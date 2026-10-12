@@ -449,11 +449,17 @@ class PartitionedHlo {
   };
   // A cache for resharding each partitioned HLO.
   struct ReshardCache {
+    struct WindowReshardCacheEntry {
+      HloSharding sharding;
+      Window window;
+      const HloInstruction* pad_value;
+      bool mask_invalid_region;
+      bool force_mask_in_compact;
+      WindowedInputShardReturnValue result;
+    };
     struct PerHloCache {
       absl::flat_hash_map<HloSharding, PartitionedHlo> reshard_cache;
-      std::vector<
-          std::tuple<HloSharding, Window, WindowedInputShardReturnValue>>
-          window_reshard_cache;
+      std::vector<WindowReshardCacheEntry> window_reshard_cache;
     };
     // Use absl::node_hash_map for pointer stability.
     absl::node_hash_map<HloInstruction*, PerHloCache> per_hlo_cache;
