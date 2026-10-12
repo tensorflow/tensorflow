@@ -58,13 +58,12 @@ TEST(TypeToTfLiteType, Sanity) {
   EXPECT_EQ(kTfLiteFloat32, typeToTfLiteType<float>());
   EXPECT_EQ(kTfLiteBool, typeToTfLiteType<bool>());
   EXPECT_EQ(kTfLiteString, typeToTfLiteType<std::string>());
-  static_assert(
-      std::is_same<float, TfLiteTypeToType<kTfLiteFloat32>::Type>::value,
-      "TfLiteTypeToType test failure");
-  static_assert(std::is_same<bool, TfLiteTypeToType<kTfLiteBool>::Type>::value,
+  static_assert(std::is_same_v<float, TfLiteTypeToType<kTfLiteFloat32>::Type>,
+                "TfLiteTypeToType test failure");
+  static_assert(std::is_same_v<bool, TfLiteTypeToType<kTfLiteBool>::Type>,
                 "TfLiteTypeToType test failure");
   static_assert(
-      std::is_same<std::string, TfLiteTypeToType<kTfLiteString>::Type>::value,
+      std::is_same_v<std::string, TfLiteTypeToType<kTfLiteString>::Type>,
       "TfLiteTypeToType test failure");
 }
 
