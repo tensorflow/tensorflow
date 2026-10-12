@@ -41,7 +41,7 @@ class ArithmeticOptimizer : public GraphOptimizer {
       : opt_level_(opt_level),
         options_(ArithmeticOptimizerOptions::Default(opt_level)) {}
 
-  ~ArithmeticOptimizer() override {}
+  ~ArithmeticOptimizer() override = default;
 
   std::string name() const override { return "arithmetic_optimizer"; };
 
