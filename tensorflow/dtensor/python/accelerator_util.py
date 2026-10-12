@@ -312,12 +312,6 @@ def shutdown_accelerator_system() -> None:
 
   try:
     context.async_wait()
-  except Exception:
-    logging.exception(
-        "Error waiting for async operations to finish before shutting "
-        "down the accelerator system."
-    )
-    raise
   finally:
     # Cleanup always runs, even if `async_wait()` raised, so the system
     # is never left stuck in an "initialized" state.
