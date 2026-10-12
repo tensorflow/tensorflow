@@ -52,6 +52,9 @@ using ::testing::HasSubstr;
 class TiledHloScheduleTest : public HloHardwareIndependentTestBase {
  protected:
   TiledHloScheduleTest() { RegisterSymbolicExprStorage(&mlir_context_); }
+  void SetUp() override {
+    GTEST_SKIP() << "Legacy symbolic tile analysis is disallowed.";
+  }
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options =
         HloHardwareIndependentTestBase::GetDebugOptionsForTest();
