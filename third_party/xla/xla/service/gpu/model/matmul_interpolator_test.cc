@@ -337,6 +337,10 @@ class MatmulInterpolatorDefaultTableTest
     return GetMatmulInterpolator(TestGpuDeviceInfo::AMDMI300DeviceInfo());
   }
 
+  std::unique_ptr<MatmulInterpolator> GetMatmulInterpolatorSm107() {
+    return GetMatmulInterpolator(TestGpuDeviceInfo::VRNVL72DeviceInfo());
+  }
+
   std::unique_ptr<MatmulInterpolator> GetMatmulInterpolatorGfx950() {
     return GetMatmulInterpolator(TestGpuDeviceInfo::AMDMI350DeviceInfo());
   }
@@ -463,6 +467,47 @@ INSTANTIATE_TEST_SUITE_P(
              /*result_type=*/"bf16",
              /*clock_cycles=*/0},
             /*expected_duration=*/absl::Microseconds(6),
+        },
+    }),
+    [](const TestParamInfo<MatmulInterpolatorDefaultTableTest::ParamType>&
+           info) { return info.param.test_name; });
+
+using Sm107DefaultTableTest = MatmulInterpolatorDefaultTableTest;
+
+TEST_P(Sm107DefaultTableTest, EstimatesExactRuntime) {
+  const auto& [_, spec, expected_duration] = GetParam();
+  ASSERT_OK_AND_ASSIGN(DotContext context,
+                       Dot(spec.b, spec.m, spec.n, spec.k, spec.lhs_type,
+                           spec.rhs_type, spec.result_type));
+  std::optional<absl::Duration> runtime =
+      GetMatmulInterpolatorSm107()->EstimatedRuntime(*context.dot);
+  ASSERT_TRUE(runtime.has_value());
+  EXPECT_NEAR(absl::ToDoubleNanoseconds(*runtime),
+              absl::ToDoubleNanoseconds(expected_duration), 1.0);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    MatmulInterpolatorDefaultTableTestInstantiationSm107, Sm107DefaultTableTest,
+    ValuesIn<ParametrizedTestCase>({
+        {
+            /*test_name=*/"bf16_bf16_bf16",
+            /*spec=*/
+            {/*b=*/4, /*m=*/4096, /*n=*/4096, /*k=*/4096,
+             /*lhs_type=*/"bf16",
+             /*rhs_type=*/"bf16",
+             /*result_type=*/"bf16",
+             /*clock_cycles=*/0},
+            /*expected_duration=*/absl::Nanoseconds(153664),
+        },
+        {
+            /*test_name=*/"f32_f32_f32",
+            /*spec=*/
+            {/*b=*/4, /*m=*/4096, /*n=*/4096, /*k=*/4096,
+             /*lhs_type=*/"f32",
+             /*rhs_type=*/"f32",
+             /*result_type=*/"f32",
+             /*clock_cycles=*/0},
+            /*expected_duration=*/absl::Nanoseconds(292353),
         },
     }),
     [](const TestParamInfo<MatmulInterpolatorDefaultTableTest::ParamType>&

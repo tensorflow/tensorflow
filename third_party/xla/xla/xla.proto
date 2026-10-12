@@ -535,6 +535,12 @@ message DebugOptions {
     EARLY_EXIT_POINT_AFTER_CONFIG_ASSIGNMENT = 1;
   }
 
+  enum DeterministicOpsTritonMode {
+    DETERMINISTIC_OPS_TRITON_MODE_UNSET = 0;
+    DETERMINISTIC_OPS_TRITON_MODE_OFF = 1;
+    DETERMINISTIC_OPS_TRITON_MODE_UNCHECKED = 2;
+  }
+
   // Filter which allows enabling NCCL symmetric buffers for a subset of
   // collectives based on their type and size.
   message CollectiveFilter {
@@ -995,6 +1001,11 @@ message DebugOptions {
   // for different scenarios.
   optional bool xla_gpu_experimental_collective_start_as_early_as_possible =
       488;
+
+  // Controls whether Triton is enabled when deterministic ops are requested
+  // (`xla_gpu_deterministic_ops` or `xla_gpu_exclude_nondeterministic_ops`).
+  optional DeterministicOpsTritonMode
+      xla_gpu_experimental_deterministic_ops_triton = 556;
 
   // Experimentally disables binary libraries in GPU compiler passes.
   optional bool xla_gpu_experimental_disable_binary_libraries = 329;
@@ -1931,7 +1942,7 @@ message DebugOptions {
   // Enables Raft for stable TopK.
   optional bool xla_gpu_experimental_enable_raft_for_stable_topk = 546;
 
-  // Next id: 556
+  // Next id: 557
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

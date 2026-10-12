@@ -1,0 +1,32 @@
+diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
+index e9c206ce..509398da 100644
+--- a/third_party/llvm/generated.patch
++++ b/third_party/llvm/generated.patch
+@@ -1,12 +1 @@
+ Auto generated patch. Do not edit or delete it, even if empty.
+-diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/Hexagon/autohvx/xqf-postra-conv-double2.ll b/llvm/test/CodeGen/Hexagon/autohvx/xqf-postra-conv-double2.ll
+---- a/llvm/test/CodeGen/Hexagon/autohvx/xqf-postra-conv-double2.ll
+-+++ b/llvm/test/CodeGen/Hexagon/autohvx/xqf-postra-conv-double2.ll
+-@@ -1,5 +1,7 @@
+- ; Checks if conversion is only inserted for the spilled register
+- ; instead of 2 conversions for the W register
+-+
+-+; REQUIRES: asserts
+- ; RUN: llc -O2 -march=hexagon -mcpu=hexagonv81 -enable-xqf-gen=true \
+- ; RUN: -hexagon-qfloat-mode=ieee -mattr=+hvxv81,+hvx-length128B \
+- ; RUN: -enable-postra-xqf-check -debug-only=handle-qfp 2>&1 < %s -o /dev/null | FileCheck %s
+diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
+index 68a14533..e512bca5 100644
+--- a/third_party/llvm/workspace.bzl
++++ b/third_party/llvm/workspace.bzl
+@@ -19,8 +19,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
+ 
+ def repo(name):
+     """Imports LLVM."""
+-    LLVM_COMMIT = "b08e005995ed29a2f89aa9a3f599a9d45db65523"
+-    LLVM_SHA256 = "3f4f1765816e22a21ac41dbf71d91d519b0b371b05d7e33ef2a0a862c838420c"
++    LLVM_COMMIT = "ce2a4984a3f43327a2b7c40baa74907bc10eb899"
++    LLVM_SHA256 = "299b00dbf6d780c21680d87b2c4321cc5f49eb4906a14b1899f47c7b2e980874"
+ 
+     tf_http_archive(
+         name = name,
