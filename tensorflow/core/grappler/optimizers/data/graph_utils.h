@@ -63,7 +63,7 @@ template <typename T>
 NodeDef* AddScalarConstNode(T v, MutableGraphView* graph) {
   // is_same is an idiomatic hack for making it compile if not instantiated.
   // Replacing with false will result in a compile-time error.
-  static_assert(!std::is_same<T, T>::value,
+  static_assert(!std::is_same_v<T, T>,
                 "Invalid specialization of this method for type T.");
   return {};
 }
@@ -87,7 +87,7 @@ template <typename T>
 absl::Status GetScalarConstNodeValue(const NodeDef& node, T* value) {
   // is_same is an idiomatic hack for making it compile if not instantiated.
   // Replacing with false will result in a compile-time error.
-  static_assert(!std::is_same<T, T>::value,
+  static_assert(!std::is_same_v<T, T>,
                 "Invalid specialization of this method fo rtype T.");
 }
 
