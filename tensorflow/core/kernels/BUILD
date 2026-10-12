@@ -4995,6 +4995,7 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/platform:errors",
         "//tensorflow/core/util:overflow",
         "@com_google_absl//absl/status",
         "@eigen_archive//:eigen3",
