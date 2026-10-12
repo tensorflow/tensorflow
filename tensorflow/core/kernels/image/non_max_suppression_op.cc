@@ -359,7 +359,8 @@ void DoNMSPerClass(int batch_idx, int class_idx, const float* boxes_data,
     float score;
   };
   auto cmp = [](const Candidate bs_i, const Candidate bs_j) {
-    return bs_i.score < bs_j.score;
+    return bs_i.score < bs_j.score ||
+           (bs_i.score == bs_j.score && bs_i.box_index > bs_j.box_index);
   };
   std::priority_queue<Candidate, std::vector<Candidate>, decltype(cmp)>
       candidate_priority_queue(cmp);
@@ -421,8 +422,18 @@ void SelectResultPerBatch(std::vector<float>& nmsed_boxes,
                           const int batch_idx, int total_size_per_batch,
                           bool pad_per_class, int max_size_per_batch,
                           bool clip_boxes, int per_batch_size) {
+  // The order is total (real entries first, then score descending, class
+  // ascending, box index ascending; padding entries compare equal), so the
+  // result does not depend on the std::sort implementation.
   auto rc_cmp = [](const ResultCandidate rc_i, const ResultCandidate rc_j) {
-    return rc_i.score > rc_j.score;
+    const bool real_i = rc_i.box_index >= 0;
+    const bool real_j = rc_j.box_index >= 0;
+    if (real_i != real_j) return real_i;
+    if (rc_i.score != rc_j.score) return rc_i.score > rc_j.score;
+    if (rc_i.class_idx != rc_j.class_idx) {
+      return rc_i.class_idx < rc_j.class_idx;
+    }
+    return rc_i.box_index < rc_j.box_index;
   };
   std::sort(result_candidate_vec.begin(), result_candidate_vec.end(), rc_cmp);
 

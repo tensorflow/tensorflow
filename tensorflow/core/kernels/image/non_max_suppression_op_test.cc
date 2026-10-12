@@ -1505,4 +1505,110 @@ TEST_F(CombinedNonMaxSuppressionOpTest,
   test::ExpectTensorEqual<int>(expected_valid_d, *GetOutput(3));
 }
 
+TEST_F(CombinedNonMaxSuppressionOpTest, TestNegativeScoresBelowPaddingScore) {
+  MakeOp();
+  // Box 2 duplicates box 0 and is suppressed. The two selected scores are
+  // below the padding score of -1.0.
+  AddInputFromArray<float>(
+      TensorShape({1, 3, 1, 4}),
+      {0, 0, 0.1, 0.1, 0.2, 0.2, 0.3, 0.3, 0, 0, 0.1, 0.1});
+  AddInputFromArray<float>(TensorShape({1, 3, 1}), {-2.0f, -3.0f, -4.0f});
+  AddInputFromArray<int>(TensorShape({}), {3});
+  AddInputFromArray<int>(TensorShape({}), {2});
+  AddInputFromArray<float>(TensorShape({}), {.5f});
+  AddInputFromArray<float>(TensorShape({}), {-1e30f});
+  TF_ASSERT_OK(RunOpKernel());
+
+  // boxes
+  Tensor expected_boxes(allocator(), DT_FLOAT, TensorShape({1, 2, 4}));
+  test::FillValues<float>(&expected_boxes,
+                          {0, 0, 0.1, 0.1, 0.2, 0.2, 0.3, 0.3});
+  test::ExpectTensorEqual<float>(expected_boxes, *GetOutput(0));
+  // scores
+  Tensor expected_scores(allocator(), DT_FLOAT, TensorShape({1, 2}));
+  test::FillValues<float>(&expected_scores, {-2, -3});
+  test::ExpectTensorEqual<float>(expected_scores, *GetOutput(1));
+  // classes
+  Tensor expected_classes(allocator(), DT_FLOAT, TensorShape({1, 2}));
+  test::FillValues<float>(&expected_classes, {0, 0});
+  test::ExpectTensorEqual<float>(expected_classes, *GetOutput(2));
+  // valid
+  Tensor expected_valid_d(allocator(), DT_INT32, TensorShape({1}));
+  test::FillValues<int>(&expected_valid_d, {2});
+  test::ExpectTensorEqual<int>(expected_valid_d, *GetOutput(3));
+}
+
+TEST_F(CombinedNonMaxSuppressionOpTest,
+       TestEqualScoresTieBrokenByClassThenIndex) {
+  MakeOp();
+  // All six (box, class) scores are equal, so the order comes from the
+  // tie-break: class ascending, then box index ascending.
+  AddInputFromArray<float>(TensorShape({1, 3, 1, 4}),
+                           {0, 0, 0.1, 0.1, 0.2, 0.2, 0.3, 0.3, 0.4, 0.4, 0.5,
+                            0.5});
+  AddInputFromArray<float>(TensorShape({1, 3, 2}),
+                           {.5f, .5f, .5f, .5f, .5f, .5f});
+  AddInputFromArray<int>(TensorShape({}), {3});
+  AddInputFromArray<int>(TensorShape({}), {3});
+  AddInputFromArray<float>(TensorShape({}), {.5f});
+  AddInputFromArray<float>(TensorShape({}), {0.0f});
+  TF_ASSERT_OK(RunOpKernel());
+
+  // boxes
+  Tensor expected_boxes(allocator(), DT_FLOAT, TensorShape({1, 3, 4}));
+  test::FillValues<float>(&expected_boxes,
+                          {0, 0, 0.1, 0.1, 0.2, 0.2, 0.3, 0.3, 0.4, 0.4, 0.5,
+                           0.5});
+  test::ExpectTensorEqual<float>(expected_boxes, *GetOutput(0));
+  // scores
+  Tensor expected_scores(allocator(), DT_FLOAT, TensorShape({1, 3}));
+  test::FillValues<float>(&expected_scores, {0.5, 0.5, 0.5});
+  test::ExpectTensorEqual<float>(expected_scores, *GetOutput(1));
+  // classes
+  Tensor expected_classes(allocator(), DT_FLOAT, TensorShape({1, 3}));
+  test::FillValues<float>(&expected_classes, {0, 0, 0});
+  test::ExpectTensorEqual<float>(expected_classes, *GetOutput(2));
+  // valid
+  Tensor expected_valid_d(allocator(), DT_INT32, TensorShape({1}));
+  test::FillValues<int>(&expected_valid_d, {3});
+  test::ExpectTensorEqual<int>(expected_valid_d, *GetOutput(3));
+}
+
+TEST_F(CombinedNonMaxSuppressionOpTest,
+       TestEqualScoresIdenticalBoxesLowestIndexWins) {
+  MakeOp();
+  // Boxes 1 and 2 have equal scores and nearly identical coordinates
+  // (IoU = 0.04 / 0.042 ~= 0.952 > 0.5). Box 2 is suppressed by box 1 because
+  // the lower index is popped first; keeping box 2 instead would change the
+  // second output box.
+  AddInputFromArray<float>(TensorShape({1, 4, 1, 4}),
+                           {0, 0, 0.1, 0.1, 0.2, 0.2, 0.4, 0.4, 0.2, 0.2, 0.4,
+                            0.41, 0.6, 0.6, 0.8, 0.8});
+  AddInputFromArray<float>(TensorShape({1, 4, 1}), {.5f, .5f, .5f, .5f});
+  AddInputFromArray<int>(TensorShape({}), {3});
+  AddInputFromArray<int>(TensorShape({}), {3});
+  AddInputFromArray<float>(TensorShape({}), {.5f});
+  AddInputFromArray<float>(TensorShape({}), {0.0f});
+  TF_ASSERT_OK(RunOpKernel());
+
+  // boxes
+  Tensor expected_boxes(allocator(), DT_FLOAT, TensorShape({1, 3, 4}));
+  test::FillValues<float>(&expected_boxes,
+                          {0, 0, 0.1, 0.1, 0.2, 0.2, 0.4, 0.4, 0.6, 0.6, 0.8,
+                           0.8});
+  test::ExpectTensorEqual<float>(expected_boxes, *GetOutput(0));
+  // scores
+  Tensor expected_scores(allocator(), DT_FLOAT, TensorShape({1, 3}));
+  test::FillValues<float>(&expected_scores, {0.5, 0.5, 0.5});
+  test::ExpectTensorEqual<float>(expected_scores, *GetOutput(1));
+  // classes
+  Tensor expected_classes(allocator(), DT_FLOAT, TensorShape({1, 3}));
+  test::FillValues<float>(&expected_classes, {0, 0, 0});
+  test::ExpectTensorEqual<float>(expected_classes, *GetOutput(2));
+  // valid
+  Tensor expected_valid_d(allocator(), DT_INT32, TensorShape({1}));
+  test::FillValues<int>(&expected_valid_d, {3});
+  test::ExpectTensorEqual<int>(expected_valid_d, *GetOutput(3));
+}
+
 }  // namespace tensorflow
