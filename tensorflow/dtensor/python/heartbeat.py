@@ -18,7 +18,7 @@ In normal cases, all workers will exchange the same randomly generated number
 until normal program termination. If any worker stops or restarts, other workers
 will detect that and crash themselves.
 
-In this module, logging.fatal is used to guarantee a worker crash no matter how
+In this module, _fatal is used to guarantee a worker crash no matter how
 the functions below are called, in a thread or not.
 """
 
@@ -42,7 +42,7 @@ _failure_count = 0
 _heartbeat_timer = None
 
 
-def _fatal(msg, *args):
+def _fatal(msg, *args, **kwargs):
   """Logs `msg` at FATAL level and unconditionally crashes the process.
 
   `logging.fatal` (tf_logging -> the stdlib `logging` module) only logs at
@@ -51,7 +51,7 @@ def _fatal(msg, *args):
   or calling `sys.exit` would only end that thread, not the process. Use
   `os._exit` to guarantee a hard process crash regardless of caller.
   """
-  logging.fatal(msg, *args)
+  logging.fatal(msg, *args, **kwargs)
   os._exit(1)  # pylint: disable=protected-access
 
 
