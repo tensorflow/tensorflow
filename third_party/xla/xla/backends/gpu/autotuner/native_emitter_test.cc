@@ -116,7 +116,9 @@ ENTRY %entry_computation (p0: f32[32,16], p1: f32[32,16]) -> (f32[32,16], f32[32
 class NativeEmitterBackendTest : public HloHardwareIndependentTestBase {
  protected:
   NativeEmitterBackendTest()
-      : platform_(PlatformUtil::GetDefaultPlatform().value()),
+      : debug_options_(
+            HloHardwareIndependentTestBase::GetDebugOptionsForTest()),
+        platform_(PlatformUtil::GetDefaultPlatform().value()),
         stream_executor_(platform_->ExecutorForDevice(0).value()),
         target_config_(stream_executor_),
         compiler_(Compiler::GetForPlatform(platform_->id()).value()),

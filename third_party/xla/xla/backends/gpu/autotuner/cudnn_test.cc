@@ -331,10 +331,11 @@ TEST_F(CudnnBackendTest, GetDefaultConfigSucceedsWithNullStreamExecutor) {
                        GetGpuTargetConfig(GpuModel::H100_SXM));
   ASSERT_OK_AND_ASSIGN(Compiler::GpuTargetConfig target_config,
                        Compiler::GpuTargetConfig::FromProto(proto));
-  debug_options_.set_xla_gpu_cudnn_deviceless_compilation_mode(
+  DebugOptions debug_options = debug_options_;
+  debug_options.set_xla_gpu_cudnn_deviceless_compilation_mode(
       DebugOptions::CUDNN_DEVICELESS_COMPILATION_AUTO);
   CudnnBackend backend_without_stream_executor(
-      /*stream_executor=*/nullptr, &debug_options_, &compiler_, &target_config);
+      /*stream_executor=*/nullptr, &debug_options, &compiler_, &target_config);
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                        ParseAndReturnVerifiedModule(kCudnnFusionHlo));
 
@@ -350,10 +351,11 @@ TEST_F(CudnnBackendTest, CudnnDevicelessCompilationDisabledFails) {
                        GetGpuTargetConfig(GpuModel::H100_SXM));
   ASSERT_OK_AND_ASSIGN(Compiler::GpuTargetConfig target_config,
                        Compiler::GpuTargetConfig::FromProto(proto));
-  debug_options_.set_xla_gpu_cudnn_deviceless_compilation_mode(
+  DebugOptions debug_options = debug_options_;
+  debug_options.set_xla_gpu_cudnn_deviceless_compilation_mode(
       DebugOptions::CUDNN_DEVICELESS_COMPILATION_DISABLED);
   CudnnBackend backend_without_stream_executor(
-      /*stream_executor=*/nullptr, &debug_options_, &compiler_, &target_config);
+      /*stream_executor=*/nullptr, &debug_options, &compiler_, &target_config);
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                        ParseAndReturnVerifiedModule(kCudnnFusionHlo));
 
