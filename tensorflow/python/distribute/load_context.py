@@ -25,22 +25,25 @@ class LoadContext(threading.local):
 
   def __init__(self):
     super().__init__()
-    self._entered_load_context = []
-    self._load_options = None
+    # Stack of load options, one entry per nested `load_context()` call. The
+    # top of the stack is the currently active load options; popping on exit
+    # restores whatever options (if any) were active before entering, rather
+    # than always resetting to `None`.
+    self._load_options_stack = []
 
   def set_load_options(self, load_options):
-    self._load_options = load_options
-    self._entered_load_context.append(True)
+    self._load_options_stack.append(load_options)
 
   def clear_load_options(self):
-    self._load_options = None
-    self._entered_load_context.pop()
+    self._load_options_stack.pop()
 
   def load_options(self):
-    return self._load_options
+    if not self._load_options_stack:
+      return None
+    return self._load_options_stack[-1]
 
   def in_load_context(self):
-    return self._entered_load_context
+    return bool(self._load_options_stack)
 
 
 _load_context = LoadContext()
