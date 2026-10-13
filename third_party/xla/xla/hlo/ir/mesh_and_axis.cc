@@ -46,12 +46,12 @@ namespace xla {
 
 absl::Status Mesh::Validate() {
   if (device_assignment_.num_dimensions() == 0) {
-    // Empty mesh or maximal mesh.
+    // Empty mesh or single-device mesh.
     if (device_assignment_.num_elements() <= 1) {
       return absl::OkStatus();
     }
     return absl::InvalidArgumentError(absl::StrCat(
-        "Non-maximal mesh must have exactly 1 device id. Number of "
+        "Single-device mesh must have at most 1 device id. Number of "
         "device ids: ",
         device_assignment_.num_elements()));
   }
@@ -109,9 +109,9 @@ Mesh::Mesh(TileAssignment device_assignment,
 }
 
 std::string Mesh::ToString() const {
-  if (IsMaximal()) {
+  if (IsSingleDevice()) {
     return absl::StrCat(
-        "maximal_mesh[device_id=", device_assignment_.array()(0), "]");
+        "single_device[device_id=", device_assignment_.array()(0), "]");
   }
 
   std::string mesh_str = "mesh";
@@ -143,7 +143,7 @@ MeshProto Mesh::ToProto() const {
     if (device_assignment_.num_elements() == 0) {
       return MeshProto();
     }
-    // Maximal mesh
+    // Single-device mesh
     // TODO(b/454008727): Validate device_ids_size is 1.
     proto.add_device_ids(*device_assignment_.array().begin());
     return proto;

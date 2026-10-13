@@ -4934,10 +4934,16 @@ TEST_F(HloParserTest, ParseNamedShardingReplicatedAxes) {
   EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), original);
 }
 
-TEST_F(HloParserTest, ParseNamedShardingMaximal) {
-  const std::string original = "{maximal_mesh[device_id=5]}";
+TEST_F(HloParserTest, ParseNamedShardingSingleDevice) {
+  const std::string original = "{single_device[device_id=5]}";
   ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
   EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), original);
+
+  // Backward compatibility: parsing maximal_mesh
+  ASSERT_OK_AND_ASSIGN(HloSharding sharding_maximal,
+                       ParseSharding("{maximal_mesh[device_id=5]}"));
+  EXPECT_EQ(sharding_maximal.ToString(/*include_metadata=*/true),
+            "{single_device[device_id=5]}");
 }
 
 TEST_F(HloParserTest, ParseNamedShardingWithSpecialCharacters) {
@@ -5006,7 +5012,7 @@ TEST_F(HloParserTest, ParseNamedShardingTuple) {
 TEST_F(HloParserTest, ParseMixedShardingTuple1) {
   const std::string original =
       "{{replicated}, {mesh['a'=2,'b'=4], replicated}, {maximal device=5}, "
-      "{maximal_mesh[device_id=5]}}";
+      "{single_device[device_id=5]}}";
   ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
 
   EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), original);
@@ -5155,12 +5161,16 @@ TEST_F(HloParserTest, ParseReplicaGroupsV3) {
   EXPECT_EQ("{{0,1},{2,3}}", ReplicaGroupsToString(replica_groups));
 }
 
-TEST_F(HloParserTest, ParseReplicaGroupsMaximalMesh) {
-  const std::string original = "maximal_mesh[device_id=1] {}";
-  auto status = ParseReplicaGroupsOnly(original).status();
+TEST_F(HloParserTest, ParseReplicaGroupsSingleDevice) {
+  const std::string original = "single_device[device_id=1] {}";
   ASSERT_OK_AND_ASSIGN(std::vector<ReplicaGroup> replica_groups,
                        ParseReplicaGroupsOnly(original));
   EXPECT_EQ("{{1}}", ReplicaGroupsToString(replica_groups));
+
+  // Backward compatibility: parsing maximal_mesh
+  ASSERT_OK_AND_ASSIGN(std::vector<ReplicaGroup> replica_groups_maximal,
+                       ParseReplicaGroupsOnly("maximal_mesh[device_id=1] {}"));
+  EXPECT_EQ("{{1}}", ReplicaGroupsToString(replica_groups_maximal));
 }
 
 TEST_F(HloParserTest, ParseDynamicReshapeMissingOperands) {

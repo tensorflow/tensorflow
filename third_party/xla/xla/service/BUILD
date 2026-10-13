@@ -6209,6 +6209,29 @@ xla_cc_test(
     ],
 )
 
+xla_cc_test(
+    name = "original_value_recovery_test",
+    srcs = ["original_value_recovery_test.cc"],
+    deps = [
+        ":call_inliner",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/transforms/simplifiers:algebraic_simplifier",
+        "//xla/hlo/utils:hlo_original_value_analysis",
+        "//xla/hlo/utils:hlo_original_value_analyzer_utils",
+        "//xla/hlo/utils:hlo_original_value_reconstructor",
+        "//xla/hlo/utils:hlo_sharding_reconstruction_util",
+        "//xla/service/spmd:spmd_partitioner",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "while_loop_pipeline_unroller",
     srcs = ["while_loop_pipeline_unroller.cc"],

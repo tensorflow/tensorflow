@@ -132,6 +132,56 @@ ENTRY main {
                                  SizeIs(1)))))));
 }
 
+// Verifies that an optimized instruction with a non-placeholder OriginalArray
+// (e.g., {"x.1"} without "__ovp") both recovers {"x.1"} directly and triggers
+// recovery table entries whose source is {"x.1"} (such as {"reshape.1"} :
+// {"x.1"}).
+TEST_F(HloOriginalValueAnalysisTest, RecoveryFromNonPlaceholderOriginalArray) {
+  std::string hlo_text = R"hlo(
+HloModule module, origin_recovery_table={
+  {"reshape.1"}: {"x.1"}, "HloModule rec ENTRY %e { %p = f32[8] parameter(0) ROOT %r = f32[1,8,1] reshape(%p) }"
+}
+ENTRY main {
+  %x.1 = f32[8] parameter(0), origin={{"x.1"}}
+  ROOT %broadcast.1 = f32[1,2,3,8,1] broadcast(%x.1), dimensions={3}, origin={{"broadcast.1"}}
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto analysis,
+                       HloOriginalValueAnalysis::Create(module.get()));
+
+  auto x_orig = RelativeScopedTensorKey::FromString("x.1", {});
+  auto reshape_orig = RelativeScopedTensorKey::FromString("reshape.1", {});
+  auto broadcast_orig = RelativeScopedTensorKey::FromString("broadcast.1", {});
+
+  EXPECT_THAT(
+      analysis->original_tensor_by_optimized_tensor_key(),
+      UnorderedElementsAre(
+          Pair(TensorKey{"x.1", {}},
+               UnorderedElementsAre(
+                   AllOf(Field(&HloOriginalValueAnalysis::OriginalTensorInfo::
+                                   original_scoped_tensor_key,
+                               x_orig),
+                         Field(&HloOriginalValueAnalysis::OriginalTensorInfo::
+                                   recovery_modules,
+                               IsEmpty())),
+                   AllOf(Field(&HloOriginalValueAnalysis::OriginalTensorInfo::
+                                   original_scoped_tensor_key,
+                               reshape_orig),
+                         Field(&HloOriginalValueAnalysis::OriginalTensorInfo::
+                                   recovery_modules,
+                               SizeIs(1))))),
+          Pair(TensorKey{"broadcast.1", {}},
+               ElementsAre(
+                   AllOf(Field(&HloOriginalValueAnalysis::OriginalTensorInfo::
+                                   original_scoped_tensor_key,
+                               broadcast_orig),
+                         Field(&HloOriginalValueAnalysis::OriginalTensorInfo::
+                                   recovery_modules,
+                               IsEmpty()))))));
+}
+
 TEST_F(HloOriginalValueAnalysisTest, ChainedRecoveryModules) {
   constexpr absl::string_view hlo_string = R"hlo(
 HloModule chained_module, entry_computation_layout={(f32[4,8]{1,0})->f32[4,8]{1,0}}, origin_recovery_table={
