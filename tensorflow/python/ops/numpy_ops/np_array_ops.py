@@ -1681,10 +1681,10 @@ def flip(m, axis=None):  # pylint: disable=missing-docstring
   if axis is None:
     return array_ops.reverse(m, math_ops.range(array_ops.rank(m)))
 
-  if np_utils.isscalar(axis):
+  if np_utils.isscalar(axis) or (
+      isinstance(axis, np.ndarray) and axis.ndim == 0
+  ):
     axis = [axis]
-
-  axis = np_utils._canonicalize_axes(axis, array_ops.rank(m))  # pylint: disable=protected-access
 
   return array_ops.reverse(m, axis)
 
