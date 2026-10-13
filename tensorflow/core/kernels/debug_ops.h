@@ -507,9 +507,13 @@ struct CurtHealthLaunch {
 extern template struct CurtHealthLaunch<Eigen::half, float>;
 extern template struct CurtHealthLaunch<float, float>;
 extern template struct CurtHealthLaunch<double, float>;
+extern template struct CurtHealthLaunch<int16_t, float>;
+extern template struct CurtHealthLaunch<int32_t, float>;
 extern template struct CurtHealthLaunch<Eigen::half, double>;
 extern template struct CurtHealthLaunch<float, double>;
 extern template struct CurtHealthLaunch<double, double>;
+extern template struct CurtHealthLaunch<int16_t, double>;
+extern template struct CurtHealthLaunch<int32_t, double>;
 
 template <typename Tin, typename Tout>
 struct ConciseHealthLaunch {
@@ -520,9 +524,13 @@ struct ConciseHealthLaunch {
 extern template struct ConciseHealthLaunch<Eigen::half, float>;
 extern template struct ConciseHealthLaunch<float, float>;
 extern template struct ConciseHealthLaunch<double, float>;
+extern template struct ConciseHealthLaunch<int16_t, float>;
+extern template struct ConciseHealthLaunch<int32_t, float>;
 extern template struct ConciseHealthLaunch<Eigen::half, double>;
 extern template struct ConciseHealthLaunch<float, double>;
 extern template struct ConciseHealthLaunch<double, double>;
+extern template struct ConciseHealthLaunch<int16_t, double>;
+extern template struct ConciseHealthLaunch<int32_t, double>;
 
 template <typename Tin, typename Tout>
 struct FullHealthLaunch {
@@ -533,9 +541,13 @@ struct FullHealthLaunch {
 extern template struct FullHealthLaunch<Eigen::half, float>;
 extern template struct FullHealthLaunch<float, float>;
 extern template struct FullHealthLaunch<double, float>;
+extern template struct FullHealthLaunch<int16_t, float>;
+extern template struct FullHealthLaunch<int32_t, float>;
 extern template struct FullHealthLaunch<Eigen::half, double>;
 extern template struct FullHealthLaunch<float, double>;
 extern template struct FullHealthLaunch<double, double>;
+extern template struct FullHealthLaunch<int16_t, double>;
+extern template struct FullHealthLaunch<int32_t, double>;
 
 template <typename Tin, typename Tout>
 struct ReduceInfNanThreeSlotsLaunch {
@@ -546,9 +558,13 @@ struct ReduceInfNanThreeSlotsLaunch {
 extern template struct ReduceInfNanThreeSlotsLaunch<Eigen::half, float>;
 extern template struct ReduceInfNanThreeSlotsLaunch<float, float>;
 extern template struct ReduceInfNanThreeSlotsLaunch<double, float>;
+extern template struct ReduceInfNanThreeSlotsLaunch<int16_t, float>;
+extern template struct ReduceInfNanThreeSlotsLaunch<int32_t, float>;
 extern template struct ReduceInfNanThreeSlotsLaunch<Eigen::half, double>;
 extern template struct ReduceInfNanThreeSlotsLaunch<float, double>;
 extern template struct ReduceInfNanThreeSlotsLaunch<double, double>;
+extern template struct ReduceInfNanThreeSlotsLaunch<int16_t, double>;
+extern template struct ReduceInfNanThreeSlotsLaunch<int32_t, double>;
 
 #endif
 

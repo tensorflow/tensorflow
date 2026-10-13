@@ -24,10 +24,10 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/status/status.h"
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/gpu_launch_config.h"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 
 namespace tensorflow {
 
@@ -40,7 +40,7 @@ typedef Eigen::GpuDevice GPUDevice;
 template <typename Tin, typename Tout>
 __global__ void CurtHealthKernel(const Tin* __restrict__ data, int64_t size,
                                  Tout output[1]) {
-  GPU_1D_KERNEL_LOOP(offset, size, int64_t) {
+  for (int64_t offset : GpuGridRangeX<int64_t>(size)) {
     if (Eigen::numext::isinf(data[offset]) ||
         Eigen::numext::isnan(data[offset])) {
       output[0] = 1.0;
@@ -55,7 +55,7 @@ __global__ void ConciseHealthKernel(const Tin* __restrict__ data, int64_t size,
                                     Tout output[3]) {
   Tout accum[3] = {0.0, 0.0, 0.0};
 
-  GPU_1D_KERNEL_LOOP(offset, size, int64_t) {
+  for (int64_t offset : GpuGridRangeX<int64_t>(size)) {
     if (Eigen::numext::isinf(data[offset])) {
       if (data[offset] < static_cast<Tin>(0.f)) {
         ++accum[0];
@@ -81,7 +81,7 @@ __global__ void FullHealthKernel(const Tin* __restrict__ data, int64_t size,
                                  Tout output[6]) {
   Tout accum[6] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
 
-  GPU_1D_KERNEL_LOOP(offset, size, int64_t) {
+  for (int64_t offset : GpuGridRangeX<int64_t>(size)) {
     if (Eigen::numext::isinf(data[offset])) {
       if (data[offset] < static_cast<Tin>(0.f)) {
         ++accum[0];
@@ -117,7 +117,7 @@ __global__ void FullHealthKernel(const Tin* __restrict__ data, int64_t size,
 template <typename Tin, typename Tout>
 __global__ void ReduceInfNanThreeSlotsKernel(const Tin* __restrict__ data,
                                              int64_t size, Tout output[3]) {
-  GPU_1D_KERNEL_LOOP(offset, size, int64_t) {
+  for (int64_t offset : GpuGridRangeX<int64_t>(size)) {
     if (Eigen::numext::isinf(data[offset])) {
       if (data[offset] < static_cast<Tin>(0.f)) {
         output[0] = -std::numeric_limits<Tout>::infinity();
