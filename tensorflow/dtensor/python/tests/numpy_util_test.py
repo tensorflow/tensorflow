@@ -125,6 +125,23 @@ class NumpyUtilTest(test_util.DTensorBaseTest):
         numpy_util.unpacked_to_numpy(tensors, sharded_on_y_x),
         np.arange(16).reshape(4, 4))
 
+  def test_pack_tf_tensor_multi_axis_sharded_under_tf_function(self):
+    from tensorflow.python.eager import polymorphic_function
+    from tensorflow.python.framework import constant_op
+    from tensorflow.python.framework import dtypes
+
+    sharded_layout = layout.Layout([_MESH_DIM_X, _MESH_DIM_Y], mesh=self.mesh)
+    val = constant_op.constant(
+        np.arange(16).reshape(4, 4), dtype=dtypes.float32
+    )
+
+    @polymorphic_function.function
+    def fn(x):
+      return numpy_util.pack_tf_tensor(x, sharded_layout)
+
+    dtensor_out = fn(val)
+    self.assertAllClose(val, numpy_util.to_numpy(dtensor_out))
+
   def test_unpack_uneven_split_raises(self):
     value = np.arange(5)
 
