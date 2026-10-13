@@ -5002,6 +5002,21 @@ tf_kernel_library(
     ],
 )
 
+tf_cuda_only_cc_test(
+    name = "depth_space_ops_gpu_test",
+    size = "small",
+    srcs = ["depth_space_ops_gpu_test.cu.cc"],
+    deps = [
+        ":depth_space_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:status_matchers",
+        "@com_google_absl//absl/status",
+        "@eigen_archive//:eigen3",
+    ],
+)
+
 cc_library(
     name = "parsing",
     deps = [

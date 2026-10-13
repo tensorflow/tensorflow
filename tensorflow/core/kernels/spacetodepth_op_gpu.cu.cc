@@ -152,6 +152,9 @@ struct SpaceToDepthOpFunctor<GPUDevice, T, FORMAT_NHWC> {
                           typename TTypes<T, 4>::ConstTensor input,
                           int block_size,
                           typename TTypes<T, 4>::Tensor output) {
+    if (input.size() == 0) {
+      return absl::OkStatus();
+    }
     if (input.size() > std::numeric_limits<int32_t>::max()) {
       return absl::InvalidArgumentError(
           "SpaceToDepthOpFunctor NHWC: input size exceeds int32 bounds");
@@ -164,20 +167,8 @@ struct SpaceToDepthOpFunctor<GPUDevice, T, FORMAT_NHWC> {
     const int output_width = output.dimension(2);
     const int output_depth = output.dimension(3);
 
-    int64_t total_count_64 = MultiplyWithoutOverflow(
-        MultiplyWithoutOverflow(
-            MultiplyWithoutOverflow(batch_size, input_height), input_width),
-        input_depth);
-    if (total_count_64 < 0 ||
-        total_count_64 > std::numeric_limits<int32_t>::max()) {
-      return absl::InternalError(
-          "SpaceToDepthOpFunctor NHWC: total_count exceeds int32 bounds");
-    }
-    const int total_count = total_count_64;
+    const int total_count = static_cast<int>(input.size());
 
-    if (total_count == 0) {
-      return absl::OkStatus();
-    }
     GpuLaunchConfig config = GetGpuLaunchConfig(total_count, d);
     TF_RETURN_IF_ERROR(GpuLaunchKernel(
         S2D_NHWC<T>, config.block_count, config.thread_per_block, 0, d.stream(),
@@ -202,6 +193,9 @@ struct SpaceToDepthOpFunctor<GPUDevice, T, FORMAT_NCHW> {
                           typename TTypes<T, 4>::ConstTensor input,
                           int block_size,
                           typename TTypes<T, 4>::Tensor output) {
+    if (input.size() == 0) {
+      return absl::OkStatus();
+    }
     if (input.size() > std::numeric_limits<int32_t>::max()) {
       return absl::InvalidArgumentError(
           "SpaceToDepthOpFunctor NCHW: input size exceeds int32 bounds");
@@ -254,9 +248,6 @@ struct SpaceToDepthOpFunctor<GPUDevice, T, FORMAT_NCHW> {
       }
       const int total_count = total_count_64;
 
-      if (total_count == 0) {
-        return absl::OkStatus();
-      }
       GpuLaunchConfig config = GetGpuLaunchConfig(total_count, d);
       switch (block_size) {
         case 2:
@@ -296,9 +287,6 @@ struct SpaceToDepthOpFunctor<GPUDevice, T, FORMAT_NCHW> {
     }
     const int total_count = total_count_64;
 
-    if (total_count == 0) {
-      return absl::OkStatus();
-    }
     GpuLaunchConfig config = GetGpuLaunchConfig(total_count, d);
     TF_RETURN_IF_ERROR(GpuLaunchKernel(
         S2D_NCHW<T>, config.block_count, config.thread_per_block, 0, d.stream(),
