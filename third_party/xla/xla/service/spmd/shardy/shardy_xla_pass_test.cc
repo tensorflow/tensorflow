@@ -17,14 +17,18 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
+#include "absl/status/statusor.h"
 #include "shardy/dialect/sdy/transforms/common/partitioner_stage.h"
 #include "shardy/dialect/sdy/transforms/common/propagation_options.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/hlo_sharding.h"
@@ -32,6 +36,8 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_matchers.h"
+#include "xla/layout.h"
+#include "xla/layout_util.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/spmd/sharding_format_picker.h"
 #include "xla/service/spmd/shardy/constants.h"
@@ -1106,6 +1112,60 @@ TEST_P(ShardyXLATest, ShardyGenerateDeviceLocalCodeUseTupleArgs) {
   EXPECT_EQ(module->entry_computation_layout().ToString(),
             "((f32[4,4]{1,0:T(8,128)}, "
             "f32[4,16]{1,0:T(8,128)}))->f32[4,4]{1,0:T(8,128)}");
+}
+
+TEST_P(ShardyXLATest, ShardyGenerateDeviceLocalCodeCanonicalizeLayout) {
+  const char* const hloString = R"(
+    HloModule pjit_f,
+      entry_computation_layout={(f32[8,16]{1,0:T(8,128)}, f32[8,16]{0,1:T(8,128)}, f32[8,16]{0,1:T(8,128)})->(f32[8,16]{1,0:T(8,128)}, f32[8,16]{0,1:T(8,128)})},
+      allow_spmd_sharding_propagation_to_parameters={false,false,true},
+      allow_spmd_sharding_propagation_to_output={false,false},
+      num_partitions=8
+
+    ENTRY %main (Arg_0: f32[8,16], Arg_1: f32[8,16], Arg_2: f32[8,16]) -> (f32[8,16], f32[8,16]) {
+      %Arg_0 = f32[8,16]{1,0} parameter(0), sharding={devices=[2,4]<=[8]}
+      %Arg_1 = f32[8,16]{0,1} parameter(1)
+      %Arg_2 = f32[8,16]{0,1} parameter(2)
+      %add_0 = f32[8,16]{1,0} add(%Arg_0, %Arg_2), sharding={devices=[2,4]<=[8]}
+      ROOT %tuple = (f32[8,16]{1,0}, f32[8,16]{0,1}) tuple(%add_0, %Arg_1)
+    })";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hloString));
+  module->set_layout_canonicalization_callback(
+      [](const HloModule& m)
+          -> absl::StatusOr<std::pair<std::vector<Shape>, Shape>> {
+        auto chooseCompactLayout = [](Shape shape) {
+          *shape.mutable_layout() = LayoutUtil::MakeLayout(
+              {1, 0}, {Tile({shape.dimensions(0), shape.dimensions(1)})});
+          return shape;
+        };
+        std::vector<Shape> paramShapes;
+        for (const HloInstruction* param :
+             m.entry_computation()->parameter_instructions()) {
+          paramShapes.push_back(chooseCompactLayout(param->shape()));
+        }
+        Shape resultShape = m.entry_computation()->root_instruction()->shape();
+        for (Shape& subshape : *resultShape.mutable_tuple_shapes()) {
+          subshape = chooseCompactLayout(subshape);
+        }
+        return std::make_pair(std::move(paramShapes), std::move(resultShape));
+      });
+
+  mlir::sdy::PropagationOptions propagationOptions;
+  propagationOptions.partitionerStage =
+      mlir::sdy::PartitionerStage::kConvertGlobalToLocal;
+  runShardyWithStablehloImport(module.get(),
+                               /*runSdyShardingPropagation=*/true,
+                               /*expectChanged=*/true, propagationOptions);
+
+  // Arg_0, Arg_2 (via propagation), and output element 0 shapes changed from
+  // f32[8,16] to f32[4,4], so their layouts are canonicalized to {1,0:T(4,4)}.
+  // Arg_1 and output element 1 shapes did not change, so their preset
+  // {0,1:T(8,128)} layouts are preserved.
+  EXPECT_EQ(module->entry_computation_layout().ToString(),
+            "(f32[4,4]{1,0:T(4,4)}, f32[8,16]{0,1:T(8,128)}, "
+            "f32[4,4]{1,0:T(4,4)})->(f32[4,4]{1,0:T(4,4)}, "
+            "f32[8,16]{0,1:T(8,128)})");
 }
 
 TEST_P(ShardyXLATest, TestMaximalShardingNoResults) {
