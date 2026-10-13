@@ -35,6 +35,10 @@ class LoadContext(threading.local):
     self._load_options_stack.append(load_options)
 
   def clear_load_options(self):
+    if not self._load_options_stack:
+      raise RuntimeError(
+          "clear_load_options() called when load context stack is empty."
+      )
     self._load_options_stack.pop()
 
   def load_options(self):
