@@ -56,6 +56,15 @@ class LoadContextTest(test.TestCase):
         self.assertIsNone(load_context.get_load_options())
       self.assertTrue(load_context.in_load_context())
       self.assertIs(load_context.get_load_options(), outer_options)
+    self.assertFalse(load_context.in_load_context())
+    self.assertIsNone(load_context.get_load_options())
+
+  def test_clear_load_options_empty_stack_raises(self):
+    with self.assertRaisesRegex(
+        RuntimeError,
+        r"clear_load_options\(\) called when load context stack is empty\.",
+    ):
+      load_context._load_context.clear_load_options()
 
   def test_thread_isolation(self):
     options = object()
