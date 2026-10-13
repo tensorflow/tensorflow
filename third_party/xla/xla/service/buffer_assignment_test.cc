@@ -866,6 +866,89 @@ TEST_F(BufferAssignmentTest, OOMFallbackIgnoresThreadLocalAllocations) {
   EXPECT_EQ(other_bytes_fallback, 288);
 }
 
+TEST_F(BufferAssignmentTest, OOMFallbackOnlyForExceededColor) {
+  auto builder = HloComputation::Builder(TestName());
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p1"));
+
+  auto with_space = [](Shape s, int64_t space) {
+    s.mutable_layout()->set_memory_space(space);
+    return s;
+  };
+  Shape s10 = ShapeUtil::MakeShape(F32, {10});  // 40 bytes
+  Shape s20 = ShapeUtil::MakeShape(F32, {20});  // 80 bytes
+  Shape s30 = ShapeUtil::MakeShape(F32, {30});  // 120 bytes
+  Shape s40 = ShapeUtil::MakeShape(F32, {40});  // 160 bytes
+  Shape s1 = ShapeUtil::MakeShape(F32, {1});    // 4 bytes
+
+  // Chain in memory space 0 (exceeds limit -> falls back to DEFAULT: 288B).
+  auto a0 = builder.AddInstruction(
+      HloInstruction::CreateCustomCall(with_space(s10, 0), {param}, "dummy"));
+  auto b0 = builder.AddInstruction(
+      HloInstruction::CreateCustomCall(with_space(s20, 0), {a0}, "dummy"));
+  auto c0 = builder.AddInstruction(
+      HloInstruction::CreateCustomCall(with_space(s30, 0), {b0}, "dummy"));
+  auto d0 = builder.AddInstruction(
+      HloInstruction::CreateCustomCall(with_space(s40, 0), {c0}, "dummy"));
+
+  // Identical chain in memory space 2 (within limit -> stays FAST_MERGE: 404B).
+  auto a2 = builder.AddInstruction(
+      HloInstruction::CreateCustomCall(with_space(s10, 2), {param}, "dummy"));
+  auto b2 = builder.AddInstruction(
+      HloInstruction::CreateCustomCall(with_space(s20, 2), {a2}, "dummy"));
+  auto c2 = builder.AddInstruction(
+      HloInstruction::CreateCustomCall(with_space(s30, 2), {b2}, "dummy"));
+  auto d2 = builder.AddInstruction(
+      HloInstruction::CreateCustomCall(with_space(s40, 2), {c2}, "dummy"));
+
+  auto root = builder.AddInstruction(
+      HloInstruction::CreateCustomCall(with_space(s1, 0), {d0, d2}, "dummy"));
+
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(module->entry_computation(),
+                        {param, a0, b0, c0, d0, a2, b2, c2, d2, root});
+  CHECK_OK(module->set_schedule(schedule));
+
+  BufferAssigner::Options opts;
+  opts.assignment_algorithm_for_computations_without_ordering =
+      buffer_assignment::
+          AssignmentAlgorithmForComputationsWithoutOrderingProto::FAST_MERGE;
+  opts.buffer_assignment_algorithm = buffer_assignment::
+      BufferAssignmentAlgorithmProto::FAST_MERGE_WITH_FALLBACK;
+  opts.fallback_algorithm =
+      buffer_assignment::BufferAssignmentAlgorithmProto::DEFAULT;
+
+  constexpr int64_t kSafetyMargin = int64_t{5} << 29;
+  opts.color_memory_limit = [&](LogicalBuffer::Color color) {
+    // Color 0 exceeds limit (tight limit); Color 2 fits comfortably.
+    return color == 0 ? (kSafetyMargin + 10) : (kSafetyMargin + 10000000);
+  };
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<BufferAssignment> assignment,
+      BufferAssigner::Run(
+          module.get(), std::make_unique<SequentialHloOrdering>(schedule),
+          &BufferSizeBytes, &alias_info_,
+          [](LogicalBuffer::Color) { return 1; }, std::move(opts)));
+
+  int64_t color0_bytes = 0;
+  int64_t color2_bytes = 0;
+  for (const BufferAllocation& alloc : assignment->Allocations()) {
+    if (alloc.color() == 0) {
+      color0_bytes += alloc.size();
+    } else if (alloc.color() == 2) {
+      color2_bytes += alloc.size();
+    }
+  }
+  // Color 0 fell back to DEFAULT (288 bytes), while Color 2 kept FAST_MERGE
+  // (400 bytes of temps without param/root).
+  EXPECT_EQ(color0_bytes, 288);
+  EXPECT_EQ(color2_bytes, 400);
+}
+
 MATCHER(IdEq, "") {
   auto* actual = std::get<0>(arg);
   auto* expected = std::get<1>(arg);
