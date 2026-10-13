@@ -79,7 +79,7 @@ def _ctc_loss_v2(labels, inputs, sequence_length,
       logits_time_major=time_major)
 
 
-class CTCLossValidationTest(test.TestCase):
+class CTCLossValidationTest(test.TestCase, parameterized.TestCase):
 
   def _callCtcLoss(self, ctc_loss_fn, logits, blank_index=0):
     labels = constant_op.constant([[0]], dtype=dtypes.int32)
@@ -117,6 +117,75 @@ class CTCLossValidationTest(test.TestCase):
       with self.subTest(ctc_loss_fn=ctc_loss_fn.__name__):
         with self.assertRaisesRegex(ValueError, r"must be in range \[-3, 3\)"):
           self._callCtcLoss(ctc_loss_fn, logits, blank_index=-4)
+
+
+  def _makeLabels(self, sparse, values):
+    if sparse:
+      return sparse_tensor.SparseTensor(
+          indices=constant_op.constant(
+              [[0, i] for i in range(len(values))], dtype=dtypes.int64),
+          values=constant_op.constant(values, dtype=dtypes.int32),
+          dense_shape=constant_op.constant(
+              [1, len(values)], dtype=dtypes.int64))
+    return constant_op.constant([values], dtype=dtypes.int32)
+
+  def _callCtcLossWithLabels(self, ctc_loss_fn, sparse, values, blank_index=-1):
+    logits = array_ops.zeros([3, 1, 10], dtype=dtypes.float32)
+    return ctc_loss_fn(
+        labels=self._makeLabels(sparse, values),
+        logits=logits,
+        label_length=constant_op.constant([len(values)], dtype=dtypes.int32),
+        logit_length=constant_op.constant([3], dtype=dtypes.int32),
+        blank_index=blank_index,
+    )
+
+  @parameterized.product(
+      ctc_loss_fn=[ctc_ops.ctc_loss_v2, ctc_ops.ctc_loss_v3],
+      sparse=[True, False],
+      label=[-1, 10, 2147483647],
+  )
+  def testOutOfRangeLabelRejected(self, ctc_loss_fn, sparse, label):
+    with self.assertRaisesRegex(
+        (errors_impl.InvalidArgumentError, ValueError),
+        "labels must be in the range|nonnegative|greater than num_classes"):
+      self.evaluate(
+          self._callCtcLossWithLabels(ctc_loss_fn, sparse, [label]))
+
+  @parameterized.product(
+      ctc_loss_fn=[ctc_ops.ctc_loss_v2, ctc_ops.ctc_loss_v3],
+      sparse=[True, False],
+      label=[-1, 10, 2147483647],
+  )
+  def testOutOfRangeLabelRejectedInFunction(self, ctc_loss_fn, sparse, label):
+    @def_function.function
+    def f():
+      return self._callCtcLossWithLabels(ctc_loss_fn, sparse, [label])
+
+    with self.assertRaisesRegex(
+        errors_impl.InvalidArgumentError,
+        "labels must be in the range|nonnegative|greater than num_classes"):
+      self.evaluate(f())
+
+  @parameterized.product(
+      ctc_loss_fn=[ctc_ops.ctc_loss_v2, ctc_ops.ctc_loss_v3],
+      sparse=[True, False],
+  )
+  def testInRangeLabelsStillAccepted(self, ctc_loss_fn, sparse):
+    loss = self.evaluate(
+        self._callCtcLossWithLabels(ctc_loss_fn, sparse, [0, 9]))
+    self.assertAllEqual(loss.shape, [1])
+    self.assertTrue(np.all(np.isfinite(loss)))
+
+  def testDensePaddingBeyondLabelLengthIgnored(self):
+    # Entries past `label_length` are padding and may hold any value.
+    logits = array_ops.zeros([3, 1, 10], dtype=dtypes.float32)
+    loss = ctc_ops.ctc_loss_v3(
+        labels=constant_op.constant([[3, -1]], dtype=dtypes.int32),
+        logits=logits,
+        label_length=constant_op.constant([1], dtype=dtypes.int32),
+        logit_length=constant_op.constant([3], dtype=dtypes.int32),
+        blank_index=-1)
+    self.assertTrue(np.all(np.isfinite(self.evaluate(loss))))
 
 
 class CTCLossTest(test.TestCase):
