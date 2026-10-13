@@ -53,7 +53,7 @@ class RollOp : public XlaOpKernel {
     OP_REQUIRES(ctx, axis_shape.dims() <= 1,
                 errors::InvalidArgument(
                     "axis must be a scalar or a 1-D vector. Found: ",
-                    shift_shape.DebugString()));
+                    axis_shape.DebugString()));
     OP_REQUIRES(
         ctx, shift_shape == axis_shape,
         errors::InvalidArgument("shift and axis must have the same size"));
@@ -101,7 +101,8 @@ class RollOp : public XlaOpKernel {
               : xla::ConstantR0WithType(ctx->builder(), shift_type,
                                         input_shape.dim_size(cur_axis));
       // Adjust large offsets into [0, axis_size). This also makes negative
-      // offsets positive.
+      // offsets positive. A dimension of size 0 needs no guard: XLA's
+      // remainder by zero returns the dividend, and the output is empty.
       offset = ((offset % axis_size) + axis_size) % axis_size;
 
       // Stack two copies of the dimension, then slice from the calculated
