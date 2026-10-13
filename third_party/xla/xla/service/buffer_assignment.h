@@ -763,7 +763,8 @@ class BufferAssignment {
   // Helper that calls NewEmptyAllocation and AddAssignment in one call,
   // creating an allocation containing a single LogicalBuffer.
   absl::StatusOr<BufferAllocation*> NewAllocation(const HloBuffer& buffer,
-                                                  int64_t size);
+                                                  int64_t size,
+                                                  int64_t offset = 0);
 
   // Adds a LogicalBuffer to the set assigned to the given allocation.
   absl::Status AddAssignment(BufferAllocation* allocation,
@@ -780,7 +781,10 @@ class BufferAssignment {
 
   // Combines allocations of temporary buffers into one big BufferAllocation.
   absl::Status CombineTempAllocations(
-      std::optional<BufferValue::Color> temp_buffer_color);
+      std::optional<BufferValue::Color> temp_buffer_color,
+      std::optional<std::function<std::optional<int64_t>(
+          const HloAliasAnalysis&, const HloInstruction*, const ShapeIndex&)>>
+          fixed_offset = std::nullopt);
 
   // Computes stats for the assignment, to be retrieved by GetStats.
   void ComputeSummaryStats();
@@ -900,6 +904,8 @@ class BufferAssigner {
       const HloAliasAnalysis&, const HloInstruction*, const ShapeIndex&)>;
   using LiveRangeInterferenceOptions =
       BufferAssignment::LiveRangeInterferenceOptions;
+  using FixedOffset = std::function<std::optional<int64_t>(
+      const HloAliasAnalysis&, const HloInstruction*, const ShapeIndex&)>;
 
   // The order in which to process buffers during buffer assignment.
   enum class BufferOrder {
@@ -927,6 +933,10 @@ class BufferAssigner {
     // Optional callbacks to override live-range interference analysis between
     // two buffer values (e.g. for target-specific concurrency or barriers).
     std::optional<LiveRangeInterferenceOptions> live_range_interference_options;
+
+    // Optional callback returning a required fixed offset for a buffer
+    // position.
+    std::optional<FixedOffset> fixed_offset;
     // Description of any buffer offsets that are already set by an earlier
     // pass.
     std::unique_ptr<memory_space_assignment::PresetAssignments>

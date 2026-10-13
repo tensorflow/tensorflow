@@ -103,13 +103,13 @@ class TransposePlan {
     kDefault,
     // A and B have the same stride-1 dimension, so the inner loop is a memcpy.
     kMemcpy,
-    // B's stride-1 dimension has size 3 and A's stride-1 dimension is large:
-    // three contiguous rows of A, `lda` bytes apart, are merged element by
-    // element into one contiguous run of B, i.e. b[3 * i + k] = a[k][i].
+    // B's stride-1 dimension has a small size K and A's is large, each after
+    // being coalesced with any dimensions contiguous with it in both A and B:
+    // K rows of A, `lda` bytes apart, are merged element by element into one
+    // contiguous run of B, i.e. b[K * i + k] = a[k][i].
     kInterleave,
-    // The reverse of kInterleave: A's stride-1 dimension has size 3 and one
-    // contiguous run of A is split into three rows of B, `ldb` bytes apart,
-    // i.e. b[k][i] = a[3 * i + k].
+    // The reverse of kInterleave: one contiguous run of A is split into K rows
+    // of B, `ldb` bytes apart, i.e. b[k][i] = a[K * i + k].
     kDeinterleave,
   };
 
@@ -376,6 +376,8 @@ class TransposePlan {
   bool a_is_tiled_ = false;
   bool b_is_tiled_ = false;
   bool is_identity_permutation_ = false;
+  // K for kInterleave and kDeinterleave. Placed here to fill padding.
+  int interleave_size_ = 0;
 
   // Per-chunk loop nests. Each loop nest has its own start/end bounds
   // representing one chunk of the work.
