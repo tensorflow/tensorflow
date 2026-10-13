@@ -337,42 +337,85 @@ class MatrixDiagOp : public XlaOpKernel {
     output_shape.AddDim(num_cols);
     xla::XlaOp output = xla::Broadcast(padding_value, output_shape.dim_sizes());
     xla::XlaOp diag = context->Input(0);
+
+    // If the diagonals have a dynamic length, max_diag_len is its bound, and so
+    // are num_rows and num_cols where they're inferred from it. Build the
+    // matrices at those sizes from the diagonals at their bound, with each
+    // diagonal's entries where SetMatrixDiag reads them, so that the actual
+    // matrices are in the top left, and give the inferred dimensions their
+    // actual sizes at the end.
+    xla::Shape diag_xla_shape;
+    OP_REQUIRES_VALUE(diag_xla_shape, context, context->InputXlaShape(0));
+    const bool dynamic_diag_len =
+        diag_xla_shape.is_dynamic_dimension(diag_rank - 1);
+    xla::XlaOp actual_num_rows;
+    xla::XlaOp actual_num_cols;
+    if (dynamic_diag_len) {
+      const xla::XlaOp diag_len = xla::GetDimensionSize(diag, diag_rank - 1);
+      const auto actual_size = [&](bool inferred, int64_t size) {
+        return inferred ? xla::Add(diag_len, xla::ScalarLike(
+                                                 diag_len, size - max_diag_len))
+                        : xla::ScalarLike(diag_len, size);
+      };
+      actual_num_rows = actual_size(infer_num_rows, num_rows);
+      actual_num_cols = actual_size(infer_num_cols, num_cols);
+      diag = xla::RemoveDynamicDimension(diag, diag_rank - 1);
+      if (num_diags > 1) {
+        // A right-aligned diagonal's entries come after the padding it has at
+        // the actual sizes, and SetMatrixDiag reads them after the padding it
+        // would have at the bound. Pad the diagonal at the front and slice it
+        // so that they start there.
+        auto slice_sizes = diag_shape.dim_sizes();
+        slice_sizes[diag_rank - 2] = 1;
+        std::vector<xla::XlaOp> diags;
+        for (int64_t diag_index = upper_diag_index;
+             diag_index >= lower_diag_index; --diag_index) {
+          const int64_t row = upper_diag_index - diag_index;
+          xla::XlaOp single_diag =
+              xla::SliceInDim(diag, row, row + 1, 1, diag_rank - 2);
+          if (!IsLeftAligned(diag_index, left_align_superdiagonal_,
+                             left_align_subdiagonal_)) {
+            const xla::XlaOp actual_len = xla::Min(
+                xla::Add(actual_num_rows,
+                         xla::ScalarLike(diag_len, std::min<int64_t>(
+                                                       diag_index, 0))),
+                xla::Sub(actual_num_cols,
+                         xla::ScalarLike(diag_len, std::max<int64_t>(
+                                                       diag_index, 0))));
+            xla::PaddingConfig padding_config =
+                xla::MakeNoPaddingConfig(diag_rank);
+            padding_config.mutable_dimensions(diag_rank - 1)
+                ->set_edge_padding_low(max_diag_len);
+            single_diag = xla::Pad(single_diag, xla::ScalarLike(single_diag, 0),
+                                   padding_config);
+            std::vector<xla::XlaOp> start_indices(diag_rank,
+                                                  xla::ScalarLike(diag_len, 0));
+            start_indices.back() = xla::Add(
+                xla::ScalarLike(diag_len,
+                                ComputeDiagLen(diag_index, num_rows, num_cols)),
+                xla::Sub(diag_len, actual_len));
+            single_diag =
+                xla::DynamicSlice(single_diag, start_indices, slice_sizes);
+          }
+          diags.push_back(single_diag);
+        }
+        diag = xla::ConcatInDim(context->builder(), diags, diag_rank - 2);
+      }
+    }
     output = SetMatrixDiag(output, diag, output_shape, diag_rank, num_diags,
                            lower_diag_index, upper_diag_index, max_diag_len,
                            num_rows, num_cols, left_align_superdiagonal_,
                            left_align_subdiagonal_);
-
-    // If the diagonals have a dynamic length, max_diag_len is its bound, and so
-    // are num_rows and num_cols where they're inferred from it. Give those
-    // dimensions the size the actual length gives them. A dimension set by
-    // num_rows or num_cols is static, but broadcasting a diagonal along it can
-    // make it dynamic, so make it static again. This is only right for a
-    // single diagonal or when both dimensions are inferred: in a band with one
-    // of them set, SetMatrixDiag pads shorter diagonals that are right-aligned
-    // against that dimension by an amount it computes from the bound.
-    xla::Shape diag_xla_shape;
-    OP_REQUIRES_VALUE(diag_xla_shape, context, context->InputXlaShape(0));
-    if (diag_xla_shape.is_dynamic_dimension(diag_rank - 1) &&
-        (num_diags == 1 || (infer_num_rows && infer_num_cols))) {
-      const xla::XlaOp diag_len = xla::GetDimensionSize(diag, diag_rank - 1);
-      xla::Shape output_xla_shape;
-      OP_REQUIRES_VALUE(output_xla_shape, context,
-                        context->builder()->GetShape(output));
-      const auto fix_size = [&](int64_t dim, bool inferred, int64_t size) {
-        if (inferred) {
-          xla::XlaOp dim_size = diag_len;
-          if (size != max_diag_len) {
-            dim_size = xla::Add(diag_len,
-                                xla::ScalarLike(diag_len, size - max_diag_len));
-          }
-          output = xla::SetDimensionSize(output, dim_size, dim);
-        } else if (output_xla_shape.is_dynamic_dimension(dim)) {
-          output = xla::RemoveDynamicDimension(output, dim);
-        }
-      };
+    if (dynamic_diag_len) {
       const int64_t output_rank = output_shape.dims();
-      fix_size(output_rank - 2, infer_num_rows, num_rows);
-      fix_size(output_rank - 1, infer_num_cols, num_cols);
+      if (infer_num_rows) {
+        output =
+            xla::SetDimensionSize(output, actual_num_rows, output_rank - 2);
+      }
+      if (infer_num_cols) {
+        output =
+            xla::SetDimensionSize(output, actual_num_cols, output_rank - 1);
+      }
     }
     context->SetOutput(0, output);
   }

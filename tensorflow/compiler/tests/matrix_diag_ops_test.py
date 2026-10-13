@@ -549,14 +549,16 @@ class MatrixDiagTest(xla_test.XLATestCase):
         output = f(x_ph, mask_ph)
       return session.run(output, {
           x_ph: x,
-          mask_ph: [True, False, True, False]
+          mask_ph: [True, False, True, False, False]
       })
 
   def testDynamicDiagonalLength(self):
     # Regression test for GitHub issue 128954: the output's matrix dimensions
     # took the bound of the diagonals' length instead of its value. The mask
-    # selects 2 of 4 entries, so the diagonals have length 2 and bound 4.
-    x = [1, 5, 2, 7]
+    # selects 2 of 5 entries, so the diagonals have length 2 and bound 5. (XLA
+    # turns a gather from 4 or fewer entries into selects, which XLA:GPU
+    # doesn't support with dynamic shapes.)
+    x = [1, 5, 2, 7, 3]
     self.assertAllEqual(self._matrixDiagOfSelected(x), [[1, 0], [0, 2]])
     self.assertAllEqual(
         self._matrixDiagOfSelected(x, k=1), [[0, 1, 0], [0, 0, 2], [0, 0, 0]])
@@ -565,9 +567,20 @@ class MatrixDiagTest(xla_test.XLATestCase):
         self._matrixDiagOfSelected(x, k=1, num_rows=5, align="LEFT_RIGHT"),
         [[0, 1, 0], [0, 0, 2], [0, 0, 0], [0, 0, 0], [0, 0, 0]])
     self.assertAllEqual(
+        self._matrixDiagOfSelected([[1, 5, 2, 7, 3], [4, 6, 8, 9, 0]]),
+        [[[1, 0], [0, 2]], [[4, 0], [0, 8]]])
+    self.assertAllEqual(
         self._matrixDiagOfSelected(
-            [[10, 11, 12, 13], [20, 21, 22, 23], [30, 31, 32, 33]],
+            [[10, 11, 12, 13, 14], [20, 21, 22, 23, 24], [30, 31, 32, 33, 34]],
             k=(-1, 1)), [[20, 12], [30, 22]])
+    # A right-aligned diagonal in a band with num_rows set: the subdiagonal is
+    # shorter than the bound but as long as the actual length.
+    self.assertAllEqual(
+        self._matrixDiagOfSelected([[1, 2, 3, 4, 5], [6, 7, 8, 9, 10]],
+                                   k=(-1, 0),
+                                   num_rows=5,
+                                   align="LEFT_RIGHT"),
+        [[1, 0], [6, 3], [0, 8], [0, 0], [0, 0]])
 
 
 class MatrixSetDiagTest(xla_test.XLATestCase):
