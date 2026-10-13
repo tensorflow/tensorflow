@@ -279,11 +279,15 @@ class SoftmaxTest(test.TestCase):
   def testHighRank(self):
     # Regression test for GitHub issue 128814: the oneDNN kernel rejected
     # inputs of more than 5 dimensions.
-    np.random.seed(0)
+    rng = np.random.RandomState(0)
     for rank in (6, 7):
-      features = np.random.rand(*([2] * (rank - 1) + [3])).astype(np.float32)
-      self._testSoftmax(features)
-      self._testSoftmax(features, dim=1)
+      for empty in (False, True):
+        shape = [2] * (rank - 1) + [3]
+        if empty:
+          shape[2] = 0
+        features = rng.rand(*shape).astype(np.float32)
+        self._testSoftmax(features)
+        self._testSoftmax(features, dim=1)
 
   def testShapeInference(self):
     op = nn_ops.softmax([[[1., 1., 1., 1.], [1., 2., 3., 4.]],
