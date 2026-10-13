@@ -966,11 +966,14 @@ absl::Status AlgebraicSimplifierVisitor::HandleAdd(HloInstruction* add) {
   //
   VLOG(10) << "trying transform [(A + C1) + C2 => A + (C1 + C2)]";
   HloInstruction *a, *c1, *c2;
-  if (Match(add, m::Add(m::Add(m::NonConstant(&a), m::Constant(&c1)),
-                        m::Constant(&c2))) ||
-      Match(add, m::Add(m::Add(m::NonConstant(&a),
-                               m::Broadcast(m::ConstantScalar(&c1))),
-                        m::Broadcast(m::ConstantScalar(&c2))))) {
+  if (((!ShapeUtil::ElementIsFloating(add->shape()) &&
+        !ShapeUtil::ElementIsComplex(add->shape())) ||
+       options_.enable_fast_math()) &&
+      (Match(add, m::Add(m::Add(m::NonConstant(&a), m::Constant(&c1)),
+                         m::Constant(&c2))) ||
+       Match(add, m::Add(m::Add(m::NonConstant(&a),
+                                m::Broadcast(m::ConstantScalar(&c1))),
+                         m::Broadcast(m::ConstantScalar(&c2)))))) {
     ABSL_ASSIGN_OR_RETURN(auto* sum_of_constants,
                      MakeBinaryHlo(HloOpcode::kAdd, c1, c2));
     if (ShapeUtil::IsScalar(sum_of_constants->shape()) &&
@@ -984,11 +987,14 @@ absl::Status AlgebraicSimplifierVisitor::HandleAdd(HloInstruction* add) {
   }
 
   VLOG(10) << "trying transform [(C1 - A) + C2 => (C1 + C2) - A]";
-  if (Match(add, m::Add(m::Subtract(m::Constant(&c1), m::NonConstant(&a)),
-                        m::Constant(&c2))) ||
-      Match(add, m::Add(m::Subtract(m::Broadcast(m::ConstantScalar(&c1)),
-                                    m::NonConstant(&a)),
-                        m::Broadcast(m::ConstantScalar(&c2))))) {
+  if (((!ShapeUtil::ElementIsFloating(add->shape()) &&
+        !ShapeUtil::ElementIsComplex(add->shape())) ||
+       options_.enable_fast_math()) &&
+      (Match(add, m::Add(m::Subtract(m::Constant(&c1), m::NonConstant(&a)),
+                         m::Constant(&c2))) ||
+       Match(add, m::Add(m::Subtract(m::Broadcast(m::ConstantScalar(&c1)),
+                                     m::NonConstant(&a)),
+                         m::Broadcast(m::ConstantScalar(&c2)))))) {
     ABSL_ASSIGN_OR_RETURN(HloInstruction * sum_of_constants,
                      MakeBinaryHlo(HloOpcode::kAdd, c1, c2));
     if (ShapeUtil::IsScalar(sum_of_constants->shape()) &&
@@ -5110,7 +5116,10 @@ absl::Status AlgebraicSimplifierVisitor::HandleMultiply(
     HloInstruction *a, *b, *c1, *c2;
     // Mul(Mul(x, constant1), Mul(y, constant2)) => Mul(Mul(x, y),
     // constant1*constant2)
-    if (Match(multiply,
+    if (((!ShapeUtil::ElementIsFloating(multiply->shape()) &&
+          !ShapeUtil::ElementIsComplex(multiply->shape())) ||
+         options_.enable_fast_math()) &&
+        Match(multiply,
               m::MultiplyAnyOrder(
                   m::MultiplyAnyOrder(m::NonConstant(&a), m::Constant(&c1)),
                   m::MultiplyAnyOrder(m::NonConstant(&b), m::Constant(&c2))))) {
@@ -5135,7 +5144,10 @@ absl::Status AlgebraicSimplifierVisitor::HandleMultiply(
   {
     HloInstruction *a, *c1, *c2;
     // Mul(Mul(a, constant1), constant2) => Mul(a, constant1*constant2)
-    if (Match(multiply,
+    if (((!ShapeUtil::ElementIsFloating(multiply->shape()) &&
+          !ShapeUtil::ElementIsComplex(multiply->shape())) ||
+         options_.enable_fast_math()) &&
+        Match(multiply,
               m::MultiplyAnyOrder(
                   m::MultiplyAnyOrder(m::NonConstant(&a), m::Constant(&c1)),
                   m::Constant(&c2)))) {
@@ -5159,15 +5171,18 @@ absl::Status AlgebraicSimplifierVisitor::HandleMultiply(
     HloInstruction *a, *b, *constant, *op;
     // Mul(Mul(a, constant1), Broadcast(b)) =>
     // Mul(Broadcast(Mul(b, constant1), a))
-    if (Match(multiply,
-              m::MultiplyAnyOrder(m::MultiplyAnyOrder(m::NonConstant(&a),
-                                                      m::Constant(&constant)),
-                                  m::Op(&op))) ||
-        Match(multiply,
-              m::MultiplyAnyOrder(
-                  m::MultiplyAnyOrder(m::NonConstant(&a),
-                                      m::Broadcast(m::Constant(&constant))),
-                  m::Op(&op)))) {
+    if (((!ShapeUtil::ElementIsFloating(multiply->shape()) &&
+          !ShapeUtil::ElementIsComplex(multiply->shape())) ||
+         options_.enable_fast_math()) &&
+        (Match(multiply,
+               m::MultiplyAnyOrder(m::MultiplyAnyOrder(m::NonConstant(&a),
+                                                       m::Constant(&constant)),
+                                   m::Op(&op))) ||
+         Match(multiply,
+               m::MultiplyAnyOrder(
+                   m::MultiplyAnyOrder(m::NonConstant(&a),
+                                       m::Broadcast(m::Constant(&constant))),
+                   m::Op(&op))))) {
       // Check that the other side was a broadcast, and not of a constant.
       if (ShapeUtil::IsScalar(constant->shape()) &&
           Match(op, m::Broadcast(m::NonConstant()))) {
@@ -5193,13 +5208,16 @@ absl::Status AlgebraicSimplifierVisitor::HandleMultiply(
 
   VLOG(10) << "trying transform [(A * C1) * C2 => A * (C1 * C2)]";
   HloInstruction *a, *c1, *c2;
-  if (Match(multiply,
-            m::Multiply(m::Multiply(m::NonConstant(&a), m::Constant(&c1)),
-                        m::Constant(&c2))) ||
-      Match(multiply,
-            m::Multiply(
-                m::Multiply(m::Op(&a), m::Broadcast(m::ConstantScalar(&c1))),
-                m::Broadcast(m::ConstantScalar(&c2))))) {
+  if (((!ShapeUtil::ElementIsFloating(multiply->shape()) &&
+        !ShapeUtil::ElementIsComplex(multiply->shape())) ||
+       options_.enable_fast_math()) &&
+      (Match(multiply,
+             m::Multiply(m::Multiply(m::NonConstant(&a), m::Constant(&c1)),
+                         m::Constant(&c2))) ||
+       Match(multiply,
+             m::Multiply(
+                 m::Multiply(m::Op(&a), m::Broadcast(m::ConstantScalar(&c1))),
+                 m::Broadcast(m::ConstantScalar(&c2)))))) {
     ABSL_ASSIGN_OR_RETURN(auto* product_of_constants,
                      MakeBinaryHlo(HloOpcode::kMultiply, c1, c2));
     if (ShapeUtil::IsScalar(product_of_constants->shape()) &&
