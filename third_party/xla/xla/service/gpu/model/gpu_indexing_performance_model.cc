@@ -234,8 +234,8 @@ int64_t GetNumBlocksForRegion(const TiledHloInstructionType* tiled_hlo,
 }
 
 // Visits all tiled HLOs in the computation (including those within regions)
-// using a visitor that receives the tiled HLO and the root num_blocks that
-// access that tiled HLO.
+// using a visitor that receives the tiled HLO, the root num_blocks that
+// access that tiled HLO, and whether the instruction is within a dot region.
 //
 // Note: Set num_blocks_at_root to 1 if the visitor doesn't use the block count.
 template <typename TiledHloComputationType>
@@ -243,27 +243,37 @@ void ForEachInstructionInTiledHloComputation(
     const TiledHloComputationType& tiled_hlo_computation,
     int64_t num_blocks_at_root,
     absl::FunctionRef<
-        void(const typename TiledHloComputationType::InstructionType*, int64_t)>
+        void(const typename TiledHloComputationType::InstructionType*, int64_t,
+             bool)>
         visitor) {
-  std::vector<std::pair<
-      const typename TiledHloComputationType::InstructionType*, int64_t>>
-      worklist;
+  struct WorkItem {
+    const typename TiledHloComputationType::InstructionType* instruction;
+    int64_t num_blocks_cur_hlo;
+    bool in_dot_region;
+  };
+  std::vector<WorkItem> worklist;
   for (const auto* instruction : tiled_hlo_computation.instructions()) {
-    worklist.push_back({instruction, num_blocks_at_root});
+    worklist.push_back(
+        {instruction, num_blocks_at_root, /*in_dot_region=*/false});
   }
 
   while (!worklist.empty()) {
-    auto [instruction, num_blocks_cur_hlo] = worklist.back();
+    auto [instruction, num_blocks_cur_hlo, in_dot_region] = worklist.back();
     worklist.pop_back();
 
-    visitor(instruction, num_blocks_cur_hlo);
+    visitor(instruction, num_blocks_cur_hlo, in_dot_region);
 
+    bool child_in_dot_region =
+        in_dot_region ||
+        HloPredicateIsOp<HloOpcode::kDot, HloOpcode::kScaledDot>(
+            instruction->hlo());
     for (const auto& [i, region] :
          llvm::enumerate(instruction->hlo_regions())) {
       int64_t num_blocks_cur_region =
           GetNumBlocksForRegion(instruction, num_blocks_cur_hlo, i);
       for (const auto& tiled_hlo : region.instructions()) {
-        worklist.push_back({&*tiled_hlo, num_blocks_cur_region});
+        worklist.push_back(
+            {&*tiled_hlo, num_blocks_cur_region, child_in_dot_region});
       }
     }
   }
@@ -293,7 +303,7 @@ bool DoesComputationFitInRegisters(
       tiled_hlo_computation,
       /*num_blocks_at_root=*/1,
       [&](const typename TiledHloComputationType::InstructionType* tiled_hlo,
-          int64_t unused_num_blocks_cur_hlo) {
+          int64_t /*num_blocks_cur_hlo*/, bool /*in_dot_region*/) {
         if (!fits) {
           return;
         }
@@ -465,6 +475,7 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputationImpl(
   int64_t dot_flops = 0;
   int64_t flops = 0;
   int64_t bytes_read = 0;
+  int64_t dot_l2_bytes_read = 0;
   int64_t num_blocks = tiled_hlo_computation.num_output_tiles();
 
   DotEstimates dot_estimates;
@@ -481,7 +492,7 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputationImpl(
   ForEachInstructionInTiledHloComputation(
       tiled_hlo_computation, num_blocks,
       [&](const typename TiledHloComputationType::InstructionType* tiled_hlo,
-          int64_t num_blocks_cur_hlo) {
+          int64_t num_blocks_cur_hlo, bool in_dot_region) {
         const HloInstruction* hlo = tiled_hlo->hlo();
         if (fusion_adaptor.ContainsInstruction(hlo)) {
           // Number of elements in the tile after padding.
@@ -543,6 +554,9 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputationImpl(
         int64_t tile_bytes_read = element_type_size * num_elements;
 
         bytes_read += tile_bytes_read;
+        if (in_dot_region) {
+          dot_l2_bytes_read += tile_bytes_read;
+        }
 
         double effective_bandwidth_utilization_rate =
             BandwidthUtilizationRateHeuristicForTiledMemoryAccess(*tiled_hlo,
@@ -597,7 +611,7 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputationImpl(
       /*write_time=*/write_time,
       /*compute_time=*/compute_time,
       /*exec_time=*/exec_time,
-      /*l2_bytes_read=*/0,
+      /*l2_bytes_read=*/dot_l2_bytes_read,
       /*shared_memory_per_block_bytes=*/
       dot_estimates.shared_memory_per_block_bytes,
       /*registers_per_thread=*/dot_estimates.registers_per_thread};
@@ -612,7 +626,7 @@ int64_t EstimateNumWarpsImpl(
   ForEachInstructionInTiledHloComputation(
       tiled_hlo_computation, /*num_blocks_at_root=*/1,
       [&](const typename TiledHloComputationType::InstructionType* tiled_hlo,
-          int64_t unused_num_blocks_cur_hlo) {
+          int64_t /*num_blocks_cur_hlo*/, bool /*in_dot_region*/) {
         largest_live_tile_size = std::max(
             largest_live_tile_size, GetPaddedTileSize(tiled_hlo->tile_sizes()));
       });
