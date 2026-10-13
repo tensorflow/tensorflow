@@ -780,6 +780,7 @@ class SparseBincountOpTest(test_util.TensorFlowTestCase,
           )
       )
 
+  @test_util.run_in_graph_and_eager_modes
   def test_sparse_bincount_invalid_weights_length(self):
     # Regression test: the 2-D SparseBincount path reads `weights(i)` with the
     # value index `i`, so a `weights` shorter than the values would be read out

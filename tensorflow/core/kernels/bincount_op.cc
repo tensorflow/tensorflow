@@ -515,12 +515,13 @@ class RaggedBincountOp : public OpKernel {
                 absl::InvalidArgumentError(
                     absl::StrCat("size (", size, ") must be non-negative")));
 
-    int num_rows = splits.size() - 1;
-    int num_values = values.size();
-    int batch_idx = 0;
+    int64_t num_values = values.size();
+    int64_t batch_idx = 0;
 
     OP_REQUIRES(ctx, splits.size() > 0,
                 absl::InvalidArgumentError("Splits must be non-empty"));
+
+    int64_t num_rows = splits.size() - 1;
 
     OP_REQUIRES(ctx, splits(0) == 0,
                 absl::InvalidArgumentError(absl::StrCat(
@@ -549,7 +550,7 @@ class RaggedBincountOp : public OpKernel {
     fill(ctx->eigen_device<Device>(), out_t->flat<T>());
     const auto out = out_t->matrix<T>();
 
-    for (int idx = 0; idx < num_values; ++idx) {
+    for (int64_t idx = 0; idx < num_values; ++idx) {
       while (idx >= splits(batch_idx)) {
         batch_idx++;
       }
