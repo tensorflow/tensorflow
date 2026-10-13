@@ -1114,6 +1114,7 @@ cc_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:macros",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 

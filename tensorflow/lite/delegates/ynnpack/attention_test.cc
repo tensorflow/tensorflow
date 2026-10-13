@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <string>
 #include <vector>
@@ -426,6 +427,89 @@ TEST(AttentionGqaTest, OdmlSdpaTransposedGqaDecodeAndPrefill) {
         EXPECT_FALSE(std::isnan(out_delegate[i]));
         EXPECT_FALSE(std::isnan(out_ref[i]));
         EXPECT_NEAR(out_delegate[i], out_ref[i], 1e-3f);
+      }
+    }
+  }
+}
+
+TEST(AttentionGqaTest, OdmlSdpaTransposedQuantizedKvAndBoolMask) {
+  for (int t : {1, 4}) {
+    for (int n_kv : {1, 2}) {
+      for (int32_t kv_zp : {0, -5}) {
+        const int b = 1;
+        const int s = 24;
+        const int h = 16;
+        const int n_q = 4;
+        const int s_active = 11;
+        const float scale = 1.0f / std::sqrt(static_cast<float>(h));
+        const float kv_scale = 0.05f;
+
+        TfLiteYNNPackDelegateOptions options =
+            TfLiteYNNPackDelegateOptionsDefault();
+        options.num_threads = 1;
+        options.static_shape = true;
+
+        std::vector<float> q_data(b * n_q * t * h);
+        std::vector<int8_t> k_qdata(b * n_kv * s * h);
+        std::vector<float> k_fdata(b * n_kv * s * h);
+        std::vector<int8_t> v_qdata(b * n_kv * h * s);
+        std::vector<float> v_fdata(b * n_kv * h * s);
+        std::vector<bool> mask_bdata(b * 1 * t * s);
+        std::vector<float> mask_fdata(b * 1 * t * s);
+
+        for (size_t i = 0; i < q_data.size(); ++i) {
+          q_data[i] = 0.5f * std::sin(static_cast<float>(i + 1));
+        }
+        for (size_t i = 0; i < k_qdata.size(); ++i) {
+          int val = static_cast<int>(
+              std::round(20.0f * std::cos(static_cast<float>(i + 2))));
+          k_qdata[i] = static_cast<int8_t>(val);
+          k_fdata[i] = static_cast<float>(k_qdata[i] - kv_zp) * kv_scale;
+        }
+        for (size_t i = 0; i < v_qdata.size(); ++i) {
+          int val = static_cast<int>(
+              std::round(20.0f * std::sin(static_cast<float>(i + 3))));
+          v_qdata[i] = static_cast<int8_t>(val);
+          v_fdata[i] = static_cast<float>(v_qdata[i] - kv_zp) * kv_scale;
+        }
+        for (int i = 0; i < b * t; ++i) {
+          for (int j = 0; j < s; ++j) {
+            bool allow = (j < s_active) && (j <= i + 4);
+            mask_bdata[i * s + j] = allow;
+            mask_fdata[i * s + j] = allow ? 0.0f : -10000.0f;
+          }
+        }
+
+        AttentionModel model_ref(b, t, s, h, n_q, scale, /*transpose_io=*/false,
+                                 /*use_delegate=*/false, options,
+                                 AttentionImpl::kOdmlRuntimeBmm, n_kv);
+        model_ref.PopulateTensor(model_ref.query(), q_data);
+        model_ref.PopulateTensor(model_ref.key(), k_fdata);
+        model_ref.PopulateTensor(model_ref.value(), v_fdata);
+        model_ref.PopulateTensor(model_ref.runtime_bmm_params(), {s_active});
+        model_ref.PopulateTensor(model_ref.mask(), mask_fdata);
+        ASSERT_EQ(model_ref.Invoke(), kTfLiteOk);
+
+        AttentionModel model(b, t, s, h, n_q, scale, /*transpose_io=*/false,
+                             /*use_delegate=*/true, options,
+                             AttentionImpl::kOdmlSdpa, n_kv,
+                             /*quantize_kv=*/true, /*bool_mask=*/true, kv_zp);
+        model.PopulateTensor(model.query(), q_data);
+        model.PopulateTensor(model.key(), k_qdata);
+        model.PopulateTensor(model.value(), v_qdata);
+        model.PopulateTensor(model.runtime_bmm_params(), {s_active});
+        model.PopulateTensor(model.mask(), mask_bdata);
+        ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+        auto out_delegate = model.ExtractVector<float>(model.output());
+        auto out_ref = model_ref.ExtractVector<float>(model_ref.output());
+        ASSERT_EQ(out_delegate.size(), out_ref.size());
+
+        for (size_t i = 0; i < out_delegate.size(); ++i) {
+          EXPECT_FALSE(std::isnan(out_delegate[i]));
+          EXPECT_FALSE(std::isnan(out_ref[i]));
+          EXPECT_NEAR(out_delegate[i], out_ref[i], 2e-2f);
+        }
       }
     }
   }

@@ -2832,7 +2832,42 @@ PjRtCApiLoadedExecutable::PjRtCApiLoadedExecutable(
   executable_ =
       std::make_unique<PjRtCApiExecutable>(pjrt_c_api(), args.executable);
   InitDevices();
+  InitAddressableDeviceLogicalIds();
   InitDeviceAssignment();
+}
+
+void PjRtCApiLoadedExecutable::InitAddressableDeviceLogicalIds() {
+  if (pjrt_c_api()->pjrt_api_version.major_version == 0 &&
+      pjrt_c_api()->pjrt_api_version.minor_version < 96) {
+    return;
+  }
+  PJRT_LoadedExecutable_AddressableDeviceLogicalIds_Args args;
+  args.struct_size =
+      PJRT_LoadedExecutable_AddressableDeviceLogicalIds_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.executable = c_loaded_executable();
+  args.addressable_device_logical_ids = nullptr;
+  args.num_addressable_device_logical_ids = 0;
+
+  const PJRT_Api* api = pjrt_c_api();
+  if (api->PJRT_LoadedExecutable_AddressableDeviceLogicalIds == nullptr) {
+    return;
+  }
+  pjrt::LogFatalIfPjrtError(
+      api->PJRT_LoadedExecutable_AddressableDeviceLogicalIds(&args), api);
+
+  if (args.num_addressable_device_logical_ids == 0 ||
+      args.addressable_device_logical_ids == nullptr) {
+    return;
+  }
+  addressable_device_logical_ids_.reserve(
+      args.num_addressable_device_logical_ids);
+
+  for (size_t i = 0; i < args.num_addressable_device_logical_ids; ++i) {
+    PJRT_LogicalDeviceIds id = args.addressable_device_logical_ids[i];
+    addressable_device_logical_ids_.push_back(
+        LogicalDeviceIds{id.replica, id.partition});
+  }
 }
 
 void PjRtCApiLoadedExecutable::InitDevices() {
