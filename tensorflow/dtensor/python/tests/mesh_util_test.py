@@ -158,7 +158,9 @@ class MeshUtilTest(test_util.DTensorBaseTest):
 
   def test_create_distributed_mesh_tpu_with_local_devices_raises_error(self):
     self.skipForDeviceType(['GPU', 'TPU'], reason='Test is intended for CPUs')
-    with mock.patch.object(accelerator_util, 'is_initialized', return_value=True):
+    with mock.patch.object(
+        accelerator_util, 'is_initialized', return_value=True
+    ):
       with self.assertRaisesRegex(
           ValueError, 'Do not specify devices for TPU meshes'
       ):
@@ -179,7 +181,9 @@ class MeshUtilTest(test_util.DTensorBaseTest):
 
   def test_create_distributed_mesh_empty_local_devices(self):
     self.skipForDeviceType(['GPU', 'TPU'], reason='Test is intended for CPUs')
-    with mock.patch.object(accelerator_util, 'is_initialized', return_value=True):
+    with mock.patch.object(
+        accelerator_util, 'is_initialized', return_value=True
+    ):
       with self.assertRaisesRegex(
           ValueError, 'Received an empty `devices` list'
       ):
