@@ -5850,6 +5850,16 @@ TEST_F(HloParserTest, ParseShapeStringWithTilingLayout) {
       << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
       << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
 
+  // Tile with matching dimension ('d').
+  shape_string = "bf16[123,456]{1,0:T(d,128)(2,1)}";
+  ASSERT_OK_AND_ASSIGN(actual, ParseShape(shape_string));
+  expected = ShapeUtil::MakeShapeWithDenseLayout(
+      BF16, {123, 456}, {1, 0},
+      {Tile({Tile::kMatchDimension, 128}), Tile({2, 1})});
+  EXPECT_EQ(expected, actual)
+      << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
+      << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
+
   // Wrong minor_to_major.
   shape_string = "f32[123,456,789]{1:T(2, * , 128)}";
   auto result = ParseShape(shape_string);

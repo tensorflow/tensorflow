@@ -7311,11 +7311,16 @@ bool HloParserImpl::ParseDimLevelTypes(
 //   ::= 'T' ('(' dim_list ')')+
 // dim_list
 //   ::= /*empty*/
-//   ::= (int64_t | '*') (',' (int64_t | '*'))*
+//   ::= (int64_t | '*' | 'd') (',' (int64_t | '*' | 'd'))*
 bool HloParserImpl::ParseTiles(std::vector<Tile>* tiles) {
   auto parse_and_add_tile_dimension = [&]() {
     if (lexer_.GetKind() == TokKind::kAsterisk) {
       tiles->back().add_dimensions(Tile::kCombineDimension);
+      lexer_.Lex();
+      return true;
+    }
+    if (lexer_.GetKind() == TokKind::kIdent && lexer_.GetStrVal() == "d") {
+      tiles->back().add_dimensions(Tile::kMatchDimension);
       lexer_.Lex();
       return true;
     }

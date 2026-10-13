@@ -2544,7 +2544,7 @@ ShapeUtil::ByteStrides(const Shape& shape) {
                                                   shape, minor_to_major[dim])
                                             : 1;
     int64_t tile_dim = tile_dimensions[tile_dim_size - dim - 1];
-    if (tile_dim == Tile::kCombineDimension) {
+    if (tile_dim == Tile::kMatchDimension) {
       int64_t packing = 1;
       if (shape.layout().tiles().size() > 1) {
         const Tile& sub_tile = shape.layout().tiles(1);

@@ -295,12 +295,12 @@ bool IsAllFpConstantPowerOf2(const HloInstruction* op) {
   return mantissa == 0.5 || mantissa == -0.5;
 }
 
-bool HasCombineDimensionTile(const Shape& shape) {
+bool HasMatchDimensionTile(const Shape& shape) {
   if (!shape.has_layout()) {
     return false;
   }
   for (const Tile& tile : shape.layout().tiles()) {
-    if (absl::c_linear_search(tile.dimensions(), Tile::kCombineDimension)) {
+    if (absl::c_linear_search(tile.dimensions(), Tile::kMatchDimension)) {
       return true;
     }
   }
@@ -316,8 +316,8 @@ bool TransposeIsBitcast(const HloInstruction* transpose) {
                                      transpose->dimensions())) {
     return false;
   }
-  if (!HasCombineDimensionTile(operand->shape()) &&
-      !HasCombineDimensionTile(transpose->shape())) {
+  if (!HasMatchDimensionTile(operand->shape()) &&
+      !HasMatchDimensionTile(transpose->shape())) {
     return true;
   }
   return absl::c_equal(operand->shape().layout().tiles(),
@@ -1896,8 +1896,8 @@ absl::Status AlgebraicSimplifierVisitor::HandleCopy(HloInstruction* copy) {
       copy->operand(0)->user_count() == 1 &&
       ShapeUtil::ReshapeIsBitcast(copy->operand(0)->shape(), copy->shape()) &&
       (!options_.is_layout_sensitive() ||
-       (!HasCombineDimensionTile(copy->operand(0)->shape()) &&
-        !HasCombineDimensionTile(copy->shape())) ||
+       (!HasMatchDimensionTile(copy->operand(0)->shape()) &&
+        !HasMatchDimensionTile(copy->shape())) ||
        absl::c_equal(copy->operand(0)->shape().layout().tiles(),
                      copy->shape().layout().tiles()))) {
     return ReplaceWithNewInstruction(
