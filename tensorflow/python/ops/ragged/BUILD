@@ -798,6 +798,7 @@ py_test(
         "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/compiler/jit:xla_cpu_jit",
         "//tensorflow/python/framework:type_spec",
         "//tensorflow/python/framework:type_utils",
         "//tensorflow/python/ops:array_grad",
