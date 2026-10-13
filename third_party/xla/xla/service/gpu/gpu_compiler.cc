@@ -3230,7 +3230,8 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
   // fusions are validated there.
   if ((cuda_cc != nullptr && cuda_cc->IsAtLeastAmpere()) ||
       (rocm_cc != nullptr &&
-       (rocm_cc->gfx9_mi300_series() || rocm_cc->gfx1250()))) {
+       (rocm_cc->gfx9_mi200() || rocm_cc->gfx9_mi300_series() ||
+        rocm_cc->gfx1250()))) {
     // This needs to run after every pass affecting fusions. The last passes
     // that create new fusions are FusionWrapper and StreamAttributeAnnotator.
     main_pipeline.AddPass<HloPassPipeline>(

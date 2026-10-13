@@ -728,6 +728,7 @@ sycl_library(
     ],
     deps = [
         ":onednn_util",
+        "//xla:xla_data_proto_cc",
         "//xla/service/gpu:matmul_utils",
         "//xla/stream_executor:device_address",
         "//xla/tsl/platform:statusor",
