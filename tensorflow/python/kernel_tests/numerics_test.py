@@ -18,6 +18,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -60,6 +61,43 @@ class VerifyTensorAllFiniteTest(test.TestCase):
         t = constant_op.constant(x, shape=x_shape, dtype=dtypes.float32)
         t_verified = numerics.verify_tensor_all_finite(t, my_msg)
         self.evaluate(t_verified)
+
+
+class CheckNumericsGpuTest(test.TestCase):
+
+  @test_util.run_gpu_only
+  @test_util.run_in_graph_and_eager_modes
+  def testAnomaliesAcrossBlocks(self):
+    size = 2**20 + 3
+    for dtype in [np.float16, np.float32, np.float64]:
+      x = np.ones(size, dtype=dtype)
+      with self.subTest(dtype=dtype, case="finite"), test_util.use_gpu():
+        self.assertAllEqual(x, self.evaluate(array_ops.check_numerics(x, "v1")))
+        self.assertAllEqual(x,
+                            self.evaluate(array_ops.check_numerics_v2(x, "v2")))
+
+      x = np.ones(size, dtype=dtype)
+      x[size - 1] = np.nan
+      with self.subTest(dtype=dtype, case="nan"), test_util.use_gpu():
+        with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                    "v1 : Tensor had NaN values"):
+          self.evaluate(array_ops.check_numerics(x, "v1"))
+        with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                    "v2 : Tensor had NaN values"):
+          self.evaluate(array_ops.check_numerics_v2(x, "v2"))
+
+      x = np.ones(size, dtype=dtype)
+      x[8191] = -np.inf
+      x[size // 2] = np.inf
+      x[size - 1] = np.nan
+      with self.subTest(dtype=dtype, case="all"), test_util.use_gpu():
+        with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                    "v1 : Tensor had Inf and NaN values"):
+          self.evaluate(array_ops.check_numerics(x, "v1"))
+        with self.assertRaisesRegex(
+            errors.InvalidArgumentError,
+            r"v2 : Tensor had -Inf, \+Inf, and NaN values"):
+          self.evaluate(array_ops.check_numerics_v2(x, "v2"))
 
 
 @test_util.run_v1_only("add_check_numerics_op() is meant to be a v1-only API")

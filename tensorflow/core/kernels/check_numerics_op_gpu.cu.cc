@@ -24,10 +24,10 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/status/status.h"
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/gpu_launch_config.h"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 
 namespace tensorflow {
 
@@ -40,7 +40,7 @@ typedef Eigen::GpuDevice GPUDevice;
 template <typename T>
 __global__ void CheckNumericsKernel(const T* __restrict__ data, int64_t size,
                                     int abnormal_detected[2]) {
-  GPU_1D_KERNEL_LOOP(offset, size, int64_t) {
+  for (int64_t offset : GpuGridRangeX<int64_t>(size)) {
     if (isnan(data[offset])) {
       abnormal_detected[0] = 1;
     }
@@ -57,7 +57,7 @@ __global__ void CheckNumericsKernel(const T* __restrict__ data, int64_t size,
 template <typename T>
 __global__ void CheckNumericsKernelV2(const T* __restrict__ data, int64_t size,
                                       int abnormal_detected[3]) {
-  GPU_1D_KERNEL_LOOP(offset, size, int64_t) {
+  for (int64_t offset : GpuGridRangeX<int64_t>(size)) {
     if (isnan(data[offset])) {
       abnormal_detected[0] = 1;
     }

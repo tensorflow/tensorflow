@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_reference.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -215,9 +216,11 @@ class CheckNumericsOp<GPUDevice, T> : public AsyncOpKernel {
     // Allocate and initialize the elements to hold the check results
     Tensor abnormal_detected;
     const int abnormal_detected_size = getAnomalyIndicatorSize();
-    OP_REQUIRES_OK(context, context->allocate_temp(
-                                DT_INT32, TensorShape({abnormal_detected_size}),
-                                &abnormal_detected));
+    OP_REQUIRES_OK_ASYNC(
+        context,
+        context->allocate_temp(DT_INT32, TensorShape({abnormal_detected_size}),
+                               &abnormal_detected),
+        done);
 
     auto* stream = context->op_device_context()->stream();
     OP_REQUIRES_ASYNC(context, stream != nullptr,
@@ -226,10 +229,11 @@ class CheckNumericsOp<GPUDevice, T> : public AsyncOpKernel {
     stream_executor::DeviceAddressBase abnormal_detected_ptr(
         abnormal_detected.flat<int>().data(),
         abnormal_detected.flat<int>().size());
-    OP_REQUIRES_OK(
+    OP_REQUIRES_OK_ASYNC(
         context,
         stream->Memset32(&abnormal_detected_ptr, 0,
-                         abnormal_detected.flat<int>().size() * sizeof(int)));
+                         abnormal_detected.flat<int>().size() * sizeof(int)),
+        done);
 
     // Call the GPU kernels for the numerical checks
     const Device& d = context->eigen_device<Device>();
