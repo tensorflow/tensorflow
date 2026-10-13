@@ -804,10 +804,11 @@ class DeviceAssignmentTest(test_util.DTensorBaseTest):
 
   def testCreateMeshWithInvalidRingBounds(self):
     topology_shape = list(tpu_util._tpu_topology.mesh_shape)
-    # A bound that exceeds the topology in a non-first dimension
-    # would pass a lexicographical check but must fail element-wise.
+    # A bound that exceeds the topology in a non-first dimension but is
+    # smaller in the first dimension would pass a lexicographical check
+    # but must fail element-wise.
     invalid_ring_bounds = [
-        topology_shape[0],
+        topology_shape[0] - 1,
         topology_shape[1] + 1,
         topology_shape[2],
         topology_shape[3],
