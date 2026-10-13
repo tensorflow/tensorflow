@@ -22,11 +22,11 @@ tensorflow {
     hwloc*;
     LLVM*;
 
-    # The statically linked curl: its public curl_* functions and its
-    # internal Curl_* and curlx_* ones. Nothing outside this library calls
-    # them, and exported, they could stand in for another libcurl's, such as
-    # the system's, in the same process, with TensorFlow's BoringSSL behind
-    # them (tensorflow#129050).
+    /* The statically linked curl: its public curl_* functions and its
+       internal Curl_* and curlx_* ones. Nothing outside this library calls
+       them, and exported, they could stand in for another libcurl's, such as
+       the system's, in the same process, with TensorFlow's BoringSSL behind
+       them (tensorflow#129050). */
     curl_*;
     Curl_*;
     curlx_*;
