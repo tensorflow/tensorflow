@@ -18,6 +18,7 @@ limitations under the License.
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
+#include <limits>
 #include <type_traits>
 
 #include "absl/status/statusor.h"
@@ -67,12 +68,21 @@ absl::StatusOr<xla::XlaOp> CreateRangeTensor(
   }
   int64_t size;
   if constexpr (std::is_integral_v<T>) {
-    int64_t start_i = static_cast<int64_t>(start);
-    int64_t limit_i = static_cast<int64_t>(limit);
-    int64_t delta_i = static_cast<int64_t>(delta);
-    size = (limit_i == start_i
-                ? 0
-                : (std::abs(limit_i - start_i) - 1) / std::abs(delta_i) + 1);
+    // Take |limit - start| and |delta| in uint64_t, which holds them for every
+    // T, as the CPU kernel does, so that a range wider than T can hold doesn't
+    // overflow.
+    const bool count_up = delta > static_cast<T>(0);
+    const uint64_t range =
+        count_up ? static_cast<uint64_t>(limit) - static_cast<uint64_t>(start)
+                 : static_cast<uint64_t>(start) - static_cast<uint64_t>(limit);
+    const uint64_t abs_delta = count_up ? static_cast<uint64_t>(delta)
+                                        : -static_cast<uint64_t>(delta);
+    const uint64_t size_unsigned = range == 0 ? 0 : (range - 1) / abs_delta + 1;
+    if (size_unsigned > std::numeric_limits<int64_t>::max()) {
+      return errors::InvalidArgument("Requires ((limit - start) / delta) <= ",
+                                     std::numeric_limits<int64_t>::max());
+    }
+    size = static_cast<int64_t>(size_unsigned);
   } else {
     double start_f = static_cast<double>(start);
     double limit_f = static_cast<double>(limit);
@@ -187,17 +197,41 @@ class RangeOp : public XlaOpKernel {
       xla::XlaOp delta = ctx->Input(2);
       xla::XlaOp limit = ctx->Input(1);
       xla::XlaOp start = ctx->Input(0);
+      // The runtime values can be in the wrong order for delta's sign, which
+      // the CPU kernel rejects. Give such a range size 0 rather than a size
+      // past the output's static size.
+      const xla::XlaOp is_empty =
+          count_down ? xla::Le(start, limit) : xla::Ge(start, limit);
+      xla::XlaOp dynamic_size;
       if (DataTypeIsInteger(type)) {
-        auto dynamic_size = (xla::Abs(limit - start) + xla::Abs(delta) -
-                             xla::One(ctx->builder(), ctx->input_xla_type(0))) /
-                            xla::Abs(delta);
-        dynamic_size = xla::ConvertElementType(dynamic_size, xla::S32);
-        output = xla::SetDimensionSize(output.value(), dynamic_size, 0);
+        // Take |limit - start| and |delta| in the unsigned type of the same
+        // width, which holds them. XLA's Abs doesn't take unsigned types, whose
+        // delta is positive anyway.
+        const xla::PrimitiveType xla_type = ctx->input_xla_type(0);
+        const xla::PrimitiveType unsigned_type =
+            xla::primitive_util::UnsignedIntegralTypeForBitWidth(
+                xla::primitive_util::BitWidth(xla_type));
+        const auto as_unsigned = [&](xla::XlaOp x) {
+          return xla::BitcastConvertType(x, unsigned_type);
+        };
+        const xla::XlaOp range = count_down
+                                     ? as_unsigned(start) - as_unsigned(limit)
+                                     : as_unsigned(limit) - as_unsigned(start);
+        const xla::XlaOp abs_delta =
+            as_unsigned(xla::primitive_util::IsSignedIntegralType(xla_type)
+                            ? xla::Abs(delta)
+                            : delta);
+        const xla::XlaOp one = xla::One(ctx->builder(), unsigned_type);
+        dynamic_size =
+            xla::Select(is_empty, xla::Zero(ctx->builder(), unsigned_type),
+                        (range - one) / abs_delta + one);
       } else {
-        auto dynamic_size = (xla::Ceil(xla::Abs((limit - start) / delta)));
-        dynamic_size = xla::ConvertElementType(dynamic_size, xla::S32);
-        output = xla::SetDimensionSize(output.value(), dynamic_size, 0);
+        dynamic_size = xla::Select(
+            is_empty, xla::Zero(ctx->builder(), ctx->input_xla_type(0)),
+            xla::Ceil(xla::Abs((limit - start) / delta)));
       }
+      dynamic_size = xla::ConvertElementType(dynamic_size, xla::S32);
+      output = xla::SetDimensionSize(output.value(), dynamic_size, 0);
     }
 
     ctx->SetOutput(0, output.value());
