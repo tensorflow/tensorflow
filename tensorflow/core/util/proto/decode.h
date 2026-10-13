@@ -301,8 +301,9 @@ inline const uint8_t* ReadFromArray<int, WireFormatLite::TYPE_ENUM>(
 // Stride is set to 1 for repeated fields, and 0 for non-repeated fields
 // (where any value overwrites previous values).
 // `data_size` is the number of elements in the array at `datap`. Returns the
-// number of values stored, or -1 if the values don't fit in the array after
-// `index`; nothing is written past `data_size` in either case.
+// number of elements filled (at most 1 for a non-repeated field), or -1 if the
+// values don't fit in the array after `index`; nothing is written past
+// `data_size` in either case.
 template <class TensorType, enum WireFormatLite::FieldType DeclaredType>
 inline int ReadPackedPrimitives(const void* bufp, const size_t len,
                                 const int index, const int stride,
@@ -321,11 +322,17 @@ inline int ReadPackedPrimitives(const void* bufp, const size_t len,
     }
     buf = ReadFromArray<TensorType, DeclaredType>(buf, data + count);
   }
+  if (stride == 0 && len > 0) {
+    // The last value of a non-repeated field is stored at `index`, which must
+    // count as filled so that it isn't replaced by the default value.
+    return 1;
+  }
   return count;
 }
 
 // Adds the number of values stored by ReadPackedPrimitives to `index`.
 inline absl::Status AdvancePackedIndex(int count, int* index) {
+  DCHECK(index != nullptr);
   if (count < 0) {
     return absl::DataLossError("Packed field has more values than expected");
   }
