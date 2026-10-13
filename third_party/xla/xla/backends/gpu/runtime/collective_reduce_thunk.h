@@ -78,11 +78,10 @@ class CollectiveReduceThunk : public AllReduceReduceScatterThunkBase {
 
   absl::StatusOr<ThunkProto> ToProto() const override;
 
+  absl::Status Initialize(const InitializeParams& params) override;
+
  protected:
   bool RequiresRendezvous() const override { return true; }
-
-  absl::Status InitializeCollective(const InitializeParams& params,
-                                    const GpuCliqueKey& clique_key) override;
 
   absl::Status RunCollective(const ExecuteParams& params,
                              const GpuCliqueKey& clique_key, se::Stream& stream,

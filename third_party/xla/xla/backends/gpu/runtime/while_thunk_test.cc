@@ -102,6 +102,7 @@ WhileThunk CreateWhileThunk(
 
 struct CommandRecordCounts {
   int prepares = 0;
+  int initializes = 0;
   int creates = 0;
   int updates = 0;
 };
@@ -115,6 +116,11 @@ class RecordingCommand : public Command {
 
   absl::Status Prepare(const PrepareParams&) override {
     ++counts_->prepares;
+    return absl::OkStatus();
+  }
+
+  absl::Status Initialize(const InitializeParams&) override {
+    ++counts_->initializes;
     return absl::OkStatus();
   }
 
@@ -319,6 +325,69 @@ TEST(WhileThunkTest, PreparePropagatesToCommandBufferExecutors) {
 
   EXPECT_EQ(cond_counts.prepares, 1);
   EXPECT_EQ(body_counts.prepares, 1);
+}
+
+TEST(WhileThunkTest, PrepareAndInitializeDoNotDuplicateSharedCommands) {
+  BufferAllocation pred_alloc(/*index=*/0, /*size=*/sizeof(bool), /*color=*/0);
+  BufferAllocation::Slice pred_slice(&pred_alloc, /*offset=*/0,
+                                     /*size=*/sizeof(bool));
+  CommandRecordCounts cond_counts;
+  CommandRecordCounts body_counts;
+  auto cond_cmd = std::make_unique<RecordingCommand>(&cond_counts);
+  auto body_cmd = std::make_unique<RecordingCommand>(&body_counts);
+
+  CommandSequence cond_commands;
+  cond_commands.Append(cond_cmd.get());
+  CommandSequence body_commands;
+  body_commands.Append(body_cmd.get());
+
+  ThunkSequence cond_thunks;
+  cond_thunks.push_back(std::move(cond_cmd));
+  ThunkSequence body_thunks;
+  body_thunks.push_back(std::move(body_cmd));
+
+  WhileThunk thunk(Thunk::ThunkInfo(), pred_slice, std::move(cond_thunks),
+                   std::move(body_thunks), /*trip_count=*/std::nullopt,
+                   /*devices_per_host=*/1);
+
+  ASSERT_OK_AND_ASSIGN(CommandExecutor cond_executor,
+                       CommandExecutor::Create(
+                           std::move(cond_commands),
+                           CommandExecutor::SynchronizationMode::kSerialize));
+  ASSERT_OK_AND_ASSIGN(CommandExecutor body_executor,
+                       CommandExecutor::Create(
+                           std::move(body_commands),
+                           CommandExecutor::SynchronizationMode::kSerialize));
+  ASSERT_OK(thunk.SetOrUpdateCommandBufferExecutors(
+      std::move(cond_executor), std::move(body_executor),
+      /*enable_loop_unroll=*/false));
+
+  ASSERT_OK_AND_ASSIGN(std::string platform_name,
+                       PlatformUtil::CanonicalPlatformName("gpu"));
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       se::PlatformManager::PlatformWithName(platform_name));
+  ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+
+  std::vector<se::DeviceAddressBase> buffers;
+  BufferAllocations allocations(buffers, /*device_ordinal=*/0,
+                                /*memory_allocator=*/nullptr);
+
+  Thunk::PrepareParams prepare_params{/*collective_params=*/nullptr,
+                                      /*collective_clique_requests=*/nullptr,
+                                      /*collective_memory_requests=*/nullptr,
+                                      /*executor=*/executor,
+                                      /*buffer_allocations=*/&allocations};
+  ASSERT_OK(thunk.Prepare(prepare_params));
+  EXPECT_EQ(cond_counts.prepares, 1);
+  EXPECT_EQ(body_counts.prepares, 1);
+
+  Thunk::InitializeParams init_params;
+  init_params.executor = executor;
+  init_params.buffer_allocations = &allocations;
+  ASSERT_OK(thunk.Initialize(init_params));
+  EXPECT_EQ(cond_counts.initializes, 1);
+  EXPECT_EQ(body_counts.initializes, 1);
 }
 
 TEST(WhileThunkTest, RecordCreatesAndUpdatesCommandBufferWhile) {

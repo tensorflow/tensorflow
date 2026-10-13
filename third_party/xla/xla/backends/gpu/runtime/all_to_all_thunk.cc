@@ -125,7 +125,6 @@ AllToAllThunk::AllToAllThunk(ThunkInfo thunk_info,
 }
 
 absl::Status AllToAllThunk::Initialize(const InitializeParams& params) {
-  ABSL_RETURN_IF_ERROR(CollectiveThunk::Initialize(params));
   CHECK_GT(params.local_device_count, 0);
   XLA_VLOG_DEVICE(5, params.executor->device_ordinal())
       << "Local device count : " << params.local_device_count;

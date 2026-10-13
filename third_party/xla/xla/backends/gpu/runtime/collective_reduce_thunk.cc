@@ -102,8 +102,7 @@ CollectiveReduceThunk::CollectiveReduceThunk(
   return GetAllReduceConfigInst(inst).config.group_mode;
 }
 
-absl::Status CollectiveReduceThunk::InitializeCollective(
-    const InitializeParams& params, const GpuCliqueKey& clique_key) {
+absl::Status CollectiveReduceThunk::Initialize(const InitializeParams& params) {
   if (!has_dynamic_root_) {
     return absl::OkStatus();
   }

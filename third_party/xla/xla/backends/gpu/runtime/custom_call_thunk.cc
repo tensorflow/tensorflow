@@ -370,10 +370,13 @@ InvokeContext CustomCallThunk::BuildInvokeContext(
   ffi::ExecutionState* initialize_state = nullptr;
 
   if (execution_scoped_state) {
-    PrepareAndInitState& prepare_and_init = tsl::any_cast<PrepareAndInitState>(
-        execution_scoped_state->at(this->thunk_info().thunk_id));
-    prepare_state = &prepare_and_init.prepare;
-    initialize_state = &prepare_and_init.init;
+    if (auto it = execution_scoped_state->find(this->thunk_info().thunk_id);
+        it != execution_scoped_state->end()) {
+      PrepareAndInitState& prepare_and_init =
+          tsl::any_cast<PrepareAndInitState>(it->second);
+      prepare_state = &prepare_and_init.prepare;
+      initialize_state = &prepare_and_init.init;
+    }
   }
 
   // `called_computation_` is forwarded to the FFI handler both for direct
@@ -471,9 +474,14 @@ absl::Status CustomCallThunk::ExecuteFfiHandler(
 }
 
 absl::Status CustomCallThunk::Prepare(const PrepareParams& params) {
-  // Run the prepare stage at most once per execution. When lowered into a
-  // command buffer, CommandBufferThunk drives this same object via both its
-  // command sequence and its fallback thunk sequence; see PrepareAndInitState.
+  const auto* c_bundle = std::get_if<XLA_FFI_Handler_Bundle>(&bundle_);
+  const auto* owned_bundle = std::get_if<OwnedHandlerBundle>(&bundle_);
+  if ((c_bundle == nullptr || c_bundle->prepare == nullptr) &&
+      (owned_bundle == nullptr || owned_bundle->prepare == nullptr)) {
+    return absl::OkStatus();
+  }
+
+  // Run the prepare stage at most once per execution.
   if (params.execution_scoped_state != nullptr) {
     auto [it, _] = params.execution_scoped_state->try_emplace(
         thunk_info().thunk_id, std::in_place_type<PrepareAndInitState>);
@@ -487,8 +495,7 @@ absl::Status CustomCallThunk::Prepare(const PrepareParams& params) {
   const RunId run_id =
       params.collective_params ? params.collective_params->run_id : RunId{-1};
 
-  if (const auto* c_bundle = std::get_if<XLA_FFI_Handler_Bundle>(&bundle_);
-      c_bundle && c_bundle->prepare) {
+  if (c_bundle && c_bundle->prepare) {
     return ExecuteFfiHandler(
         run_id, c_bundle->prepare, XLA_FFI_ExecutionStage_PREPARE,
         /*stream=*/nullptr,
@@ -502,8 +509,7 @@ absl::Status CustomCallThunk::Prepare(const PrepareParams& params) {
         /*collective_memory=*/nullptr,
         /*computation_streams=*/{});
   }
-  if (const auto* owned_bundle = std::get_if<OwnedHandlerBundle>(&bundle_);
-      owned_bundle && owned_bundle->prepare) {
+  if (owned_bundle && owned_bundle->prepare) {
     return ExecuteFfiHandler(
         run_id, *owned_bundle->prepare, xla::ffi::ExecutionStage::kPrepare,
         /*stream=*/nullptr,
@@ -522,9 +528,14 @@ absl::Status CustomCallThunk::Prepare(const PrepareParams& params) {
 }
 
 absl::Status CustomCallThunk::Initialize(const InitializeParams& params) {
-  // Run the initialize stage at most once per execution. When lowered into a
-  // command buffer, CommandBufferThunk drives this same object via both its
-  // command sequence and its fallback thunk sequence; see PrepareAndInitState.
+  const auto* c_bundle = std::get_if<XLA_FFI_Handler_Bundle>(&bundle_);
+  const auto* owned_bundle = std::get_if<OwnedHandlerBundle>(&bundle_);
+  if ((c_bundle == nullptr || c_bundle->initialize == nullptr) &&
+      (owned_bundle == nullptr || owned_bundle->initialize == nullptr)) {
+    return absl::OkStatus();
+  }
+
+  // Run the initialize stage at most once per execution.
   if (params.execution_scoped_state != nullptr) {
     auto [it, _] = params.execution_scoped_state->try_emplace(
         thunk_info().thunk_id, std::in_place_type<PrepareAndInitState>);
@@ -538,8 +549,7 @@ absl::Status CustomCallThunk::Initialize(const InitializeParams& params) {
   const RunId run_id =
       params.collective_params ? params.collective_params->run_id : RunId{-1};
 
-  if (const auto* c_bundle = std::get_if<XLA_FFI_Handler_Bundle>(&bundle_);
-      c_bundle && c_bundle->initialize) {
+  if (c_bundle && c_bundle->initialize) {
     return ExecuteFfiHandler(
         run_id, *c_bundle->initialize, XLA_FFI_ExecutionStage_INITIALIZE,
         params.stream, params.execution_scoped_state,
@@ -550,8 +560,7 @@ absl::Status CustomCallThunk::Initialize(const InitializeParams& params) {
         params.collective_memory,
         /*computation_streams=*/{});
   }
-  if (const auto* owned_bundle = std::get_if<OwnedHandlerBundle>(&bundle_);
-      owned_bundle && owned_bundle->initialize) {
+  if (owned_bundle && owned_bundle->initialize) {
     return ExecuteFfiHandler(
         run_id, *owned_bundle->initialize,
         xla::ffi::ExecutionStage::kInitialize, params.stream,

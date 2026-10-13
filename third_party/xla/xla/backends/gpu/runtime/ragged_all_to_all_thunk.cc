@@ -613,8 +613,6 @@ RaggedAllToAllThunk::GetCliqueRequirements(const GpuCliqueKey& clique_key,
 }
 
 absl::Status RaggedAllToAllThunk::Initialize(const InitializeParams& params) {
-  ABSL_RETURN_IF_ERROR(CollectiveThunk::Initialize(params));
-
   se::StreamExecutor* executor = params.executor;
   ABSL_RETURN_IF_ERROR(per_device_states_.GetOrCreateAndInitialize(
       executor->device_ordinal(),
