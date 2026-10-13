@@ -592,11 +592,18 @@ class MatrixDiagTest(xla_test.XLATestCase):
 
   def testBandFromVector(self):
     # A band of diagonals needs them stacked in a dimension that a vector
-    # doesn't have, and looking for it aborted the process.
+    # doesn't have, and looking for it aborted the process. array_ops'
+    # matrix_diag rejects a vector of a known rank itself, so call the op.
     with self.session() as session:
       with self.test_scope():
         diagonal = array_ops.placeholder(dtypes.int32, [3])
-        output = array_ops.matrix_diag(diagonal, k=(-1, 1))
+        output = gen_array_ops.matrix_diag_v3(
+            diagonal=diagonal,
+            k=[-1, 1],
+            num_rows=-1,
+            num_cols=-1,
+            padding_value=0,
+            align="RIGHT_LEFT")
       with self.assertRaisesOpError("The number of diagonals provided"):
         session.run(output, {diagonal: [1, 2, 3]})
 
