@@ -1037,6 +1037,7 @@ cc_library(
         ":collective_params",
         ":command",
         ":command_state",
+        ":per_device_state",
         ":record_ffi",
         ":thunk",
         ":thunk_proto_cc",
@@ -1060,7 +1061,6 @@ cc_library(
         "//xla/ffi/api:record_api",
         "//xla/hlo/ir:hlo",
         "//xla/runtime:buffer_use",
-        "//xla/runtime:object_pool",
         "//xla/service:buffer_assignment",
         "//xla/service:hlo_proto_cc",
         "//xla/service:shaped_slice",
@@ -5503,7 +5503,6 @@ cc_library(
     name = "per_device_state",
     srcs = ["per_device_state.cc"],
     hdrs = ["per_device_state.h"],
-    visibility = ["//visibility:private"],
     deps = [
         ":cow_storage",
         ":device_slot",
