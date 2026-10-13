@@ -49,6 +49,8 @@ struct WhileLoopConfig {
   int64_t trip_count;
   // The index of the induction variable in the input tuple of the while loop.
   int64_t induction_var_idx;
+  // The step size of the induction variable.
+  int64_t step = 1;
 };
 
 // Result for unrolled while loops.

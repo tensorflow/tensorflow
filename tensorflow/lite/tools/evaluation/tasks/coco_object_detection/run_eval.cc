@@ -51,7 +51,7 @@ std::string GetNameFromPath(const std::string& str) {
 class CocoObjectDetection : public TaskExecutor {
  public:
   CocoObjectDetection() : debug_mode_(false), num_interpreter_threads_(1) {}
-  ~CocoObjectDetection() override {}
+  ~CocoObjectDetection() override = default;
 
  protected:
   std::vector<Flag> GetFlags() final;

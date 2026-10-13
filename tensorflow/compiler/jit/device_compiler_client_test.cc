@@ -86,6 +86,8 @@ TEST(GetExecutableOptionTest, XlaDeterministicFrontendAttribute) {
       GetExecutableBuildOptions(options, result, /*default_device_ordinal=*/-1);
   EXPECT_FALSE(default_build_option.debug_options()
                    .xla_gpu_exclude_nondeterministic_ops());
+  EXPECT_FALSE(default_build_option.debug_options()
+                   .xla_gpu_experimental_cost_model_gemm_tiling_default());
 
   (*result.computation->mutable_proto()
         ->mutable_frontend_attributes()
@@ -94,6 +96,8 @@ TEST(GetExecutableOptionTest, XlaDeterministicFrontendAttribute) {
       GetExecutableBuildOptions(options, result, /*default_device_ordinal=*/-1);
   EXPECT_TRUE(deterministic_build_option.debug_options()
                   .xla_gpu_exclude_nondeterministic_ops());
+  EXPECT_TRUE(deterministic_build_option.debug_options()
+                  .xla_gpu_experimental_cost_model_gemm_tiling_default());
 }
 
 }  // namespace

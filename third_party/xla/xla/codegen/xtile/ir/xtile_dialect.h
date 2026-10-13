@@ -17,9 +17,11 @@ limitations under the License.
 #define XLA_CODEGEN_XTILE_IR_XTILE_DIALECT_H_
 
 #include "mlir/Dialect/Arith/IR/Arith.h"  // IWYU pragma: keep
+#include "mlir/Dialect/Complex/IR/Complex.h"  // IWYU pragma: keep
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // IWYU pragma: keep
 #include "mlir/Dialect/SCF/IR/SCF.h"  // IWYU pragma: keep
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // IWYU pragma: keep
+#include "mlir/Dialect/Vector/IR/VectorOps.h"  // IWYU pragma: keep
 #include "mlir/IR/Dialect.h"  // IWYU pragma: keep
 #include "stablehlo/dialect/StablehloOps.h"  // IWYU pragma: keep
 

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/nvptx_compiler.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <fstream>
@@ -32,12 +33,14 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
@@ -83,6 +86,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/llvm_gpu_backend/nvptx_backend.h"
 #include "xla/service/gpu/llvm_gpu_backend/nvptx_utils.h"
+#include "xla/service/gpu/llvm_gpu_backend/ptx_version_util.h"
 #include "xla/service/gpu/metrics.h"
 #include "xla/service/gpu/nvptx_alias_info.h"
 #include "xla/service/gpu/ptx_compile_options_from_debug_options.h"
@@ -99,6 +103,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
+#include "xla/stream_executor/cuda/subprocess_compilation.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/semantic_version.h"
@@ -657,8 +662,23 @@ NVPTXCompiler::CompileTargetBinary(
   se::cuda::CompilationOptions compilation_options =
       PtxCompileOptionsFromDebugOptions(module_config.debug_options());
 
+  absl::StatusOr<stream_executor::SemanticVersion> runtime_cuda_version =
+      stream_executor::GetAsmCompilerVersion(
+          module_config.debug_options().xla_gpu_cuda_data_dir());
+  constexpr stream_executor::SemanticVersion kCompileTimeCudaVersion{
+      CUDA_VERSION / 1000, (CUDA_VERSION / 10) % 100, CUDA_VERSION % 10};
+  auto highest_supported_cuda_version = [&] {
+    if (runtime_cuda_version.ok()) {
+      return std::min(runtime_cuda_version.value(), kCompileTimeCudaVersion);
+    }
+    return kCompileTimeCudaVersion;
+  }();
+  auto ptx_version = nvptx::DetermineHighestSupportedPtxVersionFromCudaVersion(
+      highest_supported_cuda_version);
+
   se::CudaComputeCapability cc = nvptx::ResolveSupportedComputeCapability(
-      *device_description.gpu_compute_capability().cuda_compute_capability());
+      *device_description.gpu_compute_capability().cuda_compute_capability(),
+      ptx_version);
 
   // This may print multiple lines per HLO compilation because of the
   // parallelized compilation of LLVM modules.
@@ -719,8 +739,23 @@ absl::StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
     return std::vector<uint8_t>{};
   }
 
+  absl::StatusOr<stream_executor::SemanticVersion> runtime_cuda_version =
+      stream_executor::GetAsmCompilerVersion(
+          debug_options.xla_gpu_cuda_data_dir());
+  constexpr stream_executor::SemanticVersion kCompileTimeCudaVersion{
+      CUDA_VERSION / 1000, (CUDA_VERSION / 10) % 100, CUDA_VERSION % 10};
+  auto highest_supported_cuda_version = [&] {
+    if (runtime_cuda_version.ok()) {
+      return std::min(runtime_cuda_version.value(), kCompileTimeCudaVersion);
+    }
+    return kCompileTimeCudaVersion;
+  }();
+  auto ptx_version = nvptx::DetermineHighestSupportedPtxVersionFromCudaVersion(
+      highest_supported_cuda_version);
+
   se::CudaComputeCapability cc = nvptx::ResolveSupportedComputeCapability(
-      *device_description.gpu_compute_capability().cuda_compute_capability());
+      *device_description.gpu_compute_capability().cuda_compute_capability(),
+      ptx_version);
 
   ABSL_ASSIGN_OR_RETURN(const se::cuda::CompilationProvider* compilation_provider,
                    GetCompilationProvider(debug_options, stream_exec));

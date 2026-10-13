@@ -24,6 +24,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
@@ -73,6 +74,29 @@ using ::testing::Field;
 using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::Not;
+
+// Returns the default platform.
+se::Platform* GetDefaultPlatform() {
+  absl::StatusOr<se::Platform*> platform = PlatformUtil::GetDefaultPlatform();
+  CHECK_OK(platform.status());
+  return *platform;
+}
+
+// Returns the compiler registered for `platform`.
+std::unique_ptr<Compiler> GetCompilerForPlatform(se::Platform* platform) {
+  absl::StatusOr<std::unique_ptr<Compiler>> compiler =
+      Compiler::GetForPlatform(platform->id());
+  CHECK_OK(compiler.status());
+  return *std::move(compiler);
+}
+
+// Returns the first device executor of `platform`.
+se::StreamExecutor* GetStreamExecutor(se::Platform* platform) {
+  absl::StatusOr<se::StreamExecutor*> stream_executor =
+      platform->ExecutorForDevice(0);
+  CHECK_OK(stream_executor.status());
+  return *stream_executor;
+}
 
 const char kTritonFusionHlo[] = R"(
   HloModule module
@@ -280,9 +304,11 @@ class FissionTest : public HloHardwareIndependentTestBase,
   std::unique_ptr<FissionBackend> fission_backend_;
 
   FissionTest()
-      : platform_(PlatformUtil::GetDefaultPlatform().value()),
-        stream_executor_(platform_->ExecutorForDevice(0).value()),
-        compiler_(Compiler::GetForPlatform(platform_->id()).value()),
+      : debug_options_(
+            HloHardwareIndependentTestBase::GetDebugOptionsForTest()),
+        platform_(GetDefaultPlatform()),
+        stream_executor_(GetStreamExecutor(platform_)),
+        compiler_(GetCompilerForPlatform(platform_)),
         target_config_(stream_executor_),
         device_description_(stream_executor_->GetDeviceDescription()),
         rewriter_pipeline_(GetParam().pipeline_factory(device_description_)),
@@ -496,9 +522,11 @@ class CublasFissionBackendTest : public HloHardwareIndependentTestBase {
   std::unique_ptr<FissionBackend> fission_backend_;
 
   CublasFissionBackendTest()
-      : platform_(PlatformUtil::GetDefaultPlatform().value()),
-        stream_executor_(platform_->ExecutorForDevice(0).value()),
-        compiler_(Compiler::GetForPlatform(platform_->id()).value()),
+      : debug_options_(
+            HloHardwareIndependentTestBase::GetDebugOptionsForTest()),
+        platform_(GetDefaultPlatform()),
+        stream_executor_(GetStreamExecutor(platform_)),
+        compiler_(GetCompilerForPlatform(platform_)),
         target_config_(stream_executor_),
         device_description_(stream_executor_->GetDeviceDescription()),
         alias_info_(device_description_),
@@ -687,8 +715,9 @@ TEST_F(CublasFissionBackendTest, CublasFallbackForBf16Bf16F32Algorithm) {
 //     returned.
 TEST_F(CublasFissionBackendTest,
        GetSupportedConfigsRespectsUserGemmRewriteSizeThreshold) {
-  // Confirm the fixture's debug options use the proto default (0), which
-  // differs from DefaultDebugOptionsIgnoringFlags() that sets it to 100.
+  // Set the fixture's debug options threshold to 0, which differs from
+  // DefaultDebugOptionsIgnoringFlags() that sets it to 100.
+  debug_options_.set_xla_gpu_gemm_rewrite_size_threshold(0);
   EXPECT_EQ(debug_options_.xla_gpu_gemm_rewrite_size_threshold(), 0);
 
   // A tiny f32 fusion whose dot's combined size is 50 < 100

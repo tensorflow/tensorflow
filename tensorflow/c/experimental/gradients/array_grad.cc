@@ -35,7 +35,7 @@ class IdentityNGradientFunction : public GradientFunction {
     }
     return absl::OkStatus();
   }
-  ~IdentityNGradientFunction() override {}
+  ~IdentityNGradientFunction() override = default;
 };
 }  // namespace
 

@@ -1,5 +1,5 @@
-// RUN: fusion_to_triton --xla_gpu_experimental_enable_tiling_propagation %s | FileCheck %s
-// RUN: triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation --abs_error_bound=1e-4 --rel_error_bound=1e-4 %s
+// RUN: fusion_to_triton %s | FileCheck %s
+// RUN: triton_test_correctness --abs_error_bound=1e-4 --rel_error_bound=1e-4 %s
 
 max_region {
   p0 = f32[] parameter(0)

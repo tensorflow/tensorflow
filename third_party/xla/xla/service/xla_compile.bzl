@@ -32,10 +32,16 @@ xla_aot_compile(
 load("//xla:xla.default.bzl", "xla_compile_target_cpu")
 load("//xla/backends/gpu/target_config:target_config_map.bzl", gpu_target_config_map = "target_config_map")
 load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
+load("//xla/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_newer_than")
 
 visibility(DEFAULT_LOAD_VISIBILITY)
 
 xla_compile_tool = "//xla/service:xla_compile"
+
+_MIN_CUDA_VERSION = {
+    # SM107a requires PTX 9.4, available starting with CUDA 13.4.
+    "vr_nvl72": "13_4",
+}
 
 def target_llvm_triple():
     """Returns the target LLVM triple to be used for compiling the target."""
@@ -129,11 +135,19 @@ def xla_aot_compile_gpu(
             flags.append(xla_flags)
         if flags:
             cmd = "XLA_FLAGS=\"" + " ".join(flags) + "\" " + cmd
+        cmd = (
+            "if ! err=`" + cmd + " 2>&1`; then " +
+            "echo \"$$err\" >&2; " +
+            "if echo \"$$err\" | grep -q \"Deviceless cuDNN compilation requires cuDNN >=\"; then " +
+            "touch $(location " + compiled_binary + "); " +
+            "else exit 1; fi; fi"
+        )
         native.genrule(
             name = "gen_" + name + "_" + target,
             srcs = srcs,
             outs = [name + "_" + target],
             cmd = cmd,
+            tags = ["manual"] if target in _MIN_CUDA_VERSION else [],
             tools = [xla_compile_tool],
             # copybara:comment_begin(oss-only)
             target_compatible_with = select({
@@ -142,7 +156,10 @@ def xla_aot_compile_gpu(
             }),
             # copybara:comment_end
         )
-        res.append(compiled_binary)
+        if target in _MIN_CUDA_VERSION:
+            res = res + if_cuda_newer_than(_MIN_CUDA_VERSION[target], [compiled_binary])
+        else:
+            res = res + [compiled_binary]
     native.filegroup(
         name = name,
         data = res,

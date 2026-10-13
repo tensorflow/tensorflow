@@ -811,6 +811,32 @@ LogicalResult matmul_downgrade(Operation* op, int version, bool&) {
   return success();
 }
 
+LogicalResult repeat_upgrade(Operation* op, int version, bool& erased) {
+  if (op->getNumOperands() != 1 || op->getNumResults() != 1) {
+    return op->emitError("Unexpected operand/result count in tpu.repeat");
+  }
+  auto dimension_attr = op->getAttrOfType<IntegerAttr>("dimension");
+  auto times_attr = op->getAttrOfType<IntegerAttr>("times");
+  if (!dimension_attr || !times_attr) {
+    return op->emitError("Missing dimension or times attribute in tpu.repeat");
+  }
+  Value source = op->getOperand(0);
+  int32_t times = times_attr.getInt();
+  if (times == 1) {
+    op->replaceAllUsesWith(ValueRange{source});
+  } else {
+    OpBuilder builder(op);
+    SmallVector<Value> operands(times, source);
+    Value concat =
+        ConcatenateOp::create(builder, op->getLoc(), op->getResult(0).getType(),
+                              operands, dimension_attr.getInt());
+    op->replaceAllUsesWith(ValueRange{concat});
+  }
+  op->erase();
+  erased = true;
+  return success();
+}
+
 const llvm::StringMap<SerdeRuleType>& upgrade_rules() {
   static auto rules = new llvm::StringMap<SerdeRuleType>{
       {EnqueueDMAOp::getOperationName(), enqueue_dma_upgrade},
@@ -827,6 +853,7 @@ const llvm::StringMap<SerdeRuleType>& upgrade_rules() {
       {arith::ConstantOp::getOperationName(), arith_constant_upgrade},
       {ReinterpretCastOp::getOperationName(), reinterpret_cast_upgrade},
       {MatmulOp::getOperationName(), matmul_upgrade},
+      {"tpu.repeat", repeat_upgrade},
   };
   return *rules;
 }

@@ -7,7 +7,7 @@ XLA.
 
 --- a/lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp
 +++ b/lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp
-@@ -143,6 +143,10 @@ TMemAllocation getTmemAllocSizes(MemDescType memDescType) {
+@@ -148,6 +148,10 @@ TMemAllocation getTmemAllocSizes(MemDescType memDescType) {
    if (ll.getBasis(kRow, llvm::Log2_32(16)) == ArrayRef{0, 0}) {
      nRow /= 2;
    }

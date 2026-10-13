@@ -306,6 +306,8 @@ cc_library(
         "//xla/codegen/xtile:xtile_config_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:backend_configs_cc",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
         "@com_google_absl//absl/status:statusor",
     ],
 )
@@ -382,6 +384,9 @@ xla_cc_test(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu:gpu_device_info_for_tests",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",  # fixdeps: keep
     ],
@@ -2317,13 +2322,9 @@ cc_library(
         "//xla/service/gpu:cublas_cudnn",
         "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu:matmul_utils",
-        "//xla/service/gpu:reduction_utils",
         "//xla/service/gpu:stream_executor_util",
         "//xla/stream_executor:device_description",
-        "//xla/stream_executor:dnn",
         "//xla/stream_executor/cuda:cuda_compute_capability",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/protobuf:dnn_proto_cc",
         "//xla/tsl/util:env_var",
         "@com_google_absl//absl/algorithm:container",
@@ -2354,6 +2355,7 @@ xla_cc_test(
         "//xla/hlo/testlib:pattern_matcher_gmock",
         "//xla/service:computation_layout",
         "//xla/service:hlo_verifier",
+        "//xla/service:layout_assignment",
         "//xla/service:pattern_matcher",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cuda_compute_capability",
@@ -3126,6 +3128,7 @@ xla_test(
     name = "scatter_determinism_expander_test",
     srcs = ["scatter_determinism_expander_test.cc"],
     backends = ["gpu"],
+    shard_count = 3,
     deps = [
         ":scatter_determinism_expander",
         "//xla:literal",
@@ -3700,7 +3703,7 @@ xla_test(
         "gb300": ["broken"],  # TODO(b/505574653): re-enable when fixed.
     },
     backends = ["gpu"],
-    shard_count = 10,
+    shard_count = 15,
     deps = [
         ":topk_specializer",
         "//xla/backends/gpu/tests:hlo_pjrt_gpu_test_base",

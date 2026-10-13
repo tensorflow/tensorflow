@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/queue_base.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
@@ -254,12 +255,12 @@ class Barrier : public ResourceBase {
   void Close(OpKernelContext* ctx, bool cancel_pending_enqueues,
              const DoneCallback& callback) {
     mutex_lock lock(mu_);
+    auto cleanup = gtl::MakeCleanup([&callback]() { callback(); });
     // We're allowed to close twice if the first close wasn't a
     // cancel but the second one is.
     if (closed_ && (cancel_pending_enqueues_ || !cancel_pending_enqueues)) {
       ctx->SetStatus(absl::CancelledError(
           absl::StrCat("Barrier '", name_, "' is already closed.")));
-      callback();
       return;
     }
     cancel_pending_enqueues_ = cancel_pending_enqueues;
@@ -267,10 +268,9 @@ class Barrier : public ResourceBase {
     if (cancel_pending_enqueues_ || incomplete_.empty()) {
       incomplete_.clear();
       // CloseQueueLocked runs the callback
+      cleanup.release();
       CloseQueueLocked(ctx, cancel_pending_enqueues_, callback);
-      return;
     }
-    callback();
   }
 
   int32_t ready_size() { return ready_queue_->size(); }
@@ -403,18 +403,18 @@ class Barrier : public ResourceBase {
   void CloseQueueLocked(OpKernelContext* ctx, bool cancel_pending_enqueues,
                         const DoneCallback& callback)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    auto cleanup = gtl::MakeCleanup([&callback]() { callback(); });
     // CloseQueueLocked may only be called with mu_ held.
     if (!cancel_pending_enqueues && queue_closed_) {
-      callback();
       return;
     }
     if (cancel_pending_enqueues && queue_cancelled_) {
-      callback();
       return;
     }
     queue_closed_ = true;
     if (cancel_pending_enqueues) queue_cancelled_ = true;
     if (!ready_queue_->is_closed()) {
+      cleanup.release();
       ready_queue_->Close(ctx, cancel_pending_enqueues, callback);
     }
   }

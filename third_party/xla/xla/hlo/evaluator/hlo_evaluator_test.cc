@@ -7417,6 +7417,46 @@ TEST_F(HloEvaluatorTest, ParameterThroughCallSucceedsWithPrecomputation) {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
+TEST_F(HloEvaluatorTest,
+       EvaluateWhileInductionVarWithNonUnitStepAndNonZeroInit) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule while_induction_var
+
+    %while_condition {
+      %param = (s32[], f32[4]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %loop_bound = s32[] constant(23)
+      ROOT %result = pred[] compare(%gte.0, %loop_bound), direction=LT
+    }
+
+    %while_body {
+      %param = (s32[], f32[4]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = f32[4] get-tuple-element(%param), index=1
+      %step = s32[] constant(4)
+      %next_indvar = s32[] add(%gte.0, %step)
+      %next_buf = f32[4] add(%gte.1, %gte.1)
+      ROOT %loop_result = (s32[], f32[4]) tuple(%next_indvar, %next_buf)
+    }
+
+    ENTRY main {
+      %param.0 = f32[4] parameter(0)
+      %init = s32[] constant(3)
+      %while_init = (s32[], f32[4]) tuple(%init, %param.0)
+      %while = (s32[], f32[4]) while(%while_init), condition=%while_condition, body=%while_body
+      ROOT %indvar = s32[] get-tuple-element(%while), index=0
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(
+      Literal result,
+      evaluator_.Evaluate(hlo_module->entry_computation()->root_instruction(),
+                          /*precomputed_analyses=*/{},
+                          /*recursively_evaluate_nonconstant_operands=*/true));
+  EXPECT_EQ(result, LiteralUtil::CreateR0<int32_t>(23));
+}
+
 class PatternMatchParseWhileLoopTest : public HloHardwareIndependentTestBase {};
 
 TEST_F(PatternMatchParseWhileLoopTest, LoopBoundDefinedInsideOfCond) {
@@ -8957,6 +8997,149 @@ BENCHMARK(BM_BinaryOp)
     ->Arg(128)
     ->Arg(512)
     ->Arg(1024);
+
+static void BM_EvaluateConvolution(benchmark::State& state) {
+  int64_t d = state.range(0);
+
+  std::unique_ptr<HloInstruction> lhs = HloInstruction::CreateConstant(
+      LiteralUtil::CreateFull({1, 2, d, d}, 1.0f));
+  std::unique_ptr<HloInstruction> rhs = HloInstruction::CreateConstant(
+      LiteralUtil::CreateFull({2, 2, 3, 3}, 1.0f));
+
+  Window window;
+  WindowDimension dim;
+  dim.set_size(3);
+  dim.set_stride(1);
+  dim.set_padding_low(1);
+  dim.set_padding_high(1);
+  dim.set_window_dilation(1);
+  dim.set_base_dilation(1);
+  *window.add_dimensions() = dim;
+  *window.add_dimensions() = dim;
+
+  ConvolutionDimensionNumbers dnums =
+      XlaBuilder::CreateDefaultConvDimensionNumbers(2);
+  std::unique_ptr<HloInstruction> conv = HloInstruction::CreateConvolve(
+      ShapeUtil::MakeShape(F32, {1, 2, d, d}), {lhs.get(), rhs.get()},
+      /*feature_group_count=*/1, /*batch_group_count=*/1, window, dnums,
+      HloHardwareIndependentTestBase::DefaultPrecisionConfig(2));
+
+  HloEvaluator evaluator;
+  for (auto s : state) {
+    CHECK_OK(evaluator.Evaluate(conv.get()).status());
+  }
+}
+
+BENCHMARK(BM_EvaluateConvolution)->MeasureProcessCPUTime()->Arg(4)->Arg(16);
+
+static void BM_EvaluateDotSlowPath(benchmark::State& state) {
+  int64_t d = state.range(0);
+
+  std::unique_ptr<HloInstruction> lhs = HloInstruction::CreateConstant(
+      LiteralUtil::CreateFull<int32_t>({d, d}, 1));
+  std::unique_ptr<HloInstruction> rhs = HloInstruction::CreateConstant(
+      LiteralUtil::CreateFull<int32_t>({d, d}, 2));
+
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  std::unique_ptr<HloInstruction> dot = HloInstruction::CreateDot(
+      ShapeUtil::MakeShape(S32, {d, d}), lhs.get(), rhs.get(), dot_dnums,
+      HloHardwareIndependentTestBase::DefaultPrecisionConfig(2));
+
+  HloEvaluator evaluator;
+  for (auto s : state) {
+    CHECK_OK(evaluator.Evaluate(dot.get()).status());
+  }
+}
+
+BENCHMARK(BM_EvaluateDotSlowPath)->MeasureProcessCPUTime()->Arg(4)->Arg(32);
+
+static void BM_EvaluateRaggedDot(benchmark::State& state) {
+  int64_t d = state.range(0);
+
+  HloComputation::Builder b("BM_EvaluateRaggedDot");
+  HloModuleConfig config;
+  config.set_seed(1);
+  HloModule module("BM_EvaluateRaggedDot", config);
+
+  HloInstruction* lhs = b.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateFull({d, d}, 1.0f)));
+  HloInstruction* rhs = b.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateFull({2, d, d}, 2.0f)));
+  HloInstruction* gs = b.AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::CreateR1<int64_t>({d / 2, d / 2})));
+
+  RaggedDotDimensionNumbers ragged_dnums;
+  ragged_dnums.add_lhs_ragged_dimensions(0);
+  ragged_dnums.add_rhs_group_dimensions(0);
+  ragged_dnums.mutable_dot_dimension_numbers()->add_lhs_contracting_dimensions(
+      1);
+  ragged_dnums.mutable_dot_dimension_numbers()->add_rhs_contracting_dimensions(
+      1);
+  b.AddInstruction(HloInstruction::CreateRaggedDot(
+      ShapeUtil::MakeShape(F32, {d, d}), lhs, rhs, gs, ragged_dnums,
+      HloHardwareIndependentTestBase::DefaultPrecisionConfig(2)));
+  module.AddEntryComputation(b.Build());
+
+  HloEvaluator evaluator;
+  for (auto s : state) {
+    evaluator.ResetVisitStates();
+    CHECK_OK(evaluator.Evaluate(*module.entry_computation(), {}).status());
+  }
+}
+
+BENCHMARK(BM_EvaluateRaggedDot)->MeasureProcessCPUTime()->Arg(4)->Arg(32);
+
+static void BM_EvaluateScaledDot(benchmark::State& state) {
+  int64_t d = state.range(0);
+
+  std::unique_ptr<HloInstruction> lhs =
+      HloInstruction::CreateConstant(LiteralUtil::CreateFull({d, d}, 1.0f));
+  std::unique_ptr<HloInstruction> lhs_scale =
+      HloInstruction::CreateConstant(LiteralUtil::CreateFull({d, 2}, 2.0f));
+  std::unique_ptr<HloInstruction> rhs =
+      HloInstruction::CreateConstant(LiteralUtil::CreateFull({d, d}, 1.0f));
+  std::unique_ptr<HloInstruction> rhs_scale =
+      HloInstruction::CreateConstant(LiteralUtil::CreateFull({2, d}, 3.0f));
+
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  std::unique_ptr<HloInstruction> scaled_dot = HloInstruction::CreateScaledDot(
+      ShapeUtil::MakeShape(F32, {d, d}), lhs.get(), rhs.get(), lhs_scale.get(),
+      rhs_scale.get(), dot_dnums,
+      HloHardwareIndependentTestBase::DefaultPrecisionConfig(4));
+
+  HloEvaluator evaluator;
+  for (auto s : state) {
+    CHECK_OK(evaluator.Evaluate(scaled_dot.get()).status());
+  }
+}
+
+BENCHMARK(BM_EvaluateScaledDot)->MeasureProcessCPUTime()->Arg(4)->Arg(32);
+
+static void BM_EvaluatePad(benchmark::State& state) {
+  int64_t d = state.range(0);
+
+  std::unique_ptr<HloInstruction> operand =
+      HloInstruction::CreateConstant(LiteralUtil::CreateFull({d, d}, 1.0f));
+  std::unique_ptr<HloInstruction> pad_value =
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f));
+
+  PaddingConfig padding_config =
+      CreatePaddingConfig({{{1, 1, 0}}, {{1, 1, 0}}});
+  std::unique_ptr<HloInstruction> pad =
+      HloInstruction::CreatePad(ShapeUtil::MakeShape(F32, {d + 2, d + 2}),
+                                operand.get(), pad_value.get(), padding_config);
+
+  HloEvaluator evaluator;
+  for (auto s : state) {
+    CHECK_OK(evaluator.Evaluate(pad.get()).status());
+  }
+}
+
+BENCHMARK(BM_EvaluatePad)->MeasureProcessCPUTime()->Arg(4)->Arg(64);
 
 }  // namespace
 }  // namespace xla

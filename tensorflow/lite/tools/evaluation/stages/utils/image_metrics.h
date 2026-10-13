@@ -31,7 +31,7 @@ struct Box2D {
       min = x;
       max = y;
     }
-    Interval() {}
+    Interval() = default;
   };
 
   Interval x;
@@ -69,7 +69,7 @@ struct Detection {
   Box2D box;
   IgnoreType ignore = IgnoreType::kDontIgnore;
 
-  Detection() {}
+  Detection() = default;
   Detection(bool d, int64_t id, float s, Box2D b)
       : difficult(d), imgid(id), score(s), box(b) {}
   Detection(bool d, int64_t id, float s, Box2D b, IgnoreType i)

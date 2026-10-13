@@ -116,7 +116,7 @@ class GrpcEagerClientThread : public core::RefCounted {
         }));
   }
 
-  ~GrpcEagerClientThread() override {}
+  ~GrpcEagerClientThread() override = default;
 
   ::grpc::CompletionQueue* completion_queue() { return &completion_queue_; }
 

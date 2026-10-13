@@ -58,18 +58,9 @@ using ::testing::UnorderedElementsAre;
 namespace xla {
 namespace gpu {
 
-class PriorityFusionTest : public HloHardwareIndependentTestBase,
-                           public ::testing::WithParamInterface<bool> {
+class PriorityFusionTest : public HloHardwareIndependentTestBase {
  public:
   PriorityFusionTest() { RegisterSymbolicExprStorage(&mlir_context_); }
-
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options =
-        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_experimental_enable_tiling_propagation(
-        GetParam());
-    return debug_options;
-  }
 
   std::vector<HloFusionAnalysis::EmitterFusionKind> RunAndGetFusionKinds(
       absl::string_view hlo) {
@@ -101,13 +92,7 @@ class PriorityFusionTest : public HloHardwareIndependentTestBase,
   }();
 };
 
-INSTANTIATE_TEST_SUITE_P(
-    PriorityFusionTest, PriorityFusionTest, ::testing::Bool(),
-    [](const ::testing::TestParamInfo<PriorityFusionTest::ParamType>& info) {
-      return info.param ? "TilingPropagation" : "SymbolicAnalysis";
-    });
-
-TEST_P(PriorityFusionTest, ParallelTilingSearchMatchesSerialTilingSearch) {
+TEST_F(PriorityFusionTest, ParallelTilingSearchMatchesSerialTilingSearch) {
   constexpr absl::string_view kHlo = R"(
     HloModule test_module
 
@@ -147,7 +132,7 @@ TEST_P(PriorityFusionTest, ParallelTilingSearchMatchesSerialTilingSearch) {
             serial_module->ToString(HloPrintOptions::ShortParsable()));
 }
 
-TEST_P(PriorityFusionTest, FuseWithSharedArgument) {
+TEST_F(PriorityFusionTest, FuseWithSharedArgument) {
   auto module = ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
@@ -170,7 +155,7 @@ TEST_P(PriorityFusionTest, FuseWithSharedArgument) {
   EXPECT_EQ(root->fusion_kind(), HloInstruction::FusionKind::kLoop);
 }
 
-TEST_P(PriorityFusionTest, FusionOnStreamAnnotatedComputation) {
+TEST_F(PriorityFusionTest, FusionOnStreamAnnotatedComputation) {
   auto module = ParseAndReturnVerifiedModule(R"(
     HloModule test_module
     stream {
@@ -204,7 +189,7 @@ TEST_P(PriorityFusionTest, FusionOnStreamAnnotatedComputation) {
   EXPECT_EQ(called_root->fusion_kind(), HloInstruction::FusionKind::kLoop);
 }
 
-TEST_P(PriorityFusionTest, FusionFusionWithDuplication) {
+TEST_F(PriorityFusionTest, FusionFusionWithDuplication) {
   absl::string_view kHlo = R"(
     HloModule test_module
 
@@ -240,7 +225,7 @@ CHECK-NEXT: ROOT {{.*}} tuple(%[[FUSION_0]], %[[FUSION_1]])
   )");
 }
 
-TEST_P(PriorityFusionTest, FuseBroadcastIntoBitcastConsumers) {
+TEST_F(PriorityFusionTest, FuseBroadcastIntoBitcastConsumers) {
   absl::string_view kHlo = R"(
     HloModule test_module
 
@@ -258,7 +243,7 @@ CHECK-NEXT: ROOT %{{.*}} fusion(%[[PARAM]])
   )");
 }
 
-TEST_P(PriorityFusionTest, FuseWideningConvertIntoConsumers) {
+TEST_F(PriorityFusionTest, FuseWideningConvertIntoConsumers) {
   absl::string_view kHlo = R"(
     HloModule test_module
 
@@ -281,7 +266,7 @@ CHECK-NEXT: ROOT %{{.*}} = (f32[512]{0}, s32[512]{0}) tuple(%[[FUSION_F32]], %[[
   )");
 }
 
-TEST_P(PriorityFusionTest, DoNotFuseBitWidthChangingBitcast) {
+TEST_F(PriorityFusionTest, DoNotFuseBitWidthChangingBitcast) {
   // `neg` is the producer that could be fused with `bitcast` and `mul`, but
   // since `bitcast` changes the bit width, we don't fuse it.
   auto module = *ParseAndReturnVerifiedModule(R"(
@@ -297,7 +282,7 @@ TEST_P(PriorityFusionTest, DoNotFuseBitWidthChangingBitcast) {
               absl_testing::IsOkAndHolds(false));
 }
 
-TEST_P(PriorityFusionTest, FuseConvertIntoReduce) {
+TEST_F(PriorityFusionTest, FuseConvertIntoReduce) {
   absl::string_view kHlo = R"(
     HloModule test_module
 
@@ -336,7 +321,7 @@ CHECK-COUNT-3: fusion
   )");
 }
 
-TEST_P(PriorityFusionTest, ReductionEpilogueFusionRegressionTest) {
+TEST_F(PriorityFusionTest, ReductionEpilogueFusionRegressionTest) {
   // Regression test for epilogue fusion of convert into a reduction, even if
   // the convert has a bitcast as consumer.
   absl::string_view kHlo = R"(
@@ -391,7 +376,7 @@ CHECK: ROOT {{.*}} bitcast({{.*}}fusion{{.*}})
   )");
 }
 
-TEST_P(PriorityFusionTest, DoNotChangeReductionFusionToLoopFusion) {
+TEST_F(PriorityFusionTest, DoNotChangeReductionFusionToLoopFusion) {
   // Regression test for epilogue fusion of slice into a reduction. The fusion
   // kind for the reduction fusion is intentionally chosen to be set to kLoop,
   // as we cannot rely on reductions always having fusion kind kInput.
@@ -419,7 +404,7 @@ TEST_P(PriorityFusionTest, DoNotChangeReductionFusionToLoopFusion) {
               absl_testing::IsOkAndHolds(false));
 }
 
-TEST_P(PriorityFusionTest, DoNotFuseTransposeIntoReduce) {
+TEST_F(PriorityFusionTest, DoNotFuseTransposeIntoReduce) {
   absl::string_view kHlo = R"(
     HloModule test_module
 
@@ -495,7 +480,7 @@ TEST_P(PriorityFusionTest, DoNotFuseTransposeIntoReduce) {
                            Kind::kTranspose, Kind::kTranspose));
 }
 
-TEST_P(PriorityFusionTest, DoNotFuseReduceIntoReduce) {
+TEST_F(PriorityFusionTest, DoNotFuseReduceIntoReduce) {
   absl::string_view kHlo = R"(
     HloModule test_module
 
@@ -518,7 +503,7 @@ CHECK: ROOT {{.*}} reduce(
   )");
 }
 
-TEST_P(PriorityFusionTest, ConvertFusedIntoReduce) {
+TEST_F(PriorityFusionTest, ConvertFusedIntoReduce) {
   absl::string_view kHlo = R"(
     HloModule test_module
 
@@ -558,7 +543,7 @@ CHECK-NOT: fusion(
   )");
 }
 
-TEST_P(PriorityFusionTest, DoNotFuseDynamicUpdateSliceIntoReduce) {
+TEST_F(PriorityFusionTest, DoNotFuseDynamicUpdateSliceIntoReduce) {
   absl::string_view kHlo = R"(
     HloModule test_module
 
@@ -634,7 +619,7 @@ CHECK-COUNT-3: fusion(
   )");
 }
 
-TEST_P(PriorityFusionTest, DontFuseIntoFirstOperandOfScatter) {
+TEST_F(PriorityFusionTest, DontFuseIntoFirstOperandOfScatter) {
   auto module = *ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
@@ -674,7 +659,7 @@ TEST_P(PriorityFusionTest, DontFuseIntoFirstOperandOfScatter) {
 // This test is similar to DontFuseIntoFirstOperandOfScatter, but PriorityFusion
 // has a separate run to fuse constants. Fusing anything into a scatter fusion
 // will fail in the emitter.
-TEST_P(PriorityFusionTest, DontFuseConstantIntoFirstOperandOfScatter) {
+TEST_F(PriorityFusionTest, DontFuseConstantIntoFirstOperandOfScatter) {
   auto module = *ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
@@ -708,7 +693,7 @@ TEST_P(PriorityFusionTest, DontFuseConstantIntoFirstOperandOfScatter) {
                                     m::Broadcast(m::Constant()))));
 }
 
-TEST_P(PriorityFusionTest, DoNotFuseReduceIntoReduceEvenIfOccupancyIsHigh) {
+TEST_F(PriorityFusionTest, DoNotFuseReduceIntoReduceEvenIfOccupancyIsHigh) {
   constexpr absl::string_view kHlo = R"(
     HloModule test_module
 
@@ -731,7 +716,7 @@ CHECK: ROOT {{.*}} reduce(
   )");
 }
 
-TEST_P(PriorityFusionTest, FuseReductionEpilogueWithMultipleUsers) {
+TEST_F(PriorityFusionTest, FuseReductionEpilogueWithMultipleUsers) {
   // Regression test that verifies we correctly fuse the `log` into the reduce.
   constexpr absl::string_view kHlo = R"(
     HloModule test_module
@@ -765,7 +750,7 @@ TEST_P(PriorityFusionTest, FuseReductionEpilogueWithMultipleUsers) {
   )");
 }
 
-TEST_P(PriorityFusionTest, EpilogueFusion) {
+TEST_F(PriorityFusionTest, EpilogueFusion) {
   absl::string_view kHlo = R"(
     HloModule test_module
 
@@ -797,7 +782,7 @@ TEST_P(PriorityFusionTest, EpilogueFusion) {
 CHECK: ROOT {{.*}} = f32[8,4,128]{2,1,0} fusion(%p{{.*}}), kind=kInput, calls=%fused_computation)");
 }
 
-TEST_P(PriorityFusionTest, EpilogueFusionFails) {
+TEST_F(PriorityFusionTest, EpilogueFusionFails) {
   auto module = *ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
@@ -830,7 +815,7 @@ TEST_P(PriorityFusionTest, EpilogueFusionFails) {
               absl_testing::IsOkAndHolds(false));
 }
 
-TEST_P(PriorityFusionTest, DoNotFuseIntoRoot) {
+TEST_F(PriorityFusionTest, DoNotFuseIntoRoot) {
   auto module = *ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
@@ -848,7 +833,7 @@ TEST_P(PriorityFusionTest, DoNotFuseIntoRoot) {
               absl_testing::IsOkAndHolds(false));
 }
 
-TEST_P(PriorityFusionTest, DontFuseConcat) {
+TEST_F(PriorityFusionTest, DontFuseConcat) {
   // Regression test that verifies we don't fuse concat into a column reduction.
   auto module = *ParseAndReturnVerifiedModule(R"(
     HloModule module
@@ -901,7 +886,7 @@ TEST_P(PriorityFusionTest, DontFuseConcat) {
               absl_testing::IsOkAndHolds(false));
 }
 
-TEST_P(PriorityFusionTest, FuseOnlySmallConstant) {
+TEST_F(PriorityFusionTest, FuseOnlySmallConstant) {
   auto module = *ParseAndReturnVerifiedModule(R"(
     HloModule module
 
@@ -925,7 +910,7 @@ TEST_P(PriorityFusionTest, FuseOnlySmallConstant) {
                   m::Add(m::Parameter(), m::Broadcast(m::Constant())))));
 }
 
-TEST_P(PriorityFusionTest, FuseSmallConstantIntoTritonFusion) {
+TEST_F(PriorityFusionTest, FuseSmallConstantIntoTritonFusion) {
   auto module = *ParseAndReturnVerifiedModule(R"(
 HloModule module
 
@@ -955,7 +940,7 @@ ENTRY main {
               GmockMatch(m::Reduce(m::Parameter(), m::Constant())));
 }
 
-TEST_P(PriorityFusionTest, FuseProducerConsumerMergedNotTooLarge) {
+TEST_F(PriorityFusionTest, FuseProducerConsumerMergedNotTooLarge) {
   auto module = *ParseAndReturnVerifiedModule(R"(
     HloModule module
 
@@ -1007,7 +992,7 @@ TEST_P(PriorityFusionTest, FuseProducerConsumerMergedNotTooLarge) {
               absl_testing::IsOkAndHolds(true));
 }
 
-TEST_P(PriorityFusionTest, CanMergeTritonFusionWithBothProducerAndConsumer) {
+TEST_F(PriorityFusionTest, CanMergeTritonFusionWithBothProducerAndConsumer) {
   const std::string kHloText = R"(
 HloModule t
 add {
@@ -1064,7 +1049,7 @@ ENTRY main {
             2);
 }
 
-TEST_P(PriorityFusionTest, FuseTritonProducerWithTwoConsumers) {
+TEST_F(PriorityFusionTest, FuseTritonProducerWithTwoConsumers) {
   const std::string kHloText = R"(
 HloModule t
 add {
@@ -1128,13 +1113,11 @@ ENTRY main {
             2);
 }
 
-TEST_P(PriorityFusionTest,
+TEST_F(PriorityFusionTest,
        FuseTritonProducerWithTwoConsumersUsingMultiOutputFusion) {
-  if (GetParam()) {
-    // TODO(b/530092114): support multi-output fusions.
-    GTEST_SKIP() << "Multi-output fusions are not supported with tile-based "
-                    "block-level emitter";
-  }
+  // TODO(b/530092114): support multi-output fusions.
+  GTEST_SKIP() << "Multi-output fusions are not supported with tile-based "
+                  "block-level emitter";
   const std::string kHloText = R"(
 HloModule t
 
@@ -1187,12 +1170,10 @@ ENTRY main {
             2);
 }
 
-TEST_P(PriorityFusionTest,
+TEST_F(PriorityFusionTest,
        FuseProducerWithTritonConsumerUsingMultiOutputFusion) {
-  if (GetParam()) {
-    GTEST_SKIP() << "Multi-output fusions are not supported with tile-based "
-                    "block-level emitter";
-  }
+  GTEST_SKIP() << "Multi-output fusions are not supported with tile-based "
+                  "block-level emitter";
   const std::string kHloText = R"(
 HloModule t
 
@@ -1240,11 +1221,9 @@ ENTRY main {
             2);
 }
 
-TEST_P(PriorityFusionTest, FuseTritonFusionBothEndsUsingMultiOutputFusion) {
-  if (GetParam()) {
-    GTEST_SKIP() << "Multi-output fusions are not supported with tile-based "
-                    "block-level emitter";
-  }
+TEST_F(PriorityFusionTest, FuseTritonFusionBothEndsUsingMultiOutputFusion) {
+  GTEST_SKIP() << "Multi-output fusions are not supported with tile-based "
+                  "block-level emitter";
   // Here, we fuse `fusion` first into `exp` and `sqrt`. When we try to fuse
   // `log` into the two fusions resulting from the previous step using
   // multi-output fusion, we currently don't allow that, as we would need to
@@ -1286,7 +1265,7 @@ ENTRY main {
   EXPECT_TRUE(IsGenericTritonFusion(*fusion2));
 }
 
-TEST_P(PriorityFusionTest,
+TEST_F(PriorityFusionTest,
        ProducerWithOnlyBitcastUsersHasNoMultiOutputFusionCandidates) {
   // `negate` can only be fused into bitcasts, so there are no candidates for
   // Triton multi-output fusion either.
@@ -1307,7 +1286,7 @@ ENTRY main {
   EXPECT_FALSE(changed);
 }
 
-TEST_P(PriorityFusionTest, TritonProducerNotSupported_DoNotFuse) {
+TEST_F(PriorityFusionTest, TritonProducerNotSupported_DoNotFuse) {
   const std::string kHloText = R"(
 HloModule t
 
@@ -1336,7 +1315,7 @@ ENTRY main {
   EXPECT_FALSE(priority_fusion_.Run(module.get()).value());
 }
 
-TEST_P(PriorityFusionTest, TritonConsumerNotSupported_DoNotFuse) {
+TEST_F(PriorityFusionTest, TritonConsumerNotSupported_DoNotFuse) {
   const std::string kHloText = R"(
 HloModule t
 
@@ -1366,7 +1345,7 @@ ENTRY main {
   EXPECT_FALSE(priority_fusion_.Run(module.get()).value());
 }
 
-TEST_P(PriorityFusionTest, DoNotFuseInsideReducer) {
+TEST_F(PriorityFusionTest, DoNotFuseInsideReducer) {
   auto module = *ParseAndReturnVerifiedModule(R"(
     %reducer {
       p0 = f32[] parameter(0)
@@ -1391,7 +1370,7 @@ TEST_P(PriorityFusionTest, DoNotFuseInsideReducer) {
               absl_testing::IsOkAndHolds(false));
 }
 
-TEST_P(PriorityFusionTest, SkipsTilingsWithInfiniteRuntime) {
+TEST_F(PriorityFusionTest, SkipsTilingsWithInfiniteRuntime) {
   // This test verifies the fix in TryFindBestTilingForFusionAsync that skips
   // tilings with infinite runtime estimates.
   //
@@ -1518,14 +1497,7 @@ class HerolessPriorityFusionTest : public PriorityFusionTest {
   }
 };
 
-INSTANTIATE_TEST_SUITE_P(
-    HerolessPriorityFusionTest, HerolessPriorityFusionTest, ::testing::Bool(),
-    [](const ::testing::TestParamInfo<HerolessPriorityFusionTest::ParamType>&
-           info) {
-      return info.param ? "TilingPropagation" : "SymbolicAnalysis";
-    });
-
-TEST_P(HerolessPriorityFusionTest, TwoElementwiseOpsAreFusedWithTriton) {
+TEST_F(HerolessPriorityFusionTest, TwoElementwiseOpsAreFusedWithTriton) {
   auto module = *ParseAndReturnVerifiedModule(R"(
 HloModule m
 
@@ -1544,7 +1516,7 @@ ENTRY main {
   EXPECT_TRUE(IsGenericTritonFusion(*root));
 }
 
-TEST_P(HerolessPriorityFusionTest, DoNotFuseIntoRoot) {
+TEST_F(HerolessPriorityFusionTest, DoNotFuseIntoRoot) {
   auto module = *ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
@@ -1562,7 +1534,7 @@ TEST_P(HerolessPriorityFusionTest, DoNotFuseIntoRoot) {
               absl_testing::IsOkAndHolds(false));
 }
 
-TEST_P(HerolessPriorityFusionTest, LimitNumberOfParameters) {
+TEST_F(HerolessPriorityFusionTest, LimitNumberOfParameters) {
   std::string module_text =
       "HloModule m\n\nENTRY main {\nadd0 = f32[] parameter(0)\n";
   for (int64_t i = 1; i <= MaxOperandsAndOutputsPerFusion(); ++i) {
@@ -1580,11 +1552,9 @@ TEST_P(HerolessPriorityFusionTest, LimitNumberOfParameters) {
   EXPECT_LE(root->operand_count(), MaxOperandsAndOutputsPerFusion());
 }
 
-TEST_P(HerolessPriorityFusionTest, MultipleMultiOutputFusionCandidates) {
-  if (GetParam()) {
-    GTEST_SKIP() << "Multi-output fusions are not supported with tile-based "
-                    "block-level emitter";
-  }
+TEST_F(HerolessPriorityFusionTest, MultipleMultiOutputFusionCandidates) {
+  GTEST_SKIP() << "Multi-output fusions are not supported with tile-based "
+                  "block-level emitter";
   auto module = *ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
@@ -1618,7 +1588,7 @@ TEST_P(HerolessPriorityFusionTest, MultipleMultiOutputFusionCandidates) {
   EXPECT_TRUE(IsGenericTritonFusion(*fusion));
 }
 
-TEST_P(PriorityFusionTest, FusesQwixQuantization) {
+TEST_F(PriorityFusionTest, FusesQwixQuantization) {
   absl::string_view kHlo = R"(
 HloModule hlo_qwix_quantize_bf16_s8_2x256x512_tile128
 
@@ -1753,10 +1723,8 @@ TEST_F(PriorityFusionRocmMemoryBandwidthTest, MemoryBandwidthTipsReduceFusion) {
   EXPECT_EQ(RunAndCountFusions(kHlo, kFixedBandwidth), 2);
 }
 
-TEST_P(HerolessPriorityFusionTest, DoNotFuseScanEpilogue) {
-  bool experimental_tiling = GetParam();
-  std::string hlo = absl::StrFormat(
-      R"(
+TEST_F(HerolessPriorityFusionTest, DoNotFuseScanEpilogue) {
+  constexpr absl::string_view kHlo = R"(
 HloModule module
 
 add {
@@ -1778,19 +1746,18 @@ ENTRY entry {
   p1 = f32[] parameter(1)
   scan_fusion = f32[100] fusion(p0, p1), kind=kCustom, calls=fused_computation,
     backend_config={"fusion_backend_config":{"kind":"__triton","block_level_fusion_config":
-      {"output_tiles":[{"sizes":[%s]}],"num_warps":"1"}}}
+      {"output_tiles":[{"sizes":[]}],"num_warps":"1"}}}
   c = f32[] constant(1.0)
   bcast = f32[100] broadcast(c), dimensions={}
   ROOT add = f32[100] add(scan_fusion, bcast)
 }
-  )",
-      experimental_tiling ? "" : "100");
+  )";
 
   GpuHloCostAnalysis::Options options;
   options.count_multiple_input_accesses = true;
   PriorityFusion priority_fusion(nullptr, device_info_, &alias_info_, options,
                                  &mlir_context_);
-  RunAndFilecheckHloRewrite(hlo, std::move(priority_fusion), R"(
+  RunAndFilecheckHloRewrite(kHlo, std::move(priority_fusion), R"(
 CHECK: ENTRY
 CHECK: %[[SCAN_FUSION:.*]] = f32[100]{0} fusion(%{{.*}}, %{{.*}}), kind=kCustom
 CHECK: ROOT %[[EPILOGUE_FUSION:.*]] = f32[100]{0} fusion(%[[SCAN_FUSION]]), kind=kCustom

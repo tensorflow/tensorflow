@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
@@ -43,6 +44,19 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+namespace {
+
+// Returns the first device executor of the default platform.
+se::StreamExecutor* GetDefaultStreamExecutor() {
+  absl::StatusOr<se::Platform*> platform = PlatformUtil::GetDefaultPlatform();
+  CHECK_OK(platform.status());
+  absl::StatusOr<se::StreamExecutor*> stream_executor =
+      (*platform)->ExecutorForDevice(0);
+  CHECK_OK(stream_executor.status());
+  return *stream_executor;
+}
+
+}  // namespace
 
 using MIOpenBackendConfig = stream_executor::dnn::AlgorithmProto;
 
@@ -81,10 +95,9 @@ class MIOpenBackendTest : public HloHardwareIndependentTestBase {
   MIOpenBackend backend_;
 
   MIOpenBackendTest()
-      : stream_executor_(PlatformUtil::GetDefaultPlatform()
-                             .value()
-                             ->ExecutorForDevice(0)
-                             .value()),
+      : debug_options_(
+            HloHardwareIndependentTestBase::GetDebugOptionsForTest()),
+        stream_executor_(GetDefaultStreamExecutor()),
         target_config_(stream_executor_),
         allocator_(stream_executor_),
         backend_(

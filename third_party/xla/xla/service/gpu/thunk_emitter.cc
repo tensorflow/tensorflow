@@ -540,7 +540,8 @@ ThunkEmitter::ThunkEmitter(
     llvm_ir::LLVMCommandLineOptionsReleasableLock* absl_nonnull
         llvm_options_lock)
     : ir_emitter_context_(ir_emitter_context),
-      send_recv_events_(std::make_shared<HostSendRecvAsyncEvents>()),
+      send_recv_events_(std::make_shared<HostSendRecvAsyncEvents>(
+          ir_emitter_context_->gpu_topology().num_devices_per_host())),
       call_graph_(CallGraph::Build(&ir_emitter_context->hlo_module())),
       constants_module_context_(std::make_unique<llvm::LLVMContext>()),
       constants_module_(ir_emitter_context_->CreateLLVMModule(
@@ -695,12 +696,14 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConvolution(
                                   instr->window(),
                                   instr->convolution_dimension_numbers(),
                                   instr->feature_group_count()};
-  ABSL_ASSIGN_OR_RETURN(auto thunk,
-                   ConvolutionThunk::Create(
-                       Thunk::ThunkInfo::WithProfileAnnotation(
-                           instr, ir_emitter_context_->GetNextThunkId()),
-                       std::move(descriptor), std::move(operand_slices),
-                       std::move(result_slices), scratch_slice));
+  ABSL_ASSIGN_OR_RETURN(
+      auto thunk,
+      ConvolutionThunk::Create(
+          Thunk::ThunkInfo::WithProfileAnnotation(
+              instr, ir_emitter_context_->GetNextThunkId()),
+          std::move(descriptor), std::move(operand_slices),
+          std::move(result_slices), scratch_slice,
+          ir_emitter_context_->gpu_topology().num_devices_per_host()));
   return ThunkSequence::Of(std::move(thunk));
 }
 
@@ -1105,12 +1108,13 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitNorm(
 
   ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<NormThunk> thunk,
-      NormThunk::Create(Thunk::ThunkInfo::WithProfileAnnotation(
-                            instr, ir_emitter_context_->GetNextThunkId()),
-                        std::move(descriptor), x_slice, scale_slice,
-                        y_or_dx_slice, bias_slice, expectation_slice,
-                        norm_factor_slice, dy_slice, dscale_slice, dbias_slice,
-                        scratch_slice.slice));
+      NormThunk::Create(
+          Thunk::ThunkInfo::WithProfileAnnotation(
+              instr, ir_emitter_context_->GetNextThunkId()),
+          std::move(descriptor), x_slice, scale_slice, y_or_dx_slice,
+          bias_slice, expectation_slice, norm_factor_slice, dy_slice,
+          dscale_slice, dbias_slice, scratch_slice.slice,
+          ir_emitter_context_->gpu_topology().num_devices_per_host()));
   return ThunkSequence::Of(std::move(thunk));
 }
 
@@ -1780,10 +1784,12 @@ Future<ThunkSequence> ThunkEmitter::EmitFusion(
     return EmitStaticSliceCopyFusion(instr, *static_copy);
   }
 
-  ABSL_ASSIGN_OR_RETURN(std::optional<DynamicSliceCopyFusion> dynamic_copy,
-                   AnalyzeDynamicSliceCopyFusion(instr));
-  if (dynamic_copy.has_value()) {
-    return EmitDynamicSliceCopyFusion(instr, std::move(*dynamic_copy));
+  if (SupportsDynamicSliceCopyThunks(ir_emitter_context_->gpu_device_info())) {
+    ABSL_ASSIGN_OR_RETURN(std::optional<DynamicSliceCopyFusion> dynamic_copy,
+                     AnalyzeDynamicSliceCopyFusion(instr));
+    if (dynamic_copy.has_value()) {
+      return EmitDynamicSliceCopyFusion(instr, std::move(*dynamic_copy));
+    }
   }
 
   analysis_garbage_collector_.push_back(
@@ -2268,12 +2274,6 @@ Future<ThunkSequence> ThunkEmitter::EmitCollective(
         ir_emitter_context_->gpu_topology().num_devices_per_host(),
         ir_emitter_context_->debug_options().xla_gpu_use_memcpy_local_p2p(),
         has_dynamic_root);
-  } else if constexpr (std::is_same_v<CollectiveThunkType,
-                                      RaggedAllToAllThunk>) {
-    thunks = ThunkSequence::Of<CollectiveThunkType>(
-        info, inst, /*buffers=*/std::move(buffers),
-        ir_emitter_context_->debug_options().xla_gpu_use_memcpy_local_p2p(),
-        ir_emitter_context_->gpu_topology().num_devices_per_host());
   } else if constexpr (std::is_constructible_v<
                            CollectiveThunkType, Thunk::ThunkInfo,
                            decltype(inst),
@@ -2283,7 +2283,8 @@ Future<ThunkSequence> ThunkEmitter::EmitCollective(
   } else {
     thunks = ThunkSequence::Of<CollectiveThunkType>(
         info, inst, /*buffers=*/std::move(buffers),
-        ir_emitter_context_->debug_options().xla_gpu_use_memcpy_local_p2p());
+        ir_emitter_context_->debug_options().xla_gpu_use_memcpy_local_p2p(),
+        ir_emitter_context_->gpu_topology().num_devices_per_host());
   }
   return thunks;
 }
@@ -2674,12 +2675,14 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHostExecuteStart(
   host_offloading_executable_proto.set_executable_type(
       HostOffloadingExecutableProto::EXECUTABLE_TYPE_NANORT);
 
-  ABSL_ASSIGN_OR_RETURN(auto thunk,
-                   HostExecuteStartThunk::Create(
-                       Thunk::ThunkInfo::WithProfileAnnotation(
-                           async_start, ir_emitter_context_->GetNextThunkId()),
-                       std::move(host_offloading_executable_proto),
-                       std::move(operand_slices), std::move(result_slices)));
+  ABSL_ASSIGN_OR_RETURN(
+      auto thunk,
+      HostExecuteStartThunk::Create(
+          Thunk::ThunkInfo::WithProfileAnnotation(
+              async_start, ir_emitter_context_->GetNextThunkId()),
+          std::move(host_offloading_executable_proto),
+          std::move(operand_slices), std::move(result_slices),
+          ir_emitter_context_->gpu_topology().num_devices_per_host()));
 
   auto [it, inserted] = GetInstructionToHostExecuteAsyncEvents().emplace(
       host_execute, thunk->async_events());

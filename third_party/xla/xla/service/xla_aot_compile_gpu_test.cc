@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/service/hlo_runner_pjrt.h"
+#include "xla/stream_executor/cuda/cuda_dnn.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/test.h"
 #include "tsl/platform/path.h"
@@ -123,6 +124,10 @@ TEST_F(XlaCompileTest, LoadGpuExecutableWithConvolutionLegacyCache) {
 }
 
 TEST_F(XlaCompileTest, LoadGpuExecutableWithDevicelessCudnnConvolution) {
+  if (!se::gpu::SupportsDevicelessCudnnCompilation()) {
+    GTEST_SKIP() << "Deviceless cuDNN compilation requires cuDNN >= "
+                 << se::gpu::kMinDevicelessCudnnVersion;
+  }
   const char* test_device = getenv("XLA_TEST_DEVICE");
   if (test_device == nullptr || absl::string_view(test_device) != "h100") {
     GTEST_SKIP() << "Only compiled for h100.";

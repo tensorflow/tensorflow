@@ -1118,9 +1118,9 @@ struct TransposeMicroKernel {
 };
 
 // Kernels for InnerKernelKind::kInterleave and kDeinterleave over `n` elements
-// of each of the K rows. They are written as scalar loops because, with K a
-// compile-time constant, clang vectorizes them into structured loads/stores
-// (ld3/st3 on NEON, shuffle sequences on x86).
+// of each of the K rows. They are written as scalar loops with a compile-time
+// K for clang to vectorize, e.g. with NEON structured loads/stores (ld2/ld3,
+// st2/st3) for K = 2, 3 and shuffles on x86.
 template <typename T, int K>
 void InterleaveKernel(const char* __restrict a, int64_t lda, char* __restrict b,
                       int64_t n) {

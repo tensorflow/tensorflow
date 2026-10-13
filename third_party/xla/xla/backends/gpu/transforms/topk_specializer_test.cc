@@ -137,7 +137,7 @@ TEST_F(TopkTest, PreservesBackendConfig) {
 
     ENTRY top_k {
       arg = f32[8,1024] parameter(0)
-      ROOT result = (f32[8,64], s32[8,64]) custom-call(arg), custom_call_target="TopK", called_computations={%compare-gt.1}, backend_config={is_stable = false}
+      ROOT result = (f32[8,64], s32[8,64]) custom-call(arg), custom_call_target="TopK", called_computations={%compare-gt.1}, backend_config={is_stable = false, order = "TOTAL"}
     }
   )";
 
@@ -161,7 +161,8 @@ TEST_F(TopkTest, PreservesBackendConfig) {
   const HloInstruction* root = module->entry_computation()->root_instruction();
   const HloInstruction* custom_call = root->operand(0)->operand(0);
   EXPECT_EQ(custom_call->custom_call_target(), "__gpu$TopK");
-  EXPECT_EQ(custom_call->raw_backend_config_string(), "{is_stable = false}");
+  EXPECT_EQ(custom_call->raw_backend_config_string(),
+            "{is_stable = false, order = \"TOTAL\"}");
 }
 
 TEST_F(TopkTest, RewriteStableTopKF32ToUint64) {
@@ -178,7 +179,7 @@ TEST_F(TopkTest, RewriteStableTopKF32ToUint64) {
 
     ENTRY top_k {
       arg = f32[8,1024] parameter(0)
-      ROOT result = (f32[8,32], s32[8,32]) custom-call(arg), custom_call_target="TopK", called_computations={%compare-gt.1}, backend_config={is_stable = true}
+      ROOT result = (f32[8,32], s32[8,32]) custom-call(arg), custom_call_target="TopK", called_computations={%compare-gt.1}, backend_config={is_stable = true, order = "TOTAL"}
     }
   )";
 
@@ -220,7 +221,7 @@ TEST_F(TopkTest, RewriteStableTopKF32ToUint64) {
 // CHECK: %[[PACKED:[^ ]+]] = u64[8,1024]{{.*}} or(%[[SHIFT_LEFT]], {{.*}})
 
 // 4. CustomCall (__gpu$TopK)
-// CHECK: %[[CUSTOM_CALL:[^ ]+]] = (u64[8,32]{{.*}}, s32[8,32]{{.*}}, u8[33554432]{{.*}}) custom-call(%[[PACKED]]), custom_call_target="__gpu$TopK", api_version=API_VERSION_TYPED_FFI, backend_config={is_stable = false}
+// CHECK: %[[CUSTOM_CALL:[^ ]+]] = (u64[8,32]{{.*}}, s32[8,32]{{.*}}, u8[33554432]{{.*}}) custom-call(%[[PACKED]]), custom_call_target="__gpu$TopK", api_version=API_VERSION_TYPED_FFI, backend_config={is_stable = false, order = "TOTAL"}
 
 // 5. Unpack U64 -> U32
 // CHECK: %[[SRL:[^ ]+]] = u64[8,32]{{.*}} shift-right-logical(%[[CUSTOM_CALL]]#0, {{.*}})
@@ -256,7 +257,7 @@ TEST_F(TopkTest, RewriteStableTopKBF16ToUint64) {
 
     ENTRY top_k {
       arg = bf16[8,65540] parameter(0)
-      ROOT result = (bf16[8,32], s32[8,32]) custom-call(arg), custom_call_target="TopK", called_computations={%compare-gt.1}, backend_config={is_stable = true}
+      ROOT result = (bf16[8,32], s32[8,32]) custom-call(arg), custom_call_target="TopK", called_computations={%compare-gt.1}, backend_config={is_stable = true, order = "TOTAL"}
     }
   )";
 
@@ -299,7 +300,7 @@ TEST_F(TopkTest, RewriteStableTopKBF16ToUint64) {
 // CHECK: %[[PACKED:[^ ]+]] = u64[8,65540]{{.*}} or(%[[SHIFT_LEFT]], {{.*}})
 
 // 4. CustomCall (__gpu$TopK)
-// CHECK: %[[CUSTOM_CALL:[^ ]+]] = (u64[8,32]{{.*}}, s32[8,32]{{.*}}, u8[33554432]{{.*}}) custom-call(%[[PACKED]]), custom_call_target="__gpu$TopK", api_version=API_VERSION_TYPED_FFI, backend_config={is_stable = false}
+// CHECK: %[[CUSTOM_CALL:[^ ]+]] = (u64[8,32]{{.*}}, s32[8,32]{{.*}}, u8[33554432]{{.*}}) custom-call(%[[PACKED]]), custom_call_target="__gpu$TopK", api_version=API_VERSION_TYPED_FFI, backend_config={is_stable = false, order = "TOTAL"}
 
 // 5. Unpack U64 -> U32
 // CHECK: %[[SRL:[^ ]+]] = u64[8,32]{{.*}} shift-right-logical(%[[CUSTOM_CALL]]#0, {{.*}})
@@ -336,7 +337,7 @@ TEST_F(TopkTest, RewriteStableTopKDisabledByDefault) {
 
     ENTRY top_k {
       arg = f32[8,1024] parameter(0)
-      ROOT result = (f32[8,32], s32[8,32]) custom-call(arg), custom_call_target="TopK", called_computations={%compare-gt.1}, backend_config={is_stable = true}
+      ROOT result = (f32[8,32], s32[8,32]) custom-call(arg), custom_call_target="TopK", called_computations={%compare-gt.1}, backend_config={is_stable = true, order = "TOTAL"}
     }
   )";
 
@@ -346,6 +347,39 @@ TEST_F(TopkTest, RewriteStableTopKDisabledByDefault) {
   if (!device_description().gpu_compute_capability().IsCuda()) {
     GTEST_SKIP() << "RAFT is CUDA-only.";
   }
+
+  ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      TopkSpecializer(device_description().gpu_compute_capability())
+          .Run(module.get()));
+  EXPECT_FALSE(changed);
+}
+
+TEST_F(TopkTest, SkipsPartialOrderTopK) {
+  const char* hlo = R"(
+    HloModule m
+
+    %compare-gt.1 {
+      p.1.lhs = s32[] parameter(2)
+      p.1.rhs = s32[] parameter(3)
+      p.0.lhs = f32[] parameter(0)
+      p.0.rhs = f32[] parameter(1)
+      ROOT compare = pred[] compare(p.0.lhs, p.0.rhs), direction=GT
+    }
+
+    ENTRY top_k {
+      arg = f32[8,1024] parameter(0)
+      small_k = (f32[8,8], s32[8,8]) custom-call(arg), custom_call_target="TopK", called_computations={%compare-gt.1}, backend_config={is_stable = true, order = "PARTIAL"}
+      raft_k = (f32[8,32], s32[8,32]) custom-call(arg), custom_call_target="TopK", called_computations={%compare-gt.1}, backend_config={is_stable = true, order = "PARTIAL"}
+      ROOT result = tuple(small_k, raft_k)
+    }
+  )";
+
+  HloModuleConfig config = GetModuleConfigForTest();
+  config.mutable_debug_options()
+      .set_xla_gpu_experimental_enable_raft_for_stable_topk(true);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo, config));
 
   ASSERT_OK_AND_ASSIGN(
       bool changed,

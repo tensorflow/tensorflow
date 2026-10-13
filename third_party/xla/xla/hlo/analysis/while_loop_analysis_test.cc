@@ -16,9 +16,11 @@ limitations under the License.
 #include "xla/hlo/analysis/while_loop_analysis.h"
 
 #include <cstdint>
+#include <initializer_list>
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -421,6 +423,22 @@ TEST_F(WhileLoopAnalysisTest, ExactBoundTrivialTripCount) {
   EXPECT_EQ(
       MakeWhileLoopAndGetTripCount(0, 40, 5, ComparisonDirection::kLe).value(),
       CalculateTripCount(0, 40, 5, ComparisonDirection::kLe));
+}
+
+TEST_F(WhileLoopAnalysisTest, NegativeAndZeroTripCountNonUnitStep) {
+  for (auto [init, bound, step, dir] : std::initializer_list<
+           std::tuple<int32_t, int32_t, int32_t, ComparisonDirection>>{
+           {-5, 0, 2, ComparisonDirection::kLt},
+           {-10, -3, 2, ComparisonDirection::kLt},
+           {-2, 1, 2, ComparisonDirection::kLt},
+           {5, 2, 4, ComparisonDirection::kLt},
+           {-5, 0, 2, ComparisonDirection::kLe},
+           {1, 0, 2, ComparisonDirection::kLe},
+           {5, 2, 4, ComparisonDirection::kLe}}) {
+    ASSERT_OK_AND_ASSIGN(int64_t tc,
+                         MakeWhileLoopAndGetTripCount(init, bound, step, dir));
+    EXPECT_EQ(tc, CalculateTripCount(init, bound, step, dir));
+  }
 }
 
 TEST_F(WhileLoopAnalysisTest, NoAIVNoConstChain) {

@@ -1542,16 +1542,17 @@ class MutableLiteralBase : public LiteralBase {
   // Implementation details shared between Populate() and PopulateParallel().
   template <typename NativeT, typename Generator>
   absl::Status PopulateInternal(Generator&& generator, bool parallel);
-  void PopulateInplaceInternal(
+  absl::Status PopulateInplaceInternal(
       absl::FunctionRef<void(void*, absl::Span<const int64_t>, int)> populator,
-      bool parallel);
+      bool parallel, PrimitiveType element_type = PRIMITIVE_TYPE_INVALID);
 
   // Implementation details shared between PopulateLinear() and
   // PopulateLinearParallel().
   template <typename NativeT, typename Generator>
   absl::Status PopulateLinearInternal(Generator&& generator, bool parallel);
-  void PopulateLinearInplaceInternal(
-      absl::FunctionRef<void(void*, int64_t, int)> populator, bool parallel);
+  absl::Status PopulateLinearInplaceInternal(
+      absl::FunctionRef<void(void*, int64_t, int)> populator, bool parallel,
+      PrimitiveType element_type = PRIMITIVE_TYPE_INVALID);
 
   friend class LiteralBase;
   friend class MutableBorrowingLiteral;
@@ -2190,28 +2191,16 @@ void MutableLiteralBase::PopulateR4FromArray4D(const Array4D<NativeT>& values) {
 template <typename NativeT, typename Generator>
 absl::Status MutableLiteralBase::PopulateInternal(Generator&& generator,
                                                   bool parallel) {
-  const Shape& this_shape = shape();
-  DCHECK(this_shape.IsArray());
-  TF_RET_CHECK(this_shape.element_type() ==
-               primitive_util::NativeToPrimitiveType<NativeT>())
-      << "Failing to populate literal with element type "
-      << primitive_util::LowercasePrimitiveTypeName(this_shape.element_type())
-      << " using data of type "
-      << primitive_util::LowercasePrimitiveTypeName(
-             primitive_util::NativeToPrimitiveType<NativeT>());
-  PopulateInplaceInternal(
+  return PopulateInplaceInternal(
       [&](void* dest, absl::Span<const int64_t> indices, int thread_id) {
         *static_cast<NativeT*>(dest) = generator(indices, thread_id);
       },
-      parallel);
-  return absl::OkStatus();
+      parallel, primitive_util::NativeToPrimitiveType<NativeT>());
 }
 
 template <typename NativeT, typename Generator,
           MutableLiteralBase::IsGenerator<NativeT, Generator>*>
 absl::Status MutableLiteralBase::Populate(Generator&& generator) {
-  TF_RET_CHECK(shape().IsArray())
-      << __func__ << " is only supported for dense arrays: " << shape();
   return PopulateInternal<NativeT>(
       [&](absl::Span<const int64_t> indexes, int /*thread_id*/) {
         return generator(indexes);
@@ -2221,37 +2210,23 @@ absl::Status MutableLiteralBase::Populate(Generator&& generator) {
 template <typename NativeT, typename Generator,
           MutableLiteralBase::IsParallelGenerator<NativeT, Generator>*>
 absl::Status MutableLiteralBase::PopulateParallel(Generator&& generator) {
-  TF_RET_CHECK(shape().IsArray())
-      << __func__ << " is only supported for dense arrays: " << shape();
-  return PopulateInternal<NativeT>(generator,
-                                   /*parallel=*/element_count() > 32);
+  return PopulateInternal<NativeT>(std::forward<Generator>(generator),
+                                   /*parallel=*/true);
 }
 
 template <typename NativeT, typename Generator>
 absl::Status MutableLiteralBase::PopulateLinearInternal(Generator&& generator,
                                                         bool parallel) {
-  const Shape& this_shape = shape();
-  DCHECK(this_shape.IsArray());
-  TF_RET_CHECK(this_shape.element_type() ==
-               primitive_util::NativeToPrimitiveType<NativeT>())
-      << "Failing to populate literal with element type "
-      << primitive_util::LowercasePrimitiveTypeName(this_shape.element_type())
-      << " using data of type "
-      << primitive_util::LowercasePrimitiveTypeName(
-             primitive_util::NativeToPrimitiveType<NativeT>());
-  PopulateLinearInplaceInternal(
+  return PopulateLinearInplaceInternal(
       [&](void* dest, int64_t linear_index, int thread_id) {
         *static_cast<NativeT*>(dest) = generator(linear_index, thread_id);
       },
-      parallel);
-  return absl::OkStatus();
+      parallel, primitive_util::NativeToPrimitiveType<NativeT>());
 }
 
 template <typename NativeT, typename Generator,
           MutableLiteralBase::IsLinearGenerator<NativeT, Generator>*>
 absl::Status MutableLiteralBase::PopulateLinear(Generator&& generator) {
-  TF_RET_CHECK(shape().IsArray())
-      << __func__ << " is only supported for dense arrays: " << shape();
   return PopulateLinearInternal<NativeT>(
       [&](int64_t linear_index, int /*thread_id*/) {
         return generator(linear_index);
@@ -2261,56 +2236,42 @@ absl::Status MutableLiteralBase::PopulateLinear(Generator&& generator) {
 template <typename NativeT, typename Generator,
           MutableLiteralBase::IsLinearParallelGenerator<NativeT, Generator>*>
 absl::Status MutableLiteralBase::PopulateLinearParallel(Generator&& generator) {
-  TF_RET_CHECK(shape().IsArray())
-      << __func__ << " is only supported for dense arrays: " << shape();
   return PopulateLinearInternal<NativeT>(std::forward<Generator>(generator),
-                                         /*parallel=*/element_count() > 32);
+                                         /*parallel=*/true);
 }
 
 template <typename Populator, MutableLiteralBase::IsPopulator<Populator>*>
 absl::Status MutableLiteralBase::PopulateInplace(Populator&& populator) {
-  TF_RET_CHECK(shape().IsArray())
-      << __func__ << " is only supported for dense arrays: " << shape();
-  PopulateInplaceInternal(
+  return PopulateInplaceInternal(
       [&](void* dest, absl::Span<const int64_t> indexes, int /*thread_id*/) {
         return populator(dest, indexes);
       },
       /*parallel=*/false);
-  return absl::OkStatus();
 }
 
 template <typename Populator,
           MutableLiteralBase::IsParallelPopulator<Populator>*>
 absl::Status MutableLiteralBase::PopulateInplaceParallel(
     Populator&& populator) {
-  TF_RET_CHECK(shape().IsArray())
-      << __func__ << " is only supported for dense arrays: " << shape();
-  PopulateInplaceInternal(std::forward<Populator>(populator),
-                          /*parallel=*/element_count() > 32);
-  return absl::OkStatus();
+  return PopulateInplaceInternal(std::forward<Populator>(populator),
+                                 /*parallel=*/true);
 }
 
 template <typename Populator, MutableLiteralBase::IsLinearPopulator<Populator>*>
 absl::Status MutableLiteralBase::PopulateLinearInplace(Populator&& populator) {
-  TF_RET_CHECK(shape().IsArray())
-      << __func__ << " is only supported for dense arrays: " << shape();
-  PopulateLinearInplaceInternal(
+  return PopulateLinearInplaceInternal(
       [&](void* dest, int64_t linear_index, int /*thread_id*/) {
         return populator(dest, linear_index);
       },
       /*parallel=*/false);
-  return absl::OkStatus();
 }
 
 template <typename Populator,
           MutableLiteralBase::IsLinearParallelPopulator<Populator>*>
 absl::Status MutableLiteralBase::PopulateLinearInplaceParallel(
     Populator&& populator) {
-  TF_RET_CHECK(shape().IsArray())
-      << __func__ << " is only supported for dense arrays: " << shape();
-  PopulateLinearInplaceInternal(std::forward<Populator>(populator),
-                                /*parallel=*/element_count() > 32);
-  return absl::OkStatus();
+  return PopulateLinearInplaceInternal(std::forward<Populator>(populator),
+                                       /*parallel=*/true);
 }
 
 template <typename NativeT>

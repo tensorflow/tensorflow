@@ -392,6 +392,48 @@ HloSharding HloSharding::Subgroup(
   return create_sharding(tile_assignment, subgroup_types, metadata);
 }
 
+HloSharding::HloSharding(const HloSharding& other)
+    : tile_assignment_(other.tile_assignment_),
+      tuple_elements_(other.tuple_elements_),
+      metadata_(other.metadata_),
+      subgroup_types_(other.subgroup_types_),
+      replicated_(other.replicated_),
+      single_device_(other.single_device_),
+      tuple_(other.tuple_),
+      manual_(other.manual_),
+      unknown_(other.unknown_),
+      unreduced_(other.unreduced_),
+      replicate_on_last_tile_dim_(other.replicate_on_last_tile_dim_),
+      shard_group_(other.shard_group_),
+      reduction_op_(other.reduction_op_),
+      named_sharding_(other.named_sharding_ ? std::make_unique<NamedSharding>(
+                                                  *other.named_sharding_)
+                                            : nullptr) {}
+
+HloSharding& HloSharding::operator=(const HloSharding& other) {
+  if (this == &other) {
+    return *this;
+  }
+  tile_assignment_ = other.tile_assignment_;
+  tuple_elements_ = other.tuple_elements_;
+  metadata_ = other.metadata_;
+  subgroup_types_ = other.subgroup_types_;
+  replicated_ = other.replicated_;
+  single_device_ = other.single_device_;
+  tuple_ = other.tuple_;
+  manual_ = other.manual_;
+  unknown_ = other.unknown_;
+  unreduced_ = other.unreduced_;
+  replicate_on_last_tile_dim_ = other.replicate_on_last_tile_dim_;
+  shard_group_ = other.shard_group_;
+  reduction_op_ = other.reduction_op_;
+  named_sharding_ =
+      other.named_sharding_
+          ? std::make_unique<NamedSharding>(*other.named_sharding_)
+          : nullptr;
+  return *this;
+}
+
 HloSharding HloSharding::Tuple(const ShapeTree<HloSharding>& sub_shardings) {
   std::vector<HloSharding> flattened_list;
   flattened_list.reserve(sub_shardings.leaf_count());

@@ -229,7 +229,7 @@ benchmarks {
 
   environment_configs {
     id: "cpu_x86"
-    runner_label: "linux-x86-n2-128"
+    runner_label: "linux-x86-n4-80"
     container_image: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest"
     workload_action_inputs {
       key: "hardware_category"

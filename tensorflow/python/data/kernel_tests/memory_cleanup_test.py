@@ -50,9 +50,11 @@ class MemoryCleanupTest(test_base.DatasetTestBase, parameterized.TestCase):
     f()
     # Wait for background threads to start up and allocate memory.
     time.sleep(4)
+    gc.collect()
     initial = memory_profiler.memory_usage(-1)[0]
     for _ in range(num_iters):
       f()
+    gc.collect()
     increase = memory_profiler.memory_usage(-1)[0] - initial
     logging.info("Memory increase observed: %f MB" % increase)
     assert increase < max_increase_mb, (

@@ -251,7 +251,6 @@ cc_library(
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:ComplexDialect",
         "@llvm-project//mlir:DataLayoutInterfaces",
-        "@llvm-project//mlir:DialectUtils",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FuncUtils",
         "@llvm-project//mlir:GPUDialect",

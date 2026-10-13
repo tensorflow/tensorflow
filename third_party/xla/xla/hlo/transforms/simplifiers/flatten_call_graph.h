@@ -18,6 +18,7 @@ limitations under the License.
 #ifndef XLA_HLO_TRANSFORMS_SIMPLIFIERS_FLATTEN_CALL_GRAPH_H_
 #define XLA_HLO_TRANSFORMS_SIMPLIFIERS_FLATTEN_CALL_GRAPH_H_
 
+#include <optional>
 #include <utility>
 
 #include "absl/container/flat_hash_set.h"
@@ -32,13 +33,31 @@ namespace xla {
 // Flattening associates each call site with a unique computation (for
 // sequential calling contexts) This simplifies buffer assignment and
 // points-to analysis (see b/36865746 for details).
+//
+// Keeps the single version of a computation on the entire module that
+// `skip_cloning_handler_` predicate is true.
+//
+// If `skip_cloning_if_does_not_contain_handler_` is provided, keeps the single
+// version of a computation on the entire module that does not transitively
+// contain an instruction that `skip_cloning_if_does_not_contain_handler_`
+// predicate is true.
+//
+// Note that the two predicates for skipping cloning combines as an OR. That is,
+// a computation skips being cloned if it holds either of the two predicates.
+//
+// TODO(b/260601110): Combine the two skip handler.
 class FlattenCallGraph : public HloModulePass {
  public:
   FlattenCallGraph()
-      : skip_cloning_handler_([](const HloComputation&) { return false; }) {}
+      : skip_cloning_handler_([](const HloComputation&) { return false; }),
+        skip_cloning_if_does_not_contain_handler_(std::nullopt) {}
   explicit FlattenCallGraph(
-      absl::AnyInvocable<bool(const HloComputation&)> skip_cloning_handler)
-      : skip_cloning_handler_(std::move(skip_cloning_handler)) {}
+      absl::AnyInvocable<bool(const HloComputation&)> skip_cloning_handler,
+      std::optional<absl::AnyInvocable<bool(const HloInstruction&)>>
+          skip_cloning_if_does_not_contain_handler = std::nullopt)
+      : skip_cloning_handler_(std::move(skip_cloning_handler)),
+        skip_cloning_if_does_not_contain_handler_(
+            std::move(skip_cloning_if_does_not_contain_handler)) {}
 
   // A skip cloning handler that skips cloning for computations that are only
   // called by kCall instructions.
@@ -59,6 +78,8 @@ class FlattenCallGraph : public HloModulePass {
 
  private:
   absl::AnyInvocable<bool(const HloComputation&)> skip_cloning_handler_;
+  std::optional<absl::AnyInvocable<bool(const HloInstruction&)>>
+      skip_cloning_if_does_not_contain_handler_;
 };
 
 }  // namespace xla

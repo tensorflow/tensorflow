@@ -34,7 +34,7 @@ class ExecutorFactory {
   virtual absl::Status NewExecutor(const LocalExecutorParams& params,
                                    const Graph& graph,
                                    std::unique_ptr<Executor>* out_executor) = 0;
-  virtual ~ExecutorFactory() {}
+  virtual ~ExecutorFactory() = default;
 
   static void Register(const std::string& executor_type,
                        ExecutorFactory* factory);

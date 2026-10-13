@@ -302,8 +302,10 @@ absl::StatusOr<bool> UnrollInternal(HloInstruction* while_op,
                    NextSchedulingGroupId(*while_op->GetModule()));
   std::vector<HloInstruction*> new_calls;
   new_calls.reserve(config.trip_count);
-  for (int64_t i = config.init; i < config.trip_count + config.init; ++i) {
-    CHECK(OverflowSafeAdd(i, (int64_t)1).has_value());
+  for (int64_t iter = 0; iter < config.trip_count; ++iter) {
+    int64_t i = OverflowSafeAdd(config.init,
+                                OverflowSafeMultiply(iter, config.step).first)
+                    .value();
 
     HloComputation* unrolled_body = module->AddEmbeddedComputation(
         UnrollSingleIterationOfTrivialLoop(while_op, config, i,
@@ -350,8 +352,10 @@ absl::StatusOr<UnrollResult> UnrollInternalWrappedAndReturnReplacement(
 
   std::vector<HloInstruction*> new_calls;
   new_calls.reserve(config.trip_count);
-  for (int64_t i = config.init; i < config.trip_count + config.init; ++i) {
-    CHECK(OverflowSafeAdd(i, (int64_t)1).has_value());
+  for (int64_t iter = 0; iter < config.trip_count; ++iter) {
+    int64_t i = OverflowSafeAdd(config.init,
+                                OverflowSafeMultiply(iter, config.step).first)
+                    .value();
 
     HloComputation* unrolled_body = module->AddEmbeddedComputation(
         UnrollSingleIterationOfTrivialLoop(while_op, config, i,
@@ -1296,7 +1300,9 @@ std::optional<int64_t> AdvancedMatchShapeCoveringDynamicIndexInstruction(
   Literal indvar_iter_val = std::move(indvar_init_result).value();
   std::optional<int64_t> trip_count =
       MatchTrivialLoopTripCount(while_op, *indvar_tuple_idx, indvar_iter_val);
-  if (!trip_count.has_value()) {
+  std::optional<int64_t> step =
+      MatchTrivialLoopInductionStep(while_op, *indvar_tuple_idx);
+  if (!trip_count.has_value() || !step.has_value()) {
     VLOG(3) << "Loop doesn't have trivial trip count";
     return std::nullopt;
   }
@@ -1309,6 +1315,7 @@ std::optional<int64_t> AdvancedMatchShapeCoveringDynamicIndexInstruction(
       LiteralUtil::LiteralAsScalarInt64(std::move(indvar_iter_val)).value();
   config.trip_count = trip_count.value();
   config.induction_var_idx = *indvar_tuple_idx;
+  config.step = *step;
   return config;
 }
 

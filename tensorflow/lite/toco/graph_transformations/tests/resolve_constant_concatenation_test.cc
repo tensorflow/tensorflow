@@ -102,7 +102,7 @@ std::vector<testing::Matcher<float>> ArrayFloatNear(
 
 class ResolveConstantConcatenationTest : public ::testing::Test {
  protected:
-  ResolveConstantConcatenationTest() {}
+  ResolveConstantConcatenationTest() = default;
 
   // Prepare a hypothetical TOCO model with one Concatenation operator in it
   // together with 4 arrays as its inputs.

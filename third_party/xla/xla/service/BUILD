@@ -5907,6 +5907,7 @@ xla_aot_compile_gpu(
     gpu_targets = [
         "h100",
         "b200",
+        "vr_nvl72",
     ],
     module = "xla_aot_compile_test.mlir",
     xla_flags = "--xla_gpu_use_new_autotune_cache_format=false",
@@ -5953,7 +5954,7 @@ xla_aot_compile_gpu(
         "b200",
     ],
     module = "xla_aot_compile_test_convolution.mlir",
-    xla_flags = "--xla_gpu_use_new_autotune_cache_format=true",
+    xla_flags = "--xla_gpu_use_new_autotune_cache_format=true --xla_gpu_experimental_enable_conv_fusion=true",
 )
 
 xla_aot_compile_gpu(
@@ -5964,7 +5965,7 @@ xla_aot_compile_gpu(
         "b200",
     ],
     module = "xla_aot_compile_test_convolution.mlir",
-    xla_flags = "--xla_gpu_use_new_autotune_cache_format=false",
+    xla_flags = "--xla_gpu_use_new_autotune_cache_format=false --xla_gpu_experimental_enable_conv_fusion=true",
 )
 
 xla_aot_compile_gpu(
@@ -6080,6 +6081,7 @@ xla_test(
         "//xla:literal",
         "//xla:literal_util",
         "//xla/backends/gpu/tests:hlo_pjrt_gpu_test_base",
+        "//xla/stream_executor/cuda:cudnn_plugin",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status:status_macros",
@@ -6202,6 +6204,29 @@ xla_cc_test(
         "//xla/hlo/transforms/simplifiers:algebraic_simplifier",
         "//xla/service/spmd:spmd_partitioner",
         "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_cc_test(
+    name = "original_value_recovery_test",
+    srcs = ["original_value_recovery_test.cc"],
+    deps = [
+        ":call_inliner",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/transforms/simplifiers:algebraic_simplifier",
+        "//xla/hlo/utils:hlo_original_value_analysis",
+        "//xla/hlo/utils:hlo_original_value_analyzer_utils",
+        "//xla/hlo/utils:hlo_original_value_reconstructor",
+        "//xla/hlo/utils:hlo_sharding_reconstruction_util",
+        "//xla/service/spmd:spmd_partitioner",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],

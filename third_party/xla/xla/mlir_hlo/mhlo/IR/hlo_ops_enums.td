@@ -172,6 +172,7 @@ def MHLO_COMPARISON_TYPE_FLOAT : I32EnumAttrCase<"FLOAT", 1>;
 def MHLO_COMPARISON_TYPE_FLOAT_TOTAL_ORDER : I32EnumAttrCase<"TOTALORDER", 2>;
 def MHLO_COMPARISON_TYPE_SIGNED : I32EnumAttrCase<"SIGNED", 3>;
 def MHLO_COMPARISON_TYPE_UNSIGNED : I32EnumAttrCase<"UNSIGNED", 4>;
+def MHLO_COMPARISON_TYPE_WEAK_ORDER : I32EnumAttrCase<"WEAKORDER", 5>;
 
 def MHLO_ComparisonType : I32EnumAttr<"ComparisonType",
     "Which comparison type to use.",
@@ -180,7 +181,8 @@ def MHLO_ComparisonType : I32EnumAttr<"ComparisonType",
       MHLO_COMPARISON_TYPE_FLOAT,
       MHLO_COMPARISON_TYPE_FLOAT_TOTAL_ORDER,
       MHLO_COMPARISON_TYPE_SIGNED,
-      MHLO_COMPARISON_TYPE_UNSIGNED
+      MHLO_COMPARISON_TYPE_UNSIGNED,
+      MHLO_COMPARISON_TYPE_WEAK_ORDER
     ]> {
   let genSpecializedAttr = 0;
   let cppNamespace = "::mlir::mhlo";

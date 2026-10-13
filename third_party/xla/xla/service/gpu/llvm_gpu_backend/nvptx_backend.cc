@@ -162,7 +162,12 @@ absl::StatusOr<std::unique_ptr<llvm::TargetMachine>> NVPTXGetTargetMachine(
   std::string feature_str =
       absl::StrFormat("+ptx%d", highest_supported_ptx_version);
 
-  return GetTargetMachine(target_triple, nvptx::GetSmName(compute_capability),
+  const se::SemanticVersion ptx_version{
+      static_cast<unsigned>(highest_supported_ptx_version / 10),
+      static_cast<unsigned>(highest_supported_ptx_version % 10), 0};
+
+  return GetTargetMachine(target_triple,
+                          nvptx::GetSmName(compute_capability, ptx_version),
                           debug_options, feature_str);
 }
 
@@ -271,8 +276,80 @@ constexpr se::CudaComputeCapability kSupportedVersions[] = {
     {8, 7},  {8, 6},  {8, 0},  {7, 5},  {7, 2},  {7, 0},  {6, 2}, {6, 1},
     {6, 0},  {5, 3},  {5, 2},  {5, 0},  {3, 7},  {3, 5},  {3, 2}, {3, 0}};
 
+stream_executor::SemanticVersion GetMinimumRequiredPtxVersion(
+    se::CudaComputeCapability cc) {
+  if (cc.major == 12) {
+    if (cc.minor >= 1) {
+      return {8, 8, 0};
+    }
+    return {8, 7, 0};
+  }
+  if (cc.major == 11) {
+    return {9, 0, 0};
+  }
+  if (cc.major == 10) {
+    if (cc.minor >= 7) {
+      return {9, 4, 0};
+    }
+    if (cc.minor >= 3) {
+      return {8, 8, 0};
+    }
+    return {8, 7, 0};
+  }
+  if (cc.major == 9) {
+    return {7, 8, 0};
+  }
+  if (cc.major == 8) {
+    if (cc.minor >= 9) {
+      return {7, 8, 0};
+    }
+    if (cc.minor >= 7) {
+      return {7, 4, 0};
+    }
+    if (cc.minor >= 6) {
+      return {7, 1, 0};
+    }
+    return {7, 0, 0};
+  }
+  if (cc.major == 7) {
+    if (cc.minor >= 5) {
+      return {6, 3, 0};
+    }
+    if (cc.minor >= 2) {
+      return {6, 1, 0};
+    }
+    return {6, 0, 0};
+  }
+  if (cc.major == 6) {
+    return {5, 0, 0};
+  }
+  if (cc.major == 5) {
+    if (cc.minor >= 3) {
+      return {4, 2, 0};
+    }
+    if (cc.minor >= 2) {
+      return {4, 1, 0};
+    }
+    return {4, 0, 0};
+  }
+  if (cc.major == 3) {
+    if (cc.minor >= 7) {
+      return {4, 1, 0};
+    }
+    if (cc.minor >= 5) {
+      return {3, 5, 0};
+    }
+    if (cc.minor >= 2) {
+      return {3, 2, 0};
+    }
+    return {3, 0, 0};
+  }
+  return {3, 0, 0};
+}
+
 se::CudaComputeCapability ResolveSupportedComputeCapability(
-    se::CudaComputeCapability compute_capability) {
+    se::CudaComputeCapability compute_capability,
+    std::optional<stream_executor::SemanticVersion> ptx_version) {
   using CudaComputeCapabilities =
       se::CudaComputeCapability::CudaComputeCapabilities;
 
@@ -287,6 +364,10 @@ se::CudaComputeCapability ResolveSupportedComputeCapability(
 
   for (const auto& v : kSupportedVersions) {
     if (gpu_compute_capability.SupportsAllFeaturesOf(v)) {
+      if (ptx_version.has_value() &&
+          *ptx_version < GetMinimumRequiredPtxVersion(v)) {
+        continue;
+      }
       // Found the most advanced supported capability
       target_compute_capability = v;
       break;
@@ -316,9 +397,11 @@ se::CudaComputeCapability ResolveSupportedComputeCapability(
   return target_compute_capability;
 }
 
-std::string GetSmName(se::CudaComputeCapability compute_capability) {
+std::string GetSmName(
+    se::CudaComputeCapability compute_capability,
+    std::optional<stream_executor::SemanticVersion> ptx_version) {
   se::CudaComputeCapability target_compute_capability =
-      ResolveSupportedComputeCapability(compute_capability);
+      ResolveSupportedComputeCapability(compute_capability, ptx_version);
 
   // If the current CC isn't supported by LLVM and it is newer then
   // the max supported LLVM version, do not warn about it. The end

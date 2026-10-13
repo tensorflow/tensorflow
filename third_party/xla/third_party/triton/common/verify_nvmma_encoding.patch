@@ -22,7 +22,7 @@ reshape outcomes.
  #include "triton/Tools/LayoutUtils.h"
  #include "llvm/ADT/STLExtras.h"
  #include "llvm/Support/Casting.h"
-@@ -576,7 +579,45 @@ LogicalResult MemDescReshapeOp::verify() {
+@@ -598,7 +601,45 @@ LogicalResult MemDescReshapeOp::verify() {
    return OpTrait::impl::verifyEquivalentMemDescType(expectedTy, dstType);
  }
  
@@ -69,7 +69,7 @@ reshape outcomes.
                                                     Attribute srcEnc,
                                                     ArrayRef<int64_t> dstShape,
                                                     Attribute &dstEnc) {
-@@ -597,6 +638,11 @@ static LogicalResult inferMemDescReshapeOpEncoding(ArrayRef<int64_t> srcShape,
+@@ -619,6 +660,11 @@ static LogicalResult inferMemDescReshapeOpEncoding(ArrayRef<int64_t> srcShape,
              ctx, mmaEncoding.getSwizzlingByteWidth(),
              mmaEncoding.getTransposed(), mmaEncoding.getElementBitWidth(),
              mmaEncoding.getFp4Padded(), CGALayout);
@@ -81,7 +81,7 @@ reshape outcomes.
          auto srcLL = toLinearLayout(srcShape, srcEnc);
          auto dstLL = toLinearLayout(dstShape, candidateEncoding);
          if (reshapeLayout(ctx, srcLL, dstShape) == dstLL) {
-@@ -636,8 +682,8 @@ LogicalResult MemDescReshapeOp::inferReturnTypes(
+@@ -658,8 +704,8 @@ LogicalResult MemDescReshapeOp::inferReturnTypes(
  
    Attribute dstEncoding;
    if (Attribute srcEnc = srcTy.getEncoding()) {

@@ -33,18 +33,18 @@ class WinogradTransform : public DeepConv2DTransform<T> {
   WinogradTransform()
       : filter_shape_(3, 3), input_shape_(4, 4), output_shape_(2, 2) {}
 
-  virtual void GetFilterTransformMatrix(const int64_t rows, const int64_t cols,
-                                        T* transform_matrix) const;
+  void GetFilterTransformMatrix(const int64_t rows, const int64_t cols,
+                                T* transform_matrix) const override;
 
-  virtual void GetInputTransformMatrix(const int64_t rows, const int64_t cols,
-                                       T* transform_matrix) const;
+  void GetInputTransformMatrix(const int64_t rows, const int64_t cols,
+                               T* transform_matrix) const override;
 
-  virtual void GetOutputTransformMatrix(const int64_t rows, const int64_t cols,
-                                        T* transform_matrix) const;
+  void GetOutputTransformMatrix(const int64_t rows, const int64_t cols,
+                                T* transform_matrix) const override;
 
-  virtual const Shape& filter_shape() const { return filter_shape_; }
-  virtual const Shape& input_shape() const { return input_shape_; }
-  virtual const Shape& output_shape() const { return output_shape_; }
+  const Shape& filter_shape() const override { return filter_shape_; }
+  const Shape& input_shape() const override { return input_shape_; }
+  const Shape& output_shape() const override { return output_shape_; }
 
  private:
   const Shape filter_shape_;

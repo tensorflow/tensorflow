@@ -176,7 +176,7 @@ absl::StatusOr<cuda::Assembly> CompileAndLinkUsingLibNvJitLink(
   if (version >= NvJitLinkVersion{12, 3}) {
     cli_args.emplace_back(absl::StrCat("-split-compile=", inputs.size()));
   }
-  if (version >= NvJitLinkVersion{12, 6}) {
+  if (version >= NvJitLinkVersion{12, 5}) {
     cli_args.emplace_back("-no-cache");
   }
 
@@ -298,7 +298,7 @@ absl::StatusOr<int> GetLatestPtxIsaVersionForLibNvJitLinkImpl() {
   // The call to `nvJitLinkCreate` below requires an arch to be specified in
   // order to succeed.
   std::vector<const char*> cli_args_ptrs{"-arch=sm_90a"};
-  if (version.ok() && *version >= NvJitLinkVersion{12, 6}) {
+  if (version.ok() && *version >= NvJitLinkVersion{12, 5}) {
     cli_args_ptrs.push_back("-no-cache");
   }
   nvJitLinkHandle link_handle = nullptr;

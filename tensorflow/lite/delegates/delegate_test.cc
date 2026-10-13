@@ -1445,9 +1445,9 @@ TEST_F(TestDelegateWithControlEdges, NoControlEdges) {
   delegate_ = std::make_unique<SimpleDelegate>(std::vector<int>({0, 2}));
   interpreter_->ModifyGraphWithDelegate(delegate_->get_tf_lite_delegate());
   ASSERT_EQ(interpreter_->execution_plan().size(), 3);     // [ {0, 2}, 1, 3]
-  EXPECT_EQ(interpreter_->execution_plan().data()[0], 4);  // new super-node
-  EXPECT_EQ(interpreter_->execution_plan().data()[1], 1);  // undelegated
-  EXPECT_EQ(interpreter_->execution_plan().data()[2], 3);  // undelegated
+  EXPECT_EQ(interpreter_->execution_plan()[0], 4);         // new super-node
+  EXPECT_EQ(interpreter_->execution_plan()[1], 1);         // undelegated
+  EXPECT_EQ(interpreter_->execution_plan()[2], 3);         // undelegated
 }
 
 TEST_F(TestDelegateWithControlEdges, OverrideControlEdges) {
@@ -1462,10 +1462,10 @@ TEST_F(TestDelegateWithControlEdges, OverrideControlEdges) {
   // preserved. Nodes 0 and 2 both get rewritten into new delegate nodes
   // 4 and 5.
   ASSERT_EQ(interpreter_->execution_plan().size(), 4);  // [ 0, 1, 2, 3]
-  EXPECT_EQ(interpreter_->execution_plan().data()[0], 4);
-  EXPECT_EQ(interpreter_->execution_plan().data()[1], 1);
-  EXPECT_EQ(interpreter_->execution_plan().data()[2], 5);
-  EXPECT_EQ(interpreter_->execution_plan().data()[3], 3);
+  EXPECT_EQ(interpreter_->execution_plan()[0], 4);
+  EXPECT_EQ(interpreter_->execution_plan()[1], 1);
+  EXPECT_EQ(interpreter_->execution_plan()[2], 5);
+  EXPECT_EQ(interpreter_->execution_plan()[3], 3);
 }
 
 // Test that empty control edge metadata for subgraph 0 don't change anything.

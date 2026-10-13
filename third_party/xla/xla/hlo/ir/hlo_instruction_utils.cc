@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "re2/re2.h"
 #include "xla/comparison_util.h"
@@ -105,20 +106,30 @@ bool IsTopKStable(const HloCustomCallInstruction* inst) {
   return true;
 }
 
-std::optional<ComparisonOrder> GetTopKComparatorOrder(
-    const HloCustomCallInstruction* inst) {
-  if (inst == nullptr || !inst->has_to_apply()) {
-    return std::nullopt;
+void SetTopKStability(HloCustomCallInstruction* inst, bool is_stable) {
+  std::string replacement =
+      absl::StrCat("is_stable = ", is_stable ? "true" : "false");
+  std::string cfg = inst->raw_backend_config_string();
+  static const LazyRE2 kIsStableRegex = {R"((?i)is_stable\s*=\s*(true|false))"};
+  if (!RE2::Replace(&cfg, *kIsStableRegex, replacement)) {
+    static const LazyRE2 kNonEmptyDictEndRegex = {R"(([^\s\{])\s*\}\s*$)"};
+    if (!RE2::Replace(&cfg, *kNonEmptyDictEndRegex,
+                      absl::StrCat("\\1, ", replacement, "}"))) {
+      cfg = absl::StrCat("{", replacement, "}");
+    }
   }
-  const HloInstruction* root = inst->to_apply()->root_instruction();
-  if (root->opcode() == HloOpcode::kSelect &&
-      root->operand(0) == root->operand(2)) {
-    root = root->operand(1);
+  inst->set_raw_backend_config_string(cfg);
+}
+
+ComparisonOrder GetTopKOrder(const HloCustomCallInstruction* inst) {
+  static const LazyRE2 kOrderRegex = {R"(order\s*=\s*"?([A-Z]+))"};
+  absl::string_view order_str;
+  if (RE2::PartialMatch(inst->raw_backend_config_string(), *kOrderRegex,
+                        &order_str)) {
+    return ShortStringToComparisonOrder(order_str).value_or(
+        ComparisonOrder::kTotal);
   }
-  if (root->opcode() == HloOpcode::kCompare) {
-    return root->comparison_order();
-  }
-  return std::nullopt;
+  return ComparisonOrder::kTotal;
 }
 
 namespace async {

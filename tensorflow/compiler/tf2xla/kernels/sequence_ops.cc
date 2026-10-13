@@ -65,7 +65,7 @@ absl::StatusOr<xla::XlaOp> CreateRangeTensor(
     }
   }
   int64_t size;
-  if constexpr (std::is_integral<T>::value) {
+  if constexpr (std::is_integral_v<T>) {
     int64_t start_i = static_cast<int64_t>(start);
     int64_t limit_i = static_cast<int64_t>(limit);
     int64_t delta_i = static_cast<int64_t>(delta);

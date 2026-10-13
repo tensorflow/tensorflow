@@ -56,7 +56,9 @@ void addSdyRoundTripExportPipeline(mlir::OpPassManager& pm,
   // Lift meshes before deduping, since the dedup meshes pass ignores inlined
   // meshes.
   if (!keepMeshesInlined) {
-    pm.addPass(mlir::sdy::createLiftInlinedMeshesPass());
+    pm.addPass(mlir::sdy::createLiftInlinedMeshesPass(
+        mlir::sdy::LiftInlinedMeshesPassOptions{
+            /*useSingleDeviceMeshNames=*/true}));
   }
   pm.addPass(createSdyRoundTripDedupMeshesPass());
   pm.addPass(createSdyRoundTripExportOpsPass());
@@ -110,7 +112,9 @@ void addSdyRoundTripImportPipeline(mlir::OpPassManager& pm,
     //
     // liftAndDedupMeshes is required here because of sdy shardings added
     // directly to hlo in tf2xla.
-    pm.addPass(mlir::sdy::createLiftInlinedMeshesPass());
+    pm.addPass(mlir::sdy::createLiftInlinedMeshesPass(
+        mlir::sdy::LiftInlinedMeshesPassOptions{
+            /*useSingleDeviceMeshNames=*/true}));
     pm.addPass(createSdyRoundTripDedupMeshesPass());
   }
   pm.addPass(createCanonicalizerPass(

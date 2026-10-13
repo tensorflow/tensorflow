@@ -381,7 +381,7 @@ namespace {
 template <typename UniqueContainer>
 void EraseNodesFromGraphImpl(const UniqueContainer& nodes_to_delete,
                              GraphDef* graph) {
-  static_assert(std::is_same<typename UniqueContainer::value_type, int>::value,
+  static_assert(std::is_same_v<typename UniqueContainer::value_type, int>,
                 "Need to pass container of ints");
 
   int last = graph->node_size() - 1;

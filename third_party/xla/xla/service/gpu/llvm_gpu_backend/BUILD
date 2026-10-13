@@ -86,6 +86,7 @@ cc_library(
         "//xla/service/gpu:metrics",
         "//xla/service/llvm_ir:llvm_command_line_options",
         "//xla/stream_executor:device_description",
+        "//xla/stream_executor:semantic_version",
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tsl/platform:env",
         "@com_google_absl//absl/base",

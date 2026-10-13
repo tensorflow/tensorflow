@@ -31,9 +31,6 @@ limitations under the License.
 #include "xla/codegen/tiling/experimental/tiled_hlo.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
 #include "xla/codegen/tiling/experimental/tiling_space_utils.h"
-#include "xla/codegen/tiling/symbolic_tile_analysis.h"
-#include "xla/codegen/tiling/tiled_hlo_computation.h"
-#include "xla/codegen/tiling/tiling_specification.h"
 #include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
@@ -42,6 +39,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -64,18 +62,16 @@ namespace xla {
 namespace gpu {
 namespace {
 
+namespace dot_model = ::xla::gpu::gpu_dot_fusion_cost_model::detail;
+
 using ::testing::ElementsAre;
 using ::xla::xtile::BlockLevelParameters;
 
-class GpuIndexingPerformanceModelTest
-    : public HloHardwareIndependentTestBase,
-      public ::testing::WithParamInterface<bool> {
+class GpuIndexingPerformanceModelTest : public HloHardwareIndependentTestBase {
  public:
   GpuIndexingPerformanceModelTest() {
     RegisterSymbolicExprStorage(&mlir_context_);
   }
-
-  bool use_experimental_tiling() const { return GetParam(); }
 
   static std::unique_ptr<mlir::MLIRContext> CreateMlirContext() {
     auto ctx = std::make_unique<mlir::MLIRContext>();
@@ -94,29 +90,14 @@ class GpuIndexingPerformanceModelTest
       &fusion_analysis_cache_,
       HloCostAnalysis::DefaultShapeSize,
       &mlir_context_,
-      use_experimental_tiling(),
+      /*use_experimental_tiling=*/true,
       /*enable_same_shape_multi_output_fusion=*/false,
       &mlir_context_pool_};
 
   size_t WarpSize() const { return ::xla::gpu::WarpSize(device_info_); }
-
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options =
-        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_experimental_enable_tiling_propagation(
-        use_experimental_tiling());
-    return debug_options;
-  }
 };
 
-INSTANTIATE_TEST_SUITE_P(GpuIndexingPerformanceModelTest,
-                         GpuIndexingPerformanceModelTest, ::testing::Bool(),
-                         [](const ::testing::TestParamInfo<bool>& info) {
-                           return info.param ? "ExperimentalTiling"
-                                             : "SymbolicTiling";
-                         });
-
-TEST_P(GpuIndexingPerformanceModelTest,
+TEST_F(GpuIndexingPerformanceModelTest,
        TritonGemmWithCustomBlockLevelParameters) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
@@ -169,7 +150,7 @@ ENTRY e {
   EXPECT_NE(result_with_custom.exec_time, result_default.exec_time);
 }
 
-TEST_P(GpuIndexingPerformanceModelTest, TritonGemmComputeBoundBf16NumStages1) {
+TEST_F(GpuIndexingPerformanceModelTest, TritonGemmComputeBoundBf16NumStages1) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
 
@@ -212,7 +193,7 @@ ENTRY e {
   EXPECT_GT(runtime.exec_time, expected_compute_and_flops.compute_time * 1.2);
 }
 
-TEST_P(GpuIndexingPerformanceModelTest, TritonGemmComputeBoundBf16) {
+TEST_F(GpuIndexingPerformanceModelTest, TritonGemmComputeBoundBf16) {
   // TODO: b/510666436 - Tile sizes are intentionally kept large to reduce
   // L2 cache replication overhead modeled by threadblock_count, keeping
   // the operation compute bound.
@@ -262,7 +243,7 @@ ENTRY e {
   EXPECT_LE(runtime.exec_time, expected_time * 1.1);
 }
 
-TEST_P(GpuIndexingPerformanceModelTest, TritonGemmMemoryBoundBf16) {
+TEST_F(GpuIndexingPerformanceModelTest, TritonGemmMemoryBoundBf16) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
 
@@ -304,7 +285,7 @@ ENTRY e {
   EXPECT_LE(runtime.exec_time, approx_hbm_time * 1.1);
 }
 
-TEST_P(GpuIndexingPerformanceModelTest,
+TEST_F(GpuIndexingPerformanceModelTest,
        TritonSoftmaxFusionInstructionIsSupported) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
@@ -351,13 +332,11 @@ ENTRY main {
 }
 
 // Example from b/383162692.
-TEST_P(GpuIndexingPerformanceModelTest, EstimateBestTiling_CombinedFusion) {
-  if (use_experimental_tiling()) {
-    // TODO: b/422689305 - Enable this test once multi-output fusions are
-    // supported.
-    GTEST_SKIP()
-        << "Experimental tiling does not support multi-output fusions yet.";
-  }
+TEST_F(GpuIndexingPerformanceModelTest, EstimateBestTiling_CombinedFusion) {
+  // TODO: b/422689305 - Enable this test once multi-output fusions are
+  // supported.
+  GTEST_SKIP()
+      << "Experimental tiling does not support multi-output fusions yet.";
 
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
@@ -470,13 +449,11 @@ ENTRY entry_computation {
   // EXPECT_EQ(tiled_runtime_data.block_level_parameters.num_warps, 32);
 }
 
-TEST_P(GpuIndexingPerformanceModelTest, EstimateBestTiling_MultioutputFusion) {
-  if (use_experimental_tiling()) {
-    // TODO: b/422689305 - Enable this test once multi-output fusions are
-    // supported.
-    GTEST_SKIP()
-        << "Experimental tiling does not support multi-output fusions yet.";
-  }
+TEST_F(GpuIndexingPerformanceModelTest, EstimateBestTiling_MultioutputFusion) {
+  // TODO: b/422689305 - Enable this test once multi-output fusions are
+  // supported.
+  GTEST_SKIP()
+      << "Experimental tiling does not support multi-output fusions yet.";
 
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
@@ -521,7 +498,7 @@ ENTRY entry_computation {
   EXPECT_EQ(tiled_runtime_data.block_level_parameters.num_warps, 1);
 }
 
-TEST_P(GpuIndexingPerformanceModelTest,
+TEST_F(GpuIndexingPerformanceModelTest,
        TryFindTopKBestTilingsForFusion_DumpsToFile) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
@@ -564,7 +541,7 @@ ENTRY main {
   EXPECT_THAT(dumped_content, ::testing::HasSubstr("Candidate #0:"));
 }
 
-TEST_P(GpuIndexingPerformanceModelTest,
+TEST_F(GpuIndexingPerformanceModelTest,
        EstimateBestTiling_TritonSoftmax_IsSupported) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
@@ -616,16 +593,8 @@ ENTRY main {
 
   EXPECT_EQ(tiled_runtime_data.block_level_parameters.output_tile_sizes.size(),
             1);
-
-  // Experimental tiling uses padded tile sizes, while the symbolic tiling does
-  // not.
-  if (use_experimental_tiling()) {
-    EXPECT_THAT(tiled_runtime_data.block_level_parameters.output_tile_sizes[0],
-                ElementsAre(4, 1024));
-  } else {
-    EXPECT_THAT(tiled_runtime_data.block_level_parameters.output_tile_sizes[0],
-                ElementsAre(4, 911));
-  }
+  EXPECT_THAT(tiled_runtime_data.block_level_parameters.output_tile_sizes[0],
+              ElementsAre(4, 1024));
   EXPECT_EQ(tiled_runtime_data.block_level_parameters.num_warps, 4);
 
   EXPECT_EQ(tiled_runtime_data.runtime_data.bytes_read, kExpectedBytesRead);
@@ -637,7 +606,7 @@ ENTRY main {
 
 // This test means to catch integer overflow errors when run with ASan build.
 // The checks below are just sanity checks for values.
-TEST_P(
+TEST_F(
     GpuIndexingPerformanceModelTest,
     EstimateRunTimeForTiledFusion_NumberOfTilesLargerThanInt32Max_IsSupported) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
@@ -675,7 +644,7 @@ ENTRY main {
   EXPECT_NEAR(absl::ToDoubleSeconds(runtime_data.exec_time), 2932, 2);
 }
 
-TEST_P(GpuIndexingPerformanceModelTest,
+TEST_F(GpuIndexingPerformanceModelTest,
        EstimateRunTimeForTiledFusion_Concatenate) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
@@ -715,7 +684,7 @@ ENTRY main {
   );
 }
 
-TEST_P(GpuIndexingPerformanceModelTest,
+TEST_F(GpuIndexingPerformanceModelTest,
        EstimateRunTimeForTiledFusion_DotWithReductionLoop) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
@@ -757,9 +726,84 @@ ENTRY main {
       4 * (64 * 32) * (num_blocks * CeilOfRatio(257, 64))        // ==> %p1
           + 4 * (64 * 32) * (num_blocks * CeilOfRatio(257, 64))  // ==> %p0
   );
+  EXPECT_EQ(result.l2_bytes_read, result.bytes_read);
+  // (32 * 64 + 32 * 64) * 4 bytes (f32) * 1 stage = 16384 bytes.
+  EXPECT_EQ(result.shared_memory_per_block_bytes, 2 * (32 * 64 * 4));
+  // 1 accumulator register per thread (32 * 32 / 1024) plus base kernel-state
+  // overhead, staying below one 32-register allocation block.
+  EXPECT_GT(result.registers_per_thread, 1);
+  EXPECT_LT(result.registers_per_thread, 32);
 }
 
-TEST_P(GpuIndexingPerformanceModelTest,
+TEST_F(GpuIndexingPerformanceModelTest,
+       EstimateRunTimeForTiledFusion_ChainedDotsMergesDotEstimates) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+chained_dot_fusion {
+  p0 = f32[128, 64] parameter(0)
+  p1 = f32[64, 128] parameter(1)
+  p2 = f32[128, 32] parameter(2)
+  dot0 = f32[128, 128] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    backend_config={sizes:[16]}
+  ROOT dot1 = f32[128, 32] dot(dot0, p2),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    backend_config={sizes:[64]}
+}
+
+ENTRY main {
+  p0 = f32[128, 64] parameter(0)
+  p1 = f32[64, 128] parameter(1)
+  p2 = f32[128, 32] parameter(2)
+  ROOT fusion = f32[128, 32] fusion(p0, p1, p2),
+    kind=kCustom, calls=chained_dot_fusion
+})"));
+
+  std::unique_ptr<HloFusionAdaptor> fusion_adaptor =
+      HloFusionAdaptor::ForInstruction(
+          module->entry_computation()->root_instruction());
+
+  ASSERT_OK_AND_ASSIGN(
+      EstimateRunTimeData result,
+      indexing_cost_model_.EstimateRunTimeForTiledFusion(
+          *fusion_adaptor,
+          BlockLevelParameters{/*output_tile_sizes=*/{{32, 16}},
+                               /*num_warps=*/2}));
+
+  // Sequential dots reuse shared memory and registers, so the fusion takes the
+  // max of each across dot0 (tile [32, 64], block_k=16) and dot1 (tile [32,
+  // 16], block_k=64):
+  // - dot1 has the larger block_k and dominates shared memory:
+  //   (32 * 64 + 16 * 64) * 4 = 12288 bytes (vs. 6144 for dot0).
+  // - dot0 has the larger output tile and dominates registers: 32 accumulator
+  //   registers per thread (32 * 64 / 64) plus base kernel-state overhead
+  //   (vs. 8 accumulator registers for dot1), staying below 64.
+  EXPECT_EQ(result.shared_memory_per_block_bytes, 12288);
+  EXPECT_GT(result.registers_per_thread, 32);
+  EXPECT_LT(result.registers_per_thread, 64);
+
+  const HloDotInstruction* dot1 = Cast<HloDotInstruction>(
+      module->entry_computation()->root_instruction()->fused_expression_root());
+  const HloDotInstruction* dot0 = Cast<HloDotInstruction>(dot1->operand(0));
+  ASSERT_OK_AND_ASSIGN(
+      dot_model::ComputeAndFlops dot0_compute,
+      dot_model::CalculateComputeTimeWithTileAndWaveQuantization(
+          dot_model::DotProblemInfo(*dot0),
+          dot_model::DotTileSize{/*m=*/32, /*n=*/64, /*k=*/16, /*b=*/1},
+          device_info_));
+  ASSERT_OK_AND_ASSIGN(
+      dot_model::ComputeAndFlops dot1_compute,
+      dot_model::CalculateComputeTimeWithTileAndWaveQuantization(
+          dot_model::DotProblemInfo(*dot1),
+          dot_model::DotTileSize{/*m=*/32, /*n=*/16, /*k=*/64, /*b=*/1},
+          device_info_));
+  EXPECT_EQ(result.compute_time,
+            dot0_compute.compute_time + dot1_compute.compute_time);
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
        EstimateRunTimeForTiledFusion_Softmax_RegisterSpill_ReturnsInfinite) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
@@ -799,7 +843,7 @@ ENTRY main {
   EXPECT_TRUE(res2.IsInfinite());
 }
 
-TEST_P(
+TEST_F(
     GpuIndexingPerformanceModelTest,
     EstimateRunTimeForTiledFusion_BroadcastReduce_RegisterSpill_ReturnsInfinite) {  // NOLINT(whitespace/line_length)
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
@@ -855,7 +899,7 @@ ENTRY main {
   EXPECT_TRUE(res3.IsInfinite());
 }
 
-TEST_P(
+TEST_F(
     GpuIndexingPerformanceModelTest,
     EstimateRunTimeForTiledFusion_UsesHloDimensionSizeWhenTileCoversFullDimensionForMemoryAccessTime) {  // NOLINT(whitespace/line_length)
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
@@ -894,7 +938,7 @@ ENTRY main {
   EXPECT_EQ(res.flops, kPaddedOutputTileSize * kAddFlops);
 }
 
-TEST_P(
+TEST_F(
     GpuIndexingPerformanceModelTest,
     EstimateRunTimeForTiledFusion_UncoalescedReadsAreScaledBasedOnWasteTransactionPercentage) {  // NOLINT(whitespace/line_length)
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
@@ -941,7 +985,7 @@ ENTRY main {
       0.001);
 }
 
-TEST_P(
+TEST_F(
     GpuIndexingPerformanceModelTest,
     EstimateRunTimeForTiledFusion_UncoalescedWritesAreScaledBasedOnWasteTransactionPercentage) {  // NOLINT(whitespace/line_length)
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
@@ -987,7 +1031,7 @@ ENTRY main {
       4, 0.001);
 }
 
-TEST_P(GpuIndexingPerformanceModelTest,
+TEST_F(GpuIndexingPerformanceModelTest,
        GetLaunchDimensionsForTiledFusion_IsSupported) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
@@ -1006,44 +1050,22 @@ ENTRY main {
 )"));
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
       module->entry_computation()->root_instruction());
-  const HloInstruction* fusion_root =
-      &fusion_adaptor->GetRoots().front().instruction();
 
   absl::InlinedVector<int64_t, 4> output_tile_sizes = {9, 9, 9};
 
-  int64_t num_warps = 0;
-  if (use_experimental_tiling()) {
-    ASSERT_OK_AND_ASSIGN(
-        std::unique_ptr<experimental::TilingSpace> tiling_space,
-        experimental::TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<experimental::TilingSpace> tiling_space,
+      experimental::TilingSpace::Create(*fusion_adaptor, &mlir_context_));
 
-    EXPECT_OK(tiling_space->AssignTileSizes(
-        xla::xtile::GetPaddedTileSizes(output_tile_sizes)));
+  EXPECT_OK(tiling_space->AssignTileSizes(
+      xla::xtile::GetPaddedTileSizes(output_tile_sizes)));
 
-    ASSERT_OK_AND_ASSIGN(
-        experimental::TiledHloComputation tiled_hlo_computation,
-        experimental::TiledHloComputation::Tile(*fusion_adaptor,
-                                                std::move(tiling_space)));
+  ASSERT_OK_AND_ASSIGN(experimental::TiledHloComputation tiled_hlo_computation,
+                       experimental::TiledHloComputation::Tile(
+                           *fusion_adaptor, std::move(tiling_space)));
 
-    num_warps = GpuPerformanceModelWithIndexingAnalysis::EstimateNumWarps(
-        tiled_hlo_computation);
-  } else {
-    SymbolicTileAnalysisOrError analysis_or_error =
-        SymbolicTileAnalysis::AnalyzeFusion(
-            *fusion_adaptor, &mlir_context_,
-            /*emitter_specific_constraints_builder=*/nullptr);
-    ASSERT_TRUE(
-        std::holds_alternative<SymbolicTileAnalysis>(analysis_or_error));
-
-    ASSERT_OK_AND_ASSIGN(
-        TiledHloComputation tiled_hlo_computation,
-        std::get<SymbolicTileAnalysis>(analysis_or_error)
-            .ComputeTiledComputation(
-                Tiling({{fusion_root, FlatTiling(output_tile_sizes)}})));
-
-    num_warps = GpuPerformanceModelWithIndexingAnalysis::EstimateNumWarps(
-        tiled_hlo_computation);
-  }
+  int64_t num_warps = GpuPerformanceModelWithIndexingAnalysis::EstimateNumWarps(
+      tiled_hlo_computation);
 
   // Tile size is 9 * 9 * 9 = 729 that corresponds to 2 warps. But we estimate
   // the number of warps for padded tile that has size of 16 * 16 * 16 = 4096
@@ -1051,7 +1073,7 @@ ENTRY main {
   EXPECT_EQ(num_warps, 4);
 }
 
-TEST_P(GpuIndexingPerformanceModelTest,
+TEST_F(GpuIndexingPerformanceModelTest,
        NumberOfWarpsDependsOnLargestLiveTileSize) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
@@ -1077,47 +1099,25 @@ ENTRY main {
 )"));
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
       module->entry_computation()->root_instruction());
-  const HloInstruction* fusion_root =
-      &fusion_adaptor->GetRoots().front().instruction();
 
   absl::InlinedVector<int64_t, 4> output_tile_sizes = {1};
 
-  int64_t num_warps = 0;
-  if (use_experimental_tiling()) {
-    ASSERT_OK_AND_ASSIGN(
-        std::unique_ptr<experimental::TilingSpace> tiling_space,
-        experimental::TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<experimental::TilingSpace> tiling_space,
+      experimental::TilingSpace::Create(*fusion_adaptor, &mlir_context_));
 
-    absl::InlinedVector<int64_t, 4> tile_sizes = output_tile_sizes;
-    tile_sizes.push_back(4096);
+  absl::InlinedVector<int64_t, 4> tile_sizes = output_tile_sizes;
+  tile_sizes.push_back(4096);
 
-    EXPECT_OK(tiling_space->AssignTileSizes(
-        xla::xtile::GetPaddedTileSizes(tile_sizes)));
+  EXPECT_OK(tiling_space->AssignTileSizes(
+      xla::xtile::GetPaddedTileSizes(tile_sizes)));
 
-    ASSERT_OK_AND_ASSIGN(
-        experimental::TiledHloComputation tiled_hlo_computation,
-        experimental::TiledHloComputation::Tile(*fusion_adaptor,
-                                                std::move(tiling_space)));
+  ASSERT_OK_AND_ASSIGN(experimental::TiledHloComputation tiled_hlo_computation,
+                       experimental::TiledHloComputation::Tile(
+                           *fusion_adaptor, std::move(tiling_space)));
 
-    num_warps = GpuPerformanceModelWithIndexingAnalysis::EstimateNumWarps(
-        tiled_hlo_computation);
-
-  } else {
-    SymbolicTileAnalysisOrError analysis_or_error =
-        SymbolicTileAnalysis::AnalyzeFusion(
-            *fusion_adaptor, &mlir_context_,
-            /*emitter_specific_constraints_builder=*/nullptr);
-    ASSERT_TRUE(
-        std::holds_alternative<SymbolicTileAnalysis>(analysis_or_error));
-
-    ASSERT_OK_AND_ASSIGN(
-        TiledHloComputation tiled_hlo_computation,
-        std::get<SymbolicTileAnalysis>(analysis_or_error)
-            .ComputeTiledComputation(Tiling({{fusion_root, FlatTiling({1})}})));
-
-    num_warps = GpuPerformanceModelWithIndexingAnalysis::EstimateNumWarps(
-        tiled_hlo_computation);
-  }
+  int64_t num_warps = GpuPerformanceModelWithIndexingAnalysis::EstimateNumWarps(
+      tiled_hlo_computation);
 
   // The largest tile size is 1 * 4096, for which our implementation recommends
   // using 4 warps.
@@ -1148,10 +1148,7 @@ class FlopsPerElementTest : public GpuIndexingPerformanceModelTest {
   }
 };
 
-INSTANTIATE_TEST_SUITE_P(FlopsPerElementTestInstantiation, FlopsPerElementTest,
-                         ::testing::ValuesIn({false}));
-
-TEST_P(FlopsPerElementTest, MatchesGpuHloCostAnalysis_Reduce) {
+TEST_F(FlopsPerElementTest, MatchesGpuHloCostAnalysis_Reduce) {
   // Note: This comparison only succeeds when the reduction dimension size is a
   // power of two (e.g. 64), because FlopsPerElement accounts for power-of-two
   // padding while GpuHloCostAnalysis measures unpadded FLOP counts.
@@ -1172,7 +1169,7 @@ ENTRY entry_computation {
 )");
 }
 
-TEST_P(FlopsPerElementTest, MatchesGpuHloCostAnalysis_VariadicReduce) {
+TEST_F(FlopsPerElementTest, MatchesGpuHloCostAnalysis_VariadicReduce) {
   // Note: This comparison only succeeds when the reduction dimension size is a
   // power of two (e.g. 64), because FlopsPerElement accounts for power-of-two
   // padding while GpuHloCostAnalysis measures unpadded FLOP counts.
@@ -1197,7 +1194,7 @@ ENTRY entry_computation {
 )");
 }
 
-TEST_P(FlopsPerElementTest, PaddedReduceDimensions) {
+TEST_F(FlopsPerElementTest, PaddedReduceDimensions) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
 
@@ -1223,7 +1220,7 @@ ENTRY entry_computation {
   EXPECT_EQ(indexing_cost_model_.FlopsPerElement(instr), 765);
 }
 
-TEST_P(FlopsPerElementTest, MatchesGpuHloCostAnalysis_Elementwise_Cosine) {
+TEST_F(FlopsPerElementTest, MatchesGpuHloCostAnalysis_Elementwise_Cosine) {
   CompareFlopsModels(R"(
 HloModule m
 
@@ -1234,7 +1231,7 @@ ENTRY entry_computation {
 )");
 }
 
-TEST_P(FlopsPerElementTest, MatchesGpuHloCostAnalysis_Elementwise_Clamp) {
+TEST_F(FlopsPerElementTest, MatchesGpuHloCostAnalysis_Elementwise_Clamp) {
   CompareFlopsModels(R"(
 HloModule m
 
@@ -1247,7 +1244,7 @@ ENTRY entry_computation {
 )");
 }
 
-TEST_P(FlopsPerElementTest, MatchesGpuHloCostAnalysis_Gather) {
+TEST_F(FlopsPerElementTest, MatchesGpuHloCostAnalysis_Gather) {
   CompareFlopsModels(R"(
 HloModule module
 entry {
@@ -1259,7 +1256,7 @@ entry {
 })");
 }
 
-TEST_P(FlopsPerElementTest, MatchesGpuHloCostAnalysis_ReduceWindow) {
+TEST_F(FlopsPerElementTest, MatchesGpuHloCostAnalysis_ReduceWindow) {
   CompareFlopsModels(R"(
 
 add {
@@ -1275,7 +1272,7 @@ ENTRY entry {
 })");
 }
 
-TEST_P(FlopsPerElementTest, MatchesGpuHloCostAnalysis_Concatenate_Aligned) {
+TEST_F(FlopsPerElementTest, MatchesGpuHloCostAnalysis_Concatenate_Aligned) {
   CompareFlopsModels(R"(
 HloModule m
 
@@ -1287,7 +1284,7 @@ ENTRY entry_computation {
 )");
 }
 
-TEST_P(FlopsPerElementTest, MatchesGpuHloCostAnalysis_Concatenate_Unaligned) {
+TEST_F(FlopsPerElementTest, MatchesGpuHloCostAnalysis_Concatenate_Unaligned) {
   CompareFlopsModels(R"(
 HloModule m
 
@@ -1299,7 +1296,7 @@ ENTRY entry_computation {
 )");
 }
 
-TEST_P(GpuIndexingPerformanceModelTest, PrecomputeFlopsMapWorksCorrectly) {
+TEST_F(GpuIndexingPerformanceModelTest, PrecomputeFlopsMapWorksCorrectly) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
 
@@ -1345,7 +1342,7 @@ ENTRY entry {
   EXPECT_EQ(flops_map.at(exp), indexing_cost_model_.FlopsPerElement(exp));
 }
 
-TEST_P(GpuIndexingPerformanceModelTest,
+TEST_F(GpuIndexingPerformanceModelTest,
        TryFindTopKBestTilingsForFusionAsync_ParallelMatchesSequential) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
@@ -1400,7 +1397,7 @@ ENTRY main {
   }
 }
 
-TEST_P(FlopsPerElementTest, CopyHasZeroFlops) {
+TEST_F(FlopsPerElementTest, CopyHasZeroFlops) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
 
