@@ -1,6 +1,6 @@
 --- a/python/src/llvm.cc
 +++ b/python/src/llvm.cc
-@@ -753,7 +753,7 @@ void init_triton_llvm(py::module_ &m) {
+@@ -838,7 +838,7 @@
          if (!pluginFile.empty()) {
            // TODO: Add some logging here that we inserted a pass into the LLVM
            // pass pipeline
@@ -9,51 +9,4 @@
            if (!passPlugin) {
              llvm::Error Err = passPlugin.takeError();
              std::string ErrMsg =
-
---- a/python/test/unit/language/test_compile_only.py
-+++ b/python/test/unit/language/test_compile_only.py
-@@ -99,8 +99,7 @@ def test_compile_only_mulhi_survives_llvm_opt(bits) -> None:
-     for kind, stage in stages.items():
-         module = stage(module, metadata)
-         if kind == "llir":
--            intrinsic = "ui" if bits == 32 else "ull"
--            assert f"@llvm.nvvm.mulhi.{intrinsic}" in str(module)
-+            assert f"@llvm.umulh.i{bits}" in str(module)
-         if kind == "ptx":
-             assert f"mul.hi.u{bits}" in module
-             assert "mul.lo." not in module
-
---- a/test/Conversion/tritongpu_to_llvm.mlir
-+++ b/test/Conversion/tritongpu_to_llvm.mlir
-@@ -23,7 +23,7 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 1 : i32} {
-   tt.func @umulhi_truncated_input(%seed: i64, %out: !tt.ptr<i32>) {
-     // CHECK: %[[X:.*]] = llvm.trunc %arg0 : i64 to i32
-     %x = arith.trunci %seed : i64 to i32
--    // CHECK: llvm.call_intrinsic "llvm.nvvm.mulhi.ui"(%[[X]], %[[X]]) : (i32, i32) -> i32
-+    // CHECK: llvm.call_intrinsic "llvm.umulh"(%[[X]], %[[X]]) : (i32, i32) -> i32
-     %high = tt.mulhiui %x, %x : i32
-     tt.store %out, %high : !tt.ptr<i32>
-     tt.return
-@@ -31,7 +31,7 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 1 : i32} {
- 
-   // CHECK-LABEL: llvm.func @umulhi_i64
-   tt.func @umulhi_i64(%seed: i64, %out: !tt.ptr<i64>) {
--    // CHECK: llvm.call_intrinsic "llvm.nvvm.mulhi.ull"(%arg0, %arg0) : (i64, i64) -> i64
-+    // CHECK: llvm.call_intrinsic "llvm.umulh"(%arg0, %arg0) : (i64, i64) -> i64
-     %high = tt.mulhiui %seed, %seed : i64
-     tt.store %out, %high : !tt.ptr<i64>
-     tt.return
-
---- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ElementwiseOpToLLVM.cpp
-+++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ElementwiseOpToLLVM.cpp
-@@ -949,8 +949,7 @@ struct MulhiUIOpConversion
-                                    Location loc) const {
-     unsigned bitWidth = elemTy.getIntOrFloatBitWidth();
-     assert(bitWidth == 32 || bitWidth == 64);
--    StringRef intrinsic =
--        bitWidth == 32 ? "llvm.nvvm.mulhi.ui" : "llvm.nvvm.mulhi.ull";
-+    StringRef intrinsic = "llvm.umulh";
-     // A widened multiply/shift relies on LLVM recognizing explicit extensions.
-     // InstCombine can replace those extensions with masks, losing mul.hi.
-     return {LLVM::createLLVMIntrinsicCallOp(rewriter, loc, intrinsic, elemTy,
 

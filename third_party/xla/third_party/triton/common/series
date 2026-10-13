@@ -3,6 +3,7 @@ mixed_precision_fix.patch
 mma_limit_pred.patch
 tc_disabled_kwidth_fix.patch
 enable_peer_access.patch
+f8e5m2_conversion.patch
 no_accelerate_through_broadcast.patch
 speed_up_int4_unpacking.patch
 verify_nvmma_encoding.patch
@@ -35,5 +36,5 @@ llvm_cl986804242.patch
 useStrictPropertiesInAssemblyFormat.patch
 llvm_cl991819890.patch
 fix_load_ops.patch
-cxx17_support.patch
+fp64_large_k.patch
 llvm_cl996124567.patch

@@ -1,6 +1,6 @@
 --- a/test/LLVMIR/insert-dbg-intrinsic.mlir
 +++ b/test/LLVMIR/insert-dbg-intrinsic.mlir
-@@ -19,7 +19,7 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32 } {
+@@ -19,7 +19,7 @@
      // CHECK: llvm.intr.dbg.value #di_local_variable{{([0-9]*)?}} = %y_ptr :
      // CHECK: llvm.intr.dbg.value #di_local_variable{{([0-9]*)?}} = %out_ptr :
      // CHECK: llvm.intr.dbg.value #di_local_variable{{([0-9]*)?}} = %n_elements :
@@ -9,7 +9,7 @@
  
      // CHECK: %pid = rocdl.workgroup.id.x
      // CHECK-NEXT: llvm.intr.dbg.value #di_local_variable{{([0-9]*)?}} = %pid :
-@@ -59,7 +59,7 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 8 : i32} {
+@@ -59,7 +59,7 @@
                                  %arg1: !llvm.array<4 x i8>,
                                  %arg2: !llvm.ptr<1> {tt.pointee_type = i16},
                                  %arg3: i32) attributes {noinline = false} {
@@ -21,7 +21,7 @@
 
 --- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ElementwiseOpToLLVM.cpp
 +++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ElementwiseOpToLLVM.cpp
-@@ -389,7 +389,9 @@ struct FpToFpOpConversion
+@@ -382,7 +382,9 @@
            "unsupported rounding mode for f32->bf16 conversion: " +
            stringifyRoundingMode(rounding) + "\n");
      }

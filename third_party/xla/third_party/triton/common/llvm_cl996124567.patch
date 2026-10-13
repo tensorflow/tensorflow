@@ -21,7 +21,7 @@
 
 --- a/third_party/amd/lib/TritonAMDGPUToLLVM/TritonGPUToLLVM.cpp
 +++ b/third_party/amd/lib/TritonAMDGPUToLLVM/TritonGPUToLLVM.cpp
-@@ -10,10 +10,10 @@
+@@ -12,10 +12,10 @@
  #include "mlir/Conversion/MathToLLVM/MathToLLVM.h"
  #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
  #include "mlir/Conversion/UBToLLVM/UBToLLVM.h"
@@ -33,15 +33,15 @@
  #include "mlir/Pass/Pass.h"
  #include "third_party/amd/include/Analysis/AMDGPUAllocation.h"
  #include "third_party/amd/include/Analysis/AxisInfoExt.h"
-@@ -213,16 +213,16 @@
+@@ -222,16 +222,16 @@
      mlir::triton::AMD::populateWarpIdOpToLLVMPattern(typeConverter, targetInfo,
                                                       patterns, commonBenefit);
  
 -    FailureOr<mlir::amdgpu::Chipset> maybeChipset =
--        mlir::amdgpu::Chipset::parse(targetInfo.getBaseArch());
+-        mlir::amdgpu::Chipset::parse(this->gfxArch);
 -    if (failed(maybeChipset)) {
 +    FailureOr<mlir::ROCDL::TargetInfo> maybeTargetInfo =
-+        mlir::ROCDL::TargetInfo::get(targetInfo.getBaseArch());
++        mlir::ROCDL::TargetInfo::get(this->gfxArch);
 +    if (failed(maybeTargetInfo)) {
        emitError(UnknownLoc::get(&getContext()),
                  "Invalid AMDGPU chipset name: " + this->gfxArch);

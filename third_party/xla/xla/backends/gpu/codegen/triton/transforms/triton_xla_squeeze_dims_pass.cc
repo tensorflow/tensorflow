@@ -130,19 +130,13 @@ RankedTensorType SqueezeTensorType(RankedTensorType type,
   if (encoding) {
     auto inferLayoutInterface =
         cast<DialectInferLayoutInterface>(&encoding.getDialect());
-    Attribute dst_encoding;
+    Attribute dst_encoding = dst_encoding_hint;
     [[maybe_unused]] LogicalResult result =
         inferLayoutInterface->inferReshapeOpEncoding(
             type.getShape(), encoding, shape, dst_encoding,
             /*allowReorder=*/false, /*loc=*/std::nullopt);
     CHECK(succeeded(result));
-    if (dst_encoding_hint &&
-        succeeded(inferLayoutInterface->verifyLayoutsAreEqual(
-            shape, dst_encoding, dst_encoding_hint, /*loc=*/std::nullopt))) {
-      encoding = dst_encoding_hint;
-    } else {
-      encoding = dst_encoding;
-    }
+    encoding = dst_encoding;
   }
   return RankedTensorType::get(shape, type.getElementType(), encoding);
 }

@@ -168,18 +168,13 @@ static void MakeLLIR(mlir::OpPassManager* pm,
   pm->addPass(
       mt::createAllocateSharedMemoryNvPass(cuda_cc_as_int, final_ptx_version));
   pm->addPass(ttng::createTritonTensorMemoryAllocationPass());
-  pm->addPass(ttng::createTritonGPUProxyFenceInsertion({cuda_cc_as_int}));
-  pm->addPass(
-      mt::createTritonNvidiaGPUMembar({cuda_cc_as_int, final_ptx_version}));
-  pm->addPass(ttng::createTritonNvidiaGPUTMemBarrierInsertionPass());
-  pm->addPass(ttng::createTritonNvidiaGPUOptimizeMBarrierArrivalsPass());
   // We could add a flag to XLA to optionally enable the following passes:
   // if "consan" in options.instrumentation_mode
   // pm->addPass(mt::instrument::createTritonInstrumentConcurrencySanitizer());
   // pm->addPass(mlir::triton::gluon::createGluonCanonicalize());
   // pm->addPass(mlir::createCSEPass());
-  pm->addPass(ttng::createTritonNvidiaGPUClusterBarrierMbarAllocatorPass());
-  pm->addPass(mt::gpu::createTritonGPUGlobalScratchAllocationPass());
+  pm->addPass(ttng::createTritonGPUProxyFenceInsertion({cuda_cc_as_int}));
+  pm->addPass(ttng::createTritonNvidiaGPUTMemBarrierInsertionPass());
   pm->addPass(
       mt::createConvertTritonGPUToLLVMPass(cuda_cc_as_int, final_ptx_version));
   pm->addPass(mt::createInitializeWSClusterBarriers(
