@@ -350,6 +350,18 @@ py_library(
     ],
 )
 
+distribute_py_strict_test(
+    name = "tpu_util_test",
+    srcs = ["tpu_util_test.py"],
+    deps = [
+        ":tpu_util",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:control_flow_ops",
+        "//tensorflow/python/tpu:tpu_replication",
+    ],
+)
+
 py_library(
     name = "mirrored_strategy",
     srcs = ["mirrored_strategy.py"],
