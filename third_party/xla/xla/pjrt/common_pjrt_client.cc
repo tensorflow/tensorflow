@@ -554,52 +554,14 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CommonPjRtClient::Load(
   return loaded_executable;
 }
 
-absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-CommonPjRtClient::LoadInternal(std::shared_ptr<PjRtExecutable> executable,
-                               const LoadOptions& load_options, bool dump) {
-  tsl::profiler::TraceMe traceme("CommonPjRtClient::Load");
-  VLOG(1) << "CommonPjRtClient::Load";
-  ABSL_ASSIGN_OR_RETURN(const PjRtTopologyDescription* topology,
-                   GetTopologyDescription());
-  ABSL_ASSIGN_OR_RETURN(auto hlo_module, executable->GetHloModule());
-
-  ABSL_ASSIGN_OR_RETURN(CompileOptions compile_options,
-                   executable->GetCompileOptions());
-  ABSL_RETURN_IF_ERROR(compile_options.ApplyAllOptionOverrides());
-  if (IsEarlyExitCompilation(compile_options)) {
-    return InvalidArgument(
-        "Executable compiled with xla_early_exit_with_layouts cannot be "
-        "loaded.");
-  }
-  if (!IsGpuId(platform_id())) {
-    absl::StatusOr<std::unique_ptr<PjRtRuntimeAbiVersion>> runtime_abi_version =
-        RuntimeAbiVersion();
-    if (!absl::IsUnimplemented(runtime_abi_version.status())) {
-      ABSL_RETURN_IF_ERROR(runtime_abi_version.status());
-      ABSL_ASSIGN_OR_RETURN(
-          std::unique_ptr<PjRtExecutableAbiVersion> executable_abi_version,
-          executable->GetAbiVersion());
-      ABSL_RETURN_IF_ERROR(
-          (*runtime_abi_version)->IsCompatibleWith(*executable_abi_version));
-    }
-  }
-  std::vector<PjRtLoadedExecutable::LogicalDeviceIds>
-      addressable_device_logical_ids;
-  std::vector<PjRtDevice*> addressable_devices;
-  int num_replicas;
-  int num_partitions;
-  std::shared_ptr<DeviceAssignment> device_assignment;
-  ABSL_RETURN_IF_ERROR(ParseDeviceAssignmentCompileOptions(
-      compile_options.compile_portable_executable,
-      &compile_options.executable_build_options,
-      [this, topology, &compile_options](int num_replicas, int num_partitions) {
-        return topology->GetDefaultDeviceAssignment(
-            process_index(), num_replicas,
-            /*num_replicas_per_slice=*/std::nullopt, num_partitions,
-            compile_options.multi_slice_config);
-      },
-      &num_replicas, &num_partitions, &device_assignment));
-
+absl::StatusOr<tsl::RCReference<PjRtExecutableLoadState>>
+CommonPjRtClient::MakeLoadStateAndResolveAddressableDevices(
+    PjRtExecutable* executable, CompileOptions* compile_options,
+    std::vector<PjRtLoadedExecutable::LogicalDeviceIds>&
+        addressable_device_logical_ids,
+    std::vector<PjRtDevice*>& addressable_devices,
+    std::shared_ptr<DeviceAssignment>& device_assignment,
+    const LoadOptions& load_options) {
   // Find devices that are addressable by this client/task.
   if (device_assignment != nullptr) {
     int num_replicas = device_assignment->replica_count();
@@ -630,6 +592,73 @@ CommonPjRtClient::LoadInternal(std::shared_ptr<PjRtExecutable> executable,
     }
   }
 
+  return raw_client()->MakeLoadState();
+}
+
+absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+CommonPjRtClient::LoadInternal(std::shared_ptr<PjRtExecutable> executable,
+                               const LoadOptions& load_options, bool dump) {
+  ABSL_ASSIGN_OR_RETURN(CompileOptions compile_options,
+                   executable->GetCompileOptions());
+  ABSL_RETURN_IF_ERROR(compile_options.ApplyAllOptionOverrides());
+  return LoadInternal(executable, std::move(compile_options), nullptr,
+                      load_options, dump);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+CommonPjRtClient::LoadInternal(
+    std::shared_ptr<PjRtExecutable> executable,
+    CompileOptions&& compile_options,
+    std::shared_ptr<DeviceAssignment> device_assignment,
+    const LoadOptions& load_options, bool dump) {
+  tsl::profiler::TraceMe traceme("CommonPjRtClient::Load");
+  VLOG(1) << "CommonPjRtClient::Load";
+
+  ABSL_ASSIGN_OR_RETURN(const PjRtTopologyDescription* topology,
+                   GetTopologyDescription());
+  ABSL_ASSIGN_OR_RETURN(auto hlo_module, executable->GetHloModule());
+  if (IsEarlyExitCompilation(compile_options)) {
+    return InvalidArgument(
+        "Executable compiled with xla_early_exit_with_layouts cannot be "
+        "loaded.");
+  }
+  if (!IsGpuId(platform_id())) {
+    absl::StatusOr<std::unique_ptr<PjRtRuntimeAbiVersion>> runtime_abi_version =
+        RuntimeAbiVersion();
+    if (!absl::IsUnimplemented(runtime_abi_version.status())) {
+      ABSL_RETURN_IF_ERROR(runtime_abi_version.status());
+      ABSL_ASSIGN_OR_RETURN(
+          std::unique_ptr<PjRtExecutableAbiVersion> executable_abi_version,
+          executable->GetAbiVersion());
+      ABSL_RETURN_IF_ERROR(
+          (*runtime_abi_version)->IsCompatibleWith(*executable_abi_version));
+    }
+  }
+  std::vector<PjRtLoadedExecutable::LogicalDeviceIds>
+      addressable_device_logical_ids;
+  std::vector<PjRtDevice*> addressable_devices;
+  if (device_assignment == nullptr) {
+    int num_replicas;
+    int num_partitions;
+    ABSL_RETURN_IF_ERROR(ParseDeviceAssignmentCompileOptions(
+        compile_options.compile_portable_executable,
+        &compile_options.executable_build_options,
+        [this, topology, &compile_options](int num_replicas,
+                                           int num_partitions) {
+          return topology->GetDefaultDeviceAssignment(
+              process_index(), num_replicas,
+              /*num_replicas_per_slice=*/std::nullopt, num_partitions,
+              compile_options.multi_slice_config);
+        },
+        &num_replicas, &num_partitions, &device_assignment));
+  }
+
+  ABSL_ASSIGN_OR_RETURN(
+      auto load_state,
+      MakeLoadStateAndResolveAddressableDevices(
+          executable.get(), &compile_options, addressable_device_logical_ids,
+          addressable_devices, device_assignment, load_options));
+  ABSL_RETURN_IF_ERROR(load_state->Preload(executable.get()));
   const auto& ex_options = compile_options.executable_build_options;
   const bool xla_dump_hlo_unoptimized_snapshots =
       ex_options.has_debug_options() &&
@@ -675,8 +704,55 @@ CommonPjRtClient::LoadInternal(std::shared_ptr<PjRtExecutable> executable,
     }
   }
 
+  // TODO(parkers): get to the bottom of this...
   auto parameter_shapes =
-      GetParameterShapes(hlo_module->compute_computation_layout());
+      IsTpuId(platform_id())
+          ? GetParameterShapes(hlo_module->entry_computation_layout())
+          : GetParameterShapes(hlo_module->compute_computation_layout());
+  if (IsTpuId(platform_id())) {
+    auto canonicalize_shapes =
+        [&](absl::Span<xla::Shape> shapes) -> absl::Status {
+      for (xla::Shape& shape : shapes) {
+        ABSL_ASSIGN_OR_RETURN(int kind_id, GetMemorySpaceKindForShape(shape));
+        ABSL_ASSIGN_OR_RETURN(shape,
+                         topology->MakeCanonicalShapeForMemorySpace(
+                             kind_id, shape,
+                             shape.has_layout() ? &shape.layout() : nullptr));
+      }
+      return absl::OkStatus();
+    };
+    ABSL_RETURN_IF_ERROR(canonicalize_shapes(
+        result_shape.IsTuple()
+            ? absl::MakeSpan(*result_shape.mutable_tuple_shapes())
+            : absl::MakeSpan(&result_shape, 1)));
+    ABSL_RETURN_IF_ERROR(canonicalize_shapes(absl::MakeSpan(parameter_shapes)));
+    // canonicalize_shapes calls MakeCanonicalShapeForMemorySpace, which by
+    // default sets dynamic_shape_metadata_prefix_bytes to 1024 for all dynamic
+    // shapes. However, custom call PadRealToStatic consumes dynamic inputs
+    // without the 1024-byte metadata prefix. Find parameters feeding
+    // PadRealToStatic custom calls and explicitly set their prefix bytes to 0.
+    const HloComputation* entry_comp = hlo_module->entry_computation();
+    for (const HloInstruction* instruction : entry_comp->instructions()) {
+      if (instruction->IsCustomCall("PadRealToStatic") &&
+          instruction->operand_count() > 0) {
+        const HloInstruction* operand = instruction->operand(0);
+        while (operand->opcode() == HloOpcode::kCopy ||
+               operand->opcode() == HloOpcode::kBitcast) {
+          operand = operand->operand(0);
+        }
+        CHECK(operand->opcode() == HloOpcode::kParameter);
+        CHECK(operand->shape().IsArray());
+        int64_t param_no = operand->parameter_number();
+        DCHECK_LT(param_no, parameter_shapes.size());
+        DCHECK(parameter_shapes[param_no].IsArray());
+        if (param_no < parameter_shapes.size()) {
+          parameter_shapes[param_no]
+              .mutable_layout()
+              ->set_dynamic_shape_metadata_prefix_bytes(0);
+        }
+      }
+    }
+  }
   using InputHloSnapshotBits =
       CommonPjRtLoadedExecutable::DispatchInfo::InputHloSnapshotBits;
   std::unique_ptr<InputHloSnapshotBits> input_hlo_snapshot_bits;
@@ -705,8 +781,6 @@ CommonPjRtClient::LoadInternal(std::shared_ptr<PjRtExecutable> executable,
   if (IsCpuId(platform_id())) {
     dispatch_info.parameter_memory_space_kind_ids.clear();
   }
-  auto load_state = raw_client()->MakeLoadState();
-  ABSL_RETURN_IF_ERROR(load_state->Preload(executable.get()));
   auto loaded_executable = std::make_unique<CommonPjRtLoadedExecutable>(
       this, raw_client()->ToAsyncExecutable(std::move(executable)),
       std::move(dispatch_info), std::move(load_state));

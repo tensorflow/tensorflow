@@ -592,7 +592,24 @@ class CommonPjRtClient : public PjRtClient {
       std::shared_ptr<PjRtExecutable> executable,
       const LoadOptions& load_options) override;
 
+  // TODO(parkers): Remove the need for this temporary function once more
+  // backend differences are resolved.
+  virtual absl::StatusOr<tsl::RCReference<PjRtExecutableLoadState>>
+  MakeLoadStateAndResolveAddressableDevices(
+      PjRtExecutable* executable, CompileOptions* compile_options,
+      std::vector<PjRtLoadedExecutable::LogicalDeviceIds>&
+          addressable_device_logical_ids,
+      std::vector<PjRtDevice*>& addressable_devices,
+      std::shared_ptr<DeviceAssignment>& device_assignment,
+      const LoadOptions& load_options);
+
  protected:
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> LoadInternal(
+      std::shared_ptr<PjRtExecutable> executable,
+      CompileOptions&& compile_options,
+      std::shared_ptr<DeviceAssignment> device_assignment,
+      const LoadOptions& load_options, bool dump);
+
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> LoadInternal(
       std::shared_ptr<PjRtExecutable> executable,
       const LoadOptions& load_options, bool dump);
