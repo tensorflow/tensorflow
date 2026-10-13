@@ -711,6 +711,31 @@ TEST(ArrayOpsTest, MatrixSetDiag_ShapeFn) {
   INFER_OK(op, "[?,3,2];[1,2]", "[d1_0,d0_1,d0_2]");
 }
 
+TEST(ArrayOpsTest, MatrixSetDiagV3_ShapeFn) {
+  ShapeInferenceTestOp op("MatrixSetDiagV3");
+
+  // Inputs are input, diagonal and k.
+
+  // Without k's value, the batch dimensions are counted from the input's
+  // rank, so a band's diagonals aren't taken for a single diagonal's.
+  INFER_OK(op, "[?,4];[2,?];[2]", "in0");
+  INFER_OK(op, "[?,?,4];[3,2,?];[2]", "[d1_0,d0_1,d0_2]");
+  INFER_OK(op, "[?,?,4];[3,?];[]", "[d1_0,d0_1,d0_2]");
+
+  // Without the input's rank either, a k with one element is a single
+  // diagonal, and nothing is inferred from a k with two.
+  INFER_OK(op, "?;[3,?];[]", "[d1_0,?,?]");
+  INFER_OK(op, "?;[3,2,?];[2]", "in0");
+
+  // With k's value.
+  Tensor k_t = test::AsTensor<int32_t>({-1, 0});
+  op.input_tensors.resize(3);
+  op.input_tensors[2] = &k_t;
+  INFER_OK(op, "[?,4];[2,?];[2]", "in0");
+  INFER_OK(op, "?;[3,2,?];[2]", "[d1_0,?,?]");
+  INFER_ERROR("Shape must be rank 2 but is rank 1", op, "[?,4];[4];[2]");
+}
+
 TEST(ArrayOpsTest, ExpandDims_ShapeFn) {
   ShapeInferenceTestOp op("ExpandDims");
   op.input_tensors.resize(2);
