@@ -23,6 +23,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu::tensor_ir {
@@ -264,9 +266,39 @@ CodegenDecision IsInstructionSupportedForFusion(const HloInstruction& instr) {
       break;
     }
 
+    // HLO allows scalar `min`/`max` bounds for clamp and a scalar predicate
+    // for select, but the TensorIR ops require all operands to have the same
+    // shape.
+    case HloOpcode::kClamp:
+    case HloOpcode::kSelect: {
+      for (const HloInstruction* operand : instr.operands()) {
+        if (operand->shape().dimensions() != instr.shape().dimensions()) {
+          return CodegenDecision::Forbid(
+              absl::StrCat("Unsupported scalar operand of ternary operation: ",
+                           instr.name()));
+        }
+      }
+      break;
+    }
+
     default: {
       break;
     }
+  }
+  return CodegenDecision::Allow();
+}
+
+CodegenDecision IsSupportedComputeCapability(
+    const se::GpuComputeCapability& cc) {
+  const auto* cuda_cc = cc.cuda_compute_capability();
+  if (cuda_cc == nullptr) {
+    return CodegenDecision::Forbid("TensorIR requires a CUDA GPU");
+  }
+  if (!cuda_cc->IsAtLeastHopper()) {
+    return CodegenDecision::Forbid(
+        absl::StrCat("TensorIR requires compute capability ",
+                     se::CudaComputeCapability::Hopper().ToString(),
+                     " or newer, got ", cuda_cc->ToString()));
   }
   return CodegenDecision::Allow();
 }

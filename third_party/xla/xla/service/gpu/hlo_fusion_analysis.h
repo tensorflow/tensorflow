@@ -52,6 +52,7 @@ class HloFusionAnalysis {
     kScatter,
     kCuDnn,
     kSort,
+    kTensorIr,
   };
 
   // Precomputed information about inputs (arguments) and outputs (roots) of the
