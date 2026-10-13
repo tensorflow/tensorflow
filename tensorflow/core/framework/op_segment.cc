@@ -29,7 +29,7 @@ OpSegment::Item::~Item() {
   for (const auto& kv : name_kernel) delete kv.second;
 }
 
-OpSegment::OpSegment() {}
+OpSegment::OpSegment() = default;
 
 OpSegment::~OpSegment() {
   for (const auto& kv : sessions_) delete kv.second;

@@ -94,7 +94,7 @@ class QueueInterface : public ResourceBase {
   }
 
  protected:
-  ~QueueInterface() override {}
+  ~QueueInterface() override = default;
 };
 
 }  // namespace tensorflow

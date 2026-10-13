@@ -482,7 +482,7 @@ ApiDefMap::ApiDefMap(const OpList& op_list) {
   }
 }
 
-ApiDefMap::~ApiDefMap() {}
+ApiDefMap::~ApiDefMap() = default;
 
 absl::Status ApiDefMap::LoadFileList(
     Env* env, const std::vector<std::string>& filenames) {

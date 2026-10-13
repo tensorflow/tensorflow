@@ -35,7 +35,7 @@ class MockOpRegistry : public OpRegistryInterface {
                             .Input("f: float")
                             .Input("i: int32")
                             .Output("of: double"))) {}
-  ~MockOpRegistry() override {}
+  ~MockOpRegistry() override = default;
 
   // Returns an error status and sets *op_reg_data to nullptr if no OpDef is
   // registered under that name, otherwise returns the registered OpDef.

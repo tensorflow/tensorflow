@@ -65,7 +65,7 @@ class RendezvousInterface {
     DeviceNameUtils::ParsedName dst;
     absl::string_view edge_name;
 
-    ParsedKey() {}
+    ParsedKey() = default;
     ParsedKey(const ParsedKey& b) { *this = b; }
 
     ParsedKey& operator=(const ParsedKey& b);

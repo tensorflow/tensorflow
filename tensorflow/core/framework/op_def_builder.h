@@ -66,7 +66,7 @@ typedef std::function<absl::Status(shape_inference::InferenceContext* c)>
 
 struct OpRegistrationData {
  public:
-  OpRegistrationData() {}
+  OpRegistrationData() = default;
   OpRegistrationData(const OpDef& def) : op_def(def) {}
   OpRegistrationData(const OpDef& def, const OpShapeInferenceFn& fn,
                      bool is_function = false)
