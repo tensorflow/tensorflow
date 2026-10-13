@@ -5990,6 +5990,14 @@ class Subgraph {
         logging_context, begin_tensor, size_tensor, 0, node_index, "SLICE"));
 
     const int num_dims = begin_tensor.dims->data[0];
+    if (num_dims != input_tensor.dims->size) {
+      TF_LITE_MAYBE_KERNEL_LOG(
+          logging_context,
+          "begin_tensor size (%d) must be equal to input rank (%d) in SLICE "
+          "node #%d",
+          num_dims, input_tensor.dims->size, node_index);
+      return kTfLiteError;
+    }
     if (num_dims > XNN_MAX_TENSOR_DIMS) {
       TF_LITE_MAYBE_KERNEL_LOG(
           logging_context,
@@ -6024,6 +6032,14 @@ class Subgraph {
                                  "size %" PRId64
                                  " must be positive or -1 in SLICE node #%d",
                                  size[i], node_index);
+        return kTfLiteError;
+      }
+      if (size[i] > 0 &&
+          begin[i] > std::numeric_limits<int64_t>::max() - size[i]) {
+        TF_LITE_MAYBE_KERNEL_LOG(logging_context,
+                                 "begin %" PRId64 " + size %" PRId64
+                                 " overflows in SLICE node #%d",
+                                 begin[i], size[i], node_index);
         return kTfLiteError;
       }
     }

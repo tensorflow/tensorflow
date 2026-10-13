@@ -64,6 +64,10 @@ TfLiteStatus CalculateOutputShapeVector(TfLiteContext* context,
   // the input rank, so establish that here before either is dereferenced.
   TF_LITE_ENSURE_EQ(context, NumElements(begin), input_dims);
   TF_LITE_ENSURE_EQ(context, NumElements(size), input_dims);
+  if (input_dims > 0) {
+    TF_LITE_ENSURE(context, GetTensorData<T>(begin) != nullptr);
+    TF_LITE_ENSURE(context, GetTensorData<T>(size) != nullptr);
+  }
   for (int idx = 0; idx < input_dims; ++idx) {
     const T dim_value = static_cast<T>(SizeOfDimension(input, idx));
     const T begin_value = GetTensorData<T>(begin)[idx];
