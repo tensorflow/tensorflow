@@ -116,6 +116,7 @@ cc_library(
         "@llvm-project//mlir:BufferizationDialect",
         "@llvm-project//mlir:BufferizationInterfaces",
         "@llvm-project//mlir:BytecodeOpInterface",
+        "@llvm-project//mlir:ComplexDialect",
         "@llvm-project//mlir:DialectUtils",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FunctionInterfaces",
@@ -127,6 +128,7 @@ cc_library(
         "@llvm-project//mlir:SideEffectInterfaces",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:VectorDialect",
         "@stablehlo//:stablehlo_ops",
     ],
 )

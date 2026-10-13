@@ -27,10 +27,12 @@ def XTileDialect : Dialect {
 
   let dependentDialects = [
     "mlir::arith::ArithDialect",
+    "mlir::complex::ComplexDialect",
     "mlir::memref::MemRefDialect",
     "mlir::tensor::TensorDialect",
     "mlir::stablehlo::StablehloDialect",
     "mlir::scf::SCFDialect",
+    "mlir::vector::VectorDialect",
   ];
 
   let useDefaultAttributePrinterParser = 1;

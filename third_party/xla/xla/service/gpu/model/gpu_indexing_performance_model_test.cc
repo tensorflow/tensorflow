@@ -726,6 +726,7 @@ ENTRY main {
       4 * (64 * 32) * (num_blocks * CeilOfRatio(257, 64))        // ==> %p1
           + 4 * (64 * 32) * (num_blocks * CeilOfRatio(257, 64))  // ==> %p0
   );
+  EXPECT_EQ(result.l2_bytes_read, result.bytes_read);
   // (32 * 64 + 32 * 64) * 4 bytes (f32) * 1 stage = 16384 bytes.
   EXPECT_EQ(result.shared_memory_per_block_bytes, 2 * (32 * 64 * 4));
   // 1 accumulator register per thread (32 * 32 / 1024) plus base kernel-state

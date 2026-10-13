@@ -1298,6 +1298,65 @@ TEST(ExecutableTest, ExecutableSerialization) {
   }
 }
 
+TEST(ExecutableTest, ExecutableSerializationUsesExecutableOutputDimensions) {
+  static constexpr absl::string_view kUnevenShardingModule = R"mlir(
+    module @uneven_sharding attributes {
+      mhlo.num_replicas = 1 : i32,
+      mhlo.num_partitions = 2 : i32
+    } {
+      func.func @main(
+        %arg0: tensor<3x3xi32> {mhlo.sharding = "{devices=[2,1]<=[2]}"}
+      ) -> (
+        tensor<3x3xi32> {mhlo.sharding = "{devices=[2,1]<=[2]}"}
+      ) {
+        return %arg0 : tensor<3x3xi32>
+      }
+    }
+  )mlir";
+
+  ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  Compiler* compiler = client->GetDefaultCompiler();
+  absl::Span<Device* const> devices =
+      client->addressable_devices().subspan(0, 2);
+
+  ASSERT_OK_AND_ASSIGN(
+      LoadedExecutableRef loaded_executable,
+      CompileOnDevices(client.get(), compiler, kUnevenShardingModule, devices,
+                       /*replicated=*/false, /*serialize=*/false));
+
+  absl::StatusOr<std::string> serialized_executable =
+      loaded_executable->Serialize();
+  if (absl::IsUnimplemented(serialized_executable.status())) {
+    GTEST_SKIP() << "Serialization is not supported on this platform.";
+  }
+  ASSERT_OK(serialized_executable);
+
+  SerializedXlaExecutableMetadata metadata;
+  tsl::protobuf::io::ArrayInputStream input_stream(
+      serialized_executable->data(), serialized_executable->size());
+  ASSERT_TRUE(tsl::protobuf::util::ParseDelimitedFromZeroCopyStream(
+      &metadata, &input_stream, nullptr));
+
+  ASSERT_EQ(metadata.output_specs_size(), 1);
+  EXPECT_THAT(metadata.output_specs(0).shape().dims(), ElementsAre(3, 3));
+  // Padded per-device shard shape reported by
+  // `PjRtExecutable::GetOutputDimensions()` (whereas
+  // `hlo_sharding_util::TileShape` would fail `3 % 2 == 0`).
+  EXPECT_THAT(metadata.output_specs(0).shard_shape().dims(), ElementsAre(2, 3));
+
+  ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
+                       client->MakeDeviceList(devices));
+  auto options = std::make_unique<XlaDeserializeExecutableOptions>();
+  options->devices = std::move(device_list);
+  ASSERT_OK_AND_ASSIGN(
+      LoadedExecutableRef deserialized_executable,
+      compiler
+          ->DeserializeLoadedExecutable(absl::Cord(*serialized_executable),
+                                        std::move(options))
+          .Await());
+  EXPECT_EQ(deserialized_executable->name(), "uneven_sharding");
+}
+
 }  // namespace
 }  // namespace ifrt
 }  // namespace xla
