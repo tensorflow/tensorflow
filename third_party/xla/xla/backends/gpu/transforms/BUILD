@@ -2611,6 +2611,7 @@ cc_library(
         "//xla/service/gpu:gpu_fusible",
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/service/gpu:ir_emission_utils",
+        "//xla/service/gpu:mlir_context_pool",
         "//xla/service/gpu/model:combined_gpu_performance_model",
         "//xla/service/gpu/model:fusion_analysis_cache",
         "//xla/service/gpu/model:gpu_hlo_cost_analysis",
@@ -2623,6 +2624,7 @@ cc_library(
         "//xla/tsl/concurrency:future",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:logging",
+        "//xla/tsl/util:sorted_range",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:nullability",
@@ -2647,6 +2649,7 @@ xla_cc_test(
     srcs = ["priority_fusion_test.cc"],
     deps = [
         ":priority_fusion",
+        "//xla:shape_util",
         "//xla:xla_proto_cc",
         "//xla/backends/gpu/codegen/emitters:mlir_kernel_emitter",
         "//xla/codegen/xtile:xtile_config_proto_cc",
