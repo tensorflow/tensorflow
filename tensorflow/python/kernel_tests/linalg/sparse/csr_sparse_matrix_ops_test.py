@@ -1193,6 +1193,25 @@ class CSRSparseMatrixOpsTest(test.TestCase, parameterized.TestCase):
         self.assertAllClose(full_dense_matrix, verification_values)
 
   @test_util.run_in_graph_and_eager_modes
+  def testSparseCholeskyInvalidPermutation(self):
+    # A permutation entry outside [0, num_rows) is applied by Eigen as an
+    # out-of-bounds subscript; the op must reject it instead of corrupting
+    # memory.
+    dense_matrix = np.array([
+        [2, 0, 0],
+        [0, 3, 0],
+        [1, 1, 7],
+    ]).astype(np.float32)
+    with test_util.force_cpu():
+      sparse_matrix = dense_to_csr_sparse_matrix(
+          math_ops.cast(dense_matrix, dtypes.float32))
+      invalid_permutation = np.array([0, 3, 1], dtype=np.int32)
+      with self.assertRaises((ValueError, errors.InvalidArgumentError)):
+        self.evaluate(
+            sparse_csr_matrix_ops.sparse_matrix_sparse_cholesky(
+                sparse_matrix, invalid_permutation, type=dtypes.float32))
+
+  @test_util.run_in_graph_and_eager_modes
   def testBatchSparseCholesky(self):
     dense_mat = np.array([
         # A diagonal matrix.
