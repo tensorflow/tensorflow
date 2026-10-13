@@ -440,11 +440,13 @@ class MatrixDiagPartOp : public XlaOpKernel {
                        context->builder(),
                        static_cast<int32_t>(input_shape.dim_size(dim)));
     };
+    // Only built with dynamic matrix dimensions, so that static inputs build
+    // the same HLO as before.
+    xla::XlaOp actual_num_rows;
+    xla::XlaOp actual_num_cols;
     // The length of the longest diagonal from lower to upper at the actual
     // sizes.
     const auto actual_len = [&](int64_t lower, int64_t upper) {
-      const xla::XlaOp actual_num_rows = actual_size(input_rank - 2);
-      const xla::XlaOp actual_num_cols = actual_size(input_rank - 1);
       return xla::Min(
           xla::Add(actual_num_rows,
                    xla::ScalarLike(actual_num_rows,
@@ -455,6 +457,8 @@ class MatrixDiagPartOp : public XlaOpKernel {
     };
     xla::XlaOp actual_max_diag_len;
     if (dynamic_matrix) {
+      actual_num_rows = actual_size(input_rank - 2);
+      actual_num_cols = actual_size(input_rank - 1);
       actual_max_diag_len = actual_len(lower_diag_index, upper_diag_index);
     }
 
