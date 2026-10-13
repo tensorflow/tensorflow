@@ -746,6 +746,22 @@ class MatrixSetDiagTest(xla_test.XLATestCase):
             [diagonal, [80, 81, 82, 83, 84]], {-2: keep}, keep),
         [[[90, 2, 3], [7, 92, 9]], [[80, 17, 18], [22, 82, 24]]])
 
+  def testBandFromVector(self):
+    # A band of diagonals needs them stacked in a dimension that a vector
+    # doesn't have, and looking for it aborted the process. The ranks are left
+    # unknown so that shape inference doesn't reject the vector first.
+    with self.session() as session:
+      with self.test_scope():
+        x = array_ops.placeholder(dtypes.int32)
+        diagonal = array_ops.placeholder(dtypes.int32)
+        output = gen_array_ops.matrix_set_diag_v3(
+            input=x, diagonal=diagonal, k=[-1, 1], align="RIGHT_LEFT")
+      with self.assertRaisesOpError("The number of diagonals provided"):
+        session.run(output, {
+            x: np.zeros([2, 3, 3], dtype=np.int32),
+            diagonal: [1, 2, 3]
+        })
+
 
 class MatrixDiagPartTest(xla_test.XLATestCase):
 

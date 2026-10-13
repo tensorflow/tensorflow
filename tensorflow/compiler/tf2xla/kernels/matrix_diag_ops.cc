@@ -631,7 +631,8 @@ class MatrixSetDiagOp : public XlaOpKernel {
     const Eigen::Index num_diags = upper_diag_index - lower_diag_index + 1;
     OP_REQUIRES(context,
                 lower_diag_index == upper_diag_index ||
-                    (diag_shape.dim_size(input_rank - 2) == num_diags),
+                    (diag_rank == input_rank &&
+                     diag_shape.dim_size(input_rank - 2) == num_diags),
                 absl::InvalidArgumentError(
                     "The number of diagonals provided in `diag` "
                     "is not consistent with `lower_diag_index` and "
