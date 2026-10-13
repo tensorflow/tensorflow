@@ -71,13 +71,15 @@ class RollOp : public OpKernel {
     // total modulo sum of shifts for each dimension
     absl::InlinedVector<int64_t, 4> shift_mod_sum(num_dims, 0);
     for (int i = 0; i < num_shifts; i++) {
-      int axis = axis_flat(i);
+      int64_t axis = axis_flat(i);
       if (axis < 0) {
         axis += num_dims;
       }
-      OP_REQUIRES(context, FastBoundsCheck(axis, num_dims),
-                  absl::InvalidArgumentError(
-                      absl::StrCat("axis ", axis, " is out of range")));
+      OP_REQUIRES(
+          context, FastBoundsCheck(axis, num_dims),
+          absl::InvalidArgumentError(absl::StrCat(
+              "axis ", axis_flat(i), " is out of range for input of rank ",
+              num_dims, ".")));
       const int64_t ds = std::max<int64_t>(input.dim_size(axis), 1);
       // reduce the shift first so the sum cannot overflow int64_t
       const int64_t sum =

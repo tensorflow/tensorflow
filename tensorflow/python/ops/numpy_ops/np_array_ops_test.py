@@ -1682,9 +1682,12 @@ class ArrayMethodsTest(test.TestCase):
     _test(a, [1, -2], axis=[-3, 2])
     _test(a, np.array([0, 1]), axis=np.array([-1, 1]))
 
-    # Empty and scalar arrays.
+    # Empty and scalar arrays, including rolls on the empty dimension itself
+    # (exercising the max(dim_size, 1) safeguard).
+    _test(np.empty((0, 3, 4)), 1, axis=0)
     _test(np.empty((0, 3, 4)), 1, axis=1)
     _test(np.empty((3, 4, 0)), 1, axis=1)
+    _test(np.empty((3, 4, 0)), 1, axis=2)
     _test(np.array(42.0), 1)
 
     # Out-of-bounds axes raise, checked by the backend kernel.
@@ -1712,6 +1715,10 @@ class ArrayMethodsTest(test.TestCase):
         errors_impl.InvalidArgumentError, 'out of range'
     ):
       np_array_ops.roll(a, 1, axis=1 << 33)
+    with self.assertRaisesRegex(
+        errors_impl.InvalidArgumentError, 'out of range'
+    ):
+      np_array_ops.roll(a, 1, axis=-(1 << 33))
 
     # Graph-mode tracing of roll with concrete axes.
     @def_function.function
@@ -1730,6 +1737,10 @@ class ArrayMethodsTest(test.TestCase):
         errors_impl.InvalidArgumentError, 'out of range'
     ):
       f(a, 1, 3)
+    with self.assertRaisesRegex(
+        errors_impl.InvalidArgumentError, 'out of range'
+    ):
+      f(a, constant_op.constant(1), constant_op.constant(3))
 
   def testNdim(self):
     self.assertAllEqual(0, np_array_ops.ndim(0.5))
