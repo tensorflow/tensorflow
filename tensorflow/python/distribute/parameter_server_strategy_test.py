@@ -898,7 +898,7 @@ class CentralStorageStrategyTest(strategy_test_lib.DistributionTestBase,
     strategy, _, _ = create_test_objects(num_gpus=0)
     self.assertFalse(strategy.extended._in_multi_worker_mode())
 
-  @combinations.generate(combinations.combine(mode=['eager']))
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_central_storage_strategy_input_options(self):
     strategy = central_storage_strategy.CentralStorageStrategy._from_num_gpus(
         0)
