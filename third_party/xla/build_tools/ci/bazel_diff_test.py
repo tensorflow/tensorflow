@@ -14,6 +14,7 @@
 # ============================================================================
 """Tests for bazel_diff module."""
 
+import dataclasses
 import hashlib
 import os
 import subprocess
@@ -25,6 +26,28 @@ from absl.testing import parameterized
 
 from build_tools.ci import bazel_diff
 from build_tools.ci import change_detector
+
+
+@dataclasses.dataclass(frozen=True)
+class _FakeBuildConfig:
+  target_patterns: tuple[str, ...] = ("//xla/...",)
+  configs: tuple[str, ...] = ()
+  repo_env: dict[str, str] = dataclasses.field(default_factory=dict)
+  options: dict[str, object] = dataclasses.field(default_factory=dict)
+  startup_options: dict[str, object] = dataclasses.field(default_factory=dict)
+  bazel_diff_use_cquery: bool = True
+
+
+def _write_impacted_targets(
+    jar_path: str,
+    workspace_dir: str,
+    base_hashes: str,
+    head_hashes: str,
+    output_path: str,
+) -> None:
+  del jar_path, workspace_dir, base_hashes, head_hashes
+  with open(output_path, "w", encoding="utf-8") as f:
+    f.write("//xla/service/cpu:cpu_compiler_test\n")
 
 
 class BazelDiffTest(parameterized.TestCase):
@@ -335,6 +358,92 @@ class BazelDiffTest(parameterized.TestCase):
     )
     self.assertEqual(decision.decision, bazel_diff.BazelDiffDecisionType.FULL)
     self.assertIn("Failed to get git changed files", decision.reason)
+
+  @mock.patch.object(
+      bazel_diff, "run_get_impacted_targets", autospec=True, spec_set=True
+  )
+  @mock.patch.object(
+      bazel_diff, "run_generate_hashes", autospec=True, spec_set=True
+  )
+  @mock.patch.object(
+      bazel_diff, "download_and_verify_jar", autospec=True, spec_set=True
+  )
+  @mock.patch.object(bazel_diff.subprocess, "run", autospec=True, spec_set=True)
+  @mock.patch.object(
+      change_detector, "get_diff_base", autospec=True, spec_set=True
+  )
+  @mock.patch.object(
+      change_detector, "get_changed_files", autospec=True, spec_set=True
+  )
+  @mock.patch.object(
+      change_detector, "ensure_base_fetched", autospec=True, spec_set=True
+  )
+  @mock.patch.object(
+      change_detector, "run_git_best_effort", autospec=True, spec_set=True
+  )
+  def test_compute_impacted_targets_checkout_and_restore(
+      self,
+      mock_git_best_effort,
+      mock_ensure_fetched,
+      mock_changed_files,
+      mock_diff_base,
+      mock_subprocess_run,
+      mock_download_jar,
+      mock_generate_hashes,
+      mock_get_impacted,
+  ):
+    del mock_ensure_fetched, mock_generate_hashes
+    mock_git_best_effort.side_effect = [
+        subprocess.CompletedProcess(
+            args=["git", "rev-parse", "HEAD"],
+            returncode=0,
+            stdout="orig_head_sha\n",
+        ),
+        subprocess.CompletedProcess(
+            args=["git", "checkout", "-f", "orig_head_sha"],
+            returncode=0,
+            stdout="",
+        ),
+    ]
+    mock_changed_files.return_value = ["xla/service/cpu/cpu_compiler.cc"]
+    mock_diff_base.return_value = "merge_base_sha"
+    mock_download_jar.return_value = "/tmp/bazel-diff.jar"
+    mock_get_impacted.side_effect = _write_impacted_targets
+
+    decision = bazel_diff.compute_impacted_targets(
+        _FakeBuildConfig(), "base_sha", "HEAD", workspace_dir="/workspace"
+    )
+
+    self.assertEqual(
+        decision.decision, bazel_diff.BazelDiffDecisionType.IMPACTED
+    )
+    self.assertEqual(
+        decision.impacted_targets, ("//xla/service/cpu:cpu_compiler_test",)
+    )
+    self.assertEqual(
+        mock_subprocess_run.call_args_list,
+        [
+            mock.call(
+                ["git", "checkout", "-f", "merge_base_sha"],
+                cwd="/workspace",
+                check=True,
+                capture_output=True,
+            ),
+            mock.call(
+                ["git", "checkout", "-f", "orig_head_sha"],
+                cwd="/workspace",
+                check=True,
+                capture_output=True,
+            ),
+        ],
+    )
+    self.assertEqual(
+        mock_git_best_effort.call_args_list,
+        [
+            mock.call(["rev-parse", "HEAD"], cwd="/workspace"),
+            mock.call(["checkout", "-f", "orig_head_sha"], cwd="/workspace"),
+        ],
+    )
 
 
 if __name__ == "__main__":
