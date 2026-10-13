@@ -61,10 +61,11 @@ struct CalculateNNZPerBatchMatrixFromIndices {
 //   coo_row_ind.size() == indices.dim_size(0)
 template <typename Device>
 struct SparseTensorToCOOSparseMatrix {
-  void operator()(const Device& d, TTypes<int64_t>::ConstVec host_dense_shape,
-                  TTypes<int64_t>::ConstMatrix indices,
-                  TTypes<int32_t>::Vec coo_row_ind,
-                  TTypes<int32_t>::Vec coo_col_ind);
+  absl::Status operator()(const Device& d,
+                          TTypes<int64_t>::ConstVec host_dense_shape,
+                          TTypes<int64_t>::ConstMatrix indices,
+                          TTypes<int32_t>::Vec coo_row_ind,
+                          TTypes<int32_t>::Vec coo_col_ind);
 };
 
 // Write coo batch, row, and column vectors to output matrix indices:
