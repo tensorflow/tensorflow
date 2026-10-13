@@ -677,6 +677,75 @@ class MatrixSetDiagTest(xla_test.XLATestCase):
                   "align": align
               }, solution)
 
+  def _setDiagOfSelected(self, x, diagonal, masks, diag_mask, **params):
+    # masks maps axes of x to masks of the entries to keep along them, which
+    # gives those dimensions a size only known at run time, and diag_mask does
+    # the same for the diagonal's last dimension.
+    axes = sorted(masks)
+
+    @def_function.function(jit_compile=True)
+    def f(x, diagonal, diag_mask, *x_masks):
+      for axis, mask in zip(axes, x_masks):
+        x = array_ops.gather(
+            x, array_ops.reshape(array_ops.where(mask), [-1]), axis=axis)
+      diagonal = array_ops.gather(
+          diagonal, array_ops.reshape(array_ops.where(diag_mask), [-1]),
+          axis=-1)
+      return array_ops.matrix_set_diag(x, diagonal, **params)
+
+    x = np.array(x, dtype=np.int32)
+    diagonal = np.array(diagonal, dtype=np.int32)
+    with self.session() as session:
+      with self.device_scope():
+        x_ph = array_ops.placeholder(dtypes.int32, x.shape)
+        diagonal_ph = array_ops.placeholder(dtypes.int32, diagonal.shape)
+        diag_mask_ph = array_ops.placeholder(dtypes.bool, [len(diag_mask)])
+        mask_phs = [
+            array_ops.placeholder(dtypes.bool, [x.shape[axis]])
+            for axis in axes
+        ]
+        output = f(x_ph, diagonal_ph, diag_mask_ph, *mask_phs)
+      feed_dict = {x_ph: x, diagonal_ph: diagonal, diag_mask_ph: diag_mask}
+      feed_dict.update({ph: masks[axis] for ph, axis in zip(mask_phs, axes)})
+      return session.run(output, feed_dict)
+
+  def testDynamicDimensions(self):
+    # Regression test for GitHub issue 129054: a matrix with a dynamic
+    # dimension was rejected unless the bounds of its size and its diagonal's
+    # length agreed, and then its columns took the diagonal's length. The mask
+    # keeps 2 of 5 entries, so the dimensions it selects have size 2 and bound
+    # 5. (XLA turns a gather from 4 or fewer entries into selects, which
+    # XLA:GPU doesn't support with dynamic shapes.)
+    keep = [True, False, True, False, False]
+    diagonal = [90, 91, 92, 93, 94]
+    self.assertAllEqual(
+        self._setDiagOfSelected(
+            np.arange(1, 16).reshape(5, 3), diagonal, {-2: keep}, keep),
+        [[90, 2, 3], [7, 92, 9]])
+    self.assertAllEqual(
+        self._setDiagOfSelected(
+            np.arange(1, 26).reshape(5, 5), diagonal, {-2: keep}, keep),
+        [[90, 2, 3, 4, 5], [11, 92, 13, 14, 15]])
+    self.assertAllEqual(
+        self._setDiagOfSelected(
+            np.arange(1, 16).reshape(3, 5), diagonal, {-1: keep}, keep),
+        [[90, 3], [6, 92], [11, 13]])
+    self.assertAllEqual(
+        self._setDiagOfSelected(
+            np.arange(1, 26).reshape(5, 5), diagonal, {
+                -2: keep,
+                -1: keep
+            }, keep), [[90, 3], [11, 92]])
+    self.assertAllEqual(
+        self._setDiagOfSelected(
+            np.arange(1, 16).reshape(5, 3), diagonal, {-2: keep}, keep, k=1),
+        [[1, 90, 3], [7, 8, 92]])
+    self.assertAllEqual(
+        self._setDiagOfSelected(
+            np.arange(1, 31).reshape(2, 5, 3),
+            [diagonal, [80, 81, 82, 83, 84]], {-2: keep}, keep),
+        [[[90, 2, 3], [7, 92, 9]], [[80, 17, 18], [22, 82, 24]]])
+
 
 class MatrixDiagPartTest(xla_test.XLATestCase):
 

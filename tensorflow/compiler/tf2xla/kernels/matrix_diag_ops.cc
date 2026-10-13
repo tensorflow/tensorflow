@@ -644,8 +644,27 @@ class MatrixSetDiagOp : public XlaOpKernel {
         std::min(num_rows + std::min(upper_diag_index, int64_t{0}),
                  num_cols - std::max(lower_diag_index, int64_t{0}));
     expected_diag_shape.AddDim(max_diag_len);
+    // A dynamic dimension's static size is its bound, so only compare the
+    // sizes that are static on both sides. The diagonals' length is dynamic
+    // when a matrix dimension is.
+    xla::Shape input_xla_shape;
+    OP_REQUIRES_VALUE(input_xla_shape, context, context->InputXlaShape(0));
+    xla::Shape diag_xla_shape;
+    OP_REQUIRES_VALUE(diag_xla_shape, context, context->InputXlaShape(1));
+    const bool dynamic_matrix =
+        input_xla_shape.is_dynamic_dimension(input_rank - 2) ||
+        input_xla_shape.is_dynamic_dimension(input_rank - 1);
+    bool diag_shape_matches = expected_diag_shape.dims() == diag_rank;
+    for (int i = 0; diag_shape_matches && i < diag_rank; ++i) {
+      const bool expected_is_dynamic =
+          i < input_rank - 2 ? input_xla_shape.is_dynamic_dimension(i)
+                             : i == diag_rank - 1 && dynamic_matrix;
+      diag_shape_matches =
+          expected_is_dynamic || diag_xla_shape.is_dynamic_dimension(i) ||
+          expected_diag_shape.dim_size(i) == diag_shape.dim_size(i);
+    }
     OP_REQUIRES(
-        context, expected_diag_shape == diag_shape,
+        context, diag_shape_matches,
         absl::InvalidArgumentError(absl::StrCat(
             "Either first dimensions of diagonal don't match input.shape[:-2], "
             "or diagonal.shape[:-1] is not equal to the longests diagonal in "
@@ -657,11 +676,111 @@ class MatrixSetDiagOp : public XlaOpKernel {
     // Actual processing.
     xla::XlaOp input = context->Input(0);
     xla::XlaOp diag = context->Input(1);
-    context->SetOutput(
-        0, SetMatrixDiag(input, diag, input_shape, diag_rank, num_diags,
-                         lower_diag_index, upper_diag_index, max_diag_len,
-                         num_rows, num_cols, left_align_superdiagonal_,
-                         left_align_subdiagonal_));
+    if (!input_xla_shape.is_dynamic() && !diag_xla_shape.is_dynamic()) {
+      context->SetOutput(
+          0, SetMatrixDiag(input, diag, input_shape, diag_rank, num_diags,
+                           lower_diag_index, upper_diag_index, max_diag_len,
+                           num_rows, num_cols, left_align_superdiagonal_,
+                           left_align_subdiagonal_));
+      return;
+    }
+
+    // With dynamic dimensions, set the diagonals at the bound sizes, with each
+    // diagonal's entries where SetMatrixDiag reads them, so that the actual
+    // matrices are in the top left, and give the input's dynamic dimensions
+    // their sizes back at the end. Broadcasting a dynamic diagonal would give
+    // the dimension it's broadcast along its length.
+    const auto actual_size = [&](int64_t dim) {
+      return input_xla_shape.is_dynamic_dimension(dim)
+                 ? xla::GetDimensionSize(input, dim)
+                 : xla::ConstantR0<int32_t>(
+                       context->builder(),
+                       static_cast<int32_t>(input_shape.dim_size(dim)));
+    };
+    const xla::XlaOp actual_num_rows = actual_size(input_rank - 2);
+    const xla::XlaOp actual_num_cols = actual_size(input_rank - 1);
+    std::vector<xla::XlaOp> input_dim_sizes(input_rank);
+    for (int i = 0; i < input_rank; ++i) {
+      if (input_xla_shape.is_dynamic_dimension(i)) {
+        input_dim_sizes[i] = xla::GetDimensionSize(input, i);
+        input = xla::RemoveDynamicDimension(input, i);
+      }
+    }
+    for (int i = 0; i < diag_rank; ++i) {
+      if (diag_xla_shape.is_dynamic_dimension(i)) {
+        diag = xla::RemoveDynamicDimension(diag, i);
+      }
+    }
+    // Make the diagonals as long as the bound sizes make them.
+    const int64_t diag_len = diag_shape.dim_size(diag_rank - 1);
+    if (diag_len > max_diag_len) {
+      diag = xla::SliceInDim(diag, 0, max_diag_len, 1, diag_rank - 1);
+    } else if (diag_len < max_diag_len) {
+      xla::PaddingConfig padding_config = xla::MakeNoPaddingConfig(diag_rank);
+      padding_config.mutable_dimensions(diag_rank - 1)
+          ->set_edge_padding_high(max_diag_len - diag_len);
+      diag = xla::Pad(diag, xla::ScalarLike(diag, 0), padding_config);
+    }
+    if (num_diags > 1) {
+      // A right-aligned diagonal's entries come after the padding it has at
+      // the actual sizes, and SetMatrixDiag reads them after the padding it
+      // has at the bound sizes. Those differ when the rows and columns don't
+      // shrink by the same amount, in either direction, so pad the diagonal on
+      // both sides and slice it so that its entries start there.
+      const auto actual_len = [&](int64_t lower, int64_t upper) {
+        return xla::Min(
+            xla::Add(actual_num_rows,
+                     xla::ScalarLike(actual_num_rows,
+                                     std::min(upper, int64_t{0}))),
+            xla::Sub(actual_num_cols,
+                     xla::ScalarLike(actual_num_cols,
+                                     std::max(lower, int64_t{0}))));
+      };
+      const xla::XlaOp actual_max_diag_len =
+          actual_len(lower_diag_index, upper_diag_index);
+      xla::PaddingConfig padding_config = xla::MakeNoPaddingConfig(diag_rank);
+      padding_config.mutable_dimensions(diag_rank - 1)
+          ->set_edge_padding_low(max_diag_len);
+      padding_config.mutable_dimensions(diag_rank - 1)
+          ->set_edge_padding_high(max_diag_len);
+      auto slice_sizes = diag_shape.dim_sizes();
+      slice_sizes[diag_rank - 2] = 1;
+      slice_sizes[diag_rank - 1] = max_diag_len;
+      std::vector<xla::XlaOp> diags;
+      for (int64_t diag_index = upper_diag_index;
+           diag_index >= lower_diag_index; --diag_index) {
+        const int64_t row = upper_diag_index - diag_index;
+        xla::XlaOp single_diag =
+            xla::SliceInDim(diag, row, row + 1, 1, diag_rank - 2);
+        if (!IsLeftAligned(diag_index, left_align_superdiagonal_,
+                           left_align_subdiagonal_)) {
+          single_diag = xla::Pad(single_diag, xla::ScalarLike(single_diag, 0),
+                                 padding_config);
+          std::vector<xla::XlaOp> start_indices(
+              diag_rank, xla::ScalarLike(actual_num_rows, 0));
+          start_indices.back() = xla::Add(
+              xla::ScalarLike(actual_num_rows,
+                              ComputeDiagLen(diag_index, num_rows, num_cols)),
+              xla::Sub(actual_max_diag_len,
+                       actual_len(diag_index, diag_index)));
+          single_diag =
+              xla::DynamicSlice(single_diag, start_indices, slice_sizes);
+        }
+        diags.push_back(single_diag);
+      }
+      diag = xla::ConcatInDim(context->builder(), diags, diag_rank - 2);
+    }
+    xla::XlaOp output =
+        SetMatrixDiag(input, diag, input_shape, diag_rank, num_diags,
+                      lower_diag_index, upper_diag_index, max_diag_len,
+                      num_rows, num_cols, left_align_superdiagonal_,
+                      left_align_subdiagonal_);
+    for (int i = 0; i < input_rank; ++i) {
+      if (input_xla_shape.is_dynamic_dimension(i)) {
+        output = xla::SetDimensionSize(output, input_dim_sizes[i], i);
+      }
+    }
+    context->SetOutput(0, output);
   }
 
  private:
