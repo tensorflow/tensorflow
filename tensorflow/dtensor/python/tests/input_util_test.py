@@ -604,6 +604,41 @@ class InputUtilHelpersTest(test_util.DTensorBaseTest):
 
     self.assertEqual(input_util._shard_counts(layout, batch_dim), counts)
 
+  @parameterized.parameters(
+      {
+          'mesh_dims': [(MESH_DIM_BATCH, 2),
+                        (MESH_DIM_HEIGHT, 4),
+                        (MESH_DIM_WIDTH, 2)],
+          'layout_specs': [MESH_DIM_BATCH, MESH_DIM_HEIGHT, UNSHARDED],
+          'elem_shape': [8, 16, 3],
+          'expected_matrix': [[0, 0, 0], [0, 4, 0], [0, 0, 0]],
+      }, {
+          'mesh_dims': [(MESH_DIM_BATCH, 2),
+                        (MESH_DIM_HEIGHT, 4),
+                        (MESH_DIM_WIDTH, 2)],
+          'layout_specs': [MESH_DIM_BATCH, MESH_DIM_WIDTH, MESH_DIM_HEIGHT],
+          'elem_shape': [8, 6, 16],
+          'expected_matrix': [[0, 0, 0], [0, 0, 4], [0, 3, 0]],
+      })
+  def testIndexMatrixForBatchedElementSpec(
+      self, mesh_dims, layout_specs, elem_shape, expected_matrix):
+    """Regression test for the `dataset_already_batched=True` offset bug.
+
+    `_index_matrix` must be called with the *batched* element spec (shape
+    rank matching `layout.rank`, including the leading batch dim) and must
+    index it at `layout_idx + 1` to skip that leading batch dim. Passing an
+    unbatched spec, or omitting the `+ 1` offset, silently computes the wrong
+    slice offsets for sharded, non-batch dimensions.
+    """
+    num_devices = np.prod([size for _, size in mesh_dims])
+    mesh = mesh_util.create_mesh(
+        mesh_dims=mesh_dims, devices=['CPU:%d' % i for i in range(num_devices)])
+    layout = Layout(layout_specs, mesh)
+    elem_spec = tensor_spec.TensorSpec(shape=elem_shape, dtype=dtypes.float32)
+
+    matrix = input_util._index_matrix(layout, elem_spec)
+    self.assertAllEqual(matrix, expected_matrix)
+
 
 class DTensorIteratorSpecTest(test_util.DTensorBaseTest):
 
