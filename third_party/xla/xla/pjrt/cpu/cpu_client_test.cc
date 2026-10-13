@@ -16,6 +16,8 @@ limitations under the License.
 #include <array>
 #include <numeric>
 
+#include "absl/base/casts.h"
+#include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"

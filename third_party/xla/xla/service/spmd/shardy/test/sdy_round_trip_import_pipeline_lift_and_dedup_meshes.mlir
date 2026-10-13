@@ -17,12 +17,12 @@
 // CHECK-LABEL: module @multiple_inlined_mesh_shardings
 module @multiple_inlined_mesh_shardings {
   // CHECK: sdy.mesh @mesh = <["a"=2, "b"=2]>
-  // CHECK: sdy.mesh @maximal_mesh_0 = <[], device_ids=[0]>
-  // CHECK: sdy.mesh @maximal_mesh_2 = <[], device_ids=[2]>
+  // CHECK: sdy.mesh @single_device_0 = <[], device_ids=[0]>
+  // CHECK: sdy.mesh @single_device_2 = <[], device_ids=[2]>
 
   // CHECK-LABEL: func @inlined_mesh1(
   // CHECK-SAME: %arg0: tensor<32xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"a"}]>})
-  // CHECK-SAME: -> (tensor<32xi32> {sdy.sharding = #sdy.sharding<@maximal_mesh_0, []>}) {
+  // CHECK-SAME: -> (tensor<32xi32> {sdy.sharding = #sdy.sharding<@single_device_0, []>}) {
   func.func @inlined_mesh1(
     %arg0: tensor<32xi32> {mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding<mesh<[\"a\"=2, \"b\"=2]>, [{\"a\"}]>"}}
   ) -> tensor<32xi32> {
@@ -35,7 +35,7 @@ module @multiple_inlined_mesh_shardings {
 
   // CHECK-LABEL: func @inlined_mesh2(
   // CHECK-SAME: %arg0: tensor<32xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"a", "b"}]>})
-  // CHECK-SAME: -> (tensor<32xi32> {sdy.sharding = #sdy.sharding<@maximal_mesh_2, []>}) {
+  // CHECK-SAME: -> (tensor<32xi32> {sdy.sharding = #sdy.sharding<@single_device_2, []>}) {
   func.func @inlined_mesh2(
     %arg0: tensor<32xi32> {mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding<mesh<[\"a\"=4, \"b\"=1]>, [{\"a\"}]>"}}
   ) -> tensor<32xi32> {

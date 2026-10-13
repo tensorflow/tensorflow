@@ -15,7 +15,6 @@
 """Tests for tensorflow.ops.math_ops.matrix_inverse."""
 
 import itertools
-import unittest
 
 from absl.testing import parameterized
 import numpy as np
@@ -29,12 +28,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
-@test_util.run_all_without_tensor_float_32(
-    "XLA QR op calls matmul. Also, matmul used for verification. Also with "
-    'TensorFloat-32, mysterious "Unable to launch cuBLAS gemm" error '
-    "occasionally occurs")
-# TODO(b/165435566): Fix "Unable to launch cuBLAS gemm" error
-class QrOpTest(xla_test.XLATestCase, parameterized.TestCase):
+class QrOpTestBase:
 
   def AdjustedNorm(self, x):
     """Computes the norm of matrices in 'x', adjusted for dimension and type."""
@@ -111,6 +105,15 @@ class QrOpTest(xla_test.XLATestCase, parameterized.TestCase):
       self.CheckApproximation(x_np, q_tf_val, r_tf_val)
       self.CheckUnitary(q_tf_val)
 
+
+@test_util.run_all_without_tensor_float_32(
+    "XLA QR op calls matmul. Also, matmul used for verification. Also with "
+    'TensorFloat-32, mysterious "Unable to launch cuBLAS gemm" error '
+    "occasionally occurs"
+)
+# TODO(b/165435566): Fix "Unable to launch cuBLAS gemm" error
+class QrOpTest(QrOpTestBase, xla_test.XLATestCase, parameterized.TestCase):
+
   SIZES = [1, 2, 5, 10, 32, 100, 300, 603]
   DTYPES = [np.float32, np.complex64]
   PARAMS = itertools.product(SIZES, SIZES, DTYPES)
@@ -122,15 +125,6 @@ class QrOpTest(xla_test.XLATestCase, parameterized.TestCase):
       for batch_dims in [(), (3,)] + [(3, 2)] * (max(rows, cols) < 10):
         x_np = self._random_matrix(dtype, batch_dims + (rows, cols))
         self._test(x_np, full_matrices)
-
-  def testLarge2000x2000(self):
-    x_np = self._random_matrix(np.float32, (2000, 2000))
-    self._test(x_np, full_matrices=True)
-
-  @unittest.skip("Test times out on CI")
-  def testLarge17500x128(self):
-    x_np = self._random_matrix(np.float32, (17500, 128))
-    self._test(x_np, full_matrices=True)
 
   @parameterized.parameters((23, 25), (513, 23))
   def testZeroColumn(self, rows, cols):

@@ -44,7 +44,6 @@ limitations under the License.
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/index.h"
 #include "xla/python/ifrt/index_domain.h"
-#include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
@@ -947,16 +946,17 @@ TEST(ArrayImplTest,
   }
 
   Shape shape({2, 3});
+  Shape shard_shape({1, 3});
   std::vector<Device*> devices = {non_addressable_devices.at(0),
                                   client->addressable_devices().at(0)};
   ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
                        client->MakeDeviceList(devices));
-  ShardingParam sharding_param{/*dim_shards=*/{2, 1},
-                               {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 1}}};
-  ASSERT_OK_AND_ASSIGN(
-      ShardingRef sharding,
-      ShardingParamSharding::Create(std::move(sharding_param),
-                                    std::move(device_list), MemoryKind()));
+  ShardingRef sharding = ConcreteSharding::Create(
+      std::move(device_list), MemoryKind(), shape,
+      /*shard_shapes=*/{shard_shape},
+      /*index_domains=*/
+      std::vector<IndexDomain>{IndexDomain(Index({0, 0}), shard_shape),
+                               IndexDomain(Index({1, 0}), shard_shape)});
 
   std::vector<float> data1 = {3.0f, 4.0f, 5.0f};
   EXPECT_THAT(
@@ -981,17 +981,20 @@ TEST(ArrayImplTest,
   // Tile 0 replicas: devices[0] (non-addressable), devices[1] (addressable)
   // Tile 1 replicas: devices[2] (non-addressable), devices[3] (addressable)
   Shape shape({2, 3});
+  Shape shard_shape({1, 3});
   std::vector<Device*> devices = {
       non_addressable_devices.at(0), client->addressable_devices().at(0),
       non_addressable_devices.at(1), client->addressable_devices().at(1)};
   ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
                        client->MakeDeviceList(devices));
-  ShardingParam sharding_param{/*dim_shards=*/{2, 1},
-                               {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 2}}};
-  ASSERT_OK_AND_ASSIGN(
-      ShardingRef sharding,
-      ShardingParamSharding::Create(std::move(sharding_param),
-                                    std::move(device_list), MemoryKind()));
+  ShardingRef sharding = ConcreteSharding::Create(
+      std::move(device_list), MemoryKind(), shape,
+      /*shard_shapes=*/{shard_shape, shard_shape},
+      /*index_domains=*/
+      std::vector<IndexDomain>{IndexDomain(Index({0, 0}), shard_shape),
+                               IndexDomain(Index({0, 0}), shard_shape),
+                               IndexDomain(Index({1, 0}), shard_shape),
+                               IndexDomain(Index({1, 0}), shard_shape)});
 
   std::vector<float> data0 = {0.0f, 1.0f, 2.0f};
   std::vector<float> data1 = {3.0f, 4.0f, 5.0f};

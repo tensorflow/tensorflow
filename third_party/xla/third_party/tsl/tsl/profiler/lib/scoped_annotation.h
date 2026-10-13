@@ -37,18 +37,27 @@ namespace tsl::profiler {
 // TraceCollector until PopAnnotation() is called.
 template <typename Generator>
 void PushAnnotation(const Generator& generator) {
-  if (auto domain = DefaultProfilerDomain();
-      TF_PREDICT_FALSE(domain != nullptr)) {
-    RangePush(domain, generator());
-    return;
-  }
-
+  auto domain = DefaultProfilerDomain();
+  const bool push_nvtx = TF_PREDICT_FALSE(domain != nullptr);
 #if !defined(IS_MOBILE_PLATFORM)
-  if (TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
-    AnnotationStack::PushAnnotation(
-        static_cast<absl::string_view>(generator()));
-  }
+  const bool push_stack = TF_PREDICT_FALSE(AnnotationStack::IsEnabled());
+#else
+  constexpr bool push_stack = false;
 #endif
+  if (TF_PREDICT_FALSE(push_nvtx || push_stack)) {
+    // Now CUPTI supports multiple subscribers we may need both sets of
+    // annotations at the same time.
+    decltype(auto) annotation = generator();
+    if (push_nvtx) {
+      RangePush(domain, annotation);
+    }
+#if !defined(IS_MOBILE_PLATFORM)
+    if (push_stack) {
+      AnnotationStack::PushAnnotation(
+          static_cast<absl::string_view>(annotation));
+    }
+#endif
+  }
 }
 
 template <typename AnnotationGenerator, typename RangeGenerator>
@@ -57,7 +66,6 @@ void PushAnnotation(const AnnotationGenerator& annotation_generator,
   if (auto domain = DefaultProfilerDomain();
       TF_PREDICT_FALSE(domain != nullptr)) {
     RangePush(domain, range_generator());
-    return;
   }
 
 #if !defined(IS_MOBILE_PLATFORM)
@@ -80,17 +88,16 @@ inline void PopAnnotation() {
   // fail probably due to compiler in that presubmit config.
   std::atomic_thread_fence(std::memory_order_acquire);
 
-  if (auto domain = DefaultProfilerDomain();
-      TF_PREDICT_FALSE(domain != nullptr)) {
-    RangePop(domain);
-    return;
-  }
-
 #if !defined(IS_MOBILE_PLATFORM)
   if (TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
     AnnotationStack::PopAnnotation();
   }
 #endif
+
+  if (auto domain = DefaultProfilerDomain();
+      TF_PREDICT_FALSE(domain != nullptr)) {
+    RangePop(domain);
+  }
 }
 
 // Adds an annotation to all activities for the duration of the instance
@@ -120,7 +127,7 @@ class ScopedAnnotation {
                    std::forward<RangeGenerator>(range_generator));
   }
 
-  // Pops the annotation or range pushed by the constructor.
+  // Pops the annotation and/or range pushed by the constructor.
   ~ScopedAnnotation() { PopAnnotation(); }
 
   static bool IsEnabled() {

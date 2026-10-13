@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/literal_util.h"
+#include "xla/overflow_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/call_inliner.h"
 #include "xla/service/hlo_creation_utils.h"
@@ -64,11 +65,12 @@ using hlo_query::ContainsInstrWithOpcode;
 using std::optional;
 
 // This function removes trivial compare hlo instructions inside the while body.
-// Assuming a while loop with known trip count, k, loop induction variable i,
-// and the initial loop induction value c, a compare(i,x) instruction is trivial
-// if:
-//   1) x is a constant and x >= k + c (for LT) or x >= k + c - 1 (for GT).
-//   2) x is a constant and x <= c (for LT) or x < c (for GT).
+// Assuming a while loop with known trip count k, loop induction variable i with
+// initial value c and constant step s (so i takes the values c, c + s, ...,
+// c + (k - 1) * s), a compare(i,x) instruction with constant x is trivial if:
+//   1) x <= c: (i < x) is false; and if x < c, (i > x) is true.
+//   2) x >= c + (k - 1) * s: (i > x) is false; and if x > c + (k - 1) * s,
+//      (i < x) is true.
 static absl::StatusOr<bool> TryRemoveTrivialCompare(HloInstruction* while_op) {
   std::optional<int64_t> indvar_index = GetLoopInductionVarTupleIdx(while_op);
   if (indvar_index.has_value()) {
@@ -78,10 +80,26 @@ static absl::StatusOr<bool> TryRemoveTrivialCompare(HloInstruction* while_op) {
               while_op->operand(0)->operand(*indvar_index));
       std::optional<int64_t> trip_count = MatchTrivialLoopTripCount(
           while_op, indvar_index.value(), init_value_hlo->literal());
+      std::optional<int64_t> step =
+          MatchTrivialLoopInductionStep(while_op, indvar_index.value());
 
-      if (trip_count.has_value()) {
+      if (trip_count.has_value() && step.has_value() && *trip_count > 0) {
         std::optional<int64_t> init_value =
             LiteralUtil::LiteralAsScalarInt64(init_value_hlo->literal());
+        // The last value of i is init + (trip_count - 1) * step. Give up if
+        // that does not fit in an int64_t rather than fold with a wrong bound.
+        std::optional<int64_t> last_value;
+        if (init_value.has_value()) {
+          auto [last_offset, overflow] =
+              OverflowSafeMultiply(*trip_count - 1, *step);
+          if (overflow) {
+            return false;
+          }
+          last_value = OverflowSafeAdd(*init_value, last_offset);
+          if (!last_value.has_value()) {
+            return false;
+          }
+        }
         for (HloInstruction* body_instr :
              while_op->while_body()->instructions()) {
           HloInstruction* constant;
@@ -93,7 +111,7 @@ static absl::StatusOr<bool> TryRemoveTrivialCompare(HloInstruction* while_op) {
                 LiteralUtil::LiteralAsScalarInt64(constant->literal());
             if (constant_value.has_value() && init_value.has_value()) {
               const int64_t min_i = *init_value;
-              const int64_t max_i = *init_value + *trip_count - 1;
+              const int64_t max_i = *last_value;
               const int64_t rhs = *constant_value;
               if (body_instr->comparison_direction() ==
                   ComparisonDirection::kLt) {

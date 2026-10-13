@@ -20,16 +20,14 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/all_reduce_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
+#include "xla/backends/gpu/runtime/per_device_state.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/reduction_kind.h"
@@ -37,7 +35,6 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/stream_executor/stream_executor.h"
 
 namespace xla {
 namespace gpu {
@@ -57,11 +54,11 @@ struct CollectiveReduceMetadata {
 class CollectiveReduceThunk : public AllReduceReduceScatterThunkBase {
  public:
   CollectiveReduceThunk(ThunkInfo thunk_info, AllReduceConfig config,
-                        std::vector<Buffer> buffers,
+                        std::vector<Buffer> buffers, int devices_per_host,
                         bool has_dynamic_root = false);
   CollectiveReduceThunk(ThunkInfo thunk_info,
                         const HloCollectiveReduceInstruction* inst,
-                        std::vector<Buffer> buffers,
+                        std::vector<Buffer> buffers, int devices_per_host,
                         bool p2p_memcpy_enabled = false,
                         bool has_dynamic_root = false);
 
@@ -76,7 +73,8 @@ class CollectiveReduceThunk : public AllReduceReduceScatterThunkBase {
 
   static absl::StatusOr<std::unique_ptr<CollectiveReduceThunk>> FromProto(
       ThunkInfo thunk_info, const CollectiveReduceThunkProto& thunk_proto,
-      absl::Span<const BufferAllocation> buffer_allocations);
+      absl::Span<const BufferAllocation> buffer_allocations,
+      int devices_per_host);
 
   absl::StatusOr<ThunkProto> ToProto() const override;
 
@@ -92,10 +90,7 @@ class CollectiveReduceThunk : public AllReduceReduceScatterThunkBase {
 
  private:
   const bool has_dynamic_root_;
-  mutable absl::Mutex mutex_;
-  absl::flat_hash_map<se::StreamExecutor*,
-                      std::unique_ptr<CollectiveReduceMetadata>>
-      per_executor_metadata_ ABSL_GUARDED_BY(mutex_);
+  PerDeviceState<CollectiveReduceMetadata> per_device_metadata_;
 };
 
 // Runs a reduce over `buffers` on `stream`. When `has_dynamic_root` is set the

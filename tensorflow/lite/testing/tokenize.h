@@ -24,7 +24,7 @@ namespace testing {
 // Process tokens coming from Tokenize().
 class TokenProcessor {
  public:
-  virtual ~TokenProcessor() {}
+  virtual ~TokenProcessor() = default;
   // Process a single token. The token won't be reused, so it is OK to call
   // token.swap().
   virtual void ConsumeToken(std::string* token) = 0;

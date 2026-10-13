@@ -1,0 +1,2697 @@
+Add the tiling analysis (architecture info, tiling enumeration and cost
+model evaluation) imported from dynamic-kernel-generator/tensor_ir.
+
+diff --git a/include/tensor_ir/Analysis/Tiling/Arch.h b/include/tensor_ir/Analysis/Tiling/Arch.h
+new file mode 100644
+index 0000000..8d4e3e6
+--- /dev/null
++++ b/include/tensor_ir/Analysis/Tiling/Arch.h
+@@ -0,0 +1,57 @@
++// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++
++#ifndef TENSOR_IR_ANALYSIS_TILING_ARCH_H_
++#define TENSOR_IR_ANALYSIS_TILING_ARCH_H_
++
++#include "tensor_ir/Dialect/TensorIRAttrs.h"
++
++namespace mlir::nv_tensor_ir {
++namespace tiling_analysis {
++
++/// Common parameters for all GPU architectures.
++/// Number of threads per warp.
++constexpr int kWarpSize = 32;
++/// Size of a cache line in bytes.
++constexpr int kCacheLineSize = 128;
++/// Maximum number of registers per thread.
++constexpr int kMaxRegistersPerThread = 255;
++/// Maximum number of registers per SM.
++constexpr int kMaxRegistersPerSM = 65536;
++/// Size of a register in bytes.
++constexpr int kRegisterSize = 4;
++
++/// Tensor core versions (bit values).
++enum TensorCoreVersion {
++  kMMAv2 = 1 << 2,
++  kMMAv3 = 1 << 3,
++  kMMAv5 = 1 << 5,
++};
++
++/**
++ * @brief GPU architecture information.
++ */
++struct ArchInfo {
++  /// Number of Streaming Multiprocessors (SMs).
++  int numSMs = 0;
++  /// Maximum number of resident blocks per SM.
++  int maxBlocksPerSM;
++  /// Maximum number of resident warps per SM.
++  int maxWarpsPerSM;
++  /// Maximum amount of shared memory per SM (in KB).
++  int maxSharedMemoryPerSM;
++  /// Supported tensor core versions (bit mask).
++  int tensorCoreVersions;
++};
++
++/**
++ * @brief Get the architecture information for a given compute capability.
++ * @param cc Compute capability.
++ * @param numSMs Number of Streaming Multiprocessors (SMs).
++ */
++ArchInfo getArchInfo(ComputeCapability cc, int numSMs);
++
++} // namespace tiling_analysis
++} // namespace mlir::nv_tensor_ir
++
++#endif // TENSOR_IR_ANALYSIS_TILING_ARCH_H_
+diff --git a/include/tensor_ir/Analysis/Tiling/Enumerate.h b/include/tensor_ir/Analysis/Tiling/Enumerate.h
+new file mode 100644
+index 0000000..ade5641
+--- /dev/null
++++ b/include/tensor_ir/Analysis/Tiling/Enumerate.h
+@@ -0,0 +1,25 @@
++// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++
++#ifndef TENSOR_IR_ANALYSIS_TILING_ENUMERATE_H_
++#define TENSOR_IR_ANALYSIS_TILING_ENUMERATE_H_
++
++#include "tensor_ir/Analysis/Tiling/Evaluate.h"
++
++#include "mlir/Support/LLVM.h"
++
++namespace mlir::nv_tensor_ir {
++namespace tiling_analysis {
++
++/**
++  * @brief Get the tiling configurations in the evaluator scope.
++  * @param evaluator The tiling config evaluator.
++  * @param maxResults The maximum number of results to return.
++  */
++SmallVector<TilingConfig> enumerateTilings(TilingEvaluator &evaluator,
++                                           size_t maxResults = 1000);
++
++} // namespace tiling_analysis
++} // namespace mlir::nv_tensor_ir
++
++#endif // TENSOR_IR_ANALYSIS_TILING_ENUMERATE_H_
+diff --git a/include/tensor_ir/Analysis/Tiling/Evaluate.h b/include/tensor_ir/Analysis/Tiling/Evaluate.h
+new file mode 100644
+index 0000000..350dfa8
+--- /dev/null
++++ b/include/tensor_ir/Analysis/Tiling/Evaluate.h
+@@ -0,0 +1,191 @@
++// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++
++#ifndef TENSOR_IR_ANALYSIS_TILING_EVALUATE_H_
++#define TENSOR_IR_ANALYSIS_TILING_EVALUATE_H_
++
++#include "tensor_ir/Analysis/Tiling/Arch.h"
++#include "tensor_ir/Dialect/TensorIR.h"
++
++#include "mlir/Support/LLVM.h"
++
++#include <array>
++#include <cstdint>
++#include <utility>
++
++/// Tiling evaluator: an analytical cost model for tiling a TensorIR graph.
++///
++/// A graph is executed as a grid of blocks, where each block computes one tile
++/// of the main iteration space. The evaluator estimates the per-block costs of
++/// a tiling configuration, so that configurations can be ranked without
++/// generating code. It does not produce timings; the results are only
++/// meaningful relative to other configurations.
++///
++/// The graph must have been processed by the layout propagation and
++/// normalization passes. The evaluator reads the layouts attached to the graph
++/// terminator (`iteration_space`, and `result_layouts` and `result_views` for
++/// multi-output graphs), which describe the memory accesses of the graph as a
++/// tree of tensor, composite, concat, reduction and matmul sources.
++///
++/// A tiling configuration consists of:
++///
++/// - The tile shape, with one power-of-two size per dimension of the main
++///   iteration space. Reduced and contracting dimensions are not part of the
++///   iteration space. Concat dimensions must have unit tile size.
++/// - The reduction tile size, the number of elements of the reduced (or
++///   contracting) dimensions processed per loop iteration. It is distributed
++///   between these dimensions.
++///
++/// The evaluation estimates:
++///
++/// - The number of blocks covering the iteration space.
++/// - The register and shared memory storage, as the peak over the iteration
++///   spaces. The register storage assumes that every live value of a tile is
++///   kept in registers.
++/// - The number of memory accesses and accessed cache lines (loads and stores),
++///   the number of loop iterations over the reduction tiles, and the number of
++///   tensor core operations per MMA generation.
++///
++/// Typical use:
++///
++///   auto evaluator = TilingEvaluator::create(graph, archInfo);
++///   if (failed(evaluator)) return failure();
++///   for (const TilingConfig &config : candidates) {
++///     if (auto eval = evaluator->evaluate(config); succeeded(eval)) { ... }
++///   }
++///
++/// `create` fails with a diagnostic when the layouts are missing or do not
++/// match the graph. `evaluate` fails silently for invalid configurations, and
++/// with a diagnostic for layouts that cannot be evaluated with the given tile
++/// shape (e.g. non-unit concat dimensions).
++
++namespace mlir::nv_tensor_ir {
++namespace tiling_analysis {
++
++/**
++ * @brief Tiling configuration.
++ */
++class TilingConfig {
++public:
++  /// Returns the tiling config, if the tile sizes are valid.
++  static FailureOr<TilingConfig> get(SmallVector<int32_t> tileShape,
++                                     int32_t reductionTileSize);
++
++  ArrayRef<int32_t> getTileShape() const { return tileShape; }
++  int32_t getReductionTileSize() const { return reductionTileSize; }
++
++  friend llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
++                                       const TilingConfig &config);
++
++private:
++  TilingConfig(SmallVector<int32_t> tileShape, int32_t reductionTileSize)
++      : tileShape(std::move(tileShape)), reductionTileSize(reductionTileSize) {}
++
++  /// Tile shape for the main iteration space, for example [16,32,64]
++  SmallVector<int32_t> tileShape;
++  /// Reduction tile size for reduction/matmul operations.
++  int32_t reductionTileSize = 1;
++
++  friend class TilingLayoutIterator;
++  friend class EvaluationLayoutIterator;
++};
++
++/**
++ * @brief Tiling evaluation result.
++ */
++struct TilingEvaluation {
++  /// Number of execution blocks.
++  int64_t blockCount = 1;
++
++  /// Estimate register storage size for the tiles.
++  int64_t registerStorageBytes = 0;
++
++  /// Estimate shared memory storage size for the tiles.
++  int64_t sharedStorageBytes = 0;
++
++  /// Number of memory accesses (loads/stores).
++  int64_t memoryAccessCount = 0;
++
++  /// Estimate cost of memory accesses (~number of cache lines).
++  int64_t memoryAccessCost = 0;
++
++  /// Number of loop iterations.
++  int64_t loopIterationCount = 0;
++
++  /// Number of TensorCore MMA operations (v2/v3/v5).
++  std::array<int64_t, 3> mmaOperationCount = {0, 0, 0};
++
++  /// Returns true if this tiling is expected to run faster than `other`.
++  /// The total memory traffic is the main criterion, followed by the loop
++  /// iterations, the number of blocks and the tensor core generation. Only
++  /// evaluations of the same graph and architecture are comparable.
++  bool operator<(const TilingEvaluation &other) const;
++
++  friend llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
++                                       const TilingEvaluation &eval);
++};
++
++/**
++ * @brief Tiling evaluator implementation.
++ */
++class TilingEvaluator {
++public:
++  /**
++   * @brief Construct a new TilingEvaluator object.
++   * @param graph The graph to evaluate.
++   * @param archInfo The architecture information.
++   */
++  static FailureOr<TilingEvaluator> create(GraphOp graph,
++                                           const ArchInfo &archInfo);
++
++  /**
++   * @brief Evaluate the tiling configuration for the current graph.
++   * @param config The tiling configuration.
++   */
++  FailureOr<TilingEvaluation> evaluate(const TilingConfig &config);
++
++  /// Basic getters.
++  GraphOp getGraph() const { return graph; }
++  const ArchInfo &getArchInfo() const { return archInfo; }
++  LayoutSourceAttrInterface getInputLayout() const { return inputLayout; }
++  LayoutSourceAttrInterface getOutputLayout() const { return outputLayout; }
++
++private:
++  TilingEvaluator(GraphOp graph, ArchInfo archInfo,
++                  LayoutSourceAttrInterface inputLayout,
++                  LayoutSourceAttrInterface outputLayout,
++                  DenseMap<LayoutSourceAttrInterface, Operation *> pivots,
++                  DenseMap<Operation *, SmallVector<int>> liveSizes)
++      : graph(graph), archInfo(archInfo), inputLayout(inputLayout),
++        outputLayout(outputLayout), pivots(std::move(pivots)),
++        liveSizes(std::move(liveSizes)) {}
++
++  GraphOp graph;
++  ArchInfo archInfo;
++  LayoutSourceAttrInterface inputLayout;
++  LayoutSourceAttrInterface outputLayout;
++  DenseMap<LayoutSourceAttrInterface, Operation *> pivots;
++  DenseMap<Operation *, SmallVector<int>> liveSizes;
++
++  friend class EvaluationLayoutIterator;
++};
++
++/**
++ * @brief Layout tree iterator (base class).
++ */
++class LayoutIterator {
++public:
++  virtual ~LayoutIterator() = default;
++  LogicalResult dispatch(LayoutSourceAttrInterface layout);
++
++  virtual LogicalResult processTensor(TensorSourceAttr tensor);
++  virtual LogicalResult processComposite(CompositeSourceAttr composite);
++  virtual LogicalResult processConcat(ConcatSourceAttr concat);
++  virtual LogicalResult processReduction(ReductionSourceAttr reduction);
++  virtual LogicalResult processMatmul(MatmulSourceAttr matmul);
++};
++
++} // namespace tiling_analysis
++} // namespace mlir::nv_tensor_ir
++
++#endif // TENSOR_IR_ANALYSIS_TILING_EVALUATE_H_
+diff --git a/lib/Analysis/Tiling/Arch.cpp b/lib/Analysis/Tiling/Arch.cpp
+new file mode 100644
+index 0000000..d11d8cb
+--- /dev/null
++++ b/lib/Analysis/Tiling/Arch.cpp
+@@ -0,0 +1,128 @@
++// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++
++#include "tensor_ir/Analysis/Tiling/Arch.h"
++
++namespace mlir::nv_tensor_ir {
++namespace tiling_analysis {
++namespace {
++
++static const ArchInfo archInfoSm80 = {
++    .maxBlocksPerSM = 32,
++    .maxWarpsPerSM = 64,
++    .maxSharedMemoryPerSM = 164,
++    .tensorCoreVersions = kMMAv2,
++};
++
++static const ArchInfo archInfoSm86 = {
++    .maxBlocksPerSM = 16,
++    .maxWarpsPerSM = 48,
++    .maxSharedMemoryPerSM = 100,
++    .tensorCoreVersions = kMMAv2,
++};
++
++static const ArchInfo archInfoSm87 = {
++    .maxBlocksPerSM = 16,
++    .maxWarpsPerSM = 48,
++    .maxSharedMemoryPerSM = 164,
++    .tensorCoreVersions = kMMAv2,
++};
++
++static const ArchInfo archInfoSm89 = {
++    .maxBlocksPerSM = 24,
++    .maxWarpsPerSM = 48,
++    .maxSharedMemoryPerSM = 100,
++    .tensorCoreVersions = kMMAv2,
++};
++
++static const ArchInfo archInfoSm90 = {
++    .maxBlocksPerSM = 32,
++    .maxWarpsPerSM = 64,
++    .maxSharedMemoryPerSM = 228,
++    .tensorCoreVersions = kMMAv2 | kMMAv3,
++};
++
++static const ArchInfo archInfoSm100 = {
++    .maxBlocksPerSM = 32,
++    .maxWarpsPerSM = 64,
++    .maxSharedMemoryPerSM = 228,
++    .tensorCoreVersions = kMMAv2 | kMMAv5,
++};
++
++static const ArchInfo archInfoSm103 = {
++    .maxBlocksPerSM = 32,
++    .maxWarpsPerSM = 64,
++    .maxSharedMemoryPerSM = 228,
++    .tensorCoreVersions = kMMAv2 | kMMAv5,
++};
++
++static const ArchInfo archInfoSm110 = {
++    .maxBlocksPerSM = 24,
++    .maxWarpsPerSM = 48,
++    .maxSharedMemoryPerSM = 228,
++    .tensorCoreVersions = kMMAv2 | kMMAv5,
++};
++
++static const ArchInfo archInfoSm120 = {
++    .maxBlocksPerSM = 24,
++    .maxWarpsPerSM = 48,
++    .maxSharedMemoryPerSM = 100,
++    .tensorCoreVersions = kMMAv2,
++};
++
++static const ArchInfo archInfoSm121 = {
++    .maxBlocksPerSM = 24,
++    .maxWarpsPerSM = 48,
++    .maxSharedMemoryPerSM = 100,
++    .tensorCoreVersions = kMMAv2,
++};
++
++static const ArchInfo archInfoGeneric = {
++    .maxBlocksPerSM = 16,
++    .maxWarpsPerSM = 48,
++    .maxSharedMemoryPerSM = 100,
++    .tensorCoreVersions = 0,
++};
++
++ArchInfo getArchInfo(ComputeCapability cc) {
++  switch (cc) {
++  case ComputeCapability::Sm80:
++    return archInfoSm80;
++  case ComputeCapability::Sm86:
++    return archInfoSm86;
++  case ComputeCapability::Sm87:
++    return archInfoSm87;
++  case ComputeCapability::Sm89:
++    return archInfoSm89;
++  case ComputeCapability::Sm90:
++    return archInfoSm90;
++  case ComputeCapability::Sm100:
++    return archInfoSm100;
++  case ComputeCapability::Sm103:
++    return archInfoSm103;
++  case ComputeCapability::Sm110:
++    return archInfoSm110;
++  case ComputeCapability::Sm120:
++    return archInfoSm120;
++  case ComputeCapability::Sm121:
++    return archInfoSm121;
++  default:
++    return archInfoGeneric;
++  }
++}
++
++} // namespace
++
++/**
++ * @brief Get the architecture information for a given compute capability.
++ * @param cc Compute capability.
++ * @param numSMs Number of Streaming Multiprocessors (SMs).
++ */
++ArchInfo getArchInfo(ComputeCapability cc, int numSMs) {
++  ArchInfo archInfo = getArchInfo(cc);
++  archInfo.numSMs = std::max(numSMs, 1);
++  return archInfo;
++}
++
++} // namespace tiling_analysis
++} // namespace mlir::nv_tensor_ir
+diff --git a/lib/Analysis/Tiling/Enumerate.cpp b/lib/Analysis/Tiling/Enumerate.cpp
+new file mode 100644
+index 0000000..74441bd
+--- /dev/null
++++ b/lib/Analysis/Tiling/Enumerate.cpp
+@@ -0,0 +1,869 @@
++// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++
++#include "tensor_ir/Analysis/Tiling/Enumerate.h"
++
++#include "llvm/ADT/STLExtras.h"
++#include "llvm/Support/Debug.h"
++#include "llvm/Support/MathExtras.h"
++#include "llvm/Support/raw_ostream.h"
++
++#include <algorithm>
++#include <cassert>
++#include <cmath>
++#include <cstddef>
++#include <cstdint>
++#include <functional>
++#include <utility>
++
++#define DEBUG_TYPE "tiling-analysis-enumerate"
++
++namespace mlir::nv_tensor_ir {
++namespace tiling_analysis {
++
++/// Minimum tile size (1 warp, 1 value per thread).
++constexpr int kMinTileSizeBits = 5; // 2^5 = 32
++/// Maximum tile size (8 warps, 128 values per thread).
++constexpr int kMaxTileSizeBits = 15; // 2^15 = 32768
++
++/// Minimum reduction tile size.
++constexpr int kMinReductionTileSizeBits = 5; // 2^5 = 32
++/// Maximum tile size for dynamic dimensions.
++constexpr int kMaxDynamicTileSizeBits = 6; // 2^6 = 64
++
++/// Tile size limits for matmul dimensions.
++constexpr int kMinLhsTileSizeBits = 4;         // 2^4 = 16
++constexpr int kMaxLhsTileSizeBits = 7;         // 2^7 = 128
++constexpr int kMinRhsTileSizeBits = 3;         // 2^3 = 8
++constexpr int kMaxRhsTileSizeBits = 8;         // 2^8 = 256
++constexpr int kMinContractionTileSizeBits = 4; // 2^4 = 16
++constexpr int kMaxContractionTileSizeBits = 8; // 2^8 = 256
++
++/// ----- Dimension analysis ---------------------------------------------------
++///
++/// Before generating tile shapes, the enumerator collects the properties of
++/// each dimension of the main iteration space, by walking the input and output
++/// layout trees attached to the graph:
++///
++/// - Tensor sources count the tensors where the dimension is contiguous
++///   (stride 1, the loads and stores can be vectorized), and where it is
++///   broadcast (stride 0, the loaded values are reused across the tile).
++/// - Concat sources mark their concatenation dimension as non-tileable, as the
++///   evaluator requires a unit tile size for it.
++/// - Matmul sources mark the dimensions that map to the M and N dimensions of
++///   the matmul result, based on their position in the (batch, M, N, K)
++///   iteration space. The matmul generator tiles these groups separately.
++///
++/// Reductions and matmuls start nested iteration spaces. The nested dimensions
++/// are mapped back to the main dimensions the same way as in the evaluator, and
++/// the reduced and contracting dimensions are mapped to a temporary value,
++/// since their tile size is set by the reduction tile size instead.
++///
++/// The dimensions are then ordered by importance. The combination generators
++/// assign the bits depth-first, starting from the largest values in the first
++/// dimensions, so the order decides which dimensions get the largest tiles
++/// when the budget is limited. Non-tileable dimensions go last, and the other
++/// dimensions are ordered by the number of vectorizable and broadcast uses.
++
++/**
++ * @brief Information about a dimension.
++ */
++struct DimensionInfo {
++  /// Dimension number in the main iteration space (-1 for reduction dims).
++  int index;
++
++  /// Number of tensors where this dimension can be vectorized (stride=1).
++  int vectorizableCount = 0;
++
++  /// Number of tensors where this dimension is broadcasted (stride=0).
++  int broadcastedCount = 0;
++
++  /// Marks dimensions that cannot be tiled (e.g. concatenation dims).
++  bool nonTileable = false;
++
++  /// Marks dimensions that propagate to a matmul result.
++  bool usedInMatmulM = false;
++  bool usedInMatmulN = false;
++
++  friend llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
++                                       const DimensionInfo &info);
++};
++
++class DimensionLayoutIterator : public LayoutIterator {
++public:
++  explicit DimensionLayoutIterator(size_t rank);
++
++  LogicalResult processTensor(TensorSourceAttr tensor) override;
++  LogicalResult processConcat(ConcatSourceAttr concat) override;
++  LogicalResult processReduction(ReductionSourceAttr reduction) override;
++  LogicalResult processMatmul(MatmulSourceAttr matmul) override;
++
++  // Returns the ordered dimensions (important first).
++  SmallVector<DimensionInfo> getOrderedDimensions() const;
++
++private:
++  SmallVector<DimensionInfo> dimensions;
++  SmallVector<DimensionInfo *> pointers;
++};
++
++DimensionLayoutIterator::DimensionLayoutIterator(size_t rank) {
++  dimensions.reserve(rank);
++  for (size_t i = 0; i < rank; ++i) {
++    dimensions.push_back({.index = static_cast<int>(i)});
++    pointers.push_back(&dimensions.back());
++  }
++}
++
++LogicalResult DimensionLayoutIterator::processTensor(TensorSourceAttr tensor) {
++  // Mark vectorizable and broadcasted tensor dimensions.
++  auto cuteLayout = tensor.getCuteLayout();
++  for (auto [idx, stride] : llvm::enumerate(cuteLayout.stride().getValues())) {
++    if (stride.isLeaf() && stride.isStatic()) {
++      if (stride.as_int() == 1) {
++        pointers[idx]->vectorizableCount++;
++      } else if (stride.as_int() == 0) {
++        pointers[idx]->broadcastedCount++;
++      }
++    }
++  }
++  return success();
++}
++
++LogicalResult DimensionLayoutIterator::processConcat(ConcatSourceAttr concat) {
++  // Mark the concatenation dimension as non-tileable.
++  pointers[concat.getDimension()]->nonTileable = true;
++  return LayoutIterator::processConcat(concat);
++}
++
++LogicalResult
++DimensionLayoutIterator::processReduction(ReductionSourceAttr reduction) {
++  // Build the new pointers for the inner iteration space.
++  SmallVector<DimensionInfo *> newPointers;
++  auto cuteLayout = reduction.getCuteLayout();
++  auto strideValues = cuteLayout.stride().getValues().drop_back();
++  for (auto [idx, stride] : llvm::enumerate(strideValues)) {
++    if (stride.as_int() > 0) {
++      newPointers.push_back(pointers[idx]);
++    }
++  }
++  DimensionInfo reductionDim{.index = -1};
++  newPointers.resize(newPointers.size() + reduction.getReductionShape().size(),
++                     &reductionDim);
++
++  // Add reduction dimensions (temporary) to the iteration space.
++  std::swap(pointers, newPointers);
++  LogicalResult result = LayoutIterator::processReduction(reduction);
++  std::swap(pointers, newPointers);
++  return result;
++}
++
++LogicalResult DimensionLayoutIterator::processMatmul(MatmulSourceAttr matmul) {
++  size_t rank = pointers.size();
++  DimensionInfo reductionDim{.index = -1};
++  SmallVector<DimensionInfo *> iterSpace = pointers;
++
++  // Process LHS input.
++  if (auto lhsDimensionMap = matmul.getLhsDimensionMap();
++      succeeded(lhsDimensionMap)) {
++    pointers.clear();
++    for (size_t idx : *lhsDimensionMap) {
++      pointers.push_back(idx < rank ? iterSpace[idx] : &reductionDim);
++    }
++    auto lhsResult = dispatch(matmul.getLhs());
++    (void)lhsResult;
++  }
++
++  // Process RHS input.
++  if (auto rhsDimensionMap = matmul.getRhsDimensionMap();
++      succeeded(rhsDimensionMap)) {
++    pointers.clear();
++    for (size_t idx : *rhsDimensionMap) {
++      pointers.push_back(idx < rank ? iterSpace[idx] : &reductionDim);
++    }
++    auto rhsResult = dispatch(matmul.getRhs());
++    (void)rhsResult;
++  }
++
++  // Mark the dimensions used in the matmul.
++  pointers = std::move(iterSpace);
++  auto cuteLayout = matmul.getCuteLayout();
++  auto strideValues = cuteLayout.stride().getValues().drop_back();
++  for (auto [idx, stride] : llvm::enumerate(strideValues)) {
++    if (stride.isStatic()) {
++      int64_t pos = stride.as_int();
++      if (pos >= matmul.getM() * matmul.getN() * matmul.getK()) {
++        continue; // Skip batch dimension.
++      }
++      if (pos >= matmul.getN() * matmul.getK()) {
++        pointers[idx]->usedInMatmulM = true;
++      } else if (pos >= matmul.getK()) {
++        pointers[idx]->usedInMatmulN = true;
++      }
++    }
++  }
++  return success();
++}
++
++SmallVector<DimensionInfo>
++DimensionLayoutIterator::getOrderedDimensions() const {
++  // Sort the dimensions in order of importance:
++  // - Non-tileable dimensions go to the end.
++  // - Vectorizable dimensions first.
++  // - Broadcasted dimensions next.
++  // - Otherwise, in the iteration space order.
++  SmallVector<DimensionInfo> result = dimensions;
++  llvm::sort(result, [](const DimensionInfo &a, const DimensionInfo &b) {
++    if (a.nonTileable != b.nonTileable) {
++      return b.nonTileable;
++    }
++    if (a.vectorizableCount != b.vectorizableCount) {
++      return a.vectorizableCount > b.vectorizableCount;
++    }
++    if (a.broadcastedCount != b.broadcastedCount) {
++      return a.broadcastedCount > b.broadcastedCount;
++    }
++    return a.index < b.index;
++  });
++  return result;
++}
++
++#ifndef NDEBUG
++llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
++                              const DimensionInfo &info) {
++  os << "[" << info.index;
++  if (info.vectorizableCount > 0) {
++    os << " v" << info.vectorizableCount;
++  }
++  if (info.broadcastedCount > 0) {
++    os << " b" << info.broadcastedCount;
++  }
++  if (info.nonTileable) {
++    os << " nt";
++  }
++  os << "]";
++  return os;
++}
++#endif
++
++/// ----- Combination generator ------------------------------------------------
++///
++/// Tile sizes are powers of two, so a tile shape is represented by the number
++/// of bits (the exponent) assigned to each dimension, called a slot here. The
++/// sum of the bits is the log2 of the number of elements in the tile.
++/// A combination is valid if each slot is within its limit (the dimension size,
++/// rounded up to a power of two) and the sum is within the requested range.
++///
++/// The number of combinations grows quickly with the rank, so the generation is
++/// bounded by a result budget:
++///
++/// - `countCombinations` counts the combinations without generating them, used
++///   to check whether the whole search space fits the budget.
++/// - `generateCombinationsExactCount` generates the combinations with a given
++///   sum depth-first, starting from the largest values in the first slots.
++/// - `generateCombinationsWithinRange` splits the budget evenly between the
++///   sums in the range, starting from the largest or the smallest tiles.
++/// - `generateCombinationsBalanced` first reduces the search space by lowering
++///   the limits of the least important slots, when the whole space does not fit
++///   the budget, so that the truncation does not favor the first slots only.
++
++/**
++ * @brief Counts the number of combinations of bits assigned to slots.
++ * @param minBits The minimum number of bits to assign.
++ * @param maxBits The maximum number of bits to assign.
++ * @param limits The maximum number of bits for each slot.
++ */
++size_t countCombinations(int minBits, int maxBits, ArrayRef<int> limits) {
++  // Use dynamic programming to avoid enumerating the combinations: for each
++  // bit total, count the ways to reach it as slots are added one at a time.
++  // The result is the sum of the counts for totals in [minBits, maxBits].
++  SmallVector<size_t> accum(maxBits + 1, 0);
++  accum[0] = 1;
++  for (int limit : limits) {
++    // accum[s] counts the combinations of the previous slots summing to s.
++    // Add the current dimension by shifting each count by every value in
++    // [0, limit], dropping sums above maxBits.
++    SmallVector<size_t> next = accum;
++    for (int add = std::min(maxBits, limit); add >= 1; --add) {
++      for (int i = maxBits - add; i >= 0; --i) {
++        next[i + add] += accum[i];
++      }
++    }
++    accum = std::move(next);
++  }
++  return llvm::sum_of(ArrayRef(accum).drop_front(minBits));
++}
++
++/**
++ * @brief Generates all combinations of exact number of bits assigned to slots.
++ * @param bits The number of bits to assign.
++ * @param limits The maximum number of bits for each slot.
++ * @param maxResults The maximum number of results to generate.
++ */
++SmallVector<SmallVector<int>>
++generateCombinationsExactCount(int bits, ArrayRef<int> limits,
++                               size_t maxResults) {
++  SmallVector<SmallVector<int>> result;
++  SmallVector<int> current(limits.size(), 0);
++
++  // Calculate suffix sum for the limits, needed for early stopping.
++  // Example: for input [2,3,4], the suffix sum is [7,4,0].
++  SmallVector<int> suffixSum(limits.size(), 0);
++  for (int i = static_cast<int>(limits.size()) - 1; i > 0; --i) {
++    suffixSum[i - 1] = suffixSum[i] + limits[i];
++  }
++
++  // Recursively assign bits to slots.
++  std::function<void(size_t, int)> generate = [&](size_t idx, int bits) {
++    // Stop when enough results are generated.
++    if (result.size() == maxResults) {
++      return;
++    }
++    // All bits are assigned, add the current combination.
++    if (bits == 0) {
++      result.push_back(current);
++      return;
++    }
++    // Try all possible assignments for the current dimension.
++    // Start from the higher value, as the dimensions are sorted.
++    for (int i = std::min(bits, limits[idx]);
++         i >= std::max(bits - suffixSum[idx], 0); --i) {
++      current[idx] = i;
++      generate(idx + 1, bits - i);
++    }
++    current[idx] = 0;
++  };
++
++  // Start from the first index.
++  assert(!limits.empty());
++  generate(0, bits);
++  return result;
++}
++
++/**
++ * @brief Generates all combinations of bits assigned to slots.
++ * @param minBits The minimum number of bits to assign (must be >= 0).
++ * @param maxBits The maximum number of bits to assign (must be >= minBits).
++ * @param limits The maximum number of bits for each slot.
++ * @param maxResults The maximum number of results to generate.
++ * @param descending Whether to start from the upper bound.
++ */
++SmallVector<SmallVector<int>>
++generateCombinationsWithinRange(int minBits, int maxBits, ArrayRef<int> limits,
++                                size_t maxResults, bool descending) {
++  SmallVector<SmallVector<int>> result;
++  assert(minBits >= 0 && maxBits >= minBits);
++
++  // Generate combinations for each number of bits in the range.
++  for (int i = 0, n = maxBits - minBits + 1; i < n; ++i) {
++    size_t maxResultsWeighted =
++        llvm::divideCeil(maxResults - result.size(), n - i);
++    auto combinations = generateCombinationsExactCount(
++        descending ? maxBits - i : minBits + i, limits, maxResultsWeighted);
++    result.append(combinations);
++  }
++
++  // If there are no results, then the limits are too low.
++  if (result.empty() && maxResults > 0) {
++    result.push_back(SmallVector<int>(limits));
++  }
++  return result;
++}
++
++/// Generates the combinations of bits assigned to slots within the budget. If
++/// the search space is too large, it is first reduced by lowering the limits of
++/// the least important dimensions, so that the budget covers the rest evenly.
++///
++/// The generator assigns the bits depth-first, starting from the largest values
++/// of the first slots. When the search space exceeds the budget, the output is
++/// truncated and would only contain the combinations favoring the first slots.
++/// In case there are more than two vectorizable dimensions, this would result
++/// in missed optimization opportunities.
++SmallVector<SmallVector<int>>
++generateCombinationsBalanced(int minBits, int maxBits, ArrayRef<int> limits,
++                             size_t maxResults, bool descending,
++                             ArrayRef<DimensionInfo> dimensions) {
++  // If the number of combinations is within the budget, then generate all
++  // combinations (fast path).
++  if (countCombinations(minBits, maxBits, limits) <= maxResults) {
++    return generateCombinationsWithinRange(minBits, maxBits, limits, maxResults,
++                                           descending);
++  }
++
++  // Conservative upper bound for the tile size of the vectorizable dimensions,
++  // assuming small element size (one byte).
++  int vectorizableCap = llvm::Log2_64(kCacheLineSize);
++
++  // Try reducing the search space by reducing the limits starting from the
++  // less important dimensions. Reduce the limit on vectorizable dimensions and
++  // remove the other dimensions.
++  SmallVector<int> newLimits(limits);
++  for (int dim = limits.size() - 1; dim >= 0; --dim) {
++    int cap = dimensions[dim].vectorizableCount > 0 ? vectorizableCap : 0;
++    if (limits[dim] > cap) {
++      newLimits[dim] = cap;
++      if (countCombinations(minBits, maxBits, newLimits) <= maxResults) {
++        return generateCombinationsWithinRange(minBits, maxBits, newLimits,
++                                               maxResults, descending);
++      }
++    }
++  }
++
++  // The search space is still too large, so lower the cap on all slots by up
++  // to kReductionFactor bits (halving the tile size each step). As above, stop
++  // at the first cap that fits the budget. If no cap fits, the lowest one is
++  // used and the output is truncated.
++  constexpr int kReductionExponentFactorMax = 2;
++  for (int i = 1; i <= kReductionExponentFactorMax; ++i) {
++    for (int &limit : newLimits) {
++      limit = std::min(limit, vectorizableCap - i);
++    }
++    if (countCombinations(minBits, maxBits, newLimits) <= maxResults) {
++      break;
++    }
++  }
++  return generateCombinationsWithinRange(minBits, maxBits, newLimits,
++                                         maxResults, descending);
++}
++
++/// ----- Reduction processing -------------------------------------------------
++///
++/// The default generator, used for graphs without matmuls, and as a fallback
++/// when the matmul dimensions are too small to use tensor cores. A tiling
++/// configuration consists of the reduction tile size and the tile shape of the
++/// main iteration space, both enumerated here.
++///
++/// Reduction tile size:
++///
++/// - The sizes range from 32 elements up to the largest reduction size in the
++///   graph (rounded up to a power of two), and are enumerated from the largest,
++///   as larger reduction tiles need fewer loop iterations.
++/// - Graphs without reductions use a unit reduction tile. On the matmul
++///   fallback path, the contraction tile sizes are enumerated instead.
++///
++/// Main tile shape:
++///
++/// - The upper bound on the number of tile elements is the number of elements
++///   per SM if the grid runs in a single wave. Larger tiles would leave SMs
++///   idle, but the bound is kept above the minimum tile size (one warp).
++/// - The main tile combined with the reduction tile is limited to 2^15
++///   elements, so larger reduction tiles leave room for smaller main tiles.
++/// - The evaluator is used to lower the upper bound while the estimated
++///   register storage exceeds the register file, as such tiles are likely to
++///   spill.
++/// - Non-tileable dimensions are forced to a unit tile size. They are still
++///   counted in the single wave bound, as they multiply the number of blocks.
++///
++/// The result budget is split evenly between the reduction tile sizes, and the
++/// tile shapes are generated by the balanced combination generator, starting
++/// from the largest tiles.
++
++/// Calculates the maximum reduction size in the iteration space.
++class ReductionSizeEstimator : public LayoutIterator {
++public:
++  LogicalResult processReduction(ReductionSourceAttr reduction) override {
++    maxReductionSize = std::max(maxReductionSize, reduction.getReductionSize());
++    return dispatch(reduction.getSource());
++  }
++  int64_t maxReductionSize = 1;
++};
++
++/// Calculates the maximum number of tile size bits in each dimension.
++SmallVector<int> getMaxSizeBits(ArrayRef<DimensionInfo> dimensions,
++                                ArrayRef<int64_t> shape,
++                                bool markNonTileable = true) {
++  SmallVector<int> result;
++  for (const auto &dim : dimensions) {
++    int64_t size = shape[dim.index];
++    result.push_back(size > 0 ? llvm::Log2_64_Ceil(size)
++                              : kMaxDynamicTileSizeBits);
++    if (markNonTileable && dim.nonTileable) {
++      result.back() = 0;
++    }
++  }
++  return result;
++}
++
++// Calculates the maximum number of tile size bits in each dimension, taking
++// into account the estimated storage size needed for the tile.
++SmallVector<int> getMaxSizeBits(ArrayRef<DimensionInfo> dimensions,
++                                ArrayRef<int> limits, int reductionTileSizeBits,
++                                TilingEvaluator &evaluator) {
++  SmallVector<int> result(limits);
++  for (auto [idx, dim] : llvm::enumerate(dimensions)) {
++    if (limits[idx] > 0) {
++      // Run the evaluator to estimate the storage size needed for the maximum
++      // tile size with the given reduction tile size.
++      SmallVector<int32_t> tileShape(limits.size(), 1);
++      tileShape[dim.index] = 1 << kMaxTileSizeBits;
++      auto evalResult = evaluator.evaluate(
++          *TilingConfig::get(tileShape, 1 << reductionTileSizeBits));
++      if (succeeded(evalResult)) {
++        // Proportionally lower the limit to avoid spilling.
++        int64_t ratio = llvm::divideCeil(evalResult->registerStorageBytes,
++                                         kMaxRegistersPerSM * kRegisterSize);
++        assert(ratio > 0);
++        int newLimit = kMaxTileSizeBits - llvm::Log2_64_Ceil(ratio);
++        result[idx] = std::min(limits[idx], std::max(newLimit, 0));
++      }
++    }
++  }
++  return result;
++}
++
++/**
++ * @brief Generates tiling configurations for a graph with reductions.
++ * @param evaluator The tiling config evaluator.
++ * @param dimensions The ordered dimensions of the main iteration space.
++ * @param maxResults The maximum number of results to generate.
++ * @param fallbackUpperBound Maximum reduction tile size on fallback path.
++ */
++SmallVector<TilingConfig>
++generateReductionConfigs(TilingEvaluator &evaluator,
++                         ArrayRef<DimensionInfo> dimensions, size_t maxResults,
++                         int fallbackUpperBound = 0) {
++  SmallVector<TilingConfig> result;
++
++  // Calculate the maximum number of tile size bits in each dimension.
++  auto shape = evaluator.getInputLayout().getShape();
++  SmallVector<int> maxTileSizeBits =
++      getMaxSizeBits(dimensions, shape, /*markNonTileable=*/false);
++
++  // Set the lower and upper bounds for the reduction tile size.
++  ReductionSizeEstimator iter;
++  auto iterResult = iter.dispatch(evaluator.getInputLayout());
++  (void)iterResult;
++
++  int minReductionTileSizeBits = kMinReductionTileSizeBits;
++  int maxReductionTileSizeBits = std::min<int>(
++      llvm::Log2_64_Ceil(iter.maxReductionSize), kMaxTileSizeBits);
++
++  if (maxReductionTileSizeBits > 0) {
++    maxReductionTileSizeBits =
++        std::max(maxReductionTileSizeBits, minReductionTileSizeBits);
++    LLVM_DEBUG(llvm::dbgs() << "Max reduction size: " << iter.maxReductionSize
++                            << ", max reduction tile size: "
++                            << (1 << maxReductionTileSizeBits) << "\n");
++  } else {
++    minReductionTileSizeBits =
++        std::min(kMinContractionTileSizeBits, fallbackUpperBound);
++    maxReductionTileSizeBits = fallbackUpperBound;
++  }
++
++  // Estimate number of elements per SM if a single wave is used.
++  // This defines the upper bound for the tile size, but do not allow values
++  // that are too low (i.e. underutilize threads).
++  const ArchInfo &archInfo = evaluator.getArchInfo();
++  int bitsPerProcessorSingleWave =
++      llvm::sum_of(maxTileSizeBits) - llvm::Log2_64(archInfo.numSMs);
++  int globalUpperBound = std::max(bitsPerProcessorSingleWave, kMinTileSizeBits);
++
++  LLVM_DEBUG(llvm::dbgs() << "Tile size upper bound: "
++                          << (int64_t{1} << globalUpperBound)
++                          << " (using SM count: " << archInfo.numSMs << ")\n");
++
++  // Force the tile size limit for non-tileable dimensions.
++  for (auto [idx, dim] : llvm::enumerate(dimensions)) {
++    if (dim.nonTileable) {
++      LLVM_DEBUG(llvm::dbgs()
++                 << "Non-tileable dimension: " << dim.index << "\n");
++      maxTileSizeBits[idx] = 0;
++    }
++  }
++
++  // Iterate over all possible reduction tile sizes.
++  for (int reductionTileSizeBits = maxReductionTileSizeBits;
++       reductionTileSizeBits >= minReductionTileSizeBits;
++       --reductionTileSizeBits) {
++    // Split the remaining result budget evenly over the remaining sizes.
++    size_t maxResultsWeighted =
++        llvm::divideCeil(maxResults - result.size(),
++                         reductionTileSizeBits - minReductionTileSizeBits + 1);
++
++    // Update the limits for the tile dimensions.
++    SmallVector<int> limits = getMaxSizeBits(dimensions, maxTileSizeBits,
++                                             reductionTileSizeBits, evaluator);
++    int localUpperBound = std::min(llvm::sum_of(limits), globalUpperBound);
++
++    // Calculate the bounds for the tile size.
++    int upperBound = std::min(kMaxTileSizeBits, localUpperBound);
++    int lowerBound = std::min(kMinTileSizeBits, upperBound);
++
++    LLVM_DEBUG({
++      llvm::dbgs() << "Reduction tile size: " << (1 << reductionTileSizeBits)
++                   << ", tile size range: " << (1 << lowerBound) << ".."
++                   << (1 << upperBound) << ", bits: [";
++      llvm::interleave(limits, llvm::dbgs(), ",");
++      llvm::dbgs() << "], limit: " << maxResultsWeighted << "\n";
++    });
++
++    // Build the tiling configuration.
++    SmallVector<int32_t> tileShape(dimensions.size(), 1);
++    int32_t reductionTileSize = 1 << reductionTileSizeBits;
++
++    auto combinations = generateCombinationsBalanced(
++        lowerBound, upperBound, limits, maxResultsWeighted,
++        /*descending=*/true, dimensions);
++
++    for (const auto &combination : combinations) {
++      for (auto [bits, dim] : llvm::zip_equal(combination, dimensions)) {
++        tileShape[dim.index] = 1 << bits;
++      }
++      result.push_back(*TilingConfig::get(tileShape, reductionTileSize));
++    }
++  }
++
++  return result;
++}
++
++/// ----- Matmul processing ----------------------------------------------------
++///
++/// The generator for graphs with matmuls. The tile shape is built around the
++/// MMA tile, so the dimensions are split into three groups, based on the
++/// dimension analysis:
++///
++/// - LHS dimensions map to the M dimension of a matmul result. Their combined
++///   tile size ranges from 16 to 128 elements.
++/// - RHS dimensions map to the N dimension of a matmul result. Their combined
++///   tile size ranges from 8 to 256 elements.
++/// - Other dimensions (batch dimensions, and dimensions not used by matmuls)
++///   are tiled with the remaining space.
++///
++/// If either the LHS or the RHS dimensions cannot reach the minimum size,
++/// tensor cores cannot be used, and the reduction generator is used instead.
++///
++/// The configurations are enumerated in nested loops:
++///
++/// - The LHS and RHS tile combinations are generated separately, starting from
++///   the largest tiles, and each pair of them is visited. The result budget is
++///   split as a square root between the two sides, so that neither side limits
++///   the other when the budget is small. If one side has fewer combinations,
++///   its unused share is given to the other side.
++/// - The contraction tile size ranges from 16 elements up to the contraction
++///   size (at most 256), so that the LHS and RHS operand tiles (M x K and
++///   N x K) do not exceed 2^15 elements. The sizes are enumerated from the
++///   smallest, so that the small contraction tiles are always included when
++///   the budget is too small to cover the full range.
++/// - The other dimensions get the bits left after the output tile (M x N) and
++///   the operand tiles, starting from the smallest tiles, as they do not
++///   contribute to the MMA efficiency.
++///
++/// At each level, the remaining budget is split evenly between the remaining
++/// iterations. The MMA constraints (e.g. the supported tile sizes per tensor
++/// core generation) are not checked here, they are accounted for by the
++/// evaluator when ranking the configurations.
++
++/// Calculates the maximum contraction size in the iteration space.
++class ContractionSizeEstimator : public LayoutIterator {
++public:
++  LogicalResult processMatmul(MatmulSourceAttr matmul) override {
++    maxContractionSize = std::max(
++        maxContractionSize, llvm::product_of(matmul.getContractingShape()));
++    bool ok = succeeded(dispatch(matmul.getLhs())) &&
++              succeeded(dispatch(matmul.getRhs()));
++    return LogicalResult::success(ok);
++  }
++  int64_t maxContractionSize = 1;
++};
++
++/**
++ * @brief Generates tiling configurations for a graph with matmuls.
++ * @param evaluator The tiling config evaluator.
++ * @param dimensions The ordered dimensions of the main iteration space.
++ * @param maxResults The maximum number of results to generate.
++ */
++SmallVector<TilingConfig>
++generateMatmulConfigs(TilingEvaluator &evaluator,
++                      ArrayRef<DimensionInfo> dimensions, size_t maxResults) {
++  SmallVector<TilingConfig> result;
++
++  // Set the upper bound for the contraction tile size.
++  ContractionSizeEstimator iter;
++  auto iterResult = iter.dispatch(evaluator.getInputLayout());
++  (void)iterResult;
++  int maxContractionTileSizeBits =
++      std::clamp<int>(llvm::Log2_64_Ceil(iter.maxContractionSize),
++                      kMinContractionTileSizeBits, kMaxContractionTileSizeBits);
++
++  LLVM_DEBUG(llvm::dbgs() << "Max contraction size: " << iter.maxContractionSize
++                          << ", max contraction tile size: "
++                          << (1 << maxContractionTileSizeBits) << "\n");
++
++  // Separate the dimensions into LHS, RHS, and other dimensions.
++  SmallVector<DimensionInfo> lhsDims, rhsDims, otherDims;
++  for (const auto &dim : dimensions) {
++    if (dim.usedInMatmulM) {
++      lhsDims.push_back(dim);
++    } else if (dim.usedInMatmulN) {
++      rhsDims.push_back(dim);
++    } else {
++      otherDims.push_back(dim);
++    }
++  }
++
++  // Calculate the maximum number of tile size bits in each dimension.
++  auto shape = evaluator.getInputLayout().getShape();
++  SmallVector<int> lhsLimits = getMaxSizeBits(lhsDims, shape);
++  SmallVector<int> rhsLimits = getMaxSizeBits(rhsDims, shape);
++  SmallVector<int> otherLimits = getMaxSizeBits(otherDims, shape);
++
++  // Count the number of combinations for LHS and RHS dimensions.
++  size_t lhsCount =
++      countCombinations(kMinLhsTileSizeBits, kMaxLhsTileSizeBits, lhsLimits);
++  size_t rhsCount =
++      countCombinations(kMinRhsTileSizeBits, kMaxRhsTileSizeBits, rhsLimits);
++
++  LLVM_DEBUG({
++    llvm::dbgs() << "LHS dimensions: " << lhsDims.size() << " (" << lhsCount
++                 << " combinations total)\n";
++    llvm::dbgs() << "RHS dimensions: " << rhsDims.size() << " (" << rhsCount
++                 << " combinations total)\n";
++    llvm::dbgs() << "Other dimensions: " << otherDims.size() << "\n";
++  });
++
++  // If LHS/RHS dimensions are too small, fall back to default generator.
++  if (lhsCount == 0 || rhsCount == 0) {
++    LLVM_DEBUG(llvm::dbgs() << "Falling back to reduction generator\n");
++    return generateReductionConfigs(evaluator, dimensions, maxResults,
++                                    maxContractionTileSizeBits);
++  }
++
++  // Split the search space by using `sqrt(maxResults)` for LHS/RHS number of
++  // combinations, balance this number if any side is too small.
++  size_t maxLhsResults = std::min<size_t>(lhsCount, std::sqrt(maxResults));
++  size_t maxRhsResults = std::min(rhsCount, maxResults / maxLhsResults);
++  maxLhsResults = std::min(lhsCount, maxResults / maxRhsResults);
++
++  // Generate combinations for LHS and RHS dimensions.
++  auto lhsCombinations = generateCombinationsWithinRange(
++      kMinLhsTileSizeBits, kMaxLhsTileSizeBits, lhsLimits, maxLhsResults,
++      /*descending=*/true);
++  auto rhsCombinations = generateCombinationsWithinRange(
++      kMinRhsTileSizeBits, kMaxRhsTileSizeBits, rhsLimits, maxRhsResults,
++      /*descending=*/true);
++  size_t remainingCount = lhsCombinations.size() * rhsCombinations.size();
++
++  LLVM_DEBUG(llvm::dbgs() << "Outer iterations: " << lhsCombinations.size()
++                          << " * " << rhsCombinations.size() << " = "
++                          << remainingCount << "\n");
++#ifndef NDEBUG
++  DenseSet<std::pair<int, int>> visited;
++#endif
++
++  // Iterate over all generated LHS/RHS tile combinations.
++  for (const auto &lhs : lhsCombinations) {
++    for (const auto &rhs : rhsCombinations) {
++      // Split the remaining result budget evenly over the remaining sizes.
++      size_t maxResultsWeighted =
++          llvm::divideCeil(maxResults - result.size(), remainingCount--);
++
++      // Build the tiling configuration.
++      SmallVector<int32_t> tileShape(dimensions.size(), 1);
++      for (auto [bits, dim] : llvm::zip_equal(lhs, lhsDims)) {
++        tileShape[dim.index] = 1 << bits;
++      }
++      for (auto [bits, dim] : llvm::zip_equal(rhs, rhsDims)) {
++        tileShape[dim.index] = 1 << bits;
++      }
++
++      // Set the upper bound for the contraction tile size.
++      int lhsBits = llvm::sum_of(lhs);
++      int rhsBits = llvm::sum_of(rhs);
++      int upperBound = std::min(kMaxTileSizeBits - std::max(lhsBits, rhsBits),
++                                maxContractionTileSizeBits);
++      LLVM_DEBUG({
++        if (visited.insert({lhsBits, rhsBits}).second) {
++          llvm::dbgs() << "LHS tile size: " << (1 << lhsBits)
++                       << ", RHS tile size: " << (1 << rhsBits)
++                       << ", contraction tile size upper bound: "
++                       << (1 << upperBound) << "\n";
++        }
++      });
++
++      // Iterate over all possible contraction tile sizes.
++      // Start from the smaller sizes to handle limited search space (when the
++      // budget is too small to cover the full range).
++      for (int contractionTileSizeBits = kMinContractionTileSizeBits;
++           contractionTileSizeBits <= upperBound; ++contractionTileSizeBits) {
++        int32_t reductionTileSize = 1 << contractionTileSizeBits;
++
++        if (!otherDims.empty()) {
++          // Split the remaining result budget one last time.
++          size_t maxResultsInner = llvm::divideCeil(
++              maxResultsWeighted, upperBound - contractionTileSizeBits + 1);
++
++          // Generate combinations for the other dimensions.
++          int innerBound =
++              kMaxTileSizeBits -
++              std::max(lhsBits + rhsBits,
++                       contractionTileSizeBits + std::max(lhsBits, rhsBits));
++          auto combinations = generateCombinationsBalanced(
++              0, innerBound, otherLimits, maxResultsInner, /*descending=*/false,
++              otherDims);
++          maxResultsWeighted -= combinations.size();
++
++          // Add the generated configurations to the result.
++          for (const auto &combination : combinations) {
++            for (auto [bits, dim] : llvm::zip_equal(combination, otherDims)) {
++              tileShape[dim.index] = 1 << bits;
++            }
++            result.push_back(*TilingConfig::get(tileShape, reductionTileSize));
++          }
++        } else if (maxResultsWeighted > 0) {
++          // No other dimensions, add the configuration to the result.
++          result.push_back(*TilingConfig::get(tileShape, reductionTileSize));
++          --maxResultsWeighted;
++        }
++      }
++    }
++  }
++  return result;
++}
++
++/// ----- Enumerator implementation --------------------------------------------
++///
++/// The entry point analyzes and orders the dimensions of the main iteration
++/// space, then dispatches to the matmul generator if the graph has matmuls, or
++/// to the reduction generator otherwise. No configurations are returned for
++/// rank-0 iteration spaces or a zero budget. If no dimension can be tiled, the
++/// only configuration is a unit tile with the largest reduction tile, which
++/// the evaluator and the lowering clamp to the actual reduction size.
++
++SmallVector<TilingConfig> enumerateTilings(TilingEvaluator &evaluator,
++                                           size_t maxResults) {
++  auto shape = evaluator.getInputLayout().getShape();
++  if (shape.empty() || maxResults == 0) {
++    return {};
++  }
++
++  // Collect the dimensions of the main iteration space.
++  DimensionLayoutIterator iter(shape.size());
++  auto inputResult = iter.dispatch(evaluator.getInputLayout());
++  (void)inputResult;
++  auto outputResult = iter.dispatch(evaluator.getOutputLayout());
++  (void)outputResult;
++
++  // Order the dimensions using the importance heuristic.
++  auto dimensions = iter.getOrderedDimensions();
++  LLVM_DEBUG({
++    llvm::dbgs() << "Dimensions:";
++    for (const auto &dim : dimensions) {
++      llvm::dbgs() << " " << dim;
++    }
++    llvm::dbgs() << "\n";
++  });
++
++  // If the first dimension is non-tileable, return a unit tile shape.
++  if (dimensions.front().nonTileable) {
++    return {*TilingConfig::get(SmallVector<int32_t>(shape.size(), 1),
++                               1 << kMaxTileSizeBits)};
++  }
++
++  // Generate tiling configurations.
++  if (!evaluator.getGraph().getOps<MatmulOp>().empty()) {
++    return generateMatmulConfigs(evaluator, dimensions, maxResults);
++  }
++  return generateReductionConfigs(evaluator, dimensions, maxResults);
++}
++
++} // namespace tiling_analysis
++} // namespace mlir::nv_tensor_ir
+diff --git a/lib/Analysis/Tiling/Evaluate.cpp b/lib/Analysis/Tiling/Evaluate.cpp
+new file mode 100644
+index 0000000..365b1d3
+--- /dev/null
++++ b/lib/Analysis/Tiling/Evaluate.cpp
+@@ -0,0 +1,1388 @@
++// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++
++#include "tensor_ir/Analysis/Tiling/Evaluate.h"
++
++#include "tensor_ir/Support/TCutegen.h"
++#include "tensor_ir/Utils/Utils.h"
++
++#include "llvm/ADT/STLExtras.h"
++#include "llvm/ADT/TypeSwitch.h"
++#include "llvm/Support/Debug.h"
++#include "llvm/Support/MathExtras.h"
++#include "llvm/Support/raw_ostream.h"
++
++#include <algorithm>
++#include <cstdint>
++#include <functional>
++#include <iterator>
++#include <optional>
++#include <utility>
++
++#define DEBUG_TYPE "tiling-analysis-evaluate"
++
++namespace mlir::nv_tensor_ir {
++namespace tiling_analysis {
++
++/// Size value used for dynamic dimensions.
++constexpr int64_t kDynamicSizeValue = 128;
++
++/// Overhead of load masking (bytes).
++constexpr int kLoadMaskingOverhead = 2 * kRegisterSize;
++
++/// ----- Layout analysis ------------------------------------------------------
++///
++/// The evaluator works on the layouts attached to the graph terminator by the
++/// layout propagation and normalization passes:
++///
++/// - `iteration_space` is the input layout. It is a tree of layout sources
++///   describing which tensor elements are loaded for each point of the main
++///   iteration space. Tensor sources are the leaves (loads from graph inputs,
++///   or constants that need no memory access). Composite sources group
++///   independent loads, and concat, reduction and matmul sources start nested
++///   iteration spaces over their operands.
++/// - `result_views` describe the stores to the graph outputs, one tensor source
++///   per result, expressed in the main iteration space. They are only present
++///   for multi-output graphs. For a single result, the output layout is built
++///   from the result type and the output stride.
++/// - `result_layouts` are the per-result input layouts of multi-output graphs.
++///   `iteration_space` is their deduplicated union. For a single result, the
++///   input layout is used instead.
++///
++/// The layouts only describe memory accesses, so the evaluator also needs the
++/// operations behind the nested iteration spaces: the storage of a concat,
++/// reduction or matmul tile depends on the values that are live while its
++/// operands are computed. `findPivots` recovers this mapping by walking the
++/// graph backwards from the results, carrying the layout of each value:
++///
++/// - Reshape, transpose, broadcast and slice are already folded into the
++///   layouts, so the layout passes through to the operand unchanged.
++/// - Concat, reduction and matmul operations are pivots. Their layout is
++///   mapped to the operation, and its sources are split between the operands.
++///   Operands discarded by a slice after a concat have no source and are
++///   skipped.
++/// - Pointwise operations with multiple operands carry the forward-propagated
++///   `layout` attribute, a composite with one source per distinct operand
++///   layout. The normalized layout of the result has the same structure, so
++///   each operand's forward sources are located in the forward composite and
++///   replaced by the normalized sources at the same positions.
++/// - Block arguments must have flat tensor sources, and constants must have
++///   tensor sources.
++///
++/// Pivots are keyed by the (uniqued) layout attribute, so the evaluation
++/// iterator can find the operation for every nested iteration space it visits.
++/// A value can be reached with multiple layouts (e.g. directly and through a
++/// transpose), and each value and layout pair is processed once. Any layout
++/// that does not match the graph structure is reported as an error instead of
++/// being evaluated.
++
++/// Get the input layout from the iteration space attribute.
++LayoutSourceAttrInterface getInputLayoutInternal(GraphOp graph) {
++  Operation *resultsOp = graph.getBody()->getTerminator();
++  return resultsOp->getAttrOfType<LayoutSourceAttrInterface>(
++      TensorIRDialect::getIterationSpaceAttrName());
++}
++
++/// Get the output layout from the result views attribute or compute it.
++LayoutSourceAttrInterface getOutputLayoutInternal(GraphOp graph) {
++  // Try the result views attribute first.
++  Operation *resultsOp = graph.getBody()->getTerminator();
++  auto resultViews = getResultViews(resultsOp);
++  if (failed(resultViews) ||
++      resultsOp->getNumOperands() !=
++          (resultViews->empty() ? 1 : resultViews->size())) {
++    return nullptr;
++  }
++
++  // If the result views are not available, create tensor source.
++  if (resultViews->empty()) {
++    auto stride = getStrideFromGraph(resultsOp->getOperand(0));
++    auto outputType =
++        cast<RankedTensorType>(resultsOp->getOperand(0).getType());
++    auto cuteLayout = tcutegen::Layout(getShapeRef(outputType), *stride);
++    return TensorSourceAttr::get(graph.getContext(), graph.getNumArguments(),
++                                 /*offset=*/0, cuteLayout.toString(),
++                                 getDynamicValueMapping(cuteLayout));
++  }
++
++  // Build a composite source for multiple results.
++  if (resultViews->size() > 1) {
++    SmallVector<LayoutSourceAttrInterface> sources(resultViews->begin(),
++                                                   resultViews->end());
++    return CompositeSourceAttr::get(graph.getContext(), sources);
++  }
++  return resultViews->front();
++}
++
++/// Map concat layouts to the operands.
++FailureOr<SmallVector<LayoutSourceAttrInterface>>
++getConcatLayouts(ConcatSourceAttr concat, size_t numOperands) {
++  SmallVector<LayoutSourceAttrInterface> layouts(concat.getSources());
++  if (!concat.getArgumentIndex().empty()) {
++    layouts = SmallVector<LayoutSourceAttrInterface>(numOperands, nullptr);
++    for (auto [sourceIdx, operandIdx] :
++         llvm::enumerate(concat.getArgumentIndex())) {
++      layouts[operandIdx] = concat.getSource(sourceIdx);
++    }
++  } else if (layouts.size() != numOperands) {
++    return failure();
++  }
++  return layouts;
++}
++
++/// Find the operations corresponding to the pivot layouts.
++FailureOr<DenseMap<LayoutSourceAttrInterface, Operation *>>
++findPivots(GraphOp graph, LayoutSourceAttrInterface rootLayout) {
++  DenseMap<LayoutSourceAttrInterface, Operation *> pivots;
++  DenseSet<std::pair<Value, LayoutSourceAttrInterface>> visited;
++
++  // Recursively process all operations in the graph.
++  std::function<LogicalResult(Value, LayoutSourceAttrInterface)> process =
++      [&](Value value, LayoutSourceAttrInterface layout) -> LogicalResult {
++    // Check if the value has already been processed.
++    if (!visited.insert(std::make_pair(value, layout)).second) {
++      return success();
++    }
++
++    // If the value is a block argument, the layout must be a tensor source.
++    if (isa<BlockArgument>(value)) {
++      if (auto tensorSource = dyn_cast<TensorSourceAttr>(layout);
++          !tensorSource || tcutegen::depth(tensorSource.getCuteLayout()) > 1) {
++        return graph.emitError() << "expected normalized layout";
++      }
++      return success();
++    }
++
++    // Skip the layout modification operations (already applied).
++    Operation *op = value.getDefiningOp();
++    if (isa<ReshapeOp, TransposeOp, BroadcastOp, SliceOp>(op)) {
++      return process(op->getOperand(0), layout);
++    }
++
++    // Concatenation operations define new iteration spaces.
++    if (isa<ConcatenateOp>(op)) {
++      auto concatLayout = dyn_cast<ConcatSourceAttr>(layout);
++      if (!concatLayout) {
++        return op->emitError() << "expected concatenation layout";
++      }
++      pivots[layout] = op;
++      auto operandLayouts =
++          getConcatLayouts(concatLayout, op->getNumOperands());
++      if (failed(operandLayouts)) {
++        return op->emitError() << "invalid concatenation layout";
++      }
++      for (auto [opValue, opLayout] :
++           llvm::zip_equal(op->getOperands(), *operandLayouts)) {
++        if (opLayout && failed(process(opValue, opLayout))) {
++          return failure();
++        }
++      }
++      return success();
++    }
++
++    // Reduction operations define new iteration spaces.
++    if (isa<ReduceOp, ReduceUDOp>(op)) {
++      auto reduceLayout = dyn_cast<ReductionSourceAttr>(layout);
++      if (!reduceLayout) {
++        return op->emitError() << "expected reduction layout";
++      }
++      pivots[layout] = op;
++      if (op->getNumOperands() == 1) {
++        return process(op->getOperand(0), reduceLayout.getSource());
++      }
++      auto composite = dyn_cast<CompositeSourceAttr>(reduceLayout.getSource());
++      if (!composite || composite.getSources().size() != op->getNumOperands()) {
++        return op->emitError() << "expected composite reduction layout";
++      }
++      for (auto [opValue, opLayout] :
++           llvm::zip_equal(op->getOperands(), composite.getSources())) {
++        if (failed(process(opValue, opLayout))) {
++          return failure();
++        }
++      }
++      return success();
++    }
++
++    // Matmul operations define new iteration spaces.
++    if (isa<MatmulOp>(op)) {
++      auto matmulLayout = dyn_cast<MatmulSourceAttr>(layout);
++      if (!matmulLayout) {
++        return op->emitError() << "expected matmul layout";
++      }
++      pivots[layout] = op;
++      if (failed(process(op->getOperand(0), matmulLayout.getLhs())) ||
++          failed(process(op->getOperand(1), matmulLayout.getRhs()))) {
++        return failure();
++      }
++      return success();
++    }
++
++    // Pointwise operations split the layout.
++    if (isa<PointwiseOpInterface>(op)) {
++      if (op->getNumOperands() == 1) {
++        return process(op->getOperand(0), layout);
++      }
++      auto getSources = [](LayoutSourceAttrInterface src) {
++        if (auto composite = dyn_cast_if_present<CompositeSourceAttr>(src)) {
++          return SmallVector<LayoutSourceAttrInterface>(composite.getSources());
++        }
++        return SmallVector<LayoutSourceAttrInterface>(1, src);
++      };
++      auto forward = getSources(op->getAttrOfType<LayoutSourceAttrInterface>(
++          TensorIRDialect::getLayoutAttrName()));
++      auto backward = getSources(layout);
++      if (forward.size() != backward.size()) {
++        return op->emitError() << "composite layout size mismatch";
++      }
++
++      for (auto operand : op->getOperands()) {
++        auto unmapped = getSources(cast_or_null<LayoutSourceAttrInterface>(
++            getLayoutSourceAttr(operand)));
++        SmallVector<LayoutSourceAttrInterface> mapped = llvm::to_vector(
++            llvm::map_range(unmapped, [&](LayoutSourceAttrInterface src) {
++              auto it = llvm::find(forward, src);
++              return it == forward.end()
++                         ? nullptr
++                         : backward[std::distance(forward.begin(), it)];
++            }));
++        if (llvm::is_contained(mapped, nullptr)) {
++          return op->emitError() << "composite layout mapping error";
++        }
++        auto next = mapped.size() == 1
++                        ? mapped.front()
++                        : CompositeSourceAttr::get(op->getContext(), mapped);
++        if (failed(process(operand, next))) {
++          return failure();
++        }
++      }
++      return success();
++    }
++
++    // Constants do not have tensor operands.
++    if (isa<ConstantOp, SplatOp, IotaOp>(op)) {
++      if (!isa<TensorSourceAttr>(layout)) {
++        return op->emitError() << "expected constant layout";
++      }
++      return success();
++    }
++    return op->emitError() << "unsupported operation";
++  };
++
++  // Get result layouts from attributes or use root layout.
++  Operation *resultsOp = graph.getBody()->getTerminator();
++  auto resultLayouts = getResultLayouts(resultsOp);
++  if (succeeded(resultLayouts) && resultLayouts->empty()) {
++    resultLayouts->push_back(rootLayout);
++  }
++  if (failed(resultLayouts) ||
++      resultLayouts->size() != resultsOp->getNumOperands()) {
++    return graph.emitError() << "invalid result layouts";
++  }
++
++  // Process all output values.
++  for (auto [result, layout] :
++       llvm::zip_equal(resultsOp->getOperands(), *resultLayouts)) {
++    if (failed(process(result, layout))) {
++      return failure();
++    }
++  }
++  return pivots;
++}
++
++/// ----- Liveness analysis ----------------------------------------------------
++///
++/// The register storage of a tile is estimated as the number of tile elements
++/// times the peak number of bytes that are live per tile element. Each tile
++/// element is computed independently, so it is enough to track the element
++/// types of the live values, not their tensor shapes.
++///
++/// The analysis works on the block order of the graph operations, which is
++/// used as the schedule; operations are never reordered to reduce the register
++/// pressure. A value is live from its definition to its last use, and block
++/// arguments are live from the start of the block. Operations are assumed to
++/// update their operands in place: operands at their last use are released
++/// before the results are allocated, so a chain of unary operations only needs
++/// the larger of its input and output sizes. An operand used multiple times by
++/// the same operation is released once.
++///
++/// The live values are restricted to a single iteration space. Starting from
++/// the root values of the iteration space, the values are collected backwards
++/// through their defining operations, stopping at concat, reduction and matmul
++/// operations. Their results belong to the outer iteration space, while their
++/// operands are computed in nested iteration spaces with separate storage. The
++/// evaluator calculates the live sizes of:
++///
++/// - the main iteration space, from the graph results;
++/// - each concat and matmul operand, as the operands are tiled independently;
++/// - all operands of a reduction together (ReduceUD has one iteration space).
++
++/// Liveness range for a value: [start, end)
++using LivenessRange = std::pair<int, int>;
++using LivenessRangeMap = DenseMap<Value, LivenessRange>;
++using IterationSpaceValues = DenseSet<Value>;
++
++/// Calculate the liveness ranges for the given block.
++LivenessRangeMap getLivenessRangeMap(Block *block) {
++  LivenessRangeMap livenessRanges;
++  for (auto arg : block->getArguments()) {
++    livenessRanges[arg] = {-1, -1};
++  }
++  for (auto [idx, op] : llvm::enumerate(block->getOperations())) {
++    for (auto operand : op.getOperands()) {
++      livenessRanges[operand].second = idx;
++    }
++    for (auto result : op.getResults()) {
++      livenessRanges[result] = {idx, idx};
++    }
++  }
++  return livenessRanges;
++}
++
++/// Collect the values in the iteration space of the given inputs.
++IterationSpaceValues getIterationSpaceValues(ValueRange initial) {
++  IterationSpaceValues result;
++  SmallVector<Value> worklist(initial.begin(), initial.end());
++  while (!worklist.empty()) {
++    Value current = worklist.pop_back_val();
++    if (result.insert(current).second) {
++      if (Operation *op = current.getDefiningOp()) {
++        // Stop at iteration space boundary.
++        if (isa<ConcatenateOp, ReduceOp, ReduceUDOp, MatmulOp>(op)) {
++          continue;
++        }
++        for (auto operand : op->getOperands()) {
++          worklist.push_back(operand);
++        }
++      }
++    }
++  }
++  return result;
++}
++
++/// Calculate the storage needed for the element type.
++int getSizeBytes(Type type) {
++  if (auto tensorType = dyn_cast<TensorType>(type)) {
++    type = tensorType.getElementType();
++  }
++  return std::max(type.getIntOrFloatBitWidth() / 8, 1u);
++}
++
++/// Calculate the storage needed for one tile element in the iteration space.
++int calculateMaxLiveSize(Block *block, const LivenessRangeMap &livenessRanges,
++                         const IterationSpaceValues &activeValues) {
++  // Mark active block arguments as live.
++  int liveSize = 0;
++  for (auto arg : block->getArguments()) {
++    if (activeValues.contains(arg)) {
++      liveSize += getSizeBytes(arg.getType());
++    }
++  }
++  int maxLiveSize = liveSize;
++
++  // Helper for getting the index of a value in a range.
++  auto getIndex = [](ValueRange c, Value v) -> unsigned {
++    return llvm::find(c, v) - c.begin();
++  };
++
++  // Process all operations in the block, while any values are live.
++  // Assume the operations can update the values in-place.
++  for (auto [idx, op] : llvm::enumerate(block->getOperations())) {
++    // Remove values that are no longer live.
++    // Make sure to process each value only once.
++    for (auto [pos, operand] : llvm::enumerate(op.getOperands())) {
++      if (auto it = livenessRanges.find(operand);
++          it->second.second == static_cast<int>(idx) &&
++          activeValues.contains(operand) &&
++          getIndex(op.getOperands(), operand) == pos) {
++        liveSize -= getSizeBytes(operand.getType());
++      }
++    }
++    // Add values of the operation results.
++    for (auto result : op.getResults()) {
++      if (activeValues.contains(result)) {
++        liveSize += getSizeBytes(result.getType());
++      }
++    }
++    // Update the maximum live size.
++    maxLiveSize = std::max(maxLiveSize, liveSize);
++  }
++  return maxLiveSize;
++}
++
++/// ----- Tiling iterator -------------------------------------------------------
++///
++/// The tile shape of the configuration is defined in the main iteration space.
++/// This iterator keeps the tile shape of the layout being visited in sync while
++/// descending into nested iteration spaces:
++///
++/// - A reduction tile keeps the tile sizes of the dimensions that the reduction
++///   operand depends on (dimensions broadcast by the reduction view are
++///   dropped), followed by the reduction tile over the reduced dimensions.
++/// - A matmul tile is built separately for the LHS and RHS operands, using the
++///   dimension maps to select either the output tile sizes or the reduction
++///   tile sizes of the contracting dimensions.
++///
++/// The reduction tile size is split between the reduced (or contracting)
++/// dimensions as evenly as possible in powers of two, and each dimension is
++/// capped at its size rounded up to a power of two. The tile shape is swapped
++/// in for the nested layouts and restored afterwards, so the iterator can be
++/// reused for sibling layouts.
++
++class TilingLayoutIterator : public LayoutIterator {
++public:
++  TilingLayoutIterator(TilingConfig config) : config(std::move(config)) {}
++
++  LogicalResult processReduction(ReductionSourceAttr reduction) override;
++  LogicalResult processMatmul(MatmulSourceAttr matmul) override;
++
++protected:
++  TilingConfig config;
++};
++
++/// Calculate the reduction tile shape by distributing the reduction tile size
++/// evenly between the contracting dimensions.
++SmallVector<int32_t>
++calculateReductionTileShape(ArrayRef<int64_t> reductionShape,
++                            int32_t reductionTileSize) {
++  SmallVector<int32_t> tileShape;
++  int rest = llvm::Log2_64(reductionTileSize);
++  int dist = reductionShape.size();
++
++  for (int64_t size : reductionShape) {
++    int bits = std::min(llvm::Log2_64_Ceil(uint64_t(size)),
++                        llvm::divideCeil(rest, dist--));
++    rest -= bits;
++    tileShape.push_back(1ull << bits);
++  }
++  return tileShape;
++}
++
++LogicalResult
++TilingLayoutIterator::processReduction(ReductionSourceAttr reduction) {
++  // Calculate the new tile shape.
++  SmallVector<int32_t> newTileShape;
++  auto cuteLayout = reduction.getCuteLayout();
++  auto strideValues = cuteLayout.stride().getValues().drop_back();
++  for (auto [idx, stride] : llvm::enumerate(strideValues)) {
++    if (stride.as_int() > 0) {
++      newTileShape.push_back(config.tileShape[idx]);
++    }
++  }
++  SmallVector<int32_t> reductionTileShape = calculateReductionTileShape(
++      reduction.getReductionShape(), config.reductionTileSize);
++  newTileShape.append(reductionTileShape);
++
++  // Swap and process the underlying layout.
++  std::swap(newTileShape, config.tileShape);
++  if (failed(dispatch(reduction.getSource()))) {
++    return failure();
++  }
++
++  // Restore the tile shape.
++  std::swap(newTileShape, config.tileShape);
++  return success();
++}
++
++LogicalResult TilingLayoutIterator::processMatmul(MatmulSourceAttr matmul) {
++  size_t rank = config.tileShape.size();
++  SmallVector<int32_t> reductionTileShape = calculateReductionTileShape(
++      matmul.getContractingShape(), config.reductionTileSize);
++
++  // Get the dimension maps.
++  auto lhsDimensionMap = matmul.getLhsDimensionMap();
++  auto rhsDimensionMap = matmul.getRhsDimensionMap();
++  if (failed(lhsDimensionMap) || failed(rhsDimensionMap)) {
++    return failure();
++  }
++
++  // Calculate the LHS tile shape.
++  SmallVector<int32_t> lhsTileShape;
++  for (size_t idx : *lhsDimensionMap) {
++    lhsTileShape.push_back(idx < rank ? config.tileShape[idx]
++                                      : reductionTileShape[idx - rank]);
++  }
++
++  // Calculate the RHS tile shape.
++  SmallVector<int32_t> rhsTileShape;
++  for (size_t idx : *rhsDimensionMap) {
++    rhsTileShape.push_back(idx < rank ? config.tileShape[idx]
++                                      : reductionTileShape[idx - rank]);
++  }
++
++  // Process LHS/RHS underlying layouts.
++  std::swap(lhsTileShape, config.tileShape);
++  if (failed(dispatch(matmul.getLhs()))) {
++    return failure();
++  }
++  std::swap(rhsTileShape, config.tileShape);
++  if (failed(dispatch(matmul.getRhs()))) {
++    return failure();
++  }
++
++  // Restore the tile shape.
++  std::swap(lhsTileShape, config.tileShape);
++  return success();
++}
++
++/// ----- Matmul evaluation ----------------------------------------------------
++///
++/// A matmul tile is described by its batch, M, N and K sizes, where K is the
++/// reduction tile over the contracting dimensions. The evaluation iterator
++/// tries the tensor core generations from the newest to the oldest, and uses
++/// the first one that supports the element types, the tile size and the
++/// architecture. If none applies, only the register storage of a plain
++/// register implementation is reported.
++///
++/// All generations require equal floating-point operand types. One MMA
++/// instruction consumes 32 bytes of K per row, so K must be a multiple of
++/// `32 / elementSize` elements.
++///
++/// - MMAv5 requires M of 64 or 128 and N of at most 256 (multiple of 8). The
++///   RHS tile is stored in shared memory, and the accumulator lives in tensor
++///   memory, so it does not use registers. One instruction is counted per
++///   K step and batch.
++/// - MMAv3 requires M of 64 (one warpgroup) with the same N limits. The RHS
++///   tile is stored in shared memory, and the accumulator is stored in
++///   registers. One instruction is counted per K step and batch.
++/// - MMAv2 requires M and N to be multiples of 16 and 8. The LHS, RHS and
++///   accumulator tiles are stored in registers, and one instruction is counted
++///   per 16x8 output fragment, K step and batch.
++///
++/// The shared memory tiles must fit into the shared memory of one SM. For MMAv5
++/// and MMAv3, the RHS only needs registers if it is computed by the graph: an
++/// RHS loaded directly from a graph input (through view operations only) is
++/// copied to shared memory without passing through registers. The LHS storage
++/// uses the live size of the LHS operand iteration space, since its operand
++/// values must pass through registers.
++
++struct MmaTileSize {
++  int64_t b, m, n, k;
++};
++
++bool checkMmaTypes(MatmulOp matmul) {
++  Type aType = matmul.getA().getType().getElementType();
++  Type bType = matmul.getB().getType().getElementType();
++  return aType == bType && aType.isFloat();
++}
++
++bool isGraphInputValue(Value value) {
++  while (Operation *op = value.getDefiningOp()) {
++    if (!isa<ReshapeOp, TransposeOp, BroadcastOp, SliceOp>(op)) {
++      return false;
++    }
++    value = op->getOperand(0);
++  }
++  return true;
++}
++
++std::optional<TilingEvaluation> evaluateV5(MatmulOp matmul,
++                                           const ArchInfo &archInfo,
++                                           const MmaTileSize &tile,
++                                           ArrayRef<int> liveSizes) {
++  // Verify the types and the tile size.
++  int kSize = 32 / getSizeBytes(matmul.getA().getType());
++  bool isValid = checkMmaTypes(matmul) &&
++                 (archInfo.tensorCoreVersions & kMMAv5) != 0 &&
++                 (tile.m == 64 || tile.m == 128) &&
++                 (tile.n % 8 == 0 && tile.n <= 256) && (tile.k % kSize == 0);
++
++  // RHS must be stored in shared memory.
++  int64_t sharedMemorySize =
++      tile.b * tile.n * tile.k * getSizeBytes(matmul.getB().getType());
++  if (!isValid || sharedMemorySize > archInfo.maxSharedMemoryPerSM * 1024) {
++    return std::nullopt;
++  }
++
++  // LHS uses registers, RHS uses registers if any operations are applied.
++  int64_t storageSize = tile.b * tile.m * tile.k * liveSizes[0];
++  if (!isGraphInputValue(matmul.getB())) {
++    int64_t rhsSize = tile.b * tile.n * tile.k * liveSizes[1];
++    storageSize = std::max(storageSize, rhsSize);
++  }
++
++  int64_t mmaCount = tile.b * tile.k / kSize;
++  return TilingEvaluation{
++      .registerStorageBytes = storageSize,
++      .sharedStorageBytes = sharedMemorySize,
++      .mmaOperationCount = {0, 0, mmaCount},
++  };
++}
++
++std::optional<TilingEvaluation> evaluateV3(MatmulOp matmul,
++                                           const ArchInfo &archInfo,
++                                           const MmaTileSize &tile,
++                                           ArrayRef<int> liveSizes) {
++  // Verify the types and the tile size.
++  int kSize = 32 / getSizeBytes(matmul.getA().getType());
++  bool isValid = checkMmaTypes(matmul) &&
++                 (archInfo.tensorCoreVersions & kMMAv3) != 0 &&
++                 (tile.m == 64) && (tile.n % 8 == 0 && tile.n <= 256) &&
++                 (tile.k % kSize == 0);
++
++  // RHS should be stored in shared memory.
++  int64_t sharedMemorySize =
++      tile.b * tile.n * tile.k * getSizeBytes(matmul.getB().getType());
++  if (!isValid || sharedMemorySize > archInfo.maxSharedMemoryPerSM * 1024) {
++    return std::nullopt;
++  }
++
++  // LHS uses registers, RHS uses registers if any operations are applied.
++  int64_t storageSize = tile.b * tile.m * tile.k * liveSizes[0];
++  if (!isGraphInputValue(matmul.getB())) {
++    int64_t rhsSize = tile.b * tile.n * tile.k * liveSizes[1];
++    storageSize = std::max(storageSize, rhsSize);
++  }
++  // Accumulator is stored in registers, must be live.
++  storageSize +=
++      tile.b * tile.m * tile.n * getSizeBytes(matmul.getResult().getType());
++
++  int64_t mmaCount = tile.b * tile.k / kSize;
++  return TilingEvaluation{
++      .registerStorageBytes = storageSize,
++      .sharedStorageBytes = sharedMemorySize,
++      .mmaOperationCount = {0, mmaCount, 0},
++  };
++}
++
++int64_t getMatmulRegisterStorage(MatmulOp matmul, const MmaTileSize &tile) {
++  // Total storage needed by the matmul operation using registers.
++  int64_t size = tile.m * tile.k * getSizeBytes(matmul.getA().getType()) +
++                 tile.n * tile.k * getSizeBytes(matmul.getB().getType()) +
++                 tile.m * tile.n * getSizeBytes(matmul.getResult().getType());
++  return tile.b * size;
++}
++
++std::optional<TilingEvaluation> evaluateV2(MatmulOp matmul,
++                                           const ArchInfo &archInfo,
++                                           const MmaTileSize &tile,
++                                           ArrayRef<int> liveSizes) {
++  // Verify the types and the tile size.
++  int kSize = 32 / getSizeBytes(matmul.getA().getType());
++  bool isValid =
++      checkMmaTypes(matmul) && (archInfo.tensorCoreVersions & kMMAv2) != 0 &&
++      (tile.m % 16 == 0) && (tile.n % 8 == 0) && (tile.k % kSize == 0);
++  if (!isValid) {
++    return std::nullopt;
++  }
++
++  // LHS, RHS and accumulator must be stored in registers.
++  int64_t lhsStorageSize = tile.b * tile.m * tile.k * liveSizes[0];
++  int64_t rhsStorageSize = tile.b * tile.n * tile.k * liveSizes[1];
++  int64_t registerStorage = getMatmulRegisterStorage(matmul, tile);
++
++  int64_t mmaCount = tile.b * (tile.m / 16) * (tile.n / 8) * (tile.k / kSize);
++  return TilingEvaluation{
++      .registerStorageBytes =
++          std::max(std::max(lhsStorageSize, rhsStorageSize), registerStorage),
++      .mmaOperationCount = {mmaCount, 0, 0},
++  };
++}
++
++/// ----- Evaluation iterator --------------------------------------------------
++///
++/// The evaluation iterator estimates the cost of processing one tile (one
++/// block) of the main iteration space. It visits the layout tree depth-first
++/// and keeps a stack of partial evaluations: every visited layout pushes one
++/// evaluation, and a parent layout replaces the evaluations of its children
++/// with their combination.
++///
++/// Tensor sources are the memory accesses. Each one counts as one access, and
++/// the number of cache lines is estimated from the CuTe layout clamped to the
++/// tile shape:
++///
++/// - Broadcast dimensions (stride 0) are skipped.
++/// - Dimensions with a stride below the cache line size are densely packed.
++///   Together they form one contiguous run per combination of the other
++///   dimensions, which may straddle one extra cache line if it is unaligned.
++/// - Every step along a larger (or dynamic) stride starts a new run.
++///
++/// Tensor sources without a graph input or output (e.g. constants) cost
++/// nothing. The other layouts combine the evaluations of their children:
++///
++/// - Composite: the children are accessed together, so their memory accesses,
++///   loops and MMA operations are added.
++/// - Concat: every block of the concat dimension is covered by exactly one
++///   operand, so the costs are averaged over the operands, weighted by their
++///   size along the concat dimension and rounded up.
++/// - Reduction: the costs of the reduction operand are repeated for every step
++///   of the reduction tile over the reduced dimensions, and the steps are
++///   counted as loop iterations.
++/// - Matmul: the costs of the LHS and RHS operands are repeated for every K
++///   step, and the steps are counted as loop iterations. The tensor core
++///   evaluation adds the MMA operations and the MMA storage.
++///
++/// Register and shared storage are peaks rather than sums, so the maximum over
++/// the children is used. Concat, reduction and matmul layouts also account for
++/// the storage of their operand iteration spaces: the tile size times the live
++/// size per tile element, plus a result-typed accumulator when necessary.
++///
++/// The evaluator then adds the output stores and the storage of the main
++/// iteration space. All counts except `blockCount` are per block.
++
++class EvaluationLayoutIterator : public TilingLayoutIterator {
++public:
++  EvaluationLayoutIterator(TilingEvaluator &parent, TilingConfig config)
++      : TilingLayoutIterator(std::move(config)), parent(parent) {}
++
++  LogicalResult processTensor(TensorSourceAttr tensor) override;
++  LogicalResult processComposite(CompositeSourceAttr composite) override;
++  LogicalResult processConcat(ConcatSourceAttr concat) override;
++  LogicalResult processReduction(ReductionSourceAttr reduction) override;
++  LogicalResult processMatmul(MatmulSourceAttr matmul) override;
++
++  // Must be called only after processing a layout.
++  TilingEvaluation getResult() const { return evals.back(); }
++
++private:
++  TilingEvaluator &parent;
++  SmallVector<TilingEvaluation> evals;
++};
++
++LogicalResult EvaluationLayoutIterator::processTensor(TensorSourceAttr tensor) {
++  // Get the element type from the input or the output value.
++  // Ignore missing tensor IDs (e.g. constant tensors).
++  Type elementType;
++  auto argTypes = parent.graph.getArgumentTypes();
++  auto resTypes = parent.graph.getResultTypes();
++  size_t id = tensor.getTensorId();
++  if (id < argTypes.size()) {
++    elementType = argTypes[id];
++  } else if (id < argTypes.size() + resTypes.size()) {
++    elementType = resTypes[id - argTypes.size()];
++  } else {
++    evals.push_back(TilingEvaluation{});
++    return success();
++  }
++
++  // Verify that the CuTe layout is flat. This can fail if `iteration_space` or
++  // `result_layouts` attributes are modified after the normalization pass.
++  auto cuteLayout = tensor.getCuteLayout();
++  if (tcutegen::depth(cuteLayout) > 1) {
++    return parent.graph.emitError() << "expected flat layout";
++  }
++
++  // Get the element type size (bytes).
++  int elementSizeBytes = getSizeBytes(elementType);
++  int elementsPerCacheLine = kCacheLineSize / elementSizeBytes;
++
++  // If the offset is not aligned to the cache line boundary, an additional
++  // cache line access may be needed.
++  bool isUnalignedAccess =
++      (tensor.getOffset() * elementSizeBytes) % kCacheLineSize != 0;
++
++  // Calculate the number of cache line accessed for the current tile.
++  int64_t cacheLineAccesses = 1;
++  int64_t innerSpan = 0;
++  for (auto [tileSize, dimLayout] :
++       llvm::zip_equal(config.tileShape, cuteLayout)) {
++    auto cgShape = dimLayout.shape();
++    auto cgStride = dimLayout.stride();
++
++    // Clamp the tile size to the dimension shape.
++    int64_t maxSize =
++        tcutegen::is_static(cgShape) ? cgShape.as_int() : INT64_MAX;
++    int64_t actualSize = std::min<int64_t>(tileSize, maxSize);
++
++    // Assume large stride value for dynamic strides.
++    int64_t cacheLinesInDim = actualSize;
++    if (tcutegen::is_static(cgStride)) {
++      // Skip broadcasted dimensions.
++      int64_t stride = cgStride.as_int();
++      if (stride == 0) {
++        continue;
++      }
++      if (stride < elementsPerCacheLine) {
++        // If the accesses are not aligned to the cache line boundary, an
++        // additional cache line access may be needed.
++        int64_t accessSize = actualSize * stride;
++        isUnalignedAccess |= accessSize % elementsPerCacheLine != 0 &&
++                             elementsPerCacheLine % accessSize != 0;
++        // Extend the contiguous span by this dimension's extent.
++        innerSpan += accessSize - stride;
++        cacheLinesInDim = 1;
++      } else {
++        // Each step along a large-stride dimension starts a new contiguous run.
++        // Unless the stride is a multiple of the cache line size, these runs
++        // start mid-line and may straddle an extra cache line.
++        isUnalignedAccess |= stride % elementsPerCacheLine != 0;
++      }
++    }
++    cacheLineAccesses *= cacheLinesInDim;
++  }
++
++  // Densely packed dimensions (stride below a cache line size) form a single
++  // contiguous run per combination of the remaining dimensions. The run covers
++  // `innerSpan` elements and may straddle one extra cache line when the access
++  // is unaligned.
++  if (innerSpan > 0) {
++    cacheLineAccesses *= llvm::divideCeil(innerSpan + 1, elementsPerCacheLine) +
++                         isUnalignedAccess;
++  }
++
++  // Add the evaluation result.
++  evals.push_back(TilingEvaluation{
++      .memoryAccessCount = 1,
++      .memoryAccessCost = cacheLineAccesses,
++  });
++  return success();
++}
++
++LogicalResult
++EvaluationLayoutIterator::processComposite(CompositeSourceAttr composite) {
++  // Process the child layouts.
++  size_t size = evals.size();
++  if (failed(TilingLayoutIterator::processComposite(composite))) {
++    return failure();
++  }
++
++  // Accumulate the results from the child evals.
++  TilingEvaluation result;
++  for (const auto &eval : llvm::make_range(evals.begin() + size, evals.end())) {
++    result.registerStorageBytes =
++        std::max(result.registerStorageBytes, eval.registerStorageBytes);
++    result.sharedStorageBytes =
++        std::max(result.sharedStorageBytes, eval.sharedStorageBytes);
++    result.memoryAccessCount += eval.memoryAccessCount;
++    result.memoryAccessCost += eval.memoryAccessCost;
++    result.loopIterationCount += eval.loopIterationCount;
++    for (int i = 0; i < 3; ++i) {
++      result.mmaOperationCount[i] += eval.mmaOperationCount[i];
++    }
++  }
++
++  // Replace the child evals with the accumulated result.
++  evals.resize(size);
++  evals.push_back(result);
++  return success();
++}
++
++LogicalResult EvaluationLayoutIterator::processConcat(ConcatSourceAttr concat) {
++  // Get the operation and the live sizes.
++  Operation *concatOp = parent.pivots[concat];
++  ArrayRef<int> operandLiveSizes = parent.liveSizes[concatOp];
++  if (!concatOp) {
++    return parent.graph.emitError() << "missing pivot: " << concat;
++  }
++
++  // Verify the tile shape (must have unit size for concat dimension).
++  if (config.tileShape[concat.getDimension()] != 1) {
++    return concatOp->emitError()
++           << "expected unit tile size for concat dimension";
++  }
++
++  // Process the child layouts.
++  size_t size = evals.size();
++  if (failed(TilingLayoutIterator::processConcat(concat))) {
++    return failure();
++  }
++
++  // Accumulate the results from the child evals.
++  TilingEvaluation result;
++  auto operandLayouts = getConcatLayouts(concat, concatOp->getNumOperands());
++  size_t ptr = size;
++  for (auto [idx, src] : llvm::enumerate(*operandLayouts)) {
++    if (src == nullptr) {
++      continue; // The operand is not used.
++    }
++    int64_t weight = src.getShape()[concat.getDimension()];
++    const auto &eval = evals[ptr++];
++
++    result.registerStorageBytes =
++        std::max(result.registerStorageBytes, eval.registerStorageBytes);
++    result.sharedStorageBytes =
++        std::max(result.sharedStorageBytes, eval.sharedStorageBytes);
++    result.memoryAccessCount += weight * eval.memoryAccessCount;
++    result.memoryAccessCost += weight * eval.memoryAccessCost;
++    result.loopIterationCount += weight * eval.loopIterationCount;
++    for (int i = 0; i < 3; ++i) {
++      result.mmaOperationCount[i] += weight * eval.mmaOperationCount[i];
++    }
++
++    // Calculate the total storage needed by the operand iteration space.
++    int64_t storageBytes =
++        llvm::product_of(config.tileShape, int64_t{1}) * operandLiveSizes[idx];
++    result.registerStorageBytes =
++        std::max(result.registerStorageBytes, storageBytes);
++  }
++
++  // Adjust the weighted results.
++  int64_t totalWeight = concat.getShape()[concat.getDimension()];
++  result.memoryAccessCount =
++      llvm::divideCeil(result.memoryAccessCount, totalWeight);
++  result.memoryAccessCost =
++      llvm::divideCeil(result.memoryAccessCost, totalWeight);
++  result.loopIterationCount =
++      llvm::divideCeil(result.loopIterationCount, totalWeight);
++  for (int i = 0; i < 3; ++i) {
++    result.mmaOperationCount[i] =
++        llvm::divideCeil(result.mmaOperationCount[i], totalWeight);
++  }
++
++  // Replace the child evals with the accumulated result.
++  evals.resize(size);
++  evals.push_back(result);
++  return success();
++}
++
++LogicalResult
++EvaluationLayoutIterator::processReduction(ReductionSourceAttr reduction) {
++  // Get the operation and the live sizes.
++  Operation *reduceOp = parent.pivots[reduction];
++  ArrayRef<int> operandLiveSizes = parent.liveSizes[reduceOp];
++  if (!reduceOp) {
++    return parent.graph.emitError() << "missing pivot: " << reduction;
++  }
++
++  // Process the child layout.
++  if (failed(TilingLayoutIterator::processReduction(reduction))) {
++    return failure();
++  }
++
++  // Calculate the number of loop iterations.
++  int64_t repeats = 1;
++  SmallVector<int32_t> reductionTileShape = calculateReductionTileShape(
++      reduction.getReductionShape(), config.reductionTileSize);
++  bool maskNeeded = false;
++  for (auto [size, tileSize] :
++       llvm::zip_equal(reduction.getReductionShape(), reductionTileShape)) {
++    repeats *= llvm::divideCeil(size, tileSize);
++    maskNeeded |= size % tileSize != 0;
++  }
++
++  // Update the evaluation result.
++  TilingEvaluation &result = evals.back();
++  result.memoryAccessCount *= repeats;
++  result.memoryAccessCost *= repeats;
++  if (repeats > 1) {
++    result.loopIterationCount =
++        repeats * std::max(result.loopIterationCount, 1l);
++  }
++  for (int i = 0; i < 3; ++i) {
++    result.mmaOperationCount[i] *= repeats;
++  }
++
++  // Calculate the underlying tile size.
++  int64_t tileSize = llvm::product_of(reductionTileShape);
++  auto cuteLayout = reduction.getCuteLayout();
++  auto strideValues = cuteLayout.stride().getValues().drop_back();
++  for (auto [idx, stride] : llvm::enumerate(strideValues)) {
++    tileSize *= stride.as_int() > 0 ? config.tileShape[idx] : 1;
++  }
++
++  // Add the codegen overhead to the live size.
++  int liveSize = operandLiveSizes[0];
++  if (repeats > 1) {
++    int accumulatorSize =
++        llvm::sum_of(llvm::map_range(reduceOp->getResultTypes(), getSizeBytes));
++    liveSize += accumulatorSize + kRegisterSize; // Loop overhead.
++  }
++  if (maskNeeded) {
++    liveSize += kLoadMaskingOverhead;
++  }
++
++  // Set the total storage needed by the operand iteration space.
++  result.registerStorageBytes =
++      std::max(result.registerStorageBytes, tileSize * liveSize);
++
++  return success();
++}
++
++LogicalResult EvaluationLayoutIterator::processMatmul(MatmulSourceAttr matmul) {
++  // Get the operation and the live sizes.
++  Operation *matmulOp = parent.pivots[matmul];
++  SmallVector<int> operandLiveSizes = parent.liveSizes[matmulOp];
++  if (!matmulOp) {
++    return parent.graph.emitError() << "missing pivot: " << matmul;
++  }
++
++  // Process the child layout.
++  if (failed(TilingLayoutIterator::processMatmul(matmul))) {
++    return failure();
++  }
++
++  // Calculate the number of loop iterations.
++  int64_t repeats = 1;
++  SmallVector<int32_t> reductionTileShape = calculateReductionTileShape(
++      matmul.getContractingShape(), config.reductionTileSize);
++  bool maskNeeded = false;
++  for (auto [size, tileSize] :
++       llvm::zip_equal(matmul.getContractingShape(), reductionTileShape)) {
++    repeats *= llvm::divideCeil(size, tileSize);
++    maskNeeded |= size % tileSize != 0;
++  }
++
++  // If the mask is needed, add the overhead to the live sizes.
++  if (maskNeeded) {
++    operandLiveSizes[0] += kLoadMaskingOverhead;
++    operandLiveSizes[1] += kLoadMaskingOverhead;
++  }
++
++  // Calculate tile B/M/N/K sizes.
++  MmaTileSize tile = {1, 1, 1, llvm::product_of(reductionTileShape)};
++  auto cuteLayout = matmul.getCuteLayout();
++  auto strideValues = cuteLayout.stride().getValues().drop_back();
++  for (auto [idx, stride] : llvm::enumerate(strideValues)) {
++    int64_t pos = stride.as_int();
++    if (pos >= matmul.getM() * matmul.getN() * matmul.getK()) {
++      tile.b *= config.tileShape[idx];
++    } else if (pos >= matmul.getN() * matmul.getK()) {
++      tile.m *= config.tileShape[idx];
++    } else if (pos >= matmul.getK()) {
++      tile.n *= config.tileShape[idx];
++    }
++  }
++
++  // Evaluate the matmul operation.
++  TilingEvaluation result;
++  auto matmulCast = cast<MatmulOp>(matmulOp);
++  if (auto eval =
++          evaluateV5(matmulCast, parent.archInfo, tile, operandLiveSizes);
++      eval.has_value()) {
++    result = *eval;
++  } else if (auto eval = evaluateV3(matmulCast, parent.archInfo, tile,
++                                    operandLiveSizes);
++             eval.has_value()) {
++    result = *eval;
++  } else if (auto eval = evaluateV2(matmulCast, parent.archInfo, tile,
++                                    operandLiveSizes);
++             eval.has_value()) {
++    result = *eval;
++  } else {
++    int64_t lhsStorageSize = tile.b * tile.m * tile.k * operandLiveSizes[0];
++    int64_t rhsStorageSize = tile.b * tile.n * tile.k * operandLiveSizes[1];
++    int64_t registerStorage = getMatmulRegisterStorage(matmulCast, tile);
++    result = TilingEvaluation{
++        .registerStorageBytes =
++            std::max(std::max(lhsStorageSize, rhsStorageSize), registerStorage),
++    };
++  }
++
++  // Accumulate the results from the child evals.
++  for (const auto &eval : llvm::make_range(evals.end() - 2, evals.end())) {
++    result.registerStorageBytes =
++        std::max(result.registerStorageBytes, eval.registerStorageBytes);
++    result.sharedStorageBytes =
++        std::max(result.sharedStorageBytes, eval.sharedStorageBytes);
++    result.memoryAccessCount += repeats * eval.memoryAccessCount;
++    result.memoryAccessCost += repeats * eval.memoryAccessCost;
++    result.loopIterationCount += eval.loopIterationCount;
++    for (int i = 0; i < 3; ++i) {
++      result.mmaOperationCount[i] += repeats * eval.mmaOperationCount[i];
++    }
++  }
++  if (repeats > 1) {
++    result.loopIterationCount =
++        repeats * std::max(result.loopIterationCount, 1l);
++  }
++
++  // Replace the child evals with the accumulated result.
++  evals.resize(evals.size() - 2);
++  evals.push_back(result);
++  return success();
++}
++
++/// ----- Tiling configuration -------------------------------------------------
++///
++/// All tile sizes must be positive powers of two. The tile shape must not be
++/// empty, and both the tile size (product of the tile shape) and the reduction
++/// tile size are limited to 2^20 elements, which also keeps the storage
++/// calculations from overflowing. The tile rank is checked against the
++/// iteration space by the evaluator.
++
++FailureOr<TilingConfig> TilingConfig::get(SmallVector<int32_t> tileShape,
++                                          int32_t reductionTileSize) {
++  constexpr int64_t maxTileSize = 1 << 20;
++  int64_t acc = 1;
++  auto isValid = [&](int64_t size) {
++    return size > 0 && llvm::isPowerOf2_64(size) &&
++           !llvm::MulOverflow(acc, size, acc) && acc <= maxTileSize;
++  };
++  if (tileShape.empty() || !llvm::all_of(tileShape, isValid) ||
++      reductionTileSize <= 0 || !llvm::isPowerOf2_64(reductionTileSize) ||
++      reductionTileSize > maxTileSize) {
++    return failure();
++  }
++  return TilingConfig(std::move(tileShape), reductionTileSize);
++}
++
++llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
++                              const TilingConfig &config) {
++  os << "[";
++  llvm::interleave(config.tileShape, os, ",");
++  os << "]";
++  if (config.reductionTileSize != 1) {
++    os << " r" << config.reductionTileSize;
++  }
++  return os;
++}
++
++llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
++                              const TilingEvaluation &eval) {
++  os << "blocks:" << eval.blockCount;
++  if (eval.registerStorageBytes > 0) {
++    os << " storage:" << eval.registerStorageBytes;
++  }
++  if (eval.sharedStorageBytes > 0) {
++    os << " shared:" << eval.sharedStorageBytes;
++  }
++  if (eval.memoryAccessCount > 0) {
++    os << " memAccess:" << eval.memoryAccessCount;
++  }
++  if (eval.memoryAccessCost > 0) {
++    os << " memCost:" << eval.memoryAccessCost;
++  }
++  if (eval.loopIterationCount > 0) {
++    os << " loops:" << eval.loopIterationCount;
++  }
++  if (eval.mmaOperationCount[0] > 0) {
++    os << " mmaV2:" << eval.mmaOperationCount[0];
++  }
++  if (eval.mmaOperationCount[1] > 0) {
++    os << " mmaV3:" << eval.mmaOperationCount[1];
++  }
++  if (eval.mmaOperationCount[2] > 0) {
++    os << " mmaV5:" << eval.mmaOperationCount[2];
++  }
++  return os;
++}
++
++bool TilingEvaluation::operator<(const TilingEvaluation &other) const {
++  // Total number of memory cache lines accessed is the main discriminator.
++  int64_t score = blockCount * memoryAccessCost;
++  int64_t otherScore = other.blockCount * other.memoryAccessCost;
++  if (score != otherScore) {
++    return score < otherScore;
++  }
++  // Prefer kernels with less loop iterations.
++  if (loopIterationCount != other.loopIterationCount) {
++    return loopIterationCount < other.loopIterationCount;
++  }
++  // Prefer kernels with fewer blocks.
++  if (blockCount != other.blockCount) {
++    return blockCount < other.blockCount;
++  }
++  // If MMA operations are present, prefer the higher MMA version.
++  for (int i = 2; i >= 0; --i) {
++    bool hasMma = mmaOperationCount[i] > 0;
++    bool otherHasMma = other.mmaOperationCount[i] > 0;
++    if (hasMma != otherHasMma) {
++      return hasMma;
++    }
++  }
++  // Storage estimation is inaccurate, use it as a tie-breaker only.
++  if (sharedStorageBytes != other.sharedStorageBytes) {
++    return sharedStorageBytes < other.sharedStorageBytes;
++  }
++  if (registerStorageBytes != other.registerStorageBytes) {
++    return registerStorageBytes < other.registerStorageBytes;
++  }
++  // Memory access count is dependent on the loop iterations count.
++  return memoryAccessCount < other.memoryAccessCount;
++}
++
++/// ----- Tiling evaluator -----------------------------------------------------
++///
++/// The evaluator is split into a per-graph setup and a per-configuration
++/// evaluation, so that many tiling configurations of the same graph can be
++/// compared cheaply.
++///
++/// `create` collects everything that does not depend on the configuration:
++///
++/// - The input layout (`iteration_space`) and the output layout (the result
++///   views, or a tensor source for a single result). The output layout is
++///   reshaped to the shape of the input layout, so that one tile shape applies
++///   to both. The reshape fails for incompatible shapes, and a hierarchical
++///   reshaped layout is rejected during the evaluation.
++/// - The pivots, which map the concat, reduction and matmul layouts to their
++///   operations.
++/// - The live sizes per tile element: one for the main iteration space, keyed
++///   by the graph terminator, and one per operand iteration space of every
++///   pivot operation (per operand for concats and matmuls, one for all
++///   operands of a reduction). An operation reached through multiple layouts
++///   is analyzed once.
++///
++/// `evaluate` rejects invalid configurations and tile shapes whose rank does
++/// not match the iteration space without emitting a diagnostic, so callers can
++/// probe configurations freely. Layout errors found during the evaluation are
++/// reported as diagnostics. A valid configuration is evaluated in four steps:
++///
++/// 1. The input layout gives the loads, the loop iterations, the MMA
++///    operations and the storage of the nested iteration spaces.
++/// 2. The output layout adds the stores. Only its memory costs are used.
++/// 3. The storage of the main iteration space is the tile size times its live
++///    size, and the register storage is the maximum over all iteration spaces.
++/// 4. The block count is the number of tiles covering the iteration space,
++///    assuming `kDynamicSizeValue` elements for dynamic dimensions.
++
++FailureOr<TilingEvaluator> TilingEvaluator::create(GraphOp graph,
++                                                   const ArchInfo &archInfo) {
++  // Get the input layout.
++  auto inputLayout = getInputLayoutInternal(graph);
++  LLVM_DEBUG(llvm::dbgs() << "Input layout: " << inputLayout << "\n");
++  if (!inputLayout) {
++    return graph.emitError("Failed to get the input layout");
++  }
++
++  // Get the output layout.
++  auto outputLayout = getOutputLayoutInternal(graph);
++  LLVM_DEBUG(llvm::dbgs() << "Output layout: " << outputLayout << "\n");
++  if (!outputLayout) {
++    return graph.emitError("Failed to get the output layout");
++  }
++
++  // Align the output layout to the input layout.
++  if (outputLayout.getShape() != inputLayout.getShape()) {
++    outputLayout = outputLayout.reshape(inputLayout.getShape());
++    LLVM_DEBUG(llvm::dbgs() << "Reshaped output: " << outputLayout << "\n");
++    if (!outputLayout) {
++      return graph.emitError("Failed to reshape the output layout");
++    }
++  }
++
++  // Find pivots (connect layouts to operations).
++  auto pivots = findPivots(graph, inputLayout);
++  if (failed(pivots)) {
++    return failure();
++  }
++  LLVM_DEBUG(llvm::dbgs() << "Iteration space pivots: " << pivots->size()
++                          << "\n");
++
++  // Calculate the live sizes for the main iteration space.
++  DenseMap<Operation *, SmallVector<int>> liveSizes;
++  LivenessRangeMap livenessRanges = getLivenessRangeMap(graph.getBody());
++  Operation *resultsOp = graph.getBody()->getTerminator();
++  int mainLiveSize =
++      calculateMaxLiveSize(graph.getBody(), livenessRanges,
++                           getIterationSpaceValues(resultsOp->getOperands()));
++  liveSizes.insert({resultsOp, {mainLiveSize}});
++  LLVM_DEBUG(
++      llvm::dbgs() << "Each tile element in the main iteration space needs "
++                   << mainLiveSize << " bytes of storage\n");
++
++  // For operations that define new iteration spaces, calculate the live sizes.
++  for (auto [_, op] : *pivots) {
++    if (liveSizes.contains(op)) {
++      continue;
++    }
++    SmallVector<int> operandLiveSizes;
++    if (isa<ConcatenateOp, MatmulOp>(op)) {
++      for (auto operand : op->getOperands()) {
++        operandLiveSizes.push_back(calculateMaxLiveSize(
++            graph.getBody(), livenessRanges, getIterationSpaceValues(operand)));
++      }
++    } else {
++      operandLiveSizes.push_back(
++          calculateMaxLiveSize(graph.getBody(), livenessRanges,
++                               getIterationSpaceValues(op->getOperands())));
++    }
++    LLVM_DEBUG({
++      llvm::dbgs() << op->getName() << " storage: ";
++      llvm::interleaveComma(operandLiveSizes, llvm::dbgs());
++      llvm::dbgs() << "\n";
++    });
++    liveSizes.insert({op, std::move(operandLiveSizes)});
++  }
++
++  // Create the tiling evaluator.
++  return TilingEvaluator(graph, archInfo, inputLayout, outputLayout,
++                         std::move(*pivots), std::move(liveSizes));
++}
++
++FailureOr<TilingEvaluation>
++TilingEvaluator::evaluate(const TilingConfig &config) {
++  // Verify the tiling configuration.
++  if (config.getTileShape().size() != inputLayout.getShape().size()) {
++    LLVM_DEBUG(llvm::dbgs()
++               << "Invalid tiling configuration: " << config << "\n");
++    return failure();
++  }
++
++  // Get the evaluation result for the input layout.
++  EvaluationLayoutIterator iterator(*this, config);
++  if (failed(iterator.dispatch(inputLayout))) {
++    return failure();
++  }
++  TilingEvaluation result = iterator.getResult();
++
++  // Get the evaluation result for the output layout.
++  if (failed(iterator.dispatch(outputLayout))) {
++    return failure();
++  }
++  TilingEvaluation output = iterator.getResult();
++  result.memoryAccessCount += output.memoryAccessCount;
++  result.memoryAccessCost += output.memoryAccessCost;
++
++  // Calculate the total storage needed by the main iteration space.
++  int64_t mainLiveSize = liveSizes[graph.getBody()->getTerminator()][0];
++  int64_t storageBytes =
++      llvm::product_of(config.getTileShape(), int64_t{1}) * mainLiveSize;
++  result.registerStorageBytes =
++      std::max(result.registerStorageBytes, storageBytes);
++
++  // Calculate the number of execution blocks.
++  for (auto [size, tileSize] :
++       llvm::zip_equal(inputLayout.getShape(), config.getTileShape())) {
++    if (size == ShapedType::kDynamic) {
++      size = kDynamicSizeValue;
++    }
++    result.blockCount *= llvm::divideCeil(size, tileSize);
++  }
++
++  return result;
++}
++
++/// ----- Layout iterator ------------------------------------------------------
++///
++/// Base visitor over the layout source tree. `dispatch` calls the handler for
++/// the layout kind, and the default handlers visit the child layouts in order,
++/// stopping at the first failure. Subclasses override the handlers to track
++/// the tile shape or to accumulate the evaluation results.
++
++LogicalResult LayoutIterator::dispatch(LayoutSourceAttrInterface layout) {
++  return llvm::TypeSwitch<LayoutSourceAttrInterface, LogicalResult>(layout)
++      .Case<TensorSourceAttr>(
++          [&](auto tensor) { return processTensor(tensor); })
++      .Case<CompositeSourceAttr>(
++          [&](auto composite) { return processComposite(composite); })
++      .Case<ConcatSourceAttr>(
++          [&](auto concat) { return processConcat(concat); })
++      .Case<ReductionSourceAttr>(
++          [&](auto reduction) { return processReduction(reduction); })
++      .Case<MatmulSourceAttr>(
++          [&](auto matmul) { return processMatmul(matmul); })
++      .Default(failure());
++}
++
++LogicalResult LayoutIterator::processTensor(TensorSourceAttr tensor) {
++  return success();
++}
++
++LogicalResult LayoutIterator::processComposite(CompositeSourceAttr composite) {
++  if (llvm::any_of(composite.getSources(),
++                   [&](auto source) { return failed(dispatch(source)); })) {
++    return failure();
++  }
++  return success();
++}
++
++LogicalResult LayoutIterator::processConcat(ConcatSourceAttr concat) {
++  if (llvm::any_of(concat.getSources(),
++                   [&](auto source) { return failed(dispatch(source)); })) {
++    return failure();
++  }
++  return success();
++}
++
++LogicalResult LayoutIterator::processReduction(ReductionSourceAttr reduction) {
++  return dispatch(reduction.getSource());
++}
++
++LogicalResult LayoutIterator::processMatmul(MatmulSourceAttr matmul) {
++  if (failed(dispatch(matmul.getLhs())) || failed(dispatch(matmul.getRhs()))) {
++    return failure();
++  }
++  return success();
++}
++
++} // namespace tiling_analysis
++} // namespace mlir::nv_tensor_ir

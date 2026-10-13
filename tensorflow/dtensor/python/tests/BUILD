@@ -763,7 +763,7 @@ dtensor_test(
     },
     main = "spmd_test.py",
     shard_count = {
-        "cpu": 25,
+        "cpu": 50,
         "gpu": 10,
         "tpu": 10,
         TPU_V3_DONUT_BACKEND: 32,

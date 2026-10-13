@@ -245,6 +245,28 @@ void Tile::Replace(const llvm::DenseMap<SymbolicExpr, SymbolicExpr>& map) {
   }
 }
 
+bool Tile::DependsOnVariables(llvm::ArrayRef<VariableID> variables) const {
+  for (const DimTile& dim_tile :
+       llvm::concat<const DimTile>(dim_tiles_, replica_ids_)) {
+    for (SymbolicExpr expr : {dim_tile.offset, dim_tile.size, dim_tile.stride,
+                              dim_tile.upper_bound}) {
+      for (VariableID var : variables) {
+        if (expr.IsFunctionOfVariable(var)) {
+          return true;
+        }
+      }
+    }
+  }
+  for (const auto& [expr, range] : constraints_) {
+    for (VariableID var : variables) {
+      if (expr.IsFunctionOfVariable(var)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 void SimplifyDimTiles(
     llvm::ArrayRef<llvm::MutableArrayRef<DimTile>> dim_tile_groups,
     const TilingSpace& space,

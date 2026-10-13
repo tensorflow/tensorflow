@@ -129,6 +129,11 @@ CreateFoldStablehloConstantTransformsPass();
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreateFuseA4W2DRQFullyConnectedPass();
 
+// Folds f16 <-> f32 casts around a float fully_connected into it, producing a
+// fully_connected with f16 activations and unchanged weights.
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateFoldFp16CastsIntoFullyConnectedPass();
+
 std::unique_ptr<OperationPass<ModuleOp>> CreateLowerQuantAnnotationsPass();
 
 // Creates an instance of the TFLite PropagateQParams pass which propagates

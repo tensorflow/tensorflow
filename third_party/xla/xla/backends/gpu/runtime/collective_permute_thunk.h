@@ -21,7 +21,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -112,11 +111,10 @@ absl::Status RunCollectivePermute(P2PConfig::SourceTargetRanks source_target,
 //===----------------------------------------------------------------------===//
 
 // Computes connected components of the source-target pairs graph using
-// Union-Find. Returns a map from component root to sorted member IDs. All IDs
-// in [0, num_participants) are included; IDs not in any pair become singleton
-// components.
-absl::flat_hash_map<int64_t, std::vector<int64_t>>
-SourceTargetConnectedComponents(
+// Union-Find. Returns a sorted list of components, where each component is a
+// sorted list of member IDs. All IDs in [0, num_participants) are included; IDs
+// not in any pair become singleton components.
+std::vector<std::vector<int64_t>> SourceTargetConnectedComponents(
     int64_t num_participants,
     absl::Span<const std::pair<int64_t, int64_t>> source_target_pairs);
 

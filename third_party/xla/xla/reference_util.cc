@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/reference_util.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -220,36 +221,42 @@ ReferenceUtil::ReduceWindow4DGeneric(
   }
   auto result = std::make_unique<Array4D<float>>(
       window_counts[0], window_counts[1], window_counts[2], window_counts[3]);
+  const int64_t n2 = operand.n2();
+  const int64_t n3 = operand.n3();
+  const int64_t n4 = operand.n4();
+  const float* operand_data = operand.data();
+  float* out_ptr = result->data();
   // Do a full 4D reduce window.
   for (int64_t i0 = 0; i0 < window_counts[0]; ++i0) {
+    const int64_t i0_base = i0 * stride[0] - pad_low[0];
+    const int64_t b0_start = std::max<int64_t>(0, i0_base);
+    const int64_t b0_end = std::min<int64_t>(operand.n1(), i0_base + window[0]);
     for (int64_t i1 = 0; i1 < window_counts[1]; ++i1) {
+      const int64_t i1_base = i1 * stride[1] - pad_low[1];
+      const int64_t b1_start = std::max<int64_t>(0, i1_base);
+      const int64_t b1_end = std::min<int64_t>(n2, i1_base + window[1]);
       for (int64_t i2 = 0; i2 < window_counts[2]; ++i2) {
+        const int64_t i2_base = i2 * stride[2] - pad_low[2];
+        const int64_t b2_start = std::max<int64_t>(0, i2_base);
+        const int64_t b2_end = std::min<int64_t>(n3, i2_base + window[2]);
         for (int64_t i3 = 0; i3 < window_counts[3]; ++i3) {
-          int64_t i0_base = i0 * stride[0] - pad_low[0];
-          int64_t i1_base = i1 * stride[1] - pad_low[1];
-          int64_t i2_base = i2 * stride[2] - pad_low[2];
-          int64_t i3_base = i3 * stride[3] - pad_low[3];
+          const int64_t i3_base = i3 * stride[3] - pad_low[3];
+          const int64_t b3_start = std::max<int64_t>(0, i3_base);
+          const int64_t b3_end = std::min<int64_t>(n4, i3_base + window[3]);
 
           float val = init;
-          for (int64_t i0_win = 0; i0_win < window[0]; ++i0_win) {
-            for (int64_t i1_win = 0; i1_win < window[1]; ++i1_win) {
-              for (int64_t i2_win = 0; i2_win < window[2]; ++i2_win) {
-                for (int64_t i3_win = 0; i3_win < window[3]; ++i3_win) {
-                  if (i0_base + i0_win >= 0 && i1_base + i1_win >= 0 &&
-                      i2_base + i2_win >= 0 && i3_base + i3_win >= 0 &&
-                      i0_base + i0_win < operand.n1() &&
-                      i1_base + i1_win < operand.n2() &&
-                      i2_base + i2_win < operand.n3() &&
-                      i3_base + i3_win < operand.n4()) {
-                    val = reduce_func(
-                        val, operand(i0_base + i0_win, i1_base + i1_win,
-                                     i2_base + i2_win, i3_base + i3_win));
-                  }
+          for (int64_t b0 = b0_start; b0 < b0_end; ++b0) {
+            for (int64_t b1 = b1_start; b1 < b1_end; ++b1) {
+              const int64_t b01_offset = (b0 * n2 + b1) * n3;
+              for (int64_t b2 = b2_start; b2 < b2_end; ++b2) {
+                const float* row = operand_data + (b01_offset + b2) * n4;
+                for (int64_t b3 = b3_start; b3 < b3_end; ++b3) {
+                  val = reduce_func(val, row[b3]);
                 }
               }
             }
           }
-          (*result)(i0, i1, i2, i3) = val;
+          *out_ptr++ = val;
         }
       }
     }

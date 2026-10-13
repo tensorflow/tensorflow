@@ -180,8 +180,7 @@ absl::Status GpuInclusivePrefixSum(OpKernelContext* context, int size,
                                    InputIteratorT input,
                                    OutputIteratorT output) {
   static_assert(
-      !std::is_same<typename std::remove_reference<decltype(*input)>::type,
-                    bool>::value,
+      !std::is_same_v<std::remove_reference_t<decltype(*input)>, bool>,
       "GpuInclusivePrefixSum does not work correct with booleans, please use "
       "TransformInputIterator to explicitly cast to an integer.");
   if (size == 0) return absl::OkStatus();

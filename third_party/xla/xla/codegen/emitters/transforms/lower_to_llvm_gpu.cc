@@ -251,19 +251,18 @@ class LowerToLLVMGPUPass
       if (device_spec_.IsAmdGpu()) {
         std::string chipset =
             device_spec_.gpu().rocm_compute_capability().gfx_version();
-        llvm::FailureOr<mlir::amdgpu::Chipset> maybeChipset =
-            mlir::amdgpu::Chipset::parse(chipset);
-        if (mlir::failed(maybeChipset)) {
+        llvm::FailureOr<mlir::ROCDL::TargetInfo> targetInfo =
+            mlir::ROCDL::TargetInfo::get(chipset);
+        if (mlir::failed(targetInfo)) {
           mlir::emitError(mlir::UnknownLoc::get(&getContext()),
-                          "Invalid chipset name: " + chipset);
+                          "Invalid chipset/target name: " + chipset);
           return mlir::failure();
         }
         mlir::populateGpuToROCDLConversionPatterns(
-            converter, patterns, mlir::gpu::amd::Runtime::Unknown,
-            *maybeChipset);
+            converter, patterns, mlir::gpu::amd::Runtime::Unknown, *targetInfo);
         mlir::configureGpuToROCDLConversionLegality(target);
         mlir::populateAMDGPUToROCDLConversionPatterns(converter, patterns,
-                                                      *maybeChipset);
+                                                      *targetInfo);
         // Higher benefit than the default MathToROCDL patterns so these win for
         // scalar bf16 ops.
         mlir::PatternBenefit benefit(2);

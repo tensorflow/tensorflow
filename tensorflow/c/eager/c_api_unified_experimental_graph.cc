@@ -321,7 +321,7 @@ class GraphOperation : public TracingOperation {
   static bool classof(const AbstractOperation* ptr) {
     return ptr->getKind() == kGraph;
   }
-  ~GraphOperation() override {}
+  ~GraphOperation() override = default;
 
  private:
   friend class GraphContext;  // For access to op_.

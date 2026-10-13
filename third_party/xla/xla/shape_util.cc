@@ -2543,8 +2543,21 @@ ShapeUtil::ByteStrides(const Shape& shape) {
     int64_t dim_size = dim < shape_dim_size ? LayoutUtil::MaxSplitSize(
                                                   shape, minor_to_major[dim])
                                             : 1;
-    num_of_elements *=
-        RoundUpTo(dim_size, tile_dimensions[tile_dim_size - dim - 1]);
+    int64_t tile_dim = tile_dimensions[tile_dim_size - dim - 1];
+    if (tile_dim == Tile::kCombineDimension) {
+      int64_t packing = 1;
+      if (shape.layout().tiles().size() > 1) {
+        const Tile& sub_tile = shape.layout().tiles(1);
+        if (dim < sub_tile.dimensions().size()) {
+          packing = std::max<int64_t>(
+              1, sub_tile.dimension(sub_tile.dimensions().size() - 1 - dim));
+        } else if (dim == 1 && !sub_tile.dimensions().empty()) {
+          packing = std::max<int64_t>(1, sub_tile.dimension(0));
+        }
+      }
+      tile_dim = packing;
+    }
+    num_of_elements *= RoundUpTo(dim_size, tile_dim);
   }
   for (; dim < shape_dim_size; dim++) {
     int64_t dim_size = LayoutUtil::MaxSplitSize(shape, minor_to_major[dim]);

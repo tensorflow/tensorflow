@@ -45,28 +45,7 @@ using ::xla::xtile::BlockLevelParameters;
 class XTileDialectTest : public HloHardwareIndependentTestBase,
                          public XTileTestBase {};
 
-class XTileDialectTestParameterized
-    : public XTileDialectTest,
-      public ::testing::WithParamInterface<bool> {
- protected:
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options =
-        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_experimental_enable_tiling_propagation(
-        GetParam());
-    return debug_options;
-  }
-};
-
-INSTANTIATE_TEST_SUITE_P(XTileDialectTestParameterized,
-                         XTileDialectTestParameterized, testing::Bool(),
-                         [](const ::testing::TestParamInfo<bool>& info) {
-                           return info.param ? "ExperimentalEmitter"
-                                             : "LegacyEmitter";
-                         });
-
-TEST_P(XTileDialectTestParameterized,
-       HloTransposeIsLoweredToStableHloTranspose) {
+TEST_F(XTileDialectTest, HloTransposeIsLoweredToStableHloTranspose) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -95,7 +74,7 @@ CHECK: %[[RES:.*]] = stablehlo.transpose %[[ARG:.*]], dims = [1, 0] : (tensor<32
 )"));
 }
 
-TEST_P(XTileDialectTestParameterized, HloBitcastIsLoweredToTensorBitcast) {
+TEST_F(XTileDialectTest, HloBitcastIsLoweredToTensorBitcast) {
   constexpr absl::string_view kHloText = R"(
 HloModule t, is_scheduled=true
 
@@ -123,7 +102,7 @@ CHECK: %[[RES:.*]] = tensor.bitcast %[[ARG:.*]] : tensor<16x32xf32> to tensor<16
 )"));
 }
 
-TEST_P(XTileDialectTestParameterized, HloIotaIsLoweredToStableHloIota) {
+TEST_F(XTileDialectTest, HloIotaIsLoweredToStableHloIota) {
   constexpr absl::string_view kHloText = R"(
 HloModule t, is_scheduled=true
 
@@ -149,8 +128,7 @@ CHECK: %[[RES:.*]] = stablehlo.iota dim = 0 : tensor<16xi32>
 )"));
 }
 
-TEST_P(XTileDialectTestParameterized,
-       HloBroadcastInDimIsLoweredToStableHloBroadcastInDim) {
+TEST_F(XTileDialectTest, HloBroadcastInDimIsLoweredToStableHloBroadcastInDim) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -179,7 +157,7 @@ CHECK: %[[RES:.*]] = stablehlo.broadcast_in_dim %[[ARG:.*]], dims = [0, 1] : (te
 )"));
 }
 
-TEST_P(XTileDialectTestParameterized,
+TEST_F(XTileDialectTest,
        HloZeroDimensionalBroadcastIsLoweredToStableHloBroadcastInDim) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
@@ -209,7 +187,7 @@ CHECK: %[[RES:.*]] = stablehlo.broadcast_in_dim %[[ARG:.*]], dims = [] : (tensor
 )"));
 }
 
-TEST_P(XTileDialectTestParameterized, HloReduceIsLoweredToStableHloReduce) {
+TEST_F(XTileDialectTest, HloReduceIsLoweredToStableHloReduce) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -246,11 +224,7 @@ CHECK: %[[RES:.*]] = stablehlo.reduce(%[[MASKED_INPUT]] init: %[[INIT]]) applies
 )"));
 }
 
-TEST_P(XTileDialectTestParameterized, HloScanIsLoweredToXTileScan) {
-  if (!GetParam()) {
-    GTEST_SKIP() << "Skipping test for legacy emitter.";
-  }
-
+TEST_F(XTileDialectTest, HloScanIsLoweredToXTileScan) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -280,9 +254,7 @@ ENTRY e {
                        ParseAndReturnVerifiedModule(kHloText));
 
   BlockLevelParameters block_level_parameters;
-  block_level_parameters.output_tile_sizes =
-      GetParam() ? std::vector<std::vector<int64_t>>{{}}
-                 : std::vector<std::vector<int64_t>>{{1024}};
+  block_level_parameters.output_tile_sizes = {{}};
 
   EXPECT_OK(CreateXTileIrAndFileCheck(
       *module->GetComputationWithName("scan_fusion"), block_level_parameters,
@@ -301,7 +273,7 @@ ENTRY e {
 )"));
 }
 
-TEST_P(XTileDialectTestParameterized, HloReshapeIsLoweredToStableHloReshape) {
+TEST_F(XTileDialectTest, HloReshapeIsLoweredToStableHloReshape) {
   constexpr absl::string_view kHloText = R"(
 HloModule t, is_scheduled=true
 
@@ -329,7 +301,7 @@ CHECK: %[[RES:.*]] = stablehlo.reshape %[[ARG:.*]] : (tensor<16xi32>) -> tensor<
 )"));
 }
 
-TEST_P(XTileDialectTestParameterized, HloDotIsLoweredToStableHloDot) {
+TEST_F(XTileDialectTest, HloDotIsLoweredToStableHloDot) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -362,7 +334,7 @@ CHECK: %[[ADD_RES:.*]] = arith.addf %[[ARG2:.*]], %[[RES]] : tensor<32x8xf32>
 )"));
 }
 
-TEST_P(XTileDialectTestParameterized, HloScaledDotIsLoweredToXTileDotScaled) {
+TEST_F(XTileDialectTest, HloScaledDotIsLoweredToXTileDotScaled) {
   constexpr absl::string_view kHloText = R"(
 HloModule m
 
@@ -416,8 +388,7 @@ ENTRY e {
       )"));
 }
 
-TEST_P(XTileDialectTestParameterized,
-       HloAllReduceIsLoweredToStableHloAllReduce) {
+TEST_F(XTileDialectTest, HloAllReduceIsLoweredToStableHloAllReduce) {
   constexpr absl::string_view kHloText =
       R"(
       HloModule wrapped_module_all-reduce-start
@@ -456,8 +427,7 @@ CHECK: stablehlo.add
 )"));
 }
 
-TEST_P(XTileDialectTestParameterized,
-       HloReduceScatterIsLoweredToStableHloReduceScatter) {
+TEST_F(XTileDialectTest, HloReduceScatterIsLoweredToStableHloReduceScatter) {
   constexpr absl::string_view kHloText =
       R"(
       HloModule wrapped_module_reduce-scatter
@@ -495,8 +465,7 @@ CHECK: stablehlo.add
 )"));
 }
 
-TEST_P(XTileDialectTestParameterized,
-       HloUnsignedIntIsLoweredToStableHloUnsignedInt) {
+TEST_F(XTileDialectTest, HloUnsignedIntIsLoweredToStableHloUnsignedInt) {
   constexpr absl::string_view kHloText = R"(
 HloModule t, is_scheduled=true
 
@@ -524,12 +493,7 @@ CHECK: stablehlo.add{{.*}}: tensor<16xui32>
 )"));
 }
 
-TEST_P(XTileDialectTestParameterized,
-       HloSameShapeMultiOutputFusionIsLoweredToXTileInsert) {
-  if (!GetParam()) {
-    GTEST_SKIP() << "Skipping test for legacy emitter.";
-  }
-
+TEST_F(XTileDialectTest, HloSameShapeMultiOutputFusionIsLoweredToXTileInsert) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -608,9 +572,6 @@ TEST_F(XTileDialectTest, HloAllGatherDotLowering) {
 
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnUnverifiedModule(kHloText));
-  module->mutable_config()
-      .mutable_debug_options()
-      .set_xla_gpu_experimental_enable_tiling_propagation(true);
 
   BlockLevelParameters block_level_parameters;
   block_level_parameters.output_tile_sizes = {{128, 128}};
@@ -656,9 +617,6 @@ ENTRY e {
 })";
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnUnverifiedModule(kHloText));
-  module->mutable_config()
-      .mutable_debug_options()
-      .set_xla_gpu_experimental_enable_tiling_propagation(true);
 
   BlockLevelParameters block_level_parameters;
   block_level_parameters.output_tile_sizes = {{}};
@@ -703,9 +661,6 @@ ENTRY e {
 })";
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnUnverifiedModule(kHloText));
-  module->mutable_config()
-      .mutable_debug_options()
-      .set_xla_gpu_experimental_enable_tiling_propagation(true);
 
   BlockLevelParameters block_level_parameters;
   block_level_parameters.output_tile_sizes = {{}};
@@ -753,9 +708,6 @@ ENTRY e {
 })";
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnUnverifiedModule(kHloText));
-  module->mutable_config()
-      .mutable_debug_options()
-      .set_xla_gpu_experimental_enable_tiling_propagation(true);
   BlockLevelParameters block_level_parameters;
   block_level_parameters.output_tile_sizes = {{}};
   // The mask is emitted as a dynamic boundary check (scf.if + arith.select)

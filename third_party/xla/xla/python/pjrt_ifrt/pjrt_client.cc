@@ -1234,12 +1234,10 @@ absl::StatusOr<ArrayRef> PjRtClient::AssembleArrayFromSingleDeviceArrays(
     return arrays[0];
   } else if (!isa<const SingleDeviceSharding, const OpaqueSharding,
                   const ConcreteSharding, const ConcreteEvenSharding,
-                  const ShardingParamSharding, const HloSharding>(
-                 sharding.get())) {
+                  const HloSharding>(sharding.get())) {
     return InvalidArgument(
         "Only SingleDeviceSharding, OpaqueSharding, ConcreteSharding, "
-        "ConcreteEvenSharding, ShardingParamSharding, HloSharding are "
-        "supported: sharding=%v",
+        "ConcreteEvenSharding, and HloSharding are supported: sharding=%v",
         sharding);
   }
   if (single_device_shard_semantics == SingleDeviceShardSemantics::kAllShards &&

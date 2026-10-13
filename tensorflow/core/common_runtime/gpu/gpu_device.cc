@@ -168,7 +168,7 @@ class EigenGpuStreamDevice : public ::Eigen::StreamInterface {
         semaphore_(nullptr),
         context_(nullptr),
         device_(this) {}
-  ~EigenGpuStreamDevice() override {}
+  ~EigenGpuStreamDevice() override = default;
 
   void Reinitialize(OpKernelContext* context, gpuStream_t gpu_stream,
                     tsl::PlatformDeviceId platform_device_id,
@@ -196,8 +196,8 @@ class EigenGpuStreamDevice : public ::Eigen::StreamInterface {
     if (ret == nullptr) {
       if (context_) {
         context_->SetStatus(absl::ResourceExhaustedError(
-            strings::StrCat("Ran out of GPU memory when allocating ", num_bytes,
-                            " bytes for ", operation_)));
+            absl::StrCat("Ran out of GPU memory when allocating ", num_bytes,
+                         " bytes for ", operation_)));
       } else {
         LOG(FATAL)
             << "EigenAllocator for GPU ran out of memory when allocating "

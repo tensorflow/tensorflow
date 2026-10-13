@@ -182,6 +182,30 @@ TEST_F(TileTest, ReplaceWithConstraints) {
   EXPECT_EQ(tile.constraints()[0].second, (Interval{0, 9}));
 }
 
+TEST_F(TileTest, DependsOnVariablesIncludesConstraints) {
+  std::unique_ptr<TilingSpace> space =
+      GetFakeTilingSpace(/*num_dims=*/2, /*num_rt_vars=*/1);
+  SymbolicExpr tid0 = CreateDimExpr(0, &mlir_context_);
+  SymbolicExpr tid1 = CreateDimExpr(1, &mlir_context_);
+  SymbolicExpr ts0 = CreateSymbolExpr(0, /*num_dims=*/2, &mlir_context_);
+  SymbolicExpr rt0 = CreateSymbolExpr(2, /*num_dims=*/2, &mlir_context_);
+  auto c1 = CreateSymbolicConstant(1, &mlir_context_);
+  auto c16 = CreateSymbolicConstant(16, &mlir_context_);
+
+  // Variable IDs: tid_0 = 0, tid_1 = 1, ts_0 = 2, ts_1 = 3, rt_0 = 4.
+  Tile tile{*space, {DimTile{tid0 * ts0, ts0, c1, c16}}};
+  EXPECT_FALSE(tile.DependsOnVariables({}));
+  EXPECT_TRUE(tile.DependsOnVariables({0}));
+  EXPECT_TRUE(tile.DependsOnVariables({2}));
+  EXPECT_FALSE(tile.DependsOnVariables({1, 4}));
+  EXPECT_TRUE(tile.DependsOnVariables({1, 2}));
+
+  tile.AddConstraint(tid1 + rt0, Interval{0, 10});
+  EXPECT_TRUE(tile.DependsOnVariables({1}));
+  EXPECT_TRUE(tile.DependsOnVariables({4}));
+  EXPECT_FALSE(tile.DependsOnVariables({3}));
+}
+
 TEST_F(TileTest, ToStringWithMultipleConstraints) {
   std::unique_ptr<TilingSpace> space =
       GetFakeTilingSpace(/*num_dims=*/2, /*num_rt_vars=*/0);

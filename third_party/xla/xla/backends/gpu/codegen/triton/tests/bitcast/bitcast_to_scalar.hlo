@@ -1,7 +1,5 @@
-// RUN: fusion_to_triton %s --xla_gpu_experimental_enable_tiling_propagation=false | FileCheck %s --check-prefixes=CHECK,CHECK-OLD
-// RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation=false
-// RUN: fusion_to_triton %s --xla_gpu_experimental_enable_tiling_propagation | FileCheck %s --check-prefixes=CHECK,CHECK-NEW
-// RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation
+// RUN: fusion_to_triton %s | FileCheck %s
+// RUN: triton_test_correctness %s
 
 fusion {
   p = f32[1,1,1] parameter(0)
@@ -13,8 +11,7 @@ fusion {
 // CHECK-SAME:      %[[ARG1:.*]]: memref<f32>,
 // CHECK-SAME:      %[[PID:.*]]: index{{( \{xla.range = \[0 : index, 0 : index\]\})?}}) attributes {num_opaque_args = 0 : i32} {
 // CHECK:           %[[C0:.*]] = arith.constant 0 : index
-// CHECK-OLD:       %[[EXTRACT:.*]] = xtile.extract %[[ARG0]][%[[C0]], %[[C0]], %[[C0]]] [1, 1, 1] [0, 0, 0] : memref<1x1x1xf32> -> tensor<1x1x1xf32>
-// CHECK-NEW:       %[[EXTRACT:.*]] = xtile.extract %[[ARG0]][%[[C0]], %[[C0]], %[[C0]]] [1, 1, 1] [1, 1, 1] : memref<1x1x1xf32> -> tensor<1x1x1xf32>
+// CHECK:           %[[EXTRACT:.*]] = xtile.extract %[[ARG0]][%[[C0]], %[[C0]], %[[C0]]] [1, 1, 1] [1, 1, 1] : memref<1x1x1xf32> -> tensor<1x1x1xf32>
 // CHECK:           %[[UNSPLAT:.*]] = tt.unsplat %[[EXTRACT]] : tensor<1x1x1xf32>
 // CHECK:           %[[FROM_ELEMENTS:.*]] = tensor.from_elements %[[UNSPLAT]] : tensor<f32>
 // CHECK:           xtile.insert %[[FROM_ELEMENTS]] into %[[ARG1]][] [] [] : tensor<f32> -> memref<f32>

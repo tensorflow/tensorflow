@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
-#include "absl/synchronization/mutex.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/stream_executor/event.h"
@@ -63,8 +62,10 @@ struct ExecutionState {
 
 }  // namespace
 
-AsyncExecution::AsyncExecution(Thunk::ThunkInfo start_thunk_info)
-    : start_thunk_info_(std::move(start_thunk_info)) {}
+AsyncExecution::AsyncExecution(Thunk::ThunkInfo start_thunk_info,
+                               int devices_per_host)
+    : start_thunk_info_(std::move(start_thunk_info)),
+      event_pools_(devices_per_host) {}
 
 AsyncExecution::ExecutionGuard::ExecutionGuard(se::Event* event,
                                                se::Stream* async_stream)
@@ -88,21 +89,14 @@ AsyncExecution::ExecutionGuard::~ExecutionGuard() {
       << " on a stream " << async_stream_;
 }
 
-AsyncExecution::EventPool& AsyncExecution::GetOrCreatePool(
-    se::StreamExecutor* executor) {
-  absl::MutexLock lock(mu_);
-  auto [it, _] = event_pools_.try_emplace(
-      executor, [executor] { return executor->CreateEvent(); });
-  return it->second;
-}
-
 absl::Status AsyncExecution::Initialize(Thunk::ExecutionScopedState* state,
                                         se::StreamExecutor* executor) {
   XLA_VLOG_DEVICE(1, executor->device_ordinal())
       << absl::StreamFormat("Initialize async execution for `%s`",
                             start_thunk_info_.profile_annotation);
-  EventPool& pool = GetOrCreatePool(executor);
-  ABSL_ASSIGN_OR_RETURN(auto borrowed, pool.GetOrCreate());
+  ABSL_ASSIGN_OR_RETURN(PoolState * pool_state,
+                   event_pools_.GetOrCreate(executor->device_ordinal()));
+  ABSL_ASSIGN_OR_RETURN(auto borrowed, pool_state->pool.GetOrCreate(executor));
   state->try_emplace(start_thunk_info_.thunk_id,
                      std::in_place_type<ExecutionState>, std::move(borrowed));
   // For shared async executions (e.g. pipelined send/recv), multiple

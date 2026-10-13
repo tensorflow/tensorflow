@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_YNNPACK_ATTENTION_MODEL_H_
 #define TENSORFLOW_LITE_DELEGATES_YNNPACK_ATTENTION_MODEL_H_
 
+#include <cstdint>
 #include <vector>
 
 #include "tensorflow/lite/c/common.h"
@@ -44,7 +45,8 @@ class AttentionModel : public MultiOpModel {
   AttentionModel(int b, int t, int s, int h, int n, float scale,
                  bool transpose_io, bool use_delegate,
                  const TfLiteYNNPackDelegateOptions& delegate_options,
-                 AttentionImpl impl, int n_kv = -1);
+                 AttentionImpl impl, int n_kv = -1, bool quantize_kv = false,
+                 bool bool_mask = false, int32_t kv_zero_point = 0);
 
   int query() const { return query_id_; }
   int key() const { return key_id_; }

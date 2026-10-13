@@ -40,7 +40,7 @@ class AbstractOperation {
     kOpHandler
   };
   explicit AbstractOperation(AbstractOperationKind kind) : kind_(kind) {}
-  virtual ~AbstractOperation() {}
+  virtual ~AbstractOperation() = default;
 
  public:
   AbstractOperationKind getKind() const { return kind_; }

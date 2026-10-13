@@ -287,7 +287,7 @@ class DebugGrpcChannel {
   //     debug_service.proto). E.g., "127.0.0.1:12345".
   explicit DebugGrpcChannel(const std::string& server_stream_addr);
 
-  virtual ~DebugGrpcChannel() {}
+  virtual ~DebugGrpcChannel() = default;
 
   // Attempt to establish connection with server.
   //

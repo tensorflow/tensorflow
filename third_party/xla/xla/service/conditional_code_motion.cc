@@ -1614,6 +1614,13 @@ class GroupConnectedBoundaries {
   // instructions. Use different integers to classify different levels
   // of reuses. Assume all instructions can be fused to enable data reuses.
   int64_t ReusesCarriedBy(HloInstruction* op, HloInstruction* user) {
+    // Side-effecting instructions can't be fused (see
+    // HloInstruction::IsFusible), so a side-effecting custom-call user carries
+    // no reuse.
+    if (user->opcode() == HloOpcode::kCustomCall &&
+        Cast<HloCustomCallInstruction>(user)->custom_call_has_side_effect()) {
+      return 0;
+    }
     std::vector<int64_t>& curconfig =
         reuse_config_[static_cast<uint32_t>(op->opcode())];
     // Flip the reuse configuration if tuning the cost model.

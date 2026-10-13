@@ -103,6 +103,30 @@ CUmemAllocationProp BuildVmmAllocationProp(
 absl::StatusOr<CudaDeviceAllocator::Options> QueryDeviceAllocatorOptions(
     CUdevice device);
 
+// The handle types the driver accepted for a granularity query, and the
+// recommended mapping granularity for them.
+struct VmmGranularityProbe {
+  CudaDeviceAllocator::Options options;
+  size_t granularity = 0;
+};
+
+// Queries the recommended VMM allocation granularity for `options`. Drivers can
+// reject the query itself for unsupported handle types, so this falls back the
+// same way CreateVmmPhysicalAllocation does (FABRIC+POSIX_FD -> POSIX_FD ->
+// NONE) and returns `options` with the handle types that were accepted. The
+// caller must have activated the device context.
+absl::StatusOr<VmmGranularityProbe> ProbeVmmGranularity(
+    CUdevice device, CudaDeviceAllocator::Options options);
+
+// Creates a physical VMM allocation of `padded_size` bytes with cuMemCreate,
+// falling back through simpler handle types (FABRIC+POSIX_FD -> POSIX_FD ->
+// NONE) when the driver reports NOT_PERMITTED, NOT_SUPPORTED or INVALID_VALUE.
+// The returned handle may therefore carry fewer handle types than `properties`
+// requested; callers that computed `padded_size` from the original properties
+// accept that. The caller must have activated the device context.
+absl::StatusOr<CUmemGenericAllocationHandle> CreateVmmPhysicalAllocation(
+    CUmemAllocationProp properties, uint64_t padded_size);
+
 }  // namespace stream_executor::gpu
 
 #endif  // XLA_STREAM_EXECUTOR_CUDA_CUDA_DEVICE_ALLOCATOR_H_

@@ -32,9 +32,9 @@ auto* session_created = monitoring::Gauge<bool, 0>::New(
 
 void SetSessionCreatedMetric() { session_created->GetCell()->Set(true); }
 
-Session::Session() {}
+Session::Session() = default;
 
-Session::~Session() {}
+Session::~Session() = default;
 
 absl::Status Session::Run(
     const RunOptions& run_options,

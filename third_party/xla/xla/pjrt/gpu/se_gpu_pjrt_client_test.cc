@@ -1656,6 +1656,32 @@ TEST(StreamExecutorGpuClientTest, ShouldStageHostToDeviceTransfersSetToTrue) {
       *literal, LiteralUtil::CreateR1<float>(std::vector<float>(1024, 1.0f))));
 }
 
+TEST(StreamExecutorGpuClientTest, ShouldStageLargeTransfersWhenChunking) {
+  GpuClientOptions options = GetTestGpuClientOptions();
+  options.should_stage_host_to_device_transfers = true;
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
+  auto* raw_client = absl::down_cast<PjRtStreamExecutorRawClient*>(
+      absl::down_cast<CommonPjRtClient*>(client.get())->raw_client());
+
+  // Only the pointer value is used; no 1 GiB host buffer is allocated.
+  std::vector<char> host(16);
+  constexpr int64_t kOneGiB = int64_t{1} << 30;
+  ASSERT_FALSE(raw_client->IsDmaMapped(host.data(), kOneGiB));
+
+  // Without chunking, large transfers are not staged (unchanged behavior).
+  EXPECT_FALSE(
+      raw_client->ShouldStageHostToDeviceTransfers(host.data(), kOneGiB));
+  EXPECT_FALSE(
+      raw_client->ShouldStageHostToDeviceTransfers(host.data(), kOneGiB + 1));
+
+  // With chunking, staging uses bounded chunk buffers, so any size is staged.
+  raw_client->SetStagingChunkingForTesting(/*force=*/true, /*chunk_size=*/4096);
+  EXPECT_TRUE(
+      raw_client->ShouldStageHostToDeviceTransfers(host.data(), kOneGiB));
+  EXPECT_TRUE(
+      raw_client->ShouldStageHostToDeviceTransfers(host.data(), kOneGiB + 1));
+}
+
 TEST(StreamExecutorGpuClientTest, ShouldStageHostToDeviceTransfersSetToFalse) {
   GpuClientOptions options_no_staging = GetTestGpuClientOptions();
   options_no_staging.should_stage_host_to_device_transfers = false;
@@ -1685,6 +1711,83 @@ TEST(StreamExecutorGpuClientTest, ShouldStageHostToDeviceTransfersSetToFalse) {
   TF_ASSERT_OK_AND_ASSIGN(auto literal, buffer->ToLiteral().Await());
   EXPECT_TRUE(LiteralTestUtil::Equal(
       *literal, LiteralUtil::CreateR1<float>(std::vector<float>(1024, 1.0f))));
+}
+
+constexpr int64_t kTestStagingChunkSize = 4 * 1024;
+
+// Returns `size` bytes whose content differs between any two chunks, so that
+// misplaced or reordered chunks are detected.
+std::vector<uint8_t> MakeStagingTestPattern(int64_t size) {
+  std::vector<uint8_t> pattern(size);
+  for (int64_t i = 0; i < size; ++i) {
+    pattern[i] = static_cast<uint8_t>((i * 131) ^ (i >> 8));
+  }
+  return pattern;
+}
+
+// Copies `transfer_size` bytes host->device->host at `offset` of a device
+// buffer with chunked host staging forced on, and checks the bytes survive.
+void ExpectChunkedStagingRoundTrip(int64_t offset, int64_t transfer_size) {
+  GpuClientOptions options = GetTestGpuClientOptions();
+  options.should_stage_host_to_device_transfers = true;
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> pjrt_client,
+                          GetStreamExecutorGpuClient(options));
+  auto* client = absl::down_cast<CommonPjRtClient*>(pjrt_client.get());
+  auto* raw_client =
+      absl::down_cast<PjRtStreamExecutorRawClient*>(client->raw_client());
+  raw_client->SetStagingChunkingForTesting(/*force=*/true,
+                                           kTestStagingChunkSize);
+
+  std::vector<uint8_t> src = MakeStagingTestPattern(transfer_size);
+  ASSERT_TRUE(
+      raw_client->ShouldStageHostToDeviceTransfers(src.data(), transfer_size));
+  TF_ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * memory_space,
+      client->addressable_devices()[0]->default_memory_space());
+  TF_ASSERT_OK_AND_ASSIGN(
+      PjRtRawBufferRef raw_buffer,
+      client->AllocateRawBuffer(memory_space, offset + transfer_size,
+                                /*retry_on_oom=*/true,
+                                /*allocate_after=*/{}));
+
+  TF_ASSERT_OK(
+      raw_buffer->CopyRawHostToDevice(src.data(), offset, transfer_size)
+          .Await());
+  std::vector<uint8_t> dst(transfer_size, 0);
+  TF_ASSERT_OK(
+      raw_buffer->CopyRawDeviceToHost(dst.data(), offset, transfer_size)
+          .Await());
+  EXPECT_EQ(dst, src);
+}
+
+TEST(StreamExecutorGpuClientTest, ChunkedStagingZeroBytes) {
+  ExpectChunkedStagingRoundTrip(/*offset=*/0, 0);
+}
+
+TEST(StreamExecutorGpuClientTest, ChunkedStagingOneByte) {
+  ExpectChunkedStagingRoundTrip(/*offset=*/0, 1);
+}
+
+TEST(StreamExecutorGpuClientTest, ChunkedStagingSmallerThanChunk) {
+  ExpectChunkedStagingRoundTrip(/*offset=*/0, kTestStagingChunkSize / 2);
+}
+
+TEST(StreamExecutorGpuClientTest, ChunkedStagingEqualToChunk) {
+  ExpectChunkedStagingRoundTrip(/*offset=*/0, kTestStagingChunkSize);
+}
+
+TEST(StreamExecutorGpuClientTest, ChunkedStagingMultipleOfChunk) {
+  // More chunks than staging slots, so slots are reused.
+  ExpectChunkedStagingRoundTrip(/*offset=*/0, 8 * kTestStagingChunkSize);
+}
+
+TEST(StreamExecutorGpuClientTest, ChunkedStagingNonMultipleOfChunk) {
+  ExpectChunkedStagingRoundTrip(/*offset=*/0, 10 * kTestStagingChunkSize + 123);
+}
+
+TEST(StreamExecutorGpuClientTest, ChunkedStagingWithNonzeroOffset) {
+  ExpectChunkedStagingRoundTrip(/*offset=*/123,
+                                10 * kTestStagingChunkSize + 45);
 }
 
 TEST(StreamExecutorGpuClientTest, BufferFromHostBufferPinnedMemory) {

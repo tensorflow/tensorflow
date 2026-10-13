@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/memory_allocator.h"
+#include "xla/stream_executor/memory_reservation.h"
 #include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
@@ -117,6 +118,21 @@ class StreamExecutor {
   virtual absl::StatusOr<std::unique_ptr<MemoryAllocator>>
   CreateMemoryAllocator(MemorySpace memory_space) {
     return absl::UnimplementedError("Not Implemented");
+  }
+
+  // Reserves device virtual address space without allocating physical memory.
+  // Backends implementing this must also support
+  // CreatePhysicalMemoryAllocation.
+  virtual absl::StatusOr<std::unique_ptr<MemoryReservation>>
+  CreateMemoryReservation(uint64_t size) {
+    return absl::UnimplementedError("Device VA reservation is not supported");
+  }
+
+  // Allocates physical device memory without mapping it to a virtual address.
+  // The returned size may be rounded up to the backend's mapping granularity.
+  virtual absl::StatusOr<std::unique_ptr<MemoryAllocation>>
+  CreatePhysicalMemoryAllocation(uint64_t size) {
+    return absl::UnimplementedError("Physical allocation is not supported");
   }
 
   // Obtains metadata about the underlying device.

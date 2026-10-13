@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/math_ops.h"
 #include "tensorflow/cc/ops/resource_variable_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
@@ -2355,6 +2356,100 @@ TEST_F(XlaCompilerTest, DeadNodePruning) {
   XlaCompiler::CompilationResult result;
   TF_ASSERT_OK(compiler.CompileFunction(XlaCompiler::CompileOptions(),
                                         name_attr, args, &result));
+}
+
+TEST_F(XlaCompilerTest, CompileFunctionXlaDeterministicFrontendAttribute) {
+  XlaCompiler compiler(DefaultOptions());
+
+  std::vector<XlaCompiler::Argument> args(1);
+  args[0].kind = XlaCompiler::Argument::kParameter;
+  args[0].type = DT_FLOAT;
+  args[0].shape = TensorShape({2});
+
+  // 1. Default FunctionDef without _XlaDeterministic does not set the frontend
+  // attribute.
+  {
+    FunctionDef default_fn = FunctionDefHelper::Define(
+        "DefaultAddFn", /*arg_def=*/{"x: float"}, /*ret_def=*/{"y: float"},
+        /*attr_def=*/{},
+        /*node_def=*/{{{"y"}, "Add", {"x", "x"}, {{"T", DT_FLOAT}}}});
+    TF_ASSERT_OK(flib_def_->AddFunctionDef(default_fn));
+
+    NameAttrList name_attr;
+    name_attr.set_name("DefaultAddFn");
+
+    XlaCompiler::CompilationResult result;
+    TF_ASSERT_OK(compiler.CompileFunction(XlaCompiler::CompileOptions(),
+                                          name_attr, args, &result));
+    ASSERT_NE(result.computation, nullptr);
+    const auto& frontend_attrs =
+        result.computation->proto().frontend_attributes().map();
+    EXPECT_EQ(frontend_attrs.find(kXlaDeterministicAttr), frontend_attrs.end());
+  }
+
+  // 2. FunctionDef with _XlaDeterministic=true sets the frontend attribute.
+  {
+    FunctionDef det_fn = FunctionDefHelper::Define(
+        "DeterministicAddFn", /*arg_def=*/{"x: float"},
+        /*ret_def=*/{"y: float"},
+        /*attr_def=*/{},
+        /*node_def=*/{{{"y"}, "Add", {"x", "x"}, {{"T", DT_FLOAT}}}});
+    (*det_fn.mutable_attr())[kXlaDeterministicAttr].set_b(true);
+    TF_ASSERT_OK(flib_def_->AddFunctionDef(det_fn));
+
+    NameAttrList name_attr;
+    name_attr.set_name("DeterministicAddFn");
+
+    XlaCompiler::CompilationResult result;
+    TF_ASSERT_OK(compiler.CompileFunction(XlaCompiler::CompileOptions(),
+                                          name_attr, args, &result));
+    ASSERT_NE(result.computation, nullptr);
+    const auto& frontend_attrs =
+        result.computation->proto().frontend_attributes().map();
+    auto it = frontend_attrs.find(kXlaDeterministicAttr);
+    ASSERT_NE(it, frontend_attrs.end());
+    EXPECT_EQ(it->second, "true");
+  }
+
+  // 3. NameAttrList with _XlaDeterministic=true also sets the frontend
+  // attribute even when FunctionDef does not have the attribute.
+  {
+    NameAttrList name_attr;
+    name_attr.set_name("DefaultAddFn");
+    (*name_attr.mutable_attr())[kXlaDeterministicAttr].set_b(true);
+
+    XlaCompiler::CompilationResult result;
+    TF_ASSERT_OK(compiler.CompileFunction(XlaCompiler::CompileOptions(),
+                                          name_attr, args, &result));
+    ASSERT_NE(result.computation, nullptr);
+    const auto& frontend_attrs =
+        result.computation->proto().frontend_attributes().map();
+    auto it = frontend_attrs.find(kXlaDeterministicAttr);
+    ASSERT_NE(it, frontend_attrs.end());
+    EXPECT_EQ(it->second, "true");
+  }
+}
+
+TEST_F(XlaCompilerTest, CheckNumerics) {
+  Scope scope = Scope::NewRootScope().ExitOnError();
+  auto a = ops::_Arg(scope.WithOpName("A"), DT_FLOAT, 0);
+  auto check = ops::CheckNumerics(scope.WithOpName("Check"), a, "check");
+  auto ret = ops::_Retval(scope.WithOpName("Ret"), check, 0);
+  auto graph = std::make_unique<Graph>(OpRegistry::Global());
+  TF_ASSERT_OK(scope.ToGraph(graph.get()));
+
+  std::vector<XlaCompiler::Argument> args(1);
+  args[0].kind = XlaCompiler::Argument::kParameter;
+  args[0].type = DT_FLOAT;
+  args[0].shape = TensorShape({2});
+
+  XlaCompiler compiler(DefaultOptions());
+  XlaCompiler::CompilationResult result;
+  TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "test",
+                                     std::move(graph), args, &result));
+  ASSERT_EQ(result.outputs.size(), 1);
+  EXPECT_EQ(result.outputs[0].type, DT_FLOAT);
+  EXPECT_EQ(result.outputs[0].shape, TensorShape({2}));
 }
 
 }  // namespace

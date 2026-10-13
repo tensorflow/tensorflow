@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/work_queue.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
+#include "xla/tsl/platform/logging.h"
 
 #define EIGEN_USE_THREADS
 #include "unsupported/Eigen/CXX11/Tensor"
@@ -130,6 +131,14 @@ class OneDnnThreadPool final
   // This is used only when is_async_ is true.
   tsl::AsyncValueRef<tsl::Chain> done_event_;
 };
+
+inline Eigen::ThreadPoolInterface* GetFallbackThreadPoolForOneDnn() {
+  static auto* pool = new Eigen::ThreadPool(1);
+  VLOG_FIRST_N(0, 1)
+      << "No intra-op thread pool available. "
+         "Using fallback single-threaded thread pool for oneDNN execution.";
+  return pool;
+}
 
 }  // namespace xla::cpu
 

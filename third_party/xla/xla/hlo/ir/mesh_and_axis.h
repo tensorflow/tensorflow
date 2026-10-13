@@ -44,8 +44,8 @@ class AxisRef;
 // - device_assignment_.dimensions() represents the axis sizes.
 // - device_assignment_.array() represents the list of device IDs.
 //
-// For maximal mesh, axes_names is empty and device_assignment_ contains the
-// single device id.
+// For single-device mesh, axes_names is empty and device_assignment_ contains
+// the single device id.
 //
 // Example: device_assignment {{3, 0, 2}, {1, 4, 5}} with axes names
 // {"data", "model"} represents the mesh ["data"=2, "model"=3].
@@ -54,7 +54,7 @@ class Mesh {
   // Empty mesh
   explicit Mesh() = default;
 
-  // Maximal Mesh
+  // Single-device Mesh
   explicit Mesh(int64_t device_id) : device_assignment_(device_id) {}
 
   // Constructs an iota device assignment mesh with given axes sizes and names.
@@ -77,12 +77,15 @@ class Mesh {
   explicit Mesh(TileAssignment device_assignment,
                 absl::Span<const absl::string_view> axes_names);
 
-  // Returns whether this mesh is a maximal-sharding mesh.
+  // Returns whether this mesh is a single-device mesh.
   //
-  // A maximal-sharding mesh contains an empty axis list and a single device id.
-  bool IsMaximal() const {
+  // A single-device mesh contains an empty axis list and a single device id.
+  bool IsSingleDevice() const {
     return axes_names_.empty() && device_assignment_.num_elements() == 1;
   }
+
+  // Backward compatibility alias for `IsSingleDevice()`.
+  bool IsMaximal() const { return IsSingleDevice(); }
 
   bool operator==(const Mesh& other) const {
     return device_assignment_ == other.device_assignment_ &&

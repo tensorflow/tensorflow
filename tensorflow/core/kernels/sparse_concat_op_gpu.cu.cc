@@ -118,10 +118,11 @@ __global__ void SparseConcatPermuteKernel(
 template <typename T>
 struct SparseConcatFunctor<GPUDevice, T> {
   void operator()(OpKernelContext* context, const OpInputList& inds,
-                  const OpInputList& vals, const OpInputList& shapes,
+                  const OpInputList& vals,
+                  const absl::Span<const TensorShape>& input_shapes,
                   int concat_dim) {
     const int N = inds.size();
-    const TensorShape input_shape0(shapes[0].vec<int64_t>());
+    const TensorShape& input_shape0 = input_shapes[0];
     const int rank = input_shape0.dims();
 
     // The input non-zeros are assumed to be sorted by increasing dimension
@@ -152,7 +153,7 @@ struct SparseConcatFunctor<GPUDevice, T> {
                   absl::InvalidArgumentError("nnz overflowed"));
       nnz_sum = next_nnz_sum;
       nnz_scan.Set(i + 1, nnz_sum);
-      const TensorShape current_shape(shapes[i].vec<int64_t>());
+      const TensorShape& current_shape = input_shapes[i];
       int64_t next_concat_size_sum = AddWithoutOverflow(
           concat_size_sum, current_shape.dim_size(concat_dim));
       OP_REQUIRES(context, next_concat_size_sum >= 0,

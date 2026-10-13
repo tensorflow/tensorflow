@@ -26,7 +26,6 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
@@ -58,18 +57,22 @@ namespace gpu {
 CollectiveReduceThunk::CollectiveReduceThunk(ThunkInfo thunk_info,
                                              AllReduceConfig config,
                                              std::vector<Buffer> buffers,
+                                             int devices_per_host,
                                              bool has_dynamic_root)
     : AllReduceReduceScatterThunkBase(Thunk::kCollectiveReduce, thunk_info,
                                       std::move(config), std::move(buffers)),
-      has_dynamic_root_(has_dynamic_root) {}
+      has_dynamic_root_(has_dynamic_root),
+      per_device_metadata_(devices_per_host) {}
 
 CollectiveReduceThunk::CollectiveReduceThunk(
     ThunkInfo thunk_info, const HloCollectiveReduceInstruction* inst,
-    std::vector<Buffer> buffers, bool p2p_memcpy_enabled, bool has_dynamic_root)
+    std::vector<Buffer> buffers, int devices_per_host, bool p2p_memcpy_enabled,
+    bool has_dynamic_root)
     : AllReduceReduceScatterThunkBase(Thunk::kCollectiveReduce, thunk_info,
                                       GetAllReduceConfigInst(inst),
                                       std::move(buffers)),
-      has_dynamic_root_(has_dynamic_root) {}
+      has_dynamic_root_(has_dynamic_root),
+      per_device_metadata_(devices_per_host) {}
 
 /*static*/ absl::Status CollectiveReduceThunk::CheckImplementable(
     const HloCollectiveReduceInstruction* inst, int64_t replica_count,
@@ -105,22 +108,18 @@ absl::Status CollectiveReduceThunk::InitializeCollective(
     return absl::OkStatus();
   }
   se::StreamExecutor* executor = params.executor;
-  absl::MutexLock lock(mutex_);
-  std::unique_ptr<CollectiveReduceMetadata>& metadata =
-      per_executor_metadata_[executor];
-  if (metadata == nullptr) {
-    metadata = std::make_unique<CollectiveReduceMetadata>();
-  }
-  if (metadata->reduce_roots == nullptr) {
-    // The last buffer holds the runtime-selected root ranks (one S32 per
-    // reduce); all other buffers are the data being reduced.
-    metadata->num_roots = buffers().size() - 1;
-    ABSL_ASSIGN_OR_RETURN(
-        std::unique_ptr<se::MemoryAllocation> alloc,
-        executor->HostMemoryAllocate(metadata->num_roots * sizeof(int32_t)));
-    metadata->reduce_roots = std::move(alloc);
-  }
-  return absl::OkStatus();
+  return per_device_metadata_.GetOrCreateAndInitialize(
+      executor->device_ordinal(),
+      [&](CollectiveReduceMetadata* metadata) -> absl::Status {
+        // The last buffer holds the runtime-selected root ranks (one S32 per
+        // reduce); all other buffers are the data being reduced.
+        metadata->num_roots = buffers().size() - 1;
+        ABSL_ASSIGN_OR_RETURN(std::unique_ptr<se::MemoryAllocation> alloc,
+                         executor->HostMemoryAllocate(metadata->num_roots *
+                                                      sizeof(int32_t)));
+        metadata->reduce_roots = std::move(alloc);
+        return absl::OkStatus();
+      });
 }
 
 absl::Status CollectiveReduceThunk::RunCollective(
@@ -129,11 +128,8 @@ absl::Status CollectiveReduceThunk::RunCollective(
   ABSL_ASSIGN_OR_RETURN(std::vector<DeviceBufferPair> device_buffers,
                    ConvertToDeviceBuffers(params.buffer_allocations, buffers(),
                                           config_.config.operand_element_type));
-  CollectiveReduceMetadata* metadata = nullptr;
-  {
-    absl::MutexLock lock(mutex_);
-    metadata = per_executor_metadata_[stream.parent()].get();
-  }
+  CollectiveReduceMetadata* metadata =
+      per_device_metadata_.Find(stream.parent()->device_ordinal());
   return RunCollectiveReduce(config_.reduction_kind, device_buffers, stream,
                              comm, metadata, has_dynamic_root_);
 }
@@ -141,7 +137,8 @@ absl::Status CollectiveReduceThunk::RunCollective(
 absl::StatusOr<std::unique_ptr<CollectiveReduceThunk>>
 CollectiveReduceThunk::FromProto(
     ThunkInfo thunk_info, const CollectiveReduceThunkProto& thunk_proto,
-    absl::Span<const BufferAllocation> buffer_allocations) {
+    absl::Span<const BufferAllocation> buffer_allocations,
+    int devices_per_host) {
   std::vector<CollectiveThunk::Buffer> buffers;
   buffers.reserve(thunk_proto.buffers_size());
   for (const CollectiveBufferProto& proto : thunk_proto.buffers()) {
@@ -159,7 +156,7 @@ CollectiveReduceThunk::FromProto(
 
   return std::make_unique<CollectiveReduceThunk>(
       std::move(thunk_info), AllReduceConfig{config, reduction_kind},
-      std::move(buffers), thunk_proto.has_dynamic_root());
+      std::move(buffers), devices_per_host, thunk_proto.has_dynamic_root());
 }
 
 absl::StatusOr<ThunkProto> CollectiveReduceThunk::ToProto() const {

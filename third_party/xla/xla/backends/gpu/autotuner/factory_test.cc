@@ -97,6 +97,8 @@ class FactoryTest : public xla::HloHardwareIndependentTestBase,
         compiler_(GetCompilerForPlatform(platform_)),
         stream_executor_(GetStreamExecutor(platform_)),
         target_config_(stream_executor_),
+        debug_options_(
+            HloHardwareIndependentTestBase::GetDebugOptionsForTest()),
         allocator_(stream_executor_) {}
 };
 
@@ -130,7 +132,7 @@ TEST_P(FactoryTest, GetCodegenBackends) {
 INSTANTIATE_TEST_SUITE_P(
     All, FactoryTest,
     ::testing::Values(
-        FactoryTestParams{{}, 6, /*run_on_cuda=*/true, /*run_on_rocm=*/false},
+        FactoryTestParams{{}, 7, /*run_on_cuda=*/true, /*run_on_rocm=*/false},
         FactoryTestParams{{}, 6, /*run_on_cuda=*/false, /*run_on_rocm=*/true},
         FactoryTestParams{{Backend::TRITON}, 1},
         FactoryTestParams{{Backend::TRITON, Backend::CUBLASLT},

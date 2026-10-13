@@ -41,7 +41,7 @@ TEST(EmbeddedTargetConfigTest, DeviceInfoMatches) {
   for (const std::string file_name :
        {"a100_pcie_80", "a100_sxm_40", "a100_sxm_80", "a6000", "b200",
         "b200_mig", "bmg_g21", "h100_pcie", "h100_sxm", "h100_sxm_mig", "p100",
-        "v100", "mi200", "rtx6000pro", "gb200", "gb300"}) {
+        "v100", "mi200", "rtx6000pro", "gb200", "gb300", "vr_nvl72"}) {
     GpuTargetConfigProto proto;
     std::string spec_string;
     ASSERT_OK(tsl::ReadFileToString(

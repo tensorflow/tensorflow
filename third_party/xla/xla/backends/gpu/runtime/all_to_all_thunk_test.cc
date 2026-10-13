@@ -200,7 +200,7 @@ class MemzeroAllToAllThunk : public AllToAllThunk {
   MemzeroAllToAllThunk(Thunk::ThunkInfo thunk_info, AllToAllConfig config,
                        std::vector<CollectiveThunk::Buffer> buffers)
       : AllToAllThunk(std::move(thunk_info), config, std::move(buffers),
-                      /*p2p_memcpy_enabled=*/false) {}
+                      /*p2p_memcpy_enabled=*/false, /*devices_per_host=*/1) {}
 
  protected:
   absl::Status RunCollective(const ExecuteParams& params, const GpuCliqueKey&,
@@ -241,7 +241,7 @@ TEST(CollectiveThunkTest, ProtoRoundTrip) {
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<AllToAllThunk> thunk,
       AllToAllThunk::FromProto(thunk_info, proto.all_to_all_thunk(),
-                               buffer_allocations));
+                               buffer_allocations, /*devices_per_host=*/1));
 
   ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
 

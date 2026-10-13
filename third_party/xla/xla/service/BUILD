@@ -2646,6 +2646,7 @@ xla_cc_test(
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
     ],
@@ -2860,12 +2861,15 @@ xla_cc_test(
         "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:test",
+        "//xla/hlo/testlib:verified_hlo_module",
         "//xla/hlo/transforms/simplifiers:hlo_dce",
         "//xla/hlo/transforms/simplifiers:tuple_simplifier",
         "//xla/hlo/utils:hlo_matchers",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
@@ -3903,6 +3907,7 @@ xla_cc_test(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
@@ -5902,6 +5907,7 @@ xla_aot_compile_gpu(
     gpu_targets = [
         "h100",
         "b200",
+        "vr_nvl72",
     ],
     module = "xla_aot_compile_test.mlir",
     xla_flags = "--xla_gpu_use_new_autotune_cache_format=false",
@@ -5948,7 +5954,7 @@ xla_aot_compile_gpu(
         "b200",
     ],
     module = "xla_aot_compile_test_convolution.mlir",
-    xla_flags = "--xla_gpu_use_new_autotune_cache_format=true",
+    xla_flags = "--xla_gpu_use_new_autotune_cache_format=true --xla_gpu_experimental_enable_conv_fusion=true",
 )
 
 xla_aot_compile_gpu(
@@ -5959,7 +5965,22 @@ xla_aot_compile_gpu(
         "b200",
     ],
     module = "xla_aot_compile_test_convolution.mlir",
-    xla_flags = "--xla_gpu_use_new_autotune_cache_format=false",
+    xla_flags = "--xla_gpu_use_new_autotune_cache_format=false --xla_gpu_experimental_enable_conv_fusion=true",
+)
+
+xla_aot_compile_gpu(
+    name = "xla_aot_compile_test_gpu_executable_convolution_deviceless_cudnn",
+    # H100 only: deviceless conv graphs on Blackwell require cuDNN >= 9.19.
+    gpu_targets = [
+        "h100",
+        "h100_mig",
+    ],
+    module = "xla_aot_compile_test_convolution.mlir",
+    xla_flags = " ".join([
+        "--xla_gpu_experimental_enable_conv_fusion=true",
+        "--xla_gpu_cudnn_deviceless_compilation_mode=CUDNN_DEVICELESS_COMPILATION_AUTO",
+        "--xla_gpu_experimental_autotune_backends=cudnn",
+    ]),
 )
 
 xla_aot_compile_gpu_runtime_autotuning(
@@ -6043,6 +6064,7 @@ xla_test(
         ":xla_aot_compile_test_gpu_executable",
         ":xla_aot_compile_test_gpu_executable_constant",
         ":xla_aot_compile_test_gpu_executable_convolution",
+        ":xla_aot_compile_test_gpu_executable_convolution_deviceless_cudnn",
         ":xla_aot_compile_test_gpu_executable_convolution_legacy_cache",
         ":xla_aot_compile_test_gpu_executable_hlo",
         ":xla_aot_compile_test_gpu_executable_hlo_legacy_cache",
@@ -6058,7 +6080,8 @@ xla_test(
         ":hlo_runner_pjrt",
         "//xla:literal",
         "//xla:literal_util",
-        "//xla/tests:hlo_test_base",
+        "//xla/backends/gpu/tests:hlo_pjrt_gpu_test_base",
+        "//xla/stream_executor/cuda:cudnn_plugin",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status:status_macros",
@@ -6181,6 +6204,29 @@ xla_cc_test(
         "//xla/hlo/transforms/simplifiers:algebraic_simplifier",
         "//xla/service/spmd:spmd_partitioner",
         "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_cc_test(
+    name = "original_value_recovery_test",
+    srcs = ["original_value_recovery_test.cc"],
+    deps = [
+        ":call_inliner",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/transforms/simplifiers:algebraic_simplifier",
+        "//xla/hlo/utils:hlo_original_value_analysis",
+        "//xla/hlo/utils:hlo_original_value_analyzer_utils",
+        "//xla/hlo/utils:hlo_original_value_reconstructor",
+        "//xla/hlo/utils:hlo_sharding_reconstruction_util",
+        "//xla/service/spmd:spmd_partitioner",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],

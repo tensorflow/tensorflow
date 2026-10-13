@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
@@ -631,7 +632,8 @@ absl::Status MakeIteratorOp::DoCompute(OpKernelContext* ctx) {
 absl::Status DeleteIteratorOp::DoCompute(OpKernelContext* ctx) {
   tensorflow::ResourceTagger tag(kTFDataResourceTag,
                                  ctx->op_kernel().type_string());
-  const ResourceHandle& handle = ctx->input(0).flat<ResourceHandle>()(0);
+  ResourceHandle handle;
+  TF_RETURN_IF_ERROR(HandleFromInput(ctx, 0, &handle));
   // The iterator resource is guaranteed to exist because the variant tensor
   // wrapping the deleter is provided as an unused input to this op, which
   // guarantees that it has not run yet.
@@ -1150,6 +1152,8 @@ void DeserializeIteratorOp::Compute(OpKernelContext* ctx) {
   core::ScopedUnref unref_iterator(iterator_resource);
   const Tensor* serialized_t;
   OP_REQUIRES_OK(ctx, ctx->input("serialized", &serialized_t));
+  OP_REQUIRES(ctx, TensorShapeUtils::IsVector(serialized_t->shape()),
+              absl::InvalidArgumentError("serialized must be a vector"));
   IteratorVariantSerializer serializer;
   OP_REQUIRES_OK(ctx, serializer.InitFromTensor(serialized_t));
   absl::Status s = iterator_resource->Restore(ctx, serializer.GetReader());

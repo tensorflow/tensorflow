@@ -531,7 +531,7 @@ cuda_py_strict_test(
 cuda_py_strict_test(
     name = "forwardprop_test",
     srcs = ["forwardprop_test.py"],
-    shard_count = 5,
+    shard_count = 20,
     deps = [
         ":backprop",
         ":context",

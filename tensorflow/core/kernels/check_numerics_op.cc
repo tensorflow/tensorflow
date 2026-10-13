@@ -31,6 +31,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #if TENSORFLOW_USE_ROCM
@@ -202,10 +203,10 @@ class CheckNumericsOp<GPUDevice, T> : public AsyncOpKernel {
   }
 
   void ComputeAsync(OpKernelContext* context, DoneCallback done) override {
+    auto cleanup = gtl::MakeCleanup([&done]() { done(); });
     // pass along the input to the output
     context->set_output(0, context->input(0));
     if (context->input(0).NumElements() == 0) {
-      done();
       return;
     }
     auto input = context->input(0).flat<T>();
@@ -213,21 +214,24 @@ class CheckNumericsOp<GPUDevice, T> : public AsyncOpKernel {
     // Allocate and initialize the elements to hold the check results
     Tensor abnormal_detected;
     const int abnormal_detected_size = getAnomalyIndicatorSize();
-    OP_REQUIRES_OK(context, context->allocate_temp(
-                                DT_INT32, TensorShape({abnormal_detected_size}),
-                                &abnormal_detected));
+    OP_REQUIRES_OK_ASYNC(
+        context,
+        context->allocate_temp(DT_INT32, TensorShape({abnormal_detected_size}),
+                               &abnormal_detected),
+        []() {});
 
     auto* stream = context->op_device_context()->stream();
     OP_REQUIRES_ASYNC(context, stream != nullptr,
-                      absl::InternalError("No GPU stream available."), done);
+                      absl::InternalError("No GPU stream available."), []() {});
 
     stream_executor::DeviceAddressBase abnormal_detected_ptr(
         abnormal_detected.flat<int>().data(),
         abnormal_detected.flat<int>().size());
-    OP_REQUIRES_OK(
+    OP_REQUIRES_OK_ASYNC(
         context,
         stream->Memset32(&abnormal_detected_ptr, 0,
-                         abnormal_detected.flat<int>().size() * sizeof(int)));
+                         abnormal_detected.flat<int>().size() * sizeof(int)),
+        []() {});
 
     // Call the GPU kernels for the numerical checks
     const Device& d = context->eigen_device<Device>();
@@ -243,7 +247,7 @@ class CheckNumericsOp<GPUDevice, T> : public AsyncOpKernel {
         context,
         context->allocate_temp(DT_INT32, TensorShape({abnormal_detected_size}),
                                &abnormal_detected_host, attr),
-        done);
+        []() {});
     OP_REQUIRES_ASYNC(
         context,
         stream
@@ -251,7 +255,7 @@ class CheckNumericsOp<GPUDevice, T> : public AsyncOpKernel {
                      abnormal_detected_ptr,
                      abnormal_detected_size * sizeof(int))
             .ok(),
-        absl::InternalError("GPU memcpy from device to host failed"), done);
+        absl::InternalError("GPU memcpy from device to host failed"), []() {});
 
     // We have observed crashes on some network stacks when not holding
     // this tensor reference.
@@ -270,6 +274,7 @@ class CheckNumericsOp<GPUDevice, T> : public AsyncOpKernel {
          // Context.
       done();
     };
+    cleanup.release();
     context->device()
         ->tensorflow_accelerator_device_info()
         ->event_mgr->ThenExecute(stream, std::move(check_cb));

@@ -3472,6 +3472,58 @@ in detail on the [broadcasting page](broadcasting.md).
 For StableHLO information see
 [StableHLO - multiply](https://openxla.org/stablehlo/spec#multiply).
 
+## Mulhi
+
+See also
+[`XlaBuilder::Mulhi`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Performs element-wise multiplication of two N-bit integer arrays `lhs` and
+`rhs`, returning an N-bit integer array containing the most significant N bits
+of the upcasted (N+N-bit) product:
+
+$$
+\text{mulhi}(x, y) = \text{downcast}((\text{upcast}(x) * \text{upcast}(y)) >> N)
+$$
+
+**`Mulhi(lhs, rhs)`**
+
+Arguments | Type  | Semantics
+--------- | ----- | -------------------------------------------------
+lhs       | XlaOp | Left-hand-side operand: array of integer type T
+rhs       | XlaOp | Right-hand-side operand: array of integer type T
+
+The arguments' shapes have to be either similar or compatible. See the
+[broadcasting](broadcasting.md) documentation about what it means for shapes to
+be compatible. The result of an operation has a shape which is the result of
+broadcasting the two input arrays. In this variant, operations between arrays of
+different ranks are *not* supported, unless one of the operands is a scalar.
+
+An alternative variant with different-dimensional broadcasting support exists
+for Mulhi:
+
+**`Mulhi(lhs,rhs, broadcast_dimensions)`**
+
+| Arguments           | Type              | Semantics                         |
+| ------------------- | ----------------- | --------------------------------- |
+| lhs                 | XlaOp             | Left-hand-side operand: array of  |
+:                     :                   : integer type T                    :
+| rhs                 | XlaOp             | Right-hand-side operand: array of |
+:                     :                   : integer type T                    :
+| broadcast_dimension | ArraySlice<int64> | Which dimension in the target     |
+:                     :                   : shape each dimension of the       :
+:                     :                   : operand shape corresponds to      :
+
+This variant of the operation should be used for arithmetic operations between
+arrays of different ranks (such as adding a matrix to a vector).
+
+The additional broadcast_dimensions operand is a slice of integers specifying
+the dimensions to use for broadcasting the operands. The semantics are described
+in detail on the [broadcasting page](broadcasting.md).
+
+> **Note:** `Mulhi` is only found in HLO and not found in StableHLO. CHLO
+> `Mulhi` in Frameworks will lower to HLO `Mulhi` see
+> [StableHLO - chlo.mulhi](https://openxla.org/stablehlo/generated/chlo?hl=en#chlomulhi_chlomulhiop)
+
 ## Neg
 
 See also

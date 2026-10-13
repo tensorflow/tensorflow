@@ -36,7 +36,7 @@ namespace graph_analyzer {
 GraphAnalyzer::GraphAnalyzer(const GraphDef& graph, int subgraph_size)
     : graph_(graph), subgraph_size_(subgraph_size) {}
 
-GraphAnalyzer::~GraphAnalyzer() {}
+GraphAnalyzer::~GraphAnalyzer() = default;
 
 absl::Status GraphAnalyzer::Run() {
   // The signature computation code would detect this too, but better

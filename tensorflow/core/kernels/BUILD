@@ -3623,6 +3623,8 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/framework:bounds_check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
     ],
@@ -3691,7 +3693,10 @@ MATH_DEPS = [
 tf_kernel_library(
     name = "sparse_matmul_op",
     prefix = "sparse_matmul_op",
-    deps = MATH_DEPS + ["@xla//xla/tsl/framework/contraction:eigen_contraction_kernel"],
+    deps = MATH_DEPS + [
+        "@highway//:hwy",
+        "@xla//xla/tsl/framework/contraction:eigen_contraction_kernel",
+    ],
 )
 
 cc_library(
@@ -4232,6 +4237,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "@highway//:hwy",
     ],
 )
 
@@ -5378,6 +5384,7 @@ tf_kernel_library(
         "//tensorflow/core/util:overflow",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ] + if_cuda_or_rocm([
         ":gpu_device_array",
         ":gpu_prim_helpers",
@@ -7463,6 +7470,7 @@ filegroup(
             "decode_proto_op.cc",
             "encode_proto_op.cc",
             "sobol_op.cc",
+            "sparse_matmul_op.*",
             # Excluded due to experimental status:
             "debug_ops.*",
             "mutex_ops.*",

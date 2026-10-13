@@ -33,7 +33,7 @@ class CostMeasurement {
 
   explicit CostMeasurement(const Context& context) {}
 
-  virtual ~CostMeasurement() {}
+  virtual ~CostMeasurement() = default;
 
   virtual absl::Duration GetTotalCost() = 0;
 

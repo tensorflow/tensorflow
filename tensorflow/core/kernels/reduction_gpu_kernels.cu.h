@@ -241,7 +241,7 @@ __global__ __launch_bounds__(1024) void RowReduceKernel(
 template <typename T1>
 struct storage_type {
   T1 val;
-  __host__ __device__ storage_type() {}
+  __host__ __device__ storage_type() = default;
   __host__ __device__ operator T1() { return val; }
   __host__ __device__ storage_type<T1>& operator=(const T1& in) {
     val = in;
@@ -253,7 +253,7 @@ template <typename T2>
 struct storage_type<std::complex<T2>> {
   T2 real;
   T2 imag;
-  __host__ __device__ storage_type() {}
+  __host__ __device__ storage_type() = default;
   __host__ __device__ operator std::complex<T2>() {
     return std::complex<T2>(real, imag);
   }

@@ -63,7 +63,7 @@ class LibjpegHandle {
   boolean (*jpeg_finish_decompress_)(j_decompress_ptr);
 
  private:
-  LibjpegHandle() {}
+  LibjpegHandle() = default;
   void* libjpeg_ = nullptr;
 };
 

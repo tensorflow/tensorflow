@@ -35,7 +35,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/index_domain.h"
-#include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
@@ -491,57 +490,6 @@ class ConcreteEvenShardingSpec
   mutable std::vector<int> cached_shard_indices_;
   mutable absl::once_flag shard_to_unique_index_domain_index_once_;
   mutable std::vector<int> cached_shard_to_unique_index_domain_index_;
-};
-
-// Sharding spec derived from an IR ShardingParam.
-class ShardingParamShardingSpec
-    : public RTTIExtends<ShardingParamShardingSpec, ShardingSpec> {
- public:
-  static std::unique_ptr<ShardingParamShardingSpec> Create(
-      ShardingParam sharding_param);
-
-  const ShardingParam& sharding_param() const { return sharding_param_; }
-
-  absl::StatusOr<ShardingRef> ToSharding(DeviceListRef devices,
-                                         MemoryKind memory_kind) const override;
-
-  absl::StatusOr<Shape> GetShardShape(const Shape& shape) const override;
-
-  bool HasSamePartitioning(const ShardingSpec& other) const override;
-
-  absl::StatusOr<std::vector<std::pair<Shape, ShardingSpecRef>>> Disassemble(
-      const Shape& shape) const override;
-
-  absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingSpecRef>>>
-  Disassemble(const DynamicShape& dynamic_shape) const override;
-
-  absl::StatusOr<std::vector<IndexDomain>> IndexDomains(
-      const Shape& shape) const override;
-
-  absl::StatusOr<absl::InlinedVector<IndexDomainAndShardIndices, 1>>
-  UniqueIndexDomains(const Shape& shape) const override;
-
-  absl::StatusOr<absl::Span<const int>> ShardToUniqueIndexDomainIndex()
-      const override;
-
-  static char ID;  // NOLINT
-
-  ShardingParamShardingSpec(const ShardingParamShardingSpec& other);
-
- private:
-  ShardingParamShardingSpec(int num_shards, ShardingParam sharding_param);
-
-  std::string DebugString() const override;
-
-  void Hash(absl::HashState state) const override;
-
-  ShardingParam sharding_param_;
-
-  mutable absl::once_flag unique_shard_indices_once_;
-  mutable absl::StatusOr<std::vector<int>> cached_shard_indices_;
-  mutable absl::once_flag shard_to_unique_index_domain_index_once_;
-  mutable absl::StatusOr<std::vector<int>>
-      cached_shard_to_unique_index_domain_index_;
 };
 
 }  // namespace ifrt

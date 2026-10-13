@@ -209,7 +209,8 @@ TfLiteRegistration* Register_DummySDPA() {
 AttentionModel::AttentionModel(
     int b, int t, int s, int h, int n, float scale, bool transpose_io,
     bool use_delegate, const TfLiteYNNPackDelegateOptions& delegate_options,
-    AttentionImpl impl, int n_kv) {
+    AttentionImpl impl, int n_kv, bool quantize_kv, bool bool_mask,
+    int32_t kv_zero_point) {
   if (n_kv <= 0) {
     n_kv = n;
   }
@@ -237,14 +238,22 @@ AttentionModel::AttentionModel(
   }
 
   query_id_ = AddInput({TensorType_FLOAT32, query_shape});
-  key_id_ = AddInput({TensorType_FLOAT32, key_shape});
-  value_id_ = AddInput({TensorType_FLOAT32, value_shape});
+  if (quantize_kv) {
+    key_id_ = AddInput(
+        {TensorType_INT8, key_shape, 0.0f, 0.0f, 0.05f, kv_zero_point});
+    value_id_ = AddInput(
+        {TensorType_INT8, value_shape, 0.0f, 0.0f, 0.05f, kv_zero_point});
+  } else {
+    key_id_ = AddInput({TensorType_FLOAT32, key_shape});
+    value_id_ = AddInput({TensorType_FLOAT32, value_shape});
+  }
   if (impl != AttentionImpl::kFullSequence) {
     runtime_bmm_params_id_ = AddInput({TensorType_INT32, {1}});
   } else {
     runtime_bmm_params_id_ = -1;
   }
-  mask_id_ = AddInput({TensorType_FLOAT32, mask_shape});
+  mask_id_ =
+      AddInput({bool_mask ? TensorType_BOOL : TensorType_FLOAT32, mask_shape});
 
   std::vector<int> output_shape = transpose_io ? std::vector<int>{b, t, n, h}
                                                : std::vector<int>{b, n, t, h};

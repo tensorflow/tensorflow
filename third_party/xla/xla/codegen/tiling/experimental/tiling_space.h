@@ -202,6 +202,15 @@ class TilingSpace {
 
   bool IsSymbolic() const { return is_symbolic_; }
 
+  // Returns true if `hlo` is a tuple-producing instruction tiled with one
+  // distinct tile per output (consumed through `get-tuple-element`), rather
+  // than a single shared tile for all outputs (such as variadic `reduce`).
+  bool HasPerOutputTiles(const HloInstructionAdaptor& hlo) const;
+
+  // Returns true if the tiling space contains a tuple-producing instruction
+  // tiled with one distinct tile per output.
+  bool HasPerOutputTiles() const;
+
   // Result of `SimplifyExpressions`.
   // TODO(b/565301234): follow up: we can also return simplified constraint
   // intervals but that requires extracting them from IndexingMap properly,
@@ -290,6 +299,12 @@ class TilingSpace {
 // If the shape is a tuple, return the shape at the given index.
 // Otherwise, return the shape itself.
 const Shape& GetFirstShape(const HloInstruction* instr, int64_t index = 0);
+
+// Returns true if `hlo` is a tuple-producing instruction whose output `k`
+// depends only on operand `k`, with the same tile mapping for every `k`.
+//
+// Currently only multi-operand all-gather qualifies.
+bool IsIndexWiseVariadic(const HloInstruction& hlo);
 
 // Returns a symbol replacement map to set concrete tile sizes.
 llvm::DenseMap<SymbolicExpr, SymbolicExpr> GetTileSizeReplacementMap(

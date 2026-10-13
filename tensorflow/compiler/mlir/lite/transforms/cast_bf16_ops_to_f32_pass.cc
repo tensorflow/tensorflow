@@ -148,6 +148,12 @@ class RemoveUnneededCastOps : public OpRewritePattern<mlir::TFL::CastOp> {
     if (orig_input.getType() != op.getType()) {
       return failure();
     }
+    // Only fold round trips through bf16, which is what this pass introduces.
+    // Other narrowing round trips (e.g. f32 -> f16 -> f32) are explicit
+    // precision changes in the source program and must be preserved.
+    if (!getElementTypeOrSelf(prev_cast.getType()).isBF16()) {
+      return failure();
+    }
     rewriter.replaceOp(op, orig_input);
     return success();
   }

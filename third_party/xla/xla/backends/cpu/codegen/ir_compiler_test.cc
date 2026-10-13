@@ -62,6 +62,7 @@ namespace xla::cpu {
 
 namespace {
 
+using ::testing::ContainsRegex;
 using ::testing::HasSubstr;
 using ::testing::Not;
 
@@ -601,7 +602,7 @@ TEST(IrCompilerTest, DataFlowSanitizerInstrumentsPolynomialApproximations) {
   auto ir = llvm_ir::DumpToString(ir_module.get());
   EXPECT_THAT(ir, HasSubstr("@test_exp.dfsan"));
   EXPECT_THAT(ir, HasSubstr("fmul contract"));
-  EXPECT_THAT(ir, HasSubstr("store i8 %1, ptr @__dfsan_retval_tls"));
+  EXPECT_THAT(ir, ContainsRegex("store i8 %[0-9]+, ptr @__dfsan_retval_tls"));
 }
 
 }  // namespace

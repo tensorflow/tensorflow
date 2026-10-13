@@ -97,7 +97,8 @@ TEST(ThunkWalkTest, ConditionalThunk) {
   std::vector<ThunkSequence> branch_thunks;
   branch_thunks.push_back(std::move(thunk_sequence));
   ConditionalThunk conditional_thunk(Thunk::ThunkInfo(), {slice, shape},
-                                     std::move(branch_thunks));
+                                     std::move(branch_thunks),
+                                     /*devices_per_host=*/1);
 
   EXPECT_THAT(GetAllThunks(&conditional_thunk),
               UnorderedElementsAre(thunk_ptr, &conditional_thunk));

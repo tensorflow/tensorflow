@@ -106,6 +106,17 @@ class SliceTester {
     return use_int64_offsets_and_sizes_;
   }
 
+  SliceTester& ReshapeInputShapes(
+      const std::vector<std::vector<int32_t>>& shapes) {
+    reshape_input_shapes_ = shapes;
+    return *this;
+  }
+
+  SliceTester& RequireDelegation(bool require) {
+    require_delegation_ = require;
+    return *this;
+  }
+
   void Test(TensorType tensor_type, TfLiteDelegate* delegate) const;
   template <typename T>
   void Test(Interpreter* default_interpreter,
@@ -120,7 +131,9 @@ class SliceTester {
   std::vector<int32_t> sizes_;
   std::vector<int64_t> sizes_int64_;
   std::vector<int32_t> output_shape_;
-  bool use_int64_offsets_and_sizes_;
+  bool use_int64_offsets_and_sizes_ = false;
+  std::vector<std::vector<int32_t>> reshape_input_shapes_;
+  bool require_delegation_ = false;
 };
 
 int32_t ComputeSize(const std::vector<int32_t>& shape);

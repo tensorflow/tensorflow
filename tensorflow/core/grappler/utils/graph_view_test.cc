@@ -49,8 +49,7 @@ GraphDef SimpleTestGraph() {
 
 template <typename T>
 const std::string GetGraphViewTypeAsString() {
-  return std::is_same<T, class GraphView>::value ? "GraphView"
-                                                 : "MutableGraphView";
+  return std::is_same_v<T, class GraphView> ? "GraphView" : "MutableGraphView";
 }
 
 using GraphViewTypes = ::testing::Types<GraphView, MutableGraphView>;
@@ -412,7 +411,7 @@ TYPED_TEST(TypedFaninTest, GetControllingFanins) {
   const auto& c_fanins = c_node->GetControllingFanins();
   FanoutViewType d_control_fanin(&graph_view, d_node->node_index(),
                                  Graph::kControlSlot);
-  if (std::is_same<GraphViewType, GraphView>::value) {
+  if (std::is_same_v<GraphViewType, GraphView>) {
     ASSERT_EQ(c_fanins.size(), 2);
     EXPECT_EQ(c_fanins[0], d_control_fanin);
     EXPECT_EQ(c_fanins[1], d_control_fanin);
@@ -545,7 +544,7 @@ TYPED_TEST(TypedFanoutTest, GetControlledFanouts) {
   const auto& d_fanouts = d_node->GetControlledFanouts();
   FaninViewType c_control_fanout(&graph_view, c_node->node_index(),
                                  Graph::kControlSlot);
-  if (std::is_same<GraphViewType, GraphView>::value) {
+  if (std::is_same_v<GraphViewType, GraphView>) {
     ASSERT_EQ(d_fanouts.size(), 2);
     EXPECT_EQ(d_fanouts[0], c_control_fanout);
     EXPECT_EQ(d_fanouts[1], c_control_fanout);
@@ -598,7 +597,7 @@ TYPED_TEST(TypedNodeViewTest, NumControllingFanins) {
 
   EXPECT_EQ(a_node->NumControllingFanins(), 1);
   EXPECT_EQ(b_node->NumControllingFanins(), 1);
-  if (std::is_same<TypeParam, GraphView>::value) {
+  if (std::is_same_v<TypeParam, GraphView>) {
     EXPECT_EQ(c_node->NumControllingFanins(), 2);
   } else {
     EXPECT_EQ(c_node->NumControllingFanins(), 1);
@@ -647,7 +646,7 @@ TYPED_TEST(TypedNodeViewTest, NumControlledFanouts) {
   EXPECT_EQ(a_node->NumControlledFanouts(), 0);
   EXPECT_EQ(b_node->NumControlledFanouts(), 0);
   EXPECT_EQ(c_node->NumControlledFanouts(), 2);
-  if (std::is_same<TypeParam, GraphView>::value) {
+  if (std::is_same_v<TypeParam, GraphView>) {
     EXPECT_EQ(d_node->NumControlledFanouts(), 2);
   } else {
     EXPECT_EQ(d_node->NumControlledFanouts(), 1);

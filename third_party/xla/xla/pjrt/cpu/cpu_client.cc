@@ -21,8 +21,6 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <functional>
-#include <iterator>
-#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -1496,10 +1494,12 @@ PjRtRawLoadedExecutable::RawExecuteResult CpuPjRtRawLoadedExecutable::Execute(
   // pacing to avoid problems such as memory fragmentation and running ahead
   // too far, not for correctness. Placing it before the executable launch
   // allows the inputs for the next executable to be fetched even if the
-  // launch is delayed.
+  // launch is delayed. A dispatch from inside a host callback takes no units:
+  // the computations holding them may be queued behind the computation that
+  // runs the callback, so waiting for a unit can deadlock.
   auto compute_reservation = std::make_unique<Semaphore::ScopedReservation>(
       local_device_state->max_inflight_computations_semaphore().ScopedAcquire(
-          1));
+          ThisThreadIsInsideHostCallback() ? 0 : 1));
 
   ExecutableRunOptions run_options;
   run_options.set_run_id(run_id_);

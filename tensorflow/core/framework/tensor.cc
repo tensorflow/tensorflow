@@ -208,7 +208,7 @@ struct Helper {
     }
     port::CopyToArray(in, data);
 
-    if constexpr (std::is_same_v<typename std::remove_cv<T>::type, bool>) {
+    if constexpr (std::is_same_v<std::remove_cv_t<T>, bool>) {
       // Check that contents are valid and not trap representations for bool
       // TODO(tlongeri): do we need this for any other types?
       static constexpr bool true_value = true;
@@ -701,7 +701,7 @@ TensorBuffer* FromProtoField(Allocator* a, const TensorProto& in, int64_t n) {
       std::copy_n(begin, n, data);
     } else {
       std::copy_n(begin, in_n, data);
-      if (std::is_trivially_copyable<T>::value) {
+      if (std::is_trivially_copyable_v<T>) {
         const T last = *(data + in_n - 1);
         std::fill_n(data + in_n, n - in_n, last);
       } else {

@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology_description.h"
+#include "xla/pjrt/proto/topology_description.pb.h"
 
 namespace xla::cpu {
 namespace {

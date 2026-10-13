@@ -6019,25 +6019,26 @@ class Subgraph {
                                  begin[i], node_index);
         return kTfLiteError;
       }
-      if (size[i] <= 0) {
-        // TODO(b/329228576): Add support for negative begin.
+      if (size[i] == 0 || size[i] < -1) {
         TF_LITE_MAYBE_KERNEL_LOG(logging_context,
                                  "size %" PRId64
-                                 " must be positive in SLICE node #%d",
+                                 " must be positive or -1 in SLICE node #%d",
                                  size[i], node_index);
         return kTfLiteError;
       }
     }
 
     if (subgraph != nullptr) {
-      // Convert to size_t.
-      std::array<size_t, XNN_MAX_TENSOR_DIMS> offsets;
-      std::copy(begin.begin(), begin.end(), offsets.begin());
-      std::array<size_t, XNN_MAX_TENSOR_DIMS> sizes;
-      std::copy(size.begin(), size.end(), sizes.begin());
+      std::array<int64_t, XNN_MAX_TENSOR_DIMS> ends{};
+      for (int i = 0; i < num_dims; ++i) {
+        // An end value of 0 tells XNNPACK to infer the largest open interval,
+        // which matches TFLite's size == -1 ("to the end") semantics across
+        // input reshapes.
+        ends[i] = (size[i] == -1) ? 0 : begin[i] + size[i];
+      }
 
-      const xnn_status status = xnn_define_static_slice(
-          subgraph, num_dims, offsets.data(), sizes.data(),
+      const xnn_status status = xnn_define_static_slice_v3(
+          subgraph, num_dims, begin.data(), ends.data(), /*strides=*/nullptr,
           input_output_tensors.at(node->inputs->data[0]),
           input_output_tensors.at(node->outputs->data[0]), /*flags=*/0);
       if (status != xnn_status_success) {

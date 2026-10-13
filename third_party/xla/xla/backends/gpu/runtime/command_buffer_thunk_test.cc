@@ -1472,7 +1472,7 @@ TEST(CommandBufferThunkTest, ConditionalThunkCaseCommand) {
   // Prepare thunk sequence for command buffer conversion.
   ThunkSequence thunks = ThunkSequence::Of<ConditionalThunk>(
       Thunk::ThunkInfo(), ShapedSlice{slice_i, i_shape},
-      std::move(branch_thunks));
+      std::move(branch_thunks), /*devices_per_host=*/1);
 
   ConvertToCommandsOptions options;
   options.synchronization_mode = serialize;

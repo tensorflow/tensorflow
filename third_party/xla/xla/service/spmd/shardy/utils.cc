@@ -448,7 +448,7 @@ mlir::sdy::MeshAttr toSdyMeshAttr(const Mesh& mesh,
                                   mlir::MLIRContext* context) {
   if (mesh.axis_names().empty()) {
     if (mesh.device_assignment().num_elements() == 1) {
-      return mlir::sdy::MeshAttr::getMaximal(
+      return mlir::sdy::MeshAttr::getSingleDevice(
           context, mesh.device_assignment().array()(0));
     }
     return mlir::sdy::MeshAttr::get(context, {}, {});
@@ -515,8 +515,8 @@ mlir::sdy::TensorShardingAttr convertToSdyShardingAttr(
   if (namedSharding.IsSingleDevice()) {
     return mlir::sdy::TensorShardingAttr::getFullyClosed(
         context, /*rank=*/0,
-        mlir::sdy::MeshAttr::getMaximal(context,
-                                        hloSharding.GetUniqueDevice()));
+        mlir::sdy::MeshAttr::getSingleDevice(context,
+                                             hloSharding.GetUniqueDevice()));
   }
 
   mlir::sdy::MeshAttr meshAttr = toSdyMeshAttr(namedSharding.mesh(), context);

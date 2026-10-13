@@ -39,8 +39,6 @@ limitations under the License.
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/Support/LogicalResult.h"
-#include "xla/python/ifrt/ir/sharding_param.pb.h"
-#include "xla/python/ifrt/serdes_version.h"
 
 namespace xla {
 namespace ifrt {
@@ -373,69 +371,6 @@ llvm::raw_ostream& operator<<(llvm::raw_ostream& os, ShardingParam sharding) {
   // V2 if the current ShardingParam version.
   PrintInternalV2(os, sharding);
   return os;
-}
-
-absl::StatusOr<ShardingParam> ShardingParam::FromProto(
-    const ShardingParamProto& proto) {
-  const SerDesVersionNumber version_number(proto.version_number());
-  // We should only accept <= SerDesVersionNumber(1), but we accidentally used
-  // version 2 instead of 1. Since there is no `ShardingParam` serialization
-  // format change at version 2, we gracefully accept this version number.
-  if (version_number > SerDesVersionNumber(2)) {
-    return absl::FailedPreconditionError(absl::StrCat(
-        "Unsupported ", version_number, " for ShardingParam deserialization"));
-  }
-
-  ShardingParam::MinorToMajor minor_to_major;
-  minor_to_major.permutation.append(proto.permutation().begin(),
-                                    proto.permutation().end());
-  minor_to_major.axis_sizes.append(proto.axis_sizes().begin(),
-                                   proto.axis_sizes().end());
-  std::vector<int64_t> dim_shards(proto.dim_shards().begin(),
-                                  proto.dim_shards().end());
-  std::vector<int> unreduced_axes;
-  if (version_number > SerDesVersionNumber(0)) {
-    unreduced_axes = std::vector<int>(proto.unreduced_axes().begin(),
-                                      proto.unreduced_axes().end());
-  }
-  ShardingParam param(std::move(dim_shards), std::move(minor_to_major),
-                      std::move(unreduced_axes));
-  ABSL_RETURN_IF_ERROR(param.verify());
-  return param;
-}
-
-absl::Status ShardingParam::ToProto(ShardingParamProto& proto,
-                                    SerDesVersion version) const {
-  if (version.version_number() < SerDesVersionNumber(0)) {
-    return absl::FailedPreconditionError(
-        absl::StrCat("Unsupported ", version.version_number(),
-                     " for ShardingParam serialization"));
-  }
-  if (version.version_number() < SerDesVersionNumber(1) &&
-      !unreduced_axes().empty()) {
-    return absl::FailedPreconditionError(
-        absl::StrCat("ShardingParamProto with ", version.version_number(),
-                     " does not support `unreduced_axes`"));
-  }
-
-  proto.Clear();
-  if (unreduced_axes().empty()) {
-    // If the SerDes minimum supported version becomes 1 or larger, we can use
-    // the new minimum version here without breaking version compatibility.
-    proto.set_version_number(SerDesVersionNumber(0).value());
-  } else {
-    proto.set_version_number(SerDesVersionNumber(1).value());
-  }
-  proto.mutable_dim_shards()->Add(dim_shards().begin(), dim_shards().end());
-  proto.mutable_permutation()->Add(minor_to_major().permutation.begin(),
-                                   minor_to_major().permutation.end());
-  proto.mutable_axis_sizes()->Add(minor_to_major().axis_sizes.begin(),
-                                  minor_to_major().axis_sizes.end());
-  if (!unreduced_axes().empty()) {
-    proto.mutable_unreduced_axes()->Add(unreduced_axes().begin(),
-                                        unreduced_axes().end());
-  }
-  return absl::OkStatus();
 }
 
 }  // namespace ifrt

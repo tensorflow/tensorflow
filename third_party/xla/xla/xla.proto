@@ -483,7 +483,7 @@ message DebugOptions {
 
   // Controls when cuDNN fusions are compiled in "deviceless" mode, i.e. driven
   // purely by the DeviceDescription without a live cuDNN handle. Deviceless
-  // compilation requires cuDNN >= 9.8.
+  // compilation requires cuDNN >= 9.23.
   enum CudnnDevicelessCompilationMode {
     CUDNN_DEVICELESS_COMPILATION_UNSET = 0;
     // Never use deviceless compilation; always require a live device.
@@ -533,6 +533,12 @@ message DebugOptions {
   enum EarlyExitPoint {
     EARLY_EXIT_POINT_UNSET = 0;
     EARLY_EXIT_POINT_AFTER_CONFIG_ASSIGNMENT = 1;
+  }
+
+  enum DeterministicOpsTritonMode {
+    DETERMINISTIC_OPS_TRITON_MODE_UNSET = 0;
+    DETERMINISTIC_OPS_TRITON_MODE_OFF = 1;
+    DETERMINISTIC_OPS_TRITON_MODE_UNCHECKED = 2;
   }
 
   // Filter which allows enabling NCCL symmetric buffers for a subset of
@@ -995,6 +1001,11 @@ message DebugOptions {
   // for different scenarios.
   optional bool xla_gpu_experimental_collective_start_as_early_as_possible =
       488;
+
+  // Controls whether Triton is enabled when deterministic ops are requested
+  // (`xla_gpu_deterministic_ops` or `xla_gpu_exclude_nondeterministic_ops`).
+  optional DeterministicOpsTritonMode
+      xla_gpu_experimental_deterministic_ops_triton = 556;
 
   // Experimentally disables binary libraries in GPU compiler passes.
   optional bool xla_gpu_experimental_disable_binary_libraries = 329;
@@ -1931,7 +1942,12 @@ message DebugOptions {
   // Enables Raft for stable TopK.
   optional bool xla_gpu_experimental_enable_raft_for_stable_topk = 546;
 
-  // Next id: 556
+  // Lets the GPU autotuner consider the experimental TensorIR (CUDA Tile)
+  // fusion emitter as a codegen backend, so fusions may be assigned to it.
+  // Requires sm_90+ and CUDA 13.3+ (tileiras) at runtime. Off by default.
+  optional bool xla_gpu_experimental_enable_tensor_ir = 557;
+
+  // Next id: 558
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

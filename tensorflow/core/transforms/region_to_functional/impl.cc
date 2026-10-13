@@ -363,7 +363,7 @@ using ConvertStatelessIfOp =
     ConvertIfLikeOp<StatelessIfRegionOp, StatelessIfOp>;
 using ConvertStatefulIfOp = ConvertIfLikeOp<StatefulIfRegionOp, StatefulIfOp>;
 
-// Base class for patterns to convert an case-like TFG region op to
+// Base class for patterns to convert a case-like TFG region op to
 // functional form.
 template <typename CaseLikeRegionOp, typename CaseLikeOp>
 struct ConvertCaseLikeOp

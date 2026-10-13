@@ -24,22 +24,38 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/base/casts.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/collective_clique_requests.h"
+#include "xla/backends/gpu/runtime/collective_memory_requests.h"
+#include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk_multigpu_test_utils.h"
 #include "xla/backends/gpu/runtime/ragged_all_to_all_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/device_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
+#include "xla/service/gpu/gpu_executable_run_options.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream_executor_address_allocator.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
@@ -332,6 +348,128 @@ TEST(RaggedAllToAllThunkMultiGpuTest, RecordCommandBufferUpdate) {
         MakeBufferAllocations(slots[d], slots[d].update_buffers));
     return RunUpdatePhase(slots[d], thunk, *update_allocs[d], d, /*phase=*/2);
   }));
+}
+
+TEST(RaggedAllToAllThunkMultiGpuTest,
+     SingletonRaggedAllToAllDoesNotRequestBarrierOrSymmetricMemory) {
+  if (!HasEnoughGpus(kNumDevices)) {
+    GTEST_SKIP() << "Test requires at least " << kNumDevices << " GPUs";
+  }
+
+  constexpr absl::string_view kModuleStr = R"hlo(
+HloModule module, replica_count=2
+
+ENTRY entry {
+  input = bf16[4,16] parameter(0)
+  output = bf16[4,16] parameter(1)
+  input_offsets = s64[1] parameter(2)
+  send_sizes = s64[1] parameter(3)
+  output_offsets = s64[1] parameter(4)
+  recv_sizes = s64[1] parameter(5)
+  ROOT ra2a = bf16[4,16] ragged-all-to-all(
+      input, output, input_offsets, send_sizes, output_offsets, recv_sizes),
+      replica_groups={{0},{1}}
+}
+)hlo";
+
+  HloModuleConfig config;
+  DebugOptions debug_options = config.debug_options();
+  debug_options.set_xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel(
+      true);
+  debug_options
+      .set_xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl(true);
+  config.set_debug_options(debug_options);
+  config.set_replica_count(kNumDevices);
+
+  VerifiedHloModule module("test_module", config,
+                           /*verifier_layout_sensitive=*/false,
+                           /*allow_mixed_precision_in_hlo_verifier=*/false,
+                           ShapeUtil::ByteSizeOfElements);
+  ASSERT_OK(module.ParseHloStringAndVerifyModule(kModuleStr));
+
+  const HloInstruction* root = module.entry_computation()->root_instruction();
+  ASSERT_EQ(root->opcode(), HloOpcode::kRaggedAllToAll);
+  const auto* ra2a_instr =
+      absl::down_cast<const HloRaggedAllToAllInstruction*>(root);
+
+  std::vector<BufferAllocation> allocations;
+  allocations.reserve(ra2a_instr->operand_count());
+  for (int i = 0; i < ra2a_instr->operand_count(); ++i) {
+    allocations.emplace_back(
+        /*index=*/i, ShapeUtil::ByteSizeOf(ra2a_instr->operand(i)->shape()),
+        /*color=*/0);
+  }
+
+  std::vector<CollectiveThunk::Buffer> buffers;
+  buffers.reserve(ra2a_instr->operand_count());
+  for (int i = 0; i < ra2a_instr->operand_count(); ++i) {
+    const Shape& shape = ra2a_instr->operand(i)->shape();
+    int64_t byte_size = ShapeUtil::ByteSizeOf(shape);
+    ShapedSlice slice{BufferAllocation::Slice(&allocations[i], 0, byte_size),
+                      shape};
+    buffers.push_back(CollectiveThunk::Buffer{
+        /*element_count=*/ShapeUtil::ElementsIn(shape),
+        /*source_buffer=*/slice,
+        /*destination_buffer=*/slice,
+        /*source_memory_space=*/0,
+        /*destination_memory_space=*/0,
+    });
+  }
+
+  RaggedAllToAllThunk thunk(Thunk::ThunkInfo(), ra2a_instr, std::move(buffers),
+                            /*p2p_memcpy_enabled=*/true,
+                            /*devices_per_host=*/kNumDevices);
+
+  DeviceAssignment device_assignment = MakeDeviceAssignment(kNumDevices);
+  GpuExecutableRunOptions::DeviceIdMap id_map;
+  for (int i = 0; i < kNumDevices; ++i) {
+    id_map[LocalDeviceId(i)] = GlobalDeviceId(i);
+  }
+
+  ASSERT_OK(RunOnDevices(
+      kNumDevices, "singleton_ra2a_prepare", [&](int d) -> absl::Status {
+        se::StreamExecutor* executor = GetGpuExecutor(d);
+        ABSL_ASSIGN_OR_RETURN(std::unique_ptr<se::Stream> stream,
+                         executor->CreateStream());
+        se::StreamExecutorAddressAllocator allocator(executor);
+
+        GpuExecutableRunOptions gpu_options;
+        gpu_options.set_gpu_global_device_ids(id_map);
+
+        ServiceExecutableRunOptions run_options;
+        run_options.mutable_run_options()->set_stream(stream.get());
+        run_options.mutable_run_options()->set_device_assignment(
+            &device_assignment);
+        run_options.mutable_run_options()->set_gpu_executable_run_options(
+            &gpu_options);
+        run_options.mutable_run_options()->set_local_device_count(kNumDevices);
+
+        ABSL_ASSIGN_OR_RETURN(
+            CollectiveParams collective_params,
+            CollectiveParams::Create(run_options, /*async_streams=*/{},
+                                     LocalDeviceId(d)));
+
+        std::vector<se::DeviceAddressBase> allocated_buffers(
+            allocations.size());
+        BufferAllocations buffer_allocs(allocated_buffers, d, &allocator);
+        CollectiveCliqueRequests clique_requests;
+        CollectiveMemoryRequests memory_requests(buffer_allocs);
+        Thunk::PrepareParams prepare_params{&collective_params,
+                                            &clique_requests, &memory_requests,
+                                            executor, &buffer_allocs};
+
+        ABSL_RETURN_IF_ERROR(thunk.Prepare(prepare_params));
+
+        std::vector<CollectiveCliqueRequests::CliqueRequest> requested_cliques =
+            clique_requests.OrderedRequestedCliques();
+        EXPECT_EQ(requested_cliques.size(), 1);
+        if (!requested_cliques.empty()) {
+          EXPECT_EQ(requested_cliques[0].key.num_devices(), 1);
+          EXPECT_FALSE(requested_cliques[0].use_cross_device_barrier_requested);
+        }
+        EXPECT_EQ(memory_requests.symmetric_size(), 0);
+        return absl::OkStatus();
+      }));
 }
 
 }  // namespace

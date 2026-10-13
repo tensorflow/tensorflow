@@ -73,7 +73,8 @@ TEST(FftThunkTest, ProtoRoundTrip) {
                        Thunk::ThunkInfo::FromProto(proto.thunk_info()));
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<FftThunk> thunk,
-      FftThunk::FromProto(thunk_info, proto.fft_thunk(), buffer_allocations));
+      FftThunk::FromProto(thunk_info, proto.fft_thunk(), buffer_allocations,
+                          /*devices_per_host=*/1));
   ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
 }

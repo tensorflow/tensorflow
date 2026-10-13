@@ -26,6 +26,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
@@ -557,6 +558,72 @@ TEST(WhileThunkTest, TransformNested) {
   EXPECT_THAT(while_thunk->body_executor().thunks(), SizeIs(1));
   EXPECT_THAT(while_thunk->body_executor().thunks()[0]->kind(),
               Kind::kCustomCall);
+}
+
+TEST(WhileThunkTest, UnrollDecisionIsReadyBeforeDeviceInitialization) {
+  constexpr int kTripCount = 7;
+  BufferAllocation pred_alloc(/*index=*/0, /*size=*/sizeof(bool), /*color=*/0);
+  BufferAllocation::Slice pred_slice(&pred_alloc, /*offset=*/0,
+                                     /*size=*/sizeof(bool));
+  WhileThunk thunk(Thunk::ThunkInfo(), pred_slice, ThunkSequence(),
+                   ThunkSequence(), kTripCount, /*devices_per_host=*/1);
+  CommandRecordCounts cond_counts;
+  CommandRecordCounts body_counts;
+  ASSERT_OK_AND_ASSIGN(CommandExecutor cond_executor,
+                       MakeCommandExecutor(&cond_counts));
+  ASSERT_OK_AND_ASSIGN(CommandExecutor body_executor,
+                       MakeCommandExecutor(&body_counts));
+  ASSERT_OK(thunk.SetOrUpdateCommandBufferExecutors(
+      std::move(cond_executor), std::move(body_executor),
+      /*enable_loop_unroll=*/true));
+
+  bool pred = true;
+  std::vector<se::DeviceAddressBase> buffers = {
+      se::DeviceAddressBase(&pred, sizeof(pred))};
+  BufferAllocations allocations(buffers, /*device_ordinal=*/0,
+                                /*memory_allocator=*/nullptr);
+  ServiceExecutableRunOptions run_options;
+  Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
+      run_options, allocations, /*stream=*/nullptr,
+      /*command_buffer_trace_stream=*/nullptr, /*collective_params=*/nullptr,
+      /*collective_cliques=*/nullptr, /*collective_memory=*/nullptr);
+  CommandStateManager state_manager;
+  Command::RecordParams record_params{state_manager};
+  ::testing::NiceMock<se::MockCommandBuffer> command_buffer;
+  NestedCommandBuffer child;
+  ConfigureNestedCommandBuffer(&child);
+  FakeSeCommand child_command;
+  using RecordChild = absl::AnyInvocable<absl::Status(se::CommandBuffer*)>;
+  EXPECT_CALL(command_buffer,
+              CreateChildCommand(::testing::A<RecordChild>(), ::testing::_))
+      .WillOnce([&](RecordChild record,
+                    absl::Span<const se::CommandBuffer::Command* const>)
+                    -> absl::StatusOr<const se::CommandBuffer::Command*> {
+        ABSL_RETURN_IF_ERROR(record(child.command_buffer.get()));
+        ABSL_RETURN_IF_ERROR(child.command_buffer->Finalize());
+        return &child_command;
+      });
+  EXPECT_CALL(command_buffer,
+              CreateWhile(::testing::A<se::DeviceAddress<bool>>(), ::testing::_,
+                          ::testing::_, ::testing::_))
+      .Times(0);
+  ASSERT_OK_AND_ASSIGN(const se::CommandBuffer::Command* recorded,
+                       thunk.Record(execute_params, record_params,
+                                    Command::RecordCreate{}, &command_buffer));
+  EXPECT_EQ(recorded, &child_command);
+  EXPECT_EQ(cond_counts.creates, kTripCount);
+  EXPECT_EQ(body_counts.creates, kTripCount);
+
+  ASSERT_OK(child.command_buffer->Update());
+  EXPECT_CALL(command_buffer,
+              UpdateChildCommand(&child_command, ::testing::A<RecordChild>()))
+      .WillOnce([&](const se::CommandBuffer::Command*, RecordChild update) {
+        return update(child.command_buffer.get());
+      });
+  ASSERT_OK(thunk.Record(execute_params, record_params,
+                         Command::RecordUpdate{recorded}, &command_buffer));
+  EXPECT_EQ(cond_counts.updates, kTripCount);
+  EXPECT_EQ(body_counts.updates, kTripCount);
 }
 
 }  // namespace

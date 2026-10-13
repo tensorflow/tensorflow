@@ -63,7 +63,7 @@ TfLiteStatus ActivationOpBuilder::RegisterOutputs(const TfLiteIntArray* outputs,
   return kTfLiteOk;
 }
 
-ActivationOpBuilder::~ActivationOpBuilder() {}
+ActivationOpBuilder::~ActivationOpBuilder() = default;
 
 OpBuilder* CreateActivationBuilder(GraphBuilder* graph_builder, int op_type) {
   return new ActivationOpBuilder(graph_builder, op_type);

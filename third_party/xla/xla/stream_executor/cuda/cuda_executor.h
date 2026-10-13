@@ -62,6 +62,7 @@ limitations under the License.
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/memory_allocator.h"
+#include "xla/stream_executor/memory_reservation.h"
 #include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
@@ -198,6 +199,10 @@ class CudaExecutor : public GpuExecutor {
                                             void* global_address) override;
   absl::StatusOr<std::unique_ptr<MemoryAllocator>> CreateMemoryAllocator(
       MemorySpace type) override;
+  absl::StatusOr<std::unique_ptr<MemoryReservation>> CreateMemoryReservation(
+      uint64_t size) override;
+  absl::StatusOr<std::unique_ptr<MemoryAllocation>>
+  CreatePhysicalMemoryAllocation(uint64_t size) override;
 
   // Returns the granularity which is the minimum unit of memory that can be
   // allocated with VMM API. In order to map the memory slices to multicast

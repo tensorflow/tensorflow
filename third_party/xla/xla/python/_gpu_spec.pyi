@@ -39,6 +39,8 @@ class GpuModel(enum.Enum):
 
   B200 = 4
 
+  B200_MIG = 5
+
   B300 = 6
 
   BMG_G21 = 7
@@ -47,24 +49,30 @@ class GpuModel(enum.Enum):
 
   H100_SXM = 9
 
+  H100_SXM_MIG = 10
+
   H200 = 11
 
   MI200 = 12
 
-  P100 = 14
+  MI300 = 13
 
-  PVC = 15
+  MI350 = 14
 
-  V100 = 16
+  MI450 = 15
 
-  GB200 = 17
+  P100 = 16
 
-  GB300 = 18
+  PVC = 17
 
-  RTX6000PRO = 19
+  VR_NVL72 = 18
 
-  GFX1250 = 20
+  V100 = 19
 
-  MI350 = 13
+  GB200 = 20
+
+  GB300 = 21
+
+  RTX6000PRO = 22
 
 def get_gpu_spec(gpu_model: GpuModel) -> GpuTargetConfig: ...

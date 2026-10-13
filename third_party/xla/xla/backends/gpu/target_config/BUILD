@@ -201,6 +201,7 @@ xla_test(
         "b200",
         "gb200",
         "gb300",
+        "vr_nvl72",
         "amdgpu_any",
         "intelgpu_any",
     ],

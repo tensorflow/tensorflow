@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/container/node_hash_map.h"
+#include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -519,6 +520,73 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
     DimensionVector contracting_dim_sizes;
     DimensionVector contracting_dim_scale_divisors;
   };
+
+  struct DotDimensionInfo {
+    DotDimensionInfo(
+        const Shape& lhs_shape, const Shape& rhs_shape,
+        const DotDimensionNumbers& dnums,
+        std::optional<int64_t> extra_rhs_contracting_dim = std::nullopt);
+    ~DotDimensionInfo();
+
+    int64_t lhs_rank;
+    int64_t rhs_rank;
+    DimensionVector lhs_non_contracting_dims;
+    DimensionVector rhs_non_contracting_dims;
+    DimensionVector lhs_contracting_dims;
+    DimensionVector rhs_contracting_dims;
+    DimensionVector contracting_dim_sizes;
+    int64_t total_contraction_size;
+  };
+
+  absl::Status EvaluateConvolution(
+      const HloInstruction* conv, bool use_f32_fast_path,
+      absl::FunctionRef<absl::Status(
+          const Literal& lhs_literal, const Literal& rhs_literal,
+          const Shape& window_shape, const DimensionVector& lhs_dim_multipliers,
+          const DimensionVector& rhs_dim_multipliers, Literal* result)>
+          evaluate_impl);
+
+  absl::Status EvaluateDotSlowPath(
+      const HloInstruction* dot,
+      absl::FunctionRef<
+          absl::Status(const Literal& lhs_literal, const Literal& rhs_literal,
+                       const DotDimensionInfo& dot_info, Literal* result)>
+          evaluate_impl);
+
+  absl::Status EvaluateRaggedDot(
+      const HloInstruction* dot,
+      absl::FunctionRef<absl::Status(
+          const Literal& lhs_literal, const Literal& rhs_literal,
+          const Literal& gs_literal, const DotDimensionInfo& dot_info,
+          int64_t ragged_dim_as_contracting_dim, Literal* result)>
+          contracting_impl,
+      absl::FunctionRef<
+          absl::Status(const Literal& lhs_literal, const Literal& rhs_literal,
+                       const Literal& gs_literal,
+                       const DotDimensionInfo& dot_info, Literal* result)>
+          batch_impl,
+      absl::FunctionRef<
+          absl::Status(const Literal& lhs_literal, const Literal& rhs_literal,
+                       const Literal& gs_literal,
+                       const DotDimensionInfo& dot_info, Literal* result)>
+          non_contracting_impl);
+
+  absl::Status EvaluateScaledDot(
+      const HloInstruction* dot,
+      absl::FunctionRef<absl::Status(
+          const Literal& lhs_literal, const Literal& rhs_literal,
+          const Literal& lhs_scale_literal, const Literal& rhs_scale_literal,
+          const ShapeInfo& lhs_info, const ShapeInfo& rhs_info,
+          int64_t total_contraction_size, Literal* result)>
+          evaluate_impl);
+
+  absl::Status EvaluatePad(
+      const HloInstruction* pad,
+      absl::FunctionRef<absl::Status(
+          const Literal& evaluated_operand, const Literal& evaluated_padding,
+          absl::Span<int64_t> target_index, absl::Span<const int64_t> zero_base,
+          absl::Span<const int64_t> step, Literal* result)>
+          evaluate_impl);
 
   // Make HloEvaluatorTypedVisitor a friend because it is logically part of this
   // class.

@@ -55,6 +55,7 @@ limitations under the License.
 #include "xla/core/collectives/reduction_kind.h"
 #include "xla/core/collectives/registered_memory.h"
 #include "xla/core/collectives/symmetric_memory.h"
+#include "xla/ffi/api/record_c_api.h"
 #include "xla/future.h"
 #include "xla/primitive_util.h"
 #include "xla/stream_executor/device_address.h"
@@ -1145,6 +1146,27 @@ absl::Status NcclCommunicator::LaunchMultiGpuBarrier(const Executor& executor) {
       stream, num_ranks, RankId(current_rank),
       tied_cross_device_barrier_symmetric_memory_.Lock().get(),
       tied_cross_device_barrier_signal_value_.Lock()->address());
+}
+
+absl::StatusOr<const XLA_FFI_Command*> NcclCommunicator::RecordMultiGpuBarrier(
+    xla::ffi::RecordContext& record_ctx,
+    const XLA_FFI_Command* absl_nullable cmd) {
+  if (!IsCrossDeviceBarrierInitiated()) {
+    return FailedPrecondition(
+        "Cross device barrier buffers are not set on this communicator. Did "
+        "you set use_cross_device_barrier=true in BarrierRequirements?");
+  }
+  absl::MutexLock lock(barrier_mu_);
+  if (cancel_->IsCancelled()) {
+    return FailedPrecondition("NcclCommunicator aborted");
+  }
+  ABSL_ASSIGN_OR_RETURN(size_t num_ranks, NumRanks());
+  ABSL_ASSIGN_OR_RETURN(size_t current_rank, CurrentRank());
+
+  return xla::gpu::RecordMultiGpuBarrierWithNccl(
+      stream_executor_, record_ctx, num_ranks, RankId(current_rank),
+      tied_cross_device_barrier_symmetric_memory_.Lock().get(),
+      tied_cross_device_barrier_signal_value_.Lock()->address(), cmd);
 }
 
 void NcclCommunicator::InitializeCrossDeviceBarrier(

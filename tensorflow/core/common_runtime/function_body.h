@@ -49,7 +49,7 @@ struct FunctionBody {
   absl::InlinedVector<AllocatorAttributes, 4UL> args_alloc_attrs;
   absl::InlinedVector<AllocatorAttributes, 4UL> rets_alloc_attrs;
 
-  FunctionBody() {}
+  FunctionBody() = default;
   FunctionBody(core::RefCountPtr<FunctionRecord>&& record,
                DataTypeSlice arg_types, DataTypeSlice ret_types, Graph* g);
   ~FunctionBody();

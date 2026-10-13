@@ -115,21 +115,21 @@ struct Prod {
 template <typename T, typename Op>
 struct IsSum {
   constexpr static bool value =
-      (std::is_same<Op, Sum<T>>::value ||
-       std::is_same<Op, Eigen::internal::SumReducer<T>>::value);
+      (std::is_same_v<Op, Sum<T>> ||
+       std::is_same_v<Op, Eigen::internal::SumReducer<T>>);
 };
 
 template <typename T, typename Op>
 struct IsProd {
   constexpr static bool value =
-      (std::is_same<Op, Prod<T>>::value ||
-       std::is_same<Op, Eigen::internal::ProdReducer<T>>::value);
+      (std::is_same_v<Op, Prod<T>> ||
+       std::is_same_v<Op, Eigen::internal::ProdReducer<T>>);
 };
 
 template <typename T, typename Op>
 struct IsLogSumExp {
-  constexpr static bool value = (std::is_same<Op, LogSumExp<T>>::value ||
-                                 std::is_same<Op, LogSumExpReducer<T>>::value);
+  constexpr static bool value = (std::is_same_v<Op, LogSumExp<T>> ||
+                                 std::is_same_v<Op, LogSumExpReducer<T>>);
 };
 
 template <typename T, typename Op>
@@ -139,20 +139,20 @@ struct IdentityValue {
                 "IdentityValue not yet defined for this type.");
 
   template <typename U = T, typename OpCopy = Op>
-  __host__ __device__ U operator()(
-      typename std::enable_if<IsSum<U, OpCopy>::value, U>::type t = U(0)) {
-    return t;
-  }
-
-  template <typename U = T, typename OpCopy = Op>
-  __host__ __device__ U operator()(
-      typename std::enable_if<IsProd<U, OpCopy>::value, U>::type t = U(1)) {
+  __host__ __device__ U
+  operator()(std::enable_if_t<IsSum<U, OpCopy>::value, U> t = U(0)) {
     return t;
   }
 
   template <typename U = T, typename OpCopy = Op>
   __host__ __device__ U
-  operator()(typename std::enable_if<IsLogSumExp<U, OpCopy>::value, U>::type t =
+  operator()(std::enable_if_t<IsProd<U, OpCopy>::value, U> t = U(1)) {
+    return t;
+  }
+
+  template <typename U = T, typename OpCopy = Op>
+  __host__ __device__ U
+  operator()(std::enable_if_t<IsLogSumExp<U, OpCopy>::value, U> t =
                  U(Eigen::NumTraits<U>::lowest())) {
     return t;
   }
@@ -251,7 +251,7 @@ void LaunchScan(const GPUDevice& d, typename TTypes<T, 3>::ConstTensor in,
 
   // There seems to be a bug when the type is not float and block_size 1024.
   // Launch on the smallest power of 2 block size that we can.
-  if (ideal_block_size >= 1024 && std::is_same<T, float>::value) {
+  if (ideal_block_size >= 1024 && std::is_same_v<T, float>) {
     const int block_size = 1024;
     TF_CHECK_OK(
         GpuLaunchKernel(scan_kernel<T, Op, block_size, items_per_thread>,

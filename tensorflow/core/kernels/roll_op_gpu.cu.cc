@@ -20,6 +20,8 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -41,8 +43,8 @@ namespace {
 template <typename T>
 __global__ void RollKernel(const int64_t nthreads, const int32_t num_dims,
                            const T* __restrict__ input, T* __restrict__ output,
-                           const int32_t* __restrict__ dim_size,
-                           const int32_t* __restrict__ shifts,
+                           const int64_t* __restrict__ dim_size,
+                           const int64_t* __restrict__ shifts,
                            const int64_t* __restrict__ strides) {
   CUDA_1D_KERNEL_LOOP(out_idx, nthreads, int64_t) {
     int64_t offset = 0;
@@ -63,9 +65,9 @@ namespace functor {
 template <typename T>
 struct Roll<GPUDevice, T> {
   void operator()(OpKernelContext* context, const int64_t num_elements,
-                  const int num_dims, const absl::Span<const int32_t> dim_size,
+                  const int num_dims, const absl::Span<const int64_t> dim_size,
                   const T* input, T* output,
-                  const absl::Span<const int32_t> threshold,
+                  const absl::Span<const int64_t> threshold,
                   const absl::Span<const int64_t> dim_range,
                   const int64_t isd) {
     if (!num_elements) return;
@@ -75,7 +77,7 @@ struct Roll<GPUDevice, T> {
     OP_REQUIRES_OK(context, config_or.status());
     const GpuLaunchConfig64& cfg = *config_or;
 
-    std::vector<int32_t> shifts(num_dims);
+    std::vector<int64_t> shifts(num_dims);
     std::vector<int64_t> strides(num_dims);
     for (int i = 0; i < num_dims; ++i) {
       shifts[i] = dim_size[i] - threshold[i];
@@ -87,15 +89,15 @@ struct Roll<GPUDevice, T> {
     Tensor stride_tensor;
     OP_REQUIRES_OK(
         context,
-        context->allocate_temp(DT_INT32, TensorShape({num_dims}), &dim_tensor));
+        context->allocate_temp(DT_INT64, TensorShape({num_dims}), &dim_tensor));
     OP_REQUIRES_OK(context,
-                   context->allocate_temp(DT_INT32, TensorShape({num_dims}),
+                   context->allocate_temp(DT_INT64, TensorShape({num_dims}),
                                           &shift_tensor));
     OP_REQUIRES_OK(context,
                    context->allocate_temp(DT_INT64, TensorShape({num_dims}),
                                           &stride_tensor));
-    auto* dim_buf = dim_tensor.flat<int32_t>().data();
-    auto* shift_buf = shift_tensor.flat<int32_t>().data();
+    auto* dim_buf = dim_tensor.flat<int64_t>().data();
+    auto* shift_buf = shift_tensor.flat<int64_t>().data();
     auto* stride_buf = stride_tensor.flat<int64_t>().data();
     d.memcpyHostToDevice(dim_buf, dim_size.data(), dim_tensor.TotalBytes());
     d.memcpyHostToDevice(shift_buf, shifts.data(), shift_tensor.TotalBytes());

@@ -931,7 +931,7 @@ ENTRY main.9_spmd {
 ; CHECK-DAG:         "force_earliest_schedule":false
 ; CHECK-NEXT:    [[ADD3:%[^ ]+]] = f32[2,512,24576]{2,1,0} add([[CP0]], [[DOT0]])
 ; CHECK-NEXT:    [[GTE6:[^ ]+]] = f32[2,512,24576]{2,1,0} get-tuple-element([[TUPLE0]]), index=3
-; CHECK-NEXT:    [[C11:%[^ ]+]] = u32[] constant(1)
+; CHECK-NEXT:    [[C11:%[^ ]+]] = u32[] constant(2)
 ; CHECK-NEXT:    [[ADD6:%[^ ]+]] = u32[] add([[C11]], [[PID]])
 ; CHECK-NEXT:    [[AND1:%[^ ]+]] = u32[] and([[ADD6]], [[C2]])
 ; CHECK-NEXT:    [[CLAMP1:%[^ ]+]] = u32[] clamp([[C1]], [[AND1]], [[C2]])

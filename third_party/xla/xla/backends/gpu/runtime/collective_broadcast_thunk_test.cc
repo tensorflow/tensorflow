@@ -214,7 +214,8 @@ ENTRY test_computation {
   ThunkSequence start_sequence;
   start_sequence.push_back(std::move(cb_start_thunk));
   auto async_start = std::make_unique<AsyncStartThunk>(
-      Thunk::ThunkInfo(), CommunicationStreamId(0), std::move(start_sequence));
+      Thunk::ThunkInfo(), CommunicationStreamId(0), std::move(start_sequence),
+      /*devices_per_host=*/1);
   auto async_done = std::make_unique<AsyncDoneThunk>(
       Thunk::ThunkInfo(), async_start->async_execution());
 

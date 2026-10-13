@@ -915,10 +915,12 @@ bool HloDataflowAnalysis::UpdateParameterValueSet(HloInstruction* parameter) {
   const CallGraphNode& call_graph_node =
       call_graph_->GetNode(parameter->parent());
 
-  // Subcomputations called in a parallel context (eg, map) do not have dataflow
-  // from the caller operands.
+  // Subcomputations called in a parallel context (eg, map), dead computations,
+  // or computations when cross computation propagation is disabled do not have
+  // dataflow from the caller operands.
   if (call_graph_node.context() == CallContext::kEmbedded ||
-      call_graph_node.caller_callsites().empty()) {
+      call_graph_node.caller_callsites().empty() ||
+      (!propagate_through_calls_ && !propagate_through_control_flow_)) {
     return false;
   }
   CHECK_EQ(call_graph_node.context(), CallContext::kControlFlow);
@@ -1355,22 +1357,25 @@ void HloDataflowAnalysis::Propagate() {
       // If user sequentially calls a computation, then the respective
       // parameter(s) of the computation need to be updated.
       if (user->opcode() == HloOpcode::kConditional) {
-        // If operand 0 is the use of instruction, then no parameters need to be
-        // updated, since that is the branch_index of the conditional.
-        // If operand n+1 is the use of instruction, then the branch_computation
-        // n's parameter need to be updated.
-        //
-        // Note that the same instruction can be used in multiple branches'
-        // operands.
-        for (int j = 0; j < user->branch_count(); ++j) {
-          if (user->operand(j + 1) == instruction) {
-            add_to_worklist(
-                user->branch_computation(j)->parameter_instruction(0));
+        if (propagate_through_control_flow_) {
+          // If operand 0 is the use of instruction, then no parameters need to
+          // be updated, since that is the branch_index of the conditional. If
+          // operand n+1 is the use of instruction, then the branch_computation
+          // n's parameter need to be updated.
+          //
+          // Note that the same instruction can be used in multiple branches'
+          // operands.
+          for (int j = 0; j < user->branch_count(); ++j) {
+            if (user->operand(j + 1) == instruction) {
+              add_to_worklist(
+                  user->branch_computation(j)->parameter_instruction(0));
+            }
           }
         }
       } else if (user->opcode() == HloOpcode::kAsyncUpdate ||
                  user->opcode() == HloOpcode::kAsyncDone) {
-        if (HloInstruction::IsThreadIncluded(user->async_execution_thread(),
+        if (propagate_through_control_flow_ &&
+            HloInstruction::IsThreadIncluded(user->async_execution_thread(),
                                              execution_threads_)) {
           // For async update and async done, we cannot distinguish which
           // parameter needs to be updated so add all to the worklist.
@@ -1388,6 +1393,12 @@ void HloDataflowAnalysis::Propagate() {
         for (HloComputation* called_computation : user->called_computations()) {
           if (!HloInstruction::IsThreadIncluded(
                   called_computation->execution_thread(), execution_threads_)) {
+            continue;
+          }
+          if ((!propagate_through_calls_ &&
+               user->opcode() == HloOpcode::kCall) ||
+              (!propagate_through_control_flow_ &&
+               user->opcode() != HloOpcode::kCall)) {
             continue;
           }
           const CallGraphNode& call_graph_node =
@@ -1477,11 +1488,6 @@ absl::Status HloDataflowAnalysis::InitializeInstructionValueSets() {
       continue;
     }
     const CallGraphNode& call_graph_node = call_graph_->GetNode(computation);
-    const bool is_regular_call_computation =
-        IsRegularCallComputation(call_graph_node);
-    const bool is_control_flow_computation =
-        !call_graph_node.caller_callsites().empty() &&
-        !is_regular_call_computation;
     for (HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
       // Create an empty shape tree.
@@ -1537,6 +1543,10 @@ absl::Status HloDataflowAnalysis::InitializeInstructionValueSets() {
           // flow from their operands or from cross computation dataflow.
           break;
         case HloOpcode::kParameter: {
+          if (!propagate_through_calls_ && !propagate_through_control_flow_) {
+            define_all_values();
+            break;
+          }
           if (call_graph_node.context() == CallContext::kBoth) {
             // We do not support a subcomputation that is called from both a
             // parallel and sequential context. In this case, the parameter
@@ -1548,6 +1558,11 @@ absl::Status HloDataflowAnalysis::InitializeInstructionValueSets() {
                 "sequential (eg, kCall) context",
                 computation->name());
           }
+          const bool is_regular_call_computation =
+              IsRegularCallComputation(call_graph_node);
+          const bool is_control_flow_computation =
+              !call_graph_node.caller_callsites().empty() &&
+              !is_regular_call_computation;
           if (call_graph_node.caller_callsites().empty() ||
               call_graph_node.context() == CallContext::kEmbedded ||
               (!propagate_through_calls_ && is_regular_call_computation) ||

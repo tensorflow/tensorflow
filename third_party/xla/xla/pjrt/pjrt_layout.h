@@ -70,7 +70,7 @@ class PjRtLayout {
   std::string ToString() const { return xla_layout_.ToString(); }
 
   bool operator==(const PjRtLayout& other) const {
-    return xla_layout_ == other.xla_layout_;
+    return this == &other || xla_layout_ == other.xla_layout_;
   }
 
   bool operator!=(const PjRtLayout& other) const { return !(*this == other); }

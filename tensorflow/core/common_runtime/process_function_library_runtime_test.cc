@@ -981,7 +981,7 @@ class TestFunctionPackedArgs : public FunctionArgsInterface {
     packed_args_.emplace(index, std::move(tensor_args));
   }
 
-  ~TestFunctionPackedArgs() override{};
+  ~TestFunctionPackedArgs() override = default;
 
   bool HasRemoteOrPackedInputs() const override { return true; };
 

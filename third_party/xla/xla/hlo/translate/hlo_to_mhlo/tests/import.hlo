@@ -416,6 +416,9 @@ add {
   // CHECK-NEXT:  mhlo.compare LE, %arg0, %arg1, TOTALORDER : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xi1>
   %compare.5 = pred[3] compare(Arg_0.1, Arg_1.2), direction=LE, type=TOTALORDER
 
+  // CHECK-NEXT:  mhlo.compare LT, %arg0, %arg1, WEAKORDER : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xi1>
+  %compare.weak = pred[3] compare(Arg_0.1, Arg_1.2), direction=LT, order=WEAK
+
   // Requires broadcast of compatible tensors.
   // CHECK-NEXT:  mhlo.compare GT, %arg0, %arg2 : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xi1>
   ROOT %compare.6 = pred[3] compare(Arg_0.1, Arg_2.3), direction=GT

@@ -28,9 +28,11 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "third_party/gpus/cuda/include/cuda.h"
+#include "absl/strings/string_view.h"
+#include "absl/strings/strip.h"
 #include "llvm/ADT/FloatingPointMode.h"
 #include "llvm/Analysis/CGSCCPassManager.h"
 #include "llvm/Analysis/LazyCallGraph.h"
@@ -48,6 +50,7 @@ limitations under the License.
 #include "llvm/IR/Verifier.h"
 #include "llvm/InitializePasses.h"
 #include "llvm/Linker/Linker.h"
+#include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/PassRegistry.h"
 #include "llvm/Passes/PassBuilder.h"
@@ -62,14 +65,11 @@ limitations under the License.
 #include "xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "xla/service/gpu/llvm_gpu_backend/load_ir_module.h"
 #include "xla/service/gpu/llvm_gpu_backend/nvptx_libdevice_path.h"
-#include "xla/service/gpu/llvm_gpu_backend/ptx_version_util.h"
 #include "xla/service/gpu/metrics.h"
 #include "xla/service/llvm_ir/llvm_command_line_options.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/semantic_version.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
@@ -146,28 +146,28 @@ absl::Status NVPTXTargetModuleLinker(llvm::Module* module,
   return absl::OkStatus();
 }
 
-std::unique_ptr<llvm::TargetMachine> NVPTXGetTargetMachine(
+absl::StatusOr<std::unique_ptr<llvm::TargetMachine>> NVPTXGetTargetMachine(
     llvm::Triple target_triple, se::CudaComputeCapability compute_capability,
     const DebugOptions& debug_options, std::optional<int> max_ptx_isa_version) {
-  constexpr stream_executor::SemanticVersion kCompileTimeCudaVersion{
-      CUDA_VERSION / 1000, (CUDA_VERSION / 10) % 100, CUDA_VERSION % 10};
-  auto compile_time_ptx_version =
-      nvptx::DetermineHighestSupportedPtxVersionFromCudaVersion(
-          kCompileTimeCudaVersion, compute_capability.major);
-  int highest_supported_ptx_version =
-      compile_time_ptx_version.major_version() * 10 +
-      compile_time_ptx_version.minor_version();
+  ABSL_ASSIGN_OR_RETURN(int llvm_max_ptx_version,
+                   GetMaxPtxVersionSupportedByLlvm(target_triple));
 
+  int highest_supported_ptx_version = llvm_max_ptx_version;
   if (max_ptx_isa_version.has_value()) {
     highest_supported_ptx_version =
-        std::min(*max_ptx_isa_version, highest_supported_ptx_version);
+        std::min(*max_ptx_isa_version, llvm_max_ptx_version);
   }
 
   VLOG(1) << "Targeting PTX version: " << highest_supported_ptx_version;
   std::string feature_str =
       absl::StrFormat("+ptx%d", highest_supported_ptx_version);
 
-  return GetTargetMachine(target_triple, nvptx::GetSmName(compute_capability),
+  const se::SemanticVersion ptx_version{
+      static_cast<unsigned>(highest_supported_ptx_version / 10),
+      static_cast<unsigned>(highest_supported_ptx_version % 10), 0};
+
+  return GetTargetMachine(target_triple,
+                          nvptx::GetSmName(compute_capability, ptx_version),
                           debug_options, feature_str);
 }
 
@@ -187,6 +187,45 @@ void NVPTXBackendInit() {
 }
 
 }  // namespace
+
+absl::StatusOr<int> GetMaxPtxVersionSupportedByLlvm(
+    const llvm::Triple& target_triple) {
+  std::string error;
+  const llvm::Target* target =
+      llvm::TargetRegistry::lookupTarget(target_triple, error);
+  if (target == nullptr) {
+    return Internal("Failed to look up LLVM target for triple %s: %s",
+                    target_triple.str(), error);
+  }
+
+  std::unique_ptr<const llvm::MCSubtargetInfo> subtarget_info{
+      target->createMCSubtargetInfo(target_triple, "", "")};
+  if (subtarget_info == nullptr) {
+    return Internal("Failed to get LLVM subtarget info for triple %s",
+                    target_triple.str());
+  }
+
+  int max_ptx_version = 0;
+  for (const llvm::SubtargetFeatureKV& feature :
+       subtarget_info->getAllProcessorFeatures()) {
+    absl::string_view version_string = feature.key();
+    if (!absl::ConsumePrefix(&version_string, "ptx")) {
+      continue;
+    }
+
+    int ptx_version;
+    if (!absl::SimpleAtoi(version_string, &ptx_version)) {
+      return Internal("Failed to parse LLVM PTX feature: %s", version_string);
+    }
+    max_ptx_version = std::max(max_ptx_version, ptx_version);
+  }
+
+  if (max_ptx_version == 0) {
+    return Internal("LLVM target %s does not define any PTX features",
+                    target_triple.str());
+  }
+  return max_ptx_version;
+}
 
 std::vector<std::string> GetNVPTXBackendOptions(
     const DebugOptions& debug_options) {
@@ -237,8 +276,80 @@ constexpr se::CudaComputeCapability kSupportedVersions[] = {
     {8, 7},  {8, 6},  {8, 0},  {7, 5},  {7, 2},  {7, 0},  {6, 2}, {6, 1},
     {6, 0},  {5, 3},  {5, 2},  {5, 0},  {3, 7},  {3, 5},  {3, 2}, {3, 0}};
 
+stream_executor::SemanticVersion GetMinimumRequiredPtxVersion(
+    se::CudaComputeCapability cc) {
+  if (cc.major == 12) {
+    if (cc.minor >= 1) {
+      return {8, 8, 0};
+    }
+    return {8, 7, 0};
+  }
+  if (cc.major == 11) {
+    return {9, 0, 0};
+  }
+  if (cc.major == 10) {
+    if (cc.minor >= 7) {
+      return {9, 4, 0};
+    }
+    if (cc.minor >= 3) {
+      return {8, 8, 0};
+    }
+    return {8, 7, 0};
+  }
+  if (cc.major == 9) {
+    return {7, 8, 0};
+  }
+  if (cc.major == 8) {
+    if (cc.minor >= 9) {
+      return {7, 8, 0};
+    }
+    if (cc.minor >= 7) {
+      return {7, 4, 0};
+    }
+    if (cc.minor >= 6) {
+      return {7, 1, 0};
+    }
+    return {7, 0, 0};
+  }
+  if (cc.major == 7) {
+    if (cc.minor >= 5) {
+      return {6, 3, 0};
+    }
+    if (cc.minor >= 2) {
+      return {6, 1, 0};
+    }
+    return {6, 0, 0};
+  }
+  if (cc.major == 6) {
+    return {5, 0, 0};
+  }
+  if (cc.major == 5) {
+    if (cc.minor >= 3) {
+      return {4, 2, 0};
+    }
+    if (cc.minor >= 2) {
+      return {4, 1, 0};
+    }
+    return {4, 0, 0};
+  }
+  if (cc.major == 3) {
+    if (cc.minor >= 7) {
+      return {4, 1, 0};
+    }
+    if (cc.minor >= 5) {
+      return {3, 5, 0};
+    }
+    if (cc.minor >= 2) {
+      return {3, 2, 0};
+    }
+    return {3, 0, 0};
+  }
+  return {3, 0, 0};
+}
+
 se::CudaComputeCapability ResolveSupportedComputeCapability(
-    se::CudaComputeCapability compute_capability) {
+    se::CudaComputeCapability compute_capability,
+    std::optional<stream_executor::SemanticVersion> ptx_version) {
   using CudaComputeCapabilities =
       se::CudaComputeCapability::CudaComputeCapabilities;
 
@@ -253,6 +364,10 @@ se::CudaComputeCapability ResolveSupportedComputeCapability(
 
   for (const auto& v : kSupportedVersions) {
     if (gpu_compute_capability.SupportsAllFeaturesOf(v)) {
+      if (ptx_version.has_value() &&
+          *ptx_version < GetMinimumRequiredPtxVersion(v)) {
+        continue;
+      }
       // Found the most advanced supported capability
       target_compute_capability = v;
       break;
@@ -282,9 +397,11 @@ se::CudaComputeCapability ResolveSupportedComputeCapability(
   return target_compute_capability;
 }
 
-std::string GetSmName(se::CudaComputeCapability compute_capability) {
+std::string GetSmName(
+    se::CudaComputeCapability compute_capability,
+    std::optional<stream_executor::SemanticVersion> ptx_version) {
   se::CudaComputeCapability target_compute_capability =
-      ResolveSupportedComputeCapability(compute_capability);
+      ResolveSupportedComputeCapability(compute_capability, ptx_version);
 
   // If the current CC isn't supported by LLVM and it is newer then
   // the max supported LLVM version, do not warn about it. The end
@@ -336,9 +453,10 @@ absl::StatusOr<std::string> CompileToPtx(
 
     llvm::Triple default_target_triple("nvptx64-unknown-unknown");
     // Construct LLVM TargetMachine for NVPTX.
-    std::unique_ptr<llvm::TargetMachine> target_machine =
+    ABSL_ASSIGN_OR_RETURN(
+        std::unique_ptr<llvm::TargetMachine> target_machine,
         NVPTXGetTargetMachine(default_target_triple, *compute_capability,
-                              debug_options, max_ptx_isa_version);
+                              debug_options, max_ptx_isa_version));
 
     // Apply target machine configuration from call-back if available.
     if (configure_target) {

@@ -169,7 +169,7 @@ class ResizeBilinearOpTestBase
 
 class ResizeBilinearOpTest : public ResizeBilinearOpTestBase {
  public:
-  ResizeBilinearOpTest() {}
+  ResizeBilinearOpTest() = default;
 };
 
 class ResizeBilinearHalfPixelCentersOpTest : public ResizeBilinearOpTestBase {

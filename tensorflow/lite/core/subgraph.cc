@@ -348,6 +348,11 @@ namespace {
 void CopyVectorToTfLiteIntArray(const std::vector<int>& vec,
                                 TfLiteIntArray* arr) {
   arr->size = vec.size();
+  // An empty vector may return a null data(); passing null to memcpy is
+  // undefined behavior even when the size is zero.
+  if (arr->size == 0) {
+    return;
+  }
   memcpy(arr->data, vec.data(), sizeof(int) * arr->size);
 }
 

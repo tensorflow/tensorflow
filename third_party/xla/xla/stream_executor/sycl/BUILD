@@ -585,6 +585,39 @@ cc_library(
 )
 
 cc_library(
+    name = "onemkl_util_headers",
+    hdrs = ["onemkl_util.h"],
+    tags = [
+        "gpu",
+        "oneapi-only",
+    ],
+    deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@local_config_sycl//sycl:sycl_headers",
+    ],
+)
+
+xla_test(
+    name = "onemkl_util_test",
+    srcs = ["onemkl_util_test.cc"],
+    backends = ["gpu"],
+    tags = [
+        "gpu",
+        "oneapi-only",
+    ],
+    deps = [
+        ":onemkl_util_headers",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
+        "@local_config_sycl//sycl:sycl_headers",
+    ],
+)
+
+cc_library(
     name = "onednn_util",
     srcs = ["onednn_util.cc"],
     hdrs = ["onednn_util.h"],
@@ -598,11 +631,11 @@ cc_library(
         "//xla/tsl/mkl:onednn",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
+        "//xla/tsl/protobuf:dnn_proto_cc",
         "//xla/tsl/util:env_var",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
-        "@tsl//tsl/platform:logging",
         "@tsl//tsl/platform:str_util",
     ],
 )
@@ -619,8 +652,7 @@ cc_library(
     deps = [
         ":sycl_conv_utils",
         ":sycl_platform_id",
-        "//xla/service/gpu:gpu_conv_runner",
-        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:device_address",
         "//xla/stream_executor:dnn",
         "//xla/stream_executor:plugin_registry",
         "//xla/stream_executor:scratch_allocator",
@@ -688,10 +720,8 @@ cc_library(
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
-        "//xla/service/gpu:cublas_cudnn",
-        "//xla/service/gpu:gpu_conv_runner",
         "//xla/stream_executor:device_address",
-        "//xla/stream_executor:scratch_allocator",
+        "//xla/stream_executor:dnn",
         "//xla/stream_executor:stream",
         "//xla/tsl/mkl:onednn",
         "//xla/tsl/protobuf:dnn_proto_cc",

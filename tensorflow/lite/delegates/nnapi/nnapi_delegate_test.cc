@@ -1809,7 +1809,7 @@ TEST(NNAPIDelegate, DivWithNoActivation) {
 
 class BaseConcatenationOpModel : public SingleOpModelWithNNAPI {
  public:
-  BaseConcatenationOpModel() {}
+  BaseConcatenationOpModel() = default;
   BaseConcatenationOpModel(const TensorData& input_template, int axis,
                            int num_inputs) {
     std::vector<std::vector<int>> all_input_shapes;

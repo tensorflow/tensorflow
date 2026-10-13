@@ -1,7 +1,7 @@
 """Intel XPU Triton archive metadata."""
 
-XPU_TRITON_COMMIT = "9b507bc72f26026254e572c8d9e59c22497ae522"
-XPU_TRITON_SHA256 = "98f63c0a7fbbf5c6a13a76fe976e3d2f352d731f56bf75c8043fa77e302a9772"
+XPU_TRITON_COMMIT = "616ef4c791a0feb79243689b985ca2a2afd9fa6b"
+XPU_TRITON_SHA256 = "e51b47dd8f6a59bd3574964337fc8b1deef04c34a2ff8fbe2a4ba2cba134f1cf"
 
 def use_xpu_triton(repository_ctx):
     return repository_ctx.getenv("ENABLE_INTEL_XPU_TRITON", "").strip() == "1"

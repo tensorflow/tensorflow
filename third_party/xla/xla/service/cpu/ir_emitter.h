@@ -427,6 +427,10 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // to explicitly pass parameters or return results.
   void EmitGlobalCall(const HloComputation& callee, absl::string_view name);
 
+  // Returns an error if `callee` is not a global computation, i.e. if it is
+  // called from an embedded computation such as a sort comparator.
+  absl::Status CheckGlobalCallee(const HloComputation& callee);
+
   // Returns the buffer to which a global call to `callee` would have written
   // its result.
   llvm::Value* GetBufferForGlobalCallReturnValue(const HloComputation& callee);
@@ -516,7 +520,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
                               llvm::Align alignment,
                               const llvm_ir::IrArray& containing_array);
 
-  using ReductionGenerator = std ::function<llvm::Value*(
+  using ReductionGenerator = std::function<llvm::Value*(
       llvm::IRBuilderBase*, llvm::Value*, llvm::Value*)>;
 
   // Tries to match the reduction function "function" to a known reduction
@@ -674,8 +678,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   absl::flat_hash_map<const HloInstruction*, llvm::Value*> emitted_value_;
 
   llvm_ir::AliasAnalysis alias_analysis_;
-
-
 
   // This struct contains all the state needed to emit instructions for
   // profiling a computation.

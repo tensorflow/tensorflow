@@ -26,7 +26,7 @@ namespace grappler {
 
 class TransposerFactory {
  public:
-  explicit TransposerFactory() {}
+  explicit TransposerFactory() = default;
 
   std::shared_ptr<Transposer> GetTransposer(const NodeDef& node);
 
