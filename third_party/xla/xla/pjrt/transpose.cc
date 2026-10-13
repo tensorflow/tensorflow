@@ -187,12 +187,88 @@ struct TransposePlan::Node {
   bool is_inner_dim_in_b = false;
 };
 
-// Size of the stride-1 dimension handled by the interleave kernels.
-constexpr int kInterleaveSize = 3;
+// Returns whether to use the `kind` interleave kernel for K = `k` and
+// `elem_size`-byte elements.
+//
+// Measured against the default kernel on 2026-10-11 with the
+// BM_TransposeSmallDim_* benchmarks in transpose_test.cc on AMD Milan, Intel
+// Sapphire Rapids and Arm Neoverse V2. K >= 8 was much slower on some of these.
+// K = 4 was faster only for interleave of 1- and 2-byte elements. Deinterleave
+// beyond the per-size K limits was slower on at least one platform. Among the
+// selected cases, the only slowdown was 16-byte interleave at K = 6 and 7 on
+// Sapphire Rapids (up to 6%).
+constexpr bool InterleaveKernelIsFaster(TransposePlan::InnerKernelKind kind,
+                                        int64_t k, int64_t elem_size) {
+  if (kind == TransposePlan::InnerKernelKind::kInterleave) {
+    return k >= 2 && k < 8 && (k != 4 || elem_size <= 2);
+  }
+  int64_t max_k = 0;
+  switch (elem_size) {
+    case 1:
+    case 2:
+      max_k = 7;
+      break;
+    case 4:
+      max_k = 5;
+      break;
+    case 8:
+      max_k = 3;
+      break;
+  }
+  return k >= 2 && k != 4 && k <= max_k;
+}
+
+// Maps a runtime K to a compile-time constant for `fn`, instantiating `fn` only
+// for the K that InterleaveKernelIsFaster can select for `kind` and T, so
+// kernels that are never used are not compiled.
+template <typename T, TransposePlan::InnerKernelKind kind, typename Fn>
+ABSL_ATTRIBUTE_ALWAYS_INLINE void WithInterleaveSize(int64_t k, Fn fn) {
+  const auto call = [&](auto const_k) {
+    if constexpr (InterleaveKernelIsFaster(kind, const_k, sizeof(T))) {
+      fn(const_k);
+    } else {
+      LOG(FATAL) << "Unreachable: interleave kernel with K=" << k
+                 << " sizeof(T)=" << sizeof(T);
+    }
+  };
+  switch (k) {
+    case 2:
+      call(std::integral_constant<int, 2>{});
+      break;
+    case 3:
+      call(std::integral_constant<int, 3>{});
+      break;
+    case 4:
+      call(std::integral_constant<int, 4>{});
+      break;
+    case 5:
+      call(std::integral_constant<int, 5>{});
+      break;
+    case 6:
+      call(std::integral_constant<int, 6>{});
+      break;
+    case 7:
+      call(std::integral_constant<int, 7>{});
+      break;
+    default:
+      LOG(FATAL) << "Invalid interleave size " << k;
+  }
+}
+
+// The value of MacroKernel's `k` when K is read from the stride at run time.
+constexpr int kRuntimeInterleaveSize = -1;
+
+// Returns K for the `kind` interleave kernel given the sentinel strides: the
+// small side's K-groups are back to back, so its stride is K elements.
+template <typename T, TransposePlan::InnerKernelKind kind>
+int64_t InterleaveSizeFromStrides(int64_t lda, int64_t ldb) {
+  return (kind == TransposePlan::InnerKernelKind::kInterleave ? ldb : lda) /
+         int64_t{sizeof(T)};
+}
 
 template <typename T, int inner_bs,
           TransposePlan::Transformation transformation,
-          TransposePlan::InnerKernelKind kind>
+          TransposePlan::InnerKernelKind kind, int k = kRuntimeInterleaveSize>
 ABSL_ATTRIBUTE_FUNC_ALIGN(64)
 void MacroKernel(const char* __restrict a, int64_t lda, int outer_bs_a,
                  char* __restrict b, int64_t ldb, int outer_bs_b,
@@ -201,11 +277,28 @@ void MacroKernel(const char* __restrict a, int64_t lda, int outer_bs_a,
             << " outer_bs_a=" << outer_bs_a << " outer_bs_b=" << outer_bs_b
             << " inner_bs=" << inner_bs;
 
+  // `k == kRuntimeInterleaveSize` means the caller has not dispatched on K, so
+  // dispatch here.
   if constexpr (kind == TransposePlan::InnerKernelKind::kInterleave) {
-    InterleaveKernel<T, kInterleaveSize>(a, lda, b, outer_bs_a * inner_bs);
+    if constexpr (k != kRuntimeInterleaveSize) {
+      InterleaveKernel<T, k>(a, lda, b, outer_bs_a * inner_bs);
+    } else {
+      WithInterleaveSize<T, kind>(
+          InterleaveSizeFromStrides<T, kind>(lda, ldb), [&](auto const_k) {
+            InterleaveKernel<T, const_k>(a, lda, b, outer_bs_a * inner_bs);
+          });
+    }
     return;
-  } else if constexpr (kind == TransposePlan::InnerKernelKind::kDeinterleave) {
-    DeinterleaveKernel<T, kInterleaveSize>(a, b, ldb, outer_bs_b * inner_bs);
+  }
+  if constexpr (kind == TransposePlan::InnerKernelKind::kDeinterleave) {
+    if constexpr (k != kRuntimeInterleaveSize) {
+      DeinterleaveKernel<T, k>(a, b, ldb, outer_bs_b * inner_bs);
+    } else {
+      WithInterleaveSize<T, kind>(
+          InterleaveSizeFromStrides<T, kind>(lda, ldb), [&](auto const_k) {
+            DeinterleaveKernel<T, const_k>(a, b, ldb, outer_bs_b * inner_bs);
+          });
+    }
     return;
   }
 
@@ -303,10 +396,25 @@ void Transpose(const char* __restrict a, int outer_bs_a, char* __restrict b,
     const int64_t lda_block = next_node->lda;
     const int64_t ldb_block = next_node->ldb;
     int64_t i;
-    for (i = 0; i < stop; i += inc) {
-      MacroKernel<T, inner_bs, transformation, kind>(
-          a_offset(i), lda_block, outer_bs_a, b_offset(i), ldb_block,
-          outer_bs_b, scratch, bits_per_element);
+    if constexpr (kind == TransposePlan::InnerKernelKind::kInterleave ||
+                  kind == TransposePlan::InnerKernelKind::kDeinterleave) {
+      // Dispatch K once per loop rather than per block; a per-block dispatch
+      // was measurably slower.
+      WithInterleaveSize<T, kind>(
+          InterleaveSizeFromStrides<T, kind>(lda_block, ldb_block),
+          [&](auto const_k) {
+            for (i = 0; i < stop; i += inc) {
+              MacroKernel<T, inner_bs, transformation, kind, const_k>(
+                  a_offset(i), lda_block, outer_bs_a, b_offset(i), ldb_block,
+                  outer_bs_b, scratch, bits_per_element);
+            }
+          });
+    } else {
+      for (i = 0; i < stop; i += inc) {
+        MacroKernel<T, inner_bs, transformation, kind>(
+            a_offset(i), lda_block, outer_bs_a, b_offset(i), ldb_block,
+            outer_bs_b, scratch, bits_per_element);
+      }
     }
     // Handle trailing elements that didn't fit in a complete macrokernel.
     // Only the innermost dimensions have non-trivial outer_bs blocking.
@@ -560,7 +668,7 @@ void TransposePlan::ExecuteTyped(const char* a, char* b,
       break;
     }
     case InnerKernelKind::kInterleave:
-      if constexpr (transformation == Transformation::kNone && sizeof(T) <= 8) {
+      if constexpr (transformation == Transformation::kNone) {
         DCHECK_EQ(inner_block_elems_, 1);
         handle_inner_block_elems(
             std::integral_constant<int, 1>{},
@@ -568,12 +676,11 @@ void TransposePlan::ExecuteTyped(const char* a, char* b,
                                    InnerKernelKind::kInterleave>{});
       } else {
         LOG(FATAL) << "Unreachable: kInterleave with transformation="
-                   << static_cast<int>(transformation)
-                   << " sizeof(T)=" << sizeof(T);
+                   << static_cast<int>(transformation);
       }
       break;
     case InnerKernelKind::kDeinterleave:
-      if constexpr (transformation == Transformation::kNone && sizeof(T) <= 8) {
+      if constexpr (transformation == Transformation::kNone) {
         DCHECK_EQ(inner_block_elems_, 1);
         handle_inner_block_elems(
             std::integral_constant<int, 1>{},
@@ -581,8 +688,7 @@ void TransposePlan::ExecuteTyped(const char* a, char* b,
                                    InnerKernelKind::kDeinterleave>{});
       } else {
         LOG(FATAL) << "Unreachable: kDeinterleave with transformation="
-                   << static_cast<int>(transformation)
-                   << " sizeof(T)=" << sizeof(T);
+                   << static_cast<int>(transformation);
       }
       break;
     case InnerKernelKind::kMemcpy:
@@ -1360,28 +1466,55 @@ absl::Status TransposePlan::Initialize() {
     b_stride1_size = std::min(b_stride1_size, b_dims_[pos_stride1b_in_b]);
   }
 
-  if (!inner_kernel_is_memcpy() && transformation_ == Transformation::kNone &&
-      (elem_size_in_bytes_ == 1 || elem_size_in_bytes_ == 2 ||
-       elem_size_in_bytes_ == 4 || elem_size_in_bytes_ == 8)) {
-    auto loop_a = absl::c_find_if(
+  // For kInterleave and kDeinterleave, the trip count of the large side's
+  // stride-1 loop.
+  int64_t large_loop_size = 0;
+  if (!inner_kernel_is_memcpy() && transformation_ == Transformation::kNone) {
+    const auto loop_a_it = absl::c_find_if(
         loop_order, [](const Loop& l) { return l.is_inner_dim_in_a; });
-    auto loop_b = absl::c_find_if(
+    const auto loop_b_it = absl::c_find_if(
         loop_order, [](const Loop& l) { return l.is_inner_dim_in_b; });
-    if (loop_a != loop_order.end() && loop_b != loop_order.end() &&
-        loop_a != loop_b && loop_a->lda == elem_size_in_bytes_ &&
-        loop_a->ldb == sentinel_ldb_ && loop_b->lda == sentinel_lda_ &&
-        loop_b->ldb == elem_size_in_bytes_) {
-      if (!loop_b->tile_interior && loop_b->tile_size == 1 &&
-          loop_b->dim_size == kInterleaveSize &&
-          b_stride1_size == kInterleaveSize && a_stride1_size >= 8 &&
-          sentinel_ldb_ == kInterleaveSize * elem_size_in_bytes_) {
-        inner_kernel_kind_ = InnerKernelKind::kInterleave;
-      } else if (!loop_a->tile_interior && loop_a->tile_size == 1 &&
-                 loop_a->dim_size == kInterleaveSize &&
-                 a_stride1_size == kInterleaveSize && b_stride1_size >= 8 &&
-                 sentinel_lda_ == kInterleaveSize * elem_size_in_bytes_) {
-        inner_kernel_kind_ = InnerKernelKind::kDeinterleave;
-      }
+    DCHECK(loop_a_it != loop_order.end());
+    DCHECK(loop_b_it != loop_order.end());
+    // loop_a and loop_b iterate over A's and B's stride-1 dimensions (or their
+    // tile interiors).
+    const Loop& loop_a = *loop_a_it;
+    const Loop& loop_b = *loop_b_it;
+    DCHECK_EQ(loop_a.lda, elem_size_in_bytes_);
+    DCHECK_EQ(loop_b.ldb, elem_size_in_bytes_);
+    DCHECK_EQ(loop_a.ldb, sentinel_ldb_);
+    DCHECK_EQ(loop_b.lda, sentinel_lda_);
+    const auto trip_count = [](const Loop& l) {
+      return l.tile_interior ? std::min(l.tile_size, l.dim_size) : l.dim_size;
+    };
+    const int64_t loop_a_size = trip_count(loop_a);
+    const int64_t loop_b_size = trip_count(loop_b);
+    // Returns whether to use the `kind` kernel with K = small.dim_size, where
+    // `small` is the stride-1 loop of the small side.
+    const auto use_kernel = [&](InnerKernelKind kind, const Loop& small,
+                                int64_t group_stride, int64_t large_size) {
+      DCHECK_EQ(small.tile_size == 1, !small.tile_interior);
+      const int64_t k = small.dim_size;
+      // With a partial tile, the trip count is not a constant K.
+      const bool no_partial_tile = !small.tile_interior;
+      // The K-groups are back to back, so the small side is one contiguous run.
+      const bool contiguous = group_stride == k * elem_size_in_bytes_;
+      // Faster than the default kernel for this K and element size.
+      const bool faster =
+          InterleaveKernelIsFaster(kind, k, elem_size_in_bytes_);
+      const bool large_side_is_long = large_size >= 8;
+      return no_partial_tile && contiguous && faster && large_side_is_long;
+    };
+    if (use_kernel(InnerKernelKind::kInterleave, loop_b, sentinel_ldb_,
+                   loop_a_size)) {
+      inner_kernel_kind_ = InnerKernelKind::kInterleave;
+      interleave_size_ = loop_b.dim_size;
+      large_loop_size = loop_a_size;
+    } else if (use_kernel(InnerKernelKind::kDeinterleave, loop_a, sentinel_lda_,
+                          loop_b_size)) {
+      inner_kernel_kind_ = InnerKernelKind::kDeinterleave;
+      interleave_size_ = loop_a.dim_size;
+      large_loop_size = loop_b_size;
     }
   }
 
@@ -1413,13 +1546,13 @@ absl::Status TransposePlan::Initialize() {
     if (inner_kernel_kind_ == InnerKernelKind::kInterleave) {
       inner_block_elems_ = 1;
       outer_block_elems_a_ = std::min<int64_t>(
-          a_stride1_size, max_inner_block_elems * kMaxOuterBlockElems);
+          large_loop_size, max_inner_block_elems * kMaxOuterBlockElems);
       outer_block_elems_b_ = 1;
     } else if (inner_kernel_kind_ == InnerKernelKind::kDeinterleave) {
       inner_block_elems_ = 1;
       outer_block_elems_a_ = 1;
       outer_block_elems_b_ = std::min<int64_t>(
-          b_stride1_size, max_inner_block_elems * kMaxOuterBlockElems);
+          large_loop_size, max_inner_block_elems * kMaxOuterBlockElems);
     } else {
       inner_block_elems_ = max_inner_block_elems;
       while (inner_block_elems_ > std::min(a_stride1_size, b_stride1_size)) {
@@ -1634,7 +1767,7 @@ int TransposePlan::ChooseParallelizationStrategy(
   int64_t acc = elem_size_in_bytes_;
   if (inner_kernel_kind_ == InnerKernelKind::kInterleave ||
       inner_kernel_kind_ == InnerKernelKind::kDeinterleave) {
-    acc *= kInterleaveSize * inner_block_elems_ * outer_block_elems_a_ *
+    acc *= interleave_size_ * inner_block_elems_ * outer_block_elems_a_ *
            outer_block_elems_b_;
   } else if (!inner_kernel_is_memcpy()) {
     acc *= inner_block_elems_ * inner_block_elems_ * outer_block_elems_a_ *
@@ -1907,7 +2040,7 @@ std::string TransposePlan::ToString() const {
       transformation_str = absl::StrCat("pack(", bits_per_element_, ")");
       break;
   }
-  absl::string_view inner_kernel_str;
+  std::string inner_kernel_str;
   switch (inner_kernel_kind_) {
     case InnerKernelKind::kDefault:
       inner_kernel_str = "default";
@@ -1916,10 +2049,10 @@ std::string TransposePlan::ToString() const {
       inner_kernel_str = "memcpy";
       break;
     case InnerKernelKind::kInterleave:
-      inner_kernel_str = "interleave";
+      inner_kernel_str = absl::StrCat("interleave(", interleave_size_, ")");
       break;
     case InnerKernelKind::kDeinterleave:
-      inner_kernel_str = "deinterleave";
+      inner_kernel_str = absl::StrCat("deinterleave(", interleave_size_, ")");
       break;
   }
   return absl::StrFormat(

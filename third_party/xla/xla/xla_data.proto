@@ -1066,7 +1066,7 @@ message StatisticsViz {
 // If the list of axes is empty
 //   - If the `device_ids` is not provided, it is an empty mesh.
 //   - If the `device_ids` is provided, it must be a single non-negative
-//     integer, we call it a **maximal-sharding mesh**.
+//     integer, we call it a **single-device mesh**.
 
 // If the list of axes is provided
 //   - If a device ID list is specified, the product of the axis sizes must
@@ -1074,14 +1074,14 @@ message StatisticsViz {
 //   - If a device ID list is not specified, then the device ID list is
 //     implicitly `iota(product(axis_sizes))` with an optional transform
 //     in the `iota_transform` field applied.
-//   - It is not a maximal-sharding mesh even if the total size of axes is 1.
+//   - It is not a single-device mesh even if the total size of axes is 1.
 
 // Here are some examples of meshes:
 
 // - An empty mesh represents a placeholder mesh that can be replaced during
 //   propagation: <[]>
 // - A mesh without axes list and a single non-negative device ID, which is a
-//   maximal-sharding mesh: <[], device_ids=[3]>
+//   single-device mesh: <[], device_ids=[3]>
 // - A mesh with two axes and device IDs defined as iota(6) with no
 //   transformation applied: <["a"=2, "b"=3]>
 // - A mesh with two axes and device IDs defined as iota(6) with a transpose
@@ -1092,7 +1092,7 @@ message StatisticsViz {
 // **Constraints:**
 // - Elements in `device_ids` must be non-negative.
 // - If `axes` is empty, the size of `device_ids` can be 0 (empty mesh) or 1
-//   (maximal-sharding mesh).
+//   (single-device mesh).
 // - If `axes` is not empty,
 //     - Elements in `axes` must not have duplicate names.
 //     - If `device_ids` is specified, the original `device_ids` is not

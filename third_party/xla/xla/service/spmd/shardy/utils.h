@@ -181,7 +181,8 @@ bool hasFrontendMeshes(mlir::ModuleOp module);
 
 // Check if the module has any sort of Shardy mesh:
 // - `mesh`
-// - `maximal_mesh_{X}`
+// - `single_device_{X}`
+// - `maximal_mesh_{X}` (for backward compatibility)
 // - `empty_mesh`
 // TODO(b/420837831): delete this once we don't fall back to GSPMD.
 bool hasShardyMesh(mlir::ModuleOp module);

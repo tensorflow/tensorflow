@@ -10,6 +10,7 @@ tf_py_strict_test(
     name = "assert_cardinality_test",
     size = "small",
     srcs = ["assert_cardinality_test.py"],
+    shard_count = 4,
     deps = [
         "//tensorflow/python/data/experimental/ops:cardinality",
         "//tensorflow/python/data/experimental/ops:global_shuffle_op",
