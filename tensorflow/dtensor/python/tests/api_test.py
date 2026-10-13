@@ -300,6 +300,24 @@ class APITest(test_util.DTensorBaseTest):
 
     self.assertIsNone(api.get_default_mesh())
 
+  def test_default_mesh_restore_on_exception(self):
+    self.assertIsNone(api.get_default_mesh())
+    with self.assertRaisesRegex(RuntimeError, "simulated error"):
+      with api.default_mesh(self.mesh):
+        self.assertEqual(api.get_default_mesh(), self.mesh)
+        raise RuntimeError("simulated error")
+    self.assertIsNone(api.get_default_mesh())
+
+    # Verify nested scope restoration on exception
+    with api.default_mesh(self.mesh):
+      self.assertEqual(api.get_default_mesh(), self.mesh)
+      with self.assertRaisesRegex(RuntimeError, "inner simulated error"):
+        with api.default_mesh(self.mesh.host_mesh()):
+          self.assertEqual(api.get_default_mesh(), self.mesh.host_mesh())
+          raise RuntimeError("inner simulated error")
+      self.assertEqual(api.get_default_mesh(), self.mesh)
+    self.assertIsNone(api.get_default_mesh())
+
 
 if __name__ == '__main__':
   test.main()

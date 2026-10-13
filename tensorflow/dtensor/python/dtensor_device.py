@@ -368,7 +368,7 @@ class DTensorDevice(object):
       # mesh and `_current_default_mesh` are left stuck on `mesh` for the
       # rest of the program.
       _pywrap_dtensor_device.ExperimentalClearDefaultMesh(self._device_info)
-      if previous_default:
+      if previous_default is not None:
         _pywrap_dtensor_device.ExperimentalSetDefaultMesh(
             self._device_info,
             previous_default.to_string().encode("utf-8"))
