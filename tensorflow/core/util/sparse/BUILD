@@ -111,7 +111,6 @@ tf_cc_test(
         "sparse_tensor_test.cc",
     ],
     deps = [
-        ":sparse_tensor",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib",
