@@ -28,4 +28,8 @@ cc_library(
     name = "signature_def",
     hdrs = ["signature_def.h"],
     compatible_with = get_compatible_with_portable(),
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+        "//third_party/odml/litert/litert/runtime:__pkg__",
+    ],
 )

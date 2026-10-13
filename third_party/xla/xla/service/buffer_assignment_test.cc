@@ -5971,15 +5971,17 @@ ENTRY main {
   EXPECT_EQ(buffer0_slice.offset(), slice0.offset());
 }
 
-TEST_F(BufferAssignmentTest, CustomInterferenceForcesInterference) {
+TEST_F(BufferAssignmentTest,
+       CustomInterferenceIgnoredWhenLiveRangesDoNotOverlap) {
   constexpr absl::string_view kHlo = R"hlo(
 HloModule main, is_scheduled=true
 
 ENTRY main {
   buffer.0 = s32[4096]{0} custom-call(), custom_call_target="AllocateBuffer"
-  copy.0 = s32[4096]{0} copy(buffer.0)
+  use.0 = (s32[4096]{0}) tuple(buffer.0)
   buffer.1 = s32[4096]{0} custom-call(), custom_call_target="AllocateBuffer"
-  ROOT copy.1 = s32[4096]{0} copy(buffer.1)
+  use.1 = (s32[4096]{0}) tuple(buffer.1)
+  ROOT root = tuple()
 }
 )hlo";
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -6022,7 +6024,9 @@ ENTRY main {
   ASSERT_OK_AND_ASSIGN(const BufferAllocation::Slice buffer1_slice,
                        buffers->GetUniqueTopLevelSlice(buffer1));
 
-  EXPECT_NE(buffer0_slice.index(), buffer1_slice.index());
+  // buffer.0 and buffer.1 have non-overlapping HLO live ranges, so custom
+  // interference returning true is ignored and they still share an allocation.
+  EXPECT_EQ(buffer0_slice, buffer1_slice);
 }
 
 TEST_F(BufferAssignmentTest, HasLiveRangeInterferenceOptionFastMerge) {
