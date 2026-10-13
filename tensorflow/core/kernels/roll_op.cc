@@ -69,7 +69,7 @@ class RollOp : public OpKernel {
 
     // if there are any duplicate axes, shift_mod_sum will have the
     // total modulo sum of shifts for each dimension
-    absl::InlinedVector<int32_t, 4> shift_mod_sum(num_dims, 0);
+    absl::InlinedVector<int64_t, 4> shift_mod_sum(num_dims, 0);
     for (int i = 0; i < num_shifts; i++) {
       int axis = axis_flat(i);
       if (axis < 0) {
@@ -78,15 +78,17 @@ class RollOp : public OpKernel {
       OP_REQUIRES(context, FastBoundsCheck(axis, num_dims),
                   absl::InvalidArgumentError(
                       absl::StrCat("axis ", axis, " is out of range")));
-      const int ds = std::max<int>(static_cast<int>(input.dim_size(axis)), 1);
-      const int sum = shift_mod_sum[axis] + static_cast<int>(shift_flat(i));
+      const int64_t ds = std::max<int64_t>(input.dim_size(axis), 1);
+      // reduce the shift first so the sum cannot overflow int64_t
+      const int64_t sum =
+          shift_mod_sum[axis] + static_cast<int64_t>(shift_flat(i)) % ds;
       // modulo that works with negatives: ((x % y) + y) % y
       shift_mod_sum[axis] = (sum % ds + ds) % ds;
     }
     // the size of each dimension
-    absl::InlinedVector<int32_t, 4> dim_size(num_dims);
+    absl::InlinedVector<int64_t, 4> dim_size(num_dims);
     // threshold[i] is the index that the roll starts to wrap back to the front
-    absl::InlinedVector<int32_t, 4> threshold(num_dims);
+    absl::InlinedVector<int64_t, 4> threshold(num_dims);
     // dim_range is the number of indices over in the flattened tensor
     // you need to skip in order to make it over from one side of a dimension
     // to the other. Used to make the shifts wrap around after a threshold.
@@ -96,7 +98,7 @@ class RollOp : public OpKernel {
     int64_t isd = 0;
     for (int i = num_dims - 1; i >= 0; i--) {
       if (isd == 0 && shift_mod_sum[i] != 0) isd = i;
-      const int ds = std::max<int>(static_cast<int>(input.dim_size(i)), 1);
+      const int64_t ds = std::max<int64_t>(input.dim_size(i), 1);
       dim_size[i] = ds;
       threshold[i] = (ds - shift_mod_sum[i]) % ds;
       dim_size_prod *= static_cast<int64_t>(input.dim_size(i));
@@ -125,9 +127,9 @@ namespace functor {
 //    back to the front
 template <typename T>
 void DoRoll(const OpKernelContext* context, const int64_t num_elements,
-            const int num_dims, const absl::Span<const int32_t> dim_size,
+            const int num_dims, const absl::Span<const int64_t> dim_size,
             const T* input, T* output,
-            const absl::Span<const int32_t> threshold,
+            const absl::Span<const int64_t> threshold,
             const absl::Span<const int64_t> dim_range) {
   auto work = [input, output, num_dims, &dim_size, &threshold, &dim_range](
                   int64_t start, int64_t end) {
@@ -191,8 +193,8 @@ template <typename T>
 // Use memcpy to copy memory in groups when the data type supports memcpy
 void DoRollWithMemcpy(const OpKernelContext* context,
                       const int64_t num_elements, const int num_dims,
-                      const absl::Span<const int32_t> dim_size, const T* input,
-                      T* output, const absl::Span<const int32_t> threshold,
+                      const absl::Span<const int64_t> dim_size, const T* input,
+                      T* output, const absl::Span<const int64_t> threshold,
                       const absl::Span<const int64_t> dim_range,
                       const int64_t isd) {
   auto work = [input, output, num_dims, &dim_size, &threshold, &dim_range, isd](
@@ -282,9 +284,9 @@ void DoRollWithMemcpy(const OpKernelContext* context,
       // indices = [i, j, k, l, 0, 0]
       //                      ^isd
       for (int j = isd; j >= 0; j--) {
-        int inc = 1;
+        int64_t inc = 1;
         if (j == isd) inc = isd_indx_skip;
-        const int indx = (indices[j] + inc) % dim_size[j];
+        const int64_t indx = (indices[j] + inc) % dim_size[j];
         indices[j] = indx;
         if (indx != 0) {
           if (indx == threshold[j]) {
@@ -319,10 +321,10 @@ void DoRollWithMemcpy(const OpKernelContext* context,
 
 template <typename T>
 struct Roll<CPUDevice, T> {
-  void operator()(const OpKernelContext* context, const int64_t num_elements,
-                  const int num_dims, const absl::Span<const int32_t> dim_size,
+  void operator()(OpKernelContext* context, const int64_t num_elements,
+                  const int num_dims, const absl::Span<const int64_t> dim_size,
                   const T* input, T* output,
-                  const absl::Span<const int32_t> threshold,
+                  const absl::Span<const int64_t> threshold,
                   const absl::Span<const int64_t> dim_range,
                   const int64_t isd) {
     if (DataTypeCanUseMemcpy(DataTypeToEnum<T>::v())) {

@@ -1398,8 +1398,13 @@ SymbolicTileAnalysis::AnalyzeFromInstruction(
 /*static*/ SymbolicTileAnalysisOrError SymbolicTileAnalysis::AnalyzeFusion(
     const HloFusionAdaptor& fusion, MLIRContext* mlir_context,
     EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder) {
-  LOG(FATAL) << "Calling into symbolic tile analysis is disallowed. "
-             << "Please use experimental tiling propagation instead.";
+  CHECK(!fusion.GetRoots()
+             .front()
+             .instruction()
+             .GetModule()
+             ->config()
+             .debug_options()
+             .xla_gpu_experimental_enable_tiling_propagation());
   RegisterSymbolicExprStorage(mlir_context);
   auto real_root_index_or = GetRealRootIndex(fusion.GetRoots());
   if (!real_root_index_or.ok()) {

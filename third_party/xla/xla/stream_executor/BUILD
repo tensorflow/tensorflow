@@ -1144,11 +1144,10 @@ cc_library(
         ":platform",
         ":stream_executor_h",
         "//xla/tsl/util:env_var",
-        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -1341,11 +1340,12 @@ xla_cc_test(
     name = "stream_executor_test",
     srcs = ["stream_executor_test.cc"],
     deps = [
+        ":device_description",
         ":platform",
         ":platform_manager",
         ":stream_executor_h",
         "//xla/stream_executor/host:host_platform",
-        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:env",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
