@@ -19,6 +19,7 @@ import itertools
 import numpy as np
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import math_ops
@@ -96,33 +97,106 @@ class CSRSparseMatrixTest(test.TestCase):
     self.assertAllEqual(dense_shape, a_sm_st.dense_shape)
     self.assertAllClose([a_mats[tuple(x)] for x in indices], a_sm_st.values)
 
+  _INVALID_INDEX_CASES = (
+      ([5, 11], [[-1, 0]]),
+      ([5, 11], [[5, 0]]),
+      ([5, 11], [[0, 11]]),
+      ([5, 11], [[2**32, 0]]),
+      ([5, 11], [[4, 10], [-7, 99], [0, 0]]),
+      ([2, 5, 11], [[0, 5, 0], [1, 0, -1]]),
+      ([5, 11], [[140177464885984, 140177464885984]] + [[-2**63, -2**63]] * 16),
+  )
+
+  def _assertValidCSRStructure(self, a_sm, shape, nnz):
+    st = self.evaluate(a_sm.to_sparse_tensor())
+    self.assertLen(st.values, nnz)
+    for dim, size in enumerate(shape):
+      self.assertAllInRange(st.indices[:, dim], 0, size - 1)
+    dense = self.evaluate(a_sm.to_dense())
+    self.assertAllEqual(shape, dense.shape)
+    self.assertTrue(np.all(np.isfinite(dense)))
+
   @test_util.run_gpu_only
   @test_util.run_in_graph_and_eager_modes
   def testConstructorFromDenseTensorInvalidIndicesOnGpu(self):
-    cases = [
-        ([5, 11], [[-1, 0]]),
-        ([5, 11], [[5, 0]]),
-        ([5, 11], [[0, 11]]),
-        ([5, 11], [[2**32, 0]]),
-        ([5, 11], [[4, 10], [0, 0]]),
-        ([2, 5, 11], [[0, 5, 0], [1, 0, -1]]),
-    ]
-    for shape, indices in cases:
+    for shape, indices in self._INVALID_INDEX_CASES:
       with self.subTest(shape=shape, indices=indices), test_util.use_gpu():
         a_sm = sparse_csr_matrix_ops.CSRSparseMatrix(
             np.ones(shape, dtype=np.float32),
             indices=np.array(indices, dtype=np.int64))
-        self.assertAllEqual(shape, self.evaluate(a_sm.to_dense()).shape)
+        self._assertValidCSRStructure(a_sm, shape, len(indices))
 
   @test_util.run_in_graph_and_eager_modes
   def testConstructorFromDenseTensorInvalidIndicesOnCpu(self):
-    with test_util.device(use_gpu=False), self.assertRaisesOpError(
-        "does not index into param shape"):
-      a_sm = sparse_csr_matrix_ops.CSRSparseMatrix(
-          np.ones([5, 11], dtype=np.float32),
-          indices=np.array([[5, 0]], dtype=np.int64))
-      self.evaluate(a_sm.to_dense())
+    for shape, indices in self._INVALID_INDEX_CASES:
+      with self.subTest(shape=shape, indices=indices), test_util.device(
+          use_gpu=False), self.assertRaisesRegex(
+              errors.InvalidArgumentError, "does not index into param shape"):
+        a_sm = sparse_csr_matrix_ops.CSRSparseMatrix(
+            np.ones(shape, dtype=np.float32),
+            indices=np.array(indices, dtype=np.int64))
+        self.evaluate(a_sm.to_dense())
 
+  @test_util.run_gpu_only
+  @test_util.run_in_graph_and_eager_modes
+  def testConstructorFromSparseTensorInvalidIndicesOnGpu(self):
+    for shape, indices in self._INVALID_INDEX_CASES:
+      with self.subTest(shape=shape, indices=indices), test_util.use_gpu():
+        st = sparse_tensor.SparseTensor(
+            indices=np.array(indices, dtype=np.int64),
+            values=np.ones(len(indices), dtype=np.float32),
+            dense_shape=shape)
+        a_sm = sparse_csr_matrix_ops.CSRSparseMatrix(st)
+        self._assertValidCSRStructure(a_sm, shape, len(indices))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConstructorFromSparseTensorInvalidIndicesOnCpu(self):
+    for shape, indices in self._INVALID_INDEX_CASES:
+      with self.subTest(shape=shape, indices=indices), test_util.device(
+          use_gpu=False), self.assertRaisesRegex(errors.InvalidArgumentError,
+                                                 "is out of bounds"):
+        st = sparse_tensor.SparseTensor(
+            indices=np.array(indices, dtype=np.int64),
+            values=np.ones(len(indices), dtype=np.float32),
+            dense_shape=shape)
+        a_sm = sparse_csr_matrix_ops.CSRSparseMatrix(st)
+        self.evaluate(a_sm.to_dense())
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConstructorInvalidBatchIndices(self):
+    shape = [2, 5, 11]
+    for indices in ([[2, 0, 0]], [[-1, 0, 0]], [[2**32, 0, 0]],
+                    [[0, 1, 1], [3, 0, 0]]):
+      with self.subTest(indices=indices), test_util.use_gpu():
+        with self.assertRaisesRegex(
+            errors.InvalidArgumentError,
+            "does not index into param shape|outside of valid range"):
+          a_sm = sparse_csr_matrix_ops.CSRSparseMatrix(
+              np.ones(shape, dtype=np.float32),
+              indices=np.array(indices, dtype=np.int64))
+          self.evaluate(a_sm.to_dense())
+        with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                    "is out of bounds|outside of valid range"):
+          st = sparse_tensor.SparseTensor(
+              indices=np.array(indices, dtype=np.int64),
+              values=np.ones(len(indices), dtype=np.float32),
+              dense_shape=shape)
+          a_sm = sparse_csr_matrix_ops.CSRSparseMatrix(st)
+          self.evaluate(a_sm.to_dense())
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConstructorFromDenseTensorTooManyRowsOrCols(self):
+    for shape, dim in (([2**31, 0], "rows"), ([0, 2**31], "cols"),
+                       ([1, 2**31, 0], "rows"), ([1, 0, 2**31], "cols")):
+      with self.subTest(shape=shape), test_util.use_gpu():
+        with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                    f"dense_input {dim} must be <= Int32Max"):
+          a_sm = sparse_csr_matrix_ops.CSRSparseMatrix(
+              np.ones(shape, dtype=np.float32),
+              indices=np.zeros([0, len(shape)], dtype=np.int64))
+          self.evaluate(a_sm.to_dense())
+
+  @test_util.run_gpu_only
   @test_util.run_in_graph_and_eager_modes
   def testConstructorFromEmptyDenseTensorWithIndices(self):
     with test_util.use_gpu(), self.assertRaisesOpError("params is empty"):
@@ -131,6 +205,7 @@ class CSRSparseMatrixTest(test.TestCase):
           indices=np.array([[0, 0]], dtype=np.int64))
       self.evaluate(a_sm.to_dense())
 
+  @test_util.run_gpu_only
   @test_util.run_in_graph_and_eager_modes
   def testConstructorFromDenseTensorEmptyIndices(self):
     dense = np.zeros([2, 3], dtype=np.float32)
