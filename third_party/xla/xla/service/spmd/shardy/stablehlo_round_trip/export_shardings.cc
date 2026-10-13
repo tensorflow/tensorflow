@@ -32,6 +32,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/AffineMap.h"
@@ -310,32 +311,9 @@ class ExportStablehloShardingsPass
                  clearReverseOpSharding);
     }
 
-    moduleOp.walk([&](stablehlo::CustomCallOp customCall) {
-      // StableHLO doesn't have an equivalent of `erf` and `topk` ops.
-      // If they have a sharding annotation, we need to move it into
-      // `mhlo.attributes`, which StableHLO->MHLO conversion would lift back up.
-      StringRef callTargetName = customCall.getCallTargetName();
-      if (callTargetName != "mhlo.erf" && callTargetName != "mhlo.topk") {
-        return;
-      }
-      // TODO(bartchr): refactor `addFrontendAttribute` to take a key for the
-      // dictionary attribute. Then can re-use the logic instead of duplicating
-      // it here for `kMhloAttributesAttr`.
-      if (auto sdySharding =
-              customCall->getAttrOfType<StringAttr>(kXlaShardingAttr)) {
-        customCall->removeAttr(kXlaShardingAttr);
-        SmallVector<mlir::NamedAttribute> newAttributes(
-            customCall->getAttrOfType<DictionaryAttr>(kMhloAttributesAttr)
-                .getValue());
-        newAttributes.push_back(
-            builder.getNamedAttr(kXlaShardingAttr, sdySharding));
-        customCall->setAttr(kMhloAttributesAttr,
-                            builder.getDictionaryAttr(newAttributes));
-      }
-    });
     // Collect all used mesh names from StableHLO attributes
     llvm::DenseSet<StringRef> usedMeshNames;
-    auto collectMeshesFromReplicaGroups = [&](auto op) {
+    auto collectMeshesFromReplicaGroups = [&](Operation* op) {
       if (auto attr = op->getAttr("replica_groups")) {
         if (auto rgv3 =
                 mlir::dyn_cast<stablehlo::ReplicaGroupMeshAxesAttr>(attr)) {
@@ -350,17 +328,34 @@ class ExportStablehloShardingsPass
       }
     };
 
-    moduleOp.walk(
-        [&](stablehlo::AllGatherOp op) { collectMeshesFromReplicaGroups(op); });
-    moduleOp.walk(
-        [&](stablehlo::AllReduceOp op) { collectMeshesFromReplicaGroups(op); });
-    moduleOp.walk([&](stablehlo::ReduceScatterOp op) {
-      collectMeshesFromReplicaGroups(op);
-    });
-    moduleOp.walk(
-        [&](stablehlo::AllToAllOp op) { collectMeshesFromReplicaGroups(op); });
-    moduleOp.walk([&](stablehlo::CollectiveBroadcastOp op) {
-      collectMeshesFromReplicaGroups(op);
+    moduleOp.walk([&](Operation* op) {
+      if (auto customCall = dyn_cast<stablehlo::CustomCallOp>(op)) {
+        // StableHLO doesn't have an equivalent of `erf` and `topk` ops.
+        // If they have a sharding annotation, we need to move it into
+        // `mhlo.attributes`, which StableHLO->MHLO conversion would lift back
+        // up.
+        StringRef callTargetName = customCall.getCallTargetName();
+        if (callTargetName == "mhlo.erf" || callTargetName == "mhlo.topk") {
+          // TODO(bartchr): refactor `addFrontendAttribute` to take a key for
+          // the dictionary attribute. Then can re-use the logic instead of
+          // duplicating it here for `kMhloAttributesAttr`.
+          if (auto sdySharding =
+                  customCall->getAttrOfType<StringAttr>(kXlaShardingAttr)) {
+            customCall->removeAttr(kXlaShardingAttr);
+            SmallVector<mlir::NamedAttribute> newAttributes(
+                customCall->getAttrOfType<DictionaryAttr>(kMhloAttributesAttr)
+                    .getValue());
+            newAttributes.push_back(
+                builder.getNamedAttr(kXlaShardingAttr, sdySharding));
+            customCall->setAttr(kMhloAttributesAttr,
+                                builder.getDictionaryAttr(newAttributes));
+          }
+        }
+      } else if (isa<stablehlo::AllGatherOp, stablehlo::AllReduceOp,
+                     stablehlo::ReduceScatterOp, stablehlo::AllToAllOp,
+                     stablehlo::CollectiveBroadcastOp>(op)) {
+        collectMeshesFromReplicaGroups(op);
+      }
     });
 
     // Remove all mesh symbols that are not used
