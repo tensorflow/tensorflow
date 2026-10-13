@@ -727,6 +727,14 @@ ENTRY main {
           + 4 * (64 * 32) * (num_blocks * CeilOfRatio(257, 64))  // ==> %p0
   );
   EXPECT_EQ(result.l2_bytes_read, result.bytes_read);
+  const HloDotInstruction* dot = Cast<HloDotInstruction>(
+      module->entry_computation()->root_instruction()->fused_expression_root());
+  dot_model::HbmEstimates expected_hbm = dot_model::CalculateHbmTime(
+      dot_model::DotProblemInfo(*dot), device_info_);
+  EXPECT_NEAR(absl::ToDoubleNanoseconds(result.read_time),
+              absl::ToDoubleNanoseconds(expected_hbm.read_time), 1.0);
+  EXPECT_NEAR(absl::ToDoubleNanoseconds(result.write_time),
+              absl::ToDoubleNanoseconds(expected_hbm.write_time), 15.0);
   // (32 * 64 + 32 * 64) * 4 bytes (f32) * 1 stage = 16384 bytes.
   EXPECT_EQ(result.shared_memory_per_block_bytes, 2 * (32 * 64 * 4));
   // 1 accumulator register per thread (32 * 32 / 1024) plus base kernel-state

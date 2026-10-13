@@ -90,6 +90,8 @@ using ::xla::xtile::TilingFromAnnotatedFusion;
 
 namespace {
 
+namespace dot_model = ::xla::gpu::gpu_dot_fusion_cost_model::detail;
+
 // Information about an operand read.
 struct OperandReadInfo {
   // Total number of bytes read from the operand.
@@ -120,25 +122,44 @@ void RecordOperandRead(const HloInstruction* hlo, int64_t tile_bytes_read,
                bandwidth_utilization_rate);
 }
 
-// Computes the memory read time across all operands in `read_map`.
+// Returns the unique bytes read from DRAM for an operand, capped at the
+// operand's total size since re-reads across tiles are assumed to hit cache.
+int64_t GetDramBytesRead(const HloInstruction* hlo, const OperandReadInfo& info,
+                         const HloCostAnalysis::ShapeSizeFunction& shape_size) {
+  return std::min(shape_size(hlo->shape()), info.total_bytes_read);
+}
+
+// Computes total net HBM bytes read across all unique operands.
+int64_t GetNetBytesRead(const OperandReadMap& read_map,
+                        const HloCostAnalysis::ShapeSizeFunction& shape_size) {
+  int64_t net_bytes = 0;
+  // NOLINTNEXTLINE(*-custom-deterministic-iteration-order)
+  for (const auto& [hlo, info] : read_map) {
+    net_bytes += GetDramBytesRead(hlo, info, shape_size);
+  }
+  return net_bytes;
+}
+
+// Computes the memory read time across all operands.
 absl::Duration ComputeReadTime(
     const OperandReadMap& read_map, const se::DeviceDescription& device_info,
-    int64_t num_blocks, const HloCostAnalysis::ShapeSizeFunction& shape_size) {
+    int64_t num_blocks, const HloCostAnalysis::ShapeSizeFunction& shape_size,
+    bool include_cache_rereads = true, double bandwidth_derate = 1.0) {
   absl::Duration read_time = absl::ZeroDuration();
   // `absl::Duration` addition uses exact fixed-point integer arithmetic, so
   // map iteration order does not affect the accumulated result.
   // NOLINTNEXTLINE(*-custom-deterministic-iteration-order)
   for (const auto& [hlo, operand_read_info] : read_map) {
-    int64_t operand_size = shape_size(hlo->shape());
-    int64_t n_bytes_net =
-        std::min(operand_size, operand_read_info.total_bytes_read);
+    int64_t dram_bytes = GetDramBytesRead(hlo, operand_read_info, shape_size);
+    int64_t total_bytes =
+        include_cache_rereads ? operand_read_info.total_bytes_read : dram_bytes;
 
     read_time += GpuPerformanceModelBase::ReadTimeWithDRAMHeuristic(
-        device_info, num_blocks, n_bytes_net,
-        operand_read_info.total_bytes_read,
+        device_info, num_blocks, /*n_bytes_net=*/dram_bytes,
+        /*n_bytes_total=*/total_bytes,
         /*element_type=*/hlo->shape().element_type(),
         /*hbm_bandwidth_utilization_rate=*/
-        operand_read_info.read_bandwidth_utilization_rate);
+        operand_read_info.read_bandwidth_utilization_rate * bandwidth_derate);
   }
   return read_time;
 }
@@ -602,6 +623,21 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputationImpl(
   // planning to do it in the future but the cost model will need to be
   // significantly more complex for that.
   exec_time = std::max(exec_time, dot_estimates.exec_time);
+
+  if (dot_estimates.exec_time > absl::ZeroDuration()) {
+    int64_t total_net_hbm_bytes =
+        GetNetBytesRead(n_bytes_total_map, shape_size) + bytes_written;
+    float effective_hbm_bandwidth =
+        dot_model::GetEffectiveHbmBandwidth(total_net_hbm_bytes, device_info);
+    double hbm_bandwidth_derate = static_cast<double>(effective_hbm_bandwidth) /
+                                  device_info.memory_bandwidth();
+    // Exclude K-loop cache re-reads because `CalculateL2Time` models L2
+    // traffic separately.
+    read_time =
+        ComputeReadTime(n_bytes_total_map, device_info, num_blocks, shape_size,
+                        /*include_cache_rereads=*/false, hbm_bandwidth_derate);
+    write_time /= hbm_bandwidth_derate;
+  }
 
   return EstimateRunTimeData{
       /*flops=*/flops + dot_flops,
