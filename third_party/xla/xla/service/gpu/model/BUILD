@@ -71,6 +71,7 @@ cc_library(
         "//xla/service:latency_hiding_scheduler",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:flag_utils",
+        "//xla/service/gpu:ir_emission_utils",
         "//xla/stream_executor:device_description",
         "//xla/tsl/platform:env",
         "@com_google_absl//absl/log",
