@@ -487,6 +487,126 @@ TEST(FastParse, OOB_Write_Vulnerability_NonPacked_FloatList) {
   EXPECT_TRUE(absl::IsInvalidArgument(parse_status));
 }
 
+namespace {
+void AppendVarint(uint32_t v, std::string* out) {
+  while (v >= 0x80) {
+    out->push_back((v & 0x7f) | 0x80);
+    v >>= 7;
+  }
+  out->push_back(v);
+}
+
+// Returns a serialized Example with a single feature "f" whose Feature has the
+// given oneof tag and a list holding one length-delimited field 1 that declares
+// `declared_length` bytes but is followed by `payload` only.
+std::string ExampleWithDeclaredListLength(char feature_oneof_tag,
+                                          uint32_t declared_length,
+                                          const std::string& payload) {
+  std::string list;
+  list.push_back(10);  // kDelimitedTag(1): BytesList.value / packed FloatList
+  AppendVarint(declared_length, &list);
+  list.append(payload);
+
+  std::string feature;
+  feature.push_back(feature_oneof_tag);
+  AppendVarint(list.size(), &feature);
+  feature.append(list);
+
+  std::string map_entry;
+  map_entry.push_back(10);  // kDelimitedTag(1): map key
+  map_entry.push_back(1);
+  map_entry.push_back('f');
+  map_entry.push_back(18);  // kDelimitedTag(2): map value
+  AppendVarint(feature.size(), &map_entry);
+  map_entry.append(feature);
+
+  std::string features;
+  features.push_back(10);  // kDelimitedTag(1): map entry
+  AppendVarint(map_entry.size(), &features);
+  features.append(map_entry);
+
+  std::string example;
+  example.push_back(10);  // kDelimitedTag(1): Features
+  AppendVarint(features.size(), &example);
+  example.append(features);
+  return example;
+}
+
+constexpr char kBytesListTag = 10;  // kDelimitedTag(1)
+constexpr char kFloatListTag = 18;  // kDelimitedTag(2)
+
+absl::Status ParseSparse(DataType dtype, const std::string& serialized,
+                         Result* result) {
+  FastParseExampleConfig config;
+  AddSparseFeature("f", dtype, &config);
+  return FastParseExample(config, {tstring(serialized)}, {}, nullptr, result);
+}
+}  // namespace
+
+// ReadRaw() takes an int, so a declared length of 2^31 or more turned into a
+// negative size and an out-of-bounds memcpy. A length past the end of the input
+// must be rejected before any allocation or copy.
+TEST(FastParse, BytesListLengthPastEndOfInput) {
+  const std::string payload = "A";
+  Result result;
+  absl::Status status = ParseSparse(
+      DT_STRING, ExampleWithDeclaredListLength(kBytesListTag, 1, payload),
+      &result);
+  ASSERT_TRUE(status.ok()) << status;
+  EXPECT_EQ(result.sparse_values[0].flat<tstring>()(0), "A");
+
+  for (uint32_t length : {2u, 0x7fffffffu, 0x80000000u, 0xffffffffu}) {
+    Result result;
+    EXPECT_TRUE(absl::IsInvalidArgument(ParseSparse(
+        DT_STRING,
+        ExampleWithDeclaredListLength(kBytesListTag, length, payload),
+        &result)))
+        << length;
+  }
+}
+
+TEST(FastParse, PackedFloatListLengthPastEndOfInput) {
+  float value = 1.5f;
+  const std::string payload(reinterpret_cast<const char*>(&value),
+                            sizeof(value));
+  Result result;
+  absl::Status status = ParseSparse(
+      DT_FLOAT, ExampleWithDeclaredListLength(kFloatListTag, 4, payload),
+      &result);
+  ASSERT_TRUE(status.ok()) << status;
+  EXPECT_EQ(result.sparse_values[0].flat<float>()(0), 1.5f);
+
+  for (uint32_t length : {8u, 0x7fffffffu, 0x80000000u, 0xffffffffu}) {
+    Result result;
+    EXPECT_TRUE(absl::IsInvalidArgument(ParseSparse(
+        DT_FLOAT, ExampleWithDeclaredListLength(kFloatListTag, length, payload),
+        &result)))
+        << length;
+  }
+}
+
+TEST(FastParse, SingleExamplePackedFloatListLengthPastEndOfInput) {
+  FastParseSingleExampleConfig config;
+  AddSparseFeature("f", DT_FLOAT, &config);
+  float value = 1.5f;
+  const std::string payload(reinterpret_cast<const char*>(&value),
+                            sizeof(value));
+  Result result;
+  absl::Status status = FastParseSingleExample(
+      config, ExampleWithDeclaredListLength(kFloatListTag, 4, payload),
+      &result);
+  ASSERT_TRUE(status.ok()) << status;
+  EXPECT_EQ(result.sparse_values[0].flat<float>()(0), 1.5f);
+
+  for (uint32_t length : {8u, 0x80000000u, 0xffffffffu}) {
+    Result result;
+    EXPECT_TRUE(absl::IsInvalidArgument(FastParseSingleExample(
+        config, ExampleWithDeclaredListLength(kFloatListTag, length, payload),
+        &result)))
+        << length;
+  }
+}
+
 TEST(FastParse, DenseFloat_TooManyElements_ReportsError) {
   FastParseExampleConfig config;
   AddDenseFeature("f", DT_FLOAT, {1}, false, 1, &config);

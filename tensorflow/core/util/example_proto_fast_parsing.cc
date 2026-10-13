@@ -203,6 +203,11 @@ class Feature {
       // parse string
       uint32_t bytes_length;
       if (!stream.ReadVarint32(&bytes_length)) return false;
+      // ReadRaw() takes an int and does not reject negative sizes, so bound the
+      // length by the remaining input before resizing and copying.
+      if (static_cast<int64_t>(bytes_length) > stream.BytesUntilLimit()) {
+        return false;
+      }
       tstring* bytes = construct_at_end(bytes_list);
       if (bytes == nullptr) return false;
       bytes->resize_uninitialized(bytes_length);
@@ -234,6 +239,11 @@ class Feature {
         if (!stream.ExpectTag(kDelimitedTag(1))) return false;  // packed tag
         uint32_t packed_length;
         if (!stream.ReadVarint32(&packed_length)) return false;
+        // ReadRaw() below takes an int and does not reject negative sizes, so
+        // bound the length by the remaining input before resizing and copying.
+        if (static_cast<int64_t>(packed_length) > stream.BytesUntilLimit()) {
+          return false;
+        }
         auto packed_limit = stream.PushLimit(packed_length);
 
         // Store the initial size to know the offset we have to start writing
