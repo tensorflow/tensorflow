@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Complex/IR/Complex.h"
@@ -117,20 +118,45 @@ class EmitterContext {
     return tiled_computation_;
   }
 
+  // Returns the single result of `tiled_hlo`. Multi-result instructions (e.g.
+  // variadic collectives) must be addressed with an explicit result index.
   TensorValue TiledHloToTensorValue(
       const gpu::experimental::TiledHloInstruction& tiled_hlo) const {
-    return tiled_hlo_to_tensor_.at(&tiled_hlo);
+    const auto& results = tiled_hlo_to_tensors_.at(&tiled_hlo);
+    CHECK_EQ(results.size(), 1)
+        << "Expected a single result for " << tiled_hlo.hlo()->ToString();
+    return results.front();
+  }
+
+  // Returns result `result_index` of `tiled_hlo`.
+  TensorValue TiledHloToTensorValue(
+      const gpu::experimental::TiledHloInstruction& tiled_hlo,
+      int64_t result_index) const {
+    const auto& results = tiled_hlo_to_tensors_.at(&tiled_hlo);
+    CHECK_GE(result_index, 0);
+    CHECK_LT(result_index, results.size())
+        << "Result index out of range for " << tiled_hlo.hlo()->ToString();
+    return results[result_index];
+  }
+
+  // Maps `tiled_hlo` to its results. Returns false if it was already mapped.
+  bool MapTiledHloToTensorValues(
+      const gpu::experimental::TiledHloInstruction* tiled_hlo,
+      llvm::ArrayRef<TensorValue> values) {
+    return tiled_hlo_to_tensors_
+        .try_emplace(tiled_hlo, values.begin(), values.end())
+        .second;
   }
 
   bool IsEmitted(
       const gpu::experimental::TiledHloInstruction& tiled_hlo) const {
-    return tiled_hlo_to_tensor_.contains(&tiled_hlo);
+    return tiled_hlo_to_tensors_.contains(&tiled_hlo);
   }
 
   bool MapTiledHloToTensorValue(
       const gpu::experimental::TiledHloInstruction* tiled_hlo,
       TensorValue value) {
-    return tiled_hlo_to_tensor_.insert(std::make_pair(tiled_hlo, value)).second;
+    return MapTiledHloToTensorValues(tiled_hlo, {value});
   }
 
   std::pair<mlir::Value, Interval> GetSequentialDimValue(
@@ -167,8 +193,8 @@ class EmitterContext {
   mlir::Value pid_;
   mlir::Value tid_;
   absl::flat_hash_map<const gpu::experimental::TiledHloInstruction*,
-                      TensorValue>
-      tiled_hlo_to_tensor_;
+                      llvm::SmallVector<TensorValue, 1>>
+      tiled_hlo_to_tensors_;
   gpu::experimental::Schedule schedule_;
   const HloFusionInstruction* fusion_ = nullptr;
   xtile::EntryFuncOp entry_func_;

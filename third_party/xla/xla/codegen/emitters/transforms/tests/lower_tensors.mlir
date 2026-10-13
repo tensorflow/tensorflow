@@ -725,27 +725,27 @@ func.func @direct_atomic_rmw_fadd_f32(%in: tensor<8xf32>,
 // CHECK-PASCAL-LABEL: @direct_atomic_rmw_fadd_f32
 // CHECK-PASCAL: %[[C2:.*]] = arith.constant 2
 // CHECK-PASCAL: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-PASCAL: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] monotonic
+// CHECK-PASCAL: llvm.atomicrmw ignore_denormal_mode fadd %[[ADDR]], %[[C2]] monotonic
 
 // CHECK-VOLTA-LABEL: @direct_atomic_rmw_fadd_f32
 // CHECK-VOLTA: %[[C2:.*]] = arith.constant 2
 // CHECK-VOLTA: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-VOLTA: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] monotonic
+// CHECK-VOLTA: llvm.atomicrmw ignore_denormal_mode fadd %[[ADDR]], %[[C2]] monotonic
 
 // CHECK-AMPERE-LABEL: @direct_atomic_rmw_fadd_f32
 // CHECK-AMPERE: %[[C2:.*]] = arith.constant 2
 // CHECK-AMPERE: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-AMPERE: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] monotonic
+// CHECK-AMPERE: llvm.atomicrmw ignore_denormal_mode fadd %[[ADDR]], %[[C2]] monotonic
 
 // CHECK-GFX908-MI100-LABEL: @direct_atomic_rmw_fadd_f32
 // CHECK-GFX908-MI100: %[[C2:.*]] = arith.constant 2
 // CHECK-GFX908-MI100: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-GFX908-MI100: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] syncscope("agent-one-as") monotonic
+// CHECK-GFX908-MI100: llvm.atomicrmw ignore_denormal_mode fadd %[[ADDR]], %[[C2]] syncscope("agent-one-as") monotonic {rocdl.no_fine_grained_memory, rocdl.no_remote_memory}
 
 // CHECK-GFX90A-MI200-LABEL: @direct_atomic_rmw_fadd_f32
 // CHECK-GFX90A-MI200: %[[C2:.*]] = arith.constant 2
 // CHECK-GFX90A-MI200: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-GFX90A-MI200: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] syncscope("agent-one-as") monotonic
+// CHECK-GFX90A-MI200: llvm.atomicrmw ignore_denormal_mode fadd %[[ADDR]], %[[C2]] syncscope("agent-one-as") monotonic {rocdl.no_fine_grained_memory, rocdl.no_remote_memory}
 
 // -----
 
@@ -765,12 +765,12 @@ func.func @direct_atomic_rmw_fadd_f16(%in: tensor<8xf16>,
 // CHECK-VOLTA-LABEL: @direct_atomic_rmw_fadd_f16
 // CHECK-VOLTA: %[[C2:.*]] = arith.constant 2
 // CHECK-VOLTA: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-VOLTA: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] monotonic
+// CHECK-VOLTA: llvm.atomicrmw ignore_denormal_mode fadd %[[ADDR]], %[[C2]] monotonic
 
 // CHECK-AMPERE-LABEL: @direct_atomic_rmw_fadd_f16
 // CHECK-AMPERE: %[[C2:.*]] = arith.constant 2
 // CHECK-AMPERE: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-AMPERE: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] monotonic
+// CHECK-AMPERE: llvm.atomicrmw ignore_denormal_mode fadd %[[ADDR]], %[[C2]] monotonic
 
 // CHECK-GFX908-MI100-LABEL: @direct_atomic_rmw_fadd_f16
 // CHECK-GFX908-MI100: %[[CST:.*]] = arith.constant 2
@@ -788,7 +788,7 @@ func.func @direct_atomic_rmw_fadd_f16(%in: tensor<8xf16>,
 // CHECK-GFX908-MI100: %[[VAL_SHIFT:.*]] = llvm.shl %[[VAL_WIDE]], %[[SHIFT]]
 // CHECK-GFX908-MI100: %[[ADDR:.*]] = llvm.inttoptr %[[ADDR_MASKED]]
 // CHECK-GFX908-MI100: %[[VAL:.*]] = llvm.bitcast %[[VAL_SHIFT]] : i32 to vector<2xf16>
-// CHECK-GFX908-MI100: llvm.atomicrmw fadd %[[ADDR]], %[[VAL]] syncscope("agent-one-as") monotonic
+// CHECK-GFX908-MI100: llvm.atomicrmw ignore_denormal_mode fadd %[[ADDR]], %[[VAL]] syncscope("agent-one-as") monotonic {rocdl.no_fine_grained_memory, rocdl.no_remote_memory}
 
 
 // CHECK-GFX90A-MI200-LABEL: @direct_atomic_rmw_fadd_f16
@@ -807,7 +807,7 @@ func.func @direct_atomic_rmw_fadd_f16(%in: tensor<8xf16>,
 // CHECK-GFX90A-MI200: %[[VAL_SHIFT:.*]] = llvm.shl %[[VAL_WIDE]], %[[SHIFT]]
 // CHECK-GFX90A-MI200: %[[ADDR:.*]] = llvm.inttoptr %[[ADDR_MASKED]]
 // CHECK-GFX90A-MI200: %[[VAL:.*]] = llvm.bitcast %[[VAL_SHIFT]] : i32 to vector<2xf16>
-// CHECK-GFX90A-MI200: llvm.atomicrmw fadd %[[ADDR]], %[[VAL]] syncscope("agent-one-as") monotonic
+// CHECK-GFX90A-MI200: llvm.atomicrmw ignore_denormal_mode fadd %[[ADDR]], %[[VAL]] syncscope("agent-one-as") monotonic {rocdl.no_fine_grained_memory, rocdl.no_remote_memory}
 
 // -----
 
@@ -856,7 +856,7 @@ func.func @direct_atomic_rmw_fadd_bf16(%in: tensor<8xbf16>,
 // CHECK-HOPPER-LABEL: @direct_atomic_rmw_fadd_bf16
 // CHECK-HOPPER: %[[C2:.*]] = arith.constant 2
 // CHECK-HOPPER: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-HOPPER: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] monotonic
+// CHECK-HOPPER: llvm.atomicrmw ignore_denormal_mode fadd %[[ADDR]], %[[C2]] monotonic
 
 // -----
 
@@ -892,7 +892,7 @@ func.func @direct_atomic_rmw_fadd_bf16_widened(%in: tensor<8xbf16>,
 // CHECK-GFX942-MI300: %[[VAL_SHIFT:.*]] = llvm.shl %[[VAL_WIDE]], %[[SHIFT]]
 // CHECK-GFX942-MI300: %[[ADDR_PTR:.*]] = llvm.inttoptr %[[ADDR_MASKED]]
 // CHECK-GFX942-MI300: %[[VAL:.*]] = llvm.bitcast %[[VAL_SHIFT]] : i32 to vector<2xbf16>
-// CHECK-GFX942-MI300: llvm.atomicrmw fadd %[[ADDR_PTR]], %[[VAL]] syncscope("agent-one-as") monotonic
+// CHECK-GFX942-MI300: llvm.atomicrmw ignore_denormal_mode fadd %[[ADDR_PTR]], %[[VAL]] syncscope("agent-one-as") monotonic {rocdl.no_fine_grained_memory, rocdl.no_remote_memory}
 
 // -----
 
@@ -909,28 +909,28 @@ func.func @direct_atomic_rmw_fadd_f64(%in: tensor<8xf64>,
 // CHECK-PASCAL-LABEL: @direct_atomic_rmw_fadd_f64
 // CHECK-PASCAL: %[[C2:.*]] = arith.constant 2
 // CHECK-PASCAL: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-PASCAL: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] monotonic
+// CHECK-PASCAL: llvm.atomicrmw ignore_denormal_mode fadd %[[ADDR]], %[[C2]] monotonic
 
 // CHECK-VOLTA-LABEL: @direct_atomic_rmw_fadd_f64
 // CHECK-VOLTA: %[[C2:.*]] = arith.constant 2
 // CHECK-VOLTA: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-VOLTA: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] monotonic
+// CHECK-VOLTA: llvm.atomicrmw ignore_denormal_mode fadd %[[ADDR]], %[[C2]] monotonic
 
 // CHECK-AMPERE-LABEL: @direct_atomic_rmw_fadd_f64
 // CHECK-AMPERE: %[[C2:.*]] = arith.constant 2
 // CHECK-AMPERE: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-AMPERE: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] monotonic
+// CHECK-AMPERE: llvm.atomicrmw ignore_denormal_mode fadd %[[ADDR]], %[[C2]] monotonic
 
 // CHECK-GFX908-MI100-LABEL: @direct_atomic_rmw_fadd_f64
 // CHECK-GFX908-MI100: %[[C2:.*]] = arith.constant 2
 // CHECK-GFX908-MI100: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-GFX908-MI100: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] syncscope("agent-one-as") monotonic
+// CHECK-GFX908-MI100: llvm.atomicrmw ignore_denormal_mode fadd %[[ADDR]], %[[C2]] syncscope("agent-one-as") monotonic {rocdl.no_fine_grained_memory, rocdl.no_remote_memory}
 
 
 // CHECK-GFX90A-MI200-LABEL: @direct_atomic_rmw_fadd_f64
 // CHECK-GFX90A-MI200: %[[C2:.*]] = arith.constant 2
 // CHECK-GFX90A-MI200: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-GFX90A-MI200: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] syncscope("agent-one-as") monotonic
+// CHECK-GFX90A-MI200: llvm.atomicrmw ignore_denormal_mode fadd %[[ADDR]], %[[C2]] syncscope("agent-one-as") monotonic {rocdl.no_fine_grained_memory, rocdl.no_remote_memory}
 
 
 // -----

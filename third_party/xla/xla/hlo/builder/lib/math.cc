@@ -1109,22 +1109,28 @@ XlaOp RandomGammaGrad(XlaOp a, XlaOp x) {
 XlaOp Igammac(XlaOp a, XlaOp x) {
   auto& b = *a.builder();
   auto doit = [&b](XlaOp a, XlaOp x, PrimitiveType type) -> XlaOp {
-    XlaOp out_of_range = Or(Le(x, ScalarLike(x, 0)), Le(a, ScalarLike(a, 0)));
+    XlaOp is_nan = Or(IsNan(a), IsNan(x));
+    XlaOp x_is_zero = Eq(x, ScalarLike(x, 0));
+    XlaOp x_is_infinity =
+        Eq(x, ScalarLike(x, std::numeric_limits<float>::infinity()));
+    // Same domain as Igamma: x < 0 or a <= 0 is a domain error (NaN), while
+    // x == 0 is a valid boundary where igammac(a, 0) = 1.
+    XlaOp domain_error = Or(Lt(x, ScalarLike(x, 0)), Le(a, ScalarLike(a, 0)));
     XlaOp use_igamma = Or(Lt(x, ScalarLike(x, 1)), Lt(x, a));
     XlaOp ax = a * Log(x) - x - Lgamma(a);
     XlaOp underflow = Lt(ax, -Log(MaxFiniteValue(&b, type)));
-    XlaOp enabled = Not(Or(out_of_range, underflow));
+    XlaOp enabled = Not(Or(Or(Or(x_is_zero, domain_error), underflow), is_nan));
     ax = Exp(ax);
+    const double nan = std::numeric_limits<double>::quiet_NaN();
     XlaOp result =
         Select(use_igamma,
                ScalarLike(a, 1) - IgammaSeries<VALUE>(
                                       ax, x, a, And(enabled, use_igamma), type),
                IgammacContinuedFraction<VALUE>(
                    ax, x, a, And(enabled, Not(use_igamma)), type));
-    XlaOp x_is_infinity =
-        Eq(x, ScalarLike(x, std::numeric_limits<float>::infinity()));
+    result = Select(x_is_zero, FullLike(result, 1), result);
     result = Select(x_is_infinity, ZerosLike(result), result);
-    return Select(out_of_range, FullLike(a, 1), result);
+    return Select(Or(domain_error, is_nan), FullLike(a, nan), result);
   };
   return b.ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     ABSL_ASSIGN_OR_RETURN(auto a_shape, b.GetShape(a));
