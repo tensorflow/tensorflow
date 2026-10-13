@@ -23,6 +23,9 @@ from tensorflow.dtensor.python import layout
 from tensorflow.dtensor.python import layout as layout_lib
 from tensorflow.dtensor.python import numpy_util
 from tensorflow.dtensor.python.tests import test_util
+from tensorflow.python.eager import polymorphic_function
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.platform import test as tf_test
 # pylint: enable=g-direct-tensorflow-import
 
@@ -126,10 +129,6 @@ class NumpyUtilTest(test_util.DTensorBaseTest):
         np.arange(16).reshape(4, 4))
 
   def test_pack_tf_tensor_multi_axis_sharded_under_tf_function(self):
-    from tensorflow.python.eager import polymorphic_function
-    from tensorflow.python.framework import constant_op
-    from tensorflow.python.framework import dtypes
-
     sharded_layout = layout.Layout([_MESH_DIM_X, _MESH_DIM_Y], mesh=self.mesh)
     val = constant_op.constant(
         np.arange(16).reshape(4, 4), dtype=dtypes.float32
