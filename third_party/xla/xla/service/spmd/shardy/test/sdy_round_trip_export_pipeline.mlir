@@ -177,7 +177,7 @@ func.func @constant() -> tensor<i32> {
 // CHECK-V2-SAME: -> (tensor<32xi32> {mhlo.sharding = "{maximal device=5}"}) {
 // CHECK-V3-NOT:    mhlo.frontend_attributes
 // CHECK-V3-SAME: mhlo.sharding = "{mesh['a'=2,'b'=2], [{'a'}]}"
-// CHECK-V3-SAME: -> (tensor<32xi32> {mhlo.sharding = "{maximal_mesh[device_id=5]}"}) {
+// CHECK-V3-SAME: -> (tensor<32xi32> {mhlo.sharding = "{single_device[device_id=5]}"}) {
 func.func @inlined_mesh(
   %arg0: tensor<32xi32> {sdy.sharding = #sdy.sharding<mesh<["a"=2, "b"=2]>, [{"a"}]>}
 ) -> (tensor<32xi32> {sdy.sharding = #sdy.sharding<mesh<[], device_ids=[5]>, []>}) {

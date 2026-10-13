@@ -1099,12 +1099,10 @@ cc_test(
     name = "depthwiseconv_quantized_test",
     srcs = [
         "depthwiseconv_quantized_test.cc",
-        "optimized/depthwiseconv_uint8_transitional.h",
     ],
     copts = tflite_copts(),
     shard_count = 2,
     deps = [
-        ":compatibility",
         ":cpu_check",
         ":optimized_base",
         ":reference_base",
