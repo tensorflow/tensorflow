@@ -1,12 +1,10 @@
 # Test-related settings.
 
-build:rocm_dev --remote_upload_local_results=false
-build:rocm_dev --remote_cache="grpcs://internal.actinolite.cluster.engflow.com"
-
 common:rocm_base --test_verbose_timeout_warnings
 common:rocm_base --test_timeout=920,2400,7200,9600
 
 build:rocm_rbe --remote_cache="grpcs://internal.actinolite.cluster.engflow.com"
+build:rocm_rbe --remote_executor="grpcs://internal.actinolite.cluster.engflow.com"
 build:rocm_rbe --repo_env=REMOTE_GPU_TESTING=1
 build:rocm_rbe --bes_backend="grpcs://internal.actinolite.cluster.engflow.com"
 build:rocm_rbe --bes_results_url="https://internal.actinolite.cluster.engflow.com/invocation/"
@@ -25,11 +23,15 @@ build:rocm_rbe --incompatible_strict_action_env
 build:rocm_rbe --experimental_strict_repo_env
 
 
-test:rocm_rbe --jobs=50
-test:rocm_rbe --remote_executor=grpcs://internal.actinolite.cluster.engflow.com
-test:rocm_rbe --remote_timeout=3600
-test:rocm_rbe --strategy=TestRunner=remote,local
-test:rocm_rbe --test_sharding_strategy=explicit
+build:rocm_rbe --jobs=50
+build:rocm_rbe --remote_timeout=3600
+build:rocm_rbe --strategy=TestRunner=remote,local
+build:rocm_rbe --test_sharding_strategy=explicit
+
+build:rocm_rbe_dev --config=rocm_rbe
+build:rocm_rbe_dev --remote_cache="grpcs://actinolite.cluster.engflow.com"
+build:rocm_rbe_dev --remote_executor="grpcs://actinolite.cluster.engflow.com"
+build:rocm_rbe_dev --repo_env=REMOTE_GPU_TESTING=1
 
 # Dynamic execution config for ROCm RBE - races remote vs local with remote head start
 build:rocm_rbe_dynamic --config=rocm_rbe
