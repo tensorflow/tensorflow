@@ -274,6 +274,19 @@ class CSRSparseCholeskyCPUOp : public OpKernel {
                          perm_shape.dim_size(0), " != ", *batch_size));
     }
 
+    // Each permutation entry is applied by Eigen's twistedBy() as a destination
+    // row/column subscript into the num_rows-sized factor without any bounds
+    // checking, so an out-of-range value reads and writes outside the
+    // permutation buffers. Reject entries not in [0, num_rows).
+    const auto permutation_flat = permutation_indices.flat<int32_t>();
+    for (int64_t i = 0; i < permutation_flat.size(); ++i) {
+      const int32_t index = permutation_flat(i);
+      if (index < 0 || index >= *num_rows)
+        return absl::InvalidArgumentError(
+            absl::StrCat("permutation index ", index, " at position ", i,
+                         " is out of range [0, ", *num_rows, ")."));
+    }
+
     return absl::OkStatus();
   }
 };
