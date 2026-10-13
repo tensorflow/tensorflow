@@ -2045,6 +2045,23 @@ inline int ParseInt64Feature(protobuf::io::CodedInputStream* stream,
   return num_elements;
 }
 
+// Returns the length of the next feature on `stream`.
+// Returns -1 if the next feature on `stream` doesn't match `dtype`.
+inline int GetFeatureLength(DataType dtype,
+                            protobuf::io::CodedInputStream* stream) {
+  switch (dtype) {
+    case DT_STRING:
+      return ParseBytesFeature(stream, nullptr, 0);
+    case DT_FLOAT:
+      return ParseFloatFeature(stream, nullptr, 0);
+    case DT_INT64:
+      return ParseInt64Feature(stream, nullptr, 0);
+    default:
+      ReportUnexpectedDataType(dtype);
+      return -1;
+  }
+}
+
 // Parses the next feature on `stream` into `out` starting at `out_offset`.
 // Updates `out_offset`, and returns the number of values added.
 // Returns -1 if the next feature on `stream` doesn't match `dtype`, or if it
@@ -2056,6 +2073,11 @@ inline int ParseFeature(DataType dtype, protobuf::io::CodedInputStream* stream,
     return -1;
   }
   const size_t out_size = out_elements - *out_offset;
+  if (out_size == 0) {
+    // `out` may have no buffer at all, and a null pointer would make the
+    // Parse*Feature functions count the values instead of storing them.
+    return GetFeatureLength(dtype, stream) == 0 ? 0 : -1;
+  }
   int delta;
   switch (dtype) {
     case DT_STRING:
@@ -2108,23 +2130,6 @@ inline bool PadFeature(DataType dtype, size_t num_to_pad, Tensor* out,
   }
   *out_offset += num_to_pad;
   return true;
-}
-
-// Returns the length of the next feature on `stream`.
-// Returns -1 if the next feature on `stream` doesn't match `dtype`.
-inline int GetFeatureLength(DataType dtype,
-                            protobuf::io::CodedInputStream* stream) {
-  switch (dtype) {
-    case DT_STRING:
-      return ParseBytesFeature(stream, nullptr, 0);
-    case DT_FLOAT:
-      return ParseFloatFeature(stream, nullptr, 0);
-    case DT_INT64:
-      return ParseInt64Feature(stream, nullptr, 0);
-    default:
-      ReportUnexpectedDataType(dtype);
-      return -1;
-  }
 }
 
 inline DataType ParseDataType(protobuf::io::CodedInputStream* stream) {
@@ -2993,6 +2998,25 @@ absl::Status ParseSequenceRaggedFeatures(
 }
 
 }  // namespace
+
+int TestParseFeature(DataType dtype, const std::string& serialized_feature,
+                     Tensor* out, size_t* out_offset) {
+  protobuf::io::CodedInputStream stream(
+      reinterpret_cast<const uint8_t*>(serialized_feature.data()),
+      serialized_feature.size());
+  EnableAliasing(&stream);
+  return ParseFeature(dtype, &stream, out, out_offset);
+}
+
+bool TestPadFeature(DataType dtype, size_t num_to_pad, Tensor* out,
+                    size_t* out_offset) {
+  return PadFeature(dtype, num_to_pad, out, out_offset);
+}
+
+bool TestCopyTensorIntoTensor(DataType dtype, const Tensor& src, Tensor* dst,
+                              size_t* dst_offset) {
+  return CopyTensorIntoTensor(dtype, src, dst, dst_offset);
+}
 
 // TODO(sundberg): Use the threadpool to parallelize example parsing.
 // TODO(b/111553342): Support extracting feature statistics from the examples.

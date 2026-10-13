@@ -701,6 +701,78 @@ TEST(FastParse, SequenceExampleFillsAllOutputKinds) {
                 std::vector<int64_t>{0, 2, 2});
 }
 
+TEST(FastParse, ParseFeatureRejectsValuesThatDoNotFit) {
+  Feature floats, ints, bytes;
+  for (float v : {1, 2, 3}) floats.mutable_float_list()->add_value(v);
+  for (int64_t v : {1, 2, 3}) ints.mutable_int64_list()->add_value(v);
+  for (const char* v : {"a", "b", "c"})
+    bytes.mutable_bytes_list()->add_value(v);
+  for (const auto& [dtype, feature] :
+       {std::pair{DT_FLOAT, &floats}, std::pair{DT_INT64, &ints},
+        std::pair{DT_STRING, &bytes}}) {
+    // Room for two of the three values after the offset.
+    Tensor out(dtype, TensorShape({3}));
+    size_t out_offset = 1;
+    EXPECT_EQ(TestParseFeature(dtype, feature->SerializeAsString(), &out,
+                               &out_offset),
+              -1)
+        << DataTypeString(dtype);
+    EXPECT_EQ(out_offset, 1);
+
+    Tensor fits(dtype, TensorShape({4}));
+    out_offset = 1;
+    EXPECT_EQ(TestParseFeature(dtype, feature->SerializeAsString(), &fits,
+                               &out_offset),
+              3)
+        << DataTypeString(dtype);
+    EXPECT_EQ(out_offset, 4);
+  }
+}
+
+TEST(FastParse, ParseFeatureIntoEmptyTensor) {
+  Feature feature;
+  feature.mutable_float_list()->add_value(1);
+  Tensor out(DT_FLOAT, TensorShape({0}));
+  size_t out_offset = 0;
+  EXPECT_EQ(TestParseFeature(DT_FLOAT, feature.SerializeAsString(), &out,
+                             &out_offset),
+            -1);
+  EXPECT_EQ(out_offset, 0);
+
+  // A feature without values still fits.
+  feature.mutable_float_list()->clear_value();
+  EXPECT_EQ(TestParseFeature(DT_FLOAT, feature.SerializeAsString(), &out,
+                             &out_offset),
+            0);
+  EXPECT_EQ(out_offset, 0);
+}
+
+TEST(FastParse, PadFeatureRejectsPaddingThatDoesNotFit) {
+  Tensor out(DT_INT64, TensorShape({3}));
+  size_t out_offset = 1;
+  EXPECT_FALSE(TestPadFeature(DT_INT64, 3, &out, &out_offset));
+  EXPECT_EQ(out_offset, 1);
+  EXPECT_TRUE(TestPadFeature(DT_INT64, 2, &out, &out_offset));
+  EXPECT_EQ(out_offset, 3);
+}
+
+TEST(FastParse, CopyTensorIntoTensorRejectsSourceThatDoesNotFit) {
+  // A context dense default with more values than the output has room for.
+  Tensor default_value(DT_INT64, TensorShape({3}));
+  default_value.flat<int64_t>().setConstant(7);
+  Tensor out(DT_INT64, TensorShape({2}));
+  size_t out_offset = 0;
+  EXPECT_FALSE(
+      TestCopyTensorIntoTensor(DT_INT64, default_value, &out, &out_offset));
+  EXPECT_EQ(out_offset, 0);
+
+  Tensor fits(DT_INT64, TensorShape({4}));
+  out_offset = 1;
+  EXPECT_TRUE(
+      TestCopyTensorIntoTensor(DT_INT64, default_value, &fits, &out_offset));
+  EXPECT_EQ(out_offset, 4);
+}
+
 }  // namespace
 }  // namespace example
 }  // namespace tensorflow
