@@ -756,6 +756,30 @@ TEST(FastParse, PadFeatureRejectsPaddingThatDoesNotFit) {
   EXPECT_EQ(out_offset, 3);
 }
 
+TEST(FastParse, HelpersRejectUnexpectedDataType) {
+  Feature feature;
+  feature.mutable_int64_list()->add_value(1);
+  const std::string serialized = feature.SerializeAsString();
+  Tensor src(DT_BOOL, TensorShape({2}));
+  Tensor out(DT_BOOL, TensorShape({4}));
+  size_t out_offset = 1;
+#ifdef NDEBUG
+  // ReportUnexpectedDataType() only DCHECKs, so the helpers must fail on
+  // their own and leave the offset alone.
+  EXPECT_EQ(TestParseFeature(DT_BOOL, serialized, &out, &out_offset), -1);
+  EXPECT_FALSE(TestPadFeature(DT_BOOL, 2, &out, &out_offset));
+  EXPECT_FALSE(TestCopyTensorIntoTensor(DT_BOOL, src, &out, &out_offset));
+  EXPECT_EQ(out_offset, 1);
+#else
+  EXPECT_DEATH(TestParseFeature(DT_BOOL, serialized, &out, &out_offset),
+               "unexpected DataType");
+  EXPECT_DEATH(TestPadFeature(DT_BOOL, 2, &out, &out_offset),
+               "unexpected DataType");
+  EXPECT_DEATH(TestCopyTensorIntoTensor(DT_BOOL, src, &out, &out_offset),
+               "unexpected DataType");
+#endif
+}
+
 TEST(FastParse, CopyTensorIntoTensorRejectsSourceThatDoesNotFit) {
   // A context dense default with more values than the output has room for.
   Tensor default_value(DT_INT64, TensorShape({3}));

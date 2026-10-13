@@ -2064,8 +2064,9 @@ inline int GetFeatureLength(DataType dtype,
 
 // Parses the next feature on `stream` into `out` starting at `out_offset`.
 // Updates `out_offset`, and returns the number of values added.
-// Returns -1 if the next feature on `stream` doesn't match `dtype`, or if it
-// has more values than `out` has room for after `out_offset`.
+// Returns -1 if the next feature on `stream` doesn't match `dtype`, if it has
+// more values than `out` has room for after `out_offset`, or if `dtype` isn't
+// supported.
 inline int ParseFeature(DataType dtype, protobuf::io::CodedInputStream* stream,
                         Tensor* out, size_t* out_offset) {
   const size_t out_elements = out->NumElements();
@@ -2094,7 +2095,7 @@ inline int ParseFeature(DataType dtype, protobuf::io::CodedInputStream* stream,
       break;
     default:
       ReportUnexpectedDataType(dtype);
-      delta = 0;
+      return -1;
   }
   if (delta > 0) {
     *out_offset += delta;
@@ -2104,7 +2105,7 @@ inline int ParseFeature(DataType dtype, protobuf::io::CodedInputStream* stream,
 
 // Fills `num_to_pad` values of `out` starting at `out_offset` with zeros (or
 // empty strings), and updates `out_offset`. Returns false if `out` doesn't have
-// room for them.
+// room for them or if `dtype` isn't supported.
 inline bool PadFeature(DataType dtype, size_t num_to_pad, Tensor* out,
                        size_t* out_offset) {
   const size_t out_elements = out->NumElements();
@@ -2127,6 +2128,7 @@ inline bool PadFeature(DataType dtype, size_t num_to_pad, Tensor* out,
     }
     default:
       ReportUnexpectedDataType(dtype);
+      return false;
   }
   *out_offset += num_to_pad;
   return true;
@@ -2343,7 +2345,8 @@ absl::Status GetSequenceFeatureLengths(
 }
 
 // Copies src into dst[dst_offset:dst_offset+src.size], and then increments
-// dst_offset by src.size. Returns false if dst doesn't have room for src.
+// dst_offset by src.size. Returns false if dst doesn't have room for src or if
+// dtype isn't supported.
 bool CopyTensorIntoTensor(DataType dtype, const Tensor& src, Tensor* dst,
                           size_t* dst_offset) {
   const size_t src_size = src.NumElements();
@@ -2372,6 +2375,7 @@ bool CopyTensorIntoTensor(DataType dtype, const Tensor& src, Tensor* dst,
     }
     default:
       ReportUnexpectedDataType(dtype);
+      return false;
   }
   *dst_offset += src_size;
   return true;
