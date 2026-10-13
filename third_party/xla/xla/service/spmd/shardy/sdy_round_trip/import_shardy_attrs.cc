@@ -242,32 +242,45 @@ ManualAxesAttr extractManualAxes(const xla::HloSharding& hloSharding,
 
 // The sharding information is in the `kXlaShardingAttr` attribute.
 void convertShardyAttrsWithHloShardingV3(FuncOp funcOp) {
+  // Replace `kXlaShardingAttr` with `kShardingAttr` on all args, then set all
+  // arg attrs at once. Per-arg `setArgAttr` would be O(N^2).
+  llvm::SmallVector<DictionaryAttr> funcArgAttrs;
+  funcArgAttrs.reserve(funcOp.getNumArguments());
   for (auto [argNum, argType] : llvm::enumerate(funcOp.getArgumentTypes())) {
+    mlir::NamedAttrList attrs(funcOp.getArgAttrDict(argNum));
     if (auto oldSharding =
-            funcOp.getArgAttrOfType<StringAttr>(argNum, kXlaShardingAttr)) {
+            mlir::dyn_cast_or_null<StringAttr>(attrs.get(kXlaShardingAttr))) {
       if (auto sdySharding = convertToSdyShardingAttr(
               parseShardingFromString(oldSharding),
               mlir::sdy::getTensorRank(argType), funcOp.getContext())) {
-        funcOp.setArgAttr(argNum, kShardingAttr, sdySharding);
+        attrs.set(kShardingAttr, sdySharding);
       }
     }
-    funcOp.removeArgAttr(argNum, kXlaShardingAttr);
+    attrs.erase(kXlaShardingAttr);
+    funcArgAttrs.push_back(attrs.getDictionary(funcOp.getContext()));
   }
+  funcOp.setAllArgAttrs(funcArgAttrs);
 
+  // Same for results, but single-device shardings are dropped.
+  llvm::SmallVector<DictionaryAttr> newResultAttrs;
+  newResultAttrs.reserve(funcOp.getNumResults());
   for (auto [resNum, resType] : llvm::enumerate(funcOp.getResultTypes())) {
+    mlir::NamedAttrList attrs(funcOp.getResultAttrDict(resNum));
     if (auto oldSharding =
-            funcOp.getResultAttrOfType<StringAttr>(resNum, kXlaShardingAttr)) {
+            mlir::dyn_cast_or_null<StringAttr>(attrs.get(kXlaShardingAttr))) {
       HloSharding hloSharding = parseShardingFromString(oldSharding);
       if (!hloSharding.IsSingleDevice()) {
         if (auto sdySharding = convertToSdyShardingAttr(
                 hloSharding, mlir::sdy::getTensorRank(resType),
                 funcOp.getContext())) {
-          funcOp.setResultAttr(resNum, kShardingAttr, sdySharding);
+          attrs.set(kShardingAttr, sdySharding);
         }
       }
     }
-    funcOp.removeResultAttr(resNum, kXlaShardingAttr);
+    attrs.erase(kXlaShardingAttr);
+    newResultAttrs.push_back(attrs.getDictionary(funcOp.getContext()));
   }
+  funcOp.setAllResultAttrs(newResultAttrs);
 
   if (funcOp.isExternal()) {
     return;
