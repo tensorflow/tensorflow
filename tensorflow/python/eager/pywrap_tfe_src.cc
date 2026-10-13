@@ -1608,7 +1608,7 @@ PyObject* PyTapeTensor::ZerosLike() const {
 // Keeps track of all variables that have been accessed during execution.
 class VariableWatcher {
  public:
-  VariableWatcher() {}
+  VariableWatcher() = default;
 
   ~VariableWatcher() {
     for (const IdAndVariable& v : watched_variables_) {
@@ -1677,7 +1677,7 @@ class GradientTape
                                         PyTapeTensor>(persistent),
         watch_accessed_variables_(watch_accessed_variables) {}
 
-  virtual ~GradientTape() {}
+  virtual ~GradientTape() = default;
 
   void VariableAccessed(PyObject* v) {
     if (watch_accessed_variables_) {
