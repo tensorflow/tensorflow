@@ -752,6 +752,55 @@ TEST_F(CublasFissionBackendTest,
   EXPECT_THAT(configs, testing::Not(testing::IsEmpty()));
 }
 
+// A scaled E5M2 x E4M3 dot with an E4M3 output needs no D-scaled kernels, so
+// hipBLASLt fuses its FP8 output instead of leaving a much slower Triton GEMM.
+TEST_F(CublasFissionBackendTest, HipblasLtConfigsForMixedFp8OutputFusion) {
+  const auto* rocm_cc =
+      device_description_.gpu_compute_capability().rocm_compute_capability();
+  if (rocm_cc == nullptr || !rocm_cc->has_ocp_fp8_support()) {
+    GTEST_SKIP() << "Requires a ROCm GPU with OCP FP8 support.";
+  }
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+  computation {
+    x = f8e5m2[64,128]{1,0} parameter(0)
+    y = f8e4m3fn[128,64]{1,0} parameter(1)
+    x_scale = f32[] parameter(2)
+    y_scale = f32[] parameter(3)
+    z_scale = f32[] parameter(4)
+    x_f32 = f32[64,128]{1,0} convert(x)
+    y_f32 = f32[128,64]{1,0} convert(y)
+    x_scale_bcast = f32[64,128]{1,0} broadcast(x_scale), dimensions={}
+    y_scale_bcast = f32[128,64]{1,0} broadcast(y_scale), dimensions={}
+    x_unscaled = f32[64,128]{1,0} multiply(x_f32, x_scale_bcast)
+    y_unscaled = f32[128,64]{1,0} multiply(y_f32, y_scale_bcast)
+    dot = f32[64,64]{1,0} dot(x_unscaled, y_unscaled), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    z_scale_bcast = f32[64,64]{1,0} broadcast(z_scale), dimensions={}
+    dot_scaled = f32[64,64]{1,0} divide(dot, z_scale_bcast)
+    c1 = f32[] constant(-448)
+    c1_bcast = f32[64,64]{1,0} broadcast(c1), dimensions={}
+    c2 = f32[] constant(448)
+    c2_bcast = f32[64,64]{1,0} broadcast(c2), dimensions={}
+    dot_clamped = f32[64,64]{1,0} clamp(c1_bcast, dot_scaled, c2_bcast)
+    ROOT out = f8e4m3fn[64,64]{1,0} convert(dot_clamped)
+  }
+
+  ENTRY main {
+    x = f8e5m2[64,128]{1,0} parameter(0)
+    y = f8e4m3fn[128,64]{1,0} parameter(1)
+    x_scale = f32[] parameter(2)
+    y_scale = f32[] parameter(3)
+    z_scale = f32[] parameter(4)
+    ROOT fusion = f8e4m3fn[64,64]{1,0} fusion(x, y, x_scale, y_scale, z_scale),
+      kind=kCustom, calls=computation,
+      backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
+  })"));
+  ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<BackendConfig>> configs,
+                       fission_backend_->GetSupportedConfigs(
+                           *module->entry_computation()->root_instruction()));
+  EXPECT_THAT(configs, Not(IsEmpty()));
+}
+
 TEST_F(CublasFissionBackendTest,
        GetSupportedConfigsWithEstimatesComposesPrologueEpilogueAndGemm) {
   if (IsRocm(stream_executor_)) {
