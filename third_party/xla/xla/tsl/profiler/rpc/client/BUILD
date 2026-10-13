@@ -1,4 +1,4 @@
-load("//xla/tsl:tsl.bzl", "internal_visibility")
+load("//xla/tsl:tsl.bzl", "if_oss", "internal_visibility")
 load(
     "//xla/tsl/platform:build_config.bzl",
     "tf_protos_profiler_service",
@@ -289,10 +289,14 @@ tsl_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
+        "@grpc//:grpc++",
         "@tsl//tsl/platform:platform_port",
         "@tsl//tsl/profiler/lib:profiler_factory_impl",
         "@tsl//tsl/profiler/lib:profiler_session",
         "@tsl//tsl/profiler/lib:profiler_session_impl",
         "@tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
-    ] + tf_protos_profiler_service(),
+    ] + if_oss([
+        "@tsl//tsl/profiler/protobuf:profiler_service_cc_grpc_proto",
+        "@tsl//tsl/profiler/protobuf:profiler_service_proto_cc",
+    ]) + tf_protos_profiler_service(),
 )

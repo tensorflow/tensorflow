@@ -436,14 +436,28 @@ def nextafter(x1, x2):
 @np_utils.np_doc('heaviside')
 def heaviside(x1, x2):  # pylint: disable=missing-function-docstring
   def f(x1, x2):
+    dtype = x2.dtype
+    zero = constant_op.constant(0, dtype=dtype)
+    one = constant_op.constant(1, dtype=dtype)
+    # NumPy propagates NaN from the first argument. TensorFlow's relational
+    # operators evaluate to False for NaN inputs, so the `x1 > 0` and
+    # `x1 < 0` branches both miss and the value falls through to `x2`. Nest
+    # the NaN selection into that fallback so the outer `where_v2` remains a
+    # single pass over the tensor. Integer dtypes cannot represent NaN, so
+    # only floating inputs get the extra mask. Use the native `is_floating`
+    # property rather than `np.issubdtype(..., np.inexact)`: TensorFlow's
+    # bfloat16 maps to `ml_dtypes.bfloat16`, which is not part of NumPy's
+    # `inexact` hierarchy.
+    fallback = x2
+    if x1.dtype.is_floating:
+      nan = constant_op.constant(np.nan, dtype=dtype)
+      fallback = array_ops.where_v2(math_ops.is_nan(x1), nan, fallback)
     return array_ops.where_v2(
-        x1 < 0,
-        constant_op.constant(0, dtype=x2.dtype),
-        array_ops.where_v2(x1 > 0, constant_op.constant(1, dtype=x2.dtype), x2),
+        x1 > 0, one, array_ops.where_v2(x1 < 0, zero, fallback)
     )
 
   y = _bin_op(f, x1, x2)
-  if not np.issubdtype(y.dtype.as_numpy_dtype, np.inexact):
+  if not y.dtype.is_floating:
     # See the note in `_scalar`: `astype` is unavailable without the
     # `enable_numpy_methods_on_tensor()` opt-in.
     y = math_ops.cast(y, np_utils.result_type(float))
@@ -855,20 +869,21 @@ def reciprocal(x):
   return _scalar(math_ops.reciprocal, x)
 
 
+def _signbit(x):
+  if x.dtype == dtypes.bool:
+    return array_ops.fill(array_ops.shape(x), False)
+  if x.dtype in _SIGN_BITCAST_DTYPES:
+    # Check the IEEE-754 sign bit instead of comparing with zero, which
+    # cannot tell -0.0 from +0.0 or a negative NaN from a positive one.
+    bits = array_ops.bitcast(x, _SIGN_BITCAST_DTYPES[x.dtype])
+    return bits < 0
+  return x < 0
+
+
 @tf_export.tf_export('experimental.numpy.signbit', v1=[])
 @np_utils.np_doc('signbit')
 def signbit(x):
-  def f(x):
-    if x.dtype == dtypes.bool:
-      return array_ops.fill(array_ops.shape(x), False)
-    if x.dtype in _SIGN_BITCAST_DTYPES:
-      # Check the IEEE-754 sign bit instead of comparing with zero, which
-      # cannot tell -0.0 from +0.0 or a negative NaN from a positive one.
-      bits = array_ops.bitcast(x, _SIGN_BITCAST_DTYPES[x.dtype])
-      return math_ops.less(bits, 0)
-    return x < 0
-
-  return _scalar(f, x)
+  return _scalar(_signbit, x)
 
 
 @tf_export.tf_export('experimental.numpy.sin', v1=[])
@@ -974,11 +989,12 @@ def angle(z, deg=False):  # pylint: disable=missing-function-docstring
       # Workaround for b/147515503
       # `np.pi` and `0` are Python scalars, which would make the result
       # float32 whatever `x` is, so build them in `x`'s dtype instead.
-      return array_ops.where_v2(
-          x < 0,
+      pi_or_zero = array_ops.where_v2(
+          _signbit(x),
           constant_op.constant(np.pi, dtype=x.dtype),
           constant_op.constant(0, dtype=x.dtype),
       )
+      return array_ops.where_v2(math_ops.is_nan(x), x, pi_or_zero)
     else:
       return math_ops.angle(x)
 
@@ -994,7 +1010,7 @@ def cbrt(x):
   def f(x):
     # __pow__ can't handle negative base, so we use `abs` here.
     rt = math_ops.abs(x) ** (1.0 / 3)
-    return array_ops.where_v2(x < 0, -rt, rt)
+    return array_ops.where_v2(_signbit(x), -rt, rt)
 
   return _scalar(f, x, True)
 

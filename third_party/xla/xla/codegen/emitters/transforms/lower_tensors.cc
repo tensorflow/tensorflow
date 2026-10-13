@@ -1015,8 +1015,10 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
       return failure();
     }
 
-    ml::AtomicRMWOp::create(b, loc, ml::AtomicBinOp::fadd, addr, modifier_arg,
-                            ml::AtomicOrdering::monotonic);
+    auto rmw_op =
+        ml::AtomicRMWOp::create(b, loc, ml::AtomicBinOp::fadd, addr,
+                                modifier_arg, ml::AtomicOrdering::monotonic);
+    rmw_op.setIgnoreDenormalMode(true);
     return success();
   }
 
@@ -1125,17 +1127,16 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
     auto op = ml::AtomicRMWOp::create(
         b, loc, ml::AtomicBinOp::fadd, addr, modifier_arg,
         ml::AtomicOrdering::monotonic, "agent-one-as");
+    op.setIgnoreDenormalMode(true);
 
     auto unitAttr = b.getUnitAttr();
     auto* rocdl =
         op->getContext()->getOrLoadDialect<mlir::ROCDL::ROCDLDialect>();
     auto noRemoteMemHelper = rocdl->getNoRemoteMemoryAttrHelper();
     auto noFineMemHelper = rocdl->getNoFineGrainedMemoryAttrHelper();
-    auto ignoreDenormalModeHelper = rocdl->getIgnoreDenormalModeAttrHelper();
 
     noRemoteMemHelper.setAttr(op, unitAttr);
     noFineMemHelper.setAttr(op, unitAttr);
-    ignoreDenormalModeHelper.setAttr(op, unitAttr);
 
     return success();
   }
