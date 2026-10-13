@@ -1060,36 +1060,6 @@ ENTRY Identity() -> f32[2, 2] {
   EXPECT_THAT(poison_result, IsOkAndHolds(false));
 }
 
-TEST(PjRtCApiClientTest, AddressableDeviceLogicalIds) {
-  SetUpCpuPjRtApi();
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
-                       GetCApiClient("cpu"));
-  ASSERT_GT(client->addressable_devices().size(), 1);
-
-  XlaBuilder builder("Identity");
-  Shape shape = ShapeUtil::MakeShape(S32, {2, 3});
-  XlaOp input = Parameter(&builder, 0, shape, "input");
-  XlaComputation computation = builder.Build(input).value();
-
-  DeviceAssignment device_assignment(1, 2);
-  device_assignment(0, 0) = 0;
-  device_assignment(0, 1) = 1;
-
-  CompileOptions options;
-  options.executable_build_options.set_device_assignment(device_assignment);
-
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
-                       client->CompileAndLoad(computation, options));
-
-  absl::Span<const PjRtLoadedExecutable::LogicalDeviceIds> logical_ids =
-      executable->addressable_device_logical_ids();
-  ASSERT_EQ(logical_ids.size(), 2);
-  EXPECT_EQ(logical_ids[0].replica, 0);
-  EXPECT_EQ(logical_ids[0].partition, 0);
-  EXPECT_EQ(logical_ids[1].replica, 0);
-  EXPECT_EQ(logical_ids[1].partition, 1);
-}
-
 TEST(PjRtCApiClientTest, Bitcast) {
   SetUpCpuPjRtApi();
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,

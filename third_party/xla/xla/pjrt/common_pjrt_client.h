@@ -654,11 +654,6 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
     return *device_assignment_;
   }
 
-  absl::Span<const LogicalDeviceIds> addressable_device_logical_ids()
-      const override {
-    return addressable_device_logical_ids_;
-  }
-
   void Delete() override {
     if (load_state_ != nullptr) {
       load_state_->Delete();

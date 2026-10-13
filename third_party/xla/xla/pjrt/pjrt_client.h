@@ -1411,21 +1411,12 @@ class PjRtLoadedExecutable {
   virtual absl::StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
   GetCostAnalysis() const;
 
-  // The replica and partition indices of device_assignment to be run by this
-  // client. On single-host platforms without partitioning, this is all replicas
-  // (i.e. addressable_device_logical_ids_[i] = (i, 0)), but this may not be the
-  // case on multi-host platforms. If there are 4 replicas and 2 partitions on a
-  // single host platform, size of addressable_device_logical_ids_ is 4*2 = 8.
   struct LogicalDeviceIds {
     int replica;
     int partition;
   };
-  virtual absl::Span<const LogicalDeviceIds> addressable_device_logical_ids()
-      const = 0;
 
   // An addressable_device is one which the client can issue commands to.
-  // addressable_devices()[i] is the Device to which
-  // addressable_device_logical_ids()[i] is assigned.
   virtual absl::Span<PjRtDevice* const> addressable_devices() const = 0;
 
   // Donation Semantics:
