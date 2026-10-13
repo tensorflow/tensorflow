@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <cstdint>
 #include <limits>
 #include <ostream>
 #include <vector>
@@ -709,6 +710,8 @@ REGISTER_OP("SplitV")
         if (size_splits->dtype() == DT_INT32) {
           data =
               AsInt64<int32_t>(size_splits, size_splits->shape().dim_size(0));
+        } else if (size_splits->dtype() == DT_INT8) {
+          data = AsInt64<int8_t>(size_splits, size_splits->shape().dim_size(0));
         } else {
           data =
               AsInt64<int64_t>(size_splits, size_splits->shape().dim_size(0));
@@ -719,7 +722,8 @@ REGISTER_OP("SplitV")
         }
         int64_t total_size = 0;
         bool has_neg_one = false;
-        for (const auto size : data) {
+        for (int i = 0; i < num_outputs; ++i) {
+          const auto size = data[i];
           if (size == -1) {
             if (has_neg_one) {
               return absl::InvalidArgumentError(
@@ -727,6 +731,15 @@ REGISTER_OP("SplitV")
             }
             has_neg_one = true;
           } else {
+            if (size < 0) {
+              return absl::InvalidArgumentError(absl::StrCat(
+                  "Split size at index ", i, " must be >= 0. Got: ", size));
+            }
+            if (total_size > std::numeric_limits<int64_t>::max() - size) {
+              return absl::InvalidArgumentError(absl::StrCat(
+                  "Sum of size_splits overflows the index type at index ", i,
+                  "."));
+            }
             total_size += size;
           }
         }
