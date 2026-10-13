@@ -27,6 +27,7 @@ limitations under the License.
 // are available at runtime but should be competitive in speed with approaches
 // that compile in the proto definitions.
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -524,19 +525,26 @@ class DenseCollector {
     }
 
     // Setting stride=0 causes new values to overwrite old ones for
-    // non-repeated fields.
+    // non-repeated fields, which always write at index 0 (as in ReadValue).
     const int stride = field.is_repeated ? 1 : 0;
-
-    if (next_repeat_index_ >= max_repeat_count_) {
+    int32_t index = 0;
+    if (field.is_repeated) {
+      index = next_repeat_index_;
+    }
+    if (index >= max_repeat_count_) {
       return absl::DataLossError(absl::StrCat(
           "ReadPackedValues: Tried to write more entries than allowed.  "
           "Field tag: ",
           field.number, ", Max entries allowed: ", max_repeat_count_));
-    } else {
-      return internal::ReadPackedFromArray(
-          buf, buf_size, field.type, field.number, default_value_.dtype, stride,
-          max_repeat_count_, &next_repeat_index_, datap_);
     }
+
+    absl::Status status = internal::ReadPackedFromArray(
+        buf, buf_size, field.type, field.number, default_value_.dtype, stride,
+        max_repeat_count_, &index, datap_);
+    // A non-repeated field ends at index 1 once it holds a value, and stays
+    // filled when it later appears again (including as an empty packed run).
+    next_repeat_index_ = std::max(next_repeat_index_, index);
+    return status;
   }
 
   // Fills in any missing values in the output array with defaults. Dispatches

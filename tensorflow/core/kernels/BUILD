@@ -8662,3 +8662,19 @@ tf_cc_test(
         "@com_google_absl//absl/strings",
     ],
 )
+
+tf_cc_test(
+    name = "decode_proto_op_test",
+    size = "small",
+    srcs = ["decode_proto_op_test.cc"],
+    deps = [
+        ":decode_proto_op",
+        ":ops_testutil",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:ops",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
