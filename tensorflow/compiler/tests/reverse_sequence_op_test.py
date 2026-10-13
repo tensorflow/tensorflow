@@ -99,34 +99,45 @@ class ReverseSequenceTest(xla_test.XLATestCase):
 
     x = np.array(x, dtype=np.int32)
     seq_lengths = np.array(seq_lengths, dtype=np.int32)
+    mask = np.array([True, False, True, True, False])
     with self.session() as session:
       with self.device_scope():
         x_ph = array_ops.placeholder(dtypes.int32, x.shape)
         seq_lengths_ph = array_ops.placeholder(dtypes.int32, seq_lengths.shape)
-        mask_ph = array_ops.placeholder(dtypes.bool, [4])
+        mask_ph = array_ops.placeholder(dtypes.bool, mask.shape)
         output = f(x_ph, seq_lengths_ph, mask_ph)
-      return session.run(output, {
+      result = session.run(output, {
           x_ph: x,
           seq_lengths_ph: seq_lengths,
-          mask_ph: [True, False, True, True]
+          mask_ph: mask
       })
+    # Eager mode gives the same result.
+    with self.device_scope():
+      self.assertAllEqual(f(x, seq_lengths, mask), result)
+    return result
 
   def testDynamicDimensions(self):
+    if "TPU" in self.device:
+      self.skipTest("XLA:TPU fails to compile these dynamic dimensions with a "
+                    "bitcast shape size mismatch.")
     # Regression test for GitHub issue 128953: the output had the bound of a
-    # dynamic input dimension instead of its size. The mask selects 3 of 4
-    # entries, so the selected dimension has size 3 and bound 4.
+    # dynamic input dimension instead of its size. The mask selects 3 of 5
+    # entries, so the selected dimension has size 3 and bound 5. (XLA turns a
+    # gather from 4 or fewer entries into selects, which XLA:GPU doesn't
+    # support with dynamic shapes.)
     self.assertAllEqual(
-        self._reverseSelected([[1, 2, 3, 4], [5, 6, 7, 8]], [3, 2],
+        self._reverseSelected([[1, 2, 3, 4, 0], [5, 6, 7, 8, 0]], [3, 2],
                               axis=1, seq_axis=1, batch_axis=0),
         [[4, 3, 1], [7, 5, 8]])
     self.assertAllEqual(
-        self._reverseSelected([[1, 5], [2, 6], [3, 7], [4, 8]], [3, 2],
+        self._reverseSelected([[1, 5], [2, 6], [3, 7], [4, 8], [0, 0]], [3, 2],
                               axis=0, seq_axis=0, batch_axis=1),
         [[4, 7], [3, 5], [1, 8]])
     self.assertAllEqual(
-        self._reverseSelected([[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]],
-                              [3, 1, 2, 3],
-                              axis=0, seq_axis=1, batch_axis=0),
+        self._reverseSelected(
+            [[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12], [0, 0, 0]],
+            [3, 1, 2, 3, 1],
+            axis=0, seq_axis=1, batch_axis=0),
         [[3, 2, 1], [8, 7, 9], [12, 11, 10]])
 
 
