@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "llvm/IR/Attributes.h"
 #include "llvm/IR/DerivedTypes.h"
@@ -75,6 +76,33 @@ class EigenAtan : public Intrinsic<EigenAtan> {
         {Type::V(xla::F32, 16)}, {Type::S(xla::F64)},    {Type::V(xla::F64, 2)},
         {Type::V(xla::F64, 4)},  {Type::V(xla::F64, 8)},
     };
+  }
+
+  static absl::StatusOr<llvm::Function*> CreateDefinition(
+      llvm::Module* module, const IntrinsicOptions& options, Type type) {
+    return GetCppGenFunction(module, Name(type),
+                             UnaryFunctionType(module, type));
+  }
+};
+
+class Expm1 : public Intrinsic<Expm1> {
+ public:
+  static constexpr absl::string_view kName = "expm1";
+
+  static std::vector<std::vector<Type>> SupportedVectorTypes(
+      absl::string_view features = "") {
+    if (!AreCppGenIntrinsicsAvailable()) {
+      return {};
+    }
+    std::vector<std::vector<Type>> types = {
+        {Type::S(xla::F32)}, {Type::V(xla::F32, 4)}, {Type::V(xla::F32, 8)},
+        {Type::S(xla::F64)}, {Type::V(xla::F64, 4)},
+    };
+    if (absl::StrContains(features, "+avx512f")) {
+      types.push_back({Type::V(xla::F32, 16)});
+      types.push_back({Type::V(xla::F64, 8)});
+    }
+    return types;
   }
 
   static absl::StatusOr<llvm::Function*> CreateDefinition(
