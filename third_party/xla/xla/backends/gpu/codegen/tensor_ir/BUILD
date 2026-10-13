@@ -1,3 +1,4 @@
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.bzl", "if_google")
@@ -73,7 +74,7 @@ cc_library(
     hdrs = ["compilation_pipeline.h"],
     # tileiras, ptxas and libnvvm staged from the CUDA 13.3+ toolkit;
     # FindCudaExecutable("tileiras") picks them up from runfiles.
-    data = if_google(["@local_config_cuda//cuda:runtime_tileiras"]),
+    data = if_google(if_cuda(["@local_config_cuda//cuda:runtime_tileiras"])),
     deps = [
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cuda_compute_capability",
