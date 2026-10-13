@@ -112,6 +112,9 @@ def squeeze(input: ragged_tensor.Ragged, axis=None, name=None):  # pylint: disab
     if remaining_row_splits and 0 in ragged_dims:
       remaining_row_splits.pop(0)
 
+    # Pass validate=False because remaining_row_splits come from an
+    # already-valid input RaggedTensor and are gated by the squeezability
+    # Assert checks above.
     squeezed_rt = RaggedTensor.from_nested_row_splits(
         squeezed_rt, remaining_row_splits, validate=False)
 

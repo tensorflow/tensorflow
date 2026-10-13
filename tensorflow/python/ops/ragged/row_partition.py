@@ -251,8 +251,8 @@ class RowPartition(composite_tensor.CompositeTensor):
                         [value_rowids, nrows]):
       value_rowids = cls._convert_row_partition(
           value_rowids, "value_rowids", dtype_hint=dtype_hint, dtype=dtype)
+      const_rowids = tensor_util.constant_value(value_rowids)
       if nrows is None:
-        const_rowids = tensor_util.constant_value(value_rowids)
         if const_rowids is None:
           nrows = array_ops.concat([value_rowids[-1:], [-1]], axis=0)[0] + 1
           const_nrows = None
@@ -266,7 +266,6 @@ class RowPartition(composite_tensor.CompositeTensor):
         if const_nrows is not None:
           if const_nrows < 0:
             raise ValueError("Expected nrows >= 0; got %d" % const_nrows)
-          const_rowids = tensor_util.constant_value(value_rowids)
           if const_rowids is not None and const_rowids.size > 0:
             if not const_nrows >= const_rowids[-1] + 1:
               raise ValueError(
@@ -277,23 +276,21 @@ class RowPartition(composite_tensor.CompositeTensor):
       nrows.shape.assert_has_rank(0)
 
       if validate:
-        value_rowids_const = tensor_util.constant_value(value_rowids)
-        if value_rowids_const is not None:
-          if len(value_rowids_const) > 0 and value_rowids_const[0] < 0:
+        if const_rowids is not None:
+          if len(const_rowids) > 0 and const_rowids[0] < 0:
             raise ValueError(
                 "Arguments to from_value_rowids do not form a valid "
                 "RowPartition: value_rowids must be non-negative, "
-                f"got {value_rowids_const[0]}")
-          diff = np.diff(value_rowids_const)
-          if np.any(diff < 0):
-            bad_idx = int(np.argmax(diff < 0))
+                f"got {const_rowids[0]}")
+          if np.any(const_rowids[1:] < const_rowids[:-1]):
+            bad_idx = int(np.argmax(const_rowids[1:] < const_rowids[:-1]))
             raise ValueError(
                 "Arguments to from_value_rowids do not form a valid "
                 "RowPartition: value_rowids must be monotonic increasing, "
                 f"but value_rowids[{bad_idx}] "
-                f"({value_rowids_const[bad_idx]}) > "
+                f"({const_rowids[bad_idx]}) > "
                 f"value_rowids[{bad_idx + 1}] "
-                f"({value_rowids_const[bad_idx + 1]})")
+                f"({const_rowids[bad_idx + 1]})")
         msg = ("Arguments to from_value_rowids do not form a valid "
                "RowPartition")
         checks = [
@@ -390,9 +387,9 @@ class RowPartition(composite_tensor.CompositeTensor):
                 "Arguments to from_row_splits do not form a valid "
                 f"RaggedTensor: row_splits[0] must be zero, "
                 f"got {row_splits_const[0]}")
-          diff = np.diff(row_splits_const)
-          if np.any(diff < 0):
-            bad_idx = int(np.argmax(diff < 0))
+          if np.any(row_splits_const[1:] < row_splits_const[:-1]):
+            bad_idx = int(
+                np.argmax(row_splits_const[1:] < row_splits_const[:-1]))
             raise ValueError(
                 "Arguments to from_row_splits do not form a valid "
                 "RaggedTensor: row_splits must be monotonic increasing, "
@@ -517,9 +514,9 @@ class RowPartition(composite_tensor.CompositeTensor):
                 "Arguments to from_row_starts do not form a valid "
                 f"RaggedTensor: row_starts[0] must be zero, "
                 f"got {row_starts_const[0]}")
-          diff = np.diff(row_starts_const)
-          if np.any(diff < 0):
-            bad_idx = int(np.argmax(diff < 0))
+          if np.any(row_starts_const[1:] < row_starts_const[:-1]):
+            bad_idx = int(
+                np.argmax(row_starts_const[1:] < row_starts_const[:-1]))
             raise ValueError(
                 "Arguments to from_row_starts do not form a valid "
                 "RaggedTensor: row_starts must be monotonic increasing, "
@@ -591,9 +588,9 @@ class RowPartition(composite_tensor.CompositeTensor):
                 "Arguments to from_row_limits do not form a valid "
                 "RaggedTensor: row_limits must be non-negative, "
                 f"got {row_limits_const[0]}")
-          diff = np.diff(row_limits_const)
-          if np.any(diff < 0):
-            bad_idx = int(np.argmax(diff < 0))
+          if np.any(row_limits_const[1:] < row_limits_const[:-1]):
+            bad_idx = int(
+                np.argmax(row_limits_const[1:] < row_limits_const[:-1]))
             raise ValueError(
                 "Arguments to from_row_limits do not form a valid "
                 "RaggedTensor: row_limits must be monotonic increasing, "
@@ -990,7 +987,7 @@ class RowPartition(composite_tensor.CompositeTensor):
     if self._row_lengths is not None:
       row_lengths_const = tensor_util.constant_value(self._row_lengths)
       if row_lengths_const is not None:
-        return int(row_lengths_const.sum())
+        return int(np.sum(row_lengths_const, dtype=np.int64))
     if self._uniform_row_length is not None and self._nrows is not None:
       nrows = self.static_nrows
       row_len = self.static_uniform_row_length
