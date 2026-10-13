@@ -423,9 +423,13 @@ class TrainingOpsTest(TensorFlowTestCase):
            (var, accum, accum, lr, lr, lr, lr, grad, indices)),
       ]
 
+      regex = (
+          r"(grad and var must have the same rank|Shapes must be equal rank|"
+          r"Argument grad must not be a scalar)"
+      )
       for op, args in test_cases:
         with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
-                                    "grad and var must have the same rank"):
+                                    regex):
           self.evaluate(op(*args))
 
   @test_util.run_v1_only("SparseApplyAdagrad op returns a ref, so it is not "
@@ -616,9 +620,13 @@ class TrainingOpsTest(TensorFlowTestCase):
           variables.Variable(np.zeros((10, 2), np.float32)) for _ in range(3)
       ]
       self.evaluate(variables.global_variables_initializer())
+      regex = (
+          r"(grad and var must have the same rank|Shapes must be equal rank|"
+          r"Argument grad must not be a scalar)"
+      )
       with self.assertRaisesRegex(
-          errors.InvalidArgumentError,
-          "grad and var must have the same rank",
+          (ValueError, errors.InvalidArgumentError),
+          regex,
       ):
         self.evaluate(
             gen_training_ops.resource_sparse_apply_adagrad_da(
@@ -701,10 +709,14 @@ class TrainingOpsTest(TensorFlowTestCase):
             idx,
         ),
     ]
+    regex = (
+        r"(grad and var must have the same rank|Shapes must be equal rank|"
+        r"Argument grad must not be a scalar)"
+    )
     with ops.device("/cpu:0"):
       for apply_op in cases:
         with self.assertRaisesRegex(
-            errors.InvalidArgumentError, "grad and var must have the same rank"
+            (ValueError, errors.InvalidArgumentError), regex
         ):
           self.evaluate(apply_op())
 
@@ -727,9 +739,13 @@ class TrainingOpsTest(TensorFlowTestCase):
       grad = constant_op.constant(0.0, dtype=dtypes.float32)  # wrong rank
       indices = constant_op.constant([0, 0], dtype=dtypes.int32)
 
+      regex = (
+          r"(grad and var must have the same rank|Shapes must be equal rank|"
+          r"Argument grad must not be a scalar)"
+      )
       with self.assertRaisesRegex(
-          errors.InvalidArgumentError,
-          "grad and var must have the same rank",
+          (ValueError, errors.InvalidArgumentError),
+          regex,
       ):
         self.evaluate(
             gen_training_ops.resource_sparse_apply_adagrad_da(

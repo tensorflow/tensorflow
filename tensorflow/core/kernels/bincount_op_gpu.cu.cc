@@ -66,10 +66,10 @@ struct BincountFunctor<GPUDevice, Tidx, T, false> {
     size_t temp_storage_bytes = 0;
     const Tidx* d_samples = arr.data();
     T* d_histogram = output.data();
-    int64_t num_levels_64 = output.size() + 1;
-    if (num_levels_64 > std::numeric_limits<int>::max()) {
+    if (output.size() >= std::numeric_limits<int>::max()) {
       return absl::InvalidArgumentError("num_bins is too large for GPU");
     }
+    int64_t num_levels_64 = output.size() + 1;
     int num_levels = static_cast<int>(num_levels_64);
     Tidx lower_level = Tidx(0);
     Tidx upper_level = num_bins;

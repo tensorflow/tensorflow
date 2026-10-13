@@ -1898,6 +1898,9 @@ REGISTER_OP("SparseBincount")
         }
         c->set_output(
             0, c->MakeShape({num_rows, size_val}));
+      } else if (shape_tensor->NumElements() == 0) {
+        return absl::InvalidArgumentError(
+            "dense_shape must have at least 1 dimension, got 0");
       } else {
         return absl::InvalidArgumentError(absl::StrCat(
             "Shape must be at most rank 2 but is rank ",
