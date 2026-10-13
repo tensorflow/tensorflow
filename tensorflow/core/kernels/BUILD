@@ -1197,7 +1197,16 @@ tf_kernel_library(
 tf_kernel_library(
     name = "slice_op",
     prefix = "slice_op",
-    deps = ARRAY_DEPS + [":strided_slice_op"],
+    deps = ARRAY_DEPS + [
+        ":strided_slice_op",
+        "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
 )
 
 tf_kernel_library(
@@ -3937,7 +3946,10 @@ tf_kernel_library(
     gpu_copts = if_not_windows(["-Wno-pass-failed"]),
     prefix = "segment_reduction_ops",
     deps = MATH_DEPS + [
+        "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/util:determinism_for_kernels",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ] + if_cuda_or_rocm([
         ":gpu_prim_helpers",
     ]) + if_cuda([
@@ -3972,7 +3984,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "sequence_ops",
     prefix = "sequence_ops",
-    deps = MATH_DEPS,
+    deps = MATH_DEPS + [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(
@@ -4598,6 +4613,8 @@ tf_kernel_library(
     ]) + [
         ":gpu_prim_hdrs",
         ":loose_headers",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -4955,7 +4972,11 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/framework:bounds_check",
+        "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/util:overflow",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
     ],
 )
@@ -5806,6 +5827,8 @@ cc_library(
     features = ["-layering_check"],
     deps = [
         "//tensorflow/core:framework",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -5873,6 +5896,8 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
