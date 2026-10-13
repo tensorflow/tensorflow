@@ -17,10 +17,12 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
@@ -49,6 +51,29 @@ namespace {
 using ::testing::UnorderedElementsAre;
 using ::tsl::proto_testing::EqualsProto;
 using ::xla::xtile::BlockLevelFusionConfig;
+
+// Returns the default platform.
+se::Platform* GetDefaultPlatform() {
+  absl::StatusOr<se::Platform*> platform = PlatformUtil::GetDefaultPlatform();
+  CHECK_OK(platform.status());
+  return *platform;
+}
+
+// Returns the compiler registered for `platform`.
+std::unique_ptr<Compiler> GetCompilerForPlatform(se::Platform* platform) {
+  absl::StatusOr<std::unique_ptr<Compiler>> compiler =
+      Compiler::GetForPlatform(platform->id());
+  CHECK_OK(compiler.status());
+  return *std::move(compiler);
+}
+
+// Returns the first device executor of `platform`.
+se::StreamExecutor* GetStreamExecutor(se::Platform* platform) {
+  absl::StatusOr<se::StreamExecutor*> stream_executor =
+      platform->ExecutorForDevice(0);
+  CHECK_OK(stream_executor.status());
+  return *stream_executor;
+}
 
 const char kReductionFusionHlo[] = R"(
 HloModule m
@@ -116,10 +141,12 @@ ENTRY %entry_computation (p0: f32[32,16], p1: f32[32,16]) -> (f32[32,16], f32[32
 class NativeEmitterBackendTest : public HloHardwareIndependentTestBase {
  protected:
   NativeEmitterBackendTest()
-      : platform_(PlatformUtil::GetDefaultPlatform().value()),
-        stream_executor_(platform_->ExecutorForDevice(0).value()),
+      : debug_options_(
+            HloHardwareIndependentTestBase::GetDebugOptionsForTest()),
+        platform_(GetDefaultPlatform()),
+        stream_executor_(GetStreamExecutor(platform_)),
         target_config_(stream_executor_),
-        compiler_(Compiler::GetForPlatform(platform_->id()).value()),
+        compiler_(GetCompilerForPlatform(platform_)),
         backend_(&debug_options_, compiler_.get(), &target_config_) {
     debug_options_.set_xla_gpu_libnvjitlink_mode(
         xla::DebugOptions::LIB_NV_JIT_LINK_MODE_DISABLED);

@@ -305,6 +305,9 @@ rocm_lib_import(
     ]) + glob([
         "%{rocm_root}/lib/libMIOpenCKGroupedConv_" + arch + ".so"
         for arch in rocm_gpu_architectures()
+    ]) + glob([
+        "%{rocm_root}/.kpack/miopen_lib_" + arch + ".kpack"
+        for arch in rocm_gpu_architectures()
     ]),
     interface_library = "%{rocm_root}/lib/libMIOpen.so",
     deps = [
@@ -395,8 +398,12 @@ rocm_lib_import(
 cc_library(
     name = "rocsparse_libs",
     data = glob(["%{rocm_root}/lib/librocsparse.so*"]) + glob([
-        "%{rocm_root}/.kpack/blas_lib_" + arch + ".kpack"
+        pattern
         for arch in rocm_gpu_architectures()
+        for pattern in (
+            "%{rocm_root}/.kpack/blas_lib_" + arch + ".kpack",
+            "%{rocm_root}/.kpack/sparse_lib_" + arch + ".kpack",
+        )
     ]),
     deps = [
         ":hip_runtime_libs",
@@ -451,8 +458,12 @@ rocm_lib_import(
         "%{rocm_root}/lib/librocsolver.so*",
         "%{rocm_root}/lib/host-math/lib/*.so*",
     ]) + glob([
-        "%{rocm_root}/.kpack/blas_lib_" + arch + ".kpack"
+        pattern
         for arch in rocm_gpu_architectures()
+        for pattern in (
+            "%{rocm_root}/.kpack/blas_lib_" + arch + ".kpack",
+            "%{rocm_root}/.kpack/solver_lib_" + arch + ".kpack",
+        )
     ]),
     interface_library = "%{rocm_root}/lib/librocsolver.so",
     deps = [

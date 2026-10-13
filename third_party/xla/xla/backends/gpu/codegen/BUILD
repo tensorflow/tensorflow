@@ -16,6 +16,10 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tests:build_defs.bzl", "xla_test")
+load(
+    "//xla/tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -240,7 +244,10 @@ cc_library(
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/service/gpu:ir_emission_utils",
         "@com_google_absl//absl/status:statusor",
-    ],
+    ] + if_cuda_is_configured(
+        ["//xla/backends/gpu/codegen/tensor_ir:fusion"],
+        no_cuda = ["//xla/backends/gpu/codegen/tensor_ir:fusion_stub"],
+    ),
 )
 
 cc_library(

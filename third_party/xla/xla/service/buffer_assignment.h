@@ -496,9 +496,12 @@ class BufferAssignment {
         has_custom_interference;
 
     // Symmetric binary predicate: returns true/false to override interference
-    // between lhs and rhs, or std::nullopt to fall back to default analysis.
+    // between lhs and rhs when their HLO live ranges overlap, or std::nullopt
+    // to fall back to default analysis.
     // Must be symmetric: interferes(alias_analysis, a, b) ==
     // interferes(alias_analysis, b, a).
+    // Only consulted when standard HLO live range analysis indicates that lhs
+    // and rhs overlap; ignored when their HLO live ranges do not overlap.
     // Returning true forces interference (preventing allocation reuse), while
     // returning false forces non-interference (enabling allocation reuse).
     //
@@ -974,6 +977,11 @@ class BufferAssigner {
     // If set and returns > 0, the returned limit is used instead of the
     // default module config's device memory size.
     std::function<int64_t(LogicalBuffer::Color)> color_memory_limit;
+
+    // Whether a buffer color supports fast buffer assignment (FAST_MERGE /
+    // FAST_SPLIT); unsupported colors use the DEFAULT algorithm.
+    std::function<bool(LogicalBuffer::Color)> supports_fast_buffer_assignment =
+        [](LogicalBuffer::Color) { return true; };
   };
 
   static std::unique_ptr<BufferAllocationsManagerForComputationsWithoutOrdering>

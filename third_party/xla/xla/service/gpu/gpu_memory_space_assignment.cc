@@ -149,39 +149,6 @@ bool IsNcclSymmetricOrUserBuffersEnabledForInstruction(
          IsNcclSymmetricBuffersEnabledForCollective(inst, option);
 }
 
-bool HasCollectiveMemoryInstruction(const HloValue& input_alias,
-                                    const DebugOptions& option) {
-  // Tuple-shaped values are pointer containers and never hold data that needs
-  // to live in collective memory. Only array sub-elements do.
-  if (input_alias.shape().IsTuple()) {
-    return false;
-  }
-  // If any use is a collective instruction, we must color the value to use
-  // collective memory space.
-  for (const HloUse& use : input_alias.GetUses()) {
-    if (IsNcclSymmetricOrUserBuffersEnabledForInstruction(use.instruction,
-                                                          option)) {
-      return true;
-    }
-  }
-  return IsNcclSymmetricOrUserBuffersEnabledForInstruction(
-      input_alias.instruction(), option);
-}
-
-bool HasSymmetricMemoryInstruction(const HloValue& input_alias) {
-  // Tuple-shaped values are pointer containers and never hold data that needs
-  // to live in collective memory. Only array sub-elements do.
-  if (input_alias.shape().IsTuple()) {
-    return false;
-  }
-  for (const HloUse& use : input_alias.GetUses()) {
-    if (RequiresCollectiveSymmetricMemorySpace(use.instruction)) {
-      return true;
-    }
-  }
-  return RequiresCollectiveSymmetricMemorySpace(input_alias.instruction());
-}
-
 // Returns the memory space requested for the given custom call use, or
 // MemorySpaceColor::kDefault if none is specified.
 static absl::StatusOr<MemorySpaceColor> GetCustomCallOperandMemorySpace(
@@ -205,29 +172,6 @@ static absl::StatusOr<MemorySpaceColor> GetCustomCallOperandMemorySpace(
   }
 
   return MemorySpaceColor::kDefault;
-}
-
-// Returns true if the value is
-// 1. Used by a RaggedAllToAll as Operand(1)
-// 2. RaggedAllToAll result
-bool IsRaggedAllToAllCollectiveOperandOrResult(const HloValue& value) {
-  if (value.shape().IsTuple()) {
-    return false;
-  }
-
-  // Check if the value is DEFINED by an RA2A (the result)
-  if (IsRaggedAllToAllOrAsyncDoneRaggedAllToAll(value.defining_instruction())) {
-    return true;
-  }
-
-  // Check if the value is USED by an RA2A as the destination (Operand 1)
-  for (const HloUse& use : value.GetUses()) {
-    if (IsRaggedAllToAllOrAsyncStartRaggedAllToAll(use.instruction) &&
-        use.operand_number == 1) {
-      return true;
-    }
-  }
-  return false;
 }
 
 // Returns the memory space requested for a custom call result value, or
@@ -256,13 +200,87 @@ static absl::StatusOr<MemorySpaceColor> GetCustomCallResultMemorySpace(
   return MemorySpaceColor::kDefault;
 }
 
+bool RequiresCollectiveInput(const HloUse& use, const DebugOptions& option) {
+  const HloInstruction* user = use.instruction;
+  if (ShapeUtil::GetSubshape(user->operand(use.operand_number)->shape(),
+                             use.operand_index)
+          .IsTuple()) {
+    return false;
+  }
+
+  // Handle standard collectives under NCCL user/symmetric buffers, or
+  // device-initiated/one-sided collectives requiring symmetric memory.
+  if (IsNcclSymmetricOrUserBuffersEnabledForInstruction(user, option) ||
+      RequiresCollectiveSymmetricMemorySpace(user)) {
+    return true;
+  }
+
+  // Handle one-shot RaggedAllToAll with NCCL enabled: operand 1 (the output
+  // buffer) requires collective memory.
+  if (IsOneShotRaggedAllToAllWithNcclEnabled(option) &&
+      IsRaggedAllToAllOrAsyncStartRaggedAllToAll(user) &&
+      use.operand_number == 1) {
+    return true;
+  }
+
+  // Check custom calls with operands_memory_spaces attribute.
+  absl::StatusOr<MemorySpaceColor> operand_ms =
+      GetCustomCallOperandMemorySpace(use);
+  return operand_ms.ok() && *operand_ms == MemorySpaceColor::kCollective;
+}
+
+bool RequiresCollectiveOutput(const HloValue& value,
+                              const DebugOptions& option) {
+  // Tuple-shaped values are pointer containers and never hold data that needs
+  // to live in collective memory. Only array sub-elements do.
+  if (value.shape().IsTuple()) {
+    return false;
+  }
+
+  const HloInstruction* def = value.defining_instruction();
+
+  // Handle standard collectives under NCCL user/symmetric buffers, or
+  // device-initiated/one-sided collectives requiring symmetric memory.
+  if (IsNcclSymmetricOrUserBuffersEnabledForInstruction(def, option) ||
+      RequiresCollectiveSymmetricMemorySpace(def)) {
+    return true;
+  }
+
+  // Handle one-shot RaggedAllToAll with NCCL enabled.
+  if (IsOneShotRaggedAllToAllWithNcclEnabled(option) &&
+      IsRaggedAllToAllOrAsyncDoneRaggedAllToAll(def)) {
+    return true;
+  }
+
+  // Check custom calls with results_memory_spaces attribute.
+  absl::StatusOr<MemorySpaceColor> result_ms =
+      GetCustomCallResultMemorySpace(value);
+  return result_ms.ok() && *result_ms == MemorySpaceColor::kCollective;
+}
+
 namespace {
+
+bool HasCollectiveMemoryInstruction(const HloValue& input_alias,
+                                    const DebugOptions& option) {
+  // Tuple-shaped values are pointer containers and never hold data that needs
+  // to live in collective memory. Only array sub-elements do.
+  if (input_alias.shape().IsTuple()) {
+    return false;
+  }
+  if (RequiresCollectiveOutput(input_alias, option)) {
+    return true;
+  }
+  for (const HloUse& use : input_alias.GetUses()) {
+    if (RequiresCollectiveInput(use, option)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // Determines the memory space color for the given HLO buffer
 absl::StatusOr<BufferValue::Color> DetermineBufferColor(
     const HloBuffer& buffer, const DebugOptions& option) {
-  // Is one-shot RaggedAllToAll with NCCL feature is enabled.
-  const bool is_one_shot_ra2a_with_nccl =
-      IsOneShotRaggedAllToAllWithNcclEnabled(option);
   // Collect Color Candidates
   absl::InlinedVector<BufferValue::Color, 4> candidates;
   for (const HloValue* value : buffer.values()) {
@@ -303,17 +321,7 @@ absl::StatusOr<BufferValue::Color> DetermineBufferColor(
     }
 
     // Collective Candidates
-    if (is_one_shot_ra2a_with_nccl &&
-        IsRaggedAllToAllCollectiveOperandOrResult(*value)) {
-      // One-shot RaggedAllToAll with NCCL requires collective memory for
-      // both operand 1 and the result.
-      candidates.push_back(
-          static_cast<BufferValue::Color>(MemorySpaceColor::kCollective));
-    } else if (HasSymmetricMemoryInstruction(*value)) {
-      // Device-initiated and one-sided collectives require symmetric memory.
-      candidates.push_back(
-          static_cast<BufferValue::Color>(MemorySpaceColor::kCollective));
-    } else if (HasCollectiveMemoryInstruction(*value, option)) {
+    if (HasCollectiveMemoryInstruction(*value, option)) {
       candidates.push_back(
           static_cast<BufferValue::Color>(MemorySpaceColor::kCollective));
     }

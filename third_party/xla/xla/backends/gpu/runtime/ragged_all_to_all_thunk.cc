@@ -601,7 +601,8 @@ RaggedAllToAllThunk::GetCliqueRequirements(const GpuCliqueKey& clique_key,
     const int core_count = params.executor->GetDeviceDescription().core_count();
     clique_reqs.dev_comm = DeviceKernelLsaDevCommRequirements(core_count);
   }
-  if (use_multi_gpu_barrier_with_nccl_in_one_shot_kernel()) {
+  if (use_multi_gpu_barrier_with_nccl_in_one_shot_kernel() &&
+      clique_key.num_devices() > 1) {
     clique_reqs.barrier_reqs = CollectiveCliqueRequests::BarrierRequirements();
     clique_reqs.barrier_reqs->use_cross_device_barrier = true;
   }
@@ -649,7 +650,8 @@ absl::Status RaggedAllToAllThunk::Initialize(const InitializeParams& params) {
               "Failed to allocate output offsets buffer.");
         }
 
-        if (use_multi_gpu_barrier_with_nccl_in_one_shot_kernel() ||
+        if ((use_multi_gpu_barrier_with_nccl_in_one_shot_kernel() &&
+             state->clique_key.num_devices() > 1) ||
             config_.use_device_kernel) {
           if (config_.fast_interconnect_slice_size_override.has_value()) {
             state->lsa_size =
@@ -715,7 +717,8 @@ absl::Status RaggedAllToAllThunk::Initialize(const InitializeParams& params) {
   //      it's safe to cache the symmetric handler.
   if ((!state->lsa_size.has_value() ||
        state->lsa_size.value() != state->clique_key.num_devices() ||
-       !config_.use_multi_gpu_barrier_with_nccl_in_one_shot_kernel) &&
+       !config_.use_multi_gpu_barrier_with_nccl_in_one_shot_kernel ||
+       state->clique_key.num_devices() < 2) &&
       is_local(params.local_device_count)) {
     // Rendezvous - Exchange output pointers and barrier signal buffers.
     ABSL_ASSIGN_OR_RETURN(
@@ -1025,6 +1028,7 @@ absl::Status RaggedAllToAllThunk::RunCollective(const ExecuteParams& params,
 
   if (is_one_shot_kernel_enabled() && fabric_safe) {
     if (use_multi_gpu_barrier_with_nccl_in_one_shot_kernel() &&
+        clique_key.num_devices() > 1 &&
         IsRaggedAllToAllWithSymmetricMemoryKernelSupported(
             config_.config.operand_element_type[0]) &&
         state->lsa_size.has_value() &&
@@ -1141,7 +1145,8 @@ RendezvousResources(int device_ordinal, RankId rank,
 
 absl::Status RaggedAllToAllThunk::PrepareCollective(
     const PrepareParams& params, const GpuCliqueKey& clique_key) {
-  if (config_.use_multi_gpu_barrier_with_nccl_in_one_shot_kernel ||
+  if ((config_.use_multi_gpu_barrier_with_nccl_in_one_shot_kernel &&
+       clique_key.num_devices() > 1) ||
       use_symmetric_memory()) {
     // Request symmetric memory for the output buffer only.
     const Buffer& output_buffer = buffers()[1];

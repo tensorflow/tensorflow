@@ -48,7 +48,6 @@ limitations under the License.
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/gpu/reduction_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/layout_assignment.h"
@@ -59,9 +58,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/dnn.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/tsl/util/env_var.h"
 #include "xla/util.h"
@@ -654,9 +650,15 @@ absl::Status GpuLayoutAssignment::AddBackendConstraints(
         ABSL_RETURN_IF_ERROR(SetBufferLayout(keys_layout, output_buffer));
       }
     } else if (IsCustomCallToTopK(*instruction)) {
-      // The output of the TopK custom call needs to have default layout.
+      // The operands and outputs of the TopK custom call need to have default
+      // layout.
       Layout default_layout = LayoutUtil::GetDefaultLayoutForRank(
           instruction->operand(0)->shape().dimensions().size());
+      for (int64_t i = 0; i < instruction->operand_count(); ++i) {
+        Shape shape = instruction->operand(i)->shape();
+        *shape.mutable_layout() = default_layout;
+        ABSL_RETURN_IF_ERROR(SetOperandLayout(shape, instruction, i));
+      }
       const HloValue& values_buffer =
           dataflow_analysis_->GetValueDefinedAt(instruction, {0});
       ABSL_RETURN_IF_ERROR(SetBufferLayout(default_layout, values_buffer));
@@ -941,20 +943,6 @@ bool GpuLayoutAssignment::PropagateReductionLayoutToOperand(
   // TODO: b/466059465 - Holisitically evaluate the benefits of row reductions
   // vs column reductions and refine this threshold.
   return reduction_size >= 32;
-}
-
-bool GpuLayoutAssignment::InstructionCanChangeLayoutInstance(
-    const HloInstruction* instruction) {
-  // The TopK custom call cannot handle the case if the operand has a different
-  // layout.
-  const HloCustomCallInstruction* custom_call =
-      DynCast<HloCustomCallInstruction>(instruction);
-  if (custom_call != nullptr &&
-      custom_call->custom_call_target() == kTopKCustomCallTarget) {
-    return false;
-  }
-
-  return LayoutAssignment::InstructionCanChangeLayoutInstance(instruction);
 }
 
 // GPU specific layout alignment for reshapes.

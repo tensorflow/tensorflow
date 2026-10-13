@@ -746,7 +746,7 @@ ResourcesVector GpuAsyncTracker::GetResourcesFromInstructionImpl(
 absl::flat_hash_map<int64_t, int64_t>
 GpuAsyncTracker::GetNumResourcesPerInstruction(
     const HloInstruction& instr) const {
-  if (!IsCollectivesGroupAsyncOp(instr)) {
+  if (!IsCollectivesGroupAsyncOp(instr) && !IsCustomCollectiveOp(&instr)) {
     return GpuAsyncTrackerBase::GetNumResourcesPerInstruction(instr);
   }
 

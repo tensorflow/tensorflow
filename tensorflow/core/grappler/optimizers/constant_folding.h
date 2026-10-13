@@ -53,7 +53,7 @@ class ConstantFolding : public GraphOptimizer {
                   bool disable_compressed_tensor_optimization = false,
                   bool fold_quantization_emulation = true);
 
-  ~ConstantFolding() override {}
+  ~ConstantFolding() override = default;
 
   std::string name() const override { return "constant_folding"; };
 

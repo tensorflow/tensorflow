@@ -637,6 +637,7 @@ xla_cc_test(
         "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/testlib:verified_hlo_module",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service:hlo_cost_analysis",
         "//xla/service/gpu:gpu_device_info_for_tests",

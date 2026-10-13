@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -60,6 +61,8 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 namespace {
+
+namespace dot_model = ::xla::gpu::gpu_dot_fusion_cost_model::detail;
 
 using ::testing::ElementsAre;
 using ::xla::xtile::BlockLevelParameters;
@@ -723,6 +726,81 @@ ENTRY main {
       4 * (64 * 32) * (num_blocks * CeilOfRatio(257, 64))        // ==> %p1
           + 4 * (64 * 32) * (num_blocks * CeilOfRatio(257, 64))  // ==> %p0
   );
+  EXPECT_EQ(result.l2_bytes_read, result.bytes_read);
+  // (32 * 64 + 32 * 64) * 4 bytes (f32) * 1 stage = 16384 bytes.
+  EXPECT_EQ(result.shared_memory_per_block_bytes, 2 * (32 * 64 * 4));
+  // 1 accumulator register per thread (32 * 32 / 1024) plus base kernel-state
+  // overhead, staying below one 32-register allocation block.
+  EXPECT_GT(result.registers_per_thread, 1);
+  EXPECT_LT(result.registers_per_thread, 32);
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
+       EstimateRunTimeForTiledFusion_ChainedDotsMergesDotEstimates) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+chained_dot_fusion {
+  p0 = f32[128, 64] parameter(0)
+  p1 = f32[64, 128] parameter(1)
+  p2 = f32[128, 32] parameter(2)
+  dot0 = f32[128, 128] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    backend_config={sizes:[16]}
+  ROOT dot1 = f32[128, 32] dot(dot0, p2),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    backend_config={sizes:[64]}
+}
+
+ENTRY main {
+  p0 = f32[128, 64] parameter(0)
+  p1 = f32[64, 128] parameter(1)
+  p2 = f32[128, 32] parameter(2)
+  ROOT fusion = f32[128, 32] fusion(p0, p1, p2),
+    kind=kCustom, calls=chained_dot_fusion
+})"));
+
+  std::unique_ptr<HloFusionAdaptor> fusion_adaptor =
+      HloFusionAdaptor::ForInstruction(
+          module->entry_computation()->root_instruction());
+
+  ASSERT_OK_AND_ASSIGN(
+      EstimateRunTimeData result,
+      indexing_cost_model_.EstimateRunTimeForTiledFusion(
+          *fusion_adaptor,
+          BlockLevelParameters{/*output_tile_sizes=*/{{32, 16}},
+                               /*num_warps=*/2}));
+
+  // Sequential dots reuse shared memory and registers, so the fusion takes the
+  // max of each across dot0 (tile [32, 64], block_k=16) and dot1 (tile [32,
+  // 16], block_k=64):
+  // - dot1 has the larger block_k and dominates shared memory:
+  //   (32 * 64 + 16 * 64) * 4 = 12288 bytes (vs. 6144 for dot0).
+  // - dot0 has the larger output tile and dominates registers: 32 accumulator
+  //   registers per thread (32 * 64 / 64) plus base kernel-state overhead
+  //   (vs. 8 accumulator registers for dot1), staying below 64.
+  EXPECT_EQ(result.shared_memory_per_block_bytes, 12288);
+  EXPECT_GT(result.registers_per_thread, 32);
+  EXPECT_LT(result.registers_per_thread, 64);
+
+  const HloDotInstruction* dot1 = Cast<HloDotInstruction>(
+      module->entry_computation()->root_instruction()->fused_expression_root());
+  const HloDotInstruction* dot0 = Cast<HloDotInstruction>(dot1->operand(0));
+  ASSERT_OK_AND_ASSIGN(
+      dot_model::ComputeAndFlops dot0_compute,
+      dot_model::CalculateComputeTimeWithTileAndWaveQuantization(
+          dot_model::DotProblemInfo(*dot0),
+          dot_model::DotTileSize{/*m=*/32, /*n=*/64, /*k=*/16, /*b=*/1},
+          device_info_));
+  ASSERT_OK_AND_ASSIGN(
+      dot_model::ComputeAndFlops dot1_compute,
+      dot_model::CalculateComputeTimeWithTileAndWaveQuantization(
+          dot_model::DotProblemInfo(*dot1),
+          dot_model::DotTileSize{/*m=*/32, /*n=*/16, /*k=*/64, /*b=*/1},
+          device_info_));
+  EXPECT_EQ(result.compute_time,
+            dot0_compute.compute_time + dot1_compute.compute_time);
 }
 
 TEST_F(GpuIndexingPerformanceModelTest,
