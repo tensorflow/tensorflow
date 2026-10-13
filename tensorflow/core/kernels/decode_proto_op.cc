@@ -512,6 +512,12 @@ class DenseCollector {
   // Reads and stores a length-delimited list of values.
   absl::Status ReadPackedValues(CodedInputStream* input, const FieldInfo& field,
                                 const size_t buf_size) {
+    // An empty packed run holds no values (CountCollector counts none), so it
+    // must not fail the bounds check below when the output is already full.
+    if (buf_size == 0) {
+      return absl::OkStatus();
+    }
+
     const void* buf;
     int unused_max_buf_size;
     input->GetDirectBufferPointerInline(&buf, &unused_max_buf_size);

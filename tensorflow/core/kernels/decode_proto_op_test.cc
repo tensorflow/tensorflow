@@ -75,5 +75,17 @@ TEST_F(DecodeProtoOpTest, RepeatedPackedFieldAppends) {
       *GetOutput(1), test::AsTensor<int64_t>({1, 2, 3, 4}, {1, 4}));
 }
 
+TEST_F(DecodeProtoOpTest, RepeatedPackedFieldEmptyAtEnd) {
+  Init("tensorflow.Int64List", "value", DT_INT64);
+  // An empty packed run after the output is already full.
+  const std::string serialized = "\x0a\x02\x01\x02\x0a\x00"s;
+  AddInputFromArray<tstring>(TensorShape({1}), {serialized});
+  TF_ASSERT_OK(RunOpKernel());
+  test::ExpectTensorEqual<int32_t>(*GetOutput(0),
+                                   test::AsTensor<int32_t>({2}, {1, 1}));
+  test::ExpectTensorEqual<int64_t>(
+      *GetOutput(1), test::AsTensor<int64_t>({1, 2}, {1, 2}));
+}
+
 }  // namespace
 }  // namespace tensorflow
