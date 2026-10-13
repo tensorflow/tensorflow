@@ -412,8 +412,12 @@ class MathTest(test.TestCase, parameterized.TestCase):
     a_vals = [np.inf, -np.inf, -np.inf, np.inf, 1.0, 1.0, np.inf]
     b_vals = [np.inf, -np.inf, np.inf, -np.inf, 1.0, np.inf, 1.0]
     if np.issubdtype(dtype, np.complexfloating):
-      a_vals.extend([complex(np.inf, np.inf), complex(np.inf, np.inf)])
-      b_vals.extend([complex(np.inf, 0), complex(np.inf, np.inf)])
+      a_vals.extend([
+          complex(np.inf, np.inf), complex(np.inf, np.inf), complex(np.inf, 0)
+      ])
+      b_vals.extend([
+          complex(np.inf, 0), complex(np.inf, np.inf), complex(np.inf, np.inf)
+      ])
 
     a = np.array(a_vals, dtype)
     b = np.array(b_vals, dtype)
@@ -428,6 +432,14 @@ class MathTest(test.TestCase, parameterized.TestCase):
     self.match(
         np_math_ops.allclose([dtype(-np.inf)], [dtype(np.inf)]),
         np.allclose([dtype(-np.inf)], [dtype(np.inf)]),
+    )
+    self.match(
+        np_math_ops.allclose([dtype(np.inf)], [dtype(-np.inf)]),
+        np.allclose([dtype(np.inf)], [dtype(-np.inf)]),
+    )
+    self.match(
+        np_math_ops.allclose([dtype(-np.inf)], [dtype(-np.inf)]),
+        np.allclose([dtype(-np.inf)], [dtype(-np.inf)]),
     )
 
   @parameterized.parameters([np.int32, np.int64])
