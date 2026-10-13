@@ -316,7 +316,7 @@ inline int ReadPackedPrimitives(const void* bufp, const size_t len,
   // against in the caller, where it ensures that the input buffer
   // contains complete values.
   for (count = 0; buf < bound; count += stride) {
-    if (index + count >= data_size) {
+    if (count >= data_size - index) {
       return -1;
     }
     buf = ReadFromArray<TensorType, DeclaredType>(buf, data + count);
