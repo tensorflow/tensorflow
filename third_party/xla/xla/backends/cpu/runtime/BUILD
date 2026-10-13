@@ -802,7 +802,6 @@ cc_library(
         "ignore_for_dep=third_party/tensorflow/compiler/xla/tsl/framework/contraction/eigen_contraction_kernel.h",
     ]),
     deps = [
-        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/functional:any_invocable",
         "@eigen_archive//:eigen3",
     ],
@@ -825,7 +824,6 @@ cc_library(
     hdrs = ["dot_lib.h"],
     deps = [
         "//xla/tsl/framework/contraction:eigen_contraction_kernel",
-        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/functional:any_invocable",
         "@eigen_archive//:eigen3",
     ],
