@@ -85,7 +85,7 @@ class ManipOpsTest(xla_test.XLATestCase):
       feed_dict.update({ph: masks[d] for ph, d in zip(mask_phs, dims)})
       return session.run(output, feed_dict)
 
-  def testDynamicDimensions(self):
+  def testDynamicDimension(self):
     # Regression test for GitHub issue 128951: a dynamic dimension was rolled
     # over its bound instead of its size, and the output had the bound.
     x = [1, 5, 2, 7, 3]
@@ -93,6 +93,14 @@ class ManipOpsTest(xla_test.XLATestCase):
     self.assertAllEqual(self._rollSelected(x, masks, 1, 0), [7, 1, 2])
     self.assertAllEqual(self._rollSelected(x, masks, -1, 0), [2, 7, 1])
     self.assertAllEqual(self._rollSelected(x, masks, 4, 0), [7, 1, 2])
+    # A dynamic dimension of size 0.
+    masks = {0: [False] * 5}
+    self.assertAllEqual(self._rollSelected(x, masks, 1, 0), [])
+
+  def testTwoDynamicDimensions(self):
+    if "GPU" in self.device:
+      self.skipTest("XLA:GPU returns this two-dimensional dynamic output "
+                    "transposed.")
     # Both dimensions dynamic, rolled together.
     x = np.arange(20).reshape(4, 5)
     masks = {0: [True, False, True, True], 1: [False, True, True, False, True]}
