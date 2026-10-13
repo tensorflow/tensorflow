@@ -992,29 +992,6 @@ def TPU_TruncFOp : TPU_Op<"truncf", [Pure, ElementwiseMappable]> {
   let assemblyFormat = [{ $in prop-dict attr-dict `:` type($in) `->` type($out) }];
 }
 
-// TODO(apaszke): Think hard about precision
-def TPU_MatmulOp : TPU_Op<"matmul", [Pure]> {
-  let arguments = (ins
-    AnyVectorOfNonZeroRank:$lhs,
-    AnyVectorOfNonZeroRank:$rhs,
-    AnyVectorOfNonZeroRank:$acc,
-    // These flags are deprecated - if dimension_numbers are defined,
-    // these flags are ignored. They will always be false after canonicalize.
-    DefaultValuedAttr<BoolAttr, "false">:$transpose_lhs,
-    DefaultValuedAttr<BoolAttr, "false">:$transpose_rhs,
-    OptionalAttr<TPU_ContractPrecisionEnum>:$precision,
-    // NOTE: User-level optional, once canonicalized, always present.
-    OptionalAttr<TPU_DotDimensionNumbersAttr>:$dimension_numbers,
-    // Hint to compilers whether to fuse the transposed LHS in the matmul.
-    BoolAttr:$transpose_lhs_hint
-  );
-  let results = (outs AnyVectorOfNonZeroRank:$result);
-  let assemblyFormat = [{
-    $lhs `,` $rhs `,` $acc prop-dict attr-dict `:` type($lhs) `,` type($rhs) `,` type($acc) `->` type($result)
-  }];
-  let hasVerifier = 1;
-}
-
 def TPU_ConvOp : TPU_Op<"conv", [Pure]> {
   let summary = "N-D General Convolution operation on TPU";
   let description = [{
