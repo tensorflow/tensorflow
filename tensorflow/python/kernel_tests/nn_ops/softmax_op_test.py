@@ -276,17 +276,24 @@ class SoftmaxTest(test.TestCase):
         use_gpu=False)
     self._testOverflow(use_gpu=False)
 
+  @test_util.run_in_graph_and_eager_modes(use_gpu=False)
   def testHighRank(self):
     # Regression test for GitHub issue 128814: the oneDNN kernel rejected
     # inputs of more than 5 dimensions.
     rng = np.random.RandomState(0)
     for rank in (6, 7):
-      for empty in (False, True):
+      for empty_dim in (None, 2, -1):
         shape = [2] * (rank - 1) + [3]
-        if empty:
-          shape[2] = 0
+        if empty_dim is not None:
+          shape[empty_dim] = 0
         features = rng.rand(*shape).astype(np.float32)
-        self._testSoftmax(features)
+        if empty_dim == -1:
+          # NumPy can't take the maximum along an empty dimension.
+          self.assertAllEqual(
+              np.zeros(shape, dtype=np.float32),
+              self.evaluate(nn_ops.softmax(features)))
+        else:
+          self._testSoftmax(features)
         self._testSoftmax(features, dim=1)
 
   def testShapeInference(self):
