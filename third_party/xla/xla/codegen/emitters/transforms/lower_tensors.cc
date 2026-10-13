@@ -37,7 +37,7 @@ limitations under the License.
 #include "mlir/Dialect/LLVMIR/LLVMAttrs.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
-#include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
+#include "mlir/Dialect/LLVMIR/ROCDLDialectDecl.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
@@ -1015,8 +1015,10 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
       return failure();
     }
 
-    ml::AtomicRMWOp::create(b, loc, ml::AtomicBinOp::fadd, addr, modifier_arg,
-                            ml::AtomicOrdering::monotonic);
+    auto rmw_op =
+        ml::AtomicRMWOp::create(b, loc, ml::AtomicBinOp::fadd, addr,
+                                modifier_arg, ml::AtomicOrdering::monotonic);
+    rmw_op.setIgnoreDenormalMode(true);
     return success();
   }
 
@@ -1125,17 +1127,15 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
     auto op = ml::AtomicRMWOp::create(
         b, loc, ml::AtomicBinOp::fadd, addr, modifier_arg,
         ml::AtomicOrdering::monotonic, "agent-one-as");
+    op.setIgnoreDenormalMode(true);
 
     auto unitAttr = b.getUnitAttr();
-    auto* rocdl =
-        op->getContext()->getOrLoadDialect<mlir::ROCDL::ROCDLDialect>();
-    auto noRemoteMemHelper = rocdl->getNoRemoteMemoryAttrHelper();
-    auto noFineMemHelper = rocdl->getNoFineGrainedMemoryAttrHelper();
-    auto ignoreDenormalModeHelper = rocdl->getIgnoreDenormalModeAttrHelper();
-
-    noRemoteMemHelper.setAttr(op, unitAttr);
-    noFineMemHelper.setAttr(op, unitAttr);
-    ignoreDenormalModeHelper.setAttr(op, unitAttr);
+    op->setDiscardableAttr(
+        mlir::ROCDL::ROCDLDialect::NoRemoteMemoryAttrHelper::getNameStr(),
+        unitAttr);
+    op->setDiscardableAttr(
+        mlir::ROCDL::ROCDLDialect::NoFineGrainedMemoryAttrHelper::getNameStr(),
+        unitAttr);
 
     return success();
   }

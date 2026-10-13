@@ -200,7 +200,7 @@ def TPU_ReduceOp : TPU_Op<"reduce", [Pure, SameOperandsAndResultRank]> {
 //  mask   : Elementwise vector mask. The scan operation starts from the
 //           lowest-indexed non-masked vector element (all previous elements
 //           have undefined values). Not taken for I1 input vectors.
-def TPU_ScanOp : TPU_Op<"scan"> {
+def TPU_ScanOp : TPU_Op<"scan", [Pure]> {
   let arguments = (ins
     VectorOfNonZeroRankOf<[I1, I16, I32, BF16, F32]>:$input,
     TPU_ReductionKindAttr:$kind,

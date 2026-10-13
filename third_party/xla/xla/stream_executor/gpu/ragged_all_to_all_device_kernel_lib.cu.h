@@ -177,9 +177,6 @@ __global__ void __launch_bounds__(512) RaggedAllToAllDeviceKernelImpl(
     const int64_t* __restrict__ output_offsets_ptr,
     int64_t num_updates_per_replica, int64_t num_row_elements,
     int64_t input_buffer_offset_bytes, int64_t output_buffer_offset_bytes) {
-  // NCCL device barrier/GIN APIs emit scope-qualified atomics that require
-  // sm_60+. Lower architectures compile to an empty stub; the kernel is only
-  // launched when the device supports NCCL device comms.
 #if __CUDA_ARCH__ >= 600
   ncclTeam world = ncclTeamWorld(dev_comm);
   ncclTeam lsa = ncclTeamLsa(dev_comm);
@@ -189,12 +186,11 @@ __global__ void __launch_bounds__(512) RaggedAllToAllDeviceKernelImpl(
   const bool has_remote_peers = (lsa_size < num_ranks);
 
   if (has_remote_peers) {
-    const int gin_context = 0;
+    const int n_ctxs = static_cast<int>(dev_comm.ginContextCount);
+    const int my_ctx = static_cast<int>(blockIdx.x) % n_ctxs;
     const unsigned int signal_index = 0;
 
-    ncclGin gin{dev_comm, gin_context};
-    uint64_t signal_value =
-        (blockIdx.x == 0) ? gin.readSignal(signal_index) : 0;
+    ncclGin gin{dev_comm, my_ctx};
 
     ncclBarrierSession<ncclCoopCta> bar{ncclCoopCta(), ncclTeamTagWorld(), gin,
                                         blockIdx.x};
@@ -207,16 +203,9 @@ __global__ void __launch_bounds__(512) RaggedAllToAllDeviceKernelImpl(
         input_buffer_offset_bytes, output_buffer_offset_bytes, start_lsa,
         lsa_size, num_ranks, &gin, world, signal_index);
 
-    const int num_remote_peers =
-        (num_ranks - lsa_size) * num_updates_per_replica;
-    if (blockIdx.x == 0) {
-      gin.waitSignal(ncclCoopCta(), signal_index,
-                     signal_value + num_remote_peers);
-    }
-
     gin.flush(ncclCoopCta());
     bar.sync(ncclCoopCta(), ::cuda::memory_order_release,
-             ncclGinFenceLevel::Relaxed);
+             ncclGinFenceLevel::Put | ncclGinFenceLevel::Get);
   } else {
     ncclLsaBarrierSession<ncclCoopCta> bar{ncclCoopCta(), dev_comm,
                                            ncclTeamTagLsa{}, blockIdx.x};

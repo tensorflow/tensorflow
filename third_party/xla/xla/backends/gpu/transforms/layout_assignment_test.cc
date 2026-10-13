@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/hlo_verifier.h"
+#include "xla/service/layout_assignment.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_layout.h"
@@ -456,6 +457,48 @@ TEST_F(LayoutAssignmentTest, TopKLayout) {
               GmockMatch(m::CustomCall(
                   m::Transpose(m::Copy().WithShape(F32, {2048, 6}, {0, 1}))
                       .WithShape(F32, {6, 2048}, {1, 0}))));
+}
+
+TEST_F(LayoutAssignmentTest, TopKAfterAllGatherHasDefaultLayout) {
+  const char* hlo_text = R"(
+  HloModule topk
+
+  compare-greater-than {
+    p.1.lhs.3 = s32[] parameter(2)
+    p.1.rhs.4 = s32[] parameter(3)
+    p.0.lhs.1 = f32[] parameter(0)
+    p.0.rhs.2 = f32[] parameter(1)
+    ROOT compare.5 = pred[] compare(p.0.lhs.1, p.0.rhs.2), direction=GT
+  }
+
+  ENTRY main {
+    p0 = f32[32,64]{1,0} parameter(0)
+    ag = f32[32,512]{1,0} all-gather(p0), dimensions={1}, replica_groups={{0,1,2,3,4,5,6,7}}
+    neg = f32[32,512]{1,0} negate(ag)
+    topk = (f32[32,64]{1,0}, s32[32,64]{1,0}) custom-call(neg), custom_call_target="__gpu$TopK", api_version=API_VERSION_TYPED_FFI, called_computations={compare-greater-than}
+    gte0 = f32[32,64]{1,0} get-tuple-element(topk), index=0
+    gte1 = s32[32,64]{1,0} get-tuple-element(topk), index=1
+    ROOT out = (f32[32,64]{1,0}, s32[32,64]{1,0}) tuple(gte0, gte1)
+  })";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
+
+  ComputationLayout computation_layout(
+      module->entry_computation()->ComputeProgramShape(),
+      /*ignore_layouts=*/false);
+  GpuLayoutAssignment layout_assignment(&computation_layout, default_gpu_cc_,
+                                        default_device_description_);
+
+  EXPECT_THAT(layout_assignment.Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
+
+  const HloInstruction* topk = FindInstruction(module.get(), "topk");
+  ASSERT_NE(topk, nullptr);
+  EXPECT_EQ(topk->operand(0)->shape().layout(), LayoutUtil::MakeLayout({1, 0}));
+  EXPECT_EQ(ShapeUtil::GetSubshape(topk->shape(), {0}).layout(),
+            LayoutUtil::MakeLayout({1, 0}));
+  EXPECT_EQ(ShapeUtil::GetSubshape(topk->shape(), {1}).layout(),
+            LayoutUtil::MakeLayout({1, 0}));
 }
 
 TEST_F(LayoutAssignmentTest,

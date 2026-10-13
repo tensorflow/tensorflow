@@ -499,5 +499,30 @@ TEST(DebugOptions, DeduplicateBackendConfigsMinSizeFlagsParsing) {
   EXPECT_EQ(opts.xla_deduplicate_backend_configs_min_size(), 128);
 }
 
+TEST(DebugOptions, DeterministicOpsTriton) {
+  DebugOptions opts = DefaultDebugOptionsIgnoringFlags();
+  EXPECT_EQ(opts.xla_gpu_experimental_deterministic_ops_triton(),
+            DebugOptions::DETERMINISTIC_OPS_TRITON_MODE_OFF);
+
+  std::vector<tsl::Flag> flags;
+  MakeDebugOptionsFlags(&flags, &opts);
+  auto parse = [&](std::string value) {
+    std::vector<std::string> args = {
+        "--xla_gpu_experimental_deterministic_ops_triton=" + value};
+    return tsl::Flags::Parse(args, flags);
+  };
+
+  EXPECT_TRUE(parse("unchecked"));
+  EXPECT_EQ(opts.xla_gpu_experimental_deterministic_ops_triton(),
+            DebugOptions::DETERMINISTIC_OPS_TRITON_MODE_UNCHECKED);
+
+  EXPECT_TRUE(parse("off"));
+  EXPECT_EQ(opts.xla_gpu_experimental_deterministic_ops_triton(),
+            DebugOptions::DETERMINISTIC_OPS_TRITON_MODE_OFF);
+
+  EXPECT_FALSE(parse("unset"));
+  EXPECT_FALSE(parse("invalid"));
+}
+
 }  // namespace
 }  // namespace xla

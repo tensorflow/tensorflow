@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/tsl/profiler/rpc/client/capture_profile.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <iostream>
 #include <memory>
@@ -26,9 +27,10 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_join.h"
-#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/strip.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "xla/tsl/platform/errors.h"
@@ -104,15 +106,31 @@ NewProfileSessionRequest PopulateNewProfileSessionRequest(
     absl::string_view repository_root, absl::string_view session_id,
     const RemoteProfilerSessionManagerOptions& opts) {
   NewProfileSessionRequest request;
-  std::vector<absl::string_view> parts =
-      absl::StrSplit(opts.service_addresses(0), ':');
-  DCHECK(!parts.empty());
+  absl::string_view host_port = opts.service_addresses(0);
+  absl::string_view host = host_port;
+  const size_t colon_pos = host_port.rfind(':');
+  const size_t close_bracket_pos = host_port.rfind(']');
+  const bool has_unbracketed_port =
+      close_bracket_pos == absl::string_view::npos &&
+      host_port.find(':') == colon_pos;
+  const bool has_bracketed_port =
+      close_bracket_pos != absl::string_view::npos &&
+      colon_pos > close_bracket_pos;
+  if (colon_pos != absl::string_view::npos &&
+      (has_unbracketed_port || has_bracketed_port)) {
+    host = host_port.substr(0, colon_pos);
+  }
+  if (absl::StartsWith(host, "[") && absl::EndsWith(host, "]")) {
+    host = absl::StripPrefix(host, "[");
+    host = absl::StripSuffix(host, "]");
+  }
+  DCHECK(!host.empty());
 
   *request.mutable_request() =
-      PopulateProfileRequest(repository_root, session_id, parts[0], opts);
+      PopulateProfileRequest(repository_root, session_id, host, opts);
   request.set_repository_root(repository_root.data(), repository_root.size());
   request.set_session_id(session_id.data(), session_id.size());
-  for (const auto& hostname : opts.service_addresses()) {
+  for (const std::string& hostname : opts.service_addresses()) {
     request.add_hosts(hostname);
   }
   return request;

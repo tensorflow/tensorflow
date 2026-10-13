@@ -164,7 +164,7 @@ class InterpreterLiteralWrapperBuffer final : public PjRtBuffer {
     Layout layout = on_device_shape().layout();
     for (const Tile& tile : layout.tiles()) {
       for (int64_t d : tile.dimensions()) {
-        if (d == Tile::kCombineDimension) {
+        if (d == Tile::kCombineDimension || d == Tile::kMatchDimension) {
           layout.clear_tiles();
           return std::make_shared<PjRtLayout>(std::move(layout));
         }

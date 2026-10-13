@@ -40,11 +40,11 @@ test_reduce_mul {
 
 // -----
 
+// The reduction body adds its operands in the flipped order; addition is
+// commutative, so this still matches the built-in `add` reduction mode.
 // CHECK-LABEL: @test_reduce_add_flip
 // CHECK-SAME: %[[ARG0:.*]]: tensor<16x64xf32>
-// CHECK: %[[REDUCE:.*]] = reduce_ud(%[[ARG0]]) <dimensions = [1], identity = [0.000000e+00 : f32]> (%[[LHS:.*]]: f32, %[[RHS:.*]]: f32) {
-// CHECK: %[[RESULT:.*]] = arith.addf %[[RHS]], %[[LHS]] : f32
-// CHECK: yield %[[RESULT]]
+// CHECK: %[[REDUCE:.*]] = reduce(%[[ARG0]]) <dimensions = [1], reduction_mode = <add>> : tensor<16x64xf32> -> tensor<16x1xf32>
 // CHECK: %[[OUT:.*]] = reshape %[[REDUCE]] : tensor<16x1xf32> -> tensor<16xf32>
 // CHECK: results %[[OUT]]
 
@@ -62,11 +62,10 @@ test_reduce_add_flip {
 
 // -----
 
+// As above, but for the commutative `mul` reduction mode.
 // CHECK-LABEL: @test_reduce_mul_flip
 // CHECK-SAME: %[[ARG0:.*]]: tensor<16x64xf32>
-// CHECK: %[[REDUCE:.*]] = reduce_ud(%[[ARG0]]) <dimensions = [1], identity = [1.000000e+00 : f32]> (%[[LHS:.*]]: f32, %[[RHS:.*]]: f32) {
-// CHECK: %[[RESULT:.*]] = arith.mulf %[[RHS]], %[[LHS]] : f32
-// CHECK: yield %[[RESULT]]
+// CHECK: %[[REDUCE:.*]] = reduce(%[[ARG0]]) <dimensions = [1], reduction_mode = <mul>> : tensor<16x64xf32> -> tensor<16x1xf32>
 // CHECK: %[[OUT:.*]] = reshape %[[REDUCE]] : tensor<16x1xf32> -> tensor<16xf32>
 // CHECK: results %[[OUT]]
 
@@ -86,9 +85,7 @@ test_reduce_mul_flip {
 
 // CHECK-LABEL: @test_reduce_min
 // CHECK-SAME: %[[ARG0:.*]]: tensor<16x64xf32>
-// CHECK: %[[REDUCE:.*]] = reduce_ud(%[[ARG0]]) <dimensions = [1], identity = [0x7F800000 : f32]> (%[[LHS:.*]]: f32, %[[RHS:.*]]: f32) {
-// CHECK: %[[RESULT:.*]] = arith.minimumf %[[LHS]], %[[RHS]] : f32
-// CHECK: yield %[[RESULT]]
+// CHECK: %[[REDUCE:.*]] = reduce(%[[ARG0]]) <dimensions = [1], reduction_mode = <min>> : tensor<16x64xf32> -> tensor<16x1xf32>
 // CHECK: %[[OUT:.*]] = reshape %[[REDUCE]] : tensor<16x1xf32> -> tensor<16xf32>
 // CHECK: results %[[OUT]]
 
@@ -108,9 +105,7 @@ test_reduce_min {
 
 // CHECK-LABEL: @test_reduce_max
 // CHECK-SAME: %[[ARG0:.*]]: tensor<16x64xf32>
-// CHECK: %[[REDUCE:.*]] = reduce_ud(%[[ARG0]]) <dimensions = [1], identity = [0xFF800000 : f32]> (%[[LHS:.*]]: f32, %[[RHS:.*]]: f32) {
-// CHECK: %[[RESULT:.*]] = arith.maximumf %[[LHS]], %[[RHS]] : f32
-// CHECK: yield %[[RESULT]]
+// CHECK: %[[REDUCE:.*]] = reduce(%[[ARG0]]) <dimensions = [1], reduction_mode = <max>> : tensor<16x64xf32> -> tensor<16x1xf32>
 // CHECK: %[[OUT:.*]] = reshape %[[REDUCE]] : tensor<16x1xf32> -> tensor<16xf32>
 // CHECK: results %[[OUT]]
 

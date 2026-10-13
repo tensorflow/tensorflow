@@ -523,6 +523,9 @@ absl::StatusOr<std::string> PjRtExecutable::CommonMetadata::Serialize(
 
   metadata.set_computation_name(pjrt_executable->name());
 
+  absl::StatusOr<std::vector<std::vector<xla::DimensionVector>>>
+      output_dimensions = pjrt_executable->GetOutputDimensions();
+
   // Encode output specs.
   for (int i = 0; i < output_dtypes.size(); ++i) {
     SerializedXlaExecutableMetadata::OutputSpec& output_spec =
@@ -545,13 +548,17 @@ absl::StatusOr<std::string> PjRtExecutable::CommonMetadata::Serialize(
     // Shape
     std::optional<Shape> shard_shape;
     {
-      // If the output sharding information is missing (e.g., serializing a
-      // previously deserialized executable) or the output dtype is token, the
-      // output shard shape is the same as the output shape. The former case
-      // will be removed once serialization/deserialization roundtrip preserves
-      // the output sharding information.
-      if (!output_hlo_shardings.has_value() ||
-          output_dtypes[i].kind() == DType::kToken) {
+      // Prefer the per-device output dimensions reported by the compiled
+      // executable. This handles manual SPMD shardings (`{manual}` from
+      // `shard_map`) and unevenly tiled shardings, where
+      // `hlo_sharding_util::TileShape` would otherwise return the unsharded
+      // global shape or fail its divisibility check.
+      if (output_dtypes[i].kind() == DType::kToken) {
+        shard_shape = output_shapes[i];
+      } else if (output_dimensions.ok() && !output_dimensions->empty() &&
+                 (*output_dimensions)[0].size() == output_dtypes.size()) {
+        shard_shape = Shape((*output_dimensions)[0][i]);
+      } else if (!output_hlo_shardings.has_value()) {
         shard_shape = output_shapes[i];
       } else {
         ABSL_ASSIGN_OR_RETURN(xla::PrimitiveType element_type,

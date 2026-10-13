@@ -195,27 +195,24 @@ TfLiteStatus DefineMatMul(TfLiteContext* context, ynn_subgraph_t subgraph,
         context, subgraph, input_a_tensor, &a_scale_id, &a_zp_id));
   }
 
-  auto transpose = [&](int rank, uint32_t& val_id) -> TfLiteStatus {
+  auto transpose = [&](uint32_t& val_id) -> TfLiteStatus {
     uint32_t transposed_id = YNN_INVALID_VALUE_ID;
-    int32_t perm[YNN_MAX_TENSOR_RANK];
-    std::iota(perm, perm + rank, 0);
-    std::swap(perm[rank - 1], perm[rank - 2]);
-
+    const int32_t perm[2] = {-1, -2};
     TF_LITE_ENSURE_YNN_STATUS(ynn_define_static_transpose(
-        subgraph, rank, perm, val_id, &transposed_id, 0));
+        subgraph, 2, perm, val_id, &transposed_id, YNN_NODE_FLAG_KEEP_DIMS));
     val_id = transposed_id;
     return kTfLiteOk;
   };
 
   if (adj_x) {
-    TF_LITE_ENSURE_STATUS(transpose(rank_a, current_a_id));
+    TF_LITE_ENSURE_STATUS(transpose(current_a_id));
     if (is_dynamically_quantized) {
-      TF_LITE_ENSURE_STATUS(transpose(rank_a, a_zp_id));
-      TF_LITE_ENSURE_STATUS(transpose(rank_a, a_scale_id));
+      TF_LITE_ENSURE_STATUS(transpose(a_zp_id));
+      TF_LITE_ENSURE_STATUS(transpose(a_scale_id));
     }
   }
   if (adj_y) {
-    TF_LITE_ENSURE_STATUS(transpose(rank_b, current_b_id));
+    TF_LITE_ENSURE_STATUS(transpose(current_b_id));
   }
 
   if (mutual_broadcast) {

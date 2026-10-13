@@ -631,6 +631,27 @@ TEST_F(MathTest, Igammac) {
   ComputeAndCompareR3<float>(&builder, expected, {}, kErrorSpec);
 }
 
+TEST_F(MathTest, IgammacSpecialValues) {
+  SetFastMathDisabled(true);
+  XlaBuilder builder(TestName());
+  const float nan = std::numeric_limits<float>::quiet_NaN();
+  const float inf = std::numeric_limits<float>::infinity();
+  auto a = ConstantR1<float>(
+      &builder,
+      {nan, nan, 0.53327996, nan, 0.6374078, -1.6019852, -0.24963307,
+       0.53327996, 0.0, -2.0, -2.0, 0.53327996, 0.53327996, 0.53327996});
+  auto x = ConstantR1<float>(
+      &builder, {nan, 8.97671773, nan, 0.0, 0.6374078, -1.6019852, -0.24963307,
+                 -1.0, 2.0, 0.0, inf, 0.0, -0.0, inf});
+
+  Igammac(a, x);
+  // Domain errors (x < 0, a <= 0) and NaN inputs give NaN as in Eigen and
+  // Igamma; igammac(a, 0) = 1 and igammac(a, inf) = 0 for a > 0.
+  std::vector<float> expected = {nan, nan, nan, nan, 0.33642888, nan, nan,
+                                 nan, nan, nan, nan, 1.0,        1.0, 0.0};
+  ComputeAndCompareR1<float>(&builder, expected, {}, kErrorSpec);
+}
+
 TEST_F(MathTest, IgammacF16) {
   SetFastMathDisabled(true);
 

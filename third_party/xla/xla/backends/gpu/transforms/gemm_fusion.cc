@@ -1650,7 +1650,22 @@ std::optional<TrackerInfo> ComputeCandidateTracker(
   return std::nullopt;
 }
 
+// Returns true if the only user of `transpose`, looking through bitcasts and
+// reshapes, can absorb it at no extra memory cost. `transpose` must be from
+// the original module so that all its users are visible.
+bool UserCanAbsorbTranspose(const HloInstruction& transpose) {
+  const HloInstruction* user = &transpose;
+  do {
+    if (user->user_count() != 1) {
+      return false;
+    }
+    user = user->users()[0];
+  } while (HloPredicateIsOp<HloOpcode::kBitcast, HloOpcode::kReshape>(user));
+  return user->IsElementwise() || user->opcode() == HloOpcode::kConcatenate;
+}
+
 FusionDecision ShouldFuseUserTranspose(const HloInstruction& transpose,
+                                       const HloInstruction& original_transpose,
                                        const HloInstruction& fusion,
                                        const ShapeTracker& tracker) {
   const HloInstruction* dot = hlo_query::FindInstruction(
@@ -1692,6 +1707,16 @@ FusionDecision ShouldFuseUserTranspose(const HloInstruction& transpose,
     }
   }
 
+  // As in ShouldFuseTranspose, leave a transpose that splits M or N without
+  // moving the minor dimension to its user if the user can absorb it.
+  if ((!transpose_tracker.MapsToOneStride(lhs_nc_dims) ||
+       !transpose_tracker.MapsToOneStride(rhs_nc_dims)) &&
+      !TransposesMinorDimension(&original_transpose) &&
+      UserCanAbsorbTranspose(original_transpose)) {
+    return FusionDecision::Forbid(
+        "Transpose within a non-contracting dimension can be fused into its "
+        "user instead.");
+  }
   return FusionDecision::Allow();
 }
 
@@ -1723,7 +1748,7 @@ FusionDecision ShouldFuseUser(const HloInstruction* user,
         return FusionDecision::Forbid(
             "No shape tracker found for transpose user.");
       }
-      return ShouldFuseUserTranspose(*user, *fusion, *tracker);
+      return ShouldFuseUserTranspose(*user, original_user, *fusion, *tracker);
     case HloOpcode::kConcatenate:
       return FusionDecision::Forbid("Not fusing concatenate into epilogue.");
     default:

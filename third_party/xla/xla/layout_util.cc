@@ -73,11 +73,11 @@ void SetDefaultLayoutToContainer(T* minor_to_major) {
   }
   for (const Tile& tile : tiles) {
     for (int64_t dim : tile.dimensions()) {
-      if (dim < 0 && dim != Tile::kCombineDimension) {
-        LOG(FATAL)
-            << "Tile dimension size needs to be minimum int64_t value if "
-               "it's negative. Value is "
-            << dim;
+      if (dim < 0 && dim != Tile::kCombineDimension &&
+          dim != Tile::kMatchDimension) {
+        LOG(FATAL) << "Tile dimension size needs to be kCombineDimension or "
+                      "kMatchDimension if it's negative. Value is "
+                   << dim;
       }
     }
     *layout.add_tiles() = tile;
@@ -287,10 +287,11 @@ Layout CreateDefaultLayoutForRank(int64_t num_dims) {
       return InvalidArgument("layout has invalid tiles: %s", shape.ToString());
     }
     for (int64_t dim : tile.dimensions()) {
-      if (dim <= 0 && dim != Tile::kCombineDimension) {
+      if (dim <= 0 && dim != Tile::kCombineDimension &&
+          dim != Tile::kMatchDimension) {
         return InvalidArgument(
-            "layout has invalid tiles: tile dimension %d must be positive or "
-            "kCombineDimension: %s",
+            "layout has invalid tiles: tile dimension %d must be positive, "
+            "kCombineDimension, or kMatchDimension: %s",
             dim, shape.ToString());
       }
     }
@@ -618,7 +619,7 @@ Layout LayoutUtil::MoveDimToMinor(const Layout& layout, const int64_t dim) {
     tile = shape.layout().tiles()[0];
   }
 
-  auto resolve_combine_dim = [&](int64_t i, int64_t dim_size) {
+  auto resolve_match_dim = [&](int64_t i, int64_t dim_size) {
     absl::Span<const int64_t> tile_dims = tile.dimensions();
     absl::Span<const int64_t> sub_tile_dims =
         shape.layout().tiles().size() > 1 ? shape.layout().tiles(1).dimensions()
@@ -641,13 +642,13 @@ Layout LayoutUtil::MoveDimToMinor(const Layout& layout, const int64_t dim) {
   // Initialize to number of elements in a tile.
   for (int64_t d_idx = 0; d_idx < tile.dimensions().size(); ++d_idx) {
     int64_t tile_dim_size = tile.dimensions()[d_idx];
-    if (tile_dim_size == Tile::kCombineDimension) {
+    if (tile_dim_size == Tile::kMatchDimension) {
       int64_t minor = tile.dimensions().size() - 1 - d_idx;
       if (minor >= shape.layout().minor_to_major().size()) {
         continue;
       }
       int64_t logical_dim = Minor(shape.layout(), minor);
-      tile_dim_size = resolve_combine_dim(d_idx, shape.dimensions(logical_dim));
+      tile_dim_size = resolve_match_dim(d_idx, shape.dimensions(logical_dim));
     }
     tile_multiplier *= tile_dim_size;
   }
@@ -662,8 +663,8 @@ Layout LayoutUtil::MoveDimToMinor(const Layout& layout, const int64_t dim) {
     if (minor < tile.dimensions().size()) {
       int64_t d_idx = tile.dimensions().size() - 1 - minor;
       int64_t tile_dim_size = tile.dimensions()[d_idx];
-      if (tile_dim_size == Tile::kCombineDimension) {
-        tile_dim_size = resolve_combine_dim(d_idx, shape_dim_size);
+      if (tile_dim_size == Tile::kMatchDimension) {
+        tile_dim_size = resolve_match_dim(d_idx, shape_dim_size);
       }
       linear_index += tile_multiplier * (index / tile_dim_size) +
                       within_tile_multiplier * (index % tile_dim_size);
@@ -733,7 +734,7 @@ Layout LayoutUtil::MoveDimToMinor(const Layout& layout, const int64_t dim) {
       int64_t d = current_shape[suffix_start + i];
       int64_t e = current_indices[suffix_start + i];
       int64_t t = tile.dimension(i);
-      if (t == Tile::kCombineDimension) {
+      if (t == Tile::kMatchDimension) {
         t = d == 0 ? 1 : d;
       }
       next_shape.push_back(CeilOfRatio(d, t));
@@ -746,7 +747,7 @@ Layout LayoutUtil::MoveDimToMinor(const Layout& layout, const int64_t dim) {
       int64_t d = current_shape[suffix_start + i];
       int64_t e = current_indices[suffix_start + i];
       int64_t t = tile.dimension(i);
-      if (t == Tile::kCombineDimension) {
+      if (t == Tile::kMatchDimension) {
         t = d == 0 ? 1 : d;
       }
       next_shape.push_back(t);
@@ -819,7 +820,7 @@ Layout LayoutUtil::MoveDimToMinor(const Layout& layout, const int64_t dim) {
     for (int i = 0; i < tile_rank; ++i) {
       int64_t d = current_shape[suffix_start + i];
       int64_t t = tile.dimension(i);
-      if (t == Tile::kCombineDimension) {
+      if (t == Tile::kMatchDimension) {
         t = d == 0 ? 1 : d;
       }
       next_shape.push_back(CeilOfRatio(d, t));
@@ -828,7 +829,7 @@ Layout LayoutUtil::MoveDimToMinor(const Layout& layout, const int64_t dim) {
     for (int i = 0; i < tile_rank; ++i) {
       int64_t d = current_shape[suffix_start + i];
       int64_t t = tile.dimension(i);
-      if (t == Tile::kCombineDimension) {
+      if (t == Tile::kMatchDimension) {
         t = d == 0 ? 1 : d;
       }
       next_shape.push_back(t);
@@ -866,7 +867,7 @@ Layout LayoutUtil::MoveDimToMinor(const Layout& layout, const int64_t dim) {
       int64_t outer_idx = current_indices[suffix_start + i];
       int64_t inner_idx = current_indices[suffix_start + tile_rank + i];
       int64_t tile_dim = step.tile.dimension(i);
-      if (tile_dim == Tile::kCombineDimension) {
+      if (tile_dim == Tile::kMatchDimension) {
         int64_t d = step.shape_before[suffix_start + i];
         tile_dim = d == 0 ? 1 : d;
       }

@@ -2719,6 +2719,57 @@ ENTRY e {
                                    GmockMatch(m::Parameter())));
 }
 
+TEST_F(GemmFusionTestV2, DoNotFuseEpilogueTransposeIfUserCanAbsorbIt) {
+  // The transpose only reorders the sub-dimensions of the LHS non-contracting
+  // dimension, so it is left for its user (a residual add) to absorb, even
+  // though the user could be fused into the GEMM otherwise. The bias is still
+  // fused.
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY e {
+  p0 = f16[3072,64]{1,0} parameter(0)
+  p1 = f16[64,32]{1,0} parameter(1)
+  dot = f16[3072,32]{1,0} dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  p2 = f16[32]{0} parameter(2)
+  bias = f16[3072,32]{1,0} broadcast(p2), dimensions={1}
+  add = f16[3072,32]{1,0} add(dot, bias)
+  bitcast = f16[3,16,64,32]{3,2,1,0} bitcast(add)
+  transpose = f16[16,64,3,32]{3,2,1,0} transpose(bitcast),
+    dimensions={1,2,0,3}
+  p3 = f16[16,64,3,32]{3,2,1,0} parameter(3)
+  ROOT sum = f16[16,64,3,32]{3,2,1,0} add(p3, transpose)
+})"));
+  ASSERT_THAT(GemmFusion(device_info_).Run(module.get()), IsOkAndHolds(true));
+  const HloInstruction* fusion = nullptr;
+  ASSERT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Add(m::Parameter(), TransposeOrTransposeBitcast(
+                                                    m::Fusion(&fusion)))));
+  EXPECT_THAT(fusion->fused_expression_root(), GmockMatch(m::Add()));
+}
+
+TEST_F(GemmFusionTestV2, FuseEpilogueTransposeIfRoot) {
+  // There is no user kernel that could absorb the transpose.
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY e {
+  p0 = f16[3072,64]{1,0} parameter(0)
+  p1 = f16[64,32]{1,0} parameter(1)
+  dot = f16[3072,32]{1,0} dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  bitcast = f16[3,16,64,32]{3,2,1,0} bitcast(dot)
+  ROOT transpose = f16[16,64,3,32]{3,2,1,0} transpose(bitcast),
+    dimensions={1,2,0,3}
+})"));
+  ASSERT_THAT(GemmFusion(device_info_).Run(module.get()), IsOkAndHolds(true));
+  const HloInstruction* fusion =
+      module->entry_computation()->root_instruction();
+  ASSERT_THAT(fusion, GmockMatch(m::Fusion()));
+  EXPECT_THAT(fusion->fused_expression_root(), GmockMatch(m::Transpose()));
+}
+
 TEST_F(GemmFusionTestV2, ConcatResetTrackerCrash) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m

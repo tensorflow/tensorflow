@@ -21,7 +21,6 @@ limitations under the License.
 #include <type_traits>
 #include <utility>
 
-#include "absl/base/optimization.h"
 #include "absl/functional/any_invocable.h"
 
 #define EIGEN_USE_THREADS
@@ -34,8 +33,7 @@ namespace xla::cpu::internal {
 using DoneCallback = absl::AnyInvocable<void()>;
 
 // Col-major x Col-major MatMul implementation as Eigen contraction.
-template <typename LhsType, typename RhsType, typename OutType,
-          Eigen::AlignmentType alignment>
+template <typename LhsType, typename RhsType, typename OutType>
 void MatMul(const Eigen::ThreadPoolDevice* device, OutType* out, LhsType* lhs,
             RhsType* rhs, int64_t m, int64_t n, int64_t k,
             int32_t transpose_lhs, int32_t transpose_rhs, DoneCallback done);
@@ -50,8 +48,7 @@ void TypedMatMul(const Eigen::ThreadPoolDevice* device, void* out, void* lhs,
 // TypedMatMul/MatMul implementation details.
 //===----------------------------------------------------------------------===//
 
-template <typename LhsType, typename RhsType, typename OutType,
-          Eigen::AlignmentType alignment>
+template <typename LhsType, typename RhsType, typename OutType>
 void MatMul(const Eigen::ThreadPoolDevice* device, OutType* out, LhsType* lhs,
             RhsType* rhs, int64_t m, int64_t n, int64_t k,
             int32_t transpose_lhs, int32_t transpose_rhs, DoneCallback done) {
@@ -67,11 +64,16 @@ void MatMul(const Eigen::ThreadPoolDevice* device, OutType* out, LhsType* lhs,
     std::swap(rhs_rows, rhs_cols);
   }
 
-  const Eigen::TensorMap<Eigen::Tensor<const LhsType, 2>, alignment> a(
+  // Both Eigen's TensorContractionEvaluatorBase and DirectColMajorAccess in
+  // eigen_contraction_kernel.h support Eigen::Unaligned TensorMap inputs with
+  // the same generated code and oneDNN direct col-major access as
+  // Eigen::Aligned16. Using Eigen::Unaligned avoids instantiating a duplicate
+  // set of contraction kernels for Eigen::Aligned16.
+  const Eigen::TensorMap<Eigen::Tensor<const LhsType, 2>, Eigen::Unaligned> a(
       lhs, lhs_rows, lhs_cols);
-  const Eigen::TensorMap<Eigen::Tensor<const RhsType, 2>, alignment> b(
+  const Eigen::TensorMap<Eigen::Tensor<const RhsType, 2>, Eigen::Unaligned> b(
       rhs, rhs_rows, rhs_cols);
-  Eigen::TensorMap<Eigen::Tensor<OutType, 2>, alignment> c(out, m, n);
+  Eigen::TensorMap<Eigen::Tensor<OutType, 2>, Eigen::Unaligned> c(out, m, n);
 
   typedef typename Eigen::Tensor<LhsType, 2>::DimensionPair DimPair;
   int lhs_contract_dim = transpose_lhs ? 0 : 1;
@@ -108,24 +110,10 @@ template <typename LhsType, typename RhsType, typename OutType>
 void TypedMatMul(const Eigen::ThreadPoolDevice* device, void* out, void* lhs,
                  void* rhs, int64_t m, int64_t n, int64_t k, bool transpose_lhs,
                  bool transpose_rhs, DoneCallback done) {
-  auto is_16_byte_aligned = [](void* ptr) {
-    return reinterpret_cast<uintptr_t>(ptr) % 16 == 0;
-  };
-
-  bool is_aligned = is_16_byte_aligned(lhs) && is_16_byte_aligned(rhs) &&
-                    is_16_byte_aligned(out);
-
-  if (ABSL_PREDICT_TRUE(is_aligned)) {
-    MatMul<LhsType, RhsType, OutType, Eigen::Aligned16>(
-        device, static_cast<OutType*>(out), static_cast<LhsType*>(lhs),
-        static_cast<RhsType*>(rhs), m, n, k, transpose_lhs, transpose_rhs,
-        std::move(done));
-  } else {
-    MatMul<LhsType, RhsType, OutType, Eigen::Unaligned>(
-        device, static_cast<OutType*>(out), static_cast<LhsType*>(lhs),
-        static_cast<RhsType*>(rhs), m, n, k, transpose_lhs, transpose_rhs,
-        std::move(done));
-  }
+  MatMul<LhsType, RhsType, OutType>(
+      device, static_cast<OutType*>(out), static_cast<LhsType*>(lhs),
+      static_cast<RhsType*>(rhs), m, n, k, transpose_lhs, transpose_rhs,
+      std::move(done));
 }
 
 // Declare TypedMatMul template for all supported data types to enable

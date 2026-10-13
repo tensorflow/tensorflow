@@ -50,19 +50,20 @@ TEST_F(TopkTest, ApproxTopKWithSpecialFloats) {
 
   float pos_64_5 = absl::bit_cast<float>(0x42810000u);
   float pos_0_0125 = absl::bit_cast<float>(0x3C4d0000u);
+  float neg_0_0125 = absl::bit_cast<float>(0xBC4d0000u);
   float neg_64_5 = absl::bit_cast<float>(0xC2810000u);
 
   std::vector<float> input_row_start = {
-      neg_inf,       pos_inf,       neg_dnrm_1e39, pos_zero,     neg_zero,
-      neg_64_5,      pos_inf,       neg_64_5,      neg_zero,     pos_dnrm_1e40,
-      neg_dnrm_9e41, pos_zero,      neg_inf,       pos_64_5,     pos_0_0125,
-      pos_dnrm_1e38, neg_dnrm_1e39, pos_dnrm_1e40, neg_dnrm_9e41};
+      neg_inf,       pos_inf,       neg_dnrm_1e39, pos_zero,      neg_zero,
+      neg_64_5,      pos_inf,       neg_64_5,      neg_zero,      pos_dnrm_1e40,
+      neg_dnrm_9e41, pos_zero,      neg_inf,       pos_64_5,      pos_0_0125,
+      pos_dnrm_1e38, neg_dnrm_1e39, pos_dnrm_1e40, neg_dnrm_9e41, neg_0_0125};
 
   std::vector<float> expected_values_64 = {
       pos_inf,       pos_inf,       pos_64_5,      pos_0_0125,    pos_dnrm_1e38,
       pos_dnrm_1e40, pos_dnrm_1e40, pos_zero,      neg_zero,      neg_zero,
       pos_zero,      neg_dnrm_9e41, neg_dnrm_9e41, neg_dnrm_1e39, neg_dnrm_1e39,
-      neg_64_5,      neg_64_5,      neg_inf,       neg_inf,       neg_inf,
+      neg_0_0125,    neg_64_5,      neg_64_5,      neg_inf,       neg_inf,
       neg_inf,       neg_inf,       neg_inf,       neg_inf,       neg_inf,
       neg_inf,       neg_inf,       neg_inf,       neg_inf,       neg_inf,
       neg_inf,       neg_inf,       neg_inf,       neg_inf,       neg_inf,
@@ -74,23 +75,24 @@ TEST_F(TopkTest, ApproxTopKWithSpecialFloats) {
       neg_inf,       neg_inf,       neg_inf,       neg_inf};
 
   std::vector<int32_t> expected_indices_64 = {
-      1,  6,  13, 14, 15, 9,  17, 3,  4,  8,  11, 10, 18, 2,  16, 5,
-      7,  0,  12, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
+      1,  6,  13, 14, 15, 9,  17, 3,  4,  8,  11, 10, 18, 2,  16, 19,
+      5,  7,  0,  12, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
       32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47,
       48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63};
 
-  for (int n : {512, 1024, 32768, 65536 + 4096}) {
-    Array2D<float> input(8, n, neg_inf);
-    for (int i = 0; i < input_row_start.size(); ++i) {
-      for (int j = 0; j < 8; ++j) {
-        input(j, i) = input_row_start[i];
+  for (int batch : {1, 8}) {
+    for (int n : {512, 1024, 4096, 32768, 65536 + 4096}) {
+      Array2D<float> input(batch, n, neg_inf);
+      for (int i = 0; i < input_row_start.size(); ++i) {
+        for (int j = 0; j < batch; ++j) {
+          input(j, i) = input_row_start[i];
+        }
       }
-    }
 
-    auto literal = LiteralUtil::CreateR2FromArray2D<float>(input);
+      auto literal = LiteralUtil::CreateR2FromArray2D<float>(input);
 
-    for (int k : {2, 4, 8, 16, 32, 64}) {
-      const auto hlo_text_module = absl::Substitute(R"(
+      for (int k : {2, 4, 8, 16, 32, 64}) {
+        const auto hlo_text_module = absl::Substitute(R"(
       HloModule topk
 
       %top_k_gt_f32_comparator.4 (approx_top_k.35: f32[], approx_top_k.36: f32[], approx_top_k.37: s32[], approx_top_k.38: s32[]) -> pred[] {
@@ -102,41 +104,42 @@ TEST_F(TopkTest, ApproxTopKWithSpecialFloats) {
       }
 
       ENTRY TopK {
-        x = f32[8,$0]{1,0} parameter(0)
-        %approx_top_k.60 = s32[$0]{0} iota(), iota_dimension=0
-        %approx_top_k.61 = s32[8,$0]{1,0} broadcast(%approx_top_k.60), dimensions={1}
-        %approx_top_k.62 = (f32[8,$0]{1,0}, s32[8,$0]{1,0}) sort(x, %approx_top_k.61), dimensions={1}, is_stable=true, to_apply=%top_k_gt_f32_comparator.4
-        %approx_top_k.64 = f32[8,$1]{1,0} slice(%approx_top_k.62#0), slice={[0:8], [0:$1]}
-        %approx_top_k.66 = s32[8,$1]{1,0} slice(%approx_top_k.62#1), slice={[0:8], [0:$1]}
-        ROOT %approx_top_k.67 = (f32[8,$1]{1,0}, s32[8,$1]{1,0}) tuple(%approx_top_k.64, %approx_top_k.66)
+        x = f32[$0,$1]{1,0} parameter(0)
+        %approx_top_k.60 = s32[$1]{0} iota(), iota_dimension=0
+        %approx_top_k.61 = s32[$0,$1]{1,0} broadcast(%approx_top_k.60), dimensions={1}
+        %approx_top_k.62 = (f32[$0,$1]{1,0}, s32[$0,$1]{1,0}) sort(x, %approx_top_k.61), dimensions={1}, is_stable=true, to_apply=%top_k_gt_f32_comparator.4
+        %approx_top_k.64 = f32[$0,$2]{1,0} slice(%approx_top_k.62#0), slice={[0:$0], [0:$2]}
+        %approx_top_k.66 = s32[$0,$2]{1,0} slice(%approx_top_k.62#1), slice={[0:$0], [0:$2]}
+        ROOT %approx_top_k.67 = (f32[$0,$2]{1,0}, s32[$0,$2]{1,0}) tuple(%approx_top_k.64, %approx_top_k.66)
       }
     )",
-                                                    n, k);
+                                                      batch, n, k);
 
-      ASSERT_OK_AND_ASSIGN(auto module,
-                           ParseAndReturnVerifiedModule(hlo_text_module));
+        ASSERT_OK_AND_ASSIGN(auto module,
+                             ParseAndReturnVerifiedModule(hlo_text_module));
 
-      Array2D<float> expected_vals_arr(8, k);
-      Array2D<int32_t> expected_idxs_arr(8, k);
-      for (int i = 0; i < 8; ++i) {
-        for (int j = 0; j < k; ++j) {
-          expected_vals_arr(i, j) = expected_values_64[j];
-          expected_idxs_arr(i, j) = expected_indices_64[j];
+        Array2D<float> expected_vals_arr(batch, k);
+        Array2D<int32_t> expected_idxs_arr(batch, k);
+        for (int i = 0; i < batch; ++i) {
+          for (int j = 0; j < k; ++j) {
+            expected_vals_arr(i, j) = expected_values_64[j];
+            expected_idxs_arr(i, j) = expected_indices_64[j];
+          }
         }
+
+        auto expected_vals_literal =
+            LiteralUtil::CreateR2FromArray2D<float>(expected_vals_arr);
+        auto expected_idxs_literal =
+            LiteralUtil::CreateR2FromArray2D<int32_t>(expected_idxs_arr);
+        auto expected_tuple = LiteralUtil::MakeTuple(
+            {&expected_vals_literal, &expected_idxs_literal});
+
+        ASSERT_OK_AND_ASSIGN(Literal actual_tuple,
+                             Execute(std::move(module), {&literal}));
+
+        EXPECT_TRUE(LiteralTestUtil::Near(expected_tuple, actual_tuple,
+                                          xla::ErrorSpec{0, 0}));
       }
-
-      auto expected_vals_literal =
-          LiteralUtil::CreateR2FromArray2D<float>(expected_vals_arr);
-      auto expected_idxs_literal =
-          LiteralUtil::CreateR2FromArray2D<int32_t>(expected_idxs_arr);
-      auto expected_tuple = LiteralUtil::MakeTuple(
-          {&expected_vals_literal, &expected_idxs_literal});
-
-      ASSERT_OK_AND_ASSIGN(Literal actual_tuple,
-                           Execute(std::move(module), {&literal}));
-
-      EXPECT_TRUE(LiteralTestUtil::Near(expected_tuple, actual_tuple,
-                                        xla::ErrorSpec{0, 0}));
     }
   }
 }
@@ -158,19 +161,20 @@ TEST_F(TopkTest, ApproxTopKWithSpecialBFloat16) {
 
   bfloat16 pos_64_5 = ToBfloat16(0x4281u);
   bfloat16 pos_0_0125 = ToBfloat16(0x3C4du);
+  bfloat16 neg_0_0125 = ToBfloat16(0xBC4du);
   bfloat16 neg_64_5 = ToBfloat16(0xC281u);
 
   std::vector<bfloat16> input_row_start = {
-      neg_inf,       pos_inf,       neg_dnrm_1e39, pos_zero,     neg_zero,
-      neg_64_5,      pos_inf,       neg_64_5,      neg_zero,     pos_dnrm_1e40,
-      neg_dnrm_9e41, pos_zero,      neg_inf,       pos_64_5,     pos_0_0125,
-      pos_dnrm_1e38, neg_dnrm_1e39, pos_dnrm_1e40, neg_dnrm_9e41};
+      neg_inf,       pos_inf,       neg_dnrm_1e39, pos_zero,      neg_zero,
+      neg_64_5,      pos_inf,       neg_64_5,      neg_zero,      pos_dnrm_1e40,
+      neg_dnrm_9e41, pos_zero,      neg_inf,       pos_64_5,      pos_0_0125,
+      pos_dnrm_1e38, neg_dnrm_1e39, pos_dnrm_1e40, neg_dnrm_9e41, neg_0_0125};
 
   std::vector<bfloat16> expected_values_64 = {
       pos_inf,       pos_inf,       pos_64_5,      pos_0_0125,    pos_dnrm_1e38,
       pos_dnrm_1e40, pos_dnrm_1e40, pos_zero,      neg_zero,      neg_zero,
       pos_zero,      neg_dnrm_9e41, neg_dnrm_9e41, neg_dnrm_1e39, neg_dnrm_1e39,
-      neg_64_5,      neg_64_5,      neg_inf,       neg_inf,       neg_inf,
+      neg_0_0125,    neg_64_5,      neg_64_5,      neg_inf,       neg_inf,
       neg_inf,       neg_inf,       neg_inf,       neg_inf,       neg_inf,
       neg_inf,       neg_inf,       neg_inf,       neg_inf,       neg_inf,
       neg_inf,       neg_inf,       neg_inf,       neg_inf,       neg_inf,
@@ -182,23 +186,24 @@ TEST_F(TopkTest, ApproxTopKWithSpecialBFloat16) {
       neg_inf,       neg_inf,       neg_inf,       neg_inf};
 
   std::vector<int32_t> expected_indices_64 = {
-      1,  6,  13, 14, 15, 9,  17, 3,  4,  8,  11, 10, 18, 2,  16, 5,
-      7,  0,  12, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
+      1,  6,  13, 14, 15, 9,  17, 3,  4,  8,  11, 10, 18, 2,  16, 19,
+      5,  7,  0,  12, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
       32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47,
       48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63};
 
-  for (int n : {512, 1024, 32768, 65536 + 4096}) {
-    Array2D<bfloat16> input(8, n, neg_inf);
-    for (int i = 0; i < input_row_start.size(); ++i) {
-      for (int j = 0; j < 8; ++j) {
-        input(j, i) = input_row_start[i];
+  for (int batch : {1, 8}) {
+    for (int n : {512, 1024, 4096, 32768, 65536 + 4096}) {
+      Array2D<bfloat16> input(batch, n, neg_inf);
+      for (int i = 0; i < input_row_start.size(); ++i) {
+        for (int j = 0; j < batch; ++j) {
+          input(j, i) = input_row_start[i];
+        }
       }
-    }
 
-    auto literal = LiteralUtil::CreateR2FromArray2D<bfloat16>(input);
+      auto literal = LiteralUtil::CreateR2FromArray2D<bfloat16>(input);
 
-    for (int k : {2, 4, 8, 16, 32, 64}) {
-      const auto hlo_text_module = absl::Substitute(R"(
+      for (int k : {2, 4, 8, 16, 32, 64}) {
+        const auto hlo_text_module = absl::Substitute(R"(
       HloModule topk
 
       %top_k_gt_bf16_comparator.4 (approx_top_k.35: bf16[], approx_top_k.36: bf16[], approx_top_k.37: s32[], approx_top_k.38: s32[]) -> pred[] {
@@ -210,41 +215,42 @@ TEST_F(TopkTest, ApproxTopKWithSpecialBFloat16) {
       }
 
       ENTRY TopK {
-        x = bf16[8,$0]{1,0} parameter(0)
-        %approx_top_k.60 = s32[$0]{0} iota(), iota_dimension=0
-        %approx_top_k.61 = s32[8,$0]{1,0} broadcast(%approx_top_k.60), dimensions={1}
-        %approx_top_k.62 = (bf16[8,$0]{1,0}, s32[8,$0]{1,0}) sort(x, %approx_top_k.61), dimensions={1}, is_stable=true, to_apply=%top_k_gt_bf16_comparator.4
-        %approx_top_k.64 = bf16[8,$1]{1,0} slice(%approx_top_k.62#0), slice={[0:8], [0:$1]}
-        %approx_top_k.66 = s32[8,$1]{1,0} slice(%approx_top_k.62#1), slice={[0:8], [0:$1]}
-        ROOT %approx_top_k.67 = (bf16[8,$1]{1,0}, s32[8,$1]{1,0}) tuple(%approx_top_k.64, %approx_top_k.66)
+        x = bf16[$0,$1]{1,0} parameter(0)
+        %approx_top_k.60 = s32[$1]{0} iota(), iota_dimension=0
+        %approx_top_k.61 = s32[$0,$1]{1,0} broadcast(%approx_top_k.60), dimensions={1}
+        %approx_top_k.62 = (bf16[$0,$1]{1,0}, s32[$0,$1]{1,0}) sort(x, %approx_top_k.61), dimensions={1}, is_stable=true, to_apply=%top_k_gt_bf16_comparator.4
+        %approx_top_k.64 = bf16[$0,$2]{1,0} slice(%approx_top_k.62#0), slice={[0:$0], [0:$2]}
+        %approx_top_k.66 = s32[$0,$2]{1,0} slice(%approx_top_k.62#1), slice={[0:$0], [0:$2]}
+        ROOT %approx_top_k.67 = (bf16[$0,$2]{1,0}, s32[$0,$2]{1,0}) tuple(%approx_top_k.64, %approx_top_k.66)
       }
     )",
-                                                    n, k);
+                                                      batch, n, k);
 
-      ASSERT_OK_AND_ASSIGN(auto module,
-                           ParseAndReturnVerifiedModule(hlo_text_module));
+        ASSERT_OK_AND_ASSIGN(auto module,
+                             ParseAndReturnVerifiedModule(hlo_text_module));
 
-      Array2D<bfloat16> expected_vals_arr(8, k);
-      Array2D<int32_t> expected_idxs_arr(8, k);
-      for (int i = 0; i < 8; ++i) {
-        for (int j = 0; j < k; ++j) {
-          expected_vals_arr(i, j) = expected_values_64[j];
-          expected_idxs_arr(i, j) = expected_indices_64[j];
+        Array2D<bfloat16> expected_vals_arr(batch, k);
+        Array2D<int32_t> expected_idxs_arr(batch, k);
+        for (int i = 0; i < batch; ++i) {
+          for (int j = 0; j < k; ++j) {
+            expected_vals_arr(i, j) = expected_values_64[j];
+            expected_idxs_arr(i, j) = expected_indices_64[j];
+          }
         }
+
+        auto expected_vals_literal =
+            LiteralUtil::CreateR2FromArray2D<bfloat16>(expected_vals_arr);
+        auto expected_idxs_literal =
+            LiteralUtil::CreateR2FromArray2D<int32_t>(expected_idxs_arr);
+        auto expected_tuple = LiteralUtil::MakeTuple(
+            {&expected_vals_literal, &expected_idxs_literal});
+
+        ASSERT_OK_AND_ASSIGN(Literal actual_tuple,
+                             Execute(std::move(module), {&literal}));
+
+        EXPECT_TRUE(LiteralTestUtil::Near(expected_tuple, actual_tuple,
+                                          xla::ErrorSpec{0, 0}));
       }
-
-      auto expected_vals_literal =
-          LiteralUtil::CreateR2FromArray2D<bfloat16>(expected_vals_arr);
-      auto expected_idxs_literal =
-          LiteralUtil::CreateR2FromArray2D<int32_t>(expected_idxs_arr);
-      auto expected_tuple = LiteralUtil::MakeTuple(
-          {&expected_vals_literal, &expected_idxs_literal});
-
-      ASSERT_OK_AND_ASSIGN(Literal actual_tuple,
-                           Execute(std::move(module), {&literal}));
-
-      EXPECT_TRUE(LiteralTestUtil::Near(expected_tuple, actual_tuple,
-                                        xla::ErrorSpec{0, 0}));
     }
   }
 }
