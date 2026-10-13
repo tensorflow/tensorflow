@@ -293,26 +293,49 @@ class MatrixDiagOp : public XlaOpKernel {
     const int64_t diag_rank = diag_shape.dims();
     const int64_t max_diag_len = diag_shape.dim_size(diag_rank - 1);
     const int64_t num_diags = upper_diag_index - lower_diag_index + 1;
-    OP_REQUIRES(
-        context,
-        num_diags == 1 || num_diags == diag_shape.dim_size(diag_rank - 2),
-        absl::InvalidArgumentError(
-            "The number of diagonals provided in the input does not "
-            "match the lower_diag_index and upper_diag_index range."));
+    OP_REQUIRES(context,
+                num_diags == 1 ||
+                    (diag_rank >= 2 &&
+                     num_diags == diag_shape.dim_size(diag_rank - 2)),
+                absl::InvalidArgumentError(
+                    "The number of diagonals provided in the input does not "
+                    "match the lower_diag_index and upper_diag_index range."));
+
+    // If the diagonals have a dynamic length, max_diag_len is its bound, and so
+    // are num_rows and num_cols where they're inferred from it. Build the
+    // matrices at those sizes from the diagonals at their bound, with each
+    // diagonal's entries where SetMatrixDiag reads them, so that the actual
+    // matrices are in the top left, and give the inferred dimensions their
+    // actual sizes at the end.
+    xla::Shape diag_xla_shape;
+    OP_REQUIRES_VALUE(diag_xla_shape, context, context->InputXlaShape(0));
+    const bool dynamic_diag_len =
+        diag_xla_shape.is_dynamic_dimension(diag_rank - 1);
     const int64_t min_num_rows =
         max_diag_len - std::min(upper_diag_index, int64_t{0});
     const int64_t min_num_cols =
         max_diag_len + std::max(lower_diag_index, int64_t{0});
-    OP_REQUIRES(context, num_rows == -1 || num_rows >= min_num_rows,
+    // A dynamic length can be shorter than its bound, and then fit in fewer
+    // rows or columns than the bound needs, so only check that a size set by
+    // num_rows or num_cols fits diagonals of length 0.
+    const int64_t checked_len = dynamic_diag_len ? 0 : max_diag_len;
+    OP_REQUIRES(context,
+                num_rows == -1 ||
+                    num_rows >= checked_len - std::min(upper_diag_index,
+                                                       int64_t{0}),
                 absl::InvalidArgumentError("The number of rows is too small."));
     OP_REQUIRES(
-        context, num_cols == -1 || num_cols >= min_num_cols,
+        context,
+        num_cols == -1 ||
+            num_cols >= checked_len + std::max(lower_diag_index, int64_t{0}),
         absl::InvalidArgumentError("The number of columns is too small."));
 
     // Infers num_rows and num_cols. If both are unknown, assume that the output
     // is square. Otherwise, use smallest possible values.
     const bool infer_num_rows = num_rows == -1;
     const bool infer_num_cols = num_cols == -1;
+    const int64_t requested_num_rows = num_rows;
+    const int64_t requested_num_cols = num_cols;
     if (num_rows == -1 && num_cols == -1) {
       num_rows = std::max(min_num_rows, min_num_cols);
       num_cols = num_rows;
@@ -320,6 +343,13 @@ class MatrixDiagOp : public XlaOpKernel {
       num_rows = min_num_rows;
     } else if (num_cols == -1) {
       num_cols = min_num_cols;
+    }
+    // With a dynamic length, build the matrices at least as large as the
+    // bound needs, and cut a dimension set smaller down to its size at the
+    // end.
+    if (dynamic_diag_len) {
+      num_rows = std::max(num_rows, min_num_rows);
+      num_cols = std::max(num_cols, min_num_cols);
     }
 
     // At least one of num_rows and num_cols must match its minimum length.
@@ -338,27 +368,20 @@ class MatrixDiagOp : public XlaOpKernel {
     xla::XlaOp output = xla::Broadcast(padding_value, output_shape.dim_sizes());
     xla::XlaOp diag = context->Input(0);
 
-    // If the diagonals have a dynamic length, max_diag_len is its bound, and so
-    // are num_rows and num_cols where they're inferred from it. Build the
-    // matrices at those sizes from the diagonals at their bound, with each
-    // diagonal's entries where SetMatrixDiag reads them, so that the actual
-    // matrices are in the top left, and give the inferred dimensions their
-    // actual sizes at the end.
-    xla::Shape diag_xla_shape;
-    OP_REQUIRES_VALUE(diag_xla_shape, context, context->InputXlaShape(0));
-    const bool dynamic_diag_len =
-        diag_xla_shape.is_dynamic_dimension(diag_rank - 1);
     xla::XlaOp actual_num_rows;
     xla::XlaOp actual_num_cols;
     if (dynamic_diag_len) {
       const xla::XlaOp diag_len = xla::GetDimensionSize(diag, diag_rank - 1);
-      const auto actual_size = [&](bool inferred, int64_t size) {
+      const auto actual_size = [&](bool inferred, int64_t size,
+                                   int64_t requested_size) {
         return inferred ? xla::Add(diag_len, xla::ScalarLike(
                                                  diag_len, size - max_diag_len))
-                        : xla::ScalarLike(diag_len, size);
+                        : xla::ScalarLike(diag_len, requested_size);
       };
-      actual_num_rows = actual_size(infer_num_rows, num_rows);
-      actual_num_cols = actual_size(infer_num_cols, num_cols);
+      actual_num_rows =
+          actual_size(infer_num_rows, num_rows, requested_num_rows);
+      actual_num_cols =
+          actual_size(infer_num_cols, num_cols, requested_num_cols);
       diag = xla::RemoveDynamicDimension(diag, diag_rank - 1);
       if (num_diags > 1) {
         // A right-aligned diagonal's entries come after the padding it has at
@@ -411,10 +434,16 @@ class MatrixDiagOp : public XlaOpKernel {
       if (infer_num_rows) {
         output =
             xla::SetDimensionSize(output, actual_num_rows, output_rank - 2);
+      } else if (requested_num_rows < num_rows) {
+        output = xla::SliceInDim(output, 0, requested_num_rows, 1,
+                                 output_rank - 2);
       }
       if (infer_num_cols) {
         output =
             xla::SetDimensionSize(output, actual_num_cols, output_rank - 1);
+      } else if (requested_num_cols < num_cols) {
+        output = xla::SliceInDim(output, 0, requested_num_cols, 1,
+                                 output_rank - 1);
       }
     }
     context->SetOutput(0, output);

@@ -566,6 +566,14 @@ class MatrixDiagTest(xla_test.XLATestCase):
     self.assertAllEqual(
         self._matrixDiagOfSelected(x, k=1, num_rows=5, align="LEFT_RIGHT"),
         [[0, 1, 0], [0, 0, 2], [0, 0, 0], [0, 0, 0], [0, 0, 0]])
+    # A size set by num_rows or num_cols that the actual length fits but the
+    # bound doesn't.
+    self.assertAllEqual(
+        self._matrixDiagOfSelected(x, k=-1, num_rows=5, align="LEFT_RIGHT"),
+        [[0, 0], [1, 0], [0, 2], [0, 0], [0, 0]])
+    self.assertAllEqual(
+        self._matrixDiagOfSelected(x, k=1, num_cols=5),
+        [[0, 1, 0, 0, 0], [0, 0, 2, 0, 0]])
     self.assertAllEqual(
         self._matrixDiagOfSelected([[1, 5, 2, 7, 3], [4, 6, 8, 9, 0]]),
         [[[1, 0], [0, 2]], [[4, 0], [0, 8]]])
@@ -581,6 +589,16 @@ class MatrixDiagTest(xla_test.XLATestCase):
                                    num_rows=5,
                                    align="LEFT_RIGHT"),
         [[1, 0], [6, 3], [0, 8], [0, 0], [0, 0]])
+
+  def testBandFromVector(self):
+    # A band of diagonals needs them stacked in a dimension that a vector
+    # doesn't have, and looking for it aborted the process.
+    with self.session() as session:
+      with self.test_scope():
+        diagonal = array_ops.placeholder(dtypes.int32, [3])
+        output = array_ops.matrix_diag(diagonal, k=(-1, 1))
+      with self.assertRaisesOpError("The number of diagonals provided"):
+        session.run(output, {diagonal: [1, 2, 3]})
 
 
 class MatrixSetDiagTest(xla_test.XLATestCase):
