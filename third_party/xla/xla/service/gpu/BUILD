@@ -141,6 +141,7 @@ xla_cc_test(
     srcs = ["gpu_memory_space_assignment_test.cc"],
     deps = [
         ":gpu_memory_space_assignment",
+        "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/hlo/analysis:alias_info",
@@ -150,6 +151,7 @@ xla_cc_test(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:verified_hlo_module",
         "//xla/service:buffer_assignment",
+        "//xla/service:hlo_buffer",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_value",
         "//xla/tsl/lib/core:status_test_util",

@@ -47,7 +47,6 @@ fusion {
 
 // CHECK-VECTOR-LABEL: func.func @wrapped_fusion_impl
 // CHECK-VECTOR:         %[[ALLOCA_0:.*]] = memref.alloca() : memref<1x8x1x8xbf16>
-// CHECK-VECTOR:         %[[ALLOCA_1:.*]] = memref.alloca() : memref<1x8x1x8xbf16>
 // CHECK-VECTOR:         %[[ALLOCA_2:.*]] = memref.alloca() alignment = 64 : memref<1x1x8x8xf32>
 // CHECK-VECTOR:         scf.for
 // CHECK-VECTOR:           memref.copy

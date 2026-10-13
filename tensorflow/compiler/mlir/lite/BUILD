@@ -1100,6 +1100,7 @@ cc_library(
         ":pass",
         ":pass_options",
         ":tensorflow_lite_ops",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",

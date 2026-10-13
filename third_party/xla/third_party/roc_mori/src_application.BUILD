@@ -41,8 +41,6 @@ cc_library(
         "@roc_mori//:mori_shmem_headers",
         # CMake hip::host: libamdhip64.so + HIP host headers.
         "@local_config_rocm//rocm:hip",
-        # CMake find_library(ROCM_SMI_LIB rocm_smi64): librocm_smi64.so.
-        "@local_config_rocm//rocm:rocm_smi",
         "@local_config_rocm//rocm:hsa_runtime",
         "@local_config_rocm//rocm:hsakmt",
         # CMake ibverbs: system libibverbs.so (rdma-core).

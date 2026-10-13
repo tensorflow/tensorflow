@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/layout.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/hlo_value.h"
 #include "xla/xla.pb.h"
 
 namespace xla::gpu {
@@ -66,6 +67,14 @@ ParseIndexMemorySpacePairs(absl::string_view str);
 // (collective) memory. Device-initiated and one-sided collectives need all
 // buffers registered with the collective runtime ahead of time.
 bool RequiresCollectiveSymmetricMemorySpace(const HloInstruction* inst);
+
+// Returns true if the given operand use requires collective memory space.
+bool RequiresCollectiveInput(const HloUse& use, const DebugOptions& option);
+
+// Returns true if the given HLO value definition requires collective memory
+// space.
+bool RequiresCollectiveOutput(const HloValue& value,
+                              const DebugOptions& option);
 
 // Creates a buffer colorer that assigns memory space colors to HLO values
 // during buffer assignment. It handles:

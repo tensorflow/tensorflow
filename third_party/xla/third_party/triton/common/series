@@ -37,3 +37,4 @@ llvm_cl991819890.patch
 fix_load_ops.patch
 cxx17_support.patch
 llvm_cl996124567.patch
+llvm_cl998243985.patch

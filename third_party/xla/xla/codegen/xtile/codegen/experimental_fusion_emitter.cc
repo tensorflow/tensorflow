@@ -22,6 +22,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -113,11 +114,14 @@ namespace arith = ::mlir::arith;
 namespace stablehlo = ::mlir::stablehlo;
 namespace ge = ::xla::gpu::experimental;
 
+// One tensor per result of a tiled HLO instruction.
+using EmittedResults = SmallVector<TensorValue, 1>;
+
 absl::StatusOr<std::vector<TensorValue>> EmitTiledComputation(
     EmitterContext& emitter_ctx, const ge::TiledHloRegion& region,
     absl::Span<const ge::TiledHloInstruction* const> roots);
 
-absl::StatusOr<TensorValue> EmitTiledHloInstruction(
+absl::StatusOr<EmittedResults> EmitTiledHloInstruction(
     EmitterContext& emitter_ctx, const ge::TiledHloInstruction& tiled_hlo);
 
 Value MakeIndex(mlir::ImplicitLocOpBuilder& b, int64_t value) {
@@ -144,7 +148,8 @@ TensorValue ReshapeTo(mlir::ImplicitLocOpBuilder& b, TensorValue input,
       stablehlo::ReshapeOp::create(b, result_type, input).getResult());
 }
 
-absl::StatusOr<TensorValue> EmitAllGather(
+// Emits a (possibly variadic) all-gather and returns one tensor per output.
+absl::StatusOr<EmittedResults> EmitAllGather(
     EmitterContext& emitter_ctx, const HloAllGatherInstruction* all_gather,
     const ge::TiledHloInstruction& tiled_all_gather, ValueRange operands) {
   if (all_gather->device_list()->replica_groups().empty()) {
@@ -163,13 +168,25 @@ absl::StatusOr<TensorValue> EmitAllGather(
   bool use_global_device_ids = all_gather->use_global_device_ids();
 
   ImplicitLocOpBuilder& b = emitter_ctx.b();
-  ABSL_ASSIGN_OR_RETURN(
-      auto output_element_type,
-      xtile::PrimitiveTypeToMlirType(b, all_gather->shape().element_type()));
-  ABSL_ASSIGN_OR_RETURN(SmallVector<int64_t> tile_sizes,
-                   tiled_all_gather.tile().GetStaticTileSizes());
-  auto output_type =
-      mlir::RankedTensorType::get(tile_sizes, output_element_type);
+  // One result per gathered operand. For a variadic all-gather the HLO shape
+  // is a tuple and the tiled instruction holds one tile per output.
+  const int64_t num_outputs = all_gather->shape().IsTuple()
+                                  ? all_gather->shape().tuple_shapes().size()
+                                  : 1;
+  SmallVector<Type> output_types;
+  output_types.reserve(num_outputs);
+  for (int64_t k = 0; k < num_outputs; ++k) {
+    const Shape& output_shape = all_gather->shape().IsTuple()
+                                    ? all_gather->shape().tuple_shapes(k)
+                                    : all_gather->shape();
+    ABSL_ASSIGN_OR_RETURN(
+        auto output_element_type,
+        xtile::PrimitiveTypeToMlirType(b, output_shape.element_type()));
+    ABSL_ASSIGN_OR_RETURN(SmallVector<int64_t> tile_sizes,
+                     tiled_all_gather.tile(k).GetStaticTileSizes());
+    output_types.push_back(
+        mlir::RankedTensorType::get(tile_sizes, output_element_type));
+  }
 
   auto replica_groups_type = mlir::RankedTensorType::get(
       {static_cast<int64_t>(all_gather->replica_groups().size()),
@@ -184,10 +201,15 @@ absl::StatusOr<TensorValue> EmitAllGather(
                                                                /*type=*/0)
                      : nullptr;
   auto all_gather_op = mlir::stablehlo::AllGatherOp::create(
-      b, mlir::TypeRange{output_type}, operands,
+      b, mlir::TypeRange{output_types}, operands,
       all_gather->all_gather_dimension(), replica_groups_attr,
       channel_handle_attr, use_global_device_ids);
-  return mlir::cast<TensorValue>(all_gather_op.getResult(0));
+  EmittedResults results;
+  results.reserve(num_outputs);
+  for (Value result : all_gather_op.getResults()) {
+    results.push_back(mlir::cast<TensorValue>(result));
+  }
+  return results;
 }
 
 absl::StatusOr<TensorValue> EmitAllReduce(
@@ -700,9 +722,9 @@ absl::StatusOr<TensorValue> EmitRegionInstructionWithDependencies(
     if (!visited.contains(instr)) {
       continue;
     }
-    ABSL_ASSIGN_OR_RETURN(TensorValue value,
+    ABSL_ASSIGN_OR_RETURN(EmittedResults values,
                      EmitTiledHloInstruction(emitter_ctx, *instr));
-    TF_RET_CHECK(emitter_ctx.MapTiledHloToTensorValue(instr, value))
+    TF_RET_CHECK(emitter_ctx.MapTiledHloToTensorValues(instr, values))
         << instr->hlo()->ToString();
   }
   TF_RET_CHECK(emitter_ctx.IsEmitted(*root))
@@ -2274,8 +2296,9 @@ absl::StatusOr<TensorValue> EmitReduce(
              : EmitReduceWithRegion(emitter_ctx, tiled_hlo);
 }
 
-absl::StatusOr<TensorValue> EmitTiledHloInstruction(
-    EmitterContext& emitter_ctx, const ge::TiledHloInstruction& tiled_hlo) {
+absl::StatusOr<std::variant<TensorValue, EmittedResults>>
+EmitTiledHloInstructionImpl(EmitterContext& emitter_ctx,
+                            const ge::TiledHloInstruction& tiled_hlo) {
   auto& b = emitter_ctx.b();
   const HloInstruction* hlo = tiled_hlo.hlo();
   VLOG(4) << "EmitTiledHloInstruction: " << hlo->ToString();
@@ -2344,12 +2367,8 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
     return result.front();
   }
   if (hlo->opcode() == HloOpcode::kGetTupleElement) {
-    int64_t index = hlo->tuple_index();
-    if (index == 0) {
-      return emitter_ctx.TiledHloToTensorValue(*tiled_hlo.operand(0));
-    }
-    return absl::UnimplementedError(
-        absl::StrCat("Unsupported get-tuple-element index ", index));
+    return emitter_ctx.TiledHloToTensorValue(*tiled_hlo.operand(0),
+                                             hlo->tuple_index());
   }
   std::vector<Value> operands;
   operands.reserve(hlo->operands().size());
@@ -2431,15 +2450,25 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
       absl::StrCat("Unsupported operation ", hlo->ToString()));
 }
 
+absl::StatusOr<EmittedResults> EmitTiledHloInstruction(
+    EmitterContext& emitter_ctx, const ge::TiledHloInstruction& tiled_hlo) {
+  ABSL_ASSIGN_OR_RETURN(auto result,
+                   EmitTiledHloInstructionImpl(emitter_ctx, tiled_hlo));
+  if (auto* single = std::get_if<TensorValue>(&result)) {
+    return EmittedResults{*single};
+  }
+  return std::move(std::get<EmittedResults>(result));
+}
+
 absl::StatusOr<std::vector<TensorValue>> EmitTiledComputation(
     EmitterContext& emitter_ctx, const ge::TiledHloRegion& region,
     absl::Span<const ge::TiledHloInstruction* const> roots) {
   for (const auto* tiled_hlo : region.instructions()) {
     const HloInstruction* hlo = tiled_hlo->hlo();
     VLOG(8) << "Emitting " << hlo->ToString(HloPrintOptions::ShortParsable());
-    ABSL_ASSIGN_OR_RETURN(TensorValue result,
+    ABSL_ASSIGN_OR_RETURN(EmittedResults results,
                      EmitTiledHloInstruction(emitter_ctx, *tiled_hlo));
-    TF_RET_CHECK(emitter_ctx.MapTiledHloToTensorValue(tiled_hlo, result))
+    TF_RET_CHECK(emitter_ctx.MapTiledHloToTensorValues(tiled_hlo, results))
         << hlo->ToString();
   }
   std::vector<TensorValue> results;

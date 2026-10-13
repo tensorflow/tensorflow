@@ -17,11 +17,12 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <utility>
 
+#include "absl/base/call_once.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
-#include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/tsl/util/env_var.h"
@@ -42,12 +43,12 @@ StreamExecutorCommon::StreamExecutorCommon(const Platform* platform)
       memory_limit_bytes_(GetMemoryLimitBytesFromEnvironmentVariable()) {}
 
 const DeviceDescription& StreamExecutorCommon::GetDeviceDescription() const {
-  absl::MutexLock lock(mu_);
-  if (device_description_ != nullptr) {
-    return *device_description_;
-  }
-
-  device_description_ = CreateDeviceDescription().value();
+  absl::call_once(device_description_once_, [this]() {
+    absl::StatusOr<std::unique_ptr<DeviceDescription>> desc =
+        CreateDeviceDescription();
+    CHECK_OK(desc);
+    device_description_ = *std::move(desc);
+  });
   return *device_description_;
 }
 

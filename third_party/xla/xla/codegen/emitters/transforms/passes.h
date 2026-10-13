@@ -19,8 +19,6 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "mlir/Dialect/LLVMIR/NVVMDialect.h"  // IWYU pragma: keep
-#include "mlir/Dialect/LLVMIR/ROCDLDialect.h"  // IWYU pragma: keep
 #include "mlir/Pass/Pass.h"
 
 namespace stream_executor {

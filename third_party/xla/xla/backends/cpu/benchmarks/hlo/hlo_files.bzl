@@ -44,6 +44,7 @@ REGULAR_HLO_FILES = [
     "jax.issue.33666.linx.slow_0100.module_0013.hlo",
     "jax.issue.33666.linx.slow_0428.module_0003.hlo",
     "jax.issue.33666.linx.slow_0428.module_0006.hlo",
+    "jax.issue.40150.grad.hlo",
     "layer_norm_1x4096x768_bf16.hlo",
     "mean_axis_1x4096x1024_bf16.hlo",
     "mha_block_1x12x128x64_bf16.hlo",
@@ -60,6 +61,7 @@ REGULAR_HLO_FILES = [
     "sum_axis_1x4096x1024_bf16.hlo",
     "topk_logits_k10_1x50000_bf16.hlo",
     "vit_keras_jax_bf16.hlo",
+    "xla.issue.50040.value_and_grad.hlo",
     "xnn.parallel_dots.optimized.hlo",
     "xnn.sequential_dots.optimized.hlo",
     # go/keep-sorted end

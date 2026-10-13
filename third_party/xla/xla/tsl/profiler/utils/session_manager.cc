@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <climits>
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <variant>
@@ -308,12 +309,42 @@ absl::Status ValidateRemoteProfilerSessionManagerOptions(
 }
 
 absl::Status ValidateHostPortPair(absl::string_view host_port) {
-  uint32_t port;
-  std::vector<absl::string_view> parts = absl::StrSplit(host_port, ':');
-  // Must be host:port, port must be a number, host must not contain a '/',
-  // host also must not be empty.
-  if (parts.size() != 2 || !absl::SimpleAtoi(parts[1], &port) ||
-      absl::StrContains(parts[0], "/") || parts[0].empty()) {
+  absl::string_view host;
+  absl::string_view port_str;
+  if (absl::StartsWith(host_port, "[")) {
+    const size_t close_bracket = host_port.find(']');
+    if (close_bracket == absl::string_view::npos ||
+        close_bracket + 1 >= host_port.size() ||
+        host_port[close_bracket + 1] != ':') {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Could not interpret \"", host_port, "\" as a host-port pair."));
+    }
+    host = host_port.substr(1, close_bracket - 1);
+    port_str = host_port.substr(close_bracket + 2);
+    // Per RFC 3986 and gRPC's dns:/// resolver, bracketed hosts must be IPv6
+    // literals (contain ':') and must not contain nested brackets.
+    if (host.empty() || !absl::StrContains(host, ':') ||
+        absl::StrContains(host, '[')) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Could not interpret \"", host_port, "\" as a host-port pair."));
+    }
+  } else {
+    if (absl::StrContains(host_port, '[') ||
+        absl::StrContains(host_port, ']')) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Could not interpret \"", host_port, "\" as a host-port pair."));
+    }
+    std::vector<absl::string_view> parts = absl::StrSplit(host_port, ':');
+    if (parts.size() != 2 || parts[0].empty()) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Could not interpret \"", host_port, "\" as a host-port pair."));
+    }
+    host = parts[0];
+    port_str = parts[1];
+  }
+  uint32_t port = 0;
+  if (!absl::SimpleAtoi(port_str, &port) || port > 65535 ||
+      absl::StrContains(host, '/')) {
     return absl::InvalidArgumentError(absl::StrCat(
         "Could not interpret \"", host_port, "\" as a host-port pair."));
   }

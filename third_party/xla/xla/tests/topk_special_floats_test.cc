@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/tests/hlo_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
+#include "xla/tests/xla_test_backend_predicates.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/types.h"
 
@@ -97,51 +98,59 @@ TEST_F(TopkTest, TopKWithSpecialFloats) {
       32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47,
       48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63};
 
-  for (int n : {512, 1024, 32768, 65536 + 4096}) {
-    Array2D<float> input(8, n, neg_smallest_qnan);
-    for (int i = 0; i < input_row_start.size(); ++i) {
-      for (int j = 0; j < 8; ++j) {
-        input(j, i) = input_row_start[i];
-      }
-    }
-
-    auto literal = LiteralUtil::CreateR2FromArray2D<float>(input);
-
-    for (int k : {2, 4, 8, 16, 32, 64}) {
-      const auto hlo_text_module = absl::StrFormat(R"(
-      HloModule topk
-
-      ENTRY TopK {
-        x = f32[8,%d]{1,0} parameter(0)
-        ROOT topk = (f32[8,%d]{1,0}, s32[8,%d]{1,0}) topk(x), k=%d, largest=true
-      }
-    )",
-                                                   n, k, k, k);
-
-      ASSERT_OK_AND_ASSIGN(auto module,
-                           ParseAndReturnVerifiedModule(hlo_text_module));
-
-      Array2D<float> expected_vals_arr(8, k);
-      Array2D<int32_t> expected_idxs_arr(8, k);
-      for (int i = 0; i < 8; ++i) {
-        for (int j = 0; j < k; ++j) {
-          expected_vals_arr(i, j) = expected_values_64[j];
-          expected_idxs_arr(i, j) = expected_indices_64[j];
+  for (int batch : {1, 8}) {
+    for (int n : {512, 1024, 4096, 32768, 65536 + 4096}) {
+      Array2D<float> input(batch, n, neg_smallest_qnan);
+      for (int i = 0; i < input_row_start.size(); ++i) {
+        for (int j = 0; j < batch; ++j) {
+          input(j, i) = input_row_start[i];
         }
       }
 
-      auto expected_vals_literal =
-          LiteralUtil::CreateR2FromArray2D<float>(expected_vals_arr);
-      auto expected_idxs_literal =
-          LiteralUtil::CreateR2FromArray2D<int32_t>(expected_idxs_arr);
-      auto expected_tuple = LiteralUtil::MakeTuple(
-          {&expected_vals_literal, &expected_idxs_literal});
+      auto literal = LiteralUtil::CreateR2FromArray2D<float>(input);
 
-      ASSERT_OK_AND_ASSIGN(Literal actual_tuple,
-                           Execute(std::move(module), {&literal}));
+      for (int k : {2, 4, 8, 16, 32, 64}) {
+        if (test::DeviceTypeIs(test::kGpu) && batch == 1 && n >= 4096 &&
+            k > 16) {
+          // TODO(b/572311831): [XLA:GPU] hlo.topk gives incorrect ordering
+          // for +0.0 vs -0.0 when lowered to CUB radix sort.
+          continue;
+        }
+        const auto hlo_text_module = absl::StrFormat(
+            R"(
+      HloModule topk
 
-      EXPECT_TRUE(LiteralTestUtil::Near(expected_tuple, actual_tuple,
-                                        xla::ErrorSpec{0, 0}));
+      ENTRY TopK {
+        x = f32[%d,%d]{1,0} parameter(0)
+        ROOT topk = (f32[%d,%d]{1,0}, s32[%d,%d]{1,0}) topk(x), k=%d, largest=true
+      }
+    )",
+            batch, n, batch, k, batch, k, k);
+
+        ASSERT_OK_AND_ASSIGN(auto module,
+                             ParseAndReturnVerifiedModule(hlo_text_module));
+
+        Array2D<float> expected_vals_arr(batch, k);
+        Array2D<int32_t> expected_idxs_arr(batch, k);
+        for (int i = 0; i < batch; ++i) {
+          for (int j = 0; j < k; ++j) {
+            expected_vals_arr(i, j) = expected_values_64[j];
+            expected_idxs_arr(i, j) = expected_indices_64[j];
+          }
+        }
+
+        auto expected_vals_literal =
+            LiteralUtil::CreateR2FromArray2D<float>(expected_vals_arr);
+        auto expected_idxs_literal =
+            LiteralUtil::CreateR2FromArray2D<int32_t>(expected_idxs_arr);
+        auto expected_tuple = LiteralUtil::MakeTuple(
+            {&expected_vals_literal, &expected_idxs_literal});
+
+        ASSERT_OK_AND_ASSIGN(Literal actual_tuple,
+                             Execute(std::move(module), {&literal}));
+        EXPECT_TRUE(LiteralTestUtil::Near(expected_tuple, actual_tuple,
+                                          xla::ErrorSpec{0, 0}));
+      }
     }
   }
 }
@@ -201,51 +210,54 @@ TEST_F(TopkTest, TopKWithSpecialBFloat16) {
       32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47,
       48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63};
 
-  for (int n : {512, 1024, 32768, 65536 + 4096}) {
-    Array2D<bfloat16> input(8, n, neg_smallest_qnan);
-    for (int i = 0; i < input_row_start.size(); ++i) {
-      for (int j = 0; j < 8; ++j) {
-        input(j, i) = input_row_start[i];
-      }
-    }
-
-    auto literal = LiteralUtil::CreateR2FromArray2D<bfloat16>(input);
-
-    for (int k : {2, 4, 8, 16, 32, 64}) {
-      const auto hlo_text_module = absl::StrFormat(R"(
-      HloModule topk
-
-      ENTRY TopK {
-        x = bf16[8,%d]{1,0} parameter(0)
-        ROOT topk = (bf16[8,%d]{1,0}, s32[8,%d]{1,0}) topk(x), k=%d, largest=true
-      }
-    )",
-                                                   n, k, k, k);
-
-      ASSERT_OK_AND_ASSIGN(auto module,
-                           ParseAndReturnVerifiedModule(hlo_text_module));
-
-      Array2D<bfloat16> expected_vals_arr(8, k);
-      Array2D<int32_t> expected_idxs_arr(8, k);
-      for (int i = 0; i < 8; ++i) {
-        for (int j = 0; j < k; ++j) {
-          expected_vals_arr(i, j) = expected_values_64[j];
-          expected_idxs_arr(i, j) = expected_indices_64[j];
+  for (int batch : {1, 8}) {
+    for (int n : {512, 1024, 4096, 32768, 65536 + 4096}) {
+      Array2D<bfloat16> input(batch, n, neg_smallest_qnan);
+      for (int i = 0; i < input_row_start.size(); ++i) {
+        for (int j = 0; j < batch; ++j) {
+          input(j, i) = input_row_start[i];
         }
       }
 
-      auto expected_vals_literal =
-          LiteralUtil::CreateR2FromArray2D<bfloat16>(expected_vals_arr);
-      auto expected_idxs_literal =
-          LiteralUtil::CreateR2FromArray2D<int32_t>(expected_idxs_arr);
-      auto expected_tuple = LiteralUtil::MakeTuple(
-          {&expected_vals_literal, &expected_idxs_literal});
+      auto literal = LiteralUtil::CreateR2FromArray2D<bfloat16>(input);
 
-      ASSERT_OK_AND_ASSIGN(Literal actual_tuple,
-                           Execute(std::move(module), {&literal}));
+      for (int k : {2, 4, 8, 16, 32, 64}) {
+        const auto hlo_text_module = absl::StrFormat(
+            R"(
+      HloModule topk
 
-      EXPECT_TRUE(LiteralTestUtil::Near(expected_tuple, actual_tuple,
-                                        xla::ErrorSpec{0, 0}));
+      ENTRY TopK {
+        x = bf16[%d,%d]{1,0} parameter(0)
+        ROOT topk = (bf16[%d,%d]{1,0}, s32[%d,%d]{1,0}) topk(x), k=%d, largest=true
+      }
+    )",
+            batch, n, batch, k, batch, k, k);
+
+        ASSERT_OK_AND_ASSIGN(auto module,
+                             ParseAndReturnVerifiedModule(hlo_text_module));
+
+        Array2D<bfloat16> expected_vals_arr(batch, k);
+        Array2D<int32_t> expected_idxs_arr(batch, k);
+        for (int i = 0; i < batch; ++i) {
+          for (int j = 0; j < k; ++j) {
+            expected_vals_arr(i, j) = expected_values_64[j];
+            expected_idxs_arr(i, j) = expected_indices_64[j];
+          }
+        }
+
+        auto expected_vals_literal =
+            LiteralUtil::CreateR2FromArray2D<bfloat16>(expected_vals_arr);
+        auto expected_idxs_literal =
+            LiteralUtil::CreateR2FromArray2D<int32_t>(expected_idxs_arr);
+        auto expected_tuple = LiteralUtil::MakeTuple(
+            {&expected_vals_literal, &expected_idxs_literal});
+
+        ASSERT_OK_AND_ASSIGN(Literal actual_tuple,
+                             Execute(std::move(module), {&literal}));
+
+        EXPECT_TRUE(LiteralTestUtil::Near(expected_tuple, actual_tuple,
+                                          xla::ErrorSpec{0, 0}));
+      }
     }
   }
 }

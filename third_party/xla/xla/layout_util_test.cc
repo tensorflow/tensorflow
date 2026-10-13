@@ -355,13 +355,13 @@ TEST_F(LayoutUtilTest, HumanStringWithTiling) {
             "bf16[8,2,3,1004]{3,2,1,0:T(2,*,*,128)}");
 }
 
-TEST_F(LayoutUtilTest, LinearIndexWithCombineDimension) {
+TEST_F(LayoutUtilTest, LinearIndexWithMatchDimension) {
   Shape shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {16, 256}, {1, 0});
   Tile* tile = shape.mutable_layout()->add_tiles();
-  tile->add_dimensions(Tile::kCombineDimension);
+  tile->add_dimensions(Tile::kMatchDimension);
   tile->add_dimensions(128);
 
-  // Tile (*, 128) on [16, 256] means each tile has size (16, 128).
+  // Tile (d, 128) on [16, 256] means each tile has size (16, 128).
   // (0, 0) -> 0
   EXPECT_EQ(LayoutUtil::LinearIndex(shape, {0, 0}), 0);
   EXPECT_EQ(LayoutUtil::LinearIndexForNestedTiling(shape, {0, 0}), 0);

@@ -702,18 +702,81 @@ TEST_F(AutotunerFlagsTest, GetEnabledBackendsRespectsDeterminism) {
   RegisterSymbolicExprStorage(&mlir_context);
   MlirContextPool mlir_context_pool(CreateMlirContext);
 
-  ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<CodegenBackend>> backends,
-                       ConfigAssignerPass::GetEnabledBackends(
-                           stream_executor_, allocator_.get(), &target_config,
-                           &alias_info, debug_options, &mlir_context,
-                           /*shape_size_fn=*/[](const Shape&) { return 0; },
-                           &compiler_, stream_executor_->GetPlatform()->id(),
-                           /*thread_pool=*/nullptr, &mlir_context_pool));
+  auto get_enabled_backends = [&]() {
+    return ConfigAssignerPass::GetEnabledBackends(
+        stream_executor_, allocator_.get(), &target_config, &alias_info,
+        debug_options, &mlir_context,
+        /*shape_size_fn=*/[](const Shape&) { return 0; }, &compiler_,
+        stream_executor_->GetPlatform()->id(),
+        /*thread_pool=*/nullptr, &mlir_context_pool);
+  };
 
+  ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<CodegenBackend>> backends,
+                       get_enabled_backends());
   for (const auto& backend : backends) {
     EXPECT_NE(backend->backend(), autotuner::Backend::TRITON);
     EXPECT_NE(backend->backend(), autotuner::Backend::NATIVE_EMITTER);
     EXPECT_NE(backend->backend(), autotuner::Backend::BLOCK_LEVEL_EMITTER);
+  }
+
+  debug_options.set_xla_gpu_experimental_deterministic_ops_triton(
+      DebugOptions::DETERMINISTIC_OPS_TRITON_MODE_UNCHECKED);
+  ASSERT_OK_AND_ASSIGN(backends, get_enabled_backends());
+  bool has_triton = false;
+  for (const auto& backend : backends) {
+    if (backend->backend() == autotuner::Backend::TRITON) {
+      has_triton = true;
+    }
+    EXPECT_NE(backend->backend(), autotuner::Backend::NATIVE_EMITTER);
+    EXPECT_NE(backend->backend(), autotuner::Backend::BLOCK_LEVEL_EMITTER);
+  }
+  EXPECT_TRUE(has_triton);
+}
+
+TEST_F(AutotunerFlagsTest, GetEnabledBackendsRespectsTensorIrFlag) {
+  GpuCompiler::GpuTargetConfig target_config(stream_executor_);
+  GpuAliasInfo alias_info(stream_executor_->GetDeviceDescription());
+  mlir::MLIRContext mlir_context;
+  RegisterSymbolicExprStorage(&mlir_context);
+  MlirContextPool mlir_context_pool(CreateMlirContext);
+
+  {
+    DebugOptions debug_options = GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_experimental_enable_tensor_ir(false);
+
+    ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<CodegenBackend>> backends,
+                         ConfigAssignerPass::GetEnabledBackends(
+                             stream_executor_, allocator_.get(), &target_config,
+                             &alias_info, debug_options, &mlir_context,
+                             /*shape_size_fn=*/[](const Shape&) { return 0; },
+                             &compiler_, stream_executor_->GetPlatform()->id(),
+                             /*thread_pool=*/nullptr, &mlir_context_pool));
+
+    for (const auto& backend : backends) {
+      EXPECT_NE(backend->backend(), autotuner::Backend::TENSOR_IR);
+    }
+  }
+
+  {
+    DebugOptions debug_options = GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_experimental_enable_tensor_ir(true);
+
+    ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<CodegenBackend>> backends,
+                         ConfigAssignerPass::GetEnabledBackends(
+                             stream_executor_, allocator_.get(), &target_config,
+                             &alias_info, debug_options, &mlir_context,
+                             /*shape_size_fn=*/[](const Shape&) { return 0; },
+                             &compiler_, stream_executor_->GetPlatform()->id(),
+                             /*thread_pool=*/nullptr, &mlir_context_pool));
+
+    bool has_tensor_ir = false;
+    for (const auto& backend : backends) {
+      if (backend->backend() == autotuner::Backend::TENSOR_IR) {
+        has_tensor_ir = true;
+        break;
+      }
+    }
+    EXPECT_TRUE(has_tensor_ir);
   }
 }
 

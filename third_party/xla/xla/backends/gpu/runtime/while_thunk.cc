@@ -113,46 +113,30 @@ WhileThunk::WhileThunk(
       host_memory_pools_(devices_per_host) {}
 
 absl::Status WhileThunk::Prepare(const PrepareParams& params) {
-  ABSL_RETURN_IF_ERROR(condition_executor_.Prepare(params));
-  ABSL_RETURN_IF_ERROR(body_executor_.Prepare(params));
-  if (command_condition_executor_.has_value()) {
+  if (!condition_executor_.thunks().empty()) {
+    ABSL_RETURN_IF_ERROR(condition_executor_.Prepare(params));
+  } else if (command_condition_executor_.has_value()) {
     ABSL_RETURN_IF_ERROR(command_condition_executor_->Prepare(params));
   }
-  if (command_body_executor_.has_value()) {
+  if (!body_executor_.thunks().empty()) {
+    ABSL_RETURN_IF_ERROR(body_executor_.Prepare(params));
+  } else if (command_body_executor_.has_value()) {
     ABSL_RETURN_IF_ERROR(command_body_executor_->Prepare(params));
   }
   return absl::OkStatus();
 }
 
 absl::Status WhileThunk::Initialize(const InitializeParams& params) {
-  ABSL_RETURN_IF_ERROR(condition_executor_.Initialize(params));
-  ABSL_RETURN_IF_ERROR(body_executor_.Initialize(params));
-  if (command_condition_executor_.has_value()) {
+  if (!condition_executor_.thunks().empty()) {
+    ABSL_RETURN_IF_ERROR(condition_executor_.Initialize(params));
+  } else if (command_condition_executor_.has_value()) {
     ABSL_RETURN_IF_ERROR(command_condition_executor_->Initialize(params));
   }
-  if (command_body_executor_.has_value()) {
+  if (!body_executor_.thunks().empty()) {
+    ABSL_RETURN_IF_ERROR(body_executor_.Initialize(params));
+  } else if (command_body_executor_.has_value()) {
     ABSL_RETURN_IF_ERROR(command_body_executor_->Initialize(params));
   }
-
-  is_unrolled_loop_ = false;
-  if (command_condition_executor_.has_value() &&
-      command_body_executor_.has_value() && enable_loop_unroll_ &&
-      command_body_executor_->support_loop_unroll() &&
-      command_condition_executor_->support_loop_unroll() &&
-      trip_count_.has_value()) {
-    is_unrolled_loop_ = true;
-  }
-  VLOG(3) << "WhileThunk::Initialize command buffer: enable_loop_unroll_="
-          << enable_loop_unroll_ << ", body_support="
-          << (command_body_executor_.has_value()
-                  ? command_body_executor_->support_loop_unroll()
-                  : false)
-          << ", cond_support="
-          << (command_condition_executor_.has_value()
-                  ? command_condition_executor_->support_loop_unroll()
-                  : false)
-          << ", trip_count=" << trip_count_.value_or(-1)
-          << ", is_unrolled_loop_=" << is_unrolled_loop_;
 
   return host_memory_pools_.GetOrCreateAndInitialize(
       params.executor->device_ordinal(), [&](PoolState* state) -> absl::Status {
@@ -270,7 +254,23 @@ absl::Status WhileThunk::SetOrUpdateCommandBufferExecutors(
   command_condition_executor_ = std::move(condition_executor);
   command_body_executor_ = std::move(body_executor);
   enable_loop_unroll_ = enable_loop_unroll;
-  is_unrolled_loop_ = false;
+  is_unrolled_loop_ = command_condition_executor_.has_value() &&
+                      command_body_executor_.has_value() &&
+                      enable_loop_unroll_ &&
+                      command_body_executor_->support_loop_unroll() &&
+                      command_condition_executor_->support_loop_unroll() &&
+                      trip_count_.has_value();
+  VLOG(3) << "WhileThunk command buffer: enable_loop_unroll_="
+          << enable_loop_unroll_ << ", body_support="
+          << (command_body_executor_.has_value()
+                  ? command_body_executor_->support_loop_unroll()
+                  : false)
+          << ", cond_support="
+          << (command_condition_executor_.has_value()
+                  ? command_condition_executor_->support_loop_unroll()
+                  : false)
+          << ", trip_count=" << trip_count_.value_or(-1)
+          << ", is_unrolled_loop_=" << is_unrolled_loop_;
   return absl::OkStatus();
 }
 

@@ -39,12 +39,15 @@ limitations under the License.
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/service/device_assignment.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/test_utils.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -120,6 +123,20 @@ class ParameterizedFp8GemmRewriteTest
         FindInstruction(optimized_module.get(), HloOpcode::kCustomCall);
     ASSERT_NE(call, nullptr);
     EXPECT_EQ(call->custom_call_target(), "__cublas$lt$matmul$f8");
+  }
+
+  // Runs `hlo_text` with the F32 scales in parameters 2-4 set to 4, 8 and 0.25.
+  void RunAndCompareWithScales(absl::string_view hlo_text) {
+    ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+    ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
+                         MakeFakeArguments(module.get()));
+    args[2] = LiteralUtil::CreateR0<float>(4.0f);
+    args[3] = LiteralUtil::CreateR0<float>(8.0f);
+    args[4] = LiteralUtil::CreateR0<float>(0.25f);
+    // The relative tolerance allows one E4M3 ULP (2^-3).
+    EXPECT_TRUE(RunAndCompare(std::move(module),
+                              LiteralUtil::MakePointers(args),
+                              ErrorSpec{1e-2, 1.3e-1}));
   }
 
   void MatchOptimizedHlo(absl::string_view hlo, const absl::string_view pattern,
@@ -1431,9 +1448,9 @@ TEST_F(ParameterizedFp8GemmRewriteTest, UnscaledABScaledDF8) {
       z_scale_bcast = f32[16,16] broadcast(z_scale), dimensions={}
       dot_a = f32[16,16] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
       dot_a_scaled = f32[16,16] divide(dot_a, z_scale_bcast)
-      c1 = f32[] constant(-448.)
+      c1 = f32[] constant(-<<F8E4M3_AMAX>>)
       c1_bcast = f32[16,16] broadcast(c1), dimensions={}
-      c2 = f32[] constant(448.)
+      c2 = f32[] constant(<<F8E4M3_AMAX>>)
       c2_bcast = f32[16,16] broadcast(c2), dimensions={}
       dot_a_clamped = f32[16,16] clamp(c1_bcast, dot_a_scaled, c2_bcast)
       ROOT dot_a_f8 = <<F8E4M3>>[16,16] convert(dot_a_clamped)
@@ -1457,7 +1474,7 @@ TEST_F(ParameterizedFp8GemmRewriteTest, UnscaledABScaledDF8) {
 ; CHECK-NEXT:    [[C1:%[^ ]+]] = f32[] constant(1)
 ; CHECK-PTX-NEXT:    [[C2:%[^ ]+]] = f32[] constant(1)
 ; CHECK-PTX-NEXT:    [[OUT:%[^ ]+]] = (<<F8E4M3>>[16,16]{1,0}, s8[{{[0-9]+}}]{0}) custom-call([[P0]], [[P1_TRANSPOSE]], [[P2_INV]], [[C1]], [[C2]]),
-; CHECK-GCN-NEXT:    [[OUT:%[^ ]+]] = (f32[16,16]{1,0}, s8[{{[0-9]+}}]{0}) custom-call([[P0]], [[P1_TRANSPOSE]], [[P2_INV]], [[C1]]),
+; CHECK-GCN-NEXT:    [[OUT:%[^ ]+]] = (<<F8E4M3>>[16,16]{1,0}, s8[{{[0-9]+}}]{0}) custom-call([[P0]], [[P1_TRANSPOSE]], [[P2_INV]], [[C1]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "alpha_real":1
@@ -1668,12 +1685,17 @@ TEST_F(ParameterizedFp8GemmRewriteTest, ScaledABScaledDF8) {
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = <<F8E4M3>>[32,16]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = <<F8E4M3>>[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[] parameter(2)
-; CHECK-NEXT:    [[P3:%[^ ]+]] = f32[] parameter(3)
+; CHECK-PTX-NEXT:    [[P3:%[^ ]+]] = f32[] parameter(3)
 ; CHECK-PTX-NEXT:    [[C2:%[^ ]+]] = f32[] constant(1)
 ; CHECK-PTX-NEXT:    [[P4:%[^ ]+]] = f32[] parameter(4)
 ; CHECK-PTX-NEXT:    [[P4_INV:%[^ ]+]] = f32[] divide([[C2]], [[P4]])
 ; CHECK-PTX-NEXT:    [[OUT:%[^ ]+]] = (<<F8E4M3>>[16,16]{1,0}, s8[{{[0-9]+}}]{0}) custom-call([[P0]], [[P1_TRANSPOSE]], [[P2]], [[P3]], [[P4_INV]]),
-; CHECK-GCN-NEXT:    [[OUT:%[^ ]+]] = (f32[16,16]{1,0}, s8[{{[0-9]+}}]{0}) custom-call([[P0]], [[P1_TRANSPOSE]], [[P2]], [[P3]]),
+; CHECK-GCN-NEXT:    [[C2:%[^ ]+]] = f32[] constant(1)
+; CHECK-GCN-NEXT:    [[P4:%[^ ]+]] = f32[] parameter(4)
+; CHECK-GCN-NEXT:    [[P4_INV:%[^ ]+]] = f32[] divide([[C2]], [[P4]])
+; CHECK-GCN-NEXT:    [[A_SCALE:%[^ ]+]] = f32[] multiply([[P2]], [[P4_INV]])
+; CHECK-GCN-NEXT:    [[P3:%[^ ]+]] = f32[] parameter(3)
+; CHECK-GCN-NEXT:    [[OUT:%[^ ]+]] = (<<F8E4M3>>[16,16]{1,0}, s8[{{[0-9]+}}]{0}) custom-call([[P0]], [[P1_TRANSPOSE]], [[A_SCALE]], [[P3]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "alpha_real":1
@@ -1689,6 +1711,7 @@ TEST_F(ParameterizedFp8GemmRewriteTest, ScaledABScaledDF8) {
 ; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK-GCN-NOT:     "has_d_scale"
 ; CHECK:           }
       )");
 }
@@ -1778,11 +1801,10 @@ TEST_F(ParameterizedFp8GemmRewriteTest, ScaledABScaledDReluActivationF8) {
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = <<F8E4M3>>[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[] parameter(2)
 ; CHECK-NEXT:    [[P3:%[^ ]+]] = f32[] parameter(3)
-; CHECK-PTX-NEXT:    [[C2:%[^ ]+]] = f32[] constant(1)
-; CHECK-PTX-NEXT:    [[P4:%[^ ]+]] = f32[] parameter(4)
-; CHECK-PTX-NEXT:    [[P4_INV:%[^ ]+]] = f32[] divide([[C2]], [[P4]])
-; CHECK-PTX-NEXT:    [[OUT:%[^ ]+]] = (<<F8E4M3>>[16,16]{1,0}, s8[{{[0-9]+}}]{0}) custom-call([[P0]], [[P1_TRANSPOSE]], [[P2]], [[P3]], [[P4_INV]]),
-; CHECK-GCN-NEXT:    [[OUT:%[^ ]+]] = (f32[16,16]{1,0}, s8[{{[0-9]+}}]{0}) custom-call([[P0]], [[P1_TRANSPOSE]], [[P2]], [[P3]]),
+; CHECK-NEXT:    [[C2:%[^ ]+]] = f32[] constant(1)
+; CHECK-NEXT:    [[P4:%[^ ]+]] = f32[] parameter(4)
+; CHECK-NEXT:    [[P4_INV:%[^ ]+]] = f32[] divide([[C2]], [[P4]])
+; CHECK-NEXT:    [[OUT:%[^ ]+]] = (<<F8E4M3>>[16,16]{1,0}, s8[{{[0-9]+}}]{0}) custom-call([[P0]], [[P1_TRANSPOSE]], [[P2]], [[P3]], [[P4_INV]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "alpha_real":1
@@ -1798,6 +1820,7 @@ TEST_F(ParameterizedFp8GemmRewriteTest, ScaledABScaledDReluActivationF8) {
 ; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "epilogue":"RELU"
+; CHECK-GCN-DAG:     "has_d_scale":true
 ; CHECK:           }
       )");
 }
@@ -1930,12 +1953,11 @@ TEST_F(ParameterizedFp8GemmRewriteTest, ScaledABScaledDVectorBiasF8) {
 ; CHECK-NEXT:    [[P3:%[^ ]+]] = f16[] parameter(4)
 ; CHECK-NEXT:    [[CV1:%[^ ]+]] = f32[] convert([[P3]])
 ; CHECK-NEXT:    [[VB:%[^ ]+]] = f16[16]{0} parameter(2)
-; CHECK-PTX-NEXT:    [[C2:%[^ ]+]] = f16[] constant(1)
-; CHECK-PTX-NEXT:    [[P4:%[^ ]+]] = f16[] parameter(5)
-; CHECK-PTX-NEXT:    [[DV:%[^ ]+]] = f16[] divide([[C2]], [[P4]])
-; CHECK-PTX-NEXT:    [[CV2:%[^ ]+]] = f32[] convert([[DV]])
-; CHECK-PTX:     [[OUT:%[^ ]+]] = (<<F8E4M3>>[16,16]{1,0}, s8[{{[0-9]+}}]{0}) custom-call([[P0]], [[P1_TRANSPOSE]], [[CV]], [[CV1]], [[VB]], /*index=5*/[[CV2]]),
-; CHECK-GCN:     [[OUT:%[^ ]+]] = (f16[16,16]{1,0}, s8[{{[0-9]+}}]{0}) custom-call([[P0]], [[P1_TRANSPOSE]], [[CV]], [[CV1]], [[VB]]),
+; CHECK-NEXT:    [[C2:%[^ ]+]] = f16[] constant(1)
+; CHECK-NEXT:    [[P4:%[^ ]+]] = f16[] parameter(5)
+; CHECK-NEXT:    [[DV:%[^ ]+]] = f16[] divide([[C2]], [[P4]])
+; CHECK-NEXT:    [[CV2:%[^ ]+]] = f32[] convert([[DV]])
+; CHECK:     [[OUT:%[^ ]+]] = (<<F8E4M3>>[16,16]{1,0}, s8[{{[0-9]+}}]{0}) custom-call([[P0]], [[P1_TRANSPOSE]], [[CV]], [[CV1]], [[VB]], /*index=5*/[[CV2]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "alpha_real":1
@@ -1951,6 +1973,7 @@ TEST_F(ParameterizedFp8GemmRewriteTest, ScaledABScaledDVectorBiasF8) {
 ; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "epilogue":"BIAS"
+; CHECK-GCN-DAG:     "has_d_scale":true
 ; CHECK:           }
       )");
 }
@@ -2520,6 +2543,139 @@ TEST_F(ParameterizedFp8GemmRewriteTest,
 ; CHECK:         [[VBC:%[^ ]+]] = f16[16,16]{1,0} broadcast([[VB]]), dimensions={1}
 ; CHECK:         ROOT [[OUT:%[^ ]+]] = f16[16,16]{1,0} add([[GEMMOUT]], [[VBC]])
       )");
+}
+
+// On ROCm, hipBLASLt reads the vector bias of a GEMM with FP8 output as F16,
+// so an FP8 vector bias is not fused into it.
+TEST_F(ParameterizedFp8GemmRewriteTest,
+       UnscaledABUnscaledDVectorBiasF8OutputNotFused) {
+  if (!IsRocm()) {
+    GTEST_SKIP() << "ROCm-specific.";
+  }
+  const char* hlo_text = R"(
+    HloModule test
+
+    ENTRY test {
+      x = <<F8E4M3>>[16,32] parameter(0)
+      y = <<F8E4M3>>[32,16] parameter(1)
+      b = <<F8E4M3>>[16] parameter(2)
+      b_bcast = <<F8E4M3>>[16,16] broadcast(b), dimensions={1}
+      dot_a = <<F8E4M3>>[16,16] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      ROOT out = <<F8E4M3>>[16,16] add(dot_a, b_bcast)
+    }
+)";
+
+  RunAndFilecheckHloRewrite(
+      hlo_text,
+      GemmRewriter(CudaHopperOrRocmCapability(), GetToolkitVersion(),
+                   GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}),
+      R"(
+; CHECK:         custom-call({{[^,]+}}, {{[^,]+}}, {{[^,]+}}, {{[^,)]+}}), custom_call_target="__cublas$lt$matmul$f8"
+; CHECK-SAME:      "epilogue":"DEFAULT"
+; CHECK:         add(
+      )");
+}
+
+// A scaled FP8 GEMM, where <<ACTIVATION>> computes <<ACT>> from `dot`.
+constexpr absl::string_view kScaledABScaledDActivationF8Hlo = R"(
+    ENTRY test {
+      x = <<F8E4M3>>[16,32] parameter(0)
+      y = <<F8E4M3>>[32,16] parameter(1)
+      x_f32 = f32[16,32] convert(x)
+      y_f32 = f32[32,16] convert(y)
+      x_scale = f32[] parameter(2)
+      y_scale = f32[] parameter(3)
+      z_scale = f32[] parameter(4)
+      x_scale_bcast = f32[16,32] broadcast(x_scale), dimensions={}
+      y_scale_bcast = f32[32,16] broadcast(y_scale), dimensions={}
+      z_scale_bcast = f32[16,16] broadcast(z_scale), dimensions={}
+      x_unscaled = f32[16,32] multiply(x_f32, x_scale_bcast)
+      y_unscaled = f32[32,16] multiply(y_f32, y_scale_bcast)
+      dot = f32[16,16] dot(x_unscaled, y_unscaled), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      <<ACTIVATION>>
+      act_scaled = f32[16,16] divide(<<ACT>>, z_scale_bcast)
+      c1 = f32[] constant(-<<F8E4M3_AMAX>>)
+      c1_bcast = f32[16,16] broadcast(c1), dimensions={}
+      c2 = f32[] constant(<<F8E4M3_AMAX>>)
+      c2_bcast = f32[16,16] broadcast(c2), dimensions={}
+      act_clamped = f32[16,16] clamp(c1_bcast, act_scaled, c2_bcast)
+      ROOT out = <<F8E4M3>>[16,16] convert(act_clamped)
+    }
+)";
+
+constexpr absl::string_view kGelu = R"(
+      mul.0 = f32[16,16] multiply(dot, dot)
+      mul.1 = f32[16,16] multiply(dot, mul.0)
+      const.0 = f32[] constant(0.044715)
+      bcast.0 = f32[16,16] broadcast(const.0), dimensions={}
+      mul.2 = f32[16,16] multiply(mul.1, bcast.0)
+      add.0 = f32[16,16] add(dot, mul.2)
+      const.1 = f32[] constant(0.797884583)
+      bcast.1 = f32[16,16] broadcast(const.1), dimensions={}
+      mul.3 = f32[16,16] multiply(add.0, bcast.1)
+      tanh = f32[16,16] tanh(mul.3)
+      const.2 = f32[] constant(1)
+      bcast.2 = f32[16,16] broadcast(const.2), dimensions={}
+      add.2 = f32[16,16] add(tanh, bcast.2)
+      const.3 = f32[] constant(0.5)
+      bcast.3 = f32[16,16] broadcast(const.3), dimensions={}
+      mul.4 = f32[16,16] multiply(add.2, bcast.3)
+      act = f32[16,16] multiply(dot, mul.4))";
+
+// On ROCm, the D scale of a GELU epilogue cannot be folded into the A scale,
+// so it is passed to a hipBLASLt kernel that applies it.
+TEST_F(ParameterizedFp8GemmRewriteTest, ScaledABScaledDGeluF8) {
+  if (!IsRocm()) {
+    GTEST_SKIP() << "ROCm-specific.";
+  }
+  std::string hlo_text =
+      absl::StrReplaceAll(kScaledABScaledDActivationF8Hlo,
+                          {{"<<ACTIVATION>>", kGelu}, {"<<ACT>>", "act"}});
+  RunAndCompareWithScales(hlo_text);
+  MatchOptimizedHlo(hlo_text, R"(
+; CHECK:         (<<F8E4M3>>[16,16]{1,0}, s8[{{[0-9]+}}]{0}) custom-call({{[^,]+}}, {{[^,]+}}, {{[^,]+}}, {{[^,]+}}, {{[^,)]+}}),
+; CHECK-SAME:      custom_call_target="__cublas$lt$matmul$f8"
+; CHECK-SAME:      "epilogue":"GELU"
+; CHECK-SAME:      "has_d_scale":true
+      )");
+}
+
+// On ROCm, the output scaling and conversion stay unfused when hipBLASLt has no
+// kernel for them: with a matrix bias, a vector bias that is not F16, or an
+// E5M2 output of E4M3 inputs.
+TEST_F(ParameterizedFp8GemmRewriteTest, ScaledABScaledDNotFusedOnRocm) {
+  if (!IsRocm()) {
+    GTEST_SKIP() << "ROCm-specific.";
+  }
+  constexpr absl::string_view kMatrixBias = R"(
+      b = f32[16,16] parameter(5)
+      act = f32[16,16] add(dot, b))";
+  constexpr absl::string_view kF32VectorBias = R"(
+      b = f32[16] parameter(5)
+      b_bcast = f32[16,16] broadcast(b), dimensions={1}
+      act = f32[16,16] add(dot, b_bcast))";
+  struct Case {
+    absl::string_view activation, act, root, amax;
+  };
+  for (const Case& c :
+       {Case{kMatrixBias, "act", "ROOT out = <<F8E4M3>>", "<<F8E4M3_AMAX>>"},
+        Case{kF32VectorBias, "act", "ROOT out = <<F8E4M3>>", "<<F8E4M3_AMAX>>"},
+        Case{"", "dot", "ROOT out = <<F8E5M2>>", "57344."}}) {
+    std::string hlo_text = absl::StrReplaceAll(
+        kScaledABScaledDActivationF8Hlo, {{"<<ACTIVATION>>", c.activation},
+                                          {"<<ACT>>", c.act},
+                                          {"ROOT out = <<F8E4M3>>", c.root},
+                                          {"<<F8E4M3_AMAX>>", c.amax}});
+    SCOPED_TRACE(hlo_text);
+    RunAndFilecheckHloRewrite(
+        hlo_text,
+        GemmRewriter(CudaHopperOrRocmCapability(), GetToolkitVersion(),
+                     GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}),
+        R"(
+; CHECK:         = (f32[16,16]{1,0}, s8[{{[0-9]+}}]{0}) custom-call(
+; CHECK-SAME:      custom_call_target="__cublas$lt$matmul$f8"
+      )");
+  }
 }
 
 TEST_F(ParameterizedFp8GemmRewriteTest, ScaledABScaledDWithDAmaxF8) {
