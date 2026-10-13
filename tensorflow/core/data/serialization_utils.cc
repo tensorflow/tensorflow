@@ -186,7 +186,7 @@ VariantTensorDataReader::VariantTensorDataReader(
     const std::vector<const tensorflow::VariantTensorData*>& data) {
   for (const auto& d : data) {
     if (d == nullptr) {
-      VLOG(1) << "Found null VariantTensorData pointer; skipping.";
+      LOG(WARNING) << "Found null VariantTensorData pointer; skipping.";
       continue;
     }
     std::string metadata;
