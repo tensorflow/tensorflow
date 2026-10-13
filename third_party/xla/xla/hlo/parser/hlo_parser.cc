@@ -4156,10 +4156,11 @@ bool HloParserImpl::ParseCollectiveDeviceListBase(
     return true;
   }
 
-  // If the first token is 'mesh' or 'maximal_mesh', then we are parsing a (v3)
-  // MeshAxesReplicaGroupList.
+  // If the first token is 'mesh', 'single_device', or 'maximal_mesh', then we
+  // are parsing a (v3) MeshAxesReplicaGroupList.
   if (lexer_.GetKind() == TokKind::kIdent &&
-      (lexer_.GetStrVal() == "mesh" || lexer_.GetStrVal() == "maximal_mesh")) {
+      (lexer_.GetStrVal() == "mesh" || lexer_.GetStrVal() == "single_device" ||
+       lexer_.GetStrVal() == "maximal_mesh")) {
     std::optional<Mesh> mesh;
     if (!ParseMesh(mesh)) {
       return false;
@@ -4335,19 +4336,22 @@ bool HloParserImpl::ParseMesh(std::optional<Mesh>& mesh) {
   std::string kind = lexer_.GetStrVal();
   lexer_.Lex();
 
-  if (kind == "maximal_mesh") {
-    if (!ParseToken(TokKind::kLsquare, "expected '[' after maximal_mesh")) {
+  if (kind == "single_device" || kind == "maximal_mesh") {
+    if (!ParseToken(TokKind::kLsquare,
+                    absl::StrCat("expected '[' after ", kind))) {
       return false;
     }
     std::string device_ids_str;
     if (!ParseAttributeName(&device_ids_str) || device_ids_str != "device_id") {
-      return TokenError("expected device_id= attribute in maximal_mesh");
+      return TokenError(
+          absl::StrCat("expected device_id= attribute in ", kind));
     }
     int64_t device_id;
     if (!ParseInt64(&device_id)) {
       return false;
     }
-    if (!ParseToken(TokKind::kRsquare, "expected ']' to end maximal_mesh")) {
+    if (!ParseToken(TokKind::kRsquare,
+                    absl::StrCat("expected ']' to end ", kind))) {
       return false;
     }
     mesh.emplace(device_id);
@@ -4355,7 +4359,7 @@ bool HloParserImpl::ParseMesh(std::optional<Mesh>& mesh) {
   }
 
   if (kind != "mesh") {
-    return TokenError("Expected 'mesh' or 'maximal_mesh'");
+    return TokenError("Expected 'mesh', 'single_device', or 'maximal_mesh'");
   }
 
   // Parse @mesh[...]
@@ -4892,7 +4896,8 @@ bool HloParserImpl::ParseSingleSharding(std::optional<HloSharding>& sharding,
   }
 
   if (lexer_.GetKind() == TokKind::kIdent &&
-      (lexer_.GetStrVal() == "mesh" || lexer_.GetStrVal() == "maximal_mesh")) {
+      (lexer_.GetStrVal() == "mesh" || lexer_.GetStrVal() == "single_device" ||
+       lexer_.GetStrVal() == "maximal_mesh")) {
     std::optional<NamedSharding> named_sharding;
     if (ParseSingleSharding(named_sharding)) {
       sharding = HloSharding(std::move(*named_sharding));

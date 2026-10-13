@@ -87,18 +87,18 @@ func.func @main(
 // CHECK-NOT: xla.sdy.sharding
 
 // CHECK-V3: sdy.mesh @empty_mesh = <[]>
-// CHECK-V3: sdy.mesh @maximal_mesh_0 = <[], device_ids=[0]>
+// CHECK-V3: sdy.mesh @single_device_0 = <[], device_ids=[0]>
 sdy.mesh @empty_mesh = <[]>
-sdy.mesh @maximal_mesh_0 = <[], device_ids=[0]>
+sdy.mesh @single_device_0 = <[], device_ids=[0]>
 
 // CHECK-LABEL: func @main
 func.func @main(
   // CHECK-V2: %arg0: tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@empty_mesh, [{?}, {}]>},
   // CHECK-V3: %arg0: tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@empty_mesh, [{?}, {}]>},
-  // CHECK-V2: %arg1: tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@maximal_mesh_0, []>})
-  // CHECK-V3: %arg1: tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@maximal_mesh_0, []>})
+  // CHECK-V2: %arg1: tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@single_device_0, []>})
+  // CHECK-V3: %arg1: tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@single_device_0, []>})
   %arg0: tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@empty_mesh, [{?}, {}]>},
-  %arg1: tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@maximal_mesh_0, []>}
+  %arg1: tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@single_device_0, []>}
   ) -> (tensor<8x16xf32>) {
   %0 = stablehlo.add %arg0, %arg1 : tensor<8x16xf32>
   return %0 : tensor<8x16xf32>
