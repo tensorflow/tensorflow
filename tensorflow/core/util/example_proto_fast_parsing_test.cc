@@ -619,6 +619,88 @@ TEST(FastParse, OobWriteVulnerabilityMalformedSparseSequenceExample) {
   EXPECT_TRUE(absl::IsInvalidArgument(status));
 }
 
+TEST(FastParse, SequenceExampleFillsAllOutputKinds) {
+  // Two SequenceExamples with a different number of rows and values each, so
+  // that dense feature lists are padded and sparse/ragged ones are packed.
+  SequenceExample examples[2];
+  (*examples[0].mutable_context()->mutable_feature())["c"]
+      .mutable_int64_list()
+      ->add_value(11);
+  (*examples[1].mutable_context()->mutable_feature())["c"]
+      .mutable_int64_list()
+      ->add_value(12);
+  auto* lists0 = examples[0].mutable_feature_lists()->mutable_feature_list();
+  auto* lists1 = examples[1].mutable_feature_lists()->mutable_feature_list();
+  // Adds one row holding `values` to a float feature list.
+  auto add_float_row = [](FeatureList* list, std::vector<float> values) {
+    auto* float_list = list->add_feature()->mutable_float_list();
+    for (float v : values) float_list->add_value(v);
+  };
+  add_float_row(&(*lists0)["d"], {1, 2});
+  add_float_row(&(*lists0)["d"], {3, 4});
+  add_float_row(&(*lists1)["d"], {5, 6});
+  (*lists0)["s"].add_feature()->mutable_int64_list()->add_value(7);
+  auto* s01 = (*lists0)["s"].add_feature()->mutable_int64_list();
+  s01->add_value(8);
+  s01->add_value(9);
+  (*lists1)["s"].add_feature()->mutable_int64_list()->add_value(10);
+  (*lists0)["r"].add_feature()->mutable_bytes_list()->add_value("a");
+  auto* r01 = (*lists0)["r"].add_feature()->mutable_bytes_list();
+  r01->add_value("b");
+  r01->add_value("c");
+  const std::vector<tstring> serialized = {Serialize(examples[0]),
+                                           Serialize(examples[1])};
+
+  FastParseExampleConfig context_config;
+  context_config.dense.emplace_back("c", DT_INT64, PartialTensorShape({1}),
+                                    Tensor(DT_INT64, TensorShape({0})),
+                                    /*variable_length=*/false,
+                                    /*elements_per_stride=*/1);
+  FastParseExampleConfig sequence_config;
+  sequence_config.dense.emplace_back("d", DT_FLOAT, PartialTensorShape({2}),
+                                     Tensor(DT_FLOAT, TensorShape({0})),
+                                     /*variable_length=*/true,
+                                     /*elements_per_stride=*/2);
+  AddSparseFeature("s", DT_INT64, &sequence_config);
+  sequence_config.ragged.emplace_back("r", DT_STRING, DT_INT64);
+
+  Result context_result, sequence_result;
+  std::vector<Tensor> dense_lengths;
+  const absl::Status status = FastParseSequenceExample(
+      context_config, sequence_config, serialized, {}, nullptr, &context_result,
+      &sequence_result, &dense_lengths);
+  ASSERT_TRUE(status.ok()) << status;
+
+  auto expect_values = [](const Tensor& t, std::vector<int64_t> shape,
+                          auto expected) {
+    EXPECT_EQ(t.shape(), TensorShape(shape));
+    using T = typename decltype(expected)::value_type;
+    auto flat = t.flat<T>();
+    ASSERT_EQ(flat.size(), expected.size());
+    for (int i = 0; i < flat.size(); ++i) {
+      EXPECT_EQ(flat(i), expected[i]) << "i=" << i;
+    }
+  };
+  expect_values(context_result.dense_values[0], {2, 1},
+                std::vector<int64_t>{11, 12});
+  // The second example's missing row is padded with zeros.
+  expect_values(sequence_result.dense_values[0], {2, 2, 2},
+                std::vector<float>{1, 2, 3, 4, 5, 6, 0, 0});
+  expect_values(dense_lengths[0], {2}, std::vector<int64_t>{2, 1});
+  expect_values(sequence_result.sparse_values[0], {4},
+                std::vector<int64_t>{7, 8, 9, 10});
+  expect_values(sequence_result.sparse_indices[0], {4, 3},
+                std::vector<int64_t>{0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0});
+  expect_values(sequence_result.sparse_shapes[0], {3},
+                std::vector<int64_t>{2, 2, 2});
+  expect_values(sequence_result.ragged_values[0], {3},
+                std::vector<tstring>{"a", "b", "c"});
+  expect_values(sequence_result.ragged_splits[0], {3},
+                std::vector<int64_t>{0, 1, 3});
+  expect_values(sequence_result.ragged_outer_splits[0], {3},
+                std::vector<int64_t>{0, 2, 2});
+}
+
 }  // namespace
 }  // namespace example
 }  // namespace tensorflow
