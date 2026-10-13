@@ -868,7 +868,6 @@ tf_cc_test(
         "//tensorflow/core/kernels/data:range_dataset_op",
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/status",
-        "@com_google_googletest//:gtest_main",
         "@xla//xla/tsl/lib/core:status_test_util",
         "@xla//xla/tsl/platform:status_matchers",
     ],

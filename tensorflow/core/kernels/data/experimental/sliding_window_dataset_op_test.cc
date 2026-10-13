@@ -141,6 +141,39 @@ TEST_F(SlidingWindowDatasetOpTest, AddOverflowingTargetBufferSize) {
                              ::testing::HasSubstr("overflow")));
 }
 
+TEST_F(SlidingWindowDatasetOpTest, SizeOneWithExtremeStrideDoesNotOverflow) {
+  auto dataset_params = SlidingWindowDatasetParams(
+      RangeDatasetParams(0, 3, 1),
+      /*size=*/1,
+      /*shift=*/1,
+      /*stride=*/std::numeric_limits<int64_t>::max(),
+      /*drop_remainder=*/true,
+      /*output_dtypes=*/{DT_VARIANT},
+      /*output_shapes=*/{PartialTensorShape({})},
+      /*node_name=*/kNodeName);
+  TF_EXPECT_OK(Initialize(dataset_params));
+}
+
+SlidingWindowDatasetParams SlidingWindowDatasetParamsWithSignedInt64Overflow() {
+  return SlidingWindowDatasetParams(
+      RangeDatasetParams(0, 3, 1),
+      /*size=*/3,
+      /*shift=*/1,
+      /*stride=*/static_cast<int64_t>(1) << 62,
+      /*drop_remainder=*/true,
+      /*output_dtypes=*/{DT_VARIANT},
+      /*output_shapes=*/{PartialTensorShape({})},
+      /*node_name=*/kNodeName);
+}
+
+TEST_F(SlidingWindowDatasetOpTest, SignedInt64OverflowingTargetBufferSize) {
+  auto dataset_params = SlidingWindowDatasetParamsWithSignedInt64Overflow();
+  EXPECT_THAT(
+      Initialize(dataset_params),
+      tsl::testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                             ::testing::HasSubstr("overflow")));
+}
+
 }  // namespace
 }  // namespace experimental
 }  // namespace data
