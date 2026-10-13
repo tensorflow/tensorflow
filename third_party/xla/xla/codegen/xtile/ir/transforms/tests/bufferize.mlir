@@ -17,6 +17,7 @@
 
 // CHECK: @extract_strided(%[[SOURCE:.*]]: memref<16xf32>, %[[OFFSET:.*]]: index)
 func.func @extract_strided(%source: memref<16xf32>, %tile_id: index) -> tensor<8xf32> {
+  // CHECK-DAG: %[[PAD:.*]] = arith.constant dense<0x7FC00000> : vector<8xf32>
   // CHECK-DAG: %[[C1:.*]] = arith.constant 1 : index
   // CHECK-DAG: %[[C2:.*]] = arith.constant 2 : index
   // CHECK-DAG: %[[C8:.*]] = arith.constant 8 : index
@@ -39,6 +40,7 @@ func.func @extract_strided(%source: memref<16xf32>, %tile_id: index) -> tensor<8
     // CHECK-SAME: : memref<16xf32> to memref<?xf32, strided<[2], offset: ?>>
 
     // CHECK: %[[ALLOC_1:.*]] = memref.alloc() : memref<8xf32>
+    // CHECK: vector.store %[[PAD]], %[[ALLOC_1]][%{{.*}}] : memref<8xf32>, vector<8xf32>
 
     // CHECK: %[[ALLOC_1_SUBVIEW:.*]] = memref.subview %[[ALLOC_1]]
     // CHECK-SAME: [0] [%[[SIZE]]] [1] : memref<8xf32> to memref<?xf32, strided<[1]>>
@@ -114,6 +116,7 @@ func.func @extract_identity(%source: memref<16xf32>, %tile_id: index) -> tensor<
   // CHECK: } else {
   // CHECK:   %[[INPUT_SUBVIEW:.*]] = memref.subview %[[SOURCE]][%[[OFFSET]]] [%[[SIZE]]] [1] : memref<16xf32> to memref<?xf32, strided<[1], offset: ?>>
   // CHECK:   %[[ALLOC_ELSE:.*]] = memref.alloc() : memref<8xf32>
+  // CHECK:   vector.store %{{.*}}, %[[ALLOC_ELSE]][%{{.*}}] : memref<8xf32>, vector<8xf32>
   // CHECK:   %[[ALLOC_SUBVIEW:.*]] = memref.subview %[[ALLOC_ELSE]][0] [%[[SIZE]]] [1] : memref<8xf32> to memref<?xf32, strided<[1]>>
   // CHECK:   memref.copy %[[INPUT_SUBVIEW]], %[[ALLOC_SUBVIEW]] : memref<?xf32, strided<[1], offset: ?>> to memref<?xf32, strided<[1]>>
   // CHECK:   scf.yield %[[ALLOC_ELSE]] : memref<8xf32>
@@ -141,6 +144,7 @@ func.func @extract_5d(%source: memref<1x2x1x32768x256xf32>, %d1: index, %d3: ind
   // CHECK: } else {
   // CHECK:   %[[INPUT_SUBVIEW:.*]] = memref.subview %[[SOURCE]][%[[C_0]], %[[D1]], %[[C_0]], %[[D3]], %[[D4]]] [1, 1, 1, 1, %[[SIZE_4]]] [0, 1, 0, 1, 1] : memref<1x2x1x32768x256xf32> to memref<1x1x1x1x?xf32, strided<[0, 8388608, 0, 256, 1], offset: ?>>
   // CHECK:   %[[ALLOC_ELSE:.*]] = memref.alloc() : memref<1x1x1x1x16xf32>
+  // CHECK:   vector.store %{{.*}}, %[[ALLOC_ELSE]][%[[C_0]], %[[C_0]], %[[C_0]], %[[C_0]], %[[C_0]]] : memref<1x1x1x1x16xf32>, vector<16xf32>
   // CHECK:   %[[ALLOC_SUBVIEW:.*]] = memref.subview %[[ALLOC_ELSE]][0, 0, 0, 0, 0] [1, 1, 1, 1, %[[SIZE_4]]] [1, 1, 1, 1, 1] : memref<1x1x1x1x16xf32> to memref<1x1x1x1x?xf32, strided<[16, 16, 16, 16, 1]>>
   // CHECK:   memref.copy %[[INPUT_SUBVIEW]], %[[ALLOC_SUBVIEW]]
   // CHECK:   scf.yield %[[ALLOC_ELSE]] : memref<1x1x1x1x16xf32>
@@ -157,6 +161,7 @@ func.func @extract_5d(%source: memref<1x2x1x32768x256xf32>, %d1: index, %d3: ind
 // CHECK: @extract_static(%[[SOURCE:.*]]: memref<16xf32>)
 func.func @extract_static(%source: memref<16xf32>) -> tensor<8xf32> {
   // CHECK-NOT: scf.if
+  // CHECK-NOT: vector.store
   // CHECK: %[[SUBVIEW:.*]] = memref.subview %[[SOURCE]][0] [8] [1] : memref<16xf32> to memref<8xf32, strided<[1]>>
   // CHECK: %[[ALLOC:.*]] = memref.alloc() : memref<8xf32>
   // CHECK: memref.copy %[[SUBVIEW]], %[[ALLOC]] : memref<8xf32, strided<[1]>> to memref<8xf32>
@@ -193,6 +198,7 @@ func.func @insert_in_bounds(%source: tensor<8xf32>, %destination: memref<16xf32>
 // CHECK: @extract_strided_in_bounds(%[[SOURCE:.*]]: memref<17xf32>, %[[TILE_ID:.*]]: index)
 func.func @extract_strided_in_bounds(%source: memref<17xf32>, %tile_id: index) -> tensor<8xf32> {
   // CHECK-NOT: scf.if
+  // CHECK-NOT: vector.store
   // CHECK: %[[OFFSET:.*]] = xla.apply_indexing #[[MAP]](%[[TILE_ID]])
   // CHECK: %[[SUBVIEW:.*]] = memref.subview %[[SOURCE]][%[[OFFSET]]] [8] [2] : memref<17xf32> to memref<8xf32, strided<[2], offset: ?>>
   // CHECK: %[[ALLOC:.*]] = memref.alloc() : memref<8xf32>
@@ -237,6 +243,7 @@ func.func @extract_rank_reduced(%source: memref<2x8x16xf32>, %d0: index, %d1: in
   // CHECK: } else {
   // CHECK:   %[[INPUT_SUBVIEW:.*]] = memref.subview %[[SOURCE]][%[[D0]], %[[OFFSET_1]], %[[D2]]] [1, 4, %[[SIZE_2]]] [1, 1, 1] : memref<2x8x16xf32> to memref<4x?xf32, strided<[16, 1], offset: ?>>
   // CHECK:   %[[ALLOC_ELSE:.*]] = memref.alloc() : memref<4x8xf32>
+  // CHECK:   vector.store %{{.*}}, %[[ALLOC_ELSE]][%{{.*}}, %{{.*}}] : memref<4x8xf32>, vector<32xf32>
   // CHECK:   %[[ALLOC_SUBVIEW:.*]] = memref.subview %[[ALLOC_ELSE]][0, 0] [4, %[[SIZE_2]]] [1, 1] : memref<4x8xf32> to memref<4x?xf32, strided<[8, 1]>>
   // CHECK:   memref.copy %[[INPUT_SUBVIEW]], %[[ALLOC_SUBVIEW]]
   // CHECK:   scf.yield %[[ALLOC_ELSE]] : memref<4x8xf32>
@@ -276,3 +283,78 @@ func.func @insert_rank_reduced(%source: tensor<4x1x8xf32>, %destination: memref<
   return
 }
 
+// -----
+
+// CHECK-LABEL: @extract_int(
+func.func @extract_int(%source: memref<16xi32>, %tile_id: index) -> tensor<8xi32> {
+  // CHECK-DAG: %[[PAD:.*]] = arith.constant dense<-1> : vector<8xi32>
+  // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
+  // CHECK: scf.if {{.*}} -> (memref<8xi32>) {
+  // CHECK: } else {
+  // CHECK:   %[[ALLOC_ELSE:.*]] = memref.alloc() : memref<8xi32>
+  // CHECK:   vector.store %[[PAD]], %[[ALLOC_ELSE]][%[[C0]]] : memref<8xi32>, vector<8xi32>
+  // CHECK: }
+  %tile = xtile.extract %source[%tile_id][8][1] : memref<16xi32> -> tensor<8xi32>
+  return %tile : tensor<8xi32>
+}
+
+// -----
+
+// CHECK-LABEL: @extract_complex(
+func.func @extract_complex(%source: memref<16xcomplex<f32>>, %tile_id: index) -> tensor<8xcomplex<f32>> {
+  // CHECK-DAG: %[[NAN:.*]] = arith.constant 0x7FC00000 : f32
+  // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
+  // CHECK-DAG: %[[C1:.*]] = arith.constant 1 : index
+  // CHECK-DAG: %[[C8:.*]] = arith.constant 8 : index
+  // CHECK: scf.if {{.*}} -> (memref<8xcomplex<f32>>) {
+  // CHECK: } else {
+  // CHECK:   %[[ALLOC_ELSE:.*]] = memref.alloc() : memref<8xcomplex<f32>>
+  // CHECK:   %[[PAD:.*]] = complex.create %[[NAN]], %[[NAN]] : complex<f32>
+  // CHECK:   scf.for %[[IV:.*]] = %[[C0]] to %[[C8]] step %[[C1]] {
+  // CHECK:     memref.store %[[PAD]], %[[ALLOC_ELSE]][%[[IV]]] : memref<8xcomplex<f32>>
+  // CHECK:   }
+  // CHECK: }
+  %tile = xtile.extract %source[%tile_id][8][1] : memref<16xcomplex<f32>> -> tensor<8xcomplex<f32>>
+  return %tile : tensor<8xcomplex<f32>>
+}
+
+// -----
+
+// CHECK-LABEL: @extract_subbyte_int(
+func.func @extract_subbyte_int(%source: memref<4x16xi4>, %d0: index, %d1: index) -> tensor<2x8xi4> {
+  // CHECK-DAG: %[[PAD:.*]] = arith.constant -1 : i4
+  // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
+  // CHECK-DAG: %[[C1:.*]] = arith.constant 1 : index
+  // CHECK-DAG: %[[C2:.*]] = arith.constant 2 : index
+  // CHECK-DAG: %[[C8:.*]] = arith.constant 8 : index
+  // CHECK: scf.if {{.*}} -> (memref<2x8xi4>) {
+  // CHECK: } else {
+  // CHECK:   %[[ALLOC_ELSE:.*]] = memref.alloc() : memref<2x8xi4>
+  // CHECK:   scf.for %[[IV0:.*]] = %[[C0]] to %[[C2]] step %[[C1]] {
+  // CHECK:     scf.for %[[IV1:.*]] = %[[C0]] to %[[C8]] step %[[C1]] {
+  // CHECK:       memref.store %[[PAD]], %[[ALLOC_ELSE]][%[[IV0]], %[[IV1]]] : memref<2x8xi4>
+  // CHECK:     }
+  // CHECK:   }
+  // CHECK: }
+  %tile = xtile.extract %source[%d0, %d1][2, 8][1, 1] : memref<4x16xi4> -> tensor<2x8xi4>
+  return %tile : tensor<2x8xi4>
+}
+
+// -----
+
+// CHECK-LABEL: @extract_finite_only_float(
+func.func @extract_finite_only_float(%source: memref<16xf4E2M1FN>, %tile_id: index) -> tensor<8xf4E2M1FN> {
+  // CHECK-DAG: %[[PAD:.*]] = arith.constant 0.000000e+00 : f4E2M1FN
+  // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
+  // CHECK-DAG: %[[C1:.*]] = arith.constant 1 : index
+  // CHECK-DAG: %[[C8:.*]] = arith.constant 8 : index
+  // CHECK: scf.if {{.*}} -> (memref<8xf4E2M1FN>) {
+  // CHECK: } else {
+  // CHECK:   %[[ALLOC_ELSE:.*]] = memref.alloc() : memref<8xf4E2M1FN>
+  // CHECK:   scf.for %[[IV:.*]] = %[[C0]] to %[[C8]] step %[[C1]] {
+  // CHECK:     memref.store %[[PAD]], %[[ALLOC_ELSE]][%[[IV]]] : memref<8xf4E2M1FN>
+  // CHECK:   }
+  // CHECK: }
+  %tile = xtile.extract %source[%tile_id][8][1] : memref<16xf4E2M1FN> -> tensor<8xf4E2M1FN>
+  return %tile : tensor<8xf4E2M1FN>
+}

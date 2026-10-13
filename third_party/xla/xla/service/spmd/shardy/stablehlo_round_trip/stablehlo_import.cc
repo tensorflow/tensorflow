@@ -687,15 +687,16 @@ class ImportShardingsPass
     symbolTable.insert(MeshOp::create(opBuilder, moduleOp.getLoc(),
                                       kGlobalMeshName, globalMesh));
 
-    SmallDenseMap<int64_t, StringRef> deviceIdToMaximalMeshName;
+    SmallDenseMap<int64_t, StringRef> deviceIdToSingleDeviceMeshName;
     for (int64_t deviceId : deviceIdsForMaximalMesh) {
-      // Create a mesh name with its deviceId as a suffix for each maximal mesh.
-      std::string meshName = absl::StrCat("maximal_mesh_", deviceId);
+      // Create a mesh name with its deviceId as a suffix for each single-device
+      // mesh.
+      std::string meshName = absl::StrCat("single_device_", deviceId);
       auto meshOp = MeshOp::create(
           opBuilder, moduleOp.getLoc(), meshName,
           MeshAttr::getSingleDevice(moduleOp.getContext(), deviceId));
       symbolTable.insert(meshOp);
-      deviceIdToMaximalMeshName[deviceId] = meshOp.getSymName();
+      deviceIdToSingleDeviceMeshName[deviceId] = meshOp.getSymName();
     }
 
     for (FuncOp funcOp : moduleOp.getOps<FuncOp>()) {
@@ -703,7 +704,7 @@ class ImportShardingsPass
       // only to the main/entry function.
       bool isMain = funcOp.getSymName() == "main";
       if (mlir::failed(importShardings(
-              funcOp, globalMesh, deviceIdToMaximalMeshName,
+              funcOp, globalMesh, deviceIdToSingleDeviceMeshName,
               isMain ? allowPropagationToArgs : ArrayRef<bool>(),
               isMain ? allowPropagationToResults : ArrayRef<bool>(),
               inlineMesh))) {

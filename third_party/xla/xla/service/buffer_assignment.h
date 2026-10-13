@@ -496,9 +496,12 @@ class BufferAssignment {
         has_custom_interference;
 
     // Symmetric binary predicate: returns true/false to override interference
-    // between lhs and rhs, or std::nullopt to fall back to default analysis.
+    // between lhs and rhs when their HLO live ranges overlap, or std::nullopt
+    // to fall back to default analysis.
     // Must be symmetric: interferes(alias_analysis, a, b) ==
     // interferes(alias_analysis, b, a).
+    // Only consulted when standard HLO live range analysis indicates that lhs
+    // and rhs overlap; ignored when their HLO live ranges do not overlap.
     // Returning true forces interference (preventing allocation reuse), while
     // returning false forces non-interference (enabling allocation reuse).
     //

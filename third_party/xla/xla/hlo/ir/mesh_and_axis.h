@@ -44,8 +44,8 @@ class AxisRef;
 // - device_assignment_.dimensions() represents the axis sizes.
 // - device_assignment_.array() represents the list of device IDs.
 //
-// For maximal mesh, axes_names is empty and device_assignment_ contains the
-// single device id.
+// For single-device mesh, axes_names is empty and device_assignment_ contains
+// the single device id.
 //
 // Example: device_assignment {{3, 0, 2}, {1, 4, 5}} with axes names
 // {"data", "model"} represents the mesh ["data"=2, "model"=3].
@@ -54,7 +54,7 @@ class Mesh {
   // Empty mesh
   explicit Mesh() = default;
 
-  // Maximal Mesh
+  // Single-device Mesh
   explicit Mesh(int64_t device_id) : device_assignment_(device_id) {}
 
   // Constructs an iota device assignment mesh with given axes sizes and names.
