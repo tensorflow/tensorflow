@@ -290,14 +290,16 @@ def _SoftmaxGrad(op: ops.Operation, grad_softmax):
 
     grad_x = grad_softmax * softmax - sum(grad_softmax * softmax) * softmax
 
-  For ``float64``, when one logit dominates (e.g. [40.0, 0.0]), the stored
-  probabilities round to [1.0, 0.0], causing (grad_softmax - sum_channels)
-  to suffer catastrophic cancellation (1.0 - 1.0 = 0.0) at the dominant
-  position while dropping the finite tail (~4.25e-18), which breaks the
-  logit-translation invariance sum_j(grad_x[j]) = 0. Since mathematically
-  sum_j(grad_x[j]) = 0, the dominant component equals -sum_{j != k}(grad_x[j]).
-  Correcting the dominant component by subtracting the residual sum restores
-  both the finite tail and the exact sum-to-zero invariant.
+  When one logit dominates (e.g. [40.0, 0.0] or [100000.0, 0.0]), the stored
+  probabilities round to 1.0 (or normalization rounding / fast-reciprocal
+  approximations produce ~0.99999994), causing (grad_softmax - sum_channels)
+  to suffer catastrophic cancellation or amplified normalization rounding
+  at the dominant position while dropping the finite tail or producing spurious
+  nonzero gradients, which breaks logit-translation invariance sum_j(grad_x[j]) = 0.
+  Since mathematically sum_j(grad_x[j]) = 0, the dominant component equals
+  -sum_{j != k}(grad_x[j]). Correcting the dominant component by subtracting
+  the residual sum restores both the finite tail and the exact sum-to-zero
+  invariant across all floating-point types.
 
   Args:
      op: the Softmax op.
@@ -310,14 +312,13 @@ def _SoftmaxGrad(op: ops.Operation, grad_softmax):
   softmax = op.outputs[0]
   sum_channels = math_ops.reduce_sum(grad_softmax * softmax, -1, keepdims=True)
   grad_x = (grad_softmax - sum_channels) * softmax
-  if softmax.dtype == dtypes.float64:
-    k = math_ops.argmax(softmax, axis=-1)
-    num_classes = array_ops.shape(softmax)[-1]
-    one_hot_mask = array_ops.stop_gradient(
-        array_ops.one_hot(k, depth=num_classes, dtype=dtypes.float64)
-    )
-    grad_sum = math_ops.reduce_sum(grad_x, -1, keepdims=True)
-    grad_x = grad_x - grad_sum * one_hot_mask
+  k = math_ops.argmax(softmax, axis=-1)
+  num_classes = array_ops.shape(softmax)[-1]
+  one_hot_mask = array_ops.stop_gradient(
+      array_ops.one_hot(k, depth=num_classes, dtype=softmax.dtype)
+  )
+  grad_sum = math_ops.reduce_sum(grad_x, -1, keepdims=True)
+  grad_x = grad_x - grad_sum * one_hot_mask
   return grad_x
 
 
@@ -337,9 +338,8 @@ def _LogSoftmaxGrad(op: ops.Operation, grad):
   """
   softmax = math_ops.exp(op.outputs[0])
   result = grad - math_ops.reduce_sum(grad, -1, keepdims=True) * softmax
-  if result.dtype == dtypes.float64:
-    # Remove the zero-sum residual left by cancellation at saturated logits.
-    result = result - math_ops.reduce_sum(result, -1, keepdims=True) * softmax
+  # Remove the zero-sum residual left by cancellation at saturated logits.
+  result = result - math_ops.reduce_sum(result, -1, keepdims=True) * softmax
   return result
 
 
