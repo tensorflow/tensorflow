@@ -83,7 +83,7 @@ class DTensorDatasetTest(test_util.DTensorBaseTest):
             tensor_shape.TensorShape(None), dtype=dtypes.int32))
 
     with self.assertRaisesRegex(
-        ValueError, 'Dataset element shape must have a valid rank'):
+        ValueError, 'Dataset element shape must be fully defined'):
       input_util.DTensorDataset(
           dataset=dataset,
           global_batch_size=8,
@@ -104,6 +104,34 @@ class DTensorDatasetTest(test_util.DTensorBaseTest):
           mesh=self.mesh,
           layouts=images_layout,
           batch_dim=MESH_DIM_BATCH)
+
+  def testDatasetAlreadyBatchedOffsets(self):
+    layout = Layout(
+        [MESH_DIM_BATCH, MESH_DIM_HEIGHT, MESH_DIM_WIDTH], self.mesh)
+
+    # Global batch size 4. Non-batch sharded on height and width, so this
+    # exercises the `dataset_already_batched=True` + non-batch-sharded-layout
+    # path fixed in `_index_matrix` / `DTensorDataset.__init__` (previously,
+    # the un-batched `element_spec` was used to build `_index_matrices`,
+    # which shifted every non-batch axis by one and produced wrong slice
+    # offsets whenever a non-batch sharded axis's size differed from the
+    # batch size).
+    images = self._images([4, 4, 6])
+    dataset = dataset_ops.DatasetV2.from_tensor_slices(images).batch(
+        4, drop_remainder=True)
+
+    d_dataset = input_util.DTensorDataset(
+        dataset=dataset,
+        global_batch_size=4,
+        mesh=self.mesh,
+        layouts=layout,
+        batch_dim=MESH_DIM_BATCH,
+        dataset_already_batched=True)
+
+    iterator = iter(d_dataset)
+    d_tensor = next(iterator)
+
+    self.assertDTensorEqual(images, layout, d_tensor)
 
   @parameterized.named_parameters(('Eager', False), ('Graph', True))
   def testRangeIteration(self, is_graph):

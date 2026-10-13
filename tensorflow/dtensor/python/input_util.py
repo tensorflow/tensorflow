@@ -226,9 +226,9 @@ def _validate_input(flattened_layouts: Sequence[layout_lib.Layout],
   first_elem_shape = flattened_elem_spec[0].shape
 
   for layout, elem_spec in zip(flattened_layouts, flattened_elem_spec):
-    if elem_spec.shape.rank is None:
+    if not elem_spec.shape.is_fully_defined():
       raise ValueError(
-          'Dataset element shape must have a valid rank, got spec %s.' %
+          'Dataset element shape must be fully defined, got spec %s.' %
           elem_spec)
 
     # Check that layout's rank matches the element's rank. If dataset is not yet
