@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/ynnpack/elementwise.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <vector>
 
@@ -24,6 +25,7 @@ limitations under the License.
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/ynnpack/utils.h"
+#include "tensorflow/lite/kernels/kernel_util.h"
 
 namespace tflite {
 namespace ynnpack {
@@ -41,13 +43,16 @@ TfLiteStatus IsUnaryOpSupported(const TfLiteRegistration* registration,
   const TfLiteTensor& input = context->tensors[node->inputs->data[0]];
   const TfLiteTensor& output = context->tensors[node->outputs->data[0]];
 
-  TF_LITE_ENSURE(context, IsTensorSupported(input));
+  int builtin_code = registration->builtin_code;
+  ynn_unary_operator op = GetYnnUnaryOperator(builtin_code);
+  const bool is_bool_to_float_cast =
+      (op == ynn_unary_convert && input.type == kTfLiteBool &&
+       (output.type == kTfLiteFloat32 || output.type == kTfLiteFloat16 ||
+        output.type == kTfLiteBFloat16));
+  TF_LITE_ENSURE(context, IsTensorSupported(input) || is_bool_to_float_cast);
   TF_LITE_ENSURE(context, IsTensorSupported(output));
   TF_LITE_ENSURE(context, YnnTypeElementCount(GetYnnType(input.type)) == 1);
   TF_LITE_ENSURE(context, YnnTypeElementCount(GetYnnType(output.type)) == 1);
-
-  int builtin_code = registration->builtin_code;
-  ynn_unary_operator op = GetYnnUnaryOperator(builtin_code);
   bool is_decomposed = (builtin_code == kTfLiteBuiltinGelu ||
                         builtin_code == kTfLiteBuiltinElu ||
                         builtin_code == kTfLiteBuiltinLeakyRelu ||
@@ -278,8 +283,66 @@ TfLiteStatus DefineBinaryNode(TfLiteContext* context, ynn_subgraph_t subgraph,
   return kTfLiteOk;
 }
 
+namespace {
+
+bool IsConstantZero(const TfLiteTensor& tensor) {
+  return tensor.type == kTfLiteFloat32 && IsConstant(tensor) &&
+         tflite::NumElements(&tensor) == 1 && tensor.data.f != nullptr &&
+         tensor.data.f[0] == 0.0f;
+}
+
+}  // namespace
+
+TfLiteStatus IsNotEqualSupported(const TfLiteRegistration* registration,
+                                 const TfLiteNode* node,
+                                 TfLiteContext* context) {
+  TF_LITE_ENSURE_EQ(context, node->inputs->size, 2);
+  TF_LITE_ENSURE_EQ(context, node->outputs->size, 1);
+
+  const TfLiteTensor& input1 = context->tensors[node->inputs->data[0]];
+  const TfLiteTensor& input2 = context->tensors[node->inputs->data[1]];
+  const TfLiteTensor& output = context->tensors[node->outputs->data[0]];
+
+  TF_LITE_ENSURE_EQ(context, input1.type, kTfLiteFloat32);
+  TF_LITE_ENSURE(context, IsConstantZero(input2));
+  TF_LITE_ENSURE_EQ(context, input1.dims->size, output.dims->size);
+  TF_LITE_ENSURE_EQ(context, output.type, kTfLiteBool);
+  return kTfLiteOk;
+}
+
+TfLiteStatus DefineNotEqualNode(TfLiteContext* context, ynn_subgraph_t subgraph,
+                                TensorToValueIdMap& tensor_to_value_id,
+                                const NodeInfo& node) {
+  TF_LITE_ENSURE_EQ(context, node.inputs.size(), 2);
+  TF_LITE_ENSURE_EQ(context, node.outputs.size(), 1);
+  int input1_tensor_index = node.inputs[0];
+  int output_tensor_index = node.outputs[0];
+
+  uint32_t input1_val_id = GetOrCreateValueId(
+      context, subgraph, tensor_to_value_id, input1_tensor_index);
+  uint32_t output_val_id = GetOrCreateValueId(
+      context, subgraph, tensor_to_value_id, output_tensor_index);
+  TF_LITE_ENSURE(context, input1_val_id != YNN_INVALID_VALUE_ID);
+  TF_LITE_ENSURE(context, output_val_id != YNN_INVALID_VALUE_ID);
+
+  // YNNPACK has no comparison operators. Since input2 is constant 0.0f,
+  // implement `input1 != 0.0f` as `uint8(abs(sign(input1)))`, which maps 0.0f
+  // to 0 and any non-zero value to 1.
+  uint32_t sign_val_id = YNN_INVALID_VALUE_ID;
+  TF_LITE_ENSURE_YNN_STATUS(ynn_define_unary(subgraph, ynn_unary_sign,
+                                             input1_val_id, &sign_val_id, 0));
+
+  uint32_t abs_val_id = YNN_INVALID_VALUE_ID;
+  TF_LITE_ENSURE_YNN_STATUS(
+      ynn_define_unary(subgraph, ynn_unary_abs, sign_val_id, &abs_val_id, 0));
+
+  TF_LITE_ENSURE_YNN_STATUS(ynn_define_convert(
+      subgraph, abs_val_id, ynn_type_uint8, &output_val_id, 0));
+  return kTfLiteOk;
+}
+
 // ==============================================================================
-// Ternary Operations (Clamp)
+// Ternary Operations (Clamp, SelectV2)
 // ==============================================================================
 
 TfLiteStatus IsStablehloClampSupported(const TfLiteRegistration* registration,
@@ -385,6 +448,64 @@ TfLiteStatus DefineStablehloClampNode(TfLiteContext* context,
                                    output_val_id));
   }
 
+  return kTfLiteOk;
+}
+
+TfLiteStatus IsSelectV2Supported(const TfLiteRegistration* registration,
+                                 const TfLiteNode* node,
+                                 TfLiteContext* context) {
+  TF_LITE_ENSURE_EQ(context, node->inputs->size, 3);
+  TF_LITE_ENSURE_EQ(context, node->outputs->size, 1);
+
+  const TfLiteTensor& cond = context->tensors[node->inputs->data[0]];
+  const TfLiteTensor& x = context->tensors[node->inputs->data[1]];
+  const TfLiteTensor& y = context->tensors[node->inputs->data[2]];
+  const TfLiteTensor& output = context->tensors[node->outputs->data[0]];
+
+  TF_LITE_ENSURE_EQ(context, cond.type, kTfLiteBool);
+  TF_LITE_ENSURE_EQ(context, x.type, kTfLiteFloat32);
+  TF_LITE_ENSURE(context, IsConstantZero(y));
+  TF_LITE_ENSURE_EQ(context, output.dims->size,
+                    std::max(cond.dims->size, x.dims->size));
+  TF_LITE_ENSURE_EQ(context, output.type, kTfLiteFloat32);
+  return kTfLiteOk;
+}
+
+TfLiteStatus DefineSelectV2Node(TfLiteContext* context, ynn_subgraph_t subgraph,
+                                TensorToValueIdMap& tensor_to_value_id,
+                                const NodeInfo& node) {
+  TF_LITE_ENSURE_EQ(context, node.inputs.size(), 3);
+  TF_LITE_ENSURE_EQ(context, node.outputs.size(), 1);
+  int cond_tensor_index = node.inputs[0];
+  int x_tensor_index = node.inputs[1];
+  int output_tensor_index = node.outputs[0];
+
+  uint32_t cond_val_id = GetOrCreateValueId(
+      context, subgraph, tensor_to_value_id, cond_tensor_index);
+  uint32_t x_val_id =
+      GetOrCreateValueId(context, subgraph, tensor_to_value_id, x_tensor_index);
+  uint32_t output_val_id = GetOrCreateValueId(
+      context, subgraph, tensor_to_value_id, output_tensor_index);
+  TF_LITE_ENSURE(context, cond_val_id != YNN_INVALID_VALUE_ID);
+  TF_LITE_ENSURE(context, x_val_id != YNN_INVALID_VALUE_ID);
+  TF_LITE_ENSURE(context, output_val_id != YNN_INVALID_VALUE_ID);
+
+  const TfLiteTensor& cond_tensor = context->tensors[cond_tensor_index];
+  const TfLiteTensor& x_tensor = context->tensors[x_tensor_index];
+
+  // YNNPACK has no select operator. Since y is constant 0.0f, implement
+  // `cond ? x : 0.0f` as `float(cond) * x`.
+  uint32_t cond_fp32_id = YNN_INVALID_VALUE_ID;
+  TF_LITE_ENSURE_YNN_STATUS(ynn_define_convert(
+      subgraph, cond_val_id, ynn_type_fp32, &cond_fp32_id, 0));
+
+  uint32_t a_id = cond_fp32_id;
+  uint32_t b_id = x_val_id;
+  TF_LITE_ENSURE_STATUS(
+      ImplementMutualBroadcasting(context, subgraph, cond_tensor.dims->size,
+                                  x_tensor.dims->size, 0, 0, a_id, b_id));
+  TF_LITE_ENSURE_YNN_STATUS(ynn_define_binary(subgraph, ynn_binary_multiply,
+                                              a_id, b_id, &output_val_id, 0));
   return kTfLiteOk;
 }
 
