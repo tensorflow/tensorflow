@@ -428,7 +428,8 @@ def hessians(ys,
   }
   # Compute first-order derivatives and iterate for each x in xs.
   hessians = []
-  with ops.name_scope(name, "hessians", ys_list + xs):
+  # _AsList() passes tuples through unchanged, so cast before concatenating.
+  with ops.name_scope(name, "hessians", list(ys_list) + list(xs)):
     _gradients = gradients(ys, xs, **kwargs)
     for gradient, x in zip(_gradients, xs):
       # change shape to one-dimension without graph branching

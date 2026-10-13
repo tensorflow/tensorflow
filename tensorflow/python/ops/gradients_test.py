@@ -866,19 +866,33 @@ class HessianTest(test_util.TensorFlowTestCase):
     # `name` is documented as grouping all the gradient ops together, so the
     # ops hessians() adds must land under it rather than in the enclosing
     # scope.
+    # _AsList() leaves tuples alone, so the ys and xs containers also have to
+    # survive being mixed.
+    containers = [
+        lambda y, x: (y, x),
+        lambda y, x: (y, (x,)),
+        lambda y, x: ((y,), [x]),
+        lambda y, x: ([y], (x,)),
+        lambda y, x: ([y], [x]),
+        lambda y, x: ((y,), (x,)),
+    ]
     for name, expected in [(None, "hessians"), ("my_hessians", "my_hessians")]:
-      with ops.Graph().as_default() as g:
-        x = constant_op.constant([1.0, 2.0, 3.0])
-        y = math_ops.reduce_sum(x * x * x)
-        existing_ops = set(g.get_operations())
-        if name is None:
-          gradients.hessians(y, x)
-        else:
-          gradients.hessians(y, x, name=name)
-        added = [op.name for op in g.get_operations() if op not in existing_ops]
-      self.assertNotEmpty(added)
-      for op_name in added:
-        self.assertEqual(expected, op_name.split("/")[0])
+      for wrap in containers:
+        with ops.Graph().as_default() as g:
+          x = constant_op.constant([1.0, 2.0, 3.0])
+          y = math_ops.reduce_sum(x * x * x)
+          existing_ops = set(g.get_operations())
+          ys, xs = wrap(y, x)
+          if name is None:
+            gradients.hessians(ys, xs)
+          else:
+            gradients.hessians(ys, xs, name=name)
+          added = [
+              op.name for op in g.get_operations() if op not in existing_ops
+          ]
+        self.assertNotEmpty(added)
+        for op_name in added:
+          self.assertEqual(expected, op_name.split("/")[0])
 
 
 class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
