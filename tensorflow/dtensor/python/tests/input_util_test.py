@@ -122,7 +122,8 @@ class DTensorDatasetTest(test_util.DTensorBaseTest):
           layouts=images_layout,
           batch_dim=MESH_DIM_BATCH)
 
-  def testDatasetAlreadyBatchedOffsets(self):
+  @parameterized.named_parameters(('Eager', False), ('Graph', True))
+  def testDatasetAlreadyBatchedOffsets(self, is_graph):
     layout = Layout(
         [MESH_DIM_BATCH, MESH_DIM_HEIGHT, MESH_DIM_WIDTH], self.mesh)
 
@@ -142,7 +143,15 @@ class DTensorDatasetTest(test_util.DTensorBaseTest):
         dataset_already_batched=True)
 
     iterator = iter(d_dataset)
-    d_tensor = next(iterator)
+
+    def get_next(it):
+      return next(it)
+
+    get_next_fn = (
+        polymorphic_function.function(get_next) if is_graph else get_next)
+    d_tensor = get_next_fn(iterator)
+    if is_graph:
+      mesh_util.barrier(self.mesh)
 
     self.assertDTensorEqual(local_images, layout, d_tensor)
 
