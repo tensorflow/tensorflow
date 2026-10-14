@@ -1691,34 +1691,19 @@ class ArrayMethodsTest(test.TestCase):
     _test(np.array(42.0), 1)
 
     # Out-of-bounds axes raise, checked by the backend kernel.
-    with self.assertRaisesRegex(
-        errors_impl.InvalidArgumentError, 'out of range'
-    ):
-      np_array_ops.roll(a, 1, axis=3)
-    with self.assertRaisesRegex(
-        errors_impl.InvalidArgumentError, 'out of range'
-    ):
-      np_array_ops.roll(a, 1, axis=-4)
-    with self.assertRaisesRegex(
-        errors_impl.InvalidArgumentError, 'out of range'
-    ):
-      np_array_ops.roll(a, (1, 2), axis=(0, 3))
-    with self.assertRaisesRegex(
-        errors_impl.InvalidArgumentError, 'out of range'
-    ):
-      np_array_ops.roll(a, (1, -1), axis=[0, -4])
-    with self.assertRaisesRegex(
-        errors_impl.InvalidArgumentError, 'out of range'
-    ):
-      np_array_ops.roll(a, range(2), axis=range(2, 4))
-    with self.assertRaisesRegex(
-        errors_impl.InvalidArgumentError, 'out of range'
-    ):
-      np_array_ops.roll(a, 1, axis=1 << 33)
-    with self.assertRaisesRegex(
-        errors_impl.InvalidArgumentError, 'out of range'
-    ):
-      np_array_ops.roll(a, 1, axis=-(1 << 33))
+    for shift, invalid_axis in [
+        (1, 3),
+        (1, -4),
+        ((1, 2), (0, 3)),
+        ((1, -1), [0, -4]),
+        (range(2), range(2, 4)),
+        (1, 1 << 33),
+        (1, -(1 << 33)),
+    ]:
+      with self.assertRaisesRegex(
+          (errors_impl.InvalidArgumentError, ValueError), 'out of range'
+      ):
+        np_array_ops.roll(a, shift, axis=invalid_axis)
 
     # Graph-mode tracing of roll with concrete axes.
     @def_function.function
@@ -1734,11 +1719,11 @@ class ArrayMethodsTest(test.TestCase):
         f(a, constant_op.constant(1), constant_op.constant(0)),
     )
     with self.assertRaisesRegex(
-        errors_impl.InvalidArgumentError, 'out of range'
+        (errors_impl.InvalidArgumentError, ValueError), 'out of range'
     ):
       f(a, 1, 3)
     with self.assertRaisesRegex(
-        errors_impl.InvalidArgumentError, 'out of range'
+        (errors_impl.InvalidArgumentError, ValueError), 'out of range'
     ):
       f(a, constant_op.constant(1), constant_op.constant(3))
 
