@@ -510,7 +510,9 @@ GpuExecutable::GpuExecutable(
       debug_buffer_assignment_show_max_(
           debug_options.xla_debug_buffer_assignment_show_max()),
       constants_(std::move(constants)),
-      module_globals_(std::make_unique<GpuModuleGlobals>(binary_, constants_)),
+      module_globals_(std::make_unique<GpuModuleGlobals>(
+          binary_, constants_,
+          gpu_topology.has_value() ? gpu_topology->num_devices_per_host() : 0)),
       output_info_(std::move(output_info)),
       enable_debug_info_manager_(enable_debug_info_manager),
       thunk_sequence_proto_(std::move(thunk_sequence_proto)),

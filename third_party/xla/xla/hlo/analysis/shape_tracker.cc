@@ -783,7 +783,8 @@ absl::Status ShapeTracker::PrependBitcast(const xla::Shape& src_shape,
   return absl::OkStatus();
 }
 
-std::vector<ShapeTracker::Step> ShapeTracker::GetSteps() const {
+std::vector<ShapeTracker::Step> ShapeTracker::GetSteps(
+    bool avoid_combining_reshapes) const {
   if (ShapeUtil::ElementsIn(input_shape_) == 1) {
     if (input_shape_.dimensions() == output_shape_.dimensions()) {
       return {};
@@ -837,6 +838,9 @@ std::vector<ShapeTracker::Step> ShapeTracker::GetSteps() const {
                                           output_shape_.dimensions().end())});
   }
 
+  if (avoid_combining_reshapes) {
+    return OptimizeSteps(steps, input_shape_, output_shape_);
+  }
   return steps;
 }
 
@@ -981,12 +985,7 @@ absl::StatusOr<HloInstruction*> ShapeTracker::ToInstructionChain(
   HloComputation* computation = inst->parent();
   HloInstruction* current_inst = inst;
 
-  std::vector<Step> steps = GetSteps();
-  if (avoid_combining_reshapes) {
-    steps = OptimizeSteps(steps, input_shape_, output_shape_);
-  }
-
-  for (const auto& step : steps) {
+  for (const auto& step : GetSteps(avoid_combining_reshapes)) {
     switch (step.type) {
       case Step::Type::kReshape: {
         Shape new_shape = ShapeUtil::MakeShape(
@@ -1015,12 +1014,7 @@ std::string ShapeTracker::DebugString(bool avoid_combining_reshapes) const {
   std::vector<int64_t> current_dims(input_shape_.dimensions().begin(),
                                     input_shape_.dimensions().end());
 
-  std::vector<Step> steps = GetSteps();
-  if (avoid_combining_reshapes) {
-    steps = OptimizeSteps(steps, input_shape_, output_shape_);
-  }
-
-  for (const auto& step : steps) {
+  for (const auto& step : GetSteps(avoid_combining_reshapes)) {
     switch (step.type) {
       case Step::Type::kReshape: {
         absl::StrAppend(&result, " -> R[", absl::StrJoin(step.dimensions, ","),

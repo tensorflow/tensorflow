@@ -3,7 +3,7 @@ model evaluation) imported from dynamic-kernel-generator/tensor_ir.
 
 diff --git a/include/tensor_ir/Analysis/Tiling/Arch.h b/include/tensor_ir/Analysis/Tiling/Arch.h
 new file mode 100644
-index 0000000..8d4e3e6
+index 0000000..4becf41
 --- /dev/null
 +++ b/include/tensor_ir/Analysis/Tiling/Arch.h
 @@ -0,0 +1,57 @@
@@ -21,8 +21,8 @@ index 0000000..8d4e3e6
 +/// Common parameters for all GPU architectures.
 +/// Number of threads per warp.
 +constexpr int kWarpSize = 32;
-+/// Size of a cache line in bytes.
-+constexpr int kCacheLineSize = 128;
++/// Size of a memory sector in bytes.
++constexpr int kMemorySectorSize = 32;
 +/// Maximum number of registers per thread.
 +constexpr int kMaxRegistersPerThread = 255;
 +/// Maximum number of registers per SM.
@@ -97,7 +97,7 @@ index 0000000..ade5641
 +#endif // TENSOR_IR_ANALYSIS_TILING_ENUMERATE_H_
 diff --git a/include/tensor_ir/Analysis/Tiling/Evaluate.h b/include/tensor_ir/Analysis/Tiling/Evaluate.h
 new file mode 100644
-index 0000000..350dfa8
+index 0000000..403592b
 --- /dev/null
 +++ b/include/tensor_ir/Analysis/Tiling/Evaluate.h
 @@ -0,0 +1,191 @@
@@ -145,7 +145,7 @@ index 0000000..350dfa8
 +/// - The register and shared memory storage, as the peak over the iteration
 +///   spaces. The register storage assumes that every live value of a tile is
 +///   kept in registers.
-+/// - The number of memory accesses and accessed cache lines (loads and stores),
++/// - The number of memory accesses and accessed sectors (loads and stores),
 +///   the number of loop iterations over the reduction tiles, and the number of
 +///   tensor core operations per MMA generation.
 +///
@@ -209,7 +209,7 @@ index 0000000..350dfa8
 +  /// Number of memory accesses (loads/stores).
 +  int64_t memoryAccessCount = 0;
 +
-+  /// Estimate cost of memory accesses (~number of cache lines).
++  /// Estimate cost of memory accesses (~number of sectors).
 +  int64_t memoryAccessCost = 0;
 +
 +  /// Number of loop iterations.
@@ -428,10 +428,10 @@ index 0000000..d11d8cb
 +} // namespace mlir::nv_tensor_ir
 diff --git a/lib/Analysis/Tiling/Enumerate.cpp b/lib/Analysis/Tiling/Enumerate.cpp
 new file mode 100644
-index 0000000..74441bd
+index 0000000..e4bbed9
 --- /dev/null
 +++ b/lib/Analysis/Tiling/Enumerate.cpp
-@@ -0,0 +1,869 @@
+@@ -0,0 +1,910 @@
 +// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 +// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 +
@@ -482,6 +482,8 @@ index 0000000..74441bd
 +/// - Tensor sources count the tensors where the dimension is contiguous
 +///   (stride 1, the loads and stores can be vectorized), and where it is
 +///   broadcast (stride 0, the loaded values are reused across the tile).
++///   Stores are counted twice, as storing a partial sector needs a
++///   read-modify-write.
 +/// - Concat sources mark their concatenation dimension as non-tileable, as the
 +///   evaluator requires a unit tile size for it.
 +/// - Matmul sources mark the dimensions that map to the M and N dimensions of
@@ -527,6 +529,11 @@ index 0000000..74441bd
 +public:
 +  explicit DimensionLayoutIterator(size_t rank);
 +
++  LogicalResult start(LayoutSourceAttrInterface layout, bool writes) {
++    this->writes = writes;
++    return dispatch(layout);
++  }
++
 +  LogicalResult processTensor(TensorSourceAttr tensor) override;
 +  LogicalResult processConcat(ConcatSourceAttr concat) override;
 +  LogicalResult processReduction(ReductionSourceAttr reduction) override;
@@ -538,6 +545,7 @@ index 0000000..74441bd
 +private:
 +  SmallVector<DimensionInfo> dimensions;
 +  SmallVector<DimensionInfo *> pointers;
++  bool writes = false;
 +};
 +
 +DimensionLayoutIterator::DimensionLayoutIterator(size_t rank) {
@@ -554,7 +562,8 @@ index 0000000..74441bd
 +  for (auto [idx, stride] : llvm::enumerate(cuteLayout.stride().getValues())) {
 +    if (stride.isLeaf() && stride.isStatic()) {
 +      if (stride.as_int() == 1) {
-+        pointers[idx]->vectorizableCount++;
++        // Increased weights for write operations (read-modify-write).
++        pointers[idx]->vectorizableCount += writes ? 2 : 1;
 +      } else if (stride.as_int() == 0) {
 +        pointers[idx]->broadcastedCount++;
 +      }
@@ -806,6 +815,9 @@ index 0000000..74441bd
 +/// Generates the combinations of bits assigned to slots within the budget. If
 +/// the search space is too large, it is first reduced by lowering the limits of
 +/// the least important dimensions, so that the budget covers the rest evenly.
++/// The lowering stops once the search space fits the budget, or once the limits
++/// sum to at most `maxBits`: lowering them further would make even the largest
++/// combination smaller than the upper bound.
 +///
 +/// The generator assigns the bits depth-first, starting from the largest values
 +/// of the first slots. When the search space exceeds the budget, the output is
@@ -818,14 +830,18 @@ index 0000000..74441bd
 +                             ArrayRef<DimensionInfo> dimensions) {
 +  // If the number of combinations is within the budget, then generate all
 +  // combinations (fast path).
-+  if (countCombinations(minBits, maxBits, limits) <= maxResults) {
++  auto fitsBudget = [&](ArrayRef<int> limits) {
++    return llvm::sum_of(limits) <= maxBits ||
++           countCombinations(minBits, maxBits, limits) <= maxResults;
++  };
++  if (fitsBudget(limits)) {
 +    return generateCombinationsWithinRange(minBits, maxBits, limits, maxResults,
 +                                           descending);
 +  }
 +
 +  // Conservative upper bound for the tile size of the vectorizable dimensions,
 +  // assuming small element size (one byte).
-+  int vectorizableCap = llvm::Log2_64(kCacheLineSize);
++  int vectorizableCap = llvm::Log2_64(kMemorySectorSize);
 +
 +  // Try reducing the search space by reducing the limits starting from the
 +  // less important dimensions. Reduce the limit on vectorizable dimensions and
@@ -835,7 +851,7 @@ index 0000000..74441bd
 +    int cap = dimensions[dim].vectorizableCount > 0 ? vectorizableCap : 0;
 +    if (limits[dim] > cap) {
 +      newLimits[dim] = cap;
-+      if (countCombinations(minBits, maxBits, newLimits) <= maxResults) {
++      if (fitsBudget(newLimits)) {
 +        return generateCombinationsWithinRange(minBits, maxBits, newLimits,
 +                                               maxResults, descending);
 +      }
@@ -843,15 +859,16 @@ index 0000000..74441bd
 +  }
 +
 +  // The search space is still too large, so lower the cap on all slots by up
-+  // to kReductionFactor bits (halving the tile size each step). As above, stop
-+  // at the first cap that fits the budget. If no cap fits, the lowest one is
-+  // used and the output is truncated.
++  // to kReductionExponentFactorMax bits (halving the tile size each step).
++  // As above, stop at the first cap that fits the budget or brings the limits
++  // within `maxBits`. Otherwise, the lowest cap is used and the output is
++  // truncated.
 +  constexpr int kReductionExponentFactorMax = 2;
 +  for (int i = 1; i <= kReductionExponentFactorMax; ++i) {
 +    for (int &limit : newLimits) {
 +      limit = std::min(limit, vectorizableCap - i);
 +    }
-+    if (countCombinations(minBits, maxBits, newLimits) <= maxResults) {
++    if (fitsBudget(newLimits)) {
 +      break;
 +    }
 +  }
@@ -879,11 +896,12 @@ index 0000000..74441bd
 +/// - The upper bound on the number of tile elements is the number of elements
 +///   per SM if the grid runs in a single wave. Larger tiles would leave SMs
 +///   idle, but the bound is kept above the minimum tile size (one warp).
-+/// - The main tile combined with the reduction tile is limited to 2^15
-+///   elements, so larger reduction tiles leave room for smaller main tiles.
-+/// - The evaluator is used to lower the upper bound while the estimated
-+///   register storage exceeds the register file, as such tiles are likely to
-+///   spill.
++/// - For each reduction tile size, the evaluator is used to lower the
++///   per-dimension limits, so that the estimated register storage fits the
++///   register file, as larger tiles are likely to spill.
++/// - The lower bound is the minimum tile size (one warp). With reductions, it
++///   is lowered further when several blocks fit on one SM, as smaller tiles
++///   still run in a single wave.
 +/// - Non-tileable dimensions are forced to a unit tile size. They are still
 +///   counted in the single wave bound, as they multiply the number of blocks.
 +///
@@ -933,9 +951,8 @@ index 0000000..74441bd
 +          *TilingConfig::get(tileShape, 1 << reductionTileSizeBits));
 +      if (succeeded(evalResult)) {
 +        // Proportionally lower the limit to avoid spilling.
-+        int64_t ratio = llvm::divideCeil(evalResult->registerStorageBytes,
-+                                         kMaxRegistersPerSM * kRegisterSize);
-+        assert(ratio > 0);
++        int64_t ratio = 1 + evalResult->registerStorageBytes /
++                                (kMaxRegistersPerSM * kRegisterSize);
 +        int newLimit = kMaxTileSizeBits - llvm::Log2_64_Ceil(ratio);
 +        result[idx] = std::min(limits[idx], std::max(newLimit, 0));
 +      }
@@ -1013,14 +1030,38 @@ index 0000000..74441bd
 +        llvm::divideCeil(maxResults - result.size(),
 +                         reductionTileSizeBits - minReductionTileSizeBits + 1);
 +
-+    // Update the limits for the tile dimensions.
++    // Lower the minimum tile size (32) down to the smallest tile for which the
++    // grid still runs in a single wave (reductions only).
++    // The register storage of a unit main tile estimates how many blocks can
++    // be resident on one SM (capped by the hardware limit). The single wave
++    // bound assumes one block per SM; if N blocks fit on each SM, the grid can
++    // have N times more blocks, so the tile can be N times smaller and still
++    // run in a single wave.
++    int lowerBound = kMinTileSizeBits;
++    if (reductionTileSizeBits > 0) {
++      auto evalResult = evaluator.evaluate(
++          *TilingConfig::get(SmallVector<int32_t>(dimensions.size(), 1),
++                             1 << reductionTileSizeBits));
++      if (succeeded(evalResult)) {
++        int occupancy = std::clamp<int>((kMaxRegistersPerSM * kRegisterSize) /
++                                            evalResult->registerStorageBytes,
++                                        1, archInfo.maxBlocksPerSM);
++        int bitsRemaining =
++            bitsPerProcessorSingleWave - llvm::Log2_32_Ceil(occupancy);
++        lowerBound = std::min(lowerBound, std::max(bitsRemaining, 0));
++      }
++    }
++
++    // Lower the per-dimension limits so that a tile with this reduction tile
++    // size fits into the register file. The tile cannot be larger than all
++    // dimensions at their limits, nor than the maximum tile size.
 +    SmallVector<int> limits = getMaxSizeBits(dimensions, maxTileSizeBits,
 +                                             reductionTileSizeBits, evaluator);
-+    int localUpperBound = std::min(llvm::sum_of(limits), globalUpperBound);
++    int upperBound = std::min(kMaxTileSizeBits, llvm::sum_of(limits));
 +
-+    // Calculate the bounds for the tile size.
-+    int upperBound = std::min(kMaxTileSizeBits, localUpperBound);
-+    int lowerBound = std::min(kMinTileSizeBits, upperBound);
++    // Set the bounds for the tile size.
++    upperBound = std::min(upperBound, globalUpperBound);
++    lowerBound = std::min(lowerBound, upperBound);
 +
 +    LLVM_DEBUG({
 +      llvm::dbgs() << "Reduction tile size: " << (1 << reductionTileSizeBits)
@@ -1271,9 +1312,9 @@ index 0000000..74441bd
 +
 +  // Collect the dimensions of the main iteration space.
 +  DimensionLayoutIterator iter(shape.size());
-+  auto inputResult = iter.dispatch(evaluator.getInputLayout());
++  auto inputResult = iter.start(evaluator.getInputLayout(), /*writes=*/false);
 +  (void)inputResult;
-+  auto outputResult = iter.dispatch(evaluator.getOutputLayout());
++  auto outputResult = iter.start(evaluator.getOutputLayout(), /*writes=*/true);
 +  (void)outputResult;
 +
 +  // Order the dimensions using the importance heuristic.
@@ -1303,10 +1344,10 @@ index 0000000..74441bd
 +} // namespace mlir::nv_tensor_ir
 diff --git a/lib/Analysis/Tiling/Evaluate.cpp b/lib/Analysis/Tiling/Evaluate.cpp
 new file mode 100644
-index 0000000..365b1d3
+index 0000000..e86311b
 --- /dev/null
 +++ b/lib/Analysis/Tiling/Evaluate.cpp
-@@ -0,0 +1,1388 @@
+@@ -0,0 +1,1399 @@
 +// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 +// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 +
@@ -1670,10 +1711,8 @@ index 0000000..365b1d3
 +
 +/// Calculate the storage needed for the element type.
 +int getSizeBytes(Type type) {
-+  if (auto tensorType = dyn_cast<TensorType>(type)) {
-+    type = tensorType.getElementType();
-+  }
-+  return std::max(type.getIntOrFloatBitWidth() / 8, 1u);
++  return llvm::divideCeil(
++      mlir::getElementTypeOrSelf(type).getIntOrFloatBitWidth(), 8);
 +}
 +
 +/// Calculate the storage needed for one tile element in the iteration space.
@@ -1996,13 +2035,13 @@ index 0000000..365b1d3
 +/// with their combination.
 +///
 +/// Tensor sources are the memory accesses. Each one counts as one access, and
-+/// the number of cache lines is estimated from the CuTe layout clamped to the
++/// the number of sectors is estimated from the CuTe layout clamped to the
 +/// tile shape:
 +///
 +/// - Broadcast dimensions (stride 0) are skipped.
-+/// - Dimensions with a stride below the cache line size are densely packed.
++/// - Dimensions with a stride below the sector size are densely packed.
 +///   Together they form one contiguous run per combination of the other
-+///   dimensions, which may straddle one extra cache line if it is unaligned.
++///   dimensions, which may straddle one extra sector if it is unaligned.
 +/// - Every step along a larger (or dynamic) stride starts a new run.
 +///
 +/// Tensor sources without a graph input or output (e.g. constants) cost
@@ -2033,6 +2072,11 @@ index 0000000..365b1d3
 +  EvaluationLayoutIterator(TilingEvaluator &parent, TilingConfig config)
 +      : TilingLayoutIterator(std::move(config)), parent(parent) {}
 +
++  LogicalResult start(LayoutSourceAttrInterface layout, bool writes) {
++    this->writes = writes;
++    return dispatch(layout);
++  }
++
 +  LogicalResult processTensor(TensorSourceAttr tensor) override;
 +  LogicalResult processComposite(CompositeSourceAttr composite) override;
 +  LogicalResult processConcat(ConcatSourceAttr concat) override;
@@ -2045,6 +2089,7 @@ index 0000000..365b1d3
 +private:
 +  TilingEvaluator &parent;
 +  SmallVector<TilingEvaluation> evals;
++  bool writes = false;
 +};
 +
 +LogicalResult EvaluationLayoutIterator::processTensor(TensorSourceAttr tensor) {
@@ -2072,16 +2117,15 @@ index 0000000..365b1d3
 +
 +  // Get the element type size (bytes).
 +  int elementSizeBytes = getSizeBytes(elementType);
-+  int elementsPerCacheLine = kCacheLineSize / elementSizeBytes;
++  int elementsPerSector = kMemorySectorSize / elementSizeBytes;
 +
-+  // If the offset is not aligned to the cache line boundary, an additional
-+  // cache line access may be needed.
-+  bool isUnalignedAccess =
-+      (tensor.getOffset() * elementSizeBytes) % kCacheLineSize != 0;
++  // If the offset is not aligned to the sector boundary, an additional sector
++  // access may be needed.
++  bool isUnalignedAccess = tensor.getOffset() % elementsPerSector != 0;
 +
-+  // Calculate the number of cache line accessed for the current tile.
-+  int64_t cacheLineAccesses = 1;
-+  int64_t innerSpan = 0;
++  // Calculate the number of sector accessed for the current tile.
++  int64_t sectorAccesses = 1;
++  int64_t innerSpan = 0, innerSize = 1;
 +  for (auto [tileSize, dimLayout] :
 +       llvm::zip_equal(config.tileShape, cuteLayout)) {
 +    auto cgShape = dimLayout.shape();
@@ -2093,45 +2137,53 @@ index 0000000..365b1d3
 +    int64_t actualSize = std::min<int64_t>(tileSize, maxSize);
 +
 +    // Assume large stride value for dynamic strides.
-+    int64_t cacheLinesInDim = actualSize;
 +    if (tcutegen::is_static(cgStride)) {
 +      // Skip broadcasted dimensions.
 +      int64_t stride = cgStride.as_int();
 +      if (stride == 0) {
 +        continue;
 +      }
-+      if (stride < elementsPerCacheLine) {
-+        // If the accesses are not aligned to the cache line boundary, an
-+        // additional cache line access may be needed.
++      if (stride < elementsPerSector) {
++        // If the accesses are not aligned to the sector boundary, an additional
++        // sector access may be needed.
 +        int64_t accessSize = actualSize * stride;
-+        isUnalignedAccess |= accessSize % elementsPerCacheLine != 0 &&
-+                             elementsPerCacheLine % accessSize != 0;
++        isUnalignedAccess |= accessSize % elementsPerSector != 0 &&
++                             elementsPerSector % accessSize != 0;
 +        // Extend the contiguous span by this dimension's extent.
 +        innerSpan += accessSize - stride;
-+        cacheLinesInDim = 1;
-+      } else {
-+        // Each step along a large-stride dimension starts a new contiguous run.
-+        // Unless the stride is a multiple of the cache line size, these runs
-+        // start mid-line and may straddle an extra cache line.
-+        isUnalignedAccess |= stride % elementsPerCacheLine != 0;
++        innerSize *= actualSize;
++        continue;
 +      }
++      // Each step along a large-stride dimension starts a new contiguous run.
++      // Unless the stride is a multiple of the sector size, these runs start
++      // mid-sector and may straddle an extra sector.
++      isUnalignedAccess |= stride % elementsPerSector != 0;
 +    }
-+    cacheLineAccesses *= cacheLinesInDim;
++    sectorAccesses *= actualSize;
 +  }
 +
-+  // Densely packed dimensions (stride below a cache line size) form a single
++  // Densely packed dimensions (stride below a sector size) form a single
 +  // contiguous run per combination of the remaining dimensions. The run covers
-+  // `innerSpan` elements and may straddle one extra cache line when the access
++  // `innerSpan` elements and may straddle one extra sector when the access
 +  // is unaligned.
 +  if (innerSpan > 0) {
-+    cacheLineAccesses *= llvm::divideCeil(innerSpan + 1, elementsPerCacheLine) +
-+                         isUnalignedAccess;
++    sectorAccesses *=
++        llvm::divideCeil(innerSpan + 1, elementsPerSector) + isUnalignedAccess;
++
++    // Stores that only partially cover a sector need a read-modify-write: the
++    // sector is read before the written elements are merged into it. This is
++    // the case when the run is not a whole number of sectors, or when it has
++    // gaps (the span is larger than the number of written elements).
++    if (writes &&
++        (innerSize % elementsPerSector != 0 || innerSpan + 1 != innerSize)) {
++      sectorAccesses *= 2;
++    }
 +  }
 +
 +  // Add the evaluation result.
 +  evals.push_back(TilingEvaluation{
 +      .memoryAccessCount = 1,
-+      .memoryAccessCost = cacheLineAccesses,
++      .memoryAccessCost = sectorAccesses,
 +  });
 +  return success();
 +}
@@ -2456,7 +2508,7 @@ index 0000000..365b1d3
 +}
 +
 +bool TilingEvaluation::operator<(const TilingEvaluation &other) const {
-+  // Total number of memory cache lines accessed is the main discriminator.
++  // Total number of memory sectors accessed is the main discriminator.
 +  int64_t score = blockCount * memoryAccessCost;
 +  int64_t otherScore = other.blockCount * other.memoryAccessCost;
 +  if (score != otherScore) {
@@ -2608,13 +2660,13 @@ index 0000000..365b1d3
 +
 +  // Get the evaluation result for the input layout.
 +  EvaluationLayoutIterator iterator(*this, config);
-+  if (failed(iterator.dispatch(inputLayout))) {
++  if (failed(iterator.start(inputLayout, /*writes=*/false))) {
 +    return failure();
 +  }
 +  TilingEvaluation result = iterator.getResult();
 +
 +  // Get the evaluation result for the output layout.
-+  if (failed(iterator.dispatch(outputLayout))) {
++  if (failed(iterator.start(outputLayout, /*writes=*/true))) {
 +    return failure();
 +  }
 +  TilingEvaluation output = iterator.getResult();

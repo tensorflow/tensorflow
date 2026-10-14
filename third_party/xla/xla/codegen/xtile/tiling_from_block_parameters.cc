@@ -186,6 +186,8 @@ absl::StatusOr<llvm::SmallVector<int64_t>> GetTilingSpaceConcreteSizes(
         tile_sizes.push_back(parallel_tile_sizes[parallel_dim_count]);
         parallel_dim_count++;
         break;
+      case DimensionSemantics::kReplica:
+        break;
       case DimensionSemantics::kSequential: {
         if (dim.hlo->has_backend_config()) {
           ABSL_ASSIGN_OR_RETURN(xla::xtile::Tile config,
