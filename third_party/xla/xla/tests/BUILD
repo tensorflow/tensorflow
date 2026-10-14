@@ -3713,6 +3713,7 @@ cc_library(
     srcs = ["aot_interception_pjrt_client.cc"],
     hdrs = ["aot_interception_pjrt_client.h"],
     deps = [
+        "//xla:debug_options_runtime_fields",
         "//xla:literal",
         "//xla:shape_util",
         "//xla:status_macros",
@@ -3735,6 +3736,7 @@ cc_library(
         "//xla/util/split_proto:split_executable_and_options_writer",
         "//xla/util/split_proto:split_gpu_executable_writer",
         "//xla/util/split_proto:split_proto_reader",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
