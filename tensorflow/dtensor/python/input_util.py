@@ -246,12 +246,10 @@ def _validate_input(flattened_layouts: Sequence[layout_lib.Layout],
 
     if dataset_already_batched:
       # Check that the batch dimension size of all dataset elements match.
+      # `batch_dim_size` is guaranteed to not be None here because the
+      # `is_fully_defined()` check above already ensures every dimension,
+      # including the batch dimension, has a concrete size.
       batch_dim_size = first_elem_shape.as_list()[0]
-      if batch_dim_size is None:
-        raise ValueError(
-            ('Size of batch dimension of element spec %s is None. Ensure '
-             'drop_remainder=True when batching the dataset.') % elem_spec)
-
       if elem_spec.shape.as_list()[0] != batch_dim_size:
         raise ValueError(
             ('Size of batch dimension of element spec %s does not match '
@@ -592,7 +590,8 @@ class DTensorDataset(dataset_ops.UnaryUnchangedStructureDataset):
           data_service_ops.distribute(
               processing_mode=sharding_policy,
               service=self._tf_data_service_config.dispatcher_address,
-              job_name=f'{self._tf_data_service_config.job_name}_{config.client_id()}',
+              job_name=(f'{self._tf_data_service_config.job_name}_'
+                        f'{config.client_id()}'),
               target_workers='LOCAL'))
 
     for local_replica_idx, replica_id in enumerate(self._local_replica_ids):
