@@ -112,3 +112,19 @@ func.func @block_barrier_asymmetric_without_stride(%ptr: !tt.ptr<i64>, %rank: i3
   triton_xla.block_barrier %ptr, %rank, %sig, %slot <world_size = 2, barrier_mode = producer_symmetric> : (!tt.ptr<i64>, i32, i32, i32) -> ()
   return
 }
+
+// -----
+
+func.func @block_barrier_pairwise_symmetric_without_slot(%ptr: !tt.ptr<i64>, %rank: i32, %sig: i32) {
+  // expected-error @+1 {{'triton_xla.block_barrier' op asymmetric barrier_mode requires signal_slot to be specified}}
+  triton_xla.block_barrier %ptr, %rank, %sig <world_size = 2, signal_stride = 4, barrier_mode = pairwise_symmetric> : (!tt.ptr<i64>, i32, i32) -> ()
+  return
+}
+
+// -----
+
+func.func @block_barrier_pairwise_symmetric_without_stride(%ptr: !tt.ptr<i64>, %rank: i32, %sig: i32, %slot: i32) {
+  // expected-error @+1 {{'triton_xla.block_barrier' op asymmetric barrier_mode requires a positive signal_stride}}
+  triton_xla.block_barrier %ptr, %rank, %sig, %slot <world_size = 2, barrier_mode = pairwise_symmetric> : (!tt.ptr<i64>, i32, i32, i32) -> ()
+  return
+}
