@@ -256,27 +256,50 @@ TfLiteStatus BytesRequired(TfLiteType type, const int* dims, size_t dims_size,
       context_, MultiplyAndCheckOverflow(type_size, count, bytes) == kTfLiteOk,
       "BytesRequired number of bytes overflowed.\n");
 
-  // GetSizeOfType doesn't work for kTfLiteInt4 due to it having 2 values packed
-  // into 1 byte so the output of GetSizeOfType is the same as int8 aka 1 byte.
-  // Thus the required bytes must be divided by half after everything for int4.
-  if (type == kTfLiteInt4 || type == kTfLiteUInt4) {
-    *bytes = (*bytes + 1) / 2;
-  } else if (type == kTfLiteInt2) {
-    // For kTfLiteInt2, 4 elements are packed into a single byte.
-    // The '*bytes' variable at this point holds the total number of elements,
-    // because GetSizeOfType returns sizeof(int8_t) for each Int2 element.
-    // To get the actual number of bytes needed for the packed representation,
-    // we need to divide the total number of elements by 4.
-    // The expression `(*bytes + 3) / 4` implements integer division with
-    // ceiling, ensuring that we allocate enough bytes to store all elements.
-    // For example:
-    // 1 element: (1 + 3) / 4 = 1 byte
-    // 4 elements: (4 + 3) / 4 = 1 byte
-    // 5 elements: (5 + 3) / 4 = 2 bytes
-    *bytes = (*bytes + 3) / 4;
+  switch (type) {
+    case kTfLiteInt4:
+    case kTfLiteUInt4:
+      // GetSizeOfType doesn't work for kTfLiteInt4/kTfLiteUInt4 due to 2 values
+      // being packed into 1 byte, so the output of GetSizeOfType is the same as
+      // int8 (1 byte). Divide by 2 with ceiling rounding without overflowing
+      // size_t when '*bytes' is near SIZE_MAX.
+      *bytes = (*bytes / 2) + (*bytes % 2);
+      return kTfLiteOk;
+    case kTfLiteInt2:
+      // For kTfLiteInt2, 4 elements are packed into a single byte.
+      // The '*bytes' variable at this point holds the total number of elements,
+      // because GetSizeOfType returns sizeof(int8_t) for each Int2 element.
+      // To get the actual number of bytes needed for the packed representation,
+      // we need to divide the total number of elements by 4 with ceiling
+      // rounding without overflowing size_t when '*bytes' is near SIZE_MAX.
+      *bytes = (*bytes / 4) + (*bytes % 4 != 0 ? 1 : 0);
+      return kTfLiteOk;
+    case kTfLiteFloat32:
+    case kTfLiteInt32:
+    case kTfLiteUInt32:
+    case kTfLiteUInt8:
+    case kTfLiteInt64:
+    case kTfLiteUInt64:
+    case kTfLiteBool:
+    case kTfLiteComplex64:
+    case kTfLiteComplex128:
+    case kTfLiteUInt16:
+    case kTfLiteInt16:
+    case kTfLiteInt8:
+    case kTfLiteFloat16:
+    case kTfLiteBFloat16:
+    case kTfLiteFloat64:
+    case kTfLiteFloat8E4M3FN:
+    case kTfLiteFloat8E5M2:
+      return kTfLiteOk;
+    case kTfLiteNoType:
+    case kTfLiteString:
+    case kTfLiteResource:
+    case kTfLiteVariant:
+      return kTfLiteError;
   }
 
-  return kTfLiteOk;
+  return kTfLiteError;
 }
 
 #ifndef TF_LITE_STATIC_MEMORY
