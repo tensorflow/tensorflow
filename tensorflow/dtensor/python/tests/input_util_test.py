@@ -83,6 +83,23 @@ class DTensorDatasetTest(test_util.DTensorBaseTest):
             tensor_shape.TensorShape(None), dtype=dtypes.int32))
 
     with self.assertRaisesRegex(
+        ValueError, 'Dataset element shape must have a valid rank'):
+      input_util.DTensorDataset(
+          dataset=dataset,
+          global_batch_size=8,
+          mesh=self.mesh,
+          layouts=Layout.replicated(self.mesh, rank=2))
+
+  def testIterableFailsWithPartiallyDefinedShapeDatasetSpec(self):
+    def gen():
+      yield constant_op.constant([1, 2], dtype=dtypes.int32)
+
+    dataset = dataset_ops.DatasetV2.from_generator(
+        gen,
+        output_signature=tensor_spec.TensorSpec(
+            tensor_shape.TensorShape([None]), dtype=dtypes.int32))
+
+    with self.assertRaisesRegex(
         ValueError, 'Dataset element shape must be fully defined'):
       input_util.DTensorDataset(
           dataset=dataset,

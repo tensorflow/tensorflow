@@ -245,6 +245,11 @@ def _validate_input(flattened_layouts: Sequence[layout_lib.Layout],
           (expected_rank, elem_spec, layout.sharding_specs))
 
     if dataset_already_batched:
+      if elem_spec.shape.rank == 0:
+        raise ValueError(
+            ('Dataset element shape must have rank >= 1 when the dataset is '
+             'already batched, got spec %s.') % elem_spec)
+
       # Check that the batch dimension size of all dataset elements match.
       batch_dim_size = first_elem_shape.as_list()[0]
       if batch_dim_size is None:
@@ -495,6 +500,10 @@ class DTensorDataset(dataset_ops.UnaryUnchangedStructureDataset):
               [loc[batch_dim] for loc in mesh.local_device_locations()]))
 
       for layout in flattened_layouts:
+        if layout.rank == 0:
+          raise ValueError(
+              ('batch_dim %s was specified but at least one layout has rank '
+               '0: %s') % (batch_dim, layout))
         if batch_dim != layout.sharding_specs[0]:
           raise ValueError(
               ('batch_dim %s was specified but at least one layout did not '
