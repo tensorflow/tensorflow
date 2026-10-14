@@ -837,9 +837,9 @@ cc_library(
         "@com_google_protobuf//:protobuf",
         "@tsl//tsl/platform:platform_port",
     ] + if_cuda([
-        "//xla/stream_executor:cuda_platform",
+        "//xla/stream_executor:cuda_platform",  # buildcleaner: keep
     ]) + if_rocm_is_configured([
-        "//xla/stream_executor:rocm_platform",
+        "//xla/stream_executor:rocm_platform",  # buildcleaner: keep
     ]),
 )
 
