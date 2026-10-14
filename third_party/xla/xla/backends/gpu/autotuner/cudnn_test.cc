@@ -122,6 +122,21 @@ absl::string_view kTritonGemmFusionHlo = R"hlo(
       backend_config={"fusion_backend_config": {kind: "__triton_gemm"}}
   })hlo";
 
+absl::string_view kLoopDotFusionHlo = R"hlo(
+  wrapped_dot_computation {
+    p0 = f32[4,4] parameter(0)
+    p1 = f32[4,4] parameter(1)
+    ROOT d = f32[4,4] dot(p0, p1),
+      lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  }
+
+  e {
+    p0 = f32[4,4] parameter(0)
+    p1 = f32[4,4] parameter(1)
+    ROOT wrapped_dot = f32[4,4] fusion(p0, p1), kind=kLoop,
+      calls=wrapped_dot_computation
+  })hlo";
+
 absl::string_view kF64GemmFusionHlo = R"hlo(
   fusion1 {
     p0 = f64[3,28,32] parameter(0)
@@ -402,6 +417,24 @@ TEST_F(CudnnBackendTest, ApplyConfigToTritonGemmFusionSetsCudnnKind) {
   BackendConfig backend_config;
   *backend_config.mutable_algorithm() = config;
   ASSERT_OK(backend_->ApplyConfig(*fusion_instr, backend_config));
+  ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
+                       fusion_instr->backend_config<GpuBackendConfig>());
+  EXPECT_EQ(gpu_config.fusion_backend_config().kind(), kCuDnnFusionKind);
+  EXPECT_EQ(gpu_config.fusion_backend_config().cudnn_fusion_config().plan_id(),
+            1);
+}
+
+TEST_F(CudnnBackendTest, ApplyConfigToLoopFusionSetsCustomFusionKind) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kLoopDotFusionHlo));
+  CudnnBackendConfig config;
+  config.set_algo_id(1);
+  HloInstruction* fusion_instr =
+      hlo_module->entry_computation()->root_instruction();
+  BackendConfig backend_config;
+  *backend_config.mutable_algorithm() = config;
+  ASSERT_OK(backend_->ApplyConfig(*fusion_instr, backend_config));
+  EXPECT_EQ(fusion_instr->fusion_kind(), HloInstruction::FusionKind::kCustom);
   ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
                        fusion_instr->backend_config<GpuBackendConfig>());
   EXPECT_EQ(gpu_config.fusion_backend_config().kind(), kCuDnnFusionKind);
