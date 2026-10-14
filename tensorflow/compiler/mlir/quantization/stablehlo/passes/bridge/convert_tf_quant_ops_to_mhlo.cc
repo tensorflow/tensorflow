@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
@@ -361,14 +362,75 @@ class ConvertUniformQuantizeOp
       return failure();
     }
 
-    auto result = mhlo::UniformQuantizeOp::create(rewriter, op->getLoc(),
-                                                  *output_type, op.getInput());
-    rewriter.replaceOpWithNewOp<mhlo::BitcastConvertOp>(
-        op,
-        output_type->clone(
-            mlir::dyn_cast<quant::QuantizedType>(output_type->getElementType())
-                .getStorageType()),
-        result);
+    // TF rounds ties toward positive infinity, whereas MHLO uniform_quantize
+    // rounds ties to even. Lower TF's arithmetic explicitly instead.
+    const Location loc = op.getLoc();
+    auto input_type = mlir::cast<TensorType>(op.getInput().getType());
+    const auto wide_type = input_type.clone(rewriter.getI64Type());
+    const auto scalar_f32 = RankedTensorType::get({}, rewriter.getF32Type());
+    const auto scalar_i64 = RankedTensorType::get({}, rewriter.getI64Type());
+    auto float_constant = [&](float value) {
+      return mhlo::ConstantOp::create(
+          rewriter, loc,
+          DenseFPElementsAttr::get(scalar_f32, llvm::ArrayRef<float>(value)));
+    };
+    auto int_constant = [&](int64_t value) {
+      return mhlo::ConstantOp::create(
+          rewriter, loc,
+          DenseIntElementsAttr::get(scalar_i64,
+                                    llvm::ArrayRef<int64_t>(value)));
+    };
+
+    DenseFPElementsAttr scales;
+    if (!matchPattern(op.getScales(), m_Constant(&scales))) return failure();
+    SmallVector<float> inv_scales;
+    for (float scale : scales.getValues<float>()) {
+      inv_scales.push_back(1.0f / scale);
+    }
+    auto inv_scale = mhlo::ConstantOp::create(
+        rewriter, loc,
+        DenseFPElementsAttr::get(scales.getType(),
+                                 llvm::ArrayRef<float>(inv_scales)));
+    DenseI64ArrayAttr broadcast_dims;
+    const int64_t quantization_axis =
+        static_cast<int64_t>(op.getQuantizationAxis());
+    if (quantization_axis >= 0) {
+      broadcast_dims = rewriter.getDenseI64ArrayAttr({quantization_axis});
+    }
+    Value scaled = chlo::BroadcastMulOp::create(
+        rewriter, loc, input_type, op.getInput(), inv_scale, broadcast_dims);
+    Value shifted =
+        chlo::BroadcastAddOp::create(rewriter, loc, input_type, scaled,
+                                     float_constant(0.5f), DenseI64ArrayAttr{});
+    Value rounded = mhlo::FloorOp::create(rewriter, loc, shifted);
+
+    // Bound the float before conversion to avoid integer overflow. +/-2^32
+    // exceeds every possible difference of an int32 quantization bound and
+    // zero point, so values outside this interval must saturate anyway.
+    rounded = chlo::BroadcastMaxOp::create(rewriter, loc, input_type, rounded,
+                                           float_constant(-0x1p32f),
+                                           DenseI64ArrayAttr{});
+    rounded = chlo::BroadcastMinOp::create(rewriter, loc, input_type, rounded,
+                                           float_constant(0x1p32f),
+                                           DenseI64ArrayAttr{});
+    Value integer = mhlo::ConvertOp::create(rewriter, loc, wide_type, rounded);
+    const auto zp_type = mlir::cast<TensorType>(op.getZeroPoints().getType())
+                             .clone(rewriter.getI64Type());
+    Value zero_points =
+        mhlo::ConvertOp::create(rewriter, loc, zp_type, op.getZeroPoints());
+    Value result = chlo::BroadcastAddOp::create(
+        rewriter, loc, wide_type, integer, zero_points, broadcast_dims);
+    result = chlo::BroadcastMaxOp::create(
+        rewriter, loc, wide_type, result,
+        int_constant(op.getQuantizationMinVal()), DenseI64ArrayAttr{});
+    result = chlo::BroadcastMinOp::create(
+        rewriter, loc, wide_type, result,
+        int_constant(op.getQuantizationMaxVal()), DenseI64ArrayAttr{});
+    const auto storage_type =
+        mlir::cast<quant::QuantizedType>(output_type->getElementType())
+            .getStorageType();
+    rewriter.replaceOpWithNewOp<mhlo::ConvertOp>(
+        op, output_type->clone(storage_type), result);
 
     return success();
   }
