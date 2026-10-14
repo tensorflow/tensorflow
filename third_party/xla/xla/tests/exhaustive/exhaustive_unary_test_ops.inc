@@ -158,20 +158,20 @@ NativeRefT HostDigamma(NativeRefT x) {
   return static_cast<NativeRefT>(result - reflection);
 }
 
-#define DEFINE_UNARY_TEST_OP(NAME, ENQUEUE, EVALUATE)        \
-  template <PrimitiveType T>                                 \
-  class NAME final : public UnaryTestOp<T> {                 \
-   public:                                                   \
-    using Traits = UnaryTestOp<T>::Traits;                   \
-    using Test = UnaryTestOp<T>::Test;                       \
-                                                             \
-    explicit NAME(Test* test) : UnaryTestOp<T>(test) {}      \
-    ~NAME() override {}                                      \
-                                                             \
-    Traits::EnqueueOp EnqueueOp() const override ENQUEUE;    \
-                                                             \
-    Traits::EvaluateOp EvaluateOp() const override EVALUATE; \
-  };                                                         \
+#define DEFINE_UNARY_TEST_OP(NAME, ENQUEUE, EVALUATE)                 \
+  template <PrimitiveType T>                                          \
+  class NAME final : public UnaryTestOp<T> {                          \
+   public:                                                            \
+    using Traits = typename UnaryTestOp<T>::Traits;                   \
+    using Test = typename UnaryTestOp<T>::Test;                       \
+                                                                      \
+    explicit NAME(Test* test) : UnaryTestOp<T>(test) {}               \
+    ~NAME() override {}                                               \
+                                                                      \
+    typename Traits::EnqueueOp EnqueueOp() const override ENQUEUE;    \
+                                                                      \
+    typename Traits::EvaluateOp EvaluateOp() const override EVALUATE; \
+  };                                                                  \
   static_assert(true, "")
 
 DEFINE_UNARY_TEST_OP(
@@ -183,6 +183,16 @@ DEFINE_UNARY_TEST_OP(
     ExpOp, { return [](XlaOp x) { return Exp(x); }; }, { return std::exp; });
 DEFINE_UNARY_TEST_OP(
     Expm1Op, { return [](XlaOp x) { return Expm1(x); }; },
+    { return std::expm1; });
+DEFINE_UNARY_TEST_OP(
+    Expm1HighestOp,
+    {
+      return [](XlaOp x) {
+        ResultAccuracy accuracy;
+        accuracy.set_mode(ResultAccuracy::HIGHEST);
+        return Expm1(x, accuracy);
+      };
+    },
     { return std::expm1; });
 DEFINE_UNARY_TEST_OP(
     LogisticOp, { return [](XlaOp x) { return Logistic(x); }; },
