@@ -155,6 +155,23 @@ class DTensorSaveRestoreV2Test(test_util.DTensorBaseTest):
         constant_op.constant(42.0), layout, v_restored.read_value()
     )
 
+    # Regression coverage for the scalar tf.TensorShape([]) boundary case:
+    # unlike an empty tuple (), TensorShape([]) is truthy even though it also
+    # has length 0, so this must go through a fresh restore (re-using
+    # `init_callable` would double-consume the same deferred restore).
+    restore_ckpt_ts = checkpoint.Checkpoint()
+    restore_ckpt_ts.restore(saved_path)
+    init_callable_ts = restore_ckpt_ts._preload_simple_restoration('v')
+    v_restored_ts = d_variable.DVariable(
+        init_callable_ts,
+        shape=constant_op.constant(42.0).shape,
+        layout=layout,
+        dtype=dtypes.float32,
+    )
+    self.assertDTensorEqual(
+        constant_op.constant(42.0), layout, v_restored_ts.read_value()
+    )
+
   @parameterized.named_parameters(
       ('x_unsharded', [_MESH_DIM_X, UNSHARDED]),
       ('unsharded_x', [UNSHARDED, _MESH_DIM_X]),

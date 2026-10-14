@@ -185,10 +185,13 @@ class DVariable(resource_variable_ops.ResourceVariable):
         # ShapeInference to extract the shape. Scalar tensors (shape=()) can't
         # be sliced/sharded, so they must use shard_info=None rather than a
         # ShardInfo with an empty shape and offset (which would otherwise
-        # produce an invalid " " shape_and_slice spec for RestoreV2).
+        # produce an invalid " " shape_and_slice spec for RestoreV2). Check
+        # `len(shape) > 0` rather than truthiness: an empty tuple () is
+        # falsy, but a scalar tf.TensorShape([]) is truthy even though it
+        # also has length 0, so a plain `if shape` would miss that case.
         shard_info = (
             trackable.ShardInfo(shape=shape, offset=[0] * len(shape))
-            if shape
+            if len(shape) > 0
             else None
         )
         initial_value = api.call_with_layout(
