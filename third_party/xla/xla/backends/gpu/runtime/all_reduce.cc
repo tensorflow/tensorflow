@@ -62,12 +62,6 @@ static constexpr int64_t kMB = kKB * 1024;
 static constexpr int64_t kMaxOneShotAllReduceSizeBytes = 2 * kMB;
 static constexpr int64_t kMaxTwoShotAllReduceSizeBytes = 32 * kMB;
 
-// Heuristic maxima after some benchmarking.
-// It's nicer to have this as a power of 2 because we consume blocks in powers
-// of 2 from a higher dimension to a lower dimension.
-static constexpr int64_t kMaxBlocksPerGrid = 32;
-static constexpr uint64_t kMaxThreadsPerBlock = 512;
-
 bool IsElementReductionSupported(PrimitiveType element_type,
                                  ReductionKind reduction_kind) {
   absl::Span<const HloOpcode> supported_ops =
@@ -112,28 +106,6 @@ int64_t GetMaxSupportedAllReduceSizeBytes(AllReduceStrategy strategy) {
     case AllReduceStrategy::kMultimem:
       return kMaxTwoShotAllReduceSizeBytes;
   }
-}
-
-LaunchDimensions AllReduceLaunchDimensions(
-    int64_t elements, int64_t num_ranks, AllReduceStrategy strategy,
-    const se::DeviceDescription& device_info) {
-  int64_t threads_per_block;
-  int64_t blocks_per_grid;
-  const int64_t warp_size = WarpSize(device_info);
-  const int64_t elements_per_rank =
-      elements / (strategy == AllReduceStrategy::kTwoShot ? num_ranks : 1);
-  // Maximum number of threads such that each thread has elements to process.
-  const int64_t total_threads =
-      RoundUpTo(CeilOfRatio(elements_per_rank, se::gpu::kNumElementsPerThread),
-                warp_size);
-  // Triton expects power of 2 for threads_per_block / threads_per_warp.
-  // Since threads_per_warp is always a power of 2, this is guaranteed.
-  threads_per_block =
-      std::min(kMaxThreadsPerBlock,
-               llvm::bit_ceil(static_cast<uint64_t>(total_threads)));
-  blocks_per_grid = std::min(kMaxBlocksPerGrid,
-                             CeilOfRatio(total_threads, threads_per_block));
-  return LaunchDimensions(blocks_per_grid, threads_per_block);
 }
 
 absl::Status IsAllReduceKernelSupported(int64_t num_ranks, int64_t num_elements,

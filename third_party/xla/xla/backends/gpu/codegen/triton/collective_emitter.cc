@@ -301,28 +301,114 @@ absl::StatusOr<ReduceScatterEmitterContext> CreateReduceScatterEmitterContext(
   return ctx;
 }
 
+// Returns the launch dimensions for the all-reduce kernel.
+// The launch dimensions are determined by the number of elements, the
+// all-reduce strategy, and the warp size of the target device.
+LaunchDimensions AllReduceLaunchDimensions(
+    const AllReduceInfo& all_reduce_info,
+    const se::DeviceDescription& device_info) {
+  // Heuristic maxima after some benchmarking.
+  // It's nicer to have this as a power of 2 because we consume blocks in powers
+  // of 2 from a higher dimension to a lower dimension.
+  static constexpr int64_t kMaxBlocksPerGrid = 32;
+  static constexpr uint64_t kMaxThreadsPerBlock = 512;
+
+  int64_t threads_per_block;
+  int64_t blocks_per_grid;
+  const int64_t warp_size = WarpSize(device_info);
+  const int64_t elements_per_rank =
+      all_reduce_info.num_elements /
+      (all_reduce_info.all_reduce_strategy == AllReduceStrategy::kTwoShot
+           ? all_reduce_info.num_devices
+           : 1);
+  // Maximum number of threads such that each thread has elements to process.
+  const int64_t total_threads =
+      RoundUpTo(CeilOfRatio(elements_per_rank, se::gpu::kNumElementsPerThread),
+                warp_size);
+  // Triton expects power of 2 for threads_per_block / threads_per_warp.
+  // Since threads_per_warp is always a power of 2, this is guaranteed.
+  threads_per_block =
+      std::min(kMaxThreadsPerBlock,
+               llvm::bit_ceil(static_cast<uint64_t>(total_threads)));
+  blocks_per_grid = std::min(kMaxBlocksPerGrid,
+                             CeilOfRatio(total_threads, threads_per_block));
+  return LaunchDimensions(blocks_per_grid, threads_per_block);
+}
+
+// Returns the launch dimensions for the all-gather kernel.
+// All-gather uses a one-shot strategy: each rank contributes its local slice
+// to the symmetric buffer and then reads each peer's slice.
+// warp_size should be device_description.threads_per_warp() (32 on NVIDIA,
+// 64 on AMD) so that the thread count is a multiple of the hardware warp.
+LaunchDimensions AllGatherLaunchDimensions(
+    const AllGatherInfo& all_gather_info,
+    const se::DeviceDescription& device_info) {
+  // All-gather always uses a one-shot strategy: every rank reads its peers'
+  // slices directly, so the work is proportional to the full element count
+  // with no rank-based partitioning.
+  static constexpr uint64_t kMaxThreadsPerBlock = 512;
+
+  // Maximum number of threads such that each thread has elements to process.
+  // Round up to a multiple of warp_size so every warp is fully occupied.
+  const int64_t output_elements =
+      all_gather_info.num_elements * all_gather_info.num_devices;
+  // Assuming each thread writes se::gpu::kNumElementsPerThread output elements
+  // we need total threads corresponding to the output elements.
+  const int64_t total_threads =
+      RoundUpTo(CeilOfRatio(output_elements, se::gpu::kNumElementsPerThread),
+                device_info.threads_per_warp());
+  // Triton expects power of 2 for threads_per_block / threads_per_warp.
+  const int64_t threads_per_block =
+      std::min(kMaxThreadsPerBlock,
+               llvm::bit_ceil(static_cast<uint64_t>(total_threads)));
+  const int64_t blocks_per_grid =
+      std::min(kAllGatherMaxBlocksPerGrid,
+               CeilOfRatio(total_threads, threads_per_block));
+  return LaunchDimensions(blocks_per_grid, threads_per_block);
+}
+
+// Returns the launch dimensions for the reduce-scatter kernel.
+LaunchDimensions ReduceScatterLaunchDimensions(
+    const ReduceScatterInfo& reduce_scatter_info,
+    const se::DeviceDescription& device_info) {
+  constexpr int64_t kNumElementsPerThread = 4;
+  constexpr uint64_t kMaxThreadsPerBlock = 512;
+
+  const int64_t warp_size = device_info.threads_per_warp();
+  const int64_t elements_per_rank_tile = CeilOfRatio(
+      reduce_scatter_info.num_output_elements, reduce_scatter_info.num_devices);
+  const int64_t threads_per_rank_tile = RoundUpTo(
+      CeilOfRatio(elements_per_rank_tile, kNumElementsPerThread), warp_size);
+  const int64_t threads_per_block = static_cast<int64_t>(
+      std::min(kMaxThreadsPerBlock,
+               llvm::bit_ceil(static_cast<uint64_t>(threads_per_rank_tile))));
+  const int64_t blocks_per_rank_tile =
+      CeilOfRatio(threads_per_rank_tile, threads_per_block);
+  const int64_t blocks_per_grid = std::min(
+      kReduceScatterMaxBlocksPerGrid,
+      reduce_scatter_info.num_devices *
+          static_cast<int64_t>(
+              llvm::bit_floor(static_cast<uint64_t>(blocks_per_rank_tile))));
+  return LaunchDimensions(blocks_per_grid, threads_per_block);
+}
+
 absl::StatusOr<LaunchDimensions> GetLaunchDimensions(
     const CollectiveKernelInfo& collective_info,
     const GpuTopology& gpu_topology) {
   const se::DeviceDescription& device_info =
       gpu_topology.gpu_target_config().device_description;
   return std::visit(
-      absl::Overload{[&](const AllReduceInfo& all_reduce_info) {
-                       return AllReduceLaunchDimensions(
-                           all_reduce_info.num_elements,
-                           all_reduce_info.num_devices,
-                           all_reduce_info.all_reduce_strategy, device_info);
-                     },
-                     [&](const AllGatherInfo& all_gather_info) {
-                       return AllGatherLaunchDimensions(
-                           all_gather_info.num_elements,
-                           all_gather_info.num_devices, device_info);
-                     },
-                     [&](const ReduceScatterInfo& reduce_scatter_info) {
-                       return ReduceScatterLaunchDimensions(
-                           reduce_scatter_info.num_output_elements,
-                           reduce_scatter_info.num_devices, device_info);
-                     }},
+      absl::Overload{
+          [&](const AllReduceInfo& all_reduce_info) {
+            return AllReduceLaunchDimensions(all_reduce_info, device_info);
+          },
+          [&](const AllGatherInfo& all_gather_info) {
+            return AllGatherLaunchDimensions(all_gather_info, device_info);
+          },
+          [&](const ReduceScatterInfo& reduce_scatter_info) {
+            return ReduceScatterLaunchDimensions(reduce_scatter_info,
+                                                 device_info);
+          }},
       collective_info);
 }
 

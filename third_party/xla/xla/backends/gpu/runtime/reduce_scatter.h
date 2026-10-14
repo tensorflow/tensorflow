@@ -61,11 +61,6 @@ absl::StatusOr<ReduceScatterInfo> BuildReduceScatterInfo(
     const HloReduceScatterInstruction* reduce_scatter,
     const DeviceAssignment* device_assignment);
 
-// Returns the launch dimensions for the reduce-scatter kernel.
-LaunchDimensions ReduceScatterLaunchDimensions(
-    int64_t num_output_elements, int64_t num_ranks,
-    const se::DeviceDescription& device_info);
-
 // Creates a CollectiveKernelSpec describing the resource requirements of a
 // Triton one-shot reduce-scatter kernel. The kernel argument layout is:
 //   [0] input buffer  (kInputBuffer, index 0)

@@ -170,28 +170,6 @@ absl::StatusOr<ReduceScatterInfo> BuildReduceScatterInfo(
   };
 }
 
-LaunchDimensions ReduceScatterLaunchDimensions(
-    int64_t num_output_elements, int64_t num_ranks,
-    const se::DeviceDescription& device_info) {
-  constexpr int64_t kNumElementsPerThread = 4;
-  constexpr uint64_t kMaxThreadsPerBlock = 512;
-  const int64_t warp_size = device_info.threads_per_warp();
-  const int64_t elements_per_rank_tile =
-      CeilOfRatio(num_output_elements, num_ranks);
-  const int64_t threads_per_rank_tile = RoundUpTo(
-      CeilOfRatio(elements_per_rank_tile, kNumElementsPerThread), warp_size);
-  const int64_t threads_per_block = static_cast<int64_t>(
-      std::min(kMaxThreadsPerBlock,
-               llvm::bit_ceil(static_cast<uint64_t>(threads_per_rank_tile))));
-  const int64_t blocks_per_rank_tile =
-      CeilOfRatio(threads_per_rank_tile, threads_per_block);
-  const int64_t blocks_per_grid =
-      std::min(kReduceScatterMaxBlocksPerGrid,
-               num_ranks * static_cast<int64_t>(llvm::bit_floor(
-                               static_cast<uint64_t>(blocks_per_rank_tile))));
-  return LaunchDimensions(blocks_per_grid, threads_per_block);
-}
-
 absl::StatusOr<CollectiveKernelSpec> CreateReduceScatterKernelSpec(
     const HloInstruction* instr, const LaunchDimensions& launch_dimensions,
     SymmetricMemoryType scratch_memory_type) {

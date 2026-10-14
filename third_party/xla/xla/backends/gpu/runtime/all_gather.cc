@@ -165,34 +165,6 @@ absl::StatusOr<AllGatherInfo> BuildAllGatherInfo(
   };
 }
 
-namespace {
-// All-gather always uses a one-shot strategy: every rank reads its peers'
-// slices directly, so the work is proportional to the full element count
-// with no rank-based partitioning.
-static constexpr uint64_t kMaxThreadsPerBlock = 512;
-}  // namespace
-
-LaunchDimensions AllGatherLaunchDimensions(
-    int64_t elements, int64_t num_ranks,
-    const se::DeviceDescription& device_info) {
-  // Maximum number of threads such that each thread has elements to process.
-  // Round up to a multiple of warp_size so every warp is fully occupied.
-  const int64_t output_elements = elements * num_ranks;
-  // Assuming each thread writes se::gpu::kNumElementsPerThread output elements
-  // we need total threads corresponding to the output elements.
-  const int64_t total_threads =
-      RoundUpTo(CeilOfRatio(output_elements, se::gpu::kNumElementsPerThread),
-                device_info.threads_per_warp());
-  // Triton expects power of 2 for threads_per_block / threads_per_warp.
-  const int64_t threads_per_block =
-      std::min(kMaxThreadsPerBlock,
-               llvm::bit_ceil(static_cast<uint64_t>(total_threads)));
-  const int64_t blocks_per_grid =
-      std::min(kAllGatherMaxBlocksPerGrid,
-               CeilOfRatio(total_threads, threads_per_block));
-  return LaunchDimensions(blocks_per_grid, threads_per_block);
-}
-
 absl::StatusOr<CollectiveKernelSpec> CreateAllGatherKernelSpec(
     const HloInstruction* instr, const LaunchDimensions& launch_dimensions,
     SymmetricMemoryType scratch_memory_type) {

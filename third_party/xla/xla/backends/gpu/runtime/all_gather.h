@@ -82,15 +82,6 @@ absl::StatusOr<AllGatherInfo> BuildAllGatherInfo(
     const GpuTopology& gpu_topology, const HloAllGatherInstruction* all_gather,
     const DeviceAssignment* device_assignment);
 
-// Returns the launch dimensions for the all-gather kernel.
-// All-gather uses a one-shot strategy: each rank contributes its local slice
-// to the symmetric buffer and then reads each peer's slice.
-// warp_size should be device_description.threads_per_warp() (32 on NVIDIA,
-// 64 on AMD) so that the thread count is a multiple of the hardware warp.
-LaunchDimensions AllGatherLaunchDimensions(
-    int64_t elements, int64_t num_ranks,
-    const se::DeviceDescription& device_info);
-
 // Creates a CollectiveKernelSpec describing the resource requirements of a
 // Triton all-gather kernel.  The kernel argument layout matches all-reduce:
 //   [0] local input buffer (kInputBuffer, index 0)
