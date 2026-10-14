@@ -402,6 +402,39 @@ ENTRY main {
   EXPECT_DOUBLE_EQ(details[0].rel_error, 0.25);
 }
 
+TEST(HloIsolationApiTest, DefaultModuleSizeEstimateHandlesTupleResults) {
+  const absl::string_view kHlo = R"hlo(
+HloModule m
+ENTRY main {
+  p0 = f32[4] parameter(0)
+  ROOT t = (f32[4], f32[4]) tuple(p0, p0)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       xla::ParseAndReturnUnverifiedModule(kHlo));
+
+  ModuleIsolationOptions options;
+  options.max_module_size_bytes = 1;
+  options.run_module_fn =
+      [](std::unique_ptr<HloModule> m, HloRunnerInterface* r,
+         absl::Span<const Literal> i,
+         const RunModuleOptions& run_opts) -> absl::StatusOr<Literal> {
+    if (absl::StrContains(m->name(), "defused")) {
+      return absl::ResourceExhaustedError("Ran out of memory on HBM");
+    }
+    Literal element = LiteralUtil::CreateR1<float>({0.0f, 0.0f, 0.0f, 0.0f});
+    return LiteralUtil::MakeTuple({&element, &element});
+  };
+
+  // Estimating the size of a tuple result used to abort; the module is now
+  // only too large for the reference run.
+  ASSERT_OK_AND_ASSIGN(HloIsolationTestResult result,
+                       RunIsolationTestOnModule(
+                           *module, nullptr, FakeReferenceRunner(), options));
+  EXPECT_EQ(result.state(), State::SKIPPED);
+  EXPECT_EQ(result.reason(), "DEFUSED_REFERENCE_UNAVAILABLE");
+}
+
 }  // namespace
 }  // namespace hlo_isolation
 }  // namespace xla

@@ -138,10 +138,12 @@ absl::Status InitIsolatorOptions(ModuleIsolationOptions& options) {
       int64_t total_size = 0;
       for (const auto* param :
            module.entry_computation()->parameter_instructions()) {
-        total_size += ShapeUtil::ByteSizeOf(param->shape());
+        total_size += ShapeUtil::ByteSizeOf(param->shape(),
+                                            /*pointer_size=*/sizeof(void*));
       }
       total_size += ShapeUtil::ByteSizeOf(
-          module.entry_computation()->root_instruction()->shape());
+          module.entry_computation()->root_instruction()->shape(),
+          /*pointer_size=*/sizeof(void*));
       return total_size;
     };
   }
