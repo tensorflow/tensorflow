@@ -152,6 +152,8 @@ class NumpyUtilTest(test_util.DTensorBaseTest):
         numpy_util.unpacked_to_numpy(shards, sharded_layout), val)
 
   def test_pack_tf_tensor_multi_axis_sharded(self):
+    if len(self.mesh.local_device_ids()) < 4:
+      self.skipTest('Test requires at least 4 devices.')
     sharded_layout = layout.Layout([_MESH_DIM_X, _MESH_DIM_Y], mesh=self.mesh)
     val = constant_op.constant(
         np.arange(16).reshape(4, 4), dtype=dtypes.float32
