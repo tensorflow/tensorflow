@@ -648,6 +648,9 @@ class AssignUpdateVariableOp : public OpKernel {
     // ADD if value's refcount was 1.
     mutex_lock ml(*variable->mu());
     Tensor* var_tensor = variable->tensor();
+    OP_REQUIRES(context, var_tensor->IsInitialized(),
+                errors::FailedPrecondition(
+                    "Attempting to use uninitialized variables: ", handle.name()));
     OP_REQUIRES_OK(context, ValidateAssignUpdateVariableOpShapes(
                                 var_tensor->shape(), value.shape()));
     OP_REQUIRES(context, var_tensor->dtype() == value.dtype(),

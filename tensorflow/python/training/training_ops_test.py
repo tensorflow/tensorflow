@@ -699,7 +699,7 @@ class TrainingOpsTest(TensorFlowTestCase):
             )
         )
 
-  @test_util.run_v2_only
+  @test_util.run_in_graph_and_eager_modes
   def testResourceVariableDtypeMismatch(self):
     # A resource variable whose dtype differs from optimizer dtype T
     # previously caused a fatal CHECK failure in CheckTypeAndIsAligned
@@ -750,19 +750,28 @@ class TrainingOpsTest(TensorFlowTestCase):
           )
       )
 
-  @test_util.run_v2_only
+  @test_util.run_in_graph_and_eager_modes
   def testResourceVariableUninitialized(self):
-    shared_name = (
-        context.anonymous_name() if context.executing_eagerly() else ""
-    )
     var_uninit_f32 = gen_resource_variable_ops.var_handle_op(
-        dtype=dtypes.float32, shape=[1, 2], shared_name=shared_name
+        dtype=dtypes.float32,
+        shape=[1, 2],
+        shared_name=(
+            context.anonymous_name() if context.executing_eagerly() else ""
+        ),
     )
     var_uninit_f16 = gen_resource_variable_ops.var_handle_op(
-        dtype=dtypes.float16, shape=[1, 2], shared_name=shared_name
+        dtype=dtypes.float16,
+        shape=[1, 2],
+        shared_name=(
+            context.anonymous_name() if context.executing_eagerly() else ""
+        ),
     )
     accum_uninit_f16 = gen_resource_variable_ops.var_handle_op(
-        dtype=dtypes.float16, shape=[1, 2], shared_name=shared_name
+        dtype=dtypes.float16,
+        shape=[1, 2],
+        shared_name=(
+            context.anonymous_name() if context.executing_eagerly() else ""
+        ),
     )
     lr = constant_op.constant(0.1, dtype=dtypes.float16)
     grad = constant_op.constant([[0.1, 0.2]], dtype=dtypes.float16)
@@ -815,6 +824,23 @@ class TrainingOpsTest(TensorFlowTestCase):
               lr=lr,
               grad=grad,
               indices=indices,
+          )
+      )
+
+    var_uninit_scalar_f16 = gen_resource_variable_ops.var_handle_op(
+        dtype=dtypes.float16,
+        shape=[],
+        shared_name=(
+            context.anonymous_name() if context.executing_eagerly() else ""
+        ),
+    )
+    with self.assertRaisesRegex(
+        errors.FailedPreconditionError, "uninitialized"
+    ):
+      self.evaluate(
+          gen_resource_variable_ops.assign_add_variable_op(
+              resource=var_uninit_scalar_f16,
+              value=constant_op.constant(0.1, dtype=dtypes.float16),
           )
       )
 
