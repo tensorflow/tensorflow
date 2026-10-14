@@ -3682,6 +3682,22 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "initializable_lookup_table_test",
+    size = "small",
+    srcs = ["initializable_lookup_table_test.cc"],
+    deps = [
+        ":initializable_lookup_table",
+        ":lookup_table_op",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "@com_google_absl//absl/status",
+    ],
+)
+
 MATH_DEPS = [
     ":fill_functor",
     "//tensorflow/core:core_cpu",
