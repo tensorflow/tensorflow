@@ -1,0 +1,9 @@
+op {
+  graph_op_name: "FlashAttentionGrad"
+  visibility: HIDDEN
+  summary: "Computes the gradients of `FlashAttention`."
+  description: <<END
+`seed`, `offset` and the attributes must match those of the forward op so that
+the same dropout mask is regenerated.
+END
+}
