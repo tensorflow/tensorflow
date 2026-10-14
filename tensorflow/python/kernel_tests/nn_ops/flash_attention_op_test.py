@@ -31,7 +31,6 @@ from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
-from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import special_math_ops
 from tensorflow.python.platform import test
 
@@ -61,6 +60,12 @@ def _value_and_grads(fn, query, key, value, output_grad):
   return [output] + tape.gradient(loss, [query, key, value])
 
 
+def _normal(shape, seed):
+  """Fixed standard-normal values, identical on every evaluate()."""
+  rng = np.random.RandomState(seed)
+  return constant_op.constant(rng.standard_normal(shape).astype(np.float32))
+
+
 def _tolerance(dtype):
   return {dtypes.float32: 1e-4, dtypes.float16: 2e-2, dtypes.bfloat16: 5e-2}[
       dtype
@@ -71,6 +76,7 @@ def _sm80_gpu_available():
   return test_util.is_gpu_available(min_cuda_compute_capability=(8, 0))
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class FlashAttentionTest(test.TestCase, parameterized.TestCase):
 
   def setUp(self):
@@ -81,7 +87,7 @@ class FlashAttentionTest(test.TestCase, parameterized.TestCase):
 
   def _random(self, shape, dtype, seed):
     # Round to `dtype` so the float32 reference sees exactly the same inputs.
-    x = random_ops.random_normal(shape, seed=seed)
+    x = _normal(shape, seed=seed)
     return math_ops.cast(math_ops.cast(x, dtype), dtypes.float32)
 
   def _check(self, dtype, batch, seq_q, seq_kv, heads, head_dim,
@@ -90,7 +96,7 @@ class FlashAttentionTest(test.TestCase, parameterized.TestCase):
     query = self._random([batch, seq_q, heads, head_dim], dtype, 1)
     key = self._random([batch, seq_kv, heads, head_dim], dtype, 2)
     value = self._random([batch, seq_kv, heads, head_dim_v], dtype, 3)
-    output_grad = random_ops.random_normal(
+    output_grad = _normal(
         [batch, seq_q, heads, head_dim_v], seed=4)
     scale = 1.0 / np.sqrt(head_dim)
 
@@ -147,7 +153,7 @@ class FlashAttentionTest(test.TestCase, parameterized.TestCase):
       query = self._random([1, 1024, 1, 32], dtype, 1)
       key = self._random([1, 1024, 1, 32], dtype, 2)
       value = self._random([1, 1024, 1, 32], dtype, 3)
-      output_grad = random_ops.random_normal([1, 1024, 1, 32], seed=4)
+      output_grad = _normal([1, 1024, 1, 32], seed=4)
       got = _value_and_grads(
           nn_ops.flash_attention,
           *(math_ops.cast(t, dtype) for t in (query, key, value)), output_grad)
@@ -193,7 +199,7 @@ class FlashAttentionTest(test.TestCase, parameterized.TestCase):
                 is_causal=is_causal, jit_compile=True)
 
   def testDropoutIsDeterministicGivenSeed(self):
-    query = random_ops.random_normal([2, 64, 2, 32], seed=1)
+    query = _normal([2, 64, 2, 32], seed=1)
     run = lambda seed: self.evaluate(nn_ops.flash_attention(
         query, query, query, dropout_rate=0.3, seed=seed))
     self.assertAllEqual(run([1, 2]), run([1, 2]))
@@ -212,7 +218,7 @@ class FlashAttentionTest(test.TestCase, parameterized.TestCase):
     query = self._random([batch, seq, heads, seq], dtype, 1)
     key = self._random([batch, seq, heads, seq], dtype, 2)
     value = self._random([batch, seq, heads, seq], dtype, 3)
-    output_grad = random_ops.random_normal([batch, seq, heads, seq], seed=4)
+    output_grad = _normal([batch, seq, heads, seq], seed=4)
     scale = 1.0 / np.sqrt(seq)
 
     def flash(q, k, v):
@@ -273,10 +279,13 @@ class FlashAttentionTest(test.TestCase, parameterized.TestCase):
       nn_ops.flash_attention(x, array_ops.zeros([2, 4, 1, 32]), x)
     # The kernel checks them too, for callers of the raw op.
     seed = constant_op.constant(0, dtypes.uint64)
+    key = array_ops.zeros([2, 4, 32])
+    if not context.executing_eagerly():
+      key = array_ops.placeholder_with_default(key, shape=None)
     with self.assertRaisesRegex(errors.InvalidArgumentError,
                                 "feature size mismatch"):
       self.evaluate(gen_nn_ops.flash_attention(
-          x[:, :, 0], array_ops.zeros([2, 4, 32]), x[:, :, 0], seed, seed))
+          x[:, :, 0], key, x[:, :, 0], seed, seed))
     # Checked by the kernel; in graph mode, hide the static shape so shape
     # inference doesn't reject it first.
     kv = array_ops.zeros([2, 5, 1, 8])
@@ -341,7 +350,7 @@ class FlashAttentionTest(test.TestCase, parameterized.TestCase):
       self.evaluate(nn_ops.flash_attention(x, x, x))
 
   def testRawOps(self):
-    query = random_ops.random_normal([3, 10, 16], seed=1)
+    query = _normal([3, 10, 16], seed=1)
     seed = constant_op.constant(0, dtypes.uint64)
     output, softmax_lse = gen_nn_ops.flash_attention(
         query, query, query, seed, seed, scale=0.25)
