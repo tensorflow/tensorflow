@@ -70,17 +70,16 @@ absl::Status IsAllGatherKernelSupported(int64_t num_elements,
 // Returns absl::OkStatus() if supported, or an absl::UnimplementedError
 // explaining why not.
 absl::Status IsAllGatherKernelSupported(
-    bool is_collective_kernel_enabled, const se::DeviceDescription& device_info,
-    int32_t num_operands, int64_t num_devices, int64_t num_elements,
-    int64_t per_rank_gather_dim_size, PrimitiveType element_type, bool is_local,
+    const se::DeviceDescription& device_info, int32_t num_operands,
+    int64_t num_devices, int64_t num_elements, int64_t per_rank_gather_dim_size,
+    PrimitiveType element_type, bool is_local,
     const std::vector<ReplicaGroup>& replica_groups);
 
 // Constructs an AllGatherInfo object for the given all-gather instruction.
 // Returns absl::UnimplementedError if the Triton all-gather kernel is not
 // supported for this instruction's configuration.
 absl::StatusOr<AllGatherInfo> BuildAllGatherInfo(
-    bool is_collective_kernel_enabled, const GpuTopology& gpu_topology,
-    const HloAllGatherInstruction* all_gather,
+    const GpuTopology& gpu_topology, const HloAllGatherInstruction* all_gather,
     const DeviceAssignment* device_assignment);
 
 // Returns the launch dimensions for the all-gather kernel.

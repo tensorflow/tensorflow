@@ -313,7 +313,6 @@ absl::StatusOr<InfoStruct> GetCollectiveInfo(
           Cast<HloAllReduceInstruction>(instr);
       ABSL_ASSIGN_OR_RETURN(AllReduceInfo all_reduce_info,
                        BuildAllReduceInfo(
-                           /*is_collective_kernel_enabled=*/true,
                            /*is_multimem_enabled=*/false, gpu_topology,
                            all_reduce, device_assignment));
       return all_reduce_info;
@@ -321,18 +320,17 @@ absl::StatusOr<InfoStruct> GetCollectiveInfo(
     case HloOpcode::kAllGather: {
       const HloAllGatherInstruction* all_gather =
           Cast<HloAllGatherInstruction>(instr);
-      ABSL_ASSIGN_OR_RETURN(AllGatherInfo all_gather_info,
-                       BuildAllGatherInfo(
-                           /*is_collective_kernel_enabled=*/true, gpu_topology,
-                           all_gather, device_assignment));
+      ABSL_ASSIGN_OR_RETURN(
+          AllGatherInfo all_gather_info,
+          BuildAllGatherInfo(gpu_topology, all_gather, device_assignment));
       return all_gather_info;
     }
     case HloOpcode::kReduceScatter: {
       ABSL_ASSIGN_OR_RETURN(
           ReduceScatterInfo reduce_scatter_info,
-          BuildReduceScatterInfo(
-              /*is_collective_kernel_enabled=*/true, gpu_topology,
-              Cast<HloReduceScatterInstruction>(instr), device_assignment));
+          BuildReduceScatterInfo(gpu_topology,
+                                 Cast<HloReduceScatterInstruction>(instr),
+                                 device_assignment));
       return reduce_scatter_info;
     }
     default:
@@ -603,10 +601,9 @@ mlir::Value EmitRemoteBufferPtr(mlir::ImplicitLocOpBuilder& b,
       ttir::PointerType::get(elem_storage_type, kGlobalAddressSpace);
   mlir::Value remote_buf_ptr_addr =
       ttir::AddPtrOp::create(b, ptr_to_i64_type, remote_buffers, rank);
-  mlir::Value remote_buf_i64 =
-      ttir::LoadOp::create(b,                             //
-                           remote_buf_ptr_addr,           //
-                           /*isVolatile=*/false);         //
+  mlir::Value remote_buf_i64 = ttir::LoadOp::create(b,                      //
+                                                    remote_buf_ptr_addr,    //
+                                                    /*isVolatile=*/false);  //
   mlir::Value remote_buf_ptr_base = ttir::IntToPtrOp::create(
       b, ptr_to_elem_type, remote_buf_i64,
       llvm::ArrayRef<mlir::NamedAttribute>{xtile::GetDivisibilityAttr(b)});

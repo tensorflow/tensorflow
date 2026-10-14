@@ -256,7 +256,6 @@ absl::Status IsAllReduceKernelSupported(int64_t num_ranks, int64_t num_elements,
 }
 
 absl::Status IsAllReduceKernelSupported(
-    bool is_collective_kernel_enabled,               //
     const se::DeviceDescription& device_info,        //
     int32_t num_operands,                            //
     std::optional<ReductionKind> reduction_kind,     //
@@ -267,9 +266,6 @@ absl::Status IsAllReduceKernelSupported(
     bool is_multimem_enabled,                        //
     const std::vector<ReplicaGroup>& replica_groups  //
 ) {
-  if (!is_collective_kernel_enabled) {
-    return absl::UnimplementedError("Collective kernel is not enabled.");
-  }
   // Check if the device supports Triton collective codegen:
   // CUDA: Requires compute capability 9.0+ (Hopper or newer)
   if (!device_info.cuda_compute_capability().IsAtLeastHopper() &&
@@ -338,8 +334,8 @@ absl::Status IsAllReduceKernelSupported(
 }
 
 absl::StatusOr<AllReduceInfo> BuildAllReduceInfo(
-    bool is_collective_kernel_enabled, bool is_multimem_enabled,
-    const GpuTopology& gpu_topology, const HloAllReduceInstruction* all_reduce,
+    bool is_multimem_enabled, const GpuTopology& gpu_topology,
+    const HloAllReduceInstruction* all_reduce,
     const DeviceAssignment* device_assignment) {
   if (!gpu_topology.has_gpu_target_config()) {
     return absl::InvalidArgumentError(
@@ -368,16 +364,15 @@ absl::StatusOr<AllReduceInfo> BuildAllReduceInfo(
         "Collective kernels are only supported on devices with NVLink/UALink "
         "support.");
   }
-  ABSL_RETURN_IF_ERROR(IsAllReduceKernelSupported(is_collective_kernel_enabled,  //
-                                             device_info,                   //
-                                             num_operands,                  //
-                                             reduction_kind,                //
-                                             num_devices,                   //
-                                             num_elements,                  //
-                                             element_type,                  //
-                                             is_local,                      //
-                                             is_multimem_enabled,           //
-                                             all_reduce->replica_groups()   //
+  ABSL_RETURN_IF_ERROR(IsAllReduceKernelSupported(device_info,                  //
+                                             num_operands,                 //
+                                             reduction_kind,               //
+                                             num_devices,                  //
+                                             num_elements,                 //
+                                             element_type,                 //
+                                             is_local,                     //
+                                             is_multimem_enabled,          //
+                                             all_reduce->replica_groups()  //
                                              ));
   return AllReduceInfo{
       /*.reduction_kind=*/*reduction_kind,

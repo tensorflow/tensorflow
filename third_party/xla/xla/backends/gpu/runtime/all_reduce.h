@@ -110,7 +110,6 @@ absl::Status IsAllReduceKernelSupported(
 // Returns absl::OkStatus() if supported, or an error status detailing why
 // it is not supported.
 absl::Status IsAllReduceKernelSupported(
-    bool is_collective_kernel_enabled,               //
     const se::DeviceDescription& device_info,        //
     int32_t num_operands,                            //
     std::optional<ReductionKind> reduction_kind,     //
@@ -125,8 +124,8 @@ absl::Status IsAllReduceKernelSupported(
 // Constructs an AllReduceInfo object for the given all-reduce instruction.
 // Returns an error status if the all-reduce kernel is not supported.
 absl::StatusOr<AllReduceInfo> BuildAllReduceInfo(
-    bool is_collective_kernel_enabled, bool is_multimem_enabled,
-    const GpuTopology& gpu_topology, const HloAllReduceInstruction* all_reduce,
+    bool is_multimem_enabled, const GpuTopology& gpu_topology,
+    const HloAllReduceInstruction* all_reduce,
     const DeviceAssignment* device_assignment);
 
 // Performs element-wise addition of all input buffers and stores the result in

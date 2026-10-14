@@ -57,7 +57,7 @@ bool IsReduceScatterFlattenable(const HloReduceScatterInstruction* rs);
 // instruction. Returns absl::UnimplementedError if the Triton reduce-scatter
 // kernel is not supported for this instruction's configuration.
 absl::StatusOr<ReduceScatterInfo> BuildReduceScatterInfo(
-    bool is_collective_kernel_enabled, const GpuTopology& gpu_topology,
+    const GpuTopology& gpu_topology,
     const HloReduceScatterInstruction* reduce_scatter,
     const DeviceAssignment* device_assignment);
 

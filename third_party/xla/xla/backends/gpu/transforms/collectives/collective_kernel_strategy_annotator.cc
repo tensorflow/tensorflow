@@ -91,8 +91,7 @@ absl::StatusOr<bool> TryAnnotateAllReduce(HloInstruction* instr,
   }
 
   absl::StatusOr<AllReduceInfo> maybe_info = BuildAllReduceInfo(
-      /*is_collective_kernel_enabled=*/true, is_multimem_enabled, gpu_topology,
-      all_reduce, device_assignment);
+      is_multimem_enabled, gpu_topology, all_reduce, device_assignment);
   if (absl::IsUnimplemented(maybe_info.status())) {
     VLOG(3) << "[CollectiveKernelStrategyAnnotator] Collective kernel not "
                "supported for "
@@ -135,8 +134,7 @@ absl::StatusOr<bool> TryAnnotateAllGather(HloInstruction* instr,
   }
 
   absl::StatusOr<AllGatherInfo> maybe_info =
-      BuildAllGatherInfo(/*is_collective_kernel_enabled=*/true, gpu_topology,
-                         all_gather, device_assignment);
+      BuildAllGatherInfo(gpu_topology, all_gather, device_assignment);
   if (!maybe_info.ok()) {
     VLOG(3) << "[CollectiveKernelStrategyAnnotator] Collective kernel not "
                "supported for AllGather "
@@ -171,9 +169,8 @@ absl::StatusOr<bool> TryAnnotateReduceScatter(HloInstruction* instr,
         &instr->GetModule()->config().static_device_assignment();
   }
 
-  absl::StatusOr<ReduceScatterInfo> maybe_info = BuildReduceScatterInfo(
-      /*is_collective_kernel_enabled=*/true, gpu_topology, reduce_scatter,
-      device_assignment);
+  absl::StatusOr<ReduceScatterInfo> maybe_info =
+      BuildReduceScatterInfo(gpu_topology, reduce_scatter, device_assignment);
   if (!maybe_info.ok()) {
     VLOG(3) << "[CollectiveKernelStrategyAnnotator] Collective kernel not "
                "supported for ReduceScatter "

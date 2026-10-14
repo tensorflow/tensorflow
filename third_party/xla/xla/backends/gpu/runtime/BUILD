@@ -4304,7 +4304,6 @@ xla_cc_test(
         "//xla/service/gpu:launch_dimensions",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_description_proto_cc",
-        "//xla/tsl/lib/gtl:int_type",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/status",

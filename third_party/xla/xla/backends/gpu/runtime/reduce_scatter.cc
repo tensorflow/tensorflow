@@ -86,12 +86,9 @@ bool IsReduceScatterFlattenable(const HloReduceScatterInstruction* rs) {
 }
 
 absl::StatusOr<ReduceScatterInfo> BuildReduceScatterInfo(
-    bool is_collective_kernel_enabled, const GpuTopology& gpu_topology,
+    const GpuTopology& gpu_topology,
     const HloReduceScatterInstruction* reduce_scatter,
     const DeviceAssignment* device_assignment) {
-  if (!is_collective_kernel_enabled) {
-    return absl::UnimplementedError("Collective kernel is not enabled.");
-  }
   if (!gpu_topology.has_gpu_target_config()) {
     return absl::InvalidArgumentError(
         "GpuTopology must have a target config to build ReduceScatterInfo.");

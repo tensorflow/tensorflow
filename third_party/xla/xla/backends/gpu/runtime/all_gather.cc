@@ -70,13 +70,10 @@ absl::Status IsAllGatherKernelSupported(int64_t num_elements,
 }
 
 absl::Status IsAllGatherKernelSupported(
-    bool is_collective_kernel_enabled, const se::DeviceDescription& device_info,
-    int32_t num_operands, int64_t num_devices, int64_t num_elements,
-    int64_t per_rank_gather_dim_size, PrimitiveType element_type, bool is_local,
+    const se::DeviceDescription& device_info, int32_t num_operands,
+    int64_t num_devices, int64_t num_elements, int64_t per_rank_gather_dim_size,
+    PrimitiveType element_type, bool is_local,
     const std::vector<ReplicaGroup>& replica_groups) {
-  if (!is_collective_kernel_enabled) {
-    return absl::UnimplementedError("Collective kernel is not enabled.");
-  }
   // Check if the device supports Triton collective codegen:
   // CUDA: Requires compute capability 9.0+ (Hopper or newer)
   if (!device_info.cuda_compute_capability().IsAtLeastHopper() &&
@@ -127,8 +124,7 @@ absl::Status IsAllGatherKernelSupported(
 }
 
 absl::StatusOr<AllGatherInfo> BuildAllGatherInfo(
-    bool is_collective_kernel_enabled, const GpuTopology& gpu_topology,
-    const HloAllGatherInstruction* all_gather,
+    const GpuTopology& gpu_topology, const HloAllGatherInstruction* all_gather,
     const DeviceAssignment* device_assignment) {
   if (!gpu_topology.has_gpu_target_config()) {
     return absl::InvalidArgumentError(
@@ -159,8 +155,8 @@ absl::StatusOr<AllGatherInfo> BuildAllGatherInfo(
       const bool is_local,
       AreAllReplicasOnSameSlice(gpu_topology, *all_gather, device_assignment));
   ABSL_RETURN_IF_ERROR(IsAllGatherKernelSupported(
-      is_collective_kernel_enabled, device_info, num_operands, num_devices,
-      num_elements, per_rank_gather_dim_size, element_type, is_local,
+      device_info, num_operands, num_devices, num_elements,
+      per_rank_gather_dim_size, element_type, is_local,
       all_gather->replica_groups()));
   return AllGatherInfo{
       /*.num_devices =*/num_devices,
