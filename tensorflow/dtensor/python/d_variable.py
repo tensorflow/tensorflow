@@ -182,12 +182,21 @@ class DVariable(resource_variable_ops.ResourceVariable):
         # layout of the tf.RestoreV2 that will be called
         #
         # Passing shard_info with the correct shape allows the tf.RestoreV2
-        # ShapeInference to extract the shape.
+        # ShapeInference to extract the shape. Scalar tensors (shape=()) can't
+        # be sliced/sharded, so they must use shard_info=None rather than a
+        # ShardInfo with an empty shape and offset (which would otherwise
+        # produce an invalid " " shape_and_slice spec for RestoreV2).
+        shard_info = (
+            trackable.ShardInfo(shape=shape, offset=[0] * len(shape))
+            if shape
+            else None
+        )
         initial_value = api.call_with_layout(
             initial_value,
             layout,
-            shard_info=trackable.ShardInfo(
-                shape=shape, offset=[0] * len(shape)))
+            shape=shape,
+            shard_info=shard_info,
+        )
       else:
         initial_value = initial_value()
 
