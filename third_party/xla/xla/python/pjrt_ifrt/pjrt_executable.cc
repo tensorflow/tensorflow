@@ -443,7 +443,8 @@ char PjRtLoadedExecutable::ID = 0;
 absl::StatusOr<ExecutableRef> PjRtExecutable::Create(
     xla::MaybeOwningMlirModule module, xla::CompileOptions compile_options,
     const xla::PjRtTopologyDescription& topology,
-    xla::PjRtClient* compile_client) {
+    xla::PjRtClient* compile_client,
+    std::optional<std::vector<int>> outputs_bundle_slice_sizes) {
   const bool is_portable = compile_options.compile_portable_executable;
 
   // We have to do process the MLIR before the compile call, since the latter
@@ -486,6 +487,8 @@ absl::StatusOr<ExecutableRef> PjRtExecutable::Create(
   common_metadata.output_hlo_shardings = std::move(output_hlo_shardings);
   common_metadata.output_memory_kinds = std::move(output_memory_kinds);
   common_metadata.output_layouts = std::move(output_layouts);
+  common_metadata.outputs_bundle_slice_sizes =
+      std::move(outputs_bundle_slice_sizes);
 
   return ExecutableRef(new PjRtExecutable(std::move(pjrt_executable),
                                           std::move(common_metadata)));
@@ -843,9 +846,6 @@ absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::Create(
       std::vector<MemoryKind> output_memory_kinds,
       GetMemoryKinds(pjrt_loaded_executable->GetOutputMemoryKinds(),
                      output_dtypes));
-  std::vector<ShardingRef> output_shardings =
-      MakeShardings(output_shapes, output_hlo_shardings, output_memory_kinds,
-                    executable_devices);
   ABSL_ASSIGN_OR_RETURN(
       std::optional<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
           output_layouts,
@@ -864,7 +864,8 @@ absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::Create(
       std::move(outputs_bundle_slice_sizes);
 
   return LoadedExecutableRef(new PjRtLoadedExecutable(
-      client, std::move(pjrt_loaded_executable), std::move(executable_devices),
+      client, std::move(pjrt_loaded_executable),
+      is_portable ? DeviceListRef() : std::move(executable_devices),
       std::move(loaded_host_callbacks), std::move(common_metadata)));
 }
 
@@ -877,7 +878,9 @@ PjRtLoadedExecutable::PjRtLoadedExecutable(
     : client_(client),
       pjrt_loaded_executable_(std::move(pjrt_loaded_executable)),
       devices_(std::move(devices)),
-      addressable_devices_(devices_->AddressableDeviceList()->devices()),
+      addressable_devices_(devices_ != nullptr
+                               ? devices_->AddressableDeviceList()->devices()
+                               : absl::Span<Device* const>()),
       all_loaded_host_callbacks_(
           std::make_shared<std::vector<tsl::RCReference<LoadedHostCallback>>>(
               std::move(all_loaded_host_callbacks))),
@@ -887,9 +890,13 @@ PjRtLoadedExecutable::PjRtLoadedExecutable(
           GatherHloOutputCallbacks(*all_loaded_host_callbacks_)),
       common_metadata_(std::move(common_metadata)),
       user_context_(UserContextScope::current()) {
-  output_shardings_ = MakeShardings(
-      common_metadata_.output_shapes, common_metadata_.output_hlo_shardings,
-      common_metadata_.output_memory_kinds, devices_);
+  if (devices_ != nullptr) {
+    output_shardings_ = MakeShardings(
+        common_metadata_.output_shapes,
+        common_metadata_.is_portable ? std::nullopt
+                                     : common_metadata_.output_hlo_shardings,
+        common_metadata_.output_memory_kinds, devices_);
+  }
   pjrt_output_memory_kinds_.emplace_back();
   for (const MemoryKind& memory_kind : common_metadata_.output_memory_kinds) {
     pjrt_output_memory_kinds_.back().push_back(memory_kind.value());
@@ -911,19 +918,29 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
   std::vector<std::unique_ptr<PjRtBuffer>> owned_buffers;
 
   int num_computations;
-  const bool portable_execution = devices.has_value();
+  const bool portable_execution = common_metadata_.is_portable;
   PjRtCompatibleDevice* portable_execution_device = nullptr;
+  if (devices_ != nullptr && devices.has_value() &&
+      (*devices == nullptr || **devices != *devices_)) {
+    return InvalidArgument(
+        "Cannot execute with devices that differ from the bound devices");
+  }
   if (portable_execution) {
-    if ((*devices)->size() != 1) {
+    const DeviceListRef& execution_devices =
+        devices.has_value() ? *devices : devices_;
+    if (execution_devices == nullptr || execution_devices->empty()) {
+      return InvalidArgument("No devices provided for portable executable");
+    }
+    if (execution_devices->size() != 1) {
       return InvalidArgument(
           "Only single-shard portable execution is supported");
     }
-    num_computations = 1;
     portable_execution_device =
-        static_cast<PjRtDevice*>((*devices)->devices().front());
+        static_cast<PjRtDevice*>(execution_devices->devices().front());
+    num_computations = 1;
   } else {
-    if (devices_->devices().empty()) {
-      return InvalidArgument("No devices provided for portable executable");
+    if (devices_ == nullptr || devices_->empty()) {
+      return InvalidArgument("No devices provided for executable");
     }
     num_computations = addressable_devices_.size();
   }
@@ -1144,7 +1161,7 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
   for (int i = 0; i < num_outputs; ++i) {
     PjRtArray::PjRtBuffers buffers;
     buffers.reserve(num_computations);
-    const MemoryKind dst_memory_kind = output_shardings_[i]->memory_kind();
+    const MemoryKind dst_memory_kind = common_metadata_.output_memory_kinds[i];
 
     for (int j = 0; j < num_computations; ++j) {
       if (j > 0) {
@@ -1161,7 +1178,7 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
           std::shared_ptr<PjRtBuffer>(pjrt_outputs[j][i].release()));
     }
     std::optional<ShardingRef> sharding;
-    if (portable_execution) {
+    if (output_shardings_.empty()) {
       if (auto it = single_device_shardings.find(dst_memory_kind);
           it == single_device_shardings.end()) {
         sharding = single_device_shardings
