@@ -19,6 +19,7 @@ import threading
 
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -27,6 +28,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework.test_util import TensorFlowTestCase
 # Import resource_variable_ops for the variables-to-tensor implicit conversion.
+from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import gen_training_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops  # pylint: disable=unused-import
@@ -750,9 +752,6 @@ class TrainingOpsTest(TensorFlowTestCase):
 
   @test_util.run_v2_only
   def testResourceVariableUninitialized(self):
-    from tensorflow.python.eager import context
-    from tensorflow.python.ops import gen_resource_variable_ops
-
     shared_name = (
         context.anonymous_name() if context.executing_eagerly() else ""
     )
