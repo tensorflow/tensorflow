@@ -2921,15 +2921,34 @@ cc_library(
     hdrs = ["collective_memory_cache.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        ":per_device_state",
         "//xla/backends/gpu/collectives:gpu_clique_key",
         "//xla/core/collectives:symmetric_memory",
         "//xla/stream_executor:device_address",
-        "//xla/stream_executor:memory_allocation",
         "//xla/stream_executor/gpu:multicast_memory",
         "//xla/tsl/util:tied_ref",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
+    ],
+)
+
+xla_cc_test(
+    name = "collective_memory_cache_test",
+    srcs = ["collective_memory_cache_test.cc"],
+    deps = [
+        ":collective_memory_cache",
+        "//xla/backends/gpu/collectives:gpu_clique_key",
+        "//xla/core/collectives:symmetric_memory",
+        "//xla/runtime:device_id",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor/gpu:multicast_memory",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/util:tied_ref",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -3436,6 +3455,7 @@ cc_library(
     hdrs = ["multi_gpu_barrier.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        ":per_device_state",
         "//xla:status_macros",
         "//xla/core/collectives:rank_id",
         "//xla/core/collectives:symmetric_memory",
@@ -3450,11 +3470,9 @@ cc_library(
         "//xla/stream_executor/gpu:multi_gpu_barrier_kernel",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/base:nullability",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/synchronization",
     ],
 )
 

@@ -26,11 +26,10 @@ limitations under the License.
 
 #include "absl/base/no_destructor.h"
 #include "absl/base/nullability.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "absl/synchronization/mutex.h"
+#include "xla/backends/gpu/runtime/per_device_state.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/symmetric_memory.h"
 #include "xla/ffi/api/record_api.h"
@@ -54,25 +53,24 @@ namespace {
 template <typename Kernel>
 absl::StatusOr<typename Kernel::KernelType*> GetCachedKernel(
     se::StreamExecutor* executor) {
-  static absl::NoDestructor<absl::flat_hash_map<
-      se::StreamExecutor*, std::unique_ptr<typename Kernel::KernelType>>>
-      kernel_per_executor;
-  static absl::NoDestructor<absl::Mutex> kernel_mutex;
-
-  absl::MutexLock lock(*kernel_mutex);
-  auto it = kernel_per_executor->find(executor);
-  if (it == kernel_per_executor->end()) {
-    ABSL_ASSIGN_OR_RETURN(
-        auto new_kernel,
-        (stream_executor::gpu::GpuKernelRegistry::GetGlobalRegistry()
-             .LoadKernel<Kernel>(executor)));
-    it = kernel_per_executor
-             ->emplace(executor, std::make_unique<typename Kernel::KernelType>(
-                                     std::move(new_kernel)))
-             .first;
-  }
-
-  return it->second.get();
+  // Pre-size to 16 slots so all standard single-host GPU topologies
+  // (up to 16 GPUs, e.g. DGX H100/B200) hit the lock-free array fast path.
+  static absl::NoDestructor<
+      PerDeviceState<std::unique_ptr<typename Kernel::KernelType>>>
+      kernel_per_device(/*num_devices=*/16);
+  int device_ordinal = executor->device_ordinal();
+  ABSL_RETURN_IF_ERROR(kernel_per_device->GetOrCreateAndInitialize(
+      device_ordinal,
+      [&](std::unique_ptr<typename Kernel::KernelType>* slot) -> absl::Status {
+        ABSL_ASSIGN_OR_RETURN(
+            auto new_kernel,
+            stream_executor::gpu::GpuKernelRegistry::GetGlobalRegistry()
+                .LoadKernel<Kernel>(executor));
+        *slot = std::make_unique<typename Kernel::KernelType>(
+            std::move(new_kernel));
+        return absl::OkStatus();
+      }));
+  return kernel_per_device->Find(device_ordinal)->get();
 }
 
 }  // namespace

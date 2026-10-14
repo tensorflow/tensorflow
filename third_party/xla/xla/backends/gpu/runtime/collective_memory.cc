@@ -267,7 +267,8 @@ AcquireSymmetricMemory(
       se::DeviceAddressBase addr = buffers.GetDeviceAddress(i);
       CollectiveMemory::Key mem_key = std::make_pair(r.clique, i);
       // Check cache first to avoid redundant collective window registration.
-      if (auto cached = memory_cache.FindSymmetricMemory(r.clique, addr)) {
+      if (auto cached = memory_cache.FindSymmetricMemory(
+              params.executor->device_ordinal(), r.clique, addr)) {
         sym_memories[mem_key] = std::move(cached);
         continue;
       }
@@ -276,7 +277,8 @@ AcquireSymmetricMemory(
       ABSL_ASSIGN_OR_RETURN(tsl::TiedRef<SymmetricMemory> tied_symm,
                        cliques.Tie(r.clique, std::move(symm)));
       sym_memories[mem_key] =
-          memory_cache.AddSymmetricMemory(r.clique, addr, std::move(tied_symm));
+          memory_cache.AddSymmetricMemory(params.executor->device_ordinal(),
+                                          r.clique, addr, std::move(tied_symm));
     }
   }
 
@@ -416,8 +418,9 @@ absl::StatusOr<MulticastMemoryMap> AcquireMulticastMemory(
         se::DeviceAddressBase mcast_addr =
             params[0]->buffers.GetDeviceAddress(i);
         std::shared_ptr<se::gpu::MulticastMemory> cached =
-            memory_cache.AddMulticastMemory(r.clique, mcast_addr,
-                                            std::move(tied_multicast_memory));
+            memory_cache.AddMulticastMemory(
+                params[0]->executor->device_ordinal(), r.clique, mcast_addr,
+                std::move(tied_multicast_memory));
 
         clique_mcast_memories[std::make_pair(r.clique, i)] =
             MappedMulticastMemory{std::move(cached), std::move(mapped_ptrs)};

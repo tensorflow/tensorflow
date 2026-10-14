@@ -518,6 +518,8 @@ GpuExecutable::GpuExecutable(
       thunk_sequence_proto_(std::move(thunk_sequence_proto)),
       executable_abi_version_(std::move(executable_abi_version)),
       cpu_target_machine_options_(std::move(cpu_target_machine_options)),
+      collective_memory_cache_(
+          gpu_topology.has_value() ? gpu_topology->num_devices_per_host() : 0),
       buffer_allocations_debug_summary_(
           std::move(buffer_allocations_debug_summary)),
       collective_use_minimal_resource_(collective_use_minimal_resource),
