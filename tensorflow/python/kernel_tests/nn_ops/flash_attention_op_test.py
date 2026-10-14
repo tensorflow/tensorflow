@@ -122,8 +122,9 @@ class FlashAttentionTest(test.TestCase, parameterized.TestCase):
       is_causal=[False, True],
   )
   def testMatchesReference(self, dtype, head_dim, is_causal):
-    self._check(dtype, batch=2, seq_q=67, seq_kv=67, heads=3,
-                head_dim=head_dim, is_causal=is_causal)
+    with test_util.force_cpu():
+      self._check(dtype, batch=2, seq_q=67, seq_kv=67, heads=3,
+                  head_dim=head_dim, is_causal=is_causal)
 
   @parameterized.parameters(dtypes.float32, dtypes.float16)
   def testDifferentSequenceLengthsAndValueDim(self, dtype):
@@ -227,7 +228,9 @@ class FlashAttentionTest(test.TestCase, parameterized.TestCase):
       nn_ops.flash_attention(x[0], x[0], x[0])
     with self.assertRaisesRegex(ValueError, "dropout_rate"):
       nn_ops.flash_attention(x, x, x, dropout_rate=1.0)
-    with self.assertRaises((ValueError, errors.InvalidArgumentError)):
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        "must be rank|compatible|feature size mismatch"):
       nn_ops.flash_attention(x, array_ops.zeros([2, 4, 1, 16]), x)
     with self.assertRaisesRegex(
         (ValueError, errors.InvalidArgumentError), "is_causal"):
