@@ -121,10 +121,21 @@ class FlashAttentionTest(test.TestCase, parameterized.TestCase):
       head_dim=[16, 64, 128],
       is_causal=[False, True],
   )
-  def testMatchesReference(self, dtype, head_dim, is_causal):
+  def testMatchesReferenceCPU(self, dtype, head_dim, is_causal):
     with test_util.force_cpu():
       self._check(dtype, batch=2, seq_q=67, seq_kv=67, heads=3,
                   head_dim=head_dim, is_causal=is_causal)
+
+  @parameterized.product(
+      dtype=[dtypes.float32, dtypes.float16, dtypes.bfloat16],
+      head_dim=[16, 64, 128],
+      is_causal=[False, True],
+  )
+  def testMatchesReferenceGPU(self, dtype, head_dim, is_causal):
+    if not test_util.is_gpu_available():
+      self.skipTest("Covered by testMatchesReferenceCPU without a GPU")
+    self._check(dtype, batch=2, seq_q=67, seq_kv=67, heads=3,
+                head_dim=head_dim, is_causal=is_causal)
 
   @parameterized.parameters(dtypes.float16, dtypes.bfloat16)
   def testCpuGradientsLongSequence(self, dtype):
