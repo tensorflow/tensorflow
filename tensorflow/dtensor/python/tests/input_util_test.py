@@ -127,7 +127,7 @@ class DTensorDatasetTest(test_util.DTensorBaseTest):
     iterator = iter(d_dataset)
     d_tensor = next(iterator)
 
-    self.assertEqual(d_tensor.shape, [16, 8, 12])
+    self.assertDTensorEqual(local_images, layout, d_tensor)
 
   @parameterized.named_parameters(('Eager', False), ('Graph', True))
   def testRangeIteration(self, is_graph):
