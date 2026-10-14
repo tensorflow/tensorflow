@@ -556,6 +556,117 @@ TEST_F(SchedulingTest, VariadicAllGatherWithDotProducersSharesPeerIndex) {
           "num_pids=16, num_tiles=16")));
 }
 
+// Replica dims d4 and d5 share `pid / 2`; root 1 is padded on d5.
+TEST_F(SchedulingTest, VariadicReduceScatterSharesShardIndex) {
+  ASSERT_OK_AND_ASSIGN(const TiledHloComputation tiled_computation,
+                       ParseAndTile(R"(
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+
+    f {
+      p0 = f32[4,64] parameter(0)
+      p1 = f32[4,1] parameter(1)
+      rs = (f32[2,64], f32[2,1]) reduce-scatter(p0, p1),
+        replica_groups={{0,1}}, dimensions={0}, to_apply=add
+      gte0 = f32[2,64] get-tuple-element(rs), index=0
+      gte1 = f32[2,1] get-tuple-element(rs), index=1
+      ROOT t = (f32[2,64], f32[2,1]) tuple(gte0, gte1)
+    }
+
+    ENTRY e {
+      arg0 = f32[4,64] parameter(0)
+      arg1 = f32[4,1] parameter(1)
+      ROOT fusion = (f32[2,64], f32[2,1]) fusion(arg0, arg1),
+        kind=kCustom, calls=f
+    })",
+                                    {1, 32, 1, 1}));
+  EXPECT_THAT(
+      GetSchedule(tiled_computation),
+      IsOkAndHolds(MatchSchedule(
+          "d0 -> (pid mod 2) / 2, d1 -> pid mod 2 mod 2, d2 -> pid mod 2, "
+          "d3 -> 0, d4 -> pid / 2, d5 -> pid / 2 + (pid mod 2) * 2, "
+          "num_pids=4, num_tiles=4")));
+}
+
+// Output 0 has 2 scattered tiles/shard on d0; d4 and d5 carry the peer index.
+TEST_F(SchedulingTest, VariadicReduceScatterMultipleTilesPerShard) {
+  ASSERT_OK_AND_ASSIGN(const TiledHloComputation tiled_computation,
+                       ParseAndTile(R"(
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+
+    f {
+      p0 = f32[8,64] parameter(0)
+      p1 = f32[8,1] parameter(1)
+      rs = (f32[4,64], f32[4,1]) reduce-scatter(p0, p1),
+        replica_groups={{0,1}}, dimensions={0}, to_apply=add
+      gte0 = f32[4,64] get-tuple-element(rs), index=0
+      gte1 = f32[4,1] get-tuple-element(rs), index=1
+      ROOT t = (f32[4,64], f32[4,1]) tuple(gte0, gte1)
+    }
+
+    ENTRY e {
+      arg0 = f32[8,64] parameter(0)
+      arg1 = f32[8,1] parameter(1)
+      ROOT fusion = (f32[4,64], f32[4,1]) fusion(arg0, arg1),
+        kind=kCustom, calls=f
+    })",
+                                    {1, 64, 2, 1}));
+  EXPECT_THAT(GetSchedule(tiled_computation),
+              IsOkAndHolds(MatchSchedule(
+                  "d0 -> pid mod 2, d1 -> 0, d2 -> pid mod 2, d3 -> 0, "
+                  "d4 -> pid / 2, d5 -> pid / 2 + (pid mod 2) * 2, "
+                  "num_pids=4, num_tiles=4")));
+}
+
+TEST_F(SchedulingTest, VariadicReduceScatterWithDotProducers) {
+  ASSERT_OK_AND_ASSIGN(const TiledHloComputation tiled_computation,
+                       ParseAndTile(R"(
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+
+    f {
+      lhs0 = f32[16,8] parameter(0)
+      rhs0 = f32[8,16] parameter(1)
+      lhs1 = f32[32,8] parameter(2)
+      rhs1 = f32[8,32] parameter(3)
+      dot0 = f32[16,16] dot(lhs0, rhs0),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      dot1 = f32[32,32] dot(lhs1, rhs1),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      rs = (f32[4,16], f32[8,32]) reduce-scatter(dot0, dot1),
+        replica_groups={{0,1,2,3}}, dimensions={0}, to_apply=add
+      gte0 = f32[4,16] get-tuple-element(rs), index=0
+      gte1 = f32[8,32] get-tuple-element(rs), index=1
+      ROOT t = (f32[4,16], f32[8,32]) tuple(gte0, gte1)
+    }
+
+    ENTRY e {
+      lhs0 = f32[16,8] parameter(0)
+      rhs0 = f32[8,16] parameter(1)
+      lhs1 = f32[32,8] parameter(2)
+      rhs1 = f32[8,32] parameter(3)
+      ROOT fusion = (f32[4,16], f32[8,32]) fusion(lhs0, rhs0, lhs1, rhs1),
+        kind=kCustom, calls=f
+    })",
+                                    {1, 8, 1, 16, 8, 8}));
+  EXPECT_THAT(GetSchedule(tiled_computation),
+              IsOkAndHolds(MatchSchedule(
+                  "d0 -> (pid mod 4) / 2, d1 -> pid mod 4 mod 2, "
+                  "d2 -> (pid mod 4) / 2, d3 -> pid mod 4 mod 2, "
+                  "d4 -> pid / 4 + ((pid mod 4) / 2) * 4, d5 -> pid / 4, "
+                  "num_pids=16, num_tiles=16")));
+}
+
 TEST_F(SchedulingTest, SingleOperandReduceScatterReplicaDimension) {
   ASSERT_OK_AND_ASSIGN(const TiledHloComputation tiled_computation,
                        ParseAndTile(R"(

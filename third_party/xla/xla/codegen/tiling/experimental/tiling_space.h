@@ -317,8 +317,15 @@ const Shape& GetFirstShape(const HloInstruction* instr, int64_t index = 0);
 // Returns true if `hlo` is a tuple-producing instruction whose output `k`
 // depends only on operand `k`, with the same tile mapping for every `k`.
 //
-// Currently only multi-operand all-gather qualifies.
+// Currently multi-operand all-gather and reduce-scatter qualify.
 bool IsIndexWiseVariadic(const HloInstruction& hlo);
+
+// Returns the position of the first dimension of result `result_index` in the
+// ordered list of dimensions of `hlo`. For an index-wise variadic instruction
+// the dimensions of all results are laid out back to back: result k starts at
+// the sum of the ranks of results 0..k-1.
+int64_t GetResultDimensionOffset(const HloInstruction& hlo,
+                                 int64_t result_index);
 
 // Returns a symbol replacement map to set concrete tile sizes.
 llvm::DenseMap<SymbolicExpr, SymbolicExpr> GetTileSizeReplacementMap(

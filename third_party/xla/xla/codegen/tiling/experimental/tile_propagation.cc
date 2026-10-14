@@ -1589,15 +1589,22 @@ absl::StatusOr<Tiles> PropagateTileToOutputForBitcastOp(
 //    (64 rows). This guarantees that the tile never crosses the boundary
 //    between shards (e.g., crossing row 64), meaning this thread block
 //    only ever has to send its data to exactly *one* target GPU.
+//
+// For a variadic reduce-scatter, output `output_index` depends only on operand
+// `output_index`; the scatter dimension and replica count are shared by all
+// operands, so the same mapping applies to each of them independently.
 absl::StatusOr<Tiles> PropagateTileToInputForReduceScatterOp(
     const TilingSpace& tiling_space,
-    const HloReduceScatterInstruction& reduce_scatter,
-    const Tile& output_tile) {
-  // Crash OK. Must be checked while forming the fusion.
-  CHECK_EQ(reduce_scatter.operand_count(), 1)
-      << "Multi-operand ReduceScatter is not yet supported.";
+    const HloReduceScatterInstruction& reduce_scatter, const Tile& output_tile,
+    int64_t output_index) {
+  if (output_index < 0 || output_index >= reduce_scatter.operand_count()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Output index ", output_index, " is out of range for ",
+                     reduce_scatter.ToString()));
+  }
   const int64_t scatter_dim = reduce_scatter.scatter_dimension();
-  const int64_t shard_size = reduce_scatter.shape().dimensions(scatter_dim);
+  const int64_t shard_size =
+      GetFirstShape(&reduce_scatter, output_index).dimensions(scatter_dim);
   const int64_t num_replicas =
       reduce_scatter.device_list()->num_devices_per_group();
 
@@ -1611,9 +1618,11 @@ absl::StatusOr<Tiles> PropagateTileToInputForReduceScatterOp(
   if (num_replicas <= 1) {
     return Tiles{output_tile};
   }
+  const int64_t total_result_dims =
+      GetResultDimensionOffset(reduce_scatter, reduce_scatter.operand_count());
   const TilingSpace::DimensionInfo& replica_dim_info =
       tiling_space.GetDimensionInfo(reduce_scatter,
-                                    reduce_scatter.shape().dimensions().size());
+                                    total_result_dims + output_index);
   SymbolicExpr replica_id =
       CreateDimExpr(replica_dim_info.id.value(), tiling_space.mlir_context());
   scatter_tile.offset = (scatter_tile.offset + replica_id * shard_size -
@@ -1628,9 +1637,9 @@ absl::StatusOr<Tiles> PropagateTileToInputForReduceScatterOp(
     if (!size.has_value() || shard_size % *size != 0 ||
         !scatter_tile.offset.IsMultipleOf(*size)) {
       return absl::FailedPreconditionError(absl::StrCat(
-          "Tiling propagation rejected for ", reduce_scatter.ToString(),
-          ": operand tile ", scatter_tile.size.ToString(), " at ",
-          scatter_tile.offset.ToString(),
+          "Tiling propagation rejected for output ", output_index, " of ",
+          reduce_scatter.ToString(), ": operand tile ",
+          scatter_tile.size.ToString(), " at ", scatter_tile.offset.ToString(),
           " crosses shard boundary (shard_size=", shard_size, ")"));
     }
   }
@@ -1818,7 +1827,8 @@ absl::StatusOr<Tiles> PropagateTileToInput(TilingSpace& tiling_space,
   }
   if (hlo.opcode() == HloOpcode::kReduceScatter) {
     return PropagateTileToInputForReduceScatterOp(
-        tiling_space, *Cast<HloReduceScatterInstruction>(&hlo), output_tile);
+        tiling_space, *Cast<HloReduceScatterInstruction>(&hlo), output_tile,
+        output_index);
   }
   if (hlo.opcode() == HloOpcode::kBitcast) {
     return PropagateTileToInputForBitcastOp(hlo, output_tile);

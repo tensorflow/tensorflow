@@ -295,8 +295,7 @@ struct IndexWiseVariadicInfo {
   //   - Each GPU owns a 4-row slice, which is 4 / 2 = 2 tiles along `d0`.
   //   - So `tiles_per_peer_by_dim[d0] = 2`.
   llvm::DenseMap<int64_t, int64_t> tiles_per_peer_by_dim;
-  // Number of peers the outputs are read from. 1 if `tiles_per_peer_by_dim`
-  // is empty.
+  // Number of peers across `tiles_per_peer_by_dim` and `kReplica` dimensions.
   int64_t num_peers = 1;
 };
 
@@ -404,14 +403,26 @@ absl::StatusOr<IndexWiseVariadicInfo> BuildIndexWiseVariadicInfo(
       info.tiles_per_peer_by_dim[dim_id] = tiles_per_peer;
     }
   }
+  for (const TilingSpace::DimensionInfo& dim : dims) {
+    if (dim.type != TilingSpace::DimensionSemantics::kReplica) {
+      continue;
+    }
+    if (num_peers.has_value() && *num_peers != dim.dimension_size) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "Replica dimension %d of %s has %d replicas, but other dimensions "
+          "have %d peers.",
+          dim.id.value(), dim.hlo->name(), dim.dimension_size, *num_peers));
+    }
+    num_peers = dim.dimension_size;
+  }
   info.num_peers = num_peers.value_or(1);
   return info;
 }
 
 // Internal struct for holding the parallel dimensions of a root.
 struct RootDims {
-  // Parallel output dimension whose tile ID encodes the peer index
-  // (all-gather).
+  // Parallel output dimension (all-gather) or `kReplica` dimension
+  // (reduce-scatter) whose tile ID encodes the peer index.
   std::optional<int64_t> peer_dim_id;
   int64_t tiles_per_peer = 1;
   llvm::SmallVector<int64_t, 4> non_peer_dim_ids;
@@ -423,7 +434,6 @@ absl::StatusOr<llvm::SmallVector<RootDims, 2>> BuildRootsForIndexWiseVariadic(
     const TiledHloComputation& tiled_computation,
     const IndexWiseVariadicInfo& info) {
   const TilingSpace& tiling_space = tiled_computation.tiling_space();
-  const bool has_peer_dim = !info.tiles_per_peer_by_dim.empty();
   // Group the parallel dimensions by the root (output) that defines them.
   llvm::SmallVector<RootDims, 2> roots;
   int64_t num_grouped_dims = 0;
@@ -440,22 +450,28 @@ absl::StatusOr<llvm::SmallVector<RootDims, 2>> BuildRootsForIndexWiseVariadic(
       ++num_grouped_dims;
       const int64_t dim_id = dim->id.value();
       auto it = info.tiles_per_peer_by_dim.find(dim_id);
-      if (it == info.tiles_per_peer_by_dim.end()) {
-        root.non_peer_dim_ids.push_back(dim_id);
-        root.non_peer_block_counts.push_back(
-            CeilOfRatio(dim->dimension_size, *dim->tile_size));
-        continue;
+      if (dim->replica_dim.has_value() ||
+          it != info.tiles_per_peer_by_dim.end()) {
+        if (root.peer_dim_id.has_value() ||
+            (dim->replica_dim.has_value() &&
+             it != info.tiles_per_peer_by_dim.end())) {
+          return absl::UnimplementedError(absl::StrFormat(
+              "Output %d of %s has more than one dimension carrying the peer "
+              "index.",
+              root_index, hlo.name()));
+        }
+        if (dim->replica_dim.has_value()) {
+          root.peer_dim_id = dim->replica_dim->value();
+        } else {
+          root.peer_dim_id = dim_id;
+          root.tiles_per_peer = it->second;
+          continue;
+        }
       }
-      if (root.peer_dim_id.has_value()) {
-        return absl::UnimplementedError(absl::StrFormat(
-            "Output %d of %s has more than one dimension carrying the peer "
-            "index.",
-            root_index, hlo.name()));
-      }
-      root.peer_dim_id = dim_id;
-      root.tiles_per_peer = it->second;
+      root.non_peer_dim_ids.push_back(dim_id);
+      root.non_peer_block_counts.push_back(tiling_space.GetNumTiles(*dim));
     }
-    if (has_peer_dim && !root.peer_dim_id.has_value()) {
+    if (info.num_peers > 1 && !root.peer_dim_id.has_value()) {
       return absl::UnimplementedError(
           absl::StrFormat("Output %d of %s does not depend on the peer index.",
                           root_index, hlo.name()));
@@ -472,11 +488,11 @@ absl::StatusOr<llvm::SmallVector<RootDims, 2>> BuildRootsForIndexWiseVariadic(
 absl::StatusOr<Schedule> BuildIndexWiseVariadicSchedule(
     mlir::MLIRContext* ctx, const IndexWiseVariadicInfo& info,
     llvm::ArrayRef<RootDims> roots, int64_t num_tiles_per_pid,
-    int64_t max_tiles, bool has_peer_dim, SymbolicExpr global_tile_id) {
+    int64_t max_tiles, SymbolicExpr global_tile_id) {
   Schedule schedule;
   SymbolicExpr peer = global_tile_id.floorDiv(max_tiles);
   SymbolicExpr intra_peer_tile_id =
-      has_peer_dim ? global_tile_id % max_tiles : global_tile_id;
+      info.num_peers > 1 ? global_tile_id % max_tiles : global_tile_id;
   for (const RootDims& root : roots) {
     llvm::SmallVector<int64_t, 4> block_counts = root.non_peer_block_counts;
     if (root.tiles_per_peer > 1) {
@@ -530,7 +546,6 @@ absl::StatusOr<Schedule> GetIndexWiseVariadicSchedule(
     const IndexWiseVariadicInfo& info, SymbolicExpr global_tile_id,
     int64_t num_tiles_per_pid) {
   mlir::MLIRContext* ctx = tiled_computation.GetMLIRContext();
-  const bool has_peer_dim = !info.tiles_per_peer_by_dim.empty();
   using Roots = llvm::SmallVector<RootDims, 2>;
   ABSL_ASSIGN_OR_RETURN(Roots roots,
                    BuildRootsForIndexWiseVariadic(tiled_computation, info));
@@ -542,8 +557,7 @@ absl::StatusOr<Schedule> GetIndexWiseVariadicSchedule(
   }
   // Now build the scheduled rooted on the output with the max number of tiles.
   return BuildIndexWiseVariadicSchedule(ctx, info, roots, num_tiles_per_pid,
-                                        max_tiles, has_peer_dim,
-                                        global_tile_id);
+                                        max_tiles, global_tile_id);
 }
 
 }  // namespace

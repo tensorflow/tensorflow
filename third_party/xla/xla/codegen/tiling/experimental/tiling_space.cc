@@ -73,13 +73,13 @@ bool HasIndexWiseVariadic(const HloFusionAdaptor& fusion) {
                         });
 }
 
-// Returns the position of the first dimension of result `result_index` in the
-// ordered list of dimensions of `hlo`. For an index-wise variadic instruction
-// the dimensions of all results are laid out back to back: result k starts at
-// the sum of the ranks of results 0..k-1. For every other instruction the
-// results share the dimensions of the first one and the offset is 0.
+}  // namespace
+
 int64_t GetResultDimensionOffset(const HloInstruction& hlo,
                                  int64_t result_index) {
+  if (!hlo.shape().IsTuple()) {
+    return result_index * hlo.shape().dimensions().size();
+  }
   if (!IsIndexWiseVariadic(hlo)) {
     return 0;
   }
@@ -90,10 +90,10 @@ int64_t GetResultDimensionOffset(const HloInstruction& hlo,
   return offset;
 }
 
-}  // namespace
-
 bool IsIndexWiseVariadic(const HloInstruction& hlo) {
-  return hlo.opcode() == HloOpcode::kAllGather && hlo.operand_count() > 1;
+  return HloPredicateIsOp<HloOpcode::kAllGather, HloOpcode::kReduceScatter>(
+             &hlo) &&
+         hlo.operand_count() > 1;
 }
 
 llvm::DenseMap<SymbolicExpr, SymbolicExpr> GetTileSizeReplacementMap(
@@ -224,27 +224,29 @@ void TilingSpace::ProcessReduce(const HloInstruction& hlo) {
   }
 }
 
-// Adds a `kReplica` dimension for `reduce-scatter` and links it to the scatter
-// dimension.
+// Adds a `kReplica` dimension for each `reduce-scatter` output and links it to
+// the output's scatter dimension.
 void TilingSpace::ProcessReduceScatter(const HloInstruction& hlo) {
-  if (hlo.shape().IsTuple()) {
-    return;
-  }
   const auto* reduce_scatter = Cast<HloReduceScatterInstruction>(&hlo);
   const int64_t scatter_dim = reduce_scatter->scatter_dimension();
-  auto it = hlo_to_dimension_.find(std::make_pair(&hlo, scatter_dim));
-  if (it == hlo_to_dimension_.end()) {
-    return;
-  }
-  const TiledDimId scatter_dim_id = it->second->id;
   const int64_t num_replicas =
       reduce_scatter->device_list()->num_devices_per_group();
   if (num_replicas <= 1) {
     return;
   }
-  AppendDimension(&hlo, hlo.shape().dimensions().size(), num_replicas,
-                  DimensionSemantics::kReplica);
-  dimensions_[scatter_dim_id.value()].replica_dim = dimensions_.back().id;
+  const int64_t num_results = reduce_scatter->operand_count();
+  const int64_t total_result_dims = GetResultDimensionOffset(hlo, num_results);
+  for (int64_t result_index = 0; result_index < num_results; ++result_index) {
+    auto it = hlo_to_dimension_.find(std::make_pair(
+        &hlo, GetResultDimensionOffset(hlo, result_index) + scatter_dim));
+    if (it == hlo_to_dimension_.end()) {
+      continue;
+    }
+    const TiledDimId scatter_dim_id = it->second->id;
+    AppendDimension(&hlo, total_result_dims + result_index, num_replicas,
+                    DimensionSemantics::kReplica);
+    dimensions_[scatter_dim_id.value()].replica_dim = dimensions_.back().id;
+  }
 }
 
 // Register sequential dimensions and RTVars for a kRaggedDot instruction.
