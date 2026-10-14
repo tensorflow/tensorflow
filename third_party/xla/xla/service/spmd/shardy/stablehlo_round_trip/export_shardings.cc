@@ -329,7 +329,7 @@ class ExportStablehloShardingsPass
     };
 
     moduleOp.walk([&](Operation* op) {
-      if (auto customCall = dyn_cast<stablehlo::CustomCallOp>(op)) {
+      if (auto customCall = mlir::dyn_cast<stablehlo::CustomCallOp>(op)) {
         // StableHLO doesn't have an equivalent of `erf` and `topk` ops.
         // If they have a sharding annotation, we need to move it into
         // `mhlo.attributes`, which StableHLO->MHLO conversion would lift back
@@ -351,9 +351,9 @@ class ExportStablehloShardingsPass
                                 builder.getDictionaryAttr(newAttributes));
           }
         }
-      } else if (isa<stablehlo::AllGatherOp, stablehlo::AllReduceOp,
-                     stablehlo::ReduceScatterOp, stablehlo::AllToAllOp,
-                     stablehlo::CollectiveBroadcastOp>(op)) {
+      } else if (mlir::isa<stablehlo::AllGatherOp, stablehlo::AllReduceOp,
+                           stablehlo::ReduceScatterOp, stablehlo::AllToAllOp,
+                           stablehlo::CollectiveBroadcastOp>(op)) {
         collectMeshesFromReplicaGroups(op);
       }
     });
