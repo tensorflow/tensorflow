@@ -831,6 +831,7 @@ class RemoteUtilsTest(test.TestCase, parameterized.TestCase):
       ('localhost:8000', 'localhost', 8000),
       ('grpc://localhost:8000', 'localhost', 8000),
       ('grpc://[::1]:8000', '::1', 8000),
+      ('[::1]:8000', '::1', 8000),
       ('localhost', 'localhost', None),
       ('::1', '::1', None),
   )

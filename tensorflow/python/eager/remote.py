@@ -93,13 +93,19 @@ def _parse_host_and_port(address):
     # `urlsplit` raises a `ValueError` when it tries to parse `.port` on an
     # unbracketed IPv6 address (e.g. `//::1`), since it mistakes the address's
     # own colons for a host:port separator. Retry with the host wrapped in
-    # brackets, which is the syntax `urlsplit` expects for IPv6 hosts.
+    # brackets, which is the syntax `urlsplit` expects for IPv6 hosts. Only do
+    # this when the netloc has more than one colon (a true unbracketed IPv6
+    # address like `::1`); otherwise an address that's simply unparseable
+    # (e.g. `localhost:foo`) would get wrapped in brackets and misread as a
+    # literal IPv6 host instead of correctly failing to parse.
     scheme, netloc = address.split("//", 1)
-    try:
-      parsed_bracketed = urllib.parse.urlsplit(f"{scheme}//[{netloc}]")
-      return parsed_bracketed.hostname, parsed_bracketed.port
-    except ValueError:
-      return None, None
+    if not netloc.startswith("[") and netloc.count(":") > 1:
+      try:
+        parsed_bracketed = urllib.parse.urlsplit(f"{scheme}//[{netloc}]")
+        return parsed_bracketed.hostname, parsed_bracketed.port
+      except ValueError:
+        pass
+    return None, None
 
 
 def _find_master_job_and_task(cluster_spec, master):
@@ -221,6 +227,7 @@ def connect_to_cluster(cluster_spec_or_resolver,
     for i, job in enumerate(current_server_def.cluster.job):
       if job.name == job_name:
         del current_server_def.cluster.job[i]
+        break
   if (current_server_def is None or current_server_def.cluster != cluster_def or
       current_server_def.job_name != job_name or
       current_server_def.task_index != task_index):
@@ -278,6 +285,7 @@ def connect_to_cluster(cluster_spec_or_resolver,
     default_session_config.experimental.collective_group_leader = (
         f"/job:{name}/replica:0/task:0"
     )
+    break
 
   logging.info("default session config: %s", default_session_config)
 
