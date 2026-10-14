@@ -1281,6 +1281,112 @@ TEST_F(TilePropagationTest, CanPropagateReplicaIdThroughBroadcast) {
   )"));
 }
 
+TEST_F(TilePropagationTest, CanPropagateToInputOfAllToAllOp) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[10, 64, 5] parameter(0)
+      ROOT all_to_all = f32[10, 64, 5] all-to-all(p0), replica_groups={{0,1}}, dimensions={1}
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+
+  ASSERT_OK_AND_ASSIGN(auto tiled_a2a_operands,
+                       PropagateTileToInput(*tiling_space, *root,
+                                            tiling_space->tiled_roots()[0], 0));
+
+  EXPECT_THAT(tiled_a2a_operands, MatchToString(R"(
+    0) (tid_0, tid_1, tid_2)
+      -> offsets [tid_0 * ts_0, (tid_1 * ts_1) mod 32, tid_2 * ts_2]
+         sizes [ts_0, ts_1, ts_2]
+         strides [1, 1, 1]
+         upper bounds [10, 32, 5]
+         replica ids {
+           offsets [(tid_1 * ts_1) / 32]
+           sizes [1]
+           strides [1]
+           upper bounds [2]
+         }
+  )"));
+
+  ASSERT_OK(tiling_space->AssignTileSizes({10, 16, 5}));
+  ASSERT_OK_AND_ASSIGN(auto concrete_tiled_a2a_operands,
+                       PropagateTileToInput(*tiling_space, *root,
+                                            tiling_space->tiled_roots()[0], 0));
+
+  EXPECT_THAT(concrete_tiled_a2a_operands, MatchToString(R"(
+    0) (tid_0, tid_1, tid_2)
+      -> offsets [0, (tid_1 mod 2) * 16, 0]
+         sizes [10, 16, 5]
+         strides [1, 1, 1]
+         upper bounds [10, 32, 5]
+         replica ids {
+           offsets [tid_1 / 2]
+           sizes [1]
+           strides [1]
+           upper bounds [2]
+         }
+  )"));
+}
+
+TEST_F(TilePropagationTest, AllToAllRejectsNonUnitSplitStride) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[10, 64, 5] parameter(0)
+      ROOT all_to_all = f32[10, 64, 5] all-to-all(p0), replica_groups={{0,1}}, dimensions={1}
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+  // GetTestTile assigns stride = index + 1 = 2 on dimension 1.
+  EXPECT_THAT(PropagateTileToInput(
+                  *tiling_space, *root,
+                  GetTestTile(*tiling_space, root->shape().dimensions()), 0),
+              StatusIs(absl::StatusCode::kUnimplemented));
+}
+
+TEST_F(TilePropagationTest, AllToAllRejectsTileCrossingShards) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[10, 64, 5] parameter(0)
+      ROOT all_to_all = f32[10, 64, 5] all-to-all(p0), replica_groups={{0,1}}, dimensions={1}
+    }
+  )");
+  {
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<TilingSpace> tiling_space,
+        TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                            &mlir_context_));
+    // Shard size on dimension 1 is 32, which is not divisible by tile size 24.
+    ASSERT_OK(tiling_space->AssignTileSizes({10, 24, 5}));
+    EXPECT_THAT(PropagateTileToInput(*tiling_space, *root,
+                                     tiling_space->tiled_roots()[0], 0),
+                StatusIs(absl::StatusCode::kUnimplemented));
+  }
+  {
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<TilingSpace> tiling_space,
+        TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                            &mlir_context_));
+    ASSERT_OK(tiling_space->AssignTileSizes({10, 16, 5}));
+    Tile unaligned_tile = tiling_space->tiled_roots()[0];
+    SmallVector<DimTile> dim_tiles(unaligned_tile.dim_tiles());
+    // Offset tid_1 * 16 + 8 is not a multiple of tile size 16.
+    dim_tiles[1].offset = dim_tiles[1].offset + 8;
+    EXPECT_THAT(PropagateTileToInput(
+                    *tiling_space, *root,
+                    unaligned_tile.CloneWithNewDims(std::move(dim_tiles)), 0),
+                StatusIs(absl::StatusCode::kUnimplemented));
+  }
+}
+
 TEST_F(TilePropagationTest, CanPropagateToInputsOfReduceOp) {
   HloInstruction* root = ParseAndGetRoot(R"(
     HloModule m

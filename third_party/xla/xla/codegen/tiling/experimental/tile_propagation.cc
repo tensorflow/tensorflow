@@ -1713,6 +1713,87 @@ absl::StatusOr<Tiles> PropagateTileToInputForAllGatherOp(
   return Tiles{input_tile};
 }
 
+absl::StatusOr<Tiles> PropagateTileToInputForAllToAllOp(
+    const TilingSpace& tiling_space, const HloInstruction& hlo,
+    const Tile& output_tile, int64_t output_index) {
+  const auto& all_to_all = *Cast<HloAllToAllInstruction>(&hlo);
+  if (!all_to_all.split_dimension().has_value()) {
+    return absl::UnimplementedError(absl::StrCat(
+        "Tuple all-to-all without split_dimension is not supported: ",
+        hlo.ToString()));
+  }
+  int64_t split_dim = *all_to_all.split_dimension();
+  if (output_index < 0 || output_index >= hlo.operand_count()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Output index ", output_index, " is out of range for ",
+                     hlo.ToString()));
+  }
+  const Shape& input_shape = hlo.operand(output_index)->shape();
+  int64_t num_replicas =
+      all_to_all.device_list()->replica_groups().empty()
+          ? 1
+          : all_to_all.device_list()->replica_groups()[0].replica_ids_size();
+  int64_t shard_size = input_shape.dimensions(split_dim) / num_replicas;
+
+  const DimTile& output_dim_tile = output_tile.dim_tiles()[split_dim];
+  if (!IsConstantValue(output_dim_tile.stride, 1)) {
+    return absl::UnimplementedError(absl::StrCat(
+        "Non-unit stride on the split dimension of ", all_to_all.ToString()));
+  }
+
+  if (!tiling_space.IsSymbolic()) {
+    DimTile simplified_dim_tile = output_dim_tile;
+    simplified_dim_tile.Simplify(tiling_space);
+    if (simplified_dim_tile.size.GetType() != SymbolicExprType::kConstant ||
+        simplified_dim_tile.size.GetValue() <= 0 ||
+        shard_size % simplified_dim_tile.size.GetValue() != 0 ||
+        !simplified_dim_tile.offset.Canonicalize().IsMultipleOf(
+            simplified_dim_tile.size.GetValue())) {
+      return absl::UnimplementedError(absl::StrCat(
+          "Output ", output_index, " of ", hlo.name(), " is tiled with size ",
+          simplified_dim_tile.size.ToString(), " at offset ",
+          simplified_dim_tile.offset.ToString(), " on split dimension ",
+          split_dim, ", expected tile size to divide per-rank shard size ",
+          shard_size,
+          " and offset to be a multiple of tile size (one peer per tile)"));
+    }
+  }
+
+  SymbolicExpr replica_id =
+      (output_dim_tile.offset / shard_size).Canonicalize();
+  SymbolicExpr input_offset =
+      (output_dim_tile.offset % shard_size).Canonicalize();
+
+  llvm::SmallVector<DimTile> input_dim_tiles;
+  input_dim_tiles.reserve(output_tile.num_dim_tiles());
+
+  for (int64_t i = 0; i < output_tile.num_dim_tiles(); ++i) {
+    if (i == split_dim) {
+      input_dim_tiles.push_back(DimTile{
+          input_offset, output_dim_tile.size, output_dim_tile.stride,
+          CreateSymbolicConstant(shard_size, output_tile.mlir_context())});
+    } else {
+      input_dim_tiles.push_back(output_tile.dim_tiles()[i]);
+    }
+  }
+
+  mlir::MLIRContext* ctx = output_tile.mlir_context();
+  llvm::SmallVector<DimTile> replica_id_dim_tiles =
+      llvm::to_vector(output_tile.replica_ids());
+  replica_id_dim_tiles.push_back(DimTile{
+      /*offset=*/replica_id,
+      /*size=*/CreateSymbolicConstant(1, ctx),
+      /*stride=*/CreateSymbolicConstant(1, ctx),
+      /*upper_bound=*/
+      CreateSymbolicConstant(num_replicas, ctx),
+  });
+
+  Tile input_tile(output_tile.tiling_space(), std::move(input_dim_tiles),
+                  std::move(replica_id_dim_tiles), output_tile.constraints());
+
+  return Tiles{input_tile};
+}
+
 absl::StatusOr<Tiles> PropagateTileToInput(TilingSpace& tiling_space,
                                            const HloInstruction& hlo,
                                            const Tile& output_tile,
@@ -1730,6 +1811,10 @@ absl::StatusOr<Tiles> PropagateTileToInput(TilingSpace& tiling_space,
   if (hlo.opcode() == HloOpcode::kAllGather) {
     return PropagateTileToInputForAllGatherOp(tiling_space, hlo, output_tile,
                                               output_index);
+  }
+  if (hlo.opcode() == HloOpcode::kAllToAll) {
+    return PropagateTileToInputForAllToAllOp(tiling_space, hlo, output_tile,
+                                             output_index);
   }
   if (hlo.opcode() == HloOpcode::kReduceScatter) {
     return PropagateTileToInputForReduceScatterOp(
