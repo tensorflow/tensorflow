@@ -6888,6 +6888,31 @@ TEST_F(HloEvaluatorTest, AsyncOpsWithLayout) {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
+TEST_F(HloEvaluatorTest, AsyncStartWithTiledLayout) {
+  // The reshape drops the tiling, so the result can't be moved.
+  const absl::string_view hlo_text = R"(
+  HloModule test
+
+  async_computation {
+    p0 = f32[8,128]{1,0:T(8,128)} parameter(0)
+    ROOT reshape = f32[8,128]{1,0:T(8,128)} reshape(p0)
+  }, execution_thread="thread"
+
+  ENTRY entry {
+    x = f32[8,128]{1,0:T(8,128)} parameter(0)
+    async-start = ((f32[8,128]{1,0:T(8,128)}), f32[8,128]{1,0:T(8,128)}) async-start(x), calls=async_computation, async_execution_thread="thread"
+    ROOT async-done = f32[8,128]{1,0:T(8,128)} async-done(async-start)
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Array2D<float> input(8, 128);
+  input.FillIota(1.0f);
+  Literal arg = LiteralUtil::CreateR2FromArray2D<float>(input);
+  ASSERT_OK_AND_ASSIGN(Literal result, HloEvaluator().Evaluate(
+                                           *m_->entry_computation(), {&arg}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(arg, result));
+}
+
 TEST_F(HloEvaluatorTest, LateBindingAsyncStartAndUpdate) {
   const absl::string_view hlo_text = R"(
   HloModule test

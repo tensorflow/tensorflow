@@ -3448,9 +3448,8 @@ absl::Status HloEvaluator::HandleAsyncStart(const HloInstruction* async_start) {
         Literal result,
         embedded_evaluator->Evaluate(*async_start->async_wrapped_computation(),
                                      arg_literals));
-    // Move the output value to the index {1} of the output.
-    ABSL_RETURN_IF_ERROR(
-        literal.MoveFrom(std::move(result), /*dest_shape_index=*/{1}));
+    // Copy the output value to the index {1} of the output.
+    ABSL_RETURN_IF_ERROR(literal.CopyFrom(result, /*dest_shape_index=*/{1}));
   }
 
   SetEvaluatedLiteralFor(async_start, std::move(literal));
@@ -3510,9 +3509,8 @@ absl::Status HloEvaluator::HandleAsyncUpdate(
         Literal result,
         embedded_evaluator->Evaluate(*async_update->async_wrapped_computation(),
                                      sub_literals));
-    // Move the output value to the index {1} of the output.
-    ABSL_RETURN_IF_ERROR(
-        literal.MoveFrom(std::move(result), /*dest_shape_index=*/{1}));
+    // Copy the output value to the index {1} of the output.
+    ABSL_RETURN_IF_ERROR(literal.CopyFrom(result, /*dest_shape_index=*/{1}));
 
     // propagate the output subshapes back to previous async ops
     ABSL_RETURN_IF_ERROR(
