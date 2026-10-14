@@ -114,6 +114,7 @@ class FlashAttentionTest(test.TestCase, parameterized.TestCase):
       w = self.evaluate(w)
       # Relative to the largest magnitude, since some gradients are ~0.
       err = np.max(np.abs(g - w)) / max(np.max(np.abs(w)), 1e-3)
+      self.assertFalse(np.isnan(g).any(), msg=name)
       self.assertLess(err, tol, msg=name)
 
   @parameterized.product(
@@ -261,10 +262,19 @@ class FlashAttentionTest(test.TestCase, parameterized.TestCase):
     for rate in (-0.1, 1.0):
       with self.assertRaisesRegex(errors.InvalidArgumentError, "dropout_rate"):
         self.evaluate(nn_ops.flash_attention(x, x, x, dropout_rate=rate))
-    with self.assertRaisesRegex(
-        (ValueError, errors.InvalidArgumentError),
-        "must be rank|compatible|feature size mismatch"):
-      nn_ops.flash_attention(x, array_ops.zeros([2, 4, 1, 16]), x)
+    # Shape mismatches are caught statically by the Python wrapper.
+    with self.assertRaisesRegex(ValueError, "must be rank 4"):
+      nn_ops.flash_attention(x, array_ops.zeros([2, 4, 16]), x)
+    with self.assertRaisesRegex(ValueError, "incompatible"):  # num_heads
+      nn_ops.flash_attention(x, array_ops.zeros([2, 4, 2, 8]), x)
+    with self.assertRaisesRegex(ValueError, "incompatible"):  # head_dim
+      nn_ops.flash_attention(x, array_ops.zeros([2, 4, 1, 32]), x)
+    # The kernel checks them too, for callers of the raw op.
+    seed = constant_op.constant(0, dtypes.uint64)
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "feature size mismatch"):
+      self.evaluate(gen_nn_ops.flash_attention(
+          x[:, :, 0], array_ops.zeros([2, 4, 32]), x[:, :, 0], seed, seed))
     with self.assertRaisesRegex(
         (ValueError, errors.InvalidArgumentError), "is_causal"):
       self.evaluate(nn_ops.flash_attention(
@@ -289,6 +299,17 @@ class FlashAttentionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(output.shape, (2, 0, 1, 32))
     self.assertAllEqual(dk, np.zeros([2, 8, 1, 32]))
     self.assertAllEqual(dv, np.zeros([2, 8, 1, 32]))
+
+    # test batch size of zero
+    query_b0 = array_ops.ones([0, 8, 1, 32], dtype)
+    kv_b0 = array_ops.ones([0, 8, 1, 32], dtype)
+    og_b0 = array_ops.ones([0, 8, 1, 32])
+    out_b0, dq_b0, dk_b0, dv_b0 = [self.evaluate(t) for t in _value_and_grads(
+        nn_ops.flash_attention, query_b0, kv_b0, kv_b0, og_b0)]
+    self.assertEqual(out_b0.shape, (0, 8, 1, 32))
+    self.assertEqual(dq_b0.shape, (0, 8, 1, 32))
+    self.assertEqual(dk_b0.shape, (0, 8, 1, 32))
+    self.assertEqual(dv_b0.shape, (0, 8, 1, 32))
 
   def testXlaInvalidDropout(self):
     if not test_util.is_gpu_available():
