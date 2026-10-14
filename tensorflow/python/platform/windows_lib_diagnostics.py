@@ -172,29 +172,31 @@ def diagnose_dll_load(path, depth=0, visited=None):
       _ = ctypes.WinDLL(dll_name)
     except OSError as e:
       err = getattr(e, "winerror", None)
-      print(f"{indent}[Error] Failed to load {dll_name}: ", end="")
+      _safe_print(f"{indent}[Error] Failed to load {dll_name}: ", end="")
       if err == ERROR_MOD_NOT_FOUND:
-        print(
+        _safe_print(
             "MODULE NOT FOUND (0x7E) - Check if the file or its dependencies"
             " exist."
         )
       elif err == ERROR_BAD_EXE_FORMAT:
-        print("BAD EXE FORMAT (0xC1/193) - Likely a 32-bit vs 64-bit mismatch.")
+        _safe_print(
+            "BAD EXE FORMAT (0xC1/193) - Likely a 32-bit vs 64-bit mismatch."
+        )
       elif err == ERROR_PROC_NOT_FOUND:
-        print(
+        _safe_print(
             "PROC NOT FOUND (0x7F/127) - Version mismatch in a dependent DLL."
         )
       elif err == ERROR_ACCESS_DENIED:
-        print("ACCESS DENIED (0x05) - Check file permissions.")
+        _safe_print("ACCESS DENIED (0x05) - Check file permissions.")
       elif err == ERROR_DLL_INIT_FAILED:
-        print(
+        _safe_print(
             "INITIALIZATION FAILED (0x45A) - The DLL's DllMain returned false."
         )
-        print(
+        _safe_print(
             f"{indent}    Hint: This often happens if your CPU lacks required"
             " instructions (like AVX/AVX2)"
         )
-        print(
+        _safe_print(
             f"{indent}    or if the Microsoft Visual C++ Redistributable is"
             " outdated/missing."
         )
