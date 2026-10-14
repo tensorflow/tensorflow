@@ -2132,6 +2132,8 @@ absl::flat_hash_set<std::string> GetKnownXLAAllowlistOp() {
       "FakeQuantWithMinMaxVarsGradient",
       "FakeQuantWithMinMaxVarsPerChannel",
       "FakeQuantWithMinMaxVarsPerChannelGradient",
+      "FlashAttention",
+      "FlashAttentionGrad",
       "Gather",
       "GatherNd",
       "GatherV2",
