@@ -90,7 +90,16 @@ def _parse_host_and_port(address):
     parsed = urllib.parse.urlsplit(address)
     return parsed.hostname, parsed.port
   except ValueError:
-    return None, None
+    # `urlsplit` raises a `ValueError` when it tries to parse `.port` on an
+    # unbracketed IPv6 address (e.g. `//::1`), since it mistakes the address's
+    # own colons for a host:port separator. Retry with the host wrapped in
+    # brackets, which is the syntax `urlsplit` expects for IPv6 hosts.
+    scheme, netloc = address.split("//", 1)
+    try:
+      parsed_bracketed = urllib.parse.urlsplit(f"{scheme}//[{netloc}]")
+      return parsed_bracketed.hostname, parsed_bracketed.port
+    except ValueError:
+      return None, None
 
 
 def _find_master_job_and_task(cluster_spec, master):
@@ -281,11 +290,12 @@ def connect_to_cluster(cluster_spec_or_resolver,
       cluster_device_filters=cluster_device_filters,
   )
 
-  if is_server_def_changed:
-    context.set_server_def(server_def)
-  else:
-    context.update_server_def(server_def)
-
+  # Validate the master device *before* mutating the context below, so a
+  # ValueError here (unknown master, or a conflicting existing device scope)
+  # leaves the context's server def untouched instead of partially applying
+  # the new cluster configuration.
+  master_device = None
+  current_device = None
   if make_master_device_default and isinstance(
       cluster_spec_or_resolver,
       cluster_resolver.ClusterResolver) and cluster_spec_or_resolver.master():
@@ -309,6 +319,13 @@ def connect_to_cluster(cluster_spec_or_resolver,
                        "scope %s, which is different from the master device "
                        "scope %s to enter. This is not allowed." %
                        (current_device, master_device))
+
+  if is_server_def_changed:
+    context.set_server_def(server_def)
+  else:
+    context.update_server_def(server_def)
+
+  if master_device:
     # TODO(b/138389076): Think of the entering device scope behavior in the
     # failure recovery case when dealing with preemptions.
     if not current_device:

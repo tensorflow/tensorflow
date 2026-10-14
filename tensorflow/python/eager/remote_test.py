@@ -773,11 +773,11 @@ class MultiJobsTest(test.TestCase, parameterized.TestCase):
       remote.connect_to_cluster(resolver)
 
   def testConnectToClusterWithInvalidMaster(self):
-    resolver = SimpleClusterResolver(self._cluster, master='::1')
+    resolver = SimpleClusterResolver(self._cluster, master='localhost:foo')
     with self.assertRaisesRegex(
         ValueError,
         '`make_master_device_default` is set to True but cannot find master '
-        '::1 in the cluster'):
+        'localhost:foo in the cluster'):
       remote.connect_to_cluster(resolver)
 
   def testConnectToClusterWithLocalMaster(self):
@@ -832,6 +832,7 @@ class RemoteUtilsTest(test.TestCase, parameterized.TestCase):
       ('grpc://localhost:8000', 'localhost', 8000),
       ('grpc://[::1]:8000', '::1', 8000),
       ('localhost', 'localhost', None),
+      ('::1', '::1', None),
   )
   def testParseHostAndPortSuccess(self, address, expected_host, expected_port):
     host, port = remote._parse_host_and_port(address)
