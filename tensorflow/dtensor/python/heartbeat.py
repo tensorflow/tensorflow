@@ -51,8 +51,10 @@ def _fatal(msg, *args, **kwargs):
   or calling `sys.exit` would only end that thread, not the process. Use
   `os._exit` to guarantee a hard process crash regardless of caller.
   """
-  logging.fatal(msg, *args, **kwargs)
-  os._exit(1)  # pylint: disable=protected-access
+  try:
+    logging.fatal(msg, *args, **kwargs)
+  finally:
+    os._exit(1)  # pylint: disable=protected-access
 
 
 def _heartbeat(

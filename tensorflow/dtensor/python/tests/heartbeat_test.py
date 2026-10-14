@@ -40,10 +40,10 @@ class HeartbeatFatalTest(tf_test.TestCase):
     with mock.patch.object(heartbeat.os, '_exit') as mock_exit:
       with mock.patch.object(
           heartbeat.logging, 'fatal', side_effect=ValueError('bad format')):
-        with self.assertRaises(ValueError):
+        with self.assertRaisesRegex(ValueError, r'bad format'):
           heartbeat._fatal('Unexpected heartbeat signal received: %s', [1, 0])
 
-    mock_exit.assert_not_called()
+    mock_exit.assert_called_once_with(1)
 
   def test_fatal_forwards_kwargs(self):
     with mock.patch.object(heartbeat.os, '_exit'):
