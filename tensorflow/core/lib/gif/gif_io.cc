@@ -78,6 +78,26 @@ uint8_t* Decode(
     return nullptr;
   }
 
+  // Reject implausibly large logical-screen sizes before DGifSlurp. Note that
+  // giflib allocates RasterBits per frame (from each frame's ImageDesc), and
+  // the output tensor is sized from the frames, not from the logical screen,
+  // so this is only a cheap early rejection of pathological headers; the
+  // op-level check on the total output size is the actual allocation bound.
+  // A 0x0 logical screen is valid (the output uses the frame sizes), so only
+  // the upper bound is enforced here.
+  {
+    const int64_t screen_w = static_cast<int64_t>(gif_file->SWidth);
+    const int64_t screen_h = static_cast<int64_t>(gif_file->SHeight);
+    const int64_t screen_bytes = screen_w * screen_h * 3;
+    if (screen_bytes >= (1LL << 30)) {
+      *error_string = absl::StrCat(
+          "GIF logical screen too large: ", gif_file->SWidth, "x",
+          gif_file->SHeight,
+          ". Canvas must be less than 2^30 bytes (RGB)");
+      return nullptr;
+    }
+  }
+
   if (DGifSlurp(gif_file) != GIF_OK) {
     *error_string = absl::StrCat("failed to slurp gif file: ",
                                  GifErrorStringNonNull(gif_file->Error));
