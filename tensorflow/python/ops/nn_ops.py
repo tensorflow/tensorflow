@@ -7020,7 +7020,7 @@ def flash_attention(
     query.shape[:1].assert_is_compatible_with(key.shape[:1])
 
     if scale is None:
-      head_dim = query.shape[-1]
+      head_dim = tensor_shape.dimension_value(query.shape[-1])
       if head_dim is None:
         raise ValueError(
             "`scale` must be given if the head dim of `query` is not "

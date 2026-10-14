@@ -8,6 +8,7 @@
 #   or CPU kernels.
 
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library", "if_cuda", "if_cuda_clang")
+load("//tensorflow:tensorflow.bzl", "if_oss")
 load("//tensorflow:tensorflow.default.bzl", "tf_kernel_library")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
@@ -40,37 +41,43 @@ cc_library(
     visibility = ["//visibility:private"],
 )
 
-# The FlashAttention-2 kernels and a TF-independent C++ API for them.
+# The FlashAttention-2 kernels and a TF-independent C++ API for them. Where
+# @flash_attention isn't available, fa2_api.cu.cc builds a stub that reports
+# FA2 as unsupported, so the op uses its own memory-efficient kernels.
 cuda_library(
     name = "fa2",
-    srcs = [
-        "fa2_api.cu.cc",
-        "@flash_attention//:sm80_kernel_srcs",
-    ],
+    srcs = ["fa2_api.cu.cc"] + if_oss(["@flash_attention//:sm80_kernel_srcs"]),
     hdrs = ["fa2_api.h"],
     copts = [
         "-fvisibility=hidden",
         "-Wno-unused-variable",
         "-Wno-unused-but-set-variable",
         "-Wno-missing-braces",
-    ] + if_cuda_clang([
+    ] + if_oss(if_cuda_clang([
         # Overrides the toolchain's "--maxrregcount=0", which makes ptxas
         # clamp kernels without launch bounds to too few registers for FA2.
         "-Xcuda-ptxas",
         "--maxrregcount=255",
-    ] + ["--no-cuda-gpu-arch=" + arch for arch in _FA2_PRE_SM80_ARCHS]),
+        # ptxas -O3 on the backward kernels can exceed the CI's 1h action
+        # timeout.
+        "-Xcuda-ptxas",
+        "-O2",
+    ] + ["--no-cuda-gpu-arch=" + arch for arch in _FA2_PRE_SM80_ARCHS])),
     local_defines = [
         "FLASH_NAMESPACE=flash_attention_fa2_impl",
         "FLASHATTENTION_DISABLE_ALIBI",
+        # fa2_api.cu.cc never uses sliding-window attention.
+        "FLASHATTENTION_DISABLE_LOCAL",
         "FLASHATTENTION_DISABLE_SOFTCAP",
     ],
     deps = [
         ":torch_shim",
+        "@local_config_cuda//cuda:cuda_headers",
+    ] + if_oss([
         "@cutlass_archive//:cutlass",
         "@flash_attention//:headers",
-        "@local_config_cuda//cuda:cuda_headers",
         "@local_config_cuda//cuda:cudart_headers",
-    ],
+    ]),
 )
 
 # Device functors shared by the TF kernels and the XLA custom calls.
