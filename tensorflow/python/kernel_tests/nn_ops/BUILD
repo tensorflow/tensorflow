@@ -546,6 +546,7 @@ cuda_py_strict_test(
     shard_count = 4,
     deps = [
         "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:constant_op",
@@ -558,7 +559,6 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:nn_ops",
         "//tensorflow/python/ops:nn_ops_gen",
-        "//tensorflow/python/ops:random_ops",
         "//tensorflow/python/ops:special_math_ops",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
