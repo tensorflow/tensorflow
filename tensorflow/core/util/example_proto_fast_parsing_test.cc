@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/util/example_proto_fast_parsing_test.pb.h"
@@ -549,6 +550,23 @@ absl::Status ParseSparse(DataType dtype, const std::string& serialized,
   AddSparseFeature("f", dtype, &config);
   return FastParseExample(config, {tstring(serialized)}, {}, nullptr, result);
 }
+
+// The error FastParseExample returns when feature "f" of the first example
+// can't be parsed.
+auto IsBatchParseError() {
+  return absl_testing::StatusIs(
+      absl::StatusCode::kInvalidArgument,
+      ::testing::HasSubstr(
+          "Key: f, Index: 0.  Can't parse serialized Example."));
+}
+
+// The error FastParseSingleExample returns when feature "f" can't be parsed.
+auto IsSingleParseError(absl::string_view description) {
+  return absl_testing::StatusIs(
+      absl::StatusCode::kInvalidArgument,
+      ::testing::HasSubstr(absl::StrCat(
+          "Key: f.  Can't parse serialized Example: ", description)));
+}
 }  // namespace
 
 // ReadRaw() takes an int, so a declared length of 2^31 or more turned into a
@@ -565,10 +583,12 @@ TEST(FastParse, BytesListLengthPastEndOfInput) {
 
   for (uint32_t length : {2u, 0x7fffffffu, 0x80000000u, 0xffffffffu}) {
     Result result;
-    EXPECT_TRUE(absl::IsInvalidArgument(ParseSparse(
-        DT_STRING,
-        ExampleWithDeclaredListLength(kBytesListTag, length, payload),
-        &result)))
+    EXPECT_THAT(
+        ParseSparse(DT_STRING,
+                    ExampleWithDeclaredListLength(kBytesListTag, length,
+                                                  payload),
+                    &result),
+        IsBatchParseError())
         << length;
   }
 }
@@ -586,9 +606,12 @@ TEST(FastParse, PackedFloatListLengthPastEndOfInput) {
 
   for (uint32_t length : {8u, 0x7fffffffu, 0x80000000u, 0xffffffffu}) {
     Result result;
-    EXPECT_TRUE(absl::IsInvalidArgument(ParseSparse(
-        DT_FLOAT, ExampleWithDeclaredListLength(kFloatListTag, length, payload),
-        &result)))
+    EXPECT_THAT(
+        ParseSparse(DT_FLOAT,
+                    ExampleWithDeclaredListLength(kFloatListTag, length,
+                                                  payload),
+                    &result),
+        IsBatchParseError())
         << length;
   }
 }
@@ -608,9 +631,12 @@ TEST(FastParse, SingleExamplePackedFloatListLengthPastEndOfInput) {
 
   for (uint32_t length : {8u, 0x7fffffffu, 0x80000000u, 0xffffffffu}) {
     Result result;
-    EXPECT_TRUE(absl::IsInvalidArgument(FastParseSingleExample(
-        config, ExampleWithDeclaredListLength(kFloatListTag, length, payload),
-        &result)))
+    EXPECT_THAT(
+        FastParseSingleExample(
+            config,
+            ExampleWithDeclaredListLength(kFloatListTag, length, payload),
+            &result),
+        IsSingleParseError("Parsing float_list failed."))
         << length;
   }
 }
@@ -627,17 +653,23 @@ TEST(FastParse, ListLengthPastEndOfFeature) {
     DataType dtype;
     char feature_oneof_tag;
     std::string list;
+    // FastParseSingleExample's description of the failure.
+    const char* single_error;
   };
   const std::vector<Case> cases = {
       // BytesList {value: "A"}
-      {"bytes", DT_STRING, kBytesListTag, std::string("\x0a\x01" "A", 3)},
+      {"bytes", DT_STRING, kBytesListTag, std::string("\x0a\x01" "A", 3),
+       "Could not get num elements in bytes_list."},
       // FloatList {value: [1.5]}, packed and non-packed
       {"packed float", DT_FLOAT, kFloatListTag,
-       std::string("\x0a\x04", 2) + float_bytes},
-      {"float", DT_FLOAT, kFloatListTag, std::string("\x0d", 1) + float_bytes},
+       std::string("\x0a\x04", 2) + float_bytes, "Parsing float_list failed."},
+      {"float", DT_FLOAT, kFloatListTag, std::string("\x0d", 1) + float_bytes,
+       "Parsing float_list failed."},
       // Int64List {value: [5]}, packed and non-packed
-      {"packed int64", DT_INT64, kInt64ListTag, std::string("\x0a\x01\x05", 3)},
-      {"int64", DT_INT64, kInt64ListTag, std::string("\x08\x05", 2)},
+      {"packed int64", DT_INT64, kInt64ListTag, std::string("\x0a\x01\x05", 3),
+       "Parsing int64_list failed."},
+      {"int64", DT_INT64, kInt64ListTag, std::string("\x08\x05", 2),
+       "Parsing int64_list failed."},
   };
   for (const Case& c : cases) {
     SCOPED_TRACE(c.name);
@@ -663,12 +695,14 @@ TEST(FastParse, ListLengthPastEndOfFeature) {
       const std::string serialized =
           ExampleWithFeatureList(c.feature_oneof_tag, length, c.list);
       Result result;
-      EXPECT_TRUE(absl::IsInvalidArgument(FastParseExample(
-          config, {tstring(serialized)}, {}, nullptr, &result)))
+      EXPECT_THAT(FastParseExample(config, {tstring(serialized)}, {}, nullptr,
+                                   &result),
+                  IsBatchParseError())
           << length;
       Result single_result;
-      EXPECT_TRUE(absl::IsInvalidArgument(
-          FastParseSingleExample(single_config, serialized, &single_result)))
+      EXPECT_THAT(
+          FastParseSingleExample(single_config, serialized, &single_result),
+          IsSingleParseError(c.single_error))
           << length;
     }
   }
