@@ -1883,9 +1883,7 @@ message DebugOptions {
   optional int64 xla_gpu_async_copy_min_bytes = 522;
 
   // If true, enable experimental tiling propagation.
-  // TODO(b/514293537): drop the flag.
-  optional bool xla_gpu_experimental_enable_tiling_propagation = 456
-      [deprecated = true];
+  optional bool xla_gpu_experimental_enable_tiling_propagation = 456;
 
   // Enables and controls expetimental cost model-driven tiling choices for GEMM
   // fusions.
