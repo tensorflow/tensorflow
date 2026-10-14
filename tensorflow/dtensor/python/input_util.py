@@ -226,9 +226,9 @@ def _validate_input(flattened_layouts: Sequence[layout_lib.Layout],
   first_elem_shape = flattened_elem_spec[0].shape
 
   for layout, elem_spec in zip(flattened_layouts, flattened_elem_spec):
-    if not elem_spec.shape.is_fully_defined():
+    if elem_spec.shape.rank is None:
       raise ValueError(
-          'Dataset element shape must be fully defined, got spec %s.' %
+          'Dataset element shape must have a valid rank, got spec %s.' %
           elem_spec)
 
     # Check that layout's rank matches the element's rank. If dataset is not yet
@@ -246,14 +246,21 @@ def _validate_input(flattened_layouts: Sequence[layout_lib.Layout],
 
     if dataset_already_batched:
       # Check that the batch dimension size of all dataset elements match.
-      # `batch_dim_size` is guaranteed to not be None here because the
-      # `is_fully_defined()` check above already ensures every dimension,
-      # including the batch dimension, has a concrete size.
       batch_dim_size = first_elem_shape.as_list()[0]
+      if batch_dim_size is None:
+        raise ValueError(
+            ('Size of batch dimension of element spec %s is None. Ensure '
+             'drop_remainder=True when batching the dataset.') % elem_spec)
+
       if elem_spec.shape.as_list()[0] != batch_dim_size:
         raise ValueError(
             ('Size of batch dimension of element spec %s does not match '
              'expected size %d.') % (elem_spec, batch_dim_size))
+
+    if not elem_spec.shape.is_fully_defined():
+      raise ValueError(
+          'Dataset element shape must be fully defined, got spec %s.' %
+          elem_spec)
 
 
 def _shard_counts(layout: layout_lib.Layout,
