@@ -163,13 +163,6 @@ class FlashAttentionGradOp : public OpKernel {
         errors::InvalidArgument("softmax_lse must be rank 2, got shape ",
                                 stats_tensor.shape().DebugString()));
 
-    for (const Tensor *t : {&q_tensor, &k_tensor, &v_tensor}) {
-      OP_REQUIRES(context, t->dims() == 3,
-                  errors::InvalidArgument(
-                      "query, key, and value must be rank 3, got shape ",
-                      t->shape().DebugString()));
-    }
-
     const int64_t B = q_tensor.dim_size(0);
     const int64_t S_q = q_tensor.dim_size(1);
     const int64_t D_qk = q_tensor.dim_size(2);
