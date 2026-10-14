@@ -19,6 +19,8 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/flash_attention/fa2_api.h"
 
+#if __has_include("flash.h")
+
 #include <c10/cuda/CUDAException.h>
 #include <cutlass/numeric_types.h>
 
@@ -302,3 +304,39 @@ cudaError_t Backward(cudaStream_t stream, bool bf16, const void *q,
 }
 
 }  // namespace flash_attention_fa2
+
+#else  // !__has_include("flash.h")
+
+// Built without @flash_attention: report FA2 as unsupported everywhere, so the
+// op always uses its own memory-efficient kernels.
+namespace flash_attention_fa2 {
+
+bool ShapeSupported(int d_qk, int d_v) { return false; }
+
+bool Supported(int d_qk, int d_v) { return false; }
+
+bool BackwardSupported(int d_qk, int d_v, float dropout) { return false; }
+
+cudaError_t Forward(cudaStream_t stream, bool bf16, const void *q,
+                    const void *k, const void *v, void *out, float *lse, int B,
+                    int S_q, int S_kv, int D, float scale, float dropout,
+                    bool causal, uint64_t seed, uint64_t offset,
+                    const uint64_t *seed_dev, const uint64_t *offset_dev) {
+  return cudaErrorNotSupported;
+}
+
+size_t BackwardWorkspaceBytes(int B, int S_q, int D) { return 0; }
+
+cudaError_t Backward(cudaStream_t stream, bool bf16, const void *q,
+                     const void *k, const void *v, const void *out,
+                     const float *lse, const void *dout, void *dq, void *dk,
+                     void *dv, void *workspace, int B, int S_q, int S_kv, int D,
+                     float scale, float dropout, bool causal, uint64_t seed,
+                     uint64_t offset, const uint64_t *seed_dev,
+                     const uint64_t *offset_dev) {
+  return cudaErrorNotSupported;
+}
+
+}  // namespace flash_attention_fa2
+
+#endif  // __has_include("flash.h")
