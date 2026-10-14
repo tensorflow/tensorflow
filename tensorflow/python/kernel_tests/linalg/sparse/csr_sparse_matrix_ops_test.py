@@ -1194,9 +1194,9 @@ class CSRSparseMatrixOpsTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testSparseCholeskyInvalidPermutation(self):
-    # A permutation entry outside [0, num_rows) is applied by Eigen as an
-    # out-of-bounds subscript; the op must reject it instead of corrupting
-    # memory.
+    # A permutation entry outside [0, num_rows) or containing duplicates is
+    # applied by Eigen as an out-of-bounds subscript or uninitialized memory;
+    # the op must reject it instead of corrupting memory.
     dense_matrix = np.array([
         [2, 0, 0],
         [0, 3, 0],
@@ -1205,11 +1205,33 @@ class CSRSparseMatrixOpsTest(test.TestCase, parameterized.TestCase):
     with test_util.force_cpu():
       sparse_matrix = dense_to_csr_sparse_matrix(
           math_ops.cast(dense_matrix, dtypes.float32))
-      invalid_permutation = np.array([0, 3, 1], dtype=np.int32)
-      with self.assertRaises((ValueError, errors.InvalidArgumentError)):
+
+      # Index >= num_rows
+      with self.assertRaisesRegex(
+          (ValueError, errors.InvalidArgumentError),
+          r"permutation index 3 at position 1 is out of range \[0, 3\)"):
         self.evaluate(
             sparse_csr_matrix_ops.sparse_matrix_sparse_cholesky(
-                sparse_matrix, invalid_permutation, type=dtypes.float32))
+                sparse_matrix, np.array([0, 3, 1], dtype=np.int32),
+                type=dtypes.float32))
+
+      # Negative index
+      with self.assertRaisesRegex(
+          (ValueError, errors.InvalidArgumentError),
+          r"permutation index -1 at position 1 is out of range \[0, 3\)"):
+        self.evaluate(
+            sparse_csr_matrix_ops.sparse_matrix_sparse_cholesky(
+                sparse_matrix, np.array([0, -1, 1], dtype=np.int32),
+                type=dtypes.float32))
+
+      # Duplicate index
+      with self.assertRaisesRegex(
+          (ValueError, errors.InvalidArgumentError),
+          r"duplicate permutation index 1"):
+        self.evaluate(
+            sparse_csr_matrix_ops.sparse_matrix_sparse_cholesky(
+                sparse_matrix, np.array([0, 1, 1], dtype=np.int32),
+                type=dtypes.float32))
 
   @test_util.run_in_graph_and_eager_modes
   def testBatchSparseCholesky(self):
