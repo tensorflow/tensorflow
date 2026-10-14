@@ -1459,9 +1459,17 @@ def moments(
     #       because that gradient is zero
     diff = math_ops.subtract(y, array_ops.stop_gradient(mean))
     variance = math_ops.maximum(
-        math_ops.subtract(
-            math_ops.reduce_mean(math_ops.square(diff), axes, keepdims=True),
-            math_ops.square(math_ops.reduce_mean(diff, axes, keepdims=True)),
+        math_ops.reduce_mean(
+            math_ops.subtract(
+                math_ops.square(diff),
+                math_ops.square(
+                    array_ops.stop_gradient(
+                        math_ops.reduce_mean(diff, axes, keepdims=True)
+                    )
+                ),
+            ),
+            axes,
+            keepdims=True,
         ),
         math_ops.cast(0, y.dtype),
         name="variance",
