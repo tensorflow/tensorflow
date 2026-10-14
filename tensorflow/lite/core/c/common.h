@@ -269,14 +269,11 @@ void TfLiteFloatArrayFree(TfLiteFloatArray* a);
 
 #define TF_LITE_ENSURE_NEAR(context, a, b, epsilon)                          \
   do {                                                                       \
-    const auto _val_a = (a);                                                 \
-    const auto _val_b = (b);                                                 \
-    const auto _eps = (epsilon);                                             \
-    const auto _delta = _val_a - _val_b;                                     \
-    if (_delta > _eps || _delta < -_eps) {                                   \
-      TF_LITE_KERNEL_LOG(                                                    \
-          (context), "%s:%d %s not near %s (%f != %f)", __FILE__, __LINE__,  \
-          #a, #b, static_cast<double>(_val_a), static_cast<double>(_val_b)); \
+    auto delta = ((a) > (b)) ? ((a) - (b)) : ((b) - (a));                    \
+    if (delta > epsilon) {                                                   \
+      TF_LITE_KERNEL_LOG((context), "%s:%d %s not near %s (%f != %f)",       \
+                         __FILE__, __LINE__, #a, #b, static_cast<double>(a), \
+                         static_cast<double>(b));                            \
       return kTfLiteError;                                                   \
     }                                                                        \
   } while (0)
