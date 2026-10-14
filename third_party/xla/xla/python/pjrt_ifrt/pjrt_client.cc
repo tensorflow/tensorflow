@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -59,6 +60,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
+#include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
@@ -73,6 +75,7 @@ limitations under the License.
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
+#include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
@@ -89,13 +92,17 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_buffer_hash_util.h"
 #include "xla/python/pjrt_ifrt/pjrt_device.h"
 #include "xla/python/pjrt_ifrt/pjrt_dtype.h"
+#include "xla/python/pjrt_ifrt/pjrt_executable.h"
 #include "xla/python/pjrt_ifrt/pjrt_layout.h"
 #include "xla/python/pjrt_ifrt/pjrt_memory.h"
 #include "xla/python/pjrt_ifrt/pjrt_remap.h"
 #include "xla/python/pjrt_ifrt/pjrt_topology.h"
 #include "xla/python/pjrt_ifrt/pjrt_tuple.h"
+#include "xla/python/pjrt_ifrt/xla_client.h"
+#include "xla/python/pjrt_ifrt/xla_compiler.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
 #include "xla/runtime/device_id.h"
+#include "xla/service/device_assignment.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -1961,7 +1968,114 @@ absl::StatusOr<BundleRef> PjRtClient::ConcatBundles(
 absl::StatusOr<std::vector<tsl::Future<LoadedExecutableRef>>> PjRtClient::Load(
     absl::Span<const ExecutableRef> executables,
     absl::Span<std::unique_ptr<LoadOptions>> options) {
-  return absl::UnimplementedError("Load is not implemented in PjRtClient.");
+  if (executables.size() != options.size()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("executables and options must have the same size, got ",
+                     executables.size(), " and ", options.size()));
+  }
+
+  std::vector<tsl::Future<LoadedExecutableRef>> loaded_executables;
+  loaded_executables.reserve(executables.size());
+
+  absl::flat_hash_map<xla::GlobalDeviceId, DeviceId>
+      pjrt_global_device_id_to_ifrt_device_id;
+  pjrt_global_device_id_to_ifrt_device_id.reserve(
+      ifrt_device_id_to_pjrt_global_device_id_.size());
+  for (const auto& [ifrt_device_id, pjrt_global_device_id] :
+       ifrt_device_id_to_pjrt_global_device_id_) {
+    pjrt_global_device_id_to_ifrt_device_id.insert(
+        {pjrt_global_device_id, ifrt_device_id});
+  }
+
+  for (size_t i = 0; i < executables.size(); ++i) {
+    auto* pjrt_executable =
+        dyn_cast_or_null<PjRtExecutable>(executables[i].get());
+    if (pjrt_executable == nullptr) {
+      return absl::InvalidArgumentError(
+          "PjRtClient::Load requires PjRtExecutable");
+    }
+    if (options[i] == nullptr) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("LoadOptions at index ", i, " must not be null"));
+    }
+    if (options[i]->devices != nullptr && options[i]->devices->empty()) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "LoadOptions::devices at index ", i, " must be non-empty"));
+    }
+
+    DeviceListRef device_list = std::move(options[i]->devices);
+    if (pjrt_executable->common_metadata().is_portable &&
+        device_list != nullptr && device_list->size() != 1) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Only single-shard portable execution is supported, got ",
+          device_list->size(), " devices at index ", i));
+    }
+    std::optional<std::vector<int>> outputs_bundle_slice_sizes =
+        std::move(options[i]->outputs_bundle_slice_sizes);
+    std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks;
+    if (auto* xla_load_options = dyn_cast<XlaLoadOptions>(options[i].get());
+        xla_load_options != nullptr) {
+      loaded_host_callbacks =
+          std::move(xla_load_options->loaded_host_callbacks);
+    }
+
+    ABSL_ASSIGN_OR_RETURN(
+        std::unique_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
+        pjrt_client_->Load(pjrt_executable->shared_ptr_pjrt_executable(),
+                           xla::LoadOptions()));
+
+    if (!pjrt_executable->common_metadata().is_portable) {
+      xla::DeviceAssignment device_assignment =
+          pjrt_loaded_executable->device_assignment();
+      absl::Status result;
+      device_assignment.Each(
+          [&](int64_t replica, int64_t computation, int64_t* device_id) {
+            if (!result.ok()) {
+              return;
+            }
+            auto it = pjrt_global_device_id_to_ifrt_device_id.find(
+                xla::GlobalDeviceId(*device_id));
+            if (it != pjrt_global_device_id_to_ifrt_device_id.end()) {
+              *device_id = it->second.value();
+            } else {
+              result.Update(absl::InvalidArgumentError(absl::StrCat(
+                  "Unknown IFRT device ID for PjRt global device ID ",
+                  *device_id)));
+            }
+          });
+      ABSL_RETURN_IF_ERROR(result);
+      ABSL_ASSIGN_OR_RETURN(
+          DeviceListRef compiled_device_list,
+          GetDeviceListFromDeviceAssignment(this, device_assignment));
+      if (device_list == nullptr) {
+        device_list = std::move(compiled_device_list);
+      } else if (*device_list != *compiled_device_list) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "LoadOptions::devices at index ", i,
+            " does not match the executable's compiled device assignment: ",
+            *device_list, " vs. ", *compiled_device_list));
+      }
+    }
+
+    PjRtExecutable::CommonMetadata common_metadata =
+        pjrt_executable->common_metadata();
+    if (outputs_bundle_slice_sizes.has_value()) {
+      common_metadata.outputs_bundle_slice_sizes =
+          std::move(outputs_bundle_slice_sizes);
+    }
+
+    ABSL_ASSIGN_OR_RETURN(LoadedExecutableRef loaded_executable,
+                     PjRtLoadedExecutable::Create(
+                         this,
+                         std::shared_ptr<xla::PjRtLoadedExecutable>(
+                             std::move(pjrt_loaded_executable)),
+                         std::move(loaded_host_callbacks),
+                         std::move(device_list), std::move(common_metadata)));
+    loaded_executables.push_back(
+        tsl::Future<LoadedExecutableRef>(std::move(loaded_executable)));
+  }
+
+  return loaded_executables;
 }
 
 absl::StatusOr<std::shared_ptr<Topology>> PjRtClient::GetTopologyForDevices(
