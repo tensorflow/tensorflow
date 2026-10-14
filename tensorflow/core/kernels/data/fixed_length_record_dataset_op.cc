@@ -332,7 +332,8 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
             absl::string_view lookahead_cache_view(lookahead_cache_);
             record = tstring(
                 lookahead_cache_view.substr(0, dataset()->record_bytes_));
-            lookahead_cache_.erase(0, dataset()->record_bytes_);
+            lookahead_cache_ = tstring(
+                lookahead_cache_view.substr(dataset()->record_bytes_));
             // Produce the record as output.
             Tensor record_tensor(ctx->allocator({}), DT_STRING, {});
             record_tensor.scalar<tstring>()() = std::move(record);
@@ -434,11 +435,13 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
       uint64_t file_size;
       TF_RETURN_IF_ERROR(ctx->env()->GetFileSize(filename, &file_size));
       TF_RETURN_IF_ERROR(ctx->env()->NewRandomAccessFile(filename, &file_));
-      // Bound both zlib buffers even for very large compressed files.
+      // Keep allocations bounded and within ZlibInputStream's int read size.
       constexpr int64_t kMaxZlibBufferSize = int64_t{512} << 20;
       const int64_t max_buffer_size =
           std::min(std::max<int64_t>(dataset()->buffer_size_, 1),
                    kMaxZlibBufferSize);
+      // Input is bounded by compressed file size. Output may expand beyond it,
+      // so retain the requested output size up to the allocation limit.
       const size_t input_buffer_size =
           EffectiveBufferSize(max_buffer_size, file_size);
       const size_t output_buffer_size = static_cast<size_t>(std::min<uint64_t>(

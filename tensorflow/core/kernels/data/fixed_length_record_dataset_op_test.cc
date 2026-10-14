@@ -343,6 +343,30 @@ TEST_P(FixedLengthRecordLargeBufferTest, EmptyFileWithLargeBuffer) {
   TF_ASSERT_OK(CheckIteratorGetNext({}, true));
 }
 
+FixedLengthRecordDatasetParams ExpandedRecordsDatasetParams(
+    CompressionType compression_type) {
+  std::vector<tstring> filenames = {LocalTempFilename()};
+  std::vector<std::string> contents = {
+      absl::StrCat("HHHHH", std::string(1024, 'a'), std::string(1024, 'b'),
+                   std::string(1024, 'c'), "FF")};
+  if (!CreateTestFiles(filenames, contents, compression_type).ok()) {
+    LOG(WARNING) << "Failed to create the test files: "
+                 << absl::StrJoin(filenames, ", ");
+  }
+  return FixedLengthRecordDatasetParams(
+      filenames, /*header_bytes=*/5, /*record_bytes=*/1024, /*footer_bytes=*/2,
+      /*buffer_size=*/256, compression_type, /*node_name=*/kNodeName);
+}
+
+TEST_P(FixedLengthRecordLargeBufferTest, RecordsLargerThanBothBuffers) {
+  TF_ASSERT_OK(Initialize(ExpandedRecordsDatasetParams(GetParam())));
+  TF_ASSERT_OK(CheckIteratorGetNext(
+      CreateTensors<tstring>(TensorShape({}),
+                            {{tstring(1024, 'a')}, {tstring(1024, 'b')},
+                             {tstring(1024, 'c')}}),
+      true));
+}
+
 INSTANTIATE_TEST_SUITE_P(
     Compression, FixedLengthRecordLargeBufferTest,
     ::testing::Values(CompressionType::UNCOMPRESSED, CompressionType::GZIP,
@@ -351,6 +375,16 @@ INSTANTIATE_TEST_SUITE_P(
 std::vector<IteratorSaveAndRestoreTestCase<FixedLengthRecordDatasetParams>>
 IteratorSaveAndRestoreTestCases() {
   return {
+      {/*dataset_params=*/ExpandedRecordsDatasetParams(CompressionType::ZLIB),
+       /*breakpoints=*/{0, 1, 2, 4},
+       /*expected_outputs=*/CreateTensors<tstring>(
+           TensorShape({}), {{tstring(1024, 'a')}, {tstring(1024, 'b')},
+                            {tstring(1024, 'c')}})},
+      {/*dataset_params=*/ExpandedRecordsDatasetParams(CompressionType::GZIP),
+       /*breakpoints=*/{0, 1, 2, 4},
+       /*expected_outputs=*/CreateTensors<tstring>(
+           TensorShape({}), {{tstring(1024, 'a')}, {tstring(1024, 'b')},
+                            {tstring(1024, 'c')}})},
       {/*dataset_params=*/FixedLengthRecordDatasetParams1(),
        /*breakpoints=*/{0, 2, 6},
        /*expected_outputs=*/
