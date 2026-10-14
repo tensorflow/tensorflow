@@ -409,8 +409,7 @@ struct FlashAttentionGradFunctor<CPUDevice, T> {
 
     const float zero = 0.0f;
     const float one = 1.0f;
-    const float eps = 1e-6f;
-
+    
     float dp_inverse_scale = one;
     if (dropout_rate > 0.0f) {
       dp_inverse_scale = one / (one - dropout_rate);
