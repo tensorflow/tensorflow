@@ -458,8 +458,12 @@ struct FlashAttentionGradFunctor<GPUDevice, T> {
     // floats)
     int smem_size =
         (2 * Br + 2 * Bc) * D_MAX * sizeof(T) + 2 * Br * sizeof(float);
-    int blocks_per_batch = (S_kv + Bc - 1) / Bc;
-    int total_blocks = B * blocks_per_batch;
+    uint64_t blocks_per_batch = (S_kv + Bc - 1) / Bc;
+    uint64_t total_blocks = static_cast<uint64_t>(B) * blocks_per_batch;
+    if (total_blocks > 2147483647ULL) {
+      return errors::InvalidArgument(
+          "FlashAttention: total blocks exceed 1D grid limit");
+    }
     return GpuLaunchKernel(FlashAttnBwdKernel_KV<T, D_MAX>, total_blocks,
                            threads_per_block, smem_size, d.stream(), Q.data(),
                            K.data(), V.data(), Out.data(), Stats.data(),
@@ -486,8 +490,12 @@ struct FlashAttentionGradFunctor<GPUDevice, T> {
     // Shared Memory size: Q, dO (Br rows) + K, V (Bc rows) + Stats, dOsum (Br
     // floats)
     int smem_size = (2 * Br + 2 * Bc) * D_MAX * sizeof(T);
-    int blocks_per_batch = (S_q + Br - 1) / Br;
-    int total_blocks = B * blocks_per_batch;
+    uint64_t blocks_per_batch = (S_q + Br - 1) / Br;
+    uint64_t total_blocks = static_cast<uint64_t>(B) * blocks_per_batch;
+    if (total_blocks > 2147483647ULL) {
+      return errors::InvalidArgument(
+          "FlashAttention: total blocks exceed 1D grid limit");
+    }
     return GpuLaunchKernel(FlashAttnBwdKernel_Q<T, D_MAX>, total_blocks,
                            threads_per_block, smem_size, d.stream(), Q.data(),
                            K.data(), V.data(), Out.data(), Stats.data(),
