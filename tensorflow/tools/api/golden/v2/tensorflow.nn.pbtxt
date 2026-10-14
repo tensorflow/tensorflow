@@ -173,6 +173,10 @@ tf_module {
     argspec: "args=[\'true_classes\', \'num_true\', \'num_sampled\', \'unique\', \'range_max\', \'vocab_file\', \'distortion\', \'num_reserved_ids\', \'num_shards\', \'shard\', \'unigrams\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'1.0\', \'0\', \'1\', \'0\', \'()\', \'None\', \'None\'], "
   }
   member_method {
+    name: "flash_attention"
+    argspec: "args=[\'query\', \'key\', \'value\', \'scale\', \'is_causal\', \'dropout_rate\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'0.0\', \'None\', \'None\'], "
+  }
+  member_method {
     name: "fractional_avg_pool"
     argspec: "args=[\'value\', \'pooling_ratio\', \'pseudo_random\', \'overlapping\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'0\', \'None\'], "
   }

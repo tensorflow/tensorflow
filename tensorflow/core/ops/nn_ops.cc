@@ -3392,4 +3392,73 @@ REGISTER_OP("IsotonicRegression")
       return absl::OkStatus();
     });
 
+// --------------------------------------------------------------------------
+
+REGISTER_OP("FlashAttention")
+    .Input("query: T")
+    .Input("key: T")
+    .Input("value: T")
+    .Input("seed: uint64")
+    .Input("offset: uint64")
+    .Output("output: T")
+    .Output("softmax_lse: float")
+    .Attr("T: {half, bfloat16, float}")
+    .Attr("scale: float = 1.0")
+    .Attr("dropout_rate: float = 0.0")
+    .Attr("is_causal: bool = false")
+    .SetShapeFn([](InferenceContext* c) {
+      // query: [batch, seq_q, dim], key: [batch, seq_kv, dim],
+      // value: [batch, seq_kv, dim_v].
+      ShapeHandle query, key, value, unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 3, &query));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 3, &key));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 3, &value));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
+
+      DimensionHandle batch, seq_kv, unused_dim;
+      TF_RETURN_IF_ERROR(c->Merge(c->Dim(query, 0), c->Dim(key, 0), &batch));
+      TF_RETURN_IF_ERROR(c->Merge(batch, c->Dim(value, 0), &batch));
+      TF_RETURN_IF_ERROR(c->Merge(c->Dim(key, 1), c->Dim(value, 1), &seq_kv));
+      TF_RETURN_IF_ERROR(
+          c->Merge(c->Dim(query, 2), c->Dim(key, 2), &unused_dim));
+
+      c->set_output(0,
+                    c->MakeShape({batch, c->Dim(query, 1), c->Dim(value, 2)}));
+      c->set_output(1, c->MakeShape({batch, c->Dim(query, 1)}));
+      return absl::OkStatus();
+    });
+
+REGISTER_OP("FlashAttentionGrad")
+    .Input("query: T")
+    .Input("key: T")
+    .Input("value: T")
+    .Input("output: T")
+    .Input("softmax_lse: float")
+    .Input("output_grad: T")
+    .Input("seed: uint64")
+    .Input("offset: uint64")
+    .Output("query_grad: T")
+    .Output("key_grad: T")
+    .Output("value_grad: T")
+    .Attr("T: {half, bfloat16, float}")
+    .Attr("scale: float = 1.0")
+    .Attr("dropout_rate: float = 0.0")
+    .Attr("is_causal: bool = false")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle query, key, value, unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 3, &query));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 3, &key));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 3, &value));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 3, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 2, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 3, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 0, &unused));
+      c->set_output(0, query);
+      c->set_output(1, key);
+      c->set_output(2, value);
+      return absl::OkStatus();
+    });
+
 }  // namespace tensorflow

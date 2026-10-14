@@ -193,6 +193,7 @@ cc_library(
         ":xla_select_and_scatter_op",
         ":xla_self_adjoint_eig_op",
         ":xla_svd_op",
+        "//tensorflow/core/kernels/flash_attention:flash_attention_xla_op",
     ],
 )
 
