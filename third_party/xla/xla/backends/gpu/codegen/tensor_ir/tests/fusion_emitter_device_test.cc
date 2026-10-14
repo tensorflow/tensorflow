@@ -86,6 +86,82 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
+TEST_F(TensorIrEmitterTest, CopyChangesLayout) {
+  constexpr absl::string_view kHloText = R"(
+fused_computation {
+  p0 = f32[8,16]{1,0} parameter(0)
+  neg = f32[8,16]{1,0} negate(p0)
+  ROOT copy = f32[8,16]{0,1} copy(neg)
+}
+
+ENTRY main {
+  p0 = f32[8,16]{1,0} parameter(0)
+  ROOT fusion = f32[8,16]{0,1} fusion(p0), kind=kCustom, calls=fused_computation,
+    backend_config={"fusion_backend_config":{"kind":"__tensorir","tensor_ir_fusion_config":{}}}
+})";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
+}
+
+TEST_F(TensorIrEmitterTest, MultiOutputElementwiseF32) {
+  constexpr absl::string_view kHloText = R"(
+fused_computation {
+  p0 = f32[8,16] parameter(0)
+  p1 = f32[8,16] parameter(1)
+  add = f32[8,16] add(p0, p1)
+  mul = f32[8,16] multiply(p0, p1)
+  ROOT tuple = (f32[8,16], f32[8,16]) tuple(add, mul)
+}
+
+ENTRY main {
+  p0 = f32[8,16] parameter(0)
+  p1 = f32[8,16] parameter(1)
+  ROOT fusion = (f32[8,16], f32[8,16]) fusion(p0, p1), kind=kCustom, calls=fused_computation,
+    backend_config={"fusion_backend_config":{"kind":"__tensorir","tensor_ir_fusion_config":{}}}
+})";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
+}
+
+TEST_F(TensorIrEmitterTest, MultiOutputWithDifferentTypes) {
+  constexpr absl::string_view kHloText = R"(
+fused_computation {
+  p0 = f32[8,16] parameter(0)
+  neg = f32[8,16] negate(p0)
+  cvt = s32[8,16] convert(p0)
+  ROOT tuple = (f32[8,16], s32[8,16]) tuple(neg, cvt)
+}
+
+ENTRY main {
+  p0 = f32[8,16] parameter(0)
+  ROOT fusion = (f32[8,16], s32[8,16]) fusion(p0), kind=kCustom, calls=fused_computation,
+    backend_config={"fusion_backend_config":{"kind":"__tensorir","tensor_ir_fusion_config":{}}}
+})";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
+}
+
+TEST_F(TensorIrEmitterTest, MultiOutputElementwiseAndReduceF32) {
+  constexpr absl::string_view kHloText = R"(
+add_f32 {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT sum = f32[] add(a, b)
+}
+
+fused_computation {
+  p0 = f32[8,16] parameter(0)
+  neg = f32[8,16] negate(p0)
+  zero = f32[] constant(0)
+  sum = f32[8] reduce(p0, zero), dimensions={1}, to_apply=add_f32
+  ROOT tuple = (f32[8,16], f32[8]) tuple(neg, sum)
+}
+
+ENTRY main {
+  p0 = f32[8,16] parameter(0)
+  ROOT fusion = (f32[8,16], f32[8]) fusion(p0), kind=kCustom, calls=fused_computation,
+    backend_config={"fusion_backend_config":{"kind":"__tensorir","tensor_ir_fusion_config":{}}}
+})";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, ErrorSpec{1e-5, 1e-5}));
+}
+
 TEST_F(TensorIrEmitterTest, ElementwiseMulMaxF32) {
   constexpr absl::string_view kHloText = R"(
 fused_computation {

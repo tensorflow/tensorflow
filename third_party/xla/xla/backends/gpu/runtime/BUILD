@@ -5435,6 +5435,7 @@ xla_test(
 cc_library(
     name = "device_slot",
     hdrs = ["device_slot.h"],
+    compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:private"],
     deps = [
         "@com_google_absl//absl/base",
@@ -5448,6 +5449,7 @@ cc_library(
     name = "vector_storage",
     srcs = ["vector_storage.cc"],
     hdrs = ["vector_storage.h"],
+    compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:private"],
     deps = [
         ":device_slot",
@@ -5471,6 +5473,7 @@ cc_library(
     name = "cow_storage",
     srcs = ["cow_storage.cc"],
     hdrs = ["cow_storage.h"],
+    compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:private"],
     deps = [
         ":device_slot",
@@ -5500,6 +5503,7 @@ cc_library(
     name = "per_device_state",
     srcs = ["per_device_state.cc"],
     hdrs = ["per_device_state.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":cow_storage",
         ":device_slot",

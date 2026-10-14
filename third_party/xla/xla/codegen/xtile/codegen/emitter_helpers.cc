@@ -446,6 +446,7 @@ absl::StatusOr<SmallVector<Value>> EmitterContext::EvaluateTilingParameters(
   for (const int64_t dim : dim_ids) {
     switch (tiling_space.dimensions()[dim].type) {
       case ge::TilingSpace::DimensionSemantics::kParallel:
+      case ge::TilingSpace::DimensionSemantics::kReplica:
         dim_replacements[dim] = schedule_.GetPidExpr(dim);
         break;
       case ge::TilingSpace::DimensionSemantics::kSequential: {

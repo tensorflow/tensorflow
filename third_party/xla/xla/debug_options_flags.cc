@@ -3901,12 +3901,9 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_rocm_max_trace_events(),
       "Maximum number of ROCm trace events (applies to callback/activity/"
       "annotation). Set as high as memory allows; up to 1e9."));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_experimental_enable_tiling_propagation",
-      bool_setter_for(
-          &DebugOptions::set_xla_gpu_experimental_enable_tiling_propagation),
-      debug_options->xla_gpu_experimental_enable_tiling_propagation(),
-      "If true, enable experimental tiling propagation."));
+  flag_list->push_back(
+      tsl::Flag("xla_gpu_experimental_enable_tiling_propagation",
+                noop_flag_setter<bool>, true, "[Deprecated, do not use]."));
 
   auto setter_for_xla_gpu_detect_nan =
       [debug_options, detection_mode](const std::string& value) {
@@ -4117,6 +4114,7 @@ DebugOptions GetDebugOptionsFromProtoAndFlags(
     DebugOptions* proto_debug_options) {
   if (proto_debug_options != nullptr) {
     DebugOptions debug_options = *proto_debug_options;
+    debug_options.set_xla_gpu_experimental_enable_tiling_propagation(true);
     // Apply overrides from XLA_FLAGS environment variable.
     std::vector<tsl::Flag> flag_list;
     MakeDebugOptionsFlags(&flag_list, &debug_options);
