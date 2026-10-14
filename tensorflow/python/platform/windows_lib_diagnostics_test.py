@@ -52,8 +52,25 @@ class WindowsLibDiagnosticsTest(test.TestCase):
       windows_lib_diagnostics._safe_print("text")
 
   def testUnsetPathInEnviron(self):
-    with mock.patch.dict(os.environ, {}, clear=True):
-      windows_lib_diagnostics.run_diagnosis("nonexistent.dll")
+    out = _FakeStdout("utf-8")
+    fake_ctypes = mock.MagicMock()
+    fake_ctypes.WinDLL.side_effect = OSError("mock load failure")
+    with mock.patch("sys.stdout", out), \
+        mock.patch.dict(os.environ, {}, clear=True), \
+        mock.patch.object(windows_lib_diagnostics, "ctypes", fake_ctypes), \
+        mock.patch.object(
+            windows_lib_diagnostics.os.path, "exists",
+            side_effect=lambda p: p == "main.dll"), \
+        mock.patch.object(
+            windows_lib_diagnostics, "get_dll_dependencies",
+            return_value=["dep.dll"]):
+      # Calls `diagnose_dll_load` directly (rather than `run_diagnosis`) so
+      # that this actually reaches the `os.environ.get("PATH", "")` lookup,
+      # which `run_diagnosis` only does on Windows with an existing path.
+      # With PATH unset, this must not raise a KeyError while searching for
+      # `dep.dll`'s location.
+      windows_lib_diagnostics.diagnose_dll_load("main.dll")
+    self.assertIn("Failed to load dep.dll", out.getvalue())
 
   def testRunDiagnosisSwallowsUnexpectedErrors(self):
     out = _FakeStdout("utf-8")
