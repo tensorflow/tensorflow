@@ -17,6 +17,12 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_FLASH_ATTENTION_FLASH_ATTENTION_OP_GPU_CU_H_
 #if GOOGLE_CUDA
 
+#include <cstddef>
+#include <initializer_list>
+#include <utility>
+
+#include "absl/status/status.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow::functor {
@@ -24,6 +30,22 @@ namespace tensorflow::functor {
 inline constexpr float EPSF = 1e-6f;
 inline constexpr float ZEROF = 0.0f;
 inline constexpr float NEGINF = -1e9f;
+
+// Zeroes each (pointer, bytes) buffer on the device's stream. Used for empty
+// inputs, where the kernels are skipped but the outputs still need values.
+inline absl::Status ZeroOutputs(
+    const Eigen::GpuDevice &d,
+    std::initializer_list<std::pair<void *, size_t>> buffers) {
+  for (const auto &[ptr, bytes] : buffers) {
+    if (bytes == 0) continue;
+    const cudaError_t err = cudaMemsetAsync(ptr, 0, bytes, d.stream());
+    if (err != cudaSuccess) {
+      return errors::Internal("FlashAttention: zeroing outputs failed: ",
+                              cudaGetErrorString(err));
+    }
+  }
+  return absl::OkStatus();
+}
 
 __device__ __forceinline__ float get_random_float_v2(uint64_t global_idx,
                                                      uint64_t j) {

@@ -19,7 +19,9 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <type_traits>
+#include <vector>
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -69,6 +71,8 @@ class FlashAttentionOp : public OpKernel {
     const int64_t D_qk = q_tensor.dim_size(2);
     const int64_t S_kv = k_tensor.dim_size(1);
     const int64_t D_v = v_tensor.dim_size(2);
+    OP_REQUIRES_OK(context,
+                   functor::CheckDimsFitInt32(B, S_q, S_kv, D_qk, D_v));
 
     OP_REQUIRES(context, k_tensor.dim_size(0) == B,
                 errors::InvalidArgument("K batch size mismatch"));
@@ -122,6 +126,8 @@ class FlashAttentionGradOp : public OpKernel {
   explicit FlashAttentionGradOp(OpKernelConstruction *context)
       : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("dropout_rate", &dropout_rate_));
+    OP_REQUIRES(context, dropout_rate_ >= 0.0 && dropout_rate_ < 1.0,
+                errors::InvalidArgument("dropout_rate must be in [0, 1)"));
     OP_REQUIRES_OK(context, context->GetAttr("scale", &scale_));
     OP_REQUIRES_OK(context, context->GetAttr("is_causal", &causal_mask_));
   }
@@ -169,6 +175,8 @@ class FlashAttentionGradOp : public OpKernel {
     const int64_t D_qk = q_tensor.dim_size(2);
     const int64_t S_kv = k_tensor.dim_size(1);
     const int64_t D_v = v_tensor.dim_size(2);
+    OP_REQUIRES_OK(context,
+                   functor::CheckDimsFitInt32(B, S_q, S_kv, D_qk, D_v));
 
     OP_REQUIRES(context, k_tensor.dim_size(0) == B,
                 errors::InvalidArgument("K batch size mismatch"));
@@ -301,8 +309,8 @@ struct FlashAttentionFunctor<CPUDevice, T> {
     }
 
     auto shard = [&](int64_t start, int64_t end) {
+      std::vector<float> O_accum(D_v);
       for (int64_t b = start; b < end; ++b) {
-        std::vector<float> O_accum(D_v);
         // --- Loop Query (i) ---
         for (int i = 0; i < S_q; ++i) {
           float m_i = neg_inf;
@@ -415,13 +423,16 @@ struct FlashAttentionGradFunctor<CPUDevice, T> {
       dp_inverse_scale = one / (one - dropout_rate);
     }
 
-    dQ.setZero();
-    dK.setZero();
-    dV.setZero();
-
     auto shard = [&](int64_t start, int64_t end) {
+      // dK and dV sum over all queries, so accumulate them in float and round
+      // to T once at the end; T = half/bfloat16 would lose most of the sum.
+      // Shards own whole batch entries, so these buffers are private.
       std::vector<float> dQ_accum(D_k);
+      std::vector<float> dK_accum(static_cast<size_t>(S_kv) * D_k);
+      std::vector<float> dV_accum(static_cast<size_t>(S_kv) * D_v);
       for (int64_t b = start; b < end; ++b) {
+        std::fill(dK_accum.begin(), dK_accum.end(), zero);
+        std::fill(dV_accum.begin(), dV_accum.end(), zero);
         for (int i = 0; i < S_q; ++i) {
           float stats_val = Stats(b, i);
           float D_i = zero;
@@ -444,7 +455,6 @@ struct FlashAttentionGradFunctor<CPUDevice, T> {
 
             // (b) Softmax
             float prob = std::exp(score - stats_val);
-            // if (prob < eps) continue; // NOTE: this shouldn't be a problem
 
             float prob_raw = prob;
             bool is_dropped(false);
@@ -465,10 +475,9 @@ struct FlashAttentionGradFunctor<CPUDevice, T> {
               dS_val = -prob_raw * D_i * scale;
             } else {
               // 1. dV (Accumulate)
+              float *dV_j = &dV_accum[static_cast<size_t>(j) * D_v];
               for (int k = 0; k < D_v; ++k) {
-                float val_dO = static_cast<float>(dO(b, i, k));
-                dV(b, j, k) = static_cast<T>(static_cast<float>(dV(b, j, k)) +
-                                             prob * val_dO);
+                dV_j[k] += prob * static_cast<float>(dO(b, i, k));
               }
 
               // 2. dP_val = dO_i . V_j
@@ -482,13 +491,12 @@ struct FlashAttentionGradFunctor<CPUDevice, T> {
             }
 
             //  Update dK & Accumulate dQ (Merged) ---
+            float *dK_j = &dK_accum[static_cast<size_t>(j) * D_k];
             for (int k = 0; k < D_k; ++k) {
               float val_Q = static_cast<float>(Q(b, i, k));
               float val_K = static_cast<float>(K(b, j, k));
 
-              dK(b, j, k) = static_cast<T>(static_cast<float>(dK(b, j, k)) +
-                                           dS_val * val_Q);
-
+              dK_j[k] += dS_val * val_Q;
               dQ_accum[k] += dS_val * val_K;
             }
 
@@ -498,6 +506,17 @@ struct FlashAttentionGradFunctor<CPUDevice, T> {
             dQ(b, i, k) = static_cast<T>(dQ_accum[k]);
           }
         }  // End Loop i
+
+        for (int j = 0; j < S_kv; ++j) {
+          for (int k = 0; k < D_k; ++k) {
+            dK(b, j, k) =
+                static_cast<T>(dK_accum[static_cast<size_t>(j) * D_k + k]);
+          }
+          for (int k = 0; k < D_v; ++k) {
+            dV(b, j, k) =
+                static_cast<T>(dV_accum[static_cast<size_t>(j) * D_v + k]);
+          }
+        }
       }  // End Loop b
     };
 

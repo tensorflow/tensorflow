@@ -39,7 +39,7 @@ __global__ void FlashAttnBwdKernel_KV(
   constexpr int Br = traits::FlashTraitsKV<D_MAX>::Br;
   constexpr int Bc = traits::FlashTraitsKV<D_MAX>::Bc;
   const float dp_inverse =
-      (dropout_rate > EPSF) ? (1.0f / (1.0f - dropout_rate)) : 1.0f;
+      (dropout_rate > 0.0f) ? (1.0f / (1.0f - dropout_rate)) : 1.0f;
 
   extern __shared__ char smem_[];
   T *s_K = reinterpret_cast<T *>(smem_);
@@ -145,7 +145,7 @@ __global__ void FlashAttnBwdKernel_KV(
           if (p_ij > EPSF) {
             float dS = scale;
             bool is_dropped = false;
-            if (dropout_rate > EPSF) {
+            if (dropout_rate > 0.0f) {
               if (get_random_float_v2(global_rng_idx, q_idx * S_kv) <
                   dropout_rate) {
                 is_dropped = true;
@@ -206,7 +206,7 @@ __global__ void FlashAttnBwdKernel_Q(
   constexpr int Br = traits::FlashTraitsQ<D_MAX>::Br;
   constexpr int Bc = traits::FlashTraitsQ<D_MAX>::Bc;
   const float dp_inverse =
-      (dropout_rate > EPSF) ? (1.0f / (1.0f - dropout_rate)) : 1.0f;
+      (dropout_rate > 0.0f) ? (1.0f / (1.0f - dropout_rate)) : 1.0f;
 
   // Shared Memory Layout:
   // Q_tile[Br][D_qk] | dO_tile[Br][D_v] | K_tile[Bc][D_qk] | V_tile[Bc][D_v]
@@ -292,7 +292,7 @@ __global__ void FlashAttnBwdKernel_Q(
           // if (p_ij > EPSF) {
           float dS = scale;
           bool is_dropped = false;
-          if (dropout_rate > EPSF) {
+          if (dropout_rate > 0.0f) {
             if (get_random_float_v2(global_rng_idx, kv_offset) < dropout_rate) {
               is_dropped = true;
               dS *= -p_ij * dOsum;
@@ -373,6 +373,14 @@ struct FlashAttentionGradFunctor<GPUDevice, T> {
     const int D_qk = Q.dimension(2);
     const int S_kv = K.dimension(1);
     const int D_v = V.dimension(2);
+
+    if (B == 0) return absl::OkStatus();
+    if (S_q == 0 || S_kv == 0) {
+      // Nothing attends to anything, so all gradients are zero.
+      return ZeroOutputs(d, {{dQ.data(), dQ.size() * sizeof(T)},
+                             {dK.data(), dK.size() * sizeof(T)},
+                             {dV.data(), dV.size() * sizeof(T)}});
+    }
 
     if constexpr (kIsFa2Type) {
       if (flash_attention_fa2::BackwardSupported(D_qk, D_v, dropout_rate)) {
