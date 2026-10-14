@@ -38,7 +38,7 @@ __global__ void FlashAttnFwdKernel(const T *__restrict__ Q,
   constexpr int Br = traits::FlashTraits<D_MAX>::Br;
   constexpr int Bc = traits::FlashTraits<D_MAX>::Bc;
   const float dp_inverse =
-      (dropout_rate > EPSF) ? (1.0f / (1.0f - dropout_rate)) : 1.0f;
+      (dropout_rate > 0.0f) ? (1.0f / (1.0f - dropout_rate)) : 1.0f;
 
   // Shared Memory Layout:
   // Q_tile[Br][D_qk] | K_tile[Bc][D_qk] | V_tile[Bc][D_v]
@@ -147,7 +147,7 @@ __global__ void FlashAttnFwdKernel(const T *__restrict__ Q,
           const int kv_offset = tile_offset_kv + j;
           float p_ij = Eigen::numext::exp(score_tmp[j] - m_i);
           l_i += p_ij;
-          if (dropout_rate > EPSF) {
+          if (dropout_rate > 0.0f) {
             if (get_random_float_v2(global_rng_idx, kv_offset) < dropout_rate) {
               p_ij = ZEROF;
             } else {
@@ -207,6 +207,13 @@ struct FlashAttentionFunctor<GPUDevice, T> {
     const int S_kv = K.dimension(1);
     const int D_v = V.dimension(2);
     int max_D = std::max(D_qk, D_v);
+
+    if (B == 0 || S_q == 0) return absl::OkStatus();
+    if (S_kv == 0) {
+      // No keys to attend to: the output is zero.
+      return ZeroOutputs(d, {{Out.data(), Out.size() * sizeof(T)},
+                             {Stats.data(), Stats.size() * sizeof(float)}});
+    }
 
     if constexpr (kIsFa2Type) {
       if (flash_attention_fa2::Supported(D_qk, D_v)) {
