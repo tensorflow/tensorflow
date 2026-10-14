@@ -323,6 +323,10 @@ class ScatterNdUpdateOp : public ScatterOpBase<Device> {
       OP_REQUIRES_OK(c, LookupResource(c, handle, &v));
       OP_REQUIRES_OK(c, EnsureSparseVariableAccess<Device, T>(c, v.get()));
       mutex_lock m(*v->mu());
+      OP_REQUIRES(c, v->tensor()->IsInitialized(),
+                  errors::FailedPrecondition(
+                      "Attempting to use uninitialized variables: ",
+                      handle.name()));
       DoCompute(c);
     } else if (use_exclusive_lock_) {
       // If we're here, it means the input type is a ref.

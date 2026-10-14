@@ -29,6 +29,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.framework.test_util import TensorFlowTestCase
 # Import resource_variable_ops for the variables-to-tensor implicit conversion.
 from tensorflow.python.ops import gen_resource_variable_ops
+from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import gen_training_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops  # pylint: disable=unused-import
@@ -841,6 +842,79 @@ class TrainingOpsTest(TensorFlowTestCase):
           gen_resource_variable_ops.assign_add_variable_op(
               resource=var_uninit_scalar_f16,
               value=constant_op.constant(0.1, dtype=dtypes.float16),
+          )
+      )
+
+
+    scatter_var_uninit_f16 = gen_resource_variable_ops.var_handle_op(
+        dtype=dtypes.float16,
+        shape=[1, 2],
+        shared_name=(
+            context.anonymous_name() if context.executing_eagerly() else ""
+        ),
+    )
+    with self.assertRaisesRegex(
+        errors.FailedPreconditionError, "uninitialized"
+    ):
+      self.evaluate(
+          gen_resource_variable_ops.resource_scatter_update(
+              resource=scatter_var_uninit_f16,
+              indices=indices,
+              updates=grad,
+          )
+      )
+
+    gather_var_uninit_f16 = gen_resource_variable_ops.var_handle_op(
+        dtype=dtypes.float16,
+        shape=[1, 2],
+        shared_name=(
+            context.anonymous_name() if context.executing_eagerly() else ""
+        ),
+    )
+    with self.assertRaisesRegex(
+        errors.FailedPreconditionError, "uninitialized"
+    ):
+      self.evaluate(
+          gen_resource_variable_ops.resource_gather(
+              resource=gather_var_uninit_f16,
+              indices=indices,
+              dtype=dtypes.float16,
+          )
+      )
+
+    gather_nd_var_uninit_f16 = gen_resource_variable_ops.var_handle_op(
+        dtype=dtypes.float16,
+        shape=[1, 2],
+        shared_name=(
+            context.anonymous_name() if context.executing_eagerly() else ""
+        ),
+    )
+    with self.assertRaisesRegex(
+        errors.FailedPreconditionError, "uninitialized"
+    ):
+      self.evaluate(
+          gen_resource_variable_ops.resource_gather_nd(
+              resource=gather_nd_var_uninit_f16,
+              indices=constant_op.constant([[0]], dtype=dtypes.int32),
+              dtype=dtypes.float16,
+          )
+      )
+
+    scatter_nd_var_uninit_f16 = gen_resource_variable_ops.var_handle_op(
+        dtype=dtypes.float16,
+        shape=[1, 2],
+        shared_name=(
+            context.anonymous_name() if context.executing_eagerly() else ""
+        ),
+    )
+    with self.assertRaisesRegex(
+        errors.FailedPreconditionError, "uninitialized"
+    ):
+      self.evaluate(
+          gen_state_ops.resource_scatter_nd_update(
+              ref=scatter_nd_var_uninit_f16,
+              indices=constant_op.constant([[0]], dtype=dtypes.int32),
+              updates=grad,
           )
       )
 
