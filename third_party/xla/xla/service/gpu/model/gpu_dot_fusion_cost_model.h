@@ -75,17 +75,32 @@ struct DotTileSize {
   int64_t b = 1;
 };
 
+// Parameters for the Hockney bandwidth model:
+//   bandwidth_fraction(s) = (eta_max * s) / (s + eta_max * t0 * B_peak)
+struct HockneyBandwidthParams {
+  double eta_max = 0.0;
+  double t0_sec = 0.0;
+};
+
+// Returns the Hockney model bandwidth parameters for the given device.
+HockneyBandwidthParams GetHockneyBandwidthParams(
+    const se::DeviceDescription& device_info);
+
+// Evaluates the parametric Hockney model for a given transfer size in bytes,
+// returning the fraction of peak bandwidth in the range [0.0, 1.0].
+float EvaluateHockneyBandwidthFraction(int64_t dma_size,
+                                       const HockneyBandwidthParams& params,
+                                       double peak_bandwidth_bytes_per_sec);
+
 // Returns the effective HBM bandwidth in bytes per second for a given dma_size.
 // dma_size is the total amount of data transferred to/from HBM in bytes.
 float GetEffectiveHbmBandwidth(int64_t dma_size,
                                const se::DeviceDescription& device_info);
 
-// Calculates the HBM time for a GPU DOT operation. Current implementation
-// uses a flat derate on top of the spec bandwidth. A HBM bandwidth model based
-// derate lookup from profiled data will be added in the future.
+// HBM transfer time estimates for input reads and output writes.
 struct HbmEstimates {
-  absl::Duration read_time;
-  absl::Duration write_time;
+  absl::Duration read_time = absl::ZeroDuration();
+  absl::Duration write_time = absl::ZeroDuration();
   int64_t bytes_read = 0;
   int64_t bytes_written = 0;
 
