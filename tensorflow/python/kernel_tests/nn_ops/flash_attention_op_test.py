@@ -126,6 +126,27 @@ class FlashAttentionTest(test.TestCase, parameterized.TestCase):
       self._check(dtype, batch=2, seq_q=67, seq_kv=67, heads=3,
                   head_dim=head_dim, is_causal=is_causal)
 
+  @parameterized.parameters(dtypes.float16, dtypes.bfloat16)
+  def testCpuGradientsLongSequence(self, dtype):
+    # dK and dV sum over every query; the CPU kernel must accumulate them in
+    # float32, not in `dtype`, or the error grows with the sequence length.
+    with test_util.force_cpu():
+      query = self._random([1, 1024, 1, 32], dtype, 1)
+      key = self._random([1, 1024, 1, 32], dtype, 2)
+      value = self._random([1, 1024, 1, 32], dtype, 3)
+      output_grad = random_ops.random_normal([1, 1024, 1, 32], seed=4)
+      got = _value_and_grads(
+          nn_ops.flash_attention,
+          *(math_ops.cast(t, dtype) for t in (query, key, value)), output_grad)
+      want = _value_and_grads(
+          lambda q, k, v: _reference(q, k, v, 1.0 / np.sqrt(32), False),
+          query, key, value, output_grad)
+      for name, g, w in zip(["output", "dq", "dk", "dv"], got, want):
+        g = self.evaluate(math_ops.cast(g, dtypes.float32))
+        w = self.evaluate(w)
+        err = np.max(np.abs(g - w)) / max(np.max(np.abs(w)), 1e-3)
+        self.assertLess(err, 2e-2, msg=name)
+
   @parameterized.parameters(dtypes.float32, dtypes.float16)
   def testDifferentSequenceLengthsAndValueDim(self, dtype):
     self._check(dtype, batch=2, seq_q=33, seq_kv=101, heads=2, head_dim=64,
@@ -226,8 +247,9 @@ class FlashAttentionTest(test.TestCase, parameterized.TestCase):
     x = array_ops.zeros([2, 4, 1, 8])
     with self.assertRaisesRegex(ValueError, "must be rank 4"):
       nn_ops.flash_attention(x[0], x[0], x[0])
-    with self.assertRaisesRegex(ValueError, "dropout_rate"):
-      nn_ops.flash_attention(x, x, x, dropout_rate=1.0)
+    for rate in (-0.1, 1.0):
+      with self.assertRaisesRegex(errors.InvalidArgumentError, "dropout_rate"):
+        self.evaluate(nn_ops.flash_attention(x, x, x, dropout_rate=rate))
     with self.assertRaisesRegex(
         (ValueError, errors.InvalidArgumentError),
         "must be rank|compatible|feature size mismatch"):
@@ -237,6 +259,43 @@ class FlashAttentionTest(test.TestCase, parameterized.TestCase):
       self.evaluate(nn_ops.flash_attention(
           x, array_ops.zeros([2, 5, 1, 8]), array_ops.zeros([2, 5, 1, 8]),
           is_causal=True))
+
+  @parameterized.parameters(dtypes.float32, dtypes.float16)
+  def testEmptySequences(self, dtype):
+    # Empty inputs skip the kernels; the outputs must still be zero.
+    def run(seq_q, seq_kv):
+      query = array_ops.ones([2, seq_q, 1, 32], dtype)
+      kv = array_ops.ones([2, seq_kv, 1, 32], dtype)
+      output_grad = array_ops.ones([2, seq_q, 1, 32])
+      return [self.evaluate(t) for t in _value_and_grads(
+          nn_ops.flash_attention, query, kv, kv, output_grad)]
+
+    output, dq, dk, dv = run(seq_q=8, seq_kv=0)
+    self.assertAllEqual(output, np.zeros([2, 8, 1, 32]))
+    self.assertAllEqual(dq, np.zeros([2, 8, 1, 32]))
+    self.assertEqual(dk.shape, (2, 0, 1, 32))
+    output, dq, dk, dv = run(seq_q=0, seq_kv=8)
+    self.assertEqual(output.shape, (2, 0, 1, 32))
+    self.assertAllEqual(dk, np.zeros([2, 8, 1, 32]))
+    self.assertAllEqual(dv, np.zeros([2, 8, 1, 32]))
+
+  def testXlaInvalidDropout(self):
+    if not test_util.is_gpu_available():
+      self.skipTest("FlashAttention is only compiled by XLA on GPU")
+    x = array_ops.zeros([2, 4, 1, 8])
+    fn = def_function.function(
+        lambda: nn_ops.flash_attention(x, x, x, dropout_rate=1.0),
+        jit_compile=True)
+    with self.assertRaisesRegex(errors.InvalidArgumentError, "dropout_rate"):
+      self.evaluate(fn())
+
+  def testDimsExceedingInt32(self):
+    # Zero-sized, so a dimension over the int32 limit doesn't need memory.
+    seed = constant_op.constant(0, dtypes.uint64)
+    query = array_ops.zeros([1, 1, 0])
+    key = array_ops.zeros([1, 2**31, 0])
+    with self.assertRaisesRegex(errors.InvalidArgumentError, "int32 limit"):
+      self.evaluate(gen_nn_ops.flash_attention(query, key, key, seed, seed))
 
   def testUnsupportedHeadDim(self):
     # float32 always uses the fallback kernels, which stop at 128.

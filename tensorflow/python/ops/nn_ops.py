@@ -6998,7 +6998,9 @@ def flash_attention(
 
   Raises:
     ValueError: If the inputs are not rank 4, their static shapes don't match,
-      `head_dim` is not statically known, or `dropout_rate` is not in `[0, 1)`.
+      or `head_dim` is not statically known.
+    InvalidArgumentError: If `dropout_rate` is not in `[0, 1)`. Raised by the
+      op, when it runs (or is compiled by XLA).
   """
   with ops.name_scope(name, "flash_attention", [query, key, value]):
     query = ops.convert_to_tensor(query, name="query")
@@ -7025,10 +7027,6 @@ def flash_attention(
             f"statically known. Received: query.shape={query.shape}."
         )
       scale = 1.0 / np.sqrt(head_dim)
-    if not 0.0 <= dropout_rate < 1.0:
-      raise ValueError(
-          f"`dropout_rate` must be in [0, 1). Received: {dropout_rate}."
-      )
 
     if dropout_rate > 0.0:
       if seed is None:
