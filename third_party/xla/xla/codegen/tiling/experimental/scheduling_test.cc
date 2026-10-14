@@ -556,4 +556,30 @@ TEST_F(SchedulingTest, VariadicAllGatherWithDotProducersSharesPeerIndex) {
           "num_pids=16, num_tiles=16")));
 }
 
+TEST_F(SchedulingTest, SingleOperandReduceScatterReplicaDimension) {
+  ASSERT_OK_AND_ASSIGN(const TiledHloComputation tiled_computation,
+                       ParseAndTile(R"(
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+
+    f {
+      p0 = f32[8,64] parameter(0)
+      ROOT rs = f32[4,64] reduce-scatter(p0),
+        replica_groups={{0,1}}, dimensions={0}, to_apply=add
+    }
+
+    ENTRY e {
+      arg0 = f32[8,64] parameter(0)
+      ROOT fusion = f32[4,64] fusion(arg0), kind=kCustom, calls=f
+    })",
+                                    {1, 32}));
+  EXPECT_THAT(GetSchedule(tiled_computation),
+              IsOkAndHolds(
+                  MatchSchedule("d0 -> (pid mod 4) / 2, d1 -> pid mod 4 mod 2, "
+                                "d2 -> pid / 4, num_pids=8, num_tiles=8")));
+}
+
 }  // namespace xla::gpu::experimental

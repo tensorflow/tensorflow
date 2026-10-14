@@ -69,7 +69,7 @@ absl::StatusOr<mlir::nv_tensor_ir::GraphOp> ImportAndLegalizeComputation(
                                         &function_map, &builder,
                                         /*is_main=*/true,
                                         /*flatten_computation_args_result=*/
-                                        false);
+                                        true);
   if (!func_op.ok()) {
     return diagnostic_handler.Combine(absl::Status(
         func_op.status().code(),
