@@ -16,6 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_FLASH_ATTENTION_FLASH_ATTENTION_OP_H_
 #define TENSORFLOW_CORE_KERNELS_FLASH_ATTENTION_FLASH_ATTENTION_OP_H_
 
+#include <cstdint>
+#include <limits>
+#include <utility>
+
 #include "tensorflow/core/framework/op_kernel.h"
 #include "unsupported/Eigen/CXX11/Tensor"
 
@@ -45,6 +49,23 @@ inline absl::Status FeatureSizeError(int D_qk, int D_v) {
       "D > 192 with dropout, >= 144 KB shared memory per block, e.g. "
       "A100/H100). Set smaller "
       "feature size or use more heads");
+}
+
+// The functors and the FlashAttention-2 API take 32-bit dimensions, so larger
+// ones would silently truncate.
+inline absl::Status CheckDimsFitInt32(int64_t B, int64_t S_q, int64_t S_kv,
+                                      int64_t D_qk, int64_t D_v) {
+  constexpr int64_t kMax = std::numeric_limits<int32_t>::max();
+  const std::pair<const char *, int64_t> dims[] = {
+      {"batch", B}, {"S_q", S_q}, {"S_kv", S_kv}, {"D_qk", D_qk}, {"D_v", D_v}};
+  for (const auto &[name, size] : dims) {
+    if (size > kMax) {
+      return errors::InvalidArgument("FlashAttention dimension ", name, "=",
+                                     size, " exceeds the int32 limit (", kMax,
+                                     ")");
+    }
+  }
+  return absl::OkStatus();
 }
 
 template <typename Device, typename T>

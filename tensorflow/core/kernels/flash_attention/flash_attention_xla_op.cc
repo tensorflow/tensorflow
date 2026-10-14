@@ -80,6 +80,9 @@ static absl::Status ValidateQKV(const TensorShape& q, const TensorShape& k,
   if (causal && q.dim_size(1) != k.dim_size(1)) {
     return errors::InvalidArgument("seq size Q != K while is_causal = True");
   }
+  TF_RETURN_IF_ERROR(functor::CheckDimsFitInt32(q.dim_size(0), q.dim_size(1),
+                                                k.dim_size(1), q.dim_size(2),
+                                                v.dim_size(2)));
   const int64_t d_qk = q.dim_size(2), d_v = v.dim_size(2);
   const bool fa2_type = dt == DT_HALF || dt == DT_BFLOAT16;
   if (std::max(d_qk, d_v) > 128 &&
@@ -114,6 +117,8 @@ class FlashAttnXlaOp : public XlaOpKernel {
   explicit FlashAttnXlaOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("is_causal", &causal_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("dropout_rate", &dropout_));
+    OP_REQUIRES(ctx, dropout_ >= 0.0f && dropout_ < 1.0f,
+                errors::InvalidArgument("dropout_rate must be in [0, 1)"));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("scale", &scale_));
   }
 
@@ -176,6 +181,8 @@ class FlashAttnGradXlaOp : public XlaOpKernel {
   explicit FlashAttnGradXlaOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("is_causal", &causal_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("dropout_rate", &dropout_));
+    OP_REQUIRES(ctx, dropout_ >= 0.0f && dropout_ < 1.0f,
+                errors::InvalidArgument("dropout_rate must be in [0, 1)"));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("scale", &scale_));
   }
 
