@@ -354,6 +354,17 @@ class ConvertUniformQuantizeOp
 
   LogicalResult matchAndRewrite(TF::UniformQuantizeOp op,
                                 PatternRewriter &rewriter) const override {
+    DenseFPElementsAttr scales;
+    if (!matchPattern(op.getScales(), m_Constant(&scales))) return failure();
+    SmallVector<float> inv_scales;
+    for (float scale : scales.getValues<float>()) {
+      if (!(scale > 0.0f)) {
+        return rewriter.notifyMatchFailure(op,
+                                           "scales must be strictly positive");
+      }
+      inv_scales.push_back(1.0f / scale);
+    }
+
     auto output_type = GetUniformQuantizedType(
         op, op.getOutput().getType(), op.getScales(), op.getZeroPoints(),
         /*expressed_type=*/rewriter.getF32Type(), op.getQuantizationMinVal(),
@@ -381,12 +392,6 @@ class ConvertUniformQuantizeOp
                                     llvm::ArrayRef<int64_t>(value)));
     };
 
-    DenseFPElementsAttr scales;
-    if (!matchPattern(op.getScales(), m_Constant(&scales))) return failure();
-    SmallVector<float> inv_scales;
-    for (float scale : scales.getValues<float>()) {
-      inv_scales.push_back(1.0f / scale);
-    }
     auto inv_scale = mhlo::ConstantOp::create(
         rewriter, loc,
         DenseFPElementsAttr::get(scales.getType(),
