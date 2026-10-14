@@ -3426,6 +3426,12 @@ REGISTER_OP("FlashAttention")
       c->set_output(0,
                     c->MakeShape({batch, c->Dim(query, 1), c->Dim(value, 2)}));
       c->set_output(1, c->MakeShape({batch, c->Dim(query, 1)}));
+
+      bool is_causal;
+      TF_RETURN_IF_ERROR(c->GetAttr("is_causal", &is_causal));
+      if (is_causal) {
+        TF_RETURN_IF_ERROR(c->Merge(c->Dim(query, 1), seq_kv, &unused_dim));
+      }
       return absl::OkStatus();
     });
 
@@ -3446,15 +3452,42 @@ REGISTER_OP("FlashAttentionGrad")
     .Attr("dropout_rate: float = 0.0")
     .Attr("is_causal: bool = false")
     .SetShapeFn([](InferenceContext* c) {
-      ShapeHandle query, key, value, unused;
+      ShapeHandle query, key, value, out, stats, output_grad, unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 3, &query));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 3, &key));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 3, &value));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 3, &unused));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 2, &unused));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 3, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 3, &out));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 2, &stats));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 3, &output_grad));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 0, &unused));
+
+      DimensionHandle batch, seq_q, seq_kv, unused_dim;
+      TF_RETURN_IF_ERROR(c->Merge(c->Dim(query, 0), c->Dim(key, 0), &batch));
+      TF_RETURN_IF_ERROR(c->Merge(batch, c->Dim(value, 0), &batch));
+      TF_RETURN_IF_ERROR(c->Merge(batch, c->Dim(out, 0), &batch));
+      TF_RETURN_IF_ERROR(c->Merge(batch, c->Dim(stats, 0), &batch));
+      TF_RETURN_IF_ERROR(c->Merge(batch, c->Dim(output_grad, 0), &batch));
+
+      TF_RETURN_IF_ERROR(c->Merge(c->Dim(query, 1), c->Dim(out, 1), &seq_q));
+      TF_RETURN_IF_ERROR(c->Merge(seq_q, c->Dim(stats, 1), &seq_q));
+      TF_RETURN_IF_ERROR(c->Merge(seq_q, c->Dim(output_grad, 1), &seq_q));
+
+      TF_RETURN_IF_ERROR(c->Merge(c->Dim(key, 1), c->Dim(value, 1), &seq_kv));
+
+      TF_RETURN_IF_ERROR(
+          c->Merge(c->Dim(query, 2), c->Dim(key, 2), &unused_dim));
+      TF_RETURN_IF_ERROR(
+          c->Merge(c->Dim(value, 2), c->Dim(out, 2), &unused_dim));
+      TF_RETURN_IF_ERROR(
+          c->Merge(c->Dim(out, 2), c->Dim(output_grad, 2), &unused_dim));
+
+      bool is_causal;
+      TF_RETURN_IF_ERROR(c->GetAttr("is_causal", &is_causal));
+      if (is_causal) {
+        TF_RETURN_IF_ERROR(c->Merge(seq_q, seq_kv, &unused_dim));
+      }
+
       c->set_output(0, query);
       c->set_output(1, key);
       c->set_output(2, value);

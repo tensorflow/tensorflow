@@ -7005,7 +7005,7 @@ def flash_attention(
     key = ops.convert_to_tensor(key, dtype=query.dtype, name="key")
     value = ops.convert_to_tensor(value, dtype=query.dtype, name="value")
     for t in (query, key, value):
-      if t.shape.rank != 4:
+      if t.shape.rank is not None and t.shape.rank != 4:
         raise ValueError(
             "`query`, `key` and `value` must be rank 4 "
             "([batch, seq, num_heads, head_dim]). Received: "
