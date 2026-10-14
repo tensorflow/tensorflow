@@ -90,6 +90,7 @@ limitations under the License.
 #include "xla/stream_executor/mock_stream_executor.h"
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -1383,17 +1384,24 @@ TEST_F(GpuExecutableTest, InvokesDeviceErrorCallbackOnStreamError) {
   EXPECT_CALL(executor, GetPlatform()).WillRepeatedly(Return(platform));
   EXPECT_CALL(executor, device_ordinal()).WillRepeatedly(Return(0));
   EXPECT_CALL(stream, parent()).WillRepeatedly(Return(&executor));
-  EXPECT_CALL(stream, GetCudaComputeCapability())
-      .WillRepeatedly(Return(se::CudaComputeCapability::Hopper()));
 
-  se::DeviceDescription device_description;
-  device_description.set_gpu_compute_capability(
-      se::GpuComputeCapability{se::CudaComputeCapability::Hopper()});
+  const se::GpuComputeCapability& compute_capability =
+      device_description().gpu_compute_capability();
+  if (const se::CudaComputeCapability* cuda_cc =
+          compute_capability.cuda_compute_capability()) {
+    EXPECT_CALL(stream, GetCudaComputeCapability())
+        .WillRepeatedly(Return(*cuda_cc));
+  }
+  if (const se::RocmComputeCapability* rocm_cc =
+          compute_capability.rocm_compute_capability()) {
+    EXPECT_CALL(stream, GetRocmComputeCapability())
+        .WillRepeatedly(Return(*rocm_cc));
+  }
 
   GpuExecutable::Params params;
   params.module_name = "test_module";
   params.executable = std::make_unique<ThunkExecutor>(ThunkSequence{});
-  params.device_description = device_description;
+  params.device_description = device_description();
   params.enable_debug_info_manager = false;
   SetDummyBufferAssignment(params);
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> executable,
