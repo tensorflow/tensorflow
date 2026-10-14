@@ -64,13 +64,13 @@ class RollOp : public OpKernel {
         context, shift.shape() == axis.shape(),
         absl::InvalidArgumentError("shift and axis must have the same size"));
     const int64_t num_elements = input.NumElements();
-    const int num_shifts = static_cast<int>(shift_flat.size());
+    const int64_t num_shifts = shift_flat.size();
     const int num_dims = input.dims();
 
     // if there are any duplicate axes, shift_mod_sum will have the
     // total modulo sum of shifts for each dimension
     absl::InlinedVector<int64_t, 4> shift_mod_sum(num_dims, 0);
-    for (int i = 0; i < num_shifts; i++) {
+    for (int64_t i = 0; i < num_shifts; i++) {
       int64_t axis = axis_flat(i);
       if (axis < 0) {
         axis += num_dims;
@@ -110,7 +110,6 @@ class RollOp : public OpKernel {
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, input.shape(), &output));
-    if (num_elements == 0) return;
     auto input_flat = input.flat<T>().data();
     auto output_flat = output->flat<T>().data();
 
