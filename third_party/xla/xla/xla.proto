@@ -61,6 +61,10 @@ message ThunkBufferDebugFilter {
 // All singular scalar fields must be explicitly defined as `optional` so that
 // field presence is available to support merging between command-line flags and
 // stored instances. This is enforced via a unit test.
+//
+// Fields that can change how a loaded executable behaves must be added to
+// `kRuntimeFields` in `debug_options_runtime_fields.cc`. This is not
+// enforced; see `debug_options_runtime_fields.h` for the criteria.
 message DebugOptions {
   // Enum to define all collective ops
   // that xla supports.
