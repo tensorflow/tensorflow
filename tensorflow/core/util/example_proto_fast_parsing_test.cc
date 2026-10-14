@@ -484,8 +484,12 @@ TEST(FastParse, OOB_Write_Vulnerability_NonPacked_FloatList) {
 
   // We expect this to fail with INVALID_ARGUMENT due to size mismatch,
   // but WITHOUT crashing.
-  EXPECT_FALSE(parse_status.ok());
-  EXPECT_TRUE(absl::IsInvalidArgument(parse_status));
+  EXPECT_THAT(parse_status,
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInvalidArgument,
+                  ::testing::HasSubstr(
+                      "Key: f, Index: 0.  Number of float values != expected.  "
+                      "Values size: 10000 but output shape: [1]")));
 }
 
 namespace {
