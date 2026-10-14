@@ -16,7 +16,7 @@
 
 import ctypes
 # importing hashlib to avoid a linkage issue. refer b/372709714
-import hashlib
+import hashlib  # pylint: disable=unused-import
 import os
 import sys
 import traceback
@@ -25,7 +25,7 @@ import traceback
 # TODO(vam): Override boringssl static linking by explicitly importing openssl
 # Please refer to b/304394983 for more information.
 try:
-  import ssl
+  import ssl  # pylint: disable=unused-import
 except ImportError:
   print(f'{traceback.format_exc()}')
   print('\nWarning: Failed to load ssl module. Continuing without ssl support.')
@@ -62,12 +62,6 @@ try:
     # (macOS). On Linux RTLD_LOCAL is 0, so this does nothing (and would not
     # override an RTLD_GLOBAL in _default_dlopen_flags).
     sys.setdlopenflags(_default_dlopen_flags | ctypes.RTLD_LOCAL)
-
-  # Python2.7 does not have a ModuleNotFoundError.
-  try:
-    ModuleNotFoundError
-  except NameError:
-    ModuleNotFoundError = ImportError  # pylint: disable=redefined-builtin
 
   # pylint: disable=wildcard-import,g-import-not-at-top,line-too-long,undefined-variable
   try:
