@@ -541,6 +541,33 @@ cuda_py_strict_test(
     ],
 )
 
+cuda_py_strict_test(
+    name = "flash_attention_op_test",
+    size = "medium",
+    srcs = ["flash_attention_op_test.py"],
+    shard_count = 4,
+    deps = [
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:config",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:linalg_ops",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:nn_ops",
+        "//tensorflow/python/ops:nn_ops_gen",
+        "//tensorflow/python/ops:random_ops",
+        "//tensorflow/python/ops:special_math_ops",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
 tf_py_strict_test(
     name = "fractional_avg_pool_op_test",
     size = "small",
