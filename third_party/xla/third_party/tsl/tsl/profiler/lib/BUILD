@@ -87,6 +87,7 @@ cc_library(
         "@xla//xla/python:__pkg__",
         "//learning/brain/tfrc/executor/api:__pkg__",
         "//net/grpc/internal/src/core/ext/xprof_profiler:__pkg__",
+        "//third_party/py/jax/jaxlib:__pkg__",
         "//third_party/py/torch_tpu:__subpackages__",
     ]),
     deps = [
@@ -149,6 +150,7 @@ cc_library(
         "@xla//xla/tsl/profiler:internal",
         "@xla//xla/tsl/profiler:xla_profiler_backends",
         "//net/grpc/internal/src/core/ext/xprof_profiler:__pkg__",
+        "//third_party/py/jax/jaxlib:__pkg__",
         "//third_party/py/torch_tpu:__subpackages__",
     ]),
     deps = [
