@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/backends/cpu/ynn_emitter.h"
 
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -27,6 +26,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
@@ -523,24 +523,22 @@ absl::StatusOr<uint32_t> DefineDotOp(
   ABSL_ASSIGN_OR_RETURN(DotCanonicalDims dot_canonical_dims,
                    GetDotCanonicalDims(dot_dimensions, dot_shape));
 
-  const size_t b_rank = rhs_shape.dimensions().size();
-  const bool transpose_b = !dot_canonical_dims.rhs_canonical;
+  auto transpose_last_two_dims = [](ynn_subgraph_t subgraph,
+                                    uint32_t& id) -> absl::Status {
+    const int32_t perm[2] = {-1, -2};
+    uint32_t transposed_id = YNN_INVALID_VALUE_ID;
+    YNN_RETURN_IF_ERROR(ynn_define_static_transpose(subgraph, /*num_dims=*/2,
+                                                    perm, id, &transposed_id,
+                                                    YNN_NODE_FLAG_KEEP_DIMS));
+    id = transposed_id;
+    return absl::OkStatus();
+  };
 
-  if (transpose_b) {
-    uint32_t rhs_id_transposed = YNN_INVALID_VALUE_ID;
-    std::array<int32_t, YNN_MAX_TENSOR_RANK> perm;
-    absl::c_iota(perm, 0);
-    CHECK_LT(b_rank, YNN_MAX_TENSOR_RANK);
-    CHECK_GE(b_rank, 2);
-    std::swap(perm[b_rank - 1], perm[b_rank - 2]);
-    ynn_status status = ynn_define_static_transpose(
-        subgraph,
-        /*num_dims=*/b_rank, perm.data(), rhs_id, &rhs_id_transposed,
-        /*flags=*/0);
-    if (status != ynn_status_success) {
-      return status;
-    }
-    rhs_id = rhs_id_transposed;
+  if (!dot_canonical_dims.lhs_canonical) {
+    ABSL_RETURN_IF_ERROR(transpose_last_two_dims(subgraph, lhs_id));
+  }
+  if (!dot_canonical_dims.rhs_canonical) {
+    ABSL_RETURN_IF_ERROR(transpose_last_two_dims(subgraph, rhs_id));
   }
 
   YNN_RETURN_IF_ERROR(ynn_define_dot(subgraph, /*num_k_dims=*/1, lhs_id, rhs_id,
@@ -994,7 +992,8 @@ absl::StatusOr<YnnSubgraph> EmitYnnSubgraph(
       } break;
 
       case HloOpcode::kDot: {
-        if (!IsDotSupportedByYnn(instr).value_or(false)) {
+        if (!IsDotSupportedByYnn(instr, /*allow_non_canonical_lhs=*/true)
+                 .value_or(false)) {
           return InvalidArgument(
               "Unsupported dot instruction in YNN fusion: %s",
               instr->ToString());

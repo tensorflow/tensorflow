@@ -192,6 +192,11 @@ xla_test(
         "b200": ["full"],
         "gb200": ["full"],
         "gb300": ["full"],
+        # TODO(b/568743647): Re-enable when fixed.
+        "vr_nvl72": [
+            "broken",
+            "full",
+        ],
     },
     backends = [
         "p100",

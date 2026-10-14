@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/internal/reference/quantize.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <vector>
@@ -184,9 +185,24 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     } else if (input->type == kTfLiteInt32) {
       TF_LITE_ENSURE(
           context, output->type == kTfLiteInt8 || output->type == kTfLiteInt16);
+    } else if (input->type == kTfLiteInt4 || input->type == kTfLiteInt2) {
+      TF_LITE_ENSURE(context, !IsQuantizedPerChannel(input));
+      TF_LITE_ENSURE(context, !IsQuantizedPerChannel(output));
+      TF_LITE_ENSURE(context, output->type == kTfLiteInt8 ||
+                                  output->type == kTfLiteUInt8 ||
+                                  output->type == kTfLiteInt16);
+    } else if (input->type == kTfLiteInt8) {
+      if (output->type == kTfLiteInt4 || output->type == kTfLiteInt2) {
+        TF_LITE_ENSURE(context, !IsQuantizedPerChannel(input));
+        TF_LITE_ENSURE(context, !IsQuantizedPerChannel(output));
+      }
+      TF_LITE_ENSURE(context, output->type == kTfLiteUInt8 ||
+                                  output->type == kTfLiteInt8 ||
+                                  output->type == kTfLiteInt16 ||
+                                  output->type == kTfLiteInt4 ||
+                                  output->type == kTfLiteInt2);
     } else {
-      TF_LITE_ENSURE(context,
-                     input->type == kTfLiteInt8 || input->type == kTfLiteUInt8);
+      TF_LITE_ENSURE_EQ(context, input->type, kTfLiteUInt8);
       TF_LITE_ENSURE(context, output->type == kTfLiteUInt8 ||
                                   output->type == kTfLiteInt8 ||
                                   output->type == kTfLiteInt16);
@@ -364,11 +380,78 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           return kTfLiteError;
       }
     }
+    case kTfLiteInt4:
+    case kTfLiteInt2: {
+      const int32_t size = MatchingFlatSize(input_shape, output_shape);
+      const int bit_width = (input->type == kTfLiteInt4) ? 4 : 2;
+      const int elements_per_byte = 8 / bit_width;
+      const int8_t* packed_input = GetTensorData<int8_t>(input);
+      constexpr int32_t kChunkSize = 1024;
+      int8_t unpacked_chunk[kChunkSize];
+      for (int32_t offset = 0; offset < size; offset += kChunkSize) {
+        const int32_t chunk = std::min(kChunkSize, size - offset);
+        tensor_utils::UnpackPackedIntToInt8(
+            packed_input + offset / elements_per_byte, chunk, bit_width,
+            unpacked_chunk);
+        switch (output->type) {
+          case kTfLiteInt8:
+            Requantize<kernel_type>(unpacked_chunk, chunk,
+                                    data->output_multiplier, data->output_shift,
+                                    input->params.zero_point,
+                                    output->params.zero_point,
+                                    GetTensorData<int8_t>(output) + offset);
+            break;
+          case kTfLiteUInt8:
+            Requantize<kernel_type>(unpacked_chunk, chunk,
+                                    data->output_multiplier, data->output_shift,
+                                    input->params.zero_point,
+                                    output->params.zero_point,
+                                    GetTensorData<uint8_t>(output) + offset);
+            break;
+          case kTfLiteInt16:
+            Requantize<kernel_type>(unpacked_chunk, chunk,
+                                    data->output_multiplier, data->output_shift,
+                                    input->params.zero_point,
+                                    output->params.zero_point,
+                                    GetTensorData<int16_t>(output) + offset);
+            break;
+          default:
+            ReportError(context, input->type, output->type);
+            return kTfLiteError;
+        }
+      }
+      return kTfLiteOk;
+    }
     case kTfLiteInt8: {
-      // int8 to int8, uint8.
+      // int8 to int8, uint8, int16, int4, int2.
       const int32_t size = MatchingFlatSize(input_shape, output_shape);
       const int8_t* input_data = GetTensorData<int8_t>(input);
       switch (output->type) {
+        case kTfLiteInt4:
+        case kTfLiteInt2: {
+          const int bit_width = (output->type == kTfLiteInt4) ? 4 : 2;
+          const int elements_per_byte = 8 / bit_width;
+          const int8_t min_val = (output->type == kTfLiteInt4) ? -8 : -2;
+          const int8_t max_val = (output->type == kTfLiteInt4) ? 7 : 1;
+          int8_t* packed_output = GetTensorData<int8_t>(output);
+          constexpr int32_t kChunkSize = 1024;
+          int8_t requantized_chunk[kChunkSize];
+          for (int32_t offset = 0; offset < size; offset += kChunkSize) {
+            const int32_t chunk = std::min(kChunkSize, size - offset);
+            Requantize<kernel_type>(
+                input_data + offset, chunk, data->output_multiplier,
+                data->output_shift, input->params.zero_point,
+                output->params.zero_point, requantized_chunk);
+            for (int32_t i = 0; i < chunk; ++i) {
+              requantized_chunk[i] = std::min<int8_t>(
+                  std::max<int8_t>(requantized_chunk[i], min_val), max_val);
+            }
+            tensor_utils::PackInt8IntoDenseInt(
+                requantized_chunk, chunk, bit_width,
+                packed_output + offset / elements_per_byte);
+          }
+          return kTfLiteOk;
+        }
         case kTfLiteInt8:
           Requantize<kernel_type>(input_data, size, data->output_multiplier,
                                   data->output_shift, input->params.zero_point,
