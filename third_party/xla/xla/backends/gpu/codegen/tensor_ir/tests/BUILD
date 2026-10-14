@@ -73,10 +73,11 @@ xla_test(
 # `--xla_gpu_cuda_data_dir`, or on `PATH`). CUDA 13.0 ships no `tileiras`, and
 # the 13.1 and 13.2 releases lack the `--list-versions` probe TensorIR uses to
 # check bytecode compatibility, so 13.3 is the first release the compiler can
-# assemble with. Without an assembler the compiler hands back Tile IR bytecode
-# for the driver to JIT. TensorIR emits the CUDA 13.3 bytecode format by
-# default (`max(compatibility, 13.3)`, see the tensor_ir README), which needs
-# the matching r610 or newer driver; the r590 (CUDA 13.1) JIT only takes the
+# assemble with; `SetUpTileIrAssembler` ignores older ones. Without an
+# assembler the compiler hands back Tile IR bytecode for the driver to JIT.
+# TensorIR emits the CUDA 13.3 bytecode format by default
+# (`max(compatibility, 13.3)`, see the tensor_ir README), which needs the
+# matching r610 or newer driver; the r590 (CUDA 13.1) JIT only takes the
 # `compatibility` format, which the emitter does not request.
 #
 # Why Hopper. The compiler refuses to assemble a cubin below sm_90

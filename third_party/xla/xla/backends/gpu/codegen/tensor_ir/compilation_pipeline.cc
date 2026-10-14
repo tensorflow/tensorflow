@@ -27,11 +27,13 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "mlir/Pass/PassManager.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/subprocess_compilation.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "tsl/platform/path.h"
 
 namespace xla::gpu::tensor_ir {
@@ -64,8 +66,13 @@ void SetUpTileIrAssembler() {
     // The same search that finds `ptxas`: the CUDA toolkit roots first, `$PATH`
     // last. `tileiras` ships next to `ptxas` from CUDA 13.1 on; TensorIR itself
     // needs the 13.3 release or newer.
+    static constexpr stream_executor::SemanticVersion kMinimumTileirasVersion{
+        13, 3, 0};
+    static constexpr absl::Span<const stream_executor::SemanticVersion>
+        kNoExcludedVersions{};
     absl::StatusOr<std::string> path = stream_executor::FindCudaExecutable(
-        "tileiras", /*preferred_cuda_dir=*/"");
+        "tileiras", /*preferred_cuda_dir=*/"", kMinimumTileirasVersion,
+        kNoExcludedVersions);
     if (!path.ok()) {
       LOG(WARNING) << "TensorIR: no Tile IR assembler (CUDA 13.3 or newer "
                       "ships one), falling back to Tile IR bytecode for the "
