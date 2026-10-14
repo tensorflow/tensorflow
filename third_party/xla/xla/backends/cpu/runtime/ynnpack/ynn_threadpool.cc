@@ -29,17 +29,13 @@ limitations under the License.
 
 namespace xla::cpu {
 
-absl::StatusOr<YnnThreadpool> CreateYnnThreadpool(
-    Eigen::ThreadPoolInterface* threadpool) {
-  return CreateYnnThreadpool([&](ynn_threadpool_t* ynn_threadpool) {
-    *ynn_threadpool =
-        reinterpret_cast<ynn_threadpool_t>(new SlinkyThreadPool(threadpool));
-    return ynn_status_success;
-  });
+YnnThreadpool CreateYnnThreadpool(Eigen::ThreadPoolInterface* threadpool) {
+  return YnnThreadpool(
+      reinterpret_cast<ynn_threadpool_t>(new SlinkyThreadPool(threadpool)),
+      ynn_delete_threadpool);
 }
 
-absl::StatusOr<YnnThreadpool> CreateYnnThreadpool(
-    const Eigen::ThreadPoolDevice* device) {
+YnnThreadpool CreateYnnThreadpool(const Eigen::ThreadPoolDevice* device) {
   return CreateYnnThreadpool(device->getPool());
 }
 
