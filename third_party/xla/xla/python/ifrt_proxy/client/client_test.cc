@@ -15,6 +15,7 @@
 #include "xla/python/ifrt_proxy/client/client.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -297,6 +298,49 @@ TEST_P(ClientTest, CopyArraysDefaultLayoutSuccess) {
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<const xla::PjRtLayout> layout_2,
                           copied_arrays[1].get()->pjrt_layout());
   EXPECT_EQ(layout_2, nullptr);
+}
+
+TEST_P(ClientTest, CopyArraysMemoryKindCombinations) {
+  IfrtResponse response;
+  response.mutable_copy_arrays_response()->add_array_handles(1);
+  EXPECT_CALL(*session_,
+              Enqueue(IfrtRequestOfType(IfrtRequest::kCopyArraysRequest)))
+      .WillRepeatedly(MockClientSessionReturnResponse(response));
+  EXPECT_CALL(*session_,
+              Enqueue(IfrtRequestOfType(IfrtRequest::kDestructArrayRequest)))
+      .WillRepeatedly(MockClientSessionReturnResponse(IfrtResponse()));
+
+  struct Case {
+    std::optional<MemoryKind> kind;
+    absl::string_view expected;
+  };
+  const std::vector<Case> kCases = {
+      {std::nullopt, "device"},
+      {MemoryKind(), "device"},
+      {MemoryKind("device"), "device"},
+      {MemoryKind("pinned_host"), "pinned_host"},
+  };
+
+  for (const Case& src : kCases) {
+    for (const Case& dst : kCases) {
+      auto sharding = SingleDeviceSharding::Create(
+          device_, src.kind.value_or(MemoryKind()));
+      std::vector<ArrayRef> arrays = {tsl::MakeRef<Array>(
+          client_.get(), rpc_helper_, DType(DType::kF64), Shape({1, 2, 3}),
+          std::move(sharding), ArrayHandle{1234}, /*layout=*/nullptr)};
+      ASSERT_OK_AND_ASSIGN(DeviceListRef devices,
+                           client_->MakeDeviceList({device_}));
+
+      ASSERT_OK_AND_ASSIGN(
+          std::vector<ArrayRef> copied,
+          client_->CopyArrays(absl::MakeSpan(arrays), std::move(devices),
+                              dst.kind, ArrayCopySemantics::kAlwaysCopy));
+      ASSERT_THAT(copied, SizeIs(1));
+
+      EXPECT_EQ(copied[0]->sharding().memory_kind().value(),
+                dst.kind.has_value() ? dst.expected : src.expected);
+    }
+  }
 }
 
 TEST_P(ClientTest, CopyArraysCustomLayoutSuccess) {
