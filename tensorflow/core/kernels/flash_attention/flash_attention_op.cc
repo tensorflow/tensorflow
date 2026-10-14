@@ -36,6 +36,8 @@ class FlashAttentionOp : public OpKernel {
  public:
   explicit FlashAttentionOp(OpKernelConstruction *context) : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("dropout_rate", &dropout_rate_));
+    OP_REQUIRES(context, dropout_rate_ >= 0.0 && dropout_rate_ < 1.0,
+                errors::InvalidArgument("dropout_rate must be in [0, 1)"));
     OP_REQUIRES_OK(context, context->GetAttr("scale", &scale_));
     OP_REQUIRES_OK(context, context->GetAttr("is_causal", &causal_mask_));
   }
@@ -55,11 +57,18 @@ class FlashAttentionOp : public OpKernel {
     uint64_t seed_val = seed_tensor.scalar<uint64_t>()();
     uint64_t offset_val = offset_tensor.scalar<uint64_t>()();
 
-    const int B = q_tensor.dim_size(0);
-    const int S_q = q_tensor.dim_size(1);
-    const int D_qk = q_tensor.dim_size(2);
-    const int S_kv = k_tensor.dim_size(1);
-    const int D_v = v_tensor.dim_size(2);
+    for (const Tensor *t : {&q_tensor, &k_tensor, &v_tensor}) {
+      OP_REQUIRES(context, t->dims() == 3,
+                  errors::InvalidArgument(
+                      "query, key, and value must be rank 3, got shape ",
+                      t->shape().DebugString()));
+    }
+
+    const int64_t B = q_tensor.dim_size(0);
+    const int64_t S_q = q_tensor.dim_size(1);
+    const int64_t D_qk = q_tensor.dim_size(2);
+    const int64_t S_kv = k_tensor.dim_size(1);
+    const int64_t D_v = v_tensor.dim_size(2);
 
     OP_REQUIRES(context, k_tensor.dim_size(0) == B,
                 errors::InvalidArgument("K batch size mismatch"));
@@ -148,11 +157,18 @@ class FlashAttentionGradOp : public OpKernel {
         errors::InvalidArgument("softmax_lse must be rank 2, got shape ",
                                 stats_tensor.shape().DebugString()));
 
-    const int B = q_tensor.dim_size(0);
-    const int S_q = q_tensor.dim_size(1);
-    const int D_qk = q_tensor.dim_size(2);
-    const int S_kv = k_tensor.dim_size(1);
-    const int D_v = v_tensor.dim_size(2);
+    for (const Tensor *t : {&q_tensor, &k_tensor, &v_tensor}) {
+      OP_REQUIRES(context, t->dims() == 3,
+                  errors::InvalidArgument(
+                      "query, key, and value must be rank 3, got shape ",
+                      t->shape().DebugString()));
+    }
+
+    const int64_t B = q_tensor.dim_size(0);
+    const int64_t S_q = q_tensor.dim_size(1);
+    const int64_t D_qk = q_tensor.dim_size(2);
+    const int64_t S_kv = k_tensor.dim_size(1);
+    const int64_t D_v = v_tensor.dim_size(2);
 
     OP_REQUIRES(context, k_tensor.dim_size(0) == B,
                 errors::InvalidArgument("K batch size mismatch"));
@@ -220,12 +236,10 @@ class FlashAttentionGradOp : public OpKernel {
     const int64_t workspace_bytes =
         functor::FlashAttentionGradFunctor<Device, T>::WorkspaceBytes(
             B, S_q, S_kv, D_qk, D_v);
-    if (workspace_bytes > 0) {
-      OP_REQUIRES_OK(context,
-                     context->allocate_temp(
-                         DT_INT8, TensorShape({workspace_bytes}), &workspace));
-      workspace_ptr = workspace.flat<int8_t>().data();
-    }
+    OP_REQUIRES_OK(
+        context, context->allocate_temp(DT_INT8, TensorShape({workspace_bytes}),
+                                        &workspace));
+    workspace_ptr = workspace.flat<int8_t>().data();
 
     const Device &d = context->template eigen_device<Device>();
     OP_REQUIRES_OK(
@@ -430,7 +444,7 @@ struct FlashAttentionGradFunctor<CPUDevice, T> {
 
             // (b) Softmax
             float prob = std::exp(score - stats_val);
-            if (prob < eps) continue;
+            // if (prob < eps) continue; // NOTE: this shouldn't be a problem
 
             float prob_raw = prob;
             bool is_dropped(false);
