@@ -166,8 +166,8 @@ TEST_F(GpuRunnerTest, Basic) {
   // Construct GpuRunInputs.
   GpuRunInputs run_inputs;
 
-  Tensor tensor1 = CreateTensor<int32>(TensorShape({1, 2}), {1, 2});
-  Tensor tensor2 = CreateTensor<int32>(TensorShape({1, 2}), {3, 4});
+  Tensor tensor1 = CreateTensor<int32_t>(TensorShape({1, 2}), {1, 2});
+  Tensor tensor2 = CreateTensor<int32_t>(TensorShape({1, 2}), {3, 4});
   run_inputs.args.push_back(tfrt_stub::FallbackTensor(tensor1));
   run_inputs.args.push_back(tfrt_stub::FallbackTensor(tensor2));
 
@@ -195,8 +195,8 @@ TEST_F(GpuRunnerTest, Basic) {
   exec_ctx_->host()->Await(outputs_to_wait);
 
   ASSERT_EQ(outputs.size(), 1);
-  auto expected = CreateTensor<int32>(TensorShape({1, 2}), {4, 6});
-  test::ExpectTensorEqual<int32>(expected, outputs[0].get().tensor());
+  auto expected = CreateTensor<int32_t>(TensorShape({1, 2}), {4, 6});
+  test::ExpectTensorEqual<int32_t>(expected, outputs[0].get().tensor());
 }
 
 }  // namespace
