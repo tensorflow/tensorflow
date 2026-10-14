@@ -92,7 +92,6 @@ xla_cc_test(
         "//xla/hlo/parser:hlo_parser",
         "//xla/service:hlo_proto_cc",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",

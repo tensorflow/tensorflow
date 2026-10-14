@@ -1341,7 +1341,39 @@ PopulateTensorVisualizations(const HloModule& module,
           }
           ApplyBoundingBoxTail(bbox, mismatch->rel_error, info);
         } else {
-          info.mismatch_count = 1;
+          int64_t mismatch_count = 1;
+          if (!mismatch->is_summary_mean &&
+              mismatch->percentage_of_elems_exceeding_both_errors.has_value() &&
+              info.total_elements > 0) {
+            mismatch_count = std::max<int64_t>(
+                1, std::llround(
+                       (*mismatch->percentage_of_elems_exceeding_both_errors /
+                        100.0) *
+                       static_cast<double>(info.total_elements)));
+          }
+          info.mismatch_count = mismatch_count;
+          if (!mismatch->is_summary_mean &&
+              mismatch->sample_index.has_value() &&
+              mismatch->sample_index->size() == info.shape.size()) {
+            if (!info.shape.empty()) {
+              const double top_rel_error = (std::isnan(mismatch->rel_error) ||
+                                            std::isinf(mismatch->rel_error))
+                                               ? 1.0
+                                               : mismatch->rel_error;
+              info.top_mismatches.push_back(
+                  {*mismatch->sample_index, top_rel_error});
+            }
+            if (mismatch_count == 1) {
+              info.box_min = *mismatch->sample_index;
+              info.box_max = *mismatch->sample_index;
+            } else {
+              info.box_min.assign(info.shape.size(), 0);
+              info.box_max.resize(info.shape.size());
+              for (size_t d = 0; d < info.shape.size(); ++d) {
+                info.box_max[d] = std::max<int64_t>(0, info.shape[d] - 1);
+              }
+            }
+          }
         }
       }
 
@@ -1485,6 +1517,61 @@ std::string ConvertHloToHtml(
       hlo_dump_style_css = std::string(p->data, p->size);
     }
   }
+
+  hlo_dump_ui_js = absl::StrReplaceAll(
+      hlo_dump_ui_js,
+      {{"vec4 getColorForScore(float score){\\n"
+        "if (score==-1.0) return vec4(0.702,0.533,1.0,1.0);\\n"
+        "if (score<0.0) return vec4(0.82,0.82,0.82,1.0);\\n"
+        "if (score>=100.0) return vec4(1.0,0.090,0.090,1.0);\\n"
+        "if (score<1.0){\\n"
+        "return mix(vec4(0.6,1.0,0.6,1.0),vec4(0.753,0.961,0.502,1.0),score);"
+        "\\n"
+        "}else if (score<5.0){\\n"
+        "return mix(vec4(0.753,0.961,0.502,1.0),vec4(0.878,0.933,0.251,1.0),"
+        "(score-1.0)/4.0);\\n"
+        "}else if (score<10.0){\\n"
+        "return mix(vec4(0.878,0.933,0.251,1.0),vec4(0.933,0.933,0.0,1.0),"
+        "(score-5.0)/5.0);\\n"
+        "}else if (score<30.0){\\n"
+        "return mix(vec4(0.933,0.933,0.0,1.0),vec4(1.0,0.753,0.0,1.0),"
+        "(score-10.0)/20.0);\\n"
+        "}else if (score<60.0){\\n"
+        "return mix(vec4(1.0,0.753,0.0,1.0),vec4(1.0,0.502,0.0,1.0),"
+        "(score-30.0)/30.0);\\n"
+        "}else{\\n"
+        "return mix(vec4(1.0,0.502,0.0,1.0),vec4(1.0,0.090,0.090,1.0),"
+        "(score-60.0)/40.0);\\n"
+        "}\\n"
+        "}",
+        "vec4 getColorForScore(float score){\\n"
+        "if (score==-1.0) return vec4(0.702,0.533,1.0,1.0);\\n"
+        "if (score<0.0) return vec4(0.82,0.82,0.82,1.0);\\n"
+        "if (score==0.0) return vec4(0.6,1.0,0.6,1.0);\\n"
+        "return vec4(1.0,0.090,0.090,1.0);\\n"
+        "}"},
+       {"float diffFactor=aDiffScore==-1.0 ? 5.0 : "
+        "clamp(aDiffScore/20.0,0.0,5.0);",
+        "float diffFactor=5.0;"},
+       {"if (aDiffScore==-1.0){\\n"
+        "depth=-1.0;\\n"
+        "}else{\\n"
+        "depth=-clamp((aDiffScore+1.0)/101.0,0.0,1.0);\\n"
+        "}",
+        "if (aDiffScore==-1.0){\\n"
+        "depth=-1.0;\\n"
+        "}else if (aDiffScore>0.0){\\n"
+        "depth=-0.5-clamp(aDiffScore/200.0,0.0,0.49);\\n"
+        "}else if (aDiffScore==0.0){\\n"
+        "depth=-0.01;\\n"
+        "}else{\\n"
+        "depth=0.0;\\n"
+        "}"},
+       {"var b=`Diff Score: ${a.diffScore}`;a.diffScore===-1&&(b=\"Diff "
+        "Score: NaN/Inf Mismatch\");",
+        "var b=a.diffScore===-1?\"Diff Score: NaN/Inf Mismatch\":a.diffScore<0?"
+        "\"Diff Score: Not Evaluated\":`Diff Score: "
+        "${Number(a.diffScore.toPrecision(6))}`;"}});
 
   std::string background_styles = GenerateBackgroundStyles(annotations);
 
@@ -1632,18 +1719,38 @@ absl::flat_hash_map<TensorKey, TensorAnnotation> PopulateMismatchAnnotations(
 
     TensorAnnotation ann;
     ann.anchor_id = absl::StrCat("step", target_instr->unique_id());
-    ann.background_color = "pink";
+    const bool is_finite_vals =
+        std::isfinite(mismatch.actual) && std::isfinite(mismatch.expected);
+    const bool is_zero_both_errors =
+        is_finite_vals &&
+        ((mismatch.percentage_of_elems_exceeding_both_errors.has_value() &&
+          *mismatch.percentage_of_elems_exceeding_both_errors == 0.0) ||
+         (mismatch.diff_score.has_value() && *mismatch.diff_score == 0.0));
+    ann.background_color = is_zero_both_errors ? "lightgreen" : "pink";
 
     std::vector<std::string> tooltip_parts;
     tooltip_parts.push_back("<b>Numeric Mismatch:</b>");
     if (mismatch.custom_description.has_value()) {
       tooltip_parts.push_back(*mismatch.custom_description);
     } else {
-      tooltip_parts.push_back(absl::StrFormat("Actual: %g", mismatch.actual));
+      std::string sample_suffix;
+      if (mismatch.is_summary_mean) {
+        sample_suffix = " (mean)";
+      } else if (mismatch.sample_index.has_value()) {
+        if (!mismatch.sample_index->empty()) {
+          sample_suffix =
+              absl::StrFormat(" (at max diff, index {%s})",
+                              absl::StrJoin(*mismatch.sample_index, ","));
+        } else {
+          sample_suffix = " (at max diff)";
+        }
+      }
       tooltip_parts.push_back(
-          absl::StrFormat("Expected: %g", mismatch.expected));
+          absl::StrFormat("Actual: %g%s", mismatch.actual, sample_suffix));
       tooltip_parts.push_back(
-          absl::StrFormat("Rel Error: %g", mismatch.rel_error));
+          absl::StrFormat("Expected: %g%s", mismatch.expected, sample_suffix));
+      tooltip_parts.push_back(absl::StrFormat(
+          "Rel Error: %g%s", mismatch.rel_error, sample_suffix));
       if (mismatch.percentage_of_elems_exceeding_abs_error.has_value()) {
         tooltip_parts.push_back(
             absl::StrFormat("Elems exceeding abs error: %.2f%%",
@@ -1675,7 +1782,8 @@ absl::flat_hash_map<TensorKey, TensorAnnotation> PopulateMismatchAnnotations(
 }
 
 GraphData PopulateMismatchGraphData(
-    const HloModule& module, absl::Span<const MismatchDetails> mismatches) {
+    const HloModule& module, absl::Span<const MismatchDetails> mismatches,
+    double unverified_diff_score) {
   GraphData graph_data;
 
   absl::flat_hash_map<const HloComputation*, const HloInstruction*>
@@ -1717,9 +1825,14 @@ GraphData PopulateMismatchGraphData(
 
   for (const MismatchDetails& m : mismatches) {
     double score = 100.0;
-    if (std::isnan(m.actual) || std::isinf(m.actual) ||
-        std::isnan(m.expected) || std::isinf(m.expected)) {
+    if (m.diff_score.has_value()) {
+      score = *m.diff_score;
+    } else if (std::isnan(m.actual) || std::isinf(m.actual) ||
+               std::isnan(m.expected) || std::isinf(m.expected)) {
       score = kNanInfMismatchDiffScore;
+    } else if (m.percentage_of_elems_exceeding_both_errors.has_value() &&
+               *m.percentage_of_elems_exceeding_both_errors == 0.0) {
+      score = 0.0;
     } else if (m.rel_error > 0.0) {
       score = m.rel_error * 100.0;
     }
@@ -1779,7 +1892,7 @@ GraphData PopulateMismatchGraphData(
     double y = next_y;
     next_y += 2.0;
 
-    double score = 0.0;
+    double score = unverified_diff_score;
     if (auto it = instr_to_score.find(instr); it != instr_to_score.end()) {
       score = it->second;
     }
@@ -1830,7 +1943,8 @@ absl::StatusOr<std::string> DumpHloModuleMismatchWithGraphData(
   }
   absl::flat_hash_map<TensorKey, TensorAnnotation> annotations =
       PopulateMismatchAnnotations(module, mismatches);
-  GraphData graph_data = PopulateMismatchGraphData(module, mismatches);
+  GraphData graph_data =
+      PopulateMismatchGraphData(module, mismatches, kUnverifiedDiffScore);
   auto tensor_visualizations = PopulateTensorVisualizations(module, mismatches);
 
   xla::StackFrameIndexProto stack_frame_index = module.stack_frames().proto();
