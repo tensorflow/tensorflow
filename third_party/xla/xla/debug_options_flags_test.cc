@@ -244,6 +244,12 @@ TEST(DebugOptions, CollectiveKernelsFlagUnderscoreAllGather) {
               ElementsAre(DebugOptions::COLLECTIVE_KERNEL_ALL_GATHER));
 }
 
+TEST(DebugOptions, CollectiveKernelsFlagAllToAll) {
+  DebugOptions opts = ParseCollectiveKernelsFlag("ALL_TO_ALL");
+  EXPECT_THAT(opts.xla_gpu_experimental_use_collective_kernels(),
+              ElementsAre(DebugOptions::COLLECTIVE_KERNEL_ALL_TO_ALL));
+}
+
 TEST(DebugOptions, CollectiveKernelsFlagBothHyphenated) {
   DebugOptions opts = ParseCollectiveKernelsFlag("ALL_REDUCE,ALL_GATHER");
   EXPECT_THAT(opts.xla_gpu_experimental_use_collective_kernels(),
