@@ -54,8 +54,8 @@ __global__ void FlashAttnFwdKernel(const T *__restrict__ Q,
       blockIdx.x <
       tiles_per_batch * B;  // in case current block exceeds total blocks
   const int b = block_valid ? blockIdx.x / tiles_per_batch : 0;
-  const size_t batch_offset_q = static_cast<size_t>(b * S_q);
-  const size_t batch_offset_kv = static_cast<size_t>(b * S_kv);
+  const size_t batch_offset_q = static_cast<size_t>(b) * S_q;
+  const size_t batch_offset_kv = static_cast<size_t>(b) * S_kv;
 
   const int tile_idx_q = blockIdx.x % tiles_per_batch;
   const int tile_offset_q = tile_idx_q * Br;

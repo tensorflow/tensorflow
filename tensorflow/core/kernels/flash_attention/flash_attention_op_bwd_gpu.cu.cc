@@ -60,8 +60,8 @@ __global__ void FlashAttnBwdKernel_KV(
   const int kv_offset = tile_offset_kv + tid;
 
   const bool active = block_valid && (tid < Bc) && (kv_offset < S_kv);
-  const size_t batch_offset_q = static_cast<size_t>(b * S_q);
-  const size_t batch_offset_kv = static_cast<size_t>(b * S_kv);
+  const size_t batch_offset_q = static_cast<size_t>(b) * S_q;
+  const size_t batch_offset_kv = static_cast<size_t>(b) * S_kv;
   const int64_t global_rng_idx = seed + offset + kv_offset;
 
   // Local accumulators for the specific column(s) this thread handles
@@ -224,8 +224,8 @@ __global__ void FlashAttnBwdKernel_Q(
   const int tile_offset_q = tile_idx_q * Br;
   const int q_offset = tile_offset_q + tid;
   const bool active = block_valid && (tid < Br) && (q_offset < S_q);
-  const size_t batch_offset_q = static_cast<size_t>(b * S_q);
-  const size_t batch_offset_kv = static_cast<size_t>(b * S_kv);
+  const size_t batch_offset_q = static_cast<size_t>(b) * S_q;
+  const size_t batch_offset_kv = static_cast<size_t>(b) * S_kv;
   const size_t q_idx = batch_offset_q + q_offset;
   const uint64_t global_rng_idx =
       seed + offset + static_cast<uint64_t>(q_idx * S_kv);

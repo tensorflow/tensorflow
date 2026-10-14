@@ -288,12 +288,13 @@ struct FlashAttentionFunctor<CPUDevice, T> {
 
     auto shard = [&](int64_t start, int64_t end) {
       for (int64_t b = start; b < end; ++b) {
+        std::vector<float> O_accum(D_v);
         // --- Loop Query (i) ---
         for (int i = 0; i < S_q; ++i) {
           float m_i = neg_inf;
           float l_i = zero;
 
-          std::vector<float> O_accum(D_v, zero);
+          std::fill(O_accum.begin(), O_accum.end(), zero);
 
           // --- Loop Keys (j) ---
           for (int j = 0; j < S_kv; ++j) {
@@ -405,6 +406,7 @@ struct FlashAttentionGradFunctor<CPUDevice, T> {
     dV.setZero();
 
     auto shard = [&](int64_t start, int64_t end) {
+      std::vector<float> dQ_accum(D_k);
       for (int64_t b = start; b < end; ++b) {
         for (int i = 0; i < S_q; ++i) {
           float stats_val = Stats(b, i);
@@ -413,7 +415,7 @@ struct FlashAttentionGradFunctor<CPUDevice, T> {
             D_i += static_cast<float>(dO(b, i, k) * Out(b, i, k));
           }
 
-          std::vector<float> dQ_accum(D_k, zero);
+          std::fill(dQ_accum.begin(), dQ_accum.end(), zero);
           for (int j = 0; j < S_kv; ++j) {
             if (causal_mask && (j > i)) {
               continue;

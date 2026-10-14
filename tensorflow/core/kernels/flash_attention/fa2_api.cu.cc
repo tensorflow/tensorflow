@@ -22,6 +22,7 @@ limitations under the License.
 #include <c10/cuda/CUDAException.h>
 #include <cutlass/numeric_types.h>
 
+#include <atomic>
 #include <cmath>
 
 #include "flash.h"
@@ -56,11 +57,12 @@ constexpr size_t AlignUp(size_t x) { return (x + 255) / 256 * 256; }
 // build simply didn't target.
 bool DeviceHasKernelImage() {
   constexpr int kMaxDevices = 64;
-  static int cached[kMaxDevices] = {};  // 0 = unknown, 1 = yes, -1 = no
+  static std::atomic<int> cached[kMaxDevices];  // 0 = unknown, 1 = yes, -1 = no
   int dev = 0;
   if (cudaGetDevice(&dev) != cudaSuccess || dev < 0 || dev >= kMaxDevices)
     return false;
-  if (cached[dev] == 0) {
+  int val = cached[dev].load(std::memory_order_relaxed);
+  if (val == 0) {
     // Builds that also target pre-sm80 GPUs contain FA2 stubs for them (see
     // ARCH_SUPPORTS_FLASH), so a kernel image alone isn't enough.
     int major = 0;
@@ -71,9 +73,10 @@ bool DeviceHasKernelImage() {
         major >= 8 && cudaFuncGetAttributes(&attr, SetRngState) == cudaSuccess;
     if (!ok)
       cudaGetLastError();  // don't leave the error for the next launch check
-    cached[dev] = ok ? 1 : -1;
+    val = ok ? 1 : -1;
+    cached[dev].store(val, std::memory_order_relaxed);
   }
-  return cached[dev] == 1;
+  return val == 1;
 }
 
 void SetFwdParams(Flash_fwd_params &p, bool bf16, const void *q, const void *k,
