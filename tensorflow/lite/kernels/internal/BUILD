@@ -1388,6 +1388,20 @@ cc_test(
 )
 
 cc_test(
+    name = "kernel_utils_test",
+    srcs = ["kernel_utils_test.cc"],
+    deps = [
+        ":kernel_utils",
+        "//tensorflow/lite:array",
+        "//tensorflow/lite:util",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/kernels:test_util",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "reduce_utils_test",
     srcs = ["optimized/reduce_utils_test.cc"],
     deps = [
