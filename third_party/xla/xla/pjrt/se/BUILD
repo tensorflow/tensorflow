@@ -80,6 +80,7 @@ cc_library(
         "//xla/pjrt:device_event",
         "//xla/pjrt:pjrt_common",
         "//xla/pjrt:semaphore",
+        "//xla/pjrt:thread_pool_async_work_runner",
         "//xla/pjrt:worker_thread",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:event",

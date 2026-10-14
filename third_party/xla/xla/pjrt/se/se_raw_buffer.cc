@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -80,10 +81,12 @@ namespace {
 constexpr int64_t kMaxStagingChunksInFlight = 4;
 
 // A pinned host staging buffer for one chunk, and an event recorded after the
-// most recent DMA that used it.
+// most recent DMA that used it. The event comes from the device's EventPool and
+// returns to it when the slot is released, so staged transfers do not create or
+// destroy device events on the hot path.
 struct StagingSlot {
   std::shared_ptr<void> buffer;
-  std::unique_ptr<se::Event> dma_done;
+  std::optional<EventPool::Handle> dma_done;
 };
 
 // Allocates the staging slots for a chunked transfer of `transfer_size` bytes.
@@ -109,7 +112,9 @@ absl::StatusOr<std::vector<StagingSlot>> AllocateStagingSlots(
           "XLA_PJRT_GPU_CC_STAGING_CHUNK_MB).",
           slot_size);
     }
-    ABSL_ASSIGN_OR_RETURN(slot.dma_done, stream->parent()->CreateEvent());
+    ABSL_ASSIGN_OR_RETURN(slot.dma_done,
+                     local_device->event_pool().AllocateEvent(
+                         client->async_work_runner(), stream->parent()));
   }
   return slots;
 }
@@ -125,6 +130,12 @@ absl::StatusOr<std::vector<StagingSlot>> AllocateStagingSlots(
 // event is recorded after already-enqueued stream work, so it completes on GPU
 // progress alone and never waits on work from this runner. Clients that supply
 // a bounded runner would hold one thread per in-flight staged transfer.
+// Chunked staged transfers run only once the device has passed the
+// destination or source allocation event (see `ExecuteWhenAllocationReady`),
+// so the transfer streams never wait on compute work. Chunked H2D transfers to
+// a device run on its single-threaded
+// `LocalDeviceState::staged_host_to_device_runner()`, which only ever waits for
+// its own slots' previous DMAs on `host_to_device_stream()`.
 
 // Copies `transfer_size` bytes from host `src` to device `dst` in
 // `chunk_size`-byte chunks staged through `slots`. Host copies into the
@@ -143,7 +154,10 @@ absl::Status ChunkedStagedHostToDevice(se::Stream* stream, const void* src,
     const int64_t size = std::min(chunk_size, transfer_size - offset);
     StagingSlot& slot = slots[i % num_slots];
     if (i >= num_slots) {
-      ABSL_RETURN_IF_ERROR(slot.dma_done->Synchronize());
+      // Safe to wait in the driver: the slot event only follows this
+      // transfer's own copies on the host-to-device stream, which no longer
+      // waits on compute work.
+      ABSL_RETURN_IF_ERROR(slot.dma_done->event()->Synchronize());
     }
     {
       tsl::profiler::TraceMe trace("H2D Copy To Staging Chunk");
@@ -152,7 +166,7 @@ absl::Status ChunkedStagedHostToDevice(se::Stream* stream, const void* src,
     }
     se::DeviceAddressBase dst_chunk = dst.GetByteSlice(offset, size);
     ABSL_RETURN_IF_ERROR(stream->Memcpy(&dst_chunk, slot.buffer.get(), size));
-    ABSL_RETURN_IF_ERROR(stream->RecordEvent(slot.dma_done.get()));
+    ABSL_RETURN_IF_ERROR(stream->RecordEvent(slot.dma_done->event()));
   }
   return absl::OkStatus();
 }
@@ -174,7 +188,7 @@ absl::Status ChunkedStagedDeviceToHost(se::Stream* stream,
     StagingSlot& slot = slots[i % num_slots];
     ABSL_RETURN_IF_ERROR(stream->Memcpy(slot.buffer.get(),
                                    src.GetByteSlice(offset, size), size));
-    return stream->RecordEvent(slot.dma_done.get());
+    return stream->RecordEvent(slot.dma_done->event());
   };
   for (int64_t i = 0; i < num_slots; ++i) {
     ABSL_RETURN_IF_ERROR(enqueue_dma(i));
@@ -183,7 +197,7 @@ absl::Status ChunkedStagedDeviceToHost(se::Stream* stream,
     const int64_t offset = i * chunk_size;
     const int64_t size = std::min(chunk_size, transfer_size - offset);
     StagingSlot& slot = slots[i % num_slots];
-    ABSL_RETURN_IF_ERROR(slot.dma_done->Synchronize());
+    ABSL_RETURN_IF_ERROR(slot.dma_done->event()->Synchronize());
     {
       tsl::profiler::TraceMe trace("D2H Copy From Staging Chunk");
       std::memcpy(static_cast<char*>(dst) + offset, slot.buffer.get(), size);
@@ -202,6 +216,40 @@ absl::Status DrainStreamOnError(se::Stream* stream, absl::Status status) {
     stream->BlockHostUntilDone().IgnoreError();
   }
   return status;
+}
+
+// Executes `task` on `runner` once `dependencies` are ready and the device has
+// passed `buffer`'s allocation event, without making a stream or a thread wait
+// for compute work: the allocation event becomes ready from the host callback
+// that `LocalDeviceState::AllocateAndRecordEvent` enqueued when recording it.
+// As in `WaitForAllocation`, an allocation event that failed is not waited
+// for. Sets `device_event` to an error if the allocation event can't be
+// obtained.
+void ExecuteWhenAllocationReady(PjRtStreamExecutorRawClient* client,
+                                tsl::AsyncValueRef<RawSEDeviceMemory> buffer,
+                                BufferSequencingEventRef device_event,
+                                const PjRtDeviceEventRefVector& dependencies,
+                                AsyncWorkRunner* runner,
+                                AsyncWorkRunner::Task task) {
+  ExecuteWhenReady(dependencies, client->async_work_runner(),
+                   [client, buffer = std::move(buffer),
+                    device_event = std::move(device_event), runner,
+                    task = std::move(task)]() mutable {
+                     absl::StatusOr<BufferSequencingEventRef> allocation_event =
+                         buffer->GetDefinitionEvent(client->async_work_runner(),
+                                                    /*nullptr_if_past=*/true);
+                     if (!allocation_event.ok()) {
+                       client->SetEventAsError(device_event,
+                                               allocation_event.status());
+                       return;
+                     }
+                     if (!*allocation_event) {
+                       runner->Execute(std::move(task));
+                       return;
+                     }
+                     runner->ExecuteWhenReady({allocation_event->CopyRCRef()},
+                                              std::move(task));
+                   });
 }
 
 }  // namespace
@@ -274,7 +322,11 @@ PjRtStreamExecutorRawBuffer::CopyRawHostToDeviceAndReturnEvent(
     // the slots outlive the drain below if AllocateAndRecordEvent fails.
     std::shared_ptr<std::vector<StagingSlot>> staging_slots;
     auto status = [&]() -> absl::Status {
-      ABSL_RETURN_IF_ERROR(client->WaitForAllocation(stream, *buf));
+      // Chunked staged transfers run once their allocation is ready; see
+      // ExecuteWhenAllocationReady below.
+      if (!client->ShouldUseChunkedStaging()) {
+        ABSL_RETURN_IF_ERROR(client->WaitForAllocation(stream, *buf));
+      }
       if (transfer_size > 0) {
         if (client->ShouldStageHostToDeviceTransfers(src, transfer_size)) {
           if (client->GetHostMemoryAllocator() == nullptr) {
@@ -289,9 +341,16 @@ PjRtStreamExecutorRawBuffer::CopyRawHostToDeviceAndReturnEvent(
                                                   transfer_size, chunk_size));
             staging_slots =
                 std::make_shared<std::vector<StagingSlot>>(std::move(slots));
-            return ChunkedStagedHostToDevice(stream, src, sub_buffer,
-                                             transfer_size, chunk_size,
-                                             absl::MakeSpan(*staging_slots));
+            ABSL_RETURN_IF_ERROR(ChunkedStagedHostToDevice(
+                stream, src, sub_buffer, transfer_size, chunk_size,
+                absl::MakeSpan(*staging_slots)));
+            // Nothing waits on the slot events after the copies are issued, so
+            // return them to the pool for the next transfer to reuse. The slot
+            // buffers stay alive until the transfer's completion event.
+            for (StagingSlot& slot : *staging_slots) {
+              slot.dma_done.reset();
+            }
+            return absl::OkStatus();
           }
           HostMemoryAllocator::AllocateOptions alloc_opts;
           alloc_opts.numa_node = stream->parent()->numa_node();
@@ -345,8 +404,17 @@ PjRtStreamExecutorRawBuffer::CopyRawHostToDeviceAndReturnEvent(
   // `run_transfer` may be deferred until `dependencies` are ready, so record
   // the allocation event now.
   client_->MaterializeAllocationEvent(*this);
-  ExecuteWhenReady(dependencies, client_->async_work_runner(),
-                   std::move(run_transfer));
+  if (client_->ShouldUseChunkedStaging()) {
+    // Issue the copies on the device's staged host-to-device runner, one
+    // transfer at a time. A transfer whose allocation is not ready yet does
+    // not hold up later transfers to the same device.
+    ExecuteWhenAllocationReady(
+        client_, device_buffer_, device_event, dependencies,
+        local_device_->staged_host_to_device_runner(), std::move(run_transfer));
+  } else {
+    ExecuteWhenReady(dependencies, client_->async_work_runner(),
+                     std::move(run_transfer));
+  }
 
   return PjRtDeviceEventRef(std::move(device_event));
 }
@@ -376,7 +444,10 @@ PjRtStreamExecutorRawBuffer::CopyRawDeviceToHostAndReturnEvent(
     }
     std::shared_ptr<void> staging_buffer;
     auto status = [&]() -> absl::Status {
-      ABSL_RETURN_IF_ERROR(client->WaitForAllocation(stream, *buf));
+      // See CopyRawHostToDeviceAndReturnEvent.
+      if (!client->ShouldUseChunkedStaging()) {
+        ABSL_RETURN_IF_ERROR(client->WaitForAllocation(stream, *buf));
+      }
       if (transfer_size > 0) {
         if (client->ShouldStageHostToDeviceTransfers(dst, transfer_size)) {
           if (client->GetHostMemoryAllocator() == nullptr) {
@@ -442,8 +513,14 @@ PjRtStreamExecutorRawBuffer::CopyRawDeviceToHostAndReturnEvent(
   // `run_transfer` may be deferred until `dependencies` are ready, so record
   // the allocation event now.
   client_->MaterializeAllocationEvent(*this);
-  ExecuteWhenReady(dependencies, client_->async_work_runner(),
-                   std::move(run_transfer));
+  if (client_->ShouldUseChunkedStaging()) {
+    ExecuteWhenAllocationReady(client_, device_buffer_, device_event,
+                               dependencies, client_->async_work_runner(),
+                               std::move(run_transfer));
+  } else {
+    ExecuteWhenReady(dependencies, client_->async_work_runner(),
+                     std::move(run_transfer));
+  }
 
   return PjRtDeviceEventRef(std::move(device_event));
 }
