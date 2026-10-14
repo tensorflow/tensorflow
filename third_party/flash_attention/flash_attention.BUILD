@@ -22,7 +22,10 @@ _HEAD_DIMS = [32, 64, 96, 128, 192, 256]
 
 cc_library(
     name = "headers",
-    hdrs = glob(["src/*.h"]),
+    hdrs = glob([
+        "src/*.h",
+        "src/*.cuh",
+    ]),
     includes = ["src"],
     deps = ["@cutlass_archive//:cutlass"],
 )
