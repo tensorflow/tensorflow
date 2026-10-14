@@ -134,13 +134,15 @@ class DTensorSaveRestoreV2Test(test_util.DTensorBaseTest):
     ckpt = checkpoint.Checkpoint(v=v_save)
     saved_path = ckpt.save(self.get_temp_dir())
 
-    # Re-create checkpoint on an empty container to test deferred restoration
-    root = trackable.SimpleTrackable()
-    restore_ckpt = checkpoint.Checkpoint(root=root)
+    # Re-create an empty checkpoint object to test deferred restoration. The
+    # dependency named "v" lives directly on the Checkpoint root, matching
+    # the attribute name used when saving above (see checkpointing_test.py's
+    # testInitializeFromCheckpoint for the same pattern).
+    restore_ckpt = checkpoint.Checkpoint()
     restore_ckpt.restore(saved_path)
 
     # Preload simple restoration produces a CheckpointInitialValueCallable
-    init_callable = root._preload_simple_restoration('v')
+    init_callable = restore_ckpt._preload_simple_restoration('v')
     self.assertIsInstance(
         init_callable, trackable.CheckpointInitialValueCallable
     )

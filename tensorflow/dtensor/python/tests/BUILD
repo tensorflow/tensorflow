@@ -932,6 +932,7 @@ dtensor_test(
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:stateless_random_ops",
         "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/trackable:base",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
