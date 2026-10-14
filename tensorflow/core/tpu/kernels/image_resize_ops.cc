@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <vector>
 
@@ -34,6 +36,66 @@ limitations under the License.
 #include "tensorflow/core/tpu/tpu_defs.h"
 
 namespace tensorflow {
+namespace {
+
+inline float CalculateResizeScale(int64_t in_size, int64_t out_size,
+                                  bool align_corners) {
+  return (align_corners && in_size > 1 && out_size > 1)
+             ? (in_size - 1) / static_cast<float>(out_size - 1)
+             : in_size / static_cast<float>(out_size);
+}
+
+inline bool HasNonIntegerScale(int64_t in_size, int64_t out_size) {
+  if (in_size <= 0 || out_size <= 0) return false;
+  return (in_size % out_size != 0) && (out_size % in_size != 0);
+}
+
+std::vector<int32_t> ComputeNearestNeighborIndices(int64_t in_size,
+                                                   int64_t out_size,
+                                                   bool align_corners,
+                                                   bool half_pixel_centers) {
+  std::vector<int32_t> indices(out_size);
+  const float scale = CalculateResizeScale(in_size, out_size, align_corners);
+  for (int64_t i = 0; i < out_size; ++i) {
+    int64_t in_idx;
+    if (half_pixel_centers) {
+      in_idx = static_cast<int64_t>(
+          std::floor((static_cast<float>(i) + 0.5f) * scale));
+      in_idx = std::max(int64_t{0}, in_idx);
+    } else if (align_corners) {
+      in_idx = static_cast<int64_t>(std::round(static_cast<float>(i) * scale));
+    } else {
+      in_idx = static_cast<int64_t>(std::floor(static_cast<float>(i) * scale));
+    }
+    in_idx = std::min(in_idx, in_size - 1);
+    indices[i] = static_cast<int32_t>(in_idx);
+  }
+  return indices;
+}
+
+xla::XlaOp Gather1D(xla::XlaBuilder* builder, xla::XlaOp input,
+                    const xla::Shape& input_shape,
+                    const std::vector<int32_t>& indices, int64_t axis) {
+  xla::XlaOp indices_op = xla::ConstantR1<int32_t>(builder, indices);
+  xla::GatherDimensionNumbers dnums;
+  dnums.set_index_vector_dim(1);
+  dnums.add_start_index_map(axis);
+  dnums.add_collapsed_slice_dims(axis);
+
+  const int64_t rank = input_shape.dimensions_size();
+  std::vector<int64_t> slice_sizes(rank);
+  for (int64_t i = 0; i < rank; ++i) {
+    if (i == axis) {
+      slice_sizes[i] = 1;
+    } else {
+      slice_sizes[i] = input_shape.dimensions(i);
+      dnums.add_offset_dims(i);
+    }
+  }
+  return xla::Gather(input, indices_op, dnums, slice_sizes);
+}
+
+}  // namespace
 
 class TpuCustomResizeOp : public XlaOpKernel {
  public:
@@ -103,6 +165,10 @@ class TpuCustomResizeOp : public XlaOpKernel {
                                       output_shape, OpaqueField()));
   }
 
+ protected:
+  bool align_corners() const { return align_corners_; }
+  bool half_pixel_centers() const { return half_pixel_centers_; }
+
  private:
   bool align_corners_;
   bool half_pixel_centers_;
@@ -113,7 +179,68 @@ class TpuResizeNearestNeighborOp : public TpuCustomResizeOp {
   explicit TpuResizeNearestNeighborOp(OpKernelConstruction* ctx)
       : TpuCustomResizeOp(ctx) {}
   void Compile(XlaOpKernelContext* ctx) override {
-    CompileForward(ctx, "ResizeNearest");
+    OP_REQUIRES_VALUE(auto output_shape, ctx, GetOutputShape(ctx));
+    const TensorShape& input_tensor_shape = ctx->InputShape(0);
+
+    // Fast-path 1: Identity resize.
+    if (input_tensor_shape.dim_size(1) == output_shape.dimensions(1) &&
+        input_tensor_shape.dim_size(2) == output_shape.dimensions(2)) {
+      ctx->SetOutput(
+          0, xla::ConvertElementType(ctx->Input(0), ctx->output_xla_type(0)));
+      return;
+    }
+
+    // Fast-path 2: 1x1 spatial input.
+    if (input_tensor_shape.dim_size(1) == 1 &&
+        input_tensor_shape.dim_size(2) == 1) {
+      ctx->SetOutput(
+          0, ctx->Input(0) +
+                 xla::Zeros(ctx->builder(),
+                            xla::ShapeUtil::MakeStaticShape(output_shape)));
+      return;
+    }
+
+    OP_REQUIRES_VALUE(xla::Shape input_xla_shape, ctx, ctx->InputXlaShape(0));
+    const int64_t in_h = input_tensor_shape.dim_size(1);
+    const int64_t in_w = input_tensor_shape.dim_size(2);
+    const int64_t out_h = output_shape.dimensions(1);
+    const int64_t out_w = output_shape.dimensions(2);
+
+    const bool spatial_dims_static = input_tensor_shape.dims() == 4 &&
+                                     !input_xla_shape.is_dynamic_dimension(1) &&
+                                     !input_xla_shape.is_dynamic_dimension(2);
+
+    const bool has_non_integer_scale =
+        HasNonIntegerScale(in_h, out_h) || HasNonIntegerScale(in_w, out_w);
+
+    if (spatial_dims_static && has_non_integer_scale) {
+      xla::XlaOp current = ctx->Input(0);
+      xla::Shape current_shape = input_xla_shape;
+
+      if (in_h != out_h) {
+        std::vector<int32_t> h_indices = ComputeNearestNeighborIndices(
+            in_h, out_h, align_corners(), half_pixel_centers());
+        current =
+            Gather1D(ctx->builder(), current, current_shape, h_indices, 1);
+        current_shape.set_dimensions(1, out_h);
+      }
+
+      if (in_w != out_w) {
+        std::vector<int32_t> w_indices = ComputeNearestNeighborIndices(
+            in_w, out_w, align_corners(), half_pixel_centers());
+        current =
+            Gather1D(ctx->builder(), current, current_shape, w_indices, 2);
+        current_shape.set_dimensions(2, out_w);
+      }
+
+      ctx->SetOutput(0,
+                     xla::ConvertElementType(current, ctx->output_xla_type(0)));
+      return;
+    }
+
+    ctx->SetOutput(
+        0, xla::CustomCall(ctx->builder(), "ResizeNearest", {ctx->Input(0)},
+                           output_shape, OpaqueField()));
   }
 };
 
