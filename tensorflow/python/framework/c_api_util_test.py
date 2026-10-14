@@ -151,5 +151,14 @@ class ScopedTFBufferTest(test_util.TensorFlowTestCase):
     with mock.patch.object(c_api_util, "c_api", None):
       buf.__del__()  # should not raise
 
+  def testDeletePartiallyInitializedObjectDoesNotRaise(self):
+    # Regression test: if __init__ raises before `self.buffer` is ever
+    # assigned (e.g. compat.as_bytes failing on bad input), __del__ still
+    # runs on the partially-constructed object. It must not raise an
+    # AttributeError from accessing the missing `self.buffer`, which would
+    # mask whatever real exception caused __init__ to fail.
+    buf = c_api_util.ScopedTFBuffer.__new__(c_api_util.ScopedTFBuffer)
+    buf.__del__()  # should not raise
+
 if __name__ == "__main__":
   googletest.main()

@@ -138,8 +138,6 @@ class ScopedTFBuffer(object):
   def __del__(self):
     # Note: when we're destructing the global context (i.e when the process is
     # terminating) we can have already deleted other modules.
-    if c_api is not None:
-      c_api.TF_DeleteBuffer(self.buffer)
     # Also guard against __init__ having failed before `self.buffer` was
     # ever assigned (e.g. compat.as_bytes raising on bad input): __del__
     # still runs on a partially-constructed object, and accessing
