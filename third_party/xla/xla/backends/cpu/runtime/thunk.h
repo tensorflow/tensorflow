@@ -26,6 +26,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/call_once.h"
 #include "absl/base/no_destructor.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
@@ -36,8 +37,6 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
 #include "xla/backends/cpu/runtime/function_library.h"
 #include "xla/backends/cpu/runtime/xfeed_manager.h"
-#include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
-#include "xla/backends/cpu/runtime/ynnpack/ynn_threadpool.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/runtime/buffer_use.h"
@@ -48,6 +47,8 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/platform.h"
+
+struct ynn_threadpool;
 
 namespace Eigen {
 struct ThreadPoolDevice;
@@ -259,14 +260,26 @@ class Thunk {
   // YnnParams
   //===--------------------------------------------------------------------===//
 
-  // Parameters capturing all the details required for running XNNPACK fusions.
-  struct YnnParams {
-    static absl::StatusOr<YnnParams> Create(
-        const ExecutableRunOptions* run_options);
+  // Parameters capturing all the details required for running YNNPACK fusions.
+  // `ynn_threadpool` is forward-declared and lazily initialized with a
+  // function-pointer deleter so that `:thunk` doesn't need to depend on YNNPACK
+  // (avoiding binary size bloat for targets that don't use YNNPACK).
+  class YnnParams {
+   public:
+    using Threadpool =
+        std::unique_ptr<ynn_threadpool, void (*)(ynn_threadpool*)>;
 
-    YnnThreadpool threadpool = nullptr;
+    // Lazily initializes and returns the threadpool. `factory` is invoked at
+    // most once per execution.
+    const Threadpool& GetOrCreateThreadpool(
+        absl::FunctionRef<Threadpool()> factory) const {
+      absl::call_once(once_, [&] { threadpool_ = factory(); });
+      return threadpool_;
+    }
 
-    explicit YnnParams(YnnThreadpool threadpool);
+   private:
+    mutable absl::once_flag once_;
+    mutable Threadpool threadpool_ = {nullptr, nullptr};
   };
 
   //===--------------------------------------------------------------------===//
@@ -283,7 +296,6 @@ class Thunk {
     TaskRunner* task_runner = nullptr;
     CollectiveExecuteParams* collective_params = nullptr;
     CustomCallExecuteParams* custom_call_params = nullptr;
-    YnnParams* ynn_params = nullptr;
     int64_t run_id = -1;          // -1 means no run id is set.
     int64_t device_ordinal = -1;  // -1 means no device ordinal is set.
     ExecuteSession session = ExecuteSession(ExecuteSession::kMaxWorkers,
@@ -292,6 +304,8 @@ class Thunk {
 
     // Per-execution custom options.
     const CustomOptions* custom_options = nullptr;
+
+    YnnParams ynn_params;
   };
 
   // An execute event that becomes ready when all tasks are completed.

@@ -86,7 +86,6 @@ cc_library(
         "@XNNPACK//ynnpack:ynnpack_h",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status:statusor",
         "@eigen_archive//:eigen3",
     ],
 )
@@ -97,6 +96,7 @@ cc_library(
     hdrs = ["ynn_fusion_thunk.h"],
     deps = [
         ":ynn_interop",
+        ":ynn_threadpool",
         "//xla:shape_util",
         "//xla/backends/cpu/runtime:thunk",
         "//xla/hlo/ir:hlo",
@@ -132,7 +132,6 @@ xla_cc_test(
     deps = [
         ":ynn_fusion_thunk",
         ":ynn_interop",
-        ":ynn_threadpool",
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",

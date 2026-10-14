@@ -96,14 +96,14 @@ cc_library(
         "//xla/service:gpu_plugin",
         "//xla/backends/profiler/gpu:device_tracer",
     ]) + if_cuda([
-        "//xla/stream_executor:cuda_platform",
-        "//xla/backends/profiler/gpu:cupti_tracer",
+        "//xla/stream_executor:cuda_platform",  # buildcleaner: keep
+        "//xla/backends/profiler/gpu:cupti_tracer",  # buildcleaner: keep
     ] + if_google(
         [
             "//third_party/py/jax/jaxlib/cuda:cuda_gpu_kernels",  # fixdeps: keep
         ],
     )) + if_rocm([
-        "//xla/stream_executor:rocm_platform",
+        "//xla/stream_executor:rocm_platform",  # buildcleaner: keep
     ]),
     alwayslink = True,
 )
@@ -337,7 +337,9 @@ xla_test(
         "@tsl//tsl/platform",
         "@tsl//tsl/platform:path",
         "@tsl//tsl/platform:protobuf",
-    ] + if_cuda(["//xla/tsl/cuda:nvml"]),
+    ] + if_cuda([
+        "//xla/tsl/cuda:nvml",  # buildcleaner: keep
+    ]),
 )
 
 tsl_pybind_extension(

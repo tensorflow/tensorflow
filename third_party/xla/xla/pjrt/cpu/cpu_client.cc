@@ -1616,11 +1616,6 @@ PjRtRawLoadedExecutable::RawExecuteResult CpuPjRtRawLoadedExecutable::Execute(
         cpu::Thunk::CustomCallExecuteParams custom_call_execute_params,
         cpu::Thunk::CustomCallExecuteParams::Create(&run_options));
 
-    std::optional<cpu::Thunk::YnnParams> ynn_params;
-    if (cpu_executable->has_ynn_fusions()) {
-      ABSL_ASSIGN_OR_RETURN(ynn_params, cpu::Thunk::YnnParams::Create(&run_options));
-    }
-
     cpu::ThreadPoolTaskRunner task_runner(
         run_options.intra_op_thread_pool()->getPool());
 
@@ -1632,7 +1627,6 @@ PjRtRawLoadedExecutable::RawExecuteResult CpuPjRtRawLoadedExecutable::Execute(
         &task_runner,
         &collective_params,
         &custom_call_execute_params,
-        ynn_params ? &*ynn_params : nullptr,
         run_options.run_id().ToInt(),
         run_options.device_ordinal(),
         cpu::Thunk::ExecuteSession(cpu::Thunk::ExecuteSession::kMaxWorkers,

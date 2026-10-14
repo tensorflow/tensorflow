@@ -124,8 +124,6 @@ cc_library(
         "//xla/backends/cpu/runtime:function_library",
         "//xla/backends/cpu/runtime:thread_pool_task_runner",
         "//xla/backends/cpu/runtime:thunk",
-        "//xla/backends/cpu/runtime/ynnpack:ynn_interop",
-        "//xla/backends/cpu/runtime/ynnpack:ynn_threadpool",
         "//xla/ffi:execution_context",
         "//xla/hlo/ir:hlo",
         "//xla/runtime:device_id",
