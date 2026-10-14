@@ -17,12 +17,14 @@ limitations under the License.
 #define XLA_SERVICE_GPU_GPU_EXECUTABLE_RUN_OPTIONS_H_
 
 #include <functional>
+#include <memory>
 #include <optional>
 #include <vector>
 
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
@@ -124,6 +126,31 @@ class GpuExecutableRunOptions {
   // timeout handlers are not set.
   std::vector<ExecutionTimeoutHandler> execution_timeout_handlers() const;
 
+  // Callback invoked when an asynchronous device stream error (e.g.
+  // `CUDA_ERROR_ILLEGAL_ADDRESS` from a faulting kernel on `main_stream`) is
+  // detected at the end of an `ExecuteThunks` launch.
+  //
+  // Because GPU kernels execute asynchronously after host launch returns,
+  // device-side faults are detected asynchronously when XLA's background
+  // stream status monitor polls the poisoned stream (or synchronously on the
+  // host launch thread if host-callback registration fails).
+  //
+  // Typically used to abort local collective cliques (`AbortAllCliques`) and
+  // broadcast the fatal error via `kv_store` so peer devices/nodes abort their
+  // in-flight collectives immediately instead of hanging until timeout.
+  //
+  // Threading & lifetime: Invoked via `Stream::DoHostCallback`'s error path on
+  // XLA's background stream status monitor `tsl::Thread` (or synchronously on
+  // the host launch thread), not on a GPU driver callback thread. May be
+  // invoked after the run options are destroyed; capture only owning pointers
+  // or values.
+  using DeviceErrorCallback = absl::AnyInvocable<void(
+      int device_ordinal, const absl::Status& status) const>;
+
+  GpuExecutableRunOptions& set_device_error_callback(
+      DeviceErrorCallback callback);
+  std::shared_ptr<const DeviceErrorCallback> device_error_callback() const;
+
  private:
   bool requires_exclusive_lock_on_gpu_ = false;
   bool enable_mock_collectives_ = false;
@@ -134,6 +161,7 @@ class GpuExecutableRunOptions {
       incarnations_;
   std::function<std::vector<ExecutionTimeoutHandler>()>
       execution_timeout_handlers_;
+  std::shared_ptr<const DeviceErrorCallback> device_error_callback_;
 };
 
 }  // namespace xla::gpu
