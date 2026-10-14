@@ -289,34 +289,33 @@ __global__ void FlashAttnBwdKernel_Q(
             score += static_cast<float>(q_ptr[d] * k_ptr[d]);
           }
           float p_ij = Eigen::numext::exp(score * scale - stats_val);
-          if (p_ij > EPSF) {
-            float dS = scale;
-            bool is_dropped = false;
-            if (dropout_rate > EPSF) {
-              if (get_random_float_v2(global_rng_idx, kv_offset) <
-                  dropout_rate) {
-                is_dropped = true;
-                dS *= -p_ij * dOsum;
-                p_ij = ZEROF;
-              } else {
-                p_ij *= dp_inverse;
-              }
-            }
-
-            if (!is_dropped) {
-              T *v_ptr = s_V + j * D_MAX;
-              float dP = ZEROF;
-              for (int d = 0; d < D_v; ++d) {
-                dP += static_cast<float>(dO_ptr[d] * v_ptr[d]);
-              }
-              dS *= p_ij * (dP - dOsum / dp_inverse);
-            }
-
-#pragma unroll
-            for (int d = 0; d < D_MAX; ++d) {
-              if (d < D_qk) r_dQ[d] += dS * static_cast<float>(k_ptr[d]);
+          // if (p_ij > EPSF) {
+          float dS = scale;
+          bool is_dropped = false;
+          if (dropout_rate > EPSF) {
+            if (get_random_float_v2(global_rng_idx, kv_offset) < dropout_rate) {
+              is_dropped = true;
+              dS *= -p_ij * dOsum;
+              p_ij = ZEROF;
+            } else {
+              p_ij *= dp_inverse;
             }
           }
+
+          if (!is_dropped) {
+            T *v_ptr = s_V + j * D_MAX;
+            float dP = ZEROF;
+            for (int d = 0; d < D_v; ++d) {
+              dP += static_cast<float>(dO_ptr[d] * v_ptr[d]);
+            }
+            dS *= p_ij * (dP - dOsum / dp_inverse);
+          }
+
+#pragma unroll
+          for (int d = 0; d < D_MAX; ++d) {
+            if (d < D_qk) r_dQ[d] += dS * static_cast<float>(k_ptr[d]);
+          }
+          // }
         }
       }
     }
