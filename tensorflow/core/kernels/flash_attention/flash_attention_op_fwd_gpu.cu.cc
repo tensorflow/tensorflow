@@ -263,8 +263,12 @@ struct FlashAttentionFunctor<GPUDevice, T> {
     constexpr int Bc = traits::FlashTraits<D_MAX>::Bc;
     constexpr int threads_per_block = traits::FlashTraits<D_MAX>::Th;
     int smem_size = (Br + Bc + Bc) * D_MAX * sizeof(T);
-    int blocks_per_batch = (S_q + Br - 1) / Br;
-    int total_blocks = B * blocks_per_batch;
+    uint64_t blocks_per_batch = (S_q + Br - 1) / Br;
+    uint64_t total_blocks = static_cast<uint64_t>(B) * blocks_per_batch;
+    if (total_blocks > 2147483647ULL) {
+      return errors::InvalidArgument(
+          "FlashAttention: total blocks exceed 1D grid limit");
+    }
     return GpuLaunchKernel(FlashAttnFwdKernel<T, D_MAX>, total_blocks,
                            threads_per_block, smem_size, d.stream(), Q.data(),
                            K.data(), V.data(), Out.data(), Stats.data(), B, S_q,
