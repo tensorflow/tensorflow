@@ -484,43 +484,6 @@ INSTANTIATE_TEST_SUITE_P(
     [](const ::testing::TestParamInfo<GreedyPowerOfTwoTilesTest::ParamType>&
            info) { return info.param.test_name; });
 
-TEST_F(CollectiveEmitterTest, FlattenCollectiveComputation) {
-  Shape shape_3d = ShapeUtil::MakeShape(F32, {2, 4, 8});
-  Shape shape_1d = ShapeUtil::MakeShape(F32, {64});  // 2 * 4 * 8
-  ASSERT_OK_AND_ASSIGN(ModuleWithFusion module_with_fusion,
-                       BuildModuleWithFusion(GetModuleStr(shape_3d)));
-  HloFusionInstruction* fusion_instr = module_with_fusion.MutableFusionInstr();
-  EXPECT_THAT(fusion_instr,
-              AllOf(HasOpcode(HloOpcode::kFusion), HasShape(shape_3d)));
-
-  HloComputation* entry_computation =
-      module_with_fusion.module->entry_computation();
-  EXPECT_OK(FlattenCollectiveFusion(fusion_instr));
-
-  // Output bitcast should have the original 3D shape.
-  HloInstruction* root = entry_computation->root_instruction();
-  EXPECT_THAT(root, AllOf(HasOpcode(HloOpcode::kBitcast), HasShape(shape_3d),
-                          HasNumOperands(1)));
-
-  // All other ops should have the flattened 1D shape.
-  HloInstruction* new_fusion_instr = root->mutable_operand(0);
-  EXPECT_THAT(new_fusion_instr, AllOf(HasOpcode(HloOpcode::kFusion),
-                                      HasShape(shape_1d), HasNumOperands(1)));
-
-  HloInstruction* input_bitcast = new_fusion_instr->mutable_operand(0);
-  EXPECT_THAT(input_bitcast, AllOf(HasOpcode(HloOpcode::kBitcast),
-                                   HasShape(shape_1d), HasNumOperands(1)));
-  EXPECT_THAT(input_bitcast->operand(0), HasOpcode(HloOpcode::kParameter));
-
-  HloComputation* fused_comp =
-      new_fusion_instr->fused_instructions_computation();
-  EXPECT_THAT(
-      fused_comp->parameter_instructions(),
-      ElementsAre(AllOf(HasOpcode(HloOpcode::kParameter), HasShape(shape_1d))));
-  EXPECT_THAT(fused_comp->root_instruction(),
-              AllOf(HasOpcode(HloOpcode::kAllReduce), HasShape(shape_1d)));
-}
-
 TEST_F(CollectiveBlockLevelConfigTest, AllGatherBlockLevelConfig) {
   constexpr absl::string_view kAllGatherHloStr = R"(
     HloModule test

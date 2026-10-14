@@ -33,7 +33,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/shape.h"
@@ -45,15 +44,6 @@ class GpuTopology;
 }  // namespace xla
 
 namespace xla::gpu {
-
-// Flattens instructions inside a > 1D collective fusion to 1D instructions
-// inplace. For example, a 2D computation with shape [2, 3] will be flattened to
-// a 1D computation with shape [6] with surrounding bitcasts inserted in the
-// parent computation.
-// NB: This should only be used if the fused computation  only contains
-// elementwise operations (and the collective itself).
-absl::Status FlattenCollectiveFusion(
-    HloFusionInstruction* absl_nonnull fusion_instr);
 
 // Returns a tile such that each dimension is a power of two and that the total
 // number of blocks does not exceed num_blocks. Returns the tile sizes in

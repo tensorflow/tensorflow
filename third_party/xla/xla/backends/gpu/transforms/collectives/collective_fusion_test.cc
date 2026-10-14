@@ -167,6 +167,35 @@ TEST_F(CollectiveFusionTest, FusesAndFlattensMediumAllReduceTwoShot) {
                             kExpected, /*after_pass_checks=*/nullptr, &config);
 }
 
+TEST_F(CollectiveFusionTest, FusesAndFlattens3DAllReduceTwoShot) {
+  // Use a 3D shape to test multi-dimensional flattening:
+  // [2, 4, 32768] = 262144 elements (1 MB -> TwoShot)
+  Shape shape = xla::ShapeUtil::MakeShape(F32, {2, 4, 32768});
+  std::string hlo = absl::StrFormat(kAllReduceHloTemplate, shape.ToString());
+  SCOPED_TRACE(::testing::Message() << "hlo: " << hlo);
+  static constexpr absl::string_view kExpected = R"(
+    // CHECK: %[[FUSION_COMPUTATION:.*]] (param_0: f32[262144]) -> f32[262144] {
+    // CHECK:   %[[P0:.*]] = f32[262144]{0} parameter(0)
+    // CHECK:   ROOT {{.*}} = f32[262144]{0} all-reduce(%[[P0]]),
+    // CHECK-SAME: to_apply=%add
+    // CHECK: }
+    //
+    // CHECK: ENTRY %e (p0.1: f32[2,4,32768]) -> f32[2,4,32768] {
+    // CHECK:   %[[P0:.*]] = f32[2,4,32768]{2,1,0} parameter(0)
+    // CHECK:   %[[BITCAST_TO_1D:.*]] = f32[262144]{0} bitcast(%[[P0]])
+    // CHECK:   %[[FUSION:.*]] = f32[262144]{0} fusion(%[[BITCAST_TO_1D]]),
+    // CHECK-SAME: kind=kCustom,
+    // CHECK-SAME: calls=%[[FUSION_COMPUTATION]],
+    // CHECK-SAME: backend_config={
+    // CHECK-SAME: "kind":"__triton_collective"
+    // CHECK-SAME: "block_level_fusion_config"
+    // CHECK:   ROOT {{.*}} = f32[2,4,32768]{2,1,0} bitcast(%[[FUSION]])
+  )";
+  HloModuleConfig config = GetModuleConfigForTest(/*replica_count=*/8);
+  RunAndFilecheckHloRewrite(hlo, AnnotateAndFusePipeline(*gpu_topology_),
+                            kExpected, /*after_pass_checks=*/nullptr, &config);
+}
+
 TEST_F(CollectiveFusionTest, DoesNotFuseUnannotated) {
   constexpr int64_t kNumElements = 32768;
   Shape shape = ShapeUtil::MakeShape(F32, {kNumElements});
