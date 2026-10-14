@@ -221,8 +221,10 @@ cudaError_t Forward(cudaStream_t stream, bool bf16, const void *q,
                     bool causal, uint64_t seed, uint64_t offset,
                     const uint64_t *seed_dev, const uint64_t *offset_dev) {
   if (B == 0 || S_q == 0) return cudaSuccess;
-  if (S_kv == 0)
+  if (S_kv == 0) {
+    cudaMemsetAsync(lse, 0, size_t(B) * S_q * sizeof(float), stream);
     return cudaMemsetAsync(out, 0, size_t(B) * S_q * D * kElemBytes, stream);
+  }
 
   fa2_shim::last_error = cudaSuccess;
   Flash_fwd_params p;
