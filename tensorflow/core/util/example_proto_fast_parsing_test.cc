@@ -497,19 +497,13 @@ void AppendVarint(uint32_t v, std::string* out) {
 }
 
 // Returns a serialized Example with a single feature "f" whose Feature has the
-// given oneof tag and a list holding one length-delimited field 1 that declares
-// `declared_length` bytes but is followed by `payload` only.
-std::string ExampleWithDeclaredListLength(char feature_oneof_tag,
-                                          uint32_t declared_length,
-                                          const std::string& payload) {
-  std::string list;
-  list.push_back(10);  // kDelimitedTag(1): BytesList.value / packed FloatList
-  AppendVarint(declared_length, &list);
-  list.append(payload);
-
+// given oneof tag and holds `list`, declared as `declared_list_length` bytes.
+std::string ExampleWithFeatureList(char feature_oneof_tag,
+                                   uint32_t declared_list_length,
+                                   const std::string& list) {
   std::string feature;
   feature.push_back(feature_oneof_tag);
-  AppendVarint(list.size(), &feature);
+  AppendVarint(declared_list_length, &feature);
   feature.append(list);
 
   std::string map_entry;
@@ -532,8 +526,22 @@ std::string ExampleWithDeclaredListLength(char feature_oneof_tag,
   return example;
 }
 
+// Returns a serialized Example with a single feature "f" whose Feature has the
+// given oneof tag and a list holding one length-delimited field 1 that declares
+// `declared_length` bytes but is followed by `payload` only.
+std::string ExampleWithDeclaredListLength(char feature_oneof_tag,
+                                          uint32_t declared_length,
+                                          const std::string& payload) {
+  std::string list;
+  list.push_back(10);  // kDelimitedTag(1): BytesList.value / packed FloatList
+  AppendVarint(declared_length, &list);
+  list.append(payload);
+  return ExampleWithFeatureList(feature_oneof_tag, list.size(), list);
+}
+
 constexpr char kBytesListTag = 10;  // kDelimitedTag(1)
 constexpr char kFloatListTag = 18;  // kDelimitedTag(2)
+constexpr char kInt64ListTag = 26;  // kDelimitedTag(3)
 
 absl::Status ParseSparse(DataType dtype, const std::string& serialized,
                          Result* result) {
@@ -598,12 +606,71 @@ TEST(FastParse, SingleExamplePackedFloatListLengthPastEndOfInput) {
   ASSERT_TRUE(status.ok()) << status;
   EXPECT_EQ(result.sparse_values[0].flat<float>()(0), 1.5f);
 
-  for (uint32_t length : {8u, 0x80000000u, 0xffffffffu}) {
+  for (uint32_t length : {8u, 0x7fffffffu, 0x80000000u, 0xffffffffu}) {
     Result result;
     EXPECT_TRUE(absl::IsInvalidArgument(FastParseSingleExample(
         config, ExampleWithDeclaredListLength(kFloatListTag, length, payload),
         &result)))
         << length;
+  }
+}
+
+// The length of the list itself must not run past the Feature either: a list
+// that declares more bytes than the Feature holds is malformed, as the proto
+// parser reports, for every list type and both of its encodings.
+TEST(FastParse, ListLengthPastEndOfFeature) {
+  float value = 1.5f;
+  const std::string float_bytes(reinterpret_cast<const char*>(&value),
+                                sizeof(value));
+  struct Case {
+    const char* name;
+    DataType dtype;
+    char feature_oneof_tag;
+    std::string list;
+  };
+  const std::vector<Case> cases = {
+      // BytesList {value: "A"}
+      {"bytes", DT_STRING, kBytesListTag, std::string("\x0a\x01" "A", 3)},
+      // FloatList {value: [1.5]}, packed and non-packed
+      {"packed float", DT_FLOAT, kFloatListTag,
+       std::string("\x0a\x04", 2) + float_bytes},
+      {"float", DT_FLOAT, kFloatListTag, std::string("\x0d", 1) + float_bytes},
+      // Int64List {value: [5]}, packed and non-packed
+      {"packed int64", DT_INT64, kInt64ListTag, std::string("\x0a\x01\x05", 3)},
+      {"int64", DT_INT64, kInt64ListTag, std::string("\x08\x05", 2)},
+  };
+  for (const Case& c : cases) {
+    SCOPED_TRACE(c.name);
+    FastParseExampleConfig config;
+    AddSparseFeature("f", c.dtype, &config);
+    FastParseSingleExampleConfig single_config;
+    AddSparseFeature("f", c.dtype, &single_config);
+
+    const std::string valid =
+        ExampleWithFeatureList(c.feature_oneof_tag, c.list.size(), c.list);
+    Result result;
+    absl::Status status =
+        FastParseExample(config, {tstring(valid)}, {}, nullptr, &result);
+    ASSERT_TRUE(status.ok()) << status;
+    EXPECT_EQ(result.sparse_values[0].NumElements(), 1);
+    Result single_result;
+    status = FastParseSingleExample(single_config, valid, &single_result);
+    ASSERT_TRUE(status.ok()) << status;
+    EXPECT_EQ(single_result.sparse_values[0].NumElements(), 1);
+
+    for (uint32_t length : {static_cast<uint32_t>(c.list.size() + 1),
+                            0x7fffffffu, 0x80000000u, 0xffffffffu}) {
+      const std::string serialized =
+          ExampleWithFeatureList(c.feature_oneof_tag, length, c.list);
+      Result result;
+      EXPECT_TRUE(absl::IsInvalidArgument(FastParseExample(
+          config, {tstring(serialized)}, {}, nullptr, &result)))
+          << length;
+      Result single_result;
+      EXPECT_TRUE(absl::IsInvalidArgument(
+          FastParseSingleExample(single_config, serialized, &single_result)))
+          << length;
+    }
   }
 }
 
