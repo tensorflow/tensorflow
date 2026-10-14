@@ -1599,7 +1599,7 @@ absl::StatusOr<Tiles> PropagateTileToInputForReduceScatterOp(
   const int64_t scatter_dim = reduce_scatter.scatter_dimension();
   const int64_t shard_size = reduce_scatter.shape().dimensions(scatter_dim);
   const int64_t num_replicas =
-      reduce_scatter.operand(0)->shape().dimensions(scatter_dim) / shard_size;
+      reduce_scatter.device_list()->num_devices_per_group();
 
   SmallVector<DimTile> dim_tiles(output_tile.dim_tiles());
   DimTile& scatter_tile = dim_tiles[scatter_dim];
@@ -1608,14 +1608,25 @@ absl::StatusOr<Tiles> PropagateTileToInputForReduceScatterOp(
         absl::StrCat("Non-unit stride on the scatter dimension of ",
                      reduce_scatter.ToString()));
   }
-  scatter_tile.offset = scatter_tile.offset * num_replicas;
-  scatter_tile.size = scatter_tile.size * num_replicas;
-  scatter_tile.upper_bound = scatter_tile.upper_bound * num_replicas;
+  if (num_replicas <= 1) {
+    return Tiles{output_tile};
+  }
+  const TilingSpace::DimensionInfo& replica_dim_info =
+      tiling_space.GetDimensionInfo(reduce_scatter,
+                                    reduce_scatter.shape().dimensions().size());
+  SymbolicExpr replica_id =
+      CreateDimExpr(replica_dim_info.id.value(), tiling_space.mlir_context());
+  scatter_tile.offset = (scatter_tile.offset + replica_id * shard_size -
+                         replica_id * scatter_tile.size)
+                            .Canonicalize();
+  scatter_tile.size = (scatter_tile.size * num_replicas).Canonicalize();
+  scatter_tile.upper_bound =
+      (scatter_tile.upper_bound * num_replicas).Canonicalize();
 
   if (!tiling_space.IsSymbolic()) {
     std::optional<int64_t> size = TryGetConstantValue(scatter_tile.size);
     if (!size.has_value() || shard_size % *size != 0 ||
-        !scatter_tile.offset.Canonicalize().IsMultipleOf(*size)) {
+        !scatter_tile.offset.IsMultipleOf(*size)) {
       return absl::FailedPreconditionError(absl::StrCat(
           "Tiling propagation rejected for ", reduce_scatter.ToString(),
           ": operand tile ", scatter_tile.size.ToString(), " at ",

@@ -569,6 +569,48 @@ TEST_F(TilingSpaceTest,
   EXPECT_EQ(tiling_space->num_parallel_dimensions(), 4);
 }
 
+TEST_F(TilingSpaceTest,
+       ReduceScatterRootGetsReplicaDimensionAndReplicaSplitRootTile) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+    f {
+      p0 = f32[32,16] parameter(0)
+      ROOT rs = f32[8,16] reduce-scatter(p0),
+        replica_groups={{0,1,2,3}}, dimensions={0}, to_apply=add
+    }
+
+    ENTRY e {
+      p0 = f32[32,16] parameter(0)
+      ROOT fusion = f32[8,16] fusion(p0), kind=kCustom, calls=f
+    }
+  )");
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  ASSERT_OK_AND_ASSIGN(auto tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+  EXPECT_EQ(tiling_space->num_dimensions(), 3);
+  EXPECT_EQ(tiling_space->num_parallel_dimensions(), 2);
+  EXPECT_THAT(*tiling_space, MatchString(R"(
+    Dimensions:
+        0 type: parallel size: 8 dim ID:0
+          hlo: %rs = f32[8,16]{1,0} reduce-scatter(%p0), replica_groups={{0,1,2,3}}, dimensions={0}, to_apply=%add
+        1 type: parallel size: 16 dim ID:1
+          hlo: %rs = f32[8,16]{1,0} reduce-scatter(%p0), replica_groups={{0,1,2,3}}, dimensions={0}, to_apply=%add
+        2 type: replica size: 4 dim ID:2
+          hlo: %rs = f32[8,16]{1,0} reduce-scatter(%p0), replica_groups={{0,1,2,3}}, dimensions={0}, to_apply=%add
+    Root tiles:
+      0 root tile:
+           offsets [tid_0 * ts_0 * 4 + tid_2 * ts_0, tid_1 * ts_1]
+           sizes [ts_0, ts_1]
+           strides [1, 1]
+           upper bounds [8, 16]
+  )"));
+}
+
 class TilingSpaceSameShapeMultiOutputTest : public TilingSpaceTest {
  protected:
   DebugOptions GetDebugOptionsForTest() const override {

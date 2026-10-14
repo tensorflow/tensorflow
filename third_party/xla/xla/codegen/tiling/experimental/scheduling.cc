@@ -580,17 +580,23 @@ absl::StatusOr<Schedule> GetSchedule(
                                         global_tile_id, num_tiles_per_pid);
   }
 
-  // Compute the block counts for each parallel dimension.
+  // Compute the block counts for each replica and parallel dimension.
+  // Replica dimensions are placed outermost so each contiguous group of
+  // parallel blocks targets the same peer.
+  const TilingSpace& tiling_space = tiled_computation.tiling_space();
+  llvm::SmallVector<int64_t, 4> block_counts;
+  llvm::SmallVector<int64_t, 4> dim_ids;
   llvm::SmallVector<int64_t, 4> parallel_dim_block_counts;
   llvm::SmallVector<int64_t, 4> parallel_dim_ids;
   for (const auto& [dim_id, dimension] :
-       llvm::enumerate(tiled_computation.tiling_space().dimensions())) {
-    if (dimension.type != TilingSpace::DimensionSemantics::kParallel) {
-      continue;
+       llvm::enumerate(tiling_space.dimensions())) {
+    if (dimension.type == TilingSpace::DimensionSemantics::kReplica) {
+      block_counts.push_back(tiling_space.GetNumTiles(dimension));
+      dim_ids.push_back(dim_id);
+    } else if (dimension.type == TilingSpace::DimensionSemantics::kParallel) {
+      parallel_dim_block_counts.push_back(tiling_space.GetNumTiles(dimension));
+      parallel_dim_ids.push_back(dim_id);
     }
-    parallel_dim_block_counts.push_back(
-        CeilOfRatio(dimension.dimension_size, *dimension.tile_size));
-    parallel_dim_ids.push_back(dim_id);
   }
 
   llvm::SmallVector<int64_t> permutation =
@@ -601,15 +607,16 @@ absl::StatusOr<Schedule> GetSchedule(
     parallel_dim_ids =
         llvm::to_vector<4>(xla::Permute(parallel_dim_ids, permutation));
   }
+  block_counts.append(parallel_dim_block_counts);
+  dim_ids.append(parallel_dim_ids);
 
   llvm::SmallVector<SymbolicExpr, 4> delinearized_pid =
-      DelinearizeIndex(parallel_dim_block_counts, global_tile_id, ctx);
+      DelinearizeIndex(block_counts, global_tile_id, ctx);
   Schedule schedule;
-  for (const auto& [parallel_dim_id, expr] :
-       llvm::zip(parallel_dim_ids, delinearized_pid)) {
-    schedule.dim_id_to_pid_expr[parallel_dim_id] = expr;
+  for (const auto& [dim_id, expr] : llvm::zip(dim_ids, delinearized_pid)) {
+    schedule.dim_id_to_pid_expr[dim_id] = expr;
   }
-  schedule.num_tiles = Product(parallel_dim_block_counts);
+  schedule.num_tiles = Product(block_counts);
   schedule.num_pids = CeilOfRatio(schedule.num_tiles, num_tiles_per_pid);
   return schedule;
 }
