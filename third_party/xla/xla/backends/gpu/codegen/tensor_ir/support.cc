@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
@@ -44,7 +45,9 @@ bool IsSupportedPrimitiveType(PrimitiveType type) {
     case PrimitiveType::F16:
     case PrimitiveType::BF16:
     case PrimitiveType::F32:
-    case PrimitiveType::F64: {
+    case PrimitiveType::F64:
+    case PrimitiveType::F8E4M3FN:
+    case PrimitiveType::F8E5M2: {
       return true;
     }
 
@@ -108,6 +111,7 @@ bool IsSupportedFusionOpcode(HloOpcode opcode) {
     case HloOpcode::kParameter:
     case HloOpcode::kConstant:
     case HloOpcode::kIota:
+    case HloOpcode::kCopy:
     case HloOpcode::kConcatenate: {
       return true;
     }
@@ -200,20 +204,26 @@ CodegenDecision IsInstructionSupportedForFusion(const HloInstruction& instr) {
         *instr.fused_instructions_computation());
   }
 
-  if (!instr.shape().IsArray()) {
-    return CodegenDecision::Forbid(absl::StrCat("Unsupported non-array shape: ",
-                                                instr.shape().ToString()));
-  }
-
-  if (!IsSupportedPrimitiveType(instr.shape().element_type())) {
-    return CodegenDecision::Forbid(
-        absl::StrCat("Unsupported element type: ",
-                     primitive_util::LowercasePrimitiveTypeName(
-                         instr.shape().element_type())));
-  }
-  if (!IsSupportedFusionOpcode(instr.opcode())) {
-    return CodegenDecision::Forbid(absl::StrCat(
-        "Unsupported instruction: ", HloOpcodeString(instr.opcode())));
+  // The root of a multi-output fusion is a flat tuple of arrays. Only `kTuple`
+  // gets this exemption: the tuple's operands are checked as instructions of
+  // the computation, while any other tuple-shaped opcode is unsupported.
+  bool is_root_tuple = instr.opcode() == HloOpcode::kTuple && instr.IsRoot() &&
+                       !ShapeUtil::IsNestedTuple(instr.shape());
+  if (!is_root_tuple) {
+    if (!instr.shape().IsArray()) {
+      return CodegenDecision::Forbid(absl::StrCat(
+          "Unsupported non-array shape: ", instr.shape().ToString()));
+    }
+    if (!IsSupportedPrimitiveType(instr.shape().element_type())) {
+      return CodegenDecision::Forbid(
+          absl::StrCat("Unsupported element type: ",
+                       primitive_util::LowercasePrimitiveTypeName(
+                           instr.shape().element_type())));
+    }
+    if (!IsSupportedFusionOpcode(instr.opcode())) {
+      return CodegenDecision::Forbid(absl::StrCat(
+          "Unsupported instruction: ", HloOpcodeString(instr.opcode())));
+    }
   }
 
   switch (instr.opcode()) {

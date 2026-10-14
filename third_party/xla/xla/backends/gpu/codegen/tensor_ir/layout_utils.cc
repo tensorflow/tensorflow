@@ -22,9 +22,9 @@ limitations under the License.
 #include "tensor_ir/Dialect/TensorIR.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
-#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -66,24 +66,29 @@ bool HasDefaultLayout(const Shape& shape) {
 
 namespace {
 
-// Both attachment functions below target the single-result graphs that
-// `ImportAndLegalizeComputation` produces.
-absl::Status CheckGraphIsSingleResult(mlir::nv_tensor_ir::GraphOp graph,
-                                      absl::string_view caller) {
-  if (graph.getNumResults() != 1) {
-    return absl::InternalError(
-        absl::StrCat(caller, ": graph '", graph.getSymName().str(), "' has ",
-                     graph.getNumResults(), " results, expected exactly 1"));
+// Returns the shapes of the graph results `ImportAndLegalizeComputation`
+// produces for `computation`: the elements of a root tuple, or the root shape
+// itself otherwise.
+absl::StatusOr<absl::Span<const Shape>> GetResultShapes(
+    const HloComputation& computation) {
+  const Shape& root_shape = computation.root_instruction()->shape();
+  absl::Span<const Shape> shapes =
+      root_shape.IsTuple() ? absl::MakeConstSpan(root_shape.tuple_shapes())
+                           : absl::MakeConstSpan(&root_shape, 1);
+  for (const Shape& shape : shapes) {
+    if (!shape.IsArray()) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("AttachLayoutStrides: non-array result of computation '",
+                       computation.name(), "': ", shape.ToString()));
+    }
   }
-  return absl::OkStatus();
+  return shapes;
 }
 
 }  // namespace
 
 absl::Status AttachLayoutStrides(mlir::nv_tensor_ir::GraphOp graph,
                                  const HloComputation& computation) {
-  ABSL_RETURN_IF_ERROR(CheckGraphIsSingleResult(graph, "AttachLayoutStrides"));
-
   int64_t num_parameters = computation.num_parameters();
   if (graph.getNumArguments() != num_parameters) {
     return absl::InternalError(absl::StrCat(
@@ -110,16 +115,20 @@ absl::Status AttachLayoutStrides(mlir::nv_tensor_ir::GraphOp graph,
     }
   }
 
-  const Shape& root_shape = computation.root_instruction()->shape();
-  if (!root_shape.IsArray()) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("AttachLayoutStrides: non-array root of computation '",
-                     computation.name(), "': ", root_shape.ToString()));
+  ABSL_ASSIGN_OR_RETURN(absl::Span<const Shape> result_shapes,
+                   GetResultShapes(computation));
+  if (graph.getNumResults() != result_shapes.size()) {
+    return absl::InternalError(absl::StrCat(
+        "AttachLayoutStrides: graph '", graph.getSymName().str(), "' has ",
+        graph.getNumResults(), " results, expected ", result_shapes.size(),
+        " for computation '", computation.name(), "'"));
   }
-  if (!HasDefaultLayout(root_shape)) {
-    graph.setResultAttr(
-        0, stride_attr_name,
-        mlir::StringAttr::get(context, ComputeStrideString(root_shape)));
+  for (int64_t i = 0; i < result_shapes.size(); ++i) {
+    if (!HasDefaultLayout(result_shapes[i])) {
+      graph.setResultAttr(i, stride_attr_name,
+                          mlir::StringAttr::get(
+                              context, ComputeStrideString(result_shapes[i])));
+    }
   }
 
   return absl::OkStatus();
@@ -128,14 +137,14 @@ absl::Status AttachLayoutStrides(mlir::nv_tensor_ir::GraphOp graph,
 absl::Status AttachBufferAlignments(
     mlir::nv_tensor_ir::GraphOp graph,
     absl::Span<const emitters::KernelArgument> kernel_args) {
-  ABSL_RETURN_IF_ERROR(CheckGraphIsSingleResult(graph, "AttachBufferAlignments"));
-
   int64_t num_inputs = graph.getNumArguments();
-  if (kernel_args.size() != num_inputs + 1) {
+  int64_t num_results = graph.getNumResults();
+  if (kernel_args.size() != num_inputs + num_results) {
     return absl::InternalError(absl::StrCat(
-        "AttachBufferAlignments: expected ", num_inputs + 1,
+        "AttachBufferAlignments: expected ", num_inputs + num_results,
         " kernel arguments for graph '", graph.getSymName().str(), "' with ",
-        num_inputs, " arguments, but got ", kernel_args.size()));
+        num_inputs, " arguments and ", num_results, " results, but got ",
+        kernel_args.size()));
   }
 
   mlir::MLIRContext* context = graph.getContext();
@@ -148,9 +157,11 @@ absl::Status AttachBufferAlignments(
         i, alignment_attr_name,
         mlir::IntegerAttr::get(i64_type, kernel_args[i].alignment()));
   }
-  graph.setResultAttr(
-      0, alignment_attr_name,
-      mlir::IntegerAttr::get(i64_type, kernel_args[num_inputs].alignment()));
+  for (int64_t i = 0; i < num_results; ++i) {
+    graph.setResultAttr(i, alignment_attr_name,
+                        mlir::IntegerAttr::get(
+                            i64_type, kernel_args[num_inputs + i].alignment()));
+  }
 
   return absl::OkStatus();
 }

@@ -221,3 +221,17 @@ func.func @broadcast_permuted(%arg0: tensor<2x3xf32>) -> tensor<4x3x2xf32> {
   %0 = stablehlo.broadcast_in_dim %arg0, dims = [2, 1] : (tensor<2x3xf32>) -> tensor<4x3x2xf32>
   return %0 : tensor<4x3x2xf32>
 }
+
+// -----
+
+// mhlo.copy only changes the layout, which lives on the graph boundary rather
+// than in the body, so it legalizes to its operand.
+// CHECK-LABEL: nv_tensor_ir.graph @copy_is_identity
+// CHECK-SAME: (%[[IN:.*]]: tensor<8x16xf32>) -> tensor<8x16xf32>
+// CHECK-NEXT: %[[NEG:.*]] = neg %[[IN]] : tensor<8x16xf32>
+// CHECK-NEXT: results %[[NEG]] : tensor<8x16xf32>
+func.func @copy_is_identity(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
+  %0 = stablehlo.negate %arg0 : tensor<8x16xf32>
+  %1 = "mhlo.copy"(%0) {result_layout = dense<[0, 1]> : tensor<2xindex>, xla_shape = "f32[8,16]{0,1}"} : (tensor<8x16xf32>) -> tensor<8x16xf32>
+  return %1 : tensor<8x16xf32>
+}
