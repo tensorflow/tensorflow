@@ -64,6 +64,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/lowering_util.h"
 #include "xla/backends/gpu/runtime/all_gather.h"
 #include "xla/backends/gpu/runtime/all_reduce.h"
+#include "xla/backends/gpu/runtime/collective_info_utils.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/reduce_scatter.h"
 #include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
@@ -300,47 +301,9 @@ absl::StatusOr<ReduceScatterEmitterContext> CreateReduceScatterEmitterContext(
   return ctx;
 }
 
-using InfoStruct =
-    std::variant<AllReduceInfo, AllGatherInfo, ReduceScatterInfo>;
-
-// Builds helper struct for the given collective instruction.
-absl::StatusOr<InfoStruct> GetCollectiveInfo(
-    const HloInstruction* instr, const GpuTopology& gpu_topology,
-    const DeviceAssignment* device_assignment) {
-  switch (instr->opcode()) {
-    case HloOpcode::kAllReduce: {
-      const HloAllReduceInstruction* all_reduce =
-          Cast<HloAllReduceInstruction>(instr);
-      ABSL_ASSIGN_OR_RETURN(AllReduceInfo all_reduce_info,
-                       BuildAllReduceInfo(
-                           /*is_multimem_enabled=*/false, gpu_topology,
-                           all_reduce, device_assignment));
-      return all_reduce_info;
-    }
-    case HloOpcode::kAllGather: {
-      const HloAllGatherInstruction* all_gather =
-          Cast<HloAllGatherInstruction>(instr);
-      ABSL_ASSIGN_OR_RETURN(
-          AllGatherInfo all_gather_info,
-          BuildAllGatherInfo(gpu_topology, all_gather, device_assignment));
-      return all_gather_info;
-    }
-    case HloOpcode::kReduceScatter: {
-      ABSL_ASSIGN_OR_RETURN(
-          ReduceScatterInfo reduce_scatter_info,
-          BuildReduceScatterInfo(gpu_topology,
-                                 Cast<HloReduceScatterInstruction>(instr),
-                                 device_assignment));
-      return reduce_scatter_info;
-    }
-    default:
-      return absl::InvalidArgumentError(
-          absl::StrCat("Unsupported collective opcode: ", instr->opcode()));
-  }
-}
-
 absl::StatusOr<LaunchDimensions> GetLaunchDimensions(
-    const InfoStruct& collective_info, const GpuTopology& gpu_topology) {
+    const CollectiveKernelInfo& collective_info,
+    const GpuTopology& gpu_topology) {
   const se::DeviceDescription& device_info =
       gpu_topology.gpu_target_config().device_description;
   return std::visit(
@@ -365,7 +328,7 @@ absl::StatusOr<LaunchDimensions> GetLaunchDimensions(
 
 absl::Status ValidateBlockLevelFusionConfig(
     const BlockLevelFusionConfig& block_level_config,
-    const InfoStruct& collective_info) {
+    const CollectiveKernelInfo& collective_info) {
   TF_RET_CHECK(block_level_config.output_tiles_size() == 1)
       << "expected 1 output tile, but got "
       << block_level_config.output_tiles_size();
@@ -1358,7 +1321,7 @@ absl::StatusOr<BlockLevelFusionConfig> GetCollectiveBlockLevelFusionConfig(
         "Triton codegen. %s",
         instr->ToString()));
   }
-  ABSL_ASSIGN_OR_RETURN(InfoStruct collective_info,
+  ABSL_ASSIGN_OR_RETURN(CollectiveKernelInfo collective_info,
                    GetCollectiveInfo(instr, gpu_topology, device_assignment));
   ABSL_ASSIGN_OR_RETURN(const LaunchDimensions launch_dims,
                    GetLaunchDimensions(collective_info, gpu_topology));

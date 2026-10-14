@@ -4245,6 +4245,46 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "collective_info_utils",
+    srcs = ["collective_info_utils.cc"],
+    hdrs = ["collective_info_utils.h"],
+    deps = [
+        ":all_gather",
+        ":all_reduce",
+        ":reduce_scatter",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:device_assignment",
+        "//xla/service:gpu_topology",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_cc_test(
+    name = "collective_info_utils_test",
+    srcs = ["collective_info_utils_test.cc"],
+    deps = [
+        ":all_gather",
+        ":all_reduce",
+        ":collective_info_utils",
+        ":reduce_scatter",
+        "//xla/backends/gpu/target_config",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/service:gpu_topology",
+        "//xla/service/gpu:gpu_device_info_for_tests",
+        "//xla/stream_executor:device_description",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 xla_cc_test(
     name = "all_reduce_build_info_test",
     srcs = ["all_reduce_build_info_test.cc"],
