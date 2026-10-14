@@ -106,15 +106,17 @@ absl::StatusOr<KernelReuseCache::Entry> CompileFusion(
 
   const std::vector<emitters::KernelArgument>& kernel_args =
       kernel_arguments.args();
-  // The graph has one argument per fused parameter, which the HLO verifier
-  // ties to the fusion's operands. A fusion is permitted to have operands that
-  // no fused parameter reads, though, in which case the counts disagree; fail
-  // loudly here rather than letting the alignments be attached off-by-one.
+  // The graph has one argument per fused parameter and one result per fusion
+  // output, which the HLO verifier ties to the fusion's operands and result. A
+  // fusion is permitted to have operands that no fused parameter reads, though,
+  // in which case the counts disagree; fail loudly here rather than letting the
+  // alignments be attached off-by-one.
   int64_t num_inputs = computation->num_parameters();
-  if (kernel_args.size() != num_inputs + 1) {
+  int64_t num_outputs = graph_op.getNumResults();
+  if (kernel_args.size() != num_inputs + num_outputs) {
     return absl::InternalError(absl::StrCat(
-        "TensorIrFusion: expected ", num_inputs + 1,
-        " kernel arguments (one per fused parameter plus a single output), "
+        "TensorIrFusion: expected ", num_inputs + num_outputs,
+        " kernel arguments (one per fused parameter plus one per output), "
         "got ",
         kernel_args.size(), " for fusion: ", fusion.ToString()));
   }
