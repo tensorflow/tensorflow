@@ -16,6 +16,8 @@ limitations under the License.
 #include "xla/service/gpu/stream_executor_util.h"
 
 #include <cstdint>
+#include <memory>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -23,10 +25,16 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "absl/synchronization/blocking_counter.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "xla/autotuning.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/stream_executor/mock_stream_executor.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/tsl/util/proto/proto_utils.h"
 
@@ -109,6 +117,63 @@ TEST(StreamExecutorUtilTest, CudnnConvKindFromProto) {
 
   EXPECT_THAT(CudnnConvKindFromProto(ConvolutionKind::INVALID),
               StatusIs(absl::StatusCode::kInternal));
+}
+
+TEST(StreamExecutorUtilTest, GetGpuMutexConcurrentPerDevice) {
+  constexpr int kNumDevices = 8;
+  constexpr int kThreadsPerDevice = 4;
+
+  std::vector<std::unique_ptr<se::MockStreamExecutor>> executors;
+  for (int d = 0; d < kNumDevices; ++d) {
+    auto exec = std::make_unique<se::MockStreamExecutor>();
+    EXPECT_CALL(*exec, device_ordinal()).WillRepeatedly(::testing::Return(d));
+    executors.push_back(std::move(exec));
+  }
+
+  tsl::thread::ThreadPool pool(tsl::Env::Default(), "gpu_mutex_test",
+                               kNumDevices * kThreadsPerDevice);
+  absl::BlockingCounter ready(kNumDevices * kThreadsPerDevice);
+  absl::Notification go;
+  absl::BlockingCounter done(kNumDevices * kThreadsPerDevice);
+
+  std::vector<absl::Mutex*> mutex_ptrs(kNumDevices * kThreadsPerDevice,
+                                       nullptr);
+
+  for (int d = 0; d < kNumDevices; ++d) {
+    for (int t = 0; t < kThreadsPerDevice; ++t) {
+      int idx = d * kThreadsPerDevice + t;
+      pool.Schedule([&, d, idx]() {
+        ready.DecrementCount();
+        go.WaitForNotification();
+        absl::Mutex& mu = GetGpuMutex(executors[d].get());
+        {
+          absl::MutexLock lock(mu);
+          mutex_ptrs[idx] = &mu;
+        }
+        done.DecrementCount();
+      });
+    }
+  }
+
+  ready.Wait();
+  go.Notify();
+  done.Wait();
+
+  for (int d = 0; d < kNumDevices; ++d) {
+    absl::Mutex* base = mutex_ptrs[d * kThreadsPerDevice];
+    ASSERT_NE(base, nullptr);
+    for (int t = 1; t < kThreadsPerDevice; ++t) {
+      EXPECT_EQ(mutex_ptrs[d * kThreadsPerDevice + t], base);
+    }
+    for (int other_d = d + 1; other_d < kNumDevices; ++other_d) {
+      EXPECT_NE(base, mutex_ptrs[other_d * kThreadsPerDevice]);
+    }
+  }
+
+  se::MockStreamExecutor neg_exec;
+  EXPECT_CALL(neg_exec, device_ordinal()).WillRepeatedly(::testing::Return(-1));
+  absl::Mutex& fallback_mu = GetGpuMutex(&neg_exec);
+  EXPECT_EQ(&fallback_mu, &GetGpuMutex(&neg_exec));
 }
 
 }  // namespace
