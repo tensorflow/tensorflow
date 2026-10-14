@@ -199,8 +199,14 @@ mlir::Value OnesLike(mlir::ImplicitLocOpBuilder& b, mlir::Type type) {
   return cst;
 }
 
-Value ReducePrecision(mlir::ImplicitLocOpBuilder& b, const HloInstruction& hlo,
-                      Value value) {
+absl::StatusOr<Value> ReducePrecision(mlir::ImplicitLocOpBuilder& b,
+                                      const HloInstruction& hlo, Value value) {
+  // The lowering assumes an IEEE-like layout with a sign bit and a mantissa,
+  // which F8E8M0FNU does not have.
+  if (hlo.operand(0)->shape().element_type() == F8E8M0FNU) {
+    return absl::UnimplementedError(
+        "ReducePrecision is not supported for F8E8M0FNU.");
+  }
   // Check if it's a no-op.
   auto elem_type =
       GetPrimitiveType(mlir::getElementTypeOrSelf(value.getType()));

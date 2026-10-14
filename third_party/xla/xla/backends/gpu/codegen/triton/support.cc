@@ -101,6 +101,33 @@ CodegenDecision IsTritonSupportedDataType(
   }
 }
 
+// Like `IsTritonSupportedDataType`, but also allows types that are only
+// supported by some opcodes.
+CodegenDecision IsTritonSupportedDataTypeForOpcode(
+    PrimitiveType type, HloOpcode opcode,
+    const se::GpuComputeCapability& gpu_version) {
+  // F8E8M0FNU is lowered as i8, so it supports ops that don't change values.
+  if (type == F8E8M0FNU && gpu_version.IsCuda()) {
+    switch (opcode) {
+      case HloOpcode::kBitcast:
+      case HloOpcode::kBroadcast:
+      case HloOpcode::kConcatenate:
+      case HloOpcode::kConstant:
+      case HloOpcode::kCopy:
+      case HloOpcode::kPad:
+      case HloOpcode::kParameter:
+      case HloOpcode::kReshape:
+      case HloOpcode::kSelect:
+      case HloOpcode::kSlice:
+      case HloOpcode::kTranspose:
+        return CodegenDecision::Allow();
+      default:
+        break;
+    }
+  }
+  return IsTritonSupportedDataType(type, gpu_version);
+}
+
 // Set of unary elementwise ops that are genuinely supported by Triton.
 absl::flat_hash_set<HloOpcode> TritonSupportedUnaryElementwiseOps(
     PrimitiveType element_type, const se::GpuComputeCapability& gpu_version) {
@@ -221,6 +248,12 @@ CodegenDecision IsTritonSupportedConversion(
   // PRED to U8 not clamping the value to the [0, 1] range.
   if (input == PRED && output == U8) {
     return error_message("Unsupported PRED to U8 conversion.");
+  }
+
+  // A no-op conversion only moves data around.
+  if (input == output) {
+    return IsTritonSupportedDataTypeForOpcode(input, HloOpcode::kCopy,
+                                              gpu_version);
   }
 
   if (!IsTritonSupportedDataType(input, gpu_version)) {
@@ -825,12 +858,13 @@ CodegenDecision IsTritonSupportedInstructionImpl(
         return CodegenDecision::Forbid(
             "Nested tuple or token shape is not supported.");
       }
-      output_type_is_supported = output_type_is_supported.And(
-          IsTritonSupportedDataType(shape.element_type(), gpu_version));
+      output_type_is_supported =
+          output_type_is_supported.And(IsTritonSupportedDataTypeForOpcode(
+              shape.element_type(), instr.opcode(), gpu_version));
     }
   } else {
-    output_type_is_supported =
-        IsTritonSupportedDataType(instr.shape().element_type(), gpu_version);
+    output_type_is_supported = IsTritonSupportedDataTypeForOpcode(
+        instr.shape().element_type(), instr.opcode(), gpu_version);
   }
 
   if (!output_type_is_supported) {
@@ -840,8 +874,8 @@ CodegenDecision IsTritonSupportedInstructionImpl(
 
   CodegenDecision input_types_are_supported = CodegenDecision(
       absl::c_all_of(instr.operands(), [&](const HloInstruction* operand) {
-        return IsTritonSupportedDataType(operand->shape().element_type(),
-                                         gpu_version);
+        return IsTritonSupportedDataTypeForOpcode(
+            operand->shape().element_type(), instr.opcode(), gpu_version);
       }));
 
   if (!input_types_are_supported) {

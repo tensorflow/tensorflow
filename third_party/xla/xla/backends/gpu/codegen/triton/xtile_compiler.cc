@@ -734,13 +734,7 @@ absl::Status LowerXTileToTriton(
     pm.addPass(
         mlir::triton::xla::createTritonXLAMathToLibdevicePass(math_options));
 
-    if (fusion.GetModule()
-            ->config()
-            .debug_options()
-            .xla_gpu_experimental_scaled_dot_with_triton()) {
-      pm.addPass(
-          mlir::triton::xla::createTritonXLAConvertUnsupportedTypesPass());
-    }
+    pm.addPass(mlir::triton::xla::createTritonXLAConvertUnsupportedTypesPass());
     tsl::StatusScopedDiagnosticHandler diagnostic_handler(&mlir_context);
     if (absl::Status status =
             diagnostic_handler.consumeStatus(pm.run(xtile_dialect_module));
