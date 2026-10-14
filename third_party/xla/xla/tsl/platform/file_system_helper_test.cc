@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "xla/tsl/platform/file_system_helper.h"
 
+#include <algorithm>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include <gtest/gtest.h>
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -62,6 +64,46 @@ TEST(RandomAccessFileCopyingInputStreamTest, Read) {
   EXPECT_EQ(absl::string_view(buffer, 5), "ello\n");
 
   EXPECT_EQ(input.Read(buffer, 1), 0);
+}
+
+TEST(GetMatchingPathsTest, MatchesSingleAndMultiLevelGlobPatterns) {
+  Env* env = Env::Default();
+  const std::string base_dir =
+      ::testing::TempDir() + "/get_matching_paths_test";
+  TF_ASSERT_OK(env->RecursivelyCreateDir(base_dir + "/dir_a/sub"));
+  TF_ASSERT_OK(env->RecursivelyCreateDir(base_dir + "/dir_b"));
+
+  const std::string file_a = base_dir + "/file_a.txt";
+  const std::string file_sub_1 = base_dir + "/dir_a/file_1.txt";
+  const std::string file_sub_2 = base_dir + "/dir_b/file_2.txt";
+  TF_ASSERT_OK(WriteStringToFile(env, file_a, "a"));
+  TF_ASSERT_OK(WriteStringToFile(env, file_sub_1, "1"));
+  TF_ASSERT_OK(WriteStringToFile(env, file_sub_2, "2"));
+
+  FileSystem* fs = nullptr;
+  TF_ASSERT_OK(env->GetFileSystemForFile(base_dir, &fs));
+
+  for (bool multithreaded : {false, true}) {
+    std::vector<std::string> results;
+    TF_ASSERT_OK(
+        internal::GetMatchingPaths(fs, env, "", &results, multithreaded));
+    EXPECT_TRUE(results.empty());
+
+    TF_ASSERT_OK(
+        internal::GetMatchingPaths(fs, env, file_a, &results, multithreaded));
+    EXPECT_EQ(results, std::vector<std::string>{file_a});
+
+    TF_ASSERT_OK(internal::GetMatchingPaths(fs, env, base_dir + "/*", &results,
+                                            multithreaded));
+    std::sort(results.begin(), results.end());
+    EXPECT_EQ(results, (std::vector<std::string>{base_dir + "/dir_a",
+                                                 base_dir + "/dir_b", file_a}));
+
+    TF_ASSERT_OK(internal::GetMatchingPaths(
+        fs, env, base_dir + "/dir_*/file_*.txt", &results, multithreaded));
+    std::sort(results.begin(), results.end());
+    EXPECT_EQ(results, (std::vector<std::string>{file_sub_1, file_sub_2}));
+  }
 }
 
 }  // namespace
