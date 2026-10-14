@@ -351,6 +351,7 @@ absl::Status ApplyConfigToCudnnFusion(HloInstruction& instr,
   backend_config->set_kind(kCuDnnFusionKind);
   backend_config->mutable_cudnn_fusion_config()->set_plan_id(config.algo_id());
   ABSL_RETURN_IF_ERROR(instr.set_backend_config(std::move(gpu_config)));
+  instr.set_fusion_kind(HloInstruction::FusionKind::kCustom);
   return absl::OkStatus();
 }
 
