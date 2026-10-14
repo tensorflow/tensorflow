@@ -18,6 +18,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.eager import backprop
+from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
@@ -260,7 +261,8 @@ class FlashAttentionTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(ValueError, "must be rank 4"):
       nn_ops.flash_attention(x[0], x[0], x[0])
     for rate in (-0.1, 1.0):
-      with self.assertRaisesRegex(errors.InvalidArgumentError, "dropout_rate"):
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  r"dropout_rate must be in \[0, 1\)"):
         self.evaluate(nn_ops.flash_attention(x, x, x, dropout_rate=rate))
     # Shape mismatches are caught statically by the Python wrapper.
     with self.assertRaisesRegex(ValueError, "must be rank 4"):
@@ -275,11 +277,14 @@ class FlashAttentionTest(test.TestCase, parameterized.TestCase):
                                 "feature size mismatch"):
       self.evaluate(gen_nn_ops.flash_attention(
           x[:, :, 0], array_ops.zeros([2, 4, 32]), x[:, :, 0], seed, seed))
-    with self.assertRaisesRegex(
-        (ValueError, errors.InvalidArgumentError), "is_causal"):
-      self.evaluate(nn_ops.flash_attention(
-          x, array_ops.zeros([2, 5, 1, 8]), array_ops.zeros([2, 5, 1, 8]),
-          is_causal=True))
+    # Checked by the kernel; in graph mode, hide the static shape so shape
+    # inference doesn't reject it first.
+    kv = array_ops.zeros([2, 5, 1, 8])
+    if not context.executing_eagerly():
+      kv = array_ops.placeholder_with_default(kv, shape=None)
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "seq size Q != K while is_causal = True"):
+      self.evaluate(nn_ops.flash_attention(x, kv, kv, is_causal=True))
 
   @parameterized.parameters(dtypes.float32, dtypes.float16)
   def testEmptySequences(self, dtype):
