@@ -483,6 +483,34 @@ class SoftmaxVJPFloat64InvarianceTest(test.TestCase):
           np.all(np.isfinite(g_val)), msg='float32 gradient must be finite'
       )
 
+  def testSoftmaxVJPFloat16Unchanged(self):
+    """float16 softmax VJP must still work (no regression)."""
+    with self.cached_session():
+      logits = constant_op.constant([40.0, 0.0], dtype=dtypes.float16)
+      with backprop.GradientTape() as tape:
+        tape.watch(logits)
+        output = nn_ops.softmax(logits)[0]
+      g = tape.gradient(output, logits)
+      g_val = self.evaluate(g)
+      self.assertEqual(g_val.shape, (2,))
+      self.assertTrue(
+          np.all(np.isfinite(g_val)), msg='float16 gradient must be finite'
+      )
+
+  def testSoftmaxVJPBfloat16Unchanged(self):
+    """bfloat16 softmax VJP must still work (no regression)."""
+    with self.cached_session():
+      logits = constant_op.constant([40.0, 0.0], dtype=dtypes.bfloat16)
+      with backprop.GradientTape() as tape:
+        tape.watch(logits)
+        output = nn_ops.softmax(logits)[0]
+      g = tape.gradient(output, logits)
+      g_val = self.evaluate(g)
+      self.assertEqual(g_val.shape, (2,))
+      self.assertTrue(
+          np.all(np.isfinite(g_val)), msg='bfloat16 gradient must be finite'
+      )
+
   def testSoftmaxVJPGradientCheckerFloat64(self):
     """Gradient checker must pass for softmax over a float64 range."""
     with self.cached_session():
