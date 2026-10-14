@@ -509,7 +509,6 @@ class SdyRoundTripDedupMeshesPass
 
   void runOnOperation() final {
     ModuleOp moduleOp = getOperation();
-    SymbolTable symbolTable(moduleOp);
 
     // Exit early if there are no meshes or just one mesh.
     auto meshIter = moduleOp.getOps<MeshOp>();
@@ -528,6 +527,7 @@ class SdyRoundTripDedupMeshesPass
       // No meshes to dedup.
       return;
     }
+    SymbolTable symbolTable(moduleOp);
     dedupMeshes(moduleOp, symbolTable, duplicateMeshesToAxisMap);
     eraseMeshes(symbolTable, duplicateMeshesToAxisMap);
   }
