@@ -51,6 +51,7 @@ class ConstOpTest(test_util.TensorFlowTestCase):
         dtypes.float8_e4m3fnuz,
         dtypes.float8_e4m3b11fnuz,
         dtypes.float8_e5m2fnuz,
+        dtypes.float8_e8m0fnu,
     }
     for dtype in types:
       with self.subTest(dtype=dtype):
@@ -61,6 +62,7 @@ class ConstOpTest(test_util.TensorFlowTestCase):
             dtypes.uint16,
             dtypes.uint32,
             dtypes.uint64,
+            dtypes.float8_e8m0fnu,
         ]:
           values = [0., 1., dtype.min, dtype.max]
         else:

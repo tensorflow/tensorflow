@@ -408,6 +408,36 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose(24., acc.jvp(x))
     self.assertAllClose(24. * 3., acc.jvp(y))
 
+  def testShapeMismatchRaisesError(self):
+    primals = constant_op.constant([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+    tangents = constant_op.constant([0.1, 0.2, 0.3])
+    with self.assertRaisesRegex(
+        ValueError,
+        r"primals and tangents must have the same shape, "
+        r"got \(2, 3\) vs \(3,\)",
+    ):
+      forwardprop.ForwardAccumulator(primals, tangents)
+
+    # Non-tensor inputs are converted before validation, so they report the
+    # same shape error instead of an AttributeError from `.shape`.
+    with self.assertRaisesRegex(
+        ValueError,
+        r"primals and tangents must have the same shape, "
+        r"got \(2, 3\) vs \(3,\)",
+    ):
+      forwardprop.ForwardAccumulator(
+          np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]),
+          np.array([0.1, 0.2, 0.3]),
+      )
+
+  def testNonTensorInputs(self):
+    # Python scalars/lists and NumPy inputs are converted rather than raising
+    # AttributeError while validating shapes or registering the watch.
+    forwardprop.ForwardAccumulator(1.0, 2.0)
+    forwardprop.ForwardAccumulator([1.0, 2.0], [0.1, 0.2])
+    forwardprop.ForwardAccumulator(np.array([1.0, 2.0]), np.array([0.1, 0.2]))
+    forwardprop.ForwardAccumulator(np.float64(1.0), np.float64(2.0))
+
   @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testReenter(self):
     x = constant_op.constant(-2.)
@@ -626,6 +656,89 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose(3.5 * 1.1**2.5, inner_jvp)
     self.assertAllClose(3.5 * 2.5 * 1.1**1.5, outer_jvp)
     self.assertIsNone(acc.jvp(outer_acc.jvp(primal_out)))
+
+  @parameterized.product(
+      shared_first=[True, False], record_backprop=[True, False]
+  )
+  def testFunctionJVPWithChangingTangentAliasing(
+      self, shared_first, record_backprop
+  ):
+
+    @def_function.function
+    def multiply(x, y):
+      return x * y
+
+    x = constant_op.constant(2.0)
+    y = constant_op.constant(5.0)
+    concrete = multiply.get_concrete_function(x, y)
+    cache_sizes = []
+    for shared in (shared_first, not shared_first, shared_first):
+      tangent_x = constant_op.constant(2.0)
+      tangent_y = tangent_x if shared else constant_op.constant(3.0)
+      with backprop.GradientTape() as tape:
+        if record_backprop:
+          tape.watch((x, y))
+        with forwardprop.ForwardAccumulator(
+            (x, y), (tangent_x, tangent_y)
+        ) as acc:
+          result = multiply(x, y)
+        jvp = acc.jvp(result)
+      self.assertAllClose(14.0 if shared else 16.0, jvp)
+      if record_backprop:
+        self.assertAllClose([5.0, 2.0], tape.gradient(result, (x, y)))
+      cache_sizes.append(
+          len(concrete._first_order_tape_functions)
+          + len(concrete._higher_order_tape_functions)
+      )
+    # Fresh tensors with the same aliasing pattern should reuse the cache.
+    self.assertEqual(cache_sizes[1], cache_sizes[2])
+
+  @parameterized.product(
+      dtype=[dtypes.float32, dtypes.float64],
+      transform=["identity", "sin", "square"],
+      compiled=[False, True],
+  )
+  def testNestedForwardWithReusedIntermediate(self, dtype, transform, compiled):
+    transforms = {
+        "identity": array_ops.identity,
+        "sin": math_ops.sin,
+        "square": math_ops.square,
+    }
+
+    def second_derivative(x):
+      with forwardprop.ForwardAccumulator(x, array_ops.ones_like(x)) as outer:
+        with forwardprop.ForwardAccumulator(x, array_ops.ones_like(x)) as inner:
+          m = transforms[transform](x)
+          result = (m * m) * m
+        first_derivative = inner.jvp(result)
+      return outer.jvp(first_derivative)
+
+    if compiled:
+      second_derivative = def_function.function(second_derivative)
+    for value in (0.7, 1.1):
+      expected = {
+          "identity": 6 * value,
+          "sin": (
+              6 * np.sin(value) * np.cos(value) ** 2 - 3 * np.sin(value) ** 3
+          ),
+          "square": 30 * value**4,
+      }[transform]
+      self.assertAllClose(
+          expected, second_derivative(constant_op.constant(value, dtype=dtype))
+      )
+
+  @parameterized.parameters(dtypes.float32, dtypes.float64)
+  def testNestedForwardWithReusedMatrixIntermediate(self, dtype):
+    x = constant_op.constant(0.7, dtype=dtype)
+    with forwardprop.ForwardAccumulator(x, array_ops.ones_like(x)) as outer:
+      with forwardprop.ForwardAccumulator(x, array_ops.ones_like(x)) as inner:
+        one = constant_op.constant(1.0, dtype=dtype)
+        m = array_ops_stack.stack(
+            [array_ops_stack.stack([x, one]), array_ops_stack.stack([-one, x])]
+        )
+        result = math_ops.matmul(math_ops.matmul(m, m), m)
+      first_derivative = inner.jvp(result)
+    self.assertAllClose(6 * m, outer.jvp(first_derivative))
 
   @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testJVPPacking(self):

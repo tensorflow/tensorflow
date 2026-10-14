@@ -23,13 +23,20 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/service/call_graph.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
 
 namespace xla {
 namespace host_offload_utils {
 namespace {
+
+using ::testing::ElementsAre;
+using ::testing::UnorderedElementsAre;
 
 using HostOffloadUtilsTest = HloHardwareIndependentTestBase;
 
@@ -50,20 +57,22 @@ TEST_F(HostOffloadUtilsTest, SimpleGetSuccessorsGetPredecessorsTest) {
   )hlo";
 
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
   HloInstruction* data_param = FindInstruction(module.get(), "data_param");
   ASSERT_NE(data_param, nullptr);
   HloInstruction* offload_custom_call =
       FindInstruction(module.get(), "offload_custom_call");
   ASSERT_NE(offload_custom_call, nullptr);
 
-  ASSERT_OK_AND_ASSIGN(std::vector<InstructionAndShapeIndex> succ,
-                       GetSuccessors(InstructionAndShapeIndex(data_param, {})));
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<InstructionAndShapeIndex> succ,
+      GetSuccessors(InstructionAndShapeIndex(data_param, {}), *call_graph));
   std::vector<InstructionAndShapeIndex> expected_succ = {
       InstructionAndShapeIndex(offload_custom_call, {})};
   EXPECT_EQ(succ, expected_succ);
 
-  std::vector<InstructionAndShapeIndex> pred =
-      GetPredecessors(InstructionAndShapeIndex(offload_custom_call, {}));
+  std::vector<InstructionAndShapeIndex> pred = GetPredecessors(
+      InstructionAndShapeIndex(offload_custom_call, {}), *call_graph);
   std::vector<InstructionAndShapeIndex> expected_pred = {
       InstructionAndShapeIndex(data_param, {})};
   EXPECT_EQ(pred, expected_pred);
@@ -89,6 +98,7 @@ TEST_F(HostOffloadUtilsTest, ComputationGetSuccessorsGetPredecessorsTest) {
   )hlo";
 
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
   HloInstruction* call = FindInstruction(module.get(), "call");
   ASSERT_NE(call, nullptr);
   HloInstruction* gte_0 = FindInstruction(module.get(), "gte_0");
@@ -96,14 +106,15 @@ TEST_F(HostOffloadUtilsTest, ComputationGetSuccessorsGetPredecessorsTest) {
   HloInstruction* tuple = FindInstruction(module.get(), "tuple");
   ASSERT_NE(tuple, nullptr);
 
-  ASSERT_OK_AND_ASSIGN(std::vector<InstructionAndShapeIndex> succ,
-                       GetSuccessors(InstructionAndShapeIndex(call, {0})));
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<InstructionAndShapeIndex> succ,
+      GetSuccessors(InstructionAndShapeIndex(call, {0}), *call_graph));
   std::vector<InstructionAndShapeIndex> expected_succ = {
       InstructionAndShapeIndex(gte_0, {})};
   EXPECT_EQ(succ, expected_succ);
 
   std::vector<InstructionAndShapeIndex> pred =
-      GetPredecessors(InstructionAndShapeIndex(call, {0}));
+      GetPredecessors(InstructionAndShapeIndex(call, {0}), *call_graph);
   std::vector<InstructionAndShapeIndex> expected_pred = {
       InstructionAndShapeIndex(tuple, {0})};
   EXPECT_EQ(pred, expected_pred);
@@ -115,10 +126,72 @@ TEST_F(HostOffloadUtilsTest, ComputationGetSuccessorsGetPredecessorsTest) {
   ASSERT_NE(offload_custom_call, nullptr);
 
   std::vector<InstructionAndShapeIndex> param_pred =
-      GetPredecessors(InstructionAndShapeIndex(param_0, {}));
+      GetPredecessors(InstructionAndShapeIndex(param_0, {}), *call_graph);
   std::vector<InstructionAndShapeIndex> expected_param_pred = {
       InstructionAndShapeIndex(offload_custom_call, {})};
   EXPECT_EQ(param_pred, expected_param_pred);
+}
+
+TEST_F(HostOffloadUtilsTest, RootAndParameterStepsUseTheGivenCallGraph) {
+  absl::string_view hlo_string = R"hlo(
+    HloModule my_module
+    callee {
+      callee_param = f32[2048] parameter(0)
+      ROOT callee_root = f32[2048] negate(callee_param)
+    }
+    ENTRY main {
+      data_param = f32[2048] parameter(0)
+      call_a = f32[2048] call(data_param), to_apply=callee
+      call_b = f32[2048] call(call_a), to_apply=callee
+      ROOT add = f32[2048] add(call_a, call_b)
+    }
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
+  HloInstruction* callee_param = FindInstruction(module.get(), "callee_param");
+  HloInstruction* callee_root = FindInstruction(module.get(), "callee_root");
+  HloInstruction* data_param = FindInstruction(module.get(), "data_param");
+  HloInstruction* call_a = FindInstruction(module.get(), "call_a");
+  HloInstruction* call_b = FindInstruction(module.get(), "call_b");
+  ASSERT_NE(callee_param, nullptr);
+  ASSERT_NE(callee_root, nullptr);
+  ASSERT_NE(data_param, nullptr);
+  ASSERT_NE(call_a, nullptr);
+  ASSERT_NE(call_b, nullptr);
+
+  // The root steps to every call site, in call site order; the parameter
+  // steps to the operand of every call site.
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<InstructionAndShapeIndex> succ,
+      GetSuccessors(InstructionAndShapeIndex(callee_root, {}), *call_graph));
+  EXPECT_THAT(succ, ElementsAre(InstructionAndShapeIndex(call_a, {}),
+                                InstructionAndShapeIndex(call_b, {})));
+  EXPECT_THAT(
+      GetPredecessors(InstructionAndShapeIndex(callee_param, {}), *call_graph),
+      UnorderedElementsAre(InstructionAndShapeIndex(data_param, {}),
+                           InstructionAndShapeIndex(call_a, {})));
+
+  // A call site added after the graph was built is unknown to that graph and
+  // known to a fresh one: the answers come from the graph, not from the
+  // module. HostOffloader relies on this to build its graph once per run, so
+  // the utilities must never rebuild one themselves.
+  HloInstruction* call_c = module->entry_computation()->AddInstruction(
+      HloInstruction::CreateCall(data_param->shape(), {data_param},
+                                 FindComputation(module.get(), "callee")));
+  ASSERT_OK_AND_ASSIGN(
+      succ,
+      GetSuccessors(InstructionAndShapeIndex(callee_root, {}), *call_graph));
+  EXPECT_THAT(succ, ElementsAre(InstructionAndShapeIndex(call_a, {}),
+                                InstructionAndShapeIndex(call_b, {})));
+  std::unique_ptr<CallGraph> fresh_call_graph = CallGraph::Build(module.get());
+  ASSERT_OK_AND_ASSIGN(succ,
+                       GetSuccessors(InstructionAndShapeIndex(callee_root, {}),
+                                     *fresh_call_graph));
+  EXPECT_THAT(succ, ElementsAre(InstructionAndShapeIndex(call_a, {}),
+                                InstructionAndShapeIndex(call_b, {}),
+                                InstructionAndShapeIndex(call_c, {})));
 }
 
 TEST_F(HostOffloadUtilsTest, IsMoveToHostWithDynamicUpdateSliceTest) {
@@ -239,13 +312,14 @@ TEST_F(HostOffloadUtilsTest, SendGetPredecessorsTest) {
   )hlo";
 
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
   HloInstruction* send = FindInstruction(module.get(), "send");
   ASSERT_NE(send, nullptr);
   HloInstruction* data_param = FindInstruction(module.get(), "data_param");
   ASSERT_NE(data_param, nullptr);
 
   std::vector<InstructionAndShapeIndex> pred =
-      GetPredecessors(InstructionAndShapeIndex(send, {}));
+      GetPredecessors(InstructionAndShapeIndex(send, {}), *call_graph);
   std::vector<InstructionAndShapeIndex> expected_pred = {
       InstructionAndShapeIndex(data_param, {})};
   EXPECT_EQ(pred, expected_pred);
@@ -295,6 +369,7 @@ TEST_F(HostOffloadUtilsTest, ConditionalGetPredecessorsTest) {
   )hlo";
 
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
   HloInstruction* conditional = FindInstruction(module.get(), "conditional");
   ASSERT_NE(conditional, nullptr);
   HloInstruction* true_operand = FindInstruction(module.get(), "true_operand");
@@ -307,13 +382,13 @@ TEST_F(HostOffloadUtilsTest, ConditionalGetPredecessorsTest) {
   ASSERT_NE(f_root, nullptr);
 
   std::vector<InstructionAndShapeIndex> pred_param =
-      GetPredecessors(InstructionAndShapeIndex(t_param, {}));
+      GetPredecessors(InstructionAndShapeIndex(t_param, {}), *call_graph);
   std::vector<InstructionAndShapeIndex> expected_pred_param = {
       InstructionAndShapeIndex(true_operand, {})};
   EXPECT_EQ(pred_param, expected_pred_param);
 
   std::vector<InstructionAndShapeIndex> pred_cond =
-      GetPredecessors(InstructionAndShapeIndex(conditional, {}));
+      GetPredecessors(InstructionAndShapeIndex(conditional, {}), *call_graph);
   std::vector<InstructionAndShapeIndex> expected_pred_cond = {
       InstructionAndShapeIndex(t_root, {}),
       InstructionAndShapeIndex(f_root, {})};
@@ -337,6 +412,7 @@ TEST_F(HostOffloadUtilsTest, ConditionalReusedComputationPredecessorsTest) {
 
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(hlo_string));
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
   HloInstruction* s_param = FindInstruction(module.get(), "s_param");
   ASSERT_NE(s_param, nullptr);
   HloInstruction* true_operand = FindInstruction(module.get(), "true_operand");
@@ -346,7 +422,7 @@ TEST_F(HostOffloadUtilsTest, ConditionalReusedComputationPredecessorsTest) {
   ASSERT_NE(false_operand, nullptr);
 
   std::vector<InstructionAndShapeIndex> pred_param =
-      GetPredecessors(InstructionAndShapeIndex(s_param, {}));
+      GetPredecessors(InstructionAndShapeIndex(s_param, {}), *call_graph);
   std::vector<InstructionAndShapeIndex> expected_pred_param = {
       InstructionAndShapeIndex(true_operand, {}),
       InstructionAndShapeIndex(false_operand, {})};
@@ -453,6 +529,7 @@ TEST_F(HostOffloadUtilsTest, SortTupleSuccessorsAndPredecessorsTest) {
   )hlo";
 
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
   HloInstruction* main_p0 = FindInstruction(module.get(), "main_p0");
   ASSERT_NE(main_p0, nullptr);
   HloInstruction* main_p1 = FindInstruction(module.get(), "main_p1");
@@ -465,22 +542,24 @@ TEST_F(HostOffloadUtilsTest, SortTupleSuccessorsAndPredecessorsTest) {
   ASSERT_NE(gte1, nullptr);
 
   // Successor of main_p0 (operand 0 of sort) is sort with shape_index {0}.
-  ASSERT_OK_AND_ASSIGN(std::vector<InstructionAndShapeIndex> succ_p0,
-                       GetSuccessors(InstructionAndShapeIndex(main_p0, {})));
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<InstructionAndShapeIndex> succ_p0,
+      GetSuccessors(InstructionAndShapeIndex(main_p0, {}), *call_graph));
   std::vector<InstructionAndShapeIndex> expected_succ_p0 = {
       InstructionAndShapeIndex(sort, {0})};
   EXPECT_EQ(succ_p0, expected_succ_p0);
 
   // Successor of {sort, {0}} is gte0 with shape_index {}, not gte1.
-  ASSERT_OK_AND_ASSIGN(std::vector<InstructionAndShapeIndex> succ_sort0,
-                       GetSuccessors(InstructionAndShapeIndex(sort, {0})));
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<InstructionAndShapeIndex> succ_sort0,
+      GetSuccessors(InstructionAndShapeIndex(sort, {0}), *call_graph));
   std::vector<InstructionAndShapeIndex> expected_succ_sort0 = {
       InstructionAndShapeIndex(gte0, {})};
   EXPECT_EQ(succ_sort0, expected_succ_sort0);
 
   // Predecessor of {sort, {1}} is main_p1 with shape_index {}.
   std::vector<InstructionAndShapeIndex> pred_sort1 =
-      GetPredecessors(InstructionAndShapeIndex(sort, {1}));
+      GetPredecessors(InstructionAndShapeIndex(sort, {1}), *call_graph);
   std::vector<InstructionAndShapeIndex> expected_pred_sort1 = {
       InstructionAndShapeIndex(main_p1, {})};
   EXPECT_EQ(pred_sort1, expected_pred_sort1);

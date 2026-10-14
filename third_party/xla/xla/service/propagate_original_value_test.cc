@@ -222,7 +222,7 @@ TEST_F(OriginalValueRecoveryTableTest,
   constexpr absl::string_view hlo_string = R"hlo(
 // CHECK-NOT: origin_recovery_table
 // CHECK:       ENTRY %[[COMPUTATION:.*]] (param: f32[4]) -> f32[4]
-// CHECK:       parameter(0), sharding={replicated}, origin={{[{]}}{"param_origin"}
+// CHECK:       parameter(0), origin={{[{]}}{"param_origin"}
 // CHECK:       negate(%param), origin={{[{]}}{"negate_origin"}
 
 HloModule test, entry_computation_layout={(f32[4]{0})->f32[4]{0}}, num_partitions=2

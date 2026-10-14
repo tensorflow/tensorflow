@@ -47,19 +47,18 @@ struct type_caster<absl::Span<T const>> {
 
   static handle from_cpp(absl::Span<T const> src, rv_policy policy,
                          cleanup_list* cleanup) noexcept {
-    object ret = steal(PyList_New(src.size()));
-    if (ret.is_valid()) {
-      Py_ssize_t i = 0;
-      for (const T& value : src) {
-        handle h = Caster::from_cpp(value, policy, cleanup);
-        if (!h.is_valid()) {
-          ret.reset();
-          break;
-        }
-        PyList_SET_ITEM(ret.ptr(), i++, h.ptr());
-      }
+    seq_builder<false> b(src.size());
+    if (NB_UNLIKELY(!b.valid())) {
+      return {};
     }
-    return ret.release();
+    for (const T& x : src) {
+      handle h = Caster::from_cpp(x, policy, cleanup);
+      if (NB_UNLIKELY(!h.is_valid())) {
+        break;
+      }
+      b.put(h);
+    }
+    return b.commit();
   }
 };
 

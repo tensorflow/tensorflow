@@ -18,7 +18,6 @@ load("//xla:xla.default.bzl", "xla_cc_test", "xla_internal")
 load("//xla/tsl:tsl.bzl", "internal_visibility", "tsl_copts")
 load(
     "//xla/tsl/platform:build_config_root.bzl",
-    "if_llvm_aarch32_available",
     "if_llvm_aarch64_available",
     "if_llvm_powerpc_available",
     "if_llvm_riscv_available",
@@ -106,10 +105,26 @@ cc_library(
 )
 
 cc_library(
+    name = "object_buffer_identifier",
+    hdrs = ["object_buffer_identifier.h"],
+    deps = [
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
     name = "ir_compiler",
     srcs = ["ir_compiler.cc"],
     hdrs = ["ir_compiler.h"],
-    defines = if_llvm_aarch32_available(["XLA_LLVM_AARCH32_AVAILABLE=1"]) + if_llvm_aarch64_available([
+    # TODO(xla-cpu): Have users who need a specific target architecture include
+    # and initialize that LLVM backend directly.
+    defines = select({
+        "//xla/tsl:aarch32_or_cross": [
+            "XLA_LLVM_AARCH32_AVAILABLE=1",
+        ],
+        "//conditions:default": [],
+    }) + if_llvm_aarch64_available([
         "XLA_LLVM_AARCH64_AVAILABLE=1",
     ]) + if_llvm_powerpc_available([
         "XLA_LLVM_POWERPC_AVAILABLE=1",
@@ -120,6 +135,7 @@ cc_library(
     ]),
     deps = [
         ":kernel_api_ir_builder",
+        ":object_buffer_identifier",
         ":polynomial_approximations",
         "//xla:util",
         "//xla:xla_proto_cc",
@@ -167,6 +183,7 @@ xla_cc_test(
     deps = [
         ":ir_compiler",
         ":kernel_api_ir_builder",
+        ":object_buffer_identifier",
         "//xla:debug_options_flags",
         "//xla:util",
         "//xla/backends/cpu:target_machine_options",
@@ -174,6 +191,7 @@ xla_cc_test(
         "//xla/service/cpu:test_header_helper",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/log",
@@ -195,6 +213,7 @@ xla_cc_test(
         "@llvm-project//llvm:TargetParser",
         "@llvm-project//llvm:X86AsmParser",  # fixdeps: keep
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
+        "@tsl//tsl/platform:platform_port",
     ],
 )
 
@@ -228,6 +247,7 @@ cc_library(
         "@com_google_absl//absl/base:config",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:vlog_is_on",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
@@ -278,6 +298,7 @@ cc_library(
         "@stablehlo//:stablehlo_ops",
         "@stablehlo//:stablehlo_passes",
         "@stablehlo//:stablehlo_passes_optimization",
+        "@tsl//tsl/platform",
         "@tsl//tsl/profiler/lib:traceme",
         "@tsl//tsl/profiler/lib:traceme_encode",
     ],
@@ -609,11 +630,13 @@ cc_library(
     deps = [
         ":contiguous_section_memory_manager",
         ":jit_memory_mapper",
+        ":object_buffer_identifier",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:ExecutionEngine",
         "@llvm-project//llvm:OrcJIT",
         "@llvm-project//llvm:Support",
@@ -761,6 +784,7 @@ cc_library(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/numeric:bits",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",

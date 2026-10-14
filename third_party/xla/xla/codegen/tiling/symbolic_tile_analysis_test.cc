@@ -1654,14 +1654,14 @@ ENTRY entry_computation {
   )"));
   EXPECT_THAT(convert->runtime_variables(), SizeIs(2));
   const TiledHloInstruction* convert_rt0 = convert->runtime_variables()[0];
-  EXPECT_EQ(convert_rt0->hlo()->name(), "off2");
+  EXPECT_EQ(convert_rt0->hlo()->name(), "off");
   EXPECT_THAT(*convert_rt0, MatchTiledHloInstruction(
                                 /*tile_sizes=*/{},
                                 /*tile_strides=*/{},
                                 /*tile_offsets_indexing=*/R"(
     (pid_0) -> (), domain: pid_0 in [0, 9]
   )"));
-  EXPECT_EQ(convert->runtime_variables()[1]->hlo()->name(), "off");
+  EXPECT_EQ(convert->runtime_variables()[1]->hlo()->name(), "off2");
 
   EXPECT_THAT(*off, MatchTiledHloInstruction(
                         /*tile_sizes=*/{},

@@ -19,6 +19,7 @@ import numpy as np
 import scipy.special as sps
 
 from tensorflow.compiler.tests import xla_test
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -75,6 +76,62 @@ class TernaryOpsTest(xla_test.XLATestCase, parameterized.TestCase):
           dtype(2),
           expected=np.array([1, 3, 5], dtype=dtype),
       )
+    # The distance from start to limit doesn't fit in int64.
+    self._testTernary(
+        math_ops.range,
+        np.int64(-(2**63)),
+        np.int64(2**63 - 1),
+        np.int64(2**62),
+        expected=np.array([-(2**63), -(2**62), 0, 2**62], dtype=np.int64),
+    )
+
+  def _rangeOfMaskedSize(self, args, dtype=np.int32):
+    # n is the number of true entries in mask, a size only known at run time,
+    # and args maps it to the range's start, limit and delta.
+    @def_function.function(jit_compile=True)
+    def f(mask):
+      indices = array_ops.reshape(array_ops.where(mask), [-1])
+      n = array_ops.size(array_ops.gather(math_ops.range(6), indices))
+      return gen_math_ops._range(
+          *[math_ops.cast(a, dtype) for a in args(math_ops.cast(n, dtype))]
+      )
+
+    with self.session() as session:
+      with self.device_scope():
+        mask = array_ops.placeholder(dtypes.bool, [6])
+        output = f(mask)
+      return session.run(
+          output, {mask: [True, False, True, False, True, False]}
+      )
+
+  def testRangeDynamicBounds(self):
+    # Regression test for GitHub issue 128950: with a negative delta, the
+    # output was sized from the wrong bounds of start and limit, and with a
+    # dynamic start, its values began at start's bound. Here n is 3, bound 6.
+    for dtype in (np.int32, np.int64, np.float32):
+      self.assertAllEqual(
+          self._rangeOfMaskedSize(lambda n: (n - 1, -1, -1), dtype), [2, 1, 0]
+      )
+      self.assertAllEqual(
+          self._rangeOfMaskedSize(lambda n: (6, n, -1), dtype), [6, 5, 4]
+      )
+      self.assertAllEqual(
+          self._rangeOfMaskedSize(lambda n: (n, 5, 1), dtype), [3, 4]
+      )
+      self.assertAllEqual(
+          self._rangeOfMaskedSize(lambda n: (n, -n, -2), dtype), [3, 1, -1]
+      )
+      # The CPU kernel rejects runtime values in the wrong order for delta's
+      # sign. XLA can't report that at run time, and returns an empty range.
+      self.assertAllEqual(
+          self._rangeOfMaskedSize(lambda n: (n, 1, 1), dtype), []
+      )
+      self.assertAllEqual(
+          self._rangeOfMaskedSize(lambda n: (n, 4, -1), dtype), []
+      )
+    self.assertAllEqual(
+        self._rangeOfMaskedSize(lambda n: (n, 10, 2), np.uint32), [3, 5, 7, 9]
+    )
 
   def testSelect(self):
     for dtype in self.numeric_types:

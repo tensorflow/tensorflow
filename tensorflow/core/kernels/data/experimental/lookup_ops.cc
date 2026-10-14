@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/lookup_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/io/inputbuffer.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -152,41 +154,41 @@ void InitializeTableFromDataset(OpKernelContext* ctx,
   OP_REQUIRES_ASYNC(
       ctx, dataset_types.size() == 2,
       absl::InvalidArgumentError("Dataset should have two output types only"),
-      done);
+      []() {});
   OP_REQUIRES_ASYNC(
       ctx, dataset_types[0] == table->key_dtype(),
       absl::InvalidArgumentError(absl::StrCat(
           "Key dtype expected: ", DataTypeString(table->key_dtype()),
           " but obtained: ", DataTypeString(dataset_types[0]),
           " from the dataset")),
-      done);
+      []() {});
   OP_REQUIRES_ASYNC(
       ctx, dataset_types[1] == table->value_dtype(),
       absl::InvalidArgumentError(absl::StrCat(
           "Value dtype expected: ", DataTypeString(table->value_dtype()),
           " but obtained: ", DataTypeString(dataset_types[1]),
           " from the dataset")),
-      done);
+      []() {});
   // Assert that the dataset output shapes are scalars.
   const auto& dataset_shapes = dataset->output_shapes();
   OP_REQUIRES_ASYNC(
       ctx, dataset_shapes.size() == 2,
       absl::InvalidArgumentError("Dataset should have two output shapes only"),
-      done);
+      []() {});
   OP_REQUIRES_ASYNC(ctx,
                     dataset_shapes[0].IsCompatibleWith(PartialTensorShape({})),
                     absl::InvalidArgumentError(
                         absl::StrCat("Expected scalar for key. Obtained: ",
                                      dataset_shapes[0].DebugString())),
-                    done);
+                    []() {});
   OP_REQUIRES_ASYNC(ctx,
                     dataset_shapes[1].IsCompatibleWith(PartialTensorShape({})),
                     absl::InvalidArgumentError(
                         absl::StrCat("Expected scalar for key. Obtained: ",
                                      dataset_shapes[1].DebugString())),
-                    done);
+                    []() {});
   DatasetIterator iter(dataset);
-  OP_REQUIRES_OK_ASYNC(ctx, iter.Init(ctx), done);
+  OP_REQUIRES_OK_ASYNC(ctx, iter.Init(ctx), []() {});
   absl::Status s =
       table->Initialize(iter, MakeDatasetInitializerSerializer(ctx, dataset));
   if (absl::IsFailedPrecondition(s) && table->is_initialized()) {
@@ -203,13 +205,15 @@ class InitializeTableFromDatasetOp : public AsyncOpKernel {
         background_worker_(ctx->env(), "initialize_table_from_dataset") {}
 
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
+    auto cleanup = gtl::MakeCleanup([&done]() { done(); });
     lookup::InitializableLookupTable* table;
     OP_REQUIRES_OK_ASYNC(
-        ctx, GetInitializableLookupTable("table_handle", ctx, &table), done);
+        ctx, GetInitializableLookupTable("table_handle", ctx, &table), []() {});
     core::ScopedUnref unref_me(table);
     data::DatasetBase* dataset;
     OP_REQUIRES_OK_ASYNC(
-        ctx, GetDatasetFromVariantTensor(ctx->input(1), &dataset), done);
+        ctx, GetDatasetFromVariantTensor(ctx->input(1), &dataset), []() {});
+    cleanup.release();
     background_worker_.Schedule([ctx, dataset, table, done]() {
       InitializeTableFromDataset(ctx, dataset, table, done);
     });

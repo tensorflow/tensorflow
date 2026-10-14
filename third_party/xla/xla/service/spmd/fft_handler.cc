@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
@@ -353,23 +354,62 @@ HloInstruction* SliceValidData(HloInstruction* hlo, const Shape& target_shape,
 
 // Distributed FFT using the algorithm described in go/tpu-spmd-fft.
 absl::Status SpmdPartitioningVisitor::HandleFft(HloInstruction* hlo) {
-  if (hlo->operand(0)->shape().dimensions().size() < 3 ||
-      hlo->fft_type() != FftType::FFT) {
+  const int64_t rank = hlo->operand(0)->shape().dimensions().size();
+  const int64_t first_fft_dim =
+      rank - static_cast<int64_t>(hlo->fft_length().size());
+
+  auto fallback_to_replicated = [&](const char* reason) {
+    if (hlo->has_sharding() && hlo->sharding().IsTiled()) {
+      LOG_FIRST_N(WARNING, 5)
+          << "[SPMD] Falling back to replicated execution for tiled FFT "
+             "operation "
+          << hlo->name() << ": " << reason
+          << ". This may introduce all-gather communication and duplicate FFT "
+             "computation. Operation: "
+          << hlo->ToString();
+    }
     return DefaultAction(hlo);
+  };
+
+  if (hlo->has_sharding() && hlo->sharding().IsTiled()) {
+    bool fft_dims_unsharded = true;
+    for (int64_t dim = first_fft_dim; dim < rank; ++dim) {
+      fft_dims_unsharded &= hlo->sharding().dimension(dim) == 1;
+    }
+    if (fft_dims_unsharded) {
+      // FFTs are independent across non-transformed dimensions, so they can
+      // use the same local partitioning as elementwise operations.
+      return HandleElementwise(hlo);
+    }
+  }
+
+  if (rank < 3) {
+    return fallback_to_replicated("the operand rank is less than 3");
+  }
+  if (hlo->fft_type() != FftType::FFT) {
+    return fallback_to_replicated(
+        "partitioning along transformed dimensions is only supported for FFT");
   }
 
   // Only support input_length equals fft_length's case.
   int64_t input_length = hlo->operand(0)->shape().dimensions().back();
   int64_t fft_length = hlo->fft_length().back();
-  if (input_length != fft_length || input_length % num_partitions_ != 0) {
-    return DefaultAction(hlo);
+  if (input_length != fft_length) {
+    return fallback_to_replicated(
+        "the input length does not match the FFT length");
+  }
+  if (input_length % num_partitions_ != 0) {
+    return fallback_to_replicated(
+        "the input length is not divisible by the partition count");
   }
 
   // Support partition at the last dimension only.
   if (!hlo->has_sharding() || hlo->sharding().IsReplicated() ||
       hlo->sharding().dimensions().empty() ||
       hlo->sharding().dimensions().back() != num_partitions_) {
-    return DefaultAction(hlo);
+    return fallback_to_replicated(
+        "distributed FFT requires the last FFT dimension to be sharded across "
+        "all partitions without replication");
   }
 
   auto partitioned_input =
@@ -397,7 +437,8 @@ absl::Status SpmdPartitioningVisitor::HandleFft(HloInstruction* hlo) {
     // not possible for this sharding (e.g. a halo larger than the per-shard
     // size), fall back to the default partitioning instead of proceeding with
     // an un-padded operand and hitting that CHECK.
-    return DefaultAction(hlo);
+    return fallback_to_replicated(
+        "halo exchange cannot support the per-partition FFT size");
   }
   result = padded_hlo.value();
 

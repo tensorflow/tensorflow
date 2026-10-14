@@ -214,6 +214,26 @@ std::vector<MaxIsaTestSpec> GetX86MaxIsaTestCases() {
       MaxIsaTestSpec{"AVX512", "avx512f", true},
       MaxIsaTestSpec{"AVX512", "avx512vnni", false},
       MaxIsaTestSpec{"AVX512", "amx-bf16", false},
+      MaxIsaTestSpec{"AVX512", "amx-fp8", false},
+      // AMX_FP16 as max: SPR-or-older ISAs stay on; DMR additions (amx-fp8,
+      // other amx tiles, avx10, APX) are suppressed.
+      MaxIsaTestSpec{"AMX_FP16", "amx-bf16", true},
+      MaxIsaTestSpec{"AMX_FP16", "amx-int8", true},
+      MaxIsaTestSpec{"AMX_FP16", "avx512bf16", true},
+      MaxIsaTestSpec{"AMX_FP16", "amx-fp16", true},
+      MaxIsaTestSpec{"AMX_FP16", "avx10.1", true},
+      MaxIsaTestSpec{"AMX_FP16", "amx-fp8", false},
+      MaxIsaTestSpec{"AMX_FP16", "amx-tf32", false},
+      MaxIsaTestSpec{"AMX_FP16", "amx-avx512", false},
+      MaxIsaTestSpec{"AMX_FP16", "avx10.2", false},
+      MaxIsaTestSpec{"AMX_FP16", "ndd", false},
+      MaxIsaTestSpec{"AMX_FP16", "ppx", false},
+      // AMX_FP8 as max: amx-fp8 and older AMX tiles stay on.
+      MaxIsaTestSpec{"AMX_FP8", "amx-fp8", true},
+      MaxIsaTestSpec{"AMX_FP8", "amx-fp16", true},
+      MaxIsaTestSpec{"AMX_FP8", "amx-bf16", true},
+      // Older max still suppresses amx-fp8.
+      MaxIsaTestSpec{"AMX", "amx-fp8", false},
   });
 }
 
@@ -405,6 +425,56 @@ TEST_F(AtanJitVectorizationTest, AtanF32) {
 
   std::string check_lines =
       absl::StrFormat("CHECK: fdiv <%d x float>", num_elements);
+
+  ASSERT_OK(CompileAndVerifyIr(llvm_compiler, compile_options,
+                               std::move(hlo_module), check_lines,
+                               /*match_optimized_ir=*/true));
+}
+
+class Expm1JitVectorizationTest : public HloHardwareIndependentTestBase {
+ protected:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options =
+        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_cpu_max_isa("AVX512");
+    debug_options.set_xla_cpu_prefer_vector_width(512);
+    return debug_options;
+  }
+};
+
+TEST_F(Expm1JitVectorizationTest, Expm1F32) {
+  if (!tsl::port::IsX86CPU()) {
+    GTEST_SKIP() << "This feature only works for x86 CPUs.";
+  }
+
+  const absl::string_view hlo_text = R"(
+    HloModule Expm1F32
+
+    ENTRY Expm1F32 {
+      p0 = f32[1024] parameter(0)
+      ROOT expm1 = f32[1024] exponential-minus-one(p0)
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_text));
+
+  auto compiler = GetCpuCompiler();
+  auto llvm_compiler = absl::down_cast<LLVMCompiler*>(compiler.get());
+  Compiler::CompileOptions compile_options;
+  compile_options.device_allocator = nullptr;
+
+  int num_elements = 16;
+  if (!tsl::port::TestCPUFeature(tsl::port::CPUFeature::AVX512F)) {
+    if (tsl::port::TestCPUFeature(tsl::port::CPUFeature::AVX2)) {
+      num_elements = 8;
+    } else {
+      num_elements = 4;
+    }
+  }
+
+  std::string check_lines =
+      absl::StrFormat("CHECK: fmul contract <%d x float>", num_elements);
 
   ASSERT_OK(CompileAndVerifyIr(llvm_compiler, compile_options,
                                std::move(hlo_module), check_lines,

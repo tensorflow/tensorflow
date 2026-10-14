@@ -67,5 +67,18 @@ TEST_F(EmbeddedConstantBuffersTest, CreateEmbeddedConstantBuffers) {
   EXPECT_FALSE(embedded_constant_buffers.object_file_data.empty());
 }
 
+TEST_F(EmbeddedConstantBuffersTest, SerializeEmptyBuffer) {
+  ConstantToEmbed constant;
+  constant.symbol_prefix = "empty";
+  constant.SerializeIntoBuffer({});
+  EXPECT_GT(constant.data().size(), 0);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      EmbeddedConstantBuffers embedded_constant_buffers,
+      CreateEmbeddedConstantBuffers(kTargetTripleForHost,
+                                    absl::MakeSpan(&constant, 1)));
+  EXPECT_FALSE(embedded_constant_buffers.object_file_data.empty());
+}
+
 }  // namespace
 }  // namespace xla

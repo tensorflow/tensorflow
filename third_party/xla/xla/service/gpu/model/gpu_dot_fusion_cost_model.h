@@ -164,9 +164,9 @@ int CalculateRegistersPerThread(const DotProblemInfo& dot_info,
                                 const se::DeviceDescription& device_info);
 
 // Calculates the L2 time for a GPU DOT operation.
-absl::StatusOr<absl::Duration> CalculateL2Time(
-    int64_t dot_k, int64_t tile_k, const se::DeviceDescription& device_info,
-    int64_t l2_bytes, bool is_tma_allowed);
+absl::Duration CalculateL2Time(int64_t k_loop_iterations,
+                               const se::DeviceDescription& device_info,
+                               int64_t l2_bytes, bool is_tma_allowed);
 
 // Calculates the compute time for a GPU DOT operation with tile and wave
 // quantization effects taken into account.

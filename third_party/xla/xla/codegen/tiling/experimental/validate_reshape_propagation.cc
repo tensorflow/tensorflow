@@ -163,9 +163,9 @@ absl::Status ValidateConfig(const Shape& from_shape, const Shape& to_shape,
       PropagateTileToInput(*tiling_space, *reshape, output_tile, 0));
   CHECK_EQ(input_tiles.size(), 1);
   Tile input_tile = input_tiles[0];
-  llvm::DenseMap<SymbolicExpr, SymbolicExpr> replacement_map =
-      GetTileSizeReplacementMap(*tiling_space, config.sizes);
   ABSL_RETURN_IF_ERROR(tiling_space->AssignTileSizes(config.sizes));
+  llvm::DenseMap<SymbolicExpr, SymbolicExpr> replacement_map =
+      GetTileSizeReplacementMap(*tiling_space);
 
   input_tile.Replace(replacement_map);
   input_tile.Simplify();

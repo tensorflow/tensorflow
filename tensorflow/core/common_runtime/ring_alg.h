@@ -33,7 +33,7 @@ class Device;
 class RingAlg : public CollectiveImplementationInterface {
  public:
   explicit RingAlg(CollectiveType type, const std::string& name);
-  ~RingAlg() override {}
+  ~RingAlg() override = default;
 
   // Establishes the requested number of subdivision permutations based on the
   // ring order implicit in the device order.

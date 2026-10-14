@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -24,8 +25,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
-#include "xla/stream_executor/kernel.h"
-#include "xla/stream_executor/kernel_args.h"
 #include "xla/stream_executor/kernel_args_packing_spec.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -80,6 +79,18 @@ absl::StatusOr<CustomKernel> CreateOwnedCubinCustomKernel(
     size_t shared_memory_bytes) {
   se::KernelLoaderSpec kernel_spec =
       se::KernelLoaderSpec::CreateOwningCudaCubinInMemorySpec(
+          std::move(cubin), kernel_name, /*arity=*/num_args,
+          se::KernelArgsPackingSpec::Identity(num_args));
+  return CustomKernel(std::move(kernel_name), std::move(kernel_spec), block_dim,
+                      thread_dim, shared_memory_bytes);
+}
+
+absl::StatusOr<CustomKernel> CreateSharedCubinCustomKernel(
+    std::string kernel_name, std::shared_ptr<const std::vector<uint8_t>> cubin,
+    int num_args, se::BlockDim block_dim, se::ThreadDim thread_dim,
+    size_t shared_memory_bytes) {
+  se::KernelLoaderSpec kernel_spec =
+      se::KernelLoaderSpec::CreateSharedCudaCubinInMemorySpec(
           std::move(cubin), kernel_name, /*arity=*/num_args,
           se::KernelArgsPackingSpec::Identity(num_args));
   return CustomKernel(std::move(kernel_name), std::move(kernel_spec), block_dim,

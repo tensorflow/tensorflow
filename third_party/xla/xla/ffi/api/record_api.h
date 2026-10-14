@@ -21,7 +21,6 @@ limitations under the License.
 #include <cstdint>
 #include <initializer_list>
 #include <type_traits>
-#include <utility>
 #include <variant>
 #include <vector>
 
@@ -51,6 +50,7 @@ using KernelArg = std::variant<DevicePointer, HostValue>;
 enum class SourceFormat {
   kPtx = XLA_FFI_SourceFormat_PTX,
   kCubin = XLA_FFI_SourceFormat_CUBIN,
+  kFunctionPtr = XLA_FFI_SourceFormat_FUNCTION_PTR,
 };
 
 enum class RecordAction {
@@ -122,7 +122,7 @@ class RecordContextBase {
   // Converts a span of `KernelArg` or `void*` to a vector of
   // `XLA_FFI_KernelArg`.
   template <typename KernelArgSpan>
-  std::vector<XLA_FFI_KernelArg> ConvertArgs(KernelArgSpan args) {
+  std::vector<XLA_FFI_KernelArg> ConvertArgs(const KernelArgSpan& args) {
     std::vector<XLA_FFI_KernelArg> raw_args;
     const size_t num_args = std::size(args);
     raw_args.reserve(num_args);
@@ -175,8 +175,13 @@ class RecordContextBase {
   StatusOr<const XLA_FFI_Command*> CreateLaunch(
       const char* kernel_name, const void* kernel_data, size_t kernel_size,
       SourceFormat format, XLA_FFI_LaunchDims launch_dims,
-      uint32_t shared_mem_bytes, bool uses_pdl, KernelArgSpan args,
-      DepSpan dependencies = {}) {
+      uint32_t shared_mem_bytes, bool uses_pdl, const KernelArgSpan& args,
+      const DepSpan& dependencies = {}) {
+    if (kernel_data == nullptr) {
+      return ErrorPolicy::FromErrorCode(
+          XLA_FFI_Error_Code_INVALID_ARGUMENT,
+          "kernel_data/function_ptr must not be null during create_launch.");
+    }
     std::vector<XLA_FFI_KernelArg> raw_args = ConvertArgs(args);
     XLA_FFI_KernelArgs ffi_args{raw_args.data(),
                                 static_cast<int64_t>(raw_args.size())};
@@ -207,7 +212,8 @@ class RecordContextBase {
   }
 
   template <typename KernelArgSpan>
-  Status UpdateLaunch(const XLA_FFI_Command* command, KernelArgSpan args) {
+  Status UpdateLaunch(const XLA_FFI_Command* command,
+                      const KernelArgSpan& args) {
     std::vector<XLA_FFI_KernelArg> raw_args = ConvertArgs(args);
     XLA_FFI_KernelArgs ffi_args{raw_args.data(),
                                 static_cast<int64_t>(raw_args.size())};

@@ -65,7 +65,8 @@ absl::StatusOr<std::unique_ptr<Thunk>> EmitPtxCustomKernelThunk(
   Thunk::ThunkInfo thunk_info =
       Thunk::ThunkInfo::WithProfileAnnotation(instr, context->GetNextThunkId());
   return std::make_unique<CustomKernelThunk>(
-      std::move(thunk_info), ptx_custom_kernel, kernel_arguments);
+      std::move(thunk_info), ptx_custom_kernel, kernel_arguments,
+      context->gpu_topology().num_devices_per_process());
 }
 
 }  // namespace gpu

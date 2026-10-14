@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/time.h"
 #include "google/protobuf/text_format.h"
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/profiler/plugin/plugin_tracer_impl.h"
@@ -55,6 +56,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_xla_transform_internal.h"
 #include "xla/pjrt/extensions/abi_version/gpu_abi_version_extension.h"
 #include "xla/pjrt/extensions/cross_host_transfers/pjrt_c_api_cross_host_transfers_extension.h"
+#include "xla/pjrt/gpu/allocator_config.h"
 #include "xla/pjrt/gpu/gpu_helpers.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
@@ -63,7 +65,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/pjrt/plugin/xla_gpu/xla_gpu_allocator_config.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/python/custom_call_batch_partitioner.h"
 #include "xla/python/custom_partition_callback.h"
@@ -107,6 +108,8 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
           {"allocator", PJRT_NamedValue_Type::PJRT_NamedValue_kString},
           {"memory_fraction", PJRT_NamedValue_Type::PJRT_NamedValue_kFloat},
           {"preallocate", PJRT_NamedValue_Type::PJRT_NamedValue_kBool},
+          {"memory_fraction_policy",
+           PJRT_NamedValue_Type::PJRT_NamedValue_kString},
           {"collective_memory_size",
            PJRT_NamedValue_Type::PJRT_NamedValue_kInt64},
           {"visible_devices", PJRT_NamedValue_Type::PJRT_NamedValue_kInt64List},
@@ -116,6 +119,8 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
            PJRT_NamedValue_Type::PJRT_NamedValue_kBool},
           {"abort_collectives_on_failure",
            PJRT_NamedValue_Type::PJRT_NamedValue_kBool},
+          {"abort_collectives_timeout",
+           PJRT_NamedValue_Type::PJRT_NamedValue_kString},
           {"use_tfrt_gpu_client", PJRT_NamedValue_Type::PJRT_NamedValue_kBool},
           {"enable_mock_nccl", PJRT_NamedValue_Type::PJRT_NamedValue_kBool},
           {"mock_gpu_topology", PJRT_NamedValue_Type::PJRT_NamedValue_kString},
@@ -165,6 +170,17 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
       it != create_options.end()) {
     allocator_config.collective_memory_size = std::get<int64_t>(it->second);
   }
+  if (auto it = create_options.find("memory_fraction_policy");
+      it != create_options.end()) {
+    // Full grammar ("0.75", "0.75+", "0.75-0.85"); wins over the float.
+    absl::StatusOr<xla::MemFraction> fraction =
+        xla::ParseMemFraction(std::get<std::string>(it->second));
+    if (!fraction.ok()) {
+      return StatusToPjRtError(absl::InvalidArgumentError(absl::StrFormat(
+          "memory_fraction_policy: %s", fraction.status().message())));
+    }
+    allocator_config.memory_fraction_policy = *fraction;
+  }
   std::optional<std::set<int>> visible_devices;
   if (auto it = create_options.find("visible_devices");
       it != create_options.end()) {
@@ -188,6 +204,15 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
   if (auto it = create_options.find("abort_collectives_on_failure");
       it != create_options.end()) {
     abort_collectives_on_failure = std::get<bool>(it->second);
+  }
+  absl::Duration abort_collectives_timeout = absl::InfiniteDuration();
+  if (auto it = create_options.find("abort_collectives_timeout");
+      it != create_options.end()) {
+    const auto& timeout = std::get<std::string>(it->second);
+    if (!absl::ParseDuration(timeout, &abort_collectives_timeout)) {
+      return StatusToPjRtError(absl::InvalidArgumentError(absl::StrFormat(
+          "Failed to parse abort_collectives_timeout: %s", timeout)));
+    }
   }
   bool use_tfrt_gpu_client = false;
   if (auto it = create_options.find("use_tfrt_gpu_client");
@@ -227,6 +252,7 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
   options.should_stage_host_to_device_transfers =
       should_stage_host_to_device_transfers;
   options.abort_collectives_on_failure = abort_collectives_on_failure;
+  options.abort_collectives_timeout = abort_collectives_timeout;
   options.use_tfrt_gpu_client = use_tfrt_gpu_client;
   options.enable_mock_nccl = enable_mock_nccl;
   options.mock_gpu_topology = mock_gpu_topology;

@@ -139,6 +139,11 @@ struct CudaComputeCapability {
                                  FeatureExtension::kFamilyCompatibleFeatures};
   }
 
+  // Represents the baseline Rubin architecture with compute capability 10.7.
+  constexpr static CudaComputeCapability Rubin() {
+    return CudaComputeCapability{kBlackwell, 7, FeatureExtension::kNone};
+  }
+
   // Returns true if the compute capability is at least
   // `other_major.other_minor`. It is equivalent to
   // this->SupportsAllFeaturesOf(CudaComputeCapability{other_major,

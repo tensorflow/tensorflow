@@ -158,6 +158,8 @@ absl::StatusOr<std::vector<NumericMismatch>> ExtractAndEnrichTopMismatches(
 absl::StatusOr<std::vector<NumericMismatch>> ExtractTopMismatches(
     std::string error_message, bool is_tuple = false);
 
+absl::StatusOr<NumericMismatch> ParseMismatchLine(absl::string_view line);
+
 absl::StatusOr<std::vector<bool>> DetectReducesInModuleOutput(
     const HloModule* module);
 

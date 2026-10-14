@@ -208,7 +208,7 @@ struct Helper {
     }
     port::CopyToArray(in, data);
 
-    if constexpr (std::is_same_v<typename std::remove_cv<T>::type, bool>) {
+    if constexpr (std::is_same_v<std::remove_cv_t<T>, bool>) {
       // Check that contents are valid and not trap representations for bool
       // TODO(tlongeri): do we need this for any other types?
       static constexpr bool true_value = true;
@@ -585,6 +585,10 @@ template <>
 struct ProtoHelper<float8_e5m2fnuz>
     : public Float8ProtoHelper<float8_e5m2fnuz> {};
 
+template <>
+struct ProtoHelper<float8_e8m0fnu> : public Float8ProtoHelper<float8_e8m0fnu> {
+};
+
 template <typename Float4>
 struct Float4ProtoHelper {
   typedef std::string RepeatedFieldType;
@@ -697,7 +701,7 @@ TensorBuffer* FromProtoField(Allocator* a, const TensorProto& in, int64_t n) {
       std::copy_n(begin, n, data);
     } else {
       std::copy_n(begin, in_n, data);
-      if (std::is_trivially_copyable<T>::value) {
+      if (std::is_trivially_copyable_v<T>) {
         const T last = *(data + in_n - 1);
         std::fill_n(data + in_n, n - in_n, last);
       } else {
@@ -1069,6 +1073,7 @@ absl::Status Tensor::BitcastFrom(const Tensor& other, DataType dtype,
     CASE(float8_e4m3fnuz, SINGLE_ARG(STMTS))                   \
     CASE(float8_e4m3b11fnuz, SINGLE_ARG(STMTS))                \
     CASE(float8_e5m2fnuz, SINGLE_ARG(STMTS))                   \
+    CASE(float8_e8m0fnu, SINGLE_ARG(STMTS))                    \
     CASE(float4_e2m1fn, SINGLE_ARG(STMTS))                     \
     CASE(int4, SINGLE_ARG(STMTS))                              \
     CASE(uint4, SINGLE_ARG(STMTS))                             \
@@ -1373,7 +1378,19 @@ float PrintOneElement(float8_e4m3fn f, bool print_v2) {
   return static_cast<float>(f);
 }
 
+float PrintOneElement(float8_e4m3fnuz f, bool print_v2) {
+  return static_cast<float>(f);
+}
+
 float PrintOneElement(float8_e4m3b11fnuz f, bool print_v2) {
+  return static_cast<float>(f);
+}
+
+float PrintOneElement(float8_e5m2fnuz f, bool print_v2) {
+  return static_cast<float>(f);
+}
+
+float PrintOneElement(float8_e8m0fnu f, bool print_v2) {
   return static_cast<float>(f);
 }
 
@@ -1579,9 +1596,18 @@ std::string Tensor::SummarizeValue(int64_t max_entries, bool print_v2) const {
     case DT_FLOAT8_E4M3FN:
       return SummarizeArray<float8_e4m3fn>(limit, num_elts, shape_, data,
                                            print_v2);
+    case DT_FLOAT8_E4M3FNUZ:
+      return SummarizeArray<float8_e4m3fnuz>(limit, num_elts, shape_, data,
+                                             print_v2);
     case DT_FLOAT8_E4M3B11FNUZ:
       return SummarizeArray<float8_e4m3b11fnuz>(limit, num_elts, shape_, data,
                                                 print_v2);
+    case DT_FLOAT8_E5M2FNUZ:
+      return SummarizeArray<float8_e5m2fnuz>(limit, num_elts, shape_, data,
+                                             print_v2);
+    case DT_FLOAT8_E8M0FNU:
+      return SummarizeArray<float8_e8m0fnu>(limit, num_elts, shape_, data,
+                                            print_v2);
     case DT_FLOAT4_E2M1FN:
       return SummarizeArray<float4_e2m1fn>(limit, num_elts, shape_, data,
                                            print_v2);

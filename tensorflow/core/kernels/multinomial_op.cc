@@ -188,7 +188,7 @@ class MultinomialOp : public OpKernel {
     // Execute kernel only for nonempty output; otherwise Eigen crashes on GPU.
     if (samples_t->NumElements() > 0) {
       Tensor noises, scores, scratch;  // Scratch space only used for GPU.
-      if (std::is_same<Device, GPUDevice>::value) {
+      if (std::is_same_v<Device, GPUDevice>) {
         OP_REQUIRES_OK(
             ctx,
             ctx->allocate_temp(
@@ -207,7 +207,7 @@ class MultinomialOp : public OpKernel {
 
       int num_samples_ceil_4 = (num_samples + 3) / 4 * 4;
       // CPU generates doubles = 2 samples per number.
-      if (std::is_same<Device, CPUDevice>::value) num_samples_ceil_4 *= 2;
+      if (std::is_same_v<Device, CPUDevice>) num_samples_ceil_4 *= 2;
       auto rng =
           generator->ReserveRandomOutputs(batch_size * num_samples_ceil_4, 256);
       functor::MultinomialFunctor<Device, T, OutputType>()(

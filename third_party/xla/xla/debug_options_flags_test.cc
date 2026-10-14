@@ -244,6 +244,12 @@ TEST(DebugOptions, CollectiveKernelsFlagUnderscoreAllGather) {
               ElementsAre(DebugOptions::COLLECTIVE_KERNEL_ALL_GATHER));
 }
 
+TEST(DebugOptions, CollectiveKernelsFlagAllToAll) {
+  DebugOptions opts = ParseCollectiveKernelsFlag("ALL_TO_ALL");
+  EXPECT_THAT(opts.xla_gpu_experimental_use_collective_kernels(),
+              ElementsAre(DebugOptions::COLLECTIVE_KERNEL_ALL_TO_ALL));
+}
+
 TEST(DebugOptions, CollectiveKernelsFlagBothHyphenated) {
   DebugOptions opts = ParseCollectiveKernelsFlag("ALL_REDUCE,ALL_GATHER");
   EXPECT_THAT(opts.xla_gpu_experimental_use_collective_kernels(),
@@ -262,6 +268,25 @@ TEST(DebugOptions, CollectiveKernelsFlagShortEnumNameUppercase) {
   DebugOptions opts = ParseCollectiveKernelsFlag("ALL_REDUCE");
   EXPECT_THAT(opts.xla_gpu_experimental_use_collective_kernels(),
               ElementsAre(DebugOptions::COLLECTIVE_KERNEL_ALL_REDUCE));
+}
+
+TEST(DebugOptions, CollectiveKernelsFlagAllCollectives) {
+  DebugOptions opts = ParseCollectiveKernelsFlag("ALL_COLLECTIVES");
+  EXPECT_THAT(opts.xla_gpu_experimental_use_collective_kernels(),
+              ElementsAre(DebugOptions::COLLECTIVE_KERNEL_ALL_COLLECTIVES));
+}
+
+TEST(DebugOptions, CollectiveKernelsFlagLowercaseAllCollectives) {
+  DebugOptions opts = ParseCollectiveKernelsFlag("all_collectives");
+  EXPECT_THAT(opts.xla_gpu_experimental_use_collective_kernels(),
+              ElementsAre(DebugOptions::COLLECTIVE_KERNEL_ALL_COLLECTIVES));
+}
+
+TEST(DebugOptions, CollectiveKernelsFlagFullEnumNameAllCollectives) {
+  DebugOptions opts =
+      ParseCollectiveKernelsFlag("COLLECTIVE_KERNEL_ALL_COLLECTIVES");
+  EXPECT_THAT(opts.xla_gpu_experimental_use_collective_kernels(),
+              ElementsAre(DebugOptions::COLLECTIVE_KERNEL_ALL_COLLECTIVES));
 }
 
 TEST(DebugOptions, CollectiveKernelsFlagEmptyDisablesAll) {
@@ -478,6 +503,31 @@ TEST(DebugOptions, DeduplicateBackendConfigsMinSizeFlagsParsing) {
       "--xla_deduplicate_backend_configs_min_size=128"};
   EXPECT_TRUE(tsl::Flags::Parse(flag_args, flags));
   EXPECT_EQ(opts.xla_deduplicate_backend_configs_min_size(), 128);
+}
+
+TEST(DebugOptions, DeterministicOpsTriton) {
+  DebugOptions opts = DefaultDebugOptionsIgnoringFlags();
+  EXPECT_EQ(opts.xla_gpu_experimental_deterministic_ops_triton(),
+            DebugOptions::DETERMINISTIC_OPS_TRITON_MODE_OFF);
+
+  std::vector<tsl::Flag> flags;
+  MakeDebugOptionsFlags(&flags, &opts);
+  auto parse = [&](std::string value) {
+    std::vector<std::string> args = {
+        "--xla_gpu_experimental_deterministic_ops_triton=" + value};
+    return tsl::Flags::Parse(args, flags);
+  };
+
+  EXPECT_TRUE(parse("unchecked"));
+  EXPECT_EQ(opts.xla_gpu_experimental_deterministic_ops_triton(),
+            DebugOptions::DETERMINISTIC_OPS_TRITON_MODE_UNCHECKED);
+
+  EXPECT_TRUE(parse("off"));
+  EXPECT_EQ(opts.xla_gpu_experimental_deterministic_ops_triton(),
+            DebugOptions::DETERMINISTIC_OPS_TRITON_MODE_OFF);
+
+  EXPECT_FALSE(parse("unset"));
+  EXPECT_FALSE(parse("invalid"));
 }
 
 }  // namespace

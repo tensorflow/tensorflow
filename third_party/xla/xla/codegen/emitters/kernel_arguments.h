@@ -162,8 +162,9 @@ class KernelArguments {
 
   const std::vector<KernelArgument>& args() const { return args_; }
 
-  // Position of the argument that carries operand `operand_index` of the
-  // instruction these arguments were created for.
+  // Position, in this argument list, of the argument that carries operand
+  // `operand_number_in_hlo` of the HLO instruction these arguments were
+  // created for.
   //
   // Use this instead of hardcoding argument positions when building a
   // `stream_executor::KernelArgsPackingSpec`, whose relocation indices refer
@@ -171,15 +172,17 @@ class KernelArguments {
   //
   // Returns `FailedPrecondition` if the arguments were not built by one of the
   // `Create` factories, and `OutOfRange` if there is no such operand.
-  absl::StatusOr<int64_t> OperandIndex(int64_t operand_index) const;
+  absl::StatusOr<int64_t> PositionOfOperand(
+      int64_t operand_number_in_hlo) const;
 
-  // Position of the argument that carries the result subshape at
-  // `shape_index`. For an instruction with a non-tuple result, that is
-  // `ResultIndex({})`; for a one-element tuple result, `ResultIndex({0})`.
+  // Position, in this argument list, of the argument that carries the result
+  // subshape at `shape_index` of the HLO instruction these arguments were
+  // created for. For a non-tuple result that is `PositionOfResult({})`; for a
+  // one-element tuple result, `PositionOfResult({0})`.
   //
   // Returns `FailedPrecondition` if the arguments were not built by one of the
   // `Create` factories, and `OutOfRange` if there is no such result.
-  absl::StatusOr<int64_t> ResultIndex(const ShapeIndex& shape_index) const;
+  absl::StatusOr<int64_t> PositionOfResult(const ShapeIndex& shape_index) const;
 
   std::vector<ShapedSlice> GetArgumentShapedSlices() const {
     std::vector<ShapedSlice> arg_slices;

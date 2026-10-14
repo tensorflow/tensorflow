@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/types.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {

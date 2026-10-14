@@ -54,7 +54,7 @@ cc_library(
         "//xla/codegen/tiling/experimental:tile",
         "//xla/codegen/tiling/experimental:tiling_space_utils",
         "//xla/hlo/ir:hlo",
-        "//xla/service/gpu:backend_configs_cc",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
@@ -75,8 +75,6 @@ xla_cc_test(
         ":xtile_config_proto_cc",
         "//xla:status_macros",
         "//xla:xla_proto_cc",
-        "//xla/codegen/tiling:symbolic_tile_analysis",
-        "//xla/codegen/tiling:tiling_specification",
         "//xla/codegen/tiling/experimental:tile",
         "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
@@ -103,7 +101,6 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":xtile_config_proto_cc",
-        "//xla/service/gpu:backend_configs_cc",
     ],
 )
 
@@ -113,7 +110,6 @@ xla_cc_test(
     deps = [
         ":block_level_parameters",
         ":xtile_config_proto_cc",
-        "//xla/service/gpu:backend_configs_cc",
         "@com_google_googletest//:gtest_main",
     ],
 )

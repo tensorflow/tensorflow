@@ -35,7 +35,7 @@ ENTRY main {
 // CHECK:        xtile.entry_func @wrapped_fusion(
 // CHECK-SAME:     %[[ARG0:[^:]+]]: memref<128x32x64xf32>,
 // CHECK-SAME:     %[[ARG1:[^:]+]]: memref<32x64x128xf32>,
-// CHECK-SAME:     %{{.*}}: index)
+// CHECK-SAME:     %{{.*}}: index {xla.range = [0 : index, 0 : index]})
 
 // CHECK:        scf.for %[[IDX:.*]] = %{{.*}} to %{{.*}} step %{{.*}} {
 // CHECK:          %[[OFF0:.*]] = xla.apply_indexing #indexing_map(%[[IDX]])

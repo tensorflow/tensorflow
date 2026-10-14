@@ -847,7 +847,7 @@ PreprocessAndPartitionGraph(
 
   // As not all devices might set number of threads for intra op
   // parallelisation we restrict this only to local device which does.
-  if (cpu_device && std::is_same<decltype(cpu_device), LocalDevice>::value &&
+  if (cpu_device && std::is_same_v<decltype(cpu_device), LocalDevice> &&
       cpu_device->tensorflow_cpu_worker_threads() != nullptr) {
     // Forward to the optimisation pass number of intra threads that are used to
     // parallelise operations.

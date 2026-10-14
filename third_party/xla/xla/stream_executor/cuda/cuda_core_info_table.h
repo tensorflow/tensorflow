@@ -17,18 +17,16 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_CUDA_CUDA_CORE_INFO_TABLE_H_
 
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
-#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/gpu/dtype_core_info.h"
 
 namespace stream_executor {
 namespace gpu {
 
-// Fills the scalar and matrix unit fields in `desc` with CUDA Core and Tensor
-// Core descriptions if available for the given compute capability.
-void FillExecutionUnitDesc(CudaComputeCapability cc, float base_clock_rate_ghz,
-                           DeviceDescription& desc);
+// Returns the core info for `cc`, empty if it is not in the table.
+CoreInfo FindCudaCoreInfo(CudaComputeCapability cc);
 
-// Gets the number of FPUs (CUDA Cores) per SM. Assumes FP32 cores.
-int GetFpusPerCore(CudaComputeCapability cc);
+// Number of FPUs (CUDA Cores) per SM to assume when `cc` is not in the table.
+int CudaFpusPerCoreFallback(CudaComputeCapability cc);
 
 }  // namespace gpu
 }  // namespace stream_executor

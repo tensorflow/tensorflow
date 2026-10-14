@@ -175,6 +175,7 @@ xla_cc_test(
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_runner_interface",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//xla/tools/hlo_dump:hlo_dump_utils",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",

@@ -9,7 +9,7 @@ Lifecycle: Upstream this fix to triton-lang/triton and remove the patch in the n
 
 --- a/third_party/amd/lib/Analysis/RangeAnalysis.cpp
 +++ b/third_party/amd/lib/Analysis/RangeAnalysis.cpp
-@@ -314,13 +314,16 @@
+@@ -314,13 +314,16 @@ TritonIntegerRangeAnalysis::maybeGetTripCount(LoopLikeOpInterface loop) {
    // loop can run. Over-estimating is safe because extra backedges only widen
    // loop carried values; under-estimating is not. Loops which may not run at
    // all are handled by always propagating the init args.
@@ -32,7 +32,7 @@ Lifecycle: Upstream this fix to triton-lang/triton and remove the patch in the n
  }
  
  bool isEmptyInitializedRange(ConstantIntRanges rv) {
-@@ -384,11 +387,16 @@
+@@ -384,11 +387,16 @@ int64_t
  TritonIntegerRangeAnalysis::getTotalLoopTripCount(LoopLikeOpInterface loop) {
    SmallVector<LoopLikeOpInterface> loops{loop};
    getEnclosingLoops(*loop, loops);

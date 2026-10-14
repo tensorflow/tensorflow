@@ -242,13 +242,12 @@ XlaOp AsinComplex(XlaOp z) {
 
 // Arcus sine on real input:
 //
-//     arcsin(x) = 2 * arctan2(x, (1 + sqrt(1 - x * x)))
+//     arcsin(x) = atan2(x, sqrt((1 - x) * (1 + x)))
 //
 template <typename FloatType>
 XlaOp AsinReal(XlaOp x) {
   XlaOp one = ScalarLike(x, 1);
-  return Mul(ScalarLike(x, 2),
-             Atan2(x, Add(one, Sqrt(Mul(Sub(one, x), Add(one, x))))));
+  return Atan2(x, Sqrt(Mul(Sub(one, x), Add(one, x))));
 }
 
 // clang-format on

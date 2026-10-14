@@ -3,7 +3,7 @@ Remove redundant defaulted copy/move constructors to preserve aggregate status.
 diff --git a/tools/cuda-tile-tblgen/CudaTileOp.h b/tools/cuda-tile-tblgen/CudaTileOp.h
 --- a/tools/cuda-tile-tblgen/CudaTileOp.h
 +++ b/tools/cuda-tile-tblgen/CudaTileOp.h
-@@ -55,11 +55,6 @@
+@@ -56,11 +56,6 @@
    std::optional<std::vector<std::string>> selectedVariants;
    ParameterType type;
  

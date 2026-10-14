@@ -134,7 +134,7 @@ const std::map<string, string>& GetKnownQuantizeBrokenTests() {
 // sure those temporary directories are removed later.
 class ArchiveEnvironment : public ::testing::Environment {
  public:
-  ~ArchiveEnvironment() override {}
+  ~ArchiveEnvironment() override = default;
 
   // Delete all temporary directories on teardown.
   void TearDown() override {

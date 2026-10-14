@@ -171,9 +171,7 @@ def multinomial_cases():
   def wrap(op: ops.Operation, logits, logits_dtype, output_dtype, seed):
     device_type = get_device().device_type
     # Some dtypes are not supported on some devices
-    if (logits_dtype == dtypes.bfloat16 and device_type == 'GPU' and
-        not test_util.is_gpu_available(
-            cuda_only=True, min_cuda_compute_capability=(8, 0))):
+    if logits_dtype == dtypes.bfloat16 and device_type == 'GPU':
       logits_dtype = dtypes.float32
     return op(seed=seed,
               logits=constant_op.constant(logits, dtype=logits_dtype),

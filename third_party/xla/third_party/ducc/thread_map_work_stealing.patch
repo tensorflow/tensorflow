@@ -1,0 +1,152 @@
+# Copyright 2026 The OpenXLA Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+diff --git a/src/ducc0/infra/threading.h b/src/ducc0/infra/threading.h
+--- a/src/ducc0/infra/threading.h
++++ b/src/ducc0/infra/threading.h
+@@ -112,6 +112,8 @@
+       { MR_fail("Resizing is not supported by this thread pool"); }
+     virtual size_t adjust_nthreads(size_t nthreads_in) const = 0;
+     virtual void submit(std::function<void()> work) = 0;
++    virtual void parallel_for(size_t nthreads,
++                              std::function<void(size_t)> work);
+   };
+ 
+ }}
+diff --git a/src/ducc0/infra/threading.cc b/src/ducc0/infra/threading.cc
+--- a/src/ducc0/infra/threading.cc
++++ b/src/ducc0/infra/threading.cc
+@@ -642,6 +642,50 @@
+ 
+ #endif
+ 
++void thread_pool::parallel_for(size_t nthreads,
++                               std::function<void(size_t)> work) {
++  if (nthreads == 0) return;
++  if (nthreads == 1) {
++    work(0);
++    return;
++  }
++
++#ifdef DUCC0_HIERARCHICAL_SUBMISSION
++
++  latch counter(nthreads);
++  // distribute work to helper threads, in a recursive fashion
++  auto new_f = YCombinator([this, &work, &counter, nthreads](
++                               auto& new_f, size_t istart,
++                               size_t step) -> void {
++    for (; step > 0; step >>= 1)
++      if (istart + step < nthreads)
++        submit([&new_f, istart, step]() { new_f(istart + step, step >> 1); });
++    work(istart);
++    counter.count_down();
++  });
++
++  size_t biggest_step = 1;
++  while (biggest_step * 2 < nthreads) biggest_step <<= 1;
++  new_f(0, biggest_step);
++
++#else  // sequential submission
++
++    latch counter(nthreads - 1);
++    for (size_t i = 1; i < nthreads; ++i) {
++      submit([&work, i, &counter] {
++        work(i);
++        counter.count_down();
++      });
++    }
++    // do remaining work directly on this thread
++    work(0);
++
++#endif
++#undef DUCC0_HIERARCHICAL_SUBMISSION
++
++  counter.wait();
++}
++
+ void Distribution::thread_map(std::function<void(Scheduler &)> f)
+   {
+   if (nthreads_ == 1)
+@@ -661,67 +705,18 @@
+   // threads, which executes everything sequentially on its own thread,
+   // automatically prohibiting nested parallelism.
+   auto pool = get_active_pool();
+-
+-#ifdef DUCC0_HIERARCHICAL_SUBMISSION
+-
+-  latch counter(nthreads_);
+-  // distribute work to helper threads, in a recursive fashion
+-  auto new_f = YCombinator([this, &f, &counter, &ex, &ex_mut, pool](auto &new_f, size_t istart, size_t step) -> void {
++  pool->parallel_for(nthreads_, [&](size_t i) {
+     try
+       {
+       ScopedValueChanger<bool> changer(in_parallel_region, true);
+       ScopedUseThreadPool guard(*pool);
+-      for(; step>0; step>>=1)
+-        if(istart+step<nthreads_)
+-          pool->submit([&new_f, istart, step]()
+-            {new_f(istart+step, step>>1);});
+-      MyScheduler sched(*this, istart);
++      MyScheduler sched(*this, i);
+       f(sched);
+-      }
+-    catch (...)
+-      {
++    } catch (...) {
+       LockGuard lock(ex_mut);
+       ex = std::current_exception();
+-      }
+-    counter.count_down();
+-    });
+-
+-  size_t biggest_step=1;
+-  while (biggest_step*2<nthreads_) biggest_step<<=1;
+-  new_f(0, biggest_step);
+-
+-#else  // sequential submission
+-
+-  latch counter(nthreads_-1);
+-  for (size_t i=1; i<nthreads_; ++i)
+-    {
+-    pool->submit(
+-      [this, &f, i, &counter, &ex, &ex_mut, pool] {
+-      try
+-        {
+-        ScopedUseThreadPool guard(*pool);
+-        MyScheduler sched(*this, i);
+-        f(sched);
+-        }
+-      catch (...)
+-        {
+-        LockGuard lock(ex_mut);
+-        ex = std::current_exception();
+-        }
+-      counter.count_down();
+-      });
+     }
+-  {
+-  // do remaining work directly on this thread
+-  ScopedValueChanger<bool> changer(in_parallel_region, true);
+-  MyScheduler sched(*this, 0);
+-  f(sched);
+-  }
+-
+-#endif
+-#undef DUCC0_HIERARCHICAL_SUBMISSION
+-
+-  counter.wait();
++  });
+   if (ex)
+     std::rethrow_exception(ex);
+   }

@@ -17,6 +17,7 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 
+#include "absl/base/casts.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
@@ -546,7 +547,7 @@ class OneDnnOpsRewriterVisitor : public DfsHloRewriteVisitor {
     OneDnnNormConfig* ln_config =
         backend_config.mutable_onednn_layer_norm_config();
     ln_config->set_rescale(OneDnnNormConfig::SCALE_AND_SHIFT);
-    ln_config->set_epsilon_typecast(*(reinterpret_cast<int32_t*>(&eps)));
+    ln_config->set_epsilon_typecast(absl::bit_cast<int32_t>(eps));
     ABSL_RETURN_IF_ERROR(ln_call->set_backend_config(backend_config));
 
     if (convert_instr != nullptr && is_bf16orfp16_convert &&

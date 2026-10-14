@@ -378,6 +378,7 @@ nanobind_pywrap_extension(
     deps = [
         ":dlpack_types",
         ":nb_absl_span",
+        ":nb_numpy",
         ":strides",
         ":types",
         "//xla:array",
@@ -392,7 +393,6 @@ nanobind_pywrap_extension(
         "//xla/hlo/parser:hlo_parser",
         "//xla/pjrt:exceptions",
         "//xla/pjrt:status_casters",
-        "//xla/python:nb_numpy",
         "//xla/service:hlo_graph_dumper",
         "//xla/service:hlo_module_config",
         "//xla/service/spmd/shardy/stablehlo_round_trip:stablehlo_import",
@@ -586,6 +586,19 @@ nanobind_pywrap_extension(
     ],
 )
 
+nanobind_pywrap_extension(
+    name = "_gpu_spec",
+    srcs = ["gpu_spec.cc"],
+    pytype_srcs = ["_gpu_spec.pyi"],
+    visibility = internal_visibility([":jax"] + XLA_PYTHON_PROFILER_USERS),
+    deps = [
+        "//xla/backends/gpu/target_config",
+        "//xla/pjrt:exceptions",
+        "@com_google_absl//absl/base:core_headers",
+        "@nanobind",
+    ],
+)
+
 cc_library(
     name = "logging",
     srcs = ["logging.cc"],
@@ -636,6 +649,7 @@ xla_cc_test(
         "//xla/tsl/profiler/utils:file_system_utils",
         "//xla/tsl/profiler/utils:xplane_builder",
         "//xla/tsl/profiler/utils:xplane_schema",
+        "@tsl//tsl/profiler/protobuf:profiled_instructions_proto_cc",
         "@tsl//tsl/profiler/protobuf:profiled_instructions_proto_cc_impl",
         "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],

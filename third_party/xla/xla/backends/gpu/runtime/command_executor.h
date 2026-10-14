@@ -65,8 +65,9 @@ class CommandExecutor {
     // that have buffer of resource conflicts, and building a DAG of commands.
     kConcurrent,
 
-    // Uses the same latency hidden scheduling results used in the thunk
-    // scheduling.
+    // Preserves the thunk schedule produced by the latency hiding scheduler.
+    // The emitter expresses command order as token resources in
+    // `extra_resources`; the execution graph is built like kConcurrent.
     kLHS,
 
     // Hybrid of kSerialize and kConcurrent. Builds a DAG for concurrent

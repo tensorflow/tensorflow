@@ -217,3 +217,21 @@ cc_library(
         "@com_google_absl//absl/synchronization",
     ],
 )
+
+xla_cc_test(
+    name = "client_library_test",
+    srcs = ["client_library_test.cc"],
+    deps = [
+        ":client_library",
+        ":compile_only_client",
+        ":local_client",
+        "//xla/service:backend",
+        "//xla/service:cpu_plugin",
+        "//xla/service:platform_util",
+        "//xla/stream_executor:platform",
+        "//xla/tsl/platform:env",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

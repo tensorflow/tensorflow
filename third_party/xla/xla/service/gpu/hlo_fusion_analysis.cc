@@ -131,6 +131,10 @@ HloFusionAnalysis::EmitterFusionKind GetEmitterFusionKind(
     return HloFusionAnalysis::EmitterFusionKind::kCuDnn;
   }
 
+  if (fusion_backend_config.kind() == kTensorIrFusionKind) {
+    return HloFusionAnalysis::EmitterFusionKind::kTensorIr;
+  }
+
   std::optional<HloInstructionAdaptor> first_reduce_hero;
   for (auto [root, hero] : llvm::zip(fusion_roots, fusion_heroes)) {
     if (IsRealReductionHero(root.instruction(), hero.instruction(),
@@ -216,7 +220,8 @@ std::optional<HloInstructionAdaptor> FindCollectiveHero(
   std::optional<HloInstructionAdaptor> collective_hero;
   for (HloInstructionAdaptor instr : fusion.MakeInstructionPostOrder()) {
     if (instr.opcode() == HloOpcode::kAllGather ||
-        instr.opcode() == HloOpcode::kAllReduce) {
+        instr.opcode() == HloOpcode::kAllReduce ||
+        instr.opcode() == HloOpcode::kReduceScatter) {
       collective_hero = instr;
       break;
     }

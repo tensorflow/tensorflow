@@ -736,15 +736,11 @@ TfLiteStatus DefineYnnStencil(TfLiteContext* context, ynn_subgraph_t subgraph,
   return kTfLiteOk;
 }
 
-flexbuffers::Map GetFlexBufferMap(const TfLiteRegistration* reg,
-                                  const TfLiteNode* node) {
-  if (node == nullptr) {
-    return flexbuffers::Map::EmptyMap();
-  }
-  if (reg != nullptr && reg->builtin_code == kTfLiteBuiltinStablehloComposite &&
-      node->builtin_data != nullptr) {
+flexbuffers::Map GetFlexBufferMap(const NodeInfo& node) {
+  if (node.builtin_code == kTfLiteBuiltinStablehloComposite &&
+      node.builtin_data != nullptr) {
     const auto* composite_params =
-        static_cast<const TfLiteStablehloCompositeParams*>(node->builtin_data);
+        static_cast<const TfLiteStablehloCompositeParams*>(node.builtin_data);
     if (composite_params->attributes != nullptr &&
         composite_params->attributes_size > 0) {
       return flexbuffers::GetRoot(composite_params->attributes,
@@ -752,11 +748,11 @@ flexbuffers::Map GetFlexBufferMap(const TfLiteRegistration* reg,
           .AsMap();
     }
   }
-  if (node->custom_initial_data != nullptr &&
-      node->custom_initial_data_size > 0) {
+  if (node.custom_initial_data != nullptr &&
+      node.custom_initial_data_size > 0) {
     return flexbuffers::GetRoot(
-               reinterpret_cast<const uint8_t*>(node->custom_initial_data),
-               node->custom_initial_data_size)
+               reinterpret_cast<const uint8_t*>(node.custom_initial_data),
+               node.custom_initial_data_size)
         .AsMap();
   }
   return flexbuffers::Map::EmptyMap();

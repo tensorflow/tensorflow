@@ -49,6 +49,11 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "tsl/platform/platform.h"  // For PLATFORM_GOOGLE.
+
+#if defined(PLATFORM_GOOGLE)
+#include "third_party/ortools/ortools/algorithms/multikey_radix_sort.h"
+#endif  // PLATFORM_GOOGLE
 #include "xla/comparison_util.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
@@ -2055,6 +2060,70 @@ std::string RenderTimeByFreeChunks(
 
 }  // namespace
 
+#if defined(PLATFORM_GOOGLE)
+// Sorts `chunks` in ascending order of `Chunk::offset` using an adaptive sort
+// strategy.
+//
+// Optimizations:
+// 1. Tuned cutoff: For small arrays (N < 3000, ~48 kB for 16-byte Chunks),
+//    elements fit comfortably in L2 cache (typically 1+ MB, though spilling
+//    the 32-48 kB L1d cache). For this size, introsort (`absl::c_sort`) has
+//    lower constant factor overhead and is faster than radix sort.
+// 2. Single pass to check sortedness by counting inversions:
+//    - If nearly sorted (`inversions <= n / 10`), introsort does almost zero
+//      swaps and beats radix sort by >2x.
+// 3. AutoRadixSort:
+//    For high-entropy inputs with N >= 3000, dispatches to zero-allocation
+//    `operations_research::AutoRadixSort`, reusing the caller-provided scratch
+//    buffer without heap reallocations.
+void AdaptiveHybridSortChunks(std::vector<HeapSimulator::Chunk>& chunks,
+                              std::vector<HeapSimulator::Chunk>& scratch) {
+  using Chunk = HeapSimulator::Chunk;
+  const size_t n = chunks.size();
+
+  // Small lists fit within L2 cache (~48 kB data spills 32-48 kB L1d, but is
+  // well within L2) where introsort has lower constant overhead than radix sort
+  if (n < 3000) {
+    absl::c_sort(chunks, [](const Chunk& a, const Chunk& b) {
+      return a.offset < b.offset;
+    });
+    return;
+  }
+
+  // Single pass for sortedness by local inversion count.
+  int64_t prev = chunks[0].offset;
+  size_t inversions = 0;
+  constexpr size_t kMaxInversionDivisor = 10;
+  const size_t max_inversions_for_stdsort = n / kMaxInversionDivisor;
+
+  for (size_t i = 1; i < n; ++i) {
+    const int64_t curr = chunks[i].offset;
+    if (curr < prev) {
+      ++inversions;
+    }
+    prev = curr;
+  }
+
+  // Immediate early exit for already-sorted or uniform arrays.
+  if (inversions == 0) {
+    return;
+  }
+
+  // For nearly-sorted data, introsort does almost no swaps and beats radix
+  // sort.
+  if (inversions <= max_inversions_for_stdsort) {
+    absl::c_sort(chunks, [](const Chunk& a, const Chunk& b) {
+      return a.offset < b.offset;
+    });
+    return;
+  }
+
+  // Use zero-allocation AutoRadixSort.
+  operations_research::AutoRadixSort(
+      chunks, scratch, [](const Chunk& chunk) { return chunk.offset; });
+}
+#endif  // PLATFORM_GOOGLE
+
 template <typename BufferType>
 GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder::
     SlicedAllocationFinder(
@@ -2311,53 +2380,46 @@ GlobalDecreasingSizeBestFitHeap<
 }
 
 template <typename BufferType>
-absl::Status GlobalDecreasingSizeBestFitHeap<BufferType>::
-    SlicedAllocationFinder::DoesPermutationFit(
-        absl::Span<const int64_t> permutation_of_slice_times,
-        const FreeChunkRoot& root, int64_t offset) const {
-  absl::Status result =
-      DoesPermutationFitImpl(permutation_of_slice_times, root, offset);
-  VLOG(3) << "SlicedAllocationFinder::DoesPermutationFit\n"
-          << "  permutation of slice times: [ "
-          << absl::StrJoin(permutation_of_slice_times, ",") << " ]\n"
-          << "  offset: " << offset << "\n"
-          << "  root: " << root.ToString() << "\n"
-          << "  -> " << result;
-  return result;
-}
+bool GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder::
+    DoesPermutationFit(absl::Span<const int64_t> permutation_of_slice_times,
+                       const FreeChunkRoot& root, int64_t offset) const {
+  auto vlog_prefix = [&]() {
+    return absl::StrCat("SlicedAllocationFinder::DoesPermutationFit\n",
+                        "  permutation of slice times: [ ",
+                        absl::StrJoin(permutation_of_slice_times, ","), " ]\n",
+                        "  offset: ", offset, "\n", "  root: ", root.ToString(),
+                        "\n  -> ");
+  };
 
-template <typename BufferType>
-absl::Status GlobalDecreasingSizeBestFitHeap<BufferType>::
-    SlicedAllocationFinder::DoesPermutationFitImpl(
-        absl::Span<const int64_t> permutation_of_slice_times,
-        const FreeChunkRoot& root, int64_t offset) const {
   if (permutation_of_slice_times.size() != sorted_slice_sizes_.size()) {
-    return InvalidArgumentStrCat(
-        sorted_slice_sizes_.size(), " slices times expected in permutation. ",
-        permutation_of_slice_times.size(), " specified.");
+    VLOG(3) << vlog_prefix() << sorted_slice_sizes_.size()
+            << " slices times expected in permutation. "
+            << permutation_of_slice_times.size() << " specified.";
+    return false;
   }
   if (offset >= root.chunk.chunk_end()) {
-    return FailedPrecondition(
-        "%s", absl::StrCat("Free chunk root ", root.chunk.ToString(),
-                           " does not overlap with offset ", offset, "."));
+    VLOG(3) << vlog_prefix() << "Free chunk root " << root.chunk.ToString()
+            << " does not overlap with offset " << offset << ".";
+    return false;
   }
   if (offset + max_colocation_size_ > root.chunk.chunk_end()) {
-    return FailedPrecondition(
-        "%s", absl::StrCat("Not enough space to fit enitre allocation [",
-                           offset, ", ", offset + max_colocation_size_,
-                           ") in free chunk root ", root.chunk.ToString()));
+    VLOG(3) << vlog_prefix() << "Not enough space to fit entire allocation ["
+            << offset << ", " << offset + max_colocation_size_
+            << ") in free chunk root " << root.chunk.ToString();
+    return false;
   }
   if (!is_offset_allowed_(offset)) {
-    return FailedPrecondition(
-        "%s", absl::StrCat("We are not permitted to place an allocation at ",
-                           "offset ", offset, "."));
+    VLOG(3) << vlog_prefix()
+            << "We are not permitted to place an allocation at offset "
+            << offset << ".";
+    return false;
   }
 
   auto piece_fwd_it = root.pieces.lower_bound(offset);
   if (piece_fwd_it == root.pieces.end()) {
-    return FailedPrecondition(
-        "%s", absl::StrCat("Offset ", offset, " comes before free chunk root ",
-                           root.chunk.ToString()));
+    VLOG(3) << vlog_prefix() << "Offset " << offset
+            << " comes before free chunk root " << root.chunk.ToString();
+    return false;
   }
   ++piece_fwd_it;
   auto piece_reverse_it = std::make_reverse_iterator(piece_fwd_it);
@@ -2386,11 +2448,10 @@ absl::Status GlobalDecreasingSizeBestFitHeap<BufferType>::
     if (current_piece_time > current_slice_time) {
       // The current piece is not free far enough back in time to support the
       // current slice.
-      return FailedPrecondition(
-          "%s",
-          absl::StrCat("At slice time t", current_slice_time, ", slice ",
-                       slice_index, " does not fit at offset ", current_offset,
-                       " in root ", root.chunk.ToString()));
+      VLOG(3) << vlog_prefix() << "At slice time t" << current_slice_time
+              << ", slice " << slice_index << " does not fit at offset "
+              << current_offset << " in root " << root.chunk.ToString();
+      return false;
     }
 
     if (remaining_in_slice >= remaining_in_piece) {
@@ -2406,12 +2467,14 @@ absl::Status GlobalDecreasingSizeBestFitHeap<BufferType>::
   }
 
   if (!out_of_slices(slice_index)) {
-    return InternalStrCat("Ran out of space in root ", root.chunk.ToString(),
-                          " to fit slice permutation; however, we should "
-                          "have caught such a condition earlier.");
+    VLOG(3) << vlog_prefix() << "Ran out of space in root "
+            << root.chunk.ToString()
+            << " to fit slice permutation; however, we should "
+               "have caught such a condition earlier.";
+    return false;
   }
 
-  return absl::OkStatus();
+  return true;
 }
 
 // Future opportunities:
@@ -2449,8 +2512,7 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder::FindInRoot(
          !slice_time_permutation_iterator_->Done();
          slice_time_permutation_iterator_->Next()) {
       if (DoesPermutationFit(slice_time_permutation_iterator_->Get(), root,
-                             offset)
-              .ok()) {
+                             offset)) {
         return PermutationToChunks(slice_time_permutation_iterator_->Get(),
                                    offset);
       }
@@ -2588,9 +2650,14 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::MakeFreeChunksList(
         });
   }
 
+#if defined(PLATFORM_GOOGLE)
+  // Sort used chunks by offset ascending using adaptive hybrid sort.
+  AdaptiveHybridSortChunks(used_chunks_, radix_scratch_);
+#else
   // Sort used chunks by offset ascending.
   std::sort(used_chunks_.begin(), used_chunks_.end(),
             [](const Chunk& a, const Chunk& b) { return a.offset < b.offset; });
+#endif  // PLATFORM_GOOGLE
 
   free_chunks_list_.clear();
   if (used_chunks_.empty()) {
@@ -2849,13 +2916,9 @@ void GlobalDecreasingSizeBestFitHeap<BufferType>::CommitChunkOnly(
       Chunk::FromOffsetSize(chunk.offset, max_colocation_size);
 
   result_.heap_size = result_.UpdatedHeapSize(max_size_chunk);
+  // NOLINTNEXTLINE
   for (auto colocation : GetTransitiveColocations(buffer_interval)) {
-    // Create a colocation chunk with the same offset and the maximum size of
-    // all colocated buffers.
-    Chunk colocation_chunk =
-        Chunk::FromOffsetSize(chunk.offset, max_colocation_size);
-    result_.heap_size = result_.UpdatedHeapSize(colocation_chunk);
-    AddToChunkMap(colocation, colocation_chunk);
+    AddToChunkMap(colocation, max_size_chunk);
   }
 
   AddToChunkMap(buffer_interval.buffer, max_size_chunk);
@@ -2875,9 +2938,8 @@ void GlobalDecreasingSizeBestFitHeap<BufferType>::CommitChunkAndInterval(
   // NOLINTNEXTLINE
   for (auto colocation : GetTransitiveColocations(buffer_interval)) {
     auto colocation_interval = buffer_intervals_[colocation];
-    interval_tree_.Add(
-        colocation_interval.start, colocation_interval.end,
-        Chunk::FromOffsetSize(chunk.offset, max_colocation_size));
+    interval_tree_.Add(colocation_interval.start, colocation_interval.end,
+                       max_size_chunk);
   }
 }
 

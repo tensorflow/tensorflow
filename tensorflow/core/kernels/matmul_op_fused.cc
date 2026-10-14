@@ -453,10 +453,19 @@ struct LaunchFusedMatMulOp<GPUDevice, T> {
     // + <other pointwise operations>. Therefore, the bias tensor is required.
     const Tensor& bias = context->input(2);
 
-    if (bias.dims() != 1) {
-      OP_REQUIRES_OK(context, absl::InvalidArgumentError(
-                                  absl::StrCat("bias must be 1-dimensional",
-                                               bias.shape().DebugString())));
+    if (bias.dims() < 1) {
+      OP_REQUIRES_OK(context, absl::InvalidArgumentError(absl::StrCat(
+                                  "bias must be at least 1-dimensional, got: ",
+                                  bias.shape().DebugString())));
+    }
+    for (int i = 0; i < bias.dims() - 1; ++i) {
+      if (bias.dim_size(i) != 1) {
+        OP_REQUIRES_OK(context,
+                       absl::InvalidArgumentError(absl::StrCat(
+                           "For bias_dims > 1, all except the last dimension "
+                           "must be 1, got: ",
+                           bias.shape().DebugString())));
+      }
     }
 
     auto a_ptr = AsDeviceMemory(a.template flat<T>().data(),
@@ -626,7 +635,7 @@ class FusedMatMulOp : public OpKernel {
     std::vector<FusedComputationPattern> patterns;
 
     using FCT = FusedComputationType;
-    if (std::is_same<Device, CPUDevice>::value) {
+    if (std::is_same_v<Device, CPUDevice>) {
       patterns = {
           {FCT::kBiasAdd, {"BiasAdd"}},
           {FCT::kBiasAddWithRelu, {"BiasAdd", "Relu"}},
@@ -636,7 +645,7 @@ class FusedMatMulOp : public OpKernel {
           {FCT::kBiasAddWithElu, {"BiasAdd", "Elu"}},
           {FCT::kBiasAddWithLeakyRelu, {"BiasAdd", "LeakyRelu"}},
       };
-    } else if (std::is_same<Device, GPUDevice>::value) {
+    } else if (std::is_same_v<Device, GPUDevice>) {
       patterns = {
           {FCT::kBiasAdd, {"BiasAdd"}},
           {FCT::kBiasAddWithRelu, {"BiasAdd", "Relu"}},
@@ -649,7 +658,7 @@ class FusedMatMulOp : public OpKernel {
     OP_REQUIRES_OK(context, InitializeFusedComputation(
                                 context, "MatMul", patterns,
                                 &fused_computation_, &fused_computation_args_));
-    if (std::is_same<Device, GPUDevice>::value &&
+    if (std::is_same_v<Device, GPUDevice> &&
         (fused_computation_ == FCT::kBiasAddWithGeluExact ||
          fused_computation_ == FCT::kBiasAddWithTanh ||
          fused_computation_ == FCT::kBiasAddWithSigmoid)) {

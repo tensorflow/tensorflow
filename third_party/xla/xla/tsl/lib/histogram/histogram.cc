@@ -18,12 +18,14 @@ limitations under the License.
 #include <float.h>
 #include <math.h>
 
+#include <cstddef>
 #include <vector>
 
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/types.h"
 #include "xla/tsl/protobuf/histogram.pb.h"
+#include "tsl/platform/platform.h"
 
 namespace tsl {
 namespace histogram {
@@ -61,13 +63,13 @@ Histogram::Histogram(absl::Span<const double> custom_bucket_limits)
     : custom_bucket_limits_(custom_bucket_limits.begin(),
                             custom_bucket_limits.end()),
       bucket_limits_(custom_bucket_limits_) {
-#ifndef NDEBUG
-  DCHECK_GT(bucket_limits_.size(), size_t{0});
-  // Verify that the bucket boundaries are strictly increasing
-  for (size_t i = 1; i < bucket_limits_.size(); i++) {
-    DCHECK_GT(bucket_limits_[i], bucket_limits_[i - 1]);
+  if constexpr (tsl::kIsDebugBuild) {
+    DCHECK_GT(bucket_limits_.size(), size_t{0});
+    // Verify that the bucket boundaries are strictly increasing
+    for (size_t i = 1; i < bucket_limits_.size(); i++) {
+      DCHECK_GT(bucket_limits_[i], bucket_limits_[i - 1]);
+    }
   }
-#endif
   Clear();
 }
 

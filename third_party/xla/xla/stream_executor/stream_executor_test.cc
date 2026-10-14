@@ -17,17 +17,20 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <vector>
 
 #include <gtest/gtest.h>
 #include "absl/status/status_macros.h"
-#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/threadpool.h"
 
 namespace stream_executor {
+namespace {
 
 struct TestResource : public StreamExecutor::Resource {
   TestResource() = default;
@@ -35,7 +38,7 @@ struct TestResource : public StreamExecutor::Resource {
   int32_t value = 0;
 };
 
-static absl::StatusOr<StreamExecutor*> NewStreamExecutor() {
+absl::StatusOr<StreamExecutor*> NewStreamExecutor() {
   ABSL_ASSIGN_OR_RETURN(auto platform, PlatformManager::PlatformWithName("Host"));
   ABSL_ASSIGN_OR_RETURN(auto stream_exec, platform->ExecutorForDevice(0));
   return stream_exec;
@@ -61,4 +64,25 @@ TEST(StreamExecutorTest, GetOrCreateResource) {
   EXPECT_EQ(executor->GetOrNullResource<TestResource>(), resource);
 }
 
+TEST(StreamExecutorTest, GetDeviceDescriptionConcurrent) {
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor, NewStreamExecutor());
+
+  constexpr int kNumThreads = 8;
+  std::vector<const DeviceDescription*> descriptions(kNumThreads, nullptr);
+  {
+    tsl::thread::ThreadPool pool(tsl::Env::Default(), "test_pool", kNumThreads);
+    for (int i = 0; i < kNumThreads; ++i) {
+      pool.Schedule([executor, &descriptions, i]() {
+        descriptions[i] = &executor->GetDeviceDescription();
+      });
+    }
+  }
+
+  ASSERT_NE(descriptions[0], nullptr);
+  for (int i = 1; i < kNumThreads; ++i) {
+    EXPECT_EQ(descriptions[i], descriptions[0]);
+  }
+}
+
+}  // namespace
 }  // namespace stream_executor

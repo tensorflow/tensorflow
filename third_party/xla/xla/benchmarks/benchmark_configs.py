@@ -21,6 +21,8 @@ import immutabledict
 from jax.experimental.pallas import tpu as pltpu
 import jax.numpy as jnp
 
+from xla.benchmarks.collectives import all_gather_benchmark
+from xla.benchmarks.collectives import collectives_benchmark
 from xla.benchmarks.core import platform_info
 from xla.benchmarks.dma_microbenchmarks import chip_to_chip_dma_benchmark
 from xla.benchmarks.dma_microbenchmarks import chiplet_to_chiplet_dma_benchmark
@@ -232,6 +234,28 @@ def get_dma_configs(
   return configs
 
 
+_COLLECTIVE_SUITES: tuple[
+    tuple[str, type[collectives_benchmark.CollectivesBenchmarks]], ...
+] = (("all_gather", all_gather_benchmark.AllGatherBenchmarks),)
+
+
+def get_collectives_configs(
+    chip_version: pltpu.ChipVersion | None = None,
+) -> list[collectives_benchmark.CollectiveBenchmarkConfig]:
+  """Generates configs for all collective microbenchmarks."""
+  del chip_version  # Unused.
+  configs = []
+  for suite, test_class in _COLLECTIVE_SUITES:
+    for name in sorted(dir(test_class)):
+      if name.startswith("test_"):
+        configs.append(
+            collectives_benchmark.CollectiveBenchmarkConfig(
+                suite=suite, test_class=test_class, test_name=name
+            )
+        )
+  return configs
+
+
 BENCHMARK_FACTORIES: Mapping[
     str, Callable[[pltpu.ChipVersion | None], list[Any]]
 ] = immutabledict.immutabledict({
@@ -239,4 +263,5 @@ BENCHMARK_FACTORIES: Mapping[
     "subchannel_matmul": get_subchannel_matmul_configs,
     "jax_matmul": get_jax_matmul_configs,
     "dma": get_dma_configs,
+    "collectives": get_collectives_configs,
 })

@@ -27,7 +27,6 @@ import numpy as onp
 import six
 
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import errors_impl
 from tensorflow.python.ops.numpy_ops.tests.config import config
 from tensorflow.python.ops.numpy_ops.tests.config import FLAGS
 import tensorflow.python.ops.numpy_ops.tests.extensions as nje
@@ -39,7 +38,14 @@ from tensorflow.python.util.numpy_compat import np_where
 config.parse_flags_with_absl()
 
 
-nonempty_nonscalar_array_shapes = [(4,), (3, 4), (3, 1), (1, 4), (2, 1, 4), (2, 3, 4)]
+nonempty_nonscalar_array_shapes = [
+    (4,),
+    (3, 4),
+    (3, 1),
+    (1, 4),
+    (2, 1, 4),
+    (2, 3, 4),
+]
 nonempty_array_shapes = [()] + nonempty_nonscalar_array_shapes
 empty_array_shapes = [(0,), (0, 4), (3, 0),]
 
@@ -2069,6 +2075,50 @@ class LaxBackedNumpyTests(jtu.TestCase):
     self._CompileAndCheck(
         lnp_op, args_maker, check_dtypes=True, check_incomplete_shape=True)
 
+  @new_test
+  def testRot90InvalidAxes(self):
+    a = tnp.ones((2, 3))
+    # Out-of-bounds axes must be rejected, matching NumPy's ValueError.
+    with self.assertRaisesRegex(ValueError, "out of range"):
+      tnp.rot90(a, axes=(0, 3))
+    with self.assertRaisesRegex(ValueError, "out of range"):
+      tnp.rot90(a, axes=(0, -5))
+    # Duplicate axes (after negative normalization) must be rejected.
+    with self.assertRaisesRegex(ValueError, "must be different"):
+      tnp.rot90(a, axes=(0, 0))
+    with self.assertRaisesRegex(ValueError, "must be different"):
+      tnp.rot90(a, axes=(0, -2))
+    # axes must have exactly two entries.
+    with self.assertRaisesRegex(ValueError, "must be 2"):
+      tnp.rot90(a, axes=(0,))
+    with self.assertRaisesRegex(ValueError, "must be 2"):
+      tnp.rot90(a, axes=(0, 1, 2))
+    # Sub-2D inputs are invalid with the default axes=(0, 1), matching
+    # NumPy's check order: the vector's default axes trip the duplicate
+    # check (abs(0 - 1) == ndim), and a scalar trips the bounds check.
+    with self.assertRaisesRegex(ValueError, "out of range"):
+      tnp.rot90(tnp.ones(()))
+    with self.assertRaisesRegex(ValueError, "must be different"):
+      tnp.rot90(tnp.ones(3))
+    # Unsigned NumPy integers must not wrap around in the duplicate
+    # check (unsigned scalar subtraction is modular).
+    with self.assertRaisesRegex(ValueError, "must be different"):
+      tnp.rot90(tnp.ones(3), axes=(onp.uint32(0), onp.uint32(0)))
+    with self.assertRaisesRegex(ValueError, "must be different"):
+      tnp.rot90(tnp.ones(3), axes=(onp.uint32(0), onp.uint32(1)))
+    # In-bounds negative axes remain valid.
+    self.assertAllClose(
+        tnp.rot90(a, axes=(-2, -1)),
+        onp.rot90(onp.ones((2, 3)), axes=(-2, -1)),
+        check_dtypes=False,
+    )
+    # Valid unsigned integer axes still work.
+    self.assertAllClose(
+        tnp.rot90(tnp.ones((2, 3)), axes=(onp.uint32(0), onp.uint32(1))),
+        onp.rot90(onp.ones((2, 3)), axes=(0, 1)),
+        check_dtypes=False,
+    )
+
   # TODO(mattjj): test infix operator overrides
 
   def testRavel(self):
@@ -2601,9 +2651,7 @@ class LaxBackedNumpyTests(jtu.TestCase):
 
   def testReductionOfOutOfBoundsAxis(self):  # Issue 888
     x = tnp.ones((3, 4))
-    self.assertRaises(
-        errors_impl.InvalidArgumentError, lambda: tnp.sum(x, axis=2)
-    )
+    self.assertRaises(ValueError, lambda: tnp.sum(x, axis=2))
 
   @jtu.disable
   def testIssue956(self):
@@ -2957,6 +3005,19 @@ class LaxBackedNumpyTests(jtu.TestCase):
     def foo(x):
       return tnp.concatenate(x)
     foo(onp.zeros((2, 2)))  # doesn't crash
+
+  def testStackInvalidAxis(self):
+    # NumPy raises AxisError for out-of-bounds stack axes. `axis` is an
+    # insertion position, so rank itself is in bounds.
+    a = onp.ones((2, 3))
+    with self.assertRaisesRegex(ValueError, "out of bounds"):
+      tnp.stack([a, a], axis=3)
+    with self.assertRaisesRegex(ValueError, "out of bounds"):
+      tnp.stack([a, a], axis=-4)
+    with self.assertRaisesRegex(ValueError, "out of bounds"):
+      tnp.stack([a, a], axis=4)
+    # In-bounds boundaries still work.
+    self.assertEqual(tnp.stack([a, a], axis=2).shape, (2, 3, 2))
 
   @jtu.disable
   def testReluGradientConstants(self):

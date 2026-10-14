@@ -28,7 +28,6 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -40,7 +39,6 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
@@ -547,16 +545,18 @@ absl::Status RunNcclFallbackRaggedAllToAll(
 
 RaggedAllToAllThunk::RaggedAllToAllThunk(
     ThunkInfo thunk_info, const HloRaggedAllToAllInstruction* instr,
-    std::vector<CollectiveThunk::Buffer> buffers, bool p2p_memcpy_enabled)
+    std::vector<CollectiveThunk::Buffer> buffers, bool p2p_memcpy_enabled,
+    int devices_per_host)
     : RaggedAllToAllThunk(std::move(thunk_info), GetRaggedAllToAllConfig(instr),
-                          std::move(buffers)) {}
+                          std::move(buffers), devices_per_host) {}
 
 RaggedAllToAllThunk::RaggedAllToAllThunk(
     ThunkInfo thunk_info, const RaggedAllToAllConfig& config,
-    std::vector<CollectiveThunk::Buffer> buffers)
+    std::vector<CollectiveThunk::Buffer> buffers, int devices_per_host)
     : CollectiveThunk(Thunk::kRaggedAllToAll, thunk_info, std::move(buffers),
                       CommunicationId(0), config.collectives_mode),
-      config_(config) {
+      config_(config),
+      per_device_states_(devices_per_host) {
   CHECK_EQ(config_.config.operand_element_type.size(), this->buffers().size());
 }
 
@@ -601,7 +601,8 @@ RaggedAllToAllThunk::GetCliqueRequirements(const GpuCliqueKey& clique_key,
     const int core_count = params.executor->GetDeviceDescription().core_count();
     clique_reqs.dev_comm = DeviceKernelLsaDevCommRequirements(core_count);
   }
-  if (use_multi_gpu_barrier_with_nccl_in_one_shot_kernel()) {
+  if (use_multi_gpu_barrier_with_nccl_in_one_shot_kernel() &&
+      clique_key.num_devices() > 1) {
     clique_reqs.barrier_reqs = CollectiveCliqueRequests::BarrierRequirements();
     clique_reqs.barrier_reqs->use_cross_device_barrier = true;
   }
@@ -611,111 +612,99 @@ RaggedAllToAllThunk::GetCliqueRequirements(const GpuCliqueKey& clique_key,
   return clique_reqs;
 }
 
-absl::StatusOr<RaggedAllToAllStreamState*> RaggedAllToAllThunk::InitializeOnce(
-    const InitializeParams& params) {
-  se::StreamExecutor* executor = params.executor;
-  {
-    absl::MutexLock lock(mutex_);
-
-    // If the stream state already exists, it means that the thunk has been
-    // initialized for this executor.
-    auto it = per_stream_states_.find(executor);
-    if (it != per_stream_states_.end()) {
-      return it->second.get();
-    }
-  }
-
-  ABSL_ASSIGN_OR_RETURN(
-      GpuCliqueKey clique_key,
-      GetCollectiveGpuCliqueKey(*params.collective_params, config_.config));
-  const std::optional<RankId> rank =
-      clique_key.rank(params.collective_params->global_device_id);
-
-  auto state = std::make_unique<RaggedAllToAllStreamState>(
-      executor->device_ordinal(), rank.value(), std::move(clique_key));
-
-  // Allocate temp buffers in the host memory to load the sizes and offsets of
-  // ragged tensors from device memory.
-  for (int64_t i = 0; i < kNumRaggedMetadataOperands; ++i) {
-    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<se::MemoryAllocation> alloc,
-                     executor->HostMemoryAllocate(config_.num_total_updates *
-                                                  sizeof(int64_t)));
-    state->host_buffer_allocs.push_back(std::move(alloc));
-  }
-
-  const uint64_t output_offsets_buffer_bytes =
-      static_cast<uint64_t>(config_.num_total_updates) * sizeof(int64_t);
-  ABSL_ASSIGN_OR_RETURN(
-      state->output_offsets_device_buffer,
-      params.buffer_allocations->memory_allocator()->Allocate(
-          executor->device_ordinal(), output_offsets_buffer_bytes));
-
-  if (output_offsets_buffer_bytes > 0 &&
-      state->output_offsets_device_buffer.is_null()) {
-    return absl::InternalError("Failed to allocate output offsets buffer.");
-  }
-
-  if (use_multi_gpu_barrier_with_nccl_in_one_shot_kernel() ||
-      config_.use_device_kernel) {
-    if (config_.fast_interconnect_slice_size_override.has_value()) {
-      state->lsa_size = config_.fast_interconnect_slice_size_override.value();
-    } else {
-      ABSL_ASSIGN_OR_RETURN(auto* comm, params.collective_cliques->GetComm(
-                                       state->clique_key, state->rank));
-
-      state->lsa_size = comm->LsaSize();
-    }
-  }
-  XLA_VLOG_DEVICE(3, state->device_ordinal)
-      << "lsa_size: "
-      << (state->lsa_size.has_value() ? absl::StrCat(state->lsa_size.value())
-                                      : "null");
-
-  if (is_local(params.local_device_count) ||
-      (state->lsa_size.has_value() &&
-       state->lsa_size.value() == state->clique_key.num_devices())) {
-    using MultiGpuBarrierKernel = se::gpu::MultiGpuBarrierKernel;
-
-    ABSL_ASSIGN_OR_RETURN(
-        std::unique_ptr<se::MemoryAllocator> collective_allocator,
-        executor->CreateMemoryAllocator(se::MemorySpace::kCollective));
-
-    // We allocate kMaxPeers to be safe and avoid bounds issues, aligning with
-    // the fixed-size kernel logic.
-    ABSL_ASSIGN_OR_RETURN(
-        state->barrier_signal_buffer,
-        collective_allocator->Allocate(BarrierSignalBufferBytes()));
-
-    // This value acts as the local step counter.
-    ABSL_ASSIGN_OR_RETURN(state->barrier_signal_value,
-                     collective_allocator->Allocate(sizeof(uint32_t)));
-
-    ABSL_ASSIGN_OR_RETURN(state->output_buffer_ptr_storage,
-                     collective_allocator->Allocate(
-                         MultiGpuBarrierKernel::kMaxPeers * sizeof(void*)));
-
-    ABSL_RETURN_IF_ERROR(ZeroBarrierSignalBuffers(
-        *params.stream, state->barrier_signal_buffer->address(),
-        state->barrier_signal_value->address()));
-
-    ABSL_ASSIGN_OR_RETURN(
-        std::vector<DeviceBufferPair> device_buffers,
-        ConvertToDeviceBuffers(params.buffer_allocations, buffers(),
-                               config_.config.operand_element_type));
-  }
-
-  RaggedAllToAllStreamState* state_ptr = state.get();
-  {
-    absl::MutexLock lock(mutex_);
-    per_stream_states_.emplace(executor, std::move(state));
-  }
-  return state_ptr;
-}
-
 absl::Status RaggedAllToAllThunk::Initialize(const InitializeParams& params) {
-  ABSL_RETURN_IF_ERROR(CollectiveThunk::Initialize(params));
+  se::StreamExecutor* executor = params.executor;
+  ABSL_RETURN_IF_ERROR(per_device_states_.GetOrCreateAndInitialize(
+      executor->device_ordinal(),
+      [&](RaggedAllToAllStreamState* state) -> absl::Status {
+        ABSL_ASSIGN_OR_RETURN(GpuCliqueKey clique_key,
+                         GetCollectiveGpuCliqueKey(*params.collective_params,
+                                                   config_.config));
+        const std::optional<RankId> rank =
+            clique_key.rank(params.collective_params->global_device_id);
 
-  ABSL_ASSIGN_OR_RETURN(RaggedAllToAllStreamState * state, InitializeOnce(params));
+        *state = RaggedAllToAllStreamState(executor->device_ordinal(),
+                                           rank.value(), std::move(clique_key));
+
+        // Allocate temp buffers in the host memory to load the sizes and
+        // offsets of ragged tensors from device memory.
+        for (int64_t i = 0; i < kNumRaggedMetadataOperands; ++i) {
+          ABSL_ASSIGN_OR_RETURN(std::unique_ptr<se::MemoryAllocation> alloc,
+                           executor->HostMemoryAllocate(
+                               config_.num_total_updates * sizeof(int64_t)));
+          state->host_buffer_allocs.push_back(std::move(alloc));
+        }
+
+        const uint64_t output_offsets_buffer_bytes =
+            static_cast<uint64_t>(config_.num_total_updates) * sizeof(int64_t);
+        ABSL_ASSIGN_OR_RETURN(
+            state->output_offsets_device_buffer,
+            params.buffer_allocations->memory_allocator()->Allocate(
+                executor->device_ordinal(), output_offsets_buffer_bytes));
+
+        if (output_offsets_buffer_bytes > 0 &&
+            state->output_offsets_device_buffer.is_null()) {
+          return absl::InternalError(
+              "Failed to allocate output offsets buffer.");
+        }
+
+        if ((use_multi_gpu_barrier_with_nccl_in_one_shot_kernel() &&
+             state->clique_key.num_devices() > 1) ||
+            config_.use_device_kernel) {
+          if (config_.fast_interconnect_slice_size_override.has_value()) {
+            state->lsa_size =
+                config_.fast_interconnect_slice_size_override.value();
+          } else {
+            ABSL_ASSIGN_OR_RETURN(auto* comm, params.collective_cliques->GetComm(
+                                             state->clique_key, state->rank));
+
+            state->lsa_size = comm->LsaSize();
+          }
+        }
+        XLA_VLOG_DEVICE(3, state->device_ordinal)
+            << "lsa_size: "
+            << (state->lsa_size.has_value()
+                    ? absl::StrCat(state->lsa_size.value())
+                    : "null");
+
+        if (is_local(params.local_device_count) ||
+            (state->lsa_size.has_value() &&
+             state->lsa_size.value() == state->clique_key.num_devices())) {
+          using MultiGpuBarrierKernel = se::gpu::MultiGpuBarrierKernel;
+
+          ABSL_ASSIGN_OR_RETURN(
+              std::unique_ptr<se::MemoryAllocator> collective_allocator,
+              executor->CreateMemoryAllocator(se::MemorySpace::kCollective));
+
+          // We allocate kMaxPeers to be safe and avoid bounds issues,
+          // aligning with the fixed-size kernel logic.
+          ABSL_ASSIGN_OR_RETURN(
+              state->barrier_signal_buffer,
+              collective_allocator->Allocate(BarrierSignalBufferBytes()));
+
+          // This value acts as the local step counter.
+          ABSL_ASSIGN_OR_RETURN(state->barrier_signal_value,
+                           collective_allocator->Allocate(sizeof(uint32_t)));
+
+          ABSL_ASSIGN_OR_RETURN(
+              state->output_buffer_ptr_storage,
+              collective_allocator->Allocate(MultiGpuBarrierKernel::kMaxPeers *
+                                             sizeof(void*)));
+
+          ABSL_RETURN_IF_ERROR(ZeroBarrierSignalBuffers(
+              *params.stream, state->barrier_signal_buffer->address(),
+              state->barrier_signal_value->address()));
+
+          ABSL_ASSIGN_OR_RETURN(
+              std::vector<DeviceBufferPair> device_buffers,
+              ConvertToDeviceBuffers(params.buffer_allocations, buffers(),
+                                     config_.config.operand_element_type));
+        }
+
+        return absl::OkStatus();
+      }));
+  RaggedAllToAllStreamState* state =
+      per_device_states_.Find(executor->device_ordinal());
 
   // If the symmetric memory handlers are not initialized, initialize it.
   // This can happen in two scenarios:
@@ -726,7 +715,8 @@ absl::Status RaggedAllToAllThunk::Initialize(const InitializeParams& params) {
   //      it's safe to cache the symmetric handler.
   if ((!state->lsa_size.has_value() ||
        state->lsa_size.value() != state->clique_key.num_devices() ||
-       !config_.use_multi_gpu_barrier_with_nccl_in_one_shot_kernel) &&
+       !config_.use_multi_gpu_barrier_with_nccl_in_one_shot_kernel ||
+       state->clique_key.num_devices() < 2) &&
       is_local(params.local_device_count)) {
     // Rendezvous - Exchange output pointers and barrier signal buffers.
     ABSL_ASSIGN_OR_RETURN(
@@ -880,7 +870,8 @@ bool RaggedAllToAllThunk::IsOneShotKernelSupported() const {
 absl::StatusOr<std::unique_ptr<RaggedAllToAllThunk>>
 RaggedAllToAllThunk::FromProto(
     ThunkInfo thunk_info, const RaggedAllToAllThunkProto& thunk_proto,
-    absl::Span<const BufferAllocation> buffer_allocations) {
+    absl::Span<const BufferAllocation> buffer_allocations,
+    int devices_per_host) {
   std::vector<CollectiveThunk::Buffer> buffers;
   buffers.reserve(thunk_proto.buffers_size());
   for (const CollectiveBufferProto& proto : thunk_proto.buffers()) {
@@ -908,7 +899,7 @@ RaggedAllToAllThunk::FromProto(
           thunk_proto.allow_fallback_to_nccl(), thunk_proto.collectives_mode(),
           thunk_proto.use_device_kernel(),
           fast_interconnect_slice_size_override, thunk_proto.enable_gxl()},
-      std::move(buffers));
+      std::move(buffers), devices_per_host);
 }
 
 absl::StatusOr<ThunkProto> RaggedAllToAllThunk::ToProto() const {
@@ -951,11 +942,9 @@ absl::Status RaggedAllToAllThunk::RunCollective(const ExecuteParams& params,
   ABSL_ASSIGN_OR_RETURN(bool peer_access_enabled,
                    params.collective_cliques->peer_access_enabled(clique_key));
 
-  RaggedAllToAllStreamState* state = nullptr;
-  {
-    absl::MutexLock lock(mutex_);
-    state = per_stream_states_[stream.parent()].get();
-  }
+  RaggedAllToAllStreamState* state =
+      per_device_states_.Find(stream.parent()->device_ordinal());
+  TF_RET_CHECK(state != nullptr);
 
   auto* gpu_comm = absl::down_cast<GpuCommunicator*>(&comm);
   if (config_.enable_gxl && gpu_comm->gxl_communicator() != nullptr) {
@@ -1037,6 +1026,7 @@ absl::Status RaggedAllToAllThunk::RunCollective(const ExecuteParams& params,
 
   if (is_one_shot_kernel_enabled() && fabric_safe) {
     if (use_multi_gpu_barrier_with_nccl_in_one_shot_kernel() &&
+        clique_key.num_devices() > 1 &&
         IsRaggedAllToAllWithSymmetricMemoryKernelSupported(
             config_.config.operand_element_type[0]) &&
         state->lsa_size.has_value() &&
@@ -1153,7 +1143,8 @@ RendezvousResources(int device_ordinal, RankId rank,
 
 absl::Status RaggedAllToAllThunk::PrepareCollective(
     const PrepareParams& params, const GpuCliqueKey& clique_key) {
-  if (config_.use_multi_gpu_barrier_with_nccl_in_one_shot_kernel ||
+  if ((config_.use_multi_gpu_barrier_with_nccl_in_one_shot_kernel &&
+       clique_key.num_devices() > 1) ||
       use_symmetric_memory()) {
     // Request symmetric memory for the output buffer only.
     const Buffer& output_buffer = buffers()[1];

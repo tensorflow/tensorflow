@@ -158,8 +158,6 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
                                                  llvm::Value* lhs,
                                                  llvm::Value* rhs,
                                                  absl::string_view name);
-  virtual absl::StatusOr<llvm::Value*> EmitSinh(PrimitiveType prim_type,
-                                                llvm::Value* value);
 
   virtual absl::StatusOr<llvm::Value*> EmitAtanh(PrimitiveType prim_type,
                                                  llvm::Value* value);
@@ -169,6 +167,9 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
 
   virtual absl::StatusOr<llvm::Value*> EmitLog(PrimitiveType prim_type,
                                                llvm::Value* value);
+
+  virtual absl::StatusOr<llvm::Value*> EmitLog2(PrimitiveType prim_type,
+                                                llvm::Value* value);
 
   virtual absl::StatusOr<llvm::Value*> EmitSqrt(PrimitiveType prim_type,
                                                 llvm::Value* value);
@@ -185,6 +186,9 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
   virtual absl::StatusOr<llvm::Value*> EmitSin(PrimitiveType prim_type,
                                                llvm::Value* value);
 
+  virtual absl::StatusOr<llvm::Value*> EmitSinh(PrimitiveType prim_type,
+                                                llvm::Value* value);
+
   virtual absl::StatusOr<llvm::Value*> EmitCos(PrimitiveType prim_type,
                                                llvm::Value* value);
 
@@ -200,6 +204,9 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
   virtual absl::StatusOr<llvm::Value*> EmitExp(PrimitiveType prim_type,
                                                llvm::Value* value,
                                                absl::string_view name);
+
+  virtual absl::StatusOr<llvm::Value*> EmitExp2(PrimitiveType prim_type,
+                                                llvm::Value* value);
 
   virtual absl::StatusOr<llvm::Value*> EmitExpm1(PrimitiveType prim_type,
                                                  llvm::Value* value);

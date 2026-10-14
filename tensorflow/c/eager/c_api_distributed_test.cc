@@ -310,7 +310,7 @@ string VariableAddFunction() {
 class GraphErrorInjectionPass : public tensorflow::GraphOptimizationPass {
  public:
   static bool enabled_;
-  GraphErrorInjectionPass() {}
+  GraphErrorInjectionPass() = default;
 
   absl::Status Run(
       const tensorflow::GraphOptimizationPassOptions& options) override {

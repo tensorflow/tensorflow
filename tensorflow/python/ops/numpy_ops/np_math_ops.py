@@ -403,7 +403,7 @@ def vdot(a, b):  # pylint: disable=missing-docstring
   a, b = np_array_ops._promote_dtype(a, b)  # pylint: disable=protected-access
   a = np_array_ops.reshape(a, [-1])
   b = np_array_ops.reshape(b, [-1])
-  if a.dtype == np_dtypes.complex128 or a.dtype == np_dtypes.complex64:
+  if a.dtype.is_complex:
     a = conj(a)
   return dot(a, b)
 
@@ -436,14 +436,28 @@ def nextafter(x1, x2):
 @np_utils.np_doc('heaviside')
 def heaviside(x1, x2):  # pylint: disable=missing-function-docstring
   def f(x1, x2):
+    dtype = x2.dtype
+    zero = constant_op.constant(0, dtype=dtype)
+    one = constant_op.constant(1, dtype=dtype)
+    # NumPy propagates NaN from the first argument. TensorFlow's relational
+    # operators evaluate to False for NaN inputs, so the `x1 > 0` and
+    # `x1 < 0` branches both miss and the value falls through to `x2`. Nest
+    # the NaN selection into that fallback so the outer `where_v2` remains a
+    # single pass over the tensor. Integer dtypes cannot represent NaN, so
+    # only floating inputs get the extra mask. Use the native `is_floating`
+    # property rather than `np.issubdtype(..., np.inexact)`: TensorFlow's
+    # bfloat16 maps to `ml_dtypes.bfloat16`, which is not part of NumPy's
+    # `inexact` hierarchy.
+    fallback = x2
+    if x1.dtype.is_floating:
+      nan = constant_op.constant(np.nan, dtype=dtype)
+      fallback = array_ops.where_v2(math_ops.is_nan(x1), nan, fallback)
     return array_ops.where_v2(
-        x1 < 0,
-        constant_op.constant(0, dtype=x2.dtype),
-        array_ops.where_v2(x1 > 0, constant_op.constant(1, dtype=x2.dtype), x2),
+        x1 > 0, one, array_ops.where_v2(x1 < 0, zero, fallback)
     )
 
   y = _bin_op(f, x1, x2)
-  if not np.issubdtype(y.dtype.as_numpy_dtype, np.inexact):
+  if not y.dtype.is_floating:
     # See the note in `_scalar`: `astype` is unavailable without the
     # `enable_numpy_methods_on_tensor()` opt-in.
     y = math_ops.cast(y, np_utils.result_type(float))
@@ -536,12 +550,20 @@ def logaddexp(x1, x2):
       float_dtype = np_utils.result_type(float)
       x1 = math_ops.cast(x1, float_dtype)
       x2 = math_ops.cast(x2, float_dtype)
-    amax = maximum(x1, x2)
     delta = x1 - x2
+    # `maximum` sends the whole gradient to `x1` where `x1 == x2`, so the two
+    # partial derivatives (analytically 0.5 each) come out as 1.0 and 0.0.
+    # Selecting the operands through `where` instead keeps the forward values
+    # bit-for-bit identical while giving each argument its own differentiable
+    # expression, so both gradients are 0.5 at `x1 == x2`. Selecting them once
+    # also avoids evaluating `exp` and `log1p` for both branches. The exponent
+    # is always <= 0, hence this cannot overflow.
+    max_val = np_array_ops.where(x1 > x2, x1, x2)
+    min_val = np_array_ops.where(x1 > x2, x2, x1)
     return np_array_ops.where(
         isnan(delta),
         x1 + x2,  # NaNs or infinities of the same sign.
-        amax + log1p(exp(-abs(delta))),
+        max_val + log1p(exp(min_val - max_val)),
     )
 
   return _bin_op(f, x1, x2)
@@ -847,20 +869,21 @@ def reciprocal(x):
   return _scalar(math_ops.reciprocal, x)
 
 
+def _signbit(x):
+  if x.dtype == dtypes.bool:
+    return array_ops.fill(array_ops.shape(x), False)
+  if x.dtype in _SIGN_BITCAST_DTYPES:
+    # Check the IEEE-754 sign bit instead of comparing with zero, which
+    # cannot tell -0.0 from +0.0 or a negative NaN from a positive one.
+    bits = array_ops.bitcast(x, _SIGN_BITCAST_DTYPES[x.dtype])
+    return bits < 0
+  return x < 0
+
+
 @tf_export.tf_export('experimental.numpy.signbit', v1=[])
 @np_utils.np_doc('signbit')
 def signbit(x):
-  def f(x):
-    if x.dtype == dtypes.bool:
-      return array_ops.fill(array_ops.shape(x), False)
-    if x.dtype in _SIGN_BITCAST_DTYPES:
-      # Check the IEEE-754 sign bit instead of comparing with zero, which
-      # cannot tell -0.0 from +0.0 or a negative NaN from a positive one.
-      bits = array_ops.bitcast(x, _SIGN_BITCAST_DTYPES[x.dtype])
-      return math_ops.less(bits, 0)
-    return x < 0
-
-  return _scalar(f, x)
+  return _scalar(_signbit, x)
 
 
 @tf_export.tf_export('experimental.numpy.sin', v1=[])
@@ -966,11 +989,12 @@ def angle(z, deg=False):  # pylint: disable=missing-function-docstring
       # Workaround for b/147515503
       # `np.pi` and `0` are Python scalars, which would make the result
       # float32 whatever `x` is, so build them in `x`'s dtype instead.
-      return array_ops.where_v2(
-          x < 0,
+      pi_or_zero = array_ops.where_v2(
+          _signbit(x),
           constant_op.constant(np.pi, dtype=x.dtype),
           constant_op.constant(0, dtype=x.dtype),
       )
+      return array_ops.where_v2(math_ops.is_nan(x), x, pi_or_zero)
     else:
       return math_ops.angle(x)
 
@@ -986,7 +1010,7 @@ def cbrt(x):
   def f(x):
     # __pow__ can't handle negative base, so we use `abs` here.
     rt = math_ops.abs(x) ** (1.0 / 3)
-    return array_ops.where_v2(x < 0, -rt, rt)
+    return array_ops.where_v2(_signbit(x), -rt, rt)
 
   return _scalar(f, x, True)
 
@@ -1176,8 +1200,15 @@ def positive(x):
 def sinc(x):
   def f(x):
     pi_x = x * np.pi
+    is_zero = x == 0
+    # `sin(pi_x) / pi_x` is 0/0 at `x == 0`. That branch is never selected, but
+    # `where` still propagates its gradient, and 0 * nan is nan, so the
+    # gradient at zero comes out as nan instead of 0. Substituting 1 for the
+    # denominator keeps the selected value bit-for-bit identical while making
+    # the discarded branch finite, so its contribution is scaled to exactly 0.
+    safe_pi_x = array_ops.where_v2(is_zero, array_ops.ones_like(pi_x), pi_x)
     return array_ops.where_v2(
-        x == 0, array_ops.ones_like(x), math_ops.sin(pi_x) / pi_x
+        is_zero, array_ops.ones_like(x), math_ops.sin(safe_pi_x) / safe_pi_x
     )
 
   return _scalar(f, x, True)
@@ -1659,6 +1690,17 @@ def average(a, axis=None, weights=None, returned=False):  # pylint: disable=miss
         f'Received axis={axis} (of type {type(axis)})'
     )
   a = np_array_ops.array(a)
+  # NumPy raises AxisError for out-of-bounds axes instead of letting the
+  # backend kernel fail with a confusing error.
+  maybe_rank = a.shape.rank
+  if axis is not None and maybe_rank is not None:
+    if not (-maybe_rank <= axis < maybe_rank):
+      raise ValueError(
+          f'Argument `axis` (received axis={axis}) is out of bounds '
+          f'for input of rank {maybe_rank}.'
+      )
+    if axis < 0:
+      axis += maybe_rank
   default_float_type = np_utils.result_type(float)
   if weights is None:  # Treat all weights as 1
     if not np.issubdtype(a.dtype.as_numpy_dtype, np.inexact):
@@ -1738,8 +1780,15 @@ def trace(a, offset=0, axis1=0, axis2=1, dtype=None):  # pylint: disable=missing
     a_shape = a.shape
     if a_shape.rank is not None:
       rank = len(a_shape)
-      if (axis1 == -2 or axis1 == rank - 2) and (
-          axis2 == -1 or axis2 == rank - 1
+      # Guard `rank >= 2` so the fast path never routes a rank-1 (or
+      # rank-0) input with negative axes to `math_ops.trace`/
+      # `matrix_diag_part`, which require rank >= 2: e.g. on a rank-1
+      # input, `axis1 == -2 or axis1 == rank - 2` erroneously holds for
+      # the out-of-bounds default `axis1=-2`.
+      if (
+          rank >= 2
+          and (axis1 == -2 or axis1 == rank - 2)
+          and (axis2 == -1 or axis2 == rank - 1)
       ):
         return math_ops.trace(a)
 

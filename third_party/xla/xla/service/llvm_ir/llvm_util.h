@@ -332,6 +332,22 @@ llvm::FastMathFlags GetCpuFastMathFlags(const HloModuleConfig& module_config);
 // surrounding expression tree (Reassociate.cpp:191).
 void SetAllowContractOnFpArithmetic(llvm::Module& module);
 
+// Moves every single-use `fmul contract` to immediately before its
+// `fadd contract` / `fsub contract` user when both are in the same basic block.
+//
+// Sanitizer instrumentation (e.g. msan's checks on loads/stores) inserts
+// branches that split blocks. If this instrumentation is inserted between
+// the fmul and its user, they no longer are in the same basic block, which
+// prevents LLVM from fusing them into an fma. This transformation avoids that.
+//
+// Without sanitizers this changes the order of pure arithmetic within a block.
+// The only observable effect is a different (order-based) tie-breaking in
+// instruction scheduling.
+//
+// This is a workaround until XLA:CPU stops relying on LLVM passes to emit
+// fma's; see b/560320144.
+void SinkContractableFMulToFAddFSub(llvm::Module& module);
+
 // Computes a conservative union of the metadata in "a" and "b".  For
 // aliasing-related metadata, this means the result can be applied to
 // instructions whose aliasing relationship can be described either by "a" *or*

@@ -40,6 +40,8 @@ concurrency:
 env:
   ROCM_DISTRO_URL: https://stable.repo.amd.com/rocm/core/tarball/therock-dist-linux-multiarch-10.0.0.tar.gz
   ROCM_DISTRO_HASH: 1c5e807875d26a2470ecc7323daa5b5b9009208a55c3290ac255a909cde15fc6
+  ROCM_AMD_GPU_TARGETS: gfx950
+  ROCM_SINGLE_GPU_RBE_POOL: linux_x64_gpu
 
 jobs:
   rocm-config:
@@ -74,7 +76,6 @@ jobs:
       - name: Checking out openxla/xla
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: openxla/xla
           persist-credentials: false
 
       - name: Checkout JAX
@@ -101,10 +102,12 @@ jobs:
             --action_env=JAX_ENABLE_X64=0 \
             --repo_env=HERMETIC_PYTHON_VERSION=3.14 \
             --repo_env=TF_ROCM_RBE_DOCKER_IMAGE="${DOCKER_IMAGE}" \
+            --repo_env=TF_ROCM_RBE_SINGLE_GPU_POOL="${ROCM_SINGLE_GPU_RBE_POOL}" \
             --jobs=20 \
             --repo_env=ROCM_PATH="" \
             --repo_env=ROCM_DISTRO_URL="${ROCM_DISTRO_URL}" \
             --repo_env=ROCM_DISTRO_HASH="${ROCM_DISTRO_HASH}" \
+            --repo_env=TF_ROCM_AMDGPU_TARGETS="${ROCM_AMD_GPU_TARGETS}" \
             --repo_env=SYSROOT_DIST=linux_glibc_2_31 \
             --bes_keywords=jax \
             --bes_keywords=upstream \
@@ -134,16 +137,7 @@ jobs:
       - name: Checking out openxla/xla
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: openxla/xla
           persist-credentials: false
-
-      - name: Fetch ROCm XLA Upstream Scripts from ROCm/xla
-        env:
-          ROCM_XLA_BRANCH: ${{ inputs.rocm_xla_branch || 'rocm-dev-infra' }}
-        run: |
-          wget -O build_tools/rocm/execute_ci_build_upstream.sh \
-            "https://raw.githubusercontent.com/ROCm/xla/refs/heads/${ROCM_XLA_BRANCH}/build_tools/rocm/execute_ci_build_upstream.sh"
-          chmod +x build_tools/rocm/execute_ci_build_upstream.sh
 
       - name: CPU Info
         run: lscpu
@@ -151,38 +145,48 @@ jobs:
       - name: Test XLA [single_gpu]
         timeout-minutes: 120
         run: |
-          build_tools/rocm/execute_ci_build_upstream.sh \
+          build_tools/rocm/run_xla_ci_build.sh \
             --config=rocm_ci_hermetic \
             --config=rocm_rbe_dynamic \
             --config=ci_single_gpu \
             --repo_env=TF_ROCM_RBE_DOCKER_IMAGE="${DOCKER_IMAGE}" \
+            --repo_env=TF_ROCM_AMDGPU_TARGETS=gfx950 \
             --repo_env=ROCM_PATH="" \
             --repo_env=ROCM_DISTRO_URL="${ROCM_DISTRO_URL}" \
             --repo_env=ROCM_DISTRO_HASH="${ROCM_DISTRO_HASH}" \
+            --repo_env=TF_ROCM_AMDGPU_TARGETS="${ROCM_AMD_GPU_TARGETS}" \
+            --repo_env=TF_ROCM_RBE_SINGLE_GPU_POOL="${ROCM_SINGLE_GPU_RBE_POOL}" \
             --local_test_jobs=1 \
             --bes_keywords=xla \
             --bes_keywords=upstream \
             --bes_keywords=gpu \
             --bes_keywords=pull_request \
-            --build_event_json_file=xla_single_gpu_build_events.json
+            --build_event_json_file=xla_single_gpu_build_events.json \
+            -- \
+            //xla/...
 
       - name: Test XLA [rocm_cpu]
         timeout-minutes: 80
         run: |
-          build_tools/rocm/execute_ci_build_upstream.sh \
+          build_tools/rocm/run_xla_ci_build.sh \
             --config=rocm_ci_hermetic \
             --config=rocm_rbe_dynamic \
             --config=ci_rocm_cpu \
             --local_test_jobs=200 \
             --repo_env=TF_ROCM_RBE_DOCKER_IMAGE="${DOCKER_IMAGE}" \
+            --repo_env=TF_ROCM_AMDGPU_TARGETS=gfx950 \
             --repo_env=ROCM_PATH="" \
             --repo_env=ROCM_DISTRO_URL="${ROCM_DISTRO_URL}" \
             --repo_env=ROCM_DISTRO_HASH="${ROCM_DISTRO_HASH}" \
+            --repo_env=TF_ROCM_AMDGPU_TARGETS="${ROCM_AMD_GPU_TARGETS}" \
+            --repo_env=TF_ROCM_RBE_SINGLE_GPU_POOL="${ROCM_SINGLE_GPU_RBE_POOL}" \
             --bes_keywords=xla \
             --bes_keywords=upstream \
             --bes_keywords=cpu \
             --bes_keywords=pull_request \
-            --build_event_json_file=xla_rocm_cpu_build_events.json
+            --build_event_json_file=xla_rocm_cpu_build_events.json \
+            -- \
+            //xla/...
 
       - name: Upload XLA BEP Files
         if: always()

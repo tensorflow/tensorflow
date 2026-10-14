@@ -29,6 +29,12 @@ namespace xla {
 inline const stream_executor::dnn::VersionInfo
     kMinCudnnVersionForRaggedDotFusion(9, 22);
 
+// The ragged-dot wgrad (kRaggedContracting) path lowers to cuDNN's
+// moe_grouped_matmul_bwd, which requires a newer cuDNN than the forward
+// ragged-dot fusion.
+inline const stream_executor::dnn::VersionInfo
+    kMinCudnnVersionForRaggedDotWgradFusion(9, 24);
+
 // RaggedDotRewriter converts ragged dots to general dots through expansion.
 class RaggedDotRewriter : public HloModulePass {
  public:

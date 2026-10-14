@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -29,10 +30,10 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
-#include "absl/synchronization/mutex.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log.pb.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_entry_metadata_store.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_structs.h"
+#include "xla/backends/gpu/runtime/per_device_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/service/buffer_assignment.h"
@@ -60,8 +61,10 @@ BuffersDebugFloatCheckThunk::BuffersDebugFloatCheckThunk(
     ThunkInfo info, const ThunkInfo& checked_thunk_info,
     BufferAllocation::Slice log_slice, BufferAllocation::Slice tmp_slice,
     absl::flat_hash_map<size_t, BufferAllocation::Slice> checked_thunk_buffers,
-    std::shared_ptr<BufferDebugLogEntryMetadataStore> metadata_store)
+    std::shared_ptr<BufferDebugLogEntryMetadataStore> metadata_store,
+    int devices_per_host)
     : Thunk(Thunk::Kind::kBuffersDebugFloatCheck, std::move(info)),
+      kernels_(devices_per_host),
       log_slice_(log_slice),
       tmp_slice_(tmp_slice),
       checked_thunk_info_(checked_thunk_info),
@@ -92,40 +95,38 @@ absl::Status BuffersDebugFloatCheckThunk::Initialize(
     return absl::OkStatus();
   }
 
-  {
-    absl::MutexLock lock(kernels_mutex_);
-    if (!kernels_.contains(params.executor)) {
-      se::gpu::GpuKernelRegistry registry =
-          se::gpu::GpuKernelRegistry::GetGlobalRegistry();
-      ABSL_ASSIGN_OR_RETURN(
-          auto kernel_f32,
-          registry.LoadKernel<se::gpu::BufferDebugFloatCheckF32Kernel>(
-              params.executor));
-      ABSL_ASSIGN_OR_RETURN(
-          auto kernel_bf16,
-          registry.LoadKernel<se::gpu::BufferDebugFloatCheckBf16Kernel>(
-              params.executor));
-      ABSL_ASSIGN_OR_RETURN(
-          auto kernel_f16,
-          registry.LoadKernel<se::gpu::BufferDebugFloatCheckF16Kernel>(
-              params.executor));
-      ABSL_ASSIGN_OR_RETURN(
-          auto kernel_f64,
-          registry.LoadKernel<se::gpu::BufferDebugFloatCheckF64Kernel>(
-              params.executor));
-      ABSL_ASSIGN_OR_RETURN(
-          auto kernel_reduce,
-          registry.LoadKernel<
-              se::gpu::BufferDebugAppendReducedFloatCheckResultsKernel>(
-              params.executor));
-      kernels_[params.executor] = std::make_unique<Kernels>(Kernels{
-          std::move(kernel_f32), std::move(kernel_bf16), std::move(kernel_f16),
-          std::move(kernel_f64), std::move(kernel_reduce)});
-      VLOG(1) << "NanCount kernels loaded";
-    }
-  }
-
-  return absl::OkStatus();
+  return kernels_.GetOrCreateAndInitialize(
+      params.executor->device_ordinal(),
+      [&](std::optional<Kernels>* state) -> absl::Status {
+        se::gpu::GpuKernelRegistry registry =
+            se::gpu::GpuKernelRegistry::GetGlobalRegistry();
+        ABSL_ASSIGN_OR_RETURN(
+            auto kernel_f32,
+            registry.LoadKernel<se::gpu::BufferDebugFloatCheckF32Kernel>(
+                params.executor));
+        ABSL_ASSIGN_OR_RETURN(
+            auto kernel_bf16,
+            registry.LoadKernel<se::gpu::BufferDebugFloatCheckBf16Kernel>(
+                params.executor));
+        ABSL_ASSIGN_OR_RETURN(
+            auto kernel_f16,
+            registry.LoadKernel<se::gpu::BufferDebugFloatCheckF16Kernel>(
+                params.executor));
+        ABSL_ASSIGN_OR_RETURN(
+            auto kernel_f64,
+            registry.LoadKernel<se::gpu::BufferDebugFloatCheckF64Kernel>(
+                params.executor));
+        ABSL_ASSIGN_OR_RETURN(
+            auto kernel_reduce,
+            registry.LoadKernel<
+                se::gpu::BufferDebugAppendReducedFloatCheckResultsKernel>(
+                params.executor));
+        state->emplace(Kernels{std::move(kernel_f32), std::move(kernel_bf16),
+                               std::move(kernel_f16), std::move(kernel_f64),
+                               std::move(kernel_reduce)});
+        VLOG(1) << "NanCount kernels loaded";
+        return absl::OkStatus();
+      });
 }
 
 template <typename T>
@@ -189,19 +190,15 @@ absl::Status BuffersDebugFloatCheckThunk::ExecuteOnStream(
     const ExecuteParams& params) {
   se::StreamExecutor* executor = params.stream->parent();
 
-  Kernels* kernels = nullptr;
-  {
-    absl::MutexLock lock(kernels_mutex_);
-    auto kernel_it = kernels_.find(executor);
-    if (kernel_it == kernels_.end()) {
-      // Initialize didn't load the kernel. This can happen when we're running
-      // on an unsupported platform.
-      VLOG(1) << "FloatCheck kernels not loaded on device "
-              << executor->device_ordinal() << ", skipping";
-      return absl::OkStatus();
-    }
-    kernels = kernel_it->second.get();
+  std::optional<Kernels>* state = kernels_.Find(executor->device_ordinal());
+  if (state == nullptr || !state->has_value()) {
+    // Initialize didn't load the kernel. This can happen when we're running
+    // on an unsupported platform.
+    VLOG(1) << "FloatCheck kernels not loaded on device "
+            << executor->device_ordinal() << ", skipping";
+    return absl::OkStatus();
   }
+  Kernels* kernels = &**state;
 
   VLOG(1) << "BuffersDebugFloatCheckThunk::ExecuteOnStream";
 

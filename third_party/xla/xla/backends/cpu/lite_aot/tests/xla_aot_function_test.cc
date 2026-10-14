@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "xla/backends/cpu/alignment.h"
 #include "xla/backends/cpu/lite_aot/tests/add_aot_example_lib.h"
+#include "xla/service/cpu/executable.pb.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/path.h"
@@ -96,11 +97,10 @@ TEST(XlaAotFunctionTest, TestManualModelLoading) {
 }
 
 TEST(XlaAotFunctionTest, TestErrorPropagation) {
-#ifdef NDEBUG
-  GTEST_SKIP() << "Skipping test in optimized mode because XLA:CPU won't "
-                  "check for the alignment error.";
-  return;
-#endif
+  if constexpr (!tsl::kIsDebugBuild) {
+    GTEST_SKIP() << "Skipping test in optimized mode because XLA:CPU won't "
+                    "check for the alignment error.";
+  }
   ASSERT_OK_AND_ASSIGN(auto aot_function, xla::cpu::GetAddAotFunction());
 
   // We don't align data which is incompatible with XLA:CPU and returns an error

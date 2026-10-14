@@ -1,0 +1,53 @@
+HloModule jit_gravity_accel, entry_computation_layout={(f64[4096,3]{1,0}, f64[4096,3]{1,0}, f64[4096]{0})->f64[4096,3]{1,0}}
+
+region_0.1 {
+  reduce_sum.3 = f64[] parameter(0)
+  reduce_sum.4 = f64[] parameter(1)
+  ROOT reduce_sum.5 = f64[] add(reduce_sum.3, reduce_sum.4)
+}
+
+norm.2 {
+  Arg_0.1 = f64[4096,4096,3]{2,1,0} parameter(0)
+  mul.1 = f64[4096,4096,3]{2,1,0} multiply(Arg_0.1, Arg_0.1)
+  constant.2 = f64[] constant(0)
+  reduce_sum.7 = f64[4096,4096]{1,0} reduce(mul.1, constant.2), dimensions={2}, to_apply=region_0.1
+  broadcast_in_dim.3 = f64[4096,4096,1]{2,1,0} reshape(reduce_sum.7)
+  ROOT sqrt.1 = f64[4096,4096,1]{2,1,0} sqrt(broadcast_in_dim.3)
+}
+
+region_1.3 {
+  reduce_sum.11 = f64[] parameter(0)
+  reduce_sum.12 = f64[] parameter(1)
+  ROOT reduce_sum.13 = f64[] add(reduce_sum.11, reduce_sum.12)
+}
+
+ENTRY main.4 {
+  w.1 = f64[4096]{0} parameter(2)
+  broadcast_in_dim.7 = f64[1,4096,1]{2,1,0} reshape(w.1)
+  mul.6 = f64[1,4096,1]{2,1,0} broadcast(broadcast_in_dim.7), dimensions={0,1,2}
+  mul.7 = f64[4096]{0} reshape(mul.6)
+  mul.8 = f64[4096,4096,3]{2,1,0} broadcast(mul.7), dimensions={1}
+  pos.1 = f64[4096,3]{1,0} parameter(0)
+  broadcast_in_dim.5 = f64[4096,1,3]{2,1,0} reshape(pos.1)
+  sub.7 = f64[4096,1,3]{2,1,0} broadcast(broadcast_in_dim.5), dimensions={0,1,2}
+  sub.8 = f64[4096,3]{1,0} reshape(sub.7)
+  sub.9 = f64[4096,4096,3]{2,1,0} broadcast(sub.8), dimensions={0,2}
+  src.1 = f64[4096,3]{1,0} parameter(1)
+  broadcast_in_dim.6 = f64[1,4096,3]{2,1,0} reshape(src.1)
+  sub.10 = f64[1,4096,3]{2,1,0} broadcast(broadcast_in_dim.6), dimensions={0,1,2}
+  sub.11 = f64[4096,3]{1,0} reshape(sub.10)
+  sub.12 = f64[4096,4096,3]{2,1,0} broadcast(sub.11), dimensions={1,2}
+  sub.13 = f64[4096,4096,3]{2,1,0} subtract(sub.9, sub.12)
+  mul.9 = f64[4096,4096,3]{2,1,0} multiply(mul.8, sub.13)
+  jit_norm_.1 = f64[4096,4096,1]{2,1,0} call(sub.13), to_apply=norm.2
+  integer_pow.2 = f64[4096,4096,1]{2,1,0} multiply(jit_norm_.1, jit_norm_.1)
+  integer_pow.3 = f64[4096,4096,1]{2,1,0} multiply(integer_pow.2, jit_norm_.1)
+  div.4 = f64[4096,4096,1]{2,1,0} broadcast(integer_pow.3), dimensions={0,1,2}
+  div.5 = f64[4096,4096]{1,0} reshape(div.4)
+  div.6 = f64[4096,4096,3]{2,1,0} broadcast(div.5), dimensions={0,1}
+  div.7 = f64[4096,4096,3]{2,1,0} divide(mul.9, div.6)
+  constant.3 = f64[] constant(0)
+  ROOT reduce_sum.15 = f64[4096,3]{1,0} reduce(div.7, constant.3), dimensions={1}, to_apply=region_1.3
+}
+
+

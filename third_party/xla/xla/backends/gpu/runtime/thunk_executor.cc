@@ -100,7 +100,7 @@ absl::Status ThunkExecutor::ExecuteOnStream(
     // If progress tracker is installed for current thread, verify that a
     // thunk indexing record exists for the given `thunk`.
     if (progress_tracker) {
-      if (!progress_tracker->indexing.contains(thunk.get())) {
+      if (!progress_tracker->indexing_.contains(thunk.get())) {
         return Internal(
             "[thunk=%d/%d] Progress tracker is missing a record for thunk `%s`",
             i, thunks_.size(), thunk->profile_annotation());
@@ -138,12 +138,12 @@ absl::Status ThunkExecutor::ExecuteOnStream(
     if (progress_tracker) {
       // Borrow an event from the pool and record it on the execution stream.
       ABSL_ASSIGN_OR_RETURN(auto event,
-                       progress_tracker->event_pool->GetOrCreateEvent());
+                       progress_tracker->event_pool_->GetOrCreateEvent());
       ABSL_RETURN_IF_ERROR(params.stream->RecordEvent(event->get()));
 
-      absl::MutexLock lock(progress_tracker->mu);
-      progress_tracker->events.emplace_back(thunk.get(), std::move(event),
-                                            loop_nest.nest);
+      absl::MutexLock lock(progress_tracker->mu_);
+      progress_tracker->events_.emplace_back(thunk.get(), std::move(event),
+                                             loop_nest.nest);
     }
 
     XLA_VLOG_DEVICE(1, device_ordinal) << absl::StreamFormat(
@@ -245,12 +245,12 @@ absl::StatusOr<ThunkExecutor::ScopedDefinitionTracker> InstallDefinitionTracker(
 // Tracking Thunk execution progress.
 //===----------------------------------------------------------------------===//
 
-using ThunkExecution = ThunkExecutor::ScopedProgressTracker::ThunkExecution;
+using ThunkExecution = ThunkExecutor::ProgressTracker::ThunkExecution;
 
-thread_local ThunkExecutor::ScopedProgressTracker::ProgressTracker*
+thread_local ThunkExecutor::ProgressTracker*
     ThunkExecutor::ScopedProgressTracker::installed = nullptr;
 
-ThunkExecutor::ScopedProgressTracker::ThunkExecutionEvent::ThunkExecutionEvent(
+ThunkExecutor::ProgressTracker::ThunkExecutionEvent::ThunkExecutionEvent(
     const Thunk* thunk, EventPool::Event event,
     absl::Span<const WhileLoopState> loop_nest)
     : thunk(thunk),
@@ -261,7 +261,7 @@ ThunkExecutor::ScopedProgressTracker::ThunkExecutionEvent::ThunkExecutionEvent(
 ThunkExecutor::ScopedProgressTracker::ScopedProgressTracker(
     EventPool* event_pool, ThunkIndexing indexing)
     : tracker_(
-          std::make_unique<ProgressTracker>(std::move(indexing), event_pool)) {
+          std::make_shared<ProgressTracker>(std::move(indexing), event_pool)) {
   CHECK_EQ(installed, nullptr)  // Crash OK
       << "Tried to install multiple progress trackers";
   installed = tracker_.get();
@@ -275,31 +275,28 @@ ThunkExecutor::ScopedProgressTracker::~ScopedProgressTracker() {
   }
 }
 
-size_t ThunkExecutor::ScopedProgressTracker::num_executions() const {
-  absl::MutexLock lock(tracker_->mu);
-  return tracker_->events.size();
+size_t ThunkExecutor::ProgressTracker::num_executions() const {
+  absl::MutexLock lock(mu_);
+  return events_.size();
 }
 
-size_t ThunkExecutor::ScopedProgressTracker::NumPendingThunks() {
-  absl::MutexLock lock(tracker_->mu);
-  return absl::c_count_if(tracker_->events, [](const auto& event) {
+size_t ThunkExecutor::ProgressTracker::NumPendingThunks() {
+  absl::MutexLock lock(mu_);
+  return absl::c_count_if(events_, [](const auto& event) {
     return event.event->get()->PollForStatus() == se::Event::Status::kPending;
   });
 }
 
-size_t ThunkExecutor::ScopedProgressTracker::NumCompletedThunks() {
-  absl::MutexLock lock(tracker_->mu);
-  return absl::c_count_if(tracker_->events, [](const auto& event) {
+size_t ThunkExecutor::ProgressTracker::NumCompletedThunks() {
+  absl::MutexLock lock(mu_);
+  return absl::c_count_if(events_, [](const auto& event) {
     return event.event->get()->PollForStatus() == se::Event::Status::kComplete;
   });
 }
 
-std::vector<ThunkExecution> ThunkExecutor::ScopedProgressTracker::CollectThunks(
+std::vector<ThunkExecution> ThunkExecutor::ProgressTracker::CollectThunks(
     se::Event::Status status, bool most_recent_first, size_t n) {
-  absl::MutexLock lock(tracker_->mu);
-
-  ThunkIndexing& indexing = tracker_->indexing;
-  absl::Span<const ThunkExecutionEvent> events = tracker_->events;
+  absl::MutexLock lock(mu_);
 
   // Events are naturally in chronological order (oldest first). Iterate forward
   // for oldest-first or backward for most-recent-first.
@@ -307,45 +304,45 @@ std::vector<ThunkExecution> ThunkExecutor::ScopedProgressTracker::CollectThunks(
 
   auto collect = [&](size_t exec_idx, const ThunkExecutionEvent& event) {
     if (event.event->get()->PollForStatus() == status) {
-      result.push_back({exec_idx, indexing.at(event.thunk), event.executed,
+      result.push_back({exec_idx, indexing_.at(event.thunk), event.executed,
                         event.thunk->kind(), event.thunk->profile_annotation(),
                         event.loop_nest});
     }
   };
 
   if (most_recent_first) {
-    for (size_t i = events.size(); i > 0; --i) {
+    for (size_t i = events_.size(); i > 0; --i) {
       if (result.size() >= n) {
         break;
       }
-      collect(i - 1, events[i - 1]);
+      collect(i - 1, events_[i - 1]);
     }
   } else {
-    for (size_t i = 0; i < events.size(); ++i) {
+    for (size_t i = 0; i < events_.size(); ++i) {
       if (result.size() >= n) {
         break;
       }
-      collect(i, events[i]);
+      collect(i, events_[i]);
     }
   }
 
   return result;
 }
 
-std::vector<ThunkExecution>
-ThunkExecutor::ScopedProgressTracker::LastCompletedThunks(size_t n) {
+std::vector<ThunkExecution> ThunkExecutor::ProgressTracker::LastCompletedThunks(
+    size_t n) {
   return CollectThunks(se::Event::Status::kComplete, /*most_recent_first=*/true,
                        n);
 }
 
-std::vector<ThunkExecution>
-ThunkExecutor::ScopedProgressTracker::FirstPendingThunks(size_t n) {
+std::vector<ThunkExecution> ThunkExecutor::ProgressTracker::FirstPendingThunks(
+    size_t n) {
   return CollectThunks(se::Event::Status::kPending,
                        /*most_recent_first=*/false, n);
 }
 
-std::vector<ThunkExecution>
-ThunkExecutor::ScopedProgressTracker::LastPendingThunks(size_t n) {
+std::vector<ThunkExecution> ThunkExecutor::ProgressTracker::LastPendingThunks(
+    size_t n) {
   return CollectThunks(se::Event::Status::kPending, /*most_recent_first=*/true,
                        n);
 }

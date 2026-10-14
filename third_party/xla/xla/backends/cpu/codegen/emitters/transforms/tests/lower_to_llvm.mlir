@@ -141,10 +141,10 @@ func.func private @wrap_entry(
 // CHECK-DAG:    %[[WORK_ID_2_PTR:.+]] = llvm.load %[[WORK_ID_2_GEP]] invariant
 // CHECK-DAG:    %[[WORK_ID_2:.+]] = builtin.unrealized_conversion_cast %[[WORK_ID_2_PTR]]
 // CHECK-DAG:    call @wrap_entry_wrapped(%[[TENSOR_0]],
-// CHECK-DAG                              %[[TENSOR_1]],
-// CHECK-DAG                              %[[WORK_ID_0]],
-// CHECK-DAG                              %[[WORK_ID_1]],
-// CHECK-DAG                              %[[WORK_ID_2]])
+// CHECK-DAG:                             %[[TENSOR_1]],
+// CHECK-DAG:                             %[[WORK_ID_0]],
+// CHECK-DAG:                             %[[WORK_ID_1]],
+// CHECK-DAG:                             %[[WORK_ID_2]])
 // CHECK-DAG:    return %[[RETURN_PTR]]
 // CHECK:      }
 // CHECK:      func.func private @wrap_entry_wrapped(
@@ -161,7 +161,7 @@ func.func @test_8x8_vector_transpose_lowering(%arg0: vector<8x8xf32>) -> vector<
   return %0 : vector<8x8xf32>
 }
 
-// CHECK @test_8x8_vector_transpose_lowering(%[[ARG_0:.+]]: vector<8x8xf32>) -> vector<8x8xf32> {
+// CHECK: @test_8x8_vector_transpose_lowering(%[[ARG_0:.+]]: vector<8x8xf32>) -> vector<8x8xf32> {
 // CHECK:      %[[POISON_RESULT:.+]] = ub.poison : vector<8x8xf32>
 // CHECK:      %[[R0:.+]] = vector.extract %[[ARG_0]][0]
 // CHECK:      %[[R1:.+]] = vector.extract %[[ARG_0]][1
@@ -218,7 +218,7 @@ func.func @test_other_vector_transpose_shape_falls_back_to_vector(
   return %0 : vector<8x4xf32>
 }
 
-// CHECK @test_other_vector_transpose_shape_falls_back_to_vector(%[[ARG_0:.+]]: vector<4x8xf32>) -> vector<8x4xf32> {
+// CHECK: @test_other_vector_transpose_shape_falls_back_to_vector(%[[ARG_0:.+]]: vector<4x8xf32>) -> vector<8x4xf32> {
 // CHECK:      %[[RES:.+]] = vector.transpose %[[ARG_0]], [1, 0]
 // CHECK-SAME:   : vector<4x8xf32> to vector<8x4xf32>
 // CHECK-NEXT: return %[[RES]] : vector<8x4xf32>

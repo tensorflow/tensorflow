@@ -124,6 +124,9 @@ TEST(EnvTest, ReadFileToStringAllowsShortReadsForSystemFiles) {
   std::string content;
   absl::Status s = ReadFileToString(
       Env::Default(), "/sys/devices/system/cpu/kernel_max", &content);
+  if (absl::IsNotFound(s)) {
+    GTEST_SKIP() << "/sys/devices/system/cpu/kernel_max not available: " << s;
+  }
   EXPECT_OK(s);
   EXPECT_FALSE(content.empty());
 }

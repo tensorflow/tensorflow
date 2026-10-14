@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/stream_executor/cuda/cuda_core_info_table.h"
-
 #include <cstdint>
 #include <optional>
 
@@ -22,6 +20,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/gpu/core_info.h"
 #include "xla/xla_data.pb.h"
 
 namespace stream_executor {
@@ -57,7 +56,7 @@ void CheckPeakOpsPerNs(const DeviceDescription& device_info,
 TEST(CudaCoreInfoTableTest, CalculatePeakOpsPerNsA100) {
   DeviceDescription a100_device_info =
       xla::gpu::TestGpuDeviceInfo::A100SXMDeviceInfo();
-  FillExecutionUnitDesc(a100_device_info.cuda_compute_capability(),
+  FillExecutionUnitDesc(a100_device_info.gpu_compute_capability(),
                         a100_device_info.clock_rate_ghz(), a100_device_info);
 
   CheckPeakOpsPerNs(a100_device_info, /*is_matrix_unit=*/true,
@@ -89,7 +88,7 @@ TEST(CudaCoreInfoTableTest, CalculatePeakOpsPerNsA100) {
 TEST(CudaCoreInfoTableTest, CalculatePeakOpsPerNsH100) {
   DeviceDescription h100_device_info =
       xla::gpu::TestGpuDeviceInfo::H100SXMDeviceInfo();
-  FillExecutionUnitDesc(h100_device_info.cuda_compute_capability(),
+  FillExecutionUnitDesc(h100_device_info.gpu_compute_capability(),
                         h100_device_info.clock_rate_ghz(), h100_device_info);
 
   CheckPeakOpsPerNs(h100_device_info, /*is_matrix_unit=*/true,
@@ -119,7 +118,7 @@ TEST(CudaCoreInfoTableTest, CalculatePeakOpsPerNsH100) {
 TEST(CudaCoreInfoTableTest, CalculatePeakOpsPerNsB200) {
   DeviceDescription b200_device_info =
       xla::gpu::TestGpuDeviceInfo::B200SXMDeviceInfo();
-  FillExecutionUnitDesc(b200_device_info.cuda_compute_capability(),
+  FillExecutionUnitDesc(b200_device_info.gpu_compute_capability(),
                         b200_device_info.clock_rate_ghz(), b200_device_info);
 
   CheckPeakOpsPerNs(b200_device_info, /*is_matrix_unit=*/true,
@@ -158,8 +157,46 @@ TEST(CudaCoreInfoTableTest, B300UsesBlackwellTable) {
   EXPECT_EQ(matrix_unit_desc->GetRateInfo(xla::BF16).value().units_per_core, 4);
 }
 
+TEST(CudaCoreInfoTableTest, VRNVL72UsesSm107Table) {
+  DeviceDescription vr_nvl72_device_info =
+      xla::gpu::TestGpuDeviceInfo::VRNVL72DeviceInfo();
+
+  CheckPeakOpsPerNs(vr_nvl72_device_info, /*is_matrix_unit=*/true,
+                    xla::PrimitiveType::F4E2M1FN, 34314.0);
+  CheckPeakOpsPerNs(vr_nvl72_device_info, /*is_matrix_unit=*/true,
+                    xla::PrimitiveType::F6E3M2FN, 17157.0);
+  CheckPeakOpsPerNs(vr_nvl72_device_info, /*is_matrix_unit=*/true,
+                    xla::PrimitiveType::S8, 268.0);
+  CheckPeakOpsPerNs(vr_nvl72_device_info, /*is_matrix_unit=*/true,
+                    xla::PrimitiveType::F8E4M3, 17157.0);
+  CheckPeakOpsPerNs(vr_nvl72_device_info, /*is_matrix_unit=*/true,
+                    xla::PrimitiveType::F16, 4289.0);
+  CheckPeakOpsPerNs(vr_nvl72_device_info, /*is_matrix_unit=*/true,
+                    xla::PrimitiveType::BF16, 4289.0);
+  CheckPeakOpsPerNs(vr_nvl72_device_info, /*is_matrix_unit=*/true,
+                    xla::PrimitiveType::F32, 2145.0);
+  CheckPeakOpsPerNs(vr_nvl72_device_info, /*is_matrix_unit=*/true,
+                    xla::PrimitiveType::F64, 33.5);
+  CheckPeakOpsPerNs(vr_nvl72_device_info, /*is_matrix_unit=*/false,
+                    xla::PrimitiveType::F16, 134.0);
+  CheckPeakOpsPerNs(vr_nvl72_device_info, /*is_matrix_unit=*/false,
+                    xla::PrimitiveType::BF16, 134.0);
+  CheckPeakOpsPerNs(vr_nvl72_device_info, /*is_matrix_unit=*/false,
+                    xla::PrimitiveType::F32, 134.0);
+  CheckPeakOpsPerNs(vr_nvl72_device_info, /*is_matrix_unit=*/false,
+                    xla::PrimitiveType::S32, 67.0);
+  CheckPeakOpsPerNs(vr_nvl72_device_info, /*is_matrix_unit=*/false,
+                    xla::PrimitiveType::F64, 33.5);
+
+  ASSERT_NE(vr_nvl72_device_info.scalar_unit_description(), nullptr);
+  EXPECT_FALSE(vr_nvl72_device_info.scalar_unit_description()
+                   ->GetRateInfo(xla::S8)
+                   .has_value());
+}
+
 TEST(CudaCoreInfoTableTest, GetFpusPerCore) {
   EXPECT_EQ(GetFpusPerCore(CudaComputeCapability::Hopper()), 128);
+  EXPECT_EQ(GetFpusPerCore(CudaComputeCapability::Rubin()), 128);
   EXPECT_EQ(GetFpusPerCore(CudaComputeCapability::Ampere()), 64);
   EXPECT_EQ(GetFpusPerCore(CudaComputeCapability::Volta()), 64);
   EXPECT_EQ(GetFpusPerCore(CudaComputeCapability::Pascal()), 64);

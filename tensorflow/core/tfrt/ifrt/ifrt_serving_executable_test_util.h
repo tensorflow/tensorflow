@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_IFRT_IFRT_SERVING_EXECUTABLE_TEST_UTIL_H_
 #define TENSORFLOW_CORE_TFRT_IFRT_IFRT_SERVING_EXECUTABLE_TEST_UTIL_H_
 
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -66,7 +67,28 @@ class IfrtServingExecutableTestHelper {
 
   int num_cores() const { return client_->addressable_device_count(); }
 
+  // Simulates XLA compilation being disabled (e.g. by
+  // `ScopedTpuCompileDisabler`) for executables created by this helper.
+  void SetXlaCompilationDisabled(bool disabled) {
+    tf_to_hlo_compiler_.set_xla_compilation_disabled(disabled);
+  }
+
  private:
+  // A `TfToHloCompiler` whose `IsXlaCompilationDisabled()` can be controlled
+  // by tests.
+  class TestTfToHloCompiler : public TfToHloCompiler {
+   public:
+    bool IsXlaCompilationDisabled() const override {
+      return xla_compilation_disabled_.load();
+    }
+    void set_xla_compilation_disabled(bool disabled) {
+      xla_compilation_disabled_.store(disabled);
+    }
+
+   private:
+    std::atomic<bool> xla_compilation_disabled_ = false;
+  };
+
   static constexpr int kThreadPoolNumThreads = 16;
 
   tsl::test_util::MockServingDeviceSelector* device_selector_;  // Not owned.
@@ -82,7 +104,7 @@ class IfrtServingExecutableTestHelper {
   std::unique_ptr<mlir::MLIRContext> context_;
   std::unique_ptr<IfrtPersistentCompilationCache>
       ifrt_persistent_compilation_cache_;
-  TfToHloCompiler tf_to_hlo_compiler_;
+  TestTfToHloCompiler tf_to_hlo_compiler_;
   std::unique_ptr<H2DTransferExecutorFactory> h2d_transfer_executor_factory_;
 };
 

@@ -49,6 +49,8 @@ struct WhileLoopConfig {
   int64_t trip_count;
   // The index of the induction variable in the input tuple of the while loop.
   int64_t induction_var_idx;
+  // The step size of the induction variable.
+  int64_t step = 1;
 };
 
 // Result for unrolled while loops.
@@ -68,9 +70,8 @@ struct UnrollResult {
 // 2. The start index of that dimension should be equal to the enclosing loop
 //    induction variable.
 // 3. The size of that dimension must match the loop trip count.
-// 4. For dynamic-slice, the slice size for the induction variable dimension is
-//    1, and the size of all other dimensions is the same as the shape of the
-//    input.
+// 4. The slice size for the induction variable dimension is 1, and the size
+//    of all other dimensions is the same as the shape of the input.
 // If so, it returns the dynamic index.
 std::optional<int64_t> MatchShapeCoveringDynamicIndexInstruction(
     const HloInstruction* instr, const HloInstruction* input, HloOpcode opcode,

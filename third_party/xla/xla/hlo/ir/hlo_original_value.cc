@@ -212,6 +212,10 @@ std::shared_ptr<OriginalValue> OriginalValue::FromProto(
 
 std::shared_ptr<OriginalValue> OriginalValue::CreateFromInstruction(
     const HloInstruction* instruction, absl::string_view prefix) {
+  if (instruction->shape().IsToken()) {
+    return nullptr;
+  }
+
   if (instruction->opcode() == HloOpcode::kGetTupleElement) {
     const auto* tuple = instruction->operand(0);
     std::shared_ptr<OriginalValue> tuple_original_value =
@@ -222,13 +226,17 @@ std::shared_ptr<OriginalValue> OriginalValue::CreateFromInstruction(
     auto original_value = std::make_shared<OriginalValue>(
         TupleTree<std::optional<OriginalArray>>(instruction->shape()));
     const auto& tuple_tree = tuple_original_value->tree();
+    bool has_original_value = false;
     original_value->mutable_tree()->ForEachMutableElement(
         [&](const ShapeIndex& index, std::optional<OriginalArray>* value) {
           ShapeIndex src_index({instruction->tuple_index()});
           src_index.insert(src_index.end(), index.begin(), index.end());
           *value = tuple_tree.element(src_index);
+          if (value->has_value()) {
+            has_original_value = true;
+          }
         });
-    return original_value;
+    return has_original_value ? original_value : nullptr;
   }
 
   if (instruction->opcode() == HloOpcode::kTuple) {
@@ -241,45 +249,41 @@ std::shared_ptr<OriginalValue> OriginalValue::CreateFromInstruction(
       if (!op_original_value || op_original_value->is_synthetic_call()) {
         continue;
       }
-      has_original_value = true;
       const auto& op_tree = op_original_value->tree();
       op_tree.ForEachElement([&](const ShapeIndex& index,
                                  const std::optional<OriginalArray>& value) {
         ShapeIndex dest_index({i});
         dest_index.insert(dest_index.end(), index.begin(), index.end());
         *original_value->mutable_tree()->mutable_element(dest_index) = value;
+        if (value.has_value()) {
+          has_original_value = true;
+        }
       });
     }
     return has_original_value ? original_value : nullptr;
   }
 
+  std::optional<std::string> call_hierarchy;
   if (instruction->opcode() == HloOpcode::kWhile) {
-    auto original_value = std::make_shared<OriginalValue>(
-        TupleTree<std::optional<OriginalArray>>(instruction->shape()),
-        absl::StrCat(prefix, instruction->name(), "#$"));
-    for (auto& leaf : original_value->mutable_original_arrays()) {
-      leaf.second = {absl::StrCat(prefix, instruction->name()), leaf.first};
-    }
-    return original_value;
-  }
-
-  if (instruction->opcode() == HloOpcode::kCall) {
-    auto original_value = std::make_shared<OriginalValue>(
-        TupleTree<std::optional<OriginalArray>>(instruction->shape()),
-        absl::StrCat(prefix, instruction->name()));
-    for (auto& leaf : original_value->mutable_original_arrays()) {
-      leaf.second = {absl::StrCat(prefix, instruction->name()), leaf.first};
-    }
-    return original_value;
+    call_hierarchy = absl::StrCat(prefix, instruction->name(), "#$");
+  } else if (instruction->opcode() == HloOpcode::kCall) {
+    call_hierarchy = absl::StrCat(prefix, instruction->name());
   }
 
   // Default case: create a new tree with leaves pointing to this instruction.
   auto original_value = std::make_shared<OriginalValue>(
-      TupleTree<std::optional<OriginalArray>>(instruction->shape()));
-  for (auto& leaf : original_value->mutable_original_arrays()) {
-    leaf.second = {absl::StrCat(prefix, instruction->name()), leaf.first};
+      TupleTree<std::optional<OriginalArray>>(instruction->shape()),
+      std::move(call_hierarchy));
+  bool has_original_value = false;
+  for (auto& [shape_index, original_array] :
+       original_value->mutable_original_arrays()) {
+    if (ShapeUtil::GetSubshape(instruction->shape(), shape_index).IsToken()) {
+      continue;
+    }
+    original_array = {absl::StrCat(prefix, instruction->name()), shape_index};
+    has_original_value = true;
   }
-  return original_value;
+  return has_original_value ? original_value : nullptr;
 }
 
 /* static */

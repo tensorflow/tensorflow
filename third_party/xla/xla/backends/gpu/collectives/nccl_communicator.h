@@ -23,6 +23,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
@@ -42,6 +43,7 @@ limitations under the License.
 #include "xla/core/collectives/registered_memory.h"
 #include "xla/core/collectives/symmetric_memory.h"
 #include "xla/debug_options_flags.h"
+#include "xla/ffi/api/record_c_api.h"
 #include "xla/future.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/kernel_args.h"
@@ -55,6 +57,10 @@ limitations under the License.
 // Include NCCL after XLA headers.
 #include "third_party/nccl/nccl.h"
 #include "third_party/nccl/nccl_device.h"  // IWYU pragma: keep
+
+namespace xla::ffi {
+struct RecordContext;
+}  // namespace xla::ffi
 
 namespace xla::gpu {
 
@@ -217,6 +223,12 @@ class NcclCommunicator : public GpuCommunicator {
                                PrimitiveType dtype, size_t count, RankId root,
                                const Executor& executor) final;
 
+  absl::Status LaunchReduce(se::DeviceAddressBase send_buffer,
+                            se::DeviceAddressBase recv_buffer,
+                            PrimitiveType dtype, size_t count,
+                            ReductionKind reduction_kind, RankId root,
+                            const Executor& executor) final;
+
   absl::Status LaunchReduceScatter(se::DeviceAddressBase send_buffer,
                                    se::DeviceAddressBase recv_buffer,
                                    PrimitiveType dtype, size_t count,
@@ -264,6 +276,10 @@ class NcclCommunicator : public GpuCommunicator {
                                  const Executor& executor) final;
 
   absl::Status LaunchMultiGpuBarrier(const Executor& executor) final;
+
+  absl::StatusOr<const XLA_FFI_Command*> RecordMultiGpuBarrier(
+      xla::ffi::RecordContext& record_ctx,
+      const XLA_FFI_Command* absl_nullable cmd) final;
 
   void InitializeCrossDeviceBarrier(
       tsl::TiedRef<se::MemoryAllocation> tied_signal_value,

@@ -575,6 +575,10 @@ if gen_math_ops.mul.__doc__ is not None:
 @dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 def subtract(x, y, name=None):
+  if not tensor_util.is_tf_type(x) and tensor_util.is_tf_type(y):
+    x = ops.convert_to_tensor(x, dtype=y.dtype.base_dtype)
+  elif tensor_util.is_tf_type(x) and not tensor_util.is_tf_type(y):
+    y = ops.convert_to_tensor(y, dtype=x.dtype.base_dtype)
   return gen_math_ops.sub(x, y, name)
 
 
@@ -2737,20 +2741,44 @@ def reduce_variance(input_tensor, axis=None, keepdims=False, name=None):
   name = name if name else "reduce_variance"
   with ops.name_scope(name):
     input_tensor = ops.convert_to_tensor(input_tensor)
-    means = reduce_mean(input_tensor, axis=axis, keepdims=True)
-    if means.dtype.is_integer:
-      raise TypeError(f"Input must be either real or complex. "
-                      f"Received integer type {means.dtype}.")
-    diff = input_tensor - means
-    if diff.dtype.is_complex:
-      # For complex values we need to take the absolute value before squaring.
-      # This is achieved by multiplying with the conjugate.
-      real_dtype = diff.dtype.real_dtype
-      squared_deviations = gen_math_ops.real(
-          gen_math_ops.mul(gen_math_ops.conj(diff), diff), Tout=real_dtype)
-    else:
-      squared_deviations = gen_math_ops.square(diff)
-    return reduce_mean(squared_deviations, axis=axis, keepdims=keepdims)
+    is_float16 = input_tensor.dtype == dtypes.float16
+    variance = _reduce_variance_in_stable_dtype(
+        input_tensor, is_float16, axis, keepdims
+    )
+    if is_float16:
+      variance = cast(variance, dtypes.float16)
+    return variance
+
+
+def _reduce_variance_in_stable_dtype(input_tensor, is_float16, axis, keepdims):
+  """Computes variance, promoting float16 to float32 first.
+
+  The dynamic range of float16 is too limited for the squared deviations
+  computed below, so this performs the computation on 32-bit floats before
+  returning, matching the approach `tf.nn.moments` uses for the same reason.
+  Unlike `reduce_variance`, this does not cast the result back to the
+  original dtype, so that `reduce_std` can take the square root while still
+  in the wider dtype.
+  """
+  if is_float16:
+    input_tensor = cast(input_tensor, dtypes.float32)
+  means = reduce_mean(input_tensor, axis=axis, keepdims=True)
+  if means.dtype.is_integer:
+    raise TypeError(
+        "Input must be either real or complex. "
+        f"Received integer type {means.dtype}."
+    )
+  diff = input_tensor - means
+  if diff.dtype.is_complex:
+    # For complex values we need to take the absolute value before squaring.
+    # This is achieved by multiplying with the conjugate.
+    real_dtype = diff.dtype.real_dtype
+    squared_deviations = gen_math_ops.real(
+        gen_math_ops.mul(gen_math_ops.conj(diff), diff), Tout=real_dtype
+    )
+  else:
+    squared_deviations = gen_math_ops.square(diff)
+  return reduce_mean(squared_deviations, axis=axis, keepdims=keepdims)
 
 
 @tf_export("math.reduce_std")
@@ -2800,8 +2828,17 @@ def reduce_std(input_tensor, axis=None, keepdims=False, name=None):
   name = name if name else "reduce_std"
   with ops.name_scope(name):
     input_tensor = ops.convert_to_tensor(input_tensor)
-    variance = reduce_variance(input_tensor, axis=axis, keepdims=keepdims)
-    return gen_math_ops.sqrt(variance)
+    is_float16 = input_tensor.dtype == dtypes.float16
+    # Preserve the `reduce_variance` sub-scope reduce_std has always had,
+    # rather than calling the private helper directly at this scope level.
+    with ops.name_scope("reduce_variance"):
+      variance = _reduce_variance_in_stable_dtype(
+          input_tensor, is_float16, axis, keepdims
+      )
+    std = gen_math_ops.sqrt(variance)
+    if is_float16:
+      std = cast(std, dtypes.float16)
+    return std
 
 
 @tf_export("math.reduce_prod", "reduce_prod", v1=[])
@@ -3578,6 +3615,15 @@ def matmul(
   This optimization is only available for plain matrices (rank-2 tensors) with
   datatypes `bfloat16` or `float32`.
 
+  Note: On NVIDIA GPUs of the Ampere generation and later, `float32` inputs are
+  rounded from 23 to 10 bits of mantissa (TensorFloat-32) before the
+  multiplication, and TPUs round to `bfloat16` similarly; accumulation stays in
+  `float32` in both cases. Results therefore differ from a CPU `float32` matmul
+  by considerably more than `float32` roundoff alone would suggest, and the gap
+  grows with the size of the contracted dimension. Use
+  `tf.config.experimental.enable_tensor_float_32_execution(False)` to run with
+  full `float32` precision instead.
+
   A simple 2-D tensor matrix multiplication:
 
   >>> a = tf.constant([1, 2, 3, 4, 5, 6], shape=[2, 3])
@@ -4299,7 +4345,7 @@ def log_sigmoid(x, name=None):
   we use `y = -tf.nn.softplus(-x)`.
 
   Args:
-    x: A Tensor with type `float32` or `float64`.
+    x: A Tensor with type `float16`, `bfloat16`, `float32`, or `float64`.
     name: A name for the operation (optional).
 
   Returns:

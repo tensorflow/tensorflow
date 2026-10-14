@@ -1,0 +1,1016 @@
+
+Remove C++20 features (such as std::bit_cast, std::ranges, associative container
+.contains(), requires clauses, and defaulted operator==) so Triton can be
+compiled with C++17.
+
+
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -9,7 +9,7 @@
+ project(triton CXX C)
+ include(CTest)
+ 
+-set(CMAKE_CXX_STANDARD 20)
++set(CMAKE_CXX_STANDARD 17)
+ set(CMAKE_CXX_STANDARD_REQUIRED ON)
+ set(CMAKE_INCLUDE_CURRENT_DIR ON)
+ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+
+--- a/include/triton/Analysis/Membar.h
++++ b/include/triton/Analysis/Membar.h
+@@ -137,7 +137,10 @@
+   Kind kind = Unknown;
+   Region *region = nullptr;
+ 
+-  bool operator==(const ThreadIssuer &) const = default;
++  bool operator==(const ThreadIssuer &other) const {
++    return kind == other.kind && region == other.region;
++  }
++  bool operator!=(const ThreadIssuer &other) const { return !(*this == other); }
+ };
+ 
+ // Empty summaries contain no operations. Nonempty summaries preserve an issuer
+@@ -151,7 +154,12 @@
+   bool hasSameKnownIssuer(const IssuerSummary &other) const;
+   void join(const IssuerSummary &other);
+ 
+-  bool operator==(const IssuerSummary &) const = default;
++  bool operator==(const IssuerSummary &other) const {
++    return issuer == other.issuer;
++  }
++  bool operator!=(const IssuerSummary &other) const {
++    return !(*this == other);
++  }
+ 
+ private:
+   std::optional<ThreadIssuer> issuer;
+@@ -176,7 +184,14 @@
+     CompletionSync completion = CompletionSync::None;
+     bool peerWaitNeedsSync = false;
+ 
+-    bool operator==(const ThreadSyncState &) const = default;
++    bool operator==(const ThreadSyncState &other) const {
++      return effectIssuers == other.effectIssuers &&
++             completion == other.completion &&
++             peerWaitNeedsSync == other.peerWaitNeedsSync;
++    }
++    bool operator!=(const ThreadSyncState &other) const {
++      return !(*this == other);
++    }
+   } threadSync;
+   struct ThreadDemandState {
+     bool hasDemand = false;
+@@ -186,7 +201,15 @@
+     IssuerSummary publicationIssuers;
+     bool mayNotifyPeer = false;
+ 
+-    bool operator==(const ThreadDemandState &) const = default;
++    bool operator==(const ThreadDemandState &other) const {
++      return hasDemand == other.hasDemand &&
++             hasDemandBeyondGlobalReads == other.hasDemandBeyondGlobalReads &&
++             publicationIssuers == other.publicationIssuers &&
++             mayNotifyPeer == other.mayNotifyPeer;
++    }
++    bool operator!=(const ThreadDemandState &other) const {
++      return !(*this == other);
++    }
+   } threadDemands;
+ 
+   BlockInfo() = default;
+@@ -275,7 +298,13 @@
+     threadDemands = {};
+   }
+ 
+-  bool operator==(const BlockInfo &) const = default;
++  bool operator==(const BlockInfo &other) const {
++    return syncReadSlices == other.syncReadSlices &&
++           syncWriteSlices == other.syncWriteSlices &&
++           threadSync == other.threadSync &&
++           threadDemands == other.threadDemands;
++  }
++  bool operator!=(const BlockInfo &other) const { return !(*this == other); }
+ 
+   /// Checks one pair of access maps with the same alias and operation filters.
+   static bool isIntersected(const SliceMapT &lhsSlices,
+@@ -359,7 +388,13 @@
+     entryBlockInfo.transformSlices(transform);
+   }
+ 
+-  bool operator==(const MembarInfo &) const = default;
++  bool operator==(const MembarInfo &other) const {
++    return pending == other.pending &&
++           entryBlockInfo == other.entryBlockInfo &&
++           allPathsFromEntrySynced == other.allPathsFromEntrySynced &&
++           warpsSynced == other.warpsSynced;
++  }
++  bool operator!=(const MembarInfo &other) const { return !(*this == other); }
+ };
+ 
+ /// Classify the barriers that synchronize local memory accesses in `op`
+
+--- a/include/triton/Tools/Sys/GetEnv.h
++++ b/include/triton/Tools/Sys/GetEnv.h
+@@ -67,8 +67,8 @@
+ namespace tools {
+ 
+ inline void assertIsRecognized(const std::string &env) {
+-  bool is_invalidating = CACHE_INVALIDATING_ENV_VARS.contains(env.c_str());
+-  bool is_neutral = CACHE_NEUTRAL_ENV_VARS.contains(env.c_str());
++  bool is_invalidating = CACHE_INVALIDATING_ENV_VARS.count(env.c_str());
++  bool is_neutral = CACHE_NEUTRAL_ENV_VARS.count(env.c_str());
+   std::string errmsg = env + "is not recognized. "
+                              "Please add it to triton/Tools/Sys/GetEnv.h";
+   assert((is_invalidating || is_neutral) && errmsg.c_str());
+
+--- a/lib/Dialect/TritonGPU/Transforms/Utility.cpp
++++ b/lib/Dialect/TritonGPU/Transforms/Utility.cpp
+@@ -318,7 +318,7 @@
+ 
+ std::string GraphDumper::emitValueNode(Value value) const {
+   NodeInfo info = onValue(value);
+-  if (!info.contains("label")) {
++  if (info.find("label") == info.end()) {
+     std::string shapeStr = getShapeStr(value.getType());
+     if (auto arg = mlir::dyn_cast<BlockArgument>(value))
+       info["label"] =
+@@ -331,7 +331,7 @@
+ 
+ std::string GraphDumper::emitOperationNode(Operation *op) const {
+   NodeInfo info = onOperation(op);
+-  if (!info.contains("label"))
++  if (info.find("label") == info.end())
+     info["label"] = op->getName().getStringRef().str();
+   return emitNode(getUniqueId(op), info);
+ }
+
+--- a/lib/Dialect/TritonGPU/Transforms/WarpSpecialization/PartitionScheduling.cpp
++++ b/lib/Dialect/TritonGPU/Transforms/WarpSpecialization/PartitionScheduling.cpp
+@@ -340,7 +340,7 @@
+             cast<DenseI32ArrayAttr>(op->getAttr(kPartitionAttrName))
+                 .asArrayRef();
+         for (auto id : partitionIds) {
+-          if (!manual_partitions.contains(id)) {
++          if (manual_partitions.find(id) == manual_partitions.end()) {
+             auto partition = graph->addPartition();
+             partition->addFlag(Flags::MANUAL);
+             manual_partitions[id] = partition;
+@@ -1213,7 +1213,7 @@
+                 } else if (child->getPartition() == startPartition) {
+                   // found a path, set all nodes on the path to the partition
+                   node->addPartition(startPartition);
+-                  while (parentMap.contains(node)) {
++                  while (parentMap.find(node) != parentMap.end()) {
+                     node = parentMap[node];
+                     node->addPartition(startPartition);
+                   }
+
+--- a/lib/Dialect/TritonGPU/Transforms/WarpSpecialization/PartitionSchedulingUtility.cpp
++++ b/lib/Dialect/TritonGPU/Transforms/WarpSpecialization/PartitionSchedulingUtility.cpp
+@@ -200,7 +200,7 @@
+       tools::getBoolEnv("TRITON_PARTITION_SCHEDULING_DUMP_LOOP_ONLY");
+ 
+   static std::map<std::string, int> keys;
+-  if (!keys.contains(key)) {
++  if (keys.find(key) == keys.end()) {
+     keys[key] = 0;
+   }
+   auto idx = keys[key];
+
+--- a/lib/Tools/LinearLayout.cpp
++++ b/lib/Tools/LinearLayout.cpp
+@@ -1189,7 +1189,7 @@
+   for (StringAttr dim : getInDimNames()) {
+     int32_t mask = 0;
+     for (int i = 0; i < getInDimSizeLog2(dim); i++, c++) {
+-      if (!basicVars.contains(c)) {
++      if (!basicVars.count(c)) {
+         mask |= (1 << i);
+       }
+     }
+
+--- a/python/src/interpreter.cc
++++ b/python/src/interpreter.cc
+@@ -1,5 +1,4 @@
+ #include <atomic>
+-#include <bit>
+ #include <cmath>
+ #include <cstddef>
+ #include <cstdint>
+@@ -260,12 +259,23 @@
+   }
+ }
+ 
++template <class To, class From>
++typename std::enable_if_t<sizeof(To) == sizeof(From) &&
++                              std::is_trivially_copyable_v<From> &&
++                              std::is_trivially_copyable_v<To>,
++                          To>
++bit_cast(const From &src) noexcept {
++  To dst;
++  std::memcpy(&dst, &src, sizeof(To));
++  return dst;
++}
++
+ triton_half npy_float_to_half(float f) {
+-  return {FromFloatBits(std::bit_cast<uint32_t>(f))};
++  return {FromFloatBits(bit_cast<uint32_t>(f))};
+ }
+ 
+ float npy_half_to_float(triton_half h) {
+-  return std::bit_cast<float>(ToFloatBits(h.value));
++  return bit_cast<float>(ToFloatBits(h.value));
+ }
+ 
+ template <>
+
+--- a/python/src/llvm.cc
++++ b/python/src/llvm.cc
+@@ -945,7 +945,7 @@
+       // Mark linked-in functions as internal because backends use external
+       // linkage as a signifier of kernel functions.
+       for (llvm::Function &fn : dstMod->functions()) {
+-        if (externalFns.contains(fn.getName().str())) {
++        if (externalFns.count(fn.getName().str())) {
+           fn.setLinkage(llvm::GlobalValue::InternalLinkage);
+         }
+       }
+
+--- a/third_party/amd/backend/codegen/CMakeLists.txt
++++ b/third_party/amd/backend/codegen/CMakeLists.txt
+@@ -12,7 +12,7 @@
+ set(TRITON_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../..")
+ add_library(triton_amd_codegen SHARED amdgpu_codegen.cc
+             "${TRITON_SOURCE_DIR}/lib/Tools/LLVMOptions.cpp")
+-target_compile_features(triton_amd_codegen PRIVATE cxx_std_20)
++target_compile_features(triton_amd_codegen PRIVATE cxx_std_17)
+ target_include_directories(triton_amd_codegen PRIVATE
+                            "${TRITON_SOURCE_DIR}/include")
+ target_include_directories(triton_amd_codegen SYSTEM PRIVATE
+
+--- a/third_party/amd/lib/TritonAMDGPUToLLVM/ConvertFpCastOpToLLVM.cpp
++++ b/third_party/amd/lib/TritonAMDGPUToLLVM/ConvertFpCastOpToLLVM.cpp
+@@ -433,8 +433,9 @@
+ }
+ 
+ // OCP Bf8/Fp8 -> Bf16
+-template <typename SrcFPType>
+-  requires llvm::is_one_of<SrcFPType, Float8E4M3FNType, Float8E5M2Type>::value
++template <typename SrcFPType,
++          typename = std::enable_if_t<llvm::is_one_of<
++              SrcFPType, Float8E4M3FNType, Float8E5M2Type>::value>>
+ SmallVector<Value> OcpF8ToBf16SW(Location loc,
+                                  ConversionPatternRewriter &rewriter,
+                                  const SmallVector<Value> &v) {
+@@ -622,11 +623,13 @@
+ // In saturation mode, inf and out-of-range numbers are converted to the largest
+ // normal number, i.e. ±448. NaNs are converted to NaNs.
+ // For UZ formats please check: https://onnx.ai/onnx/technical/float8.html
+-template <typename SrcFPType, typename DstFPType>
+-  requires llvm::is_one_of<SrcFPType, Float32Type, Float16Type,
+-                           BFloat16Type>::value &&
+-           llvm::is_one_of<DstFPType, Float8E4M3FNType, Float8E4M3FNUZType,
+-                           Float8E5M2FNUZType>::value
++template <
++    typename SrcFPType, typename DstFPType,
++    typename = std::enable_if_t<
++        llvm::is_one_of<SrcFPType, Float32Type, Float16Type,
++                        BFloat16Type>::value &&
++        llvm::is_one_of<DstFPType, Float8E4M3FNType, Float8E4M3FNUZType,
++                        Float8E5M2FNUZType>::value>>
+ Value downcastToFp8rtneOneValue(Location loc,
+                                 ConversionPatternRewriter &rewriter, Value v) {
+   constexpr bool isFp8UZ =
+
+--- a/third_party/amd/lib/TritonAMDGPUToLLVM/ConvertWarpPipeline.cpp
++++ b/third_party/amd/lib/TritonAMDGPUToLLVM/ConvertWarpPipeline.cpp
+@@ -129,7 +129,7 @@
+             "non-warp-pipeline scf.execute_region inside pipelined_for body");
+       ++numClusters;
+     } else if (isWarpPipelineIgnorableBarrier(&op)) {
+-      if (existingBarrierMap.contains(numClusters))
++      if (existingBarrierMap.count(numClusters))
+         return op.emitError("multiple pre-existing barriers between pipeline "
+                             "stages; insert a dummy stage instead");
+       existingBarrierMap[numClusters] = &op;
+@@ -144,8 +144,8 @@
+   if (numClusters < 2)
+     return forOp.emitError(
+         "pipelined_for body must contain at least two pipeline stages");
+-  if (existingBarrierMap.contains(0) &&
+-      existingBarrierMap.contains(numClusters))
++  if (existingBarrierMap.count(0) &&
++      existingBarrierMap.count(numClusters))
+     return forOp.emitError("pipelined_for body has both top-of-loop and "
+                            "bottom-of-loop pre-existing barriers");
+   return success();
+@@ -438,7 +438,7 @@
+     // Normally, we don't expect a pipelined loop begins with a barrier
+     // but sometimes required by memory prefetching pattern.
+     auto bottomBar = existingBarrierMap.find(numClusters);
+-    bool hasTopBarrier = existingBarrierMap.contains(0);
++    bool hasTopBarrier = existingBarrierMap.count(0);
+     bool hasBottomBarrier = bottomBar != existingBarrierMap.end();
+     if (bottomBar != existingBarrierMap.end()) {
+       // validatePipelinedForBody guarantees we cannot have both top and
+
+--- a/third_party/amd/lib/TritonAMDGPUTransforms/BlockPingpong.cpp
++++ b/third_party/amd/lib/TritonAMDGPUTransforms/BlockPingpong.cpp
+@@ -1160,18 +1160,23 @@
+   // Prune Memory operations that may be moved to only those involved in dot
+   // computation. To understand the "cluster assumptions" we also estimate
+   // the impact of any additional loads/stores.
+-  auto nonDotGLoads =
+-      std::ranges::stable_partition(gLoadOps, [&dotGlobalLoads](tt::LoadOp op) {
+-        return dotGlobalLoads.contains(op);
+-      });
+-  auto nonDotLLoads = std::ranges::stable_partition(
+-      lLoadOps, [&dotLocalLoads](ttg::LocalLoadOp op) {
+-        return dotLocalLoads.contains(op);
+-      });
+-  auto nonDotLStores = std::ranges::stable_partition(
+-      lStoreOps, [&dotLocalStores](ttg::LocalStoreOp op) {
+-        return dotLocalStores.contains(op);
+-      });
++  auto nonDotGLoadsIt = std::stable_partition(
++      gLoadOps.begin(), gLoadOps.end(),
++      [&dotGlobalLoads](tt::LoadOp op) { return dotGlobalLoads.contains(op); });
++  llvm::ArrayRef<tt::LoadOp> nonDotGLoads(nonDotGLoadsIt, gLoadOps.end());
++  auto nonDotLLoadsIt =
++      std::stable_partition(lLoadOps.begin(), lLoadOps.end(),
++                            [&dotLocalLoads](ttg::LocalLoadOp op) {
++                              return dotLocalLoads.contains(op);
++                            });
++  llvm::ArrayRef<ttg::LocalLoadOp> nonDotLLoads(nonDotLLoadsIt, lLoadOps.end());
++  auto nonDotLStoresIt =
++      std::stable_partition(lStoreOps.begin(), lStoreOps.end(),
++                            [&dotLocalStores](ttg::LocalStoreOp op) {
++                              return dotLocalStores.contains(op);
++                            });
++  llvm::ArrayRef<ttg::LocalStoreOp> nonDotLStores(nonDotLStoresIt,
++                                                  lStoreOps.end());
+   if (estimateNonDotMemoryImpact<tt::LoadOp>(nonDotGLoads, assumeNotTaken) !=
+       0) {
+     std::stringstream message;
+
+--- a/third_party/amd/lib/TritonAMDGPUTransforms/ConvertToBufferOps.cpp
++++ b/third_party/amd/lib/TritonAMDGPUTransforms/ConvertToBufferOps.cpp
+@@ -499,9 +499,10 @@
+   bool analyzeSmallTensorOfst;
+ };
+ 
+-template <typename SourceOp>
+-  requires llvm::is_one_of<SourceOp, triton::LoadOp,
+-                           triton::gpu::AsyncCopyGlobalToLocalOp>::value
++template <typename SourceOp,
++          typename = std::enable_if_t<llvm::is_one_of<
++              SourceOp, triton::LoadOp,
++              triton::gpu::AsyncCopyGlobalToLocalOp>::value>>
+ struct ConvertTritonLoadToBufferLoad : public mlir::OpRewritePattern<SourceOp> {
+   using OpRewritePattern<SourceOp>::OpRewritePattern;
+ 
+
+--- a/third_party/amd/lib/TritonAMDGPUTransforms/LowerLoops.cpp
++++ b/third_party/amd/lib/TritonAMDGPUTransforms/LowerLoops.cpp
+@@ -679,8 +679,8 @@
+   // Make assignments
+   Clusters clusterVec;
+   schedule.clusters.clear();
+-  std::ranges::generate(clusterVec,
+-                        [&] { return schedule.clusters.newAtBack(); });
++  std::generate(clusterVec.begin(), clusterVec.end(),
++                [&] { return schedule.clusters.newAtBack(); });
+ 
+   clusters[SCHED_GLOBAL_LOAD] = clusterVec[globalLoadCluster];
+   clusters[SCHED_LOCAL_STORE] = clusterVec[localStoreCluster];
+
+--- a/third_party/amd/lib/TritonAMDGPUTransforms/ScheduleLoops.cpp
++++ b/third_party/amd/lib/TritonAMDGPUTransforms/ScheduleLoops.cpp
+@@ -352,8 +352,8 @@
+   stages[SCHED_ASYNC_WAIT] = stages[SCHED_LOCAL_LOAD];
+ 
+   Clusters clusterVec;
+-  std::ranges::generate(clusterVec,
+-                        [&] { return schedule.clusters.newAtBack(); });
++  std::generate(clusterVec.begin(), clusterVec.end(),
++                [&] { return schedule.clusters.newAtBack(); });
+ 
+   // This is a symbolic cluster assignment. In this stage, we only focus on
+   // global load and compute ops.
+@@ -491,8 +491,8 @@
+   LDBG("Build ChainedDotSchedule");
+   tt::CoarseSchedule schedule(numStages);
+   ChainedDotClusters clusters;
+-  std::ranges::generate(clusters,
+-                        [&] { return schedule.clusters.newAtBack(); });
++  std::generate(clusters.begin(), clusters.end(),
++                [&] { return schedule.clusters.newAtBack(); });
+ 
+   // Schedule dots
+   auto dotOpsVec = llvm::to_vector(forOp.getBody()->getOps<tt::DotOp>());
+
+--- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/MMAHelpers.h
++++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/MMAHelpers.h
+@@ -3,7 +3,7 @@
+ #include "triton/Dialect/TritonNvidiaGPU/IR/NvmmaSmemAttrs.h"
+ #include "triton/Tools/LayoutUtils.h"
+ 
+-#include <bit>
++#include "llvm/ADT/bit.h"
+ 
+ namespace mlir {
+ namespace triton {
+@@ -175,7 +175,7 @@
+       currDesc.leadDimensionBaseOffset = 0;
+     }
+     int32_t smemByteOffsetb128 = smemByteOffsetb8 >> 4;
+-    uint64_t descBits = std::bit_cast<uint64_t>(currDesc) + smemByteOffsetb128;
++    uint64_t descBits = llvm::bit_cast<uint64_t>(currDesc) + smemByteOffsetb128;
+     // Add the base address to the descriptor
+     Value low = tb.add(tb.i32_val(uint32_t(descBits)), baseb128);
+     Value high = tb.i32_val(descBits >> 32);
+@@ -288,7 +288,7 @@
+           loc, "MMA instruction exceeds the shared-memory layout");
+ 
+     auto desc =
+-        std::bit_cast<SMEMDescriptor>(mmaVersion == 5 ? 1ULL << 46 : 0ULL);
++        llvm::bit_cast<SMEMDescriptor>(mmaVersion == 5 ? 1ULL << 46 : 0ULL);
+     // The lbo / sbo is defined wrt. the 128b elements
+     desc.leadDimensionBaseOffset = (lbo * bitwidth / 8) >> 4;
+     desc.strideDimensionBaseOffset = (sbo * bitwidth / 8) >> 4;
+
+--- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/MMAv2.cpp
++++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/MMAv2.cpp
+@@ -782,7 +782,7 @@
+ 
+   TensorCoreType mmaType = getMmaTypeDot(op, aTensorTy, bTensorTy, dTensorTy);
+   const auto &instrMap = isTuring ? mmaInstrPtxTuring : mmaInstrPtxAmpere;
+-  if (!instrMap.contains(mmaType))
++  if (!instrMap.count(mmaType))
+     return op.emitError(
+         "unsupported MMA instruction for the given operand/result types");
+ 
+@@ -816,7 +816,7 @@
+ 
+   TensorCoreType mmaType =
+       getMmaTypeDotScaled(op, aTensorTy, bTensorTy, dTensorTy);
+-  if (!mmaInstrPtxScaled.contains(mmaType))
++  if (!mmaInstrPtxScaled.count(mmaType))
+     return op.emitError(
+         "unsupported MMA instruction for the given operand/result types");
+ 
+
+--- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/MMAv5.cpp
++++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/MMAv5.cpp
+@@ -6,8 +6,8 @@
+ #include "triton/Conversion/TritonGPUToLLVM/PatternTritonGPUOpToLLVM.h"
+ #include "triton/Dialect/TritonNvidiaGPU/IR/NvmmaSmemAttrs.h"
+ 
++#include "llvm/ADT/bit.h"
+ #include <array>
+-#include <bit>
+ 
+ using namespace mlir;
+ using namespace mlir::triton;
+@@ -201,7 +201,7 @@
+   if (kSize == 64)
+     desc.kSize = 1;
+ 
+-  return b.int_val(32, std::bit_cast<uint32_t>(desc));
++  return b.int_val(32, llvm::bit_cast<uint32_t>(desc));
+ }
+ 
+ static Value createScaleInstDescriptorFp8(ConversionPatternRewriter &rewriter,
+@@ -267,7 +267,7 @@
+     desc.BScaleFactor *= 2;
+   }
+ 
+-  return b.int_val(32, std::bit_cast<uint32_t>(desc));
++  return b.int_val(32, llvm::bit_cast<uint32_t>(desc));
+ }
+ 
+ static Value createScaleInstDescriptorFp4(
+@@ -313,7 +313,7 @@
+     // K96 selectors are byte offsets into three (block32) or six (block16)
+     // consecutive scales, including across scale words.
+     desc.kSizeLower = 1;
+-    return b.int_val(32, std::bit_cast<uint32_t>(desc));
++    return b.int_val(32, llvm::bit_cast<uint32_t>(desc));
+   }
+   if (kSize == 128) {
+     desc.kSizeUpper = 1;
+@@ -345,7 +345,7 @@
+            "MMAv5 with kind=mxf4nvf4 and .block16 only supports SFB_ID 0");
+   }
+ 
+-  return b.int_val(32, std::bit_cast<uint32_t>(desc));
++  return b.int_val(32, llvm::bit_cast<uint32_t>(desc));
+ }
+ 
+ //===----------------------------------------------------------------------===//
+
+--- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/LoadStoreOpToLLVM.cpp
++++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/LoadStoreOpToLLVM.cpp
+@@ -841,7 +841,7 @@
+              triton::nvgpu::MemSyncScope::SYSTEM}};
+     const bool doPTXLDPromotion = !useRed && isPromotableToNVPTXLD(op) &&
+                                   vec == 1 && packed == 1 &&
+-                                  ScopeMap.contains(op.getScope());
++                                  ScopeMap.count(op.getScope());
+ 
+     for (size_t i = 0; i < elemsPerThread; i += vec * packed) {
+       Value rmwPtr = ptrElements[i];
+
+--- a/third_party/proton/common/lib/TraceDataIO/CircularLayoutParser.cpp
++++ b/third_party/proton/common/lib/TraceDataIO/CircularLayoutParser.cpp
+@@ -110,14 +110,14 @@
+         trace.asyncEvents.push_back(entry);
+         continue;
+       }
+-      if (!activeEvent.contains(entry->scopeId)) {
++      if (!activeEvent.count(entry->scopeId)) {
+         activeEvent[entry->scopeId] =
+             CircularLayoutParserResult::ProfileEvent();
+       }
+       auto &activeProfileEvent = activeEvent[entry->scopeId];
+ 
+       auto prevState = ParseState::INIT;
+-      if (scopeState.contains(entry->scopeId))
++      if (scopeState.count(entry->scopeId))
+         prevState = scopeState[entry->scopeId];
+ 
+       if (entry->isStart) {
+@@ -174,7 +174,7 @@
+     if (endpoint.entry->isStart) {
+       // A warp cannot have two outstanding instances of the same static event
+       // because a later end would not identify which instance it completes.
+-      if (activeEndpoints.byWarp.contains(endpoint.uid)) {
++      if (activeEndpoints.byWarp.count(endpoint.uid)) {
+         reportException(
+             ScopeMisMatchException("Async event mismatch: start after start"),
+             buffer.position());
+
+--- a/third_party/proton/common/lib/TraceDataIO/TraceWriter.cpp
++++ b/third_party/proton/common/lib/TraceDataIO/TraceWriter.cpp
+@@ -91,7 +91,7 @@
+ 
+     // Group block traces by proc id
+     int procId = bt.procId;
+-    if (!procToBlockTraces.contains(procId)) {
++    if (!procToBlockTraces.count(procId)) {
+       procToBlockTraces[procId] = {};
+     }
+     procToBlockTraces[procId].push_back(&bt);
+@@ -203,12 +203,12 @@
+     for (const auto &event : trace.profileEvents) {
+       int lineId = eventLineIds.at(event.first.get());
+       int scopeId = event.first->scopeId;
+-      if (!scopeColor.contains(scopeId)) {
++      if (!scopeColor.count(scopeId)) {
+         scopeColor[scopeId] = curColorIndex;
+         curColorIndex = (curColorIndex + 1) % colors.size();
+       }
+       const std::string &color = colors[scopeColor[scopeId]];
+-      std::string name = !metadata.scopeName.contains(scopeId)
++      std::string name = !metadata.scopeName.count(scopeId)
+                              ? "scope_" + std::to_string(scopeId)
+                              : metadata.scopeName.at(scopeId);
+       std::string tid = "warp " + std::to_string(warpId) + " (line " +
+@@ -250,12 +250,12 @@
+   constexpr double freq = 1000.0;
+   for (const auto &link : blockTrace.asyncLinks) {
+     int scopeId = link.first.entry->scopeId;
+-    if (!scopeColor.contains(scopeId)) {
++    if (!scopeColor.count(scopeId)) {
+       scopeColor[scopeId] = curColorIndex;
+       curColorIndex = (curColorIndex + 1) % colors.size();
+     }
+     const std::string &color = colors[scopeColor[scopeId]];
+-    std::string name = !metadata.scopeName.contains(scopeId)
++    std::string name = !metadata.scopeName.count(scopeId)
+                            ? "event_" + std::to_string(scopeId)
+                            : metadata.scopeName.at(scopeId);
+ 
+
+--- a/third_party/proton/csrc/include/Session/Session.h
++++ b/third_party/proton/csrc/include/Session/Session.h
+@@ -151,10 +151,10 @@
+   size_t getSessionId(const std::string &path) { return sessionPaths[path]; }
+ 
+   bool hasSession(const std::string &path) {
+-    return sessionPaths.contains(path);
+-  }
+-
+-  bool hasSession(size_t sessionId) { return sessions.contains(sessionId); }
++    return sessionPaths.count(path);
++  }
++
++  bool hasSession(size_t sessionId) { return sessions.count(sessionId); }
+ 
+   void removeSession(size_t sessionId);
+ 
+
+--- a/third_party/proton/csrc/include/Utility/Map.h
++++ b/third_party/proton/csrc/include/Utility/Map.h
+@@ -68,7 +68,7 @@
+ 
+   bool contains(const Key &key) const {
+     std::shared_lock<std::shared_mutex> lock(mutex);
+-    return map.contains(key);
++    return map.count(key) > 0;
+   }
+ 
+   bool erase(const Key &key) {
+
+--- a/third_party/proton/csrc/include/Utility/Set.h
++++ b/third_party/proton/csrc/include/Utility/Set.h
+@@ -19,7 +19,7 @@
+ 
+   bool contains(const Key &key) const {
+     std::shared_lock<std::shared_mutex> lock(mutex);
+-    return set.contains(key);
++    return set.count(key) > 0;
+   }
+ 
+   bool erase(const Key &key) {
+
+--- a/third_party/proton/csrc/lib/Data/Dump/HatchetMsgPack.cpp
++++ b/third_party/proton/csrc/lib/Data/Dump/HatchetMsgPack.cpp
+@@ -102,14 +102,14 @@
+   }
+   if (isRoot) {
+     if (metricSummary.hasKernelMetric &&
+-        !metrics.contains(MetricKind::Kernel)) {
++        !metrics.count(MetricKind::Kernel)) {
+       metricEntries += kKernelInclusiveCount;
+     }
+     if (metricSummary.hasPCSamplingMetric &&
+-        !metrics.contains(MetricKind::PCSampling)) {
++        !metrics.count(MetricKind::PCSampling)) {
+       metricEntries += PCSamplingMetric::Count;
+     }
+-    if (metricSummary.hasCycleMetric && !metrics.contains(MetricKind::Cycle)) {
++    if (metricSummary.hasCycleMetric && !metrics.count(MetricKind::Cycle)) {
+       metricEntries += kCycleInclusiveCount;
+     }
+   }
+@@ -202,14 +202,14 @@
+   }
+   if (isRoot) {
+     if (metricSummary.hasKernelMetric &&
+-        !metrics.contains(MetricKind::Kernel)) {
++        !metrics.count(MetricKind::Kernel)) {
+       writer.appendBytes(kKernelDurationKey);
+       writer.packUInt(0);
+       writer.appendBytes(kKernelInvocationsKey);
+       writer.packUInt(0);
+     }
+     if (metricSummary.hasPCSamplingMetric &&
+-        !metrics.contains(MetricKind::PCSampling)) {
++        !metrics.count(MetricKind::PCSampling)) {
+       PCSamplingMetric pcSamplingMetric;
+       for (size_t i = 0; i < PCSamplingMetric::Count; i++) {
+         const auto valueName = pcSamplingMetric.getValueName(i);
+@@ -217,7 +217,7 @@
+         writer.packUInt(0);
+       }
+     }
+-    if (metricSummary.hasCycleMetric && !metrics.contains(MetricKind::Cycle)) {
++    if (metricSummary.hasCycleMetric && !metrics.count(MetricKind::Cycle)) {
+       writer.packStr(CycleMetric::getValueName(CycleMetric::Duration));
+       writer.packUInt(0);
+       writer.packStr(
+@@ -348,7 +348,7 @@
+     linkedChildren.reserve(virtualNode.children.size());
+     for (const auto &child : virtualNode.children) {
+       const auto &childNode = virtualTree->getNode(child.id);
+-      if (!childNode.children.empty() || linkedMetrics.contains(child.id)) {
++      if (!childNode.children.empty() || linkedMetrics.count(child.id)) {
+         linkedChildren.push_back(child.id);
+       }
+     }
+
+--- a/third_party/proton/csrc/lib/Data/Dump/TraceDataDump.cpp
++++ b/third_party/proton/csrc/lib/Data/Dump/TraceDataDump.cpp
+@@ -215,7 +215,7 @@
+           }
+ 
+           auto scopeName = event.contexts.back().name;
+-          if (!scopeNameToId.contains(scopeName)) {
++          if (!scopeNameToId.count(scopeName)) {
+             scopeIdToName[curScopeId] = scopeName;
+             scopeNameToId[scopeName] = curScopeId;
+             curScopeId++;
+
+--- a/third_party/proton/csrc/lib/Data/Metric.cpp
++++ b/third_party/proton/csrc/lib/Data/Metric.cpp
+@@ -1,11 +1,25 @@
+ #include "Data/Metric.h"
+ #include "Utility/Errors.h"
+ 
+-#include <bit>
++#include <cstring>
+ #include <stdexcept>
+ #include <type_traits>
+ 
+ namespace proton {
++namespace {
++
++template <class To, class From>
++typename std::enable_if_t<sizeof(To) == sizeof(From) &&
++                              std::is_trivially_copyable_v<From> &&
++                              std::is_trivially_copyable_v<To>,
++                          To>
++bit_cast(const From &src) noexcept {
++  To dst;
++  std::memcpy(&dst, &src, sizeof(To));
++  return dst;
++}
++
++} // namespace
+ 
+ std::map<uint64_t, MetricBuffer::MetricDescriptor>
+     MetricBuffer::metricDescriptors;
+@@ -101,22 +115,22 @@
+                                    stream);
+     runtime->synchronizeStream(stream);
+     if (tensorMetric.typeIndex == variant_index_v<double, MetricValueType>) {
+-      tensorMetricsHost[name] = std::bit_cast<double>(metricVector[0]);
++      tensorMetricsHost[name] = bit_cast<double>(metricVector[0]);
+     } else if (tensorMetric.typeIndex ==
+                variant_index_v<int64_t, MetricValueType>) {
+-      tensorMetricsHost[name] = std::bit_cast<int64_t>(metricVector[0]);
++      tensorMetricsHost[name] = bit_cast<int64_t>(metricVector[0]);
+     } else if (tensorMetric.typeIndex ==
+                variant_index_v<std::vector<double>, MetricValueType>) {
+       std::vector<double> values(tensorMetric.size);
+       for (size_t i = 0; i < tensorMetric.size; ++i) {
+-        values[i] = std::bit_cast<double>(metricVector[i]);
++        values[i] = bit_cast<double>(metricVector[i]);
+       }
+       tensorMetricsHost[name] = std::move(values);
+     } else if (tensorMetric.typeIndex ==
+                variant_index_v<std::vector<int64_t>, MetricValueType>) {
+       std::vector<int64_t> values(tensorMetric.size);
+       for (size_t i = 0; i < tensorMetric.size; ++i) {
+-        values[i] = std::bit_cast<int64_t>(metricVector[i]);
++        values[i] = bit_cast<int64_t>(metricVector[i]);
+       }
+       tensorMetricsHost[name] = std::move(values);
+     } else {
+@@ -166,7 +180,7 @@
+         } else {
+           static_assert(sizeof(T) == sizeof(uint64_t),
+                         "MetricValueType alternative must be 8 bytes");
+-          return std::bit_cast<uint64_t>(value);
++          return bit_cast<uint64_t>(value);
+         }
+       },
+       scalarMetric);
+@@ -204,7 +218,7 @@
+ MetricBuffer::DeviceBuffer &MetricBuffer::getOrCreateBuffer() {
+   std::lock_guard<std::mutex> lock(bufferMutex);
+   auto device = runtime->getDevice();
+-  if (!deviceBuffers.contains(device)) {
++  if (!deviceBuffers.count(device)) {
+     deviceBuffers[device] = DeviceBuffer{};
+     auto &buffer = deviceBuffers.at(device);
+     if (mappedHostBuffer) {
+
+--- a/third_party/proton/csrc/lib/Data/TraceData.cpp
++++ b/third_party/proton/csrc/lib/Data/TraceData.cpp
+@@ -53,7 +53,7 @@
+     void addChild(const Context &context, size_t id) { children[context] = id; }
+ 
+     bool hasChild(const Context &context) const {
+-      return children.contains(context);
++      return children.count(context);
+     }
+ 
+     size_t getChild(const Context &context) const {
+@@ -152,7 +152,7 @@
+     return nextEventId++;
+   }
+ 
+-  bool hasEvent(size_t eventId) { return traceEvents.contains(eventId); }
++  bool hasEvent(size_t eventId) { return traceEvents.count(eventId); }
+ 
+   Event &getEvent(size_t eventId) {
+     auto it = traceEvents.find(eventId);
+@@ -253,7 +253,7 @@
+   auto &event = currentTrace->getEvent(eventId);
+   auto &flexibleMetrics = event.metricSet.flexibleMetrics;
+   for (auto [metricName, metricValue] : metrics) {
+-    if (!flexibleMetrics.contains(metricName)) {
++    if (!flexibleMetrics.count(metricName)) {
+       flexibleMetrics.emplace(metricName,
+                               FlexibleMetric(metricName, metricValue));
+     } else {
+
+--- a/third_party/proton/csrc/lib/Profiler/Cupti/CuptiPCSampling.cpp
++++ b/third_party/proton/csrc/lib/Profiler/Cupti/CuptiPCSampling.cpp
+@@ -365,7 +365,7 @@
+       auto *cubinData = getCubinData(pcData->cubinCrc);
+       auto key =
+           CubinData::LineInfoKey{pcData->functionIndex, pcData->pcOffset};
+-      if (!cubinData->lineInfo.contains(key)) {
++      if (!cubinData->lineInfo.count(key)) {
+         auto [lineNumber, fileName, dirName] =
+             getSassToSourceCorrelation(pcData->functionName, pcData->pcOffset,
+                                        cubinData->cubin, cubinData->cubinSize);
+@@ -376,7 +376,7 @@
+       auto &lineInfo = cubinData->lineInfo[key];
+       for (size_t j = 0; j < pcData->stallReasonCount; ++j) {
+         auto *stallReason = &pcData->stallReason[j];
+-        if (!configureData->stallReasonIndexToMetricIndex.contains(
++        if (!configureData->stallReasonIndexToMetricIndex.count(
+                 stallReason->pcSamplingStallReasonIndex))
+           throw makeOutOfRange("Invalid stall reason index");
+         for (const auto &[data, baseEntry] : dataToEntry) {
+@@ -392,7 +392,7 @@
+                   [stallReason->pcSamplingStallReasonIndex]);
+           auto samples = stallReason->samples;
+           auto stalledSamples =
+-              configureData->notIssuedStallReasonIndices.contains(
++              configureData->notIssuedStallReasonIndices.count(
+                   stallReason->pcSamplingStallReasonIndex)
+                   ? 0
+                   : samples;
+
+--- a/third_party/proton/csrc/lib/Profiler/Graph.cpp
++++ b/third_party/proton/csrc/lib/Profiler/Graph.cpp
+@@ -4,12 +4,27 @@
+ #include "Runtime/Runtime.h"
+ #include "Utility/Errors.h"
+ 
+-#include <bit>
++#include <cstring>
+ #include <optional>
+ #include <stdexcept>
++#include <type_traits>
+ #include <vector>
+ 
+ namespace proton {
++namespace {
++
++template <class To, class From>
++typename std::enable_if_t<sizeof(To) == sizeof(From) &&
++                              std::is_trivially_copyable_v<From> &&
++                              std::is_trivially_copyable_v<To>,
++                          To>
++bit_cast(const From &src) noexcept {
++  To dst;
++  std::memcpy(&dst, &src, sizeof(To));
++  return dst;
++}
++
++} // namespace
+ 
+ void GraphState::recordNode(uint64_t nodeId, const std::string &name,
+                             std::optional<MetricNodeState> metricNodeState,
+@@ -69,7 +84,7 @@
+ void GraphState::buildLaunchEntries(const DataToEntryMap &dataToEntry,
+                                     DataToEntryMap &dataToGraphEntry) const {
+   for (const auto &[data, entry] : dataToEntry) {
+-    if (!capturedData.contains(data))
++    if (!capturedData.count(data))
+       // This data object was not enabled during graph capture.
+       continue;
+     dataToGraphEntry.insert({data, entry});
+@@ -153,11 +168,11 @@
+       break;
+     }
+     case variant_index_v<int64_t, MetricValueType>: {
+-      metricValueVariant = std::bit_cast<int64_t>(readWord(wordOffset));
++      metricValueVariant = bit_cast<int64_t>(readWord(wordOffset));
+       break;
+     }
+     case variant_index_v<double, MetricValueType>: {
+-      metricValueVariant = std::bit_cast<double>(readWord(wordOffset));
++      metricValueVariant = bit_cast<double>(readWord(wordOffset));
+       break;
+     }
+     case variant_index_v<std::vector<uint64_t>, MetricValueType>: {
+@@ -171,7 +186,7 @@
+     case variant_index_v<std::vector<int64_t>, MetricValueType>: {
+       std::vector<int64_t> values(metricDesc.size);
+       for (size_t j = 0; j < metricDesc.size; ++j) {
+-        values[j] = std::bit_cast<int64_t>(readWord(wordOffset + j));
++        values[j] = bit_cast<int64_t>(readWord(wordOffset + j));
+       }
+       metricValueVariant = std::move(values);
+       break;
+@@ -179,7 +194,7 @@
+     case variant_index_v<std::vector<double>, MetricValueType>: {
+       std::vector<double> values(metricDesc.size);
+       for (size_t j = 0; j < metricDesc.size; ++j) {
+-        values[j] = std::bit_cast<double>(readWord(wordOffset + j));
++        values[j] = bit_cast<double>(readWord(wordOffset + j));
+       }
+       metricValueVariant = std::move(values);
+       break;
+
+--- a/third_party/proton/csrc/lib/Profiler/Instrumentation/InstrumentationProfiler.cpp
++++ b/third_party/proton/csrc/lib/Profiler/Instrumentation/InstrumentationProfiler.cpp
+@@ -90,7 +90,7 @@
+ getUnitIdVector(const std::map<std::string, std::string> &modeOptions,
+                 size_t totalUnits) {
+   std::vector<uint32_t> unitIdVector;
+-  if (modeOptions.contains("sampling_options")) {
++  if (modeOptions.count("sampling_options")) {
+     auto &samplingOption = modeOptions.at("sampling_options");
+     auto unitIds = proton::split(samplingOption, ",");
+     for (auto uintId : unitIds) {
+@@ -118,7 +118,7 @@
+   auto config = std::make_shared<CircularLayoutParserConfig>();
+   config->scratchMemSize =
+       functionMetadata.at(functionId).getScratchMemorySize();
+-  if (modeOptions.contains("granularity") &&
++  if (modeOptions.count("granularity") &&
+       modeOptions.at("granularity") != "GRANULARITY.WARP") {
+     throw makeInvalidArgument("Only warp granularity is supported for now");
+   }
+@@ -146,7 +146,7 @@
+     const std::vector<std::pair<size_t, std::string>> &scopeIdPairs,
+     const std::vector<std::pair<size_t, size_t>> &scopeIdParentPairs,
+     const std::string &metadataPath) {
+-  if (functionScopeIdNames.contains(functionId)) {
++  if (functionScopeIdNames.count(functionId)) {
+     throw makeInvalidArgument(
+         "Duplicate function id: " + std::to_string(functionId) +
+         " for function " + functionName);
+@@ -155,7 +155,7 @@
+   for (auto &pair : scopeIdPairs) {
+     auto scopeId = pair.first;
+     auto scopeName = pair.second;
+-    if (functionScopeIdNames[functionId].contains(scopeId)) {
++    if (functionScopeIdNames[functionId].count(scopeId)) {
+       throw makeInvalidArgument(
+           "Duplicate scope id: " + std::to_string(scopeId) + " for function " +
+           functionName);
+@@ -173,7 +173,7 @@
+     std::vector<Context> reversedContexts;
+     reversedContexts.emplace_back(name);
+     auto currentId = scopeId;
+-    while (scopeIdParentMap.contains(currentId)) {
++    while (scopeIdParentMap.count(currentId)) {
+       auto parentId = scopeIdParentMap[currentId];
+       auto parentName = functionScopeIdNames[functionId].at(parentId);
+       reversedContexts.emplace_back(parentName);
+@@ -239,7 +239,7 @@
+   }
+ 
+   int64_t timeShiftCost = 0;
+-  if (modeOptions.contains("optimizations")) {
++  if (modeOptions.count("optimizations")) {
+     auto optimizations = proton::split(modeOptions.at("optimizations"), ",");
+     if (std::find(optimizations.begin(), optimizations.end(), "time_shift") !=
+         optimizations.end())
+
+--- a/third_party/proton/csrc/lib/Profiler/RocprofSDK/RocprofSDKPCSamplingSourceLocations.cpp
++++ b/third_party/proton/csrc/lib/Profiler/RocprofSDK/RocprofSDKPCSamplingSourceLocations.cpp
+@@ -229,8 +229,8 @@
+ void RocprofSDKPCSampling::tryReleaseCodeObject(uint64_t codeObjectId) {
+   metadataState.withLock([&](MetadataState &metadata) {
+     samplingState.withLock([&](SamplingState &sampling) {
+-      if (sampling.pendingCodeObjectIds.contains(codeObjectId) ||
+-          sampling.flushingCodeObjectIds.contains(codeObjectId))
++      if (sampling.pendingCodeObjectIds.count(codeObjectId) > 0 ||
++          sampling.flushingCodeObjectIds.count(codeObjectId) > 0)
+         return;
+ 
+       auto info = metadata.codeObjects.find(codeObjectId);
+
+--- a/third_party/proton/csrc/lib/Session/Session.cpp
++++ b/third_party/proton/csrc/lib/Session/Session.cpp
+@@ -66,7 +66,7 @@
+ void throwIfSessionNotInitialized(
+     const std::map<size_t, std::unique_ptr<Session>> &sessions,
+     size_t sessionId) {
+-  if (!sessions.contains(sessionId)) {
++  if (!sessions.count(sessionId)) {
+     throw makeOutOfRange("Session has not been initialized: " +
+                          std::to_string(sessionId));
+   }
+
+--- a/third_party/proton/csrc/lib/Utility/MsgPackWriter.cpp
++++ b/third_party/proton/csrc/lib/Utility/MsgPackWriter.cpp
+@@ -1,6 +1,5 @@
+ #include "Utility/MsgPackWriter.h"
+ 
+-#include <bit>
+ #include <cstring>
+ #include <limits>
+ #include <type_traits>
+@@ -78,7 +77,10 @@
+ 
+ void MsgPackWriter::packDouble(double value) {
+   out.push_back(0xcb);
+-  writeBE(out, std::bit_cast<uint64_t>(value));
++  uint64_t bits{};
++  static_assert(sizeof(bits) == sizeof(value));
++  std::memcpy(&bits, &value, sizeof(bits));
++  writeBE(out, bits);
+ }
+ 
+ void MsgPackWriter::packStr(std::string_view value) {
+

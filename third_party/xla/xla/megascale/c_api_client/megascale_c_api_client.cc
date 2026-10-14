@@ -695,7 +695,7 @@ CreateMegascaleCollectives(
 }
 
 typedef absl::AnyInvocable<void(
-    const runtime::MegaScaleRuntimeErrorOverlay& error)>
+    const runtime::external::MegaScaleRuntimeError& error)>
     MegaScaleErrorHandler;
 
 static absl::Mutex megascale_error_handlers_mutex(absl::kConstInit);
@@ -718,7 +718,7 @@ absl::Status RegisterMegascaleErrorHandler(absl::string_view handler_name,
   args.handler_name_size = handler_name.size();
   args.handler = +[](const char* serialized_error, size_t serialized_error_size,
                      void* user_data) {
-    runtime::MegaScaleRuntimeErrorOverlay error;
+    runtime::external::MegaScaleRuntimeError error;
     error.ParseFromString(
         absl::string_view(serialized_error, serialized_error_size));
     MegaScaleErrorHandler* handler =
@@ -815,11 +815,12 @@ GetInterfaceAddressesHelper(absl::string_view megascale_port_name,
   return addresses;
 }
 
-absl::StatusOr<std::tuple<runtime::MegaScaleRuntimeErrorOverlay, bool>>
+absl::StatusOr<std::tuple<runtime::external::MegaScaleRuntimeError, bool>>
 GetOrCreateRuntimeError(
-    runtime::MegaScaleRuntimeErrorOverlay::ErrorType error_type,
+    runtime::external::MegaScaleRuntimeError::ErrorType error_type,
     absl::Time start_time, const absl::Status& status, int32_t launch_id,
-    std::optional<runtime::MegaScaleRuntimeErrorOverlay::UnrecoverableErrorType>
+    std::optional<
+        runtime::external::MegaScaleRuntimeError::UnrecoverableErrorType>
         unrecoverable_error_type) {
   ABSL_ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(kTpuPjrtName));
   ABSL_ASSIGN_OR_RETURN(PJRT_Megascale_Extension * extension,
@@ -849,11 +850,11 @@ GetOrCreateRuntimeError(
   };
 
   CHECK_NOTNULL(args.serialized_error);
-  runtime::MegaScaleRuntimeErrorOverlay error;
+  runtime::external::MegaScaleRuntimeError error;
   if (!error.ParseFromString(absl::string_view(args.serialized_error,
                                                args.serialized_error_size))) {
     return absl::InternalError(
-        "Failed to parse MegaScaleRuntimeErrorOverlay proto from serialized "
+        "Failed to parse MegaScaleRuntimeError proto from serialized "
         "error.");
   }
 

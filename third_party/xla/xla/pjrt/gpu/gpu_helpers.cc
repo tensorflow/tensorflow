@@ -36,9 +36,11 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/client/client_library.h"
 #include "xla/client/local_client.h"
+#include "xla/pjrt/gpu/allocator_config.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/integrations/device_mem_allocator.h"
 #include "xla/stream_executor/integrations/stream_executor_allocator.h"
+#include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/framework/allocator.h"
@@ -100,8 +102,8 @@ void EnablePeerAccess(absl::Span<se::StreamExecutor* const> executors) {
 
 // Builds a BFCAllocator for all local GPUs.
 absl::StatusOr<std::shared_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
-    se::StreamExecutor* executor, double memory_fraction, bool preallocate,
-    std::optional<int64_t> gpu_system_memory_size,
+    se::StreamExecutor* executor, const MemFraction& memory_fraction,
+    bool preallocate, std::optional<int64_t> gpu_system_memory_size,
     const std::vector<tsl::SubAllocator::Visitor>& sub_allocator_alloc_visitors,
     const std::vector<tsl::SubAllocator::Visitor>& sub_allocator_free_visitors,
     bool enable_spatial_partitioning) {
@@ -144,9 +146,12 @@ absl::StatusOr<std::shared_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
   // unified memory.
   // When unified memory is enabled, allow GPU memory oversubscription by
   // setting memory_fraction > 1.
+  // Growth for FlexMemFraction policies is wired up by a follow-up change;
+  // until then only the start fraction matters.
+  const double start_fraction = MemFractionStart(memory_fraction);
   size_t allocator_memory = enable_unified_memory
-                                ? total_memory * fmax(1.0, memory_fraction)
-                                : total_memory * memory_fraction;
+                                ? total_memory * fmax(1.0, start_fraction)
+                                : total_memory * start_fraction;
   // If gpu_system_memory_size is set, use it instead of default value.
   if (gpu_system_memory_size.has_value()) {
     allocator_memory = gpu_system_memory_size.value();
@@ -169,6 +174,33 @@ absl::StatusOr<std::shared_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
   tsl::BFCAllocator::Options opts;
   opts.allow_growth = !preallocate;
   opts.enable_spatial_partitioning = enable_spatial_partitioning;
+  if (enable_spatial_partitioning) {
+    // Default memory (S(0), upper end) mixes buffers with different lifetimes.
+    // Keep the BFC padding-retention heuristic for both owned holes and
+    // central-gap carves: retaining a small remainder as padding can prevent a
+    // longer-lived allocation in that remainder from blocking coalescing later.
+    // This trades immediate internal fragmentation for potentially less
+    // external fragmentation; it does not guarantee better memory utilization.
+    //
+    // Collective memory (S(1), lower end) is expected to be primarily transient
+    // temporaries, with less mixing of lifetimes to justify retaining padding.
+    // Keep exact splitting for both owned holes and central-gap carves so
+    // usable remainders remain free. Exact gap splitting also keeps collective
+    // chunk sizes independent of default-memory activity while the gap has
+    // capacity, as required for reproducible NCCL symmetric-window offsets. The
+    // transient lifetime pattern is an expectation, not an allocator invariant;
+    // collective memory can still suffer external fragmentation.
+    //
+    // Break equal-size ties toward each space's outer arena boundary: lower
+    // addresses for collective memory, higher addresses for default memory.
+    // Size remains the primary best-fit key.
+    opts.lower_end_policy = {tsl::BFCAllocator::HoleOrder::kAscendingAddress,
+                             tsl::BFCAllocator::SplitPolicy::kExact,
+                             tsl::BFCAllocator::SplitPolicy::kExact};
+    opts.upper_end_policy = {tsl::BFCAllocator::HoleOrder::kDescendingAddress,
+                             tsl::BFCAllocator::SplitPolicy::kRetainPadding,
+                             tsl::BFCAllocator::SplitPolicy::kRetainPadding};
+  }
   return std::make_shared<tsl::BFCAllocator>(
       std::move(sub_allocator), allocator_memory,
       absl::StrCat("GPU_", device_ordinal, "_bfc"), opts);

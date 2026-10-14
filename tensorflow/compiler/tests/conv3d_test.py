@@ -21,6 +21,7 @@ from tensorflow.compiler.tests import test_utils
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gradient_checker
@@ -662,6 +663,7 @@ class Conv3DTest(xla_test.XLATestCase, parameterized.TestCase):
 # tensorflow/python/kernel_tests/conv3d_backprop_filter_v2_grad_test.py
 class Conv3DBackpropFilterV2GradTest(xla_test.XLATestCase):
 
+  @test_util.run_without_tensor_float_32("Avoid TF32 conv3d in gradient check")
   def testGradient(self):
     with self.session(), self.test_scope():
       for padding in ["SAME", "VALID"]:
@@ -836,6 +838,7 @@ class Conv3DTransposeTest(xla_test.XLATestCase):
 
     self.assertAllClose(cache_values, value)
 
+  @test_util.run_without_tensor_float_32("Avoid TF32 conv3d in gradient check")
   def testGradient(self):
     x_shape = [2, 3, 4, 3, 2]
     f_shape = [3, 3, 3, 2, 2]

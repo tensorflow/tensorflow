@@ -19,6 +19,7 @@ load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 load("@llvm-raw//utils/bazel:configure.bzl", "llvm_configure")
 load("@llvm-raw//utils/bazel:linux_uapi.bzl", "linux_uapi_setup")
 load("//third_party:repo.bzl", "tf_mirror_urls")
+load("//third_party/xz:workspace.bzl", xz = "repo")
 
 _PYYAML_CONTENT = """\
 load("@rules_python//python:defs.bzl", "py_library")
@@ -64,6 +65,7 @@ _llvm_zstd_compat = repository_rule(
 def _llvm_extension_impl(mctx):  # @unused
     _llvm_zlib_compat(name = "llvm_zlib")
     _llvm_zstd_compat(name = "llvm_zstd")
+    xz()
     linux_uapi_setup(name = "linux_uapi")
     http_archive(
         name = "pyyaml",

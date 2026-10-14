@@ -389,7 +389,21 @@ HipblasLtBackend::GetDefaultConfig(const HloInstruction& instr) {
   }
 
   auto config = std::make_unique<BackendConfig>();
-  config->mutable_gemm()->set_algorithm(0);
+  auto* gemm_key = config->mutable_gemm();
+  gemm_key->set_algorithm(0);
+  // Standard GEMMs were already lowered into custom calls with a workspace
+  // buffer tuple by GemmRewriter, so we can preserve that allocated workspace
+  // size. In contrast, scaled-dot GEMMs enter this pass as a fusion and are
+  // only lowered to a custom call in ApplyConfig(), so they do not yet have a
+  // workspace buffer in their shape. MX scaled dots on ROCm are currently
+  // supported on gfx950, so we use kGFX950Workspace (matching
+  // GetSupportedConfigs).
+  if (GetScaledDotFromFusion(instr) != nullptr) {
+    gemm_key->set_autotune_workspace_size(GemmConfig::kGFX950Workspace);
+  } else if (instr.shape().IsTuple() && !instr.shape().tuple_shapes().empty()) {
+    gemm_key->set_autotune_workspace_size(
+        ShapeUtil::ByteSizeOf(instr.shape().tuple_shapes().back()));
+  }
   return config;
 }
 

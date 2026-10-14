@@ -28,7 +28,7 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
-#include "xla/hlo/analysis/tuple_points_to_analysis.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -226,10 +226,10 @@ class HloRematerialization : public HloPassInterface {
 
   int64_t GetBlockSizeLimit() const { return options_.block_size_limit; }
 
-  // Sets points to analysis to stale. Used by Peak Priority algorithm to
-  // indicate that the points to analysis should be updated before the next
+  // Sets dataflow analysis to stale. Used by Peak Priority algorithm to
+  // indicate that the dataflow analysis should be updated before the next
   // rematerialization subpass.
-  void SetPointsToAnalysisStale();
+  void SetDataflowAnalysisStale();
 
   // Holds references to data structures and some constants that are used during
   // rematerialization. This struct is used to avoid long function signatures.
@@ -283,10 +283,10 @@ class HloRematerialization : public HloPassInterface {
     return absl::OkStatus();
   }
 
-  // Only Peak priority requires constant update of points to analysis.
+  // Only Peak priority requires constant update of dataflow analysis.
   void on_block_rematerialized(int remat_count) {
     if (remat_count > 0 && remat_algorithm() == RematAlgorithm::kPeakPriority) {
-      SetPointsToAnalysisStale();
+      SetDataflowAnalysisStale();
     }
   }
 
@@ -300,8 +300,8 @@ class HloRematerialization : public HloPassInterface {
       const HloInstructionSequence& sequence,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
 
-  // Updates points to analysis if it is stale.
-  absl::Status UpdatePointsToAnalysis(HloModule* module);
+  // Updates dataflow analysis if it is stale.
+  absl::Status UpdateDataflowAnalysis(HloModule* module);
 
   // Cleans up dead rematerialized instructions out of the module. Basically
   // runs DCE and updates the schedule.
@@ -402,7 +402,7 @@ class HloRematerialization : public HloPassInterface {
   // These values are updated as rematerialization occurs.
   absl::flat_hash_map<const HloComputation*, int64_t> computation_peak_memory_;
 
-  std::unique_ptr<TuplePointsToAnalysis> points_to_analysis_;
+  std::unique_ptr<HloDataflowAnalysis> dataflow_analysis_;
 
   // Set of computations which have had rematerialization
   // applied. Rematerialization is only applied once per computation.

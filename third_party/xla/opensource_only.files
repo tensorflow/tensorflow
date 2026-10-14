@@ -160,4 +160,5 @@ xla/third_party/tensorrt/tensorrt/tensorrt_config.py.tpl:
 xla/third_party/tensorrt/tensorrt_configure.bzl:
 xla/third_party/tensorrt/workspace.bzl:
 xla/third_party/xla_googletest_wrapper/include/gmock/gmock.h:
+xla/third_party/xz/config/config_generic.h:
 xla/third_party/zlib.BUILD:

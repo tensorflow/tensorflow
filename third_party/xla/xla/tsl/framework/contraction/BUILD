@@ -21,7 +21,7 @@ load(
     "//xla/tsl/platform:build_config.bzl",
     "tsl_cc_test",
 )
-load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
+load("//xla/tsl/platform:rules_cc.bzl", "cc_binary", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -138,9 +138,12 @@ cc_library(
         ],
     }),
     deps = [
+        "//xla/tsl/framework:fixedpoint_types",
         "//xla/tsl/framework/fixedpoint",
         "//xla/tsl/platform:dynamic_annotations",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/synchronization",
         "@eigen_archive//:eigen3",
     ] + select({
         ":disable_onednn_contraction_kernel_config": [],
@@ -191,6 +194,17 @@ tsl_cc_test(
         ":eigen_contraction_kernel",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
+        "@eigen_archive//:eigen3",
+    ],
+)
+
+cc_binary(
+    name = "eigen_contraction_kernel_benchmark",
+    testonly = 1,
+    srcs = ["eigen_contraction_kernel_benchmark.cc"],
+    deps = [
+        "//xla/tsl/platform:test_benchmark",
+        "//xla/tsl/platform:test_main",
         "@eigen_archive//:eigen3",
     ],
 )

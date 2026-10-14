@@ -485,7 +485,7 @@ cc_library(
     hdrs = ["launch_dim.h"],
     visibility = internal_visibility([
         ":friends",
-        "//xla/backends/gpu/libraries/native_custom_call_thunks:handler_allowlist",
+        "//xla:native_custom_call_handler_allowlist",
     ]),
     deps = [
         ":launch_dim_proto_cc",
@@ -701,6 +701,7 @@ cc_library(
         ":kernel_spec",
         ":memory_allocation",
         ":memory_allocator",
+        ":memory_reservation",
         ":memory_space",
         ":module_spec",
         ":platform",
@@ -874,14 +875,13 @@ cc_library(
     hdrs = ["kernel_spec.h"],
     visibility = internal_visibility([
         ":friends",
-        "//xla/backends/gpu/libraries/native_custom_call_thunks:handler_allowlist",
+        "//xla:native_custom_call_handler_allowlist",
     ]),
     deps = [
         ":kernel",
         ":kernel_args",
         ":kernel_args_packing_spec",
         ":kernel_spec_proto_cc",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -1094,7 +1094,7 @@ cc_library(
     name = "command_buffer",
     srcs = ["command_buffer.cc"],
     hdrs = ["command_buffer.h"],
-    visibility = [":internal"],
+    visibility = internal_visibility([":internal"]),
     deps = [
         ":bit_pattern",
         ":device_address",
@@ -1144,11 +1144,10 @@ cc_library(
         ":platform",
         ":stream_executor_h",
         "//xla/tsl/util:env_var",
-        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -1341,14 +1340,14 @@ xla_cc_test(
     name = "stream_executor_test",
     srcs = ["stream_executor_test.cc"],
     deps = [
+        ":device_description",
         ":platform",
         ":platform_manager",
         ":stream_executor_h",
         "//xla/stream_executor/host:host_platform",
-        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:env",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status:status_macros",
-        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
     ],
@@ -1367,7 +1366,6 @@ xla_cc_test(
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1438,7 +1436,6 @@ xla_cc_test(
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
     ],
 )

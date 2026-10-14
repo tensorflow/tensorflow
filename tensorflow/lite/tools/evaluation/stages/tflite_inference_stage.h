@@ -51,7 +51,7 @@ class TfliteInferenceStage : public EvaluationStage {
   // EvaluationStageMetrics.num_runs denotes the number of inferences run.
   EvaluationStageMetrics LatestMetrics() override;
 
-  ~TfliteInferenceStage() override {}
+  ~TfliteInferenceStage() override = default;
 
   // Call before Run().
   // This class does not take ownership of raw_input_ptrs.

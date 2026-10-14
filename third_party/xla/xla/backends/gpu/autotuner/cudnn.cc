@@ -269,11 +269,6 @@ GetCudnnFusionConfigs(const HloInstruction& instr,
       break;
   }
   if (use_deviceless) {
-    if (target_config.device_description.dnn_version() <
-        se::SemanticVersion(9, 8, 0)) {
-      return absl::FailedPreconditionError(
-          "Deviceless cuDNN compilation requires cuDNN >= 9.8.");
-    }
     stream_executor = nullptr;
   } else if (stream_executor == nullptr) {
     return absl::InvalidArgumentError(
@@ -356,6 +351,7 @@ absl::Status ApplyConfigToCudnnFusion(HloInstruction& instr,
   backend_config->set_kind(kCuDnnFusionKind);
   backend_config->mutable_cudnn_fusion_config()->set_plan_id(config.algo_id());
   ABSL_RETURN_IF_ERROR(instr.set_backend_config(std::move(gpu_config)));
+  instr.set_fusion_kind(HloInstruction::FusionKind::kCustom);
   return absl::OkStatus();
 }
 

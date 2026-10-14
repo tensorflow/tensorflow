@@ -102,14 +102,15 @@ which would print the dump to stdout (or to a given file if `-o` was specified).
 ### Deviceless Compilation for GPU
 
 Deviceless compilation do not need access to a GPU. The Deviceless Compilation
-provides a way to specify GPU spec on the command line
-(`--xla_gpu_target_config_filename`) for stages where access to GPU is required,
+provides a way to specify a GPU spec (`--xla_gpu_target_config_filename`) or
+GPU topology (`--xla_gpu_topology_filename`) on the command line for stages
+where access to a GPU or multi-GPU topology is required,
 eliminating a need for GPU device.
 
 Example: PTX output without access to a gpu device:
 
 ```
-hlo-opt  --platform=CUDA --stage=llvm  --xla_gpu_target_config_filename=/xla/tools/hlo_opt/gpu_specs/a100_pcie_80.txtpb input.hlo
+hlo-opt --platform=CUDA --stage=llvm --xla_gpu_target_config_filename=xla/backends/gpu/target_config/specs/a100_pcie_80.txtpb input.hlo
 ```
 
 Specs for popular GPUs are shipped with the compiler, and the provided file is
@@ -138,7 +139,34 @@ gpu_device_info {
 }
 platform_name: "CUDA"
 ```
-More GPU specs are located at `/xla/tools/hlo_opt/gpu_specs`
+More GPU specs are located at `xla/backends/gpu/target_config/specs`.
+
+#### Multi-GPU Topology and Collectives
+
+Passes that lower or optimize collective operations require a GPU topology
+(number of partitions, hosts per partition, and devices per host). Use
+`--xla_gpu_topology_filename` to provide either:
+
+*   A serialized `GpuTopologyProto` file from
+    `xla/backends/gpu/target_config/specs` (such as `h100_1x8.txtpb`,
+    `h100_2x8.txtpb`, `gb200_2x4.txtpb`, or `gb300_4x4.txtpb`), which also
+    automatically populates the target device configuration from
+    `platform_version`:
+
+    ```
+    hlo-opt --platform=gpu --stage=hlo --xla_gpu_topology_filename=xla/backends/gpu/target_config/specs/gb200_2x4.txtpb input.hlo
+    ```
+
+*   An inline topology string of the form
+    `[<platform_version>:]<num_partitions>x<num_hosts_per_partition>x<num_devices_per_host>`
+    (or `[<platform_version>:]<num_hosts_per_partition>x<num_devices_per_host>`).
+    When `<platform_version>` is omitted, pair it with
+    `--xla_gpu_target_config_filename`:
+
+    ```
+    hlo-opt --platform=gpu --stage=hlo --xla_gpu_topology_filename=oberon_b200:1x2x4 input.hlo
+    hlo-opt --platform=gpu --stage=hlo --xla_gpu_topology_filename=1x2x4 --xla_gpu_target_config_filename=xla/backends/gpu/target_config/specs/gb200.txtpb input.hlo
+    ```
 
 #### Autotuning
 
@@ -151,7 +179,7 @@ or\
 `--xla_gpu_dump_autotune_results_to=<filename>`).
 
 ```
-hlo-opt  --platform=CUDA --stage=llvm  --xla_gpu_target_config_filename=gpu_specs/a100_pcie_80.txtpb --xla_gpu_load_autotune_results_from=results.textpb input.hlo
+hlo-opt --platform=CUDA --stage=llvm --xla_gpu_target_config_filename=xla/backends/gpu/target_config/specs/a100_pcie_80.txtpb --xla_gpu_load_autotune_results_from=results.textpb input.hlo
 ```
 
 The autotune file is text serialization of `autotune_results.proto`, with

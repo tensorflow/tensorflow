@@ -1,0 +1,278 @@
+HloModule jit_loss, entry_computation_layout={(f64[2048,3]{1,0}, f64[2048,3]{1,0}, f64[2048]{0})->(f64[2048,3]{1,0}, f64[2048,3]{1,0})}
+
+region_0.1 {
+  reduce_sum.3 = f64[] parameter(0)
+  reduce_sum.4 = f64[] parameter(1)
+  ROOT reduce_sum.5 = f64[] add(reduce_sum.3, reduce_sum.4)
+}
+
+norm.2 {
+  Arg_0.1 = f64[2048,2048,3]{2,1,0} parameter(0)
+  mul.3 = f64[2048,2048,3]{2,1,0} multiply(Arg_0.1, Arg_0.1)
+  constant.7 = f64[] constant(0)
+  reduce_sum.7 = f64[2048,2048]{1,0} reduce(mul.3, constant.7), dimensions={2}, to_apply=region_0.1
+  broadcast_in_dim.4 = f64[2048,2048,1]{2,1,0} reshape(reduce_sum.7)
+  sqrt.1 = f64[2048,2048,1]{2,1,0} sqrt(broadcast_in_dim.4)
+  constant.6 = f64[] constant(0.5)
+  div.2 = f64[2048,2048,1]{2,1,0} broadcast(constant.6), dimensions={}
+  div.3 = f64[2048,2048,1]{2,1,0} divide(div.2, sqrt.1)
+  ROOT tuple.1 = (f64[2048,2048,1]{2,1,0}, f64[2048,2048,1]{2,1,0}) tuple(sqrt.1, div.3)
+}
+
+cross.3 {
+  Arg_0.3 = f64[2048,3]{1,0} parameter(0)
+  slice.7 = f64[2048,1]{1,0} slice(Arg_0.3), slice={[0:2048], [1:2]}
+  broadcast_in_dim_squeeze.6 = f64[1,2048]{1,0} reshape(slice.7)
+  mul.28 = f64[1,2048]{1,0} broadcast(broadcast_in_dim_squeeze.6), dimensions={0,1}
+  mul.29 = f64[2048]{0} reshape(mul.28)
+  mul.30 = f64[2048,2048]{1,0} broadcast(mul.29), dimensions={1}
+  Arg_1.1 = f64[2048,2048,3]{2,1,0} parameter(1)
+  slice.11 = f64[2048,2048,1]{2,1,0} slice(Arg_1.1), slice={[0:2048], [0:2048], [2:3]}
+  squeeze.5 = f64[2048,2048]{1,0} reshape(slice.11)
+  mul.31 = f64[2048,2048]{1,0} multiply(mul.30, squeeze.5)
+  slice.8 = f64[2048,1]{1,0} slice(Arg_0.3), slice={[0:2048], [2:3]}
+  broadcast_in_dim_squeeze.7 = f64[1,2048]{1,0} reshape(slice.8)
+  mul.32 = f64[1,2048]{1,0} broadcast(broadcast_in_dim_squeeze.7), dimensions={0,1}
+  mul.33 = f64[2048]{0} reshape(mul.32)
+  mul.34 = f64[2048,2048]{1,0} broadcast(mul.33), dimensions={1}
+  slice.10 = f64[2048,2048,1]{2,1,0} slice(Arg_1.1), slice={[0:2048], [0:2048], [1:2]}
+  squeeze.4 = f64[2048,2048]{1,0} reshape(slice.10)
+  mul.35 = f64[2048,2048]{1,0} multiply(mul.34, squeeze.4)
+  sub.10 = f64[2048,2048]{1,0} subtract(mul.31, mul.35)
+  broadcast_in_dim.8 = f64[1,2048,2048]{2,1,0} reshape(sub.10)
+  broadcast_in_dim_squeeze.8 = f64[1,2048]{1,0} reshape(slice.8)
+  mul.36 = f64[1,2048]{1,0} broadcast(broadcast_in_dim_squeeze.8), dimensions={0,1}
+  mul.37 = f64[2048]{0} reshape(mul.36)
+  mul.38 = f64[2048,2048]{1,0} broadcast(mul.37), dimensions={1}
+  slice.9 = f64[2048,2048,1]{2,1,0} slice(Arg_1.1), slice={[0:2048], [0:2048], [0:1]}
+  squeeze.3 = f64[2048,2048]{1,0} reshape(slice.9)
+  mul.39 = f64[2048,2048]{1,0} multiply(mul.38, squeeze.3)
+  slice.6 = f64[2048,1]{1,0} slice(Arg_0.3), slice={[0:2048], [0:1]}
+  broadcast_in_dim_squeeze.9 = f64[1,2048]{1,0} reshape(slice.6)
+  mul.40 = f64[1,2048]{1,0} broadcast(broadcast_in_dim_squeeze.9), dimensions={0,1}
+  mul.41 = f64[2048]{0} reshape(mul.40)
+  mul.42 = f64[2048,2048]{1,0} broadcast(mul.41), dimensions={1}
+  mul.43 = f64[2048,2048]{1,0} multiply(mul.42, squeeze.5)
+  sub.11 = f64[2048,2048]{1,0} subtract(mul.39, mul.43)
+  broadcast_in_dim.9 = f64[1,2048,2048]{2,1,0} reshape(sub.11)
+  broadcast_in_dim_squeeze.10 = f64[1,2048]{1,0} reshape(slice.6)
+  mul.44 = f64[1,2048]{1,0} broadcast(broadcast_in_dim_squeeze.10), dimensions={0,1}
+  mul.45 = f64[2048]{0} reshape(mul.44)
+  mul.46 = f64[2048,2048]{1,0} broadcast(mul.45), dimensions={1}
+  mul.47 = f64[2048,2048]{1,0} multiply(mul.46, squeeze.4)
+  broadcast_in_dim_squeeze.11 = f64[1,2048]{1,0} reshape(slice.7)
+  mul.48 = f64[1,2048]{1,0} broadcast(broadcast_in_dim_squeeze.11), dimensions={0,1}
+  mul.49 = f64[2048]{0} reshape(mul.48)
+  mul.50 = f64[2048,2048]{1,0} broadcast(mul.49), dimensions={1}
+  mul.51 = f64[2048,2048]{1,0} multiply(mul.50, squeeze.3)
+  sub.12 = f64[2048,2048]{1,0} subtract(mul.47, mul.51)
+  broadcast_in_dim.10 = f64[1,2048,2048]{2,1,0} reshape(sub.12)
+  concatenate.1 = f64[3,2048,2048]{2,1,0} concatenate(broadcast_in_dim.8, broadcast_in_dim.9, broadcast_in_dim.10), dimensions={0}
+  transpose.1 = f64[2048,2048,3]{1,0,2} transpose(concatenate.1), dimensions={1,2,0}
+  ROOT tuple.3 = (f64[2048,2048,3]{1,0,2}, f64[1,2048]{1,0}, f64[1,2048]{1,0}, f64[1,2048]{1,0}, f64[1,2048]{1,0}, /*index=5*/f64[1,2048]{1,0}, f64[1,2048]{1,0}) tuple(transpose.1, broadcast_in_dim_squeeze.6, broadcast_in_dim_squeeze.7, broadcast_in_dim_squeeze.8, broadcast_in_dim_squeeze.9, broadcast_in_dim_squeeze.10, broadcast_in_dim_squeeze.11)
+}
+
+region_1.4 {
+  reduce_sum.11 = f64[] parameter(0)
+  reduce_sum.12 = f64[] parameter(1)
+  ROOT reduce_sum.13 = f64[] add(reduce_sum.11, reduce_sum.12)
+}
+
+region_2.5 {
+  reduce_sum.18 = f64[] parameter(0)
+  reduce_sum.19 = f64[] parameter(1)
+  ROOT reduce_sum.20 = f64[] add(reduce_sum.18, reduce_sum.19)
+}
+
+region_3.6 {
+  reduce_sum.25 = f64[] parameter(0)
+  reduce_sum.26 = f64[] parameter(1)
+  ROOT reduce_sum.27 = f64[] add(reduce_sum.25, reduce_sum.26)
+}
+
+region_4.7 {
+  reduce_sum.32 = f64[] parameter(0)
+  reduce_sum.33 = f64[] parameter(1)
+  ROOT reduce_sum.34 = f64[] add(reduce_sum.32, reduce_sum.33)
+}
+
+region_5.8 {
+  reduce_sum.39 = f64[] parameter(0)
+  reduce_sum.40 = f64[] parameter(1)
+  ROOT reduce_sum.41 = f64[] add(reduce_sum.39, reduce_sum.40)
+}
+
+cross_0.9 {
+  Arg_3.1 = f64[1,2048]{1,0} parameter(3)
+  mul.93 = f64[1,2048]{1,0} broadcast(Arg_3.1), dimensions={0,1}
+  mul.94 = f64[2048]{0} reshape(mul.93)
+  mul.95 = f64[2048,2048]{1,0} broadcast(mul.94), dimensions={1}
+  Arg_6.1 = f64[2048,2048,3]{2,1,0} parameter(6)
+  transpose.3 = f64[3,2048,2048]{0,2,1} transpose(Arg_6.1), dimensions={2,0,1}
+  split.4 = f64[1,2048,2048]{2,1,0} slice(transpose.3), slice={[1:2], [0:2048], [0:2048]}
+  constant.9 = f64[] constant(0)
+  reduce_sum.44 = f64[2048,2048]{1,0} reduce(split.4, constant.9), dimensions={0}, to_apply=region_4.7
+  neg.5 = f64[2048,2048]{1,0} negate(reduce_sum.44)
+  mul.96 = f64[2048,2048]{1,0} multiply(mul.95, neg.5)
+  Arg_0.5 = f64[1,2048]{1,0} parameter(0)
+  mul.105 = f64[1,2048]{1,0} broadcast(Arg_0.5), dimensions={0,1}
+  mul.106 = f64[2048]{0} reshape(mul.105)
+  mul.107 = f64[2048,2048]{1,0} broadcast(mul.106), dimensions={1}
+  split.3 = f64[1,2048,2048]{2,1,0} slice(transpose.3), slice={[0:1], [0:2048], [0:2048]}
+  reduce_sum.45 = f64[2048,2048]{1,0} reduce(split.3, constant.9), dimensions={0}, to_apply=region_5.8
+  mul.108 = f64[2048,2048]{1,0} multiply(mul.107, reduce_sum.45)
+  add_any.7 = f64[2048,2048]{1,0} add(mul.96, mul.108)
+  broadcast_in_dim.15 = f64[2048,2048,1]{2,1,0} reshape(add_any.7)
+  pad.3 = f64[2048,2048,3]{2,1,0} pad(broadcast_in_dim.15, constant.9), padding=0_0x0_0x2_0
+  Arg_4.1 = f64[1,2048]{1,0} parameter(4)
+  mul.89 = f64[1,2048]{1,0} broadcast(Arg_4.1), dimensions={0,1}
+  mul.90 = f64[2048]{0} reshape(mul.89)
+  mul.91 = f64[2048,2048]{1,0} broadcast(mul.90), dimensions={1}
+  split.5 = f64[1,2048,2048]{2,1,0} slice(transpose.3), slice={[2:3], [0:2048], [0:2048]}
+  reduce_sum.43 = f64[2048,2048]{1,0} reduce(split.5, constant.9), dimensions={0}, to_apply=region_3.6
+  mul.92 = f64[2048,2048]{1,0} multiply(mul.91, reduce_sum.43)
+  Arg_1.3 = f64[1,2048]{1,0} parameter(1)
+  mul.101 = f64[1,2048]{1,0} broadcast(Arg_1.3), dimensions={0,1}
+  mul.102 = f64[2048]{0} reshape(mul.101)
+  mul.103 = f64[2048,2048]{1,0} broadcast(mul.102), dimensions={1}
+  neg.6 = f64[2048,2048]{1,0} negate(reduce_sum.45)
+  mul.104 = f64[2048,2048]{1,0} multiply(mul.103, neg.6)
+  add_any.6 = f64[2048,2048]{1,0} add(mul.92, mul.104)
+  broadcast_in_dim.16 = f64[2048,2048,1]{2,1,0} reshape(add_any.6)
+  pad.4 = f64[2048,2048,3]{2,1,0} pad(broadcast_in_dim.16, constant.9), padding=0_0x0_0x1_1
+  add_any.8 = f64[2048,2048,3]{2,1,0} add(pad.3, pad.4)
+  Arg_5.1 = f64[1,2048]{1,0} parameter(5)
+  mul.85 = f64[1,2048]{1,0} broadcast(Arg_5.1), dimensions={0,1}
+  mul.86 = f64[2048]{0} reshape(mul.85)
+  mul.87 = f64[2048,2048]{1,0} broadcast(mul.86), dimensions={1}
+  neg.4 = f64[2048,2048]{1,0} negate(reduce_sum.43)
+  mul.88 = f64[2048,2048]{1,0} multiply(mul.87, neg.4)
+  Arg_2.1 = f64[1,2048]{1,0} parameter(2)
+  mul.97 = f64[1,2048]{1,0} broadcast(Arg_2.1), dimensions={0,1}
+  mul.98 = f64[2048]{0} reshape(mul.97)
+  mul.99 = f64[2048,2048]{1,0} broadcast(mul.98), dimensions={1}
+  mul.100 = f64[2048,2048]{1,0} multiply(mul.99, reduce_sum.44)
+  add_any.5 = f64[2048,2048]{1,0} add(mul.88, mul.100)
+  broadcast_in_dim.17 = f64[2048,2048,1]{2,1,0} reshape(add_any.5)
+  pad.5 = f64[2048,2048,3]{2,1,0} pad(broadcast_in_dim.17, constant.9), padding=0_0x0_0x0_2
+  ROOT add_any.9 = f64[2048,2048,3]{2,1,0} add(add_any.8, pad.5)
+}
+
+region_6.10 {
+  reduce_sum.49 = f64[] parameter(0)
+  reduce_sum.50 = f64[] parameter(1)
+  ROOT reduce_sum.51 = f64[] add(reduce_sum.49, reduce_sum.50)
+}
+
+norm_1.11 {
+  Arg_0.7 = f64[2048,2048,3]{2,1,0} parameter(0)
+  Arg_2.3 = f64[2048,2048,1]{2,1,0} parameter(2)
+  Arg_1.5 = f64[2048,2048,1]{2,1,0} parameter(1)
+  mul.112 = f64[2048,2048,1]{2,1,0} multiply(Arg_2.3, Arg_1.5)
+  constant.11 = f64[] constant(0)
+  reduce_sum.53 = f64[2048,2048]{1,0} reduce(mul.112, constant.11), dimensions={2}, to_apply=region_6.10
+  broadcast_in_dim.19 = f64[2048,2048,3]{2,1,0} broadcast(reduce_sum.53), dimensions={0,1}
+  mul.113 = f64[2048,2048,3]{2,1,0} multiply(Arg_0.7, broadcast_in_dim.19)
+  mul.114 = f64[2048,2048,3]{2,1,0} multiply(broadcast_in_dim.19, Arg_0.7)
+  ROOT add_any.11 = f64[2048,2048,3]{2,1,0} add(mul.113, mul.114)
+}
+
+region_7.12 {
+  reduce_sum.57 = f64[] parameter(0)
+  reduce_sum.58 = f64[] parameter(1)
+  ROOT reduce_sum.59 = f64[] add(reduce_sum.57, reduce_sum.58)
+}
+
+region_8.13 {
+  reduce_sum.64 = f64[] parameter(0)
+  reduce_sum.65 = f64[] parameter(1)
+  ROOT reduce_sum.66 = f64[] add(reduce_sum.64, reduce_sum.65)
+}
+
+region_9.14 {
+  reduce_sum.71 = f64[] parameter(0)
+  reduce_sum.72 = f64[] parameter(1)
+  ROOT reduce_sum.73 = f64[] add(reduce_sum.71, reduce_sum.72)
+}
+
+region_10.15 {
+  reduce_sum.78 = f64[] parameter(0)
+  reduce_sum.79 = f64[] parameter(1)
+  ROOT reduce_sum.80 = f64[] add(reduce_sum.78, reduce_sum.79)
+}
+
+ENTRY main.16 {
+  a_2_.1 = f64[2048]{0} parameter(2)
+  stack.4 = f64[2048,1]{1,0} reshape(a_2_.1)
+  stack.5 = f64[2048,1]{1,0} reshape(a_2_.1)
+  stack.6 = f64[2048,1]{1,0} reshape(a_2_.1)
+  stack.7 = f64[2048,3]{1,0} concatenate(stack.4, stack.5, stack.6), dimensions={1}
+  a_0_.1 = f64[2048,3]{1,0} parameter(0)
+  broadcast_in_dim.21 = f64[2048,1,3]{2,1,0} reshape(a_0_.1)
+  sub.13 = f64[2048,1,3]{2,1,0} broadcast(broadcast_in_dim.21), dimensions={0,1,2}
+  sub.14 = f64[2048,3]{1,0} reshape(sub.13)
+  sub.15 = f64[2048,2048,3]{2,1,0} broadcast(sub.14), dimensions={0,2}
+  a_1_.1 = f64[2048,3]{1,0} parameter(1)
+  broadcast_in_dim.22 = f64[1,2048,3]{2,1,0} reshape(a_1_.1)
+  sub.16 = f64[1,2048,3]{2,1,0} broadcast(broadcast_in_dim.22), dimensions={0,1,2}
+  sub.17 = f64[2048,3]{1,0} reshape(sub.16)
+  sub.18 = f64[2048,2048,3]{2,1,0} broadcast(sub.17), dimensions={1,2}
+  sub.19 = f64[2048,2048,3]{2,1,0} subtract(sub.15, sub.18)
+  jvp_jit_cross__.8 = (f64[2048,2048,3]{1,0,2}, f64[1,2048]{1,0}, f64[1,2048]{1,0}, f64[1,2048]{1,0}, f64[1,2048]{1,0}, /*index=5*/f64[1,2048]{1,0}, f64[1,2048]{1,0}) call(stack.7, sub.19), to_apply=cross.3
+  jvp_jit_cross__.10 = f64[1,2048]{1,0} get-tuple-element(jvp_jit_cross__.8), index=1
+  jvp_jit_cross__.11 = f64[1,2048]{1,0} get-tuple-element(jvp_jit_cross__.8), index=2
+  jvp_jit_cross__.12 = f64[1,2048]{1,0} get-tuple-element(jvp_jit_cross__.8), index=3
+  jvp_jit_cross__.13 = f64[1,2048]{1,0} get-tuple-element(jvp_jit_cross__.8), index=4
+  jvp_jit_cross__.14 = f64[1,2048]{1,0} get-tuple-element(jvp_jit_cross__.8), index=5
+  jvp_jit_cross__.15 = f64[1,2048]{1,0} get-tuple-element(jvp_jit_cross__.8), index=6
+  jvp_jit_cross__.9 = f64[2048,2048,3]{1,0,2} get-tuple-element(jvp_jit_cross__.8), index=0
+  jvp_jit_norm__.3 = (f64[2048,2048,1]{2,1,0}, f64[2048,2048,1]{2,1,0}) call(sub.19), to_apply=norm.2
+  jvp_jit_norm__.4 = f64[2048,2048,1]{2,1,0} get-tuple-element(jvp_jit_norm__.3), index=0
+  integer_pow.3 = f64[2048,2048,1]{2,1,0} multiply(jvp_jit_norm__.4, jvp_jit_norm__.4)
+  integer_pow.4 = f64[2048,2048,1]{2,1,0} multiply(integer_pow.3, jvp_jit_norm__.4)
+  div.13 = f64[2048,2048,1]{2,1,0} broadcast(integer_pow.4), dimensions={0,1,2}
+  div.14 = f64[2048,2048]{1,0} reshape(div.13)
+  div.15 = f64[2048,2048,3]{2,1,0} broadcast(div.14), dimensions={0,1}
+  div.16 = f64[2048,2048,3]{1,0,2} divide(jvp_jit_cross__.9, div.15)
+  constant.15 = f64[] constant(0)
+  reduce_sum.82 = f64[2048,3]{1,0} reduce(div.16, constant.15), dimensions={1}, to_apply=region_1.4
+  constant.12 = f64[] constant(2)
+  mul.115 = f64[2048,3]{1,0} broadcast(constant.12), dimensions={}
+  mul.119 = f64[2048,3]{1,0} multiply(reduce_sum.82, mul.115)
+  broadcast_in_dim.23 = f64[2048,2048,3]{2,1,0} broadcast(mul.119), dimensions={0,2}
+  div.18 = f64[2048,2048,1]{2,1,0} broadcast(integer_pow.4), dimensions={0,1,2}
+  div.19 = f64[2048,2048]{1,0} reshape(div.18)
+  div.20 = f64[2048,2048,3]{2,1,0} broadcast(div.19), dimensions={0,1}
+  div.21 = f64[2048,2048,3]{2,1,0} divide(broadcast_in_dim.23, div.20)
+  transpose_jvp_jit_cross___.1 = f64[2048,2048,3]{2,1,0} call(jvp_jit_cross__.10, jvp_jit_cross__.11, jvp_jit_cross__.12, jvp_jit_cross__.13, jvp_jit_cross__.14, jvp_jit_cross__.15, div.21), to_apply=cross_0.9
+  jvp_jit_norm__.5 = f64[2048,2048,1]{2,1,0} get-tuple-element(jvp_jit_norm__.3), index=1
+  constant.13 = f64[] constant(1)
+  broadcast_in_dim.20 = f64[2048,2048,1]{2,1,0} broadcast(constant.13), dimensions={}
+  mul.118 = f64[2048,2048,1]{2,1,0} multiply(integer_pow.4, integer_pow.4)
+  div.17 = f64[2048,2048,1]{2,1,0} divide(broadcast_in_dim.20, mul.118)
+  mul.120 = f64[2048,2048,1]{2,1,0} broadcast(div.17), dimensions={0,1,2}
+  mul.121 = f64[2048,2048]{1,0} reshape(mul.120)
+  mul.122 = f64[2048,2048,3]{2,1,0} broadcast(mul.121), dimensions={0,1}
+  mul.123 = f64[2048,2048,3]{2,1,0} multiply(broadcast_in_dim.23, mul.122)
+  mul.124 = f64[2048,2048,3]{2,1,0} multiply(mul.123, jvp_jit_cross__.9)
+  reduce_sum.83 = f64[2048,2048]{1,0} reduce(mul.124, constant.15), dimensions={2}, to_apply=region_2.5
+  reshape.3 = f64[2048,2048,1]{2,1,0} reshape(reduce_sum.83)
+  neg.8 = f64[2048,2048,1]{2,1,0} negate(reshape.3)
+  integer_pow.5 = f64[2048,2048,1]{2,1,0} multiply(jvp_jit_norm__.4, jvp_jit_norm__.4)
+  constant.14 = f64[] constant(3)
+  mul.116 = f64[2048,2048,1]{2,1,0} broadcast(constant.14), dimensions={}
+  mul.117 = f64[2048,2048,1]{2,1,0} multiply(integer_pow.5, mul.116)
+  mul.125 = f64[2048,2048,1]{2,1,0} multiply(neg.8, mul.117)
+  transpose_jvp_jit_norm___.1 = f64[2048,2048,3]{2,1,0} call(sub.19, jvp_jit_norm__.5, mul.125), to_apply=norm_1.11
+  add_any.13 = f64[2048,2048,3]{2,1,0} add(transpose_jvp_jit_cross___.1, transpose_jvp_jit_norm___.1)
+  reduce_sum.84 = f64[2048,3]{1,0} reduce(add_any.13, constant.15), dimensions={1}, to_apply=region_7.12
+  reshape.4 = f64[2048,1,3]{2,1,0} reshape(reduce_sum.84)
+  reduce_sum.87 = f64[2048,3]{1,0} reduce(reshape.4, constant.15), dimensions={1}, to_apply=region_10.15
+  neg.9 = f64[2048,2048,3]{2,1,0} negate(add_any.13)
+  reduce_sum.85 = f64[2048,3]{1,0} reduce(neg.9, constant.15), dimensions={0}, to_apply=region_8.13
+  reshape.5 = f64[1,2048,3]{2,1,0} reshape(reduce_sum.85)
+  reduce_sum.86 = f64[2048,3]{1,0} reduce(reshape.5, constant.15), dimensions={0}, to_apply=region_9.14
+  ROOT tuple.5 = (f64[2048,3]{1,0}, f64[2048,3]{1,0}) tuple(reduce_sum.87, reduce_sum.86)
+}
+
+

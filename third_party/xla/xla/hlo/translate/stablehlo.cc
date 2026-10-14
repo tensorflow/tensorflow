@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/tsl/platform/errors.h"
+#include "tsl/platform/platform.h"
 
 #define DEBUG_TYPE "xla-translate"
 
@@ -61,9 +62,9 @@ absl::Status StablehloToMhlo(mlir::ModuleOp module, bool run_canonicalizer) {
 
   // Only enable verifier in debug builds.
   bool enableVerifier = false;
-#ifndef NDEBUG
-  enableVerifier = true;
-#endif
+  if constexpr (tsl::kIsDebugBuild) {
+    enableVerifier = true;
+  }
   pm.enableVerifier(enableVerifier);
 
   // CHLO -> MHLO for high level ops (TopK, Erf, RaggedDot, etc.)

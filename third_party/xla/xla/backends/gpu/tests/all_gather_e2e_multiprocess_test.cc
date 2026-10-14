@@ -187,7 +187,6 @@ absl::Status AllGatherMultiProcessTestBody(int node_id, int port) {
   debug_options.set_xla_gpu_autotune_level(0);
   debug_options.add_xla_gpu_experimental_use_collective_kernels(
       DebugOptions::COLLECTIVE_KERNEL_ALL_GATHER);
-  debug_options.set_xla_gpu_experimental_enable_tiling_propagation(true);
   debug_options.add_xla_gpu_unsupported_use_cross_host_one_shot_kernel(
       DebugOptions::ALLGATHER);
   *compile_options.executable_build_options.mutable_debug_options() =

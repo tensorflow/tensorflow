@@ -34,7 +34,7 @@ std::string SummarizeDebugTensorWatches(
 // An abstract interface for storing and retrieving debugging information.
 class DebuggerStateInterface {
  public:
-  virtual ~DebuggerStateInterface() {}
+  virtual ~DebuggerStateInterface() = default;
 
   // Publish metadata about the debugged Session::Run() call.
   //
@@ -57,7 +57,7 @@ class DebuggerStateInterface {
 
 class DebugGraphDecoratorInterface {
  public:
-  virtual ~DebugGraphDecoratorInterface() {}
+  virtual ~DebugGraphDecoratorInterface() = default;
 
   // Insert special-purpose debug nodes to graph and dump the graph for
   // record. See the documentation of DebugNodeInserter::InsertNodes() for

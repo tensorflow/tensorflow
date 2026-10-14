@@ -326,6 +326,17 @@ absl::StatusOr<CompileOptions> CreateCompileOptions(
     int num_nodes = 1,
     std::shared_ptr<xla::KeyValueStoreInterface> kv_store = nullptr);
 
+// Same as above, but uses `topology` instead of a client, so that compile
+// options can be created for ahead-of-time compilation (see the `Compile`
+// overload that takes a `PjRtTopologyDescription`) on a machine without the
+// target devices. If no device assignment is provided, the default device
+// assignment of `topology` for process `task_id` is used.
+absl::StatusOr<CompileOptions> CreateCompileOptions(
+    const PjRtTopologyDescription& topology,
+    const FunctionalHloRunner::RawCompileOptions& raw_options, int task_id = 0,
+    int num_nodes = 1,
+    std::shared_ptr<xla::KeyValueStoreInterface> kv_store = nullptr);
+
 // Runs on HLO module and dumps the output if needed.
 //
 // This is the highest level API in this file.

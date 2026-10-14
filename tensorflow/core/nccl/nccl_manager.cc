@@ -67,7 +67,7 @@ int NcclManager::instance_count = 0;
 struct NcclManager::NcclStream : public core::RefCounted {
  public:
   NcclStream() = default;
-  ~NcclStream() = default;
+  ~NcclStream() override = default;
 
   se::StreamExecutor* executor = nullptr;
 

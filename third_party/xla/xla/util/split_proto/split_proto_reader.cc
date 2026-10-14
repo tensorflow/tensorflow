@@ -27,7 +27,9 @@ limitations under the License.
 #include "google/protobuf/message.h"
 #include "google/protobuf/reflection.h"
 #include "riegeli/base/any.h"
+#include "riegeli/base/chain.h"
 #include "riegeli/bytes/reader.h"
+#include "riegeli/messages/parse_message.h"
 #include "riegeli/records/record_position.h"
 #include "riegeli/records/record_reader.h"
 #include "xla/tsl/platform/errors.h"
@@ -52,15 +54,20 @@ absl::Status ReadRecord(riegeli::RecordReader<Src>& record_reader, T& record) {
 template <typename Src>
 absl::Status HandleProtoMergeRecord(riegeli::RecordReader<Src>& record_reader,
                                     google::protobuf::Message& proto) {
-  absl::string_view record_data;
+  // Read the record as a `Chain` rather than a flat `string_view`: large
+  // records (e.g. HLO modules with big constants) span multiple blocks of the
+  // decoded chunk, and reading them as a flat view would force an extra copy
+  // to make them contiguous. The `Chain` shares the decoded blocks instead and
+  // the proto parser can consume it directly.
+  riegeli::Chain record_data;
   TF_RETURN_WITH_CONTEXT_IF_ERROR(ReadRecord(record_reader, record_data),
                                   "failed to read proto merge record data for ",
                                   proto.GetTypeName());
 
-  if (!proto.MergeFromString(record_data)) {
-    return absl::InternalError(absl::StrFormat(
-        "Failed to parse proto merge record for %s", proto.GetTypeName()));
-  }
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(
+      riegeli::ParseMessage(record_data, proto,
+                            riegeli::ParseMessageOptions().set_merge(true)),
+      "Failed to parse proto merge record for ", proto.GetTypeName());
   return absl::OkStatus();
 }
 

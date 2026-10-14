@@ -39,6 +39,7 @@ limitations under the License.
 namespace stream_executor::cuda {
 namespace {
 
+using ::testing::AnyOf;
 using ::testing::Optional;
 using Write42Kernel = TypedKernelFactory<DeviceAddress<int32_t>, int32_t>;
 
@@ -147,9 +148,19 @@ TEST(CudaRuntimeKernelRegistryTest, ExtractsFuncAttributes) {
   EXPECT_EQ(attrs.compute_capability.major, cc.major);
   EXPECT_EQ(attrs.compute_capability.minor, cc.minor);
   EXPECT_EQ(attrs.num_regs, runtime_attrs.numRegs);
-  EXPECT_EQ(attrs.static_shared_size_bytes,
+  int reserved_shared_bytes = 0;
+  ASSERT_EQ(cudaDeviceGetAttribute(&reserved_shared_bytes,
+                                   cudaDevAttrReservedSharedMemoryPerBlock, 0),
+            cudaSuccess);
+  EXPECT_EQ(runtime_attrs.sharedSizeBytes,
             kWrite42SharedElements * sizeof(int32_t));
-  EXPECT_EQ(attrs.static_shared_size_bytes, runtime_attrs.sharedSizeBytes);
+  // On Hopper+ (sm_90+), the CUBIN ELF `.nv.shared.<kernel>` section size
+  // includes architecture-reserved shared memory per block (e.g., 1024 bytes),
+  // whereas `cudaFuncGetAttributes` reports only user-declared static shared
+  // memory in `sharedSizeBytes`.
+  EXPECT_THAT(attrs.static_shared_size_bytes,
+              AnyOf(runtime_attrs.sharedSizeBytes,
+                    runtime_attrs.sharedSizeBytes + reserved_shared_bytes));
   EXPECT_THAT(attrs.max_threads_per_block,
               Optional(kWrite42LaunchBoundsMaxThreads));
   EXPECT_THAT(attrs.max_threads_per_block,

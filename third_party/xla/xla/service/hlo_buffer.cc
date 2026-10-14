@@ -24,7 +24,10 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -32,6 +35,26 @@ limitations under the License.
 #include "xla/service/hlo_value.h"
 
 namespace xla {
+
+absl::StatusOr<BufferValue::Color> HloBuffer::ComputeColorSlowPath() const {
+  // Invariant: All values in the buffer should have the same color.
+  BufferValue::Color result = values()[0]->color();
+  for (const HloValue* value : values()) {
+    if (result != value->color()) {
+      std::string details = absl::StrFormat(
+          "Not all HloValues in the HloBuffer have the same color. "
+          "Buffer id=%d has %d values:",
+          id(), values().size());
+      for (const HloValue* v : values()) {
+        absl::StrAppendFormat(&details, "\n  value %d color=%d defined at %s",
+                              v->id(), v->color(),
+                              v->defining_position().ToString());
+      }
+      return absl::FailedPreconditionError(details);
+    }
+  }
+  return result;
+}
 
 bool HloBuffer::operator==(const HloBuffer& other) const {
   bool equal = id() == other.id();

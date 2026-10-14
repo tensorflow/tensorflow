@@ -1795,7 +1795,8 @@ def tf_gpu_only_cc_test(
         args = [],
         kernels = [],
         linkopts = [],
-        features = []):
+        features = [],
+        extra_copts = []):
     tags = tags + tf_gpu_tests_tags()
 
     gpu_lib_name = "%s%s" % (name, "_gpu_lib")
@@ -1803,6 +1804,7 @@ def tf_gpu_only_cc_test(
         name = gpu_lib_name,
         srcs = srcs + tf_binary_additional_srcs(),
         data = tf_binary_additional_srcs(fullversion = True),
+        copts = extra_copts,
         deps = deps,
         testonly = 1,
         features = features,

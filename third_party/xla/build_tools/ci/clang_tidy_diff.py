@@ -218,15 +218,17 @@ def _resolve_clang_apply_replacements(
   runfiles_dir = os.environ.get("RUNFILES_DIR")
   if not runfiles_dir:
     return None
-  runfiles_path = (
-      pathlib.Path(runfiles_dir)
-      / "xla/build_tools/ci/clang_apply_replacements_bin"
-  )
-  if runfiles_path.exists():
-    return runfiles_path
+  for repo_dir in ("_main", "xla"):
+    runfiles_path = (
+        pathlib.Path(runfiles_dir)
+        / repo_dir
+        / "build_tools/ci/clang_apply_replacements_bin"
+    )
+    if runfiles_path.exists():
+      return runfiles_path
   _logger().warning(
       "clang-apply-replacements binary not found in RUNFILES_DIR: %s",
-      runfiles_path,
+      runfiles_dir,
   )
   return None
 

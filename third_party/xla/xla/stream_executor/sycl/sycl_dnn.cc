@@ -21,8 +21,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "dnnl.hpp"
-#include "xla/service/gpu/gpu_conv_runner.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/plugin_registry.h"
@@ -50,16 +49,115 @@ absl::StatusOr<dnn::VersionInfo> OnednnSupport::GetVersion() {
   return GetOnednnVersion();
 }
 
-absl::Status OnednnSupport::DoConvolveWithGpuConfig(
-    Stream* stream, const xla::gpu::GpuConvConfig& config,
-    absl::Span<const DeviceMemoryBase> operand_se_buffers,
-    DeviceMemoryBase result_se_buffer, ScratchAllocator* scratch_allocator) {
+namespace {
+class OnednnConvRunner : public dnn::ConvRunner {
+ public:
+  OnednnConvRunner(OneDnnConvPrimitiveDesc onednn_conv_primitive_desc,
+                   size_t workspace_size)
+      : onednn_conv_primitive_desc_(std::move(onednn_conv_primitive_desc)),
+        workspace_size_(workspace_size) {}
+  std::string ToString() const override { return "OnednnConvRunner"; }
+
+  size_t GetWorkspaceSize() const override { return workspace_size_; }
+
+  absl::StatusOr<dnn::AlgorithmDesc> ToAlgorithmDesc() const override {
+    return dnn::AlgorithmDesc(-1, false, workspace_size_);
+  }
+
+  absl::Status operator()(Stream* stream,
+                          dnn::ProfileResult* output_profile_result,
+                          DeviceAddressBase scratch_memory,
+                          DeviceAddressBase input_data,
+                          DeviceAddressBase filter_data,
+                          DeviceAddressBase output_data) const override {
+    // Implemented as part of a follow-up PR.
+    return absl::UnimplementedError(
+        "OnednnConvRunner operator() is not implemented for SYCL");
+  }
+
+ private:
+  OneDnnConvPrimitiveDesc onednn_conv_primitive_desc_;
+  size_t workspace_size_ = 0;
+};
+
+class OnednnFusedConvRunner : public dnn::FusedConvRunner {
+ public:
+  OnednnFusedConvRunner(OneDnnConvPrimitiveDesc onednn_conv_primitive_desc,
+                        size_t workspace_size)
+      : onednn_conv_primitive_desc_(std::move(onednn_conv_primitive_desc)),
+        workspace_size_(workspace_size) {}
+  std::string ToString() const override { return "OnednnFusedConvRunner"; }
+
+  size_t GetWorkspaceSize() const override { return workspace_size_; }
+
+  absl::StatusOr<dnn::AlgorithmDesc> ToAlgorithmDesc() const override {
+    return dnn::AlgorithmDesc(-1, false, workspace_size_);
+  }
+
+  absl::Status operator()(Stream* stream,
+                          dnn::ProfileResult* output_profile_result,
+                          DeviceAddressBase scratch_memory,
+                          DeviceAddressBase input_data,
+                          DeviceAddressBase filter_data,
+                          DeviceAddressBase side_input_data,
+                          DeviceAddressBase bias_data,
+                          DeviceAddressBase output_data) const override {
+    // Implemented as part of a follow-up PR.
+    return absl::UnimplementedError(
+        "OnednnFusedConvRunner operator() is not implemented for SYCL");
+  }
+
+ private:
+  OneDnnConvPrimitiveDesc onednn_conv_primitive_desc_;
+  size_t workspace_size_ = 0;
+};
+}  // namespace
+
+absl::StatusOr<std::unique_ptr<const dnn::ConvRunner>>
+OnednnSupport::ConvolveRunnerFromDesc(
+    Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+    dnn::ConvolutionKind kind, dnn::DataType input_type,
+    dnn::DataType output_type, const dnn::BatchDescriptor& input_descriptor,
+    const dnn::FilterDescriptor& filter_descriptor,
+    const dnn::BatchDescriptor& output_descriptor,
+    const dnn::ConvolutionDescriptor& convolution_descriptor) {
   ABSL_ASSIGN_OR_RETURN(
-      auto onednn_primitive,
-      CreateOneDnnConvPrimitive(config, operand_se_buffers, result_se_buffer,
-                                stream, scratch_allocator));
-  ABSL_RETURN_IF_ERROR(DoOnednnConv(onednn_primitive));
-  return absl::OkStatus();
+      OneDnnConvPrimitiveDesc primitive_desc,
+      CreateOneDnnConvPrimitiveDesc(
+          OneDnnConvConfig{kind, input_type, output_type, input_descriptor,
+                           filter_descriptor, output_descriptor,
+                           convolution_descriptor},
+          stream));
+  size_t workspace_size = 0;
+  return std::make_unique<OnednnConvRunner>(std::move(primitive_desc),
+                                            workspace_size);
+}
+
+absl::StatusOr<std::unique_ptr<const dnn::FusedConvRunner>>
+OnednnSupport::FusedConvolveRunnerFromDesc(
+    Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+    dnn::ConvolutionKind kind, dnn::DataType element_type,
+    dnn::DataType bias_type, dnn::DataType output_type, double conv_scale,
+    double side_input_scale, double leakyrelu_alpha,
+    const dnn::BatchDescriptor& input_descriptor,
+    const dnn::FilterDescriptor& filter_descriptor,
+    const dnn::BatchDescriptor& bias_descriptor,
+    const dnn::BatchDescriptor& output_descriptor,
+    const dnn::ConvolutionDescriptor& convolution_descriptor,
+    dnn::ActivationMode activation_mode) {
+  ABSL_ASSIGN_OR_RETURN(
+      OneDnnConvPrimitiveDesc primitive_desc,
+      CreateOneDnnConvPrimitiveDesc(
+          OneDnnConvConfig{
+              kind, element_type, output_type, input_descriptor,
+              filter_descriptor, output_descriptor, convolution_descriptor,
+              conv_scale,
+              OneDnnConvConfig::Fusion{activation_mode, side_input_scale,
+                                       leakyrelu_alpha}},
+          stream));
+  size_t workspace_size = 0;
+  return std::make_unique<OnednnFusedConvRunner>(std::move(primitive_desc),
+                                                 workspace_size);
 }
 
 void initialize_onednn() {

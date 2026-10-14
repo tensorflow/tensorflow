@@ -56,7 +56,7 @@ static Platform* GpuPlatform() {
 static constexpr auto nested = CommandBuffer::Mode::kNested;    // NOLINT
 static constexpr auto primary = CommandBuffer::Mode::kPrimary;  // NOLINT
 
-// Some of the tests rely on CUDA 12.3+ features.
+// CUDA command buffers require CUDA 12.3+.
 static bool IsAtLeastCuda12300(
     const stream_executor::StreamExecutor* executor) {
   if (executor->GetPlatform()->id() != cuda::kCudaPlatformId) {
@@ -76,7 +76,20 @@ absl::StatusOr<std::vector<const CommandBuffer::Command*>> Wrap(
   return std::vector<const CommandBuffer::Command*>{*command};
 }
 
-TEST(GpuCommandBufferTest, LaunchSingleKernel) {
+// CUDA command buffers are built with graph APIs that require CUDA 12.3.
+class GpuCommandBufferTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    StreamExecutor* executor = GpuPlatform()->ExecutorForDevice(0).value();
+    if (executor->GetPlatform()->id() == cuda::kCudaPlatformId &&
+        !IsAtLeastCuda12300(executor)) {
+      GTEST_SKIP()
+          << "CUDA command buffers require CUDA runtime and driver >= 12.3";
+    }
+  }
+};
+
+TEST_F(GpuCommandBufferTest, LaunchSingleKernel) {
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
@@ -129,11 +142,11 @@ TEST(GpuCommandBufferTest, LaunchSingleKernel) {
   ASSERT_EQ(dst, expected);
 }
 
-TEST(GpuCommandBufferTest, TraceSingleKernel) {
+TEST_F(GpuCommandBufferTest, TraceSingleKernel) {
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
-  if (!IsAtLeastCuda12300(executor)) {
+  if (executor->GetPlatform()->id() != cuda::kCudaPlatformId) {
     GTEST_SKIP() << "Command buffer tracing is not supported";
   }
 
@@ -175,14 +188,9 @@ TEST(GpuCommandBufferTest, TraceSingleKernel) {
   ASSERT_EQ(dst, expected);
 }
 
-TEST(GpuCommandBufferTest, TraceEmptyChildCommand) {
+TEST_F(GpuCommandBufferTest, TraceEmptyChildCommand) {
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
-
-  if (executor->GetPlatform()->id() == cuda::kCudaPlatformId &&
-      !IsAtLeastCuda12300(executor)) {
-    GTEST_SKIP() << "Command buffer tracing is supported after CUDA 12.3";
-  }
 
   ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
@@ -201,7 +209,7 @@ TEST(GpuCommandBufferTest, TraceEmptyChildCommand) {
   ASSERT_OK(stream->BlockHostUntilDone());
 }
 
-TEST(GpuCommandBufferTest, LaunchNestedCommandBuffer) {
+TEST_F(GpuCommandBufferTest, LaunchNestedCommandBuffer) {
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
@@ -261,7 +269,7 @@ TEST(GpuCommandBufferTest, LaunchNestedCommandBuffer) {
   ASSERT_EQ(dst, expected);
 }
 
-TEST(GpuCommandBufferTest, MemcpyDeviceToDevice) {
+TEST_F(GpuCommandBufferTest, MemcpyDeviceToDevice) {
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
@@ -307,7 +315,7 @@ TEST(GpuCommandBufferTest, MemcpyDeviceToDevice) {
   ASSERT_EQ(dst, expected);
 }
 
-TEST(GpuCommandBufferTest, Memset) {
+TEST_F(GpuCommandBufferTest, Memset) {
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
@@ -349,12 +357,12 @@ TEST(GpuCommandBufferTest, Memset) {
   ASSERT_EQ(dst, expected);
 }
 
-TEST(GpuCommandBufferTest, ConditionalCaseEmptyGraph) {
+TEST_F(GpuCommandBufferTest, ConditionalCaseEmptyGraph) {
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
   // See b/362769658.
-  if (!IsAtLeastCuda12300(executor)) {
+  if (executor->GetPlatform()->id() != cuda::kCudaPlatformId) {
     GTEST_SKIP() << "CUDA graph conditionals are not supported";
   }
 
@@ -525,11 +533,11 @@ INSTANTIATE_TEST_SUITE_P(ConditionalMultipleCaseTest, GpuCommandBufferCaseTest,
                          testing::Range(1, 32),
                          testing::PrintToStringParamName());
 
-TEST(GpuCommandBufferTest, ConditionalCase) {
+TEST_F(GpuCommandBufferTest, ConditionalCase) {
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
-  if (!IsAtLeastCuda12300(executor)) {
+  if (executor->GetPlatform()->id() != cuda::kCudaPlatformId) {
     GTEST_SKIP() << "CUDA graph conditionals are not supported";
   }
 
@@ -612,11 +620,11 @@ TEST(GpuCommandBufferTest, ConditionalCase) {
   ASSERT_EQ(dst, expected_mul);
 }
 
-TEST(GpuCommandBufferTest, ConditionalWhile) {
+TEST_F(GpuCommandBufferTest, ConditionalWhile) {
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
-  if (!IsAtLeastCuda12300(executor)) {
+  if (executor->GetPlatform()->id() != cuda::kCudaPlatformId) {
     GTEST_SKIP() << "CUDA graph conditionals are not supported";
   }
 
@@ -674,11 +682,11 @@ TEST(GpuCommandBufferTest, ConditionalWhile) {
 }
 
 // TODO(b/339653343): Re-enable when not failing.
-TEST(GpuCommandBufferTest, DISABLED_WhileNestedConditional) {
+TEST_F(GpuCommandBufferTest, DISABLED_WhileNestedConditional) {
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
-  if (!IsAtLeastCuda12300(executor)) {
+  if (executor->GetPlatform()->id() != cuda::kCudaPlatformId) {
     GTEST_SKIP() << "CUDA graph conditionals are not supported";
   }
 
@@ -766,7 +774,7 @@ struct TestResource : public CommandBuffer::Resource {
   int32_t value = 0;
 };
 
-TEST(GpuCommandBufferTest, GetOrCreateResource) {
+TEST_F(GpuCommandBufferTest, GetOrCreateResource) {
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
@@ -814,7 +822,7 @@ BENCHMARK_SIZES(BM_CreateCommandBuffer);
 // Tests that CreateEmptyCmd works: an empty node can be added to a command
 // buffer alongside real commands, the graph finalizes and executes correctly,
 // and the empty node does not interfere with kernel results.
-TEST(GpuCommandBufferTest, EmptyNodeWithKernel) {
+TEST_F(GpuCommandBufferTest, EmptyNodeWithKernel) {
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
@@ -853,7 +861,7 @@ TEST(GpuCommandBufferTest, EmptyNodeWithKernel) {
 
 // Tests that a command buffer with only an empty node can be finalized and
 // executed without crashing (exercises PrepareFinalization on HIP).
-TEST(GpuCommandBufferTest, EmptyNodeOnly) {
+TEST_F(GpuCommandBufferTest, EmptyNodeOnly) {
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
@@ -870,7 +878,7 @@ TEST(GpuCommandBufferTest, EmptyNodeOnly) {
 
 // Tests a chain of empty nodes followed by a kernel: exercises dependency
 // propagation through multiple empty nodes.
-TEST(GpuCommandBufferTest, EmptyNodeChain) {
+TEST_F(GpuCommandBufferTest, EmptyNodeChain) {
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
@@ -910,7 +918,7 @@ TEST(GpuCommandBufferTest, EmptyNodeChain) {
 // Tests that an empty node can act as a synchronization barrier between two
 // kernels: kernel_1 -> empty -> kernel_2, where kernel_2 reads kernel_1's
 // output.
-TEST(GpuCommandBufferTest, EmptyNodeAsDependencyBarrier) {
+TEST_F(GpuCommandBufferTest, EmptyNodeAsDependencyBarrier) {
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 

@@ -22,6 +22,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
@@ -41,7 +42,9 @@ namespace xla::gpu::experimental {
 namespace {
 
 using absl_testing::IsOkAndHolds;
+using absl_testing::StatusIs;
 using mlir::MLIRContext;
+using testing::HasSubstr;
 
 }  // namespace
 
@@ -269,6 +272,314 @@ TEST_F(SchedulingTest, GetRaggedDotNonContractingPermutationNoSwapWhenMGeN) {
       GetSchedule(tiled_computation),
       IsOkAndHolds(MatchSchedule(
           "d0 -> pid / 2, d1 -> pid mod 2, num_pids=32, num_tiles=32")));
+}
+
+// d0 and d4 share the peer index (pid / 4); output 1 is padded on d5.
+TEST_F(SchedulingTest, VariadicAllGatherSharesPeerIndex) {
+  ASSERT_OK_AND_ASSIGN(const TiledHloComputation tiled_computation,
+                       ParseAndTile(R"(
+    f {
+      p0 = f32[1,2,8,16] parameter(0)
+      p1 = s32[1,2] parameter(1)
+      ag = (f32[4,2,8,16], s32[4,2]) all-gather(p0, p1),
+        replica_groups={{0,1,2,3}}, dimensions={0}
+      gte0 = f32[4,2,8,16] get-tuple-element(ag), index=0
+      gte1 = s32[4,2] get-tuple-element(ag), index=1
+      ROOT t = (f32[4,2,8,16], s32[4,2]) tuple(gte0, gte1)
+    }
+
+    ENTRY e {
+      arg0 = f32[1,2,8,16] parameter(0)
+      arg1 = s32[1,2] parameter(1)
+      ROOT fusion = (f32[4,2,8,16], s32[4,2]) fusion(arg0, arg1),
+        kind=kCustom, calls=f
+    })",
+                                    {1, 1, 4, 16, 1, 1}));
+  EXPECT_THAT(
+      GetSchedule(tiled_computation),
+      IsOkAndHolds(MatchSchedule("d0 -> pid / 4, d1 -> (pid mod 4) / 2, "
+                                 "d2 -> pid mod 4 mod 2, d3 -> 0, "
+                                 "d4 -> pid / 4, d5 -> pid mod 4, "
+                                 "num_pids=16, num_tiles=16")));
+}
+
+TEST_F(SchedulingTest, VariadicAllGatherNonZeroGatherDim) {
+  ASSERT_OK_AND_ASSIGN(const TiledHloComputation tiled_computation,
+                       ParseAndTile(R"(
+    f {
+      p0 = f32[2,1,16] parameter(0)
+      p1 = s32[2,1] parameter(1)
+      ag = (f32[2,4,16], s32[2,4]) all-gather(p0, p1),
+        replica_groups={{0,1,2,3}}, dimensions={1}
+      gte0 = f32[2,4,16] get-tuple-element(ag), index=0
+      gte1 = s32[2,4] get-tuple-element(ag), index=1
+      ROOT t = (f32[2,4,16], s32[2,4]) tuple(gte0, gte1)
+    }
+
+    ENTRY e {
+      arg0 = f32[2,1,16] parameter(0)
+      arg1 = s32[2,1] parameter(1)
+      ROOT fusion = (f32[2,4,16], s32[2,4]) fusion(arg0, arg1),
+        kind=kCustom, calls=f
+    })",
+                                    {1, 1, 8, 1, 1}));
+  EXPECT_THAT(
+      GetSchedule(tiled_computation),
+      IsOkAndHolds(MatchSchedule("d0 -> (pid mod 4) / 2, d1 -> pid / 4, "
+                                 "d2 -> pid mod 4 mod 2, d3 -> pid mod 4, "
+                                 "d4 -> pid / 4, "
+                                 "num_pids=16, num_tiles=16")));
+}
+
+// Output 1 has no private dims; padded tiles push d2 past the last peer.
+TEST_F(SchedulingTest, VariadicAllGatherOutputWithoutPrivateDimsIsPadded) {
+  ASSERT_OK_AND_ASSIGN(const TiledHloComputation tiled_computation,
+                       ParseAndTile(R"(
+    f {
+      p0 = s32[1,2] parameter(0)
+      p1 = s32[1] parameter(1)
+      ag = (s32[4,2], s32[4]) all-gather(p0, p1),
+        replica_groups={{0,1,2,3}}, dimensions={0}
+      gte0 = s32[4,2] get-tuple-element(ag), index=0
+      gte1 = s32[4] get-tuple-element(ag), index=1
+      ROOT t = (s32[4,2], s32[4]) tuple(gte0, gte1)
+    }
+
+    ENTRY e {
+      arg0 = s32[1,2] parameter(0)
+      arg1 = s32[1] parameter(1)
+      ROOT fusion = (s32[4,2], s32[4]) fusion(arg0, arg1), kind=kCustom,
+        calls=f
+    })",
+                                    {1, 1, 1}));
+  EXPECT_THAT(GetSchedule(tiled_computation),
+              IsOkAndHolds(MatchSchedule("d0 -> pid / 2, d1 -> pid mod 2, "
+                                         "d2 -> pid / 2 + (pid mod 2) * 4, "
+                                         "num_pids=8, num_tiles=8")));
+}
+
+// Output 1's single-tile private dim (d3) cannot mask; d2 is pushed out of
+// bounds.
+TEST_F(SchedulingTest, VariadicAllGatherOutputWithSingleTileIsPadded) {
+  ASSERT_OK_AND_ASSIGN(const TiledHloComputation tiled_computation,
+                       ParseAndTile(R"(
+    f {
+      p0 = s32[1,2] parameter(0)
+      p1 = s32[1,1] parameter(1)
+      ag = (s32[4,2], s32[4,1]) all-gather(p0, p1),
+        replica_groups={{0,1,2,3}}, dimensions={0}
+      gte0 = s32[4,2] get-tuple-element(ag), index=0
+      gte1 = s32[4,1] get-tuple-element(ag), index=1
+      ROOT t = (s32[4,2], s32[4,1]) tuple(gte0, gte1)
+    }
+
+    ENTRY e {
+      arg0 = s32[1,2] parameter(0)
+      arg1 = s32[1,1] parameter(1)
+      ROOT fusion = (s32[4,2], s32[4,1]) fusion(arg0, arg1), kind=kCustom,
+        calls=f
+    })",
+                                    {1, 1, 1, 1}));
+  EXPECT_THAT(GetSchedule(tiled_computation),
+              IsOkAndHolds(MatchSchedule("d0 -> pid / 2, d1 -> pid mod 2, "
+                                         "d2 -> pid / 2 + (pid mod 2) * 4, "
+                                         "d3 -> pid mod 2, "
+                                         "num_pids=8, num_tiles=8")));
+}
+
+// Six outputs with 2..10 tiles/peer share peer index `pid / 10`.
+TEST_F(SchedulingTest, VariadicAllGatherWithMixedTileCounts) {
+  ASSERT_OK_AND_ASSIGN(
+      const TiledHloComputation tiled_computation,
+      ParseAndTile(R"(
+    f {
+      p0 = f32[1,163840] parameter(0)
+      p1 = pred[1,256] parameter(1)
+      p2 = s32[1,512] parameter(2)
+      p3 = pred[1,2] parameter(3)
+      p4 = pred[1,2] parameter(4)
+      p5 = s32[1,16] parameter(5)
+      ag = (f32[4,163840], pred[4,256], s32[4,512], pred[4,2], pred[4,2],
+        s32[4,16]) all-gather(p0, p1, p2, p3, p4, p5),
+        replica_groups={{0,1,2,3}}, dimensions={0}
+      gte0 = f32[4,163840] get-tuple-element(ag), index=0
+      gte1 = pred[4,256] get-tuple-element(ag), index=1
+      gte2 = s32[4,512] get-tuple-element(ag), index=2
+      gte3 = pred[4,2] get-tuple-element(ag), index=3
+      gte4 = pred[4,2] get-tuple-element(ag), index=4
+      gte5 = s32[4,16] get-tuple-element(ag), index=5
+      ROOT t = (f32[4,163840], pred[4,256], s32[4,512], pred[4,2], pred[4,2],
+        s32[4,16]) tuple(gte0, gte1, gte2, gte3, gte4, gte5)
+    }
+
+    ENTRY e {
+      p0 = f32[1,163840] parameter(0)
+      p1 = pred[1,256] parameter(1)
+      p2 = s32[1,512] parameter(2)
+      p3 = pred[1,2] parameter(3)
+      p4 = pred[1,2] parameter(4)
+      p5 = s32[1,16] parameter(5)
+      ROOT fusion = (f32[4,163840], pred[4,256], s32[4,512], pred[4,2],
+        pred[4,2], s32[4,16]) fusion(p0, p1, p2, p3, p4, p5), kind=kCustom,
+        calls=f
+    })",
+                   {1, 16384, 1, 64, 1, 128, 1, 1, 1, 1, 1, 4}));
+  EXPECT_THAT(GetSchedule(tiled_computation),
+              IsOkAndHolds(MatchSchedule("d0 -> pid / 10, d1 -> pid mod 10, "
+                                         "d2 -> pid / 10, d3 -> pid mod 10, "
+                                         "d4 -> pid / 10, d5 -> pid mod 10, "
+                                         "d6 -> pid / 10, d7 -> pid mod 10, "
+                                         "d8 -> pid / 10, d9 -> pid mod 10, "
+                                         "d10 -> pid / 10, d11 -> pid mod 10, "
+                                         "num_pids=40, num_tiles=40")));
+}
+
+TEST_F(SchedulingTest, VariadicAllGatherTileSpanningPeersIsRejected) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    f {
+      p0 = f32[1,8,16] parameter(0)
+      p1 = s32[1,8] parameter(1)
+      ag = (f32[4,8,16], s32[4,8]) all-gather(p0, p1),
+        replica_groups={{0,1,2,3}}, dimensions={0}
+      gte0 = f32[4,8,16] get-tuple-element(ag), index=0
+      gte1 = s32[4,8] get-tuple-element(ag), index=1
+      ROOT t = (f32[4,8,16], s32[4,8]) tuple(gte0, gte1)
+    }
+
+    ENTRY e {
+      arg0 = f32[1,8,16] parameter(0)
+      arg1 = s32[1,8] parameter(1)
+      ROOT fusion = (f32[4,8,16], s32[4,8]) fusion(arg0, arg1),
+        kind=kCustom, calls=f
+    })");
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  ASSERT_OK_AND_ASSIGN(auto tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+  ASSERT_OK(tiling_space->AssignTileSizes({2, 8, 16, 1, 8}));
+  EXPECT_THAT(
+      TiledHloComputation::Tile(*fusion_adaptor, std::move(tiling_space)),
+      StatusIs(absl::StatusCode::kUnimplemented,
+               HasSubstr("expected tile size to divide per-rank size")));
+}
+
+// Both outputs have 2 gather tiles/peer; output 1 is padded past the last peer.
+TEST_F(SchedulingTest, VariadicAllGatherMultipleTilesPerPeerOnGatherDim) {
+  ASSERT_OK_AND_ASSIGN(const TiledHloComputation tiled_computation,
+                       ParseAndTile(R"(
+    f {
+      p0 = f32[4,16] parameter(0)
+      p1 = s32[2] parameter(1)
+      ag = (f32[16,16], s32[8]) all-gather(p0, p1),
+        replica_groups={{0,1,2,3}}, dimensions={0}
+      gte0 = f32[16,16] get-tuple-element(ag), index=0
+      gte1 = s32[8] get-tuple-element(ag), index=1
+      ROOT t = (f32[16,16], s32[8]) tuple(gte0, gte1)
+    }
+
+    ENTRY e {
+      arg0 = f32[4,16] parameter(0)
+      arg1 = s32[2] parameter(1)
+      ROOT fusion = (f32[16,16], s32[8]) fusion(arg0, arg1),
+        kind=kCustom, calls=f
+    })",
+                                    {2, 8, 1}));
+  EXPECT_THAT(
+      GetSchedule(tiled_computation),
+      IsOkAndHolds(MatchSchedule(
+          "d0 -> (pid / 4) * 2 + pid mod 4 mod 2, d1 -> (pid mod 4) / 2, "
+          "d2 -> (pid / 4) * 2 + pid mod 4 + ((pid mod 4) / 2) * 8, "
+          "num_pids=16, num_tiles=16")));
+}
+
+TEST_F(SchedulingTest,
+       InteriorVariadicAllGatherConsumedByElementwiseSharesPeerIndex) {
+  ASSERT_OK_AND_ASSIGN(const TiledHloComputation tiled_computation,
+                       ParseAndTile(R"(
+    f {
+      p0 = f32[2,16] parameter(0)
+      p1 = s32[4] parameter(1)
+      ag = (f32[8,16], s32[16]) all-gather(p0, p1),
+        replica_groups={{0,1,2,3}}, dimensions={0}
+      gte0 = f32[8,16] get-tuple-element(ag), index=0
+      gte1 = s32[16] get-tuple-element(ag), index=1
+      c0 = bf16[8,16] convert(gte0)
+      c1 = f32[16] convert(gte1)
+      ROOT t = (bf16[8,16], f32[16]) tuple(c0, c1)
+    }
+
+    ENTRY e {
+      arg0 = f32[2,16] parameter(0)
+      arg1 = s32[4] parameter(1)
+      ROOT fusion = (bf16[8,16], f32[16]) fusion(arg0, arg1),
+        kind=kCustom, calls=f
+    })",
+                                    {2, 8, 2}));
+  EXPECT_THAT(GetSchedule(tiled_computation),
+              IsOkAndHolds(MatchSchedule("d0 -> pid / 2, d1 -> pid mod 2, "
+                                         "d2 -> (pid / 2) * 2 + pid mod 2, "
+                                         "num_pids=8, num_tiles=8")));
+}
+
+TEST_F(SchedulingTest, VariadicAllGatherWithDotProducersSharesPeerIndex) {
+  ASSERT_OK_AND_ASSIGN(const TiledHloComputation tiled_computation,
+                       ParseAndTile(R"(
+    f {
+      lhs0 = f32[2,8] parameter(0)
+      rhs0 = f32[8,16] parameter(1)
+      lhs1 = f32[4,8] parameter(2)
+      rhs1 = f32[8,32] parameter(3)
+      dot0 = f32[2,16] dot(lhs0, rhs0),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      dot1 = f32[4,32] dot(lhs1, rhs1),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      ag = (f32[8,16], f32[16,32]) all-gather(dot0, dot1),
+        replica_groups={{0,1,2,3}}, dimensions={0}
+      gte0 = f32[8,16] get-tuple-element(ag), index=0
+      gte1 = f32[16,32] get-tuple-element(ag), index=1
+      ROOT t = (f32[8,16], f32[16,32]) tuple(gte0, gte1)
+    }
+
+    ENTRY e {
+      lhs0 = f32[2,8] parameter(0)
+      rhs0 = f32[8,16] parameter(1)
+      lhs1 = f32[4,8] parameter(2)
+      rhs1 = f32[8,32] parameter(3)
+      ROOT fusion = (f32[8,16], f32[16,32]) fusion(lhs0, rhs0, lhs1, rhs1),
+        kind=kCustom, calls=f
+    })",
+                                    {2, 8, 2, 16, 8, 8}));
+  EXPECT_THAT(
+      GetSchedule(tiled_computation),
+      IsOkAndHolds(MatchSchedule(
+          "d0 -> pid / 4, d1 -> pid mod 4, "
+          "d2 -> (pid / 4) * 2 + pid mod 4 mod 2, d3 -> (pid mod 4) / 2, "
+          "num_pids=16, num_tiles=16")));
+}
+
+TEST_F(SchedulingTest, SingleOperandReduceScatterReplicaDimension) {
+  ASSERT_OK_AND_ASSIGN(const TiledHloComputation tiled_computation,
+                       ParseAndTile(R"(
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+
+    f {
+      p0 = f32[8,64] parameter(0)
+      ROOT rs = f32[4,64] reduce-scatter(p0),
+        replica_groups={{0,1}}, dimensions={0}, to_apply=add
+    }
+
+    ENTRY e {
+      arg0 = f32[8,64] parameter(0)
+      ROOT fusion = f32[4,64] fusion(arg0), kind=kCustom, calls=f
+    })",
+                                    {1, 32}));
+  EXPECT_THAT(GetSchedule(tiled_computation),
+              IsOkAndHolds(
+                  MatchSchedule("d0 -> (pid mod 4) / 2, d1 -> pid mod 4 mod 2, "
+                                "d2 -> pid / 4, num_pids=8, num_tiles=8")));
 }
 
 }  // namespace xla::gpu::experimental

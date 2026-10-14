@@ -20,11 +20,19 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/symmetric_memory.h"
+#include "xla/ffi/api/record_c_api.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_executor.h"
+
+namespace xla::ffi {
+struct RecordContext;
+}  // namespace xla::ffi
 
 namespace xla::gpu {
 
@@ -42,6 +50,13 @@ absl::Status LaunchMultiGpuBarrierWithNccl(
     stream_executor::Stream* stream, int64_t num_devices, RankId rank,
     xla::SymmetricMemory* symmetric_memory,
     stream_executor::DeviceAddressBase local_barrier_signal_value);
+
+absl::StatusOr<const XLA_FFI_Command*> RecordMultiGpuBarrierWithNccl(
+    stream_executor::StreamExecutor* executor,
+    xla::ffi::RecordContext& record_ctx, int64_t num_devices, RankId rank,
+    xla::SymmetricMemory* symmetric_memory,
+    stream_executor::DeviceAddressBase local_barrier_signal_value,
+    const XLA_FFI_Command* absl_nullable cmd);
 
 // Returns the size of the barrier signal buffer in bytes.
 size_t GetMultiGpuBarrierSignalBufferSize();

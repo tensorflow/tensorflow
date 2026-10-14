@@ -95,7 +95,7 @@ class RangeOp : public OpKernel {
               "Requires start >= limit when delta < 0: ", start, "/", limit));
     }
     int64_t size;
-    if constexpr (std::is_integral<T>::value) {
+    if constexpr (std::is_integral_v<T>) {
       uint64_t range;
       if ((limit > 0 && start < 0) || (limit < 0 && start > 0)) {
         range = static_cast<uint64_t>(Eigen::numext::abs(limit)) +

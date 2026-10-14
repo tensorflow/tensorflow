@@ -35,6 +35,15 @@ class BuiltinOpResolver : public MutableOpResolver {
   // derived instance to a variable of this class. See "object slicing"
   // (https://en.wikipedia.org/wiki/Object_slicing)) for details.
   BuiltinOpResolver();
+
+ protected:
+  // Registers the builtin ops without any default delegate creators, so that
+  // the default (XNNPACK) delegate is not referenced and can be dead-stripped.
+  struct WithoutDefaultDelegatesTag {};
+  explicit BuiltinOpResolver(WithoutDefaultDelegatesTag);
+
+ private:
+  void RegisterBuiltinOps();
 };
 
 // This built-in op resolver enables XNNPACK by default for all types.
@@ -52,10 +61,8 @@ class BuiltinOpResolverWithXNNPACK : public BuiltinOpResolver {
 // BuiltinOpResolverWithoutDefaultDelegates.
 class BuiltinOpResolverWithoutDefaultDelegates : public BuiltinOpResolver {
  public:
-  BuiltinOpResolverWithoutDefaultDelegates() : BuiltinOpResolver() {
-    delegate_creators_.clear();
-    opaque_delegate_creators_.clear();
-  }
+  BuiltinOpResolverWithoutDefaultDelegates()
+      : BuiltinOpResolver(WithoutDefaultDelegatesTag{}) {}
 };
 
 }  // namespace builtin

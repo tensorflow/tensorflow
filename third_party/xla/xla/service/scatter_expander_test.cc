@@ -35,6 +35,8 @@ limitations under the License.
 namespace xla {
 namespace {
 
+namespace op = xla::testing::opcode_matchers;
+
 class ScatterExpanderTest : public HloHardwareIndependentTestBase {
  protected:
   // The HLO parser changes all no layout shapes from the input to have a
@@ -257,6 +259,36 @@ TEST_F(ScatterExpanderTest,
   EXPECT_FALSE(result);
 }
 
+TEST_F(ScatterExpanderTest, IndexValidityBoundIsClampedToIndexType) {
+  // The bound 299 does not fit into u8 and must be clamped to 255, not
+  // wrapped to 43; the check stays in u8.
+  const char* kModuleStr = R"(
+    HloModule scatter_expander
+
+    scatter_computation {
+      parameter0 = s32[] parameter(0)
+      parameter1 = s32[] parameter(1)
+      ROOT add = s32[] add(parameter0, parameter1)
+    }
+
+    ENTRY kernel_entry {
+      operand = s32[300] parameter(0)
+      indices = u8[1,1] parameter(1)
+      updates = s32[1] parameter(2)
+      ROOT scatter = s32[300] scatter(operand, indices, updates),
+        update_window_dims={}, inserted_window_dims={0},
+        scatter_dims_to_operand_dims={0}, index_vector_dim=1,
+        to_apply=scatter_computation
+    })";
+
+  RunAndFilecheckHloRewrite(
+      kModuleStr, ScatterExpander(ScatterExpander::kEliminateSimpleScatters),
+      R"(
+    // CHECK: %[[BOUND:.*]] = u8[1]{0} constant({255})
+    // CHECK: pred[1]{0} compare(%[[BOUND]], %{{.*}}), direction=GE
+  )");
+}
+
 TEST_F(ScatterExpanderTest, EliminateSimpleScattersRewritesTrivialScatter) {
   const char* kModuleStr = R"(
     HloModule scatter_expander
@@ -407,6 +439,45 @@ TEST_F(ScatterExpanderTest, DoNotEliminateScatterWithAssociativeFp32Combiner) {
   ASSERT_OK_AND_ASSIGN(bool result,
                        RunHloPass(&scatter_expander, module.get()));
   EXPECT_FALSE(result);
+}
+
+TEST_F(ScatterExpanderTest, ExtraFilterRestrictsExpansion) {
+  const char* const kModuleStr = R"(
+    HloModule scatter_expander
+
+    scatter_computation {
+      parameter0 = s32[] parameter(0)
+      ROOT parameter1 = s32[] parameter(1)
+    }
+
+    ENTRY kernel_entry {
+      operand = s32[5] parameter(0)
+      indices = s32[2,1] parameter(1)
+      updates = s32[2] parameter(2)
+      expanded = s32[5] scatter(operand, indices, updates),
+        to_apply=scatter_computation, update_window_dims={},
+        inserted_window_dims={0}, scatter_dims_to_operand_dims={0},
+        index_vector_dim=1
+      kept = s32[5] scatter(operand, indices, updates),
+        to_apply=scatter_computation, update_window_dims={},
+        inserted_window_dims={0}, scatter_dims_to_operand_dims={0},
+        index_vector_dim=1
+      ROOT tuple = (s32[5], s32[5]) tuple(expanded, kept)
+    })";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
+
+  ScatterExpander scatter_expander(ScatterExpander::kEliminateAllScatters,
+                                   [](const HloInstruction* instruction) {
+                                     return instruction->name() == "expanded";
+                                   });
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunHloPass(&scatter_expander, module.get()));
+  EXPECT_TRUE(result);
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root->operand(0), op::GetTupleElement(op::While()));
+  EXPECT_THAT(root->operand(1), op::Scatter());
 }
 
 }  // namespace

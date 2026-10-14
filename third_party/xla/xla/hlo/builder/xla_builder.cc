@@ -212,6 +212,33 @@ XlaOp XlaBuilderFriend::BuildAsyncStart(XlaBuilder* builder,
   return start_op;
 }
 
+XlaOp XlaBuilderFriend::BuildAsyncStart(
+    XlaBuilder* builder, absl::Span<const XlaOp> operands,
+    std::string execution_thread, XlaComputationId called_computation,
+    const Shape& shape,
+    absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
+        output_operand_aliasing) {
+  auto start_op = builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    *instr.mutable_shape() = shape.ToProto();
+    instr.set_async_execution_thread(execution_thread);
+    ABSL_RETURN_IF_ERROR(builder->AddCalledComputation(called_computation, instr));
+    for (const auto& pair : output_operand_aliasing) {
+      OutputOperandAliasing* aliasing = instr.add_output_operand_aliasing();
+      aliasing->set_operand_index(pair.second.first);
+      for (int64_t index : pair.second.second) {
+        aliasing->add_operand_shape_index(index);
+      }
+      for (int64_t index : pair.first) {
+        aliasing->add_output_shape_index(index);
+      }
+    }
+    return builder->AddInstruction(std::move(instr), HloOpcode::kAsyncStart,
+                                   operands);
+  });
+  return start_op;
+}
+
 XlaOp XlaBuilderFriend::BuildAsyncUpdate(XlaBuilder* builder,
                                          const XlaOp operand,
                                          const Shape& shape) {
@@ -1400,7 +1427,7 @@ absl::StatusOr<UnboundedBroadcastResult> BroadcastToOutputShapeWithUnbounded(
 XlaOp XlaBuilder::BinaryOp(HloOpcode binop, XlaOp lhs, XlaOp rhs,
                            absl::Span<const int64_t> broadcast_dimensions,
                            std::optional<ComparisonDirection> direction,
-                           std::optional<Comparison::Type> type) {
+                           std::optional<ComparisonOrder> order) {
   return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     ABSL_ASSIGN_OR_RETURN(const Shape* lhs_shape, GetShapePtr(lhs));
     ABSL_ASSIGN_OR_RETURN(const Shape* rhs_shape, GetShapePtr(rhs));
@@ -1463,10 +1490,10 @@ XlaOp XlaBuilder::BinaryOp(HloOpcode binop, XlaOp lhs, XlaOp rhs,
         return InvalidArgument(
             "kCompare expects a ComparisonDirection, but none provided.");
       }
-      if (type == std::nullopt) {
+      if (order == std::nullopt) {
         return Compare(shape, updated_lhs, updated_rhs, *direction);
       }
-      return Compare(shape, updated_lhs, updated_rhs, *direction, *type);
+      return Compare(shape, updated_lhs, updated_rhs, *direction, *order);
     }
 
     if (direction.has_value()) {
@@ -1491,18 +1518,17 @@ absl::StatusOr<XlaOp> XlaBuilder::Compare(const Shape& shape, XlaOp lhs,
                                           XlaOp rhs,
                                           ComparisonDirection direction) {
   ABSL_ASSIGN_OR_RETURN(auto operand_shape, GetShape(lhs));
-  return Compare(
-      shape, lhs, rhs, direction,
-      Comparison::DefaultComparisonType(operand_shape.element_type()));
+  return Compare(shape, lhs, rhs, direction,
+                 Comparison::DefaultOrdering(operand_shape.element_type()));
 }
 
 absl::StatusOr<XlaOp> XlaBuilder::Compare(const Shape& shape, XlaOp lhs,
                                           XlaOp rhs,
                                           ComparisonDirection direction,
-                                          Comparison::Type type) {
+                                          ComparisonOrder order) {
   HloInstructionProto instr;
   instr.set_comparison_direction(ComparisonDirectionToString(direction));
-  instr.set_comparison_type(ComparisonTypeToString(type));
+  instr.set_comparison_order(ComparisonOrderToShortString(order));
   *instr.mutable_shape() = shape.ToProto();
   return AddInstruction(std::move(instr), HloOpcode::kCompare, {lhs, rhs});
 }
@@ -2192,15 +2218,20 @@ XlaOp XlaBuilder::Dot(XlaOp lhs, XlaOp rhs,
 XlaOp XlaBuilder::DotGeneral(
     XlaOp lhs, XlaOp rhs, const DotDimensionNumbers& dimension_numbers,
     const PrecisionConfig* precision_config,
-    std::optional<PrimitiveType> preferred_element_type) {
+    std::optional<PrimitiveType> preferred_element_type,
+    absl::Span<const XlaOp> ext_operands, const SparsityConfig* sparsity_config,
+    const BlockScalingConfig* block_scaling_config) {
   return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     ABSL_ASSIGN_OR_RETURN(const Shape* lhs_shape, GetShapePtr(lhs));
     ABSL_ASSIGN_OR_RETURN(const Shape* rhs_shape, GetShapePtr(rhs));
-    ABSL_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferDotOpShape(
-                                      *lhs_shape, *rhs_shape, dimension_numbers,
-                                      preferred_element_type));
+    ABSL_ASSIGN_OR_RETURN(
+        Shape shape,
+        ShapeInference::InferDotOpShape(
+            *lhs_shape, *rhs_shape, dimension_numbers, preferred_element_type,
+            sparsity_config ? *sparsity_config : SparsityConfig()));
     return DotGeneralInternal(shape, lhs, rhs, dimension_numbers,
-                              precision_config);
+                              precision_config, ext_operands, sparsity_config,
+                              block_scaling_config);
   });
 }
 
@@ -2230,14 +2261,26 @@ XlaOp XlaBuilder::ScaledDot(
 absl::StatusOr<XlaOp> XlaBuilder::DotGeneralInternal(
     const Shape& shape, XlaOp lhs, XlaOp rhs,
     const DotDimensionNumbers& dimension_numbers,
-    const PrecisionConfig* precision_config) {
+    const PrecisionConfig* precision_config,
+    absl::Span<const XlaOp> ext_operands, const SparsityConfig* sparsity_config,
+    const BlockScalingConfig* block_scaling_config) {
   HloInstructionProto instr;
   *instr.mutable_shape() = shape.ToProto();
   *instr.mutable_dot_dimension_numbers() = dimension_numbers;
   if (precision_config != nullptr) {
     *instr.mutable_precision_config() = *precision_config;
   }
-  return AddInstruction(std::move(instr), HloOpcode::kDot, {lhs, rhs});
+  if (sparsity_config &&
+      (sparsity_config->has_lhs() || sparsity_config->has_rhs())) {
+    *instr.mutable_sparsity_config() = *sparsity_config;
+  }
+  if (block_scaling_config &&
+      (block_scaling_config->has_lhs() || block_scaling_config->has_rhs())) {
+    *instr.mutable_block_scaling_config() = *block_scaling_config;
+  }
+  std::vector<XlaOp> operands = {lhs, rhs};
+  operands.insert(operands.end(), ext_operands.begin(), ext_operands.end());
+  return AddInstruction(std::move(instr), HloOpcode::kDot, operands);
 }
 
 XlaOp ScaledDot(const XlaOp lhs, const XlaOp rhs, const XlaOp lhs_scale,
@@ -3125,6 +3168,28 @@ absl::StatusOr<XlaOp> XlaBuilder::RevInternal(
     instr.add_dimensions(dim);
   }
   return AddInstruction(std::move(instr), HloOpcode::kReverse, {operand});
+}
+
+XlaOp XlaBuilder::Shuffle(XlaOp operand, absl::Span<const int64_t> dimensions,
+                          const ShuffleMode& mode) {
+  return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
+    ABSL_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
+    ABSL_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferShuffleShape(
+                                      *operand_shape, dimensions, mode));
+    return ShuffleInternal(shape, operand, dimensions, mode);
+  });
+}
+
+absl::StatusOr<XlaOp> XlaBuilder::ShuffleInternal(
+    const Shape& shape, XlaOp operand, absl::Span<const int64_t> dimensions,
+    const ShuffleMode& mode) {
+  HloInstructionProto instr;
+  *instr.mutable_shape() = shape.ToProto();
+  for (int64_t dim : dimensions) {
+    instr.add_dimensions(dim);
+  }
+  *instr.mutable_shuffle_mode() = mode;
+  return AddInstruction(std::move(instr), HloOpcode::kShuffle, {operand});
 }
 
 XlaOp XlaBuilder::Sort(absl::Span<const XlaOp> operands,
@@ -5696,12 +5761,12 @@ static XlaOp CompareTotalOrder(const XlaOp lhs, const XlaOp rhs,
   return b->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     ABSL_ASSIGN_OR_RETURN(auto operand_shape, b->GetShape(lhs));
     auto operand_element_type = operand_shape.element_type();
-    auto compare_type =
+    auto compare_order =
         primitive_util::IsFloatingPointType(operand_element_type)
-            ? Comparison::Type::kFloatTotalOrder
-            : Comparison::DefaultComparisonType(operand_element_type);
+            ? ComparisonOrder::kTotal
+            : Comparison::DefaultOrdering(operand_element_type);
     return Compare(lhs, rhs, broadcast_dimensions, comparison_direction,
-                   compare_type);
+                   compare_order);
   });
 }
 
@@ -5775,9 +5840,9 @@ XlaOp Compare(const XlaOp lhs, const XlaOp rhs,
 
 XlaOp Compare(const XlaOp lhs, const XlaOp rhs,
               absl::Span<const int64_t> broadcast_dimensions,
-              ComparisonDirection direction, Comparison::Type compare_type) {
+              ComparisonDirection direction, ComparisonOrder order) {
   return lhs.builder()->BinaryOp(HloOpcode::kCompare, lhs, rhs,
-                                 broadcast_dimensions, direction, compare_type);
+                                 broadcast_dimensions, direction, order);
 }
 
 XlaOp Compare(const XlaOp lhs, const XlaOp rhs, ComparisonDirection direction) {
@@ -5793,9 +5858,13 @@ XlaOp Dot(const XlaOp lhs, const XlaOp rhs,
 XlaOp DotGeneral(const XlaOp lhs, const XlaOp rhs,
                  const DotDimensionNumbers& dimension_numbers,
                  const PrecisionConfig* precision_config,
-                 std::optional<PrimitiveType> preferred_element_type) {
-  return lhs.builder()->DotGeneral(lhs, rhs, dimension_numbers,
-                                   precision_config, preferred_element_type);
+                 std::optional<PrimitiveType> preferred_element_type,
+                 absl::Span<const XlaOp> ext_operands,
+                 const SparsityConfig* sparsity_config,
+                 const BlockScalingConfig* block_scaling_config) {
+  return lhs.builder()->DotGeneral(
+      lhs, rhs, dimension_numbers, precision_config, preferred_element_type,
+      ext_operands, sparsity_config, block_scaling_config);
 }
 
 XlaOp RaggedAllToAll(const XlaOp input, const XlaOp input_offsets,
@@ -6535,6 +6604,11 @@ XlaOp Exp(const XlaOp operand,
   return operand.builder()->UnaryOp(HloOpcode::kExp, operand, result_accuracy);
 }
 
+XlaOp Exp2(const XlaOp operand,
+           const std::optional<ResultAccuracy>& result_accuracy) {
+  return operand.builder()->UnaryOp(HloOpcode::kExp2, operand, result_accuracy);
+}
+
 XlaOp Expm1(const XlaOp operand,
             const std::optional<ResultAccuracy>& result_accuracy) {
   return operand.builder()->UnaryOp(HloOpcode::kExpm1, operand,
@@ -6566,6 +6640,11 @@ XlaOp Log1p(const XlaOp operand,
             const std::optional<ResultAccuracy>& result_accuracy) {
   return operand.builder()->UnaryOp(HloOpcode::kLog1p, operand,
                                     result_accuracy);
+}
+
+XlaOp Log2(const XlaOp operand,
+           const std::optional<ResultAccuracy>& result_accuracy) {
+  return operand.builder()->UnaryOp(HloOpcode::kLog2, operand, result_accuracy);
 }
 
 XlaOp Erf(const XlaOp operand,
@@ -6664,6 +6743,11 @@ XlaOp Transpose(const XlaOp operand, absl::Span<const int64_t> permutation) {
 
 XlaOp Rev(const XlaOp operand, absl::Span<const int64_t> dimensions) {
   return operand.builder()->Rev(operand, dimensions);
+}
+
+XlaOp Shuffle(const XlaOp operand, absl::Span<const int64_t> dimensions,
+              const ShuffleMode& mode) {
+  return operand.builder()->Shuffle(operand, dimensions, mode);
 }
 
 XlaOp Sort(absl::Span<const XlaOp> operands, const XlaComputation& comparator,

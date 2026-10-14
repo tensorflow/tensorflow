@@ -49,6 +49,7 @@ class LocalDmaBenchmarks(memory_base.MemoryBenchmarks):
     vmem_capacity_kib = tpu_info.vmem_capacity_bytes // 1024
     smem_capacity_kib = tpu_info.smem_capacity_bytes // 1024
 
+    self.vmem_capacity_kib = vmem_capacity_kib
     if _VMEM_DMA_SIZE_KIB.value is None:
       self.vmem_dma_size_kib = vmem_capacity_kib - 1024  # capacity - 1 MiB
     else:
@@ -87,6 +88,9 @@ class LocalDmaBenchmarks(memory_base.MemoryBenchmarks):
             memory_space((dma_size_kib, 1024), jnp.uint8),
             *[pltpu.SemaphoreType.DMA] * num_dmas,
         ]),
+        compiler_params=pltpu.CompilerParams(
+            vmem_limit_bytes=self.vmem_capacity_kib * 1024
+        ),
         name=self._KERNEL_NAME,
         interpret=False,
     )

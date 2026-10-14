@@ -57,7 +57,6 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_interpreter_reference_mixin.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/test.h"
@@ -914,11 +913,11 @@ ENTRY entry {
   const HloFusionInstruction* fusion2 = Cast<HloFusionInstruction>(
       module1_and_metadata.computation->FusionInstruction());
 
-  TF_EXPECT_OK(TritonWrapper("test_fn", *fusion2, se::GpuComputeCapability{cc},
-                             device_info,
-                             module2_and_metadata.block_level_parameters,
-                             target_triple, data_layout, mlir_context_)
-                   .status());
+  EXPECT_OK(TritonWrapper("test_fn", *fusion2, se::GpuComputeCapability{cc},
+                          device_info,
+                          module2_and_metadata.block_level_parameters,
+                          target_triple, data_layout, mlir_context_)
+                .status());
 }
 
 // TODO(b/393299275): this test may have some value while Triton tiling

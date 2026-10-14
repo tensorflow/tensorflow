@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/tf2hlo.h"
 
+#include <cstdint>
 #include <memory>
 #include <ostream>
 #include <string>
@@ -43,7 +44,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology_description.h"
 #include "xla/python/ifrt/client.h"
-#include "xla/python/ifrt/mock.h"
 #include "xla/python/ifrt/test_util.h"
 #include "xla/python/pjrt_ifrt/pjrt_topology.h"
 #include "xla/service/device_assignment.h"
@@ -514,18 +514,15 @@ TEST_F(Tf2HloTest, GpuCompile) {
   ASSERT_TRUE(mlir_module);
   ASSERT_TRUE(mlir_module.get() != nullptr);
 
-  xla::ifrt::MockClient mock_client;
-  ON_CALL(mock_client, GetDefaultDeviceAssignment)
-      .WillByDefault([]() -> absl::StatusOr<xla::DeviceAssignment> {
-        return xla::DeviceAssignment(1, 1);
-      });
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
+                          xla::ifrt::test_util::GetClient());
 
   std::vector<DtypeAndShape> dtype_and_shapes;
   dtype_and_shapes.push_back(DtypeAndShape{DT_FLOAT, {}});
 
   TF_ASSERT_OK_AND_ASSIGN(
       tensorflow::tpu::TPUCompileMetadataProto compile_metadata,
-      GetCompileMetadata(mlir_module.get(), mock_client));
+      GetCompileMetadata(mlir_module.get(), *client));
   TF_ASSERT_OK(UpdateCompileMetadata(compile_metadata, dtype_and_shapes));
 
   std::vector<int> variable_arg_indices;
@@ -759,6 +756,60 @@ TEST_F(Tf2HloTest, ToProtoAndFromProto) {
   ASSERT_EQ(result_from_proto.xla_input_shapes.size(), 2);
   EXPECT_EQ(result_from_proto.xla_input_shapes[0], shape0);
   EXPECT_EQ(result_from_proto.xla_input_shapes[1], shape1);
+}
+
+TEST_F(Tf2HloTest, MlirModuleFingerprint) {
+  constexpr absl::string_view kModule = R"mlir(
+    module {
+      func.func @main(%arg0: tensor<1xi32>) -> tensor<1xi32> {
+        return %arg0 : tensor<1xi32>
+      }
+    })mlir";
+  // Same IR, but with a debug location.
+  constexpr absl::string_view kModuleWithLoc = R"mlir(
+    module {
+      func.func @main(%arg0: tensor<1xi32>) -> tensor<1xi32> {
+        return %arg0 : tensor<1xi32> loc("model.py":1:2)
+      }
+    })mlir";
+  // Same IR, but with a module-level attribute.
+  constexpr absl::string_view kModuleWithAttr = R"mlir(
+    module attributes {tf_ifrt.modified_variable_names = ["v"]} {
+      func.func @main(%arg0: tensor<1xi32>) -> tensor<1xi32> {
+        return %arg0 : tensor<1xi32>
+      }
+    })mlir";
+  constexpr absl::string_view kDifferentModule = R"mlir(
+    module {
+      func.func @main(%arg0: tensor<1xi32>) -> tensor<1xi32> {
+        %0 = "tf.Identity"(%arg0) : (tensor<1xi32>) -> tensor<1xi32>
+        return %0 : tensor<1xi32>
+      }
+    })mlir";
+
+  auto parse = [&](absl::string_view mlir) {
+    return mlir::parseSourceString<mlir::ModuleOp>(
+        mlir, mlir::ParserConfig(context_.get()));
+  };
+  mlir::OwningOpRef<mlir::ModuleOp> module = parse(kModule);
+  mlir::OwningOpRef<mlir::ModuleOp> module_with_loc = parse(kModuleWithLoc);
+  mlir::OwningOpRef<mlir::ModuleOp> module_with_attr = parse(kModuleWithAttr);
+  mlir::OwningOpRef<mlir::ModuleOp> different_module = parse(kDifferentModule);
+  ASSERT_TRUE(module);
+  ASSERT_TRUE(module_with_loc);
+  ASSERT_TRUE(module_with_attr);
+  ASSERT_TRUE(different_module);
+
+  const uint64_t fingerprint = MlirModuleFingerprint(module.get());
+  // Deterministic across identical modules.
+  mlir::OwningOpRef<mlir::ModuleOp> module_clone(module->clone());
+  EXPECT_THAT(MlirModuleFingerprint(module_clone.get()), Eq(fingerprint));
+  // Debug locations do not affect the fingerprint.
+  EXPECT_THAT(MlirModuleFingerprint(module_with_loc.get()), Eq(fingerprint));
+  // Module attributes do: callers must strip host-only attributes first.
+  EXPECT_THAT(MlirModuleFingerprint(module_with_attr.get()), Ne(fingerprint));
+  // Different IR produces a different fingerprint.
+  EXPECT_THAT(MlirModuleFingerprint(different_module.get()), Ne(fingerprint));
 }
 
 }  // namespace

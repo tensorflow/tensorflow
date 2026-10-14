@@ -478,7 +478,7 @@ struct FusedBatchNormGrad<CPUDevice, T, U> {
 
     // Maybe allocate a temporary workspace of [rest_size, depth] shape.
     Tensor scratch_rest_by_depth;
-    if (std::is_same<T, U>::value) {
+    if (std::is_same_v<T, U>) {
       OP_REQUIRES(context,
                   scratch_rest_by_depth.CopyFrom(transformed_x_backprop_output,
                                                  {rest_size, depth}),
@@ -583,7 +583,7 @@ struct FusedBatchNormFreezeGrad<CPUDevice, T, U> {
 
     // Maybe allocate a temporary workspace of [rest_size, depth] shape.
     Tensor scratch3_tensor;
-    if (std::is_same<T, U>::value) {
+    if (std::is_same_v<T, U>) {
       OP_REQUIRES(
           context,
           scratch3_tensor.CopyFrom(*x_backprop_output, {rest_size, depth}),

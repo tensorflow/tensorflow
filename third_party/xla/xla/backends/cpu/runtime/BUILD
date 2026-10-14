@@ -193,8 +193,6 @@ cc_library(
         "//xla:executable_run_options",
         "//xla/backends/cpu/collectives:cpu_collectives",
         "//xla/backends/cpu/collectives:in_process_collectives",
-        "//xla/backends/cpu/runtime/ynnpack:ynn_interop",
-        "//xla/backends/cpu/runtime/ynnpack:ynn_threadpool",
         "//xla/ffi:execution_context",
         "//xla/runtime:buffer_use",
         "//xla/runtime:device_id",
@@ -206,6 +204,7 @@ cc_library(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:function_ref",
@@ -213,6 +212,7 @@ cc_library(
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
+        "@tsl//tsl/platform",
         "@tsl//tsl/profiler/lib:traceme",
         "@tsl//tsl/profiler/lib:traceme_encode",
     ],
@@ -277,6 +277,7 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
+        "@tsl//tsl/platform",
         "@tsl//tsl/platform:numbers",
         "@tsl//tsl/profiler/lib:connected_traceme",
         "@tsl//tsl/profiler/lib:context_types_hdrs",
@@ -314,6 +315,7 @@ xla_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
+        "@tsl//tsl/platform",
     ],
 )
 
@@ -728,6 +730,7 @@ cc_library(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:config",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:dynamic_annotations",
         "@com_google_absl//absl/container:inlined_vector",
@@ -741,6 +744,23 @@ cc_library(
         "@llvm-project//mlir:AsmParser",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+xla_cc_test(
+    name = "custom_call_thunk_test",
+    srcs = ["custom_call_thunk_test.cc"],
+    deps = [
+        ":custom_call_thunk",
+        ":thunk",
+        "//xla:custom_options",
+        "//xla:executable_run_options",
+        "//xla/ffi",
+        "//xla/service:hlo_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -781,7 +801,6 @@ cc_library(
         "ignore_for_dep=third_party/tensorflow/compiler/xla/tsl/framework/contraction/eigen_contraction_kernel.h",
     ]),
     deps = [
-        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/functional:any_invocable",
         "@eigen_archive//:eigen3",
     ],
@@ -804,7 +823,6 @@ cc_library(
     hdrs = ["dot_lib.h"],
     deps = [
         "//xla/tsl/framework/contraction:eigen_contraction_kernel",
-        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/functional:any_invocable",
         "@eigen_archive//:eigen3",
     ],
@@ -1041,6 +1059,7 @@ xla_cc_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
+        "@tsl//tsl/platform",
     ],
 )
 
@@ -1266,6 +1285,28 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "fft_thunk_test",
+    srcs = ["fft_thunk_test.cc"],
+    deps = [
+        ":buffer_allocations",
+        ":fft_thunk",
+        ":thunk",
+        ":thunk_testlib",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla:types",
+        "//xla:xla_data_proto_cc",
+        "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_googletest//:gtest_main",
+        "@eigen_archive//:eigen3",
+    ],
+)
+
 cc_library(
     name = "topk_lib",
     hdrs = ["topk_lib.h"],
@@ -1334,7 +1375,6 @@ cc_library(
         ":while_thunk",
         "//xla:shape_util",
         "//xla:util",
-        "//xla/backends/cpu/runtime/ynnpack:ynn_interop",
         "//xla/runtime:work_group",
         "//xla/service:collective_ops_utils",
         "//xla/service:shaped_slice",

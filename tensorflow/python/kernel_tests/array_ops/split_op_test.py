@@ -121,6 +121,63 @@ class SplitOpTest(test.TestCase):
     self.assertAllEqual(r[2], value[4:])
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.disable_xla(
+      "XLA shape inference rejects the reshape to an INT64_MAX dimension, so "
+      "the test cannot reach the SplitV kernel under XLA"
+  )
+  def testSizeSplitsOverflowRaises(self):
+    # Regression test for GitHub issue 126126. The cumulative sum of
+    # size_splits was computed with unchecked signed addition, so a wrapped
+    # total could equal the input dimension, pass validation, and reach a
+    # fatal `Tensor::Slice` invariant in the aligned slicing path. It must
+    # raise instead.
+    i64_max = (1 << 63) - 1
+    i32_max = (1 << 31) - 1
+    for input_size, size_splits, dtype, message in (
+        (i64_max, [i64_max, i64_max, i64_max, 2], dtypes.int64, "overflow"),
+        # A -1 does not keep the other sizes from overflowing.
+        (i64_max, [-1, i64_max, i64_max, 2], dtypes.int64, "overflow"),
+        # int32 sizes overflow at their own width in the kernel. In graph
+        # mode the shape function, which sums in int64, rejects the mismatch
+        # before the kernel runs.
+        (5, [i32_max, i32_max, 5], dtypes.int32, "overflow|can't split axis"),
+    ):
+      with self.subTest(size_splits=size_splits, dtype=dtype.name):
+        value = array_ops.reshape(
+            constant_op.constant([], dtype=dtypes.float32),
+            constant_op.constant([input_size, 0], dtype=dtypes.int64),
+        )
+        with self.assertRaisesRegex(
+            (ValueError, errors_impl.InvalidArgumentError), message
+        ):
+          self.evaluate(
+              array_ops.split(
+                  value, constant_op.constant(size_splits, dtype=dtype), axis=0
+              )
+          )
+
+  @test_util.run_in_graph_and_eager_modes
+  @test_util.disable_xla("Checks the SplitV kernel, which XLA replaces")
+  def testInputSizeAboveSizeSplitsTypeRaises(self):
+    # With int32 size_splits, an input size above INT32_MAX was truncated to
+    # int32, so [1, 2] matched an input of size 2**32 + 3 and the split
+    # silently dropped the rest of the input. In graph mode the shape
+    # function, which compares in int64, rejects the mismatch first.
+    value = array_ops.reshape(
+        constant_op.constant([], dtype=dtypes.float32),
+        constant_op.constant([(1 << 32) + 3, 0], dtype=dtypes.int64),
+    )
+    with self.assertRaisesRegex(
+        (ValueError, errors_impl.InvalidArgumentError),
+        r"must be <= max\(Tlen\)|can't split axis",
+    ):
+      self.evaluate(
+          array_ops.split(
+              value, constant_op.constant([1, 2], dtype=dtypes.int32), axis=0
+          )
+      )
+
+  @test_util.run_in_graph_and_eager_modes
   def testListOfScalarTensors(self):
     a = math_ops.cast(5, dtypes.int32)
     b = math_ops.cast(6, dtypes.int32)

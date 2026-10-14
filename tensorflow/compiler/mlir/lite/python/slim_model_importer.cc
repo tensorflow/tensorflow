@@ -374,8 +374,19 @@ absl::StatusOr<OwningOpRef<ModuleOp>> LoadSlimModel(
                              {combined_builder.getStringAttr(res_name)}));
     }
 
-    std::string inputs_str = absl::StrJoin(arg_names, ",");
-    std::string outputs_str = absl::StrJoin(res_names, ",");
+    std::vector<std::string> entry_input_names;
+    entry_input_names.reserve(arg_names.size());
+    for (const auto& arg_name : arg_names) {
+      entry_input_names.push_back(absl::StrCat(sig_name, "_", arg_name));
+    }
+    std::vector<std::string> entry_output_names;
+    entry_output_names.reserve(res_names.size());
+    for (const auto& res_name : res_names) {
+      entry_output_names.push_back(
+          absl::StrCat(sig_name, "_", res_name, "_output"));
+    }
+    std::string inputs_str = absl::StrJoin(entry_input_names, ",");
+    std::string outputs_str = absl::StrJoin(entry_output_names, ",");
     llvm::SmallVector<mlir::NamedAttribute, 2> entry_function_attrs;
     entry_function_attrs.push_back(combined_builder.getNamedAttr(
         "inputs", combined_builder.getStringAttr(inputs_str)));

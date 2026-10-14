@@ -404,6 +404,11 @@ class DeviceDescription {
     return shared_memory_per_block_optin_;
   }
 
+  // Returns the maximum oversized shared memory available per block.
+  int64_t oversized_shared_memory_per_block() const {
+    return oversized_shared_memory_per_block_;
+  }
+
   // Returns the amount of shared memory reserved by the CUDA driver per block.
   int64_t reserved_shared_memory_per_block() const {
     return reserved_shared_memory_per_block_;
@@ -466,6 +471,10 @@ class DeviceDescription {
 
   uint64_t collective_memory_granularity() const {
     return collective_memory_granularity_;
+  }
+
+  bool confidential_computing_enabled() const {
+    return confidential_computing_enabled_;
   }
 
   ABSL_DEPRECATE_AND_INLINE() GpuDeviceInfoProto ToGpuProto() const {
@@ -553,6 +562,9 @@ class DeviceDescription {
   void set_shared_memory_per_block_optin(int64_t value) {
     shared_memory_per_block_optin_ = value;
   }
+  void set_oversized_shared_memory_per_block(int64_t value) {
+    oversized_shared_memory_per_block_ = value;
+  }
   void set_reserved_shared_memory_per_block(int64_t value) {
     reserved_shared_memory_per_block_ = value;
   }
@@ -584,6 +596,9 @@ class DeviceDescription {
   void set_ecc_enabled(bool value) { ecc_enabled_ = value; }
   void set_collective_memory_granularity(uint64_t value) {
     collective_memory_granularity_ = value;
+  }
+  void set_confidential_computing_enabled(bool value) {
+    confidential_computing_enabled_ = value;
   }
 
   void set_device_interconnect_info(DeviceInterconnectInfo info) {
@@ -650,6 +665,7 @@ class DeviceDescription {
   int64_t shared_memory_per_core_ = kUninitialized<int64_t>;
   int64_t shared_memory_per_block_ = kUninitialized<int64_t>;
   int64_t shared_memory_per_block_optin_ = kUninitialized<int64_t>;
+  int64_t oversized_shared_memory_per_block_ = kUninitialized<int64_t>;
   int64_t reserved_shared_memory_per_block_ = kUninitialized<int64_t>;
   int64_t max_blocks_per_multiprocessor_ = kUninitialized<int64_t>;
 
@@ -674,6 +690,7 @@ class DeviceDescription {
 
   DeviceInterconnectInfo interconnect_info_;
   uint64_t collective_memory_granularity_ = 0;
+  bool confidential_computing_enabled_ = false;
 
   // Please keep the fields in sync with the proto.
   // LINT.ThenChange(//tensorflow/compiler/xla/stream_executor/device_description.proto)

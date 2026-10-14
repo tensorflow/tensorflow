@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <type_traits>
 #define EIGEN_USE_THREADS
 #include "tensorflow/core/kernels/training_ops.h"
 
@@ -1117,6 +1118,11 @@ class ApplyAdadeltaOp : public OpKernel {
         absl::InvalidArgumentError(absl::StrCat(
             "var and grad do not have the same shape",
             var.shape().DebugString(), " ", grad.shape().DebugString())));
+    OP_REQUIRES(ctx, var.shape().IsSameSize(accum_update.shape()),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "var and accum_update do not have the same shape",
+                    var.shape().DebugString(), " ",
+                    accum_update.shape().DebugString())));
   }
 
   void DoCompute(OpKernelContext* ctx) {

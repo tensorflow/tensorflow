@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <numeric>
+#include <optional>
 #include <set>
 #include <string>
 #include <utility>
@@ -26,12 +27,20 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/status_macros.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/codegen/tiling/experimental/tile.h"
 #include "xla/codegen/tiling/experimental/tiled_hlo.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
@@ -39,11 +48,13 @@ limitations under the License.
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/analysis/symbolic_map.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/permutation_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -270,6 +281,271 @@ llvm::SmallVector<int64_t> GetParallelDimensionsPermutation(
   return {};
 }
 
+// What the scheduler needs to know about the index-wise variadic instructions
+// of a computation.
+struct IndexWiseVariadicInfo {
+  // The index-wise variadic instructions, in any region of the computation.
+  llvm::SmallVector<const TiledHloInstruction*, 2> instructions;
+  // Maps each all-gather dimension ID to how many tiles each peer owns along
+  // that dimension.
+  //
+  // Example: `f32[4, 16] -> f32[16, 16] all-gather` across 4 GPUs on dim 0
+  // (`d0`) with tile size [2, 16]:
+  //   - `d0` has 16 / 2 = 8 tiles in total across all 4 GPUs.
+  //   - Each GPU owns a 4-row slice, which is 4 / 2 = 2 tiles along `d0`.
+  //   - So `tiles_per_peer_by_dim[d0] = 2`.
+  llvm::DenseMap<int64_t, int64_t> tiles_per_peer_by_dim;
+  // Number of peers the outputs are read from. 1 if `tiles_per_peer_by_dim`
+  // is empty.
+  int64_t num_peers = 1;
+};
+
+// Collects the index-wise variadic instructions of `region` and its nested
+// regions.
+void CollectIndexWiseVariadic(
+    const TiledHloRegion& region,
+    llvm::SmallVectorImpl<const TiledHloInstruction*>& result) {
+  for (const TiledHloInstruction* instruction : region.instructions()) {
+    if (IsIndexWiseVariadic(*instruction->hlo())) {
+      result.push_back(instruction);
+    }
+    for (const TiledHloRegion& nested : instruction->hlo_regions()) {
+      CollectIndexWiseVariadic(nested, result);
+    }
+  }
+}
+
+// Finds the index-wise variadic instructions of the computation and, for the
+// operand tiles that carry a replica id, derives which parallel tile dimension
+// carries the peer index and how many tiles per peer it spans.
+absl::StatusOr<IndexWiseVariadicInfo> BuildIndexWiseVariadicInfo(
+    const TiledHloComputation& tiled_computation) {
+  IndexWiseVariadicInfo info;
+  CollectIndexWiseVariadic(tiled_computation.tiled_root_region(),
+                           info.instructions);
+  if (info.instructions.empty()) {
+    return info;
+  }
+
+  const TilingSpace& tiling_space = tiled_computation.tiling_space();
+  TF_RET_CHECK(!tiling_space.IsSymbolic())
+      << "Expected tile sizes to be assigned at this point.";
+  llvm::SmallVector<TilingSpace::DimensionInfo, 4> dims =
+      tiling_space.dimensions();
+  const int64_t num_dims = dims.size();
+
+  llvm::SmallVector<int64_t, 4> tile_sizes;
+  tile_sizes.reserve(num_dims);
+  for (const TilingSpace::DimensionInfo& dim : dims) {
+    tile_sizes.push_back(*dim.tile_size);
+  }
+  // Variables are laid out as [tile ids, tile sizes, runtime variables].
+  const int64_t num_vars = 2 * num_dims + tiling_space.num_rt_vars();
+
+  std::optional<int64_t> num_peers;
+  for (const TiledHloInstruction* instruction : info.instructions) {
+    const HloInstruction& hlo = *instruction->hlo();
+    for (const auto& [output_index, operand] :
+         llvm::enumerate(instruction->operands())) {
+      const Tile& tile = operand->tile();
+      if (tile.num_replica_ids() == 0) {
+        // The output tile is not associated with a single peer; nothing to
+        // factor out of its tile ids.
+        continue;
+      }
+      TF_RET_CHECK(tile.num_replica_ids() == 1)
+          << "Only one replica dimension is supported.";
+      const DimTile& replica_dim_tile = tile.replica_ids().back();
+      const int64_t num_replicas = replica_dim_tile.upper_bound.GetValue();
+      SymbolicExpr peer = replica_dim_tile.offset;
+      llvm::DenseSet<VariableID> used_vars;
+      peer.GetUsedVariables(used_vars);
+      if (used_vars.size() != 1 || *used_vars.begin() >= num_dims ||
+          dims[*used_vars.begin()].type !=
+              TilingSpace::DimensionSemantics::kParallel) {
+        return absl::UnimplementedError(absl::StrFormat(
+            "Peer index %s of output %d of %s must depend on exactly one "
+            "parallel tile id.",
+            peer.ToString(num_dims), output_index, hlo.name()));
+      }
+      const int64_t dim_id = *used_vars.begin();
+      // Number of blocks across all replicas.
+      const int64_t num_blocks =
+          CeilOfRatio(dims[dim_id].dimension_size, tile_sizes[dim_id]);
+      if (num_blocks < num_replicas || num_blocks % num_replicas != 0) {
+        return absl::UnimplementedError(absl::StrFormat(
+            "Dimension %d of output %d of %s has %d blocks, which is not a "
+            "multiple of the number of peers %d.",
+            dim_id, output_index, hlo.name(), num_blocks, num_replicas));
+      }
+      const int64_t tiles_per_peer = num_blocks / num_replicas;
+      std::vector<int64_t> values(num_vars, 0);
+      auto peer_at = [&](int64_t tile_id) {
+        values[dim_id] = tile_id;
+        return peer.Evaluate(values);
+      };
+      if (!llvm::all_of(llvm::seq<int64_t>(0, num_blocks), [&](int64_t t) {
+            return peer_at(t) == t / tiles_per_peer;
+          })) {
+        return absl::UnimplementedError(absl::StrFormat(
+            "Peer index %s of output %d of %s must be tile id %d divided by "
+            "%d.",
+            peer.ToString(num_dims), output_index, hlo.name(), dim_id,
+            tiles_per_peer));
+      }
+
+      if (num_peers.has_value() && *num_peers != num_replicas) {
+        return absl::InvalidArgumentError(absl::StrFormat(
+            "Output %d of %s reads from %d peers, but other outputs read "
+            "from %d peers.",
+            output_index, hlo.name(), num_replicas, *num_peers));
+      }
+      num_peers = num_replicas;
+      info.tiles_per_peer_by_dim[dim_id] = tiles_per_peer;
+    }
+  }
+  info.num_peers = num_peers.value_or(1);
+  return info;
+}
+
+// Internal struct for holding the parallel dimensions of a root.
+struct RootDims {
+  // Parallel output dimension whose tile ID encodes the peer index
+  // (all-gather).
+  std::optional<int64_t> peer_dim_id;
+  int64_t tiles_per_peer = 1;
+  llvm::SmallVector<int64_t, 4> non_peer_dim_ids;
+  llvm::SmallVector<int64_t, 4> non_peer_block_counts;
+  int64_t num_tiles = 1;
+};
+
+absl::StatusOr<llvm::SmallVector<RootDims, 2>> BuildRootsForIndexWiseVariadic(
+    const TiledHloComputation& tiled_computation,
+    const IndexWiseVariadicInfo& info) {
+  const TilingSpace& tiling_space = tiled_computation.tiling_space();
+  const bool has_peer_dim = !info.tiles_per_peer_by_dim.empty();
+  // Group the parallel dimensions by the root (output) that defines them.
+  llvm::SmallVector<RootDims, 2> roots;
+  int64_t num_grouped_dims = 0;
+  for (const auto& [root_index, tiled_root] :
+       llvm::enumerate(tiled_computation.roots())) {
+    const HloInstruction& hlo = *tiled_root->hlo();
+    RootDims& root = roots.emplace_back();
+    for (int64_t i = 0; i < GetFirstShape(&hlo).dimensions().size(); ++i) {
+      const TilingSpace::DimensionInfo* dim =
+          &tiling_space.GetDimensionInfo(hlo, i);
+      if (dim->type != TilingSpace::DimensionSemantics::kParallel) {
+        continue;
+      }
+      ++num_grouped_dims;
+      const int64_t dim_id = dim->id.value();
+      auto it = info.tiles_per_peer_by_dim.find(dim_id);
+      if (it == info.tiles_per_peer_by_dim.end()) {
+        root.non_peer_dim_ids.push_back(dim_id);
+        root.non_peer_block_counts.push_back(
+            CeilOfRatio(dim->dimension_size, *dim->tile_size));
+        continue;
+      }
+      if (root.peer_dim_id.has_value()) {
+        return absl::UnimplementedError(absl::StrFormat(
+            "Output %d of %s has more than one dimension carrying the peer "
+            "index.",
+            root_index, hlo.name()));
+      }
+      root.peer_dim_id = dim_id;
+      root.tiles_per_peer = it->second;
+    }
+    if (has_peer_dim && !root.peer_dim_id.has_value()) {
+      return absl::UnimplementedError(
+          absl::StrFormat("Output %d of %s does not depend on the peer index.",
+                          root_index, hlo.name()));
+    }
+    root.num_tiles = Product(root.non_peer_block_counts) * root.tiles_per_peer;
+  }
+  if (num_grouped_dims != tiling_space.num_parallel_dimensions()) {
+    return absl::UnimplementedError(
+        "Not all parallel dimensions are defined by the roots.");
+  }
+  return roots;
+}
+
+absl::StatusOr<Schedule> BuildIndexWiseVariadicSchedule(
+    mlir::MLIRContext* ctx, const IndexWiseVariadicInfo& info,
+    llvm::ArrayRef<RootDims> roots, int64_t num_tiles_per_pid,
+    int64_t max_tiles, bool has_peer_dim, SymbolicExpr global_tile_id) {
+  Schedule schedule;
+  SymbolicExpr peer = global_tile_id.floorDiv(max_tiles);
+  SymbolicExpr intra_peer_tile_id =
+      has_peer_dim ? global_tile_id % max_tiles : global_tile_id;
+  for (const RootDims& root : roots) {
+    llvm::SmallVector<int64_t, 4> block_counts = root.non_peer_block_counts;
+    if (root.tiles_per_peer > 1) {
+      block_counts.push_back(root.tiles_per_peer);
+    }
+    // `DelinearizeIndex` does not wrap its outermost component, so for a padded
+    // tile (`intra_peer_tile_id >= num_tiles`) that component exceeds its
+    // block count and the tile is masked by its upper bound.
+    llvm::SmallVector<SymbolicExpr, 4> delinearized =
+        DelinearizeIndex(block_counts, intra_peer_tile_id, ctx);
+    for (int64_t i = 0; i < root.non_peer_dim_ids.size(); ++i) {
+      schedule.dim_id_to_pid_expr[root.non_peer_dim_ids[i]] = delinearized[i];
+    }
+    if (!root.peer_dim_id.has_value()) {
+      continue;
+    }
+    SymbolicExpr peer_tile_id = peer * root.tiles_per_peer;
+    if (root.tiles_per_peer > 1) {
+      peer_tile_id = peer_tile_id + delinearized.back();
+    }
+    if (root.num_tiles < max_tiles &&
+        (root.non_peer_block_counts.empty() ||
+         root.non_peer_block_counts.front() == 1)) {
+      // No non-trivial non-peer dimension can absorb the padding: a non-peer
+      // dimension covered by a single block folds its tile offset to 0, and
+      // an unpadded `tiles_per_peer` offset would step into the next peer
+      // instead of out of bounds. Push the peer tile id past the last peer.
+      peer_tile_id =
+          peer_tile_id + intra_peer_tile_id.floorDiv(root.num_tiles) *
+                             (info.num_peers * root.tiles_per_peer);
+    }
+    schedule.dim_id_to_pid_expr[*root.peer_dim_id] = peer_tile_id;
+  }
+  schedule.num_tiles = info.num_peers * max_tiles;
+  schedule.num_pids = CeilOfRatio(schedule.num_tiles, num_tiles_per_pid);
+  return schedule;
+}
+
+// Schedules a computation that contains index-wise variadic instructions.
+//
+// All roots are "zipped": one program handles tile `i` of every root, so
+// that each variadic instruction is executed once per program for all of
+// its outputs. If the outputs are associated with a peer the peer index is
+// the outermost tile index and is shared by all roots; below it every root
+// gets its own intra-peer tile index over its remaining ("non-peer")
+// parallel dimensions and any intra-peer tiles along the peer dimension
+// itself. Roots with fewer tiles than the largest root are padded: their
+// padded tiles are mapped out of bounds so that the emitter masks them.
+absl::StatusOr<Schedule> GetIndexWiseVariadicSchedule(
+    const TiledHloComputation& tiled_computation,
+    const IndexWiseVariadicInfo& info, SymbolicExpr global_tile_id,
+    int64_t num_tiles_per_pid) {
+  mlir::MLIRContext* ctx = tiled_computation.GetMLIRContext();
+  const bool has_peer_dim = !info.tiles_per_peer_by_dim.empty();
+  using Roots = llvm::SmallVector<RootDims, 2>;
+  ABSL_ASSIGN_OR_RETURN(Roots roots,
+                   BuildRootsForIndexWiseVariadic(tiled_computation, info));
+
+  // Find the maximum number of tiles across all roots.
+  int64_t max_tiles = 1;
+  for (const RootDims& root : roots) {
+    max_tiles = std::max(max_tiles, root.num_tiles);
+  }
+  // Now build the scheduled rooted on the output with the max number of tiles.
+  return BuildIndexWiseVariadicSchedule(ctx, info, roots, num_tiles_per_pid,
+                                        max_tiles, has_peer_dim,
+                                        global_tile_id);
+}
+
 }  // namespace
 
 std::string Schedule::ToString() const {
@@ -290,17 +566,37 @@ std::string Schedule::ToString() const {
 
 absl::StatusOr<Schedule> GetSchedule(
     const TiledHloComputation& tiled_computation, int64_t num_tiles_per_pid) {
-  // Compute the block counts for each parallel dimension.
+  mlir::MLIRContext* ctx = tiled_computation.GetMLIRContext();
+  SymbolicExpr program_id = CreateDimExpr(0, ctx);
+  SymbolicExpr global_tile_id = program_id;
+  if (num_tiles_per_pid > 1) {
+    SymbolicExpr tile_id = CreateDimExpr(1, ctx);
+    global_tile_id = program_id * num_tiles_per_pid + tile_id;
+  }
+  ABSL_ASSIGN_OR_RETURN(IndexWiseVariadicInfo variadic_info,
+                   BuildIndexWiseVariadicInfo(tiled_computation));
+  if (!variadic_info.instructions.empty()) {
+    return GetIndexWiseVariadicSchedule(tiled_computation, variadic_info,
+                                        global_tile_id, num_tiles_per_pid);
+  }
+
+  // Compute the block counts for each replica and parallel dimension.
+  // Replica dimensions are placed outermost so each contiguous group of
+  // parallel blocks targets the same peer.
+  const TilingSpace& tiling_space = tiled_computation.tiling_space();
+  llvm::SmallVector<int64_t, 4> block_counts;
+  llvm::SmallVector<int64_t, 4> dim_ids;
   llvm::SmallVector<int64_t, 4> parallel_dim_block_counts;
   llvm::SmallVector<int64_t, 4> parallel_dim_ids;
   for (const auto& [dim_id, dimension] :
-       llvm::enumerate(tiled_computation.tiling_space().dimensions())) {
-    if (dimension.type != TilingSpace::DimensionSemantics::kParallel) {
-      continue;
+       llvm::enumerate(tiling_space.dimensions())) {
+    if (dimension.type == TilingSpace::DimensionSemantics::kReplica) {
+      block_counts.push_back(tiling_space.GetNumTiles(dimension));
+      dim_ids.push_back(dim_id);
+    } else if (dimension.type == TilingSpace::DimensionSemantics::kParallel) {
+      parallel_dim_block_counts.push_back(tiling_space.GetNumTiles(dimension));
+      parallel_dim_ids.push_back(dim_id);
     }
-    parallel_dim_block_counts.push_back(
-        CeilOfRatio(dimension.dimension_size, *dimension.tile_size));
-    parallel_dim_ids.push_back(dim_id);
   }
 
   llvm::SmallVector<int64_t> permutation =
@@ -311,22 +607,16 @@ absl::StatusOr<Schedule> GetSchedule(
     parallel_dim_ids =
         llvm::to_vector<4>(xla::Permute(parallel_dim_ids, permutation));
   }
+  block_counts.append(parallel_dim_block_counts);
+  dim_ids.append(parallel_dim_ids);
 
-  mlir::MLIRContext* ctx = tiled_computation.GetMLIRContext();
-  SymbolicExpr program_id = CreateDimExpr(0, ctx);
-  SymbolicExpr global_tile_id = program_id;
-  if (num_tiles_per_pid > 1) {
-    SymbolicExpr tile_id = CreateDimExpr(1, ctx);
-    global_tile_id = program_id * num_tiles_per_pid + tile_id;
-  }
   llvm::SmallVector<SymbolicExpr, 4> delinearized_pid =
-      DelinearizeIndex(parallel_dim_block_counts, global_tile_id, ctx);
+      DelinearizeIndex(block_counts, global_tile_id, ctx);
   Schedule schedule;
-  for (const auto& [parallel_dim_id, expr] :
-       llvm::zip(parallel_dim_ids, delinearized_pid)) {
-    schedule.dim_id_to_pid_expr[parallel_dim_id] = expr;
+  for (const auto& [dim_id, expr] : llvm::zip(dim_ids, delinearized_pid)) {
+    schedule.dim_id_to_pid_expr[dim_id] = expr;
   }
-  schedule.num_tiles = Product(parallel_dim_block_counts);
+  schedule.num_tiles = Product(block_counts);
   schedule.num_pids = CeilOfRatio(schedule.num_tiles, num_tiles_per_pid);
   return schedule;
 }

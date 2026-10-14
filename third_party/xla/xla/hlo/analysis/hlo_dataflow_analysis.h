@@ -20,6 +20,8 @@ limitations under the License.
 #ifndef XLA_HLO_ANALYSIS_HLO_DATAFLOW_ANALYSIS_H_
 #define XLA_HLO_ANALYSIS_HLO_DATAFLOW_ANALYSIS_H_
 
+#include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -88,7 +90,8 @@ class HloDataflowAnalysis {
       absl::flat_hash_set<absl::string_view> execution_threads = {},
       bool propagate_through_calls = true,
       std::optional<absl::FunctionRef<bool(const HloValue&)>> precompute_uses =
-          std::nullopt);
+          std::nullopt,
+      bool propagate_through_control_flow = true);
 
   // Returns true if 'instruction' defines an HLO value at the given shape index
   // of its output.
@@ -219,7 +222,8 @@ class HloDataflowAnalysis {
   HloDataflowAnalysis(const HloModule& module, bool ssa_form,
                       bool bitcast_defines_value,
                       absl::flat_hash_set<absl::string_view> execution_threads,
-                      bool propagate_through_calls = true);
+                      bool propagate_through_calls = true,
+                      bool propagate_through_control_flow = true);
 
   // Runs dataflow analysis on the module attached to this HloDataflowAnalysis.
   absl::Status RunImpl();
@@ -335,6 +339,7 @@ class HloDataflowAnalysis {
   const bool ssa_form_;
   const bool bitcast_defines_value_;
   bool propagate_through_calls_ = true;
+  bool propagate_through_control_flow_ = true;
 
   std::unique_ptr<CallGraph> call_graph_;
 
@@ -370,6 +375,311 @@ class HloDataflowAnalysis {
   mutable absl::flat_hash_map<std::pair<HloInstruction*, ShapeIndex>,
                               absl::flat_hash_set<HloUse>>
       cache_share_buffer_with_operand_;
+};
+
+// Options controlling which computation boundaries are visited by
+// HloDataflowPropagation.
+struct HloCallBoundaryOptions {
+  // Include kCall instructions.
+  bool include_calls = true;
+  // Include kWhile, kConditional, and kAsyncStart instructions.
+  bool include_control_flow = true;
+  // Include kFusion instructions.
+  bool include_fusions = true;
+  // Include associative kScan instructions.
+  bool include_associative_scans = true;
+  // Optional execution thread filter applied to caller and callee computations
+  // across all boundary instruction kinds (and async_execution_thread() on
+  // kAsyncStart). When nullptr or empty, all threads are included.
+  const absl::flat_hash_set<absl::string_view>* execution_threads = nullptr;
+
+  constexpr HloCallBoundaryOptions() = default;
+  constexpr HloCallBoundaryOptions(
+      bool include_calls_in, bool include_control_flow_in,
+      bool include_fusions_in, bool include_associative_scans_in = false,
+      const absl::flat_hash_set<absl::string_view>* execution_threads_in =
+          nullptr)
+      : include_calls(include_calls_in),
+        include_control_flow(include_control_flow_in),
+        include_fusions(include_fusions_in),
+        include_associative_scans(include_associative_scans_in),
+        execution_threads(execution_threads_in) {}
+};
+
+// Describes the dataflow boundary between a callsite instruction and one of its
+// called computations.
+struct HloCallBoundary {
+  // The calling instruction (kCall, kWhile, kConditional, kAsyncStart, kFusion,
+  // or associative kScan).
+  const HloInstruction* callsite = nullptr;
+  // The called computation.
+  HloComputation* callee = nullptr;
+  // Contiguous span of caller operands feeding `callee`'s parameters in order:
+  // `caller_operands[param_no]` feeds
+  // `callee->parameter_instruction(param_no)`.
+  absl::Span<HloInstruction* const> caller_operands;
+  // Index of `caller_operands[0]` in `callsite->operands()` (b + 1 for
+  // conditional branch b, 0 for all other instructions).
+  int64_t first_operand_index = 0;
+  // True if `callee->root_instruction()` flows into `callsite`'s output (true
+  // for all boundary types except `while_condition()`).
+  bool root_feeds_callsite = true;
+  // ShapeIndex prefix on `callsite->shape()` where `callee->root_instruction()`
+  // appears ({1} for kAsyncStart, {} for all other instructions).
+  ShapeIndex callsite_output_prefix;
+
+  HloCallBoundary() = default;
+  HloCallBoundary(const HloInstruction* callsite_in, HloComputation* callee_in,
+                  absl::Span<HloInstruction* const> caller_operands_in,
+                  int64_t first_operand_index_in, bool root_feeds_callsite_in,
+                  ShapeIndex callsite_output_prefix_in)
+      : callsite(callsite_in),
+        callee(callee_in),
+        caller_operands(caller_operands_in),
+        first_operand_index(first_operand_index_in),
+        root_feeds_callsite(root_feeds_callsite_in),
+        callsite_output_prefix(std::move(callsite_output_prefix_in)) {}
+
+  int64_t num_parameters() const {
+    return std::min<int64_t>(caller_operands.size(), callee->num_parameters());
+  }
+
+  int64_t caller_operand_index(int64_t param_no) const {
+    return first_operand_index + param_no;
+  }
+
+  HloInstruction* caller_operand(int64_t param_no) const {
+    return caller_operands[param_no];
+  }
+
+  HloInstruction* callee_parameter(int64_t param_no) const {
+    return callee->parameter_instruction(param_no);
+  }
+
+  HloInstruction* callee_root() const { return callee->root_instruction(); }
+
+  // Maps a ShapeIndex on `callee->root_instruction()` to the corresponding
+  // ShapeIndex on `callsite->shape()`.
+  ShapeIndex CallerOutputIndex(const ShapeIndex& root_index) const {
+    ShapeIndex result = callsite_output_prefix;
+    result.insert(result.end(), root_index.begin(), root_index.end());
+    return result;
+  }
+
+  // Maps a ShapeIndex on `callsite->shape()` to the corresponding ShapeIndex on
+  // `callee->root_instruction()`, or returns std::nullopt if
+  // `!root_feeds_callsite` or `caller_output_index` does not match
+  // `callsite_output_prefix`.
+  std::optional<ShapeIndex> CalleeRootIndex(
+      const ShapeIndex& caller_output_index) const {
+    if (!root_feeds_callsite ||
+        caller_output_index.size() < callsite_output_prefix.size()) {
+      return std::nullopt;
+    }
+    for (size_t i = 0; i < callsite_output_prefix.size(); ++i) {
+      if (caller_output_index[i] != callsite_output_prefix[i]) {
+        return std::nullopt;
+      }
+    }
+    return ShapeIndex(
+        caller_output_index.begin() + callsite_output_prefix.size(),
+        caller_output_index.end());
+  }
+};
+
+// Base class and helper for propagating dataflow properties across computation
+// call boundaries (kCall, kWhile, kConditional, kAsyncStart, kFusion, and
+// associative kScan) over an HloDataflowAnalysis.
+//
+// Subclasses implement `HasValueAt` and `PropagateAcrossEdge` (plus optional
+// policy hooks for while loops, conditionals, and computation flushing) and
+// invoke `Run(computations)` for full module fixed point propagation or
+// `PropagateForValue(value)` for incremental single value propagation.
+class HloDataflowPropagation {
+ public:
+  explicit HloDataflowPropagation(
+      const HloDataflowAnalysis* dataflow_analysis = nullptr,
+      const HloCallBoundaryOptions& options = {})
+      : dataflow_analysis_(dataflow_analysis), options_(options) {}
+  virtual ~HloDataflowPropagation() = default;
+
+  void set_dataflow_analysis(const HloDataflowAnalysis* dataflow_analysis) {
+    dataflow_analysis_ = dataflow_analysis;
+  }
+
+  // Runs iterative bottom up (callee to caller) and top down (caller to callee)
+  // propagation across `computations` until convergence.
+  absl::Status Run(absl::Span<HloComputation* const> computations);
+
+  // Propagates a single newly constrained HloValue across any call boundaries
+  // its positions touch.
+  absl::Status PropagateForValue(const HloValue& value);
+
+  // Propagates constrained parameter and root positions of `computation` to its
+  // caller instructions' operands and outputs.
+  absl::Status PropagateCalleeToCallers(HloComputation* computation,
+                                        bool* changed);
+
+  // Propagates constrained operand and output positions of callsite
+  // instructions in `computation` into their called computations' parameters
+  // and roots.
+  absl::Status PropagateCallerToCallees(HloComputation* computation,
+                                        bool* changed);
+
+  // Directional boundary propagation steps.
+  absl::Status PropagateParameterToCallers(const HloInstruction* param,
+                                           const ShapeIndex& index,
+                                           bool allow_override, bool* changed);
+  absl::Status PropagateRootToCallers(const HloInstruction* root,
+                                      const ShapeIndex& index,
+                                      bool allow_override, bool* changed);
+  absl::Status PropagateCallerOutputToCallees(const HloInstruction* caller,
+                                              const ShapeIndex& index,
+                                              bool allow_override,
+                                              bool* changed);
+  absl::Status PropagateCallerOperandToCallees(const HloInstruction* caller,
+                                               const HloInstruction* operand,
+                                               const ShapeIndex& index,
+                                               bool allow_override,
+                                               bool* changed);
+  absl::Status PropagateWhileBoundary(const HloInstruction* while_inst,
+                                      const ShapeIndex& index,
+                                      const HloInstruction* fallback_source,
+                                      bool allow_override, bool* changed,
+                                      bool check_caller_to_body);
+
+  // Invokes `fn(index)` for each subshape index of `instruction` where
+  // `HasValueAt(instruction, index)` holds.
+  absl::Status ForEachConstrainedSubshape(
+      const HloInstruction* instruction,
+      absl::FunctionRef<absl::Status(const ShapeIndex&)> fn) const;
+
+  // Visits each HloCallBoundary of `callsite` enabled by `options`.
+  static absl::Status ForEachCallBoundaryWithStatus(
+      const HloInstruction* callsite,
+      absl::FunctionRef<absl::Status(const HloCallBoundary&)> fn,
+      const HloCallBoundaryOptions& options = {});
+
+  static void ForEachCallBoundary(
+      const HloInstruction* callsite,
+      absl::FunctionRef<void(const HloCallBoundary&)> fn,
+      const HloCallBoundaryOptions& options = {});
+
+  // Visits each HloCallBoundary in caller instructions that invokes `callee`.
+  static absl::Status ForEachCallerBoundaryWithStatus(
+      const HloComputation* callee,
+      absl::FunctionRef<absl::Status(const HloCallBoundary&)> fn,
+      const HloCallBoundaryOptions& options = {});
+
+  static void ForEachCallerBoundary(
+      const HloComputation* callee,
+      absl::FunctionRef<void(const HloCallBoundary&)> fn,
+      const HloCallBoundaryOptions& options = {});
+
+  // Visits each parameter instruction in computations called by `callsite` that
+  // receives `callsite->operand(operand_number)`.
+  static absl::Status ForEachCalledParameterWithStatus(
+      const HloInstruction* callsite, int64_t operand_number,
+      absl::FunctionRef<absl::Status(HloInstruction*)> fn,
+      const HloCallBoundaryOptions& options = {});
+
+  static void ForEachCalledParameter(
+      const HloInstruction* callsite, int64_t operand_number,
+      absl::FunctionRef<void(HloInstruction*)> fn,
+      const HloCallBoundaryOptions& options = {});
+
+  // Visits all boundary instructions that must agree at a given ShapeIndex for
+  // `while_inst`: the init operand, the body and condition parameters (when
+  // present), the body root, and `while_inst` itself.
+  static absl::Status ForEachWhileBoundaryInstructionWithStatus(
+      const HloInstruction* while_inst,
+      absl::FunctionRef<absl::Status(const HloInstruction*)> fn);
+
+  static void ForEachWhileBoundaryInstruction(
+      const HloInstruction* while_inst,
+      absl::FunctionRef<void(const HloInstruction*)> fn);
+
+  // Returns the output ShapeIndex of `use.instruction` corresponding to `use`
+  // when `use.instruction` forwards or preserves subshape structure (kTuple,
+  // tuple shaped kAllReduce, kGetTupleElement, or same shape ops).
+  static ShapeIndex GetForwardedUseOutputIndex(const HloUse& use);
+
+ protected:
+  const HloDataflowAnalysis& dataflow_analysis() const {
+    return *dataflow_analysis_;
+  }
+  const HloCallBoundaryOptions& options() const { return options_; }
+
+  // Returns true if `computation` participates in propagation.
+  virtual bool IsComputationIncluded(const HloComputation* computation) const {
+    return true;
+  }
+
+  // Returns true if `(instruction, index)` currently has a value or constraint
+  // ready to propagate across a call boundary.
+  virtual bool HasValueAt(const HloInstruction* instruction,
+                          const ShapeIndex& index) const = 0;
+
+  // Transfers the value or constraint at `(src_instruction, src_index)` to
+  // `(dst_instruction, dst_index)`. When `allow_override` is true, may also
+  // update a previously propagated non mandatory constraint. Sets `*changed`
+  // (when non null) if any destination value was updated.
+  virtual absl::Status PropagateAcrossEdge(
+      const HloInstruction* src_instruction, const ShapeIndex& src_index,
+      const HloInstruction* dst_instruction, const ShapeIndex& dst_index,
+      bool allow_override, bool* changed) = 0;
+
+  // Policy hook: returns true if root values may propagate across `boundary`.
+  virtual bool ShouldPropagateAcrossRootBoundary(
+      const HloCallBoundary& boundary) const {
+    return true;
+  }
+
+  // Policy hook: for a `kConditional` caller, returns the preferred branch
+  // computation whose root should drive the conditional output, or nullptr if
+  // no branch is preferred.
+  virtual const HloComputation* PreferredConditionalBranch(
+      const HloInstruction* conditional) const {
+    return nullptr;
+  }
+
+  // Policy hook: returns true if a value on the while body parameter or root
+  // `body_source` at `index` should yield to `caller_source`.
+  virtual bool IsStaleWhileBodyValue(const HloInstruction* while_inst,
+                                     const ShapeIndex& index,
+                                     const HloInstruction* body_source,
+                                     const HloInstruction* caller_source) {
+    return false;
+  }
+
+  // Policy hook: returns the instruction whose value at `index` should drive
+  // `while_inst`'s boundary at `index`, preferring non stale while body
+  // parameter or root values over caller values.
+  virtual const HloInstruction* PreferredWhileBoundarySource(
+      const HloInstruction* while_inst, const ShapeIndex& index,
+      const HloInstruction* fallback_source);
+
+  // Policy hook: returns true if a caller value from `source_instruction` at
+  // `index` should propagate into `while_inst`'s body.
+  virtual bool ShouldPropagateCallerToWhileBody(
+      const HloInstruction* while_inst, const ShapeIndex& index,
+      const HloInstruction* source_instruction) {
+    return true;
+  }
+
+  // Hook invoked at the start of `Run` to reset per-pass state.
+  virtual void ResetPropagationState() {}
+
+  // Hook invoked when `*dirty` is true to flush intra computation propagation.
+  virtual absl::Status FlushComputationPropagation() {
+    return absl::OkStatus();
+  }
+
+ private:
+  absl::Status FlushPending(bool* dirty, bool* changed);
+
+  const HloDataflowAnalysis* dataflow_analysis_;
+  HloCallBoundaryOptions options_;
 };
 
 }  // namespace xla

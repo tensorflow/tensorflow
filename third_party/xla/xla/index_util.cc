@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/log/check.h"
 #include "absl/types/span.h"
 #include "xla/layout_util.h"
 #include "xla/shape.h"
@@ -25,6 +26,12 @@ limitations under the License.
 #include "xla/util.h"
 
 namespace xla {
+
+/* static */ int64_t IndexUtil::MultidimensionalIndexToLinearIndex(
+    const Shape& shape, absl::Span<const int64_t> multi_index) {
+  return MultidimensionalIndexToLinearIndex(
+      shape, LayoutUtil::MinorToMajor(shape), multi_index);
+}
 
 /* static */ DimensionVector IndexUtil::LinearIndexToMultidimensionalIndex(
     const Shape& shape, int64_t linear_index) {

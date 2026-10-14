@@ -94,7 +94,9 @@ class RocmComputeCapability {
       "gfx1030",  // RX68xx / RX69xx
       "gfx1100",  // RX7900
       "gfx1101",  // RX7700 / RX7800
-      "gfx1103", "gfx1150", "gfx1151", "gfx1200", "gfx1201", "gfx1250"};
+      "gfx1103", "gfx1150", "gfx1151", "gfx1200", "gfx1201",
+      "gfx1250",  // MI450
+  };
 
   bool is_supported_gfx_version() const {
     return IsThisGfxInAnyList(kSupportedGfxVersions);

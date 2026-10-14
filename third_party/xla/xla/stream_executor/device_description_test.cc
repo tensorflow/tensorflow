@@ -188,6 +188,17 @@ TEST(DeviceDescription, ExecutionUnitDescriptionProtoConversion) {
               Pointee(Eq(*desc.matrix_unit_description())));
 }
 
+TEST(DeviceDescription, OversizedSharedMemoryPerBlockProtoConversion) {
+  DeviceDescription desc;
+  desc.set_oversized_shared_memory_per_block(123456);
+
+  ASSERT_OK_AND_ASSIGN(DeviceDescription from_proto,
+                       DeviceDescription::FromProto(desc.ToProto()));
+
+  EXPECT_EQ(from_proto.oversized_shared_memory_per_block(),
+            desc.oversized_shared_memory_per_block());
+}
+
 TEST(DeviceDescription, ProtoConversion) {
   ASSERT_OK_AND_ASSIGN(
       stream_executor::GpuTargetConfigProto gpu_target_config_proto,

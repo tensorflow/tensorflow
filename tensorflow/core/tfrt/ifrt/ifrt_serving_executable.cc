@@ -937,7 +937,6 @@ IfrtServingExecutable::LookUpOrCreateExecutable(
     absl::Span<const DtypeAndShape> dtypes_and_shapes,
     absl::Span<const int> variable_arg_indices,
     const xla::ifrt::DeviceListRef& device_list) {
-
   tsl::Promise<SharedCachedExecutableBundle> promise;
   tsl::Future<SharedCachedExecutableBundle> future;
   mlir::OwningOpRef<mlir::ModuleOp> module_copy;
@@ -950,7 +949,9 @@ IfrtServingExecutable::LookUpOrCreateExecutable(
       return it->second;
     }
 
-    if (is_frozen_ || tf_to_hlo_compiler_->IsXlaCompilationDisabled()) {
+    const bool xla_compilation_disabled =
+        tf_to_hlo_compiler_->IsXlaCompilationDisabled();
+    if (is_frozen_ || xla_compilation_disabled) {
       // Build a description of the requested (offending) input shapes.
       std::string requested_shapes_str;
       for (size_t i = 0; i < dtypes_and_shapes.size(); ++i) {
@@ -975,14 +976,23 @@ IfrtServingExecutable::LookUpOrCreateExecutable(
         }
         absl::StrAppend(&cached_shapes_str, "}\n");
       }
+      // When compilation is disabled, prepend the marker
+      // `kXlaCompilationDisabledErrorMarker` so that callers (e.g. model
+      // servers) can identify this as a compilation cache miss while
+      // compilation is disabled. Note that the failure is intentionally not
+      // cached in `executable_bundles_`, so a retry with compilation enabled
+      // can still compile the executable if it is not frozen.
       tsl::Future<SharedCachedExecutableBundle> frozen_future(
           absl::FailedPreconditionError(absl::StrCat(
+              xla_compilation_disabled
+                  ? absl::StrCat(kXlaCompilationDisabledErrorMarker, ": ")
+                  : "",
               "Cannot compile for new input shapes. Either the executable is "
               "already frozen: ",
               is_frozen_,
               " or XLA compilation disabled by ScopedTpuCompileDisabler: ",
-              tf_to_hlo_compiler_->IsXlaCompilationDisabled(),
-              ". Requested input shapes: {", requested_shapes_str,
+              xla_compilation_disabled, ". Requested input shapes: {",
+              requested_shapes_str,
               "}. Number of already compiled shape sets: ",
               executable_bundles_.size(),
               cached_shapes_str.empty()

@@ -18,6 +18,7 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -41,13 +42,23 @@ namespace xla::cpu {
 
 namespace {
 
+llvm::SmallVector<int64_t> GetTransposeTargetShape(
+    mlir::vector::TransposeOp transpose_op, llvm::ArrayRef<int64_t> shape) {
+  llvm::ArrayRef<int64_t> perm = transpose_op.getPermutation();
+  int64_t rank = shape.size();
+  llvm::SmallVector<int64_t> target_shape(rank, 1);
+  for (int64_t i = 0; i < rank; ++i) {
+    if (i == rank - 1 || perm[i] == rank - 1) {
+      target_shape[i] = std::min<int64_t>(shape[i], 16);
+    }
+  }
+  return target_shape;
+}
+
 // Returns the target 1D unroll shape for a vector operation by keeping the
 // innermost dimension and reducing all leading dimensions to 1.
 static std::optional<llvm::SmallVector<int64_t>> GetNativeShape(
     mlir::Operation* op) {
-  if (mlir::isa<mlir::vector::TransposeOp>(op)) {
-    return std::nullopt;
-  }
   auto unrollable = mlir::dyn_cast<mlir::VectorUnrollOpInterface>(op);
   if (!unrollable) {
     return std::nullopt;
@@ -55,6 +66,14 @@ static std::optional<llvm::SmallVector<int64_t>> GetNativeShape(
   auto shape = unrollable.getShapeForUnroll();
   if (!shape || shape->size() <= 1) {
     return std::nullopt;
+  }
+  if (auto transpose_op = mlir::dyn_cast<mlir::vector::TransposeOp>(op)) {
+    llvm::SmallVector<int64_t> target_shape =
+        GetTransposeTargetShape(transpose_op, *shape);
+    if (target_shape == *shape) {
+      return std::nullopt;
+    }
+    return target_shape;
   }
   if (llvm::all_of(llvm::ArrayRef(*shape).drop_back(),
                    [](int64_t d) { return d == 1; })) {

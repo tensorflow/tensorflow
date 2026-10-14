@@ -32,6 +32,58 @@ import sys
 import tempfile
 from typing import Iterator, Sequence
 
+_ADD_STRING_VIEW_PREFIX = (
+    "buildozer 'add deps @com_google_absl//absl/strings:string_view' "
+)
+_REMOVE_STRINGS_PREFIXES = (
+    "buildozer 'remove deps @com_google_absl//absl/strings' ",
+    "buildozer 'remove deps @com_google_absl//absl/strings:strings' ",
+)
+_BANT_CLEANUP_FINDINGS_EXIT_CODE = 3
+
+
+def _is_paired_strings_removal(
+    line: str, string_view_targets: set[str]
+) -> bool:
+  """Return whether `line` removes `absl/strings` from a `string_view` target."""
+  for prefix in _REMOVE_STRINGS_PREFIXES:
+    if line.startswith(prefix):
+      return line.removeprefix(prefix) in string_view_targets
+  return False
+
+
+def _filter_bant_stdout(stdout: str) -> list[str]:
+  """Suppress @com_google_absl//absl/strings:string_view findings from BANT.
+
+  `@com_google_absl//absl/strings` exports `string_view.h` in `hdrs`, so Bazel's
+  `layering_check` allows including `absl/strings/string_view.h` when
+  `@com_google_absl//absl/strings` is in `deps`. However, BANT has a hardcoded
+  `absl_string_view_skip` special case that ignores `string_view.h` on
+  `absl/strings:strings`, which does not align with `layering_check`.
+
+  Args:
+    stdout: Standard output emitted by `bant dwyu`.
+
+  Returns:
+    Remaining `buildozer` finding lines after filtering.
+  """
+  lines = stdout.splitlines()
+  string_view_targets = set()
+  for line in lines:
+    if line.startswith(_ADD_STRING_VIEW_PREFIX):
+      string_view_targets.add(line.removeprefix(_ADD_STRING_VIEW_PREFIX))
+  if not string_view_targets:
+    return lines
+
+  filtered = []
+  for line in lines:
+    if line.startswith(_ADD_STRING_VIEW_PREFIX):
+      continue
+    if _is_paired_strings_removal(line, string_view_targets):
+      continue
+    filtered.append(line)
+  return filtered
+
 
 @contextlib.contextmanager
 def bant_workspace(
@@ -77,7 +129,7 @@ def run_dwyu(
       "@xla" + label if label.startswith("//") else label for label in targets
   ]
   with bant_workspace(pathlib.Path.cwd(), output_base) as workspace:
-    return subprocess.run(
+    proc = subprocess.run(
         [
             str(pathlib.Path(executable).resolve()),
             "-C",
@@ -90,8 +142,17 @@ def run_dwyu(
             "dwyu",
             *labels,
         ],
+        stdout=subprocess.PIPE,
+        text=True,
         check=False,
-    ).returncode
+    )
+  findings = _filter_bant_stdout(proc.stdout)
+  if findings:
+    sys.stdout.write("\n".join(findings) + "\n")
+    sys.stdout.flush()
+  if proc.returncode == _BANT_CLEANUP_FINDINGS_EXIT_CODE and not findings:
+    return 0
+  return proc.returncode
 
 
 def main(argv: Sequence[str]) -> int:

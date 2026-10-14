@@ -12,9 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/lite/kernels/internal/reference/strided_slice.h"
+
 #include <stdint.h>
 
+#include <algorithm>
+#include <cstdlib>
+#include <cstring>
+#include <functional>
 #include <initializer_list>
+#include <ios>
 #include <limits>
 #include <numeric>
 #include <string>
@@ -23,9 +30,16 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "benchmark/benchmark.h"  // from @com_google_benchmark
 #include "Eigen/Core"  // from @eigen_archive  // IWYU pragma: keep
+#include "ruy/profiler/instrumentation.h"  // from @ruy
+#include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/kernels/internal/portable_tensor.h"
+#include "tensorflow/lite/kernels/internal/runtime_shape.h"
+#include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/types/half.h"
 
 namespace tflite {
@@ -1631,5 +1645,557 @@ TYPED_TEST(StridedSliceOpTest, NoopOffset) {
   EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
                                  CastVector<TypeParam>({3, 2, 1, 6, 5, 4})));
 }
+
+// Verbatim copy of the legacy element-by-element std::function recursive
+// StridedSlice implementation used as a reference oracle to verify 100%
+// bit-for-bit identical output across all tensor shapes, strides, and masks.
+template <typename T>
+void LegacyReferenceStridedSlice(
+    const reference_ops::DynamicStridedSliceParams& op_params,
+    const RuntimeShape& input_shape, const RuntimeShape& output_shape,
+    SequentialTensorWriter<T>* writer) {
+  ruy::profiler::ScopeLabel label("StridedSlice");
+  const int dims = input_shape.DimensionsCount();
+  std::vector<int> starts(dims);
+  std::vector<int> stops(dims);
+  std::vector<int64_t> input_strides(dims);
+  if (dims == 0) {
+    writer->Write(0);
+    return;
+  }
+  input_strides[dims - 1] = 1;
+  for (int i = dims - 2; i >= 0; --i) {
+    input_strides[i] = input_strides[i + 1] * input_shape.Dims(i + 1);
+  }
+  for (int axis = 0; axis < dims; ++axis) {
+    starts[axis] = reference_ops::StartForAxis(op_params, input_shape, axis);
+    stops[axis] =
+        reference_ops::EndForAxis(op_params, input_shape, axis, starts[axis]);
+  }
+  auto loop_condition = [](int64_t index, int64_t stop, int stride) {
+    return stride > 0 ? index < stop : index > stop;
+  };
+  std::function<void(int, int64_t)> write_slice = [&](int axis,
+                                                      int64_t input_index) {
+    if (axis == dims) {
+      writer->Write(input_index);
+      return;
+    }
+    for (int64_t offset = starts[axis];
+         loop_condition(offset, stops[axis], op_params.strides[axis]);
+         offset += op_params.strides[axis]) {
+      write_slice(axis + 1, input_index + offset * input_strides[axis]);
+    }
+  };
+  write_slice(/*axis=*/0, /*input_index=*/0);
+}
+
+// Dual-sentinel bit-for-bit and write-cardinality verification helper.
+// 1. Runs both LegacyReferenceStridedSlice and reference_ops::StridedSlice
+//    twice using bitwise-complementary sentinel byte patterns (0xA5 and 0x5A).
+// 2. Independently computes the closed-form analytical element count K from
+//    StartForAxis / EndForAxis and verifies that:
+//    - Every byte in [0, K * sizeof(T)) is identical between the 0xA5 run and
+//      the 0x5A run (proving every byte in [0, K * sizeof(T)) was written),
+//    - Every byte in [K * sizeof(T), max_out * sizeof(T)) equals 0xA5 in the
+//      first run and 0x5A in the second run (proving zero over-writes), and
+//    - The full output buffer matches LegacyReferenceStridedSlice bit-for-bit.
+template <typename T>
+void VerifyBitForBitIdentical(
+    const reference_ops::DynamicStridedSliceParams& params,
+    const RuntimeShape& shape, const std::vector<T>& input) {
+  const int dims = shape.DimensionsCount();
+  int64_t expected_elements = 1;
+  for (int axis = 0; axis < dims; ++axis) {
+    const int64_t start = reference_ops::StartForAxis(params, shape, axis);
+    const int64_t stop = reference_ops::EndForAxis(params, shape, axis, start);
+    const int64_t stride = params.strides[axis];
+    if ((stride > 0 && start >= stop) || (stride < 0 && start <= stop)) {
+      expected_elements = 0;
+      break;
+    }
+    const int64_t span = stride > 0 ? (stop - start) : (start - stop);
+    const int64_t step = stride > 0 ? stride : -stride;
+    expected_elements *= (span + step - 1) / step;
+  }
+
+  const int64_t max_out =
+      std::max<int64_t>(4, static_cast<int64_t>(input.size()) * 2 + 4);
+  const size_t total_bytes = static_cast<size_t>(max_out) * sizeof(T);
+  const size_t expected_bytes =
+      static_cast<size_t>(expected_elements) * sizeof(T);
+
+  std::vector<T> opt_out_a5(max_out);
+  std::vector<T> opt_out_5a(max_out);
+
+  for (int sentinel : {0xA5, 0x5A}) {
+    std::vector<T> legacy_out(max_out);
+    std::vector<T>& opt_out = (sentinel == 0xA5) ? opt_out_a5 : opt_out_5a;
+    std::memset(legacy_out.data(), sentinel, total_bytes);
+    std::memset(opt_out.data(), sentinel, total_bytes);
+
+    SequentialTensorWriter<T> legacy_writer(input.data(), legacy_out.data());
+    SequentialTensorWriter<T> opt_writer(input.data(), opt_out.data());
+
+    LegacyReferenceStridedSlice<T>(params, shape, shape, &legacy_writer);
+    reference_ops::StridedSlice<T>(params, shape, shape, &opt_writer);
+
+    EXPECT_EQ(std::memcmp(legacy_out.data(), opt_out.data(), total_bytes), 0)
+        << "Bit-for-bit mismatch for shape with dims=" << dims
+        << " and sentinel=0x" << std::hex << sentinel;
+  }
+
+  if (expected_bytes > 0) {
+    EXPECT_EQ(std::memcmp(opt_out_a5.data(), opt_out_5a.data(), expected_bytes),
+              0)
+        << "Under-write detected inside [0, " << expected_bytes << ")";
+  }
+  const auto* bytes_a5 = reinterpret_cast<const uint8_t*>(opt_out_a5.data());
+  const auto* bytes_5a = reinterpret_cast<const uint8_t*>(opt_out_5a.data());
+  for (size_t b = expected_bytes; b < total_bytes; ++b) {
+    ASSERT_EQ(bytes_a5[b], 0xA5u) << "Over-write at byte " << b;
+    ASSERT_EQ(bytes_5a[b], 0x5Au) << "Over-write at byte " << b;
+  }
+}
+
+template <typename T>
+void RunExhaustiveBitForBitSuite() {
+  // 0D scalar tensor.
+  {
+    RuntimeShape shape0d;
+    std::vector<T> in0d = CastVector<T>({42});
+    reference_ops::DynamicStridedSliceParams params0d;
+    VerifyBitForBitIdentical<T>(params0d, shape0d, in0d);
+  }
+
+  // 1D, 2D, 3D, 4D, and 5D shapes exercising:
+  // - Zero-extent dimensions (Dims(axis) == 0) with positive & negative strides
+  // - Full trailing contiguous dimensions (1, 2, 3, and 4 coalesced axes)
+  // - Trailing singleton dimensions (Dims(axis) == 1) where
+  //   input_strides[last_loop_axis] == 1 on a non-innermost axis
+  // - Partial unit-stride inner dimension (starts > 0, stops < Dims)
+  // - Strided inner dimension (stride = 2, 3, -1, -2, -3)
+  // - Strided or negative-strided outer/middle dimension with full contiguous
+  //   inner dimensions (where input_strides[last_loop_axis] > 1)
+  // - Empty slices on outer, middle, and inner axes (positive & negative
+  //   stride)
+  // - begin_mask, end_mask, shrink_axis_mask, and offset = true.
+  struct SliceCase {
+    std::vector<int32_t> dims;
+    std::vector<int32_t> starts;
+    std::vector<int32_t> stops;
+    std::vector<int32_t> strides;
+    uint32_t begin_mask = 0;
+    uint32_t end_mask = 0;
+    uint32_t shrink_axis_mask = 0;
+    bool offset = false;
+  };
+
+  const std::vector<SliceCase> cases = {
+      // Zero-extent dimension cases (Dims(axis) == 0).
+      {{0}, {0}, {0}, {1}},
+      {{0}, {0}, {0}, {-1}},
+      {{0, 8, 16}, {0, 0, 0}, {0, 8, 16}, {1, 1, 1}},
+      {{3, 0, 16}, {0, 0, 0}, {3, 0, 16}, {1, 1, 1}},
+      {{3, 8, 0}, {0, 0, 0}, {3, 8, 0}, {1, -1, -1}},
+      {{3, 0, 16}, {0, 0, 0}, {3, 0, 16}, {1, 1, 1}, 0, 0, 0b010},
+      // 1D cases: full, partial, strided, reversed, empty.
+      {{16}, {0}, {16}, {1}},
+      {{16}, {3}, {13}, {1}},
+      {{16}, {1}, {15}, {2}},
+      {{16}, {15}, {-1}, {-1}, 0, 1},
+      {{16}, {14}, {2}, {-3}},
+      {{16}, {10}, {5}, {1}},
+      {{16}, {5}, {10}, {-1}},
+      // 2D cases: coalesced inner, partial inner, strided outer + full inner,
+      // reversed outer + full inner, reversed inner.
+      {{6, 12}, {0, 0}, {6, 12}, {1, 1}},
+      {{6, 12}, {1, 0}, {5, 12}, {1, 1}},
+      {{6, 12}, {1, 2}, {5, 10}, {1, 1}},
+      {{6, 12}, {0, 0}, {6, 12}, {2, 1}},
+      {{6, 12}, {5, 0}, {-1, 12}, {-1, 1}, 0, 0b01},
+      {{6, 12}, {5, 0}, {0, 12}, {-2, 1}},
+      {{6, 12}, {1, 11}, {5, -1}, {2, -1}, 0, 0b10},
+      {{6, 12}, {1, 10}, {5, 1}, {1, -2}},
+      {{6, 12}, {4, 0}, {2, 12}, {1, 1}},
+      {{6, 12}, {0, 8}, {6, 3}, {1, 1}},
+      // Trailing singleton dimension cases (1 < inner_contig_axis < dims with
+      // input_strides[last_loop_axis] == 1 and last_loop_stride_is_1 == false).
+      {{3, 6, 1}, {0, 0, 0}, {3, 6, 1}, {1, 2, 1}},
+      {{3, 6, 1}, {0, 5, 0}, {3, -1, 1}, {1, -2, 1}, 0, 0b010},
+      {{2, 6, 1, 1}, {0, 5, 0, 0}, {2, -1, 1, 1}, {1, -1, 1, 1}, 0, 0b0010},
+      // 3D speech-like feature tensor cases:
+      // [B, T, F] with full T & F coalesced, sliced T with full F coalesced,
+      // strided/reversed T with full F coalesced, partial F, strided F,
+      // and empty middle/inner axes.
+      {{3, 8, 16}, {0, 0, 0}, {3, 8, 16}, {1, 1, 1}},
+      {{3, 8, 16}, {1, 0, 0}, {3, 8, 16}, {1, 1, 1}},
+      {{3, 8, 16}, {0, 2, 0}, {3, 7, 16}, {1, 1, 1}},
+      {{3, 8, 16}, {0, 1, 0}, {3, 8, 16}, {1, 2, 1}},
+      {{3, 8, 16}, {0, 7, 0}, {3, -1, 16}, {1, -1, 1}, 0, 0b010},
+      {{3, 8, 16}, {2, 7, 0}, {-1, 0, 16}, {-1, -2, 1}, 0, 0b001},
+      {{3, 8, 16}, {0, 1, 3}, {3, 6, 14}, {1, 2, 1}},
+      {{3, 8, 16}, {0, 1, 15}, {3, 6, 0}, {1, 2, -3}},
+      {{3, 8, 16}, {0, 5, 0}, {3, 2, 16}, {1, 1, 1}},
+      {{3, 8, 16}, {0, 1, 10}, {3, 6, 4}, {1, 1, 1}},
+      {{3, 8, 16}, {1, 2, 0}, {2, 5, 16}, {1, 1, 1}, 0, 0, 0b001},
+      {{3, 8, 16}, {0, 3, 0}, {3, 4, 16}, {1, 1, 1}, 0, 0, 0b010},
+      {{3, 8, 16}, {0, 2, 5}, {3, 5, 6}, {1, 1, 1}, 0, 0, 0b100},
+      {{3, 8, 16}, {1, 2, 3}, {2, 4, 10}, {1, 1, 1}, 0, 0, 0, true},
+      // 4D and 5D cases: multi-axis coalescing across 3 and 4 trailing axes,
+      // mixed positive/negative strides, and shrink_axis_mask combinations.
+      {{2, 3, 4, 5}, {0, 1, 0, 0}, {2, 3, 4, 5}, {1, 1, 1, 1}},
+      {{2, 3, 4, 5}, {0, 2, 0, 0}, {2, -1, 4, 5}, {1, -1, 1, 1}, 0, 0b0010},
+      {{2, 3, 4, 5}, {1, 0, 1, 0}, {-1, 3, 3, 5}, {-1, 2, 1, 1}, 0, 0b0001},
+      {{2, 2, 3, 2, 4}, {0, 0, 1, 0, 0}, {2, 2, 3, 2, 4}, {1, 1, 1, 1, 1}},
+      {{2, 2, 3, 2, 4},
+       {1, 1, 2, 0, 0},
+       {-1, -1, 0, 2, 4},
+       {-1, -1, -1, 1, 1},
+       0,
+       0b00011},
+  };
+
+  for (const auto& tc : cases) {
+    RuntimeShape shape(static_cast<int>(tc.dims.size()), tc.dims.data());
+    const int total_elements = shape.FlatSize();
+    std::vector<int> raw_vals(total_elements);
+    for (int i = 0; i < total_elements; ++i) {
+      if (i == 0) {
+        raw_vals[i] = -91;  // 0xA5 in two's complement int8_t
+      } else if (i == 1) {
+        raw_vals[i] = 90;  // 0x5A in int8_t
+      } else {
+        raw_vals[i] = (i * 37 + 13) % 127 - 63;
+      }
+    }
+    const std::vector<T> input = CastVector<T>(raw_vals);
+    reference_ops::DynamicStridedSliceParams params;
+    params.start_indices = tc.starts;
+    params.stop_indices = tc.stops;
+    params.strides = tc.strides;
+    params.begin_mask = tc.begin_mask;
+    params.end_mask = tc.end_mask;
+    params.shrink_axis_mask = tc.shrink_axis_mask;
+    params.offset = tc.offset;
+
+    VerifyBitForBitIdentical<T>(params, shape, input);
+  }
+}
+
+TYPED_TEST(StridedSliceOpTest, ExhaustiveBitForBitEquivalenceWithLegacyOracle) {
+  RunExhaustiveBitForBitSuite<TypeParam>();
+}
+
+TEST(StridedSliceBitExactInt64Test,
+     ExhaustiveBitForBitEquivalenceWithLegacyOracleInt64) {
+  RunExhaustiveBitForBitSuite<int64_t>();
+}
+
+// Verify strict bit-for-bit equality on float tensors containing special IEEE
+// 754 bit patterns (-0.0f, +0.0f, quiet NaNs with distinct payloads, signaling
+// NaNs, subnormals, +-Inf, and sentinel bit patterns 0xa5a5a5a5 / 0x5a5a5a5a)
+// where operator== would either return false (NaN != NaN) or conflate distinct
+// bit representations (-0.0f == +0.0f).
+TEST(StridedSliceBitExactFloatTest, PreservesSpecialFloatBitPatternsExactly) {
+  const std::vector<uint32_t> special_bits = {
+      0x00000000u,  // +0.0f
+      0x80000000u,  // -0.0f
+      0x7f800000u,  // +Inf
+      0xff800000u,  // -Inf
+      0x7fc00001u,  // Quiet NaN payload 1
+      0x7fcabcdeu,  // Quiet NaN payload 0xabcde (8 hex digits)
+      0xffc01234u,  // Negative Quiet NaN payload 0x1234
+      0x7f800001u,  // Signaling NaN payload 1
+      0x00000001u,  // Smallest positive subnormal
+      0x80000001u,  // Smallest negative subnormal
+      0x007fffffu,  // Largest positive subnormal
+      0x3f800000u,  // 1.0f
+      0xbf800000u,  // -1.0f
+      0xa5a5a5a5u,  // Sentinel bit pattern A5
+      0x5a5a5a5au,  // Sentinel bit pattern 5A
+  };
+
+  RuntimeShape shape({2, 4, 8});
+  const int total = shape.FlatSize();
+  std::vector<float> input(total);
+  for (int i = 0; i < total; ++i) {
+    uint32_t bits =
+        special_bits[i % special_bits.size()] ^ static_cast<uint32_t>(i & 0x3);
+    std::memcpy(&input[i], &bits, sizeof(float));
+  }
+
+  for (int stride_1 : {1, 2, -1, -2}) {
+    for (int stride_2 : {1, 2, -1}) {
+      reference_ops::DynamicStridedSliceParams params;
+      params.start_indices = {0, stride_1 > 0 ? 0 : 3, stride_2 > 0 ? 0 : 7};
+      params.stop_indices = {2, stride_1 > 0 ? 4 : -1, stride_2 > 0 ? 8 : -1};
+      params.strides = {1, stride_1, stride_2};
+      params.end_mask =
+          (stride_1 < 0 ? 0b010u : 0u) | (stride_2 < 0 ? 0b100u : 0u);
+      VerifyBitForBitIdentical<float>(params, shape, input);
+    }
+  }
+}
+
+// Verify bit-for-bit identical serialized string buffers on multi-dimensional
+// std::string tensors across coalesced, partial, strided/reversed, and empty
+// slices, comparing both deserialized strings and raw serialized TfLiteTensor
+// byte buffers against LegacyReferenceStridedSlice<std::string>.
+TEST(StridedSliceBitExactStringTest, MultiDimCoalescedAndStridedStrings) {
+  std::vector<std::string> input_data;
+  input_data.reserve(24);
+  for (int i = 0; i < 24; ++i) {
+    if (i % 5 == 0) {
+      input_data.push_back("");  // Empty string
+    } else if (i % 7 == 0) {
+      input_data.push_back(std::string("nul\0byte_", 9) + std::to_string(i));
+    } else {
+      input_data.push_back("token_str_" + std::to_string(i * 101));
+    }
+  }
+
+  auto verify_raw_string_tensor_bit_exact =
+      [&](const RuntimeShape& shape,
+          const reference_ops::DynamicStridedSliceParams& params) {
+        DynamicBuffer in_buf;
+        for (const std::string& s : input_data) {
+          in_buf.AddString(s.data(), s.size());
+        }
+        TfLiteTensor input_tensor{};
+        input_tensor.type = kTfLiteString;
+        input_tensor.allocation_type = kTfLiteDynamic;
+        in_buf.WriteToTensor(&input_tensor, /*new_shape=*/nullptr);
+
+        TfLiteTensor legacy_tensor{};
+        legacy_tensor.type = kTfLiteString;
+        legacy_tensor.allocation_type = kTfLiteDynamic;
+
+        TfLiteTensor opt_tensor{};
+        opt_tensor.type = kTfLiteString;
+        opt_tensor.allocation_type = kTfLiteDynamic;
+
+        {
+          SequentialTensorWriter<std::string> legacy_writer(&input_tensor,
+                                                            &legacy_tensor);
+          LegacyReferenceStridedSlice<std::string>(params, shape, shape,
+                                                   &legacy_writer);
+        }
+        {
+          SequentialTensorWriter<std::string> opt_writer(&input_tensor,
+                                                         &opt_tensor);
+          reference_ops::StridedSlice<std::string>(params, shape, shape,
+                                                   &opt_writer);
+        }
+
+        ASSERT_EQ(legacy_tensor.bytes, opt_tensor.bytes);
+        if (legacy_tensor.bytes > 0) {
+          EXPECT_EQ(std::memcmp(legacy_tensor.data.raw, opt_tensor.data.raw,
+                                legacy_tensor.bytes),
+                    0);
+        }
+
+        free(input_tensor.data.raw);
+        free(legacy_tensor.data.raw);
+        free(opt_tensor.data.raw);
+
+        // Also verify a non-trivially-copyable type with the raw-pointer
+        // overload (SequentialTensorWriter<T>(const T*, T*)), which exercises
+        // the !std::is_trivially_copyable_v<T> element-by-element Write
+        // path in write_contiguous without invoking memcpy.
+        struct NonTriviallyCopyableVal {
+          int v = -1;
+          const NonTriviallyCopyableVal* self = this;
+          NonTriviallyCopyableVal() = default;
+          explicit NonTriviallyCopyableVal(int x) : v(x), self(this) {}
+          NonTriviallyCopyableVal(const NonTriviallyCopyableVal& o)
+              : v(o.v), self(this) {}
+          NonTriviallyCopyableVal& operator=(const NonTriviallyCopyableVal& o) {
+            v = o.v;
+            self = this;
+            return *this;
+          }
+          bool operator==(const NonTriviallyCopyableVal& o) const {
+            return v == o.v && self == this && o.self == &o;
+          }
+        };
+        static_assert(!std::is_trivially_copyable_v<NonTriviallyCopyableVal>,
+                      "Must be non-trivially copyable");
+        std::vector<NonTriviallyCopyableVal> ntc_in(shape.FlatSize());
+        for (int i = 0; i < shape.FlatSize(); ++i) {
+          ntc_in[i] = NonTriviallyCopyableVal(i + 100);
+        }
+        std::vector<NonTriviallyCopyableVal> ntc_legacy(
+            shape.FlatSize(), NonTriviallyCopyableVal(-999));
+        std::vector<NonTriviallyCopyableVal> ntc_actual(
+            shape.FlatSize(), NonTriviallyCopyableVal(-999));
+        SequentialTensorWriter<NonTriviallyCopyableVal> ntc_legacy_writer(
+            ntc_in.data(), ntc_legacy.data());
+        LegacyReferenceStridedSlice<NonTriviallyCopyableVal>(
+            params, shape, shape, &ntc_legacy_writer);
+        reference_ops::StridedSlice<NonTriviallyCopyableVal>(
+            params, shape, ntc_in.data(), shape, ntc_actual.data());
+        EXPECT_EQ(ntc_actual, ntc_legacy);
+      };
+
+  const RuntimeShape shape3d({2, 3, 4});
+
+  // Case 1: Coalesced inner dimension [2, 3, 4] -> [0:2, 1:3, 0:4]
+  {
+    StridedSliceOpModel<std::string> m({2, 3, 4}, {3}, {3}, {3}, input_data,
+                                       {0, 1, 0}, {2, 3, 4}, {1, 1, 1}, 0, 0, 0,
+                                       0, 0, false);
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 4}));
+    std::vector<std::string> expected;
+    for (int b = 0; b < 2; ++b) {
+      for (int r = 1; r < 3; ++r) {
+        for (int c = 0; c < 4; ++c) {
+          expected.push_back(input_data[b * 12 + r * 4 + c]);
+        }
+      }
+    }
+    EXPECT_THAT(m.GetStringOutput(), ElementsAreArray(expected));
+
+    reference_ops::DynamicStridedSliceParams params;
+    params.start_indices = {0, 1, 0};
+    params.stop_indices = {2, 3, 4};
+    params.strides = {1, 1, 1};
+    verify_raw_string_tensor_bit_exact(shape3d, params);
+  }
+
+  // Case 2: Negative stride on middle axis with full unit-stride inner axis
+  // (exercises input_strides[last_loop_axis] > 1 with WriteN on strings).
+  {
+    StridedSliceOpModel<std::string> m({2, 3, 4}, {3}, {3}, {3}, input_data,
+                                       {0, 2, 0}, {2, -1, 4}, {1, -1, 1}, 0,
+                                       0b010, 0, 0, 0, false);
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3, 4}));
+    std::vector<std::string> expected;
+    for (int b = 0; b < 2; ++b) {
+      for (int r = 2; r >= 0; --r) {
+        for (int c = 0; c < 4; ++c) {
+          expected.push_back(input_data[b * 12 + r * 4 + c]);
+        }
+      }
+    }
+    EXPECT_THAT(m.GetStringOutput(), ElementsAreArray(expected));
+
+    reference_ops::DynamicStridedSliceParams params;
+    params.start_indices = {0, 2, 0};
+    params.stop_indices = {2, -1, 4};
+    params.strides = {1, -1, 1};
+    params.end_mask = 0b010;
+    verify_raw_string_tensor_bit_exact(shape3d, params);
+  }
+
+  // Case 3: Partial unit-stride inner axis (1:3:1), strided/reversed inner axis
+  // (3:-1:-1), and empty string slice (2:1:1).
+  {
+    reference_ops::DynamicStridedSliceParams partial_inner;
+    partial_inner.start_indices = {0, 0, 1};
+    partial_inner.stop_indices = {2, 3, 3};
+    partial_inner.strides = {1, 1, 1};
+    verify_raw_string_tensor_bit_exact(shape3d, partial_inner);
+
+    reference_ops::DynamicStridedSliceParams reversed_inner;
+    reversed_inner.start_indices = {0, 0, 3};
+    reversed_inner.stop_indices = {2, 3, -1};
+    reversed_inner.strides = {1, 2, -1};
+    reversed_inner.end_mask = 0b100;
+    verify_raw_string_tensor_bit_exact(shape3d, reversed_inner);
+
+    reference_ops::DynamicStridedSliceParams empty_slice;
+    empty_slice.start_indices = {0, 2, 0};
+    empty_slice.stop_indices = {2, 1, 4};
+    empty_slice.strides = {1, 1, 1};
+    verify_raw_string_tensor_bit_exact(shape3d, empty_slice);
+  }
+}
+
+// Microbenchmarks comparing LegacyReferenceStridedSlice vs optimized
+// reference_ops::StridedSlice on representative speech_detector_alt_service
+// feature tensors ([1, 100, 256] and [4, 64, 128]).
+void BM_StridedSlice_SpeechFeature_Legacy(benchmark::State& state) {
+  const RuntimeShape input_shape({1, 100, 256});
+  const RuntimeShape output_shape({1, 99, 256});
+  std::vector<float> input(input_shape.FlatSize(), 1.25f);
+  std::vector<float> output(output_shape.FlatSize(), 0.0f);
+  reference_ops::DynamicStridedSliceParams params;
+  params.start_indices = {0, 1, 0};
+  params.stop_indices = {1, 100, 256};
+  params.strides = {1, 1, 1};
+
+  for (auto _ : state) {
+    SequentialTensorWriter<float> writer(input.data(), output.data());
+    LegacyReferenceStridedSlice<float>(params, input_shape, output_shape,
+                                       &writer);
+    benchmark::DoNotOptimize(output.data());
+    benchmark::ClobberMemory();
+  }
+}
+BENCHMARK(BM_StridedSlice_SpeechFeature_Legacy)->MinTime(0.01);
+
+void BM_StridedSlice_SpeechFeature_Optimized(benchmark::State& state) {
+  const RuntimeShape input_shape({1, 100, 256});
+  const RuntimeShape output_shape({1, 99, 256});
+  std::vector<float> input(input_shape.FlatSize(), 1.25f);
+  std::vector<float> output(output_shape.FlatSize(), 0.0f);
+  reference_ops::DynamicStridedSliceParams params;
+  params.start_indices = {0, 1, 0};
+  params.stop_indices = {1, 100, 256};
+  params.strides = {1, 1, 1};
+
+  for (auto _ : state) {
+    SequentialTensorWriter<float> writer(input.data(), output.data());
+    reference_ops::StridedSlice<float>(params, input_shape, output_shape,
+                                       &writer);
+    benchmark::DoNotOptimize(output.data());
+    benchmark::ClobberMemory();
+  }
+}
+BENCHMARK(BM_StridedSlice_SpeechFeature_Optimized)->MinTime(0.01);
+
+void BM_StridedSlice_BatchedSpeechFeature_Legacy(benchmark::State& state) {
+  const RuntimeShape input_shape({4, 64, 128});
+  const RuntimeShape output_shape({4, 60, 128});
+  std::vector<float> input(input_shape.FlatSize(), 1.25f);
+  std::vector<float> output(output_shape.FlatSize(), 0.0f);
+  reference_ops::DynamicStridedSliceParams params;
+  params.start_indices = {0, 2, 0};
+  params.stop_indices = {4, 62, 128};
+  params.strides = {1, 1, 1};
+
+  for (auto _ : state) {
+    SequentialTensorWriter<float> writer(input.data(), output.data());
+    LegacyReferenceStridedSlice<float>(params, input_shape, output_shape,
+                                       &writer);
+    benchmark::DoNotOptimize(output.data());
+    benchmark::ClobberMemory();
+  }
+}
+BENCHMARK(BM_StridedSlice_BatchedSpeechFeature_Legacy)->MinTime(0.01);
+
+void BM_StridedSlice_BatchedSpeechFeature_Optimized(benchmark::State& state) {
+  const RuntimeShape input_shape({4, 64, 128});
+  const RuntimeShape output_shape({4, 60, 128});
+  std::vector<float> input(input_shape.FlatSize(), 1.25f);
+  std::vector<float> output(output_shape.FlatSize(), 0.0f);
+  reference_ops::DynamicStridedSliceParams params;
+  params.start_indices = {0, 2, 0};
+  params.stop_indices = {4, 62, 128};
+  params.strides = {1, 1, 1};
+
+  for (auto _ : state) {
+    SequentialTensorWriter<float> writer(input.data(), output.data());
+    reference_ops::StridedSlice<float>(params, input_shape, output_shape,
+                                       &writer);
+    benchmark::DoNotOptimize(output.data());
+    benchmark::ClobberMemory();
+  }
+}
+BENCHMARK(BM_StridedSlice_BatchedSpeechFeature_Optimized)->MinTime(0.01);
+
 }  // namespace
 }  // namespace tflite

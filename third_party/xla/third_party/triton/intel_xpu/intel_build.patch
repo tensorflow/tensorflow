@@ -15,21 +15,24 @@
 diff --git b/BUILD b/BUILD
 --- a/BUILD
 +++ b/BUILD
-@@ -5,3 +5,4 @@
+@@ -4,6 +4,7 @@
+ load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
  load("@rules_cc//cc:cc_library.bzl", "cc_library")
  load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 +load("@local_config_sycl//sycl:build_defs.bzl", "if_sycl_is_configured")
  # copybara:uncomment load("//tools/build_defs/license:license.bzl", "license")
-@@ -545,7 +546,7 @@
-         "lib/Dialect/TritonGPU/Transforms/Utility.cpp",  # Avoid circular dependency.
+ 
+ # See go/triton-sla.
+@@ -566,7 +567,7 @@ cc_library(
          "lib/Dialect/TritonNvidiaGPU/Transforms/ClusterBarrierMbarAllocator.cpp",  # Avoid circular dependency.
+         "lib/Dialect/TritonNvidiaGPU/Transforms/MBarrierUtilities.cpp",  # Avoid circular dependency.
          "lib/Dialect/TritonNvidiaGPU/Transforms/TMAUtilities.cpp",  # Avoid circular dependency.
 -    ],
 +    ] + if_sycl_is_configured(["//third_party/intel:TritonIntelGPU_srcs"]),
      hdrs = glob([
          "include/triton/Dialect/Gluon/IR/*.h",
          "include/triton/Dialect/Triton/IR/*.h",
-@@ -565,7 +566,7 @@
+@@ -587,7 +588,7 @@ cc_library(
          # it would be better if upstream moved it there.
          "include/triton/Conversion/MLIRTypes.h",
          "include/triton/Dialect/TritonInstrument/Transforms/ConSanTargetHooks.h",
@@ -38,7 +41,7 @@ diff --git b/BUILD b/BUILD
      copts = select({
          ":compiler_is_msvc": [],
          "//conditions:default": [
-@@ -576,7 +577,10 @@
+@@ -598,7 +599,10 @@ cc_library(
              "-Wno-implicit-fallthrough",
          ],
      }),
@@ -50,7 +53,7 @@ diff --git b/BUILD b/BUILD
      deps = [
          ":Dump",
          ":GetEnv",  # for Utility
-@@ -633,7 +638,16 @@
+@@ -659,7 +663,16 @@ cc_library(
          "@llvm-project//mlir:UBDialect",
          "@triton//third_party/f2reduce",  # for Utility
          "@triton//third_party/nvidia:NVGPUDialect",
@@ -676,88 +679,3 @@ new file mode 100644
 +exports_files([
 +    "include/sycl_functions.h",
 +])
-
-diff --git a/lib/Conversion/TritonGPUToLLVM/ElementwiseOpToLLVM.cpp b/lib/Conversion/TritonGPUToLLVM/ElementwiseOpToLLVM.cpp
---- a/lib/Conversion/TritonGPUToLLVM/ElementwiseOpToLLVM.cpp
-+++ b/lib/Conversion/TritonGPUToLLVM/ElementwiseOpToLLVM.cpp
-@@ -275,7 +275,8 @@
-                            /*asm_string=*/op.getAsmString(),
-                            /*constraints=*/op.getConstraints(),
-                            /*has_side_effects=*/!op.getPure(),
--                           /*is_align_stack=*/false, LLVM::TailCallKind::None,
-+                           /*is_align_stack=*/false,
-+                           LLVM::TailCallKind::None, /*convergent=*/false,
-                            /*asm_dialect=*/
-                            LLVM::AsmDialectAttr::get(rewriter.getContext(),
-                                                      LLVM::AsmDialect::AD_ATT),
-
-diff --git a/third_party/amd/lib/TritonAMDGPUToLLVM/GCNAsmFormat.cpp b/third_party/amd/lib/TritonAMDGPUToLLVM/GCNAsmFormat.cpp
---- a/third_party/amd/lib/TritonAMDGPUToLLVM/GCNAsmFormat.cpp
-+++ b/third_party/amd/lib/TritonAMDGPUToLLVM/GCNAsmFormat.cpp
-@@ -83,6 +83,7 @@
-       hasSideEffect,                          // has_side_effects
-       isAlignStack,                           // is_align_stack
-       LLVM::TailCallKind::None,
-+      /*convergent=*/false,
-       LLVM::AsmDialectAttr::get(ctx,
-                                 LLVM::AsmDialect::AD_ATT), // asm_dialect
-       ArrayAttr::get(ctx, attrs)                           // operand_attrs
-
-diff --git a/third_party/amd/lib/TritonAMDGPUToLLVM/TDMUtility.cpp b/third_party/amd/lib/TritonAMDGPUToLLVM/TDMUtility.cpp
---- a/third_party/amd/lib/TritonAMDGPUToLLVM/TDMUtility.cpp
-+++ b/third_party/amd/lib/TritonAMDGPUToLLVM/TDMUtility.cpp
-@@ -37,6 +37,7 @@
-              /*asm_string=*/"", /*constraints=*/"=s,0",
-              /*has_side_effects=*/true, /*is_align_stack=*/false,
-              LLVM::TailCallKind::None,
-+             /*convergent=*/false,
-              LLVM::AsmDialectAttr::get(ctx, LLVM::AsmDialect::AD_ATT),
-              /*operand_attrs=*/ArrayAttr::get(ctx, {}))
-       .getRes();
-
-diff --git a/third_party/amd/lib/TritonAMDGPUToLLVM/TargetInfo.cpp b/third_party/amd/lib/TritonAMDGPUToLLVM/TargetInfo.cpp
---- a/third_party/amd/lib/TritonAMDGPUToLLVM/TargetInfo.cpp
-+++ b/third_party/amd/lib/TritonAMDGPUToLLVM/TargetInfo.cpp
-@@ -693,6 +693,7 @@
-       "s_trap 2", /*constraints=*/"",
-       /*has_side_effects=*/true, /*is_align_stack=*/false,
-       LLVM::TailCallKind::None,
-+      /*convergent=*/false,
-       LLVM::AsmDialectAttr::get(ctx, LLVM::AsmDialect::AD_ATT),
-       /*operand_attrs=*/ArrayAttr::get(ctx, {}));
- }
-
-diff --git a/third_party/intel/lib/TritonGENToLLVM/TritonGENToLLVMPass.cpp b/third_party/intel/lib/TritonGENToLLVM/TritonGENToLLVMPass.cpp
---- a/third_party/intel/lib/TritonGENToLLVM/TritonGENToLLVMPass.cpp
-+++ b/third_party/intel/lib/TritonGENToLLVM/TritonGENToLLVMPass.cpp
-@@ -1405,6 +1405,7 @@
-         "=rw,rw.u,rw.u",
-         /*has_side_effects=*/false,
-         /*is_align_stack=*/false, LLVM::TailCallKind::None,
-+        /*convergent=*/false,
-         LLVM::AsmDialectAttr::get(ctx, LLVM::AsmDialect::AD_ATT),
-         ArrayAttr::get(ctx, {}));
-
-diff --git a/third_party/intel/lib/TritonIntelGPUToLLVM/XeAsmFormat.cpp b/third_party/intel/lib/TritonIntelGPUToLLVM/XeAsmFormat.cpp
---- a/third_party/intel/lib/TritonIntelGPUToLLVM/XeAsmFormat.cpp
-+++ b/third_party/intel/lib/TritonIntelGPUToLLVM/XeAsmFormat.cpp
-@@ -106,6 +106,7 @@
-       hasSideEffect,                          // has_side_effects
-       isAlignStack,                           // is_align_stack
-       LLVM::TailCallKind::None,
-+      /*convergent=*/false,
-       LLVM::AsmDialectAttr::get(ctx,
-                                 LLVM::AsmDialect::AD_ATT), // asm_dialect
-       ArrayAttr::get(ctx, attrs)                           // operand_attrs
-
-diff --git a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/PTXAsmFormat.cpp b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/PTXAsmFormat.cpp
---- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/PTXAsmFormat.cpp
-+++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/PTXAsmFormat.cpp
-@@ -106,6 +106,7 @@
-       hasSideEffect,                          // has_side_effects
-       isAlignStack,                           // is_align_stack
-       LLVM::TailCallKind::None,
-+      /*convergent=*/false,
-       LLVM::AsmDialectAttr::get(ctx,
-                                 LLVM::AsmDialect::AD_ATT), // asm_dialect
-       ArrayAttr::get(ctx, attrs)                           // operand_attrs

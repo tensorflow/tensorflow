@@ -55,7 +55,7 @@ TfLiteStatus L2NormalizationOpBuilder::RegisterOutputs(
   return kTfLiteOk;
 }
 
-L2NormalizationOpBuilder::~L2NormalizationOpBuilder() {}
+L2NormalizationOpBuilder::~L2NormalizationOpBuilder() = default;
 
 OpBuilder* CreateL2NormalizationBuilder(GraphBuilder* graph_builder,
                                         int op_type) {

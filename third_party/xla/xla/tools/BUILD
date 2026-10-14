@@ -764,6 +764,8 @@ cc_library(
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -781,15 +783,21 @@ cc_library(
 xla_test(
     name = "matmul_perf_table_gen_test",
     srcs = ["matmul_perf_table_gen_test.cc"],
+    # TODO(b/372714955): Remove once default CUDA ver is >= 13.4 (CUPTI session leak fixed in 13.4).
+    args = if_google(["--heap_check="]),
     backends = ["gpu"],
     local_defines = if_cuda(["GOOGLE_CUDA"]),
+    # TODO(b/372714955): Remove once default CUDA ver is >= 13.4 (CUPTI session leak fixed in 13.4).
+    tags = if_google(["noasan"]),
     deps = [
         ":matmul_perf_table_gen",
         "//xla:xla_data_proto_cc",
         "//xla/backends/gpu/tests:hlo_pjrt_gpu_test_base",
         "//xla/service/gpu/model:hlo_op_profile_proto_cc",
+        "//xla/service/gpu/model:hlo_op_profiler_lib",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@com_google_protobuf//:protobuf",
@@ -829,9 +837,9 @@ cc_library(
         "@com_google_protobuf//:protobuf",
         "@tsl//tsl/platform:platform_port",
     ] + if_cuda([
-        "//xla/stream_executor:cuda_platform",
+        "//xla/stream_executor:cuda_platform",  # buildcleaner: keep
     ]) + if_rocm_is_configured([
-        "//xla/stream_executor:rocm_platform",
+        "//xla/stream_executor:rocm_platform",  # buildcleaner: keep
     ]),
 )
 

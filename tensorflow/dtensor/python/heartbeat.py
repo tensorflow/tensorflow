@@ -85,6 +85,7 @@ def _heartbeat(
         logging.warning('Heartbeat failure %d, %d more until limit: %s',
                         _failure_count,
                         _CONSECUTIVE_FAILURES_LIMIT - _failure_count, e)
+        continue
       else:
         logging.fatal('Heartbeat failure %d, limit of %d reached: %s',
                       _failure_count, _CONSECUTIVE_FAILURES_LIMIT, e)

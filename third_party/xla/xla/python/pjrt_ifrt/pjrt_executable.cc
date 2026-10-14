@@ -20,6 +20,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -43,6 +44,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/TypeRange.h"
 #include "mlir/IR/Types.h"
+#include "xla/custom_options.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/type_registry.h"
 #include "xla/future.h"
@@ -126,7 +128,8 @@ absl::StatusOr<std::unique_ptr<XlaExecutableVersion>> GetXlaExecutableVersion(
   if (platform_id == xla::TpuId()) {
     xla_abi_version = std::make_unique<xla::TpuXlaExecutableAbiVersion>(
         *std::move(abi_version));
-  } else if (platform_id == xla::CudaId() || platform_id == xla::RocmId()) {
+  } else if (platform_id == xla::CudaId() || platform_id == xla::RocmId() ||
+             platform_id == xla::OneapiId()) {
     xla_abi_version = std::make_unique<xla::GpuXlaExecutableAbiVersion>(
         *std::move(abi_version));
   } else {
@@ -415,6 +418,21 @@ std::vector<PjRtHloOutputLoadedHostCallback*> GatherHloOutputCallbacks(
   return hlo_output_callbacks;
 }
 
+// Converts IFRT custom options to XLA custom options forwarded to the runtime.
+// Options consumed by the PjRt-IFRT layer itself are not forwarded.
+xla::CustomOptions::Map ToCustomOptionsMap(const AttributeMap& attribute_map) {
+  xla::CustomOptions::Map custom_options;
+  custom_options.reserve(attribute_map.size());
+  attribute_map.ForEach([&](const std::string& name,
+                            const AttributeMap::Value& value) {
+    std::visit([&](const auto& v) { custom_options.insert({name, v.value}); },
+               value);
+  });
+  custom_options.erase("use_output_arena");
+  custom_options.erase(PjRtCompatibleLoadedExecutable::kCallLocation);
+  return custom_options;
+}
+
 }  // namespace
 
 char PjRtCompatibleExecutable::ID = 0;
@@ -425,7 +443,8 @@ char PjRtLoadedExecutable::ID = 0;
 absl::StatusOr<ExecutableRef> PjRtExecutable::Create(
     xla::MaybeOwningMlirModule module, xla::CompileOptions compile_options,
     const xla::PjRtTopologyDescription& topology,
-    xla::PjRtClient* compile_client) {
+    xla::PjRtClient* compile_client,
+    std::optional<std::vector<int>> outputs_bundle_slice_sizes) {
   const bool is_portable = compile_options.compile_portable_executable;
 
   // We have to do process the MLIR before the compile call, since the latter
@@ -468,6 +487,8 @@ absl::StatusOr<ExecutableRef> PjRtExecutable::Create(
   common_metadata.output_hlo_shardings = std::move(output_hlo_shardings);
   common_metadata.output_memory_kinds = std::move(output_memory_kinds);
   common_metadata.output_layouts = std::move(output_layouts);
+  common_metadata.outputs_bundle_slice_sizes =
+      std::move(outputs_bundle_slice_sizes);
 
   return ExecutableRef(new PjRtExecutable(std::move(pjrt_executable),
                                           std::move(common_metadata)));
@@ -505,6 +526,9 @@ absl::StatusOr<std::string> PjRtExecutable::CommonMetadata::Serialize(
 
   metadata.set_computation_name(pjrt_executable->name());
 
+  absl::StatusOr<std::vector<std::vector<xla::DimensionVector>>>
+      output_dimensions = pjrt_executable->GetOutputDimensions();
+
   // Encode output specs.
   for (int i = 0; i < output_dtypes.size(); ++i) {
     SerializedXlaExecutableMetadata::OutputSpec& output_spec =
@@ -527,13 +551,17 @@ absl::StatusOr<std::string> PjRtExecutable::CommonMetadata::Serialize(
     // Shape
     std::optional<Shape> shard_shape;
     {
-      // If the output sharding information is missing (e.g., serializing a
-      // previously deserialized executable) or the output dtype is token, the
-      // output shard shape is the same as the output shape. The former case
-      // will be removed once serialization/deserialization roundtrip preserves
-      // the output sharding information.
-      if (!output_hlo_shardings.has_value() ||
-          output_dtypes[i].kind() == DType::kToken) {
+      // Prefer the per-device output dimensions reported by the compiled
+      // executable. This handles manual SPMD shardings (`{manual}` from
+      // `shard_map`) and unevenly tiled shardings, where
+      // `hlo_sharding_util::TileShape` would otherwise return the unsharded
+      // global shape or fail its divisibility check.
+      if (output_dtypes[i].kind() == DType::kToken) {
+        shard_shape = output_shapes[i];
+      } else if (output_dimensions.ok() && !output_dimensions->empty() &&
+                 (*output_dimensions)[0].size() == output_dtypes.size()) {
+        shard_shape = Shape((*output_dimensions)[0][i]);
+      } else if (!output_hlo_shardings.has_value()) {
         shard_shape = output_shapes[i];
       } else {
         ABSL_ASSIGN_OR_RETURN(xla::PrimitiveType element_type,
@@ -541,7 +569,7 @@ absl::StatusOr<std::string> PjRtExecutable::CommonMetadata::Serialize(
         xla::Shape xla_shape(element_type, output_shapes[i].dims());
         xla::Shape xla_shard_shape = xla::hlo_sharding_util::TileShape(
             (*output_hlo_shardings)[i], xla_shape);
-        shard_shape = Shape(xla_shape.dimensions());
+        shard_shape = Shape(xla_shard_shape.dimensions());
       }
     }
     *output_spec.mutable_shard_shape() = shard_shape->ToProto(serdes_version);
@@ -818,9 +846,6 @@ absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::Create(
       std::vector<MemoryKind> output_memory_kinds,
       GetMemoryKinds(pjrt_loaded_executable->GetOutputMemoryKinds(),
                      output_dtypes));
-  std::vector<ShardingRef> output_shardings =
-      MakeShardings(output_shapes, output_hlo_shardings, output_memory_kinds,
-                    executable_devices);
   ABSL_ASSIGN_OR_RETURN(
       std::optional<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
           output_layouts,
@@ -839,7 +864,8 @@ absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::Create(
       std::move(outputs_bundle_slice_sizes);
 
   return LoadedExecutableRef(new PjRtLoadedExecutable(
-      client, std::move(pjrt_loaded_executable), std::move(executable_devices),
+      client, std::move(pjrt_loaded_executable),
+      is_portable ? DeviceListRef() : std::move(executable_devices),
       std::move(loaded_host_callbacks), std::move(common_metadata)));
 }
 
@@ -852,7 +878,9 @@ PjRtLoadedExecutable::PjRtLoadedExecutable(
     : client_(client),
       pjrt_loaded_executable_(std::move(pjrt_loaded_executable)),
       devices_(std::move(devices)),
-      addressable_devices_(devices_->AddressableDeviceList()->devices()),
+      addressable_devices_(devices_ != nullptr
+                               ? devices_->AddressableDeviceList()->devices()
+                               : absl::Span<Device* const>()),
       all_loaded_host_callbacks_(
           std::make_shared<std::vector<tsl::RCReference<LoadedHostCallback>>>(
               std::move(all_loaded_host_callbacks))),
@@ -862,9 +890,13 @@ PjRtLoadedExecutable::PjRtLoadedExecutable(
           GatherHloOutputCallbacks(*all_loaded_host_callbacks_)),
       common_metadata_(std::move(common_metadata)),
       user_context_(UserContextScope::current()) {
-  output_shardings_ = MakeShardings(
-      common_metadata_.output_shapes, common_metadata_.output_hlo_shardings,
-      common_metadata_.output_memory_kinds, devices_);
+  if (devices_ != nullptr) {
+    output_shardings_ = MakeShardings(
+        common_metadata_.output_shapes,
+        common_metadata_.is_portable ? std::nullopt
+                                     : common_metadata_.output_hlo_shardings,
+        common_metadata_.output_memory_kinds, devices_);
+  }
   pjrt_output_memory_kinds_.emplace_back();
   for (const MemoryKind& memory_kind : common_metadata_.output_memory_kinds) {
     pjrt_output_memory_kinds_.back().push_back(memory_kind.value());
@@ -886,19 +918,29 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
   std::vector<std::unique_ptr<PjRtBuffer>> owned_buffers;
 
   int num_computations;
-  const bool portable_execution = devices.has_value();
+  const bool portable_execution = common_metadata_.is_portable;
   PjRtCompatibleDevice* portable_execution_device = nullptr;
+  if (devices_ != nullptr && devices.has_value() &&
+      (*devices == nullptr || **devices != *devices_)) {
+    return InvalidArgument(
+        "Cannot execute with devices that differ from the bound devices");
+  }
   if (portable_execution) {
-    if ((*devices)->size() != 1) {
+    const DeviceListRef& execution_devices =
+        devices.has_value() ? *devices : devices_;
+    if (execution_devices == nullptr || execution_devices->empty()) {
+      return InvalidArgument("No devices provided for portable executable");
+    }
+    if (execution_devices->size() != 1) {
       return InvalidArgument(
           "Only single-shard portable execution is supported");
     }
-    num_computations = 1;
     portable_execution_device =
-        static_cast<PjRtDevice*>((*devices)->devices().front());
+        static_cast<PjRtDevice*>(execution_devices->devices().front());
+    num_computations = 1;
   } else {
-    if (devices_->devices().empty()) {
-      return InvalidArgument("No devices provided for portable executable");
+    if (devices_ == nullptr || devices_->empty()) {
+      return InvalidArgument("No devices provided for executable");
     }
     num_computations = addressable_devices_.size();
   }
@@ -985,6 +1027,15 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
     ffi::TypeRegistry::TypeId type_id(FfiLoadedHostCallbacks::id.type_id);
     CHECK_OK(context->ffi_context().Insert(type_id, ffi_callbacks.get()));
     opts.context = context.get();
+  }
+
+  if (options.custom_options.has_value()) {
+    xla::CustomOptions::Map custom_options =
+        ToCustomOptionsMap(*options.custom_options);
+    if (!custom_options.empty()) {
+      opts.custom_options =
+          std::make_shared<const xla::CustomOptions>(std::move(custom_options));
+    }
   }
 
   // When using host callbacks on CPU, we need to use synchronous dispatch to
@@ -1110,7 +1161,7 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
   for (int i = 0; i < num_outputs; ++i) {
     PjRtArray::PjRtBuffers buffers;
     buffers.reserve(num_computations);
-    const MemoryKind dst_memory_kind = output_shardings_[i]->memory_kind();
+    const MemoryKind dst_memory_kind = common_metadata_.output_memory_kinds[i];
 
     for (int j = 0; j < num_computations; ++j) {
       if (j > 0) {
@@ -1127,7 +1178,7 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
           std::shared_ptr<PjRtBuffer>(pjrt_outputs[j][i].release()));
     }
     std::optional<ShardingRef> sharding;
-    if (portable_execution) {
+    if (output_shardings_.empty()) {
       if (auto it = single_device_shardings.find(dst_memory_kind);
           it == single_device_shardings.end()) {
         sharding = single_device_shardings

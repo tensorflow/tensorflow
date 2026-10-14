@@ -1089,6 +1089,60 @@ TEST_F(HloCseTest, ResultAccuracyCseKey) {
   EXPECT_EQ(root->operand(2), root->operand(3));
 }
 
+TEST_F(HloCseTest, FusionCseKey) {
+  constexpr absl::string_view kHlo = R"(
+    HloModule m
+
+    fused_comp.0 {
+      p0 = f32[4] parameter(0)
+      p1 = f32[4] parameter(1)
+      mul = f32[4] multiply(p0, p1)
+      ROOT add = f32[4] add(p0, mul)
+    }
+
+    fused_comp.1 {
+      p0 = f32[4] parameter(0)
+      p1 = f32[4] parameter(1)
+      mul = f32[4] multiply(p0, p1)
+      ROOT add = f32[4] add(p0, mul)
+    }
+
+    fused_comp.2 {
+      p0 = f32[4] parameter(0)
+      p1 = f32[4] parameter(1)
+      sub = f32[4] subtract(p0, p1)
+      ROOT add = f32[4] add(p0, sub)
+    }
+
+    fused_comp.3 {
+      p0 = f32[4] parameter(0)
+      p1 = f32[4] parameter(1)
+      mul = f32[4] multiply(p1, p1)
+      ROOT add = f32[4] add(p0, mul)
+    }
+
+    ENTRY main {
+      p0 = f32[4] parameter(0)
+      p1 = f32[4] parameter(1)
+      f0 = f32[4] fusion(p0, p1), kind=kLoop, calls=fused_comp.0
+      f1 = f32[4] fusion(p0, p1), kind=kLoop, calls=fused_comp.1
+      f2 = f32[4] fusion(p0, p1), kind=kLoop, calls=fused_comp.2
+      f3 = f32[4] fusion(p0, p1), kind=kLoop, calls=fused_comp.3
+      ROOT t = tuple(f0, f1, f2, f3)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> m,
+                       ParseAndReturnVerifiedModule(kHlo));
+  HloCSE cse(/*is_layout_sensitive=*/false);
+  EXPECT_THAT(cse.Run(m.get()), absl_testing::IsOkAndHolds(true));
+  const HloInstruction* root = m->entry_computation()->root_instruction();
+  ASSERT_EQ(root->operand_count(), 4);
+  EXPECT_EQ(root->operand(0), root->operand(1));
+  EXPECT_NE(root->operand(0), root->operand(2));
+  EXPECT_NE(root->operand(0), root->operand(3));
+  EXPECT_NE(root->operand(2), root->operand(3));
+}
+
 TEST_F(HloCseTest, ScalarCustomCallNoOperands) {
   constexpr absl::string_view kHlo = R"(
 HloModule main
@@ -1116,6 +1170,94 @@ ENTRY main {
   ASSERT_EQ(root->operands().size(), 2);
   EXPECT_EQ(root->operands()[0]->opcode(), HloOpcode::kCustomCall);
   EXPECT_EQ(root->operands()[0]->unique_id(), root->operands()[1]->unique_id());
+}
+
+TEST_F(HloCseTest, RaggedAllToAllsWithSingleUseAllocateBuffers) {
+  const char* const hlo_string = R"(
+    HloModule m, replica_count=8
+
+    ENTRY test {
+      input = f32[2,4] parameter(0)
+      offsets = s32[8] parameter(1)
+      sizes = s32[8] parameter(2)
+      buffer0 = f32[16,4] custom-call(), custom_call_target="AllocateBuffer"
+      buffer1 = f32[16,4] custom-call(), custom_call_target="AllocateBuffer"
+      ra2a0 = f32[16,4] ragged-all-to-all(input, buffer0, offsets, sizes, offsets, sizes), replica_groups={{0,1,2,3,4,5,6,7}}
+      ra2a1 = f32[16,4] ragged-all-to-all(input, buffer1, offsets, sizes, offsets, sizes), replica_groups={{0,1,2,3,4,5,6,7}}
+      ROOT t = tuple(ra2a0, ra2a1)
+    })";
+  ASSERT_OK_AND_ASSIGN(
+      auto m, ParseAndReturnVerifiedModule(hlo_string, /*replica_count=*/8));
+  EXPECT_THAT(HloCSE(/*is_layout_sensitive=*/false).Run(m.get()),
+              absl_testing::IsOkAndHolds(true));
+  const HloInstruction* root = m->entry_computation()->root_instruction();
+  EXPECT_EQ(root->operand(0), root->operand(1));
+  // The unused AllocateBuffer is removed together with its user.
+  EXPECT_EQ(m->entry_computation()->instruction_count(), 6);
+}
+
+TEST_F(HloCseTest, RaggedAllToAllsWithAllocateBuffersDifferentInputs) {
+  const char* const hlo_string = R"(
+    HloModule m, replica_count=8
+
+    ENTRY test {
+      input0 = f32[2,4] parameter(0)
+      input1 = f32[2,4] parameter(1)
+      offsets = s32[8] parameter(2)
+      sizes = s32[8] parameter(3)
+      buffer0 = f32[16,4] custom-call(), custom_call_target="AllocateBuffer"
+      buffer1 = f32[16,4] custom-call(), custom_call_target="AllocateBuffer"
+      ra2a0 = f32[16,4] ragged-all-to-all(input0, buffer0, offsets, sizes, offsets, sizes), replica_groups={{0,1,2,3,4,5,6,7}}
+      ra2a1 = f32[16,4] ragged-all-to-all(input1, buffer1, offsets, sizes, offsets, sizes), replica_groups={{0,1,2,3,4,5,6,7}}
+      ROOT t = tuple(ra2a0, ra2a1)
+    })";
+  ASSERT_OK_AND_ASSIGN(
+      auto m, ParseAndReturnVerifiedModule(hlo_string, /*replica_count=*/8));
+  EXPECT_THAT(HloCSE(/*is_layout_sensitive=*/false).Run(m.get()),
+              absl_testing::IsOkAndHolds(false));
+}
+
+TEST_F(HloCseTest, RaggedAllToAllsWithMultiUseAllocateBuffer) {
+  const char* const hlo_string = R"(
+    HloModule m, replica_count=8
+
+    ENTRY test {
+      input = f32[2,4] parameter(0)
+      offsets = s32[8] parameter(1)
+      sizes = s32[8] parameter(2)
+      buffer0 = f32[16,4] custom-call(), custom_call_target="AllocateBuffer"
+      buffer1 = f32[16,4] custom-call(), custom_call_target="AllocateBuffer"
+      ra2a0 = f32[16,4] ragged-all-to-all(input, buffer0, offsets, sizes, offsets, sizes), replica_groups={{0,1,2,3,4,5,6,7}}
+      ra2a1 = f32[16,4] ragged-all-to-all(input, buffer1, offsets, sizes, offsets, sizes), replica_groups={{0,1,2,3,4,5,6,7}}
+      ROOT t = tuple(ra2a0, ra2a1, buffer0)
+    })";
+  ASSERT_OK_AND_ASSIGN(
+      auto m, ParseAndReturnVerifiedModule(hlo_string, /*replica_count=*/8));
+  EXPECT_THAT(HloCSE(/*is_layout_sensitive=*/false).Run(m.get()),
+              absl_testing::IsOkAndHolds(false));
+}
+
+TEST_F(HloCseTest, PadsOfAllocateBuffersAreNotCombined) {
+  const char* const hlo_string = R"(
+    HloModule m, replica_count=8
+
+    ENTRY test {
+      input = f32[2,4] parameter(0)
+      offsets = s32[8] parameter(1)
+      sizes = s32[8] parameter(2)
+      zero = f32[] constant(0)
+      buffer0 = f32[15,4] custom-call(), custom_call_target="AllocateBuffer"
+      buffer1 = f32[15,4] custom-call(), custom_call_target="AllocateBuffer"
+      pad0 = f32[16,4] pad(buffer0, zero), padding=0_1x0_0
+      pad1 = f32[16,4] pad(buffer1, zero), padding=0_1x0_0
+      ra2a0 = f32[16,4] ragged-all-to-all(input, pad0, offsets, sizes, offsets, sizes), replica_groups={{0,1,2,3,4,5,6,7}}
+      ra2a1 = f32[16,4] ragged-all-to-all(input, pad1, offsets, sizes, offsets, sizes), replica_groups={{0,1,2,3,4,5,6,7}}
+      ROOT t = tuple(ra2a0, ra2a1)
+    })";
+  ASSERT_OK_AND_ASSIGN(
+      auto m, ParseAndReturnVerifiedModule(hlo_string, /*replica_count=*/8));
+  EXPECT_THAT(HloCSE(/*is_layout_sensitive=*/false).Run(m.get()),
+              absl_testing::IsOkAndHolds(false));
 }
 
 class HloCseCommutativeOpTest

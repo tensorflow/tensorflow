@@ -22,7 +22,7 @@ fusion {
 // CHECK-SAME:     %[[LHS:[^:]+]]: memref<9xcomplex<f32>>,
 // CHECK-SAME:     %[[RHS:[^:]+]]: memref<9xcomplex<f32>>,
 // CHECK-SAME:     %[[OUT:[^:]+]]: memref<9xcomplex<f32>>,
-// CHECK-SAME:     %[[PID:[^:]+]]: index)
+// CHECK-SAME:     %[[PID:[^:]+]]: index {xla.range = [0 : index, 0 : index]})
 
 // CHECK:       %[[T_0:.*]] = xtile.extract %[[LHS]]
 // CHECK-SAME:    : memref<9xcomplex<f32>> -> tensor<4xcomplex<f32>>
@@ -37,7 +37,7 @@ fusion {
 // NEW-VECTOR-SAME:    %[[LHS:[^:]+]]: memref<9x2xf32>,
 // NEW-VECTOR-SAME:    %[[RHS:[^:]+]]: memref<9x2xf32>,
 // NEW-VECTOR-SAME:    %[[OUT:[^:]+]]: memref<9x2xf32>,
-// NEW-VECTOR-SAME:    %[[PID:[^:]+]]: index)
+// NEW-VECTOR-SAME:    %[[PID:[^:]+]]: index {xla.range = [0 : index, 0 : index]})
 
 // NEW-VECTOR:       vector.transfer_read %[[LHS]]
 // NEW-VECTOR:       vector.transfer_read %[[RHS]]

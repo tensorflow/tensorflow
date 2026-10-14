@@ -67,7 +67,8 @@ absl::StatusOr<se::StreamExecutor*> CompiledOptProvider::GetExecutor() {
   DebugOptions debug_opts = GetDebugOptionsFromFlags();
   ABSL_ASSIGN_OR_RETURN(se::Platform * platform,
                    PlatformUtil::GetPlatform(GetPlatformName()));
-  if (debug_opts.xla_gpu_target_config_filename().empty()) {
+  if (debug_opts.xla_gpu_target_config_filename().empty() &&
+      debug_opts.xla_gpu_topology_filename().empty()) {
     ABSL_ASSIGN_OR_RETURN(std::vector<se::StreamExecutor*> stream_executors,
                      PlatformUtil::GetStreamExecutors(
                          platform, /*allowed_devices=*/std::nullopt));

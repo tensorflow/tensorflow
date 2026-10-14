@@ -1,0 +1,43 @@
+// RUN: fusion_to_tensorir --hlo-to-tensorir --split-input-file %s | FileCheck %s
+
+// CHECK-LABEL: @test_two_outputs
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xf32>, %[[ARG1:.*]]: tensor<8x16xf32>
+// CHECK-SAME: -> (tensor<8x16xf32>, tensor<8x16xf32>)
+// CHECK: %[[ADD:.*]] = add %[[ARG0]], %[[ARG1]]
+// CHECK: %[[MUL:.*]] = mul %[[ARG0]], %[[ARG1]]
+// CHECK: results %[[ADD]], %[[MUL]]
+
+test_two_outputs {
+  %p0 = f32[8,16] parameter(0)
+  %p1 = f32[8,16] parameter(1)
+  %add = f32[8,16] add(%p0, %p1)
+  %mul = f32[8,16] multiply(%p0, %p1)
+  ROOT %out = (f32[8,16], f32[8,16]) tuple(%add, %mul)
+}
+
+// -----
+
+// CHECK-LABEL: @test_different_types
+// CHECK-SAME: -> (tensor<8x16xf32>, tensor<8x16xsi32>)
+// CHECK: results
+
+test_different_types {
+  %p0 = f32[8,16] parameter(0)
+  %neg = f32[8,16] negate(%p0)
+  %cvt = s32[8,16] convert(%p0)
+  ROOT %out = (f32[8,16], s32[8,16]) tuple(%neg, %cvt)
+}
+
+// -----
+
+// CHECK-LABEL: @test_non_default_layout
+// CHECK-SAME: nv_tensor_ir.stride = "(1,8)"
+// CHECK-SAME: nv_tensor_ir.stride = "(1,8)"
+// CHECK: results
+
+test_non_default_layout {
+  %p0 = f32[8,16]{0,1} parameter(0)
+  %neg = f32[8,16]{0,1} negate(%p0)
+  %abs = f32[8,16]{0,1} abs(%p0)
+  ROOT %out = (f32[8,16]{0,1}, f32[8,16]{0,1}) tuple(%neg, %abs)
+}

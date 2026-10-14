@@ -37,7 +37,7 @@ namespace tensorflow {
 using gtl::ArraySlice;
 using gtl::MutableArraySlice;
 
-RangeSampler::~RangeSampler() {}
+RangeSampler::~RangeSampler() = default;
 
 void RangeSampler::SampleBatch(random::SimplePhilox* rnd, bool unique,
                                absl::Span<int64_t> batch) const {

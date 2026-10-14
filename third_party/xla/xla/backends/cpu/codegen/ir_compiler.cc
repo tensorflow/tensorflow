@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -50,6 +51,7 @@ limitations under the License.
 #include "llvm/IR/PassManager.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/MC/MCContext.h"
+#include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Passes/OptimizationLevel.h"
 #include "llvm/Passes/PassBuilder.h"
@@ -68,6 +70,7 @@ limitations under the License.
 #include "llvm/Transforms/IPO/AlwaysInliner.h"
 #include "llvm/Transforms/Instrumentation/DataFlowSanitizer.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
+#include "xla/backends/cpu/codegen/object_buffer_identifier.h"
 #include "xla/backends/cpu/codegen/polynomial_approximations.h"
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/codegen/intrinsic/intrinsic.h"
@@ -379,26 +382,6 @@ llvm::Error IrCompiler::RunIrPasses(llvm::Module& module,
   target_library_info_impl->addVectorizableFunctions(
       PolynomialApproximationsVectorization());
 
-  xla::codegen::intrinsics::DeviceType device_type;
-  if (target_triple.isX86()) {
-    // As a heuristic, we check for SSE4a to determine if we are on AMD.
-    // This feature was added in 2007 and is set on all AMD CPUs since then, and
-    // no intel cpus. This is a bit of a hack though, as there is no strict link
-    // between increased precision and SSE4a; Intel could decide to add it in
-    // the future but they are very unlikely to do so as they haven't in the
-    // past 18 years.
-    if (target_machine->getTargetFeatureString().contains("+sse4a")) {
-      device_type = xla::codegen::intrinsics::DeviceType::kAmdCpu;
-    } else {
-      device_type = xla::codegen::intrinsics::DeviceType::kIntelCpu;
-    }
-  } else if (target_triple.isAArch64() || target_triple.isARM()) {
-    device_type = xla::codegen::intrinsics::DeviceType::kArmCpu;
-  } else if (target_triple.isSystemZ()) {
-    device_type = xla::codegen::intrinsics::DeviceType::kSystemZCpu;
-  } else {
-    LOG(FATAL) << "Unsupported CPU type: " << target_triple.str();
-  }
   int prefer_vector_width = 0;
   for (const auto& func : module) {
     if (func.hasFnAttribute("prefer-vector-width")) {
@@ -412,8 +395,35 @@ llvm::Error IrCompiler::RunIrPasses(llvm::Module& module,
     }
   }
 
+  // The explicit feature string lacks features implied by the target CPU.
+  std::string features = absl::StrJoin(
+      target_machine->getMCSubtargetInfo().getEnabledProcessorFeatures(), ",",
+      [](std::string* out, const llvm::SubtargetFeatureKV* feature) {
+        absl::StrAppend(out, "+", feature->key());
+      });
+
+  xla::codegen::intrinsics::DeviceType device_type;
+  if (target_triple.isX86()) {
+    // As a heuristic, we check for SSE4a to determine if we are on AMD.
+    // This feature was added in 2007 and is set on all AMD CPUs since then, and
+    // no intel cpus. This is a bit of a hack though, as there is no strict link
+    // between increased precision and SSE4a; Intel could decide to add it in
+    // the future but they are very unlikely to do so as they haven't in the
+    // past 18 years.
+    if (absl::StrContains(features, "+sse4a")) {
+      device_type = xla::codegen::intrinsics::DeviceType::kAmdCpu;
+    } else {
+      device_type = xla::codegen::intrinsics::DeviceType::kIntelCpu;
+    }
+  } else if (target_triple.isAArch64() || target_triple.isARM()) {
+    device_type = xla::codegen::intrinsics::DeviceType::kArmCpu;
+  } else if (target_triple.isSystemZ()) {
+    device_type = xla::codegen::intrinsics::DeviceType::kSystemZCpu;
+  } else {
+    LOG(FATAL) << "Unsupported CPU type: " << target_triple.str();
+  }
   codegen::IntrinsicFunctionLib intrinsic_lib(
-      {target_machine->getTargetFeatureString().str(), device_type,
+      {std::move(features), device_type,
        /*disable_platform_dependent_math=*/
        options_.disable_platform_dependent_math, prefer_vector_width});
   target_library_info_impl->addVectorizableFunctions(
@@ -429,10 +439,6 @@ llvm::Error IrCompiler::RunIrPasses(llvm::Module& module,
   pb.crossRegisterProxies(lam, fam, cgam, mam);
 
   llvm::ModulePassManager pm;
-
-  if (options_.dfsan_enabled) {
-    pm.addPass(llvm::DataFlowSanitizerPass(options_.dfsan_abi_list_files));
-  }
 
   llvm::OptimizationLevel opt_level = GetOptimizationLevel(options_);
   if (opt_level == llvm::OptimizationLevel::O0) {
@@ -473,17 +479,34 @@ llvm::Error IrCompiler::RunIrPasses(llvm::Module& module,
     codegen::intrinsic::RunInlineAndOptPasses(module);
   }
 
-  // Must stay last: middle-end passes behave differently on instructions that
-  // already carry `contract`.
-  //
-  // TODO(b/560320144): `AllowFPOpFusion = Fast` is deliberately still set in
-  // service/cpu/cpu_aot_loader.cc:53, tools/hlo_opt/cpu_opt.cc:217,
-  // backends/cpu/testlib/kernel_runner.cc:132 and
-  // service/cpu/ir_emitter_test.cc:258. Drop those once the upstream change
-  // has landed.
+  // Must run after all optimization passes: middle-end passes behave
+  // differently on instructions that already carry `contract`.
   llvm_ir::SetAllowContractOnFpArithmetic(module);
+  // Must run after `contract` is set and before sanitizer instrumentation, so
+  // that instrumentation cannot split contractable fmul/fadd pairs into
+  // separate basic blocks.
+  llvm_ir::SinkContractableFMulToFAddFSub(module);
+
+  // Sanitizer instrumentation must be the last IR transformation.
+  if (options_.dfsan_enabled) {
+    // The transformations immediately above are not visible to the analysis
+    // manager; clear its cache.
+    mam.clear();
+
+    RunSanitizerPasses(module, mam);
+  }
 
   return llvm::Error::success();
+}
+
+void IrCompiler::RunSanitizerPasses(llvm::Module& module,
+                                    llvm::ModuleAnalysisManager& mam) const {
+  llvm::ModulePassManager pm;
+
+  if (options_.dfsan_enabled) {
+    pm.addPass(llvm::DataFlowSanitizerPass(options_.dfsan_abi_list_files));
+  }
+  pm.run(module, mam);
 }
 
 std::unique_ptr<llvm::MemoryBuffer> IrCompiler::EmitMachineCode(
@@ -496,7 +519,6 @@ std::unique_ptr<llvm::MemoryBuffer> IrCompiler::EmitMachineCode(
   llvm::MCContext* mc_context;
   llvm::legacy::PassManager codegen_passes;
   codegen_passes.add(new llvm::RuntimeLibraryInfoWrapper(
-      target_machine->Options.ExceptionModel,
       target_machine->Options.MCOptions.ABIName,
       target_machine->Options.VecLib));
   target_machine->addPassesToEmitMC(codegen_passes, mc_context, ostream);
@@ -514,8 +536,17 @@ std::unique_ptr<llvm::MemoryBuffer> IrCompiler::EmitMachineCode(
   CHECK(md_str != nullptr);
   llvm::StringRef mem_region_name_str = md_str->getString();
 
+  // Each module gets assigned two names encoded into the buffer identifier:
+  // - Memory region name: human-friendly name shared among related kernels,
+  //   so that profilers can aggregate results per kernel.
+  // - Buffer identifier: to refer to each module uniquely. Necessary for
+  //   sanitizers.
+  std::string buffer_identifier = EncodeBufferIdentifier(
+      absl::string_view(mem_region_name_str.data(), mem_region_name_str.size()),
+      module.getModuleIdentifier());
+
   return std::make_unique<llvm::SmallVectorMemoryBuffer>(
-      std::move(mc_stream_buffer), mem_region_name_str);
+      std::move(mc_stream_buffer), buffer_identifier);
 }
 
 llvm::CodeGenOptLevel IrCompiler::GetCodeGenOptLevel(

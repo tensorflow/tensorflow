@@ -15,6 +15,9 @@
 TFCI_BAZEL_COMMON_ARGS="--repo_env=HERMETIC_PYTHON_VERSION=$TFCI_PYTHON_VERSION --repo_env=USE_PYWRAP_RULES=True --config release_macos_arm64"
 TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX=macos_arm64
 TFCI_BUILD_PIP_PACKAGE_WHEEL_NAME_ARG="--repo_env=WHEEL_NAME=tensorflow"
+# The same wheel is also published as tensorflow_cpu, so that the package name
+# works on every platform TensorFlow ships. See the note in ci_default.
+TFCI_BUILD_PIP_PACKAGE_ADDITIONAL_WHEEL_NAMES="tensorflow_cpu"
 TFCI_INDEX_HTML_ENABLE=1
 TFCI_LIB_SUFFIX="-cpu-darwin-arm64"
 TFCI_MACOS_BAZEL_TEST_DIR_ENABLE=1

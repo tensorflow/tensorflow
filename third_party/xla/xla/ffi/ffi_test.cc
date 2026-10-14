@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/cpu/ffi.h"
 #include "xla/backends/gpu/ffi.h"
+#include "xla/custom_options.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/api/api.h"
 #include "xla/ffi/api/c_api.h"
@@ -544,6 +545,21 @@ TEST(FfiTest, AttrsAsDictionary) {
   auto status = Invoke(Api(), *handler, call_frame);
 
   TF_ASSERT_OK(status);
+}
+
+TEST(FfiTest, CustomOptionsAsDictionary) {
+  xla::CustomOptions options(
+      {{"i64", int64_t{42}}, {"str", std::string("value")}});
+  auto call_frame = CallFrameBuilder(0, 0).Build();
+  auto handler = Ffi::Bind().Ctx<CustomOptions>().To([](Dictionary options) {
+    EXPECT_THAT(options.get<int64_t>("i64"), absl_testing::IsOkAndHolds(42));
+    EXPECT_THAT(options.get<absl::string_view>("str"),
+                absl_testing::IsOkAndHolds("value"));
+    return absl::OkStatus();
+  });
+  InvokeContext context;
+  context.custom_options = &options;
+  EXPECT_OK(Invoke(Api(), *handler, call_frame, context));
 }
 
 TEST(FfiTest, DictionaryAttr) {

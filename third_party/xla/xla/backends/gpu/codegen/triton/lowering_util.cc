@@ -356,6 +356,28 @@ std::pair<mlir::Value, mlir::Value> CreateTensorOfPointersAndMask(
     range_tile = add_if(arith::AddIOp(), range, range_tile);
   }
 
+  mlir::Value reduced_mask;
+  for (unsigned dim : reduced_dims) {
+    if (!IsGuaranteedInBounds(offsets[dim], sizes[dim], original_shape[dim])) {
+      mlir::Value upper_bound =
+          arith::ConstantIntOp::create(builder, i64_type, original_shape[dim]);
+      mlir::Value mask_right = arith::CmpIOp::create(
+          builder, arith::CmpIPredicate::slt, cast_offsets[dim], upper_bound);
+
+      mlir::Value lower_bound =
+          arith::ConstantIntOp::create(builder, i64_type, 0);
+      mlir::Value mask_left = arith::CmpIOp::create(
+          builder, arith::CmpIPredicate::sge, cast_offsets[dim], lower_bound);
+      mlir::Value mask = arith::AndIOp::create(builder, mask_left, mask_right);
+      reduced_mask = add_if(arith::AndIOp(), mask, reduced_mask);
+    }
+  }
+  if (reduced_mask) {
+    reduced_mask = ttir::SplatOp::create(
+        builder, i64_tile_type.clone(builder.getI1Type()), reduced_mask);
+    mask_tile = add_if(arith::AndIOp(), reduced_mask, mask_tile);
+  }
+
   // Sum up block-uniform offsets multiplied by strides.
   mlir::Value block_offset;
   for (auto [cast_offset, shape_stride] :

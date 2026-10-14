@@ -356,7 +356,9 @@ void SetKernelEventUponApiExit(CuptiTracerEvent& event, uint32_t device_id,
                                uint64_t start_time, uint64_t end_time) {
   event.type = CuptiTracerEventType::Kernel;
   event.source = CuptiTracerEventSource::DriverCallback;
-  event.name = cbdata->symbolName ? cbdata->symbolName : cbdata->functionName;
+  event.name = cbdata->symbolName
+                   ? cbdata->symbolName
+                   : (cbdata->functionName ? cbdata->functionName : "");
   event.start_time_ns = start_time;
   event.end_time_ns = end_time;
   event.thread_id = Env::Default()->GetCurrentThreadId();
@@ -807,10 +809,12 @@ void SetCudaGraphNodeEventUponApiExit(CuptiTracerEvent& event,
   event.graph_id = graph_id_info.graph_id;
   // TODO(rahulnayar): Re-enable this check once the bug is fixed.
   // DCHECK_EQ(graph_id_info.node_id_map.size(), 1);
-  event.graph_node_id = graph_id_info.node_id_map.begin()->first;
   event.cuda_graph_info.orig_graph_id = graph_id_info.orig_graph_id;
-  event.cuda_graph_info.orig_graph_node_id =
-      graph_id_info.node_id_map.begin()->second;
+  if (!graph_id_info.node_id_map.empty()) {
+    event.graph_node_id = graph_id_info.node_id_map.begin()->first;
+    event.cuda_graph_info.orig_graph_node_id =
+        graph_id_info.node_id_map.begin()->second;
+  }
   VLOG(3) << "Observed CudaGraphNode API exit."
           << " name=" << cbdata->functionName;
   graph_id_info.node_id_map.clear();
@@ -834,18 +838,8 @@ void SetGenericEventUponApiExit(CuptiTracerEvent& event, uint32_t device_id,
           << " name=" << cbdata->functionName;
 }
 
-// Supporting CUPTI paired with CUDA, and hence the value of
-// CUPTI_DRIVER_TRACE_CBID_SIZE in cupti_driver_cbid.h are as follows
-// corresponding to different CUDA version: CUDA version -->
-// CUPTI_DRIVER_TRACE_CBID_SIZE
-//   11.0 --> 579
-//   12.0 --> 701
-//   12.8 --> 782
-//   12.9 --> 784
-//   13.0 -->
-// CUDA versions that are impacting code logic here are
-// (11.0), 12.0, 12.8 with their corresponding
-// CUPTI_DRIVER_TRACE_CBID_SIZE value (579), 701, 782 respectively.
+// CUDA 11.0 callbacks are handled by the switch below. Later callbacks are
+// categorized by the CUDA 12.0 and 12.3 version helpers.
 
 // As this is the call back function, no need to check the CUDA
 // runtime/driver version. CBIDs are naturally valid here.
@@ -858,7 +852,7 @@ void SetCallbackEventUponApiExit(
   static absl::NoDestructor<
       std::vector<cuda_versions::CbidCategoryMap const*>> const
       kExtraCbidCategories(
-          {&cuda_versions::GetExtraCallbackIdCategories12080(),
+          {&cuda_versions::GetExtraCallbackIdCategories12030(),
            &cuda_versions::GetExtraCallbackIdCategories12000()});
 
   // Find the category of the CBID, checking newer CUDA version earlier than
@@ -1446,7 +1440,7 @@ CuptiTracer::CreateDefaultCallbackIds() {
   // Adding default Callback cbids according to the CUDA version, considering
   // both compilation and runtime/driver version.
   for (const auto& id_categories :
-       {cuda_versions::GetExtraCallbackIdCategories12080(),
+       {cuda_versions::GetExtraCallbackIdCategories12030(),
         cuda_versions::GetExtraCallbackIdCategories12000()}) {
     for (const auto& [cbid, category] : id_categories) {
       if (category != cuda_versions::CbidCategory::kNone) {
@@ -1546,6 +1540,7 @@ absl::Status CuptiTracer::PrepareSubscriberForSession(
   }
   if (!use_v2_subscriber) {
     if (subscribe_status == CUPTI_ERROR_NOT_SUPPORTED ||
+        subscribe_status == CUPTI_ERROR_NOT_COMPATIBLE ||
         subscribe_status == CUPTI_ERROR_UNKNOWN) {
       subscribe_status = cupti_interface_->Subscribe(
           &subscriber_, (CUpti_CallbackFunc)ApiCallback, this);

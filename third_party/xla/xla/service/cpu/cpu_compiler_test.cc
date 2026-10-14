@@ -99,6 +99,7 @@ ENTRY main {
   DebugOptions debug_options = GetDebugOptionsForTest();
   debug_options.add_xla_cpu_experimental_ynn_fusion_type(
       xla::DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_DOT);
+  debug_options.set_xla_cpu_experimental_onednn_custom_call(false);
   debug_options.mutable_xla_backend_extra_options()->insert(
       {"xla_is_host_offload", "true"});
   config.set_debug_options(debug_options);
@@ -162,6 +163,22 @@ TEST_F(CpuCompilerTest, PermutationSortConvertedToScatter) {
   EXPECT_EQ(sort_count, 1);
 
   EXPECT_TRUE(Run(hlo, /*run_hlo_passes=*/true));
+}
+
+TEST_F(CpuCompilerTest, CompilesElementalOpsWithFusionWrapperPassDisabled) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+    HloModule test
+    ENTRY main {
+      p0 = f32[8]{0} parameter(0)
+      p1 = f32[8]{0} parameter(1)
+      ROOT add = f32[8]{0} add(p0, p1)
+    }
+  )"));
+  module->mutable_config().mutable_debug_options().add_xla_disable_hlo_passes(
+      "fusion-wrapper");
+
+  EXPECT_TRUE(Run(std::move(module), /*run_hlo_passes=*/true));
 }
 
 }  // namespace

@@ -167,7 +167,13 @@ class ProfileData {
 
   ProfileData(const void* serialized_xspace_ptr, size_t serialized_xspace_size);
 
-  explicit ProfileData(std::shared_ptr<XSpace> xspace_ptr);
+  // Supports chunked XSpace vectors (continuous profiling >2GB) and
+  // preserves session_id on ProfileData for standalone export_profile_data().
+  explicit ProfileData(std::shared_ptr<XSpace> xspace_ptr,
+                       std::string session_id = "");
+
+  explicit ProfileData(std::shared_ptr<std::vector<XSpace>> xspaces_ptr,
+                       std::string session_id = "");
 
   explicit ProfileData(const nb::bytes& serialized_xspace);
 
@@ -177,11 +183,21 @@ class ProfileData {
 
   ProfilePlane* find_plane_with_name(const std::string& name) const;
 
+  std::shared_ptr<const XSpace> raw_xspace() const { return xspace_; }
+
+  // Exposes chunked XSpaces and session_id so export_to_xprof can save >2GB
+  // continuous profiles and retain session_id when exporting ProfileData.
+  std::shared_ptr<std::vector<XSpace>> raw_xspaces() const { return xspaces_; }
+
+  const std::string& session_id() const { return session_id_; }
+
  private:
   // The actual XSpace protobuf we are wrapping around. A shared ptr is used so
   // the different levels of  visitors (ProfileData, ProfilePlane,
   // ProfileLine, etc.) don't depend on the lifetime of others.
   std::shared_ptr<XSpace> xspace_;
+  std::shared_ptr<std::vector<XSpace>> xspaces_;
+  std::string session_id_;
 };
 
 ProfileData from_serialized_xspace(const std::string& serialized_xspace);

@@ -65,7 +65,7 @@ cc_library(
 )
 
 xla_cc_binary(
-    name = "fusion_to_mlir",
+    name = "gpu_fusion_to_mlir",
     testonly = 1,
     srcs = ["fusion_to_mlir.cc"],
     # We want to use this tool for lit tests. Due to hermetic cuda, we need to
@@ -96,10 +96,12 @@ xla_cc_binary(
     ],
     visibility = [":codegen_tests"],
     deps = [
-        "//xla/backends/gpu/codegen/tensor_ir:conversion",
+        "//xla/backends/gpu/codegen/tensor_ir:hlo_to_tensor_ir",
         "//xla/backends/gpu/codegen/tensor_ir:support",
         "//xla/hlo/ir:hlo",
+        "//xla/service/llvm_ir:llvm_util",
         "//xla/tools:hlo_module_loader",
+        "@com_google_absl//absl/status:statusor",
         "@cuda_tile//:CudaTileDialect",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
@@ -108,9 +110,9 @@ xla_cc_binary(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TranslateLib",
+        "@tensor_ir//:NVTensorIRConversionOptions",
         "@tensor_ir//:NVTensorIRCudaTilePipelines",
         "@tensor_ir//:NVTensorIRDialect",
-        "@tensor_ir//:NVTensorIRToCudaTileConversion",
     ],
 )
 

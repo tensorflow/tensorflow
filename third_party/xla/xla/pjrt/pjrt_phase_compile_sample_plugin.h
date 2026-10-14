@@ -16,8 +16,11 @@ limitations under the License.
 #ifndef XLA_PJRT_PJRT_PHASE_COMPILE_SAMPLE_PLUGIN_H_
 #define XLA_PJRT_PJRT_PHASE_COMPILE_SAMPLE_PLUGIN_H_
 
+#include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -31,6 +34,12 @@ limitations under the License.
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/pjrt_layout.h"
+#include "xla/pjrt/pjrt_relocatable.h"
+#include "xla/pjrt/proto/pjrt_partial_program.pb.h"
+#include "xla/shape.h"
+#include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace pjrt {
 namespace phase_compile_sample_plugin {
@@ -53,6 +62,7 @@ class StablehloTypeSerialization {
 
   // Serializes an MLIR ModuleOp into a StableHLO bytecode string.
   // Returns an error if serialization fails.
+  static absl::StatusOr<std::string> Serialize(mlir::ModuleOp module_op);
   static absl::StatusOr<std::string> Serialize(
       const mlir::OwningOpRef<mlir::ModuleOp>& module_op);
 
@@ -64,6 +74,72 @@ class StablehloTypeSerialization {
 // to register the phase with the `PjRtPhaseCompiler` and to identify the
 // phase in the `PjRtPartialProgramProto` objects.
 constexpr absl::string_view kPhaseName = "stablehlo_to_optimized_stablehlo";
+
+// Sample implementation of `PjRtRelocatable` that contains a mock-optimized
+// StableHLO program inside its set of partial programs, along with any
+// dependent StableHLO programs.
+class SampleRelocatable : public xla::PjRtRelocatable {
+ public:
+  SampleRelocatable(
+      absl::string_view name, absl::string_view build_id,
+      xla::ProgramShape shape, absl::string_view call_backend_config,
+      std::vector<std::pair<int64_t, int64_t>> param_output_aliases,
+      bool has_side_effects,
+      std::vector<xla::PjRtPartialProgramProto> partial_programs)
+      : name_(name),
+        build_id_(build_id),
+        shape_(std::move(shape)),
+        call_backend_config_(call_backend_config),
+        param_output_aliases_(std::move(param_output_aliases)),
+        has_side_effects_(has_side_effects),
+        partial_programs_(std::move(partial_programs)) {}
+
+  ~SampleRelocatable() override = default;
+
+  static absl::StatusOr<std::unique_ptr<SampleRelocatable>> Create(
+      std::vector<xla::PjRtPartialProgramProto> partial_programs);
+
+  absl::string_view name() const override { return name_; }
+  absl::string_view build_id() const override { return build_id_; }
+  absl::string_view call_backend_config() const override {
+    return call_backend_config_;
+  }
+  bool has_side_effects() const override { return has_side_effects_; }
+  const xla::ProgramShape& shape() const { return shape_; }
+  const std::vector<xla::PjRtPartialProgramProto>& partial_programs() const {
+    return partial_programs_;
+  }
+
+  absl::StatusOr<std::string> Serialize() const override;
+  static absl::StatusOr<std::unique_ptr<SampleRelocatable>> Deserialize(
+      absl::string_view serialized);
+
+  absl::StatusOr<std::vector<xla::PrimitiveType>> GetParameterElementTypes()
+      const override;
+  absl::StatusOr<std::vector<xla::PrimitiveType>> GetOutputElementTypes()
+      const override;
+  absl::StatusOr<std::vector<xla::DimensionVector>> GetParameterDimensions()
+      const override;
+  absl::StatusOr<std::vector<xla::DimensionVector>> GetOutputDimensions()
+      const override;
+  absl::StatusOr<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
+  GetParameterLayouts() const override;
+  absl::StatusOr<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
+  GetOutputLayouts() const override;
+  absl::StatusOr<std::vector<std::pair<int64_t, int64_t>>>
+  GetParameterOutputAliases() const override {
+    return param_output_aliases_;
+  }
+
+ private:
+  std::string name_;
+  std::string build_id_;
+  xla::ProgramShape shape_;
+  std::string call_backend_config_;
+  std::vector<std::pair<int64_t, int64_t>> param_output_aliases_;
+  bool has_side_effects_;
+  std::vector<xla::PjRtPartialProgramProto> partial_programs_;
+};
 
 // This class demonstrates an example phase compiler that the plugin developer
 // needs to implement.
@@ -80,6 +156,14 @@ class SamplePhaseCompiler : public xla::PjRtPhaseCompiler {
       xla::CompileOptions options, xla::MaybeOwningMlirModule module,
       const xla::PjRtTopologyDescription& topology,
       xla::PjRtClient* client) override;
+
+  absl::StatusOr<std::unique_ptr<xla::PjRtRelocatable>> CompileToRelocatable(
+      xla::CompileOptions options, xla::MaybeOwningMlirModule module,
+      const xla::PjRtTopologyDescription& topology, absl::string_view name,
+      bool is_entrypoint, xla::PjRtClient* client) override;
+
+  absl::StatusOr<std::unique_ptr<xla::PjRtRelocatable>> DeserializeRelocatable(
+      absl::string_view serialized) const override;
 };
 
 // Creates a phase compile extension for the sample plugin.

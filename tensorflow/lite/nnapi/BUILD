@@ -101,7 +101,6 @@ cc_library(
     deps = [
         ":nnapi_implementation",
         ":nnapi_lib",
-        "//tensorflow/core/platform:logging",
         "//tensorflow/lite:framework",
         "@com_google_absl//absl/log:check",
     ],

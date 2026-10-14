@@ -307,6 +307,7 @@ class HloInstruction {
 
   inline static constexpr char kMainExecutionThread[] = "main";
   inline static constexpr char kHostThread[] = "host";
+  inline static constexpr char kParallelExecutionThread[] = "parallel";
   // Iota based id unique inside parent computation.
   using LocalId = int32_t;
 
@@ -492,6 +493,13 @@ class HloInstruction {
       const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
       const DotDimensionNumbers& dimension_numbers,
       const PrecisionConfig& precision_config);
+
+  static std::unique_ptr<HloInstruction> CreateDot(
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      const DotDimensionNumbers& dimension_numbers,
+      const PrecisionConfig& precision_config,
+      const SparsityConfig& sparsity_config = {},
+      const BlockScalingConfig& block_scaling_config = {});
 
   // Creates a ragged dot op with operands 'lhs', 'rhs', and 'group_sizes', with
   // contracting, batch, ragged, and group dimensions specified in
@@ -874,7 +882,7 @@ class HloInstruction {
   // is a tuple containing the infeed_shape and the TOKEN.
   static std::unique_ptr<HloInstruction> CreateInfeed(
       const Shape& infeed_shape, HloInstruction* token_operand,
-      const std::string& config);
+      absl::string_view config);
 
   // Creates an outfeed instruction, which outputs data. outfeed_shape is the
   // shape of the data being outfed *not* the shape of the outfeed instruction
@@ -1213,6 +1221,12 @@ class HloInstruction {
       const Shape& shape, HloInstruction* operand,
       absl::Span<const int64_t> dimensions);
 
+  // Creates a shuffle instruction, which shuffles the elements of `operand`
+  // along the given dimensions following the pattern selected by `mode`.
+  static std::unique_ptr<HloInstruction> CreateShuffle(
+      const Shape& shape, HloInstruction* operand,
+      absl::Span<const int64_t> dimensions, const ShuffleMode& mode);
+
   // Creates a Afterall instruction used for joining or creating new values of
   // token type which thread through side-effecting operations. Operands must
   // all be tokens, calls without operands generates a token.
@@ -1270,14 +1284,7 @@ class HloInstruction {
   }
 
   // Returns the (mutable) result shape of this instruction.
-  Shape* mutable_shape() {
-    DCHECK(shape_) << "Instruction shape must be set";
-    if (shape_is_canonicalized_) {
-      shape_ = std::make_shared<Shape>(*shape_);
-      shape_is_canonicalized_ = false;
-    }
-    return &*shape_;
-  }
+  Shape* mutable_shape();
 
   // Canonicalize instruction shape using the given shape pool.
   bool Canonicalize(ShapePool* shape_pool) {
@@ -1766,12 +1773,8 @@ class HloInstruction {
   }
   // Sets the sharding of this operator. Should only be called by HloModule or
   // HloComputation methods.
-  void set_sharding(HloSharding sharding) {
-    set_sharding(std::make_shared<HloSharding>(std::move(sharding)));
-  }
-  void set_sharding(std::shared_ptr<const HloSharding> sharding) {
-    sharding_ = std::move(sharding);
-  }
+  void set_sharding(HloSharding sharding);
+  void set_sharding(std::shared_ptr<const HloSharding> sharding);
   // Copies the sharding of another instruction, this is more efficient than
   // set_sharding(hlo->sharding()) because it avoids a deep copy and shares the
   // storage. Note that if the other instruction has no sharding set, it also
@@ -1810,12 +1813,12 @@ class HloInstruction {
   // the instruction to form the name of the cloned instruction.
   // Ignores the control predecessors and successors of this HLO instruction.
   std::unique_ptr<HloInstruction> Clone(
-      const std::string& suffix = "clone",
+      absl::string_view suffix = "clone",
       HloCloneContext* context = nullptr) const;
 
   // Clones the HLO instruction as above but with new shape.
   std::unique_ptr<HloInstruction> CloneWithNewShape(
-      const Shape& shape, const std::string& suffix = "clone",
+      const Shape& shape, absl::string_view suffix = "clone",
       HloCloneContext* context = nullptr) const;
 
   // Clones the HLO instruction as above but with new shape and operands.
@@ -1826,7 +1829,7 @@ class HloInstruction {
   // Clones the HLO instruction with new shape, operands and suffix.
   std::unique_ptr<HloInstruction> CloneWithNewOperands(
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
-      const std::string& suffix, HloCloneContext* context = nullptr) const;
+      absl::string_view suffix, HloCloneContext* context = nullptr) const;
 
   // Implementation for non-common logic of CloneWithNewOperands.
   // CloneWithNewOperands forwards to this method for some of the intstruction
@@ -1928,9 +1931,7 @@ class HloInstruction {
   //
   // See also HloModule::SetAndUniquifyInstrName(), which does this plus
   // UniquifyName().
-  void SetAndSanitizeName(absl::string_view name) {
-    name_ = NameUniquer::GetSanitizedName(name);
-  }
+  void SetAndSanitizeName(absl::string_view name);
 
   // Use the given NameUniquer to select a unique name for the instruction based
   // on the instruction's existing name.
@@ -1977,39 +1978,22 @@ class HloInstruction {
 
   bool has_backend_config() const { return !backend_config_->empty(); }
 
-  void clear_backend_config() {
-    backend_config_ = std::make_shared<BackendConfigWrapper>();
-  }
+  void clear_backend_config();
 
   void CopyBackendConfigFrom(const HloInstruction* other) {
     backend_config_ = other->backend_config_;
   }
 
   // Replaces the frontend attributes with the provided argument.
-  void set_frontend_attributes(FrontendAttributes frontend_attributes) {
-    if (!has_rare() && frontend_attributes.map().empty()) {
-      return;
-    }
-    mutable_rare()->frontend_attributes = std::move(frontend_attributes);
-  }
+  void set_frontend_attributes(FrontendAttributes frontend_attributes);
 
   // Adds attributes only if they not already present in the HloInstruction.
   // Skips all atributes already present in the HloInstruction.
-  void add_frontend_attributes(FrontendAttributes frontend_attributes) {
-    if (!frontend_attributes.map().empty()) {
-      mutable_rare()->frontend_attributes.mutable_map()->insert(
-          frontend_attributes.map().begin(), frontend_attributes.map().end());
-    }
-  }
+  void add_frontend_attributes(FrontendAttributes frontend_attributes);
 
   // Adds a single attribute only if it not already present in the
   // HloInstruction. Returns false if the attribute was already present.
-  bool add_frontend_attribute(const std::string& key,
-                              const std::string& value) {
-    auto it =
-        mutable_rare()->frontend_attributes.mutable_map()->insert({key, value});
-    return it.second;
-  }
+  bool add_frontend_attribute(absl::string_view key, absl::string_view value);
 
   size_t erase_frontend_attribute(absl::string_view key) {
     return mutable_rare()->frontend_attributes.mutable_map()->erase(key);
@@ -2029,13 +2013,7 @@ class HloInstruction {
   }
 
   std::optional<std::string> get_frontend_attribute(
-      absl::string_view key) const {
-    auto it = rare()->frontend_attributes.map().find(key);
-    if (it == rare()->frontend_attributes.map().end()) {
-      return std::nullopt;
-    }
-    return it->second;
-  }
+      absl::string_view key) const;
 
   void set_is_composite(bool is_composite) {
     if (!has_rare() && !is_composite) {
@@ -2133,20 +2111,14 @@ class HloInstruction {
     return backend_config_->ApplyFnOnProto(fn);
   }
 
-  absl::Status set_backend_config(const tsl::protobuf::Message& proto) {
-    backend_config_ = std::make_shared<BackendConfigWrapper>(proto);
-    return absl::OkStatus();
-  }
+  absl::Status set_backend_config(const tsl::protobuf::Message& proto);
 
   // Getter/setter for raw JSON-encoded backend config.  Prefer the
   // functions above that deal in proto Messages where possible.
   const std::string& raw_backend_config_string() const {
     return backend_config_->GetRawString();
   }
-  void set_raw_backend_config_string(std::string config_str) {
-    backend_config_ =
-        std::make_shared<BackendConfigWrapper>(std::move(config_str));
-  }
+  void set_raw_backend_config_string(std::string config_str);
 
   bool is_default_config() const { return is_default_config_; }
   void set_default_config() { is_default_config_ = true; }
@@ -2173,13 +2145,7 @@ class HloInstruction {
 
   // Sets the debug metadata for this instruction, excluding creation_pass_id,
   // which should never be copied anywhere.
-  void set_metadata(const OpMetadata& metadata) {
-    if (&metadata == kEmptyMetadata) {
-      metadata_.reset();
-    } else {
-      mutable_metadata() = metadata;
-    }
-  }
+  void set_metadata(const OpMetadata& metadata);
 
   void set_size_of_generated_code_in_bytes(int64_t code_size_in_bytes) {
     mutable_metadata().set_size_of_generated_code_in_bytes(code_size_in_bytes);
@@ -2229,12 +2195,7 @@ class HloInstruction {
   // string.
   std::string GetStackTraceStringFromMetadata(int indent = 0) const;
 
-  OpMetadata& mutable_metadata() {
-    if (metadata_ == nullptr) {
-      metadata_ = std::make_unique<OpMetadata>();
-    }
-    return *metadata_;
-  }
+  OpMetadata& mutable_metadata();
 
   // Get the computation containing this instruction.
   const HloComputation* parent() const { return parent_; }
@@ -2415,13 +2376,13 @@ class HloInstruction {
   std::string infeed_config() const;
 
   // Delegates to HloInfeedInstruction::set_infeed_config.
-  void set_infeed_config(const std::string& config);
+  void set_infeed_config(absl::string_view config);
 
   // Returns the config for the Outfeed instruction.
   const std::string& outfeed_config() const;
 
   // Delegates to HloOutfeedInstruction::set_outfeed_config.
-  void set_outfeed_config(const std::string& config);
+  void set_outfeed_config(absl::string_view config);
 
   // Returns the shape for the Outfeed instruction.
   const Shape& outfeed_shape() const;
@@ -2745,6 +2706,16 @@ class HloInstruction {
   // HloInstruction.
   bool IsMarkedAsDead() const { return marked_as_dead_; }
 
+  // Implementation of DetachFromOperandsAndUsers that leaves the edges to
+  // instructions of the given computation (the parent, or null for none) in
+  // place and still marks this instruction cleaned up, so ~HloInstruction does
+  // not unlink them either. ~HloComputation uses it because unlinking an
+  // instruction scans every operand slot of each of its users, and the edges
+  // among instructions that die together are never read again.
+  // REQUIRES: every instruction of the given computation is deleted before any
+  // of those edges is read again.
+  void DetachFromOperandsAndUsersOutside(const HloComputation* computation);
+
   // Set the unique id for this instruction to "id". Should only be called by
   // the instruction's parent computation to set an internal unique id that fits
   // in an int32_t.
@@ -2807,12 +2778,7 @@ class HloInstruction {
   }
 
   // Lazily allocate the Rare struct
-  Rare* mutable_rare() {
-    if (rare_ == nullptr) {
-      rare_ = std::make_unique<Rare>();
-    }
-    return rare_.get();
-  }
+  Rare* mutable_rare();
 
   // Users holds the list of users of an HloInstruction, plus it provides a fast
   // way for checking for presence of a potential user.
@@ -2954,6 +2920,7 @@ std::string ResultAccuracyToleranceToString(
 std::string RandomAlgorithmToString(const RandomAlgorithm& algorithm);
 std::string RandomDistributionToString(const RandomDistribution& distribution);
 std::string PrecisionToString(const PrecisionConfig::Precision& precision);
+std::string ShuffleModeToString(ShuffleMode::ModeCase shuffle_mode);
 std::string ResultAccuracyToString(ResultAccuracy::Mode accuracy_mode);
 std::string AlgorithmToString(const PrecisionConfig::Algorithm& algorithm);
 std::string DotDimensionNumbersToString(const DotDimensionNumbers& dnums);
@@ -2966,14 +2933,15 @@ std::string SparsityConfigToString(const SparsityConfig& sparsity_config);
 std::string BlockScalingConfigToString(
     const BlockScalingConfig& block_scaling_config);
 
-absl::StatusOr<RandomAlgorithm> StringToRandomAlgorithm(
-    const std::string& name);
+absl::StatusOr<RandomAlgorithm> StringToRandomAlgorithm(absl::string_view name);
 absl::StatusOr<RandomDistribution> StringToRandomDistribution(
-    const std::string& name);
+    absl::string_view name);
 absl::StatusOr<PrecisionConfig::Precision> StringToPrecision(
-    const std::string& name);
+    absl::string_view name);
+absl::StatusOr<ShuffleMode::ModeCase> StringToShuffleMode(
+    absl::string_view mode);
 absl::StatusOr<PrecisionConfig::Algorithm> StringToAlgorithm(
-    const std::string& name);
+    absl::string_view name);
 absl::StatusOr<ResultAccuracy::Mode> StringToResultAccuracy(
     absl::string_view name);
 absl::StatusOr<CustomCallSchedule> StringToCustomCallSchedule(

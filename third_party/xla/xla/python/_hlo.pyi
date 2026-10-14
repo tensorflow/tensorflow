@@ -203,155 +203,161 @@ class HloOpcode(enum.Enum):
 
   kExp = 58
 
-  kExpm1 = 59
+  kExp2 = 59
 
-  kFft = 60
+  kExpm1 = 60
 
-  kFloor = 61
+  kFft = 61
 
-  kFusion = 62
+  kFloor = 62
 
-  kGather = 63
+  kFusion = 63
 
-  kGetDimensionSize = 64
+  kGather = 64
 
-  kGetTupleElement = 65
+  kGetDimensionSize = 65
 
-  kImag = 66
+  kGetTupleElement = 66
 
-  kInfeed = 67
+  kImag = 67
 
-  kIota = 68
+  kInfeed = 68
 
-  kIsFinite = 69
+  kIota = 69
 
-  kLog = 70
+  kIsFinite = 70
 
-  kLog1p = 71
+  kLog = 71
 
-  kLogistic = 72
+  kLog1p = 72
 
-  kMap = 73
+  kLog2 = 73
 
-  kMaximum = 74
+  kLogistic = 74
 
-  kMinimum = 75
+  kMap = 75
 
-  kMulhi = 76
+  kMaximum = 76
 
-  kMultiply = 77
+  kMinimum = 77
 
-  kNegate = 78
+  kMulhi = 78
 
-  kNot = 79
+  kMultiply = 79
 
-  kOptimizationBarrier = 80
+  kNegate = 80
 
-  kOr = 81
+  kNot = 81
 
-  kOutfeed = 82
+  kOptimizationBarrier = 82
 
-  kPad = 83
+  kOr = 83
 
-  kParameter = 84
+  kOutfeed = 84
 
-  kPartitionId = 85
+  kPad = 85
 
-  kPopulationCount = 86
+  kParameter = 86
 
-  kPower = 87
+  kPartitionId = 87
 
-  kRaggedAllToAll = 88
+  kPopulationCount = 88
 
-  kRaggedDot = 89
+  kPower = 89
 
-  kReal = 90
+  kRaggedAllToAll = 90
 
-  kRecv = 91
+  kRaggedDot = 91
 
-  kRecvDone = 92
+  kReal = 92
 
-  kReduce = 93
+  kRecv = 93
 
-  kReducePrecision = 94
+  kRecvDone = 94
 
-  kReduceScatter = 95
+  kReduce = 95
 
-  kReduceWindow = 96
+  kReducePrecision = 96
 
-  kRemainder = 97
+  kReduceScatter = 97
 
-  kReplicaId = 98
+  kReduceWindow = 98
 
-  kReshape = 99
+  kRemainder = 99
 
-  kReverse = 100
+  kReplicaId = 100
 
-  kRng = 101
+  kReshape = 101
 
-  kRngBitGenerator = 102
+  kReverse = 102
 
-  kRngGetAndUpdateState = 103
+  kRng = 103
 
-  kRoundNearestAfz = 104
+  kRngBitGenerator = 104
 
-  kRoundNearestEven = 105
+  kRngGetAndUpdateState = 105
 
-  kRsqrt = 106
+  kRoundNearestAfz = 106
 
-  kScaledDot = 107
+  kRoundNearestEven = 107
 
-  kScan = 108
+  kRsqrt = 108
 
-  kScatter = 109
+  kScaledDot = 109
 
-  kSelect = 110
+  kScan = 110
 
-  kSelectAndScatter = 111
+  kScatter = 111
 
-  kSend = 112
+  kSelect = 112
 
-  kSendDone = 113
+  kSelectAndScatter = 113
 
-  kSetDimensionSize = 114
+  kSend = 114
 
-  kShiftLeft = 115
+  kSendDone = 115
 
-  kShiftRightArithmetic = 116
+  kSetDimensionSize = 116
 
-  kShiftRightLogical = 117
+  kShiftLeft = 117
 
-  kSign = 118
+  kShiftRightArithmetic = 118
 
-  kSin = 119
+  kShiftRightLogical = 119
 
-  kSinh = 120
+  kShuffle = 120
 
-  kSlice = 121
+  kSign = 121
 
-  kSort = 122
+  kSin = 122
 
-  kSqrt = 123
+  kSinh = 123
 
-  kStochasticConvert = 124
+  kSlice = 124
 
-  kSubtract = 125
+  kSort = 125
 
-  kTan = 126
+  kSqrt = 126
 
-  kTanh = 127
+  kStochasticConvert = 127
 
-  kTopK = 128
+  kSubtract = 128
 
-  kTranspose = 129
+  kTan = 129
 
-  kTriangularSolve = 130
+  kTanh = 130
 
-  kTuple = 131
+  kTopK = 131
 
-  kWhile = 132
+  kTranspose = 132
 
-  kXor = 133
+  kTriangularSolve = 133
+
+  kTuple = 134
+
+  kWhile = 135
+
+  kXor = 136
 
 class Layout:
   @overload
@@ -408,6 +414,7 @@ class Shape:
     """Constructs a scalar shape."""
 
   def dimensions(self) -> tuple[int, ...]: ...
+  def has_layout(self) -> bool: ...
   def layout(self) -> Layout: ...
   def xla_element_type(self) -> PrimitiveType: ...
   def element_type(self) -> numpy.dtype: ...
@@ -556,13 +563,17 @@ class HloInstruction:
   def to_string(self) -> str: ...
   @property
   def opcode(self) -> HloOpcode: ...
+  @property
+  def shape(self) -> Shape: ...
   def users(self) -> list[HloInstruction]: ...
   def operands(self) -> list[HloInstruction]: ...
+  def control_predecessors(self) -> list[HloInstruction]: ...
   def async_wrapped_root(self) -> HloInstruction: ...
   def get_frontend_attribute(self, key: str) -> str | None: ...
   def set_frontend_attribute(self, key: str, value: str) -> None: ...
   def set_core_assignment(self, core_ids: Sequence[int]) -> None: ...
   def core_assignment(self) -> list[int]: ...
+  def as_serialized_proto(self) -> bytes: ...
   def __hash__(self) -> int: ...
   def __eq__(self, arg: HloInstruction, /) -> bool: ...
 

@@ -20,6 +20,8 @@ limitations under the License.
 #include <string>
 
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -33,6 +35,7 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/test_helpers.h"
+#include "xla/hlo/transforms/simplifiers/float_normalization.h"
 #include "xla/literal_util.h"
 #include "xla/service/float_support.h"
 #include "xla/service/hlo_verifier.h"
@@ -46,8 +49,10 @@ limitations under the License.
 namespace xla {
 
 // A class specifying the BF16 support used to test the propagation pass. It
-// specifies that BF16 and mixed precision are supported in all HloInstructions,
-// and that kDot reduces its operands precision to BF16.
+// specifies that BF16 and mixed precision are supported in all HloInstructions
+// (unless an opcode or a named instruction is opted out via
+// SetSupportsMixedPrecisions), and that kDot reduces its operands precision to
+// BF16.
 class TestBFloat16Support : public FloatSupport {
  public:
   TestBFloat16Support() : FloatSupport(BF16) {}
@@ -63,13 +68,60 @@ class TestBFloat16Support : public FloatSupport {
   }
 
   bool SupportsMixedPrecisions(const HloInstruction& hlo) const override {
-    return true;
+    return !non_mixed_precision_opcodes_.contains(hlo.opcode()) &&
+           !non_mixed_precision_names_.contains(hlo.name());
   }
 
   bool EffectiveOperandPrecisionIsLowPrecision(
       const HloInstruction& hlo, int64_t operand_index) const override {
     return hlo.opcode() == HloOpcode::kDot;
   }
+
+  void SetSupportsMixedPrecisions(HloOpcode opcode, bool supports) {
+    if (supports) {
+      non_mixed_precision_opcodes_.erase(opcode);
+    } else {
+      non_mixed_precision_opcodes_.insert(opcode);
+    }
+  }
+
+  // Per-instruction override, for tests that need two instructions of the
+  // same opcode (e.g. a nested fusion and its parent) to differ.
+  void SetSupportsMixedPrecisions(absl::string_view instruction_name,
+                                  bool supports) {
+    if (supports) {
+      non_mixed_precision_names_.erase(instruction_name);
+    } else {
+      non_mixed_precision_names_.insert(std::string(instruction_name));
+    }
+  }
+
+ private:
+  absl::flat_hash_set<HloOpcode> non_mixed_precision_opcodes_;
+  absl::flat_hash_set<std::string> non_mixed_precision_names_;
+};
+
+// Records the forward pass candidate decision of every instruction by name.
+class CandidateTrackingPropagation : public BFloat16Propagation {
+ public:
+  CandidateTrackingPropagation(const FloatSupport* bfloat16_support,
+                               const AliasInfo* alias_info)
+      : BFloat16Propagation(bfloat16_support, alias_info) {}
+
+  bool InstructionIsCandidateForBF16Output(HloInstruction* hlo) override {
+    bool is_candidate =
+        BFloat16Propagation::InstructionIsCandidateForBF16Output(hlo);
+    candidate_map_[hlo->name()] = is_candidate;
+    return is_candidate;
+  }
+
+  bool IsCandidate(absl::string_view name) const {
+    auto it = candidate_map_.find(name);
+    return it != candidate_map_.end() && it->second;
+  }
+
+ private:
+  absl::flat_hash_map<std::string, bool> candidate_map_;
 };
 
 class BFloat16PropagationTest : public HloHardwareIndependentTestBase {
@@ -81,10 +133,24 @@ class BFloat16PropagationTest : public HloHardwareIndependentTestBase {
 
   // Runs the propagation pass on the given module, and returns whether the
   // module is changed after this pass.
-  bool PropagatePrecision(HloModule* module) {
-    TestBFloat16Support bfloat16_support;
-    BFloat16Propagation propagation(&bfloat16_support, &alias_info_);
+  bool PropagatePrecision(HloModule* module,
+                          const FloatSupport* bfloat16_support = nullptr) {
+    TestBFloat16Support default_bfloat16_support;
+    if (bfloat16_support == nullptr) {
+      bfloat16_support = &default_bfloat16_support;
+    }
+    BFloat16Propagation propagation(bfloat16_support, &alias_info_);
     absl::StatusOr<bool> result = propagation.Run(module);
+    EXPECT_IS_OK(result.status());
+    return result.value();
+  }
+
+  // Runs FloatNormalization with the same FloatSupport, as backends do right
+  // after propagation (see the header). Returns whether the module changed.
+  bool NormalizePrecision(HloModule* module,
+                          const FloatSupport* bfloat16_support) {
+    FloatNormalization normalization(bfloat16_support);
+    absl::StatusOr<bool> result = normalization.Run(module);
     EXPECT_IS_OK(result.status());
     return result.value();
   }
@@ -2709,6 +2775,1488 @@ ENTRY main {
                         /*allow_mixed_precision=*/true)
                 .Run(module.get())
                 .status());
+}
+
+TEST_F(BFloat16PropagationTest,
+       GatherConvertsToBF16WithoutMixedPrecisionWhenOperandCanConvert) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule gather_bf16
+
+ENTRY main {
+  p0 = f32[1024,128]{1,0} parameter(0)
+  p1 = f32[1024,128]{1,0} parameter(1)
+  add = f32[1024,128]{1,0} add(p0, p1)
+  indices = s32[512]{0} parameter(2)
+  gather = f32[512,128]{1,0} gather(add, indices), offset_dims={1}, collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=1, slice_sizes={1,128}
+  ROOT convert = bf16[512,128]{1,0} convert(gather)
+}
+)hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  TestBFloat16Support bfloat16_support;
+  bfloat16_support.SetSupportsMixedPrecisions(HloOpcode::kGather, false);
+
+  EXPECT_TRUE(PropagatePrecision(module.get(), &bfloat16_support));
+
+  HloInstruction* gather = FindInstruction(module.get(), "gather");
+  ASSERT_NE(gather, nullptr);
+  EXPECT_TRUE(OutputsBF16(gather));
+  EXPECT_EQ(gather->shape().element_type(), BF16);
+
+  HloInstruction* add = FindInstruction(module.get(), "add");
+  ASSERT_NE(add, nullptr);
+  EXPECT_TRUE(OutputsBF16(add));
+  EXPECT_EQ(add->shape().element_type(), BF16);
+
+  EXPECT_OK(HloVerifier(/*layout_sensitive=*/false,
+                        /*allow_mixed_precision=*/true)
+                .Run(module.get())
+                .status());
+}
+
+// When the operand of a bare non-mixed gather is pinned to F32 (here by a
+// live-out user), the gather must stay F32 with it. FloatNormalization could
+// not fix a BF16 gather with an F32 operand by converting the operand (the
+// integer index operand rules that out) and would restore the F32 output
+// instead, so this pass pins the gather itself (see
+// KeepsNonMixedPrecisionOpHomogeneous): the module is left untouched rather
+// than flipped to BF16 and back, and a subsequent FloatNormalization has
+// nothing to do.
+TEST_F(BFloat16PropagationTest,
+       BareGatherIsPinnedToF32WhenOperandCannotConvert) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule gather_bf16_prevented
+
+ENTRY main {
+  p0 = f32[1024,128]{1,0} parameter(0)
+  p1 = f32[1024,128]{1,0} parameter(1)
+  add = f32[1024,128]{1,0} add(p0, p1)
+  indices = s32[512]{0} parameter(2)
+  gather = f32[512,128]{1,0} gather(add, indices), offset_dims={1}, collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=1, slice_sizes={1,128}
+  convert = bf16[512,128]{1,0} convert(gather)
+  other_add = f32[1024,128]{1,0} add(add, p1)
+  ROOT root = (bf16[512,128]{1,0}, f32[1024,128]{1,0}) tuple(convert, other_add)
+}
+)hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  TestBFloat16Support bfloat16_support;
+  bfloat16_support.SetSupportsMixedPrecisions(HloOpcode::kGather, false);
+
+  EXPECT_FALSE(PropagatePrecision(module.get(), &bfloat16_support));
+
+  HloInstruction* gather = FindInstruction(module.get(), "gather");
+  ASSERT_NE(gather, nullptr);
+  HloInstruction* add = FindInstruction(module.get(), "add");
+  ASSERT_NE(add, nullptr);
+  // `add` is pinned by `other_add`, and the gather with it.
+  EXPECT_EQ(add->shape().element_type(), F32);
+  EXPECT_EQ(gather->shape().element_type(), F32);
+  ASSERT_EQ(gather->user_count(), 1);
+  EXPECT_EQ(gather->users()[0]->opcode(), HloOpcode::kConvert);
+  EXPECT_EQ(gather->users()[0]->shape().element_type(), BF16);
+  EXPECT_OK(HloVerifier(/*layout_sensitive=*/false,
+                        /*allow_mixed_precision=*/true)
+                .Run(module.get())
+                .status());
+
+  EXPECT_FALSE(NormalizePrecision(module.get(), &bfloat16_support));
+}
+
+// A bare non-mixed op that forwards operand precision and has no non-float
+// operands (here an all-gather) must *not* be pinned to F32 by this pass when
+// its operand is: FloatNormalization converts the operand instead, so the
+// collective runs, and moves its bytes, in BF16. The entry parameter is never
+// marked and so is an F32 seed in the resolve pass.
+TEST_F(BFloat16PropagationTest,
+       AllGatherWithF32OperandStillRunsInBF16WithoutMixedPrecision) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule all_gather_bf16
+
+ENTRY main {
+  p0 = f32[256,128]{1,0} parameter(0)
+  p1 = bf16[1024,128]{1,0} parameter(1)
+  ag = f32[1024,128]{1,0} all-gather(p0), dimensions={0}, replica_groups={}
+  ROOT dot = f32[1024,1024]{1,0} dot(ag, p1), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+)hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kHlo, /*replica_count=*/4));
+  TestBFloat16Support bfloat16_support;
+  bfloat16_support.SetSupportsMixedPrecisions(HloOpcode::kAllGather, false);
+
+  EXPECT_TRUE(PropagatePrecision(module.get(), &bfloat16_support));
+
+  HloInstruction* ag = FindInstruction(module.get(), "ag");
+  ASSERT_NE(ag, nullptr);
+  EXPECT_EQ(ag->shape().element_type(), BF16);
+  EXPECT_EQ(ag->operand(0)->shape().element_type(), F32);
+
+  EXPECT_TRUE(NormalizePrecision(module.get(), &bfloat16_support));
+  ag = FindInstruction(module.get(), "ag");
+  ASSERT_NE(ag, nullptr);
+  EXPECT_EQ(ag->shape().element_type(), BF16);
+  EXPECT_EQ(ag->operand(0)->shape().element_type(), BF16);
+  EXPECT_EQ(ag->operand(0)->opcode(), HloOpcode::kConvert);
+  EXPECT_OK(HloVerifier(/*layout_sensitive=*/false,
+                        /*allow_mixed_precision=*/true)
+                .Run(module.get())
+                .status());
+}
+
+// A bare non-mixed collective is left to FloatNormalization. It stays a
+// candidate even when the producer behind the get-tuple-element it reads (a
+// non-mixed top-k whose operand is an entry parameter) is not: the collective
+// still ends up in BF16, with a convert on its operand, instead of running in
+// F32 and converting after.
+TEST_F(BFloat16PropagationTest,
+       AllGatherOfNonCandidateTupleProducerIsStillCandidate) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule all_gather_of_topk
+
+ENTRY main {
+  p0 = f32[1024,128]{1,0} parameter(0)
+  topk = (f32[1024,8]{1,0}, s32[1024,8]{1,0}) topk(p0), k=8, largest=true
+  vals = f32[1024,8]{1,0} get-tuple-element(topk), index=0
+  ag = f32[4096,8]{1,0} all-gather(vals), dimensions={0}, replica_groups={}
+  ROOT convert = bf16[4096,8]{1,0} convert(ag)
+}
+)hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kHlo, /*replica_count=*/4));
+  TestBFloat16Support bfloat16_support;
+  bfloat16_support.SetSupportsMixedPrecisions(HloOpcode::kAllGather, false);
+  bfloat16_support.SetSupportsMixedPrecisions(HloOpcode::kTopK, false);
+
+  CandidateTrackingPropagation pass(&bfloat16_support, &alias_info_);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, pass.Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_FALSE(pass.IsCandidate("topk"));
+  EXPECT_TRUE(pass.IsCandidate("ag"));
+
+  HloInstruction* ag = FindInstruction(module.get(), "ag");
+  ASSERT_NE(ag, nullptr);
+  EXPECT_EQ(ag->shape().element_type(), BF16);
+  EXPECT_EQ(ag->operand(0)->shape().element_type(), F32);
+  HloInstruction* topk = FindInstruction(module.get(), "topk");
+  ASSERT_NE(topk, nullptr);
+  EXPECT_EQ(ShapeUtil::GetSubshape(topk->shape(), {0}).element_type(), F32);
+
+  EXPECT_TRUE(NormalizePrecision(module.get(), &bfloat16_support));
+  ag = FindInstruction(module.get(), "ag");
+  ASSERT_NE(ag, nullptr);
+  EXPECT_EQ(ag->shape().element_type(), BF16);
+  EXPECT_EQ(ag->operand(0)->opcode(), HloOpcode::kConvert);
+  EXPECT_EQ(ag->operand(0)->shape().element_type(), BF16);
+  EXPECT_OK(HloVerifier(/*layout_sensitive=*/false,
+                        /*allow_mixed_precision=*/true)
+                .Run(module.get())
+                .status());
+}
+
+// The operand of a non-mixed fusion is only pinned to F32 in the resolve pass
+// here: `x` is marked BF16 in the backward pass (both of its users accept
+// BF16), and so is the nested non-mixed fusion `inner`, but `x` is also live
+// out of the entry computation and therefore reverts to F32. The homogeneity
+// edge then has to follow from the fused parameter of the outer fusion into
+// `inner`, which must stay F32 with its operand; the outer fusion itself can
+// still return BF16 because the mismatch is resolved inside it.
+TEST_F(BFloat16PropagationTest,
+       NonMixedFusionOutputIsPinnedWhenOperandIsPinnedOnlyInResolvePass) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule late_pinned_nested_fusion
+
+inner_comp {
+  operand = f32[1024,128]{1,0} parameter(0)
+  indices = s32[512]{0} parameter(1)
+  ROOT gather = f32[512,128]{1,0} gather(operand, indices), offset_dims={1}, collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=1, slice_sizes={1,128}
+}
+
+outer_comp {
+  op0 = f32[1024,128]{1,0} parameter(0)
+  op1 = s32[512]{0} parameter(1)
+  ROOT inner = f32[512,128]{1,0} fusion(op0, op1), kind=kCustom, calls=inner_comp
+}
+
+ENTRY main {
+  p0 = f32[1024,128]{1,0} parameter(0)
+  p1 = f32[1024,128]{1,0} parameter(1)
+  x = f32[1024,128]{1,0} add(p0, p1)
+  indices = s32[512]{0} parameter(2)
+  outer = f32[512,128]{1,0} fusion(x, indices), kind=kLoop, calls=outer_comp
+  convert = bf16[512,128]{1,0} convert(outer)
+  ROOT root = (bf16[512,128]{1,0}, f32[1024,128]{1,0}) tuple(convert, x)
+}
+)hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  TestBFloat16Support bfloat16_support;
+  bfloat16_support.SetSupportsMixedPrecisions("inner", false);
+
+  EXPECT_TRUE(PropagatePrecision(module.get(), &bfloat16_support));
+
+  HloInstruction* x = FindInstruction(module.get(), "x");
+  ASSERT_NE(x, nullptr);
+  EXPECT_EQ(x->shape().element_type(), F32);
+
+  HloInstruction* outer = FindInstruction(module.get(), "outer");
+  ASSERT_NE(outer, nullptr);
+  HloComputation* outer_comp = outer->fused_instructions_computation();
+  HloInstruction* op0 = outer_comp->parameter_instruction(0);
+  EXPECT_EQ(op0->shape().element_type(), F32);
+  HloInstruction* inner = outer_comp->GetInstructionWithName("inner");
+  ASSERT_NE(inner, nullptr);
+  EXPECT_EQ(inner->shape().element_type(), F32);
+  EXPECT_EQ(inner->operand(0)->shape().element_type(), F32);
+  HloComputation* inner_comp = inner->fused_instructions_computation();
+  EXPECT_EQ(inner_comp->parameter_instruction(0)->shape().element_type(), F32);
+  EXPECT_EQ(inner_comp->root_instruction()->shape().element_type(), F32);
+
+  // The outer fusion is not restricted to be homogeneous, so it still returns
+  // BF16; the precision change happens inside it.
+  EXPECT_EQ(outer->shape().element_type(), BF16);
+  EXPECT_OK(HloVerifier(/*layout_sensitive=*/false,
+                        /*allow_mixed_precision=*/true)
+                .Run(module.get())
+                .status());
+}
+
+// A non-mixed custom fusion wrapping a gather converts to BF16 together with
+// its fused computation and its operand `add`, since its only user takes BF16.
+// This reaches a fixed point: a second run and a follow-up FloatNormalization
+// make no further changes.
+TEST_F(BFloat16PropagationTest,
+       CustomFusionGatherConvertsWithoutMixedPrecisionWhenOperandCanConvert) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule custom_fusion_gather_bf16
+
+fused_gather {
+  operand = f32[1024,128]{1,0} parameter(0)
+  indices = s32[512]{0} parameter(1)
+  ROOT gather = f32[512,128]{1,0} gather(operand, indices), offset_dims={1}, collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=1, slice_sizes={1,128}
+}
+
+ENTRY main {
+  p0 = f32[1024,128]{1,0} parameter(0)
+  p1 = f32[1024,128]{1,0} parameter(1)
+  add = f32[1024,128]{1,0} add(p0, p1)
+  indices = s32[512]{0} parameter(2)
+  custom_fusion = f32[512,128]{1,0} fusion(add, indices), kind=kCustom, calls=fused_gather
+  ROOT convert = bf16[512,128]{1,0} convert(custom_fusion)
+}
+)hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  TestBFloat16Support bfloat16_support;
+  bfloat16_support.SetSupportsMixedPrecisions(HloOpcode::kFusion, false);
+
+  EXPECT_TRUE(PropagatePrecision(module.get(), &bfloat16_support));
+
+  HloInstruction* custom_fusion =
+      FindInstruction(module.get(), "custom_fusion");
+  ASSERT_NE(custom_fusion, nullptr);
+  EXPECT_EQ(custom_fusion->shape().element_type(), BF16);
+  EXPECT_EQ(custom_fusion->fused_parameter(0)->shape().element_type(), BF16);
+
+  HloInstruction* gather =
+      custom_fusion->fused_instructions_computation()->GetInstructionWithName(
+          "gather");
+  ASSERT_NE(gather, nullptr);
+  EXPECT_EQ(gather->shape().element_type(), BF16);
+
+  HloInstruction* add = FindInstruction(module.get(), "add");
+  ASSERT_NE(add, nullptr);
+  EXPECT_EQ(add->shape().element_type(), BF16);
+
+  const std::string after_first_run = module->ToString();
+  EXPECT_FALSE(PropagatePrecision(module.get(), &bfloat16_support));
+  EXPECT_EQ(module->ToString(), after_first_run);
+  EXPECT_FALSE(NormalizePrecision(module.get(), &bfloat16_support));
+  EXPECT_EQ(module->ToString(), after_first_run);
+
+  EXPECT_OK(HloVerifier(/*layout_sensitive=*/false,
+                        /*allow_mixed_precision=*/true)
+                .Run(module.get())
+                .status());
+}
+
+TEST_F(
+    BFloat16PropagationTest,
+    CustomFusionGatherStaysF32WithoutMixedPrecisionWhenOperandCannotConvert) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule custom_fusion_gather_bf16_prevented
+
+fused_gather {
+  operand = f32[1024,128]{1,0} parameter(0)
+  indices = s32[512]{0} parameter(1)
+  ROOT gather = f32[512,128]{1,0} gather(operand, indices), offset_dims={1}, collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=1, slice_sizes={1,128}
+}
+
+ENTRY main {
+  p0 = f32[1024,128]{1,0} parameter(0)
+  p1 = f32[1024,128]{1,0} parameter(1)
+  add = f32[1024,128]{1,0} add(p0, p1)
+  indices = s32[512]{0} parameter(2)
+  custom_fusion = f32[512,128]{1,0} fusion(add, indices), kind=kCustom, calls=fused_gather
+  convert = bf16[512,128]{1,0} convert(custom_fusion)
+  other_add = f32[1024,128]{1,0} add(add, p1)
+  ROOT root = (bf16[512,128]{1,0}, f32[1024,128]{1,0}) tuple(convert, other_add)
+}
+)hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  TestBFloat16Support bfloat16_support;
+  bfloat16_support.SetSupportsMixedPrecisions(HloOpcode::kFusion, false);
+
+  EXPECT_FALSE(PropagatePrecision(module.get(), &bfloat16_support));
+
+  HloInstruction* custom_fusion =
+      FindInstruction(module.get(), "custom_fusion");
+  ASSERT_NE(custom_fusion, nullptr);
+  EXPECT_EQ(custom_fusion->shape().element_type(), F32);
+
+  HloInstruction* gather =
+      custom_fusion->fused_instructions_computation()->GetInstructionWithName(
+          "gather");
+  ASSERT_NE(gather, nullptr);
+  EXPECT_EQ(gather->shape().element_type(), F32);
+
+  HloInstruction* add = FindInstruction(module.get(), "add");
+  ASSERT_NE(add, nullptr);
+  EXPECT_EQ(add->shape().element_type(), F32);
+
+  EXPECT_OK(HloVerifier(/*layout_sensitive=*/false,
+                        /*allow_mixed_precision=*/true)
+                .Run(module.get())
+                .status());
+}
+
+// A non-mixed multi-output fusion with one output live out in F32 (gte1) and
+// one only consumed as BF16 (gte0) stays F32 as a whole, and so do the
+// operands `x` and `y` that only feed it. The backward pass already reverts the
+// partially marked fusion, so both output leaves enter the resolve pass
+// unmarked and are seeded F32 directly; the sibling edge itself is exercised by
+// NestedNonMixedFusionWithoutF32OperandsIsPinnedTogetherBySiblingEdge below.
+TEST_F(BFloat16PropagationTest,
+       MultiOutputFusionStaysF32WithoutMixedPrecisionWhenOutputsAreMixed) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule multi_output_fusion_mixed_output
+
+fused_comp {
+  p0 = f32[4,4]{1,0} parameter(0)
+  p1 = f32[4,4]{1,0} parameter(1)
+  add0 = f32[4,4]{1,0} add(p0, p1)
+  add1 = f32[4,4]{1,0} add(p0, p1)
+  ROOT root = (f32[4,4]{1,0}, f32[4,4]{1,0}) tuple(add0, add1)
+}
+
+ENTRY main {
+  p0 = f32[4,4]{1,0} parameter(0)
+  p1 = f32[4,4]{1,0} parameter(1)
+  x = f32[4,4]{1,0} add(p0, p1)
+  y = f32[4,4]{1,0} multiply(p0, p1)
+  fusion = (f32[4,4]{1,0}, f32[4,4]{1,0}) fusion(x, y), kind=kCustom, calls=fused_comp
+  gte0 = f32[4,4]{1,0} get-tuple-element(fusion), index=0
+  gte1 = f32[4,4]{1,0} get-tuple-element(fusion), index=1
+  convert0 = bf16[4,4]{1,0} convert(gte0)
+  ROOT root = (bf16[4,4]{1,0}, f32[4,4]{1,0}) tuple(convert0, gte1)
+}
+)hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  TestBFloat16Support bfloat16_support;
+  bfloat16_support.SetSupportsMixedPrecisions(HloOpcode::kFusion, false);
+
+  EXPECT_FALSE(PropagatePrecision(module.get(), &bfloat16_support));
+
+  HloInstruction* fusion = FindInstruction(module.get(), "fusion");
+  ASSERT_NE(fusion, nullptr);
+  EXPECT_FALSE(OutputsBF16(fusion));
+  EXPECT_EQ(fusion->shape().tuple_shapes(0).element_type(), F32);
+  EXPECT_EQ(fusion->shape().tuple_shapes(1).element_type(), F32);
+
+  HloInstruction* fused_root =
+      fusion->fused_instructions_computation()->root_instruction();
+  ASSERT_NE(fused_root, nullptr);
+  EXPECT_FALSE(OutputsBF16(fused_root));
+
+  for (absl::string_view name : {"x", "y"}) {
+    HloInstruction* inst = FindInstruction(module.get(), name);
+    ASSERT_NE(inst, nullptr) << name;
+    EXPECT_EQ(inst->shape().element_type(), F32) << name;
+  }
+  EXPECT_OK(HloVerifier(/*layout_sensitive=*/false,
+                        /*allow_mixed_precision=*/true)
+                .Run(module.get())
+                .status());
+}
+
+TEST_F(BFloat16PropagationTest,
+       PreexistingBF16FusionInteriorIsProcessedWithoutMixedPrecision) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule preexisting_bf16_fusion
+
+fused_gather {
+  operand = f32[1024,128]{1,0} parameter(0)
+  indices = s32[512]{0} parameter(1)
+  ROOT gather = bf16[512,128]{1,0} gather(operand, indices), offset_dims={1}, collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=1, slice_sizes={1,128}
+}
+
+ENTRY main {
+  p0 = f32[1024,128]{1,0} parameter(0)
+  p1 = f32[1024,128]{1,0} parameter(1)
+  add = f32[1024,128]{1,0} add(p0, p1)
+  indices = s32[512]{0} parameter(2)
+  ROOT custom_fusion = bf16[512,128]{1,0} fusion(add, indices), kind=kCustom, calls=fused_gather
+}
+)hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  TestBFloat16Support bfloat16_support;
+  bfloat16_support.SetSupportsMixedPrecisions(HloOpcode::kFusion, false);
+
+  EXPECT_TRUE(PropagatePrecision(module.get(), &bfloat16_support));
+
+  HloInstruction* custom_fusion =
+      FindInstruction(module.get(), "custom_fusion");
+  ASSERT_NE(custom_fusion, nullptr);
+  EXPECT_EQ(custom_fusion->shape().element_type(), BF16);
+
+  HloInstruction* gather =
+      custom_fusion->fused_instructions_computation()->GetInstructionWithName(
+          "gather");
+  ASSERT_NE(gather, nullptr);
+  EXPECT_EQ(gather->shape().element_type(), BF16);
+
+  // Because the fusion interior is processed, parameter(0) of fused_gather
+  // converts to BF16, which in turn allows `add` outside the fusion to convert
+  // to BF16.
+  EXPECT_EQ(gather->operand(0)->shape().element_type(), BF16);
+
+  HloInstruction* add = FindInstruction(module.get(), "add");
+  ASSERT_NE(add, nullptr);
+  EXPECT_EQ(add->shape().element_type(), BF16);
+
+  EXPECT_OK(HloVerifier(/*layout_sensitive=*/false,
+                        /*allow_mixed_precision=*/true)
+                .Run(module.get())
+                .status());
+}
+
+// A non-mixed fusion that already has mixed (bf16, f32) outputs, where the F32
+// output is pinned (live out of the entry), is not converted: its outputs and
+// fused parameters are left as they are, so `add` outside stays F32 too. (The
+// fused computation is still walked like any other computation, with its
+// parameters skipped, exactly as before this change; here it contains nothing
+// that walk could change.)
+TEST_F(BFloat16PropagationTest,
+       PreexistingMixedOutputNonMixedFusionIsLeftAloneWhenF32OutputIsPinned) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule preexisting_mixed_output_fusion
+
+fused_comp {
+  p0 = f32[4,4]{1,0} parameter(0)
+  p1 = f32[4,4]{1,0} parameter(1)
+  convert0 = bf16[4,4]{1,0} convert(p0)
+  mul0 = f32[4,4]{1,0} multiply(p0, p1)
+  ROOT root = (bf16[4,4]{1,0}, f32[4,4]{1,0}) tuple(convert0, mul0)
+}
+
+ENTRY main {
+  p0 = f32[4,4]{1,0} parameter(0)
+  p1 = f32[4,4]{1,0} parameter(1)
+  add = f32[4,4]{1,0} add(p0, p1)
+  fusion = (bf16[4,4]{1,0}, f32[4,4]{1,0}) fusion(add, p1), kind=kCustom, calls=fused_comp
+  gte0 = bf16[4,4]{1,0} get-tuple-element(fusion), index=0
+  gte1 = f32[4,4]{1,0} get-tuple-element(fusion), index=1
+  ROOT root = (bf16[4,4]{1,0}, f32[4,4]{1,0}) tuple(gte0, gte1)
+}
+)hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  TestBFloat16Support bfloat16_support;
+  bfloat16_support.SetSupportsMixedPrecisions(HloOpcode::kFusion, false);
+
+  EXPECT_FALSE(PropagatePrecision(module.get(), &bfloat16_support));
+
+  HloInstruction* fusion = FindInstruction(module.get(), "fusion");
+  ASSERT_NE(fusion, nullptr);
+  EXPECT_EQ(fusion->shape().tuple_shapes(0).element_type(), BF16);
+  EXPECT_EQ(fusion->shape().tuple_shapes(1).element_type(), F32);
+
+  HloComputation* fused = fusion->fused_instructions_computation();
+  EXPECT_EQ(fused->parameter_instruction(0)->shape().element_type(), F32);
+  EXPECT_EQ(fused->parameter_instruction(1)->shape().element_type(), F32);
+  HloInstruction* mul0 = fused->GetInstructionWithName("mul0");
+  ASSERT_NE(mul0, nullptr);
+  EXPECT_EQ(mul0->shape().element_type(), F32);
+
+  HloInstruction* add = FindInstruction(module.get(), "add");
+  ASSERT_NE(add, nullptr);
+  EXPECT_EQ(add->shape().element_type(), F32);
+
+  EXPECT_OK(HloVerifier(/*layout_sensitive=*/false,
+                        /*allow_mixed_precision=*/true)
+                .Run(module.get())
+                .status());
+}
+
+// A non-mixed fusion whose F32 operand comes from an op that cannot become
+// BF16 (a non-mixed add, whose operands do not forward precision) stays F32 as
+// a whole, whether it reads that operand directly or as an element of a tuple
+// operand: the resolve pass pins it through the operand's F32 value.
+TEST_F(BFloat16PropagationTest,
+       FusionWithTupleOperandOfUnsupportedF32ElementStaysF32) {
+  constexpr absl::string_view kHloDirect = R"hlo(
+HloModule direct_fusion
+
+fused_comp {
+  operand = f32[1024,128]{1,0} parameter(0)
+  indices = s32[512]{0} parameter(1)
+  ROOT gather = f32[512,128]{1,0} gather(operand, indices), offset_dims={1}, collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=1, slice_sizes={1,128}
+}
+
+ENTRY main {
+  p0 = f32[1024,128]{1,0} parameter(0)
+  p1 = f32[1024,128]{1,0} parameter(1)
+  add = f32[1024,128]{1,0} add(p0, p1)
+  indices = s32[512]{0} parameter(2)
+  custom_fusion = f32[512,128]{1,0} fusion(add, indices), kind=kCustom, calls=fused_comp
+  ROOT convert = bf16[512,128]{1,0} convert(custom_fusion)
+}
+)hlo";
+
+  constexpr absl::string_view kHloTuple = R"hlo(
+HloModule tuple_fusion
+
+fused_comp {
+  tuple_param = (f32[1024,128]{1,0}) parameter(0)
+  operand = f32[1024,128]{1,0} get-tuple-element(tuple_param), index=0
+  indices = s32[512]{0} parameter(1)
+  ROOT gather = f32[512,128]{1,0} gather(operand, indices), offset_dims={1}, collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=1, slice_sizes={1,128}
+}
+
+ENTRY main {
+  p0 = f32[1024,128]{1,0} parameter(0)
+  p1 = f32[1024,128]{1,0} parameter(1)
+  add = f32[1024,128]{1,0} add(p0, p1)
+  indices = s32[512]{0} parameter(2)
+  t = (f32[1024,128]{1,0}) tuple(add)
+  custom_fusion = f32[512,128]{1,0} fusion(t, indices), kind=kCustom, calls=fused_comp
+  ROOT convert = bf16[512,128]{1,0} convert(custom_fusion)
+}
+)hlo";
+
+  TestBFloat16Support bfloat16_support;
+  bfloat16_support.SetSupportsMixedPrecisions(HloOpcode::kFusion, false);
+  bfloat16_support.SetSupportsMixedPrecisions(HloOpcode::kAdd, false);
+
+  for (absl::string_view hlo : {kHloDirect, kHloTuple}) {
+    TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+    SCOPED_TRACE(module->name());
+    EXPECT_FALSE(PropagatePrecision(module.get(), &bfloat16_support));
+    HloInstruction* add = FindInstruction(module.get(), "add");
+    ASSERT_NE(add, nullptr);
+    EXPECT_EQ(add->shape().element_type(), F32);
+    HloInstruction* fusion = FindInstruction(module.get(), "custom_fusion");
+    ASSERT_NE(fusion, nullptr);
+    EXPECT_EQ(fusion->shape().element_type(), F32);
+    for (const HloInstruction* inst :
+         fusion->fused_instructions_computation()->instructions()) {
+      EXPECT_FALSE(ShapeUtil::HasPrimitiveType(inst->shape(), BF16))
+          << inst->name();
+    }
+  }
+}
+
+// The same for a non-mixed gather, which this pass keeps homogeneous because
+// of its integer indices: it stays F32 with the add it reads, directly or
+// through gte(tuple(add)). In the tuple case the gather is still a candidate
+// (its operand, the gte, is one) and only the resolve pass keeps it in F32, so
+// the non-mixed all-gather reading it is a candidate too and still ends up in
+// BF16, with a convert on its operand.
+TEST_F(BFloat16PropagationTest,
+       GatherWithTupleOperandOfUnsupportedF32ElementStaysF32) {
+  constexpr absl::string_view kHloDirect = R"hlo(
+HloModule direct_gather
+
+ENTRY main {
+  p0 = f32[1024,128]{1,0} parameter(0)
+  p1 = f32[1024,128]{1,0} parameter(1)
+  add = f32[1024,128]{1,0} add(p0, p1)
+  indices = s32[512]{0} parameter(2)
+  gather = f32[512,128]{1,0} gather(add, indices), offset_dims={1}, collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=1, slice_sizes={1,128}
+  ROOT convert = bf16[512,128]{1,0} convert(gather)
+}
+)hlo";
+
+  constexpr absl::string_view kHloTuple = R"hlo(
+HloModule tuple_gather
+
+ENTRY main {
+  p0 = f32[1024,128]{1,0} parameter(0)
+  p1 = f32[1024,128]{1,0} parameter(1)
+  add = f32[1024,128]{1,0} add(p0, p1)
+  indices = s32[512]{0} parameter(2)
+  t = (f32[1024,128]{1,0}) tuple(add)
+  gte = f32[1024,128]{1,0} get-tuple-element(t), index=0
+  gather = f32[512,128]{1,0} gather(gte, indices), offset_dims={1}, collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=1, slice_sizes={1,128}
+  ag = f32[2048,128]{1,0} all-gather(gather), dimensions={0}, replica_groups={}
+  ROOT convert = bf16[2048,128]{1,0} convert(ag)
+}
+)hlo";
+
+  TestBFloat16Support bfloat16_support;
+  bfloat16_support.SetSupportsMixedPrecisions(HloOpcode::kGather, false);
+  bfloat16_support.SetSupportsMixedPrecisions(HloOpcode::kAdd, false);
+  bfloat16_support.SetSupportsMixedPrecisions(HloOpcode::kAllGather, false);
+
+  {
+    TF_ASSERT_OK_AND_ASSIGN(auto module,
+                            ParseAndReturnVerifiedModule(kHloDirect));
+    EXPECT_FALSE(PropagatePrecision(module.get(), &bfloat16_support));
+    for (absl::string_view name : {"add", "gather"}) {
+      HloInstruction* inst = FindInstruction(module.get(), name);
+      ASSERT_NE(inst, nullptr) << name;
+      EXPECT_EQ(inst->shape().element_type(), F32) << name;
+    }
+  }
+
+  {
+    TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                             kHloTuple, /*replica_count=*/4));
+    EXPECT_TRUE(PropagatePrecision(module.get(), &bfloat16_support));
+    for (absl::string_view name : {"add", "gather"}) {
+      HloInstruction* inst = FindInstruction(module.get(), name);
+      ASSERT_NE(inst, nullptr) << name;
+      EXPECT_EQ(inst->shape().element_type(), F32) << name;
+    }
+    HloInstruction* ag = FindInstruction(module.get(), "ag");
+    ASSERT_NE(ag, nullptr);
+    EXPECT_EQ(ag->shape().element_type(), BF16);
+
+    EXPECT_TRUE(NormalizePrecision(module.get(), &bfloat16_support));
+    ag = FindInstruction(module.get(), "ag");
+    ASSERT_NE(ag, nullptr);
+    EXPECT_EQ(ag->operand(0)->opcode(), HloOpcode::kConvert);
+    EXPECT_EQ(ag->operand(0)->shape().element_type(), BF16);
+    EXPECT_OK(HloVerifier(/*layout_sensitive=*/false,
+                          /*allow_mixed_precision=*/true)
+                  .Run(module.get())
+                  .status());
+  }
+}
+
+// When the add can become BF16, so can the gather reading it through
+// gte(tuple(add)).
+TEST_F(BFloat16PropagationTest,
+       GatherWithTupleOperandOfSupportedF32ElementBecomesBF16) {
+  constexpr absl::string_view kHloTuple = R"hlo(
+HloModule tuple_gather
+
+ENTRY main {
+  p0 = f32[1024,128]{1,0} parameter(0)
+  p1 = f32[1024,128]{1,0} parameter(1)
+  add = f32[1024,128]{1,0} add(p0, p1)
+  indices = s32[512]{0} parameter(2)
+  t = (f32[1024,128]{1,0}) tuple(add)
+  gte = f32[1024,128]{1,0} get-tuple-element(t), index=0
+  gather = f32[512,128]{1,0} gather(gte, indices), offset_dims={1}, collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=1, slice_sizes={1,128}
+  ROOT convert = bf16[512,128]{1,0} convert(gather)
+}
+)hlo";
+
+  TestBFloat16Support bfloat16_support;
+  bfloat16_support.SetSupportsMixedPrecisions(HloOpcode::kGather, false);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloTuple));
+  EXPECT_TRUE(PropagatePrecision(module.get(), &bfloat16_support));
+  for (absl::string_view name : {"add", "gather"}) {
+    HloInstruction* inst = FindInstruction(module.get(), name);
+    ASSERT_NE(inst, nullptr) << name;
+    EXPECT_EQ(inst->shape().element_type(), BF16) << name;
+  }
+}
+
+// The values reaching a while body parameter are defined in the caller, which
+// the forward pass visits after the body. A non-mixed op fed from the loop
+// parameter must still be judged by the parameter (a candidate), not by the
+// not-yet-visited producers in the caller.
+TEST_F(BFloat16PropagationTest,
+       GatherInWhileBodyIsCandidateWithoutMixedPrecision) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule gather_in_while_body
+
+body {
+  p = (f32[1024,128]{1,0}, s32[512]{0}, bf16[512,128]{1,0}) parameter(0)
+  data = f32[1024,128]{1,0} get-tuple-element(p), index=0
+  indices = s32[512]{0} get-tuple-element(p), index=1
+  gather = f32[512,128]{1,0} gather(data, indices), offset_dims={1}, collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=1, slice_sizes={1,128}
+  convert = bf16[512,128]{1,0} convert(gather)
+  ROOT t = (f32[1024,128]{1,0}, s32[512]{0}, bf16[512,128]{1,0}) tuple(data, indices, convert)
+}
+
+cond {
+  cp = (f32[1024,128]{1,0}, s32[512]{0}, bf16[512,128]{1,0}) parameter(0)
+  ROOT c = pred[] constant(false)
+}
+
+ENTRY main {
+  p0 = f32[1024,128]{1,0} parameter(0)
+  p1 = f32[1024,128]{1,0} parameter(1)
+  add = f32[1024,128]{1,0} add(p0, p1)
+  indices = s32[512]{0} parameter(2)
+  init_out = bf16[512,128]{1,0} parameter(3)
+  init = (f32[1024,128]{1,0}, s32[512]{0}, bf16[512,128]{1,0}) tuple(add, indices, init_out)
+  w = (f32[1024,128]{1,0}, s32[512]{0}, bf16[512,128]{1,0}) while(init), condition=cond, body=body
+  ROOT out = bf16[512,128]{1,0} get-tuple-element(w), index=2
+}
+)hlo";
+
+  TestBFloat16Support bfloat16_support;
+  bfloat16_support.SetSupportsMixedPrecisions(HloOpcode::kGather, false);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  CandidateTrackingPropagation pass(&bfloat16_support, &alias_info_);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, pass.Run(module.get()));
+  EXPECT_TRUE(pass.IsCandidate("gather"));
+  EXPECT_TRUE(changed);
+
+  HloInstruction* gather = FindInstruction(module.get(), "gather");
+  ASSERT_NE(gather, nullptr);
+  EXPECT_EQ(gather->shape().element_type(), BF16);
+  EXPECT_EQ(gather->operand(0)->shape().element_type(), BF16);
+  HloInstruction* add = FindInstruction(module.get(), "add");
+  ASSERT_NE(add, nullptr);
+  EXPECT_EQ(add->shape().element_type(), BF16);
+
+  EXPECT_OK(HloVerifier(/*layout_sensitive=*/false,
+                        /*allow_mixed_precision=*/true)
+                .Run(module.get())
+                .status());
+}
+
+// Same as above for a called computation, whose parameters also carry the
+// caller's values when the dataflow propagates through calls.
+TEST_F(BFloat16PropagationTest,
+       GatherInCalledComputationIsCandidateWithoutMixedPrecision) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule gather_in_call
+
+callee {
+  cp0 = f32[1024,128]{1,0} parameter(0)
+  cp1 = s32[512]{0} parameter(1)
+  gather = f32[512,128]{1,0} gather(cp0, cp1), offset_dims={1}, collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=1, slice_sizes={1,128}
+  ROOT convert = bf16[512,128]{1,0} convert(gather)
+}
+
+ENTRY main {
+  p0 = f32[1024,128]{1,0} parameter(0)
+  p1 = f32[1024,128]{1,0} parameter(1)
+  add = f32[1024,128]{1,0} add(p0, p1)
+  indices = s32[512]{0} parameter(2)
+  ROOT call = bf16[512,128]{1,0} call(add, indices), to_apply=callee
+}
+)hlo";
+
+  TestBFloat16Support bfloat16_support;
+  bfloat16_support.SetSupportsMixedPrecisions(HloOpcode::kGather, false);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  CandidateTrackingPropagation pass(&bfloat16_support, &alias_info_);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, pass.Run(module.get()));
+  EXPECT_TRUE(pass.IsCandidate("gather"));
+  EXPECT_TRUE(changed);
+
+  HloInstruction* gather = FindInstruction(module.get(), "gather");
+  ASSERT_NE(gather, nullptr);
+  EXPECT_EQ(gather->shape().element_type(), BF16);
+  EXPECT_EQ(gather->operand(0)->shape().element_type(), BF16);
+  HloInstruction* add = FindInstruction(module.get(), "add");
+  ASSERT_NE(add, nullptr);
+  EXPECT_EQ(add->shape().element_type(), BF16);
+
+  EXPECT_OK(HloVerifier(/*layout_sensitive=*/false,
+                        /*allow_mixed_precision=*/true)
+                .Run(module.get())
+                .status());
+}
+
+// Same as above for conditional branch parameters: the branch operands are
+// tuples whose F32 leaf is produced in the caller, which the forward pass has
+// not visited when it reaches the branches.
+TEST_F(BFloat16PropagationTest,
+       GatherInConditionalBranchIsCandidateWithoutMixedPrecision) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule gather_in_conditional
+
+true_branch {
+  tp = (f32[1024,128]{1,0}, s32[512]{0}) parameter(0)
+  tdata = f32[1024,128]{1,0} get-tuple-element(tp), index=0
+  tidx = s32[512]{0} get-tuple-element(tp), index=1
+  tgather = f32[512,128]{1,0} gather(tdata, tidx), offset_dims={1}, collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=1, slice_sizes={1,128}
+  ROOT tconvert = bf16[512,128]{1,0} convert(tgather)
+}
+
+false_branch {
+  fp = (f32[1024,128]{1,0}, s32[512]{0}) parameter(0)
+  fdata = f32[1024,128]{1,0} get-tuple-element(fp), index=0
+  fidx = s32[512]{0} get-tuple-element(fp), index=1
+  fgather = f32[512,128]{1,0} gather(fdata, fidx), offset_dims={1}, collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=1, slice_sizes={1,128}
+  ROOT fconvert = bf16[512,128]{1,0} convert(fgather)
+}
+
+ENTRY main {
+  p = pred[] parameter(0)
+  p0 = f32[1024,128]{1,0} parameter(1)
+  p1 = f32[1024,128]{1,0} parameter(2)
+  indices = s32[512]{0} parameter(3)
+  add = f32[1024,128]{1,0} add(p0, p1)
+  copy0 = f32[1024,128]{1,0} copy(add)
+  copy1 = f32[1024,128]{1,0} copy(add)
+  t0 = (f32[1024,128]{1,0}, s32[512]{0}) tuple(copy0, indices)
+  t1 = (f32[1024,128]{1,0}, s32[512]{0}) tuple(copy1, indices)
+  ROOT cond = bf16[512,128]{1,0} conditional(p, t0, t1), true_computation=true_branch, false_computation=false_branch
+}
+)hlo";
+
+  TestBFloat16Support bfloat16_support;
+  bfloat16_support.SetSupportsMixedPrecisions(HloOpcode::kGather, false);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  CandidateTrackingPropagation pass(&bfloat16_support, &alias_info_);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, pass.Run(module.get()));
+  EXPECT_TRUE(pass.IsCandidate("tgather"));
+  EXPECT_TRUE(pass.IsCandidate("fgather"));
+  EXPECT_TRUE(changed);
+
+  for (absl::string_view name : {"tgather", "fgather"}) {
+    HloInstruction* gather = FindInstruction(module.get(), name);
+    ASSERT_NE(gather, nullptr) << name;
+    EXPECT_EQ(gather->shape().element_type(), BF16) << name;
+    EXPECT_EQ(gather->operand(0)->shape().element_type(), BF16) << name;
+  }
+  HloInstruction* add = FindInstruction(module.get(), "add");
+  ASSERT_NE(add, nullptr);
+  EXPECT_EQ(add->shape().element_type(), BF16);
+
+  EXPECT_OK(HloVerifier(/*layout_sensitive=*/false,
+                        /*allow_mixed_precision=*/true)
+                .Run(module.get())
+                .status());
+}
+
+// A kDomain forwards its operand's value like a tuple/get-tuple-element. A
+// non-mixed gather reading the non-mixed add through one stays F32 with it;
+// when the add can become BF16, the add, the domain and the gather all do.
+TEST_F(BFloat16PropagationTest,
+       GatherThroughDomainStaysHomogeneousWithoutMixedPrecision) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule gather_through_domain
+
+ENTRY main {
+  p0 = f32[1024,128]{1,0} parameter(0)
+  p1 = f32[1024,128]{1,0} parameter(1)
+  add = f32[1024,128]{1,0} add(p0, p1)
+  indices = s32[512]{0} parameter(2)
+  gather = f32[512,128]{1,0} gather(add, indices), offset_dims={1}, collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=1, slice_sizes={1,128}
+  ROOT convert = bf16[512,128]{1,0} convert(gather)
+}
+)hlo";
+
+  // Inserts `add -> domain -> gather`; domains are not expressible in HLO text
+  // without sharding metadata, so do it on the parsed module.
+  auto insert_domain = [&](HloModule* module) {
+    HloInstruction* add = FindInstruction(module, "add");
+    HloInstruction* gather = FindInstruction(module, "gather");
+    ASSERT_NE(add, nullptr);
+    ASSERT_NE(gather, nullptr);
+    HloInstruction* domain = add->parent()->AddInstruction(
+        HloInstruction::CreateDomain(add->shape(), add, nullptr, nullptr));
+    ASSERT_OK(add->ReplaceUseWith(gather, domain));
+  };
+
+  {
+    TestBFloat16Support bfloat16_support;
+    bfloat16_support.SetSupportsMixedPrecisions(HloOpcode::kGather, false);
+    bfloat16_support.SetSupportsMixedPrecisions(HloOpcode::kAdd, false);
+    TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+    insert_domain(module.get());
+    EXPECT_FALSE(PropagatePrecision(module.get(), &bfloat16_support));
+    HloInstruction* gather = FindInstruction(module.get(), "gather");
+    ASSERT_NE(gather, nullptr);
+    EXPECT_EQ(gather->shape().element_type(), F32);
+    EXPECT_EQ(gather->operand(0)->opcode(), HloOpcode::kDomain);
+    EXPECT_EQ(gather->operand(0)->shape().element_type(), F32);
+    HloInstruction* add = FindInstruction(module.get(), "add");
+    ASSERT_NE(add, nullptr);
+    EXPECT_EQ(add->shape().element_type(), F32);
+  }
+
+  {
+    TestBFloat16Support bfloat16_support;
+    bfloat16_support.SetSupportsMixedPrecisions(HloOpcode::kGather, false);
+    TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+    insert_domain(module.get());
+    EXPECT_TRUE(PropagatePrecision(module.get(), &bfloat16_support));
+    HloInstruction* gather = FindInstruction(module.get(), "gather");
+    ASSERT_NE(gather, nullptr);
+    EXPECT_EQ(gather->shape().element_type(), BF16);
+    EXPECT_EQ(gather->operand(0)->opcode(), HloOpcode::kDomain);
+    EXPECT_EQ(gather->operand(0)->shape().element_type(), BF16);
+    HloInstruction* add = FindInstruction(module.get(), "add");
+    ASSERT_NE(add, nullptr);
+    EXPECT_EQ(add->shape().element_type(), BF16);
+  }
+}
+
+// An operand that is BF16 already cannot pin a non-mixed op to F32, so the
+// forward pass does not require its producer to be a candidate. Here that
+// producer is a copy from host memory, which never is; the non-mixed fusion
+// reading it still becomes BF16, since its only user takes BF16.
+TEST_F(BFloat16PropagationTest,
+       NonMixedFusionOfBF16OperandFromNonCandidateBecomesBF16) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule fusion_of_bf16_host_copy
+
+fused_comp {
+  fp0 = bf16[4,4]{1,0} parameter(0)
+  fconvert = f32[4,4]{1,0} convert(fp0)
+  ROOT ftranspose = f32[4,4]{1,0} transpose(fconvert), dimensions={1,0}
+}
+
+ENTRY main {
+  p0 = bf16[4,4]{1,0:S(5)} parameter(0)
+  copy = bf16[4,4]{1,0} copy(p0)
+  fusion = f32[4,4]{1,0} fusion(copy), kind=kCustom, calls=fused_comp
+  ROOT convert = bf16[4,4]{1,0} convert(fusion)
+}
+)hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  TestBFloat16Support bfloat16_support;
+  bfloat16_support.SetSupportsMixedPrecisions(HloOpcode::kFusion, false);
+
+  EXPECT_TRUE(PropagatePrecision(module.get(), &bfloat16_support));
+  HloInstruction* fusion = FindInstruction(module.get(), "fusion");
+  ASSERT_NE(fusion, nullptr);
+  EXPECT_EQ(fusion->shape().element_type(), BF16);
+  EXPECT_EQ(fusion->fused_expression_root()->shape().element_type(), BF16);
+  EXPECT_OK(HloVerifier(/*layout_sensitive=*/false,
+                        /*allow_mixed_precision=*/true)
+                .Run(module.get())
+                .status());
+}
+
+// The homogeneity edge of a non-mixed fusion only involves its F32 output
+// leaves. The fusion's F32 operand `x` is pinned (live out), which must pin
+// the fusion's F32 output even though its users only want BF16; the S32
+// output takes no part. Without the edge the fusion would end with an F32
+// operand and a BF16 output, which FloatNormalization does not repair for
+// fusions.
+TEST_F(BFloat16PropagationTest,
+       NonMixedFusionF32OutputIsPinnedByF32OperandNextToIntegerOutput) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule non_mixed_fusion_integer_output
+
+fused_comp {
+  fp0 = f32[4,4]{1,0} parameter(0)
+  fp1 = f32[4,4]{1,0} parameter(1)
+  fadd = f32[4,4]{1,0} add(fp0, fp1)
+  fidx = s32[4,4]{1,0} convert(fadd)
+  ROOT froot = (f32[4,4]{1,0}, s32[4,4]{1,0}) tuple(fadd, fidx)
+}
+
+ENTRY main {
+  p0 = f32[4,4]{1,0} parameter(0)
+  p1 = f32[4,4]{1,0} parameter(1)
+  x = f32[4,4]{1,0} add(p0, p1)
+  fusion = (f32[4,4]{1,0}, s32[4,4]{1,0}) fusion(x, p1), kind=kCustom, calls=fused_comp
+  gte0 = f32[4,4]{1,0} get-tuple-element(fusion), index=0
+  gte1 = s32[4,4]{1,0} get-tuple-element(fusion), index=1
+  convert0 = bf16[4,4]{1,0} convert(gte0)
+  ROOT root = (bf16[4,4]{1,0}, s32[4,4]{1,0}, f32[4,4]{1,0}) tuple(convert0, gte1, x)
+}
+)hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  TestBFloat16Support bfloat16_support;
+  bfloat16_support.SetSupportsMixedPrecisions(HloOpcode::kFusion, false);
+
+  EXPECT_FALSE(PropagatePrecision(module.get(), &bfloat16_support));
+
+  HloInstruction* fusion = FindInstruction(module.get(), "fusion");
+  ASSERT_NE(fusion, nullptr);
+  EXPECT_EQ(fusion->shape().tuple_shapes(0).element_type(), F32);
+  EXPECT_EQ(fusion->shape().tuple_shapes(1).element_type(), S32);
+  EXPECT_EQ(fusion->operand(0)->shape().element_type(), F32);
+  HloInstruction* fadd =
+      fusion->fused_instructions_computation()->GetInstructionWithName("fadd");
+  ASSERT_NE(fadd, nullptr);
+  EXPECT_EQ(fadd->shape().element_type(), F32);
+  EXPECT_OK(HloVerifier(/*layout_sensitive=*/false,
+                        /*allow_mixed_precision=*/true)
+                .Run(module.get())
+                .status());
+}
+
+// Pins the documented over-approximation of the homogeneity edge:
+// SupportsMixedPrecisions is a per-instruction answer, so an F32 operand of a
+// non-mixed fusion pins the fusion's F32 outputs even when that operand only
+// feeds an integer-producing path inside the fusion and the F32 output does
+// not depend on it. Here `x` (live out, so pinned) only feeds the S32 output
+// through a convert, while the F32 output is a transpose of `y`; `y` and the
+// F32 output could have converted on their own, but the fusion as a whole is
+// kept F32, and the pass reports no change.
+TEST_F(BFloat16PropagationTest,
+       NonMixedFusionF32OutputIsPinnedByF32OperandFeedingOnlyIntegerPath) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule non_mixed_fusion_integer_only_operand
+
+fused_comp {
+  fp0 = f32[4,4]{1,0} parameter(0)
+  fp1 = f32[4,4]{1,0} parameter(1)
+  ft = f32[4,4]{1,0} transpose(fp0), dimensions={1,0}
+  fidx = s32[4,4]{1,0} convert(fp1)
+  ROOT froot = (f32[4,4]{1,0}, s32[4,4]{1,0}) tuple(ft, fidx)
+}
+
+ENTRY main {
+  p0 = f32[4,4]{1,0} parameter(0)
+  p1 = f32[4,4]{1,0} parameter(1)
+  x = f32[4,4]{1,0} add(p0, p1)
+  y = f32[4,4]{1,0} multiply(p0, p1)
+  fusion = (f32[4,4]{1,0}, s32[4,4]{1,0}) fusion(y, x), kind=kCustom, calls=fused_comp
+  gte0 = f32[4,4]{1,0} get-tuple-element(fusion), index=0
+  gte1 = s32[4,4]{1,0} get-tuple-element(fusion), index=1
+  convert0 = bf16[4,4]{1,0} convert(gte0)
+  ROOT root = (bf16[4,4]{1,0}, s32[4,4]{1,0}, f32[4,4]{1,0}) tuple(convert0, gte1, x)
+}
+)hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  TestBFloat16Support bfloat16_support;
+  bfloat16_support.SetSupportsMixedPrecisions(HloOpcode::kFusion, false);
+
+  EXPECT_FALSE(PropagatePrecision(module.get(), &bfloat16_support));
+
+  HloInstruction* fusion = FindInstruction(module.get(), "fusion");
+  ASSERT_NE(fusion, nullptr);
+  EXPECT_EQ(fusion->shape().tuple_shapes(0).element_type(), F32);
+  HloInstruction* y = FindInstruction(module.get(), "y");
+  ASSERT_NE(y, nullptr);
+  EXPECT_EQ(y->shape().element_type(), F32);
+  HloInstruction* ft =
+      fusion->fused_instructions_computation()->GetInstructionWithName("ft");
+  ASSERT_NE(ft, nullptr);
+  EXPECT_EQ(ft->shape().element_type(), F32);
+  EXPECT_OK(HloVerifier(/*layout_sensitive=*/false,
+                        /*allow_mixed_precision=*/true)
+                .Run(module.get())
+                .status());
+}
+
+// A get-tuple-element that does not "support mixed precision" is still a pure
+// forwarder: one F32 element of a nested tuple must not pin its siblings.
+TEST_F(BFloat16PropagationTest,
+       NestedTupleGetTupleElementDoesNotPinSiblingsWithoutMixedPrecision) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule nested_tuple_gte
+
+ENTRY main {
+  p0 = f32[4,4]{1,0} parameter(0)
+  p1 = f32[4,4]{1,0} parameter(1)
+  a = f32[4,4]{1,0} add(p0, p1)
+  b = f32[4,4]{1,0} multiply(p0, p1)
+  inner = (f32[4,4]{1,0}, f32[4,4]{1,0}) tuple(a, b)
+  t = ((f32[4,4]{1,0}, f32[4,4]{1,0})) tuple(inner)
+  gte0 = (f32[4,4]{1,0}, f32[4,4]{1,0}) get-tuple-element(t), index=0
+  a2 = f32[4,4]{1,0} get-tuple-element(gte0), index=0
+  b2 = f32[4,4]{1,0} get-tuple-element(gte0), index=1
+  convert_b = bf16[4,4]{1,0} convert(b2)
+  ROOT root = (f32[4,4]{1,0}, bf16[4,4]{1,0}) tuple(a2, convert_b)
+}
+)hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  TestBFloat16Support bfloat16_support;
+  bfloat16_support.SetSupportsMixedPrecisions(HloOpcode::kGetTupleElement,
+                                              false);
+
+  EXPECT_TRUE(PropagatePrecision(module.get(), &bfloat16_support));
+
+  // `a` is live out in F32, `b` is only consumed as BF16 and must convert even
+  // though it shares a nested tuple (and a non-mixed GTE) with `a`.
+  HloInstruction* a = FindInstruction(module.get(), "a");
+  ASSERT_NE(a, nullptr);
+  EXPECT_EQ(a->shape().element_type(), F32);
+  HloInstruction* b = FindInstruction(module.get(), "b");
+  ASSERT_NE(b, nullptr);
+  EXPECT_EQ(b->shape().element_type(), BF16);
+
+  EXPECT_OK(HloVerifier(/*layout_sensitive=*/false,
+                        /*allow_mixed_precision=*/true)
+                .Run(module.get())
+                .status());
+}
+
+// A non-mixed multi-output fusion `inner` with F32 operands is the root of a
+// fusion `outer` that does support mixed precision. inner{0} is a dot, which
+// reads its operands at low precision, and is only consumed as BF16 (through
+// outer{0}); inner{1} is live out in F32 (through outer{1}). inner must not end
+// mixed: both of its outputs and the dot stay F32, while outer{0} still
+// converts.
+//
+// This does not isolate the sibling edge in PropagateFromPosition: an F32
+// operand of a non-mixed fusion pins *every* F32 output leaf through its
+// homogeneity edges (AddEdgesForUse), and here the operands are pinned because
+// the add reads them at F32. So any fusion with an F32 operand masks the
+// sibling edge; the next test isolates it with a fusion that has none.
+TEST_F(BFloat16PropagationTest,
+       NestedNonMixedFusionWithF32OperandsAndDotOutputStaysF32) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule nested_non_mixed_fusion_f32_operands
+
+inner_comp {
+  ip0 = f32[4,4]{1,0} parameter(0)
+  ip1 = f32[4,4]{1,0} parameter(1)
+  d = f32[4,4]{1,0} dot(ip0, ip1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  a = f32[4,4]{1,0} add(ip0, ip1)
+  ROOT t = (f32[4,4]{1,0}, f32[4,4]{1,0}) tuple(d, a)
+}
+
+outer_comp {
+  op0 = f32[4,4]{1,0} parameter(0)
+  op1 = f32[4,4]{1,0} parameter(1)
+  ROOT inner = (f32[4,4]{1,0}, f32[4,4]{1,0}) fusion(op0, op1), kind=kCustom, calls=inner_comp
+}
+
+ENTRY main {
+  p0 = f32[4,4]{1,0} parameter(0)
+  p1 = f32[4,4]{1,0} parameter(1)
+  x = f32[4,4]{1,0} add(p0, p1)
+  y = f32[4,4]{1,0} multiply(p0, p1)
+  outer = (f32[4,4]{1,0}, f32[4,4]{1,0}) fusion(x, y), kind=kLoop, calls=outer_comp
+  gte0 = f32[4,4]{1,0} get-tuple-element(outer), index=0
+  gte1 = f32[4,4]{1,0} get-tuple-element(outer), index=1
+  convert0 = bf16[4,4]{1,0} convert(gte0)
+  ROOT root = (bf16[4,4]{1,0}, f32[4,4]{1,0}) tuple(convert0, gte1)
+}
+)hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  TestBFloat16Support bfloat16_support;
+  bfloat16_support.SetSupportsMixedPrecisions("inner", false);
+
+  HloInstruction* outer = FindInstruction(module.get(), "outer");
+  ASSERT_NE(outer, nullptr);
+  HloInstruction* inner =
+      outer->fused_instructions_computation()->GetInstructionWithName("inner");
+  ASSERT_NE(inner, nullptr);
+  ASSERT_FALSE(bfloat16_support.SupportsMixedPrecisions(*inner));
+  ASSERT_TRUE(bfloat16_support.SupportsMixedPrecisions(*outer));
+
+  // `outer` and `inner` stay valid across Run: the pass changes element types
+  // in place and only ever inserts converts/tuples, it never replaces a fusion
+  // instruction.
+  EXPECT_TRUE(PropagatePrecision(module.get(), &bfloat16_support));
+
+  EXPECT_EQ(inner->shape().tuple_shapes(0).element_type(), F32);
+  EXPECT_EQ(inner->shape().tuple_shapes(1).element_type(), F32);
+  HloComputation* inner_comp = inner->fused_instructions_computation();
+  for (absl::string_view name : {"ip0", "ip1", "d", "a"}) {
+    HloInstruction* inst = inner_comp->GetInstructionWithName(name);
+    ASSERT_NE(inst, nullptr) << name;
+    EXPECT_EQ(inst->shape().element_type(), F32) << name;
+  }
+
+  // outer{0} is only consumed as BF16 and converts; the mismatch with its
+  // F32 root is patched by ResolveInconsistentFusions, so the fused root's
+  // leaf types follow the fusion's.
+  EXPECT_EQ(outer->shape().tuple_shapes(0).element_type(), BF16);
+  EXPECT_EQ(outer->shape().tuple_shapes(1).element_type(), F32);
+  const Shape& outer_root_shape =
+      outer->fused_instructions_computation()->root_instruction()->shape();
+  ASSERT_TRUE(outer_root_shape.IsTuple());
+  EXPECT_EQ(outer_root_shape.tuple_shapes(0).element_type(), BF16);
+  EXPECT_EQ(outer_root_shape.tuple_shapes(1).element_type(), F32);
+
+  for (absl::string_view name : {"x", "y"}) {
+    HloInstruction* inst = FindInstruction(module.get(), name);
+    ASSERT_NE(inst, nullptr) << name;
+    EXPECT_EQ(inst->shape().element_type(), F32) << name;
+  }
+
+  EXPECT_OK(HloVerifier(/*layout_sensitive=*/false,
+                        /*allow_mixed_precision=*/true)
+                .Run(module.get())
+                .status());
+}
+
+// Exercises the sibling edge in PropagateFromPosition. As above, a non-mixed
+// multi-output fusion `inner` is the root of a fusion `outer` that does
+// support mixed precision, but inner has no F32 operands (it converts an S32
+// operand itself), so nothing but the sibling edge ties its outputs together.
+// The backward pass reverts inner's partial marks, but inner's leaves are
+// bf16_pushable_positions_ (root of a called computation), so they are *not*
+// seeded F32 in the resolve pass. The push from outer{1} (F32 live-out) pins
+// only inner{1}; without the sibling edge MaterializeResolvedPrecisions would
+// flip the unreached inner{0} to BF16 and leave inner with (bf16, f32)
+// outputs.
+TEST_F(BFloat16PropagationTest,
+       NestedNonMixedFusionWithoutF32OperandsIsPinnedTogetherBySiblingEdge) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule nested_non_mixed_fusion_s32_operand
+
+inner_comp {
+  ip0 = s32[4,4]{1,0} parameter(0)
+  c = f32[4,4]{1,0} convert(ip0)
+  n = f32[4,4]{1,0} negate(c)
+  ROOT t = (f32[4,4]{1,0}, f32[4,4]{1,0}) tuple(c, n)
+}
+
+outer_comp {
+  op0 = s32[4,4]{1,0} parameter(0)
+  ROOT inner = (f32[4,4]{1,0}, f32[4,4]{1,0}) fusion(op0), kind=kCustom, calls=inner_comp
+}
+
+ENTRY main {
+  p0 = s32[4,4]{1,0} parameter(0)
+  outer = (f32[4,4]{1,0}, f32[4,4]{1,0}) fusion(p0), kind=kLoop, calls=outer_comp
+  gte0 = f32[4,4]{1,0} get-tuple-element(outer), index=0
+  gte1 = f32[4,4]{1,0} get-tuple-element(outer), index=1
+  convert0 = bf16[4,4]{1,0} convert(gte0)
+  ROOT root = (bf16[4,4]{1,0}, f32[4,4]{1,0}) tuple(convert0, gte1)
+}
+)hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  TestBFloat16Support bfloat16_support;
+  bfloat16_support.SetSupportsMixedPrecisions("inner", false);
+
+  HloInstruction* outer = FindInstruction(module.get(), "outer");
+  ASSERT_NE(outer, nullptr);
+  HloInstruction* inner =
+      outer->fused_instructions_computation()->GetInstructionWithName("inner");
+  ASSERT_NE(inner, nullptr);
+  ASSERT_FALSE(bfloat16_support.SupportsMixedPrecisions(*inner));
+  ASSERT_TRUE(bfloat16_support.SupportsMixedPrecisions(*outer));
+
+  // `outer` and `inner` stay valid across Run (see above).
+  EXPECT_TRUE(PropagatePrecision(module.get(), &bfloat16_support));
+
+  // inner{1} is pinned by the push from outer{1}; inner{0} only by the sibling
+  // edge. Both must end F32 together.
+  EXPECT_EQ(inner->shape().tuple_shapes(0).element_type(), F32);
+  EXPECT_EQ(inner->shape().tuple_shapes(1).element_type(), F32);
+  HloComputation* inner_comp = inner->fused_instructions_computation();
+  for (absl::string_view name : {"c", "n"}) {
+    HloInstruction* inst = inner_comp->GetInstructionWithName(name);
+    ASSERT_NE(inst, nullptr) << name;
+    EXPECT_EQ(inst->shape().element_type(), F32) << name;
+  }
+  const Shape& inner_root_shape = inner_comp->root_instruction()->shape();
+  ASSERT_TRUE(inner_root_shape.IsTuple());
+  EXPECT_EQ(inner_root_shape.tuple_shapes(0).element_type(), F32);
+  EXPECT_EQ(inner_root_shape.tuple_shapes(1).element_type(), F32);
+
+  EXPECT_EQ(outer->shape().tuple_shapes(0).element_type(), BF16);
+  EXPECT_EQ(outer->shape().tuple_shapes(1).element_type(), F32);
+  const Shape& outer_root_shape =
+      outer->fused_instructions_computation()->root_instruction()->shape();
+  ASSERT_TRUE(outer_root_shape.IsTuple());
+  EXPECT_EQ(outer_root_shape.tuple_shapes(0).element_type(), BF16);
+  EXPECT_EQ(outer_root_shape.tuple_shapes(1).element_type(), F32);
+
+  EXPECT_OK(HloVerifier(/*layout_sensitive=*/false,
+                        /*allow_mixed_precision=*/true)
+                .Run(module.get())
+                .status());
+}
+
+// When an output of a non-mixed fusion is pinned to F32, all of its F32
+// operands and fused parameters must be pinned to F32 as well, even one that
+// an interior instruction only reads at low precision. Here the fusion's
+// output is only consumed as BF16, so the backward pass marks it BF16 and
+// processes the fused computation: `p0` is only read by a dot, so it, and with
+// it the operand `x`, are marked BF16. `p1` is read at F32 by the add, so `y`
+// stays F32, and in the resolve pass its homogeneity edge pins the whole
+// fusion: its output and all of its F32 operands and fused parameters. That
+// reverts `p0` and `x`; without it the fusion would end with a BF16 operand
+// and an F32 output.
+TEST_F(BFloat16PropagationTest,
+       NonMixedFusionOperandReadAtLowPrecisionIsPinnedWithOutput) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule non_mixed_fusion_pinned_output
+
+fused_comp {
+  p0 = f32[4,4]{1,0} parameter(0)
+  p1 = f32[4,4]{1,0} parameter(1)
+  dot = f32[4,4]{1,0} dot(p0, p0), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT root = f32[4,4]{1,0} add(dot, p1)
+}
+
+ENTRY main {
+  a = f32[4,4]{1,0} parameter(0)
+  b = f32[4,4]{1,0} parameter(1)
+  x = f32[4,4]{1,0} add(a, b)
+  y = f32[4,4]{1,0} multiply(a, b)
+  fusion = f32[4,4]{1,0} fusion(x, y), kind=kCustom, calls=fused_comp
+  ROOT convert = bf16[4,4]{1,0} convert(fusion)
+}
+)hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  TestBFloat16Support bfloat16_support;
+  bfloat16_support.SetSupportsMixedPrecisions(HloOpcode::kFusion, false);
+
+  EXPECT_FALSE(PropagatePrecision(module.get(), &bfloat16_support));
+
+  HloInstruction* fusion = FindInstruction(module.get(), "fusion");
+  ASSERT_NE(fusion, nullptr);
+  EXPECT_EQ(fusion->shape().element_type(), F32);
+  HloComputation* fused_comp = fusion->fused_instructions_computation();
+  for (int64_t i = 0; i < fused_comp->num_parameters(); ++i) {
+    EXPECT_EQ(fused_comp->parameter_instruction(i)->shape().element_type(), F32)
+        << "fused parameter " << i;
+  }
+  for (absl::string_view name : {"dot", "root"}) {
+    HloInstruction* inst = fused_comp->GetInstructionWithName(name);
+    ASSERT_NE(inst, nullptr) << name;
+    EXPECT_EQ(inst->shape().element_type(), F32) << name;
+  }
+  for (absl::string_view name : {"x", "y"}) {
+    HloInstruction* inst = FindInstruction(module.get(), name);
+    ASSERT_NE(inst, nullptr) << name;
+    EXPECT_EQ(inst->shape().element_type(), F32) << name;
+  }
+
+  EXPECT_OK(HloVerifier(/*layout_sensitive=*/false,
+                        /*allow_mixed_precision=*/true)
+                .Run(module.get())
+                .status());
+}
+
+// As above, but the non-mixed fusion `q` is pinned only through its output.
+// Both fusions' outputs are only consumed as BF16, so the backward pass marks
+// `qp0` and `rp0`, which only a dot reads, BF16, and with them the operands `x`
+// and `q`. Like `y` above, `z` stays F32 and pins all of `r` in the resolve
+// pass, including its operand `q`. That is the only constraint on `q`, so only
+// the edge from an output leaf to the whole fusion in PropagateFromPosition
+// reverts `qp0` and `x`.
+TEST_F(BFloat16PropagationTest,
+       NonMixedFusionPinnedThroughOutputPinsOperandReadAtLowPrecision) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule non_mixed_fusion_pinned_through_output
+
+q_comp {
+  qp0 = f32[4,4]{1,0} parameter(0)
+  ROOT qdot = f32[4,4]{1,0} dot(qp0, qp0), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+r_comp {
+  rp0 = f32[4,4]{1,0} parameter(0)
+  rp1 = f32[4,4]{1,0} parameter(1)
+  rdot = f32[4,4]{1,0} dot(rp0, rp0), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT radd = f32[4,4]{1,0} add(rdot, rp1)
+}
+
+ENTRY main {
+  a = f32[4,4]{1,0} parameter(0)
+  b = f32[4,4]{1,0} parameter(1)
+  x = f32[4,4]{1,0} add(a, b)
+  q = f32[4,4]{1,0} fusion(x), kind=kCustom, calls=q_comp
+  z = f32[4,4]{1,0} multiply(a, b)
+  r = f32[4,4]{1,0} fusion(q, z), kind=kCustom, calls=r_comp
+  ROOT convert = bf16[4,4]{1,0} convert(r)
+}
+)hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  TestBFloat16Support bfloat16_support;
+  bfloat16_support.SetSupportsMixedPrecisions(HloOpcode::kFusion, false);
+
+  EXPECT_FALSE(PropagatePrecision(module.get(), &bfloat16_support));
+
+  for (absl::string_view name : {"x", "q", "z", "r"}) {
+    HloInstruction* inst = FindInstruction(module.get(), name);
+    ASSERT_NE(inst, nullptr) << name;
+    EXPECT_EQ(inst->shape().element_type(), F32) << name;
+  }
+  for (absl::string_view fusion_name : {"q", "r"}) {
+    HloInstruction* fusion = FindInstruction(module.get(), fusion_name);
+    ASSERT_NE(fusion, nullptr) << fusion_name;
+    for (const HloInstruction* inst :
+         fusion->fused_instructions_computation()->instructions()) {
+      EXPECT_EQ(inst->shape().element_type(), F32) << inst->name();
+    }
+  }
+
+  EXPECT_OK(HloVerifier(/*layout_sensitive=*/false,
+                        /*allow_mixed_precision=*/true)
+                .Run(module.get())
+                .status());
+}
+
+// A bare non-mixed op without any F32/BF16 operand (here `real` of a complex
+// value, or a bitcast-convert of an integer) has no operand to keep at its
+// output's precision, so this pass does not keep it homogeneous and it gets
+// the plain candidate check. It does not forward operand precision, so it is
+// not a candidate, and neither is the non-mixed all-gather that reads it: the
+// module is left unchanged.
+TEST_F(BFloat16PropagationTest,
+       NonMixedOpWithoutFloatOperandIsNotCandidateWithoutMixedPrecision) {
+  constexpr absl::string_view kHloReal = R"hlo(
+HloModule all_gather_of_real
+
+ENTRY main {
+  p0 = c64[4,4]{1,0} parameter(0)
+  real = f32[4,4]{1,0} real(p0)
+  ag = f32[16,4]{1,0} all-gather(real), dimensions={0}, replica_groups={}
+  ROOT convert = bf16[16,4]{1,0} convert(ag)
+}
+)hlo";
+
+  constexpr absl::string_view kHloBitcastConvert = R"hlo(
+HloModule all_gather_of_bitcast_convert
+
+ENTRY main {
+  p0 = s32[4,4]{1,0} parameter(0)
+  bc = f32[4,4]{1,0} bitcast-convert(p0)
+  ag = f32[16,4]{1,0} all-gather(bc), dimensions={0}, replica_groups={}
+  ROOT convert = bf16[16,4]{1,0} convert(ag)
+}
+)hlo";
+
+  struct TestCase {
+    absl::string_view hlo;
+    HloOpcode opcode;
+    absl::string_view name;
+  };
+  for (const TestCase& test_case :
+       {TestCase{kHloReal, HloOpcode::kReal, "real"},
+        TestCase{kHloBitcastConvert, HloOpcode::kBitcastConvert, "bc"}}) {
+    SCOPED_TRACE(test_case.name);
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto module,
+        ParseAndReturnVerifiedModule(test_case.hlo, /*replica_count=*/4));
+    TestBFloat16Support bfloat16_support;
+    bfloat16_support.SetSupportsMixedPrecisions(test_case.opcode, false);
+    bfloat16_support.SetSupportsMixedPrecisions(HloOpcode::kAllGather, false);
+
+    CandidateTrackingPropagation pass(&bfloat16_support, &alias_info_);
+    TF_ASSERT_OK_AND_ASSIGN(bool changed, pass.Run(module.get()));
+    EXPECT_FALSE(changed);
+    EXPECT_FALSE(pass.IsCandidate(test_case.name));
+    EXPECT_FALSE(pass.IsCandidate("ag"));
+    for (absl::string_view name : {test_case.name, absl::string_view("ag")}) {
+      HloInstruction* inst = FindInstruction(module.get(), name);
+      ASSERT_NE(inst, nullptr) << name;
+      EXPECT_EQ(inst->shape().element_type(), F32) << name;
+    }
+  }
 }
 
 }  // namespace xla

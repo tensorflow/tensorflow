@@ -695,6 +695,23 @@ func.func @fuseMulIntoFullyConnectedNoBias(%arg0: tensor<4x2xf32>, %arg1: none) 
 // CHECK:  return %[[RES]] : tensor<4x2xf32>
 }
 
+// A multiplier with leading unit dims (e.g. ConvNeXt layer scale after a
+// keep_num_dims FC) must not broadcast the fused bias beyond 1-D.
+// CHECK-LABEL: @fuseMulIntoFullyConnectedKeepsBias1D
+func.func @fuseMulIntoFullyConnectedKeepsBias1D(%arg0: tensor<1x2x2x3xf32>) -> tensor<1x2x2x2xf32> {
+  %cst0 = arith.constant dense<[[1.0, 2.0, 3.0], [1.0, 2.0, 3.0]]> : tensor<2x3xf32>
+  %cst1 = arith.constant dense<[1.0, 2.0]> : tensor<2xf32>
+  %cst2 = arith.constant dense<[[[[3.0, 5.0]]]]> : tensor<1x1x1x2xf32>
+  %0 = "tfl.fully_connected"(%arg0, %cst0, %cst1) {fused_activation_function = "NONE", keep_num_dims = true, weights_format = "DEFAULT"} : (tensor<1x2x2x3xf32>, tensor<2x3xf32>, tensor<2xf32>) -> tensor<1x2x2x2xf32>
+  %1 = "tfl.mul"(%0, %cst2) {fused_activation_function = "NONE"} : (tensor<1x2x2x2xf32>, tensor<1x1x1x2xf32>) -> tensor<1x2x2x2xf32>
+  func.return %1 : tensor<1x2x2x2xf32>
+
+// CHECK-DAG:  %[[FILTER:.*]] = arith.constant dense<{{\[\[}}3.000000e+00, 6.000000e+00, 9.000000e+00], [5.000000e+00, 1.000000e+01, 1.500000e+01]]> : tensor<2x3xf32>
+// CHECK-DAG:  %[[BIAS:.*]] = arith.constant dense<[3.000000e+00, 1.000000e+01]> : tensor<2xf32>
+// CHECK:  %[[RES:.*]] = "tfl.fully_connected"(%arg0, %[[FILTER]], %[[BIAS]]) <{fused_activation_function = "NONE", keep_num_dims = true, weights_format = "DEFAULT"}> : (tensor<1x2x2x3xf32>, tensor<2x3xf32>, tensor<2xf32>) -> tensor<1x2x2x2xf32>
+// CHECK:  return %[[RES]] : tensor<1x2x2x2xf32>
+}
+
 // CHECK-LABEL: @fuseMulIntoDepthwiseConv2d
 func.func @fuseMulIntoDepthwiseConv2d(%arg0: tensor<1x112x112x2xf32>) -> tensor<1x112x112x2xf32> {
   %cst0 = arith.constant dense<[[[[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], [[7.0, 8.0], [9.0, 10.0], [11.0, 12.0]], [[13.0, 14.0], [15.0, 16.0], [17.0, 18.0]]]]> : tensor<1x3x3x2xf32>

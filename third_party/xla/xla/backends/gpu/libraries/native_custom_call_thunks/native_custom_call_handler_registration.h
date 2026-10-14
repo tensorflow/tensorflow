@@ -24,30 +24,39 @@ limitations under the License.
 namespace xla::gpu {
 namespace native_custom_call_internal {
 
-// Helper whose constructor registers a handler. Used by the registration macro.
+// Helper whose constructor registers handlers. Used by the registration macro.
 struct Registrar {
   Registrar(absl::string_view target, NativeCustomCallHandler handler);
+  Registrar(absl::string_view target, NativeCustomCallHandlerBundle bundle);
 };
 
 }  // namespace native_custom_call_internal
 }  // namespace xla::gpu
 
 #define XLA_GPU_REGISTER_NATIVE_CUSTOM_CALL_HANDLER_UNIQ_HELPER(ctr, target, \
-                                                                handler)     \
+                                                                ...)         \
   static ::xla::gpu::native_custom_call_internal::Registrar                  \
-  xla_gpu_native_custom_call_registrar_##ctr(target, handler)
+  xla_gpu_native_custom_call_registrar_##ctr(target, __VA_ARGS__)
 
-#define XLA_GPU_REGISTER_NATIVE_CUSTOM_CALL_HANDLER_UNIQ(ctr, target, handler) \
-  XLA_GPU_REGISTER_NATIVE_CUSTOM_CALL_HANDLER_UNIQ_HELPER(ctr, target, handler)
+#define XLA_GPU_REGISTER_NATIVE_CUSTOM_CALL_HANDLER_UNIQ(ctr, target, ...) \
+  XLA_GPU_REGISTER_NATIVE_CUSTOM_CALL_HANDLER_UNIQ_HELPER(ctr, target,     \
+                                                          __VA_ARGS__)
 
-// Registers a NativeCustomCallHandler for a custom-call target name. Place at
-// namespace scope in a `.cc` file:
+// Registers the handlers for a custom-call target name. Place at namespace
+// scope in a `.cc` file. Either pass just the thunk handler:
 //
 //   XLA_GPU_REGISTER_NATIVE_CUSTOM_CALL_HANDLER("my.custom.call", MyHandler);
 //
+// or a NativeCustomCallHandlerBundle to also register a scratch handler:
+//
+//   XLA_GPU_REGISTER_NATIVE_CUSTOM_CALL_HANDLER(
+//       "my.custom.call", {.emit_thunks = MyHandler,
+//                          .request_scratch_buffers = MyScratchHandler});
+//
 // The registering target must be on the visibility allowlist of the
 // native_custom_call_thunks package.
-#define XLA_GPU_REGISTER_NATIVE_CUSTOM_CALL_HANDLER(target, handler) \
-  XLA_GPU_REGISTER_NATIVE_CUSTOM_CALL_HANDLER_UNIQ(__COUNTER__, target, handler)
+#define XLA_GPU_REGISTER_NATIVE_CUSTOM_CALL_HANDLER(target, ...)        \
+  XLA_GPU_REGISTER_NATIVE_CUSTOM_CALL_HANDLER_UNIQ(__COUNTER__, target, \
+                                                   __VA_ARGS__)
 
 #endif  // XLA_BACKENDS_GPU_LIBRARIES_NATIVE_CUSTOM_CALL_THUNKS_NATIVE_CUSTOM_CALL_HANDLER_REGISTRATION_H_

@@ -207,6 +207,45 @@ TEST_F(HloInstructionTest, BlockScalingConfigToString) {
   }
 }
 
+TEST_F(HloInstructionTest, DotBlockScalingAndSparsityToString) {
+  HloComputation::Builder builder("main");
+  auto lhs = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(BF16, {64, 64}), "lhs"));
+  auto rhs = builder.AddInstruction(HloInstruction::CreateParameter(
+      1, ShapeUtil::MakeShape(BF16, {128, 64}), "rhs"));
+  auto lhs_scale = builder.AddInstruction(HloInstruction::CreateParameter(
+      2, ShapeUtil::MakeShape(F8E8M0FNU, {64, 2}), "lhs_scale"));
+  auto lhs_indices = builder.AddInstruction(HloInstruction::CreateParameter(
+      3, ShapeUtil::MakeShape(S8, {64, 16}), "lhs_indices"));
+
+  DotDimensionNumbers dnums;
+  dnums.add_lhs_contracting_dimensions(1);
+  dnums.add_rhs_contracting_dimensions(0);
+  PrecisionConfig precision_config;
+
+  SparsityConfig sp;
+  sp.mutable_lhs()->set_idx(3);
+  sp.mutable_lhs()->set_num_non_zero(2);
+  sp.mutable_lhs()->set_block_size(4);
+  sp.mutable_lhs()->set_dimension(1);
+  sp.mutable_lhs()->set_stride(1);
+
+  BlockScalingConfig bs;
+  bs.mutable_lhs()->set_scale_idx(2);
+  bs.mutable_lhs()->add_strides(1);
+  bs.mutable_lhs()->add_strides(32);
+  bs.mutable_lhs()->add_steps(1);
+  bs.mutable_lhs()->add_steps(1);
+
+  auto dot = builder.AddInstruction(HloInstruction::CreateDot(
+      ShapeUtil::MakeShape(BF16, {64, 64}), {lhs, rhs, lhs_scale, lhs_indices},
+      dnums, precision_config, sp, bs));
+
+  EXPECT_EQ(
+      dot->ToString(),
+      R"(%dot = bf16[64,64]{1,0} dot(%lhs, %rhs, %lhs_scale, %lhs_indices), lhs_contracting_dims={1}, rhs_contracting_dims={0}, sparsity_config={lhs={sparsity=2x4 dimension=1 stride=1 idx=3}}, block_scaling_config={lhs={scale_idx=2 strides=1x32 steps=1x1}})");
+}
+
 TEST_F(HloInstructionTest, GetStackTraceStringFromStackFrameId) {
   auto module = CreateNewVerifiedModule();
   HloComputation::Builder builder("main");
@@ -873,6 +912,38 @@ TEST_F(HloInstructionTest, DetachFromOperandsWithDuplicateOperands) {
   *module->mutable_entry_computation_layout()->mutable_result_layout() =
       ShapeLayout(p0->shape());
   EXPECT_OK(module->entry_computation()->RemoveInstruction(tuple));
+}
+
+// Each aliasing entry keeps naming the same operand: the entry on the second
+// x moves to the x that stays, and the entry on y follows y down a slot.
+TEST_F(HloInstructionTest, DeduplicateFusionOperandsRemapsAliasing) {
+  constexpr absl::string_view kHlo = R"(
+HloModule m
+
+f {
+  p0 = f32[8] parameter(0)
+  p1 = f32[8] parameter(1)
+  p2 = f32[8] parameter(2)
+  a = f32[8] add(p0, p1)
+  b = f32[8] add(p1, p2)
+  ROOT t = (f32[8], f32[8]) tuple(a, b)
+}
+
+ENTRY e {
+  x = f32[8] parameter(0)
+  y = f32[8] parameter(1)
+  ROOT fusion = (f32[8], f32[8]) fusion(x, x, y), kind=kLoop, output_to_operand_aliasing={{0}: (1, {}), {1}: (2, {})}, calls=f
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  auto* fusion = Cast<HloFusionInstruction>(
+      module->entry_computation()->root_instruction());
+  ASSERT_OK(fusion->DeduplicateFusionOperands());
+  ASSERT_EQ(fusion->operand_count(), 2);
+  const std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
+      expected = {{{0}, {0, {}}}, {{1}, {1, {}}}};
+  EXPECT_EQ(fusion->output_to_operand_aliasing(), expected);
 }
 
 TEST_F(HloInstructionTest, AsyncChainTraversalAndShapesWithIntermediaries) {
