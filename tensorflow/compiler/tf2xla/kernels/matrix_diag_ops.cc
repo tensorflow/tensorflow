@@ -445,15 +445,17 @@ class MatrixDiagPartOp : public XlaOpKernel {
     xla::XlaOp actual_num_rows;
     xla::XlaOp actual_num_cols;
     // The length of the longest diagonal from lower to upper at the actual
-    // sizes.
+    // sizes. Diagonals outside the actual matrix, which the CPU kernel
+    // rejects, have length 0.
     const auto actual_len = [&](int64_t lower, int64_t upper) {
-      return xla::Min(
-          xla::Add(actual_num_rows,
-                   xla::ScalarLike(actual_num_rows,
-                                   std::min(upper, int64_t{0}))),
-          xla::Sub(actual_num_cols,
-                   xla::ScalarLike(actual_num_cols,
-                                   std::max(lower, int64_t{0}))));
+      return xla::Max(
+          xla::Min(xla::Add(actual_num_rows,
+                            xla::ScalarLike(actual_num_rows,
+                                            std::min(upper, int64_t{0}))),
+                   xla::Sub(actual_num_cols,
+                            xla::ScalarLike(actual_num_cols,
+                                            std::max(lower, int64_t{0})))),
+          xla::ScalarLike(actual_num_rows, 0));
     };
     xla::XlaOp actual_max_diag_len;
     if (dynamic_matrix) {

@@ -769,7 +769,7 @@ class MatrixDiagPartTest(xla_test.XLATestCase):
                   "align": align
               }, solution)
 
-  def _diagPartOfSelected(self, op, x, masks, **params):
+  def _diagPartOfSelected(self, op, x, masks, dtype=np.int32, **params):
     # masks maps axes of x to masks of the entries to keep along them, which
     # gives those dimensions a size only known at run time.
     axes = sorted(masks)
@@ -781,15 +781,13 @@ class MatrixDiagPartTest(xla_test.XLATestCase):
             x, array_ops.reshape(array_ops.where(mask), [-1]), axis=axis)
       return op(x, **params)
 
-    x = np.array(x, dtype=np.int32)
+    x = np.array(x, dtype=dtype)
     with self.session() as session:
-      with self.device_scope():
-        x_ph = array_ops.placeholder(dtypes.int32, x.shape)
-        mask_phs = [
-            array_ops.placeholder(dtypes.bool, [x.shape[axis]])
-            for axis in axes
-        ]
-        output = f(x_ph, *mask_phs)
+      x_ph = array_ops.placeholder(dtypes.as_dtype(dtype), x.shape)
+      mask_phs = [
+          array_ops.placeholder(dtypes.bool, [x.shape[axis]]) for axis in axes
+      ]
+      output = f(x_ph, *mask_phs)
       feed_dict = {x_ph: x}
       feed_dict.update({ph: masks[axis] for ph, axis in zip(mask_phs, axes)})
       return session.run(output, feed_dict)
@@ -800,31 +798,57 @@ class MatrixDiagPartTest(xla_test.XLATestCase):
     # entries, so the dimensions it selects have size 2 and bound 5.
     keep = [True, False, True, False, False]
     x = np.arange(1, 16).reshape(5, 3)  # Keeps [[1, 2, 3], [7, 8, 9]].
-    for op in (array_ops.matrix_diag_part, gen_array_ops.matrix_diag_part):
-      self.assertAllEqual(self._diagPartOfSelected(op, x, {-2: keep}), [1, 8])
+    for dtype in (np.int32, np.float32, np.float16):
+      for op in (array_ops.matrix_diag_part, gen_array_ops.matrix_diag_part):
+        self.assertAllEqual(
+            self._diagPartOfSelected(op, x, {-2: keep}, dtype), [1, 8])
+      self.assertAllEqual(
+          self._diagPartOfSelected(
+              array_ops.matrix_diag_part,
+              x, {-2: keep},
+              dtype,
+              k=(-1, 1),
+              padding_value=9), [[2, 9], [1, 8], [7, 9]])
+      self.assertAllEqual(
+          self._diagPartOfSelected(
+              array_ops.matrix_diag_part,
+              x, {-2: keep},
+              dtype,
+              k=(-1, 1),
+              padding_value=9,
+              align="LEFT_RIGHT"), [[2, 9], [1, 8], [9, 7]])
+      self.assertAllEqual(
+          self._diagPartOfSelected(
+              gen_array_ops.matrix_diag_part_v2,
+              x, {-2: keep},
+              dtype,
+              k=[-1, 1],
+              padding_value=9), [[2, 9], [1, 8], [7, 9]])
+      self.assertAllEqual(
+          self._diagPartOfSelected(array_ops.matrix_diag_part,
+                                   np.arange(1, 16).reshape(3, 5), {-1: keep},
+                                   dtype), [1, 8])
+      # With no rows kept, the diagonal is empty.
+      self.assertAllEqual(
+          self._diagPartOfSelected(array_ops.matrix_diag_part, x,
+                                   {-2: [False] * 5}, dtype), np.zeros([0]))
+
+  def testDynamicDimensionsBatch(self):
+    if "GPU" in self.device:
+      self.skipTest("XLA:GPU returns the batched dynamic output of these "
+                    "transposed.")
+    keep = [True, False, True, False, False]
+    x = np.arange(1, 31).reshape(2, 5, 3)
+    self.assertAllEqual(
+        self._diagPartOfSelected(array_ops.matrix_diag_part, x, {-2: keep}),
+        [[1, 8], [16, 23]])
     self.assertAllEqual(
         self._diagPartOfSelected(
             array_ops.matrix_diag_part,
             x, {-2: keep},
             k=(-1, 1),
-            padding_value=9), [[2, 9], [1, 8], [7, 9]])
-    self.assertAllEqual(
-        self._diagPartOfSelected(
-            array_ops.matrix_diag_part,
-            x, {-2: keep},
-            k=(-1, 1),
-            padding_value=9,
-            align="LEFT_RIGHT"), [[2, 9], [1, 8], [9, 7]])
-    self.assertAllEqual(
-        self._diagPartOfSelected(
-            gen_array_ops.matrix_diag_part_v2,
-            x, {-2: keep},
-            k=[-1, 1],
-            padding_value=9), [[2, 9], [1, 8], [7, 9]])
-    self.assertAllEqual(
-        self._diagPartOfSelected(array_ops.matrix_diag_part,
-                                 np.arange(1, 16).reshape(3, 5), {-1: keep}),
-        [1, 8])
+            padding_value=9),
+        [[[2, 9], [1, 8], [7, 9]], [[17, 24], [16, 23], [22, 9]]])
     self.assertAllEqual(
         self._diagPartOfSelected(array_ops.matrix_diag_part,
                                  np.arange(1, 51).reshape(2, 5, 5), {
