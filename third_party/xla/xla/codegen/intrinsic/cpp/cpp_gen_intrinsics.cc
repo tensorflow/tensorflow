@@ -44,6 +44,7 @@ limitations under the License.
 #include "llvm/Support/Alignment.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
+#include "xla/codegen/intrinsic/cpp/custom_cpp_intrinsics_ll.h"
 #include "xla/codegen/intrinsic/cpp/eigen_unary_16_ll.h"
 #include "xla/codegen/intrinsic/cpp/eigen_unary_32_ll.h"
 #include "xla/codegen/intrinsic/cpp/eigen_unary_64_ll.h"
@@ -97,7 +98,8 @@ std::vector<CppGenIntrinsicLibrary> GetCppGenLibraries(
   std::vector<CppGenIntrinsicLibrary> libraries;
   if (options.device_type != intrinsics::DeviceType::kIntelCpu &&
       options.device_type != intrinsics::DeviceType::kAmdCpu &&
-      options.device_type != intrinsics::DeviceType::kArmCpu) {
+      options.device_type != intrinsics::DeviceType::kArmCpu &&
+      options.device_type != intrinsics::DeviceType::kSystemZCpu) {
     return libraries;
   }
   const std::string& eigen_ir = GetCppGenIrString(options);
@@ -108,6 +110,10 @@ std::vector<CppGenIntrinsicLibrary> GetCppGenLibraries(
       SelectIrString(options, ::llvm_ir::kExpm132LlIr, ::llvm_ir::kExpm164LlIr);
   if (!expm1_ir.empty()) {
     libraries.emplace_back(expm1_ir, "expm1");
+  }
+  if (!::llvm_ir::kCustomCppIntrinsicsLlIr.empty()) {
+    libraries.emplace_back(::llvm_ir::kCustomCppIntrinsicsLlIr,
+                           "custom_cpp_intrinsics");
   }
   return libraries;
 }

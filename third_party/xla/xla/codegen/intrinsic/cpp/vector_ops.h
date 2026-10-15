@@ -61,6 +61,20 @@ typedef int64_t Vec4l __attribute__((vector_size(32)));
 typedef int64_t Vec8l __attribute__((vector_size(64)));
 
 namespace internal {
+template <typename T, bool kIsArithmetic = std::is_arithmetic_v<T>>
+struct ElementTypeImpl {
+  using Vec = std::remove_cv_t<T>;
+  using type = std::remove_reference_t<decltype(Vec{}[0])>;
+};
+
+template <typename T>
+struct ElementTypeImpl<T, true> {
+  using type = std::remove_cv_t<T>;
+};
+
+template <typename T>
+using ElementType = typename ElementTypeImpl<T>::type;
+
 // Helper type to select the corresponding unsigned integer vector type.
 template <typename ScalarInt, size_t Width>
 struct MakeIntVec;
@@ -119,18 +133,31 @@ struct MakeSignedIntVec<int64_t, 8> {
   using type = Vec8l;
 };
 
-// This trait takes a float vector and provides its unsigned integer vector
+// This trait takes a float scalar or vector and provides its unsigned integer
 // partner.
 template <typename FloatVec>
 struct CorrespondingIntVector {
  private:
-  using ScalarFloat = decltype(FloatVec{}[0]);
+  using ScalarFloat = ElementType<FloatVec>;
   static constexpr size_t kWidth = sizeof(FloatVec) / sizeof(ScalarFloat);
   using ScalarInt =
       std::conditional_t<sizeof(ScalarFloat) == 4, uint32_t, uint64_t>;
 
  public:
   using type = typename MakeIntVec<ScalarInt, kWidth>::type;
+  using scalar_type = ScalarInt;
+};
+
+template <>
+struct CorrespondingIntVector<float> {
+  using type = uint32_t;
+  using scalar_type = uint32_t;
+};
+
+template <>
+struct CorrespondingIntVector<double> {
+  using type = uint64_t;
+  using scalar_type = uint64_t;
 };
 
 // This trait takes a float vector and provides its signed integer vector
@@ -146,7 +173,104 @@ struct CorrespondingSignedIntVector {
  public:
   using type = typename MakeSignedIntVec<ScalarInt, kWidth>::type;
 };
+
+template <typename T, typename S, size_t... Is>
+constexpr T SplatImpl(S val, std::index_sequence<Is...>) {
+  return T{(static_cast<void>(Is), static_cast<ElementType<T>>(val))...};
+}
 }  // namespace internal
+
+template <typename T>
+using ElementType = internal::ElementType<T>;
+
+template <typename T>
+inline constexpr size_t NumLanes = sizeof(T) / sizeof(ElementType<T>);
+
+template <typename T, typename S>
+constexpr T Splat(S val) {
+  if constexpr (std::is_arithmetic_v<T>) {
+    return static_cast<T>(val);
+  } else {
+    return internal::SplatImpl<T>(val, std::make_index_sequence<NumLanes<T>>{});
+  }
+}
+
+template <typename T>
+constexpr ElementType<T> GetLane(T v, size_t idx) {
+  if constexpr (std::is_arithmetic_v<T>) {
+    (void)idx;
+    return v;
+  } else {
+    return v[idx];
+  }
+}
+
+template <typename T>
+constexpr void SetLane(T& v, size_t idx, ElementType<T> val) {
+  if constexpr (std::is_arithmetic_v<T>) {
+    (void)idx;
+    v = val;
+  } else {
+    v[idx] = val;
+  }
+}
+
+template <typename MaskT>
+inline bool AnyLane(MaskT mask) {
+  if constexpr (std::is_arithmetic_v<MaskT>) {
+    return mask != 0;
+  } else {
+    return __builtin_reduce_or(mask) != 0;
+  }
+}
+
+// Emits `@llvm.fmuladd` (`a * b + c`), which targets without FMA lower to a
+// separate multiply and add instead of an `fma` libcall.
+template <typename T>
+inline T Fmuladd(T a, T b, T c) {
+#pragma clang fp contract(on)
+  return a * b + c;
+}
+
+// Error-free transformation `p + e = a * b` on targets with FMA. Without FMA
+// the error term evaluates to 0 and only `p`, the rounded product, is kept.
+// `p` is emitted as `@llvm.fmuladd(a, b, +0.0)` instead of a bare `fmul`
+// because `e` is only the rounding error of `p` if `p` is rounded on its own:
+// downstream `SetAllowContractOnFpArithmetic` or aggressive-FMA targets could
+// otherwise fuse it into an addition that consumes it.
+template <typename T>
+inline std::pair<T, T> TwoProd(T a, T b) {
+  T p = Fmuladd(a, b, Splat<T>(0.0));
+  T e = Fmuladd(a, b, -p);
+  return {p, e};
+}
+
+// Evaluates a polynomial c_0 * x^n + c_1 * x^(n-1) + ... + c_n using Horner's
+// method with `Fmuladd`, where `coeffs` are given in descending degree order.
+template <typename T, typename S, typename... Coeffs>
+constexpr T HornerPoly(T x, S c0, Coeffs... coeffs) {
+  T acc = Splat<T>(c0);
+  ((acc = Fmuladd(acc, x, Splat<T>(coeffs))), ...);
+  return acc;
+}
+
+// Dekker's error-free transformation `s + e = a + b` assuming `|a| >= |b|`.
+template <typename T>
+inline std::pair<T, T> FastTwoSum(T a, T b) {
+  T s = a + b;
+  T e = (a - s) + b;
+  return {s, e};
+}
+
+// Knuth's error-free transformation `s + e = a + b` without any magnitude
+// ordering precondition on `a` and `b`.
+template <typename T>
+inline std::pair<T, T> TwoSum(T a, T b) {
+  T s = a + b;
+  T v = s - a;
+  T e = (a - (s - v)) + (b - v);
+  return {s, e};
+}
 
 // ===--------------------------------------------------------------------===//
 // Eigen Array type mapping
@@ -191,54 +315,25 @@ struct ArrayMap<Vec8d> {
   using type = Eigen::Array<double, 8, 1>;
 };
 
-namespace internal {
-template <typename T, typename S, size_t... Is>
-constexpr T SplatImpl(S val, std::index_sequence<Is...>) {
-  return T{(static_cast<void>(Is), static_cast<decltype(T{}[0])>(val))...};
-}
-}  // namespace internal
-
-template <typename T, typename S>
-constexpr T Splat(S val) {
-  if constexpr (std::is_fundamental_v<T>) {
-    return static_cast<T>(val);
-  } else {
-    constexpr size_t kWidth = sizeof(T) / sizeof(decltype(T{}[0]));
-    return internal::SplatImpl<T>(val, std::make_index_sequence<kWidth>{});
-  }
-}
-
-// Computes the absolute value of a vector using bitwise operations.
-// FloatVec: The floating-point vector type (e.g., Vec4f).
-// x: The input vector.
-// Returns a new vector containing the absolute value of each element in x.
+// Computes the absolute value of a scalar or vector using bitwise operations.
 template <typename FloatVec>
 FloatVec BitwiseAbs(FloatVec x) {
   using IntVec = typename internal::CorrespondingIntVector<FloatVec>::type;
-  // Get the underlying scalar integer type (e.g., uint32_t from Vec4u).
-  using ScalarInt = decltype(IntVec{}[0]);
-
-  // Create a mask to clear the sign bit (e.g., 0x7FFFFFFF for int).
-  // This is a vector where every element is the mask.
-  const IntVec abs_mask =
-      IntVec{~(static_cast<ScalarInt>(1) << (sizeof(ScalarInt) * 8 - 1))};
-
-  // Reinterpret float as int, apply the mask, and reinterpret back.
+  using ScalarInt =
+      typename internal::CorrespondingIntVector<FloatVec>::scalar_type;
+  const IntVec abs_mask = Splat<IntVec>(
+      ~(static_cast<ScalarInt>(1) << (sizeof(ScalarInt) * 8 - 1)));
   return __builtin_bit_cast(FloatVec, __builtin_bit_cast(IntVec, x) & abs_mask);
 }
 
-// Copies the sign of one vector to the value of another.
-// FloatVec: The floating-point vector type (e.g., Vec4f).
-// value: The vector providing the magnitude.
-// sign_source: The vector providing the sign.
-// Returns a new vector with the magnitude of `value` and the sign of
-// `sign_source`.
+// Copies the sign of one scalar or vector to the value of another.
 template <typename FloatVec>
 FloatVec BitwiseCopysign(FloatVec value, FloatVec sign_source) {
   using IntVec = typename internal::CorrespondingIntVector<FloatVec>::type;
-  using ScalarInt = decltype(IntVec{}[0]);
+  using ScalarInt =
+      typename internal::CorrespondingIntVector<FloatVec>::scalar_type;
   const IntVec sign_mask =
-      IntVec{static_cast<ScalarInt>(1) << (sizeof(ScalarInt) * 8 - 1)};
+      Splat<IntVec>(static_cast<ScalarInt>(1) << (sizeof(ScalarInt) * 8 - 1));
   FloatVec value_abs = BitwiseAbs<FloatVec>(value);
   IntVec sign_bits = __builtin_bit_cast(IntVec, sign_source) & sign_mask;
   return __builtin_bit_cast(FloatVec,
@@ -248,34 +343,6 @@ FloatVec BitwiseCopysign(FloatVec value, FloatVec sign_source) {
 template <typename Vec, typename Scalar>
 Vec Clamp(Vec x, Scalar min, Scalar max) {
   return x < min ? min : x > max ? max : x;
-}
-
-// Evaluates a polynomial c_0 * x^n + c_1 * x^(n-1) + ... + c_n using Horner's
-// method, where `coeffs` are given in descending degree order.
-template <typename T, typename S, typename... Coeffs>
-constexpr T HornerPoly(T x, S c0, Coeffs... coeffs) {
-  T acc = Splat<T>(c0);
-  ((acc = acc * x + Splat<T>(coeffs)), ...);
-  return acc;
-}
-
-// Emits `@llvm.fmuladd` to compute `a * b + c`. When the target CPU has
-// hardware FMA, this lowers to a single fused multiply-add instruction;
-// without hardware FMA, `@llvm.fmuladd` falls back to unfused multiply/add.
-template <typename VecT>
-inline VecT Fmuladd(VecT a, VecT b, VecT c) {
-#pragma clang fp contract(on)
-  return a * b + c;
-}
-
-// Computes the error-free transformation `s + e = a + b` assuming `|a| >= |b|`
-// (Dekker's FastTwoSum), returning `{s, e}` where `s = RN(a + b)` and `e` is
-// the rounding error.
-template <typename VecT>
-inline std::pair<VecT, VecT> FastTwoSum(VecT a, VecT b) {
-  VecT s = a + b;
-  VecT e = (a - s) + b;
-  return {s, e};
 }
 
 template <typename VecT>
