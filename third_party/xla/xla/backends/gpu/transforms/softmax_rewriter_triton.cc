@@ -451,41 +451,21 @@ absl::StatusOr<bool> CanSymbolicTileAnalysisTileDiamond(
   ABSL_ASSIGN_OR_RETURN(HloFusionInstruction * normalization_fusion,
                    MakeFusionForDiamond(diamond));
   mlir::MLIRContext mlir_context;
-  bool use_experimental_tiling =
-      normalization_fusion->GetModule()
-          ->config()
-          .debug_options()
-          .xla_gpu_experimental_enable_tiling_propagation();
-
-  bool can_tile = false;
-  if (use_experimental_tiling) {
-    using experimental::TiledHloComputation;
-    using experimental::TilingSpace;
-    std::unique_ptr<HloFusionAdaptor> fusion_adaptor =
-        HloFusionAdaptor::ForInstruction(normalization_fusion);
-    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<TilingSpace> tiling_space,
-                     TilingSpace::Create(*fusion_adaptor, &mlir_context));
-    absl::StatusOr<TiledHloComputation> tiled_computation_or =
-        TiledHloComputation::Tile(*fusion_adaptor, std::move(tiling_space));
-    // We don't have concrete tile sizes here and don't validate Triton
-    // constraints here.
-    if (!tiled_computation_or.ok()) {
-      VLOG(2) << absl::StrCat("TiledHloComputation::Tile failed: ",
-                              tiled_computation_or.status());
-    }
-    can_tile = tiled_computation_or.ok();
-  } else {
-    SymbolicTileAnalysisOrError symbolic_tile_analysis_or_error =
-        SymbolicTileAnalysis::AnalyzeComputation(
-            *normalization_fusion->called_computation(), &mlir_context,
-            TritonEmitterConstraints::GetBuilder(device_info));
-    if (std::holds_alternative<Decision>(symbolic_tile_analysis_or_error)) {
-      VLOG(2) << "SymbolicTileAnalysis failed: "
-              << std::get<Decision>(symbolic_tile_analysis_or_error).Explain();
-    }
-    can_tile = std::holds_alternative<SymbolicTileAnalysis>(
-        symbolic_tile_analysis_or_error);
+  using experimental::TiledHloComputation;
+  using experimental::TilingSpace;
+  std::unique_ptr<HloFusionAdaptor> fusion_adaptor =
+      HloFusionAdaptor::ForInstruction(normalization_fusion);
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<TilingSpace> tiling_space,
+                   TilingSpace::Create(*fusion_adaptor, &mlir_context));
+  absl::StatusOr<TiledHloComputation> tiled_computation_or =
+      TiledHloComputation::Tile(*fusion_adaptor, std::move(tiling_space));
+  // We don't have concrete tile sizes here and don't validate Triton
+  // constraints here.
+  if (!tiled_computation_or.ok()) {
+    VLOG(2) << absl::StrCat("TiledHloComputation::Tile failed: ",
+                            tiled_computation_or.status());
   }
+  bool can_tile = tiled_computation_or.ok();
 
   ABSL_RETURN_IF_ERROR(diamond.root->GetModule()->RemoveEmbeddedComputation(
       normalization_fusion->called_computation()));

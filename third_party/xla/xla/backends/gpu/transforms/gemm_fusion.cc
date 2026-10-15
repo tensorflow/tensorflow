@@ -1290,54 +1290,41 @@ FusionDecision CanUnpackS4ParametersInFusion(
 FusionDecision CanTile(mlir::MLIRContext& mlir_context,
                        const HloFusionAdaptor& fusion,
                        const se::DeviceDescription& device_description) {
-  if (fusion.GetRoots()[0]
-          .instruction()
-          .GetModule()
-          ->config()
-          .debug_options()
-          .xla_gpu_experimental_enable_tiling_propagation()) {
-    namespace ge = ::xla::gpu::experimental;
-    auto ts = ge::TilingSpace::Create(fusion, &mlir_context);
-    if (!ts.ok()) {
-      return FusionDecision::Forbid(absl::StrCat(
-          "Failed to create tiling space: ", ts.status().message()));
-    }
-    auto tiled_computation =
-        ge::TiledHloComputation::Tile(fusion, std::move(ts.value()));
-    if (!tiled_computation.ok()) {
-      return FusionDecision::Forbid(
-          absl::StrCat("Fusion is not tileable with experimental tiling: ",
-                       tiled_computation.status().message()));
-    }
-
-    // The symbolic tiling may be satisfiable in theory, but we don't have any
-    // tiles that we will actually try. For example, the constraints may require
-    // a tile size to be divisible by 3, but all Triton tiles are powers of 2.
-    std::optional<HloInstructionAdaptor> dot =
-        HloBfsFindIf(fusion.GetRoots(), fusion, [](HloInstructionAdaptor node) {
-          return node.opcode() == HloOpcode::kDot;
-        });
-    if (!dot.has_value()) {
-      return FusionDecision::Forbid("No dot instruction found in the fusion.");
-    }
-    for (const TritonGemmConfig& config :
-         GetDefaultTritonConfigs(device_description.gpu_compute_capability())) {
-      absl::StatusOr<xtile::BlockLevelParameters> params =
-          FindBlockLevelParameters(fusion, &dot->instruction(), config,
-                                   &mlir_context, device_description);
-      if (params.ok()) {
-        return FusionDecision::Allow();
-      }
-    }
+  namespace ge = ::xla::gpu::experimental;
+  auto ts = ge::TilingSpace::Create(fusion, &mlir_context);
+  if (!ts.ok()) {
     return FusionDecision::Forbid(
-        "None of the default Triton configs can be used to tile the fusion.");
+        absl::StrCat("Failed to create tiling space: ", ts.status().message()));
   }
-  auto fusion_analysis =
-      SymbolicTileAnalysis::AnalyzeFusion(fusion, &mlir_context);
-  if (std::holds_alternative<FusionDecision>(fusion_analysis)) {
-    return std::get<FusionDecision>(fusion_analysis);
+  auto tiled_computation =
+      ge::TiledHloComputation::Tile(fusion, std::move(ts.value()));
+  if (!tiled_computation.ok()) {
+    return FusionDecision::Forbid(
+        absl::StrCat("Fusion is not tileable with experimental tiling: ",
+                     tiled_computation.status().message()));
   }
-  return FusionDecision::Allow();
+
+  // The symbolic tiling may be satisfiable in theory, but we don't have any
+  // tiles that we will actually try. For example, the constraints may require
+  // a tile size to be divisible by 3, but all Triton tiles are powers of 2.
+  std::optional<HloInstructionAdaptor> dot =
+      HloBfsFindIf(fusion.GetRoots(), fusion, [](HloInstructionAdaptor node) {
+        return node.opcode() == HloOpcode::kDot;
+      });
+  if (!dot.has_value()) {
+    return FusionDecision::Forbid("No dot instruction found in the fusion.");
+  }
+  for (const TritonGemmConfig& config :
+       GetDefaultTritonConfigs(device_description.gpu_compute_capability())) {
+    absl::StatusOr<xtile::BlockLevelParameters> params =
+        FindBlockLevelParameters(fusion, &dot->instruction(), config,
+                                 &mlir_context, device_description);
+    if (params.ok()) {
+      return FusionDecision::Allow();
+    }
+  }
+  return FusionDecision::Forbid(
+      "None of the default Triton configs can be used to tile the fusion.");
 }
 
 // Returns true if fusing `producer` into `consumer` is possible and supported.

@@ -420,11 +420,6 @@ CodegenDecision CanTritonHandleReduce(
         "Unsupported reduction computation by Triton.");
   }
 
-  bool tiling_propagation_enabled =
-      reduce.GetModule()
-          ->config()
-          .debug_options()
-          .xla_gpu_experimental_enable_tiling_propagation();
 
   if (reduce.operand_count() != 2) {
     return CodegenDecision::Forbid(
@@ -436,11 +431,6 @@ CodegenDecision CanTritonHandleReduce(
         "Reduction must have at least one dimension.");
   }
 
-  if (reduce.dimensions().size() > 1 && !tiling_propagation_enabled) {
-    return CodegenDecision::Forbid(
-        "Multi-dimension reductions are only supported when experimental "
-        "tiling propagation is enabled.");
-  }
 
   return CodegenDecision::Allow();
 }

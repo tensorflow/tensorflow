@@ -288,8 +288,7 @@ absl::StatusOr<absl::Duration> FissionBackend::EstimateFissionPrologueEpilogue(
   GpuPerformanceModelWithIndexingAnalysis indexing_cost_model{
       &device_info, &fusion_analysis_cache, HloCostAnalysis::DefaultShapeSize,
       mlir_context->get(),
-      /*use_experimental_tiling=*/
-      debug_options().xla_gpu_experimental_enable_tiling_propagation(),
+      /*use_experimental_tiling=*/true,
       /*enable_same_shape_multi_output_fusion=*/
       debug_options()
           .xla_gpu_experimental_enable_same_shape_multi_output_fusion(),

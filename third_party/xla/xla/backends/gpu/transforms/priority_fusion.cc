@@ -1390,10 +1390,7 @@ absl::StatusOr<bool> PriorityFusion::RunImpl(
           .debug_options()
           .xla_gpu_experimental_enable_triton_heroless_priority_fusion();
 
-  bool use_experimental_tiling =
-      module->config()
-          .debug_options()
-          .xla_gpu_experimental_enable_tiling_propagation();
+  bool use_experimental_tiling = true;
 
   FusionDeduplicationCache fusion_deduplication_cache =
       FusionDeduplicationCache::Create(*module, IsFusible);

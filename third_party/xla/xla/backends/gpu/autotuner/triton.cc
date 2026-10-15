@@ -371,38 +371,21 @@ bool TritonBackend::IsSupported(const HloInstruction& instr) {
       VLOG(1) << "Failed to borrow MLIRContext: " << mlir_context.status();
       return false;
     }
-    if (instr.GetModule()
-            ->config()
-            .debug_options()
-            .xla_gpu_experimental_enable_tiling_propagation()) {
-      auto ts = experimental::TilingSpace::Create(*fusion_adaptor,
-                                                  (*mlir_context)->get());
-      if (!ts.ok()) {
-        VLOG(1) << "Failed to create tiling space: " << ts.status().message();
-        return false;
-      }
-      auto tiled_computation_or = experimental::TiledHloComputation::Tile(
-          *fusion_adaptor, std::move(ts.value()));
-      if (!tiled_computation_or.ok()) {
-        VLOG(1) << "Fusion is not tileable with experimental tiling: "
-                << tiled_computation_or.status().message();
-        return false;
-      }
-      // We don't have concrete tile sizes here and don't validate Triton
-      // constraints here.
-      return true;
-    }
-
-    auto device_info = target_config().device_description;
-    SymbolicTileAnalysisOrError analysis_or_error =
-        SymbolicTileAnalysis::AnalyzeFusion(
-            *fusion_adaptor, (*mlir_context)->get(),
-            TritonEmitterConstraints::GetBuilder(device_info));
-    if (const auto* fusion_decision =
-            std::get_if<FusionDecision>(&analysis_or_error)) {
-      VLOG(1) << "Fusion not tileable: " << fusion_decision->Explain();
+    auto ts = experimental::TilingSpace::Create(*fusion_adaptor,
+                                                (*mlir_context)->get());
+    if (!ts.ok()) {
+      VLOG(1) << "Failed to create tiling space: " << ts.status().message();
       return false;
     }
+    auto tiled_computation_or = experimental::TiledHloComputation::Tile(
+        *fusion_adaptor, std::move(ts.value()));
+    if (!tiled_computation_or.ok()) {
+      VLOG(1) << "Fusion is not tileable with experimental tiling: "
+              << tiled_computation_or.status().message();
+      return false;
+    }
+    // We don't have concrete tile sizes here and don't validate Triton
+    // constraints here.
     return true;
   }
   return backend_config.kind() == kCuDnnFusionKind ||

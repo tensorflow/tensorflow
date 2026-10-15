@@ -310,72 +310,45 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> TileAndEmitXTileModule(
     const BlockLevelParameters& block_level_parameters,
     absl::Span<mlir::Type> opaque_args_types, mlir::MLIRContext& mlir_context,
     bool use_experimental_tiling, bool enable_same_shape_multi_output_fusion) {
-  const HloComputation* computation = fusion.fused_instructions_computation();
+  using experimental::TiledHloComputation;
+  using experimental::TilingSpace;
 
-  if (use_experimental_tiling || IsCollectiveFusion(fusion)) {
-    using experimental::TiledHloComputation;
-    using experimental::TilingSpace;
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(&fusion);
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<TilingSpace> tiling_space,
+                   TilingSpace::Create(*fusion_adaptor, &mlir_context));
 
-    auto fusion_adaptor = HloFusionAdaptor::ForInstruction(&fusion);
-    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<TilingSpace> tiling_space,
-                     TilingSpace::Create(*fusion_adaptor, &mlir_context));
-
-    VLOG(3) << "fusion instruction: " << fusion.ToString() << "\n";
-    VLOG(3) << "tiling space: " << tiling_space->ToString();
-    if (VLOG_IS_ON(4)) {
-      XLA_VLOG_LINES(
-          4, absl::StrCat("HLO module to reproduce:\n",
-                          ExtractInstructionIntoNewModule(fusion)->ToString(
-                              HloPrintOptions::ShortParsable())));
-    }
-    ABSL_ASSIGN_OR_RETURN(
-        llvm::SmallVector<int64_t> tile_sizes,
-        GetTilingSpaceConcreteSizes(*tiling_space, block_level_parameters,
-                                    enable_same_shape_multi_output_fusion));
-    ABSL_RETURN_IF_ERROR(
-        tiling_space->AssignTileSizes(xtile::GetPaddedTileSizes(tile_sizes)));
-
-    ABSL_ASSIGN_OR_RETURN(
-        TiledHloComputation tiled_computation,
-        TiledHloComputation::Tile(*fusion_adaptor, std::move(tiling_space)));
-    tiled_computation.Simplify();
-    tiled_computation.SortInstructionsPostOrder();
-    if (Decision constraints = experimental::VerifyTritonConstraints(
-            tiled_computation, device_info);
-        !constraints) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("Triton constraints violated during codegen: ",
-                       constraints.Explain()));
-    }
-    VLOG(4) << "tiled computation: " << tiled_computation.ToString();
-    return xtile::EmitXTileModule(
-        fn_name, fusion, tiled_computation, mlir_context,
-        absl::MakeSpan(opaque_args_types),
-        std::make_optional(device_info.gpu_compute_capability()),
-        block_level_parameters.num_tiles_per_pid);
+  VLOG(3) << "fusion instruction: " << fusion.ToString() << "\n";
+  VLOG(3) << "tiling space: " << tiling_space->ToString();
+  if (VLOG_IS_ON(4)) {
+    XLA_VLOG_LINES(
+        4, absl::StrCat("HLO module to reproduce:\n",
+                        ExtractInstructionIntoNewModule(fusion)->ToString(
+                            HloPrintOptions::ShortParsable())));
   }
-  SymbolicTileAnalysisOrError symbolic_tile_analysis_or =
-      SymbolicTileAnalysis::AnalyzeComputation(
-          *computation, &mlir_context,
-          TritonEmitterConstraints::GetBuilder(device_info));
+  ABSL_ASSIGN_OR_RETURN(
+      llvm::SmallVector<int64_t> tile_sizes,
+      GetTilingSpaceConcreteSizes(*tiling_space, block_level_parameters,
+                                  enable_same_shape_multi_output_fusion));
+  ABSL_RETURN_IF_ERROR(
+      tiling_space->AssignTileSizes(xtile::GetPaddedTileSizes(tile_sizes)));
 
-  if (std::holds_alternative<FusionDecision>(symbolic_tile_analysis_or)) {
-    return Internal(
-        "Unsupported fusion in CreateTritonModule: %s",
-        std::get<FusionDecision>(symbolic_tile_analysis_or).Explain());
+  ABSL_ASSIGN_OR_RETURN(
+      TiledHloComputation tiled_computation,
+      TiledHloComputation::Tile(*fusion_adaptor, std::move(tiling_space)));
+  tiled_computation.Simplify();
+  tiled_computation.SortInstructionsPostOrder();
+  if (Decision constraints =
+          experimental::VerifyTritonConstraints(tiled_computation, device_info);
+      !constraints) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Triton constraints violated during codegen: ", constraints.Explain()));
   }
-
-  const auto& symbolic_tile_analysis =
-      std::get<SymbolicTileAnalysis>(symbolic_tile_analysis_or);
-
-  ABSL_ASSIGN_OR_RETURN(Tiling tiling,
-                   TilingFromAnnotatedFusion(symbolic_tile_analysis,
-                                             block_level_parameters));
-
+  VLOG(4) << "tiled computation: " << tiled_computation.ToString();
   return xtile::EmitXTileModule(
-      fn_name, fusion, symbolic_tile_analysis, tiling, mlir_context,
+      fn_name, fusion, tiled_computation, mlir_context,
       absl::MakeSpan(opaque_args_types),
-      std::make_optional(device_info.gpu_compute_capability()));
+      std::make_optional(device_info.gpu_compute_capability()),
+      block_level_parameters.num_tiles_per_pid);
 }
 
 absl::StatusOr<TritonKernelSource> CreateTritonModule(
@@ -387,9 +360,7 @@ absl::StatusOr<TritonKernelSource> CreateTritonModule(
 
   const DebugOptions& debug_options =
       fusion.GetModule()->config().debug_options();
-  bool use_experimental_tiling =
-      debug_options.xla_gpu_experimental_enable_tiling_propagation() ||
-      IsCollectiveFusion(fusion);
+  bool use_experimental_tiling = true;
   bool enable_same_shape_multi_output_fusion =
       debug_options
           .xla_gpu_experimental_enable_same_shape_multi_output_fusion();

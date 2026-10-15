@@ -120,47 +120,36 @@ XTileTestBase::CreateXTileIrAndFileCheck(
     absl::string_view filecheck_pattern) {
   mlir::OwningOpRef<mlir::ModuleOp> xtile_dialect_module;
   LoadMlirDialectsForTriton(*mlir_context());
-  if (computation.parent()
-          ->config()
-          .debug_options()
-          .xla_gpu_experimental_enable_tiling_propagation()) {
-    namespace ge = ::xla::gpu::experimental;
-    auto* fusion = Cast<HloFusionInstruction>(computation.FusionInstruction());
-    auto fusion_adaptor = HloFusionAdaptor::ForInstruction(fusion);
-    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<ge::TilingSpace> tiling_space,
-                     ge::TilingSpace::Create(*fusion_adaptor, mlir_context()));
-    ABSL_ASSIGN_OR_RETURN(
-        llvm::SmallVector<int64_t> concrete_sizes,
-        GetTilingSpaceConcreteSizes(
-            *tiling_space, block_level_parameters,
-            computation.parent()
-                ->config()
-                .debug_options()
-                .xla_gpu_experimental_enable_same_shape_multi_output_fusion()));
-    ABSL_RETURN_IF_ERROR(tiling_space->AssignTileSizes(
-        xtile::GetPaddedTileSizes(concrete_sizes)));
-    ABSL_ASSIGN_OR_RETURN(ge::TiledHloComputation tiled_computation,
-                     ge::TiledHloComputation::Tile(*fusion_adaptor,
-                                                   std::move(tiling_space)));
-    tiled_computation.Simplify();
-    tiled_computation.SortInstructionsPostOrder();
-    if (Decision constraints = ge::VerifyTritonConstraints(
-            tiled_computation, TestGpuDeviceInfo::RTXA6000DeviceInfo());
-        !constraints) {
-      return absl::InternalError(
-          absl::StrCat("Triton constraints violated during test codegen: ",
-                       constraints.Explain()));
-    }
-    ABSL_ASSIGN_OR_RETURN(
-        xtile_dialect_module,
-        xtile::EmitXTileModule("xtile_dialect_fn", *fusion, tiled_computation,
-                               *mlir_context()));
-  } else {
-    ABSL_ASSIGN_OR_RETURN(xtile_dialect_module,
-                     CreateXTileIrAndFileCheckLegacy(
-                         mlir_context(), computation, block_level_parameters,
-                         filecheck_pattern));
+  namespace ge = ::xla::gpu::experimental;
+  auto* fusion = Cast<HloFusionInstruction>(computation.FusionInstruction());
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(fusion);
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<ge::TilingSpace> tiling_space,
+                   ge::TilingSpace::Create(*fusion_adaptor, mlir_context()));
+  ABSL_ASSIGN_OR_RETURN(
+      llvm::SmallVector<int64_t> concrete_sizes,
+      GetTilingSpaceConcreteSizes(
+          *tiling_space, block_level_parameters,
+          computation.parent()
+              ->config()
+              .debug_options()
+              .xla_gpu_experimental_enable_same_shape_multi_output_fusion()));
+  ABSL_RETURN_IF_ERROR(
+      tiling_space->AssignTileSizes(xtile::GetPaddedTileSizes(concrete_sizes)));
+  ABSL_ASSIGN_OR_RETURN(
+      ge::TiledHloComputation tiled_computation,
+      ge::TiledHloComputation::Tile(*fusion_adaptor, std::move(tiling_space)));
+  tiled_computation.Simplify();
+  tiled_computation.SortInstructionsPostOrder();
+  if (Decision constraints = ge::VerifyTritonConstraints(
+          tiled_computation, TestGpuDeviceInfo::RTXA6000DeviceInfo());
+      !constraints) {
+    return absl::InternalError(
+        absl::StrCat("Triton constraints violated during test codegen: ",
+                     constraints.Explain()));
   }
+  ABSL_ASSIGN_OR_RETURN(xtile_dialect_module,
+                   xtile::EmitXTileModule("xtile_dialect_fn", *fusion,
+                                          tiled_computation, *mlir_context()));
   std::string out;
   llvm::raw_string_ostream os(out);
   xtile_dialect_module->print(os);
