@@ -7118,28 +7118,29 @@ absl::Status AlgebraicSimplifierVisitor::HandleReverse(
     };
     if (inner->IsElementwiseBinary()) {
       // produces incorrect result for rng.
-      if (inner->opcode() == HloOpcode::kRng ||
-          inner_opcode == HloOpcode::kCompare) {
+      if (inner_opcode == HloOpcode::kCompare ||
+          inner_opcode == HloOpcode::kFusion || inner->HasSideEffect()) {
         return absl::OkStatus();
       }
-      HloInstruction* hlo;
       if (match_with_scalar(inner->mutable_operand(0))) {
-        hlo = inner->mutable_operand(1);
+        HloInstruction* hlo = inner->mutable_operand(1);
+        ABSL_ASSIGN_OR_RETURN(HloInstruction * reverse_hlo,
+                         MakeReverseHlo(hlo, reverse_dims));
         return ReplaceWithNewInstruction(
             reverse,
-            HloInstruction::CreateBinary(inner->shape(), inner_opcode,
-                                         inner->mutable_operand(0),
-                                         *MakeReverseHlo(hlo, reverse_dims)));
-      } else if (match_with_scalar(inner->mutable_operand(1))) {
-        hlo = inner->mutable_operand(0);
-        return ReplaceWithNewInstruction(
-            reverse,
-            HloInstruction::CreateBinary(inner->shape(), inner_opcode,
-                                         *MakeReverseHlo(hlo, reverse_dims),
-                                         inner->mutable_operand(1)));
-      } else {
-        return absl::OkStatus();
+            inner->CloneWithNewOperands(
+                inner->shape(), {inner->mutable_operand(0), reverse_hlo}));
       }
+      if (match_with_scalar(inner->mutable_operand(1))) {
+        HloInstruction* hlo = inner->mutable_operand(0);
+        ABSL_ASSIGN_OR_RETURN(HloInstruction * reverse_hlo,
+                         MakeReverseHlo(hlo, reverse_dims));
+        return ReplaceWithNewInstruction(
+            reverse,
+            inner->CloneWithNewOperands(
+                inner->shape(), {reverse_hlo, inner->mutable_operand(1)}));
+      }
+      return absl::OkStatus();
     }
     // reverse(DegenerateDimensionAddingReshape(x)) ==>
     // DegenerateDimensionAddingReshape(reverse(x))

@@ -13755,6 +13755,88 @@ TEST_F(AlgebraicSimplifierTest, SwapConstantEwboWithReverse2) {
                                       m::Reverse(m::Parameter(0)))));
 }
 
+TEST_F(AlgebraicSimplifierTest, SwapConstantMapWithReverse) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule m
+    mapped_computation {
+      lhs = bf16[] parameter(0)
+      rhs = bf16[] parameter(1)
+      mul = bf16[] multiply(lhs, rhs)
+      ROOT add = bf16[] add(mul, rhs)
+    }
+    ENTRY test {
+      p0 = bf16[100,1,100,512] parameter(0)
+      constant0 = bf16[] constant(1)
+      const = bf16[100,1,100,512] broadcast(constant0), dimensions={}
+      map0 = bf16[100,1,100,512] map(const, p0), dimensions={0,1,2,3},
+          to_apply=mapped_computation
+      ROOT r0 = bf16[100,1,100,512] reverse(map0), dimensions={0}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  SCOPED_TRACE("Before rewrite\n" + m->ToString());
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_OK_AND_ASSIGN(bool result, simplifier.Run(m.get()));
+  SCOPED_TRACE("After rewrite\n" + m->ToString());
+  ASSERT_TRUE(result);
+  auto* root = m->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Map(m::Broadcast(m::Constant()),
+                                      m::Reverse(m::Parameter(0)))));
+}
+
+TEST_F(AlgebraicSimplifierTest, DoNotSwapConstantFusionWithReverse) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule m
+    fused_computation {
+      lhs = f32[4] parameter(0)
+      rhs = f32[4] parameter(1)
+      c = f32[4] constant({1, 2, 3, 4})
+      add0 = f32[4] add(lhs, rhs)
+      ROOT add1 = f32[4] add(add0, c)
+    }
+    ENTRY test {
+      p0 = f32[4] parameter(0)
+      c0 = f32[] constant(1)
+      b0 = f32[4] broadcast(c0), dimensions={}
+      fusion = f32[4] fusion(b0, p0), kind=kLoop, calls=fused_computation
+      ROOT r0 = f32[4] reverse(fusion), dimensions={0}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_OK_AND_ASSIGN(bool result, simplifier.Run(m.get()));
+  EXPECT_FALSE(result);
+}
+
+TEST_F(AlgebraicSimplifierTest, FullSliceScatterFollowedByReverse) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule m
+    update_computation {
+      lhs = f32[] parameter(0)
+      ROOT rhs = f32[] parameter(1)
+    }
+    ENTRY main {
+      p0 = f32[4] parameter(0)
+      zero = f32[] constant(0)
+      operand = f32[4] broadcast(zero), dimensions={}
+      indices = s32[0] constant({})
+      scatter = f32[4] scatter(operand, indices, p0),
+          update_window_dims={0},
+          inserted_window_dims={},
+          scatter_dims_to_operand_dims={},
+          index_vector_dim=0,
+          to_apply=update_computation
+      ROOT reverse = f32[4] reverse(scatter), dimensions={0}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  HloPassFix<AlgebraicSimplifier> simplifier(default_options_);
+  ASSERT_OK_AND_ASSIGN(bool result, simplifier.Run(m.get()));
+  ASSERT_TRUE(result);
+  auto* root = m->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Reverse(m::Parameter(0))));
+}
+
 TEST_F(AlgebraicSimplifierTest, SquaredComplexSqrtIsFloat) {
   const absl::string_view kModuleStr = R"(
   HloModule module
