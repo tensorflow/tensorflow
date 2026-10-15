@@ -21,8 +21,8 @@ sdy.mesh @mesh_2 = <["x"=8, "y"=4]>
 sdy.mesh @mesh_3 = <["a"=2, "b"=2, "c"=2, "d"=2]>
 sdy.mesh @mesh_4 = <["axis_0"=2, "axis_1"=2, "axis_2"=2], device_ids=[0,2,4,6,1,3,5,7]>
 sdy.mesh @mesh_5 = <["i"=2, "j"=2]>
-sdy.mesh @maximal_mesh_0 = <[], device_ids=[0]>
-sdy.mesh @maximal_mesh_1 = <[], device_ids=[1]>
+sdy.mesh @single_device_0 = <[], device_ids=[0]>
+sdy.mesh @single_device_1 = <[], device_ids=[1]>
 sdy.mesh @empty_mesh_0 = <[]>
 sdy.mesh @empty_mesh_1 = <[]>
 
@@ -262,12 +262,12 @@ func.func @sharding_in_manual_computation_body(%arg0: tensor<8x16xf32> {sdy.shar
 
 // CHECK-V2-LABEL: func @mesh_with_device_id_should_be_converted_to_maximal_sharding(%arg0: tensor<8x8xf32> {mhlo.sharding = "{maximal device=0}"}, %arg1: tensor<8x8xf32>)
 // CHECK-V3-LABEL: func @mesh_with_device_id_should_be_converted_to_maximal_sharding(%arg0: tensor<8x8xf32> {mhlo.sharding = "{single_device[device_id=0]}"}, %arg1: tensor<8x8xf32>)
-func.func @mesh_with_device_id_should_be_converted_to_maximal_sharding(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@maximal_mesh_0, []>}, %arg1: tensor<8x8xf32>) -> tensor<8x8xf32> {
+func.func @mesh_with_device_id_should_be_converted_to_maximal_sharding(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@single_device_0, []>}, %arg1: tensor<8x8xf32>) -> tensor<8x8xf32> {
     // CHECK: %[[ADD:.*]] = stablehlo.add %arg0, %arg1
     %0 = stablehlo.add %arg0, %arg1 : tensor<8x8xf32>
     // CHECK-V2: %[[ADD_WITH_SHARDING:.*]] = stablehlo.add %[[ADD]], %[[ADD]] {mhlo.sharding = "{maximal device=1}"}
     // CHECK-V3: %[[ADD_WITH_SHARDING:.*]] = stablehlo.add %[[ADD]], %[[ADD]] {mhlo.sharding = "{single_device[device_id=1]}"}
-    %1 = stablehlo.add %0, %0 {sdy.sharding = #sdy.sharding_per_value<[<@maximal_mesh_1, []>]>} : tensor<8x8xf32>
+    %1 = stablehlo.add %0, %0 {sdy.sharding = #sdy.sharding_per_value<[<@single_device_1, []>]>} : tensor<8x8xf32>
     return %1 : tensor<8x8xf32>
 }
 
@@ -426,7 +426,7 @@ func.func public @callback_no_result(%arg0: tensor<f64>) {
   // CHECK-SAME:   operand_layouts = [dense<> : tensor<0xindex>, dense<> : tensor<0xindex>],
   // CHECK-SAME: } : (tensor<i64>, tensor<f64>) -> ()
   %c = stablehlo.constant dense<56238273106176> : tensor<i64>
-  stablehlo.custom_call @xla_python_cpu_callback(%c, %arg0) {api_version = 2 : i32, backend_config = "56238273106176", has_side_effect = true, operand_layouts = [dense<> : tensor<0xindex>, dense<> : tensor<0xindex>], result_layouts = [], sdy.sharding = #sdy.sharding_per_value<[<@maximal_mesh_0, []>]>} : (tensor<i64>, tensor<f64>) -> ()
+  stablehlo.custom_call @xla_python_cpu_callback(%c, %arg0) {api_version = 2 : i32, backend_config = "56238273106176", has_side_effect = true, operand_layouts = [dense<> : tensor<0xindex>, dense<> : tensor<0xindex>], result_layouts = [], sdy.sharding = #sdy.sharding_per_value<[<@single_device_0, []>]>} : (tensor<i64>, tensor<f64>) -> ()
   return
 }
 
@@ -443,7 +443,7 @@ func.func public @callback_tuple_result_token_used(%arg0: !stablehlo.token, %arg
   // CHECK-SAME: } : (tensor<i64>, !stablehlo.token, tensor<2xi64>) -> tuple<!stablehlo.token>
   // CHECK-NEXT: %[[TOKEN:.*]] = stablehlo.get_tuple_element %[[CALLBACK]][0] : (tuple<!stablehlo.token>) -> !stablehlo.token
   // CHECK-NEXT: return %[[TOKEN]] : !stablehlo.token
-  %0 = stablehlo.custom_call @xla_python_cpu_callback(%c, %arg0, %arg1) {api_version = 2 : i32, backend_config = "56238119409280", has_side_effect = true, operand_layouts = [dense<> : tensor<0xindex>, dense<> : tensor<0xindex>, dense<0> : tensor<1xindex>], result_layouts = [dense<> : tensor<0xindex>], sdy.sharding = #sdy.sharding_per_value<[<@maximal_mesh_0, []>]>} : (tensor<i64>, !stablehlo.token, tensor<2xi64>) -> tuple<!stablehlo.token>
+  %0 = stablehlo.custom_call @xla_python_cpu_callback(%c, %arg0, %arg1) {api_version = 2 : i32, backend_config = "56238119409280", has_side_effect = true, operand_layouts = [dense<> : tensor<0xindex>, dense<> : tensor<0xindex>, dense<0> : tensor<1xindex>], result_layouts = [dense<> : tensor<0xindex>], sdy.sharding = #sdy.sharding_per_value<[<@single_device_0, []>]>} : (tensor<i64>, !stablehlo.token, tensor<2xi64>) -> tuple<!stablehlo.token>
   %1 = stablehlo.get_tuple_element %0[0] : (tuple<!stablehlo.token>) -> !stablehlo.token
   return %1 : !stablehlo.token
 }
@@ -466,7 +466,7 @@ func.func @maximal_sharding_no_results(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32
   // CHECK-V2-NEXT: stablehlo.custom_call @foo(%arg0) {has_side_effect = true, mhlo.sharding = "{maximal device=0}"} : (tensor<8x8xf32>) -> ()
   // CHECK-V3-NEXT: stablehlo.custom_call @foo(%arg0) {has_side_effect = true, mhlo.sharding = "{single_device[device_id=0]}"} : (tensor<8x8xf32>) -> ()
   // CHECK-NEXT: return %arg0 : tensor<8x8xf32>
-  stablehlo.custom_call @foo(%arg0) {has_side_effect = true, sdy.sharding = #sdy.sharding_per_value<[<@maximal_mesh_0, []>]>} : (tensor<8x8xf32>) -> ()
+  stablehlo.custom_call @foo(%arg0) {has_side_effect = true, sdy.sharding = #sdy.sharding_per_value<[<@single_device_0, []>]>} : (tensor<8x8xf32>) -> ()
   return %arg0 : tensor<8x8xf32>
 }
 
@@ -482,12 +482,12 @@ func.func @reshard_maximal_sharding(%arg0: tensor<8x8xf32>) -> (tensor<8x8xf32>,
   // CHECK-V3-NEXT: %[[COPY_1:.*]] = mhlo.copy %[[CALL]] {mhlo.sharding = "{mesh['x'=8,'y'=4], [{'y'}, {}]}"} : tensor<8x8xf32>
   // CHECK-V3-NEXT: %[[COPY_2:.*]] = mhlo.copy %[[CALL]] {mhlo.sharding = "{single_device[device_id=1]}"} : tensor<8x8xf32>
   // CHECK-NEXT: return %[[CALL]], %[[COPY_0]], %[[COPY_1]], %[[COPY_2]] : tensor<8x8xf32>, tensor<8x8xf32>, tensor<8x8xf32>, tensor<8x8xf32>
-  %0 = sdy.reshard %arg0 <@maximal_mesh_0, []> : tensor<8x8xf32>
-  %1 = stablehlo.custom_call @foo(%0) {has_side_effect = true, sdy.sharding = #sdy.sharding_per_value<[<@maximal_mesh_0, []>]>} : (tensor<8x8xf32>) -> tensor<8x8xf32>
+  %0 = sdy.reshard %arg0 <@single_device_0, []> : tensor<8x8xf32>
+  %1 = stablehlo.custom_call @foo(%0) {has_side_effect = true, sdy.sharding = #sdy.sharding_per_value<[<@single_device_0, []>]>} : (tensor<8x8xf32>) -> tensor<8x8xf32>
   %2 = sdy.reshard %1 <@mesh_2, [{}, {}]> : tensor<8x8xf32>
   %3 = sdy.reshard %2 <@mesh_2, [{"x"}, {}]> : tensor<8x8xf32>
   %4 = sdy.reshard %1 <@mesh_2, [{"y"}, {}]> : tensor<8x8xf32>
-  %5 = sdy.reshard %1 <@maximal_mesh_1, []> : tensor<8x8xf32>
+  %5 = sdy.reshard %1 <@single_device_1, []> : tensor<8x8xf32>
   return %2, %3, %4, %5 : tensor<8x8xf32>, tensor<8x8xf32>, tensor<8x8xf32>, tensor<8x8xf32>
 }
 
