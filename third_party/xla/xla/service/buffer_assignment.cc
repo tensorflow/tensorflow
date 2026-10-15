@@ -3923,7 +3923,7 @@ int64_t ComputeTotalAllocationBytes(const BufferAssignmentProto& proto,
                                     int64_t memory_color) {
   int64_t total_allocation_bytes = 0;
   for (const auto& alloc : proto.buffer_allocations()) {
-    if (alloc.color() == memory_color) {
+    if (alloc.color() == memory_color && !alloc.is_thread_local()) {
       total_allocation_bytes += alloc.size();
     }
   }
@@ -3934,11 +3934,11 @@ int64_t ComputeIndefiniteAllocationsInBytes(const BufferAssignmentProto& proto,
                                             int64_t memory_color) {
   int64_t indefinite_allocations_bytes = 0;
   for (const auto& alloc : proto.buffer_allocations()) {
-    if (alloc.color() != memory_color) {
+    if (alloc.color() != memory_color || alloc.is_thread_local()) {
       continue;
     }
-    if (alloc.is_thread_local() || alloc.is_entry_computation_parameter() ||
-        alloc.is_constant() || alloc.maybe_live_out()) {
+    if (alloc.is_entry_computation_parameter() || alloc.is_constant() ||
+        alloc.maybe_live_out()) {
       indefinite_allocations_bytes += alloc.size();
     }
   }

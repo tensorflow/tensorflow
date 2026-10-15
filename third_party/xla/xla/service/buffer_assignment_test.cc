@@ -5280,11 +5280,12 @@ TEST(ComputeIndefiniteAllocationsTest, AllConditionsFalse) {
 }
 
 TEST(ComputeIndefiniteAllocationsTest, IsThreadLocal) {
+  // Thread-local allocations are never materialized, so they do not count.
   BufferAssignmentProto proto;
   BufferAllocationProto* alloc1 = proto.add_buffer_allocations();
   alloc1->set_size(10);
   alloc1->set_is_thread_local(true);
-  EXPECT_EQ(ComputeIndefiniteAllocationsInBytes(proto, /*memory_color=*/0), 10);
+  EXPECT_EQ(ComputeIndefiniteAllocationsInBytes(proto, /*memory_color=*/0), 0);
 }
 
 TEST(ComputeIndefiniteAllocationsTest, IsEntryComputationParameter) {
@@ -5319,7 +5320,8 @@ TEST(ComputeIndefiniteAllocationsTest, AllConditionsTrue) {
   alloc1->set_is_entry_computation_parameter(true);
   alloc1->set_is_constant(true);
   alloc1->set_maybe_live_out(true);
-  EXPECT_EQ(ComputeIndefiniteAllocationsInBytes(proto, /*memory_color=*/0), 10);
+  // Thread-local wins: such an allocation is never materialized.
+  EXPECT_EQ(ComputeIndefiniteAllocationsInBytes(proto, /*memory_color=*/0), 0);
 }
 
 TEST(ComputeIndefiniteAllocationsTest, MultipleAllocations) {
@@ -5338,8 +5340,7 @@ TEST(ComputeIndefiniteAllocationsTest, MultipleAllocations) {
   alloc4->set_maybe_live_out(true);
   BufferAllocationProto* alloc5 = proto.add_buffer_allocations();
   alloc5->set_size(500);
-  EXPECT_EQ(ComputeIndefiniteAllocationsInBytes(proto, /*memory_color=*/0),
-            100);
+  EXPECT_EQ(ComputeIndefiniteAllocationsInBytes(proto, /*memory_color=*/0), 90);
 }
 
 TEST(ComputeIndefiniteAllocationsTest, NonMatchingColorAllocations) {
@@ -5365,7 +5366,7 @@ TEST(ComputeIndefiniteAllocationsTest, OnlyMatchingColorAllocations) {
   alloc2->set_size(20);
   alloc2->set_color(0);
   alloc2->set_is_constant(true);
-  EXPECT_EQ(ComputeIndefiniteAllocationsInBytes(proto, /*memory_color=*/0), 30);
+  EXPECT_EQ(ComputeIndefiniteAllocationsInBytes(proto, /*memory_color=*/0), 20);
 }
 
 TEST(ComputeIndefiniteAllocationsTest, MixedColorAllocations) {
@@ -5382,7 +5383,7 @@ TEST(ComputeIndefiniteAllocationsTest, MixedColorAllocations) {
   alloc3->set_size(30);
   alloc3->set_color(0);
   alloc3->set_maybe_live_out(true);
-  EXPECT_EQ(ComputeIndefiniteAllocationsInBytes(proto, /*memory_color=*/0), 40);
+  EXPECT_EQ(ComputeIndefiniteAllocationsInBytes(proto, /*memory_color=*/0), 30);
 }
 
 TEST_F(BufferAssignmentTest, TopologicalOrder) {
@@ -5579,6 +5580,18 @@ TEST(ComputeTotalAllocationBytesTest, OnlyMatchingColorAllocations) {
   alloc2->set_size(20);
   alloc2->set_color(0);
   EXPECT_EQ(ComputeTotalAllocationBytes(proto, /*memory_color=*/0), 30);
+}
+
+TEST(ComputeTotalAllocationBytesTest, ThreadLocalAllocationsAreExcluded) {
+  BufferAssignmentProto proto;
+  BufferAllocationProto* alloc1 = proto.add_buffer_allocations();
+  alloc1->set_size(10);
+  alloc1->set_color(0);
+  BufferAllocationProto* alloc2 = proto.add_buffer_allocations();
+  alloc2->set_size(20);
+  alloc2->set_color(0);
+  alloc2->set_is_thread_local(true);
+  EXPECT_EQ(ComputeTotalAllocationBytes(proto, /*memory_color=*/0), 10);
 }
 
 TEST_F(BufferAssignmentTest, ScanComputation) {
