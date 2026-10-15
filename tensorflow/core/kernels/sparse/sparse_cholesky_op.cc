@@ -107,8 +107,12 @@ class CSRSparseCholeskyCPUOp : public OpKernel {
     std::vector<SparseMatrix> sparse_cholesky_factors(batch_size);
 
     // TODO(anudhyan): Tune the cost per unit based on benchmarks.
+    // num_rows or batch_size can be zero for a valid empty matrix; guard the
+    // divisions so the cost estimate does not trigger a SIGFPE.
     const double nnz_per_row =
-        (input_matrix->total_nnz() / batch_size) / num_rows;
+        (batch_size == 0 || num_rows == 0)
+            ? 0.0
+            : (input_matrix->total_nnz() / batch_size) / num_rows;
     const int64_t sparse_cholesky_cost_per_batch =
         nnz_per_row * nnz_per_row * num_rows;
     // Perform sparse Cholesky factorization of each batch in parallel.
@@ -194,7 +198,7 @@ class CSRSparseCholeskyCPUOp : public OpKernel {
     // CSRSparseMatrix into common utils. This is also used in
     // SparseMatrixSparseMatMul.
     Shard(worker_threads.num_threads, worker_threads.workers, batch_size,
-          (3 * total_nnz) / batch_size /* cost per unit */,
+          batch_size == 0 ? 0 : (3 * total_nnz) / batch_size /* cost per unit */,
           [&](int64_t batch_begin, int64_t batch_end) {
             for (int64_t batch_index = batch_begin; batch_index < batch_end;
                  ++batch_index) {

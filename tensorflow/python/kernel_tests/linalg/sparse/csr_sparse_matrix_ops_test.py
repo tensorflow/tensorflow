@@ -1234,6 +1234,49 @@ class CSRSparseMatrixOpsTest(test.TestCase, parameterized.TestCase):
                 type=dtypes.float32))
 
   @test_util.run_in_graph_and_eager_modes
+  def testBatchSparseCholeskyInvalidPermutation(self):
+    # A rank-3 input exercises the batch-dim parity check; a permutation whose
+    # leading dimension does not match the matrix batch size must be rejected
+    # before the per-batch access runs.
+    dense_mat = np.array([
+        [
+            [2, 0, 0],  #
+            [0, 3, 0],  #
+            [1, 1, 7],
+        ],  #
+        [
+            [4, 0, 0],  #
+            [0, 5, 0],  #
+            [1, 1, 6],
+        ],  #
+    ]).astype(np.float32)
+    with test_util.force_cpu():
+      sparse_matrix = dense_to_csr_sparse_matrix(
+          math_ops.cast(dense_mat, dtypes.float32))
+      # batch_size is 2 but the permutation only carries one batch.
+      with self.assertRaisesRegex(
+          (ValueError, errors.InvalidArgumentError),
+          r"permutation must have the same batch size as sparse matrix; "
+          r"got: 1 != 2"):
+        self.evaluate(
+            sparse_csr_matrix_ops.sparse_matrix_sparse_cholesky(
+                sparse_matrix, np.array([[0, 1, 2]], dtype=np.int32),
+                type=dtypes.float32))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSparseCholeskyEmptyMatrix(self):
+    # An empty (zero-row) matrix is a valid input; the threading cost estimate
+    # must not divide by num_rows and crash with a SIGFPE.
+    with test_util.force_cpu():
+      sparse_matrix = dense_to_csr_sparse_matrix(
+          np.zeros([0, 0], dtype=np.float32))
+      cholesky = sparse_csr_matrix_ops.sparse_matrix_sparse_cholesky(
+          sparse_matrix, np.array([], dtype=np.int32), type=dtypes.float32)
+      dense = sparse_csr_matrix_ops.csr_sparse_matrix_to_dense(
+          cholesky, dtypes.float32)
+      self.assertAllEqual(self.evaluate(dense).shape, [0, 0])
+
+  @test_util.run_in_graph_and_eager_modes
   def testBatchSparseCholesky(self):
     dense_mat = np.array([
         # A diagonal matrix.
