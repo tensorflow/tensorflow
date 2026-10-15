@@ -743,6 +743,11 @@ class MatrixSetDiagTest(xla_test.XLATestCase):
         self._setDiagOfSelected(
             np.arange(1, 16).reshape(5, 3), diagonal, {-2: keep}, keep, k=1),
         [[1, 90, 3], [7, 8, 92]])
+    # A diagonal whose bound is shorter than the one the matrix's bound gives.
+    self.assertAllEqual(
+        self._setDiagOfSelected(
+            np.arange(1, 37).reshape(6, 6), diagonal, {-2: keep + [False]},
+            keep), [[90, 2, 3, 4, 5, 6], [13, 92, 15, 16, 17, 18]])
 
   def testDynamicDimensionsBatch(self):
     if "GPU" in self.device:
