@@ -1167,9 +1167,6 @@ TEST_P(KernelTest, IfrtRestoreVariableOpWaitsForAsyncShardsBeforeDestruction) {
   EXPECT_TRUE(restored_future.IsReady());
   fallback_state_.reset();
 
-  if (!unblock_restore.HasBeenNotified()) {
-    unblock_restore.Notify();
-  }
   restore_work_queue_->Quiesce();
 
   absl::StatusOr<tensorflow::Tensor> restored_tensor = restored_future.Await();
