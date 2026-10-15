@@ -76,10 +76,6 @@ absl::Status EnsureSparseVariableAccess(OpKernelContext* ctx, Var* var) {
         " (resource variable dtype)"));
   }
 
-  if (!var->tensor()->IsInitialized()) {
-    return absl::OkStatus();
-  }
-
   // Once copy-on-read mode is True the refcount is guaranteed to be 1. This can
   // also happen if there are no concurrent reads of the variable and
   // copy-on-read mode is false.
@@ -250,9 +246,6 @@ absl::Status PrepareToUpdateVariable(OpKernelContext* ctx, Tensor* tensor,
     return absl::InvalidArgumentError(absl::StrCat(
         "dtype mismatch: expected ", DataTypeString(DataTypeToEnum<T>::v()),
         " but got ", DataTypeString(tensor->dtype())));
-  }
-  if (!tensor->IsInitialized()) {
-    return absl::OkStatus();
   }
   if (copy_on_read_mode || !tensor->RefCountIsOne()) {
     // Tensor's buffer is in use by some read, so we need to copy before

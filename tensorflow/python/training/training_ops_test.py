@@ -19,7 +19,6 @@ import threading
 
 import numpy as np
 
-from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -28,8 +27,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework.test_util import TensorFlowTestCase
 # Import resource_variable_ops for the variables-to-tensor implicit conversion.
-from tensorflow.python.ops import gen_resource_variable_ops
-from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import gen_training_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops  # pylint: disable=unused-import
@@ -748,173 +745,6 @@ class TrainingOpsTest(TensorFlowTestCase):
               var=var.handle,
               alpha=lr,
               delta=grad,
-          )
-      )
-
-  @test_util.run_in_graph_and_eager_modes
-  def testResourceVariableUninitialized(self):
-    var_uninit_f32 = gen_resource_variable_ops.var_handle_op(
-        dtype=dtypes.float32,
-        shape=[1, 2],
-        shared_name=(
-            context.anonymous_name() if context.executing_eagerly() else ""
-        ),
-    )
-    var_uninit_f16 = gen_resource_variable_ops.var_handle_op(
-        dtype=dtypes.float16,
-        shape=[1, 2],
-        shared_name=(
-            context.anonymous_name() if context.executing_eagerly() else ""
-        ),
-    )
-    accum_uninit_f16 = gen_resource_variable_ops.var_handle_op(
-        dtype=dtypes.float16,
-        shape=[1, 2],
-        shared_name=(
-            context.anonymous_name() if context.executing_eagerly() else ""
-        ),
-    )
-    lr = constant_op.constant(0.1, dtype=dtypes.float16)
-    grad = constant_op.constant([[0.1, 0.2]], dtype=dtypes.float16)
-    indices = constant_op.constant([0], dtype=dtypes.int32)
-
-    # Mismatched dtype should raise InvalidArgumentError
-    with self.assertRaisesRegex(
-        errors.InvalidArgumentError, "dtype mismatch"
-    ):
-      self.evaluate(
-          gen_training_ops.resource_apply_gradient_descent(
-              var=var_uninit_f32,
-              alpha=lr,
-              delta=grad,
-          )
-      )
-
-    with self.assertRaisesRegex(
-        errors.InvalidArgumentError, "dtype mismatch"
-    ):
-      self.evaluate(
-          gen_training_ops.resource_sparse_apply_adagrad(
-              var=var_uninit_f32,
-              accum=accum_uninit_f16,
-              lr=lr,
-              grad=grad,
-              indices=indices,
-          )
-      )
-
-    # Matched dtype should raise FailedPreconditionError
-    with self.assertRaisesRegex(
-        errors.FailedPreconditionError, "uninitialized"
-    ):
-      self.evaluate(
-          gen_training_ops.resource_apply_gradient_descent(
-              var=var_uninit_f16,
-              alpha=lr,
-              delta=grad,
-          )
-      )
-
-    with self.assertRaisesRegex(
-        errors.FailedPreconditionError, "uninitialized"
-    ):
-      self.evaluate(
-          gen_training_ops.resource_sparse_apply_adagrad(
-              var=var_uninit_f16,
-              accum=accum_uninit_f16,
-              lr=lr,
-              grad=grad,
-              indices=indices,
-          )
-      )
-
-    var_uninit_scalar_f16 = gen_resource_variable_ops.var_handle_op(
-        dtype=dtypes.float16,
-        shape=[],
-        shared_name=(
-            context.anonymous_name() if context.executing_eagerly() else ""
-        ),
-    )
-    with self.assertRaisesRegex(
-        errors.FailedPreconditionError, "uninitialized"
-    ):
-      self.evaluate(
-          gen_resource_variable_ops.assign_add_variable_op(
-              resource=var_uninit_scalar_f16,
-              value=constant_op.constant(0.1, dtype=dtypes.float16),
-          )
-      )
-
-
-    scatter_var_uninit_f16 = gen_resource_variable_ops.var_handle_op(
-        dtype=dtypes.float16,
-        shape=[1, 2],
-        shared_name=(
-            context.anonymous_name() if context.executing_eagerly() else ""
-        ),
-    )
-    with self.assertRaisesRegex(
-        errors.FailedPreconditionError, "uninitialized"
-    ):
-      self.evaluate(
-          gen_resource_variable_ops.resource_scatter_update(
-              resource=scatter_var_uninit_f16,
-              indices=indices,
-              updates=grad,
-          )
-      )
-
-    gather_var_uninit_f16 = gen_resource_variable_ops.var_handle_op(
-        dtype=dtypes.float16,
-        shape=[1, 2],
-        shared_name=(
-            context.anonymous_name() if context.executing_eagerly() else ""
-        ),
-    )
-    with self.assertRaisesRegex(
-        errors.FailedPreconditionError, "uninitialized"
-    ):
-      self.evaluate(
-          gen_resource_variable_ops.resource_gather(
-              resource=gather_var_uninit_f16,
-              indices=indices,
-              dtype=dtypes.float16,
-          )
-      )
-
-    gather_nd_var_uninit_f16 = gen_resource_variable_ops.var_handle_op(
-        dtype=dtypes.float16,
-        shape=[1, 2],
-        shared_name=(
-            context.anonymous_name() if context.executing_eagerly() else ""
-        ),
-    )
-    with self.assertRaisesRegex(
-        errors.FailedPreconditionError, "uninitialized"
-    ):
-      self.evaluate(
-          gen_resource_variable_ops.resource_gather_nd(
-              resource=gather_nd_var_uninit_f16,
-              indices=constant_op.constant([[0]], dtype=dtypes.int32),
-              dtype=dtypes.float16,
-          )
-      )
-
-    scatter_nd_var_uninit_f16 = gen_resource_variable_ops.var_handle_op(
-        dtype=dtypes.float16,
-        shape=[1, 2],
-        shared_name=(
-            context.anonymous_name() if context.executing_eagerly() else ""
-        ),
-    )
-    with self.assertRaisesRegex(
-        errors.FailedPreconditionError, "uninitialized"
-    ):
-      self.evaluate(
-          gen_state_ops.resource_scatter_nd_update(
-              ref=scatter_nd_var_uninit_f16,
-              indices=constant_op.constant([[0]], dtype=dtypes.int32),
-              updates=grad,
           )
       )
 

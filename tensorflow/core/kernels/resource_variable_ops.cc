@@ -648,9 +648,6 @@ class AssignUpdateVariableOp : public OpKernel {
     // ADD if value's refcount was 1.
     mutex_lock ml(*variable->mu());
     Tensor* var_tensor = variable->tensor();
-    OP_REQUIRES(context, var_tensor->IsInitialized(),
-                errors::FailedPrecondition(
-                    "Attempting to use uninitialized variables: ", handle.name()));
     OP_REQUIRES_OK(context, ValidateAssignUpdateVariableOpShapes(
                                 var_tensor->shape(), value.shape()));
     OP_REQUIRES(context, var_tensor->dtype() == value.dtype(),
@@ -768,10 +765,6 @@ class ResourceGatherOp : public OpKernel {
     // reference count greater than one and make a copy of the
     // (potentially very large) tensor buffer.
     tf_shared_lock ml(*v->mu());
-    OP_REQUIRES(c, v->tensor()->IsInitialized(),
-                errors::FailedPrecondition(
-                    "Attempting to use uninitialized variables: ",
-                    handle.name()));
     OP_REQUIRES(
         c, v->tensor()->dtype() == DataTypeToEnum<T>::v(),
         absl::InvalidArgumentError(absl::StrCat(
@@ -965,10 +958,6 @@ class ResourceGatherNdOp : public OpKernel {
     // reference count greater than one and make a copy of the
     // (potentially very large) tensor buffer.
     tf_shared_lock ml(*v->mu());
-    OP_REQUIRES(c, v->tensor()->IsInitialized(),
-                errors::FailedPrecondition(
-                    "Attempting to use uninitialized variables: ",
-                    handle.name()));
     OP_REQUIRES(
         c, v->tensor()->dtype() == DataTypeToEnum<T>::v(),
         absl::InvalidArgumentError(absl::StrCat(
@@ -1200,10 +1189,6 @@ class ResourceScatterUpdateOp : public OpKernel {
         update_dtype == DT_STRING || update_dtype == DT_VARIANT;
     if (is_non_pod_dtype || use_exclusive_lock_) {
       mutex_lock ml(*v->mu());
-      OP_REQUIRES(c, v->tensor()->IsInitialized(),
-                  errors::FailedPrecondition(
-                      "Attempting to use uninitialized variables: ",
-                      handle.name()));
       OP_REQUIRES(c, v->tensor()->dtype() == update_dtype,
                   absl::InvalidArgumentError(
                       "DType of scatter resource and updates does not match."));
@@ -1211,10 +1196,6 @@ class ResourceScatterUpdateOp : public OpKernel {
     } else {
       // For POD dtypes, we can safely run the update without the mutex.
       tf_shared_lock ml(*v->mu());
-      OP_REQUIRES(c, v->tensor()->IsInitialized(),
-                  errors::FailedPrecondition(
-                      "Attempting to use uninitialized variables: ",
-                      handle.name()));
       OP_REQUIRES(c, v->tensor()->dtype() == update_dtype,
                   absl::InvalidArgumentError(
                       "DType of scatter resource and updates does not match."));
