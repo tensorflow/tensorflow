@@ -72,7 +72,7 @@ index 1ea9160e..8f149153 100644
  
  TEST_F(DialectTest, DimensionShardingAttrGetSharded) {
 diff --git a/shardy/dialect/sdy/transforms/export/convert_global_to_local.cc b/shardy/dialect/sdy/transforms/export/convert_global_to_local.cc
-index c6b1a677..1b545c49 100644
+index c6b1a677..c77a0ad4 100644
 --- a/shardy/dialect/sdy/transforms/export/convert_global_to_local.cc
 +++ b/shardy/dialect/sdy/transforms/export/convert_global_to_local.cc
 @@ -280,19 +280,6 @@ LogicalResult localizeGenericOp(Operation* op, ValueRange operands,
@@ -206,7 +206,81 @@ index c6b1a677..1b545c49 100644
  }
  
  ValueRange createAllReduceForUnreducedAxes(
-@@ -708,6 +741,24 @@ class AllReduceOpPattern : public OpConversionPattern<sdy::AllReduceOp> {
+@@ -528,18 +561,23 @@ class AllGatherOpPattern : public OpConversionPattern<AllGatherOp> {
+     }
+ 
+     SDY_CHECK(gatheringDims.size() > 1);
+-
+-    // Add a leading dimension of size 1 to gather all partitions at once.
+-    SmallVector<int64_t> tmpShape = {1};
+-    llvm::append_range(tmpShape, localShape);
++    int64_t firstGatheringDim = gatheringDims.front();
++
++    // Add a dimension of size 1 at `firstGatheringDim` to gather all
++    // partitions at once, keeping dimensions 0..firstGatheringDim-1 untouched.
++    SmallVector<int64_t> tmpShape =
++        llvm::to_vector(localShape.take_front(firstGatheringDim));
++    tmpShape.push_back(1);
++    llvm::append_range(tmpShape, localShape.drop_front(firstGatheringDim));
+     Value curInput = stablehlo::ReshapeOp::create(
+         rewriter, op.getLoc(),
+         RankedTensorType::get(tmpShape, localType.getElementType()), input);
+ 
+-    // Perform All-Gather on dim 0.
++    // Perform All-Gather on `firstGatheringDim`.
+     Attribute replicaGroups;
+-    std::tie(replicaGroups, tmpShape[0]) = getReplicaGroupsAndSize(
+-        allGatheringAxes, mesh, meshOrRef, enableRGV3, rewriter);
++    std::tie(replicaGroups, tmpShape[firstGatheringDim]) =
++        getReplicaGroupsAndSize(allGatheringAxes, mesh, meshOrRef, enableRGV3,
++                                rewriter);
+     auto channelHandle = stablehlo::ChannelHandleAttr::get(
+         ctx, /*handle=*/conversionState.getNextChannelId(),
+         kCrossPartitionChannelHandleType);
+@@ -548,13 +586,15 @@ class AllGatherOpPattern : public OpConversionPattern<AllGatherOp> {
+     auto allGather = stablehlo::AllGatherOp::create(
+         rewriter, op.getLoc(),
+         TypeRange{RankedTensorType::get(tmpShape, localType.getElementType())},
+-        curInput, /*all_gather_dim=*/0, replicaGroups, channelHandle,
+-        /*use_global_device_ids=*/true);
++        curInput, /*all_gather_dim=*/firstGatheringDim, replicaGroups,
++        channelHandle, /*use_global_device_ids=*/true);
+     curInput = allGather.getResult(0);
+ 
+-    // Split the leading dimension into individual gathering factors.
+-    SmallVector<int64_t> splitShape = gatheringFactors;
+-    llvm::append_range(splitShape, localShape);
++    // Split `firstGatheringDim` into individual gathering factors.
++    SmallVector<int64_t> splitShape =
++        llvm::to_vector(localShape.take_front(firstGatheringDim));
++    llvm::append_range(splitShape, gatheringFactors);
++    llvm::append_range(splitShape, localShape.drop_front(firstGatheringDim));
+     curInput = stablehlo::ReshapeOp::create(
+         rewriter, op.getLoc(),
+         RankedTensorType::get(splitShape, localType.getElementType()),
+@@ -562,14 +602,16 @@ class AllGatherOpPattern : public OpConversionPattern<AllGatherOp> {
+ 
+     // Transpose factors next to their corresponding dimensions.
+     SmallVector<int64_t> xposePerm;
+-    int64_t nextFactorIdx = 0;
+-    for (int64_t i = 0; i < rank; ++i) {
++    xposePerm.reserve(rank + gatheringDims.size());
++    for (int64_t i = 0; i < firstGatheringDim; ++i) {
++      xposePerm.push_back(i);
++    }
++    int64_t nextFactorIdx = firstGatheringDim;
++    for (int64_t i = firstGatheringDim; i < rank; ++i) {
+       if (llvm::is_contained(gatheringDims, i)) {
+         xposePerm.push_back(nextFactorIdx++);
+-        xposePerm.push_back(i + gatheringDims.size());
+-      } else {
+-        xposePerm.push_back(i + gatheringDims.size());
+       }
++      xposePerm.push_back(i + gatheringDims.size());
+     }
+     curInput = stablehlo::TransposeOp::create(
+         rewriter, op.getLoc(), curInput,
+@@ -708,6 +750,24 @@ class AllReduceOpPattern : public OpConversionPattern<sdy::AllReduceOp> {
    bool enableRGV3;
  };
  
@@ -231,7 +305,7 @@ index c6b1a677..1b545c49 100644
  // Returns a 0-rank i32 tensor containing the global offset for the given shard
  // axes and local shard size.
  Value getDimensionOffset(Location loc, MeshAttr mesh,
-@@ -716,9 +767,6 @@ Value getDimensionOffset(Location loc, MeshAttr mesh,
+@@ -716,9 +776,6 @@ Value getDimensionOffset(Location loc, MeshAttr mesh,
                           ConversionPatternRewriter& rewriter) {
    int64_t numDevices = mesh.getTotalSize();
    Type i32Ty = rewriter.getI32Type();
@@ -241,7 +315,7 @@ index c6b1a677..1b545c49 100644
  
    // Calculate a compile-time offset table for this dimension.
    SmallVector<int32_t> offsetsTable = llvm::map_to_vector(
-@@ -728,16 +776,11 @@ Value getDimensionOffset(Location loc, MeshAttr mesh,
+@@ -728,16 +785,11 @@ Value getDimensionOffset(Location loc, MeshAttr mesh,
          return static_cast<int32_t>(offset);
        });
  
@@ -262,7 +336,7 @@ index c6b1a677..1b545c49 100644
  }
  
  Value emitDynamicSliceForAxes(Location loc, Value globalTensor, MeshAttr mesh,
-@@ -767,6 +810,43 @@ Value emitDynamicSliceForAxes(Location loc, Value globalTensor, MeshAttr mesh,
+@@ -767,6 +819,43 @@ Value emitDynamicSliceForAxes(Location loc, Value globalTensor, MeshAttr mesh,
        .getResult();
  }
  
@@ -306,7 +380,7 @@ index c6b1a677..1b545c49 100644
  class AllSliceOpPattern : public OpConversionPattern<AllSliceOp> {
   public:
    AllSliceOpPattern(TypeConverter& converter, MLIRContext* ctx,
-@@ -1119,7 +1199,14 @@ class ConstantOpPattern : public OpConversionPattern<sdy::ConstantOp> {
+@@ -1119,7 +1208,14 @@ class ConstantOpPattern : public OpConversionPattern<sdy::ConstantOp> {
      auto localType = cast<RankedTensorType>(converter->convertType(op));
      ElementsAttr elementsAttr = op.getValue();
      Location loc = op.getLoc();
@@ -321,7 +395,7 @@ index c6b1a677..1b545c49 100644
      // Unsharded or splat constants.
      if (localType == globalType || elementsAttr.isSplat()) {
        Attribute newAttr =
-@@ -1128,33 +1215,35 @@ class ConstantOpPattern : public OpConversionPattern<sdy::ConstantOp> {
+@@ -1128,33 +1224,35 @@ class ConstantOpPattern : public OpConversionPattern<sdy::ConstantOp> {
                : SplatElementsAttr::get(localType,
                                         elementsAttr.getSplatValue<Attribute>());
  
@@ -379,7 +453,7 @@ index c6b1a677..1b545c49 100644
      conversionState.removeToConvertOp(op);
  
      return success();
-@@ -1425,6 +1514,97 @@ class ReduceScatterOpPattern : public OpConversionPattern<ReduceScatterOp> {
+@@ -1425,6 +1523,97 @@ class ReduceScatterOpPattern : public OpConversionPattern<ReduceScatterOp> {
    bool enableRGV3;
  };
  
@@ -477,7 +551,7 @@ index c6b1a677..1b545c49 100644
  class NamedComputationOpPattern
      : public OpConversionPattern<NamedComputationOp> {
   public:
-@@ -1608,11 +1788,11 @@ class StablehloConvolutionOpPattern
+@@ -1608,11 +1797,11 @@ class StablehloConvolutionOpPattern
        addRhsReductionAxes(spatialDim);
      }
  
@@ -492,7 +566,7 @@ index c6b1a677..1b545c49 100644
      }
  
      auto getAxes = [&](TensorShardingAttr sharding, int64_t dim) {
-@@ -1643,7 +1823,7 @@ class StablehloConvolutionOpPattern
+@@ -1643,7 +1832,7 @@ class StablehloConvolutionOpPattern
          localBatchGroupCount, op.getPrecisionConfigAttr());
  
      ValueRange results = localConv->getResults();
@@ -501,7 +575,7 @@ index c6b1a677..1b545c49 100644
        Attribute meshOrRef =
            rhsSharding ? rhsSharding.getMeshOrRef() : lhsSharding.getMeshOrRef();
        results = createAllReduceForUnreducedAxes(
-@@ -1727,8 +1907,8 @@ class StablehloDotOpPattern : public OpConversionPattern<stablehlo::DotOp> {
+@@ -1727,8 +1916,8 @@ class StablehloDotOpPattern : public OpConversionPattern<stablehlo::DotOp> {
  
          // Verify that an AllReduce has been inserted by a previous pass unless
          // the result is explicitly unreduced.
@@ -512,7 +586,7 @@ index c6b1a677..1b545c49 100644
            Operation* localDot = createLocalGenericOp(op, adaptor.getOperands(),
                                                       rewriter, converter);
            ValueRange results = createAllReduceForUnreducedAxes(
-@@ -1804,8 +1984,8 @@ class StablehloDotGeneralOpPattern
+@@ -1804,8 +1993,8 @@ class StablehloDotGeneralOpPattern
  
          // Verify that an AllReduce has been inserted by a previous pass unless
          // the result is explicitly unreduced.
@@ -523,7 +597,7 @@ index c6b1a677..1b545c49 100644
            Operation* localDotGeneral = createLocalGenericOp(
                op, adaptor.getOperands(), rewriter, converter);
            ValueRange results = createAllReduceForUnreducedAxes(
-@@ -1828,6 +2008,71 @@ class StablehloDotGeneralOpPattern
+@@ -1828,6 +2017,71 @@ class StablehloDotGeneralOpPattern
    bool enableRGV3;
  };
  
@@ -595,7 +669,7 @@ index c6b1a677..1b545c49 100644
  Value createScalarInt(OpBuilder& b, Location loc, RankedTensorType type,
                        int64_t val) {
    return stablehlo::ConstantOp::create(
-@@ -2095,7 +2340,7 @@ class StablehloReduceOpPattern
+@@ -2095,7 +2349,7 @@ class StablehloReduceOpPattern
      }
  
      if (!reductionAxes.empty() &&
@@ -604,7 +678,7 @@ index c6b1a677..1b545c49 100644
        auto localReduceOp = cast<stablehlo::ReduceOp>(
            createLocalGenericOp(op, adaptor.getOperands(), rewriter, converter));
        if (op.getNumResults() == 1) {
-@@ -2555,8 +2800,8 @@ class StablehloGatherOpPattern
+@@ -2555,8 +2809,8 @@ class StablehloGatherOpPattern
          mask, bcastDims);
  
      TensorShardingAttr resSharding = getSharding(op.getResult());
@@ -615,7 +689,7 @@ index c6b1a677..1b545c49 100644
      ReductionOp reductionOp =
          resSharding ? resSharding.getReductionOp() : ReductionOp::SUM;
  
-@@ -2573,7 +2818,7 @@ class StablehloGatherOpPattern
+@@ -2573,7 +2827,7 @@ class StablehloGatherOpPattern
      result = stablehlo::SelectOp::create(rewriter, loc, bcastMask, result,
                                           identityVal);
  
@@ -624,7 +698,7 @@ index c6b1a677..1b545c49 100644
        result =
            createAllReduceForUnreducedAxes(loc, result, reductionAxes, mesh,
                                            operandSharding.getMeshOrRef(),
-@@ -2747,30 +2992,8 @@ class StablehloRngBitGeneratorOpPattern
+@@ -2747,30 +3001,8 @@ class StablehloRngBitGeneratorOpPattern
      // Mask non-leader shards (where shard index across dataAxes != 0) to zero
      // and all-reduce across dataAxes so all partitions receive device 0's
      // updated output_state.
@@ -657,7 +731,7 @@ index c6b1a677..1b545c49 100644
  
      finalState =
          createAllReduceForUnreducedAxes(loc, ValueRange{maskedState}, dataAxes,
-@@ -3121,35 +3344,13 @@ class StablehloScatterOpPattern
+@@ -3121,35 +3353,13 @@ class StablehloScatterOpPattern
        if (!identity) {
          return op.emitError("failed to get scatter reduction identity.");
        }
@@ -696,7 +770,7 @@ index c6b1a677..1b545c49 100644
      }
  
      auto globalInputType = cast<RankedTensorType>(input.getType());
-@@ -3207,7 +3408,8 @@ class StablehloScatterOpPattern
+@@ -3207,7 +3417,8 @@ class StablehloScatterOpPattern
  
      ValueRange results = localScatter.getResults();
      if (!reductionAxes.empty() &&
@@ -706,7 +780,7 @@ index c6b1a677..1b545c49 100644
        Attribute meshOrRef = inputSharding ? inputSharding.getMeshOrRef()
                                            : updateSharding.getMeshOrRef();
        results = createAllReduceForUnreducedAxes(
-@@ -3503,7 +3705,8 @@ struct ConvertGlobalToLocalPass
+@@ -3503,7 +3714,8 @@ struct ConvertGlobalToLocalPass
      patterns.add<AllSliceOpPattern, CollectivePermuteOpPattern,
                   ConstantOpPattern, FuncOpSignaturePattern, GenericOpPattern,
                   ManualComputationOpPattern, NamedComputationOpPattern,
@@ -811,6 +885,38 @@ index c840e9f1..f11dcdbe 100644
  // CHECK-LABEL: func.func @callee_sharded
  // CHECK-SAME: (%arg0: tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh_2, [{"x"}]>}) -> (tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh_2, [{"x"}]>})
  func.func @callee_sharded(%arg0: tensor<16xf32> {sdy.sharding = #sdy.sharding<@mesh_2, [{"x"}]>}) -> (tensor<16xf32> {sdy.sharding = #sdy.sharding<@mesh_2, [{"x"}]>}) {
+diff --git a/shardy/dialect/sdy/transforms/export/test/convert_global_to_local/sdy_all_gather.mlir b/shardy/dialect/sdy/transforms/export/test/convert_global_to_local/sdy_all_gather.mlir
+index d79f9dae..7e6ae755 100644
+--- a/shardy/dialect/sdy/transforms/export/test/convert_global_to_local/sdy_all_gather.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/convert_global_to_local/sdy_all_gather.mlir
+@@ -174,3 +174,27 @@ func.func @two_dims_merge_adjacent_sub_axes(%arg0 : tensor<8x16xf32> {sdy.shardi
+   return %0 : tensor<8x16xf32>
+ }
+ 
++// CHECK-LABEL: func @two_dims_non_zero_first_dim
++// CHECK-SAME: (%[[ARG0:.*]]: tensor<3x5x7x11xf32> {sdy.sharding = #sdy.sharding<@mesh_2_4_2, [{}, {"y"}, {}, {"z"}]>})
++// CHECK-SAME: -> (tensor<3x20x7x22xf32> {sdy.sharding = #sdy.sharding<@mesh_2_4_2, [{}, {}, {}, {}]>})
++func.func @two_dims_non_zero_first_dim(%arg0 : tensor<3x20x7x22xf32> {sdy.sharding = #sdy.sharding<@mesh_2_4_2, [{}, {"y"}, {}, {"z"}]>})
++  -> (tensor<3x20x7x22xf32> {sdy.sharding = #sdy.sharding<@mesh_2_4_2, [{}, {}, {}, {}]>}){
++
++  // --- Combined Dimensions All-Gather Strategy (per-dim-all-gather=false) ---
++  // COMBINED: %[[RESHAPE1:.*]] = stablehlo.reshape %[[ARG0]] : (tensor<3x5x7x11xf32>) -> tensor<3x1x5x7x11xf32>
++  // COMBINED: %[[GATHER:.*]] = "stablehlo.all_gather"(%[[RESHAPE1]]) <{
++  // COMBINED-SAME: all_gather_dim = 1 : i64,
++  // COMBINED-SAME: channel_handle = #stablehlo.channel_handle<handle = 8, type = 1>,
++  // COMBINED-V1-SAME{LITERAL}: replica_groups = dense<[[0, 1, 2, 3, 4, 5, 6, 7], [8, 9, 10, 11, 12, 13, 14, 15]]>
++  // COMBINED-V3-SAME: replica_groups = #stablehlo.replica_group_mesh_axes<mesh = @mesh_2_4_2, axes = [#stablehlo.axis_ref<name = "y">, #stablehlo.axis_ref<name = "z">]>
++  // COMBINED-SAME: }> : (tensor<3x1x5x7x11xf32>) -> tensor<3x8x5x7x11xf32>
++  // COMBINED: %[[RESHAPE2:.*]] = stablehlo.reshape %[[GATHER]] : (tensor<3x8x5x7x11xf32>) -> tensor<3x4x2x5x7x11xf32>
++  // COMBINED: %[[TRANSPOSE:.*]] = stablehlo.transpose %[[RESHAPE2]], dims = [0, 1, 3, 4, 2, 5] : (tensor<3x4x2x5x7x11xf32>) -> tensor<3x4x5x7x2x11xf32>
++  // COMBINED: %[[RESULT:.*]] = stablehlo.reshape %[[TRANSPOSE]] : (tensor<3x4x5x7x2x11xf32>) -> tensor<3x20x7x22xf32>
++
++  %0 = sdy.all_gather[{}, {"y"}, {}, {"z"}] %arg0 out_sharding = <@mesh_2_4_2, [{}, {}, {}, {}]> : tensor<3x20x7x22xf32>
++
++  // COMBINED: return %[[RESULT]] : tensor<3x20x7x22xf32>
++  return %0 : tensor<3x20x7x22xf32>
++}
++
 diff --git a/shardy/dialect/sdy/transforms/export/test/convert_global_to_local/sdy_constant.mlir b/shardy/dialect/sdy/transforms/export/test/convert_global_to_local/sdy_constant.mlir
 index 2e01e015..15a45782 100644
 --- a/shardy/dialect/sdy/transforms/export/test/convert_global_to_local/sdy_constant.mlir
@@ -1153,6 +1259,52 @@ index e45919c6..3661799c 100644
    // CHECK:      %[[INPUT_SEL:.*]] = stablehlo.select %[[IS_LEADER]], %[[ARG0]], %[[ID_BCAST]]
    // CHECK:      %[[SCATTER:.*]] = "stablehlo.scatter"(%[[INPUT_SEL]], %[[ARG1]], %[[ARG2]])
    // CHECK-SAME: scatter_dimension_numbers = #stablehlo.scatter<update_window_dims = [2], inserted_window_dims = [0, 1], scatter_dims_to_operand_dims = [0, 1], index_vector_dim = 2>
+diff --git a/shardy/dialect/sdy/transforms/export/test/executable_convert_global_to_local/sdy_all_gather.mlir b/shardy/dialect/sdy/transforms/export/test/executable_convert_global_to_local/sdy_all_gather.mlir
+index 2377e4a7..47c5801a 100644
+--- a/shardy/dialect/sdy/transforms/export/test/executable_convert_global_to_local/sdy_all_gather.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/executable_convert_global_to_local/sdy_all_gather.mlir
+@@ -30,6 +30,14 @@ func.func @all_gather_test(
+   return %0 : tensor<4x4xi32>
+ }
+ 
++// This function gathers non-zero dims 1 and 3 of a 2x4x2x2 tensor.
++func.func @all_gather_test_non_zero_first_dim(
++  %arg0: tensor<2x4x2x2xi32> {sdy.sharding = #sdy.sharding<@mesh_2_2, [{}, {"x"}, {}, {"y"}]>}
++  ) -> tensor<2x4x2x2xi32> {
++  %0 = sdy.all_gather [{}, {"x"}, {}, {"y"}] %arg0 out_sharding=<@mesh_2_2, [{}, {}, {}, {}]> : tensor<2x4x2x2xi32>
++  return %0 : tensor<2x4x2x2xi32>
++}
++
+ //--- part2.mlir
+ 
+ func.func @main() {
+@@ -63,5 +71,26 @@ func.func @main() {
+   "check.expect_eq"(%res_comb#0, %res_pdim#0) : (tensor<4x4xi32>, tensor<4x4xi32>) -> ()
+   "check.expect_eq"(%res_comb#0, %cst) : (tensor<4x4xi32>, tensor<4x4xi32>) -> ()
+ 
++  // Test gathering on non-zero dims 1 and 3 with non-gathering dims 0 and 2.
++  %iota = stablehlo.iota dim = 0 : tensor<32xi32>
++  %cst_4d = stablehlo.reshape %iota : (tensor<32xi32>) -> tensor<2x4x2x2xi32>
++  %s0_4d = stablehlo.slice %cst_4d [0:2, 0:2, 0:2, 0:1] : (tensor<2x4x2x2xi32>) -> tensor<2x2x2x1xi32>
++  %s1_4d = stablehlo.slice %cst_4d [0:2, 0:2, 0:2, 1:2] : (tensor<2x4x2x2xi32>) -> tensor<2x2x2x1xi32>
++  %s2_4d = stablehlo.slice %cst_4d [0:2, 2:4, 0:2, 0:1] : (tensor<2x4x2x2xi32>) -> tensor<2x2x2x1xi32>
++  %s3_4d = stablehlo.slice %cst_4d [0:2, 2:4, 0:2, 1:2] : (tensor<2x4x2x2xi32>) -> tensor<2x2x2x1xi32>
++
++  %res_comb_4d:4 = "interpreter.run_parallel"(%s0_4d, %s1_4d, %s2_4d, %s3_4d) {
++    programs = [[@combined_gather_non_zero_first_dim, @combined_gather_non_zero_first_dim, @combined_gather_non_zero_first_dim, @combined_gather_non_zero_first_dim]]
++  } : (tensor<2x2x2x1xi32>, tensor<2x2x2x1xi32>, tensor<2x2x2x1xi32>, tensor<2x2x2x1xi32>) ->
++      (tensor<2x4x2x2xi32>, tensor<2x4x2x2xi32>, tensor<2x4x2x2xi32>, tensor<2x4x2x2xi32>)
++
++  %res_pdim_4d:4 = "interpreter.run_parallel"(%s0_4d, %s1_4d, %s2_4d, %s3_4d) {
++    programs = [[@per_dim_gather_non_zero_first_dim, @per_dim_gather_non_zero_first_dim, @per_dim_gather_non_zero_first_dim, @per_dim_gather_non_zero_first_dim]]
++  } : (tensor<2x2x2x1xi32>, tensor<2x2x2x1xi32>, tensor<2x2x2x1xi32>, tensor<2x2x2x1xi32>) ->
++      (tensor<2x4x2x2xi32>, tensor<2x4x2x2xi32>, tensor<2x4x2x2xi32>, tensor<2x4x2x2xi32>)
++
++  "check.expect_eq"(%res_comb_4d#0, %res_pdim_4d#0) : (tensor<2x4x2x2xi32>, tensor<2x4x2x2xi32>) -> ()
++  "check.expect_eq"(%res_comb_4d#0, %cst_4d) : (tensor<2x4x2x2xi32>, tensor<2x4x2x2xi32>) -> ()
++
+   return
+ }
 diff --git a/shardy/dialect/sdy/transforms/export/test/pad_for_divisibility/stablehlo_pad.mlir b/shardy/dialect/sdy/transforms/export/test/pad_for_divisibility/stablehlo_pad.mlir
 index 59cc6b86..208aa2c2 100644
 --- a/shardy/dialect/sdy/transforms/export/test/pad_for_divisibility/stablehlo_pad.mlir
@@ -1452,7 +1604,7 @@ index c5cd8022..6d9f32c2 100644
 +  return %1 : tensor<8x8xf32>
 +}
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index e42d7dbd..ba37bcd1 100644
+index e42d7dbd..caf6ccb5 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -19,8 +19,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
@@ -1461,8 +1613,8 @@ index e42d7dbd..ba37bcd1 100644
      """Imports LLVM."""
 -    LLVM_COMMIT = "2e0d9e12b36e853d9b108c4da09509cd54d1f3f9"
 -    LLVM_SHA256 = "8e4a851780af109d623fa6d6db9b1e62d7126272d17268fed1b149f0e737c1d7"
-+    LLVM_COMMIT = "2b35fb9283a44aae92cb72a41d077ee8de2be7ad"
-+    LLVM_SHA256 = "b61c85c97cde1c3e96ea7cfd09737c24578d6d0656c392d79ce402da6904b828"
++    LLVM_COMMIT = "1ee8805f01a663b7f2b09215a8eab5ab2d15ce35"
++    LLVM_SHA256 = "273fa5e9618fa8085aea51d6eb40129677fea8cf4c8825a2c4ff6ea582706a55"
  
      tf_http_archive(
          name = name,
