@@ -312,6 +312,20 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
       } else if (IsMoe(reg, node)) {
         node_info.composite_op_type = CompositeOpType::kMoe;
       }
+      if (node_info.composite_op_type != CompositeOpType::kNone) {
+        auto* subgraph = reinterpret_cast<tflite::Subgraph*>(context->impl_);
+        const auto* composite_params =
+            static_cast<const TfLiteStablehloCompositeParams*>(
+                node->builtin_data);
+        if (subgraph != nullptr && subgraph->GetSubgraphs() != nullptr &&
+            composite_params != nullptr &&
+            composite_params->subgraph_index > 0 &&
+            static_cast<size_t>(composite_params->subgraph_index) <
+                subgraph->GetSubgraphs()->size()) {
+          TF_LITE_ENSURE_STATUS(subgraph->MarkSubgraphAsDelegationSkippable(
+              composite_params->subgraph_index));
+        }
+      }
       nodes_info_.push_back(node_info);
     }
 
