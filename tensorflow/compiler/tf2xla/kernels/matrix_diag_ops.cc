@@ -374,16 +374,23 @@ class MatrixDiagOp : public XlaOpKernel {
       const xla::XlaOp diag_len = xla::GetDimensionSize(diag, diag_rank - 1);
       const auto actual_size = [&](bool inferred, int64_t size,
                                    int64_t requested_size) {
-        return inferred ? xla::Add(diag_len, xla::ScalarLike(
-                                                 diag_len, size - max_diag_len))
-                        : xla::ScalarLike(diag_len, requested_size);
+        if (!inferred) return xla::ScalarLike(diag_len, requested_size);
+        if (size == max_diag_len) return diag_len;
+        return xla::Add(diag_len,
+                        xla::ScalarLike(diag_len, size - max_diag_len));
       };
       actual_num_rows =
           actual_size(infer_num_rows, num_rows, requested_num_rows);
       actual_num_cols =
           actual_size(infer_num_cols, num_cols, requested_num_cols);
       diag = xla::RemoveDynamicDimension(diag, diag_rank - 1);
-      if (num_diags > 1) {
+      bool has_right_aligned = false;
+      for (int64_t diag_index = lower_diag_index;
+           diag_index <= upper_diag_index; ++diag_index) {
+        has_right_aligned |= !IsLeftAligned(
+            diag_index, left_align_superdiagonal_, left_align_subdiagonal_);
+      }
+      if (num_diags > 1 && has_right_aligned) {
         // A right-aligned diagonal's entries come after the padding it has at
         // the actual sizes, and SetMatrixDiag reads them after the padding it
         // would have at the bound. Pad the diagonal at the front and slice it
@@ -431,19 +438,21 @@ class MatrixDiagOp : public XlaOpKernel {
                            left_align_subdiagonal_);
     if (dynamic_diag_len) {
       const int64_t output_rank = output_shape.dims();
+      if (!infer_num_rows && requested_num_rows < num_rows) {
+        output = xla::SliceInDim(output, 0, requested_num_rows, 1,
+                                 output_rank - 2);
+      }
+      if (!infer_num_cols && requested_num_cols < num_cols) {
+        output = xla::SliceInDim(output, 0, requested_num_cols, 1,
+                                 output_rank - 1);
+      }
       if (infer_num_rows) {
         output =
             xla::SetDimensionSize(output, actual_num_rows, output_rank - 2);
-      } else if (requested_num_rows < num_rows) {
-        output = xla::SliceInDim(output, 0, requested_num_rows, 1,
-                                 output_rank - 2);
       }
       if (infer_num_cols) {
         output =
             xla::SetDimensionSize(output, actual_num_cols, output_rank - 1);
-      } else if (requested_num_cols < num_cols) {
-        output = xla::SliceInDim(output, 0, requested_num_cols, 1,
-                                 output_rank - 1);
       }
     }
     context->SetOutput(0, output);
