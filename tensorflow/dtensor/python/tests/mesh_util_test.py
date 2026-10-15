@@ -370,6 +370,20 @@ class InitializedMeshUtilTest(test_util.DTensorBaseTest):
     with self.assertRaisesRegex(ValueError, 'not initialized'):
       accelerator_util.shutdown_accelerator_system()
 
+  def test_shutdown_accelerator_system_async_wait_error(self):
+    accelerator_util.shutdown_accelerator_system()
+    accelerator_util.initialize_accelerator_system(
+        'CPU', num_logical_cpu_devices=1
+    )
+    self.assertTrue(accelerator_util.is_initialized())
+    with mock.patch.object(
+        context, 'async_wait', side_effect=RuntimeError('async fail')
+    ):
+      with self.assertRaisesRegex(RuntimeError, 'async fail'):
+        accelerator_util.shutdown_accelerator_system()
+    # Ensure cleanup still ran in the finally block.
+    self.assertFalse(accelerator_util.is_initialized())
+
   def test_distributed_tpu_mesh_creation(self):
     self.skipForDeviceType(['CPU', 'GPU'], reason='Test is intended for TPUs')
     self.skipForDeviceType(['TPU'],
