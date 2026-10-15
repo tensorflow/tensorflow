@@ -279,9 +279,10 @@ class SoftmaxTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes(use_gpu=False)
   def testHighRank(self):
     # Regression test for GitHub issue 128814: the oneDNN kernel rejected
-    # inputs of more than 5 dimensions.
+    # inputs of more than 5 dimensions. It now collapses the leading
+    # dimensions of those, and rank 5 is the highest it takes as is.
     rng = np.random.RandomState(0)
-    for rank in (6, 7):
+    for rank in (5, 6, 7):
       for empty_dim in (None, 2, -1):
         shape = [2] * (rank - 1) + [3]
         if empty_dim is not None:

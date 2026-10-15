@@ -235,8 +235,8 @@ class MklSoftmaxOp : public OpKernel {
         for (int i = 0; i < src_shape.dims() - 1; ++i) {
           num_rows *= src_shape.dim_size(i);
         }
-        src_shape =
-            TensorShape({num_rows, src_shape.dim_size(src_shape.dims() - 1)});
+        const int64_t last_dim = src_shape.dim_size(src_shape.dims() - 1);
+        src_shape = TensorShape({num_rows, last_dim});
       }
       const int input_dims = src_shape.dims();
       memory::format_tag src_fmt;
