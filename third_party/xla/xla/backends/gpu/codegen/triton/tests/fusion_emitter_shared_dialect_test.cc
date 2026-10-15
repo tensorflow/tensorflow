@@ -460,7 +460,55 @@ TEST_F(XTileDialectTest, HloReduceScatterIsLoweredToStableHloReduceScatter) {
       block_level_parameters,
       R"(
 CHECK: %[[INPUT_TILE:.*]] = xtile.extract %arg0[%{{.*}}, %{{.*}}] [2, 1024] [1, 1] : memref<4x16384xf32> -> tensor<2x1024xf32>
-CHECK: stablehlo.reduce_scatter
+CHECK: xtile.reduce_scatter
+CHECK: stablehlo.add
+)"));
+}
+
+TEST_F(XTileDialectTest,
+       VariadicHloReduceScatterIsLoweredToXTileReduceScatter) {
+  constexpr absl::string_view kHloText =
+      R"(
+      HloModule wrapped_module_variadic_reduce-scatter
+
+      %apply_op {
+        %x = f32[] parameter(0)
+        %y = f32[] parameter(1)
+        ROOT %apply_op = f32[] add(%x, %y)
+      }
+
+      %wrapped_reduce-scatter {
+        %p0 = f32[4,16384]{1,0} parameter(0)
+        %p1 = f32[4,8]{1,0} parameter(1)
+        %rs = (f32[2,16384]{1,0}, f32[2,8]{1,0}) reduce-scatter(%p0, %p1),
+          replica_groups={{0,1}}, dimensions={0}, to_apply=%apply_op
+        %gte0 = f32[2,16384]{1,0} get-tuple-element(%rs), index=0
+        %gte1 = f32[2,8]{1,0} get-tuple-element(%rs), index=1
+        ROOT %tuple = (f32[2,16384]{1,0}, f32[2,8]{1,0}) tuple(%gte0, %gte1)
+      }
+
+      ENTRY %entry {
+        %p0 = f32[4,16384]{1,0} parameter(0)
+        %p1 = f32[4,8]{1,0} parameter(1)
+        ROOT %fusion = (f32[2,16384]{1,0}, f32[2,8]{1,0}) fusion(%p0, %p1),
+          kind=kLoop, calls=%wrapped_reduce-scatter,
+          backend_config={"fusion_backend_config":{"kind":"__triton_collective","block_level_fusion_config":{"num_warps":"16","output_tiles":[{"sizes":["1","1024"]},{"sizes":["1","8"]}],"num_ctas":1,"num_stages":1,"is_tma_allowed":false,"is_warp_specialization_allowed":false}}}
+      }
+    )";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnUnverifiedModule(kHloText));
+
+  BlockLevelParameters block_level_parameters;
+  block_level_parameters.output_tile_sizes = {{1, 1024}, {1, 8}};
+
+  EXPECT_OK(CreateXTileIrAndFileCheck(
+      *hlo_module->GetComputationWithName("wrapped_reduce-scatter"),
+      block_level_parameters,
+      R"(
+CHECK-DAG: xtile.extract %arg0[%{{.*}}, %{{.*}}] [2, 1024] [1, 1] : memref<4x16384xf32> -> tensor<2x1024xf32>
+CHECK-DAG: xtile.extract %arg1[%{{.*}}, %{{.*}}] [2, 8] [1, 1] : memref<4x8xf32> -> tensor<2x8xf32>
+CHECK: xtile.reduce_scatter(%{{.*}}, %{{.*}}) scatter_dimension = 0 {{.*}} : (tensor<2x1024xf32>, tensor<2x8xf32>) -> (tensor<1x1024xf32>, tensor<1x8xf32>)
 CHECK: stablehlo.add
 )"));
 }

@@ -64,6 +64,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h"
 #include "xla/codegen/xtile/codegen/dot_algorithms.h"
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
+#include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/hlo/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "xla/service/algorithm_util.h"
 #include "xla/tsl/platform/errors.h"
@@ -1055,13 +1056,13 @@ class LowerAllReduce : public mlir::OpRewritePattern<stablehlo::AllReduceOp> {
 };
 
 class LowerReduceScatter
-    : public mlir::OpRewritePattern<stablehlo::ReduceScatterOp> {
+    : public mlir::OpRewritePattern<::xla::xtile::ReduceScatterOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
 
  private:
   mlir::LogicalResult matchAndRewrite(
-      stablehlo::ReduceScatterOp op,
+      ::xla::xtile::ReduceScatterOp op,
       mlir::PatternRewriter& rewriter) const override {
     return ::xla::gpu::RewriteReduceScatter(op, rewriter);
   }

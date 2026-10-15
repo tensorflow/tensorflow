@@ -1260,12 +1260,10 @@ TensorValue EmitTiledTranspose(mlir::ImplicitLocOpBuilder& b,
 }
 
 absl::Status EmitReduceComputation(mlir::ImplicitLocOpBuilder& b,
-                                   const HloInstruction* hlo_reduction,
+                                   PrimitiveType element_type,
                                    const HloComputation* reduction_computation,
                                    mlir::Operation* reduction) {
-  ABSL_ASSIGN_OR_RETURN(
-      Type result_ty,
-      PrimitiveTypeToMlirType(b, hlo_reduction->shape().element_type()));
+  ABSL_ASSIGN_OR_RETURN(Type result_ty, PrimitiveTypeToMlirType(b, element_type));
   result_ty = mlir::RankedTensorType::get({}, result_ty);
 
   mlir::Location loc = b.getLoc();
