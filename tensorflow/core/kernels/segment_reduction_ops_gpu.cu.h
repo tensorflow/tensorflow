@@ -368,7 +368,8 @@ __global__ void SegmentReduceVectorKernel(
                                   : static_cast<int64_t>(y_offset + y);
         // Skip rows whose index is out of range.
         const bool idx_ok = !indices || FastBoundsCheck(y_idx, input_nrows);
-        const int64_t input_idx = y_idx * ninner_vec + x;
+        const int64_t safe_y_idx = idx_ok ? y_idx : 0;
+        const int64_t input_idx = safe_y_idx * ninner_vec + x;
         // Load the input row from global mem.
         Treducevec block_result =
             x_ok && y_ok && idx_ok ? input_vec[input_idx] : Tvec(initial_value);
@@ -1342,6 +1343,64 @@ struct SparseSegmentGradV2Functor<GPUDevice, T, Tindices, Tsegmentids> {
                       done);
     const Toffsets ninner = static_cast<Toffsets>(ninner64);
 
+    // Like the CPU functor and SparseSegmentGradFunctor, reject out-of-range
+    // indices and segment ids before they are downcast below.
+    const int64_t noutput64 = dense_output_shape.dim_size(0);
+    if (nouter64 > 0) {
+      se::Stream* stream = context->op_device_context()->stream();
+      OP_REQUIRES_ASYNC(context, stream != nullptr,
+                        absl::InternalError("No GPU stream available."), done);
+
+      Tensor bad_positions;
+      OP_REQUIRES_OK_ASYNC(
+          context,
+          context->allocate_temp(DT_INT32, TensorShape({2}), &bad_positions),
+          done);
+      int32_t* const bad_positions_ptr = bad_positions.flat<int32_t>().data();
+      int32_t* const bad_index_pos_ptr = bad_positions_ptr;
+      int32_t* const bad_segment_pos_ptr = bad_positions_ptr + 1;
+      stream_executor::DeviceAddressBase bad_positions_device(
+          bad_positions_ptr, 2 * sizeof(int32_t));
+      OP_REQUIRES_OK_ASYNC(context,
+                           stream->Memset32(&bad_positions_device,
+                                            std::numeric_limits<int32_t>::max(),
+                                            2 * sizeof(int32_t)),
+                           done);
+      OP_REQUIRES_OK_ASYNC(
+          context,
+          LaunchSparseSegmentGradBoundsCheckKernel(
+              device, static_cast<Tindices>(nouter64),
+              static_cast<Tindices>(noutput64),
+              static_cast<Tsegmentids>(nsegments), indices_vec.data(),
+              segment_vec.data(), bad_index_pos_ptr, bad_segment_pos_ptr),
+          done);
+      ScratchSpace<int32_t> bad_positions_host(context, 2, /*on_host=*/true);
+      OP_REQUIRES_OK_ASYNC(
+          context,
+          stream->Memcpy(bad_positions_host.mutable_data(),
+                         bad_positions_device, 2 * sizeof(int32_t)),
+          done);
+      OP_REQUIRES_OK_ASYNC(context, stream->BlockHostUntilDone(), done);
+      const int32_t bad_index_pos = bad_positions_host.data()[0];
+      const int32_t bad_segment_pos = bad_positions_host.data()[1];
+      OP_REQUIRES_ASYNC(context,
+                        bad_index_pos == std::numeric_limits<int32_t>::max(),
+                        absl::InvalidArgumentError(absl::StrCat(
+                            "indices[", bad_index_pos,
+                            "] is out of range. Please note "
+                            "that the GPU op does not support out of "
+                            "range indices.")),
+                        done);
+      OP_REQUIRES_ASYNC(context,
+                        bad_segment_pos == std::numeric_limits<int32_t>::max(),
+                        absl::InvalidArgumentError(absl::StrCat(
+                            "segment_ids[", bad_segment_pos,
+                            "] is out of range. Please note "
+                            "that the GPU op does not support out of "
+                            "range segment_ids.")),
+                        done);
+    }
+
     // Cast indices to 32-bit to save memory bandwidth (the cost of the cast is
     // worth it because the vector is used multiple times).
     // Note that we can currently assume int32 is safe because the op's dense
@@ -1358,12 +1417,8 @@ struct SparseSegmentGradV2Functor<GPUDevice, T, Tindices, Tsegmentids> {
                                  TensorShape({nouter}), &tmp_indices_internal),
           done);
       auto indices_vec_internal = tmp_indices_internal.flat<TindicesCompact>();
-      const Tindices min_idx = -1;
-      const Tindices max_idx = dense_output_shape.dim_size(0);
       indices_vec_internal.device(device) =
-          indices_vec.cwiseMin(max_idx)
-              .cwiseMax(min_idx)
-              .template cast<TindicesCompact>();
+          indices_vec.template cast<TindicesCompact>();
       indices_internal_ptr = indices_vec_internal.data();
     }
 
@@ -1408,12 +1463,8 @@ struct SparseSegmentGradV2Functor<GPUDevice, T, Tindices, Tsegmentids> {
         done);
     auto segment_vec_internal =
         tmp_segment_internal.flat<Tsegmentids_internal>();
-    const Tsegmentids min_seg = -1;
-    const Tsegmentids max_seg = nsegments;
     segment_vec_internal.device(device) =
-        segment_vec.cwiseMin(max_seg)
-            .cwiseMax(min_seg)
-            .template cast<Tsegmentids_internal>();
+        segment_vec.template cast<Tsegmentids_internal>();
 
     Impl<Toffsets, TindicesCompact, Tsegmentids_internal>(
         context, operation, nouter, ninner, nsegments, input, indices_tensor,

@@ -1609,9 +1609,11 @@ class SparseSegmentReductionInvalidIndicesGpuTest(
 ):
   """Out-of-range indices must not cause out-of-bounds reads on GPU.
 
-  The GPU kernels do not validate indices, and the output for a segment that
-  contains an out-of-range row is unspecified. These tests check that the op
-  runs, and only check the values of segments whose rows are all valid.
+  The forward GPU kernels do not validate indices, and the output for a segment
+  that contains an out-of-range row is unspecified. These tests check that the
+  op runs, and only check the values of segments whose rows are all valid. The
+  GradV2 GPU kernel rejects out-of-range indices and segment ids, like the CPU
+  kernel.
   """
 
   _OPS = (
@@ -1725,32 +1727,84 @@ class SparseSegmentReductionInvalidIndicesGpuTest(
   @test_util.run_gpu_only
   @test_util.run_in_graph_and_eager_modes
   def testGradV2SegmentIdsOutOfRange(self, dtype, segment_id_dtype):
-    # The segment ids index rows of grad. Use more rows than int16 can count,
-    # so that the GPU kernel keeps the segment ids as int32.
+    # The segment ids index rows of grad. Test with fewer rows and with more
+    # rows than int16 can count, so that the GPU kernel downcasts the segment
+    # ids to int16 or keeps them as int32.
     np_dtype = dtype.as_numpy_dtype
-    grad = constant_op.constant(np.ones([40000, 4], dtype=np_dtype))
     ops_list = [
         math_ops.sparse_segment_sum_grad_v2,
         math_ops.sparse_segment_mean_grad_v2,
         math_ops.sparse_segment_sqrt_n_grad_v2,
     ]
-    seg_ids = [0, 2**30, -(2**30)]
+    bad_seg_ids = [2**30, -(2**30)]
     if segment_id_dtype == dtypes_lib.int64:
-      seg_ids.append(2**33 + 1)
+      bad_seg_ids.append(2**33 + 1)
+    indices = constant_op.constant([0, 1], dtype=dtypes_lib.int32)
+    for grad_rows in (2, 40000):
+      grad = constant_op.constant(np.ones([grad_rows, 4], dtype=np_dtype))
+      for tf_op in ops_list:
+        xgrad, unique_indices = self.evaluate(
+            tf_op(
+                grad,
+                indices,
+                constant_op.constant(
+                    [0, grad_rows - 1], dtype=segment_id_dtype
+                ),
+                2,
+            )
+        )
+        self.assertAllEqual([0, 1], unique_indices)
+        self.assertAllEqual(np.ones([2, 4], dtype=np_dtype), xgrad)
+        for bad_seg_id in bad_seg_ids:
+          with self.assertRaisesOpError(r"segment_ids\[1\] is out of range"):
+            self.evaluate(
+                tf_op(
+                    grad,
+                    indices,
+                    constant_op.constant(
+                        [0, bad_seg_id], dtype=segment_id_dtype
+                    ),
+                    2,
+                )
+            )
+
+  @parameterized.product(
+      dtype=(
+          dtypes_lib.float16,
+          dtypes_lib.bfloat16,
+          dtypes_lib.float32,
+          dtypes_lib.float64,
+      ),
+      index_dtype=(dtypes_lib.int32, dtypes_lib.int64),
+  )
+  @test_util.disable_xla("Tests TF GPU kernel handling of invalid indices")
+  @test_util.run_gpu_only
+  @test_util.run_in_graph_and_eager_modes
+  def testGradV2IndicesOutOfRange(self, dtype, index_dtype):
+    # The indices are positions in the dense output of size 2. For int64,
+    # 2**33 + 1 becomes the valid index 1 if it is cast to int32 unchecked.
+    np_dtype = dtype.as_numpy_dtype
+    grad = constant_op.constant(np.ones([2, 4], dtype=np_dtype))
+    segment_ids = constant_op.constant([0, 1], dtype=dtypes_lib.int32)
+    ops_list = [
+        math_ops.sparse_segment_sum_grad_v2,
+        math_ops.sparse_segment_mean_grad_v2,
+        math_ops.sparse_segment_sqrt_n_grad_v2,
+    ]
+    bad_indices = [2, -1, 2**30]
+    if index_dtype == dtypes_lib.int64:
+      bad_indices.append(2**33 + 1)
     for tf_op in ops_list:
-      xgrad, unique_indices = self.evaluate(
-          tf_op(
-              grad,
-              constant_op.constant(
-                  list(range(len(seg_ids))), dtype=dtypes_lib.int32
-              ),
-              constant_op.constant(seg_ids, dtype=segment_id_dtype),
-              len(seg_ids),
+      for bad_index in bad_indices:
+        with self.assertRaisesOpError(r"indices\[1\] is out of range"):
+          self.evaluate(
+              tf_op(
+                  grad,
+                  constant_op.constant([0, bad_index], dtype=index_dtype),
+                  segment_ids,
+                  2,
+              )
           )
-      )
-      self.assertAllEqual([len(seg_ids), 4], xgrad.shape)
-      self.assertAllEqual(list(range(len(seg_ids))), unique_indices)
-      self.assertAllEqual(np.ones([4], dtype=np_dtype), xgrad[0])
 
 
 class SegmentReductionOpBenchmark(test.Benchmark):
