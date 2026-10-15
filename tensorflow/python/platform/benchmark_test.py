@@ -15,6 +15,8 @@
 """Test for the tf.test.benchmark."""
 
 import os
+import time
+from unittest import mock
 from google.protobuf import json_format
 from tensorflow.core.util import test_log_pb2
 from tensorflow.python.platform import benchmark
@@ -73,6 +75,43 @@ class BenchmarkTest(test.TestCase, benchmark.TensorFlowBenchmark):
 
     self.assertEqual(2000, benchmark_entries.entry[0].iters)
     self.assertDictEqual(expected_result, actual_result)
+
+  def testRunOpBenchmarkThroughputZeroOrNegativeDelta(self):
+    mock_sess = mock.MagicMock()
+    with mock.patch.object(self, 'report_benchmark') as mock_report:
+      # Case 1: min_iters=0 (deltas is empty, median_delta=-1)
+      res_zero_iters = self.run_op_benchmark(
+          mock_sess, op_or_tensor=None, min_iters=0, mbs=10.0, name='zero_iters'
+      )
+      self.assertEqual(res_zero_iters['throughput'], 0.0)
+      self.assertEqual(mock_report.call_args.kwargs['throughput'], 0.0)
+
+      # Case 2: instantaneous execution (delta=0.0, median_delta=0.0)
+      with mock.patch.object(time, 'time', return_value=1.0):
+        res_zero_delta = self.run_op_benchmark(
+            mock_sess,
+            op_or_tensor=None,
+            min_iters=5,
+            mbs=10.0,
+            name='zero_delta',
+        )
+        self.assertEqual(res_zero_delta['throughput'], 0.0)
+        self.assertEqual(mock_report.call_args.kwargs['throughput'], 0.0)
+
+  def testBenchmarksMainFilterRegexWithEqual(self):
+    captured_regex = []
+
+    with mock.patch.object(
+        benchmark, '_run_benchmarks', side_effect=captured_regex.append
+    ):
+      with mock.patch.object(
+          benchmark.app, 'run', side_effect=lambda fn, argv: fn(argv)
+      ):
+        test_argv = ['test_prog', '--benchmark_filter=Benchmark.*param=foo=bar']
+        benchmark.benchmarks_main(true_main=None, argv=test_argv)
+
+    self.assertEqual(captured_regex, ['Benchmark.*param=foo=bar'])
+
 
 if __name__ == '__main__':
   test.main()

@@ -33,6 +33,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.platform import test
+from tensorflow.python.trackable import base as trackable
 
 Mesh = layout_lib.Mesh
 Layout = layout_lib.Layout
@@ -121,6 +122,55 @@ class DTensorSaveRestoreV2Test(test_util.DTensorBaseTest):
 
     self.assertDTensorEqual(tensor_a, layout, dvariable_a.read_value())
     self.assertDTensorEqual(tensor_b, layout, dvariable_b.read_value())
+
+  def test_checkpoint_deferred_restore_scalar_dvariable(self):
+    layout = layout_lib.Layout.replicated(self.mesh, rank=0)
+    v_save = d_variable.DVariable(
+        api.pack(
+            [constant_op.constant(42.0)] * self.mesh.num_local_devices(),
+            layout,
+        )
+    )
+    ckpt = checkpoint.Checkpoint(v=v_save)
+    saved_path = ckpt.save(self.get_temp_dir())
+
+    # Re-create an empty checkpoint object to test deferred restoration. The
+    # dependency named "v" lives directly on the Checkpoint root, matching
+    # the attribute name used when saving above (see checkpointing_test.py's
+    # testInitializeFromCheckpoint for the same pattern).
+    restore_ckpt = checkpoint.Checkpoint()
+    restore_ckpt.restore(saved_path)
+
+    # Preload simple restoration produces a CheckpointInitialValueCallable
+    init_callable = restore_ckpt._preload_simple_restoration('v')
+    self.assertIsInstance(
+        init_callable, trackable.CheckpointInitialValueCallable
+    )
+
+    # Creating scalar DVariable with shape=() must succeed without ValueError
+    v_restored = d_variable.DVariable(
+        init_callable, shape=(), layout=layout, dtype=dtypes.float32
+    )
+    self.assertDTensorEqual(
+        constant_op.constant(42.0), layout, v_restored.read_value()
+    )
+
+    # Regression coverage for the scalar tf.TensorShape([]) boundary case:
+    # unlike an empty tuple (), TensorShape([]) is truthy even though it also
+    # has length 0, so this must go through a fresh restore (re-using
+    # `init_callable` would double-consume the same deferred restore).
+    restore_ckpt_ts = checkpoint.Checkpoint()
+    restore_ckpt_ts.restore(saved_path)
+    init_callable_ts = restore_ckpt_ts._preload_simple_restoration('v')
+    v_restored_ts = d_variable.DVariable(
+        init_callable_ts,
+        shape=constant_op.constant(42.0).shape,
+        layout=layout,
+        dtype=dtypes.float32,
+    )
+    self.assertDTensorEqual(
+        constant_op.constant(42.0), layout, v_restored_ts.read_value()
+    )
 
   @parameterized.named_parameters(
       ('x_unsharded', [_MESH_DIM_X, UNSHARDED]),
