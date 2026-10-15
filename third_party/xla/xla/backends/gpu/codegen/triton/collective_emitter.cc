@@ -21,13 +21,11 @@ limitations under the License.
 #include <numeric>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/base/nullability.h"
 #include "absl/functional/any_invocable.h"
-#include "absl/functional/overload.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/log/vlog_is_on.h"
@@ -64,7 +62,6 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/lowering_util.h"
 #include "xla/backends/gpu/runtime/all_gather.h"
 #include "xla/backends/gpu/runtime/all_reduce.h"
-#include "xla/backends/gpu/runtime/collective_info_utils.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/reduce_scatter.h"
 #include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
@@ -299,139 +296,6 @@ absl::StatusOr<ReduceScatterEmitterContext> CreateReduceScatterEmitterContext(
   ctx.output_tile_shape.assign(output_tile_shape.begin(),
                                output_tile_shape.end());
   return ctx;
-}
-
-// Returns the launch dimensions for the all-reduce kernel.
-// The launch dimensions are determined by the number of elements, the
-// all-reduce strategy, and the warp size of the target device.
-LaunchDimensions AllReduceLaunchDimensions(
-    const AllReduceInfo& all_reduce_info,
-    const se::DeviceDescription& device_info) {
-  // Heuristic maxima after some benchmarking.
-  // It's nicer to have this as a power of 2 because we consume blocks in powers
-  // of 2 from a higher dimension to a lower dimension.
-  static constexpr int64_t kMaxBlocksPerGrid = 32;
-  static constexpr uint64_t kMaxThreadsPerBlock = 512;
-
-  int64_t threads_per_block;
-  int64_t blocks_per_grid;
-  const int64_t warp_size = WarpSize(device_info);
-  const int64_t elements_per_rank =
-      all_reduce_info.num_elements /
-      (all_reduce_info.all_reduce_strategy == AllReduceStrategy::kTwoShot
-           ? all_reduce_info.num_devices
-           : 1);
-  // Maximum number of threads such that each thread has elements to process.
-  const int64_t total_threads =
-      RoundUpTo(CeilOfRatio(elements_per_rank, se::gpu::kNumElementsPerThread),
-                warp_size);
-  // Triton expects power of 2 for threads_per_block / threads_per_warp.
-  // Since threads_per_warp is always a power of 2, this is guaranteed.
-  threads_per_block =
-      std::min(kMaxThreadsPerBlock,
-               llvm::bit_ceil(static_cast<uint64_t>(total_threads)));
-  blocks_per_grid = std::min(kMaxBlocksPerGrid,
-                             CeilOfRatio(total_threads, threads_per_block));
-  return LaunchDimensions(blocks_per_grid, threads_per_block);
-}
-
-// Returns the launch dimensions for the all-gather kernel.
-// All-gather uses a one-shot strategy: each rank contributes its local slice
-// to the symmetric buffer and then reads each peer's slice.
-// warp_size should be device_description.threads_per_warp() (32 on NVIDIA,
-// 64 on AMD) so that the thread count is a multiple of the hardware warp.
-LaunchDimensions AllGatherLaunchDimensions(
-    const AllGatherInfo& all_gather_info,
-    const se::DeviceDescription& device_info) {
-  // All-gather always uses a one-shot strategy: every rank reads its peers'
-  // slices directly, so the work is proportional to the full element count
-  // with no rank-based partitioning.
-  static constexpr uint64_t kMaxThreadsPerBlock = 512;
-
-  // Maximum number of threads such that each thread has elements to process.
-  // Round up to a multiple of warp_size so every warp is fully occupied.
-  const int64_t output_elements =
-      all_gather_info.num_elements * all_gather_info.num_devices;
-  // Assuming each thread writes se::gpu::kNumElementsPerThread output elements
-  // we need total threads corresponding to the output elements.
-  const int64_t total_threads =
-      RoundUpTo(CeilOfRatio(output_elements, se::gpu::kNumElementsPerThread),
-                device_info.threads_per_warp());
-  // Triton expects power of 2 for threads_per_block / threads_per_warp.
-  const int64_t threads_per_block =
-      std::min(kMaxThreadsPerBlock,
-               llvm::bit_ceil(static_cast<uint64_t>(total_threads)));
-  const int64_t blocks_per_grid =
-      std::min(kAllGatherMaxBlocksPerGrid,
-               CeilOfRatio(total_threads, threads_per_block));
-  return LaunchDimensions(blocks_per_grid, threads_per_block);
-}
-
-// Returns the launch dimensions for the reduce-scatter kernel.
-LaunchDimensions ReduceScatterLaunchDimensions(
-    const ReduceScatterInfo& reduce_scatter_info,
-    const se::DeviceDescription& device_info) {
-  constexpr int64_t kNumElementsPerThread = 4;
-  constexpr uint64_t kMaxThreadsPerBlock = 512;
-
-  const int64_t warp_size = device_info.threads_per_warp();
-  const int64_t elements_per_rank_tile = CeilOfRatio(
-      reduce_scatter_info.num_output_elements, reduce_scatter_info.num_devices);
-  const int64_t threads_per_rank_tile = RoundUpTo(
-      CeilOfRatio(elements_per_rank_tile, kNumElementsPerThread), warp_size);
-  const int64_t threads_per_block = static_cast<int64_t>(
-      std::min(kMaxThreadsPerBlock,
-               llvm::bit_ceil(static_cast<uint64_t>(threads_per_rank_tile))));
-  const int64_t blocks_per_rank_tile =
-      CeilOfRatio(threads_per_rank_tile, threads_per_block);
-  const int64_t blocks_per_grid = std::min(
-      kReduceScatterMaxBlocksPerGrid,
-      reduce_scatter_info.num_devices *
-          static_cast<int64_t>(
-              llvm::bit_floor(static_cast<uint64_t>(blocks_per_rank_tile))));
-  return LaunchDimensions(blocks_per_grid, threads_per_block);
-}
-
-absl::StatusOr<LaunchDimensions> GetLaunchDimensions(
-    const CollectiveKernelInfo& collective_info,
-    const GpuTopology& gpu_topology) {
-  const se::DeviceDescription& device_info =
-      gpu_topology.gpu_target_config().device_description;
-  return std::visit(
-      absl::Overload{
-          [&](const AllReduceInfo& all_reduce_info) {
-            return AllReduceLaunchDimensions(all_reduce_info, device_info);
-          },
-          [&](const AllGatherInfo& all_gather_info) {
-            return AllGatherLaunchDimensions(all_gather_info, device_info);
-          },
-          [&](const ReduceScatterInfo& reduce_scatter_info) {
-            return ReduceScatterLaunchDimensions(reduce_scatter_info,
-                                                 device_info);
-          }},
-      collective_info);
-}
-
-absl::Status ValidateBlockLevelFusionConfig(
-    const BlockLevelFusionConfig& block_level_config,
-    const CollectiveKernelInfo& collective_info) {
-  TF_RET_CHECK(block_level_config.output_tiles_size() == 1)
-      << "expected 1 output tile, but got "
-      << block_level_config.output_tiles_size();
-  const int64_t linear_tile_size =
-      Product(block_level_config.output_tiles(0).sizes());
-  if (std::holds_alternative<AllReduceInfo>(collective_info)) {
-    const AllReduceInfo& all_reduce_info =
-        std::get<AllReduceInfo>(collective_info);
-    if (all_reduce_info.all_reduce_strategy == AllReduceStrategy::kTwoShot &&
-        linear_tile_size % all_reduce_info.num_devices != 0) {
-      return absl::InvalidArgumentError(absl::StrFormat(
-          "Two-shot all-reduce linear_tile_size(%d) %% num_devices(%d) != 0. "
-          "Codegen will not be supported.",
-          linear_tile_size, all_reduce_info.num_devices));
-    }
-  }
-  return absl::OkStatus();
 }
 
 // Unmanaged kernel arguments of collectives that use the AllReduce argument
@@ -1354,6 +1218,145 @@ llvm::SmallVector<int64_t> GreedyPowerOfTwoTiles(const Shape& output_shape,
   return tile_sizes;
 }
 
+namespace {
+
+// Heuristic maximum warps per block across collective kernels.
+// Triton expects a power of 2 for num_warps.
+constexpr int64_t kMaxWarpsPerBlock = 16;
+
+BlockLevelFusionConfig CreateBlockLevelFusionConfig(
+    int64_t num_warps, absl::Span<const int64_t> tile_sizes) {
+  BlockLevelFusionConfig config;
+  config.set_num_warps(num_warps);
+  config.set_num_ctas(1);    // No block-level clustering.
+  config.set_num_stages(1);  // No pipelining of loops.
+  config.add_output_tiles()->mutable_sizes()->Assign(tile_sizes.begin(),
+                                                     tile_sizes.end());
+  return config;
+}
+
+absl::StatusOr<BlockLevelFusionConfig> GetBlockLevelConfigForAllReduce(
+    const GpuTopology& gpu_topology, const HloAllReduceInstruction* instr,
+    const DeviceAssignment* device_assignment) {
+  // Heuristic maximum blocks per grid after benchmarking. Power of 2 so blocks
+  // are consumed cleanly in powers of 2 from major to minor dimensions.
+  static constexpr int64_t kAllReduceMaxBlocksPerGrid = 32;
+
+  ABSL_ASSIGN_OR_RETURN(const AllReduceInfo all_reduce_info,
+                   BuildAllReduceInfo(/*is_multimem_enabled=*/false,
+                                      gpu_topology, instr, device_assignment));
+
+  const int64_t elements_per_warp =
+      WarpSize(gpu_topology.gpu_target_config().device_description) *
+      se::gpu::kNumElementsPerThread;
+  const int64_t elements_per_rank =
+      all_reduce_info.num_elements /
+      (all_reduce_info.all_reduce_strategy == AllReduceStrategy::kTwoShot
+           ? all_reduce_info.num_devices
+           : 1);
+  const int64_t total_warps = CeilOfRatio(elements_per_rank, elements_per_warp);
+  const int64_t num_warps = std::min<int64_t>(
+      kMaxWarpsPerBlock, llvm::bit_ceil(static_cast<uint64_t>(total_warps)));
+  const int64_t num_blocks =
+      std::min(kAllReduceMaxBlocksPerGrid, CeilOfRatio(total_warps, num_warps));
+
+  llvm::SmallVector<int64_t> tile_sizes =
+      GreedyPowerOfTwoTiles(instr->shape(), num_blocks);
+  const int64_t linear_tile_size = Product(tile_sizes);
+  if (all_reduce_info.all_reduce_strategy == AllReduceStrategy::kTwoShot &&
+      linear_tile_size % all_reduce_info.num_devices != 0) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "Two-shot all-reduce linear_tile_size(%d) %% num_devices(%d) != 0. "
+        "Codegen will not be supported.",
+        linear_tile_size, all_reduce_info.num_devices));
+  }
+
+  return CreateBlockLevelFusionConfig(num_warps, tile_sizes);
+}
+
+absl::StatusOr<BlockLevelFusionConfig> GetBlockLevelConfigForAllGather(
+    const GpuTopology& gpu_topology, const HloAllGatherInstruction* instr,
+    const DeviceAssignment* device_assignment) {
+  ABSL_ASSIGN_OR_RETURN(const AllGatherInfo all_gather_info,
+                   BuildAllGatherInfo(gpu_topology, instr, device_assignment));
+
+  const Shape& output_shape = instr->shape();
+
+  const int64_t elements_per_warp =
+      WarpSize(gpu_topology.gpu_target_config().device_description) *
+      se::gpu::kNumElementsPerThread;
+  // All-gather always uses a one-shot strategy: every rank reads its peers'
+  // slices directly, so the work is proportional to the full output element
+  // count with no rank-based partitioning.
+  const int64_t output_elements =
+      all_gather_info.num_elements * all_gather_info.num_devices;
+  const int64_t total_warps = CeilOfRatio(output_elements, elements_per_warp);
+  const int64_t num_warps = std::min<int64_t>(
+      kMaxWarpsPerBlock, llvm::bit_ceil(static_cast<uint64_t>(total_warps)));
+  const int64_t num_blocks =
+      std::min(kAllGatherMaxBlocksPerGrid, CeilOfRatio(total_warps, num_warps));
+
+  llvm::SmallVector<int64_t> tile_sizes =
+      GreedyPowerOfTwoTiles(output_shape, num_blocks);
+
+  // For AllGather, the tile on the gather dimension must not exceed the
+  // per-rank size. Otherwise a single tile would span multiple replicas,
+  // but the tiling framework assigns a single replica_id per tile.
+  const int64_t gather_dim = instr->all_gather_dimension();
+  const int64_t per_rank_size =
+      output_shape.dimensions(gather_dim) / all_gather_info.num_devices;
+  tile_sizes[gather_dim] = std::min(tile_sizes[gather_dim],
+                                    static_cast<int64_t>(llvm::bit_floor(
+                                        static_cast<uint64_t>(per_rank_size))));
+
+  return CreateBlockLevelFusionConfig(num_warps, tile_sizes);
+}
+
+absl::StatusOr<BlockLevelFusionConfig> GetBlockLevelConfigForReduceScatter(
+    const GpuTopology& gpu_topology, const HloReduceScatterInstruction* instr,
+    const DeviceAssignment* device_assignment) {
+  ABSL_ASSIGN_OR_RETURN(
+      const ReduceScatterInfo reduce_scatter_info,
+      BuildReduceScatterInfo(gpu_topology, instr, device_assignment));
+
+  const Shape& output_shape = instr->shape();
+  const int64_t num_devices = reduce_scatter_info.num_devices;
+  const int64_t scatter_dim = instr->scatter_dimension();
+  TF_RET_CHECK(output_shape.dimensions(scatter_dim) % num_devices == 0)
+      << "Reduce-scatter output scatter dimension "
+      << output_shape.dimensions(scatter_dim)
+      << " is not divisible by the number of devices " << num_devices;
+
+  const int64_t elements_per_warp =
+      WarpSize(gpu_topology.gpu_target_config().device_description) *
+      se::gpu::kNumElementsPerThread;
+  const int64_t elements_per_rank_tile =
+      CeilOfRatio(reduce_scatter_info.num_output_elements, num_devices);
+  const int64_t warps_per_rank_tile =
+      CeilOfRatio(elements_per_rank_tile, elements_per_warp);
+  const int64_t num_warps = std::min<int64_t>(
+      kMaxWarpsPerBlock,
+      llvm::bit_ceil(static_cast<uint64_t>(warps_per_rank_tile)));
+  const int64_t blocks_per_rank_tile =
+      CeilOfRatio(warps_per_rank_tile, num_warps);
+  const int64_t num_blocks =
+      std::min(kReduceScatterMaxBlocksPerGrid,
+               num_devices * static_cast<int64_t>(llvm::bit_floor(
+                                 static_cast<uint64_t>(blocks_per_rank_tile))));
+
+  llvm::SmallVector<int64_t> tile_sizes =
+      GreedyPowerOfTwoTiles(output_shape, num_blocks);
+  // The pull-based reduce-scatter kernel requires the input tile of every
+  // program to cover exactly one shard along the scatter dimension, i.e. an
+  // output tile of `shard_size / num_devices` along the scatter dimension.
+  // FlattenReduceScatterFusion reshapes the fusion so that this is 1.
+  tile_sizes[scatter_dim] = output_shape.dimensions(scatter_dim) / num_devices;
+
+  return CreateBlockLevelFusionConfig(num_warps, tile_sizes);
+}
+
+}  // namespace
+
 absl::StatusOr<BlockLevelFusionConfig> GetCollectiveBlockLevelFusionConfig(
     const GpuTopology& gpu_topology, const HloFusionInstruction* fusion_instr,
     const DeviceAssignment* device_assignment) {
@@ -1364,61 +1367,36 @@ absl::StatusOr<BlockLevelFusionConfig> GetCollectiveBlockLevelFusionConfig(
           gpu_config.collective_backend_config().kernel_strategy())) {
     return absl::InvalidArgumentError(absl::StrFormat(
         "Instruction was not annotated with Triton strategy but still called "
-        "for "
-        "Triton codegen. %s",
+        "for Triton codegen. %s",
         instr->ToString()));
   }
-  ABSL_ASSIGN_OR_RETURN(CollectiveKernelInfo collective_info,
-                   GetCollectiveInfo(instr, gpu_topology, device_assignment));
-  ABSL_ASSIGN_OR_RETURN(const LaunchDimensions launch_dims,
-                   GetLaunchDimensions(collective_info, gpu_topology));
-  const Shape& output_shape = instr->shape();
-  const se::DeviceDescription& device_info =
-      gpu_topology.gpu_target_config().device_description;
-  BlockLevelFusionConfig block_level_config;
-  block_level_config.set_num_warps(xla::CeilOfRatio(
-      static_cast<int64_t>(launch_dims.num_threads_per_block()),
-      WarpSize(device_info)));
-  block_level_config.set_num_ctas(1);    // No block-level clustering.
-  block_level_config.set_num_stages(1);  // No pipelining of loops.
-  xtile::Tile* output_tile = block_level_config.add_output_tiles();
-  llvm::SmallVector<int64_t> tile_sizes =
-      GreedyPowerOfTwoTiles(output_shape, launch_dims.num_blocks());
-  // For AllGather, the tile on the gather dimension must not exceed the
-  // per-rank size. Otherwise a single tile would span multiple replicas,
-  // but the tiling framework assigns a single replica_id per tile.
-  if (instr->opcode() == HloOpcode::kAllGather) {
-    const auto* all_gather = Cast<HloAllGatherInstruction>(instr);
-    const int64_t gather_dim = all_gather->all_gather_dimension();
-    const int64_t num_devices =
-        std::get<AllGatherInfo>(collective_info).num_devices;
-    const int64_t per_rank_size =
-        output_shape.dimensions(gather_dim) / num_devices;
-    tile_sizes[gather_dim] = std::min(
-        tile_sizes[gather_dim], static_cast<int64_t>(llvm::bit_floor(
-                                    static_cast<uint64_t>(per_rank_size))));
-  } else if (instr->opcode() == HloOpcode::kReduceScatter) {
-    // The pull-based reduce-scatter kernel requires the input tile of every
-    // program to cover exactly one shard along the scatter dimension, i.e. an
-    // output tile of `shard_size / num_devices` along the scatter dimension.
-    // FlattenReduceScatterFusion reshapes the fusion so that this is 1.
-    const auto* rs = Cast<HloReduceScatterInstruction>(instr);
-    const int64_t scatter_dim = rs->scatter_dimension();
-    const int64_t num_devices =
-        std::get<ReduceScatterInfo>(collective_info).num_devices;
-    TF_RET_CHECK(output_shape.dimensions(scatter_dim) % num_devices == 0)
-        << "Reduce-scatter output scatter dimension "
-        << output_shape.dimensions(scatter_dim)
-        << " is not divisible by the number of devices " << num_devices;
-    tile_sizes[scatter_dim] =
-        output_shape.dimensions(scatter_dim) / num_devices;
+  if (!gpu_topology.has_gpu_target_config()) {
+    return absl::InvalidArgumentError(
+        "GpuTopology must have a target config to build "
+        "BlockLevelFusionConfig.");
   }
-  output_tile->mutable_sizes()->Assign(tile_sizes.begin(), tile_sizes.end());
-  ABSL_RETURN_IF_ERROR(
-      ValidateBlockLevelFusionConfig(block_level_config, collective_info));
-  VLOG(3) << "Block level fusion config for " << instr->name() << ": "
-          << block_level_config;
-  return block_level_config;
+
+  if (const HloAllReduceInstruction* all_reduce =
+          DynCast<HloAllReduceInstruction>(instr)) {
+    return GetBlockLevelConfigForAllReduce(gpu_topology, all_reduce,
+                                           device_assignment);
+  }
+
+  if (const HloAllGatherInstruction* all_gather =
+          DynCast<HloAllGatherInstruction>(instr)) {
+    return GetBlockLevelConfigForAllGather(gpu_topology, all_gather,
+                                           device_assignment);
+  }
+
+  if (const HloReduceScatterInstruction* reduce_scatter =
+          DynCast<HloReduceScatterInstruction>(instr)) {
+    return GetBlockLevelConfigForReduceScatter(gpu_topology, reduce_scatter,
+                                               device_assignment);
+  }
+
+  return absl::UnimplementedError(
+      absl::StrFormat("Unsupported collective opcode for Triton codegen: %s",
+                      HloOpcodeString(instr->opcode())));
 }
 
 absl::Status TrySetGpuBackendConfigForCollective(
@@ -1849,7 +1827,8 @@ absl::Status FlattenReduceScatterFusion(
   // When `inner_elements` is not a power of two (e.g. 12288), a 2D
   // [R, OutputSize / R] shape rounds the inner tile size up to a power of two
   // in GreedyPowerOfTwoTiles, which can drop the grid below the target block
-  // count from ReduceScatterLaunchDimensions (e.g. 48 blocks instead of 64).
+  // count from GetBlockLevelConfigForReduceScatter (e.g. 48 blocks instead of
+  // 64).
   // Factor out up to `kReduceScatterMaxBlocksPerGrid / R` blocks into a middle
   // dimension [R, B, OutputSize / (R * B)] so GreedyPowerOfTwoTiles can assign
   // blocks along that dimension without rounding `inner_elements` as a single
