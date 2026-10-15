@@ -103,6 +103,11 @@ message SparseCoreTableLayout {
   int64 per_sparse_core_batch_size = 10;
   // Number of features that refer to this table.
   int64 num_features = 11;
+
+  // If non-empty, the table's features are partitioned into this many
+  // forward calls, in order. For example, [5,5] means two calls: first 5
+  // features, then next 5.
+  repeated int64 num_features_for_each_lookup = 13;
 }
 
 // Each proto in this list corresponds to an unstacked table.
