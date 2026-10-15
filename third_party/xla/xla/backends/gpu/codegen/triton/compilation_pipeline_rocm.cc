@@ -85,8 +85,8 @@ static void MakeTTGIR(mlir::OpPassManager* pm,
   pm->addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
   // TODO ROCm Check if we want to compare MI100 and greater
   pm->addPass(mlir::createTritonAMDGPUOptimizeEpilogue());
-  pm->addPass(mt::amdgpu::createTritonAMDGPUOptimizeDotOperands(
-      {rocm_cc.gfx_version()}));
+  pm->addPass(
+      mlir::createTritonAMDGPUOptimizeDotOperands({rocm_cc.gfx_version()}));
   pm->addNestedPass<mlir::triton::FuncOp>(
       mlir::createTritonAMDGPUHoistLayoutConversions());
   pm->addNestedPass<mlir::triton::FuncOp>(
