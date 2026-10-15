@@ -3529,6 +3529,25 @@ TEST_F(AlgebraicSimplifierTest, PowNegative1) {
   EXPECT_EQ(root->operand(0)->literal().GetFirstElement<float>(), 1);
 }
 
+// Test that an integer pow(A, -1) is not simplified to 1/A because integer
+// pow(0, -1) is 0 while integer 1/0 is -1.
+TEST_F(AlgebraicSimplifierTest, IntegerPowNegative1NotSimplified) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule m
+    test {
+      a = s32[] parameter(0)
+      minus_one = s32[] constant(-1)
+      ROOT p = s32[] power(a, minus_one)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AlgebraicSimplifier(default_options_).Run(m.get()));
+  EXPECT_FALSE(changed);
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Power(m::Parameter(0), m::ConstantScalar(-1))));
+}
+
 // pow(A, 0.5) => sqrt(A), for A >= 0
 TEST_F(AlgebraicSimplifierTest, PowHalf) {
   constexpr absl::string_view kModuleStr = R"(
