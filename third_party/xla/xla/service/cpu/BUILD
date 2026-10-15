@@ -1837,7 +1837,6 @@ cc_library(
         "//xla:util",
         "//xla/backends/cpu:target_machine_options",
         "//xla/backends/cpu/codegen:builtin_definition_generator",
-        "//xla/backends/cpu/codegen:cpu_features",
         "//xla/backends/cpu/codegen:execution_engine",
         "//xla/backends/cpu/codegen:object_loader",
         "//xla/backends/cpu/runtime:function_library",
@@ -1846,30 +1845,16 @@ cc_library(
         "//xla/service:compiler",
         "//xla/service:executable",
         "//xla/service:hlo_module_config",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:TargetParser",
         "@llvm-project//llvm:ir_headers",
-    ] + if_llvm_aarch64_available([
-        "@llvm-project//llvm:AArch64CodeGen",  # fixdeps: keep
-    ]) + if_llvm_powerpc_available([
-        "@llvm-project//llvm:PowerPCCodeGen",  # fixdeps: keep
-    ]) + if_llvm_riscv_available([
-        "@llvm-project//llvm:RISCVCodeGen",  # fixdeps: keep
-    ]) + if_llvm_system_z_available([
-        "@llvm-project//llvm:SystemZCodeGen",  # fixdeps: keep
-    ]) + if_llvm_x86_available([
-        "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
-    ]),
+    ],
 )
 
 xla_cc_test(
