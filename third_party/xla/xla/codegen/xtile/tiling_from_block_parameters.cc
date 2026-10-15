@@ -176,9 +176,21 @@ absl::StatusOr<llvm::SmallVector<int64_t>> GetTilingSpaceConcreteSizes(
         "(%d).",
         num_parallel_dims, parallel_tile_sizes.size());
   }
+  const int64_t num_sequential_dims = tiling_space.num_sequential_dimensions();
+  const auto& sequential_tile_sizes =
+      block_level_parameters.sequential_tile_sizes;
+  if (!sequential_tile_sizes.empty() &&
+      sequential_tile_sizes.size() != num_sequential_dims) {
+    return Internal(
+        "Number of sequential dimensions in the tiling space (%d) does not "
+        "match the number of sequential tile sizes in the block level fusion "
+        "config (%d).",
+        num_sequential_dims, sequential_tile_sizes.size());
+  }
   llvm::SmallVector<int64_t> tile_sizes;
   tile_sizes.reserve(tiling_space.dimensions().size());
   int parallel_dim_count = 0;
+  int sequential_dim_count = 0;
   for (const xla::gpu::experimental::TilingSpace::DimensionInfo& dim :
        tiling_space.dimensions()) {
     switch (dim.type) {
@@ -189,6 +201,18 @@ absl::StatusOr<llvm::SmallVector<int64_t>> GetTilingSpaceConcreteSizes(
       case DimensionSemantics::kReplica:
         break;
       case DimensionSemantics::kSequential: {
+        if (!sequential_tile_sizes.empty()) {
+          if (dim.hlo->has_backend_config()) {
+            return Internal(
+                "Instruction %s has a backend config while "
+                "sequential_tile_sizes is set in the block level fusion "
+                "config.",
+                dim.hlo->name());
+          }
+          tile_sizes.push_back(sequential_tile_sizes[sequential_dim_count]);
+          sequential_dim_count++;
+          break;
+        }
         if (dim.hlo->has_backend_config()) {
           ABSL_ASSIGN_OR_RETURN(xla::xtile::Tile config,
                            dim.hlo->backend_config<xla::xtile::Tile>());
@@ -197,23 +221,23 @@ absl::StatusOr<llvm::SmallVector<int64_t>> GetTilingSpaceConcreteSizes(
           // in config.sizes is offset by output_rank. For scans, the sequential
           // dimension is in the output and config.sizes contains only the scan
           // dimension at index 0.
-          int64_t seq_dim_idx = 0;
+          int64_t config_dim_idx = 0;
           if (dim.hlo->opcode() != HloOpcode::kScan) {
             int64_t output_rank = dim.hlo->shape().dimensions().size();
-            seq_dim_idx = dim.dim_position - output_rank;
+            config_dim_idx = dim.dim_position - output_rank;
           }
-          if (seq_dim_idx < 0 || seq_dim_idx >= config.sizes_size()) {
+          if (config_dim_idx < 0 || config_dim_idx >= config.sizes_size()) {
             return Internal(
                 "Sequential dimension index %d is out of bounds for backend "
                 "config sizes of size %d.",
-                seq_dim_idx, config.sizes_size());
+                config_dim_idx, config.sizes_size());
           }
-          tile_sizes.push_back(config.sizes(seq_dim_idx));
-        } else {
-          VLOG(1) << "No backend_config set for HLO instruction of dimension "
-                  << dim.ToString() << ". Using dimension size as tile size.";
-          tile_sizes.push_back(dim.dimension_size);
+          tile_sizes.push_back(config.sizes(config_dim_idx));
+          break;
         }
+        VLOG(1) << "No backend_config set for HLO instruction of dimension "
+                << dim.ToString() << ". Using dimension size as tile size.";
+        tile_sizes.push_back(dim.dimension_size);
         break;
       }
       default:

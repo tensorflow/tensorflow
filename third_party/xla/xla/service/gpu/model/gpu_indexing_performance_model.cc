@@ -79,6 +79,7 @@ limitations under the License.
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/path.h"
 
 namespace xla {
@@ -669,6 +670,45 @@ int64_t EstimateNumWarpsImpl(
   return GetNumWarps(largest_live_tile_size);
 }
 
+// SymbolicTileAnalysis does not tile sequential reduction/scan dimensions.
+std::vector<int64_t> GetSequentialTileSizes(
+    const TiledHloComputation& tiled_hlo_computation) {
+  return {};
+}
+
+// TODO(b/534676634): Support multi-reduction and multi-dimension reduction
+// fusions. When supporting multi-reduction fusions, `sequential_tile_sizes`
+// must be ordered in the reverse post-order that the merged fusion computation
+// will have after `MergeFusionInstruction` (e.g., via a post-order DFS from
+// `fusion_adaptor.GetRoots()` following
+// `HloInstructionAdaptor::GetOperands()`), because
+// `HloFusionAdaptor::MakeInstructionPostOrder()` on a producer-consumer adaptor
+// concatenates the producer's post-order before the consumer's post-order,
+// which can differ from the post-order of the merged computation.
+std::vector<int64_t> GetSequentialTileSizes(
+    const experimental::TiledHloComputation& tiled_hlo_computation) {
+  const experimental::TilingSpace& tiling_space =
+      tiled_hlo_computation.tiling_space();
+  std::vector<int64_t> sequential_tile_sizes;
+  bool all_dimensions_untiled = true;
+  for (const auto& dim : tiling_space.dimensions()) {
+    if (dim.type ==
+            experimental::TilingSpace::DimensionSemantics::kSequential &&
+        dim.hlo->opcode() == HloOpcode::kReduce) {
+      CHECK(dim.tile_size.has_value()) << dim.ToString();
+      sequential_tile_sizes.push_back(*dim.tile_size);
+      all_dimensions_untiled &= *dim.tile_size >= dim.dimension_size;
+    }
+  }
+  // An empty result means that the sequential dimensions are not tiled. Keep it
+  // empty when every sequential dimension is covered by a single tile, so that
+  // the config of such tilings is the same as before reduction tiling.
+  if (all_dimensions_untiled || sequential_tile_sizes.size() != 1) {
+    return {};
+  }
+  return sequential_tile_sizes;
+}
+
 template <typename TiledHloComputationType>
 absl::StatusOr<std::optional<TiledRunTimeData>> EstimateTiledRunTimeDataImpl(
     const HloFusionAdaptor& fusion_adaptor,
@@ -685,6 +725,8 @@ absl::StatusOr<std::optional<TiledRunTimeData>> EstimateTiledRunTimeDataImpl(
     block_level_parameters.output_tile_sizes.emplace_back(tile_sizes.begin(),
                                                           tile_sizes.end());
   }
+  block_level_parameters.sequential_tile_sizes =
+      GetSequentialTileSizes(tiled_hlo_computation);
   block_level_parameters.num_warps =
       EstimateNumWarpsImpl(tiled_hlo_computation);
 
@@ -700,6 +742,17 @@ absl::StatusOr<std::optional<TiledRunTimeData>> EstimateTiledRunTimeDataImpl(
   }
 
   return TiledRunTimeData{estimate_run_time_data, block_level_parameters};
+}
+
+// Whether the tiling search for `fusion_adaptor` should enumerate tile sizes
+// for the reduction dimensions, i.e. consider emitting reductions as loops.
+bool ShouldTileReductionDimensions(const HloFusionAdaptor& fusion_adaptor) {
+  const HloModule* module =
+      fusion_adaptor.GetRoots().front().instruction().GetModule();
+  return module != nullptr &&
+         module->config()
+             .debug_options()
+             .xla_gpu_experimental_enable_reduction_dimension_tiling();
 }
 
 absl::Status DumpAndLogTopKCandidates(
@@ -857,7 +910,10 @@ tsl::Future<TopKTiledRunTimeDataOrError> TryFindTopKBestTilingsWithTilingSpace(
       base->tiling_space,
       experimental::TilingSpace::Create(fusion_adaptor, base->context.get()));
 
-  ABSL_ASSIGN_OR_RETURN(auto tilings, base->tiling_space->GetValidTilings());
+  ABSL_ASSIGN_OR_RETURN(auto tilings,
+                   base->tiling_space->GetValidTilings(
+                       /*tile_reduction_dimensions=*/
+                       ShouldTileReductionDimensions(fusion_adaptor)));
   VLOG(1) << absl::StrCat(
       "TryFindTopKBestTilingsForFusionAsync tiling_space evaluating ",
       tilings.size(), " tilings.");

@@ -1113,5 +1113,99 @@ TEST_F(TilingSpaceTest,
   }
 }
 
+TEST_F(TilingSpaceTest, GetValidTilingsTilesReductionDimOfSingleDimReduce) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+      HloModule m
+      add {
+        p0 = f32[] parameter(0)
+        p1 = f32[] parameter(1)
+        ROOT res = f32[] add(p0, p1)
+      }
+      ENTRY e {
+        p0 = f32[2,4] parameter(0)
+        c0 = f32[] constant(0)
+        ROOT r = f32[2] reduce(p0, c0), dimensions={1}, to_apply=add
+      }
+  )");
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  ASSERT_OK_AND_ASSIGN(auto tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+  ASSERT_OK_AND_ASSIGN(
+      auto valid_tilings,
+      tiling_space->GetValidTilings(/*tile_reduction_dimensions=*/true));
+  EXPECT_THAT(valid_tilings, ElementsAre(ElementsAre(1, 1), ElementsAre(1, 2),
+                                         ElementsAre(1, 4), ElementsAre(2, 1),
+                                         ElementsAre(2, 2), ElementsAre(2, 4)));
+
+  // By default, the reduction dimension is covered by a single tile.
+  ASSERT_OK_AND_ASSIGN(auto untiled_valid_tilings,
+                       tiling_space->GetValidTilings());
+  EXPECT_THAT(untiled_valid_tilings,
+              ElementsAre(ElementsAre(1, 4), ElementsAre(2, 4)));
+}
+
+// TODO(b/534676634): Remove this test once tiling reduction dimensions of
+// multi-reduction fusions is supported.
+TEST_F(TilingSpaceTest,
+       GetValidTilingsDoesNotTileReductionDimsOfMultipleReduces) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+      HloModule m
+      add {
+        p0 = f32[] parameter(0)
+        p1 = f32[] parameter(1)
+        ROOT res = f32[] add(p0, p1)
+      }
+      fused_computation {
+        p0 = f32[2,4,8] parameter(0)
+        c0 = f32[] constant(0)
+        r0 = f32[2,4] reduce(p0, c0), dimensions={2}, to_apply=add
+        ROOT r1 = f32[2] reduce(r0, c0), dimensions={1}, to_apply=add
+      }
+      ENTRY e {
+        p0 = f32[2,4,8] parameter(0)
+        ROOT fusion = f32[2] fusion(p0), kind=kLoop, calls=fused_computation
+      }
+  )");
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  ASSERT_OK_AND_ASSIGN(auto tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+  ASSERT_OK_AND_ASSIGN(
+      auto valid_tilings,
+      tiling_space->GetValidTilings(/*tile_reduction_dimensions=*/true));
+  // Dimensions are ordered use-before-def: r1's reduction dimension (4) comes
+  // before r0's (8). Both are kept at their full size.
+  EXPECT_THAT(valid_tilings,
+              ElementsAre(ElementsAre(1, 4, 8), ElementsAre(2, 4, 8)));
+}
+
+// TODO(b/534676634): Remove this test once tiling reduction dimensions of
+// multi-dimension reductions is supported.
+TEST_F(TilingSpaceTest,
+       GetValidTilingsDoesNotTileReductionDimsOfMultiDimReduce) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+      HloModule m
+      add {
+        p0 = f32[] parameter(0)
+        p1 = f32[] parameter(1)
+        ROOT res = f32[] add(p0, p1)
+      }
+      ENTRY e {
+        p0 = f32[2,4,8] parameter(0)
+        c0 = f32[] constant(0)
+        ROOT r = f32[2] reduce(p0, c0), dimensions={1,2}, to_apply=add
+      }
+  )");
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  ASSERT_OK_AND_ASSIGN(auto tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+  ASSERT_OK_AND_ASSIGN(
+      auto valid_tilings,
+      tiling_space->GetValidTilings(/*tile_reduction_dimensions=*/true));
+  // Multi-dimension reductions keep both reduction dimensions at their full
+  // size.
+  EXPECT_THAT(valid_tilings,
+              ElementsAre(ElementsAre(1, 4, 8), ElementsAre(2, 4, 8)));
+}
+
 }  // namespace
 }  // namespace xla::gpu::experimental

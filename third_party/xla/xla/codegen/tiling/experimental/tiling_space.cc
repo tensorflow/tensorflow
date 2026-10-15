@@ -751,6 +751,12 @@ int64_t TilingSpace::num_parallel_dimensions() const {
   });
 }
 
+int64_t TilingSpace::num_sequential_dimensions() const {
+  return absl::c_count_if(dimensions_, [](const DimensionInfo& dim) {
+    return dim.type == DimensionSemantics::kSequential;
+  });
+}
+
 void TilingSpace::InitSimplificationIndexing() {
   CHECK(!is_symbolic_) << "Tile sizes must be assigned before initializing "
                           "cached indexing map variables.";
@@ -821,24 +827,35 @@ TilingSpace::SimplificationResult TilingSpace::SimplifyExpressions(
 }
 
 absl::StatusOr<std::vector<llvm::SmallVector<int64_t, 4>>>
-TilingSpace::GetValidTilings() {
+TilingSpace::GetValidTilings(bool tile_reduction_dimensions) {
   // TODO: b/511080616 - returned tilings should be valid. Right now we return
   // all possible tilings and rely on the downstream to check the validity.
   llvm::SmallVector<int64_t, 4> input_space;
 
-  // Sequential reduce dimensions are not tiled yet. To work around the
-  // limitation of `GetFlatTilingsForInputSpace`, we set the tile size to 1 here
-  // and later replace with the actual dimension size.
+  // TODO(b/534676634): Lift this condition once multi-reduction and
+  // multi-dimension reduction fusions are supported.
+  // Reduction dimensions are only tiled when requested and the fusion has a
+  // single reduce that reduces a single dimension. Otherwise, sequential reduce
+  // dimensions are not tiled. To work around the limitation of
+  // `GetFlatTilingsForInputSpace`, we set the tile size to 1 here and later
+  // replace with the actual dimension size.
+  const int64_t num_reduction_dims =
+      absl::c_count_if(dimensions_, [](const DimensionInfo& dim) {
+        return dim.type == DimensionSemantics::kSequential &&
+               dim.hlo->opcode() == HloOpcode::kReduce;
+      });
+  const bool tile_reduction_dims =
+      tile_reduction_dimensions && num_reduction_dims == 1;
+  auto is_untiled_dim = [&](const DimensionInfo& dim) {
+    return !tile_reduction_dims &&
+           dim.type == DimensionSemantics::kSequential &&
+           dim.hlo->opcode() == HloOpcode::kReduce;
+  };
   for (const auto& dim : dimensions_) {
     if (dim.type == DimensionSemantics::kReplica) {
       continue;
     }
-    if (dim.type == DimensionSemantics::kSequential &&
-        dim.hlo->opcode() == HloOpcode::kReduce) {
-      input_space.push_back(1);
-    } else {
-      input_space.push_back(dim.dimension_size);
-    }
+    input_space.push_back(is_untiled_dim(dim) ? 1 : dim.dimension_size);
   }
 
   ABSL_ASSIGN_OR_RETURN(auto flat_tilings, GetFlatTilingsForInputSpace(input_space));
@@ -849,8 +866,7 @@ TilingSpace::GetValidTilings() {
       if (dim.type == DimensionSemantics::kReplica) {
         continue;
       }
-      if (dim.type == DimensionSemantics::kSequential &&
-          dim.hlo->opcode() == HloOpcode::kReduce) {
+      if (is_untiled_dim(dim)) {
         flat_tiling[idx] = dim.dimension_size;
       }
       ++idx;
