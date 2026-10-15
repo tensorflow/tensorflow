@@ -749,6 +749,44 @@ class BufferAssignment {
     stats_ = Stats();
   }
 
+  // Encapsulates the state of the buffer assignment.
+  struct State {
+    std::vector<BufferAllocation> allocations;
+    int64_t temp_allocation_total_size = 0;
+    std::vector<BufferAllocation::Index> allocation_index_for_value_id;
+    size_t num_assigned_values = 0;
+    absl::btree_map<LogicalBuffer::Color, int64_t> fragmentation_bytes_by_color;
+    Stats stats;
+  };
+
+  // Takes a snapshot of the current state.
+  State GetState() const {
+    return {allocations_,
+            temp_allocation_total_size_,
+            allocation_index_for_value_id_,
+            num_assigned_values_,
+            fragmentation_bytes_by_color_,
+            stats_};
+  }
+
+  // Restores the state from a snapshot.
+  void RestoreState(State state) {
+    allocations_ = std::move(state.allocations);
+    temp_allocation_total_size_ = state.temp_allocation_total_size;
+    allocation_index_for_value_id_ =
+        std::move(state.allocation_index_for_value_id);
+    num_assigned_values_ = state.num_assigned_values;
+    fragmentation_bytes_by_color_ =
+        std::move(state.fragmentation_bytes_by_color);
+    stats_ = state.stats;
+  }
+
+  // Replaces allocations and fragmentation stats for `colors` with those from
+  // `state`, leaving all other colors untouched.
+  void RestoreStateForColors(
+      const State& state,
+      const absl::flat_hash_set<LogicalBuffer::Color>& colors);
+
   // Clears only the buffer allocations belonging to `colors`.
   void ClearAllocationsForColors(
       const absl::flat_hash_set<LogicalBuffer::Color>& colors);
@@ -1012,6 +1050,14 @@ class BufferAllocationsManagerForComputationsWithoutOrdering {
 // A class which constructs a buffer assignment.
 class BufferAssigner {
  public:
+  // Specifies the buffer assignment algorithms for
+  // AssignBuffersForGlobalComputations and AssignBuffersWithSequentialOrdering.
+  struct AssignmentStrategy {
+    buffer_assignment::AssignmentAlgorithmForComputationsWithoutOrderingProto::
+        Value non_sequential_algorithm;
+    buffer_assignment::BufferAssignmentAlgorithmProto::Value
+        sequential_algorithm;
+  };
   friend class BufferAssignmentTest;
   using Colorer =
       std::function<absl::Status(HloAliasAnalysis*, const HloOrdering&)>;
@@ -1193,6 +1239,17 @@ class BufferAssigner {
                          LogicalBuffer::Color color) const;
 
  private:
+  // Assigns buffers of `colors_to_assign` (all colors if null) in three steps:
+  //  1. AssignBuffersForGlobalComputations with `non_sequential_algorithm`,
+  //     which also collects the temp buffers of sequentially ordered
+  //     computations,
+  //  2. heap simulation of the collected buffers with `sequential_algorithm`
+  //     (AssignBuffersWithSequentialOrdering),
+  //  3. thread-local computations, live-out marking and
+  //     CombineTempAllocations.
+  // If `precomputed_sequential_buffers` is set, step 1 is skipped and step 2
+  // uses the given buffers instead. The caller must have already run step 1 on
+  // `assignment`.
   absl::Status RunAssignBuffers(
       const HloModule* module,
       const std::vector<const HloComputation*>& global_computations,
@@ -1204,7 +1261,10 @@ class BufferAssigner {
           AssignmentAlgorithmForComputationsWithoutOrderingProto::Value
               non_sequential_algorithm,
       const absl::flat_hash_set<LogicalBuffer::Color>* colors_to_assign =
-          nullptr);
+          nullptr,
+      const absl::flat_hash_map<const HloComputation*,
+                                absl::flat_hash_set<const HloValue*>>*
+          precomputed_sequential_buffers = nullptr);
 
   absl::Status RunAssignBuffersWithFallback(
       const HloModule* module,
