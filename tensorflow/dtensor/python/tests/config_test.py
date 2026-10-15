@@ -44,6 +44,11 @@ class ConfigTest(tf_test.TestCase):
     self.assertEqual(config.full_job_name(), 'localhost/replica:0/task:0')
     self.assertEqual(config.jobs(), [])
 
+  def test_jobs_empty_and_whitespace(self):
+    for empty_val in ('', '   '):
+      os.environ[config._DT_JOBS] = empty_val
+      self.assertEqual(config.jobs(), [])
+
   def test_list_devices(self):
     device_type = config.preferred_device_type()
 
