@@ -2763,17 +2763,16 @@ PartialReplicatedGroupShardingWithAssignedDeviceGroups(
        ++group_idx) {
     HloSharding group_sharding = HloSharding::Replicate();
     Array<int64_t> grouped_tiling(grouped_tiling_dims);
-    Array<int64_t> stacked_pos(
-        absl::MakeConstSpan(grouped_tiling_dims.data(),
-                            grouped_tiling_dims.size() - 1),
-        0);
+    Array<int64_t> stacked_pos(absl::MakeConstSpan(grouped_tiling_dims)
+                                   .first(grouped_tiling_dims.size() - 1),
+                               0);
     for (int64_t device_idx = 0;
          device_idx < device_groups.num_devices_per_group(); ++device_idx) {
       VLOG(5) << "Device idx: " << device_idx;
       const int64_t device = device_groups(group_idx, device_idx);
       const auto& indices = device_to_index[device];
       absl::Span<const int64_t> stacked_pos_idx =
-          absl::MakeConstSpan(indices.data(), indices.size() - 1);
+          absl::MakeConstSpan(indices).first(indices.size() - 1);
       int64_t& position = stacked_pos(stacked_pos_idx);
       if (position == num_shards) {
         VLOG(5) << "Fail because stacked position overflow " << position
