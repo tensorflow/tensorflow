@@ -123,6 +123,26 @@ class SliceTest(xla_test.XLATestCase):
         self.assertEqual((0,),
                          sess.run(out, {m: [[-5, 0]], w: [1, 1]}).shape)
 
+  def testSliceWithRuntimeBeginAndSizeMinusOne(self):
+    # With a begin known only at run time, a size of -1 takes the rest of the
+    # dimension. That size was an int32 constant minus begin, which failed to
+    # compile when begin and size are int64.
+
+    @def_function.function(jit_compile=True)
+    def slice_rest(x, m, w):
+      return array_ops.slice(x, _runtime_size(m, w),
+                             constant_op.constant([-1], dtype=m.dtype))
+
+    for dtype in (dtypes.int32, dtypes.int64):
+      with self.subTest(dtype=dtype.name), self.session() as sess:
+        with self.test_scope():
+          x = constant_op.constant([10., 20., 30., 40., 50.])
+          m = array_ops.placeholder(dtype, shape=[1, 2])
+          w = array_ops.placeholder(dtypes.uint8, shape=[2])
+          out = slice_rest(x, m, w)
+        self.assertAllEqual([30., 40., 50.],
+                            sess.run(out, {m: [[1, 1]], w: [1, 1]}))
+
   def test3D(self):
     for dtype in self.numeric_types:
       with self.session():
