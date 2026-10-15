@@ -927,8 +927,10 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
         HangWatchdog::Abort(device_watchdog_name, device_timeout)));
   }
 
+  // TODO(b/573818657): Re-enable device_error_callback once the host callback
+  // performance regression is fixed.
   std::shared_ptr<const GpuExecutableRunOptions::DeviceErrorCallback> error_cb =
-      gpu_run_options ? gpu_run_options->device_error_callback() : nullptr;
+      nullptr;
 
   if (!device_guards.empty() || error_cb != nullptr) {
     ABSL_RETURN_IF_ERROR(main_stream->DoHostCallback(
