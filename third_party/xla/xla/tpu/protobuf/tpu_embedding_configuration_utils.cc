@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2026 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/tpu/tpu_embedding_configuration_utils.h"
+#include "xla/tpu/protobuf/tpu_embedding_configuration_utils.h"
 
 #include <cstdint>
 #include <set>
@@ -21,9 +21,9 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
-#include "tensorflow/core/protobuf/tpu/optimization_parameters.pb.h"
-#include "tensorflow/core/protobuf/tpu/tpu_embedding_configuration.pb.h"
-#include "tensorflow/core/tpu/tpu_embedding_optimization_parameters_utils.h"
+#include "xla/tpu/protobuf/optimization_parameters.pb.h"
+#include "xla/tpu/protobuf/tpu_embedding_configuration.pb.h"
+#include "xla/tpu/protobuf/tpu_embedding_optimization_parameters_utils.h"
 
 namespace tensorflow {
 namespace tpu {

@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2026 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,19 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/tpu/tpu_compile_interface.h"
+#include "xla/tpu/tpu_compile_interface.h"
 
 #include <cstdint>
 
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/platform/fingerprint.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tsl/platform/fingerprint.h"
+#include "tsl/platform/logging.h"
 
 class TpuCompileInterfaceExternal : public TpuCompileInterface {
  public:
   uint64_t FingerprintString(absl::string_view str) override {
-    return ::tensorflow::Fingerprint64(str);
+    return tsl::Fingerprint64(str);
   }
 };
 

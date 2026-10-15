@@ -283,3 +283,16 @@ cc_library(
         "@tsl//tsl/platform:types",
     ],
 )
+
+cc_library(
+    name = "tpu_compile_interface",
+    srcs = ["tpu_compile_interface.cc"],
+    hdrs = ["tpu_compile_interface.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
+        "@tsl//tsl/platform:fingerprint",
+        "@tsl//tsl/platform:logging",
+    ],
+)
