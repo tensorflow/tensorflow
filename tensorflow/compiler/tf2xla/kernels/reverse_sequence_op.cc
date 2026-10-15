@@ -136,10 +136,12 @@ class ReverseSequenceOp : public XlaOpKernel {
     // the input's, in the same order, so give them the input's sizes.
     xla::Shape input_xla_shape;
     OP_REQUIRES_VALUE(input_xla_shape, context, context->InputXlaShape(0));
-    for (int i = 0; i < input_shape.dims(); ++i) {
-      if (input_xla_shape.is_dynamic_dimension(i)) {
-        output =
-            xla::SetDimensionSize(output, xla::GetDimensionSize(input, i), i);
+    if (input_xla_shape.is_dynamic()) {
+      for (int i = 0; i < input_shape.dims(); ++i) {
+        if (input_xla_shape.is_dynamic_dimension(i)) {
+          output =
+              xla::SetDimensionSize(output, xla::GetDimensionSize(input, i), i);
+        }
       }
     }
     context->SetOutput(0, output);

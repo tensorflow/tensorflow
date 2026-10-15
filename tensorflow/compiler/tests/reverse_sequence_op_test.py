@@ -17,6 +17,7 @@
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
+from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
@@ -111,8 +112,9 @@ class ReverseSequenceTest(xla_test.XLATestCase):
           seq_lengths_ph: seq_lengths,
           mask_ph: mask
       })
-    # Eager mode gives the same result.
-    with self.device_scope():
+    # Eager execution of the compiled function gives the same result, also
+    # when the test itself runs in graph mode.
+    with context.eager_mode(), self.device_scope():
       self.assertAllEqual(f(x, seq_lengths, mask), result)
     return result
 
