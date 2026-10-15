@@ -313,10 +313,52 @@ cc_binary(
 )
 
 cc_library(
+    name = "custom_cpp_intrinsics_lib",
+    srcs = ["custom_cpp_intrinsics.cc"],
+    hdrs = ["custom_cpp_intrinsics.h"],
+    copts = [
+        "-Wno-psabi",
+    ],
+    deps = [
+        ":vector_ops",
+    ],
+)
+
+cc_ir_header(
+    name = "custom_cpp_intrinsics_ll",
+    src = "custom_cpp_intrinsics.cc",
+    deps = [
+        ":cpp_context_provider",
+        ":custom_cpp_intrinsics_lib",
+        ":vector_ops",
+    ],
+)
+
+xla_cc_test(
+    name = "custom_cpp_intrinsics_test",
+    srcs = ["custom_cpp_intrinsics_test.cc"],
+    copts = [
+        "-Wno-psabi",
+    ],
+    deps = [
+        ":_cpp_gen_intrinsics",
+        ":custom_cpp_intrinsics_lib",
+        ":custom_cpp_intrinsics_ll",
+        ":vector_ops",
+        "//xla/codegen/intrinsic:test_matchers",
+        "@com_google_absl//absl/base",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:ir_headers",
+    ],
+)
+
+cc_library(
     name = "_cpp_gen_intrinsics",
     srcs = ["cpp_gen_intrinsics.cc"],
     hdrs = ["cpp_gen_intrinsics.h"],
     deps = [
+        ":custom_cpp_intrinsics_ll",
         ":eigen_unary_16_ll",
         ":eigen_unary_32_ll",
         ":eigen_unary_64_ll",
