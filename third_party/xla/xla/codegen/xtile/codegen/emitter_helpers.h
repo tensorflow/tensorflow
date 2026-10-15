@@ -555,9 +555,10 @@ TensorValue EmitTiledTranspose(mlir::ImplicitLocOpBuilder& b,
                                llvm::SmallVector<int64_t> dimensions,
                                TensorValue input);
 
-// Emits a reduction computation.
+// Emits a reduction computation (two scalar arguments of `element_type`) as
+// the region of `reduction`.
 absl::Status EmitReduceComputation(mlir::ImplicitLocOpBuilder& b,
-                                   const HloInstruction* hlo_reduction,
+                                   PrimitiveType element_type,
                                    const HloComputation* reduction_computation,
                                    mlir::Operation* reduction);
 }  // namespace xla::xtile

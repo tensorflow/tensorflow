@@ -54,12 +54,12 @@ build:tsan --run_under=//build_tools/rocm:sanitizer_wrapper
 
 build:asan --run_under=//build_tools/rocm:sanitizer_wrapper
 
-build:ci_single_gpu --flaky_test_attempts=3
+build:ci_single_gpu --config=rocm_base
 
+build:ci_multi_gpu --config=rocm_base
 build:ci_multi_gpu --action_env=XLA_FLAGS="--xla_gpu_force_compilation_parallelism=16"
 build:ci_multi_gpu --action_env=NCCL_MAX_NCHANNELS=1
 build:ci_multi_gpu --test_sharding_strategy=disabled
-build:ci_multi_gpu --flaky_test_attempts=3
 build:ci_multi_gpu --experimental_guard_against_concurrent_changes
 build:ci_multi_gpu --test_env=HIP_VISIBLE_DEVICES=0,1,2,3
 

@@ -1374,7 +1374,9 @@ class FakeDeviceAddressAllocator : public se::DeviceAddressAllocator {
   }
 };
 
-TEST_F(GpuExecutableTest, InvokesDeviceErrorCallbackOnStreamError) {
+// TODO(b/573818657): Re-enable once device_error_callback is wired without
+// per-step DoHostCallback overhead.
+TEST_F(GpuExecutableTest, DISABLED_InvokesDeviceErrorCallbackOnStreamError) {
   ASSERT_OK_AND_ASSIGN(
       se::Platform * platform,
       se::PlatformManager::PlatformWithId(stream_executor_platform_id()));

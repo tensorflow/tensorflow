@@ -255,12 +255,13 @@ absl::StatusOr<TensorValue> EmitAllReduce(
       b, output_type, operands, replica_groups_attr, channel_handle_attr,
       use_global_device_ids);
 
-  ABSL_RETURN_IF_ERROR(EmitReduceComputation(b, all_reduce, all_reduce->to_apply(),
-                                        all_reduce_op));
+  ABSL_RETURN_IF_ERROR(EmitReduceComputation(b, all_reduce->shape().element_type(),
+                                        all_reduce->to_apply(), all_reduce_op));
   return mlir::cast<TensorValue>(all_reduce_op.getResult(0));
 }
 
-absl::StatusOr<TensorValue> EmitReduceScatter(
+// Emits a (possibly variadic) reduce-scatter and returns one tensor per output.
+absl::StatusOr<EmittedResults> EmitReduceScatter(
     EmitterContext& emitter_ctx,
     const HloReduceScatterInstruction* reduce_scatter,
     const ge::TiledHloInstruction& tiled_reduce_scatter, ValueRange operands) {
@@ -279,13 +280,32 @@ absl::StatusOr<TensorValue> EmitReduceScatter(
   }
 
   ImplicitLocOpBuilder& b = emitter_ctx.b();
-  ABSL_ASSIGN_OR_RETURN(auto output_element_type,
-                   xtile::PrimitiveTypeToMlirType(
-                       b, reduce_scatter->shape().element_type()));
-  ABSL_ASSIGN_OR_RETURN(SmallVector<int64_t> tile_sizes,
-                   tiled_reduce_scatter.tile().GetStaticTileSizes());
-  auto output_type = mlir::RankedTensorType::get(GetPaddedTileSizes(tile_sizes),
-                                                 output_element_type);
+  // One result per operand. For a variadic reduce-scatter the HLO shape is a
+  // tuple and the tiled instruction holds one tile per output.
+  const bool is_variadic = reduce_scatter->shape().IsTuple();
+  const int64_t num_outputs =
+      is_variadic ? reduce_scatter->shape().tuple_shapes().size() : 1;
+  TF_RET_CHECK(operands.size() == num_outputs)
+      << "Expected one operand per reduce-scatter output, got "
+      << operands.size() << " operands and " << num_outputs << " outputs.";
+  SmallVector<Type> output_types;
+  output_types.reserve(num_outputs);
+  for (int64_t k = 0; k < num_outputs; ++k) {
+    const Shape& output_shape = is_variadic
+                                    ? reduce_scatter->shape().tuple_shapes(k)
+                                    : reduce_scatter->shape();
+    ABSL_ASSIGN_OR_RETURN(
+        auto output_element_type,
+        xtile::PrimitiveTypeToMlirType(b, output_shape.element_type()));
+    ABSL_ASSIGN_OR_RETURN(SmallVector<int64_t> tile_sizes,
+                     tiled_reduce_scatter.tile(k).GetStaticTileSizes());
+    output_types.push_back(mlir::RankedTensorType::get(
+        GetPaddedTileSizes(tile_sizes), output_element_type));
+  }
+  // All operands share the reducer, so they share the element type.
+  const PrimitiveType element_type =
+      is_variadic ? reduce_scatter->shape().tuple_shapes(0).element_type()
+                  : reduce_scatter->shape().element_type();
 
   auto replica_groups_type = mlir::RankedTensorType::get(
       {static_cast<int64_t>(reduce_scatter->replica_groups().size()),
@@ -294,13 +314,23 @@ absl::StatusOr<TensorValue> EmitReduceScatter(
       b.getI64Type());
   auto replica_groups_attr = mlir::DenseIntElementsAttr::get(
       replica_groups_type, flattened_replica_group_ids);
-  auto reduce_scatter_op = mlir::stablehlo::ReduceScatterOp::create(
-      b, output_type, operands[0], reduce_scatter->scatter_dimension(),
-      replica_groups_attr, /*channel_handle=*/nullptr);
+
+  // `stablehlo.reduce_scatter` is single-operand/single-result (unlike
+  // `stablehlo.all_gather`/`all_reduce`), so reduce-scatter is emitted as
+  // `xtile.reduce_scatter` instead of changing the StableHLO dialect. See the
+  // op description in xtile_ops.td.
+  auto reduce_scatter_op = xtile::ReduceScatterOp::create(
+      b, mlir::TypeRange{output_types}, operands,
+      reduce_scatter->scatter_dimension(), replica_groups_attr);
 
   ABSL_RETURN_IF_ERROR(EmitReduceComputation(
-      b, reduce_scatter, reduce_scatter->to_apply(), reduce_scatter_op));
-  return mlir::cast<TensorValue>(reduce_scatter_op.getResult());
+      b, element_type, reduce_scatter->to_apply(), reduce_scatter_op));
+  EmittedResults results;
+  results.reserve(num_outputs);
+  for (Value result : reduce_scatter_op->getResults()) {
+    results.push_back(mlir::cast<TensorValue>(result));
+  }
+  return results;
 }
 
 absl::StatusOr<TensorValue> EmitBroadcast(
@@ -2128,8 +2158,9 @@ absl::StatusOr<TensorValue> EmitReduceWithNoRegion(
       input_value, mask_dim_bounds, neutral_value));
   stablehlo::ReduceOp reduction = stablehlo::ReduceOp::create(
       b, input_value, init_value, reduce_hlo.dimensions());
-  ABSL_RETURN_IF_ERROR(EmitReduceComputation(
-      b, &reduce_hlo, tiled_hlo.hlo()->to_apply(), reduction));
+  ABSL_RETURN_IF_ERROR(EmitReduceComputation(b, reduce_hlo.shape().element_type(),
+                                        tiled_hlo.hlo()->to_apply(),
+                                        reduction));
   return mlir::cast<TensorValue>(reduction.getResult(0));
 }
 
@@ -2275,8 +2306,8 @@ absl::StatusOr<TensorValue> EmitReduceWithRegion(
 
   stablehlo::ReduceOp reduction = stablehlo::ReduceOp::create(
       b, loop_result, init_value, reduce_hlo.dimensions());
-  ABSL_RETURN_IF_ERROR(
-      EmitReduceComputation(b, &reduce_hlo, reduce_hlo.to_apply(), reduction));
+  ABSL_RETURN_IF_ERROR(EmitReduceComputation(b, reduce_hlo.shape().element_type(),
+                                        reduce_hlo.to_apply(), reduction));
   return mlir::cast<TensorValue>(reduction.getResult(0));
 }
 

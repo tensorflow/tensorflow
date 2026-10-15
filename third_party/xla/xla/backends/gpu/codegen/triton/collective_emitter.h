@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
+#include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -95,8 +96,8 @@ mlir::LogicalResult RewriteAllReduce(mlir::stablehlo::AllReduceOp op,
 mlir::LogicalResult RewriteAllGather(mlir::stablehlo::AllGatherOp op,
                                      mlir::PatternRewriter& rewriter);
 
-// Rewrites stablehlo reduce-scatter op to a triton implementation.
-mlir::LogicalResult RewriteReduceScatter(mlir::stablehlo::ReduceScatterOp op,
+// Rewrites xtile reduce-scatter op to a triton implementation.
+mlir::LogicalResult RewriteReduceScatter(xla::xtile::ReduceScatterOp op,
                                          mlir::PatternRewriter& rewriter);
 
 // Returns the symmetric memory type for the scratch buffers of the collective

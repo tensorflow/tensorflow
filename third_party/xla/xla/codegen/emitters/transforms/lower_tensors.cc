@@ -734,8 +734,7 @@ ml::GlobalOp CreateGlobalOp(mlir::Attribute value,
       auto unpacked_data =
           mlir::cast<mlir::DenseElementsAttr>(value).getRawData();
       std::vector<char> packed_data(num_elements);
-      absl::Span<char> packed_data_span =
-          absl::MakeSpan(packed_data.data(), packed_data.size());
+      absl::Span<char> packed_data_span = absl::MakeSpan(packed_data);
       PackIntN(4, unpacked_data, packed_data_span);
       value = mlir::DenseElementsAttr::getFromRawBuffer(
           mlir::RankedTensorType::get({num_elements}, llvm_element_type),

@@ -250,10 +250,8 @@ absl::Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
     PrintBufferContents(stream, kernel_args);
   }
 
-  return ExecuteKernelOnStream(
-      *kernel,
-      absl::Span<se::KernelArg>(kernel_args.data(), kernel_args.size()),
-      launch_dimensions_, cluster_dim_, stream);
+  return ExecuteKernelOnStream(*kernel, absl::MakeSpan(kernel_args),
+                               launch_dimensions_, cluster_dim_, stream);
 }
 
 absl::StatusOr<const se::CommandBuffer::Command*> KernelThunk::Record(
