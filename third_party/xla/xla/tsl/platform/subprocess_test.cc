@@ -518,6 +518,9 @@ TEST_F(SubProcessTest, SetEnviron) {
   proc.SetProgram(GetEnvProgram(), {GetEnvProgram(), "MY_VAR"});
   SubProcess::EnvMap env;
   env["MY_VAR"] = "my_value";
+  if (const char* ld_library_path = getenv("LD_LIBRARY_PATH")) {
+    env["LD_LIBRARY_PATH"] = ld_library_path;
+  }
   proc.SetEnviron(env);
   proc.SetChannelAction(CHAN_STDOUT, ACTION_PIPE);
   proc.SetChannelAction(CHAN_STDERR, ACTION_PIPE);
