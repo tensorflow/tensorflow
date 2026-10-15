@@ -51,8 +51,10 @@ get_save_spec = _tflite_keras_util.get_save_spec
 # pylint: disable=unused-import
 try:
   from jax import jit as _jit
+  from jax.interpreters import mlir as _mlir
 except ImportError:
   _jit = None
+  _mlir = None
 # pylint: enable=g-import-not-at-top
 # pylint: enable=unused-import
 
