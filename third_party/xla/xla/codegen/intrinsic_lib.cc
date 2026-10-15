@@ -143,6 +143,10 @@ IntrinsicFunctionLib::IntrinsicFunctionLib(const IntrinsicOptions& options)
       std::make_unique<IntrinsicAdapter<intrinsics::Tanh>>());
   intrinsic_functions_.push_back(
       std::make_unique<IntrinsicAdapter<intrinsics::EigenAtan>>());
+  intrinsic_functions_.push_back(
+      std::make_unique<IntrinsicAdapter<intrinsics::Sin>>());
+  intrinsic_functions_.push_back(
+      std::make_unique<IntrinsicAdapter<intrinsics::Cos>>());
 }
 
 namespace {
