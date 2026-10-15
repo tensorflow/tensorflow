@@ -330,8 +330,13 @@ TfLiteStatus GetQuantizedConvolutionMultipler(TfLiteContext* context,
                                               const TfLiteTensor* filter,
                                               TfLiteTensor* output,
                                               double* multiplier) {
+  // Keep float scale multiplication for legacy uint8 quantization for backward
+  // compatibility with existing golden tests.
   const double input_product_scale =
-      static_cast<double>(input->params.scale * filter->params.scale);
+      (input->type == kTfLiteUInt8)
+          ? static_cast<double>(input->params.scale * filter->params.scale)
+          : static_cast<double>(input->params.scale) *
+                static_cast<double>(filter->params.scale);
   TF_LITE_ENSURE(context, input_product_scale >= 0);
   *multiplier = input_product_scale / static_cast<double>(output->params.scale);
 
