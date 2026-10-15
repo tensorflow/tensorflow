@@ -702,18 +702,26 @@ class MatrixSetDiagTest(test.TestCase):
     # Shape inference first runs before it has k's value, and with the input's
     # dimensions not all known, it took a band's diagonals for a single
     # diagonal's and failed with "Shapes must be equal rank".
-    @def_function.function(input_signature=[
-        tensor_spec.TensorSpec([None, 4], dtypes_lib.int32),
-        tensor_spec.TensorSpec([2, None], dtypes_lib.int32)
-    ])
-    def set_band(x, diagonals):
-      return array_ops.matrix_set_diag(x, diagonals, k=(-1, 0))
-
     x = np.arange(1, 17, dtype=np.int32).reshape(4, 4)
     diagonals = np.array([[90, 91, 92, 93], [80, 81, 82, 83]], dtype=np.int32)
-    self.assertAllEqual(
-        set_band(x, diagonals),
-        [[90, 2, 3, 4], [80, 91, 7, 8], [9, 81, 92, 12], [13, 14, 82, 93]])
+    for input_shape, diag_shape, x, diagonals in (
+        ([None, 4], [2, None], x, diagonals),
+        ([None, None, 4], [None, 2, None], np.stack([x, -x]),
+         np.stack([diagonals, -diagonals])),
+    ):
+      set_band = def_function.function(
+          lambda x, diagonals: array_ops.matrix_set_diag(
+              x, diagonals, k=(-1, 0)),
+          input_signature=[
+              tensor_spec.TensorSpec(input_shape, dtypes_lib.int32),
+              tensor_spec.TensorSpec(diag_shape, dtypes_lib.int32)
+          ])
+      self.assertEqual(
+          set_band.get_concrete_function().output_shapes.as_list(),
+          input_shape)
+      self.assertAllEqual(
+          set_band(x, diagonals),
+          array_ops.matrix_set_diag(x, diagonals, k=(-1, 0)))
 
   @test_util.run_deprecated_v1
   def testInvalidShape(self):

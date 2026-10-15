@@ -1830,8 +1830,13 @@ absl::Status MatrixSetDiagV2Shape(shape_inference::InferenceContext* c) {
     // Otherwise go by diag_index, which is a single diagonal when it has one
     // element.
     if (diag_index_known) {
-      num_batch_dims = c->Rank(diag_shape) -
-                       ((lower_diag_index == upper_diag_index) ? 1 : 2);
+      // Without the input's rank, the check above couldn't tell that a band
+      // needs a dimension to hold its diagonals.
+      const int32_t diag_dims =
+          (lower_diag_index == upper_diag_index) ? 1 : 2;
+      TF_RETURN_IF_ERROR(
+          c->WithRankAtLeast(c->input(1), diag_dims, &diag_shape));
+      num_batch_dims = c->Rank(diag_shape) - diag_dims;
     } else if (c->Value(c->NumElements(diag_index_shape)) == 1) {
       num_batch_dims = c->Rank(diag_shape) - 1;
     }
