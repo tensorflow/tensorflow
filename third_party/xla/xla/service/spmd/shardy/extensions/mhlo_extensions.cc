@@ -49,13 +49,21 @@ using ::mlir::sdy::getTensorShape;
 using ::mlir::sdy::kNullDim;
 using ::mlir::sdy::OpShardingRuleBuilder;
 
-struct CopyShardingRuleOpInterface
+template <typename OpTy>
+struct PointwiseShardingRuleOpInterface
     : public mlir::sdy::ShardingRuleOpInterface::ExternalModel<
-          CopyShardingRuleOpInterface, mhlo::CopyOp> {
+          PointwiseShardingRuleOpInterface<OpTy>, OpTy> {
   mlir::sdy::OpShardingRuleAttr getShardingRule(mlir::Operation* op) const {
     return OpShardingRuleBuilder::buildPointwise(op);
   }
 };
+
+template <typename... OpTys>
+void attachPointwiseShardingRule(mlir::MLIRContext* ctx) {
+  (OpTys::template attachInterface<PointwiseShardingRuleOpInterface<OpTys>>(
+       *ctx),
+   ...);
+}
 
 enum RaggedDotMode {
   // Ragged non-contracting (m): [b,m,k], [g,b,k,n], [b,g] -> [b,m,n].
@@ -443,7 +451,10 @@ struct ScanShardingRuleOpInterface
 
 void registerMhloExtensions(mlir::DialectRegistry& registry) {
   registry.addExtension(+[](mlir::MLIRContext* ctx, mhlo::MhloDialect*) {
-    mhlo::CopyOp::attachInterface<CopyShardingRuleOpInterface>(*ctx);
+    attachPointwiseShardingRule<mhlo::AcosOp, mhlo::AcoshOp, mhlo::AsinOp,
+                                mhlo::AsinhOp, mhlo::AtanhOp, mhlo::CopyOp,
+                                mhlo::CoshOp, mhlo::ErfOp, mhlo::MulhiOp,
+                                mhlo::SinhOp, mhlo::StochasticConvertOp>(ctx);
     mhlo::RaggedDotOp::attachInterface<RaggedDotShardingRuleOpInterface>(*ctx);
     mhlo::ScanOp::attachInterface<ScanShardingRuleOpInterface>(*ctx);
     mhlo::TopKOp::attachInterface<TopKShardingRuleOpInterface>(*ctx);
