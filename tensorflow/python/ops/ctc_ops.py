@@ -912,10 +912,11 @@ def ctc_loss_v2(labels,
       blank_index += _get_dim(logits, 2)
 
     assert_op = _assert_label_ids_in_range(labels.values, _get_dim(logits, 2))
-    with ops.control_dependencies([assert_op] if assert_op is not None else []):
-      labels = sparse_tensor.SparseTensor(
-          labels.indices, array_ops.identity(labels.values),
-          labels.dense_shape)
+    if assert_op is not None:
+      with ops.control_dependencies([assert_op]):
+        labels = sparse_tensor.SparseTensor(
+            labels.indices, array_ops.identity(labels.values),
+            labels.dense_shape)
 
     if blank_index != _get_dim(logits, 2) - 1:
       logits = array_ops.concat([
@@ -1062,10 +1063,11 @@ def ctc_loss_v3(labels,
       blank_index += _get_dim(logits, 2)
 
     assert_op = _assert_label_ids_in_range(labels.values, _get_dim(logits, 2))
-    with ops.control_dependencies([assert_op] if assert_op is not None else []):
-      labels = sparse_tensor.SparseTensor(
-          labels.indices, array_ops.identity(labels.values),
-          labels.dense_shape)
+    if assert_op is not None:
+      with ops.control_dependencies([assert_op]):
+        labels = sparse_tensor.SparseTensor(
+            labels.indices, array_ops.identity(labels.values),
+            labels.dense_shape)
 
     params = {
         "labels": labels,
@@ -1197,8 +1199,9 @@ def ctc_loss_dense(labels,
         label_length, _get_dim(labels, 1), dtype=dtypes.bool)
     assert_op = _assert_label_ids_in_range(
         labels, _get_dim(logits, 2), valid_mask=label_mask)
-    with ops.control_dependencies([assert_op] if assert_op is not None else []):
-      labels = array_ops.identity(labels)
+    if assert_op is not None:
+      with ops.control_dependencies([assert_op]):
+        labels = array_ops.identity(labels)
 
     if blank_index != 0:
       if blank_index < 0:
@@ -1622,5 +1625,7 @@ def _scan(fn, elems, initial, reverse=False, inclusive=False, final_only=False):
 
 def _get_dim(tensor, i):
   """Get value of tensor shape[i] preferring static value if available."""
+  if tensor.shape.rank is None:
+    return array_ops.shape(tensor)[i]
   return tensor_shape.dimension_value(
       tensor.shape[i]) or array_ops.shape(tensor)[i]
