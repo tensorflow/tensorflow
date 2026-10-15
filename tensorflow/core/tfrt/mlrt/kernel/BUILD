@@ -163,7 +163,10 @@ cc_library(
         "//tensorflow/core/tfrt/utils:fallback_tensor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@xla//xla/tsl/platform:errors",
     ],
 )
