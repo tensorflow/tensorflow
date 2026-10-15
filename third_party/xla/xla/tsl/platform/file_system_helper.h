@@ -46,6 +46,7 @@ namespace internal {
 //   env: may not be null and will be used to check if a match has been found.
 //   pattern: see FileSystem::GetMatchingPaths() for details.
 //   results: will be cleared and may not be null.
+//   multithreaded: if true, scans subdirectories in parallel where supported.
 //
 // Returns an error status if any call to 'fs' failed.
 absl::Status GetMatchingPaths(FileSystem* fs, Env* env,
