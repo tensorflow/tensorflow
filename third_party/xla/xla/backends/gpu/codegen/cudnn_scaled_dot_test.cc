@@ -222,7 +222,7 @@ std::vector<ScaledDotCoverageTestCase> GetCoverageTestCases() {
       {F8E5M2, F8E4M3FN, F8E8M0FNU, 32, true, true,
        CuDnnSupportResult::kSupported},
 
-      // 5. MXFP8 E5M2 x E5M2 (scale E8M0FNU, block 32) - unsupported by cuDNN
+      // 5. MXFP8 E5M2 x E5M2 (scale E8M0FNU, block 32)
       {F8E5M2, F8E5M2, F8E8M0FNU, 32, false, false,
        CuDnnSupportResult::kNotSupported},
       {F8E5M2, F8E5M2, F8E8M0FNU, 32, false, true,
@@ -230,7 +230,7 @@ std::vector<ScaledDotCoverageTestCase> GetCoverageTestCases() {
       {F8E5M2, F8E5M2, F8E8M0FNU, 32, true, false,
        CuDnnSupportResult::kNotSupported},
       {F8E5M2, F8E5M2, F8E8M0FNU, 32, true, true,
-       CuDnnSupportResult::kNotSupported},
+       CuDnnSupportResult::kSupported},
 
       // 6. E5M2 x F4E2M1FN (scale E8M0FNU, block 32)
       {F8E5M2, F4E2M1FN, F8E8M0FNU, 32, false, false,
@@ -270,7 +270,7 @@ std::vector<ScaledDotCoverageTestCase> GetCoverageTestCases() {
       {F4E2M1FN, F4E2M1FN, F8E8M0FNU, 32, true, false,
        CuDnnSupportResult::kNotSupported},
       {F4E2M1FN, F4E2M1FN, F8E8M0FNU, 32, true, true,
-       CuDnnSupportResult::kNotSupported},
+       CuDnnSupportResult::kSupported},
 
       // 10. F4E2M1FN x F4E2M1FN (scale E8M0FNU, block 16)
       {F4E2M1FN, F4E2M1FN, F8E8M0FNU, 16, false, false,
@@ -519,7 +519,7 @@ ENTRY %main {
           }
           auto run_result = RunAndCompareTwoModules(
               std::move(*optimized_module_or), std::move(*ref_optimized_or),
-              arg_ptrs, ErrorSpec{/*aabs=*/0.02, /*arel=*/0.05},
+              arg_ptrs, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-5},
               /*run_hlo_passes=*/false);
           status = run_result ? "SUCCESS" : "FAILURE";
           if (!run_result) {

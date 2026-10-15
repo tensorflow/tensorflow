@@ -257,6 +257,8 @@ enum class CudnnMxType {
   MXFP8_E4M3FN,
   // Input: E5M2, scale: E8M0FNU, block size: 32.
   MXFP8_E5M2,
+  // Input: E2M1FN, scale: E8M0FNU, block size: 32.
+  MXFP4,
   // Input: E2M1FN, scale: E4M3FN, block size: 16.
   NVFP4,
 };
@@ -292,6 +294,14 @@ CudnnMxType GetCudnnMxType(const Shape& input_shape, const Shape& scale_shape,
     return CudnnMxType::MXFP8_E5M2;
   }
 
+  // MXFP4: the input is E2M1FN and the scale is E8M0FNU.
+  if (input_shape.element_type() == PrimitiveType::F4E2M1FN &&
+      scale_shape.element_type() == PrimitiveType::F8E8M0FNU &&
+      actual_block_size == BlockScalingRewriter::kBlockSizeMXFP4 &&
+      contracting_size % actual_block_size == 0) {
+    return CudnnMxType::MXFP4;
+  }
+
   // NVFP4: the input is E2M1FN and the scale is E4M3FN.
   if (input_shape.element_type() == PrimitiveType::F4E2M1FN &&
       scale_shape.element_type() == PrimitiveType::F8E4M3FN &&
@@ -310,12 +320,12 @@ CudnnMxType GetCudnnMxType(const Shape& input_shape, const Shape& scale_shape,
 }
 
 bool IsSupportedByCudnn(CudnnMxType lhs, CudnnMxType rhs) {
-  // cuDNN supports mixing input types for MXFP8, but the E5M2/E5M2 combination
-  // is not supported.
   return (lhs == CudnnMxType::MXFP8_E4M3FN &&
           rhs == CudnnMxType::MXFP8_E4M3FN) ||
          (lhs == CudnnMxType::MXFP8_E4M3FN && rhs == CudnnMxType::MXFP8_E5M2) ||
          (lhs == CudnnMxType::MXFP8_E5M2 && rhs == CudnnMxType::MXFP8_E4M3FN) ||
+         (lhs == CudnnMxType::MXFP8_E5M2 && rhs == CudnnMxType::MXFP8_E5M2) ||
+         (lhs == CudnnMxType::MXFP4 && rhs == CudnnMxType::MXFP4) ||
          (lhs == CudnnMxType::NVFP4 && rhs == CudnnMxType::NVFP4);
 }
 
