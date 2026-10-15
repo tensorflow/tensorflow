@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -354,15 +355,27 @@ class ConvertUniformQuantizeOp
 
   LogicalResult matchAndRewrite(TF::UniformQuantizeOp op,
                                 PatternRewriter &rewriter) const override {
+    const int64_t quantization_axis =
+        static_cast<int64_t>(op.getQuantizationAxis());
+    if (quantization_axis < -1) {
+      return rewriter.notifyMatchFailure(op, "quantization_axis must be >= -1");
+    }
     DenseFPElementsAttr scales;
-    if (!matchPattern(op.getScales(), m_Constant(&scales))) return failure();
+    if (!matchPattern(op.getScales(), m_Constant(&scales))) {
+      return rewriter.notifyMatchFailure(op, "scales must be constant");
+    }
     SmallVector<float> inv_scales;
     for (float scale : scales.getValues<float>()) {
-      if (!(scale > 0.0f)) {
-        return rewriter.notifyMatchFailure(op,
-                                           "scales must be strictly positive");
+      if (!(scale > 0.0f) || !std::isfinite(scale)) {
+        return rewriter.notifyMatchFailure(
+            op, "scales must be strictly positive and finite");
       }
-      inv_scales.push_back(1.0f / scale);
+      const float inv_scale = 1.0f / scale;
+      if (!std::isfinite(inv_scale)) {
+        return rewriter.notifyMatchFailure(op,
+                                           "scale reciprocals must be finite");
+      }
+      inv_scales.push_back(inv_scale);
     }
 
     auto output_type = GetUniformQuantizedType(
@@ -370,7 +383,8 @@ class ConvertUniformQuantizeOp
         /*expressed_type=*/rewriter.getF32Type(), op.getQuantizationMinVal(),
         op.getQuantizationMaxVal(), op.getQuantizationAxis(), rewriter);
     if (failed(output_type)) {
-      return failure();
+      return rewriter.notifyMatchFailure(
+          op, "failed to construct the output quantized type");
     }
 
     // TF rounds ties toward positive infinity, whereas MHLO uniform_quantize
@@ -382,12 +396,15 @@ class ConvertUniformQuantizeOp
     const auto zp_type = mlir::cast<TensorType>(op.getZeroPoints().getType())
                              .clone(rewriter.getI64Type());
     TensorType zp_broadcast_type = zp_type;
-    const int64_t quantization_axis =
-        static_cast<int64_t>(op.getQuantizationAxis());
     if (quantization_axis >= 0) {
       auto ranked_input = mlir::dyn_cast<RankedTensorType>(input_type);
-      if (!ranked_input || quantization_axis >= ranked_input.getRank()) {
-        return failure();
+      if (!ranked_input) {
+        return rewriter.notifyMatchFailure(
+            op, "per-axis quantization requires a ranked input");
+      }
+      if (quantization_axis >= ranked_input.getRank()) {
+        return rewriter.notifyMatchFailure(
+            op, "quantization_axis must be less than the input rank");
       }
       // CHLO only supports explicit different-rank broadcasts along trailing
       // dimensions. Use same-rank NumPy broadcasting for any quantization axis.

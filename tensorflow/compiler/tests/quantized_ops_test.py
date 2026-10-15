@@ -87,6 +87,15 @@ class QuantizedOpsTest(xla_test.XLATestCase):
             quantization_max_val=2147483647)
       self.assertAllEqual(session.run(output, {inputs: values}),
                           [2147483644, 2147483647, 2147483647])
+      with self.device_scope():
+        inputs = array_ops.placeholder(dtypes.float32, values.shape)
+        output = gen_uniform_quant_ops.uniform_quantize(
+            inputs, constant_op.constant(1.0),
+            constant_op.constant(-2147483648, dtypes.int32), dtypes.qint32,
+            quantization_min_val=-2147483648,
+            quantization_max_val=2147483647)
+      self.assertAllEqual(session.run(output, {inputs: values}),
+                          [-2147483648, -2147483648, -2147483645])
 
   # Verify that quantized types can be clustered by XLA.
   def testQuantizedTypeRoundtrip(self):
