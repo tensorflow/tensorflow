@@ -744,8 +744,6 @@ def TFL_TransposeConvOp: TFL_Op<"transpose_conv", [
 
   let hasVerifier = 1;
 
-  let hasFolder = 1;
-
   let extraClassDeclaration = [{
     // AffineQuantizedOpInterface:
     int GetChannelDimIndex() { return 0; }
@@ -1020,7 +1018,6 @@ def TFL_Conv2DOp : TFL_ConvOp<"conv_2d", "Convolution", 0,
   );
 
   let hasCanonicalizer = 1;
-  let hasFolder = 1;
 
   let extraClassDeclaration = [{
     // AffineQuantizedOpInterface:
@@ -1111,7 +1108,6 @@ def TFL_DepthwiseConv2DOp :
   );
 
   let hasCanonicalizer = 1;
-  let hasFolder = 1;
 
   let extraClassDeclaration = [{
     // AffineQuantizedOpInterface:
@@ -1249,6 +1245,8 @@ in the batch dimensions and broadcasting.
   let hasOptions = 1;
 
   let hasVerifier = 1;
+
+  let hasFolder = 1;
 
   let extraClassDeclaration = [{
     // DynamicRangeQuantizedOpInterface:

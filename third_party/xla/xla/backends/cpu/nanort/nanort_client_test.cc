@@ -22,6 +22,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <new>
 #include <optional>
 #include <string>
 #include <utility>
@@ -107,6 +108,44 @@ TEST(NanoRtClientStandaloneTest, ManagedTempAlignment) {
   EXPECT_EQ(reinterpret_cast<uintptr_t>(&temp1.data()[0]) % Align(), 0);
   EXPECT_EQ(reinterpret_cast<uintptr_t>(&temp2.data()[0]) % Align(), 0);
   EXPECT_EQ(reinterpret_cast<uintptr_t>(&temp3.data()[0]) % Align(), 0);
+}
+
+template <size_t n>
+void ExpectManagedTempSizeAndContents() {
+  constexpr size_t sizes[] = {0, 1, 3, 7, 8, 63, 64, 65, 127, 128, 129};
+  for (size_t size : sizes) {
+    SCOPED_TRACE(size);
+    NanoRtExecutable::ManagedTemp<n> temp(size);
+    absl::Span<std::byte> bytes = temp.data();
+    EXPECT_EQ(bytes.size(), size);
+    EXPECT_EQ(reinterpret_cast<uintptr_t>(bytes.data()) % Align(), 0);
+    for (std::byte& byte : bytes) {
+      byte = std::byte{0x42};
+    }
+    for (std::byte byte : bytes) {
+      EXPECT_EQ(byte, std::byte{0x42});
+    }
+  }
+}
+
+TEST(NanoRtClientStandaloneTest, ManagedTempSizeAndContents) {
+  ExpectManagedTempSizeAndContents<0>();
+  ExpectManagedTempSizeAndContents<3>();
+  ExpectManagedTempSizeAndContents<2 * Align()>();
+}
+
+TEST(NanoRtClientStandaloneTest, ManagedTempUnpoisonsStorageOnDestruction) {
+  using Temp = NanoRtExecutable::ManagedTemp<3>;
+  alignas(Temp) std::byte storage[sizeof(Temp)];
+  Temp* temp = new (storage) Temp(3);
+  temp->~Temp();
+  // Writes to the former inline buffer must not encounter stale ASAN poison.
+  volatile std::byte* bytes = storage;
+  for (size_t i = 0; i < sizeof(storage); ++i) {
+    bytes[i] = std::byte{0x42};
+    std::byte byte = bytes[i];
+    EXPECT_EQ(byte, std::byte{0x42});
+  }
 }
 
 TEST_P(NanoRtClientTest, CompileAndRunScalarComputation) {
