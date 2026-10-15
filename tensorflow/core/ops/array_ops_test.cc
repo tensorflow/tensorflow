@@ -734,6 +734,7 @@ TEST(ArrayOpsTest, MatrixSetDiagV3_ShapeFn) {
   INFER_OK(op, "[?,4];[2,?];[2]", "in0");
   INFER_OK(op, "?;[3,2,?];[2]", "[d1_0,?,?]");
   INFER_ERROR("Shape must be rank 2 but is rank 1", op, "[?,4];[4];[2]");
+  INFER_ERROR("Shape must be at least rank 2 but is rank 1", op, "?;[4];[2]");
 }
 
 TEST(ArrayOpsTest, ExpandDims_ShapeFn) {
