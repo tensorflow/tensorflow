@@ -313,6 +313,7 @@ class MathTest(test.TestCase, parameterized.TestCase):
 
   def match(self, actual, expected, msg='', check_dtype=True):
     self.assertIsInstance(actual, np_arrays.ndarray)
+    expected = np.asarray(expected)
     if check_dtype:
       self.assertEqual(
           actual.dtype, expected.dtype,
@@ -434,13 +435,70 @@ class MathTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(ValueError, 'out of bounds'):
       np_math_ops.argmin(a, axis=-3)
 
-  @parameterized.parameters([False, True])
-  def testIsCloseEqualNan(self, equal_nan):
-    a = np.asarray([1, 1, np.nan, 1, np.nan], np.float32)
-    b = np.asarray([1, 2, 1, np.nan, np.nan], np.float32)
+  @parameterized.parameters(
+      itertools.product(
+          [False, True], [np.float32, np.float64, np.complex64, np.complex128]
+      )
+  )
+  def testIsCloseEqualNan(self, equal_nan, dtype):
+    a_vals = [1.0, 1.0, np.nan, 1.0, np.nan]
+    b_vals = [1.0, 2.0, 1.0, np.nan, np.nan]
+    if np.issubdtype(dtype, np.complexfloating):
+      a_vals.extend([
+          complex(1.0, np.nan),
+          complex(np.nan, 1.0),
+          complex(np.nan, np.nan),
+      ])
+      b_vals.extend([
+          complex(np.nan, 1.0),
+          complex(1.0, np.nan),
+          complex(np.nan, np.nan),
+      ])
+    a = np.asarray(a_vals, dtype)
+    b = np.asarray(b_vals, dtype)
     self.match(
         np_math_ops.isclose(a, b, equal_nan=equal_nan),
         np.isclose(a, b, equal_nan=equal_nan))
+
+  @parameterized.parameters(
+      [np.float32, np.float64, np.complex64, np.complex128]
+  )
+  def testIsCloseInfinities(self, dtype):
+    # Regression test for GitHub issue 128480: same-sign infinities must be
+    # close and opposite-sign infinities must not be close, matching NumPy.
+    # Also covers mixed finite/infinite pairs like (1.0, inf).
+    a_vals = [np.inf, -np.inf, -np.inf, np.inf, 1.0, 1.0, np.inf]
+    b_vals = [np.inf, -np.inf, np.inf, -np.inf, 1.0, np.inf, 1.0]
+    if np.issubdtype(dtype, np.complexfloating):
+      a_vals.extend(
+          [complex(np.inf, np.inf), complex(np.inf, np.inf), complex(np.inf, 0)]
+      )
+      b_vals.extend(
+          [complex(np.inf, 0), complex(np.inf, np.inf), complex(np.inf, np.inf)]
+      )
+
+    a = np.array(a_vals, dtype)
+    b = np.array(b_vals, dtype)
+    self.match(
+        np_math_ops.isclose(a, b),
+        np.isclose(a, b),
+    )
+    self.match(
+        np_math_ops.allclose([dtype(np.inf)], [dtype(np.inf)]),
+        np.allclose([dtype(np.inf)], [dtype(np.inf)]),
+    )
+    self.match(
+        np_math_ops.allclose([dtype(-np.inf)], [dtype(np.inf)]),
+        np.allclose([dtype(-np.inf)], [dtype(np.inf)]),
+    )
+    self.match(
+        np_math_ops.allclose([dtype(np.inf)], [dtype(-np.inf)]),
+        np.allclose([dtype(np.inf)], [dtype(-np.inf)]),
+    )
+    self.match(
+        np_math_ops.allclose([dtype(-np.inf)], [dtype(-np.inf)]),
+        np.allclose([dtype(-np.inf)], [dtype(-np.inf)]),
+    )
 
   @parameterized.parameters([np.int32, np.int64])
   def testIsCloseIntegerTolerances(self, dtype):
@@ -454,8 +512,8 @@ class MathTest(test.TestCase, parameterized.TestCase):
         np_math_ops.isclose(a, b, rtol=9, atol=0),
         np.isclose(a, b, rtol=9, atol=0),
     )
-    self.assertEqual(
-        bool(np_math_ops.allclose(a, b, rtol=9, atol=0)),
+    self.match(
+        np_math_ops.allclose(a, b, rtol=9, atol=0),
         np.allclose(a, b, rtol=9, atol=0),
     )
     c = np.array([100, 200, -300, 0], dtype)
