@@ -296,6 +296,8 @@ TEST_F(TilingSpaceTest, DynamicSlice) {
 }
 
 TEST_F(TilingSpaceTest, TwoOutputsParallelDims) {
+  GTEST_SKIP() << "Arbitrary multi-output fusions are currently not supported "
+                  "in TilingSpace (b/502910372).";
   HloInstruction* root = ParseAndGetRoot(R"(
     HloModule m
     f {

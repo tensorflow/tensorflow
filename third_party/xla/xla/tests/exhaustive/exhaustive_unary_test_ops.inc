@@ -208,7 +208,12 @@ DEFINE_UNARY_TEST_OP(
     { return +[](Traits::NativeRefT x) { return std::exp2(x); }; });
 DEFINE_UNARY_TEST_OP(
     RsqrtOp, { return [](XlaOp x) { return Rsqrt(x); }; },
-    { return +[](Traits::NativeRefT x) { return 1 / std::sqrt(x); }; });
+    {
+      return +[](typename Traits::NativeRefT x) {
+        return static_cast<typename Traits::NativeRefT>(
+            1.0 / std::sqrt(static_cast<double>(x)));
+      };
+    });
 DEFINE_UNARY_TEST_OP(
     SqrtOp, { return [](XlaOp x) { return Sqrt(x); }; }, { return std::sqrt; });
 DEFINE_UNARY_TEST_OP(

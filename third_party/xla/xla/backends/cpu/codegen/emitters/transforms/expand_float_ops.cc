@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Arith/IR/ArithAttributes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Math/IR/Math.h"  // IWYU pragma: keep
 #include "mlir/IR/Builders.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "xla/codegen/intrinsic/cpp/cpp_gen_intrinsics.h"
 
 namespace xla::cpu {
 
@@ -100,6 +102,57 @@ struct RewriteExtFPattern : public mlir::OpRewritePattern<ma::ExtFOp> {
   }
 };
 
+// Fallback lowering for expm1(x) on platforms (such as Windows) where CppGen
+// bitcode intrinsics are unavailable:
+// |x| > 0.5: exp(x) - 1
+// |x| <= 0.5: tanh(x / 2) * (exp(x) + 1)
+class RewriteExpm1Pattern : public mlir::OpRewritePattern<mlir::math::ExpM1Op> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      mlir::math::ExpM1Op op, mlir::PatternRewriter& rewriter) const override {
+    mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+
+    mlir::Type type = op.getType();
+    mlir::Type element_type = mlir::getElementTypeOrSelf(type);
+    mlir::Value one = GetConst(b, type, b.getFloatAttr(element_type, 1.0));
+    mlir::Value half = GetConst(b, type, b.getFloatAttr(element_type, 0.5));
+    mlir::Value zero = GetConst(b, type, b.getFloatAttr(element_type, 0.0));
+    mlir::Value x = op.getOperand();
+
+    mlir::arith::FastMathFlagsAttr fastmath = op.getFastmathAttr();
+
+    mlir::Value exp_x = mlir::math::ExpOp::create(b, x, fastmath);
+
+    mlir::Value exp_x_minus_1 =
+        mlir::arith::SubFOp::create(b, exp_x, one, fastmath);
+
+    mlir::Value half_x = mlir::arith::MulFOp::create(b, x, half, fastmath);
+    mlir::Value tanh_half_x = mlir::math::TanhOp::create(b, half_x, fastmath);
+    mlir::Value exp_x_plus_1 =
+        mlir::arith::AddFOp::create(b, exp_x, one, fastmath);
+    mlir::Value small_result =
+        mlir::arith::MulFOp::create(b, tanh_half_x, exp_x_plus_1, fastmath);
+
+    mlir::Value abs_x = mlir::math::AbsFOp::create(b, x, fastmath);
+    mlir::Value x_is_large = mlir::arith::CmpFOp::create(
+        b, mlir::arith::CmpFPredicate::OGT, abs_x, half);
+    mlir::Value normal_result = mlir::arith::SelectOp::create(
+        b, x_is_large, exp_x_minus_1, small_result);
+
+    // half_x can underflow resulting in zero.
+    // TODO(willfroom): Do we actually need this check? tanh(0) == 0.
+    mlir::Value half_x_is_zero = mlir::arith::CmpFOp::create(
+        b, mlir::arith::CmpFPredicate::OEQ, half_x, zero);
+    mlir::Value result =
+        mlir::arith::SelectOp::create(b, half_x_is_zero, x, normal_result);
+
+    rewriter.replaceOp(op, result);
+    return mlir::success();
+  }
+};
+
 class ExpandFloatOpsPass
     : public impl::ExpandFloatOpsPassBase<ExpandFloatOpsPass> {
  public:
@@ -108,6 +161,9 @@ class ExpandFloatOpsPass
   void runOnOperation() override {
     mlir::RewritePatternSet patterns(&getContext());
     patterns.add<RewriteExtFPattern>(&getContext());
+    if (!xla::codegen::AreCppGenIntrinsicsAvailable()) {
+      patterns.add<RewriteExpm1Pattern>(&getContext());
+    }
 
     if (mlir::failed(
             mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {

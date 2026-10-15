@@ -245,6 +245,53 @@ TEST_F(MinimumMemoryForSequenceTest, SubcomputationAccounting) {
                     .value());
 }
 
+TEST_F(MinimumMemoryForSequenceTest, WhileLoopDoubleCounting) {
+  // Demonstrates that MinimumMemoryForModule (via NoFragmentationStatsHeap)
+  // does not double count shared buffers between the while loop condition,
+  // body, and init.
+  constexpr absl::string_view kHloString = R"hlo(
+    HloModule WhileLoopDoubleCounting, is_scheduled=true
+
+    WhileCond {
+      cond_param = f32[1000] parameter(0)
+      slice = f32[1] slice(cond_param), slice={[0:1]}
+      reshape = f32[] reshape(slice)
+      zero = f32[] constant(0)
+      ROOT cond_comparison = pred[] compare(reshape, zero), direction=NE
+    }
+
+    WhileBody {
+      body_param = f32[1000] parameter(0)
+      ROOT negate = f32[1000] negate(body_param)
+    }
+
+    ENTRY Entry {
+      init = f32[1000] parameter(0)
+      ROOT while_loop = f32[1000] while(init), condition=WhileCond, body=WhileBody
+    }
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK(module->schedule().Verify());
+
+  BufferValue::SizeFunction size_fn = [](const BufferValue& buffer) {
+    return ShapeUtil::ByteSizeOf(buffer.shape());
+  };
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info_));
+
+  // With the NoFragmentationStatsHeap fix in place, the peak memory correctly
+  // avoids double counting the 4000-byte shared buffer across the condition and
+  // body, resulting in 4008 bytes (4000 + 4 slice + 4 reshape).
+  ASSERT_OK_AND_ASSIGN(
+      int64_t min_memory,
+      HeapSimulator::MinimumMemoryForModule(module->schedule(), *alias_analysis,
+                                            &alias_info_, &size_fn));
+  EXPECT_EQ(min_memory, 4008);
+}
+
 const char kAlloc[] = "Alloc";
 const char kFree[] = "Free";
 const char kShare[] = "Share";
@@ -1105,6 +1152,27 @@ TEST_F(NoFragmentationStatsHeapTest, Mixed) {
   ASSERT_OK_AND_ASSIGN(const HeapSimulator::Result<HloValue> result,
                        heap.Finish());
   EXPECT_EQ(40, result.heap_size);
+}
+
+TEST_F(NoFragmentationStatsHeapTest, ShareWith) {
+  NoFragmentationStatsHeap<HloValue> heap;
+  heap.Alloc(buffer_a_, 100);                 // current: 100, max: 100
+  heap.ShareWith(buffer_b_, buffer_a_, 100);  // current: 100, max: 100
+  heap.ShareWith(buffer_c_, buffer_b_, 100);  // current: 100, max: 100
+  heap.Free(buffer_b_, 100);                  // current: 100, max: 100
+  heap.ShareWith(buffer_d_, buffer_b_, 100);  // current: 100, max: 100
+  heap.Free(buffer_a_, 100);                  // current: 100, max: 100
+  heap.Free(buffer_c_, 100);                  // current: 100, max: 100
+  heap.Free(buffer_d_, 100);                  // current: 0, max: 100
+
+  heap.Alloc(buffer_e_, 50);  // current: 50, max: 100
+  heap.Alloc(buffer_f_, 60);  // current: 110, max: 110
+  heap.Free(buffer_e_, 50);
+  heap.Free(buffer_f_, 60);
+
+  ASSERT_OK_AND_ASSIGN(const HeapSimulator::Result<HloValue> result,
+                       heap.Finish());
+  EXPECT_EQ(110, result.heap_size);
 }
 
 class GlobalDecreasingSizeBestFitHeapTest : public HeapAlgorithmTestBase {};
