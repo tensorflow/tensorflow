@@ -832,7 +832,7 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
       return kTfLiteOk;
     };
     size_t buffer_size = 0;
-    const char* buffer_ptr;
+    const char* buffer_ptr = nullptr;
     TF_LITE_ENSURE_STATUS(get_readonly_data(&buffer_ptr, &buffer_size));
 
     const auto* src_quantization = tensor->quantization();
