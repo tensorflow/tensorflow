@@ -14,8 +14,10 @@
 # ==============================================================================
 """Tests for windows_lib_diagnostics."""
 
+import builtins
 import io
 import os
+import sys
 from unittest import mock
 
 from tensorflow.python.platform import test
@@ -37,25 +39,25 @@ class WindowsLibDiagnosticsTest(test.TestCase):
 
   def testSafePrintWithAsciiConsole(self):
     out = _FakeStdout("ascii")
-    with mock.patch("sys.stdout", out):
+    with mock.patch.object(sys, "stdout", out):
       windows_lib_diagnostics._safe_print("C:\\Users\\Jos\u00e9\\x.dll")
     self.assertIn("Jos\\xe9", out.getvalue())
 
   def testSafePrintWithNoneEncoding(self):
     out = _FakeStdout(None)
-    with mock.patch("sys.stdout", out):
+    with mock.patch.object(sys, "stdout", out):
       windows_lib_diagnostics._safe_print("caf\u00e9")
     self.assertIn("caf\\xe9", out.getvalue())
 
   def testSafePrintNeverRaises(self):
-    with mock.patch("builtins.print", side_effect=ValueError("boom")):
+    with mock.patch.object(builtins, "print", side_effect=ValueError("boom")):
       windows_lib_diagnostics._safe_print("text")
 
   def testUnsetPathInEnviron(self):
     out = _FakeStdout("utf-8")
     fake_ctypes = mock.MagicMock()
     fake_ctypes.WinDLL.side_effect = OSError("mock load failure")
-    with mock.patch("sys.stdout", out), \
+    with mock.patch.object(sys, "stdout", out), \
         mock.patch.dict(os.environ, {}, clear=True), \
         mock.patch.object(windows_lib_diagnostics, "ctypes", fake_ctypes), \
         mock.patch.object(
@@ -74,7 +76,7 @@ class WindowsLibDiagnosticsTest(test.TestCase):
 
   def testRunDiagnosisSwallowsUnexpectedErrors(self):
     out = _FakeStdout("utf-8")
-    with mock.patch("sys.stdout", out), mock.patch.object(
+    with mock.patch.object(sys, "stdout", out), mock.patch.object(
         windows_lib_diagnostics.os.path, "abspath",
         side_effect=RuntimeError("unexpected")):
       windows_lib_diagnostics.run_diagnosis(None)
