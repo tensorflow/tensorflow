@@ -607,6 +607,28 @@ class FractionalAvgPoolGradTest(test.TestCase):
             overlapping=overlapping)
         self.evaluate(t)
 
+  def testShapeMismatchRaiseErrorForFractionalAvgPoolGrad(self):
+    # in_backprop is sized from orig_input_tensor_shape, but the op walks
+    # out_backprop's batch and depth; an out_backprop with more batches or
+    # channels than orig_input_tensor_shape used to write past that buffer.
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                r"same batch size"):
+      t = gen_nn_ops.fractional_avg_pool_grad(
+          orig_input_tensor_shape=[1, 2, 2, 1],
+          out_backprop=np.ones([8, 1, 1, 1], dtype=np.float64),
+          row_pooling_sequence=[0, 2],
+          col_pooling_sequence=[0, 2],
+          overlapping=False)
+      self.evaluate(t)
+    with self.assertRaisesRegex(errors.InvalidArgumentError, r"same depth"):
+      t = gen_nn_ops.fractional_avg_pool_grad(
+          orig_input_tensor_shape=[1, 2, 2, 1],
+          out_backprop=np.ones([1, 1, 1, 8], dtype=np.float64),
+          row_pooling_sequence=[0, 2],
+          col_pooling_sequence=[0, 2],
+          overlapping=False)
+      self.evaluate(t)
+
 
 if __name__ == "__main__":
   test.main()
