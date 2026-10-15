@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -29,7 +28,6 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
-#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
@@ -245,41 +243,27 @@ class TileAnalysisTestBase : public HloHardwareIndependentTestBase {
 };
 
 // For tests that don't depend on the flags in TileAnalysisTestParams.
-class TileAnalysisTest
-    : public TileAnalysisTestBase,
-      public ::testing::WithParamInterface<std::tuple<bool, bool>> {
+class TileAnalysisTest : public TileAnalysisTestBase,
+                         public ::testing::WithParamInterface<bool> {
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = TileAnalysisTestBase::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_unsupported_enable_triton_multi_output_fusion(
-        EnableTritonMultiOutputFusion());
     debug_options
         .set_xla_gpu_experimental_enable_same_shape_multi_output_fusion(
             EnableSameShapeMultiOutputFusion());
     return debug_options;
   }
 
-  bool EnableTritonMultiOutputFusion() const { return std::get<0>(GetParam()); }
-  bool EnableSameShapeMultiOutputFusion() const {
-    return std::get<1>(GetParam());
-  }
+  bool EnableSameShapeMultiOutputFusion() const { return GetParam(); }
 };
 
-INSTANTIATE_TEST_SUITE_P(
-    TileAnalysisTestInstantiation, TileAnalysisTest,
-    testing::Combine(testing::Bool(), testing::Bool()),
-    [](const ::testing::TestParamInfo<std::tuple<bool, bool>>& info) {
-      std::vector<std::string> parts;
-      if (std::get<0>(info.param)) {
-        parts.push_back("WithTritonMOF");
-      }
-      if (std::get<1>(info.param)) {
-        parts.push_back("WithSameShapeMOF");
-      }
-      if (parts.empty()) {
-        return std::string("Default");
-      }
-      return absl::StrJoin(parts, "_");
-    });
+INSTANTIATE_TEST_SUITE_P(TileAnalysisTestInstantiation, TileAnalysisTest,
+                         testing::Bool(),
+                         [](const ::testing::TestParamInfo<bool>& info) {
+                           if (info.param) {
+                             return std::string("WithSameShapeMOF");
+                           }
+                           return std::string("Default");
+                         });
 
 // For tests that assume no multi-output fusion support.
 class SingleOutputFusionTileAnalysisTest : public TileAnalysisTestBase {};
@@ -302,10 +286,6 @@ class SameShapeMultiOutputFusionTileAnalysisTest : public TileAnalysisTestBase {
     DebugOptions debug_options = TileAnalysisTestBase::GetDebugOptionsForTest();
     debug_options
         .set_xla_gpu_experimental_enable_same_shape_multi_output_fusion(true);
-    // Triton multi-output fusion is preferred over same-shape MOF so we must
-    // disable it to test same-shape MOF.
-    debug_options.set_xla_gpu_unsupported_enable_triton_multi_output_fusion(
-        false);
     return debug_options;
   }
 };
@@ -961,6 +941,8 @@ TEST_F(SingleOutputFusionTileAnalysisTest, SimpleFusion) {
 }
 
 TEST_F(TritonMultiOutputFusionTileAnalysisTest, DuplicateFusionRoots) {
+  GTEST_SKIP() << "Arbitrary multi-output fusions are currently not supported "
+                  "in TilingSpace (b/502910372).";
   ASSERT_OK_AND_ASSIGN(const TiledHloComputation tiled_computation,
                        ParseAndTile(R"hlo(
     fusion {

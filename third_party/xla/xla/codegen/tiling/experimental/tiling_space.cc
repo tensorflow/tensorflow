@@ -612,11 +612,6 @@ absl::StatusOr<std::unique_ptr<TilingSpace>> TilingSpace::Create(
           .xla_gpu_experimental_enable_same_shape_multi_output_fusion()) {
     ABSL_RETURN_IF_ERROR(
         tiling_space->InitializeDimensionsForSameShapeMultiOutputFusion(roots));
-  } else if (debug_options
-                 .xla_gpu_unsupported_enable_triton_multi_output_fusion()) {
-    // xla_gpu_unsupported_enable_triton_multi_output_fusion flag name is
-    // misleading, it is not GPU specific.
-    ABSL_RETURN_IF_ERROR(tiling_space->InitializeDimensions(roots));
   } else {
     // TODO(b/502910372): Support arbitrary multi-output fusions.
     return absl::UnimplementedError(

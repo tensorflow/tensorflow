@@ -613,6 +613,8 @@ ENTRY entry_computation {
 }
 
 TEST_F(VerifyTritonConstraintsTest, MultiOutputFusionHasPowerOfTwoTileSizes) {
+  GTEST_SKIP() << "Arbitrary multi-output fusions are currently not supported "
+                  "in TilingSpace (b/502910372).";
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                        ParseAndReturnVerifiedModule(R"hlo(
 HloModule m

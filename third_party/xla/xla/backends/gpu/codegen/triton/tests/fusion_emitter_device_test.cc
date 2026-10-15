@@ -218,8 +218,10 @@ ENTRY entry_computation {
       CreateTritonIrFromHloTextAndFileCheck(kHloText, "fused_computation", "");
   EXPECT_THAT(
       status,
-      StatusIs(tsl::error::UNIMPLEMENTED,
-               HasSubstr("Only single-result fusions are supported for now")));
+      StatusIs(
+          tsl::error::UNIMPLEMENTED,
+          HasSubstr(
+              "TilingSpace does not support fusions with multiple roots.")));
 }
 
 class TritonEmitterTestWithOffsetParam
