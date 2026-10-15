@@ -14,11 +14,14 @@
 # ==============================================================================
 """Tests for all_renames_v2."""
 
+import sys
+import unittest
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test as test_lib
 from tensorflow.tools.compatibility import all_renames_v2
 
 
+@unittest.skipIf(sys.version_info >= (3, 14), "pasta is broken on Python 3.14+")
 class AllRenamesV2Test(test_util.TensorFlowTestCase):
 
   def test_no_identity_renames(self):
