@@ -16,7 +16,7 @@
 
 // CHECK-LABEL: module @multiple_func_result_shardings
 module @multiple_func_result_shardings attributes {mhlo.frontend_attributes = {xla.sdy.meshes =
-    "{mesh = #sdy.mesh<[\"a\"=8, \"b\"=8, \"c\"=8]>, mesh2 = #sdy.mesh<[\"a\"=1, \"b\"=4, \"c\"=1]>, maximal_mesh = #sdy.mesh<[], device_ids=[0]>}"}} {
+    "{mesh = #sdy.mesh<[\"a\"=8, \"b\"=8, \"c\"=8]>, mesh2 = #sdy.mesh<[\"a\"=1, \"b\"=4, \"c\"=1]>, single_device = #sdy.mesh<[], device_ids=[0]>}"}} {
   // CHECK: sdy.mesh @mesh = <["a"=8, "b"=8, "c"=8]>
   // CHECK: sdy.mesh @mesh2 = <["a"=1, "b"=4, "c"=1]>
 
@@ -259,19 +259,19 @@ module @multiple_func_result_shardings attributes {mhlo.frontend_attributes = {x
     %arg0: tensor<16x8xf32> {mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding<@mesh2, [{\"b\"}, {?}]>"}},
     %arg1: tensor<16x8xf32> {mhlo.frontend_attributes = {baz = 1 : i32, foo = "bar"}},
     %arg2: !stablehlo.token) -> tensor<16x8xf32> {
-    // CHECK-NEXT: %[[SEND:.*]] = "stablehlo.send"(%arg0, %arg2) <{channel_handle = #stablehlo.channel_handle<handle = 1, type = 2>, is_host_transfer = true}> {mhlo.frontend_attributes = {baz = 1 : i32}, sdy.sharding = #sdy.sharding_per_value<[<@maximal_mesh, []>]>} : (tensor<16x8xf32>, !stablehlo.token) -> !stablehlo.token
-    // CHECK-NEXT: %[[RECV:.*]]:2 = "stablehlo.recv"(%[[SEND]]) <{channel_handle = #stablehlo.channel_handle<handle = 1, type = 3>, is_host_transfer = true}> {mhlo.frontend_attributes = {baz = 1 : i32}, sdy.sharding = #sdy.sharding_per_value<[<@maximal_mesh, []>, <@maximal_mesh, []>]>} : (!stablehlo.token) -> (tensor<16x8xf32>, !stablehlo.token)
+    // CHECK-NEXT: %[[SEND:.*]] = "stablehlo.send"(%arg0, %arg2) <{channel_handle = #stablehlo.channel_handle<handle = 1, type = 2>, is_host_transfer = true}> {mhlo.frontend_attributes = {baz = 1 : i32}, sdy.sharding = #sdy.sharding_per_value<[<@single_device, []>]>} : (tensor<16x8xf32>, !stablehlo.token) -> !stablehlo.token
+    // CHECK-NEXT: %[[RECV:.*]]:2 = "stablehlo.recv"(%[[SEND]]) <{channel_handle = #stablehlo.channel_handle<handle = 1, type = 3>, is_host_transfer = true}> {mhlo.frontend_attributes = {baz = 1 : i32}, sdy.sharding = #sdy.sharding_per_value<[<@single_device, []>, <@single_device, []>]>} : (!stablehlo.token) -> (tensor<16x8xf32>, !stablehlo.token)
     // CHECK-NEXT: %[[ADD:.*]] = stablehlo.add %[[RECV]]#0, %arg1 : tensor<16x8xf32>
     // CHECK-NEXT: return %[[ADD]] : tensor<16x8xf32>
     %0 = "stablehlo.send"(%arg0, %arg2) {
       channel_handle = #stablehlo.channel_handle<handle = 1, type = 2>,
       is_host_transfer = true,
-      mhlo.frontend_attributes = {baz = 1 : i32, xla.sdy.sharding = "#sdy.sharding_per_value<[<@maximal_mesh, []>]>"}
+      mhlo.frontend_attributes = {baz = 1 : i32, xla.sdy.sharding = "#sdy.sharding_per_value<[<@single_device, []>]>"}
     } : (tensor<16x8xf32>, !stablehlo.token) -> !stablehlo.token
     %1:2 = "stablehlo.recv"(%0) {
       channel_handle = #stablehlo.channel_handle<handle = 1, type = 3>,
       is_host_transfer = true,
-      mhlo.frontend_attributes = {baz = 1 : i32, xla.sdy.sharding = "#sdy.sharding_per_value<[<@maximal_mesh, []>, <@maximal_mesh, []>]>"}
+      mhlo.frontend_attributes = {baz = 1 : i32, xla.sdy.sharding = "#sdy.sharding_per_value<[<@single_device, []>, <@single_device, []>]>"}
     } : (!stablehlo.token) -> (tensor<16x8xf32>, !stablehlo.token)
     %2 = stablehlo.add %1#0, %arg1 : tensor<16x8xf32>
     return %2 : tensor<16x8xf32>
@@ -280,18 +280,18 @@ module @multiple_func_result_shardings attributes {mhlo.frontend_attributes = {x
 
 // -----
 
-module @maximal_sharding_module attributes {mhlo.frontend_attributes = {xla.sdy.meshes = "{maximal_mesh_0 = #sdy.mesh<[], device_ids=[0]>}"}} {
-  // CHECK-LABEL: @maximal_sharding_empty_tuple
-  func.func @maximal_sharding_empty_tuple(%arg0: tensor<2xi64>) -> tensor<2xi64> {
+module @single_device_sharding_module attributes {mhlo.frontend_attributes = {xla.sdy.meshes = "{single_device_0 = #sdy.mesh<[], device_ids=[0]>}"}} {
+  // CHECK-LABEL: @single_device_sharding_empty_tuple
+  func.func @single_device_sharding_empty_tuple(%arg0: tensor<2xi64>) -> tensor<2xi64> {
     // CHECK-NEXT: stablehlo.custom_call @xla_ffi_python_cpu_callback(%arg0) {
     // CHECK-SAME:   api_version = 4 : i32, backend_config = {descriptor = 126001424235520 : ui64},
     // CHECK-SAME:   has_side_effect = true, operand_layouts = [dense<0> : tensor<1xindex>], result_layouts = [],
-    // CHECK-SAME:   sdy.sharding = #sdy.sharding_per_value<[<@maximal_mesh_0, []>]>, xla_shape = "()"
+    // CHECK-SAME:   sdy.sharding = #sdy.sharding_per_value<[<@single_device_0, []>]>, xla_shape = "()"
     // CHECK-SAME: } : (tensor<2xi64>) -> ()
     // CHECK-NEXT: return %arg0 : tensor<2xi64>
     %2 = stablehlo.custom_call @xla_ffi_python_cpu_callback(%arg0) {
       api_version = 4 : i32, backend_config = {descriptor = 126001424235520 : ui64},
-      has_side_effect = true, mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding_per_value<[<@maximal_mesh_0, []>]>"},
+      has_side_effect = true, mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding_per_value<[<@single_device_0, []>]>"},
       mhlo.sharding = "{{maximal device=0}}",
       operand_layouts = [dense<0> : tensor<1xindex>], result_layouts = [], xla_shape = "()"
     } : (tensor<2xi64>) -> tuple<>

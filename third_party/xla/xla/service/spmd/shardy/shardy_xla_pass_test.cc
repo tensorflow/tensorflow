@@ -1168,16 +1168,16 @@ TEST_P(ShardyXLATest, ShardyGenerateDeviceLocalCodeCanonicalizeLayout) {
             "f32[8,16]{0,1:T(8,128)})");
 }
 
-TEST_P(ShardyXLATest, TestMaximalShardingNoResults) {
+TEST_P(ShardyXLATest, TestSingleDeviceShardingNoResults) {
   const char* const hloString = R"(
-HloModule maximal_sharding_module, entry_computation_layout={(s64[2]{0})->s64[2]{0}},
-    frontend_attributes={xla.sdy.meshes={maximal_mesh_0 = #sdy.mesh<[], device_ids=[0]>}}
+HloModule single_device_sharding_module, entry_computation_layout={(s64[2]{0})->s64[2]{0}},
+    frontend_attributes={xla.sdy.meshes={single_device_0 = #sdy.mesh<[], device_ids=[0]>}}
 
 ENTRY %main.0 (Arg_0.0: s64[2]) -> s64[2] {
   ROOT %Arg_0.0 = s64[2] parameter(0)
   %custom-call.0 = () custom-call(s64[2] %Arg_0.0), custom_call_target="xla_ffi_python_cpu_callback",
       operand_layout_constraints={s64[2]{0}}, custom_call_has_side_effect=true, api_version=API_VERSION_TYPED_FFI,
-      frontend_attributes={xla.sdy.sharding="#sdy.sharding_per_value<[<@maximal_mesh_0, []>]>"},
+      frontend_attributes={xla.sdy.sharding="#sdy.sharding_per_value<[<@single_device_0, []>]>"},
       sharding={{maximal device=0}}
 }
 )";
@@ -1249,7 +1249,7 @@ TEST_P(ShardyXLATest, WhileShardingOnlyOnFreeVariables) {
 
 TEST_P(ShardyXLATest, EmptyResultLayout) {
   const char* const hloString = R"(
-    HloModule pjit_f_, entry_computation_layout={(s64[2,2,2]{2,1,0})->()}, num_partitions=2, frontend_attributes={xla.sdy.meshes={maximal_mesh_0 = #sdy.mesh<[], device_ids=[0]>, mesh = #sdy.mesh<["x"=2]>}}
+    HloModule pjit_f_, entry_computation_layout={(s64[2,2,2]{2,1,0})->()}, num_partitions=2, frontend_attributes={xla.sdy.meshes={single_device_0 = #sdy.mesh<[], device_ids=[0]>, mesh = #sdy.mesh<["x"=2]>}}
 
     ENTRY %main.5 (Arg_0.1: s64[2,2,2]) -> () {
       %Arg_0.0 = s64[2,2,2]{2,1,0} parameter(0), sharding={devices=[2,1,1]<=[2]}, metadata={op_name="x"}
@@ -1265,7 +1265,7 @@ TEST_P(ShardyXLATest, EmptyResultLayout) {
 
 TEST_P(ShardyXLATest, EmptyOperandLayout) {
   const char* const hloString = R"(
-    HloModule pjit_f_, entry_computation_layout={()->s64[2,2]{1,0}}, num_partitions=2, frontend_attributes={xla.sdy.meshes={maximal_mesh_0 = #sdy.mesh<[], device_ids=[0]>, mesh = #sdy.mesh<["x"=2]>}}
+    HloModule pjit_f_, entry_computation_layout={()->s64[2,2]{1,0}}, num_partitions=2, frontend_attributes={xla.sdy.meshes={single_device_0 = #sdy.mesh<[], device_ids=[0]>, mesh = #sdy.mesh<["x"=2]>}}
 
     ENTRY %main.5 () -> s64[2,2] {
       ROOT %constant = s64[2,2]{1,0} constant({{1,1},{1,1}})

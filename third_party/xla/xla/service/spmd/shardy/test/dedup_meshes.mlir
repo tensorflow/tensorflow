@@ -36,10 +36,10 @@ sdy.mesh @meshA = <["a"=4, "b"=4]>
 sdy.mesh @mesh_one_device_before_empty = <["x"=1, "y"=1]>
 sdy.mesh @empty_mesh1 = <[]>
 sdy.mesh @empty_mesh2 = <[]>
-// CHECK:     sdy.mesh @maximal_mesh1 = <[], device_ids=[0]>
-// CHECK-NOT: sdy.mesh @maximal_mesh2 = <[], device_ids=[0]>
-sdy.mesh @maximal_mesh1 = <[], device_ids=[0]>
-sdy.mesh @maximal_mesh2 = <[], device_ids=[0]>
+// CHECK:     sdy.mesh @single_device_mesh1 = <[], device_ids=[0]>
+// CHECK-NOT: sdy.mesh @single_device_mesh2 = <[], device_ids=[0]>
+sdy.mesh @single_device_mesh1 = <[], device_ids=[0]>
+sdy.mesh @single_device_mesh2 = <[], device_ids=[0]>
 
 // CHECK-NOT: sdy.mesh @meshC = <["x"=4]>
 // CHECK:     sdy.mesh @meshD = <["a"=2, "b"=2]>
@@ -136,12 +136,12 @@ func.func @empty_mesh(
   return %arg0 : tensor<8x8xf32>
 }
 
-// CHECK-LABEL: @maximal_mesh
-// CHECK-SAME:  (%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@maximal_mesh1, []>})
-// CHECK-SAME:  -> (tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@maximal_mesh1, []>}) {
-func.func @maximal_mesh(
-  %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@maximal_mesh1, []>}
-) -> (tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@maximal_mesh2, []>}) {
+// CHECK-LABEL: @single_device_mesh
+// CHECK-SAME:  (%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@single_device_mesh1, []>})
+// CHECK-SAME:  -> (tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@single_device_mesh1, []>}) {
+func.func @single_device_mesh(
+  %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@single_device_mesh1, []>}
+) -> (tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@single_device_mesh2, []>}) {
   return %arg0 : tensor<8x8xf32>
 }
 

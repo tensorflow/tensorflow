@@ -4634,8 +4634,8 @@ bool HloParserImpl::ParseSingleSharding(
     return true;
   };
 
-  // Maximal sharding
-  if (mesh->IsMaximal()) {
+  // Single-device sharding
+  if (mesh->IsSingleDevice()) {
     std::vector<OpMetadata> metadata;
     if (!parse_metadata_if_present(metadata)) {
       return false;

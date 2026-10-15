@@ -191,7 +191,7 @@ TEST(MeshAndAxisTest, ValidatesAxisRef) {
 
 TEST(MeshAndAxisTest, ValidatesMeshEmptyMesh) { Mesh(); }
 
-TEST(MeshAndAxisTest, ValidatesMeshMaximalMesh) { Mesh(5); }
+TEST(MeshAndAxisTest, ValidatesMeshSingleDeviceMesh) { Mesh(5); }
 
 TEST(MeshAndAxisTest, ValidatesMesh) {
   EXPECT_DEATH(
@@ -358,7 +358,7 @@ TEST(MeshAndAxisTest, EmptyMesh) {
   EXPECT_EQ(empty_mesh, Mesh());
   EXPECT_NE(empty_mesh, Mesh(5));
   EXPECT_NE(empty_mesh, Mesh({1}, {"a"}));
-  EXPECT_FALSE(empty_mesh.IsMaximal());
+  EXPECT_FALSE(empty_mesh.IsSingleDevice());
   EXPECT_THAT(empty_mesh.ToProto(), EqualsProto(MeshProto()));
   EXPECT_EQ(empty_mesh, Mesh::FromProto(MeshProto()));
   EXPECT_EQ(empty_mesh, Mesh::FromProto(empty_mesh.ToProto()));
@@ -367,13 +367,10 @@ TEST(MeshAndAxisTest, EmptyMesh) {
 TEST(MeshAndAxisTest, SingleDeviceMesh) {
   Mesh single_device_mesh(5);
   EXPECT_TRUE(single_device_mesh.IsSingleDevice());
-  EXPECT_TRUE(single_device_mesh.IsMaximal());
   Mesh non_single_device_mesh({2, 3}, {"a", "b"});
   EXPECT_FALSE(non_single_device_mesh.IsSingleDevice());
-  EXPECT_FALSE(non_single_device_mesh.IsMaximal());
   Mesh mesh_single_axis({1}, {"a"});
   EXPECT_FALSE(mesh_single_axis.IsSingleDevice());
-  EXPECT_FALSE(mesh_single_axis.IsMaximal());
 
   EXPECT_EQ(single_device_mesh, Mesh(5));
   EXPECT_NE(single_device_mesh, Mesh(6));

@@ -388,11 +388,12 @@ HloSharding getHloShardingForOp(
     return manualAxes;
   };
 
-  bool isNoResultMaximal = op->getNumResults() == 0 && shardings.size() == 1 &&
-                           (getMeshAttr(shardings.front()).isMaximal() ||
-                            shardings.front().isFullyReplicated());
-  CHECK(shardings.size() == op->getNumResults() || isNoResultMaximal);
-  if (op->getNumResults() == 1 || isNoResultMaximal) {
+  bool isNoResultSingleDevice =
+      op->getNumResults() == 0 && shardings.size() == 1 &&
+      (getMeshAttr(shardings.front()).isSingleDevice() ||
+       shardings.front().isFullyReplicated());
+  CHECK(shardings.size() == op->getNumResults() || isNoResultSingleDevice);
+  if (op->getNumResults() == 1 || isNoResultSingleDevice) {
     ArrayRef<StringAttr> resultManualAxes =
         op->getNumResults() == 1
             ? getManualAxesForType(op->getResultTypes().front(),
@@ -453,7 +454,7 @@ NamedSharding convertToNamedSharding(
     return NamedSharding::Replicate();
   }
   // If there are no axes, convert to:
-  // - maximal sharding if the mesh has a device id
+  // - single-device sharding if the mesh has a device id
   // - else replicated sharding
   if (sdyMesh.getAxes().empty()) {
     if (!sdyMesh.getDeviceIds().empty()) {
@@ -559,7 +560,7 @@ HloSharding convertToHloSharding(
   MeshAttr mesh = getMeshAttr(sdySharding);
 
   // If there are no axes, convert to:
-  // - maximal sharding if the mesh has a device id
+  // - single-device sharding if the mesh has a device id
   // - else replicated sharding
   if (mesh.getAxes().empty()) {
     return mesh.getDeviceIds().empty()
