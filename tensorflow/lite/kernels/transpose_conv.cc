@@ -124,8 +124,18 @@ TfLiteStatus ResizeTensor(TfLiteContext* context,
 
   std::unique_ptr<TfLiteIntArray, void (*)(TfLiteIntArray*)> shape(
       TfLiteIntArrayCreate(NumElements(shape_tensor)), TfLiteIntArrayFree);
+  int positive_elements = 1;
   for (int i = 0; i < shape->size; ++i) {
-    shape->data[i] = GetTensorData<int32_t>(shape_tensor)[i];
+    const int32_t dim = GetTensorData<int32_t>(shape_tensor)[i];
+    TF_LITE_ENSURE(context, dim >= 0);
+    if (dim > 1) {
+      TF_LITE_ENSURE_MSG(context,
+                         CheckedNumElements({positive_elements, dim},
+                                            positive_elements) == kTfLiteOk,
+                         "%s",
+                         "TransposeConv output tensor has too many elements.");
+    }
+    shape->data[i] = dim;
   }
 
   return context->ResizeTensor(context, tensor_to_resize, shape.release());
@@ -226,6 +236,13 @@ TfLiteStatus ResizeCol2ImTensor(TfLiteContext* context,
   TF_LITE_ENSURE_MSG(
       context, weights_shape.CheckedSizeToDimension(/*end=*/3, col2im_columns),
       "%s", "TransposeConv col2im tensor has too many columns.");
+
+  int col2im_elements = 0;
+  TF_LITE_ENSURE_MSG(context,
+                     CheckedNumElements({col2im_rows, col2im_columns},
+                                        col2im_elements) == kTfLiteOk,
+                     "%s",
+                     "TransposeConv col2im tensor has too many elements.");
 
   std::unique_ptr<TfLiteIntArray, void (*)(TfLiteIntArray*)> col2im_shape_array(
       TfLiteIntArrayCreate(2), TfLiteIntArrayFree);
@@ -411,6 +428,22 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // Note: TOCO will reorder weights in the following format: OHWI.
   TF_LITE_ENSURE_EQ(context, SizeOfDimension(input, 3),
                     SizeOfDimension(weights, 3));
+
+  int weights_elements = 0;
+  TF_LITE_ENSURE_MSG(
+      context, CheckedNumElements(weights, weights_elements) == kTfLiteOk, "%s",
+      "TransposeConv weights tensor has too many elements.");
+  int input_spatial_elements = 0;
+  TF_LITE_ENSURE_MSG(
+      context,
+      CheckedNumElements({SizeOfDimension(input, 1), SizeOfDimension(input, 2),
+                          SizeOfDimension(input, 3)},
+                         input_spatial_elements) == kTfLiteOk,
+      "%s", "TransposeConv input spatial dimensions overflow.");
+  int input_elements = 0;
+  TF_LITE_ENSURE_MSG(context,
+                     CheckedNumElements(input, input_elements) == kTfLiteOk,
+                     "%s", "TransposeConv input tensor has too many elements.");
 
   // Allocate col2Im, transposed_weights & scratch Tensor.
   TF_LITE_ENSURE_STATUS(AllocateTemporaryTensorsIfRequired<kernel_type>(
