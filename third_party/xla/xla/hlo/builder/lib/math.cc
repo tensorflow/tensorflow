@@ -2128,7 +2128,10 @@ XlaOp Zeta(XlaOp x, XlaOp q) {
     neg_power = Pow(acc, Neg(x));
 
     // Calculating `I`.
-    XlaOp I = neg_power * acc / (x - ScalarLike(acc, 1.));
+    // Compute acc^(1-x) directly rather than as acc^-x * acc: the latter
+    // underflows to 0 for large acc, and is 0 * inf = NaN for acc = inf.
+    XlaOp x_minus_one = x - ScalarLike(acc, 1.);
+    XlaOp I = Pow(acc, Neg(x_minus_one)) / x_minus_one;
 
     // Calculating the rest of the formula – `T`.
     // Use Horner's rule for this.

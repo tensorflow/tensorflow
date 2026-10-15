@@ -4509,7 +4509,59 @@ diff --ruN a/stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir b/st
  // CHECK:         }
  func.func @asin_f64(%arg : tensor<f64>) -> tensor<f64> {
    %result = "chlo.asin"(%arg) : (tensor<f64>) -> tensor<f64>
-@@ -5424,6 +5416,55 @@
+@@ -2432,9 +2424,10 @@
+ // CHECK:           %[[ADD_18:.*]] = stablehlo.add %[[ADD_16]], %[[CONSTANT_1]] : tensor<f32>
+ // CHECK:           %[[POWER_10:.*]] = stablehlo.power %[[ADD_18]], %[[NEGATE_0]] : tensor<f32>
+ // CHECK:           %[[CONSTANT_2:.*]] = stablehlo.constant dense<1.000000e+00> : tensor<f32>
+-// CHECK:           %[[MULTIPLY_0:.*]] = stablehlo.multiply %[[POWER_10]], %[[ADD_18]] : tensor<f32>
+ // CHECK:           %[[SUBTRACT_0:.*]] = stablehlo.subtract %[[CONVERT_0]], %[[CONSTANT_2]] : tensor<f32>
+-// CHECK:           %[[DIVIDE_0:.*]] = stablehlo.divide %[[MULTIPLY_0]], %[[SUBTRACT_0]] : tensor<f32>
++// CHECK:           %[[NEGATE_1:.*]] = stablehlo.negate %[[SUBTRACT_0]] : tensor<f32>
++// CHECK:           %[[POWER_11:.*]] = stablehlo.power %[[ADD_18]], %[[NEGATE_1]] : tensor<f32>
++// CHECK:           %[[DIVIDE_0:.*]] = stablehlo.divide %[[POWER_11]], %[[SUBTRACT_0]] : tensor<f32>
+ // CHECK:           %[[MULTIPLY_1:.*]] = stablehlo.multiply %[[ADD_18]], %[[ADD_18]] : tensor<f32>
+ // CHECK:           %[[DIVIDE_1:.*]] = stablehlo.divide %[[CONSTANT_1]], %[[MULTIPLY_1]] : tensor<f32>
+ // CHECK:           %[[CONSTANT_3:.*]] = stablehlo.constant dense<2.200000e+01> : tensor<f32>
+@@ -2710,9 +2703,10 @@
+ // CHECK:           %[[ADD_40:.*]] = stablehlo.add %[[ADD_38]], %[[CONSTANT_29]] : tensor<f32>
+ // CHECK:           %[[POWER_10:.*]] = stablehlo.power %[[ADD_40]], %[[NEGATE_2]] : tensor<f32>
+ // CHECK:           %[[CONSTANT_30:.*]] = stablehlo.constant dense<1.000000e+00> : tensor<f32>
+-// CHECK:           %[[MULTIPLY_3:.*]] = stablehlo.multiply %[[POWER_10]], %[[ADD_40]] : tensor<f32>
+ // CHECK:           %[[SUBTRACT_7:.*]] = stablehlo.subtract %[[ADD_0]], %[[CONSTANT_30]] : tensor<f32>
+-// CHECK:           %[[DIVIDE_10:.*]] = stablehlo.divide %[[MULTIPLY_3]], %[[SUBTRACT_7]] : tensor<f32>
++// CHECK:           %[[NEGATE_4:.*]] = stablehlo.negate %[[SUBTRACT_7]] : tensor<f32>
++// CHECK:           %[[POWER_11:.*]] = stablehlo.power %[[ADD_40]], %[[NEGATE_4]] : tensor<f32>
++// CHECK:           %[[DIVIDE_10:.*]] = stablehlo.divide %[[POWER_11]], %[[SUBTRACT_7]] : tensor<f32>
+ // CHECK:           %[[MULTIPLY_4:.*]] = stablehlo.multiply %[[ADD_40]], %[[ADD_40]] : tensor<f32>
+ // CHECK:           %[[DIVIDE_11:.*]] = stablehlo.divide %[[CONSTANT_29]], %[[MULTIPLY_4]] : tensor<f32>
+ // CHECK:           %[[CONSTANT_31:.*]] = stablehlo.constant dense<2.200000e+01> : tensor<f32>
+@@ -3103,9 +3097,10 @@
+ // CHECK:           %[[ADD_40:.*]] = stablehlo.add %[[ADD_38]], %[[CONSTANT_29]] : tensor<f64>
+ // CHECK:           %[[POWER_10:.*]] = stablehlo.power %[[ADD_40]], %[[NEGATE_2]] : tensor<f64>
+ // CHECK:           %[[CONSTANT_30:.*]] = stablehlo.constant dense<1.000000e+00> : tensor<f64>
+-// CHECK:           %[[MULTIPLY_3:.*]] = stablehlo.multiply %[[POWER_10]], %[[ADD_40]] : tensor<f64>
+ // CHECK:           %[[SUBTRACT_7:.*]] = stablehlo.subtract %[[ADD_0]], %[[CONSTANT_30]] : tensor<f64>
+-// CHECK:           %[[DIVIDE_10:.*]] = stablehlo.divide %[[MULTIPLY_3]], %[[SUBTRACT_7]] : tensor<f64>
++// CHECK:           %[[NEGATE_4:.*]] = stablehlo.negate %[[SUBTRACT_7]] : tensor<f64>
++// CHECK:           %[[POWER_11:.*]] = stablehlo.power %[[ADD_40]], %[[NEGATE_4]] : tensor<f64>
++// CHECK:           %[[DIVIDE_10:.*]] = stablehlo.divide %[[POWER_11]], %[[SUBTRACT_7]] : tensor<f64>
+ // CHECK:           %[[MULTIPLY_4:.*]] = stablehlo.multiply %[[ADD_40]], %[[ADD_40]] : tensor<f64>
+ // CHECK:           %[[DIVIDE_11:.*]] = stablehlo.divide %[[CONSTANT_29]], %[[MULTIPLY_4]] : tensor<f64>
+ // CHECK:           %[[CONSTANT_31:.*]] = stablehlo.constant dense<2.200000e+01> : tensor<f64>
+@@ -3498,9 +3493,10 @@
+ // CHECK:           %[[ADD_40:.*]] = stablehlo.add %[[ADD_38]], %[[CONSTANT_29]] : tensor<f32>
+ // CHECK:           %[[POWER_10:.*]] = stablehlo.power %[[ADD_40]], %[[NEGATE_2]] : tensor<f32>
+ // CHECK:           %[[CONSTANT_30:.*]] = stablehlo.constant dense<1.000000e+00> : tensor<f32>
+-// CHECK:           %[[MULTIPLY_3:.*]] = stablehlo.multiply %[[POWER_10]], %[[ADD_40]] : tensor<f32>
+ // CHECK:           %[[SUBTRACT_7:.*]] = stablehlo.subtract %[[ADD_0]], %[[CONSTANT_30]] : tensor<f32>
+-// CHECK:           %[[DIVIDE_10:.*]] = stablehlo.divide %[[MULTIPLY_3]], %[[SUBTRACT_7]] : tensor<f32>
++// CHECK:           %[[NEGATE_4:.*]] = stablehlo.negate %[[SUBTRACT_7]] : tensor<f32>
++// CHECK:           %[[POWER_11:.*]] = stablehlo.power %[[ADD_40]], %[[NEGATE_4]] : tensor<f32>
++// CHECK:           %[[DIVIDE_10:.*]] = stablehlo.divide %[[POWER_11]], %[[SUBTRACT_7]] : tensor<f32>
+ // CHECK:           %[[MULTIPLY_4:.*]] = stablehlo.multiply %[[ADD_40]], %[[ADD_40]] : tensor<f32>
+ // CHECK:           %[[DIVIDE_11:.*]] = stablehlo.divide %[[CONSTANT_29]], %[[MULTIPLY_4]] : tensor<f32>
+ // CHECK:           %[[CONSTANT_31:.*]] = stablehlo.constant dense<2.200000e+01> : tensor<f32>
+@@ -5424,6 +5420,55 @@
  
  // -----
  
@@ -12601,7 +12653,23 @@ diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stable
    }
    return {};
  }
-@@ -2520,7 +2522,7 @@
+@@ -1747,9 +1749,13 @@
+   acc = AddOp::create(rewriter, loc, acc, one);
+   qNegPower = PowOp::create(rewriter, loc, acc, negX);
+   Value oneLikeX = getConstantLike(rewriter, loc, 1.0, x);
++  // Compute acc^(1-x) directly rather than as acc^-x * acc: the latter
++  // underflows to 0 for large acc, and is inf * 0 = NaN for acc = inf.
++  Value xMinusOne = SubtractOp::create(rewriter, loc, x, oneLikeX);
++  Value accPowOneMinusX = PowOp::create(
++      rewriter, loc, acc, NegOp::create(rewriter, loc, xMinusOne));
+   Value correctionEulerMaclaurin =
+-      DivOp::create(rewriter, loc, MulOp::create(rewriter, loc, qNegPower, acc),
+-                    SubtractOp::create(rewriter, loc, x, oneLikeX));
++      DivOp::create(rewriter, loc, accPowOneMinusX, xMinusOne);
+ 
+   // Manual reciprocal of the square root as RsqrtOp produces different results
+   Value rsqrtAcc =
+@@ -2520,7 +2526,7 @@
      }
      Value dotGeneral = mlir::stablehlo::DotGeneralOp::create(
          rewriter, op.getLoc(), resultType, ValueRange{lhsMasked, rhsReshaped},
@@ -12610,7 +12678,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stable
  
      if (i == 0) {
        out = dotGeneral;
-@@ -2672,7 +2674,7 @@
+@@ -2672,7 +2678,7 @@
      }
      Value dotGeneral = mlir::stablehlo::DotGeneralOp::create(
          rewriter, op.getLoc(), RankedTensorType::get(resultShape, outDType),
@@ -12619,7 +12687,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stable
  
      results.push_back(dotGeneral);
      start = limit;
-@@ -2747,7 +2749,7 @@
+@@ -2747,7 +2753,7 @@
    }
    rewriter.replaceOpWithNewOp<mlir::stablehlo::DotGeneralOp>(
        op, op.getResult().getType(), ValueRange{op.getLhs(), op.getRhs()},
@@ -12628,7 +12696,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stable
    return success();
  }
  
-@@ -2930,8 +2932,18 @@
+@@ -2930,8 +2936,18 @@
        SmallVector<int64_t> sliceShape(inputType.getShape().begin(),
                                        inputType.getShape().end());
        sliceShape[dim] = 1;
@@ -12649,7 +12717,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stable
  
        Value slice;
        if (inputType.hasStaticShape()) {
-@@ -2980,9 +2992,18 @@
+@@ -2980,9 +2996,18 @@
        for (int64_t d = 0; d < rank; ++d) {
          if (d != dim) resultShape.push_back(sliceShape[d]);
        }
@@ -12669,7 +12737,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stable
            slice);
        slicedInputs.push_back(reshaped);
      }
-@@ -3004,9 +3025,20 @@
+@@ -3004,9 +3029,20 @@
        SmallVector<int64_t> elementShape(outputType.getShape().begin(),
                                          outputType.getShape().end());
        elementShape[dim] = 1;
