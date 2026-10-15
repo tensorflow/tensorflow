@@ -46,6 +46,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"
+#include "hwy//targets.h"
 #include "xla/array.h"
 #include "xla/ef57.h"
 #include "xla/hlo/testlib/test.h"
@@ -66,26 +67,38 @@ ABSL_FLAG(int, transpose_num_random_testcases, 10,
 
 namespace xla {
 
+// Number of bs x bs tiles along each dimension of the macroblocks used by the
+// macro-kernel test and benchmark.
 template <typename T, int bs>
-void TestMicroKernelEquivalence() {
-  // Test both tightly-packed tiles (0 padding) and tiles with 64 bytes of
-  // padding between rows (which exercises wide-stride / rectangular kernels).
-  static_assert(64 % sizeof(T) == 0);
+constexpr int BenchmarkOuterBlockSize() {
+  int max_by_elems = kMaxOuterBlockElems / bs;
+  int max_by_bytes = kMaxSquare128StrideBytes / (bs * sizeof(T));
+  return std::max(1, std::min(max_by_elems, max_by_bytes));
+}
 
-  for (int input_stride : {bs, bs + static_cast<int>(64 / sizeof(T))}) {
-    for (int output_stride : {bs, bs + static_cast<int>(64 / sizeof(T))}) {
-      std::vector<T> input(bs * input_stride);
-      std::vector<T> expected_output(bs * output_stride);
-      std::vector<T> actual_output(bs * output_stride);
+// Checks that `kernel(a, lda, b, ldb)` transposes an n x n matrix of T, where
+// n = outer_bs * bs.
+template <typename T, int bs, typename Kernel>
+void CheckTransposeKernel(int outer_bs, Kernel kernel) {
+  // Test both tightly-packed rows (0 padding) and rows with 64 bytes of
+  // padding (which exercises wide-stride / rectangular kernels).
+  static_assert(64 % sizeof(T) == 0);
+  const int n = outer_bs * bs;
+
+  for (int input_stride : {n, n + static_cast<int>(64 / sizeof(T))}) {
+    for (int output_stride : {n, n + static_cast<int>(64 / sizeof(T))}) {
+      std::vector<T> input(n * input_stride);
+      std::vector<T> expected_output(n * output_stride);
+      std::vector<T> actual_output(n * output_stride);
 
       // Initialize input
-      for (int i = 0; i < bs * input_stride; ++i) {
+      for (int i = 0; i < n * input_stride; ++i) {
         input[i] = static_cast<T>(static_cast<float>(i % 100));
       }
 
       // Compute reference
-      for (int row = 0; row < bs; ++row) {
-        for (int col = 0; col < bs; ++col) {
+      for (int row = 0; row < n; ++row) {
+        for (int col = 0; col < n; ++col) {
           expected_output[col * output_stride + row] =
               input[row * input_stride + col];
         }
@@ -93,47 +106,143 @@ void TestMicroKernelEquivalence() {
 
       const int64_t lda = input_stride * sizeof(T);
       const int64_t ldb = output_stride * sizeof(T);
-      TransposeMicroKernel<T, bs>::Apply(
-          reinterpret_cast<const char*>(input.data()), lda,
-          reinterpret_cast<char*>(actual_output.data()), ldb);
+      kernel(reinterpret_cast<const char*>(input.data()), lda,
+             reinterpret_cast<char*>(actual_output.data()), ldb);
 
-      EXPECT_EQ(0, std::memcmp(expected_output.data(), actual_output.data(),
-                               bs * ldb))
+      EXPECT_EQ(
+          0, std::memcmp(expected_output.data(), actual_output.data(), n * ldb))
           << "Mismatch for sizeof(T)=" << sizeof(T) << " bs=" << bs
-          << " lda=" << lda << " ldb=" << ldb;
+          << " outer_bs=" << outer_bs << " lda=" << lda << " ldb=" << ldb;
     }
   }
 }
 
+template <typename T, int bs>
+void TestMicroKernelEquivalence() {
+  CheckTransposeKernel<T, bs>(
+      /*outer_bs=*/1, [](const char* a, int64_t lda, char* b, int64_t ldb) {
+        TransposeMicroKernelDispatch<T, bs>(a, lda, b, ldb);
+      });
+}
+
+template <typename T, int bs>
+void TestMacroKernelEquivalence() {
+  constexpr int kOuterBs = BenchmarkOuterBlockSize<T, bs>();
+  CheckTransposeKernel<T, bs>(
+      kOuterBs, [](const char* a, int64_t lda, char* b, int64_t ldb) {
+        TransposeMacroKernelDispatch<T, bs>(a, lda, kOuterBs, b, ldb, kOuterBs);
+      });
+}
+
+// TODO(b/543906735): Remove along with the legacy SIMD intrinsic kernels once
+// transpose.cc uses the Highway kernels.
+template <typename T, int bs>
+void TestLegacyMicroKernelEquivalence() {
+  CheckTransposeKernel<T, bs>(
+      /*outer_bs=*/1, [](const char* a, int64_t lda, char* b, int64_t ldb) {
+        TransposeMicroKernel<T, bs>::Apply(a, lda, b, ldb);
+      });
+}
+
 TEST(TransposeMicroKernelTest, ExactEquivalence) {
+  for (int64_t target : hwy::SupportedAndGeneratedTargets()) {
+    hwy::SetSupportedTargetsForTest(target);
+
+    // TransposeMicroKernel256Square is triggered when a logical row of the tile
+    // (bs * sizeof(T)) is 256 bits (32 bytes).
+    TestMicroKernelEquivalence<int8_t, 32>();
+    TestMicroKernelEquivalence<int16_t, 16>();
+    TestMicroKernelEquivalence<float, 8>();
+    TestMicroKernelEquivalence<int64_t, 4>();
+    TestMicroKernelEquivalence<absl::uint128, 2>();
+
+    // TransposeMicroKernel128 or TransposeMicroKernel256Rect is triggered when
+    // a logical row of the tile (bs * sizeof(T)) is 128 bits (16 bytes).
+    // TransposeMicroKernel128 operates on 128-bit blocks when gathering from
+    // memory (lda >= ldb && lda <= 64B) while TransposeMicroKernel256Rect packs
+    // two rows into 256-bit vectors when scattering to memory (ldb > lda) or
+    // for large strides.
+    TestMicroKernelEquivalence<int8_t, 16>();
+    TestMicroKernelEquivalence<int16_t, 8>();
+    TestMicroKernelEquivalence<bfloat16, 8>();
+    TestMicroKernelEquivalence<float, 4>();
+    TestMicroKernelEquivalence<int64_t, 2>();
+
+    // Smaller or larger cases fall back to TransposeMicroKernel128 or scalar
+    // loop.
+    TestMicroKernelEquivalence<int8_t, 8>();
+    TestMicroKernelEquivalence<int16_t, 4>();
+    TestMicroKernelEquivalence<bfloat16, 4>();
+    TestMicroKernelEquivalence<float, 2>();
+    TestMicroKernelEquivalence<int8_t, 4>();
+    TestMicroKernelEquivalence<int16_t, 2>();
+    TestMicroKernelEquivalence<int8_t, 2>();
+    TestMicroKernelEquivalence<int8_t, 64>();
+  }
+  hwy::SetSupportedTargetsForTest(0);
+}
+
+// Same tile shapes as above, but transposing a macroblock of
+// BenchmarkOuterBlockSize() x BenchmarkOuterBlockSize() tiles.
+TEST(TransposeMacroKernelTest, ExactEquivalence) {
+  for (int64_t target : hwy::SupportedAndGeneratedTargets()) {
+    hwy::SetSupportedTargetsForTest(target);
+
+    TestMacroKernelEquivalence<int8_t, 32>();
+    TestMacroKernelEquivalence<int16_t, 16>();
+    TestMacroKernelEquivalence<float, 8>();
+    TestMacroKernelEquivalence<int64_t, 4>();
+    TestMacroKernelEquivalence<absl::uint128, 2>();
+
+    TestMacroKernelEquivalence<int8_t, 16>();
+    TestMacroKernelEquivalence<int16_t, 8>();
+    TestMacroKernelEquivalence<bfloat16, 8>();
+    TestMacroKernelEquivalence<float, 4>();
+    TestMacroKernelEquivalence<int64_t, 2>();
+
+    TestMacroKernelEquivalence<int8_t, 8>();
+    TestMacroKernelEquivalence<int16_t, 4>();
+    TestMacroKernelEquivalence<bfloat16, 4>();
+    TestMacroKernelEquivalence<float, 2>();
+    TestMacroKernelEquivalence<int8_t, 4>();
+    TestMacroKernelEquivalence<int16_t, 2>();
+    TestMacroKernelEquivalence<int8_t, 2>();
+    TestMacroKernelEquivalence<int8_t, 64>();
+  }
+  hwy::SetSupportedTargetsForTest(0);
+}
+
+// TODO(b/543906735): Remove along with the legacy SIMD intrinsic kernels once
+// transpose.cc uses the Highway kernels.
+TEST(TransposeMicroKernelTest, LegacyExactEquivalence) {
   // AvxSquareTransposeMicroKernelImpl is triggered when a logical row of the
   // tile (bs * sizeof(T)) is exactly 256 bits to fit in __m256i.
-  TestMicroKernelEquivalence<int8_t, 32>();
-  TestMicroKernelEquivalence<int16_t, 16>();
-  TestMicroKernelEquivalence<float, 8>();
-  TestMicroKernelEquivalence<int64_t, 4>();
-  TestMicroKernelEquivalence<absl::uint128, 2>();
+  TestLegacyMicroKernelEquivalence<int8_t, 32>();
+  TestLegacyMicroKernelEquivalence<int16_t, 16>();
+  TestLegacyMicroKernelEquivalence<float, 8>();
+  TestLegacyMicroKernelEquivalence<int64_t, 4>();
+  TestLegacyMicroKernelEquivalence<absl::uint128, 2>();
 
   // SseSquareTransposeMicroKernelImpl or AvxRectangularTransposeMicroKernelImpl
   // is triggered when a logical row of the tile (bs * sizeof(T)) is exactly
   // 128 bits. SseSquare operates directly on __m128i when gathering from memory
   // (lda >= ldb && lda <= 64B) while AvxRectangular packs two rows into __m256i
   // when scattering to memory (ldb > lda) or for large strides.
-  TestMicroKernelEquivalence<int8_t, 16>();
-  TestMicroKernelEquivalence<int16_t, 8>();
-  TestMicroKernelEquivalence<bfloat16, 8>();
-  TestMicroKernelEquivalence<float, 4>();
-  TestMicroKernelEquivalence<int64_t, 2>();
+  TestLegacyMicroKernelEquivalence<int8_t, 16>();
+  TestLegacyMicroKernelEquivalence<int16_t, 8>();
+  TestLegacyMicroKernelEquivalence<bfloat16, 8>();
+  TestLegacyMicroKernelEquivalence<float, 4>();
+  TestLegacyMicroKernelEquivalence<int64_t, 2>();
 
   // Smaller or larger cases fall back to either Vec128 or a for loop.
-  TestMicroKernelEquivalence<int8_t, 8>();
-  TestMicroKernelEquivalence<int16_t, 4>();
-  TestMicroKernelEquivalence<bfloat16, 4>();
-  TestMicroKernelEquivalence<float, 2>();
-  TestMicroKernelEquivalence<int8_t, 4>();
-  TestMicroKernelEquivalence<int16_t, 2>();
-  TestMicroKernelEquivalence<int8_t, 2>();
-  TestMicroKernelEquivalence<int8_t, 64>();
+  TestLegacyMicroKernelEquivalence<int8_t, 8>();
+  TestLegacyMicroKernelEquivalence<int16_t, 4>();
+  TestLegacyMicroKernelEquivalence<bfloat16, 4>();
+  TestLegacyMicroKernelEquivalence<float, 2>();
+  TestLegacyMicroKernelEquivalence<int8_t, 4>();
+  TestLegacyMicroKernelEquivalence<int16_t, 2>();
+  TestLegacyMicroKernelEquivalence<int8_t, 2>();
+  TestLegacyMicroKernelEquivalence<int8_t, 64>();
 }
 
 class TestTransposePlan : public TransposePlan {
@@ -1386,13 +1495,6 @@ enum class StrideMode {
   kWideScatter,    // lda < ldb (exercises AvxRectangular scatter)
 };
 
-template <typename T, int bs>
-constexpr int BenchmarkOuterBlockSize() {
-  int max_by_elems = kMaxOuterBlockElems / bs;
-  int max_by_bytes = kMaxSquare128StrideBytes / (bs * sizeof(T));
-  return std::max(1, std::min(max_by_elems, max_by_bytes));
-}
-
 template <typename T, int bs, StrideMode kStrideMode = StrideMode::kTight>
 void BM_TransposeMicroKernel(::testing::benchmark::State& state) {
   constexpr int kOuterBs = BenchmarkOuterBlockSize<T, bs>();
@@ -1416,13 +1518,7 @@ void BM_TransposeMicroKernel(::testing::benchmark::State& state) {
     benchmark::DoNotOptimize(lda);
     benchmark::DoNotOptimize(ldb);
     benchmark::DoNotOptimize(outer_bs);
-    for (int i = 0; i < outer_bs; ++i) {
-      for (int j = 0; j < outer_bs; ++j) {
-        TransposeMicroKernel<T, bs>::Apply(
-            a + bs * j * lda + i * bs * sizeof(T), lda,
-            b + bs * i * ldb + j * bs * sizeof(T), ldb);
-      }
-    }
+    TransposeMacroKernelDispatch<T, bs>(a, lda, outer_bs, b, ldb, outer_bs);
     benchmark::ClobberMemory();
   }
   state.SetBytesProcessed(state.iterations() * kOuterBs * kOuterBs * bs * bs *
