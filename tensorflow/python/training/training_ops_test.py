@@ -698,6 +698,7 @@ class TrainingOpsTest(TensorFlowTestCase):
         )
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.disable_xla("Tests C++ kernel validation in training_op_helpers.h")
   def testResourceVariableDtypeMismatch(self):
     # A resource variable whose dtype differs from optimizer dtype T
     # previously caused a fatal CHECK failure in CheckTypeAndIsAligned
