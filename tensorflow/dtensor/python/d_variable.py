@@ -181,14 +181,11 @@ class DVariable(resource_variable_ops.ResourceVariable):
         # The default layout scope allows us to correctly specify the output
         # layout of the tf.RestoreV2 that will be called
         #
-        # Passing shard_info with the correct shape allows the tf.RestoreV2
-        # ShapeInference to extract the shape. Scalar tensors (shape=()) can't
-        # be sliced/sharded, so they must use shard_info=None rather than a
-        # ShardInfo with an empty shape and offset (which would otherwise
-        # produce an invalid " " shape_and_slice spec for RestoreV2). Check
-        # `len(shape) > 0` rather than truthiness: an empty tuple () is
-        # falsy, but a scalar tf.TensorShape([]) is truthy even though it
-        # also has length 0, so a plain `if shape` would miss that case.
+        # Passing shard_info with the correct shape lets tf.RestoreV2 extract
+        # the shape. Scalars can't be sharded, so they use shard_info=None
+        # instead of an empty-shape ShardInfo (which RestoreV2 rejects).
+        # Use `len(shape) > 0`, not truthiness: a scalar tf.TensorShape([])
+        # is truthy despite having length 0.
         shard_info = (
             trackable.ShardInfo(shape=shape, offset=[0] * len(shape))
             if len(shape) > 0
