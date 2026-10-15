@@ -105,7 +105,8 @@ func.func @uniform_quantize_half_integer_rounding(%input: tensor<6xf32>) -> tens
 func.func @uniform_quantize_per_axis_rounding(%input: tensor<3x2xf32>) -> tensor<3x2xi8> {
   %scales = "tf.Const"() {value = dense<[1.0, 2.0]> : tensor<2xf32>} : () -> tensor<2xf32>
   %zps = "tf.Const"() {value = dense<[0, 13]> : tensor<2xi32>} : () -> tensor<2xi32>
-  // CHECK: mhlo.constant{{.*}}dense<[[1.000000e+00, 5.000000e-01]]> : tensor<1x2xf32>
+  // CHECK: mhlo.constant
+  // CHECK-SAME{LITERAL}: dense<[[1.000000e+00, 5.000000e-01]]> : tensor<1x2xf32>
   // CHECK: chlo.broadcast_multiply {{.*}} : (tensor<3x2xf32>, tensor<1x2xf32>) -> tensor<3x2xf32>
   // CHECK: mhlo.floor
   // CHECK: mhlo.reshape {{.*}} : (tensor<2xi64>) -> tensor<1x2xi64>
@@ -125,7 +126,8 @@ func.func @uniform_quantize_per_axis_rounding(%input: tensor<3x2xf32>) -> tensor
 func.func @uniform_quantize_per_axis_zero_rounding(%input: tensor<2x3xf32>) -> tensor<2x3xi8> {
   %scales = "tf.Const"() {value = dense<[1.0, 2.0]> : tensor<2xf32>} : () -> tensor<2xf32>
   %zps = "tf.Const"() {value = dense<[0, 13]> : tensor<2xi32>} : () -> tensor<2xi32>
-  // CHECK: mhlo.constant{{.*}}dense<[[1.000000e+00], [5.000000e-01]]> : tensor<2x1xf32>
+  // CHECK: mhlo.constant
+  // CHECK-SAME{LITERAL}: dense<[[1.000000e+00], [5.000000e-01]]> : tensor<2x1xf32>
   // CHECK: chlo.broadcast_multiply {{.*}} : (tensor<2x3xf32>, tensor<2x1xf32>) -> tensor<2x3xf32>
   // CHECK: mhlo.floor
   // CHECK: mhlo.reshape {{.*}} : (tensor<2xi64>) -> tensor<2x1xi64>
