@@ -378,6 +378,26 @@ class ConvertUniformQuantizeOp
     const Location loc = op.getLoc();
     auto input_type = mlir::cast<TensorType>(op.getInput().getType());
     const auto wide_type = input_type.clone(rewriter.getI64Type());
+    ShapedType scale_type = scales.getType();
+    const auto zp_type = mlir::cast<TensorType>(op.getZeroPoints().getType())
+                             .clone(rewriter.getI64Type());
+    TensorType zp_broadcast_type = zp_type;
+    const int64_t quantization_axis =
+        static_cast<int64_t>(op.getQuantizationAxis());
+    if (quantization_axis >= 0) {
+      auto ranked_input = mlir::dyn_cast<RankedTensorType>(input_type);
+      if (!ranked_input || quantization_axis >= ranked_input.getRank()) {
+        return failure();
+      }
+      // CHLO only supports explicit different-rank broadcasts along trailing
+      // dimensions. Use same-rank NumPy broadcasting for any quantization axis.
+      SmallVector<int64_t> broadcast_shape(ranked_input.getRank(), 1);
+      broadcast_shape[quantization_axis] = scales.getNumElements();
+      scale_type =
+          RankedTensorType::get(broadcast_shape, rewriter.getF32Type());
+      zp_broadcast_type =
+          RankedTensorType::get(broadcast_shape, rewriter.getI64Type());
+    }
     const auto scalar_f32 = RankedTensorType::get({}, rewriter.getF32Type());
     const auto scalar_i64 = RankedTensorType::get({}, rewriter.getI64Type());
     auto float_constant = [&](float value) {
@@ -394,16 +414,11 @@ class ConvertUniformQuantizeOp
 
     auto inv_scale = mhlo::ConstantOp::create(
         rewriter, loc,
-        DenseFPElementsAttr::get(scales.getType(),
+        DenseFPElementsAttr::get(scale_type,
                                  llvm::ArrayRef<float>(inv_scales)));
-    DenseI64ArrayAttr broadcast_dims;
-    const int64_t quantization_axis =
-        static_cast<int64_t>(op.getQuantizationAxis());
-    if (quantization_axis >= 0) {
-      broadcast_dims = rewriter.getDenseI64ArrayAttr({quantization_axis});
-    }
-    Value scaled = chlo::BroadcastMulOp::create(
-        rewriter, loc, input_type, op.getInput(), inv_scale, broadcast_dims);
+    Value scaled =
+        chlo::BroadcastMulOp::create(rewriter, loc, input_type, op.getInput(),
+                                     inv_scale, DenseI64ArrayAttr{});
     Value shifted =
         chlo::BroadcastAddOp::create(rewriter, loc, input_type, scaled,
                                      float_constant(0.5f), DenseI64ArrayAttr{});
@@ -419,12 +434,14 @@ class ConvertUniformQuantizeOp
                                            float_constant(0x1p32f),
                                            DenseI64ArrayAttr{});
     Value integer = mhlo::ConvertOp::create(rewriter, loc, wide_type, rounded);
-    const auto zp_type = mlir::cast<TensorType>(op.getZeroPoints().getType())
-                             .clone(rewriter.getI64Type());
     Value zero_points =
         mhlo::ConvertOp::create(rewriter, loc, zp_type, op.getZeroPoints());
+    if (quantization_axis >= 0) {
+      zero_points = mhlo::ReshapeOp::create(rewriter, loc, zp_broadcast_type,
+                                           zero_points);
+    }
     Value result = chlo::BroadcastAddOp::create(
-        rewriter, loc, wide_type, integer, zero_points, broadcast_dims);
+        rewriter, loc, wide_type, integer, zero_points, DenseI64ArrayAttr{});
     result = chlo::BroadcastMaxOp::create(
         rewriter, loc, wide_type, result,
         int_constant(op.getQuantizationMinVal()), DenseI64ArrayAttr{});
