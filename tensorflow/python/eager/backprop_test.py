@@ -196,6 +196,22 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(g(5.)[0], 1.0)
     self.assertAllEqual(g(50.)[0], 100.0)
 
+  def testWhereGradientInlineReduceSum(self):
+    # Regression test for
+    # https://github.com/tensorflow/tensorflow/issues/115116
+    # tf.where with a condition derived from the same variable should
+    # produce a non-None gradient when the loss is computed with
+    # tf.reduce_sum.
+    x = variables.Variable([-1.0, 2.0, -3.0])
+    with backprop.GradientTape() as tape:
+      y = array_ops.where(x > 0, x, x * x)
+      loss = math_ops.reduce_sum(y)
+    grad = tape.gradient(loss, x)
+    self.assertIsNotNone(grad,
+                        "Gradient of tf.where with inline reduce_sum "
+                        "should not be None (see issue #115116)")
+    self.assertAllClose(grad.numpy(), [-2.0, 1.0, -6.0])
+
   def testTwoTargets(self):
     with backprop.GradientTape() as t:
       x = constant_op.constant(3.0)

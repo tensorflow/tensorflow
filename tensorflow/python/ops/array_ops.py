@@ -4610,6 +4610,21 @@ def where_v2(condition, x=None, y=None, name=None):
   because the gradient calculation for `tf.where` combines the two branches, for
   performance reasons.
 
+  Note that `tf.where` is an element-wise selector, not a piecewise function.
+  When the condition depends on the same variable being differentiated, the
+  gradient is computed by backpropagating through both branches and masking,
+  which may produce `None` in some cases (see
+  https://github.com/tensorflow/tensorflow/issues/115116). A workaround is to
+  use arithmetic masking:
+
+  >>> x = tf.Variable([-1.0, 2.0, -3.0])
+  >>> with tf.GradientTape() as tape:
+  ...   mask = tf.cast(x > 0, tf.float32)
+  ...   y = mask * x + (1.0 - mask) * (x * x)
+  ...   loss = tf.reduce_sum(y)
+  >>> tape.gradient(loss, x)
+  <tf.Tensor: shape=(3,), dtype=float32, numpy=array([-2.,  1., -6.], dtype=float32)>
+
   A workaround is to use an inner `tf.where` to ensure the function has
   no asymptote, and to avoid computing a value whose gradient is `NaN` by
   replacing dangerous inputs with safe inputs.
