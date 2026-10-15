@@ -16,12 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_FLASH_ATTENTION_FLASH_ATTENTION_OP_GPU_CU_H_
 #define TENSORFLOW_CORE_KERNELS_FLASH_ATTENTION_FLASH_ATTENTION_OP_GPU_CU_H_
 #if GOOGLE_CUDA
+#define EIGEN_USE_GPU
 
 #include <cstddef>
 #include <initializer_list>
 #include <utility>
 
 #include "absl/status/status.h"
+#include "tensorflow/core/kernels/flash_attention/flash_attention_op.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 

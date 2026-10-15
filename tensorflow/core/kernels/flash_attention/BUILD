@@ -7,7 +7,7 @@
 #   (@flash_attention). Everything else uses the op's own memory-efficient CUDA
 #   or CPU kernels.
 
-load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library", "if_cuda", "if_cuda_clang")
+load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library", "if_cuda")
 load("//tensorflow:tensorflow.bzl", "if_oss")
 load("//tensorflow:tensorflow.default.bzl", "tf_kernel_library")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
@@ -39,6 +39,7 @@ cc_library(
     hdrs = glob(["torch_shim/**"]),
     includes = ["torch_shim"],
     visibility = ["//visibility:private"],
+    deps = ["@local_config_cuda//cuda:cuda_headers"],
 )
 
 # The FlashAttention-2 kernels and a TF-independent C++ API for them. Where
@@ -53,16 +54,19 @@ cuda_library(
         "-Wno-unused-variable",
         "-Wno-unused-but-set-variable",
         "-Wno-missing-braces",
-    ] + if_oss(if_cuda_clang([
-        # Overrides the toolchain's "--maxrregcount=0", which makes ptxas
-        # clamp kernels without launch bounds to too few registers for FA2.
-        "-Xcuda-ptxas",
-        "--maxrregcount=255",
-        # ptxas -O3 on the backward kernels can exceed the CI's 1h action
-        # timeout.
-        "-Xcuda-ptxas",
-        "-O2",
-    ] + ["--no-cuda-gpu-arch=" + arch for arch in _FA2_PRE_SM80_ARCHS])),
+    ] + if_oss(select({
+        "//tensorflow:is_cuda_clang": [
+            # Overrides the toolchain's "--maxrregcount=0", which makes ptxas
+            # clamp kernels without launch bounds to too few registers for FA2.
+            "-Xcuda-ptxas",
+            "--maxrregcount=255",
+            # ptxas -O3 on the backward kernels can exceed the CI's 1h action
+            # timeout.
+            "-Xcuda-ptxas",
+            "-O2",
+        ] + ["--no-cuda-gpu-arch=" + arch for arch in _FA2_PRE_SM80_ARCHS],
+        "//conditions:default": [],
+    })),
     local_defines = [
         "FLASH_NAMESPACE=flash_attention_fa2_impl",
         "FLASHATTENTION_DISABLE_ALIBI",
@@ -112,11 +116,11 @@ tf_kernel_library(
 # XLA custom-call targets that run the GPU kernels inside XLA clusters.
 cc_library(
     name = "flash_attention_custom_call",
-    srcs = ["flash_attention_custom_call.cc"],
+    srcs = if_cuda(["flash_attention_custom_call.cc"]),
     hdrs = ["flash_attention_custom_call.h"],
     copts = if_cuda(["-DGOOGLE_CUDA=1"]),
     visibility = ["//visibility:private"],
-    deps = [
+    deps = if_cuda([
         ":flash_attention_functor",
         ":flash_attention_op_gpu",
         "//tensorflow/core:framework",
@@ -126,7 +130,7 @@ cc_library(
         "@local_config_cuda//cuda:cuda_headers",
         "@xla//xla/service:custom_call_status",
         "@xla//xla/service:custom_call_target_registry",
-    ],
+    ]),
     alwayslink = 1,
 )
 
@@ -141,6 +145,7 @@ cc_library(
         ":flash_attention_custom_call",
         ":flash_attention_functor",
         ":flash_attention_op_gpu",
+        "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_helpers",
         "//tensorflow/compiler/tf2xla:xla_op_registry",
