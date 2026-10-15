@@ -632,7 +632,7 @@ class MatrixSetDiagOp : public XlaOpKernel {
     OP_REQUIRES(context,
                 lower_diag_index == upper_diag_index ||
                     (diag_rank == input_rank &&
-                     diag_shape.dim_size(input_rank - 2) == num_diags),
+                     diag_shape.dim_size(diag_rank - 2) == num_diags),
                 absl::InvalidArgumentError(
                     "The number of diagonals provided in `diag` "
                     "is not consistent with `lower_diag_index` and "
@@ -692,15 +692,6 @@ class MatrixSetDiagOp : public XlaOpKernel {
     // matrices are in the top left, and give the input's dynamic dimensions
     // their sizes back at the end. Broadcasting a dynamic diagonal would give
     // the dimension it's broadcast along its length.
-    const auto actual_size = [&](int64_t dim) {
-      return input_xla_shape.is_dynamic_dimension(dim)
-                 ? xla::GetDimensionSize(input, dim)
-                 : xla::ConstantR0<int32_t>(
-                       context->builder(),
-                       static_cast<int32_t>(input_shape.dim_size(dim)));
-    };
-    const xla::XlaOp actual_num_rows = actual_size(input_rank - 2);
-    const xla::XlaOp actual_num_cols = actual_size(input_rank - 1);
     std::vector<xla::XlaOp> input_dim_sizes(input_rank);
     for (int i = 0; i < input_rank; ++i) {
       if (input_xla_shape.is_dynamic_dimension(i)) {
@@ -708,6 +699,15 @@ class MatrixSetDiagOp : public XlaOpKernel {
         input = xla::RemoveDynamicDimension(input, i);
       }
     }
+    const auto actual_size = [&](int64_t dim) {
+      return input_xla_shape.is_dynamic_dimension(dim)
+                 ? input_dim_sizes[dim]
+                 : xla::ConstantR0<int32_t>(
+                       context->builder(),
+                       static_cast<int32_t>(input_shape.dim_size(dim)));
+    };
+    const xla::XlaOp actual_num_rows = actual_size(input_rank - 2);
+    const xla::XlaOp actual_num_cols = actual_size(input_rank - 1);
     for (int i = 0; i < diag_rank; ++i) {
       if (diag_xla_shape.is_dynamic_dimension(i)) {
         diag = xla::RemoveDynamicDimension(diag, i);

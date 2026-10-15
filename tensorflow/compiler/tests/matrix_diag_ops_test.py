@@ -678,6 +678,9 @@ class MatrixSetDiagTest(xla_test.XLATestCase):
               }, solution)
 
   def _setDiagOfSelected(self, x, diagonal, masks, diag_mask, **params):
+    if "TPU" in self.device:
+      self.skipTest(
+          "Dynamic shape execution on matrix_set_diag is not supported on TPU.")
     # masks maps axes of x to masks of the entries to keep along them, which
     # gives those dimensions a size only known at run time, and diag_mask does
     # the same for the diagonal's last dimension.
