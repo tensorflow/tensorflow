@@ -138,6 +138,10 @@ xla_cc_test(
 cc_library(
     name = "pjrt_c_api_megascale_extension_hdrs",
     hdrs = ["pjrt_c_api_megascale_extension.h"],
+    visibility = internal_visibility([
+        "//xla:internal",
+        "//xla/megascale:internal",
+    ]),
     deps = [
         ":pjrt_c_api_hdrs",
         ":pjrt_c_api_multi_slice_extension_hdrs",
@@ -147,6 +151,10 @@ cc_library(
 cc_library(
     name = "pjrt_c_api_multi_slice_extension_hdrs",
     hdrs = ["pjrt_c_api_multi_slice_extension.h"],
+    visibility = internal_visibility([
+        "//xla:internal",
+        "//xla/megascale:internal",
+    ]),
     deps = [":pjrt_c_api_hdrs"],
 )
 
