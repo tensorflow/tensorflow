@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/compiler.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -440,6 +441,30 @@ TEST_F(CudnnBackendTest, ApplyConfigToLoopFusionSetsCustomFusionKind) {
   EXPECT_EQ(gpu_config.fusion_backend_config().kind(), kCuDnnFusionKind);
   EXPECT_EQ(gpu_config.fusion_backend_config().cudnn_fusion_config().plan_id(),
             1);
+}
+
+TEST_F(CudnnBackendTest, ApplyConfigToScaledDotGemmFusionAddsScaleSwizzle) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kScaledDotGemmFusionHlo));
+  CudnnBackendConfig config;
+  config.set_algo_id(1);
+  HloInstruction* fusion_instr =
+      hlo_module->entry_computation()->root_instruction();
+  BackendConfig backend_config;
+  *backend_config.mutable_algorithm() = config;
+  ASSERT_OK(backend_->ApplyConfig(*fusion_instr, backend_config));
+  HloInstruction* root_instr =
+      hlo_module->entry_computation()->root_instruction();
+  ASSERT_EQ(root_instr->opcode(), HloOpcode::kFusion);
+  ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
+                       root_instr->backend_config<GpuBackendConfig>());
+  EXPECT_EQ(gpu_config.fusion_backend_config().kind(), kCuDnnFusionKind);
+  EXPECT_EQ(gpu_config.fusion_backend_config().cudnn_fusion_config().plan_id(),
+            1);
+  EXPECT_EQ(root_instr->operand(2)->opcode(), HloOpcode::kGetTupleElement);
+  EXPECT_EQ(root_instr->operand(2)->operand(0)->opcode(), HloOpcode::kCall);
+  EXPECT_EQ(root_instr->operand(3)->opcode(), HloOpcode::kGetTupleElement);
+  EXPECT_EQ(root_instr->operand(3)->operand(0)->opcode(), HloOpcode::kCall);
 }
 
 TEST_F(CudnnBackendTest, ApplyConfigToCudnnCustomCall) {

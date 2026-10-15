@@ -320,6 +320,7 @@ cc_library(
         "//xla/backends/autotuner:backends_proto_cc",
         "//xla/backends/autotuner:codegen_backend",
         "//xla/backends/gpu/target_config",
+        "//xla/backends/gpu/transforms:block_scaling_rewriter",
         "//xla/backends/gpu/transforms:cudnn_fusion_compiler",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_query",

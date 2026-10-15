@@ -290,7 +290,7 @@ std::vector<ScaledDotCoverageTestCase> GetCoverageTestCases() {
       {F4E2M1FN, F4E2M1FN, F8E4M3FN, 16, true, false,
        CuDnnSupportResult::kNotSupported},
       {F4E2M1FN, F4E2M1FN, F8E4M3FN, 16, true, true,
-       CuDnnSupportResult::kFailed},
+       CuDnnSupportResult::kSupported},
   };
 }
 
@@ -510,9 +510,16 @@ ENTRY %main {
         auto ref_optimized_or =
             GetOptimizedModule((*ref_module_or)->ToString());
         if (ref_optimized_or.ok()) {
+          auto args_or = MakeScaledDotArguments(optimized_module_or->get());
+          CHECK_OK(args_or.status());
+          std::vector<const Literal*> arg_ptrs;
+          arg_ptrs.reserve(args_or->size());
+          for (const Literal& arg : *args_or) {
+            arg_ptrs.push_back(&arg);
+          }
           auto run_result = RunAndCompareTwoModules(
               std::move(*optimized_module_or), std::move(*ref_optimized_or),
-              ErrorSpec{/*aabs=*/0.02, /*arel=*/0.05},
+              arg_ptrs, ErrorSpec{/*aabs=*/0.02, /*arel=*/0.05},
               /*run_hlo_passes=*/false);
           status = run_result ? "SUCCESS" : "FAILURE";
           if (!run_result) {
