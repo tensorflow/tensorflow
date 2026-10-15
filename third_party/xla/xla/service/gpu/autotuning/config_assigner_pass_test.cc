@@ -27,7 +27,10 @@ limitations under the License.
 #include "absl/log/globals.h"
 #include "absl/log/log.h"
 #include "absl/log/scoped_mock_log.h"
+#include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "mlir/IR/MLIRContext.h"
@@ -1196,6 +1199,95 @@ TEST_F(ConfigAssignerPassTest, OtherOpcodeAllowsSpills) {
   EXPECT_TRUE(options.allow_reg_spills_fn(
       *instr, autotuner::Backend::BLOCK_LEVEL_EMITTER));
 }
+
+// Regression test: the autotune caches are process-wide, so a deterministic
+// compilation must not reuse configs that a non-deterministic compilation of a
+// different module selected via (timing-based) autotuning. Otherwise the
+// deterministic result depends on what else was compiled in the process first.
+class DeterministicCacheIsolationTest
+    : public ConfigAssignerPassTest,
+      public ::testing::WithParamInterface<bool /*use_new_cache_format*/> {
+ protected:
+  absl::StatusOr<bool> RunPass(HloModule* module,
+                               tsl::thread::ThreadPool* thread_pool) {
+    GpuCompiler::GpuTargetConfig target_config(stream_executor_);
+    std::vector<std::unique_ptr<CodegenBackend>> backends;
+    backends.push_back(std::make_unique<CublasLtBackend>(
+        stream_executor_, &module->config().debug_options(), &compiler_,
+        &target_config));
+    auto get_backends_fn =
+        [backends =
+             std::make_shared<std::vector<std::unique_ptr<CodegenBackend>>>(
+                 std::move(backends))]() mutable {
+          return std::move(*backends);
+        };
+    ABSL_ASSIGN_OR_RETURN(
+        std::unique_ptr<ConfigAssignerPass> pass,
+        ConfigAssignerPass::Create(
+            std::move(get_backends_fn), module->config().debug_options(),
+            target_config.device_description.gpu_compute_capability(),
+            stream_executor_, thread_pool, &target_config,
+            /*alias_info=*/nullptr, /*mlir_context=*/nullptr,
+            /*shape_size_fn=*/[](const Shape& shape) { return 0; },
+            allocator_.get()));
+    return pass->Run(module, /*execution_threads=*/{});
+  }
+};
+
+TEST_P(DeterministicCacheIsolationTest,
+       DeterministicCompileIgnoresNonDeterministicCacheEntries) {
+  const bool use_new_cache_format = GetParam();
+  tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "autotuning",
+                                      /*num_threads=*/4);
+
+  // 1. A non-deterministic compilation autotunes the GEMM and populates the
+  //    (in-memory, process-wide) autotune cache.
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> autotuned_module,
+                       ParseAndReturnVerifiedModule(kCublasCustomCallHlo));
+  autotuned_module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_use_new_autotune_cache_format(use_new_cache_format);
+  EXPECT_THAT(RunPass(autotuned_module.get(), &thread_pool),
+              absl_testing::IsOkAndHolds(true));
+
+  // 2. A deterministic compilation of the same GEMM, requiring every config to
+  //    come from the cache, must not see the entry inserted above.
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> deterministic_module,
+                       ParseAndReturnVerifiedModule(kCublasCustomCallHlo));
+  DebugOptions& debug_options =
+      deterministic_module->mutable_config().mutable_debug_options();
+  debug_options.set_xla_gpu_use_new_autotune_cache_format(use_new_cache_format);
+  debug_options.set_xla_gpu_exclude_nondeterministic_ops(true);
+  debug_options.set_xla_gpu_require_complete_aot_autotune_results(true);
+  EXPECT_THAT(RunPass(deterministic_module.get(), &thread_pool),
+              absl_testing::StatusIs(absl::StatusCode::kNotFound));
+
+  // 3. Without `require_complete_aot_autotune_results`, the deterministic
+  //    compilation falls back to the first valid config, exactly as if the
+  //    non-deterministic compilation had never happened.
+  ASSERT_OK_AND_ASSIGN(deterministic_module,
+                       ParseAndReturnVerifiedModule(kCublasCustomCallHlo));
+  DebugOptions& debug_options_2 =
+      deterministic_module->mutable_config().mutable_debug_options();
+  debug_options_2.set_xla_gpu_use_new_autotune_cache_format(
+      use_new_cache_format);
+  debug_options_2.set_xla_gpu_exclude_nondeterministic_ops(true);
+  EXPECT_THAT(RunPass(deterministic_module.get(), &thread_pool),
+              absl_testing::IsOkAndHolds(true));
+  const HloInstruction* gemm =
+      deterministic_module->entry_computation()->GetInstructionWithName(
+          "custom-call.1");
+  ASSERT_OK_AND_ASSIGN(auto gpu_backend_config,
+                       gemm->backend_config<GpuBackendConfig>());
+  EXPECT_EQ(gpu_backend_config.gemm_backend_config().selected_algorithm(), 0);
+}
+
+INSTANTIATE_TEST_SUITE_P(CacheFormats, DeterministicCacheIsolationTest,
+                         ::testing::Bool(),
+                         [](const ::testing::TestParamInfo<bool>& info) {
+                           return info.param ? "NewCacheFormat"
+                                             : "LegacyCacheFormat";
+                         });
 
 }  // namespace
 }  // namespace gpu
