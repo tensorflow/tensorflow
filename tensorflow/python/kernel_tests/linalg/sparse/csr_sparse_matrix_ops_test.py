@@ -1276,6 +1276,19 @@ class CSRSparseMatrixOpsTest(test.TestCase, parameterized.TestCase):
           cholesky, dtypes.float32)
       self.assertAllEqual(self.evaluate(dense).shape, [0, 0])
 
+      # Zero-batch rank-3 matrix (including large num_rows with batch_size == 0)
+      empty_batch = sparse_csr_matrix_ops.sparse_tensor_to_csr_sparse_matrix(
+          indices=np.zeros([0, 3], dtype=np.int64),
+          values=np.zeros([0], dtype=np.float32),
+          dense_shape=[0, 1000000000, 1000000000])
+      cholesky_empty_batch = (
+          sparse_csr_matrix_ops.sparse_matrix_sparse_cholesky(
+              empty_batch,
+              np.zeros([0, 1000000000], dtype=np.int32),
+              type=dtypes.float32))
+      nnz = sparse_csr_matrix_ops.sparse_matrix_nnz(cholesky_empty_batch)
+      self.assertAllEqual(self.evaluate(nnz).shape, [0])
+
   @test_util.run_in_graph_and_eager_modes
   def testBatchSparseCholesky(self):
     dense_mat = np.array([

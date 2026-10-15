@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/types.pb.h"
 
@@ -278,6 +279,8 @@ class CSRSparseCholeskyCPUOp : public OpKernel {
                          "as sparse matrix; got: ",
                          perm_shape.dim_size(0), " != ", *batch_size));
     }
+
+    if (*batch_size == 0 || *num_rows == 0) return absl::OkStatus();
 
     // Each permutation entry is applied by Eigen's twistedBy() as a destination
     // row/column subscript into the num_rows-sized factor without any bounds
