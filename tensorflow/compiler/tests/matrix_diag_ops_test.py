@@ -698,7 +698,10 @@ class MatrixSetDiagTest(xla_test.XLATestCase):
     with self.session() as session:
       with self.device_scope():
         x_ph = array_ops.placeholder(dtypes.int32, x.shape)
-        diagonal_ph = array_ops.placeholder(dtypes.int32, diagonal.shape)
+        # MatrixSetDiagV3's shape function rejects a band of diagonals with
+        # an unknown length while tracing (GitHub issue 129061), unless their
+        # rank is unknown too.
+        diagonal_ph = array_ops.placeholder(dtypes.int32)
         diag_mask_ph = array_ops.placeholder(dtypes.bool, [len(diag_mask)])
         mask_phs = [
             array_ops.placeholder(dtypes.bool, [x.shape[axis]])
@@ -740,18 +743,41 @@ class MatrixSetDiagTest(xla_test.XLATestCase):
         self._setDiagOfSelected(
             np.arange(1, 16).reshape(5, 3), diagonal, {-2: keep}, keep, k=1),
         [[1, 90, 3], [7, 8, 92]])
+
+  def testDynamicDimensionsBatch(self):
+    if "GPU" in self.device:
+      self.skipTest("XLA:GPU returns the batched dynamic output of this "
+                    "transposed.")
+    keep = [True, False, True, False, False]
     self.assertAllEqual(
         self._setDiagOfSelected(
             np.arange(1, 31).reshape(2, 5, 3),
-            [diagonal, [80, 81, 82, 83, 84]], {-2: keep}, keep),
+            [[90, 91, 92, 93, 94], [80, 81, 82, 83, 84]], {-2: keep}, keep),
         [[[90, 2, 3], [7, 92, 9]], [[80, 17, 18], [22, 82, 24]]])
+
+  def testDynamicDimensionsBand(self):
+    # In each case, diagonals 1 and -1 are padded differently at the actual
+    # sizes than at the bound sizes, which matters when they're right-aligned.
+    keep = [True, False, True, False, False]
+    diagonals = [[70, 71, 72, 73, 74], [80, 81, 82, 83, 84],
+                 [90, 91, 92, 93, 94]]
+    for align, sub, sup in (("RIGHT_LEFT", 90, 72), ("LEFT_RIGHT", 92, 70),
+                            ("LEFT_LEFT", 90, 70), ("RIGHT_RIGHT", 92, 72)):
+      self.assertAllEqual(
+          self._setDiagOfSelected(
+              np.arange(1, 16).reshape(5, 3), diagonals, {-2: keep}, keep,
+              k=(-1, 1), align=align), [[80, 70, 3], [sub, 82, 72]])
+      self.assertAllEqual(
+          self._setDiagOfSelected(
+              np.arange(1, 16).reshape(3, 5), diagonals, {-1: keep}, keep,
+              k=(-1, 1), align=align), [[80, sup], [90, 82], [11, 92]])
 
   def testBandFromVector(self):
     # A band of diagonals needs them stacked in a dimension that a vector
     # doesn't have, and looking for it aborted the process. The ranks are left
     # unknown so that shape inference doesn't reject the vector first.
     with self.session() as session:
-      with self.test_scope():
+      with self.device_scope():
         x = array_ops.placeholder(dtypes.int32)
         diagonal = array_ops.placeholder(dtypes.int32)
         output = gen_array_ops.matrix_set_diag_v3(

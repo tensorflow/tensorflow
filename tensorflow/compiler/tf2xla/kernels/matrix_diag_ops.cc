@@ -645,9 +645,10 @@ class MatrixSetDiagOp : public XlaOpKernel {
         std::min(num_rows + std::min(upper_diag_index, int64_t{0}),
                  num_cols - std::max(lower_diag_index, int64_t{0}));
     expected_diag_shape.AddDim(max_diag_len);
-    // A dynamic dimension's static size is its bound, so only compare the
-    // sizes that are static on both sides. The diagonals' length is dynamic
-    // when a matrix dimension is.
+    // A dynamic dimension's static size is its bound. SetMatrixDiag needs the
+    // bounds to match to broadcast the diagonals, except for their length,
+    // which is made to match below. So the length is only compared when it
+    // and the matrix sizes are static.
     xla::Shape input_xla_shape;
     OP_REQUIRES_VALUE(input_xla_shape, context, context->InputXlaShape(0));
     xla::Shape diag_xla_shape;
@@ -657,18 +658,18 @@ class MatrixSetDiagOp : public XlaOpKernel {
         input_xla_shape.is_dynamic_dimension(input_rank - 1);
     bool diag_shape_matches = expected_diag_shape.dims() == diag_rank;
     for (int i = 0; diag_shape_matches && i < diag_rank; ++i) {
-      const bool expected_is_dynamic =
-          i < input_rank - 2 ? input_xla_shape.is_dynamic_dimension(i)
-                             : i == diag_rank - 1 && dynamic_matrix;
+      if (i == diag_rank - 1 &&
+          (dynamic_matrix || diag_xla_shape.is_dynamic_dimension(i))) {
+        continue;
+      }
       diag_shape_matches =
-          expected_is_dynamic || diag_xla_shape.is_dynamic_dimension(i) ||
           expected_diag_shape.dim_size(i) == diag_shape.dim_size(i);
     }
     OP_REQUIRES(
         context, diag_shape_matches,
         absl::InvalidArgumentError(absl::StrCat(
             "Either first dimensions of diagonal don't match input.shape[:-2], "
-            "or diagonal.shape[:-1] is not equal to the longests diagonal in "
+            "or diagonal.shape[:-1] is not equal to the longest diagonal in "
             "range [lower_diag_index:upper_diag_index].\nInput shape: ",
             input_shape.DebugString(),
             "\nDiagonal shape: ", diag_shape.DebugString(),
