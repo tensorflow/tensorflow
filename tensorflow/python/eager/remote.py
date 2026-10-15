@@ -84,7 +84,9 @@ def _parse_host_and_port(address):
     A tuple `(host, port)`. `port` is None if the address has no port, and
     both are None if the address cannot be parsed.
   """
-  if "://" not in address:
+  if not address or not isinstance(address, str):
+    return None, None
+  if "://" not in address and not address.startswith("//"):
     address = "//" + address
   try:
     parsed = urllib.parse.urlsplit(address)

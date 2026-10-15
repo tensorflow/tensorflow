@@ -766,19 +766,37 @@ class MultiJobsTest(test.TestCase, parameterized.TestCase):
 
   def testConnectToClusterWithMissingMaster(self):
     resolver = SimpleClusterResolver(self._cluster, master='localhost:80')
+    # The master lookup must be validated before the eager context's
+    # ServerDef is mutated, so a validation failure here must leave the
+    # context's ServerDef untouched (see testConnectToClusterOrderingInvariant
+    # for the dedicated regression test of that ordering).
+    initial_server_def = context.get_server_def()
     with self.assertRaisesRegex(
         ValueError,
         '`make_master_device_default` is set to True but cannot find master '
         'localhost:80 in the cluster'):
       remote.connect_to_cluster(resolver)
+    self.assertEqual(context.get_server_def(), initial_server_def)
 
   def testConnectToClusterWithInvalidMaster(self):
     resolver = SimpleClusterResolver(self._cluster, master='localhost:foo')
+    initial_server_def = context.get_server_def()
     with self.assertRaisesRegex(
         ValueError,
         '`make_master_device_default` is set to True but cannot find master '
         'localhost:foo in the cluster'):
       remote.connect_to_cluster(resolver)
+    self.assertEqual(context.get_server_def(), initial_server_def)
+
+  def testCollectiveGroupLeaderIsFirstNonLocalJob(self):
+    # Regression test for the `break` added to the `collective_group_leader`
+    # search loop: with multiple non-local jobs in the cluster spec, the
+    # leader must be the first one (`my_worker`), not a later one
+    # (`my_ps`) that the loop would otherwise overwrite it with.
+    remote.connect_to_cluster(self._cluster, job_name='localhost')
+    self.assertEqual(
+        context.get_server_def().default_session_config.experimental
+        .collective_group_leader, '/job:my_worker/replica:0/task:0')
 
   def testConnectToClusterWithLocalMaster(self):
     local_resolver = SimpleClusterResolver(ClusterSpec({}), master='local')
@@ -821,8 +839,13 @@ class RemoteUtilsTest(test.TestCase, parameterized.TestCase):
   @parameterized.parameters(
       ('localhost:foo',),
       ('localhost:6553600',),
+      (None,),
+      (123,),
+      ('',),
   )
   def testParseHostAndPortError(self, address):
+    # None, a non-string, and an empty string must be rejected up front
+    # rather than raising TypeError when `"://" in address` is evaluated.
     host, port = remote._parse_host_and_port(address)
     self.assertIsNone(host)
     self.assertIsNone(port)
