@@ -341,6 +341,8 @@ class LowerXlaIntrinsicLibPass
                  LowerIntrinsicPattern<ci::Rsqrt, mm::RsqrtOp>,
                  LowerIntrinsicPattern<ci::Tanh, mm::TanhOp>,
                  LowerIntrinsicPattern<ci::EigenAtan, mm::AtanOp>,
+                 LowerIntrinsicPattern<ci::Sin, mm::SinOp>,
+                 LowerIntrinsicPattern<ci::Cos, mm::CosOp>,
                  LowerIntrinsicPattern<ci::FpTrunc, ma::TruncFOp>,
                  LowerIntrinsicPattern<ci::Erf, mm::ErfOp>>(context,
                                                             cpu_features);
