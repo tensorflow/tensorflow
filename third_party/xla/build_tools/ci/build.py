@@ -73,6 +73,10 @@ _XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS = (
     "//xla/tools:compute_xspace_stats_main_gpu",
 )
 _GITHUB_WORKSPACE = os.environ.get("GITHUB_WORKSPACE", "$GITHUB_WORKSPACE")
+_WINDOWS_BAZEL_DNS_SECURITY_PROPERTIES = (
+    f"-Djava.security.properties={_GITHUB_WORKSPACE}"
+    r"\openxla\xla\build_tools\ci\bazel_dns_windows.security"
+)
 
 
 def retry(
@@ -486,6 +490,7 @@ Build(
     subcommand="build",
     startup_options={
         "output_user_root": "C:/x",
+        "host_jvm_args": _WINDOWS_BAZEL_DNS_SECURITY_PROPERTIES,
     },
     # Retry failed Bazel builds against the warm local cache to mitigate
     # transient Windows lld-link wcifs.sys file-open races (b/571438464) until
@@ -832,6 +837,7 @@ Build(
     subcommand="build",
     startup_options={
         "output_base": f"{_GITHUB_WORKSPACE}\\bazel_output_base",
+        "host_jvm_args": _WINDOWS_BAZEL_DNS_SECURITY_PROPERTIES,
     },
     # Retry failed Bazel builds against the warm local cache to mitigate
     # transient Windows lld-link wcifs.sys file-open races (b/571438464) until
