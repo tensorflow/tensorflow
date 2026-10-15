@@ -468,8 +468,11 @@ class MatrixDiagPartOp : public XlaOpKernel {
     std::vector<xla::XlaOp> diag_list;
     xla::PaddingConfig padding_config =
         xla::MakeNoPaddingConfig(input_rank - 1);
+    // XLA:GPU can lay out the gather's output with the batch dimensions minor,
+    // and a batched dynamic output laid out that way comes back transposed.
+    const bool use_gather = is_gpu_ && !input_xla_shape.is_dynamic();
     if (num_diags == 1) {
-      output = is_gpu_
+      output = use_gather
                    ? xla::GetMatrixDiagonalViaGather(input, upper_diag_index)
                    : xla::GetMatrixDiagonal(input, upper_diag_index);
     } else {
@@ -479,8 +482,8 @@ class MatrixDiagPartOp : public XlaOpKernel {
       for (int diag_index = upper_diag_index; diag_index >= lower_diag_index;
            --diag_index) {
         xla::XlaOp single_diag =
-            is_gpu_ ? xla::GetMatrixDiagonalViaGather(input, diag_index)
-                    : xla::GetMatrixDiagonal(input, diag_index);
+            use_gather ? xla::GetMatrixDiagonalViaGather(input, diag_index)
+                       : xla::GetMatrixDiagonal(input, diag_index);
         const int64_t diag_len =
             ComputeDiagLen(diag_index, num_rows, num_cols);
         const int64_t padding_len = max_diag_len - diag_len;

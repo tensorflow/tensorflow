@@ -798,7 +798,7 @@ class MatrixDiagPartTest(xla_test.XLATestCase):
     # entries, so the dimensions it selects have size 2 and bound 5.
     keep = [True, False, True, False, False]
     x = np.arange(1, 16).reshape(5, 3)  # Keeps [[1, 2, 3], [7, 8, 9]].
-    for dtype in (np.int32, np.float32, np.float16):
+    for dtype in (np.int32, np.float32, np.float64):
       for op in (array_ops.matrix_diag_part, gen_array_ops.matrix_diag_part):
         self.assertAllEqual(
             self._diagPartOfSelected(op, x, {-2: keep}, dtype), [1, 8])
@@ -834,9 +834,6 @@ class MatrixDiagPartTest(xla_test.XLATestCase):
                                    {-2: [False] * 5}, dtype), np.zeros([0]))
 
   def testDynamicDimensionsBatch(self):
-    if "GPU" in self.device:
-      self.skipTest("XLA:GPU returns the batched dynamic output of these "
-                    "transposed.")
     keep = [True, False, True, False, False]
     x = np.arange(1, 31).reshape(2, 5, 3)
     self.assertAllEqual(
