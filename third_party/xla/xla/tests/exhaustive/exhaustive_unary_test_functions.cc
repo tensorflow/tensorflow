@@ -130,6 +130,20 @@ UNARY_TEST(Rsqrt, {
             .strict_signed_zeros()
             .build();
       })
+      .CpuError(+[](NativeT x) {
+        if constexpr (std::is_same_v<NativeT, double>) {
+          // The reference 1.0 / std::sqrt(x) computed in double can itself be
+          // 1 ULP off from the exact value in the opposite direction.
+          return ErrorSpec::Builder()
+              .distance_err(2)
+              .strict_signed_zeros()
+              .build();
+        }
+        return ErrorSpec::Builder()
+            .distance_err(1)
+            .strict_signed_zeros()
+            .build();
+      })
       .Run();
 })
 UNARY_TEST(Sqrt, {
