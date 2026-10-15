@@ -393,7 +393,7 @@ class MatrixDiagOp : public XlaOpKernel {
       if (num_diags > 1 && has_right_aligned) {
         // A right-aligned diagonal's entries come after the padding it has at
         // the actual sizes, and SetMatrixDiag reads them after the padding it
-        // would have at the bound. Pad the diagonal at the front and slice it
+        // would have at the bound. Pad the diagonal on both sides and slice it
         // so that they start there.
         auto slice_sizes = diag_shape.dim_sizes();
         slice_sizes[diag_rank - 2] = 1;
@@ -405,17 +405,22 @@ class MatrixDiagOp : public XlaOpKernel {
               xla::SliceInDim(diag, row, row + 1, 1, diag_rank - 2);
           if (!IsLeftAligned(diag_index, left_align_superdiagonal_,
                              left_align_subdiagonal_)) {
-            const xla::XlaOp actual_len = xla::Min(
-                xla::Add(actual_num_rows,
-                         xla::ScalarLike(diag_len, std::min<int64_t>(
-                                                       diag_index, 0))),
-                xla::Sub(actual_num_cols,
-                         xla::ScalarLike(diag_len, std::max<int64_t>(
-                                                       diag_index, 0))));
+            const xla::XlaOp actual_len = xla::Max(
+                xla::Min(
+                    xla::Add(actual_num_rows,
+                             xla::ScalarLike(diag_len,
+                                             std::min<int64_t>(diag_index, 0))),
+                    xla::Sub(
+                        actual_num_cols,
+                        xla::ScalarLike(diag_len,
+                                        std::max<int64_t>(diag_index, 0)))),
+                xla::ScalarLike(diag_len, 0));
             xla::PaddingConfig padding_config =
                 xla::MakeNoPaddingConfig(diag_rank);
             padding_config.mutable_dimensions(diag_rank - 1)
                 ->set_edge_padding_low(max_diag_len);
+            padding_config.mutable_dimensions(diag_rank - 1)
+                ->set_edge_padding_high(max_diag_len);
             single_diag = xla::Pad(single_diag, xla::ScalarLike(single_diag, 0),
                                    padding_config);
             std::vector<xla::XlaOp> start_indices(diag_rank,
