@@ -23,13 +23,20 @@ limitations under the License.
 // InterpreterBuilder::ParseNodes and ParseTensors are exercised directly. The
 // OSS-Fuzz tensorflow build has no TFLite target that reaches this path.
 
+#include <cstdarg>
 #include <cstring>
+#include <fstream>
+#include <iterator>
 #include <memory>
 #include <string>
+#include <tuple>
+#include <utility>
 #include <vector>
 
 #include "fuzztest/fuzztest.h"
+#include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/error_reporter.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/interpreter_builder.h"
 #include "tensorflow/lite/kernels/register.h"
@@ -37,9 +44,51 @@ limitations under the License.
 
 namespace {
 
+// Nearly every fuzz input is malformed, and the default reporter writes each
+// rejection to stderr, which would dominate the run. The model and, through
+// the model, the interpreter builder report into this instead.
+class NullErrorReporter : public tflite::ErrorReporter {
+ public:
+  int Report(const char* /*format*/, va_list /*args*/) override { return 0; }
+};
+
+// A valid model to start from, so the fuzzer does not have to rediscover the
+// flatbuffer framing before it reaches InterpreterBuilder and Invoke.
+std::vector<std::tuple<std::string>> SeedModels() {
+  std::ifstream file(
+      tensorflow::GetDataDependencyFilepath("tensorflow/lite/testdata/add.bin"),
+      std::ios::binary);
+  std::string bytes((std::istreambuf_iterator<char>(file)),
+                    std::istreambuf_iterator<char>());
+  if (bytes.empty()) return {};
+  return {std::make_tuple(std::move(bytes))};
+}
+
+// Whether `tensor` is a runtime input that is safe and useful to zero.
+bool IsZeroableInput(const TfLiteTensor* tensor) {
+  if (tensor == nullptr || tensor->data.raw == nullptr || tensor->bytes == 0) {
+    return false;
+  }
+  // A constant input aliases the read-only model mapping, and a persistent
+  // read-only one is owned and filled by the planner; neither is
+  // uninitialized, and writing to the mapping would fault.
+  if (tensor->allocation_type == kTfLiteMmapRo ||
+      tensor->allocation_type == kTfLitePersistentRo) {
+    return false;
+  }
+  // These are not plain byte buffers of `bytes` length.
+  if (tensor->type == kTfLiteString || tensor->type == kTfLiteResource ||
+      tensor->type == kTfLiteVariant) {
+    return false;
+  }
+  return true;
+}
+
 void FuzzModelBuildAndInvoke(const std::string& model_bytes) {
+  NullErrorReporter error_reporter;
   auto model = tflite::FlatBufferModel::VerifyAndBuildFromBuffer(
-      model_bytes.data(), model_bytes.size());
+      model_bytes.data(), model_bytes.size(), /*extra_verifier=*/nullptr,
+      &error_reporter);
   if (model == nullptr) return;
 
   tflite::ops::builtin::BuiltinOpResolver resolver;
@@ -51,19 +100,16 @@ void FuzzModelBuildAndInvoke(const std::string& model_bytes) {
   if (interpreter->AllocateTensors() != kTfLiteOk) return;
 
   // Zero-initialize runtime inputs so MSan does not flag uninitialized reads.
-  // An input a crafted model backs with a constant buffer is kTfLiteMmapRo and
-  // points into the read-only model mapping; it is already initialized and
-  // writing to it would fault, so leave those alone.
   for (int input_index : interpreter->inputs()) {
     TfLiteTensor* tensor = interpreter->tensor(input_index);
-    if (tensor != nullptr && tensor->data.raw != nullptr &&
-        tensor->allocation_type != kTfLiteMmapRo) {
+    if (IsZeroableInput(tensor)) {
       std::memset(tensor->data.raw, 0, tensor->bytes);
     }
   }
 
   interpreter->Invoke();
 }
-FUZZ_TEST(TfliteInterpreterBuilder, FuzzModelBuildAndInvoke);
+FUZZ_TEST(TfliteInterpreterBuilder, FuzzModelBuildAndInvoke)
+    .WithSeeds(SeedModels());
 
 }  // namespace
