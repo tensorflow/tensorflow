@@ -30,21 +30,38 @@ limitations under the License.
 //
 
 #include <cinttypes>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <functional>
-#include <utility>
 
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/kernels/internal/kernel_utils.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/types/half.h"
 #include "tensorflow/lite/util.h"
+
 namespace tflite {
 namespace ops {
 namespace builtin {
 namespace embedding_lookup {
+
+namespace {
+
+TfLiteStatus ValidateLookupIndex(TfLiteContext* context, int32_t idx,
+                                 int row_size) {
+  if (idx >= row_size || idx < 0) {
+    TF_LITE_KERNEL_LOG(context,
+                       "Embedding Lookup: index out of bounds. "
+                       "Got %" PRId32 ", and bounds are [0, %d]",
+                       idx, row_size - 1);
+    return kTfLiteError;
+  }
+  return kTfLiteOk;
+}
+
+}  // namespace
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
@@ -92,46 +109,31 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
-  TfLiteIntArray* output_size = TfLiteIntArrayCreate(NumDimensions(value));
-
-  output_size->data[0] = SizeOfDimension(lookup, 0);
-  output_size->data[1] = SizeOfDimension(value, 1);
-  for (int i = 2; i < NumDimensions(value); i++) {
-    output_size->data[i] = SizeOfDimension(value, i);
-  }
-  return context->ResizeTensor(context, output, output_size);
+  return kernel_utils::ResizeLookupOutputTensor(context, *lookup, *value,
+                                                output);
 }
 
 TfLiteStatus EvalSimple(TfLiteContext* context, TfLiteNode* node,
                         const TfLiteTensor* lookup, const TfLiteTensor* value,
                         TfLiteTensor* output) {
-  const int row_size = SizeOfDimension(value, 0);
-  if (row_size == 0) {
-    // Propagate empty tensor if input is empty
+  const int lookup_size = SizeOfDimension(lookup, 0);
+  if (lookup_size == 0) {
+    // Propagate empty output tensor if lookup has zero elements.
     return kTfLiteOk;
   }
+  const int row_size = SizeOfDimension(value, 0);
+  TF_LITE_ENSURE(context, row_size > 0);
   const size_t row_bytes = value->bytes / row_size;
 
   char* output_raw = GetTensorData<char>(output);
   const char* value_raw = GetTensorData<char>(value);
   const int32_t* lookup_data = GetTensorData<int32_t>(lookup);
-  for (int i = 0; i < SizeOfDimension(lookup, 0); i++) {
+  for (int i = 0; i < lookup_size; i++) {
     const int32_t idx = lookup_data[i];
-    if (idx >= row_size || idx < 0) {
-      TF_LITE_KERNEL_LOG(context,
-                         "Embedding Lookup: index out of bounds. "
-                         "Got %" PRId32 ", and bounds are [0, %d]",
-                         idx, row_size - 1);
-      return kTfLiteError;
-    } else {
-      CheckedInt<size_t> offset_output = CheckedInt<size_t>(i) * row_bytes;
-      CheckedInt<size_t> offset_value = CheckedInt<size_t>(idx) * row_bytes;
-      if (offset_output.Overflow() || offset_value.Overflow()) {
-        TF_LITE_KERNEL_LOG(context, "Embedding Lookup: offset overflow.");
-        return kTfLiteError;
-      }
-      std::memcpy(output_raw + offset_output.Value(),
-                  value_raw + offset_value.Value(), row_bytes);
+    TF_LITE_ENSURE_OK(context, ValidateLookupIndex(context, idx, row_size));
+    if (row_bytes > 0) {
+      std::memcpy(output_raw + static_cast<size_t>(i) * row_bytes,
+                  value_raw + static_cast<size_t>(idx) * row_bytes, row_bytes);
     }
   }
   return kTfLiteOk;
@@ -144,16 +146,16 @@ void Unpack4Bit(float scaling_factor, size_t col_size, const int8_t* value_ptr,
   size_t j = 0;
   size_t i4_idx = 0;
   for (; j + 1 < col_size; j += 2, ++i4_idx) {
-    int8_t i4_val = value_ptr[i4_idx];
-    int8_t i8_val0 = i4_val << 4;
-    int8_t i8_val1 = i4_val & 0xF0;
+    uint8_t i4_val = static_cast<uint8_t>(value_ptr[i4_idx]);
+    int8_t i8_val0 = static_cast<int8_t>(i4_val << 4);
+    int8_t i8_val1 = static_cast<int8_t>(i4_val & 0xF0);
 
     output_ptr[j] = i8_val0 * scaling_factor0;
     output_ptr[j + 1] = i8_val1 * scaling_factor0;
   }
   if (col_size & 1) {
-    int8_t i4_val = value_ptr[i4_idx];
-    int8_t i8_val0 = i4_val << 4;
+    uint8_t i4_val = static_cast<uint8_t>(value_ptr[i4_idx]);
+    int8_t i8_val0 = static_cast<int8_t>(i4_val << 4);
     output_ptr[j] = i8_val0 * scaling_factor0;
   }
 }
@@ -165,11 +167,11 @@ void Unpack2Bit(float scaling_factor, size_t col_size, const int8_t* value_ptr,
   size_t j = 0;
   size_t i2_idx = 0;
   for (; j + 3 < col_size; j += 4, ++i2_idx) {
-    int8_t i2_val = value_ptr[i2_idx];
+    uint8_t i2_val = static_cast<uint8_t>(value_ptr[i2_idx]);
     int8_t i8_val0 = static_cast<int8_t>(i2_val << 6);
-    int8_t i8_val1 = static_cast<int8_t>(i2_val << 4) & 0xC0;
-    int8_t i8_val2 = static_cast<int8_t>(i2_val << 2) & 0xC0;
-    int8_t i8_val3 = i2_val & 0xC0;
+    int8_t i8_val1 = static_cast<int8_t>((i2_val << 4) & 0xC0);
+    int8_t i8_val2 = static_cast<int8_t>((i2_val << 2) & 0xC0);
+    int8_t i8_val3 = static_cast<int8_t>(i2_val & 0xC0);
 
     output_ptr[j] = i8_val0 * scaling_factor0;
     output_ptr[j + 1] = i8_val1 * scaling_factor0;
@@ -178,17 +180,30 @@ void Unpack2Bit(float scaling_factor, size_t col_size, const int8_t* value_ptr,
   }
   size_t rem = col_size - j;
   if (rem) {
-    int8_t i2_val = value_ptr[i2_idx];
+    uint8_t i2_val = static_cast<uint8_t>(value_ptr[i2_idx]);
     int8_t i8_val0 = static_cast<int8_t>(i2_val << 6);
     output_ptr[j] = i8_val0 * scaling_factor0;
     if (rem & 2) {
-      int8_t i8_val1 = static_cast<int8_t>(i2_val << 4) & 0xC0;
+      int8_t i8_val1 = static_cast<int8_t>((i2_val << 4) & 0xC0);
       output_ptr[j + 1] = i8_val1 * scaling_factor0;
       if (rem & 1) {
-        int8_t i8_val2 = static_cast<int8_t>(i2_val << 2) & 0xC0;
+        int8_t i8_val2 = static_cast<int8_t>((i2_val << 2) & 0xC0);
         output_ptr[j + 2] = i8_val2 * scaling_factor0;
       }
     }
+  }
+}
+
+template <typename T>
+void UnpackSubByteElements(TfLiteType type, float scaling_factor,
+                           size_t num_elements, size_t elem_offset,
+                           const int8_t* value_ptr, T* output_ptr) {
+  if (type == kTfLiteInt2) {
+    Unpack2Bit(scaling_factor, num_elements, &value_ptr[elem_offset >> 2],
+               output_ptr);
+  } else {
+    Unpack4Bit(scaling_factor, num_elements, &value_ptr[elem_offset >> 1],
+               output_ptr);
   }
 }
 
@@ -214,16 +229,11 @@ TfLiteStatus EvalBlockwise(TfLiteContext* context, TfLiteNode* node,
     return kTfLiteError;
   }
   const int row_size = SizeOfDimension(value, 0);
+  size_t col_size = 0;
+  TF_LITE_ENSURE_OK(context,
+                    kernel_utils::CheckedDimensionProduct(
+                        context, *value, 1, NumDimensions(value), col_size));
 
-  // col_size after we flatten tensor into 2D.
-  CheckedInt<size_t> col_size = 1;
-  for (int i = 1; i < NumDimensions(value); i++) {
-    col_size = col_size * CheckedInt<size_t>(SizeOfDimension(value, i));
-    if (col_size.Overflow()) {
-      TF_LITE_KERNEL_LOG(context, "Embedding Lookup: col_size overflow.");
-      return kTfLiteError;
-    }
-  }
   const auto quantization_params =
       reinterpret_cast<const TfLiteBlockwiseQuantization*>(
           value->quantization.params);
@@ -233,52 +243,20 @@ TfLiteStatus EvalBlockwise(TfLiteContext* context, TfLiteNode* node,
 
   float* output_fp32_ptr = GetTensorData<float>(output);
   half* output_fp16_ptr = GetTensorData<half>(output);
-
   const int8_t* value_ptr = GetTensorData<int8_t>(value);
   const int32_t* lookup_data = GetTensorData<int32_t>(lookup);
 
-  // Wrap the correct 2/4-bit float32/float16 unpacking function.
-  auto [unpack_to_fp32, unpack_to_fp16] =
-      value->type == kTfLiteInt2
-          ? std::make_pair(Unpack2Bit<float>, Unpack2Bit<half>)
-          : std::make_pair(Unpack4Bit<float>, Unpack4Bit<half>);
-  const int values_per_byte = value->type == kTfLiteInt2 ? 4 : 2;
-  std::function<void(float, size_t, size_t)> unpack;
-  if (output->type == kTfLiteFloat32) {
-    unpack = [&, unpack = unpack_to_fp32](float scaling_factor,
-                                          size_t value_offset,
-                                          size_t output_offset) {
-      unpack(scaling_factor, blocksize,
-             &value_ptr[value_offset / values_per_byte],
-             &output_fp32_ptr[output_offset]);
-    };
-  } else {
-    unpack = [&, unpack = unpack_to_fp16](float scaling_factor,
-                                          size_t value_offset,
-                                          size_t output_offset) {
-      unpack(scaling_factor, blocksize,
-             &value_ptr[value_offset / values_per_byte],
-             &output_fp16_ptr[output_offset]);
-    };
-  }
-
-  if (col_size.Value() % blocksize != 0) {
+  if (col_size % blocksize != 0) {
     TF_LITE_KERNEL_LOG(context,
                        "Embedding Lookup: lookup dimension %zu must be "
                        "divisible by blocksize %d",
-                       col_size.Value(), blocksize);
+                       col_size, blocksize);
     return kTfLiteError;
   }
-  size_t num_blocks = col_size.Value() / blocksize;
+  const size_t num_blocks = col_size / blocksize;
   for (int i = 0; i < dimension_size; i++) {
-    int idx = lookup_data[i];
-    if (idx >= row_size || idx < 0) {
-      TF_LITE_KERNEL_LOG(context,
-                         "Embedding Lookup: index out of bounds. "
-                         "Got %d, and bounds are [0, %d]",
-                         idx, row_size - 1);
-      return kTfLiteError;
-    }
+    const int32_t idx = lookup_data[i];
+    TF_LITE_ENSURE_OK(context, ValidateLookupIndex(context, idx, row_size));
     CheckedInt<size_t> output_row_offset = CheckedInt<size_t>(i) * col_size;
     CheckedInt<size_t> scale_offset = CheckedInt<size_t>(idx) * num_blocks;
     CheckedInt<size_t> value_offset = CheckedInt<size_t>(idx) * col_size;
@@ -298,7 +276,15 @@ TfLiteStatus EvalBlockwise(TfLiteContext* context, TfLiteNode* node,
         TF_LITE_KERNEL_LOG(context, "Embedding Lookup: offset overflow.");
         return kTfLiteError;
       }
-      unpack(scaling_factor, val_off.Value(), out_off.Value());
+      if (output->type == kTfLiteFloat32) {
+        UnpackSubByteElements(value->type, scaling_factor, blocksize,
+                              val_off.Value(), value_ptr,
+                              &output_fp32_ptr[out_off.Value()]);
+      } else {
+        UnpackSubByteElements(value->type, scaling_factor, blocksize,
+                              val_off.Value(), value_ptr,
+                              &output_fp16_ptr[out_off.Value()]);
+      }
     }
   }
   return kTfLiteOk;
@@ -308,31 +294,23 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
                         const TfLiteTensor* lookup, const TfLiteTensor* value,
                         TfLiteTensor* output) {
   const int row_size = SizeOfDimension(value, 0);
+  size_t col_size = 0;
+  TF_LITE_ENSURE_OK(context,
+                    kernel_utils::CheckedDimensionProduct(
+                        context, *value, 1, NumDimensions(value), col_size));
 
-  // col_size after we flatten tensor into 2D.
-  CheckedInt<size_t> col_size = 1;
-  for (int i = 1; i < NumDimensions(value); i++) {
-    col_size = col_size * CheckedInt<size_t>(SizeOfDimension(value, i));
-    if (col_size.Overflow()) {
-      TF_LITE_KERNEL_LOG(context, "Embedding Lookup: col_size overflow.");
-      return kTfLiteError;
-    }
-  }
   auto copy_row = [&](float scaling_factor, auto output_ptr, auto value_ptr,
                       int idx, size_t out_off) -> TfLiteStatus {
-    CheckedInt<size_t> offset = col_size * CheckedInt<size_t>(idx);
+    CheckedInt<size_t> offset = CheckedInt<size_t>(col_size) * idx;
     if (offset.Overflow()) {
       TF_LITE_KERNEL_LOG(context, "Embedding Lookup: offset overflow.");
       return kTfLiteError;
     }
-    if (value->type == kTfLiteInt4) {
-      Unpack4Bit(scaling_factor, col_size.Value(),
-                 &value_ptr[offset.Value() >> 1], &output_ptr[out_off]);
-    } else if (value->type == kTfLiteInt2) {
-      Unpack2Bit(scaling_factor, col_size.Value(),
-                 &value_ptr[offset.Value() >> 2], &output_ptr[out_off]);
+    if (value->type == kTfLiteInt4 || value->type == kTfLiteInt2) {
+      UnpackSubByteElements(value->type, scaling_factor, col_size,
+                            offset.Value(), value_ptr, &output_ptr[out_off]);
     } else {
-      for (size_t j = 0; j < col_size.Value(); j++) {
+      for (size_t j = 0; j < col_size; j++) {
         CheckedInt<size_t> output_idx = CheckedInt<size_t>(j) + out_off;
         CheckedInt<size_t> value_idx = offset + CheckedInt<size_t>(j);
         if (output_idx.Overflow() || value_idx.Overflow()) {
@@ -355,38 +333,31 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
 
   for (int i = 0; i < SizeOfDimension(lookup, 0); i++) {
     const int32_t idx = lookup_data[i];
-    if (idx >= row_size || idx < 0) {
-      TF_LITE_KERNEL_LOG(context,
-                         "Embedding Lookup: index out of bounds. "
-                         "Got %" PRId32 ", and bounds are [0, %d]",
-                         idx, row_size - 1);
+    TF_LITE_ENSURE_OK(context, ValidateLookupIndex(context, idx, row_size));
+    CheckedInt<size_t> out_off = CheckedInt<size_t>(i) * col_size;
+    if (out_off.Overflow()) {
+      TF_LITE_KERNEL_LOG(context, "Embedding Lookup: offset overflow.");
       return kTfLiteError;
-    } else {
-      CheckedInt<size_t> out_off = CheckedInt<size_t>(i) * col_size.Value();
-      if (out_off.Overflow()) {
-        TF_LITE_KERNEL_LOG(context, "Embedding Lookup: offset overflow.");
-        return kTfLiteError;
+    }
+    // Dequantize embedding values.
+    // TODO(alanchiao): refactor scalar multiply into separate function
+    // for ease of adding a neon equivalent if ever necessary.
+    float scaling_factor = value->params.scale;
+    if (value->quantization.type == kTfLiteAffineQuantization) {
+      const auto qparams = static_cast<const TfLiteAffineQuantization*>(
+          value->quantization.params);
+      if (qparams->scale->size > 1) {
+        // get this row's scale for per-axis quantization
+        scaling_factor = qparams->scale->data[idx];
       }
-      // Dequantize embedding values.
-      // TODO(alanchiao): refactor scalar multiply into separate function
-      // for ease of adding a neon equivalent if ever necessary.
-      float scaling_factor = value->params.scale;
-      if (value->quantization.type == kTfLiteAffineQuantization) {
-        const auto qparams = static_cast<const TfLiteAffineQuantization*>(
-            value->quantization.params);
-        if (qparams->scale->size > 1) {
-          // get this row's scale for per-axis quantization
-          scaling_factor = qparams->scale->data[idx];
-        }
-      }
+    }
 
-      if (output_fp32_ptr) {
-        TF_LITE_ENSURE_OK(context, copy_row(scaling_factor, output_fp32_ptr,
-                                            value_ptr, idx, out_off.Value()));
-      } else {
-        TF_LITE_ENSURE_OK(context, copy_row(scaling_factor, output_fp16_ptr,
-                                            value_ptr, idx, out_off.Value()));
-      }
+    if (output_fp32_ptr) {
+      TF_LITE_ENSURE_OK(context, copy_row(scaling_factor, output_fp32_ptr,
+                                          value_ptr, idx, out_off.Value()));
+    } else {
+      TF_LITE_ENSURE_OK(context, copy_row(scaling_factor, output_fp16_ptr,
+                                          value_ptr, idx, out_off.Value()));
     }
   }
 
