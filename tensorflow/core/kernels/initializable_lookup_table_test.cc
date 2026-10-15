@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -80,7 +81,9 @@ TEST(InitializableLookupTableTest, RejectsFirstBatchWithMismatchedShapes) {
   BatchIterator iter({
       {test::AsTensor<int64_t>({1, 2}), test::AsTensor<int64_t>({10})},
   });
-  EXPECT_TRUE(absl::IsInvalidArgument(table->Initialize(iter)));
+  EXPECT_THAT(table->Initialize(iter),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     ::testing::HasSubstr("Expected shape")));
   EXPECT_FALSE(table->is_initialized());
 }
 
@@ -92,7 +95,9 @@ TEST(InitializableLookupTableTest, RejectsLaterBatchWithMoreKeysThanValues) {
       {test::AsTensor<int64_t>({1}), test::AsTensor<int64_t>({10})},
       {test::AsTensor<int64_t>({2, 3, 4, 5}), test::AsTensor<int64_t>({20})},
   });
-  EXPECT_TRUE(absl::IsInvalidArgument(table->Initialize(iter)));
+  EXPECT_THAT(table->Initialize(iter),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     ::testing::HasSubstr("Expected shape")));
   EXPECT_FALSE(table->is_initialized());
 }
 
@@ -103,7 +108,9 @@ TEST(InitializableLookupTableTest, RejectsLaterBatchWithExtraValueDims) {
       {test::AsTensor<int64_t>({2}),
        test::AsTensor<int64_t>({20, 21}, TensorShape({1, 2}))},
   });
-  EXPECT_TRUE(absl::IsInvalidArgument(table->Initialize(iter)));
+  EXPECT_THAT(table->Initialize(iter),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     ::testing::HasSubstr("Expected shape")));
   EXPECT_FALSE(table->is_initialized());
 }
 
