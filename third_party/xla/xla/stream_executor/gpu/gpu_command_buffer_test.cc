@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/types/span.h"
 #include "xla/service/platform_util.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_args.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
@@ -140,6 +142,65 @@ TEST_F(GpuCommandBufferTest, LaunchSingleKernel) {
   std::fill(dst.begin(), dst.end(), 42);
   ASSERT_OK(stream->Memcpy(dst.data(), d, byte_length));
   ASSERT_EQ(dst, expected);
+}
+
+// DynShmemKernel is an in-process kernel (loaded from its host symbol), so this
+// also covers recording such kernels with dynamic shared memory.
+TEST_F(GpuCommandBufferTest, LaunchKernelWithDynamicSharedMemory) {
+  Platform* platform = GpuPlatform();
+  StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto kernel, LoadDynShmemTestKernel(executor));
+
+  // DynShmemKernel reverses an n_cols x n_rows byte buffer through dynamic
+  // shared memory of n_cols * n_rows bytes, one thread per column.
+  constexpr uint32_t kCols = 64;
+  constexpr uint32_t kMaxRows = 512;
+  DeviceAddress<uint8_t> buf =
+      executor->AllocateArray<uint8_t>(kCols * kMaxRows);
+  DeviceAddress<uint32_t> cols = executor->AllocateScalar<uint32_t>();
+  DeviceAddress<uint32_t> rows = executor->AllocateScalar<uint32_t>();
+  ASSERT_OK(stream->Memcpy(&cols, &kCols, sizeof(kCols)));
+
+  auto upload = [&](uint32_t n_rows) -> absl::StatusOr<std::vector<uint8_t>> {
+    uint32_t n = kCols * n_rows;
+    std::vector<uint8_t> host(n);
+    for (uint32_t i = 0; i < n; ++i) {
+      host[i] = static_cast<uint8_t>(i * 7 + 3);
+    }
+    ABSL_RETURN_IF_ERROR(stream->Memcpy(&buf, host.data(), n));
+    ABSL_RETURN_IF_ERROR(stream->Memcpy(&rows, &n_rows, sizeof(n_rows)));
+    return host;
+  };
+  auto expect_reversed = [&](const std::vector<uint8_t>& before) {
+    std::vector<uint8_t> after(before.size());
+    ASSERT_OK(stream->Memcpy(after.data(), buf, after.size()));
+    ASSERT_OK(stream->BlockHostUntilDone());
+    std::vector<uint8_t> expected(before.rbegin(), before.rend());
+    ASSERT_EQ(after, expected);
+  };
+
+  // Create with a small dynamic shared memory request.
+  ASSERT_OK_AND_ASSIGN(std::vector<uint8_t> before, upload(16));
+  ASSERT_OK_AND_ASSIGN(auto cmd_buffer, executor->CreateCommandBuffer(primary));
+  ASSERT_OK_AND_ASSIGN(auto* launch,
+                       cmd_buffer->CreateLaunch(
+                           ThreadDim(kCols), BlockDim(1), {}, *kernel,
+                           *PackKernelArgs(kCols * 16, buf, cols, rows), {}));
+  ASSERT_OK(cmd_buffer->Finalize());
+  ASSERT_OK(cmd_buffer->Submit(stream.get()));
+  ASSERT_NO_FATAL_FAILURE(expect_reversed(before));
+
+  // Update to a larger request.
+  ASSERT_OK_AND_ASSIGN(before, upload(kMaxRows));
+  ASSERT_OK(cmd_buffer->Update());
+  ASSERT_OK(cmd_buffer->UpdateLaunch(
+      launch, ThreadDim(kCols), BlockDim(1), {}, *kernel,
+      *PackKernelArgs(kCols * kMaxRows, buf, cols, rows)));
+  ASSERT_OK(cmd_buffer->Finalize());
+  ASSERT_OK(cmd_buffer->Submit(stream.get()));
+  ASSERT_NO_FATAL_FAILURE(expect_reversed(before));
 }
 
 TEST_F(GpuCommandBufferTest, TraceSingleKernel) {
