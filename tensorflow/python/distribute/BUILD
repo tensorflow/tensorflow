@@ -2692,6 +2692,15 @@ pytype_strict_library(
     deps = ["//tensorflow/python/util:tf_export"],
 )
 
+tf_py_strict_test(
+    name = "load_context_test",
+    srcs = ["load_context_test.py"],
+    deps = [
+        ":load_context",
+        "//tensorflow/python/eager:test",
+    ],
+)
+
 py_library(
     name = "merge_call_interim",
     srcs = [
