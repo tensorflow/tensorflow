@@ -42,7 +42,7 @@ class QuantizedOpsTest(xla_test.XLATestCase):
       for zero_point in (0, 13):
         with self.subTest(dtype=dtype, zero_point=zero_point):
           with self.session() as session:
-            with self.test_scope():
+            with self.device_scope():
               inputs = array_ops.placeholder(dtypes.float32, values.shape)
               output = gen_uniform_quant_ops.uniform_quantize(
                   inputs, constant_op.constant(1.0),
@@ -54,6 +54,8 @@ class QuantizedOpsTest(xla_test.XLATestCase):
             self.assertAllEqual(session.run(output, {inputs: values}), expected)
 
   def testUniformQuantizePerChannelHalfIntegers(self):
+    if dtypes.qint8 not in self.quantized_tf_types:
+      self.skipTest("qint8 not supported by backend")
     values = np.array([[-2.5, -5.0], [-0.5, 1.0], [2.5, 5.0]], np.float32)
     expected = np.array([[-2, 11], [0, 14], [3, 14]])
     for axis in (0, 1):
@@ -61,7 +63,7 @@ class QuantizedOpsTest(xla_test.XLATestCase):
       axis_expected = expected.T if axis == 0 else expected
       with self.subTest(axis=axis):
         with self.session() as session:
-          with self.test_scope():
+          with self.device_scope():
             inputs = array_ops.placeholder(dtypes.float32, axis_values.shape)
             output = gen_uniform_quant_ops.uniform_quantize(
                 inputs, constant_op.constant([1.0, 2.0]),
@@ -72,9 +74,11 @@ class QuantizedOpsTest(xla_test.XLATestCase):
                               axis_expected)
 
   def testUniformQuantizeWideZeroPoint(self):
+    if dtypes.qint32 not in self.quantized_tf_types:
+      self.skipTest("qint32 not supported by backend")
     values = np.array([-3.0, 0.0, 3.0], np.float32)
     with self.session() as session:
-      with self.test_scope():
+      with self.device_scope():
         inputs = array_ops.placeholder(dtypes.float32, values.shape)
         output = gen_uniform_quant_ops.uniform_quantize(
             inputs, constant_op.constant(1.0),

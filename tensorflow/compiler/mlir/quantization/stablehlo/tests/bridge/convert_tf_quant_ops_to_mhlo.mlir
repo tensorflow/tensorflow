@@ -105,10 +105,11 @@ func.func @uniform_quantize_half_integer_rounding(%input: tensor<6xf32>) -> tens
 func.func @uniform_quantize_per_axis_rounding(%input: tensor<3x2xf32>) -> tensor<3x2xi8> {
   %scales = "tf.Const"() {value = dense<[1.0, 2.0]> : tensor<2xf32>} : () -> tensor<2xf32>
   %zps = "tf.Const"() {value = dense<[0, 13]> : tensor<2xi32>} : () -> tensor<2xi32>
-  // CHECK: mhlo.constant{{.*}}dense<[1.000000e+00, 5.000000e-01]>
-  // CHECK: chlo.broadcast_multiply {{.*}}broadcast_dimensions = array<i64: 1>
+  // CHECK: mhlo.constant{{.*}}dense<[[1.000000e+00, 5.000000e-01]]> : tensor<1x2xf32>
+  // CHECK: chlo.broadcast_multiply {{.*}} : (tensor<3x2xf32>, tensor<1x2xf32>) -> tensor<3x2xf32>
   // CHECK: mhlo.floor
-  // CHECK: chlo.broadcast_add {{.*}}broadcast_dimensions = array<i64: 1>{{.*}}tensor<3x2xi64>
+  // CHECK: mhlo.reshape {{.*}} : (tensor<2xi64>) -> tensor<1x2xi64>
+  // CHECK: chlo.broadcast_add {{.*}} : (tensor<3x2xi64>, tensor<1x2xi64>) -> tensor<3x2xi64>
   // CHECK: mhlo.convert {{.*}} : (tensor<3x2xi64>) -> tensor<3x2xi8>
   %result = "tf.UniformQuantize"(%input, %scales, %zps) {
     quantization_axis = 1 : i64, quantization_min_val = -2 : i64,
@@ -116,6 +117,26 @@ func.func @uniform_quantize_per_axis_rounding(%input: tensor<3x2xf32>) -> tensor
   } : (tensor<3x2xf32>, tensor<2xf32>, tensor<2xi32>) -> tensor<3x2x!tf_type.qint8>
   %cast = "tf.Cast"(%result) {Truncate = false} : (tensor<3x2x!tf_type.qint8>) -> tensor<3x2xi8>
   func.return %cast : tensor<3x2xi8>
+}
+
+// -----
+
+// CHECK-LABEL: func @uniform_quantize_per_axis_zero_rounding
+func.func @uniform_quantize_per_axis_zero_rounding(%input: tensor<2x3xf32>) -> tensor<2x3xi8> {
+  %scales = "tf.Const"() {value = dense<[1.0, 2.0]> : tensor<2xf32>} : () -> tensor<2xf32>
+  %zps = "tf.Const"() {value = dense<[0, 13]> : tensor<2xi32>} : () -> tensor<2xi32>
+  // CHECK: mhlo.constant{{.*}}dense<[[1.000000e+00], [5.000000e-01]]> : tensor<2x1xf32>
+  // CHECK: chlo.broadcast_multiply {{.*}} : (tensor<2x3xf32>, tensor<2x1xf32>) -> tensor<2x3xf32>
+  // CHECK: mhlo.floor
+  // CHECK: mhlo.reshape {{.*}} : (tensor<2xi64>) -> tensor<2x1xi64>
+  // CHECK: chlo.broadcast_add {{.*}} : (tensor<2x3xi64>, tensor<2x1xi64>) -> tensor<2x3xi64>
+  // CHECK: mhlo.convert {{.*}} : (tensor<2x3xi64>) -> tensor<2x3xi8>
+  %result = "tf.UniformQuantize"(%input, %scales, %zps) {
+    quantization_axis = 0 : i64, quantization_min_val = -2 : i64,
+    quantization_max_val = 14 : i64
+  } : (tensor<2x3xf32>, tensor<2xf32>, tensor<2xi32>) -> tensor<2x3x!tf_type.qint8>
+  %cast = "tf.Cast"(%result) {Truncate = false} : (tensor<2x3x!tf_type.qint8>) -> tensor<2x3xi8>
+  func.return %cast : tensor<2x3xi8>
 }
 
 // -----
