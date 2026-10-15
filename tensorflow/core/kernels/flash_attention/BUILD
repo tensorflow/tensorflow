@@ -64,6 +64,13 @@ cuda_library(
             # timeout.
             "-Xcuda-ptxas",
             "-O2",
+            # FlashAttention-2 only has sm80 kernels (no sm89/sm90 code paths).
+            # Compile once for sm_80 with PTX embedded for newer GPUs instead of
+            # once per configured arch (sm_80, sm_89, sm_90), which triples
+            # per-file clang compile time past the 1h CI action timeout.
+            "--no-cuda-gpu-arch=all",
+            "--cuda-gpu-arch=sm_80",
+            "--cuda-include-ptx=sm_80",
         ] + ["--no-cuda-gpu-arch=" + arch for arch in _FA2_PRE_SM80_ARCHS],
         "//conditions:default": [],
     })),
