@@ -786,6 +786,7 @@ py_test(
         ":ragged_tensor",
         ":ragged_tensor_value",
         ":row_partition",
+        "//tensorflow/compiler/jit:xla_cpu_jit",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:backprop",
