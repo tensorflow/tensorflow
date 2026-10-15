@@ -19,6 +19,7 @@ package tensorflow
 import (
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -395,6 +396,20 @@ func TestSessionConfig(t *testing.T) {
 	}
 	if output[0].Value().(int32) != 14 {
 		t.Fatalf("Got %v, want -1", output[0].Value())
+	}
+}
+
+func TestSessionConfigInvalid(t *testing.T) {
+	// SessionOptions.c() returns early when TF_SetConfig rejects Config, and
+	// has to free its C copy of Config there too (GitHub issue 129133).
+	graph := NewGraph()
+	opts := SessionOptions{Config: []byte("invalid config")}
+	_, err := NewSession(graph, &opts)
+	if err == nil {
+		t.Fatal("Expected error from NewSession with invalid config, got nil")
+	}
+	if got, want := err.Error(), "invalid SessionOptions.Config"; !strings.Contains(got, want) {
+		t.Errorf("Got error %q, want it to contain %q", got, want)
 	}
 }
 
