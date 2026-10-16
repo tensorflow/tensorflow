@@ -58,33 +58,6 @@ multiclass FuseSplatConstIntoSelectOp<Op SelectOp> {
     [(HasRankAtLeast<2> $constant_attr),
      (OperandsBroadcastToOutputType $input1, $input2, $result),
      (HasRankAtMost<5> $constant_value)]>;
-
-  def FuseSplatTflConstLhsInto#SelectOp : Pat<
-    (SelectOp:$result
-      AnyStaticShapeTensor:$input1,
-      (TFL_ConstOp:$constant_value SplatElementsAttr:$constant_attr),
-      AnyStaticShapeTensor:$input2),
-    (TFL_SelectV2Op
-      $input1,
-      (TFL_ConstOp (GetScalarElementsAttrFromSplat $constant_attr)),
-      $input2),
-    // Check if condition or rhs will promote the required broadcasting.
-    [(HasRankAtLeast<2> $constant_attr),
-     (OperandsBroadcastToOutputType $input1, $input2, $result),
-     (HasRankAtMost<5> $constant_value)]>;
-
-  def FuseSplatTflConstRhsInto#SelectOp : Pat<
-    (SelectOp:$result
-      AnyStaticShapeTensor:$input1,
-      AnyStaticShapeTensor:$input2,
-      (TFL_ConstOp:$constant_value SplatElementsAttr:$constant_attr)),
-    (TFL_SelectV2Op
-      $input1, $input2,
-      (TFL_ConstOp (GetScalarElementsAttrFromSplat $constant_attr))),
-    // Check if condition or lhs will promote the required broadcasting.
-    [(HasRankAtLeast<2> $constant_attr),
-     (OperandsBroadcastToOutputType $input1, $input2, $result),
-     (HasRankAtMost<5> $constant_value)]>;
 }
 
 // Pattern for skipping FillOp if it is mainly for broadcasting and the
@@ -105,27 +78,6 @@ multiclass FuseFillOpBroadcastIntoFollowingSelectOp<Op SelectOp> {
     (SelectOp:$result
       AnyStaticShapeTensor:$input1,
       (TFL_FillOp:$fill_output $fill_dims, (Arith_ConstantOp:$fill_value $val)),
-      AnyStaticShapeTensor:$input2),
-    (TFL_SelectV2Op $input1, $fill_value, $input2),
-  [(OperandsBroadcastToOutputType $input1, $input2, $result),
-   (HasRankAtMost<5> $result),
-   (IsRankLessThanEqualTo $fill_output, $result)]>;
-
-  def FoldTflFillOpIntoSelectOpRHS#SelectOp : Pat<
-    (SelectOp:$result
-      AnyStaticShapeTensor:$input1,
-      AnyStaticShapeTensor:$input2,
-      (TFL_FillOp:$fill_output $fill_dims,
-        (TFL_ConstOp:$fill_value $val))),
-    (TFL_SelectV2Op $input1, $input2, $fill_value),
-  [(OperandsBroadcastToOutputType $input1, $input2, $result),
-   (HasRankAtMost<5> $result),
-   (IsRankLessThanEqualTo $fill_output, $result)]>;
-
-  def FoldTflFillOpIntoSelectOpLHS#SelectOp : Pat<
-    (SelectOp:$result
-      AnyStaticShapeTensor:$input1,
-      (TFL_FillOp:$fill_output $fill_dims, (TFL_ConstOp:$fill_value $val)),
       AnyStaticShapeTensor:$input2),
     (TFL_SelectV2Op $input1, $fill_value, $input2),
   [(OperandsBroadcastToOutputType $input1, $input2, $result),
