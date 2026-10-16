@@ -116,8 +116,109 @@ TEST_F(AllReduceReduceScatterReorderTest, DifferentReductionFunctions) {
 
   ENTRY main {
     p0 = f32[8] parameter(0)
-    ar = f32[8] all-reduce(p0), replica_groups={}, to_apply=sum
-    ROOT rs = f32[4] reduce-scatter(ar), dimensions={0}, replica_groups={}, to_apply=product
+    ar = f32[8] all-reduce(p0), replica_groups={{0,1}, {2,3}}, to_apply=sum
+    ROOT rs = f32[4] reduce-scatter(ar), dimensions={0}, replica_groups={{0,2}, {1,3}}, to_apply=product
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass_, module.get()));
+  EXPECT_FALSE(changed);
+}
+
+TEST_F(AllReduceReduceScatterReorderTest, NonOrthogonalReplicaGroups) {
+  absl::string_view hlo_text = R"(
+  sum {
+    a = f32[] parameter(0)
+    b = f32[] parameter(1)
+    ROOT sum = f32[] add(a, b)
+  }
+
+  ENTRY main {
+    p0 = f32[8] parameter(0)
+    ar = f32[8] all-reduce(p0), replica_groups={{0,1}, {2,3}}, to_apply=sum
+    ROOT rs = f32[4] reduce-scatter(ar), dimensions={0}, replica_groups={{0,1}, {2,3}}, to_apply=sum
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass_, module.get()));
+  EXPECT_FALSE(changed);
+}
+
+TEST_F(AllReduceReduceScatterReorderTest, NonOrthogonalSwappedScatterOrder) {
+  absl::string_view hlo_text = R"(
+  sum {
+    a = f32[] parameter(0)
+    b = f32[] parameter(1)
+    ROOT sum = f32[] add(a, b)
+  }
+
+  ENTRY main {
+    p0 = f32[8] parameter(0)
+    ar = f32[8] all-reduce(p0), replica_groups={{0,1}, {2,3}}, to_apply=sum
+    ROOT rs = f32[4] reduce-scatter(ar), dimensions={0}, replica_groups={{0,2}, {3,1}}, to_apply=sum
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass_, module.get()));
+  EXPECT_FALSE(changed);
+}
+
+TEST_F(AllReduceReduceScatterReorderTest, UnrecognizedReductionComputation) {
+  absl::string_view hlo_text = R"(
+  sub {
+    a = f32[] parameter(0)
+    b = f32[] parameter(1)
+    ROOT diff = f32[] subtract(a, b)
+  }
+
+  ENTRY main {
+    p0 = f32[8] parameter(0)
+    ar = f32[8] all-reduce(p0), replica_groups={{0,1}, {2,3}}, to_apply=sub
+    ROOT rs = f32[4] reduce-scatter(ar), dimensions={0}, replica_groups={{0,2}, {1,3}}, to_apply=sub
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass_, module.get()));
+  EXPECT_FALSE(changed);
+}
+
+TEST_F(AllReduceReduceScatterReorderTest, VariadicReduceScatter) {
+  absl::string_view hlo_text = R"(
+  sum {
+    a = f32[] parameter(0)
+    b = f32[] parameter(1)
+    ROOT sum = f32[] add(a, b)
+  }
+
+  ENTRY main {
+    p0 = f32[8] parameter(0)
+    p1 = f32[8] parameter(1)
+    ar = f32[8] all-reduce(p0), replica_groups={{0,1}, {2,3}}, to_apply=sum
+    ROOT rs = (f32[4], f32[4]) reduce-scatter(ar, p1), dimensions={0}, replica_groups={{0,2}, {1,3}}, to_apply=sum
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass_, module.get()));
+  EXPECT_FALSE(changed);
+}
+
+TEST_F(AllReduceReduceScatterReorderTest, MismatchedReduceScatterGroupSize) {
+  absl::string_view hlo_text = R"(
+  sum {
+    a = f32[] parameter(0)
+    b = f32[] parameter(1)
+    ROOT sum = f32[] add(a, b)
+  }
+
+  ENTRY main {
+    p0 = f32[8] parameter(0)
+    ar = f32[8] all-reduce(p0), replica_groups={{0}, {1}, {2}, {3}}, to_apply=sum
+    ROOT rs = f32[4] reduce-scatter(ar), dimensions={0}, replica_groups={{0,1}}, to_apply=sum
   }
   )";
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
