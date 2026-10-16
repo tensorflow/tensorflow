@@ -43,7 +43,7 @@ namespace internal {
 class Spectrogram {
  public:
   Spectrogram() : initialized_(false) {}
-  ~Spectrogram() {}
+  ~Spectrogram() = default;
 
   // Initializes the class with a given window length and step length
   // (both in samples). Internally a Hann window is used as the window
