@@ -1026,7 +1026,7 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       TF_RET_CHECK(absl::c_all_of(proto.precision_config().operand_precision(),
                                   PrecisionConfig::Precision_IsValid));
       PrecisionConfig precision_config = proto.precision_config();
-      precision_config.mutable_operand_precision()->Resize(
+      precision_config.mutable_operand_precision()->resize(
           proto.operand_ids_size(), PrecisionConfig::DEFAULT);
       instruction =
           CreateConvolve(shape, all_operands(),
@@ -1130,7 +1130,7 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       TF_RET_CHECK(absl::c_all_of(proto.precision_config().operand_precision(),
                                   PrecisionConfig::Precision_IsValid));
       PrecisionConfig precision_config = proto.precision_config();
-      precision_config.mutable_operand_precision()->Resize(
+      precision_config.mutable_operand_precision()->resize(
           proto.operand_ids_size(), PrecisionConfig::DEFAULT);
       *custom_call_instr->mutable_precision_config() = precision_config;
       custom_call_instr->set_output_to_operand_aliasing(
@@ -1233,7 +1233,7 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       TF_RET_CHECK(absl::c_all_of(proto.precision_config().operand_precision(),
                                   PrecisionConfig::Precision_IsValid));
       PrecisionConfig precision_config = proto.precision_config();
-      precision_config.mutable_operand_precision()->Resize(
+      precision_config.mutable_operand_precision()->resize(
           proto.operand_ids_size(), PrecisionConfig::DEFAULT);
       instruction = std::make_unique<HloDotInstruction>(
           shape, all_operands(), proto.dot_dimension_numbers(),
@@ -1252,7 +1252,7 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                                   PrecisionConfig::Precision_IsValid));
       PrecisionConfig precision_config = proto.precision_config();
       // Only the lhs and rhs have precisions.
-      precision_config.mutable_operand_precision()->Resize(
+      precision_config.mutable_operand_precision()->resize(
           HloRaggedDotInstruction::kOperands - 1, PrecisionConfig::DEFAULT);
       auto operand_vector = all_operands();
       instruction = std::make_unique<HloRaggedDotInstruction>(
@@ -1271,7 +1271,7 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                                   PrecisionConfig::Precision_IsValid));
       PrecisionConfig precision_config = proto.precision_config();
       // Only the lhs and rhs have precisions.
-      precision_config.mutable_operand_precision()->Resize(
+      precision_config.mutable_operand_precision()->resize(
           HloScaledDotInstruction::kOperands - 2, PrecisionConfig::DEFAULT);
       auto operand_vector = all_operands();
       instruction = std::make_unique<HloScaledDotInstruction>(
