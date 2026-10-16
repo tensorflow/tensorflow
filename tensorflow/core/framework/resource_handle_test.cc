@@ -65,6 +65,21 @@ TEST_F(ResourceHandleTest, RefCounting) {
   EXPECT_FALSE(alive);
 }
 
+TEST_F(ResourceHandleTest, HandleNameDoesNotLeakAddress) {
+  auto resource = new MockResource(nullptr, 42);
+  auto handle =
+      ResourceHandle::MakeRefCountingHandle(resource, "cpu", {}, {});
+  // Handle name must not contain a raw pointer representation.
+  // Previously the name was "Resource-<id>-at-0x<hex>" which leaked the
+  // heap address of the resource to callers via error messages.
+  EXPECT_EQ(handle.name().find("-at-"), std::string::npos)
+      << "Handle name must not embed raw pointer: " << handle.name();
+  EXPECT_EQ(handle.name().find("0x"), std::string::npos)
+      << "Handle name must not embed hex address: " << handle.name();
+  // Name should start with "Resource-"
+  EXPECT_EQ(handle.name().substr(0, 9), "Resource-");
+}
+
 TEST_F(ResourceHandleTest, SummarizeValue) {
   ResourceHandleProto proto;
   TensorShapeProto shape;
