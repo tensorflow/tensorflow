@@ -490,17 +490,20 @@ common:macos --define=PREFIX=/usr
 common:macos --define=PROTOBUF_INCLUDE_PATH=$(PREFIX)/include
 # TF_SYSTEM_LIBS do not work on windows.
 
-# By default, build TF in C++ 17 mode.
-common:android --cxxopt=-std=c++17
-common:android --host_cxxopt=-std=c++17
-common:ios --cxxopt=-std=c++17
-common:ios --host_cxxopt=-std=c++17
-common:linux --cxxopt=-std=c++17
-common:linux --host_cxxopt=-std=c++17
-common:macos --cxxopt=-std=c++17
-common:macos --host_cxxopt=-std=c++17
-common:windows --cxxopt=/std:c++17
-common:windows --host_cxxopt=/std:c++17
+# Use the glibc 2.31 (manylinux_2_31, gcc-10, C++20) sysroot on Linux.
+common:linux --repo_env=SYSROOT_DIST=linux_glibc_2_31
+
+# By default, build TF in C++ 20 mode.
+common:android --cxxopt=-std=c++20
+common:android --host_cxxopt=-std=c++20
+common:ios --cxxopt=-std=c++20
+common:ios --host_cxxopt=-std=c++20
+common:linux --cxxopt=-std=c++20
+common:linux --host_cxxopt=-std=c++20
+common:macos --cxxopt=-std=c++20
+common:macos --host_cxxopt=-std=c++20
+common:windows --cxxopt=/std:c++20
+common:windows --host_cxxopt=/std:c++20
 
 # On windows, we still link everything into a single DLL.
 common:windows --config=monolithic
@@ -1039,13 +1042,10 @@ test:rbe_cross_compile_base --strategy=TestRunner=local --build_tests_only
 test:rbe_cross_compile_base --verbose_failures=true --local_test_jobs=HOST_CPUS --test_output=errors
 
 # START LINUX AARCH64 CROSS-COMPILE CONFIGS
-common:cross_compile_linux_arm64 --config=cross_compile_base
-
 # Set the target CPU to Aarch64
 common:cross_compile_linux_arm64 --platforms=//tensorflow/tools/toolchains/cross_compile/config:linux_aarch64
 common:cross_compile_linux_arm64 --cpu=aarch64
-common:cross_compile_linux_arm64 --crosstool_top=//tensorflow/tools/toolchains/cross_compile/cc:cross_compile_toolchain_suite
-common:cross_compile_linux_arm64 --extra_toolchains=//tensorflow/tools/toolchains/cross_compile/cc:linux_aarch64_toolchain
+common:cross_compile_linux_arm64 --extra_execution_platforms=//tensorflow/tools/toolchains/cross_compile/config:linux_x86_64
 common:cross_compile_linux_arm64 --define=linux_arm64_cross_compile=true
 common:cross_compile_linux_arm64 --define=ynn_enable_arm64_neonfp8=false
 
