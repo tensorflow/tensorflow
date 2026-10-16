@@ -54,7 +54,7 @@ __device__ __forceinline__ float get_random_float_v2(uint64_t global_idx,
   uint64_t state = global_idx + j;
   state = state * 6364136223846793005ULL + 1442695040888963407ULL;
   uint32_t val = (state >> 32) & 0xFFFFFFFF;
-  return static_cast<float>(val) / 4294967296.0f;
+  return static_cast<float>(val >> 8) * (1.0f / 16777216.0f);
 }
 
 __device__ __forceinline__ uint64_t
@@ -65,6 +65,12 @@ ResolveSeed(const functor::FlashAttentionRng &rng) {
 __device__ __forceinline__ uint64_t
 ResolveOffset(const functor::FlashAttentionRng &rng) {
   return rng.offset_dev != nullptr ? *rng.offset_dev : rng.offset;
+}
+
+// Tensors are [B, S, H, D], so position s of the (b, h) sequence is row
+// RowBase(b, h, S, H) + s * H of the [B * S * H, D] matrix.
+__device__ __forceinline__ size_t RowBase(int b, int h, int S, int H) {
+  return static_cast<size_t>(b) * S * H + h;
 }
 
 // Total elements in the shared memory tile allocated for this feature
@@ -78,7 +84,8 @@ __device__ __forceinline__ void load_tile(
     int d_size,                   // D_qk or D_v
     int s_size,                   // S_q or S_kv
     int tile_offset,              // tile_offset (in S dimension)
-    size_t batch_offset)          // batch index offset
+    size_t row_base,              // RowBase() of this (batch, head)
+    int row_step)                 // H: rows between sequence positions
 {
   const int total_elements = b_size * D_MAX;
   for (int i = tid; i < total_elements; i += block_dim) {
@@ -86,7 +93,9 @@ __device__ __forceinline__ void load_tile(
     const int d = i - s * D_MAX;
     const int s_offset = tile_offset + s;
     if (s_offset < s_size && d < d_size) {
-      s_mem[i] = g_mem[(batch_offset + s_offset) * d_size + d];
+      s_mem[i] =
+          g_mem[(row_base + static_cast<size_t>(s_offset) * row_step) * d_size +
+                d];
     } else {
       s_mem[i] = T(0.0f);
     }

@@ -29,7 +29,7 @@ template <typename T, int D_MAX>
 __global__ void FlashAttnFwdKernel(const T *__restrict__ Q,
                                    const T *__restrict__ K,
                                    const T *__restrict__ V, T *__restrict__ Out,
-                                   float *__restrict__ stats_out, int B,
+                                   float *__restrict__ stats_out, int BH, int H,
                                    int S_q, int S_kv, int D_qk, int D_v,
                                    bool causal_mask, float dropout_rate,
                                    float scale, FlashAttentionRng rng) {
@@ -48,14 +48,18 @@ __global__ void FlashAttnFwdKernel(const T *__restrict__ Q,
   T *s_V = s_K + Bc * D_MAX;
 
   // Grid Mapping
-  // blockIdx.x covers all tiles: (Batch * S_q) / Br
+  // blockIdx.x covers all tiles: (Batch * Heads * S_q) / Br
   const int tiles_per_batch = (S_q + Br - 1) / Br;
   const bool block_valid =
       blockIdx.x <
-      tiles_per_batch * B;  // in case current block exceeds total blocks
-  const int b = block_valid ? blockIdx.x / tiles_per_batch : 0;
-  const size_t batch_offset_q = static_cast<size_t>(b) * S_q;
-  const size_t batch_offset_kv = static_cast<size_t>(b) * S_kv;
+      tiles_per_batch * BH;  // in case current block exceeds total blocks
+  const int bh = block_valid ? blockIdx.x / tiles_per_batch : 0;
+  const int b = bh / H;
+  const int h = bh - b * H;
+  // Stats and the dropout RNG index (batch, head) pairs as bh.
+  const size_t batch_offset_q = static_cast<size_t>(bh) * S_q;
+  const size_t row_base_q = RowBase(b, h, S_q, H);
+  const size_t row_base_kv = RowBase(b, h, S_kv, H);
 
   const int tile_idx_q = blockIdx.x % tiles_per_batch;
   const int tile_offset_q = tile_idx_q * Br;
@@ -83,7 +87,7 @@ __global__ void FlashAttnFwdKernel(const T *__restrict__ Q,
   // Load Q Tile
   if (block_valid) {
     load_tile<T, D_MAX>(s_Q, Q, tid, blockDim.x, Br, D_qk, S_q, tile_offset_q,
-                        batch_offset_q);
+                        row_base_q, H);
   }
 
   T *q_ptr = s_Q + tid * D_MAX;
@@ -98,9 +102,9 @@ __global__ void FlashAttnFwdKernel(const T *__restrict__ Q,
     // Load KV Tile
     if (!tile_is_masked) {
       load_tile<T, D_MAX>(s_K, K, tid, blockDim.x, Bc, D_qk, S_kv,
-                          tile_offset_kv, batch_offset_kv);
+                          tile_offset_kv, row_base_kv, H);
       load_tile<T, D_MAX>(s_V, V, tid, blockDim.x, Bc, D_v, S_kv,
-                          tile_offset_kv, batch_offset_kv);
+                          tile_offset_kv, row_base_kv, H);
     }
 
     __syncthreads();
@@ -167,10 +171,10 @@ __global__ void FlashAttnFwdKernel(const T *__restrict__ Q,
   if (active) {
     float stats_val =
         m_i + Eigen::numext::log(l_i + EPSF);  // +epsilon for stability
-    const size_t out_offset = batch_offset_q + q_offset;
-    stats_out[out_offset] = stats_val;
+    stats_out[batch_offset_q + q_offset] = stats_val;
     float inv_l = (l_i > EPSF) ? (1.0f / l_i) : ZEROF;
-    const size_t out_base = out_offset * D_v;
+    const size_t out_base =
+        (row_base_q + static_cast<size_t>(q_offset) * H) * D_v;
 #pragma unroll
     for (int d = 0; d < D_MAX; ++d) {
       if (d < D_v) {
@@ -194,21 +198,22 @@ struct FlashAttentionFunctor<GPUDevice, T> {
   }
 
   absl::Status operator()(const GPUDevice &d,
-                          typename TTypes<T, 3>::ConstTensor Q,
-                          typename TTypes<T, 3>::ConstTensor K,
-                          typename TTypes<T, 3>::ConstTensor V,
-                          typename TTypes<T, 3>::Tensor Out,
-                          typename TTypes<float, 2>::Tensor Stats,
+                          typename TTypes<T, 4>::ConstTensor Q,
+                          typename TTypes<T, 4>::ConstTensor K,
+                          typename TTypes<T, 4>::ConstTensor V,
+                          typename TTypes<T, 4>::Tensor Out,
+                          typename TTypes<float, 3>::Tensor Stats,
                           bool causal_mask, float dropout_rate, float scale,
                           FlashAttentionRng rng) const {
     const int B = Q.dimension(0);
     const int S_q = Q.dimension(1);
-    const int D_qk = Q.dimension(2);
+    const int H = Q.dimension(2);
+    const int D_qk = Q.dimension(3);
     const int S_kv = K.dimension(1);
-    const int D_v = V.dimension(2);
+    const int D_v = V.dimension(3);
     int max_D = std::max(D_qk, D_v);
 
-    if (B == 0 || S_q == 0) return absl::OkStatus();
+    if (B == 0 || H == 0 || S_q == 0) return absl::OkStatus();
     if (S_kv == 0) {
       // No keys to attend to: the output is zero.
       return ZeroOutputs(d, {{Out.data(), Out.size() * sizeof(T)},
@@ -216,11 +221,12 @@ struct FlashAttentionFunctor<GPUDevice, T> {
     }
 
     if constexpr (kIsFa2Type) {
-      if (flash_attention_fa2::Supported(D_qk, D_v)) {
+      if (flash_attention_fa2::Supported(D_qk, D_v) &&
+          flash_attention_fa2::GridSupported(B, H)) {
         const cudaError_t err = flash_attention_fa2::Forward(
             d.stream(), kIsBf16, Q.data(), K.data(), V.data(), Out.data(),
-            Stats.data(), B, S_q, S_kv, D_qk, scale, dropout_rate, causal_mask,
-            rng.seed, rng.offset, rng.seed_dev, rng.offset_dev);
+            Stats.data(), B, H, S_q, S_kv, D_qk, scale, dropout_rate,
+            causal_mask, rng.seed, rng.offset, rng.seed_dev, rng.offset_dev);
         if (err != cudaSuccess) {
           return errors::Internal("FlashAttention-2 forward failed: ",
                                   cudaGetErrorString(err));
@@ -230,20 +236,20 @@ struct FlashAttentionFunctor<GPUDevice, T> {
     }
 
     if (max_D <= 8) {
-      return LaunchKernel<8>(d, Q, K, V, Out, Stats, B, S_q, S_kv, D_qk, D_v,
+      return LaunchKernel<8>(d, Q, K, V, Out, Stats, B, H, S_q, S_kv, D_qk, D_v,
                              causal_mask, dropout_rate, scale, rng);
     } else if (max_D <= 16) {
-      return LaunchKernel<16>(d, Q, K, V, Out, Stats, B, S_q, S_kv, D_qk, D_v,
-                              causal_mask, dropout_rate, scale, rng);
+      return LaunchKernel<16>(d, Q, K, V, Out, Stats, B, H, S_q, S_kv, D_qk,
+                              D_v, causal_mask, dropout_rate, scale, rng);
     } else if (max_D <= 32) {
-      return LaunchKernel<32>(d, Q, K, V, Out, Stats, B, S_q, S_kv, D_qk, D_v,
-                              causal_mask, dropout_rate, scale, rng);
+      return LaunchKernel<32>(d, Q, K, V, Out, Stats, B, H, S_q, S_kv, D_qk,
+                              D_v, causal_mask, dropout_rate, scale, rng);
     } else if (max_D <= 64) {
-      return LaunchKernel<64>(d, Q, K, V, Out, Stats, B, S_q, S_kv, D_qk, D_v,
-                              causal_mask, dropout_rate, scale, rng);
+      return LaunchKernel<64>(d, Q, K, V, Out, Stats, B, H, S_q, S_kv, D_qk,
+                              D_v, causal_mask, dropout_rate, scale, rng);
     } else if (max_D <= 128) {
-      return LaunchKernel<128>(d, Q, K, V, Out, Stats, B, S_q, S_kv, D_qk, D_v,
-                               causal_mask, dropout_rate, scale, rng);
+      return LaunchKernel<128>(d, Q, K, V, Out, Stats, B, H, S_q, S_kv, D_qk,
+                               D_v, causal_mask, dropout_rate, scale, rng);
     } else {
       return FeatureSizeError(D_qk, D_v);
     }
@@ -251,12 +257,12 @@ struct FlashAttentionFunctor<GPUDevice, T> {
 
   template <int D_MAX>
   absl::Status LaunchKernel(const GPUDevice &d,
-                            typename TTypes<T, 3>::ConstTensor Q,
-                            typename TTypes<T, 3>::ConstTensor K,
-                            typename TTypes<T, 3>::ConstTensor V,
-                            typename TTypes<T, 3>::Tensor Out,
-                            typename TTypes<float, 2>::Tensor Stats, int B,
-                            int S_q, int S_kv, int D_qk, int D_v,
+                            typename TTypes<T, 4>::ConstTensor Q,
+                            typename TTypes<T, 4>::ConstTensor K,
+                            typename TTypes<T, 4>::ConstTensor V,
+                            typename TTypes<T, 4>::Tensor Out,
+                            typename TTypes<float, 3>::Tensor Stats, int B,
+                            int H, int S_q, int S_kv, int D_qk, int D_v,
                             bool causal_mask, float dropout_rate, float scale,
                             FlashAttentionRng rng) const {
     constexpr int Br = traits::FlashTraits<D_MAX>::Br;
@@ -264,16 +270,17 @@ struct FlashAttentionFunctor<GPUDevice, T> {
     constexpr int threads_per_block = traits::FlashTraits<D_MAX>::Th;
     int smem_size = (Br + Bc + Bc) * D_MAX * sizeof(T);
     uint64_t blocks_per_batch = (S_q + Br - 1) / Br;
-    uint64_t total_blocks = static_cast<uint64_t>(B) * blocks_per_batch;
+    const int BH = B * H;  // fits in int, see CheckDimsFitInt32
+    uint64_t total_blocks = static_cast<uint64_t>(BH) * blocks_per_batch;
     if (total_blocks > 2147483647ULL) {
       return errors::InvalidArgument(
           "FlashAttention: total blocks exceed 1D grid limit");
     }
     return GpuLaunchKernel(FlashAttnFwdKernel<T, D_MAX>, total_blocks,
                            threads_per_block, smem_size, d.stream(), Q.data(),
-                           K.data(), V.data(), Out.data(), Stats.data(), B, S_q,
-                           S_kv, D_qk, D_v, causal_mask, dropout_rate, scale,
-                           rng);
+                           K.data(), V.data(), Out.data(), Stats.data(), BH, H,
+                           S_q, S_kv, D_qk, D_v, causal_mask, dropout_rate,
+                           scale, rng);
   }
 };
 
