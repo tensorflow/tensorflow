@@ -434,16 +434,13 @@ class ArrayCreationTest(test.TestCase):
             msg = 'dtype:{} start:{} stop:{} step:{}'.format(
                 dtype, start, stop, step)
             if not step:
-              with self.assertRaises(ValueError):
-                self.match(
-                    np_array_ops.arange(start, stop, step),
-                    np.arange(start, stop, step),
-                    msg=msg)
-                if not isinstance(start, float) and not isinstance(stop, float):
-                  self.match(
-                      np_array_ops.arange(start, stop, step, dtype=dtype),
-                      np.arange(start, stop, step, dtype=dtype),
-                      msg=msg)
+              with self.assertRaisesRegex(ValueError, 'step must be non-zero'):
+                np_array_ops.arange(start, stop, step)
+              if not isinstance(start, float) and not isinstance(stop, float):
+                with self.assertRaisesRegex(
+                    ValueError, 'step must be non-zero'
+                ):
+                  np_array_ops.arange(start, stop, step, dtype=dtype)
             else:
               self.match(
                   np_array_ops.arange(start, stop, step),
@@ -574,7 +571,7 @@ class ArrayCreationTest(test.TestCase):
         constant_op.constant([1, 2]),
     ]
     for k in invalid_ks:
-      with self.assertRaises(ValueError):
+      with self.assertRaisesRegex(ValueError, 'k must be an integer scalar'):
         np_array_ops.diag(v, k=k)
 
   def testDiagFlatInvalidK(self):
@@ -585,7 +582,7 @@ class ArrayCreationTest(test.TestCase):
         constant_op.constant([1, 2]),
     ]
     for k in invalid_ks:
-      with self.assertRaises(ValueError):
+      with self.assertRaisesRegex(ValueError, 'k must be an integer scalar'):
         np_array_ops.diagflat(v, k=k)
 
   def match_shape(self, actual, expected, msg=None):
@@ -909,8 +906,10 @@ class ArrayMethodsTest(test.TestCase):
     run_test(np.arange(8).reshape((2, 2, 2)).tolist(), axis=(2, 0))
     run_test(
         np.arange(8).reshape((2, 2, 2)).tolist(), axis=(2, 0), keepdims=True)
-    self.assertRaises(ValueError, np_array_ops.amax, np.ones([2, 2]), out=[])
-    self.assertRaises(ValueError, np_array_ops.amin, np.ones([2, 2]), out=[])
+    with self.assertRaisesRegex(ValueError, 'Setting out is not supported.'):
+      np_array_ops.amax(np.ones([2, 2]), out=[])
+    with self.assertRaisesRegex(ValueError, 'Setting out is not supported.'):
+      np_array_ops.amin(np.ones([2, 2]), out=[])
 
   def testMean(self):
 
@@ -938,7 +937,8 @@ class ArrayMethodsTest(test.TestCase):
     run_test(np.arange(8).reshape((2, 2, 2)).tolist(), axis=(2, 0))
     run_test(
         np.arange(8).reshape((2, 2, 2)).tolist(), axis=(2, 0), keepdims=True)
-    self.assertRaises(ValueError, np_array_ops.mean, np.ones([2, 2]), out=[])
+    with self.assertRaisesRegex(ValueError, 'Setting out is not supported.'):
+      np_array_ops.mean(np.ones([2, 2]), out=[])
 
   def testStd(self):
 
@@ -1168,8 +1168,14 @@ class ArrayMethodsTest(test.TestCase):
     run_test(np_array_ops.ones((3, 2, 1)))
     run_test(constant_op.constant(5))
     run_test(constant_op.constant([1, 1, 1]))
-    self.assertRaises(NotImplementedError, np_array_ops.size, np.ones((2, 2)),
-                      1)
+    self.assertRaisesRegex(
+        NotImplementedError,
+        'axis argument is not supported in the current `np.size`'
+        ' implementation',
+        np_array_ops.size,
+        np.ones((2, 2)),
+        1,
+    )
 
     @def_function.function(input_signature=[
         tensor_spec.TensorSpec(dtype=dtypes.float64, shape=None)])
@@ -1577,7 +1583,10 @@ class ArrayMethodsTest(test.TestCase):
     def f(a):
       return np_array_ops.swapaxes(a, -10, 0)
 
-    with self.assertRaises(errors_impl.InvalidArgumentError):
+    with self.assertRaisesRegex(
+        errors_impl.InvalidArgumentError,
+        'is out of bounds for array of dimension',
+    ):
       self.evaluate(f(x))
 
   def testMoveaxis(self):
