@@ -1602,6 +1602,11 @@ void Queue<TaskType>::PadOpenBatchWithLowPriorityTasks() {
       absl::Status status = SplitInputBatchIntoSubtasks(&task, &output_tasks);
       if (!status.ok()) {
         LOG(ERROR) << "Failed to split low priority task: " << status;
+        if constexpr (std::is_base_of_v<BatchTask, TaskType>) {
+          if (task != nullptr) {
+            task->FinishTask(status);
+          }
+        }
         continue;
       }
     }
