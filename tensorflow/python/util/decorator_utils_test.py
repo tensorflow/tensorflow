@@ -95,7 +95,7 @@ class AddNoticeToDocstringTest(test.TestCase):
     expected = "Brief (suffix)\n\nWarning: Go away\nInstructions"
     self._check("Brief (suffix)", expected)
     self._check("Brief (suffix)   ", expected)
-    self._check("   ", "\nWarning: Go away\nInstructions")
+    self._check("   ", "Nothing here\n\nWarning: Go away\nInstructions")
 
 
 class ValidateCallableTest(test.TestCase):

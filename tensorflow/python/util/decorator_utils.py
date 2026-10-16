@@ -102,7 +102,9 @@ def add_notice_to_docstring(doc,
     lines = [no_doc_str]
   else:
     lines = _normalize_docstring(doc).splitlines()
-    if lines and suffix_str and not lines[0].rstrip().endswith(suffix_str):
+    if not lines:
+      lines = [no_doc_str]
+    elif suffix_str and not lines[0].rstrip().endswith(suffix_str.rstrip()):
       lines[0] += ' ' + suffix_str
 
   if not notice:

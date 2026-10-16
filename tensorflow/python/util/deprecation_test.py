@@ -549,7 +549,6 @@ class DeprecationTest(test.TestCase):
     @deprecation.deprecated_args(date, instructions, "arg3")
     def _fn(arg1=0, arg2=0, arg3=0):  # pylint: disable=unused-argument
       """fn doc."""
-      pass
 
     first_line = _fn.__doc__.splitlines()[0]
     self.assertEqual("fn doc. (deprecated arguments)", first_line)
