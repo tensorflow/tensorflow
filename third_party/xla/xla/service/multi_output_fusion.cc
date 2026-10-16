@@ -105,6 +105,10 @@ HloInstruction* MultiOutputFusion::Fuse(HloInstruction* instr1,
   if (remaining->opcode() != HloOpcode::kFusion) {
     remaining = CreateFusion(remaining, fused);
   }
+  // `fused` now computes as part of `remaining`, so its ordering constraints
+  // move there. The siblings are unconnected, so this adds no cycle.
+  CHECK_OK(remaining->CopyAllControlDepsFrom(fused));
+  CHECK_OK(fused->DropAllControlDeps());
   if (fused->opcode() == HloOpcode::kFusion) {
     remaining->MergeFusionInstructionIntoMultiOutput(
         fused, /*remove_computation=*/false);
@@ -126,7 +130,11 @@ HloInstruction* MultiOutputFusion::CreateFusion(HloInstruction* base,
   candidates_.emplace_back(input_fusion);
   reachability_->Replace(base, input_fusion);
   all_fusion_candidates_.insert(input_fusion);
-  CHECK_OK(computation()->ReplaceInstruction(base, input_fusion));
+  CHECK_OK(computation()
+               ->ReplaceInstruction(base, input_fusion,
+                                    /*preserve_sharding=*/false,
+                                    /*relay_control_dependency=*/true)
+               .status());
   return input_fusion;
 }
 
