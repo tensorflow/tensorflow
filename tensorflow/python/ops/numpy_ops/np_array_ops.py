@@ -1374,6 +1374,10 @@ def _boundaries_to_sizes(a, boundaries, axis):
   prev = 0
   for i, b in enumerate(boundaries):
     if b < 0:
+      if total_size is None:
+        raise ValueError(
+            'Negative split boundaries are not supported for dynamic shapes.'
+        )
       # NumPy treats a negative split boundary like a negative slice index:
       # relative to the end of the axis, clamped at 0.
       b = builtins.max(0, b + total_size)
