@@ -161,24 +161,6 @@ struct FlashTraits<128> {
   static constexpr int Bc = 16;
   static constexpr int Th = 64;
 };
-/*template <> struct FlashTraits<256>
-{
-    static constexpr int Br = 64;
-    static constexpr int Bc = 32;
-    static constexpr int Th = 64;
-};
-template <> struct FlashTraits<512>
-{
-    static constexpr int Br = 64;
-    static constexpr int Bc = 64;
-    static constexpr int Th = 64;
-};
-template <> struct FlashTraits<1024>
-{
-    static constexpr int Br = 64;
-    static constexpr int Bc = 64;
-    static constexpr int Th = 128;
-};*/
 
 /*
 backward KV pass:
@@ -217,24 +199,6 @@ struct FlashTraitsKV<128> {
   static constexpr int Bc = 32;
   static constexpr int Th = 64;
 };
-/*template <> struct FlashTraitsKV<256>
-{
-    static constexpr int Br = 16;
-    static constexpr int Bc = 32;
-    static constexpr int Th = 64;
-};
-template <> struct FlashTraitsKV<512>
-{
-    static constexpr int Br = 64;
-    static constexpr int Bc = 32;
-    static constexpr int Th = 64;
-};
-template <> struct FlashTraitsKV<1024>
-{
-    static constexpr int Br = 64;
-    static constexpr int Bc = 64;
-    static constexpr int Th = 64;
-};*/
 
 /*
 backward Q pass:
@@ -273,24 +237,6 @@ struct FlashTraitsQ<128> {
   static constexpr int Bc = 16;
   static constexpr int Th = 64;
 };
-/*template <> struct FlashTraitsQ<256>
-{
-    static constexpr int Br = 64;
-    static constexpr int Bc = 16;
-    static constexpr int Th = 64;
-};
-template <> struct FlashTraitsQ<512>
-{
-    static constexpr int Br = 64;
-    static constexpr int Bc = 32;
-    static constexpr int Th = 64;
-};
-template <> struct FlashTraitsQ<1024>
-{
-    static constexpr int Br = 64;
-    static constexpr int Bc = 64;
-    static constexpr int Th = 64;
-};*/
 }  // namespace traits
 }  // namespace tensorflow::functor
 

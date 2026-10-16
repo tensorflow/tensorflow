@@ -213,7 +213,26 @@ class FlashAttentionTest(test.TestCase, parameterized.TestCase):
   def testDropout(self, dtype, is_causal):
     if dtype != dtypes.float32 and not test_util.is_gpu_available():
       self.skipTest("Only float32 is checked on CPU")
-    rate, batch, heads, seq = 0.2, 2, 2, 64
+    self._check_dropout(dtype, is_causal, seq=64)
+
+  @parameterized.parameters(dtypes.float16, dtypes.bfloat16)
+  def testDropoutHeadDim256(self, dtype):
+    # FA2's head dim 256 backward with dropout needs >= 144 KB of shared memory
+    # per block: sm80 and sm90 have it, other sm80+ GPUs (e.g. sm86, sm89)
+    # reject it, since the fallback kernels stop at 128.
+    if not _sm80_gpu_available():
+      self.skipTest("Needs a GPU with compute capability 8.0+")
+    gpu = config.list_physical_devices("GPU")[0]
+    capability = config.get_device_details(gpu).get("compute_capability")
+    if capability in ((8, 0), (9, 0)):
+      self._check_dropout(dtype, is_causal=False, seq=256)
+    else:
+      with self.assertRaisesRegex(errors.InvalidArgumentError, "not supported"):
+        self._check_dropout(dtype, is_causal=False, seq=256)
+
+  def _check_dropout(self, dtype, is_causal, seq):
+    """Checks dropout against the reference, with head_dim == seq."""
+    rate, batch, heads = 0.2, 2, 2
     seed = [5, 6]
     query = self._random([batch, seq, heads, seq], dtype, 1)
     key = self._random([batch, seq, heads, seq], dtype, 2)
