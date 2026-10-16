@@ -3096,10 +3096,10 @@ LogicalResult AllReduceOp::verify() {
 
   if (in_bitwidth == 1) {
     // For mask vectors, the single (semantically scalar) result is broadcast
-    // into a vector of 32-bit ints of whatever shape the target supports (not
+    // into a vector of ints of whatever shape the target supports (not
     // necessarily the same as the input).
-    if (!out_ty.getElementType().isSignlessInteger(32)) {
-      return emitOpError("Vector mask all-reduce must have i32 output");
+    if (!out_ty.getElementType().isSignlessInteger()) {
+      return emitOpError("Vector mask all-reduce must have integer output");
     }
     switch (kind) {
       case ReductionKind::kSum:
