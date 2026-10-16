@@ -148,7 +148,6 @@ py_library(
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/framework:type_spec",
         "//tensorflow/python/ops:array_ops",
-        "//tensorflow/python/ops:array_ops_stack",
         "//tensorflow/python/ops:check_ops",
         "//tensorflow/python/ops:cond",
         "//tensorflow/python/ops:control_flow_assert",
