@@ -63,7 +63,7 @@ class FlexDelegate : public SimpleDelegateInterface {
     return Create(/*base_delegate*/ nullptr);
   }
 
-  ~FlexDelegate() override {}
+  ~FlexDelegate() override = default;
 
   flex::DelegateData* mutable_data() { return &delegate_data_; }
 
@@ -88,7 +88,7 @@ class FlexDelegate : public SimpleDelegateInterface {
   static TfLiteDelegateUniquePtr Create(
       std::unique_ptr<FlexDelegate> base_delegate);
 
-  FlexDelegate() {}
+  FlexDelegate() = default;
 
   const char* Name() const override;
 
