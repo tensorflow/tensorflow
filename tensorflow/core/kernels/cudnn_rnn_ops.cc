@@ -1201,9 +1201,8 @@ void RestoreParams(const OpInputList params_input,
     auto data_src_ptr = StreamExecutorUtil::AsDeviceMemory<T>(params_input[i]);
     DeviceMemoryBase data_dst_ptr =
         SliceDeviceMemory(*data_dst, params[i].offset, size_in_bytes);
-    CHECK(stream  // Crash OK
-              ->Memcpy(&data_dst_ptr, data_src_ptr, size_in_bytes)
-              .ok());
+    CHECK_OK(stream  // Crash OK
+                 ->Memcpy(&data_dst_ptr, data_src_ptr, size_in_bytes));
   }
 }
 

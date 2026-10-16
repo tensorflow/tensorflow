@@ -67,7 +67,7 @@ struct LaunchConvOp<Eigen::GpuDevice, T> {
   void operator()(OpKernelContext* context, bool cudnn_use_autotune,
                   const Tensor& input, const Tensor& filter,
                   const std::vector<int64_t>& dilations,
-                  const std::vector<int64_t>& strides, const Padding padding,
+                  const std::vector<int64_t>& strides, Padding padding,
                   const std::vector<int64_t>& explicit_paddings,
                   TensorFormat data_format, Tensor* output);
 };
