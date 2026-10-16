@@ -24,6 +24,7 @@ limitations under the License.
 #include <c10/cuda/CUDAException.h>
 #include <cutlass/numeric_types.h>
 
+#include <algorithm>
 #include <atomic>
 #include <cmath>
 
@@ -48,6 +49,13 @@ __global__ void SetRngState(uint64_t *rng_state, uint64_t seed, uint64_t offset,
                             const uint64_t *offset_dev) {
   rng_state[0] = seed_dev != nullptr ? *seed_dev : seed;
   rng_state[1] = offset_dev != nullptr ? *offset_dev : offset;
+}
+
+__global__ void FillFloats(float *ptr, size_t n, float value) {
+  for (size_t i = blockIdx.x * size_t(blockDim.x) + threadIdx.x; i < n;
+       i += size_t(blockDim.x) * gridDim.x) {
+    ptr[i] = value;
+  }
 }
 
 constexpr int RoundUp(int x, int m) { return (x + m - 1) / m * m; }
@@ -240,7 +248,12 @@ cudaError_t Forward(cudaStream_t stream, bool bf16, const void *q,
   if (B == 0 || H == 0 || S_q == 0) return cudaSuccess;
   const size_t rows_q = size_t(B) * H * S_q;
   if (S_kv == 0) {
-    cudaMemsetAsync(lse, 0, rows_q * sizeof(float), stream);
+    // No keys: the output is zero and the log-sum-exp of the empty set is -inf.
+    constexpr int kThreads = 256;
+    const int blocks = static_cast<int>(
+        std::min<size_t>((rows_q + kThreads - 1) / kThreads, 4096));
+    FillFloats<<<blocks, kThreads, 0, stream>>>(lse, rows_q, -INFINITY);
+    if (cudaError_t err = cudaGetLastError(); err != cudaSuccess) return err;
     return cudaMemsetAsync(out, 0, rows_q * D * kElemBytes, stream);
   }
 

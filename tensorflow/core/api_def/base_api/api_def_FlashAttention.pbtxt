@@ -42,7 +42,8 @@ END
     name: "softmax_lse"
     description: <<END
 A `[batch, heads, seq_q]` float tensor holding the log-sum-exp of each row of
-the scaled attention logits. Used by `FlashAttentionGrad`.
+the scaled attention logits (`-inf` if `seq_kv == 0`). Used by
+`FlashAttentionGrad`.
 END
   }
   attr {

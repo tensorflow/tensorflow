@@ -20,6 +20,7 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <type_traits>
 #include <vector>
 
@@ -294,7 +295,6 @@ struct FlashAttentionFunctor<CPUDevice, T> {
     const float neg_inf = -1e9f;
     const float zero = 0.0f;
     const float one = 1.0f;
-    const float eps = 1e-6f;
     float dp_inverse_scale = one;
     if (dropout_rate > 0.0f) {
       dp_inverse_scale = one / (one - dropout_rate);
@@ -358,9 +358,14 @@ struct FlashAttentionFunctor<CPUDevice, T> {
           }  // End Loop j
 
           // Write Output
-          stats(b, h, i) = m_i + Eigen::numext::log(l_i + eps);
+          // Exact LSE, as in the GPU kernels: l_i >= 1 once any key is
+          // attended. A row without keys (S_kv == 0) gets -inf, the
+          // log-sum-exp of the empty set.
+          const bool has_keys = l_i > zero;
+          stats(b, h, i) = has_keys ? m_i + Eigen::numext::log(l_i)
+                                    : -std::numeric_limits<float>::infinity();
 
-          float inv_l = (l_i > eps) ? (one / l_i) : zero;
+          float inv_l = has_keys ? (one / l_i) : zero;
 
           for (int k = 0; k < D_v; ++k) {
             Out(b, i, h, k) = static_cast<T>(O_accum[k] * inv_l);
