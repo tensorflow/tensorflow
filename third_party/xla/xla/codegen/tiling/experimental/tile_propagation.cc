@@ -1688,8 +1688,9 @@ absl::StatusOr<Tiles> PropagateTileToInputForAllGatherOp(
   // with the same index.
   const Shape& input_shape = hlo.operand(output_index)->shape();
   const Shape& output_shape = GetFirstShape(&hlo, output_index);
+  int64_t output_dim_size = output_shape.dimensions(gather_dim);
   int64_t local_size = input_shape.dimensions(gather_dim);
-  int64_t num_replicas = output_shape.dimensions(gather_dim) / local_size;
+  int64_t num_replicas = output_dim_size / local_size;
 
   const DimTile& output_dim_tile = output_tile.dim_tiles()[gather_dim];
 
@@ -1708,7 +1709,15 @@ absl::StatusOr<Tiles> PropagateTileToInputForAllGatherOp(
   }
 
   SymbolicExpr replica_id = output_dim_tile.offset / local_size;
-  SymbolicExpr input_offset = output_dim_tile.offset % local_size;
+  // `offset % local_size` maps an output offset into `[0, local_size)`.
+  // However, if the variadic schedule padded this tile past `output_dim_size`
+  // (e.g., offset = 5 when local_size = 2 and output_dim_size = 4), `5 % 2 = 1`
+  // would wrap it back in-bounds. Adding
+  // `(offset / output_dim_size) * local_size` is 0 for valid tiles and pushes
+  // padded tiles to `>= local_size` so they get masked out.
+  SymbolicExpr input_offset =
+      (output_dim_tile.offset % local_size) +
+      (output_dim_tile.offset / output_dim_size) * local_size;
 
   llvm::SmallVector<DimTile> input_dim_tiles;
   input_dim_tiles.reserve(output_tile.num_dim_tiles());

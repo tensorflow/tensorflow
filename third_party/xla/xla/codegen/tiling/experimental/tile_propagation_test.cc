@@ -268,7 +268,7 @@ TEST_F(TilePropagationTest, CanPropagateToInputsOfAllGatherOp) {
           GetTestTile(*tiling_space, root->shape().dimensions()), 0));
   EXPECT_THAT(tiled_operands, MatchToString(R"(
     0) (tid_0, tid_1)
-      -> offsets [(tid_0 * ts_0) mod 64, tid_1 * ts_1]
+      -> offsets [(tid_0 * ts_0) mod 64 + ((tid_0 * ts_0) / 128) * 64, tid_1 * ts_1]
          sizes [ts_0, ts_1]
          strides [1, 2]
          upper bounds [64, 256]
@@ -309,18 +309,18 @@ TEST_F(TilePropagationTest, CanPropagateToInputsOfVariadicAllGatherOp) {
       root->fused_instructions_computation()->GetInstructionWithName("ag");
   ASSERT_EQ(tiling_space->tiled_roots().size(), 2);
 
-  // Output `k` maps directly to operand `k`.
-  // Since the gather dimension size is 1, the local offset is always 0 and the
-  // replica ID directly equals the output offset. Each output gets distinct
-  // tile IDs (e.g., tid_0 and tid_4) that the scheduler will later assign to
-  // the same peer.
+  // Output `k` comes from operand `k` (`p0` has gather size 1 -> output 4).
+  // For valid tiles (`tid_0 * ts_0 < 4`), the input offset `(tid_0 * ts_0) / 4`
+  // is 0; if the schedule pads a tile past 4, it evaluates to >= 1 so the read
+  // is masked out. Output 0 uses `tid_0` and output 1 uses `tid_4`, which the
+  // scheduler later maps to the same peer.
   ASSERT_OK_AND_ASSIGN(
       Tiles operand_0_tiles,
       PropagateTileToInput(*tiling_space, *ag, tiling_space->tiled_roots()[0],
                            /*output_index=*/0));
   EXPECT_THAT(operand_0_tiles, MatchToString(R"(
     0) (tid_0, tid_1, tid_2, tid_3, tid_4, tid_5)
-      -> offsets [0, tid_1 * ts_1, tid_2 * ts_2, tid_3 * ts_3]
+      -> offsets [(tid_0 * ts_0) / 4, tid_1 * ts_1, tid_2 * ts_2, tid_3 * ts_3]
          sizes [ts_0, ts_1, ts_2, ts_3]
          strides [1, 1, 1, 1]
          upper bounds [1, 2, 8, 16]
@@ -338,7 +338,7 @@ TEST_F(TilePropagationTest, CanPropagateToInputsOfVariadicAllGatherOp) {
                            /*output_index=*/1));
   EXPECT_THAT(operand_1_tiles, MatchToString(R"(
     0) (tid_0, tid_1, tid_2, tid_3, tid_4, tid_5)
-      -> offsets [0, tid_5 * ts_5]
+      -> offsets [(tid_4 * ts_4) / 4, tid_5 * ts_5]
          sizes [ts_4, ts_5]
          strides [1, 1]
          upper bounds [1, 2]
@@ -400,7 +400,7 @@ TEST_F(TilePropagationTest, CanPropagateFromVariadicAllGatherToDotProducers) {
       PropagateTileToInput(*tiling_space, *ag->operand(0), ag_op0[0], 0));
   EXPECT_THAT(dot0_operands, MatchToString(R"(
     0) (tid_0, tid_1, tid_2, tid_3, tid_4, tid_5)
-      -> offsets [(tid_0 * ts_0) mod 2, tid_5 * ts_5]
+      -> offsets [(tid_0 * ts_0) mod 2 + ((tid_0 * ts_0) / 8) * 2, tid_5 * ts_5]
          sizes [ts_0, ts_5]
          strides [1, 1]
          upper bounds [2, 8]
@@ -432,7 +432,7 @@ TEST_F(TilePropagationTest, CanPropagateFromVariadicAllGatherToDotProducers) {
       PropagateTileToInput(*tiling_space, *ag->operand(1), ag_op1[0], 0));
   EXPECT_THAT(dot1_operands, MatchToString(R"(
     0) (tid_0, tid_1, tid_2, tid_3, tid_4, tid_5)
-      -> offsets [(tid_2 * ts_2) mod 4, tid_4 * ts_4]
+      -> offsets [(tid_2 * ts_2) mod 4 + ((tid_2 * ts_2) / 16) * 4, tid_4 * ts_4]
          sizes [ts_2, ts_4]
          strides [1, 1]
          upper bounds [4, 8]
@@ -454,6 +454,53 @@ TEST_F(TilePropagationTest, CanPropagateFromVariadicAllGatherToDotProducers) {
            upper bounds [4]
          }
   )"));
+}
+
+TEST_F(TilePropagationTest,
+       AllGatherInputOffsetPreservesSchedulePaddingOutOfBounds) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    f {
+      p0 = f32[2,16] parameter(0)
+      p1 = pred[2] parameter(1)
+      ag = (f32[4,16], pred[4]) all-gather(p0, p1),
+        replica_groups={{0,1}}, dimensions={0}
+      gte0 = f32[4,16] get-tuple-element(ag), index=0
+      gte1 = pred[4] get-tuple-element(ag), index=1
+      ROOT t = (f32[4,16], pred[4]) tuple(gte0, gte1)
+    }
+
+    ENTRY e {
+      p0 = f32[2,16] parameter(0)
+      p1 = pred[2] parameter(1)
+      ROOT fusion = (f32[4,16], pred[4]) fusion(p0, p1), kind=kCustom, calls=f
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+  ASSERT_OK(tiling_space->AssignTileSizes({1, 4, 1}));
+  const HloInstruction* ag =
+      root->fused_instructions_computation()->GetInstructionWithName("ag");
+
+  // Simulate a padded block for output 1 (`pred[4]` from `pred[2]`) by adding
+  // `output_dim_size = 4` to its gather-dim offset (`tid_2 + 4`).
+  Tile padded_output_tile = tiling_space->tiled_roots()[1];
+  SmallVector<DimTile> dim_tiles(padded_output_tile.dim_tiles());
+  dim_tiles[0].offset = dim_tiles[0].offset + 4;
+  ASSERT_OK_AND_ASSIGN(
+      Tiles operand_1_tiles,
+      PropagateTileToInput(*tiling_space, *ag,
+                           padded_output_tile.CloneWithNewDims(dim_tiles),
+                           /*output_index=*/1));
+  ASSERT_EQ(operand_1_tiles.size(), 1);
+  // At `tid_2 = 1` (padded offset = 5), `5 % 2 = 1` alone would wrap back
+  // inside `pred[2]`. With the overflow term, the input offset is
+  // `(5 % 2) + (5 / 4) * 2 = 3 >= 2`, keeping it out of bounds.
+  EXPECT_EQ(operand_1_tiles[0].offsets()[0].Evaluate({0, 0, 1}), 3);
+  EXPECT_GE(operand_1_tiles[0].offsets()[0].Evaluate({0, 0, 1}),
+            operand_1_tiles[0].upper_bounds()[0].Evaluate({0, 0, 1}));
 }
 
 TEST_F(TilePropagationTest, VariadicAllGatherRejectsOutOfRangeOutputIndex) {
@@ -1546,7 +1593,7 @@ TEST_F(TilePropagationTest, CanPropagateReplicaIdThroughBroadcast) {
 
   EXPECT_THAT(tiled_ag_operands, MatchToString(R"(
     0) (tid_0, tid_1, tid_2)
-      -> offsets [tid_0 * ts_0, (tid_1 * ts_1) mod 32, tid_2 * ts_2]
+      -> offsets [tid_0 * ts_0, (tid_1 * ts_1) mod 32 + ((tid_1 * ts_1) / 64) * 32, tid_2 * ts_2]
          sizes [ts_0, ts_1, ts_2]
          strides [1, 2, 3]
          upper bounds [10, 32, 5]
@@ -1564,7 +1611,7 @@ TEST_F(TilePropagationTest, CanPropagateReplicaIdThroughBroadcast) {
                                             tiled_ag_operands[0], 0));
   EXPECT_THAT(tiled_broadcast_operands, MatchToString(R"(
     0) (tid_0, tid_1, tid_2)
-      -> offsets [tid_0 * ts_0, (tid_1 * ts_1) mod 32]
+      -> offsets [tid_0 * ts_0, (tid_1 * ts_1) mod 32 + ((tid_1 * ts_1) / 64) * 32]
          sizes [ts_0, ts_1]
          strides [1, 2]
          upper bounds [10, 32]
