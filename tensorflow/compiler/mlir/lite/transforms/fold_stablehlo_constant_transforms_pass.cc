@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
@@ -91,6 +92,31 @@ static ElementsAttr GetElementsAttrFromValue(mlir::Value val) {
   return nullptr;
 }
 
+// Returns true if `op` feeds (directly or through reshape/transpose ops) a
+// `quant.*` composite or custom_call op lowered by LowerQuantAnnotationsPass.
+// Folding `DenseResourceElementsAttr` out-of-place when there is no quant
+// consumer duplicates shared multi-signature weight blobs and breaks
+// `dot_general(transpose(w)) -> tfl.fully_connected(w)` cancellation.
+static bool HasQuantConsumer(mlir::Operation* op) {
+  llvm::SmallVector<mlir::Operation*, 8> worklist(op->getUsers().begin(),
+                                                  op->getUsers().end());
+  llvm::SmallPtrSet<mlir::Operation*, 8> visited;
+  while (!worklist.empty()) {
+    mlir::Operation* user = worklist.pop_back_val();
+    if (!visited.insert(user).second) continue;
+    if (auto comp = mlir::dyn_cast<stablehlo::CompositeOp>(user)) {
+      if (comp.getName().starts_with("quant.")) return true;
+    }
+    if (auto call = mlir::dyn_cast<stablehlo::CustomCallOp>(user)) {
+      if (call.getCallTargetName().starts_with("quant.")) return true;
+    }
+    if (mlir::isa<stablehlo::TransposeOp, stablehlo::ReshapeOp>(user)) {
+      worklist.append(user->getUsers().begin(), user->getUsers().end());
+    }
+  }
+  return false;
+}
+
 // Pattern to fold stablehlo.reshape on constant inputs.
 struct FoldStablehloReshapeOpPattern
     : public OpRewritePattern<stablehlo::ReshapeOp> {
@@ -111,6 +137,7 @@ struct FoldStablehloReshapeOpPattern
       return success();
     } else if (auto dense_resource =
                    mlir::dyn_cast<DenseResourceElementsAttr>(input_attr)) {
+      if (!HasQuantConsumer(op.getOperation())) return failure();
       AsmResourceBlob* blob = dense_resource.getRawHandle().getBlob();
       if (!blob && dense_resource.getRawHandle().getResource()) {
         blob = dense_resource.getRawHandle().getResource()->getBlob();
@@ -204,6 +231,7 @@ struct FoldStablehloTransposeOpPattern
       return success();
     } else if (auto dense_resource =
                    mlir::dyn_cast<DenseResourceElementsAttr>(input_attr)) {
+      if (!HasQuantConsumer(op.getOperation())) return failure();
       AsmResourceBlob* blob = dense_resource.getRawHandle().getBlob();
       if (!blob && dense_resource.getRawHandle().getResource()) {
         blob = dense_resource.getRawHandle().getResource()->getBlob();
