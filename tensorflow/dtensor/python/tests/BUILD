@@ -109,6 +109,18 @@ py_test(
     ],
 )
 
+py_test(
+    name = "heartbeat_test",
+    srcs = [
+        "heartbeat_test.py",
+    ],
+    strict_deps = True,
+    deps = [
+        "//tensorflow/dtensor/python:heartbeat",
+        "//tensorflow/python/platform:client_testlib",
+    ],
+)
+
 # TODO(b/301286466): Investigate why python annotation type mismatch is not catptured by the type
 # strict BUILD rules.
 
