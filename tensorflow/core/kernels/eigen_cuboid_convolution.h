@@ -587,9 +587,9 @@ class TensorContractionInputMapper<
   // for the TensorEvaluator or if the packet type does not support masked
   // load.
   template <typename PacketT, typename TensorEvaluatorT>
-  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE typename std::enable_if<
+  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE std::enable_if_t<
       !TensorEvaluatorHasPartialPacket<TensorEvaluatorT, PacketT, Index>::value,
-      PacketT>::type
+      PacketT>
   loadPacketStandard(Index patchId, Index planeIndex, Index rowIndex,
                      Index colIndex, Index otherIndex) const {
     const Index packetSize = internal::unpacket_traits<Packet>::size;
@@ -654,9 +654,9 @@ class TensorContractionInputMapper<
   // required packet. The idea is to enable fast load (if possible) of these
   // 'partial' packets.
   template <typename PacketT, typename TensorEvaluatorT>
-  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE typename std::enable_if<
+  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE std::enable_if_t<
       TensorEvaluatorHasPartialPacket<TensorEvaluatorT, PacketT, Index>::value,
-      PacketT>::type
+      PacketT>
   loadPacketStandard(Index patchId, Index planeIndex, Index rowIndex,
                      Index colIndex, Index otherIndex) const {
     const Index packetSize = internal::unpacket_traits<Packet>::size;
