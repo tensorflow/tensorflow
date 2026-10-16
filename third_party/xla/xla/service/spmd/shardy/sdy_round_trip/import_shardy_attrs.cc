@@ -119,22 +119,41 @@ CustomCallOp getX64CombineUser(Operation* op) {
   return nullptr;
 }
 
-CustomCallOp getX64CombineOnFuncResultSharding(
-    CustomCallOp funcResultSharding) {
-  if (auto combineOp = getX64CombineUser(funcResultSharding)) {
-    return combineOp;
+// Finds the downstream `X64Combine` for a split 32-bit half.
+// Because multiple results may share the same tuple, `tuplePath` records
+// which slot this value entered so we only follow GTEs that extract that slot.
+CustomCallOp getX64CombineOnOp(Operation* op,
+                               llvm::SmallVector<int64_t, 4>& tuplePath) {
+  if (tuplePath.empty()) {
+    if (auto combineOp = getX64CombineUser(op)) {
+      return combineOp;
+    }
   }
-  for (Operation* user : funcResultSharding->getUsers()) {
-    auto tupleOp = mlir::dyn_cast<stablehlo::TupleOp>(user);
-    if (!tupleOp) continue;
-    for (Operation* gteOp : tupleOp->getUsers()) {
-      if (!mlir::isa<stablehlo::GetTupleElementOp>(gteOp)) continue;
-      if (auto combineOp = getX64CombineUser(gteOp)) {
+  for (mlir::OpOperand& use : op->getUses()) {
+    if (auto tupleOp = mlir::dyn_cast<stablehlo::TupleOp>(use.getOwner())) {
+      tuplePath.push_back(use.getOperandNumber());
+      if (CustomCallOp combineOp = getX64CombineOnOp(tupleOp, tuplePath)) {
         return combineOp;
       }
+      tuplePath.pop_back();
+    } else if (auto gteOp =
+                   mlir::dyn_cast<stablehlo::GetTupleElementOp>(use.getOwner());
+               gteOp && !tuplePath.empty() &&
+               gteOp.getIndex() == tuplePath.back()) {
+      int64_t index = tuplePath.pop_back_val();
+      if (CustomCallOp combineOp = getX64CombineOnOp(gteOp, tuplePath)) {
+        return combineOp;
+      }
+      tuplePath.push_back(index);
     }
   }
   return nullptr;
+}
+
+CustomCallOp getX64CombineOnFuncResultSharding(
+    CustomCallOp funcResultSharding) {
+  llvm::SmallVector<int64_t, 4> tuplePath;
+  return getX64CombineOnOp(funcResultSharding, tuplePath);
 }
 
 // TODO(kostiantynl): b/448858211 when API is fixed, use
