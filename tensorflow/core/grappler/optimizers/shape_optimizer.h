@@ -30,10 +30,10 @@ namespace grappler {
 // information.
 class ShapeOptimizer : public GraphOptimizer {
  public:
-  ShapeOptimizer() {}
+  ShapeOptimizer() = default;
   explicit ShapeOptimizer(RewriterConfig::Toggle opt_level) {}
 
-  ~ShapeOptimizer() override {}
+  ~ShapeOptimizer() override = default;
 
   std::string name() const override { return "shape_optimizer"; };
 

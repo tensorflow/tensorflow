@@ -47,7 +47,7 @@ class TestOptimizer : public CustomGraphOptimizer {
   static void SetOptimized(const bool flag_value) { optimized_ = flag_value; }
   static bool IsOptimized() { return optimized_; }
 
-  TestOptimizer() {}
+  TestOptimizer() = default;
   std::string name() const override { return "test_optimizer"; }
   bool UsesFunctionLibrary() const override { return false; }
 
@@ -99,7 +99,7 @@ class GrapplerItemPropertiesAccumulator : public CustomGraphOptimizer {
   }
   static void ResetOptimizationOptions() { optimization_options_ = nullptr; }
 
-  GrapplerItemPropertiesAccumulator() {}
+  GrapplerItemPropertiesAccumulator() = default;
   std::string name() const override {
     return "grappler_item_properties_accumulator";
   }
@@ -708,7 +708,7 @@ TEST_F(MetaOptimizerTest, OptimizeFunctionLibraryWithRestrictions) {
 
 class SleepingOptimizer : public CustomGraphOptimizer {
  public:
-  SleepingOptimizer() {}
+  SleepingOptimizer() = default;
   std::string name() const override { return "test_optimizer"; }
   bool UsesFunctionLibrary() const override { return false; }
 

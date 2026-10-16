@@ -87,7 +87,7 @@ class ScopedAllocatorOptimizer : public GraphOptimizer {
   // order to take advantage of a ScopedAllocator.
   class Rewriter {
    public:
-    virtual ~Rewriter() {}
+    virtual ~Rewriter() = default;
 
     virtual absl::Status Rewrite(ScopedAllocatorOptimizer* paopti,
                                  int64_t invocation_count, GraphDef* graph,
