@@ -45,19 +45,19 @@ absl::Status RunFlashAttn(cudaStream_t stream, void** buffers,
 
   // buffers = [Q, K, V, seed, offset, Out, stats]  (operands, then tuple
   // outputs flattened)
-  typename TTypes<T, 3>::ConstTensor Q(static_cast<const T*>(buffers[0]), d.B,
-                                       d.Sq, d.Dqk);
-  typename TTypes<T, 3>::ConstTensor K(static_cast<const T*>(buffers[1]), d.B,
-                                       d.Sk, d.Dqk);
-  typename TTypes<T, 3>::ConstTensor V(static_cast<const T*>(buffers[2]), d.B,
-                                       d.Sk, d.Dv);
+  typename TTypes<T, 4>::ConstTensor Q(static_cast<const T*>(buffers[0]), d.B,
+                                       d.Sq, d.H, d.Dqk);
+  typename TTypes<T, 4>::ConstTensor K(static_cast<const T*>(buffers[1]), d.B,
+                                       d.Sk, d.H, d.Dqk);
+  typename TTypes<T, 4>::ConstTensor V(static_cast<const T*>(buffers[2]), d.B,
+                                       d.Sk, d.H, d.Dv);
   functor::FlashAttentionRng rng;
   rng.seed_dev = static_cast<const uint64_t*>(buffers[3]);
   rng.offset_dev = static_cast<const uint64_t*>(buffers[4]);
-  typename TTypes<T, 3>::Tensor Out(static_cast<T*>(buffers[5]), d.B, d.Sq,
+  typename TTypes<T, 4>::Tensor Out(static_cast<T*>(buffers[5]), d.B, d.Sq, d.H,
                                     d.Dv);
-  typename TTypes<float, 2>::Tensor stats(static_cast<float*>(buffers[6]), d.B,
-                                          d.Sq);
+  typename TTypes<float, 3>::Tensor stats(static_cast<float*>(buffers[6]), d.B,
+                                          d.H, d.Sq);
 
   return functor::FlashAttentionFunctor<GPUDevice, T>()(
       device, Q, K, V, Out, stats, d.causal, d.dropout, d.scale, rng);
@@ -71,26 +71,26 @@ absl::Status RunFlashAttnGrad(cudaStream_t stream, void** buffers,
   GPUDevice device(&stream_device);
 
   // buffers = [Q, K, V, Out, stats, dO, seed, offset, dQ, dK, dV, workspace]
-  typename TTypes<T, 3>::ConstTensor Q(static_cast<const T*>(buffers[0]), d.B,
-                                       d.Sq, d.Dqk);
-  typename TTypes<T, 3>::ConstTensor K(static_cast<const T*>(buffers[1]), d.B,
-                                       d.Sk, d.Dqk);
-  typename TTypes<T, 3>::ConstTensor V(static_cast<const T*>(buffers[2]), d.B,
-                                       d.Sk, d.Dv);
-  typename TTypes<T, 3>::ConstTensor Out(static_cast<const T*>(buffers[3]), d.B,
-                                         d.Sq, d.Dv);
-  typename TTypes<float, 2>::ConstTensor stats(
-      static_cast<const float*>(buffers[4]), d.B, d.Sq);
-  typename TTypes<T, 3>::ConstTensor dO(static_cast<const T*>(buffers[5]), d.B,
-                                        d.Sq, d.Dv);
+  typename TTypes<T, 4>::ConstTensor Q(static_cast<const T*>(buffers[0]), d.B,
+                                       d.Sq, d.H, d.Dqk);
+  typename TTypes<T, 4>::ConstTensor K(static_cast<const T*>(buffers[1]), d.B,
+                                       d.Sk, d.H, d.Dqk);
+  typename TTypes<T, 4>::ConstTensor V(static_cast<const T*>(buffers[2]), d.B,
+                                       d.Sk, d.H, d.Dv);
+  typename TTypes<T, 4>::ConstTensor Out(static_cast<const T*>(buffers[3]), d.B,
+                                         d.Sq, d.H, d.Dv);
+  typename TTypes<float, 3>::ConstTensor stats(
+      static_cast<const float*>(buffers[4]), d.B, d.H, d.Sq);
+  typename TTypes<T, 4>::ConstTensor dO(static_cast<const T*>(buffers[5]), d.B,
+                                        d.Sq, d.H, d.Dv);
   functor::FlashAttentionRng rng;
   rng.seed_dev = static_cast<const uint64_t*>(buffers[6]);
   rng.offset_dev = static_cast<const uint64_t*>(buffers[7]);
-  typename TTypes<T, 3>::Tensor dQ(static_cast<T*>(buffers[8]), d.B, d.Sq,
+  typename TTypes<T, 4>::Tensor dQ(static_cast<T*>(buffers[8]), d.B, d.Sq, d.H,
                                    d.Dqk);
-  typename TTypes<T, 3>::Tensor dK(static_cast<T*>(buffers[9]), d.B, d.Sk,
+  typename TTypes<T, 4>::Tensor dK(static_cast<T*>(buffers[9]), d.B, d.Sk, d.H,
                                    d.Dqk);
-  typename TTypes<T, 3>::Tensor dV(static_cast<T*>(buffers[10]), d.B, d.Sk,
+  typename TTypes<T, 4>::Tensor dV(static_cast<T*>(buffers[10]), d.B, d.Sk, d.H,
                                    d.Dv);
   void* workspace = d.workspace_bytes > 0 ? buffers[11] : nullptr;
 

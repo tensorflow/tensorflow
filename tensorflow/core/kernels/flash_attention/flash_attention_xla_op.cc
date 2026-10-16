@@ -65,13 +65,17 @@ static absl::Status ToFlashAttnDtype(DataType dt, int32_t* out) {
 static absl::Status ValidateQKV(const TensorShape& q, const TensorShape& k,
                                 const TensorShape& v, bool causal,
                                 DataType dt) {
-  if (q.dims() != 3 || k.dims() != 3 || v.dims() != 3) {
-    return errors::InvalidArgument("Q/K/V must be rank 3");
+  if (q.dims() != 4 || k.dims() != 4 || v.dims() != 4) {
+    return errors::InvalidArgument(
+        "Q/K/V must be rank 4 ([batch, seq, heads, dim])");
   }
   if (k.dim_size(0) != q.dim_size(0) || v.dim_size(0) != q.dim_size(0)) {
     return errors::InvalidArgument("Q/K/V batch size mismatch");
   }
-  if (k.dim_size(2) != q.dim_size(2)) {
+  if (k.dim_size(2) != q.dim_size(2) || v.dim_size(2) != q.dim_size(2)) {
+    return errors::InvalidArgument("Q/K/V heads mismatch");
+  }
+  if (k.dim_size(3) != q.dim_size(3)) {
     return errors::InvalidArgument("K feature size mismatch");
   }
   if (v.dim_size(1) != k.dim_size(1)) {
@@ -80,13 +84,14 @@ static absl::Status ValidateQKV(const TensorShape& q, const TensorShape& k,
   if (causal && q.dim_size(1) != k.dim_size(1)) {
     return errors::InvalidArgument("seq size Q != K while is_causal = True");
   }
-  TF_RETURN_IF_ERROR(functor::CheckDimsFitInt32(q.dim_size(0), q.dim_size(1),
-                                                k.dim_size(1), q.dim_size(2),
-                                                v.dim_size(2)));
-  const int64_t d_qk = q.dim_size(2), d_v = v.dim_size(2);
+  TF_RETURN_IF_ERROR(functor::CheckDimsFitInt32(q.dim_size(0), q.dim_size(2),
+                                                q.dim_size(1), k.dim_size(1),
+                                                q.dim_size(3), v.dim_size(3)));
+  const int64_t d_qk = q.dim_size(3), d_v = v.dim_size(3);
   const bool fa2_type = dt == DT_HALF || dt == DT_BFLOAT16;
   if (std::max(d_qk, d_v) > 128 &&
-      !(fa2_type && flash_attention_fa2::ShapeSupported(d_qk, d_v))) {
+      !(fa2_type && flash_attention_fa2::ShapeSupported(d_qk, d_v) &&
+        flash_attention_fa2::GridSupported(q.dim_size(0), q.dim_size(2)))) {
     return functor::FeatureSizeError(d_qk, d_v);
   }
   return absl::OkStatus();
@@ -138,19 +143,20 @@ class FlashAttnXlaOp : public XlaOpKernel {
 
     d.B = q.dim_size(0);
     d.Sq = q.dim_size(1);
-    d.Dqk = q.dim_size(2);
+    d.H = q.dim_size(2);
+    d.Dqk = q.dim_size(3);
     d.Sk = k.dim_size(1);
-    d.Dv = v.dim_size(2);
+    d.Dv = v.dim_size(3);
     d.dropout = dropout_;
     d.scale = scale_;
     d.causal = causal_;
 
     xla::Shape u64_s = RowMajor(xla::U64, {});
-    xla::Shape q_s = RowMajor(ptype, {d.B, d.Sq, d.Dqk});
-    xla::Shape k_s = RowMajor(ptype, {d.B, d.Sk, d.Dqk});
-    xla::Shape v_s = RowMajor(ptype, {d.B, d.Sk, d.Dv});
-    xla::Shape out_s = RowMajor(ptype, {d.B, d.Sq, d.Dv});
-    xla::Shape st_s = RowMajor(xla::F32, {d.B, d.Sq});
+    xla::Shape q_s = RowMajor(ptype, {d.B, d.Sq, d.H, d.Dqk});
+    xla::Shape k_s = RowMajor(ptype, {d.B, d.Sk, d.H, d.Dqk});
+    xla::Shape v_s = RowMajor(ptype, {d.B, d.Sk, d.H, d.Dv});
+    xla::Shape out_s = RowMajor(ptype, {d.B, d.Sq, d.H, d.Dv});
+    xla::Shape st_s = RowMajor(xla::F32, {d.B, d.H, d.Sq});
 
     xla::XlaOp call = xla::CustomCallWithLayout(
         ctx->builder(), "tf_flash_attention_fwd",
@@ -202,17 +208,18 @@ class FlashAttnGradXlaOp : public XlaOpKernel {
 
     d.B = q.dim_size(0);
     d.Sq = q.dim_size(1);
-    d.Dqk = q.dim_size(2);
+    d.H = q.dim_size(2);
+    d.Dqk = q.dim_size(3);
     d.Sk = k.dim_size(1);
-    d.Dv = v.dim_size(2);
+    d.Dv = v.dim_size(3);
     d.dropout = dropout_;
     d.scale = scale_;
     d.causal = causal_;
 
-    const TensorShape out_shape({d.B, d.Sq, d.Dv});
+    const TensorShape out_shape({d.B, d.Sq, d.H, d.Dv});
     OP_REQUIRES_OK(ctx, ExpectShape("out", ctx->InputShape(3), out_shape));
     OP_REQUIRES_OK(ctx, ExpectShape("stats", ctx->InputShape(4),
-                                    TensorShape({d.B, d.Sq})));
+                                    TensorShape({d.B, d.H, d.Sq})));
     OP_REQUIRES_OK(ctx, ExpectShape("do", ctx->InputShape(5), out_shape));
 
     // Sized from shapes alone, so it doesn't matter which device is current
@@ -220,25 +227,26 @@ class FlashAttnGradXlaOp : public XlaOpKernel {
     switch (d.dtype) {
       case kFlashAttnF16:
         d.workspace_bytes = functor::FlashAttentionGradFunctor<
-            GPUDevice, Eigen::half>::WorkspaceBytes(d.B, d.Sq, d.Sk, d.Dqk,
+            GPUDevice, Eigen::half>::WorkspaceBytes(d.B, d.H, d.Sq, d.Sk, d.Dqk,
                                                     d.Dv);
         break;
       case kFlashAttnBF16:
         d.workspace_bytes = functor::FlashAttentionGradFunctor<
-            GPUDevice, Eigen::bfloat16>::WorkspaceBytes(d.B, d.Sq, d.Sk, d.Dqk,
-                                                        d.Dv);
+            GPUDevice, Eigen::bfloat16>::WorkspaceBytes(d.B, d.H, d.Sq, d.Sk,
+                                                        d.Dqk, d.Dv);
         break;
       default:
         d.workspace_bytes = functor::FlashAttentionGradFunctor<
-            GPUDevice, float>::WorkspaceBytes(d.B, d.Sq, d.Sk, d.Dqk, d.Dv);
+            GPUDevice, float>::WorkspaceBytes(d.B, d.H, d.Sq, d.Sk, d.Dqk,
+                                              d.Dv);
     }
 
     xla::Shape u64_s = RowMajor(xla::U64, {});
-    xla::Shape q_s = RowMajor(ptype, {d.B, d.Sq, d.Dqk});
-    xla::Shape k_s = RowMajor(ptype, {d.B, d.Sk, d.Dqk});
-    xla::Shape v_s = RowMajor(ptype, {d.B, d.Sk, d.Dv});
-    xla::Shape o_s = RowMajor(ptype, {d.B, d.Sq, d.Dv});
-    xla::Shape st_s = RowMajor(xla::F32, {d.B, d.Sq});
+    xla::Shape q_s = RowMajor(ptype, {d.B, d.Sq, d.H, d.Dqk});
+    xla::Shape k_s = RowMajor(ptype, {d.B, d.Sk, d.H, d.Dqk});
+    xla::Shape v_s = RowMajor(ptype, {d.B, d.Sk, d.H, d.Dv});
+    xla::Shape o_s = RowMajor(ptype, {d.B, d.Sq, d.H, d.Dv});
+    xla::Shape st_s = RowMajor(xla::F32, {d.B, d.H, d.Sq});
     xla::Shape ws_s = RowMajor(xla::U8, {d.workspace_bytes});
 
     xla::XlaOp call = xla::CustomCallWithLayout(
