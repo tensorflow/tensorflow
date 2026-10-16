@@ -7045,32 +7045,18 @@ def flash_attention(
       rng_seed = constant_op.constant(0, dtypes.uint64)
       rng_offset = constant_op.constant(0, dtypes.uint64)
 
-    # [batch, seq, heads, dim] -> [batch * heads, seq, dim].
-    def fold_heads(x):
-      x = array_ops.transpose(x, [0, 2, 1, 3])
-      shape = array_ops.shape(x)
-      return array_ops.reshape(x, [-1, shape[2], shape[3]])
-
+    # The op takes [batch, seq, heads, dim] directly; the kernels index the
+    # heads with strides, so no transposes are needed.
     output, _ = gen_nn_ops.flash_attention(
-        fold_heads(query),
-        fold_heads(key),
-        fold_heads(value),
+        query,
+        key,
+        value,
         rng_seed,
         rng_offset,
         scale=float(scale),
         dropout_rate=float(dropout_rate),
         is_causal=bool(is_causal),
     )
-
-    # [batch * heads, seq_q, dim_v] -> [batch, seq_q, heads, dim_v].
-    query_shape = array_ops.shape(query)
-    output_shape = array_ops.shape(output)
-    output = array_ops.reshape(
-        output,
-        [query_shape[0], query_shape[2], query_shape[1], output_shape[2]],
-    )
-    output = array_ops.transpose(output, [0, 2, 1, 3])
-    output.set_shape(query.shape[:3].concatenate(value.shape[3:]))
     return output
 
 
