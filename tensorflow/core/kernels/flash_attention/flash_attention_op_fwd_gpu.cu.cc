@@ -17,6 +17,7 @@ limitations under the License.
 #define EIGEN_USE_GPU
 
 #include <algorithm>
+#include <cmath>
 #include <type_traits>
 
 #include "tensorflow/core/kernels/flash_attention/fa2_api.h"
@@ -169,10 +170,13 @@ __global__ void FlashAttnFwdKernel(const T *__restrict__ Q,
   }
 
   if (active) {
-    float stats_val =
-        m_i + Eigen::numext::log(l_i + EPSF);  // +epsilon for stability
-    stats_out[batch_offset_q + q_offset] = stats_val;
-    float inv_l = (l_i > EPSF) ? (1.0f / l_i) : ZEROF;
+    // l_i >= 1 once any key is attended (the max term contributes exp(0)), so
+    // the LSE is exact. A row without keys gets -inf, the log-sum-exp of the
+    // empty set, as for S_kv == 0.
+    const bool has_keys = l_i > ZEROF;
+    stats_out[batch_offset_q + q_offset] =
+        has_keys ? m_i + Eigen::numext::log(l_i) : -INFINITY;
+    float inv_l = has_keys ? (1.0f / l_i) : ZEROF;
     const size_t out_base =
         (row_base_q + static_cast<size_t>(q_offset) * H) * D_v;
 #pragma unroll
@@ -215,9 +219,11 @@ struct FlashAttentionFunctor<GPUDevice, T> {
 
     if (B == 0 || H == 0 || S_q == 0) return absl::OkStatus();
     if (S_kv == 0) {
-      // No keys to attend to: the output is zero.
-      return ZeroOutputs(d, {{Out.data(), Out.size() * sizeof(T)},
-                             {Stats.data(), Stats.size() * sizeof(float)}});
+      // No keys to attend to: the output is zero, and the log-sum-exp of the
+      // empty set is -inf.
+      TF_RETURN_IF_ERROR(
+          ZeroOutputs(d, {{Out.data(), Out.size() * sizeof(T)}}));
+      return FillFloats(d, Stats.data(), Stats.size(), -INFINITY);
     }
 
     if constexpr (kIsFa2Type) {
