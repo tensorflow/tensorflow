@@ -99,7 +99,7 @@ struct NodeCosts {
 class OpLevelCostEstimator {
  public:
   OpLevelCostEstimator();
-  virtual ~OpLevelCostEstimator() {}
+  virtual ~OpLevelCostEstimator() = default;
 
   virtual Costs PredictCosts(const OpContext& op_context) const;
 
