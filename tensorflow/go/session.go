@@ -341,6 +341,7 @@ func (o *SessionOptions) c() (ret *C.TF_SessionOptions, done func(), err error) 
 		C.TF_SetConfig(opt, cConfig, C.size_t(sz), status.c)
 		if err := status.Err(); err != nil {
 			C.TF_DeleteSessionOptions(opt)
+			C.free(cConfig)
 			return nil, func() {}, fmt.Errorf("invalid SessionOptions.Config: %v", err)
 		}
 	}
