@@ -142,6 +142,33 @@ suggesting, or modifying code within the OpenXLA codebase (everything under
         ```
         (Use `#` comment prefixes for Python and `BUILD` files.)
 
+## Code Review & Compatibility Skills
+
+When authoring or reviewing changes in the areas below, apply the corresponding
+review skill in `.agents/skills/` (also symlinked under `.claude/skills/`):
+
+*   **GPU AOT Compatibility**
+    (`.agents/skills/gpu_aot_compatibility_review/SKILL.md`): 6-month backward
+    and 2-week forward compatibility checks for changes touching
+    `xla/backends/gpu/runtime/...`, `xla/service/gpu/gpu_executable*`, or
+    transitive proto dependencies of `GpuExecutableProto` and `ThunkProto` (see
+    `docs/gpu_aot_compatibility.md`).
+*   **CUDA & cuDNN API Compatibility**
+    (`.agents/skills/cuda_api_review/SKILL.md`): Compile-time header version
+    floors, runtime `X.0` driver/toolkit version checks, and
+    `xla/tsl/cuda/*.symbols` dynamic stub registration for changes touching
+    `xla/stream_executor/cuda/...`.
+*   **Avoiding `#ifdef`s** (`.agents/skills/avoid_ifdefs_review/SKILL.md`):
+    Preprocessor conditional classification and `StreamExecutor` / runtime-`if`
+    / `if constexpr (tsl::kIsDebugBuild)` / separate-target alternatives for C++
+    changes adding or extending `#if` / `#ifdef` / `#ifndef` directives (see
+    `docs/avoiding_ifdefs.md`).
+*   **CPU Runtime & `CpuExecutable` ABI Compatibility**
+    (`.agents/skills/cpu_abi_compatibility_review/SKILL.md`): Compatibility
+    checks under `kHostExecutionAbiVersion` for changes touching
+    `xla/backends/cpu/runtime/...`, `xla/service/cpu/cpu_executable*`, or
+    `CompilationResultProto`.
+
 ## Editing This File
 
 This file is shared between the open-source repository and Google-internal
