@@ -29,6 +29,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/call_once.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -419,15 +420,17 @@ absl::Status NVPTXCompiler::RunCudnnCompilerPasses(
   });
   const se::DeviceDescription& gpu_device_info =
       gpu_target_config.device_description;
+  // Stream-annotated calls are wrapped into async computations on the parallel
+  // execution thread, and their cuDNN graphs must be compiled as well.
+  const absl::flat_hash_set<absl::string_view> execution_threads = {
+      HloInstruction::kMainExecutionThread,
+      HloInstruction::kParallelExecutionThread};
   CuDnnFusionCompiler fusion_compiler(dnn_support, gpu_device_info,
                                       *dnn_compiled_graphs);
-  ABSL_RETURN_IF_ERROR(
-      fusion_compiler.Run(module, {HloInstruction::kMainExecutionThread})
-          .status());
+  ABSL_RETURN_IF_ERROR(fusion_compiler.Run(module, execution_threads).status());
   CuDnnCustomCallCompiler call_compiler(dnn_support, gpu_device_info,
                                         *dnn_compiled_graphs);
-  return call_compiler.Run(module, {HloInstruction::kMainExecutionThread})
-      .status();
+  return call_compiler.Run(module, execution_threads).status();
 }
 
 namespace {
