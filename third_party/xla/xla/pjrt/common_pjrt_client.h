@@ -84,6 +84,9 @@ class CommonPjRtClient : public PjRtClient {
   virtual bool supports_two_phase_launch() const { return true; }
   virtual bool dump_on_deserialize() const { return false; }
   virtual bool should_stage_host_to_device_transfers() const { return false; }
+  virtual bool executable_compatibility_check_on_deserialization() const {
+    return true;
+  }
   // Returns true if we should skip the staging buffer during ToLiteral.
   bool ShouldDoDirectTransfer(const MutableLiteralBase& literal,
                               const Shape& shape,
@@ -113,21 +116,22 @@ class CommonPjRtClient : public PjRtClient {
   }
 
   // Backend specific handlers for when an oom is detected during execute.
-  virtual void CallOomHandlers() const {}
+  void CallOomHandlers() const { raw_client()->CallOomHandlers(); }
 
   virtual PjRtDynamicShapeKind GetDynamicShapeKind(
       int memory_space_kind_id) const;
 
-  virtual void LaunchOnDevice(PjRtDevice* device,
-                              absl::AnyInvocable<void()> execute_fn) const {
+  void LaunchOnDevice(PjRtDevice* device,
+                      absl::AnyInvocable<void()> execute_fn) const {
     raw_client()->LaunchOnDevice(device->local_device_id(),
                                  std::move(execute_fn));
   }
 
-  virtual bool ShouldRetryOnOom(int attempts, PjRtDevice* device,
-                                PjRtExecutableLoadState* load_state,
-                                absl::Status prepare_status) {
-    return false;
+  bool ShouldRetryOnOom(int attempts, PjRtDevice* device,
+                        PjRtExecutableLoadState* load_state,
+                        absl::Status prepare_status) {
+    return raw_client()->ShouldRetryOnOom(attempts, device, load_state,
+                                          std::move(prepare_status));
   }
 
   virtual absl::StatusOr<PjRtExecutableLoadState::DeviceAndAssignment>
@@ -1192,6 +1196,9 @@ class CommonPjRtClientImpl : public CommonPjRtClient {
   bool should_stage_host_to_device_transfers() const override {
     return should_stage_host_to_device_transfers_;
   }
+  bool executable_compatibility_check_on_deserialization() const override {
+    return executable_compatibility_check_on_deserialization_;
+  }
 
  private:
   const PjRtPlatformId platform_id_;
@@ -1228,6 +1235,7 @@ class CommonPjRtClientImpl : public CommonPjRtClient {
   bool use_stream_based_compaction_ = false;
   bool dump_on_deserialize_ = false;
   bool should_stage_host_to_device_transfers_ = false;
+  bool executable_compatibility_check_on_deserialization_ = true;
 };
 
 // A common base class for PjRtDevice implementations that delegate to

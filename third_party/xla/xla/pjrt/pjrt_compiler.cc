@@ -298,10 +298,12 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtDeserializeExecutable(
     const PjRtTopologyDescription& topology,
     riegeli::Any<riegeli::Reader*> reader,
-    std::optional<CompileOptions> options) {
+    std::optional<CompileOptions> options,
+    bool executable_compatibility_check_on_deserialization) {
   ABSL_ASSIGN_OR_RETURN(PjRtCompiler * compiler, GetPjRtCompiler(topology));
-  return compiler->DeserializeExecutable(topology, std::move(reader),
-                                         std::move(options));
+  return compiler->DeserializeExecutable(
+      topology, std::move(reader), std::move(options),
+      executable_compatibility_check_on_deserialization);
 }
 
 absl::Status PjRtPhaseCompiler::RegisterPhase(

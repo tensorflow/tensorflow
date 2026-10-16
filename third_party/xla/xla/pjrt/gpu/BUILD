@@ -892,10 +892,8 @@ cc_library(
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_id",
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
-        "@llvm-project//mlir:IR",
         "@riegeli//riegeli/base:any",
         "@riegeli//riegeli/bytes:reader",
     ] + if_rocm([

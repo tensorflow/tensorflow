@@ -558,7 +558,8 @@ class PjRtCompiler {
   virtual absl::StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
       const PjRtTopologyDescription& topology,
       riegeli::Any<riegeli::Reader*> reader,
-      std::optional<CompileOptions>&& options) {
+      std::optional<CompileOptions>&& options,
+      bool executable_compatibility_check_on_deserialization) {
     return absl::UnimplementedError(
         absl::StrCat("DeserializeExecutable is not implemented for: ",
                      topology.platform_name(), "."));
@@ -612,7 +613,8 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtDeserializeExecutable(
     const PjRtTopologyDescription& topology,
     riegeli::Any<riegeli::Reader*> reader,
-    std::optional<CompileOptions> options = std::nullopt);
+    std::optional<CompileOptions> options = std::nullopt,
+    bool executable_compatibility_check_on_deserialization = true);
 
 // Stores a compilation phase's compiler and validator functions.
 // This struct bundles the essential functional components required to define

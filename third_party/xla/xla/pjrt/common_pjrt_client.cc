@@ -513,7 +513,7 @@ CommonPjRtClient::DeserializeExecutable(absl::string_view serialized,
                    GetTopologyDescription());
   return PjRtDeserializeExecutable(
       *topology, std::make_unique<riegeli::StringReader<>>(serialized),
-      std::move(options));
+      std::move(options), executable_compatibility_check_on_deserialization());
 }
 absl::StatusOr<std::unique_ptr<PjRtExecutable>>
 CommonPjRtClient::DeserializeExecutable(const absl::Cord& serialized,
@@ -524,7 +524,7 @@ CommonPjRtClient::DeserializeExecutable(const absl::Cord& serialized,
                    GetTopologyDescription());
   return PjRtDeserializeExecutable(
       *topology, std::make_unique<riegeli::CordReader<>>(&serialized),
-      std::move(options));
+      std::move(options), executable_compatibility_check_on_deserialization());
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
@@ -600,7 +600,10 @@ CommonPjRtClient::LoadInternal(std::shared_ptr<PjRtExecutable> executable,
                                const LoadOptions& load_options, bool dump) {
   ABSL_ASSIGN_OR_RETURN(CompileOptions compile_options,
                    executable->GetCompileOptions());
-  ABSL_RETURN_IF_ERROR(compile_options.ApplyAllOptionOverrides());
+  // TODO(parkers): Apply options overrides consistently.
+  if (!IsTpuId(platform_id())) {
+    ABSL_RETURN_IF_ERROR(compile_options.ApplyAllOptionOverrides());
+  }
   return LoadInternal(executable, std::move(compile_options), nullptr,
                       load_options, dump);
 }
@@ -4716,6 +4719,9 @@ CommonPjRtClientImpl::CommonPjRtClientImpl(
   set_bool_attr_from_plugin_attrs("dump_on_deserialize", dump_on_deserialize_);
   set_bool_attr_from_plugin_attrs("should_stage_host_to_device_transfers",
                                   should_stage_host_to_device_transfers_);
+  set_bool_attr_from_plugin_attrs(
+      "executable_compatibility_check_on_deserialization",
+      executable_compatibility_check_on_deserialization_);
 }
 
 void CommonPjRtClientImpl::AttachDevices(
