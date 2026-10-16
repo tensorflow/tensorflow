@@ -34,7 +34,7 @@ limitations under the License.
 #include "xla/future.h"
 #include "xla/runtime/device_id.h"
 #include "xla/runtime/resource_use.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/collective_rendezvous.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_address.h"

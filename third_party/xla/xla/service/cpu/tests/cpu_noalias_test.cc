@@ -38,7 +38,7 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/compiler.h"
 #include "xla/service/llvm_ir/alias_analysis.h"
 #include "xla/service/llvm_ir/ir_array.h"

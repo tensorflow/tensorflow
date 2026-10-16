@@ -104,7 +104,7 @@ cc_library(
     compatible_with = get_compatible_with_libtpu_portable(),
     visibility = internal_visibility([":friends"]),
     deps = [
-        "//xla/service:buffer_assignment",
+        "//xla/service/buffer_assignment",
         "//xla/tsl/util:sorted_range",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/types:span",
@@ -159,7 +159,7 @@ xla_cc_test(
     srcs = ["buffer_slice_merge_test.cc"],
     deps = [
         ":buffer_slice_merge",
-        "//xla/service:buffer_assignment",
+        "//xla/service/buffer_assignment",
         "@com_google_googletest//:gtest_main",
     ],
 )

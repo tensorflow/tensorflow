@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_BUFFER_ASSIGNMENT_H_
-#define XLA_SERVICE_BUFFER_ASSIGNMENT_H_
+#ifndef XLA_SERVICE_BUFFER_ASSIGNMENT_BUFFER_ASSIGNMENT_H_
+#define XLA_SERVICE_BUFFER_ASSIGNMENT_BUFFER_ASSIGNMENT_H_
 
 #include <algorithm>
 #include <cstddef>
@@ -44,10 +44,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/utils/hlo_live_range.h"
-#include "xla/service/buffer_assignment.pb.h"
+#include "xla/service/buffer_assignment/buffer_assignment.pb.h"
+#include "xla/service/buffer_assignment/heap_simulator.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/call_graph.h"
-#include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_value.h"
@@ -1449,4 +1449,4 @@ ComputeLogicalBufferUnpaddedSizes(
 
 }  // namespace xla
 
-#endif  // XLA_SERVICE_BUFFER_ASSIGNMENT_H_
+#endif  // XLA_SERVICE_BUFFER_ASSIGNMENT_BUFFER_ASSIGNMENT_H_

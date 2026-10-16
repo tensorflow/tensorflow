@@ -47,7 +47,7 @@ limitations under the License.
 #include "xla/codegen/kernel_spec.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/runtime/work_group.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/shaped_slice.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/tsl/concurrency/async_value_ref.h"

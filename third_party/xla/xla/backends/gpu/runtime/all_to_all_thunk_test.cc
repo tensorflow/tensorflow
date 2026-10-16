@@ -51,7 +51,7 @@ limitations under the License.
 #include "xla/core/collectives/reduction_kind.h"
 #include "xla/future.h"
 #include "xla/runtime/device_id.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/device_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/platform_util.h"

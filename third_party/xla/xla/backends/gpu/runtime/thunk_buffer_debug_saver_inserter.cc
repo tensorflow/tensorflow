@@ -34,7 +34,7 @@ limitations under the License.
 #include "xla/ffi/ffi.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/runtime/buffer_use.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/shaped_slice.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"

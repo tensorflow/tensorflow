@@ -78,8 +78,8 @@ tsl_pybind_extension(
         "//xla/hlo/parser:hlo_parser",
         "//xla/python:nb_absl_inlined_vector",
         "//xla/python:nb_absl_span",
-        "//xla/service:buffer_assignment",
         "//xla/service:hlo_module_config",
+        "//xla/service/buffer_assignment",
     ],
 )
 

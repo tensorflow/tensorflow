@@ -19,7 +19,7 @@ package xla.cpu;
 
 import "xla/backends/cpu/xnn_fusion_options.proto";
 import "xla/backends/cpu/ynn_fusion_options.proto";
-import "xla/service/buffer_assignment.proto";
+import "xla/service/buffer_assignment/buffer_assignment.proto";
 import "xla/service/hlo.proto";
 import "xla/service/shaped_slice.proto";
 import "xla/xla_data.proto";

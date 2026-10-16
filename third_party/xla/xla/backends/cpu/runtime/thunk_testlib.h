@@ -30,7 +30,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/runtime/resource_use.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 
 namespace xla::cpu {

@@ -34,7 +34,7 @@ limitations under the License.
 #include "xla/core/collectives/communicator.h"
 #include "xla/future.h"
 #include "xla/primitive_util.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/collective_rendezvous.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"

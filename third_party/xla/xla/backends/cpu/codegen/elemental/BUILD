@@ -44,7 +44,7 @@ cc_library(
         "//xla/codegen:llvm_kernel_source",
         "//xla/hlo/ir:hlo",
         "//xla/runtime:work_group",
-        "//xla/service:buffer_assignment",
+        "//xla/service/buffer_assignment",
         "//xla/service/cpu:backend_config_proto_cc",
         "//xla/service/cpu:ir_emitter",
         "//xla/service/llvm_ir:ir_array",

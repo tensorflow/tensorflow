@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/heap_simulator/heap_simulator.h"
+#include "xla/service/buffer_assignment/heap_simulator.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -63,9 +63,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/map_util.h"
+#include "xla/service/buffer_assignment/allocation_block.h"
+#include "xla/service/buffer_assignment/free_chunks_manager.h"
 #include "xla/service/buffer_value.h"
-#include "xla/service/heap_simulator/allocation_block.h"
-#include "xla/service/heap_simulator/free_chunks_manager.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_value.h"

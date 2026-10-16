@@ -20,7 +20,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/types/span.h"
 #include "xla/layout.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/hlo_value.h"
 
 namespace xla {

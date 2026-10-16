@@ -25,7 +25,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/maybe_owning_device_address.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/util.h"

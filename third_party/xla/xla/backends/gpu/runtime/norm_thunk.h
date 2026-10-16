@@ -26,7 +26,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/per_device_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/gpu/gpu_norm_runner.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/xla_data.pb.h"

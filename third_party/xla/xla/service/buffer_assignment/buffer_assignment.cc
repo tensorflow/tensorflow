@@ -15,7 +15,7 @@ limitations under the License.
 
 // Defines the data returned by the XLA buffer assignment packages.
 
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -62,10 +62,10 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/layout_util.h"
 #include "xla/map_util.h"
-#include "xla/service/buffer_assignment.pb.h"
+#include "xla/service/buffer_assignment/buffer_assignment.pb.h"
+#include "xla/service/buffer_assignment/heap_simulator.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/call_graph.h"
-#include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_value.h"

@@ -39,7 +39,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/codegen/kernel_spec.h"
 #include "xla/runtime/work_group.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 
 namespace xla::cpu {

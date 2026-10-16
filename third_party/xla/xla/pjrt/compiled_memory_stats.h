@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "xla/pjrt/proto/executable_metadata.pb.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 
 namespace xla {
 

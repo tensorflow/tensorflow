@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/util.h"
 
 namespace xla {

@@ -108,7 +108,7 @@ message BufferIsolationConfig {
 
 // The buffer assignment algorithm to use, based on heap simulation. For more
 // details, see BufferIntervalCompare in
-// third_party/tensorflow/compiler/xla/service/heap_simulator.h.
+// third_party/tensorflow/compiler/xla/service/buffer_assignment/heap_simulator.h.
 //
 // If DEFAULT, we use BEST_OF_SPATIAL_TEMPORAL.
 // BEST_OF_SPATIAL_TEMPORAL, tries both SPATIAL and TEMPORAL and picks the one

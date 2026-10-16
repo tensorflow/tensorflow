@@ -32,7 +32,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk_proto_serdes_utils.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/runtime/resource_use.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"

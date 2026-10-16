@@ -43,7 +43,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/while_loop.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/service_executable_run_options.h"

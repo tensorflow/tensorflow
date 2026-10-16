@@ -40,7 +40,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/traced_command.h"
 #include "xla/future.h"
 #include "xla/runtime/device_id.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"

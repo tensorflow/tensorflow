@@ -31,7 +31,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "xla/frontend_attributes.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"

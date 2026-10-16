@@ -17,7 +17,7 @@ syntax = "proto3";
 
 package xla;
 
-import "xla/service/buffer_assignment.proto";
+import "xla/service/buffer_assignment/buffer_assignment.proto";
 import "xla/xla_data.proto";
 
 option java_multiple_files = true;

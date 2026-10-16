@@ -72,7 +72,7 @@ limitations under the License.
 #include "xla/mlir/tools/mlir_replay/public/compiler_trace.pb.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/dump.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
