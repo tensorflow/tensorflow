@@ -353,7 +353,7 @@ class ASBSBatch : public Batch<TaskType> {
         schedulable_time_micros_(creation_time_micros + batch_timeout_micros),
         traceme_context_id_(traceme_context_id) {}
 
-  ~ASBSBatch() override {}
+  ~ASBSBatch() override = default;
 
   ASBSQueue<TaskType>* queue() const { return queue_; }
 
