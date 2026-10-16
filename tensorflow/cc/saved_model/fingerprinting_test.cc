@@ -219,7 +219,7 @@ TEST(FingerprintingTest, CreateFingerprintDefPbEmptyMetaGraphsReturnsError) {
 
   EXPECT_THAT(
       CreateFingerprintDef(model_dir).status(),
-      tsl::testing::StatusIs(absl::StatusCode::kInvalidArgument,
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
                              "SavedModel (.pb) contains no MetaGraphs."));
 }
 
