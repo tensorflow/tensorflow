@@ -26,24 +26,33 @@ limitations under the License.
 
 namespace tensorflow::functor {
 
+// __launch_bounds__ lets ptxas use as many registers as Th threads per block
+// allow; without it, the toolchain's --maxrregcount=0 clamps the kernel to 24
+// and the per-thread accumulators spill to local memory.
 template <typename T, int D_MAX>
-__global__ void FlashAttnFwdKernel(const T *__restrict__ Q,
-                                   const T *__restrict__ K,
-                                   const T *__restrict__ V, T *__restrict__ Out,
-                                   float *__restrict__ stats_out, int BH, int H,
-                                   int S_q, int S_kv, int D_qk, int D_v,
-                                   bool causal_mask, float dropout_rate,
-                                   float scale, FlashAttentionRng rng) {
+__global__ void __launch_bounds__(traits::FlashTraits<D_MAX>::Th)
+    FlashAttnFwdKernel(const T *__restrict__ Q, const T *__restrict__ K,
+                       const T *__restrict__ V, T *__restrict__ Out,
+                       float *__restrict__ stats_out, int BH, int H, int S_q,
+                       int S_kv, int D_qk, int D_v, bool causal_mask,
+                       float dropout_rate, float scale, FlashAttentionRng rng) {
   const uint64_t seed = ResolveSeed(rng);
   const uint64_t offset = ResolveOffset(rng);
   constexpr int Br = traits::FlashTraits<D_MAX>::Br;
   constexpr int Bc = traits::FlashTraits<D_MAX>::Bc;
+  // Each thread reads its own Q row: up to D_MAX = 64 it's copied into
+  // registers once (next to acc_o), beyond that it's read from a rotated tile.
+  // Every thread reads the same K/V row, so those need no rotation.
+  constexpr bool kQInRegisters = D_MAX <= 64;
+  constexpr int kShiftQ = kQInRegisters ? 0 : 1;
+  using TileQ = Tile<T, D_MAX, kShiftQ>;
+  using TileKV = Tile<T, D_MAX, 0>;
   const float dp_inverse =
       (dropout_rate > 0.0f) ? (1.0f / (1.0f - dropout_rate)) : 1.0f;
 
   // Shared Memory Layout:
   // Q_tile[Br][D_qk] | K_tile[Bc][D_qk] | V_tile[Bc][D_v]
-  extern __shared__ char smem_[];
+  extern __shared__ __align__(16) char smem_[];
   T *s_Q = reinterpret_cast<T *>(smem_);
   T *s_K = s_Q + Br * D_MAX;
   T *s_V = s_K + Bc * D_MAX;
@@ -77,21 +86,20 @@ __global__ void FlashAttnFwdKernel(const T *__restrict__ Q,
   float m_i = NEGINF;
   float l_i = ZEROF;  // Keeps track of sum(exp(S - m))
 
-  float score_tmp[Bc];
-  for (int d = 0; d < Bc; ++d) {
-    score_tmp[d] = ZEROF;
-  }
-
   const uint64_t global_rng_idx =
       seed + offset + static_cast<uint64_t>((batch_offset_q + q_offset) * S_kv);
 
   // Load Q Tile
   if (block_valid) {
-    load_tile<T, D_MAX>(s_Q, Q, tid, blockDim.x, Br, D_qk, S_q, tile_offset_q,
-                        row_base_q, H);
+    load_tile<T, D_MAX, kShiftQ>(s_Q, Q, tid, blockDim.x, Br, D_qk, S_q,
+                                 tile_offset_q, row_base_q, H);
   }
 
-  T *q_ptr = s_Q + tid * D_MAX;
+  float q_reg[kQInRegisters ? D_MAX : 1];
+  if constexpr (kQInRegisters) {
+    __syncthreads();
+    if (tid < Br) TileQ::LoadRow(s_Q, tid, q_reg);
+  }
 
   for (int tile_offset_kv = 0; tile_offset_kv < S_kv; tile_offset_kv += Bc) {
     bool tile_is_masked =
@@ -102,10 +110,10 @@ __global__ void FlashAttnFwdKernel(const T *__restrict__ Q,
 
     // Load KV Tile
     if (!tile_is_masked) {
-      load_tile<T, D_MAX>(s_K, K, tid, blockDim.x, Bc, D_qk, S_kv,
-                          tile_offset_kv, row_base_kv, H);
-      load_tile<T, D_MAX>(s_V, V, tid, blockDim.x, Bc, D_v, S_kv,
-                          tile_offset_kv, row_base_kv, H);
+      load_tile<T, D_MAX, 0>(s_K, K, tid, blockDim.x, Bc, D_qk, S_kv,
+                             tile_offset_kv, row_base_kv, H);
+      load_tile<T, D_MAX, 0>(s_V, V, tid, blockDim.x, Bc, D_v, S_kv,
+                             tile_offset_kv, row_base_kv, H);
     }
 
     __syncthreads();
@@ -113,59 +121,42 @@ __global__ void FlashAttnFwdKernel(const T *__restrict__ Q,
     // Compute attention inside this tile
     if (active && !tile_is_masked) {
       // find valid tile range
-      int valid_start = 0;
       int valid_end =
           (tile_offset_kv + Bc > S_kv) ? (S_kv - tile_offset_kv) : Bc;
       if (causal_mask && (tile_offset_kv + valid_end > q_offset)) {
         valid_end = q_offset - tile_offset_kv + 1;
       }
-      if (valid_end > valid_start) {
-        // find score max within this kv tile
-        float score_max = NEGINF;
-        for (int j = valid_start; j < valid_end; ++j) {
-          float score = ZEROF;
-          T *k_ptr = s_K + j * D_MAX;
+      // Online softmax, one key at a time, so no scores are buffered.
+      // acc_o and l_i are only rescaled when the running max grows, which
+      // becomes rare after the first few keys.
+      for (int j = 0; j < valid_end; ++j) {
+        float score;
+        if constexpr (kQInRegisters) {
+          score = TileKV::Dot(q_reg, s_K, j) * scale;
+        } else {
+          score = TileDot<TileQ, TileKV>(s_Q, tid, s_K, j) * scale;
+        }
+        if (score > m_i) {
+          const float ratio = Eigen::numext::exp(m_i - score);
+          l_i *= ratio;
 #pragma unroll
           for (int d = 0; d < D_MAX; ++d) {
-            score +=
-                static_cast<float>(q_ptr[d]) * static_cast<float>(k_ptr[d]);
+            acc_o[d] *= ratio;
           }
-          score *= scale;
-          score_tmp[j] = score;
-          if (score > score_max) {
-            score_max = score;
-          }
+          m_i = score;
         }
 
-        const float m_prev = m_i;
-        m_i = (score_max > m_i) ? score_max : m_i;
-        const float ratio = Eigen::numext::exp(m_prev - m_i);
-
-        // scaling l_i and acc_o
-        l_i *= ratio;
-#pragma unroll
-        for (int d = 0; d < D_MAX; ++d) {
-          acc_o[d] *= ratio;
-        }
-
-        // adding l_i and acc_o
-        for (int j = valid_start; j < valid_end; ++j) {
-          const int kv_offset = tile_offset_kv + j;
-          float p_ij = Eigen::numext::exp(score_tmp[j] - m_i);
-          l_i += p_ij;
-          if (dropout_rate > 0.0f) {
-            if (get_random_float_v2(global_rng_idx, kv_offset) < dropout_rate) {
-              p_ij = ZEROF;
-            } else {
-              p_ij *= dp_inverse;
-            }
-          }
-          T *v_ptr = s_V + j * D_MAX;
-#pragma unroll
-          for (int d = 0; d < D_MAX; ++d) {
-            acc_o[d] += p_ij * static_cast<float>(v_ptr[d]);
+        const int kv_offset = tile_offset_kv + j;
+        float p_ij = Eigen::numext::exp(score - m_i);
+        l_i += p_ij;
+        if (dropout_rate > 0.0f) {
+          if (get_random_float_v2(global_rng_idx, kv_offset) < dropout_rate) {
+            p_ij = ZEROF;
+          } else {
+            p_ij *= dp_inverse;
           }
         }
+        TileKV::Axpy(acc_o, p_ij, s_V, j);
       }
     }
   }

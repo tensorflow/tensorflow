@@ -93,8 +93,127 @@ __device__ __forceinline__ size_t RowBase(int b, int h, int S, int H) {
   return static_cast<size_t>(b) * S * H + h;
 }
 
-// Total elements in the shared memory tile allocated for this feature
-template <typename T, int D_MAX>
+// Layout and accessors for the [rows][D_MAX] tiles kept in shared memory.
+//
+// Rows are stored as 16-byte chunks and read a whole chunk at a time (128-bit
+// loads), which shared memory serves 8 threads at a time. When all threads read
+// the same row this is a broadcast. When each thread reads its own row (the
+// same chunk of 8 consecutive rows), an unrotated layout puts all 8 in the same
+// bank group whenever a row is a multiple of 128 bytes, serializing the read.
+// With kShift > 0, chunk c of row r is kept at chunk position
+// (c + kShift * (r / kRowsPerShift)) % kChunks, which spreads those 8 reads
+// over all 8 bank groups without the extra shared memory that padding would
+// need. kShift = 2 is for two threads per row that read alternate chunks (see
+// FlashAttnBwdKernel): the 8 threads then cover 4 rows, which a shift of 2
+// chunks per row still keeps apart. Tiles only read by broadcast use
+// kShift = 0, saving the index arithmetic.
+template <typename T, int D_MAX, int kShift>
+struct Tile {
+  static constexpr int kChunk = 16 / sizeof(T);  // elements per chunk
+  static_assert(D_MAX % kChunk == 0, "rows must be whole 16-byte chunks");
+  static constexpr int kChunks = D_MAX / kChunk;
+  // 8 chunks span all 32 banks; narrower rows share a rotation.
+  static constexpr int kRowsPerShift = kChunks >= 8 ? 1 : 8 / kChunks;
+
+  // Position of element d of row `row`.
+  __device__ __forceinline__ static int Index(int row, int d) {
+    if constexpr (kShift == 0) return row * D_MAX + d;
+    const int chunk = (d / kChunk + kShift * (row / kRowsPerShift)) % kChunks;
+    return row * D_MAX + chunk * kChunk + d % kChunk;
+  }
+
+  // Loads chunk c (elements c * kChunk ...) of `row` with one 128-bit load.
+  __device__ __forceinline__ static void LoadChunk(const T *tile, int row,
+                                                   int c, T (&out)[kChunk]) {
+    // ::uint4 is CUDA's 128-bit vector; plain uint4 here is TF's 4-bit int.
+    const ::uint4 v =
+        *reinterpret_cast<const ::uint4 *>(tile + Index(row, c * kChunk));
+    const uint32_t w[4] = {v.x, v.y, v.z, v.w};
+#pragma unroll
+    for (int e = 0; e < kChunk; ++e) {
+      if constexpr (sizeof(T) == 4) {
+        out[e] = __uint_as_float(w[e]);
+      } else {
+        out[e] = Eigen::numext::bit_cast<T>(
+            static_cast<uint16_t>(w[e / 2] >> (16 * (e % 2))));
+      }
+    }
+  }
+
+  // Dot product of a (a row already in registers) and tile[row].
+  __device__ __forceinline__ static float Dot(const float (&a)[D_MAX],
+                                              const T *tile, int row) {
+    float sum = 0.0f;
+#pragma unroll
+    for (int c = 0; c < kChunks; ++c) {
+      T y[kChunk];
+      LoadChunk(tile, row, c, y);
+#pragma unroll
+      for (int e = 0; e < kChunk; ++e) {
+        sum += a[c * kChunk + e] * static_cast<float>(y[e]);
+      }
+    }
+    return sum;
+  }
+
+  // Copies tile[row] into registers.
+  __device__ __forceinline__ static void LoadRow(const T *tile, int row,
+                                                 float (&out)[D_MAX]) {
+#pragma unroll
+    for (int c = 0; c < kChunks; ++c) {
+      T x[kChunk];
+      LoadChunk(tile, row, c, x);
+#pragma unroll
+      for (int e = 0; e < kChunk; ++e) {
+        out[c * kChunk + e] = static_cast<float>(x[e]);
+      }
+    }
+  }
+
+  // acc += alpha * tile[row]. With kSplit > 1, a row is shared by kSplit
+  // threads: `part` handles chunks part, part + kSplit, ..., and acc holds just
+  // those, in order (acc[c' * kChunk + e] is element (c' * kSplit + part) *
+  // kChunk + e).
+  template <int kSplit = 1>
+  __device__ __forceinline__ static void Axpy(float (&acc)[D_MAX / kSplit],
+                                              float alpha, const T *tile,
+                                              int row, int part = 0) {
+#pragma unroll
+    for (int c = 0; c < kChunks / kSplit; ++c) {
+      T x[kChunk];
+      LoadChunk(tile, row, c * kSplit + part, x);
+#pragma unroll
+      for (int e = 0; e < kChunk; ++e) {
+        acc[c * kChunk + e] += alpha * static_cast<float>(x[e]);
+      }
+    }
+  }
+};
+
+// Dot product of a[a_row] and b[b_row] over the zero-padded rows, for tiles
+// with layouts TileA and TileB. With kSplit > 1, only over the chunks of
+// `part` (see Tile::Axpy); the kSplit partial sums add up to the full one.
+template <typename TileA, typename TileB, int kSplit = 1, typename T>
+__device__ __forceinline__ float TileDot(const T *a, int a_row, const T *b,
+                                         int b_row, int part = 0) {
+  static_assert(TileA::kChunks == TileB::kChunks);
+  float sum = 0.0f;
+#pragma unroll
+  for (int c = 0; c < TileA::kChunks / kSplit; ++c) {
+    T x[TileA::kChunk], y[TileA::kChunk];
+    TileA::LoadChunk(a, a_row, c * kSplit + part, x);
+    TileB::LoadChunk(b, b_row, c * kSplit + part, y);
+#pragma unroll
+    for (int e = 0; e < TileA::kChunk; ++e) {
+      sum += static_cast<float>(x[e]) * static_cast<float>(y[e]);
+    }
+  }
+  return sum;
+}
+
+// Loads rows [tile_offset, tile_offset + b_size) of one (batch, head) sequence
+// into a Tile, zero-padding rows past s_size and columns past d_size.
+template <typename T, int D_MAX, int kShift>
 __device__ __forceinline__ void load_tile(
     T *__restrict__ s_mem,        // Shared memory destination
     const T *__restrict__ g_mem,  // Global memory source
@@ -112,12 +231,13 @@ __device__ __forceinline__ void load_tile(
     const int s = i / D_MAX;
     const int d = i - s * D_MAX;
     const int s_offset = tile_offset + s;
+    const int idx = Tile<T, D_MAX, kShift>::Index(s, d);
     if (s_offset < s_size && d < d_size) {
-      s_mem[i] =
+      s_mem[idx] =
           g_mem[(row_base + static_cast<size_t>(s_offset) * row_step) * d_size +
                 d];
     } else {
-      s_mem[i] = T(0.0f);
+      s_mem[idx] = T(0.0f);
     }
   }
 }
@@ -163,27 +283,27 @@ struct FlashTraits<128> {
 };
 
 /*
-backward KV pass:
-- ((2Br + 2Bc) * D_MAX +2Br) * size(float) <= 48KB
+backward KV pass (FlashAttnBwdKernel), including the float dS tile:
+- ((2Br + 2Bc) * D_MAX + 2Br + Br * (Bc + 1)) * size(float) <= 48KB
 - Bc <= Th
 */
 template <int D_MAX>
 struct FlashTraitsKV;
 template <>
 struct FlashTraitsKV<8> {
-  static constexpr int Br = 224;
+  static constexpr int Br = 16;
   static constexpr int Bc = 256;
   static constexpr int Th = 256;
 };
 template <>
 struct FlashTraitsKV<16> {
-  static constexpr int Br = 96;
-  static constexpr int Bc = 256;
-  static constexpr int Th = 256;
+  static constexpr int Br = 32;
+  static constexpr int Bc = 128;
+  static constexpr int Th = 128;
 };
 template <>
 struct FlashTraitsKV<32> {
-  static constexpr int Br = 32;
+  static constexpr int Br = 16;
   static constexpr int Bc = 128;
   static constexpr int Th = 128;
 };
