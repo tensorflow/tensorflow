@@ -1140,11 +1140,18 @@ def swapaxes(a, axis1, axis2):  # pylint: disable=missing-docstring
         # this PR #122544 does not attempt to solve.
         rank_t = ops.convert_to_tensor(rank)
         x = ops.convert_to_tensor(x)
-        control_flow_assert.Assert(
+        assert_op = control_flow_assert.Assert(
             math_ops.reduce_all(math_ops.logical_and(x >= -rank_t, x < rank_t)),
             ['axis', x, 'is out of bounds for array of dimension', rank_t],
         )
-        x = array_ops.where_v2(x < 0, np_utils.add(x, rank_t), x)
+        # Without this control dependency, the Assert node has no data edge
+        # to the rest of the graph, so on GPU a downstream op (e.g. the
+        # TensorScatterUpdate used by callers like swapaxes) can run before
+        # the Assert and fail first with its own, more confusing error
+        # (e.g. "indices[0] = [-5] does not index into shape [5]") instead
+        # of this out-of-bounds message.
+        with ops.control_dependencies([assert_op]):
+          x = array_ops.where_v2(x < 0, np_utils.add(x, rank_t), x)
       return x
 
     return nest.map_structure(f, axes)
