@@ -1945,6 +1945,7 @@ cc_library(
         "//xla/hlo/transforms/expanders:dot_decomposer",
         "//xla/hlo/transforms/expanders:dynamic_index_splitter",
         "//xla/hlo/transforms/expanders:eigh_expander",
+        "//xla/hlo/transforms/expanders:elementary_function_expander",
         "//xla/hlo/transforms/expanders:logistic_expander",
         "//xla/hlo/transforms/expanders:optimization_barrier_expander",
         "//xla/hlo/transforms/expanders:permutation_sort_expander",

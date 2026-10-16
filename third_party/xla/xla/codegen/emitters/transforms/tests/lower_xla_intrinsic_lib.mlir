@@ -452,3 +452,31 @@ func.func @sin_cos_vector(%arg0: vector<8xf32>, %arg1: vector<4xf64>) -> (vector
 // CHECK: %[[SIN:.*]] = call @xla.sin.v8f32(%arg0) : (vector<8xf32>) -> vector<8xf32>
 // CHECK: %[[COS:.*]] = call @xla.cos.v4f64(%arg1) : (vector<4xf64>) -> vector<4xf64>
 // CHECK: return %[[SIN]], %[[COS]]
+
+// -----
+
+module {
+  func.func @sinh_f32(%arg0: f32) -> f32 {
+    %ret = math.sinh %arg0 : f32
+    return %ret : f32
+  }
+}
+
+// CHECK-LABEL: @sinh_f32
+// CHECK-NOT: math.sinh
+// CHECK: %[[RESULT:.*]] = call @xla.sinh.f32(%arg0) : (f32) -> f32
+// CHECK: return %[[RESULT]] : f32
+
+// -----
+
+module {
+  func.func @sinh_vector(%arg0: vector<8xf32>) -> vector<8xf32> {
+    %ret = math.sinh %arg0 : vector<8xf32>
+    return %ret : vector<8xf32>
+  }
+}
+
+// CHECK-LABEL: @sinh_vector
+// CHECK-NOT: math.sinh
+// CHECK: %[[SINH_CALL:.*]] = call @xla.sinh.v8f32(%arg0) : (vector<8xf32>) -> vector<8xf32>
+// CHECK: return %[[SINH_CALL]]

@@ -110,7 +110,6 @@ class Expm1 : public Intrinsic<Expm1> {
                              UnaryFunctionType(module, type));
   }
 };
-
 class Sin : public Intrinsic<Sin> {
  public:
   static constexpr absl::string_view kName = "sin";
@@ -156,6 +155,30 @@ class Cos : public Intrinsic<Cos> {
       types.push_back({Type::V(xla::F64, 8)});
     }
     return types;
+  }
+
+  static absl::StatusOr<llvm::Function*> CreateDefinition(
+      llvm::Module* module, const IntrinsicOptions& options, Type type) {
+    return GetCppGenFunction(module, Name(type),
+                             UnaryFunctionType(module, type));
+  }
+};
+
+class Sinh : public Intrinsic<Sinh> {
+ public:
+  static constexpr absl::string_view kName = "sinh";
+
+  static std::vector<std::vector<Type>> SupportedVectorTypes(
+      absl::string_view features) {
+    if (!AreCppGenIntrinsicsAvailable()) {
+      return {};
+    }
+    return {
+        {Type::S(xla::F32)},
+        {Type::V(xla::F32, 4)},
+        {Type::V(xla::F32, 8)},
+        {Type::V(xla::F32, 16)},
+    };
   }
 
   static absl::StatusOr<llvm::Function*> CreateDefinition(

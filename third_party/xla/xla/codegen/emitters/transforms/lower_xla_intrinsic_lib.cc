@@ -344,8 +344,9 @@ class LowerXlaIntrinsicLibPass
                  LowerIntrinsicPattern<ci::Sin, mm::SinOp>,
                  LowerIntrinsicPattern<ci::Cos, mm::CosOp>,
                  LowerIntrinsicPattern<ci::FpTrunc, ma::TruncFOp>,
-                 LowerIntrinsicPattern<ci::Erf, mm::ErfOp>>(context,
-                                                            cpu_features);
+                 LowerIntrinsicPattern<ci::Erf, mm::ErfOp>,
+                 LowerIntrinsicPattern<ci::Sinh, mm::SinhOp>>(context,
+                                                              cpu_features);
     if (mlir::failed(
             mlir::applyPatternsGreedily(module_op, std::move(patterns)))) {
       signalPassFailure();

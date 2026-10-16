@@ -66,6 +66,7 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/compiled_memory_stats.h"
 #include "xla/pjrt/cpu/abstract_cpu_buffer.h"
@@ -286,7 +287,8 @@ absl::StatusOr<MlirCompilationSetup> SetupMlirCompilation(
   ABSL_RETURN_IF_ERROR(MlirToXlaComputation(
       module.mlir_module(), xla_computation,
       /*use_tuple_args=*/options.parameter_is_tupled_arguments,
-      /*return_tuple=*/false, &exec_build_options));
+      /*return_tuple=*/false, &exec_build_options,
+      mlir::mhlo::getCpuChloToHighLevelMhloOptions()));
   xla_computation.mutable_proto()->set_pjrt_id(module_id);
   setup.computation = std::move(xla_computation);
 

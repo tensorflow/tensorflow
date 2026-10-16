@@ -191,6 +191,7 @@ limitations under the License.
 #include "xla/hlo/transforms/expanders/dot_decomposer.h"
 #include "xla/hlo/transforms/expanders/dynamic_index_splitter.h"
 #include "xla/hlo/transforms/expanders/eigh_expander.h"
+#include "xla/hlo/transforms/expanders/elementary_function_expander.h"
 #include "xla/hlo/transforms/expanders/logistic_expander.h"
 #include "xla/hlo/transforms/expanders/optimization_barrier_expander.h"
 #include "xla/hlo/transforms/expanders/permutation_sort_expander.h"
@@ -920,6 +921,10 @@ absl::Status RunOptimizationPasses(
       /*rewrite_inference_op=*/true,
       /*rewrite_grad_op=*/true);
 
+  pipeline.AddPass<ElementaryFunctionExpander>(
+      [](const HloInstruction* instruction) {
+        return ShapeUtil::ElementIsComplex(instruction->shape());
+      });
   pipeline.AddPass<LogisticExpander>();
   pipeline.AddPass<ConditionalCanonicalizer>();
   pipeline.AddPass<DynamicDimensionSimplifier>();

@@ -170,7 +170,6 @@ TEST(IntrinsicLibTest, Expm1Vectorizations) {
                            "xla.expm1.f64:xla.expm1.v4f64:4:_ZGV_LLVM_N4v",
                            "xla.expm1.f64:xla.expm1.v8f64:8:_ZGV_LLVM_N8v"));
 }
-
 TEST(IntrinsicLibTest, SinAndCosVectorizations) {
   auto descs_with_prefix = [](absl::string_view features,
                               absl::string_view prefix) {
@@ -187,20 +186,20 @@ TEST(IntrinsicLibTest, SinAndCosVectorizations) {
   };
 
   EXPECT_THAT(
-      descs_with_prefix("", "xla.sin"),
+      descs_with_prefix("", "xla.sin."),
       UnorderedElementsAre("xla.sin.f32:xla.sin.v4f32:4:_ZGV_LLVM_N4v",
                            "xla.sin.f32:xla.sin.v8f32:8:_ZGV_LLVM_N8v",
                            "xla.sin.f64:xla.sin.v2f64:2:_ZGV_LLVM_N2v",
                            "xla.sin.f64:xla.sin.v4f64:4:_ZGV_LLVM_N4v"));
   EXPECT_THAT(
-      descs_with_prefix("", "xla.cos"),
+      descs_with_prefix("", "xla.cos."),
       UnorderedElementsAre("xla.cos.f32:xla.cos.v4f32:4:_ZGV_LLVM_N4v",
                            "xla.cos.f32:xla.cos.v8f32:8:_ZGV_LLVM_N8v",
                            "xla.cos.f64:xla.cos.v2f64:2:_ZGV_LLVM_N2v",
                            "xla.cos.f64:xla.cos.v4f64:4:_ZGV_LLVM_N4v"));
 
   EXPECT_THAT(
-      descs_with_prefix("+avx512f", "xla.sin"),
+      descs_with_prefix("+avx512f", "xla.sin."),
       UnorderedElementsAre("xla.sin.f32:xla.sin.v4f32:4:_ZGV_LLVM_N4v",
                            "xla.sin.f32:xla.sin.v8f32:8:_ZGV_LLVM_N8v",
                            "xla.sin.f32:xla.sin.v16f32:16:_ZGV_LLVM_N16v",
@@ -208,7 +207,7 @@ TEST(IntrinsicLibTest, SinAndCosVectorizations) {
                            "xla.sin.f64:xla.sin.v4f64:4:_ZGV_LLVM_N4v",
                            "xla.sin.f64:xla.sin.v8f64:8:_ZGV_LLVM_N8v"));
   EXPECT_THAT(
-      descs_with_prefix("+avx512f", "xla.cos"),
+      descs_with_prefix("+avx512f", "xla.cos."),
       UnorderedElementsAre("xla.cos.f32:xla.cos.v4f32:4:_ZGV_LLVM_N4v",
                            "xla.cos.f32:xla.cos.v8f32:8:_ZGV_LLVM_N8v",
                            "xla.cos.f32:xla.cos.v16f32:16:_ZGV_LLVM_N16v",
@@ -217,6 +216,23 @@ TEST(IntrinsicLibTest, SinAndCosVectorizations) {
                            "xla.cos.f64:xla.cos.v8f64:8:_ZGV_LLVM_N8v"));
 }
 
+TEST(IntrinsicLibTest, SinhVectorizations) {
+  IntrinsicOptions options;
+  auto lib = IntrinsicFunctionLib(options);
+  std::vector<llvm::VecDesc> vec_descs = lib.Vectorizations();
+  std::vector<std::string> vec_descs_str;
+  for (const auto& vec_desc : vec_descs) {
+    if (vec_desc.getScalarFnName().starts_with("xla.sinh")) {
+      vec_descs_str.push_back(ToString(vec_desc));
+    }
+  }
+
+  EXPECT_THAT(
+      vec_descs_str,
+      UnorderedElementsAre("xla.sinh.f32:xla.sinh.v4f32:4:_ZGV_LLVM_N4v",
+                           "xla.sinh.f32:xla.sinh.v8f32:8:_ZGV_LLVM_N8v",
+                           "xla.sinh.f32:xla.sinh.v16f32:16:_ZGV_LLVM_N16v"));
+}
 TEST(IntrinsicLibTest, CppGenIntrinsicLibraryPreservesNoInline) {
   llvm::LLVMContext context;
   llvm::Module dst_module("dst_module", context);
