@@ -14,7 +14,6 @@
 # ==============================================================================
 """While loop for Control Flow Operations."""
 
-from tensorflow.python.types import core
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
@@ -25,6 +24,7 @@ from tensorflow.python.ops import control_flow_util as util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import while_v2
+from tensorflow.python.types import core
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util import variable_utils
