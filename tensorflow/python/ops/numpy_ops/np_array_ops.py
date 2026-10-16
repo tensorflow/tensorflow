@@ -1368,16 +1368,22 @@ def _boundaries_to_sizes(a, boundaries, axis):
   """
   if axis >= len(a.shape):
     raise ValueError('axis %s is out of bound for shape %s' % (axis, a.shape))
-  total_size = a.shape[axis]
+  # `a.shape[axis]` can be a `tf.compat.v1.Dimension` (when V2 TensorShape
+  # behavior is off, as in this file's own test suite) rather than a plain
+  # int or None, and `Dimension.__add__` rejects a negative int outright, so
+  # unwrap it first. A dynamic axis dimension shows up here as
+  # `Dimension(None)` in that mode, not `None` itself, which
+  # `tensor_shape.dimension_value` also normalizes to `None`.
+  total_size = tensor_shape.dimension_value(a.shape[axis])
+  if total_size is None:
+    raise ValueError(
+        'Negative split boundaries are not supported for dynamic shapes.'
+    )
   sizes = []
   sizes_sum = 0
   prev = 0
   for i, b in enumerate(boundaries):
     if b < 0:
-      if total_size is None:
-        raise ValueError(
-            'Negative split boundaries are not supported for dynamic shapes.'
-        )
       # NumPy treats a negative split boundary like a negative slice index:
       # relative to the end of the axis, clamped at 0.
       b = builtins.max(0, b + total_size)
