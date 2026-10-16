@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <map>
+#include <mutex>
 #include <string>
 #include <utility>
 #include <vector>
@@ -72,12 +73,14 @@ class StableDelegatePluginLoader {
   const CacheEntry* LoadStableDelegatePlugin(
       const std::string& json_settings_file_path);
 
+  std::mutex mutex_;
   std::map<std::string /*settings_file_path*/, CacheEntry> cache_;
 };
 
 const StableDelegatePluginLoader::CacheEntry*
 StableDelegatePluginLoader::LoadStableDelegatePlugin(
     const std::string& json_settings_file_path) {
+  std::lock_guard<std::mutex> lock(mutex_);
   auto it = cache_.find(json_settings_file_path);
   if (it != cache_.end()) {
     return &it->second;
