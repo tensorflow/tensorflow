@@ -350,6 +350,46 @@ class SchedulerCore {
   bool is_evaluating_concurrently_ = false;
 };
 
+// Inline capacity of ResourceCounts. Resource ids are small contiguous
+// integers (ResourceType, then each target's range; the TPU tracker's ends at
+// 78), so the counts live inside the scheduling state with no heap allocation.
+// A larger id spills to the heap and keeps working.
+inline constexpr int64_t kResourceCountsInlineCapacity = 80;
+
+// Counts indexed by resource id, in place of a hash map. A resource is absent
+// until written; operator[] makes it present with 0. The scan reads through
+// Find(), a bounds check and a load.
+struct ResourceCounts {
+  // The count of the resource when it is present, nullptr otherwise.
+  const int64_t* Find(int64_t resource) const {
+    if (resource < 0 || resource >= counts.size() || !counts[resource]) {
+      return nullptr;
+    }
+    return &*counts[resource];
+  }
+  // The count of a present resource.
+  int64_t At(int64_t resource) const {
+    const int64_t* count = Find(resource);
+    CHECK(count != nullptr) << "no count for resource " << resource;
+    return *count;
+  }
+  // The count of the resource, made present with 0 when absent.
+  int64_t& operator[](int64_t resource) {
+    CHECK_GE(resource, 0);
+    if (resource >= counts.size()) {
+      counts.resize(resource + 1);
+    }
+    if (!counts[resource]) {
+      counts[resource] = 0;
+    }
+    return *counts[resource];
+  }
+  void clear() { counts.clear(); }
+
+  absl::InlinedVector<std::optional<int64_t>, kResourceCountsInlineCapacity>
+      counts;
+};
+
 // Helper class to keep track of which instructions are to be supported and
 // how many supported instructions per-type are contained in computations
 // recursively.
@@ -394,7 +434,7 @@ class AsyncTracker {
 
   // Sets the maximum allowed number of instances for each resource
   virtual void SetConcurrentResourceLimits(
-      absl::flat_hash_map<int64_t, int64_t>& max_concurrent_resource) const;
+      ResourceCounts& max_concurrent_resource) const;
 
   // Returns the name of the given resource
   virtual absl::string_view GetResourceName(int64_t resource_type) const;
@@ -727,6 +767,7 @@ class HloGraphNode {
         (opcode_ == HloOpcode::kSend || opcode_ == HloOpcode::kSendDone ||
          opcode_ == HloOpcode::kRecv || opcode_ == HloOpcode::kRecvDone) &&
         static_cast<const HloSendRecvInstruction*>(i)->is_host_transfer();
+    is_nested_sync_computation_ = ComputeIsNestedSyncComputation(*i);
   }
 
   static void UpdateOrAddDependency(HloGraphNode* from, HloGraphNode* to,
@@ -801,6 +842,15 @@ class HloGraphNode {
   const HloInstruction& GetInstr() const { return *instr_; }
   HloOpcode GetOpcode() const { return opcode_; }
   bool IsHostTransfer() const { return is_host_transfer_; }
+  // Whether the instruction calls a computation and is not an async start or
+  // done: the scheduler must not interleave such a computation with in order
+  // resources held by the enclosing computation.
+  bool IsNestedSyncComputation() const { return is_nested_sync_computation_; }
+  // The start of this supported async done when its first operand is a
+  // supported async start, nullptr otherwise (and for every other node).
+  const HloGraphNode* GetSupportedAsyncStart() const {
+    return rare_->async_start;
+  }
   bool IsScheduled() const { return scheduled_; }
   int32_t GetIndegree() const { return indegree_; }
   int32_t GetOutdegree() const { return outdegree_; }
@@ -1034,7 +1084,8 @@ class HloGraphNode {
     return result;
   }
   bool HasRecursiveResources() const { return has_recursive_resources_; }
-  const absl::flat_hash_map<int64_t, int64_t>& GetRecursiveResources() const {
+  // (resource, count) pairs sorted by resource.
+  absl::Span<const std::pair<int64_t, int64_t>> GetRecursiveResources() const {
     return rare_->recursive_resources;
   }
   bool HasOperandThatIsSupportedAsyncDone() const {
@@ -1066,6 +1117,13 @@ class HloGraphNode {
     releases_selective_resource_ = false;
     occupies_selective_resource_ = false;
     has_recursive_resources_ = false;
+    is_nested_sync_computation_ = false;
+  }
+
+  static bool ComputeIsNestedSyncComputation(const HloInstruction& instr) {
+    return !instr.called_computations().empty() &&
+           instr.opcode() != HloOpcode::kAsyncStart &&
+           instr.opcode() != HloOpcode::kAsyncDone;
   }
 
   // Some of the fields in this are rarely non-empty (in one large compilation,
@@ -1076,16 +1134,22 @@ class HloGraphNode {
   // nodes point to their own storage allocated in a vector of Rare objects
   // in the HloScheduleGraph object.
   struct Rare {
+    // Recursive resources used by the node: (resource, count) pairs sorted by
+    // resource. The overlap limit test reads them for every ready node with
+    // recursive resources at every step, so they sit inline and first.
+    absl::InlinedVector<std::pair<int64_t, int64_t>, 8> recursive_resources;
     // Non-extendable resources released by this node.
     absl::InlinedVector<int64_t, 1> released_non_extendable_resources;
     // Shareable resources released by this node.
     absl::InlinedVector<int64_t, 1> released_shareable_resources;
     // Shareable resources occupied by this node.
     absl::InlinedVector<int64_t, 1> occupied_shareable_resources;
-    // Recursive resources used by the node.
-    absl::flat_hash_map<int64_t, int64_t> recursive_resources;
     // AsyncResources used by the node.
     ResourcesVector resources;
+    // For a supported async done whose first operand is a supported async
+    // start, that start's node; nullptr otherwise. Resolved once when the
+    // graph is built; the done then owns its Rare entry.
+    const HloGraphNode* async_start = nullptr;
   };
 
   // Instruction this Graph node represents
@@ -1147,6 +1211,9 @@ class HloGraphNode {
   bool occupies_selective_resource_ : 1;
   // Whether recursive_resources_.size() > 0
   bool has_recursive_resources_ : 1;
+  // Whether the instruction calls a computation synchronously, see
+  // IsNestedSyncComputation().
+  bool is_nested_sync_computation_ : 1;
   // The position of this node in the original order.
   int32_t original_position_;
   // Pointer to the HloGraphNode::Rare entry for this node in the parent object
@@ -1771,7 +1838,7 @@ class DefaultSchedulerCore : public SchedulerCore {
 
  public:
   using ReadyQueueSet = std::vector<HloGraphNode*>;
-  using ResourceMap = absl::flat_hash_map<int64_t, int64_t>;
+  using ResourceMap = ResourceCounts;
   using ShouldSkipNodeFunction = std::function<bool(const HloGraphNode*)>;
 
   struct SchedulingState;
