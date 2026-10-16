@@ -7316,83 +7316,6 @@ int64_t SpmdPartitioner::CommunicationCostInBytes(HloInstruction* hlo) {
   }
 }
 
-static HloSharding ResolveReductionOpForSharding(
-    const HloInstruction* instruction, HloSharding sharding) {
-  if (sharding.IsTuple()) {
-    std::vector<HloSharding> new_elements;
-    new_elements.reserve(sharding.tuple_elements().size());
-    for (int i = 0; i < sharding.tuple_elements().size(); ++i) {
-      const HloInstruction* element_instr = nullptr;
-      if (instruction->opcode() == HloOpcode::kTuple &&
-          i < instruction->operand_count()) {
-        element_instr = instruction->operand(i);
-      } else {
-        element_instr = instruction;
-      }
-      new_elements.push_back(ResolveReductionOpForSharding(
-          element_instr, sharding.tuple_elements()[i]));
-    }
-    Shape tuple_shape;
-    if (instruction->shape().IsTuple()) {
-      tuple_shape = instruction->shape();
-    } else {
-      std::vector<Shape> shapes(new_elements.size(), instruction->shape());
-      tuple_shape = ShapeUtil::MakeTupleShape(shapes);
-    }
-    return HloSharding::Tuple(tuple_shape, new_elements);
-  }
-
-  if (sharding.UseNamedShardingLeaf()) {
-    if (sharding.named_sharding().unreduced_axes().empty()) {
-      return sharding;
-    }
-  } else if (!sharding.IsUnreducedSubgroup()) {
-    return sharding;
-  }
-  if (sharding.reduction_op() != ReductionOp::kSum) {
-    return sharding;
-  }
-
-  const HloInstruction* current = instruction;
-  while (current && current->opcode() != HloOpcode::kReduce &&
-         current->opcode() != HloOpcode::kAllReduce &&
-         current->opcode() != HloOpcode::kReduceScatter &&
-         current->operand_count() > 0) {
-    current = current->operand(0);
-  }
-  if (current && (current->opcode() == HloOpcode::kReduce ||
-                  current->opcode() == HloOpcode::kAllReduce ||
-                  current->opcode() == HloOpcode::kReduceScatter)) {
-    const HloComputation* computation = current->to_apply();
-    if (computation) {
-      const HloInstruction* root = computation->root_instruction();
-      ReductionOp reduction_op = ReductionOp::kSum;
-      if (root && root->opcode() == HloOpcode::kMaximum) {
-        reduction_op = ReductionOp::kMax;
-      } else if (root && root->opcode() == HloOpcode::kMinimum) {
-        reduction_op = ReductionOp::kMin;
-      }
-      sharding.set_reduction_op(reduction_op);
-    }
-  } else if (current && current->opcode() == HloOpcode::kParameter) {
-    const HloModule* module = current->parent()->parent();
-    if (module && module->has_spmd_parameters_shardings() &&
-        current->parameter_number() <
-            module->spmd_parameters_shardings().size()) {
-      const HloSharding& param_sharding =
-          module->spmd_parameters_shardings()[current->parameter_number()];
-      const bool param_has_unreduced =
-          param_sharding.UseNamedShardingLeaf()
-              ? !param_sharding.named_sharding().unreduced_axes().empty()
-              : param_sharding.IsUnreducedSubgroup();
-      if (param_has_unreduced) {
-        sharding.set_reduction_op(param_sharding.reduction_op());
-      }
-    }
-  }
-  return sharding;
-}
-
 /* static */ void SpmdPartitioner::RecordInputsOutputsSharding(
     HloModule* module) {
   // Add the parameters' and output's shardings to the module.
@@ -7407,9 +7330,7 @@ static HloSharding ResolveReductionOpForSharding(
   module->set_spmd_parameters_shardings(entry_params_shardings);
   auto entry_root = module->entry_computation()->root_instruction();
   CHECK(entry_root->has_sharding()) << "Missing sharding in entry root.";
-  HloSharding output_sharding =
-      ResolveReductionOpForSharding(entry_root, entry_root->sharding());
-  module->set_spmd_output_sharding(std::move(output_sharding));
+  module->set_spmd_output_sharding(entry_root->sharding());
 }
 
 absl::StatusOr<bool> SpmdPartitioner::RunImpl(
