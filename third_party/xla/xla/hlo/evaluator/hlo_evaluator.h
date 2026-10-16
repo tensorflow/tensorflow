@@ -580,14 +580,6 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
           int64_t total_contraction_size, Literal* result)>
           evaluate_impl);
 
-  absl::Status EvaluatePad(
-      const HloInstruction* pad,
-      absl::FunctionRef<absl::Status(
-          const Literal& evaluated_operand, const Literal& evaluated_padding,
-          absl::Span<int64_t> target_index, absl::Span<const int64_t> zero_base,
-          absl::Span<const int64_t> step, Literal* result)>
-          evaluate_impl);
-
   // Make HloEvaluatorTypedVisitor a friend because it is logically part of this
   // class.
   //
@@ -666,6 +658,7 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
   absl::Status HandleCustomCall(const HloInstruction* custom_call) override;
   absl::Status HandleOptimizationBarrier(
       const HloInstruction* optimization_barrier) override;
+  absl::Status HandlePad(const HloInstruction* pad) override;
 
   // Unsupported HLOs, note some of them (such as BatchNorm*) are typically
   // expanded in a semantic-preserving way into other HLOs by adding expansion

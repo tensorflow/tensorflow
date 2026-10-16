@@ -3841,7 +3841,59 @@ absl::Status HloEvaluator::HandleSelect(const HloInstruction* select) {
     return absl::OkStatus();
   }
 
-  return DefaultAction(select);
+  CHECK(select->shape().IsArray());
+  Shape shape = GetShapeWithLayout(select->shape());
+  const bool is_on_false_scalar = ShapeUtil::IsScalar(on_false.shape());
+  TF_RET_CHECK(ShapeUtil::SameDimensions(shape, pred.shape()));
+  TF_RET_CHECK(ShapeUtil::SameDimensions(shape, on_true.shape()));
+  TF_RET_CHECK(is_on_false_scalar ||
+               ShapeUtil::SameDimensions(shape, on_false.shape()));
+
+  Literal result(shape);
+  const Layout& pred_layout = pred.shape().layout();
+  const Layout& on_true_layout = on_true.shape().layout();
+  const Layout& on_false_layout = on_false.shape().layout();
+  const bool same_layout = LayoutUtil::Equal(on_true_layout, shape.layout()) &&
+                           LayoutUtil::Equal(pred_layout, shape.layout()) &&
+                           (is_on_false_scalar ||
+                            LayoutUtil::Equal(on_false_layout, shape.layout()));
+
+  ABSL_RETURN_IF_ERROR(primitive_util::ByteWidthTypeSwitch(
+      [&](auto primitive_type_constant) -> absl::Status {
+        using NativeT = NativeTypeOf<primitive_type_constant>;
+        const bool* pred_data = pred.data<bool>().data();
+        const auto* on_true_data =
+            static_cast<const NativeT*>(on_true.untyped_data());
+        const auto* on_false_data =
+            static_cast<const NativeT*>(on_false.untyped_data());
+        if (same_layout) {
+          return result.PopulateLinearInplaceParallel(
+              [&](void* dest, int64_t linear_index, int) {
+                *static_cast<NativeT*>(dest) =
+                    pred_data[linear_index]
+                        ? on_true_data[linear_index]
+                        : on_false_data[is_on_false_scalar ? 0 : linear_index];
+              });
+        }
+        return result.PopulateInplaceParallel(
+            [&](void* dest, absl::Span<const int64_t> multi_index, int) {
+              if (pred.Get<bool>(multi_index)) {
+                *static_cast<NativeT*>(dest) =
+                    on_true_data[IndexUtil::MultidimensionalIndexToLinearIndex(
+                        on_true.shape(), multi_index)];
+              } else {
+                *static_cast<NativeT*>(dest) = on_false_data
+                    [is_on_false_scalar
+                         ? 0
+                         : IndexUtil::MultidimensionalIndexToLinearIndex(
+                               on_false.shape(), multi_index)];
+              }
+            });
+      },
+      shape.element_type()));
+
+  SetEvaluatedLiteralFor(select, std::move(result));
+  return absl::OkStatus();
 }
 
 namespace {
@@ -6064,13 +6116,7 @@ absl::Status HloEvaluator::EvaluateScaledDot(
   return absl::OkStatus();
 }
 
-absl::Status HloEvaluator::EvaluatePad(
-    const HloInstruction* pad,
-    absl::FunctionRef<absl::Status(
-        const Literal& evaluated_operand, const Literal& evaluated_padding,
-        absl::Span<int64_t> target_index, absl::Span<const int64_t> zero_base,
-        absl::Span<const int64_t> step, Literal* result)>
-        evaluate_impl) {
+absl::Status HloEvaluator::HandlePad(const HloInstruction* pad) {
   CHECK(pad->operand(0)->shape().IsArray());
   // Padding value must be scalar.
   CHECK(ShapeUtil::IsScalar(pad->operand(1)->shape()));
@@ -6117,10 +6163,52 @@ absl::Status HloEvaluator::EvaluatePad(
   std::vector<int64_t> zero_base(evaluated_operand.shape().dimensions().size(),
                                  0);
   std::vector<int64_t> step(evaluated_operand.shape().dimensions().size(), 1);
+  const PaddingConfig& pad_config = pad->padding_config();
 
-  ABSL_RETURN_IF_ERROR(evaluate_impl(evaluated_operand, *evaluated_padding_ptr,
-                                absl::MakeSpan(target_index), zero_base, step,
-                                &result));
+  ABSL_RETURN_IF_ERROR(primitive_util::ByteWidthTypeSwitch(
+      [&](auto primitive_type_constant) -> absl::Status {
+        using NativeT = NativeTypeOf<primitive_type_constant>;
+        const NativeT scalar =
+            *static_cast<const NativeT*>(evaluated_padding_ptr->untyped_data());
+        ABSL_RETURN_IF_ERROR(result.PopulateLinearInplaceParallel(
+            [&scalar](void* dest, int64_t /*linear_index*/, int /*thread_id*/) {
+              *static_cast<NativeT*>(dest) = scalar;
+            }));
+
+        const auto* operand_data =
+            static_cast<const NativeT*>(evaluated_operand.untyped_data());
+        auto* result_data = static_cast<NativeT*>(result.untyped_data());
+        auto func = [&](absl::Span<const int64_t> input_index) {
+          for (auto i = 0; i < input_index.size(); ++i) {
+            // Interior padding occurs logically before edge padding, so in
+            // the case of negative edge padding elements are removed from the
+            // interior-padded operand.
+            target_index[i] =
+                pad_config.dimensions(i).edge_padding_low() +
+                input_index[i] *
+                    (pad_config.dimensions(i).interior_padding() + 1);
+
+            // Account for negative low and high padding: skip assignment if
+            // the any target index is out of range.
+            if (!(target_index[i] >= 0 &&
+                  target_index[i] < pad->shape().dimensions(i))) {
+              return true;
+            }
+          }
+          result_data[IndexUtil::MultidimensionalIndexToLinearIndex(
+              result.shape(), target_index)] =
+              operand_data[IndexUtil::MultidimensionalIndexToLinearIndex(
+                  evaluated_operand.shape(), input_index)];
+          return true;
+        };
+
+        ShapeUtil::ForEachIndexNoStatus(evaluated_operand.shape(), zero_base,
+                                        evaluated_operand.shape().dimensions(),
+                                        step, func);
+        return absl::OkStatus();
+      },
+      result_type));
+
   SetEvaluatedLiteralFor(pad, std::move(result));
   return absl::OkStatus();
 }

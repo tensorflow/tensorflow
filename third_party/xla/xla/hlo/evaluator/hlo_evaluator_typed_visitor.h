@@ -891,19 +891,6 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     return UnsupportedTypeError(clamp);
   }
 
-  absl::Status HandleSelect(const HloInstruction* select) override {
-    CHECK(!ShapeUtil::IsScalar(select->operand(0)->shape()));
-    CHECK(select->shape().IsArray());
-    auto select_op = [](bool pred, ReturnT on_true, ReturnT on_false) {
-      return pred ? on_true : on_false;
-    };
-    ABSL_ASSIGN_OR_RETURN(Literal literal,
-                     (ElementwiseTernaryOp<bool, ReturnT, ReturnT>(
-                         select, std::move(select_op))));
-    parent_->SetEvaluatedLiteralFor(select, std::move(literal));
-    return absl::OkStatus();
-  }
-
   absl::Status HandleConvolutionWithLiterals(
       const HloInstruction* conv, const Literal& lhs_literal,
       const Literal& rhs_literal, const Shape& window_shape,
@@ -1593,51 +1580,6 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
   }
 
  public:
-  absl::Status HandlePad(const HloInstruction* pad) override {
-    return parent_->EvaluatePad(
-        pad,
-        [pad](const Literal& evaluated_operand,
-              const Literal& evaluated_padding,
-              absl::Span<int64_t> target_index,
-              absl::Span<const int64_t> zero_base,
-              absl::Span<const int64_t> step, Literal* result) -> absl::Status {
-          const ReturnT scalar = evaluated_padding.Get<ReturnT>({});
-          ABSL_RETURN_IF_ERROR(result->PopulateLinearParallel<ReturnT>(
-              [&scalar](int64_t linear_index, int) { return scalar; }));
-
-          // Loop through each element of the operand, assign them to the
-          // corresponding index of the resulting padded literal.
-          const PaddingConfig& pad_config = pad->padding_config();
-
-          auto func = [&](absl::Span<const int64_t> input_index) {
-            for (auto i = 0; i < input_index.size(); ++i) {
-              // Interior padding occurs logically before edge padding, so in
-              // the case of negative edge padding elements are removed from the
-              // interior-padded operand.
-              target_index[i] =
-                  pad_config.dimensions(i).edge_padding_low() +
-                  input_index[i] *
-                      (pad_config.dimensions(i).interior_padding() + 1);
-
-              // Account for negative low and high padding: skip assignment if
-              // the any target index is out of range.
-              if (!(target_index[i] >= 0 &&
-                    target_index[i] < pad->shape().dimensions(i))) {
-                return true;
-              }
-            }
-            result->Set<ReturnT>(target_index,
-                                 evaluated_operand.Get<ReturnT>(input_index));
-            return true;
-          };
-
-          ShapeUtil::ForEachIndexNoStatus(
-              evaluated_operand.shape(), zero_base,
-              evaluated_operand.shape().dimensions(), step, func);
-          return absl::OkStatus();
-        });
-  }
-
   absl::Status HandleClz(const HloInstruction* clz) override {
     // Enable CLZ only for integer types.
     if constexpr (std::is_integral_v<ElementwiseT> &&
