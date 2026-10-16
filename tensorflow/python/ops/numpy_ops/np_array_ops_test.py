@@ -1011,6 +1011,34 @@ class ArrayMethodsTest(test.TestCase):
     run_test(np.arange(8).reshape((2, 2, 2)).tolist(), axis=(2, 0))
     run_test(
         np.arange(8).reshape((2, 2, 2)).tolist(), axis=(2, 0), keepdims=True)
+
+    # Regression test: ddof >= n (the number of elements reduced over) must
+    # clamp the degrees-of-freedom denominator at 0 and match NumPy's `inf`,
+    # not silently divide by a negative count and return a wrong, finite,
+    # negative "variance". Also covers a non-integer ddof, which NumPy
+    # allows but which requires casting n to a float dtype before
+    # subtracting.
+    run_test([1.0, 2.0, 3.0], ddof=3)
+    run_test([1.0, 2.0, 3.0], ddof=4)
+    run_test([1.0, 2.0, 3.0], ddof=1.5)
+    run_test([[1.0, 2.0], [3.0, 4.0]], axis=-1, ddof=2, keepdims=True)
+    run_test(np.arange(8.0).reshape((2, 2, 2)).tolist(), axis=0, ddof=2)
+    run_test(np.arange(8.0).reshape((2, 2, 2)).tolist(), axis=(0, 2), ddof=4)
+
+    # The same clamp must also apply under graph tracing with a dynamically
+    # shaped input, where `n` is computed by `array_ops.shape` at runtime
+    # rather than resolved statically.
+    @def_function.function(
+        input_signature=[
+            tensor_spec.TensorSpec(shape=[None], dtype=dtypes.float32)
+        ]
+    )
+    def dynamic_var(x):
+      return np_array_ops.var(x, ddof=3)
+
+    x_dyn = np.array([1.0, 2.0, 3.0], dtype=np.float32)
+    self.match(dynamic_var(x_dyn), np.var(x_dyn, ddof=3))
+
     self.assertRaises(ValueError, np_array_ops.var, np.ones([2, 2]), out=[])
     out_of_bounds = 'out of bounds|not in|Invalid reduction dimension'
     for axis in (-3, (-3, 0), 3, (0, 3)):
