@@ -1039,7 +1039,8 @@ class ArrayMethodsTest(test.TestCase):
     x_dyn = np.array([1.0, 2.0, 3.0], dtype=np.float32)
     self.match(dynamic_var(x_dyn), np.var(x_dyn, ddof=3))
 
-    self.assertRaises(ValueError, np_array_ops.var, np.ones([2, 2]), out=[])
+    with self.assertRaisesRegex(ValueError, 'Setting out is not supported.'):
+      np_array_ops.var(np.ones([2, 2]), out=[])
     out_of_bounds = 'out of bounds|not in|Invalid reduction dimension'
     for axis in (-3, (-3, 0), 3, (0, 3)):
       with self.assertRaisesRegex(
