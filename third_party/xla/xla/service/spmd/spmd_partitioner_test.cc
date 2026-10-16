@@ -16951,6 +16951,24 @@ ENTRY entry {
                   op::DynamicSlice(op::Pad(_, op::Constant()), _, _, _, _), _));
 }
 
+TEST_P(SpmdPartitioningTest,
+       ReshapeOfBroadcastDoesNotFalselyMarkMergedShardedDimAsBroadcast) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %p = f32[4] parameter(0), sharding={devices=[4]<=[4]}
+  %br = f32[4,2] broadcast(%p), dimensions={0}, sharding={devices=[4,1]<=[4]}
+  %reshape = f32[2,4] reshape(%br), sharding={devices=[2,2]<=[4]}
+  ROOT %copy = f32[2,4] copy(%reshape), sharding={devices=[2,2]1,0,3,2}
+})";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       PartitionComputation(hlo_string, /*num_devices=*/4));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Copy(op::CollectivePermute(_)));
+}
+
 TEST_P(SpmdPartitioningTest, KeepPartitionedNonSlicedDimension) {
   const char* const hlo_string = R"(
 HloModule module

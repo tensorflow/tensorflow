@@ -344,13 +344,22 @@ void SpmdBuilder::SetBroadcastDimsForReshape(const HloInstruction& hlo) {
   if (it == broadcast_dims_.end()) {
     return;
   }
+  if (visiting_hlo_ == nullptr ||
+      visiting_hlo_->opcode() != HloOpcode::kReshape ||
+      visiting_hlo_->operand(0)->shape().dimensions().size() !=
+          hlo.operand(0)->shape().dimensions().size() ||
+      visiting_hlo_->shape().dimensions().size() !=
+          hlo.shape().dimensions().size()) {
+    return;
+  }
   std::vector<int64_t> iota_dims(hlo.shape().dimensions().size());
   absl::c_iota(iota_dims, 0);
   absl::flat_hash_set<int64_t> reshape_broadcast_dims(iota_dims.begin(),
                                                       iota_dims.end());
 
-  absl::Span<const int64_t> operand_dims = hlo.operand(0)->shape().dimensions();
-  absl::Span<const int64_t> hlo_dims = hlo.shape().dimensions();
+  absl::Span<const int64_t> operand_dims =
+      visiting_hlo_->operand(0)->shape().dimensions();
+  absl::Span<const int64_t> hlo_dims = visiting_hlo_->shape().dimensions();
   std::vector<int64_t> before_dim_size_stack(operand_dims.rbegin(),
                                              operand_dims.rend());
   std::vector<int64_t> after_dim_size_stack(hlo_dims.rbegin(), hlo_dims.rend());
