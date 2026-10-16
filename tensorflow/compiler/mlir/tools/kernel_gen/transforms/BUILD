@@ -187,6 +187,10 @@ cc_library(
         "@xla//xla/stream_executor/cuda:compilation_provider",
         "@xla//xla/stream_executor/cuda:compilation_provider_options",
         "@xla//xla/stream_executor/cuda:cuda_asm_compiler",
+        "@xla//xla/stream_executor/cuda:ptx_compiler",
+        "@xla//xla/stream_executor/cuda:ptx_compiler_support",
+        "@xla//xla/stream_executor/cuda:subprocess_compilation",
+        "@xla//xla/stream_executor/cuda:subprocess_compilation_provider",
         "@xla//xla/service/gpu/llvm_gpu_backend:nvptx_backend",
     ]) + if_rocm_is_configured([
         "@xla//xla/stream_executor/gpu:asm_compiler",
