@@ -310,6 +310,13 @@ class FlashAttentionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(output, np.zeros([2, 8, 1, 32]))
     self.assertAllEqual(dq, np.zeros([2, 8, 1, 32]))
     self.assertEqual(dk.shape, (2, 0, 1, 32))
+    # With no keys, the log-sum-exp is that of the empty set.
+    seed = constant_op.constant(0, dtypes.uint64)
+    kv = array_ops.ones([2, 0, 1, 32], dtype)
+    _, softmax_lse = gen_nn_ops.flash_attention(
+        array_ops.ones([2, 8, 1, 32], dtype), kv, kv, seed, seed)
+    self.assertAllEqual(self.evaluate(softmax_lse),
+                        np.full([2, 1, 8], -np.inf))
     output, dq, dk, dv = run(seq_q=0, seq_kv=8)
     self.assertEqual(output.shape, (2, 0, 1, 32))
     self.assertAllEqual(dk, np.zeros([2, 8, 1, 32]))
