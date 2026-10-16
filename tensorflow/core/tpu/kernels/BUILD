@@ -16,6 +16,7 @@
 # TPU Kernel Implementations
 
 load("@rules_python//python:proto.bzl", "py_proto_library")
+load("@xla//third_party/rules_python/python:py_test.bzl", "py_test")
 load("@xla//xla/tsl:tsl.bzl", "internal_visibility")
 load(
     "//tensorflow:tensorflow.bzl",
@@ -44,6 +45,7 @@ load(
     "if_libtpu_tf_status",
     "if_libtpu_tf_tensor",
 )
+load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_strict_test")
 
 # Config setting to enable go/libtpu support.
 
@@ -980,3 +982,128 @@ tf_proto_library(
 #     deps = [":sparse_core_layout_proto"],
 # )
 # copybara:uncomment_end
+
+tpu_py_strict_test(
+    name = "image_resize_ops_tpu_test",
+    srcs = ["image_resize_ops_tpu_test.py"],
+    disable_mlir_bridge = False,
+    # copybara:uncomment_begin(google-only)
+    # disable_v5i = True,
+    # disable_v6e = False,
+    # copybara:uncomment_end
+    deps = [
+        "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute:tpu_strategy",
+        "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:remote",
+        "//tensorflow/python/framework:config",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:image_ops",
+        "//tensorflow/python/tpu:device_assignment",
+        "//tensorflow/python/tpu:tpu_py",
+        "//tensorflow/python/tpu:tpu_strategy_util",
+        "//third_party/py/numpy",
+        "@absl_py//absl/flags",
+        "@absl_py//absl/logging",
+        "@absl_py//absl/testing:absltest",
+    ],
+)
+
+py_test(
+    name = "image_resize_ops_cpu_smoke_test",
+    size = "small",
+    srcs = ["image_resize_ops_tpu_test.py"],
+    args = ["--benchmark_device=cpu"],
+    main = "image_resize_ops_tpu_test.py",
+    tags = [
+        "no_oss",
+        "notap",
+    ],
+    deps = [
+        "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute:tpu_strategy",
+        "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:remote",
+        "//tensorflow/python/framework:config",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:image_ops",
+        "//tensorflow/python/tpu:device_assignment",
+        "//tensorflow/python/tpu:tpu_py",
+        "//tensorflow/python/tpu:tpu_strategy_util",
+        "//third_party/py/numpy",
+        "@absl_py//absl/flags",
+        "@absl_py//absl/logging",
+        "@absl_py//absl/testing:absltest",
+    ],
+)
+
+py_test(
+    name = "image_resize_ops_adversarial_cpu_test",
+    size = "small",
+    srcs = ["image_resize_ops_adversarial_test.py"],
+    args = ["--benchmark_device=cpu"],
+    main = "image_resize_ops_adversarial_test.py",
+    tags = [
+        "no_oss",
+        "notap",
+    ],
+    deps = [
+        "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute:tpu_strategy",
+        "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:remote",
+        "//tensorflow/python/framework:config",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:image_ops",
+        "//tensorflow/python/tpu:device_assignment",
+        "//tensorflow/python/tpu:tpu_py",
+        "//tensorflow/python/tpu:tpu_strategy_util",
+        "//third_party/py/numpy",
+        "@absl_py//absl/flags",
+        "@absl_py//absl/logging",
+        "@absl_py//absl/testing:absltest",
+    ],
+)
+
+tpu_py_strict_test(
+    name = "image_resize_ops_adversarial_tpu_test",
+    srcs = ["image_resize_ops_adversarial_test.py"],
+    disable_mlir_bridge = False,
+    # copybara:uncomment_begin(google-only)
+    # disable_v5i = True,
+    # disable_v6e = False,
+    # copybara:uncomment_end
+    main = "image_resize_ops_adversarial_test.py",
+    deps = [
+        "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute:tpu_strategy",
+        "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:remote",
+        "//tensorflow/python/framework:config",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:image_ops",
+        "//tensorflow/python/tpu:device_assignment",
+        "//tensorflow/python/tpu:tpu_py",
+        "//tensorflow/python/tpu:tpu_strategy_util",
+        "//third_party/py/numpy",
+        "@absl_py//absl/flags",
+        "@absl_py//absl/logging",
+        "@absl_py//absl/testing:absltest",
+    ],
+)
