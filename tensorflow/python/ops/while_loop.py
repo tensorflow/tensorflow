@@ -14,6 +14,7 @@
 # ==============================================================================
 """While loop for Control Flow Operations."""
 
+from tensorflow.python.types import core
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
@@ -453,7 +454,7 @@ def while_loop(cond,
       raise ValueError("'loop_vars' must be provided.")
     if executing_eagerly:
       def _convert_to_tensor(x):
-        if isinstance(x, tensor_array_ops.TensorArray):
+        if isinstance(x, (core.Tensor, tensor_array_ops.TensorArray)):
           return x
         return ops.convert_to_tensor(x)
 
@@ -518,12 +519,16 @@ def while_loop(cond,
         if try_to_pack and not isinstance(loop_vars, (list, tuple)):
           packed = True
           loop_vars = (loop_vars,)
-        loop_vars = nest.map_structure(
-            _convert_to_tensor, loop_vars, expand_composites=True
-        )
         nest.assert_same_structure(
             loop_var_structure, loop_vars, check_types=False
         )
+
+      def convert(x):
+        if isinstance(x, tensor_array_ops.TensorArray):
+          return x
+        return ops.convert_to_tensor(x)
+
+      loop_vars = nest.map_structure(convert, loop_vars, expand_composites=True)
 
       if maximum_iterations is not None:
         return loop_vars[1]
