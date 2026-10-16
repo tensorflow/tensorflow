@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/kernels/internal/portable_tensor_utils.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/kernels/internal/types.h"
@@ -35,13 +36,16 @@ class QuantizeOpModel : public SingleOpModel {
  public:
   explicit QuantizeOpModel() {}
 
-  QuantizeOpModel(const TensorData& input, const TensorData& output) {
+  QuantizeOpModel(const TensorData& input, const TensorData& output,
+                  bool allocate_and_delegate = true) {
     input_ = AddInput(input);
     output_ = AddOutput(output);
     SetBuiltinOp(BuiltinOperator_QUANTIZE, BuiltinOptions_QuantizeOptions,
                  CreateQuantizeOptions(builder_).Union());
 
-    BuildInterpreter({GetShape(input_)});
+    BuildInterpreter({GetShape(input_)}, /*num_threads=*/-1,
+                     /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/true, allocate_and_delegate);
   }
 
   void SetInput(std::initializer_list<float> data) {
@@ -51,6 +55,20 @@ class QuantizeOpModel : public SingleOpModel {
   template <typename T>
   void SetInputAndQuantize(std::initializer_list<float> data) {
     QuantizeAndPopulate<T>(input_, data);
+  }
+
+  void SetInputInt8(const std::vector<int8_t>& data) {
+    PopulateTensor<int8_t>(input_, data);
+  }
+
+  void SetInputInt4(const std::vector<int8_t>& data) {
+    PopulateTensor4bit(input_, /*offset=*/0, data.data(),
+                       data.data() + data.size());
+  }
+
+  void SetInputInt2(const std::vector<int8_t>& data) {
+    PopulateTensor2bit(input_, /*offset=*/0, data.data(),
+                       data.data() + data.size());
   }
 
   template <typename T>
@@ -64,6 +82,16 @@ class QuantizeOpModel : public SingleOpModel {
     std::vector<int8_t> unpacked_output(num_elements);
     tensor_utils::UnpackPackedIntToInt8(t->data.int8, num_elements,
                                         /*bit_width=*/4,
+                                        unpacked_output.data());
+    return unpacked_output;
+  }
+
+  std::vector<int8_t> GetOutputUnpackedInt2() {
+    TfLiteTensor* t = interpreter_->tensor(output_);
+    int num_elements = NumElements(t);
+    std::vector<int8_t> unpacked_output(num_elements);
+    tensor_utils::UnpackPackedIntToInt8(t->data.int8, num_elements,
+                                        /*bit_width=*/2,
                                         unpacked_output.data());
     return unpacked_output;
   }
@@ -733,6 +761,144 @@ TEST(QuantizeOpTest, UInt8Int16SameScale) {
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<int16_t>(),
               ElementsAreArray({2, 4, 6, 8, 10, 12, 14, 16, 18, 20}));
+}
+
+TEST(QuantizeOpTest, Int4ToInt8RequantizeOddCountAndZeroPoint) {
+  // Odd element count (7) with non-zero zero_point:
+  // dequant = (q_in - 1) * 1.0, requant = dequant / 0.5 + (-2) = 2*(q_in - 1) -
+  // 2
+  QuantizeOpModel m({TensorType_INT4, {1, 7}, 0, 0, 1.0f, 1},
+                    {TensorType_INT8, {1, 7}, 0, 0, 0.5f, -2});
+
+  m.SetInputInt4({-8, -4, 0, 1, 3, 5, 7});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput<int8_t>(),
+              ElementsAreArray({-20, -12, -4, -2, 2, 6, 10}));
+}
+
+TEST(QuantizeOpTest, Int4ToUInt8AndInt16Requantize) {
+  QuantizeOpModel m_uint8({TensorType_INT4, {1, 5}, 0, 0, 0.5f, 0},
+                          {TensorType_UINT8, {1, 5}, 0, 0, 0.5f, 128});
+  m_uint8.SetInputInt4({-8, -1, 0, 3, 7});
+  ASSERT_EQ(m_uint8.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m_uint8.GetOutput<uint8_t>(),
+              ElementsAreArray({120, 127, 128, 131, 135}));
+
+  QuantizeOpModel m_int16({TensorType_INT4, {1, 5}, 0, 0, 1.0f, 0},
+                          {TensorType_INT16, {1, 5}, 0, 0, 0.5f, 0});
+  m_int16.SetInputInt4({-8, -1, 0, 3, 7});
+  ASSERT_EQ(m_int16.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m_int16.GetOutput<int16_t>(),
+              ElementsAreArray({-16, -2, 0, 6, 14}));
+}
+
+TEST(QuantizeOpTest, Int2ToInt8RequantizeOddCountAndZeroPoint) {
+  // Non-multiple-of-4 element count (7) with non-zero zero_point:
+  // dequant = (q_in - (-1)) * 1.0 = q_in + 1, requant = (q_in + 1) / 0.5 + 3
+  QuantizeOpModel m({TensorType_INT2, {1, 7}, 0, 0, 1.0f, -1},
+                    {TensorType_INT8, {1, 7}, 0, 0, 0.5f, 3});
+
+  m.SetInputInt2({-2, -1, 0, 1, -2, 0, 1});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAreArray({1, 3, 5, 7, 1, 5, 7}));
+}
+
+TEST(QuantizeOpTest, Int2ToUInt8AndInt16Requantize) {
+  QuantizeOpModel m_uint8({TensorType_INT2, {1, 5}, 0, 0, 0.5f, 0},
+                          {TensorType_UINT8, {1, 5}, 0, 0, 0.5f, 128});
+  m_uint8.SetInputInt2({-2, -1, 0, 1, -2});
+  ASSERT_EQ(m_uint8.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m_uint8.GetOutput<uint8_t>(),
+              ElementsAreArray({126, 127, 128, 129, 126}));
+
+  QuantizeOpModel m_int16({TensorType_INT2, {1, 5}, 0, 0, 1.0f, 0},
+                          {TensorType_INT16, {1, 5}, 0, 0, 0.5f, 0});
+  m_int16.SetInputInt2({-2, -1, 0, 1, -2});
+  ASSERT_EQ(m_int16.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m_int16.GetOutput<int16_t>(),
+              ElementsAreArray({-4, -2, 0, 2, -4}));
+}
+
+TEST(QuantizeOpTest, Int8ToInt4RequantizeSaturationAndOddCount) {
+  // Odd element count (7), scale 1.0 -> 1.0, zp 1 -> -1:
+  // q_out = clamp((q_in - 1) + (-1), -8, 7) = clamp(q_in - 2, -8, 7)
+  QuantizeOpModel m({TensorType_INT8, {1, 7}, 0, 0, 1.0f, 1},
+                    {TensorType_INT4, {1, 7}, 0, 0, 1.0f, -1});
+
+  m.SetInputInt8({-19, -6, -5, 1, 8, 9, 21});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputUnpackedInt4(),
+              ElementsAreArray({-8, -8, -7, -1, 6, 7, 7}));
+}
+
+TEST(QuantizeOpTest, Int8ToInt2RequantizeSaturationAndOddCount) {
+  // Non-multiple-of-4 element count (7), scale 1.0 -> 1.0, zp 0 -> -1:
+  // q_out = clamp((q_in - 0) + (-1), -2, 1) = clamp(q_in - 1, -2, 1)
+  QuantizeOpModel m({TensorType_INT8, {1, 7}, 0, 0, 1.0f, 0},
+                    {TensorType_INT2, {1, 7}, 0, 0, 1.0f, -1});
+
+  m.SetInputInt8({-10, -1, 0, 1, 2, 3, 10});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputUnpackedInt2(),
+              ElementsAreArray({-2, -2, -1, 0, 1, 1, 1}));
+}
+
+TEST(QuantizeOpTest, Int4AndInt8MultiChunkRequantize) {
+  // 1031 elements spans multiple 1024-element stack chunks, 16-wide SIMD loops,
+  // and an odd tail.
+  constexpr int kCount = 1031;
+  std::vector<int8_t> int4_input(kCount);
+  std::vector<int8_t> expected_int8(kCount);
+  for (int i = 0; i < kCount; ++i) {
+    int8_t v = static_cast<int8_t>((i % 16) - 8);
+    int4_input[i] = v;
+    expected_int8[i] = static_cast<int8_t>(2 * v);
+  }
+
+  QuantizeOpModel to_int8({TensorType_INT4, {1, kCount}, 0, 0, 1.0f, 0},
+                          {TensorType_INT8, {1, kCount}, 0, 0, 0.5f, 0});
+  to_int8.SetInputInt4(int4_input);
+  ASSERT_EQ(to_int8.Invoke(), kTfLiteOk);
+  EXPECT_THAT(to_int8.GetOutput<int8_t>(), ElementsAreArray(expected_int8));
+
+  QuantizeOpModel to_int4({TensorType_INT8, {1, kCount}, 0, 0, 0.5f, 0},
+                          {TensorType_INT4, {1, kCount}, 0, 0, 1.0f, 0});
+  to_int4.SetInputInt8(expected_int8);
+  ASSERT_EQ(to_int4.Invoke(), kTfLiteOk);
+  EXPECT_THAT(to_int4.GetOutputUnpackedInt4(), ElementsAreArray(int4_input));
+}
+
+TEST(QuantizeOpTest, SubByteUnsupportedTypesAndPerChannelFailPrepare) {
+  QuantizeOpModel uint8_to_int4({TensorType_UINT8, {1, 4}, 0, 0, 1.0f, 0},
+                                {TensorType_INT4, {1, 4}, 0, 0, 1.0f, 0},
+                                /*allocate_and_delegate=*/false);
+  EXPECT_EQ(uint8_to_int4.AllocateTensors(), kTfLiteError);
+
+  QuantizeOpModel int4_to_int4({TensorType_INT4, {1, 4}, 0, 0, 1.0f, 0},
+                               {TensorType_INT4, {1, 4}, 0, 0, 1.0f, 0},
+                               /*allocate_and_delegate=*/false);
+  EXPECT_EQ(int4_to_int4.AllocateTensors(), kTfLiteError);
+
+  TensorData per_channel_int4 = {
+      TensorType_INT4,    {2, 2}, 0, 0, 0.0f, 0, true, {1.0f, 0.5f}, {0, 0},
+      /*channel_index=*/0};
+  TensorData per_channel_int8 = {
+      TensorType_INT8,    {2, 2}, 0, 0, 0.0f, 0, true, {1.0f, 0.5f}, {0, 0},
+      /*channel_index=*/0};
+  QuantizeOpModel pc_int4_in(per_channel_int4,
+                             {TensorType_INT8, {2, 2}, 0, 0, 1.0f, 0},
+                             /*allocate_and_delegate=*/false);
+  EXPECT_EQ(pc_int4_in.AllocateTensors(), kTfLiteError);
+
+  QuantizeOpModel pc_int4_out({TensorType_INT4, {2, 2}, 0, 0, 1.0f, 0},
+                              per_channel_int8,
+                              /*allocate_and_delegate=*/false);
+  EXPECT_EQ(pc_int4_out.AllocateTensors(), kTfLiteError);
+
+  QuantizeOpModel pc_int8_to_int4({TensorType_INT8, {2, 2}, 0, 0, 1.0f, 0},
+                                  per_channel_int4,
+                                  /*allocate_and_delegate=*/false);
+  EXPECT_EQ(pc_int8_to_int4.AllocateTensors(), kTfLiteError);
 }
 
 }  // namespace
