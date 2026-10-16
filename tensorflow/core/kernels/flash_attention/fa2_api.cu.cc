@@ -229,15 +229,25 @@ bool BackwardSupported(int d_qk, int d_v, float dropout) {
   if (!Supported(d_qk, d_v)) return false;
   if (d_qk <= 192 || dropout <= 0.f) return true;
   // Mirrors the smem tiers in run_mha_bwd_hdim256
-  // (flash_bwd_launch_template.h).
-  int dev = 0, max_smem = 0;
-  if (cudaGetDevice(&dev) != cudaSuccess ||
-      cudaDeviceGetAttribute(&max_smem, cudaDevAttrMaxSharedMemoryPerBlockOptin,
-                             dev) != cudaSuccess) {
+  // (flash_bwd_launch_template.h). Cached per device.
+  constexpr int kMaxDevices = 64;
+  static std::atomic<int> cached[kMaxDevices];  // 0 = unknown, 1 = yes, -1 = no
+  int dev = 0;
+  if (cudaGetDevice(&dev) != cudaSuccess || dev < 0 || dev >= kMaxDevices) {
     cudaGetLastError();
     return false;
   }
-  return max_smem >= 144 * 1024;
+  int val = cached[dev].load(std::memory_order_relaxed);
+  if (val == 0) {
+    int max_smem = 0;
+    const bool ok = cudaDeviceGetAttribute(
+                        &max_smem, cudaDevAttrMaxSharedMemoryPerBlockOptin,
+                        dev) == cudaSuccess;
+    if (!ok) cudaGetLastError();  // don't leave the error for the next check
+    val = (ok && max_smem >= 144 * 1024) ? 1 : -1;
+    cached[dev].store(val, std::memory_order_relaxed);
+  }
+  return val == 1;
 }
 
 cudaError_t Forward(cudaStream_t stream, bool bf16, const void *q,
