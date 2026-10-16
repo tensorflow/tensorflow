@@ -209,6 +209,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/schema:schema_utils",
         "//tensorflow/lite:allocation",
         "//tensorflow/lite:array",
+        "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:external_cpu_backend_context",
         "//tensorflow/lite:graph_info",
         "//tensorflow/lite:interpreter_options_header",
