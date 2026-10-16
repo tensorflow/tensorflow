@@ -17,6 +17,8 @@
 * `tf.lite`
     * Adds blockwise quantization support in the converter and `quant_spec` metadata in `FullyConnectedOptions`.
     * `tfl.cast` now supports casting packed INT2/INT4/UINT4 inputs to any non-packed output type (CAST op version 10).
+* `tf.signal`:
+    * Adds `tf.signal.blackman_window` for generating Blackman windows.
 
 ### Bug Fixes and Other Changes
 

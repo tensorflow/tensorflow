@@ -22,9 +22,11 @@ import numpy as np
 
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.kernel_tests.signal import test_util
 from tensorflow.python.ops import math_ops
@@ -60,6 +62,30 @@ def _scipy_raised_cosine(length, symmetric=True, a=0.5, b=0.5):
   if not symmetric and not odd:
     length += 1
   window = a - b * np.cos(2.0 * np.pi * np.arange(length) / (length - 1))
+  if not symmetric and not odd:
+    window = window[:-1]
+  return window
+
+def _scipy_blackman(length, symmetric=True):
+  """A simple implementation of a Blackman window that matches SciPy.
+
+  https://en.wikipedia.org/wiki/Window_function#Blackman_window
+  https://github.com/scipy/scipy/blob/v0.14.0/scipy/signal/windows.py#L615
+
+  Args:
+    length: The window length.
+    symmetric: Whether to create a symmetric window.
+
+  Returns:
+    A Blackman window of length `length`.
+  """
+  if length == 1:
+    return np.ones(1)
+  odd = length % 2
+  if not symmetric and not odd:
+    length += 1
+  window = (0.42 - 0.5 * np.cos(2.0 * np.pi * np.arange(length) / (length - 1))
+            + 0.08 * np.cos(4.0 * np.pi * np.arange(length) / (length - 1)))
   if not symmetric and not odd:
     window = window[:-1]
   return window
@@ -188,7 +214,46 @@ class WindowOpsTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters(
       itertools.product(
+          _WINDOW_LENGTHS,
+          (False, True),
+          _TF_DTYPE_TOLERANCE))
+  def test_blackman_window(self, window_length, periodic, tf_dtype_tol):
+    """Check that blackman_window matches scipy.signal.blackman's behavior."""
+    self._compare_window_fns(
+        _scipy_blackman,
+        window_ops.blackman_window, window_length, periodic, tf_dtype_tol)
+
+  @parameterized.parameters(
+      (window_ops.blackman_window, _scipy_blackman),
+      (window_ops.hann_window, _scipy_raised_cosine),
+  )
+  def test_dynamic_window_length(self, window_fn, scipy_window_fn):
+    """Check dynamic tensor window_length inputs exercising the cond branch."""
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([], dtypes.int32)])
+    def dynamic_window_symmetric(length):
+      return window_fn(length, periodic=False)
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([], dtypes.int32)])
+    def dynamic_window_periodic(length):
+      return window_fn(length, periodic=True)
+
+    for length in (1, 5):
+      expected_sym = scipy_window_fn(length, symmetric=True).astype(np.float32)
+      actual_sym = dynamic_window_symmetric(
+          constant_op.constant(length, dtype=dtypes.int32))
+      self.assertAllClose(expected_sym, self.evaluate(actual_sym), 1e-6, 1e-6)
+
+      expected_per = scipy_window_fn(length, symmetric=False).astype(np.float32)
+      actual_per = dynamic_window_periodic(
+          constant_op.constant(length, dtype=dtypes.int32))
+      self.assertAllClose(expected_per, self.evaluate(actual_per), 1e-6, 1e-6)
+
+  @parameterized.parameters(
+      itertools.product(
           (window_ops.hann_window, window_ops.hamming_window,
+           window_ops.blackman_window,
            window_ops.kaiser_window, window_ops.kaiser_bessel_derived_window,
            window_ops.vorbis_window),
           (False, True),
