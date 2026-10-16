@@ -891,6 +891,55 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     return UnsupportedTypeError(clamp);
   }
 
+  absl::Status HandleFma(const HloInstruction* fma) override {
+    return EvaluateFma(fma);
+  }
+
+  absl::Status EvaluateFma(const HloInstruction* inst) {
+    if constexpr (std::is_floating_point_v<ElementwiseT>) {
+      auto fma_op = [](ReturnT a, ReturnT b, ReturnT c) -> ReturnT {
+        if constexpr (std::is_same_v<ReturnT, float> ||
+                      std::is_same_v<ReturnT, double>) {
+          return std::fma(a, b, c);
+        } else {
+          // For narrow floats (f16, bf16, f8, f6, f4), the product a * b is
+          // exact in double. Adding c in double with Round-To-Odd (via Knuth's
+          // 2Sum error), then narrowing to float with Round-To-Odd before
+          // converting to ReturnT (since Eigen::bfloat16/Eigen::half convert
+          // from double via float), guarantees the exact single-rounded
+          // IEEE-754 fusedMultiplyAdd result without double rounding.
+          double p = static_cast<double>(a) * static_cast<double>(b);
+          double dc = static_cast<double>(c);
+          double s = p + dc;
+          if (std::isfinite(s)) {
+            double p_prime = s - dc;
+            double err = (p - p_prime) + (dc - (s - p_prime));
+            if (err != 0.0 && (absl::bit_cast<uint64_t>(s) & 1) == 0) {
+              s = std::nextafter(
+                  s, err > 0.0 ? std::numeric_limits<double>::infinity()
+                               : -std::numeric_limits<double>::infinity());
+            }
+          }
+          float f = static_cast<float>(s);
+          if (std::isfinite(s) && std::isfinite(f)) {
+            double fd = static_cast<double>(f);
+            if (fd != s && (absl::bit_cast<uint32_t>(f) & 1) == 0) {
+              f = std::nextafter(
+                  f, s > fd ? std::numeric_limits<float>::infinity()
+                            : -std::numeric_limits<float>::infinity());
+            }
+          }
+          return static_cast<ReturnT>(f);
+        }
+      };
+      ABSL_ASSIGN_OR_RETURN(
+          Literal literal,
+          (ElementwiseTernaryOp<ReturnT, ReturnT, ReturnT>(inst, fma_op)));
+      parent_->SetEvaluatedLiteralFor(inst, std::move(literal));
+      return absl::OkStatus();
+    }
+    return UnsupportedTypeError(inst);
+  }
   absl::Status HandleClz(const HloInstruction* clz) override {
     // Enable CLZ only for integer types.
     if constexpr (std::is_integral_v<ElementwiseT> &&

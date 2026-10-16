@@ -110,6 +110,7 @@ namespace xla {
   V(kExpm1, "exponential-minus-one", 1)                                        \
   V(kFft, "fft", 1)                                                            \
   V(kFloor, "floor", 1)                                                        \
+  V(kFma, "fma", 3)                                                            \
   V(kFusion, "fusion", kHloOpcodeIsVariadic)                                   \
   V(kGather, "gather", 2)                                                      \
   V(kGetDimensionSize, "get-dimension-size", 1)                                \

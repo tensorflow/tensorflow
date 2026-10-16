@@ -77,6 +77,7 @@ class DfsHloVisitorBase {
   virtual absl::Status HandleElementwiseBinary(HloInstructionPtr hlo);
 
   virtual absl::Status HandleClamp(HloInstructionPtr hlo) = 0;
+  virtual absl::Status HandleFma(HloInstructionPtr hlo) = 0;
   virtual absl::Status HandleSelect(HloInstructionPtr hlo) = 0;
   virtual absl::Status HandleMaximum(HloInstructionPtr hlo) {
     return HandleElementwiseBinary(hlo);

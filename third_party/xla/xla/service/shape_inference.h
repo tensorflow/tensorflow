@@ -437,6 +437,10 @@ class ShapeInference {
                                                const Shape& operand,
                                                const Shape& max);
 
+  // Helper for inferring the shape of Fma ops.
+  static absl::StatusOr<Shape> InferFmaShape(const Shape& a, const Shape& b,
+                                             const Shape& c);
+
   // Helper for inferring the shape of Select ops.
   static absl::StatusOr<Shape> InferSelectShape(const Shape& pred,
                                                 const Shape& on_true,

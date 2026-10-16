@@ -113,6 +113,7 @@ bool DoesOpSupportType(HloOpcode opcode, PrimitiveType type) {
     case HloOpcode::kErf:
     case HloOpcode::kFloor:
     case HloOpcode::kCeil:
+    case HloOpcode::kFma:
     case HloOpcode::kIsFinite:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kRoundNearestEven:
@@ -872,8 +873,8 @@ ENTRY triton_computation {
                                                     : ExpectedFailMode::kFail);
 }
 
-constexpr std::array kTestedOpsTernaryElementwise = {HloOpcode::kSelect,
-                                                     HloOpcode::kClamp};
+constexpr std::array kTestedOpsTernaryElementwise = {
+    HloOpcode::kSelect, HloOpcode::kClamp, HloOpcode::kFma};
 
 INSTANTIATE_TEST_SUITE_P(
     TernaryElementwiseTestSuite, TernaryElementwiseTest,

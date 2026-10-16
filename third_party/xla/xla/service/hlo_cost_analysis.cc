@@ -187,6 +187,8 @@ absl::Status HloCostAnalysis::HandleElementwiseOp(
       // clang-format on
   ) {
     current_properties_[kTranscendentalsKey] = computation_count;
+  } else if (opcode == HloOpcode::kFma) {
+    current_properties_[kFlopsKey] = kFmaFlops * computation_count;
   } else {
     // Note: transcendental operations are considered a separate category from
     // FLOPs.
@@ -336,6 +338,10 @@ absl::Status HloCostAnalysis::HandleCompare(const HloInstruction* compare) {
 
 absl::Status HloCostAnalysis::HandleClamp(const HloInstruction* clamp) {
   return HandleElementwiseOp(clamp);
+}
+
+absl::Status HloCostAnalysis::HandleFma(const HloInstruction* fma) {
+  return HandleElementwiseOp(fma);
 }
 
 absl::Status HloCostAnalysis::HandleReducePrecision(const HloInstruction* hlo) {

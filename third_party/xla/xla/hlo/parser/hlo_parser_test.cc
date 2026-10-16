@@ -9094,5 +9094,24 @@ ENTRY %entry (p: f32[4,3]) -> (f32[4,3]) {
                   "Expected array argument for operand of shuffle");
 }
 
+TEST_F(HloParserTest, Fma) {
+  const std::string original =
+      R"(HloModule fma_test, entry_computation_layout={(f32[4]{0}, f32[4]{0}, f32[4]{0})->f32[4]{0}}
+
+ENTRY %entry (a: f32[4], b: f32[4], c: f32[4]) -> f32[4] {
+  %a = f32[4]{0} parameter(0)
+  %b = f32[4]{0} parameter(1)
+  %c = f32[4]{0} parameter(2)
+  ROOT %fma_op = f32[4]{0} fma(%a, %b, %c)
+}
+
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(original));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kFma);
+  EXPECT_EQ(module->ToString(HloPrintOptions().set_print_operand_shape(false)),
+            original);
+}
+
 }  // namespace
 }  // namespace xla
