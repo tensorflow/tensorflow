@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <limits>
 #include <stdint.h>
 
 #include "tensorflow/lite/core/c/common.h"
@@ -36,13 +37,24 @@ constexpr int kOutputTensor = 0;
 template <typename T>
 TfLiteStatus ResizeOutputImpl(TfLiteContext* context, const TfLiteTensor* dims,
                               TfLiteTensor* output) {
+  if (dims->dims->data[0] < 0) {
+    TF_LITE_KERNEL_LOG(context, "Fill output rank must be >= 0");
+    return kTfLiteError;
+  }
   TfLiteIntArray* output_shape = TfLiteIntArrayCreate(dims->dims->data[0]);
+  int64_t num_elements = 1;
   for (int i = 0; i < output_shape->size; ++i) {
     T data = GetTensorData<T>(dims)[i];
     if (data < 0) {
       TfLiteIntArrayFree(output_shape);
       TF_LITE_KERNEL_LOG(context, "Fill dimensions must be >= 0 got %d",
                          dims->type);
+      return kTfLiteError;
+    }
+    num_elements *= static_cast<int64_t>(data);
+    if (num_elements > std::numeric_limits<int32_t>::max()) {
+      TfLiteIntArrayFree(output_shape);
+      TF_LITE_KERNEL_LOG(context, "Fill output tensor shape too large");
       return kTfLiteError;
     }
     output_shape->data[i] = data;
@@ -109,14 +121,18 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
-TfLiteStatus FillString(const TfLiteTensor* value, TfLiteTensor* output) {
+TfLiteStatus FillString(TfLiteContext* context, const TfLiteTensor* value,
+                        TfLiteTensor* output) {
   DynamicBuffer buffer;
   const auto string_ref = GetString(value, 0);
-  int n = 1;
-  for (int i = 0; i < output->dims->size; ++i) {
-    n *= output->dims->data[i];
+  int64_t num_elements = tflite::NumElements(output->dims);
+  if (num_elements < 0 || num_elements > std::numeric_limits<int32_t>::max()) {
+    TF_LITE_KERNEL_LOG(context,
+                       "FillString output element count out of range: %lld",
+                       static_cast<long long>(num_elements));
+    return kTfLiteError;
   }
-  for (int i = 0; i < n; ++i) {
+  for (int64_t i = 0; i < num_elements; ++i) {
     buffer.AddString(string_ref.str, string_ref.len);
   }
   buffer.WriteToTensor(output, /*new_shape=*/nullptr);
@@ -137,7 +153,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_OK(context, ResizeOutput(context, dims, output));
   }
   if (value->type == kTfLiteString) {
-    FillString(value, output);
+    TF_LITE_ENSURE_OK(context, FillString(context, value, output));
     return kTfLiteOk;
   }
 #define TF_LITE_FILL(data_type)                                               \
