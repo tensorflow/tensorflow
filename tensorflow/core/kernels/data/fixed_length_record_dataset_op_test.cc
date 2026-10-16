@@ -108,12 +108,14 @@ class FixedLengthRecordDatasetOpTest : public DatasetOpsTestBase {
       writer.GetData(&data);
       VariantTensorDataReader reader(data);
       std::unique_ptr<IteratorBase> iterator;
-      EXPECT_EQ(RestoreIterator(iterator_ctx_.get(), &reader,
-                                dataset_params.iterator_prefix(), *dataset_,
-                                &iterator)
-                    .code(),
-                absl::StatusCode::kInvalidArgument)
+      absl::Status status = RestoreIterator(
+          iterator_ctx_.get(), &reader, dataset_params.iterator_prefix(),
+          *dataset_, &iterator);
+      EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument)
           << "current_file_index=" << file_index << " current_pos=" << pos;
+      EXPECT_TRUE(
+          absl::StrContains(status.message(), "Invalid current_file_index"))
+          << status.message();
     }
   }
 };
