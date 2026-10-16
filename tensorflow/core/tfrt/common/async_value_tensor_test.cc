@@ -16,11 +16,13 @@ limitations under the License.
 #include "tensorflow/core/tfrt/common/async_value_tensor.h"
 
 #include <cstdint>
+#include <cstdlib>
 #include <memory>
 
 #include <gtest/gtest.h>
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -39,11 +41,15 @@ TEST(AsyncValueTensorTest, InvalidTensor) {
 TEST(AsyncValueTensorTest, SetAndGetAsyncValue) {
   AsyncValueAllocator allocator;
   tensorflow::Tensor tensor(&allocator, tensorflow::DT_INT64,
-                            tensorflow::TensorShape({1}));
+                            tensorflow::TensorShape({2}));
 
   AsyncValueTensor* avt = AsyncValueTensor::FromTensor(&tensor);
 
   ASSERT_NE(avt, nullptr);
+
+  tensorflow::Tensor sliced_tensor = tensor.Slice(0, 1);
+  AsyncValueTensor* avt_sliced = AsyncValueTensor::FromTensor(&sliced_tensor);
+  ASSERT_EQ(avt_sliced, nullptr);
 
   tsl::AsyncValueRef<int32_t> value =
       tsl::MakeConstructedAsyncValueRef<int32_t>(123);
