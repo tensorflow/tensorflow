@@ -39,6 +39,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/DebugStringHelper.h"
 #include "xla/backends/cpu/alignment.h"
+#include "xla/backends/cpu/codegen/computation_kernel_arguments.h"
 #include "xla/backends/cpu/codegen/computation_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/dot/dot_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/elemental/concatenate_kernel_emitter.h"
@@ -588,8 +589,33 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCallThunk(
   if (std::optional<std::string> maybe_small_call =
           instruction->get_frontend_attribute("xla_cpu_small_call");
       maybe_small_call.has_value() && *maybe_small_call == "true") {
+    ABSL_ASSIGN_OR_RETURN(ComputationKernelArguments arguments,
+                     ComputationKernelArguments::Create(
+                         *instruction->to_apply(), buffer_assignment_));
+
+    // Hoisted loops are often clones of each other, so compile each distinct
+    // kernel once. The prefix keeps keys apart from fusion fingerprints.
+    std::optional<std::string> cache_key;
+    if (arguments.fingerprint().has_value()) {
+      cache_key = absl::StrCat("small_call:", *arguments.fingerprint());
+      if (const auto itr = kernel_spec_cache_.find(*cache_key);
+          itr != kernel_spec_cache_.end()) {
+        const KernelSpec& cached_spec = itr->second;
+        VLOG(1) << "Reusing kernel: " << cached_spec.name()
+                << " for call: " << instruction->name();
+        // Kernel parameters are positional, matching the order of `arguments`.
+        KernelSpec kernel_spec(cached_spec.name(),
+                               cached_spec.work_dimensions(),
+                               arguments.arguments(), arguments.results(),
+                               cached_spec.invariant_arguments());
+        return MakeKernelThunkSequence(instruction, std::move(kernel_spec),
+                                       /*min_alignment=*/MinAlign());
+      }
+    }
+
     ComputationKernelEmitter emitter(instruction, &buffer_assignment_,
-                                     &target_machine_features_);
+                                     &target_machine_features_,
+                                     std::move(arguments));
     ABSL_ASSIGN_OR_RETURN(KernelDefinition kernel_definition,
                      emitter.EmitKernelDefinition());
 
@@ -598,6 +624,10 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCallThunk(
 
     kernels_.push_back(
         {kernel_spec.name(), std::move(kernel_source).thread_safe_module()});
+
+    if (cache_key.has_value()) {
+      kernel_spec_cache_.insert({*std::move(cache_key), kernel_spec});
+    }
 
     return MakeKernelThunkSequence(instruction, std::move(kernel_spec),
                                    /*min_alignment=*/MinAlign());

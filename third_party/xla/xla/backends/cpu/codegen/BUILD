@@ -645,13 +645,54 @@ cc_library(
 )
 
 cc_library(
+    name = "computation_kernel_arguments",
+    srcs = ["computation_kernel_arguments.cc"],
+    hdrs = ["computation_kernel_arguments.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla/codegen:kernel_spec",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:buffer_assignment",
+        "//xla/service:shaped_slice",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_cc_test(
+    name = "computation_kernel_arguments_test",
+    srcs = ["computation_kernel_arguments_test.cc"],
+    deps = [
+        ":computation_kernel_arguments",
+        "//xla/hlo/analysis:alias_info",
+        "//xla/hlo/analysis:hlo_ordering",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/service:buffer_assignment",
+        "//xla/service:buffer_value",
+        "//xla/service:logical_buffer",
+        "//xla/service/cpu:cpu_executable",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "computation_kernel_emitter",
     srcs = ["computation_kernel_emitter.cc"],
     hdrs = ["computation_kernel_emitter.h"],
     deps = [
+        ":computation_kernel_arguments",
         ":kernel_api_ir_builder",
         ":target_machine_features",
-        "//xla:shape_util",
         "//xla:util",
         "//xla/codegen:kernel_definition",
         "//xla/codegen:kernel_emitter",
@@ -667,7 +708,6 @@ cc_library(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -676,7 +716,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Support",
         "@llvm-project//llvm:ir_headers",
     ],
 )
