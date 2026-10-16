@@ -3095,6 +3095,7 @@ py_library(
 py_library(
     name = "variable_scope",
     srcs = ["variable_scope.py"],
+    lazy_imports = True,
     strict_deps = True,
     deps = [
         ":array_ops",
@@ -3138,6 +3139,7 @@ py_library(
         "resource_variable_ops.py",
         "variables.py",
     ],
+    lazy_imports = True,
     strict_deps = True,
     visibility = visibility,
     deps = [
@@ -3201,6 +3203,7 @@ py_library(
         "ref_variable.py",
         "variable_v1.py",
     ],
+    lazy_imports = True,
     strict_deps = True,
     deps = [
         ":array_ops",
