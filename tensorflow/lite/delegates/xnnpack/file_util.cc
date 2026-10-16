@@ -141,14 +141,19 @@ bool FileDescriptorView::Truncate(size_t size) const {
 
 bool InMemoryFileDescriptorAvailable() {
 #if TFLITE_XNNPACK_IN_MEMORY_FILE_ENABLED
-  // Test if the syscall memfd_create is available.
-  const int test_fd = syscall(SYS_memfd_create, "test fd", 0);
-  if (test_fd != -1) {
-    close(test_fd);
-    return true;
-  }
-#endif
+  // Test once if the syscall memfd_create is available.
+  static const bool kAvailable = []() {
+    const int test_fd = syscall(SYS_memfd_create, "test fd", 0);
+    if (test_fd != -1) {
+      close(test_fd);
+      return true;
+    }
+    return false;
+  }();
+  return kAvailable;
+#else
   return false;
+#endif
 }
 
 FileDescriptor CreateInMemoryFileDescriptor(const char* path) {
