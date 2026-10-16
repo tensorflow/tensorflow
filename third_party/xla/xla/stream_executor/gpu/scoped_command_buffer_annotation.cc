@@ -15,38 +15,82 @@ limitations under the License.
 
 #include "xla/stream_executor/gpu/scoped_command_buffer_annotation.h"
 
+#include <cstddef>
 #include <string>
-#include <utility>
 #include <vector>
+
+#include "absl/strings/string_view.h"
 
 namespace stream_executor {
 namespace {
 
-std::vector<std::string>& GetThreadLocalAnnotations() {
-  thread_local std::vector<std::string> annotations;
-  return annotations;
+struct ThreadState {
+  // The number of enabled roots open on the thread.
+  int depth = 0;
+  std::string joined;
+  // The size of `joined` before each pushed frame.
+  std::vector<size_t> prev_sizes;
+};
+
+ThreadState& state() {
+  thread_local ThreadState s;
+  return s;
 }
 
 }  // namespace
 
+ScopedCommandBufferAnnotation ScopedCommandBufferAnnotation::Root(
+    bool enabled, absl::string_view annotation) {
+  return ScopedCommandBufferAnnotation(RootTag{}, enabled, annotation);
+}
+
 ScopedCommandBufferAnnotation::ScopedCommandBufferAnnotation(
-    std::string annotation) {
-  GetThreadLocalAnnotations().push_back(std::move(annotation));
+    RootTag, bool enabled, absl::string_view annotation) {
+  if (!enabled) {
+    return;
+  }
+  ++state().depth;
+  is_root_ = true;
+  Push(annotation);
+}
+
+ScopedCommandBufferAnnotation::ScopedCommandBufferAnnotation(
+    absl::string_view annotation) {
+  if (IsActive()) {
+    Push(annotation);
+  }
 }
 
 ScopedCommandBufferAnnotation::~ScopedCommandBufferAnnotation() {
-  auto& annotations = GetThreadLocalAnnotations();
-  if (!annotations.empty()) {
-    annotations.pop_back();
+  ThreadState& s = state();
+  if (pushed_ && !s.prev_sizes.empty()) {
+    s.joined.resize(s.prev_sizes.back());
+    s.prev_sizes.pop_back();
+  }
+  if (is_root_ && --s.depth == 0) {
+    // Recording is off again: drop any leftover text.
+    s.joined.clear();
+    s.prev_sizes.clear();
   }
 }
 
-std::string ScopedCommandBufferAnnotation::GetCurrentAnnotation() {
-  const auto& annotations = GetThreadLocalAnnotations();
-  if (annotations.empty()) {
-    return "";
+void ScopedCommandBufferAnnotation::Push(absl::string_view annotation) {
+  if (annotation.empty()) {
+    return;
   }
-  return annotations.back();
+  ThreadState& s = state();
+  s.prev_sizes.push_back(s.joined.size());
+  if (!s.joined.empty()) {
+    s.joined.append("::");
+  }
+  s.joined.append(annotation.data(), annotation.size());
+  pushed_ = true;
+}
+
+bool ScopedCommandBufferAnnotation::IsActive() { return state().depth > 0; }
+
+absl::string_view ScopedCommandBufferAnnotation::GetCurrentAnnotation() {
+  return state().joined;
 }
 
 }  // namespace stream_executor

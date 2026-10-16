@@ -3478,3 +3478,38 @@ xla_test(
         "@local_config_cuda//cuda:cuda_headers",
     ],
 )
+
+cc_library(
+    name = "cuda_graph_annotation_registry",
+    srcs = ["cuda_graph_annotation_registry.cc"],
+    hdrs = ["cuda_graph_annotation_registry.h"],
+    deps = [
+        "//xla/stream_executor:semantic_version",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+xla_cc_test(
+    name = "cuda_graph_annotation_registry_test",
+    srcs = ["cuda_graph_annotation_registry_test.cc"],
+    deps = [
+        ":cuda_graph_annotation_registry",
+        "//xla/stream_executor:semantic_version",
+        "//xla/tsl/platform:env",
+        "@com_google_absl//absl/base:log_severity",
+        "@com_google_absl//absl/log:scoped_mock_log",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

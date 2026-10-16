@@ -1175,6 +1175,7 @@ xla_cc_test(
     deps = [
         ":scoped_command_buffer_annotation",
         "//xla/tsl/platform:env",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
     ],
 )
