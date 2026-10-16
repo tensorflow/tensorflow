@@ -24,7 +24,6 @@ limitations under the License.
 #include <stack>
 #include <vector>
 
-#include "absl/base/call_once.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/any_invocable.h"
@@ -214,12 +213,6 @@ class LocalDeviceState {
         nullptr, "ThenRelease");
   }
 
-  // Returns a single-threaded runner on which chunked staged host-to-device
-  // transfers (used under GPU Confidential Computing) issue their copies, so
-  // at most one staged transfer at a time issues copies to this device's
-  // `host_to_device_stream()`. Created on first use.
-  AsyncWorkRunner* staged_host_to_device_runner();
-
   std::optional<Semaphore>& compute_semaphore() { return compute_semaphore_; }
 
 
@@ -282,9 +275,6 @@ class LocalDeviceState {
   absl::Mutex stream_pool_mu_;
   std::stack<std::unique_ptr<se::Stream>> usage_stream_pool_
       ABSL_GUARDED_BY(stream_pool_mu_);
-
-  absl::once_flag staged_host_to_device_runner_once_;
-  std::unique_ptr<AsyncWorkRunner> staged_host_to_device_runner_;
 
   // Callback map pairs callback stream with a device stream and is used for
   // running short host-side callbacks after device side events, without

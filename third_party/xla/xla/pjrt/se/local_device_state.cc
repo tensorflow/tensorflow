@@ -23,7 +23,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/call_once.h"
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/any_invocable.h"
@@ -37,7 +36,6 @@ limitations under the License.
 #include "xla/client/local_client.h"
 #include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/se/buffer_sequencing_event.h"
-#include "xla/pjrt/thread_pool_async_work_runner.h"
 #include "xla/pjrt/worker_thread.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/platform.h"
@@ -160,9 +158,6 @@ LocalDeviceState::LocalDeviceState(se::StreamExecutor* executor,
 }
 
 LocalDeviceState::~LocalDeviceState() {
-  // Finish staged host-to-device copies before synchronizing the streams they
-  // use.
-  staged_host_to_device_runner_.reset();
   absl::Status status = SynchronizeAllActivity();
   if (!status.ok()) {
     LOG(ERROR) << "Error when closing device: " << status;
@@ -243,17 +238,6 @@ absl::Status LocalDeviceState::SynchronizeAllActivity() {
     status.Update(Unknown("SynchronizeAllActivity failed."));
   }
   return status;
-}
-
-AsyncWorkRunner* LocalDeviceState::staged_host_to_device_runner() {
-  absl::call_once(staged_host_to_device_runner_once_, [this] {
-    tsl::ThreadOptions thread_options;
-    thread_options.numa_node = executor_->numa_node();
-    staged_host_to_device_runner_ =
-        MakeThreadPoolAsyncWorkRunner(tsl::Env::Default(), "py_xla_staged_h2d",
-                                      /*num_threads=*/1, thread_options);
-  });
-  return staged_host_to_device_runner_.get();
 }
 
 absl::Status LocalDeviceState::ThenMemcpyDeviceToDevice(
