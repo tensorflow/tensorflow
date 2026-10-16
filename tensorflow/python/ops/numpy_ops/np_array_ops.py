@@ -1373,6 +1373,10 @@ def _boundaries_to_sizes(a, boundaries, axis):
   sizes_sum = 0
   prev = 0
   for i, b in enumerate(boundaries):
+    if b < 0:
+      # NumPy treats a negative split boundary like a negative slice index:
+      # relative to the end of the axis, clamped at 0.
+      b = builtins.max(0, b + total_size)
     size = b - prev
     if size < 0:
       raise ValueError(
