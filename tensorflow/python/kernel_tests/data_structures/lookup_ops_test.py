@@ -4403,6 +4403,29 @@ class MutableHashTableOpTest(test.TestCase):
     self.assertTrue(inferred_shapes[1].is_compatible_with(actual_shapes[1]))
 
 
+class ResourceHandleNameSecurityTest(test.TestCase):
+  """Verify that anonymous resource handle names do not leak heap addresses."""
+
+  @test_util.run_v2_only
+  def testAnonymousHashTableHandleDoesNotLeakAddress(self):
+    # AnonymousHashTable creates a ResourceBase whose handle name was
+    # previously formatted as "Resource-<id>-at-0x<hex_address>", leaking
+    # the glibc heap address to callers via error messages.
+    table = gen_lookup_ops.anonymous_hash_table(
+        key_dtype=dtypes.int64, value_dtype=dtypes.int64
+    )
+    handle_name = str(table)
+    self.assertRegex(handle_name, r'name="Resource-\d+"')
+    self.assertNotIn(
+        "-at-", handle_name, "Handle name must not contain raw pointer"
+    )
+    self.assertNotRegex(
+        handle_name,
+        r"0x[0-9a-fA-F]{8,}",
+        "Handle name must not contain hex address",
+    )
+
+
 class MutableHashTableBenchmark(test.Benchmark):
 
   def _create_table(self):
