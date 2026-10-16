@@ -3331,8 +3331,14 @@ struct FullyConnectedSwapOperandsWhenLHSIsConst
     auto input = fc.getInput();
     auto filter = fc.getFilter();
 
-    if (!matchPattern(input, m_Constant()) ||
-        matchPattern(filter, m_Constant()))
+    auto is_const_or_qconst = [](Value v) {
+      return matchPattern(v, m_Constant()) ||
+             llvm::isa_and_nonnull<TFL::QConstOp, TFL::SparseConstOp,
+                                   TFL::SparseQConstOp>(v.getDefiningOp());
+    };
+    auto filter_dequant = filter.getDefiningOp<TFL::DequantizeOp>();
+    if (!matchPattern(input, m_Constant()) || is_const_or_qconst(filter) ||
+        (filter_dequant && is_const_or_qconst(filter_dequant.getInput())))
       return failure();
 
     auto input_type = mlir::dyn_cast<RankedTensorType>(input.getType());
