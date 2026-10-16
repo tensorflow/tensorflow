@@ -28,12 +28,47 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+class FakeOpaqueAllocator : public Allocator {
+ public:
+  explicit FakeOpaqueAllocator(void* ptr) : ptr_(ptr) {}
+  void* AllocateRaw(size_t alignment, size_t num_bytes) override {
+    return ptr_;
+  }
+  void DeallocateRaw(void* ptr) override {}
+  bool AllocatesOpaqueHandle() const override { return true; }
+  std::string Name() override { return "fake-opaque"; }
+
+ private:
+  void* ptr_;
+};
+
 TEST(AsyncValueTensorTest, InvalidTensor) {
   tensorflow::Tensor tensor(tensorflow::DT_INT64, tensorflow::TensorShape({1}));
 
   AsyncValueTensor* avt = AsyncValueTensor::FromTensor(&tensor);
 
   ASSERT_EQ(avt, nullptr);
+}
+
+TEST(AsyncValueTensorTest, SlicedOpaqueTensorReturnsNull) {
+  FakeOpaqueAllocator allocator(reinterpret_cast<void*>(0x1000));
+  tensorflow::Tensor tensor(&allocator, tensorflow::DT_UINT8,
+                            tensorflow::TensorShape({16}));
+  tensorflow::Tensor sliced_tensor = tensor.Slice(1, 16);
+
+  AsyncValueTensor* avt = AsyncValueTensor::FromTensor(&sliced_tensor);
+
+  EXPECT_EQ(avt, nullptr);
+}
+
+TEST(AsyncValueTensorTest, UnalignedOpaquePointerReturnsNull) {
+  FakeOpaqueAllocator allocator(reinterpret_cast<void*>(0x1003));
+  tensorflow::Tensor tensor(&allocator, tensorflow::DT_UINT8,
+                            tensorflow::TensorShape({16}));
+
+  AsyncValueTensor* avt = AsyncValueTensor::FromTensor(&tensor);
+
+  EXPECT_EQ(avt, nullptr);
 }
 
 TEST(AsyncValueTensorTest, SetAndGetAsyncValue) {
