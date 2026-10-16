@@ -37,6 +37,6 @@ jobs:
 
       - name: Run zizmor
         # Pinned version; bumped on a regular schedule by the XLA zizmor release monitor.
-        run:  uvx zizmor@1.31.0 --format=github .github xla
+        run:  uvx zizmor@1.31.1 --format=github .github xla
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
