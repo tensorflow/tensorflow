@@ -75,6 +75,11 @@ TEST(RocmComputeCapability, IsSupportedGfxVersion) {
   ASSERT_TRUE(RocmComputeCapability{"gfx1201"}.is_supported_gfx_version());
   ASSERT_TRUE(RocmComputeCapability{"gfx942"}.is_supported_gfx_version());
   ASSERT_TRUE(RocmComputeCapability{"gfx1250"}.is_supported_gfx_version());
+  ASSERT_TRUE(RocmComputeCapability{"gfx1102"}.is_supported_gfx_version());
+  ASSERT_TRUE(RocmComputeCapability{"gfx1152"}.is_supported_gfx_version());
+  ASSERT_TRUE(RocmComputeCapability{"gfx1153"}.is_supported_gfx_version());
+  ASSERT_TRUE(
+      RocmComputeCapability{"gfx1152:xnack-"}.is_supported_gfx_version());
   ASSERT_FALSE(RocmComputeCapability{"some_string"}.is_supported_gfx_version());
 }
 
@@ -123,6 +128,14 @@ TEST(RocmComputeCapability, Accessors) {
   EXPECT_TRUE(RocmComputeCapability{"gfx1200"}.has_hipblaslt());
   EXPECT_TRUE(RocmComputeCapability{"gfx1100"}.has_hipblaslt());
   EXPECT_TRUE(RocmComputeCapability{"gfx1103"}.has_hipblaslt());
+  EXPECT_TRUE(RocmComputeCapability{"gfx1102"}.has_hipblaslt());
+  EXPECT_TRUE(RocmComputeCapability{"gfx1152"}.has_hipblaslt());
+  EXPECT_TRUE(RocmComputeCapability{"gfx1153"}.has_hipblaslt());
+  EXPECT_TRUE(RocmComputeCapability{"gfx1102"}.gfx11_discrete());
+  EXPECT_TRUE(RocmComputeCapability{"gfx1152"}.gfx11_apu());
+  EXPECT_TRUE(RocmComputeCapability{"gfx1153"}.gfx11_apu());
+  EXPECT_FALSE(RocmComputeCapability{"gfx1152"}.gfx11_discrete());
+
   EXPECT_TRUE(RocmComputeCapability{"gfx1250"}.has_hipblaslt());
 
   EXPECT_FALSE(RocmComputeCapability{"gfx1250"}.has_nhwc_layout_support());
