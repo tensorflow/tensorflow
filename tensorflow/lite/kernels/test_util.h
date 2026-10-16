@@ -72,34 +72,34 @@ namespace tflite {
 // that do not have it (e.g. half).
 template <typename T>
 struct NumericLimits {
-  static inline T epsilon() { return std::numeric_limits<T>::epsilon(); }
-  static inline T max() { return std::numeric_limits<T>::max(); }
-  static inline T min() { return std::numeric_limits<T>::lowest(); }
-  static inline T smallest_normal() { return std::numeric_limits<T>::min(); }
+  static T epsilon() { return std::numeric_limits<T>::epsilon(); }
+  static T max() { return std::numeric_limits<T>::max(); }
+  static T min() { return std::numeric_limits<T>::lowest(); }
+  static T smallest_normal() { return std::numeric_limits<T>::min(); }
   static constexpr bool kIsOptional = false;
 };
 
 template <>
 struct NumericLimits<half> {
-  static inline half epsilon() { return half::epsilon(); }
-  static inline half max() { return half::max(); }
-  static inline half min() { return half::min(); }
-  static inline half smallest_normal() { return half::smallest_normal(); }
+  static half epsilon() { return half::epsilon(); }
+  static half max() { return half::max(); }
+  static half min() { return half::min(); }
+  static half smallest_normal() { return half::smallest_normal(); }
   static constexpr bool kIsOptional = true;
 };
 
 template <>
 struct NumericLimits<Eigen::bfloat16> {
-  static inline Eigen::bfloat16 epsilon() {
+  static Eigen::bfloat16 epsilon() {
     return std::numeric_limits<Eigen::bfloat16>::epsilon();
   }
-  static inline Eigen::bfloat16 max() {
+  static Eigen::bfloat16 max() {
     return std::numeric_limits<Eigen::bfloat16>::max();
   }
-  static inline Eigen::bfloat16 min() {
+  static Eigen::bfloat16 min() {
     return std::numeric_limits<Eigen::bfloat16>::lowest();
   }
-  static inline Eigen::bfloat16 smallest_normal() {
+  static Eigen::bfloat16 smallest_normal() {
     return std::numeric_limits<Eigen::bfloat16>::min();
   }
   static constexpr bool kIsOptional = true;
