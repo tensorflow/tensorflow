@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator_runner_impl.h"
 
+#include <cerrno>
+#include <cstdint>
+#include <cstring>
 #include <iostream>
 #include <memory>
 #include <ostream>
@@ -24,11 +27,13 @@ limitations under the License.
 
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
-#include "tensorflow/lite/allocation.h"
+#include "tensorflow/lite/allocation.h"  // NOLINT(misc-include-cleaner)
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/benchmark_result_evaluator.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/fb_storage.h"
@@ -224,8 +229,7 @@ void ValidatorRunnerImpl::TriggerValidationAsync(
        storage_path = std::string(storage_path),
        data_directory_path = data_directory_path_,
        tflite_settings = std::move(tflite_settings),
-       validation_entrypoint_name =
-           validation_entrypoint_helper_.name().c_str(),
+       validation_entrypoint_name = validation_entrypoint_helper_.name(),
        validation_entrypoint = validation_entrypoint_helper_.LoadEntrypoint(),
        nnapi_sl_path = nnapi_helper_.nnapi_sl_path(),
        gpu_so_path = gpu_helper_.gpu_so_path(),
@@ -247,7 +251,8 @@ void ValidatorRunnerImpl::TriggerValidationAsync(
               ->UnPackTo(&tflite_settings_obj);
           TFLITE_LOG_PROD(TFLITE_LOG_INFO,
                           "Run validation with entry point '%s' %s",
-                          validation_entrypoint_name, storage_path.c_str());
+                          validation_entrypoint_name.c_str(),
+                          storage_path.c_str());
           ProcessRunner runner(data_directory_path, validation_entrypoint_name,
                                validation_entrypoint, timeout_ms);
           int exitcode = 0;
