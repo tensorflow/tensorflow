@@ -387,6 +387,7 @@ absl::StatusOr<PerDeviceLiteralVecType> FetchAndLogOutput(
   size_t num_pending_transfers = 0;
 
   absl::Status issue_status = [&]() -> absl::Status {
+    absl::Status ready_status;
     for (int i = 0; i < output_buffers.size(); ++i) {
       if (output_buffers[i].empty()) {
         continue;
@@ -424,11 +425,11 @@ absl::StatusOr<PerDeviceLiteralVecType> FetchAndLogOutput(
                 "All outputs from a given vector of outputs should be for the "
                 "same device");
           }
-          ABSL_RETURN_IF_ERROR(buffer->GetReadyFuture().Await());
+          ready_status.Update(buffer->GetReadyFuture().Await());
         }
       }
     }
-    return absl::OkStatus();
+    return ready_status;
   }();
 
   // The ToLiteral callbacks above reference `outputs`, `mu`, `status` and
@@ -632,9 +633,11 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
       ABSL_ASSIGN_OR_RETURN(
           output_buffers,
           executable->Execute(argument_ptrs, execute_options, futures));
+      absl::Status execute_status;
       for (auto& future : *futures) {
-        ABSL_RETURN_IF_ERROR(future.Await());
+        execute_status.Update(future.Await());
       }
+      ABSL_RETURN_IF_ERROR(execute_status);
 
       const bool upload_active_profiler_session =
           running_options.recreate_profiler_session_between_repeats ||
@@ -762,46 +765,56 @@ CopyArgumentsToDevice(PjRtClient& client,
   ABSL_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<HloModule>> hlo_modules,
                    executable->GetHloModules());
 
-  for (int i = 0; i < num_addressable_devices; ++i) {
-    PjRtDevice* curr_device = addressable_devices[i];
-    int curr_device_id = curr_device->id();
-    // 'source_device' determines where we get the input literal from.
-    PjRtDevice* source_device =
-        addressable_devices[clone_device0_arguments ? 0 : i];
-    int source_device_id = source_device->id();
-    if (!arguments.contains(source_device_id)) {
-      return InvalidArgument(
-          "The provided argument map does not contain arguments "
-          "for device: %d",
-          curr_device_id);
-    }
-
-    const std::vector<Literal>& curr_device_arguments =
-        arguments.at(source_device_id);
-
-    int executable_idx = hlo_modules.size() == 1
-                             ? 0
-                             : addressable_device_logical_ids[i].partition;
-    HloModule* module = hlo_modules[executable_idx].get();
-
-    argument_buffers[i].reserve(curr_device_arguments.size());
-    for (int arg_i = 0; arg_i < curr_device_arguments.size(); ++arg_i) {
-      const Literal& literal = curr_device_arguments[arg_i];
-      if (log_input) {
-        LOG(INFO) << "device_id=" << curr_device_id
-                  << ", input = " << literal.ToString();
+  absl::Status status = [&]() -> absl::Status {
+    for (int i = 0; i < num_addressable_devices; ++i) {
+      PjRtDevice* curr_device = addressable_devices[i];
+      int curr_device_id = curr_device->id();
+      // 'source_device' determines where we get the input literal from.
+      PjRtDevice* source_device =
+          addressable_devices[clone_device0_arguments ? 0 : i];
+      int source_device_id = source_device->id();
+      auto it = arguments.find(source_device_id);
+      if (it == arguments.end()) {
+        return InvalidArgument(
+            "The provided argument map does not contain arguments "
+            "for device: %d",
+            curr_device_id);
       }
-      ABSL_ASSIGN_OR_RETURN(
-          std::unique_ptr<PjRtBuffer> argument_buffer,
-          buffer_from_host_literal(module, curr_device, arg_i, literal));
-      argument_buffers[i].push_back(std::move(argument_buffer));
+
+      const std::vector<Literal>& curr_device_arguments = it->second;
+
+      int executable_idx = hlo_modules.size() == 1
+                               ? 0
+                               : addressable_device_logical_ids[i].partition;
+      HloModule* module = hlo_modules[executable_idx].get();
+
+      argument_buffers[i].reserve(curr_device_arguments.size());
+      for (int arg_i = 0; arg_i < curr_device_arguments.size(); ++arg_i) {
+        const Literal& literal = curr_device_arguments[arg_i];
+        if (log_input) {
+          LOG(INFO) << "device_id=" << curr_device_id
+                    << ", input = " << literal.ToString();
+        }
+        ABSL_ASSIGN_OR_RETURN(
+            std::unique_ptr<PjRtBuffer> argument_buffer,
+            buffer_from_host_literal(module, curr_device, arg_i, literal));
+        argument_buffers[i].push_back(std::move(argument_buffer));
+      }
     }
-  }
+    return absl::OkStatus();
+  }();
+
+  // BufferFromHostLiteral transfers read directly from the host `Literal`s in
+  // `arguments` until each buffer's ready future completes, so every created
+  // buffer must be awaited before returning (including on error, since callers
+  // such as CreateArgumentsOnDevice own `arguments` in their local stack
+  // frame).
   for (const auto& device_argument_buffers : argument_buffers) {
     for (const auto& device_buffer : device_argument_buffers) {
-      ABSL_RETURN_IF_ERROR(device_buffer->GetReadyFuture().Await());
+      status.Update(device_buffer->GetReadyFuture().Await());
     }
   }
+  ABSL_RETURN_IF_ERROR(status);
   return argument_buffers;
 }
 
@@ -883,11 +896,13 @@ CreateUninitializedArgumentsOnDevice(PjRtClient& client,
   }
   LOG(INFO) << "Allocated argument buffers: " << buffer_count;
 
+  absl::Status status;
   for (const auto& argument_buffers : argument_buffers_per_device) {
     for (const auto& buffer : argument_buffers) {
-      ABSL_RETURN_IF_ERROR(buffer->GetReadyFuture().Await());
+      status.Update(buffer->GetReadyFuture().Await());
     }
   }
+  ABSL_RETURN_IF_ERROR(status);
   LOG(INFO) << "Argument buffers are ready.";
 
   return argument_buffers_per_device;
