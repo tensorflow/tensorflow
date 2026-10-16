@@ -490,6 +490,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_per_fusion_autotune_cache_dir("");
 
   opts.set_xla_gpu_use_new_autotune_cache_format(true);
+  opts.set_xla_autotune_cache_require_strict_codegen_match(false);
 
   opts.set_xla_compile_all_supported_configs(false);
   opts.set_xla_deduplicate_backend_configs_min_size(
@@ -3144,6 +3145,16 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_use_new_autotune_cache_format(),
       "Whether to use the new protos for the autotune cache"
       " (xla.autotuner.AutotuneCache rather than xla.AutotuneResults."));
+
+  flag_list->push_back(tsl::Flag(
+      "xla_autotune_cache_require_strict_codegen_match",
+      bool_setter_for(
+          &DebugOptions::set_xla_autotune_cache_require_strict_codegen_match),
+      debug_options->xla_autotune_cache_require_strict_codegen_match(),
+      "When true, autotune cache lookup requires the entire codegen "
+      "environment to match. When false, only the codegen version of the "
+      "optimal backend is required to match (e.g., allowing Triton cached "
+      "entries to be reused even when the cuDNN version changes)."));
 
   flag_list->push_back(tsl::Flag(
       "xla_compile_all_supported_configs",

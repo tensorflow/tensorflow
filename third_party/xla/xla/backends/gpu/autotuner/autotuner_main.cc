@@ -336,9 +336,12 @@ absl::Status RunAutotuning(const std::vector<std::string>& hlo_files,
     auto primary = std::make_unique<InMemoryStore>();
     auto secondary = std::make_unique<DirectoryStore>(std::string(cache_dir),
                                                       CacheMode::kReadWrite);
-    autotuner_cache =
-        std::make_unique<TieredCache>(env.cache_ctx, KeyMatchingMode::kLoose,
-                                      std::move(primary), std::move(secondary));
+    KeyMatchingMode matching_mode =
+        debug_options.xla_autotune_cache_require_strict_codegen_match()
+            ? KeyMatchingMode::kStrict
+            : KeyMatchingMode::kLoose;
+    autotuner_cache = std::make_unique<TieredCache>(
+        env.cache_ctx, matching_mode, std::move(primary), std::move(secondary));
   } else {
     autotuner_cache = std::make_unique<PrintingAutotunerCache>();
   }

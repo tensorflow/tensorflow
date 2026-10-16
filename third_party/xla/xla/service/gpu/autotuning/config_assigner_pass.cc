@@ -273,9 +273,12 @@ std::unique_ptr<AutotunerCacheInterface> CreateAutotunerCache(
         cache_dir,
         GetCacheMode(debug_options.xla_gpu_experimental_autotune_cache_mode()));
   }
-  return std::make_unique<TieredCache>(cache_ctx, KeyMatchingMode::kLoose,
-                                       std::move(primary),
-                                       std::move(secondary));
+  KeyMatchingMode matching_mode =
+      debug_options.xla_autotune_cache_require_strict_codegen_match()
+          ? KeyMatchingMode::kStrict
+          : KeyMatchingMode::kLoose;
+  return std::make_unique<TieredCache>(
+      cache_ctx, matching_mode, std::move(primary), std::move(secondary));
 }
 
 }  // namespace

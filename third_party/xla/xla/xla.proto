@@ -1961,7 +1961,13 @@ message DebugOptions {
   // dimension are tiled for now; extend to the other cases.
   optional bool xla_gpu_experimental_enable_reduction_dimension_tiling = 558;
 
-  // Next id: 559
+  // When true, autotune cache lookup requires the entire codegen environment
+  // to match. When false, only the codegen version of the optimal backend is
+  // required to match (e.g., allowing Triton cached entries to be reused even
+  // when the cuDNN version changes).
+  optional bool xla_autotune_cache_require_strict_codegen_match = 559;
+
+  // Next id: 560
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
