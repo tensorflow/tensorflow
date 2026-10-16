@@ -30,7 +30,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/sort_lib.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/primitive_util.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/xla_data.pb.h"

@@ -26,7 +26,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/stream_executor/device_address.h"
 #include "tsl/platform/random.h"
 

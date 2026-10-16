@@ -53,7 +53,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/python/nb_absl_inlined_vector.h"  // IWYU pragma: keep
 #include "xla/python/nb_absl_span.h"  // IWYU pragma: keep
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/util.h"

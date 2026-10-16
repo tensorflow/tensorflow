@@ -81,7 +81,7 @@ limitations under the License.
 #include "xla/pjrt/utils.h"
 #include "xla/runtime/chip_id.h"
 #include "xla/runtime/device_id.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"

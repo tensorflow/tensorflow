@@ -39,7 +39,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/while_thunk.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/runtime/execution_graph.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/shaped_slice.h"
 #include "xla/shape_util.h"

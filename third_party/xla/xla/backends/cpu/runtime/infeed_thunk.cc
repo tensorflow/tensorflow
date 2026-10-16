@@ -31,7 +31,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/xfeed_manager.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/runtime/resource_use.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/statusor.h"

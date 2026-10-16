@@ -29,7 +29,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk_testlib.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 
 namespace xla::cpu {
 

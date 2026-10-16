@@ -31,7 +31,7 @@ limitations under the License.
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/literal.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/cpu/cpu_executable.h"
 #include "xla/service/executable.h"
 #include "xla/service/maybe_owning_device_address.h"

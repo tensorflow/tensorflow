@@ -27,7 +27,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
 #include "xla/backends/gpu/runtime/traced_command.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/stream_executor/command_buffer.h"
 
 namespace xla::gpu {

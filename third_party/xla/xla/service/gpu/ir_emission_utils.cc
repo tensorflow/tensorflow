@@ -52,7 +52,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/matmul_indexing_utils.h"

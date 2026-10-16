@@ -13,15 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// TODO(b/319135034): create a heap_simulator sub directory and move
-// allocation_block.h/cc to it.
-
 // This file contains a number of data structures to describe how blocks of
 // data are allocated. It is used by Memory Space Assignment repacking to
 // understand how data was allocated before the repacking.
 
-#ifndef XLA_SERVICE_HEAP_SIMULATOR_ALLOCATION_BLOCK_H_
-#define XLA_SERVICE_HEAP_SIMULATOR_ALLOCATION_BLOCK_H_
+#ifndef XLA_SERVICE_BUFFER_ASSIGNMENT_ALLOCATION_BLOCK_H_
+#define XLA_SERVICE_BUFFER_ASSIGNMENT_ALLOCATION_BLOCK_H_
 
 #include <cstdint>
 #include <optional>
@@ -106,4 +103,4 @@ struct AllocationBlock {
 
 }  // namespace xla
 
-#endif  // XLA_SERVICE_HEAP_SIMULATOR_ALLOCATION_BLOCK_H_
+#endif  // XLA_SERVICE_BUFFER_ASSIGNMENT_ALLOCATION_BLOCK_H_

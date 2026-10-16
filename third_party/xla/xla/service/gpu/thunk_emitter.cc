@@ -133,7 +133,7 @@ limitations under the License.
 #include "xla/mlir_hlo/transforms/gpu_passes.h"
 #include "xla/primitive_util.h"
 #include "xla/runtime/device_id.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/collective_opt_utils.h"

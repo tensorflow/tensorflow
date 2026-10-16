@@ -25,7 +25,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "xla/backends/gpu/runtime/per_device_state.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/gpu/dense_data_intermediate.h"
 #include "xla/service/gpu/gpu_executable.pb.h"
 #include "xla/stream_executor/device_address.h"

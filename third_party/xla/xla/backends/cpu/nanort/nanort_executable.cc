@@ -38,7 +38,7 @@ limitations under the License.
 #include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/runtime/device_id.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/cpu/cpu_aot_loader.h"
 #include "xla/service/cpu/cpu_executable.h"

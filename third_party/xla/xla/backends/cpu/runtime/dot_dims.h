@@ -21,7 +21,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
 #include "xla/runtime/buffer_use.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/shape.h"
 #include "xla/xla_data.pb.h"
 

@@ -542,12 +542,12 @@ cc_library(
         "//xla/pjrt/proto:executable_metadata_proto_cc",
         "//xla/pjrt/proto:execute_options_proto_cc",
         "//xla/runtime:device_id",
-        "//xla/service:buffer_assignment",
         "//xla/service:compiler",
         "//xla/service:computation_layout",
         "//xla/service:hlo_cost_analysis",
         "//xla/service:hlo_proto_cc",
         "//xla/service:hlo_value",
+        "//xla/service/buffer_assignment",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -950,7 +950,7 @@ cc_library(
     srcs = ["transpose_kernels.cc"],
     hdrs = ["transpose_kernels.h"],
     deps = [
-        "//xla:compiler_macros",
+        "@com_google_absl//absl/base:core_headers",
         "@highway//:hwy",
     ],
 )
@@ -1502,8 +1502,8 @@ cc_library(
     deps = [
         "//xla:shape_util",
         "//xla/pjrt/proto:executable_metadata_proto_cc",
-        "//xla/service:buffer_assignment",
         "//xla/service:hlo_value",
+        "//xla/service/buffer_assignment",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/types:span",
     ],

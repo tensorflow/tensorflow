@@ -29,7 +29,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_address.h"

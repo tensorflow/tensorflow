@@ -33,7 +33,7 @@ limitations under the License.
 #include "xla/runtime/buffer_use.h"
 #include "xla/runtime/execution_graph.h"
 #include "xla/runtime/resource_use.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/shape.h"

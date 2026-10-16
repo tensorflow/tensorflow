@@ -29,7 +29,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk.pb.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/runtime/resource_use.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 
 namespace xla::cpu {
 

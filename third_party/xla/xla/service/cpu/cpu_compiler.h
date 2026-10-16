@@ -29,7 +29,7 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_schedule.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/compiled_module.h"
 #include "xla/service/compiler.h"
 #include "xla/service/cpu/cpu_aot_compilation_result.h"

@@ -107,7 +107,7 @@ limitations under the License.
 #include "xla/runtime/device_id.h"
 #include "xla/runtime/hang_watchdog.h"
 #include "xla/runtime/process_id.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/compiler.h"
 #include "xla/service/gpu/gpu_memory_space_assignment.h"
 #include "xla/service/gpu_topology.h"

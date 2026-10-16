@@ -72,7 +72,7 @@ limitations under the License.
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/runtime/device_id.h"
 #include "xla/runtime/hang_watchdog.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/device_assignment.h"
 #include "xla/service/dump.h"

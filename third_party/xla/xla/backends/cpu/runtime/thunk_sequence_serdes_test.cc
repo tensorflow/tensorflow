@@ -69,7 +69,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/runtime/resource_use.h"
 #include "xla/runtime/work_group.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/shaped_slice.h"

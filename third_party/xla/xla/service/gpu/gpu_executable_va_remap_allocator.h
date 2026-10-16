@@ -27,7 +27,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/per_device_state.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/gpu/gpu_executable_buffer_allocator.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/shape.h"

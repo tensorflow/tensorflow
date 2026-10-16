@@ -35,7 +35,7 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/mlir/tools/mlir_replay/public/compiler_trace.pb.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 
 namespace xla {
 namespace cpu {

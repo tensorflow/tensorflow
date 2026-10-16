@@ -37,7 +37,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/runtime/large_hlo_snapshot_serialization/serialization.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/logical_buffer.h"

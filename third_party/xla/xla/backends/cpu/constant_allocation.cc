@@ -31,7 +31,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
 #include "xla/primitive_util.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/tsl/platform/statusor.h"

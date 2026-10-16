@@ -42,7 +42,7 @@ limitations under the License.
 #include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/runtime/buffer_use.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"

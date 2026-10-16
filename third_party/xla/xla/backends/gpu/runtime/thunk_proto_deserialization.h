@@ -26,7 +26,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/kernel_spec.h"

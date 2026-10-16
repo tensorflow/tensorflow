@@ -31,7 +31,7 @@ limitations under the License.
 #include "xla/codegen/hlo_fusion_spec.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_traversal.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
 

@@ -45,7 +45,7 @@ limitations under the License.
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/runtime/work_dimensions.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/cpu/cpu_executable.h"
 #include "xla/service/logical_buffer.h"

@@ -56,7 +56,7 @@ limitations under the License.
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/dump.h"
 #include "xla/service/gpu/alias_info.h"

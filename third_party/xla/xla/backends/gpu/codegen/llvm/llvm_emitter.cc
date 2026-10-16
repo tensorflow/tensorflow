@@ -71,7 +71,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
 #include "xla/primitive_util.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/elemental_ir_emitter.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/hlo_to_ir_bindings.h"

@@ -24,7 +24,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_proto_cc",
         "//xla/service:hlo_value",
-        "//xla/service/heap_simulator",
+        "//xla/service/buffer_assignment:heap_simulator",
         "@com_google_absl//absl/types:span",
     ],
 )

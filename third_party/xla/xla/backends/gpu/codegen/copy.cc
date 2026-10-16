@@ -26,7 +26,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/utils/hlo_traversal.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/shaped_slice.h"
 #include "xla/shape.h"

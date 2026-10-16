@@ -43,7 +43,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu_topology.h"

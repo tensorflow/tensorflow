@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"

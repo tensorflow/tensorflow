@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/heap_simulator/heap_simulator.h"
+#include "xla/service/buffer_assignment/heap_simulator.h"
 
 #include <cstdint>
 #include <functional>
@@ -42,8 +42,8 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/literal_util.h"
+#include "xla/service/buffer_assignment/allocation_block.h"
 #include "xla/service/buffer_value.h"
-#include "xla/service/heap_simulator/allocation_block.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_value.h"
 #include "xla/shape.h"

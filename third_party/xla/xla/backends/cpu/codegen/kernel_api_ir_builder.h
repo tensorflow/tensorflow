@@ -32,7 +32,7 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/shape.h"

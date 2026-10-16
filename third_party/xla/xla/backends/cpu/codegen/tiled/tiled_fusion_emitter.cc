@@ -72,7 +72,7 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/primitive_util.h"
 #include "xla/runtime/work_dimensions.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/cpu/cpu_options.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape.h"

@@ -30,7 +30,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/layout_util.h"
 #include "xla/runtime/buffer_use.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_address.h"

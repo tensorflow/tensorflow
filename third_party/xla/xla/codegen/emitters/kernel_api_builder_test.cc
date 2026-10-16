@@ -36,7 +36,7 @@ limitations under the License.
 #include "xla/runtime/work_group.h"
 #include "xla/runtime/work_item.h"
 #include "xla/runtime/work_tile_size.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/shape.h"

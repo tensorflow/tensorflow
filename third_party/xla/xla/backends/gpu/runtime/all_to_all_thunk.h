@@ -32,7 +32,7 @@ limitations under the License.
 #include "xla/core/collectives/rank_id.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/runtime/buffer_use.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"

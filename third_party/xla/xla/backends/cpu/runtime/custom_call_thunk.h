@@ -31,7 +31,7 @@ limitations under the License.
 #include "xla/ffi/execution_state.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/runtime/object_pool.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"

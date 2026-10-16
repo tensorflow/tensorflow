@@ -9,7 +9,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "xla/service/heap_simulator/free_chunks_manager.h"
+#include "xla/service/buffer_assignment/free_chunks_manager.h"
 
 #include <cstddef>
 #include <cstdint>

@@ -23,7 +23,7 @@ limitations under the License.
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/Module.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/shape_util.h"
 #include "xla/types.h"

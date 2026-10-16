@@ -50,7 +50,7 @@ limitations under the License.
 #include "xla/pjrt/se/stream_executor_pjrt_abi_version.h"
 #include "xla/pjrt/se/stream_executor_platform_id_mapping.h"
 #include "xla/pjrt/utils.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/compiled_module.h"
 #include "xla/service/compiler.h"
 #include "xla/service/computation_layout.h"

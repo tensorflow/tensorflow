@@ -42,7 +42,7 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/compiled_module.h"
 #include "xla/service/cpu/cpu_aot_compilation_result.h"
 #include "xla/service/gpu/buffer_allocations.h"

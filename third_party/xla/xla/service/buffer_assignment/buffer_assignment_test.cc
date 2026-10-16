@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 
 #include <cstdint>
 #include <functional>
@@ -55,11 +55,11 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/hlo_memory_scheduler.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/service/buffer_assignment.pb.h"
+#include "xla/service/buffer_assignment/buffer_assignment.pb.h"
+#include "xla/service/buffer_assignment/heap_simulator.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/copy_insertion.h"
-#include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_module_config.h"

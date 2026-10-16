@@ -43,7 +43,7 @@ limitations under the License.
 #include "xla/future.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"

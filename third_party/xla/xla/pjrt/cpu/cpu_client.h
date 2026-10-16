@@ -66,7 +66,7 @@ limitations under the License.
 #include "xla/pjrt/semaphore.h"
 #include "xla/pjrt/thread_pool_async_work_runner.h"
 #include "xla/runtime/device_id.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/compiler.h"
 #include "xla/service/cpu/cpu_executable.h"
 #include "xla/service/device_assignment.h"

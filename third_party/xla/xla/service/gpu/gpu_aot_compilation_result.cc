@@ -33,7 +33,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/pjrt/compiled_memory_stats.h"
 #include "xla/printer.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/gpu_executable.pb.h"

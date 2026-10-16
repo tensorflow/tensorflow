@@ -33,7 +33,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/reduction_kind.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/device_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/shaped_slice.h"

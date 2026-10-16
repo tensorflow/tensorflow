@@ -58,7 +58,7 @@ limitations under the License.
 #include "xla/runtime/work_dimensions.h"
 #include "xla/runtime/work_group.h"
 #include "xla/runtime/work_item.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"

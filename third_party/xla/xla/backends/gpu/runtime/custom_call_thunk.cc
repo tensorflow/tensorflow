@@ -65,7 +65,7 @@ limitations under the License.
 #include "xla/ffi/record_ffi.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/primitive_util.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/shaped_slice.h"

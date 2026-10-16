@@ -44,7 +44,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/runtime/buffer_use.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/autotuning/redzone_buffers.h"
 #include "xla/service/gpu/backend_configs.pb.h"

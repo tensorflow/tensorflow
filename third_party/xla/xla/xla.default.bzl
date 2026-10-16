@@ -62,7 +62,7 @@ _XLA_SHARED_OBJECT_SENSITIVE_DEPS = [
     Label("//xla:autotuning_proto_cc_impl"),
     Label("//xla:xla_data_proto_cc_impl"),
     Label("//xla:xla_proto_cc_impl"),
-    Label("//xla/service:buffer_assignment_proto_cc_impl"),
+    Label("//xla/service/buffer_assignment:buffer_assignment_proto_cc_impl"),
     Label("//xla/service:hlo_proto_cc_impl"),
     Label("//xla/service:metrics_proto_cc_impl"),
     Label("//xla/service/gpu:backend_configs_cc_impl"),

@@ -29,7 +29,7 @@ limitations under the License.
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/xla.pb.h"
 

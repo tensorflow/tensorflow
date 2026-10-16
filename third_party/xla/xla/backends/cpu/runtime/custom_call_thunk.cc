@@ -51,7 +51,7 @@ limitations under the License.
 #include "xla/ffi/invoke.h"
 #include "xla/primitive_util.h"
 #include "xla/runtime/buffer_use.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_status_internal.h"
 #include "xla/service/custom_call_target_registry.h"

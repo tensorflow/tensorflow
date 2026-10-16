@@ -79,7 +79,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/map_util.h"
 #include "xla/primitive_util.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/cpu/cpu_instruction_fusion.h"
 #include "xla/service/cpu/cpu_options.h"

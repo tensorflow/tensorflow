@@ -47,7 +47,7 @@ limitations under the License.
 #include "xla/pjrt/proto/executable_metadata.pb.h"
 #include "xla/pjrt/proto/execute_options.pb.h"
 #include "xla/pjrt/utils.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/compiler.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/hlo_cost_analysis.h"

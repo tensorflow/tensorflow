@@ -45,7 +45,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/dynamic_slice_fusion.h"
 #include "xla/comparison_util.h"
 #include "xla/runtime/buffer_use.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/shape.h"

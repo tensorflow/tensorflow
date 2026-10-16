@@ -197,7 +197,7 @@ Useful logging and error messages
 
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/heap_simulator/heap_simulator.h"
+#include "xla/service/buffer_assignment/heap_simulator.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_value.h"
 

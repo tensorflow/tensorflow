@@ -53,7 +53,7 @@ limitations under the License.
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/backend.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/device_assignment.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/buffer_allocations.h"

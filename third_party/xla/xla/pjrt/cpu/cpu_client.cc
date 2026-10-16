@@ -101,7 +101,7 @@ limitations under the License.
 #include "xla/pjrt/utils.h"
 #include "xla/primitive_util.h"
 #include "xla/runtime/device_id.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/compiled_module.h"
 #include "xla/service/compiler.h"
 #include "xla/service/computation_layout.h"

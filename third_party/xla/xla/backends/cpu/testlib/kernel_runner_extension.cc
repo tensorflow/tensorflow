@@ -52,7 +52,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/runtime/work_group.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/cpu/fusion_wrapper.h"
 #include "xla/service/hlo_module_config.h"

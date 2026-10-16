@@ -33,7 +33,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
 #include "xla/backends/gpu/runtime/while_thunk.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"

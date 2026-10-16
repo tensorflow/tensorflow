@@ -1,0 +1,266 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
+# Description:
+#   XLA buffer assignment and heap simulator.
+
+load(
+    "//xla:xla.default.bzl",
+    "xla_cc_test",
+)
+load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility")
+load(
+    "//xla/tsl/platform:build_config.bzl",
+    "tf_proto_library",
+)
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
+
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility([":friends"]),
+    licenses = ["notice"],
+)
+
+package_group(
+    name = "friends",
+    includes = [
+        "//xla:friends",
+    ],
+)
+
+tf_proto_library(
+    name = "buffer_assignment_proto",
+    srcs = ["buffer_assignment.proto"],
+    make_default_target_header_only = True,
+    deps = [
+        "//xla:xla_data_proto",
+    ],
+)
+
+cc_library(
+    name = "allocation_block",
+    srcs = ["allocation_block.cc"],
+    hdrs = ["allocation_block.h"],
+    deps = [
+        "//xla/tsl/platform:logging",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "free_chunks_manager",
+    srcs = ["free_chunks_manager.cc"],
+    hdrs = ["free_chunks_manager.h"],
+    deps = [
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+    ],
+)
+
+xla_cc_test(
+    name = "free_chunks_manager_test",
+    srcs = ["free_chunks_manager_test.cc"],
+    deps = [
+        ":free_chunks_manager",
+        "//xla/tsl/platform:test_benchmark",
+        "//xla/tsl/platform:test_main",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
+    name = "heap_simulator",
+    srcs = ["heap_simulator.cc"],
+    hdrs = ["heap_simulator.h"],
+    deps = [
+        ":allocation_block",
+        ":free_chunks_manager",
+        "//xla:comparison_util",
+        "//xla:union_find",
+        "//xla:util",
+        "//xla/hlo/analysis:alias_info",
+        "//xla/hlo/analysis:hlo_alias_analysis",
+        "//xla/hlo/analysis:hlo_dataflow_analysis",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/utils:hlo_live_range",
+        "//xla/service:buffer_value",
+        "//xla/service:hlo_buffer",
+        "//xla/service:hlo_proto_cc",
+        "//xla/service:hlo_value",
+        "//xla/service:logical_buffer",
+        "//xla/service:time_utils",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/log:vlog_is_on",
+        "@com_google_absl//absl/numeric:bits",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@tsl//tsl/platform",
+    ] + if_google([
+        "//third_party/ortools/ortools/algorithms:multikey_radix_sort",
+    ]),
+)
+
+xla_cc_test(
+    name = "heap_simulator_test",
+    srcs = ["heap_simulator_test.cc"],
+    deps = [
+        ":allocation_block",
+        ":heap_simulator",
+        "//xla:comparison_util",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/analysis:alias_info",
+        "//xla/hlo/analysis:hlo_alias_analysis",
+        "//xla/hlo/analysis:hlo_dataflow_analysis",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/service:buffer_value",
+        "//xla/service:hlo_module_config",
+        "//xla/service:hlo_value",
+        "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_benchmark",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "buffer_assignment",
+    srcs = [
+        "buffer_assignment.cc",
+    ],
+    hdrs = [
+        "buffer_assignment.h",
+    ],
+    visibility = internal_visibility([
+        ":friends",
+        "//xla:native_custom_call_handler_allowlist",
+    ]),
+    deps = [
+        ":buffer_assignment_proto_cc",
+        ":heap_simulator",
+        "//xla:shape_util",
+        "//xla:status_macros",
+        "//xla:util",
+        "//xla/hlo/analysis:alias_info",
+        "//xla/hlo/analysis:hlo_alias_analysis",
+        "//xla/hlo/analysis:hlo_dataflow_analysis",
+        "//xla/hlo/analysis:hlo_ordering",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/utils:hlo_live_range",
+        "//xla/service:buffer_value",
+        "//xla/service:call_graph",
+        "//xla/service:hlo_buffer",
+        "//xla/service:hlo_proto_cc",
+        "//xla/service:hlo_value",
+        "//xla/service:logical_buffer",
+        "//xla/service/memory_space_assignment",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/util:sorted_range",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/functional:bind_front",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+        "@tsl//tsl/platform:numbers",
+    ],
+)
+
+xla_cc_test(
+    name = "buffer_assignment_test",
+    srcs = ["buffer_assignment_test.cc"],
+    deps = [
+        ":buffer_assignment",
+        ":buffer_assignment_proto_cc",
+        ":heap_simulator",
+        "//xla:comparison_util",
+        "//xla:debug_options_flags",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/analysis:alias_info",
+        "//xla/hlo/analysis:hlo_alias_analysis",
+        "//xla/hlo/analysis:hlo_dataflow_analysis",
+        "//xla/hlo/analysis:hlo_ordering",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/testlib:test",
+        "//xla/hlo/testlib:test_helpers",
+        "//xla/hlo/transforms/simplifiers:flatten_call_graph",
+        "//xla/hlo/transforms/simplifiers:hlo_memory_scheduler",
+        "//xla/service:buffer_value",
+        "//xla/service:call_graph",
+        "//xla/service:copy_insertion",
+        "//xla/service:cpu_plugin",
+        "//xla/service:hlo_buffer",
+        "//xla/service:hlo_module_config",
+        "//xla/service:hlo_proto_cc",
+        "//xla/service:hlo_value",
+        "//xla/service:logical_buffer",
+        "//xla/service/memory_space_assignment",
+        "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/platform:test_benchmark",
+        "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)

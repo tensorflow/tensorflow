@@ -31,7 +31,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/symmetric_memory.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/multicast_memory.h"

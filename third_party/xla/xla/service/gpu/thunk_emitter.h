@@ -39,7 +39,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment/buffer_assignment.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/gpu/gpu_hlo_ordering.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
