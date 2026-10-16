@@ -708,7 +708,7 @@ PartitionedHlo PartitionedHlo::ReshardNoCache(
         hlo_sharding_util::GroupShardingOnDims(target_v2, group_dims);
     auto partially_sharded = PerGroupSliceFromReplicated(
         hlo_, state_.partition_id, target_grouped.device_groups, group_dims,
-        target_grouped.group_dim_sizes, state_.b);
+        target_grouped.group_dim_sizes, state_.b, std::move(pad_value));
     partially_sharded->set_sharding(target);
     return PartitionedHlo(partially_sharded, base_shape(), state_);
   }
