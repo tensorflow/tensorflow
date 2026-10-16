@@ -300,15 +300,17 @@ struct FlashAttentionFunctor<CPUDevice, T> {
       dp_inverse_scale = one / (one - dropout_rate);
     }
 
-    // Shards over (batch, head) pairs, bh = b * H + h. The dropout mask is
-    // indexed by bh, matching the GPU kernels.
+    // Shards over (batch, head, query) rows, row = (b * H + h) * S_q + i;
+    // rows are independent. The dropout mask is indexed by bh = b * H + h,
+    // matching the GPU kernels.
     auto shard = [&](int64_t start, int64_t end) {
       std::vector<float> O_accum(D_v);
-      for (int64_t bh = start; bh < end; ++bh) {
+      for (int64_t row = start; row < end; ++row) {
+        const int64_t bh = row / S_q;
+        const int i = static_cast<int>(row - bh * S_q);
         const int64_t b = bh / H;
         const int64_t h = bh % H;
-        // --- Loop Query (i) ---
-        for (int i = 0; i < S_q; ++i) {
+        {
           float m_i = neg_inf;
           float l_i = zero;
 
@@ -371,16 +373,15 @@ struct FlashAttentionFunctor<CPUDevice, T> {
           for (int k = 0; k < D_v; ++k) {
             Out(b, i, h, k) = static_cast<T>(O_accum[k] * inv_l);
           }
-
-        }  // End Loop i
-      }  // End Loop bh
+        }
+      }  // End Loop row
     };
 
-    // estimate cost
+    // Cost of one query row.
     double compute_cycles =
-        static_cast<double>(S_q) * S_kv * (2.0 * D_qk + 2.0 * D_v + 10.0);
+        static_cast<double>(S_kv) * (2.0 * D_qk + 2.0 * D_v + 10.0);
     Eigen::TensorOpCost cost(0, 0, compute_cycles);
-    d.parallelFor(static_cast<int64_t>(B) * H, cost, shard);
+    d.parallelFor(static_cast<int64_t>(B) * H * S_q, cost, shard);
     return absl::OkStatus();
   }
 };
@@ -426,113 +427,170 @@ struct FlashAttentionGradFunctor<CPUDevice, T> {
       dp_inverse_scale = one / (one - dropout_rate);
     }
 
-    auto shard = [&](int64_t start, int64_t end) {
-      // dK and dV sum over all queries, so accumulate them in float and round
-      // to T once at the end; T = half/bfloat16 would lose most of the sum.
-      // Shards own whole (batch, head) pairs, bh = b * H + h, so these
-      // buffers are private.
-      std::vector<float> dQ_accum(D_k);
-      std::vector<float> dK_accum(static_cast<size_t>(S_kv) * D_k);
-      std::vector<float> dV_accum(static_cast<size_t>(S_kv) * D_v);
-      for (int64_t bh = start; bh < end; ++bh) {
-        const int64_t b = bh / H;
-        const int64_t h = bh % H;
-        std::fill(dK_accum.begin(), dK_accum.end(), zero);
-        std::fill(dV_accum.begin(), dV_accum.end(), zero);
-        for (int i = 0; i < S_q; ++i) {
-          float stats_val = Stats(b, h, i);
-          float D_i = zero;
-          for (int k = 0; k < D_v; ++k) {
-            D_i += static_cast<float>(dO(b, i, h, k)) *
-                   static_cast<float>(Out(b, i, h, k));
-          }
+    // D_i = dO_i . Out_i, the softmax-backward row term.
+    auto row_sum = [&](int64_t b, int64_t h, int i) {
+      float D_i = zero;
+      for (int k = 0; k < D_v; ++k) {
+        D_i += static_cast<float>(dO(b, i, h, k)) *
+               static_cast<float>(Out(b, i, h, k));
+      }
+      return D_i;
+    };
 
-          std::fill(dQ_accum.begin(), dQ_accum.end(), zero);
-          for (int j = 0; j < S_kv; ++j) {
-            if (causal_mask && (j > i)) {
-              continue;
-            }
+    // The dropped-and-rescaled attention weight P_ij (returned in *prob) and
+    // dS_ij for one (query i, key j) pair of the (b, h) sequence, bh = b * H +
+    // h. Callers skip pairs masked by causal_mask.
+    auto pair = [&](int64_t b, int64_t h, int64_t bh, int i, int j, float D_i,
+                    float stats_val, float *prob) {
+      float score = zero;
+      for (int k = 0; k < D_k; ++k) {
+        score += static_cast<float>(Q(b, i, h, k)) *
+                 static_cast<float>(K(b, j, h, k));
+      }
+      score *= scale;
+      const float prob_raw = std::exp(score - stats_val);
+      if (dropout_rate > 0.0f &&
+          get_random_float_cpu(seed, offset, bh, i, j, S_q, S_kv) <
+              dropout_rate) {
+        *prob = zero;
+        return -prob_raw * D_i * scale;
+      }
+      *prob = prob_raw * dp_inverse_scale;
+      // dP_ij = dO_i . V_j; dS = P_scaled * (dP - D / sigma) * scale
+      float dP_val = zero;
+      for (int k = 0; k < D_v; ++k) {
+        dP_val += static_cast<float>(dO(b, i, h, k)) *
+                  static_cast<float>(V(b, j, h, k));
+      }
+      return *prob * (dP_val - D_i / dp_inverse_scale) * scale;
+    };
 
-            // (a) Q * K^T
-            float score = zero;
-            for (int k = 0; k < D_k; ++k) {
-              score += static_cast<float>(Q(b, i, h, k)) *
-                       static_cast<float>(K(b, j, h, k));
-            }
-            score *= scale;
-
-            // (b) Softmax
-            float prob = std::exp(score - stats_val);
-
-            float prob_raw = prob;
-            bool is_dropped(false);
-
-            // (c) Dropout
-            if (dropout_rate > 0.0f) {
-              if (get_random_float_cpu(seed, offset, bh, i, j, S_q, S_kv) <
-                  dropout_rate) {
-                is_dropped = true;
-                prob = zero;
-              } else {
-                prob *= dp_inverse_scale;
-              }
-            }
-
-            float dS_val = zero;
-            if (is_dropped) {
-              dS_val = -prob_raw * D_i * scale;
-            } else {
-              // 1. dV (Accumulate)
+    const int64_t BH = static_cast<int64_t>(B) * H;
+    // dK and dV sum over all queries, so accumulate them in float and round
+    // to T once at the end; T = half/bfloat16 would lose most of the sum.
+    if (BH >= d.numThreads()) {
+      // Enough (batch, head) pairs to keep every thread busy: each shard owns
+      // whole pairs, so it can compute dQ, dK and dV in one pass with private
+      // dK/dV buffers.
+      auto shard = [&](int64_t start, int64_t end) {
+        std::vector<float> dQ_accum(D_k);
+        std::vector<float> dK_accum(static_cast<size_t>(S_kv) * D_k);
+        std::vector<float> dV_accum(static_cast<size_t>(S_kv) * D_v);
+        for (int64_t bh = start; bh < end; ++bh) {
+          const int64_t b = bh / H;
+          const int64_t h = bh % H;
+          std::fill(dK_accum.begin(), dK_accum.end(), zero);
+          std::fill(dV_accum.begin(), dV_accum.end(), zero);
+          for (int i = 0; i < S_q; ++i) {
+            const float stats_val = Stats(b, h, i);
+            const float D_i = row_sum(b, h, i);
+            std::fill(dQ_accum.begin(), dQ_accum.end(), zero);
+            for (int j = 0; j < S_kv; ++j) {
+              if (causal_mask && (j > i)) continue;
+              float prob;
+              const float dS_val = pair(b, h, bh, i, j, D_i, stats_val, &prob);
               float *dV_j = &dV_accum[static_cast<size_t>(j) * D_v];
               for (int k = 0; k < D_v; ++k) {
                 dV_j[k] += prob * static_cast<float>(dO(b, i, h, k));
               }
-
-              // 2. dP_val = dO_i . V_j
-              float dP_val = zero;
-              for (int k = 0; k < D_v; ++k) {
-                dP_val += static_cast<float>(dO(b, i, h, k)) *
-                          static_cast<float>(V(b, j, h, k));
+              float *dK_j = &dK_accum[static_cast<size_t>(j) * D_k];
+              for (int k = 0; k < D_k; ++k) {
+                dK_j[k] += dS_val * static_cast<float>(Q(b, i, h, k));
+                dQ_accum[k] += dS_val * static_cast<float>(K(b, j, h, k));
               }
-
-              // 3. dS = P_scaled * (dP - D / sigma) * scale
-              dS_val = prob * (dP_val - D_i / dp_inverse_scale) * scale;
             }
-
-            //  Update dK & Accumulate dQ (Merged) ---
-            float *dK_j = &dK_accum[static_cast<size_t>(j) * D_k];
             for (int k = 0; k < D_k; ++k) {
-              float val_Q = static_cast<float>(Q(b, i, h, k));
-              float val_K = static_cast<float>(K(b, j, h, k));
-
-              dK_j[k] += dS_val * val_Q;
-              dQ_accum[k] += dS_val * val_K;
+              dQ(b, i, h, k) = static_cast<T>(dQ_accum[k]);
             }
-
-          }  // End Loop j
-
-          for (int k = 0; k < D_k; ++k) {
-            dQ(b, i, h, k) = static_cast<T>(dQ_accum[k]);
           }
-        }  // End Loop i
-
-        for (int j = 0; j < S_kv; ++j) {
-          for (int k = 0; k < D_k; ++k) {
-            dK(b, j, h, k) =
-                static_cast<T>(dK_accum[static_cast<size_t>(j) * D_k + k]);
-          }
-          for (int k = 0; k < D_v; ++k) {
-            dV(b, j, h, k) =
-                static_cast<T>(dV_accum[static_cast<size_t>(j) * D_v + k]);
+          for (int j = 0; j < S_kv; ++j) {
+            for (int k = 0; k < D_k; ++k) {
+              dK(b, j, h, k) =
+                  static_cast<T>(dK_accum[static_cast<size_t>(j) * D_k + k]);
+            }
+            for (int k = 0; k < D_v; ++k) {
+              dV(b, j, h, k) =
+                  static_cast<T>(dV_accum[static_cast<size_t>(j) * D_v + k]);
+            }
           }
         }
-      }  // End Loop bh
-    };
+      };
+      const double compute_cycles =
+          static_cast<double>(S_q) * S_kv * (4.0 * D_k + 4.0 * D_v + 30.0);
+      d.parallelFor(BH, Eigen::TensorOpCost(0, 0, compute_cycles), shard);
+      return absl::OkStatus();
+    }
 
-    double compute_cycles =
-        static_cast<double>(S_q) * S_kv * (4.0 * D_k + 4.0 * D_v + 30.0);
-    Eigen::TensorOpCost cost(0, 0, compute_cycles);
-    d.parallelFor(static_cast<int64_t>(B) * H, cost, shard);
+    // Too few (batch, head) pairs for the thread pool: parallelize over
+    // sequence positions too. Shards writing dQ rows and shards writing dK/dV
+    // rows must not share accumulators, so this takes two passes over the
+    // pairs (recomputing P and dS), one over (bh, query) rows and one over
+    // (bh, key) rows. Both are deterministic.
+    std::vector<float> row_sums(static_cast<size_t>(BH) * S_q);
+    auto q_shard = [&](int64_t start, int64_t end) {
+      std::vector<float> dQ_accum(D_k);
+      for (int64_t row = start; row < end; ++row) {
+        const int64_t bh = row / S_q;
+        const int i = static_cast<int>(row - bh * S_q);
+        const int64_t b = bh / H;
+        const int64_t h = bh % H;
+        const float stats_val = Stats(b, h, i);
+        const float D_i = row_sum(b, h, i);
+        row_sums[row] = D_i;
+        std::fill(dQ_accum.begin(), dQ_accum.end(), zero);
+        for (int j = 0; j < S_kv; ++j) {
+          if (causal_mask && (j > i)) continue;
+          float prob;
+          const float dS_val = pair(b, h, bh, i, j, D_i, stats_val, &prob);
+          for (int k = 0; k < D_k; ++k) {
+            dQ_accum[k] += dS_val * static_cast<float>(K(b, j, h, k));
+          }
+        }
+        for (int k = 0; k < D_k; ++k) {
+          dQ(b, i, h, k) = static_cast<T>(dQ_accum[k]);
+        }
+      }
+    };
+    auto kv_shard = [&](int64_t start, int64_t end) {
+      std::vector<float> dK_accum(D_k);
+      std::vector<float> dV_accum(D_v);
+      for (int64_t row = start; row < end; ++row) {
+        const int64_t bh = row / S_kv;
+        const int j = static_cast<int>(row - bh * S_kv);
+        const int64_t b = bh / H;
+        const int64_t h = bh % H;
+        std::fill(dK_accum.begin(), dK_accum.end(), zero);
+        std::fill(dV_accum.begin(), dV_accum.end(), zero);
+        for (int i = causal_mask ? j : 0; i < S_q; ++i) {
+          float prob;
+          const float dS_val = pair(b, h, bh, i, j, row_sums[bh * S_q + i],
+                                    Stats(b, h, i), &prob);
+          for (int k = 0; k < D_v; ++k) {
+            dV_accum[k] += prob * static_cast<float>(dO(b, i, h, k));
+          }
+          for (int k = 0; k < D_k; ++k) {
+            dK_accum[k] += dS_val * static_cast<float>(Q(b, i, h, k));
+          }
+        }
+        for (int k = 0; k < D_k; ++k) {
+          dK(b, j, h, k) = static_cast<T>(dK_accum[k]);
+        }
+        for (int k = 0; k < D_v; ++k) {
+          dV(b, j, h, k) = static_cast<T>(dV_accum[k]);
+        }
+      }
+    };
+    // Cost of one dQ row (over all keys) and one dK/dV row (over all queries).
+    d.parallelFor(
+        BH * S_q,
+        Eigen::TensorOpCost(
+            0, 0, static_cast<double>(S_kv) * (3.0 * D_k + 2.0 * D_v + 25.0)),
+        q_shard);
+    d.parallelFor(
+        BH * S_kv,
+        Eigen::TensorOpCost(
+            0, 0, static_cast<double>(S_q) * (3.0 * D_k + 3.0 * D_v + 25.0)),
+        kv_shard);
     return absl::OkStatus();
   }
 };
