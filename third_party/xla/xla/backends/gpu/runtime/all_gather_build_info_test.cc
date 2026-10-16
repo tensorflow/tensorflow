@@ -249,6 +249,45 @@ TEST_F(BuildAllGatherInfoTest, SucceedsFor16MBOutput) {
                          Field(&AllGatherInfo::element_type, F32))));
 }
 
+TEST_F(BuildAllGatherInfoTest, VariadicChecksSizePerOperandAndUsesMaxElements) {
+  // Each operand's output is <= 16 MB (16 MB and 8 MB), while the combined
+  // output is 24 MB. Since each operand tile is processed sequentially, the
+  // byte limit applies per operand and `num_elements` is the maximum across
+  // operands.
+  constexpr absl::string_view kModuleStr = R"(
+  HloModule test
+  ENTRY test_computation {
+    param_0 = f32[2097152] parameter(0)
+    param_1 = f32[1048576] parameter(1)
+    ROOT all-gather = (f32[4194304], f32[2097152]) all-gather(param_0, param_1),
+        dimensions={0}, replica_groups={{0,1}}
+  }
+  )";
+  se::DeviceDescription device_info = TestGpuDeviceInfo::H100SXMDeviceInfo();
+  stream_executor::GpuTargetConfigProto target_config_proto;
+  *target_config_proto.mutable_gpu_device_info() = device_info.ToProto();
+  target_config_proto.mutable_gpu_device_info()
+      ->mutable_device_interconnect_info()
+      ->set_active_links(18);
+  target_config_proto.set_platform_name("CUDA");
+  ASSERT_OK_AND_ASSIGN(gpu::GpuTargetConfig target_config,
+                       gpu::GpuTargetConfig::FromProto(target_config_proto));
+  GpuTopology gpu_topology("platform_version", /*num_partitions=*/1,
+                           /*num_hosts_per_partition=*/1,
+                           /*num_devices_per_host=*/2, target_config);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleStr, 2));
+  const HloInstruction* hlo_instr =
+      HloHardwareIndependentTestBase::FindInstruction(module.get(),
+                                                      HloOpcode::kAllGather);
+  EXPECT_THAT(
+      BuildAllGatherInfo(gpu_topology, Cast<HloAllGatherInstruction>(hlo_instr),
+                         /*device_assignment=*/nullptr),
+      IsOkAndHolds(AllOf(Field(&AllGatherInfo::num_devices, 2),
+                         Field(&AllGatherInfo::num_elements, 2 * 1024 * 1024),
+                         Field(&AllGatherInfo::element_type, F32))));
+}
+
 TEST_F(BuildAllGatherInfoTest,
        CreateAllGatherKernelSpecMatchesAllReduceArgumentLayout) {
   constexpr absl::string_view kModuleStr = R"(

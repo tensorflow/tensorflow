@@ -22,6 +22,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/all_gather.h"
 #include "xla/backends/gpu/tests/collective_ops_e2e_test_base.h"
@@ -33,6 +34,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/platform/test.h"
@@ -818,6 +820,176 @@ INSTANTIATE_TEST_SUITE_P(
     [](const ::testing::TestParamInfo<PrimitiveType>& info) {
       return std::string(
           primitive_util::LowercasePrimitiveTypeName(info.param));
+    });
+
+struct VariadicAllGatherTestCase {
+  std::string name;
+  // Per-rank operand shapes.
+  std::vector<Shape> operand_shapes;
+  int64_t gather_dim;
+};
+
+class VariadicAllGatherTest
+    : public AllGatherTest,
+      public ::testing::WithParamInterface<VariadicAllGatherTestCase> {};
+
+TEST_P(VariadicAllGatherTest, TwoGpus) {
+  constexpr int32_t kNumReplicas = 2;
+  if (!CheckDeviceCount(kNumReplicas)) {
+    return;
+  }
+
+  const VariadicAllGatherTestCase& tc = GetParam();
+  const int64_t num_operands = tc.operand_shapes.size();
+
+  std::vector<Shape> output_shapes;
+  std::vector<std::string> param_lines;
+  std::vector<std::string> operand_names;
+  for (int64_t k = 0; k < num_operands; ++k) {
+    const Shape& in = tc.operand_shapes[k];
+    Shape out = in;
+    out.set_dimensions(tc.gather_dim,
+                       in.dimensions(tc.gather_dim) * kNumReplicas);
+    output_shapes.push_back(out);
+    param_lines.push_back(absl::StrFormat("param_%d = %s parameter(%d)", k,
+                                          ShapeUtil::HumanString(in), k));
+    operand_names.push_back(absl::StrFormat("param_%d", k));
+  }
+  const std::string module_str = absl::StrFormat(
+      R"(
+  HloModule test
+  ENTRY test_computation {
+    %s
+    ROOT all-gather = %s all-gather(%s), dimensions={%d},
+      replica_groups={{0,1}}
+  }
+  )",
+      absl::StrJoin(param_lines, "\n    "),
+      ShapeUtil::HumanString(ShapeUtil::MakeTupleShape(output_shapes)),
+      absl::StrJoin(operand_names, ", "), tc.gather_dim);
+  SCOPED_TRACE(module_str);
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(module_str, kNumReplicas));
+
+  // Rank r contributes the r-th slice of each expected output along the
+  // gather dimension.
+  std::vector<Literal> expected_outputs;
+  std::vector<std::vector<Literal>> inputs(kNumReplicas);
+  for (int64_t k = 0; k < num_operands; ++k) {
+    ASSERT_OK_AND_ASSIGN(Literal expected, MakeFakeLiteral(output_shapes[k]));
+    const int64_t per_rank = tc.operand_shapes[k].dimensions(tc.gather_dim);
+    for (int r = 0; r < kNumReplicas; ++r) {
+      std::vector<int64_t> start(output_shapes[k].dimensions().size(), 0);
+      std::vector<int64_t> limit(output_shapes[k].dimensions().begin(),
+                                 output_shapes[k].dimensions().end());
+      start[tc.gather_dim] = r * per_rank;
+      limit[tc.gather_dim] = (r + 1) * per_rank;
+      inputs[r].push_back(expected.Slice(start, limit));
+    }
+    expected_outputs.push_back(std::move(expected));
+  }
+  std::vector<std::vector<Literal*>> args(kNumReplicas);
+  for (int r = 0; r < kNumReplicas; ++r) {
+    for (Literal& input : inputs[r]) {
+      args[r].push_back(&input);
+    }
+  }
+
+  ASSERT_OK_AND_ASSIGN(ExecutionResult result,
+                       ExecuteReplicated(std::move(module), args));
+
+  VerifyOneShotAllGather(result.optimized_module);
+
+  Literal expected_tuple =
+      LiteralUtil::MakeTupleOwned(std::move(expected_outputs));
+  ASSERT_EQ(result.results.size(), kNumReplicas);
+  for (int i = 0; i < kNumReplicas; ++i) {
+    EXPECT_TRUE(LiteralTestUtil::Equal(expected_tuple, result.results[i]))
+        << "Mismatch at replica " << i;
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    VariadicAllGather, VariadicAllGatherTest,
+    ::testing::ValuesIn<VariadicAllGatherTestCase>({
+        {"TwoF32SameShape",
+         {ShapeUtil::MakeShape(F32, {256}), ShapeUtil::MakeShape(F32, {256})},
+         /*gather_dim=*/0},
+        {"TwoF32DifferentSizes",
+         {ShapeUtil::MakeShape(F32, {128}), ShapeUtil::MakeShape(F32, {64})},
+         /*gather_dim=*/0},
+        {"MixedTypesAndRanks",
+         {ShapeUtil::MakeShape(F32, {16, 32}), ShapeUtil::MakeShape(S32, {8})},
+         /*gather_dim=*/0},
+        {"ThreeOperands",
+         {ShapeUtil::MakeShape(F32, {64}), ShapeUtil::MakeShape(BF16, {128}),
+          ShapeUtil::MakeShape(S32, {32})},
+         /*gather_dim=*/0},
+        {"GatherDim1",
+         {ShapeUtil::MakeShape(F32, {4, 8}),
+          ShapeUtil::MakeShape(F32, {4, 16})},
+         /*gather_dim=*/1},
+        {"NonPowerOfTwoNonGatherDim",
+         {ShapeUtil::MakeShape(S32, {2, 7}), ShapeUtil::MakeShape(F32, {4, 5})},
+         /*gather_dim=*/0},
+        {"NonPowerOfTwoNonGatherDimLarge",
+         {ShapeUtil::MakeShape(S32, {2, 529}),
+          ShapeUtil::MakeShape(BF16, {1, 300})},
+         /*gather_dim=*/0},
+        {"Large",
+         {ShapeUtil::MakeShape(F32, {4096}),
+          ShapeUtil::MakeShape(BF16, {8192})},
+         /*gather_dim=*/0},
+        // blocks_per_peer > 1 with a different number of tiles per peer on
+        // each root (4 and 2) and a private non-gather dimension.
+        {"MixedTilesPerPeer",
+         {ShapeUtil::MakeShape(F32, {4, 2048}),
+          ShapeUtil::MakeShape(S32, {2, 1024})},
+         /*gather_dim=*/0},
+        // Regression test for schedule padding on variadic all-gather:
+        // - Output 0 (`f32[8,4096]` from `f32[4,4096]`) uses 8 blocks per peer.
+        // - Output 1 (`pred[4]` from `pred[2]`) only needs 2 blocks per peer,
+        //   so the remaining blocks per peer are padded out of bounds and must
+        //   be masked out.
+        {"PaddedSmallOutput",
+         {ShapeUtil::MakeShape(F32, {4, 4096}),
+          ShapeUtil::MakeShape(PRED, {2})},
+         /*gather_dim=*/0},
+        // Same with 4 tiles per peer on the small output and a non-power-of-two
+        // minor dimension, so masking covers both padding and partial tiles.
+        {"PaddedSmallOutputNonPowerOfTwo",
+         {ShapeUtil::MakeShape(F32, {4, 4096}),
+          ShapeUtil::MakeShape(S32, {2, 3})},
+         /*gather_dim=*/0},
+        // Real variadic all-gathers of the jit_generate decode step (operands
+        // grouped by source op).
+        {"JitGenerateStart2",
+         {ShapeUtil::MakeShape(F32, {2, 4096}), ShapeUtil::MakeShape(S32, {2})},
+         /*gather_dim=*/0},
+        {"JitGenerateStart3",
+         {ShapeUtil::MakeShape(S32, {2}), ShapeUtil::MakeShape(PRED, {2, 128}),
+          ShapeUtil::MakeShape(S32, {2, 256}), ShapeUtil::MakeShape(PRED, {2})},
+         /*gather_dim=*/0},
+        {"JitGenerateStart4",
+         {ShapeUtil::MakeShape(S32, {64, 32}),
+          ShapeUtil::MakeShape(F32, {64, 32}),
+          ShapeUtil::MakeShape(U32, {2, 2}), ShapeUtil::MakeShape(S32, {2, 4}),
+          ShapeUtil::MakeShape(U32, {2}),
+          ShapeUtil::MakeShape(U32, {2, 512, 2}),
+          ShapeUtil::MakeShape(S32, {2})},
+         /*gather_dim=*/0},
+        {"JitGenerateStart25",
+         {ShapeUtil::MakeShape(S32, {64, 8, 32}),
+          ShapeUtil::MakeShape(F32, {64, 8, 32})},
+         /*gather_dim=*/0},
+        {"JitGenerateStart28",
+         {ShapeUtil::MakeShape(S32, {2}), ShapeUtil::MakeShape(S32, {2, 8}),
+          ShapeUtil::MakeShape(S32, {2, 529})},
+         /*gather_dim=*/0},
+    }),
+    [](const ::testing::TestParamInfo<VariadicAllGatherTestCase>& info) {
+      return info.param.name;
     });
 
 }  // namespace

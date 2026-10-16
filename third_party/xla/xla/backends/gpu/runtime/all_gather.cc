@@ -44,13 +44,13 @@ limitations under the License.
 
 namespace xla::gpu {
 
-// A broader check for all-gather kernel support that verifies device, operand
-// count, replica group, gather dimension, and element-type constraints.
+// A broader check for all-gather kernel support that verifies device, replica
+// group, gather dimension, and element-type constraints.
 // Returns absl::OkStatus() if supported, or an absl::UnimplementedError
 // explaining why not.
 absl::Status IsAllGatherKernelSupported(
-    const se::DeviceDescription& device_info, int32_t num_operands,
-    int64_t num_devices, int64_t num_elements, int64_t per_rank_gather_dim_size,
+    const se::DeviceDescription& device_info, int64_t num_devices,
+    int64_t num_elements, int64_t per_rank_gather_dim_size,
     PrimitiveType element_type, bool is_local,
     const std::vector<ReplicaGroup>& replica_groups) {
   // Check if the device supports Triton collective codegen:
@@ -71,13 +71,6 @@ absl::Status IsAllGatherKernelSupported(
     return absl::UnimplementedError(
         absl::StrCat("Collective kernels are not supported on ",
                      rocm_cc->gfx_version(), "."));
-  }
-  // TODO(b/383125489): Support variadic arguments.
-  if (num_operands != 1) {
-    return absl::UnimplementedError(absl::StrFormat(
-        "Collective kernel is not supported for number of operands not equal "
-        "to 1. Got %d.",
-        num_operands));
   }
   if (replica_groups.empty()) {
     return absl::UnimplementedError(
@@ -136,7 +129,6 @@ absl::StatusOr<AllGatherInfo> BuildAllGatherInfo(
   }
   const int64_t num_devices =
       all_gather->device_list()->num_devices_per_group();
-  const int32_t num_operands = all_gather->operand_count();
   if (device_info.device_interconnect_info().active_links <= 0) {
     return absl::UnimplementedError(
         "Collective kernels are only supported on devices with NVLink/UALink "
@@ -152,8 +144,8 @@ absl::StatusOr<AllGatherInfo> BuildAllGatherInfo(
     const int64_t per_rank_gather_dim_size =
         operand->shape().dimensions(all_gather->all_gather_dimension());
     ABSL_RETURN_IF_ERROR(IsAllGatherKernelSupported(
-        device_info, num_operands, num_devices, operand_elements,
-        per_rank_gather_dim_size, operand->shape().element_type(), is_local,
+        device_info, num_devices, operand_elements, per_rank_gather_dim_size,
+        operand->shape().element_type(), is_local,
         all_gather->replica_groups()));
     num_elements = std::max(num_elements, operand_elements);
   }
