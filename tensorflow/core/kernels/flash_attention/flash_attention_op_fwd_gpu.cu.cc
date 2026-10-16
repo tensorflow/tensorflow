@@ -127,7 +127,8 @@ __global__ void FlashAttnFwdKernel(const T *__restrict__ Q,
           T *k_ptr = s_K + j * D_MAX;
 #pragma unroll
           for (int d = 0; d < D_MAX; ++d) {
-            score += static_cast<float>(q_ptr[d] * k_ptr[d]);
+            score +=
+                static_cast<float>(q_ptr[d]) * static_cast<float>(k_ptr[d]);
           }
           score *= scale;
           score_tmp[j] = score;

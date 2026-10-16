@@ -117,8 +117,8 @@ __global__ void FlashAttnBwdKernel_KV(
         if (q_offset < S_q) {
           const size_t out_row = row_base_q + static_cast<size_t>(q_offset) * H;
           for (int d = 0; d < D_v; ++d) {
-            dOsum_val += static_cast<float>(s_dO[r * D_MAX + d] *
-                                            Out[out_row * D_v + d]);
+            dOsum_val += static_cast<float>(s_dO[r * D_MAX + d]) *
+                         static_cast<float>(Out[out_row * D_v + d]);
           }
           stats_val = Stats[batch_offset_q + q_offset];
         }
@@ -144,7 +144,8 @@ __global__ void FlashAttnBwdKernel_KV(
 
           float score = ZEROF;
           for (int d = 0; d < D_qk; ++d) {
-            score += static_cast<float>(q_ptr[d] * k_ptr[d]);
+            score +=
+                static_cast<float>(q_ptr[d]) * static_cast<float>(k_ptr[d]);
           }
           float p_ij = Eigen::numext::exp(score * scale - s_Stats[i]);
           float dS = scale;
@@ -163,7 +164,8 @@ __global__ void FlashAttnBwdKernel_KV(
           if (!is_dropped) {
             float dP = ZEROF;
             for (int d = 0; d < D_v; ++d) {
-              dP += static_cast<float>(dO_ptr[d] * v_ptr[d]);
+              dP +=
+                  static_cast<float>(dO_ptr[d]) * static_cast<float>(v_ptr[d]);
             }
             dS *= p_ij * (dP - s_dOsum[i] / dp_inverse);
           }
@@ -263,7 +265,8 @@ __global__ void FlashAttnBwdKernel_Q(
     stats_val = Stats[q_idx];
     const size_t out_offset = q_row * D_v;
     for (int d = 0; d < D_v; ++d) {
-      dOsum += static_cast<float>(dO_ptr[d] * Out[out_offset + d]);
+      dOsum += static_cast<float>(dO_ptr[d]) *
+               static_cast<float>(Out[out_offset + d]);
     }
   }
 
@@ -294,7 +297,8 @@ __global__ void FlashAttnBwdKernel_Q(
 
           float score = ZEROF;
           for (int d = 0; d < D_qk; ++d) {
-            score += static_cast<float>(q_ptr[d] * k_ptr[d]);
+            score +=
+                static_cast<float>(q_ptr[d]) * static_cast<float>(k_ptr[d]);
           }
           float p_ij = Eigen::numext::exp(score * scale - stats_val);
           float dS = scale;
@@ -313,7 +317,8 @@ __global__ void FlashAttnBwdKernel_Q(
             T *v_ptr = s_V + j * D_MAX;
             float dP = ZEROF;
             for (int d = 0; d < D_v; ++d) {
-              dP += static_cast<float>(dO_ptr[d] * v_ptr[d]);
+              dP +=
+                  static_cast<float>(dO_ptr[d]) * static_cast<float>(v_ptr[d]);
             }
             dS *= p_ij * (dP - dOsum / dp_inverse);
           }
