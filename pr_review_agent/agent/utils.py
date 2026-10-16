@@ -83,6 +83,7 @@ def get_next_page_url(response: Any) -> str | None:
 def get_request(
     url: str,
     params: dict[str, Any] | None = None,
+    custom_headers: dict[str, str] | None = None,
 ) -> Any:
     """Executes a GitHub GET request, following pagination links if the response is a list."""
     if params is None:
@@ -92,17 +93,23 @@ def get_request(
     next_url: str | None = url
     current_params: dict[str, Any] | None = params
     visited_urls: set[str] = set()
+    req_headers = custom_headers if custom_headers is not None else headers
 
     while next_url and next_url not in visited_urls:
         visited_urls.add(next_url)
         response = requests.get(
             next_url,
-            headers=headers,
+            headers=req_headers,
             params=current_params,
             timeout=60,
         )
         if response.status_code == 401:
-            unauth_headers = {"Accept": "application/vnd.github.v3+json"}
+            accept_header = (
+                req_headers.get("Accept")
+                if isinstance(req_headers, dict)
+                else None
+            ) or "application/vnd.github.v3+json"
+            unauth_headers = {"Accept": accept_header}
             response = requests.get(
                 next_url,
                 headers=unauth_headers,

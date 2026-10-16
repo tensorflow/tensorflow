@@ -2190,6 +2190,147 @@ class TestSecurityHardening(unittest.TestCase):
         self.assertEqual(out_no_newline, "")
         self.assertLessEqual(len(out_no_newline), 5000)
 
+    @patch("agent.utils.requests.get")
+    def test_engineer_review_get_request_custom_headers_and_401_accept_retention(
+        self, mock_http_get
+    ):
+        """get_request forwards custom_headers across pages and retains custom Accept header on 401 retry."""
+        reactions_url = (
+            "https://api.github.com/repos/tensorflow/tensorflow/issues/128063/reactions"
+        )
+        custom_headers = {
+            "Authorization": "Bearer test-token",
+            "Accept": "application/vnd.github.squirrel-girl-preview+json",
+        }
+
+        # 1. Multi-page pagination with 401 retry on page 1 retains custom Accept header
+        unauth_page1 = MagicMock()
+        unauth_page1.status_code = 401
+
+        ok_page1 = MagicMock()
+        ok_page1.status_code = 200
+        ok_page1.links = {}
+        ok_page1.headers = {
+            "Link": (
+                '<https://api.github.com/repositories/45717250/issues/128063/reactions?per_page=100&page=2>; rel="next"'
+            )
+        }
+        ok_page1.json.return_value = [{"id": 1, "content": "eyes"}]
+
+        ok_page2 = MagicMock()
+        ok_page2.status_code = 200
+        ok_page2.links = {}
+        ok_page2.headers = {}
+        ok_page2.json.return_value = [{"id": 2, "content": "rocket"}]
+
+        mock_http_get.side_effect = [unauth_page1, ok_page1, ok_page2]
+
+        res = utils.get_request(
+            reactions_url,
+            params={"per_page": 100},
+            custom_headers=custom_headers,
+        )
+        self.assertEqual(
+            res,
+            [{"id": 1, "content": "eyes"}, {"id": 2, "content": "rocket"}],
+        )
+        self.assertEqual(mock_http_get.call_count, 3)
+        # First call uses custom_headers
+        self.assertEqual(
+            mock_http_get.call_args_list[0].kwargs.get("headers"),
+            custom_headers,
+        )
+        # 401 retry strips Authorization but retains the squirrel-girl-preview Accept header
+        self.assertEqual(
+            mock_http_get.call_args_list[1].kwargs.get("headers"),
+            {"Accept": "application/vnd.github.squirrel-girl-preview+json"},
+        )
+        # Subsequent page continues using custom_headers
+        self.assertEqual(
+            mock_http_get.call_args_list[2].kwargs.get("headers"),
+            custom_headers,
+        )
+
+    @patch("agent.main.requests.post")
+    @patch("agent.main.requests.delete")
+    @patch("agent.main.utils.get_request")
+    def test_engineer_review_clear_and_set_reaction_reuses_get_request_and_isolates_errors(
+        self, mock_get_request, mock_delete, mock_post
+    ):
+        """clear_and_set_reaction reuses utils.get_request, isolates per-reaction delete errors, handles fetch errors, and skips malformed entries."""
+        expected_url = (
+            "https://api.github.com/repos/tensorflow/tensorflow/issues/12345/reactions"
+        )
+        expected_headers = {
+            "Authorization": "Bearer test-token",
+            "Accept": "application/vnd.github.squirrel-girl-preview+json",
+        }
+
+        # 1. Delegates pagination to utils.get_request, skips malformed entries/users, and continues after individual delete failure
+        mock_get_request.return_value = [
+            None,
+            "malformed-entry",
+            123,
+            {"id": 10, "content": "eyes", "user": "unexpected-string-user"},
+            {"id": 11, "content": "eyes", "user": 42},
+            {"id": 12, "content": "eyes", "user": ["unexpected-list"]},
+            {"id": 13, "content": "eyes", "user": None},
+            {"id": None, "content": "eyes", "user": {"login": "github-actions[bot]"}},
+            {"id": 101, "content": "eyes", "user": {"login": "github-actions[bot]"}},
+            {"id": 102, "content": "eyes", "user": {"login": "human-user"}},
+            {"id": 103, "content": "eyes", "user": {"login": "github-actions[bot]"}},
+        ]
+        mock_delete.side_effect = [
+            requests.exceptions.Timeout("Delete timed out for 101"),
+            MagicMock(status_code=204),
+        ]
+
+        main.clear_and_set_reaction(12345, add_content="rocket")
+
+        mock_get_request.assert_called_once_with(
+            expected_url,
+            params={"per_page": 100},
+            custom_headers=expected_headers,
+        )
+        self.assertEqual(mock_delete.call_count, 2)
+        deleted_urls = [c.args[0] for c in mock_delete.call_args_list]
+        self.assertEqual(
+            deleted_urls,
+            [
+                "https://api.github.com/repos/tensorflow/tensorflow/issues/reactions/101",
+                "https://api.github.com/repos/tensorflow/tensorflow/issues/reactions/103",
+            ],
+        )
+        mock_post.assert_called_once_with(
+            expected_url,
+            headers=expected_headers,
+            json={"content": "rocket"},
+            timeout=10,
+        )
+
+        # 2. Reaction fetch failure in utils.get_request is caught and still posts the new reaction
+        mock_get_request.reset_mock()
+        mock_delete.reset_mock()
+        mock_post.reset_mock()
+
+        mock_get_request.side_effect = requests.exceptions.RequestException(
+            "502 Bad Gateway"
+        )
+        main.clear_and_set_reaction(12345, add_content="eyes")
+
+        mock_get_request.assert_called_once_with(
+            expected_url,
+            params={"per_page": 100},
+            custom_headers=expected_headers,
+        )
+        mock_delete.assert_not_called()
+        mock_post.assert_called_once_with(
+            expected_url,
+            headers=expected_headers,
+            json={"content": "eyes"},
+            timeout=10,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
