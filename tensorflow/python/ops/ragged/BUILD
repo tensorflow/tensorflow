@@ -906,6 +906,20 @@ py_test(
 )
 
 py_test(
+    name = "ragged_embedding_ops_test",
+    srcs = ["ragged_embedding_ops_test.py"],
+    strict_deps = True,
+    deps = [
+        ":ragged_embedding_ops",
+        ":ragged_factory_ops",
+        "//tensorflow/python/framework:sparse_tensor",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:variables",
+        "//tensorflow/python/platform:test",
+    ],
+)
+
+py_test(
     name = "ragged_range_op_test",
     srcs = ["ragged_range_op_test.py"],
     strict_deps = True,
