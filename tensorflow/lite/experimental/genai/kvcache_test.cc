@@ -237,5 +237,39 @@ TEST(SimpleCacheOp2Test, ShiftSlotsInCache) {
   ASSERT_EQ(m.Invoke(), kTfLiteError);
 }
 
+TEST(SimpleCacheOp2Test, PositionShiftOutOfBoundsTest) {
+  SimpleCacheOpModel m({TensorType_INT64, {2000}},
+                       {TensorType_FLOAT32, {1, 2000, 2, 3}},
+                       {TensorType_FLOAT32, {1, 2000, 2, 3}});
+
+  std::vector<int64_t> pos1(2000);
+  for (int i = 0; i < 2000; ++i) pos1[i] = i;
+  m.SetPosition(pos1);
+  std::vector<float> key(2000 * 6, 1.0f);
+  std::vector<float> val(2000 * 6, 1.0f);
+  m.SetKey(key);
+  m.SetValue(val);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  std::vector<int64_t> pos2(2000);
+  for (int i = 0; i < 2000; ++i) pos2[i] = 3100 + i;
+  m.SetPosition(pos2);
+  ASSERT_EQ(m.Invoke(), kTfLiteError);
+}
+
+TEST(SimpleCacheOp2Test, LargePositionOverflowTest) {
+  SimpleCacheOpModel m({TensorType_INT64, {2}},
+                       {TensorType_FLOAT32, {1, 2, 2, 3}},
+                       {TensorType_FLOAT32, {1, 2, 2, 3}});
+
+  m.SetPosition({0, 1});
+  m.SetKey({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+  m.SetValue({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  m.SetPosition({5000, 5001});
+  ASSERT_EQ(m.Invoke(), kTfLiteError);
+}
+
 }  // namespace
 }  // namespace tflite
