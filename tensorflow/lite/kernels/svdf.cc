@@ -90,36 +90,75 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* weights_time;
   TF_LITE_ENSURE_OK(
       context, GetInputSafe(context, node, kWeightsTimeTensor, &weights_time));
-
-  TF_LITE_ENSURE(context,
-                 input->type == kTfLiteFloat32 || input->type == kTfLiteInt8);
-
-  // Check all the parameters of tensor match within themselves and match the
-  // input configuration.
-  const int rank = params->rank;
-  const int batch_size = input->dims->data[0];
-  const int num_filters = weights_feature->dims->data[0];
-  TF_LITE_ENSURE(context, rank != 0);
-  TF_LITE_ENSURE_EQ(context, num_filters % rank, 0);
-  const int num_units = num_filters / rank;
-  const int memory_size = weights_time->dims->data[1];
-  TF_LITE_ENSURE_EQ(context, input->dims->data[1],
-                    weights_feature->dims->data[1]);
-  TF_LITE_ENSURE_EQ(context, weights_time->dims->data[0], num_filters);
-
   const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
-  if (bias) {
-    TF_LITE_ENSURE_EQ(context, bias->dims->data[0], num_units);
-  }
-
   const TfLiteTensor* state;
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kStateTensor, &state));
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
 
-  // Check the shape of input state tensors.
+  // Check rank of tensors before accessing dimensions.
+  TF_LITE_ENSURE_EQ(context, NumDimensions(input), 2);
+  TF_LITE_ENSURE_EQ(context, NumDimensions(weights_feature), 2);
+  TF_LITE_ENSURE_EQ(context, NumDimensions(weights_time), 2);
   TF_LITE_ENSURE_EQ(context, NumDimensions(state), 2);
+  if (bias) {
+    TF_LITE_ENSURE_EQ(context, NumDimensions(bias), 1);
+  }
+
+  TF_LITE_ENSURE(context,
+                 input->type == kTfLiteFloat32 || input->type == kTfLiteInt8);
+
+  const bool is_hybrid_op = IsHybridOp(input, weights_feature);
+  const bool is_full_integer = (input->type == kTfLiteInt8);
+
+  // Validate tensor types for each execution mode.
+  if (is_hybrid_op) {
+    TF_LITE_ENSURE_EQ(context, state->type, kTfLiteFloat32);
+    TF_LITE_ENSURE_EQ(context, output->type, kTfLiteFloat32);
+    TF_LITE_ENSURE(context, weights_time->type == kTfLiteInt8 ||
+                                weights_time->type == kTfLiteUInt8);
+    if (bias) {
+      TF_LITE_ENSURE_EQ(context, bias->type, kTfLiteFloat32);
+    }
+  } else if (is_full_integer) {
+    TF_LITE_ENSURE_EQ(context, weights_feature->type, kTfLiteInt8);
+    TF_LITE_ENSURE_EQ(context, weights_time->type, kTfLiteInt16);
+    TF_LITE_ENSURE_EQ(context, state->type, kTfLiteInt16);
+    TF_LITE_ENSURE_EQ(context, output->type, kTfLiteInt8);
+    if (bias) {
+      TF_LITE_ENSURE_EQ(context, bias->type, kTfLiteInt32);
+    }
+  } else {
+    // Float mode
+    TF_LITE_ENSURE_EQ(context, input->type, kTfLiteFloat32);
+    TF_LITE_ENSURE_EQ(context, weights_feature->type, kTfLiteFloat32);
+    TF_LITE_ENSURE_EQ(context, weights_time->type, kTfLiteFloat32);
+    TF_LITE_ENSURE_EQ(context, state->type, kTfLiteFloat32);
+    TF_LITE_ENSURE_EQ(context, output->type, kTfLiteFloat32);
+    if (bias) {
+      TF_LITE_ENSURE_EQ(context, bias->type, kTfLiteFloat32);
+    }
+  }
+
+  // Check all the parameters of tensor match within themselves and match the
+  // input configuration.
+  const int rank = params->rank;
+  const int batch_size = SizeOfDimension(input, 0);
+  const int num_filters = SizeOfDimension(weights_feature, 0);
+  TF_LITE_ENSURE(context, rank != 0);
+  TF_LITE_ENSURE_EQ(context, num_filters % rank, 0);
+  const int num_units = num_filters / rank;
+  const int memory_size = SizeOfDimension(weights_time, 1);
+  TF_LITE_ENSURE_EQ(context, SizeOfDimension(input, 1),
+                    SizeOfDimension(weights_feature, 1));
+  TF_LITE_ENSURE_EQ(context, SizeOfDimension(weights_time, 0), num_filters);
+
+  if (bias) {
+    TF_LITE_ENSURE_EQ(context, SizeOfDimension(bias, 0), num_units);
+  }
+
+  // Check the shape of input state tensors.
   TF_LITE_ENSURE_EQ(context, SizeOfDimension(state, 0), batch_size);
   TF_LITE_ENSURE_EQ(context, SizeOfDimension(state, 1),
                     memory_size * num_filters);
@@ -130,10 +169,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   output_size_array->data[1] = num_units;
   TF_LITE_ENSURE_OK(context,
                     context->ResizeTensor(context, output, output_size_array));
-
-  // The weights are of consistent type, so it suffices to check one.
-  const bool is_hybrid_op = IsHybridOp(input, weights_feature);
-  const bool is_full_integer = input->type == kTfLiteInt8;
 
   // Resize scratch.
   TfLiteIntArrayFree(node->temporaries);
