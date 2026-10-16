@@ -433,6 +433,8 @@ const StatTypeMap& GetStatTypeMap() {
        {"transaction_with_chip_core_id", kTransactionWithChipCoreId},
        {"program_counter", kProgramCounter},
        {"uses_ici", kUsesIci},
+       {"src_sync_flag_id", kSrcSyncFlagId},
+       {"dst_sync_flag_0_id", kDstSyncFlag0Id},
        {"dims", kDimensions},
        {"type", kType}});
   DCHECK_EQ(stat_type_map->size(), kNumStatTypes);
