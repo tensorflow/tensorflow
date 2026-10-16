@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/all_reduce.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <optional>
 #include <vector>
@@ -42,13 +41,11 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/device_assignment.h"
 #include "xla/service/gpu/gpu_constants.h"
-#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
-#include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -108,28 +105,9 @@ int64_t GetMaxSupportedAllReduceSizeBytes(AllReduceStrategy strategy) {
   }
 }
 
-absl::Status IsAllReduceKernelSupported(int64_t num_ranks, int64_t num_elements,
-                                        PrimitiveType element_type,
-                                        ReductionKind reduction_kind,
-                                        AllReduceStrategy all_reduce_strategy) {
-  if (!IsElementReductionSupported(element_type, reduction_kind)) {
-    return absl::UnimplementedError(absl::StrCat(
-        "Element type (",
-        primitive_util::LowercasePrimitiveTypeName(element_type),
-        ") and reduction kind (", absl::StrFormat("%v", reduction_kind),
-        ") combination is not supported."));
-  }
-  if (num_ranks > stream_executor::gpu::kMaxNumAllReduceInputPtrs) {
-    return absl::UnimplementedError(
-        absl::StrCat("AllReduce XLA implementation does not support more than ",
-                     se::gpu::kMaxNumAllReduceInputPtrs,
-                     " ranks. "
-                     " Required number of ranks: ",
-                     num_ranks));
-  }
-  return absl::OkStatus();
-}
-
+// A broader check overload for all-reduce kernel support.
+// Returns absl::OkStatus() if supported, or an error status detailing why
+// it is not supported.
 absl::Status IsAllReduceKernelSupported(
     const se::DeviceDescription& device_info,        //
     int32_t num_operands,                            //
@@ -204,8 +182,20 @@ absl::Status IsAllReduceKernelSupported(
     return absl::UnimplementedError(
         "Custom all-reduce strategy is only supported for small inputs.");
   }
-  return IsAllReduceKernelSupported(num_devices, num_elements, element_type,
-                                    *reduction_kind, strategy);
+  if (!IsElementReductionSupported(element_type, *reduction_kind)) {
+    return absl::UnimplementedError(absl::StrCat(
+        "Element type (",
+        primitive_util::LowercasePrimitiveTypeName(element_type),
+        ") and reduction kind (", absl::StrFormat("%v", *reduction_kind),
+        ") combination is not supported."));
+  }
+  if (num_devices > stream_executor::gpu::kMaxNumAllReduceInputPtrs) {
+    return absl::UnimplementedError(
+        absl::StrCat("AllReduce XLA implementation does not support more than ",
+                     se::gpu::kMaxNumAllReduceInputPtrs,
+                     " ranks. Required number of ranks: ", num_devices));
+  }
+  return absl::OkStatus();
 }
 
 absl::StatusOr<AllReduceInfo> BuildAllReduceInfo(

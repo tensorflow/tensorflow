@@ -25,7 +25,6 @@ limitations under the License.
 #include "xla/service/device_assignment.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu_topology.h"
-#include "xla/stream_executor/device_description.h"
 
 namespace xla::gpu {
 

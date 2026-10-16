@@ -18,10 +18,7 @@ limitations under the License.
 
 #include <array>
 #include <cstdint>
-#include <optional>
-#include <vector>
 
-#include "absl/base/nullability.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -32,7 +29,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
 #include "xla/types.h"  // IWYU pragma: keep
 #include "xla/xla_data.pb.h"
@@ -88,28 +84,6 @@ int64_t GetMaxSupportedAllReduceSizeBytes(se::gpu::AllReduceStrategy strategy);
 absl::StatusOr<CollectiveKernelSpec> CreateAllReduceKernelSpec(
     const HloInstruction* instr, const LaunchDimensions& launch_dimensions,
     SymmetricMemoryType scratch_memory_type);
-
-// Returns absl::OkStatus() if supported, or an error status detailing why
-// it is not supported.
-absl::Status IsAllReduceKernelSupported(
-    int64_t num_ranks, int64_t num_elements, PrimitiveType element_type,
-    ReductionKind reduction_kind,
-    se::gpu::AllReduceStrategy all_reduce_strategy);
-
-// A broader check overload for all-reduce kernel support.
-// Returns absl::OkStatus() if supported, or an error status detailing why
-// it is not supported.
-absl::Status IsAllReduceKernelSupported(
-    const se::DeviceDescription& device_info,        //
-    int32_t num_operands,                            //
-    std::optional<ReductionKind> reduction_kind,     //
-    int64_t num_devices,                             //
-    int64_t num_elements,                            //
-    PrimitiveType element_type,                      //
-    bool is_local,                                   //
-    bool is_multimem_enabled,                        //
-    const std::vector<ReplicaGroup>& replica_groups  //
-);
 
 // Constructs an AllReduceInfo object for the given all-reduce instruction.
 // Returns an error status if the all-reduce kernel is not supported.

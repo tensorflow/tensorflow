@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <array>
 #include <cstdint>
-#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -28,7 +27,6 @@ limitations under the License.
 #include "xla/service/device_assignment.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu_topology.h"
-#include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
@@ -57,23 +55,6 @@ struct AllGatherInfo {
   int64_t num_elements;
   PrimitiveType element_type;
 };
-
-// Returns absl::OkStatus() if the all-gather kernel is supported for the given
-// element type, per-rank input element count, and number of devices, or an
-// error status detailing why it is not supported.
-absl::Status IsAllGatherKernelSupported(int64_t num_elements,
-                                        int64_t num_devices,
-                                        PrimitiveType element_type);
-
-// A broader check for all-gather kernel support that verifies device, operand
-// count, replica group, gather dimension, and element-type constraints.
-// Returns absl::OkStatus() if supported, or an absl::UnimplementedError
-// explaining why not.
-absl::Status IsAllGatherKernelSupported(
-    const se::DeviceDescription& device_info, int32_t num_operands,
-    int64_t num_devices, int64_t num_elements, int64_t per_rank_gather_dim_size,
-    PrimitiveType element_type, bool is_local,
-    const std::vector<ReplicaGroup>& replica_groups);
 
 // Constructs an AllGatherInfo object for the given all-gather instruction.
 // Returns absl::UnimplementedError if the Triton all-gather kernel is not

@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/reduce_scatter.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <optional>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/log/log.h"
@@ -85,47 +85,47 @@ bool IsReduceScatterFlattenable(const HloReduceScatterInstruction* rs) {
   return false;
 }
 
-absl::StatusOr<ReduceScatterInfo> BuildReduceScatterInfo(
-    const GpuTopology& gpu_topology,
-    const HloReduceScatterInstruction* reduce_scatter,
-    const DeviceAssignment* device_assignment) {
-  if (!gpu_topology.has_gpu_target_config()) {
-    return absl::InvalidArgumentError(
-        "GpuTopology must have a target config to build ReduceScatterInfo.");
-  }
-  const se::DeviceDescription& device_info =
-      gpu_topology.gpu_target_config().device_description;
+// A broader check for reduce-scatter kernel support that verifies device,
+// operand count, replica group, reduction computation, element-type, layout,
+// and size constraints.
+// Returns absl::OkStatus() if supported, or an absl::UnimplementedError
+// explaining why not.
+absl::Status IsReduceScatterKernelSupported(
+    const se::DeviceDescription& device_info,        //
+    int32_t num_operands,                            //
+    std::optional<ReductionKind> reduction_kind,     //
+    int64_t num_devices,                             //
+    int64_t num_output_elements,                     //
+    PrimitiveType element_type,                      //
+    bool is_flattenable,                             //
+    bool is_local,                                   //
+    const std::vector<ReplicaGroup>& replica_groups  //
+) {
   if (!device_info.cuda_compute_capability().IsAtLeastHopper()) {
     return absl::UnimplementedError(absl::StrFormat(
         "Triton reduce-scatter requires CUDA compute capability >= 9.0. "
         "Got: %s.",
         device_info.gpu_compute_capability().ToString()));
   }
-  if (device_info.device_interconnect_info().active_links <= 0) {
-    return absl::UnimplementedError(
-        "Collective kernels are only supported on devices with NVLink "
-        "support.");
-  }
-  if (reduce_scatter->operand_count() != 1) {
+  // TODO(b/383125489): Support variadic arguments.
+  if (num_operands != 1) {
     return absl::UnimplementedError(
         "Reduce-scatter kernel only supports a single operand.");
   }
-  if (!reduce_scatter->device_list() ||
-      reduce_scatter->replica_groups().empty()) {
+  if (replica_groups.empty()) {
     return absl::UnimplementedError(
         "Replica groups must be explicitly provided for collective kernels.");
   }
-  const int64_t num_devices =
-      reduce_scatter->device_list()->num_devices_per_group();
+  if (!is_local) {
+    return absl::UnimplementedError(
+        "Cross-host symmetric memory collectives are not supported.");
+  }
   if (!llvm::has_single_bit(static_cast<uint64_t>(num_devices))) {
     return absl::UnimplementedError(absl::StrFormat(
         "Collective kernels are only supported for power of 2 number of "
         "devices. Got %d.",
         num_devices));
   }
-  const PrimitiveType element_type = reduce_scatter->shape().element_type();
-  const std::optional<ReductionKind> reduction_kind =
-      MatchReductionComputation(reduce_scatter->to_apply());
   if (!reduction_kind.has_value()) {
     return absl::UnimplementedError(
         "Unsupported reduction computation for the reduce-scatter kernel.");
@@ -141,32 +141,63 @@ absl::StatusOr<ReduceScatterInfo> BuildReduceScatterInfo(
         primitive_util::LowercasePrimitiveTypeName(element_type),
         *reduction_kind));
   }
-  if (!IsReduceScatterFlattenable(reduce_scatter)) {
+  if (!is_flattenable) {
     return absl::UnimplementedError(
         "Reduce-scatter kernel requires the scatter dimension to be the "
         "physically major-most non-trivial dimension and matching layouts.");
   }
-  if (ShapeUtil::ElementsIn(reduce_scatter->shape()) % num_devices != 0) {
+  if (num_output_elements % num_devices != 0) {
     return absl::UnimplementedError(
         "Reduce-scatter kernel requires the output element count to be "
         "divisible by the number of devices.");
   }
-  const int64_t input_bytes =
-      ShapeUtil::ByteSizeOf(reduce_scatter->operand(0)->shape());
+  const int64_t input_bytes = num_output_elements * num_devices *
+                              primitive_util::ByteWidth(element_type);
   if (input_bytes > kMaxReduceScatterSizeBytes) {
     return absl::UnimplementedError(
         "Custom reduce-scatter strategy is only supported for small inputs.");
   }
+  return absl::OkStatus();
+}
+
+absl::StatusOr<ReduceScatterInfo> BuildReduceScatterInfo(
+    const GpuTopology& gpu_topology,
+    const HloReduceScatterInstruction* reduce_scatter,
+    const DeviceAssignment* device_assignment) {
+  if (!gpu_topology.has_gpu_target_config()) {
+    return absl::InvalidArgumentError(
+        "GpuTopology must have a target config to build ReduceScatterInfo.");
+  }
+  const se::DeviceDescription& device_info =
+      gpu_topology.gpu_target_config().device_description;
+  if (!reduce_scatter->device_list()) {
+    return absl::UnimplementedError(
+        "Replica groups must be explicitly provided for collective kernels.");
+  }
+  const int64_t num_devices =
+      reduce_scatter->device_list()->num_devices_per_group();
+  const int32_t num_operands = reduce_scatter->operand_count();
+  const std::optional<ReductionKind> reduction_kind =
+      MatchReductionComputation(reduce_scatter->to_apply());
+  const PrimitiveType element_type = reduce_scatter->shape().element_type();
+  const int64_t num_output_elements =
+      ShapeUtil::ElementsIn(reduce_scatter->shape());
+  const bool is_flattenable = IsReduceScatterFlattenable(reduce_scatter);
+  if (device_info.device_interconnect_info().active_links <= 0) {
+    return absl::UnimplementedError(
+        "Collective kernels are only supported on devices with NVLink "
+        "support.");
+  }
   ABSL_ASSIGN_OR_RETURN(const bool is_local,
                    AreAllReplicasOnSameSlice(gpu_topology, *reduce_scatter,
                                              device_assignment));
-  if (!is_local) {
-    return absl::UnimplementedError(
-        "Cross-host symmetric memory collectives are not supported.");
-  }
+  ABSL_RETURN_IF_ERROR(IsReduceScatterKernelSupported(
+      device_info, num_operands, reduction_kind, num_devices,
+      num_output_elements, element_type, is_flattenable, is_local,
+      reduce_scatter->replica_groups()));
   return ReduceScatterInfo{
       /*.num_devices=*/num_devices,
-      /*.num_output_elements=*/ShapeUtil::ElementsIn(reduce_scatter->shape()),
+      /*.num_output_elements=*/num_output_elements,
   };
 }
 

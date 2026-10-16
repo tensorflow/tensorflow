@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/all_gather.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <vector>
 
@@ -31,44 +30,22 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
-#include "xla/service/collective_ops_utils.h"
 #include "xla/service/device_assignment.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/gpu/all_reduce_kernel.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 
-absl::Status IsAllGatherKernelSupported(int64_t num_elements,
-                                        int64_t num_devices,
-                                        PrimitiveType element_type) {
-  // Only types in kSupportedAllGatherTypes are allowed. Complex types, tokens,
-  // tuples, and exotic types (e.g. 4-bit, 8-bit floats) are not supported.
-  if (!absl::c_linear_search(kSupportedAllGatherTypes, element_type)) {
-    return absl::UnimplementedError(absl::StrFormat(
-        "Element type %s is not supported for the all-gather kernel. "
-        "Supported types are predicates, 8/16/32/64-bit integers, and "
-        "standard floating-point types; use NCCL/RCCL for other types.",
-        primitive_util::LowercasePrimitiveTypeName(element_type)));
-  }
-
-  const int64_t output_byte_size =
-      num_elements * num_devices * primitive_util::ByteWidth(element_type);
-  if (output_byte_size > kMaxAllGatherSizeBytes) {
-    return absl::UnimplementedError(
-        "Custom all-gather strategy is only supported for small outputs.");
-  }
-
-  return absl::OkStatus();
-}
-
+// A broader check for all-gather kernel support that verifies device, operand
+// count, replica group, gather dimension, and element-type constraints.
+// Returns absl::OkStatus() if supported, or an absl::UnimplementedError
+// explaining why not.
 absl::Status IsAllGatherKernelSupported(
     const se::DeviceDescription& device_info, int32_t num_operands,
     int64_t num_devices, int64_t num_elements, int64_t per_rank_gather_dim_size,
@@ -120,7 +97,24 @@ absl::Status IsAllGatherKernelSupported(
         "dimension to be a power of 2. Got %d.",
         per_rank_gather_dim_size));
   }
-  return IsAllGatherKernelSupported(num_elements, num_devices, element_type);
+  // Only types in kSupportedAllGatherTypes are allowed. Complex types, tokens,
+  // tuples, and exotic types (e.g. 4-bit, 8-bit floats) are not supported.
+  if (!absl::c_linear_search(kSupportedAllGatherTypes, element_type)) {
+    return absl::UnimplementedError(absl::StrFormat(
+        "Element type %s is not supported for the all-gather kernel. "
+        "Supported types are predicates, 8/16/32/64-bit integers, and "
+        "standard floating-point types; use NCCL/RCCL for other types.",
+        primitive_util::LowercasePrimitiveTypeName(element_type)));
+  }
+
+  const int64_t output_byte_size =
+      num_elements * num_devices * primitive_util::ByteWidth(element_type);
+  if (output_byte_size > kMaxAllGatherSizeBytes) {
+    return absl::UnimplementedError(
+        "Custom all-gather strategy is only supported for small outputs.");
+  }
+
+  return absl::OkStatus();
 }
 
 absl::StatusOr<AllGatherInfo> BuildAllGatherInfo(
