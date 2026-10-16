@@ -1292,7 +1292,7 @@ class TestSecurityHardening(unittest.TestCase):
 
     @patch("agent.main.requests.post")
     @patch("agent.main.requests.delete")
-    @patch("agent.main.requests.get")
+    @patch("agent.utils.requests.get")
     def test_engineer_review_clear_and_set_reaction_deletes_only_bot_eyes(
         self, mock_get, mock_delete, mock_post
     ):
@@ -1329,7 +1329,7 @@ class TestSecurityHardening(unittest.TestCase):
         self.assertEqual(mock_get.call_args.kwargs.get("params"), {"per_page": 100})
         mock_delete.assert_called_once()
         deleted_url = mock_delete.call_args[0][0]
-        self.assertTrue(deleted_url.endswith("/issues/reactions/102"))
+        self.assertTrue(deleted_url.endswith("/issues/12345/reactions/102"))
         mock_post.assert_called_once()
         self.assertEqual(mock_post.call_args.kwargs.get("json"), {"content": "rocket"})
 
@@ -1614,7 +1614,7 @@ class TestSecurityHardening(unittest.TestCase):
 
     @patch("agent.main.requests.post")
     @patch("agent.main.requests.delete")
-    @patch("agent.main.requests.get")
+    @patch("agent.utils.requests.get")
     def test_engineer_review_reactions_pagination_and_error_handling(
         self, mock_get, mock_delete, mock_post
     ):
@@ -1672,8 +1672,8 @@ class TestSecurityHardening(unittest.TestCase):
         self.assertEqual(
             deleted_urls,
             [
-                "https://api.github.com/repos/tensorflow/tensorflow/issues/reactions/105",
-                "https://api.github.com/repos/tensorflow/tensorflow/issues/reactions/205",
+                "https://api.github.com/repos/tensorflow/tensorflow/issues/99/reactions/105",
+                "https://api.github.com/repos/tensorflow/tensorflow/issues/99/reactions/205",
             ],
         )
         mock_post.assert_called_once()
@@ -1685,6 +1685,9 @@ class TestSecurityHardening(unittest.TestCase):
 
         err_page = MagicMock()
         err_page.status_code = 502
+        err_page.raise_for_status.side_effect = requests.exceptions.HTTPError(
+            "502 Bad Gateway"
+        )
         mock_get.side_effect = [err_page]
         main.clear_and_set_reaction(99, add_content="eyes")
         mock_get.assert_called_once()
@@ -1867,6 +1870,33 @@ class TestSecurityHardening(unittest.TestCase):
 
         bad_link_res = utils.get_request(reviews_url)
         self.assertEqual(bad_link_res, [{"id": 2}])
+        mock_http_get.assert_called_once()
+
+        # Lookalike host prefix (https://api.github.com.example/...) rejected in both Link header and response.links
+        mock_http_get.reset_mock()
+        lookalike_header_page = MagicMock()
+        lookalike_header_page.status_code = 200
+        lookalike_header_page.links = {}
+        lookalike_header_page.headers = {
+            "Link": '<https://api.github.com.example/reviews?page=2>; rel="next"'
+        }
+        lookalike_header_page.json.return_value = [{"id": 3}]
+        self.assertIsNone(utils.get_next_page_url(lookalike_header_page))
+        mock_http_get.side_effect = [lookalike_header_page]
+        self.assertEqual(utils.get_request(reviews_url), [{"id": 3}])
+        mock_http_get.assert_called_once()
+
+        mock_http_get.reset_mock()
+        lookalike_links_page = MagicMock()
+        lookalike_links_page.status_code = 200
+        lookalike_links_page.links = {
+            "next": {"url": "https://api.github.com.example/reviews?page=2"}
+        }
+        lookalike_links_page.headers = {}
+        lookalike_links_page.json.return_value = [{"id": 4}]
+        self.assertIsNone(utils.get_next_page_url(lookalike_links_page))
+        mock_http_get.side_effect = [lookalike_links_page]
+        self.assertEqual(utils.get_request(reviews_url), [{"id": 4}])
         mock_http_get.assert_called_once()
 
         # 5. API / HTTP error on later page raises RequestException in get_request and returns None from has_agent_reviewed_commit
@@ -2266,7 +2296,7 @@ class TestSecurityHardening(unittest.TestCase):
             "Accept": "application/vnd.github.squirrel-girl-preview+json",
         }
 
-        # 1. Delegates pagination to utils.get_request, skips malformed entries/users, and continues after individual delete failure
+        # 1. Delegates pagination to utils.get_request, skips malformed entries/users, and continues after individual delete failure (timeout or HTTP error)
         mock_get_request.return_value = [
             None,
             "malformed-entry",
@@ -2279,34 +2309,65 @@ class TestSecurityHardening(unittest.TestCase):
             {"id": 101, "content": "eyes", "user": {"login": "github-actions[bot]"}},
             {"id": 102, "content": "eyes", "user": {"login": "human-user"}},
             {"id": 103, "content": "eyes", "user": {"login": "github-actions[bot]"}},
+            {"id": 104, "content": "eyes", "user": {"login": "github-actions[bot]"}},
         ]
+        http_err_delete = MagicMock(status_code=500)
+        http_err_delete.raise_for_status.side_effect = (
+            requests.exceptions.HTTPError("500 Server Error on delete 103")
+        )
+        ok_delete = MagicMock(status_code=204)
         mock_delete.side_effect = [
             requests.exceptions.Timeout("Delete timed out for 101"),
-            MagicMock(status_code=204),
+            http_err_delete,
+            ok_delete,
         ]
+        ok_post = MagicMock(status_code=201)
+        mock_post.return_value = ok_post
 
-        main.clear_and_set_reaction(12345, add_content="rocket")
+        with patch("builtins.print") as mock_print:
+            main.clear_and_set_reaction(12345, add_content="rocket")
+            step1_printed = "\n".join(
+                str(c.args[0]) for c in mock_print.call_args_list if c.args
+            )
+            self.assertIn(
+                "Failed to clear stale reaction 101: Delete timed out for 101",
+                step1_printed,
+            )
+            self.assertIn(
+                "Failed to clear stale reaction 103: 500 Server Error on delete 103",
+                step1_printed,
+            )
+            self.assertNotIn("Cleared stale 'eyes' reaction ID: 103", step1_printed)
+            self.assertIn("Cleared stale 'eyes' reaction ID: 104", step1_printed)
+            self.assertIn(
+                "Successfully posted final state reaction: rocket",
+                step1_printed,
+            )
 
         mock_get_request.assert_called_once_with(
             expected_url,
             params={"per_page": 100},
             custom_headers=expected_headers,
         )
-        self.assertEqual(mock_delete.call_count, 2)
+        self.assertEqual(mock_delete.call_count, 3)
         deleted_urls = [c.args[0] for c in mock_delete.call_args_list]
         self.assertEqual(
             deleted_urls,
             [
-                "https://api.github.com/repos/tensorflow/tensorflow/issues/reactions/101",
-                "https://api.github.com/repos/tensorflow/tensorflow/issues/reactions/103",
+                "https://api.github.com/repos/tensorflow/tensorflow/issues/12345/reactions/101",
+                "https://api.github.com/repos/tensorflow/tensorflow/issues/12345/reactions/103",
+                "https://api.github.com/repos/tensorflow/tensorflow/issues/12345/reactions/104",
             ],
         )
+        http_err_delete.raise_for_status.assert_called_once()
+        ok_delete.raise_for_status.assert_called_once()
         mock_post.assert_called_once_with(
             expected_url,
             headers=expected_headers,
             json={"content": "rocket"},
             timeout=10,
         )
+        ok_post.raise_for_status.assert_called_once()
 
         # 2. Reaction fetch failure in utils.get_request is caught and still posts the new reaction
         mock_get_request.reset_mock()
@@ -2330,6 +2391,30 @@ class TestSecurityHardening(unittest.TestCase):
             json={"content": "eyes"},
             timeout=10,
         )
+
+        # 3. POST HTTP error raises via raise_for_status() and does not log false-positive success
+        mock_get_request.reset_mock()
+        mock_delete.reset_mock()
+        mock_post.reset_mock()
+
+        mock_get_request.side_effect = None
+        mock_get_request.return_value = []
+        failed_post = MagicMock(status_code=503)
+        failed_post.raise_for_status.side_effect = (
+            requests.exceptions.HTTPError("503 Service Unavailable")
+        )
+        mock_post.return_value = failed_post
+        with patch("builtins.print") as mock_print:
+            main.clear_and_set_reaction(12345, add_content="rocket")
+            printed = "\n".join(
+                str(c.args[0]) for c in mock_print.call_args_list if c.args
+            )
+            self.assertNotIn("Successfully posted final state reaction", printed)
+            self.assertIn(
+                "Failed to balance PR reaction status lifecycle: 503 Service Unavailable",
+                printed,
+            )
+        failed_post.raise_for_status.assert_called_once()
 
 
 if __name__ == "__main__":

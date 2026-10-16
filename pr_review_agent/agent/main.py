@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-# pylint: disable=bad-indentation,line-too-long,unused-import
+# pylint: disable=bad-indentation,line-too-long
 
 from __future__ import annotations
 
@@ -28,18 +28,13 @@ from agent import settings as settings_mod
 from agent import utils
 from agent.settings import OWNER, REPO, PULL_REQUEST_NUMBER, PR_HEAD_SHA, GITHUB_BASE_URL
 from agent.utils import (
-    call_agent_async,
     has_agent_reviewed_commit,
     parse_number_string,
     run_pylint_on_changed_files,
 )
 
 from google.adk.cli.utils import logs
-from google.adk.runners import InMemoryRunner
 from google.genai.errors import APIError, ClientError, ServerError
-
-APP_NAME = "tensorflow_pr_review_app"
-USER_ID = "tensorflow_pr_review_user"
 
 logs.setup_adk_logger(level=logging.WARNING)
 
@@ -118,7 +113,7 @@ def clear_and_set_reaction(pr_number: int, add_content: str = "eyes"):
             reactions_list = utils.get_request(
                 url, params={"per_page": 100}, custom_headers=headers
             )
-        except Exception as e:
+        except requests.exceptions.RequestException as e:
             print(f"Warning: Failed to fetch existing reactions: {e}")
             reactions_list = []
 
@@ -140,15 +135,24 @@ def clear_and_set_reaction(pr_number: int, add_content: str = "eyes"):
                     reaction_id = reaction.get("id")
                     if reaction_id is None:
                         continue
-                    delete_url = f"{GITHUB_BASE_URL}/repos/{OWNER}/{REPO}/issues/reactions/{reaction_id}"
+                    delete_url = (
+                        f"{GITHUB_BASE_URL}/repos/{OWNER}/{REPO}/issues/"
+                        f"{pr_number}/reactions/{reaction_id}"
+                    )
                     try:
-                        requests.delete(delete_url, headers=headers, timeout=10)
+                        delete_resp = requests.delete(
+                            delete_url, headers=headers, timeout=10
+                        )
+                        delete_resp.raise_for_status()
                         print(f"Cleared stale 'eyes' reaction ID: {reaction_id}")
-                    except Exception as e:
+                    except requests.exceptions.RequestException as e:
                         print(f"Failed to clear stale reaction {reaction_id}: {e}")
 
         # Step 2: Post the fresh structural reaction status
-        requests.post(url, headers=headers, json={"content": add_content}, timeout=10)
+        post_resp = requests.post(
+            url, headers=headers, json={"content": add_content}, timeout=10
+        )
+        post_resp.raise_for_status()
         print(f"Successfully posted final state reaction: {add_content}")
     except Exception as e:
         print(f"Failed to balance PR reaction status lifecycle: {e}")
@@ -310,8 +314,6 @@ async def main():
                     f"Attempting alternative fallback..."
                 )
                 continue
-            raise e
-        except Exception as e:
             raise e
 
     error_msg = (

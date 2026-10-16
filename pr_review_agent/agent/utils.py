@@ -62,12 +62,13 @@ def run_graphql_query(query: str, variables: dict[str, Any]) -> dict[str, Any]:
 
 def get_next_page_url(response: Any) -> str | None:
     """Extracts the next pagination URL from a GitHub API response if present."""
+    base_prefix = GITHUB_BASE_URL.rstrip("/") + "/"
     links = getattr(response, "links", None)
     if isinstance(links, dict):
         next_entry = links.get("next")
         if isinstance(next_entry, dict):
             candidate = next_entry.get("url")
-            if isinstance(candidate, str) and candidate.startswith(GITHUB_BASE_URL):
+            if isinstance(candidate, str) and candidate.startswith(base_prefix):
                 return candidate
 
     resp_headers = getattr(response, "headers", None)
@@ -75,7 +76,7 @@ def get_next_page_url(response: Any) -> str | None:
         link_header = resp_headers.get("Link") or resp_headers.get("link")
         if isinstance(link_header, str):
             m = re.search(r'<([^>]+)>;\s*rel="next"', link_header)
-            if m and m.group(1).startswith(GITHUB_BASE_URL):
+            if m and m.group(1).startswith(base_prefix):
                 return m.group(1)
     return None
 

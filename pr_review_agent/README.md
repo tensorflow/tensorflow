@@ -12,9 +12,9 @@ The TensorFlow PR Review Agent evaluates pull request diffs and modified files a
 ## High-Level Workflow
 
 1. **Trigger**: `.github/workflows/pr_review.yml` runs on `pull_request_target` (`types: [labeled]`) when the applied label is `Agent Review`.
-2. **Reaction Status (`eyes`)**: `clear_and_set_reaction` in `agent/main.py` removes any existing `eyes` reactions on the PR issue thread and posts an `eyes` reaction while processing.
+2. **Reaction Status (`eyes`)**: `clear_and_set_reaction` in `agent/main.py` removes any existing `eyes` reactions posted by `github-actions[bot]` on the PR issue thread and posts an `eyes` reaction while processing.
 3. **PR Metadata & Diff Retrieval**: `get_pull_request_details` queries the GitHub GraphQL API (with a REST API fallback) for the configured `PULL_REQUEST_NUMBER` metadata, up to 100 changed files, and the unified diff. The diff is annotated with explicit right-side (`[L...]`) and left-side (`[LEFT L...]`) line numbers and capped at 30,000 characters.
-4. **Labeled Commit BindingCheck**: `main.py` compares `PR_HEAD_SHA` (`github.event.pull_request.head.sha`) against the live PR `headRefOid`. If `PR_HEAD_SHA` is missing/invalid or does not match `headRefOid`, the agent logs the SHA mismatch and aborts immediately before running Pylint, invoking Gemini, or posting a review.
+4. **Labeled Commit Binding Check**: `main.py` compares `PR_HEAD_SHA` (`github.event.pull_request.head.sha`) against the live PR `headRefOid`. If `PR_HEAD_SHA` is missing/invalid or does not match `headRefOid`, the agent logs the SHA mismatch and aborts immediately before running Pylint, invoking Gemini, or posting a review.
 5. **Commit Idempotency Check**: `has_agent_reviewed_commit` checks whether the verified commit SHA (`verified_head_sha`) already has a review authored by `github-actions[bot]` with a matching `commit_id` and HTML commit marker. If so, the agent skips analysis, posts a `rocket` reaction, and exits.
 6. **Deterministic Categorization**: `classify_pr_with_scoring` classifies the PR into one of 13 categories (`Documentation`, `Test-only`, `Build / CI`, `TensorFlow Lite`, `XLA`, `Keras`, `API change`, `oneDNN / MKL`, `Bug fix`, `Feature`, `Refactor`, `Performance`, or `General TensorFlow`) using weighted rules over modified file paths, change types, diff patterns, and PR title/body keywords. `get_focus_skip_areas` maps the category to specific `Focus Areas` and `Skip Areas`.
 7. **Pylint Static Analysis**: `run_pylint_on_changed_files` runs once on modified Python files at `verified_head_sha` and collects diff-filtered diagnostics.
@@ -62,7 +62,7 @@ During execution (`agent/main.py`):
 ### Permissions (`.github/workflows/pr_review.yml`)
 - `contents: read` — Checkout the base repository and fetch the PR head commit object.
 - `pull-requests: write` — Submit pull request reviews and inline review comments via `/repos/{OWNER}/{REPO}/pulls/{pr_number}/reviews`.
-- `issues: write` — List existing reactions, delete stale `eyes` reactions, and post `eyes` / `rocket` status reactions on the PR issue thread (`/repos/{OWNER}/{REPO}/issues/{pr_number}/reactions` and `/repos/{OWNER}/{REPO}/issues/reactions/{reaction_id}`) via `clear_and_set_reaction`. The active workflow does not create issue comments.
+- `issues: write` — List existing reactions, delete stale `eyes` reactions, and post `eyes` / `rocket` status reactions on the PR issue thread (`/repos/{OWNER}/{REPO}/issues/{pr_number}/reactions` and `/repos/{OWNER}/{REPO}/issues/{pr_number}/reactions/{reaction_id}`) via `clear_and_set_reaction`. The active workflow does not create issue comments.
 
 ### API Key Handling (`API_NEEDS_REVIEW`)
 - The Gemini API key is stored in the GitHub Actions secret `API_NEEDS_REVIEW` and injected into the workflow step as the `GEMINI_API_KEY` environment variable:
@@ -112,6 +112,7 @@ Unit tests are provided in `pr_review_agent/test_idempotency.py` and cover:
 - Commit-level idempotency (`TestCommitIdempotency`)
 - Diff line extraction and Pylint integration/filtering (`TestPylintIntegration`)
 - Gemini model pool fallback behavior (`TestModelFallback`)
+- Security hardening and regression checks (`TestSecurityHardening`)
 
 Run the test suite from `pr_review_agent/`:
 ```bash
