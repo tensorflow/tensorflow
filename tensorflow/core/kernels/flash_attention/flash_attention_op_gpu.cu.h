@@ -18,6 +18,7 @@ limitations under the License.
 #if GOOGLE_CUDA
 #define EIGEN_USE_GPU
 
+#include <algorithm>
 #include <cstddef>
 #include <initializer_list>
 #include <utility>
@@ -29,7 +30,6 @@ limitations under the License.
 
 namespace tensorflow::functor {
 
-inline constexpr float EPSF = 1e-6f;
 inline constexpr float ZEROF = 0.0f;
 inline constexpr float NEGINF = -1e9f;
 
@@ -47,6 +47,26 @@ inline absl::Status ZeroOutputs(
     }
   }
   return absl::OkStatus();
+}
+
+template <typename T>
+__global__ void FillKernel(T *__restrict__ ptr, size_t n, T value) {
+  for (size_t i = blockIdx.x * size_t(blockDim.x) + threadIdx.x; i < n;
+       i += size_t(blockDim.x) * gridDim.x) {
+    ptr[i] = value;
+  }
+}
+
+// Sets n floats at ptr to value on the device's stream (cudaMemset can only
+// set bytes).
+inline absl::Status FillFloats(const Eigen::GpuDevice &d, float *ptr, size_t n,
+                               float value) {
+  if (n == 0) return absl::OkStatus();
+  constexpr int kThreads = 256;
+  const int blocks =
+      static_cast<int>(std::min<size_t>((n + kThreads - 1) / kThreads, 4096));
+  return GpuLaunchKernel(FillKernel<float>, blocks, kThreads, 0, d.stream(),
+                         ptr, n, value);
 }
 
 __device__ __forceinline__ float get_random_float_v2(uint64_t global_idx,
