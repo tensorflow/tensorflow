@@ -38,6 +38,9 @@ class HloHostDeviceTypeCallWrapper : public HloModulePass {
     // Function that clears the device type from the backend config.
     std::function<absl::Status(HloInstruction*)>
         clear_backend_config_device_type;
+    // If true, only inline calls that are annotated as host compute or contain
+    // host compute instructions.
+    bool inline_only_host_computations = false;
   };
 
   explicit HloHostDeviceTypeCallWrapper(const Options& options)

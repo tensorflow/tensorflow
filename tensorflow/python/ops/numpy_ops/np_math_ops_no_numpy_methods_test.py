@@ -54,6 +54,7 @@ _PROMOTING_UNARY_OPS = [
     ('sinc', np_math_ops.sinc, np.sinc),
     ('exp2', np_math_ops.exp2, np.exp2),
     ('deg2rad', np_math_ops.deg2rad, np.deg2rad),
+    ('rad2deg', np_math_ops.rad2deg, np.rad2deg),
     ('fix', np_math_ops.fix, np.fix),
     ('isnan', np_math_ops.isnan, np.isnan),
     ('isfinite', np_math_ops.isfinite, np.isfinite),

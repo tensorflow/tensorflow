@@ -526,9 +526,9 @@ def copy(a):
 
 
 def _maybe_promote_to_int(a):
-  if dtypes.as_dtype(a.dtype).is_integer:
-    # If a is an integer type and its precision is less than that of `int`,
-    # the output type will be `int`.
+  if dtypes.as_dtype(a.dtype).is_integer or a.dtype == dtypes.bool:
+    # If a is a bool or an integer type whose precision is less than that of
+    # `int`, the output type will be `int`.
     a_numpy_dtype = a.dtype.as_numpy_dtype
     output_type = np.promote_types(a_numpy_dtype, int)
     if output_type != a_numpy_dtype:
@@ -831,7 +831,7 @@ def var(a, axis=None, dtype=None, out=None, ddof=0, keepdims=None):  # pylint: d
       )
 
       if axis is None:
-        n = array_ops.size(input_tensor)
+        n = array_ops.size(input_tensor, out_type=dtypes.int64)
       else:
         # axis can be an int or a sequence of ints.
         if isinstance(axis, (int, np.integer)):
@@ -854,9 +854,25 @@ def var(a, axis=None, dtype=None, out=None, ddof=0, keepdims=None):  # pylint: d
               axis < 0, axis + array_ops.rank(input_tensor), axis
           )
         n = math_ops.reduce_prod(
-            array_ops.gather(array_ops.shape(input_tensor), axis)
+            array_ops.gather(
+                array_ops.shape(input_tensor, out_type=dtypes.int64), axis
+            )
         )
-      n = math_ops.cast(n - ddof, squared_deviations.dtype)
+      # NumPy clamps the degrees-of-freedom denominator at 0 (and emits a
+      # "Degrees of freedom <= 0" RuntimeWarning) when ddof >= n, rather than
+      # letting it go negative, and it also allows a non-integer `ddof`
+      # (e.g. 1.5). Casting both `n` and `ddof` to `squared_deviations.dtype`
+      # before subtracting avoids a TypeError from mixing an integer `n`
+      # with a float `ddof`, and the `maximum(..., 0)` clamp turns a
+      # would-be negative denominator into 0 (giving NumPy's `inf` on
+      # divide) instead of a finite, wrong, negative "variance". `n` is
+      # computed as int64 above so it doesn't silently overflow on tensors
+      # with more than 2**31 - 1 elements.
+      n = math_ops.cast(n, squared_deviations.dtype)
+      ddof_cast = math_ops.cast(ddof, squared_deviations.dtype)
+      n = math_ops.maximum(
+          n - ddof_cast, math_ops.cast(0, squared_deviations.dtype)
+      )
 
       return math_ops.divide(squared_deviations, n)
 
@@ -949,14 +965,25 @@ def repeat(a, repeats, axis=None):  # pylint: disable=missing-docstring
   return result
 
 
+_AROUND_MAX_DECIMALS = {
+    dtypes.float16: 4,
+    dtypes.bfloat16: 38,
+    dtypes.float32: 38,
+    dtypes.float64: 308,
+}
+
+
 @tf_export.tf_export('experimental.numpy.around', v1=[])
 @np_utils.np_doc('around')
 def around(a, decimals=0):  # pylint: disable=missing-docstring
   a = asarray(a)
   dtype = a.dtype.as_numpy_dtype
-  factor = math.pow(10, decimals)
+  if a.dtype.is_integer and decimals >= 0:
+    # Integers are already rounded to any non-negative number of decimals.
+    # Going through a float dtype would also lose precision above 2**53.
+    return a
   if np.issubdtype(dtype, np.inexact):
-    factor = math_ops.cast(factor, dtype)
+    float_dtype = dtype
   else:
     # Use float as the working dtype when a.dtype is exact (e.g. integer),
     # because `decimals` can be negative.
@@ -965,10 +992,18 @@ def around(a, decimals=0):  # pylint: disable=missing-docstring
     # has been called, and is an alias of `math_ops.cast`; calling `cast`
     # directly keeps `around` working without that opt-in.
     a = math_ops.cast(a, float_dtype)
-    factor = math_ops.cast(factor, float_dtype)
-  a = math_ops.multiply(a, factor)
-  a = math_ops.round(a)
-  a = math_ops.divide(a, factor)
+  max_decimals = _AROUND_MAX_DECIMALS.get(
+      dtypes.as_dtype(float_dtype).real_dtype, 308
+  )
+  if decimals > max_decimals:
+    return math_ops.cast(a, dtype)
+  if decimals < -max_decimals:
+    return array_ops.zeros_like(a, dtype=dtype)
+  factor = constant_op.constant(math.pow(10, abs(decimals)), float_dtype)
+  if decimals >= 0:
+    a = math_ops.divide(math_ops.round(math_ops.multiply(a, factor)), factor)
+  else:
+    a = math_ops.multiply(math_ops.round(math_ops.divide(a, factor)), factor)
   return math_ops.cast(a, dtype)
 
 

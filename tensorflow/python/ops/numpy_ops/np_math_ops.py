@@ -416,8 +416,16 @@ def power(x1, x2):
 
 @tf_export.tf_export('experimental.numpy.float_power', v1=[])
 @np_utils.np_doc('float_power')
-def float_power(x1, x2):
-  return power(x1, x2)
+def float_power(x1, x2):  # pylint: disable=missing-function-docstring
+  # Unlike `power`, NumPy always computes `float_power` in the widest float
+  # (or complex) type, which is what lets integers be raised to negative
+  # powers.
+  x1, x2 = np_array_ops._promote_dtype_binary(x1, x2)  # pylint: disable=protected-access
+  if x1.dtype.is_complex:
+    dtype = np_utils.result_type(complex)
+  else:
+    dtype = np_utils.result_type(float)
+  return power(math_ops.cast(x1, dtype), math_ops.cast(x2, dtype))
 
 
 @tf_export.tf_export('experimental.numpy.arctan2', v1=[])
@@ -998,7 +1006,11 @@ def deg2rad(x):
 @tf_export.tf_export('experimental.numpy.rad2deg', v1=[])
 @np_utils.np_doc('rad2deg')
 def rad2deg(x):
-  return x * (180.0 / np.pi)
+
+  def f(x):
+    return x * (180.0 / np.pi)
+
+  return _scalar(f, x, True)
 
 
 _tf_float_types = [
@@ -1470,6 +1482,36 @@ def logspace(start, stop, num=50, endpoint=True, base=10.0, dtype=None, axis=0):
   return result
 
 
+def _geomspace_log10(x):
+  """`log10(x)` refined with one Newton step.
+
+  `log(x) / log(10)` is regularly an ulp or two off, e.g. it gives
+  2.9999999999999996 for x = 1000, and `geomspace` spreads that error over
+  every sample. One Newton step on `10**y - x` brings it back in line with
+  NumPy's `log10`. It is only applied to the (usually scalar) endpoints, so the
+  extra `pow` is cheap.
+
+  Args:
+    x: A tensor. Only real floating-point inputs are refined; anything else,
+      including complex inputs, goes to `log10` unchanged since `is_finite` has
+      no complex kernel.
+
+  Returns:
+    log10(x), with the same dtype as `x` for real floating-point inputs.
+  """
+  if not x.dtype.is_floating:
+    return log10(x)
+  # Stay in `x.dtype`: under NumPy-style promotion `log10(x)` can come back as
+  # float64 for a float32 `x`, which `pow` would then reject.
+  ten = constant_op.constant(10, dtype=x.dtype)
+  ln10 = math_ops.log(ten)
+  y = math_ops.log(x) / ln10
+  correction = (x - math_ops.pow(ten, y)) / (x * ln10)
+  # The correction is NaN for zero, negative and non-finite inputs, whose
+  # logarithm is left as is.
+  return array_ops.where_v2(math_ops.is_finite(correction), y + correction, y)
+
+
 @tf_export.tf_export('experimental.numpy.geomspace', v1=[])
 @np_utils.np_doc('geomspace')
 def geomspace(start, stop, num=50, endpoint=True, dtype=None, axis=0):  # pylint: disable=missing-docstring
@@ -1488,14 +1530,31 @@ def geomspace(start, stop, num=50, endpoint=True, dtype=None, axis=0):  # pylint
   stop_sign = 1 - np_array_ops.sign(np_array_ops.real(stop))
   signflip = 1 - start_sign * stop_sign // 2
   res = signflip * logspace(
-      log10(signflip * start),
-      log10(signflip * stop),
+      _geomspace_log10(signflip * start),
+      _geomspace_log10(signflip * stop),
       num,
       endpoint=endpoint,
       base=10.0,
       dtype=computation_dtype,
       axis=0,
   )
+  if num > 0:
+    # Like NumPy, make the endpoints match `start` and `stop` exactly. The
+    # round trip through log10 and pow does not reproduce them, and casting
+    # to an integer `dtype` would then truncate e.g. 999.9999999999991 to 999.
+    sample_shape = array_ops.shape(res)[1:]
+    first = array_ops.expand_dims(
+        array_ops.broadcast_to(math_ops.cast(start, res.dtype), sample_shape),
+        0,
+    )
+    if endpoint and num > 1:
+      last = array_ops.expand_dims(
+          array_ops.broadcast_to(math_ops.cast(stop, res.dtype), sample_shape),
+          0,
+      )
+      res = array_ops.concat([first, res[1:-1], last], axis=0)
+    else:
+      res = array_ops.concat([first, res[1:]], axis=0)
   if axis != 0:
     res = np_array_ops.moveaxis(res, 0, axis)
   return math_ops.cast(res, dtype)
@@ -1803,23 +1862,10 @@ def trace(a, offset=0, axis1=0, axis2=1, dtype=None):  # pylint: disable=missing
   if dtype:
     dtype = np_utils.result_type(dtype)
   a = np_array_ops.asarray(a, dtype)
-
-  if offset == 0:
-    a_shape = a.shape
-    if a_shape.rank is not None:
-      rank = len(a_shape)
-      # Guard `rank >= 2` so the fast path never routes a rank-1 (or
-      # rank-0) input with negative axes to `math_ops.trace`/
-      # `matrix_diag_part`, which require rank >= 2: e.g. on a rank-1
-      # input, `axis1 == -2 or axis1 == rank - 2` erroneously holds for
-      # the out-of-bounds default `axis1=-2`.
-      if (
-          rank >= 2
-          and (axis1 == -2 or axis1 == rank - 2)
-          and (axis2 == -1 or axis2 == rank - 1)
-      ):
-        return math_ops.trace(a)
-
+  # There is deliberately no `math_ops.trace` shortcut here: it sums in the
+  # input dtype, so small integer inputs would overflow and bool inputs would
+  # fail, whereas `sum` promotes them the way NumPy does. `diagonal` already
+  # takes the `matrix_diag_part` fast path for the last two axes.
   a = np_array_ops.diagonal(a, offset, axis1, axis2)
   return np_array_ops.sum(a, -1, dtype)
 
