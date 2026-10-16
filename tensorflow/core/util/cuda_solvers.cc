@@ -208,11 +208,14 @@ void GpuSolver::CheckLapackInfoAndDeleteSolverAsync(
   for (const auto& dev_lapack_info : dev_lapack_infos) {
     bool success = true;
     auto host_copy = dev_lapack_info.CopyToHost(&success);
-    OP_REQUIRES(
-        solver->context(), success,
-        absl::InternalError(absl::StrCat(
-            "Failed to launch copy of dev_lapack_info to host, debug_info = ",
-            dev_lapack_info.debug_info())));
+    if (!success) {
+      absl::Status status = absl::InternalError(absl::StrCat(
+          "Failed to launch copy of dev_lapack_info to host, debug_info = ",
+          dev_lapack_info.debug_info()));
+      std::move(solver).reset();
+      info_checker_callback(status, host_lapack_infos);
+      return;
+    }
     host_lapack_infos.push_back(std::move(host_copy));
   }
 
