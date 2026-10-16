@@ -120,13 +120,19 @@ bool DimIsFullyCovered(const DimTile& tile, int64_t dim) {
 }
 
 Tiles PropagateTileToInputForCwiseOp(const HloInstruction& hlo,
-                                     const Tile& input_tile) {
-  return Tiles(hlo.operand_count(), input_tile);
-}
-
-Tiles PropagateTileToOutputForCwiseOp(const HloInstruction& hlo,
-                                      const Tile& output_tile) {
-  return {output_tile};
+                                     const Tile& output_tile) {
+  Tiles input_tiles;
+  input_tiles.reserve(hlo.operand_count());
+  for (const HloInstruction* operand : hlo.operands()) {
+    // kClamp and kSelect allow scalar operands alongside non-scalar operands.
+    if (operand->shape().IsArray() && operand->shape().dimensions().empty() &&
+        !output_tile.dim_tiles().empty()) {
+      input_tiles.push_back(output_tile.CloneWithNewDims({}));
+    } else {
+      input_tiles.push_back(output_tile);
+    }
+  }
+  return input_tiles;
 }
 
 Tiles PropagateTileToInputForBroadcastOp(const HloBroadcastInstruction& bcast,
@@ -167,6 +173,18 @@ Tiles PropagateTileToOutputForBroadcastOp(const HloBroadcastInstruction& bcast,
                                           const Tile& input_tile) {
   return {PropagateTileToOutputForBroadcastOpImpl(
       bcast.shape(), bcast.dimensions(), input_tile)};
+}
+
+Tiles PropagateTileToOutputForCwiseOp(const HloInstruction& hlo,
+                                      const Tile& input_tile,
+                                      int64_t input_index) {
+  const Shape& operand_shape = hlo.operand(input_index)->shape();
+  if (operand_shape.IsArray() && operand_shape.dimensions().empty() &&
+      hlo.shape().IsArray() && !hlo.shape().dimensions().empty()) {
+    return {PropagateTileToOutputForBroadcastOpImpl(
+        hlo.shape(), /*bcast_dims=*/{}, input_tile)};
+  }
+  return {input_tile};
 }
 
 absl::Status VerifyConcatenateAlignment(
@@ -1924,7 +1942,7 @@ absl::StatusOr<Tiles> PropagateTileToOutput(const TilingSpace& tiling_space,
   VLOG(2) << "tiling_space: " << tiling_space.ToString();
   if (HloInstruction::IsOpElementwise(hlo.opcode()) ||
       hlo.opcode() == HloOpcode::kMap) {
-    return PropagateTileToOutputForCwiseOp(hlo, input_tile);
+    return PropagateTileToOutputForCwiseOp(hlo, input_tile, input_index);
   }
   if (hlo.opcode() == HloOpcode::kBitcast) {
     return PropagateTileToOutputForBitcastOp(hlo, input_tile);

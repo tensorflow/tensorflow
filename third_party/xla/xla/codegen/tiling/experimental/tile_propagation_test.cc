@@ -137,6 +137,86 @@ TEST_F(TilePropagationTest, CanPropagateToOutputsOfElementwiseOp) {
   EXPECT_THAT(from_operand_1, MatchToString(kExpected));
 }
 
+TEST_F(TilePropagationTest, CanPropagateToInputsOfClampWithScalarBounds) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[] parameter(0)
+      p1 = f32[10,20] parameter(1)
+      p2 = f32[] parameter(2)
+      ROOT clamp0 = f32[10,20] clamp(p0, p1, p2)
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+  ASSERT_OK_AND_ASSIGN(
+      Tiles tiled_operands,
+      PropagateTileToInput(
+          *tiling_space, *root,
+          GetTestTile(*tiling_space, root->shape().dimensions()), 0));
+  EXPECT_THAT(tiled_operands, MatchToString(R"(
+    0) (tid_0, tid_1)
+      -> offsets []
+         sizes []
+         strides []
+         upper bounds []
+    1) (tid_0, tid_1)
+      -> offsets [tid_0 * ts_0, tid_1 * ts_1]
+         sizes [ts_0, ts_1]
+         strides [1, 2]
+         upper bounds [10, 20]
+    2) (tid_0, tid_1)
+      -> offsets []
+         sizes []
+         strides []
+         upper bounds []
+  )"));
+}
+
+TEST_F(TilePropagationTest, CanPropagateToOutputsOfClampWithScalarBounds) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[] parameter(0)
+      p1 = f32[10,20] parameter(1)
+      p2 = f32[10,20] parameter(2)
+      ROOT clamp0 = f32[10,20] clamp(p0, p1, p2)
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+  ASSERT_OK_AND_ASSIGN(
+      Tiles from_operand_0,
+      PropagateTileToOutput(
+          *tiling_space, *root,
+          GetTestTile(*tiling_space, root->operand(0)->shape().dimensions()),
+          0));
+  EXPECT_THAT(from_operand_0, MatchToString(R"(
+    0) (tid_0, tid_1)
+      -> offsets [0, 0]
+         sizes [16, 32]
+         strides [1, 1]
+         upper bounds [10, 20]
+  )"));
+  ASSERT_OK_AND_ASSIGN(
+      Tiles from_operand_1,
+      PropagateTileToOutput(
+          *tiling_space, *root,
+          GetTestTile(*tiling_space, root->operand(1)->shape().dimensions()),
+          1));
+  EXPECT_THAT(from_operand_1, MatchToString(R"(
+    0) (tid_0, tid_1)
+      -> offsets [tid_0 * ts_0, tid_1 * ts_1]
+         sizes [ts_0, ts_1]
+         strides [1, 2]
+         upper bounds [10, 20]
+  )"));
+}
+
 TEST_F(TilePropagationTest, CanPropagateToInputsOfAllReduceOp) {
   HloInstruction* root = ParseAndGetRoot(R"(
     HloModule m
