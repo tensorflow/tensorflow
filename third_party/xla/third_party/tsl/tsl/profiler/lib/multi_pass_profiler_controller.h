@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "tsl/profiler/lib/profiler_interface.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
@@ -42,7 +43,7 @@ class MultiPassProfilerController : public MultiPassProfilerInterface {
   ~MultiPassProfilerController() override;
 
   // MultiPassProfilerInterface methods
-  bool NeedMorePasses() override;
+  absl::StatusOr<bool> NeedMorePasses() override;
   absl::Status StartPass() override;
   absl::Status PushRange(absl::string_view name) override;
   absl::Status PopRange() override;
