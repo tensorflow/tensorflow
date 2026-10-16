@@ -200,6 +200,14 @@ absl::Status CompileGraph(GraphDef graph_def, const tf2xla::Config& config,
       flags.entry_point,
       xla::cpu::CpuAotCompilationOptions::RelocationModel::BigPic);
 
+  if (!flags.use_xla_nanort_runtime) {
+    // Disable YNNPACK fusions when not using the NanoRt runtime, as
+    // ThunkProtoExecutionDeserializer does not support ynn-fusion thunks
+    // (b/452693819, b/573087829).
+    aot_opts.mutable_debug_options()
+        ->clear_xla_cpu_experimental_ynn_fusion_type();
+  }
+
   if (flags.sanitize_dataflow) {
     aot_opts.set_sanitize_dataflow(flags.sanitize_dataflow);
     aot_opts.set_sanitize_abilists_dataflow(absl::StrSplit(
