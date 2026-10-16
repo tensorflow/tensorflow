@@ -534,7 +534,8 @@ GpuExecutable::GpuExecutable(
       has_module() ? &module_config().debug_options() : nullptr;
   buffer_allocator_ = GpuExecutableBufferAllocator::Create(
       module_name_, allocation_ptrs_, program_shape_.result(),
-      allocation_debug_options, thunk_executor_.get());
+      allocation_debug_options, thunk_executor_.get(),
+      gpu_topology_.has_value() ? gpu_topology_->num_devices_per_host() : 0);
 }
 
 GpuExecutable::~GpuExecutable() {
