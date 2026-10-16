@@ -322,7 +322,8 @@ struct FlashAttentionFunctor<CPUDevice, T> {
 
             float score = zero;
             for (int k = 0; k < D_qk; ++k) {
-              score += static_cast<float>(Q(b, i, h, k) * K(b, j, h, k));
+              score += static_cast<float>(Q(b, i, h, k)) *
+                       static_cast<float>(K(b, j, h, k));
             }
             score *= scale;
 
@@ -442,7 +443,8 @@ struct FlashAttentionGradFunctor<CPUDevice, T> {
           float stats_val = Stats(b, h, i);
           float D_i = zero;
           for (int k = 0; k < D_v; ++k) {
-            D_i += static_cast<float>(dO(b, i, h, k) * Out(b, i, h, k));
+            D_i += static_cast<float>(dO(b, i, h, k)) *
+                   static_cast<float>(Out(b, i, h, k));
           }
 
           std::fill(dQ_accum.begin(), dQ_accum.end(), zero);
@@ -454,7 +456,8 @@ struct FlashAttentionGradFunctor<CPUDevice, T> {
             // (a) Q * K^T
             float score = zero;
             for (int k = 0; k < D_k; ++k) {
-              score += static_cast<float>(Q(b, i, h, k) * K(b, j, h, k));
+              score += static_cast<float>(Q(b, i, h, k)) *
+                       static_cast<float>(K(b, j, h, k));
             }
             score *= scale;
 
@@ -488,7 +491,8 @@ struct FlashAttentionGradFunctor<CPUDevice, T> {
               // 2. dP_val = dO_i . V_j
               float dP_val = zero;
               for (int k = 0; k < D_v; ++k) {
-                dP_val += static_cast<float>(dO(b, i, h, k) * V(b, j, h, k));
+                dP_val += static_cast<float>(dO(b, i, h, k)) *
+                          static_cast<float>(V(b, j, h, k));
               }
 
               // 3. dS = P_scaled * (dP - D / sigma) * scale
