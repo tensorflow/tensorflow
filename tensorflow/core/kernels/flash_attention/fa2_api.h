@@ -18,9 +18,9 @@ limitations under the License.
 // Thin wrapper around the vendored FlashAttention-2 kernels. Kept free of
 // TensorFlow and PyTorch headers so it can be compiled with FA2's own flags.
 //
-// All tensors are contiguous and row-major: q/out are [B, S_q, D], k/v are
-// [B, S_kv, D] (fp16, or bf16 when bf16 = true), lse is float [B, S_q].
-// Heads are expected to be folded into B, matching the FlashAttention op.
+// All tensors are contiguous and row-major: q/out are [B, S_q, H, D], k/v are
+// [B, S_kv, H, D] (fp16, or bf16 when bf16 = true), lse is float [B, H, S_q],
+// matching the FlashAttention op.
 //
 // Dropout RNG: seed/offset are used by value unless seed_dev/offset_dev are
 // non-null, in which case they point to device memory holding the values
@@ -46,21 +46,25 @@ bool BackwardSupported(int d_qk, int d_v, float dropout);
 // suitable GPU. Doesn't touch the device, so it's safe at XLA compile time.
 bool ShapeSupported(int d_qk, int d_v);
 
+// True if FA2 can launch with this batch size and head count: its kernels put
+// them in gridDim.y and gridDim.z, which are limited to 65535.
+bool GridSupported(int B, int H);
+
 cudaError_t Forward(cudaStream_t stream, bool bf16, const void *q,
                     const void *k, const void *v, void *out, float *lse, int B,
-                    int S_q, int S_kv, int D, float scale, float dropout,
+                    int H, int S_q, int S_kv, int D, float scale, float dropout,
                     bool causal, uint64_t seed, uint64_t offset,
                     const uint64_t *seed_dev, const uint64_t *offset_dev);
 
 // Scratch memory Backward needs (dQ accumulator, softmax row sums, RNG state).
-size_t BackwardWorkspaceBytes(int B, int S_q, int D);
+size_t BackwardWorkspaceBytes(int B, int H, int S_q, int D);
 
 cudaError_t Backward(cudaStream_t stream, bool bf16, const void *q,
                      const void *k, const void *v, const void *out,
                      const float *lse, const void *dout, void *dq, void *dk,
-                     void *dv, void *workspace, int B, int S_q, int S_kv, int D,
-                     float scale, float dropout, bool causal, uint64_t seed,
-                     uint64_t offset, const uint64_t *seed_dev,
+                     void *dv, void *workspace, int B, int H, int S_q, int S_kv,
+                     int D, float scale, float dropout, bool causal,
+                     uint64_t seed, uint64_t offset, const uint64_t *seed_dev,
                      const uint64_t *offset_dev);
 
 }  // namespace flash_attention_fa2

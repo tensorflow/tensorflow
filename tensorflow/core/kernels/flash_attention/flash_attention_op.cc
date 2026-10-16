@@ -28,6 +28,34 @@ limitations under the License.
 
 namespace tensorflow {
 
+// Checks key/value against query's batch, heads and feature size. Both are
+// [batch, seq_kv, heads, dim].
+static absl::Status CheckKV(const Tensor &k, const Tensor &v, int64_t B,
+                            int64_t H, int64_t D_qk) {
+  if (k.dim_size(0) != B || v.dim_size(0) != B) {
+    return errors::InvalidArgument("K/V batch size mismatch");
+  }
+  if (k.dim_size(2) != H || v.dim_size(2) != H) {
+    return errors::InvalidArgument("K/V heads mismatch");
+  }
+  if (k.dim_size(3) != D_qk) {
+    return errors::InvalidArgument("K feature size mismatch");
+  }
+  if (v.dim_size(1) != k.dim_size(1)) {
+    return errors::InvalidArgument("V seq size mismatch");
+  }
+  return absl::OkStatus();
+}
+
+static absl::Status ExpectShape(absl::string_view name, const Tensor &t,
+                                const TensorShape &want) {
+  if (t.shape() != want) {
+    return errors::InvalidArgument(name, " has shape ", t.shape().DebugString(),
+                                   ", expected ", want.DebugString());
+  }
+  return absl::OkStatus();
+}
+
 template <typename Device, typename T>
 class FlashAttentionOp : public OpKernel {
  private:
@@ -60,28 +88,23 @@ class FlashAttentionOp : public OpKernel {
     uint64_t offset_val = offset_tensor.scalar<uint64_t>()();
 
     for (const Tensor *t : {&q_tensor, &k_tensor, &v_tensor}) {
-      OP_REQUIRES(context, t->dims() == 3,
+      OP_REQUIRES(context, t->dims() == 4,
                   errors::InvalidArgument(
-                      "query, key, and value must be rank 3, got shape ",
+                      "query, key, and value must be rank 4 ([batch, seq, "
+                      "heads, dim]), got shape ",
                       t->shape().DebugString()));
     }
 
     const int64_t B = q_tensor.dim_size(0);
     const int64_t S_q = q_tensor.dim_size(1);
-    const int64_t D_qk = q_tensor.dim_size(2);
+    const int64_t H = q_tensor.dim_size(2);
+    const int64_t D_qk = q_tensor.dim_size(3);
     const int64_t S_kv = k_tensor.dim_size(1);
-    const int64_t D_v = v_tensor.dim_size(2);
+    const int64_t D_v = v_tensor.dim_size(3);
     OP_REQUIRES_OK(context,
-                   functor::CheckDimsFitInt32(B, S_q, S_kv, D_qk, D_v));
+                   functor::CheckDimsFitInt32(B, H, S_q, S_kv, D_qk, D_v));
 
-    OP_REQUIRES(context, k_tensor.dim_size(0) == B,
-                errors::InvalidArgument("K batch size mismatch"));
-    OP_REQUIRES(context, k_tensor.dim_size(2) == D_qk,
-                errors::InvalidArgument("K feature size mismatch"));
-    OP_REQUIRES(context, v_tensor.dim_size(0) == B,
-                errors::InvalidArgument("V batch size mismatch"));
-    OP_REQUIRES(context, v_tensor.dim_size(1) == S_kv,
-                errors::InvalidArgument("V seq size mismatch"));
+    OP_REQUIRES_OK(context, CheckKV(k_tensor, v_tensor, B, H, D_qk));
 
     if (causal_mask_) {
       OP_REQUIRES(
@@ -94,18 +117,19 @@ class FlashAttentionOp : public OpKernel {
         functor::FlashAttentionFunctor<Device, T>::CheckFeatureSize(D_qk, D_v));
 
     Tensor *output_tensor = nullptr;
-    OP_REQUIRES_OK(context, context->allocate_output(
-                                0, TensorShape({B, S_q, D_v}), &output_tensor));
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(0, TensorShape({B, S_q, H, D_v}),
+                                            &output_tensor));
 
     Tensor *stats_tensor = nullptr;
-    OP_REQUIRES_OK(context, context->allocate_output(1, TensorShape({B, S_q}),
-                                                     &stats_tensor));
+    OP_REQUIRES_OK(context, context->allocate_output(
+                                1, TensorShape({B, H, S_q}), &stats_tensor));
 
-    auto Q = q_tensor.template tensor<T, 3>();
-    auto K = k_tensor.template tensor<T, 3>();
-    auto V = v_tensor.template tensor<T, 3>();
-    auto Out = output_tensor->template tensor<T, 3>();
-    auto Stats = stats_tensor->template tensor<float, 2>();
+    auto Q = q_tensor.template tensor<T, 4>();
+    auto K = k_tensor.template tensor<T, 4>();
+    auto V = v_tensor.template tensor<T, 4>();
+    auto Out = output_tensor->template tensor<T, 4>();
+    auto Stats = stats_tensor->template tensor<float, 3>();
 
     const Device &d = context->template eigen_device<Device>();
     OP_REQUIRES_OK(
@@ -150,55 +174,29 @@ class FlashAttentionGradOp : public OpKernel {
     uint64_t seed_val = seed_tensor.scalar<uint64_t>()();
     uint64_t offset_val = offset_tensor.scalar<uint64_t>()();
 
-    for (const Tensor *t :
-         {&q_tensor, &k_tensor, &v_tensor, &out_tensor, &do_tensor}) {
-      OP_REQUIRES(context, t->dims() == 3,
+    for (const Tensor *t : {&q_tensor, &k_tensor, &v_tensor}) {
+      OP_REQUIRES(context, t->dims() == 4,
                   errors::InvalidArgument(
-                      "query, key, value, output and output gradient "
-                      "must be rank 3, got shape ",
+                      "query, key, and value must be rank 4 ([batch, seq, "
+                      "heads, dim]), got shape ",
                       t->shape().DebugString()));
     }
-    OP_REQUIRES(
-        context, stats_tensor.dims() == 2,
-        errors::InvalidArgument("softmax_lse must be rank 2, got shape ",
-                                stats_tensor.shape().DebugString()));
 
     const int64_t B = q_tensor.dim_size(0);
     const int64_t S_q = q_tensor.dim_size(1);
-    const int64_t D_qk = q_tensor.dim_size(2);
+    const int64_t H = q_tensor.dim_size(2);
+    const int64_t D_qk = q_tensor.dim_size(3);
     const int64_t S_kv = k_tensor.dim_size(1);
-    const int64_t D_v = v_tensor.dim_size(2);
+    const int64_t D_v = v_tensor.dim_size(3);
     OP_REQUIRES_OK(context,
-                   functor::CheckDimsFitInt32(B, S_q, S_kv, D_qk, D_v));
+                   functor::CheckDimsFitInt32(B, H, S_q, S_kv, D_qk, D_v));
 
-    OP_REQUIRES(context, k_tensor.dim_size(0) == B,
-                errors::InvalidArgument("K batch size mismatch"));
-    OP_REQUIRES(context, k_tensor.dim_size(2) == D_qk,
-                errors::InvalidArgument("K feature size mismatch"));
-
-    OP_REQUIRES(context, v_tensor.dim_size(0) == B,
-                errors::InvalidArgument("V batch size mismatch"));
-    OP_REQUIRES(context, v_tensor.dim_size(1) == S_kv,
-                errors::InvalidArgument("V seq size mismatch"));
-
-    OP_REQUIRES(context, out_tensor.dim_size(0) == B,
-                errors::InvalidArgument("O batch size mismatch"));
-    OP_REQUIRES(context, out_tensor.dim_size(1) == S_q,
-                errors::InvalidArgument("O seq size mismatch"));
-    OP_REQUIRES(context, out_tensor.dim_size(2) == D_v,
-                errors::InvalidArgument("O feature size mismatch"));
-
-    OP_REQUIRES(context, do_tensor.dim_size(0) == B,
-                errors::InvalidArgument("dO batch size mismatch"));
-    OP_REQUIRES(context, do_tensor.dim_size(1) == S_q,
-                errors::InvalidArgument("dO seq size mismatch"));
-    OP_REQUIRES(context, do_tensor.dim_size(2) == D_v,
-                errors::InvalidArgument("dO feature size mismatch"));
-
-    OP_REQUIRES(context, stats_tensor.dim_size(0) == B,
-                errors::InvalidArgument("S batch size mismatch"));
-    OP_REQUIRES(context, stats_tensor.dim_size(1) == S_q,
-                errors::InvalidArgument("S seq size mismatch"));
+    OP_REQUIRES_OK(context, CheckKV(k_tensor, v_tensor, B, H, D_qk));
+    const TensorShape out_shape({B, S_q, H, D_v});
+    OP_REQUIRES_OK(context, ExpectShape("output", out_tensor, out_shape));
+    OP_REQUIRES_OK(context, ExpectShape("output_grad", do_tensor, out_shape));
+    OP_REQUIRES_OK(context, ExpectShape("softmax_lse", stats_tensor,
+                                        TensorShape({B, H, S_q})));
 
     if (causal_mask_) {
       OP_REQUIRES(
@@ -221,22 +219,22 @@ class FlashAttentionGradOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output(2, v_tensor.shape(), &dv_tensor));
 
-    auto Q = q_tensor.template tensor<T, 3>();
-    auto K = k_tensor.template tensor<T, 3>();
-    auto V = v_tensor.template tensor<T, 3>();
-    auto Out = out_tensor.template tensor<T, 3>();
-    auto dO = do_tensor.template tensor<T, 3>();
-    auto Stats = stats_tensor.template tensor<float, 2>();
+    auto Q = q_tensor.template tensor<T, 4>();
+    auto K = k_tensor.template tensor<T, 4>();
+    auto V = v_tensor.template tensor<T, 4>();
+    auto Out = out_tensor.template tensor<T, 4>();
+    auto dO = do_tensor.template tensor<T, 4>();
+    auto Stats = stats_tensor.template tensor<float, 3>();
 
-    auto dQ = dq_tensor->template tensor<T, 3>();
-    auto dK = dk_tensor->template tensor<T, 3>();
-    auto dV = dv_tensor->template tensor<T, 3>();
+    auto dQ = dq_tensor->template tensor<T, 4>();
+    auto dK = dk_tensor->template tensor<T, 4>();
+    auto dV = dv_tensor->template tensor<T, 4>();
 
     Tensor workspace;
     void *workspace_ptr = nullptr;
     const int64_t workspace_bytes =
         functor::FlashAttentionGradFunctor<Device, T>::WorkspaceBytes(
-            B, S_q, S_kv, D_qk, D_v);
+            B, H, S_q, S_kv, D_qk, D_v);
     OP_REQUIRES_OK(
         context, context->allocate_temp(DT_INT8, TensorShape({workspace_bytes}),
                                         &workspace));
@@ -266,7 +264,7 @@ static float get_random_float_cpu(uint64_t seed, uint64_t offset, int64_t b,
   state = state * 6364136223846793005ULL + 1442695040888963407ULL;
 
   uint32_t val = (state >> 32) & 0xFFFFFFFF;
-  return static_cast<float>(val) / 4294967296.0f;
+  return static_cast<float>(val >> 8) * (1.0f / 16777216.0f);
 }
 
 template <typename T>
@@ -277,20 +275,21 @@ struct FlashAttentionFunctor<CPUDevice, T> {
   }
 
   absl::Status operator()(const CPUDevice &d,
-                          typename TTypes<T, 3>::ConstTensor Q,
-                          typename TTypes<T, 3>::ConstTensor K,
-                          typename TTypes<T, 3>::ConstTensor V,
-                          typename TTypes<T, 3>::Tensor Out,
-                          typename TTypes<float, 2>::Tensor stats,
+                          typename TTypes<T, 4>::ConstTensor Q,
+                          typename TTypes<T, 4>::ConstTensor K,
+                          typename TTypes<T, 4>::ConstTensor V,
+                          typename TTypes<T, 4>::Tensor Out,
+                          typename TTypes<float, 3>::Tensor stats,
                           bool causal_mask, float dropout_rate, float scale,
                           FlashAttentionRng rng) const {
     const uint64_t seed = rng.seed;
     const uint64_t offset = rng.offset;
     const int B = Q.dimension(0);
     const int S_q = Q.dimension(1);
+    const int H = Q.dimension(2);
     const int S_kv = K.dimension(1);
-    const int D_qk = Q.dimension(2);
-    const int D_v = V.dimension(2);
+    const int D_qk = Q.dimension(3);
+    const int D_v = V.dimension(3);
 
     const float neg_inf = -1e9f;
     const float zero = 0.0f;
@@ -301,9 +300,13 @@ struct FlashAttentionFunctor<CPUDevice, T> {
       dp_inverse_scale = one / (one - dropout_rate);
     }
 
+    // Shards over (batch, head) pairs, bh = b * H + h. The dropout mask is
+    // indexed by bh, matching the GPU kernels.
     auto shard = [&](int64_t start, int64_t end) {
       std::vector<float> O_accum(D_v);
-      for (int64_t b = start; b < end; ++b) {
+      for (int64_t bh = start; bh < end; ++bh) {
+        const int64_t b = bh / H;
+        const int64_t h = bh % H;
         // --- Loop Query (i) ---
         for (int i = 0; i < S_q; ++i) {
           float m_i = neg_inf;
@@ -319,7 +322,7 @@ struct FlashAttentionFunctor<CPUDevice, T> {
 
             float score = zero;
             for (int k = 0; k < D_qk; ++k) {
-              score += static_cast<float>(Q(b, i, k) * K(b, j, k));
+              score += static_cast<float>(Q(b, i, h, k) * K(b, j, h, k));
             }
             score *= scale;
 
@@ -333,7 +336,7 @@ struct FlashAttentionFunctor<CPUDevice, T> {
 
             // Dropout
             if (dropout_rate > 0.0f) {
-              if (get_random_float_cpu(seed, offset, b, i, j, S_q, S_kv) <
+              if (get_random_float_cpu(seed, offset, bh, i, j, S_q, S_kv) <
                   dropout_rate) {
                 ratio_curr_o = zero;
               } else {
@@ -348,37 +351,38 @@ struct FlashAttentionFunctor<CPUDevice, T> {
             for (int k = 0; k < D_v; ++k) {
               O_accum[k] *= ratio_prev;
 
-              float v_val = static_cast<float>(V(b, j, k));
+              float v_val = static_cast<float>(V(b, j, h, k));
               O_accum[k] += v_val * ratio_curr_o;
             }
 
           }  // End Loop j
 
           // Write Output
-          stats(b, i) = m_i + Eigen::numext::log(l_i + eps);
+          stats(b, h, i) = m_i + Eigen::numext::log(l_i + eps);
 
           float inv_l = (l_i > eps) ? (one / l_i) : zero;
 
           for (int k = 0; k < D_v; ++k) {
-            Out(b, i, k) = static_cast<T>(O_accum[k] * inv_l);
+            Out(b, i, h, k) = static_cast<T>(O_accum[k] * inv_l);
           }
 
         }  // End Loop i
-      }  // End Loop b
+      }  // End Loop bh
     };
 
     // estimate cost
     double compute_cycles =
         static_cast<double>(S_q) * S_kv * (2.0 * D_qk + 2.0 * D_v + 10.0);
     Eigen::TensorOpCost cost(0, 0, compute_cycles);
-    d.parallelFor(B, cost, shard);
+    d.parallelFor(static_cast<int64_t>(B) * H, cost, shard);
     return absl::OkStatus();
   }
 };
 
 template <typename T>
 struct FlashAttentionGradFunctor<CPUDevice, T> {
-  static int64_t WorkspaceBytes(int B, int S_q, int S_kv, int D_qk, int D_v) {
+  static int64_t WorkspaceBytes(int B, int H, int S_q, int S_kv, int D_qk,
+                                int D_v) {
     return 0;
   }
 
@@ -388,28 +392,29 @@ struct FlashAttentionGradFunctor<CPUDevice, T> {
   }
 
   absl::Status operator()(const CPUDevice &d,
-                          typename TTypes<T, 3>::ConstTensor Q,
-                          typename TTypes<T, 3>::ConstTensor K,
-                          typename TTypes<T, 3>::ConstTensor V,
-                          typename TTypes<T, 3>::ConstTensor Out,
-                          typename TTypes<float, 2>::ConstTensor Stats,
-                          typename TTypes<T, 3>::ConstTensor dO,
-                          typename TTypes<T, 3>::Tensor dQ,
-                          typename TTypes<T, 3>::Tensor dK,
-                          typename TTypes<T, 3>::Tensor dV, bool causal_mask,
+                          typename TTypes<T, 4>::ConstTensor Q,
+                          typename TTypes<T, 4>::ConstTensor K,
+                          typename TTypes<T, 4>::ConstTensor V,
+                          typename TTypes<T, 4>::ConstTensor Out,
+                          typename TTypes<float, 3>::ConstTensor Stats,
+                          typename TTypes<T, 4>::ConstTensor dO,
+                          typename TTypes<T, 4>::Tensor dQ,
+                          typename TTypes<T, 4>::Tensor dK,
+                          typename TTypes<T, 4>::Tensor dV, bool causal_mask,
                           float dropout_rate, float scale,
                           FlashAttentionRng rng, void * /*workspace*/) const {
     const uint64_t seed = rng.seed;
     const uint64_t offset = rng.offset;
     const int B = Q.dimension(0);
     const int S_q = Q.dimension(1);
+    const int H = Q.dimension(2);
     const int S_kv = K.dimension(1);
-    const int D_k = Q.dimension(2);
-    const int D_v = V.dimension(2);
+    const int D_k = Q.dimension(3);
+    const int D_v = V.dimension(3);
 
     const float zero = 0.0f;
     const float one = 1.0f;
-    
+
     float dp_inverse_scale = one;
     if (dropout_rate > 0.0f) {
       dp_inverse_scale = one / (one - dropout_rate);
@@ -418,18 +423,21 @@ struct FlashAttentionGradFunctor<CPUDevice, T> {
     auto shard = [&](int64_t start, int64_t end) {
       // dK and dV sum over all queries, so accumulate them in float and round
       // to T once at the end; T = half/bfloat16 would lose most of the sum.
-      // Shards own whole batch entries, so these buffers are private.
+      // Shards own whole (batch, head) pairs, bh = b * H + h, so these
+      // buffers are private.
       std::vector<float> dQ_accum(D_k);
       std::vector<float> dK_accum(static_cast<size_t>(S_kv) * D_k);
       std::vector<float> dV_accum(static_cast<size_t>(S_kv) * D_v);
-      for (int64_t b = start; b < end; ++b) {
+      for (int64_t bh = start; bh < end; ++bh) {
+        const int64_t b = bh / H;
+        const int64_t h = bh % H;
         std::fill(dK_accum.begin(), dK_accum.end(), zero);
         std::fill(dV_accum.begin(), dV_accum.end(), zero);
         for (int i = 0; i < S_q; ++i) {
-          float stats_val = Stats(b, i);
+          float stats_val = Stats(b, h, i);
           float D_i = zero;
           for (int k = 0; k < D_v; ++k) {
-            D_i += static_cast<float>(dO(b, i, k) * Out(b, i, k));
+            D_i += static_cast<float>(dO(b, i, h, k) * Out(b, i, h, k));
           }
 
           std::fill(dQ_accum.begin(), dQ_accum.end(), zero);
@@ -441,7 +449,7 @@ struct FlashAttentionGradFunctor<CPUDevice, T> {
             // (a) Q * K^T
             float score = zero;
             for (int k = 0; k < D_k; ++k) {
-              score += static_cast<float>(Q(b, i, k) * K(b, j, k));
+              score += static_cast<float>(Q(b, i, h, k) * K(b, j, h, k));
             }
             score *= scale;
 
@@ -453,7 +461,7 @@ struct FlashAttentionGradFunctor<CPUDevice, T> {
 
             // (c) Dropout
             if (dropout_rate > 0.0f) {
-              if (get_random_float_cpu(seed, offset, b, i, j, S_q, S_kv) <
+              if (get_random_float_cpu(seed, offset, bh, i, j, S_q, S_kv) <
                   dropout_rate) {
                 is_dropped = true;
                 prob = zero;
@@ -469,13 +477,13 @@ struct FlashAttentionGradFunctor<CPUDevice, T> {
               // 1. dV (Accumulate)
               float *dV_j = &dV_accum[static_cast<size_t>(j) * D_v];
               for (int k = 0; k < D_v; ++k) {
-                dV_j[k] += prob * static_cast<float>(dO(b, i, k));
+                dV_j[k] += prob * static_cast<float>(dO(b, i, h, k));
               }
 
               // 2. dP_val = dO_i . V_j
               float dP_val = zero;
               for (int k = 0; k < D_v; ++k) {
-                dP_val += static_cast<float>(dO(b, i, k) * V(b, j, k));
+                dP_val += static_cast<float>(dO(b, i, h, k) * V(b, j, h, k));
               }
 
               // 3. dS = P_scaled * (dP - D / sigma) * scale
@@ -485,8 +493,8 @@ struct FlashAttentionGradFunctor<CPUDevice, T> {
             //  Update dK & Accumulate dQ (Merged) ---
             float *dK_j = &dK_accum[static_cast<size_t>(j) * D_k];
             for (int k = 0; k < D_k; ++k) {
-              float val_Q = static_cast<float>(Q(b, i, k));
-              float val_K = static_cast<float>(K(b, j, k));
+              float val_Q = static_cast<float>(Q(b, i, h, k));
+              float val_K = static_cast<float>(K(b, j, h, k));
 
               dK_j[k] += dS_val * val_Q;
               dQ_accum[k] += dS_val * val_K;
@@ -495,27 +503,27 @@ struct FlashAttentionGradFunctor<CPUDevice, T> {
           }  // End Loop j
 
           for (int k = 0; k < D_k; ++k) {
-            dQ(b, i, k) = static_cast<T>(dQ_accum[k]);
+            dQ(b, i, h, k) = static_cast<T>(dQ_accum[k]);
           }
         }  // End Loop i
 
         for (int j = 0; j < S_kv; ++j) {
           for (int k = 0; k < D_k; ++k) {
-            dK(b, j, k) =
+            dK(b, j, h, k) =
                 static_cast<T>(dK_accum[static_cast<size_t>(j) * D_k + k]);
           }
           for (int k = 0; k < D_v; ++k) {
-            dV(b, j, k) =
+            dV(b, j, h, k) =
                 static_cast<T>(dV_accum[static_cast<size_t>(j) * D_v + k]);
           }
         }
-      }  // End Loop b
+      }  // End Loop bh
     };
 
     double compute_cycles =
         static_cast<double>(S_q) * S_kv * (4.0 * D_k + 4.0 * D_v + 30.0);
     Eigen::TensorOpCost cost(0, 0, compute_cycles);
-    d.parallelFor(B, cost, shard);
+    d.parallelFor(static_cast<int64_t>(B) * H, cost, shard);
     return absl::OkStatus();
   }
 };

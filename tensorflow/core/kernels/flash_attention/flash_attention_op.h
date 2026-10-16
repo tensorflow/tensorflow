@@ -52,12 +52,16 @@ inline absl::Status FeatureSizeError(int D_qk, int D_v) {
 }
 
 // The functors and the FlashAttention-2 API take 32-bit dimensions, so larger
-// ones would silently truncate.
-inline absl::Status CheckDimsFitInt32(int64_t B, int64_t S_q, int64_t S_kv,
-                                      int64_t D_qk, int64_t D_v) {
+// ones would silently truncate. The kernels also index (batch, head) pairs
+// with a single int.
+inline absl::Status CheckDimsFitInt32(int64_t B, int64_t H, int64_t S_q,
+                                      int64_t S_kv, int64_t D_qk, int64_t D_v) {
   constexpr int64_t kMax = std::numeric_limits<int32_t>::max();
+  // B * H, saturated so it can't overflow int64.
+  const int64_t BH = (H != 0 && B > kMax / H) ? kMax + 1 : B * H;
   const std::pair<const char *, int64_t> dims[] = {
-      {"batch", B}, {"S_q", S_q}, {"S_kv", S_kv}, {"D_qk", D_qk}, {"D_v", D_v}};
+      {"batch", B},   {"heads", H},   {"batch * heads", BH}, {"S_q", S_q},
+      {"S_kv", S_kv}, {"D_qk", D_qk}, {"D_v", D_v}};
   for (const auto &[name, size] : dims) {
     if (size > kMax) {
       return errors::InvalidArgument("FlashAttention dimension ", name, "=",
@@ -73,11 +77,12 @@ struct FlashAttentionFunctor {
   // OK if the kernels for this device and dtype handle these feature sizes.
   static absl::Status CheckFeatureSize(int D_qk, int D_v);
 
-  absl::Status operator()(const Device &d, typename TTypes<T, 3>::ConstTensor Q,
-                          typename TTypes<T, 3>::ConstTensor K,
-                          typename TTypes<T, 3>::ConstTensor V,
-                          typename TTypes<T, 3>::Tensor Out,
-                          typename TTypes<float, 2>::Tensor stats,
+  // Q/K/V/Out are [batch, seq, heads, dim]; stats is [batch, heads, seq_q].
+  absl::Status operator()(const Device &d, typename TTypes<T, 4>::ConstTensor Q,
+                          typename TTypes<T, 4>::ConstTensor K,
+                          typename TTypes<T, 4>::ConstTensor V,
+                          typename TTypes<T, 4>::Tensor Out,
+                          typename TTypes<float, 3>::Tensor stats,
                           bool causal_mask, float dropout_rate, float scale,
                           FlashAttentionRng rng) const;
 };
@@ -86,20 +91,21 @@ template <typename Device, typename T>
 struct FlashAttentionGradFunctor {
   // Bytes of device scratch memory operator() needs as `workspace` (may be 0).
   // Depends only on shapes, never on the current device.
-  static int64_t WorkspaceBytes(int B, int S_q, int S_kv, int D_qk, int D_v);
+  static int64_t WorkspaceBytes(int B, int H, int S_q, int S_kv, int D_qk,
+                                int D_v);
 
   // OK if the kernels for this device and dtype handle these feature sizes.
   static absl::Status CheckFeatureSize(int D_qk, int D_v, float dropout_rate);
 
-  absl::Status operator()(const Device &d, typename TTypes<T, 3>::ConstTensor Q,
-                          typename TTypes<T, 3>::ConstTensor K,
-                          typename TTypes<T, 3>::ConstTensor V,
-                          typename TTypes<T, 3>::ConstTensor Out,
-                          typename TTypes<float, 2>::ConstTensor Stats,
-                          typename TTypes<T, 3>::ConstTensor dO,
-                          typename TTypes<T, 3>::Tensor dQ,
-                          typename TTypes<T, 3>::Tensor dK,
-                          typename TTypes<T, 3>::Tensor dV, bool causal_mask,
+  absl::Status operator()(const Device &d, typename TTypes<T, 4>::ConstTensor Q,
+                          typename TTypes<T, 4>::ConstTensor K,
+                          typename TTypes<T, 4>::ConstTensor V,
+                          typename TTypes<T, 4>::ConstTensor Out,
+                          typename TTypes<float, 3>::ConstTensor Stats,
+                          typename TTypes<T, 4>::ConstTensor dO,
+                          typename TTypes<T, 4>::Tensor dQ,
+                          typename TTypes<T, 4>::Tensor dK,
+                          typename TTypes<T, 4>::Tensor dV, bool causal_mask,
                           float dropout_rate, float scale,
                           FlashAttentionRng rng, void *workspace) const;
 };

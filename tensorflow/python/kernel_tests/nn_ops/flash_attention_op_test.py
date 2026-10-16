@@ -277,15 +277,16 @@ class FlashAttentionTest(test.TestCase, parameterized.TestCase):
       nn_ops.flash_attention(x, array_ops.zeros([2, 4, 2, 8]), x)
     with self.assertRaisesRegex(ValueError, "incompatible"):  # head_dim
       nn_ops.flash_attention(x, array_ops.zeros([2, 4, 1, 32]), x)
-    # The kernel checks them too, for callers of the raw op.
+    # The kernel checks them too, for callers of the raw op. In graph mode,
+    # hide the static shapes so shape inference doesn't reject them first.
     seed = constant_op.constant(0, dtypes.uint64)
-    key = array_ops.zeros([2, 4, 32])
-    if not context.executing_eagerly():
-      key = array_ops.placeholder_with_default(key, shape=None)
-    with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                "feature size mismatch"):
-      self.evaluate(gen_nn_ops.flash_attention(
-          x[:, :, 0], key, x[:, :, 0], seed, seed))
+    for key_shape, message in (([2, 4, 1, 32], "feature size mismatch"),
+                               ([2, 4, 2, 8], "heads mismatch")):
+      key = array_ops.zeros(key_shape)
+      if not context.executing_eagerly():
+        key = array_ops.placeholder_with_default(key, shape=None)
+      with self.assertRaisesRegex(errors.InvalidArgumentError, message):
+        self.evaluate(gen_nn_ops.flash_attention(x, key, key, seed, seed))
     # Checked by the kernel; in graph mode, hide the static shape so shape
     # inference doesn't reject it first.
     kv = array_ops.zeros([2, 5, 1, 8])
@@ -338,8 +339,8 @@ class FlashAttentionTest(test.TestCase, parameterized.TestCase):
   def testDimsExceedingInt32(self):
     # Zero-sized, so a dimension over the int32 limit doesn't need memory.
     seed = constant_op.constant(0, dtypes.uint64)
-    query = array_ops.zeros([1, 1, 0])
-    key = array_ops.zeros([1, 2**31, 0])
+    query = array_ops.zeros([1, 1, 1, 0])
+    key = array_ops.zeros([1, 2**31, 1, 0])
     with self.assertRaisesRegex(errors.InvalidArgumentError, "int32 limit"):
       self.evaluate(gen_nn_ops.flash_attention(query, key, key, seed, seed))
 
@@ -350,15 +351,32 @@ class FlashAttentionTest(test.TestCase, parameterized.TestCase):
       self.evaluate(nn_ops.flash_attention(x, x, x))
 
   def testRawOps(self):
-    query = _normal([3, 10, 16], seed=1)
+    query = _normal([3, 10, 2, 16], seed=1)  # [batch, seq, heads, dim]
     seed = constant_op.constant(0, dtypes.uint64)
     output, softmax_lse = gen_nn_ops.flash_attention(
         query, query, query, seed, seed, scale=0.25)
-    logits = math_ops.matmul(query, query, transpose_b=True) * 0.25
+    logits = special_math_ops.einsum("bqhd,bkhd->bhqk", query, query) * 0.25
+    # softmax_lse is [batch, heads, seq_q].
     self.assertAllClose(softmax_lse, math_ops.reduce_logsumexp(logits, -1),
                         atol=1e-4)
     self.assertAllClose(
-        output, math_ops.matmul(nn_ops.softmax(logits), query), atol=1e-4)
+        output,
+        special_math_ops.einsum("bhqk,bkhd->bqhd", nn_ops.softmax(logits),
+                                query),
+        atol=1e-4)
+
+  def testManyBatchesAndHeads(self):
+    # batch * heads used to be FA2's gridDim.y (max 65535). Now batch and heads
+    # each have their own grid dimension; past 65535 heads, the fallback
+    # kernels take over.
+    if not _sm80_gpu_available():
+      self.skipTest("Needs a GPU with compute capability 8.0+")
+    # Kept small (head_dim 8 is FA2's minimum): in graph mode the inputs are
+    # constants, so the reference gets constant-folded on the CPU.
+    self._check(dtypes.float16, batch=256, seq_q=4, seq_kv=4, heads=256,
+                head_dim=8)
+    self._check(dtypes.float16, batch=1, seq_q=4, seq_kv=4, heads=65536,
+                head_dim=8)
 
 
 if __name__ == "__main__":

@@ -15,7 +15,7 @@ limitations under the License.
 
 // Parameter setup mirrors mha_fwd / mha_bwd in
 // @flash_attention//:flash_api.cpp (FlashAttention v2.8.3), restricted
-// to fixed-length batches with a single head per batch entry.
+// to fixed-length batches with as many key/value heads as query heads.
 
 #include "tensorflow/core/kernels/flash_attention/fa2_api.h"
 
@@ -81,28 +81,38 @@ bool DeviceHasKernelImage() {
   return val == 1;
 }
 
+// Batch and row (sequence position) strides, in elements, of a [B, S, H, D]
+// tensor. The head stride is D.
+struct Strides {
+  int64_t batch, row;
+};
+Strides BSHDStrides(int S, int H, int D) {
+  return {int64_t(S) * H * D, int64_t(H) * D};
+}
+
 void SetFwdParams(Flash_fwd_params &p, bool bf16, const void *q, const void *k,
-                  const void *v, void *out, float *lse, int B, int S_q,
+                  const void *v, void *out, float *lse, int B, int H, int S_q,
                   int S_kv, int D, float scale, float dropout, bool causal,
                   uint64_t seed, uint64_t offset, const uint64_t *seed_dev,
                   const uint64_t *offset_dev) {
   p = {};
   p.is_bf16 = bf16;
 
+  const Strides sq = BSHDStrides(S_q, H, D), skv = BSHDStrides(S_kv, H, D);
   p.q_ptr = const_cast<void *>(q);
   p.k_ptr = const_cast<void *>(k);
   p.v_ptr = const_cast<void *>(v);
   p.o_ptr = out;
-  p.q_batch_stride = int64_t(S_q) * D;
-  p.k_batch_stride = int64_t(S_kv) * D;
-  p.v_batch_stride = int64_t(S_kv) * D;
-  p.o_batch_stride = int64_t(S_q) * D;
-  p.q_row_stride = p.k_row_stride = p.v_row_stride = p.o_row_stride = D;
+  p.q_batch_stride = p.o_batch_stride = sq.batch;
+  p.k_batch_stride = p.v_batch_stride = skv.batch;
+  p.q_row_stride = p.o_row_stride = sq.row;
+  p.k_row_stride = p.v_row_stride = skv.row;
   p.q_head_stride = p.k_head_stride = p.v_head_stride = p.o_head_stride = D;
+  // [B, H, S_q], FA2's own layout.
   p.softmax_lse_ptr = lse;
 
   p.b = B;
-  p.h = p.h_k = 1;
+  p.h = p.h_k = H;
   p.h_h_k_ratio = 1;
   p.seqlen_q = S_q;
   p.seqlen_k = S_kv;
@@ -198,6 +208,11 @@ bool ShapeSupported(int d_qk, int d_v) {
   return d_qk == d_v && d_qk > 0 && d_qk % 8 == 0 && d_qk <= 256;
 }
 
+bool GridSupported(int B, int H) {
+  constexpr int kMaxGridYZ = 65535;
+  return B <= kMaxGridYZ && H <= kMaxGridYZ;
+}
+
 bool Supported(int d_qk, int d_v) {
   return ShapeSupported(d_qk, d_v) && DeviceHasKernelImage();
 }
@@ -219,18 +234,19 @@ bool BackwardSupported(int d_qk, int d_v, float dropout) {
 
 cudaError_t Forward(cudaStream_t stream, bool bf16, const void *q,
                     const void *k, const void *v, void *out, float *lse, int B,
-                    int S_q, int S_kv, int D, float scale, float dropout,
+                    int H, int S_q, int S_kv, int D, float scale, float dropout,
                     bool causal, uint64_t seed, uint64_t offset,
                     const uint64_t *seed_dev, const uint64_t *offset_dev) {
-  if (B == 0 || S_q == 0) return cudaSuccess;
+  if (B == 0 || H == 0 || S_q == 0) return cudaSuccess;
+  const size_t rows_q = size_t(B) * H * S_q;
   if (S_kv == 0) {
-    cudaMemsetAsync(lse, 0, size_t(B) * S_q * sizeof(float), stream);
-    return cudaMemsetAsync(out, 0, size_t(B) * S_q * D * kElemBytes, stream);
+    cudaMemsetAsync(lse, 0, rows_q * sizeof(float), stream);
+    return cudaMemsetAsync(out, 0, rows_q * D * kElemBytes, stream);
   }
 
   fa2_shim::last_error = cudaSuccess;
   Flash_fwd_params p;
-  SetFwdParams(p, bf16, q, k, v, out, lse, B, S_q, S_kv, D, scale, dropout,
+  SetFwdParams(p, bf16, q, k, v, out, lse, B, H, S_q, S_kv, D, scale, dropout,
                causal, seed, offset, seed_dev, offset_dev);
   void *sink = nullptr;
   cudaGetSymbolAddress(&sink, g_fwd_rng_sink);
@@ -243,50 +259,56 @@ cudaError_t Forward(cudaStream_t stream, bool bf16, const void *q,
   return TakeError();
 }
 
-size_t BackwardWorkspaceBytes(int B, int S_q, int D) {
-  const size_t s_q_rounded = RoundUp(S_q, 128);
-  const size_t dq_accum =
-      AlignUp(size_t(B) * s_q_rounded * RoundUp(D, 32) * sizeof(float));
-  const size_t softmax_d = AlignUp(size_t(B) * s_q_rounded * sizeof(float));
+// dq_accum is [B, S_q_rounded, H, D_rounded] and dsoftmax_sum is
+// [B, H, S_q_rounded], both float.
+size_t BackwardWorkspaceBytes(int B, int H, int S_q, int D) {
+  const size_t rows = size_t(B) * H * RoundUp(S_q, 128);
+  const size_t dq_accum = AlignUp(rows * RoundUp(D, 32) * sizeof(float));
+  const size_t softmax_d = AlignUp(rows * sizeof(float));
   return dq_accum + softmax_d + 2 * sizeof(uint64_t);
 }
 
 cudaError_t Backward(cudaStream_t stream, bool bf16, const void *q,
                      const void *k, const void *v, const void *out,
                      const float *lse, const void *dout, void *dq, void *dk,
-                     void *dv, void *workspace, int B, int S_q, int S_kv, int D,
-                     float scale, float dropout, bool causal, uint64_t seed,
-                     uint64_t offset, const uint64_t *seed_dev,
+                     void *dv, void *workspace, int B, int H, int S_q, int S_kv,
+                     int D, float scale, float dropout, bool causal,
+                     uint64_t seed, uint64_t offset, const uint64_t *seed_dev,
                      const uint64_t *offset_dev) {
-  if (B == 0) return cudaSuccess;
+  if (B == 0 || H == 0) return cudaSuccess;
   if (S_q == 0 || S_kv == 0) {
     // Every gradient is empty or zero.
-    cudaMemsetAsync(dq, 0, size_t(B) * S_q * D * kElemBytes, stream);
-    cudaMemsetAsync(dk, 0, size_t(B) * S_kv * D * kElemBytes, stream);
-    return cudaMemsetAsync(dv, 0, size_t(B) * S_kv * D * kElemBytes, stream);
+    const size_t q_bytes = size_t(B) * H * S_q * D * kElemBytes;
+    const size_t kv_bytes = size_t(B) * H * S_kv * D * kElemBytes;
+    cudaMemsetAsync(dq, 0, q_bytes, stream);
+    cudaMemsetAsync(dk, 0, kv_bytes, stream);
+    return cudaMemsetAsync(dv, 0, kv_bytes, stream);
   }
 
   fa2_shim::last_error = cudaSuccess;
   Flash_bwd_params p;
   SetFwdParams(p, bf16, q, k, v, const_cast<void *>(out),
-               const_cast<float *>(lse), B, S_q, S_kv, D, scale, dropout,
+               const_cast<float *>(lse), B, H, S_q, S_kv, D, scale, dropout,
                causal, seed, offset, seed_dev, offset_dev);
 
+  const Strides sq = BSHDStrides(S_q, H, D), skv = BSHDStrides(S_kv, H, D);
   p.do_ptr = const_cast<void *>(dout);
   p.dq_ptr = dq;
   p.dk_ptr = dk;
   p.dv_ptr = dv;
-  p.do_batch_stride = p.dq_batch_stride = int64_t(S_q) * D;
-  p.dk_batch_stride = p.dv_batch_stride = int64_t(S_kv) * D;
-  p.do_row_stride = p.dq_row_stride = p.dk_row_stride = p.dv_row_stride = D;
+  p.do_batch_stride = p.dq_batch_stride = sq.batch;
+  p.dk_batch_stride = p.dv_batch_stride = skv.batch;
+  p.do_row_stride = p.dq_row_stride = sq.row;
+  p.dk_row_stride = p.dv_row_stride = skv.row;
   p.do_head_stride = p.dq_head_stride = p.dk_head_stride = p.dv_head_stride = D;
 
+  // Same layout as BackwardWorkspaceBytes.
   char *ws = static_cast<char *>(workspace);
-  const size_t s_q_rounded = RoundUp(S_q, 128);
+  const size_t rows = size_t(B) * H * RoundUp(S_q, 128);
   p.dq_accum_ptr = ws;
-  ws += AlignUp(size_t(B) * s_q_rounded * RoundUp(D, 32) * sizeof(float));
+  ws += AlignUp(rows * RoundUp(D, 32) * sizeof(float));
   p.dsoftmax_sum = ws;
-  ws += AlignUp(size_t(B) * s_q_rounded * sizeof(float));
+  ws += AlignUp(rows * sizeof(float));
   p.rng_state = reinterpret_cast<uint64_t *>(ws);
   p.dk_accum_ptr = p.dv_accum_ptr = nullptr;
   p.deterministic = false;
@@ -313,26 +335,28 @@ namespace flash_attention_fa2 {
 
 bool ShapeSupported(int d_qk, int d_v) { return false; }
 
+bool GridSupported(int B, int H) { return false; }
+
 bool Supported(int d_qk, int d_v) { return false; }
 
 bool BackwardSupported(int d_qk, int d_v, float dropout) { return false; }
 
 cudaError_t Forward(cudaStream_t stream, bool bf16, const void *q,
                     const void *k, const void *v, void *out, float *lse, int B,
-                    int S_q, int S_kv, int D, float scale, float dropout,
+                    int H, int S_q, int S_kv, int D, float scale, float dropout,
                     bool causal, uint64_t seed, uint64_t offset,
                     const uint64_t *seed_dev, const uint64_t *offset_dev) {
   return cudaErrorNotSupported;
 }
 
-size_t BackwardWorkspaceBytes(int B, int S_q, int D) { return 0; }
+size_t BackwardWorkspaceBytes(int B, int H, int S_q, int D) { return 0; }
 
 cudaError_t Backward(cudaStream_t stream, bool bf16, const void *q,
                      const void *k, const void *v, const void *out,
                      const float *lse, const void *dout, void *dq, void *dk,
-                     void *dv, void *workspace, int B, int S_q, int S_kv, int D,
-                     float scale, float dropout, bool causal, uint64_t seed,
-                     uint64_t offset, const uint64_t *seed_dev,
+                     void *dv, void *workspace, int B, int H, int S_q, int S_kv,
+                     int D, float scale, float dropout, bool causal,
+                     uint64_t seed, uint64_t offset, const uint64_t *seed_dev,
                      const uint64_t *offset_dev) {
   return cudaErrorNotSupported;
 }
