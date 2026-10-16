@@ -2815,7 +2815,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         *precision_config.mutable_operand_precision() = {
             operand_precision->begin(), operand_precision->end()};
       } else {
-        precision_config.mutable_operand_precision()->Resize(
+        precision_config.mutable_operand_precision()->resize(
             operands.size(), PrecisionConfig::DEFAULT);
       }
       if (algorithm) {
@@ -3706,7 +3706,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         *precision_config.mutable_operand_precision() = {
             operand_precision->begin(), operand_precision->end()};
       } else {
-        precision_config.mutable_operand_precision()->Resize(
+        precision_config.mutable_operand_precision()->resize(
             operands.size(), PrecisionConfig::DEFAULT);
       }
       *custom_call_instr->mutable_precision_config() = precision_config;
@@ -3773,7 +3773,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         *precision_config.mutable_operand_precision() = {
             operand_precision->begin(), operand_precision->end()};
       } else {
-        precision_config.mutable_operand_precision()->Resize(
+        precision_config.mutable_operand_precision()->resize(
             operands.size(), PrecisionConfig::DEFAULT);
       }
       if (algorithm) {
@@ -3861,7 +3861,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
             operand_precision->begin(), operand_precision->end()};
       } else {
         // Only the lhs and rhs operands have precision.
-        precision_config.mutable_operand_precision()->Resize(
+        precision_config.mutable_operand_precision()->resize(
             HloRaggedDotInstruction::kOperands - 1, PrecisionConfig::DEFAULT);
       }
       if (!maybe_infer_shape([&] {
@@ -3932,7 +3932,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         *precision_config.mutable_operand_precision() = {
             operand_precision->begin(), operand_precision->end()};
       } else {
-        precision_config.mutable_operand_precision()->Resize(
+        precision_config.mutable_operand_precision()->resize(
             2, PrecisionConfig::DEFAULT);
       }
       if (algorithm) {
