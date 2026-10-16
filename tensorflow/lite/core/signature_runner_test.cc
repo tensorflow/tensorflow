@@ -19,10 +19,13 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/core/interpreter_builder.h"
 #include "tensorflow/lite/core/kernels/register.h"
+#include "tensorflow/lite/interpreter_options.h"
 #include "tensorflow/lite/model_builder.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/testing/util.h"
 
 namespace tflite {
@@ -191,6 +194,52 @@ TEST(SignatureRunnerTest, TestPlaceholderSignaturesDefaultNames) {
   EXPECT_EQ(std::string(input_names[1]), "input1");
   ASSERT_EQ(output_names.size(), 1);
   EXPECT_EQ(std::string(output_names[0]), "output0");
+}
+
+TEST(SignatureRunnerTest, OutOfBoundsSignatureSubgraphAndTensorIndex) {
+  TestErrorReporter reporter;
+  auto base_model = FlatBufferModel::BuildFromFile(
+      "tensorflow/lite/testdata/multi_signatures.bin", &reporter);
+  ASSERT_TRUE(base_model);
+
+  std::unique_ptr<ModelT> unpacked_model(base_model->GetModel()->UnPack());
+  ASSERT_NE(unpacked_model, nullptr);
+  ASSERT_GE(unpacked_model->signature_defs.size(), 2);
+
+  // Set first signature's subgraph_index out of bounds.
+  unpacked_model->signature_defs[0]->subgraph_index = 99;
+  // Set second signature's tensor indices out of bounds on a valid subgraph.
+  ASSERT_FALSE(unpacked_model->signature_defs[1]->inputs.empty());
+  ASSERT_FALSE(unpacked_model->signature_defs[1]->outputs.empty());
+  unpacked_model->signature_defs[1]->inputs[0]->tensor_index = 99;
+  unpacked_model->signature_defs[1]->outputs[0]->tensor_index = 99;
+
+  flatbuffers::FlatBufferBuilder fbb;
+  FinishModelBuffer(fbb, Model::Pack(fbb, unpacked_model.get()));
+
+  auto corrupted_model = FlatBufferModel::BuildFromBuffer(
+      reinterpret_cast<const char*>(fbb.GetBufferPointer()), fbb.GetSize(),
+      &reporter);
+  ASSERT_TRUE(corrupted_model);
+
+  ops::builtin::BuiltinOpResolver resolver;
+  InterpreterOptions options;
+  options.SetUseSignatureTensorNames(true);
+  InterpreterBuilder builder(*corrupted_model, resolver, &options);
+
+  std::unique_ptr<Interpreter> interpreter;
+  ASSERT_EQ(builder(&interpreter), kTfLiteOk);
+  ASSERT_NE(interpreter, nullptr);
+
+  EXPECT_EQ(interpreter->GetSignatureRunner("add"), nullptr);
+  EXPECT_EQ(interpreter->input_tensor_by_signature("x", "add"), nullptr);
+  EXPECT_EQ(interpreter->output_tensor_by_signature("output_0", "add"),
+            nullptr);
+
+  SignatureRunner* sub_runner = interpreter->GetSignatureRunner("sub");
+  ASSERT_NE(sub_runner, nullptr);
+  EXPECT_EQ(sub_runner->input_tensor("x"), nullptr);
+  EXPECT_EQ(sub_runner->output_tensor("output_0"), nullptr);
 }
 
 }  // namespace
