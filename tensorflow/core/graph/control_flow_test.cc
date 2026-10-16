@@ -142,5 +142,20 @@ TEST(ValidateControlFlowTest, TwoLoopCond) {
       << status.message();
 }
 
+TEST(ValidateControlFlowTest, LoopCondOutsideWhileLoop) {
+  Scope scope = Scope::NewRootScope().ExitOnError();
+  ops::LoopCond(scope, ops::Const(scope, true));
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  TF_ASSERT_OK(scope.ToGraph(graph.get()));
+  std::vector<ControlFlowInfo> info;
+  absl::Status status = BuildControlFlowInfo(graph.get(), &info);
+  EXPECT_FALSE(status.ok());
+  EXPECT_TRUE(
+      absl::StrContains(status.message(), "must be inside a while loop frame"))
+      << status.message();
+  EXPECT_TRUE(absl::StrContains(status.message(), "{{node LoopCond}}"))
+      << status.message();
+}
+
 }  // namespace
 }  // namespace tensorflow
