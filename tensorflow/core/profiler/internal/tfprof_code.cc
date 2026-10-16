@@ -18,6 +18,7 @@ limitations under the License.
 #include <stdio.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <iterator>
 #include <map>
 #include <memory>
@@ -27,13 +28,18 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
+#include "third_party/re2/re2.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
 #include "tensorflow/core/lib/io/zlib_outputbuffer.h"
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/profiler/internal/tfprof_constants.h"
+#include "tensorflow/core/profiler/tfprof_output.pb.h"
 #include "tsl/profiler/protobuf/profile.pb.h"
 
 namespace tensorflow {
