@@ -2043,6 +2043,12 @@ PjRtStreamExecutorRawClient::ToAsyncExecutable(
       std::static_pointer_cast<StreamExecutorExecutable>(executable));
 }
 
+std::pair<tsl::AsyncValueRef<PjRtExecutable>,
+          PjRtRawClient::PjRtFulfillAsyncExecutableCallback>
+PjRtStreamExecutorRawClient::CreateLinkedExecutablePromise() const {
+  return CreateLinkedExecutablePromiseForType<StreamExecutorExecutable>();
+}
+
 bool PjRtStreamExecutorRawClient::IsHostMemoryPinned(const void* ptr,
                                                      uint64_t size) const {
   return executor_->IsHostMemoryPinned(ptr, size);

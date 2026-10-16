@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#if defined(__has_attribute) && __has_attribute(ext_vector_type) && \
+    defined(__has_builtin) && __has_builtin(__builtin_vectorelements)
+
 #include "xla/codegen/intrinsic/cpp/trig.h"
 
 #include <type_traits>
@@ -141,3 +144,6 @@ Vec8f sinh_v8f32(Vec8f x) { return SinhF32(x); }
 Vec16f sinh_v16f32(Vec16f x) { return SinhF32(x); }
 
 }  // namespace xla::codegen
+
+#endif  // defined(__has_attribute) && __has_attribute(ext_vector_type) &&
+        // defined(__has_builtin) && __has_builtin(__builtin_vectorelements)

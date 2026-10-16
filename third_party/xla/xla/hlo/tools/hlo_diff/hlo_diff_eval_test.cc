@@ -192,6 +192,8 @@ TEST_F(HloDiffTest, DiffSizeWorks) {
       {graph_l->GetRoot().instruction, graph_r->GetRoot().instruction});
   diff_result.unchanged_instructions.insert(
       {graph_l->GetRoot().instruction, graph_r->GetRoot().instruction});
+  diff_result.moved_instructions.insert(
+      {graph_l->GetRoot().instruction, graph_r->GetRoot().instruction});
   std::unique_ptr<const DiffEval> diff_eval =
       ComputeDiffEval(*graph_l, *graph_r, {}, diff_result, {});
 
@@ -199,6 +201,7 @@ TEST_F(HloDiffTest, DiffSizeWorks) {
   EXPECT_EQ(diff_eval->len_right_unmatched, 1);
   EXPECT_EQ(diff_eval->len_changed, 1);
   EXPECT_EQ(diff_eval->len_unchanged, 1);
+  EXPECT_EQ(diff_eval->len_moved, 1);
 }
 
 }  // namespace
