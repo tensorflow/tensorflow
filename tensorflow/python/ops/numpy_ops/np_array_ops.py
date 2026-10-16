@@ -12,2439 +12,1937 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Common array methods."""
-# pylint: disable=g-direct-tensorflow-import
+"""Tests for tf numpy array methods."""
 
-import builtins
-import enum
-import functools
-import math
-import numbers
+import itertools
+import operator
+import sys
 
+from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.eager import backprop
+from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor as tensor_lib
+from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import array_ops_stack
-from tensorflow.python.ops import clip_ops
-from tensorflow.python.ops import control_flow_assert
-from tensorflow.python.ops import linalg_ops
-from tensorflow.python.ops import manip_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import sort_ops
+from tensorflow.python.ops.numpy_ops import np_array_ops
 from tensorflow.python.ops.numpy_ops import np_arrays
-from tensorflow.python.ops.numpy_ops import np_dtypes
-from tensorflow.python.ops.numpy_ops import np_utils
-from tensorflow.python.types import core as core_tf_types
-from tensorflow.python.util import nest
-from tensorflow.python.util import tf_export
+from tensorflow.python.ops.numpy_ops import np_math_ops
+from tensorflow.python.platform import test
 
 
-newaxis = np.newaxis
-tf_export.tf_export('experimental.numpy.newaxis', v1=[]).export_constant(
-    __name__, 'newaxis'
-)
+_virtual_devices_ready = False
 
 
-@tf_export.tf_export('experimental.numpy.empty', v1=[])
-@np_utils.np_doc('empty')
-def empty(shape, dtype=float):  # pylint: disable=redefined-outer-name
-  return zeros(shape, dtype)
+def set_up_virtual_devices():
+  global _virtual_devices_ready
+  if _virtual_devices_ready:
+    return
+  physical_devices = config.list_physical_devices('CPU')
+  config.set_logical_device_configuration(
+      physical_devices[0], [
+          context.LogicalDeviceConfiguration(),
+          context.LogicalDeviceConfiguration()
+      ])
+  _virtual_devices_ready = True
 
 
-@tf_export.tf_export('experimental.numpy.empty_like', v1=[])
-@np_utils.np_doc('empty_like')
-def empty_like(a, dtype=None):
-  return zeros_like(a, dtype)
+class ArrayCreationTest(test.TestCase):
 
+  def setUp(self):
+    super(ArrayCreationTest, self).setUp()
+    set_up_virtual_devices()
+    python_shapes = [
+        0, 1, 2, (), (1,), (2,), (1, 2, 3), [], [1], [2], [1, 2, 3]
+    ]
+    self.shape_transforms = [
+        lambda x: x, lambda x: np.array(x, dtype=int),
+        lambda x: np_array_ops.array(x, dtype=int), tensor_shape.TensorShape
+    ]
 
-@tf_export.tf_export('experimental.numpy.zeros', v1=[])
-@np_utils.np_doc('zeros')
-def zeros(shape, dtype=float):  # pylint: disable=redefined-outer-name
-  dtype = (
-      np_utils.result_type(dtype) if dtype else np_dtypes.default_float_type()
-  )
-  return array_ops.zeros(shape, dtype=dtype)
+    self.all_shapes = []
+    for fn in self.shape_transforms:
+      self.all_shapes.extend([fn(s) for s in python_shapes])
 
+    if sys.version_info.major == 3:
+      # There is a bug of np.empty (and alike) in Python 3 causing a crash when
+      # the `shape` argument is an np_arrays.ndarray scalar (or tf.Tensor
+      # scalar).
+      def not_ndarray_scalar(s):
+        return not (isinstance(s, np_arrays.ndarray) and s.ndim == 0)
 
-@tf_export.tf_export('experimental.numpy.zeros_like', v1=[])
-@np_utils.np_doc('zeros_like')
-def zeros_like(a, dtype=None):  # pylint: disable=missing-docstring
-  dtype = np_utils.result_type_unary(a, dtype)
+      self.all_shapes = list(filter(not_ndarray_scalar, self.all_shapes))
 
-  dtype = dtypes.as_dtype(dtype)  # Work around b/149877262
-  return array_ops.zeros_like(a, dtype)
+    self.all_types = [
+        int, float, np.int16, np.int32, np.int64, np.float16, np.float32,
+        np.float64, np.complex64, np.complex128
+    ]
 
+    source_array_data = [
+        1,
+        5.5,
+        7,
+        (),
+        (8, 10.),
+        ((), ()),
+        ((1, 4), (2, 8)),
+        [],
+        [7],
+        [8, 10.],
+        [[], []],
+        [[1, 4], [2, 8]],
+        ([], []),
+        ([1, 4], [2, 8]),
+        [(), ()],
+        [(1, 4), (2, 8)],
+    ]
 
-@tf_export.tf_export('experimental.numpy.ones', v1=[])
-@np_utils.np_doc('ones')
-def ones(shape, dtype=float):  # pylint: disable=redefined-outer-name
-  if dtype:
-    dtype = np_utils.result_type(dtype)
-  return array_ops.ones(shape, dtype=dtype)
+    self.array_transforms = [
+        lambda x: x,
+        ops.convert_to_tensor,
+        np.array,
+        np_array_ops.array,
+    ]
+    self.all_arrays = []
+    for fn in self.array_transforms:
+      self.all_arrays.extend([fn(s) for s in source_array_data])
 
+  def testEmpty(self):
+    for s in self.all_shapes:
+      actual = np_array_ops.empty(s)
+      expected = np.empty(s)
+      msg = 'shape: {}'.format(s)
+      self.match_shape(actual, expected, msg)
+      self.match_dtype(actual, expected, msg)
 
-@tf_export.tf_export('experimental.numpy.ones_like', v1=[])
-@np_utils.np_doc('ones_like')
-def ones_like(a, dtype=None):
-  dtype = np_utils.result_type_unary(a, dtype)
-  return array_ops.ones_like(a, dtype)
+    for s, t in itertools.product(self.all_shapes, self.all_types):
+      actual = np_array_ops.empty(s, t)
+      expected = np.empty(s, t)
+      msg = 'shape: {}, dtype: {}'.format(s, t)
+      self.match_shape(actual, expected, msg)
+      self.match_dtype(actual, expected, msg)
 
+  def testEmptyLike(self):
+    for a in self.all_arrays:
+      actual = np_array_ops.empty_like(a)
+      expected = np.empty_like(a)
+      msg = 'array: {}'.format(a)
+      self.match_shape(actual, expected, msg)
+      self.match_dtype(actual, expected, msg)
 
-@tf_export.tf_export('experimental.numpy.eye', v1=[])
-@np_utils.np_doc('eye')
-def eye(N, M=None, k=0, dtype=float):  # pylint: disable=invalid-name,missing-docstring
-  if dtype:
-    dtype = np_utils.result_type(dtype)
-  if M is None:
-    M = N
-  # Making sure N, M and k are `int`
-  N = int(N)
-  M = int(M)
-  k = int(k)
-  if k >= M or -k >= N:
-    # tf.linalg.diag will raise an error in this case
-    return zeros([N, M], dtype=dtype)
-  if k == 0:
-    return linalg_ops.eye(N, M, dtype=dtype)
-  # We need the precise length, otherwise tf.linalg.diag will raise an error
-  diag_len = builtins.min(N, M)
-  if k > 0:
-    if N >= M:
-      diag_len -= k
-    elif N + k > M:
-      diag_len = M - k
-  elif k <= 0:
-    if M >= N:
-      diag_len += k
-    elif M - k > N:
-      diag_len = N + k
-  diagonal_ = array_ops.ones([diag_len], dtype=dtype)
-  return array_ops.matrix_diag(diagonal=diagonal_, num_rows=N, num_cols=M, k=k)
+    for a, t in itertools.product(self.all_arrays, self.all_types):
+      actual = np_array_ops.empty_like(a, t)
+      expected = np.empty_like(a, t)
+      msg = 'array: {} type: {}'.format(a, t)
+      self.match_shape(actual, expected, msg)
+      self.match_dtype(actual, expected, msg)
 
+  def testZeros(self):
+    for s in self.all_shapes:
+      actual = np_array_ops.zeros(s)
+      expected = np.zeros(s)
+      msg = 'shape: {}'.format(s)
+      self.match(actual, expected, msg)
 
-@tf_export.tf_export('experimental.numpy.identity', v1=[])
-@np_utils.np_doc('identity')
-def identity(n, dtype=float):
-  return eye(N=n, M=n, dtype=dtype)
+    for s, t in itertools.product(self.all_shapes, self.all_types):
+      actual = np_array_ops.zeros(s, t)
+      expected = np.zeros(s, t)
+      msg = 'shape: {}, dtype: {}'.format(s, t)
+      self.match(actual, expected, msg)
 
+  def testZerosLike(self):
+    for a in self.all_arrays:
+      actual = np_array_ops.zeros_like(a)
+      expected = np.zeros_like(a)
+      msg = 'array: {}'.format(a)
+      self.match(actual, expected, msg)
 
-@tf_export.tf_export('experimental.numpy.full', v1=[])
-@np_utils.np_doc('full')
-def full(shape, fill_value, dtype=None):  # pylint: disable=redefined-outer-name
-  if not isinstance(shape, np_arrays.ndarray):
-    shape = asarray(np_arrays.convert_to_tensor(shape, dtype_hint=np.int32))
-  shape = atleast_1d(shape)
-  fill_value = asarray(fill_value, dtype=dtype)
-  return array_ops.broadcast_to(fill_value, shape)
+    for a, t in itertools.product(self.all_arrays, self.all_types):
+      actual = np_array_ops.zeros_like(a, t)
+      expected = np.zeros_like(a, t)
+      msg = 'array: {} type: {}'.format(a, t)
+      self.match(actual, expected, msg)
 
+  def testOnes(self):
+    for s in self.all_shapes:
+      actual = np_array_ops.ones(s)
+      expected = np.ones(s)
+      msg = 'shape: {}'.format(s)
+      self.match(actual, expected, msg)
 
-# Using doc only here since np full_like signature doesn't seem to have the
-# shape argument (even though it exists in the documentation online).
-@tf_export.tf_export('experimental.numpy.full_like', v1=[])
-@np_utils.np_doc_only('full_like')
-def full_like(a, fill_value, dtype=None, order='K', subok=True, shape=None):  # pylint: disable=missing-docstring,redefined-outer-name
-  """order, subok and shape arguments mustn't be changed."""
-  if order != 'K':
-    raise ValueError('Non-standard orders are not supported.')
-  if not subok:
-    raise ValueError('subok being False is not supported.')
-  if shape:
-    raise ValueError('Overriding the shape is not supported.')
+    for s, t in itertools.product(self.all_shapes, self.all_types):
+      actual = np_array_ops.ones(s, t)
+      expected = np.ones(s, t)
+      msg = 'shape: {}, dtype: {}'.format(s, t)
+      self.match(actual, expected, msg)
 
-  a = asarray(a)
-  dtype = dtype or np_utils.result_type(a)
-  fill_value = asarray(fill_value, dtype=dtype)
-  return array_ops.broadcast_to(fill_value, array_ops.shape(a))
+  def testOnesLike(self):
+    for a in self.all_arrays:
+      actual = np_array_ops.ones_like(a)
+      expected = np.ones_like(a)
+      msg = 'array: {}'.format(a)
+      self.match(actual, expected, msg)
 
+    for a, t in itertools.product(self.all_arrays, self.all_types):
+      actual = np_array_ops.ones_like(a, t)
+      expected = np.ones_like(a, t)
+      msg = 'array: {} type: {}'.format(a, t)
+      self.match(actual, expected, msg)
 
-def _array_internal(val, dtype=None, copy=True, ndmin=0):  # pylint: disable=redefined-outer-name
-  """Main implementation of np.array()."""
-  result_t = val
+  def testEye(self):
+    n_max = 3
+    m_max = 3
 
-  if not isinstance(result_t, tensor_lib.Tensor):
-    dtype = np_utils.result_type_unary(result_t, dtype)
-    # We can't call `convert_to_tensor(result_t, dtype=dtype)` here because
-    # convert_to_tensor doesn't allow incompatible arguments such as (5.5, int)
-    # while np.array allows them. We need to convert-then-cast.
+    for n in range(1, n_max + 1):
+      self.match(np_array_ops.eye(n), np.eye(n))
+      for k in range(-n, n + 1):
+        self.match(np_array_ops.eye(n, k=k), np.eye(n, k=k))
+      for m in range(1, m_max + 1):
+        self.match(np_array_ops.eye(n, m), np.eye(n, m))
+        for k in range(-n, m):
+          self.match(np_array_ops.eye(n, k=k), np.eye(n, k=k))
+          self.match(np_array_ops.eye(n, m, k), np.eye(n, m, k))
 
-    # EagerTensor conversion complains about "mixed types" when converting
-    # tensors with no dtype information. This is because it infers types based
-    # on one selected item in the list. So e.g. when converting [2., 2j]
-    # to a tensor, it will select float32 as the inferred type and not be able
-    # to convert the list to a float 32 tensor.
-    # Since we have some information about the final dtype we care about, we
-    # supply that information so that convert_to_tensor will do best-effort
-    # conversion to that dtype first.
-    result_t = np_arrays.convert_to_tensor(result_t, dtype_hint=dtype)
-    result_t = math_ops.cast(result_t, dtype=dtype)
-  elif dtype:
-    result_t = math_ops.cast(result_t, dtype)
+    for dtype in self.all_types:
+      for n in range(1, n_max + 1):
+        self.match(np_array_ops.eye(n, dtype=dtype), np.eye(n, dtype=dtype))
+        for k in range(-n, n + 1):
+          self.match(
+              np_array_ops.eye(n, k=k, dtype=dtype),
+              np.eye(n, k=k, dtype=dtype))
+        for m in range(1, m_max + 1):
+          self.match(
+              np_array_ops.eye(n, m, dtype=dtype), np.eye(n, m, dtype=dtype))
+          for k in range(-n, m):
+            self.match(
+                np_array_ops.eye(n, k=k, dtype=dtype),
+                np.eye(n, k=k, dtype=dtype))
+            self.match(
+                np_array_ops.eye(n, m, k, dtype=dtype),
+                np.eye(n, m, k, dtype=dtype))
 
-  if copy:
-    result_t = array_ops.identity(result_t)
+    # Test M=0 and N=0 zero-dimension edge cases
+    for n in (0, 1, 3):
+      for m in (0, 1, 3):
+        self.match(np_array_ops.eye(n, m), np.eye(n, m))
+        for k in range(-n - 1, m + 2):
+          self.match(np_array_ops.eye(n, m, k), np.eye(n, m, k))
 
-  max_ndmin = 32
-  if ndmin > max_ndmin:
-    raise ValueError(
-        f'ndmin bigger than allowable number of dimensions: {max_ndmin}.'
-    )
+  def testIdentity(self):
+    n_max = 3
 
-  if ndmin == 0:
-    return result_t
+    for n in range(1, n_max + 1):
+      self.match(np_array_ops.identity(n), np.identity(n))
 
-  ndims = array_ops.rank(result_t)
+    for dtype in self.all_types:
+      for n in range(1, n_max + 1):
+        self.match(
+            np_array_ops.identity(n, dtype=dtype), np.identity(n, dtype=dtype))
 
-  def true_fn():
-    old_shape = array_ops.shape(result_t)
-    new_shape = array_ops.concat(
-        [array_ops.ones(ndmin - ndims, dtypes.int32), old_shape], axis=0
-    )
-    return array_ops.reshape(result_t, new_shape)
+  def testFull(self):
+    # List of 2-tuples of fill value and shape.
+    data = [
+        (5, ()),
+        (5, (7,)),
+        (5., (7,)),
+        ([5, 8], (2,)),
+        ([5, 8], (3, 2)),
+        ([[5], [8]], (2, 3)),
+        ([[5], [8]], (3, 2, 5)),
+        ([[5.], [8.]], (3, 2, 5)),
+        ([[3, 4], [5, 6], [7, 8]], (3, 3, 2)),
+    ]
+    for f, s in data:
+      for fn1, fn2 in itertools.product(self.array_transforms,
+                                        self.shape_transforms):
+        fill_value = fn1(f)
+        shape = fn2(s)
+        self.match(
+            np_array_ops.full(shape, fill_value), np.full(shape, fill_value))
+        for dtype in self.all_types:
+          self.match(
+              np_array_ops.full(shape, fill_value, dtype=dtype),
+              np.full(shape, fill_value, dtype=dtype))
 
-  result_t = np_utils.cond(
-      np_utils.greater(ndmin, ndims), true_fn, lambda: result_t
-  )
-  return result_t
+  def testFullLike(self):
+    # List of 2-tuples of fill value and shape.
+    data = [
+        (5, ()),
+        (5, (7,)),
+        (5., (7,)),
+        ([5, 8], (2,)),
+        ([5, 8], (3, 2)),
+        ([[5], [8]], (2, 3)),
+        ([[5], [8]], (3, 2, 5)),
+        ([[5.], [8.]], (3, 2, 5)),
+    ]
+    zeros_builders = [np_array_ops.zeros, np.zeros]
+    for f, s in data:
+      for fn1, fn2, arr_dtype in itertools.product(self.array_transforms,
+                                                   zeros_builders,
+                                                   self.all_types):
+        fill_value = fn1(f)
+        arr = fn2(s, arr_dtype)
+        self.match(
+            np_array_ops.full_like(arr, fill_value),
+            np.full_like(arr, fill_value))
+        for dtype in self.all_types:
+          self.match(
+              np_array_ops.full_like(arr, fill_value, dtype=dtype),
+              np.full_like(arr, fill_value, dtype=dtype))
 
+  def testArray(self):
+    ndmins = [0, 1, 2, 5]
+    for a, dtype, ndmin, copy in itertools.product(self.all_arrays,
+                                                   self.all_types, ndmins,
+                                                   [True, False]):
+      self.match(
+          np_array_ops.array(a, dtype=dtype, ndmin=ndmin, copy=copy),
+          np.array(a, dtype=dtype, ndmin=ndmin))
 
-# TODO(wangpeng): investigate whether we can make `copy` default to False.
-# pylint: disable=g-short-docstring-punctuation,g-no-space-after-docstring-summary,g-doc-return-or-yield,g-doc-args
-@tf_export.tf_export('experimental.numpy.array', v1=[])
-@np_utils.np_doc_only('array')
-def array(val, dtype=None, copy=True, ndmin=0):  # pylint: disable=redefined-outer-name
-  """Since Tensors are immutable, a copy is made only if val is placed on a
+    zeros_list = np_array_ops.zeros(5)
 
-  different device than the current one. Even if `copy` is False, a new Tensor
-  may need to be built to satisfy `dtype` and `ndim`. This is used only if `val`
-  is an ndarray or a Tensor.
-  """  # pylint:disable=g-docstring-missing-newline
-  if dtype:
-    dtype = np_utils.result_type(dtype)
-  return _array_internal(val, dtype, copy, ndmin)
+    def test_copy_equal_false():
+      # Backing tensor is the same if copy=False, other attributes being None.
+      self.assertIs(np_array_ops.array(zeros_list, copy=False), zeros_list)
+      self.assertIs(np_array_ops.array(zeros_list, copy=False), zeros_list)
 
+      # Backing tensor is different if ndmin is not satisfied.
+      self.assertIsNot(
+          np_array_ops.array(zeros_list, copy=False, ndmin=2),
+          zeros_list)
+      self.assertIsNot(
+          np_array_ops.array(zeros_list, copy=False, ndmin=2),
+          zeros_list)
+      self.assertIs(
+          np_array_ops.array(zeros_list, copy=False, ndmin=1),
+          zeros_list)
+      self.assertIs(
+          np_array_ops.array(zeros_list, copy=False, ndmin=1),
+          zeros_list)
 
-# pylint: enable=g-short-docstring-punctuation,g-no-space-after-docstring-summary,g-doc-return-or-yield,g-doc-args
+      # Backing tensor is different if dtype is not satisfied.
+      self.assertIsNot(
+          np_array_ops.array(zeros_list, copy=False, dtype=int),
+          zeros_list)
+      self.assertIsNot(
+          np_array_ops.array(zeros_list, copy=False, dtype=int),
+          zeros_list)
+      self.assertIs(
+          np_array_ops.array(zeros_list, copy=False, dtype=float),
+          zeros_list)
+      self.assertIs(
+          np_array_ops.array(zeros_list, copy=False, dtype=float),
+          zeros_list)
 
+    test_copy_equal_false()
+    with ops.device('CPU:1'):
+      test_copy_equal_false()
 
-@tf_export.tf_export('experimental.numpy.asarray', v1=[])
-@np_utils.np_doc('asarray')
-def asarray(a, dtype=None):
-  if dtype:
-    dtype = np_utils.result_type(dtype)
-  if isinstance(a, np_arrays.ndarray) and (
-      not dtype or dtype == a.dtype.as_numpy_dtype
-  ):
-    return a
-  return array(a, dtype, copy=False)
+    self.assertNotIn('CPU:1', zeros_list.backing_device)
+    with ops.device('CPU:1'):
+      self.assertIn(
+          'CPU:1', np_array_ops.array(zeros_list, copy=True).backing_device)
+      self.assertIn(
+          'CPU:1', np_array_ops.array(np.array(0), copy=True).backing_device)
 
+  def testAsArray(self):
+    for a, dtype in itertools.product(self.all_arrays, self.all_types):
+      self.match(
+          np_array_ops.asarray(a, dtype=dtype), np.asarray(a, dtype=dtype))
 
-@tf_export.tf_export('experimental.numpy.asanyarray', v1=[])
-@np_utils.np_doc('asanyarray')
-def asanyarray(a, dtype=None):
-  return asarray(a, dtype)
+    zeros_list = np_array_ops.zeros(5)
+    # Same instance is returned if no dtype is specified and input is ndarray.
+    self.assertIs(np_array_ops.asarray(zeros_list), zeros_list)
+    with ops.device('CPU:1'):
+      self.assertIs(np_array_ops.asarray(zeros_list), zeros_list)
+    # Different instance is returned if dtype is specified and input is ndarray.
+    self.assertIsNot(np_array_ops.asarray(zeros_list, dtype=int), zeros_list)
 
+  def testAsAnyArray(self):
+    for a, dtype in itertools.product(self.all_arrays, self.all_types):
+      self.match(
+          np_array_ops.asanyarray(a, dtype=dtype),
+          np.asanyarray(a, dtype=dtype))
+    zeros_list = np_array_ops.zeros(5)
+    # Same instance is returned if no dtype is specified and input is ndarray.
+    self.assertIs(np_array_ops.asanyarray(zeros_list), zeros_list)
+    with ops.device('CPU:1'):
+      self.assertIs(np_array_ops.asanyarray(zeros_list), zeros_list)
+    # Different instance is returned if dtype is specified and input is ndarray.
+    self.assertIsNot(np_array_ops.asanyarray(zeros_list, dtype=int), zeros_list)
 
-@tf_export.tf_export('experimental.numpy.ascontiguousarray', v1=[])
-@np_utils.np_doc('ascontiguousarray')
-def ascontiguousarray(a, dtype=None):
-  return array(a, dtype, ndmin=1)
+  def testAsContiguousArray(self):
+    for a, dtype in itertools.product(self.all_arrays, self.all_types):
+      self.match(
+          np_array_ops.ascontiguousarray(a, dtype=dtype),
+          np.ascontiguousarray(a, dtype=dtype))
 
-
-# Numerical ranges.
-@tf_export.tf_export('experimental.numpy.arange', v1=[])
-@np_utils.np_doc('arange')
-def arange(start, stop=None, step=1, dtype=None):
-  """Returns `step`-separated values in the range [start, stop).
-
-  Args:
-    start: Start of the interval. Included in the range.
-    stop: End of the interval. If not specified, `start` is treated as 0 and
-      `start` value is used as `stop`. If specified, it is not included in the
-      range if `step` is integer. When `step` is floating point, it may or may
-      not be included.
-    step: The difference between 2 consecutive values in the output range. It is
-      recommended to use `linspace` instead of using non-integer values for
-      `step`.
-    dtype: Optional. Type of the resulting ndarray. Could be a python type, a
-      NumPy type or a TensorFlow `DType`. If not provided, the largest type of
-      `start`, `stop`, `step` is used.
-
-  Raises:
-    ValueError: If step is zero.
-  """
-  if not step:
-    raise ValueError('step must be non-zero.')
-  if dtype:
-    dtype = np_utils.result_type(dtype)
-  else:
-    if stop is None:
-      dtype = np_utils.result_type(start, step)
-    else:
-      dtype = np_utils.result_type(start, step, stop)
-  if step > 0 and (
-      (stop is not None and start > stop) or (stop is None and start < 0)
-  ):
-    return array([], dtype=dtype)
-  if step < 0 and (
-      (stop is not None and start < stop) or (stop is None and start > 0)
-  ):
-    return array([], dtype=dtype)
-  # TODO(srbs): There are some bugs when start or stop is float type and dtype
-  # is integer type.
-  if dtypes.as_dtype(dtype).is_floating:
-    # Build the range at the resolved precision so the values follow NumPy;
-    # handing the Python scalars to tf.range directly computes them as
-    # float32 even when the output dtype is float64.
-    limit = None if stop is None else ops.convert_to_tensor(stop, dtype=dtype)
-    return math_ops.range(
-        ops.convert_to_tensor(start, dtype=dtype),
-        limit=limit,
-        delta=ops.convert_to_tensor(step, dtype=dtype),
-    )
-  return math_ops.cast(
-      math_ops.range(start, limit=stop, delta=step), dtype=dtype
-  )
-
-
-# Building matrices.
-@tf_export.tf_export('experimental.numpy.diag', v1=[])
-@np_utils.np_doc('diag')
-def diag(v, k=0):  # pylint: disable=missing-docstring
-  """Raises an error if input is not 1- or 2-d."""
-  v = asarray(v)
-  v_rank = array_ops.rank(v)
-
-  v.shape.with_rank_at_most(2)
-
-  # TODO(nareshmodi): Consider a np_utils.Assert version that will fail during
-  # tracing time if the shape is known.
-  control_flow_assert.Assert(
-      np_utils.logical_or(math_ops.equal(v_rank, 1), math_ops.equal(v_rank, 2)),
-      [v_rank],
-  )
-
-  if isinstance(k, core_tf_types.Tensor) and k.shape.ndims is None:
-    control_flow_assert.Assert(math_ops.equal(array_ops.rank(k), 0), [k])
-  elif not isscalar(k):
-    raise ValueError(f'k must be an integer scalar, got {k}')
-
-  def _diag(v, k):
-    return np_utils.cond(
-        math_ops.equal(array_ops.size(v), 0),
-        lambda: array_ops.zeros([abs(k), abs(k)], dtype=v.dtype),
-        lambda: array_ops.matrix_diag(v, k=k),
-    )
-
-  def _diag_part(v, k):
-    v_shape = array_ops.shape(v)
-    v, k = np_utils.cond(
-        np_utils.logical_or(
-            np_utils.less_equal(k, -1 * np_utils.getitem(v_shape, 0)),
-            np_utils.greater_equal(k, np_utils.getitem(v_shape, 1)),
-        ),
-        lambda: (array_ops.zeros([0, 0], dtype=v.dtype), 0),
-        lambda: (v, k),
-    )
-    result = array_ops.matrix_diag_part(v, k=k)
-    return result
-
-  result = np_utils.cond(
-      math_ops.equal(v_rank, 1), lambda: _diag(v, k), lambda: _diag_part(v, k)
-  )
-  return result
-
-
-@tf_export.tf_export('experimental.numpy.diagonal', v1=[])
-@np_utils.np_doc('diagonal')
-def diagonal(a, offset=0, axis1=0, axis2=1):  # pylint: disable=missing-docstring
-  a = asarray(a)
-
-  maybe_rank = a.shape.rank
-  if (
-      maybe_rank is not None
-      and isinstance(axis1, (int, np.integer))
-      and isinstance(axis2, (int, np.integer))
-  ):
-    norm1 = axis1 + maybe_rank if axis1 < 0 else axis1
-    norm2 = axis2 + maybe_rank if axis2 < 0 else axis2
-    if norm1 < 0 or norm1 >= maybe_rank:
-      raise ValueError(
-          f'Argument `axis1` (received axis1={axis1}) is out of bounds '
-          f'for input of rank {maybe_rank}.'
+  def testARangeFloatStep(self):
+    for args, kwargs in [
+        ((0.0, 1.0), dict(step=0.3)),
+        ((0.0, 5.0), dict(step=1.5)),
+        ((2.0, -3.0), dict(step=-0.75)),
+    ]:
+      self.assertAllEqual(
+          np_array_ops.arange(*args, **kwargs), np.arange(*args, **kwargs)
       )
-    if norm2 < 0 or norm2 >= maybe_rank:
-      raise ValueError(
-          f'Argument `axis2` (received axis2={axis2}) is out of bounds '
-          f'for input of rank {maybe_rank}.'
-      )
-    if norm1 == norm2:
-      raise ValueError('axis1 and axis2 cannot be the same axis')
-    # Reassign after validation so the error messages above keep the
-    # original user-supplied values and the fast path below consumes
-    # normalized, non-negative axes.
-    axis1, axis2 = norm1, norm2
-
-  if (
-      maybe_rank is not None
-      and offset == 0
-      and axis1 == maybe_rank - 2
-      and axis2 == maybe_rank - 1
-  ):
-    return array_ops.matrix_diag_part(a)
-
-  a = moveaxis(a, (axis1, axis2), (-2, -1))
-
-  a_shape = array_ops.shape(a)
-
-  def _zeros():  # pylint: disable=missing-docstring
-    return (
-        array_ops.zeros(
-            array_ops.concat([a_shape[:-1], [0]], 0), dtype=a.dtype
-        ),
-        0,
+    self.assertAllEqual(
+        np_array_ops.arange(2.0, -3.0, step=-0.75, dtype=np.float32),
+        np.arange(2.0, -3.0, step=-0.75, dtype=np.float32),
     )
 
-  # All zeros since diag_part doesn't handle all possible k (aka offset).
-  # Written this way since cond will run shape inference on both branches,
-  # and diag_part shape inference will fail when offset is out of bounds.
-  a, offset = np_utils.cond(
-      np_utils.logical_or(
-          np_utils.less_equal(offset, -1 * np_utils.getitem(a_shape, -2)),
-          np_utils.greater_equal(offset, np_utils.getitem(a_shape, -1)),
-      ),
-      _zeros,
-      lambda: (a, offset),
-  )
-
-  a = array_ops.matrix_diag_part(a, k=offset)
-  return a
-
-
-@tf_export.tf_export('experimental.numpy.diagflat', v1=[])
-@np_utils.np_doc('diagflat')
-def diagflat(v, k=0):
-  v = asarray(v)
-  return diag(array_ops.reshape(v, [-1]), k)
-
-
-def _promote_dtype(*arrays):
-  dtype = np_utils.result_type(*arrays)
-
-  def _fast_asarray(a):
-    if isinstance(a, np_arrays.ndarray) and dtype == a.dtype.as_numpy_dtype:
-      return a
-    return _array_internal(a, dtype=dtype, copy=False)
-
-  return [_fast_asarray(a) for a in arrays]
-
-
-def _promote_dtype_binary(t1, t2):
-  dtype = np_utils._result_type_binary(t1, t2)  # pylint: disable=protected-access
-  if not (
-      isinstance(t1, np_arrays.ndarray) and dtype == t1.dtype.as_numpy_dtype
-  ):
-    t1 = _array_internal(t1, dtype=dtype, copy=False)
-  if not (
-      isinstance(t2, np_arrays.ndarray) and dtype == t2.dtype.as_numpy_dtype
-  ):
-    t2 = _array_internal(t2, dtype=dtype, copy=False)
-  return t1, t2
-
-
-@tf_export.tf_export('experimental.numpy.all', v1=[])
-@np_utils.np_doc('all')
-def all(a, axis=None, keepdims=None):  # pylint: disable=redefined-builtin
-  a = asarray(a, dtype=bool)
-  return math_ops.reduce_all(input_tensor=a, axis=axis, keepdims=keepdims)
-
-
-@tf_export.tf_export('experimental.numpy.any', v1=[])
-@np_utils.np_doc('any')
-def any(a, axis=None, keepdims=None):  # pylint: disable=redefined-builtin
-  a = asarray(a, dtype=bool)
-  return math_ops.reduce_any(input_tensor=a, axis=axis, keepdims=keepdims)
-
-
-@tf_export.tf_export('experimental.numpy.compress', v1=[])
-@np_utils.np_doc('compress')
-def compress(condition, a, axis=None):  # pylint: disable=redefined-outer-name,missing-function-docstring
-  condition = asarray(condition, dtype=bool)
-  a = asarray(a)
-
-  if condition.ndim != 1:
-    raise ValueError('condition must be a 1-d array.')
-  # `np.compress` treats scalars as 1-d arrays.
-  if a.ndim == 0:
-    a = ravel(a)
-
-  if axis is None:
-    a = ravel(a)
-    axis = 0
-
-  if axis < 0:
-    axis += a.ndim
-
-  if axis < 0 or axis >= a.ndim:
-    raise ValueError(
-        f'Argument `axis` is out of bounds for input of rank {a.ndim}.'
-    )
-
-  # `tf.boolean_mask` requires `a`'s size along `axis` to equal `condition`'s
-  # length. `np.compress` instead pairs `condition[k]` with `a[k]` along `axis`
-  # and drops any entries of `a` past `len(condition)`. Slice both down to their
-  # overlap so the mask always matches and the result stays bounded by
-  # `len(condition)` rather than `a.shape[axis]`: padding `condition` up to
-  # `a`'s size gives XLA a looser dynamic bound that fails to compile downstream
-  # (see #122055). Slicing to the overlap also avoids the `boolean_mask`
-  # "Dimensions must be equal" error when `condition` is longer than `a`.
-  cond_len = condition.shape[0]
-  a_len = a.shape[axis]
-  if cond_len is not None and a_len is not None:
-    # Static shapes: keep the slice lengths as Python ints so downstream shape
-    # inference (and XLA's static bound) sees the tight `len(condition)` extent.
-    overlap = builtins.min(cond_len, a_len)
-  else:
-    # Dynamic (`@tf.function` with `None` dims): `condition.shape[0]` /
-    # `a.shape[axis]` are `None`, so fall back to symbolic tensor shapes.
-    overlap = math_ops.minimum(
-        array_ops.shape(condition)[0], array_ops.shape(a)[axis]
-    )
-  condition = condition[:overlap]
-  a = a[tuple([slice(None)] * axis + [slice(0, overlap)])]
-  return array_ops.boolean_mask(tensor=a, mask=condition, axis=axis)
-
-
-@tf_export.tf_export('experimental.numpy.copy', v1=[])
-@np_utils.np_doc('copy')
-def copy(a):
-  return array(a, copy=True)
-
-
-def _maybe_promote_to_int(a):
-  if dtypes.as_dtype(a.dtype).is_integer:
-    # If a is an integer type and its precision is less than that of `int`,
-    # the output type will be `int`.
-    a_numpy_dtype = a.dtype.as_numpy_dtype
-    output_type = np.promote_types(a_numpy_dtype, int)
-    if output_type != a_numpy_dtype:
-      a = asarray(a, dtype=output_type)
-
-  return a
-
-
-@tf_export.tf_export('experimental.numpy.cumprod', v1=[])
-@np_utils.np_doc('cumprod')
-def cumprod(a, axis=None, dtype=None):  # pylint: disable=missing-docstring
-  a = asarray(a, dtype=dtype)
-
-  if dtype is None:
-    a = _maybe_promote_to_int(a)
-
-  # If axis is None, the input is flattened.
-  if axis is None:
-    a = ravel(a)
-    axis = 0
-  else:
-    # NumPy raises AxisError for out-of-bounds axes instead of letting the
-    # backend kernel fail with a confusing error.
-    maybe_rank = a.shape.rank
-    if maybe_rank is not None and isinstance(axis, (int, np.integer)):
-      normalized = axis + maybe_rank if axis < 0 else axis
-      if normalized < 0 or normalized >= maybe_rank:
-        raise ValueError(
-            f'Argument `axis` (received axis={axis}) is out of bounds '
-            f'for input of rank {maybe_rank}.'
-        )
-    elif axis < 0:
-      axis += array_ops.rank(a)
-  return math_ops.cumprod(a, axis)
-
-
-@tf_export.tf_export('experimental.numpy.cumsum', v1=[])
-@np_utils.np_doc('cumsum')
-def cumsum(a, axis=None, dtype=None):  # pylint: disable=missing-docstring
-  a = asarray(a, dtype=dtype)
-
-  if dtype is None:
-    a = _maybe_promote_to_int(a)
-
-  # If axis is None, the input is flattened.
-  if axis is None:
-    a = ravel(a)
-    axis = 0
-  else:
-    # NumPy raises AxisError for out-of-bounds axes instead of letting the
-    # backend kernel fail with a confusing error.
-    maybe_rank = a.shape.rank
-    if maybe_rank is not None and isinstance(axis, (int, np.integer)):
-      normalized = axis + maybe_rank if axis < 0 else axis
-      if normalized < 0 or normalized >= maybe_rank:
-        raise ValueError(
-            f'Argument `axis` (received axis={axis}) is out of bounds '
-            f'for input of rank {maybe_rank}.'
-        )
-    elif axis < 0:
-      axis += array_ops.rank(a)
-  return math_ops.cumsum(a, axis)
-
-
-@tf_export.tf_export('experimental.numpy.imag', v1=[])
-@np_utils.np_doc('imag')
-def imag(val):
-  val = asarray(val)
-  # TODO(srbs): np.imag returns a scalar if `val` is a scalar, whereas we always
-  # return an ndarray.
-  return math_ops.imag(val)
-
-
-_TO_INT_ = 0
-_TO_FLOAT = 1
-
-
-def _reduce(
-    tf_fn,
-    a,
-    axis=None,
-    dtype=None,
-    keepdims=None,
-    promote_int=_TO_INT_,
-    tf_bool_fn=None,
-    preserve_bool=False,
-):
-  """A general reduction function.
-
-  Args:
-    tf_fn: the TF reduction function.
-    a: the array to be reduced.
-    axis: (optional) the axis along which to do the reduction. If None, all
-      dimensions are reduced.
-    dtype: (optional) the dtype of the result.
-    keepdims: (optional) whether to keep the reduced dimension(s).
-    promote_int: how to promote integer and bool inputs. There are three
-      choices. (1) `_TO_INT_` always promotes them to np.int_ or np.uint; (2)
-      `_TO_FLOAT` always promotes them to a float type (determined by
-      dtypes.default_float_type); (3) None: don't promote.
-    tf_bool_fn: (optional) the TF reduction function for bool inputs. It will
-      only be used if `dtype` is explicitly set to `np.bool_` or if `a`'s dtype
-      is `np.bool_` and `preserve_bool` is True.
-    preserve_bool: a flag to control whether to use `tf_bool_fn` if `a`'s dtype
-      is `np.bool_` (some reductions such as np.sum convert bools to integers,
-      while others such as np.max preserve bools.
-
-  Returns:
-    An ndarray.
-  """
-  if dtype:
-    dtype = np_utils.result_type(dtype)
-  if keepdims is None:
-    keepdims = False
-  a = asarray(a, dtype=dtype)
-  # NumPy raises AxisError for out-of-bounds axes instead of letting the
-  # backend kernel fail with a confusing error.
-  maybe_rank = a.shape.rank
-  if maybe_rank is not None and axis is not None:
-    # Wrap scalar axes into a sequence so both ints and sequences of ints
-    # are validated; 0-d NumPy arrays cannot be iterated directly.
-    if isinstance(axis, (int, np.integer)):
-      static_axes = (axis,)
-    elif isinstance(axis, np.ndarray) and axis.ndim == 0:
-      static_axes = (int(axis),)
-    elif isinstance(axis, (list, tuple, range, np.ndarray)):
-      static_axes = axis
-    else:
-      static_axes = None
-    if static_axes is not None and builtins.all(
-        isinstance(ax, (int, np.integer)) for ax in static_axes
-    ):
-      for ax in static_axes:
-        normalized = ax + maybe_rank if ax < 0 else ax
-        if normalized < 0 or normalized >= maybe_rank:
-          raise ValueError(
-              f'Argument `axis` (received axis={ax}) is out of bounds '
-              f'for input of rank {maybe_rank}.'
-          )
-  if (
-      dtype == np.bool_ or preserve_bool and a.dtype == np.bool_
-  ) and tf_bool_fn is not None:
-    return tf_bool_fn(input_tensor=a, axis=axis, keepdims=keepdims)
-  if dtype is None:
-    dtype = a.dtype.as_numpy_dtype
-    if np.issubdtype(dtype, np.integer) or dtype == np.bool_:
-      if promote_int == _TO_INT_:
-        # If a is an integer/bool type and whose bit width is less than np.int_,
-        # numpy up-casts it to np.int_ based on the documentation at
-        # https://numpy.org/doc/1.18/reference/generated/numpy.sum.html
-        if dtype == np.bool_:
-          is_signed = True
-          width = 8  # We can use any number here that is less than 64
-        else:
-          is_signed = np.issubdtype(dtype, np.signedinteger)
-          width = np.iinfo(dtype).bits
-        # Numpy int_ and uint are defined as 'long' and 'unsigned long', so
-        # should have the same bit width.
-        if ops.is_auto_dtype_conversion_enabled():
-          # We default to 32 bits when using auto dtype conversion semantics.
-          if width < np.iinfo(np.int32).bits:
-            if is_signed:
-              dtype = np.int32
+  def testARange(self):
+    int_values = np.arange(-3, 3).tolist()
+    float_values = np.arange(-3.5, 3.5).tolist()
+    all_values = int_values + float_values
+    for dtype in self.all_types:
+      for start in all_values:
+        msg = 'dtype:{} start:{}'.format(dtype, start)
+        self.match(np_array_ops.arange(start), np.arange(start), msg=msg)
+        self.match(
+            np_array_ops.arange(start, dtype=dtype),
+            np.arange(start, dtype=dtype),
+            msg=msg)
+        for stop in all_values:
+          msg = 'dtype:{} start:{} stop:{}'.format(dtype, start, stop)
+          self.match(
+              np_array_ops.arange(start, stop), np.arange(start, stop), msg=msg)
+          # TODO(srbs): Investigate and remove check.
+          # There are some bugs when start or stop is float and dtype is int.
+          if not isinstance(start, float) and not isinstance(stop, float):
+            self.match(
+                np_array_ops.arange(start, stop, dtype=dtype),
+                np.arange(start, stop, dtype=dtype),
+                msg=msg)
+          # Note: We intentionally do not test with float values for step
+          # because numpy.arange itself returns inconsistent results. e.g.
+          # np.arange(0.5, 3, step=0.5, dtype=int) returns
+          # array([0, 1, 2, 3, 4])
+          for step in int_values:
+            msg = 'dtype:{} start:{} stop:{} step:{}'.format(
+                dtype, start, stop, step)
+            if not step:
+              with self.assertRaises(ValueError):
+                self.match(
+                    np_array_ops.arange(start, stop, step),
+                    np.arange(start, stop, step),
+                    msg=msg)
+                if not isinstance(start, float) and not isinstance(stop, float):
+                  self.match(
+                      np_array_ops.arange(start, stop, step, dtype=dtype),
+                      np.arange(start, stop, step, dtype=dtype),
+                      msg=msg)
             else:
-              dtype = np.uint32
-        else:
-          if width < np.iinfo(np.int_).bits:
-            if is_signed:
-              dtype = np.int_
-            else:
-              dtype = np.uint
-        a = math_ops.cast(a, dtype)
-      elif promote_int == _TO_FLOAT:
-        # Use a default float type.
-        a = math_ops.cast(a, np_utils.result_type(float))
+              self.match(
+                  np_array_ops.arange(start, stop, step),
+                  np.arange(start, stop, step),
+                  msg=msg)
+              if not isinstance(start, float) and not isinstance(stop, float):
+                self.match(
+                    np_array_ops.arange(start, stop, step, dtype=dtype),
+                    np.arange(start, stop, step, dtype=dtype),
+                    msg=msg)
 
-  if isinstance(axis, tensor_lib.Tensor) and axis.dtype not in (
-      dtypes.int32,
-      dtypes.int64,
-  ):
-    axis = math_ops.cast(axis, dtypes.int64)
+  def testDiag(self):
+    array_transforms = [
+        lambda x: x,  # Identity,
+        ops.convert_to_tensor,
+        np.array,
+        lambda x: np.array(x, dtype=np.float32),
+        lambda x: np.array(x, dtype=np.float64),
+        np_array_ops.array,
+        lambda x: np_array_ops.array(x, dtype=np.float32),
+        lambda x: np_array_ops.array(x, dtype=np.float64)
+    ]
 
-  return tf_fn(input_tensor=a, axis=axis, keepdims=keepdims)
+    def run_test(arr):
+      for fn in array_transforms:
+        arr = fn(arr)
+        self.match(
+            np_array_ops.diag(arr), np.diag(arr), msg='diag({})'.format(arr))
+        for k in range(-3, 3):
+          self.match(
+              np_array_ops.diag(arr, k),
+              np.diag(arr, k),
+              msg='diag({}, k={})'.format(arr, k))
 
+    # 2-d arrays.
+    run_test(np.arange(9).reshape((3, 3)).tolist())
+    run_test(np.arange(6).reshape((2, 3)).tolist())
+    run_test(np.arange(6).reshape((3, 2)).tolist())
+    run_test(np.arange(3).reshape((1, 3)).tolist())
+    run_test(np.arange(3).reshape((3, 1)).tolist())
+    run_test([[5]])
+    run_test([[]])
+    run_test([[], []])
 
-# TODO (DarrenZhang01): Add `axis` support to the `size` API.
-@tf_export.tf_export('experimental.numpy.size', v1=[])
-@np_utils.np_doc('size')
-def size(x, axis=None):  # pylint: disable=missing-docstring
-  if axis is not None:
-    raise NotImplementedError(
-        'axis argument is not supported in the current `np.size` implementation'
-    )
-  if isinstance(x, (int, float, np.int32, np.int64, np.float32, np.float64)):
-    return 1
-  x = asarray(x)
-  if x.shape.is_fully_defined():
-    return np.prod(x.shape.as_list(), dtype=int)
-  else:
-    return array_ops.size_v2(x)
+    # 1-d arrays.
+    run_test([])
+    run_test([1])
+    run_test([1, 2])
 
-
-@tf_export.tf_export('experimental.numpy.sum', v1=[])
-@np_utils.np_doc('sum')
-def sum(a, axis=None, dtype=None, keepdims=None):  # pylint: disable=redefined-builtin
-  return _reduce(
-      math_ops.reduce_sum,
-      a,
-      axis=axis,
-      dtype=dtype,
-      keepdims=keepdims,
-      tf_bool_fn=math_ops.reduce_any,
-  )
-
-
-@tf_export.tf_export('experimental.numpy.prod', v1=[])
-@np_utils.np_doc('prod')
-def prod(a, axis=None, dtype=None, keepdims=None):
-  return _reduce(
-      math_ops.reduce_prod,
-      a,
-      axis=axis,
-      dtype=dtype,
-      keepdims=keepdims,
-      tf_bool_fn=math_ops.reduce_all,
-  )
-
-
-@tf_export.tf_export('experimental.numpy.mean', v1=[])
-@np_utils.np_doc('mean', unsupported_params=['out'])
-def mean(a, axis=None, dtype=None, out=None, keepdims=None):
-  if out is not None:
-    raise ValueError('Setting out is not supported.')
-  return _reduce(
-      math_ops.reduce_mean,
-      a,
-      axis=axis,
-      dtype=dtype,
-      keepdims=keepdims,
-      promote_int=_TO_FLOAT,
-  )
-
-
-@tf_export.tf_export('experimental.numpy.amax', v1=[])
-@np_utils.np_doc('amax', unsupported_params=['out'])
-def amax(a, axis=None, out=None, keepdims=None):
-  if out is not None:
-    raise ValueError('Setting out is not supported.')
-  return _reduce(
-      math_ops.reduce_max,
-      a,
-      axis=axis,
-      dtype=None,
-      keepdims=keepdims,
-      promote_int=None,
-      tf_bool_fn=math_ops.reduce_any,
-      preserve_bool=True,
-  )
-
-
-@tf_export.tf_export('experimental.numpy.amin', v1=[])
-@np_utils.np_doc('amin', unsupported_params=['out'])
-def amin(a, axis=None, out=None, keepdims=None):
-  if out is not None:
-    raise ValueError('Setting out is not supported.')
-  return _reduce(
-      math_ops.reduce_min,
-      a,
-      axis=axis,
-      dtype=None,
-      keepdims=keepdims,
-      promote_int=None,
-      tf_bool_fn=math_ops.reduce_all,
-      preserve_bool=True,
-  )
-
-
-@tf_export.tf_export('experimental.numpy.var', v1=[])
-@np_utils.np_doc('var')
-def var(a, axis=None, dtype=None, out=None, ddof=0, keepdims=None):  # pylint: disable=missing-docstring
-  if dtype:
-    working_dtype = np_utils.result_type(a, dtype)
-  else:
-    working_dtype = None
-  if out is not None:
-    raise ValueError('Setting out is not supported.')
-  if ddof != 0:
-    # TF reduce_variance doesn't support ddof, so calculate it using raw ops.
-    def reduce_fn(input_tensor, axis, keepdims):
-      means = math_ops.reduce_mean(input_tensor, axis=axis, keepdims=True)
-      centered = input_tensor - means
-      if input_tensor.dtype in (dtypes.complex64, dtypes.complex128):
-        # The variance of a complex tensor is real; keep the real dtype like
-        # math_ops.reduce_variance and NumPy do.
-        centered = math_ops.real(centered * math_ops.conj(centered))
-      else:
-        centered = math_ops.square(centered)
-      squared_deviations = math_ops.reduce_sum(
-          centered, axis=axis, keepdims=keepdims
+  def testDiagonal(self):
+    a = np.arange(24).reshape(2, 3, 4)
+    for fn in self.array_transforms:
+      arr = fn(a)
+      self.match(np_array_ops.diagonal(arr), np.diagonal(arr))
+      self.match(
+          np_array_ops.diagonal(arr, axis1=-1, axis2=-2),
+          np.diagonal(arr, axis1=-1, axis2=-2),
       )
-
-      if axis is None:
-        n = array_ops.size(input_tensor)
-      else:
-        # axis can be an int or a sequence of ints.
-        if isinstance(axis, (int, np.integer)):
-          axis = [axis]
-        elif isinstance(axis, np.ndarray) and axis.ndim == 0:
-          axis = [axis.item()]
-        rank = input_tensor.shape.rank
-        if (
-            rank is not None
-            and isinstance(axis, (list, tuple, range, np.ndarray))
-            and builtins.all(isinstance(ax, (int, np.integer)) for ax in axis)
-        ):
-          # Known rank and axes: normalize them without adding ops.
-          axis = np.array(
-              [ax + rank if ax < 0 else ax for ax in axis], dtype=np.int32
-          )
-        else:
-          axis = math_ops.cast(axis, dtypes.int32)
-          axis = array_ops.where_v2(
-              axis < 0, axis + array_ops.rank(input_tensor), axis
-          )
-        n = math_ops.reduce_prod(
-            array_ops.gather(array_ops.shape(input_tensor), axis)
-        )
-      # NumPy clamps the degrees-of-freedom denominator at 0 (and emits a
-      # "Degrees of freedom <= 0" RuntimeWarning) when ddof >= n, rather
-      # than letting it go negative. Without this clamp, `n - ddof` can be
-      # negative here, which silently turns a nonsensical negative count
-      # into a valid-looking (but wrong, finite, negative) "variance"
-      # instead of NumPy's `inf`.
-      n = math_ops.maximum(n - ddof, 0)
-      n = math_ops.cast(n, squared_deviations.dtype)
-
-      return math_ops.divide(squared_deviations, n)
-
-  else:
-    reduce_fn = math_ops.reduce_variance
-
-  result = _reduce(
-      reduce_fn,
-      a,
-      axis=axis,
-      dtype=working_dtype,
-      keepdims=keepdims,
-      promote_int=_TO_FLOAT,
-  )
-  if dtype:
-    result = math_ops.cast(result, dtype)
-  return result
-
-
-@tf_export.tf_export('experimental.numpy.std', v1=[])
-@np_utils.np_doc('std')
-def std(a, axis=None, keepdims=None):  # pylint: disable=missing-function-docstring
-  return _reduce(
-      math_ops.reduce_std,
-      a,
-      axis=axis,
-      dtype=None,
-      keepdims=keepdims,
-      promote_int=_TO_FLOAT,
-  )
-
-
-@tf_export.tf_export('experimental.numpy.ravel', v1=[])
-@np_utils.np_doc('ravel')
-def ravel(a):  # pylint: disable=missing-docstring
-  a = asarray(a)
-  return array_ops.reshape(a, [-1])
-
-
-@tf_export.tf_export('experimental.numpy.real', v1=[])
-@np_utils.np_doc('real')
-def real(val):
-  val = asarray(val)
-  # TODO(srbs): np.real returns a scalar if val is a scalar, whereas we always
-  # return an ndarray.
-  return math_ops.real(val)
-
-
-@tf_export.tf_export('experimental.numpy.repeat', v1=[])
-@np_utils.np_doc('repeat')
-def repeat(a, repeats, axis=None):  # pylint: disable=missing-docstring
-  a = asarray(a)
-  maybe_rank = a.shape.rank
-  if isinstance(axis, (int, np.integer)) and maybe_rank is not None:
-    # NumPy accepts axes -1 and 0 on 0-d inputs (it flattens them to
-    # 1-D of size 1), so validate against max(rank, 1).
-    validation_rank = 1 if maybe_rank < 1 else maybe_rank
-    normalized = axis + validation_rank if axis < 0 else axis
-    if normalized < 0 or normalized >= validation_rank:
-      raise ValueError(
-          f'Argument `axis` (received axis={axis}) is out of bounds '
-          f'for input of rank {maybe_rank}.'
+      self.match(
+          np_array_ops.diagonal(arr, axis1=0, axis2=-1),
+          np.diagonal(arr, axis1=0, axis2=-1),
       )
-    axis = normalized
-  original_shape = a._shape_as_list()  # pylint: disable=protected-access
-  # Best effort recovery of the shape.
-  known_shape = original_shape is not None and None not in original_shape
-  if known_shape:
-    if not original_shape:
-      original_shape = (repeats,)
+    b = np.arange(6).reshape(2, 3)
+    for fn in self.array_transforms:
+      arr = fn(b)
+      self.match(np_array_ops.diagonal(arr), np.diagonal(arr))
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.diagonal(a, axis1=-7, axis2=0)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.diagonal(a, axis1=0, axis2=5)
+    # NumPy raises for 0-d/1-d inputs too.
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.diagonal(np.array(5))
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.diagonal(np.array([1, 2, 3]))
+    with self.assertRaisesRegex(ValueError, 'same axis'):
+      np_array_ops.diagonal(a, axis1=0, axis2=0)
+    # Mixed-sign duplicates normalize to the same axis.
+    with self.assertRaisesRegex(ValueError, 'same axis'):
+      np_array_ops.diagonal(a, axis1=0, axis2=-3)
+    with self.assertRaisesRegex(ValueError, 'same axis'):
+      np_array_ops.diagonal(a, axis1=-1, axis2=2)
+
+  def testDiagFlat(self):
+    array_transforms = [
+        lambda x: x,  # Identity,
+        ops.convert_to_tensor,
+        np.array,
+        lambda x: np.array(x, dtype=np.float32),
+        lambda x: np.array(x, dtype=np.float64),
+        np_array_ops.array,
+        lambda x: np_array_ops.array(x, dtype=np.float32),
+        lambda x: np_array_ops.array(x, dtype=np.float64)
+    ]
+
+    def run_test(arr):
+      for fn in array_transforms:
+        arr = fn(arr)
+        self.match(
+            np_array_ops.diagflat(arr),
+            np.diagflat(arr),
+            msg='diagflat({})'.format(arr))
+        for k in range(-3, 3):
+          self.match(
+              np_array_ops.diagflat(arr, k),
+              np.diagflat(arr, k),
+              msg='diagflat({}, k={})'.format(arr, k))
+
+    # 1-d arrays.
+    run_test([])
+    run_test([1])
+    run_test([1, 2])
+    # 2-d arrays.
+    run_test([[]])
+    run_test([[5]])
+    run_test([[], []])
+    run_test(np.arange(4).reshape((2, 2)).tolist())
+    run_test(np.arange(2).reshape((2, 1)).tolist())
+    run_test(np.arange(2).reshape((1, 2)).tolist())
+    # 3-d arrays
+    run_test(np.arange(8).reshape((2, 2, 2)).tolist())
+
+  def testDiagInvalidK(self):
+    v = [1, 2]
+    invalid_ks = [
+        [1, 2],
+        np.array([1, 2]),
+        constant_op.constant([1, 2]),
+    ]
+    for k in invalid_ks:
+      with self.assertRaises(ValueError):
+        np_array_ops.diag(v, k=k)
+
+  def testDiagFlatInvalidK(self):
+    v = [1, 2]
+    invalid_ks = [
+        [1, 2],
+        np.array([1, 2]),
+        constant_op.constant([1, 2]),
+    ]
+    for k in invalid_ks:
+      with self.assertRaises(ValueError):
+        np_array_ops.diagflat(v, k=k)
+
+  def match_shape(self, actual, expected, msg=None):
+    if msg:
+      msg = 'Shape match failed for: {}. Expected: {} Actual: {}'.format(
+          msg, expected.shape, actual.shape)
+    self.assertEqual(actual.shape, expected.shape, msg=msg)
+
+  def match_dtype(self, actual, expected, msg=None):
+    if msg:
+      msg = 'Dtype match failed for: {}. Expected: {} Actual: {}.'.format(
+          msg, expected.dtype, actual.dtype)
+    self.assertEqual(actual.dtype, expected.dtype, msg=msg)
+
+  def match(self, actual, expected, msg=None, almost=False, decimal=7):
+    msg_ = 'Expected: {} Actual: {}'.format(expected, actual)
+    if msg:
+      msg = '{} {}'.format(msg_, msg)
     else:
-      repeats_np = np.ravel(np.array(repeats))
-      if repeats_np.size == 1:
-        repeats_np = repeats_np.item()
-        if axis is None:
-          original_shape = (repeats_np * np.prod(original_shape),)
-        else:
-          original_shape[axis] = repeats_np * original_shape[axis]
+      msg = msg_
+    self.assertIsInstance(actual, np_arrays.ndarray)
+    self.match_dtype(actual, expected, msg)
+    self.match_shape(actual, expected, msg)
+    if not almost:
+      if not actual.shape.rank:
+        self.assertEqual(actual.tolist(), expected.tolist())
       else:
-        if axis is None:
-          original_shape = (repeats_np.sum(),)
-        else:
-          original_shape[axis] = repeats_np.sum()
+        self.assertSequenceEqual(actual.tolist(), expected.tolist())
+    else:
+      np.testing.assert_almost_equal(
+          actual.tolist(), expected.tolist(), decimal=decimal)
 
-  repeats = asarray(repeats)
-  result = array_ops.repeat(a, repeats, axis)
-  if known_shape:
-    result.set_shape(original_shape)
+  def testIndexedSlices(self):
+    dtype = dtypes.int64
+    iss = indexed_slices.IndexedSlices(
+        values=np_array_ops.ones([2, 3], dtype=dtype),
+        indices=constant_op.constant([1, 9]),
+        dense_shape=[10, 3])
+    a = np_array_ops.array(iss, copy=False)
+    expected = array_ops.scatter_nd([[1], [9]],
+                                    array_ops.ones([2, 3], dtype=dtype),
+                                    [10, 3])
+    self.assertAllEqual(expected, a)
 
-  return result
+  def testVander(self):
+    tf_res = np_array_ops.vander([-1.0, 1.0], N=0, increasing=False)
+    np_res = np.vander(np.array([-1.0, 1.0]), N=0)
+    self.assertAllEqual(tf_res, np_res)
 
+  def testVanderGradientZeroInput(self):
+    # Regression test for GitHub issue #127227:
+    # vander produces NaN gradient when an input element is 0.0.
+    def target(t):
+      x = np_array_ops.stack([t + 1, -t + 2, 2 * t - 1, t / 2 + 3])
+      y = np_array_ops.vander(x, N=None, increasing=False)
+      return sum((4 * i + j + 1) * y[i, j] for i in range(4) for j in range(4))
 
-@tf_export.tf_export('experimental.numpy.around', v1=[])
-@np_utils.np_doc('around')
-def around(a, decimals=0):  # pylint: disable=missing-docstring
-  a = asarray(a)
-  dtype = a.dtype.as_numpy_dtype
-  factor = math.pow(10, decimals)
-  if np.issubdtype(dtype, np.inexact):
-    factor = math_ops.cast(factor, dtype)
-  else:
-    # Use float as the working dtype when a.dtype is exact (e.g. integer),
-    # because `decimals` can be negative.
-    float_dtype = np_utils.result_type(float)
-    # `Tensor.astype` only exists once `enable_numpy_methods_on_tensor()`
-    # has been called, and is an alias of `math_ops.cast`; calling `cast`
-    # directly keeps `around` working without that opt-in.
-    a = math_ops.cast(a, float_dtype)
-    factor = math_ops.cast(factor, float_dtype)
-  a = math_ops.multiply(a, factor)
-  a = math_ops.round(a)
-  a = math_ops.divide(a, factor)
-  return math_ops.cast(a, dtype)
+    t = constant_op.constant(2.0, dtype=dtypes.float64)
+    with backprop.GradientTape() as tape:
+      tape.watch(t)
+      loss = target(t)
+    grad = tape.gradient(loss, t)
+    self.assertAllClose(loss, 1576.0)
+    self.assertAllClose(grad, 1038.5)
 
+    # Direct zero input elements with increasing=False and increasing=True.
+    for increasing in [False, True]:
+      x = constant_op.constant([0.0, 2.0, -1.0], dtype=dtypes.float64)
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y = math_ops.reduce_sum(
+            np_array_ops.vander(x, N=4, increasing=increasing)
+        )
+      grad_x = tape.gradient(y, x)
+      # d/dx (1 + x + x^2 + x^3) = 1 + 2x + 3x^2 -> [1.0, 17.0, 2.0]
+      self.assertAllClose(grad_x, [1.0, 17.0, 2.0])
 
-setattr(np_arrays.ndarray, '__round__', around)
-
-
-@tf_export.tf_export('experimental.numpy.reshape', v1=[])
-@np_utils.np_doc('reshape')
-def reshape(a, newshape, order='C'):
-  """order argument can only b 'C' or 'F'."""
-  if order not in {'C', 'F'}:
-    raise ValueError('Unsupported order argument {}'.format(order))
-
-  a = asarray(a)
-  if isinstance(newshape, int):
-    newshape = [newshape]
-
-  if order == 'F':
-    r = array_ops.transpose(
-        array_ops.reshape(array_ops.transpose(a), newshape[::-1])
-    )
-  else:
-    r = array_ops.reshape(a, newshape)
-
-  return r
+    # N=1 edge case (only x^0 column).
+    x_n1 = constant_op.constant([0.0, 3.0], dtype=dtypes.float64)
+    with backprop.GradientTape() as tape:
+      tape.watch(x_n1)
+      y_n1 = math_ops.reduce_sum(np_array_ops.vander(x_n1, N=1))
+    self.assertAllClose(tape.gradient(y_n1, x_n1), [0.0, 0.0])
 
 
-def _reshape_method_wrapper(a, *newshape, **kwargs):
-  order = kwargs.pop('order', 'C')
-  if kwargs:
-    raise ValueError('Unsupported arguments: {}'.format(kwargs.keys()))
+class ArrayMethodsTest(test.TestCase):
 
-  if len(newshape) == 1 and not isinstance(newshape[0], int):
-    newshape = newshape[0]
+  def setUp(self):
+    super(ArrayMethodsTest, self).setUp()
+    set_up_virtual_devices()
+    self.array_transforms = [
+        lambda x: x,
+        ops.convert_to_tensor,
+        np.array,
+        np_array_ops.array,
+    ]
 
-  return reshape(a, newshape, order=order)
+  def testAllAny(self):
 
+    def run_test(arr, *args, **kwargs):
+      for fn in self.array_transforms:
+        arr = fn(arr)
+        self.match(
+            np_array_ops.all(arr, *args, **kwargs),
+            np.all(arr, *args, **kwargs))
+        self.match(
+            np_array_ops.any(arr, *args, **kwargs),
+            np.any(arr, *args, **kwargs))
 
-@tf_export.tf_export('experimental.numpy.expand_dims', v1=[])
-@np_utils.np_doc('expand_dims')
-def expand_dims(a, axis):
-  a = asarray(a)
+    run_test(0)
+    run_test(1)
+    run_test([])
+    run_test([[True, False], [True, True]])
+    run_test([[True, False], [True, True]], axis=0)
+    run_test([[True, False], [True, True]], axis=0, keepdims=True)
+    run_test([[True, False], [True, True]], axis=1)
+    run_test([[True, False], [True, True]], axis=1, keepdims=True)
+    run_test([[True, False], [True, True]], axis=(0, 1))
+    run_test([[True, False], [True, True]], axis=(0, 1), keepdims=True)
+    run_test([5.2, 3.5], axis=0)
+    run_test([1, 0], axis=0)
 
-  maybe_rank = a.shape.rank
-  if maybe_rank is not None and isinstance(axis, (int, np.integer)):
-    # Match np.expand_dims behavior: raise a ValueError at trace time for
-    # an out-of-bounds axis instead of letting the underlying op produce an
-    # opaque error deeper in the stack.
-    normalized = axis + maybe_rank + 1 if axis < 0 else axis
-    if normalized < 0 or normalized > maybe_rank:
-      raise ValueError(
-          f'Argument `axis` (received axis={axis}) is out of bounds '
-          f'for input of rank {maybe_rank}.'
-      )
+  def testCompress(self):
 
-  return array_ops.expand_dims(a, axis=axis)
+    def run_test(condition, arr, *args, **kwargs):
+      for fn1 in self.array_transforms:
+        for fn2 in self.array_transforms:
+          arg1 = fn1(condition)
+          arg2 = fn2(arr)
+          self.match(
+              np_array_ops.compress(arg1, arg2, *args, **kwargs),
+              np.compress(
+                  np.asarray(arg1).astype(np.bool_), arg2, *args, **kwargs))
 
+    run_test([True], 5)
+    run_test([False], 5)
+    run_test([], 5)
+    run_test([True, False, True], [1, 2, 3])
+    run_test([True, False], [1, 2, 3])
+    run_test([False, True], [[1, 2], [3, 4]])
+    run_test([1, 0, 1], [1, 2, 3])
+    run_test([1, 0], [1, 2, 3])
+    run_test([0, 1], [[1, 2], [3, 4]])
+    run_test([True], [[1, 2], [3, 4]])
+    run_test([False, True], [[1, 2], [3, 4]], axis=1)
+    run_test([False, True], [[1, 2], [3, 4]], axis=0)
+    run_test([False, True], [[1, 2], [3, 4]], axis=-1)
+    run_test([False, True], [[1, 2], [3, 4]], axis=-2)
+    # Condition shorter than the compressed axis: `np.compress` ignores the
+    # trailing entries of `a`. Exercises the sliced (tightened-bound) path.
+    run_test([True, False, True], [1, 2, 3, 4, 5])
+    run_test([True], [1, 2, 3])
+    run_test([True, False], [[1, 2, 3], [4, 5, 6]], axis=1)
+    run_test([True], [[1, 2], [3, 4], [5, 6]], axis=0)
 
-@tf_export.tf_export('experimental.numpy.squeeze', v1=[])
-@np_utils.np_doc('squeeze')
-def squeeze(a, axis=None):
-  a = asarray(a)
-  return array_ops.squeeze(a, axis)
+  def testCompressOutOfBoundsAxis(self):
+    x = np_array_ops.array([[1, 2], [3, 4]])
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.compress([True, False], x, axis=-3)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.compress([True, False], x, axis=2)
 
+  def testCompressJitCompile(self):
+    # Regression test for #122055: `compress` produced a dynamic size bounded by
+    # `a.shape[axis]` rather than `len(condition)`, so feeding its result into an
+    # op requiring a smaller static extent failed to compile under XLA even
+    # though eager execution succeeded. The condition is derived from the input
+    # so its selected count is data-dependent (not constant-folded away).
+    if not test_util.is_xla_enabled():
+      self.skipTest('XLA JIT compiler is not enabled in this test environment.')
 
-@tf_export.tf_export('experimental.numpy.flatten', v1=[])
-@np_utils.np_doc('flatten', link=np_utils.NoLink())
-def flatten(a, order='C'):
-  a = asarray(a)
-  if order == 'C' or order == 'A' or order == 'K':
-    # Row major.
-    return array_ops.reshape(a, [-1])
-  elif order == 'F':
-    # Column major
-    return array_ops.reshape(array_ops.transpose(a), [-1])
-  else:
-    raise ValueError(
-        'order can only be C, A, K (all row major) or F (column major).'
-    )
-
-
-@tf_export.tf_export('experimental.numpy.transpose', v1=[])
-@np_utils.np_doc('transpose')
-def transpose(a, axes=None):
-  a = asarray(a)
-
-  maybe_rank = a.shape.rank
-  if maybe_rank is not None and isinstance(axes, (tuple, list)):
-    # Match np.transpose behavior: raise a ValueError at trace time for
-    # invalid `axes` instead of letting the underlying op produce an
-    # opaque error deeper in the stack. Duplicate detection uses a single
-    # integer bitmask (no intermediate list/set allocations), and only
-    # runs when the static rank and Python-int entries are known.
-    if len(axes) != maybe_rank:
-      raise ValueError(
-          f"axes don't match array. Expected {maybe_rank} axes, got "
-          f'{len(axes)}.'
-      )
-    normalized_mask = 0
-    for ax in axes:
-      if isinstance(ax, (int, np.integer)):
-        normalized = ax + maybe_rank if ax < 0 else ax
-        if normalized < 0 or normalized >= maybe_rank:
-          raise ValueError(
-              f"Argument 'axes' (received axes={ax}) is out of bounds for "
-              f'array of rank {maybe_rank}.'
-          )
-        bit = 1 << normalized
-        if normalized_mask & bit:
-          raise ValueError('repeated axis in transpose')
-        normalized_mask |= bit
-
-  if axes is not None:
-    # Specify an integer dtype explicitly: asarray([]) would otherwise
-    # infer float64, which the Transpose op's `Tperm` attr rejects.
-    axes = asarray(axes, dtype=np.int32)
-  return array_ops.transpose(a=a, perm=axes)
-
-
-@tf_export.tf_export('experimental.numpy.swapaxes', v1=[])
-@np_utils.np_doc('swapaxes')
-def swapaxes(a, axis1, axis2):  # pylint: disable=missing-docstring
-  a = asarray(a)
-
-  def adjust_axes(axes, rank):
     def f(x):
-      if isinstance(x, int) and isinstance(rank, int):
-        # Fully static case: both the axis and the rank are known Python
-        # ints, so bounds can be validated eagerly, at trace time.
-        # Match np.swapaxes behavior: raise a clear error for an
-        # out-of-bounds axis instead of producing a `perm` with a
-        # leftover negative entry. This is the key fix for #122054 — it
-        # prevents the situation where eager silently "succeeds" (its
-        # `Transpose` kernel re-normalizes negative perm entries) while
-        # `jit_compile=True` / tf2xla crashes with an opaque range error,
-        # since the XLA bridge does not re-normalize.
-        if not (-rank <= x < rank):
-          raise ValueError(
-              f'axis {x} is out of bounds for array of dimension {rank}'
-          )
-        if x < 0:
-          x = x + rank
-      else:
-        # Dynamic case: `x` and/or `rank` is only known at runtime, e.g.
-        # a `Tensor` rank inside a `tf.function` traced with an
-        # unspecified input signature. Static Python-level bounds
-        # checking can't run here, so assert the same bounds at runtime
-        # before normalizing, keeping eager and graph mode consistent.
-        # Note: under `jit_compile=True`, tf2xla lowers `Assert` to a
-        # no-op (see tf2xla/kernels/assert_op.cc), so this check does
-        # not raise inside a fully dynamic-rank XLA-compiled function;
-        # that combination is a separate, pre-existing XLA limitation
-        # this PR #122544 does not attempt to solve.
-        rank_t = ops.convert_to_tensor(rank)
-        x = ops.convert_to_tensor(x)
-        control_flow_assert.Assert(
-            math_ops.reduce_all(math_ops.logical_and(x >= -rank_t, x < rank_t)),
-            ['axis', x, 'is out of bounds for array of dimension', rank_t],
-        )
-        x = array_ops.where_v2(x < 0, np_utils.add(x, rank_t), x)
-      return x
+      condition = x[:3] > 0.0  # data-dependent, static length 3
+      compressed = np_array_ops.compress(
+          condition, x
+      )  # bounded by len 3, not 5
+      return array_ops.broadcast_to(compressed, [3])
 
-    return nest.map_structure(f, axes)
+    x = np_array_ops.array([10.0, 20.0, 30.0, 40.0, 50.0])
+    expected = f(x)
+    got = def_function.function(f, jit_compile=True)(x)
+    self.assertAllEqual(got, expected)
 
-  if (
-      a.shape.rank is not None
-      and isinstance(axis1, int)
-      and isinstance(axis2, int)
-  ):
-    # This branch makes sure `perm` is statically known, to avoid a
-    # not-compile-time-constant XLA error.
-    a_rank = a.shape.rank
-    axis1, axis2 = adjust_axes((axis1, axis2), a_rank)
-    perm = list(range(a_rank))
-    perm[axis1] = axis2
-    perm[axis2] = axis1
-  else:
-    a_rank = array_ops.rank(a)
-    axis1, axis2 = adjust_axes((axis1, axis2), a_rank)
-    perm = math_ops.range(a_rank)
-    perm = array_ops.tensor_scatter_update(
-        perm, [[axis1], [axis2]], [axis2, axis1]
+  def testCompressDynamicShape(self):
+    # #122563: under `@tf.function` with dynamic (`None`) dimensions,
+    # `condition.shape[0]` / `a.shape[axis]` are `None` and cannot be compared
+    # in Python. Tracing with an unknown-length signature must succeed (no
+    # `None` comparison error) and, from a single trace, match `np.compress`
+    # across equal, shorter, and longer condition lengths.
+    @def_function.function(
+        input_signature=[
+            tensor_spec.TensorSpec(shape=[None], dtype=dtypes.bool),
+            tensor_spec.TensorSpec(shape=[None], dtype=dtypes.float32),
+        ]
     )
-  a = array_ops.transpose(a, perm)
-  return a
+    def f(condition, a):
+      return np_array_ops.compress(condition, a)
 
+    a = np.array([1.0, 2.0, 3.0, 4.0], np.float32)
+    # Equal length.
+    self.assertAllEqual(
+        f(np.array([True, False, True, False]), a),
+        np.compress([True, False, True, False], a),
+    )
+    # Condition shorter than `a`: trailing entries of `a` are dropped.
+    self.assertAllEqual(
+        f(np.array([True, False]), a), np.compress([True, False], a)
+    )
+    # Condition longer than `a` (extra entry is False, so still valid in numpy):
+    # the old code hit `boolean_mask`'s "Dimensions must be equal" error here.
+    a3 = np.array([1.0, 2.0, 3.0], np.float32)
+    self.assertAllEqual(
+        f(np.array([True, False, True, False]), a3),
+        np.compress([True, False, True, False], a3),
+    )
 
-@tf_export.tf_export('experimental.numpy.moveaxis', v1=[])
-@np_utils.np_doc('moveaxis')
-def moveaxis(a, source, destination):  # pylint: disable=missing-docstring
-  """Raises ValueError if source, destination not in (-ndim(a), ndim(a))."""
-  if not source and not destination:
-    return a
+  def testCopy(self):
 
-  a = asarray(a)
+    def run_test(arr, *args, **kwargs):
+      for fn in self.array_transforms:
+        arg = fn(arr)
+        self.match(
+            np_array_ops.copy(arg, *args, **kwargs),
+            np.copy(arg, *args, **kwargs))
 
-  if isinstance(source, int):
-    source = (source,)
-  if isinstance(destination, int):
-    destination = (destination,)
-  if len(source) != len(destination):
-    raise ValueError('The lengths of source and destination must equal')
+    run_test([])
+    run_test([1, 2, 3])
+    run_test([1., 2., 3.])
+    run_test([True])
+    run_test(np.arange(9).reshape((3, 3)).tolist())
 
-  a_rank = np_utils._maybe_static(array_ops.rank(a))  # pylint: disable=protected-access
+    a = np_array_ops.asarray(0)
+    self.assertNotIn('CPU:1', a.backing_device)
+    with ops.device('CPU:1'):
+      self.assertIn('CPU:1', np_array_ops.array(a, copy=True)
+                    .backing_device)
+      self.assertIn('CPU:1', np_array_ops.array(np.array(0), copy=True)
+                    .backing_device)
 
-  def _correct_axis(axis, rank):
-    if isinstance(axis, (int, np.integer)) and isinstance(
-        rank, (int, np.integer)
-    ):
-      axis = int(axis)
-      rank = int(rank)
-      if not (-rank <= axis < rank):
-        raise ValueError(
-            f'Argument `axis` (received axis={axis}) is out of bounds '
-            f'for input {a} of rank {rank}.'
-        )
-      return axis + rank if axis < 0 else axis
-    rank_t = ops.convert_to_tensor(rank)
-    axis_t = ops.convert_to_tensor(axis)
-    control_flow_assert.Assert(
-        math_ops.reduce_all(
-            math_ops.logical_and(axis_t >= -rank_t, axis_t < rank_t)
+  def testCumProdAndSum(self):
+
+    def run_test(arr, *args, **kwargs):
+      for fn in self.array_transforms:
+        arg = fn(arr)
+        self.match(
+            np_array_ops.cumprod(arg, *args, **kwargs),
+            np.cumprod(arg, *args, **kwargs))
+        self.match(
+            np_array_ops.cumsum(arg, *args, **kwargs),
+            np.cumsum(arg, *args, **kwargs))
+
+    run_test([])
+    run_test([1, 2, 3])
+    run_test([1, 2, 3], dtype=float)
+    run_test([1, 2, 3], dtype=np.float32)
+    run_test([1, 2, 3], dtype=np.float64)
+    run_test([1., 2., 3.])
+    run_test([1., 2., 3.], dtype=int)
+    run_test([1., 2., 3.], dtype=np.int32)
+    run_test([1., 2., 3.], dtype=np.int64)
+    run_test([[1, 2], [3, 4]], axis=1)
+    run_test([[1, 2], [3, 4]], axis=0)
+    run_test([[1, 2], [3, 4]], axis=-1)
+    run_test([[1, 2], [3, 4]], axis=-2)
+
+  def testCumProdAndSumOutOfBoundsAxis(self):
+    a = np_array_ops.array([[1, 2, 3], [4, 5, 6]])
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.cumsum(a, axis=2)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.cumsum(a, axis=-3)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.cumprod(a, axis=2)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.cumprod(a, axis=-3)
+
+  def testImag(self):
+
+    def run_test(arr, *args, **kwargs):
+      for fn in self.array_transforms:
+        arg = fn(arr)
+        self.match(
+            np_array_ops.imag(arg, *args, **kwargs),
+            # np.imag may return a scalar so we convert to a np.ndarray.
+            np.array(np.imag(arg, *args, **kwargs)))
+
+    run_test(1)
+    run_test(5.5)
+    run_test(5 + 3j)
+    run_test(3j)
+    run_test([])
+    run_test([1, 2, 3])
+    run_test([1 + 5j, 2 + 3j])
+    run_test([[1 + 5j, 2 + 3j], [1 + 7j, 2 + 8j]])
+
+  def testAMaxAMin(self):
+
+    def run_test(arr, *args, **kwargs):
+      axis = kwargs.pop('axis', None)
+      for fn1 in self.array_transforms:
+        for fn2 in self.array_transforms:
+          arr_arg = fn1(arr)
+          axis_arg = fn2(axis) if axis is not None else None
+          self.match(
+              np_array_ops.amax(arr_arg, axis=axis_arg, *args, **kwargs),
+              np.amax(arr_arg, axis=axis, *args, **kwargs))
+          self.match(
+              np_array_ops.amin(arr_arg, axis=axis_arg, *args, **kwargs),
+              np.amin(arr_arg, axis=axis, *args, **kwargs))
+
+    run_test([1, 2, 3])
+    run_test([1., 2., 3.])
+    run_test([[1, 2], [3, 4]], axis=1)
+    run_test([[1, 2], [3, 4]], axis=0)
+    run_test([[1, 2], [3, 4]], axis=-1)
+    run_test([[1, 2], [3, 4]], axis=-2)
+    run_test([[1, 2], [3, 4]], axis=(0, 1))
+    run_test(np.arange(8).reshape((2, 2, 2)).tolist(), axis=(0, 2))
+    run_test(
+        np.arange(8).reshape((2, 2, 2)).tolist(), axis=(0, 2), keepdims=True)
+    run_test(np.arange(8).reshape((2, 2, 2)).tolist(), axis=(2, 0))
+    run_test(
+        np.arange(8).reshape((2, 2, 2)).tolist(), axis=(2, 0), keepdims=True)
+    self.assertRaises(ValueError, np_array_ops.amax, np.ones([2, 2]), out=[])
+    self.assertRaises(ValueError, np_array_ops.amin, np.ones([2, 2]), out=[])
+
+  def testMean(self):
+
+    def run_test(arr, *args, **kwargs):
+      axis = kwargs.pop('axis', None)
+      for fn1 in self.array_transforms:
+        for fn2 in self.array_transforms:
+          arr_arg = fn1(arr)
+          axis_arg = fn2(axis) if axis is not None else None
+          self.match(
+              np_array_ops.mean(arr_arg, axis=axis_arg, *args, **kwargs),
+              np.mean(arr_arg, axis=axis, *args, **kwargs))
+
+    run_test([1, 2, 1])
+    run_test([1., 2., 1.])
+    run_test([1., 2., 1.], dtype=int)
+    run_test([[1, 2], [3, 4]], axis=1)
+    run_test([[1, 2], [3, 4]], axis=0)
+    run_test([[1, 2], [3, 4]], axis=-1)
+    run_test([[1, 2], [3, 4]], axis=-2)
+    run_test([[1, 2], [3, 4]], axis=(0, 1))
+    run_test(np.arange(8).reshape((2, 2, 2)).tolist(), axis=(0, 2))
+    run_test(
+        np.arange(8).reshape((2, 2, 2)).tolist(), axis=(0, 2), keepdims=True)
+    run_test(np.arange(8).reshape((2, 2, 2)).tolist(), axis=(2, 0))
+    run_test(
+        np.arange(8).reshape((2, 2, 2)).tolist(), axis=(2, 0), keepdims=True)
+    self.assertRaises(ValueError, np_array_ops.mean, np.ones([2, 2]), out=[])
+
+  def testStd(self):
+
+    def run_test(arr, *args, **kwargs):
+      axis = kwargs.pop('axis', None)
+      for fn1 in self.array_transforms:
+        for fn2 in self.array_transforms:
+          arr_arg = fn1(arr)
+          axis_arg = fn2(axis) if axis is not None else None
+          self.match(
+              np_array_ops.std(arr_arg, axis=axis_arg, *args, **kwargs),
+              np.std(arr_arg, axis=axis, *args, **kwargs))
+
+    run_test([1, 2, 1])
+    run_test([1., 2., 1.])
+    run_test([1.j, 2., 1.j])
+    run_test([[1, 2], [3, 4]], axis=1)
+    run_test([[1, 2], [3, 4]], axis=0)
+    run_test([[1, 2], [3, 4]], axis=-1)
+    run_test([[1, 2], [3, 4]], axis=-2)
+    run_test([[1, 2], [3, 4]], axis=(0, 1))
+    run_test(np.arange(8).reshape((2, 2, 2)).tolist(), axis=(0, 2))
+    run_test(
+        np.arange(8).reshape((2, 2, 2)).tolist(), axis=(0, 2), keepdims=True)
+    run_test(np.arange(8).reshape((2, 2, 2)).tolist(), axis=(2, 0))
+    run_test(
+        np.arange(8).reshape((2, 2, 2)).tolist(), axis=(2, 0), keepdims=True)
+
+  def testVar(self):
+
+    def run_test(arr, *args, **kwargs):
+      axis = kwargs.pop('axis', None)
+      for fn1 in self.array_transforms:
+        for fn2 in self.array_transforms:
+          arr_arg = fn1(arr)
+          axis_arg = fn2(axis) if axis is not None else None
+          self.match(
+              np_array_ops.var(arr_arg, axis=axis_arg, *args, **kwargs),
+              np.var(arr_arg, axis=axis, *args, **kwargs))
+
+    run_test([1, 2, 1])
+    run_test([1., 2., 1.])
+    run_test([1.j, 2., 1.j])
+    run_test([1., 2., 1.], dtype=np.int64)
+    run_test([[1, 2], [3, 4]], axis=1)
+    run_test([[1, 2], [3, 4]], axis=0)
+    run_test([[1, 2], [3, 4]], axis=-1)
+    run_test([[1, 2], [3, 4]], axis=-2)
+    run_test([[1, 2], [3, 4]], axis=(0, 1))
+    run_test([1.0, 2.0, 3.0], ddof=1)
+    run_test([1.0, 2.0, 3.0], ddof=1, dtype=np.float64)
+    run_test([[1.0, 2.0], [3.0, 4.0]], axis=-1, ddof=1, keepdims=True)
+    run_test([1.0j, 2.0, 3.0j], ddof=1)
+    run_test([[1.0j, 2.0], [3.0j, 4.0]], axis=0, ddof=1)
+    run_test(np.arange(8.0).reshape((2, 2, 2)).tolist(), axis=(0, 2), ddof=1)
+    run_test(np.arange(8.0).reshape((2, 2, 2)).tolist(), axis=(-1, 0), ddof=1)
+    # A range of axes is static too.
+    self.match(
+        np_array_ops.var(
+            np.arange(8.0).reshape((2, 2, 2)), axis=range(2), ddof=1
         ),
-        ['axis', axis_t, 'is out of bounds for array of dimension', rank_t],
+        np.var(np.arange(8.0).reshape((2, 2, 2)), axis=(0, 1), ddof=1),
     )
-    return array_ops.where_v2(axis_t < 0, np_utils.add(axis_t, rank_t), axis_t)
-
-  source = tuple(_correct_axis(axis, a_rank) for axis in source)
-  destination = tuple(_correct_axis(axis, a_rank) for axis in destination)
-
-  if (
-      isinstance(a_rank, (int, np.integer))
-      and builtins.all(isinstance(x, (int, np.integer)) for x in source)
-      and builtins.all(isinstance(x, (int, np.integer)) for x in destination)
-  ):
-    perm = [i for i in range(a_rank) if i not in source]
-    for dest, src in sorted(zip(destination, source)):
-      assert dest <= len(perm)
-      perm.insert(dest, src)
-  else:
-    r = math_ops.range(a_rank)
-
-    def _remove_indices(a, b):
-      """Remove indices (`b`) from `a`."""
-      items = array_ops_stack.unstack(
-          sort_ops.sort(array_ops_stack.stack(b)), num=len(b)
-      )
-
-      i = 0
-      result = []
-
-      for item in items:
-        result.append(a[i:item])
-        i = item + 1
-
-      result.append(a[i:])
-
-      return array_ops.concat(result, 0)
-
-    minus_sources = _remove_indices(r, source)
-    minus_dest = _remove_indices(r, destination)
-
-    perm = array_ops.scatter_nd(
-        array_ops.expand_dims(minus_dest, 1), minus_sources, [a_rank]
-    )
-    perm = array_ops.tensor_scatter_update(
-        perm, array_ops.expand_dims(destination, 1), source
-    )
-  a = array_ops.transpose(a, perm)
-
-  return a
-
-
-@tf_export.tf_export('experimental.numpy.pad', v1=[])
-@np_utils.np_doc('pad')
-def pad(array, pad_width, mode, **kwargs):  # pylint: disable=redefined-outer-name
-  """Only supports modes 'constant', 'reflect' and 'symmetric' currently."""
-  constant_values = kwargs.get('constant_values', 0)
-  if not (mode == 'constant' or mode == 'reflect' or mode == 'symmetric'):
-    raise ValueError('Unsupported padding mode: ' + mode)
-  mode = mode.upper()
-  array = asarray(array)
-  pad_width = asarray(pad_width, dtype=dtypes.int32)
-  return array_ops.pad(
-      tensor=array,
-      paddings=pad_width,
-      mode=mode,
-      constant_values=constant_values,
-  )
-
-
-@tf_export.tf_export('experimental.numpy.take', v1=[])
-@np_utils.np_doc('take')
-def take(a, indices, axis=None, out=None, mode='clip'):
-  """out argument is not supported, and default mode is clip."""
-  if out is not None:
-    raise ValueError('out argument is not supported in take.')
-
-  if mode not in {'raise', 'clip', 'wrap'}:
-    raise ValueError("Invalid mode '{}' for take".format(mode))
-
-  a = asarray(a)
-  indices = asarray(indices)
-
-  if axis is None:
-    a = array_ops.reshape(a, [-1])
-    axis = 0
-  else:
-    # NumPy raises AxisError for out-of-bounds axes instead of letting the
-    # backend kernel fail with a confusing error.
-    maybe_rank = a.shape.rank
-    if maybe_rank is not None and isinstance(axis, (int, np.integer)):
-      normalized = axis + maybe_rank if axis < 0 else axis
-      if normalized < 0 or normalized >= maybe_rank:
-        raise ValueError(
-            f'Argument `axis` (received axis={axis}) is out of bounds '
-            f'for input of rank {maybe_rank}.'
-        )
-
-  axis_size = array_ops.shape(a, out_type=indices.dtype)[axis]
-  if mode == 'clip':
-    indices = clip_ops.clip_by_value(indices, 0, axis_size - 1)
-  elif mode == 'wrap':
-    indices = math_ops.floormod(indices, axis_size)
-  else:
-    raise ValueError("The 'raise' mode to take is not supported.")
-
-  return array_ops.gather(a, indices, axis=axis)
-
-
-@tf_export.tf_export('experimental.numpy.where', v1=[])
-@np_utils.np_doc_only('where')
-def where(condition, x=None, y=None):
-  """Raises ValueError if exactly one of x or y is not None."""
-  condition = asarray(condition, dtype=np.bool_)
-  if x is None and y is None:
-    return nonzero(condition)
-  elif x is not None and y is not None:
-    x, y = _promote_dtype(x, y)
-    return array_ops.where_v2(condition, x, y)
-  raise ValueError('Both x and y must be ndarrays, or both must be None.')
-
-
-@tf_export.tf_export('experimental.numpy.select', v1=[])
-@np_utils.np_doc('select')
-def select(condlist, choicelist, default=0):  # pylint: disable=missing-docstring
-  if len(condlist) != len(choicelist):
-    msg = 'condlist must have length equal to choicelist ({} vs {})'
-    raise ValueError(msg.format(len(condlist), len(choicelist)))
-  if not condlist:
-    raise ValueError('condlist must be non-empty')
-  choices = _promote_dtype(default, *choicelist)
-  choicelist = choices[1:]
-  output = choices[0]
-  # The traversal is in reverse order so we can return the first value in
-  # choicelist where condlist is True.
-  for cond, choice in zip(condlist[::-1], choicelist[::-1]):
-    output = where(cond, choice, output)
-  return output
-
-
-@tf_export.tf_export('experimental.numpy.shape', v1=[])
-@np_utils.np_doc(
-    'shape',
-    link=np_utils.Link(
-        'https://numpy.org/doc/1.18/reference/generated/numpy.shape.html'
-    ),
-)
-def shape(a):
-  a = asarray(a)
-  return a.shape
-
-
-@tf_export.tf_export('experimental.numpy.ndim', v1=[])
-@np_utils.np_doc('ndim', link=np_utils.NoLink())
-def ndim(a):
-  a = asarray(a)
-  return a.ndim
-
-
-@tf_export.tf_export('experimental.numpy.isscalar', v1=[])
-@np_utils.np_doc('isscalar')
-def isscalar(num):
-  return ndim(num) == 0
-
-
-def _boundaries_to_sizes(a, boundaries, axis):
-  """Converting boundaries of splits to sizes of splits.
-
-  Args:
-    a: the array to be split.
-    boundaries: the boundaries, as in np.split.
-    axis: the axis along which to split.
-
-  Returns:
-    A list of sizes of the splits, as in tf.split.
-  """
-  if axis >= len(a.shape):
-    raise ValueError('axis %s is out of bound for shape %s' % (axis, a.shape))
-  total_size = a.shape[axis]
-  sizes = []
-  sizes_sum = 0
-  prev = 0
-  for i, b in enumerate(boundaries):
-    size = b - prev
-    if size < 0:
-      raise ValueError(
-          'The %s-th boundary %s is smaller than the previous boundary %s'
-          % (i, b, prev)
-      )
-    size = builtins.min(size, builtins.max(0, total_size - sizes_sum))
-    sizes.append(size)
-    sizes_sum += size
-    prev = b
-  sizes.append(builtins.max(0, total_size - sizes_sum))
-  return sizes
-
-
-@tf_export.tf_export('experimental.numpy.split', v1=[])
-@np_utils.np_doc('split')
-def split(ary, indices_or_sections, axis=0):
-  ary = asarray(ary)
-  if isinstance(axis, (int, np.integer)):
-    rank = ary.shape.rank
-    if rank is not None:
-      axis_int = int(axis)
-      if axis_int < -rank or axis_int >= rank:
-        raise ValueError(
-            f'Argument `axis` (received axis={axis}) is out of bounds '
-            f'for input of rank {rank}.'
-        )
-  if not isinstance(indices_or_sections, int):
-    indices_or_sections = _boundaries_to_sizes(ary, indices_or_sections, axis)
-  return array_ops.split(ary, indices_or_sections, axis=axis)
-
-
-def _split_on_axis(np_fun_name, axis):  # pylint: disable=missing-function-docstring
-  @np_utils.np_doc(np_fun_name)
-  def f(ary, indices_or_sections):
-    # for 1-D array, hsplit becomes vsplit
-    new_axis = np_utils.cond(
-        math_ops.equal(axis, 1),
-        lambda: np_utils.cond(  # pylint: disable=g-long-lambda
-            math_ops.equal(array_ops.rank(ary), 1), lambda: 0, lambda: axis
-        ),
-        lambda: axis,
-    )
-    if isinstance(indices_or_sections, int):
-      ary_shape = ary.shape[new_axis]
-      if ary_shape is not None and ary_shape % indices_or_sections:
-        raise ValueError('array split does not result in an equal division')
-    return split(ary, indices_or_sections, axis=new_axis)
-
-  return f
-
-
-vsplit = tf_export.tf_export('experimental.numpy.vsplit', v1=[])(
-    _split_on_axis('vsplit', axis=0)
-)
-hsplit = tf_export.tf_export('experimental.numpy.hsplit', v1=[])(
-    _split_on_axis('hsplit', axis=1)
-)
-dsplit = tf_export.tf_export('experimental.numpy.dsplit', v1=[])(
-    _split_on_axis('dsplit', axis=2)
-)
-
-
-@tf_export.tf_export('experimental.numpy.broadcast_to', v1=[])
-@np_utils.np_doc('broadcast_to')
-def broadcast_to(array, shape):  # pylint: disable=redefined-outer-name
-  return full(shape, array)
-
-
-@tf_export.tf_export('experimental.numpy.stack', v1=[])
-@np_utils.np_doc('stack')
-def stack(arrays, axis=0):  # pylint: disable=missing-function-docstring
-  if isinstance(arrays, (np_arrays.ndarray, tensor_lib.Tensor)):
-    arrays = asarray(arrays)
-    if axis == 0:
-      return arrays
-    else:
-      return swapaxes(arrays, 0, axis)
-  arrays = _promote_dtype(*arrays)  # pylint: disable=protected-access
-  unwrapped_arrays = [
-      a if isinstance(a, np_arrays.ndarray) else a for a in arrays
-  ]
-  # NumPy raises AxisError for out-of-bounds axes instead of letting the
-  # backend kernel fail with a confusing error. `axis` is an insertion
-  # position, so rank itself is in bounds (NumPy 2.x allows axis == rank).
-  if arrays:
-    maybe_rank = asarray(unwrapped_arrays[0]).shape.rank
-    if (
-        maybe_rank is not None
-        and isinstance(axis, (int, np.integer))
-        and not -maybe_rank - 1 <= axis <= maybe_rank
-    ):
-      raise ValueError(
-          f'Argument `axis` (received axis={axis}) is out of bounds '
-          f'for input of rank {maybe_rank}.'
-      )
-  return asarray(array_ops_stack.stack(unwrapped_arrays, axis))
-
-
-@tf_export.tf_export('experimental.numpy.hstack', v1=[])
-@np_utils.np_doc('hstack')
-def hstack(tup):
-  arrays = [atleast_1d(a) for a in tup]
-  arrays = _promote_dtype(*arrays)  # pylint: disable=protected-access
-  unwrapped_arrays = [
-      a if isinstance(a, np_arrays.ndarray) else a for a in arrays
-  ]
-  rank = array_ops.rank(unwrapped_arrays[0])
-  return np_utils.cond(
-      math_ops.equal(rank, 1),
-      lambda: array_ops.concat(unwrapped_arrays, axis=0),
-      lambda: array_ops.concat(unwrapped_arrays, axis=1),
-  )
-
-
-@tf_export.tf_export('experimental.numpy.vstack', v1=[])
-@np_utils.np_doc('vstack')
-def vstack(tup):
-  arrays = [atleast_2d(a) for a in tup]
-  arrays = _promote_dtype(*arrays)  # pylint: disable=protected-access
-  unwrapped_arrays = [
-      a if isinstance(a, np_arrays.ndarray) else a for a in arrays
-  ]
-  return array_ops.concat(unwrapped_arrays, axis=0)
-
-
-@tf_export.tf_export('experimental.numpy.dstack', v1=[])
-@np_utils.np_doc('dstack')
-def dstack(tup):
-  arrays = [atleast_3d(a) for a in tup]
-  arrays = _promote_dtype(*arrays)  # pylint: disable=protected-access
-  unwrapped_arrays = [
-      a if isinstance(a, np_arrays.ndarray) else a for a in arrays
-  ]
-  return array_ops.concat(unwrapped_arrays, axis=2)
-
-
-def _pad_left_to(n, old_shape):
-  old_shape = asarray(old_shape, dtype=np.int32)
-  new_shape = array_ops.pad(
-      old_shape,
-      [[math_ops.maximum(n - array_ops.size(old_shape), 0), 0]],
-      constant_values=1,
-  )
-  return asarray(new_shape)
-
-
-def _atleast_nd(n, new_shape, *arys):
-  """Reshape arrays to be at least `n`-dimensional.
-
-  Args:
-    n: The minimal rank.
-    new_shape: a function that takes `n` and the old shape and returns the
-      desired new shape.
-    *arys: ndarray(s) to be reshaped.
-
-  Returns:
-    The reshaped array(s).
-  """
-
-  def f(x):
-    # pylint: disable=g-long-lambda
-    x = asarray(x)
-    return asarray(
-        np_utils.cond(
-            np_utils.greater(n, array_ops.rank(x)),
-            lambda: reshape(x, new_shape(n, array_ops.shape(x))),
-            lambda: x,
-        )
-    )
-
-  arys = list(map(f, arys))
-  if len(arys) == 1:
-    return arys[0]
-  else:
-    return arys
-
-
-@tf_export.tf_export('experimental.numpy.atleast_1d', v1=[])
-@np_utils.np_doc('atleast_1d')
-def atleast_1d(*arys):
-  return _atleast_nd(1, _pad_left_to, *arys)
-
-
-@tf_export.tf_export('experimental.numpy.atleast_2d', v1=[])
-@np_utils.np_doc('atleast_2d')
-def atleast_2d(*arys):
-  return _atleast_nd(2, _pad_left_to, *arys)
-
-
-@tf_export.tf_export('experimental.numpy.atleast_3d', v1=[])
-@np_utils.np_doc('atleast_3d')
-def atleast_3d(*arys):  # pylint: disable=missing-docstring
-  def new_shape(_, old_shape):
-    # pylint: disable=g-long-lambda
-    ndim_ = array_ops.size(old_shape)
-    return np_utils.cond(
-        math_ops.equal(ndim_, 0),
-        lambda: constant_op.constant([1, 1, 1], dtype=dtypes.int32),
-        lambda: np_utils.cond(
-            math_ops.equal(ndim_, 1),
-            lambda: array_ops.pad(old_shape, [[1, 1]], constant_values=1),
-            lambda: array_ops.pad(old_shape, [[0, 1]], constant_values=1),
-        ),
-    )
-
-  return _atleast_nd(3, new_shape, *arys)
-
-
-@tf_export.tf_export('experimental.numpy.nonzero', v1=[])
-@np_utils.np_doc('nonzero')
-def nonzero(a):
-  a = atleast_1d(a)
-  if a.shape.rank is None:
-    raise ValueError(
-        "The rank of `a` is unknown, so we can't decide how many "
-        'arrays to return.'
-    )
-  return array_ops_stack.unstack(
-      array_ops.where_v2(math_ops.cast(a, dtypes.bool)), a.shape.rank, axis=1
-  )
-
-
-@tf_export.tf_export('experimental.numpy.diag_indices', v1=[])
-@np_utils.np_doc('diag_indices')
-def diag_indices(n, ndim=2):  # pylint: disable=missing-docstring,redefined-outer-name
-  if n < 0:
-    raise ValueError(
-        'n argument to diag_indices must be nonnegative, got {}'.format(n)
-    )
-  if ndim < 0:
-    raise ValueError(
-        'ndim argument to diag_indices must be nonnegative, got {}'.format(ndim)
-    )
-
-  return (math_ops.range(n),) * ndim
-
-
-@tf_export.tf_export('experimental.numpy.tri', v1=[])
-@np_utils.np_doc('tri')
-def tri(N, M=None, k=0, dtype=None):  # pylint: disable=invalid-name,missing-docstring
-  M = M if M is not None else N
-  if dtype is not None:
-    dtype = np_utils.result_type(dtype)
-  else:
-    # Use a default float type.
-    dtype = np_utils.result_type(float)
-
-  if k < 0:
-    lower = -k - 1
-    if lower > N:
-      r = array_ops.zeros([N, M], dtype)
-    else:
-      # Keep as tf bool, since we create an upper triangular matrix and invert
-      # it.
-      o = array_ops.ones([N, M], dtype=dtypes.bool)
-      r = math_ops.cast(
-          math_ops.logical_not(array_ops.matrix_band_part(o, lower, -1)), dtype
-      )
-  else:
-    o = array_ops.ones([N, M], dtype)
-    if k > M:
-      r = o
-    else:
-      r = array_ops.matrix_band_part(o, -1, k)
-  return r
-
-
-@tf_export.tf_export('experimental.numpy.tril', v1=[])
-@np_utils.np_doc('tril')
-def tril(m, k=0):  # pylint: disable=missing-docstring
-  m = asarray(m)
-  if m.shape.ndims is None:
-    raise ValueError('Argument to tril should have known rank')
-  m_shape = m.shape.as_list()
-
-  if len(m_shape) < 2:
-    raise ValueError('Argument to tril must have rank at least 2')
-
-  if m_shape[-1] is None or m_shape[-2] is None:
-    raise ValueError(
-        'Currently, the last two dimensions of the input array '
-        'need to be known.'
-    )
-
-  z = constant_op.constant(0, m.dtype)
-
-  mask = tri(*m_shape[-2:], k=k, dtype=bool)
-  return array_ops.where_v2(
-      array_ops.broadcast_to(mask, array_ops.shape(m)), m, z
-  )
-
-
-@tf_export.tf_export('experimental.numpy.triu', v1=[])
-@np_utils.np_doc('triu')
-def triu(m, k=0):  # pylint: disable=missing-docstring
-  m = asarray(m)
-  if m.shape.ndims is None:
-    raise ValueError('Argument to triu should have known rank')
-  m_shape = m.shape.as_list()
-
-  if len(m_shape) < 2:
-    raise ValueError('Argument to triu must have rank at least 2')
-
-  if m_shape[-1] is None or m_shape[-2] is None:
-    raise ValueError(
-        'Currently, the last two dimensions of the input array '
-        'need to be known.'
-    )
-
-  z = constant_op.constant(0, m.dtype)
-
-  mask = tri(*m_shape[-2:], k=k - 1, dtype=bool)
-  return array_ops.where_v2(
-      array_ops.broadcast_to(mask, array_ops.shape(m)), z, m
-  )
-
-
-@tf_export.tf_export('experimental.numpy.flip', v1=[])
-@np_utils.np_doc('flip')
-def flip(m, axis=None):  # pylint: disable=missing-docstring
-  m = asarray(m)
-
-  if axis is None:
-    return array_ops.reverse(m, math_ops.range(array_ops.rank(m)))
-
-  if np_utils.isscalar(axis) or (
-      isinstance(axis, np.ndarray) and axis.ndim == 0
-  ):
-    axis = [axis]
-
-  return array_ops.reverse(m, axis)
-
-
-@tf_export.tf_export('experimental.numpy.flipud', v1=[])
-@np_utils.np_doc('flipud')
-def flipud(m):  # pylint: disable=missing-docstring
-  return flip(m, 0)
-
-
-@tf_export.tf_export('experimental.numpy.fliplr', v1=[])
-@np_utils.np_doc('fliplr')
-def fliplr(m):  # pylint: disable=missing-docstring
-  return flip(m, 1)
-
-
-@tf_export.tf_export('experimental.numpy.roll', v1=[])
-@np_utils.np_doc('roll')
-def roll(a, shift, axis=None):  # pylint: disable=missing-docstring
-  a = asarray(a)
-
-  if axis is not None:
-    return manip_ops.roll(a, shift, axis)
-
-  # If axis is None, the roll happens as a 1-d tensor.
-  original_shape = array_ops.shape(a)
-  a = manip_ops.roll(array_ops.reshape(a, [-1]), shift, 0)
-  return array_ops.reshape(a, original_shape)
-
-
-@tf_export.tf_export('experimental.numpy.rot90', v1=[])
-@np_utils.np_doc('rot90')
-def rot90(m, k=1, axes=(0, 1)):  # pylint: disable=missing-docstring
-  m = asarray(m)
-
-  maybe_rank = m.shape.rank
-  if isinstance(axes, (tuple, list, range, np.ndarray)):
-    # Validate the sequence length even when the static rank is unknown:
-    # otherwise invalid lengths only surface as unpacking errors further
-    # down.
-    if len(axes) != 2:
-      raise ValueError('len(axes) must be 2.')
-    if maybe_rank is not None:
-      # Direct scalar checks on the green path (no intermediate list, no
-      # generator expressions). NumPy checks for duplicate axes before
-      # out-of-range axes; `abs(ax0 - ax1) == maybe_rank` catches
-      # mixed-sign duplicates such as (0, -3) on a rank-3 array.
-      ax0, ax1 = axes[0], axes[1]
-      if isinstance(ax0, (int, np.integer)) and isinstance(
-          ax1, (int, np.integer)
+    run_test(np.arange(8.0).reshape((2, 2, 2)).tolist(), axis=(), ddof=1)
+    run_test(5.0, ddof=1)
+    run_test(5.0, axis=(), ddof=1)
+    run_test(np.arange(8).reshape((2, 2, 2)).tolist(), axis=(0, 2))
+    run_test(
+        np.arange(8).reshape((2, 2, 2)).tolist(), axis=(0, 2), keepdims=True)
+    run_test(np.arange(8).reshape((2, 2, 2)).tolist(), axis=(2, 0))
+    run_test(
+        np.arange(8).reshape((2, 2, 2)).tolist(), axis=(2, 0), keepdims=True)
+    # Regression test: ddof >= n (the number of elements reduced over) must
+    # clamp the degrees-of-freedom denominator at 0 and match NumPy's `inf`,
+    # not silently divide by a negative count and return a wrong, finite,
+    # negative "variance".
+    run_test([1.0, 2.0, 3.0], ddof=3)
+    run_test([1.0, 2.0, 3.0], ddof=4)
+    run_test([[1.0, 2.0], [3.0, 4.0]], axis=-1, ddof=2, keepdims=True)
+    run_test(np.arange(8.0).reshape((2, 2, 2)).tolist(), axis=0, ddof=2)
+    run_test(np.arange(8.0).reshape((2, 2, 2)).tolist(), axis=(0, 2), ddof=4)
+    self.assertRaises(ValueError, np_array_ops.var, np.ones([2, 2]), out=[])
+    out_of_bounds = 'out of bounds|not in|Invalid reduction dimension'
+    for axis in (-3, (-3, 0), 3, (0, 3)):
+      with self.assertRaisesRegex(
+          (ValueError, errors_impl.InvalidArgumentError), out_of_bounds
       ):
-        # Convert to Python int before arithmetic: NumPy unsigned scalars
-        # (e.g. np.uint32) perform modular subtraction, so `ax0 - ax1`
-        # would wrap around (e.g. 0 - 1 -> 4294967295) and both the
-        # duplicate check and the bounds check would misbehave.
-        ax0, ax1 = int(ax0), int(ax1)
-        if ax0 == ax1 or abs(ax0 - ax1) == maybe_rank:
-          raise ValueError('Axes must be different.')
-        if (
-            ax0 < -maybe_rank
-            or ax0 >= maybe_rank
-            or ax1 < -maybe_rank
-            or ax1 >= maybe_rank
-        ):
-          raise ValueError(
-              f'Axes={tuple(axes)} out of range for array of ndim={maybe_rank}.'
-          )
+        np_array_ops.var(np.ones([2, 2]), axis=axis, ddof=1)
 
-  m_rank = array_ops.rank(m)
-  ax1, ax2 = np_utils._canonicalize_axes(axes, m_rank)  # pylint: disable=protected-access
-
-  k = k % 4
-  if k == 0:
-    return m
-  elif k == 2:
-    return flip(flip(m, ax1), ax2)
-  else:
-    perm = math_ops.range(m_rank)
-    perm = array_ops.tensor_scatter_update(perm, [[ax1], [ax2]], [ax2, ax1])
-
-    if k == 1:
-      return transpose(flip(m, ax2), perm)
-    else:
-      return flip(transpose(m, perm), ax2)
-
-
-@tf_export.tf_export('experimental.numpy.vander', v1=[])
-@np_utils.np_doc('vander')
-def vander(x, N=None, increasing=False):  # pylint: disable=missing-docstring,invalid-name
-  x = asarray(x)
-
-  x_shape = array_ops.shape(x)
-  if N is None:
-    N = x_shape[0]
-
-  N_temp = np_utils.get_static_value(N)  # pylint: disable=invalid-name
-  if N_temp is not None:
-    N = N_temp
-    if N < 0:
-      raise ValueError('N must be nonnegative')
-  else:
-    control_flow_assert.Assert(N >= 0, [N])
-
-  rank = array_ops.rank(x)
-  rank_temp = np_utils.get_static_value(rank)
-  if rank_temp is not None:
-    rank = rank_temp
-    if rank != 1:
-      raise ValueError('x must be a one-dimensional array')
-  else:
-    control_flow_assert.Assert(math_ops.equal(rank, 1), [rank])
-
-  if increasing:
-    start = 0
-    limit = N
-    delta = 1
-  else:
-    start = N - 1
-    limit = -1
-    delta = -1
-
-  x = array_ops.expand_dims(x, -1)
-  exponents = math_ops.cast(math_ops.range(start, limit, delta), dtype=x.dtype)
-  # Avoid 0.0 ** 0.0 in pow, whose gradient evaluates 0 * 0^(-1) = 0 * inf = NaN.
-  # Since x^0 == 1 has zero derivative with respect to x, substituting 1 for x
-  # where exponent == 0 preserves both forward values and exact derivatives.
-  safe_x = array_ops.where_v2(
-      math_ops.equal(exponents, 0), constant_op.constant(1, dtype=x.dtype), x
-  )
-  return math_ops.pow(safe_x, exponents)
-
-
-@tf_export.tf_export('experimental.numpy.ix_', v1=[])
-@np_utils.np_doc('ix_')
-def ix_(*args):  # pylint: disable=missing-docstring
-  n = len(args)
-  output = []
-  for i, a in enumerate(args):
-    a = asarray(a)
-    a_rank = array_ops.rank(a)
-    a_rank_temp = np_utils.get_static_value(a_rank)
-    if a_rank_temp is not None:
-      a_rank = a_rank_temp
-      if a_rank != 1:
-        raise ValueError(
-            'Arguments must be 1-d, got arg {} of rank {}'.format(i, a_rank)
-        )
-    else:
-      control_flow_assert.Assert(math_ops.equal(a_rank, 1), [a_rank])
-
-    new_shape = [1] * n
-    new_shape[i] = -1
-    dtype = a.dtype
-    if dtype == dtypes.bool:
-      output.append(array_ops.reshape(nonzero(a)[0], new_shape))
-    elif dtype.is_integer:
-      output.append(array_ops.reshape(a, new_shape))
-    else:
-      raise ValueError(
-          'Only integer and bool dtypes are supported, got {}'.format(dtype)
-      )
-
-  return output
-
-
-@tf_export.tf_export('experimental.numpy.broadcast_arrays', v1=[])
-@np_utils.np_doc('broadcast_arrays')
-def broadcast_arrays(*args, **kwargs):  # pylint: disable=missing-docstring
-  subok = kwargs.pop('subok', False)
-  if subok:
-    raise ValueError('subok=True is not supported.')
-  if kwargs:
-    raise ValueError('Received unsupported arguments {}'.format(kwargs.keys()))
-
-  args = [asarray(arg) for arg in args]
-  return np_utils.tf_broadcast(*args)
-
-
-@tf_export.tf_export('experimental.numpy.sign', v1=[])
-@np_utils.np_doc_only('sign')
-def sign(x, out=None, where=None, **kwargs):  # pylint: disable=missing-docstring,redefined-outer-name
-  if out is not None:
-    raise ValueError("tf.numpy doesn't support setting out.")
-  if where is not None:
-    raise ValueError("tf.numpy doesn't support setting where.")
-  if kwargs:
-    raise ValueError(
-        "tf.numpy doesn't support setting {}".format(kwargs.keys())
+    # With an unknown rank, the axis is only checked at run time.
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)]
     )
+    def var_fn(a):
+      return np_array_ops.var(a, axis=-3, ddof=1)
 
-  x = asarray(x)
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)]
+    )
+    def var_fn_tuple(a):
+      return np_array_ops.var(a, axis=(-3, 0), ddof=1)
 
-  # Numpy 2.x and later uses the same definition of sign.
-  if np.lib.NumpyVersion(np.__version__) >= '2.0.0.dev0':
-    return math_ops.sign(x)
+    with self.assertRaisesRegex(
+        (ValueError, errors_impl.InvalidArgumentError), out_of_bounds
+    ):
+      var_fn(np.ones([2, 2], dtype=np.float32))
+    with self.assertRaisesRegex(
+        (ValueError, errors_impl.InvalidArgumentError), out_of_bounds
+    ):
+      var_fn_tuple(np.ones([2, 2], dtype=np.float32))
 
-  dtype = x.dtype.as_numpy_dtype
-  if np.issubdtype(dtype, np.complexfloating):
-    result = math_ops.cast(math_ops.sign(math_ops.real(x)), dtype)
-  else:
-    result = math_ops.sign(x)
+    # In-bounds negative axes with an unknown rank are normalized at run time.
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)]
+    )
+    def var_fn_tuple_in_bounds(a):
+      return np_array_ops.var(a, axis=(-1, 0), ddof=1)
 
-  return result
+    x = np.arange(24, dtype=np.float32).reshape((2, 3, 4))
+    self.match(var_fn_tuple_in_bounds(x), np.var(x, axis=(-1, 0), ddof=1))
 
+  def testProd(self):
 
-# Note that np.take_along_axis may not be present in some supported versions of
-# numpy.
-@tf_export.tf_export('experimental.numpy.take_along_axis', v1=[])
-@np_utils.np_doc('take_along_axis')
-def take_along_axis(arr, indices, axis):  # pylint: disable=missing-docstring
-  arr = asarray(arr)
-  indices = asarray(indices)
+    def run_test(arr, *args, **kwargs):
+      for fn in self.array_transforms:
+        arg = fn(arr)
+        self.match(
+            np_array_ops.prod(arg, *args, **kwargs),
+            np.prod(arg, *args, **kwargs))
 
-  if axis is None:
-    return take_along_axis(arr.ravel(), indices, 0)
+    run_test([1, 2, 3])
+    run_test([1., 2., 3.])
+    run_test(np.array([1, 2, 3], dtype=np.int16))
+    run_test([[1, 2], [3, 4]], axis=1)
+    run_test([[1, 2], [3, 4]], axis=0)
+    run_test([[1, 2], [3, 4]], axis=-1)
+    run_test([[1, 2], [3, 4]], axis=-2)
+    run_test([[1, 2], [3, 4]], axis=(0, 1))
+    run_test(np.arange(8).reshape((2, 2, 2)).tolist(), axis=(0, 2))
+    run_test(
+        np.arange(8).reshape((2, 2, 2)).tolist(), axis=(0, 2), keepdims=True)
+    run_test(np.arange(8).reshape((2, 2, 2)).tolist(), axis=(2, 0))
+    run_test(
+        np.arange(8).reshape((2, 2, 2)).tolist(), axis=(2, 0), keepdims=True)
 
-  # Prefer the static rank so that `axis` and the branch predicate below stay
-  # Python values. With a tensor predicate the conditional further down is
-  # emitted as a real op whose two branches have different shapes, which XLA
-  # rejects.
-  rank = arr.shape.rank
-  if rank is None:
-    rank = array_ops.rank(arr)
-  if isinstance(rank, int):
-    normalized = axis + rank if axis < 0 else axis
-    if normalized < 0 or normalized >= rank:
-      raise ValueError(
-          f'Argument `axis` (received axis={axis}) is out of bounds '
-          f'for input of rank {rank}.'
+  def _testReduce(self, math_fun, np_fun, name):
+    axis_transforms = [
+        lambda x: x,  # Identity,
+        ops.convert_to_tensor,
+        np.array,
+        np_array_ops.array,
+        lambda x: np_array_ops.array(x, dtype=np.float32),
+        lambda x: np_array_ops.array(x, dtype=np.float64),
+    ]
+
+    def run_test(a, **kwargs):
+      axis = kwargs.pop('axis', None)
+      for fn1 in self.array_transforms:
+        for fn2 in axis_transforms:
+          arg1 = fn1(a)
+          axis_arg = fn2(axis) if axis is not None else None
+          self.match(
+              math_fun(arg1, axis=axis_arg, **kwargs),
+              np_fun(arg1, axis=axis, **kwargs),
+              msg='{}({}, axis={}, keepdims={})'.format(name, arg1, axis,
+                                                        kwargs.get('keepdims')))
+
+    run_test(5)
+    run_test([2, 3])
+    run_test([[2, -3], [-6, 7]])
+    run_test([[2, -3], [-6, 7]], axis=0)
+    run_test([[2, -3], [-6, 7]], axis=0, keepdims=True)
+    run_test([[2, -3], [-6, 7]], axis=1)
+    run_test([[2, -3], [-6, 7]], axis=1, keepdims=True)
+    run_test([[2, -3], [-6, 7]], axis=(0, 1))
+    run_test([[2, -3], [-6, 7]], axis=(1, 0))
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      math_fun(np_array_ops.array([[2, -3], [-6, 7]]), axis=2)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      math_fun(np_array_ops.array([[2, -3], [-6, 7]]), axis=-3)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      math_fun(np_array_ops.array([[2, -3], [-6, 7]]), axis=(0, 2))
+
+  def testSum(self):
+    self._testReduce(np_array_ops.sum, np.sum, 'sum')
+    # Scalar input: axes -1 and 0 are in bounds, 1 and -2 are not.
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.sum(5, axis=1)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.sum(5, axis=-2)
+
+  def testAmax(self):
+    self._testReduce(np_array_ops.amax, np.amax, 'amax')
+
+  def testSize(self):
+
+    def run_test(arr, axis=None):
+      onp_arr = np.array(arr)
+      self.assertEqual(np_array_ops.size(arr, axis), np.size(onp_arr, axis))
+
+    run_test(np_array_ops.array([1]))
+    run_test(np_array_ops.array([1, 2, 3, 4, 5]))
+    run_test(np_array_ops.ones((2, 3, 2)))
+    run_test(np_array_ops.ones((3, 2)))
+    run_test(np_array_ops.zeros((5, 6, 7)))
+    run_test(1)
+    run_test(np_array_ops.ones((3, 2, 1)))
+    run_test(constant_op.constant(5))
+    run_test(constant_op.constant([1, 1, 1]))
+    self.assertRaises(NotImplementedError, np_array_ops.size, np.ones((2, 2)),
+                      1)
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(dtype=dtypes.float64, shape=None)])
+    def f(arr):
+      arr = np_array_ops.asarray(arr)
+      return np_array_ops.size(arr)
+
+    self.assertEqual(f(np_array_ops.ones((3, 2))).numpy(), 6)
+
+  def testRavel(self):
+
+    def run_test(arr, *args, **kwargs):
+      for fn in self.array_transforms:
+        arg = fn(arr)
+        self.match(
+            np_array_ops.ravel(arg, *args, **kwargs),
+            np.ravel(arg, *args, **kwargs))
+
+    run_test(5)
+    run_test(5.)
+    run_test([])
+    run_test([[]])
+    run_test([[], []])
+    run_test([1, 2, 3])
+    run_test([1., 2., 3.])
+    run_test([[1, 2], [3, 4]])
+    run_test(np.arange(8).reshape((2, 2, 2)).tolist())
+
+  def testReal(self):
+
+    def run_test(arr, *args, **kwargs):
+      for fn in self.array_transforms:
+        arg = fn(arr)
+        self.match(
+            np_array_ops.real(arg, *args, **kwargs),
+            np.array(np.real(arg, *args, **kwargs)))
+
+    run_test(1)
+    run_test(5.5)
+    run_test(5 + 3j)
+    run_test(3j)
+    run_test([])
+    run_test([1, 2, 3])
+    run_test([1 + 5j, 2 + 3j])
+    run_test([[1 + 5j, 2 + 3j], [1 + 7j, 2 + 8j]])
+
+  def testRepeat(self):
+
+    def run_test(arr, repeats, *args, **kwargs):
+      for fn1 in self.array_transforms:
+        for fn2 in self.array_transforms:
+          arr_arg = fn1(arr)
+          repeats_arg = fn2(repeats)
+          self.match(
+              np_array_ops.repeat(arr_arg, repeats_arg, *args, **kwargs),
+              np.repeat(arr_arg, repeats_arg, *args, **kwargs))
+
+    run_test(1, 2)
+    # NumPy treats 0-d inputs as 1-D of size 1, so axes -1 and 0 are
+    # valid on scalars.
+    run_test(5, 2, axis=0)
+    run_test(5, 2, axis=-1)
+    run_test([1, 2], 2)
+    run_test([1, 2], [2])
+    run_test([1, 2], [1, 2])
+    run_test([[1, 2], [3, 4]], 3, axis=0)
+    run_test([[1, 2], [3, 4]], 3, axis=1)
+    run_test([[1, 2], [3, 4]], [3], axis=0)
+    run_test([[1, 2], [3, 4]], [3], axis=1)
+    run_test([[1, 2], [3, 4]], [3, 2], axis=0)
+    run_test([[1, 2], [3, 4]], [3, 2], axis=1)
+    run_test([[1, 2], [3, 4]], [3, 2], axis=-1)
+    run_test([[1, 2], [3, 4]], [3, 2], axis=-2)
+
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.repeat([[1, 2], [3, 4]], 2, axis=2)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.repeat([[1, 2], [3, 4]], 2, axis=-3)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.repeat(np_array_ops.array(5), 2, axis=1)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.repeat(np_array_ops.array(5), 2, axis=-2)
+
+  def testAround(self):
+
+    def run_test(arr, *args, **kwargs):
+      for fn in self.array_transforms:
+        arg = fn(arr)
+        self.match(
+            np_array_ops.around(arg, *args, **kwargs),
+            np.around(arg, *args, **kwargs))
+
+    run_test(5.5)
+    run_test(5.567, decimals=2)
+    run_test([])
+    run_test([1.27, 2.49, 2.75], decimals=1)
+    run_test([23.6, 45.1], decimals=-1)
+
+  def testReshape(self):
+
+    def run_test(arr, newshape, *args, **kwargs):
+      for fn1 in self.array_transforms:
+        for fn2 in self.array_transforms:
+          arr_arg = fn1(arr)
+          newshape_arg = fn2(newshape)
+          self.match(
+              np_array_ops.reshape(arr_arg, newshape_arg, *args, **kwargs),
+              np.reshape(arr_arg, newshape, *args, **kwargs))
+
+    run_test(5, [-1])
+    run_test([], [-1])
+    run_test([1, 2, 3], [1, 3])
+    run_test([1, 2, 3], [3, 1])
+    run_test([1, 2, 3, 4], [2, 2])
+    run_test([1, 2, 3, 4], [2, 1, 2])
+
+  def testExpandDims(self):
+
+    def run_test(arr, axis):
+      self.match(np_array_ops.expand_dims(arr, axis), np.expand_dims(arr, axis))
+
+    run_test([1, 2, 3], 0)
+    run_test([1, 2, 3], 1)
+    # Valid negative and boundary axes still work.
+    run_test([1, 2, 3], -1)
+    run_test([1, 2, 3], -2)
+    a = np.ones((2, 3))
+    # Assert exact boundary tests
+    run_test(a, -3)
+    run_test(a, 2)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.expand_dims(a, 3)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.expand_dims(a, -4)
+
+  def testSqueeze(self):
+
+    def run_test(arr, *args, **kwargs):
+      for fn in self.array_transforms:
+        arg = fn(arr)
+        # Note: np.squeeze ignores the axis arg for non-ndarray objects.
+        # This looks like a bug: https://github.com/numpy/numpy/issues/8201
+        # So we convert the arg to np.ndarray before passing to np.squeeze.
+        self.match(
+            np_array_ops.squeeze(arg, *args, **kwargs),
+            np.squeeze(np.array(arg), *args, **kwargs))
+
+    run_test(5)
+    run_test([])
+    run_test([5])
+    run_test([[1, 2, 3]])
+    run_test([[[1], [2], [3]]])
+    run_test([[[1], [2], [3]]], axis=0)
+    run_test([[[1], [2], [3]]], axis=2)
+    run_test([[[1], [2], [3]]], axis=(0, 2))
+    run_test([[[1], [2], [3]]], axis=-1)
+    run_test([[[1], [2], [3]]], axis=-3)
+
+  def testTranspose(self):
+
+    def run_test(arr, axes=None):
+      for fn1 in self.array_transforms:
+        for fn2 in self.array_transforms:
+          arr_arg = fn1(arr)
+          axes_arg = fn2(axes) if axes is not None else None
+          self.match(
+              np_array_ops.transpose(arr_arg, axes_arg),
+              np.transpose(arr_arg, axes))
+
+    run_test(5)
+    run_test([])
+    run_test([5])
+    run_test([5, 6, 7])
+    run_test(np.arange(30).reshape(2, 3, 5).tolist())
+    run_test(np.arange(30).reshape(2, 3, 5).tolist(), [0, 1, 2])
+    run_test(np.arange(30).reshape(2, 3, 5).tolist(), [0, 2, 1])
+    run_test(np.arange(30).reshape(2, 3, 5).tolist(), [1, 0, 2])
+    run_test(np.arange(30).reshape(2, 3, 5).tolist(), [1, 2, 0])
+    run_test(np.arange(30).reshape(2, 3, 5).tolist(), [2, 0, 1])
+    run_test(np.arange(30).reshape(2, 3, 5).tolist(), [2, 1, 0])
+    a = np.arange(6).reshape(2, 3)
+    # Valid negative and mixed axes still work.
+    self.match(np_array_ops.transpose(a, [0, -1]), np.transpose(a, [0, -1]))
+    self.match(np_array_ops.transpose(a, [-2, -1]), np.transpose(a, [-2, -1]))
+    with self.assertRaisesRegex(ValueError, "axes don't match array"):
+      np_array_ops.transpose(a, [0, 1, 2])
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.transpose(a, [0, 2])
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.transpose(a, [0, -3])
+    with self.assertRaisesRegex(ValueError, 'repeated axis'):
+      np_array_ops.transpose(a, [1, 1])
+    with self.assertRaisesRegex(ValueError, 'repeated axis'):
+      np_array_ops.transpose(a, [0, -2])
+    # Test scalar rank.
+    a_scalar = np.array(5)
+    self.match(np_array_ops.transpose(a_scalar, []), np.transpose(a_scalar, []))
+    with self.assertRaisesRegex(ValueError, "axes don't match array"):
+      np_array_ops.transpose(a_scalar, [0])
+    # Test vector rank.
+    a_vector = np.array([1, 2, 3])
+    with self.assertRaisesRegex(ValueError, "axes don't match array"):
+      np_array_ops.transpose(a_vector, [0, 1])
+    # Duplicate detection must not be bypassed by mixed int/Tensor axes.
+    a3 = np.arange(24).reshape(2, 3, 4)
+    with self.assertRaisesRegex(ValueError, 'repeated axis'):
+      np_array_ops.transpose(a3, [0, 0, constant_op.constant(2)])
+
+  def match_shape(self, actual, expected, msg=None):
+    if msg:
+      msg = 'Shape match failed for: {}. Expected: {} Actual: {}'.format(
+          msg, expected.shape, actual.shape)
+    self.assertEqual(actual.shape, expected.shape, msg=msg)
+
+  def match_dtype(self, actual, expected, msg=None):
+    if msg:
+      msg = 'Dtype match failed for: {}. Expected: {} Actual: {}.'.format(
+          msg, expected.dtype, actual.dtype
       )
-    axis = normalized
-  else:
-    axis = axis + rank if axis < 0 else axis
+    self.assertEqual(actual.dtype, expected.dtype, msg=msg)
 
-  # Broadcast shapes to match, ensure that the axis of interest is not
-  # broadcast.
-  arr_shape_original = array_ops.shape(arr, out_type=indices.dtype)
-  indices_shape_original = array_ops.shape(indices, out_type=indices.dtype)
-  arr_shape = array_ops.tensor_scatter_update(arr_shape_original, [[axis]], [1])
-  indices_shape = array_ops.tensor_scatter_update(
-      indices_shape_original, [[axis]], [1]
-  )
-  broadcasted_shape = array_ops.broadcast_dynamic_shape(
-      arr_shape, indices_shape
-  )
-  arr_shape = array_ops.tensor_scatter_update(
-      broadcasted_shape, [[axis]], [arr_shape_original[axis]]
-  )
-  indices_shape = array_ops.tensor_scatter_update(
-      broadcasted_shape, [[axis]], [indices_shape_original[axis]]
-  )
-  arr = array_ops.broadcast_to(arr, arr_shape)
-  indices = array_ops.broadcast_to(indices, indices_shape)
-
-  # Save indices shape so we can restore it later.
-  possible_result_shape = indices.shape
-
-  # Correct indices since gather doesn't correctly handle negative indices.
-  indices = array_ops.where_v2(indices < 0, indices + arr_shape[axis], indices)
-
-  swapaxes_ = lambda t: swapaxes(t, axis, -1)
-
-  if isinstance(rank, int):
-    # Resolved at trace time, so only the taken branch is built.
-    dont_move_axis_to_end = axis == rank - 1
-  else:
-    dont_move_axis_to_end = math_ops.equal(axis, np_utils.subtract(rank, 1))
-  arr = np_utils.cond(
-      dont_move_axis_to_end, lambda: arr, lambda: swapaxes_(arr)
-  )
-  indices = np_utils.cond(
-      dont_move_axis_to_end, lambda: indices, lambda: swapaxes_(indices)
-  )
-
-  arr_shape = array_ops.shape(arr)
-  arr = array_ops.reshape(arr, [-1, arr_shape[-1]])
-
-  indices_shape = array_ops.shape(indices)
-  indices = array_ops.reshape(indices, [-1, indices_shape[-1]])
-
-  result = array_ops.gather(arr, indices, batch_dims=1)
-  result = array_ops.reshape(result, indices_shape)
-  result = np_utils.cond(
-      dont_move_axis_to_end, lambda: result, lambda: swapaxes_(result)
-  )
-  result.set_shape(possible_result_shape)
-
-  return result
-
-
-# pylint: disable=redefined-builtin,undefined-variable
-@tf_export.tf_export('experimental.numpy.max', v1=[])
-@np_utils.np_doc('max', link=np_utils.AliasOf('amax'))
-def max(a, axis=None, keepdims=None):
-  return amax(a, axis=axis, keepdims=keepdims)
-
-
-@tf_export.tf_export('experimental.numpy.min', v1=[])
-@np_utils.np_doc('min', link=np_utils.AliasOf('amin'))
-def min(a, axis=None, keepdims=None):
-  return amin(a, axis=axis, keepdims=keepdims)
-
-
-@tf_export.tf_export('experimental.numpy.round', v1=[])
-@np_utils.np_doc('round', link=np_utils.AliasOf('around'))
-def round(a, decimals=0):
-  return around(a, decimals=decimals)
-
-
-# pylint: enable=redefined-builtin,undefined-variable
-
-
-_SLICE_ERROR = (
-    'only integers, slices (`:`), ellipsis (`...`), '
-    'numpy.newaxis (`None`) and integer or boolean arrays are valid indices'
-)
-
-
-def _as_index(idx, need_scalar=True):
-  """Helper function to parse idx as an index.
-
-  Args:
-    idx: index
-    need_scalar: If idx needs to be a scalar value.
-
-  Returns:
-    A pair, (indx, bool). First one is the parsed index and can be a tensor,
-    or scalar integer / Dimension. Second one is True if rank is known to be 0.
-
-  Raises:
-    IndexError: For incorrect indices.
-  """
-  if isinstance(idx, (numbers.Integral, tensor_shape.Dimension)):
-    return idx, True
-  data = asarray(idx)
-  if data.dtype == dtypes.bool:
-    if data.shape.ndims != 1:
-      # TODO(agarwal): handle higher rank boolean masks.
-      raise NotImplementedError('Need rank 1 for bool index %s' % idx)
-    data = array_ops.where_v2(data)
-    data = array_ops.reshape(data, [-1])
-  if need_scalar and data.shape.rank not in (None, 0):
-    raise IndexError(_SLICE_ERROR + ', got {!r}'.format(idx))
-  np_dtype = data.dtype.as_numpy_dtype
-  if not np.issubdtype(np_dtype, np.integer):
-    raise IndexError(_SLICE_ERROR + ', got {!r}'.format(idx))
-  if data.dtype not in (dtypes.int64, dtypes.int32):
-    # TF slicing can only handle int32/int64. So we need to cast.
-    promoted_dtype = np.promote_types(np.int32, np_dtype)
-    if promoted_dtype == np.int32:
-      data = math_ops.cast(data, dtypes.int32)
-    elif promoted_dtype == np.int64:
-      data = math_ops.cast(data, dtypes.int64)
+  def match(self, actual, expected, msg=None, check_dtype=True):
+    msg_ = 'Expected: {} Actual: {}'.format(expected, actual)
+    if msg:
+      msg = '{} {}'.format(msg_, msg)
     else:
-      raise IndexError(_SLICE_ERROR + ', got {!r}'.format(idx))
-  return data, data.shape.rank == 0
-
-
-class _UpdateMethod(enum.Enum):
-  UPDATE = 0
-  ADD = 1
-  MIN = 2
-  MAX = 3
-
-
-def _slice_helper(tensor, slice_spec, update_method=None, updates=None):
-  """Helper function for __getitem__ and _with_index_update_helper.
-
-  This function collects the indices in `slice_spec` into two buckets, which we
-  can call "idx1" and "idx2" here. idx1 is intended for `strided_slice`, idx2
-  `gather`.  They also correspond to "basic indices" and "advanced indices" in
-  numpy.  This function supports both reading and writing at the indices. The
-  reading path can be summarized as `gather(stride_slice(tensor, idx1),
-  idx2)`. The writing path can be summarized as `strided_slice_update(tensor,
-  idx1, scatter(strided_slice(tensor, idx1), idx2, updates))`.  (`gather` here
-  means `tf.gather` or `tf.gather_nd`; `scatter` here means
-  `tf.tensor_scatter_update`.)  The writing path is inefficient because it needs
-  to first read out a portion (probably much larger than `updates`) of `tensor`
-  using `strided_slice`, update it, and then write the portion back. An
-  alternative approach is to only use `scatter`, which amounts to using the
-  indexing mechanism of gather/scatter to implement
-  strided_slice/strided_slice_update. This is feasible for XLA Gather/Scatter
-  because they support spans (e.g. `2:5`) in indices (as begin/end pairs), but
-  not TF gather/scatter because they don't support spans (except those that
-  cover entire dimensions, i.e. `:`).  If we materialize spans into individual
-  indices, the size of the index tensor would explode.  (Note that XLA
-  Gather/Scatter have a similar problem for stride > 1 because they don't
-  support strides.  Indices such as `1:2:8` will need to be materialized into
-  individual indices such as [1, 3, 5, 7].)
-
-  Args:
-    tensor: the tensor to be read from or write into.
-    slice_spec: the indices.
-    update_method: (optional) a member of `_UpdateMethod`, indicating how to
-      update the values (replacement, add, etc.). `None` indicates just reading.
-    updates: (optional) the new values to write into `tensor`. It must have the
-      same dtype as `tensor`.
-
-  Returns:
-    The result of reading (if `update_method` is `None`) or the updated `tensor`
-    after writing.
-  """
-  begin, end, strides = [], [], []
-  new_axis_mask, shrink_axis_mask = 0, 0
-  begin_mask, end_mask = 0, 0
-  ellipsis_mask = 0
-  advanced_indices = []
-  shrink_indices = []
-  for index, s in enumerate(slice_spec):
-    if isinstance(s, slice):
-      if s.start is not None:
-        begin.append(_as_index(s.start)[0])
-      else:
-        begin.append(0)
-        begin_mask |= 1 << index
-      if s.stop is not None:
-        end.append(_as_index(s.stop)[0])
-      else:
-        end.append(0)
-        end_mask |= 1 << index
-      if s.step is not None:
-        strides.append(_as_index(s.step)[0])
-      else:
-        strides.append(1)
-    elif s is Ellipsis:
-      begin.append(0)
-      end.append(0)
-      strides.append(1)
-      ellipsis_mask |= 1 << index
-    elif s is array_ops.newaxis:
-      begin.append(0)
-      end.append(0)
-      strides.append(1)
-      new_axis_mask |= 1 << index
+      msg = msg_
+    self.assertIsInstance(actual, np_arrays.ndarray)
+    if check_dtype:
+      self.match_dtype(actual, expected, msg)
+    self.match_shape(actual, expected, msg)
+    if not actual.shape.rank:
+      self.assertAllClose(actual.tolist(), expected.tolist())
     else:
-      s, is_scalar = _as_index(s, False)
-      if is_scalar:
-        begin.append(s)
-        end.append(s + 1)
-        strides.append(1)
-        shrink_axis_mask |= 1 << index
-        shrink_indices.append(index)
-      else:
-        begin.append(0)
-        end.append(0)
-        strides.append(1)
-        begin_mask |= 1 << index
-        end_mask |= 1 << index
-        advanced_indices.append((index, s, ellipsis_mask != 0))
+      self.assertAllClose(actual.tolist(), expected.tolist())
 
-  # stack possibly involves no tensors, so we must use op_scope correct graph.
-  with ops.name_scope(
-      None,
-      'strided_slice',
-      [tensor] + begin + end + strides,
-      skip_on_eager=False,
-  ) as name:
-    if begin:
-      packed_begin, packed_end, packed_strides = (
-          array_ops_stack.stack(begin),
-          array_ops_stack.stack(end),
-          array_ops_stack.stack(strides),
+  def testPad(self):
+    t = [[1, 2, 3], [4, 5, 6]]
+    paddings = [[
+        1,
+        1,
+    ], [2, 2]]
+    self.assertAllEqual(
+        np_array_ops.pad(t, paddings, 'constant'),
+        [[0, 0, 0, 0, 0, 0, 0], [0, 0, 1, 2, 3, 0, 0], [0, 0, 4, 5, 6, 0, 0],
+         [0, 0, 0, 0, 0, 0, 0]])
+
+    self.assertAllEqual(
+        np_array_ops.pad(t, paddings, 'reflect'),
+        [[6, 5, 4, 5, 6, 5, 4], [3, 2, 1, 2, 3, 2, 1], [6, 5, 4, 5, 6, 5, 4],
+         [3, 2, 1, 2, 3, 2, 1]])
+
+    self.assertAllEqual(
+        np_array_ops.pad(t, paddings, 'symmetric'),
+        [[2, 1, 1, 2, 3, 3, 2], [2, 1, 1, 2, 3, 3, 2], [5, 4, 4, 5, 6, 6, 5],
+         [5, 4, 4, 5, 6, 6, 5]])
+
+  def testTake(self):
+    a = [4, 3, 5, 7, 6, 8]
+    indices = [0, 1, 4]
+    self.assertAllEqual([4, 3, 6], np_array_ops.take(a, indices))
+    indices = [[0, 1], [2, 3]]
+    self.assertAllEqual([[4, 3], [5, 7]], np_array_ops.take(a, indices))
+    a = [[4, 3, 5], [7, 6, 8]]
+    self.assertAllEqual([[4, 3], [5, 7]], np_array_ops.take(a, indices))
+    a = np.random.rand(2, 16, 3)
+    axis = 1
+    self.assertAllEqual(
+        np.take(a, indices, axis=axis),
+        np_array_ops.take(a, indices, axis=axis))
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.take(a, indices, axis=3)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.take(a, indices, axis=-4)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.take([1, 2, 3], [0], axis=1)
+
+  def testTakeAlongAxis(self):
+    rng = np.random.default_rng()
+    x = rng.standard_normal((2, 3)).astype(np.float32)
+    ind = rng.integers(0, 3, (2, 5)).astype(np.int64)
+    out_expected = np.take_along_axis(x, ind, axis=1)
+    out = np_array_ops.take_along_axis(x, ind, axis=1)
+    self.assertAllEqual(out, out_expected)
+
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.take_along_axis(x, ind, axis=2)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.take_along_axis(x, ind, axis=-3)
+
+  def testTakeAlongAxisJitCompile(self):
+    if test_util.is_xla_enabled():
+      self.skipTest("Not supported when compiled with XLA.")
+    # Regression test for GitHub issue 62391: the axis-swapping branch was
+    # emitted as a real conditional whose branches have different shapes, so
+    # the result shape XLA computed disagreed with the shape set on the
+    # result and a following op saw the wrong dimension.
+    x = constant_op.constant(
+        np.random.default_rng(1).standard_normal((5, 3, 2)), dtypes.float32
+    )
+    ind = constant_op.constant([[[-1]]], dtype=dtypes.int32)
+
+    def f(x, ind):
+      taken = np_array_ops.take_along_axis(x, ind, axis=-2)
+      return array_ops.squeeze(taken, axis=-2)
+
+    expected = f(x, ind)
+    self.assertAllEqual((5, 2), expected.shape)
+    actual = def_function.function(f, jit_compile=True)(x, ind)
+    self.assertAllEqual((5, 2), actual.shape)
+    self.assertAllClose(expected, actual)
+
+  def testTakeAlongAxisUnknownRank(self):
+    if test_util.is_xla_enabled():
+      self.skipTest("Not supported when compiled with XLA.")
+    # The tensor predicate is still used when the rank is not known
+    # statically.
+    @def_function.function(
+        input_signature=[
+            tensor_spec.TensorSpec(None, dtypes.float32),
+            tensor_spec.TensorSpec(None, dtypes.int32),
+        ]
+    )
+    def f(x, ind):
+      return np_array_ops.take_along_axis(x, ind, axis=1)
+
+    rng = np.random.default_rng(2)
+    x = rng.standard_normal((4, 6)).astype(np.float32)
+    ind = rng.integers(0, 6, (4, 3)).astype(np.int32)
+    self.assertAllClose(np.take_along_axis(x, ind, axis=1), f(x, ind))
+
+    # A valid negative axis still normalizes correctly when the rank is
+    # only known at runtime.
+
+    @def_function.function(
+        input_signature=[
+            tensor_spec.TensorSpec(None, dtypes.float32),
+            tensor_spec.TensorSpec(None, dtypes.int32),
+        ]
+    )
+    def g(x, ind):
+      return np_array_ops.take_along_axis(x, ind, axis=-1)
+
+    self.assertAllClose(np.take_along_axis(x, ind, axis=-1), g(x, ind))
+
+  def testWhere(self):
+    self.assertAllEqual([[1.0, 1.0], [1.0, 1.0]],
+                        np_array_ops.where([True], [1.0, 1.0],
+                                           [[0, 0], [0, 0]]))
+
+  def testShape(self):
+    self.assertAllEqual((1, 2), np_array_ops.shape([[0, 0]]))
+
+  def testSwapaxes(self):
+    x = [[1, 2, 3]]
+    self.assertAllEqual([[1], [2], [3]], np_array_ops.swapaxes(x, 0, 1))
+    self.assertAllEqual([[1], [2], [3]], np_array_ops.swapaxes(x, -2, -1))
+    x = [[[0, 1], [2, 3]], [[4, 5], [6, 7]]]
+    self.assertAllEqual([[[0, 4], [2, 6]], [[1, 5], [3, 7]]],
+                        np_array_ops.swapaxes(x, 0, 2))
+    self.assertAllEqual([[[0, 4], [2, 6]], [[1, 5], [3, 7]]],
+                        np_array_ops.swapaxes(x, -3, -1))
+
+  def testSwapaxesOutOfBoundsAxisRaises(self):
+    # Regression test for GitHub issue #122054: an axis far outside
+    # `[-rank, rank)` (e.g. -10 on a rank-5 array) used to be only
+    # partially normalized, producing a `perm` with leftover negative
+    # entries. That silently "succeeded" in eager (whose `Transpose`
+    # kernel re-normalizes negative perm entries) but crashed under
+    # `jit_compile=True` with an opaque tf2xla error, since the XLA
+    # bridge does not re-normalize. `swapaxes` should instead raise a
+    # clear, consistent error in both modes, matching `np.swapaxes`.
+    x = np.zeros((1, 4, 32, 32, 8), dtype=np.float32)
+    for axis1, axis2 in [(-10, -8), (-8, -10), (5, 0), (0, -6)]:
+      with self.assertRaisesRegex(ValueError, 'out of bounds'):
+        np_array_ops.swapaxes(x, axis1, axis2)
+
+  def testSwapaxesNegativeAxisWithJitCompile(self):
+    x = np.random.randn(2, 3, 4, 5, 6, 7).astype(np.float32)
+    expected = np.swapaxes(x, -3, 1)
+
+    @def_function.function(jit_compile=True)
+    def f(a):
+      return np_array_ops.swapaxes(a, -3, 1)
+
+    self.assertAllClose(expected, f(x))
+
+  def testSwapaxesOutOfBoundsDynamicRank(self):
+    # Regression test for #122054: when the rank is only known at
+    # runtime (traced with an unspecified input signature), a static
+    # out-of-bounds axis like -10 must still be rejected, not silently
+    # normalized into another negative (still out-of-bounds) value.
+    # This exercises the `control_flow_assert.Assert` added to the
+    # dynamic branch of `adjust_axes`. Note: this is deliberately *not*
+    # run with `jit_compile=True` — tf2xla lowers `Assert` to a no-op
+    # under XLA compilation, so a fully dynamic-rank bounds violation
+    # is not guaranteed to raise a clean error in that mode.
+    x = np.zeros((1, 4, 32, 32, 8), dtype=np.float32)
+
+    @def_function.function(
+        input_signature=[
+            tensor_spec.TensorSpec(dtype=dtypes.float32, shape=None)
+        ]
+    )
+    def f(a):
+      return np_array_ops.swapaxes(a, -10, 0)
+
+    with self.assertRaises(errors_impl.InvalidArgumentError):
+      self.evaluate(f(x))
+
+  def testMoveaxis(self):
+
+    def _test(*args):
+      # pylint: disable=no-value-for-parameter
+      expected = np.moveaxis(*args)
+      raw_ans = np_array_ops.moveaxis(*args)
+
+      self.assertAllEqual(expected, raw_ans)
+
+    a = np.random.rand(1, 2, 3, 4, 5, 6)
+
+    # Basic
+    _test(a, (0, 2), (3, 5))
+    _test(a, (0, 2), (-1, -3))
+    _test(a, (-6, -4), (3, 5))
+    _test(a, (-6, -4), (-1, -3))
+    _test(a, 0, 4)
+    _test(a, -6, -2)
+    _test(a, tuple(range(6)), tuple(range(6)))
+    _test(a, tuple(range(6)), tuple(reversed(range(6))))
+    _test(a, (), ())
+
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.moveaxis(a, -8, 0)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.moveaxis(a, 0, 8)
+
+  def testFlip(self):
+    np.random.seed(0)
+    random_seed.set_seed(0)
+
+    def _test(*args, **kwargs):
+      expected = np.flip(*args, **kwargs)
+      raw_ans = np_array_ops.flip(*args, **kwargs)
+
+      self.assertAllEqual(expected, raw_ans)
+
+    a = np.random.rand(2, 3, 4)
+
+    # No axis reverses every dimension.
+    _test(a)
+    # A single axis, including negative values.
+    _test(a, axis=0)
+    _test(a, axis=2)
+    _test(a, axis=-1)
+    _test(a, axis=-3)
+    # 0-D and 1-D ndarray axes.
+    _test(a, axis=np.array(1))
+    _test(a, axis=np.array([0, 2]))
+    # A tuple, list or range of axes, including negative values.
+    _test(a, axis=(0, 1))
+    _test(a, axis=(-1, -3))
+    _test(a, axis=[0, 2])
+    _test(a, axis=(0, 1, 2))
+    _test(a, axis=range(3))
+    # Out-of-bounds axes raise InvalidArgumentError from the C++ kernel.
+    kernel_err = (
+        r'(out of (valid )?range'
+        r'|can not have more elements than input tensor has dimensions)'
+    )
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError, kernel_err):
+      self.evaluate(np_array_ops.flip(np.float64(1.0), axis=0))
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError, kernel_err):
+      self.evaluate(np_array_ops.flip(a, axis=3))
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError, kernel_err):
+      self.evaluate(np_array_ops.flip(a, axis=-4))
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError, kernel_err):
+      self.evaluate(np_array_ops.flip(a, axis=(0, 3)))
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError, kernel_err):
+      self.evaluate(np_array_ops.flip(a, axis=[0, -4]))
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError, kernel_err):
+      self.evaluate(np_array_ops.flip(a, axis=np.array(3)))
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError, kernel_err):
+      self.evaluate(np_array_ops.flip(a, axis=np.array([3])))
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError, kernel_err):
+      self.evaluate(np_array_ops.flip(a, axis=range(4)))
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError, kernel_err):
+      self.evaluate(np_array_ops.fliplr(np.arange(3)))
+    # The C++ kernel raises at execution time (or shape inference at trace time).
+    with self.assertRaisesRegex(
+        (errors_impl.InvalidArgumentError, ValueError), kernel_err
+    ):
+      self.evaluate(
+          def_function.function(lambda x: np_array_ops.flip(x, axis=-4))(a)
       )
-      if (
-          packed_begin.dtype == dtypes.int64
-          or packed_end.dtype == dtypes.int64
-          or packed_strides.dtype == dtypes.int64
+    # Unknown-rank inputs keep the previous behavior for valid axes.
+    flip_unknown_rank = def_function.function(
+        lambda x: np_array_ops.flip(x, axis=-1),
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float64)],
+    )
+    self.assertAllEqual(np.flip(a, -1), flip_unknown_rank(a))
+
+    # Unknown-rank inputs raise InvalidArgumentError for out-of-bounds axes,
+    # both negative and positive.
+    flip_unknown_rank_invalid_neg = def_function.function(
+        lambda x: np_array_ops.flip(x, axis=-4),
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float64)],
+    )
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError, kernel_err):
+      self.evaluate(flip_unknown_rank_invalid_neg(a))
+
+    flip_unknown_rank_invalid_pos = def_function.function(
+        lambda x: np_array_ops.flip(x, axis=3),
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float64)],
+    )
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError, kernel_err):
+      self.evaluate(flip_unknown_rank_invalid_pos(a))
+
+  def testRoll(self):
+    np.random.seed(0)
+    random_seed.set_seed(0)
+
+    def _test(*args, **kwargs):
+      expected = np.roll(*args, **kwargs)
+      raw_ans = np_array_ops.roll(*args, **kwargs)
+
+      self.assertAllEqual(expected, raw_ans)
+
+    a = np.random.rand(2, 3, 4)
+
+    # No axis rolls the flattened array.
+    _test(a, 1)
+    # A scalar shift on a single axis, including negative values.
+    _test(a, 1, axis=0)
+    _test(a, -1, axis=2)
+    _test(a, 2, axis=-1)
+    # A sequence of shifts across multiple axes.
+    _test(a, (1, 2, 3), axis=(0, 1, 2))
+    _test(a, [1, -2], axis=[-3, 2])
+    _test(a, np.array([0, 1]), axis=np.array([-1, 1]))
+
+    # Empty and scalar arrays, including rolls on the empty dimension itself
+    # (exercising the max(dim_size, 1) safeguard).
+    _test(np.empty((0, 3, 4)), 1, axis=0)
+    _test(np.empty((0, 3, 4)), 1, axis=1)
+    _test(np.empty((3, 4, 0)), 1, axis=1)
+    _test(np.empty((3, 4, 0)), 1, axis=2)
+    _test(np.array(42.0), 1)
+
+    # Out-of-bounds axes raise, checked by the backend kernel.
+    for shift, invalid_axis in [
+        (1, 3),
+        (1, -4),
+        ((1, 2), (0, 3)),
+        ((1, -1), [0, -4]),
+        (range(2), range(2, 4)),
+        (1, 1 << 33),
+        (1, -(1 << 33)),
+    ]:
+      with self.assertRaisesRegex(
+          (errors_impl.InvalidArgumentError, ValueError), 'out of range'
       ):
-        if packed_begin.dtype != dtypes.int64:
-          packed_begin = math_ops.cast(packed_begin, dtypes.int64)
-        if packed_end.dtype != dtypes.int64:
-          packed_end = math_ops.cast(packed_end, dtypes.int64)
-        if packed_strides.dtype != dtypes.int64:
-          packed_strides = math_ops.cast(packed_strides, dtypes.int64)
-    else:
-      var_empty = constant_op.constant([], dtype=dtypes.int32)
-      packed_begin = packed_end = packed_strides = var_empty
-    if update_method == _UpdateMethod.UPDATE and not advanced_indices:
-      return array_ops.tensor_strided_slice_update(
-          tensor,
-          packed_begin,
-          packed_end,
-          packed_strides,
-          updates,
-          begin_mask=begin_mask,
-          end_mask=end_mask,
-          shrink_axis_mask=shrink_axis_mask,
-          new_axis_mask=new_axis_mask,
-          ellipsis_mask=ellipsis_mask,
-          name=name,
-      )
-    else:
-      # TODO(b/164251540): Find a better way to support update that does not
-      #   involve one read + two writes.
-      if updates is not None:
-        original_tensor = tensor
-      # TODO(agarwal): set_shape on tensor to set rank.
-      tensor = array_ops.strided_slice(
-          tensor,
-          packed_begin,
-          packed_end,
-          packed_strides,
-          begin_mask=begin_mask,
-          end_mask=end_mask,
-          shrink_axis_mask=shrink_axis_mask,
-          new_axis_mask=new_axis_mask,
-          ellipsis_mask=ellipsis_mask,
-          name=name,
-      )
-    if not advanced_indices:
-      if update_method is None:
-        return tensor
-      assert update_method != _UpdateMethod.UPDATE
-      # TF lacks TensorStridedSliceAdd and alike, so we need to do
-      # read+add+update.
-      if update_method == _UpdateMethod.ADD:
-        update_op = math_ops.add
-      elif update_method == _UpdateMethod.MIN:
-        update_op = math_ops.minimum
-      elif update_method == _UpdateMethod.MAX:
-        update_op = math_ops.maximum
-      return array_ops.tensor_strided_slice_update(
-          original_tensor,
-          packed_begin,
-          packed_end,
-          packed_strides,
-          update_op(tensor, updates),
-          begin_mask=begin_mask,
-          end_mask=end_mask,
-          shrink_axis_mask=shrink_axis_mask,
-          new_axis_mask=new_axis_mask,
-          ellipsis_mask=ellipsis_mask,
-          name=name + '_2',
-      )
-    advanced_indices_map = {}
-    for index, data, had_ellipsis in advanced_indices:
-      if had_ellipsis:
-        num_shrink = len([x for x in shrink_indices if x > index])
-        dim = index - len(slice_spec) + num_shrink
-      else:
-        num_shrink = len([x for x in shrink_indices if x < index])
-        dim = index - num_shrink
-      advanced_indices_map[dim] = data
-    dims = sorted(advanced_indices_map.keys())
-    dims_contiguous = True
-    if len(dims) > 1:
-      if dims[0] < 0 and dims[-1] >= 0:  # not all same sign
-        dims_contiguous = False
-      else:
-        for i in range(len(dims) - 1):
-          if dims[i] + 1 != dims[i + 1]:
-            dims_contiguous = False
-            break
-    indices = [advanced_indices_map[x] for x in dims]
-    indices = _promote_dtype(*indices)
-    indices = np_utils.tf_broadcast(*indices)
-    stacked_indices = array_ops_stack.stack(indices, axis=-1)
-    # Skip the contiguous-dims optimization for update because there is no
-    # tf.*scatter* op that supports the `axis` argument.
-    if not dims_contiguous or updates is not None:
-      if range(len(dims)) != dims:
-        tensor = moveaxis(tensor, dims, range(len(dims)))
-      tensor_shape_prefix = array_ops.shape(
-          tensor, out_type=stacked_indices.dtype
-      )[: len(dims)]
-      stacked_indices = array_ops.where_v2(
-          stacked_indices < 0,
-          stacked_indices + tensor_shape_prefix,
-          stacked_indices,
-      )
-      if updates is None:
-        return array_ops.gather_nd(tensor, stacked_indices)
-      else:
-        # We only need to move-axis `updates` in the contiguous case becausce
-        # only in this case the result dimensions of advanced indexing are in
-        # the middle of `updates`. In the non-contiguous case, those dimensions
-        # are always at the front.
-        if dims_contiguous:
-          # TODO(wangpeng): Support unknown rank (e.g. by partially flattening
-          #   `updates`)
-          if stacked_indices.shape.rank is None:
-            raise NotImplementedError(
-                'Rank of the advanced indices must currently be known'
-            )
-          batch_size = stacked_indices.shape.rank - 1
-          batch_start = dims[0]
-          if batch_start < 0:
-            batch_start += len(dims) - batch_size
+        np_array_ops.roll(a, shift, axis=invalid_axis)
 
-          def range_(start, length):
-            return range(start, start + length)
+    # Graph-mode tracing of roll with concrete axes.
+    @def_function.function
+    def f(x, s, ax):
+      return np_array_ops.roll(x, s, axis=ax)
 
-          updates = moveaxis(
-              updates, range_(batch_start, batch_size), range(batch_size)
-          )
-        if update_method == _UpdateMethod.UPDATE:
-          update_op = array_ops.tensor_scatter_update
-        elif update_method == _UpdateMethod.ADD:
-          update_op = array_ops.tensor_scatter_add
-        elif update_method == _UpdateMethod.MIN:
-          update_op = array_ops.tensor_scatter_min
-        elif update_method == _UpdateMethod.MAX:
-          update_op = array_ops.tensor_scatter_max
-        tensor = update_op(tensor, stacked_indices, updates)
-        if range(len(dims)) != dims:
-          tensor = moveaxis(tensor, range(len(dims)), dims)
-        return array_ops.tensor_strided_slice_update(
-            original_tensor,
-            packed_begin,
-            packed_end,
-            packed_strides,
-            tensor,
-            begin_mask=begin_mask,
-            end_mask=end_mask,
-            shrink_axis_mask=shrink_axis_mask,
-            new_axis_mask=new_axis_mask,
-            ellipsis_mask=ellipsis_mask,
-            name=name + '_2',
-        )
-    # Note that gather_nd does not support gathering from inside the array.
-    # To avoid shuffling data back and forth, we transform the indices and
-    # do a gather instead.
-    rank = np_utils._maybe_static(array_ops.rank(tensor))  # pylint: disable=protected-access
-    dims = [(x + rank if x < 0 else x) for x in dims]
-    shape_tensor = array_ops.shape(tensor)
-    dim_sizes = array_ops.gather(shape_tensor, dims)
-    if len(dims) == 1:
-      stacked_indices = indices[0]
-    stacked_indices = math_ops.cast(stacked_indices, dtypes.int32)
-    stacked_indices = array_ops.where_v2(
-        stacked_indices < 0, stacked_indices + dim_sizes, stacked_indices
+    self.assertAllEqual(
+        np.roll(a, 1, axis=0),
+        f(a, 1, 0),
     )
-    axis = dims[0]
-    if len(dims) > 1:
-      index_scaling = math_ops.cumprod(dim_sizes, reverse=True, exclusive=True)
+    self.assertAllEqual(
+        np.roll(a, 1, axis=0),
+        f(a, constant_op.constant(1), constant_op.constant(0)),
+    )
+    with self.assertRaisesRegex(
+        (errors_impl.InvalidArgumentError, ValueError), 'out of range'
+    ):
+      f(a, 1, 3)
+    with self.assertRaisesRegex(
+        (errors_impl.InvalidArgumentError, ValueError), 'out of range'
+    ):
+      f(a, constant_op.constant(1), constant_op.constant(3))
 
-      def _tensordot(a, b):
-        # TODO(b/168657656): This function should be replaced by
-        # tensordot(axis=1) once MatMul has int32 XLA kernel.
-        b = array_ops.broadcast_to(b, array_ops.shape(a))
-        return math_ops.reduce_sum(a * b, axis=-1)
+  def testNdim(self):
+    self.assertAllEqual(0, np_array_ops.ndim(0.5))
+    self.assertAllEqual(1, np_array_ops.ndim([1, 2]))
 
-      stacked_indices = _tensordot(stacked_indices, index_scaling)
-      flat_shape = array_ops.concat(
-          [shape_tensor[:axis], [-1], shape_tensor[axis + len(dims) :]], axis=0
+  def testIsscalar(self):
+    self.assertTrue(np_array_ops.isscalar(0.5))
+    self.assertTrue(np_array_ops.isscalar(5))
+    self.assertTrue(np_array_ops.isscalar(False))
+    self.assertFalse(np_array_ops.isscalar([1, 2]))
+
+  def assertListEqual(self, a, b):
+    self.assertAllEqual(len(a), len(b))
+    for x, y in zip(a, b):
+      self.assertAllEqual(x, y)
+
+  def testSplit(self):
+    x = np_array_ops.arange(9)
+    y = np_array_ops.split(x, 3)
+    self.assertListEqual([([0, 1, 2]), ([3, 4, 5]), ([6, 7, 8])], y)
+
+    x = np_array_ops.arange(8)
+    y = np_array_ops.split(x, [3, 5, 6, 10])
+    self.assertListEqual([([0, 1, 2]), ([3, 4]), ([5]), ([6, 7]), ([])], y)
+
+  def testSplitOutOfBoundsAxis(self):
+    x_2d = np_array_ops.arange(6).reshape(2, 3)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.split(x_2d, 2, axis=-3)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.split(x_2d, 2, axis=2)
+    # Test list sections (caught by the new early static rank bounds
+    # check in split, before _boundaries_to_sizes is reached)
+    with self.assertRaisesRegex(ValueError, 'out of bound'):
+      np_array_ops.split(x_2d, [1], axis=-3)
+
+    x_1d = np_array_ops.arange(3)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.split(x_1d, 1, axis=-2)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.split(x_1d, 1, axis=1)
+
+    x_0d = np_array_ops.array(5)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.split(x_0d, 1, axis=-1)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.split(x_0d, 1, axis=0)
+
+  def testHSplitBecomesVsplitFor1DInput(self):
+    @def_function.function
+    def f(arr):
+      return np_array_ops.hsplit(arr, 2)
+
+    x = np_array_ops.arange(4)
+    self.assertListEqual([[0, 1], [2, 3]], f(x))
+
+  def testSign(self):
+    state = np.random.RandomState(0)
+    test_types = [np.float16, np.float32, np.float64, np.int32, np.int64,
+                  np.complex64, np.complex128]
+    test_shapes = [(), (1,), (2, 3, 4), (2, 3, 0, 4)]
+
+    for dtype in test_types:
+      for shape in test_shapes:
+        if np.issubdtype(dtype, np.complexfloating):
+          arr = (np.asarray(state.randn(*shape) * 100, dtype=dtype) +
+                 1j * np.asarray(state.randn(*shape) * 100, dtype=dtype))
+        else:
+          arr = np.asarray(state.randn(*shape) * 100, dtype=dtype)
+        self.match(np_array_ops.sign(arr), np.sign(arr))
+
+    with self.assertRaisesRegex(ValueError, "doesn't support setting out"):
+      np_array_ops.sign([1], out=[])
+    with self.assertRaisesRegex(ValueError, "doesn't support setting where"):
+      np_array_ops.sign([1], where=False)
+
+
+class ArrayManipulationTest(test.TestCase):
+
+  def setUp(self):
+    super(ArrayManipulationTest, self).setUp()
+    self.array_transforms = [
+        lambda x: x,
+        ops.convert_to_tensor,
+        np.array,
+        np_array_ops.array,
+    ]
+
+  def testBroadcastTo(self):
+
+    def run_test(arr, shape):
+      for fn in self.array_transforms:
+        arg1 = fn(arr)
+        self.match(
+            np_array_ops.broadcast_to(arg1, shape),
+            np.broadcast_to(arg1, shape))
+
+    run_test(1, 2)
+    run_test(1, (2, 2))
+    run_test([1, 2], (2, 2))
+    run_test([[1], [2]], (2, 2))
+    run_test([[1, 2]], (3, 2))
+    run_test([[[1, 2]], [[3, 4]], [[5, 6]]], (3, 4, 2))
+
+  def testIx_(self):
+    possible_arys = [[True, True], [True, False], [False, False],
+                     list(range(5)), np_array_ops.empty(0, dtype=np.int64)]
+    for r in range(len(possible_arys)):
+      for arys in itertools.combinations_with_replacement(possible_arys, r):
+        tnp_ans = np_array_ops.ix_(*arys)
+        onp_ans = np.ix_(*arys)
+        for t, o in zip(tnp_ans, onp_ans):
+          self.match(t, o)
+
+  def match_shape(self, actual, expected, msg=None):
+    if msg:
+      msg = 'Shape match failed for: {}. Expected: {} Actual: {}'.format(
+          msg, expected.shape, actual.shape)
+    self.assertEqual(actual.shape, expected.shape, msg=msg)
+
+  def match_dtype(self, actual, expected, msg=None):
+    if msg:
+      msg = 'Dtype match failed for: {}. Expected: {} Actual: {}.'.format(
+          msg, expected.dtype, actual.dtype
       )
-      tensor = array_ops.reshape(tensor, flat_shape)
+    self.assertEqual(actual.dtype, expected.dtype, msg=msg)
 
-    return array_ops.gather(tensor, stacked_indices, axis=axis)
-
-
-def _as_spec_tuple(slice_spec):
-  """Convert slice_spec to tuple."""
-  if isinstance(slice_spec, (list, tuple)) and not isinstance(
-      slice_spec, np.ndarray
-  ):
-    is_index = True
-    for s in slice_spec:
-      if s is None or s is Ellipsis or isinstance(s, (list, tuple, slice)):
-        is_index = False
-        break
-      elif isinstance(s, (np_arrays.ndarray, np.ndarray)) and s.ndim != 0:
-        is_index = False
-        break
-    if not is_index:
-      return tuple(slice_spec)
-  return (slice_spec,)
+  def match(self, actual, expected, msg=None):
+    msg_ = 'Expected: {} Actual: {}'.format(expected, actual)
+    if msg:
+      msg = '{} {}'.format(msg_, msg)
+    else:
+      msg = msg_
+    self.assertIsInstance(actual, np_arrays.ndarray)
+    self.match_dtype(actual, expected, msg)
+    self.match_shape(actual, expected, msg)
+    if not actual.shape.rank:
+      self.assertEqual(actual.tolist(), expected.tolist())
+    else:
+      self.assertSequenceEqual(actual.tolist(), expected.tolist())
 
 
-def _getitem(self, slice_spec):
-  """Implementation of ndarray.__getitem__."""
-  if (
-      isinstance(slice_spec, bool)
-      or (
-          isinstance(slice_spec, core_tf_types.Tensor)
-          and slice_spec.dtype == dtypes.bool
-      )
-      or (
-          isinstance(slice_spec, (np.ndarray, np_arrays.ndarray))
-          and slice_spec.dtype == np.bool_
-      )
-  ):
-    return array_ops.boolean_mask(tensor=self, mask=slice_spec)
+class ArrayMathTest(test.TestCase, parameterized.TestCase):
 
-  if not isinstance(slice_spec, tuple):
-    slice_spec = _as_spec_tuple(slice_spec)
-
-  result_t = _slice_helper(self, slice_spec)
-  return result_t
+  @parameterized.named_parameters(
+      ('complex_mul_1', 2j, [2], int, [4j], operator.mul),
+      ('complex_mul_2', 2j, [0], int, [0], operator.mul),
+      ('complex_mul_3', 2j, [-2.0], float, [-4j], operator.mul),
+      ('complex_mul_4', 2j, [2j], complex, [-4], operator.mul),
+      ('float_mul_1', 2.0, [2], int, [4], operator.mul),
+      ('float_mul_2', 2.0, [0], int, [0], operator.mul),
+      ('float_mul_3', 2.0, [-2.0], float, [-4], operator.mul),
+      ('float_mul_4', 2.0, [2j], complex, [4j], operator.mul))
+  def testConstantBinOp(self, a, b, b_type, expected_result, test_func):
+    b = np_array_ops.array(b, dtype=b_type)
+    result = test_func(a, b)
+    if np.issubdtype(result.dtype.as_numpy_dtype, np.inexact):
+      self.assertAllClose(result, expected_result)
+    else:
+      self.assertAllEqual(result, expected_result)
 
 
-def _with_index_update_helper(update_method, a, slice_spec, updates):
-  """Implementation of ndarray._with_index_*."""
-  if (
-      isinstance(slice_spec, bool)
-      or (
-          isinstance(slice_spec, core_tf_types.Tensor)
-          and slice_spec.dtype == dtypes.bool
-      )
-      or (
-          isinstance(slice_spec, (np.ndarray, np_arrays.ndarray))
-          and slice_spec.dtype == np.bool_
-      )
-  ):
-    slice_spec = nonzero(slice_spec)
+class StringArrayTest(test.TestCase, parameterized.TestCase):
 
-  if not isinstance(slice_spec, tuple):
-    slice_spec = _as_spec_tuple(slice_spec)
+  StringParameters = parameterized.named_parameters(  # pylint: disable=invalid-name
+      # Tensorflow always encodes python string into bytes, regardless of
+      # requested dtype.
+      ('str_u8', 'abcde\U0001f005', 'U8', b'abcde\xf0\x9f\x80\x85'),
+      ('str_s8', 'abcde\U0001f005', 'S8', b'abcde\xf0\x9f\x80\x85'),
+      ('str_none', 'abcde\U0001f005', None, b'abcde\xf0\x9f\x80\x85'),
+      ('zstr_u8', '\0abcde\U0001f005', 'U8', b'\0abcde\xf0\x9f\x80\x85'),
+      ('zstr_s8', '\0abcde\U0001f005', 'S8', b'\0abcde\xf0\x9f\x80\x85'),
+      ('zstr_none', '\0abcde\U0001f005', None, b'\0abcde\xf0\x9f\x80\x85'),
+      ('bytes_u8', b'abcdef', 'U8', b'abcdef'),
+      ('bytes_s8', b'abcdef', 'S8', b'abcdef'),
+      ('bytes_none', b'abcdef', None, b'abcdef'),
+      ('zbytes_u8', b'\0abcdef', 'U8', b'\0abcdef'),
+      ('zbytes_s8', b'\0abcdef', 'S8', b'\0abcdef'),
+      ('zbytes_none', b'\0abcdef', None, b'\0abcdef'),
+  )
 
-  a_dtype = a.dtype
-  a, updates = _promote_dtype_binary(a, updates)
-  result_t = _slice_helper(a, slice_spec, update_method, updates)
-  # See the note in `around`: `astype` depends on an opt-in that this
-  # module-level helper does not require of its callers.
-  return math_ops.cast(result_t, a_dtype)
+  @StringParameters
+  def testArray(self, a, dtype, a_as_bytes):
+    b = np_array_ops.array(a, dtype=dtype)
+    self.assertIsInstance(b.numpy(), bytes)
+    self.assertEqual(b.numpy(), a_as_bytes)
+
+  @StringParameters
+  def testAsArray(self, a, dtype, a_as_bytes):
+    b = np_array_ops.asarray(a, dtype=dtype)
+    self.assertIsInstance(b.numpy(), bytes)
+    self.assertEqual(b.numpy(), a_as_bytes)
+
+  @StringParameters
+  def testZerosLike(self, a, dtype, unused_a_as_bytes):
+    b = np_array_ops.zeros_like(a, dtype=dtype)
+    self.assertIsInstance(b.numpy(), bytes)
+    self.assertEqual(b.numpy(), b'')
+
+  @StringParameters
+  def testEmptyLike(self, a, dtype, unused_a_as_bytes):
+    b = np_array_ops.empty_like(a, dtype=dtype)
+    self.assertIsInstance(b.numpy(), bytes)
+    self.assertEqual(b.numpy(), b'')
 
 
-setattr(np_arrays.ndarray, '_numpy_style_getitem', _getitem)
-setattr(
-    np_arrays.ndarray,
-    '_with_index_update',
-    functools.partial(_with_index_update_helper, _UpdateMethod.UPDATE),
-)
-setattr(
-    np_arrays.ndarray,
-    '_with_index_add',
-    functools.partial(_with_index_update_helper, _UpdateMethod.ADD),
-)
-setattr(
-    np_arrays.ndarray,
-    '_with_index_min',
-    functools.partial(_with_index_update_helper, _UpdateMethod.MIN),
-)
-setattr(
-    np_arrays.ndarray,
-    '_with_index_max',
-    functools.partial(_with_index_update_helper, _UpdateMethod.MAX),
-)
+if __name__ == '__main__':
+  ops.enable_eager_execution()
+  ops.set_dtype_conversion_mode('legacy')
+  np_math_ops.enable_numpy_methods_on_tensor()
+  test.main()
