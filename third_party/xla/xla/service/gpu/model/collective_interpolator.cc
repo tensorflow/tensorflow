@@ -72,8 +72,7 @@ absl::string_view GetDefaultCollectivePerfTable() {
 static const DeviceHloInstructionProfiles& Profile() {
   static const DeviceHloInstructionProfiles* profile = []() {
     auto* profile = new DeviceHloInstructionProfiles();
-    CHECK(profile->ParseFromArray(GetDefaultCollectivePerfTable().data(),
-                                  GetDefaultCollectivePerfTable().size()))
+    CHECK(profile->ParseFromString(GetDefaultCollectivePerfTable()))
         << "Cannot parse a default profile.";
     return profile;
   }();
