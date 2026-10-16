@@ -1784,7 +1784,7 @@ class ArrayMethodsTest(test.TestCase):
       ):
         np_array_ops.split(x, bad_boundaries)
 
-    for dyn_boundaries in ([-2], [2, -2]):
+    for dyn_boundaries in ([-2], [2, -2], [2, 4]):
       @def_function.function(
           input_signature=[tensor_spec.TensorSpec([None], dtypes.int32)]
       )
@@ -1792,9 +1792,20 @@ class ArrayMethodsTest(test.TestCase):
         return np_array_ops.split(arr, b)
 
       with self.assertRaisesRegex(
-          ValueError, 'not supported for dynamic shapes'
+          ValueError, 'Split boundaries are not supported for dynamic shapes.'
       ):
         split_dynamic(np_array_ops.arange(9, dtype=np.int32))
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.int32)]
+    )
+    def split_unknown_rank(arr):
+      return np_array_ops.split(arr, [-2])
+
+    with self.assertRaisesRegex(
+        ValueError, 'Split boundaries are not supported for unknown rank.'
+    ):
+      split_unknown_rank(np_array_ops.arange(9, dtype=np.int32))
 
   def testSplitOutOfBoundsAxis(self):
     x_2d = np_array_ops.arange(6).reshape(2, 3)

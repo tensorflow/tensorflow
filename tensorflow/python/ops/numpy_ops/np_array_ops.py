@@ -1366,6 +1366,11 @@ def _boundaries_to_sizes(a, boundaries, axis):
   Returns:
     A list of sizes of the splits, as in tf.split.
   """
+  # `len(a.shape)` raises ValueError('Cannot take the length of shape with
+  # unknown rank.') for an unknown-rank tensor, before the axis bounds check
+  # below even runs, so guard it first with a clear message of our own.
+  if a.shape.rank is None:
+    raise ValueError('Split boundaries are not supported for unknown rank.')
   if axis >= len(a.shape):
     raise ValueError('axis %s is out of bound for shape %s' % (axis, a.shape))
   # `a.shape[axis]` can be a `tf.compat.v1.Dimension` (when V2 TensorShape
@@ -1376,8 +1381,11 @@ def _boundaries_to_sizes(a, boundaries, axis):
   # `tensor_shape.dimension_value` also normalizes to `None`.
   total_size = tensor_shape.dimension_value(a.shape[axis])
   if total_size is None:
+    # total_size is used unconditionally below (total_size - sizes_sum) for
+    # every boundary, not just negative ones, so a dynamic axis size can't
+    # be supported for any boundary list.
     raise ValueError(
-        'Negative split boundaries are not supported for dynamic shapes.'
+        'Split boundaries are not supported for dynamic shapes.'
     )
   sizes = []
   sizes_sum = 0
