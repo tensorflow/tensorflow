@@ -950,7 +950,7 @@ cc_library(
     srcs = ["transpose_kernels.cc"],
     hdrs = ["transpose_kernels.h"],
     deps = [
-        "//xla:compiler_macros",
+        "@com_google_absl//absl/base:core_headers",
         "@highway//:hwy",
     ],
 )

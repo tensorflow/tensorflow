@@ -71,9 +71,7 @@ namespace xla {
 // macro-kernel test and benchmark.
 template <typename T, int bs>
 constexpr int BenchmarkOuterBlockSize() {
-  int max_by_elems = kMaxOuterBlockElems / bs;
-  int max_by_bytes = kMaxSquare128StrideBytes / (bs * sizeof(T));
-  return std::max(1, std::min(max_by_elems, max_by_bytes));
+  return std::max<int>(1, kMaxOuterBlockSizeBytes / (bs * sizeof(T)));
 }
 
 // Checks that `kernel(a, lda, b, ldb)` transposes an n x n matrix of T, where
@@ -131,16 +129,6 @@ void TestMacroKernelEquivalence() {
   CheckTransposeKernel<T, bs>(
       kOuterBs, [](const char* a, int64_t lda, char* b, int64_t ldb) {
         TransposeMacroKernelDispatch<T, bs>(a, lda, kOuterBs, b, ldb, kOuterBs);
-      });
-}
-
-// TODO(b/543906735): Remove along with the legacy SIMD intrinsic kernels once
-// transpose.cc uses the Highway kernels.
-template <typename T, int bs>
-void TestLegacyMicroKernelEquivalence() {
-  CheckTransposeKernel<T, bs>(
-      /*outer_bs=*/1, [](const char* a, int64_t lda, char* b, int64_t ldb) {
-        TransposeMicroKernel<T, bs>::Apply(a, lda, b, ldb);
       });
 }
 
@@ -210,39 +198,6 @@ TEST(TransposeMacroKernelTest, ExactEquivalence) {
     TestMacroKernelEquivalence<int8_t, 64>();
   }
   hwy::SetSupportedTargetsForTest(0);
-}
-
-// TODO(b/543906735): Remove along with the legacy SIMD intrinsic kernels once
-// transpose.cc uses the Highway kernels.
-TEST(TransposeMicroKernelTest, LegacyExactEquivalence) {
-  // AvxSquareTransposeMicroKernelImpl is triggered when a logical row of the
-  // tile (bs * sizeof(T)) is exactly 256 bits to fit in __m256i.
-  TestLegacyMicroKernelEquivalence<int8_t, 32>();
-  TestLegacyMicroKernelEquivalence<int16_t, 16>();
-  TestLegacyMicroKernelEquivalence<float, 8>();
-  TestLegacyMicroKernelEquivalence<int64_t, 4>();
-  TestLegacyMicroKernelEquivalence<absl::uint128, 2>();
-
-  // SseSquareTransposeMicroKernelImpl or AvxRectangularTransposeMicroKernelImpl
-  // is triggered when a logical row of the tile (bs * sizeof(T)) is exactly
-  // 128 bits. SseSquare operates directly on __m128i when gathering from memory
-  // (lda >= ldb && lda <= 64B) while AvxRectangular packs two rows into __m256i
-  // when scattering to memory (ldb > lda) or for large strides.
-  TestLegacyMicroKernelEquivalence<int8_t, 16>();
-  TestLegacyMicroKernelEquivalence<int16_t, 8>();
-  TestLegacyMicroKernelEquivalence<bfloat16, 8>();
-  TestLegacyMicroKernelEquivalence<float, 4>();
-  TestLegacyMicroKernelEquivalence<int64_t, 2>();
-
-  // Smaller or larger cases fall back to either Vec128 or a for loop.
-  TestLegacyMicroKernelEquivalence<int8_t, 8>();
-  TestLegacyMicroKernelEquivalence<int16_t, 4>();
-  TestLegacyMicroKernelEquivalence<bfloat16, 4>();
-  TestLegacyMicroKernelEquivalence<float, 2>();
-  TestLegacyMicroKernelEquivalence<int8_t, 4>();
-  TestLegacyMicroKernelEquivalence<int16_t, 2>();
-  TestLegacyMicroKernelEquivalence<int8_t, 2>();
-  TestLegacyMicroKernelEquivalence<int8_t, 64>();
 }
 
 class TestTransposePlan : public TransposePlan {
@@ -1806,10 +1761,10 @@ TEST(TransposeTest, PackInt4_2D) {
                TransposePlan::ChunkContiguity::kOutput,
                /*expected_parallelism=*/3,
                /*expected_inner_kernel_is_memcpy=*/true);
-  TestPackIntN(4, /*dims=*/{64, 1}, /*permutation=*/{1, 0},
-               /*input_tiling=*/{}, /*output_tiling=*/{},
-               /*input_striding=*/{2, 1}, /*num_threads=*/8,
-               TransposePlan::ChunkContiguity::kOutput,
+  TestPackIntN(4, /*dims=*/{4 * kMaxOuterBlockSizeBytes, 1},
+               /*permutation=*/{1, 0}, /*input_tiling=*/{},
+               /*output_tiling=*/{}, /*input_striding=*/{2, 1},
+               /*num_threads=*/8, TransposePlan::ChunkContiguity::kOutput,
                /*expected_parallelism=*/4,
                /*expected_inner_kernel_is_memcpy=*/false);
 }
