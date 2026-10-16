@@ -35,9 +35,10 @@ enum FlashAttnDtype : int32_t {
 
 // "tf_flash_attention_fwd": operands [Q, K, V, seed, offset], outputs (Out,
 // Stats).
+// Q/K/V/Out are [B, S, H, D] and Stats is [B, H, Sq].
 struct FlashAttnDesc {
   int32_t dtype;  // FlashAttnDtype
-  int64_t B, Sq, Sk, Dqk, Dv;
+  int64_t B, H, Sq, Sk, Dqk, Dv;
   float dropout;
   float scale;
   bool causal;
@@ -49,7 +50,7 @@ struct FlashAttnDesc {
 // discarded.
 struct FlashAttnBwdDesc {
   int32_t dtype;  // FlashAttnDtype
-  int64_t B, Sq, Sk, Dqk, Dv;
+  int64_t B, H, Sq, Sk, Dqk, Dv;
   int64_t workspace_bytes;
   float dropout;
   float scale;
