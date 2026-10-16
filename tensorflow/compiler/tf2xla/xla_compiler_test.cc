@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/array_ops.h"
@@ -42,6 +43,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/resource_variable_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/compiler/jit/defs.h"
+#include "tensorflow/compiler/tf2xla/kernels/xla_call_module_loader.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
@@ -57,6 +59,7 @@ limitations under the License.
 #include "xla/client/local_client.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/testlib/filecheck.h"
@@ -2450,6 +2453,47 @@ TEST_F(XlaCompilerTest, CheckNumerics) {
   ASSERT_EQ(result.outputs.size(), 1);
   EXPECT_EQ(result.outputs[0].type, DT_FLOAT);
   EXPECT_EQ(result.outputs[0].shape, TensorShape({2}));
+}
+
+TEST_F(XlaCompilerTest,
+       XlaCallModuleLoaderPrepareStablehloForLoweringWithoutCompilerShardy) {
+  constexpr absl::string_view kMlirModuleStr = R"mlir(
+    module @jit_shard_map {
+      sdy.mesh @mesh = <["x"=2]>
+      func.func public @main(
+          %arg0: tensor<4xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}]>}
+      ) -> (tensor<4xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}]>}) {
+        %0 = sdy.manual_computation(%arg0)
+            in_shardings=[<@mesh, [{"x"}]>]
+            out_shardings=[<@mesh, [{"x"}]>]
+            manual_axes={"x"} (%arg1: tensor<2xf32>) {
+          %1 = stablehlo.add %arg1, %arg1 : tensor<2xf32>
+          sdy.return %1 : tensor<2xf32>
+        } : (tensor<4xf32>) -> tensor<4xf32>
+        return %0 : tensor<4xf32>
+      }
+    }
+  )mlir";
+
+  mlir::MLIRContext context;
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<XlaCallModuleLoader> loader,
+      XlaCallModuleLoader::Create(&context, /*version=*/10, kMlirModuleStr,
+                                  /*disabled_checks=*/{}, /*platforms=*/{"TPU"},
+                                  /*num_invocation_args=*/1,
+                                  /*main_has_token_input_output=*/false,
+                                  /*use_shardy_partitioner=*/true));
+  TF_ASSERT_OK(loader->PrepareStablehloForLowering(
+      /*compiler_use_shardy_partitioner=*/false));
+  TF_ASSERT_OK_AND_ASSIGN(xla::XlaComputation computation,
+                          loader->ToXlaComputation());
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                          LoadModuleFromHloProto(computation.proto()));
+  const std::string hlo_text = hlo_module->ToString(xla::HloPrintOptions{});
+  EXPECT_FALSE(absl::StrContains(hlo_text, "xla.sdy.GlobalToLocalShape"));
+  EXPECT_FALSE(absl::StrContains(hlo_text, "xla.sdy.LocalToGlobalShape"));
+  EXPECT_TRUE(absl::StrContains(hlo_text, "SPMDFullToShardShape"));
+  EXPECT_TRUE(absl::StrContains(hlo_text, "SPMDShardToFullShape"));
 }
 
 }  // namespace
