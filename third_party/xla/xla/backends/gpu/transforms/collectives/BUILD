@@ -971,6 +971,7 @@ cc_library(
         "//xla/backends/gpu/runtime:all_reduce",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
+        "//xla/hlo/transforms/simplifiers:tuple_simplifier",
         "//xla/service:device_assignment",
         "//xla/service:gpu_topology",
         "//xla/service/gpu:backend_configs_cc",

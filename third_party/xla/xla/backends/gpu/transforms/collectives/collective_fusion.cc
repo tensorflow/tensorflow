@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/primitive_util.h"
 #include "xla/service/device_assignment.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -70,8 +71,20 @@ HloFusionInstruction* CreateCollectiveFusionInstruction(
     parameters.push_back(builder.AddInstruction(HloInstruction::CreateParameter(
         i, operand->shape(), absl::StrCat("param_", i))));
   }
-  HloInstruction* fused_root = builder.AddInstruction(
+  HloInstruction* collective = builder.AddInstruction(
       instr->CloneWithNewOperands(instr->shape(), parameters));
+  HloInstruction* fused_root = collective;
+  if (collective->shape().IsTuple()) {
+    std::vector<HloInstruction*> gtes;
+    gtes.reserve(collective->shape().tuple_shapes().size());
+    for (int64_t i = 0; i < collective->shape().tuple_shapes().size(); ++i) {
+      gtes.push_back(builder.AddInstruction(
+          HloInstruction::CreateGetTupleElement(collective, i)));
+    }
+    fused_root = builder.AddInstruction(HloInstruction::CreateTuple(gtes));
+    fused_root->add_frontend_attribute(kDisableTupleSimplifierAttribute,
+                                       "true");
+  }
   HloComputation* fused_computation =
       module->AddEmbeddedComputation(builder.Build(fused_root));
   HloInstruction* fusion_instr =
@@ -81,7 +94,7 @@ HloFusionInstruction* CreateCollectiveFusionInstruction(
           fused_computation, absl::StrCat(instr->name(), "-")));
   // Propagate metadata.
   fusion_instr->set_metadata(instr->metadata());
-  fusion_instr->set_frontend_attributes(fused_root->frontend_attributes());
+  fusion_instr->set_frontend_attributes(collective->frontend_attributes());
   fusion_instr->CopyBackendConfigFrom(instr);
   return Cast<HloFusionInstruction>(fusion_instr);
 }

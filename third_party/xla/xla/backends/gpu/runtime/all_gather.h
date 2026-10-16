@@ -64,14 +64,16 @@ absl::StatusOr<AllGatherInfo> BuildAllGatherInfo(
     const DeviceAssignment* device_assignment);
 
 // Creates a CollectiveKernelSpec describing the resource requirements of a
-// Triton all-gather kernel.  The kernel argument layout matches all-reduce:
-//   [0] local input buffer (kInputBuffer, index 0)
-//   [1] output buffer (kOutputBuffer, index 0)
-//   [2] runtime rank  (kRuntimeRank)
-//   [3] invocation count (kInvocationCount)
-//   [4] signal flags (kScratchBuffer, index 0)
-//   [5] remote scratch buffer pointer table (kScratchBuffer, index 1)
-// `scratch_memory_type` is used for both scratch buffers.
+// Triton all-gather kernel with N operands. The kernel argument layout matches
+// all-reduce:
+//   [0, N)      local input buffers (kInputBuffer, index i)
+//   [N, 2N)     output buffers (kOutputBuffer, index i)
+//   [2N]        runtime rank  (kRuntimeRank)
+//   [2N + 1]    invocation count (kInvocationCount)
+//   [2N + 2]    signal flags (kScratchBuffer, index 0)
+//   [2N + 3 + i] remote scratch buffer pointer table of operand i
+//               (kScratchBuffer, index 1 + i)
+// `scratch_memory_type` is used for all scratch buffers.
 absl::StatusOr<CollectiveKernelSpec> CreateAllGatherKernelSpec(
     const HloInstruction* instr, const LaunchDimensions& launch_dimensions,
     SymmetricMemoryType scratch_memory_type);

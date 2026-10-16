@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/all_gather.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <vector>
 
@@ -36,6 +37,7 @@ limitations under the License.
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -91,6 +93,8 @@ absl::Status IsAllGatherKernelSupported(
         "devices. Got %d.",
         num_devices));
   }
+  // Triton pads tile sizes to powers of 2, so each rank's slice along the
+  // gather dimension must be a power of 2.
   if (!llvm::has_single_bit(static_cast<uint64_t>(per_rank_gather_dim_size))) {
     return absl::UnimplementedError(absl::StrFormat(
         "All-gather kernel requires the per-rank size along the gather "
@@ -132,13 +136,6 @@ absl::StatusOr<AllGatherInfo> BuildAllGatherInfo(
   }
   const int64_t num_devices =
       all_gather->device_list()->num_devices_per_group();
-  const int64_t num_elements =
-      ShapeUtil::ElementsIn(all_gather->operand(0)->shape());
-  const int64_t per_rank_gather_dim_size =
-      all_gather->operand(0)->shape().dimensions(
-          all_gather->all_gather_dimension());
-  const PrimitiveType element_type =
-      all_gather->operand(0)->shape().element_type();
   const int32_t num_operands = all_gather->operand_count();
   if (device_info.device_interconnect_info().active_links <= 0) {
     return absl::UnimplementedError(
@@ -148,14 +145,22 @@ absl::StatusOr<AllGatherInfo> BuildAllGatherInfo(
   ABSL_ASSIGN_OR_RETURN(
       const bool is_local,
       AreAllReplicasOnSameSlice(gpu_topology, *all_gather, device_assignment));
-  ABSL_RETURN_IF_ERROR(IsAllGatherKernelSupported(
-      device_info, num_operands, num_devices, num_elements,
-      per_rank_gather_dim_size, element_type, is_local,
-      all_gather->replica_groups()));
+
+  int64_t num_elements = 0;
+  for (const HloInstruction* operand : all_gather->operands()) {
+    const int64_t operand_elements = ShapeUtil::ElementsIn(operand->shape());
+    const int64_t per_rank_gather_dim_size =
+        operand->shape().dimensions(all_gather->all_gather_dimension());
+    ABSL_RETURN_IF_ERROR(IsAllGatherKernelSupported(
+        device_info, num_operands, num_devices, operand_elements,
+        per_rank_gather_dim_size, operand->shape().element_type(), is_local,
+        all_gather->replica_groups()));
+    num_elements = std::max(num_elements, operand_elements);
+  }
   return AllGatherInfo{
       /*.num_devices =*/num_devices,
       /*.num_elements =*/num_elements,
-      /*.element_type =*/element_type,
+      /*.element_type =*/all_gather->operand(0)->shape().element_type(),
   };
 }
 
@@ -167,43 +172,57 @@ absl::StatusOr<CollectiveKernelSpec> CreateAllGatherKernelSpec(
       instr->replica_groups()[0].replica_ids_size() > 0) {
     group_size = instr->replica_groups()[0].replica_ids_size();
   }
+  const int64_t num_operands = instr->operand_count();
+  TF_RET_CHECK(num_operands >= 1) << "all-gather requires at least one operand";
 
-  // The symmetric scratch buffer holds one rank's slice (= input size).
-  // Double-buffering is handled by the should_double_buffer flag.
-  const int64_t input_size_bytes =
-      ShapeUtil::ByteSizeOf(instr->operand(0)->shape());
   const int64_t num_signal_flags = group_size * launch_dimensions.num_blocks();
   const int64_t signal_size = xla::RoundUpTo<uint64_t>(
       num_signal_flags * sizeof(int32_t), kXlaAllocatedBufferAlignBytes);
-  // Each rank allocates its own input-sized symmetric buffer; pointers are
-  // exchanged via kXlaRendezvous so every rank can read from each peer.
-  const int64_t remote_size =
-      xla::RoundUpTo<uint64_t>(input_size_bytes, kXlaAllocatedBufferAlignBytes);
 
-  CollectiveKernelSpec kernel_spec = {
-      /* .codegen_config= */ {
-          /* .copy_input_to_scratch= */ false,
-          /* .input_buffer_specs= */
-          {{/*requires_multimem=*/false, SymmetricMemoryType::kNone}},
-          /* .output_buffer_specs= */
-          {{/*requires_multimem=*/false, SymmetricMemoryType::kNone}},
-          /* .argument_descriptors= */
-          {{KernelArgType::kInputBuffer, /*index=*/0},
-           {KernelArgType::kOutputBuffer, /*index=*/0},
-           {KernelArgType::kRuntimeRank},
-           {KernelArgType::kInvocationCount},
-           {KernelArgType::kScratchBuffer,
-            /*index=*/0},  // signal buffers
-           {KernelArgType::kScratchBuffer,
-            /*index=*/1}},  // remote scratch buffers
-          /* .sync_count_increment= */ 1u},
-      /* .scratch_buffers= */
-      {{signal_size, /*requires_multimem=*/false, scratch_memory_type,
-        /*should_memzero=*/true,
-        /*should_double_buffer=*/true},
-       {remote_size, /*requires_multimem=*/false, scratch_memory_type,
-        /*should_memzero=*/false,
-        /*should_double_buffer=*/true}}};
+  CollectiveKernelSpec kernel_spec;
+  CollectiveCodegenConfig& codegen_config = kernel_spec.codegen_config;
+  codegen_config.copy_input_to_scratch = false;
+  codegen_config.sync_count_increment = 1u;
+  // Argument layout (must match the Triton entry function): inputs, outputs,
+  // rank, invocation count, signal flags, one remote scratch table per operand.
+  for (int32_t i = 0; i < num_operands; ++i) {
+    codegen_config.input_buffer_specs.push_back(
+        {/*requires_multimem=*/false, SymmetricMemoryType::kNone});
+    codegen_config.argument_descriptors.push_back(
+        {KernelArgType::kInputBuffer, /*index=*/i});
+  }
+  for (int32_t i = 0; i < num_operands; ++i) {
+    codegen_config.output_buffer_specs.push_back(
+        {/*requires_multimem=*/false, SymmetricMemoryType::kNone});
+    codegen_config.argument_descriptors.push_back(
+        {KernelArgType::kOutputBuffer, /*index=*/i});
+  }
+  codegen_config.argument_descriptors.push_back({KernelArgType::kRuntimeRank});
+  codegen_config.argument_descriptors.push_back(
+      {KernelArgType::kInvocationCount});
+  // Signal buffers.
+  codegen_config.argument_descriptors.push_back(
+      {KernelArgType::kScratchBuffer, /*index=*/0});
+  kernel_spec.scratch_buffers.push_back({signal_size,
+                                         /*requires_multimem=*/false,
+                                         scratch_memory_type,
+                                         /*should_memzero=*/true,
+                                         /*should_double_buffer=*/true});
+  // One symmetric scratch buffer per operand that holds one rank's slice
+  // (= input size). Double-buffering is handled by the should_double_buffer
+  // flag.
+  for (int32_t i = 0; i < num_operands; ++i) {
+    const int64_t remote_size = xla::RoundUpTo<uint64_t>(
+        ShapeUtil::ByteSizeOf(instr->operand(i)->shape()),
+        kXlaAllocatedBufferAlignBytes);
+    codegen_config.argument_descriptors.push_back(
+        {KernelArgType::kScratchBuffer, /*index=*/1 + i});
+    kernel_spec.scratch_buffers.push_back({remote_size,
+                                           /*requires_multimem=*/false,
+                                           scratch_memory_type,
+                                           /*should_memzero=*/false,
+                                           /*should_double_buffer=*/true});
+  }
   return kernel_spec;
 }
 
