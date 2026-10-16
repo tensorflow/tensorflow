@@ -7340,6 +7340,9 @@ static HloSharding ResolveReductionOpForSharding(
   } else if (!sharding.IsUnreducedSubgroup()) {
     return sharding;
   }
+  if (sharding.reduction_op() != ReductionOp::kSum) {
+    return sharding;
+  }
 
   const HloInstruction* current = instruction;
   while (current && current->opcode() != HloOpcode::kReduce &&
@@ -7367,9 +7370,15 @@ static HloSharding ResolveReductionOpForSharding(
     if (module && module->has_spmd_parameters_shardings() &&
         current->parameter_number() <
             module->spmd_parameters_shardings().size()) {
-      sharding.set_reduction_op(
-          module->spmd_parameters_shardings()[current->parameter_number()]
-              .reduction_op());
+      const HloSharding& param_sharding =
+          module->spmd_parameters_shardings()[current->parameter_number()];
+      const bool param_has_unreduced =
+          param_sharding.UseNamedShardingLeaf()
+              ? !param_sharding.named_sharding().unreduced_axes().empty()
+              : param_sharding.IsUnreducedSubgroup();
+      if (param_has_unreduced) {
+        sharding.set_reduction_op(param_sharding.reduction_op());
+      }
     }
   }
   return sharding;
