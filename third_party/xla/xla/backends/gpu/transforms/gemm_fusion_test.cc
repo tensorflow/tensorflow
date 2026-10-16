@@ -2052,6 +2052,40 @@ TEST_F(GemmFusionTest, ScaledDotIsFused) {
   MatchHloModule(*module, kExpectedHloText);
 }
 
+TEST_P(GemmFusionTestVersioned, ScaledDotScaleBroadcastsAreFusedOnRocm) {
+  constexpr absl::string_view kHloText = R"(
+    HloModule m
+
+    ENTRY e {
+      lhs = f8e4m3fn[3,128,128] parameter(0)
+      rhs = f8e4m3fn[3,128,128] parameter(1)
+      lhs_scale = f8e8m0fnu[3,128] parameter(2)
+      lhs_scale_broadcast = f8e8m0fnu[3,128,4] broadcast(lhs_scale),
+          dimensions={0,1}
+      rhs_scale = f8e8m0fnu[3,128] parameter(3)
+      rhs_scale_broadcast = f8e8m0fnu[3,128,4] broadcast(rhs_scale),
+          dimensions={0,1}
+      ROOT dot = bf16[3,128,128] scaled-dot(lhs, rhs, lhs_scale_broadcast,
+          rhs_scale_broadcast),
+        lhs_batch_dims={0}, rhs_batch_dims={0},
+        lhs_contracting_dims={2}, rhs_contracting_dims={2}
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  EXPECT_THAT(GemmFusion(TestGpuDeviceInfo::AMDMI350DeviceInfo())
+                  .Run(module.get()),
+              IsOkAndHolds(true));
+  MatchHloModule(*module, R"(
+    CHECK: f8e8m0fnu[3,128,4]{2,1,0} broadcast(
+    CHECK: f8e8m0fnu[3,128,4]{2,1,0} broadcast(
+    CHECK: ROOT {{.*}} scaled-dot(
+    CHECK: ENTRY
+    CHECK-NOT: broadcast(
+    CHECK: ROOT {{.*}} fusion(
+  )");
+}
+
 TEST_P(GemmFusionTestVersioned, SkipNonFusibleComputations) {
   const char* hlo_text = R"(
 HloModule module

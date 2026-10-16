@@ -107,7 +107,7 @@ CodegenDecision IsTritonSupportedDataTypeForOpcode(
     PrimitiveType type, HloOpcode opcode,
     const se::GpuComputeCapability& gpu_version) {
   // F8E8M0FNU is lowered as i8, so it supports ops that don't change values.
-  if (type == F8E8M0FNU && gpu_version.IsCuda()) {
+  if (type == F8E8M0FNU && (gpu_version.IsCuda() || gpu_version.IsRocm())) {
     switch (opcode) {
       case HloOpcode::kBitcast:
       case HloOpcode::kBroadcast:
@@ -772,6 +772,17 @@ CodegenDecision IsTritonSupportedScaledDot(
   }
   PrimitiveType lhs_scale_type = dot.operand(2)->shape().element_type();
   PrimitiveType rhs_scale_type = dot.operand(3)->shape().element_type();
+  // Lowering tt.dot_scaled with F8E4M3FN operands or scales needs F8E4M3FN
+  // conversions, which Triton only supports from Ada onwards.
+  if (const auto* cc = gpu_version.cuda_compute_capability();
+      cc && !cc->IsAtLeastAda() &&
+      absl::c_linear_search(
+          std::vector<PrimitiveType>{lhs_type, rhs_type, lhs_scale_type,
+                                     rhs_scale_type},
+          F8E4M3FN)) {
+    return CodegenDecision::Forbid(
+        "Scaled dot with F8E4M3FN is not supported by Triton before Ada.");
+  }
   std::vector<PrimitiveType> supported_scale_types = {F8E4M3FN, F8E5M2,
                                                       F8E8M0FNU, S8};
   // tt.dot_scaled only dequantizes some operand types; a scale on any other

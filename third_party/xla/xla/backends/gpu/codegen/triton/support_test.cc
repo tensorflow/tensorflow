@@ -2532,6 +2532,41 @@ ENTRY triton_computation {
       *dot, se::GpuComputeCapability(se::CudaComputeCapability::Volta())));
 }
 
+// Triton cannot lower F8E4M3FN conversions before sm89.
+class ScaledDotF8E4M3FNTest
+    : public SupportTest,
+      public ::testing::WithParamInterface<se::GpuComputeCapability> {};
+
+TEST_P(ScaledDotF8E4M3FNTest, MixedWithBF16) {
+  const std::string kHloTestTemplate = R"(
+HloModule ScaledDotF8E4M3FNMixedWithBF16
+
+ENTRY triton_computation {
+  lhs = f8e4m3fn[16, 32] parameter(0)
+  lhs_scale = f8e8m0fnu[16, 1] parameter(1)
+  rhs = $0[32, 16] parameter(2)
+  rhs_scale = f8e8m0fnu[] constant(1)
+  rhs_scale_broadcast = f8e8m0fnu[1, 16] broadcast(rhs_scale), dimensions={}
+  ROOT dot = f32[16, 16] scaled-dot(lhs, rhs, lhs_scale, rhs_scale_broadcast),
+      lhs_contracting_dims={1},
+      rhs_contracting_dims={0},
+      backend_config={sizes:[16]}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
+                       ParseTemplateAndGetInstruction(kHloTestTemplate, BF16,
+                                                      HloOpcode::kScaledDot));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{16, 16}, GetParam(),
+                 ExpectedFailMode::kFailOrCrash);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    ScaledDotF8E4M3FNTestSuite, ScaledDotF8E4M3FNTest,
+    ::testing::Values(
+        se::GpuComputeCapability(se::CudaComputeCapability::Ampere()),
+        se::GpuComputeCapability(se::CudaComputeCapability(8, 9)),
+        se::GpuComputeCapability(se::CudaComputeCapability::Hopper())));
+
 TEST_F(SupportTest, NestedFusionsAreRejected) {
   // Nested fusions are not supported by xtile emitter.
   absl::string_view hlo_text = R"(
