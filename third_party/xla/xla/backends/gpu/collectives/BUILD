@@ -433,7 +433,7 @@ xla_test(
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",  # buildcleaner: keep
     ] + if_cuda_or_rocm_is_configured([
-        ":nccl_or_rccl_collectives",
+        ":nccl_or_rccl_collectives",  # buildcleaner: keep
     ]) + if_rocm_is_configured([
         ":mori_collectives",
     ]),
@@ -1276,10 +1276,6 @@ rocm_library(
     ],
     hdrs = ["mori_kernels.h"],
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
-    copts = [
-        "-DBUILD_CCO_SDMA=1",
-    ],
-    linkstatic = True,
     tags = [
         "gpu",
         "no-oneapi",

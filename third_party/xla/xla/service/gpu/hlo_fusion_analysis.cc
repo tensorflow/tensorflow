@@ -217,16 +217,14 @@ int SmallestBitWidth(const Container& args) {
 
 std::optional<HloInstructionAdaptor> FindCollectiveHero(
     const HloFusionAdaptor& fusion) {
-  std::optional<HloInstructionAdaptor> collective_hero;
   for (HloInstructionAdaptor instr : fusion.MakeInstructionPostOrder()) {
-    if (instr.opcode() == HloOpcode::kAllGather ||
-        instr.opcode() == HloOpcode::kAllReduce ||
-        instr.opcode() == HloOpcode::kReduceScatter) {
-      collective_hero = instr;
-      break;
+    if (HloPredicateIsOp<HloOpcode::kAllGather, HloOpcode::kAllReduce,
+                         HloOpcode::kAllToAll, HloOpcode::kReduceScatter>(
+            &instr.instruction())) {
+      return instr;
     }
   }
-  return collective_hero;
+  return std::nullopt;
 }
 
 }  // namespace

@@ -54,6 +54,7 @@ limitations under the License.
 #include "xla/future.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_constants.h"
@@ -90,7 +91,10 @@ absl::StatusOr<EmitArgs> EmitCollectiveFusion(
 
   const HloInstructionAdaptor collective_hero = analysis.fusion_hero(0);
 
-  bool use_global_device_ids = collective_hero.use_global_device_ids();
+  std::optional<bool> use_global_device_ids;
+  if (collective_hero.opcode() != HloOpcode::kAllToAll) {
+    use_global_device_ids = collective_hero.use_global_device_ids();
+  }
 
   CollectiveConfig config = GetCollectiveConfig(&collective_hero.instruction(),
                                                 use_global_device_ids);

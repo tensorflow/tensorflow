@@ -497,6 +497,20 @@ CodegenDecision IsTritonSupportedReduceScatter(
   return CodegenDecision::Allow();
 }
 
+CodegenDecision IsTritonSupportedAllToAll(
+    const HloAllToAllInstruction& all_to_all) {
+  if (!all_to_all.shape().IsArray() ||
+      !all_to_all.split_dimension().has_value()) {
+    return CodegenDecision::Forbid(
+        "Only array all-to-alls with split_dimension are supported.");
+  }
+  if (all_to_all.replica_groups().empty()) {
+    return CodegenDecision::Forbid("All-to-all does not have replica groups.");
+  }
+  return CodegenDecision(all_to_all.shape().element_type() != S4,
+                         "S4 is not supported.");
+}
+
 absl::Status CheckSupportedCheckDotDimensions(const HloDotInstruction& dot) {
   const DotDimensionNumbers& dim_numbers = dot.dot_dimension_numbers();
   // Only checking one side of bach and contracting dimensions, since they must
@@ -978,6 +992,8 @@ CodegenDecision IsTritonSupportedInstructionImpl(
     case HloOpcode::kAllGather:
       return CodegenDecision(instr.shape().element_type() != S4,
                              "S4 is not supported.");
+    case HloOpcode::kAllToAll:
+      return IsTritonSupportedAllToAll(*Cast<HloAllToAllInstruction>(&instr));
     case HloOpcode::kReduceScatter:
       return IsTritonSupportedReduceScatter(
           *Cast<HloReduceScatterInstruction>(&instr), gpu_version);

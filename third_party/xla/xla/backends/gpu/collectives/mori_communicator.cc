@@ -133,17 +133,37 @@ absl::StatusOr<std::unique_ptr<MoriCommunicator>> MoriCommunicator::Create(
   // the current device.
   comm->facade_ = CollectivesFacade::Get();
   if (comm->facade_ == nullptr) {
-    return absl::InternalError("CollectivesFacade::Create failed");
+    return absl::InternalError(
+        "CollectivesFacade::Get returned null: MORI is not initialized for the "
+        "current device");
   }
+
+  const int num_pes = comm->facade_->NumPes(), my_pe = comm->facade_->MyPe();
+  if (num_ranks != num_pes || rank != my_pe) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "Clique size (%d) disagrees with the MORI world size (%d) or "
+        "rank (%d) disagrees with the MORI PE id (%d). The MORI backend only "
+        "supports collectives over the full global clique with an identity "
+        "rank->PE mapping.",
+        num_ranks, num_pes, rank, my_pe));
+  }
+  for (int i = 0; i < num_ranks; ++i) {
+    if (rank_to_pe[i] != i) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "Rank_to_pe[%d]=%d is not the identity mapping. The MORI backend "
+          "only supports collectives over the full global clique with an "
+          "identity rank->PE mapping.",
+          i, rank_to_pe[i]));
+    }
+  }
+
   VLOG(1) << "Created " << *comm << " with participants: " << num_ranks;
   return comm;
 }
 
-MoriCommunicator::~MoriCommunicator() {
-  // facade_ (unique_ptr) releases this communicator's staging + counters via
-  // the CollectivesFacade dtor here, before MoriCollectives::Finalize() ->
-  // ShmemFinalize.
-}
+// `facade_` is non-owning: the per-device facades are released by
+// MoriCollectives::Finalize() via CollectivesFacade::TearDown().
+MoriCommunicator::~MoriCommunicator() = default;
 
 #define CHECK_CANCELLED()                                               \
   if (cancel_->IsCancelled()) {                                         \
@@ -166,7 +186,7 @@ absl::Status MoriCommunicator::Abort() {
 }
 
 absl::Status MoriCommunicator::Barrier(const Executor& executor) {
-  VLOG(1) << "Barrier: " << ToString();
+  VLOG(3) << "Barrier: " << ToString();
   CHECK_CANCELLED()
   ABSL_ASSIGN_OR_RETURN(se::Stream * stream, ToStream(executor));
   return se::gpu::ToStatus(facade_->RunBarrier(AsHipStream(stream)));
@@ -276,7 +296,7 @@ absl::Status MoriCommunicator::LaunchAllGather(
   CHECK_CANCELLED()
   ABSL_ASSIGN_OR_RETURN(se::Stream * stream, ToStream(executor));
 
-  VLOG(3) << "Launch AllGather: send_buffer=" << send_buffer.opaque()
+  VLOG(3) << "AllGather: send_buffer=" << send_buffer.opaque()
           << " recv_buffer=" << recv_buffer.opaque() << " count=" << count
           << " dtype=" << primitive_util::LowercasePrimitiveTypeName(dtype)
           << " stream=" << AsHipStream(stream);
@@ -292,13 +312,11 @@ absl::Status MoriCommunicator::LaunchAllReduce(
   CHECK_CANCELLED()
   ABSL_ASSIGN_OR_RETURN(se::Stream * stream, ToStream(executor));
 
-  VLOG(3) << absl::StreamFormat(
-      "Launch AllReduce: send_buffer=%p; recv_buffer=%p; dtype=%s; count=%d; "
-      "reduction_kind=%v; stream=%p",
-      send_buffer.opaque(), recv_buffer.opaque(),
-      primitive_util::LowercasePrimitiveTypeName(dtype), count, reduction_kind,
-      stream);
-
+  VLOG(3) << "AllReduce: send_buffer=" << send_buffer.opaque()
+          << " recv_buffer=" << recv_buffer.opaque()
+          << " dtype=" << primitive_util::LowercasePrimitiveTypeName(dtype)
+          << " count=" << count << " reduction_kind=" << reduction_kind
+          << " stream=" << AsHipStream(stream);
   ABSL_ASSIGN_OR_RETURN(auto dt, ToMoriDataType(dtype));
   ABSL_ASSIGN_OR_RETURN(auto op, ToMoriReduceOp(reduction_kind));
   return se::gpu::ToStatus(facade_->RunAllReduce(send_buffer.opaque(),
@@ -335,13 +353,11 @@ absl::Status MoriCommunicator::LaunchAllToAll(
   auto format_addr = [](std::string* out, se::DeviceAddressBase buf) {
     absl::StrAppendFormat(out, "%p", buf.opaque());
   };
-  VLOG(3) << absl::StreamFormat(
-      "Launch MORI AllToAll operation; send_buffers=[%s]; recv_buffers=[%s]; "
-      "dtype=%s; count=%d; stream=%p",
-      absl::StrJoin(send_buffers, ", ", format_addr),
-      absl::StrJoin(recv_buffers, ", ", format_addr),
-      primitive_util::LowercasePrimitiveTypeName(dtype), count,
-      AsHipStream(stream));
+  VLOG(3) << "AllToAll: send_buffers="
+          << absl::StrJoin(send_buffers, ", ", format_addr)
+          << " recv_buffers=" << absl::StrJoin(recv_buffers, ", ", format_addr)
+          << " dtype=" << primitive_util::LowercasePrimitiveTypeName(dtype)
+          << " count=" << count << " stream=" << AsHipStream(stream);
 
   if (send_buffers.size() != recv_buffers.size() ||
       send_buffers.size() != static_cast<size_t>(num_ranks_)) {
@@ -364,11 +380,10 @@ absl::Status MoriCommunicator::LaunchSend(se::DeviceAddressBase send_buffer,
                                           const Executor& executor) {
   CHECK_CANCELLED()
   ABSL_ASSIGN_OR_RETURN(se::Stream * stream, ToStream(executor));
-  VLOG(3) << absl::StreamFormat(
-      "Launch MORI Send operation; send_buffer=%p; dtype=%s; count=%d; "
-      "peer=%d; stream=%p",
-      send_buffer.opaque(), primitive_util::LowercasePrimitiveTypeName(dtype),
-      count, peer.value(), AsHipStream(stream));
+  VLOG(3) << "Send: send_buffer=" << send_buffer.opaque()
+          << " dtype=" << primitive_util::LowercasePrimitiveTypeName(dtype)
+          << " count=" << count << " peer=" << peer.value()
+          << " stream=" << AsHipStream(stream);
   return se::gpu::ToStatus(
       facade_->RunSend(send_buffer.opaque(), ToMoriByteCount(dtype, count),
                        static_cast<int>(peer.value()), AsHipStream(stream)));
@@ -380,11 +395,10 @@ absl::Status MoriCommunicator::LaunchRecv(se::DeviceAddressBase recv_buffer,
                                           const Executor& executor) {
   CHECK_CANCELLED()
   ABSL_ASSIGN_OR_RETURN(se::Stream * stream, ToStream(executor));
-  VLOG(3) << absl::StreamFormat(
-      "Launch MORI Recv operation; recv_buffer=%p; dtype=%s; count=%d; "
-      "peer=%d; stream=%p",
-      recv_buffer.opaque(), primitive_util::LowercasePrimitiveTypeName(dtype),
-      count, peer.value(), AsHipStream(stream));
+  VLOG(3) << "Recv: recv_buffer=" << recv_buffer.opaque()
+          << " dtype=" << primitive_util::LowercasePrimitiveTypeName(dtype)
+          << " count=" << count << " peer=" << peer.value()
+          << " stream=" << AsHipStream(stream);
   return se::gpu::ToStatus(
       facade_->RunRecv(recv_buffer.opaque(), ToMoriByteCount(dtype, count),
                        static_cast<int>(peer.value()), AsHipStream(stream)));
@@ -396,24 +410,23 @@ absl::Status MoriCommunicator::LaunchCollectivePermute(
     absl::Span<const RankId> target_ranks, const Executor& executor) {
   CHECK_CANCELLED()
   ABSL_ASSIGN_OR_RETURN(se::Stream * stream, ToStream(executor));
-  auto rank_formatter = [](std::string* out, RankId rank) {
+  auto formatter = [](std::string* out, RankId rank) {
     absl::StrAppendFormat(out, "%d", rank.value());
   };
-  VLOG(3) << absl::StreamFormat(
-      "[%d] Launch CollectivePermute: send_buffer=%p; "
-      "recv_buffer=%p; dtype=%s; source_rank=%s; target_[ranks=%s]; count=%d; "
-      "stream=%p",
-      stream->parent()->device_ordinal(), send_buffer.opaque(),
-      recv_buffer.opaque(), primitive_util::LowercasePrimitiveTypeName(dtype),
-      source_rank ? absl::StrCat(source_rank->value()) : "<empty>",
-      absl::StrJoin(target_ranks, ", ", rank_formatter), count, stream);
+
+  const int srcPe = source_rank.value_or(RankId{-1}).value();
+  VLOG(3) << "CollectivePermute: send_buffer=" << send_buffer.opaque()
+          << " recv_buffer=" << recv_buffer.opaque()
+          << " dtype=" << primitive_util::LowercasePrimitiveTypeName(dtype)
+          << " source_rank=" << srcPe
+          << " target_ranks=" << absl::StrJoin(target_ranks, ", ", formatter)
+          << " count=" << count << " stream=" << AsHipStream(stream);
 
   std::vector<int> dstPes;
   dstPes.reserve(target_ranks.size());
   for (RankId rank : target_ranks) {
     dstPes.push_back(static_cast<int>(rank.value()));
   }
-  const int srcPe = source_rank ? static_cast<int>(source_rank->value()) : -1;
   return se::gpu::ToStatus(facade_->RunCollectivePermute(
       send_buffer.opaque(), recv_buffer.opaque(), ToMoriByteCount(dtype, count),
       srcPe, dstPes, AsHipStream(stream)));
@@ -432,14 +445,14 @@ absl::Status MoriCommunicator::GroupLaunch(
 }
 
 absl::Status MoriCommunicator::Quiet(const Executor& executor) {
-  VLOG(1) << "Quiet: " << ToString();
+  VLOG(3) << "Quiet: " << ToString();
   CHECK_CANCELLED()
   ABSL_ASSIGN_OR_RETURN(se::Stream * stream, ToStream(executor));
   return se::gpu::ToStatus(facade_->RunQuiet(AsHipStream(stream)));
 }
 
 absl::Status MoriCommunicator::Fence() {
-  VLOG(1) << "Fence: " << ToString();
+  VLOG(3) << "Fence: " << ToString();
   CHECK_CANCELLED()
   return se::gpu::ToStatus(facade_->RunFence());
 }
