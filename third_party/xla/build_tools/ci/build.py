@@ -696,14 +696,18 @@ Build(
 Build(
     type_=BuildType.XLA_LINUX_X86_GPU_A4_224_VCPU_BENCHMARK_PRESUBMIT_GITHUB_ACTIONS,
     repo="openxla/xla",
-    configs=("cuda_libraries_from_stubs",),
+    configs=(
+        "warnings",
+        "rbe_linux_cuda_nvcc",
+        "hermetic_cuda_umd",
+        "cuda_libraries_from_stubs",
+    ),
     target_patterns=_XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
     test_tag_filters=nvidia_single_gpu_test_filters
     + _tag_filters_for_compute_capability(compute_capability=100),
     build_tag_filters=nvidia_single_gpu_build_filters,
     options={
         "run_under": "//build_tools/ci:parallel_gpu_execute",
-        # Use User Mode and Kernel Mode Drivers pre-installed on the system.
         "//xla/tsl:ci_build": True,
         **_DEFAULT_BAZEL_OPTIONS,
     },
