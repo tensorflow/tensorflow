@@ -1694,6 +1694,7 @@ filegroup(
         "//tensorflow/core/framework:tensor_reference.h",
         "//tensorflow/core/framework:tracking_allocator.h",  # only needed for tests
         "//tensorflow/core/framework:variant.h",
+        "//tensorflow/core/framework:versions.h",
         "//tensorflow/core/util:framework_internal_public_hdrs",
         "@xla//xla/tsl/framework:tracking_allocator.h",  # only needed for tests
     ],
