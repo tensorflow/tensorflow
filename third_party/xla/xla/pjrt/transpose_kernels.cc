@@ -394,6 +394,51 @@ HWY_INLINE void BuildVecs256RectCPS(D d, DHalf d_half, const char* a,
   BuildVecs256RectCPS<0, T, bs>(d, d_half, a, lda, cont);
 }
 
+// Flatten inner Unpack/StoreLane helpers into this function while keeping it
+// out-of-line so calling it 4 times in TransposeMicroKernel32x32 doesn't spill
+// vector registers.
+template <typename T>
+HWY_NOINLINE HWY_FLATTEN void TransposeMicroKernel8x32(
+    const char* HWY_RESTRICT a, int64_t lda, char* HWY_RESTRICT b,
+    int64_t ldb) {
+  using D = hn::FixedTag<uint8_t, 32>;
+  const D d;
+  using D64 = hn::Repartition<uint64_t, D>;
+  const D64 d64;
+  LoadRowsCPS<0, T, 8, D, 32>(d, a, lda, [&](auto... loads) HWY_ATTR {
+    InterleaveWithinBlocksCPS<1, 1, 8>(
+        [&](auto... interleaved) HWY_ATTR {
+          ForEachIndexed(
+              [&](auto idx_c, auto&& vec) HWY_ATTR {
+                constexpr size_t i = decltype(idx_c)::value;
+                auto v64 = hn::BitCast(d64, vec);
+                StoreLane<D64, sizeof(uint64_t), 0>(d64, b + (2 * i) * ldb,
+                                                    v64);
+                StoreLane<D64, sizeof(uint64_t), 1>(d64, b + (2 * i + 1) * ldb,
+                                                    v64);
+                StoreLane<D64, sizeof(uint64_t), 2>(d64, b + (2 * i + 16) * ldb,
+                                                    v64);
+                StoreLane<D64, sizeof(uint64_t), 3>(d64, b + (2 * i + 17) * ldb,
+                                                    v64);
+              },
+              interleaved...);
+        },
+        loads...);
+  });
+}
+
+// Transposes a 32x32 block of bytes as four 8x32 row strips.
+template <typename T>
+HWY_FLATTEN void TransposeMicroKernel32x32(const char* HWY_RESTRICT a,
+                                           int64_t lda, char* HWY_RESTRICT b,
+                                           int64_t ldb) {
+  static_assert(sizeof(T) == 1);
+  TransposeMicroKernel8x32<T>(a, lda, b, ldb);
+  TransposeMicroKernel8x32<T>(a + 8 * lda, lda, b + 8 * sizeof(T), ldb);
+  TransposeMicroKernel8x32<T>(a + 16 * lda, lda, b + 16 * sizeof(T), ldb);
+  TransposeMicroKernel8x32<T>(a + 24 * lda, lda, b + 24 * sizeof(T), ldb);
+}
+
 template <typename T, int bs>
 HWY_FLATTEN void TransposeMicroKernel256Rect(const char* HWY_RESTRICT a,
                                              int64_t lda, char* HWY_RESTRICT b,
@@ -440,7 +485,10 @@ HWY_FLATTEN void TransposeMicroKernel(const char* HWY_RESTRICT a, int64_t lda,
     TransposeMicroKernelScalar<T, bs>(a, lda, b, ldb);
   } else {
 #if HWY_MIN_BYTES >= 32
-    if constexpr (row_bytes == 2 * kBlockBytes) {
+    if constexpr (sizeof(T) == 1 && bs == 32) {
+      TransposeMicroKernel32x32<T>(a, lda, b, ldb);
+      return;
+    } else if constexpr (row_bytes == 2 * kBlockBytes) {
       TransposeMicroKernel256Square<T, bs>(a, lda, b, ldb);
       return;
     } else if constexpr (row_bytes == kBlockBytes) {
