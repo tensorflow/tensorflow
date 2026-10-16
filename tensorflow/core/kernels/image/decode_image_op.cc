@@ -23,6 +23,8 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/log/log.h"
+
 #define EIGEN_USE_THREADS
 
 #include "absl/status/status.h"
