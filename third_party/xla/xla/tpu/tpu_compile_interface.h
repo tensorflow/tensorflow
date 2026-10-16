@@ -32,7 +32,7 @@ class TpuCompileInterface {
   virtual uint64_t FingerprintString(absl::string_view str) = 0;
 
   // Proto: tensorflow::tpu::CompilationResultProto
-  // Location: tensorflow/core/protobuf/tpu/compilation_result.proto
+  // Location: xla/tpu/protobuf/compilation_result.proto
   static inline constexpr char kTpuCompileErrorPayloadKey[] =
       "type.googleapis.com/tensorflow.tpu.CompilationResultProto";
 

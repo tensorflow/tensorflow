@@ -49,6 +49,19 @@ tf_proto_library(
     deps = ["@com_google_protobuf//:wrappers_proto"],
 )
 
+tf_proto_library(
+    name = "compilation_result_proto",
+    srcs = [
+        "compilation_result.proto",
+    ],
+    protodeps = [
+        "//xla:xla_data_proto",
+        "//xla/service:hlo_proto",
+        "//xla/tsl/protobuf:error_codes_proto_impl",
+    ],
+    visibility = ["//visibility:public"],
+)
+
 cc_library(
     name = "tpu_embedding_optimization_parameters_utils",
     srcs = ["tpu_embedding_optimization_parameters_utils.cc"],
@@ -93,5 +106,11 @@ cc_library(
 #     name = "optimization_parameters_py_pb2",
 #     visibility = ["//visibility:public"],
 #     deps = [":optimization_parameters_proto"],
+# )
+#
+# py_proto_library(
+#     name = "compilation_result_py_pb2",
+#     visibility = ["//visibility:public"],
+#     deps = [":compilation_result_proto"],
 # )
 # copybara:uncomment_end
