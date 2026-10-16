@@ -728,16 +728,48 @@ class Delegate {
           }
         }
 
-        options_.weights_cache =
-            reinterpret_cast<TfLiteXNNPackDelegateWeightsCache*>(
-                &weight_cache_provider_->GetCacheProvider());
-        options_.weight_cache_file_path =
-            weight_cache_provider_->GetFilePath().data();
+        BindWeightCacheProviderOptions();
       } else {
         TFLITE_LOG(tflite::TFLITE_LOG_VERBOSE,
                    "XNNPack weight cache not enabled.");
       }
     }
+  }
+
+  void BindWeightCacheProviderOptions() {
+    options_.weights_cache =
+        reinterpret_cast<TfLiteXNNPackDelegateWeightsCache*>(
+            &weight_cache_provider_->GetCacheProvider());
+    options_.weight_cache_file_path =
+        weight_cache_provider_->GetFilePath().data();
+  }
+
+  void MaybeEnableDefaultInMemoryWeightCache(const tflite::Subgraph* subgraph) {
+    // TODO(b/571689716): Consider unifying the VMA/allocation configuration for
+    // single-signature (single-subgraph) weight repacking (e.g. above a minimum
+    // weight-size threshold) so packed weights get [anon:xnnpack-weights-cache]
+    // attribution and raw-weight eviction too.
+    if (subgraph == nullptr || subgraph->GetSubgraphs() == nullptr ||
+        subgraph->GetSubgraphs()->size() <= 1) {
+      return;
+    }
+    if (options_.weights_cache != nullptr ||
+        options_.weight_cache_provider != nullptr ||
+        options_.weight_cache_file_path != nullptr ||
+        options_.weight_cache_file_descriptor > 0 ||
+        weight_cache_provider_->IsActive() ||
+        !weight_cache_provider_.owning() ||
+        !TfLiteXNNPackDelegateCanUseInMemoryWeightCacheProvider()) {
+      return;
+    }
+    if (!weight_cache_provider_->LoadOrStartBuild(kInMemoryCachePath)) {
+      return;
+    }
+    BindWeightCacheProviderOptions();
+    TFLITE_LOG(tflite::TFLITE_LOG_VERBOSE,
+               "XNNPack in-memory weight cache automatically enabled for "
+               "multi-subgraph model (%zu subgraphs).",
+               subgraph->GetSubgraphs()->size());
   }
 
   ~Delegate() {
@@ -1515,6 +1547,11 @@ class Subgraph {
         TF_LITE_KERNEL_LOG(context,
                            "XNNPack delegate failed to stop cache build step.");
         return nullptr;
+      }
+      if (delegate.options_.weight_cache_lock_memory &&
+          !delegate.weight_cache_provider_->LockMemory()) {
+        TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR,
+                        "XNNPack weight cache could not be locked in memory.");
       }
     }
     if (status != xnn_status_success) {
@@ -7264,10 +7301,11 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(
   }
   // Clear previous data, in case the delegate is reused without re-creation.
   int subgraph_index = 0;
-  if (context) {
+  if (context && context->impl_ != nullptr) {
     tflite::Subgraph* this_subgraph =
         reinterpret_cast<tflite::Subgraph*>(context->impl_);
     subgraph_index = this_subgraph->GetSubgraphIndex();
+    MaybeEnableDefaultInMemoryWeightCache(this_subgraph);
   }
   if (subgraph_index >= static_unpacked_data_.size()) {
     static_unpacked_data_.resize(subgraph_index + 1);
@@ -7802,12 +7840,13 @@ const TfLiteRegistration kSubgraphRegistration = {
 };
 
 TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
+  auto* xnnpack_delegate =
+      static_cast<::tflite::xnnpack::Delegate*>(delegate->data_);
   std::unique_ptr<TfLiteIntArray, void (*)(TfLiteIntArray*)> moe_ops_to_replace(
       nullptr, TfLiteIntArrayFree);
   TfLiteIntArray* moe_ops_to_replace_raw = nullptr;
   TfLiteIntArray* ops_to_replace =
-      static_cast<::tflite::xnnpack::Delegate*>(delegate->data_)
-          ->PrepareOpsToDelegate(context, &moe_ops_to_replace_raw);
+      xnnpack_delegate->PrepareOpsToDelegate(context, &moe_ops_to_replace_raw);
   moe_ops_to_replace.reset(moe_ops_to_replace_raw);
   if (ops_to_replace == nullptr) {
     return kTfLiteError;

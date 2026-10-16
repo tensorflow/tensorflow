@@ -90,6 +90,12 @@ class MMapHandle {
   bool Map(const FileDescriptorView& fd, size_t offset = 0,
            const char* debug_path = nullptr);
 
+  // Maps an anonymous private read-write memory region of at least `size`
+  // bytes (`MAP_PRIVATE | MAP_ANONYMOUS`). On Linux and Android, optionally
+  // names the VMA `[anon:<vma_name>]`.
+  [[nodiscard /*Mapping anonymous memory can fail.*/]]
+  bool MapAnonymous(size_t size, const char* vma_name = nullptr);
+
   // Tries to resize the current mapping.
   //
   // Only succeeds if the mapping could be resized without being moved.
@@ -97,6 +103,18 @@ class MMapHandle {
   // WARNING: expects `IsMapped()` to be true.
   [[nodiscard /*Resizing a file can fail.*/]]
   bool Resize(size_t new_size);
+
+  // Resizes an existing anonymous mapping to at least `new_size` bytes,
+  // allowing the kernel to move the mapping (`MREMAP_MAYMOVE`). On platforms
+  // without `mremap`, copies `used_size` bytes into the new mapping.
+  [[nodiscard /*Resizing anonymous memory can fail.*/]]
+  bool ResizeAnonymous(size_t new_size, size_t used_size,
+                       const char* vma_name = nullptr);
+
+  // Shrinks any unused tail pages beyond `used_size` and marks the anonymous
+  // mapping read-only (`PROT_READ`).
+  [[nodiscard /*Finalizing anonymous memory can fail.*/]]
+  bool FinalizeAnonymous(size_t used_size, const char* vma_name = nullptr);
 
   // Unmaps an existing mapping.
   void UnMap();
@@ -145,6 +163,7 @@ class MMapHandle {
   size_t offset_ = 0;
   size_t offset_page_adjustment_ = 0;
   uint8_t* data_ = nullptr;
+  bool is_locked_ = false;
 #if defined(_WIN32)
   HANDLE file_mapping_ = 0;
 #endif
