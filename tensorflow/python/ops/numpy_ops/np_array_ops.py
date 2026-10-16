@@ -856,7 +856,14 @@ def var(a, axis=None, dtype=None, out=None, ddof=0, keepdims=None):  # pylint: d
         n = math_ops.reduce_prod(
             array_ops.gather(array_ops.shape(input_tensor), axis)
         )
-      n = math_ops.cast(n - ddof, squared_deviations.dtype)
+      # NumPy clamps the degrees-of-freedom denominator at 0 (and emits a
+      # "Degrees of freedom <= 0" RuntimeWarning) when ddof >= n, rather
+      # than letting it go negative. Without this clamp, `n - ddof` can be
+      # negative here, which silently turns a nonsensical negative count
+      # into a valid-looking (but wrong, finite, negative) "variance"
+      # instead of NumPy's `inf`.
+      n = math_ops.maximum(n - ddof, 0)
+      n = math_ops.cast(n, squared_deviations.dtype)
 
       return math_ops.divide(squared_deviations, n)
 
