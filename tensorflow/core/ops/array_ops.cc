@@ -727,6 +727,7 @@ REGISTER_OP("SplitV")
         }
         int64_t total_size = 0;
         bool has_neg_one = false;
+        int i = 0;
         for (const auto size : data) {
           if (size == -1) {
             if (has_neg_one) {
@@ -735,8 +736,17 @@ REGISTER_OP("SplitV")
             }
             has_neg_one = true;
           } else {
+            if (size < 0) {
+              return absl::InvalidArgumentError(absl::StrCat(
+                  "Split size at index ", i, " must be >= 0. Got: ", size));
+            }
+            if (total_size > std::numeric_limits<int64_t>::max() - size) {
+              return absl::InvalidArgumentError(
+                  "Sum of size_splits overflows the index type");
+            }
             total_size += size;
           }
+          ++i;
         }
         auto split_dim_size = c->Value(c->Dim(input, split_dim));
         // If the sizes of the splits are known, then
