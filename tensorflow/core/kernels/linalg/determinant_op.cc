@@ -237,18 +237,21 @@ class DeterminantOpGpu : public AsyncOpKernel {
     auto info_checker = [context, done](
                             const absl::Status& status,
                             const std::vector<HostLapackInfo>& host_infos) {
-      if (!status.ok() && absl::IsInvalidArgument(status) &&
-          !host_infos.empty()) {
-        for (int i = 0; i < host_infos[0].size(); ++i) {
-          // It is OK for a matrix to be singular (signaled by info > 0),
-          // corresponding to determinant of zero, but we do want to catch
-          // invalid arguments to Getrf{Batched}.
-          OP_REQUIRES_ASYNC(
-              context, host_infos[0](i) >= 0,
-              absl::InvalidArgumentError(absl::StrCat(
-                  "Invalid input argument no. ", host_infos[0].data()[i],
-                  " for batch index ", i, ".")),
-              done);
+      if (!status.ok()) {
+        if (absl::IsInvalidArgument(status) && !host_infos.empty()) {
+          for (int i = 0; i < host_infos[0].size(); ++i) {
+            // It is OK for a matrix to be singular (signaled by info > 0),
+            // corresponding to determinant of zero, but we do want to catch
+            // invalid arguments to Getrf{Batched}.
+            OP_REQUIRES_ASYNC(
+                context, host_infos[0](i) >= 0,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Invalid input argument no. ", host_infos[0].data()[i],
+                    " for batch index ", i, ".")),
+                done);
+          }
+        } else {
+          OP_REQUIRES_OK_ASYNC(context, status, done);
         }
       }
       done();
@@ -383,18 +386,21 @@ class LogDeterminantOpGpu : public AsyncOpKernel {
     auto info_checker = [context, done](
                             const absl::Status& status,
                             const std::vector<HostLapackInfo>& host_infos) {
-      if (!status.ok() && absl::IsInvalidArgument(status) &&
-          !host_infos.empty()) {
-        for (int i = 0; i < host_infos[0].size(); ++i) {
-          // It is OK for a matrix to be singular (signaled by info > 0),
-          // corresponding to determinant of zero, but we do want to catch
-          // invalid arguments to Getrf{Batched}.
-          OP_REQUIRES_ASYNC(
-              context, host_infos[0](i) >= 0,
-              absl::InvalidArgumentError(absl::StrCat(
-                  "Invalid input argument no. ", host_infos[0].data()[i],
-                  " for batch index ", i, ".")),
-              done);
+      if (!status.ok()) {
+        if (absl::IsInvalidArgument(status) && !host_infos.empty()) {
+          for (int i = 0; i < host_infos[0].size(); ++i) {
+            // It is OK for a matrix to be singular (signaled by info > 0),
+            // corresponding to determinant of zero, but we do want to catch
+            // invalid arguments to Getrf{Batched}.
+            OP_REQUIRES_ASYNC(
+                context, host_infos[0](i) >= 0,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Invalid input argument no. ", host_infos[0].data()[i],
+                    " for batch index ", i, ".")),
+                done);
+          }
+        } else {
+          OP_REQUIRES_OK_ASYNC(context, status, done);
         }
       }
       done();
