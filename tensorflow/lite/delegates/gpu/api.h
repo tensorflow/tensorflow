@@ -255,7 +255,7 @@ class InferenceRunner;
 // prepared for the inference.
 class InferenceBuilder {
  public:
-  virtual ~InferenceBuilder() {}
+  virtual ~InferenceBuilder() = default;
 
   // Returns inference graph inputs and outputs definitions.
   virtual std::vector<TensorObjectDef> inputs() const = 0;
@@ -302,7 +302,7 @@ class InferenceBuilder {
 // prior calling Run method.
 class InferenceRunner {
  public:
-  virtual ~InferenceRunner() {}
+  virtual ~InferenceRunner() = default;
 
   // Returns inference graph inputs and outputs definitions.
   virtual std::vector<TensorObjectDef> inputs() const = 0;
