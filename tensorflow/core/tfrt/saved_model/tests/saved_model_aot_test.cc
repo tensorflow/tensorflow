@@ -12,6 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <memory>
+#include <string>
+#include <vector>
+
+#include "third_party/protobuf/text_format.h"
+#include "xla/stream_executor/device_description.pb.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include <gtest/gtest.h>
