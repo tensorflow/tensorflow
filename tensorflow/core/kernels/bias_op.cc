@@ -60,8 +60,12 @@ void GetBiasValueDims(const Tensor& value_tensor, TensorFormat data_format,
   if (data_format == FORMAT_NHWC) {
     int32_t channel_dim = value_tensor.dims() - 1;
     *channel = static_cast<int32_t>(value_tensor.dim_size(channel_dim));
-    for (int32_t i = 0; i < channel_dim; i++) {
-      *batch *= static_cast<int32_t>(value_tensor.dim_size(i));
+    if (value_tensor.NumElements() == 0) {
+      *batch = 0;
+    } else {
+      for (int32_t i = 0; i < channel_dim; i++) {
+        *batch *= static_cast<int32_t>(value_tensor.dim_size(i));
+      }
     }
   } else if (data_format == FORMAT_NCHW) {
     *batch = static_cast<int32_t>(value_tensor.dim_size(0));
@@ -77,10 +81,16 @@ void GetBiasValueDims(const Tensor& value_tensor, TensorFormat data_format,
 }
 
 absl::Status ValidateGpuElementCount(const TensorShape& shape) {
-  if (shape.num_elements() > std::numeric_limits<int32_t>::max()) {
+  constexpr int64_t kMaxInt32 = std::numeric_limits<int32_t>::max();
+  bool fits = shape.num_elements() <= kMaxInt32;
+  for (int i = 0; i < shape.dims(); ++i) {
+    fits = fits && shape.dim_size(i) <= kMaxInt32;
+  }
+  if (!fits) {
     return absl::InvalidArgumentError(absl::StrCat(
-        "The GPU kernel supports at most ", std::numeric_limits<int32_t>::max(),
-        " elements, but the input has shape ", shape.DebugString()));
+        "The GPU kernel supports at most ", kMaxInt32,
+        " elements in total and in each dimension, but the input has shape ",
+        shape.DebugString()));
   }
   return absl::OkStatus();
 }
@@ -447,6 +457,12 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
     if (data_format_ == FORMAT_NCHW) {
       int32_t row_count = batch * channel;
       int32_t col_count = height * width * depth;
+      if (col_count == 1) {
+        BiasGradGPU<T>::DoColReduction(
+            context, output->flat<T>().data(),
+            output_backprop.template flat<T>().data(), batch, channel);
+        return;
+      }
       Tensor temp_grad_outputs;
       // For 'NCHW' format, we perform reduction twice: first HW, then N.
       TensorShape temp_grad_output_shape{row_count, col_count};

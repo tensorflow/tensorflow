@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/bias_op.h"
 #include "tensorflow/core/kernels/reduction_gpu_kernels.cu.h"
 #include "tensorflow/core/kernels/reduction_ops_common.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/overflow.h"
@@ -278,7 +279,7 @@ absl::Status BiasGradGPU<T>::compute(const GPUDevice& d,
           output_backprop, bias_backprop, bias_size));
     } else {
       // Round up the block count to multiple of bias_size.
-      int group_size = (config.block_count + bias_size - 1) / bias_size;
+      int group_size = div_ceil(config.block_count, bias_size);
       config.block_count = group_size * bias_size;
       if (config.thread_per_block < kWarpSize) {
         config.thread_per_block = kWarpSize;

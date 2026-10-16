@@ -328,7 +328,8 @@ class BiasAddTestBase(test.TestCase):
         self._testGradient(np_input, bias, dtype, data_format, use_gpu)
 
   def test1x1Image(self):
-    for (data_format, use_gpu) in [("NHWC", False), ("NCHW", False)]:
+    for (data_format, use_gpu) in [("NHWC", False), ("NCHW", False),
+                                   ("NCHW", True)]:
       np_input = np.arange(1.0, 129.0).reshape([4, 1, 1, 32]).astype(np.float32)
       self._testGradient(np_input,
                          np.random.rand(32).astype(np.float32), dtypes.float32,
@@ -356,12 +357,29 @@ class BiasAddTestBase(test.TestCase):
   @test_util.run_gpu_only
   def testGradientWithManyChannels(self):
     channels = 2**29
-    try:
-      with test_util.force_gpu():
-        out_backprop = array_ops.ones([1, channels], dtype=dtypes.float16)
-        bias_backprop = gen_nn_ops.bias_add_grad(
-            out_backprop, data_format="NHWC")
-        last_values = self.evaluate(bias_backprop[-4:])
-    except errors_impl.ResourceExhaustedError as e:
-      self.skipTest("Not enough GPU memory: %s" % e)
-    self.assertAllEqual(last_values, np.ones([4], dtype=np.float16))
+    for data_format, shape in (("NHWC", [1, channels]),
+                               ("NCHW", [1, channels, 1])):
+      try:
+        with test_util.force_gpu():
+          out_backprop = array_ops.ones(shape, dtype=dtypes.float16)
+          bias_backprop = gen_nn_ops.bias_add_grad(
+              out_backprop, data_format=data_format)
+          last_values = self.evaluate(bias_backprop[-4:])
+      except errors_impl.ResourceExhaustedError as e:
+        self.skipTest("Not enough GPU memory: %s" % e)
+      self.assertAllEqual(last_values, np.ones([4], dtype=np.float16))
+
+  @test_util.run_gpu_only
+  def testLargeDimsOverflowOnGpu(self):
+    if not context.executing_eagerly():
+      self.skipTest("kernel guard is reachable only in eager mode")
+    with test_util.force_gpu():
+      bias = array_ops.zeros([0], dtype=dtypes.float32)
+      large_batch = array_ops.zeros([2**31, 0], dtype=dtypes.float32)
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  "supports at most"):
+        nn_ops.bias_add(large_batch, bias, data_format="NHWC")
+      large_channel = array_ops.zeros([0, 2**31], dtype=dtypes.float32)
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  "supports at most"):
+        gen_nn_ops.bias_add_grad(large_channel, data_format="NHWC")
