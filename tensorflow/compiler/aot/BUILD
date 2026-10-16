@@ -152,6 +152,7 @@ cc_library(
         "@xla//xla/service/cpu:cpu_aot_compilation_result",
         "@xla//xla/service/cpu:cpu_compiler",
         "@xla//xla/service/cpu:cpu_executable",
+        "@xla//xla/service/cpu:executable_proto_cc",
         "@xla//xla/stream_executor:platform",
         "@xla//xla/stream_executor:platform_manager",
         "@xla//xla/util:embedded_constant_buffers",
@@ -170,6 +171,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:resource_loader",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",  # fixdeps: keep
         "@xla//xla:shape_util",
@@ -372,6 +374,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:lib",
+        "//third_party/protobuf:protobuf_lite",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status:statusor",
@@ -398,6 +401,9 @@ cc_library(
         "//tensorflow/compiler/tf2xla:xla_context",
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
 )
