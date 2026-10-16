@@ -125,5 +125,10 @@ absl::StatusOr<CollectiveKernelSpec> CreateCollectiveKernelSpec(
 absl::Status FlattenReduceScatterFusion(
     HloFusionInstruction* absl_nonnull fusion_instr);
 
+// Returns the collective instruction (all-reduce, all-gather, all-to-all, or
+// reduce-scatter) of a collective fusion computation, or nullptr if there is
+// none.
+const HloInstruction* GetCollectiveHero(const HloComputation* computation);
+
 }  // namespace xla::gpu
 #endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_COLLECTIVE_EMITTER_H_
