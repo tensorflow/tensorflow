@@ -874,6 +874,7 @@ void StreamExecutorGpuRawClient::ScheduleRemoteSend(
                   ABSL_ASSIGN_OR_RETURN(
                       std::shared_ptr<se::DeviceAddressBase> dst_base,
                       GetOrImportFabricHandle(executor, desc.buffer_handle()));
+                  usage_event.AndThen([dst_base]() {});
 
                   // Copy the source buffer into the destination buffer.
                   se::DeviceAddressBase dst(
@@ -1014,9 +1015,15 @@ StreamExecutorGpuRawClient::CrossHostReceiveBuffersInto(
           "same device");
     }
     raw_buffers.push_back(raw_buffer);
-    // `WaitForAllocation` is deferred to `async_work_runner()` below, so record
-    // the allocation event now.
+    // Obtaining the allocation event is deferred to `async_work_runner()`
+    // below, so record the allocation event now.
     MaterializeAllocationEvent(*raw_buffer);
+  }
+
+  PjRtDeviceEventRefVector transfer_dependencies;
+  transfer_dependencies.reserve(transfer_dependency_avs.size());
+  for (size_t i = 0; i < transfer_dependency_avs.size(); ++i) {
+    transfer_dependencies.push_back(transfer_dependency_avs[i].CopyRef());
   }
 
   // All buffers are on the same device.
@@ -1031,107 +1038,165 @@ StreamExecutorGpuRawClient::CrossHostReceiveBuffersInto(
         BufferSequencingEvent::Create(this->async_work_runner()));
   }
 
-  auto recv = [this, raw_buffers = std::move(raw_buffers),
-               buffer_sequencing_events, notifier = std::move(notifier),
-               local_device, stream]() mutable {
-    const uint64_t transfer_id = tsl::random::New64();
-    const std::string transfer_key =
-        absl::StrCat("pjrt_gpu_remote_recv_", transfer_id);
-
-    auto results = [&]() -> absl::StatusOr<std::vector<Future<>>> {
-      auto* executor =
-          absl::down_cast<se::gpu::GpuExecutor*>(local_device->executor());
-
-      StreamExecutorGpuCrossHostRecvDescriptor desc;
-      std::vector<PjRtCrossHostRecvDescriptors> serialized_descriptors;
-      serialized_descriptors.reserve(raw_buffers.size());
-      std::vector<std::string> rendezvous_keys;
-      rendezvous_keys.reserve(raw_buffers.size());
-
-      for (int i = 0; i < raw_buffers.size(); ++i) {
-        auto* se_raw_buffer =
-            raw_buffers[i]->down_cast<PjRtStreamExecutorRawBuffer>();
-
-        tsl::AsyncValueRef<RawSEDeviceMemory> mem =
-            se_raw_buffer->device_buffer();
-        ABSL_RETURN_IF_ERROR(WaitForAllocation(stream, *raw_buffers[i]));
-
-        // Keep mem alive until the Recv has finished executing.
-        buffer_sequencing_events[i].AndThen([mem]() {});
-
-        std::string rendezvous_key = absl::StrCat(transfer_key, "/", i);
-        rendezvous_keys.push_back(rendezvous_key);
-
-        // Export the buffer fabric handle and use it as a descriptor to be sent
-        // to the sender.
-        desc.Clear();
-        desc.set_buffer_index(i);
-        if (mem->mem().size() > 0) {
-          ABSL_ASSIGN_OR_RETURN(auto range,
-                           executor->GetAllocationRange(mem->mem().opaque()));
-          ABSL_ASSIGN_OR_RETURN(*desc.mutable_buffer_handle(),
-                           GetOrExportFabricHandle(executor, range.opaque()));
-          desc.set_buffer_offset(
-              reinterpret_cast<intptr_t>(mem->mem().opaque()) -
-              reinterpret_cast<intptr_t>(range.opaque()));
-        }
-        desc.set_rendezvous_key(rendezvous_key);
-
-        serialized_descriptors.push_back(
-            PjRtCrossHostRecvDescriptors{{desc.SerializeAsString()}});
-      }
-
-      auto state = std::make_shared<CrossHostRecvState>(
-          std::move(rendezvous_keys), kv_store_);
-
-      // Notify the receiver of the descriptors and cancellation callback. The
-      // caller is responsible for sending the descriptors to the sender and/or
-      // cancelling the transfer if needed.
-      VLOG(3) << "Notifying receiver of descriptors for cross-host recv of "
-              << serialized_descriptors.size() << " buffers";
-      notifier(PjRtCrossHostRecvState{
-          /*descriptors=*/std::move(serialized_descriptors),
-          /*cancel_notifier=*/
-          absl::bind_front(&CrossHostRecvState::NotifyCancellation, state),
-      });
-
-      return state->futures();
-    }();
-    if (!results.ok()) {
-      VLOG(2) << "CrossHostReceiveBuffersInto failed: " << results.status();
-      for (const auto& buffer_sequencing_event : buffer_sequencing_events) {
-        SetEventAsError(buffer_sequencing_event, results.status());
-      }
-      return;
-    }
-
-    CHECK_EQ(results->size(), buffer_sequencing_events.size());
-    for (int i = 0; i < buffer_sequencing_events.size(); ++i) {
-      (*results)[i].OnReady(
-          [this, local_device, stream,
-           event = buffer_sequencing_events[i]](const absl::Status& status) {
-            if (status.ok()) {
-              absl::Status s = AllocateAndRecordEvent(
-                  event, local_device, stream, "CrossHostReceiveBuffersInto");
-              if (!s.ok()) {
-                SetEventAsError(event, s);
-              }
-            } else {
-              SetEventAsError(event, status);
-            }
-          });
-    }
-
-    JoinFutures(*results).OnReady(
-        *async_work_runner(),
-        [kv_store = kv_store_, transfer_key](const absl::Status& /*status*/) {
-          if (absl::Status s = kv_store->Delete(transfer_key); !s.ok()) {
-            LOG(DFATAL) << "Failed to delete rendezvous keys for transfer "
-                        << transfer_key << ": " << s;
+  ExecuteWhenReady(
+      transfer_dependency_avs, async_work_runner(),
+      [this, raw_buffers = std::move(raw_buffers),
+       transfer_dependencies = std::move(transfer_dependencies),
+       buffer_sequencing_events, notifier = std::move(notifier), local_device,
+       stream]() mutable {
+        auto fail_recv = [&](const absl::Status& status) {
+          VLOG(2) << "CrossHostReceiveBuffersInto failed: " << status;
+          for (const auto& buffer_sequencing_event : buffer_sequencing_events) {
+            SetEventAsError(buffer_sequencing_event, status);
           }
-        });
-  };
-  async_work_runner()->Execute(std::move(recv));
+          notifier(status);
+        };
+
+        if (absl::Status status = GetErrors(transfer_dependencies);
+            !status.ok()) {
+          fail_recv(status);
+          return;
+        }
+
+        // The cross-host copy is executed on the sender's device-to-device
+        // stream once `notifier` delivers the exported fabric handles, so wait
+        // on the host for the receiver's compute stream to pass each buffer's
+        // allocation event before exporting descriptors and notifying the
+        // sender.
+        absl::InlinedVector<tsl::RCReference<tsl::AsyncValue>, 4>
+            allocation_events;
+        for (const PjRtRawBufferRef& raw_buffer : raw_buffers) {
+          auto* se_raw_buffer =
+              raw_buffer->down_cast<PjRtStreamExecutorRawBuffer>();
+          absl::StatusOr<BufferSequencingEventRef> allocation_event =
+              se_raw_buffer->device_buffer()->GetDefinitionEvent(
+                  async_work_runner(), /*nullptr_if_past=*/true);
+          if (!allocation_event.ok()) {
+            fail_recv(allocation_event.status());
+            return;
+          }
+          if (*allocation_event && !allocation_event->IsAvailable()) {
+            allocation_events.push_back(allocation_event->CopyRCRef());
+          }
+        }
+
+        auto recv = [this, raw_buffers = std::move(raw_buffers),
+                     buffer_sequencing_events =
+                         std::move(buffer_sequencing_events),
+                     notifier = std::move(notifier), local_device,
+                     stream]() mutable {
+          const uint64_t transfer_id = tsl::random::New64();
+          const std::string transfer_key =
+              absl::StrCat("pjrt_gpu_remote_recv_", transfer_id);
+
+          auto results = [&]() -> absl::StatusOr<std::vector<Future<>>> {
+            auto* executor = absl::down_cast<se::gpu::GpuExecutor*>(
+                local_device->executor());
+
+            StreamExecutorGpuCrossHostRecvDescriptor desc;
+            std::vector<PjRtCrossHostRecvDescriptors> serialized_descriptors;
+            serialized_descriptors.reserve(raw_buffers.size());
+            std::vector<std::string> rendezvous_keys;
+            rendezvous_keys.reserve(raw_buffers.size());
+
+            for (int i = 0; i < raw_buffers.size(); ++i) {
+              auto* se_raw_buffer =
+                  raw_buffers[i]->down_cast<PjRtStreamExecutorRawBuffer>();
+
+              tsl::AsyncValueRef<RawSEDeviceMemory> mem =
+                  se_raw_buffer->device_buffer();
+
+              // Keep mem alive until the Recv has finished executing.
+              buffer_sequencing_events[i].AndThen([mem]() {});
+
+              std::string rendezvous_key = absl::StrCat(transfer_key, "/", i);
+              rendezvous_keys.push_back(rendezvous_key);
+
+              // Export the buffer fabric handle and use it as a descriptor to
+              // be sent to the sender.
+              desc.Clear();
+              desc.set_buffer_index(i);
+              if (mem->mem().size() > 0) {
+                ABSL_ASSIGN_OR_RETURN(
+                    se::DeviceAddressBase range,
+                    executor->GetAllocationRange(mem->mem().opaque()));
+                ABSL_ASSIGN_OR_RETURN(
+                    *desc.mutable_buffer_handle(),
+                    GetOrExportFabricHandle(executor, range.opaque()));
+                desc.set_buffer_offset(
+                    reinterpret_cast<intptr_t>(mem->mem().opaque()) -
+                    reinterpret_cast<intptr_t>(range.opaque()));
+              }
+              desc.set_rendezvous_key(rendezvous_key);
+
+              serialized_descriptors.push_back(
+                  PjRtCrossHostRecvDescriptors{{desc.SerializeAsString()}});
+            }
+
+            auto state = std::make_shared<CrossHostRecvState>(
+                std::move(rendezvous_keys), kv_store_);
+
+            // Notify the receiver of the descriptors and cancellation callback.
+            // The caller is responsible for sending the descriptors to the
+            // sender and/or cancelling the transfer if needed.
+            VLOG(3) << "Notifying receiver of descriptors for cross-host recv "
+                       "of "
+                    << serialized_descriptors.size() << " buffers";
+            notifier(PjRtCrossHostRecvState{
+                /*descriptors=*/std::move(serialized_descriptors),
+                /*cancel_notifier=*/
+                absl::bind_front(&CrossHostRecvState::NotifyCancellation,
+                                 state),
+            });
+
+            return state->futures();
+          }();
+          if (!results.ok()) {
+            VLOG(2) << "CrossHostReceiveBuffersInto failed: "
+                    << results.status();
+            for (const auto& buffer_sequencing_event :
+                 buffer_sequencing_events) {
+              SetEventAsError(buffer_sequencing_event, results.status());
+            }
+            notifier(results.status());
+            return;
+          }
+
+          CHECK_EQ(results->size(), buffer_sequencing_events.size());
+          for (int i = 0; i < buffer_sequencing_events.size(); ++i) {
+            (*results)[i].OnReady([this, local_device, stream,
+                                   event = buffer_sequencing_events[i]](
+                                      const absl::Status& status) {
+              if (status.ok()) {
+                absl::Status s = AllocateAndRecordEvent(
+                    event, local_device, stream, "CrossHostReceiveBuffersInto");
+                if (!s.ok()) {
+                  SetEventAsError(event, s);
+                }
+              } else {
+                SetEventAsError(event, status);
+              }
+            });
+          }
+
+          JoinFutures(*results).OnReady(
+              *async_work_runner(), [kv_store = kv_store_, transfer_key](
+                                        const absl::Status& /*status*/) {
+                if (absl::Status s = kv_store->Delete(transfer_key); !s.ok()) {
+                  LOG(DFATAL) << "Failed to delete rendezvous keys for "
+                                 "transfer "
+                              << transfer_key << ": " << s;
+                }
+              });
+        };
+
+        if (allocation_events.empty()) {
+          recv();
+        } else {
+          async_work_runner()->ExecuteWhenReady(allocation_events,
+                                                std::move(recv));
+        }
+      });
 
   PjRtDeviceEventRefVector definition_events;
   for (const auto& buffer_sequencing_event : buffer_sequencing_events) {
