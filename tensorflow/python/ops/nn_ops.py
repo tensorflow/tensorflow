@@ -6997,30 +6997,27 @@ def flash_attention(
     `query`.
 
   Raises:
-    ValueError: If the inputs are not rank 4, their static shapes don't match,
-      or `head_dim` is not statically known.
-    InvalidArgumentError: If `dropout_rate` is not in `[0, 1)`. Raised by the
-      op, when it runs (or is compiled by XLA).
+    ValueError: If `scale` is `None` and `head_dim` is not statically known.
+      Also raised by the op's shape inference, when building a graph, if the
+      inputs are not rank 4 or their static shapes don't match.
+    InvalidArgumentError: If the inputs are not rank 4, their shapes don't
+      match, or `dropout_rate` is not in `[0, 1)`. Raised by the op when it
+      runs (or is compiled by XLA).
   """
   with ops.name_scope(name, "flash_attention", [query, key, value]):
     query = ops.convert_to_tensor(query, name="query")
     key = ops.convert_to_tensor(key, dtype=query.dtype, name="key")
     value = ops.convert_to_tensor(value, dtype=query.dtype, name="value")
-    for t in (query, key, value):
-      if t.shape.rank is not None and t.shape.rank != 4:
-        raise ValueError(
-            "`query`, `key` and `value` must be rank 4 "
-            "([batch, seq, num_heads, head_dim]). Received: "
-            f"query.shape={query.shape}, key.shape={key.shape}, "
-            f"value.shape={value.shape}."
-        )
-    query.shape[3:].assert_is_compatible_with(key.shape[3:])
-    query.shape[2:3].assert_is_compatible_with(key.shape[2:3])
-    key.shape[:3].assert_is_compatible_with(value.shape[:3])
-    query.shape[:1].assert_is_compatible_with(key.shape[:1])
+    # Ranks and shapes are checked by the op (its shape function and kernels),
+    # which also covers callers of the raw op.
 
     if scale is None:
-      head_dim = tensor_shape.dimension_value(query.shape[-1])
+      # A scalar `query` has no head dim; the op rejects it.
+      head_dim = (
+          1
+          if query.shape.rank == 0
+          else tensor_shape.dimension_value(query.shape[-1])
+      )
       if head_dim is None:
         raise ValueError(
             "`scale` must be given if the head dim of `query` is not "

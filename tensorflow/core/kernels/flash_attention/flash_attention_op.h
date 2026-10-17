@@ -51,9 +51,11 @@ inline absl::Status FeatureSizeError(int D_qk, int D_v) {
       "feature size or use more heads");
 }
 
-// The functors and the FlashAttention-2 API take 32-bit dimensions, so larger
-// ones would silently truncate. The kernels also index (batch, head) pairs
-// with a single int.
+// The functors and the FlashAttention-2 API take 32-bit, non-negative
+// dimensions, so larger ones would silently truncate. The kernels also index
+// (batch, head) pairs with a single int. Shapes built from these dimensions
+// can still exceed the int64 element limit; build them with
+// TensorShape::BuildTensorShape.
 inline absl::Status CheckDimsFitInt32(int64_t B, int64_t H, int64_t S_q,
                                       int64_t S_kv, int64_t D_qk, int64_t D_v) {
   constexpr int64_t kMax = std::numeric_limits<int32_t>::max();
@@ -63,6 +65,10 @@ inline absl::Status CheckDimsFitInt32(int64_t B, int64_t H, int64_t S_q,
       {"batch", B},   {"heads", H},   {"batch * heads", BH}, {"S_q", S_q},
       {"S_kv", S_kv}, {"D_qk", D_qk}, {"D_v", D_v}};
   for (const auto &[name, size] : dims) {
+    if (size < 0) {
+      return errors::InvalidArgument("FlashAttention dimension ", name, "=",
+                                     size, " is negative");
+    }
     if (size > kMax) {
       return errors::InvalidArgument("FlashAttention dimension ", name, "=",
                                      size, " exceeds the int32 limit (", kMax,
