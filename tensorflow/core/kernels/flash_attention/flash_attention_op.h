@@ -58,7 +58,7 @@ inline absl::Status FeatureSizeError(int D_qk, int D_v) {
 // TensorShape::BuildTensorShape.
 inline absl::Status CheckDimsFitInt32(int64_t B, int64_t H, int64_t S_q,
                                       int64_t S_kv, int64_t D_qk, int64_t D_v) {
-  constexpr int64_t kMax = std::numeric_limits<int32_t>::max();
+  constexpr int64_t kMax = std::numeric_limits<int32_t>::max() - 256;
   // B * H, saturated so it can't overflow int64.
   const int64_t BH = (H != 0 && B > kMax / H) ? kMax + 1 : B * H;
   const std::pair<const char *, int64_t> dims[] = {
