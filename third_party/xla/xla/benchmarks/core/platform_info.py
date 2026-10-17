@@ -83,6 +83,8 @@ class PlatformInfo:
       between the start of a matmul and the result being available.
     default_p_state: The default P-state for the TPU platform.
     default_vmem_limit_kib: The default VMEM limit in KiB for the TPU platform.
+    num_alus: The number of ALUs on the TPU platform.
+    num_xlus: The number of XLUs on the TPU platform.
   """
 
   chip_version: pltpu.ChipVersion
@@ -96,6 +98,8 @@ class PlatformInfo:
   matmul_latency_cycles_by_dtype: DtypeDict[int]
   default_p_state: int | None
   default_vmem_limit_kib: int
+  num_alus: int
+  num_xlus: int
   _tpu_info: pltpu.TpuInfo = dataclasses.field(init=False, repr=False)
 
   def __post_init__(self):
@@ -261,6 +265,8 @@ _PLATFORM_INFOS = (
         }),
         default_p_state=None,
         default_vmem_limit_kib=16 * 1024,
+        num_alus=4,
+        num_xlus=3,
     ),
     PlatformInfo(
         chip_version=pltpu.ChipVersion.TPU_V5P,
@@ -304,6 +310,8 @@ _PLATFORM_INFOS = (
         }),
         default_p_state=None,
         default_vmem_limit_kib=16 * 1024,
+        num_alus=4,
+        num_xlus=3,
     ),
     PlatformInfo(
         chip_version=pltpu.ChipVersion.TPU_V6E,
@@ -347,6 +355,8 @@ _PLATFORM_INFOS = (
         }),
         default_p_state=None,
         default_vmem_limit_kib=32 * 1024,
+        num_alus=4,
+        num_xlus=2,
     ),
     PlatformInfo(
         chip_version=pltpu.ChipVersion.TPU_7X,
@@ -384,6 +394,8 @@ _PLATFORM_INFOS = (
         }),
         default_p_state=3,
         default_vmem_limit_kib=32 * 1024,
+        num_alus=4,
+        num_xlus=2,
     ),
     PlatformInfo(
         chip_version=pltpu.ChipVersion.TPU_8I,
@@ -422,6 +434,8 @@ _PLATFORM_INFOS = (
         }),
         default_p_state=3,
         default_vmem_limit_kib=96 * 1024,
+        num_alus=4,
+        num_xlus=2,
     ),
     PlatformInfo(
         chip_version=pltpu.ChipVersion.TPU_8T,
@@ -462,6 +476,8 @@ _PLATFORM_INFOS = (
         }),
         default_p_state=1,
         default_vmem_limit_kib=32 * 1024,
+        num_alus=3,
+        num_xlus=3,
     ),
 )
 
