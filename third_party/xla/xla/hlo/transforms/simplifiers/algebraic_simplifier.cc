@@ -5376,7 +5376,8 @@ absl::Status AlgebraicSimplifierVisitor::HandleLog(HloInstruction* log) {
 
   // ln(pow(A,B)) => B*ln(abs(A))
   // or B*ln(A) if A is complex.
-  if (Match(log, m::Log(m::Power(m::Op(&a), m::Op(&b))))) {
+  if (options_.enable_fast_math() &&
+      Match(log, m::Log(m::Power(m::Op(&a), m::Op(&b))))) {
     auto abs_a = ShapeUtil::ElementIsComplex(a->shape())
                      ? a
                      : log->AddInstruction(HloInstruction::CreateUnary(
