@@ -193,7 +193,7 @@ class FFTBase : public OpKernel {
         OP_REQUIRES(
             ctx,
             // We pass through empty tensors, so special case them here.
-            input_shape.dim_size(input_index) == 0 ||
+            input_shape.num_elements() == 0 ||
                 input_shape.dim_size(input_index) >= min_input_dim_length,
             absl::InvalidArgumentError(absl::StrCat(
                 "Input dimension ", input_index,
@@ -270,18 +270,24 @@ class FFTNBase : public OpKernel {
     const Tensor& fft_length = ctx->input(1);
     const Tensor& axes = ctx->input(2);
     unsigned int input_rank = input_shape.dims();
+    OP_REQUIRES(ctx, axes.shape().dims() == 1,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "axes must be 1D, but got: ", axes.shape().DebugString())));
     const int fft_rank = axes.dim_size(0);
-    std::vector<uint64_t> fft_shape(fft_rank);
-    std::vector<int32_t> axes_shape(fft_rank);  // List of axes to transform.
-
+    OP_REQUIRES(ctx, fft_rank > 0,
+                absl::InvalidArgumentError("axes must not be empty."));
     OP_REQUIRES(ctx, input_rank >= fft_rank,
                 absl::InvalidArgumentError(
                     absl::StrCat("Input must have rank of at least ", fft_rank,
                                  " but got: ", input_shape.DebugString())));
+    // Allocate only after fft_rank is validated against the bounded input
+    // rank, so a huge axes tensor cannot trigger a giant allocation.
+    std::vector<uint64_t> fft_shape(fft_rank);
+    std::vector<int32_t> axes_shape(fft_rank);  // List of axes to transform.
+
     auto axes_as_vec = axes.vec<int32_t>();
     // TODO(b/295964813): fftn() ops now doesn't work for arbitrary axes.
     for (int i = 0; i < fft_rank; ++i) {
-      axes_shape[i] = axes_as_vec(i) % input_rank;
       if (axes_as_vec(i) < 0) {
         axes_shape[i] = axes_as_vec(i) + input_rank;
       } else {
@@ -297,13 +303,15 @@ class FFTNBase : public OpKernel {
                     "The last axis to perform transform on must be -1."));
 
     // In R2C or C2R mode, we use a second input to specify the FFT length
-    // instead of inferring it from the input shape.
+    // instead of inferring it from the input shape. Note the error message
+    // uses DebugString() rather than dim_size(0) so a scalar fft_length does
+    // not hit a fatal DCHECK while building the message.
     OP_REQUIRES(ctx,
                 fft_length.shape().dims() == 1 &&
                     fft_length.shape().dim_size(0) == fft_rank,
                 absl::InvalidArgumentError(absl::StrCat(
                     "fft_length must have shape [", fft_rank,
-                    "], but got: ", fft_length.shape().dim_size(0), ".")));
+                    "], but got: ", fft_length.shape().DebugString(), ".")));
     auto fft_length_as_vec = fft_length.vec<int32_t>();
     for (int i = 0; i < fft_rank; ++i) {
       OP_REQUIRES(ctx, fft_length_as_vec(i) >= 0,
@@ -311,15 +319,15 @@ class FFTNBase : public OpKernel {
                       "fft_length[", i,
                       "] must >= 0, but got: ", fft_length_as_vec(i))));
       fft_shape[i] = fft_length_as_vec(i);
+      auto input_index = input_rank - fft_rank + i;
       if (IsReal()) {
         bool inner_most = (i == fft_rank - 1);
         uint64_t min_input_dim_length =
             !IsForward() && inner_most ? fft_shape[i] / 2 + 1 : fft_shape[i];
-        auto input_index = input_rank - fft_rank + i;
         OP_REQUIRES(
             ctx,
             // We pass through empty tensors, so special case them here.
-            input_shape.dim_size(input_index) == 0 ||
+            input_shape.num_elements() == 0 ||
                 input_shape.dim_size(input_index) >= min_input_dim_length,
             absl::InvalidArgumentError(absl::StrCat(
                 "Input dimension ", input_index,
@@ -330,7 +338,16 @@ class FFTNBase : public OpKernel {
                            : fft_shape[i];
         output_shape.set_dim(output_shape.dims() - fft_rank + i, dim);
       } else {
-        output_shape.set_dim(output_shape.dims() - fft_rank + i, fft_shape[i]);
+        OP_REQUIRES(
+            ctx,
+            input_shape.num_elements() == 0 ||
+                input_shape.dim_size(input_index) >= fft_shape[i],
+            absl::InvalidArgumentError(absl::StrCat(
+                "Input dimension ", input_index,
+                " must have length of at least ", fft_shape[i],
+                " but got: ", input_shape.dim_size(input_index))));
+        uint64_t dim = fft_shape[i];
+        output_shape.set_dim(output_shape.dims() - fft_rank + i, dim);
       }
     }
 
@@ -676,8 +693,10 @@ class FFTGPUBase : public FFTBase {
     OP_REQUIRES(ctx, stream, absl::InternalError("No GPU stream available."));
 
     // See the CPU kernel: an empty input transforms to an all-zero output,
-    // which is sized from `fft_length` and can be non-empty.
-    if (in.NumElements() == 0) {
+    // which is sized from `fft_length` and can be non-empty. A zero
+    // fft_length sizes the output to empty instead, and cuFFT cannot plan
+    // a zero-length transform, so bail out before touching it.
+    if (in.NumElements() == 0 || out->NumElements() == 0) {
       if (out->NumElements() > 0) {
         stream_executor::DeviceAddressBase out_bytes(out->data(),
                                                      out->TotalBytes());
@@ -877,8 +896,10 @@ class FFTNGPUBase : public FFTNBase {
     OP_REQUIRES(ctx, stream, absl::InternalError("No GPU stream available."));
 
     // See the CPU kernel: an empty input transforms to an all-zero output,
-    // which is sized from `fft_length` and can be non-empty.
-    if (in.NumElements() == 0) {
+    // which is sized from `fft_length` and can be non-empty. A zero
+    // fft_length sizes the output to empty instead, and cuFFT cannot plan
+    // a zero-length transform, so bail out before touching it.
+    if (in.NumElements() == 0 || out->NumElements() == 0) {
       if (out->NumElements() > 0) {
         stream_executor::DeviceAddressBase out_bytes(out->data(),
                                                      out->TotalBytes());
