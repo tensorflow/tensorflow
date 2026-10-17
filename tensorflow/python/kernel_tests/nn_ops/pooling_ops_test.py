@@ -834,6 +834,118 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
             nn_ops.max_pool(t, ksize=[1, 1, 2, 1], strides=1, padding="VALID"))
 
   @test_util.run_in_graph_and_eager_modes
+  def testMaxPool1DOversizedWindowReturnsEmpty(self):
+    # GitHub issue 125509: oversized VALID window yields an empty tensor.
+    input_data = np.array([[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]],
+                          dtype=np.float32)
+    devices = (
+        ("/CPU:0", "/GPU:0") if test_util.is_gpu_available() else ("/CPU:0",)
+    )
+    for device in devices:
+      with ops.device(device):
+        with self.cached_session():
+          if context.executing_eagerly():
+            x = constant_op.constant(input_data)
+          else:
+            # Unknown temporal size avoids graph-mode shape inference rejection.
+            x = array_ops.placeholder(dtypes.float32, shape=[1, None, 3])
+          y = nn_ops.max_pool1d(x, ksize=3, strides=1, padding="VALID")
+          if context.executing_eagerly():
+            values = self.evaluate(y)
+          else:
+            values = y.eval(feed_dict={x: input_data})
+          self.assertEqual(values.shape, (1, 0, 3))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testMaxPoolOversizedWindowReturnsEmpty(self):
+    # Same oversized-window case as MaxPool1D expand (NHWC H=2, window_H=3).
+    input_data = np.ones([1, 2, 1, 3], dtype=np.float32)
+    devices = (
+        ("/CPU:0", "/GPU:0") if test_util.is_gpu_available() else ("/CPU:0",)
+    )
+    for device in devices:
+      with ops.device(device):
+        with self.cached_session():
+          if context.executing_eagerly():
+            x = constant_op.constant(input_data)
+          else:
+            x = array_ops.placeholder(dtypes.float32, shape=[1, None, None, 3])
+          y = nn_ops.max_pool(
+              x, ksize=[1, 3, 1, 1], strides=[1, 1, 1, 1], padding="VALID"
+          )
+          if context.executing_eagerly():
+            values = self.evaluate(y)
+          else:
+            values = y.eval(feed_dict={x: input_data})
+          self.assertEqual(values.shape, (1, 0, 1, 3))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testMaxPoolOversizedWindowWidthCollapseReturnsEmpty(self):
+    input_data = np.ones([1, 1, 2, 3], dtype=np.float32)
+    devices = (
+        ("/CPU:0", "/GPU:0") if test_util.is_gpu_available() else ("/CPU:0",)
+    )
+    for device in devices:
+      with ops.device(device):
+        with self.cached_session():
+          if context.executing_eagerly():
+            x = constant_op.constant(input_data)
+          else:
+            x = array_ops.placeholder(dtypes.float32, shape=[1, None, None, 3])
+          y = nn_ops.max_pool(
+              x, ksize=[1, 1, 3, 1], strides=[1, 1, 1, 1], padding="VALID"
+          )
+          if context.executing_eagerly():
+            values = self.evaluate(y)
+          else:
+            values = y.eval(feed_dict={x: input_data})
+          self.assertEqual(values.shape, (1, 1, 0, 3))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testMaxPoolWithArgmaxOversizedWindowReturnsEmpty(self):
+    input_data = np.ones([1, 2, 2, 3], dtype=np.float32)
+    devices = (
+        ("/CPU:0", "/GPU:0") if test_util.is_gpu_available() else ("/CPU:0",)
+    )
+    for device in devices:
+      with ops.device(device):
+        with self.cached_session() as sess:
+          if context.executing_eagerly():
+            x = constant_op.constant(input_data)
+          else:
+            x = array_ops.placeholder(dtypes.float32, shape=[1, None, None, 3])
+          out, argmax = gen_nn_ops.max_pool_with_argmax(
+              input=x,
+              ksize=[1, 3, 3, 1],
+              strides=[1, 1, 1, 1],
+              padding="VALID",
+              Targmax=dtypes.int64,
+          )
+          if context.executing_eagerly():
+            out_val, argmax_val = self.evaluate([out, argmax])
+          else:
+            out_val, argmax_val = sess.run(
+                [out, argmax], feed_dict={x: input_data}
+            )
+          self.assertEqual(out_val.shape, (1, 0, 0, 3))
+          self.assertEqual(argmax_val.shape, (1, 0, 0, 3))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testMaxPoolEmptySpatialDimReturnsEmpty(self):
+    x = array_ops.zeros([1, 0, 8, 8], dtype=dtypes.float32)
+    devices = (
+        ("/CPU:0", "/GPU:0") if test_util.is_gpu_available() else ("/CPU:0",)
+    )
+    for device in devices:
+      with ops.device(device):
+        for pool_fn in (nn_ops.max_pool, gen_nn_ops.max_pool_v2):
+          y = pool_fn(
+              x, ksize=[1, 1, 1, 1], strides=[1, 1, 1, 1], padding="SAME"
+          )
+          values = self.evaluate(y)
+          self.assertEqual(values.shape, (1, 0, 8, 8))
+
+  @test_util.run_in_graph_and_eager_modes
   def testMaxPoolWithArgmaxKsizeOverflow(self):
     with self.assertRaisesRegex(
         (ValueError, errors_impl.InvalidArgumentError),

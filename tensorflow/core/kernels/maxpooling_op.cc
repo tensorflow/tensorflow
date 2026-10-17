@@ -871,6 +871,9 @@ class MaxPoolingNoMaskOp : public OpKernel {
                            params.out_width, params.depth});
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, out_shape, &output));
+    if (out_shape.num_elements() == 0) {
+      return;
+    }
 
     LaunchMaxPoolingNoMask<Device, T>::launch(context, params, tensor_in,
                                               output);
@@ -961,6 +964,9 @@ class MaxPoolingNoMaskV2Op : public OpKernel {
                            params.out_width, params.depth});
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, out_shape, &output));
+    if (out_shape.num_elements() == 0) {
+      return;
+    }
 
     LaunchMaxPoolingNoMask<Device, T>::launch(context, params, tensor_in,
                                               output);
@@ -1042,6 +1048,9 @@ class MaxPoolingWithArgmaxOp : public OpKernel {
     OP_REQUIRES_OK(context, context->allocate_output(0, out_shape, &output));
     Tensor* argmax = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(1, out_shape, &argmax));
+    if (out_shape.num_elements() == 0) {
+      return;
+    }
 
     LaunchMaxPoolingWithArgmax<Device, T, Targmax>::launch(
         context, params, tensor_in, output, argmax, propagate_nans_,
@@ -1467,6 +1476,12 @@ class MaxPoolingNoMaskV2Op<GPUDevice, T> : public OpKernel {
         context, ShapeFromFormatWithStatus(data_format_, params.tensor_in_batch,
                                            params.out_height, params.out_width,
                                            params.depth, &out_shape));
+    // Degenerate pooling output should return an empty tensor.
+    if (out_shape.num_elements() == 0) {
+      Tensor* output = nullptr;
+      OP_REQUIRES_OK(context, context->allocate_output(0, out_shape, &output));
+      return;
+    }
     if (data_format_ == FORMAT_NCHW) {
       DnnPoolingOp<T>::Compute(context, se::dnn::PoolingMode::kMaximum, ksize,
                                stride, padding_, explicit_paddings_,
