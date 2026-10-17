@@ -866,6 +866,39 @@ class Conv2DTest(parameterized.TestCase, test.TestCase):
         op_name=op_name,
     )
 
+  @test_util.run_in_graph_and_eager_modes
+  def testConv2DEmptyBatchOutputShape(self):
+    # With an empty batch, the output still has the shape of the convolution's
+    # output, which differs from the input's here.
+    output = nn_ops.conv2d(
+        array_ops.zeros([0, 4, 4, 3]),
+        array_ops.zeros([3, 3, 3, 5]),
+        strides=[1, 1, 1, 1],
+        padding="VALID")
+    self.assertEqual(self.evaluate(output).shape, (0, 2, 2, 5))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConv2DBackpropEmptyOutBackprop(self):
+    # A filter larger than the input gives an empty out_backprop. The forward
+    # op rejects that configuration, but the gradient ops can be called with
+    # it directly, and then the gradients are zero.
+    for strides in ([1, 1, 1, 1], [1, 2, 2, 1]):
+      out_backprop = array_ops.zeros([2, 0, 0, 2])
+      input_grad = gen_nn_ops.conv2d_backprop_input(
+          input_sizes=[2, 4, 4, 3],
+          filter=array_ops.ones([5, 5, 3, 2]),
+          out_backprop=out_backprop,
+          strides=strides,
+          padding="VALID")
+      filter_grad = gen_nn_ops.conv2d_backprop_filter(
+          input=array_ops.ones([2, 4, 4, 3]),
+          filter_sizes=[5, 5, 3, 2],
+          out_backprop=out_backprop,
+          strides=strides,
+          padding="VALID")
+      self.assertAllEqual(np.zeros([2, 4, 4, 3]), self.evaluate(input_grad))
+      self.assertAllEqual(np.zeros([5, 5, 3, 2]), self.evaluate(filter_grad))
+
   @parameterized.named_parameters(*TEST_PARAMS)
   @test_util.run_in_graph_and_eager_modes
   def testConv2D2x2Filter(self, data_format, dtype, use_gpu, op_name):
