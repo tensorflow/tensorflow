@@ -36,6 +36,17 @@ class MockConvertedCall(object):
 
 
 class CallTreesTest(converter_testing.TestCase):
+  """Tests for call_trees converter module.
+  
+  Validates that function calls are properly transformed and tracked,
+  including handling of arguments, keyword arguments, star args, and
+  special cases like method calls and debugger integration.
+  """
+
+  def setUp(self):
+    """Reset warning flags before each test."""
+    super(CallTreesTest, self).setUp()
+    call_trees.python_random_warned = False
 
   def _transform_with_mock(self, f):
     mock = MockConvertedCall()
@@ -45,7 +56,11 @@ class CallTreesTest(converter_testing.TestCase):
     return tr, mock
 
   def test_function_no_args(self):
-
+    """Test transformation of function with no arguments.
+    
+    Verifies that a simple function call without arguments is properly
+    wrapped and executed through converted_call.
+    """
     def f(f):
       return f() + 20
 
@@ -55,7 +70,11 @@ class CallTreesTest(converter_testing.TestCase):
     self.assertListEqual(mock.calls, [((), None)])
 
   def test_function_with_expression_in_argument(self):
-
+    """Test function call with expression evaluation in arguments.
+    
+    Verifies that nested function calls within arguments are properly
+    evaluated and converted, maintaining correct execution order.
+    """
     def f(f, g):
       return f(g() + 20) + 4000
 
@@ -68,7 +87,11 @@ class CallTreesTest(converter_testing.TestCase):
     ])
 
   def test_function_with_call_in_argument(self):
-
+    """Test function call with another function call as argument.
+    
+    Verifies that nested function calls are tracked separately in
+    converted_call invocations, ensuring proper call ordering.
+    """
     def f(f, g):
       return f(g()) + 300
 
@@ -81,7 +104,11 @@ class CallTreesTest(converter_testing.TestCase):
     ])
 
   def test_function_chaining(self):
-
+    """Test chained method calls on function return values.
+    
+    Verifies that methods called on the return value of a function
+    are properly handled and tracked as separate conversions.
+    """
     def get_one():
       return 1
 
@@ -97,7 +124,11 @@ class CallTreesTest(converter_testing.TestCase):
     ])
 
   def test_function_with_single_arg(self):
-
+    """Test function call with a single argument.
+    
+    Verifies that positional arguments are correctly passed through
+    converted_call as a tuple.
+    """
     def f(f, a):
       return f(a) + 20
 
@@ -107,7 +138,11 @@ class CallTreesTest(converter_testing.TestCase):
     self.assertListEqual(mock.calls, [((1,), None)])
 
   def test_function_with_args_only(self):
-
+    """Test function call with multiple positional arguments.
+    
+    Verifies that multiple positional arguments are correctly converted
+    and passed as a tuple to converted_call.
+    """
     def f(f, a, b):
       return f(a, b) + 300
 
@@ -117,7 +152,11 @@ class CallTreesTest(converter_testing.TestCase):
     self.assertListEqual(mock.calls, [((1, 20), None)])
 
   def test_function_with_kwarg(self):
-
+    """Test function call with mixed positional and keyword arguments.
+    
+    Verifies that keyword arguments are properly separated and passed
+    as a dictionary to converted_call.
+    """
     def f(f, a, b):
       return f(a, c=b) + 300
 
@@ -127,7 +166,11 @@ class CallTreesTest(converter_testing.TestCase):
     self.assertListEqual(mock.calls, [((1,), {'c': 20})])
 
   def test_function_with_kwargs_starargs(self):
-
+    """Test function call with all argument types (*args and **kwargs).
+    
+    Verifies that star arguments and star keyword arguments are properly
+    unpacked and converted to flat tuples and dictionaries.
+    """
     def f(f, a, *args, **kwargs):
       return f(a, *args, **kwargs) + 5
 
@@ -141,7 +184,11 @@ class CallTreesTest(converter_testing.TestCase):
     self.assertListEqual(mock.calls, [((1, 2, 3), {'b': 4, 'c': 5})])
 
   def test_function_with_starargs_only(self):
-
+    """Test function call with unpacked list as star arguments.
+    
+    Verifies that list unpacking with *args is correctly flattened
+    into the arguments tuple.
+    """
     def g(*args):
       return sum(args)
 
@@ -155,7 +202,11 @@ class CallTreesTest(converter_testing.TestCase):
     self.assertListEqual(mock.calls, [((1, 20, 300), None)])
 
   def test_function_with_starargs_mixed(self):
-
+    """Test function call with mixed positional and unpacked arguments.
+    
+    Verifies that mixing regular positional args with unpacked star args
+    is handled correctly, maintaining proper argument order.
+    """
     def g(a, b, c, d):
       return a * 1000 + b * 100 + c * 10 + d
 
@@ -170,7 +221,11 @@ class CallTreesTest(converter_testing.TestCase):
     self.assertListEqual(mock.calls, [((1, 2, 3, 4), None)])
 
   def test_function_with_kwargs_keywords(self):
-
+    """Test function call with unpacked dictionary as kwargs.
+    
+    Verifies that dictionary unpacking with **kwargs is properly merged
+    with explicit keyword arguments in the kwargs dictionary.
+    """
     def f(f, a, b, **kwargs):
       return f(a, b=b, **kwargs) + 5
 
@@ -181,7 +236,11 @@ class CallTreesTest(converter_testing.TestCase):
     self.assertListEqual(mock.calls, [((1,), {'b': 2, 'c': 3})])
 
   def test_function_with_multiple_kwargs(self):
-
+    """Test function call with multiple unpacked keyword dictionaries.
+    
+    Verifies that multiple **kwargs expansions are merged correctly,
+    with proper precedence for duplicate keys.
+    """
     def f(f, a, b, c, kwargs1, kwargs2):
       return f(a, b=b, **kwargs1, c=c, **kwargs2) + 5
 
@@ -197,7 +256,11 @@ class CallTreesTest(converter_testing.TestCase):
     })])
 
   def test_function_with_call_in_lambda_argument(self):
-
+    """Test lambda function containing calls as argument.
+    
+    Verifies that lambda functions containing nested function calls
+    are properly handled by the converter.
+    """
     def h(l, a):
       return l(a) + 4000
 
@@ -212,7 +275,11 @@ class CallTreesTest(converter_testing.TestCase):
     self.assertEqual(tr(h, g, 1, *(20, 300)), 4321)
 
   def test_debugger_set_trace(self):
-
+    """Test that debugger functions are not converted.
+    
+    Verifies that pdb.set_trace() and similar debugger functions
+    bypass conversion and execute directly.
+    """
     tracking_list = []
 
     pdb = types.ModuleType('fake_pdb')
@@ -227,7 +294,11 @@ class CallTreesTest(converter_testing.TestCase):
     self.assertListEqual(tracking_list, [1])
 
   def test_class_method(self):
-
+    """Test transformation of unbound class methods.
+    
+    Verifies that class methods are properly converted when accessed
+    through the class (unbound method form).
+    """
     class TestClass(object):
 
       def other_method(self, x):
@@ -243,7 +314,11 @@ class CallTreesTest(converter_testing.TestCase):
     self.assertListEqual(mock.calls, [((1,), None)])
 
   def test_object_method(self):
-
+    """Test transformation of bound instance methods.
+    
+    Verifies that instance methods are properly converted when accessed
+    through an object instance (bound method form).
+    """
     class TestClass(object):
 
       def other_method(self, x):
@@ -259,10 +334,11 @@ class CallTreesTest(converter_testing.TestCase):
     self.assertListEqual(mock.calls, [((1,), None)])
 
   def test_python_random_warning(self):
-    """Test that using Python random module triggers a warning."""
-    # Reset the warning flag for testing
-    call_trees.python_random_warned = False
-
+    """Test that using Python random.randint triggers a warning.
+    
+    Verifies that using Python's random.randint() inside a tf.function
+    triggers a warning to guide users toward tf.random alternatives.
+    """
     def f():
       return random.randint(1, 10)
 
@@ -282,10 +358,11 @@ class CallTreesTest(converter_testing.TestCase):
     self.assertLessEqual(result, 10)
 
   def test_python_random_randrange_warning(self):
-    """Test that using Python random.randrange triggers a warning."""
-    # Reset the warning flag for testing
-    call_trees.python_random_warned = False
-
+    """Test that using Python random.randrange triggers a warning.
+    
+    Verifies that using Python's random.randrange() inside a tf.function
+    triggers a warning to guide users toward tf.random alternatives.
+    """
     def f():
       return random.randrange(0, 100)
 
@@ -305,10 +382,11 @@ class CallTreesTest(converter_testing.TestCase):
     self.assertLess(result, 100)
 
   def test_python_random_choice_warning(self):
-    """Test that using Python random.choice triggers a warning."""
-    # Reset the warning flag for testing
-    call_trees.python_random_warned = False
-
+    """Test that using Python random.choice triggers a warning.
+    
+    Verifies that using Python's random.choice() inside a tf.function
+    triggers a warning to guide users toward tf.random alternatives.
+    """
     def f():
       return random.choice([1, 2, 3])
 
