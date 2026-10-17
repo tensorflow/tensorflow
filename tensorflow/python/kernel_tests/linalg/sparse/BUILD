@@ -48,6 +48,7 @@ cuda_py_strict_test(
     ],
     deps = [
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:sparse_tensor",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:math_ops",

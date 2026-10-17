@@ -17,7 +17,9 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include <cstdint>
+#include <limits>
+
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/gpu_device_array.h"
@@ -25,9 +27,11 @@ limitations under the License.
 #include "tensorflow/core/kernels/gpu_prim.h"
 #include "tensorflow/core/kernels/sparse/kernels.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/cuda_sparse.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 
 namespace tensorflow {
 
@@ -41,7 +45,10 @@ struct StridedDataReader {
       : begin_(begin), stride_(stride) {}
 
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE int operator()(int idx) const {
-    return static_cast<int>(ldg(begin_ + idx * stride_));
+    const int64_t value = ldg(begin_ + idx * stride_);
+    return value < 0 || value > std::numeric_limits<int>::max()
+               ? -1
+               : static_cast<int>(value);
   }
 
   const int64_t* begin_;
@@ -132,38 +139,51 @@ absl::Status CSRSparseMatrixToCOOSparseMatrix<GPUDevice>::operator()(
   return gpu_sparse.Csr2coo(csr_row_ptr.data(), nnz, m, coo_row_ind.data());
 }
 
+namespace {
+__device__ inline int ClampIndex(int64_t index, int64_t limit) {
+  if (limit <= 0) return 0;
+  constexpr int64_t kMaxLimit =
+      static_cast<int64_t>(std::numeric_limits<int32_t>::max()) + 1;
+  if (limit > kMaxLimit) limit = kMaxLimit;
+  return static_cast<int>(index < 0 ? 0 : (index < limit ? index : limit - 1));
+}
+}  // namespace
+
 template <int stride>
 __global__ void SparseTensorToCOOMatrixKernel(const int64_t* indices,
                                               int* coo_rows_out,
-                                              int* coo_cols_out, int size) {
+                                              int* coo_cols_out, int64_t size,
+                                              int64_t rows, int64_t cols) {
   const int offset = (stride == 3) ? 1 : 0;
-  GPU_1D_KERNEL_LOOP(i, size) {
-    coo_rows_out[i] = static_cast<int>(ldg(indices + i * stride + offset));
-    coo_cols_out[i] = static_cast<int>(ldg(indices + i * stride + offset + 1));
+  for (int64_t i : GpuGridRangeX<int64_t>(size)) {
+    const int64_t* index = indices + i * stride + offset;
+    coo_rows_out[i] = ClampIndex(ldg(index), rows);
+    coo_cols_out[i] = ClampIndex(ldg(index + 1), cols);
   }
 }
 
 template <>
-void SparseTensorToCOOSparseMatrix<GPUDevice>::operator()(
+absl::Status SparseTensorToCOOSparseMatrix<GPUDevice>::operator()(
     const GPUDevice& d, TTypes<int64_t>::ConstVec host_dense_shape,
     TTypes<int64_t>::ConstMatrix indices, TTypes<int>::Vec coo_row_ind,
     TTypes<int>::Vec coo_col_ind) {
   const int stride = host_dense_shape.size();
   DCHECK(stride == 2 || stride == 3);
   DCHECK_EQ(stride, indices.dimension(1));
-  const int size = coo_row_ind.dimension(0);
-  GpuLaunchConfig config = GetGpuLaunchConfig(size, d);
+  const int64_t size = coo_row_ind.dimension(0);
+  const int64_t rows = host_dense_shape(stride - 2);
+  const int64_t cols = host_dense_shape(stride - 1);
+  TF_ASSIGN_OR_RETURN(GpuLaunchConfig64 config, GetGpuLaunchConfig64(size, d));
   if (stride == 2) {
-    TF_CHECK_OK(GpuLaunchKernel(SparseTensorToCOOMatrixKernel<2>,
-                                config.block_count, config.thread_per_block, 0,
-                                d.stream(), indices.data(), coo_row_ind.data(),
-                                coo_col_ind.data(), size));
-  } else {
-    TF_CHECK_OK(GpuLaunchKernel(SparseTensorToCOOMatrixKernel<3>,
-                                config.block_count, config.thread_per_block, 0,
-                                d.stream(), indices.data(), coo_row_ind.data(),
-                                coo_col_ind.data(), size));
+    return GpuLaunchKernel(SparseTensorToCOOMatrixKernel<2>, config.block_count,
+                           config.thread_per_block, 0, d.stream(),
+                           indices.data(), coo_row_ind.data(),
+                           coo_col_ind.data(), size, rows, cols);
   }
+  return GpuLaunchKernel(SparseTensorToCOOMatrixKernel<3>, config.block_count,
+                         config.thread_per_block, 0, d.stream(), indices.data(),
+                         coo_row_ind.data(), coo_col_ind.data(), size, rows,
+                         cols);
 }
 
 __global__ void COOMatrixToSparseTensorKernel2D(const int* coo_rows,
