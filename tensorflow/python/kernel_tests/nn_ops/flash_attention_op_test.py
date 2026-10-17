@@ -446,7 +446,7 @@ class FlashAttentionTest(test.TestCase, parameterized.TestCase):
     # valid, empty tensors, but the output [batch, seq_q, heads, head_dim_v]
     # would have 4 * n**2 > 2**63 elements. This must be an error, not a CHECK
     # failure that aborts the process.
-    n = 2**31 - 1
+    n = 2**31 - 1 - 256  # the largest dimension CheckDimsFitInt32 allows
     seed = constant_op.constant(0, dtypes.uint64)
     query = array_ops.zeros([n, n, 1, 0])
     key = array_ops.zeros([n, 0, 1, 0])
