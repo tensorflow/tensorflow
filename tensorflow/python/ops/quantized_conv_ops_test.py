@@ -19,6 +19,7 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import test
@@ -263,6 +264,35 @@ class Conv2DTest(test.TestCase):
     self._testBadInputSize(
         max_filter=constant_op.constant(0, shape=[1], dtype=dtypes.float32),
         error_regex="must be rank 0")
+
+  def testAttrOutOfInt32Range(self):
+    # With oneDNN, the graph rewrite read strides and dilations as int32 and
+    # aborted on a value outside that range instead of reporting it.
+    tin = math_ops.cast(
+        constant_op.constant(1, shape=[1, 2, 3, 1]), dtype=dtypes.quint8)
+    # The oneDNN kernel, which the rewrite targets, takes qint8 filters, and
+    # the default kernel quint8 filters.
+    tfilter = math_ops.cast(
+        constant_op.constant(1, shape=[1, 2, 1, 1]),
+        dtype=dtypes.qint8 if test_util.IsMklEnabled() else dtypes.quint8)
+    zero = constant_op.constant(0, shape=[], dtype=dtypes.float32)
+    one = constant_op.constant(1, shape=[], dtype=dtypes.float32)
+    for strides, dilations in (([1, 2**31, 1, 1], [1, 1, 1, 1]),
+                               ([1, 1, 1, 1], [1, 1, 2**31, 1])):
+      with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                  "out of range for an int32"):
+        self.evaluate(
+            nn_ops.quantized_conv2d(
+                tin,
+                tfilter,
+                out_type=dtypes.qint32,
+                strides=strides,
+                padding="SAME",
+                min_input=zero,
+                max_input=one,
+                min_filter=zero,
+                max_filter=one,
+                dilations=dilations))
 
 if __name__ == "__main__":
   test.main()

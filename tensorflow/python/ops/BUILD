@@ -4005,6 +4005,7 @@ tf_py_strict_test(
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
     ],
