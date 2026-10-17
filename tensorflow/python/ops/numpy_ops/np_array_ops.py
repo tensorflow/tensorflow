@@ -526,9 +526,9 @@ def copy(a):
 
 
 def _maybe_promote_to_int(a):
-  if dtypes.as_dtype(a.dtype).is_integer:
-    # If a is an integer type and its precision is less than that of `int`,
-    # the output type will be `int`.
+  if dtypes.as_dtype(a.dtype).is_integer or a.dtype == dtypes.bool:
+    # If a is a bool or an integer type whose precision is less than that of
+    # `int`, the output type will be `int`.
     a_numpy_dtype = a.dtype.as_numpy_dtype
     output_type = np.promote_types(a_numpy_dtype, int)
     if output_type != a_numpy_dtype:
@@ -954,9 +954,12 @@ def repeat(a, repeats, axis=None):  # pylint: disable=missing-docstring
 def around(a, decimals=0):  # pylint: disable=missing-docstring
   a = asarray(a)
   dtype = a.dtype.as_numpy_dtype
-  factor = math.pow(10, decimals)
+  if a.dtype.is_integer and decimals >= 0:
+    # Integers are already rounded to any non-negative number of decimals.
+    # Going through a float dtype would also lose precision above 2**53.
+    return a
   if np.issubdtype(dtype, np.inexact):
-    factor = math_ops.cast(factor, dtype)
+    float_dtype = dtype
   else:
     # Use float as the working dtype when a.dtype is exact (e.g. integer),
     # because `decimals` can be negative.
@@ -965,10 +968,19 @@ def around(a, decimals=0):  # pylint: disable=missing-docstring
     # has been called, and is an alias of `math_ops.cast`; calling `cast`
     # directly keeps `around` working without that opt-in.
     a = math_ops.cast(a, float_dtype)
-    factor = math_ops.cast(factor, float_dtype)
-  a = math_ops.multiply(a, factor)
-  a = math_ops.round(a)
-  a = math_ops.divide(a, factor)
+  # Like NumPy, scale by 10**abs(decimals), which is exact in floating point,
+  # and divide by it for negative `decimals` instead of multiplying by an
+  # inexact 10**decimals. The factor is created directly in `float_dtype`:
+  # `math_ops.cast` on a Python float goes through float32 first, which would
+  # turn 10**-1 into 0.10000000149.
+  # Keep `decimals` within the float64 exponent range, outside of which
+  # `math.pow(10, ...)` raises OverflowError.
+  decimals = builtins.max(-308, builtins.min(308, decimals))
+  factor = constant_op.constant(math.pow(10, abs(decimals)), float_dtype)
+  if decimals >= 0:
+    a = math_ops.divide(math_ops.round(math_ops.multiply(a, factor)), factor)
+  else:
+    a = math_ops.multiply(math_ops.round(math_ops.divide(a, factor)), factor)
   return math_ops.cast(a, dtype)
 
 
