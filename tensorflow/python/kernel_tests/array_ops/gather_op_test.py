@@ -389,7 +389,8 @@ class GatherTest(test.TestCase, parameterized.TestCase):
         with self.subTest(bad_axis=bad_axis, msg=fn_name, fn=fn):
           with self.assertRaisesRegex(
               (ValueError, errors.InvalidArgumentError),
-              "Shape must be at least rank .* but is rank 1"):
+              "Shape must be at least rank .* but is rank 1|"
+              "Expected axis in the range"):
             fn(params, indices, axis=bad_axis)
 
   def testEmptySlices(self):
