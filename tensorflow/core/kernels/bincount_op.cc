@@ -63,8 +63,11 @@ struct BincountFunctor<CPUDevice, Tidx, T, true> {
         context->device()->tensorflow_cpu_worker_threads()->workers;
     const int64_t num_threads = thread_pool->NumThreads() + 1;
     Tensor partial_bins_t;
+    TensorShape partial_bins_shape;
+    TF_RETURN_IF_ERROR(TensorShape::BuildTensorShape({num_threads, num_bins},
+                                                     &partial_bins_shape));
     TF_RETURN_IF_ERROR(context->allocate_temp(
-        DT_BOOL, TensorShape({num_threads, num_bins}), &partial_bins_t));
+        DT_BOOL, partial_bins_shape, &partial_bins_t));
     auto partial_bins = partial_bins_t.matrix<bool>();
     partial_bins.setZero();
     thread_pool->ParallelForWithWorkerId(
@@ -135,9 +138,11 @@ struct BincountFunctor<CPUDevice, Tidx, T, false> {
       }
     } else {
       Tensor partial_bins_t;
+      TensorShape partial_bins_shape;
+      TF_RETURN_IF_ERROR(TensorShape::BuildTensorShape({num_threads, num_bins},
+                                                       &partial_bins_shape));
       TF_RETURN_IF_ERROR(context->allocate_temp(
-          DataTypeToEnum<T>::value, TensorShape({num_threads, num_bins}),
-          &partial_bins_t));
+          DataTypeToEnum<T>::value, partial_bins_shape, &partial_bins_t));
       auto partial_bins = partial_bins_t.matrix<T>();
       partial_bins.setZero();
       thread_pool->ParallelForWithWorkerId(
@@ -176,9 +181,9 @@ struct BincountReduceFunctor<CPUDevice, Tidx, T, binary_output> {
                               const typename TTypes<T, 2>::ConstTensor& weights,
                               typename TTypes<T, 2>::Tensor& out,
                               const Tidx num_bins) {
-    std::atomic<int> err_neg_val = 0;
-    const int num_rows = out.dimension(0);
-    const int num_cols = in.dimension(1);
+    std::atomic<int64_t> err_neg_val(0);
+    const int64_t num_rows = out.dimension(0);
+    const int64_t num_cols = in.dimension(1);
     ThreadPool* thread_pool =
         context->device()->tensorflow_cpu_worker_threads()->workers;
     thread_pool->ParallelForWithWorkerId(
@@ -207,7 +212,7 @@ struct BincountReduceFunctor<CPUDevice, Tidx, T, binary_output> {
     if (err_neg_val < 0) {
       return absl::InvalidArgumentError(absl::StrCat(
           "Input 'in' must be non-negative! Negative input value found: ",
-          static_cast<int>(err_neg_val)));
+          err_neg_val.load()));
     }
 
     return absl::OkStatus();
@@ -236,8 +241,9 @@ class BincountOp : public OpKernel {
     const auto arr = arr_t.flat<int32_t>();
     const auto weights = weights_t.flat<T>();
     Tensor* output_t;
-    OP_REQUIRES_OK(ctx,
-                   ctx->allocate_output(0, TensorShape({size}), &output_t));
+    TensorShape output_shape;
+    OP_REQUIRES_OK(ctx, TensorShape::BuildTensorShape({size}, &output_shape));
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, output_shape, &output_t));
     auto output = output_t->flat<T>();
     OP_REQUIRES_OK(ctx,
                    functor::BincountFunctor<Device, int32_t, T, false>::Compute(
@@ -310,7 +316,9 @@ class DenseBincountOp : public OpKernel {
     Tensor* out_t;
     functor::SetZeroFunctor<Device, T> fill;
     if (data.dims() <= 1) {
-      OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({size}), &out_t));
+      TensorShape output_shape;
+      OP_REQUIRES_OK(ctx, TensorShape::BuildTensorShape({size}, &output_shape));
+      OP_REQUIRES_OK(ctx, ctx->allocate_output(0, output_shape, &out_t));
       auto out = out_t->flat<T>();
       fill(ctx->eigen_device<Device>(), out);
       if (binary_output_) {
@@ -328,8 +336,10 @@ class DenseBincountOp : public OpKernel {
           (weights.NumElements() == 0)
               ? weights.shaped<T, 2>(absl::InlinedVector<int64_t, 2UL>(2, 0))
               : weights.matrix<T>();
+      TensorShape output_shape;
       OP_REQUIRES_OK(
-          ctx, ctx->allocate_output(0, TensorShape({num_rows, size}), &out_t));
+          ctx, TensorShape::BuildTensorShape({num_rows, size}, &output_shape));
+      OP_REQUIRES_OK(ctx, ctx->allocate_output(0, output_shape, &out_t));
       auto out = out_t->matrix<T>();
       fill(ctx->eigen_device<Device>(), out_t->flat<T>());
       if (binary_output_) {
@@ -427,12 +437,19 @@ class SparseBincountOp : public OpKernel {
                     "dense_shape must have at least 1 dimension, got ",
                     dense_shape.NumElements())));
 
+    OP_REQUIRES(ctx, dense_shape.NumElements() <= 2,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Shape must be at most rank 2 but is rank ",
+                    dense_shape.NumElements())));
+
     bool is_1d = dense_shape.NumElements() == 1;
 
     Tensor* out_t;
     functor::SetZeroFunctor<Device, T> fill;
     if (is_1d) {
-      OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({size}), &out_t));
+      TensorShape output_shape;
+      OP_REQUIRES_OK(ctx, TensorShape::BuildTensorShape({size}, &output_shape));
+      OP_REQUIRES_OK(ctx, ctx->allocate_output(0, output_shape, &out_t));
       auto out = out_t->flat<T>();
       fill(ctx->eigen_device<Device>(), out);
       if (binary_output_) {
@@ -447,8 +464,10 @@ class SparseBincountOp : public OpKernel {
     } else {
       const auto shape = dense_shape.flat<int64_t>();
       const int64_t num_rows = shape(0);
+      TensorShape output_shape;
       OP_REQUIRES_OK(
-          ctx, ctx->allocate_output(0, TensorShape({num_rows, size}), &out_t));
+          ctx, TensorShape::BuildTensorShape({num_rows, size}, &output_shape));
+      OP_REQUIRES_OK(ctx, ctx->allocate_output(0, output_shape, &out_t));
       const auto out = out_t->matrix<T>();
       fill(ctx->eigen_device<Device>(), out_t->flat<T>());
       const auto indices_mat = indices.matrix<int64_t>();
@@ -456,11 +475,14 @@ class SparseBincountOp : public OpKernel {
         const int64_t batch = indices_mat(i, 0);
         const Tidx bin = values_flat(i);
         OP_REQUIRES(
-            ctx, batch < out.dimension(0),
-            errors::InvalidArgument("Index out of bound. `batch` (", batch,
-                                    ") must be less than the dimension size (",
-                                    out.dimension(0), ")."));
-        if (0 <= bin && bin < size) {
+            ctx, 0 <= batch && batch < out.dimension(0),
+            absl::InvalidArgumentError(absl::StrCat(
+                "Index out of bounds: `batch` (", batch,
+                ") must be non-negative and less than the dimension size (",
+                out.dimension(0), ").")));
+        OP_REQUIRES(ctx, bin >= 0,
+                    absl::InvalidArgumentError("Input must be non-negative"));
+        if (bin < size) {
           if (binary_output_) {
             out(batch, bin) = T(1);
           } else {
@@ -544,8 +566,10 @@ class RaggedBincountOp : public OpKernel {
             weights_size, " `weights` for ", num_values, " values.")));
 
     Tensor* out_t;
+    TensorShape output_shape;
     OP_REQUIRES_OK(
-        ctx, ctx->allocate_output(0, TensorShape({num_rows, size}), &out_t));
+        ctx, TensorShape::BuildTensorShape({num_rows, size}, &output_shape));
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, output_shape, &out_t));
     functor::SetZeroFunctor<Device, T> fill;
     fill(ctx->eigen_device<Device>(), out_t->flat<T>());
     const auto out = out_t->matrix<T>();
