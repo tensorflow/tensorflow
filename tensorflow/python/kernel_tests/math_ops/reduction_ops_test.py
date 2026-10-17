@@ -20,6 +20,7 @@ import numbers
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -154,6 +155,67 @@ class ReductionInvalidKeepdims(test.TestCase):
     ):
       for good_value in [True, False, None, np.bool_(True), np.bool_(False)]:
         reduction(x, axis=1, keepdims=good_value)
+
+
+class ReductionShapeOverflowTest(test.TestCase):
+
+  # These tests build their inputs eagerly. In graph mode the same shape
+  # tuples never reach the reduction kernel: building the zeros op converts
+  # the shape through int32, which truncates the large dimensions and fails
+  # at op creation instead.
+
+  @test_util.run_v2_only
+  @test_util.disable_xla("XLA does not support compiling shapes whose "
+                         "element count overflows an int64")
+  def testReducingZeroDimensionAwayRaises(self):
+    # Test case for GitHub issues 108921 and 108891. A shape is only rejected
+    # when a prefix of it overflows, so a zero dimension sitting ahead of the
+    # large ones keeps the input legal. Reducing that zero dimension away then
+    # asks for an output shape that cannot be represented, which used to abort
+    # the process instead of raising.
+    for reduction in (math_ops.reduce_sum, math_ops.reduce_mean,
+                      math_ops.reduce_prod, math_ops.reduce_max,
+                      math_ops.reduce_min):
+      x = array_ops.zeros((2, 2, 0, 2**63 - 2), dtype=dtypes.int64)
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  "more than 2\\*\\*63 - 1 elements"):
+        self.evaluate(reduction(x, axis=2))
+
+  @test_util.run_v2_only
+  @test_util.disable_xla("XLA does not support compiling shapes whose "
+                         "element count overflows an int64")
+  def testLeadingZeroDimensionRaises(self):
+    # The same overflow is reachable when the zero dimension comes first.
+    x = array_ops.zeros((0, 2**62, 2**62), dtype=dtypes.int64)
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "more than 2\\*\\*63 - 1 elements"):
+      self.evaluate(math_ops.reduce_max(x, axis=0))
+
+  @test_util.run_v2_only
+  @test_util.disable_xla("XLA does not support compiling shapes whose "
+                         "element count overflows an int64")
+  def testReducingZeroDimensionAwayInsideFunctionRaises(self):
+    # The same input reaching the reduction through a tf.function used to
+    # abort in a second place: grappler's constant folding built a
+    # TensorShape for the inferred output shape while deciding whether the
+    # reduction can be simplified, and hit the same fatal check before the
+    # kernel ever ran.
+    x = array_ops.zeros((2, 2, 0, 2**63 - 2), dtype=dtypes.int64)
+
+    @def_function.function
+    def reduce_fn(t):
+      return math_ops.reduce_max(t, axis=2)
+
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "more than 2\\*\\*63 - 1 elements"):
+      self.evaluate(reduce_fn(x))
+
+  def testRepresentableEmptyReductionStillWorks(self):
+    # Reducing a zero dimension away is fine whenever the resulting shape can
+    # be represented, and must keep working.
+    x = array_ops.zeros((2, 0, 3), dtype=dtypes.int64)
+    self.assertAllEqual([[0, 0, 0], [0, 0, 0]],
+                        self.evaluate(math_ops.reduce_sum(x, axis=1)))
 
 
 class BaseReductionTest(test.TestCase):
