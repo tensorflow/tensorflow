@@ -88,7 +88,7 @@ def kaiser_window(window_length, beta=12., dtype=dtypes.float32, name=None):
     # ones. A static length of 1 already returned above; this covers lengths
     # that are only known at run time, e.g. inside a `tf.function`.
     safe_halflen = array_ops.where_v2(
-        math_ops.equal(halflen_float, 0), one, halflen_float
+        math_ops.equal(window_length, 1), one, halflen_float
     )
     shape = math_ops.sqrt(
         nn_ops.relu(one - math_ops.square(arg / safe_halflen))
