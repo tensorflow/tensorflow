@@ -35,6 +35,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -78,6 +79,19 @@ class FromTensorsTest(test_base.DatasetTestBase, parameterized.TestCase):
         nest.flatten(dataset_ops.get_legacy_output_shapes(dataset)))
 
     self.assertDatasetProduces(dataset, expected_output=[components])
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testFromTensorsHostPlacement(self):
+    x = np.array([1, 2, 3], dtype=np.int64)
+    if test_util.is_gpu_available():
+      with ops.device("/device:GPU:0"):
+        dataset = dataset_ops.Dataset.from_tensors(x)
+        for t in dataset._tensors:
+          self.assertIn("CPU", t.device)
+    else:
+      dataset = dataset_ops.Dataset.from_tensors(x)
+      for t in dataset._tensors:
+        self.assertIn("CPU", t.device)
 
   @combinations.generate(test_base.default_test_combinations())
   def testFromTensorsDataset(self):
