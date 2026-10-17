@@ -31,6 +31,11 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 
+// The fa2 library is built with -fvisibility=hidden so that the vendored FA2
+// kernels and the PyTorch shim symbols stay internal, but this API is called
+// from other libraries (the TF and XLA kernels), so it must be exported when
+// fa2 is linked as a shared library.
+#pragma GCC visibility push(default)
 namespace flash_attention_fa2 {
 
 // True if the current device and shapes can use FlashAttention-2: the library
@@ -75,5 +80,6 @@ cudaError_t Backward(cudaStream_t stream, bool bf16, const void *q,
                      const uint64_t *seed_dev, const uint64_t *offset_dev);
 
 }  // namespace flash_attention_fa2
+#pragma GCC visibility pop
 
 #endif  // TENSORFLOW_CORE_KERNELS_FLASH_ATTENTION_FA2_API_H_
