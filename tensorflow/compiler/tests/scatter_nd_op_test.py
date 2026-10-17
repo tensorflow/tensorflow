@@ -223,23 +223,75 @@ class ScatterNdTensorScalarUpdateTest(xla_test.XLATestCase):
   def _runScatter(self, op):
     indices_np = np.array([[4], [3], [1], [7]], dtype=np.int32)
     updates_np = np.array(9, dtype=np.float32)
-    with self.session() as sess, self.test_scope():
+    with self.session() as sess, self.device_scope():
       indices = array_ops.placeholder(indices_np.dtype, shape=indices_np.shape)
       updates = array_ops.placeholder(updates_np.dtype, shape=updates_np.shape)
       t = array_ops.ones([8], dtype=np.float32)
 
       out = op(t, indices, updates)
-      return sess.run(out, feed_dict={indices: indices_np, updates: updates_np})
+      # Rank-0 updates are rejected to match the eager kernels (#128455).
+      with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError,
+                                               "Updates shape must have rank"):
+        sess.run(out, feed_dict={indices: indices_np, updates: updates_np})
+
+  def _runScatterScalarIndices(self, op):
+    indices_np = np.array(4, dtype=np.int32)
+    updates_np = np.array([9, 10, 11, 12], dtype=np.float32)
+    with self.session() as sess, self.device_scope():
+      # Unknown shapes so shape inference does not reject the scalars
+      # before they reach XLA.
+      indices = array_ops.placeholder(indices_np.dtype)
+      updates = array_ops.placeholder(updates_np.dtype)
+      t = array_ops.ones([8], dtype=np.float32)
+
+      out = op(t, indices, updates)
+      with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError,
+                                               "Indices shape must have rank"):
+        sess.run(out, feed_dict={indices: indices_np, updates: updates_np})
 
   def testUpdate(self):
-    self.assertAllEqual(
-        self._runScatter(array_ops.tensor_scatter_update),
-        np.array([1, 9, 1, 9, 9, 1, 1, 9], dtype=np.float32))
+    self._runScatter(array_ops.tensor_scatter_update)
+    self._runScatterScalarIndices(array_ops.tensor_scatter_update)
 
   def testAdd(self):
-    self.assertAllEqual(
-        self._runScatter(array_ops.tensor_scatter_add),
-        np.array([1, 10, 1, 10, 10, 1, 1, 10], dtype=np.float32))
+    self._runScatter(array_ops.tensor_scatter_add)
+    self._runScatterScalarIndices(array_ops.tensor_scatter_add)
+
+  def testSub(self):
+    self._runScatter(array_ops.tensor_scatter_sub)
+    self._runScatterScalarIndices(array_ops.tensor_scatter_sub)
+
+  def testMax(self):
+    self._runScatter(array_ops.tensor_scatter_max)
+    self._runScatterScalarIndices(array_ops.tensor_scatter_max)
+
+  def testMin(self):
+    self._runScatter(array_ops.tensor_scatter_min)
+    self._runScatterScalarIndices(array_ops.tensor_scatter_min)
+
+  def testScatterNd(self):
+    indices_np = np.array([[4], [3], [1], [7]], dtype=np.int32)
+    updates_np = np.array(9, dtype=np.float32)
+    with self.session() as sess, self.device_scope():
+      # Unknown shape so shape inference does not reject the scalar
+      # before it reaches XLA.
+      indices = array_ops.placeholder(indices_np.dtype, shape=indices_np.shape)
+      updates = array_ops.placeholder(updates_np.dtype)
+      out = array_ops.scatter_nd(indices, updates, [8])
+      with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError,
+                                               "Updates shape must have rank"):
+        sess.run(out, feed_dict={indices: indices_np, updates: updates_np})
+
+  def testScatterNdScalarIndices(self):
+    indices_np = np.array(4, dtype=np.int32)
+    updates_np = np.array([9, 10, 11, 12], dtype=np.float32)
+    with self.session() as sess, self.device_scope():
+      indices = array_ops.placeholder(indices_np.dtype)
+      updates = array_ops.placeholder(updates_np.dtype)
+      out = array_ops.scatter_nd(indices, updates, [8])
+      with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError,
+                                               "Indices shape must have rank"):
+        sess.run(out, feed_dict={indices: indices_np, updates: updates_np})
 
 if __name__ == "__main__":
   test.main()
