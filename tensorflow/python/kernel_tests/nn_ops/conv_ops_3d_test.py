@@ -585,7 +585,8 @@ class Conv3DTest(parameterized.TestCase, test.TestCase):
         op_name=op_name,
     )
 
-  def _TestConv3DEmptyTensorOutputShape(self):
+  @test_util.run_in_graph_and_eager_modes
+  def testConv3DEmptyTensorOutputShape(self):
     """Verifies the output shape of the Conv3D op when output tensor is empty.
 
     Args: none
