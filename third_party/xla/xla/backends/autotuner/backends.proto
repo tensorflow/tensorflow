@@ -41,4 +41,5 @@ enum Backend {
   HIPBLASLT_FISSION = 16;
   YNNPACK = 17;
   BLOCK_LEVEL_EMITTER_CPU = 18;
+  TENSOR_IR = 19;
 }

@@ -112,9 +112,9 @@ class Input {
   struct Initializer {
     /// Construct from a scalar value of an arithmetic type or a type that can
     /// be converted to a string (eg. a string literal).
-    template <typename T, typename = typename std::enable_if<
-                              std::is_arithmetic<T>::value ||
-                              std::is_convertible<T, std::string>::value>::type>
+    template <typename T, typename = std::enable_if_t<
+                              std::is_arithmetic_v<T> ||
+                              std::is_convertible_v<T, std::string>>>
     Initializer(const T& v) {  // NOLINT(runtime/explicit)
       typedef typename RealType<T>::type RealT;
       Tensor t(DataTypeToEnum<RealT>::v(), TensorShape());
@@ -125,9 +125,9 @@ class Input {
     Initializer(const Tensor& t) : tensor(t) {}  // NOLINT(runtime/explicit)
 
     /// Construct from a scalar value and an explicit shape
-    template <typename T, typename = typename std::enable_if<
-                              std::is_arithmetic<T>::value ||
-                              std::is_convertible<T, std::string>::value>::type>
+    template <typename T, typename = std::enable_if_t<
+                              std::is_arithmetic_v<T> ||
+                              std::is_convertible_v<T, std::string>>>
     Initializer(const T& v, const TensorShape& shape) {
       typedef typename RealType<T>::type RealT;
       Tensor t(DataTypeToEnum<RealT>::v(), shape);
@@ -138,9 +138,9 @@ class Input {
     }
 
     /// Construct from a initializer list of scalars (a one-dimensional tensor).
-    template <typename T, typename = typename std::enable_if<
-                              std::is_arithmetic<T>::value ||
-                              std::is_convertible<T, std::string>::value>::type>
+    template <typename T, typename = std::enable_if_t<
+                              std::is_arithmetic_v<T> ||
+                              std::is_convertible_v<T, std::string>>>
     Initializer(
         const std::initializer_list<T>& v) {  // NOLINT(runtime/explicit)
       typedef typename RealType<T>::type RealT;
@@ -151,9 +151,9 @@ class Input {
     }
 
     /// Construct from a initializer list of scalars and an explicit shape.
-    template <typename T, typename = typename std::enable_if<
-                              std::is_arithmetic<T>::value ||
-                              std::is_convertible<T, std::string>::value>::type>
+    template <typename T, typename = std::enable_if_t<
+                              std::is_arithmetic_v<T> ||
+                              std::is_convertible_v<T, std::string>>>
     Initializer(const std::initializer_list<T>& v, const TensorShape& shape) {
       typedef typename RealType<T>::type RealT;
       Tensor t(DataTypeToEnum<RealT>::v(), shape);
@@ -175,7 +175,7 @@ class Input {
     Initializer(const std::initializer_list<Initializer>& v);
 
     // START_SKIP_DOXYGEN
-    template <typename T, bool = std::is_convertible<T, std::string>::value>
+    template <typename T, bool = std::is_convertible_v<T, std::string>>
     struct RealType {
       typedef tstring type;
     };
@@ -210,9 +210,9 @@ class Input {
   /// * A Tensor object.
   Input(const Output& o) : output_(o) {}  // NOLINT(runtime/explicit)
 
-  template <typename T, typename = typename std::enable_if<
-                            std::is_arithmetic<T>::value ||
-                            std::is_convertible<T, std::string>::value>::type>
+  template <typename T,
+            typename = std::enable_if_t<std::is_arithmetic_v<T> ||
+                                        std::is_convertible_v<T, std::string>>>
   Input(const T& v)  // NOLINT(runtime/explicit)
       : Input(Initializer(v)) {}
 

@@ -105,8 +105,8 @@ struct AllocatorStats {
   std::optional<int64_t> bytes_limit;
 
   // Stats for reserved memory usage.
-  int64_t bytes_reserved;       // Number of bytes reserved.
-  int64_t peak_bytes_reserved;  // The peak number of bytes reserved.
+  int64_t bytes_reserved;        // Number of bytes reserved.
+  int64_t peak_bytes_reserved;   // The peak number of bytes reserved.
   int64_t peak_allocated_bytes;  // Peak of reserved and in-use bytes.
   // The upper limit on the number bytes of reservable memory,
   // if such a limit is known.
@@ -471,6 +471,17 @@ class SubAllocator {
   virtual AllocatorMemoryType GetMemoryType() const {
     return AllocatorMemoryType::kUnknown;
   }
+
+  // Returns a positive size multiple that Alloc() pads requests up to, for
+  // example a virtual memory mapping granularity. BFCAllocator sizes region
+  // extensions and backpedal retries in multiples of this value so that a
+  // shrunken retry is not padded back up to a size that just failed.
+  // Implementations whose granularity changes after suballocator construction
+  // (e.g. once an address range has been reserved) must return the current
+  // value on every call. Complete such configuration before passing the
+  // suballocator to BFCAllocator, whose constructor caches
+  // SupportsCoalescing().
+  virtual size_t GetAllocationGranularity() const { return 1; }
 
  protected:
   // Implementation of Alloc() method must call this on newly allocated

@@ -38,7 +38,7 @@ namespace functor {
 template <typename InputT, typename AccumT, typename OutputT,
           typename BinaryFunctor>
 struct ReduceOuterDimensions {
-  ReduceOuterDimensions() {}
+  ReduceOuterDimensions() = default;
 
   template <int num_dims>
   void operator()(const CPUDevice& device,
@@ -206,7 +206,7 @@ struct ReduceOuterDimensions {
 template <typename InputT, typename AccumT, typename OutputT,
           typename BinaryFunctor, typename Reducer>
 struct ReduceMiddleDimensions {
-  ReduceMiddleDimensions() {}
+  ReduceMiddleDimensions() = default;
 
   template <int num_dims>
   void operator()(const CPUDevice& device,

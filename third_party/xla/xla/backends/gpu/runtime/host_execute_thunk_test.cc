@@ -51,7 +51,9 @@ limitations under the License.
 #include "xla/service/shaped_slice.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/event.h"
 #include "xla/stream_executor/memory_space.h"
+#include "xla/stream_executor/mock_stream_executor.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_address_allocator.h"
@@ -706,6 +708,46 @@ TEST(HostExecuteDoneThunkTest, WaitingOnErrorEvent) {
   ASSERT_OK(thunk.Initialize(init_params));
   EXPECT_THAT(thunk.ExecuteOnStream(params),
               absl_testing::StatusIs(absl::StatusCode::kInternal));
+}
+
+TEST(HostExecuteAsyncEventsTest, CreateAndExtractEvents) {
+  se::MockStreamExecutor executor0;
+  se::MockStreamExecutor executor1;
+  EXPECT_CALL(executor0, device_ordinal()).WillRepeatedly(::testing::Return(0));
+  EXPECT_CALL(executor1, device_ordinal()).WillRepeatedly(::testing::Return(1));
+  EXPECT_CALL(executor0, CreateEvent()).WillRepeatedly([]() {
+    return std::unique_ptr<se::Event>(nullptr);
+  });
+  EXPECT_CALL(executor1, CreateEvent()).WillRepeatedly([]() {
+    return std::unique_ptr<se::Event>(nullptr);
+  });
+
+  HostExecuteAsyncEvents events(/*devices_per_host=*/2);
+
+  ASSERT_OK_AND_ASSIGN(auto event0_run1,
+                       events.CreateEvent(&executor0, RunId(1)));
+  ASSERT_OK_AND_ASSIGN(auto event1_run1,
+                       events.CreateEvent(&executor1, RunId(1)));
+  ASSERT_OK_AND_ASSIGN(auto event0_run2,
+                       events.CreateEvent(&executor0, RunId(2)));
+  EXPECT_THAT(events.CreateEvent(&executor0, RunId(1)),
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
+  EXPECT_THAT(events.ExtractEvent(&executor1, RunId(2)),
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
+
+  ASSERT_OK_AND_ASSIGN(auto extracted0_run1,
+                       events.ExtractEvent(&executor0, RunId(1)));
+  EXPECT_EQ(extracted0_run1.GetAsyncValue(), event0_run1.GetAsyncValue());
+  EXPECT_THAT(events.ExtractEvent(&executor0, RunId(1)),
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
+
+  ASSERT_OK_AND_ASSIGN(auto extracted1_run1,
+                       events.ExtractEvent(&executor1, RunId(1)));
+  EXPECT_EQ(extracted1_run1.GetAsyncValue(), event1_run1.GetAsyncValue());
+
+  ASSERT_OK_AND_ASSIGN(auto extracted0_run2,
+                       events.ExtractEvent(&executor0, RunId(2)));
+  EXPECT_EQ(extracted0_run2.GetAsyncValue(), event0_run2.GetAsyncValue());
 }
 
 TEST(HostExecuteStartThunkTest, ProtoRoundTrip) {

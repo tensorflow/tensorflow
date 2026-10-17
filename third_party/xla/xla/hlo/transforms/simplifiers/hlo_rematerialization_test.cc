@@ -2625,5 +2625,47 @@ ENTRY %entry {
       ::testing::UnitTest::GetInstance()->current_test_info()->name());
 }
 
+TEST_F(RecomputeAndCompressHloRematerializationTest,
+       BlockRematSharedDeadOperand) {
+  constexpr absl::string_view hlo_string = R"hlo(
+HloModule BlockRematSharedDeadOperand, is_scheduled=true
+
+ENTRY %entry {
+  %param = f32[] parameter(0)
+  %shared_dead = f32[1024]{0} custom-call(%param), custom_call_target="Producer"
+  %cand0 = f32[1024]{0} negate(%shared_dead)
+  %cand1 = f32[1024]{0} abs(%shared_dead)
+  %early_use = f32[1024]{0} custom-call(%cand0, %cand1), custom_call_target="EarlyUse"
+  %peak_op = f32[1024]{0} custom-call(%early_use), custom_call_target="Peak"
+  %final_op = f32[1024]{0} custom-call(%peak_op), custom_call_target="Final"
+  %late_use = f32[1024]{0} add(%cand0, %cand1)
+  ROOT %out = (f32[1024]{0}, f32[1024]{0}) tuple(%final_op, %late_use)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloRematerialization::RematerializationSizes sizes;
+  constexpr int64_t kMemoryLimitBytes = 20 * 1024 + 16;
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunHloRematerialization(
+                           kMemoryLimitBytes, module.get(),
+                           /*min_remat_size=*/0,
+                           HloRematerialization::RematAlgorithm::kAlwaysRemat,
+                           /*block_size_limit=*/2,
+                           /*on_rematerialized=*/nullptr, &sizes));
+  EXPECT_TRUE(changed);
+  EXPECT_EQ(sizes.before_bytes, 24 * 1024 + 16);
+  EXPECT_EQ(sizes.after_bytes, 20 * 1024 + 16);
+
+  const HloInstruction* late_use =
+      module->entry_computation()->GetInstructionWithName("late_use");
+  ASSERT_NE(late_use, nullptr);
+  EXPECT_EQ(late_use->operand(0)->name(), "cand0.remat");
+  EXPECT_EQ(late_use->operand(1)->name(), "cand1.remat");
+
+  CheckForRematInInstructionNames(
+      ::testing::UnitTest::GetInstance()->current_test_info()->name());
+}
+
 }  // namespace
 }  // namespace xla

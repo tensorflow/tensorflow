@@ -203,7 +203,7 @@ TYPED_TEST(BuffersDebugFloatCheckThunkTypedTest, CalculatesNanCounts) {
   checked_thunk_info.thunk_id = ThunkId(123);
   BuffersDebugFloatCheckThunk thunk(
       Thunk::ThunkInfo(), checked_thunk_info, log_slice, tmp_slice,
-      {{/*buffer_idx=*/0, input}}, metadata_store);
+      {{/*buffer_idx=*/0, input}}, metadata_store, /*devices_per_host=*/1);
   ASSERT_OK(thunk.Initialize(init_params));
   ASSERT_OK(thunk.Prepare(prepare_params));
   ASSERT_OK(thunk.ExecuteOnStream(execute_params));
@@ -297,7 +297,7 @@ TYPED_TEST(BuffersDebugFloatCheckThunkTypedTest,
   checked_thunk_info.thunk_id = ThunkId(123);
   BuffersDebugFloatCheckThunk thunk(
       Thunk::ThunkInfo(), checked_thunk_info, log_slice, tmp_slice,
-      {{/*buffer_idx=*/0, input}}, metadata_store);
+      {{/*buffer_idx=*/0, input}}, metadata_store, /*devices_per_host=*/1);
   ASSERT_OK(thunk.Initialize(init_params));
   ASSERT_OK(thunk.Prepare(prepare_params));
   ASSERT_OK(thunk.ExecuteOnStream(execute_params));
@@ -407,7 +407,7 @@ TYPED_TEST(BuffersDebugFloatCheckThunkTypedTest,
   checked_thunk_info.thunk_id = ThunkId(123);
   BuffersDebugFloatCheckThunk thunk(
       Thunk::ThunkInfo(), checked_thunk_info, log_slice, tmp_slice,
-      {{/*buffer_idx=*/0, input}}, metadata_store);
+      {{/*buffer_idx=*/0, input}}, metadata_store, /*devices_per_host=*/1);
   ASSERT_OK(thunk.Initialize(init_params));
   ASSERT_OK(thunk.Prepare(prepare_params));
   ASSERT_OK(thunk.ExecuteOnStream(execute_params));
@@ -487,7 +487,7 @@ TYPED_TEST(BuffersDebugFloatCheckThunkTypedTest,
   checked_thunk_info.thunk_id = ThunkId(123);
   BuffersDebugFloatCheckThunk thunk(
       Thunk::ThunkInfo(), checked_thunk_info, log_slice, tmp_slice,
-      {{/*buffer_idx=*/0, input}}, metadata_store);
+      {{/*buffer_idx=*/0, input}}, metadata_store, /*devices_per_host=*/1);
   ASSERT_OK(thunk.Initialize(init_params));
   ASSERT_OK(thunk.Prepare(prepare_params));
   // If the kernel is launched with BlockDim(0), then this will fail with
@@ -599,7 +599,7 @@ TYPED_TEST(BuffersDebugFloatCheckThunkTypedTest,
   checked_thunk_info.thunk_id = ThunkId(123);
   BuffersDebugFloatCheckThunk thunk(
       Thunk::ThunkInfo(), checked_thunk_info, log_slice, tmp_slice,
-      {{/*buffer_idx=*/0, input}}, metadata_store);
+      {{/*buffer_idx=*/0, input}}, metadata_store, /*devices_per_host=*/1);
   ASSERT_OK(thunk.Initialize(init_params));
   ASSERT_OK(thunk.Prepare(prepare_params));
   ASSERT_OK(thunk.ExecuteOnStream(execute_params));
@@ -704,7 +704,7 @@ TEST_F(BuffersDebugFloatCheckThunkTest, HandlesInputsWithDifferentTypes) {
   BuffersDebugFloatCheckThunk thunk(
       Thunk::ThunkInfo(), checked_thunk_info, log_slice, tmp_slice,
       {{/*buffer_idx=*/0, inputs[0]}, {/*buffer_idx=*/1, inputs[1]}},
-      metadata_store);
+      metadata_store, /*devices_per_host=*/1);
   ASSERT_OK(thunk.Initialize(init_params));
   ASSERT_OK(thunk.Prepare(prepare_params));
   ASSERT_OK(thunk.ExecuteOnStream(execute_params));
@@ -791,7 +791,8 @@ TEST_F(BuffersDebugFloatCheckThunkTest,
   BuffersDebugFloatCheckThunk thunk(
       Thunk::ThunkInfo(), checked_thunk_info, log_slice, tmp_slice,
       {{/*buffer_idx=*/0, f32_slice}, {/*buffer_idx=*/1, bf16_slice}},
-      std::make_shared<BufferDebugLogEntryMetadataStore>());
+      std::make_shared<BufferDebugLogEntryMetadataStore>(),
+      /*devices_per_host=*/2);
 
   // Initialize the Thunk on both devices and run the kernel. An attempt to run
   // a kernel on the wrong device will fail with CUDA_ERROR_INVALID_HANDLE. The

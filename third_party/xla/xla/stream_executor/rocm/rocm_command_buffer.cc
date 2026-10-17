@@ -372,14 +372,6 @@ absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateKernelNode(
   params.kernelParams = const_cast<void**>(args.argument_addresses().data());
   params.extra = nullptr;
 
-  if (shared_mem_bytes != 0) {
-    ABSL_RETURN_IF_ERROR(
-        ToStatus(hipFuncSetAttribute(function,
-                                     hipFuncAttributeMaxDynamicSharedMemorySize,
-                                     shared_mem_bytes),
-                 "Failed to set shared memory size"));
-  }
-
   std::vector<hipGraphNode_t> deps = ToHipGraphHandles(dependencies);
 
   hipGraphNode_t node_handle = nullptr;
@@ -436,14 +428,6 @@ absl::Status RocmCommandBuffer::UpdateKernelNode(
   // NOLINTNEXTLINE
   params.kernelParams = const_cast<void**>(args.argument_addresses().data());
   params.extra = nullptr;
-
-  if (shared_mem_bytes != 0) {
-    ABSL_RETURN_IF_ERROR(
-        ToStatus(hipFuncSetAttribute(function,
-                                     hipFuncAttributeMaxDynamicSharedMemorySize,
-                                     shared_mem_bytes),
-                 "Failed to set shared memory size"));
-  }
 
   return ToStatus(hipGraphExecKernelNodeSetParams(
                       exec_, ToHipGraphHandle(node_handle), &params),

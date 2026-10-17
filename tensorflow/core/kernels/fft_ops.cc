@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <vector>
 
 #include "absl/log/check.h"
@@ -239,11 +240,9 @@ class FFTBase : public OpKernel {
               "Wrong types for FFT: in=", in.dtype(), " out=", out->dtype())));
     }
 
-    if (input_shape.num_elements() == 0) {
-      DCHECK_EQ(0, output_shape.num_elements());
-      return;
-    }
-
+    // An empty input is handled inside DoFFT, which zeroes the output. The
+    // output is sized from `fft_length`, so it can be non-empty even when the
+    // input is not, and it must not be returned unwritten.
     DoFFT(ctx, in, fft_shape, out);
   }
 
@@ -364,10 +363,7 @@ class FFTNBase : public OpKernel {
               "Wrong types for FFT: in=", in.dtype(), " out=", out->dtype())));
     }
 
-    if (input_shape.num_elements() == 0) {
-      DCHECK_EQ(0, output_shape.num_elements());
-      return;
-    }
+    // As above, DoFFTN zeroes the output for an empty input.
     DoFFTN(ctx, in, fft_shape.data(), axes_shape.data(), out);
   }
 
@@ -395,6 +391,16 @@ class FFTCPU : public FFTBase {
 
   void DoFFT(OpKernelContext* ctx, const Tensor& in, uint64_t* fft_shape,
              Tensor* out) override {
+    // An empty input carries no frequency content, and `fft_length` pads it
+    // with zeros, so the transform is identically zero. The output is sized
+    // from `fft_length` and can be non-empty here, so fill it.
+    if (in.NumElements() == 0) {
+      if (out->NumElements() > 0) {
+        memset(out->data(), 0, out->TotalBytes());
+      }
+      return;
+    }
+
     std::vector<size_t> axes(Rank());
     int batch_dims = in.dims() - FFTRank;
 
@@ -669,6 +675,17 @@ class FFTGPUBase : public FFTBase {
     auto* stream = ctx->op_device_context()->stream();
     OP_REQUIRES(ctx, stream, absl::InternalError("No GPU stream available."));
 
+    // See the CPU kernel: an empty input transforms to an all-zero output,
+    // which is sized from `fft_length` and can be non-empty.
+    if (in.NumElements() == 0) {
+      if (out->NumElements() > 0) {
+        stream_executor::DeviceAddressBase out_bytes(out->data(),
+                                                     out->TotalBytes());
+        OP_REQUIRES_OK(ctx, stream->MemZero(&out_bytes, out->TotalBytes()));
+      }
+      return;
+    }
+
     const TensorShape& input_shape = in.shape();
     const TensorShape& output_shape = out->shape();
 
@@ -858,6 +875,17 @@ class FFTNGPUBase : public FFTNBase {
         absl::InvalidArgumentError("Only 1D, 2D and 3D FFTs supported."));
     auto* stream = ctx->op_device_context()->stream();
     OP_REQUIRES(ctx, stream, absl::InternalError("No GPU stream available."));
+
+    // See the CPU kernel: an empty input transforms to an all-zero output,
+    // which is sized from `fft_length` and can be non-empty.
+    if (in.NumElements() == 0) {
+      if (out->NumElements() > 0) {
+        stream_executor::DeviceAddressBase out_bytes(out->data(),
+                                                     out->TotalBytes());
+        OP_REQUIRES_OK(ctx, stream->MemZero(&out_bytes, out->TotalBytes()));
+      }
+      return;
+    }
 
     Eigen::Map<Eigen::ArrayXi> axes(axes_shape, fft_rank);
     const TensorShape& input_shape = in.shape();

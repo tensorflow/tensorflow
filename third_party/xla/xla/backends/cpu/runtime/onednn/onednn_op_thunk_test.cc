@@ -380,5 +380,52 @@ TEST(OneDnnOpThunkTest, SimpleOneDnnSoftmaxThunk) {
   }
 }
 
+TEST(OneDnnOpThunkTest, FallbackThreadPool) {
+  // Verify that OneDnnOpThunk executes successfully when
+  // params.intra_op_threadpool is nullptr, exercising the fallback path.
+  Shape lhs_shape = ShapeUtil::MakeShape(F32, {2, 3});
+  Shape rhs_shape = ShapeUtil::MakeShape(F32, {3, 2});
+  Shape out_shape = ShapeUtil::MakeShape(F32, {2, 2});
+
+  Literal lhs_literal = LiteralUtil::CreateR2FromArray2D<float>(
+      Array2D<float>({{1.f, 2.f, 3.f}, {4.f, 5.f, 6.f}}));
+  Literal rhs_literal = LiteralUtil::CreateR2FromArray2D<float>(
+      Array2D<float>({{7.f, 8.f}, {9.f, 10.f}, {11.f, 12.f}}));
+  Literal out_literal = LiteralUtil::CreateR2FromArray2D<float>(
+      Array2D<float>({{0.f, 0.f}, {0.f, 0.f}}));
+
+  auto [lhs_alloc, rhs_alloc, out_alloc] =
+      CreateBufferAllocation(lhs_literal, rhs_literal, out_literal);
+
+  auto [lhs_slice, rhs_slice, out_slice] =
+      CreateBufferAllocationSlice(lhs_alloc, rhs_alloc, out_alloc);
+
+  BufferAllocations allocations =
+      CreateBufferAllocations(lhs_literal, rhs_literal, out_literal);
+
+  OneDnnOpThunk::OpBuffers op_buffers;
+  op_buffers.arguments_buffers = {lhs_slice, rhs_slice};
+  op_buffers.arguments_shapes = {lhs_shape, rhs_shape};
+  op_buffers.results_buffers = {out_slice};
+  op_buffers.results_shapes = {out_shape};
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto thunk,
+      OneDnnOpThunk::Create("__onednn$matmul", Thunk::Info(), op_buffers, {}));
+
+  Thunk::ExecuteParams params;
+  params.buffer_allocations = &allocations;
+  params.intra_op_threadpool = nullptr;
+
+  tsl::AsyncValueRef<Thunk::ExecuteEvent> exec_event = thunk->Execute(params);
+  tsl::BlockUntilReady(exec_event);
+  ASSERT_FALSE(exec_event.IsError())
+      << "OneDnnOpThunk execution with fallback thread pool failed";
+
+  Literal expected = LiteralUtil::CreateR2FromArray2D<float>(
+      Array2D<float>({{58.f, 64.f}, {139.f, 154.f}}));
+  EXPECT_EQ(out_literal, expected);
+}
+
 }  // namespace
 }  // namespace xla::cpu

@@ -410,6 +410,18 @@ class SparseBincountOp : public OpKernel {
                             indices, values, dense_shape,
                             sparse_utils::IndexValidation::kUnordered));
 
+    // The 2-D path below reads `weights(i)` with the value index `i`, so a
+    // `weights` shorter than `values` would read past its buffer. The 1-D
+    // path and DenseBincount already enforce this; mirror it here.
+    OP_REQUIRES(
+        ctx, weights_size == 0 || weights_size == values.NumElements(),
+        absl::InvalidArgumentError(absl::StrCat(
+            "`weights` must be the same length as `values` or a length-0 "
+            "`Tensor`, in which case it acts as all weights equal to 1. Got a "
+            "length-",
+            weights_size, " `weights` for ", values.NumElements(),
+            " values.")));
+
     OP_REQUIRES(ctx, dense_shape.NumElements() > 0,
                 absl::InvalidArgumentError(absl::StrCat(
                     "dense_shape must have at least 1 dimension, got ",
@@ -503,12 +515,13 @@ class RaggedBincountOp : public OpKernel {
                 absl::InvalidArgumentError(
                     absl::StrCat("size (", size, ") must be non-negative")));
 
-    int num_rows = splits.size() - 1;
-    int num_values = values.size();
-    int batch_idx = 0;
+    int64_t num_values = values.size();
+    int64_t batch_idx = 0;
 
     OP_REQUIRES(ctx, splits.size() > 0,
                 absl::InvalidArgumentError("Splits must be non-empty"));
+
+    int64_t num_rows = splits.size() - 1;
 
     OP_REQUIRES(ctx, splits(0) == 0,
                 absl::InvalidArgumentError(absl::StrCat(
@@ -519,6 +532,17 @@ class RaggedBincountOp : public OpKernel {
                     "Splits must end with the number of values, got ",
                     splits(num_rows), " instead of ", num_values)));
 
+    // The loop below reads `weights(idx)` with the value index `idx`, so a
+    // `weights` shorter than `values` would read past its buffer. The 1-D
+    // path and DenseBincount already enforce this; mirror it here.
+    OP_REQUIRES(
+        ctx, weights_size == 0 || weights_size == num_values,
+        absl::InvalidArgumentError(absl::StrCat(
+            "`weights` must be the same length as `values` or a length-0 "
+            "`Tensor`, in which case it acts as all weights equal to 1. Got a "
+            "length-",
+            weights_size, " `weights` for ", num_values, " values.")));
+
     Tensor* out_t;
     OP_REQUIRES_OK(
         ctx, ctx->allocate_output(0, TensorShape({num_rows, size}), &out_t));
@@ -526,7 +550,7 @@ class RaggedBincountOp : public OpKernel {
     fill(ctx->eigen_device<Device>(), out_t->flat<T>());
     const auto out = out_t->matrix<T>();
 
-    for (int idx = 0; idx < num_values; ++idx) {
+    for (int64_t idx = 0; idx < num_values; ++idx) {
       while (idx >= splits(batch_idx)) {
         batch_idx++;
       }

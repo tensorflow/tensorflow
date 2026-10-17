@@ -167,6 +167,35 @@ TEST_F(CollectiveFusionTest, FusesAndFlattensMediumAllReduceTwoShot) {
                             kExpected, /*after_pass_checks=*/nullptr, &config);
 }
 
+TEST_F(CollectiveFusionTest, FusesAndFlattens3DAllReduceTwoShot) {
+  // Use a 3D shape to test multi-dimensional flattening:
+  // [2, 4, 32768] = 262144 elements (1 MB -> TwoShot)
+  Shape shape = xla::ShapeUtil::MakeShape(F32, {2, 4, 32768});
+  std::string hlo = absl::StrFormat(kAllReduceHloTemplate, shape.ToString());
+  SCOPED_TRACE(::testing::Message() << "hlo: " << hlo);
+  static constexpr absl::string_view kExpected = R"(
+    // CHECK: %[[FUSION_COMPUTATION:.*]] (param_0: f32[262144]) -> f32[262144] {
+    // CHECK:   %[[P0:.*]] = f32[262144]{0} parameter(0)
+    // CHECK:   ROOT {{.*}} = f32[262144]{0} all-reduce(%[[P0]]),
+    // CHECK-SAME: to_apply=%add
+    // CHECK: }
+    //
+    // CHECK: ENTRY %e (p0.1: f32[2,4,32768]) -> f32[2,4,32768] {
+    // CHECK:   %[[P0:.*]] = f32[2,4,32768]{2,1,0} parameter(0)
+    // CHECK:   %[[BITCAST_TO_1D:.*]] = f32[262144]{0} bitcast(%[[P0]])
+    // CHECK:   %[[FUSION:.*]] = f32[262144]{0} fusion(%[[BITCAST_TO_1D]]),
+    // CHECK-SAME: kind=kCustom,
+    // CHECK-SAME: calls=%[[FUSION_COMPUTATION]],
+    // CHECK-SAME: backend_config={
+    // CHECK-SAME: "kind":"__triton_collective"
+    // CHECK-SAME: "block_level_fusion_config"
+    // CHECK:   ROOT {{.*}} = f32[2,4,32768]{2,1,0} bitcast(%[[FUSION]])
+  )";
+  HloModuleConfig config = GetModuleConfigForTest(/*replica_count=*/8);
+  RunAndFilecheckHloRewrite(hlo, AnnotateAndFusePipeline(*gpu_topology_),
+                            kExpected, /*after_pass_checks=*/nullptr, &config);
+}
+
 TEST_F(CollectiveFusionTest, DoesNotFuseUnannotated) {
   constexpr int64_t kNumElements = 32768;
   Shape shape = ShapeUtil::MakeShape(F32, {kNumElements});
@@ -326,6 +355,48 @@ TEST_F(CollectiveFusionTest, FusesAndFlattensReduceScatterOneShot) {
       .add_xla_gpu_experimental_use_collective_kernels(
           DebugOptions::COLLECTIVE_KERNEL_REDUCE_SCATTER);
   RunAndFilecheckHloRewrite(kReduceScatterHlo,
+                            AnnotateAndFusePipeline(*gpu_topology_), kExpected,
+                            /*after_pass_checks=*/nullptr, &config);
+}
+
+TEST_F(CollectiveFusionTest, FusesVariadicAllGatherIntoGteTupleRoot) {
+  static constexpr absl::string_view kVariadicAllGatherHlo = R"(
+    HloModule variadic_all_gather_test
+
+    ENTRY e {
+      p0 = f32[4,4096]{1,0} parameter(0)
+      p1 = pred[2]{0} parameter(1)
+      ROOT ag = (f32[8,4096]{1,0}, pred[4]{0}) all-gather(p0, p1),
+          replica_groups={{0,1}},
+          dimensions={0}
+    }
+  )";
+  static constexpr absl::string_view kExpected = R"(
+    // CHECK: %[[FUSION_COMPUTATION:.*]] (param_0: f32[4,4096], param_1: pred[2]) -> (f32[8,4096], pred[4]) {
+    // CHECK:   %[[P0:.*]] = f32[4,4096]{1,0} parameter(0)
+    // CHECK:   %[[P1:.*]] = pred[2]{0} parameter(1)
+    // CHECK:   %[[AG:.*]] = (f32[8,4096]{1,0}, pred[4]{0}) all-gather(%[[P0]], %[[P1]]),
+    // CHECK-SAME: dimensions={0}
+    // CHECK:   %[[GTE0:.*]] = f32[8,4096]{1,0} get-tuple-element(%[[AG]]), index=0
+    // CHECK:   %[[GTE1:.*]] = pred[4]{0} get-tuple-element(%[[AG]]), index=1
+    // CHECK:   ROOT {{.*}} = (f32[8,4096]{1,0}, pred[4]{0}) tuple(%[[GTE0]], %[[GTE1]]), frontend_attributes={disable_tuple_simplifier="true"}
+    // CHECK: }
+    //
+    // CHECK: ENTRY %e (p0: f32[4,4096], p1: pred[2]) -> (f32[8,4096], pred[4]) {
+    // CHECK:   %[[P0_ENTRY:.*]] = f32[4,4096]{1,0} parameter(0)
+    // CHECK:   %[[P1_ENTRY:.*]] = pred[2]{0} parameter(1)
+    // CHECK:   ROOT {{.*}} = (f32[8,4096]{1,0}, pred[4]{0}) fusion(%[[P0_ENTRY]], %[[P1_ENTRY]]),
+    // CHECK-SAME: kind=kCustom,
+    // CHECK-SAME: calls=%[[FUSION_COMPUTATION]],
+    // CHECK-SAME: backend_config={
+    // CHECK-SAME: "kind":"__triton_collective"
+    // CHECK-SAME: "block_level_fusion_config"
+  )";
+  HloModuleConfig config = GetModuleConfigForTest(/*replica_count=*/2);
+  config.mutable_debug_options()
+      .add_xla_gpu_experimental_use_collective_kernels(
+          DebugOptions::COLLECTIVE_KERNEL_ALL_GATHER);
+  RunAndFilecheckHloRewrite(kVariadicAllGatherHlo,
                             AnnotateAndFusePipeline(*gpu_topology_), kExpected,
                             /*after_pass_checks=*/nullptr, &config);
 }

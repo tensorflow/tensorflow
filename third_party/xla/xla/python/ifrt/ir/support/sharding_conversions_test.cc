@@ -42,9 +42,9 @@ limitations under the License.
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/test_util.h"
+#include "xla/python/pjrt_ifrt/xla_sharding.h"
 #include "xla/shape.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/xla_data.pb.h"
 
@@ -61,7 +61,7 @@ using ::xla::HloSharding;
 absl::StatusOr<HloSharding> ToHloShardingViaOpSharding(
     const ShardingParam& sharding_param) {
   ABSL_ASSIGN_OR_RETURN(xla::OpSharding op_sharding, ToOpSharding(sharding_param));
-  return HloSharding::FromProto(op_sharding);
+  return xla::HloSharding::FromProto(op_sharding);
 }
 
 // Internal state of a client for sharding conversion tests.
@@ -103,14 +103,16 @@ class ShardingConversionsTest : public testing::TestWithParam<int> {
   }
 
   void AssertSameTiling(const ShardingParam& sharding_param,
-                        const HloSharding& hlo_sharding, const Shape& shape) {
-    auto device_list = GetDevices({0, 1, 2, 3, 4, 5});
-    TF_ASSERT_OK_AND_ASSIGN(ShardingRef sharding,
-                            ShardingParamSharding::Create(
-                                sharding_param, device_list, MemoryKind()));
+                        const xla::HloSharding& hlo_sharding,
+                        const Shape& shape) {
+    ASSERT_OK_AND_ASSIGN(const xla::HloSharding hlo_sharding_from_sp,
+                         ToHloSharding(sharding_param));
+    std::unique_ptr<xla::ifrt::HloSharding> sharding =
+        xla::ifrt::HloSharding::Create(GetDevices({0, 1, 2, 3, 4, 5}),
+                                       MemoryKind(), hlo_sharding_from_sp);
     const xla::Shape xla_shape(PrimitiveType::F16, shape.dims());
 
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         const std::vector<IndexDomain> index_domains,
         sharding->IndexDomains(
             shape, xla::ifrt::SingleDeviceShardSemantics::kAllShards));
@@ -139,17 +141,16 @@ using ShardingParamToHloShardingTest =
 TEST_P(ShardingParamToHloShardingTest, ShardingParamToHloSharding) {
   const ShardingParamToHloShardingTestParam& param = GetParam();
   TF_EXPECT_OK(param.sharding_param.verify());
-  TF_ASSERT_OK_AND_ASSIGN(const HloSharding hlo_iota_sharding,
-                          ToHloSharding(param.sharding_param));
-  TF_ASSERT_OK_AND_ASSIGN(const HloSharding hlo_sharding,
-                          ToHloShardingViaOpSharding(param.sharding_param));
+  ASSERT_OK_AND_ASSIGN(const xla::HloSharding hlo_iota_sharding,
+                       ToHloSharding(param.sharding_param));
+  ASSERT_OK_AND_ASSIGN(const xla::HloSharding hlo_sharding,
+                       ToHloShardingViaOpSharding(param.sharding_param));
   EXPECT_EQ(hlo_sharding.ToString(), param.expected_hlo_sharding_str);
   EXPECT_EQ(hlo_sharding, hlo_iota_sharding);
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto sharding_param,
-      ToShardingParam(hlo_iota_sharding,
-                      param.sharding_param.dim_shards().size(),
-                      param.sharding_param.NumDevices()));
+  ASSERT_OK_AND_ASSIGN(auto sharding_param,
+                       ToShardingParam(hlo_iota_sharding,
+                                       param.sharding_param.dim_shards().size(),
+                                       param.sharding_param.NumDevices()));
 
   if (param.sharding_param.minor_to_major().axis_sizes.size() ==
           hlo_sharding.num_dimensions() &&
@@ -160,8 +161,8 @@ TEST_P(ShardingParamToHloShardingTest, ShardingParamToHloSharding) {
     // that have multiple valid expansions.
     EXPECT_EQ(sharding_param, param.sharding_param);
   }
-  TF_ASSERT_OK_AND_ASSIGN(const HloSharding actual_hlo_sharding,
-                          ToHloSharding(sharding_param));
+  ASSERT_OK_AND_ASSIGN(const xla::HloSharding actual_hlo_sharding,
+                       ToHloSharding(sharding_param));
   EXPECT_EQ(hlo_iota_sharding, actual_hlo_sharding);
 }
 
@@ -269,8 +270,8 @@ TEST_P(ShardingConversionsTest, ShardingParamFullySharded) {
   ShardingParam sharding_param{/*dim_shards=*/{2, 3},
                                {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 3}}};
   TF_EXPECT_OK(sharding_param.verify());
-  TF_ASSERT_OK_AND_ASSIGN(const HloSharding hlo_sharding,
-                          ToHloShardingViaOpSharding(sharding_param));
+  ASSERT_OK_AND_ASSIGN(const xla::HloSharding hlo_sharding,
+                       ToHloShardingViaOpSharding(sharding_param));
   AssertSameTiling(sharding_param, hlo_sharding, Shape({6, 6}));
 }
 
@@ -278,8 +279,8 @@ TEST_P(ShardingConversionsTest, ShardingParamWithPermutation) {
   ShardingParam sharding_param{/*dim_shards=*/{2, 3},
                                {/*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2}}};
   TF_EXPECT_OK(sharding_param.verify());
-  TF_ASSERT_OK_AND_ASSIGN(const HloSharding hlo_sharding,
-                          ToHloShardingViaOpSharding(sharding_param));
+  ASSERT_OK_AND_ASSIGN(const xla::HloSharding hlo_sharding,
+                       ToHloShardingViaOpSharding(sharding_param));
   AssertSameTiling(sharding_param, hlo_sharding, Shape({6, 6}));
 }
 
@@ -287,17 +288,17 @@ TEST_P(ShardingConversionsTest, ShardingParamWithReplication) {
   ShardingParam sharding_param{/*dim_shards=*/{2, 1},
                                {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 3}}};
   TF_EXPECT_OK(sharding_param.verify());
-  TF_ASSERT_OK_AND_ASSIGN(const HloSharding hlo_sharding,
-                          ToHloShardingViaOpSharding(sharding_param));
+  ASSERT_OK_AND_ASSIGN(const xla::HloSharding hlo_sharding,
+                       ToHloShardingViaOpSharding(sharding_param));
   AssertSameTiling(sharding_param, hlo_sharding, Shape({6, 6}));
 }
 
 TEST_P(ShardingConversionsTest, OpShardingReplicated) {
   OpSharding op_sharding;
   op_sharding.set_type(OpSharding::REPLICATED);
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_sharding,
-                          HloSharding::FromProto(op_sharding));
-  TF_ASSERT_OK_AND_ASSIGN(auto actual, ToShardingParam(hlo_sharding, 2, 6));
+  ASSERT_OK_AND_ASSIGN(auto hlo_sharding,
+                       xla::HloSharding::FromProto(op_sharding));
+  ASSERT_OK_AND_ASSIGN(auto actual, ToShardingParam(hlo_sharding, 2, 6));
   ShardingParam expected{/*dim_shards=*/{1, 1},
                          {/*permutation=*/{0}, /*axis_sizes=*/{6}}};
   TF_EXPECT_OK(expected.verify());
@@ -307,10 +308,10 @@ TEST_P(ShardingConversionsTest, OpShardingReplicated) {
 TEST_P(ShardingConversionsTest, OpShardingUnreduced) {
   OpSharding op_sharding;
   op_sharding.set_type(OpSharding::UNREDUCED);
-  TF_ASSERT_OK_AND_ASSIGN(const HloSharding hlo_sharding,
-                          HloSharding::FromProto(op_sharding));
-  TF_ASSERT_OK_AND_ASSIGN(ShardingParam actual,
-                          ToShardingParam(hlo_sharding, 2, 6));
+  ASSERT_OK_AND_ASSIGN(const xla::HloSharding hlo_sharding,
+                       xla::HloSharding::FromProto(op_sharding));
+  ASSERT_OK_AND_ASSIGN(ShardingParam actual,
+                       ToShardingParam(hlo_sharding, 2, 6));
   ShardingParam expected{/*dim_shards=*/{1, 1},
                          {/*permutation=*/{0}, /*axis_sizes=*/{6}},
                          /*unreduced_axes=*/{0}};
@@ -335,15 +336,15 @@ TEST_P(ShardingConversionsTest, OpShardingWithUnreduced) {
     last_tile_dims: UNREDUCED
     last_tile_dims: REPLICATED
   )pb");
-  TF_ASSERT_OK_AND_ASSIGN(const HloSharding hlo_sharding,
-                          HloSharding::FromProto(op_sharding));
-  TF_ASSERT_OK_AND_ASSIGN(ShardingParam actual,
-                          ToShardingParam(hlo_sharding, 3, 30));
+  ASSERT_OK_AND_ASSIGN(const xla::HloSharding hlo_sharding,
+                       xla::HloSharding::FromProto(op_sharding));
+  ASSERT_OK_AND_ASSIGN(ShardingParam actual,
+                       ToShardingParam(hlo_sharding, 3, 30));
   ShardingParam expected{/*dim_shards=*/{1, 1, 2},
                          {/*permutation=*/{1, 2, 0}, /*axis_sizes=*/{2, 3, 5}},
                          /*unreduced_axes=*/{2}};
-  TF_ASSERT_OK_AND_ASSIGN(const HloSharding expected_hlo_sharding,
-                          ToHloSharding(expected));
+  ASSERT_OK_AND_ASSIGN(const xla::HloSharding expected_hlo_sharding,
+                       ToHloSharding(expected));
   TF_EXPECT_OK(expected.verify());
   TF_EXPECT_OK(actual.verify());
   EXPECT_EQ(hlo_sharding, expected_hlo_sharding);
@@ -353,7 +354,7 @@ INSTANTIATE_TEST_SUITE_P(NumDevices, ShardingConversionsTest,
                          testing::Values(7));
 
 struct HloShardingTestStruct {
-  HloSharding hlo_sharding;
+  xla::HloSharding hlo_sharding;
   int rank;
   int num_devices;
 };
@@ -376,16 +377,15 @@ class HloShardingToShardingParamTest
 
 TEST_P(HloShardingToShardingParamTest, HloShardingToShardingParam) {
   const auto& param = GetParam();
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto sharding_param,
       ToShardingParam(param.hlo_sharding, param.rank, param.num_devices));
   EXPECT_TRUE(sharding_param.verify().ok());
-  TF_ASSERT_OK_AND_ASSIGN(auto actual_hlo_sharding,
-                          ToHloSharding(sharding_param));
+  ASSERT_OK_AND_ASSIGN(auto actual_hlo_sharding, ToHloSharding(sharding_param));
   EXPECT_EQ(param.hlo_sharding, actual_hlo_sharding);
   // Verify that the conversion to OpSharding is also correct.
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_via_op_sharding,
-                          ToHloShardingViaOpSharding(sharding_param));
+  ASSERT_OK_AND_ASSIGN(auto hlo_via_op_sharding,
+                       ToHloShardingViaOpSharding(sharding_param));
   EXPECT_EQ(param.hlo_sharding, hlo_via_op_sharding);
 }
 
@@ -524,9 +524,9 @@ TEST_P(ShardingParamToHloShardingWithDeviceIdsTest,
        ShardingParamToHloShardingWithDeviceIds) {
   const auto& param = GetParam();
   TF_EXPECT_OK(param.sharding_param.verify());
-  TF_ASSERT_OK_AND_ASSIGN(const HloSharding hlo_sharding,
-                          ToHloSharding(param.sharding_param,
-                                        llvm::ArrayRef<int>(param.device_ids)));
+  ASSERT_OK_AND_ASSIGN(const HloSharding hlo_sharding,
+                       ToHloSharding(param.sharding_param,
+                                     llvm::ArrayRef<int>(param.device_ids)));
   EXPECT_EQ(hlo_sharding.ToString(), param.expected_hlo_sharding_str);
   if (hlo_sharding.IsTiled()) {
     EXPECT_FALSE(hlo_sharding.tile_assignment().iota().has_value());
@@ -575,17 +575,17 @@ using HloShardingV1RoundtripTest =
 TEST_P(HloShardingV1RoundtripTest, Roundtrip) {
   const auto& param = GetParam();
   TF_EXPECT_OK(param.sharding_param.verify());
-  TF_ASSERT_OK_AND_ASSIGN(const HloSharding v1_sharding,
-                          ToHloSharding(param.sharding_param,
-                                        llvm::ArrayRef<int>(param.device_ids)));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(const HloSharding v1_sharding,
+                       ToHloSharding(param.sharding_param,
+                                     llvm::ArrayRef<int>(param.device_ids)));
+  ASSERT_OK_AND_ASSIGN(
       ShardingParamWithDeviceIds result,
       ToShardingParamAndDevices(v1_sharding, param.rank, param.num_devices));
   std::optional<llvm::ArrayRef<int>> logical_device_ids = std::nullopt;
   if (result.logical_device_ids.has_value()) {
     logical_device_ids.emplace(*result.logical_device_ids);
   }
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       const HloSharding roundtrip_sharding,
       ToHloSharding(result.sharding_param, logical_device_ids));
   EXPECT_EQ(roundtrip_sharding.ToString(), v1_sharding.ToString());

@@ -41,7 +41,7 @@ env:
   ROCM_DISTRO_URL: https://stable.repo.amd.com/rocm/core/tarball/therock-dist-linux-multiarch-10.0.0.tar.gz
   ROCM_DISTRO_HASH: 1c5e807875d26a2470ecc7323daa5b5b9009208a55c3290ac255a909cde15fc6
   ROCM_AMD_GPU_TARGETS: gfx950
-  ROCM_SINGLE_GPU_RBE_POOL: linux_x64_gpu_do_gfx950
+  ROCM_SINGLE_GPU_RBE_POOL: linux_x64_gpu
 
 jobs:
   rocm-config:
@@ -117,7 +117,7 @@ jobs:
 
       - name: Upload JAX BEP File
         if: always()
-        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: jax-bep
           path: jax/jax_build_events.json
@@ -190,7 +190,7 @@ jobs:
 
       - name: Upload XLA BEP Files
         if: always()
-        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: xla-bep
           path: |

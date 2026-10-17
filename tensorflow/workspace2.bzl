@@ -28,6 +28,7 @@ load("@xla//third_party/benchmark:workspace.bzl", benchmark = "repo")
 load("@xla//third_party/clang_toolchain:cc_configure_clang.bzl", "cc_download_clang_toolchain")
 load("@xla//third_party/compute_library:workspace.bzl", compute_library = "repo")
 load("@xla//third_party/cpuinfo:workspace.bzl", cpuinfo = "repo")
+load("@xla//third_party/cuda_tile:workspace.bzl", cuda_tile = "repo")
 load("@xla//third_party/cudnn_frontend:workspace.bzl", cudnn_frontend = "repo")
 load("@xla//third_party/cutlass:workspace.bzl", cutlass = "repo")
 load("@xla//third_party/dlpack:workspace.bzl", dlpack = "repo")
@@ -63,6 +64,7 @@ load("@xla//third_party/shardy:workspace.bzl", shardy = "repo")
 load("@xla//third_party/slinky:workspace.bzl", slinky = "repo")
 load("@xla//third_party/spdlog:workspace.bzl", spdlog = "repo")
 load("@xla//third_party/stablehlo:workspace.bzl", stablehlo = "repo")
+load("@xla//third_party/tensor_ir:workspace.bzl", tensor_ir = "repo")
 load("@xla//third_party/tensorrt:tensorrt_configure.bzl", "tensorrt_configure")
 load("@xla//third_party/tensorrt:workspace.bzl", tensorrt = "repo")
 load("@xla//third_party/triton:workspace.bzl", triton = "repo")
@@ -126,6 +128,7 @@ def _initialize_third_party():
     bazel_features_deps()
     benchmark()
     com_google_highway()
+    cuda_tile()
     ducc()
     dlpack()
     eigen3()
@@ -163,6 +166,7 @@ def _initialize_third_party():
     spdlog()
     sobol_data()
     stablehlo()
+    tensor_ir()
     vulkan_headers()
     tensorrt()
     nvshmem()
@@ -261,9 +265,9 @@ def _tf_repositories():
     # XNNPack dependency.
     tf_http_archive(
         name = "KleidiAI",
-        sha256 = "652ee046ebf99bee5ed78aaf8961ea1df6ac09b6ebbd3a33106d9ce255efba69",
-        strip_prefix = "kleidiai-4bc7bd457930de119f8b826ecfdebfbd9c08cf8c",
-        urls = tf_mirror_urls("https://gitlab.arm.com/kleidi/kleidiai/-/archive/4bc7bd457930de119f8b826ecfdebfbd9c08cf8c/kleidiai-4bc7bd457930de119f8b826ecfdebfbd9c08cf8c.zip"),
+        sha256 = "a424e81535ebb6d0117e9282fba45d70aee0bedb481f603df55e1805bed0e21b",
+        strip_prefix = "kleidiai-5147983e14600ce7f8a6583dc04ba07753ac54c4",
+        urls = tf_mirror_urls("https://gitlab.arm.com/kleidi/kleidiai/-/archive/5147983e14600ce7f8a6583dc04ba07753ac54c4/kleidiai-5147983e14600ce7f8a6583dc04ba07753ac54c4.zip"),
     )
 
     FXdiv()

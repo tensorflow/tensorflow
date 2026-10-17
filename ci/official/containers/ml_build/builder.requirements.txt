@@ -11,7 +11,7 @@ pyyaml
 # For JAX
 build ~= 1.2.2
 # uv is faster than pip for installing Python packages.
-uv ~= 0.5.30
+uv ~= 0.12.23
 
 # For running wheel verification script
 immutabledict ~= 4.2.1

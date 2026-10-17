@@ -281,7 +281,7 @@ struct CSRSparseMatrixAdd<GPUDevice, T>
         beta_(beta),
         initialized_(false) {}
 
-  absl::Status Initialize() {
+  absl::Status Initialize() override {
     TF_RETURN_IF_ERROR(cuda_sparse_.Initialize());
     TF_RETURN_IF_ERROR(descrA_.Initialize());
     TF_RETURN_IF_ERROR(descrB_.Initialize());
@@ -292,7 +292,7 @@ struct CSRSparseMatrixAdd<GPUDevice, T>
 
   absl::Status GetWorkspaceSize(const ConstCSRComponent<T>& a,
                                 const ConstCSRComponent<T>& b,
-                                size_t* bufferSize) {
+                                size_t* bufferSize) override {
     DCHECK(initialized_);
 
     const int m = a.row_ptr.size() - 1;
@@ -320,7 +320,7 @@ struct CSRSparseMatrixAdd<GPUDevice, T>
   absl::Status GetOutputStructure(const ConstCSRComponent<T>& a,
                                   const ConstCSRComponent<T>& b,
                                   TTypes<int32_t>::UnalignedVec c_row_ptr,
-                                  int* output_nnz, void* workspace) {
+                                  int* output_nnz, void* workspace) override {
     DCHECK(initialized_);
 
     const int m = a.row_ptr.size() - 1;
@@ -349,7 +349,7 @@ struct CSRSparseMatrixAdd<GPUDevice, T>
 
   absl::Status Compute(const ConstCSRComponent<T>& a,
                        const ConstCSRComponent<T>& b, CSRComponent<T>* c,
-                       void* workspace) {
+                       void* workspace) override {
     DCHECK(initialized_);
 
     const int m = a.row_ptr.size() - 1;

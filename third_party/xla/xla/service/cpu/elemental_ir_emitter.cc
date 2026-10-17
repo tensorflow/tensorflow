@@ -26,6 +26,7 @@ limitations under the License.
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Value.h"
+#include "xla/codegen/intrinsic/cpp/intrinsic_declarations.h"
 #include "xla/codegen/intrinsic/exp.h"
 #include "xla/codegen/intrinsic/intrinsic.h"
 #include "xla/codegen/intrinsic/rsqrt.h"
@@ -90,6 +91,21 @@ absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitCosh(
 
 absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitSinh(
     PrimitiveType prim_type, llvm::Value* value) {
+  if (prim_type == F32) {
+    llvm::Function* sinh =
+        xla::codegen::intrinsics::Sinh::GetOrInsertDeclaration(module(),
+                                                               Type::S(F32));
+    return b()->CreateCall(sinh, value);
+  }
+  if (prim_type == F16 || prim_type == BF16) {
+    llvm::Type* f32_type = b()->getFloatTy();
+    llvm::Value* f32_value = b()->CreateFPCast(value, f32_type, "upcast");
+    llvm::Function* sinh =
+        xla::codegen::intrinsics::Sinh::GetOrInsertDeclaration(module(),
+                                                               Type::S(F32));
+    llvm::Value* f32_result = b()->CreateCall(sinh, f32_value);
+    return b()->CreateFPCast(f32_result, value->getType(), "downcast");
+  }
   return Unimplemented("sinh");
 }
 

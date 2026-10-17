@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/per_device_state.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_executable_buffer_allocator.h"
@@ -449,9 +450,10 @@ GpuExecutableVaRemapAllocator::GpuExecutableVaRemapAllocator(
     absl::string_view module_name,
     absl::Span<const BufferAllocation* const> allocations,
     const Shape& result_shape, const DebugOptions* debug_options,
-    ThunkExecutor* thunk_executor)
+    ThunkExecutor* thunk_executor, int num_devices)
     : GpuExecutableBufferAllocator(module_name, allocations, result_shape,
-                                   debug_options, thunk_executor) {
+                                   debug_options, thunk_executor),
+      remappings_(num_devices) {
   update_mode_ = debug_options != nullptr
                      ? debug_options->xla_gpu_command_buffer_update_mode()
                      : DebugOptions::ALWAYS_UPDATE;
@@ -599,20 +601,19 @@ void GpuExecutableVaRemapAllocator::TransitionProfiledRemapping(
 }
 
 GpuExecutableVaRemapAllocator::~GpuExecutableVaRemapAllocator() {
-  absl::MutexLock lock(remappings_mutex_);
-  for (auto& [executor, remapping] : remappings_) {
+  remappings_.ForEach([this](Remapping& remapping) {
     absl::MutexLock remap_lock(remapping.mutex);
     if (remapping.vmm_allocator == nullptr) {
-      continue;
+      return;
     }
     absl::Status status = remapping.vmm_allocator->SynchronizePendingOperations(
-        executor->device_ordinal());
+        remapping.device_ordinal);
     if (!status.ok()) {
       LOG(ERROR) << "Failed to synchronize command buffer VA remapping "
                     "deferred operations for module "
                  << module_name() << ": " << status;
     }
-  }
+  });
 }
 
 absl::StatusOr<std::unique_ptr<GpuExecutableBufferAllocator::ExecutionScope>>
@@ -645,24 +646,21 @@ GpuExecutableVaRemapAllocator::CreateExecutionScope(
         "and execution stream to match");
   }
 
-  Remapping* remapping = nullptr;
-  se::StreamExecutor* executor = run_options->stream()->parent();
-  {
-    absl::MutexLock lock(remappings_mutex_);
-    // This is the lifetime remapping object for this executable/executor. It
-    // owns the VA reservation reused by later ExecuteAsyncOnStream calls.
-    remapping = &remappings_[executor];
-  }
+  // This is the lifetime remapping object for this executable/device. It
+  // owns the VA reservation reused by later ExecuteAsyncOnStream calls.
+  ABSL_ASSIGN_OR_RETURN(Remapping * remapping,
+                   remappings_.GetOrCreate(device_ordinal));
 
   auto remap_lock = std::make_unique<absl::MutexLock>(remapping->mutex);
   if (remapping->vmm_allocator != nullptr &&
       remapping->vmm_allocator != vmm_allocator) {
     return Internal(
         "Command buffer VA remapping for module %s changed VMM allocator for "
-        "executor %p",
-        module_name(), executor);
+        "device %d",
+        module_name(), device_ordinal);
   }
   remapping->vmm_allocator = vmm_allocator;
+  remapping->device_ordinal = device_ordinal;
 
   if (profiled_mode) {
     // The lock is held through the whole execution in the profiling phase as

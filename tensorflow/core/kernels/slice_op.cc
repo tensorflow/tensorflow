@@ -169,7 +169,7 @@ class SliceOp : public OpKernel {
     const int input_dims = input.dims();
 
     if (result->NumElements() > 0) {
-      if (std::is_same<Device, CPUDevice>::value && input_dims == 2 &&
+      if (std::is_same_v<Device, CPUDevice> && input_dims == 2 &&
           DataTypeCanUseMemcpy(DataTypeToEnum<T>::v())) {
         auto input_t = input.tensor<T, 2>();
         auto output_t = result->tensor<T, 2>();

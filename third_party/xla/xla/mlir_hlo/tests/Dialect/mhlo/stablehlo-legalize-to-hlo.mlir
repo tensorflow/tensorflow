@@ -145,6 +145,18 @@ func.func @attr_comparison_type_unsigned(%arg0: tensor<f32>, %arg1: tensor<f32>)
 
 // -----
 
+// CHECK-LABEL: "attr_comparison_type_weak_order"
+func.func @attr_comparison_type_weak_order(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<i1> {
+  %0 = "stablehlo.compare"(%arg0, %arg1) {
+    comparison_direction = #stablehlo<comparison_direction EQ>,
+    // CHECK: compare_type = #mhlo<comparison_type WEAKORDER>,
+    compare_type = #stablehlo<comparison_type WEAKORDER>
+  } : (tensor<f32>, tensor<f32>) -> tensor<i1>
+  func.return %0 : tensor<i1>
+}
+
+// -----
+
 // CHECK-LABEL: "attr_custom_call_api_version_unspecified"
 func.func @attr_custom_call_api_version_unspecified(%arg0: tensor<f32>) -> tensor<f32> {
   %0 = "stablehlo.custom_call"(%arg0) {
@@ -2786,6 +2798,24 @@ func.func @op_unary_einsum_deprecated(%arg0: tensor<8x16xf32>) -> tensor<8xf32> 
     einsum_config = "ab->a"
   } : (tensor<8x16xf32>) -> tensor<8xf32>
   func.return %0 : tensor<8xf32>
+}
+
+// -----
+
+// CHECK-LABEL: "op_exp2"
+func.func @op_exp2(%arg0: tensor<f32>) -> tensor<f32> {
+  // CHECK: "mhlo.exp2"([[ARG0:%arg[0-9]+]]) : (tensor<f32>) -> tensor<f32>
+  %0 = "stablehlo.exp2"(%arg0) : (tensor<f32>) -> tensor<f32>
+  func.return %0 : tensor<f32>
+}
+
+// -----
+
+// CHECK-LABEL: "op_log2"
+func.func @op_log2(%arg0: tensor<f32>) -> tensor<f32> {
+  // CHECK: "mhlo.log2"([[ARG0:%arg[0-9]+]]) : (tensor<f32>) -> tensor<f32>
+  %0 = "stablehlo.log2"(%arg0) : (tensor<f32>) -> tensor<f32>
+  func.return %0 : tensor<f32>
 }
 
 // -----

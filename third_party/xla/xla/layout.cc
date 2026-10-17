@@ -102,6 +102,8 @@ void Tile::Print(Printer* printer) const {
     } else {
       if (dim == kCombineDimension) {
         printer->Append("*");
+      } else if (dim == kMatchDimension) {
+        printer->Append("d");
       } else {
         printer->Append("Invalid value ");
         printer->Append(dim);

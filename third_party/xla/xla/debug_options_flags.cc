@@ -490,6 +490,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_per_fusion_autotune_cache_dir("");
 
   opts.set_xla_gpu_use_new_autotune_cache_format(true);
+  opts.set_xla_autotune_cache_require_strict_codegen_match(false);
 
   opts.set_xla_compile_all_supported_configs(false);
   opts.set_xla_deduplicate_backend_configs_min_size(
@@ -529,7 +530,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_matmul_perf_table_path("");
   // TODO(b/366475196): Create XLA GPU without cuDNN, cuBLAS.
   opts.set_xla_gpu_experimental_disable_binary_libraries(false);
-  opts.set_xla_gpu_experimental_enable_conv_fusion(true);
+  opts.set_xla_gpu_experimental_enable_conv_fusion(false);
   opts.set_xla_gpu_dot_merger_threshold_mb(64);
   opts.set_xla_enable_fast_math(false);
   opts.set_xla_gpu_experimental_parallel_collective_overlap_limit(1);
@@ -609,6 +610,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_gxl_scratch_size_bytes(64 * 1024 * 1024);
   opts.set_xla_gpu_enable_persistent_symmetric_memory(false);
   opts.set_xla_gpu_experimental_enable_raft_for_stable_topk(false);
+  opts.set_xla_gpu_experimental_enable_tensor_ir(false);
   opts.set_xla_gpu_async_copy_min_bytes(-1);
 
   // Disable float checks.
@@ -629,6 +631,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
       DebugOptions::DEVICELESS_CUB_WITH_FALLBACK);
   opts.set_xla_gpu_cudnn_deviceless_compilation_mode(
       DebugOptions::CUDNN_DEVICELESS_COMPILATION_DISABLED);
+  opts.set_xla_gpu_experimental_deterministic_ops_triton(
+      DebugOptions::DETERMINISTIC_OPS_TRITON_MODE_OFF);
   // Pre-populate all default autotune backends so that modifier flags (e.g.
   // +cudnn, -triton) can apply to the full default set.
   for (int i = 0; i < autotuner::Backend_descriptor()->value_count(); ++i) {
@@ -1163,6 +1167,16 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       }
     };
     return absl::StrJoin(collective_ops, ", ", Formatter());
+  };
+
+  auto collective_kernel_type_to_string =
+      [](google::protobuf::RepeatedField<int> collective_kernels) -> std::string {
+    struct Formatter {
+      void operator()(std::string* out, int type) const {
+        absl::StrAppend(out, DebugOptions::CollectiveKernelType_Name(type));
+      }
+    };
+    return absl::StrJoin(collective_kernels, ", ", Formatter());
   };
 
   // Custom parser for `xla_cpu_xnn_graph_fusion_mode` flag.
@@ -3133,6 +3147,16 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       " (xla.autotuner.AutotuneCache rather than xla.AutotuneResults."));
 
   flag_list->push_back(tsl::Flag(
+      "xla_autotune_cache_require_strict_codegen_match",
+      bool_setter_for(
+          &DebugOptions::set_xla_autotune_cache_require_strict_codegen_match),
+      debug_options->xla_autotune_cache_require_strict_codegen_match(),
+      "When true, autotune cache lookup requires the entire codegen "
+      "environment to match. When false, only the codegen version of the "
+      "optimal backend is required to match (e.g., allowing Triton cached "
+      "entries to be reused even when the cuDNN version changes)."));
+
+  flag_list->push_back(tsl::Flag(
       "xla_compile_all_supported_configs",
       bool_setter_for(&DebugOptions::set_xla_compile_all_supported_configs),
       debug_options->xla_compile_all_supported_configs(),
@@ -3367,11 +3391,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
             return debug_options
                 ->mutable_xla_gpu_experimental_use_collective_kernels();
           }),
-      collective_op_types_to_string(
+      collective_kernel_type_to_string(
           debug_options->xla_gpu_experimental_use_collective_kernels()),
       "Experimental: comma-separated filter of collective ops that should use "
       "custom kernels (e.g. Triton one-shot / two-shot) instead of NCCL. "
-      "Accepted values: ALL_REDUCE, ALL_GATHER, REDUCE_SCATTER, "
+      "Accepted values: ALL_REDUCE, ALL_GATHER, REDUCE_SCATTER, ALL_TO_ALL, "
       "ALL_COLLECTIVES (case-insensitive; the "
       "COLLECTIVE_KERNEL_ prefix may be omitted). Supports +/- "
       "incremental modifiers (e.g. +ALL_REDUCE,-ALL_GATHER). The deprecated "
@@ -3726,6 +3750,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_experimental_enable_raft_for_stable_topk(),
       "If true, enables RAFT for stable TopK."));
   flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_enable_tensor_ir",
+      bool_setter_for(&DebugOptions::set_xla_gpu_experimental_enable_tensor_ir),
+      debug_options->xla_gpu_experimental_enable_tensor_ir(),
+      "If true, the GPU autotuner may assign fusions to the experimental "
+      "TensorIR (CUDA Tile) emitter. Requires sm_90+ and CUDA 13.3+ "
+      "(tileiras)."));
+  flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_ragged_all_to_all_use_device_kernel",
       bool_setter_for(
           &DebugOptions::
@@ -3881,12 +3912,17 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_rocm_max_trace_events(),
       "Maximum number of ROCm trace events (applies to callback/activity/"
       "annotation). Set as high as memory allows; up to 1e9."));
+  flag_list->push_back(
+      tsl::Flag("xla_gpu_experimental_enable_tiling_propagation",
+                noop_flag_setter<bool>, true, "Deprecated, do not use."));
   flag_list->push_back(tsl::Flag(
-      "xla_gpu_experimental_enable_tiling_propagation",
+      "xla_gpu_experimental_enable_reduction_dimension_tiling",
       bool_setter_for(
-          &DebugOptions::set_xla_gpu_experimental_enable_tiling_propagation),
-      debug_options->xla_gpu_experimental_enable_tiling_propagation(),
-      "If true, enable experimental tiling propagation."));
+          &DebugOptions::
+              set_xla_gpu_experimental_enable_reduction_dimension_tiling),
+      debug_options->xla_gpu_experimental_enable_reduction_dimension_tiling(),
+      "If true, the block-level (Triton) tiling search also enumerates tile "
+      "sizes for reduction dimensions."));
 
   auto setter_for_xla_gpu_detect_nan =
       [debug_options, detection_mode](const std::string& value) {
@@ -3988,6 +4024,28 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       /*default_value_for_display=*/"",
       "Whitespace-separated extra flags to pass to the ptxas compiler, e.g. "
       "'--maxregcount=32'."));
+  auto setter_for_xla_gpu_experimental_deterministic_ops_triton =
+      [debug_options](absl::string_view input) {
+        DebugOptions::DeterministicOpsTritonMode mode;
+        if (!DebugOptions::DeterministicOpsTritonMode_Parse(
+                absl::StrCat("DETERMINISTIC_OPS_TRITON_MODE_",
+                             absl::AsciiStrToUpper(input)),
+                &mode) ||
+            mode == DebugOptions::DETERMINISTIC_OPS_TRITON_MODE_UNSET) {
+          return false;
+        }
+        debug_options->set_xla_gpu_experimental_deterministic_ops_triton(mode);
+        return true;
+      };
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_deterministic_ops_triton",
+      setter_for_xla_gpu_experimental_deterministic_ops_triton,
+      /*default_value_for_display=*/"off",
+      "Controls whether Triton is enabled when deterministic ops are requested "
+      "(--xla_gpu_deterministic_ops or "
+      "--xla_gpu_exclude_nondeterministic_ops). "
+      "Supported modes: 'off' (default) and 'unchecked' (enables Triton and "
+      "skips correctness checks)."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

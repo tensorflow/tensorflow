@@ -1,5 +1,5 @@
-// RUN: fusion_to_triton --xla_gpu_experimental_enable_tiling_propagation %s 2>&1 | FileCheck %s
-// RUN: triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation %s
+// RUN: fusion_to_triton %s 2>&1 | FileCheck %s
+// RUN: triton_test_correctness %s
 
 // The slice effectively accesses only second parameter so we can skip scf.if .
 

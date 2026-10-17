@@ -49,7 +49,7 @@ namespace xla::gpu {
 class AsyncStartThunk : public Thunk {
  public:
   AsyncStartThunk(ThunkInfo thunk_info, ExecutionStreamId execution_stream_id,
-                  ThunkSequence thunks);
+                  ThunkSequence thunks, int devices_per_host);
 
   // Constructor that shares an existing AsyncExecution with another
   // AsyncStartThunk. Used for pipelined send/recv where multiple operations
@@ -73,7 +73,8 @@ class AsyncStartThunk : public Thunk {
   absl::StatusOr<ThunkProto> ToProto() const override;
   static absl::StatusOr<std::unique_ptr<AsyncStartThunk>> FromProto(
       ThunkInfo thunk_info, const AsyncStartThunkProto& proto,
-      const Deserializer& deserializer, AsyncExecutionMap& async_executions);
+      const Deserializer& deserializer, AsyncExecutionMap& async_executions,
+      int devices_per_host);
 
   AsyncExecutionId async_execution_id() const;
   std::shared_ptr<AsyncExecution> async_execution() const;

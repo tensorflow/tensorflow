@@ -1,7 +1,5 @@
-// RUN: fusion_to_triton --xla_gpu_experimental_enable_tiling_propagation=false %s | FileCheck %s
-// RUN: triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation=false %s
-// RUN: fusion_to_triton --xla_gpu_experimental_enable_tiling_propagation %s | FileCheck %s --check-prefixes=CHECK,CHECK-NEW
-// RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation
+// RUN: fusion_to_triton %s | FileCheck %s
+// RUN: triton_test_correctness %s
 
 region {
   p0 = f32[] parameter(0)
@@ -17,7 +15,7 @@ fusion {
 }
 
 // Make sure that the input tile is masked with a neutral value.
-// CHECK-NEW: #indexing_map = #xla.indexing_map<"(pid) -> (pid * 4), domain: pid in [0, 3]">
+// CHECK: #indexing_map = #xla.indexing_map<"(pid) -> (pid * 4), domain: pid in [0, 3]">
 // CHECK:  %[[LOAD:.*]] = xtile.extract {{.*}}[4, 8]{{.*}} : memref<13x7xf32> -> tensor<4x8xf32>
 // CHECK:  %[[MASKED:.*]] = xtile.mask %[[LOAD]] bounds [4, 7]
 // CHECK:  "tt.reduce"(%[[MASKED]]) <{axis = 1 : i32}>

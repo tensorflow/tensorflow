@@ -116,6 +116,7 @@ def cc_ir_header(name, src, deps = [], copts = [], **kwargs):
     compile_flags = [
         "-emit-llvm",
         "-O3",
+        "-g0",
         "-DNDEBUG",
         "-mprefer-vector-width=512",
         "-DEIGEN_VECTORIZE_GENERIC",

@@ -36,6 +36,7 @@ jobs:
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
 
       - name: Run zizmor
-        run:  uvx zizmor --format=github .github xla
+        # Pinned version; bumped on a regular schedule by the XLA zizmor release monitor.
+        run:  uvx zizmor@1.31.1 --format=github .github xla
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

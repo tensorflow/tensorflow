@@ -14,8 +14,10 @@
 # ==============================================================================
 """Tests for tensorflow.ops.tf.norm."""
 
+from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -68,6 +70,39 @@ class NormOpTest(test_lib.TestCase):
     # In-bounds negative axes still work.
     self.evaluate(linalg_ops.norm(matrix, axis=-1))
     self.evaluate(linalg_ops.norm(matrix, axis=(-2, -1)))
+
+
+class MatrixNormXlaTest(test_lib.TestCase, parameterized.TestCase):
+
+  @parameterized.named_parameters(
+      (f"{name}_keepdims_{keepdims}", shape, axis, keepdims)
+      for name, shape, axis in (
+          ("rank2", (3, 4), (0, 1)),
+          ("rank3_nonadjacent", (2, 3, 4), (0, 2)),
+          ("rank3_reversed", (2, 3, 4), (2, 0)),
+          ("rank4", (2, 3, 4, 5), (1, 2)),
+          ("rank4_negative", (2, 3, 4, 5), (-3, -2)),
+      )
+      for keepdims in (False, True)
+  )
+  @test_util.run_v2_only
+  def testMatrixNormOrd2XlaCompile(self, shape, axis, keepdims):
+    """Matrix 2-norm with static rank must compile without dynamic ListDiff."""
+    if not test_lib.is_built_with_xla():
+      self.skipTest("Test only applicable when running with XLA support")
+
+    matrix = np.random.RandomState(0).randn(*shape).astype(np.float32)
+    tensor = constant_op.constant(matrix)
+    expected = np.linalg.norm(matrix, ord=2, axis=axis, keepdims=keepdims)
+
+    def norm_fn(t):
+      return linalg_ops.norm(t, ord=2, axis=axis, keepdims=keepdims)
+
+    eager_result = norm_fn(tensor)
+    xla_result = def_function.function(norm_fn, jit_compile=True)(tensor)
+    self.assertAllEqual(expected.shape, xla_result.shape.as_list())
+    self.assertAllClose(expected, eager_result, rtol=1e-5, atol=1e-5)
+    self.assertAllClose(expected, xla_result, rtol=1e-5, atol=1e-5)
 
 
 def _GetNormOpTest(dtype_, shape_, ord_, axis_, keep_dims_, use_static_shape_):

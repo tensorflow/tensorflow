@@ -2577,6 +2577,9 @@ mlir::LogicalResult ExportXlaOp(mlir::stablehlo::CompareOp op,
       case mlir::stablehlo::ComparisonType::UNSIGNED:
         order = xla::ComparisonOrder::kTotal;
         break;
+      case mlir::stablehlo::ComparisonType::WEAKORDER:
+        order = xla::ComparisonOrder::kWeak;
+        break;
       case mlir::stablehlo::ComparisonType::NOTYPE:
         LOG(FATAL) << "Unreachable";
     }
@@ -4888,8 +4891,7 @@ LogicalResult ExportXlaOp(SinhOp op, OpLoweringContext ctx) {
   if (failed(GetXlaOp(op.getOperand(), value_map, &operand, op))) {
     return failure();
   }
-  value_map[op] =
-      xla::Sinh(operand, /*result_accuracy=*/std::nullopt, /*expand=*/false);
+  value_map[op] = xla::Sinh(operand, /*result_accuracy=*/std::nullopt);
   return success();
 }
 

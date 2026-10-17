@@ -537,6 +537,37 @@ func.func @ConstFoldPad(%arg0: tensor<15600xf32>) -> tensor<15600xf32> {
   // CHECK:  return %arg0
 }
 
+// CHECK-LABEL: @ConstFoldPadConstInput
+func.func @ConstFoldPadConstInput() -> tensor<3x4xf32> {
+  %0 = "tfl.pseudo_const"() {value = dense<[[1.0, 2.0], [3.0, 4.0]]> : tensor<2x2xf32>} : () -> tensor<2x2xf32>
+  %1 = "tfl.pseudo_const"() {value = dense<[[1, 0], [0, 2]]> : tensor<2x2xi32>} : () -> tensor<2x2xi32>
+  %2 = "tfl.pad"(%0, %1) : (tensor<2x2xf32>, tensor<2x2xi32>) -> tensor<3x4xf32>
+  func.return %2 : tensor<3x4xf32>
+  // CHECK: %[[CST:.*]] = arith.constant dense<{{\[\[}}0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00], [1.000000e+00, 2.000000e+00, 0.000000e+00, 0.000000e+00], [3.000000e+00, 4.000000e+00, 0.000000e+00, 0.000000e+00]]> : tensor<3x4xf32>
+  // CHECK-NOT: tfl.pad
+  // CHECK: return %[[CST]]
+}
+
+// CHECK-LABEL: @ConstFoldPadConstInputI64Paddings
+func.func @ConstFoldPadConstInputI64Paddings() -> tensor<4xi32> {
+  %0 = "tfl.pseudo_const"() {value = dense<[7, 8]> : tensor<2xi32>} : () -> tensor<2xi32>
+  %1 = "tfl.pseudo_const"() {value = dense<[[1, 1]]> : tensor<1x2xi64>} : () -> tensor<1x2xi64>
+  %2 = "tfl.pad"(%0, %1) : (tensor<2xi32>, tensor<1x2xi64>) -> tensor<4xi32>
+  func.return %2 : tensor<4xi32>
+  // CHECK: %[[CST:.*]] = arith.constant dense<[0, 7, 8, 0]> : tensor<4xi32>
+  // CHECK-NOT: tfl.pad
+  // CHECK: return %[[CST]]
+}
+
+// CHECK-LABEL: @NotFoldPadRuntimeInput
+func.func @NotFoldPadRuntimeInput(%arg0: tensor<2x2xf32>) -> tensor<3x4xf32> {
+  %0 = "tfl.pseudo_const"() {value = dense<[[1, 0], [0, 2]]> : tensor<2x2xi32>} : () -> tensor<2x2xi32>
+  %1 = "tfl.pad"(%arg0, %0) : (tensor<2x2xf32>, tensor<2x2xi32>) -> tensor<3x4xf32>
+  func.return %1 : tensor<3x4xf32>
+  // CHECK: %[[PAD:.*]] = "tfl.pad"(%arg0
+  // CHECK: return %[[PAD]]
+}
+
 func.func @ConstFoldPadV2(%arg0: tensor<15600xf32>) -> tensor<15600xf32> {
   %0 = "tfl.pseudo_const"() {value = dense<0> : tensor<1x2xi32>} : () -> tensor<1x2xi32>
   %1 = "tfl.pseudo_const"() {value = dense<0.0> : tensor<f32>} : () -> tensor<f32>

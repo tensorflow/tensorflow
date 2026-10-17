@@ -1222,6 +1222,33 @@ func.func @main(%arg0: tensor<16xf32>) -> tensor<16xf32> {
 
 // -----
 
+// CHECK-LABEL: HloModule main, entry_computation_layout={(f32[16]{0})->f32[16]{0}}
+
+// CHECK:       %[[$region_0_2:[^ ]+]]
+// CHECK-NEXT:  %[[Arg_0_3:[^ ]+]] = f32[] parameter(0)
+// CHECK-NEXT:  %[[Arg_1_4:[^ ]+]] = f32[] parameter(1)
+// CHECK-NEXT:  ROOT %[[compare_5:[^ ]+]] = pred[] compare(%[[Arg_0_3]], %[[Arg_1_4]]), direction=LT, order=WEAK, metadata=
+
+// CHECK:       ENTRY %[[$main_7:[^ ]+]]
+// CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = f32[16] parameter(0)
+// CHECK-NEXT:  ROOT %[[sort_6:[^ ]+]] = f32[16] sort(%[[Arg_0_1]]), dimensions={0}, is_stable=true, to_apply=%[[$region_0_2]], metadata=
+
+func.func @main(%arg0: tensor<16xf32>) -> tensor<16xf32> {
+  %0 = "stablehlo.sort"(%arg0) ({
+  ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+  %1 = "stablehlo.compare"(%arg1, %arg2) {compare_type = #stablehlo<comparison_type WEAKORDER>, comparison_direction = #stablehlo<comparison_direction LT>} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+  "stablehlo.return"(%1) : (tensor<i1>) -> ()
+  }) {
+  dimension = 0 : i64,
+  is_stable = true
+  } : (tensor<16xf32>) -> tensor<16xf32>
+  func.return %0 : tensor<16xf32>
+}
+// CHECK-DIRECT: stablehlo.sort
+// CHECK-DIRECT: stablehlo.compare{{.*}}WEAKORDER
+
+// -----
+
 // CHECK-LABEL: HloModule main, entry_computation_layout={(s64[])->s64[]}
 
 // CHECK:       %[[$add_n_impl_2:[^ ]+]]

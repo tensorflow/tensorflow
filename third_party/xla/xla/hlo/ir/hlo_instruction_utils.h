@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_HLO_IR_HLO_INSTRUCTION_UTILS_H_
 #define XLA_HLO_IR_HLO_INSTRUCTION_UTILS_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -26,7 +27,7 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -54,6 +55,14 @@ int32_t NestingDepth(const HloInstruction* hlo);
 
 // Checks if CustomCall TopK instruction is stable. Defaults to true.
 bool IsTopKStable(const HloCustomCallInstruction* inst);
+
+// Sets the is_stable attribute in the backend_config of a CustomCall TopK
+// instruction, preserving any other backend_config attributes.
+void SetTopKStability(HloCustomCallInstruction* inst, bool is_stable);
+
+// Returns the ComparisonOrder of a CustomCall TopK instruction. Defaults to
+// ComparisonOrder::kTotal.
+ComparisonOrder GetTopKOrder(const HloCustomCallInstruction* inst);
 
 namespace async {
 

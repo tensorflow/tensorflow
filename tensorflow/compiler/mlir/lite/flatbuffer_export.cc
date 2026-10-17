@@ -1584,10 +1584,9 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
                             /*hash=*/0);
 
     std::string buffer_data = buffer.GetData();
-    if (custom_option_alignment_.has_value()) {
-      builder_.ForceVectorAlignment(buffer_data.size(), sizeof(uint8_t),
-                                    custom_option_alignment_.value());
-    }
+    builder_.ForceVectorAlignment(
+        buffer_data.size(), sizeof(uint8_t),
+        custom_option_alignment_.value_or(kFbAlignment));
     ReleaseBufferData(buffer);
     return tflite::CreateBuffer(
         builder_, builder_.CreateVector(
@@ -3969,6 +3968,7 @@ std::optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
 BufferOffset<tflite::Metadata> Translator::BuildMetadata(StringRef name,
                                                          StringRef content) {
   auto buffer_index = buffers_.size();
+  builder_.ForceVectorAlignment(content.size(), sizeof(uint8_t), kFbAlignment);
   auto buffer_data = builder_.CreateVector(
       reinterpret_cast<const uint8_t*>(content.data()), content.size());
   buffers_.push_back(tflite::CreateBuffer(builder_, buffer_data));

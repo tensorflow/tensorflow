@@ -192,7 +192,8 @@ TEST_F(BuffersDebugChecksumThunkTest, CalculatesChecksums) {
       Thunk::ThunkInfo(), log_slice,
       /*checked_thunk_id=*/ThunkId(123),
       {{/*buffer_idx=*/0, inputs[0]}, {/*buffer_idx=*/1, inputs[1]}},
-      /*runs_before_checked_thunk=*/true, metadata_store);
+      /*runs_before_checked_thunk=*/true, metadata_store,
+      /*devices_per_host=*/1);
   ASSERT_OK(thunk.Initialize(init_params));
   ASSERT_OK(thunk.Prepare(prepare_params));
   ASSERT_OK(thunk.ExecuteOnStream(execute_params));
@@ -269,7 +270,8 @@ TEST_F(BuffersDebugChecksumThunkTest,
       Thunk::ThunkInfo(), log_slice,
       /*checked_thunk_id=*/ThunkId(123), {{/*buffer_idx=*/0, input_slice}},
       /*runs_before_checked_thunk=*/true,
-      std::make_shared<BufferDebugLogEntryMetadataStore>());
+      std::make_shared<BufferDebugLogEntryMetadataStore>(),
+      /*devices_per_host=*/2);
 
   // Initialize the Thunk on both devices and run the kernel. An attempt to run
   // a kernel on the wrong device will fail with CUDA_ERROR_INVALID_HANDLE. The

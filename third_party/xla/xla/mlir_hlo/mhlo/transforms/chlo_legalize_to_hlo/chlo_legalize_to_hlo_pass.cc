@@ -356,7 +356,21 @@ LogicalResult convertMulhiChloToMhlo(chlo::MulhiOp op,
 }  // namespace
 
 ChloLegalizeToHighLevelMhloPassOptions getDefaultChloToHighLevelMhloOptions() {
-  return ChloLegalizeToHighLevelMhloPassOptions();
+  ChloLegalizeToHighLevelMhloPassOptions opts;
+  opts.enable_sinh_ = true;
+  return opts;
+}
+
+ChloLegalizeToHighLevelMhloPassOptions getCpuChloToHighLevelMhloOptions() {
+  ChloLegalizeToHighLevelMhloPassOptions opts;
+  opts.enable_sinh_ = true;
+  return opts;
+}
+
+ChloLegalizeToHighLevelMhloPassOptions getTpuChloToHighLevelMhloOptions() {
+  ChloLegalizeToHighLevelMhloPassOptions opts;
+  opts.enable_sinh_ = true;
+  return opts;
 }
 
 ChloLegalizeToHighLevelMhloPassOptions getGpuChloToHighLevelMhloOptions() {
@@ -412,13 +426,14 @@ void populateChloToHighLevelMhloOpPatterns(
 void populateChloToHighLevelMhloOpPatterns(MLIRContext* context,
                                            RewritePatternSet* patterns) {
   populateChloToHighLevelMhloOpPatterns(
-      context, patterns, mhlo::ChloLegalizeToHighLevelMhloPassOptions());
+      context, patterns, mhlo::getDefaultChloToHighLevelMhloOptions());
 }
 
 void populateChloToHloPatterns(MLIRContext* context,
                                TypeConverter* typeConverter,
                                RewritePatternSet* patterns) {
-  populateChloToHighLevelMhloOpPatterns(context, patterns);
+  populateChloToHighLevelMhloOpPatterns(
+      context, patterns, mhlo::ChloLegalizeToHighLevelMhloPassOptions());
   stablehlo::populateChloToStablehloPatterns(context, patterns);
   stablehlo::populateStablehloToHloPatterns(patterns, typeConverter, context);
 }

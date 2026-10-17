@@ -49,7 +49,7 @@ class SessionMgr {
       std::unique_ptr<WorkerCacheInterface> default_worker_cache,
       WorkerCacheFactory worker_cache_factory,
       tsl::CoordinationServiceRpcHandler* coordination_handler);
-  ~SessionMgr() {}
+  ~SessionMgr() = default;
 
   // Allocates state for a new session.
   absl::Status CreateSession(

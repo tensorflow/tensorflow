@@ -893,9 +893,24 @@ SymbolicExpr SymbolicExpr::Replace(
 }
 
 bool SymbolicExpr::IsFunctionOfVariable(VariableID var_id) const {
-  llvm::DenseSet<VariableID> used_vars;
-  GetUsedVariables(used_vars);
-  return used_vars.contains(var_id);
+  if (!*this) {
+    return false;
+  }
+  switch (GetType()) {
+    case SymbolicExprType::kConstant:
+      return false;
+    case SymbolicExprType::kVariable:
+      return GetValue() == var_id;
+    case SymbolicExprType::kAdd:
+    case SymbolicExprType::kMul:
+    case SymbolicExprType::kFloorDiv:
+    case SymbolicExprType::kCeilDiv:
+    case SymbolicExprType::kMod:
+    case SymbolicExprType::kMin:
+    case SymbolicExprType::kMax:
+      return GetLHS().IsFunctionOfVariable(var_id) ||
+             GetRHS().IsFunctionOfVariable(var_id);
+  }
 }
 
 void SymbolicExpr::GetUsedVariables(

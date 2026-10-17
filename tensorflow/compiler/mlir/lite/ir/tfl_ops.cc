@@ -6018,11 +6018,55 @@ int64_t L2NormalizationOp::GetArithmeticCount(Operation* op) {
 // PadOp
 //===----------------------------------------------------------------------===//
 
-OpFoldResult PadOp::fold(FoldAdaptor) {
+OpFoldResult PadOp::fold(FoldAdaptor adaptor) {
   if (InputOutputHasSameShape(getInput().getType(), getOutput().getType()))
     return getInput();
 
-  return {};
+  // Fold a constant input padded by constant amounts. Left unfolded, a
+  // constant-input PAD survives into the flatbuffer, and delegates that
+  // require a runtime input (e.g. ML Drift) reject it.
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+
+  auto input = dyn_cast_or_null<DenseElementsAttr>(adaptor.getInput());
+  if (!input) return {};
+  auto output_type = mlir::dyn_cast<RankedTensorType>(getOutput().getType());
+  if (!output_type || !output_type.hasStaticShape()) return {};
+  // DenseElementsAttr does not support quantized element types.
+  Type element_type = output_type.getElementType();
+  if (!element_type.isSignlessIntOrFloat()) return {};
+
+  auto input_type = mlir::cast<ShapedType>(input.getType());
+  const int64_t rank = input_type.getRank();
+  const llvm::SmallVector<int64_t> paddings =
+      UnpackIndexOperand(adaptor.getPadding());
+  if (paddings.size() != 2 * rank) return {};
+  for (int64_t d = 0; d < rank; ++d) {
+    const int64_t before = paddings[2 * d], after = paddings[2 * d + 1];
+    if (before < 0 || after < 0 ||
+        input_type.getDimSize(d) + before + after !=
+            output_type.getDimSize(d)) {
+      return {};
+    }
+  }
+
+  // TFL PAD fills with zero (PADV2 takes an explicit value).
+  Attribute zero = mlir::isa<FloatType>(element_type)
+                       ? Attribute(FloatAttr::get(element_type, 0.0))
+                       : Attribute(IntegerAttr::get(element_type, 0));
+  std::vector<Attribute> result(output_type.getNumElements(), zero);
+
+  const FlatIndHelper read_inds(input_type);
+  const FlatIndHelper write_inds(output_type);
+  llvm::SmallVector<int64_t> offset(rank);
+  for (int64_t d = 0; d < rank; ++d) offset[d] = paddings[2 * d];
+
+  int64_t read_flat_ind = 0;
+  for (Attribute value : input.getValues<Attribute>()) {
+    llvm::SmallVector<int64_t> ind = read_inds.GetShapedInd(read_flat_ind++);
+    FlatIndHelper::AddOffset(ind, offset);
+    result[write_inds.GetFlatInd(ind)] = value;
+  }
+  return DenseElementsAttr::get(output_type, result);
 }
 
 // When padding amounts are constants, cast them to i32. XNN can only

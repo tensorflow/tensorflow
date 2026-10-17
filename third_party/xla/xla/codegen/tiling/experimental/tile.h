@@ -203,6 +203,10 @@ class Tile {
   // Replace tiling expressions with the given map.
   void Replace(const llvm::DenseMap<SymbolicExpr, SymbolicExpr>& map);
 
+  // Returns true if any of the tile expressions (including constraints) uses
+  // any of the given variables (tile IDs, tile sizes, runtime variables).
+  bool DependsOnVariables(llvm::ArrayRef<VariableID> variables) const;
+
   // Simplify expressions inside the tile using actual dimension and symbol
   // bounds.
   void Simplify();

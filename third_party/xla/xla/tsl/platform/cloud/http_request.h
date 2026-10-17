@@ -59,7 +59,7 @@ class HttpRequest {
   };
 
   /// RequestMethodName converts a RequestMethod to the canonical method string.
-  inline static const char* RequestMethodName(RequestMethod m) {
+  static const char* RequestMethodName(RequestMethod m) {
     switch (m) {
       case RequestMethod::kGet:
         return "GET";

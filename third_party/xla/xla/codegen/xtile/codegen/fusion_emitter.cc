@@ -169,8 +169,8 @@ absl::StatusOr<TensorValue> EmitReduce(
 
   stablehlo::ReduceOp reduction = stablehlo::ReduceOp::create(
       b, input, init_value, hlo_reduce.dimensions());
-  ABSL_RETURN_IF_ERROR(
-      EmitReduceComputation(b, &hlo_reduce, hlo_reduce.to_apply(), reduction));
+  ABSL_RETURN_IF_ERROR(EmitReduceComputation(b, hlo_reduce.shape().element_type(),
+                                        hlo_reduce.to_apply(), reduction));
 
   return mlir::cast<TensorValue>(reduction.getResult(0));
 }
@@ -945,8 +945,8 @@ absl::StatusOr<TensorValue> EmitAllReduce(
       b, b.getLoc(), output_type, mlir::ValueRange(operands),
       replica_groups_attr, channel_handle_attr, use_global_device_ids);
 
-  ABSL_RETURN_IF_ERROR(EmitReduceComputation(b, &all_reduce, all_reduce.to_apply(),
-                                        all_reduce_op));
+  ABSL_RETURN_IF_ERROR(EmitReduceComputation(b, all_reduce.shape().element_type(),
+                                        all_reduce.to_apply(), all_reduce_op));
 
   return mlir::cast<TensorValue>(all_reduce_op.getResult(0));
 }
@@ -1256,7 +1256,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
     return absl::InvalidArgumentError("Multi-output fusion is disabled.");
   }
 
-  CHECK(!debug_options.xla_gpu_experimental_enable_tiling_propagation());
+  LOG(FATAL) << "Calling into legacy fusion emitter is disallowed. "
+             << "Please use experimental tiling propagation instead.";
 
   const HloComputation* hlo_computation =
       fusion.fused_instructions_computation();

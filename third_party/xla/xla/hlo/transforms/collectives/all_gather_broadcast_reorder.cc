@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/hlo/transforms/collectives/all_gather_broadcast_reorder.h"
 
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
@@ -25,6 +26,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -35,6 +37,48 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 
 namespace xla {
+namespace {
+
+// Returns whether `inst` matches the all-gather(broadcast) reorder pattern,
+// and if so, whether the all-gather is along a uniform dimension.
+std::optional<bool> MatchAllGatherBroadcastReorder(const HloInstruction* inst) {
+  // Check for all-gather with a broadcast operand.
+  if (inst->opcode() != HloOpcode::kAllGather || !inst->shape().IsArray() ||
+      inst->operand(0)->opcode() != HloOpcode::kBroadcast) {
+    return std::nullopt;
+  }
+
+  const auto* ag = Cast<HloAllGatherInstruction>(inst);
+  const auto* bcast = Cast<HloBroadcastInstruction>(inst->operand(0));
+
+  // We categorize each dimension of the all-gather result as either
+  // uniform (same data along that dimension) or not. The all_gather
+  // dimension is not uniform since we don't know uniformity of data across
+  // the all-gather participants. In addition, the set of dimensions
+  // for the broadcast instruction feeding into all-gather are also not
+  // uniform. If there are any remaining uniform dims and their size > 1,
+  // then doing the broadcast after the all-gather is beneficial as the
+  // all-gather will be operating on smaller data.
+  absl::flat_hash_set<int64_t> non_uniform_dims(bcast->dimensions().begin(),
+                                                bcast->dimensions().end());
+  const bool all_gather_along_uniform_dim =
+      non_uniform_dims.insert(ag->all_gather_dimension()).second;
+
+  // Find the product of the size of uniform dims.
+  int64_t uniform_dim_size = 1;
+  for (int64_t i = 0; i < ag->shape().dimensions().size(); ++i) {
+    if (!non_uniform_dims.contains(i)) {
+      uniform_dim_size *= ag->shape().dimensions(i);
+    }
+  }
+
+  if (uniform_dim_size == 1) {
+    return std::nullopt;
+  }
+  return all_gather_along_uniform_dim;
+}
+
+}  // namespace
 
 absl::StatusOr<bool> AllGatherBroadcastReorder::RunImpl(
     HloModule* module,
@@ -51,9 +95,9 @@ absl::StatusOr<bool> AllGatherBroadcastReorder::RunImpl(
   bool changed = false;
   for (auto computation : module->computations(execution_threads)) {
     for (HloInstruction *inst : computation->MakeInstructionPostOrder()) {
-      // Check for all-gather with a broadcast operand.
-      if (inst->opcode() != HloOpcode::kAllGather || !inst->shape().IsArray() ||
-          inst->operand(0)->opcode() != HloOpcode::kBroadcast) {
+      std::optional<bool> all_gather_along_uniform_dim =
+          MatchAllGatherBroadcastReorder(inst);
+      if (!all_gather_along_uniform_dim.has_value()) {
         continue;
       }
 
@@ -61,37 +105,11 @@ absl::StatusOr<bool> AllGatherBroadcastReorder::RunImpl(
       HloBroadcastInstruction *bcast =
           Cast<HloBroadcastInstruction>(inst->mutable_operand(0));
 
-      // We categorize each dimension of the all-gather result as either
-      // uniform (same data along that dimension) or not. The all_gather
-      // dimension is not uniform since we don't know uniformity of data across
-      // the all-gather participants. In addition, the set of dimensions
-      // for the broadcast instruction feeding into all-gather are also not
-      // uniform. If there are any remaining uniform dims and their size > 1,
-      // then doing the broadcast after the all-gather is beneficial as the
-      // all-gather will be operating on smaller data.
-      absl::flat_hash_set<int64_t> non_uniform_dims;
-      non_uniform_dims.insert(bcast->dimensions().begin(),
-                              bcast->dimensions().end());
-      const bool all_gather_along_uniform_dim =
-          non_uniform_dims.insert(ag->all_gather_dimension()).second;
-
-      // Find the product of the size of uniform dims.
-      int64_t uniform_dim_size = 1;
-      for (int64_t i = 0; i < ag->shape().dimensions().size(); ++i) {
-        if (non_uniform_dims.count(i) == 0) {
-          uniform_dim_size *= ag->shape().dimensions(i);
-        }
-      }
-
-      if (uniform_dim_size == 1) {
-        continue;
-      }
-
       HloInstruction *replacement;
       const int64_t ag_dim = ag->all_gather_dimension();
       // Transform the all-gather(broadcast(x)) to broadcast(all-gather(x)).
       // There are 2 cases here:
-      if (!all_gather_along_uniform_dim) {
+      if (!*all_gather_along_uniform_dim) {
         // If the all-gather happens along one of the non-uniform dimensions of
         // the broadcast, then issue all-gather(x) and then a broadcast.
         // Example:

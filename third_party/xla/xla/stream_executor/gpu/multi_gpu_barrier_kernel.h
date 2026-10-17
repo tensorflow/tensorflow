@@ -47,8 +47,8 @@ namespace stream_executor::gpu {
 //     Zero-initialized memory correctly sets up the wait condition for the
 //     first barrier launch.
 struct MultiGpuBarrierKernel {
-  // Maximum number of peers supported by the barrier.
-  // Can be extended to support larger GPU clusters in the future.
+  // Maximum number of peers for the P2P (non-NCCL) barrier. Sized to the
+  // kernel argument array; use MultiGpuBarrierWithNcclKernel for >32 peers.
   static constexpr int64_t kMaxPeers = 32;
 
   using KernelType =
@@ -64,9 +64,9 @@ struct MultiGpuBarrierKernel {
 //  pointer storage symmetric memory at rank's location. This replaces the need
 //  to do host-side rendezvous to exchange pointers.
 struct MultiGpuBarrierWithNcclKernel {
-  // Maximum number of peers supported by the barrier.
-  // Can be extended to support larger GPU clusters in the future.
-  static constexpr int64_t kMaxPeers = 32;
+  // Maximum number of peers for the NCCL barrier. No kernel argument array,
+  // so this can be larger than MultiGpuBarrierKernel::kMaxPeers.
+  static constexpr int64_t kMaxPeers = 128;
 
   using KernelType = stream_executor::TypedKernel<
       int64_t, int64_t, xla::SymmetricMemory*,  // signal buffers

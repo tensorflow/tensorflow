@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/test.h"
@@ -102,7 +103,7 @@ TEST(ProfilerFactoryTest, FactoryClassCapturedByLambda) {
 
 class TestMultiPassProfiler : public MultiPassProfilerInterface {
  public:
-  bool NeedMorePasses() override { return false; }
+  absl::StatusOr<bool> NeedMorePasses() override { return false; }
   absl::Status StartPass() override { return absl::OkStatus(); }
   absl::Status PushRange(absl::string_view name) override {
     return absl::OkStatus();
@@ -168,7 +169,7 @@ class TrackingMultiPassProfiler : public MultiPassProfilerInterface {
   explicit TrackingMultiPassProfiler(Tracker* tracker = nullptr)
       : tracker_(tracker) {}
 
-  bool NeedMorePasses() override { return false; }
+  absl::StatusOr<bool> NeedMorePasses() override { return false; }
   absl::Status StartPass() override {
     start_pass_called_++;
     if (tracker_) tracker_->start_pass_called++;
@@ -277,25 +278,23 @@ TEST(ProfilerFactoryTest,
 TEST(ProfilerFactoryTest,
      MultiPassControllerDestructorCleansUpActivePassOnError) {
   ClearRegisteredMultiPassProfilersForTest();
-  TrackingMultiPassProfiler* raw_profiler = nullptr;
+  TrackingMultiPassProfiler::Tracker tracker;
   RegisterMultiPassProfilerFactory(
-      [&raw_profiler](const tensorflow::ProfileOptions& options) {
-        auto profiler = std::make_unique<TrackingMultiPassProfiler>();
-        raw_profiler = profiler.get();
-        return profiler;
+      [&tracker](const tensorflow::ProfileOptions& options) {
+        return std::make_unique<TrackingMultiPassProfiler>(&tracker);
       });
   {
     auto profilers = CreateMultiPassProfilers(tensorflow::ProfileOptions());
     ASSERT_EQ(profilers.size(), 1);
     ASSERT_TRUE(profilers[0]->Start().ok());
     ASSERT_TRUE(profilers[0]->StartPass().ok());
-    raw_profiler->fail_push_range_ = true;
+    tracker.fail_push_range = true;
     EXPECT_FALSE(profilers[0]->PushRange("fail").ok());
     // Destructor runs when exiting this scope while state_ == kPassStarted with
     // error.
   }
-  EXPECT_EQ(raw_profiler->stop_pass_called_, 1);
-  EXPECT_EQ(raw_profiler->stop_called_, 1);
+  EXPECT_EQ(tracker.stop_pass_called, 1);
+  EXPECT_EQ(tracker.stop_called, 1);
 }
 
 #if !defined(IS_MOBILE_PLATFORM)

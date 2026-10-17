@@ -104,6 +104,7 @@ cc_library(
         "//xla/backends/cpu/runtime:work_queue",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/mkl:onednn",
+        "//xla/tsl/platform:logging",
         "@eigen_archive//:eigen3",
     ],
 )
@@ -155,7 +156,6 @@ cc_library(
         "//xla/tsl/mkl:onednn",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:dynamic_annotations",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
@@ -164,7 +164,6 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@eigen_archive//:eigen3",
     ],
 )
 

@@ -219,6 +219,7 @@ python.toolchain(python_version = "3.10")
 python.toolchain(python_version = "3.11")
 python.toolchain(python_version = "3.12")
 python.toolchain(python_version = "3.13")
+python.toolchain(python_version = "3.14")
 
 pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
 
@@ -237,6 +238,7 @@ pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
     "3.11",
     "3.12",
     "3.13",
+    "3.14",
 ]]
 
 use_repo(pip, "pypi_mods", pypi = "tf_pypi")

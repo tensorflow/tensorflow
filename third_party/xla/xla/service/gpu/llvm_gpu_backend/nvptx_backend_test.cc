@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/llvm_gpu_backend/nvptx_backend.h"
 
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -29,6 +30,8 @@ limitations under the License.
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
+#include "llvm/Support/TargetSelect.h"
+#include "llvm/TargetParser/Triple.h"
 #include "xla/service/gpu/llvm_gpu_backend/ptx_version_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
@@ -39,6 +42,15 @@ namespace xla {
 namespace gpu {
 namespace {
 namespace se = ::stream_executor;
+
+TEST(UtilsTest, LlvmSupportsMinimumPtxVersionForSm107a) {
+  LLVMInitializeNVPTXTargetInfo();
+  LLVMInitializeNVPTXTargetMC();
+
+  EXPECT_THAT(nvptx::GetMaxPtxVersionSupportedByLlvm(
+                  llvm::Triple("nvptx64-unknown-unknown")),
+              ::absl_testing::IsOkAndHolds(::testing::Ge(94)));
+}
 
 TEST(UtilsTest, TestGetSmName) {
   using FeatureExtension = se::CudaComputeCapability::FeatureExtension;
@@ -57,7 +69,7 @@ TEST(UtilsTest, TestGetSmName) {
   ASSERT_EQ(nvptx::GetSmName(se::CudaComputeCapability{
                 10, 3, FeatureExtension::kAcceleratedFeatures}),
             "sm_103a");
-  ASSERT_EQ(nvptx::GetSmName(se::CudaComputeCapability{10, 7}), "sm_107");
+  ASSERT_EQ(nvptx::GetSmName(se::CudaComputeCapability::Rubin()), "sm_107");
   ASSERT_EQ(nvptx::GetSmName(se::CudaComputeCapability{
                 10, 7, FeatureExtension::kAcceleratedFeatures}),
             "sm_107a");
@@ -102,6 +114,36 @@ TEST(UtilsTest, UnknownCapabilityFallsBackToFamilyCompatible) {
   EXPECT_EQ(nvptx::ResolveSupportedComputeCapability(se::CudaComputeCapability{
                 9, 99, FeatureExtension::kAcceleratedFeatures}),
             (se::CudaComputeCapability{9, 0, FeatureExtension::kNone}));
+}
+
+TEST(UtilsTest, SM107FallsBackWhenPtxVersionTooLow) {
+  using FeatureExtension = se::CudaComputeCapability::FeatureExtension;
+  // SM107 requires PTX 9.4. With PTX 8.8 (e.g. CUDA 12.9), it falls back to
+  // sm_103f.
+  EXPECT_EQ(nvptx::ResolveSupportedComputeCapability(
+                se::CudaComputeCapability{
+                    10, 7, FeatureExtension::kAcceleratedFeatures},
+                se::SemanticVersion{8, 8, 0}),
+            (se::CudaComputeCapability{
+                10, 3, FeatureExtension::kFamilyCompatibleFeatures}));
+  // With PTX 9.4, SM107 remains sm_107a.
+  EXPECT_EQ(nvptx::ResolveSupportedComputeCapability(
+                se::CudaComputeCapability{
+                    10, 7, FeatureExtension::kAcceleratedFeatures},
+                se::SemanticVersion{9, 4, 0}),
+            (se::CudaComputeCapability{
+                10, 7, FeatureExtension::kAcceleratedFeatures}));
+
+  EXPECT_EQ(nvptx::GetSmName(
+                se::CudaComputeCapability{
+                    10, 7, FeatureExtension::kAcceleratedFeatures},
+                se::SemanticVersion{8, 8, 0}),
+            "sm_103f");
+  EXPECT_EQ(nvptx::GetSmName(
+                se::CudaComputeCapability{
+                    10, 7, FeatureExtension::kAcceleratedFeatures},
+                se::SemanticVersion{9, 4, 0}),
+            "sm_107a");
 }
 
 using VersionPair = std::pair<se::SemanticVersion, se::SemanticVersion>;
@@ -149,7 +191,15 @@ INSTANTIATE_TEST_SUITE_P(VersionTest, PtxVersionFromCudaVersionTest,
                                cuda_version.minor_version());
                          });
 
-TEST(UtilsTest, CompileToPtxCapsAtMaxPtxIsaVersion) {
+struct CompileToPtxVersionTestCase {
+  std::optional<int> max_ptx_isa_version;
+  const char* expected_ptx_version;
+};
+
+using CompileToPtxVersionTest =
+    ::testing::TestWithParam<CompileToPtxVersionTestCase>;
+
+TEST_P(CompileToPtxVersionTest, UsesMinimumOfLlvmAndProviderVersions) {
   llvm::LLVMContext context;
   llvm::Module module("test", context);
   new llvm::GlobalVariable(
@@ -160,10 +210,35 @@ TEST(UtilsTest, CompileToPtxCapsAtMaxPtxIsaVersion) {
   absl::StatusOr<std::string> ptx = nvptx::CompileToPtx(
       &module, se::GpuComputeCapability(se::CudaComputeCapability::Ampere()),
       DebugOptions(), /*configure_target=*/nullptr,
-      /*max_ptx_isa_version=*/80);
+      /*max_ptx_isa_version=*/GetParam().max_ptx_isa_version);
   ASSERT_THAT(ptx, ::absl_testing::IsOk());
-  EXPECT_THAT(*ptx, ::testing::HasSubstr(".version 8.0"));
+  std::string expected_ptx_version;
+  if (GetParam().expected_ptx_version != nullptr) {
+    expected_ptx_version = GetParam().expected_ptx_version;
+  } else {
+    ASSERT_OK_AND_ASSIGN(int llvm_max_ptx_version,
+                         nvptx::GetMaxPtxVersionSupportedByLlvm(
+                             llvm::Triple("nvptx64-unknown-unknown")));
+    expected_ptx_version =
+        absl::StrCat(llvm_max_ptx_version / 10, ".", llvm_max_ptx_version % 10);
+  }
+  EXPECT_THAT(*ptx, ::testing::HasSubstr(
+                        absl::StrCat(".version ", expected_ptx_version, "\n")));
 }
+
+INSTANTIATE_TEST_SUITE_P(
+    VersionTest, CompileToPtxVersionTest,
+    ::testing::ValuesIn<CompileToPtxVersionTestCase>({
+        {80, "8.0"},
+        {92, "9.2"},
+        {999, nullptr},           // LLVM's maximum.
+        {std::nullopt, nullptr},  // LLVM's maximum.
+    }),
+    [](::testing::TestParamInfo<CompileToPtxVersionTestCase> data) {
+      return data.param.max_ptx_isa_version.has_value()
+                 ? absl::StrCat("provider_", *data.param.max_ptx_isa_version)
+                 : "no_provider_limit";
+    });
 
 }  // namespace
 }  // namespace gpu

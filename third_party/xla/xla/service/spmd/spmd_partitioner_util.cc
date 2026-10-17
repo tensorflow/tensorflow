@@ -2538,7 +2538,8 @@ HloInstruction* PerGroupSliceFromReplicated(
     HloInstruction* replicated, HloInstruction* partition_id,
     const hlo_sharding_util::DeviceGroupTileAssignment& device_groups,
     absl::Span<const int64_t> group_dims,
-    absl::Span<const int64_t> group_dim_sizes, SpmdBuilder* b) {
+    absl::Span<const int64_t> group_dim_sizes, SpmdBuilder* b,
+    std::optional<Literal> pad_value) {
   std::vector<uint32_t> group_ids(device_groups.num_total_devices());
   for (int64_t g = 0; g < device_groups.num_groups(); ++g) {
     for (int64_t d = 0; d < device_groups.num_devices_per_group(); ++d) {
@@ -2568,7 +2569,7 @@ HloInstruction* PerGroupSliceFromReplicated(
   }();
   auto group_level_sharding = HloSharding::Tile(std::move(group_level_tile));
   auto padded_hlo = PadBaseShapeBeforeUnevenTiledSharding(
-      replicated, group_level_sharding, b);
+      replicated, group_level_sharding, b, std::move(pad_value));
   auto shard_shape =
       MakePartitionedShape(replicated->shape(), group_level_sharding);
   return b->AddInstruction(HloInstruction::CreateDynamicSlice(

@@ -606,9 +606,8 @@ cc_library(
 
 xla_cc_test(
     name = "support_test",
-    timeout = "long",  # TODO: b/514293537 - remove after disabling symbolic analysis.
     srcs = ["support_test.cc"],
-    shard_count = 50,  # TODO: b/514293537 - change to 25 after disabling symbolic analysis.
+    shard_count = 25,
     deps = [
         ":support",
         ":support_test_base",
@@ -781,7 +780,6 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/functional:any_invocable",
-        "@com_google_absl//absl/functional:overload",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/log:vlog_is_on",

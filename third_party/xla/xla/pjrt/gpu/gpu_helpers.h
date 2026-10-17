@@ -28,7 +28,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/client/local_client.h"
-#include "xla/pjrt/plugin/xla_gpu/xla_gpu_allocator_config.h"
+#include "xla/pjrt/gpu/allocator_config.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/framework/bfc_allocator.h"
@@ -63,9 +63,13 @@ absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> GetGpuHostAllocator(
 // heuristic, for both owned-hole reuse and central-gap carves.
 // Equal-size holes prefer lower addresses for collective memory and higher
 // addresses for default memory.
+//
+// memory_fraction describes how much of device memory the pool may use (see
+// MemFraction). Only its start fraction is used here; growth for
+// FlexMemFraction policies is wired up by a follow-up change.
 absl::StatusOr<std::shared_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
-    se::StreamExecutor* executor, double memory_fraction, bool preallocate,
-    std::optional<int64_t> gpu_system_memory_size,
+    se::StreamExecutor* executor, const MemFraction& memory_fraction,
+    bool preallocate, std::optional<int64_t> gpu_system_memory_size,
     const std::vector<tsl::SubAllocator::Visitor>& sub_allocator_alloc_visitors,
     const std::vector<tsl::SubAllocator::Visitor>& sub_allocator_free_visitors,
     bool enable_spatial_partitioning = false);

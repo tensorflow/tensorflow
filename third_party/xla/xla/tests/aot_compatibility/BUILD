@@ -41,6 +41,7 @@ xla_cc_test(
     tags = ["no_oss"],
     deps = [
         ":test_lib",
+        "//xla:debug_options_runtime_fields",
         "//xla:xla_proto_cc",
         "//xla/pjrt/proto:compile_options_proto_cc",
         "//xla/service/cpu:executable_proto_cc",

@@ -29,9 +29,10 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "re2/re2.h"
-#include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -103,6 +104,32 @@ bool IsTopKStable(const HloCustomCallInstruction* inst) {
     return false;
   }
   return true;
+}
+
+void SetTopKStability(HloCustomCallInstruction* inst, bool is_stable) {
+  std::string replacement =
+      absl::StrCat("is_stable = ", is_stable ? "true" : "false");
+  std::string cfg = inst->raw_backend_config_string();
+  static const LazyRE2 kIsStableRegex = {R"((?i)is_stable\s*=\s*(true|false))"};
+  if (!RE2::Replace(&cfg, *kIsStableRegex, replacement)) {
+    static const LazyRE2 kNonEmptyDictEndRegex = {R"(([^\s\{])\s*\}\s*$)"};
+    if (!RE2::Replace(&cfg, *kNonEmptyDictEndRegex,
+                      absl::StrCat("\\1, ", replacement, "}"))) {
+      cfg = absl::StrCat("{", replacement, "}");
+    }
+  }
+  inst->set_raw_backend_config_string(cfg);
+}
+
+ComparisonOrder GetTopKOrder(const HloCustomCallInstruction* inst) {
+  static const LazyRE2 kOrderRegex = {R"(order\s*=\s*"?([A-Z]+))"};
+  absl::string_view order_str;
+  if (RE2::PartialMatch(inst->raw_backend_config_string(), *kOrderRegex,
+                        &order_str)) {
+    return ShortStringToComparisonOrder(order_str).value_or(
+        ComparisonOrder::kTotal);
+  }
+  return ComparisonOrder::kTotal;
 }
 
 namespace async {

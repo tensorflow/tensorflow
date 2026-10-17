@@ -16,5 +16,18 @@ tensorflow {
   # The llvm:: and mlir:: C++ symbols have to stay exported: libtensorflow_cc
   # links against them from this library.
   local:
+    /* Hide leftover unprefixed hwloc_* names. Bundled APIs are renamed
+       tf_hwloc_* (HWLOC_SYM_TRANSFORM) so they do not interpose system hwloc
+       and can still be shared across TF DSOs (tensorflow#125854). */
+    hwloc*;
     LLVM*;
+
+    /* The statically linked curl: its public curl_* functions and its
+       internal Curl_* and curlx_* ones. Nothing outside this library calls
+       them, and exported, they could stand in for another libcurl's, such as
+       the system's, in the same process, with TensorFlow's BoringSSL behind
+       them (tensorflow#129050). */
+    curl_*;
+    Curl_*;
+    curlx_*;
 };

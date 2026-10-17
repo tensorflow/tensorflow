@@ -154,5 +154,135 @@ TEST(RequestCostTest, RecordStructuredCosts) {
   EXPECT_EQ(costs["cost_b"]["dim1"], absl::Milliseconds(3));
 }
 
+TEST(RequestCostTest, ToProtoAndFromProtoRoundTrip) {
+  RequestCost orig_cost;
+  orig_cost.RecordCost(
+      {{"tpu_v1", absl::Milliseconds(11)}, {"cpu_v1", absl::Milliseconds(30)}});
+  orig_cost.RecordStructuredCosts(
+      {{"tpu_v1",
+        {{"dim1", absl::Milliseconds(5)}, {"dim2", absl::Milliseconds(6)}}}});
+  orig_cost.RecordMetrics({{"latency", 100.0}, {"throughput", 2.0}});
+  orig_cost.RecordStructuredMetrics(
+      {{"blockwise_cache_read", {.values = std::vector<double>{10.0, 20.0}}},
+       {"blockwise_cache_ids",
+        {.values = std::vector<std::string>{"id1", "id2"}}}});
+  orig_cost.RecordBatchMetrics(RequestCost::BatchMetrics{
+      /*processed_size=*/8,
+      /*input_size=*/4,
+      /*padding_size=*/1,
+      {{"gcu", absl::Milliseconds(80)}, {"tpu", absl::Milliseconds(160)}}});
+
+  RequestCostProto proto = orig_cost.ToProto();
+
+  EXPECT_EQ(proto.costs().at("tpu_v1"), 11000.0);
+  EXPECT_EQ(proto.costs().at("cpu_v1"), 30000.0);
+  EXPECT_EQ(proto.structured_costs().at("tpu_v1").dimensions().at("dim1"),
+            5000.0);
+  EXPECT_EQ(proto.structured_costs().at("tpu_v1").dimensions().at("dim2"),
+            6000.0);
+  EXPECT_EQ(proto.metrics().at("latency"), 100.0);
+  EXPECT_EQ(proto.metrics().at("throughput"), 2.0);
+  EXPECT_THAT(
+      proto.structured_metrics().at("blockwise_cache_read").double_values(),
+      ElementsAre(10.0, 20.0));
+  EXPECT_THAT(
+      proto.structured_metrics().at("blockwise_cache_ids").bytes_values(),
+      ElementsAre("id1", "id2"));
+  ASSERT_EQ(proto.batch_metrics_size(), 1);
+  EXPECT_EQ(proto.batch_metrics(0).processed_size(), 8);
+  EXPECT_EQ(proto.batch_metrics(0).input_size(), 4);
+  EXPECT_EQ(proto.batch_metrics(0).padding_size(), 1);
+  EXPECT_EQ(proto.batch_metrics(0).batch_costs().at("gcu"), 80000.0);
+  EXPECT_EQ(proto.batch_metrics(0).batch_costs().at("tpu"), 160000.0);
+
+  // Deserialize into new RequestCost.
+  RequestCost new_cost;
+  new_cost.FromProto(proto);
+
+  EXPECT_THAT(new_cost.GetCosts(),
+              UnorderedElementsAre(Pair("tpu_v1", absl::Milliseconds(11)),
+                                   Pair("cpu_v1", absl::Milliseconds(30))));
+  EXPECT_THAT(new_cost.GetStructuredCosts(),
+              UnorderedElementsAre(Pair(
+                  "tpu_v1",
+                  UnorderedElementsAre(Pair("dim1", absl::Milliseconds(5)),
+                                       Pair("dim2", absl::Milliseconds(6))))));
+  EXPECT_THAT(
+      new_cost.GetMetrics(),
+      UnorderedElementsAre(Pair("latency", 100.0), Pair("throughput", 2.0)));
+
+  auto structured_metrics = new_cost.GetStructuredMetrics();
+  EXPECT_EQ(structured_metrics.size(), 2);
+  ASSERT_TRUE(std::holds_alternative<std::vector<double>>(
+      structured_metrics["blockwise_cache_read"].values));
+  EXPECT_THAT(std::get<std::vector<double>>(
+                  structured_metrics["blockwise_cache_read"].values),
+              ElementsAre(10.0, 20.0));
+  ASSERT_TRUE(std::holds_alternative<std::vector<std::string>>(
+      structured_metrics["blockwise_cache_ids"].values));
+  EXPECT_THAT(std::get<std::vector<std::string>>(
+                  structured_metrics["blockwise_cache_ids"].values),
+              ElementsAre("id1", "id2"));
+
+  EXPECT_THAT(new_cost.GetBatchMetrics(),
+              ElementsAre(FieldsAre(
+                  8, 4, 1,
+                  UnorderedElementsAre(Pair("gcu", absl::Milliseconds(80)),
+                                       Pair("tpu", absl::Milliseconds(160))))));
+}
+
+TEST(RequestCostTest, FromProtoReplacesExistingEntries) {
+  RequestCost cost;
+  cost.RecordCost({{"old_cost", absl::Milliseconds(10)}});
+  cost.RecordStructuredCosts(
+      {{"old_structured", {{"dim", absl::Milliseconds(1)}}}});
+  cost.RecordMetrics({{"old_metric", 1.0}});
+  cost.RecordStructuredMetrics(
+      {{"old_struct_metric", {.values = std::vector<double>{1.0}}}});
+  cost.RecordBatchMetrics(
+      RequestCost::BatchMetrics{/*processed_size=*/1,
+                                /*input_size=*/1,
+                                /*padding_size=*/0,
+                                {{"old_batch", absl::Milliseconds(10)}}});
+
+  RequestCostProto proto;
+  proto.mutable_costs()->insert({"new_cost", 20000.0});
+  (*proto.mutable_structured_costs())["new_structured"]
+      .mutable_dimensions()
+      ->insert({"new_dim", 3000.0});
+  proto.mutable_metrics()->insert({"new_metric", 42.0});
+  (*proto.mutable_structured_metrics())["new_struct_metric"]
+      .mutable_bytes_values()
+      ->Add("str_val");
+  auto* bm = proto.add_batch_metrics();
+  bm->set_processed_size(2);
+  bm->set_input_size(2);
+  bm->set_padding_size(0);
+  bm->mutable_batch_costs()->insert({"new_batch", 50000.0});
+
+  cost.FromProto(proto);
+
+  EXPECT_THAT(cost.GetCosts(),
+              UnorderedElementsAre(Pair("new_cost", absl::Milliseconds(20))));
+  EXPECT_THAT(cost.GetStructuredCosts(),
+              UnorderedElementsAre(Pair(
+                  "new_structured", UnorderedElementsAre(Pair(
+                                        "new_dim", absl::Milliseconds(3))))));
+  EXPECT_THAT(cost.GetMetrics(),
+              UnorderedElementsAre(Pair("new_metric", 42.0)));
+  auto structured_metrics = cost.GetStructuredMetrics();
+  EXPECT_EQ(structured_metrics.size(), 1);
+  ASSERT_TRUE(std::holds_alternative<std::vector<std::string>>(
+      structured_metrics["new_struct_metric"].values));
+  EXPECT_THAT(std::get<std::vector<std::string>>(
+                  structured_metrics["new_struct_metric"].values),
+              ElementsAre("str_val"));
+  EXPECT_THAT(
+      cost.GetBatchMetrics(),
+      ElementsAre(FieldsAre(
+          2, 2, 0,
+          UnorderedElementsAre(Pair("new_batch", absl::Milliseconds(50))))));
+}
+
 }  // namespace
 }  // namespace tensorflow

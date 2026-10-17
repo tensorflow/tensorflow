@@ -267,6 +267,15 @@ class PjRtRawClient {
     async_work_runner()->Execute(std::move(execute_fn));
   }
 
+  // Backend specific handlers for when an oom is detected during execute.
+  virtual void CallOomHandlers() const {}
+
+  virtual bool ShouldRetryOnOom(int attempts, PjRtDevice* device,
+                                PjRtExecutableLoadState* load_state,
+                                absl::Status prepare_status) {
+    return false;
+  }
+
   virtual void UpdateGlobalProcessInfo(
       absl::Span<xla::coordination::TaskInfo> infos) {
     LOG(WARNING) << "UpdateGlobalProcessInfo is not supported.";

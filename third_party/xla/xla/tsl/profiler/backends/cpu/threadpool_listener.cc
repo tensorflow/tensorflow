@@ -46,11 +46,6 @@ void RegisterThreadpoolEventCollector(
   tracing::SetEventCollector(tracing::EventCategory::kRunClosure, collector);
 }
 
-void UnregisterThreadpoolEventCollector() {
-  tracing::SetEventCollector(tracing::EventCategory::kScheduleClosure, nullptr);
-  tracing::SetEventCollector(tracing::EventCategory::kRunClosure, nullptr);
-}
-
 }  // namespace
 
 void ThreadpoolEventCollector::RecordEvent(uint64_t arg) const {
@@ -89,7 +84,6 @@ absl::Status ThreadpoolProfilerInterface::Start() {
 
 absl::Status ThreadpoolProfilerInterface::Stop() {
   threadpool_listener::Deactivate();
-  UnregisterThreadpoolEventCollector();
   return absl::OkStatus();
 }
 

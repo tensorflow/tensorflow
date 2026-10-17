@@ -764,6 +764,11 @@ class HloParserImpl : public HloParser {
   // Tracks recursion depth to prevent stack overflow from deeply nested input.
   int current_recursion_depth_ = 0;
   StackFrameIndexProto stack_frame_index_proto_;
+
+  // Next values used to fill elided constants (`{...}`) when
+  // fill_shortform_constants_with_random_values() is set.
+  uint32_t shortform_fill_word_ = 0;
+  uint8_t shortform_fill_byte_ = 0;
 };
 
 bool SplitToInt64s(absl::string_view s, char delim, std::vector<int64_t>* out) {
@@ -4156,10 +4161,11 @@ bool HloParserImpl::ParseCollectiveDeviceListBase(
     return true;
   }
 
-  // If the first token is 'mesh' or 'maximal_mesh', then we are parsing a (v3)
-  // MeshAxesReplicaGroupList.
+  // If the first token is 'mesh', 'single_device', or 'maximal_mesh', then we
+  // are parsing a (v3) MeshAxesReplicaGroupList.
   if (lexer_.GetKind() == TokKind::kIdent &&
-      (lexer_.GetStrVal() == "mesh" || lexer_.GetStrVal() == "maximal_mesh")) {
+      (lexer_.GetStrVal() == "mesh" || lexer_.GetStrVal() == "single_device" ||
+       lexer_.GetStrVal() == "maximal_mesh")) {
     std::optional<Mesh> mesh;
     if (!ParseMesh(mesh)) {
       return false;
@@ -4335,19 +4341,22 @@ bool HloParserImpl::ParseMesh(std::optional<Mesh>& mesh) {
   std::string kind = lexer_.GetStrVal();
   lexer_.Lex();
 
-  if (kind == "maximal_mesh") {
-    if (!ParseToken(TokKind::kLsquare, "expected '[' after maximal_mesh")) {
+  if (kind == "single_device" || kind == "maximal_mesh") {
+    if (!ParseToken(TokKind::kLsquare,
+                    absl::StrCat("expected '[' after ", kind))) {
       return false;
     }
     std::string device_ids_str;
     if (!ParseAttributeName(&device_ids_str) || device_ids_str != "device_id") {
-      return TokenError("expected device_id= attribute in maximal_mesh");
+      return TokenError(
+          absl::StrCat("expected device_id= attribute in ", kind));
     }
     int64_t device_id;
     if (!ParseInt64(&device_id)) {
       return false;
     }
-    if (!ParseToken(TokKind::kRsquare, "expected ']' to end maximal_mesh")) {
+    if (!ParseToken(TokKind::kRsquare,
+                    absl::StrCat("expected ']' to end ", kind))) {
       return false;
     }
     mesh.emplace(device_id);
@@ -4355,7 +4364,7 @@ bool HloParserImpl::ParseMesh(std::optional<Mesh>& mesh) {
   }
 
   if (kind != "mesh") {
-    return TokenError("Expected 'mesh' or 'maximal_mesh'");
+    return TokenError("Expected 'mesh', 'single_device', or 'maximal_mesh'");
   }
 
   // Parse @mesh[...]
@@ -4625,8 +4634,8 @@ bool HloParserImpl::ParseSingleSharding(
     return true;
   };
 
-  // Maximal sharding
-  if (mesh->IsMaximal()) {
+  // Single-device sharding
+  if (mesh->IsSingleDevice()) {
     std::vector<OpMetadata> metadata;
     if (!parse_metadata_if_present(metadata)) {
       return false;
@@ -4892,7 +4901,8 @@ bool HloParserImpl::ParseSingleSharding(std::optional<HloSharding>& sharding,
   }
 
   if (lexer_.GetKind() == TokKind::kIdent &&
-      (lexer_.GetStrVal() == "mesh" || lexer_.GetStrVal() == "maximal_mesh")) {
+      (lexer_.GetStrVal() == "mesh" || lexer_.GetStrVal() == "single_device" ||
+       lexer_.GetStrVal() == "maximal_mesh")) {
     std::optional<NamedSharding> named_sharding;
     if (ParseSingleSharding(named_sharding)) {
       sharding = HloSharding(std::move(*named_sharding));
@@ -5749,11 +5759,13 @@ bool HloParserImpl::ParseDenseLiteral(Literal* literal, const Shape& shape) {
         if (!options_.fill_shortform_constants_with_random_values()) {
           break;
         }
-        // Fill data with deterministic (garbage) values. Use static to avoid
-        // creating identical constants which could potentially got CSE'ed
-        // away. This is a best-effort approach to make sure replaying a HLO
-        // gives us same optimized HLO graph.
-        static uint32_t data = 0;
+        // Fill data with deterministic (garbage) values. The counters keep
+        // running across the elided constants of one parse, so constants of
+        // the same shape get different values and are not CSE'ed away. They
+        // are parser members rather than statics, so every parse of the same
+        // text produces the same values, regardless of what was parsed before
+        // or on which thread. This is a best effort approach to make sure
+        // replaying an HLO gives us the same optimized HLO graph.
 
         // According to the System V ABI not all 8 bit values are valid booleans
         // - only the values 0 and 1 are allowed. So to avoid undefined
@@ -5767,13 +5779,14 @@ bool HloParserImpl::ParseDenseLiteral(Literal* literal, const Shape& shape) {
             (shape.element_type() == PRED) ? kBooleanMask : kNoMask;
 
         uint32_t* raw_data = static_cast<uint32_t*>(literal->untyped_data());
-        for (int64_t i = 0; i < literal->size_bytes() / 4; ++i) {
-          raw_data[i] = data++ & mask;
+        const int64_t num_words = literal->size_bytes() / 4;
+        for (int64_t i = 0; i < num_words; ++i) {
+          raw_data[i] = shortform_fill_word_++ & mask;
         }
+        // The bytes after the last whole word.
         uint8_t* raw_data_int8 = static_cast<uint8_t*>(literal->untyped_data());
-        static uint8_t data_int8 = 0;
-        for (int64_t i = 0; i < literal->size_bytes() % 4; ++i) {
-          raw_data_int8[literal->size_bytes() / 4 + i] = data_int8++ & mask;
+        for (int64_t i = num_words * 4; i < literal->size_bytes(); ++i) {
+          raw_data_int8[i] = shortform_fill_byte_++ & mask;
         }
         break;
       }
@@ -7306,17 +7319,22 @@ bool HloParserImpl::ParseDimLevelTypes(
 //   ::= 'T' ('(' dim_list ')')+
 // dim_list
 //   ::= /*empty*/
-//   ::= (int64_t | '*') (',' (int64_t | '*'))*
+//   ::= (int64_t | '*' | 'd') (',' (int64_t | '*' | 'd'))*
 bool HloParserImpl::ParseTiles(std::vector<Tile>* tiles) {
   auto parse_and_add_tile_dimension = [&]() {
-    int64_t i;
-    if (ParseInt64(&i)) {
-      tiles->back().add_dimensions(i);
-      return true;
-    }
     if (lexer_.GetKind() == TokKind::kAsterisk) {
       tiles->back().add_dimensions(Tile::kCombineDimension);
       lexer_.Lex();
+      return true;
+    }
+    if (lexer_.GetKind() == TokKind::kIdent && lexer_.GetStrVal() == "d") {
+      tiles->back().add_dimensions(Tile::kMatchDimension);
+      lexer_.Lex();
+      return true;
+    }
+    int64_t i;
+    if (ParseInt64(&i)) {
+      tiles->back().add_dimensions(i);
       return true;
     }
     return false;

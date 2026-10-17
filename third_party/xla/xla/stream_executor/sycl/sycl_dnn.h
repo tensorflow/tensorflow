@@ -23,8 +23,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/service/gpu/gpu_conv_runner.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
@@ -46,17 +45,12 @@ class OnednnSupport : public dnn::DnnSupport {
   // Static helper to get oneDNN version without requiring an instance.
   static absl::StatusOr<stream_executor::dnn::VersionInfo> GetOnednnVersion();
 
-  absl::Status DoConvolveWithGpuConfig(
-      Stream* stream, const xla::gpu::GpuConvConfig& config,
-      absl::Span<const DeviceMemoryBase> operand_se_buffers,
-      DeviceMemoryBase result_se_buffer, ScratchAllocator* scratch_allocator);
-
   absl::Status DoPoolForward(dnn::DataType element_type, Stream* stream,
                              const dnn::PoolingDescriptor& pooling_dimensions,
                              const dnn::BatchDescriptor& input_dimensions,
-                             DeviceMemoryBase input_data,
+                             DeviceAddressBase input_data,
                              const dnn::BatchDescriptor& output_dimensions,
-                             DeviceMemoryBase output_data,
+                             DeviceAddressBase output_data,
                              ScratchAllocator* workspace_allocator) override {
     return absl::UnimplementedError(
         "DoPoolForward is not implemented for SYCL");
@@ -65,11 +59,11 @@ class OnednnSupport : public dnn::DnnSupport {
   absl::Status DoPoolBackward(dnn::DataType element_type, Stream* stream,
                               const dnn::PoolingDescriptor& pooling_dimensions,
                               const dnn::BatchDescriptor& input_dimensions,
-                              DeviceMemoryBase input_data,
+                              DeviceAddressBase input_data,
                               const dnn::BatchDescriptor& output_dimensions,
-                              DeviceMemoryBase output_data,
-                              DeviceMemoryBase input_diff_data,
-                              DeviceMemoryBase output_diff_data,
+                              DeviceAddressBase output_data,
+                              DeviceAddressBase input_diff_data,
+                              DeviceAddressBase output_diff_data,
                               ScratchAllocator* workspace_allocator) override {
     return absl::UnimplementedError(
         "DoPoolBackward is not implemented for SYCL");
@@ -81,21 +75,31 @@ class OnednnSupport : public dnn::DnnSupport {
       dnn::DataType output_type, const dnn::BatchDescriptor& input_descriptor,
       const dnn::FilterDescriptor& filter_descriptor,
       const dnn::BatchDescriptor& output_descriptor,
-      const dnn::ConvolutionDescriptor& convolution_descriptor) override {
-    return absl::UnimplementedError(
-        "ConvolveRunnerFromDesc is not implemented for SYCL");
-  }
+      const dnn::ConvolutionDescriptor& convolution_descriptor) override;
+
+  absl::StatusOr<std::unique_ptr<const dnn::FusedConvRunner>>
+  FusedConvolveRunnerFromDesc(
+      Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+      dnn::ConvolutionKind kind, dnn::DataType element_type,
+      dnn::DataType bias_type, dnn::DataType output_type, double conv_scale,
+      double side_input_scale, double leakyrelu_alpha,
+      const dnn::BatchDescriptor& input_descriptor,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const dnn::BatchDescriptor& bias_descriptor,
+      const dnn::BatchDescriptor& output_descriptor,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      dnn::ActivationMode activation_mode) override;
 
   absl::Status DoCtcLoss(Stream* stream, dnn::DataType element_type,
                          const dnn::RnnStateTensorDescriptor& probs_desc,
-                         DeviceMemoryBase probs_data,
+                         DeviceAddressBase probs_data,
                          absl::Span<const int> labels_data,
                          absl::Span<const int> labels_lengths_data,
                          absl::Span<const int> input_lengths_data,
-                         DeviceMemoryBase costs_data,
+                         DeviceAddressBase costs_data,
                          const dnn::RnnStateTensorDescriptor& grads_desc,
-                         DeviceMemoryBase grads_data,
-                         DeviceMemory<uint8_t> scratch_memory,
+                         DeviceAddressBase grads_data,
+                         DeviceAddress<uint8_t> scratch_memory,
                          int ctc_loss_algo_id) override {
     return absl::UnimplementedError("DoCtcLoss is not implemented for SYCL");
   }

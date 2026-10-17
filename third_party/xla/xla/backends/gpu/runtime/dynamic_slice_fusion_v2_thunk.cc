@@ -176,10 +176,10 @@ std::string DynamicSliceFusionV2Thunk::ToString(int indent) const {
 
 absl::Status DynamicSliceFusionV2Thunk::Prepare(const PrepareParams& params) {
   if (!params.buffer_allocations) {
-    if (command_executor_.has_value()) {
-      ABSL_RETURN_IF_ERROR(command_executor_->Prepare(params));
+    if (!executor_.thunks().empty() || !command_executor_.has_value()) {
+      return executor_.Prepare(params);
     }
-    return executor_.Prepare(params);
+    return command_executor_->Prepare(params);
   }
 
   // Embedded thunks and commands use synthetic embedded allocation indices
@@ -193,19 +193,19 @@ absl::Status DynamicSliceFusionV2Thunk::Prepare(const PrepareParams& params) {
   PrepareParams embedded_params = params;
   embedded_params.buffer_allocations = &embedded_allocs;
 
-  if (command_executor_.has_value()) {
-    ABSL_RETURN_IF_ERROR(command_executor_->Prepare(embedded_params));
+  if (!executor_.thunks().empty() || !command_executor_.has_value()) {
+    return executor_.Prepare(embedded_params);
   }
-  return executor_.Prepare(embedded_params);
+  return command_executor_->Prepare(embedded_params);
 }
 
 absl::Status DynamicSliceFusionV2Thunk::Initialize(
     const InitializeParams& params) {
   if (!params.buffer_allocations) {
-    if (command_executor_.has_value()) {
-      ABSL_RETURN_IF_ERROR(command_executor_->Initialize(params));
+    if (!executor_.thunks().empty() || !command_executor_.has_value()) {
+      return executor_.Initialize(params);
     }
-    return executor_.Initialize(params);
+    return command_executor_->Initialize(params);
   }
 
   // Embedded thunks and commands use synthetic embedded allocation indices
@@ -219,10 +219,10 @@ absl::Status DynamicSliceFusionV2Thunk::Initialize(
   InitializeParams embedded_params = params;
   embedded_params.buffer_allocations = &embedded_allocs;
 
-  if (command_executor_.has_value()) {
-    ABSL_RETURN_IF_ERROR(command_executor_->Initialize(embedded_params));
+  if (!executor_.thunks().empty() || !command_executor_.has_value()) {
+    return executor_.Initialize(embedded_params);
   }
-  return executor_.Initialize(embedded_params);
+  return command_executor_->Initialize(embedded_params);
 }
 
 absl::Status DynamicSliceFusionV2Thunk::VerifyBufferAssignment(

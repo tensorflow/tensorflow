@@ -181,8 +181,8 @@ void EigenTransposedConv2D(
   // Grouped convolutions are not supported yet.
   CHECK(kernel_channels == input_channels);
 
-  using TensorMap2D =
-      Eigen::TensorMap<Eigen::Tensor<ScalarType, 2, Eigen::RowMajor>,
+  using TensorMap3D =
+      Eigen::TensorMap<Eigen::Tensor<ScalarType, 3, Eigen::RowMajor>,
                        Eigen::Unaligned>;
   using ConstTensorMap3D =
       Eigen::TensorMap<Eigen::Tensor<const ScalarType, 3, Eigen::RowMajor>,
@@ -215,8 +215,8 @@ void EigenTransposedConv2D(
       Eigen::IndexPair<Eigen::DenseIndex>(1, 1)};
 
   // Compute intermediate results (convolution matrix) into conv_matrix.
-  TensorMap2D C(conv_matrix_data, input_batch * input_image_size,
-                kernel_total_size);
+  TensorMap3D C(conv_matrix_data, input_batch * input_image_size,
+                kernel_x * kernel_y, kernel_filters);
 
   ConstTensorMap2D A(lhs, input_batch * input_image_size, input_channels);
   ConstTensorMap3D B(rhs, kernel_x * kernel_y, kernel_channels, kernel_filters);
@@ -249,22 +249,10 @@ void EigenTransposedConv2D(
     done();
   };
 
-  // Molds the output of the contraction into the shape expected by packing
-  // algorithm:
-  // - the minor dimension (dims[1]): the patch values to be packed; contiguous
-  //   in memory
-  // - the major dimension (dims[0]): everything else
-  Eigen::DSizes<Eigen::Index, 2> post_contract_dims;
-  post_contract_dims[0] = input_batch * input_image_size;
-  post_contract_dims[1] = kernel_total_size;
-
-  if (device != nullptr) {
-    C.device(*device, std::move(pack_patches)) =
-        A.contract(B, contract_dims).reshape(post_contract_dims);
-  } else {
-    C = A.contract(B, contract_dims).reshape(post_contract_dims);
-    pack_patches();
-  }
+  Eigen::ThreadPoolDevice single_thread_device(/*pool=*/nullptr,
+                                               /*num_cores=*/1);
+  C.device(device != nullptr ? *device : single_thread_device,
+           std::move(pack_patches)) = A.contract(B, contract_dims);
 }
 
 // Algorithm that works for all types of 2D convolutions. Even though it works
@@ -283,40 +271,8 @@ void EigenGenericConv2D(
     Eigen::Index lhs_y_dilation, Eigen::Index rhs_x_dilation,
     Eigen::Index rhs_y_dilation, Eigen::Index feature_group_count,
     DoneCallback done) {
-  // For non-grouped convolutions, we can optimize Eigen expressions and avoid
-  // introducing an extra dimension of size `1`.
-  if constexpr (!is_grouped) {
-    DCHECK_EQ(feature_group_count, 1) << "Expected feature group count to be 1";
-  }
-
-  const Eigen::TensorMap<Eigen::Tensor<const ScalarType, 4, Eigen::RowMajor>,
-                         Eigen::Aligned>
-      input(lhs, input_batch, input_x, input_y, input_channels);
-
-  const Eigen::TensorMap<Eigen::Tensor<const ScalarType, 4, Eigen::RowMajor>,
-                         Eigen::Aligned>
-      kernel(rhs, kernel_x, kernel_y, kernel_channels, kernel_filters);
-
-  Eigen::TensorMap<Eigen::Tensor<ScalarType, 4, Eigen::RowMajor>,
-                   Eigen::Aligned>
-      output(out, input_batch, output_x, output_y, kernel_filters);
-
   Eigen::array<Eigen::IndexPair<Eigen::Index>, 1> contract_dims;
   contract_dims[0] = Eigen::IndexPair<Eigen::Index>(1, 0);
-
-  Eigen::DSizes<Eigen::Index, 5> input_reshaped_dims;
-  input_reshaped_dims[0] = input_batch;
-  input_reshaped_dims[1] = input_x;
-  input_reshaped_dims[2] = input_y;
-  input_reshaped_dims[3] = feature_group_count;
-  input_reshaped_dims[4] = input_channels / feature_group_count;
-
-  Eigen::DSizes<Eigen::Index, 5> output_reshaped_dims;
-  output_reshaped_dims[0] = input_batch;
-  output_reshaped_dims[1] = output_x;
-  output_reshaped_dims[2] = output_y;
-  output_reshaped_dims[3] = feature_group_count;
-  output_reshaped_dims[4] = kernel_filters / feature_group_count;
 
   // Molds the output of the patch extraction code into a 2d tensor:
   // - the first dimension (dims[0]): the patch values to be multiplied with the
@@ -326,47 +282,24 @@ void EigenGenericConv2D(
   pre_contract_dims[0] = output_y * output_x * input_batch;
   pre_contract_dims[1] = kernel_channels * kernel_y * kernel_x;
 
-  // Molds the output of the contraction into the shape expected by the user:
-  Eigen::DSizes<Eigen::Index, 4> post_contract_dims;
-  post_contract_dims[0] = input_batch;
-  post_contract_dims[1] = output_x;
-  post_contract_dims[2] = output_y;
-  post_contract_dims[3] = kernel_filters / feature_group_count;
+  // IMPORTANT: Below, the row and column dimensions must be flipped when passed
+  // to Eigen.
 
-  // Kernel dimensions for non-grouped convolution.
-  Eigen::DSizes<Eigen::Index, 2> kernel_dims;
-  kernel_dims[0] = kernel_channels * kernel_y * kernel_x;
-  kernel_dims[1] = kernel_filters;
+  // For non-grouped convolutions, we can optimize Eigen expressions and avoid
+  // introducing an extra dimension of size `1`.
+  if constexpr (!is_grouped) {
+    DCHECK_EQ(feature_group_count, 1) << "Expected feature group count to be 1";
 
-  // Kernel dimensions for grouped convolution.
-  Eigen::DSizes<Eigen::Index, 3> kernel_reshaped_dims;
-  kernel_reshaped_dims[0] = kernel_channels * kernel_y * kernel_x;
-  kernel_reshaped_dims[1] = feature_group_count;
-  kernel_reshaped_dims[2] = kernel_filters / feature_group_count;
+    const Eigen::TensorMap<Eigen::Tensor<const ScalarType, 4, Eigen::RowMajor>,
+                           Eigen::Aligned>
+        input(lhs, input_batch, input_x, input_y, input_channels);
+    const Eigen::TensorMap<Eigen::Tensor<const ScalarType, 2, Eigen::RowMajor>,
+                           Eigen::Aligned>
+        kernel(rhs, pre_contract_dims[1], kernel_filters);
+    Eigen::TensorMap<Eigen::Tensor<ScalarType, 2, Eigen::RowMajor>,
+                     Eigen::Aligned>
+        output(out, pre_contract_dims[0], kernel_filters);
 
-  // IMPORTANT: Below in `convolve_group` and `convolve` lambdas, the row and
-  // column dimensions must be flipped when passed to Eigen.
-
-  // Constructs convolution and output expressions for a given group index.
-  auto convolve_group = [=](int64_t i) {
-    auto convolved =
-        input.reshape(input_reshaped_dims)
-            .chip(i, 3)
-            .extract_image_patches(
-                kernel_y, kernel_x, y_stride, x_stride, rhs_y_dilation,
-                rhs_x_dilation, lhs_y_dilation, lhs_x_dilation,
-                padding_y_before, padding_y_after, padding_x_before,
-                padding_x_after, static_cast<ScalarType>(0.0f))
-            .reshape(pre_contract_dims)
-            .contract(kernel.reshape(kernel_reshaped_dims).chip(i, 1),
-                      contract_dims)
-            .reshape(post_contract_dims);
-    auto output_reshaped = output.reshape(output_reshaped_dims).chip(i, 3);
-    return std::make_pair(output_reshaped, convolved);
-  };
-
-  // Constructs convolution and output expressions for full input.
-  auto convolve = [=] {
     auto convolved =
         input
             .extract_image_patches(
@@ -375,57 +308,70 @@ void EigenGenericConv2D(
                 padding_y_before, padding_y_after, padding_x_before,
                 padding_x_after, static_cast<ScalarType>(0.0f))
             .reshape(pre_contract_dims)
-            .contract(kernel.reshape(kernel_dims), contract_dims)
-            .reshape(post_contract_dims);
-    return std::make_pair(output, convolved);
-  };
+            .contract(kernel, contract_dims);
 
-  // For non-grouped convolutions, we need to execute only one Eigen expression.
-  if constexpr (!is_grouped) {
-    auto [output, convolved] = convolve();
-
-    if (device != nullptr) {
-      output.device(*device, std::move(done)) = convolved;
-    } else {
-      output = convolved;
-      done();
-    }
-
-    return;
-  }
-
-  // For grouped convolutions, we need to execute multiple Eigen expressions and
-  // we might use thread pool to run them concurrently.
-  if (device != nullptr) {
-    // Although we schedule at most one tasks for each thread, individual
-    // convolution might also schedule more tasks into the same thread pool.
-    auto max_tasks = static_cast<Eigen::Index>(device->numThreads());
-    auto task_size = Eigen::numext::div_ceil(feature_group_count, max_tasks);
-    auto num_tasks = Eigen::numext::div_ceil(feature_group_count, task_size);
+    Eigen::ThreadPoolDevice single_thread_device(/*pool=*/nullptr,
+                                                 /*num_cores=*/1);
+    output.device(device != nullptr ? *device : single_thread_device,
+                  std::move(done)) = convolved;
+  } else {
+    const Eigen::TensorMap<Eigen::Tensor<const ScalarType, 5, Eigen::RowMajor>,
+                           Eigen::Aligned>
+        input(lhs, input_batch, input_x, input_y, feature_group_count,
+              input_channels / feature_group_count);
+    const Eigen::TensorMap<Eigen::Tensor<const ScalarType, 3, Eigen::RowMajor>,
+                           Eigen::Aligned>
+        kernel(rhs, pre_contract_dims[1], feature_group_count,
+               kernel_filters / feature_group_count);
 
     // Signal done callback when all feature groups are done.
     tsl::CountDownAsyncValueRef<tsl::Chain> count_down(feature_group_count);
     count_down.AsPtr().AndThen([done = std::move(done)]() mutable { done(); });
 
-    Worker::Parallelize(
-        device->getPool(), /*num_workers=*/num_tasks, num_tasks,
-        [=](Eigen::Index task_index) {
-          Eigen::Index start = task_index * task_size;
-          Eigen::Index end = std::min(start + task_size, feature_group_count);
-          for (Eigen::Index i = start; i < end; ++i) {
-            auto on_done = [count_down]() mutable { count_down.CountDown(); };
-            auto [output, convolved] = convolve_group(i);
-            output.device(*device, std::move(on_done)) = convolved;
-          }
-        });
+    auto convolve_range = [=](const Eigen::ThreadPoolDevice& dev,
+                              Eigen::Index start, Eigen::Index end) {
+      Eigen::TensorMap<Eigen::Tensor<ScalarType, 3, Eigen::RowMajor>,
+                       Eigen::Aligned>
+          output(out, pre_contract_dims[0], feature_group_count,
+                 kernel_filters / feature_group_count);
+      for (Eigen::Index i = start; i < end; ++i) {
+        auto on_done = [count_down]() mutable { count_down.CountDown(); };
+        auto convolved =
+            input.chip(i, 3)
+                .extract_image_patches(
+                    kernel_y, kernel_x, y_stride, x_stride, rhs_y_dilation,
+                    rhs_x_dilation, lhs_y_dilation, lhs_x_dilation,
+                    padding_y_before, padding_y_after, padding_x_before,
+                    padding_x_after, static_cast<ScalarType>(0.0f))
+                .reshape(pre_contract_dims)
+                .contract(kernel.chip(i, 1), contract_dims);
+        output.chip(i, 1).device(dev, std::move(on_done)) = convolved;
+      }
+    };
 
-  } else {
-    // Convolve all feature groups sequentially in the caller thread.
-    for (Eigen::Index i = 0; i < feature_group_count; ++i) {
-      auto [output, convolved] = convolve_group(i);
-      output = convolved;
+    // For grouped convolutions, we need to execute multiple Eigen expressions
+    // and we might use thread pool to run them concurrently.
+    if (device != nullptr) {
+      // Although we schedule at most one tasks for each thread, individual
+      // convolution might also schedule more tasks into the same thread pool.
+      auto max_tasks = static_cast<Eigen::Index>(device->numThreads());
+      auto task_size = Eigen::numext::div_ceil(feature_group_count, max_tasks);
+      auto num_tasks = Eigen::numext::div_ceil(feature_group_count, task_size);
+
+      Worker::Parallelize(device->getPool(), /*num_workers=*/num_tasks,
+                          num_tasks, [=](Eigen::Index task_index) {
+                            Eigen::Index start = task_index * task_size;
+                            Eigen::Index end = std::min(start + task_size,
+                                                        feature_group_count);
+                            convolve_range(*device, start, end);
+                          });
+
+    } else {
+      // Convolve all feature groups sequentially in the caller thread.
+      Eigen::ThreadPoolDevice single_thread_device(/*pool=*/nullptr,
+                                                   /*num_cores=*/1);
+      convolve_range(single_thread_device, 0, feature_group_count);
     }
-    done();
   }
 }
 
@@ -496,35 +442,6 @@ void EigenConv3D(const Eigen::ThreadPoolDevice* device, ScalarType* out,
                  Eigen::Index lhs_z_dilation, Eigen::Index rhs_x_dilation,
                  Eigen::Index rhs_y_dilation, Eigen::Index rhs_z_dilation,
                  Eigen::Index feature_group_count, DoneCallback done) {
-  using ConstTType =
-      Eigen::TensorMap<Eigen::Tensor<const ScalarType, 5, Eigen::RowMajor>,
-                       Eigen::Aligned>;
-  const ConstTType input(lhs, input_batch, input_x, input_y, input_z,
-                         input_channels);
-
-  const ConstTType kernel(rhs, kernel_x, kernel_y, kernel_z, kernel_channels,
-                          kernel_filters);
-
-  Eigen::TensorMap<Eigen::Tensor<ScalarType, 5, Eigen::RowMajor>,
-                   Eigen::Aligned>
-      output(out, input_batch, output_x, output_y, output_z, kernel_filters);
-
-  Eigen::DSizes<Eigen::Index, 6> input_reshaped_dims;
-  input_reshaped_dims[0] = input_batch;
-  input_reshaped_dims[1] = input_x;
-  input_reshaped_dims[2] = input_y;
-  input_reshaped_dims[3] = input_z;
-  input_reshaped_dims[4] = feature_group_count;
-  input_reshaped_dims[5] = input_channels / feature_group_count;
-
-  Eigen::DSizes<Eigen::Index, 6> output_reshaped_dims;
-  output_reshaped_dims[0] = input_batch;
-  output_reshaped_dims[1] = output_x;
-  output_reshaped_dims[2] = output_y;
-  output_reshaped_dims[3] = output_z;
-  output_reshaped_dims[4] = feature_group_count;
-  output_reshaped_dims[5] = kernel_filters / feature_group_count;
-
   Eigen::array<Eigen::IndexPair<Eigen::Index>, 1> contract_dims;
   contract_dims[0] = Eigen::IndexPair<Eigen::Index>(1, 0);
 
@@ -536,26 +453,33 @@ void EigenConv3D(const Eigen::ThreadPoolDevice* device, ScalarType* out,
   pre_contract_dims[0] = output_x * output_y * output_z * input_batch;
   pre_contract_dims[1] = kernel_channels * kernel_x * kernel_y * kernel_z;
 
-  // Molds the output of the contraction into the shape expected by the user:
-  Eigen::DSizes<Eigen::Index, 5> post_contract_dims;
-  post_contract_dims[0] = input_batch;
-  post_contract_dims[1] = output_x;
-  post_contract_dims[2] = output_y;
-  post_contract_dims[3] = output_z;
-  post_contract_dims[4] = kernel_filters / feature_group_count;
+  const Eigen::TensorMap<Eigen::Tensor<const ScalarType, 6, Eigen::RowMajor>,
+                         Eigen::Aligned>
+      input(lhs, input_batch, input_x, input_y, input_z, feature_group_count,
+            input_channels / feature_group_count);
 
-  Eigen::DSizes<Eigen::Index, 3> kernel_dims;
-  kernel_dims[0] = kernel_channels * kernel_x * kernel_y * kernel_z;
-  kernel_dims[1] = feature_group_count;
-  kernel_dims[2] = kernel_filters / feature_group_count;
+  const Eigen::TensorMap<Eigen::Tensor<const ScalarType, 3, Eigen::RowMajor>,
+                         Eigen::Aligned>
+      kernel(rhs, pre_contract_dims[1], feature_group_count,
+             kernel_filters / feature_group_count);
+
+  Eigen::TensorMap<Eigen::Tensor<ScalarType, 3, Eigen::RowMajor>,
+                   Eigen::Aligned>
+      output(out, pre_contract_dims[0], feature_group_count,
+             kernel_filters / feature_group_count);
 
   // Signal done callback when all feature groups are done.
   tsl::CountDownAsyncValueRef<tsl::Chain> count_down(feature_group_count);
   count_down.AsPtr().AndThen([done = std::move(done)]() mutable { done(); });
 
+  Eigen::ThreadPoolDevice single_thread_device(/*pool=*/nullptr,
+                                               /*num_cores=*/1);
+  const Eigen::ThreadPoolDevice& dev =
+      device != nullptr ? *device : single_thread_device;
+
   for (Eigen::Index i = 0; i < feature_group_count; ++i) {
     // The dimension order must be flipped when passed to Eigen.
-    auto input_chip = input.reshape(input_reshaped_dims).chip(i, 4);
+    auto input_chip = input.chip(i, 4);
     auto patches =
         Eigen::TensorVolumePatchOp<Eigen::Dynamic, Eigen::Dynamic,
                                    Eigen::Dynamic, decltype(input_chip)>(
@@ -565,20 +489,11 @@ void EigenConv3D(const Eigen::ThreadPoolDevice* device, ScalarType* out,
             padding_z_after, padding_y_before, padding_y_after,
             padding_x_before, padding_x_after, static_cast<ScalarType>(0.0f));
 
-    auto convolved =
-        patches.reshape(pre_contract_dims)
-            .contract(kernel.reshape(kernel_dims).chip(i, 1), contract_dims)
-            .reshape(post_contract_dims);
+    auto convolved = patches.reshape(pre_contract_dims)
+                         .contract(kernel.chip(i, 1), contract_dims);
 
-    auto output_reshaped = output.reshape(output_reshaped_dims).chip(i, 4);
-
-    if (device != nullptr) {
-      auto on_done = [count_down]() mutable { count_down.CountDown(); };
-      output_reshaped.device(*device, std::move(on_done)) = convolved;
-    } else {
-      output_reshaped = convolved;
-      count_down.CountDown();
-    }
+    auto on_done = [count_down]() mutable { count_down.CountDown(); };
+    output.chip(i, 1).device(dev, std::move(on_done)) = convolved;
   }
 }
 

@@ -110,6 +110,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/double_buffer_loop_unrolling.h"
 #include "xla/backends/gpu/transforms/dus_accumulator_zero_init_elimination.h"
 #include "xla/backends/gpu/transforms/dynamic_slice_annotator.h"
+#include "xla/backends/gpu/transforms/dynamic_slice_copy.h"
 #include "xla/backends/gpu/transforms/dynamic_slice_copy_fusion_async_wrapper.h"
 #include "xla/backends/gpu/transforms/dynamic_slice_fusion_rewriter_v2.h"
 #include "xla/backends/gpu/transforms/estimate_cub_scan_scratch_size.h"
@@ -122,6 +123,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/gemm_fusion_swap_operands.h"
 #include "xla/backends/gpu/transforms/gemm_rewriter.h"
 #include "xla/backends/gpu/transforms/gpu_copy_async_wrapper.h"
+#include "xla/backends/gpu/transforms/gpu_transpose_folding.h"
 #include "xla/backends/gpu/transforms/group_collectives_by_key.h"
 #include "xla/backends/gpu/transforms/hoist_fused_bitcasts.h"
 #include "xla/backends/gpu/transforms/layout_assignment.h"
@@ -190,6 +192,7 @@ limitations under the License.
 #include "xla/hlo/transforms/expanders/dot_decomposer.h"
 #include "xla/hlo/transforms/expanders/dynamic_index_splitter.h"
 #include "xla/hlo/transforms/expanders/eigh_expander.h"
+#include "xla/hlo/transforms/expanders/elementary_function_expander.h"
 #include "xla/hlo/transforms/expanders/logistic_expander.h"
 #include "xla/hlo/transforms/expanders/optimization_barrier_expander.h"
 #include "xla/hlo/transforms/expanders/permutation_sort_expander.h"
@@ -246,7 +249,6 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/call_inliner.h"
-#include "xla/service/collective_ops_utils.h"
 #include "xla/service/collective_pipeliner.h"
 #include "xla/service/collective_pipeliner_utils.h"
 #include "xla/service/collective_utils.h"
@@ -322,7 +324,6 @@ limitations under the License.
 #include "xla/service/spmd/schedule_aware_collective_ops_cse.h"
 #include "xla/service/spmd/shardy/shardy_xla_pass.h"
 #include "xla/service/topk_rewriter.h"
-#include "xla/service/transpose_folding.h"
 #include "xla/service/while_loop_constant_sinking.h"
 #include "xla/service/while_loop_simplifier.h"
 #include "xla/service/xla_transform.h"
@@ -586,12 +587,7 @@ absl::StatusOr<GpuTopology> InferGpuTopology(
             << (stream_exec == nullptr
                     ? "not stream executor. Performing deviceless compilation."
                     : "stream executor. Performing cross compilation.");
-    absl::string_view platform_version =
-        topology_from_options.has_value() &&
-                !topology_from_options->platform_version().empty()
-            ? topology_from_options->platform_version()
-            : gpu_target_config->device_description.platform_version();
-    return GpuTopology{platform_version,
+    return GpuTopology{gpu_target_config->device_description.platform_version(),
                        num_partitions,
                        num_hosts_per_partition,
                        num_devices_per_host,
@@ -925,6 +921,10 @@ absl::Status RunOptimizationPasses(
       /*rewrite_inference_op=*/true,
       /*rewrite_grad_op=*/true);
 
+  pipeline.AddPass<ElementaryFunctionExpander>(
+      [](const HloInstruction* instruction) {
+        return ShapeUtil::ElementIsComplex(instruction->shape());
+      });
   pipeline.AddPass<LogisticExpander>();
   pipeline.AddPass<ConditionalCanonicalizer>();
   pipeline.AddPass<DynamicDimensionSimplifier>();
@@ -1020,12 +1020,7 @@ absl::Status RunOptimizationPasses(
     pipeline.AddPass<ReshapeMover>(reshape_mover_options);
     pipeline.AddPass<HloConstantFolding>();
     pipeline.AddPass<ConditionalSimplifier>();
-    // Do not fold transpose operands into dots yet. This can undo the normal
-    // form established by DotDecomposer, which the DotMerger pass requires.
-    pipeline.AddPass<TransposeFolding>(
-        /*dot_can_fold_transpose_operand=*/
-        [&](const HloInstruction& dot,
-            int64_t operand) -> absl::StatusOr<bool> { return false; });
+    pipeline.AddPass<GpuTransposeFolding>(gpu_version);
     pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
     pipeline.AddPass<HloDCE>();
   }();
@@ -1044,9 +1039,7 @@ absl::Status RunOptimizationPasses(
   // gpu_version) once Triton emitter supports multiple non-contracting
   // dimensions.
   pipeline.AddPass<DotDimensionNormalizer>(true);
-  // Folding transpose operands into dots can undo the normal form established
-  // by DotDecomposer. Subsequent passes must not rely on it from this point on.
-  pipeline.AddPass<TransposeFolding>(CanFoldTransposeOperandIntoDot);
+  pipeline.AddPass<GpuTransposeFolding>(gpu_version);
 
   // ConvertMover and ReshapeMover fight with each other: ConvertMover wants
   // to move some converts down the graph, but ReshapeMover wants to move them
@@ -1416,10 +1409,9 @@ absl::Status RunLayoutAssignmentPasses(
   // Layout assignment uses alias analysis, which requires the call graph to
   // be flattened.
   pipeline.AddPass<FlattenCallGraph>();
-  ChannelLayoutConstraints layout_constraints;
   pipeline.AddPass<GpuLayoutAssignment>(
       hlo_module->mutable_entry_computation_layout(), gpu_version,
-      device_description, &layout_constraints);
+      device_description);
   // Run SubByteNormalization because GpuLayoutAssignment may modify a
   // Layout's element_size_in_bits field.
   pipeline.AddPass<SubByteNormalization>(
@@ -2149,8 +2141,7 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     // GemmRewriter assumes that all transposes are folded into gemms, but,
     // since commit 7d529df, this is not always true at this point.
     // Therefore, rerun transpose folding.
-    pipeline.AddPass<TransposeFolding>(CanFoldTransposeOperandIntoDot,
-                                       TransposeFolding::NeverFoldTranspose);
+    pipeline.AddPass<GpuTransposeFolding>(gpu_version);
 
     pipeline.AddPass<ReshapeDecomposer>();
     pipeline.AddPass<ReduceDecomposer>([&](const HloInstruction* r) {
@@ -2219,9 +2210,7 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
           gpu_target_config.device_description, ShapeSizeBytesFunction(),
           alias_info, mlir_context,
           /*only_fuse_if_profitable=*/true,
-          /*use_experimental_tiling=*/
-          debug_options.xla_gpu_experimental_enable_tiling_propagation(),
-          thread_pool, &mlir_context_pool_);
+          /*use_experimental_tiling=*/true, thread_pool, &mlir_context_pool_);
     }
 
     pipeline.AddPass<ReductionDimensionGrouper>();
@@ -2434,132 +2423,6 @@ absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
   return std::move(module);
 }
 
-namespace {
-
-bool UsesCollectiveMemorySpaceFrontendAttr(const HloUse& use) {
-  if (use.instruction->opcode() != HloOpcode::kCustomCall) {
-    return false;
-  }
-  auto attr =
-      use.instruction->get_frontend_attribute(kOperandsMemorySpacesAttr);
-  if (!attr.has_value()) {
-    return false;
-  }
-  auto pairs = ParseIndexMemorySpacePairs(*attr);
-  if (!pairs.ok()) {
-    return false;
-  }
-  for (auto [index, memory_space] : *pairs) {
-    if (index == use.operand_number &&
-        memory_space == MemorySpaceColor::kCollective) {
-      return true;
-    }
-  }
-  return false;
-}
-
-bool DefinesCollectiveMemorySpaceFrontendAttr(const HloValue* value) {
-  const HloInstruction* def = value->defining_instruction();
-  if (def->opcode() != HloOpcode::kCustomCall) {
-    return false;
-  }
-
-  auto attr = def->get_frontend_attribute(kResultsMemorySpacesAttr);
-  if (!attr.has_value()) {
-    return false;
-  }
-
-  auto pairs = ParseIndexMemorySpacePairs(*attr);
-  if (!pairs.ok()) {
-    return false;
-  }
-
-  // Determine the logical result index. If the custom call returns a tuple,
-  // we look at the top-level index (e.g., element 0 or 1 of the tuple).
-  int64_t result_index = 0;
-  if (def->shape().IsTuple()) {
-    if (value->defining_index().empty()) {
-      // The buffer for the tuple pointer array itself is not S1.
-      return false;
-    }
-    result_index = value->defining_index()[0];
-  }
-
-  for (auto [index, memory_space] : *pairs) {
-    if (index == result_index &&
-        memory_space == MemorySpaceColor::kCollective) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-bool RequiresCollectiveInput(const HloUse& use, const DebugOptions& opts) {
-  HloInstruction* user = use.instruction;
-
-  // Handle standard non-fusion/fusion collectives under NCCL user buffers
-  if (IsCollective(user) &&
-      (opts.xla_gpu_enable_nccl_user_buffers() ||
-       IsNcclSymmetricBuffersEnabledForCollective(user, opts))) {
-    return true;
-  }
-  // Handle one-shot RaggedAllToAll with NCCL enabled.
-  if (IsOneShotRaggedAllToAllWithNcclEnabled(opts)) {
-    // User is RA2A or AsyncStart(RA2A). Used by operand 1 (output).
-    if ((IsRaggedAllToAllOrAsyncStartRaggedAllToAll(user)) &&
-        use.operand_number == 1) {
-      return true;
-    }
-  }
-
-  // Device-initiated and one-sided collectives require S1 memory for all
-  // buffers.
-  if (RequiresCollectiveSymmetricMemorySpace(user)) {
-    return true;
-  }
-
-  // Check custom calls with operands_memory_spaces attribute
-  if (UsesCollectiveMemorySpaceFrontendAttr(use)) {
-    return true;
-  }
-
-  return false;
-}
-
-bool RequiresCollectiveOutput(const HloValue* value, const DebugOptions& opts) {
-  HloInstruction* def = value->defining_instruction();
-
-  // Handle standard non-fusion/fusion collectives under NCCL user buffers
-  if (IsCollective(def) &&
-      (opts.xla_gpu_enable_nccl_user_buffers() ||
-       IsNcclSymmetricBuffersEnabledForCollective(def, opts))) {
-    return true;
-  }
-  // Handle one-shot RaggedAllToAll with NCCL enabled.
-  if (IsOneShotRaggedAllToAllWithNcclEnabled(opts)) {
-    // Defining Instruction is RA2A or AsyncDone(RA2A)
-    if (IsRaggedAllToAllOrAsyncDoneRaggedAllToAll(def)) {
-      return true;
-    }
-  }
-
-  // If the instruction requires symmetric memory, its output value is S1.
-  // If the output value is live-out of the module, we must convert is to S0.
-  if (RequiresCollectiveSymmetricMemorySpace(def)) {
-    return true;
-  }
-
-  // Check custom calls with results_memory_spaces attribute
-  if (DefinesCollectiveMemorySpaceFrontendAttr(value)) {
-    return true;
-  }
-
-  return false;
-}
-
-}  // namespace
-
 void GpuCollectiveBufferAnalysis(
     HloModule* module, const HloAliasAnalysis& alias_analysis,
     std::function<void(HloInstruction*, const ShapeIndex&)> add_index_to_copy,
@@ -2611,7 +2474,7 @@ void GpuCollectiveBufferAnalysis(
         live_out_values.push_back(value);
       }
 
-      if (RequiresCollectiveOutput(value, opts)) {
+      if (RequiresCollectiveOutput(*value, opts)) {
         defined_by_collective = true;
       }
     }
@@ -3244,9 +3107,7 @@ absl::Status GpuCompiler::RunPreSchedulingPasses(
   tsl::profiler::TraceMe traceme("RunPreSchedulingPasses");
   HloPassPipeline pipeline("pre-scheduling-passes");
   pipeline.AddPass<FusionWrapper>(gpu_device_info);
-  const auto* cuda_cc =
-      gpu_device_info.gpu_compute_capability().cuda_compute_capability();
-  if (cuda_cc != nullptr && cuda_cc->IsAtLeastAmpere()) {
+  if (SupportsDynamicSliceCopyThunks(gpu_device_info)) {
     pipeline.AddPass<DynamicSliceCopyFusionAsyncWrapper>();
   }
   // GpuCopyAsyncWrapper is disabled when xla_gpu_async_copy_min_bytes is -1.
@@ -3260,9 +3121,7 @@ absl::Status GpuCompiler::RunPreSchedulingPasses(
     // Cost model analysis for compute.
     pipeline.AddPass<GpuCostModelStatsCollection>(
         gpu_device_info, cost_analysis_options, mlir_context,
-        module->config()
-            .debug_options()
-            .xla_gpu_experimental_enable_tiling_propagation(),
+        /*use_experimental_tiling=*/true,
         module->config()
             .debug_options()
             .xla_gpu_experimental_enable_same_shape_multi_output_fusion());

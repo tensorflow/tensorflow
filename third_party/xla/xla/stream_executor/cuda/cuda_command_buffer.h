@@ -55,6 +55,8 @@ class CudaCommandBuffer final : public GpuCommandBuffer {
 
   std::string ToString() const override;
 
+  bool has_node_priority() const { return has_node_priority_; }
+
   ~CudaCommandBuffer() override;
 
  private:
@@ -220,6 +222,8 @@ class CudaCommandBuffer final : public GpuCommandBuffer {
 
   CUgraphExec graph_exec() const;
 
+  void SetHasNodePriority();
+
   absl::Status CheckCanBeUpdated() override;
 
   // Static helpers that are needed across different versions of CUDA.
@@ -266,6 +270,7 @@ class CudaCommandBuffer final : public GpuCommandBuffer {
 
   CUgraph graph_ = nullptr;
   bool is_owned_graph_ = true;
+  bool has_node_priority_ = false;
   CUgraphExec graph_exec_ = nullptr;
 };
 

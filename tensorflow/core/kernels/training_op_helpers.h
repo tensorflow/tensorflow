@@ -84,7 +84,7 @@ absl::Status EnsureSparseVariableAccess(OpKernelContext* ctx, Var* var) {
     return absl::OkStatus();
   }
   Tensor tmp;
-  if (std::is_same<T, Variant>::value) {
+  if (std::is_same_v<T, Variant>) {
     tsl::AllocatorAttributes attr;
     attr.set_on_host(true);
     TF_RETURN_IF_ERROR(ctx->allocate_temp(var->tensor()->dtype(),
@@ -242,11 +242,16 @@ void MaybeForwardRefInputToRefOutput(OpKernelContext* ctx, int input,
 template <typename Device, typename T>
 absl::Status PrepareToUpdateVariable(OpKernelContext* ctx, Tensor* tensor,
                                      bool copy_on_read_mode) {
+  if (tensor->dtype() != DataTypeToEnum<T>::v()) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "dtype mismatch: expected ", DataTypeString(DataTypeToEnum<T>::v()),
+        " but got ", DataTypeString(tensor->dtype())));
+  }
   if (copy_on_read_mode || !tensor->RefCountIsOne()) {
     // Tensor's buffer is in use by some read, so we need to copy before
     // updating.
     Tensor tmp;
-    if (std::is_same<T, Variant>::value) {
+    if (std::is_same_v<T, Variant>) {
       tsl::AllocatorAttributes attr;
       attr.set_on_host(true);
       TF_RETURN_IF_ERROR(
@@ -293,6 +298,12 @@ absl::Status GetInputTensorFromVariable(OpKernelContext* ctx, int input,
     ResourceHandle handle;
     TF_RETURN_IF_ERROR(HandleFromInput(ctx, input, &handle));
     TF_RETURN_IF_ERROR(LookupResource(ctx, handle, &var));
+    if (var->tensor()->dtype() != DataTypeToEnum<T>::v()) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "dtype mismatch: expected ", DataTypeString(DataTypeToEnum<T>::v()),
+          " but got ", DataTypeString(var->tensor()->dtype()),
+          " (resource variable dtype)"));
+    }
     if (sparse) {
       var->mu()->assert_held_shared();
       *out = *var->tensor();
@@ -305,6 +316,11 @@ absl::Status GetInputTensorFromVariable(OpKernelContext* ctx, int input,
     return absl::OkStatus();
   }
   *out = ctx->mutable_input(input, lock_held);
+  if (out->IsInitialized() && out->dtype() != DataTypeToEnum<T>::v()) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "dtype mismatch: expected ", DataTypeString(DataTypeToEnum<T>::v()),
+        " but got ", DataTypeString(out->dtype())));
+  }
   return absl::OkStatus();
 }
 

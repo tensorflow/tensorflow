@@ -3132,6 +3132,36 @@ class Conv2DTest(parameterized.TestCase, test.TestCase):
     #           strides=[1, 1, 1, 1],
     #           padding=[[0, 0], [2, 2], [2, 2], [0, 0]]))
 
+    # Invalid input or filter rank (< 4) in eager/graph execution.
+    invalid_shapes = [(), (1,), (1, 1), (1, 1, 3)]
+    valid_shape = [1, 1, 1, 1]
+    for op in (nn_ops.conv2d, gen_nn_ops.Conv2D):
+      for bad_shape in invalid_shapes:
+        with self.assertRaisesRegex(
+            (ValueError, errors_impl.InvalidArgumentError),
+            r"(must be 4-dimensional|Shape must be rank 4 but is rank \d+)",
+        ):
+          self.evaluate(
+              op(
+                  input=np.ones(bad_shape, dtype=np.float32),
+                  filter=np.ones(valid_shape, dtype=np.float32),
+                  strides=[1, 1, 1, 1],
+                  padding="VALID",
+              )
+          )
+        with self.assertRaisesRegex(
+            (ValueError, errors_impl.InvalidArgumentError),
+            r"(must be 4-dimensional|Shape must be rank 4 but is rank \d+)",
+        ):
+          self.evaluate(
+              op(
+                  input=np.ones(valid_shape, dtype=np.float32),
+                  filter=np.ones(bad_shape, dtype=np.float32),
+                  strides=[1, 1, 1, 1],
+                  padding="VALID",
+              )
+          )
+
     # Filter dimensions must be greater than 0.
     with self.assertRaisesRegex(
         errors_impl.InvalidArgumentError, "filter must not have zero elements"

@@ -101,6 +101,33 @@ CodegenDecision IsTritonSupportedDataType(
   }
 }
 
+// Like `IsTritonSupportedDataType`, but also allows types that are only
+// supported by some opcodes.
+CodegenDecision IsTritonSupportedDataTypeForOpcode(
+    PrimitiveType type, HloOpcode opcode,
+    const se::GpuComputeCapability& gpu_version) {
+  // F8E8M0FNU is lowered as i8, so it supports ops that don't change values.
+  if (type == F8E8M0FNU && (gpu_version.IsCuda() || gpu_version.IsRocm())) {
+    switch (opcode) {
+      case HloOpcode::kBitcast:
+      case HloOpcode::kBroadcast:
+      case HloOpcode::kConcatenate:
+      case HloOpcode::kConstant:
+      case HloOpcode::kCopy:
+      case HloOpcode::kPad:
+      case HloOpcode::kParameter:
+      case HloOpcode::kReshape:
+      case HloOpcode::kSelect:
+      case HloOpcode::kSlice:
+      case HloOpcode::kTranspose:
+        return CodegenDecision::Allow();
+      default:
+        break;
+    }
+  }
+  return IsTritonSupportedDataType(type, gpu_version);
+}
+
 // Set of unary elementwise ops that are genuinely supported by Triton.
 absl::flat_hash_set<HloOpcode> TritonSupportedUnaryElementwiseOps(
     PrimitiveType element_type, const se::GpuComputeCapability& gpu_version) {
@@ -221,6 +248,12 @@ CodegenDecision IsTritonSupportedConversion(
   // PRED to U8 not clamping the value to the [0, 1] range.
   if (input == PRED && output == U8) {
     return error_message("Unsupported PRED to U8 conversion.");
+  }
+
+  // A no-op conversion only moves data around.
+  if (input == output) {
+    return IsTritonSupportedDataTypeForOpcode(input, HloOpcode::kCopy,
+                                              gpu_version);
   }
 
   if (!IsTritonSupportedDataType(input, gpu_version)) {
@@ -387,11 +420,6 @@ CodegenDecision CanTritonHandleReduce(
         "Unsupported reduction computation by Triton.");
   }
 
-  bool tiling_propagation_enabled =
-      reduce.GetModule()
-          ->config()
-          .debug_options()
-          .xla_gpu_experimental_enable_tiling_propagation();
 
   if (reduce.operand_count() != 2) {
     return CodegenDecision::Forbid(
@@ -403,11 +431,6 @@ CodegenDecision CanTritonHandleReduce(
         "Reduction must have at least one dimension.");
   }
 
-  if (reduce.dimensions().size() > 1 && !tiling_propagation_enabled) {
-    return CodegenDecision::Forbid(
-        "Multi-dimension reductions are only supported when experimental "
-        "tiling propagation is enabled.");
-  }
 
   return CodegenDecision::Allow();
 }
@@ -472,6 +495,20 @@ CodegenDecision IsTritonSupportedReduceScatter(
   }
 
   return CodegenDecision::Allow();
+}
+
+CodegenDecision IsTritonSupportedAllToAll(
+    const HloAllToAllInstruction& all_to_all) {
+  if (!all_to_all.shape().IsArray() ||
+      !all_to_all.split_dimension().has_value()) {
+    return CodegenDecision::Forbid(
+        "Only array all-to-alls with split_dimension are supported.");
+  }
+  if (all_to_all.replica_groups().empty()) {
+    return CodegenDecision::Forbid("All-to-all does not have replica groups.");
+  }
+  return CodegenDecision(all_to_all.shape().element_type() != S4,
+                         "S4 is not supported.");
 }
 
 absl::Status CheckSupportedCheckDotDimensions(const HloDotInstruction& dot) {
@@ -735,6 +772,17 @@ CodegenDecision IsTritonSupportedScaledDot(
   }
   PrimitiveType lhs_scale_type = dot.operand(2)->shape().element_type();
   PrimitiveType rhs_scale_type = dot.operand(3)->shape().element_type();
+  // Lowering tt.dot_scaled with F8E4M3FN operands or scales needs F8E4M3FN
+  // conversions, which Triton only supports from Ada onwards.
+  if (const auto* cc = gpu_version.cuda_compute_capability();
+      cc && !cc->IsAtLeastAda() &&
+      absl::c_linear_search(
+          std::vector<PrimitiveType>{lhs_type, rhs_type, lhs_scale_type,
+                                     rhs_scale_type},
+          F8E4M3FN)) {
+    return CodegenDecision::Forbid(
+        "Scaled dot with F8E4M3FN is not supported by Triton before Ada.");
+  }
   std::vector<PrimitiveType> supported_scale_types = {F8E4M3FN, F8E5M2,
                                                       F8E8M0FNU, S8};
   // tt.dot_scaled only dequantizes some operand types; a scale on any other
@@ -825,12 +873,13 @@ CodegenDecision IsTritonSupportedInstructionImpl(
         return CodegenDecision::Forbid(
             "Nested tuple or token shape is not supported.");
       }
-      output_type_is_supported = output_type_is_supported.And(
-          IsTritonSupportedDataType(shape.element_type(), gpu_version));
+      output_type_is_supported =
+          output_type_is_supported.And(IsTritonSupportedDataTypeForOpcode(
+              shape.element_type(), instr.opcode(), gpu_version));
     }
   } else {
-    output_type_is_supported =
-        IsTritonSupportedDataType(instr.shape().element_type(), gpu_version);
+    output_type_is_supported = IsTritonSupportedDataTypeForOpcode(
+        instr.shape().element_type(), instr.opcode(), gpu_version);
   }
 
   if (!output_type_is_supported) {
@@ -840,8 +889,8 @@ CodegenDecision IsTritonSupportedInstructionImpl(
 
   CodegenDecision input_types_are_supported = CodegenDecision(
       absl::c_all_of(instr.operands(), [&](const HloInstruction* operand) {
-        return IsTritonSupportedDataType(operand->shape().element_type(),
-                                         gpu_version);
+        return IsTritonSupportedDataTypeForOpcode(
+            operand->shape().element_type(), instr.opcode(), gpu_version);
       }));
 
   if (!input_types_are_supported) {
@@ -954,6 +1003,8 @@ CodegenDecision IsTritonSupportedInstructionImpl(
     case HloOpcode::kAllGather:
       return CodegenDecision(instr.shape().element_type() != S4,
                              "S4 is not supported.");
+    case HloOpcode::kAllToAll:
+      return IsTritonSupportedAllToAll(*Cast<HloAllToAllInstruction>(&instr));
     case HloOpcode::kReduceScatter:
       return IsTritonSupportedReduceScatter(
           *Cast<HloReduceScatterInstruction>(&instr), gpu_version);

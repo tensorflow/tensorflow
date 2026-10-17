@@ -30,7 +30,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/attributes.h"
 #include "absl/base/call_once.h"
 #include "absl/base/dynamic_annotations.h"
 #include "absl/base/optimization.h"
@@ -53,6 +52,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
+#include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_layout.h"
@@ -914,7 +914,8 @@ class NanoExecutable final
     XlaComputation computation;
     ABSL_RETURN_IF_ERROR(MlirToXlaComputation(
         xla_program->mlir_module(), computation, /*use_tuple_args=*/false,
-        /*return_tuple=*/true, /*exec_build_options=*/nullptr));
+        /*return_tuple=*/true, /*exec_build_options=*/nullptr,
+        mlir::mhlo::getCpuChloToHighLevelMhloOptions()));
     ABSL_ASSIGN_OR_RETURN(auto nano_executable,
                      client->nano_client()->Compile(computation));
 

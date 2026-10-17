@@ -970,4 +970,103 @@ ENTRY main {
                              /*optimization_level=*/2);
 }
 
+TEST_F(RecognizeReduceWindowTest,
+       BitwiseAndInitAndLargeU64DynamicSliceAndPattern3Checks) {
+  const absl::string_view and_hlo = R"(
+HloModule BitwiseAndReduceWindow
+
+and_reducer {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT res = s32[] and(lhs, rhs)
+}
+
+ENTRY main {
+  src = s32[4] parameter(0)
+  slice_rw = s32[2] slice(src), slice={[0:2]}
+  init = s32[] constant(-1)
+  rw = s32[1] reduce-window(slice_rw, init), window={size=2}, to_apply=and_reducer
+  slice_o = s32[1] slice(src), slice={[2:3]}
+  ROOT res = s32[1] and(rw, slice_o)
+}
+)";
+  CheckRecognizeReduceWindow(and_hlo, R"(
+// CHECK: [[INIT:%.*]] = s32[] constant(-1)
+// CHECK: ROOT {{.*}} = s32[1]{0} reduce-window({{.*}}, [[INIT]]), window={size=3}
+)");
+
+  const absl::string_view u64_ds_hlo = R"(
+HloModule DynamicSliceLargeU64Index
+
+ENTRY main {
+  x = s32[10] parameter(0)
+  idx = u64[] constant(9223372036854775808)
+  ds = s32[6] dynamic-slice(x, idx), dynamic_slice_sizes={6}
+  slice_2 = s32[6] slice(x), slice={[2:8]}
+  ROOT add = s32[6] add(ds, slice_2)
+}
+)";
+  CheckRecognizeReduceWindow(u64_ds_hlo, std::nullopt);
+
+  const absl::string_view non_identity_init_hlo = R"(
+HloModule Pattern3NonIdentityInit
+
+add_reducer {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  src = f32[4] parameter(0)
+  slice_rw = f32[2] slice(src), slice={[0:2]}
+  init = f32[] constant(5)
+  rw = f32[1] reduce-window(slice_rw, init), window={size=2}, to_apply=add_reducer
+  slice_o = f32[1] slice(src), slice={[2:3]}
+  ROOT add = f32[1] add(rw, slice_o)
+}
+)";
+  CheckRecognizeReduceWindow(non_identity_init_hlo, std::nullopt);
+
+  const absl::string_view non_trivial_window_hlo = R"(
+HloModule Pattern3NonTrivialOtherWindowDim
+
+add_reducer {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  src = f32[2,4] parameter(0)
+  slice_rw = f32[2,2] slice(src), slice={[0:2], [0:2]}
+  init = f32[] constant(0)
+  rw = f32[2,1] reduce-window(slice_rw, init), window={size=2x2 pad=1_0x0_0}, to_apply=add_reducer
+  slice_o = f32[2,1] slice(src), slice={[0:2], [2:3]}
+  ROOT add = f32[2,1] add(rw, slice_o)
+}
+)";
+  CheckRecognizeReduceWindow(non_trivial_window_hlo, std::nullopt);
+
+  const absl::string_view padded_reduced_dim_hlo = R"(
+HloModule Pattern3PaddedReducedWindowDim
+
+add_reducer {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  src = f32[4] parameter(0)
+  slice_rw = f32[2] slice(src), slice={[0:2]}
+  init = f32[] constant(0)
+  rw = f32[1] reduce-window(slice_rw, init), window={size=2 stride=2 pad=1_0}, to_apply=add_reducer
+  slice_o = f32[1] slice(src), slice={[2:3]}
+  ROOT add = f32[1] add(rw, slice_o)
+}
+)";
+  CheckRecognizeReduceWindow(padded_reduced_dim_hlo, std::nullopt);
+}
+
 }  // namespace xla

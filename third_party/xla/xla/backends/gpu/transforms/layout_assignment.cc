@@ -48,7 +48,6 @@ limitations under the License.
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/gpu/reduction_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/layout_assignment.h"
@@ -59,9 +58,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/dnn.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/tsl/util/env_var.h"
 #include "xla/util.h"
@@ -489,7 +485,6 @@ absl::Status GpuLayoutAssignment::AddDotBackendConstraints(
     const HloInstruction* operand;
     absl::Span<const int64_t> batch_dims;
     absl::Span<const int64_t> contracting_dims;
-    PrimitiveType type;
     std::vector<int64_t> non_contracting_dims;
   };
   auto make_side =
@@ -497,7 +492,6 @@ absl::Status GpuLayoutAssignment::AddDotBackendConstraints(
           absl::Span<const int64_t> contracting_dims) -> absl::StatusOr<Side> {
     Side side = {operand_no, instruction->operand(operand_no), batch_dims,
                  contracting_dims};
-    side.type = side.operand->shape().element_type();
     ABSL_ASSIGN_OR_RETURN(
         side.non_contracting_dims,
         GetNonContractingDims(side.operand->shape(), side.batch_dims,
@@ -512,8 +506,6 @@ absl::Status GpuLayoutAssignment::AddDotBackendConstraints(
                    make_side(1, dot_dims.rhs_batch_dimensions(),
                              dot_dims.rhs_contracting_dimensions()));
 
-  const PrimitiveType& output_type = instruction->shape().element_type();
-
   // Matmuls require the batch dimensions to be in consecutive physical
   // dimensions and likewise for the contracting and non-contracting
   // dimensions. Additionally, no batch dimension can be in the most
@@ -525,17 +517,8 @@ absl::Status GpuLayoutAssignment::AddDotBackendConstraints(
           .debug_options()
           .xla_gpu_experimental_pack_dot_operands_along_k_dimension();
 
-  const bool is_s8_to_s32 = output_type == PrimitiveType::S32 &&
-                            lhs.type == PrimitiveType::S8 &&
-                            rhs.type == PrimitiveType::S8;
-  const bool is_fp8 = (lhs.type == PrimitiveType::F8E4M3FN ||
-                       lhs.type == PrimitiveType::F8E5M2FNUZ) &&
-                      (rhs.type == PrimitiveType::F8E4M3FN ||
-                       rhs.type == PrimitiveType::F8E5M2FNUZ);
-
-  const se::CudaComputeCapability* cc = gpu_version_.cuda_compute_capability();
   const bool both_operands_require_minor_contraction_dims =
-      is_s8_to_s32 || (is_fp8 && !(cc && cc->IsBlackwell()));
+      DotRequiresMinorContractingDims(*instruction, gpu_version_);
 
   for (const Side& side : {lhs, rhs}) {
     if ((IsPackedInstruction(side.operand) && pack_along_contracting_dims) ||
@@ -654,9 +637,15 @@ absl::Status GpuLayoutAssignment::AddBackendConstraints(
         ABSL_RETURN_IF_ERROR(SetBufferLayout(keys_layout, output_buffer));
       }
     } else if (IsCustomCallToTopK(*instruction)) {
-      // The output of the TopK custom call needs to have default layout.
+      // The operands and outputs of the TopK custom call need to have default
+      // layout.
       Layout default_layout = LayoutUtil::GetDefaultLayoutForRank(
           instruction->operand(0)->shape().dimensions().size());
+      for (int64_t i = 0; i < instruction->operand_count(); ++i) {
+        Shape shape = instruction->operand(i)->shape();
+        *shape.mutable_layout() = default_layout;
+        ABSL_RETURN_IF_ERROR(SetOperandLayout(shape, instruction, i));
+      }
       const HloValue& values_buffer =
           dataflow_analysis_->GetValueDefinedAt(instruction, {0});
       ABSL_RETURN_IF_ERROR(SetBufferLayout(default_layout, values_buffer));
@@ -849,28 +838,15 @@ absl::Status GpuLayoutAssignment::SetDotOperandLayoutToMinorContracting(
     absl::Span<const int64_t> noncontracting_dims) {
   Shape shape = instruction->operand(operand)->shape();
 
+  // If contracting dims are already minor, and the layout is valid, keep it.
   if (shape.has_layout() &&
-      shape.layout().minor_to_major().size() >= contracting_dims.size()) {
-    // Check that the contracting dimensions are physically minor, i.e. check
-    // that minor physical dimensions all point to contracting logical
-    // dimensions.
-    bool contracting_dims_are_minor = true;
-    const auto& minor_to_major = shape.layout().minor_to_major();
-    for (int64_t i = 0; i < contracting_dims.size(); ++i) {
-      if (!absl::c_linear_search(contracting_dims, minor_to_major[i])) {
-        contracting_dims_are_minor = false;
-        break;
-      }
-    }
-
-    // If contracting dims are already minor, and the layout is valid, keep it.
-    if (contracting_dims_are_minor &&
-        MatrixLayout::For(shape, batch_dims, noncontracting_dims,
-                          contracting_dims)
-            .ok()) {
-      // Re-set the operand layout, so it becomes mandatory.
-      return SetOperandLayout(shape, instruction, operand);
-    }
+      shape.layout().minor_to_major().size() >= contracting_dims.size() &&
+      AreContractingDimsMinor(shape.layout(), contracting_dims) &&
+      MatrixLayout::For(shape, batch_dims, noncontracting_dims,
+                        contracting_dims)
+          .ok()) {
+    // Re-set the operand layout, so it becomes mandatory.
+    return SetOperandLayout(shape, instruction, operand);
   }
   return SetOperandMajorToMinorLayout(
       instruction, operand,
@@ -941,20 +917,6 @@ bool GpuLayoutAssignment::PropagateReductionLayoutToOperand(
   // TODO: b/466059465 - Holisitically evaluate the benefits of row reductions
   // vs column reductions and refine this threshold.
   return reduction_size >= 32;
-}
-
-bool GpuLayoutAssignment::InstructionCanChangeLayoutInstance(
-    const HloInstruction* instruction) {
-  // The TopK custom call cannot handle the case if the operand has a different
-  // layout.
-  const HloCustomCallInstruction* custom_call =
-      DynCast<HloCustomCallInstruction>(instruction);
-  if (custom_call != nullptr &&
-      custom_call->custom_call_target() == kTopKCustomCallTarget) {
-    return false;
-  }
-
-  return LayoutAssignment::InstructionCanChangeLayoutInstance(instruction);
 }
 
 // GPU specific layout alignment for reshapes.

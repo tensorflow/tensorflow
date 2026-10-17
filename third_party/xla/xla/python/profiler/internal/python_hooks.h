@@ -21,6 +21,7 @@ limitations under the License.
 #endif
 
 #include <array>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
@@ -94,15 +95,18 @@ struct PythonTraceEntry {
   }
 
   ~PythonTraceEntry() {
-    Py_XDECREF(co_filename);
-    Py_XDECREF(co_name);
-    Py_XDECREF(m_module);
+    if (owns_python_refs) {
+      Py_XDECREF(co_filename);
+      Py_XDECREF(co_name);
+      Py_XDECREF(m_module);
+    }
   }
 
   PythonTraceEntry(PythonTraceEntry&& other) noexcept {
     start_time_ns = other.start_time_ns;
     end_time_ns = other.end_time_ns;
     co_firstlineno = other.co_firstlineno;
+    owns_python_refs = other.owns_python_refs;
     co_filename = other.co_filename;
     co_name = other.co_name;
     method_name = std::move(other.method_name);
@@ -113,6 +117,7 @@ struct PythonTraceEntry {
     other.m_module = nullptr;
   }
 
+  // Returns the trace event name. Requires the GIL.
   std::string Name() const;
 
   uint64_t start_time_ns;
@@ -120,6 +125,10 @@ struct PythonTraceEntry {
   PyObject* co_filename = nullptr;
   PyObject* co_name = nullptr;
   int co_firstlineno = 0;
+  // Whether this entry holds the references to `co_filename`, `co_name`, and
+  // `m_module`. Consume() takes the references over and then uses the pointers
+  // only as lookup keys, without dereferencing them.
+  bool owns_python_refs = true;
   std::string method_name;
   PyObject* m_module = nullptr;
 
@@ -180,7 +189,7 @@ class PythonHookContext {
   std::array<EntryShard, kNumEntryShards> entry_shards_;
   uint64_t start_timestamp_ns_;
   PythonHooksOptions options_;
-  bool stopped_ = false;
+  std::atomic<bool> stopped_ = false;
   // In end to end mode, Python get uninitialized before Stop()/Finalize(), we
   // need to buffer the result.
   std::optional<tensorflow::profiler::XPlane> end_to_end_xplane_;

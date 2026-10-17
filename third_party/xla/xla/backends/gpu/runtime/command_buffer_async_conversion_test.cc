@@ -80,8 +80,8 @@ class CommandBufferAsyncConversionTest : public testing::Test {
       // Memset thunks are not eligible for conversion in this pass.
       body.Emplace<Memset32BitValueThunk>(Info(), 0, slice_);
     }
-    auto start =
-        std::make_unique<AsyncStartThunk>(Info(), stream, std::move(body));
+    auto start = std::make_unique<AsyncStartThunk>(
+        Info(), stream, std::move(body), /*devices_per_host=*/1);
     auto* result = start.get();
     thunks.push_back(std::move(start));
     return result;

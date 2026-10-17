@@ -18,25 +18,18 @@ limitations under the License.
 
 #include <array>
 #include <cstdint>
-#include <optional>
-#include <vector>
 
-#include "absl/base/nullability.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
-#include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/reduction_kind.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/stream_executor/device_address.h"
-#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
-#include "xla/stream_executor/stream.h"
 #include "xla/types.h"  // IWYU pragma: keep
 #include "xla/xla_data.pb.h"
 
@@ -86,94 +79,18 @@ se::gpu::AllReduceStrategy GetAllReduceStrategy(int64_t input_size_bytes,
 // strategy.
 int64_t GetMaxSupportedAllReduceSizeBytes(se::gpu::AllReduceStrategy strategy);
 
-// Returns the launch dimensions for the all-reduce kernel.
-// The launch dimensions are determined by the number of elements, the
-// all-reduce strategy, and the warp size of the target device.
-LaunchDimensions AllReduceLaunchDimensions(
-    int64_t elements, int64_t num_ranks, se::gpu::AllReduceStrategy strategy,
-    const se::DeviceDescription& device_info);
-
 // Creates a CollectiveKernelSpec for a given all-reduce instruction.
 // `scratch_memory_type` is used for both scratch buffers.
 absl::StatusOr<CollectiveKernelSpec> CreateAllReduceKernelSpec(
     const HloInstruction* instr, const LaunchDimensions& launch_dimensions,
     SymmetricMemoryType scratch_memory_type);
 
-// Returns absl::OkStatus() if supported, or an error status detailing why
-// it is not supported.
-absl::Status IsAllReduceKernelSupported(
-    int64_t num_ranks, int64_t num_elements, PrimitiveType element_type,
-    ReductionKind reduction_kind,
-    se::gpu::AllReduceStrategy all_reduce_strategy);
-
-// A broader check overload for all-reduce kernel support.
-// Returns absl::OkStatus() if supported, or an error status detailing why
-// it is not supported.
-absl::Status IsAllReduceKernelSupported(
-    bool is_collective_kernel_enabled,               //
-    const se::DeviceDescription& device_info,        //
-    int32_t num_operands,                            //
-    std::optional<ReductionKind> reduction_kind,     //
-    int64_t num_devices,                             //
-    int64_t num_elements,                            //
-    PrimitiveType element_type,                      //
-    bool is_local,                                   //
-    bool is_multimem_enabled,                        //
-    const std::vector<ReplicaGroup>& replica_groups  //
-);
-
 // Constructs an AllReduceInfo object for the given all-reduce instruction.
 // Returns an error status if the all-reduce kernel is not supported.
 absl::StatusOr<AllReduceInfo> BuildAllReduceInfo(
-    bool is_collective_kernel_enabled, bool is_multimem_enabled,
-    const GpuTopology& gpu_topology, const HloAllReduceInstruction* all_reduce,
+    bool is_multimem_enabled, const GpuTopology& gpu_topology,
+    const HloAllReduceInstruction* all_reduce,
     const DeviceAssignment* device_assignment);
-
-// Performs element-wise addition of all input buffers and stores the result in
-// the output buffer.
-// The kernel is intended to be used for all-reduce operations in environment
-// where direct peer memory access is available. Input buffers can point to
-// memory on different devices. The caller is responsible to gather pointers
-// from different devices.
-//
-// The kernel copies data from local input buffer to remote input buffer of the
-// current rank at the start of the kernel.
-//
-// The kernel performs synchronization across devices at the start and the end
-// of the kernel. The synchronization happens between blocks with the same id.
-//
-// Input arguments:
-//  - remove_input_buffers: A list of buffers with inputs on other devices.
-//    The data in the buffers maybe not be initialized until blocks on different
-//    devices are synchronized.
-//  - local_input_buffer: The buffer with local input. Can be the same as
-//    the output buffer.
-//  - output_buffer: The buffer to store the result.
-//  - rank: Identifier of the device.
-//  - num_ranks: The number of devices participating in the operation.
-//  - num_elements: The number of elements in each buffer.
-//  - signal_flags_buffers: A list of buffers with signal flags that are used to
-//    synchronize blocks on different devices. The size of each signal buffer
-//    should be equal to the `num_ranks * num_blocks`.
-//  - signal_value: The value that is written to the signal flags. Should be
-//    different for different invocations of the kernel with the same signal
-//    buffer.
-absl::Status RunAllReduceKernel(
-    se::Stream* stream,                              //
-    const LaunchDimensions& launch_dimensions,       //
-    PrimitiveType element_type,                      //
-    ReductionKind reduction_kind,                    //
-    se::gpu::AllReduceStrategy all_reduce_strategy,  //
-    se::DeviceAddressBase symmetric_input_buffer,    //
-    se::DeviceAddressBase local_input_buffer,        //
-    se::DeviceAddressBase output_buffer,             //
-    RankId rank,                                     //
-    int64_t num_ranks,                               //
-    int64_t num_elements,                            //
-    se::DeviceAddressBase symmetric_signal_buffer,   //
-    uint32_t signal_value,                           //
-    se::DeviceAddressBase metadata                   //
-);
 
 }  // namespace xla::gpu
 

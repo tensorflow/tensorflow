@@ -94,7 +94,7 @@ using OpTape =
 template <typename Gradient, typename BackwardFunction, typename TapeTensor>
 class VSpace {
  public:
-  virtual ~VSpace() {}
+  virtual ~VSpace() = default;
 
   // Returns the number of elements in the gradient tensor.
   virtual int64_t NumElements(Gradient* tensor) const = 0;

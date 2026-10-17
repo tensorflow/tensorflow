@@ -34,6 +34,7 @@ limitations under the License.
 namespace xla::numerics::debug_info {
 
 inline constexpr double kNanInfMismatchDiffScore = -1.0;
+inline constexpr double kUnverifiedDiffScore = -2.0;
 
 struct SliceBoundingBox {
   int64_t slice_index = 0;
@@ -81,12 +82,21 @@ struct MismatchDetails {
   double actual = 0.0;
   double expected = 0.0;
   double rel_error = 0.0;
+  bool is_summary_mean = false;
+  std::optional<std::vector<int64_t>> sample_index;
   std::optional<double> percentage_of_elems_exceeding_abs_error;
   std::optional<double> percentage_of_elems_exceeding_rel_error;
   std::optional<double> percentage_of_elems_exceeding_both_errors;
   std::optional<bool> result_of_reduce;
   std::optional<std::string> custom_description;
   std::optional<MismatchBoundingBox> bounding_box;
+  // Set to false when the producer only knows *that* the tensor mismatched, not
+  // *where* (e.g. an on-device comparison that only reports reduced scalars).
+  // The tensor inspector is then suppressed for this instruction, rather than
+  // falling back to a fabricated single-element mismatch at the origin. HLO
+  // highlighting, the graph view, and tooltips are unaffected.
+  bool has_element_level_data = true;
+  std::optional<double> diff_score;
 };
 
 struct TensorKey {
@@ -179,14 +189,20 @@ absl::flat_hash_map<TensorKey, TensorAnnotation> PopulateMismatchAnnotations(
     const HloModule& module, absl::Span<const MismatchDetails> mismatches);
 
 GraphData PopulateMismatchGraphData(
-    const HloModule& module, absl::Span<const MismatchDetails> mismatches);
+    const HloModule& module, absl::Span<const MismatchDetails> mismatches,
+    double unverified_diff_score = 0.0);
 
-// Generates an interactive HTML dump for an HLO module
-// and writes it to the test undeclared outputs directory (or temp dir).
-// Returns the absolute path of the written file.
+// Generates an interactive HTML dump for an HLO module and writes it to
+// `output_dir`/`output_filename`, creating `output_dir` if needed.
+//
+// If `output_dir` is empty, the file goes to the test undeclared outputs
+// directory when running under a test. Otherwise it goes to a randomly named
+// temp file, and `output_filename` is only used as that file's suffix.
+//
+// Returns the path of the written file.
 absl::StatusOr<std::string> DumpHloModuleMismatchWithGraphData(
     const HloModule& module, absl::Span<const MismatchDetails> mismatches,
-    absl::string_view output_filename);
+    absl::string_view output_filename, absl::string_view output_dir = "");
 
 }  // namespace xla::numerics::debug_info
 

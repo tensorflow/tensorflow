@@ -204,6 +204,12 @@ CudaStream::CaptureHandle::BeginCapture(CudaStream* stream, CUgraph graph,
                                         const CUgraphEdgeData* dependency_data,
                                         size_t num_dependencies,
                                         CUstreamCaptureMode mode) {
+  if (stream->parent()->GetDeviceDescription().driver_version() <
+      SemanticVersion{12, 3, 0}) {
+    return absl::UnimplementedError(
+        "Stream capture to graph requires CUDA driver 12.3 or newer");
+  }
+
   if (stream->type_ == CudaStreamType::kCudaGraphCapture) {
     return absl::FailedPreconditionError(
         "Cannot begin capture on a capture stream.");

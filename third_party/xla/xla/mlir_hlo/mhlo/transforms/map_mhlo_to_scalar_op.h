@@ -496,6 +496,60 @@ inline Value mapMhloOpToStdScalarOp<mhlo::CompareOp>(
       assert(predicate.has_value() && "expected valid comparison direction");
       return arith::CmpIOp::create(*b, loc, *predicate, lhsInt, rhsInt);
     }
+    if (adaptor.getCompareType() &&
+        *adaptor.getCompareType() == mhlo::ComparisonType::WEAKORDER) {
+      // Weak order treats -0.0 == +0.0 and orders all NaNs equal and > +Inf.
+      switch (comparisonDirection) {
+        case mhlo::ComparisonDirection::LE: {
+          Value ole = arith::CmpFOp::create(*b, loc, arith::CmpFPredicate::OLE,
+                                            lhs, rhs);
+          Value rhsNan = arith::CmpFOp::create(
+              *b, loc, arith::CmpFPredicate::UNO, rhs, rhs);
+          return arith::OrIOp::create(*b, loc, ole, rhsNan);
+        }
+        case mhlo::ComparisonDirection::GE: {
+          Value oge = arith::CmpFOp::create(*b, loc, arith::CmpFPredicate::OGE,
+                                            lhs, rhs);
+          Value lhsNan = arith::CmpFOp::create(
+              *b, loc, arith::CmpFPredicate::UNO, lhs, lhs);
+          return arith::OrIOp::create(*b, loc, oge, lhsNan);
+        }
+        case mhlo::ComparisonDirection::LT: {
+          Value ult = arith::CmpFOp::create(*b, loc, arith::CmpFPredicate::ULT,
+                                            lhs, rhs);
+          Value lhsOrd = arith::CmpFOp::create(
+              *b, loc, arith::CmpFPredicate::ORD, lhs, lhs);
+          return arith::AndIOp::create(*b, loc, ult, lhsOrd);
+        }
+        case mhlo::ComparisonDirection::GT: {
+          Value ugt = arith::CmpFOp::create(*b, loc, arith::CmpFPredicate::UGT,
+                                            lhs, rhs);
+          Value rhsOrd = arith::CmpFOp::create(
+              *b, loc, arith::CmpFPredicate::ORD, rhs, rhs);
+          return arith::AndIOp::create(*b, loc, ugt, rhsOrd);
+        }
+        case mhlo::ComparisonDirection::EQ: {
+          Value oeq = arith::CmpFOp::create(*b, loc, arith::CmpFPredicate::OEQ,
+                                            lhs, rhs);
+          Value lhsNan = arith::CmpFOp::create(
+              *b, loc, arith::CmpFPredicate::UNO, lhs, lhs);
+          Value rhsNan = arith::CmpFOp::create(
+              *b, loc, arith::CmpFPredicate::UNO, rhs, rhs);
+          Value bothNan = arith::AndIOp::create(*b, loc, lhsNan, rhsNan);
+          return arith::OrIOp::create(*b, loc, oeq, bothNan);
+        }
+        case mhlo::ComparisonDirection::NE: {
+          Value une = arith::CmpFOp::create(*b, loc, arith::CmpFPredicate::UNE,
+                                            lhs, rhs);
+          Value lhsOrd = arith::CmpFOp::create(
+              *b, loc, arith::CmpFPredicate::ORD, lhs, lhs);
+          Value rhsOrd = arith::CmpFOp::create(
+              *b, loc, arith::CmpFPredicate::ORD, rhs, rhs);
+          Value anyOrd = arith::OrIOp::create(*b, loc, lhsOrd, rhsOrd);
+          return arith::AndIOp::create(*b, loc, une, anyOrd);
+        }
+      }
+    }
     std::optional<arith::CmpFPredicate> predicate =
         getCmpPredicate<arith::CmpFPredicate>(comparisonDirection,
                                               /*is_signed=*/true);
@@ -1144,28 +1198,35 @@ inline Value mapMhloOpToStdScalarOp<mhlo::PowOp>(
   auto originalBase = adaptor.getLhs();
   auto originalExponent = adaptor.getRhs();
 
-  Value accum =
-      scf::ForOp::create(
-          lb, lowerBound, upperBound, step,
-          SmallVector<Value>({one, originalBase, originalExponent}),
-          [&](OpBuilder& b, Location, Value /*v*/, ValueRange iters) {
-            Value accum = iters[0];
-            Value base = iters[1];
-            Value exponent = iters[2];
+  auto forOp = scf::ForOp::create(
+      lb, lowerBound, upperBound, step,
+      SmallVector<Value>({one, originalBase, originalExponent}),
+      [&](OpBuilder& b, Location, Value /*v*/, ValueRange iters) {
+        Value accum = iters[0];
+        Value base = iters[1];
+        Value exponent = iters[2];
 
-            Value condition = arith::CmpIOp::create(
-                b, loc, arith::CmpIPredicate::eq,
-                ::mlir::arith::AndIOp::create(b, loc, exponent, one), one);
-            Value multiplied =
-                ::mlir::arith::MulIOp::create(b, loc, accum, base);
-            accum = ::mlir::arith::SelectOp::create(b, loc, condition,
-                                                    multiplied, accum);
-            base = ::mlir::arith::MulIOp::create(b, loc, base, base);
-            exponent = ::mlir::arith::ShRUIOp::create(b, loc, exponent, one);
-            scf::YieldOp::create(b, loc,
-                                 SmallVector<Value>({accum, base, exponent}));
-          })
-          .getResult(0);
+        Value condition = arith::CmpIOp::create(
+            b, loc, arith::CmpIPredicate::eq,
+            ::mlir::arith::AndIOp::create(b, loc, exponent, one), one);
+        Value multiplied = ::mlir::arith::MulIOp::create(b, loc, accum, base);
+        accum = ::mlir::arith::SelectOp::create(b, loc, condition, multiplied,
+                                                accum);
+        base = ::mlir::arith::MulIOp::create(b, loc, base, base);
+        exponent = ::mlir::arith::ShRUIOp::create(b, loc, exponent, one);
+        scf::YieldOp::create(b, loc,
+                             SmallVector<Value>({accum, base, exponent}));
+      });
+  Value accum = forOp.getResult(0);
+  Value remainingExponent = forOp.getResult(2);
+  Value exponentNonZero = arith::CmpIOp::create(lb, arith::CmpIPredicate::ne,
+                                                remainingExponent, zero);
+  Value baseIsEven = arith::CmpIOp::create(
+      lb, arith::CmpIPredicate::eq,
+      ::mlir::arith::AndIOp::create(lb, originalBase, one), zero);
+  accum = ::mlir::arith::SelectOp::create(
+      lb, ::mlir::arith::AndIOp::create(lb, exponentNonZero, baseIsEven), zero,
+      accum);
 
   if (IsUnsignedIntegerType{}(getElementTypeOrSelf(argTypes.front()))) {
     return accum;

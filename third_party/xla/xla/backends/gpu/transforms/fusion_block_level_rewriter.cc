@@ -185,19 +185,12 @@ absl::StatusOr<bool> ShouldTryRewriteFusion(
   if (IsSameShapeMultiOutputFusion(*fusion,
                                    Shape::Equal().IgnoreElementType()) &&
       debug_options
-          .xla_gpu_experimental_enable_same_shape_multi_output_fusion() &&
-      debug_options.xla_gpu_experimental_enable_tiling_propagation()) {
+          .xla_gpu_experimental_enable_same_shape_multi_output_fusion()) {
     return true;
   }
 
   if (fusion->IsMultiOutputFusion() &&
       !debug_options.xla_gpu_unsupported_enable_triton_multi_output_fusion()) {
-    return false;
-  }
-
-  // Scan fusions require the new tiling propagation infrastructure.
-  if (IsScanFusion(fusion) &&
-      !debug_options.xla_gpu_experimental_enable_tiling_propagation()) {
     return false;
   }
 
@@ -252,6 +245,16 @@ absl::StatusOr<bool> ProcessFusionInstruction(
 
   ABSL_ASSIGN_OR_RETURN(auto backend_config,
                    fusion_instruction->backend_config<GpuBackendConfig>());
+
+  if (backend_config.has_fusion_backend_config() &&
+      backend_config.fusion_backend_config().kind() == kTensorIrFusionKind) {
+    // The fusion was explicitly assigned to the TensorIR emitter (by the
+    // autotuner or by hand). Rewriting it into a Triton block-level fusion
+    // would silently discard that assignment.
+    VLOG(2) << "Not rewriting fusion " << fusion_instruction->name()
+            << " because it is assigned to the TensorIR emitter.";
+    return false;
+  }
 
   if (backend_config.has_fusion_backend_config() &&
       backend_config.fusion_backend_config().has_block_level_fusion_config()) {
@@ -341,14 +344,11 @@ absl::StatusOr<bool> FusionBlockLevelRewriter::RunImpl(
     }
     HloFusionInstruction* fusion_instruction =
         ::xla::Cast<HloFusionInstruction>(computation->FusionInstruction());
-    ABSL_ASSIGN_OR_RETURN(
-        bool changed,
-        ProcessFusionInstruction(
-            fusion_instruction, device_info_, shape_size_, mlir_context_,
-            module->config()
-                .debug_options()
-                .xla_gpu_experimental_enable_tiling_propagation(),
-            thread_pool_, mlir_context_pool_));
+    ABSL_ASSIGN_OR_RETURN(bool changed, ProcessFusionInstruction(
+                                       fusion_instruction, device_info_,
+                                       shape_size_, mlir_context_,
+                                       /*use_experimental_tiling=*/true,
+                                       thread_pool_, mlir_context_pool_));
 
     has_changed |= changed;
   }

@@ -43,6 +43,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LLVM.h"
 #include "shardy/common/file_utils.h"
+#include "shardy/dialect/sdy/transforms/common/partitioner_stage.h"
 #include "shardy/dialect/sdy/transforms/common/propagation_options.h"
 #include "shardy/dialect/sdy/transforms/export/utils.h"
 #include "shardy/dialect/sdy/transforms/propagation/passes.h"
@@ -73,8 +74,6 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/tsl/framework/mlir/status_scoped_diagnostic_handler.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -221,6 +220,53 @@ ComputationLayout getFlattenedComputationLayout(
     flattenedComputationLayout.add_parameter_layout(ShapeLayout(tupleShape));
   }
   return flattenedComputationLayout;
+}
+
+// Updates the entry computation layout of `hloModule` after Shardy device-local
+// code generation by copying layouts from `oldLayout` to the new local program
+// shape and canonicalizing layouts for any parameter or output whose shape
+// changed during partitioning.
+absl::Status updateEntryComputationLayout(HloModule* hloModule,
+                                          const ComputationLayout& oldLayout) {
+  ProgramShape newProgramShape =
+      hloModule->entry_computation()->ComputeProgramShape();
+
+  // Record which parameters changed shape and copy the original parameter
+  // layouts onto the new local parameter shapes.
+  mlir::SmallVector<bool> updateParametersLayout(
+      newProgramShape.parameters_size());
+  for (int64_t i = 0; i < newProgramShape.parameters_size(); ++i) {
+    const Shape& oldParamShape = oldLayout.parameter_shape(i);
+    Shape* newParamShape = newProgramShape.mutable_parameters(i);
+    updateParametersLayout[i] =
+        !Shape::Equal().IgnoreLayout()(oldParamShape, *newParamShape);
+    ABSL_RETURN_IF_ERROR(
+        LayoutUtil::CopyLayoutBetweenShapes(oldParamShape, newParamShape));
+  }
+
+  // Record which outputs changed shape and copy the original result layout onto
+  // the new local result shape.
+  const Shape& oldResultShape = oldLayout.result_shape();
+  Shape* newResultShape = newProgramShape.mutable_result();
+  mlir::SmallVector<bool> updateOutputLayout;
+  if (newResultShape->IsTuple()) {
+    updateOutputLayout.reserve(newResultShape->tuple_shapes().size());
+    for (int64_t i = 0; i < newResultShape->tuple_shapes().size(); ++i) {
+      updateOutputLayout.push_back(!Shape::Equal().IgnoreLayout()(
+          oldResultShape.tuple_shapes(i), newResultShape->tuple_shapes(i)));
+    }
+  } else {
+    updateOutputLayout.push_back(
+        !Shape::Equal().IgnoreLayout()(oldResultShape, *newResultShape));
+  }
+  ABSL_RETURN_IF_ERROR(
+      LayoutUtil::CopyLayoutBetweenShapes(oldResultShape, newResultShape));
+  *hloModule->mutable_entry_computation_layout() =
+      ComputationLayout(newProgramShape, /*ignore_layouts=*/false);
+
+  // Give the changed parameter and output shapes canonical layouts.
+  return hlo_sharding_util::CanonicalizeLayoutAfterShardingPropagation(
+      hloModule, updateOutputLayout, updateParametersLayout);
 }
 
 // Returns the corresponding parameter number and index dependent on whether the
@@ -426,7 +472,14 @@ absl::Status runShardingPropagation(HloModule* hloModule,
   options.enableNativeNonFlatSupport = enableNativeNonFlatSupport;
   mlir::sdy::addPropagationPipeline(pm, dumpIndex, options);
 
+  bool shardyGeneratesDeviceCode =
+      !options.avoidExportForPartitioning &&
+      !options.enablePerInstructionPartitioning &&
+      options.partitionerStage ==
+          mlir::sdy::PartitionerStage::kConvertGlobalToLocal;
   xla::sdy::StablehloExportPipelineOptions stablehloExportPipelineOptions;
+  stablehloExportPipelineOptions.addMissingShardingToControlFlow =
+      !shardyGeneratesDeviceCode;
   stablehloExportPipelineOptions.enableHloShardingV3 = enableHloShardingV3;
   stablehloExportPipelineOptions.exportAllReduceScatter =
       debugOptions.xla_sdy_export_all_reduce_scatter();
@@ -572,18 +625,8 @@ absl::StatusOr<bool> ShardyXLA::RunImpl(
       hloModule->set_spmd_parameters_shardings(std::move(param_shardings));
     }
 
-    ProgramShape newProgramShape =
-        hloModule->entry_computation()->ComputeProgramShape();
-    for (int64_t i = 0; i < newProgramShape.parameters_size(); ++i) {
-      ABSL_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
-          flattenedEntryComputationLayout.parameter_shape(i),
-          newProgramShape.mutable_parameters(i)));
-    }
-    ABSL_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
-        flattenedEntryComputationLayout.result_shape(),
-        newProgramShape.mutable_result()));
-    *hloModule->mutable_entry_computation_layout() =
-        ComputationLayout(newProgramShape, /*ignore_layouts=*/false);
+    ABSL_RETURN_IF_ERROR(updateEntryComputationLayout(
+        hloModule, flattenedEntryComputationLayout));
   } else {
     // Restore entry computation layout.
     *hloModule->mutable_entry_computation_layout() =

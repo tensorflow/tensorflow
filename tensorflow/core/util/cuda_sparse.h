@@ -310,7 +310,7 @@ class GpuSparse {
  public:
   // This object stores a pointer to context, which must outlive it.
   explicit GpuSparse(OpKernelContext* context);
-  virtual ~GpuSparse() {}
+  virtual ~GpuSparse() = default;
 
   // This initializes the GpuSparse class if it hasn't
   // been initialized yet.  All following public methods require the

@@ -200,7 +200,7 @@ def TPU_ReduceOp : TPU_Op<"reduce", [Pure, SameOperandsAndResultRank]> {
 //  mask   : Elementwise vector mask. The scan operation starts from the
 //           lowest-indexed non-masked vector element (all previous elements
 //           have undefined values). Not taken for I1 input vectors.
-def TPU_ScanOp : TPU_Op<"scan"> {
+def TPU_ScanOp : TPU_Op<"scan", [Pure]> {
   let arguments = (ins
     VectorOfNonZeroRankOf<[I1, I16, I32, BF16, F32]>:$input,
     TPU_ReductionKindAttr:$kind,
@@ -699,18 +699,6 @@ def TPU_ReshapeOp : TPU_Op<"reshape", [Pure]> {
   let assemblyFormat = [{ $source attr-dict `:` type($source) `->` type($result) }];
   let hasVerifier = 1;
   let hasFolder = 1;
-}
-
-// TODO(mvoz): deprecated - use concat. Canonicalization will do so automatically.
-// b/376295711
-def TPU_RepeatOp : TPU_Op<"repeat", [Pure]> {
-  let arguments = (ins
-    AnyVectorOfNonZeroRank:$source,
-    I32Attr:$dimension,
-    I32Attr:$times
-  );
-  let results = (outs AnyVectorOfNonZeroRank:$output);
-  let assemblyFormat = [{ $source `,` $dimension `x` $times attr-dict `:` type($source) `->` type($output) }];
 }
 
 def TPU_BroadcastInSublanesOp : TPU_Op<"broadcast_in_sublanes", [Pure]> {
@@ -1434,7 +1422,10 @@ def TPU_MemRefSqueezeOp : TPU_Op<"memref_squeeze", [Pure]> {
     $input attr-dict `:` type($input) `->` type($result)
   }];
   let extraClassDeclaration = [{
-    mlir::InFlightDiagnostic verifyTiling();
+    static ::mlir::FailureOr<::mlir::MemRefLayoutAttrInterface> inferResultLayout(
+        ::mlir::MemRefLayoutAttrInterface source_layout,
+        ::mlir::ArrayRef<int64_t> squeezed,
+        ::mlir::function_ref<::mlir::InFlightDiagnostic()> emit_error);
   }];
   let hasVerifier = 1;
   let hasCanonicalizer = 1;

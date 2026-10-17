@@ -20,16 +20,21 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/base/no_destructor.h"
-#include "absl/container/flat_hash_map.h"
+#include "absl/base/nullability.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "absl/synchronization/mutex.h"
+#include "xla/backends/gpu/runtime/per_device_state.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/symmetric_memory.h"
+#include "xla/ffi/api/record_api.h"
+#include "xla/ffi/api/record_c_api.h"
+#include "xla/ffi/record_ffi.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
@@ -37,7 +42,6 @@ limitations under the License.
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -49,25 +53,24 @@ namespace {
 template <typename Kernel>
 absl::StatusOr<typename Kernel::KernelType*> GetCachedKernel(
     se::StreamExecutor* executor) {
-  static absl::NoDestructor<absl::flat_hash_map<
-      se::StreamExecutor*, std::unique_ptr<typename Kernel::KernelType>>>
-      kernel_per_executor;
-  static absl::NoDestructor<absl::Mutex> kernel_mutex;
-
-  absl::MutexLock lock(*kernel_mutex);
-  auto it = kernel_per_executor->find(executor);
-  if (it == kernel_per_executor->end()) {
-    ABSL_ASSIGN_OR_RETURN(
-        auto new_kernel,
-        (stream_executor::gpu::GpuKernelRegistry::GetGlobalRegistry()
-             .LoadKernel<Kernel>(executor)));
-    it = kernel_per_executor
-             ->emplace(executor, std::make_unique<typename Kernel::KernelType>(
-                                     std::move(new_kernel)))
-             .first;
-  }
-
-  return it->second.get();
+  // Pre-size to 16 slots so all standard single-host GPU topologies
+  // (up to 16 GPUs, e.g. DGX H100/B200) hit the lock-free array fast path.
+  static absl::NoDestructor<
+      PerDeviceState<std::unique_ptr<typename Kernel::KernelType>>>
+      kernel_per_device(/*num_devices=*/16);
+  int device_ordinal = executor->device_ordinal();
+  ABSL_RETURN_IF_ERROR(kernel_per_device->GetOrCreateAndInitialize(
+      device_ordinal,
+      [&](std::unique_ptr<typename Kernel::KernelType>* slot) -> absl::Status {
+        ABSL_ASSIGN_OR_RETURN(
+            auto new_kernel,
+            stream_executor::gpu::GpuKernelRegistry::GetGlobalRegistry()
+                .LoadKernel<Kernel>(executor));
+        *slot = std::make_unique<typename Kernel::KernelType>(
+            std::move(new_kernel));
+        return absl::OkStatus();
+      }));
+  return kernel_per_device->Find(device_ordinal)->get();
 }
 
 }  // namespace
@@ -122,7 +125,11 @@ absl::Status LaunchMultiGpuBarrierWithNccl(
   using MultiGpuBarrierWithNcclKernel =
       stream_executor::gpu::MultiGpuBarrierWithNcclKernel;
 
-  TF_RET_CHECK(symmetric_memory != nullptr) << "Symmetric memory is required";
+  TF_RET_CHECK(symmetric_memory != nullptr)
+      << "Symmetric memory is required on rank " << rank.value();
+  TF_RET_CHECK(num_devices <= MultiGpuBarrierWithNcclKernel::kMaxPeers)
+      << "Number of participants exceeds "
+         "MultiGpuBarrierWithNcclKernel::kMaxPeers";
 
   ABSL_ASSIGN_OR_RETURN(
       MultiGpuBarrierWithNcclKernel::KernelType * kernel,
@@ -139,8 +146,53 @@ absl::Status LaunchMultiGpuBarrierWithNccl(
                         typed_sync_counter);
 }
 
+absl::StatusOr<const XLA_FFI_Command*> RecordMultiGpuBarrierWithNccl(
+    stream_executor::StreamExecutor* executor,
+    xla::ffi::RecordContext& record_ctx, int64_t num_devices, RankId rank,
+    xla::SymmetricMemory* symmetric_memory,
+    stream_executor::DeviceAddressBase local_barrier_signal_value,
+    const XLA_FFI_Command* absl_nullable cmd) {
+  using MultiGpuBarrierWithNcclKernel =
+      stream_executor::gpu::MultiGpuBarrierWithNcclKernel;
+
+  TF_RET_CHECK(symmetric_memory != nullptr)
+      << "Symmetric memory is required on rank " << rank.value();
+
+  int64_t rank_val = rank.value();
+  int64_t num_devices_val = num_devices;
+  std::array<ffi::KernelArg, 4> kernel_args = {
+      ffi::HostValue{&rank_val, sizeof(rank_val)},
+      ffi::HostValue{&num_devices_val, sizeof(num_devices_val)},
+      ffi::DevicePointer{symmetric_memory->PackKernelArg()},
+      ffi::DevicePointer{local_barrier_signal_value.opaque()},
+  };
+
+  if (record_ctx.action() == ffi::RecordAction::kCreate) {
+    TF_RET_CHECK(executor != nullptr) << "StreamExecutor is required";
+    ABSL_ASSIGN_OR_RETURN(MultiGpuBarrierWithNcclKernel::KernelType * kernel,
+                     GetCachedKernel<MultiGpuBarrierWithNcclKernel>(executor));
+    XLA_FFI_LaunchDims launch_dims = {
+        /*grid=*/{1, 1, 1},
+        /*block=*/
+        {static_cast<int32_t>(MultiGpuBarrierWithNcclKernel::kMaxPeers), 1, 1},
+        /*cluster=*/{0, 0, 0}};
+    return record_ctx.CreateLaunch(
+        std::string((*kernel)->name()).c_str(),
+        (*kernel)->platform_specific_handle().kernel,
+        /*kernel_size=*/0, ffi::SourceFormat::kFunctionPtr, launch_dims,
+        /*shared_mem_bytes=*/0, /*uses_pdl=*/false, kernel_args);
+  }
+
+  TF_RET_CHECK(record_ctx.action() == ffi::RecordAction::kUpdate)
+      << "Unexpected record action: " << static_cast<int>(record_ctx.action());
+  TF_RET_CHECK(cmd != nullptr)
+      << "Command pointer is required for RecordAction::kUpdate";
+  ABSL_RETURN_IF_ERROR(record_ctx.UpdateLaunch(cmd, kernel_args));
+  return cmd;
+}
+
 size_t GetMultiGpuBarrierSignalBufferSize() {
-  return stream_executor::gpu::MultiGpuBarrierKernel::kMaxPeers *
+  return stream_executor::gpu::MultiGpuBarrierWithNcclKernel::kMaxPeers *
          sizeof(uint32_t);
 }
 

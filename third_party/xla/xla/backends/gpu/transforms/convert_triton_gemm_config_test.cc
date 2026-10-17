@@ -41,22 +41,13 @@ using ::absl_testing::IsOkAndHolds;
 namespace xla::gpu {
 namespace {
 
-class ConvertTritonGemmConfigTest : public HloHardwareIndependentTestBase,
-                                    public ::testing::WithParamInterface<bool> {
+class ConvertTritonGemmConfigTest : public HloHardwareIndependentTestBase {
  protected:
   ConvertTritonGemmConfigTest() { RegisterSymbolicExprStorage(&mlir_context_); }
   const se::DeviceDescription device_description_{
       TestGpuDeviceInfo::RTXA6000DeviceInfo(
           se::GpuComputeCapability{se::CudaComputeCapability::Ampere()})};
   mlir::MLIRContext mlir_context_;
-
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options =
-        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_experimental_enable_tiling_propagation(
-        GetParam());
-    return debug_options;
-  }
 
   std::unique_ptr<VerifiedHloModule> RunConvertTritonGemmConfig(
       absl::string_view hlo, const bool expect_change = true) {
@@ -70,7 +61,7 @@ class ConvertTritonGemmConfigTest : public HloHardwareIndependentTestBase,
   }
 };
 
-TEST_P(ConvertTritonGemmConfigTest, BasicDot) {
+TEST_F(ConvertTritonGemmConfigTest, BasicDot) {
   absl::string_view hlo = R"(
 dot {
   lhs = f32[8192,512] parameter(0)
@@ -116,7 +107,7 @@ ENTRY entry {
                    .has_triton_gemm_config());
 }
 
-TEST_P(ConvertTritonGemmConfigTest, ScaledDot) {
+TEST_F(ConvertTritonGemmConfigTest, ScaledDot) {
   absl::string_view hlo = R"(
 scaled_dot {
   lhs = bf16[4,4] parameter(0)
@@ -162,7 +153,7 @@ ENTRY entry {
 )"));
 }
 
-TEST_P(ConvertTritonGemmConfigTest, WavesPerEuPassthrough) {
+TEST_F(ConvertTritonGemmConfigTest, WavesPerEuPassthrough) {
   absl::string_view hlo = R"(
 dot {
   lhs = f32[8192,512] parameter(0)
@@ -200,7 +191,7 @@ ENTRY entry {
                    .has_triton_gemm_config());
 }
 
-TEST_P(ConvertTritonGemmConfigTest, TransposeDot) {
+TEST_F(ConvertTritonGemmConfigTest, TransposeDot) {
   absl::string_view hlo = R"(
 dot {
   lhs = f32[8192,512] parameter(0)
@@ -230,7 +221,7 @@ ENTRY entry {
 )"));
 }
 
-TEST_P(ConvertTritonGemmConfigTest, BatchGemm) {
+TEST_F(ConvertTritonGemmConfigTest, BatchGemm) {
   absl::string_view hlo = R"(
 dot {
   lhs = f32[2,8192,512] parameter(0)
@@ -259,9 +250,6 @@ ENTRY entry {
     CHECK: "output_tiles":[{"sizes":["1","64","256"]}]
 )"));
 }
-
-INSTANTIATE_TEST_SUITE_P(ConvertTritonGemmConfigTestSuite,
-                         ConvertTritonGemmConfigTest, ::testing::Bool());
 
 }  // namespace
 }  // namespace xla::gpu

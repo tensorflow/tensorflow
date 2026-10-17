@@ -213,6 +213,67 @@ TEST(FourBitTest, BytesRequiredOdd) {
   ASSERT_EQ(required_bytes_four_bit, 3);
 }
 
+void SilentReportError(TfLiteContext*, const char*, ...) {}
+
+TEST(FourBitTest, BytesRequiredSizeMaxBoundaryDoesNotWrapToZero) {
+  TfLiteContext context{};
+  context.ReportError = SilentReportError;
+
+  // Fermat prime factorization of SIZE_MAX on 64-bit (2^64 - 1) and 32-bit
+  // (2^32 - 1) platforms. Every dimension fits in a positive 32-bit signed int.
+#if SIZE_MAX == UINT64_MAX
+  constexpr int kSizeMaxDims[] = {3, 5, 17, 257, 641, 65537, 6700417};
+  // 2^64 - 2 = 2 * 7 * 7 * 73 * 127 * 337 * 92737 * 649657.
+  constexpr int kSizeMaxMinusOneDims[] = {14, 7, 73, 127, 337, 92737, 649657};
+#else
+  constexpr int kSizeMaxDims[] = {3, 5, 17, 257, 65537};
+  // 2^32 - 2 = 2 * (2^31 - 1) = 2 * 2147483647.
+  constexpr int kSizeMaxMinusOneDims[] = {2, 2147483647};
+#endif
+  constexpr size_t kNumDims = sizeof(kSizeMaxDims) / sizeof(kSizeMaxDims[0]);
+
+  for (TfLiteType type : {kTfLiteInt4, kTfLiteUInt4}) {
+    size_t required_bytes = 0;
+    ASSERT_EQ(tflite::BytesRequired(type, kSizeMaxDims, kNumDims,
+                                    &required_bytes, &context),
+              kTfLiteOk);
+    EXPECT_EQ(required_bytes, (std::numeric_limits<size_t>::max() / 2) + 1);
+  }
+
+  {
+    size_t required_bytes = 0;
+    ASSERT_EQ(tflite::BytesRequired(kTfLiteInt2, kSizeMaxDims, kNumDims,
+                                    &required_bytes, &context),
+              kTfLiteOk);
+    EXPECT_EQ(required_bytes, (std::numeric_limits<size_t>::max() / 4) + 1);
+  }
+
+  {
+    size_t required_bytes = 0;
+    constexpr size_t kNumMinusOneDims =
+        sizeof(kSizeMaxMinusOneDims) / sizeof(kSizeMaxMinusOneDims[0]);
+    ASSERT_EQ(
+        tflite::BytesRequired(kTfLiteInt2, kSizeMaxMinusOneDims,
+                              kNumMinusOneDims, &required_bytes, &context),
+        kTfLiteOk);
+    EXPECT_EQ(required_bytes,
+              ((std::numeric_limits<size_t>::max() - 1) / 4) + 1);
+  }
+}
+
+TEST(BytesRequiredTest, RejectsUnsupportedTypes) {
+  TfLiteContext context{};
+  context.ReportError = SilentReportError;
+  constexpr int kDims[] = {2, 4};
+
+  for (TfLiteType type :
+       {kTfLiteNoType, kTfLiteString, kTfLiteResource, kTfLiteVariant}) {
+    size_t required_bytes = 0;
+    EXPECT_EQ(tflite::BytesRequired(type, kDims, 2, &required_bytes, &context),
+              kTfLiteError);
+  }
+}
+
 TEST(TestMakeUniqueTensor, Valid) {
   TensorUniquePtr t = BuildTfLiteTensor(kTfLiteInt32, {2, 3}, kTfLiteDynamic);
   ASSERT_NE(t.get(), nullptr);

@@ -436,14 +436,28 @@ def nextafter(x1, x2):
 @np_utils.np_doc('heaviside')
 def heaviside(x1, x2):  # pylint: disable=missing-function-docstring
   def f(x1, x2):
+    dtype = x2.dtype
+    zero = constant_op.constant(0, dtype=dtype)
+    one = constant_op.constant(1, dtype=dtype)
+    # NumPy propagates NaN from the first argument. TensorFlow's relational
+    # operators evaluate to False for NaN inputs, so the `x1 > 0` and
+    # `x1 < 0` branches both miss and the value falls through to `x2`. Nest
+    # the NaN selection into that fallback so the outer `where_v2` remains a
+    # single pass over the tensor. Integer dtypes cannot represent NaN, so
+    # only floating inputs get the extra mask. Use the native `is_floating`
+    # property rather than `np.issubdtype(..., np.inexact)`: TensorFlow's
+    # bfloat16 maps to `ml_dtypes.bfloat16`, which is not part of NumPy's
+    # `inexact` hierarchy.
+    fallback = x2
+    if x1.dtype.is_floating:
+      nan = constant_op.constant(np.nan, dtype=dtype)
+      fallback = array_ops.where_v2(math_ops.is_nan(x1), nan, fallback)
     return array_ops.where_v2(
-        x1 < 0,
-        constant_op.constant(0, dtype=x2.dtype),
-        array_ops.where_v2(x1 > 0, constant_op.constant(1, dtype=x2.dtype), x2),
+        x1 > 0, one, array_ops.where_v2(x1 < 0, zero, fallback)
     )
 
   y = _bin_op(f, x1, x2)
-  if not np.issubdtype(y.dtype.as_numpy_dtype, np.inexact):
+  if not y.dtype.is_floating:
     # See the note in `_scalar`: `astype` is unavailable without the
     # `enable_numpy_methods_on_tensor()` opt-in.
     y = math_ops.cast(y, np_utils.result_type(float))
@@ -601,9 +615,37 @@ def isclose(a, b, rtol=1e-05, atol=1e-08, equal_nan=False):  # pylint: disable=m
     if np.issubdtype(dtype.as_numpy_dtype, np.inexact):
       rtol_ = ops.convert_to_tensor(rtol, dtype.real_dtype)
       atol_ = ops.convert_to_tensor(atol, dtype.real_dtype)
-      result = math_ops.abs(a - b) <= atol_ + rtol_ * math_ops.abs(b)
+
+      b_abs = math_ops.abs(b)
+      result = math_ops.abs(a - b) <= atol_ + rtol_ * b_abs
+
+      # Infinities must be handled separately. The finite tolerance formula
+      # evaluates to True for mixed finite/infinite pairs like (1.0, inf)
+      # because inf <= inf. Match NumPy: elements are close if they are
+      # both finite and within tolerance, or if they are equal.
+      if dtype.is_floating or dtype.is_complex:
+        if dtype.is_complex:
+          both_finite = (
+              math_ops.is_finite(math_ops.real(a))
+              & math_ops.is_finite(math_ops.imag(a))
+              & math_ops.is_finite(math_ops.real(b))
+              & math_ops.is_finite(math_ops.imag(b))
+          )
+        else:
+          both_finite = math_ops.is_finite(a) & math_ops.is_finite(b)
+        result = (both_finite & result) | math_ops.equal(a, b)
+
       if equal_nan:
-        result = result | (math_ops.is_nan(a) & math_ops.is_nan(b))
+        if dtype.is_complex:
+          a_nan = math_ops.is_nan(math_ops.real(a)) | math_ops.is_nan(
+              math_ops.imag(a)
+          )
+          b_nan = math_ops.is_nan(math_ops.real(b)) | math_ops.is_nan(
+              math_ops.imag(b)
+          )
+          result = result | (a_nan & b_nan)
+        else:
+          result = result | (math_ops.is_nan(a) & math_ops.is_nan(b))
       return result
     elif np.issubdtype(dtype.as_numpy_dtype, np.integer):
       # Use the operands' own arithmetic instead of casting to float, so
@@ -855,20 +897,21 @@ def reciprocal(x):
   return _scalar(math_ops.reciprocal, x)
 
 
+def _signbit(x):
+  if x.dtype == dtypes.bool:
+    return array_ops.fill(array_ops.shape(x), False)
+  if x.dtype in _SIGN_BITCAST_DTYPES:
+    # Check the IEEE-754 sign bit instead of comparing with zero, which
+    # cannot tell -0.0 from +0.0 or a negative NaN from a positive one.
+    bits = array_ops.bitcast(x, _SIGN_BITCAST_DTYPES[x.dtype])
+    return bits < 0
+  return x < 0
+
+
 @tf_export.tf_export('experimental.numpy.signbit', v1=[])
 @np_utils.np_doc('signbit')
 def signbit(x):
-  def f(x):
-    if x.dtype == dtypes.bool:
-      return array_ops.fill(array_ops.shape(x), False)
-    if x.dtype in _SIGN_BITCAST_DTYPES:
-      # Check the IEEE-754 sign bit instead of comparing with zero, which
-      # cannot tell -0.0 from +0.0 or a negative NaN from a positive one.
-      bits = array_ops.bitcast(x, _SIGN_BITCAST_DTYPES[x.dtype])
-      return math_ops.less(bits, 0)
-    return x < 0
-
-  return _scalar(f, x)
+  return _scalar(_signbit, x)
 
 
 @tf_export.tf_export('experimental.numpy.sin', v1=[])
@@ -974,11 +1017,12 @@ def angle(z, deg=False):  # pylint: disable=missing-function-docstring
       # Workaround for b/147515503
       # `np.pi` and `0` are Python scalars, which would make the result
       # float32 whatever `x` is, so build them in `x`'s dtype instead.
-      return array_ops.where_v2(
-          x < 0,
+      pi_or_zero = array_ops.where_v2(
+          _signbit(x),
           constant_op.constant(np.pi, dtype=x.dtype),
           constant_op.constant(0, dtype=x.dtype),
       )
+      return array_ops.where_v2(math_ops.is_nan(x), x, pi_or_zero)
     else:
       return math_ops.angle(x)
 
@@ -994,7 +1038,7 @@ def cbrt(x):
   def f(x):
     # __pow__ can't handle negative base, so we use `abs` here.
     rt = math_ops.abs(x) ** (1.0 / 3)
-    return array_ops.where_v2(x < 0, -rt, rt)
+    return array_ops.where_v2(_signbit(x), -rt, rt)
 
   return _scalar(f, x, True)
 
@@ -1674,6 +1718,17 @@ def average(a, axis=None, weights=None, returned=False):  # pylint: disable=miss
         f'Received axis={axis} (of type {type(axis)})'
     )
   a = np_array_ops.array(a)
+  # NumPy raises AxisError for out-of-bounds axes instead of letting the
+  # backend kernel fail with a confusing error.
+  maybe_rank = a.shape.rank
+  if axis is not None and maybe_rank is not None:
+    if not (-maybe_rank <= axis < maybe_rank):
+      raise ValueError(
+          f'Argument `axis` (received axis={axis}) is out of bounds '
+          f'for input of rank {maybe_rank}.'
+      )
+    if axis < 0:
+      axis += maybe_rank
   default_float_type = np_utils.result_type(float)
   if weights is None:  # Treat all weights as 1
     if not np.issubdtype(a.dtype.as_numpy_dtype, np.inexact):

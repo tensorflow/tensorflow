@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable_run_options.h"
 
 #include <functional>
+#include <memory>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -82,6 +83,22 @@ GpuExecutableRunOptions::execution_timeout_handlers() const {
     return {};
   }
   return execution_timeout_handlers_();
+}
+
+GpuExecutableRunOptions& GpuExecutableRunOptions::set_device_error_callback(
+    DeviceErrorCallback callback) {
+  if (callback) {
+    device_error_callback_ =
+        std::make_shared<const DeviceErrorCallback>(std::move(callback));
+  } else {
+    device_error_callback_.reset();
+  }
+  return *this;
+}
+
+std::shared_ptr<const GpuExecutableRunOptions::DeviceErrorCallback>
+GpuExecutableRunOptions::device_error_callback() const {
+  return device_error_callback_;
 }
 
 }  // namespace xla::gpu

@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/matmul_indexing_utils.h"
 
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -23,6 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/shape_tracker.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/test.h"
@@ -627,6 +629,16 @@ TEST(DotOperandDimsTest, ReshapeConsecutiveButNotSorted) {
   EXPECT_FALSE(mapped_dims.has_value());
 }
 
+TEST(DotOperandDimsTest, IsSorted) {
+  ASSERT_OK_AND_ASSIGN(Shape shape, ParseShape("f32[10,20,30,40,50,60]"));
+  DotOperandDims dims(shape, /*batch_dims=*/{},
+                      /*non_contracting_dims=*/{1, 4},
+                      /*contracting_dims=*/{5, 2, 3, 0});
+  EXPECT_TRUE(dims.IsSorted(DotOperandDims::kBatch));
+  EXPECT_TRUE(dims.IsSorted(DotOperandDims::kNonContracting));
+  EXPECT_FALSE(dims.IsSorted(DotOperandDims::kContracting));
+}
+
 TEST(DotOperandDimsTest, IsConsecutive) {
   ASSERT_OK_AND_ASSIGN(Shape shape, ParseShape("f32[10,20,30,40,50,60]"));
 
@@ -743,6 +755,167 @@ TEST(DotOperandDimsTest, ReshapeScalarToDegenerate) {
     EXPECT_THAT(mapped_dims->Indices(DotOperandDims::kContracting),
                 ElementsAre());
   }
+}
+
+TEST(DotOperandDimsTest, MapForwardThroughTracker) {
+  ASSERT_OK_AND_ASSIGN(Shape input_shape, ParseShape("f32[10,4,5,30]"));
+  DotOperandDims dims(input_shape, /*batch_dims=*/{0},
+                      /*non_contracting_dims=*/{1, 2},
+                      /*contracting_dims=*/{3});
+  // [10,4,5,30] -> transpose -> [30,10,4,5] -> reshape -> [30,10,20]
+  ShapeTracker tracker(input_shape);
+  ASSERT_OK(tracker.AppendTranspose({3, 0, 1, 2}));
+  ASSERT_OK(tracker.AppendReshape({30, 10, 20}));
+
+  ASSERT_OK_AND_ASSIGN(std::optional<DotOperandDims> mapped,
+                       dims.MapForward(tracker));
+  ASSERT_TRUE(mapped.has_value());
+  EXPECT_THAT(mapped->shape().dimensions(), ElementsAre(30, 10, 20));
+  EXPECT_THAT(mapped->Indices(DotOperandDims::kBatch), ElementsAre(1));
+  EXPECT_THAT(mapped->Indices(DotOperandDims::kNonContracting), ElementsAre(2));
+  EXPECT_THAT(mapped->Indices(DotOperandDims::kContracting), ElementsAre(0));
+}
+
+TEST(DotOperandDimsTest, MapBackwardThroughTracker) {
+  ASSERT_OK_AND_ASSIGN(Shape source_shape,
+                       ParseShape("f32[10,4,5,30]{0,1,2,3}"));
+  // [10,4,5,30] -> transpose -> [30,10,4,5] -> reshape -> [30,10,20]
+  ShapeTracker tracker(source_shape);
+  ASSERT_OK(tracker.AppendTranspose({3, 0, 1, 2}));
+  ASSERT_OK(tracker.AppendReshape({30, 10, 20}));
+  DotOperandDims dims(tracker.output_shape(), /*batch_dims=*/{1},
+                      /*non_contracting_dims=*/{2},
+                      /*contracting_dims=*/{0});
+
+  ASSERT_OK_AND_ASSIGN(std::optional<DotOperandDims> mapped,
+                       dims.MapBackward(tracker));
+  ASSERT_TRUE(mapped.has_value());
+  // The result gets the tracker's input shape, including its layout.
+  EXPECT_EQ(mapped->shape(), source_shape);
+  EXPECT_THAT(mapped->Indices(DotOperandDims::kBatch), ElementsAre(0));
+  EXPECT_THAT(mapped->Indices(DotOperandDims::kNonContracting),
+              ElementsAre(1, 2));
+  EXPECT_THAT(mapped->Indices(DotOperandDims::kContracting), ElementsAre(3));
+}
+
+TEST(DotOperandDimsTest, MapBackwardThroughTrackerReshape) {
+  ASSERT_OK_AND_ASSIGN(Shape source_shape, ParseShape("f32[10,4,5]"));
+  ShapeTracker tracker(source_shape);
+  ASSERT_OK(tracker.AppendReshape({10, 20}));
+  // The reshape merges two source dimensions into one contracting dimension.
+  DotOperandDims dims(tracker.output_shape(), /*batch_dims=*/{0},
+                      /*non_contracting_dims=*/{},
+                      /*contracting_dims=*/{1});
+  ASSERT_OK_AND_ASSIGN(std::optional<DotOperandDims> mapped,
+                       dims.MapBackward(tracker));
+  ASSERT_TRUE(mapped.has_value());
+  EXPECT_THAT(mapped->Indices(DotOperandDims::kContracting), ElementsAre(1, 2));
+
+  // A reshape whose dimensions don't align with the source ones can't be
+  // mapped.
+  ShapeTracker misaligned_tracker(source_shape);
+  ASSERT_OK(misaligned_tracker.AppendReshape({2, 100}));
+  DotOperandDims misaligned_dims(misaligned_tracker.output_shape(),
+                                 /*batch_dims=*/{0},
+                                 /*non_contracting_dims=*/{},
+                                 /*contracting_dims=*/{1});
+  ASSERT_OK_AND_ASSIGN(mapped, misaligned_dims.MapBackward(misaligned_tracker));
+  EXPECT_FALSE(mapped.has_value());
+}
+
+TEST(DotOperandDimsTest, FoldBackwardTranspose) {
+  ASSERT_OK_AND_ASSIGN(Shape source_shape, ParseShape("f32[4,8,16,32]"));
+  ShapeTracker tracker(source_shape);
+  ASSERT_OK(tracker.AppendTranspose({0, 2, 3, 1}));  // -> [4,16,32,8]
+  DotOperandDims dims(tracker.output_shape(), /*batch_dims=*/{0},
+                      /*non_contracting_dims=*/{1, 2},
+                      /*contracting_dims=*/{3});
+
+  ASSERT_OK_AND_ASSIGN(std::optional<DotOperandDims> folded,
+                       dims.FoldBackward(tracker));
+  ASSERT_TRUE(folded.has_value());
+  EXPECT_EQ(folded->shape(), source_shape);
+  EXPECT_THAT(folded->Indices(DotOperandDims::kBatch), ElementsAre(0));
+  EXPECT_THAT(folded->Indices(DotOperandDims::kNonContracting),
+              ElementsAre(2, 3));
+  EXPECT_THAT(folded->Indices(DotOperandDims::kContracting), ElementsAre(1));
+}
+
+TEST(DotOperandDimsTest, FoldBackwardKeepsContractingOrder) {
+  // Swapping contracting dimensions is fine: the dimension numbers keep the
+  // pairing with the other operand.
+  ASSERT_OK_AND_ASSIGN(Shape source_shape, ParseShape("f32[4,8,16]"));
+  ShapeTracker tracker(source_shape);
+  ASSERT_OK(tracker.AppendTranspose({2, 1, 0}));  // -> [16,8,4]
+  DotOperandDims dims(tracker.output_shape(), /*batch_dims=*/{},
+                      /*non_contracting_dims=*/{1},
+                      /*contracting_dims=*/{0, 2});
+
+  ASSERT_OK_AND_ASSIGN(std::optional<DotOperandDims> folded,
+                       dims.FoldBackward(tracker));
+  ASSERT_TRUE(folded.has_value());
+  EXPECT_THAT(folded->Indices(DotOperandDims::kContracting), ElementsAre(2, 0));
+  EXPECT_THAT(folded->Sizes(DotOperandDims::kContracting), ElementsAre(16, 4));
+}
+
+TEST(DotOperandDimsTest, FoldBackwardRejectsNonContractingReorder) {
+  ASSERT_OK_AND_ASSIGN(Shape source_shape, ParseShape("f32[8,16,32]"));
+  ShapeTracker tracker(source_shape);
+  ASSERT_OK(tracker.AppendTranspose({2, 1, 0}));  // -> [32,16,8]
+  DotOperandDims dims(tracker.output_shape(), /*batch_dims=*/{},
+                      /*non_contracting_dims=*/{0, 1},
+                      /*contracting_dims=*/{2});
+  ASSERT_OK_AND_ASSIGN(std::optional<DotOperandDims> folded,
+                       dims.FoldBackward(tracker));
+  EXPECT_FALSE(folded.has_value());
+}
+
+TEST(DotOperandDimsTest, FoldBackwardRejectsReshape) {
+  ASSERT_OK_AND_ASSIGN(Shape source_shape, ParseShape("f32[8,4,8]"));
+  ShapeTracker tracker(source_shape);
+  ASSERT_OK(tracker.AppendReshape({8, 32}));
+  DotOperandDims dims(tracker.output_shape(), /*batch_dims=*/{},
+                      /*non_contracting_dims=*/{1},
+                      /*contracting_dims=*/{0});
+  // Mapping is possible, but the output would have two dimensions instead of
+  // one.
+  ASSERT_OK_AND_ASSIGN(std::optional<DotOperandDims> mapped,
+                       dims.MapBackward(tracker));
+  EXPECT_TRUE(mapped.has_value());
+  ASSERT_OK_AND_ASSIGN(std::optional<DotOperandDims> folded,
+                       dims.FoldBackward(tracker));
+  EXPECT_FALSE(folded.has_value());
+}
+
+TEST(DotOperandDimsTest, FoldBackwardDegenerateDimensions) {
+  // Dropping a degenerate dimension: mapping is possible (the dimension joins
+  // the non-contracting ones), but the output would get an extra dimension.
+  ASSERT_OK_AND_ASSIGN(Shape source_shape, ParseShape("f32[1,8,6]"));
+  ShapeTracker tracker(source_shape);
+  ASSERT_OK(tracker.AppendReshape({8, 6}));
+  DotOperandDims dims(tracker.output_shape(), /*batch_dims=*/{},
+                      /*non_contracting_dims=*/{0},
+                      /*contracting_dims=*/{1});
+  ASSERT_OK_AND_ASSIGN(std::optional<DotOperandDims> mapped,
+                       dims.MapBackward(tracker));
+  ASSERT_TRUE(mapped.has_value());
+  EXPECT_THAT(mapped->Indices(DotOperandDims::kNonContracting),
+              ElementsAre(0, 1));
+  ASSERT_OK_AND_ASSIGN(std::optional<DotOperandDims> folded,
+                       dims.FoldBackward(tracker));
+  EXPECT_FALSE(folded.has_value());
+
+  // Moving a degenerate dimension is a reshape for the tracker, which loses
+  // the dimension's identity. Conservatively rejected.
+  ASSERT_OK_AND_ASSIGN(source_shape, ParseShape("f32[8,1,6]"));
+  ShapeTracker transpose_tracker(source_shape);
+  ASSERT_OK(transpose_tracker.AppendTranspose({1, 0, 2}));  // -> [1,8,6]
+  DotOperandDims transposed_dims(transpose_tracker.output_shape(),
+                                 /*batch_dims=*/{0},
+                                 /*non_contracting_dims=*/{1},
+                                 /*contracting_dims=*/{2});
+  ASSERT_OK_AND_ASSIGN(folded, transposed_dims.FoldBackward(transpose_tracker));
+  EXPECT_FALSE(folded.has_value());
 }
 
 }  // namespace

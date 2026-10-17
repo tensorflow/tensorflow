@@ -25,12 +25,15 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/blocking_counter.h"
+#include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
 #include "riegeli/bytes/cfile_reader.h"
 #include "riegeli/bytes/string_reader.h"
@@ -49,6 +52,7 @@ limitations under the License.
 #include "xla/client/executable_build_options.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/debug_options_flags.h"
+#include "xla/executable_run_options.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
@@ -60,8 +64,10 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/gpu/buffer_allocations.h"
+#include "xla/service/gpu/dense_data_intermediate.h"
 #include "xla/service/gpu/gpu_executable.pb.h"
 #include "xla/service/gpu/gpu_executable_buffer_allocator.h"
+#include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu/gpu_module_globals.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu_topology.h"
@@ -77,10 +83,14 @@ limitations under the License.
 #include "xla/stream_executor/abi/executable_abi_version.pb.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/mock_stream.h"
 #include "xla/stream_executor/mock_stream_executor.h"
+#include "xla/stream_executor/module_spec.h"
+#include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -141,12 +151,99 @@ TEST(GpuModuleGlobalsTest, EmptyBinarySkipsModuleLoading) {
   GpuModuleGlobals module_globals(binary, constants);
 
   EXPECT_CALL(stream, parent()).WillOnce(Return(&executor));
+  EXPECT_CALL(executor, device_ordinal()).WillRepeatedly(Return(0));
   EXPECT_CALL(executor, GetPlatform()).Times(0);
   EXPECT_CALL(executor, LoadModule(::testing::_)).Times(0);
 
   ASSERT_OK_AND_ASSIGN(const auto* resolved, module_globals.Resolve(&stream));
 
   EXPECT_TRUE(resolved->empty());
+}
+
+TEST(GpuModuleGlobalsTest, ConcurrentResolveAcrossDevices) {
+  constexpr int kNumDevices = 8;
+  constexpr int kThreadsPerDevice = 4;
+
+  std::vector<uint8_t> binary = {1, 2, 3, 4};
+  std::vector<GpuModuleGlobals::ConstantInfo> constants = {
+      GpuModuleGlobals::ConstantInfo{
+          /*symbol_name=*/"const_0",
+          /*content=*/DenseDataIntermediate::Own({10, 20, 30, 40}),
+          /*allocation_index=*/0}};
+
+  std::vector<std::unique_ptr<se::MockStreamExecutor>> executors;
+  std::vector<std::unique_ptr<se::MockStream>> streams;
+  for (int d = 0; d < kNumDevices; ++d) {
+    auto executor = std::make_unique<se::MockStreamExecutor>();
+    auto stream = std::make_unique<se::MockStream>();
+    const void* handle_id =
+        reinterpret_cast<const void*>(static_cast<uintptr_t>(0x1000 + d));
+    se::ModuleHandle module_handle(handle_id);
+    se::DeviceAddressBase symbol_addr(
+        reinterpret_cast<void*>(static_cast<uintptr_t>(0x2000 + d * 16)), 4);
+
+    EXPECT_CALL(*stream, parent()).WillRepeatedly(Return(executor.get()));
+    EXPECT_CALL(*executor, device_ordinal()).WillRepeatedly(Return(d));
+    EXPECT_CALL(*executor, LoadModule(::testing::_))
+        .Times(1)
+        .WillOnce(Return(module_handle));
+    EXPECT_CALL(*executor, GetSymbol("const_0", module_handle))
+        .Times(1)
+        .WillOnce(Return(symbol_addr));
+    EXPECT_CALL(*stream, Memcpy(::testing::A<se::DeviceAddressBase*>(),
+                                ::testing::A<const void*>(), 4))
+        .Times(1)
+        .WillOnce(Return(absl::OkStatus()));
+    EXPECT_CALL(*stream, BlockHostUntilDone())
+        .Times(1)
+        .WillOnce(Return(absl::OkStatus()));
+    EXPECT_CALL(*executor, UnloadModule(module_handle))
+        .Times(1)
+        .WillOnce(Return(true));
+
+    executors.push_back(std::move(executor));
+    streams.push_back(std::move(stream));
+  }
+
+  GpuModuleGlobals module_globals(binary, constants,
+                                  /*devices_per_host=*/kNumDevices);
+
+  tsl::thread::ThreadPool pool(tsl::Env::Default(), "resolve_test",
+                               kNumDevices * kThreadsPerDevice);
+  absl::BlockingCounter ready(kNumDevices * kThreadsPerDevice);
+  absl::Notification go;
+  absl::BlockingCounter done(kNumDevices * kThreadsPerDevice);
+
+  std::vector<const GpuModuleGlobals::BufferAllocToDeviceMemoryMap*> results(
+      kNumDevices * kThreadsPerDevice, nullptr);
+
+  for (int d = 0; d < kNumDevices; ++d) {
+    for (int t = 0; t < kThreadsPerDevice; ++t) {
+      int idx = d * kThreadsPerDevice + t;
+      pool.Schedule([&, d, idx]() {
+        ready.DecrementCount();
+        go.WaitForNotification();
+        ASSERT_OK_AND_ASSIGN(results[idx],
+                             module_globals.Resolve(streams[d].get()));
+        done.DecrementCount();
+      });
+    }
+  }
+
+  ready.Wait();
+  go.Notify();
+  done.Wait();
+
+  for (int d = 0; d < kNumDevices; ++d) {
+    const auto* base = results[d * kThreadsPerDevice];
+    ASSERT_NE(base, nullptr);
+    ASSERT_TRUE(base->contains(0));
+    EXPECT_EQ(base->at(0).opaque(),
+              reinterpret_cast<void*>(static_cast<uintptr_t>(0x2000 + d * 16)));
+    for (int t = 1; t < kThreadsPerDevice; ++t) {
+      EXPECT_EQ(results[d * kThreadsPerDevice + t], base);
+    }
+  }
 }
 
 TEST_F(GpuExecutableTest, ExecuteWithWatchdogs) {
@@ -347,7 +444,8 @@ TEST_F(GpuExecutableTest, CommandBufferAllocationPolicy) {
     debug_options.set_xla_gpu_command_buffer_update_mode(update_mode);
     std::unique_ptr<GpuExecutableBufferAllocator> buffer_allocator =
         GpuExecutableBufferAllocator::Create("test", allocation_ptrs, shape,
-                                             &debug_options, &thunk_executor);
+                                             &debug_options, &thunk_executor,
+                                             /*num_devices=*/1);
     ServiceExecutableRunOptions run_options;
     ABSL_ASSIGN_OR_RETURN(
         std::unique_ptr<GpuExecutableBufferAllocator::ExecutionScope>
@@ -1247,6 +1345,103 @@ TEST_F(GpuExecutableTest, ExecutableAbiVersion) {
   ASSERT_OK_AND_ASSIGN(GpuExecutableProto proto, executable->ToProto());
   EXPECT_THAT(proto.executable_abi_version(),
               EqualsProto(executable_abi_version_proto));
+}
+
+class MockStreamWithErrorCallback : public se::MockStream {
+ public:
+  using se::MockStream::DoHostCallbackWithStatus;
+  MOCK_METHOD(absl::Status, DoHostCallbackWithStatus,
+              (absl::AnyInvocable<absl::Status() &&> callback,
+               absl::AnyInvocable<void(absl::Status) &&> error_cb),
+              (override));
+};
+
+class FakeDeviceAddressAllocator : public se::DeviceAddressAllocator {
+ public:
+  explicit FakeDeviceAddressAllocator(const se::Platform* platform)
+      : se::DeviceAddressAllocator(platform) {}
+  absl::StatusOr<se::ScopedDeviceAddress<uint8_t>> Allocate(
+      int device_ordinal, uint64_t size, bool retry_on_failure,
+      int64_t memory_space) override {
+    return se::ScopedDeviceAddress<uint8_t>();
+  }
+  absl::Status Deallocate(int device_ordinal,
+                          se::DeviceAddressBase mem) override {
+    return absl::OkStatus();
+  }
+  bool AllowsAsynchronousDeallocation() const override { return true; }
+  absl::StatusOr<se::Stream*> GetStream(int device_ordinal) override {
+    return nullptr;
+  }
+};
+
+// TODO(b/573818657): Re-enable once device_error_callback is wired without
+// per-step DoHostCallback overhead.
+TEST_F(GpuExecutableTest, DISABLED_InvokesDeviceErrorCallbackOnStreamError) {
+  ASSERT_OK_AND_ASSIGN(
+      se::Platform * platform,
+      se::PlatformManager::PlatformWithId(stream_executor_platform_id()));
+  se::MockStreamExecutor executor;
+  MockStreamWithErrorCallback stream;
+
+  EXPECT_CALL(executor, GetPlatform()).WillRepeatedly(Return(platform));
+  EXPECT_CALL(executor, device_ordinal()).WillRepeatedly(Return(0));
+  EXPECT_CALL(stream, parent()).WillRepeatedly(Return(&executor));
+
+  const se::GpuComputeCapability& compute_capability =
+      device_description().gpu_compute_capability();
+  if (const se::CudaComputeCapability* cuda_cc =
+          compute_capability.cuda_compute_capability()) {
+    EXPECT_CALL(stream, GetCudaComputeCapability())
+        .WillRepeatedly(Return(*cuda_cc));
+  }
+  if (const se::RocmComputeCapability* rocm_cc =
+          compute_capability.rocm_compute_capability()) {
+    EXPECT_CALL(stream, GetRocmComputeCapability())
+        .WillRepeatedly(Return(*rocm_cc));
+  }
+
+  GpuExecutable::Params params;
+  params.module_name = "test_module";
+  params.executable = std::make_unique<ThunkExecutor>(ThunkSequence{});
+  params.device_description = device_description();
+  params.enable_debug_info_manager = false;
+  SetDummyBufferAssignment(params);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> executable,
+                       GpuExecutable::Create(std::move(params)));
+
+  int reported_device = -1;
+  absl::Status reported_status = absl::OkStatus();
+  GpuExecutableRunOptions gpu_opts;
+  gpu_opts.set_device_error_callback(
+      [&](int device_ordinal, const absl::Status& status) {
+        reported_device = device_ordinal;
+        reported_status = status;
+      });
+
+  FakeDeviceAddressAllocator allocator(platform);
+  ExecutableRunOptions exec_run_options;
+  exec_run_options.set_stream(&stream);
+  exec_run_options.set_allocator(&allocator);
+  exec_run_options.set_gpu_executable_run_options(&gpu_opts);
+  ServiceExecutableRunOptions service_run_options(exec_run_options);
+
+  EXPECT_CALL(stream, DoHostCallbackWithStatus(::testing::_, ::testing::_))
+      .WillOnce([](absl::AnyInvocable<absl::Status() &&> /*ok_cb*/,
+                   absl::AnyInvocable<void(absl::Status) &&> error_cb) {
+        std::move(error_cb)(absl::InternalError("CUDA_ERROR_ILLEGAL_ADDRESS"));
+        return absl::OkStatus();
+      });
+
+  BufferAllocations buffer_allocations(/*buffers=*/{}, /*device_ordinal=*/0,
+                                       &allocator);
+  ASSERT_OK(
+      executable->ExecuteThunks(buffer_allocations, &service_run_options));
+  EXPECT_EQ(reported_device, 0);
+  EXPECT_THAT(reported_status,
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInternal,
+                  ::testing::HasSubstr("CUDA_ERROR_ILLEGAL_ADDRESS")));
 }
 
 int64_t BufferSizeBytes(const BufferValue& buffer) {

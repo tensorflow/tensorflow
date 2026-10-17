@@ -124,6 +124,16 @@ func.func @attr_comparison_type_unsigned(%arg0: tensor<f32>, %arg1: tensor<f32>)
   func.return %0 : tensor<i1>
 }
 
+// CHECK-LABEL: "attr_comparison_type_weak_order"
+func.func @attr_comparison_type_weak_order(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<i1> {
+  %0 = "mhlo.compare"(%arg0, %arg1) {
+    comparison_direction = #mhlo<comparison_direction EQ>,
+    // CHECK: compare_type = #stablehlo<comparison_type WEAKORDER>,
+    compare_type = #mhlo<comparison_type WEAKORDER>
+  } : (tensor<f32>, tensor<f32>) -> tensor<i1>
+  func.return %0 : tensor<i1>
+}
+
 // ConvDimensionNumbers aka #mhlo.conv is covered below.
 
 // CHECK-LABEL: "attr_custom_call_api_version_unspecified"
@@ -2606,4 +2616,22 @@ func.func @op_scan(%arg0: tensor<10xf32>, %arg1: tensor<f32>) -> (tensor<10xf32>
     mhlo.return %1, %1 : tensor<f32>, tensor<f32>
   } : (tensor<10xf32>, tensor<f32>) -> (tensor<10xf32>, tensor<f32>)
   func.return %0#0, %0#1 : tensor<10xf32>, tensor<f32>
+}
+
+// -----
+
+// CHECK-LABEL: "op_exp2"
+func.func @op_exp2(%arg0: tensor<f32>) -> tensor<f32> {
+  // CHECK: "stablehlo.exp2"([[ARG0:%arg[0-9]+]]) : (tensor<f32>) -> tensor<f32>
+  %0 = "mhlo.exp2"(%arg0) : (tensor<f32>) -> tensor<f32>
+  func.return %0 : tensor<f32>
+}
+
+// -----
+
+// CHECK-LABEL: "op_log2"
+func.func @op_log2(%arg0: tensor<f32>) -> tensor<f32> {
+  // CHECK: "stablehlo.log2"([[ARG0:%arg[0-9]+]]) : (tensor<f32>) -> tensor<f32>
+  %0 = "mhlo.log2"(%arg0) : (tensor<f32>) -> tensor<f32>
+  func.return %0 : tensor<f32>
 }

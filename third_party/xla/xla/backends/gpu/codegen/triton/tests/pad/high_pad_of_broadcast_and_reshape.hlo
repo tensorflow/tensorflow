@@ -1,5 +1,5 @@
-// RUN: fusion_to_triton %s --xla_gpu_experimental_enable_tiling_propagation | FileCheck %s
-// RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation
+// RUN: fusion_to_triton %s | FileCheck %s
+// RUN: triton_test_correctness %s
 
 // Reproducer for reproducing test for of pad OOB access (b/568080363) and
 // iterating on fully padded tiles (b/477265261).

@@ -225,5 +225,77 @@ ENTRY main {
                             "CHECK: __cudnn$blockScaledDot");
 }
 
+TEST_F(BlockScalingRewriterCudnnTest, Mxfp8_E5M2) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule test
+
+ENTRY main {
+  %lhs = f8e5m2[256,256] parameter(0)
+  %rhs = f8e5m2[256,256] parameter(1)
+  %lhs_scale = f8e8m0fnu[256,8] parameter(2)
+  %rhs_scale = f8e8m0fnu[256,8] parameter(3)
+  ROOT %result = f32[256,256] custom-call(%lhs, %rhs, %lhs_scale, %rhs_scale),
+      custom_call_target="__op$block_scaled_dot"
+})";
+
+  EXPECT_TRUE(RunAndCompare(
+      hlo_string, ErrorSpec(/*aabs=*/1e-4, /*arel=*/1e-5),
+      /*reference_preprocessor=*/
+      [](HloModule* reference_module) {
+        BlockScalingRewriter pass(kCudnnDisabled);
+        EXPECT_THAT(RunHloPass(&pass, reference_module),
+                    absl_testing::IsOkAndHolds(true));
+      },
+      /*test_preprocessor=*/
+      [](HloModule* test_module) {
+        BlockScalingRewriter pass(kCudnnVersion);
+        EXPECT_THAT(RunHloPass(&pass, test_module),
+                    absl_testing::IsOkAndHolds(true));
+      }));
+
+  RunAndFilecheckHloRewrite(hlo_string, BlockScalingRewriter(kCudnnDisabled),
+                            "CHECK-NOT: __cudnn$blockScaledDot");
+  RunAndFilecheckHloRewrite(hlo_string, BlockScalingRewriter(kCudnnVersion),
+                            "CHECK: __cudnn$blockScaledDot");
+}
+
+TEST_F(BlockScalingRewriterCudnnTest, Mxfp4) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule test
+
+ENTRY main {
+  %mult_scalar = f16[] constant(6)
+  %mult = f16[256,256] broadcast(%mult_scalar), dimensions={}
+  %p0 = f16[256,256] parameter(0)
+  %p1 = f16[256,256] parameter(1)
+  %lhs = f4e2m1fn[256,256] convert(f16[256,256] multiply(%p0, %mult))
+  %rhs = f4e2m1fn[256,256] convert(f16[256,256] multiply(%p1, %mult))
+  %lhs_scale = f8e8m0fnu[256,8] parameter(2)
+  %rhs_scale = f8e8m0fnu[256,8] parameter(3)
+  ROOT %result = f32[256,256] custom-call(%lhs, %rhs, %lhs_scale, %rhs_scale),
+      custom_call_target="__op$block_scaled_dot"
+})";
+
+  EXPECT_TRUE(RunAndCompare(
+      hlo_string, ErrorSpec(/*aabs=*/1e-4, /*arel=*/1e-5),
+      /*reference_preprocessor=*/
+      [](HloModule* reference_module) {
+        BlockScalingRewriter pass(kCudnnDisabled);
+        EXPECT_THAT(RunHloPass(&pass, reference_module),
+                    absl_testing::IsOkAndHolds(true));
+      },
+      /*test_preprocessor=*/
+      [](HloModule* test_module) {
+        BlockScalingRewriter pass(kCudnnVersion);
+        EXPECT_THAT(RunHloPass(&pass, test_module),
+                    absl_testing::IsOkAndHolds(true));
+      }));
+
+  RunAndFilecheckHloRewrite(hlo_string, BlockScalingRewriter(kCudnnDisabled),
+                            "CHECK-NOT: __cudnn$blockScaledDot");
+  RunAndFilecheckHloRewrite(hlo_string, BlockScalingRewriter(kCudnnVersion),
+                            "CHECK: __cudnn$blockScaledDot");
+}
+
 }  // namespace
 }  // namespace xla::gpu

@@ -50,10 +50,13 @@ absl::StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op);
 //    (e.g. removing unused loop parameters).
 //
 //  - Removing trivial compare instructions inside while bodies. Assuming a
-//    while loop with known trip count, k, loop induction variable i, and the
-//    initial loop induction value c, a compare(i,x) instruction is trivial if:
-//      1) x is a constant and x >= k + c (for LT) or x >= k + c - 1 (for GT).
-//      2) x is a constant and x <= c (for LT) or x < c (for GT).
+//    while loop with known trip count k, loop induction variable i with
+//    initial value c and constant step s (so i takes the values c, c + s, ...,
+//    c + (k - 1) * s), a compare(i,x) instruction with constant x is trivial
+//    if:
+//      1) x <= c: (i < x) is false; and if x < c, (i > x) is true.
+//      2) x >= c + (k - 1) * s: (i > x) is false; and if x > c + (k - 1) * s,
+//         (i < x) is true.
 //
 // Flattening nested while loop tuples adds a whole mess of likely unnecessary
 // kGetTupleElement and kTuple operations to the graph.  We expect that tuple

@@ -28,28 +28,46 @@ limitations under the License.
 namespace xla {
 
 namespace {
-// Returns true if
-// 1. `inst` is an all-reduce instruction.
-// 2. `inst` has a single user.
-// 3. The user is a reduce-scatter instruction.
-// 4. The all-reduce and reduce-scatter have the same reduction type.
+// Returns true if:
+// 1. `ar` is a single-operand all-reduce without control dependencies and with
+//    a single user.
+// 2. The user `rs` is a single-operand reduce-scatter without control
+//    dependencies.
+// 3. `ar` and `rs` share the same recognized reduction kind and collective
+//    group mode.
+// 4. `ar` and `rs` have non-empty, orthogonal replica groups with matching
+//    group sizes.
 bool IsAllReduceReduceScatter(const HloInstruction* ar) {
-  if (ar->opcode() != HloOpcode::kAllReduce) {
-    return false;
-  }
-  if (ar->user_count() != 1) {
+  if (ar->opcode() != HloOpcode::kAllReduce || ar->user_count() != 1 ||
+      ar->operand_count() != 1 || ar->HasControlDependencies()) {
     return false;
   }
   const HloInstruction* rs = ar->users().front();
-  if (rs->opcode() != HloOpcode::kReduceScatter) {
+  const auto ar_reduction = MatchReductionComputation(ar->to_apply());
+  if (rs->opcode() != HloOpcode::kReduceScatter || rs->operand_count() != 1 ||
+      rs->HasControlDependencies() || ar->replica_groups().empty() ||
+      rs->replica_groups().empty() || !ar_reduction.has_value() ||
+      ar_reduction != MatchReductionComputation(rs->to_apply())) {
     return false;
   }
-  if (MatchReductionComputation(ar->to_apply()) &&
-      MatchReductionComputation(ar->to_apply()) !=
-          MatchReductionComputation(rs->to_apply())) {
+  absl::StatusOr<CollectiveOpGroupMode> ar_mode = GetCollectiveOpGroupMode(ar);
+  if (!ar_mode.ok() || ar_mode != GetCollectiveOpGroupMode(rs) ||
+      (*ar_mode == CollectiveOpGroupMode::
+                       COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA_AND_PARTITION &&
+       ar->GetModule()->config().num_partitions() > 1)) {
     return false;
   }
-  return true;
+  for (const ReplicaGroup& g : ar->replica_groups()) {
+    if (g.replica_ids_size() != rs->replica_groups().size()) {
+      return false;
+    }
+  }
+  for (const ReplicaGroup& g : rs->replica_groups()) {
+    if (g.replica_ids_size() != ar->replica_groups().size()) {
+      return false;
+    }
+  }
+  return ReplicaGroupsOrthogonal(ar->replica_groups(), rs->replica_groups());
 }
 
 // Before: operand -> old_ar -> old_rs -> users

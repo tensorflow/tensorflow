@@ -146,7 +146,11 @@ absl::StatusOr<NvJitLinkVersion> GetNvJitLinkVersion() {
     return NvJitLinkVersion{12, 0};
   }
   unsigned int major{}, minor{};
-  RETURN_IF_NVJITLINK_ERROR(nvJitLinkVersion(&major, &minor));
+  nvJitLinkResult result = nvJitLinkVersion(&major, &minor);
+  if (result == NVJITLINK_ERROR_INTERNAL) {
+    return NvJitLinkVersion{12, 0};
+  }
+  RETURN_IF_NVJITLINK_ERROR(result);
   return NvJitLinkVersion(major, minor);
 }
 
@@ -169,8 +173,12 @@ absl::StatusOr<cuda::Assembly> CompileAndLinkUsingLibNvJitLink(
     cli_args.emplace_back("-verbose");
   }
   cli_args.emplace_back("-Xptxas=--warn-on-spills");
-  cli_args.emplace_back(absl::StrCat("-split-compile=", inputs.size()));
-  cli_args.emplace_back("-no-cache");
+  if (version >= NvJitLinkVersion{12, 3}) {
+    cli_args.emplace_back(absl::StrCat("-split-compile=", inputs.size()));
+  }
+  if (version >= NvJitLinkVersion{12, 5}) {
+    cli_args.emplace_back("-no-cache");
+  }
 
   if (options.disable_gpuasm_optimizations) {
     cli_args.emplace_back("-Xptxas=-O0");
@@ -286,9 +294,13 @@ namespace {
 
 absl::StatusOr<int> GetLatestPtxIsaVersionForLibNvJitLinkImpl() {
   absl::string_view ptx_contents = ".version 99.99";
+  absl::StatusOr<NvJitLinkVersion> version = GetNvJitLinkVersion();
   // The call to `nvJitLinkCreate` below requires an arch to be specified in
   // order to succeed.
-  std::vector<const char*> cli_args_ptrs{"-arch=sm_90a", "-no-cache"};
+  std::vector<const char*> cli_args_ptrs{"-arch=sm_90a"};
+  if (version.ok() && *version >= NvJitLinkVersion{12, 5}) {
+    cli_args_ptrs.push_back("-no-cache");
+  }
   nvJitLinkHandle link_handle = nullptr;
   nvJitLinkResult create_result =
       nvJitLinkCreate(&link_handle, /*num_args=*/cli_args_ptrs.size(),
@@ -309,7 +321,6 @@ absl::StatusOr<int> GetLatestPtxIsaVersionForLibNvJitLinkImpl() {
   }
 
   std::optional<absl::LeakCheckDisabler> disabler;
-  absl::StatusOr<NvJitLinkVersion> version = GetNvJitLinkVersion();
   if (!version.ok() || std::get<0>(*version) < 13) {
     // libnvjitlink prior to CUDA 13 has a memory leak when calling
     // nvJitLinkAddData when the input PTX is invalid.

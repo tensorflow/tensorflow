@@ -59,7 +59,6 @@ using ::testing::AllOf;
 using ::testing::Field;
 using ::testing::HasSubstr;
 
-TSL_LIB_GTL_DEFINE_INT_TYPE(CollectiveKernelEnabled, bool);
 TSL_LIB_GTL_DEFINE_INT_TYPE(MultimemEnabled, bool);
 
 // Number of devices per host in the test topology. Large enough for all replica
@@ -79,7 +78,6 @@ class BuildAllReduceInfoTest : public HloHardwareIndependentTestBase {
   // Helper to reduce boilerplate while keeping tests independent. Supports
   // multiple (possibly non-uniform) replica groups.
   absl::StatusOr<AllReduceInfo> BuildInfoWithGroups(
-      CollectiveKernelEnabled collective_kernel_enabled,
       MultimemEnabled multimem_enabled, PrimitiveType element_type,
       std::vector<int64_t> shape, HloOpcode hlo_opcode,
       std::vector<std::vector<int64_t>> replica_groups) {
@@ -129,31 +127,29 @@ class BuildAllReduceInfoTest : public HloHardwareIndependentTestBase {
     const HloInstruction* hlo_instr =
         HloHardwareIndependentTestBase::FindInstruction(module.get(),
                                                         HloOpcode::kAllReduce);
-    return BuildAllReduceInfo(collective_kernel_enabled.value(),
-                              multimem_enabled.value(), gpu_topology,
+    return BuildAllReduceInfo(multimem_enabled.value(), gpu_topology,
                               Cast<HloAllReduceInstruction>(hlo_instr),
                               /*device_assignment=*/nullptr);
   }
 
   // Single-group convenience wrapper.
-  absl::StatusOr<AllReduceInfo> BuildInfo(
-      CollectiveKernelEnabled collective_kernel_enabled,
-      MultimemEnabled multimem_enabled, PrimitiveType element_type,
-      std::vector<int64_t> shape, HloOpcode hlo_opcode,
-      std::vector<int32_t> replica_groups) {
+  absl::StatusOr<AllReduceInfo> BuildInfo(MultimemEnabled multimem_enabled,
+                                          PrimitiveType element_type,
+                                          std::vector<int64_t> shape,
+                                          HloOpcode hlo_opcode,
+                                          std::vector<int32_t> replica_groups) {
     std::vector<std::vector<int64_t>> groups;
     if (!replica_groups.empty()) {
       groups.emplace_back(replica_groups.begin(), replica_groups.end());
     }
-    return BuildInfoWithGroups(collective_kernel_enabled, multimem_enabled,
-                               element_type, std::move(shape), hlo_opcode,
-                               std::move(groups));
+    return BuildInfoWithGroups(multimem_enabled, element_type, std::move(shape),
+                               hlo_opcode, std::move(groups));
   }
 };
 
 TEST_F(BuildAllReduceInfoTest, ReturnsOneShotStrategyForSmallS32) {
-  EXPECT_THAT(BuildInfo(CollectiveKernelEnabled(true), MultimemEnabled(false),
-                        S32, {1024, 8}, HloOpcode::kMaximum, {0, 1}),
+  EXPECT_THAT(BuildInfo(MultimemEnabled(false), S32, {1024, 8},
+                        HloOpcode::kMaximum, {0, 1}),
               IsOkAndHolds(AllOf(
                   Field(&AllReduceInfo::reduction_kind, ReductionKind::MAX),
                   Field(&AllReduceInfo::all_reduce_strategy,
@@ -161,8 +157,8 @@ TEST_F(BuildAllReduceInfoTest, ReturnsOneShotStrategyForSmallS32) {
 }
 
 TEST_F(BuildAllReduceInfoTest, ReturnsTwoShotStrategyForLargerF32) {
-  EXPECT_THAT(BuildInfo(CollectiveKernelEnabled(true), MultimemEnabled(false),
-                        F32, {1024, 1024}, HloOpcode::kAdd, {0, 1}),
+  EXPECT_THAT(BuildInfo(MultimemEnabled(false), F32, {1024, 1024},
+                        HloOpcode::kAdd, {0, 1}),
               IsOkAndHolds(AllOf(
                   Field(&AllReduceInfo::reduction_kind, ReductionKind::SUM),
                   Field(&AllReduceInfo::all_reduce_strategy,
@@ -173,43 +169,34 @@ TEST_F(BuildAllReduceInfoTest, StrategyDependsOnReadSizeBytes) {
   // 512 KB input (128K F32 elements):
   // - On 2 devices: read_size_bytes = 1 MB <= 2 MB -> kOneShot.
   // - On 8 devices: read_size_bytes = 4 MB > 2 MB -> kTwoShot.
-  EXPECT_THAT(BuildInfo(CollectiveKernelEnabled(true), MultimemEnabled(false),
-                        F32, {128, 1024}, HloOpcode::kAdd, {0, 1}),
+  EXPECT_THAT(BuildInfo(MultimemEnabled(false), F32, {128, 1024},
+                        HloOpcode::kAdd, {0, 1}),
               IsOkAndHolds(Field(&AllReduceInfo::all_reduce_strategy,
                                  AllReduceStrategy::kOneShot)));
-  EXPECT_THAT(
-      BuildInfo(CollectiveKernelEnabled(true), MultimemEnabled(false), F32,
-                {128, 1024}, HloOpcode::kAdd, {0, 1, 2, 3, 4, 5, 6, 7}),
-      IsOkAndHolds(Field(&AllReduceInfo::all_reduce_strategy,
-                         AllReduceStrategy::kTwoShot)));
+  EXPECT_THAT(BuildInfo(MultimemEnabled(false), F32, {128, 1024},
+                        HloOpcode::kAdd, {0, 1, 2, 3, 4, 5, 6, 7}),
+              IsOkAndHolds(Field(&AllReduceInfo::all_reduce_strategy,
+                                 AllReduceStrategy::kTwoShot)));
 }
 
 TEST_F(BuildAllReduceInfoTest, ReturnsMultimemStrategy) {
-  EXPECT_THAT(BuildInfo(CollectiveKernelEnabled(true), MultimemEnabled(true),
-                        F32, {1024}, HloOpcode::kAdd, {0, 1}),
-              IsOkAndHolds(AllOf(
-                  Field(&AllReduceInfo::reduction_kind, ReductionKind::SUM),
-                  Field(&AllReduceInfo::all_reduce_strategy,
-                        AllReduceStrategy::kMultimem))));
-}
-
-TEST_F(BuildAllReduceInfoTest, FailsIfCollectiveKernelDisabled) {
   EXPECT_THAT(
-      BuildInfo(CollectiveKernelEnabled(false), MultimemEnabled(false), F32,
-                {1024}, HloOpcode::kAdd, {0, 1}),
-      StatusIs(absl::StatusCode::kUnimplemented, HasSubstr("not enabled")));
+      BuildInfo(MultimemEnabled(true), F32, {1024}, HloOpcode::kAdd, {0, 1}),
+      IsOkAndHolds(
+          AllOf(Field(&AllReduceInfo::reduction_kind, ReductionKind::SUM),
+                Field(&AllReduceInfo::all_reduce_strategy,
+                      AllReduceStrategy::kMultimem))));
 }
 
 TEST_F(BuildAllReduceInfoTest, FailsForNonPowerOfTwoDevices) {
-  EXPECT_THAT(BuildInfo(CollectiveKernelEnabled(true), MultimemEnabled(false),
-                        F32, {1024}, HloOpcode::kAdd, {0, 1, 2}),
+  EXPECT_THAT(BuildInfo(MultimemEnabled(false), F32, {1024}, HloOpcode::kAdd,
+                        {0, 1, 2}),
               StatusIs(absl::StatusCode::kUnimplemented,
                        HasSubstr("only supported for power of 2")));
 }
 
 TEST_F(BuildAllReduceInfoTest, SupportsMaxNumDevices) {
-  EXPECT_THAT(BuildInfo(CollectiveKernelEnabled(true), MultimemEnabled(false),
-                        F32, {1024}, HloOpcode::kAdd,
+  EXPECT_THAT(BuildInfo(MultimemEnabled(false), F32, {1024}, HloOpcode::kAdd,
                         IotaReplicaGroup(se::gpu::kMaxNumAllReduceInputPtrs)),
               IsOkAndHolds(Field(&AllReduceInfo::all_reduce_strategy,
                                  AllReduceStrategy::kOneShot)));
@@ -217,8 +204,7 @@ TEST_F(BuildAllReduceInfoTest, SupportsMaxNumDevices) {
 
 TEST_F(BuildAllReduceInfoTest, FailsForTooManyDevices) {
   EXPECT_THAT(
-      BuildInfo(CollectiveKernelEnabled(true), MultimemEnabled(false), F32,
-                {1024}, HloOpcode::kAdd,
+      BuildInfo(MultimemEnabled(false), F32, {1024}, HloOpcode::kAdd,
                 IotaReplicaGroup(2 * se::gpu::kMaxNumAllReduceInputPtrs)),
       StatusIs(absl::StatusCode::kUnimplemented,
                HasSubstr(absl::StrCat("does not support more than ",
@@ -227,41 +213,38 @@ TEST_F(BuildAllReduceInfoTest, FailsForTooManyDevices) {
 }
 
 TEST_F(BuildAllReduceInfoTest, FailsForUnsupportedTypeCombination) {
-  EXPECT_THAT(BuildInfo(CollectiveKernelEnabled(true), MultimemEnabled(false),
-                        PRED, {1024}, HloOpcode::kAdd, {0, 1}),
-              StatusIs(absl::StatusCode::kUnimplemented,
-                       HasSubstr("combination is not supported")));
+  EXPECT_THAT(
+      BuildInfo(MultimemEnabled(false), PRED, {1024}, HloOpcode::kAdd, {0, 1}),
+      StatusIs(absl::StatusCode::kUnimplemented,
+               HasSubstr("combination is not supported")));
 }
 
 TEST_F(BuildAllReduceInfoTest, FailsForLargeInputs) {
-  EXPECT_THAT(BuildInfo(CollectiveKernelEnabled(true), MultimemEnabled(false),
-                        F32, {8, 1024, 1024}, HloOpcode::kAdd, {0, 1}),
+  EXPECT_THAT(BuildInfo(MultimemEnabled(false), F32, {8, 1024, 1024},
+                        HloOpcode::kAdd, {0, 1}),
               StatusIs(absl::StatusCode::kUnimplemented,
                        HasSubstr("only supported for small inputs")));
 }
 
 TEST_F(BuildAllReduceInfoTest, FailsIfReplicaGroupsEmpty) {
   EXPECT_THAT(
-      BuildInfo(CollectiveKernelEnabled(true), MultimemEnabled(false), F32,
-                {1024}, HloOpcode::kAdd, {}),
+      BuildInfo(MultimemEnabled(false), F32, {1024}, HloOpcode::kAdd, {}),
       StatusIs(absl::StatusCode::kUnimplemented,
                HasSubstr("Replica groups must be explicitly provided")));
 }
 
 TEST_F(BuildAllReduceInfoTest, FailsForNonUniformReplicaGroups) {
-  EXPECT_THAT(
-      BuildInfoWithGroups(CollectiveKernelEnabled(true), MultimemEnabled(false),
-                          F32, {1024}, HloOpcode::kAdd, {{0, 1}, {2, 3, 4, 5}}),
-      StatusIs(absl::StatusCode::kUnimplemented,
-               HasSubstr("all replica groups to have the same size")));
+  EXPECT_THAT(BuildInfoWithGroups(MultimemEnabled(false), F32, {1024},
+                                  HloOpcode::kAdd, {{0, 1}, {2, 3, 4, 5}}),
+              StatusIs(absl::StatusCode::kUnimplemented,
+                       HasSubstr("all replica groups to have the same size")));
 }
 
 TEST_F(BuildAllReduceInfoTest, SupportsUniformMultiGroup) {
-  EXPECT_THAT(
-      BuildInfoWithGroups(CollectiveKernelEnabled(true), MultimemEnabled(false),
-                          F32, {1024}, HloOpcode::kAdd, {{0, 1}, {2, 3}}),
-      IsOkAndHolds(Field(&AllReduceInfo::all_reduce_strategy,
-                         AllReduceStrategy::kOneShot)));
+  EXPECT_THAT(BuildInfoWithGroups(MultimemEnabled(false), F32, {1024},
+                                  HloOpcode::kAdd, {{0, 1}, {2, 3}}),
+              IsOkAndHolds(Field(&AllReduceInfo::all_reduce_strategy,
+                                 AllReduceStrategy::kOneShot)));
 }
 
 }  // namespace

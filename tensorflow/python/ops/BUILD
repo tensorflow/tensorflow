@@ -210,6 +210,7 @@ tf_gen_op_strict_wrapper_private_py(
     visibility = [
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/python:__pkg__",
+        "//tensorflow/python/kernel_tests/random:__pkg__",
     ],
 )
 
@@ -2822,9 +2823,11 @@ cuda_py_strict_test(
         ":math_ops",
         ":rnn_grad",
         ":rnn_ops_gen",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
@@ -3676,6 +3679,7 @@ cuda_py_strict_test(
     ],
     deps = [
         ":math_ops",
+        ":math_ops_gen",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:tensor",

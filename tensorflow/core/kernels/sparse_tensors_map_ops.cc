@@ -93,7 +93,7 @@ class SparseTensorsMap : public ResourceBase {
   }
 
  protected:
-  ~SparseTensorsMap() override {}
+  ~SparseTensorsMap() override = default;
 
  private:
   std::string name_;

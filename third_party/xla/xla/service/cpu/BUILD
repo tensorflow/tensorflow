@@ -197,6 +197,7 @@ cc_library(
         "//xla/backends/cpu/runtime:thunk_proto_cc",
         "//xla/backends/cpu/runtime:thunk_proto_cc_impl",
         "//xla/backends/cpu/runtime:thunk_proto_serdes",
+        "//xla/backends/cpu/transforms:embedded_while_loop_unroller",
         "//xla/backends/cpu/transforms:library_rewriter",
         "//xla/backends/cpu/transforms/collectives:all_reduce_combiner",
         "//xla/hlo/analysis:alias_info",
@@ -224,6 +225,7 @@ cc_library(
         "//xla/hlo/transforms/expanders:dot_decomposer",
         "//xla/hlo/transforms/expanders:dynamic_index_splitter",
         "//xla/hlo/transforms/expanders:eigh_expander",
+        "//xla/hlo/transforms/expanders:elementary_function_expander",
         "//xla/hlo/transforms/expanders:logistic_expander",
         "//xla/hlo/transforms/expanders:optimization_barrier_expander",
         "//xla/hlo/transforms/expanders:permutation_sort_expander",
@@ -291,6 +293,7 @@ cc_library(
         "//xla/service:hlo_proto_cc",
         "//xla/service:hlo_proto_util",
         "//xla/service:hlo_verifier",
+        "//xla/service:instruction_fusion",
         "//xla/service:layout_assignment",
         "//xla/service:llvm_compiler",
         "//xla/service:logical_buffer",
@@ -807,6 +810,7 @@ cc_library(
         "//xla/backends/cpu:onednn_support",
         "//xla/backends/cpu:ynn_emitter",
         "//xla/backends/cpu:ynn_support",
+        "//xla/backends/cpu/codegen:computation_kernel_arguments",
         "//xla/backends/cpu/codegen:computation_kernel_emitter",
         "//xla/backends/cpu/codegen:fusion_compiler",
         "//xla/backends/cpu/codegen:fusion_emitter",
@@ -814,7 +818,6 @@ cc_library(
         "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/backends/cpu/codegen/dot:dot_kernel_emitter",
         "//xla/backends/cpu/codegen/elemental:concatenate_kernel_emitter",
-        "//xla/backends/cpu/codegen/emitters:cpu_fusion_emitters",
         "//xla/backends/cpu/runtime:all_gather_thunk",
         "//xla/backends/cpu/runtime:all_reduce_thunk",
         "//xla/backends/cpu/runtime:all_to_all_thunk",
@@ -848,7 +851,6 @@ cc_library(
         "//xla/codegen/emitters:computation_fingerprint",
         "//xla/codegen/emitters:kernel_api_builder",
         "//xla/codegen/emitters:kernel_arguments",
-        "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:sort_utils",
         "//xla/runtime:resource_use",
@@ -875,7 +877,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:JITLink",
         "@llvm-project//llvm:OrcJIT",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:ir_headers",
@@ -1673,6 +1674,7 @@ cc_library(
         "//xla/codegen/intrinsic:exp",
         "//xla/codegen/intrinsic:rsqrt",
         "//xla/codegen/intrinsic:tanh",
+        "//xla/codegen/intrinsic/cpp:_intrinsic_declarations",
         "//xla/hlo/ir:hlo",
         "//xla/service:elemental_ir_emitter",
         "//xla/service/llvm_ir:llvm_util",
@@ -1691,7 +1693,10 @@ cc_library(
     hdrs = ["small_while_loop_hoisting_pass.h"],
     deps = [
         ":cpu_executable",
+        ":dot_op_emitter",
+        ":ir_emission_utils",
         "//xla:util",
+        "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/service:collective_ops_utils",
@@ -1794,10 +1799,13 @@ xla_cc_test(
     deps = [
         ":backend_config_proto_cc",
         ":small_while_loop_hoisting_pass",
+        ":target_machine_features_stub",
+        "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:test",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],
@@ -1829,7 +1837,6 @@ cc_library(
         "//xla:util",
         "//xla/backends/cpu:target_machine_options",
         "//xla/backends/cpu/codegen:builtin_definition_generator",
-        "//xla/backends/cpu/codegen:cpu_features",
         "//xla/backends/cpu/codegen:execution_engine",
         "//xla/backends/cpu/codegen:object_loader",
         "//xla/backends/cpu/runtime:function_library",
@@ -1838,30 +1845,16 @@ cc_library(
         "//xla/service:compiler",
         "//xla/service:executable",
         "//xla/service:hlo_module_config",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:TargetParser",
         "@llvm-project//llvm:ir_headers",
-    ] + if_llvm_aarch64_available([
-        "@llvm-project//llvm:AArch64CodeGen",  # fixdeps: keep
-    ]) + if_llvm_powerpc_available([
-        "@llvm-project//llvm:PowerPCCodeGen",  # fixdeps: keep
-    ]) + if_llvm_riscv_available([
-        "@llvm-project//llvm:RISCVCodeGen",  # fixdeps: keep
-    ]) + if_llvm_system_z_available([
-        "@llvm-project//llvm:SystemZCodeGen",  # fixdeps: keep
-    ]) + if_llvm_x86_available([
-        "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
-    ]),
+    ],
 )
 
 xla_cc_test(
@@ -1882,7 +1875,9 @@ xla_cc_test(
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
     ],

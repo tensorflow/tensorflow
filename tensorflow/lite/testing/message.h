@@ -38,8 +38,8 @@ class Message {
   // top-level message. Returns true if the parsing succeeded.
   static bool Read(std::istream* input, Message* message);
 
-  Message() {}
-  virtual ~Message() {}
+  Message() = default;
+  virtual ~Message() = default;
 
   // Called when a new field is found. For example, when:
   //   f : "values"

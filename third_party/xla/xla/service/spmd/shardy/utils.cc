@@ -448,7 +448,7 @@ mlir::sdy::MeshAttr toSdyMeshAttr(const Mesh& mesh,
                                   mlir::MLIRContext* context) {
   if (mesh.axis_names().empty()) {
     if (mesh.device_assignment().num_elements() == 1) {
-      return mlir::sdy::MeshAttr::getMaximal(
+      return mlir::sdy::MeshAttr::getSingleDevice(
           context, mesh.device_assignment().array()(0));
     }
     return mlir::sdy::MeshAttr::get(context, {}, {});
@@ -515,8 +515,8 @@ mlir::sdy::TensorShardingAttr convertToSdyShardingAttr(
   if (namedSharding.IsSingleDevice()) {
     return mlir::sdy::TensorShardingAttr::getFullyClosed(
         context, /*rank=*/0,
-        mlir::sdy::MeshAttr::getMaximal(context,
-                                        hloSharding.GetUniqueDevice()));
+        mlir::sdy::MeshAttr::getSingleDevice(context,
+                                             hloSharding.GetUniqueDevice()));
   }
 
   mlir::sdy::MeshAttr meshAttr = toSdyMeshAttr(namedSharding.mesh(), context);
@@ -586,8 +586,8 @@ mlir::sdy::TensorShardingPerValueAttr convertToSdySharding(
   // the whole value instead, and let the caller skip setting it.
 
   // An op can carry a sharding without having any values, e.g. a custom call
-  // whose only result is an empty tuple. Such a sharding is maximal, so its
-  // rank is irrelevant, but we still need to keep it.
+  // whose only result is an empty tuple. Such a sharding is single-device, so
+  // its rank is irrelevant, but we still need to keep it.
   if (types.empty()) {
     TensorShardingAttr sdySharding =
         convertToSdyShardingAttr(leafShardings.front(), /*rank=*/0, context);

@@ -22,6 +22,11 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif
 
+#include <cstdint>
+#include <limits>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -505,6 +510,19 @@ class CSRSparseMatrix {
     auto dense_shape_t = dense_shape.vec<int64_t>();
     const int64_t batch_size = (rank == 2) ? 1 : dense_shape_t(0);
     const int64_t num_rows = (rank == 2) ? dense_shape_t(0) : dense_shape_t(1);
+    const int64_t num_cols = (rank == 2) ? dense_shape_t(1) : dense_shape_t(2);
+    if (batch_size < 0 || num_rows < 0 || num_cols < 0) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "CSRSparseMatrix::Validate: dense_shape has a negative dimension: ",
+          dense_shape.SummarizeValue(5)));
+    }
+    if (num_rows == std::numeric_limits<int64_t>::max() ||
+        (batch_size > 0 &&
+         (num_rows + 1) > std::numeric_limits<int64_t>::max() / batch_size)) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "CSRSparseMatrix::Validate: dense_shape dimensions overflow int64: ",
+          dense_shape.SummarizeValue(5)));
+    }
 
     if (batch_pointers.dtype() != DT_INT32) {
       return absl::InvalidArgumentError(

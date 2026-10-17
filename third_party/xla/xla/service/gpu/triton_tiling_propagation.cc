@@ -1054,6 +1054,15 @@ bool IsCheapToDuplicate(const HloInstruction& hlo) {
          AllUsersAreSlices(hlo);
 }
 
+// Returns the first instruction in the operand chain of `hlo` (including `hlo`
+// itself) that is not a bitcast.
+const HloInstruction* SkipBitcasts(const HloInstruction* hlo) {
+  while (hlo->opcode() == HloOpcode::kBitcast) {
+    hlo = hlo->operand(0);
+  }
+  return hlo;
+}
+
 }  // namespace
 
 // Tells that fusing an instruction as an input is efficient.
@@ -1100,9 +1109,12 @@ bool IsInputWorthFusing(const HloInstruction& hlo) {
           .debug_options()
           .xla_gpu_experimental_enable_subchannel_dequantisation_fusion();
   if (hlo.opcode() == HloOpcode::kMultiply) {
+    // Bitcasts don't change the data volume, so on their own they always look
+    // worth fusing. Look through them to judge the actual producer instead,
+    // which may not be (e.g. another dot fusion).
     return enable_subchannel_dequantisation_fusion &&
-           IsInputWorthFusing(*hlo.operand(0)) &&
-           IsInputWorthFusing(*hlo.operand(1));
+           IsInputWorthFusing(*SkipBitcasts(hlo.operand(0))) &&
+           IsInputWorthFusing(*SkipBitcasts(hlo.operand(1)));
   }
   return hlo_query::AllOperandsAreParametersOrConstantsWithSingleUser(hlo);
 }

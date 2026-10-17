@@ -347,8 +347,7 @@ absl::StatusOr<std::vector<TritonGemmConfig>> OptimizeConfigsWithCostModel(
     const DebugOptions& debug_options, mlir::MLIRContext* mlir_context) {
   namespace detail = cost_model_config_optimization_detail;
 
-  const bool use_experimental_tiling =
-      debug_options.xla_gpu_experimental_enable_tiling_propagation();
+  const bool use_experimental_tiling = true;
   const bool enable_same_shape_multi_output_fusion =
       debug_options
           .xla_gpu_experimental_enable_same_shape_multi_output_fusion();
@@ -468,7 +467,7 @@ EstimateConfigsWithCostModel(const HloDotInstruction* dot,
       detail::OrderedEstimatesAndConfigs estimated_configs,
       detail::EstimateConfigs(
           extracted.context, configs, mlir_context,
-          debug_options.xla_gpu_experimental_enable_tiling_propagation(),
+          /*use_experimental_tiling=*/true,
           debug_options
               .xla_gpu_experimental_enable_same_shape_multi_output_fusion()));
 

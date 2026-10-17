@@ -18,13 +18,13 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <optional>
 #include <utility>
 #include <vector>
 
 #include "absl/base/casts.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/shape.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/tsl/util/env_var.h"
@@ -71,22 +71,25 @@ struct ConvBufferPointers {
 };
 
 absl::StatusOr<ConvBufferPointers> GetConvBufferPointers(
-    xla::gpu::CudnnConvKind conv_kind,
+    dnn::ConvolutionKind conv_kind,
     absl::Span<const DeviceAddressBase> operand_buffers,
     const DeviceAddressBase& result_buffer) {
   auto opaque_ptr = [](const DeviceAddressBase& addr) {
     return const_cast<void*>(addr.opaque());
   };
+  if (operand_buffers.size() < 2) {
+    return absl::InvalidArgumentError("Insufficient operand buffers");
+  }
   void* op0 = opaque_ptr(operand_buffers[0]);
   void* op1 = opaque_ptr(operand_buffers[1]);
   void* res = opaque_ptr(result_buffer);
   switch (conv_kind) {
-    case xla::gpu::CudnnConvKind::kForward:
-    case xla::gpu::CudnnConvKind::kForwardActivation:
+    case dnn::ConvolutionKind::FORWARD:
+    case dnn::ConvolutionKind::FORWARD_BIAS_ACTIVATION:
       return ConvBufferPointers{op0, op1, res};
-    case xla::gpu::CudnnConvKind::kBackwardInput:
+    case dnn::ConvolutionKind::BACKWARD_DATA:
       return ConvBufferPointers{res, op1, op0};
-    case xla::gpu::CudnnConvKind::kBackwardFilter:
+    case dnn::ConvolutionKind::BACKWARD_FILTER:
       return ConvBufferPointers{op0, res, op1};
     default:
       return absl::InvalidArgumentError("Unknown convolution kind");
@@ -164,12 +167,9 @@ dnnl::memory::dims ToOneDnnFilterDims(const FilterDescriptor& descriptor,
 
 // Allocates a temporary buffer and wraps it in a dnnl::memory.
 // Such buffers are used for oneDNN scratchpad and pre-packed filter.
-absl::StatusOr<dnnl::memory> AllocateDnnlBuffer(
-    const dnnl::memory::desc& desc, const dnnl::engine& engine,
-    ScratchAllocator* scratch_allocator) {
-  stream_executor::DeviceMemory<uint8_t> buffer;
-  ABSL_ASSIGN_OR_RETURN(buffer, scratch_allocator->AllocateBytes(desc.get_size()));
-  return CreateDnnlMemory(desc, engine, buffer.opaque());
+absl::StatusOr<dnnl::memory> AllocateDnnlBuffer(const dnnl::memory::desc& desc,
+                                                const dnnl::engine& engine) {
+  return CreateDnnlMemory(desc, engine);
 }
 
 // Builds a forward convolution primitive descriptor. `bias_md` is present only
@@ -207,19 +207,16 @@ absl::StatusOr<ConvOp> BuildConvOp(
     int weights_arg_key, dnnl::memory dst, int dst_arg_key,
     const dnnl::memory::desc& filter_md,
     const dnnl::memory::desc& weights_target_desc, bool prepack_filter,
-    const dnnl::engine& engine, ScratchAllocator* scratch_allocator,
-    std::optional<ReorderOp>* out_filter_reorder) {
+    const dnnl::engine& engine, std::optional<ReorderOp>* out_filter_reorder) {
   ConvOp op;
   op.src = std::move(src);
   op.filter = std::move(filter);
   op.dst = std::move(dst);
-  ABSL_ASSIGN_OR_RETURN(
-      op.scratchpad,
-      AllocateDnnlBuffer(pd.scratchpad_desc(), engine, scratch_allocator));
+  ABSL_ASSIGN_OR_RETURN(op.scratchpad,
+                   AllocateDnnlBuffer(pd.scratchpad_desc(), engine));
   if (filter_md != weights_target_desc) {
-    ABSL_ASSIGN_OR_RETURN(
-        op.internal_filter,
-        AllocateDnnlBuffer(weights_target_desc, engine, scratch_allocator));
+    ABSL_ASSIGN_OR_RETURN(op.internal_filter,
+                     AllocateDnnlBuffer(weights_target_desc, engine));
     *out_filter_reorder = prepack_filter
                               ? CreateReorderOp(op.filter, op.internal_filter)
                               : CreateReorderOp(op.internal_filter, op.filter);
@@ -235,136 +232,94 @@ absl::StatusOr<ConvOp> BuildConvOp(
 }
 }  // namespace
 
-absl::StatusOr<OneDnnConvPrimitive> CreateOneDnnConvPrimitive(
-    const xla::gpu::GpuConvConfig& config,
-    absl::Span<const DeviceAddressBase> operand_buffers,
-    DeviceAddressBase result_buffer, Stream* stream,
-    ScratchAllocator* scratch_allocator) {
-  OneDnnConvPrimitive onednn_conv_primitive;
+absl::StatusOr<OneDnnConvPrimitiveDesc> CreateOneDnnConvPrimitiveDesc(
+    const OneDnnConvConfig& config, Stream* stream) {
+  OneDnnConvPrimitiveDesc pd;
   ::sycl::queue* sycl_queue =
       absl::bit_cast<::sycl::queue*>(stream->platform_specific_handle().stream);
-  onednn_conv_primitive.engine = FindOrCreateEngine(sycl_queue);
-  onednn_conv_primitive.stream = dnnl::sycl_interop::make_stream(
-      onednn_conv_primitive.engine, *sycl_queue);
 
-  DataLayout input_dl = config.input_descriptor.layout();
-  FilterLayout filter_dl = config.filter_descriptor.layout();
-  DataLayout output_dl = config.output_descriptor.layout();
+  const DataLayout input_dl = config.input_descriptor.layout();
+  const FilterLayout filter_dl = config.filter_descriptor.layout();
+  const DataLayout output_dl = config.output_descriptor.layout();
 
-  xla::PrimitiveType input_type;
-  void* input_data;
-  void* filter_data;
-  void* output_data;
-  void* bias_data = nullptr;
-  void* side_input_data = nullptr;
-
-  float alpha = config.conv_result_scale;
-  bool alpha_is_one = (fabs(alpha - 1.0f) < 1e-6);
-  xla::gpu::CudnnConvKind conv_kind = config.kind;
-
-  // Get input type based on convolution kind
+  dnn::DataType input_type;
+  const float alpha = config.conv_result_scale;
+  const bool alpha_is_one = std::fabs(alpha - 1.0f) < 1e-6;
+  const dnn::ConvolutionKind conv_kind = config.kind;
   switch (conv_kind) {
-    case xla::gpu::CudnnConvKind::kForward:
-    case xla::gpu::CudnnConvKind::kForwardActivation:
-    case xla::gpu::CudnnConvKind::kBackwardFilter:
+    case dnn::ConvolutionKind::FORWARD:
+    case dnn::ConvolutionKind::FORWARD_BIAS_ACTIVATION:
+    case dnn::ConvolutionKind::BACKWARD_FILTER:
       input_type = config.input_type;
       break;
-    case xla::gpu::CudnnConvKind::kBackwardInput:
+    case dnn::ConvolutionKind::BACKWARD_DATA:
       input_type = config.output_type;
       break;
     default:
       return absl::InvalidArgumentError("Unknown convolution kind");
   }
 
-  // Get buffer pointers
-  ABSL_ASSIGN_OR_RETURN(
-      auto buffers,
-      GetConvBufferPointers(conv_kind, operand_buffers, result_buffer));
-  input_data = buffers.input_data;
-  filter_data = buffers.filter_data;
-  output_data = buffers.output_data;
-
-  float side_input_scale = 0.0f;
-  bool side_input_scale_zero = true;
-  if (conv_kind == xla::gpu::CudnnConvKind::kForwardActivation) {
-    bias_data = const_cast<void*>(operand_buffers[2].opaque());
-    if (operand_buffers.size() >= 4) {
-      side_input_data = const_cast<void*>(operand_buffers[3].opaque());
-      side_input_scale = config.fusion->side_input_scale;
-      side_input_scale_zero = (fabs(side_input_scale - 0.0f) < 1e-6);
-    }
-  }
-
   // TODO(intel-tf): depthwise-conv
   const int64_t group_count = config.conv_desc.group_count();
   const bool is_group_conv = group_count > 1;
   const int64_t output_channels = config.output_descriptor.feature_map_count();
+  const bool is_conv3d = (config.conv_desc.ndims() == 3);
 
-  absl::Span<const int64_t> padding_dimensions = config.conv_desc.padding();
-  absl::Span<const int64_t> stride_dimensions = config.conv_desc.strides();
-  absl::Span<const int64_t> dilations_dimensions = config.conv_desc.dilations();
+  const absl::Span<const int64_t> padding_dimensions =
+      config.conv_desc.padding();
+  const absl::Span<const int64_t> stride_dimensions =
+      config.conv_desc.strides();
+  const absl::Span<const int64_t> dilations_dimensions =
+      config.conv_desc.dilations();
 
-  bool is_conv3d = (config.conv_desc.ndims() == 3);
+  std::vector<int64_t> src_full =
+      config.input_descriptor.full_dims(DataLayout::kBatchDepthYX);
+  std::vector<int64_t> dst_full =
+      config.output_descriptor.full_dims(DataLayout::kBatchDepthYX);
+  dnnl::memory::dims src_dims(src_full.begin(), src_full.end());
+  dnnl::memory::dims dst_dims(dst_full.begin(), dst_full.end());
+  dnnl::memory::dims filter_dims =
+      ToOneDnnFilterDims(config.filter_descriptor, group_count);
+  dnnl::memory::dims bias_dims = {output_channels};
+  dnnl::memory::dims stride_dims(stride_dimensions.begin(),
+                                 stride_dimensions.end());
+  dnnl::memory::dims padding_dims_l(padding_dimensions.begin(),
+                                    padding_dimensions.end());
+  dnnl::memory::dims padding_dims_r = padding_dims_l;
+  dnnl::memory::dims dilation_dims(dilations_dimensions.size());
+  std::transform(dilations_dimensions.begin(), dilations_dimensions.end(),
+                 dilation_dims.begin(), [](int64_t d) { return d - 1; });
+
+  dnnl::memory::format_tag src_fmt, weight_fmt, dst_fmt;
+  ABSL_ASSIGN_OR_RETURN(src_fmt, ToOneDnnDataFormatTag(input_dl, is_conv3d));
+  ABSL_ASSIGN_OR_RETURN(
+      weight_fmt, ToOneDnnFilterFormatTag(filter_dl, is_conv3d, is_group_conv));
+  ABSL_ASSIGN_OR_RETURN(dst_fmt, ToOneDnnDataFormatTag(output_dl, is_conv3d));
+  ABSL_ASSIGN_OR_RETURN(dnnl::memory::data_type data_type,
+                   ToOneDnnDataType(input_type));
+  pd.kind = conv_kind;
   try {
-    std::vector<int64_t> src_full =
-        config.input_descriptor.full_dims(DataLayout::kBatchDepthYX);
-    std::vector<int64_t> dst_full =
-        config.output_descriptor.full_dims(DataLayout::kBatchDepthYX);
-    dnnl::memory::dims src_dims(src_full.begin(), src_full.end());
-    dnnl::memory::dims dst_dims(dst_full.begin(), dst_full.end());
-    dnnl::memory::dims filter_dims =
-        ToOneDnnFilterDims(config.filter_descriptor, group_count);
-    dnnl::memory::dims bias_dims = {output_channels};
-    dnnl::memory::dims stride_dims(stride_dimensions.begin(),
-                                   stride_dimensions.end());
-    dnnl::memory::dims padding_dims_l(padding_dimensions.begin(),
-                                      padding_dimensions.end());
-    dnnl::memory::dims padding_dims_r = padding_dims_l;
-    dnnl::memory::dims dilation_dims(dilations_dimensions.size());
-    std::transform(dilations_dimensions.begin(), dilations_dimensions.end(),
-                   dilation_dims.begin(), [](int64_t d) { return d - 1; });
-    dnnl::memory::format_tag src_fmt, weight_fmt, dst_fmt;
-    ABSL_ASSIGN_OR_RETURN(src_fmt, ToOneDnnDataFormatTag(input_dl, is_conv3d));
-    ABSL_ASSIGN_OR_RETURN(weight_fmt, ToOneDnnFilterFormatTag(filter_dl, is_conv3d,
-                                                         is_group_conv));
-    ABSL_ASSIGN_OR_RETURN(dst_fmt, ToOneDnnDataFormatTag(output_dl, is_conv3d));
-    ABSL_ASSIGN_OR_RETURN(dnnl::memory::data_type data_type,
-                     ToOneDnnDataType(input_type));
+    pd.engine = FindOrCreateEngine(sycl_queue);
+    pd.src_md = dnnl::memory::desc({src_dims}, data_type, src_fmt);
+    pd.dst_md = dnnl::memory::desc({dst_dims}, data_type, dst_fmt);
+    pd.filter_md = dnnl::memory::desc({filter_dims}, data_type, weight_fmt);
 
-    dnnl::memory::desc src_md =
-        dnnl::memory::desc({src_dims}, data_type, src_fmt);
-    dnnl::memory::desc filter_md =
-        dnnl::memory::desc({filter_dims}, data_type, weight_fmt);
-    dnnl::memory::desc dst_md =
-        dnnl::memory::desc({dst_dims}, data_type, dst_fmt);
-
+    // ONEDNN_PLAIN_WEIGHT forces the primitive descriptor to keep the
+    // caller's filter layout; otherwise let oneDNN pick an internal
+    // pre-packed layout via format_tag::any.
     bool use_plain_weight = false;
     ABSL_RETURN_IF_ERROR(tsl::ReadBoolFromEnvVar("ONEDNN_PLAIN_WEIGHT", false,
                                             &use_plain_weight));
-    dnnl::memory::desc filter_md_prefer = dnnl::memory::desc(
-        {filter_dims}, data_type, dnnl::memory::format_tag::any);
-    if (use_plain_weight) {
-      filter_md_prefer =
-          dnnl::memory::desc({filter_dims}, data_type, weight_fmt);
-    }
+    dnnl::memory::desc filter_md_prefer =
+        use_plain_weight
+            ? dnnl::memory::desc({filter_dims}, data_type, weight_fmt)
+            : dnnl::memory::desc({filter_dims}, data_type,
+                                 dnnl::memory::format_tag::any);
 
-    dnnl::memory src_memory =
-        CreateDnnlMemory(src_md, onednn_conv_primitive.engine, input_data);
-    dnnl::memory filter_memory =
-        CreateDnnlMemory(filter_md, onednn_conv_primitive.engine, filter_data);
-    dnnl::memory dst_memory =
-        CreateDnnlMemory(dst_md, onednn_conv_primitive.engine, output_data);
-
-    // oneDNN's `sum` post-op computes `dst = conv + beta * dst`, reading the
-    // current dst buffer. The side input lives in a separate operand, so we
-    // create a reorder that copies it into dst before each conv execute.
-    dnnl::memory side_input_memory;
-    if (side_input_data && !side_input_scale_zero) {
-      side_input_memory = CreateDnnlMemory(dst_md, onednn_conv_primitive.engine,
-                                           side_input_data);
-      onednn_conv_primitive.side_input_reorder =
-          CreateReorderOp(side_input_memory, dst_memory);
-    }
+    const bool has_fusion = config.fusion.has_value();
+    const double side_input_scale =
+        has_fusion ? config.fusion->side_input_scale : 0.0;
+    pd.has_side_input_sum = has_fusion && std::fabs(side_input_scale) > 1e-6;
 
     // Fused forward conv computes `out = activation(alpha * conv(x, w) +
     // beta * side + bias)`. How each term is expressed depends on `alpha`:
@@ -376,160 +331,210 @@ absl::StatusOr<OneDnnConvPrimitive> CreateOneDnnConvPrimitive(
     //               (eltwise_linear alpha, sum beta, binary_add bias,
     //                activation).
     //
-    // Post-ops are applied in append order, and the terms below are appended
-    // to `po` accordingly.
+    // Post-ops are applied in append order.
     dnnl::post_ops po;
-    dnnl::primitive_attr post_ops_attr;
     if (!alpha_is_one) {
       po.append_eltwise(dnnl::algorithm::eltwise_linear, alpha, 0);
     }
-    if (side_input_data && !side_input_scale_zero) {
+    if (pd.has_side_input_sum) {
       po.append_sum(side_input_scale);
     }
-    // Post-op bias goes only on the forward path; staged here, applied below.
-    dnnl::memory post_op_bias_memory;
-    int post_op_bias_arg_key = 0;
-    bool has_post_op_bias = false;
-    // Bias can be fused directly into the primitive descriptor (via
-    // bias_md) only when alpha == 1. Otherwise, it's applied as
-    // a post-op.
-    if (!alpha_is_one && bias_data) {
+    if (has_fusion && !alpha_is_one) {
       dnnl::memory::dims bias_post_dims(dst_dims.size(), 1);
-      bias_post_dims[1] =
-          bias_dims[0];  // Logical dimension 1 is always channels (C) in oneDNN
-      auto bias_post_md =
-          dnnl::memory::desc(bias_post_dims, data_type, dst_fmt);
+      // Logical dimension 1 is always channels (C) in oneDNN.
+      bias_post_dims[1] = bias_dims[0];
+      dnnl::memory::desc bias_post_md(bias_post_dims, data_type, dst_fmt);
       po.append_binary(dnnl::algorithm::binary_add, bias_post_md);
-      post_op_bias_memory = CreateDnnlMemory(
-          bias_post_md, onednn_conv_primitive.engine, bias_data);
-      post_op_bias_arg_key =
-          DNNL_ARG_ATTR_MULTIPLE_POST_OP(po.len() - 1) | DNNL_ARG_SRC_1;
-      has_post_op_bias = true;
+      pd.bias = OneDnnConvPrimitiveDesc::Bias{
+          bias_post_md,
+          DNNL_ARG_ATTR_MULTIPLE_POST_OP(po.len() - 1) | DNNL_ARG_SRC_1};
     }
-    if (conv_kind == xla::gpu::CudnnConvKind::kForwardActivation) {
+    if (has_fusion) {
       switch (config.fusion->mode) {
-        case stream_executor::dnn::kSigmoid:
+        case dnn::kSigmoid:
           po.append_eltwise(dnnl::algorithm::eltwise_logistic, 1, 0);
           break;
-        case stream_executor::dnn::kRelu:
+        case dnn::kRelu:
           po.append_eltwise(dnnl::algorithm::eltwise_relu, 0, 0);
           break;
-        case stream_executor::dnn::kRelu6:
+        case dnn::kRelu6:
           po.append_eltwise(dnnl::algorithm::eltwise_clip_v2, 0, 6);
           break;
-        case stream_executor::dnn::kTanh:
+        case dnn::kTanh:
           po.append_eltwise(dnnl::algorithm::eltwise_tanh, 0, 0);
           break;
-        case stream_executor::dnn::kElu:
+        case dnn::kElu:
           po.append_eltwise(dnnl::algorithm::eltwise_elu, 1, 0);
           break;
-        case stream_executor::dnn::kLeakyRelu:
+        case dnn::kLeakyRelu:
           po.append_eltwise(dnnl::algorithm::eltwise_relu,
                             config.fusion->leakyrelu_alpha, 0);
           break;
-        case stream_executor::dnn::kNone:
+        case dnn::kNone:
           break;
         default:
           return absl::InvalidArgumentError("Unsupported Activation mode");
       }
     }
+    dnnl::primitive_attr post_ops_attr;
     post_ops_attr.set_post_ops(po);
     post_ops_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
-    // Set fp32 mode.
-    dnnl::fpmath_mode fp32_math_mode = GetFP32MathMode();
-    if (input_type == xla::F32) {
-      post_ops_attr.set_fpmath_mode(fp32_math_mode);
+    if (input_type == dnn::DataType::kFloat) {
+      post_ops_attr.set_fpmath_mode(GetFP32MathMode());
     }
-    switch (conv_kind) {
-      case xla::gpu::CudnnConvKind::kForward:
-      case xla::gpu::CudnnConvKind::kForwardActivation: {
-        // Bias can be fused directly into the primitive descriptor (via
-        // bias_md) only when alpha == 1.
-        std::optional<dnnl::memory::desc> bias_md;
-        if (bias_data != nullptr && alpha_is_one) {
-          bias_md = dnnl::memory::desc(bias_dims, data_type,
-                                       dnnl::memory::format_tag::x);
-        }
-        // Create the convolution forward primitive descriptor with the
-        // appropriate bias memory descriptor.
-        ConvFwdPd fwd_pd = CreateConvFwdPd(
-            onednn_conv_primitive.engine, src_md, filter_md_prefer, bias_md,
-            dst_md, stride_dims, dilation_dims, padding_dims_l, padding_dims_r,
-            post_ops_attr);
 
-        // Build a convolution primitive
+    // Backward primitives don't take post-ops; their pds only need
+    // scratchpad + fpmath, plus a forward hint built with the same attrs.
+    dnnl::primitive_attr bwd_attr;
+    bwd_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
+    if (input_type == dnn::DataType::kFloat) {
+      bwd_attr.set_fpmath_mode(GetFP32MathMode());
+    }
+
+    switch (conv_kind) {
+      case dnn::ConvolutionKind::FORWARD:
+      case dnn::ConvolutionKind::FORWARD_BIAS_ACTIVATION: {
+        if (has_fusion && alpha_is_one) {
+          pd.bias = OneDnnConvPrimitiveDesc::Bias{
+              dnnl::memory::desc(bias_dims, data_type,
+                                 dnnl::memory::format_tag::x),
+              DNNL_ARG_BIAS};
+        }
+        std::optional<dnnl::memory::desc> primitive_bias_md;
+        if (pd.bias.has_value() && pd.bias->arg_key == DNNL_ARG_BIAS) {
+          primitive_bias_md = pd.bias->md;
+        }
+        pd.conv_pd = CreateConvFwdPd(pd.engine, pd.src_md, filter_md_prefer,
+                                     primitive_bias_md, pd.dst_md, stride_dims,
+                                     dilation_dims, padding_dims_l,
+                                     padding_dims_r, post_ops_attr);
+        break;
+      }
+      case dnn::ConvolutionKind::BACKWARD_DATA: {
+        ConvFwdPd fwd_hint = CreateConvFwdPd(
+            pd.engine, pd.src_md, filter_md_prefer, /*bias_md=*/std::nullopt,
+            pd.dst_md, stride_dims, dilation_dims, padding_dims_l,
+            padding_dims_r, bwd_attr);
+        pd.conv_pd = ConvBwdInputPd(
+            pd.engine, dnnl::algorithm::convolution_direct, pd.src_md,
+            filter_md_prefer, pd.dst_md, stride_dims, dilation_dims,
+            padding_dims_l, padding_dims_r, fwd_hint, bwd_attr);
+        break;
+      }
+      case dnn::ConvolutionKind::BACKWARD_FILTER: {
+        ConvFwdPd fwd_hint = CreateConvFwdPd(
+            pd.engine, pd.src_md, filter_md_prefer, /*bias_md=*/std::nullopt,
+            pd.dst_md, stride_dims, dilation_dims, padding_dims_l,
+            padding_dims_r, bwd_attr);
+        pd.conv_pd = ConvBwdFilterPd(
+            pd.engine, dnnl::algorithm::convolution_direct, pd.src_md,
+            filter_md_prefer, pd.dst_md, stride_dims, dilation_dims,
+            padding_dims_l, padding_dims_r, fwd_hint, bwd_attr);
+        break;
+      }
+      default:
+        return absl::InvalidArgumentError("Unknown convolution kind");
+    }
+  } catch (const dnnl::error& e) {
+    return absl::InternalError(absl::StrCat("OneDNN Conv error: ", e.message));
+  }
+  return pd;
+}
+
+absl::StatusOr<OneDnnConvPrimitive> CreateOneDnnConvPrimitive(
+    const OneDnnConvPrimitiveDesc& pd,
+    absl::Span<const DeviceAddressBase> operand_buffers,
+    DeviceAddressBase result_buffer, Stream* stream) {
+  OneDnnConvPrimitive onednn_conv_primitive;
+  ::sycl::queue* sycl_queue =
+      absl::bit_cast<::sycl::queue*>(stream->platform_specific_handle().stream);
+  onednn_conv_primitive.engine = pd.engine;
+
+  const dnn::ConvolutionKind conv_kind = pd.kind;
+  ABSL_ASSIGN_OR_RETURN(
+      ConvBufferPointers buffers,
+      GetConvBufferPointers(conv_kind, operand_buffers, result_buffer));
+
+  void* bias_data = nullptr;
+  void* side_input_data = nullptr;
+  if (pd.bias.has_value() && operand_buffers.size() >= 3) {
+    bias_data = const_cast<void*>(operand_buffers[2].opaque());
+  }
+  if (pd.has_side_input_sum && operand_buffers.size() >= 4) {
+    side_input_data = const_cast<void*>(operand_buffers[3].opaque());
+  }
+  if (pd.has_side_input_sum && side_input_data == nullptr) {
+    return absl::InvalidArgumentError(
+        "Fused convolution requires a side input buffer");
+  }
+  if (pd.bias.has_value() && bias_data == nullptr) {
+    return absl::InvalidArgumentError(
+        "Fused convolution requires a bias buffer");
+  }
+  try {
+    onednn_conv_primitive.stream = dnnl::sycl_interop::make_stream(
+        onednn_conv_primitive.engine, *sycl_queue);
+    dnnl::memory src_memory = CreateDnnlMemory(
+        pd.src_md, onednn_conv_primitive.engine, buffers.input_data);
+    dnnl::memory filter_memory = CreateDnnlMemory(
+        pd.filter_md, onednn_conv_primitive.engine, buffers.filter_data);
+    dnnl::memory dst_memory = CreateDnnlMemory(
+        pd.dst_md, onednn_conv_primitive.engine, buffers.output_data);
+
+    // oneDNN's `sum` post-op computes `dst = conv + beta * dst`, reading the
+    // current dst buffer. When the side input uses a separate buffer, copy it
+    // into dst before each conv execute.
+    dnnl::memory side_input_memory;
+    if (pd.has_side_input_sum && side_input_data != nullptr &&
+        side_input_data != buffers.output_data) {
+      side_input_memory = CreateDnnlMemory(
+          pd.dst_md, onednn_conv_primitive.engine, side_input_data);
+      onednn_conv_primitive.side_input_reorder =
+          CreateReorderOp(side_input_memory, dst_memory);
+    }
+
+    switch (conv_kind) {
+      case dnn::ConvolutionKind::FORWARD:
+      case dnn::ConvolutionKind::FORWARD_BIAS_ACTIVATION: {
+        const ConvFwdPd& fwd_pd = std::get<ConvFwdPd>(pd.conv_pd);
         ConvFwd fwd;
         ABSL_ASSIGN_OR_RETURN(
-            fwd,
-            (BuildConvOp<ConvFwdPd, dnnl::convolution_forward, ConvFwd>(
-                fwd_pd, std::move(src_memory), DNNL_ARG_SRC,
-                std::move(filter_memory), DNNL_ARG_WEIGHTS,
-                std::move(dst_memory), DNNL_ARG_DST, filter_md,
-                fwd_pd.weights_desc(),
-                /*prepack_filter=*/true, onednn_conv_primitive.engine,
-                scratch_allocator, &onednn_conv_primitive.filter_reorder)));
+            fwd, (BuildConvOp<ConvFwdPd, dnnl::convolution_forward, ConvFwd>(
+                     fwd_pd, std::move(src_memory), DNNL_ARG_SRC,
+                     std::move(filter_memory), DNNL_ARG_WEIGHTS,
+                     std::move(dst_memory), DNNL_ARG_DST, pd.filter_md,
+                     fwd_pd.weights_desc(),
+                     /*prepack_filter=*/true, onednn_conv_primitive.engine,
+                     &onednn_conv_primitive.filter_reorder)));
 
         fwd.side_input = std::move(side_input_memory);
-        if (bias_md.has_value()) {
-          fwd.bias = CreateDnnlMemory(bias_md.value(),
-                                      onednn_conv_primitive.engine, bias_data);
-          fwd.args.insert({DNNL_ARG_BIAS, fwd.bias});
-        }
-        if (has_post_op_bias) {
-          fwd.bias = std::move(post_op_bias_memory);
-          fwd.args.insert({post_op_bias_arg_key, fwd.bias});
+        if (pd.bias.has_value() && bias_data != nullptr) {
+          fwd.bias = CreateDnnlMemory(pd.bias->md, onednn_conv_primitive.engine,
+                                      bias_data);
+          fwd.args.insert({pd.bias->arg_key, fwd.bias});
         }
         onednn_conv_primitive.op = std::move(fwd);
         break;
       }
-      case xla::gpu::CudnnConvKind::kBackwardInput: {
-        // Create a forward convolution primitive descriptor for the backward
-        // input convolution.
-        dnnl::primitive_attr attr;
-        if (input_type == xla::F32) {
-          attr.set_fpmath_mode(fp32_math_mode);
-        }
-        attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
-        ConvFwdPd fwd_pd = CreateConvFwdPd(
-            onednn_conv_primitive.engine, src_md, filter_md_prefer,
-            /*bias_md=*/std::nullopt, dst_md, stride_dims, dilation_dims,
-            padding_dims_l, padding_dims_r, attr);
-        ConvBwdInputPd bwd_input_pd = ConvBwdInputPd(
-            onednn_conv_primitive.engine, dnnl::algorithm::convolution_direct,
-            src_md, filter_md_prefer, dst_md, stride_dims, dilation_dims,
-            padding_dims_l, padding_dims_r, fwd_pd, attr);
-
+      case dnn::ConvolutionKind::BACKWARD_DATA: {
+        const ConvBwdInputPd& bwd_input_pd =
+            std::get<ConvBwdInputPd>(pd.conv_pd);
         ConvBwdData bwd;
         ABSL_ASSIGN_OR_RETURN(
-            bwd,
-            (BuildConvOp<ConvBwdInputPd, dnnl::convolution_backward_data,
-                         ConvBwdData>(
-                bwd_input_pd, std::move(src_memory), DNNL_ARG_DIFF_SRC,
-                std::move(filter_memory), DNNL_ARG_WEIGHTS,
-                std::move(dst_memory), DNNL_ARG_DIFF_DST, filter_md,
-                bwd_input_pd.weights_desc(),
-                /*prepack_filter=*/true, onednn_conv_primitive.engine,
-                scratch_allocator, &onednn_conv_primitive.filter_reorder)));
-
+            bwd, (BuildConvOp<ConvBwdInputPd, dnnl::convolution_backward_data,
+                              ConvBwdData>(
+                     bwd_input_pd, std::move(src_memory), DNNL_ARG_DIFF_SRC,
+                     std::move(filter_memory), DNNL_ARG_WEIGHTS,
+                     std::move(dst_memory), DNNL_ARG_DIFF_DST, pd.filter_md,
+                     bwd_input_pd.weights_desc(),
+                     /*prepack_filter=*/true, onednn_conv_primitive.engine,
+                     &onednn_conv_primitive.filter_reorder)));
         onednn_conv_primitive.op = std::move(bwd);
         break;
       }
-      case xla::gpu::CudnnConvKind::kBackwardFilter: {
-        // Create a forward convolution primitive descriptor for the backward
-        // weights convolution.
-        dnnl::primitive_attr attr;
-        if (input_type == xla::F32) {
-          attr.set_fpmath_mode(fp32_math_mode);
-        }
-        attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
-        ConvFwdPd fwd_pd = CreateConvFwdPd(
-            onednn_conv_primitive.engine, src_md, filter_md_prefer,
-            /*bias_md=*/std::nullopt, dst_md, stride_dims, dilation_dims,
-            padding_dims_l, padding_dims_r, attr);
-        ConvBwdFilterPd bwd_filter_pd = ConvBwdFilterPd(
-            onednn_conv_primitive.engine, dnnl::algorithm::convolution_direct,
-            src_md, filter_md_prefer, dst_md, stride_dims, dilation_dims,
-            padding_dims_l, padding_dims_r, fwd_pd, attr);
+      case dnn::ConvolutionKind::BACKWARD_FILTER: {
+        const ConvBwdFilterPd& bwd_filter_pd =
+            std::get<ConvBwdFilterPd>(pd.conv_pd);
         ConvBwdWeights bwd;
         ABSL_ASSIGN_OR_RETURN(
             bwd,
@@ -537,11 +542,10 @@ absl::StatusOr<OneDnnConvPrimitive> CreateOneDnnConvPrimitive(
                          ConvBwdWeights>(
                 bwd_filter_pd, std::move(src_memory), DNNL_ARG_SRC,
                 std::move(filter_memory), DNNL_ARG_DIFF_WEIGHTS,
-                std::move(dst_memory), DNNL_ARG_DIFF_DST, filter_md,
+                std::move(dst_memory), DNNL_ARG_DIFF_DST, pd.filter_md,
                 bwd_filter_pd.diff_weights_desc(),
                 /*prepack_filter=*/false, onednn_conv_primitive.engine,
-                scratch_allocator, &onednn_conv_primitive.filter_reorder)));
-
+                &onednn_conv_primitive.filter_reorder)));
         onednn_conv_primitive.op = std::move(bwd);
         break;
       }
@@ -554,7 +558,7 @@ absl::StatusOr<OneDnnConvPrimitive> CreateOneDnnConvPrimitive(
   return onednn_conv_primitive;
 }
 
-absl::Status DoOnednnConv(const OneDnnConvPrimitive& onednn_primitive) {
+absl::Status DoOneDnnConv(const OneDnnConvPrimitive& onednn_primitive) {
   try {
     auto execute_reorder = [&](const std::optional<ReorderOp>& reorder) {
       if (reorder) {

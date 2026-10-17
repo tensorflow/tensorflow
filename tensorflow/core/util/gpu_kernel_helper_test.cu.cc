@@ -170,7 +170,7 @@ class GpuLaunchConfigTest : public ::testing::Test {
     ASSERT_EQ(cudaSuccess, err) << cudaGetErrorString(err);
 #endif
   }
-  virtual void SetUp() {
+  void SetUp() override {
 #if GOOGLE_CUDA
     cudaError_t err = cudaMallocManaged(&outbuf, sizeof(int) * bufsize);
     outbuf_host = outbuf;
@@ -181,7 +181,7 @@ class GpuLaunchConfigTest : public ::testing::Test {
     ASSERT_EQ(cudaSuccess, err) << cudaGetErrorString(err);
   }
 
-  virtual void TearDown() {
+  void TearDown() override {
     ASSERT_EQ(gpuDeviceSynchronize(), cudaSuccess);
     ASSERT_EQ(gpuFree(outbuf), cudaSuccess);
     outbuf = nullptr;

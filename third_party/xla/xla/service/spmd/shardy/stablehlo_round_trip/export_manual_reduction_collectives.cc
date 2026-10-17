@@ -24,10 +24,13 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/CommandLine.h"
+#include "mlir/IR/Block.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -115,14 +118,27 @@ Value createFullyManualComputation(
     std::function<Value(mlir::BlockArgument arg, OpBuilder& blockBuilder,
                         RankedTensorType paddedGlobalType)>
         bodyPopulator) {
+  llvm::SmallDenseSet<StringRef> boundManualAxes;
+  if (mlir::Block* block = builder.getInsertionBlock()) {
+    for (mlir::Operation* parentOp = block->getParentOp(); parentOp != nullptr;
+         parentOp = parentOp->getParentOp()) {
+      if (auto parentManual = mlir::dyn_cast<ManualComputationOp>(parentOp)) {
+        for (StringRef axisName : parentManual.getManualAxes()) {
+          boundManualAxes.insert(axisName);
+        }
+      }
+    }
+  }
   SmallVector<mlir::StringAttr> manualAxes;
   manualAxes.reserve(mesh.getAxes().size());
   for (sdy::MeshAxisAttr axis : mesh.getAxes()) {
-    manualAxes.push_back(builder.getStringAttr(axis.getName()));
+    if (!boundManualAxes.contains(axis.getName())) {
+      manualAxes.push_back(builder.getStringAttr(axis.getName()));
+    }
   }
   TensorShardingAttr inSharding = sdy::getOrCreateSharding(input, mesh);
   if (!unreducedAxes.empty()) {
-    inSharding = inSharding.replaceUnreducedAxes(unreducedAxes);
+    inSharding = inSharding.replaceUnreducedAxes(unreducedAxes, reductionOp);
   }
 
   auto globalType = mlir::dyn_cast<RankedTensorType>(input.getType());
@@ -441,7 +457,8 @@ void syncInOutUnreducedAxes(mlir::Operation* op) {
   }
 
   sdy::setSharding(
-      input, inSharding.replaceUnreducedAxes(outSharding.getUnreducedAxes()));
+      input, inSharding.replaceUnreducedAxes(outSharding.getUnreducedAxes(),
+                                             outSharding.getReductionOp()));
 }
 
 class StablehloExportManualReductionCollectivesPass

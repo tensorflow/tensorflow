@@ -209,7 +209,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(_test_combinations())
   def testMapDataset(self, apply_map):
-    """Test an dataset that maps a TF function across its input elements."""
+    """Test a dataset that maps a TF function across its input elements."""
     # The pipeline is TensorSliceDataset -> MapDataset(square_3) ->
     # RepeatDataset(count).
     components = (np.arange(7),
@@ -290,7 +290,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
           combinations.combine(use_unbounded_threadpool=[None, True, False])))
   def testParallelMapDataset(self, apply_map, num_parallel_calls, buffer_size,
                              use_unbounded_threadpool):
-    """Test an dataset that maps a TF function across its input elements."""
+    """Test a dataset that maps a TF function across its input elements."""
 
     # The pipeline is TensorSliceDataset -> ParallelMapDataset(square_3) ->
     # RepeatDataset(count).

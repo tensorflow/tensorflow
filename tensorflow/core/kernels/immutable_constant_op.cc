@@ -24,7 +24,7 @@ namespace tensorflow {
 namespace {
 class MemmappedTensorAllocator : public Allocator {
  public:
-  MemmappedTensorAllocator() {}
+  MemmappedTensorAllocator() = default;
 
   absl::Status InitializeFromRegion(const std::string& name, Env* env) {
     const auto status =
@@ -110,7 +110,7 @@ void ImmutableConstantOp::Compute(OpKernelContext* ctx) {
   allocator.release()->set_delete_on_deallocate();
 }
 
-ImmutableConstantOp::~ImmutableConstantOp() {}
+ImmutableConstantOp::~ImmutableConstantOp() = default;
 constexpr char const* ImmutableConstantOp::kDTypeAttr;
 constexpr char const* ImmutableConstantOp::kShapeAttr;
 constexpr char const* ImmutableConstantOp::kMemoryRegionNameAttr;

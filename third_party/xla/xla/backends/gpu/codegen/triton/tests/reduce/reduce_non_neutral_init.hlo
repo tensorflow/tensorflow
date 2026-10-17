@@ -1,7 +1,5 @@
-// RUN: fusion_to_triton --xla_gpu_experimental_enable_tiling_propagation=false %s | FileCheck %s --check-prefix=CHECK-UNTILED
-// RUN: triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation=false %s
-// RUN: fusion_to_triton --xla_gpu_experimental_enable_tiling_propagation %s | FileCheck %s --check-prefixes=CHECK-TILED
-// RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation
+// RUN: fusion_to_triton %s | FileCheck %s
+// RUN: triton_test_correctness %s
 
 region {
   p0 = f32[] parameter(0)
@@ -16,15 +14,10 @@ fusion {
     backend_config={sizes:[4]}
 }
 
-// CHECK-UNTILED: %[[INIT:.*]] = arith.constant dense<5.000000e+00> : tensor<4xf32>
-// CHECK-UNTILED: %[[REDUCE_INPUT:.*]] = xtile.extract %{{.*}} :
-// CHECK-UNTILED: %[[REDUCE:.*]] = "tt.reduce"(%[[REDUCE_INPUT]]) <{axis = 1 : i32}>
-// CHECK-UNTILED: %[[COMBINED:.*]] = arith.maximumf %[[REDUCE]], %[[INIT]] : tensor<4xf32>
-
-// CHECK-TILED-DAG: %[[INIT_VAL:.*]] = arith.constant dense<5.000000e+00> : tensor<4xf32>
-// CHECK-TILED: %[[FOR:.*]] = scf.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}}
-// CHECK-TILED: %[[REDUCE:.*]] = "tt.reduce"(%[[FOR]]) <{axis = 1 : i32}>
-// CHECK-TILED: %[[COMBINED:.*]] = arith.maximumf %[[REDUCE]], %[[INIT_VAL]] : tensor<4xf32>
+// CHECK-DAG: %[[INIT_VAL:.*]] = arith.constant dense<5.000000e+00> : tensor<4xf32>
+// CHECK: %[[FOR:.*]] = scf.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}}
+// CHECK: %[[REDUCE:.*]] = "tt.reduce"(%[[FOR]]) <{axis = 1 : i32}>
+// CHECK: %[[COMBINED:.*]] = arith.maximumf %[[REDUCE]], %[[INIT_VAL]] : tensor<4xf32>
 
 ENTRY main {
   p = f32[8,16] parameter(0)

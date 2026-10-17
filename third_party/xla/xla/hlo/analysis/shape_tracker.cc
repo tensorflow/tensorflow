@@ -59,75 +59,11 @@ limitations under the License.
 namespace xla {
 namespace {
 
-struct PhysicalDimension {
-  int64_t size = 0;
-  int64_t src_logical_idx = -1;
-  int64_t dst_logical_idx = -1;
-  int64_t idx = -1;
-  int64_t src_expanded_idx = -1;
-};
-
-// Returns a common physical decomposition of dimensions for both shapes to
-// facilitate bitcast lowering. The returned dimensions are ordered major to
-// minor.
-absl::StatusOr<std::vector<PhysicalDimension>> BuildPhysicalDimensions(
-    const Shape& src_shape, const Shape& dst_shape) {
-  std::vector<PhysicalDimension> result;
-  int64_t src_idx = 0;
-  int64_t dst_idx = 0;
-  int64_t src_rem = 1;
-  int64_t dst_rem = 1;
-
-  auto get_dim = [](const Shape& shape, int64_t idx) {
-    return shape.dimensions(shape.layout().minor_to_major(idx));
-  };
-  auto get_logical = [](const Shape& shape, int64_t idx) {
-    return shape.layout().minor_to_major(idx);
-  };
-
-  while (src_idx < src_shape.dimensions().size() ||
-         dst_idx < dst_shape.dimensions().size()) {
-    if (src_rem == 1 && src_idx < src_shape.dimensions().size()) {
-      src_rem = get_dim(src_shape, src_idx);
-    }
-    if (dst_rem == 1 && dst_idx < dst_shape.dimensions().size()) {
-      dst_rem = get_dim(dst_shape, dst_idx);
-    }
-
-    int64_t size = std::min(src_rem, dst_rem);
-    PhysicalDimension dim;
-    dim.size = size;
-    dim.src_logical_idx =
-        src_idx < src_shape.dimensions().size()
-            ? get_logical(src_shape, src_idx)
-            : get_logical(src_shape, src_shape.dimensions().size() - 1);
-    dim.dst_logical_idx =
-        dst_idx < dst_shape.dimensions().size()
-            ? get_logical(dst_shape, dst_idx)
-            : get_logical(dst_shape, dst_shape.dimensions().size() - 1);
-    result.push_back(dim);
-
-    if (src_rem % size != 0 || dst_rem % size != 0) {
-      return absl::InvalidArgumentError("Cannot decompose bitcast");
-    }
-
-    src_rem /= size;
-    dst_rem /= size;
-
-    if (src_rem == 1) {
-      src_idx++;
-    }
-    if (dst_rem == 1) {
-      dst_idx++;
-    }
-  }
-
-  absl::c_reverse(result);
-  size_t idx = 0;
-  for (PhysicalDimension& dim : result) {
-    dim.idx = idx++;
-  }
-  return result;
+// Returns the dimensions of `shape` in major-to-minor order, i.e. the
+// permutation that transposes `shape` into its physical order.
+std::vector<int64_t> MajorToMinor(const Shape& shape) {
+  absl::Span<const int64_t> minor_to_major = shape.layout().minor_to_major();
+  return std::vector<int64_t>(minor_to_major.rbegin(), minor_to_major.rend());
 }
 
 void TryFoldProjections(std::vector<ShapeTracker::BufferView>& projections) {
@@ -552,8 +488,9 @@ absl::Status ShapeTracker::AppendReshape(absl::Span<const int64_t> dimensions) {
   return absl::OkStatus();
 }
 
-// Decomposes a bitcast into a reshape-transpose-reshape sequence and appends
-// it to the tracker.
+// A bitcast reinterprets the physical buffer, so it is a transpose of the
+// source into its physical order, a reshape to the destination's physical
+// dimensions and a transpose back into the destination's logical order.
 absl::Status ShapeTracker::AppendBitcast(const xla::Shape& src_shape,
                                          const xla::Shape& dst_shape) {
   if (ShapeUtil::ElementsIn(src_shape) != ShapeUtil::ElementsIn(dst_shape)) {
@@ -566,47 +503,11 @@ absl::Status ShapeTracker::AppendBitcast(const xla::Shape& src_shape,
         "Bitcast operand shape does not match current output shape");
   }
 
-  if (ShapeUtil::ElementsIn(output_shape_) == 1) {
-    return AppendReshape(dst_shape.dimensions());
-  }
-
-  ABSL_ASSIGN_OR_RETURN(std::vector<PhysicalDimension> dims,
-                   BuildPhysicalDimensions(src_shape, dst_shape));
-  absl::c_stable_sort(
-      dims, [](const PhysicalDimension& a, const PhysicalDimension& b) {
-        return a.src_logical_idx < b.src_logical_idx;
-      });
-  size_t idx = 0;
-  for (PhysicalDimension& dim : dims) {
-    dim.src_expanded_idx = idx++;
-  }
-
-  std::vector<int64_t> sizes;
-  sizes.reserve(dims.size());
-  for (const PhysicalDimension& dim : dims) {
-    sizes.push_back(dim.size);
-  }
-  // Decompose bitcast into reshape-transpose-reshape:
-  // 1. Reshape to physical dimensions.
-  ABSL_RETURN_IF_ERROR(AppendReshape(sizes));
-
-  absl::c_sort(dims, [](const PhysicalDimension& a,
-                        const PhysicalDimension& b) { return a.idx < b.idx; });
-  absl::c_stable_sort(
-      dims, [](const PhysicalDimension& a, const PhysicalDimension& b) {
-        return a.dst_logical_idx < b.dst_logical_idx;
-      });
-  std::vector<int64_t> permutation;
-  permutation.reserve(dims.size());
-  for (const PhysicalDimension& dim : dims) {
-    permutation.push_back(dim.src_expanded_idx);
-  }
-  // 2. Transpose to match destination physical layout.
-  ABSL_RETURN_IF_ERROR(AppendTranspose(permutation));
-  // 3. Reshape to final destination shape.
-  ABSL_RETURN_IF_ERROR(AppendReshape(dst_shape.dimensions()));
-
-  return absl::OkStatus();
+  std::vector<int64_t> dst_major_to_minor = MajorToMinor(dst_shape);
+  ABSL_RETURN_IF_ERROR(AppendTranspose(MajorToMinor(src_shape)));
+  ABSL_RETURN_IF_ERROR(
+      AppendReshape(Permute(dst_shape.dimensions(), dst_major_to_minor)));
+  return AppendTranspose(InversePermutation(dst_major_to_minor));
 }
 
 absl::Status ShapeTracker::AppendInstruction(const HloInstruction* inst) {
@@ -742,6 +643,8 @@ absl::StatusOr<ShapeTracker> ShapeTracker::GetInverted() const {
   }
 
   ABSL_RETURN_IF_ERROR(inverted.AppendReshape(input_shape_.dimensions()));
+  // The reshape above resets the layout; restore the original input's one.
+  inverted.output_shape_ = input_shape_;
 
   return inverted;
 }
@@ -783,7 +686,8 @@ absl::Status ShapeTracker::PrependBitcast(const xla::Shape& src_shape,
   return absl::OkStatus();
 }
 
-std::vector<ShapeTracker::Step> ShapeTracker::GetSteps() const {
+std::vector<ShapeTracker::Step> ShapeTracker::GetSteps(
+    bool avoid_combining_reshapes) const {
   if (ShapeUtil::ElementsIn(input_shape_) == 1) {
     if (input_shape_.dimensions() == output_shape_.dimensions()) {
       return {};
@@ -837,6 +741,9 @@ std::vector<ShapeTracker::Step> ShapeTracker::GetSteps() const {
                                           output_shape_.dimensions().end())});
   }
 
+  if (avoid_combining_reshapes) {
+    return OptimizeSteps(steps, input_shape_, output_shape_);
+  }
   return steps;
 }
 
@@ -981,12 +888,7 @@ absl::StatusOr<HloInstruction*> ShapeTracker::ToInstructionChain(
   HloComputation* computation = inst->parent();
   HloInstruction* current_inst = inst;
 
-  std::vector<Step> steps = GetSteps();
-  if (avoid_combining_reshapes) {
-    steps = OptimizeSteps(steps, input_shape_, output_shape_);
-  }
-
-  for (const auto& step : steps) {
+  for (const auto& step : GetSteps(avoid_combining_reshapes)) {
     switch (step.type) {
       case Step::Type::kReshape: {
         Shape new_shape = ShapeUtil::MakeShape(
@@ -1015,12 +917,7 @@ std::string ShapeTracker::DebugString(bool avoid_combining_reshapes) const {
   std::vector<int64_t> current_dims(input_shape_.dimensions().begin(),
                                     input_shape_.dimensions().end());
 
-  std::vector<Step> steps = GetSteps();
-  if (avoid_combining_reshapes) {
-    steps = OptimizeSteps(steps, input_shape_, output_shape_);
-  }
-
-  for (const auto& step : steps) {
+  for (const auto& step : GetSteps(avoid_combining_reshapes)) {
     switch (step.type) {
       case Step::Type::kReshape: {
         absl::StrAppend(&result, " -> R[", absl::StrJoin(step.dimensions, ","),

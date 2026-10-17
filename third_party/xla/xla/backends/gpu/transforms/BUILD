@@ -289,7 +289,6 @@ xla_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
@@ -306,6 +305,8 @@ cc_library(
         "//xla/codegen/xtile:xtile_config_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:backend_configs_cc",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
         "@com_google_absl//absl/status:statusor",
     ],
 )
@@ -382,6 +383,9 @@ xla_cc_test(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu:gpu_device_info_for_tests",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",  # fixdeps: keep
     ],
@@ -629,7 +633,7 @@ xla_test(
     srcs = ["conv_fp8_fallback_test.cc"],
     # All NVIDIA GPUs: the probe verdicts driving the pass differ per
     # generation. Every case is deviceless and opens no GPU, but needs a
-    # loadable cuDNN >= 9.8 runtime and a CUDA driver (cuDNN's deviceless
+    # loadable cuDNN >= 9.23 runtime and a CUDA driver (cuDNN's deviceless
     # heuristics abort without one), so GPU machines only.
     backends = ["gpu"],
     tags = [
@@ -1212,7 +1216,7 @@ xla_test(
     srcs = ["cudnn_fusion_compiler_deviceless_test.cc"],
     # All NVIDIA GPUs: the parity test checks the deviceless verdict against
     # live plan enumeration on each generation. The deviceless cases open no
-    # GPU, but they need a loadable cuDNN >= 9.8 runtime and a CUDA driver
+    # GPU, but they need a loadable cuDNN >= 9.23 runtime and a CUDA driver
     # (cuDNN's deviceless heuristics abort without one), so GPU machines only.
     backends = ["gpu"],
     tags = [
@@ -1501,6 +1505,42 @@ xla_cc_test(
         "//xla/hlo/testlib:pattern_matcher_gmock",
         "//xla/service:pattern_matcher",
         "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "gpu_transpose_folding",
+    srcs = ["gpu_transpose_folding.cc"],
+    hdrs = ["gpu_transpose_folding.h"],
+    deps = [
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/analysis:shape_tracker",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/service:matmul_indexing_utils",
+        "//xla/service/gpu:matmul_utils",
+        "//xla/stream_executor:device_description",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "gpu_transpose_folding_test",
+    srcs = ["gpu_transpose_folding_test.cc"],
+    deps = [
+        ":gpu_transpose_folding",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:filecheck",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -2275,6 +2315,8 @@ xla_test(
         ":gemm_rewriter",
         ":gemm_rewriter_test_lib",
         "//xla:error_spec",
+        "//xla:literal",
+        "//xla:literal_util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
@@ -2288,6 +2330,7 @@ xla_test(
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:semantic_version",
         "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
+        "//xla/tests:test_utils",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -2317,13 +2360,9 @@ cc_library(
         "//xla/service/gpu:cublas_cudnn",
         "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu:matmul_utils",
-        "//xla/service/gpu:reduction_utils",
         "//xla/service/gpu:stream_executor_util",
         "//xla/stream_executor:device_description",
-        "//xla/stream_executor:dnn",
         "//xla/stream_executor/cuda:cuda_compute_capability",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/protobuf:dnn_proto_cc",
         "//xla/tsl/util:env_var",
         "@com_google_absl//absl/algorithm:container",
@@ -2354,6 +2393,7 @@ xla_cc_test(
         "//xla/hlo/testlib:pattern_matcher_gmock",
         "//xla/service:computation_layout",
         "//xla/service:hlo_verifier",
+        "//xla/service:layout_assignment",
         "//xla/service:pattern_matcher",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cuda_compute_capability",
@@ -2606,6 +2646,7 @@ cc_library(
         "//xla/service/gpu:gpu_fusible",
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/service/gpu:ir_emission_utils",
+        "//xla/service/gpu:mlir_context_pool",
         "//xla/service/gpu/model:combined_gpu_performance_model",
         "//xla/service/gpu/model:fusion_analysis_cache",
         "//xla/service/gpu/model:gpu_hlo_cost_analysis",
@@ -2618,6 +2659,7 @@ cc_library(
         "//xla/tsl/concurrency:future",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:logging",
+        "//xla/tsl/util:sorted_range",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:nullability",
@@ -2642,6 +2684,7 @@ xla_cc_test(
     srcs = ["priority_fusion_test.cc"],
     deps = [
         ":priority_fusion",
+        "//xla:shape_util",
         "//xla:xla_proto_cc",
         "//xla/backends/gpu/codegen/emitters:mlir_kernel_emitter",
         "//xla/codegen/xtile:xtile_config_proto_cc",
@@ -3126,6 +3169,7 @@ xla_test(
     name = "scatter_determinism_expander_test",
     srcs = ["scatter_determinism_expander_test.cc"],
     backends = ["gpu"],
+    shard_count = 3,
     deps = [
         ":scatter_determinism_expander",
         "//xla:literal",
@@ -3700,7 +3744,7 @@ xla_test(
         "gb300": ["broken"],  # TODO(b/505574653): re-enable when fixed.
     },
     backends = ["gpu"],
-    shard_count = 10,
+    shard_count = 15,
     deps = [
         ":topk_specializer",
         "//xla/backends/gpu/tests:hlo_pjrt_gpu_test_base",

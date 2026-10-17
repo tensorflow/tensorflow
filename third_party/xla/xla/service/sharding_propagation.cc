@@ -1275,8 +1275,7 @@ bool InferConvolutionShardingFromOperands(HloInstruction* instruction,
   if (IsConvolutionKernelSmall(instruction)) {
     // If the kernel is small compared to the input then we can generate an
     // output what is sharded the same way as the input.
-    const auto& tile_assignment = lhs->sharding().tile_assignment();
-    if (tile_assignment.dim(dnums.input_feature_dimension()) > 1) {
+    if (lhs->sharding().dimension(dnums.input_feature_dimension()) > 1) {
       return false;
     }
     return MaybeImproveInstructionSharding(get_tiled_sharding_based_on_lhs(),
@@ -1696,8 +1695,7 @@ std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
       }
 
       const int64_t cdim = user.concatenate_dimension();
-      auto& tile_assignment = user.sharding().tile_assignment();
-      if (tile_assignment.dim(cdim) == 1) {
+      if (user.sharding().dimension(cdim) == 1) {
         // If we are concatenating along a non-sharded dimension then the
         // operands should have the same sharding as the result.
         return user.sharding();
@@ -1708,6 +1706,12 @@ std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
         // sharding.
         return user.sharding();
       }
+
+      HloSharding user_sharding =
+          user.sharding().UseNamedShardingLeaf()
+              ? HloSharding::V3ToV2Sharding(user.sharding().named_sharding())
+              : user.sharding();
+      const auto& tile_assignment = user_sharding.tile_assignment();
 
       // If we are concatenating along a sharded dimension then we want the
       // operands to be distributed among the devices their data is used.
@@ -2394,12 +2398,10 @@ bool ShardingPropagation::InferShardingFromOperands(
           if (!AggressiveConcatOperandShardingCanPassThrough(concat_operand)) {
             return false;
           }
-          const auto& tile_assignment =
-              concat_operand->sharding().tile_assignment();
           for (int64_t i = 0; i < instruction->shape().dimensions().size();
                ++i) {
             if (absl::c_linear_search(instruction->dimensions(), i) &&
-                tile_assignment.dim(i) > 1) {
+                concat_operand->sharding().dimension(i) > 1) {
               return false;
             }
           }

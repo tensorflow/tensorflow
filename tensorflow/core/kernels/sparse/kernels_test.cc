@@ -308,22 +308,82 @@ TEST(CSRSparseMatrix, DecodeRejectsUninitializedBatchPointers) {
 }
 
 TEST(CSRSparseMatrix, DecodeRejectsNegativeDenseShapeDimension) {
-  VariantTensorData data = EncodeValidBatchedMatrix();
-  data.tensors_[0] = test::AsTensor<int64_t>({2, -1, 3}, TensorShape({3}));
-  CSRSparseMatrix tampered;
-  EXPECT_FALSE(tampered.Decode(data));
+  for (const auto& shape_vals :
+       std::vector<std::vector<int64_t>>{{-1, 2, 3}, {2, -1, 3}, {2, 2, -1}}) {
+    VariantTensorData data = EncodeValidBatchedMatrix();
+    data.tensors_[0] = test::AsTensor<int64_t>(shape_vals, TensorShape({3}));
+    CSRSparseMatrix tampered;
+    EXPECT_FALSE(tampered.Decode(data));
+
+    CSRSparseMatrix created;
+    EXPECT_THAT(
+        CSRSparseMatrix::CreateCSRSparseMatrix(
+            DT_FLOAT, data.tensors_[0], data.tensors_[1], data.tensors_[2],
+            data.tensors_[3], data.tensors_[4], &created),
+        absl_testing::StatusIs(
+            tsl::error::Code::INVALID_ARGUMENT,
+            ::testing::HasSubstr("dense_shape has a negative dimension")));
+  }
+  for (const auto& shape_vals :
+       std::vector<std::vector<int64_t>>{{-1, 3}, {2, -1}}) {
+    const auto dense_shape =
+        test::AsTensor<int64_t>(shape_vals, TensorShape({2}));
+    const auto batch_pointers =
+        test::AsTensor<int32_t>({0, 0}, TensorShape({2}));
+    const auto row_pointers =
+        test::AsTensor<int32_t>({0, 0, 0}, TensorShape({3}));
+    const Tensor col_indices(DT_INT32, TensorShape({0}));
+    const Tensor values(DT_FLOAT, TensorShape({0}));
+    CSRSparseMatrix created;
+    EXPECT_THAT(
+        CSRSparseMatrix::CreateCSRSparseMatrix(DT_FLOAT, dense_shape,
+                                               batch_pointers, row_pointers,
+                                               col_indices, values, &created),
+        absl_testing::StatusIs(
+            tsl::error::Code::INVALID_ARGUMENT,
+            ::testing::HasSubstr("dense_shape has a negative dimension")));
+  }
 }
 
 TEST(CSRSparseMatrix, DecodeRejectsOverflowingDenseShape) {
-  // num_rows = INT64_MAX makes batch_size * (num_rows + 1) wrap to 0, so a
-  // 0-element row_pointers slips past the shape check; Decode must still reject
-  // it instead of indexing a null row_pointers buffer.
-  VariantTensorData data = EncodeValidBatchedMatrix();
-  data.tensors_[0] = test::AsTensor<int64_t>(
-      {2, std::numeric_limits<int64_t>::max(), 1}, TensorShape({3}));
-  data.tensors_[2] = Tensor(DT_INT32, TensorShape({0}));
-  CSRSparseMatrix tampered;
-  EXPECT_FALSE(tampered.Decode(data));
+  // ValidateTypesAndShapes must reject dense_shape dimensions where
+  // num_rows + 1 or batch_size * (num_rows + 1) would overflow signed int64_t
+  // before evaluating the product.
+  for (const auto& shape_vals : std::vector<std::vector<int64_t>>{
+           {2, std::numeric_limits<int64_t>::max(), 1},
+           {2, std::numeric_limits<int64_t>::max() / 2, 1}}) {
+    VariantTensorData data = EncodeValidBatchedMatrix();
+    data.tensors_[0] = test::AsTensor<int64_t>(shape_vals, TensorShape({3}));
+    data.tensors_[2] = Tensor(DT_INT32, TensorShape({0}));
+    CSRSparseMatrix tampered;
+    EXPECT_FALSE(tampered.Decode(data));
+
+    CSRSparseMatrix created;
+    EXPECT_THAT(
+        CSRSparseMatrix::CreateCSRSparseMatrix(
+            DT_FLOAT, data.tensors_[0], data.tensors_[1], data.tensors_[2],
+            data.tensors_[3], data.tensors_[4], &created),
+        absl_testing::StatusIs(
+            tsl::error::Code::INVALID_ARGUMENT,
+            ::testing::HasSubstr("dense_shape dimensions overflow int64")));
+  }
+  {
+    const auto dense_shape = test::AsTensor<int64_t>(
+        {std::numeric_limits<int64_t>::max(), 1}, TensorShape({2}));
+    const auto batch_pointers =
+        test::AsTensor<int32_t>({0, 0}, TensorShape({2}));
+    const Tensor row_pointers(DT_INT32, TensorShape({0}));
+    const Tensor col_indices(DT_INT32, TensorShape({0}));
+    const Tensor values(DT_FLOAT, TensorShape({0}));
+    CSRSparseMatrix created;
+    EXPECT_THAT(
+        CSRSparseMatrix::CreateCSRSparseMatrix(DT_FLOAT, dense_shape,
+                                               batch_pointers, row_pointers,
+                                               col_indices, values, &created),
+        absl_testing::StatusIs(
+            tsl::error::Code::INVALID_ARGUMENT,
+            ::testing::HasSubstr("dense_shape dimensions overflow int64")));
+  }
 }
 
 }  // namespace

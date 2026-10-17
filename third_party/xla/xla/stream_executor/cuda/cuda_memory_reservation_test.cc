@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"  // IWYU pragma: keep
 #include "absl/types/span.h"
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "xla/stream_executor/cuda/cuda_device_allocator.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/cuda/cuda_raw_memory_allocation.h"
 #include "xla/stream_executor/device_address.h"
@@ -33,9 +34,6 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace stream_executor::gpu {
 namespace {
@@ -85,6 +83,49 @@ TEST_F(CudaMemoryReservationTest, MapToWrongType) {
               StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
+// Verifies that callers can supply allocator options instead of probing them.
+TEST_F(CudaMemoryReservationTest, CreateWithExplicitOptions) {
+  CudaDeviceAllocator::Options options;
+  options.enable_posix_fd_handle = false;
+  options.enable_fabric_handle = false;
+  ASSERT_OK_AND_ASSIGN(
+      auto res, CudaMemoryReservation::Create(executor_, kTestSize, options));
+
+  EXPECT_NE(res->address().opaque(), nullptr);
+  EXPECT_GE(res->address().size(), kTestSize);
+  EXPECT_GT(res->granularity(), 0);
+}
+
+// The reservation is VMM-only, so options that opt out of VMM are rejected
+// instead of silently issuing VMM driver calls.
+TEST_F(CudaMemoryReservationTest, DisabledVmmOptionsAreRejected) {
+  CudaDeviceAllocator::Options options;
+  options.use_vmm = false;
+  EXPECT_THAT(CudaMemoryReservation::Create(executor_, kTestSize, options),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+// As in CudaDeviceAllocator, the range is aligned and padded to the larger of
+// options.alignment and the mapping granularity, while granularity() keeps
+// reporting the driver's mapping granularity.
+TEST_F(CudaMemoryReservationTest,
+       AlignmentLargerThanGranularityAlignsReservation) {
+  ASSERT_OK_AND_ASSIGN(auto probe, CudaMemoryReservation::Create(executor_, 1));
+  const size_t granularity = probe->granularity();
+  ASSERT_GT(granularity, 0);
+
+  CudaDeviceAllocator::Options options;
+  options.alignment = 2 * granularity;
+  ASSERT_OK_AND_ASSIGN(auto res,
+                       CudaMemoryReservation::Create(executor_, 1, options));
+
+  EXPECT_EQ(res->granularity(), granularity);
+  EXPECT_EQ(res->address().size(), 2 * granularity);
+  EXPECT_EQ(
+      reinterpret_cast<uintptr_t>(res->address().opaque()) % (2 * granularity),
+      0);
+}
+
 // Verifies the full MapTo workflow. The ScopedMapping is destroyed first,
 // unmapping the reservation range, then the allocation is released.
 TEST_F(CudaMemoryReservationTest, MapToSingleAllocation) {
@@ -101,8 +142,8 @@ TEST_F(CudaMemoryReservationTest, MapToSingleAllocation) {
   EXPECT_EQ(mapping.mapped_address().opaque(), res->address().opaque());
   EXPECT_EQ(mapping.mapped_address().size(), alloc_size);
   // ScopedMapping destructor: cuMemUnmap.
-  // CudaMemoryReservation destructor: cuMemUnmap (logs error, already unmapped)
-  // + cuMemAddressFree. Allocation destructor: cuMemRelease.
+  // CudaMemoryReservation destructor: cuMemAddressFree.
+  // Allocation destructor: cuMemRelease.
 }
 
 // Verifies that ScopedMapping unmaps the range on destruction, allowing a

@@ -1,17 +1,3 @@
-# Copyright 2026 The OpenXLA Authors.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-# ==============================================================================
 Add verification for NVMMASharedEncodingAttr during reshape inference.
 
 Implement verifyNVMMASharedEncoding to check compatibility with TMA block shapes
@@ -36,7 +22,7 @@ reshape outcomes.
  #include "triton/Tools/LayoutUtils.h"
  #include "llvm/ADT/STLExtras.h"
  #include "llvm/Support/Casting.h"
-@@ -576,7 +579,45 @@ LogicalResult MemDescReshapeOp::verify() {
+@@ -598,7 +601,45 @@ LogicalResult MemDescReshapeOp::verify() {
    return OpTrait::impl::verifyEquivalentMemDescType(expectedTy, dstType);
  }
  
@@ -83,7 +69,7 @@ reshape outcomes.
                                                     Attribute srcEnc,
                                                     ArrayRef<int64_t> dstShape,
                                                     Attribute &dstEnc) {
-@@ -597,6 +638,11 @@ static LogicalResult inferMemDescReshapeOpEncoding(ArrayRef<int64_t> srcShape,
+@@ -619,6 +660,11 @@ static LogicalResult inferMemDescReshapeOpEncoding(ArrayRef<int64_t> srcShape,
              ctx, mmaEncoding.getSwizzlingByteWidth(),
              mmaEncoding.getTransposed(), mmaEncoding.getElementBitWidth(),
              mmaEncoding.getFp4Padded(), CGALayout);
@@ -95,7 +81,7 @@ reshape outcomes.
          auto srcLL = toLinearLayout(srcShape, srcEnc);
          auto dstLL = toLinearLayout(dstShape, candidateEncoding);
          if (reshapeLayout(ctx, srcLL, dstShape) == dstLL) {
-@@ -636,8 +682,8 @@ LogicalResult MemDescReshapeOp::inferReturnTypes(
+@@ -658,8 +704,8 @@ LogicalResult MemDescReshapeOp::inferReturnTypes(
  
    Attribute dstEncoding;
    if (Attribute srcEnc = srcTy.getEncoding()) {

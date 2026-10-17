@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <array>
 #include <cstdint>
+#include <cstdlib>
 #include <fstream>
 #include <iterator>
 #include <limits>
@@ -38,9 +39,9 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/path.h"
 
 namespace xla::numerics::debug_info {
 namespace {
@@ -435,8 +436,8 @@ ENTRY main {
   ROOT add = f32[10] add(p0, p0)
 }
 )hlo";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
 
   MismatchDetails details;
   details.target_instruction_name = "add";
@@ -472,6 +473,88 @@ ENTRY main {
                                 "Result of reduce: False"));
 }
 
+TEST(HloDumpUtilsTest, PopulateMismatchAnnotations_SampleIndexAndSummaryMean) {
+  const absl::string_view hlo_string = R"hlo(
+HloModule test_module
+ENTRY main {
+  p0 = f32[2,4] parameter(0)
+  add = f32[2,4] add(p0, p0)
+  ROOT sub = f32[2,4] subtract(add, p0)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
+
+  MismatchDetails per_elem_details;
+  per_elem_details.target_instruction_name = "add";
+  per_elem_details.actual = 14.0;
+  per_elem_details.expected = 10.0;
+  per_elem_details.rel_error = 0.4;
+  per_elem_details.sample_index = std::vector<int64_t>{1, 3};
+
+  MismatchDetails mean_details;
+  mean_details.target_instruction_name = "sub";
+  mean_details.actual = 7.5;
+  mean_details.expected = -2.5;
+  mean_details.rel_error = 4.0;
+  mean_details.is_summary_mean = true;
+
+  MismatchDetails scalar_details;
+  scalar_details.target_instruction_name = "p0";
+  scalar_details.actual = 3.0;
+  scalar_details.expected = 2.0;
+  scalar_details.rel_error = 0.5;
+  scalar_details.sample_index = std::vector<int64_t>{};
+
+  MismatchDetails unknown_details;
+  unknown_details.target_instruction_name = "nonexistent_op";
+  unknown_details.actual = 1.0;
+  unknown_details.expected = 0.0;
+  unknown_details.rel_error = 1.0;
+
+  auto annotations = PopulateMismatchAnnotations(
+      *module,
+      {per_elem_details, mean_details, scalar_details, unknown_details});
+  auto add_key = TensorKey::Create("add", ShapeIndex{});
+  ASSERT_TRUE(annotations.contains(add_key));
+  ASSERT_TRUE(annotations[add_key].tooltip_data.has_value());
+  EXPECT_TRUE(absl::StrContains(*annotations[add_key].tooltip_data,
+                                "Actual: 14 (at max diff, index {1,3})"));
+  EXPECT_TRUE(absl::StrContains(*annotations[add_key].tooltip_data,
+                                "Expected: 10 (at max diff, index {1,3})"));
+  EXPECT_TRUE(absl::StrContains(*annotations[add_key].tooltip_data,
+                                "Rel Error: 0.4 (at max diff, index {1,3})"));
+
+  auto sub_key = TensorKey::Create("sub", ShapeIndex{});
+  ASSERT_TRUE(annotations.contains(sub_key));
+  ASSERT_TRUE(annotations[sub_key].tooltip_data.has_value());
+  EXPECT_TRUE(absl::StrContains(*annotations[sub_key].tooltip_data,
+                                "Actual: 7.5 (mean)"));
+  EXPECT_TRUE(absl::StrContains(*annotations[sub_key].tooltip_data,
+                                "Expected: -2.5 (mean)"));
+  EXPECT_TRUE(absl::StrContains(*annotations[sub_key].tooltip_data,
+                                "Rel Error: 4 (mean)"));
+
+  auto p0_key = TensorKey::Create("p0", ShapeIndex{});
+  ASSERT_TRUE(annotations.contains(p0_key));
+  ASSERT_TRUE(annotations[p0_key].tooltip_data.has_value());
+  EXPECT_TRUE(absl::StrContains(*annotations[p0_key].tooltip_data,
+                                "Actual: 3 (at max diff)"));
+  EXPECT_FALSE(
+      absl::StrContains(*annotations[p0_key].tooltip_data, "index {}"));
+  EXPECT_FALSE(
+      annotations.contains(TensorKey::Create("nonexistent_op", ShapeIndex{})));
+
+  MismatchDetails custom_desc_details = mean_details;
+  custom_desc_details.custom_description = "Summary mean comparison";
+  auto custom_annotations =
+      PopulateMismatchAnnotations(*module, {custom_desc_details});
+  ASSERT_TRUE(custom_annotations.contains(sub_key));
+  ASSERT_TRUE(custom_annotations[sub_key].tooltip_data.has_value());
+  EXPECT_TRUE(absl::StrContains(*custom_annotations[sub_key].tooltip_data,
+                                "Summary mean comparison"));
+}
+
 TEST(HloDumpUtilsTest, PopulateMismatchGraphData_Basic) {
   const absl::string_view hlo_string = R"hlo(
 HloModule test_module
@@ -480,8 +563,8 @@ ENTRY main {
   ROOT add = f32[10] add(p0, p0)
 }
 )hlo";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
 
   MismatchDetails details;
   details.target_instruction_name = "add";
@@ -528,8 +611,8 @@ ENTRY main {
   ROOT tuple = (f32[10], f32[]) tuple(add, reduce)
 }
 )hlo";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
 
   MismatchDetails details;
   details.target_instruction_name = "tuple";
@@ -564,8 +647,8 @@ ENTRY main {
   ROOT fusion = f32[10] fusion(p0), kind=kLoop, calls=fused_comp
 }
 )hlo";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
 
   MismatchDetails details;
   details.target_instruction_name = "fusion";
@@ -726,8 +809,8 @@ ENTRY main {
   ROOT add = f32[10] add(p0, p0)
 }
 )hlo";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
 
   MismatchDetails details;
   details.target_instruction_name = "add";
@@ -746,6 +829,119 @@ ENTRY main {
     }
   }
   EXPECT_TRUE(found_add);
+}
+
+TEST(HloDumpUtilsTest, PopulateMismatchGraphData_ExplicitDiffScore) {
+  const absl::string_view hlo_string = R"hlo(
+HloModule test_module
+ENTRY main {
+  p0 = f32[10] parameter(0)
+  ROOT add = f32[10] add(p0, p0)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
+
+  MismatchDetails details;
+  details.target_instruction_name = "add";
+  details.actual = 1.000243;
+  details.expected = 1.0;
+  // Sampled element rel_error is small (0.0245%), but overall tensor diff_score
+  // is 100.0 (red).
+  details.rel_error = 0.000245;
+  details.diff_score = 100.0;
+
+  auto graph_data = PopulateMismatchGraphData(*module, {details});
+  bool found_add = false;
+  for (const auto& node : graph_data.nodes) {
+    if (node.key == "add") {
+      found_add = true;
+      EXPECT_EQ(node.diff_score, 100.0);
+    }
+  }
+  EXPECT_TRUE(found_add);
+}
+
+TEST(HloDumpUtilsTest, PopulateMismatchGraphData_ExplicitDiffScoreNanInf) {
+  const absl::string_view hlo_string = R"hlo(
+HloModule test_module
+ENTRY main {
+  p0 = f32[10] parameter(0)
+  add = f32[10] add(p0, p0)
+  sub = f32[10] subtract(add, p0)
+  ROOT mul = f32[10] multiply(sub, p0)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
+
+  MismatchDetails p0_low;
+  p0_low.target_instruction_name = "p0";
+  p0_low.actual = 1.0;
+  p0_low.expected = 2.0;
+  p0_low.rel_error = 0.25;
+  p0_low.diff_score = 25.0;
+
+  MismatchDetails p0_high = p0_low;
+  p0_high.diff_score = 75.0;
+
+  MismatchDetails add_finite;
+  add_finite.target_instruction_name = "add";
+  add_finite.actual = 1.0;
+  add_finite.expected = 2.0;
+  add_finite.rel_error = 0.5;
+  add_finite.diff_score = 50.0;
+
+  MismatchDetails details = add_finite;
+  details.diff_score = kNanInfMismatchDiffScore;
+
+  MismatchDetails add_after_nan = add_finite;
+  add_after_nan.diff_score = 80.0;
+
+  MismatchDetails expected_nan;
+  expected_nan.target_instruction_name = "sub";
+  expected_nan.actual = 1.0;
+  expected_nan.expected = std::numeric_limits<double>::quiet_NaN();
+  expected_nan.rel_error = 0.5;
+
+  MismatchDetails expected_inf;
+  expected_inf.target_instruction_name = "mul";
+  expected_inf.actual = 1.0;
+  expected_inf.expected = std::numeric_limits<double>::infinity();
+  expected_inf.rel_error = 0.5;
+
+  MismatchDetails unknown_target;
+  unknown_target.target_instruction_name = "nonexistent_op";
+  unknown_target.actual = 1.0;
+  unknown_target.expected = 2.0;
+  unknown_target.rel_error = 0.5;
+
+  auto graph_data = PopulateMismatchGraphData(
+      *module, {p0_low, p0_high, add_finite, details, add_after_nan,
+                expected_nan, expected_inf, unknown_target});
+  bool found_add = false;
+  bool found_p0 = false;
+  bool found_sub = false;
+  bool found_mul = false;
+  for (const auto& node : graph_data.nodes) {
+    if (node.key == "add") {
+      found_add = true;
+      EXPECT_EQ(node.diff_score, kNanInfMismatchDiffScore);
+    } else if (node.key == "p0") {
+      found_p0 = true;
+      EXPECT_EQ(node.diff_score, 75.0);
+    } else if (node.key == "sub") {
+      found_sub = true;
+      EXPECT_EQ(node.diff_score, kNanInfMismatchDiffScore);
+    } else if (node.key == "mul") {
+      found_mul = true;
+      EXPECT_EQ(node.diff_score, kNanInfMismatchDiffScore);
+    }
+  }
+  EXPECT_TRUE(found_add);
+  EXPECT_TRUE(found_p0);
+  EXPECT_TRUE(found_sub);
+  EXPECT_TRUE(found_mul);
 }
 
 TEST(HloDumpUtilsTest, ConvertHloToHtmlCompactGte) {
@@ -1256,6 +1452,104 @@ ENTRY main {
   EXPECT_TRUE(absl::StrContains(html, "\"mismatch_count\": 15"));
 }
 
+TEST(HloDumpUtilsTest, PopulateTensorVisualizationsDefaultsToSingleElement) {
+  // Guards existing producers: without a bounding box, the historical fallback
+  // of a single mismatching element is preserved.
+  const absl::string_view hlo_string = R"hlo(
+HloModule test_vis
+ENTRY main {
+  ROOT %p0 = f32[4] parameter(0)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
+  MismatchDetails mismatch;
+  mismatch.target_instruction_name = "p0";
+
+  auto vis_map = PopulateTensorVisualizations(*module, {mismatch});
+  ASSERT_TRUE(vis_map.contains("p0"));
+  EXPECT_TRUE(vis_map["p0"].has_mismatch);
+  EXPECT_EQ(vis_map["p0"].shape, (std::vector<int64_t>{4}));
+  EXPECT_EQ(vis_map["p0"].mismatch_count, 1);
+  EXPECT_EQ(vis_map["p0"].total_elements, 4);
+}
+
+TEST(HloDumpUtilsTest, PopulateTensorVisualizationsWithoutElementLevelData) {
+  const absl::string_view hlo_string = R"hlo(
+HloModule test_vis
+ENTRY main {
+  ROOT %p0 = f32[10,20] parameter(0)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
+
+  MismatchDetails in_module;
+  in_module.target_instruction_name = "p0";
+  in_module.has_element_level_data = false;
+  // Even a supplied bounding box must not be rendered: the flag wins. Populate
+  // every element-level field so each assertion below can actually fail.
+  in_module.bounding_box = MakeBoundingBox({10, 20}, {1, 2}, {5, 8}, 15, 200,
+                                           "block", {{1, 2}, {5, 8}});
+  in_module.bounding_box->mismatched_slices = {1, 3};
+  in_module.bounding_box->slice_boxes["1"] = SliceBoundingBox{};
+
+  MismatchDetails not_in_module;
+  not_in_module.target_instruction_name = "absent";
+  not_in_module.has_element_level_data = false;
+
+  auto vis_map =
+      PopulateTensorVisualizations(*module, {in_module, not_in_module});
+  for (absl::string_view name : {"p0", "absent"}) {
+    SCOPED_TRACE(name);
+    ASSERT_TRUE(vis_map.contains(name));
+    const auto& item = vis_map[name];
+    // The mismatch is still reported, so HLO/graph highlighting keep working,
+    // but the tensor is non-inspectable so the inspector stays closed.
+    EXPECT_TRUE(item.has_mismatch);
+    EXPECT_TRUE(item.shape.empty());
+    EXPECT_TRUE(item.box_min.empty());
+    EXPECT_TRUE(item.box_max.empty());
+    EXPECT_TRUE(item.top_mismatches.empty());
+    EXPECT_TRUE(item.mismatched_slices.empty());
+    EXPECT_TRUE(item.slice_boxes.empty());
+    EXPECT_EQ(item.mismatch_count, 0);
+    EXPECT_EQ(item.total_elements, 0);
+  }
+}
+
+TEST(HloDumpUtilsTest,
+     PopulateTensorVisualizationsWithoutElementLevelDataTupleOutput) {
+  // A tuple target takes the tuple-element branch of the shape lookup, which
+  // must not re-populate the shape once element-level data is disabled.
+  const absl::string_view hlo_string = R"hlo(
+HloModule test_vis
+ENTRY main {
+  p0 = f32[10,20] parameter(0)
+  p1 = s32[7] parameter(1)
+  ROOT t = (f32[10,20], s32[7]) tuple(p0, p1)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
+
+  MismatchDetails mismatch;
+  mismatch.target_instruction_name = "t";
+  mismatch.output_shape_index = 1;
+  mismatch.has_element_level_data = false;
+
+  absl::flat_hash_map<std::string, TensorVisualizationInfo> vis_map =
+      PopulateTensorVisualizations(*module, {mismatch});
+  ASSERT_TRUE(vis_map.contains("t"));
+  const auto& item = vis_map["t"];
+  EXPECT_TRUE(item.has_mismatch);
+  EXPECT_TRUE(item.shape.empty());
+  EXPECT_TRUE(item.box_min.empty());
+  EXPECT_TRUE(item.box_max.empty());
+  EXPECT_EQ(item.mismatch_count, 0);
+  EXPECT_EQ(item.total_elements, 0);
+}
+
 TEST(HloDumpUtilsTest, SerializeTensorVisualizationsJsSpecialFloats) {
   absl::flat_hash_map<std::string, TensorVisualizationInfo> vis_map;
   TensorVisualizationInfo item;
@@ -1692,6 +1986,315 @@ ENTRY main {
     ofs << file_content;
     ofs.close();
   }
+}
+
+TEST(HloDumpUtilsTest, DumpHloModuleMismatchWithGraphDataHonorsOutputDir) {
+  const absl::string_view hlo_string = R"hlo(
+HloModule out_dir_module
+ENTRY main {
+  ROOT p0 = f32[4] parameter(0)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
+  MismatchDetails mismatch;
+  mismatch.target_instruction_name = "p0";
+
+  // A nested, not-yet-existing directory must be created, and the filename
+  // must be used verbatim rather than as a temp-file suffix.
+  const std::string dir =
+      tsl::io::JoinPath(::testing::TempDir(), "hlo_dump_out_dir", "nested");
+  ASSERT_OK_AND_ASSIGN(const std::string path,
+                       DumpHloModuleMismatchWithGraphData(*module, {mismatch},
+                                                          "page.html", dir));
+  EXPECT_EQ(path, tsl::io::JoinPath(dir, "page.html"));
+  EXPECT_TRUE(tsl::Env::Default()->FileExists(path).ok());
+
+  // Writing into the now-existing directory must also succeed.
+  ASSERT_OK_AND_ASSIGN(const std::string second,
+                       DumpHloModuleMismatchWithGraphData(*module, {mismatch},
+                                                          "page2.html", dir));
+  EXPECT_EQ(second, tsl::io::JoinPath(dir, "page2.html"));
+  EXPECT_TRUE(tsl::Env::Default()->FileExists(second).ok());
+}
+
+TEST(HloDumpUtilsTest,
+     PopulateTensorVisualizations_TupleSubshapeAndFallbackTarget) {
+  const absl::string_view hlo_string = R"hlo(
+HloModule tuple_vis_module
+ENTRY main {
+  p0 = f32[4,8] parameter(0)
+  p1 = f32[16] parameter(1)
+  tok = token[] after-all()
+  empty_tuple = () tuple()
+  inner_tuple = (f32[4,8]) tuple(p0)
+  nested_tuple = ((f32[4,8]), f32[16]) tuple(inner_tuple, p1)
+  tuple_oob = (f32[4,8], f32[16]) tuple(p0, p1)
+  ROOT tuple = (f32[4,8], f32[16]) tuple(p0, p1)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
+
+  MismatchDetails tuple_mismatch;
+  tuple_mismatch.target_instruction_name = "tuple";
+  tuple_mismatch.output_shape_index = 1;
+  tuple_mismatch.actual = 2.0;
+  tuple_mismatch.expected = 1.0;
+  tuple_mismatch.rel_error = 1.0;
+
+  MismatchDetails inner_tuple_mismatch;
+  inner_tuple_mismatch.target_instruction_name = "inner_tuple";
+  inner_tuple_mismatch.actual = 2.0;
+  inner_tuple_mismatch.expected = 1.0;
+  inner_tuple_mismatch.rel_error = 1.0;
+
+  MismatchDetails tuple_oob_mismatch;
+  tuple_oob_mismatch.target_instruction_name = "tuple_oob";
+  tuple_oob_mismatch.output_shape_index = 99;
+  tuple_oob_mismatch.actual = 2.0;
+  tuple_oob_mismatch.expected = 1.0;
+  tuple_oob_mismatch.rel_error = 1.0;
+
+  MismatchDetails p0_mismatched_box;
+  p0_mismatched_box.target_instruction_name = "p0";
+  p0_mismatched_box.actual = 2.0;
+  p0_mismatched_box.expected = 1.0;
+  p0_mismatched_box.rel_error = 1.0;
+  MismatchBoundingBox mismatched_rank_box;
+  mismatched_rank_box.box_min = {1};
+  mismatched_rank_box.box_max = {3};
+  mismatched_rank_box.mismatch_count = 3;
+  mismatched_rank_box.total_elements = 32;
+  mismatched_rank_box.pattern = "SINGLE_SLICE";
+  p0_mismatched_box.bounding_box = mismatched_rank_box;
+
+  MismatchDetails fallback_with_box;
+  fallback_with_box.target_instruction_name = "external_op_with_box";
+  fallback_with_box.actual = 3.0;
+  fallback_with_box.expected = 1.0;
+  fallback_with_box.rel_error = 2.0;
+  MismatchBoundingBox box;
+  box.box_min = {1, 2};
+  box.box_max = {4, 6};
+  box.mismatch_count = 12;
+  box.total_elements = 128;
+  box.pattern = "DENSE_BLOCK";
+  fallback_with_box.bounding_box = box;
+
+  MismatchDetails fallback_without_box;
+  fallback_without_box.target_instruction_name = "external_op_no_box";
+  fallback_without_box.actual = 4.0;
+  fallback_without_box.expected = 2.0;
+  fallback_without_box.rel_error = 1.0;
+
+  auto visualizations = PopulateTensorVisualizations(
+      *module, {tuple_mismatch, inner_tuple_mismatch, tuple_oob_mismatch,
+                p0_mismatched_box, fallback_with_box, fallback_without_box,
+                fallback_with_box});
+
+  ASSERT_TRUE(visualizations.contains("tuple"));
+  const auto& tuple_vis = visualizations.at("tuple");
+  EXPECT_TRUE(tuple_vis.has_mismatch);
+  EXPECT_EQ(tuple_vis.shape, (std::vector<int64_t>{16}));
+  EXPECT_EQ(tuple_vis.total_elements, 16);
+  EXPECT_EQ(tuple_vis.mismatch_count, 1);
+
+  ASSERT_TRUE(visualizations.contains("inner_tuple"));
+  EXPECT_EQ(visualizations.at("inner_tuple").shape,
+            (std::vector<int64_t>{4, 8}));
+
+  ASSERT_TRUE(visualizations.contains("tuple_oob"));
+  EXPECT_EQ(visualizations.at("tuple_oob").shape, (std::vector<int64_t>{4, 8}));
+
+  ASSERT_TRUE(visualizations.contains("nested_tuple"));
+  EXPECT_TRUE(visualizations.at("nested_tuple").shape.empty());
+
+  ASSERT_TRUE(visualizations.contains("p0"));
+  const auto& p0_vis = visualizations.at("p0");
+  EXPECT_EQ(p0_vis.shape, (std::vector<int64_t>{4, 8}));
+  EXPECT_EQ(p0_vis.box_min, (std::vector<int64_t>{0, 0}));
+  EXPECT_EQ(p0_vis.box_max, (std::vector<int64_t>{0, 0}));
+
+  ASSERT_TRUE(visualizations.contains("external_op_with_box"));
+  const auto& ext_box_vis = visualizations.at("external_op_with_box");
+  EXPECT_TRUE(ext_box_vis.has_mismatch);
+  EXPECT_EQ(ext_box_vis.box_min, (std::vector<int64_t>{1, 2}));
+  EXPECT_EQ(ext_box_vis.box_max, (std::vector<int64_t>{4, 6}));
+  EXPECT_EQ(ext_box_vis.mismatch_count, 12);
+  EXPECT_EQ(ext_box_vis.total_elements, 128);
+  EXPECT_EQ(ext_box_vis.pattern, "DENSE_BLOCK");
+
+  ASSERT_TRUE(visualizations.contains("external_op_no_box"));
+  const auto& ext_no_box_vis = visualizations.at("external_op_no_box");
+  EXPECT_TRUE(ext_no_box_vis.has_mismatch);
+  EXPECT_EQ(ext_no_box_vis.mismatch_count, 1);
+
+  // Verify ComputeBoundingBoxFromLiteralMask edge cases: non-array tuple,
+  // zero-element array, and size-1 leading dimension.
+  Literal tuple_lit = LiteralUtil::MakeTuple({});
+  MismatchBoundingBox tuple_bbox = ComputeBoundingBoxFromLiteralMask(tuple_lit);
+  EXPECT_EQ(tuple_bbox.mismatch_count, 0);
+  EXPECT_TRUE(tuple_bbox.tensor_shape.empty());
+
+  Literal empty_lit = LiteralUtil::CreateR1<bool>({});
+  MismatchBoundingBox empty_bbox = ComputeBoundingBoxFromLiteralMask(empty_lit);
+  EXPECT_EQ(empty_bbox.total_elements, 0);
+  EXPECT_EQ(empty_bbox.mismatch_count, 0);
+
+  Literal dim1_lit = LiteralUtil::CreateR2<bool>({{true, true, false, false}});
+  MismatchBoundingBox dim1_bbox = ComputeBoundingBoxFromLiteralMask(dim1_lit);
+  EXPECT_EQ(dim1_bbox.mismatch_count, 2);
+  EXPECT_EQ(dim1_bbox.pattern, "DENSE_BLOCK");
+
+  // Verify DumpHloModuleMismatchWithGraphData write-error and temp-dir paths.
+  auto bad_path_or = DumpHloModuleMismatchWithGraphData(
+      *module, {tuple_mismatch}, "nonexistent_subdir_xyz/mismatch.html");
+  EXPECT_FALSE(bad_path_or.ok());
+
+  const char* orig_env = std::getenv("TEST_UNDECLARED_OUTPUTS_DIR");
+  std::optional<std::string> saved_env;
+  if (orig_env != nullptr) {
+    saved_env = std::string(orig_env);
+  }
+  tsl::setenv("TEST_UNDECLARED_OUTPUTS_DIR", "", 1);
+  auto empty_env_or = DumpHloModuleMismatchWithGraphData(
+      *module, {tuple_mismatch},
+      tsl::io::JoinPath(::testing::TempDir(), "temp_mismatch_empty_env.html"));
+  EXPECT_TRUE(empty_env_or.ok());
+
+  tsl::unsetenv("TEST_UNDECLARED_OUTPUTS_DIR");
+  auto unset_env_or = DumpHloModuleMismatchWithGraphData(
+      *module, {tuple_mismatch}, "temp_mismatch_unset_env.html");
+  EXPECT_TRUE(unset_env_or.ok());
+
+  if (saved_env.has_value()) {
+    tsl::setenv("TEST_UNDECLARED_OUTPUTS_DIR", saved_env->c_str(), 1);
+  }
+}
+
+TEST(HloDumpUtilsTest,
+     PopulateMismatchGraphDataAndVisualizations_UnverifiedGrayAndActualScore) {
+  const absl::string_view hlo_string = R"hlo(
+HloModule hv_module
+ENTRY main {
+  p0 = f32[4,8] parameter(0)
+  p1 = f32[4,8] parameter(1)
+  sub = f32[4,8] subtract(p0, p1)
+  ROOT add = f32[4,8] add(sub, p1)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
+
+  MismatchDetails sub_mismatch;
+  sub_mismatch.target_instruction_name = "sub";
+  sub_mismatch.actual = -6.99993;
+  sub_mismatch.expected = -6.99822;
+  sub_mismatch.rel_error = 0.000244621;
+  sub_mismatch.sample_index = {1, 5};
+  sub_mismatch.percentage_of_elems_exceeding_both_errors = 0.0;
+
+  MismatchDetails add_mismatch;
+  add_mismatch.target_instruction_name = "add";
+  add_mismatch.actual = 10.0;
+  add_mismatch.expected = 8.0;
+  add_mismatch.rel_error = 0.25;
+  add_mismatch.sample_index = {2, 3};
+  add_mismatch.percentage_of_elems_exceeding_both_errors = 25.0;
+
+  auto annotations =
+      PopulateMismatchAnnotations(*module, {sub_mismatch, add_mismatch});
+  EXPECT_EQ(annotations[TensorKey::Create("sub", {})].background_color,
+            "lightgreen");
+  EXPECT_EQ(annotations[TensorKey::Create("add", {})].background_color, "pink");
+
+  GraphData graph_data = PopulateMismatchGraphData(
+      *module, {sub_mismatch, add_mismatch}, kUnverifiedDiffScore);
+  absl::flat_hash_map<std::string, double> scores;
+  for (const auto& node : graph_data.nodes) {
+    scores[node.key] = node.diff_score;
+  }
+  EXPECT_DOUBLE_EQ(scores["p0"], kUnverifiedDiffScore);
+  EXPECT_DOUBLE_EQ(scores["p1"], kUnverifiedDiffScore);
+  EXPECT_DOUBLE_EQ(scores["sub"], 0.0);
+  EXPECT_DOUBLE_EQ(scores["add"], 25.0);
+
+  auto visualizations =
+      PopulateTensorVisualizations(*module, {sub_mismatch, add_mismatch});
+  ASSERT_TRUE(visualizations.contains("sub"));
+  const auto& sub_vis = visualizations.at("sub");
+  EXPECT_TRUE(sub_vis.has_mismatch);
+  EXPECT_EQ(sub_vis.mismatch_count, 1);
+  EXPECT_EQ(sub_vis.box_min, (std::vector<int64_t>{1, 5}));
+  EXPECT_EQ(sub_vis.box_max, (std::vector<int64_t>{1, 5}));
+  ASSERT_EQ(sub_vis.top_mismatches.size(), 1);
+  EXPECT_EQ(sub_vis.top_mismatches[0].coord, (std::vector<int64_t>{1, 5}));
+  EXPECT_NEAR(sub_vis.top_mismatches[0].rel_error, 0.000244621, 1e-9);
+
+  ASSERT_TRUE(visualizations.contains("add"));
+  const auto& add_vis = visualizations.at("add");
+  EXPECT_TRUE(add_vis.has_mismatch);
+  EXPECT_EQ(add_vis.mismatch_count, 8);
+  EXPECT_EQ(add_vis.box_min, (std::vector<int64_t>{0, 0}));
+  EXPECT_EQ(add_vis.box_max, (std::vector<int64_t>{3, 7}));
+  ASSERT_EQ(add_vis.top_mismatches.size(), 1);
+  EXPECT_EQ(add_vis.top_mismatches[0].coord, (std::vector<int64_t>{2, 3}));
+  EXPECT_DOUBLE_EQ(add_vis.top_mismatches[0].rel_error, 0.25);
+
+  const std::string dir =
+      tsl::io::JoinPath(::testing::TempDir(), "hv_unverified_gray_test");
+  ASSERT_OK_AND_ASSIGN(
+      const std::string html_path,
+      DumpHloModuleMismatchWithGraphData(*module, {sub_mismatch, add_mismatch},
+                                         "hv_report.html", dir));
+  std::string html_content;
+  ASSERT_OK(
+      tsl::ReadFileToString(tsl::Env::Default(), html_path, &html_content));
+  EXPECT_TRUE(absl::StrContains(html_content, "Diff Score: Not Evaluated"));
+  EXPECT_TRUE(absl::StrContains(
+      html_content, "if (score==0.0) return vec4(0.6,1.0,0.6,1.0);"));
+  EXPECT_TRUE(absl::StrContains(html_content, "bg-lightgreen"));
+  EXPECT_TRUE(absl::StrContains(html_content, "bg-pink"));
+}
+
+TEST(HloDumpUtilsTest,
+     PopulateMismatchGraphData_FiniteZeroCrossingDoesNotTriggerNanInfScore) {
+  const absl::string_view hlo_string = R"hlo(
+HloModule zero_crossing_module
+ENTRY main {
+  p0 = f32[4] parameter(0)
+  sub = f32[4] negate(p0)
+  ROOT add = f32[4] add(sub, p0)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
+
+  MismatchDetails benign_zero_crossing;
+  benign_zero_crossing.target_instruction_name = "sub";
+  benign_zero_crossing.actual = 1e-7;
+  benign_zero_crossing.expected = 0.0;
+  benign_zero_crossing.rel_error = std::numeric_limits<double>::infinity();
+  benign_zero_crossing.percentage_of_elems_exceeding_both_errors = 0.0;
+
+  MismatchDetails true_zero_crossing;
+  true_zero_crossing.target_instruction_name = "add";
+  true_zero_crossing.actual = 1.0;
+  true_zero_crossing.expected = 0.0;
+  true_zero_crossing.rel_error = std::numeric_limits<double>::infinity();
+  true_zero_crossing.percentage_of_elems_exceeding_both_errors = 25.0;
+
+  GraphData graph_data = PopulateMismatchGraphData(
+      *module, {benign_zero_crossing, true_zero_crossing},
+      kUnverifiedDiffScore);
+  absl::flat_hash_map<std::string, double> scores;
+  for (const auto& node : graph_data.nodes) {
+    scores[node.key] = node.diff_score;
+  }
+  EXPECT_DOUBLE_EQ(scores["sub"], 0.0);
+  EXPECT_GT(scores["add"], 0.0);
+  EXPECT_NE(scores["add"], kNanInfMismatchDiffScore);
 }
 
 }  // namespace

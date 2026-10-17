@@ -385,8 +385,10 @@ absl::StatusOr<HloInstruction*> PartitionGatherIndexPassthroughDimensions(
   if (passthrough_sharding.IsReplicatedOrSingleDevice()) {
     return nullptr;
   }
-  hlo_sharding_util::MergeShardingIfCompatible(output_sharding,
-                                               &passthrough_sharding);
+  hlo_sharding_util::MergeShardingIfCompatible(
+      hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
+          output_sharding, index_passthrough_dims.output_dims),
+      &passthrough_sharding);
   // Group shardings on index pass-through dimensions.
   const GroupedSharding output_grouped = hlo_sharding_util::GroupShardingOnDims(
       passthrough_sharding, index_passthrough_dims.output_dims);
@@ -464,10 +466,12 @@ absl::StatusOr<HloInstruction*> PartitionGatherOperandPassthroughDimensions(
         pslice_sizes[i] = operand.hlo()->shape().dimensions(i);
       }
     }
-    // Merge the sharding from the instruction with the sharding suggested from
-    // the operand sharding.
-    hlo_sharding_util::MergeShardingIfCompatible(output_sharding,
-                                                 &*maybe_passthrough);
+    // Merge non-grouping dimension shardings from output_sharding into the
+    // suggested passthrough sharding.
+    hlo_sharding_util::MergeShardingIfCompatible(
+        hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
+            output_sharding, output_grouping_dims),
+        &*maybe_passthrough);
     // Group shardings on operand pass-through dimensions.
     const GroupedSharding output_grouped =
         hlo_sharding_util::GroupShardingOnDims(*maybe_passthrough,
@@ -1489,10 +1493,12 @@ absl::StatusOr<HloInstruction*> PartitionScatterOperandPassthroughDimensions(
         pslice_sizes[i] = operands[0].hlo()->shape().dimensions(i);
       }
     }
-    // Merge the sharding from update with the sharding suggested from the
-    // operand sharding.
-    hlo_sharding_util::MergeShardingIfCompatible(updates[0].sharding(),
-                                                 &*maybe_passthrough);
+    // Merge non-grouping dimension shardings from update_sharding into the
+    // suggested passthrough sharding.
+    hlo_sharding_util::MergeShardingIfCompatible(
+        hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
+            updates[0].sharding(), update_grouping_dims),
+        &*maybe_passthrough);
     // Group shardings on operand pass-through dimensions.
     const GroupedSharding update_grouped =
         hlo_sharding_util::GroupShardingOnDims(*maybe_passthrough,
@@ -1702,7 +1708,9 @@ absl::StatusOr<HloInstruction*> PartitionScatterIndexPassthroughDimensions(
               updates[0].sharding(), index_passthrough_dims.output_dims,
               index_passthrough_dims.indices_dims, indices.num_dimensions()),
           &indices_sharding)) {
-    indices = indices.Reshard(indices_sharding);
+    indices = indices.Reshard(indices_sharding,
+                              /*pad_value=*/LiteralUtil::CreateR0(
+                                  indices.base_shape().element_type(), -1));
   }
   const HloSharding original_indices_sharding = indices.sharding();
 
@@ -1714,8 +1722,10 @@ absl::StatusOr<HloInstruction*> PartitionScatterIndexPassthroughDimensions(
   if (passthrough_sharding.IsReplicatedOrSingleDevice()) {
     return nullptr;
   }
-  hlo_sharding_util::MergeShardingIfCompatible(updates[0].sharding(),
-                                               &passthrough_sharding);
+  hlo_sharding_util::MergeShardingIfCompatible(
+      hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
+          updates[0].sharding(), index_passthrough_dims.output_dims),
+      &passthrough_sharding);
   const GroupedSharding update_grouped = hlo_sharding_util::GroupShardingOnDims(
       passthrough_sharding, index_passthrough_dims.output_dims);
   // See if we can group partially replicated dimensions from the operand
@@ -1853,7 +1863,9 @@ absl::StatusOr<HloInstruction*> PartitionScatterTrivialSlicedOperandDimensions(
     const GroupedSharding& output_grouped = operand_grouped;
     // Reshard indices to its intended sharding before adjusting.
     indices =
-        indices.Reshard(hlo_sharding_util::UngroupSharding(indices_grouped));
+        indices.Reshard(hlo_sharding_util::UngroupSharding(indices_grouped),
+                        /*pad_value=*/LiteralUtil::CreateR0(
+                            indices.base_shape().element_type(), -1));
     HloInstruction* indices_min;
     std::tie(indices_min, std::ignore) =
         IndexBoundsForGatherScatterOperandPartitionedOnTrivialSliceDims(

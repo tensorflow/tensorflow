@@ -160,7 +160,8 @@ class IndexUtil {
 
 inline bool ABSL_ATTRIBUTE_ALWAYS_INLINE
 IndexUtil::BumpIndices(const Shape& shape, absl::Span<int64_t> indices) {
-  for (int64_t dimno = indices.size() - 1; dimno >= 0; --dimno) {
+  for (int64_t dimno = static_cast<int64_t>(indices.size()) - 1; dimno >= 0;
+       --dimno) {
     int64_t limit = shape.dimensions(dimno);
     if (indices[dimno] + 1 < limit) {
       indices[dimno]++;

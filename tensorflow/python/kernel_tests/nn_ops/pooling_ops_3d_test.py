@@ -155,6 +155,44 @@ class PoolingTest(test.TestCase):
           )
           self.evaluate(t)
 
+  @test_util.run_in_graph_and_eager_modes
+  @test_util.disable_xla("Xla does not raise error on out of bounds access")
+  def testAvgPool3dGradMismatchedGradShapeRaisesError(self):
+    for orig_input_shape, grad_shape, ksize, expected in (
+        (
+            [1, 4, 28, 28, 3],
+            [1, 2, 14, 14, 6],
+            2,
+            r"\[1,2,14,14,3\], but got " r"\[1,2,14,14,6\]",
+        ),
+        (
+            [2, 2, 2, 2, 2],
+            [2, 3, 3, 3, 3],
+            1,
+            r"\[2,2,2,2,2\], but got " r"\[2,3,3,3,3\]",
+        ),
+        (
+            [1, 2, 2, 2, 1],
+            [1, 3, 3, 3, 1],
+            1,
+            r"\[1,2,2,2,1\], but got " r"\[1,3,3,3,1\]",
+        ),
+    ):
+      with self.assertRaisesRegex(
+          (errors_impl.InvalidArgumentError, ValueError),
+          "Expected grad shape to be " + expected,
+      ):
+        self.evaluate(
+            gen_nn_ops.AvgPool3DGrad(
+                orig_input_shape=orig_input_shape,
+                grad=array_ops.zeros(grad_shape),
+                ksize=[1, ksize, ksize, ksize, 1],
+                strides=[1, ksize, ksize, ksize, 1],
+                padding="VALID",
+                data_format="NDHWC",
+            )
+        )
+
   def testAvgPool3dGradEmptyInput(self):
     for data_format, use_gpu in GetTestConfigs():
       with self.cached_session(use_gpu=use_gpu):

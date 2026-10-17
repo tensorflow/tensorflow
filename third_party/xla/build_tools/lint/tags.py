@@ -118,7 +118,7 @@ _TAGS_TO_DOCUMENTATION_MAP = {
     "xla_gb200": "Runs on a gb200.",
     "xla_gb300": "Runs on a gb300.",
     "xla_rtx6000pro": "Runs on an rtx6000pro.",
-    "xla_vr200": "Runs on a vr200.",
+    "xla_vr_nvl72": "Runs on Vera Rubin NVL72.",
     "xla_device_p100": "Runs on a p100.",
     "xla_device_v100": "Runs on a v100.",
     "xla_device_a100": "Runs on an a100.",
@@ -127,7 +127,7 @@ _TAGS_TO_DOCUMENTATION_MAP = {
     "xla_device_gb200": "Runs on a gb200.",
     "xla_device_gb300": "Runs on a gb300.",
     "xla_device_rtx6000pro": "Runs on an rtx6000pro.",
-    "xla_device_vr200": "Runs on a vr200.",
+    "xla_device_vr_nvl72": "Runs on Vera Rubin NVL72.",
     # Below tags are consumed by `xla_test`.
     "test_migrated_to_hlo_runner_pjrt": (
         "Adds the appropriate `xla/tests:pjrt_$BACKEND_client_registry` to the"

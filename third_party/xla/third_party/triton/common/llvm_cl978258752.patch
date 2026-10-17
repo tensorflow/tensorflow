@@ -1,6 +1,6 @@
 --- a/include/triton/Dialect/Triton/IR/TritonOps.td
 +++ b/include/triton/Dialect/Triton/IR/TritonOps.td
-@@ -1129,8 +1129,8 @@
+@@ -1213,8 +1213,8 @@ def CallOp : TT_Op<"call", [CallOpInterface, /*MemRefsNormalizable, */DeclareOpI
  }
  
  def FuncOp : TT_Op<"func", [
@@ -14,7 +14,7 @@
 
 --- a/lib/Conversion/TritonGPUToLLVM/Utility.cpp
 +++ b/lib/Conversion/TritonGPUToLLVM/Utility.cpp
-@@ -2193,7 +2193,7 @@
+@@ -2283,7 +2283,7 @@ void filterFuncAttributes(triton::FuncOp op, bool filterArgAttrs,
                            SmallVectorImpl<NamedAttribute> &result) {
  
    for (const auto &attr : op->getAttrs()) {
@@ -26,7 +26,7 @@
 
 --- a/lib/Dialect/Triton/IR/Ops.cpp
 +++ b/lib/Dialect/Triton/IR/Ops.cpp
-@@ -1275,8 +1275,7 @@
+@@ -1450,8 +1450,7 @@ void IntToPtrOp::getCanonicalizationPatterns(RewritePatternSet &results,
  void FuncOp::build(OpBuilder &builder, OperationState &state, StringRef name,
                     FunctionType type, ArrayRef<NamedAttribute> attrs,
                     ArrayRef<DictionaryAttr> argAttrs) {
@@ -36,4 +36,17 @@
    state.addAttribute(getFunctionTypeAttrName(state.name), TypeAttr::get(type));
    state.attributes.append(attrs.begin(), attrs.end());
    state.addRegion();
+
+--- a/test/Conversion/amd/tritongpu_to_llvm.mlir
++++ b/test/Conversion/amd/tritongpu_to_llvm.mlir
+@@ -1110,8 +1110,8 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, "ttg.thr
+   // CHECK-NOT: rocdl.grid.dim
+   // CHECK: llvm.call @callee_zero_scratch
+   // CHECK: llvm.func internal @callee_zero_scratch
+-  // CHECK-SAME: passthrough = ["noinline", "convergent"]
+   // CHECK-SAME: ws_num_warps = 4 : i32
++  // CHECK-SAME: passthrough = ["noinline", "convergent"]
+   tt.func public @test_call_zero_scratch_no_grid_ops() attributes {noinline = false} {
+     tt.call @callee_zero_scratch() : () -> ()
+     tt.return
 

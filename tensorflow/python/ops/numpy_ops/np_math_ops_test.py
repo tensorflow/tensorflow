@@ -174,7 +174,10 @@ class MathTest(test.TestCase, parameterized.TestCase):
     # branch out of Python scalars made it float32 for every real dtype, which
     # for float64 also cost precision.
     for dtype in [np.float16, np.float32, np.float64]:
-      arg = np.array([-2.0, -0.5, 0.0, 0.5, 2.0], dtype=dtype)
+      arg = np.array(
+          [-2.0, -0.5, -0.0, 0.0, 0.5, 2.0, np.nan, np.inf, -np.inf],
+          dtype=dtype,
+      )
       self.match(
           np_math_ops.angle(arg), np.angle(arg), msg='angle({})'.format(arg)
       )
@@ -228,6 +231,62 @@ class MathTest(test.TestCase, parameterized.TestCase):
       for grad in tape.gradient(y, (x1, x2)):
         self.assertAllClose(grad, [0.5, 0.5, 0.5, 0.5])
 
+  def testHeaviside(self):
+    # x1 < 0 -> 0, x1 == 0 -> x2, x1 > 0 -> 1 (NumPy semantics).
+    x1 = np.array([-1.0, 0.0, 1.0, 2.0, -3.0, 0.5], dtype=np.float32)
+    x2 = np.array([5.0, 5.0, 5.0, 5.0, 5.0, 5.0], dtype=np.float32)
+    self.match(
+        np_math_ops.heaviside(x1, x2),
+        np.heaviside(x1, x2),
+        msg='heaviside standard',
+    )
+
+  @parameterized.parameters(*[
+      (dtype,)
+      for dtype in (
+          np.float16,
+          np.float32,
+          np.float64,
+          dtypes.bfloat16.as_numpy_dtype,
+      )
+  ])
+  def testHeavisideNaNPropagation(self, dtype):
+    # NumPy propagates NaN from the first argument. TensorFlow's relational
+    # operators evaluate to False for NaN, so the unguarded implementation
+    # returned x2 (or 0/1) instead of NaN. Regression test for
+    # tensorflow/tensorflow#127819.
+    #
+    # `x2` is deliberately 0.5 -- a value produced by neither the `x1 > 0`
+    # branch (1) nor the `x1 < 0` branch (0) -- so a NaN that silently falls
+    # through to `x2` cannot masquerade as a correct result. float16 and
+    # bfloat16 are included so half-precision propagation is covered;
+    # bfloat16 in particular is the dtype for which
+    # `np.issubdtype(bfloat16, np.inexact)` is False, which is precisely the
+    # regression this test guards against.
+    x1 = np.array([np.nan, 0.0, -1.0, 1.0], dtype=dtype)
+    x2 = np.array([0.5, 0.5, 0.5, 0.5], dtype=dtype)
+    actual = np_math_ops.heaviside(x1, x2)
+    expected = np.heaviside(x1, x2)
+    # Assert the dtype explicitly: `np.array_equal` compares values only, so a
+    # silent upcast (e.g. bfloat16 -> float64) would otherwise pass unnoticed.
+    self.assertEqual(actual.dtype.as_numpy_dtype, expected.dtype)
+    # np.testing.assert_equal treats NaN != NaN, so compare with equal_nan.
+    self.assertTrue(np.array_equal(actual.numpy(), expected, equal_nan=True))
+
+  def testHeavisideIntegerInputs(self):
+    # Integer inputs have no NaN; the result is still promoted to a floating
+    # point dtype (matching NumPy) and the integer cases are reproduced.
+    # `self.match` is used (rather than comparing `.tolist()` values) so that
+    # the promoted dtype and the shape are asserted as well, which catches an
+    # integer input failing to promote to floating point.
+    x1 = np.array([-1, 0, 1, 2], dtype=np.int32)
+    x2 = np.array([3, 3, 3, 3], dtype=np.int32)
+    self.match(
+        np_math_ops.heaviside(x1, x2),
+        np.heaviside(x1, x2),
+        msg='heaviside integer inputs promote to float',
+    )
+
   def testLogaddexp(self):
     self._testBinaryOp(np_math_ops.logaddexp, np.logaddexp, 'logaddexp')
     self._testBinaryOp(np_math_ops.logaddexp2, np.logaddexp2, 'logaddexp2')
@@ -254,6 +313,7 @@ class MathTest(test.TestCase, parameterized.TestCase):
 
   def match(self, actual, expected, msg='', check_dtype=True):
     self.assertIsInstance(actual, np_arrays.ndarray)
+    expected = np.asarray(expected)
     if check_dtype:
       self.assertEqual(
           actual.dtype, expected.dtype,
@@ -375,13 +435,70 @@ class MathTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(ValueError, 'out of bounds'):
       np_math_ops.argmin(a, axis=-3)
 
-  @parameterized.parameters([False, True])
-  def testIsCloseEqualNan(self, equal_nan):
-    a = np.asarray([1, 1, np.nan, 1, np.nan], np.float32)
-    b = np.asarray([1, 2, 1, np.nan, np.nan], np.float32)
+  @parameterized.parameters(
+      itertools.product(
+          [False, True], [np.float32, np.float64, np.complex64, np.complex128]
+      )
+  )
+  def testIsCloseEqualNan(self, equal_nan, dtype):
+    a_vals = [1.0, 1.0, np.nan, 1.0, np.nan]
+    b_vals = [1.0, 2.0, 1.0, np.nan, np.nan]
+    if np.issubdtype(dtype, np.complexfloating):
+      a_vals.extend([
+          complex(1.0, np.nan),
+          complex(np.nan, 1.0),
+          complex(np.nan, np.nan),
+      ])
+      b_vals.extend([
+          complex(np.nan, 1.0),
+          complex(1.0, np.nan),
+          complex(np.nan, np.nan),
+      ])
+    a = np.asarray(a_vals, dtype)
+    b = np.asarray(b_vals, dtype)
     self.match(
         np_math_ops.isclose(a, b, equal_nan=equal_nan),
         np.isclose(a, b, equal_nan=equal_nan))
+
+  @parameterized.parameters(
+      [np.float32, np.float64, np.complex64, np.complex128]
+  )
+  def testIsCloseInfinities(self, dtype):
+    # Regression test for GitHub issue 128480: same-sign infinities must be
+    # close and opposite-sign infinities must not be close, matching NumPy.
+    # Also covers mixed finite/infinite pairs like (1.0, inf).
+    a_vals = [np.inf, -np.inf, -np.inf, np.inf, 1.0, 1.0, np.inf]
+    b_vals = [np.inf, -np.inf, np.inf, -np.inf, 1.0, np.inf, 1.0]
+    if np.issubdtype(dtype, np.complexfloating):
+      a_vals.extend(
+          [complex(np.inf, np.inf), complex(np.inf, np.inf), complex(np.inf, 0)]
+      )
+      b_vals.extend(
+          [complex(np.inf, 0), complex(np.inf, np.inf), complex(np.inf, np.inf)]
+      )
+
+    a = np.array(a_vals, dtype)
+    b = np.array(b_vals, dtype)
+    self.match(
+        np_math_ops.isclose(a, b),
+        np.isclose(a, b),
+    )
+    self.match(
+        np_math_ops.allclose([dtype(np.inf)], [dtype(np.inf)]),
+        np.allclose([dtype(np.inf)], [dtype(np.inf)]),
+    )
+    self.match(
+        np_math_ops.allclose([dtype(-np.inf)], [dtype(np.inf)]),
+        np.allclose([dtype(-np.inf)], [dtype(np.inf)]),
+    )
+    self.match(
+        np_math_ops.allclose([dtype(np.inf)], [dtype(-np.inf)]),
+        np.allclose([dtype(np.inf)], [dtype(-np.inf)]),
+    )
+    self.match(
+        np_math_ops.allclose([dtype(-np.inf)], [dtype(-np.inf)]),
+        np.allclose([dtype(-np.inf)], [dtype(-np.inf)]),
+    )
 
   @parameterized.parameters([np.int32, np.int64])
   def testIsCloseIntegerTolerances(self, dtype):
@@ -395,8 +512,8 @@ class MathTest(test.TestCase, parameterized.TestCase):
         np_math_ops.isclose(a, b, rtol=9, atol=0),
         np.isclose(a, b, rtol=9, atol=0),
     )
-    self.assertEqual(
-        bool(np_math_ops.allclose(a, b, rtol=9, atol=0)),
+    self.match(
+        np_math_ops.allclose(a, b, rtol=9, atol=0),
         np.allclose(a, b, rtol=9, atol=0),
     )
     c = np.array([100, 200, -300, 0], dtype)
@@ -570,6 +687,24 @@ class MathTest(test.TestCase, parameterized.TestCase):
         r'Argument `n` must be a non-negative integer\. Received: n=-1',
     ):
       np_math_ops.diff(x, n=-1)
+
+  def testAverageAxisOutOfBounds(self):
+    x = np_array_ops.array(np.ones([2, 3]))
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.average(x, axis=2)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.average(x, axis=-3)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.average(x, axis=2, weights=np.ones([2, 3]))
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.average(x, axis=2, returned=True)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.average(x, axis=2, weights=np.ones([3]))
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.average(x, axis=-3, weights=np.ones([2, 3]))
+    scalar = np_array_ops.array(5.0)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.average(scalar, axis=0)
 
   def testAverageWrongShape(self):
     with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError, r''):
@@ -883,6 +1018,51 @@ class MathTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(np_math_ops.signbit([-3, 3]), [True, False])
     negative_zero = ops.convert_to_tensor([-0.0], dtype=dtypes.bfloat16)
     self.assertAllEqual(np_math_ops.signbit(negative_zero), [True])
+
+  def testCbrt(self):
+    for dtype in (dtypes.float16, dtypes.float32, dtypes.float64):
+      x_np = np.array(
+          [-0.0, 0.0, -8.0, 8.0, -27.0, 27.0], dtype=dtype.as_numpy_dtype
+      )
+      x = constant_op.constant(x_np, dtype=dtype)
+      out = np_math_ops.cbrt(x)
+      self.assertAllClose(out, np.cbrt(x_np))
+      self.assertAllEqual(np_math_ops.signbit(out), np.signbit(np.cbrt(x_np)))
+
+    x_neg_zero = constant_op.constant(-0.0, dtype=dtypes.float64)
+    self.assertAllEqual(
+        math_ops.reciprocal(np_math_ops.cbrt(x_neg_zero)),
+        -np.inf,
+    )
+
+    x_bf16 = constant_op.constant([-0.0, 0.0, -8.0, 8.0], dtype=dtypes.bfloat16)
+    out_bf16 = np_math_ops.cbrt(x_bf16)
+    self.assertAllClose(out_bf16, [-0.0, 0.0, -2.0, 2.0])
+    self.assertAllEqual(
+        np_math_ops.signbit(out_bf16), [True, False, True, False]
+    )
+
+    for dtype in (
+        dtypes.float16,
+        dtypes.float32,
+        dtypes.float64,
+        dtypes.bfloat16,
+    ):
+      # Verify N=0 (empty tensor) fallback.
+      x_empty = constant_op.constant([], dtype=dtype)
+      out_empty = np_math_ops.cbrt(x_empty)
+      self.assertEqual(out_empty.shape.num_elements(), 0)
+
+      # Verify NaN, +Inf, -Inf
+      x_edge = constant_op.constant(
+          [-float('inf'), float('inf'), float('nan')], dtype=dtype
+      )
+      out_edge = np_math_ops.cbrt(x_edge)
+      # inf ** (1/3) == inf; NaN ** (1/3) == NaN
+      # Negative sign bit for -inf is preserved.
+      self.assertAllEqual(out_edge[0:2], [-float('inf'), float('inf')])
+      self.assertAllEqual(np_math_ops.signbit(out_edge[0:2]), [True, False])
+      self.assertAllEqual(math_ops.is_nan(out_edge[2]), True)
 
   def testSinc(self):
     for dtype in (dtypes.float32, dtypes.float64):

@@ -25,11 +25,19 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Target/TargetMachine.h"
+#include "llvm/TargetParser/Triple.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/xla.pb.h"
 
 namespace xla::gpu::nvptx {
+
+// Returns the maximum PTX ISA version advertised by LLVM's NVPTX target,
+// encoded as major * 10 + minor. Returns an error if the target or its MC
+// subtarget information is not registered.
+absl::StatusOr<int> GetMaxPtxVersionSupportedByLlvm(
+    const llvm::Triple& target_triple);
 
 // Resolves the compute capability that XLA actually compiles for given the
 // compute capability of the target device. If the device's compute capability
@@ -37,13 +45,15 @@ namespace xla::gpu::nvptx {
 // advanced supported compute capability that the device can run, potentially
 // with the family ("f") feature extension enabled.
 stream_executor::CudaComputeCapability ResolveSupportedComputeCapability(
-    stream_executor::CudaComputeCapability compute_capability);
+    stream_executor::CudaComputeCapability compute_capability,
+    std::optional<stream_executor::SemanticVersion> ptx_version = std::nullopt);
 
 // Gets the GPU name as it's known to LLVM for a given compute
 // capability.  If we see an unrecognized compute capability, we
 // return the highest one that is known and below the selected device.
 std::string GetSmName(
-    stream_executor::CudaComputeCapability compute_capability);
+    stream_executor::CudaComputeCapability compute_capability,
+    std::optional<stream_executor::SemanticVersion> ptx_version = std::nullopt);
 
 // Compiles the argument module and returns it. libdevice_dir_path is the
 // parent directory of the libdevice bitcode libraries. The contents of the

@@ -1262,16 +1262,6 @@ absl::StatusOr<se::gpu::CudnnGraph> PrepareGraph(
     se::dnn::DnnSupport* dnn_support,
     const se::DeviceDescription& gpu_device_info,
     const HloFusionInstruction& hlo) {
-  if (dnn_support == nullptr &&
-      hlo_query::GetFirstInstructionWithOpcode(
-          *hlo.fused_instructions_computation(), HloOpcode::kConvolution) !=
-          nullptr &&
-      !se::gpu::SupportsDevicelessConvGraphs(gpu_device_info)) {
-    return absl::FailedPreconditionError(
-        "Deviceless cuDNN preparation of convolution graphs targeting "
-        "Blackwell-generation GPUs requires cuDNN >= 9.19; older runtimes "
-        "crash inside the deviceless heuristics query.");
-  }
   ABSL_ASSIGN_OR_RETURN(se::gpu::CudnnGraph graph, HloFusionToCuDnnGraph(hlo));
   PrecisionConfig precision_config = GetPrecisionConfig(hlo);
 
