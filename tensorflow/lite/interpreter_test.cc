@@ -1545,8 +1545,8 @@ TEST(TestDelegateOwnership, ProperlyDisposed) {
   // Construct a delegate with flags for indicating preparation/destruction.
   bool destroyed = false;
   bool prepared = false;
-  std::unique_ptr<TfLiteInterpreterOwnedDelegate> delegate(
-      new TfLiteInterpreterOwnedDelegate(&destroyed, &prepared));
+  std::unique_ptr<TfLiteInterpreterOwnedDelegate> delegate =
+      std::make_unique<TfLiteInterpreterOwnedDelegate>(&destroyed, &prepared);
   {
     // Create an interpreter and assemble a simple graph.
     Interpreter interpreter;
