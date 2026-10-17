@@ -24,28 +24,33 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "llvm/TargetParser/Triple.h"
 #include "llvm/Transforms/Utils/Cloning.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"       // from @llvm-project
+#include "mlir/Target/LLVMIR/Export.h"          // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "xla/debug_options_flags.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/gpu/gpu_asm_opts_util.h"
 #include "xla/service/gpu/target_constants.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/path.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/statusor.h"
 
 #if GOOGLE_CUDA
+#include "absl/strings/string_view.h"
 #include "xla/service/gpu/llvm_gpu_backend/nvptx_backend.h"
 #include "xla/stream_executor/cuda/assemble_compilation_provider.h"
 #include "xla/stream_executor/cuda/compilation_provider.h"
 #include "xla/stream_executor/cuda/compilation_provider_options.h"
 #include "xla/stream_executor/cuda/cuda_asm_compiler.h"
+#include "xla/stream_executor/cuda/ptx_compiler.h"
+#include "xla/stream_executor/cuda/ptx_compiler_support.h"
+#include "xla/stream_executor/cuda/subprocess_compilation.h"
+#include "xla/stream_executor/cuda/subprocess_compilation_provider.h"
 #elif TENSORFLOW_USE_ROCM
 #include "xla/service/gpu/llvm_gpu_backend/amdgpu_backend.h"
 #include "xla/stream_executor/gpu/asm_compiler.h"
@@ -59,6 +64,20 @@ namespace {
 
 #define GEN_PASS_DEF_GPUKERNELTOBLOBPASS
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
+
+#if GOOGLE_CUDA
+absl::StatusOr<int> GetLatestPtxIsaVersion(
+    absl::string_view preferred_cuda_dir) {
+  if (stream_executor::IsLibNvPtxCompilerSupported()) {
+    return stream_executor::GetLatestPtxIsaVersionForNvptxCompiler();
+  }
+  TF_ASSIGN_OR_RETURN(std::string ptxas_path,
+                      stream_executor::FindPtxAsExecutable(preferred_cuda_dir));
+  return stream_executor::cuda::SubprocessCompilationProvider(
+             std::move(ptxas_path), /*path_to_nvlink=*/"")
+      .GetLatestPtxIsaVersion();
+}
+#endif
 
 class GpuKernelToBlobPass
     : public impl::GpuKernelToBlobPassBase<GpuKernelToBlobPass> {
@@ -165,6 +184,16 @@ class GpuKernelToBlobPass
     // Compile and collect requested cubin and PTX images.
     std::vector<tensorflow::se::CubinOrPTXImage> images;
     auto gpu_asm_opts = xla::gpu::PtxOptsFromDebugOptions(options);
+    auto ptx_isa_version =
+        GetLatestPtxIsaVersion(options.xla_gpu_cuda_data_dir());
+    std::optional<int> max_ptx_isa_version;
+    if (ptx_isa_version.ok()) {
+      max_ptx_isa_version = *ptx_isa_version;
+    } else {
+      VLOG(2) << "Could not query latest PTX ISA version from compilation "
+                 "provider: "
+              << ptx_isa_version.status();
+    }
     for (const std::string& arch_str : architectures_) {
       TF_ASSIGN_OR_RETURN(auto arch_pair, ParseCudaArch(arch_str));
       bool is_compute_profile = arch_pair.first;
