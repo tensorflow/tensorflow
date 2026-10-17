@@ -1129,6 +1129,7 @@ xla_cc_test(
         "//xla/stream_executor/cuda:cuda_platform_id",
         "//xla/stream_executor/cuda:cuda_runtime_abi_version",
         "//xla/stream_executor/cuda:cuda_runtime_abi_version_registration",  # buildcleaner: keep
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
