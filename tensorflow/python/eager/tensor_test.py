@@ -77,6 +77,16 @@ class TFETensorTest(test_util.TensorFlowTestCase):
         self.assertEqual(np.signbit(value.real), np.signbit(t.real))
         self.assertEqual(np.signbit(value.imag), np.signbit(t.imag))
 
+    # np.float64 and np.complex128 subclass float and complex, so they go
+    # through the same cache.
+    for value_type, dtype in ((np.float64, dtypes.float64),
+                              (np.complex128, dtypes.complex128)):
+      for first, second in ((0.0, -0.0), (-0.0, 0.0)):
+        a = _create_tensor(value_type(first), dtype=dtype)
+        b = _create_tensor(value_type(second), dtype=dtype)
+        self.assertEqual(np.signbit(first), np.signbit(np.real(a.numpy())))
+        self.assertEqual(np.signbit(second), np.signbit(np.real(b.numpy())))
+
     # The same cache backs the conversion of Python scalars in binary ops.
     x = constant_op.constant([1.0, 2.0])
     self.assertAllEqual([False, False], np.signbit(x * 0.0))

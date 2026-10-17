@@ -71,6 +71,11 @@ class PyObjectPtr {
     // complex number, but the two zeros are different tensors: the sign
     // shows up in e.g. 1 / x or atan2. Compare the sign bit too, so that one
     // is never served from the cache entry of the other.
+    //
+    // Subclasses are included on purpose: np.float64 and np.complex128
+    // subclass float and complex, and reach this cache through
+    // `PyArray_IsPythonNumber`. Their tensors are built from the stored value,
+    // so comparing that value is also more accurate than a subclass `__eq__`.
     if (PyFloat_Check(ptr_)) {
       return SameFloat(PyFloat_AS_DOUBLE(ptr_), PyFloat_AS_DOUBLE(other.ptr_));
     }
