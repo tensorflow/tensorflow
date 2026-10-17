@@ -234,6 +234,7 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
   int cpu_delegated_node_count_ = 0;
   int cpu_partition_count_ = 0;
   bool is_fully_delegated_ = false;
+  std::vector<void*> external_host_allocations_;
 };
 
 }  // namespace benchmark

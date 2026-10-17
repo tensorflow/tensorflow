@@ -21,6 +21,10 @@ limitations under the License.
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+
+#if !defined(_WIN32)
+#include <unistd.h>
+#endif
 #include <functional>
 #include <iostream>
 #include <memory>
@@ -737,6 +741,8 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
                           BenchmarkParam::Create<std::string>(""));
   default_params.AddParam("result_file_path",
                           BenchmarkParam::Create<std::string>(""));
+  default_params.AddParam("external_host_memory_compatible_ptr",
+                          BenchmarkParam::Create<bool>(false));
 
   default_params.AddParam("tensor_name_display_length",
                           BenchmarkParam::Create<int32_t>(25));
@@ -772,6 +778,11 @@ BenchmarkTfLiteModel::~BenchmarkTfLiteModel() {
   // Destory the owned interpreter earlier than other objects (specially
   // 'owned_delegates_').
   interpreter_.reset();
+
+  for (void* ptr : external_host_allocations_) {
+    free(ptr);
+  }
+  external_host_allocations_.clear();
 }
 
 std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
@@ -848,6 +859,10 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
       CreateFlag<std::string>(
           "output_proto_filepath", &params_,
           "File path to export outputs layer as tf example proto."),
+      CreateFlag<bool>("external_host_memory_compatible_ptr", &params_,
+                       "Allocate page-aligned host memory for input and output "
+                       "tensors using SetCustomAllocationForTensor to enable "
+                       "zero-copy external host memory compatibility."),
       CreateFlag<int32_t>(
           "tensor_name_display_length", &params_,
           "The number of characters to show for the tensor's name when "
@@ -1401,6 +1416,95 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
   if (interpreter_runner_->AllocateTensors() != kTfLiteOk) {
     TFLITE_LOG(ERROR) << "Failed to allocate tensors!";
     return kTfLiteError;
+  }
+
+  if (params_.Get<bool>("external_host_memory_compatible_ptr") &&
+      interpreter_ != nullptr) {
+    const bool has_gpu_delegate =
+        gpu_partition_count_ > 0 ||
+        (params_.HasParam("use_gpu") && params_.Get<bool>("use_gpu")) ||
+        (params_.HasParam("use_mldrift") && params_.Get<bool>("use_mldrift"));
+
+    if (!has_gpu_delegate) {
+      TFLITE_LOG(WARN)
+          << "--external_host_memory_compatible_ptr is only applicable when "
+             "using a GPU delegate (e.g., GPU or MLDrift). "
+             "Skipping custom allocations.";
+    } else {
+      size_t alignment = 4096;
+#if defined(_SC_PAGESIZE)
+      const int64_t sys_page_size = sysconf(_SC_PAGESIZE);
+      if (sys_page_size > 0) {
+        alignment = static_cast<size_t>(sys_page_size);
+      }
+#endif
+      std::vector<int> custom_allocated_tensors;
+      for (int tensor_index : interpreter_runner_->inputs()) {
+        TfLiteTensor* tensor = interpreter_->tensor(tensor_index);
+        if (tensor != nullptr && tensor->bytes > 0) {
+          const size_t alloc_size =
+              (tensor->bytes + alignment - 1) & ~(alignment - 1);
+          void* ptr = nullptr;
+          if (posix_memalign(&ptr, alignment, alloc_size) == 0) {
+            std::memset(ptr, 0, alloc_size);
+            external_host_allocations_.push_back(ptr);
+            TfLiteCustomAllocation custom_alloc{ptr, tensor->bytes};
+            if (interpreter_->SetCustomAllocationForTensor(
+                    tensor_index, custom_alloc) == kTfLiteOk) {
+              custom_allocated_tensors.push_back(tensor_index);
+            } else {
+              TFLITE_LOG(WARN) << "Failed to set custom allocation for input "
+                               << tensor_index;
+            }
+          }
+        }
+      }
+      for (int tensor_index : interpreter_runner_->outputs()) {
+        TfLiteTensor* tensor = interpreter_->tensor(tensor_index);
+        if (tensor != nullptr && tensor->bytes > 0) {
+          const size_t alloc_size =
+              (tensor->bytes + alignment - 1) & ~(alignment - 1);
+          void* ptr = nullptr;
+          if (posix_memalign(&ptr, alignment, alloc_size) == 0) {
+            std::memset(ptr, 0, alloc_size);
+            external_host_allocations_.push_back(ptr);
+            TfLiteCustomAllocation custom_alloc{ptr, tensor->bytes};
+            if (interpreter_->SetCustomAllocationForTensor(
+                    tensor_index, custom_alloc) == kTfLiteOk) {
+              custom_allocated_tensors.push_back(tensor_index);
+            } else {
+              TFLITE_LOG(WARN) << "Failed to set custom allocation for output "
+                               << tensor_index;
+            }
+          }
+        }
+      }
+      if (interpreter_runner_->AllocateTensors() != kTfLiteOk) {
+        TFLITE_LOG(WARN)
+            << "Failed to allocate tensors with external host memory "
+               "compatible allocations; falling back to default arena "
+               "allocation.";
+        for (int tensor_index : custom_allocated_tensors) {
+          interpreter_->SetCustomAllocationForTensor(tensor_index,
+                                                     {nullptr, 0});
+        }
+        for (void* ptr : external_host_allocations_) {
+          free(ptr);
+        }
+        external_host_allocations_.clear();
+
+        if (interpreter_runner_->AllocateTensors() != kTfLiteOk) {
+          TFLITE_LOG(ERROR)
+              << "Failed to re-allocate default tensors after fallback!";
+          return kTfLiteError;
+        }
+      } else {
+        TFLITE_LOG(INFO) << "Enabled " << alignment
+                         << "-aligned external host memory compatible "
+                            "allocations for "
+                         << external_host_allocations_.size() << " tensors.";
+      }
+    }
   }
 
   AddOwnedListener(
