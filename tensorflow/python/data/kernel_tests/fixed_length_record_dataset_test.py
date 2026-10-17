@@ -193,6 +193,24 @@ class FixedLengthRecordDatasetTest(FixedLengthRecordDatasetTestBase,
         )
 
   @combinations.generate(test_base.default_test_combinations())
+  def testInvalidSubsequentFile(self):
+    for contents, error in (
+        (b"H", "smaller than the sum of the header"),
+        (b"HHHHHxFF", "not an exact multiple of the record length")):
+      with self.subTest(contents=contents):
+        filenames = self._createFiles()
+        with open(filenames[1], "wb") as f:
+          f.write(contents)
+        dataset = readers.FixedLengthRecordDataset(
+            filenames, self._record_bytes, self._header_bytes,
+            self._footer_bytes, buffer_size=2**63 - 1)
+        get_next = self.getNext(dataset)
+        for i in range(self._num_records):
+          self.assertEqual(self.evaluate(get_next()), self._record(0, i))
+        with self.assertRaisesRegex(errors.InvalidArgumentError, error):
+          self.evaluate(get_next())
+
+  @combinations.generate(test_base.default_test_combinations())
   def testPathlib(self):
     test_filenames = self._createFiles()
     test_filenames = [pathlib.Path(f) for f in test_filenames]
