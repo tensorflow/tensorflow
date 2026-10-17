@@ -98,6 +98,18 @@ static absl::Status ValidateQKV(const TensorShape& q, const TensorShape& k,
   return absl::OkStatus();
 }
 
+// Each dimension fits in int32 (ValidateQKV), but the forward outputs'
+// element counts can still overflow, e.g. a large D_v with S_kv = 0.
+static absl::Status ValidateOutputShapes(const TensorShape& q,
+                                         const TensorShape& k,
+                                         const TensorShape& v) {
+  TensorShape unused;
+  TF_RETURN_IF_ERROR(TensorShape::BuildTensorShape(
+      {q.dim_size(0), q.dim_size(1), q.dim_size(2), v.dim_size(3)}, &unused));
+  return TensorShape::BuildTensorShape(
+      {q.dim_size(0), q.dim_size(2), q.dim_size(1)}, &unused);
+}
+
 static absl::Status ExpectShape(absl::string_view name, const TensorShape& got,
                                 const TensorShape& want) {
   if (got != want) {
@@ -137,6 +149,7 @@ class FlashAttnXlaOp : public XlaOpKernel {
     const TensorShape k = ctx->InputShape(1);
     const TensorShape v = ctx->InputShape(2);
     OP_REQUIRES_OK(ctx, ValidateQKV(q, k, v, causal_, ctx->input_type(0)));
+    OP_REQUIRES_OK(ctx, ValidateOutputShapes(q, k, v));
     OP_REQUIRES_OK(ctx, ValidateRngInputs(ctx));
     OP_REQUIRES_OK(ctx, ToFlashAttnDtype(ctx->input_type(0), &d.dtype));
     xla::PrimitiveType ptype;
@@ -218,10 +231,14 @@ class FlashAttnGradXlaOp : public XlaOpKernel {
     d.causal = causal_;
     d.deterministic = OpDeterminismRequired();
 
-    const TensorShape out_shape({d.B, d.Sq, d.H, d.Dv});
+    // Built with BuildTensorShape: see ValidateOutputShapes.
+    TensorShape out_shape, stats_shape;
+    OP_REQUIRES_OK(
+        ctx, TensorShape::BuildTensorShape({d.B, d.Sq, d.H, d.Dv}, &out_shape));
+    OP_REQUIRES_OK(
+        ctx, TensorShape::BuildTensorShape({d.B, d.H, d.Sq}, &stats_shape));
     OP_REQUIRES_OK(ctx, ExpectShape("out", ctx->InputShape(3), out_shape));
-    OP_REQUIRES_OK(ctx, ExpectShape("stats", ctx->InputShape(4),
-                                    TensorShape({d.B, d.H, d.Sq})));
+    OP_REQUIRES_OK(ctx, ExpectShape("stats", ctx->InputShape(4), stats_shape));
     OP_REQUIRES_OK(ctx, ExpectShape("do", ctx->InputShape(5), out_shape));
 
     // Sized from shapes alone, so it doesn't matter which device is current

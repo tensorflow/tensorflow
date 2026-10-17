@@ -3464,7 +3464,7 @@ REGISTER_OP("FlashAttentionGrad")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 0, &unused));
 
-      DimensionHandle batch, heads, seq_q, seq_kv, unused_dim;
+      DimensionHandle batch, heads, seq_q, seq_kv, dim_qk, dim_v, unused_dim;
       TF_RETURN_IF_ERROR(c->Merge(c->Dim(query, 0), c->Dim(key, 0), &batch));
       TF_RETURN_IF_ERROR(c->Merge(batch, c->Dim(value, 0), &batch));
       TF_RETURN_IF_ERROR(c->Merge(batch, c->Dim(out, 0), &batch));
@@ -3483,12 +3483,9 @@ REGISTER_OP("FlashAttentionGrad")
 
       TF_RETURN_IF_ERROR(c->Merge(c->Dim(key, 1), c->Dim(value, 1), &seq_kv));
 
-      TF_RETURN_IF_ERROR(
-          c->Merge(c->Dim(query, 3), c->Dim(key, 3), &unused_dim));
-      TF_RETURN_IF_ERROR(
-          c->Merge(c->Dim(value, 3), c->Dim(out, 3), &unused_dim));
-      TF_RETURN_IF_ERROR(
-          c->Merge(c->Dim(out, 3), c->Dim(output_grad, 3), &unused_dim));
+      TF_RETURN_IF_ERROR(c->Merge(c->Dim(query, 3), c->Dim(key, 3), &dim_qk));
+      TF_RETURN_IF_ERROR(c->Merge(c->Dim(value, 3), c->Dim(out, 3), &dim_v));
+      TF_RETURN_IF_ERROR(c->Merge(dim_v, c->Dim(output_grad, 3), &dim_v));
 
       bool is_causal;
       TF_RETURN_IF_ERROR(c->GetAttr("is_causal", &is_causal));
@@ -3496,9 +3493,11 @@ REGISTER_OP("FlashAttentionGrad")
         TF_RETURN_IF_ERROR(c->Merge(seq_q, seq_kv, &unused_dim));
       }
 
-      c->set_output(0, query);
-      c->set_output(1, key);
-      c->set_output(2, value);
+      // Built from the merged dimensions, so a size known only from, e.g.,
+      // output or output_grad still reaches the gradients.
+      c->set_output(0, c->MakeShape({batch, seq_q, heads, dim_qk}));
+      c->set_output(1, c->MakeShape({batch, seq_kv, heads, dim_qk}));
+      c->set_output(2, c->MakeShape({batch, seq_kv, heads, dim_v}));
       return absl::OkStatus();
     });
 

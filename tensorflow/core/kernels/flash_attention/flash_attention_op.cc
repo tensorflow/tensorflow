@@ -118,14 +118,22 @@ class FlashAttentionOp : public OpKernel {
         context,
         functor::FlashAttentionFunctor<Device, T>::CheckFeatureSize(D_qk, D_v));
 
+    // Each dimension fits in int32, but the output's element count can still
+    // overflow (e.g. a large D_v with S_kv = 0); BuildTensorShape reports that
+    // instead of CHECK-failing.
+    TensorShape output_shape, stats_shape;
+    OP_REQUIRES_OK(context, TensorShape::BuildTensorShape({B, S_q, H, D_v},
+                                                          &output_shape));
+    OP_REQUIRES_OK(context,
+                   TensorShape::BuildTensorShape({B, H, S_q}, &stats_shape));
+
     Tensor *output_tensor = nullptr;
     OP_REQUIRES_OK(context,
-                   context->allocate_output(0, TensorShape({B, S_q, H, D_v}),
-                                            &output_tensor));
+                   context->allocate_output(0, output_shape, &output_tensor));
 
     Tensor *stats_tensor = nullptr;
-    OP_REQUIRES_OK(context, context->allocate_output(
-                                1, TensorShape({B, H, S_q}), &stats_tensor));
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(1, stats_shape, &stats_tensor));
 
     auto Q = q_tensor.template tensor<T, 4>();
     auto K = k_tensor.template tensor<T, 4>();
@@ -194,11 +202,16 @@ class FlashAttentionGradOp : public OpKernel {
                    functor::CheckDimsFitInt32(B, H, S_q, S_kv, D_qk, D_v));
 
     OP_REQUIRES_OK(context, CheckKV(k_tensor, v_tensor, B, H, D_qk));
-    const TensorShape out_shape({B, S_q, H, D_v});
+    // Built with BuildTensorShape: see FlashAttentionOp.
+    TensorShape out_shape, stats_shape;
+    OP_REQUIRES_OK(context,
+                   TensorShape::BuildTensorShape({B, S_q, H, D_v}, &out_shape));
+    OP_REQUIRES_OK(context,
+                   TensorShape::BuildTensorShape({B, H, S_q}, &stats_shape));
     OP_REQUIRES_OK(context, ExpectShape("output", out_tensor, out_shape));
     OP_REQUIRES_OK(context, ExpectShape("output_grad", do_tensor, out_shape));
-    OP_REQUIRES_OK(context, ExpectShape("softmax_lse", stats_tensor,
-                                        TensorShape({B, H, S_q})));
+    OP_REQUIRES_OK(context,
+                   ExpectShape("softmax_lse", stats_tensor, stats_shape));
 
     if (causal_mask_) {
       OP_REQUIRES(
