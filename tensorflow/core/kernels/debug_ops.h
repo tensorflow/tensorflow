@@ -816,11 +816,12 @@ class DebugNumericSummaryV2Op<GPUDevice, Tin, Tout> : public AsyncOpKernel {
 
       // Call the GPU kernels for the numerical (inf/nan) checks.
       auto input = context->input(0).flat<Tin>();
-      OP_REQUIRES_OK_ASYNC(context,
-                           (CurtHealthLaunch<Tin, Tout>().Run(
-                               d, input.data(), input.size(),
-                               output_tensor->flat<Tout>().data() + 1)),
-                           []() {});
+      absl::Status status = CurtHealthLaunch<Tin, Tout>().Run(
+          d, input.data(), input.size(),
+          output_tensor->flat<Tout>().data() + 1);
+      if (!status.ok()) {
+        context->SetStatus(status);
+      }
 
       cleanup.release();
       context->device()
@@ -858,11 +859,12 @@ class DebugNumericSummaryV2Op<GPUDevice, Tin, Tout> : public AsyncOpKernel {
       }
 
       // Call the GPU kernels for the numerical (inf/nan) checks.
-      OP_REQUIRES_OK_ASYNC(context,
-                           (ConciseHealthLaunch<Tin, Tout>().Run(
-                               d, input.data(), input.size(),
-                               output_tensor->flat<Tout>().data() + 2)),
-                           []() {});
+      absl::Status status = ConciseHealthLaunch<Tin, Tout>().Run(
+          d, input.data(), input.size(),
+          output_tensor->flat<Tout>().data() + 2);
+      if (!status.ok()) {
+        context->SetStatus(status);
+      }
 
       cleanup.release();
       context->device()
@@ -906,11 +908,12 @@ class DebugNumericSummaryV2Op<GPUDevice, Tin, Tout> : public AsyncOpKernel {
 
       // Call the GPU kernels for the numerical (inf/nan) checks and
       // pos/neg/zero counts.
-      OP_REQUIRES_OK_ASYNC(context,
-                           (FullHealthLaunch<Tin, Tout>().Run(
-                               d, input.data(), input.size(),
-                               output_tensor->flat<Tout>().data() + 5)),
-                           []() {});
+      absl::Status status = FullHealthLaunch<Tin, Tout>().Run(
+          d, input.data(), input.size(),
+          output_tensor->flat<Tout>().data() + 5);
+      if (!status.ok()) {
+        context->SetStatus(status);
+      }
 
       cleanup.release();
       context->device()
@@ -979,11 +982,11 @@ class DebugNumericSummaryV2Op<GPUDevice, Tin, Tout> : public AsyncOpKernel {
 
       // Call the GPU kernels for the numerical (inf/nan) checks.
       auto input = context->input(0).flat<Tin>();
-      OP_REQUIRES_OK_ASYNC(context,
-                           (ReduceInfNanThreeSlotsLaunch<Tin, Tout>().Run(
-                               d, input.data(), input.size(),
-                               output_tensor->flat<Tout>().data())),
-                           []() {});
+      absl::Status status = ReduceInfNanThreeSlotsLaunch<Tin, Tout>().Run(
+          d, input.data(), input.size(), output_tensor->flat<Tout>().data());
+      if (!status.ok()) {
+        context->SetStatus(status);
+      }
 
       cleanup.release();
       context->device()

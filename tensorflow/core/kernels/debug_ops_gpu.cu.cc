@@ -24,6 +24,7 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/gpu_launch_config.h"
@@ -137,13 +138,15 @@ template <typename Tin, typename Tout>
 struct CurtHealthLaunch {
   absl::Status Run(const GPUDevice& d, const Tin* data, int64_t size,
                    Tout output[1]) {
-    const int32_t block_size = d.maxGpuThreadsPerBlock();
-    const int32_t num_blocks =
-        (d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor()) /
-        block_size;
+    absl::StatusOr<GpuLaunchConfig64> config_or = GetGpuLaunchConfig64(size, d);
+    if (!config_or.ok()) {
+      return config_or.status();
+    }
+    const GpuLaunchConfig64& config = *config_or;
 
-    return GpuLaunchKernel(CurtHealthKernel<Tin, Tout>, num_blocks, block_size,
-                           0, d.stream(), data, size, output);
+    return GpuLaunchKernel(CurtHealthKernel<Tin, Tout>, config.block_count,
+                           config.thread_per_block, 0, d.stream(), data, size,
+                           output);
   }
 };
 
@@ -162,13 +165,15 @@ template <typename Tin, typename Tout>
 struct ConciseHealthLaunch {
   absl::Status Run(const GPUDevice& d, const Tin* data, int64_t size,
                    Tout output[3]) {
-    const int32_t block_size = d.maxGpuThreadsPerBlock();
-    const int32_t num_blocks =
-        (d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor()) /
-        block_size;
+    absl::StatusOr<GpuLaunchConfig64> config_or = GetGpuLaunchConfig64(size, d);
+    if (!config_or.ok()) {
+      return config_or.status();
+    }
+    const GpuLaunchConfig64& config = *config_or;
 
-    return GpuLaunchKernel(ConciseHealthKernel<Tin, Tout>, num_blocks,
-                           block_size, 0, d.stream(), data, size, output);
+    return GpuLaunchKernel(ConciseHealthKernel<Tin, Tout>, config.block_count,
+                           config.thread_per_block, 0, d.stream(), data, size,
+                           output);
   }
 };
 
@@ -187,13 +192,15 @@ template <typename Tin, typename Tout>
 struct FullHealthLaunch {
   absl::Status Run(const GPUDevice& d, const Tin* data, int64_t size,
                    Tout output[6]) {
-    const int32_t block_size = d.maxGpuThreadsPerBlock();
-    const int32_t num_blocks =
-        (d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor()) /
-        block_size;
+    absl::StatusOr<GpuLaunchConfig64> config_or = GetGpuLaunchConfig64(size, d);
+    if (!config_or.ok()) {
+      return config_or.status();
+    }
+    const GpuLaunchConfig64& config = *config_or;
 
-    return GpuLaunchKernel(FullHealthKernel<Tin, Tout>, num_blocks, block_size,
-                           0, d.stream(), data, size, output);
+    return GpuLaunchKernel(FullHealthKernel<Tin, Tout>, config.block_count,
+                           config.thread_per_block, 0, d.stream(), data, size,
+                           output);
   }
 };
 
@@ -212,13 +219,15 @@ template <typename Tin, typename Tout>
 struct ReduceInfNanThreeSlotsLaunch {
   absl::Status Run(const GPUDevice& d, const Tin* data, int64_t size,
                    Tout output[3]) {
-    const int32_t block_size = d.maxGpuThreadsPerBlock();
-    const int32_t num_blocks =
-        (d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor()) /
-        block_size;
+    absl::StatusOr<GpuLaunchConfig64> config_or = GetGpuLaunchConfig64(size, d);
+    if (!config_or.ok()) {
+      return config_or.status();
+    }
+    const GpuLaunchConfig64& config = *config_or;
 
-    return GpuLaunchKernel(ReduceInfNanThreeSlotsKernel<Tin, Tout>, num_blocks,
-                           block_size, 0, d.stream(), data, size, output);
+    return GpuLaunchKernel(ReduceInfNanThreeSlotsKernel<Tin, Tout>,
+                           config.block_count, config.thread_per_block, 0,
+                           d.stream(), data, size, output);
   }
 };
 

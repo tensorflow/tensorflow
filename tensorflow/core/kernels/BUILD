@@ -977,6 +977,7 @@ tf_kernel_library(
         "//tensorflow/core:gpu_runtime",
         "//tensorflow/core/debug:debug_io_utils",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
     ],
 )
