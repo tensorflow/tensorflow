@@ -639,7 +639,9 @@ class BatchOpsTest(test.TestCase):
       self.assertEqual(len(thread_results), 0)
 
   def testUnbatchGradInvalidId(self):
-    with self.assertRaises(errors.InvalidArgumentError):
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError),
+        r"Shape must be rank 0|Expected `id` to be scalar"):
       self.evaluate(
           gen_batch_ops.unbatch_grad(
               original_input=constant_op.constant([1]),
@@ -654,8 +656,142 @@ class BatchOpsTest(test.TestCase):
                   1,
               ], dtype=dtypes.int64)))
 
+  def testUnbatchGradScalarGradient(self):
+    grad = constant_op.constant(1, dtype=dtypes.int32)
+    if not context.executing_eagerly():
+      grad = array_ops.placeholder_with_default(grad, shape=None)
+    for input_shape in ([0], [0, 0], [2, 0], [1]):
+      with self.subTest(input_shape=input_shape):
+        with self.assertRaisesRegex(
+            errors.InvalidArgumentError, "`grad` to have rank at least 1"
+        ):
+          self.evaluate(
+              gen_batch_ops.unbatch_grad(
+                  original_input=constant_op.constant(
+                      1, shape=input_shape, dtype=dtypes.int32
+                  ),
+                  batch_index=constant_op.constant(
+                      [[0, 0, 1]], dtype=dtypes.int64
+                  ),
+                  grad=grad,
+                  id=constant_op.constant(0, dtype=dtypes.int64),
+                  shared_name="unbatch_grad_scalar_gradient",
+              )
+          )
+
+  def testUnbatchGradScalarGradientShape(self):
+    if context.executing_eagerly():
+      return
+    with self.assertRaisesRegex(ValueError, "Shape must be at least rank 1"):
+      gen_batch_ops.unbatch_grad(
+          original_input=constant_op.constant([1.0]),
+          batch_index=constant_op.constant([[0, 0, 1]], dtype=dtypes.int64),
+          grad=constant_op.constant(1.0),
+          id=constant_op.constant(0, dtype=dtypes.int64),
+      )
+
+  def testUnbatchGradInvalidStaticShapes(self):
+    if context.executing_eagerly():
+      return
+    for index_shape, id_shape, message in (
+        ([], [], "Shape must be rank 2"),
+        ([0, 5], [], "Dimension must be 3"),
+        ([0, 3], [1], "Shape must be rank 0"),
+    ):
+      with self.subTest(index_shape=index_shape, id_shape=id_shape):
+        with self.assertRaisesRegex(ValueError, message):
+          gen_batch_ops.unbatch_grad(
+              original_input=constant_op.constant([], dtype=dtypes.float32),
+              batch_index=constant_op.constant(
+                  0, shape=index_shape, dtype=dtypes.int64),
+              grad=constant_op.constant([], dtype=dtypes.float32),
+              id=constant_op.constant(0, shape=id_shape, dtype=dtypes.int64))
+
+  def testUnbatchGradInvalidDynamicShapes(self):
+    for input_shape in ([0], [2, 0], [1]):
+      for index, arg_id, message in (
+          (np.array(0, dtype=np.int64), np.int64(0), "Expected a matrix"),
+          (np.empty((0, 5), dtype=np.int64), np.int64(0), "Wrong shape"),
+          (np.empty((0, 3), dtype=np.int64), [0], "`id` to be scalar"),
+      ):
+        with self.subTest(input_shape=input_shape, index=index, arg_id=arg_id):
+          batch_index = constant_op.constant(index, dtype=dtypes.int64)
+          batch_id = constant_op.constant(arg_id, dtype=dtypes.int64)
+          if not context.executing_eagerly():
+            batch_index = array_ops.placeholder_with_default(
+                batch_index, shape=None)
+            batch_id = array_ops.placeholder_with_default(batch_id, shape=None)
+          with self.assertRaisesRegex(errors.InvalidArgumentError, message):
+            self.evaluate(gen_batch_ops.unbatch_grad(
+                original_input=constant_op.constant(0.0, shape=input_shape),
+                batch_index=batch_index,
+                grad=constant_op.constant([1.0]), id=batch_id))
+
+  def testUnbatchGradEmptyOriginalInput(self):
+    for batch_id, grad_shape in enumerate(
+        ([0], [2], [2, 0], [2, 3], [2, 3, 4])
+    ):
+      with self.subTest(grad_shape=grad_shape):
+        result = self.evaluate(
+            gen_batch_ops.unbatch_grad(
+                original_input=constant_op.constant([], shape=[0, 0]),
+                batch_index=constant_op.constant(
+                    [], shape=[0, 3], dtype=dtypes.int64
+                ),
+                grad=constant_op.constant(1.0, shape=grad_shape),
+                id=constant_op.constant(batch_id, dtype=dtypes.int64),
+                shared_name="unbatch_grad_empty_original_input",
+            )
+        )
+        self.assertAllEqual(result.shape, [0] + grad_shape[1:])
+
+  def testUnbatchGradValidAfterScalarGradient(self):
+    def unbatch_grad(grad):
+      grad = constant_op.constant(grad)
+      if not context.executing_eagerly():
+        grad = array_ops.placeholder_with_default(grad, shape=None)
+      return gen_batch_ops.unbatch_grad(
+          original_input=constant_op.constant([1.0]),
+          batch_index=constant_op.constant([[0, 0, 1]], dtype=dtypes.int64),
+          grad=grad,
+          id=constant_op.constant(0, dtype=dtypes.int64),
+          shared_name="unbatch_grad_after_scalar_gradient",
+      )
+
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, "`grad` to have rank at least 1"
+    ):
+      self.evaluate(unbatch_grad(1.0))
+    self.assertAllEqual(self.evaluate(unbatch_grad([2.0])), [2.0])
+
+  def testUnbatchGradValidAfterInvalidIndex(self):
+    for batch_id, (index, message) in enumerate((
+        (np.array(0, dtype=np.int64), "Expected a matrix"),
+        (np.empty((0, 5), dtype=np.int64), "Wrong shape"),
+        (np.empty((0, 3), dtype=np.int64), "batch_index is empty"),
+    )):
+      def unbatch_grad(batch_index):
+        batch_index = constant_op.constant(batch_index, dtype=dtypes.int64)
+        if not context.executing_eagerly():
+          batch_index = array_ops.placeholder_with_default(
+              batch_index, shape=None)
+        return gen_batch_ops.unbatch_grad(
+            original_input=constant_op.constant([1.0]),
+            batch_index=batch_index,
+            grad=constant_op.constant([2.0]),
+            id=constant_op.constant(batch_id, dtype=dtypes.int64),
+            shared_name="unbatch_grad_after_invalid_index")
+
+      with self.subTest(batch_id=batch_id):
+        with self.assertRaisesRegex(errors.InvalidArgumentError, message):
+          self.evaluate(unbatch_grad(index))
+        self.assertAllEqual(
+            self.evaluate(unbatch_grad([[batch_id, 0, 1]])), [2.0])
+
   def testUnbatchGradInvalidBatchId(self):
-    with self.assertRaises(errors.InvalidArgumentError):
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError),
+        r"Dimension must be 3|Expected 1st dimension size to be 3"):
       self.evaluate(
           gen_batch_ops.unbatch_grad(
               original_input=constant_op.constant([1]),
@@ -665,9 +801,7 @@ class BatchOpsTest(test.TestCase):
               grad=constant_op.constant([
                   1,
               ]),
-              id=constant_op.constant([
-                  1,
-              ], dtype=dtypes.int64)))
+              id=constant_op.constant(1, dtype=dtypes.int64)))
 
   def testUnbatchGradInvalidArgs(self):
     original_input = random_ops.random_uniform(
@@ -678,7 +812,10 @@ class BatchOpsTest(test.TestCase):
         shape=(3, 1), dtype=dtypes.float64, maxval=None)
     batch_id = random_ops.random_uniform(
         shape=(3, 1), dtype=dtypes.int64, maxval=65536)
-    with self.assertRaises(errors.InvalidArgumentError):
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError),
+        r"Shape must be rank 0|Expected `id` to be scalar|"
+        r"Dimension must be 3|Expected 1st dimension size to be 3"):
       self.evaluate(
           gen_batch_ops.unbatch_grad(
               original_input=original_input,
