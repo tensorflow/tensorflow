@@ -65,7 +65,6 @@ tf_cc_shared_test(
         "//tensorflow/compiler/mlir/tfrt:import_model",
         "//tensorflow/compiler/mlir/tfrt/transforms/mlrt:import_model",
         "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
         "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:resource_loader",
         "//tensorflow/core/tfrt/fallback:fallback_state",

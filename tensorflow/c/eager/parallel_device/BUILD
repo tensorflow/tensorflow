@@ -126,7 +126,6 @@ tf_cc_test(
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
         "//tensorflow/core/common_runtime/eager:context",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
@@ -147,7 +146,6 @@ cc_library(
         "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/core:framework_types_hdr",
         "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
     ],
 )
 
@@ -165,7 +163,6 @@ tf_cc_test(
         "//tensorflow/c/eager:immediate_execution_tensor_handle",
         "//tensorflow/c/eager:tfe_tensorhandle_internal",
         "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
         "@com_google_googletest//:gtest_main",
     ],
 )

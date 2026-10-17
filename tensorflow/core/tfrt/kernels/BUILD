@@ -63,7 +63,6 @@ tf_cc_test(
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/framework:tensor_matcher",
         "//tensorflow/core/framework:types_proto_cc",

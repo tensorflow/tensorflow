@@ -78,7 +78,6 @@ filegroup(
 
 cc_library(
     name = "sparse_tensor",
-    srcs = ["sparse_tensor.cc"],
     hdrs = [
         "dim_comparator.h",
         "sparse_tensor.h",

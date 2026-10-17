@@ -1204,7 +1204,6 @@ tf_cc_test(
         ":auto_scaler",
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
         "//tensorflow/core/lib/monitoring:cell_reader",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/time",

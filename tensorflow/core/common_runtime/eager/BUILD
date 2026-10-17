@@ -320,7 +320,6 @@ tf_cc_test(
         "//tensorflow/core:framework",
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
         "//tensorflow/core/common_runtime:composite_device",
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/kernels:cast_op",
@@ -573,7 +572,6 @@ tf_cc_test(
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
         "@com_google_googletest//:gtest_main",
     ],
 )

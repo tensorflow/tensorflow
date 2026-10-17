@@ -1678,7 +1678,6 @@ pywrap_library(
     },
     enable_common_lib_starlark_only_filter = select({
         "//tensorflow:windows": False,
-        "//tensorflow:macos": False,
         "//conditions:default": True,
     }),
     pywrap_lib_filter = ":_pywrap_lib_filter",
