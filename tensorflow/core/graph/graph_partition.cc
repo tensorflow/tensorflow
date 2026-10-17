@@ -646,7 +646,11 @@ absl::Status AddControlFlow(const PartitionOptions& opts, Graph* g,
 
     if (IsLoopCond(node)) {
       const std::string& frame_name = cf_info[node->id()].frame_name;
-      DCHECK(!frame_name.empty());
+      if (frame_name.empty()) {
+        return absl::InvalidArgumentError(
+            absl::StrCat(FormatNodeForError(*node),
+                         " must be inside a while loop frame."));
+      }
       frame_cond_map[frame_name] = node;
     }
   }

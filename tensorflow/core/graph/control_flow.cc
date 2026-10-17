@@ -63,6 +63,11 @@ absl::Status ValidateControlFlowInfo(
           "instructions on how to reproduce the error."));
     }
     if (IsLoopCond(node)) {
+      if (cf.frame_name.empty()) {
+        return absl::InvalidArgumentError(
+            absl::StrCat(FormatNodeForError(*node),
+                         " must be inside a while loop frame."));
+      }
       // ForwardLoopCounter runs in the same frame as the forward loop and
       // BackPropLoopCounter runs in the same frame as the backprop loop. They
       // are the only cases that multiple loops share the same frame.
