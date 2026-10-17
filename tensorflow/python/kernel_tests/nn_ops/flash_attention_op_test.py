@@ -274,6 +274,51 @@ class FlashAttentionTest(test.TestCase, parameterized.TestCase):
       err = np.max(np.abs(g - w)) / max(np.max(np.abs(w)), 1e-3)
       self.assertLess(err, tol, msg=name)
 
+  @parameterized.product(
+      dtype=[dtypes.float32, dtypes.float16, dtypes.bfloat16],
+      head_dim=[64, 256],
+      dropout_rate=[0.0, 0.2],
+  )
+  def testDeterministicGradients(self, dtype, head_dim, dropout_rate):
+    # With op determinism, FA2 (in its deterministic mode) and the fallback
+    # kernels (without atomic dQ) must give bitwise identical gradients. The
+    # CPU kernels always do.
+    if not test_util.is_gpu_available():
+      self.skipTest("Only the GPU kernels use atomics")
+    if dtype != dtypes.float32 and not _sm80_gpu_available():
+      self.skipTest("Needs a GPU with compute capability 8.0+")
+    if dtype == dtypes.float32 and head_dim > 128:
+      self.skipTest("float32 uses the fallback kernels, which stop at 128")
+    gpu = config.list_physical_devices("GPU")[0]
+    capability = config.get_device_details(gpu).get("compute_capability")
+    if head_dim > 192 and dropout_rate > 0 and capability not in (
+        (8, 0), (9, 0)):
+      self.skipTest("Needs >= 144 KB of shared memory per block")
+    if not config.is_op_determinism_enabled():
+      config.enable_op_determinism()
+      self.addCleanup(config.disable_op_determinism)
+
+    # One batch entry and few heads, so FA2 splits dQ over many accumulators.
+    shape = [1, 300, 2, head_dim]
+    query, key, value = (math_ops.cast(self._random(shape, dtype, seed), dtype)
+                         for seed in (1, 2, 3))
+    output_grad = _normal(shape, seed=4)
+
+    def grads():
+      return [self.evaluate(g) for g in _value_and_grads(
+          lambda q, k, v: nn_ops.flash_attention(
+              q, k, v, dropout_rate=dropout_rate, seed=[1, 2]),
+          query, key, value, output_grad)]
+
+    first = grads()
+    for _ in range(3):
+      for name, want, got in zip(["output", "dq", "dk", "dv"], first, grads()):
+        self.assertAllEqual(want, got, msg=name)
+    if dropout_rate == 0.0:
+      # Deterministic mode must still be correct.
+      self._check(dtype, batch=1, seq_q=300, seq_kv=300, heads=2,
+                  head_dim=head_dim)
+
   def testStaticShape(self):
     query = array_ops.zeros([2, 5, 3, 8])
     value = array_ops.zeros([2, 7, 3, 4])

@@ -87,12 +87,16 @@ struct FlashAttentionFunctor {
                           FlashAttentionRng rng) const;
 };
 
+// With `deterministic` (normally OpDeterminismRequired()), the gradients are
+// bitwise reproducible; otherwise dQ may use atomic adds, whose order varies.
+// The caller decides once and passes the same value to WorkspaceBytes and
+// operator(), since the workspace size depends on it.
 template <typename Device, typename T>
 struct FlashAttentionGradFunctor {
-  // Bytes of device scratch memory operator() needs as `workspace` (may be 0).
-  // Depends only on shapes, never on the current device.
+  // Bytes of device scratch memory operator() needs as `workspace` (may be 0),
+  // for the same `deterministic`. Doesn't depend on which device runs it.
   static int64_t WorkspaceBytes(int B, int H, int S_q, int S_kv, int D_qk,
-                                int D_v);
+                                int D_v, bool deterministic);
 
   // OK if the kernels for this device and dtype handle these feature sizes.
   static absl::Status CheckFeatureSize(int D_qk, int D_v, float dropout_rate);
@@ -107,7 +111,8 @@ struct FlashAttentionGradFunctor {
                           typename TTypes<T, 4>::Tensor dK,
                           typename TTypes<T, 4>::Tensor dV, bool causal_mask,
                           float dropout_rate, float scale,
-                          FlashAttentionRng rng, void *workspace) const;
+                          FlashAttentionRng rng, bool deterministic,
+                          void *workspace) const;
 };
 
 };  // namespace tensorflow::functor

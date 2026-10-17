@@ -96,7 +96,7 @@ absl::Status RunFlashAttnGrad(cudaStream_t stream, void** buffers,
 
   return functor::FlashAttentionGradFunctor<GPUDevice, T>()(
       device, Q, K, V, Out, stats, dO, dQ, dK, dV, d.causal, d.dropout, d.scale,
-      rng, workspace);
+      rng, d.deterministic, workspace);
 }
 
 // Decodes the descriptor, runs `Runner` for its dtype and reports failures
