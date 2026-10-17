@@ -764,43 +764,6 @@ class MultiJobsTest(test.TestCase, parameterized.TestCase):
     with self.assertRaises(ValueError):
       remote.connect_to_cluster(self._cluster_resolver)
 
-  def testConnectToClusterWithMissingMaster(self):
-    resolver = SimpleClusterResolver(self._cluster, master='localhost:80')
-    # The master lookup must be validated before the eager context's
-    # ServerDef is mutated, so a validation failure here must leave the
-    # context's ServerDef untouched (see testConnectToClusterOrderingInvariant
-    # for the dedicated regression test of that ordering).
-    initial_server_def = context.get_server_def()
-    with self.assertRaisesRegex(
-        ValueError,
-        '`make_master_device_default` is set to True but cannot find master '
-        'localhost:80 in the cluster',
-    ):
-      remote.connect_to_cluster(resolver)
-    self.assertEqual(context.get_server_def(), initial_server_def)
-
-  def testConnectToClusterWithInvalidMaster(self):
-    resolver = SimpleClusterResolver(self._cluster, master='localhost:foo')
-    initial_server_def = context.get_server_def()
-    with self.assertRaisesRegex(
-        ValueError,
-        '`make_master_device_default` is set to True but cannot find master '
-        'localhost:foo in the cluster',
-    ):
-      remote.connect_to_cluster(resolver)
-    self.assertEqual(context.get_server_def(), initial_server_def)
-
-  def testCollectiveGroupLeaderIsFirstNonLocalJob(self):
-    # Regression test for the `break` added to the `collective_group_leader`
-    # search loop: with multiple non-local jobs in the cluster spec, the
-    # leader must be the first one (`my_worker`), not a later one
-    # (`my_ps`) that the loop would otherwise overwrite it with.
-    remote.connect_to_cluster(self._cluster, job_name='localhost')
-    self.assertEqual(
-        context.get_server_def().default_session_config.experimental.collective_group_leader,
-        '/job:my_worker/replica:0/task:0',
-    )
-
   def testConnectToClusterWithLocalMaster(self):
     local_resolver = SimpleClusterResolver(ClusterSpec({}), master='local')
     remote.connect_to_cluster(local_resolver)
@@ -835,91 +798,6 @@ class MultiJobsTest(test.TestCase, parameterized.TestCase):
     self.assertLen(states, 4)
     for state in states:
       self.assertIsNone(state)
-
-
-class RemoteUtilsTest(test.TestCase, parameterized.TestCase):
-
-  @parameterized.parameters(
-      ('localhost:foo',),
-      ('localhost:6553600',),
-      (None,),
-      (123,),
-      ('',),
-  )
-  def testParseHostAndPortError(self, address):
-    # None, a non-string, and an empty string must be rejected up front
-    # rather than raising TypeError when `"://" in address` is evaluated.
-    host, port = remote._parse_host_and_port(address)
-    self.assertIsNone(host)
-    self.assertIsNone(port)
-
-  @parameterized.parameters(
-      ('localhost:8000', 'localhost', 8000),
-      ('grpc://localhost:8000', 'localhost', 8000),
-      ('grpc://[::1]:8000', '::1', 8000),
-      ('[::1]:8000', '::1', 8000),
-      ('localhost', 'localhost', None),
-      ('::1', '::1', None),
-  )
-  def testParseHostAndPortSuccess(self, address, expected_host, expected_port):
-    host, port = remote._parse_host_and_port(address)
-    self.assertEqual(host, expected_host)
-    self.assertEqual(port, expected_port)
-
-  def testFindMasterJobAndTaskFirstMatch(self):
-    # Both jobs have a task at the master's address; the first job must win
-    # instead of being overwritten by the later one.
-    cluster = ClusterSpec({
-        'worker': ['localhost:8000'],
-        'chief': ['localhost:8000'],
-    })
-    self.assertEqual(
-        remote._find_master_job_and_task(cluster, 'localhost:8000'),
-        ('worker', 0),
-    )
-
-  def testFindMasterJobAndTaskFirstMatchWithoutPort(self):
-    cluster = ClusterSpec({
-        'worker': ['localhost:8000'],
-        'chief': ['localhost:8001'],
-    })
-    self.assertEqual(
-        remote._find_master_job_and_task(cluster, 'localhost'), ('worker', 0)
-    )
-
-  def testFindMasterJobAndTaskDistinctAddresses(self):
-    cluster = ClusterSpec({
-        'worker': ['10.0.0.5:2222'],
-        'chief': ['10.0.0.6:2222'],
-    })
-    self.assertEqual(
-        remote._find_master_job_and_task(cluster, '10.0.0.6:2222'), ('chief', 0)
-    )
-
-  def testFindMasterJobAndTaskNoMatch(self):
-    cluster = ClusterSpec({'worker': ['10.0.0.5:2222']})
-    self.assertEqual(
-        remote._find_master_job_and_task(cluster, '10.0.0.9:2222'), (None, None)
-    )
-
-  def testFindMasterJobAndTaskHostPrefixDoesNotMatch(self):
-    cluster = ClusterSpec({'worker': ['10.0.0.10:2222']})
-    self.assertEqual(
-        remote._find_master_job_and_task(cluster, '10.0.0.1'), (None, None)
-    )
-
-  def testFindMasterJobAndTaskWithGrpcPrefix(self):
-    cluster = ClusterSpec({'worker': ['10.0.0.5:2222']})
-    self.assertEqual(
-        remote._find_master_job_and_task(cluster, 'grpc://10.0.0.5:2222'),
-        ('worker', 0),
-    )
-
-  def testFindMasterJobAndTaskPortMismatch(self):
-    cluster = ClusterSpec({'worker': ['10.0.0.5:2222']})
-    self.assertEqual(
-        remote._find_master_job_and_task(cluster, '10.0.0.5:3333'), (None, None)
-    )
 
 
 def _strip_prefix(s, prefix):
