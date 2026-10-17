@@ -1236,6 +1236,34 @@ class CTCLossTestV3(test.TestCase, parameterized.TestCase):
     self.assertAllClose(loss, ref_loss, atol=1e-6)
     self.assertAllClose(grad, ref_grad, atol=2e-6)
 
+  @test_util.run_v2_only
+  def testGPULabelsIndicesOOBBatchIndexRaisesError(self):
+    """GPU CTCLossV2: labels_indices batch index >= batch_size → OOB in DoHistogram."""
+    if not test.is_gpu_available():
+      self.skipTest("Need GPU for testing.")
+    batch_size = 2
+    num_frames = 4
+    num_classes = 3
+    # labels_indices[0, 0] = 99 is >= batch_size=2; hits OOB write in DoHistogram
+    labels_indices = constant_op.constant([[99, 0], [0, 1]], dtype=dtypes.int64)
+    labels_values = constant_op.constant([1, 1], dtype=dtypes.int32)
+    logits = constant_op.constant(
+        np.zeros([num_frames, batch_size, num_classes], dtype=np.float32))
+    sequence_length = constant_op.constant(
+        [num_frames] * batch_size, dtype=dtypes.int32)
+    with ops.device("/GPU:0"):
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  r"labels_indices batch index 99 out of range"):
+        self.evaluate(
+            gen_ctc_ops.ctc_loss_v2(
+                logits,
+                labels_indices,
+                labels_values,
+                sequence_length,
+                preprocess_collapse_repeated=False,
+                ctc_merge_repeated=True,
+                ignore_longer_outputs_than_inputs=False))
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class CTCLossDeterministicTest(test.TestCase, parameterized.TestCase):
