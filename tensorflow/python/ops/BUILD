@@ -1498,6 +1498,7 @@ py_library(
         ":array_ops",
         ":array_ops_gen",
         ":array_ops_stack",
+        ":control_flow_assert",
         ":ctc_ops_gen",
         ":custom_gradient",
         ":functional_ops",
