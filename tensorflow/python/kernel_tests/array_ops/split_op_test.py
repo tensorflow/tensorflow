@@ -514,5 +514,35 @@ class SplitOpTest(test.TestCase):
       self.assertAllEqual(result, expected)
 
 
+  @test_util.run_in_graph_and_eager_modes
+  @test_util.disable_xla("Checks the SplitV GPU kernel, which XLA replaces")
+  def testSplitVGPUInt8LargeDimsAndUnevenSplits(self):
+    cases = [
+        # Uneven splits (fixed_size=False), total_cols = 18 * 18 = 324 > 127.
+        ([2, 18, 18], [2] + [1] * 16, 1),
+        # Uneven splits (fixed_size=False), total_cols = 70 in [65, 127].
+        ([2, 70, 1], [54] + [1] * 16, 1),
+        # Uneven splits (fixed_size=False), prefix_dim_size = 130 > 127.
+        ([130, 18, 1], [2] + [1] * 16, 1),
+        # Uneven splits (fixed_size=False), total_cols = 2, total_rows = 2.
+        ([2, 2, 1], [1, 1] + [0] * 15, 1),
+        # Equal splits (fixed_size=True), total_cols = 17 * 18 = 306 > 127.
+        ([1, 17, 18], [1] * 17, 1),
+    ]
+    with test_util.device(use_gpu=True):
+      for shape, splits, axis in cases:
+        with self.subTest(shape=shape, splits=splits, axis=axis):
+          x = np.arange(np.prod(shape), dtype=np.float32).reshape(shape)
+          size_splits = array_ops.placeholder_with_default(
+              constant_op.constant(splits, dtype=dtypes.int8),
+              shape=[len(splits)],
+          )
+          outputs = self.evaluate(array_ops.split(x, size_splits, axis=axis))
+          expected = np.split(x, np.cumsum(splits[:-1]), axis=axis)
+          self.assertLen(outputs, len(expected))
+          for actual_part, expected_part in zip(outputs, expected):
+            self.assertAllEqual(actual_part, expected_part)
+
+
 if __name__ == "__main__":
   test.main()
