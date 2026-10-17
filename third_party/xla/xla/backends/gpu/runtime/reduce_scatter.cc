@@ -179,9 +179,12 @@ absl::StatusOr<ReduceScatterInfo> BuildReduceScatterInfo(
   const int32_t num_operands = reduce_scatter->operand_count();
   const std::optional<ReductionKind> reduction_kind =
       MatchReductionComputation(reduce_scatter->to_apply());
-  const PrimitiveType element_type = reduce_scatter->shape().element_type();
+  const PrimitiveType element_type =
+      reduce_scatter->operand(0)->shape().element_type();
   const int64_t num_output_elements =
-      ShapeUtil::ElementsIn(reduce_scatter->shape());
+      reduce_scatter->shape().IsArray()
+          ? ShapeUtil::ElementsIn(reduce_scatter->shape())
+          : 0;
   const bool is_flattenable = IsReduceScatterFlattenable(reduce_scatter);
   if (device_info.device_interconnect_info().active_links <= 0) {
     return absl::UnimplementedError(
