@@ -946,6 +946,14 @@ add {
   ROOT %exp.2 = f32[16] exponential(f32[16] %arg0.1)
 }
 
+// CHECK-LABEL:  func private @test_exp2(%arg0: tensor<16xf32>) -> tensor<16xf32>
+%test_exp2 (arg0.1: f32[16]) -> f32[16] {
+  %arg0.1 = f32[16] parameter(0)
+
+  // CHECK-NEXT:  mhlo.exp2 %arg0 : tensor<16xf32>
+  ROOT %exp2.2 = f32[16] exp2(f32[16] %arg0.1)
+}
+
 // CHECK-LABEL:  func private @test_expm1(%arg0: tensor<16xf32>) -> tensor<16xf32>
 %test_expm1 (arg0.1: f32[16]) -> f32[16] {
   %arg0.1 = f32[16] parameter(0)
@@ -1102,6 +1110,14 @@ add {
 
   // CHECK:  mhlo.log_plus_one %arg0 : tensor<16xf32>
   ROOT %log1p.2 = f32[16] log-plus-one(f32[16] %arg0.1)
+}
+
+// CHECK-LABEL:  func private @test_log2(%arg0: tensor<16xf32>) -> tensor<16xf32>
+%test_log2 (arg0.1: f32[16]) -> f32[16] {
+  %arg0.1 = f32[16] parameter(0)
+
+  // CHECK:  mhlo.log2 %arg0 : tensor<16xf32>
+  ROOT %log2.2 = f32[16] log2(f32[16] %arg0.1)
 }
 
 // Test mhlo.map

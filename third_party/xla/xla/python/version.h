@@ -18,6 +18,6 @@ limitations under the License.
 
 // An increasing version number to protect jax code against breaking changes.
 // In JAX, reference this via jax._src.lib.ifrt_version.
-#define JAX_IFRT_VERSION_NUMBER 77  // Shardy unreduced axes support
+#define JAX_IFRT_VERSION_NUMBER 78  // exp2 and log2 StableHLO import
 
 #endif  // XLA_PYTHON_VERSION_H_
