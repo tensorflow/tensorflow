@@ -289,6 +289,56 @@ class TridiagonalSolveOpTest(test.TestCase):
         expected=_tfconst([[-9, 5, -4, 4], [9, -5, 4, -4]]),
         diags_format="sequence")
 
+  def testNumpyInputs(self):
+    rhs = np.array([1., 2., 3., 4.])
+    expected = np.array([-9., 5., -4., 4.])
+    self._test(
+        diags=np.array(_sample_diags, np.float64), rhs=rhs, expected=expected)
+    # Batch of systems.
+    self._test(
+        diags=np.array([_sample_diags, _sample_diags], np.float64),
+        rhs=np.array([rhs, rhs]),
+        expected=np.array([expected, expected]))
+    # Several right-hand sides.
+    self._test(
+        diags=np.array(_sample_diags, np.float64),
+        rhs=np.stack([rhs, -rhs], axis=-1),
+        expected=np.stack([expected, -expected], axis=-1))
+    self._test(
+        diags=(np.array([2., 1., 4.]), np.array([1., 3., 2., 2.]),
+               np.array([1., -1., 1.])),
+        rhs=rhs,
+        expected=expected,
+        diags_format="sequence")
+    self._test(
+        diags=np.array([[1., 2., 0., 0.], [1., 3., 1., 0.], [0., -1., 2., 4.],
+                        [0., 0., 1., 2.]]),
+        rhs=rhs,
+        expected=expected,
+        diags_format="matrix")
+
+  def testListInputs(self):
+    rhs = [1., 2., 3., 4.]
+    expected = [-9., 5., -4., 4.]
+    self._test(
+        diags=[[2., 1., 4., 0.], [1., 3., 2., 2.], [0., 1., -1., 1.]],
+        rhs=rhs,
+        expected=expected)
+    self._test(
+        diags=([2., 1., 4.], [1., 3., 2., 2.], [1., -1., 1.]),
+        rhs=rhs,
+        expected=expected,
+        diags_format="sequence")
+    self._test(
+        diags=[[1., 2., 0., 0.], [1., 3., 1., 0.], [0., -1., 2., 4.],
+               [0., 0., 1., 2.]],
+        rhs=rhs,
+        expected=expected,
+        diags_format="matrix")
+    # A list rhs takes the dtype of float64 diagonals.
+    self._test(
+        diags=np.array(_sample_diags, np.float64), rhs=rhs, expected=expected)
+
   def testMatrixFormat(self):
     self._testWithLists(
         diags=[[1, 2, 0, 0], [1, 3, 1, 0], [0, -1, 2, 4], [0, 0, 1, 2]],
@@ -512,7 +562,9 @@ class TridiagonalSolveOpTest(test.TestCase):
     test_raises((5, 4, 4), (5, 4))
     test_raises((5, 3, 4), (4, 5))
     test_raises((5, 3, 4), (5))
+    test_raises((5, 3, 4), ())
     test_raises((5), (5, 4))
+    test_raises((), (5, 4))
 
   @flags(FLAG_NO_PARAMETERIZATION)
   def testInvalidShapesSequenceFormat(self):
@@ -527,6 +579,8 @@ class TridiagonalSolveOpTest(test.TestCase):
     test_raises(((5, 6), (5, 4), (5, 3)), (5, 4))
     test_raises(((5, 4), (7, 4), (5, 4)), (5, 4))
     test_raises(((5, 4), (7, 4), (5, 4)), (3, 4))
+    test_raises(((5, 4), (5, 4), (5, 4)), ())
+    test_raises(((), (), ()), (5, 4))
 
   @flags(FLAG_NO_PARAMETERIZATION)
   def testInvalidShapesMatrixFormat(self):
@@ -537,6 +591,9 @@ class TridiagonalSolveOpTest(test.TestCase):
     test_raises((5, 4, 7), (5, 4))
     test_raises((5, 4, 4), (3, 4))
     test_raises((5, 4, 4), (5, 3))
+    test_raises((5, 4, 4), ())
+    test_raises((5,), (5, 4))
+    test_raises((), (5, 4))
 
   # Tests with placeholders
 
