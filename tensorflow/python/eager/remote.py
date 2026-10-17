@@ -15,7 +15,6 @@
 """Helpers to connect to remote servers."""
 
 import copy
-import urllib.parse
 
 from absl import logging
 
@@ -72,70 +71,6 @@ def connect_to_remote_host(remote_host=None, job_name="worker"):
       {job_name: [_strip_prefix(host, _GRPC_PREFIX) for host in remote_hosts]})
 
   connect_to_cluster(cluster_spec)
-
-
-def _parse_host_and_port(address):
-  """Splits an address, with or without a scheme, into (host, port).
-
-  Args:
-    address: An address such as `"host:8000"` or `"grpc://host:8000"`.
-
-  Returns:
-    A tuple `(host, port)`. `port` is None if the address has no port, and
-    both are None if the address cannot be parsed.
-  """
-  if not address or not isinstance(address, str):
-    return None, None
-  if "://" not in address and not address.startswith("//"):
-    address = "//" + address
-  try:
-    parsed = urllib.parse.urlsplit(address)
-    return parsed.hostname, parsed.port
-  except ValueError:
-    # `urlsplit` raises a `ValueError` when it tries to parse `.port` on an
-    # unbracketed IPv6 address (e.g. `//::1`), since it mistakes the address's
-    # own colons for a host:port separator. Retry with the host wrapped in
-    # brackets, which is the syntax `urlsplit` expects for IPv6 hosts. Only do
-    # this when the netloc has more than one colon (a true unbracketed IPv6
-    # address like `::1`); otherwise an address that's simply unparseable
-    # (e.g. `localhost:foo`) would get wrapped in brackets and misread as a
-    # literal IPv6 host instead of correctly failing to parse.
-    scheme, netloc = address.split("//", 1)
-    if not netloc.startswith("[") and netloc.count(":") > 1:
-      try:
-        parsed_bracketed = urllib.parse.urlsplit(f"{scheme}//[{netloc}]")
-        return parsed_bracketed.hostname, parsed_bracketed.port
-      except ValueError:
-        pass
-    return None, None
-
-
-def _find_master_job_and_task(cluster_spec, master):
-  """Finds the (job_name, task_id) in cluster_spec whose address matches master.
-
-  An address matches when the hosts are equal and, if both addresses specify a
-  port, the ports are equal. Returns the first match found.
-
-  Args:
-    cluster_spec: A `ClusterSpec` describing the cluster.
-    master: The master address to match against.
-
-  Returns:
-    A tuple `(job_name, task_id)` for the first matching task, or
-    `(None, None)` if no task address matches.
-  """
-  master_host, master_port = _parse_host_and_port(master)
-  if not master_host:
-    return None, None
-
-  for job_name in cluster_spec.jobs:
-    for task_id in cluster_spec.task_indices(job_name):
-      task_address = cluster_spec.task_address(job_name, task_id)
-      task_host, task_port = _parse_host_and_port(task_address)
-      if task_host == master_host:
-        if master_port is None or task_port is None or master_port == task_port:
-          return job_name, task_id
-  return None, None
 
 
 @tf_export("config.experimental_connect_to_cluster")
@@ -229,7 +164,6 @@ def connect_to_cluster(cluster_spec_or_resolver,
     for i, job in enumerate(current_server_def.cluster.job):
       if job.name == job_name:
         del current_server_def.cluster.job[i]
-        break
   if (current_server_def is None or current_server_def.cluster != cluster_def or
       current_server_def.job_name != job_name or
       current_server_def.task_index != task_index):
@@ -260,7 +194,7 @@ def connect_to_cluster(cluster_spec_or_resolver,
         is_uptc_sess = ".uptc-worker." in cluster_spec_or_resolver.master()
         service_type = remote_utils.coordination_service_type(
             protocol, is_uptc_sess)
-      # Enable coordination service for Cloud TPU.
+     # Enable coordination service for Cloud TPU.
       else:
         service_type = "standalone"
 
@@ -287,7 +221,6 @@ def connect_to_cluster(cluster_spec_or_resolver,
     default_session_config.experimental.collective_group_leader = (
         f"/job:{name}/replica:0/task:0"
     )
-    break
 
   logging.info("default session config: %s", default_session_config)
 
@@ -300,19 +233,24 @@ def connect_to_cluster(cluster_spec_or_resolver,
       cluster_device_filters=cluster_device_filters,
   )
 
-  # Validate the master device *before* mutating the context below, so a
-  # ValueError here (unknown master, or a conflicting existing device scope)
-  # leaves the context's server def untouched instead of partially applying
-  # the new cluster configuration.
-  master_device = None
-  current_device = None
+  if is_server_def_changed:
+    context.set_server_def(server_def)
+  else:
+    context.update_server_def(server_def)
+
   if make_master_device_default and isinstance(
       cluster_spec_or_resolver,
       cluster_resolver.ClusterResolver) and cluster_spec_or_resolver.master():
     master = cluster_spec_or_resolver.master()
-    master_job_name, master_task_id = _find_master_job_and_task(
-        cluster_spec, master
-    )
+    master_job_name = None
+    master_task_id = None
+    for job_name in cluster_spec.jobs:
+      for task_id in cluster_spec.task_indices(job_name):
+        task_address = cluster_spec.task_address(job_name, task_id)
+        if master in task_address or task_address in master:
+          master_job_name = job_name
+          master_task_id = task_id
+          break
 
     if not master_job_name:
       raise ValueError(
@@ -330,13 +268,6 @@ def connect_to_cluster(cluster_spec_or_resolver,
                        "scope %s, which is different from the master device "
                        "scope %s to enter. This is not allowed." %
                        (current_device, master_device))
-
-  if is_server_def_changed:
-    context.set_server_def(server_def)
-  else:
-    context.update_server_def(server_def)
-
-  if master_device:
     # TODO(b/138389076): Think of the entering device scope behavior in the
     # failure recovery case when dealing with preemptions.
     if not current_device:
