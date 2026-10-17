@@ -71,6 +71,32 @@ class NormOpTest(test_lib.TestCase):
     self.evaluate(linalg_ops.norm(matrix, axis=-1))
     self.evaluate(linalg_ops.norm(matrix, axis=(-2, -1)))
 
+  def testEmptyInputIsZero(self):
+    # reduce_max over an empty axis is -inf. A norm of an empty input should be
+    # 0, as it is in numpy. Each case gives the expected result shape too.
+    cases = [
+        (np.zeros([0]), np.inf, None, []),
+        (np.zeros([0, 3]), 2, (0, 1), []),
+        (np.zeros([3, 0]), 1, (0, 1), []),
+        (np.zeros([0, 3]), np.inf, (0, 1), []),
+        (np.zeros([2, 3, 0]), 1, (1, 2), [2]),
+    ]
+    for value, ord_, axis_, shape in cases:
+      result = self.evaluate(
+          linalg_ops.norm(
+              constant_op.constant(value, dtype=np.float32),
+              ord=ord_,
+              axis=axis_))
+      self.assertAllEqual(result, np.zeros(shape))
+
+    result = self.evaluate(
+        linalg_ops.norm(
+            constant_op.constant(np.zeros([0, 3]), dtype=np.float32),
+            ord=np.inf,
+            axis=(0, 1),
+            keepdims=True))
+    self.assertAllEqual(result, np.zeros([1, 1]))
+
 
 class MatrixNormXlaTest(test_lib.TestCase, parameterized.TestCase):
 
