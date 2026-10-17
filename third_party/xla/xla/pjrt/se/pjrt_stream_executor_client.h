@@ -213,10 +213,8 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
   }
 
   bool ShouldStageHostToDeviceTransfers(const void* data, int64_t size) const {
-    // In Confidential Computing VMs, transfers must always be staged onto
-    // host memory allocated via cuMemHostAlloc.
     if (confidential_computing_enabled_) {
-      return true;
+      return false;
     }
     // Allocating multi-gigabyte pinned buffers can be very slow. In that case,
     // using a staging buffer is probably worse than not using one.
