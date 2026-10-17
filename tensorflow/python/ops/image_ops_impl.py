@@ -2655,9 +2655,9 @@ def grayscale_to_rgb(images, name=None):
     The converted grayscale image(s).
   """
   with ops.name_scope(name, 'grayscale_to_rgb', [images]) as name:
+    images = ops.convert_to_tensor(images, name='images')
     images = _AssertGrayscaleImage(images)
 
-    images = ops.convert_to_tensor(images, name='images')
     rank_1 = array_ops.expand_dims(array_ops.rank(images) - 1, 0)
     shape_list = ([array_ops.ones(rank_1, dtype=dtypes.int32)] +
                   [array_ops.expand_dims(3, 0)])
@@ -3476,6 +3476,7 @@ def total_variation(images, name=None):
   """
 
   with ops.name_scope(name, 'total_variation'):
+    images = ops.convert_to_tensor(images, name='images')
     ndims = images.get_shape().ndims
 
     if ndims == 3:
@@ -4784,6 +4785,7 @@ def image_gradients(image):
   Raises:
     ValueError: If `image` is not a 4D tensor.
   """
+  image = ops.convert_to_tensor(image, name='image')
   if image.get_shape().ndims != 4:
     raise ValueError('image_gradients expects a 4D tensor '
                      '[batch_size, h, w, d], not {}.'.format(image.get_shape()))
@@ -4846,6 +4848,7 @@ def sobel_edges(image):
     [batch_size, h, w, d, 2] where the last two dimensions hold [[dy[0], dx[0]],
     [dy[1], dx[1]], ..., [dy[d-1], dx[d-1]]] calculated using the Sobel filter.
   """
+  image = ops.convert_to_tensor(image, name='image')
   # Define vertical and horizontal Sobel filters.
   static_image_shape = image.get_shape()
   image_shape = array_ops.shape(image)
@@ -5590,6 +5593,8 @@ def non_max_suppression_padded(boxes,
     ValueError: When set pad_to_max_output_size to False for batched input.
   """
   with ops.name_scope(name, 'non_max_suppression_padded'):
+    boxes = ops.convert_to_tensor(boxes, name='boxes')
+    scores = ops.convert_to_tensor(scores, name='scores')
     if not pad_to_max_output_size:
       # pad_to_max_output_size may be set to False only when the shape of
       # boxes is [num_boxes, 4], i.e., a single image. We make best effort to
