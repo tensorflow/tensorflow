@@ -126,6 +126,10 @@ absl::Status SplitEasyCases(OpKernelContext* context, const Tensor& input,
 
   int64_t total_size = 0;
   for (const int64_t size : sizes) {
+    if (size < 0) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Split size must be non-negative, got ", size));
+    }
     total_size += size;
   }
   if (total_size > input.shape().dim_size(0)) {
@@ -168,6 +172,10 @@ absl::Status SplitCPU(OpKernelContext* context, const Tensor& input,
 
   int64_t position = 0;
   for (const int64_t size : sizes) {
+    if (size < 0) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Split size must be non-negative, got ", size));
+    }
     TensorShape output_shape = input.shape();
     output_shape.set_dim(0, size);
     Tensor output;

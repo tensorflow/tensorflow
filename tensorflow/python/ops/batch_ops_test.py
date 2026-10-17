@@ -689,5 +689,121 @@ class BatchOpsTest(test.TestCase):
               shared_name="",
               name=""))
 
+  def testUnbatchInvalidSliceBounds(self):
+    # Regression test for GitHub issue 65633: invalid slice bounds or
+    # cumulative sizes in batch_index caused fatal CHECK failures.
+    if context.executing_eagerly():
+      # Inverted slice range (end < start)
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError, "Expected 0 <= start <= end"
+      ):
+        batch_ops.unbatch(
+            batched_tensor=constant_op.constant([[1, 2], [3, 4]], dtype=dtypes.int32),
+            batch_index=constant_op.constant([[0, 2, 1]], dtype=dtypes.int64),
+            id=constant_op.constant(0, dtype=dtypes.int64),
+            timeout_micros=0,
+            container="",
+            shared_name="",
+        )
+
+      # Negative start index
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError, "Expected 0 <= start <= end"
+      ):
+        batch_ops.unbatch(
+            batched_tensor=constant_op.constant([[1, 2], [3, 4]], dtype=dtypes.int32),
+            batch_index=constant_op.constant([[0, -1, 1]], dtype=dtypes.int64),
+            id=constant_op.constant(0, dtype=dtypes.int64),
+            timeout_micros=0,
+            container="",
+            shared_name="",
+        )
+
+      # End index exceeds dim0
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError, "exceeds dimension 0 size"
+      ):
+        batch_ops.unbatch(
+            batched_tensor=constant_op.constant([[1, 2], [3, 4]], dtype=dtypes.int32),
+            batch_index=constant_op.constant([[0, 1, 5]], dtype=dtypes.int64),
+            id=constant_op.constant(0, dtype=dtypes.int64),
+            timeout_micros=0,
+            container="",
+            shared_name="",
+        )
+
+      # Cumulative split sizes exceed dim0
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError, "Sum of split sizes must not exceed"
+      ):
+        batch_ops.unbatch(
+            batched_tensor=constant_op.constant([[1], [2], [3]], dtype=dtypes.int32),
+            batch_index=constant_op.constant([[0, 0, 2], [1, 2, 4]], dtype=dtypes.int64),
+            id=constant_op.constant(0, dtype=dtypes.int64),
+            timeout_micros=0,
+            container="",
+            shared_name="",
+        )
+
+  def testUnbatchShapeInference(self):
+    # Tests shape inference validation for Unbatch.
+    with self.assertRaises((ValueError, errors.InvalidArgumentError)):
+      gen_batch_ops.unbatch(
+          batched_tensor=constant_op.constant(1.0),
+          batch_index=constant_op.constant([[0, 0, 1]], dtype=dtypes.int64),
+          id=constant_op.constant(0, dtype=dtypes.int64),
+          timeout_micros=0,
+      )
+
+    with self.assertRaises((ValueError, errors.InvalidArgumentError)):
+      gen_batch_ops.unbatch(
+          batched_tensor=constant_op.constant([1.0, 2.0]),
+          batch_index=constant_op.constant([0, 0, 1], dtype=dtypes.int64),
+          id=constant_op.constant(0, dtype=dtypes.int64),
+          timeout_micros=0,
+      )
+
+    with self.assertRaises((ValueError, errors.InvalidArgumentError)):
+      gen_batch_ops.unbatch(
+          batched_tensor=constant_op.constant([1.0, 2.0]),
+          batch_index=constant_op.constant([[0, 1]], dtype=dtypes.int64),
+          id=constant_op.constant(0, dtype=dtypes.int64),
+          timeout_micros=0,
+      )
+
+    with self.assertRaises((ValueError, errors.InvalidArgumentError)):
+      gen_batch_ops.unbatch(
+          batched_tensor=constant_op.constant([1.0, 2.0]),
+          batch_index=constant_op.constant([[0, 0, 1]], dtype=dtypes.int64),
+          id=constant_op.constant([0], dtype=dtypes.int64),
+          timeout_micros=0,
+      )
+
+  def testUnbatchGradShapeInference(self):
+    # Tests shape inference validation for UnbatchGrad.
+    with self.assertRaises((ValueError, errors.InvalidArgumentError)):
+      gen_batch_ops.unbatch_grad(
+          original_input=constant_op.constant([1.0]),
+          batch_index=constant_op.constant([0, 0, 1], dtype=dtypes.int64),
+          grad=constant_op.constant([1.0]),
+          id=constant_op.constant(0, dtype=dtypes.int64),
+      )
+
+    with self.assertRaises((ValueError, errors.InvalidArgumentError)):
+      gen_batch_ops.unbatch_grad(
+          original_input=constant_op.constant([1.0]),
+          batch_index=constant_op.constant([[0, 1]], dtype=dtypes.int64),
+          grad=constant_op.constant([1.0]),
+          id=constant_op.constant(0, dtype=dtypes.int64),
+      )
+
+    with self.assertRaises((ValueError, errors.InvalidArgumentError)):
+      gen_batch_ops.unbatch_grad(
+          original_input=constant_op.constant([1.0]),
+          batch_index=constant_op.constant([[0, 0, 1]], dtype=dtypes.int64),
+          grad=constant_op.constant([1.0]),
+          id=constant_op.constant([0], dtype=dtypes.int64),
+      )
+
 if __name__ == "__main__":
   test.main()
