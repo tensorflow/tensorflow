@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <atomic>
 #include <cstdint>
 #include <numeric>
@@ -20,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/types.pb.h"
 
@@ -106,8 +108,12 @@ class CSRSparseCholeskyCPUOp : public OpKernel {
     std::vector<SparseMatrix> sparse_cholesky_factors(batch_size);
 
     // TODO(anudhyan): Tune the cost per unit based on benchmarks.
+    // num_rows or batch_size can be zero for a valid empty matrix; guard the
+    // divisions so the cost estimate does not trigger a SIGFPE.
     const double nnz_per_row =
-        (input_matrix->total_nnz() / batch_size) / num_rows;
+        (batch_size == 0 || num_rows == 0)
+            ? 0.0
+            : (input_matrix->total_nnz() / batch_size) / num_rows;
     const int64_t sparse_cholesky_cost_per_batch =
         nnz_per_row * nnz_per_row * num_rows;
     // Perform sparse Cholesky factorization of each batch in parallel.
@@ -193,7 +199,7 @@ class CSRSparseCholeskyCPUOp : public OpKernel {
     // CSRSparseMatrix into common utils. This is also used in
     // SparseMatrixSparseMatMul.
     Shard(worker_threads.num_threads, worker_threads.workers, batch_size,
-          (3 * total_nnz) / batch_size /* cost per unit */,
+          batch_size == 0 ? 0 : (3 * total_nnz) / batch_size /* cost per unit */,
           [&](int64_t batch_begin, int64_t batch_end) {
             for (int64_t batch_index = batch_begin; batch_index < batch_end;
                  ++batch_index) {
@@ -266,12 +272,39 @@ class CSRSparseCholeskyCPUOp : public OpKernel {
           perm_shape.dim_size(rank - 2), " != ", *num_rows));
 
     *batch_size = sparse_matrix.batch_size();
-    if (*batch_size > 1) {
+    if (rank == 3) {
       if (perm_shape.dim_size(0) != *batch_size)
         return absl::InvalidArgumentError(
             absl::StrCat("permutation must have the same batch size "
                          "as sparse matrix; got: ",
                          perm_shape.dim_size(0), " != ", *batch_size));
+    }
+
+    if (*batch_size == 0 || *num_rows == 0) return absl::OkStatus();
+
+    // Each permutation entry is applied by Eigen's twistedBy() as a destination
+    // row/column subscript into the num_rows-sized factor without any bounds
+    // checking, so an out-of-range value reads and writes outside the
+    // permutation buffers. Duplicate entries leave the inverse permutation
+    // partially uninitialized, which twistedBy() then reads as an out-of-bounds
+    // subscript. Reject entries not in [0, num_rows) and duplicates per batch.
+    const auto permutation_flat = permutation_indices.flat<int32_t>();
+    std::vector<bool> seen(*num_rows, false);
+    for (int b = 0; b < *batch_size; ++b) {
+      std::fill(seen.begin(), seen.end(), false);
+      const int64_t offset = b * (*num_rows);
+      for (int64_t i = 0; i < *num_rows; ++i) {
+        const int32_t index = permutation_flat(offset + i);
+        if (index < 0 || index >= *num_rows)
+          return absl::InvalidArgumentError(absl::StrCat(
+              "permutation index ", index, " at position ", offset + i,
+              " is out of range [0, ", *num_rows, ")."));
+        if (seen[index])
+          return absl::InvalidArgumentError(
+              absl::StrCat("duplicate permutation index ", index, " in batch ",
+                           b, " at position ", offset + i, "."));
+        seen[index] = true;
+      }
     }
 
     return absl::OkStatus();
