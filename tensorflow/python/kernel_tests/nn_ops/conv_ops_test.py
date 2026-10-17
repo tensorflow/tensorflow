@@ -3256,6 +3256,76 @@ class Conv2DTest(parameterized.TestCase, test.TestCase):
             dilations=[1, 1, 1, 1])
         self.evaluate(t)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testConv2DBackpropShortStridesRaiseError(self):
+    # Fewer than 4 strides used to abort the oneDNN kernels instead of raising.
+    backprop_ops = (
+        lambda strides: gen_nn_ops.conv2d_backprop_input(
+            input_sizes=[1, 4, 4, 3],
+            filter=array_ops.zeros([2, 2, 3, 5]),
+            out_backprop=array_ops.zeros([1, 3, 3, 5]),
+            strides=strides,
+            padding="VALID"),
+        lambda strides: gen_nn_ops.conv2d_backprop_filter(
+            input=array_ops.zeros([1, 4, 4, 3]),
+            filter_sizes=[2, 2, 3, 5],
+            out_backprop=array_ops.zeros([1, 3, 3, 5]),
+            strides=strides,
+            padding="VALID"),
+        lambda strides: gen_nn_ops.depthwise_conv2d_native_backprop_input(
+            input_sizes=[1, 4, 4, 3],
+            filter=array_ops.zeros([2, 2, 3, 1]),
+            out_backprop=array_ops.zeros([1, 3, 3, 3]),
+            strides=strides,
+            padding="VALID"),
+        lambda strides: gen_nn_ops.depthwise_conv2d_native_backprop_filter(
+            input=array_ops.zeros([1, 4, 4, 3]),
+            filter_sizes=[2, 2, 3, 1],
+            out_backprop=array_ops.zeros([1, 3, 3, 3]),
+            strides=strides,
+            padding="VALID"),
+    )
+    with test_util.device(use_gpu=False):
+      for op in backprop_ops:
+        for strides in ([], [1], [1, 1], [1, 1, 1]):
+          with self.assertRaisesRegex(
+              (errors_impl.InvalidArgumentError, ValueError),
+              "Sliding window strides field must specify 4"):
+            self.evaluate(op(strides))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConv3DBackpropBadStridesAndDilationsRaiseError(self):
+    with test_util.device(use_gpu=False):
+      # 6 strides pass the op def's minimum of 5 and reach the kernel.
+      for op, kwargs in [
+          (gen_nn_ops.conv3d_backprop_filter_v2, {
+              "input": array_ops.zeros([1, 4, 4, 4, 3]),
+              "filter_sizes": [2, 2, 2, 3, 5],
+          }),
+          (gen_nn_ops.conv3d_backprop_input_v2, {
+              "input_sizes": [1, 4, 4, 4, 3],
+              "filter": array_ops.zeros([2, 2, 2, 3, 5]),
+          }),
+      ]:
+        kwargs.update({
+            "out_backprop": array_ops.zeros([1, 3, 3, 3, 5]),
+            "strides": [1, 1, 1, 1, 1, 1],
+            "padding": "VALID",
+        })
+        with self.assertRaisesRegex(
+            (errors_impl.InvalidArgumentError, ValueError),
+            "Sliding window strides field must specify",
+        ):
+          self.evaluate(op(**kwargs))
+
+        kwargs["strides"] = [1, 1, 1, 1, 1]
+        kwargs["dilations"] = []
+        with self.assertRaisesRegex(
+            (errors_impl.InvalidArgumentError, ValueError),
+            "(Sliding window dilations|Dilation rates) field must specify 5",
+        ):
+          self.evaluate(op(**kwargs))
+
 
 @test_util.run_all_without_tensor_float_32("Avoid TF32 conv on GPU")
 class DepthwiseConv2DTest(test.TestCase):
