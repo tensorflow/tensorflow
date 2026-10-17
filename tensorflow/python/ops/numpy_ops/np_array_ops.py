@@ -323,13 +323,19 @@ def diag(v, k=0):  # pylint: disable=missing-docstring
 
   # TODO(nareshmodi): Consider a np_utils.Assert version that will fail during
   # tracing time if the shape is known.
-  control_flow_assert.Assert(
+  assert_op = control_flow_assert.Assert(
       np_utils.logical_or(math_ops.equal(v_rank, 1), math_ops.equal(v_rank, 2)),
       [v_rank],
   )
+  with ops.control_dependencies([assert_op]):
+    v = array_ops.identity(v)
 
   if isinstance(k, core_tf_types.Tensor) and k.shape.ndims is None:
-    control_flow_assert.Assert(math_ops.equal(array_ops.rank(k), 0), [k])
+    assert_op_k = control_flow_assert.Assert(
+        math_ops.equal(array_ops.rank(k), 0), [k]
+    )
+    with ops.control_dependencies([assert_op_k]):
+      k = array_ops.identity(k)
   elif not isscalar(k):
     raise ValueError(f'k must be an integer scalar, got {k}')
 
@@ -1211,13 +1217,16 @@ def moveaxis(a, source, destination):  # pylint: disable=missing-docstring
       return axis + rank if axis < 0 else axis
     rank_t = ops.convert_to_tensor(rank)
     axis_t = ops.convert_to_tensor(axis)
-    control_flow_assert.Assert(
+    assert_op = control_flow_assert.Assert(
         math_ops.reduce_all(
             math_ops.logical_and(axis_t >= -rank_t, axis_t < rank_t)
         ),
         ['axis', axis_t, 'is out of bounds for array of dimension', rank_t],
     )
-    return array_ops.where_v2(axis_t < 0, np_utils.add(axis_t, rank_t), axis_t)
+    with ops.control_dependencies([assert_op]):
+      return array_ops.where_v2(
+          axis_t < 0, np_utils.add(axis_t, rank_t), axis_t
+      )
 
   source = tuple(_correct_axis(axis, a_rank) for axis in source)
   destination = tuple(_correct_axis(axis, a_rank) for axis in destination)
@@ -1827,7 +1836,9 @@ def vander(x, N=None, increasing=False):  # pylint: disable=missing-docstring,in
     if N < 0:
       raise ValueError('N must be nonnegative')
   else:
-    control_flow_assert.Assert(N >= 0, [N])
+    assert_op = control_flow_assert.Assert(N >= 0, [N])
+    with ops.control_dependencies([assert_op]):
+      N = array_ops.identity(N)
 
   rank = array_ops.rank(x)
   rank_temp = np_utils.get_static_value(rank)
@@ -1836,7 +1847,9 @@ def vander(x, N=None, increasing=False):  # pylint: disable=missing-docstring,in
     if rank != 1:
       raise ValueError('x must be a one-dimensional array')
   else:
-    control_flow_assert.Assert(math_ops.equal(rank, 1), [rank])
+    assert_op = control_flow_assert.Assert(math_ops.equal(rank, 1), [rank])
+    with ops.control_dependencies([assert_op]):
+      x = array_ops.identity(x)
 
   if increasing:
     start = 0
@@ -1874,7 +1887,11 @@ def ix_(*args):  # pylint: disable=missing-docstring
             'Arguments must be 1-d, got arg {} of rank {}'.format(i, a_rank)
         )
     else:
-      control_flow_assert.Assert(math_ops.equal(a_rank, 1), [a_rank])
+      assert_op = control_flow_assert.Assert(
+          math_ops.equal(a_rank, 1), [a_rank]
+      )
+      with ops.control_dependencies([assert_op]):
+        a = array_ops.identity(a)
 
     new_shape = [1] * n
     new_shape[i] = -1
