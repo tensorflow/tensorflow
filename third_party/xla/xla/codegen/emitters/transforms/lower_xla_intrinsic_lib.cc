@@ -325,6 +325,39 @@ class LowerIntrinsicPattern : public mlir::OpRewritePattern<Op> {
   std::string cpu_features_;
 };
 
+// Once math.sin / math.cos are lowered to calls to `xla.sin.*` / `xla.cos.*`,
+// LLVM no longer knows that sin is odd and cos is even, so it cannot apply the
+// folds InstCombine does for `llvm.sin` / `llvm.cos` (sin(-x) -> -sin(x),
+// cos(-x) -> cos(x)). Apply them here, before lowering. They are exact for the
+// XLA implementations, which reduce |x| and then apply the sign of x for sin.
+struct FoldSinOfNeg : public mlir::OpRewritePattern<mm::SinOp> {
+  using OpRewritePattern::OpRewritePattern;
+  mlir::LogicalResult matchAndRewrite(
+      mm::SinOp op, mlir::PatternRewriter& rewriter) const override {
+    auto neg = op.getOperand().getDefiningOp<ma::NegFOp>();
+    if (!neg) {
+      return rewriter.notifyMatchFailure(op, "operand is not negf");
+    }
+    Value sin = mm::SinOp::create(rewriter, op.getLoc(), neg.getOperand(),
+                                  op.getFastmathAttr());
+    rewriter.replaceOpWithNewOp<ma::NegFOp>(op, sin);
+    return mlir::success();
+  }
+};
+
+struct FoldCosOfNeg : public mlir::OpRewritePattern<mm::CosOp> {
+  using OpRewritePattern::OpRewritePattern;
+  mlir::LogicalResult matchAndRewrite(
+      mm::CosOp op, mlir::PatternRewriter& rewriter) const override {
+    auto neg = op.getOperand().getDefiningOp<ma::NegFOp>();
+    if (!neg) {
+      return rewriter.notifyMatchFailure(op, "operand is not negf");
+    }
+    rewriter.modifyOpInPlace(op, [&] { op->setOperand(0, neg.getOperand()); });
+    return mlir::success();
+  }
+};
+
 class LowerXlaIntrinsicLibPass
     : public impl::LowerXlaIntrinsicLibPassBase<LowerXlaIntrinsicLibPass> {
  public:
@@ -347,6 +380,7 @@ class LowerXlaIntrinsicLibPass
                  LowerIntrinsicPattern<ci::Erf, mm::ErfOp>,
                  LowerIntrinsicPattern<ci::Sinh, mm::SinhOp>>(context,
                                                               cpu_features);
+    patterns.add<FoldSinOfNeg, FoldCosOfNeg>(context, /*benefit=*/2);
     if (mlir::failed(
             mlir::applyPatternsGreedily(module_op, std::move(patterns)))) {
       signalPassFailure();

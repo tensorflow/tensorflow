@@ -480,3 +480,17 @@ module {
 // CHECK-NOT: math.sinh
 // CHECK: %[[SINH_CALL:.*]] = call @xla.sinh.v8f32(%arg0) : (vector<8xf32>) -> vector<8xf32>
 // CHECK: return %[[SINH_CALL]]
+
+// -----
+
+func.func @sin_cos_of_neg(%arg0: f32) -> (f32, f32) {
+  %n = arith.negf %arg0 : f32
+  %s = math.sin %n : f32
+  %c = math.cos %n : f32
+  return %s, %c : f32, f32
+}
+// CHECK-LABEL: @sin_cos_of_neg
+// CHECK-DAG: %[[SIN:.*]] = call @xla.sin.f32(%arg0) : (f32) -> f32
+// CHECK-DAG: %[[NEG_SIN:.*]] = arith.negf %[[SIN]] : f32
+// CHECK-DAG: %[[COS:.*]] = call @xla.cos.f32(%arg0) : (f32) -> f32
+// CHECK: return %[[NEG_SIN]], %[[COS]]
