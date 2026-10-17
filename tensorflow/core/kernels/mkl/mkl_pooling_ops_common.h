@@ -20,11 +20,14 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include "dnnl.hpp"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/ops_util.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/padding.h"
 #if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
@@ -649,7 +652,26 @@ class MklPoolingOpBase : public OpKernel {
     AllocateOutputSetMklShape(context, kOutputIndex, output_tensor,
                               output_tf_shape, output_mkl_shape,
                               native_format_);
+    OP_REQUIRES_OK(context, context->status());
     DCHECK(output_tensor);
+
+    // Empty quantized pools still return the input quantization range.
+    if constexpr (std::is_same<T, qint8>::value ||
+                  std::is_same<T, quint8>::value) {
+      for (int index = 1; index <= 2; ++index) {
+        const Tensor& range_input = MklGetInput(context, index);
+        OP_REQUIRES(context, TensorShapeUtils::IsScalar(range_input.shape()),
+                    errors::InvalidArgument(
+                        index == 1 ? "min_input" : "max_input",
+                        " shape must be rank 0 but is rank ", range_input.dims(),
+                        ", received shape: ", range_input.shape().DebugString()));
+        Tensor* range_output = nullptr;
+        AllocateOutputSetMklShape(context, index, &range_output, {},
+                                  output_mkl_shape, native_format_);
+        OP_REQUIRES_OK(context, context->status());
+        range_output->scalar<float>()() = range_input.scalar<float>()();
+      }
+    }
   }
 
   // Checks to make sure that the memory we need to allocate
