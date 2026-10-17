@@ -2250,6 +2250,7 @@ tf_xla_py_strict_test(
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:bitwise_ops",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:uniform_quant_ops_gen",
         "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
     ],
