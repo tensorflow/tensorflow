@@ -3847,6 +3847,7 @@ tf_kernel_library(
     deps = MATH_DEPS + [
         "//tensorflow/core:framework_internal",
         "@com_google_absl//absl/status",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 

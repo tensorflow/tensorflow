@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/gpu_launch_config.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "xla/tsl/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -41,10 +42,10 @@ template <typename T>
 __global__ void CheckNumericsKernel(const T* __restrict__ data, int64_t size,
                                     int abnormal_detected[2]) {
   for (int64_t offset : GpuGridRangeX<int64_t>(size)) {
-    if (isnan(data[offset])) {
+    const T val = data[offset];
+    if (isnan(val)) {
       abnormal_detected[0] = 1;
-    }
-    if (isinf(data[offset])) {
+    } else if (isinf(val)) {
       abnormal_detected[1] = 1;
     }
   }
@@ -58,11 +59,11 @@ template <typename T>
 __global__ void CheckNumericsKernelV2(const T* __restrict__ data, int64_t size,
                                       int abnormal_detected[3]) {
   for (int64_t offset : GpuGridRangeX<int64_t>(size)) {
-    if (isnan(data[offset])) {
+    const T val = data[offset];
+    if (isnan(val)) {
       abnormal_detected[0] = 1;
-    }
-    if (isinf(data[offset])) {
-      abnormal_detected[data[offset] < static_cast<T>(0.f) ? 1 : 2] = 1;
+    } else if (isinf(val)) {
+      abnormal_detected[val < static_cast<T>(0.f) ? 1 : 2] = 1;
     }
   }
 }
@@ -75,13 +76,10 @@ template <typename T>
 struct CheckNumericsLaunch {
   absl::Status Run(const GPUDevice& d, const T* data, int64_t size,
                    int abnormal_detected[2]) {
-    const int32_t block_size = d.maxGpuThreadsPerBlock();
-    const int32_t num_blocks =
-        (d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor()) /
-        block_size;
-
-    return GpuLaunchKernel(CheckNumericsKernel<T>, num_blocks, block_size, 0,
-                           d.stream(), data, size, abnormal_detected);
+    TF_ASSIGN_OR_RETURN(auto config, GetGpuLaunchConfig64(size, d));
+    return GpuLaunchKernel(CheckNumericsKernel<T>, config.block_count,
+                           config.thread_per_block, 0, d.stream(), data, size,
+                           abnormal_detected);
   }
 };
 
@@ -93,13 +91,10 @@ template <typename T>
 struct CheckNumericsLaunchV2 {
   absl::Status Run(const GPUDevice& d, const T* data, int64_t size,
                    int abnormal_detected[3]) {
-    const int32_t block_size = d.maxGpuThreadsPerBlock();
-    const int32_t num_blocks =
-        (d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor()) /
-        block_size;
-
-    return GpuLaunchKernel(CheckNumericsKernelV2<T>, num_blocks, block_size, 0,
-                           d.stream(), data, size, abnormal_detected);
+    TF_ASSIGN_OR_RETURN(auto config, GetGpuLaunchConfig64(size, d));
+    return GpuLaunchKernel(CheckNumericsKernelV2<T>, config.block_count,
+                           config.thread_per_block, 0, d.stream(), data, size,
+                           abnormal_detected);
   }
 };
 
