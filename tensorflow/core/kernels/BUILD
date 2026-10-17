@@ -4996,7 +4996,6 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:errors",
-        "//tensorflow/core/util:overflow",
         "@com_google_absl//absl/status",
         "@eigen_archive//:eigen3",
     ],

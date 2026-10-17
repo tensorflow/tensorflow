@@ -78,7 +78,7 @@ TEST_F(DepthSpaceOpGpuTest, DepthToSpaceRejectsInputOverInt32Max) {
 TEST_F(DepthSpaceOpGpuTest, EmptyInputWithDimensionOverInt32MaxSucceeds) {
   TF_EXPECT_OK(
       (RunFunctor<SpaceToDepthOpFunctor<GPUDevice, float, FORMAT_NHWC>>(
-          Dims(3000000000, 0, 2, 2), Dims(3000000000, 0, 1, 4))));
+          Dims(3000000000, 0, 2, 2), Dims(3000000000, 0, 1, 8))));
   TF_EXPECT_OK(
       (RunFunctor<SpaceToDepthOpFunctor<GPUDevice, float, FORMAT_NCHW>>(
           Dims(3000000000, 0, 2, 2), Dims(3000000000, 0, 1, 1))));

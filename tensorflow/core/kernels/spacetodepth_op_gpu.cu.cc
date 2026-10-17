@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
-#include "tensorflow/core/util/overflow.h"
 
 namespace tensorflow {
 
@@ -206,47 +205,15 @@ struct SpaceToDepthOpFunctor<GPUDevice, T, FORMAT_NCHW> {
     const int output_height = output.dimension(2);
     const int output_width = output.dimension(3);
 
-    int64_t output_area_64 =
-        MultiplyWithoutOverflow(output_width, output_height);
-    if (output_area_64 < 0 ||
-        output_area_64 > std::numeric_limits<int32_t>::max()) {
-      return absl::InternalError(
-          "SpaceToDepthOpFunctor NCHW: output_area exceeds int32 bounds");
-    }
-    const int output_area = output_area_64;
-
-    int64_t output_depth_by_output_area_64 =
-        MultiplyWithoutOverflow(output_depth, output_area);
-    if (output_depth_by_output_area_64 < 0 ||
-        output_depth_by_output_area_64 > std::numeric_limits<int32_t>::max()) {
-      return absl::InternalError(
-          "SpaceToDepthOpFunctor NCHW: output_depth_by_output_area exceeds "
-          "int32 bounds");
-    }
-    const int output_depth_by_output_area = output_depth_by_output_area_64;
+    const int output_area = output_width * output_height;
+    const int output_depth_by_output_area = output_depth * output_area;
 
     // We improve performance by generating instantiations of the loop kernel
     // for the most common block sizes.
     if (block_size <= 4) {
       const int input_width = input.dimension(3);
-      int64_t input_depth_by_output_area_64 =
-          MultiplyWithoutOverflow(input_depth, output_area);
-      if (input_depth_by_output_area_64 < 0 ||
-          input_depth_by_output_area_64 > std::numeric_limits<int32_t>::max()) {
-        return absl::InternalError(
-            "SpaceToDepthOpFunctor NCHW: input_depth_by_output_area exceeds "
-            "int32 bounds");
-      }
-      const int input_depth_by_output_area = input_depth_by_output_area_64;
-
-      int64_t total_count_64 =
-          MultiplyWithoutOverflow(batch_size, input_depth_by_output_area);
-      if (total_count_64 < 0 ||
-          total_count_64 > std::numeric_limits<int32_t>::max()) {
-        return absl::InternalError(
-            "SpaceToDepthOpFunctor NCHW: total_count exceeds int32 bounds");
-      }
-      const int total_count = total_count_64;
+      const int input_depth_by_output_area = input_depth * output_area;
+      const int total_count = batch_size * input_depth_by_output_area;
 
       GpuLaunchConfig config = GetGpuLaunchConfig(total_count, d);
       switch (block_size) {
@@ -278,14 +245,7 @@ struct SpaceToDepthOpFunctor<GPUDevice, T, FORMAT_NCHW> {
     }
 
     // Other block sizes are processed by the generic kernel.
-    int64_t total_count_64 =
-        MultiplyWithoutOverflow(batch_size, output_depth_by_output_area);
-    if (total_count_64 < 0 ||
-        total_count_64 > std::numeric_limits<int32_t>::max()) {
-      return absl::InternalError(
-          "SpaceToDepthOpFunctor NCHW: total_count exceeds int32 bounds");
-    }
-    const int total_count = total_count_64;
+    const int total_count = batch_size * output_depth_by_output_area;
 
     GpuLaunchConfig config = GetGpuLaunchConfig(total_count, d);
     TF_RETURN_IF_ERROR(GpuLaunchKernel(
