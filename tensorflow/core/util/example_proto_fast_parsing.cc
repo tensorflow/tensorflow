@@ -153,19 +153,29 @@ class Feature {
     return absl::OkStatus();
   }
 
+  // Reads the length of a length-delimited field and rejects a length that
+  // runs past the remaining input. PushLimit() silently ignores such a limit
+  // and ReadRaw() takes an int and does not reject negative sizes, so every
+  // length read from the input goes through here before it is used.
+  static bool ReadLength(protobuf::io::CodedInputStream* stream,
+                         uint32_t* length) {
+    if (!stream->ReadVarint32(length)) return false;
+    return static_cast<int64_t>(*length) <= stream->BytesUntilLimit();
+  }
+
   bool GetNumElementsInBytesList(int* num_elements) {
     protobuf::io::CodedInputStream stream(
         reinterpret_cast<const uint8_t*>(serialized_.data()),
         serialized_.size());
     EnableAliasing(&stream);
     uint32_t length = 0;
-    if (!stream.ReadVarint32(&length)) return false;
+    if (!ReadLength(&stream, &length)) return false;
     auto limit = stream.PushLimit(length);
     *num_elements = 0;
     while (!stream.ExpectAtEnd()) {
       if (!stream.ExpectTag(kDelimitedTag(1))) return false;
       uint32_t bytes_length = 0;
-      if (!stream.ReadVarint32(&bytes_length)) return false;
+      if (!ReadLength(&stream, &bytes_length)) return false;
       if (!stream.Skip(bytes_length)) return false;
       ++*num_elements;
     }
@@ -195,14 +205,14 @@ class Feature {
     EnableAliasing(&stream);
 
     uint32_t length;
-    if (!stream.ReadVarint32(&length)) return false;
+    if (!ReadLength(&stream, &length)) return false;
     auto limit = stream.PushLimit(length);
 
     while (!stream.ExpectAtEnd()) {
       if (!stream.ExpectTag(kDelimitedTag(1))) return false;
       // parse string
       uint32_t bytes_length;
-      if (!stream.ReadVarint32(&bytes_length)) return false;
+      if (!ReadLength(&stream, &bytes_length)) return false;
       tstring* bytes = construct_at_end(bytes_list);
       if (bytes == nullptr) return false;
       bytes->resize_uninitialized(bytes_length);
@@ -220,7 +230,7 @@ class Feature {
         serialized_.size());
     EnableAliasing(&stream);
     uint32_t length;
-    if (!stream.ReadVarint32(&length)) return false;
+    if (!ReadLength(&stream, &length)) return false;
     auto limit = stream.PushLimit(length);
 
     if (!stream.ExpectAtEnd()) {
@@ -233,7 +243,7 @@ class Feature {
       if (peek_tag == kDelimitedTag(1)) {                       // packed
         if (!stream.ExpectTag(kDelimitedTag(1))) return false;  // packed tag
         uint32_t packed_length;
-        if (!stream.ReadVarint32(&packed_length)) return false;
+        if (!ReadLength(&stream, &packed_length)) return false;
         auto packed_limit = stream.PushLimit(packed_length);
 
         // Store the initial size to know the offset we have to start writing
@@ -299,7 +309,7 @@ class Feature {
         serialized_.size());
     EnableAliasing(&stream);
     uint32_t length;
-    if (!stream.ReadVarint32(&length)) return false;
+    if (!ReadLength(&stream, &length)) return false;
     auto limit = stream.PushLimit(length);
 
     if (!stream.ExpectAtEnd()) {
@@ -310,7 +320,7 @@ class Feature {
       if (peek_tag == kDelimitedTag(1)) {                       // packed
         if (!stream.ExpectTag(kDelimitedTag(1))) return false;  // packed tag
         uint32_t packed_length;
-        if (!stream.ReadVarint32(&packed_length)) return false;
+        if (!ReadLength(&stream, &packed_length)) return false;
         auto packed_limit = stream.PushLimit(packed_length);
 
         while (!stream.ExpectAtEnd()) {
