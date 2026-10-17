@@ -78,6 +78,11 @@ class SparseTensorToCSRSparseMatrixCPUOp : public OpKernel {
     const int64_t num_cols = dense_shape_vec((rank == 2) ? 1 : 2);
     const int64_t total_nnz = values.NumElements();
 
+    OP_REQUIRES(ctx, total_nnz == 0 || (num_rows > 0 && num_cols > 0),
+                absl::InvalidArgumentError(
+                    "SparseTensor has nnz > 0 but dense_shape has 0 "
+                    "rows or cols"));
+
     static constexpr int64_t kInt32Max = std::numeric_limits<int32_t>::max();
     OP_REQUIRES(ctx, batch_size < kInt32Max,
                 absl::InvalidArgumentError(
@@ -89,6 +94,11 @@ class SparseTensorToCSRSparseMatrixCPUOp : public OpKernel {
                     absl::StrCat("values number of elements must be <="
                                  " Int32Max, but the input value is ",
                                  total_nnz)));
+    OP_REQUIRES(ctx, num_cols <= kInt32Max,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "dense_shape cols must be <= Int32Max, but the input "
+                    "value is ",
+                    num_cols)));
     OP_REQUIRES(ctx, (num_rows + 1) * batch_size <= kInt32Max,
                 absl::InvalidArgumentError(
                     absl::StrCat("The csr row index size, computed based on the"
@@ -171,6 +181,12 @@ class SparseTensorToCSRSparseMatrixGPUOp : public AsyncOpKernel {
     const int64_t rows = dense_shape((rank == 2) ? 0 : 1);
     const int64_t cols = dense_shape((rank == 2) ? 1 : 2);
 
+    OP_REQUIRES_ASYNC(c, values_t.NumElements() == 0 || (rows > 0 && cols > 0),
+                      absl::InvalidArgumentError(
+                          "SparseTensor has nnz > 0 but dense_shape has 0 "
+                          "rows or cols"),
+                      done);
+
     static constexpr int64_t kInt32Max = std::numeric_limits<int32_t>::max();
     OP_REQUIRES_ASYNC(c, batch_size < kInt32Max,
                       absl::InvalidArgumentError(absl::StrCat(
@@ -183,6 +199,12 @@ class SparseTensorToCSRSparseMatrixGPUOp : public AsyncOpKernel {
                           absl::StrCat("values number of elements must be <="
                                        " Int32Max, but the input value is ",
                                        values_t.NumElements())),
+                      done);
+    OP_REQUIRES_ASYNC(c, cols <= kInt32Max,
+                      absl::InvalidArgumentError(absl::StrCat(
+                          "dense_shape cols must be <= Int32Max, but the input "
+                          "value is ",
+                          cols)),
                       done);
     OP_REQUIRES_ASYNC(c, (rows + 1) * batch_size <= kInt32Max,
                       absl::InvalidArgumentError(absl::StrCat(

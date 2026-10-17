@@ -142,9 +142,6 @@ absl::Status CSRSparseMatrixToCOOSparseMatrix<GPUDevice>::operator()(
 namespace {
 __device__ inline int ClampIndex(int64_t index, int64_t limit) {
   if (limit <= 0) return 0;
-  constexpr int64_t kMaxLimit =
-      static_cast<int64_t>(std::numeric_limits<int32_t>::max()) + 1;
-  if (limit > kMaxLimit) limit = kMaxLimit;
   return static_cast<int>(index < 0 ? 0 : (index < limit ? index : limit - 1));
 }
 }  // namespace
