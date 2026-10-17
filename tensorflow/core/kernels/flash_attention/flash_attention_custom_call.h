@@ -55,6 +55,8 @@ struct FlashAttnBwdDesc {
   float dropout;
   float scale;
   bool causal;
+  // OpDeterminismRequired() when compiled; workspace_bytes depends on it.
+  bool deterministic;
 };
 
 }  // namespace tensorflow

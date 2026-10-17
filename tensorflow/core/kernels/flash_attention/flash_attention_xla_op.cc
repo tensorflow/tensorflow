@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/flash_attention/fa2_api.h"
 #include "tensorflow/core/kernels/flash_attention/flash_attention_custom_call.h"
 #include "tensorflow/core/kernels/flash_attention/flash_attention_op.h"
+#include "tensorflow/core/util/determinism.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/shape_util.h"
 
@@ -215,6 +216,7 @@ class FlashAttnGradXlaOp : public XlaOpKernel {
     d.dropout = dropout_;
     d.scale = scale_;
     d.causal = causal_;
+    d.deterministic = OpDeterminismRequired();
 
     const TensorShape out_shape({d.B, d.Sq, d.H, d.Dv});
     OP_REQUIRES_OK(ctx, ExpectShape("out", ctx->InputShape(3), out_shape));
@@ -228,17 +230,18 @@ class FlashAttnGradXlaOp : public XlaOpKernel {
       case kFlashAttnF16:
         d.workspace_bytes = functor::FlashAttentionGradFunctor<
             GPUDevice, Eigen::half>::WorkspaceBytes(d.B, d.H, d.Sq, d.Sk, d.Dqk,
-                                                    d.Dv);
+                                                    d.Dv, d.deterministic);
         break;
       case kFlashAttnBF16:
         d.workspace_bytes = functor::FlashAttentionGradFunctor<
             GPUDevice, Eigen::bfloat16>::WorkspaceBytes(d.B, d.H, d.Sq, d.Sk,
-                                                        d.Dqk, d.Dv);
+                                                        d.Dqk, d.Dv,
+                                                        d.deterministic);
         break;
       default:
         d.workspace_bytes = functor::FlashAttentionGradFunctor<
-            GPUDevice, float>::WorkspaceBytes(d.B, d.H, d.Sq, d.Sk, d.Dqk,
-                                              d.Dv);
+            GPUDevice, float>::WorkspaceBytes(d.B, d.H, d.Sq, d.Sk, d.Dqk, d.Dv,
+                                              d.deterministic);
     }
 
     xla::Shape u64_s = RowMajor(xla::U64, {});

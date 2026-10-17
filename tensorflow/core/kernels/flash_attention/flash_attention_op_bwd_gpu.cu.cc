@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/flash_attention/fa2_api.h"
 #include "tensorflow/core/kernels/flash_attention/flash_attention_op.h"
 #include "tensorflow/core/kernels/flash_attention/flash_attention_op_gpu.cu.h"
-#include "tensorflow/core/util/determinism.h"
 
 // Backward pass of the fallback kernels:
 //  1. FlashAttnBwdDotDoOKernel: dOsum_i = sum_d dO_id * Out_id, once per row.
@@ -31,8 +30,8 @@ limitations under the License.
 //     registers. With kAccumulateDQ it also adds dQ_i += sum_j dS_ij K_j to a
 //     float buffer with atomicAdd, and FlashAttnBwdConvertDQKernel converts
 //     that to T.
-//  3. Float atomics make dQ nondeterministic, so when op determinism is
-//     required FlashAttnBwdKernel_Q recomputes dS per query row and writes dQ
+//  3. Float atomics make dQ nondeterministic, so in deterministic mode
+//     FlashAttnBwdKernel_Q recomputes dS per query row and writes dQ
 //     directly instead.
 
 namespace tensorflow::functor {
@@ -431,29 +430,32 @@ struct FlashAttentionGradFunctor<GPUDevice, T> {
   static constexpr bool kIsBf16 = std::is_same_v<T, Eigen::bfloat16>;
   static constexpr bool kIsFa2Type = kIsBf16 || std::is_same_v<T, Eigen::half>;
 
-  // The fallback kernels' scratch memory: dOsum (float [B, H, S_q]), then the
-  // dQ accumulator (float [B, H, S_q, D_qk]).
+  // The fallback kernels' scratch memory: dOsum (float [B, H, S_q]), then,
+  // unless deterministic, the dQ accumulator (float [B, H, S_q, D_qk]).
   static size_t DOsumBytes(int B, int H, int S_q) {
     return (static_cast<size_t>(B) * H * S_q * sizeof(float) + 255) / 256 * 256;
   }
-  static size_t FallbackWorkspaceBytes(int B, int H, int S_q, int D_qk) {
+  static size_t FallbackWorkspaceBytes(int B, int H, int S_q, int D_qk,
+                                       bool deterministic) {
     return DOsumBytes(B, H, S_q) +
-           static_cast<size_t>(B) * H * S_q * D_qk * sizeof(float);
+           (deterministic
+                ? 0
+                : static_cast<size_t>(B) * H * S_q * D_qk * sizeof(float));
   }
 
   // Shape-only (no device query) so XLA can size the buffer at compile time.
   // Big enough for whichever path the device ends up taking.
   static int64_t WorkspaceBytes(int B, int H, int S_q, int S_kv, int D_qk,
-                                int D_v) {
+                                int D_v, bool deterministic) {
     size_t bytes = 0;
     if (std::max(D_qk, D_v) <= 128) {
-      bytes = FallbackWorkspaceBytes(B, H, S_q, D_qk);
+      bytes = FallbackWorkspaceBytes(B, H, S_q, D_qk, deterministic);
     }
     if constexpr (kIsFa2Type) {
       if (flash_attention_fa2::ShapeSupported(D_qk, D_v) &&
           flash_attention_fa2::GridSupported(B, H)) {
         bytes = std::max(bytes, flash_attention_fa2::BackwardWorkspaceBytes(
-                                    B, H, S_q, D_qk));
+                                    B, H, S_q, D_qk, deterministic));
       }
     }
     return static_cast<int64_t>(bytes);
@@ -468,18 +470,16 @@ struct FlashAttentionGradFunctor<GPUDevice, T> {
     return FeatureSizeError(D_qk, D_v);
   }
 
-  absl::Status operator()(const GPUDevice &d,
-                          typename TTypes<T, 4>::ConstTensor Q,
-                          typename TTypes<T, 4>::ConstTensor K,
-                          typename TTypes<T, 4>::ConstTensor V,
-                          typename TTypes<T, 4>::ConstTensor Out,
-                          typename TTypes<float, 3>::ConstTensor Stats,
-                          typename TTypes<T, 4>::ConstTensor dO,
-                          typename TTypes<T, 4>::Tensor dQ,
-                          typename TTypes<T, 4>::Tensor dK,
-                          typename TTypes<T, 4>::Tensor dV, bool causal_mask,
-                          float dropout_rate, float scale,
-                          FlashAttentionRng rng, void *workspace) const {
+  absl::Status operator()(
+      const GPUDevice &d, typename TTypes<T, 4>::ConstTensor Q,
+      typename TTypes<T, 4>::ConstTensor K,
+      typename TTypes<T, 4>::ConstTensor V,
+      typename TTypes<T, 4>::ConstTensor Out,
+      typename TTypes<float, 3>::ConstTensor Stats,
+      typename TTypes<T, 4>::ConstTensor dO, typename TTypes<T, 4>::Tensor dQ,
+      typename TTypes<T, 4>::Tensor dK, typename TTypes<T, 4>::Tensor dV,
+      bool causal_mask, float dropout_rate, float scale, FlashAttentionRng rng,
+      bool deterministic, void *workspace) const {
     const int B = Q.dimension(0);
     const int S_q = Q.dimension(1);
     const int H = Q.dimension(2);
@@ -501,8 +501,8 @@ struct FlashAttentionGradFunctor<GPUDevice, T> {
         const cudaError_t err = flash_attention_fa2::Backward(
             d.stream(), kIsBf16, Q.data(), K.data(), V.data(), Out.data(),
             Stats.data(), dO.data(), dQ.data(), dK.data(), dV.data(), workspace,
-            B, H, S_q, S_kv, D_qk, scale, dropout_rate, causal_mask, rng.seed,
-            rng.offset, rng.seed_dev, rng.offset_dev);
+            B, H, S_q, S_kv, D_qk, scale, dropout_rate, causal_mask,
+            deterministic, rng.seed, rng.offset, rng.seed_dev, rng.offset_dev);
         if (err != cudaSuccess) {
           return errors::Internal("FlashAttention-2 backward failed: ",
                                   cudaGetErrorString(err));
@@ -511,11 +511,12 @@ struct FlashAttentionGradFunctor<GPUDevice, T> {
       }
     }
 
-    const Args args{Q.data(),    K.data(),     V.data(),  Out.data(),
-                    dO.data(),   Stats.data(), dQ.data(), dK.data(),
-                    dV.data(),   workspace,    B * H,     H,
-                    S_q,         S_kv,         D_qk,      D_v,
-                    causal_mask, dropout_rate, scale,     rng};
+    const Args args{Q.data(),     K.data(),     V.data(),  Out.data(),
+                    dO.data(),    Stats.data(), dQ.data(), dK.data(),
+                    dV.data(),    workspace,    B * H,     H,
+                    S_q,          S_kv,         D_qk,      D_v,
+                    causal_mask,  dropout_rate, scale,     rng,
+                    deterministic};
     const int max_D = std::max(D_qk, D_v);
     if (max_D <= 8) return Launch<8>(d, args);
     if (max_D <= 16) return Launch<16>(d, args);
@@ -537,6 +538,7 @@ struct FlashAttentionGradFunctor<GPUDevice, T> {
     bool causal_mask;
     float dropout_rate, scale;
     FlashAttentionRng rng;
+    bool deterministic;
   };
 
   static absl::Status CheckGrid(uint64_t total_blocks) {
@@ -563,7 +565,7 @@ struct FlashAttentionGradFunctor<GPUDevice, T> {
         FlashAttnBwdDotDoOKernel<T>, ElementwiseBlocks(rows_q, kThreads),
         kThreads, 0, d.stream(), a.Out, a.dO, dOsum, a.BH, a.H, a.S_q, a.D_v));
 
-    if (OpDeterminismRequired()) {
+    if (a.deterministic) {
       TF_RETURN_IF_ERROR(LaunchKV<D_MAX, false>(d, a, dOsum, nullptr));
       return LaunchQ<D_MAX>(d, a, dOsum);
     }
