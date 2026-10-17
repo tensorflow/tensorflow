@@ -4546,6 +4546,7 @@ tf_kernel_library(
         "//tensorflow/core/util:determinism_for_kernels",
         "//tensorflow/core/util:overflow",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ] + if_cuda_or_rocm([
         ":reduction_ops",
         "@xla//xla/stream_executor:event_based_timer",

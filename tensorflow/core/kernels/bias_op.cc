@@ -19,12 +19,18 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/bias_op.h"
 
+#include <cstdint>
+#include <limits>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/redux_functor.h"
 #include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/util/determinism.h"
@@ -68,6 +74,15 @@ void GetBiasValueDims(const Tensor& value_tensor, TensorFormat data_format,
       *depth = static_cast<int32_t>(value_tensor.dim_size(4));
     }
   }
+}
+
+absl::Status ValidateGpuElementCount(const TensorShape& shape) {
+  if (shape.num_elements() > std::numeric_limits<int32_t>::max()) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "The GPU kernel supports at most ", std::numeric_limits<int32_t>::max(),
+        " elements, but the input has shape ", shape.DebugString()));
+  }
+  return absl::OkStatus();
 }
 
 template <class T>
@@ -274,6 +289,7 @@ class BiasOp<GPUDevice, T> : public BinaryOp<T> {
     OP_REQUIRES(context, TensorShapeUtils::IsVector(bias.shape()),
                 absl::InvalidArgumentError(absl::StrCat(
                     "Biases must be 1D: ", bias.shape().DebugString())));
+    OP_REQUIRES_OK(context, ValidateGpuElementCount(input.shape()));
     int32_t batch, height, width, depth, channel;
     GetBiasValueDims(input, data_format_, &batch, &height, &width, &depth,
                      &channel);
@@ -471,6 +487,7 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
         absl::InvalidArgumentError(absl::StrCat(
             "NCHW format requires input tensor to be at least 3D: ",
             output_backprop.shape().DebugString())));
+    OP_REQUIRES_OK(context, ValidateGpuElementCount(output_backprop.shape()));
     int32_t batch, height, width, depth, channel;
     GetBiasValueDims(output_backprop, data_format_, &batch, &height, &width,
                      &depth, &channel);

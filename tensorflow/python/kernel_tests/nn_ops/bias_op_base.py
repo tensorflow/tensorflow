@@ -352,3 +352,16 @@ class BiasAddTestBase(test.TestCase):
         self._testGradient(
             np.random.randn(*shape), np.random.randn(shape[-1]), dtypes.float64,
             data_format, use_gpu)
+
+  @test_util.run_gpu_only
+  def testGradientWithManyChannels(self):
+    channels = 2**29
+    try:
+      with test_util.force_gpu():
+        out_backprop = array_ops.ones([1, channels], dtype=dtypes.float16)
+        bias_backprop = gen_nn_ops.bias_add_grad(
+            out_backprop, data_format="NHWC")
+        last_values = self.evaluate(bias_backprop[-4:])
+    except errors_impl.ResourceExhaustedError as e:
+      self.skipTest("Not enough GPU memory: %s" % e)
+    self.assertAllEqual(last_values, np.ones([4], dtype=np.float16))
