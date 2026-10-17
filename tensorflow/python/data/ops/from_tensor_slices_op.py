@@ -17,6 +17,7 @@
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_dataset_ops
 
@@ -30,7 +31,8 @@ class _TensorSliceDataset(dataset_ops.DatasetSource):
 
   def __init__(self, element, is_files=False, name=None):
     """See `Dataset.from_tensor_slices` for details."""
-    element = structure.normalize_element(element)
+    with ops.device("/device:CPU:0"):
+      element = structure.normalize_element(element)
     batched_spec = structure.type_spec_from_value(element)
     self._tensors = structure.to_batched_tensor_list(batched_spec, element)
     if not self._tensors:
