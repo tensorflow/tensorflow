@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_PYTHON_EAGER_PYWRAP_TENSOR_CONVERSION_H_
 
 // Place `<locale>` before <Python.h> to avoid build failure in macOS.
+#include <cmath>
 #include <locale>
 #include <string>
 #include <tuple>
@@ -62,6 +63,23 @@ class PyObjectPtr {
     if (Py_TYPE(ptr_) != Py_TYPE(other.ptr_)) {
       return false;
     }
+    if (ptr_ == other.ptr_) {
+      return true;
+    }
+
+    // Python also has 0.0 == -0.0, for floats as well as for the parts of a
+    // complex number, but the two zeros are different tensors: the sign
+    // shows up in e.g. 1 / x or atan2. Compare the sign bit too, so that one
+    // is never served from the cache entry of the other.
+    if (PyFloat_Check(ptr_)) {
+      return SameFloat(PyFloat_AS_DOUBLE(ptr_), PyFloat_AS_DOUBLE(other.ptr_));
+    }
+    if (PyComplex_Check(ptr_)) {
+      return SameFloat(PyComplex_RealAsDouble(ptr_),
+                       PyComplex_RealAsDouble(other.ptr_)) &&
+             SameFloat(PyComplex_ImagAsDouble(ptr_),
+                       PyComplex_ImagAsDouble(other.ptr_));
+    }
 
     bool result = PyObject_RichCompareBool(ptr_, other.ptr_, Py_EQ) > 0;
     CHECK(!PyErr_Occurred());  // Crash OK
@@ -69,6 +87,10 @@ class PyObjectPtr {
   }
 
  private:
+  static bool SameFloat(double a, double b) {
+    return a == b && std::signbit(a) == std::signbit(b);
+  }
+
   PyObject* ptr_;
 };
 
