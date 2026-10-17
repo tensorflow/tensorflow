@@ -1491,10 +1491,12 @@ def _geomspace_log10(x):
   extra `pow` is cheap.
 
   Args:
-    x: A real or complex tensor.
+    x: A tensor. Only real floating-point inputs are refined; anything else,
+      including complex inputs, goes to `log10` unchanged since `is_finite`
+      has no complex kernel.
 
   Returns:
-    log10(x), with the same dtype as `x`.
+    log10(x), with the same dtype as `x` for real floating-point inputs.
   """
   if not x.dtype.is_floating:
     return log10(x)
@@ -1541,11 +1543,13 @@ def geomspace(start, stop, num=50, endpoint=True, dtype=None, axis=0):  # pylint
     # to an integer `dtype` would then truncate e.g. 999.9999999999991 to 999.
     sample_shape = array_ops.shape(res)[1:]
     first = array_ops.expand_dims(
-        array_ops.broadcast_to(start, sample_shape), 0
+        array_ops.broadcast_to(math_ops.cast(start, res.dtype), sample_shape),
+        0,
     )
     if endpoint and num > 1:
       last = array_ops.expand_dims(
-          array_ops.broadcast_to(stop, sample_shape), 0
+          array_ops.broadcast_to(math_ops.cast(stop, res.dtype), sample_shape),
+          0,
       )
       res = array_ops.concat([first, res[1:-1], last], axis=0)
     else:
