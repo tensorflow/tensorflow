@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/latency_hiding_scheduler.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -2423,8 +2424,9 @@ bool DefaultSchedulerCore::AddOccupierToResource(
   // Since it points to the newly inserted element, increment it
   it++;
   accumulated_delay += new_edge_remaining;
-  CHECK(new_edge.OriginalLatency() - 0.0001 < accumulated_delay &&
-        accumulated_delay < new_edge.OriginalLatency() + 0.0001);
+  const HloGraphNode::TimeCost tolerance =
+      std::max(1e-4, 1e-9 * new_edge.OriginalLatency());
+  CHECK_LE(std::abs(accumulated_delay - new_edge.OriginalLatency()), tolerance);
   for (; it != occupiers.end(); it++) {
     it->second += accumulated_delay;
   }
