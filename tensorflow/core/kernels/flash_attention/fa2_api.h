@@ -57,15 +57,22 @@ cudaError_t Forward(cudaStream_t stream, bool bf16, const void *q,
                     const uint64_t *seed_dev, const uint64_t *offset_dev);
 
 // Scratch memory Backward needs (dQ accumulator, softmax row sums, RNG state).
-size_t BackwardWorkspaceBytes(int B, int H, int S_q, int D);
+// With `deterministic`, FA2 keeps one dQ accumulator per column block, and
+// their number depends on the GPU's SM count; this sizes them for the largest
+// visible GPU, so the result is valid on any of them.
+size_t BackwardWorkspaceBytes(int B, int H, int S_q, int D, bool deterministic);
+
+// With `deterministic`, uses FA2's deterministic mode: no two thread blocks
+// accumulate into the same dQ element, so the gradients are bitwise
+// reproducible (dK/dV always are).
 
 cudaError_t Backward(cudaStream_t stream, bool bf16, const void *q,
                      const void *k, const void *v, const void *out,
                      const float *lse, const void *dout, void *dq, void *dk,
                      void *dv, void *workspace, int B, int H, int S_q, int S_kv,
                      int D, float scale, float dropout, bool causal,
-                     uint64_t seed, uint64_t offset, const uint64_t *seed_dev,
-                     const uint64_t *offset_dev);
+                     bool deterministic, uint64_t seed, uint64_t offset,
+                     const uint64_t *seed_dev, const uint64_t *offset_dev);
 
 }  // namespace flash_attention_fa2
 

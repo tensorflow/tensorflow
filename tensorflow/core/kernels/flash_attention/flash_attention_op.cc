@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/util/determinism.h"
 
 namespace tensorflow {
 
@@ -231,11 +232,12 @@ class FlashAttentionGradOp : public OpKernel {
     auto dK = dk_tensor->template tensor<T, 4>();
     auto dV = dv_tensor->template tensor<T, 4>();
 
+    const bool deterministic = OpDeterminismRequired();
     Tensor workspace;
     void *workspace_ptr = nullptr;
     const int64_t workspace_bytes =
         functor::FlashAttentionGradFunctor<Device, T>::WorkspaceBytes(
-            B, H, S_q, S_kv, D_qk, D_v);
+            B, H, S_q, S_kv, D_qk, D_v, deterministic);
     OP_REQUIRES_OK(
         context, context->allocate_temp(DT_INT8, TensorShape({workspace_bytes}),
                                         &workspace));
@@ -247,7 +249,7 @@ class FlashAttentionGradOp : public OpKernel {
         functor::FlashAttentionGradFunctor<Device, T>()(
             d, Q, K, V, Out, Stats, dO, dQ, dK, dV, causal_mask_, dropout_rate_,
             scale_, functor::FlashAttentionRng{seed_val, offset_val},
-            workspace_ptr));
+            deterministic, workspace_ptr));
   }
 };
 
@@ -389,7 +391,7 @@ struct FlashAttentionFunctor<CPUDevice, T> {
 template <typename T>
 struct FlashAttentionGradFunctor<CPUDevice, T> {
   static int64_t WorkspaceBytes(int B, int H, int S_q, int S_kv, int D_qk,
-                                int D_v) {
+                                int D_v, bool deterministic) {
     return 0;
   }
 
@@ -398,18 +400,18 @@ struct FlashAttentionGradFunctor<CPUDevice, T> {
                                       : FeatureSizeError(D_qk, D_v);
   }
 
-  absl::Status operator()(const CPUDevice &d,
-                          typename TTypes<T, 4>::ConstTensor Q,
-                          typename TTypes<T, 4>::ConstTensor K,
-                          typename TTypes<T, 4>::ConstTensor V,
-                          typename TTypes<T, 4>::ConstTensor Out,
-                          typename TTypes<float, 3>::ConstTensor Stats,
-                          typename TTypes<T, 4>::ConstTensor dO,
-                          typename TTypes<T, 4>::Tensor dQ,
-                          typename TTypes<T, 4>::Tensor dK,
-                          typename TTypes<T, 4>::Tensor dV, bool causal_mask,
-                          float dropout_rate, float scale,
-                          FlashAttentionRng rng, void * /*workspace*/) const {
+  absl::Status operator()(
+      const CPUDevice &d, typename TTypes<T, 4>::ConstTensor Q,
+      typename TTypes<T, 4>::ConstTensor K,
+      typename TTypes<T, 4>::ConstTensor V,
+      typename TTypes<T, 4>::ConstTensor Out,
+      typename TTypes<float, 3>::ConstTensor Stats,
+      typename TTypes<T, 4>::ConstTensor dO, typename TTypes<T, 4>::Tensor dQ,
+      typename TTypes<T, 4>::Tensor dK, typename TTypes<T, 4>::Tensor dV,
+      bool causal_mask, float dropout_rate, float scale, FlashAttentionRng rng,
+      bool /*deterministic*/, void * /*workspace*/) const {
+    // Always deterministic: every output element is summed by one thread in a
+    // fixed order.
     const uint64_t seed = rng.seed;
     const uint64_t offset = rng.offset;
     const int B = Q.dimension(0);

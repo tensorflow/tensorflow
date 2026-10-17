@@ -282,13 +282,57 @@ cudaError_t Forward(cudaStream_t stream, bool bf16, const void *q,
   return TakeError();
 }
 
-// dq_accum is [B, S_q_rounded, H, D_rounded] and dsoftmax_sum is
-// [B, H, S_q_rounded], both float.
-size_t BackwardWorkspaceBytes(int B, int H, int S_q, int D) {
+namespace {
+
+// Number of dQ accumulators FA2's deterministic backward uses on a GPU with
+// num_sm SMs: one per column block, and it launches ceil(num_sm / (B * H)) of
+// them (run_flash_bwd_seqk_parallel in flash_bwd_launch_template.h).
+int DeterministicSplits(int num_sm, int B, int H) {
+  const int64_t bh = int64_t(B) * H;
+  if (bh <= 0) return 1;  // empty inputs; Backward returns before launching
+  return static_cast<int>((num_sm + bh - 1) / bh);
+}
+
+// Largest SM count among the visible GPUs (cached), for sizing the workspace
+// without knowing which GPU will run the kernel.
+int MaxNumSm() {
+  static const int max_sm = [] {
+    int count = 0, best = 0;
+    if (cudaGetDeviceCount(&count) != cudaSuccess) count = 0;
+    for (int dev = 0; dev < count; ++dev) {
+      int sm = 0;
+      if (cudaDeviceGetAttribute(&sm, cudaDevAttrMultiProcessorCount, dev) ==
+          cudaSuccess) {
+        best = std::max(best, sm);
+      }
+    }
+    cudaGetLastError();  // don't leave an error for the next launch check
+    // If the query fails, assume a large GPU rather than undersizing.
+    return best > 0 ? best : 1024;
+  }();
+  return max_sm;
+}
+
+// One dQ accumulator: [B, S_q_rounded, H, D_rounded] floats.
+size_t DQAccumElems(int B, int H, int S_q, int D) {
+  return size_t(B) * H * RoundUp(S_q, 128) * RoundUp(D, 32);
+}
+
+// Workspace layout: dq_accum (one, or one per deterministic split), then
+// dsoftmax_sum ([B, H, S_q_rounded] floats), then the RNG state.
+size_t DQAccumBytes(int B, int H, int S_q, int D, bool deterministic) {
+  const int splits = deterministic ? DeterministicSplits(MaxNumSm(), B, H) : 1;
+  return AlignUp(splits * DQAccumElems(B, H, S_q, D) * sizeof(float));
+}
+
+}  // namespace
+
+size_t BackwardWorkspaceBytes(int B, int H, int S_q, int D,
+                              bool deterministic) {
   const size_t rows = size_t(B) * H * RoundUp(S_q, 128);
-  const size_t dq_accum = AlignUp(rows * RoundUp(D, 32) * sizeof(float));
   const size_t softmax_d = AlignUp(rows * sizeof(float));
-  return dq_accum + softmax_d + 2 * sizeof(uint64_t);
+  return DQAccumBytes(B, H, S_q, D, deterministic) + softmax_d +
+         2 * sizeof(uint64_t);
 }
 
 cudaError_t Backward(cudaStream_t stream, bool bf16, const void *q,
@@ -296,8 +340,8 @@ cudaError_t Backward(cudaStream_t stream, bool bf16, const void *q,
                      const float *lse, const void *dout, void *dq, void *dk,
                      void *dv, void *workspace, int B, int H, int S_q, int S_kv,
                      int D, float scale, float dropout, bool causal,
-                     uint64_t seed, uint64_t offset, const uint64_t *seed_dev,
-                     const uint64_t *offset_dev) {
+                     bool deterministic, uint64_t seed, uint64_t offset,
+                     const uint64_t *seed_dev, const uint64_t *offset_dev) {
   if (B == 0 || H == 0) return cudaSuccess;
   if (S_q == 0 || S_kv == 0) {
     // Every gradient is empty or zero.
@@ -329,13 +373,31 @@ cudaError_t Backward(cudaStream_t stream, bool bf16, const void *q,
   char *ws = static_cast<char *>(workspace);
   const size_t rows = size_t(B) * H * RoundUp(S_q, 128);
   p.dq_accum_ptr = ws;
-  ws += AlignUp(rows * RoundUp(D, 32) * sizeof(float));
+  ws += DQAccumBytes(B, H, S_q, D, deterministic);
   p.dsoftmax_sum = ws;
   ws += AlignUp(rows * sizeof(float));
   p.rng_state = reinterpret_cast<uint64_t *>(ws);
   p.dk_accum_ptr = p.dv_accum_ptr = nullptr;
-  p.deterministic = false;
+  p.deterministic = deterministic;
   p.dq_accum_split_stride = 0;
+  if (deterministic) {
+    // Each column block adds into its own accumulator, which FA2 then sums in
+    // a fixed order. Unlike the default mode, FA2 doesn't zero them itself
+    // (upstream allocates them with torch::zeros).
+    int dev = 0, num_sm = 0;
+    if (cudaGetDevice(&dev) != cudaSuccess ||
+        cudaDeviceGetAttribute(&num_sm, cudaDevAttrMultiProcessorCount, dev) !=
+            cudaSuccess) {
+      return cudaGetLastError();
+    }
+    const size_t split_elems = DQAccumElems(B, H, S_q, D);
+    p.dq_accum_split_stride = static_cast<int64_t>(split_elems);
+    const cudaError_t err = cudaMemsetAsync(
+        p.dq_accum_ptr, 0,
+        DeterministicSplits(num_sm, B, H) * split_elems * sizeof(float),
+        stream);
+    if (err != cudaSuccess) return err;
+  }
 
   if (dropout > 0.f)
     SetRngState<<<1, 1, 0, stream>>>(p.rng_state, seed, offset, seed_dev,
@@ -372,15 +434,18 @@ cudaError_t Forward(cudaStream_t stream, bool bf16, const void *q,
   return cudaErrorNotSupported;
 }
 
-size_t BackwardWorkspaceBytes(int B, int H, int S_q, int D) { return 0; }
+size_t BackwardWorkspaceBytes(int B, int H, int S_q, int D,
+                              bool deterministic) {
+  return 0;
+}
 
 cudaError_t Backward(cudaStream_t stream, bool bf16, const void *q,
                      const void *k, const void *v, const void *out,
                      const float *lse, const void *dout, void *dq, void *dk,
                      void *dv, void *workspace, int B, int H, int S_q, int S_kv,
                      int D, float scale, float dropout, bool causal,
-                     uint64_t seed, uint64_t offset, const uint64_t *seed_dev,
-                     const uint64_t *offset_dev) {
+                     bool deterministic, uint64_t seed, uint64_t offset,
+                     const uint64_t *seed_dev, const uint64_t *offset_dev) {
   return cudaErrorNotSupported;
 }
 
