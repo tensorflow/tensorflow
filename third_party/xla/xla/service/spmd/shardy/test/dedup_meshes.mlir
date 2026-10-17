@@ -374,3 +374,31 @@ func.func @dedup_stablehlo_replica_group_mesh_axes(%arg0: tensor<32xi32>) -> ten
 
   return %0 : tensor<32xi32>
 }
+
+// -----
+
+// CHECK: sdy.mesh @mesh = <["a"=4, "b"=2]>
+// CHECK-NOT: sdy.mesh @mesh_0 = <["x"=2, "y"=4]>
+sdy.mesh @mesh = <["a"=4, "b"=2]>
+sdy.mesh @mesh_0 = <["x"=2, "y"=4]>
+
+// CHECK-LABEL: func @dedup_stablehlo_replica_group_mesh_axes_merge_sub_axes
+func.func @dedup_stablehlo_replica_group_mesh_axes_merge_sub_axes(%arg0: tensor<32xi32>) -> tensor<32xi32> {
+  // CHECK-NEXT: "stablehlo.all_reduce"
+  // CHECK-SAME: replica_groups = #stablehlo.replica_group_mesh_axes<mesh = @mesh, axes = [#stablehlo.axis_ref<name = "a">, #stablehlo.axis_ref<name = "b">]>
+  %0 = "stablehlo.all_reduce"(%arg0) ({
+  ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>):
+    %1 = stablehlo.add %arg1, %arg2 : tensor<i32>
+    stablehlo.return %1 : tensor<i32>
+  }) {replica_groups = #stablehlo.replica_group_mesh_axes<mesh = @mesh_0, axes = [#stablehlo.axis_ref<name = "x">, #stablehlo.axis_ref<name = "y">]>} : (tensor<32xi32>) -> tensor<32xi32>
+
+  // CHECK: "stablehlo.all_reduce"
+  // CHECK-SAME: replica_groups = #stablehlo.replica_group_mesh_axes<mesh = @mesh, axes = [#stablehlo.axis_ref<name = "a", sub_axis_info = (2)2>]>
+  %2 = "stablehlo.all_reduce"(%0) ({
+  ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>):
+    %3 = stablehlo.add %arg1, %arg2 : tensor<i32>
+    stablehlo.return %3 : tensor<i32>
+  }) {replica_groups = #stablehlo.replica_group_mesh_axes<mesh = @mesh_0, axes = [#stablehlo.axis_ref<name = "y", sub_axis_info = (1)2>]>} : (tensor<32xi32>) -> tensor<32xi32>
+
+  return %2 : tensor<32xi32>
+}

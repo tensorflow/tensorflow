@@ -43,6 +43,7 @@ limitations under the License.
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/utils.h"
 #include "shardy/dialect/sdy/transforms/common/sharding_walker.h"
+#include "shardy/dialect/sdy/transforms/export/utils.h"
 #include "stablehlo/dialect/StablehloOps.h"
 
 namespace xla {
@@ -401,7 +402,7 @@ void replaceManualAxes(sdy::ManualComputationOp manualComputation,
 }
 
 Attribute rewriteReplicaGroupsAttr(
-    Attribute attr, MLIRContext* context,
+    Attribute attr, MLIRContext* context, const SymbolTable& symbolTable,
     const MeshToAxisMap& duplicateMeshesToAxisMap) {
   auto rgv3 = mlir::dyn_cast<mlir::stablehlo::ReplicaGroupMeshAxesAttr>(attr);
   if (!rgv3) {
@@ -421,39 +422,41 @@ Attribute rewriteReplicaGroupsAttr(
   if (meshNameAndAxisMap == duplicateMeshesToAxisMap.end()) {
     return attr;
   }
-  auto [mainMeshName, axisMap] = meshNameAndAxisMap->getSecond();
+  const auto& [mainMeshName, axisMap] = meshNameAndAxisMap->getSecond();
+  MeshAttr mainMesh = sdy::getMeshOp(symbolTable, mainMeshName).getMesh();
 
-  SmallVector<mlir::Attribute> newAxes;
+  AxisRefVector newSdyAxes;
+  newSdyAxes.reserve(rgv3.getAxes().size());
   for (mlir::Attribute axis : rgv3.getAxes()) {
     auto axisRef = mlir::cast<mlir::stablehlo::AxisRefAttr>(axis);
-    StringRef axisName = axisRef.getName();
-    auto it = axisMap.find(axisName);
-    if (it == axisMap.end()) {
-      continue;
+    SubAxisInfoAttr sdySubAxisInfo;
+    if (auto subAxisInfo = axisRef.getSubAxisInfo()) {
+      sdySubAxisInfo = SubAxisInfoAttr::get(context, subAxisInfo.getPreSize(),
+                                            subAxisInfo.getSize());
     }
-    for (AxisRefAttr mainAxisRef : it->second) {
-      mlir::stablehlo::SubAxisInfoAttr subAxisInfo = nullptr;
-      if (auto sdySubAxisInfo = mainAxisRef.getSubAxisInfo()) {
-        subAxisInfo = mlir::stablehlo::SubAxisInfoAttr::get(
-            context, sdySubAxisInfo.getPreSize(), sdySubAxisInfo.getSize());
-      }
-      newAxes.push_back(mlir::stablehlo::AxisRefAttr::get(
-          context, mainAxisRef.getName(), subAxisInfo));
-    }
+    auto oldSdyAxisRef =
+        AxisRefAttr::get(context, axisRef.getName(), sdySubAxisInfo);
+    addOrMergeNewAxisRefAttr(oldSdyAxisRef, newSdyAxes, context, mainMesh,
+                             axisMap);
   }
+
+  SmallVector<mlir::Attribute> newAxes;
+  newAxes.reserve(newSdyAxes.size());
+  llvm::transform(newSdyAxes, std::back_inserter(newAxes),
+                  sdy::convertAxisRefAttr);
 
   return mlir::stablehlo::ReplicaGroupMeshAxesAttr::get(
       context, mlir::FlatSymbolRefAttr::get(context, mainMeshName),
       mlir::ArrayAttr::get(context, newAxes));
 }
 
-void replaceReplicaGroups(ModuleOp moduleOp,
+void replaceReplicaGroups(ModuleOp moduleOp, const SymbolTable& symbolTable,
                           const MeshToAxisMap& duplicateMeshesToAxisMap) {
   MLIRContext* context = moduleOp.getContext();
   moduleOp.walk([&](Operation* op) {
     if (auto attr = op->getAttr("replica_groups")) {
-      Attribute newAttr =
-          rewriteReplicaGroupsAttr(attr, context, duplicateMeshesToAxisMap);
+      Attribute newAttr = rewriteReplicaGroupsAttr(attr, context, symbolTable,
+                                                   duplicateMeshesToAxisMap);
       if (newAttr != attr) {
         op->setAttr("replica_groups", newAttr);
       }
@@ -483,7 +486,7 @@ void dedupMeshes(ModuleOp moduleOp, const SymbolTable& symbolTable,
                             duplicateMeshesToAxisMap);
         }
       });
-  replaceReplicaGroups(moduleOp, duplicateMeshesToAxisMap);
+  replaceReplicaGroups(moduleOp, symbolTable, duplicateMeshesToAxisMap);
   for (const auto& [targetMesh, mainMeshAndMap] : duplicateMeshesToAxisMap) {
     StringRef mainMeshName = mainMeshAndMap.first;
     if (failed(SymbolTable::replaceAllSymbolUses(
