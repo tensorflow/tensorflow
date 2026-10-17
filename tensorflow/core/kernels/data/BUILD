@@ -311,6 +311,8 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/core/data:dataset_test_base",
         "//tensorflow/core/data:dataset_utils",
+        "//tensorflow/core/data:serialization_utils",
+        "@com_google_absl//absl/status",
     ],
 )
 
