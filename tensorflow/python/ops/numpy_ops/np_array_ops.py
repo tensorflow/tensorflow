@@ -973,6 +973,9 @@ def around(a, decimals=0):  # pylint: disable=missing-docstring
   # inexact 10**decimals. The factor is created directly in `float_dtype`:
   # `math_ops.cast` on a Python float goes through float32 first, which would
   # turn 10**-1 into 0.10000000149.
+  # Keep `decimals` within the float64 exponent range, outside of which
+  # `math.pow(10, ...)` raises OverflowError.
+  decimals = builtins.max(-308, builtins.min(308, decimals))
   factor = constant_op.constant(math.pow(10, abs(decimals)), float_dtype)
   if decimals >= 0:
     a = math_ops.divide(math_ops.round(math_ops.multiply(a, factor)), factor)

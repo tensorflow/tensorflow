@@ -1273,6 +1273,13 @@ class ArrayMethodsTest(test.TestCase):
         np.around(0.123456789012, 11),
     )
 
+  def testAroundHugeDecimals(self):
+    # `decimals` beyond the float64 exponent range must not overflow the
+    # Python-side scale factor.
+    self.assertEqual(float(np_array_ops.around(1.5, 400)), 1.5)
+    self.assertEqual(float(np_array_ops.around(1.5, -400)), 0.0)
+    self.assertEqual(int(np_array_ops.around(np.int64(12345), -400)), 0)
+
   def testAroundKeepsLargeIntegers(self):
     # Integers are not converted to float when there is nothing to round, so
     # values above 2**53 survive unchanged.
