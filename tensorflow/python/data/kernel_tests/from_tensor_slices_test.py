@@ -74,12 +74,10 @@ class FromTensorSlicesTest(test_base.DatasetTestBase, parameterized.TestCase):
     if test_util.is_gpu_available():
       with ops.device("/device:GPU:0"):
         dataset = dataset_ops.Dataset.from_tensor_slices(x)
-        for t in dataset._tensors:
-          self.assertIn("CPU", t.device)
     else:
       dataset = dataset_ops.Dataset.from_tensor_slices(x)
-      for t in dataset._tensors:
-        self.assertIn("CPU", t.device)
+    for t in dataset._tensors:
+      self.assertIn("CPU", t.device)
 
   @combinations.generate(test_base.default_test_combinations())
   def testFromTensorSlicesDataset(self):
