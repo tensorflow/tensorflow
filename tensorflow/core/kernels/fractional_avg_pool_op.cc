@@ -20,6 +20,8 @@ limitations under the License.
 #include <random>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -318,6 +320,16 @@ class FractionalAvgPoolGradOp : public OpKernel {
     OP_REQUIRES(
         context, in_depth != 0,
         absl::InvalidArgumentError("Depth dimension of input must not be 0"));
+    OP_REQUIRES(
+        context, in_batch == out_batch,
+        absl::InvalidArgumentError(absl::StrCat(
+            "orig_input_tensor_shape batch (", in_batch,
+            ") must equal out_backprop batch (", out_batch, ")")));
+    OP_REQUIRES(
+        context, in_depth == out_depth,
+        absl::InvalidArgumentError(absl::StrCat(
+            "orig_input_tensor_shape depth (", in_depth,
+            ") must equal out_backprop depth (", out_depth, ")")));
 
     constexpr int tensor_in_and_out_dims = 4;
     // Transform orig_input_tensor_shape into TensorShape
