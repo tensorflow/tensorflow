@@ -323,13 +323,19 @@ def diag(v, k=0):  # pylint: disable=missing-docstring
 
   # TODO(nareshmodi): Consider a np_utils.Assert version that will fail during
   # tracing time if the shape is known.
-  control_flow_assert.Assert(
+  assert_op = control_flow_assert.Assert(
       np_utils.logical_or(math_ops.equal(v_rank, 1), math_ops.equal(v_rank, 2)),
       [v_rank],
   )
+  with ops.control_dependencies([assert_op]):
+    v = array_ops.identity(v)
 
   if isinstance(k, core_tf_types.Tensor) and k.shape.ndims is None:
-    control_flow_assert.Assert(math_ops.equal(array_ops.rank(k), 0), [k])
+    assert_op_k = control_flow_assert.Assert(
+        math_ops.equal(array_ops.rank(k), 0), [k]
+    )
+    with ops.control_dependencies([assert_op_k]):
+      k = array_ops.identity(k)
   elif not isscalar(k):
     raise ValueError(f'k must be an integer scalar, got {k}')
 
@@ -831,7 +837,7 @@ def var(a, axis=None, dtype=None, out=None, ddof=0, keepdims=None):  # pylint: d
       )
 
       if axis is None:
-        n = array_ops.size(input_tensor)
+        n = array_ops.size(input_tensor, out_type=dtypes.int64)
       else:
         # axis can be an int or a sequence of ints.
         if isinstance(axis, (int, np.integer)):
@@ -854,9 +860,25 @@ def var(a, axis=None, dtype=None, out=None, ddof=0, keepdims=None):  # pylint: d
               axis < 0, axis + array_ops.rank(input_tensor), axis
           )
         n = math_ops.reduce_prod(
-            array_ops.gather(array_ops.shape(input_tensor), axis)
+            array_ops.gather(
+                array_ops.shape(input_tensor, out_type=dtypes.int64), axis
+            )
         )
-      n = math_ops.cast(n - ddof, squared_deviations.dtype)
+      # NumPy clamps the degrees-of-freedom denominator at 0 (and emits a
+      # "Degrees of freedom <= 0" RuntimeWarning) when ddof >= n, rather than
+      # letting it go negative, and it also allows a non-integer `ddof`
+      # (e.g. 1.5). Casting both `n` and `ddof` to `squared_deviations.dtype`
+      # before subtracting avoids a TypeError from mixing an integer `n`
+      # with a float `ddof`, and the `maximum(..., 0)` clamp turns a
+      # would-be negative denominator into 0 (giving NumPy's `inf` on
+      # divide) instead of a finite, wrong, negative "variance". `n` is
+      # computed as int64 above so it doesn't silently overflow on tensors
+      # with more than 2**31 - 1 elements.
+      n = math_ops.cast(n, squared_deviations.dtype)
+      ddof_cast = math_ops.cast(ddof, squared_deviations.dtype)
+      n = math_ops.maximum(
+          n - ddof_cast, math_ops.cast(0, squared_deviations.dtype)
+      )
 
       return math_ops.divide(squared_deviations, n)
 
@@ -1124,11 +1146,18 @@ def swapaxes(a, axis1, axis2):  # pylint: disable=missing-docstring
         # this PR #122544 does not attempt to solve.
         rank_t = ops.convert_to_tensor(rank)
         x = ops.convert_to_tensor(x)
-        control_flow_assert.Assert(
+        assert_op = control_flow_assert.Assert(
             math_ops.reduce_all(math_ops.logical_and(x >= -rank_t, x < rank_t)),
             ['axis', x, 'is out of bounds for array of dimension', rank_t],
         )
-        x = array_ops.where_v2(x < 0, np_utils.add(x, rank_t), x)
+        # Without this control dependency, the Assert node has no data edge
+        # to the rest of the graph, so on GPU a downstream op (e.g. the
+        # TensorScatterUpdate used by callers like swapaxes) can run before
+        # the Assert and fail first with its own, more confusing error
+        # (e.g. "indices[0] = [-5] does not index into shape [5]") instead
+        # of this out-of-bounds message.
+        with ops.control_dependencies([assert_op]):
+          x = array_ops.where_v2(x < 0, np_utils.add(x, rank_t), x)
       return x
 
     return nest.map_structure(f, axes)
@@ -1188,13 +1217,16 @@ def moveaxis(a, source, destination):  # pylint: disable=missing-docstring
       return axis + rank if axis < 0 else axis
     rank_t = ops.convert_to_tensor(rank)
     axis_t = ops.convert_to_tensor(axis)
-    control_flow_assert.Assert(
+    assert_op = control_flow_assert.Assert(
         math_ops.reduce_all(
             math_ops.logical_and(axis_t >= -rank_t, axis_t < rank_t)
         ),
         ['axis', axis_t, 'is out of bounds for array of dimension', rank_t],
     )
-    return array_ops.where_v2(axis_t < 0, np_utils.add(axis_t, rank_t), axis_t)
+    with ops.control_dependencies([assert_op]):
+      return array_ops.where_v2(
+          axis_t < 0, np_utils.add(axis_t, rank_t), axis_t
+      )
 
   source = tuple(_correct_axis(axis, a_rank) for axis in source)
   destination = tuple(_correct_axis(axis, a_rank) for axis in destination)
@@ -1804,7 +1836,9 @@ def vander(x, N=None, increasing=False):  # pylint: disable=missing-docstring,in
     if N < 0:
       raise ValueError('N must be nonnegative')
   else:
-    control_flow_assert.Assert(N >= 0, [N])
+    assert_op = control_flow_assert.Assert(N >= 0, [N])
+    with ops.control_dependencies([assert_op]):
+      N = array_ops.identity(N)
 
   rank = array_ops.rank(x)
   rank_temp = np_utils.get_static_value(rank)
@@ -1813,7 +1847,9 @@ def vander(x, N=None, increasing=False):  # pylint: disable=missing-docstring,in
     if rank != 1:
       raise ValueError('x must be a one-dimensional array')
   else:
-    control_flow_assert.Assert(math_ops.equal(rank, 1), [rank])
+    assert_op = control_flow_assert.Assert(math_ops.equal(rank, 1), [rank])
+    with ops.control_dependencies([assert_op]):
+      x = array_ops.identity(x)
 
   if increasing:
     start = 0
@@ -1851,7 +1887,11 @@ def ix_(*args):  # pylint: disable=missing-docstring
             'Arguments must be 1-d, got arg {} of rank {}'.format(i, a_rank)
         )
     else:
-      control_flow_assert.Assert(math_ops.equal(a_rank, 1), [a_rank])
+      assert_op = control_flow_assert.Assert(
+          math_ops.equal(a_rank, 1), [a_rank]
+      )
+      with ops.control_dependencies([assert_op]):
+        a = array_ops.identity(a)
 
     new_shape = [1] * n
     new_shape[i] = -1
