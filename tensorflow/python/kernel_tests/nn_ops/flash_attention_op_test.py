@@ -326,21 +326,47 @@ class FlashAttentionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(
         nn_ops.flash_attention(query, key, value).shape, [2, 5, 3, 4])
 
+  def testGradShapeUsesAllInputs(self):
+    # The gradients' inferred shapes combine every input: here batch and
+    # seq_q are only known from output/output_grad, seq_kv from value.
+    if context.executing_eagerly():
+      self.skipTest("Shape inference only matters when building a graph")
+    seed = constant_op.constant(0, dtypes.uint64)
+    query = array_ops.placeholder_with_default(
+        array_ops.zeros([2, 5, 3, 8]), shape=[None, None, 3, 8])
+    key = array_ops.placeholder_with_default(
+        array_ops.zeros([2, 7, 3, 8]), shape=[None, None, 3, None])
+    value = array_ops.zeros([2, 7, 3, 4])
+    out = array_ops.zeros([2, 5, 3, 4])
+    lse = array_ops.zeros([2, 3, 5])
+    dq, dk, dv = gen_nn_ops.flash_attention_grad(
+        query, key, value, out, lse, out, seed, seed)
+    self.assertEqual(dq.shape.as_list(), [2, 5, 3, 8])
+    self.assertEqual(dk.shape.as_list(), [2, 7, 3, 8])
+    self.assertEqual(dv.shape.as_list(), [2, 7, 3, 4])
+
   def testInvalidArguments(self):
     x = array_ops.zeros([2, 4, 1, 8])
-    with self.assertRaisesRegex(ValueError, "must be rank 4"):
-      nn_ops.flash_attention(x[0], x[0], x[0])
+    # Shapes are checked by the op: by its shape function when building a
+    # graph (ValueError), by its kernel when running eagerly
+    # (InvalidArgumentError).
+    shape_error = (ValueError, errors.InvalidArgumentError)
+    with self.assertRaisesRegex(shape_error, "rank 4"):
+      self.evaluate(nn_ops.flash_attention(x[0], x[0], x[0]))
     for rate in (-0.1, 1.0):
       with self.assertRaisesRegex(errors.InvalidArgumentError,
                                   r"dropout_rate must be in \[0, 1\)"):
         self.evaluate(nn_ops.flash_attention(x, x, x, dropout_rate=rate))
-    # Shape mismatches are caught statically by the Python wrapper.
-    with self.assertRaisesRegex(ValueError, "must be rank 4"):
-      nn_ops.flash_attention(x, array_ops.zeros([2, 4, 16]), x)
-    with self.assertRaisesRegex(ValueError, "incompatible"):  # num_heads
-      nn_ops.flash_attention(x, array_ops.zeros([2, 4, 2, 8]), x)
-    with self.assertRaisesRegex(ValueError, "incompatible"):  # head_dim
-      nn_ops.flash_attention(x, array_ops.zeros([2, 4, 1, 32]), x)
+    with self.assertRaisesRegex(shape_error, "rank 4"):
+      self.evaluate(nn_ops.flash_attention(x, array_ops.zeros([2, 4, 16]), x))
+    with self.assertRaisesRegex(shape_error,
+                                "Dimensions must be equal|heads mismatch"):
+      key = array_ops.zeros([2, 4, 2, 8])
+      self.evaluate(nn_ops.flash_attention(x, key, key))
+    with self.assertRaisesRegex(
+        shape_error, "Dimensions must be equal|feature size mismatch"):
+      self.evaluate(nn_ops.flash_attention(x, array_ops.zeros([2, 4, 1, 32]),
+                                           x))
     # The kernel checks them too, for callers of the raw op. In graph mode,
     # hide the static shapes so shape inference doesn't reject them first.
     seed = constant_op.constant(0, dtypes.uint64)
@@ -414,6 +440,19 @@ class FlashAttentionTest(test.TestCase, parameterized.TestCase):
     key = array_ops.zeros([1, 2**31, 1, 0])
     with self.assertRaisesRegex(errors.InvalidArgumentError, "int32 limit"):
       self.evaluate(gen_nn_ops.flash_attention(query, key, key, seed, seed))
+
+  def testOutputShapeOverflow(self):
+    # Every dimension (and batch * heads) fits in int32 and the inputs are
+    # valid, empty tensors, but the output [batch, seq_q, heads, head_dim_v]
+    # would have 4 * n**2 > 2**63 elements. This must be an error, not a CHECK
+    # failure that aborts the process.
+    n = 2**31 - 1
+    seed = constant_op.constant(0, dtypes.uint64)
+    query = array_ops.zeros([n, n, 1, 0])
+    key = array_ops.zeros([n, 0, 1, 0])
+    value = array_ops.zeros([n, 0, 1, 4])
+    with self.assertRaisesRegex(errors.InvalidArgumentError, "overflow"):
+      self.evaluate(gen_nn_ops.flash_attention(query, key, value, seed, seed))
 
   def testUnsupportedHeadDim(self):
     # float32 always uses the fallback kernels, which stop at 128.
