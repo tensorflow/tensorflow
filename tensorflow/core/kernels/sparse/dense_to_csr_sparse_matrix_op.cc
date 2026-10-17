@@ -95,6 +95,16 @@ class DenseToCSRSparseMatrixCPUOp : public OpKernel {
     const int64_t total_nnz = indices.NumElements() / rank;
 
     static constexpr int64_t kInt32Max = std::numeric_limits<int32_t>::max();
+    OP_REQUIRES(ctx, batch_size < kInt32Max,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "dense_input batch_size must be < Int32Max, but the input "
+                    "value is ",
+                    batch_size)));
+    OP_REQUIRES(ctx, total_nnz <= kInt32Max,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "indices number of elements must be <= Int32Max, but the "
+                    "input value is ",
+                    total_nnz)));
     OP_REQUIRES(ctx, num_rows <= kInt32Max,
                 absl::InvalidArgumentError(absl::StrCat(
                     "dense_input rows must be <= Int32Max, but the input "
@@ -105,6 +115,12 @@ class DenseToCSRSparseMatrixCPUOp : public OpKernel {
                     "dense_input cols must be <= Int32Max, but the input "
                     "value is ",
                     num_cols)));
+    OP_REQUIRES(ctx, (num_rows + 1) * batch_size <= kInt32Max,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "The csr row index size, computed based on the "
+                    "dense_shape, must be <= Int32Max, but is too "
+                    "large. Current value is ",
+                    (num_rows + 1) * batch_size)));
 
     Tensor values;
     OP_REQUIRES_OK(ctx, functor::DoGatherNd<Device, T, int64_t>(
@@ -192,6 +208,18 @@ class DenseToCSRSparseMatrixGPUOp : public AsyncOpKernel {
     const int64_t cols = dense_tensor_shape.dim_size((rank == 2) ? 1 : 2);
 
     static constexpr int64_t kInt32Max = std::numeric_limits<int32_t>::max();
+    OP_REQUIRES_ASYNC(c, batch_size < kInt32Max,
+                      absl::InvalidArgumentError(absl::StrCat(
+                          "dense_input batch_size must be < Int32Max, but the "
+                          "input value is ",
+                          batch_size)),
+                      done);
+    OP_REQUIRES_ASYNC(c, indices_t.dim_size(0) <= kInt32Max,
+                      absl::InvalidArgumentError(absl::StrCat(
+                          "indices number of elements must be <= Int32Max, but "
+                          "the input value is ",
+                          indices_t.dim_size(0))),
+                      done);
     OP_REQUIRES_ASYNC(c, rows <= kInt32Max,
                       absl::InvalidArgumentError(absl::StrCat(
                           "dense_input rows must be <= Int32Max, but the input "
@@ -203,6 +231,13 @@ class DenseToCSRSparseMatrixGPUOp : public AsyncOpKernel {
                           "dense_input cols must be <= Int32Max, but the input "
                           "value is ",
                           cols)),
+                      done);
+    OP_REQUIRES_ASYNC(c, (rows + 1) * batch_size <= kInt32Max,
+                      absl::InvalidArgumentError(absl::StrCat(
+                          "The csr row index size, computed based on the "
+                          "dense_shape, must be <= Int32Max, but is too "
+                          "large. Current value is ",
+                          (rows + 1) * batch_size)),
                       done);
 
     ScratchSpace<int32_t> nnz_per_batch_host(c, batch_size, /*on_host*/ true);

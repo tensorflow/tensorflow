@@ -196,7 +196,6 @@ class CSRSparseMatrixTest(test.TestCase):
               indices=np.zeros([0, len(shape)], dtype=np.int64))
           self.evaluate(a_sm.to_dense())
 
-  @test_util.run_gpu_only
   @test_util.run_in_graph_and_eager_modes
   def testConstructorFromEmptyDenseTensorWithIndices(self):
     with test_util.use_gpu(), self.assertRaisesOpError("params is empty"):
@@ -204,8 +203,18 @@ class CSRSparseMatrixTest(test.TestCase):
           np.ones([0, 3], dtype=np.float32),
           indices=np.array([[0, 0]], dtype=np.int64))
       self.evaluate(a_sm.to_dense())
+    for shape in ([0, 3], [3, 0]):
+      with self.subTest(shape=shape), test_util.use_gpu(), (
+          self.assertRaisesRegex(
+              errors.InvalidArgumentError,
+              "is out of bounds|0 rows or cols")):
+        st = sparse_tensor.SparseTensor(
+            indices=np.array([[0, 0]], dtype=np.int64),
+            values=np.ones([1], dtype=np.float32),
+            dense_shape=shape)
+        a_sm = sparse_csr_matrix_ops.CSRSparseMatrix(st)
+        self.evaluate(a_sm.to_dense())
 
-  @test_util.run_gpu_only
   @test_util.run_in_graph_and_eager_modes
   def testConstructorFromDenseTensorEmptyIndices(self):
     dense = np.zeros([2, 3], dtype=np.float32)
