@@ -158,6 +158,7 @@ cc_library(
         "//tensorflow/compiler/tf2xla:xla_helpers",
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/core:framework",
+        "//tensorflow/core/util:determinism_for_kernels",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@xla//xla:shape_util",
