@@ -6943,6 +6943,120 @@ def isotonic_regression(inputs, decreasing=True, axis=-1):
   return _wrap_2d_function(inputs, compute_on_matrix, axis)
 
 
+
+@tf_export("nn.flash_attention", v1=[])
+@dispatch.add_dispatch_support
+def flash_attention(
+    query,
+    key,
+    value,
+    scale=None,
+    is_causal=False,
+    dropout_rate=0.0,
+    seed=None,
+    name=None,
+):
+  """Computes multi-head scaled dot-product attention with FlashAttention.
+
+  Computes `softmax(query @ key^T * scale) @ value` for every batch entry and
+  head, without materializing the `[seq_q, seq_kv]` attention matrix. Memory
+  use is linear in the sequence length, and the result is differentiable.
+
+  On NVIDIA GPUs with compute capability 8.0 or newer (Ampere and later),
+  `float16` and `bfloat16` inputs whose query and value head dims are equal, a
+  multiple of 8 and at most 256 run the FlashAttention-2 kernels
+  (https://arxiv.org/abs/2307.08691). Other inputs, including `float32` and CPU
+  execution, use memory-efficient fallback kernels that support head dims up
+  to 128. The op also compiles under XLA on GPU (`jit_compile=True`).
+
+  >>> q = tf.random.normal([2, 16, 4, 32])  # [batch, seq, heads, head_dim]
+  >>> out = tf.nn.flash_attention(q, q, q, is_causal=True)
+  >>> out.shape
+  TensorShape([2, 16, 4, 32])
+
+  Args:
+    query: A `[batch, seq_q, num_heads, head_dim]` tensor of type `float16`,
+      `bfloat16` or `float32`.
+    key: A `[batch, seq_kv, num_heads, head_dim]` tensor of the same type.
+    value: A `[batch, seq_kv, num_heads, head_dim_v]` tensor of the same type.
+    scale: Python float multiplied with the attention logits. Defaults to
+      `1 / sqrt(head_dim)`.
+    is_causal: Python bool. If `True`, query position `i` only attends to key
+      positions `<= i`. Requires `seq_q == seq_kv`.
+    dropout_rate: Python float in `[0, 1)`. Probability of dropping each
+      attention weight. Kept weights are scaled by `1 / (1 - dropout_rate)`.
+    seed: Seed for the dropout mask: a Python integer or a shape `[2]` integer
+      tensor, as for the `tf.random.stateless_*` ops. With the same seed, the
+      same dropout mask is used. If `None` and `dropout_rate > 0`, a random
+      seed is drawn. Unused if `dropout_rate == 0`. GPU and CPU kernels generate
+      different masks from the same seed.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `[batch, seq_q, num_heads, head_dim_v]` tensor of the same type as
+    `query`.
+
+  Raises:
+    ValueError: If `scale` is `None` and `head_dim` is not statically known.
+      Also raised by the op's shape inference, when building a graph, if the
+      inputs are not rank 4 or their static shapes don't match.
+    InvalidArgumentError: If the inputs are not rank 4, their shapes don't
+      match, or `dropout_rate` is not in `[0, 1)`. Raised by the op when it
+      runs (or is compiled by XLA).
+  """
+  with ops.name_scope(name, "flash_attention", [query, key, value]):
+    query = ops.convert_to_tensor(query, name="query")
+    key = ops.convert_to_tensor(key, dtype=query.dtype, name="key")
+    value = ops.convert_to_tensor(value, dtype=query.dtype, name="value")
+    # Ranks and shapes are checked by the op (its shape function and kernels),
+    # which also covers callers of the raw op.
+
+    if scale is None:
+      # A scalar `query` has no head dim; the op rejects it.
+      head_dim = (
+          1
+          if query.shape.rank == 0
+          else tensor_shape.dimension_value(query.shape[-1])
+      )
+      if head_dim is None:
+        raise ValueError(
+            "`scale` must be given if the head dim of `query` is not "
+            f"statically known. Received: query.shape={query.shape}."
+        )
+      scale = 1.0 / np.sqrt(head_dim)
+
+    if dropout_rate > 0.0:
+      if seed is None:
+        seed = random_ops.random_uniform(
+            [2], minval=0, maxval=dtypes.int64.max, dtype=dtypes.int64
+        )
+      elif isinstance(seed, numbers.Integral):
+        seed = [seed, 0]
+      seed = math_ops.cast(
+          ops.convert_to_tensor(seed, name="seed"), dtypes.int64
+      )
+      seed.shape.assert_is_compatible_with([2])
+      rng_seed = array_ops.bitcast(seed[0], dtypes.uint64)
+      rng_offset = array_ops.bitcast(seed[1], dtypes.uint64)
+    else:
+      rng_seed = constant_op.constant(0, dtypes.uint64)
+      rng_offset = constant_op.constant(0, dtypes.uint64)
+
+    # The op takes [batch, seq, heads, dim] directly; the kernels index the
+    # heads with strides, so no transposes are needed.
+    output, _ = gen_nn_ops.flash_attention(
+        query,
+        key,
+        value,
+        rng_seed,
+        rng_offset,
+        scale=float(scale),
+        dropout_rate=float(dropout_rate),
+        is_causal=bool(is_causal),
+    )
+    return output
+
+
 # Register elementwise ops that don't have Python wrappers.
 # Unary elementwise ops.
 dispatch.register_unary_elementwise_api(gen_nn_ops.elu)
