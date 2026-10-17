@@ -3741,7 +3741,21 @@ absl::Status HloInstruction::Defuse() {
   ABSL_RETURN_IF_ERROR(ReplaceAllUsesWith(defused_root));
   if (HasControlDependencies()) {
     if (first_defused != nullptr) {
-      ABSL_RETURN_IF_ERROR(CopyAllControlDepsTo(first_defused, defused_root));
+      // Preserve ordering: control predecessors run before every defused
+      // instruction, and control successors run after the defused root.
+      for (HloInstruction* predecessor : control_predecessors()) {
+        for (HloInstruction* fused_instruction :
+             fused_computation->instructions()) {
+          if (fused_instruction->opcode() == HloOpcode::kParameter) {
+            continue;
+          }
+          ABSL_RETURN_IF_ERROR(predecessor->AddControlDependencyTo(
+              defused_instructions.at(fused_instruction)));
+        }
+      }
+      for (HloInstruction* successor : control_successors()) {
+        ABSL_RETURN_IF_ERROR(defused_root->AddControlDependencyTo(successor));
+      }
       ABSL_RETURN_IF_ERROR(DropAllControlDeps());
     } else {
       ABSL_RETURN_IF_ERROR(SafelyDropAllControlDependencies());

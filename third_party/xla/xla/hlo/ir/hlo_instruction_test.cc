@@ -1189,5 +1189,39 @@ ENTRY %main (x: f32[8], y: f32[8]) -> f32[8] {
               ::testing::ElementsAre(defused_root));
 }
 
+TEST_F(HloInstructionTest, DefusePreservesControlDependencies) {
+  constexpr absl::string_view kHlo = R"(
+HloModule m
+
+fused {
+  p = f32[8,16] parameter(0)
+  c = f32[8,16] copy(p)
+  ROOT b = f32[128] bitcast(c)
+}
+
+ENTRY e {
+  p0 = f32[8,16] parameter(0)
+  before = f32[8,16] negate(p0)
+  fus = f32[128] fusion(p0), kind=kLoop, calls=fused, control-predecessors={before}
+  after = f32[8,16] exponential(p0), control-predecessors={fus}
+  ROOT t = (f32[8,16], f32[128], f32[8,16]) tuple(before, fus, after)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  HloInstruction* fus = FindInstruction(module.get(), "fus");
+  HloInstruction* before = FindInstruction(module.get(), "before");
+  HloInstruction* after = FindInstruction(module.get(), "after");
+  ASSERT_OK(fus->Defuse());
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  HloInstruction* defused_root = root->mutable_operand(1);
+  ASSERT_EQ(defused_root->opcode(), HloOpcode::kBitcast);
+  HloInstruction* defused_copy = defused_root->mutable_operand(0);
+  ASSERT_EQ(defused_copy->opcode(), HloOpcode::kCopy);
+  EXPECT_THAT(before->control_successors(),
+              ::testing::UnorderedElementsAre(defused_copy, defused_root));
+  EXPECT_THAT(defused_root->control_successors(),
+              ::testing::ElementsAre(after));
+}
 }  // namespace
 }  // namespace xla
