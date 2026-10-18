@@ -28,6 +28,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/optimization.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
@@ -404,7 +405,13 @@ absl::Status Env::GetMatchingPaths(const std::string& pattern,
                                    bool multithreaded) {
   FileSystem* fs;
   ABSL_RETURN_IF_ERROR(GetFileSystemForFile(pattern, &fs));
-  return fs->GetMatchingPaths(pattern, results, multithreaded);
+  ABSL_RETURN_IF_ERROR(fs->GetMatchingPaths(pattern, results, multithreaded));
+  // Not every file system returns sorted paths, so sort them here to give
+  // callers the same order regardless of the file system.
+  if (!absl::c_is_sorted(*results)) {
+    absl::c_sort(*results);
+  }
+  return absl::OkStatus();
 }
 
 absl::Status Env::DeleteFile(const std::string& fname) {

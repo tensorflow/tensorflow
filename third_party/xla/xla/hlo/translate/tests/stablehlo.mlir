@@ -2141,6 +2141,26 @@ func.func @main(%arg0: memref<2xf32>) -> tensor<2xf32> {
 
 // CHECK-LABEL: HloModule main, entry_computation_layout
 //       CHECK: ENTRY
+func.func @main(%arg0: memref<2xf32>) -> memref<2xf32> {
+  //               CHECK: custom-call({{.*}}), custom_call_target="FanOut",
+  // CHECK-SAME{LITERAL}: output_to_operand_aliasing={{0}: (0, {})}
+  //               CHECK: custom-call({{.*}}), custom_call_target="FanIn",
+  // CHECK-SAME{LITERAL}: output_to_operand_aliasing={{}: (0, {})}
+  %0:2 = "stablehlo.custom_call"(%arg0) {
+    call_target_name = "FanOut",
+    api_version = 4 : i32
+  } : (memref<2xf32>) -> (memref<2xf32>, memref<2xf32>)
+  %1 = "stablehlo.custom_call"(%0#0, %0#1) {
+    call_target_name = "FanIn",
+    api_version = 4 : i32
+  } : (memref<2xf32>, memref<2xf32>) -> memref<2xf32>
+  func.return %1 : memref<2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: HloModule main, entry_computation_layout
+//       CHECK: ENTRY
 func.func @main(%arg0: memref<2x4xf32>) -> memref<2x4xf32> {
   //               CHECK: custom-call({{.*}}), custom_call_target="foo",
   // CHECK-SAME{LITERAL}: output_to_operand_aliasing={{}: (0, {})}
