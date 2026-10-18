@@ -307,6 +307,20 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                  data->num_collapsed_slice_dims <= data->num_slice_sizes);
   TF_LITE_ENSURE(context, data->num_offset_dims <= output->dims->size);
   TF_LITE_ENSURE(context, data->index_vector_dim <= start_indices->dims->size);
+  TF_LITE_ENSURE_EQ(context,
+                    data->num_offset_dims + data->num_collapsed_slice_dims,
+                    operand->dims->size);
+  for (int i = 0; i < data->num_collapsed_slice_dims; ++i) {
+    const int64_t dim = data->collapsed_slice_dims[i];
+    TF_LITE_ENSURE(context, dim >= 0 && dim < operand->dims->size);
+    TF_LITE_ENSURE(context, !ArrayContains(data->collapsed_slice_dims, i, dim));
+  }
+  // ClipStartingIndex only keeps the gathered slice inside the operand when
+  // every slice size fits in its dimension.
+  for (int i = 0; i < data->num_slice_sizes; ++i) {
+    TF_LITE_ENSURE(context, data->slice_sizes[i] >= 0 &&
+                                data->slice_sizes[i] <= operand->dims->data[i]);
+  }
 
   RuntimeShape start_indices_shape = GetTensorShape(start_indices);
 
