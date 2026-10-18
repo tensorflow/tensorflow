@@ -18,6 +18,8 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/hash/hash_testing.h"
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "xla/python/ifrt/index.h"
 #include "xla/python/ifrt/index_domain.pb.h"
 #include "xla/python/ifrt/serdes_test_util.h"
@@ -27,6 +29,9 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 namespace {
+
+using ::absl_testing::IsOkAndHolds;
+using ::absl_testing::StatusIs;
 
 TEST(IndexDomainTest, Construction) {
   IndexDomain a(Index({1, 2}), Shape({3, 4}));
@@ -52,6 +57,71 @@ TEST(IndexDomainTest, Operations) {
   {
     IndexDomain c = a;
     EXPECT_EQ(c -= b, IndexDomain(Index({0, 0}), Shape({3, 4})));
+  }
+}
+
+TEST(IndexDomainTest, Intersect) {
+  // Scalar domains.
+  {
+    IndexDomain a(Index({}), Shape({}));
+    IndexDomain b(Index({}), Shape({}));
+    EXPECT_THAT(a.Intersect(b),
+                IsOkAndHolds(IndexDomain(Index({}), Shape({}))));
+  }
+
+  // Identical domains.
+  {
+    IndexDomain a(Index({1, 2}), Shape({3, 4}));
+    EXPECT_THAT(a.Intersect(a), IsOkAndHolds(a));
+  }
+
+  // Partially overlapping domains.
+  {
+    IndexDomain a(Index({1, 2}), Shape({3, 4}));
+    IndexDomain b(Index({2, 0}), Shape({4, 5}));
+    EXPECT_THAT(a.Intersect(b),
+                IsOkAndHolds(IndexDomain(Index({2, 2}), Shape({2, 3}))));
+    EXPECT_THAT(b.Intersect(a),
+                IsOkAndHolds(IndexDomain(Index({2, 2}), Shape({2, 3}))));
+  }
+
+  // Contained domain.
+  {
+    IndexDomain a(Index({0, 0}), Shape({6, 8}));
+    IndexDomain b(Index({2, 3}), Shape({2, 4}));
+    EXPECT_THAT(a.Intersect(b), IsOkAndHolds(b));
+    EXPECT_THAT(b.Intersect(a), IsOkAndHolds(b));
+  }
+
+  // Touching at boundary (disjoint).
+  {
+    IndexDomain a(Index({0, 0}), Shape({2, 4}));
+    IndexDomain b(Index({2, 1}), Shape({2, 2}));
+    EXPECT_THAT(a.Intersect(b),
+                IsOkAndHolds(IndexDomain(Index({0, 0}), Shape({0, 0}))));
+  }
+
+  // Separated in one dimension (disjoint).
+  {
+    IndexDomain a(Index({0, 0}), Shape({2, 4}));
+    IndexDomain b(Index({3, 1}), Shape({2, 2}));
+    EXPECT_THAT(a.Intersect(b),
+                IsOkAndHolds(IndexDomain(Index({0, 0}), Shape({0, 0}))));
+  }
+
+  // Zero-sized input domain.
+  {
+    IndexDomain a(Index({1, 2}), Shape({0, 4}));
+    IndexDomain b(Index({0, 0}), Shape({4, 4}));
+    EXPECT_THAT(a.Intersect(b),
+                IsOkAndHolds(IndexDomain(Index({0, 0}), Shape({0, 0}))));
+  }
+
+  // Mismatched numbers of dimensions.
+  {
+    IndexDomain a(Index({1, 2}), Shape({3, 4}));
+    IndexDomain b(Index({1}), Shape({3}));
+    EXPECT_THAT(a.Intersect(b), StatusIs(absl::StatusCode::kInvalidArgument));
   }
 }
 
