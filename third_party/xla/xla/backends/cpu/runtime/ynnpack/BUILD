@@ -84,8 +84,6 @@ cc_library(
         ":slinky_threadpool",
         ":ynn_interop",
         "@XNNPACK//ynnpack:ynnpack_h",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
         "@eigen_archive//:eigen3",
     ],
 )
