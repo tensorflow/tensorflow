@@ -498,6 +498,13 @@ class PjRtTopologyDescription {
     return absl::UnimplementedError("Subslice is not supported.");
   }
 
+  // Returns a new `PjRtTopologyDescription` representing a subslice of the
+  // current topology, defined by `chip_bounds`.
+  virtual absl::StatusOr<std::unique_ptr<PjRtTopologyDescription>> Subslice(
+      const PjRtDeviceDimensions& chip_bounds) const {
+    return absl::UnimplementedError("Subslice is not supported.");
+  }
+
   virtual absl::StatusOr<xla::Shape> UpdateLayoutForDynamicShapes(
       int memory_space_kind_id, xla::Shape shape) const {
     return std::move(shape);
