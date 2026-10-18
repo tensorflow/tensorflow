@@ -889,6 +889,8 @@ absl::StatusOr<SmallVector<Value, 1>> EmitConvert(
   return {{out}};
 }
 
+}  // namespace
+
 absl::StatusOr<SmallVector<Value, 1>> EmitIota(const HloInstruction* instr,
                                                ValueRange indices,
                                                ImplicitLocOpBuilder& builder) {
@@ -906,6 +908,8 @@ absl::StatusOr<SmallVector<Value, 1>> EmitIota(const HloInstruction* instr,
       builder.getLoc(), result_type_with_sign, result_element_type,
       {index_type}, {index}, /*attributes=*/{}, &builder)}};
 }
+
+namespace {
 
 absl::StatusOr<SmallVector<Value, 1>> EmitCompare(
     const HloInstruction* instr, llvm::ArrayRef<mlir::Type> arg_types,

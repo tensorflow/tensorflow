@@ -289,8 +289,7 @@ func.func @atomic_rmw_f16(%in: tensor<8xf16>, %i: index)
 // CHECK: %[[ADDR:.*]] = llvm.getelementptr
 // CHECK-GPU-NEXT: %[[ADDR_INT:.*]] = llvm.ptrtoint %[[ADDR]]
 // CHECK-GPU-NEXT: %[[OFFSET:.*]] = llvm.and %[[ADDR_INT]], %{{.*}}
-// CHECK-GPU-NEXT: %[[INDEX:.*]] = llvm.mul %[[OFFSET]], %{{.*}}
-// CHECK-GPU-NEXT: %[[BASE:.*]] = llvm.getelementptr inbounds %[[ADDR]]
+// CHECK-GPU-NEXT: %[[BASE:.*]] = llvm.intr.ptrmask %[[ADDR]], %{{.*}}
 // CHECK-GPU: %[[INIT:.*]] = llvm.load %[[BASE]]
 // CHECK-GPU-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]])
 // CHECK-GPU-NEXT: %[[VAR_SHIFT:.*]] = llvm.lshr %[[VAR]], %{{.*}}
@@ -325,8 +324,7 @@ func.func @atomic_rmw_f8E4M3(%in: tensor<8xf8E4M3>, %i: index)
 // CHECK: %[[ADDR:.*]] = llvm.getelementptr
 // CHECK-GPU-NEXT: %[[ADDR_INT:.*]] = llvm.ptrtoint %[[ADDR]]
 // CHECK-GPU-NEXT: %[[OFFSET:.*]] = llvm.and %[[ADDR_INT]], %{{.*}}
-// CHECK-GPU-NEXT: %[[INDEX:.*]] = llvm.mul %[[OFFSET]], %{{.*}}
-// CHECK-GPU-NEXT: %[[BASE:.*]] = llvm.getelementptr inbounds %[[ADDR]]
+// CHECK-GPU-NEXT: %[[BASE:.*]] = llvm.intr.ptrmask %[[ADDR]], %{{.*}}
 // CHECK-GPU: %[[INIT:.*]] = llvm.load %[[BASE]]
 // CHECK-GPU-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]])
 // CHECK-GPU-NEXT: %[[VAR_SHIFT:.*]] = llvm.lshr %[[VAR]], %{{.*}}
@@ -363,7 +361,7 @@ func.func @atomic_rmw_i4(%in: tensor<8xi4>, %i: index) -> (tensor<8xi4>) {
 // CHECK-GPU:       %[[C1_I64:.*]] = arith.constant 1 : i64
 // CHECK-GPU:       %[[C4_I8:.*]] = arith.constant 4 : i8
 // CHECK-GPU:       %[[C3_I64:.*]] = llvm.mlir.constant(3 : i64) : i64
-// CHECK-GPU:       %[[C_NEG1_I64:.*]] = llvm.mlir.constant(-1 : i64) : i64
+// CHECK-GPU:       %[[C_NEG4_I64:.*]] = llvm.mlir.constant(-4 : i64) : i64
 // CHECK-GPU:       %[[C8_I32:.*]] = llvm.mlir.constant(8 : i32) : i32
 // CHECK-GPU:       %[[C_NEG1_I32:.*]] = llvm.mlir.constant(-1 : i32) : i32
 // CHECK-GPU:       %[[C15_I32:.*]] = llvm.mlir.constant(15 : i32) : i32
@@ -376,8 +374,7 @@ func.func @atomic_rmw_i4(%in: tensor<8xi4>, %i: index) -> (tensor<8xi4>) {
 // CHECK-GPU:       %[[GEP_BASE:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, %[[SHR_1]]] : (!llvm.ptr, i64) -> !llvm.ptr, !llvm.array<4 x i8>
 // CHECK-GPU:       %[[PTR_INT:.*]] = llvm.ptrtoint %[[GEP_BASE]] : !llvm.ptr to i64
 // CHECK-GPU:       %[[AND_3:.*]] = llvm.and %[[PTR_INT]], %[[C3_I64]] : i64
-// CHECK-GPU:       %[[MUL_NEG1:.*]] = llvm.mul %[[AND_3]], %[[C_NEG1_I64]] : i64
-// CHECK-GPU:       %[[GEP_OFFSET:.*]] = llvm.getelementptr inbounds %[[GEP_BASE]][%[[MUL_NEG1]]] : (!llvm.ptr, i64) -> !llvm.ptr, i8
+// CHECK-GPU:       %[[GEP_OFFSET:.*]] = llvm.intr.ptrmask %[[GEP_BASE]], %[[C_NEG4_I64]] : (!llvm.ptr, i64) -> !llvm.ptr
 // CHECK-GPU:       %[[TRUNC_I32:.*]] = llvm.trunc %[[AND_3]] : i64 to i32
 // CHECK-GPU:       %[[MUL_8:.*]] = llvm.mul %[[TRUNC_I32]], %[[C8_I32]] : i32
 // CHECK-GPU:       %[[ZEXT_I32:.*]] = llvm.zext %[[MUL_4]] : i8 to i32
@@ -442,8 +439,7 @@ func.func @atomic_rmw_i1(%in: tensor<8xi1>, %i: index) -> (tensor<8xi1>) {
 // CHECK: %[[ADDR:.*]] = llvm.getelementptr inbounds %{{.*}}[0, %{{.*}}] : (!llvm.ptr, i64) -> !llvm.ptr, !llvm.array<8 x i1>
 // CHECK-GPU-NEXT: %[[ADDR_INT:.*]] = llvm.ptrtoint %[[ADDR]]
 // CHECK-GPU-NEXT: %[[OFFSET:.*]] = llvm.and %[[ADDR_INT]], %{{.*}}
-// CHECK-GPU-NEXT: %[[INDEX:.*]] = llvm.mul %[[OFFSET]], %{{.*}}
-// CHECK-GPU-NEXT: %[[BASE:.*]] = llvm.getelementptr inbounds %[[ADDR]][%[[INDEX]]]
+// CHECK-GPU-NEXT: %[[BASE:.*]] = llvm.intr.ptrmask %[[ADDR]], %{{.*}}
 // CHECK-GPU: %[[INIT:.*]] = llvm.load %[[BASE]] : !llvm.ptr -> i32
 // CHECK-GPU-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]]) : (i32) -> i32
 // CHECK-GPU: llvm.cmpxchg %[[BASE]], %[[VAR]], %{{.*}} monotonic monotonic : !llvm.ptr, i32
@@ -467,8 +463,7 @@ func.func @atomic_rmw_overwrite(%in: tensor<8xf16>, %i: index)
 // CHECK: %[[ADDR:.*]] = llvm.getelementptr
 // CHECK-GPU-NEXT: %[[ADDR_INT:.*]] = llvm.ptrtoint %[[ADDR]]
 // CHECK-GPU-NEXT: %[[OFFSET:.*]] = llvm.and %[[ADDR_INT]], %{{.*}}
-// CHECK-GPU-NEXT: %[[INDEX:.*]] = llvm.mul %[[OFFSET]], %{{.*}}
-// CHECK-GPU-NEXT: %[[BASE:.*]] = llvm.getelementptr inbounds %[[ADDR]][%[[INDEX]]]
+// CHECK-GPU-NEXT: %[[BASE:.*]] = llvm.intr.ptrmask %[[ADDR]], %{{.*}}
 // CHECK-GPU: %[[INIT:.*]] = llvm.load %[[BASE]]
 // CHECK-GPU-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]])
 // CHECK-GPU-DAG: %[[RES_SHIFT:.*]] = llvm.shl %{{.*}}, %{{.*}}
@@ -494,8 +489,7 @@ func.func @atomic_rmw_overwrite_f8E4M3(%in: tensor<8xf8E4M3>, %i: index)
 // CHECK: %[[ADDR:.*]] = llvm.getelementptr
 // CHECK-GPU-NEXT: %[[ADDR_INT:.*]] = llvm.ptrtoint %[[ADDR]]
 // CHECK-GPU-NEXT: %[[OFFSET:.*]] = llvm.and %[[ADDR_INT]], %{{.*}}
-// CHECK-GPU-NEXT: %[[INDEX:.*]] = llvm.mul %[[OFFSET]], %{{.*}}
-// CHECK-GPU-NEXT: %[[BASE:.*]] = llvm.getelementptr inbounds %[[ADDR]][%[[INDEX]]]
+// CHECK-GPU-NEXT: %[[BASE:.*]] = llvm.intr.ptrmask %[[ADDR]], %{{.*}}
 // CHECK-GPU: %[[INIT:.*]] = llvm.load %[[BASE]]
 // CHECK-GPU-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]])
 // CHECK-GPU-DAG: %[[RES_SHIFT:.*]] = llvm.shl %{{.*}}, %{{.*}}
@@ -521,8 +515,42 @@ func.func @shared_i4() -> tensor<10xi4> {
   %shared = xla_gpu.allocate_shared : tensor<10xi4>
   return %shared : tensor<10xi4>
 }
-// CHECK: llvm.mlir.global private @{{.*}}() {addr_space = 3 : i32} : !llvm.array<5 x i8>
+// Five packed bytes are padded to two whole words.
+// CHECK: llvm.mlir.global private @{{.*}}() {addr_space = 3 : i32, alignment = 4 : i64} : !llvm.array<8 x i8>
 // CHECK-LABEL: @shared_i4
+
+// -----
+
+func.func @shared_i4_store(%v: i4, %i: index) -> tensor<10xi4> {
+  %shared = xla_gpu.allocate_shared : tensor<10xi4>
+  %r = tensor.insert %v into %shared[%i] : tensor<10xi4>
+  return %r : tensor<10xi4>
+}
+// A 4 bit store is a 32 bit CAS on the containing word, so the shared
+// allocation must be word aligned and a whole number of words.
+// CHECK: llvm.mlir.global private @{{.*}}() {addr_space = 3 : i32, alignment = 4 : i64} : !llvm.array<8 x i8>
+// CHECK-LABEL: @shared_i4_store
+// CHECK-GPU: llvm.cmpxchg {{.*}} : !llvm.ptr, i32
+
+// -----
+
+func.func @shared_f64() -> tensor<16xf64> {
+  %shared = xla_gpu.allocate_shared : tensor<16xf64>
+  return %shared : tensor<16xf64>
+}
+// Wide element types keep their natural alignment.
+// CHECK: llvm.mlir.global private @{{.*}}() {addr_space = 3 : i32} : !llvm.array<16 x f64>
+// CHECK-LABEL: @shared_f64
+
+// -----
+
+func.func @shared_f16() -> tensor<3xf16> {
+  %shared = xla_gpu.allocate_shared : tensor<3xf16>
+  return %shared : tensor<3xf16>
+}
+// Six bytes of f16 are padded to eight.
+// CHECK: llvm.mlir.global private @{{.*}}() {addr_space = 3 : i32, alignment = 4 : i64} : !llvm.array<4 x f16>
+// CHECK-LABEL: @shared_f16
 
 // -----
 
@@ -562,7 +590,7 @@ func.func @i4_store(%arg: tensor<10xi4>, %v: i4, %i: index)
 // CHECK-DAG:     %[[C15_I8:.*]] = arith.constant 15 : i8
 // CHECK-DAG:     %[[C_NEG1_I8:.*]] = arith.constant -1 : i8
 // CHECK-GPU-DAG: %[[C3_I64:.*]] = llvm.mlir.constant(3 : i64) : i64
-// CHECK-GPU-DAG: %[[C_NEG1_I64:.*]] = llvm.mlir.constant(-1 : i64) : i64
+// CHECK-GPU-DAG: %[[C_NEG4_I64:.*]] = llvm.mlir.constant(-4 : i64) : i64
 // CHECK-GPU-DAG: %[[C8_I32:.*]] = llvm.mlir.constant(8 : i32) : i32
 // CHECK-GPU-DAG: %[[C_NEG1_I32:.*]] = llvm.mlir.constant(-1 : i32) : i32
 // CHECK-GPU-DAG: %[[C255_I32:.*]] = llvm.mlir.constant(255 : i32) : i32
@@ -582,8 +610,7 @@ func.func @i4_store(%arg: tensor<10xi4>, %v: i4, %i: index)
 // CHECK-GPU:     %[[GEP_BASE:.*]] = llvm.getelementptr inbounds %[[CAST_TENSOR_PTR]][0, %[[SHR_1]]] : (!llvm.ptr, i64) -> !llvm.ptr, !llvm.array<10 x i8>
 // CHECK-GPU:     %[[PTR_INT:.*]] = llvm.ptrtoint %[[GEP_BASE]] : !llvm.ptr to i64
 // CHECK-GPU:     %[[AND_3:.*]] = llvm.and %[[PTR_INT]], %[[C3_I64]] : i64
-// CHECK-GPU:     %[[MUL_NEG1:.*]] = llvm.mul %[[AND_3]], %[[C_NEG1_I64]] : i64
-// CHECK-GPU:     %[[GEP_OFFSET:.*]] = llvm.getelementptr inbounds %[[GEP_BASE]][%[[MUL_NEG1]]] : (!llvm.ptr, i64) -> !llvm.ptr, i8
+// CHECK-GPU:     %[[GEP_OFFSET:.*]] = llvm.intr.ptrmask %[[GEP_BASE]], %[[C_NEG4_I64]] : (!llvm.ptr, i64) -> !llvm.ptr
 // CHECK-GPU:     %[[TRUNC_I32:.*]] = llvm.trunc %[[AND_3]] : i64 to i32
 // CHECK-GPU:     %[[MUL_8:.*]] = llvm.mul %[[TRUNC_I32]], %[[C8_I32]] : i32
 // CHECK-GPU:     %[[SHL_255:.*]] = llvm.shl %[[C255_I32]], %[[MUL_8]] : i32

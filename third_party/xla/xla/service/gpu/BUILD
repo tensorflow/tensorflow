@@ -288,31 +288,6 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "hlo_to_ir_bindings",
-    srcs = ["hlo_to_ir_bindings.cc"],
-    hdrs = ["hlo_to_ir_bindings.h"],
-    deps = [
-        "//xla:shape_tree",
-        "//xla:shape_util",
-        "//xla:util",
-        "//xla/hlo/ir:hlo",
-        "//xla/service/llvm_ir:buffer_assignment_util",
-        "//xla/service/llvm_ir:ir_array",
-        "//xla/service/llvm_ir:llvm_util",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Core",
-        "@llvm-project//llvm:Support",
-        "@tsl//tsl/platform:logging",
-    ],
-)
-
-cc_library(
     name = "target_util",
     srcs = ["target_util.cc"],
     hdrs = ["target_util.h"],
@@ -502,6 +477,7 @@ cc_library(
         "//xla/backends/gpu/codegen:fusion_emitter",
         "//xla/backends/gpu/codegen:fusions",
         "//xla/backends/gpu/codegen:kernel_compiler",
+        "//xla/backends/gpu/codegen:sort",
         "//xla/backends/gpu/codegen/kernels:custom_kernel",
         "//xla/backends/gpu/codegen/kernels:ptx_custom_kernel",
         "//xla/backends/gpu/codegen/llvm:llvm_emitter",

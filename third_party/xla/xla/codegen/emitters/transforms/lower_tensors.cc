@@ -118,6 +118,8 @@ Value GetDestinationBuffer(Value dest) {
           result_number);
     } else if (auto scf_for = dest.getDefiningOp<scf::ForOp>()) {
       dest = scf_for.getInitArgs()[result_number];
+    } else if (auto sync_threads = dest.getDefiningOp<gpu::SyncThreadsOp>()) {
+      dest = sync_threads.getOperand(result_number);
     } else if (dest.getDefiningOp<UnrealizedConversionCastOp>() ||
                dest.getDefiningOp<gpu::AllocateSharedOp>()) {
       break;
@@ -769,6 +771,26 @@ struct RewriteAllocateShared : OpRewritePattern<gpu::AllocateSharedOp> {
     auto global =
         CreateGlobalOp(mlir::Attribute{}, "shared_", shaped_ty, module,
                        /*is_constant=*/false, kGPUSharedMemoryAddrSpace, b);
+    // Shared memory exists only on GPU, where an atomic update of an element
+    // narrower than 32 bits (every insert of an element narrower than a byte,
+    // and any narrow AtomicRMWOp) becomes a 32 bit CAS on the containing word,
+    // found with ptrmask. The masked pointer must stay inside this object, so
+    // the allocation is word aligned and padded to a whole number of words.
+    // This also keeps the CAS from touching bytes of a neighboring allocation.
+    // Wider types keep their natural alignment.
+    Type element_type = shaped_ty.getElementType();
+    if (element_type.isIntOrFloat() &&
+        element_type.getIntOrFloatBitWidth() < 32) {
+      auto array_ty = mlir::cast<ml::LLVMArrayType>(global.getGlobalType());
+      int64_t elem_bytes = CeilOfRatio<int64_t>(
+          array_ty.getElementType().getIntOrFloatBitWidth(), 8);
+      int64_t padded =
+          RoundUpTo<int64_t>(array_ty.getNumElements() * elem_bytes, 4) /
+          elem_bytes;
+      global.setGlobalTypeAttr(mlir::TypeAttr::get(
+          ml::LLVMArrayType::get(array_ty.getElementType(), padded)));
+      global.setAlignment(4);
+    }
 
     rewriter.setInsertionPoint(op);
     auto addr = ml::AddressOfOp::create(rewriter, op.getLoc(), global);
@@ -1305,12 +1327,12 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
         Value addr_offset = ml::AndOp::create(
             rewriter, loc, addr_int,
             ml::ConstantOp::create(rewriter, loc, addr_int_ty, 3));
-        Value index = ml::MulOp::create(
-            rewriter, loc, addr_offset,
-            ml::ConstantOp::create(rewriter, loc, addr_int_ty, -1));
-        addr = ml::GEPOp::create(rewriter, loc, addr.getType(),
-                                 rewriter.getI8Type(), addr, index,
-                                 mlir::LLVM::GEPNoWrapFlags::inbounds);
+        // ptrmask instead of a negative GEP: LLVM would reassociate the GEP
+        // into [base + imm], and ptxas for sm_6x drops the low bits of that
+        // immediate on shared atomics, producing a misaligned CAS.
+        addr = ml::PtrMaskOp::create(
+            rewriter, loc, addr,
+            ml::ConstantOp::create(rewriter, loc, addr_int_ty, -4));
 
         Value offset =
             ml::TruncOp::create(rewriter, loc, atomic_ty, addr_offset);

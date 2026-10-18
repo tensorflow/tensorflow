@@ -62,6 +62,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
 #include "xla/backends/gpu/codegen/kernels/ptx_custom_kernel.h"
 #include "xla/backends/gpu/codegen/llvm/llvm_emitter.h"
+#include "xla/backends/gpu/codegen/sort.h"
 #include "xla/backends/gpu/codegen/triton/triton_kernel_source.h"
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
 #include "xla/backends/gpu/ffi/ffi_attributes_from_backend_config.h"
@@ -2046,7 +2047,7 @@ Future<ThunkSequence> ThunkEmitter::EmitSort(const HloSortInstruction* sort) {
     }
   }
 
-  return EmitBitonicSortLLVMIR(sort, ir_emitter_context_)
+  return EmitBitonicSort(sort, ir_emitter_context_)
       .Map([thunks = std::move(thunks)](ThunkSequence sort_thunks) mutable {
         AppendThunkSequence(thunks, sort_thunks);
         return std::move(thunks);
