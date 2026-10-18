@@ -1,0 +1,47 @@
+diff --git a/ynnpack/kernels/dot/generator/x86_uint8_int2_int32.py b/ynnpack/kernels/dot/generator/x86_uint8_int2_int32.py
+--- a/ynnpack/kernels/dot/generator/x86_uint8_int2_int32.py
++++ b/ynnpack/kernels/dot/generator/x86_uint8_int2_int32.py
+@@ -162,10 +162,10 @@
+   def product(self, i, j, k):
+     mm = self._mm()
+     return f"""
+-c_{i}_{j} = {mm}_dpbusd_epi32(c_{i}_{j}, a_{i}_{k+0}, b_{k+0}_{j});
+-c_{i}_{j} = {mm}_dpbusd_epi32(c_{i}_{j}, a_{i}_{k+1}, b_{k+1}_{j});
+-c_{i}_{j} = {mm}_dpbusd_epi32(c_{i}_{j}, a_{i}_{k+2}, b_{k+2}_{j});
+-c_{i}_{j} = {mm}_dpbusd_epi32(c_{i}_{j}, a_{i}_{k+3}, b_{k+3}_{j});
++c_{i}_{j} = {mm}_dpbusd_avx_epi32(c_{i}_{j}, a_{i}_{k+0}, b_{k+0}_{j});
++c_{i}_{j} = {mm}_dpbusd_avx_epi32(c_{i}_{j}, a_{i}_{k+1}, b_{k+1}_{j});
++c_{i}_{j} = {mm}_dpbusd_avx_epi32(c_{i}_{j}, a_{i}_{k+2}, b_{k+2}_{j});
++c_{i}_{j} = {mm}_dpbusd_avx_epi32(c_{i}_{j}, a_{i}_{k+3}, b_{k+3}_{j});
+ """
+ 
+ generate_dot_kernels(
+diff --git a/ynnpack/kernels/dot/generator/x86_uint8_int4_int32.py b/ynnpack/kernels/dot/generator/x86_uint8_int4_int32.py
+--- a/ynnpack/kernels/dot/generator/x86_uint8_int4_int32.py
++++ b/ynnpack/kernels/dot/generator/x86_uint8_int4_int32.py
+@@ -178,8 +178,8 @@
+   def product(self, i, j, k):
+     mm = self._mm()
+     return f"""
+-c_{i}_{j+0} = {mm}_dpbusd_epi32(c_{i}_{j+0}, a_{i}_{k}, b_{k}_{j+0});
+-c_{i}_{j+4} = {mm}_dpbusd_epi32(c_{i}_{j+4}, a_{i}_{k}, b_{k}_{j+4});
++c_{i}_{j+0} = {mm}_dpbusd_avx_epi32(c_{i}_{j+0}, a_{i}_{k}, b_{k}_{j+0});
++c_{i}_{j+4} = {mm}_dpbusd_avx_epi32(c_{i}_{j+4}, a_{i}_{k}, b_{k}_{j+4});
+ """
+ 
+ 
+diff --git a/ynnpack/kernels/dot/generator/x86_uint8_int8_int32.py b/ynnpack/kernels/dot/generator/x86_uint8_int8_int32.py
+--- a/ynnpack/kernels/dot/generator/x86_uint8_int8_int32.py
++++ b/ynnpack/kernels/dot/generator/x86_uint8_int8_int32.py
+@@ -65,6 +65,11 @@
+   def __init__(self, arch="avxvnni", vector_bits=256):
+     super().__init__(arch, vector_bits, tile_shape=(1, 8, 4))
+ 
++  def product(self, i, j, k):
++    mm = self._mm()
++    c_ij = f"c_{i}_{j}"
++    return f"{c_ij} = {mm}_dpbusd_avx_epi32({c_ij}, a_{i}_{k}, b_{k}_{j});\n"
++
+ 
+ generate_dot_kernels(
+     x86_avx512vnni_uint8_int8_int32(),
