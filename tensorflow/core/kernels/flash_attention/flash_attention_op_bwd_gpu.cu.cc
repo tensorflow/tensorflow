@@ -88,19 +88,25 @@ __global__ void __launch_bounds__(traits::FlashTraitsKV<D_MAX>::Th)
                        T *__restrict__ dV, float *__restrict__ dQ_accum, int BH,
                        int H, int S_q, int S_kv, int D_qk, int D_v,
                        bool causal_mask, float dropout_rate, float scale,
-                       FlashAttentionRng rng) {
+                       FlashAttentionRng rng, bool load_chunks) {
   const uint64_t seed = ResolveSeed(rng);
   const uint64_t offset = ResolveOffset(rng);
   constexpr int Br = traits::FlashTraitsKV<D_MAX>::Br;
   constexpr int Bc = traits::FlashTraitsKV<D_MAX>::Bc;
+  constexpr int kStages = traits::BwdKVStages<T, D_MAX, kAccumulateDQ>();
+  // Query rows per step of the inner loop: each K/V chunk a thread loads
+  // serves both rows, and the rows' dot products overlap.
+  constexpr int kRows = 2;
+  static_assert(Br % kRows == 0);
   // Row stride of s_dS; the +1 keeps rows i and i + 1 in different banks when
   // the dQ loop has several rows per warp.
   constexpr int kDSStride = Bc + 1;
-  // r_dK and r_dV hold 2 * D_MAX / kSplit floats per thread. For D_MAX = 128
-  // that would be 256, more than the 255 registers a thread can have, so two
-  // threads share each key, each taking alternate 16-byte chunks of the row
-  // (traits::FlashTraitsKV<128> has Th = 2 * Bc for this).
-  constexpr int kSplit = D_MAX >= 128 ? 2 : 1;
+  // r_dK and r_dV hold 2 * D_MAX / kSplit floats per thread. From D_MAX = 32,
+  // two threads share each key, each taking alternate 16-byte chunks of the
+  // row (traits::FlashTraitsKV has Th = 2 * Bc for this): that halves the
+  // registers per thread, so twice as many warps fit on an SM to hide latency,
+  // and for D_MAX = 128 it keeps the accumulators within 255 registers.
+  constexpr int kSplit = traits::FlashTraitsKV<D_MAX>::kSplit;
   constexpr int kPart = D_MAX / kSplit;
   static_assert(traits::FlashTraitsKV<D_MAX>::Th >= Bc * kSplit);
   // Each thread reads its own K/V row (rotated); Q/dO rows are broadcast.
@@ -109,14 +115,15 @@ __global__ void __launch_bounds__(traits::FlashTraitsKV<D_MAX>::Th)
   const float dp_inverse =
       (dropout_rate > 0.0f) ? (1.0f / (1.0f - dropout_rate)) : 1.0f;
 
+  // Shared Memory Layout:
+  // K_tile[Bc] | V_tile[Bc] | kStages x (Q_tile[Br] | dO_tile[Br] | Stats[Br]
+  // | dOsum[Br]) | dS[Br][kDSStride] (with kAccumulateDQ)
   extern __shared__ __align__(16) char smem_[];
   T *s_K = reinterpret_cast<T *>(smem_);
   T *s_V = s_K + Bc * D_MAX;
-  T *s_Q = s_V + Bc * D_MAX;
-  T *s_dO = s_Q + Br * D_MAX;
-  float *s_Stats = reinterpret_cast<float *>(s_dO + Br * D_MAX);  // Br
-  float *s_dOsum = s_Stats + Br;                                  // Br
-  float *s_dS = s_dOsum + Br;  // Br * kDSStride, with kAccumulateDQ
+  char *s_stages = reinterpret_cast<char *>(s_V + Bc * D_MAX);
+  constexpr int kStageBytes = traits::BwdQStageBytes<T, D_MAX>();
+  float *s_dS = reinterpret_cast<float *>(s_stages + kStages * kStageBytes);
 
   const int tid = threadIdx.x;
   const int key = tid / kSplit;  // key j = tile_offset_kv + key
@@ -151,71 +158,121 @@ __global__ void __launch_bounds__(traits::FlashTraitsKV<D_MAX>::Th)
     r_dV[d] = ZEROF;
   }
 
+  // Arrive with the first Q tile.
   if (block_valid) {
-    load_tile<T, D_MAX, kSplit>(s_K, K, tid, blockDim.x, Bc, D_qk, S_kv,
-                                tile_offset_kv, row_base_kv, H);
-    load_tile<T, D_MAX, kSplit>(s_V, V, tid, blockDim.x, Bc, D_v, S_kv,
-                                tile_offset_kv, row_base_kv, H);
+    LoadTile<T, D_MAX, kSplit>(load_chunks, s_K, K, tid, blockDim.x, Bc, D_qk,
+                               S_kv, tile_offset_kv, row_base_kv, H);
+    LoadTile<T, D_MAX, kSplit>(load_chunks, s_V, V, tid, blockDim.x, Bc, D_v,
+                               S_kv, tile_offset_kv, row_base_kv, H);
   }
 
-  for (int tile_offset_q = 0; tile_offset_q < S_q; tile_offset_q += Br) {
-    // Uniform across the block, so the __syncthreads() below are safe.
-    const bool tile_is_masked =
-        (!block_valid) ||
-        (causal_mask && ((tile_offset_q + Br - 1) < tile_offset_kv));
+  // Q tiles [t * Br, t * Br + Br). Causal: tiles ending before this KV tile's
+  // first key are fully masked, so start at the one containing it. The range
+  // is the same for the whole block, so the __syncthreads() stay matched.
+  const int q_tiles = (S_q + Br - 1) / Br;
+  const int q_begin =
+      !block_valid ? q_tiles : (causal_mask ? tile_offset_kv / Br : 0);
+  auto stage = [&](int t) { return s_stages + (t % kStages) * kStageBytes; };
+  auto load_q = [&](int t) {
+    T *sQ = reinterpret_cast<T *>(stage(t));
+    T *sdO = sQ + Br * D_MAX;
+    float *sStats = reinterpret_cast<float *>(sdO + Br * D_MAX);
+    float *sdOsum = sStats + Br;
+    const int tile_offset_q = t * Br;
+    LoadTile<T, D_MAX, 0>(load_chunks, sQ, Q, tid, blockDim.x, Br, D_qk, S_q,
+                          tile_offset_q, row_base_q, H);
+    LoadTile<T, D_MAX, 0>(load_chunks, sdO, dO, tid, blockDim.x, Br, D_v, S_q,
+                          tile_offset_q, row_base_q, H);
+    for (int r = tid; r < Br; r += blockDim.x) {
+      const bool valid = tile_offset_q + r < S_q;
+      const size_t idx = valid ? batch_offset_q + tile_offset_q + r : 0;
+      CpAsync4(sStats + r, Stats + idx, valid);
+      CpAsync4(sdOsum + r, dOsum + idx, valid);
+    }
+  };
+
+  if constexpr (kStages > 1) {
+    if (q_begin < q_tiles) load_q(q_begin);
+    CpAsyncCommit();
+  }
+  for (int t = q_begin; t < q_tiles; ++t) {
+    if constexpr (kStages == 1) {
+      load_q(t);
+      CpAsyncCommit();
+    }
+    CpAsyncWait<0>();
+    // Makes tile t visible to the block. With two stages, it also means every
+    // thread is done with tile t - 1 (including the dQ loop's reads of s_dS),
+    // so its buffer can take tile t + 1, which then loads while this tile is
+    // processed.
+    __syncthreads();
+    if constexpr (kStages > 1) {
+      if (t + 1 < q_tiles) load_q(t + 1);
+      CpAsyncCommit();
+    }
+    const T *s_Q = reinterpret_cast<const T *>(stage(t));
+    const T *s_dO = s_Q + Br * D_MAX;
+    const float *s_Stats = reinterpret_cast<const float *>(s_dO + Br * D_MAX);
+    const float *s_dOsum = s_Stats + Br;
+    const int tile_offset_q = t * Br;
     const int rows = std::min(Br, S_q - tile_offset_q);
 
-    __syncthreads();
-    if (tile_is_masked) continue;
-
-    load_tile<T, D_MAX, 0>(s_Q, Q, tid, blockDim.x, Br, D_qk, S_q,
-                           tile_offset_q, row_base_q, H);
-    load_tile<T, D_MAX, 0>(s_dO, dO, tid, blockDim.x, Br, D_v, S_q,
-                           tile_offset_q, row_base_q, H);
-    for (int r = tid; r < Br; r += blockDim.x) {
-      const bool valid = r < rows;
-      s_Stats[r] = valid ? Stats[batch_offset_q + tile_offset_q + r] : ZEROF;
-      s_dOsum[r] = valid ? dOsum[batch_offset_q + tile_offset_q + r] : ZEROF;
-    }
-    __syncthreads();
-
     if (key < Bc) {
-      for (int i = 0; i < rows; ++i) {
-        const int q_offset = tile_offset_q + i;
-        float dS = ZEROF;
-        if (active && !(causal_mask && q_offset < kv_offset)) {
-          const size_t q_idx = batch_offset_q + q_offset;
+      for (int i = 0; i < rows; i += kRows) {
+        // Rows past `rows` (zero-padded) and causally masked pairs get
+        // p = dS = 0.
+        float p[kRows], dS[kRows];
+        if (active) {
           // Both threads of a key take this branch together, so the
           // shuffles see their partner.
-          float score = TileDot<TileQ, TileKV, kSplit>(s_Q, i, s_K, key, part);
-          if constexpr (kSplit > 1) {
-            score += __shfl_xor_sync(pair_mask, score, 1);
-          }
-          float p_ij = Eigen::numext::exp(score * scale - s_Stats[i]);
-          dS = scale;
-          bool is_dropped = false;
-          if (dropout_rate > 0.0f) {
-            if (get_random_float_v2(global_rng_idx, q_idx * S_kv) <
-                dropout_rate) {
-              is_dropped = true;
-              dS *= -p_ij * s_dOsum[i];
-              p_ij = ZEROF;
-            } else {
-              p_ij *= dp_inverse;
-            }
-          }
-          if (!is_dropped) {
-            float dP = TileDot<TileQ, TileKV, kSplit>(s_dO, i, s_V, key, part);
+          float score[kRows], dP[kRows];
+          TileDotN<TileQ, TileKV, kRows, kSplit>(s_Q, i, s_K, key, score,
+                                                 part);
+          TileDotN<TileQ, TileKV, kRows, kSplit>(s_dO, i, s_V, key, dP, part);
+#pragma unroll
+          for (int n = 0; n < kRows; ++n) {
             if constexpr (kSplit > 1) {
-              dP += __shfl_xor_sync(pair_mask, dP, 1);
+              score[n] += __shfl_xor_sync(pair_mask, score[n], 1);
+              dP[n] += __shfl_xor_sync(pair_mask, dP[n], 1);
             }
-            dS *= p_ij * (dP - s_dOsum[i] / dp_inverse);
+            const int q_offset = tile_offset_q + i + n;
+            const bool valid =
+                (i + n < rows) && !(causal_mask && q_offset < kv_offset);
+            float p_ij =
+                valid ? Eigen::numext::exp(score[n] * scale - s_Stats[i + n])
+                      : ZEROF;
+            float ds = scale;
+            bool is_dropped = false;
+            if (dropout_rate > 0.0f && valid) {
+              const size_t q_idx = batch_offset_q + q_offset;
+              if (get_random_float_v2(global_rng_idx, q_idx * S_kv) <
+                  dropout_rate) {
+                is_dropped = true;
+                ds *= -p_ij * s_dOsum[i + n];
+                p_ij = ZEROF;
+              } else {
+                p_ij *= dp_inverse;
+              }
+            }
+            if (!is_dropped) {
+              ds *= p_ij * (dP[n] - s_dOsum[i + n] / dp_inverse);
+            }
+            p[n] = p_ij;
+            dS[n] = valid ? ds : ZEROF;
           }
-          TileQ::template Axpy<kSplit>(r_dV, p_ij, s_dO, i, part);
-          TileQ::template Axpy<kSplit>(r_dK, dS, s_Q, i, part);
+          TileQ::template AxpyN<kRows, kSplit>(r_dV, p, s_dO, i, part);
+          TileQ::template AxpyN<kRows, kSplit>(r_dK, dS, s_Q, i, part);
+        } else {
+#pragma unroll
+          for (int n = 0; n < kRows; ++n) dS[n] = ZEROF;
         }
         if constexpr (kAccumulateDQ) {
-          if (part == 0) s_dS[i * kDSStride + key] = dS;
+          if (part == 0) {
+#pragma unroll
+            for (int n = 0; n < kRows; ++n) {
+              s_dS[(i + n) * kDSStride + key] = dS[n];
+            }
+          }
         }
       }
     }
@@ -255,7 +312,13 @@ __global__ void __launch_bounds__(traits::FlashTraitsKV<D_MAX>::Th)
         }
       }
     }
+    if constexpr (kStages == 1) {
+      // The next iteration overwrites this tile and s_dS.
+      __syncthreads();
+    }
   }
+  // K/V copies are still in flight if no Q tile was processed.
+  CpAsyncWait<0>();
 
   if (active) {
     // r_dK[c * kChunk + e] is element (c * kSplit + part) * kChunk + e.
@@ -277,8 +340,8 @@ __global__ void __launch_bounds__(traits::FlashTraitsKV<D_MAX>::Th)
   }
 }
 
-// Deterministic dQ: one thread per query row (two for D_MAX = 128, as in
-// FlashAttnBwdKernel), looping over all keys.
+// Deterministic dQ: one thread per query row (two for D_MAX = 128, sharing it
+// as in FlashAttnBwdKernel), looping over all keys.
 template <typename T, int D_MAX>
 __global__ void __launch_bounds__(traits::FlashTraitsQ<D_MAX>::Th)
     FlashAttnBwdKernel_Q(const T *__restrict__ Q, const T *__restrict__ K,
@@ -288,7 +351,7 @@ __global__ void __launch_bounds__(traits::FlashTraitsQ<D_MAX>::Th)
                          const T *__restrict__ dO, T *__restrict__ dQ, int BH,
                          int H, int S_q, int S_kv, int D_qk, int D_v,
                          bool causal_mask, float dropout_rate, float scale,
-                         FlashAttentionRng rng) {
+                         FlashAttentionRng rng, bool load_chunks) {
   const uint64_t seed = ResolveSeed(rng);
   const uint64_t offset = ResolveOffset(rng);
   constexpr int Br = traits::FlashTraitsQ<D_MAX>::Br;
@@ -344,11 +407,12 @@ __global__ void __launch_bounds__(traits::FlashTraitsQ<D_MAX>::Th)
     r_dQ[d] = ZEROF;
   }
 
+  // Arrive with the first K/V tile.
   if (block_valid) {
-    load_tile<T, D_MAX, kSplit>(s_Q, Q, tid, blockDim.x, Br, D_qk, S_q,
-                                tile_offset_q, row_base_q, H);
-    load_tile<T, D_MAX, kSplit>(s_dO, dO, tid, blockDim.x, Br, D_v, S_q,
-                                tile_offset_q, row_base_q, H);
+    LoadTile<T, D_MAX, kSplit>(load_chunks, s_Q, Q, tid, blockDim.x, Br, D_qk,
+                               S_q, tile_offset_q, row_base_q, H);
+    LoadTile<T, D_MAX, kSplit>(load_chunks, s_dO, dO, tid, blockDim.x, Br, D_v,
+                               S_q, tile_offset_q, row_base_q, H);
   }
   const float row_dOsum = active ? dOsum[q_idx] : ZEROF;
   const float stats_val = active ? Stats[q_idx] : ZEROF;
@@ -360,11 +424,13 @@ __global__ void __launch_bounds__(traits::FlashTraitsQ<D_MAX>::Th)
 
     __syncthreads();
     if (!tile_is_masked) {
-      load_tile<T, D_MAX, 0>(s_K, K, tid, blockDim.x, Bc, D_qk, S_kv,
-                             tile_offset_kv, row_base_kv, H);
-      load_tile<T, D_MAX, 0>(s_V, V, tid, blockDim.x, Bc, D_v, S_kv,
-                             tile_offset_kv, row_base_kv, H);
+      LoadTile<T, D_MAX, 0>(load_chunks, s_K, K, tid, blockDim.x, Bc, D_qk,
+                            S_kv, tile_offset_kv, row_base_kv, H);
+      LoadTile<T, D_MAX, 0>(load_chunks, s_V, V, tid, blockDim.x, Bc, D_v,
+                            S_kv, tile_offset_kv, row_base_kv, H);
     }
+    CpAsyncCommit();
+    CpAsyncWait<0>();
     __syncthreads();
 
     if (active && !tile_is_masked) {
@@ -541,6 +607,10 @@ struct FlashAttentionGradFunctor<GPUDevice, T> {
     bool deterministic;
   };
 
+  static bool LoadChunks(const Args &a) {
+    return CanLoadChunks<T>({a.Q, a.K, a.V, a.dO}, {a.D_qk, a.D_v});
+  }
+
   static absl::Status CheckGrid(uint64_t total_blocks) {
     if (total_blocks > 2147483647ULL) {
       return errors::InvalidArgument(
@@ -585,14 +655,10 @@ struct FlashAttentionGradFunctor<GPUDevice, T> {
   template <int D_MAX, bool kAccumulateDQ>
   absl::Status LaunchKV(const GPUDevice &d, const Args &a, const float *dOsum,
                         float *dQ_accum) const {
-    constexpr int Br = traits::FlashTraitsKV<D_MAX>::Br;
     constexpr int Bc = traits::FlashTraitsKV<D_MAX>::Bc;
     constexpr int threads_per_block = traits::FlashTraitsKV<D_MAX>::Th;
-    // K, V (Bc rows) + Q, dO (Br rows) + Stats, dOsum (Br floats) + the dS
-    // tile (Br x (Bc + 1) floats) when accumulating dQ.
-    const int smem_size = (2 * Br + 2 * Bc) * D_MAX * sizeof(T) +
-                          2 * Br * sizeof(float) +
-                          (kAccumulateDQ ? Br * (Bc + 1) * sizeof(float) : 0);
+    constexpr int smem_size =
+        traits::BwdKVSmemBytes<T, D_MAX, kAccumulateDQ>();
     const uint64_t total_blocks =
         static_cast<uint64_t>(a.BH) * ((a.S_kv + Bc - 1) / Bc);
     TF_RETURN_IF_ERROR(CheckGrid(total_blocks));
@@ -601,7 +667,7 @@ struct FlashAttentionGradFunctor<GPUDevice, T> {
                            smem_size, d.stream(), a.Q, a.K, a.V, a.Stats, dOsum,
                            a.dO, a.dK, a.dV, dQ_accum, a.BH, a.H, a.S_q, a.S_kv,
                            a.D_qk, a.D_v, a.causal_mask, a.dropout_rate,
-                           a.scale, a.rng);
+                           a.scale, a.rng, LoadChunks(a));
   }
 
   template <int D_MAX>
@@ -619,7 +685,8 @@ struct FlashAttentionGradFunctor<GPUDevice, T> {
                            static_cast<int>(total_blocks), threads_per_block,
                            smem_size, d.stream(), a.Q, a.K, a.V, a.Stats, dOsum,
                            a.dO, a.dQ, a.BH, a.H, a.S_q, a.S_kv, a.D_qk, a.D_v,
-                           a.causal_mask, a.dropout_rate, a.scale, a.rng);
+                           a.causal_mask, a.dropout_rate, a.scale, a.rng,
+                           LoadChunks(a));
   }
 };
 

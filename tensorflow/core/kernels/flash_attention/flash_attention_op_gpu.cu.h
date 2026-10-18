@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <initializer_list>
 #include <utility>
 
@@ -140,6 +141,28 @@ struct Tile {
     }
   }
 
+  // out[n] = Dot(a, tile[row + n]) for n < N. The N sums are independent, so
+  // their multiply-adds overlap instead of each waiting for the previous one.
+  template <int N>
+  __device__ __forceinline__ static void DotN(const float (&a)[D_MAX],
+                                              const T *tile, int row,
+                                              float (&out)[N]) {
+#pragma unroll
+    for (int n = 0; n < N; ++n) out[n] = 0.0f;
+#pragma unroll
+    for (int c = 0; c < kChunks; ++c) {
+#pragma unroll
+      for (int n = 0; n < N; ++n) {
+        T y[kChunk];
+        LoadChunk(tile, row + n, c, y);
+#pragma unroll
+        for (int e = 0; e < kChunk; ++e) {
+          out[n] += a[c * kChunk + e] * static_cast<float>(y[e]);
+        }
+      }
+    }
+  }
+
   // Dot product of a (a row already in registers) and tile[row].
   __device__ __forceinline__ static float Dot(const float (&a)[D_MAX],
                                               const T *tile, int row) {
@@ -188,6 +211,26 @@ struct Tile {
       }
     }
   }
+
+  // acc += sum_n alpha[n] * tile[row + n] for n < N, with kSplit as in Axpy.
+  template <int N, int kSplit = 1>
+  __device__ __forceinline__ static void AxpyN(float (&acc)[D_MAX / kSplit],
+                                               const float (&alpha)[N],
+                                               const T *tile, int row,
+                                               int part = 0) {
+#pragma unroll
+    for (int c = 0; c < kChunks / kSplit; ++c) {
+#pragma unroll
+      for (int n = 0; n < N; ++n) {
+        T x[kChunk];
+        LoadChunk(tile, row + n, c * kSplit + part, x);
+#pragma unroll
+        for (int e = 0; e < kChunk; ++e) {
+          acc[c * kChunk + e] += alpha[n] * static_cast<float>(x[e]);
+        }
+      }
+    }
+  }
 };
 
 // Dot product of a[a_row] and b[b_row] over the zero-padded rows, for tiles
@@ -209,6 +252,98 @@ __device__ __forceinline__ float TileDot(const T *a, int a_row, const T *b,
     }
   }
   return sum;
+}
+
+// out[n] = TileDot(a[a_row + n], b[b_row]) for n < N, as N independent sums.
+// Each chunk of b is loaded once for all N rows of a.
+template <typename TileA, typename TileB, int N, int kSplit = 1, typename T>
+__device__ __forceinline__ void TileDotN(const T *a, int a_row, const T *b,
+                                         int b_row, float (&out)[N],
+                                         int part = 0) {
+  static_assert(TileA::kChunks == TileB::kChunks);
+#pragma unroll
+  for (int n = 0; n < N; ++n) out[n] = 0.0f;
+#pragma unroll
+  for (int c = 0; c < TileA::kChunks / kSplit; ++c) {
+    T y[TileA::kChunk];
+    TileB::LoadChunk(b, b_row, c * kSplit + part, y);
+#pragma unroll
+    for (int n = 0; n < N; ++n) {
+      T x[TileA::kChunk];
+      TileA::LoadChunk(a, a_row + n, c * kSplit + part, x);
+#pragma unroll
+      for (int e = 0; e < TileA::kChunk; ++e) {
+        out[n] += static_cast<float>(x[e]) * static_cast<float>(y[e]);
+      }
+    }
+  }
+}
+
+// Asynchronous global -> shared copies (cp.async, sm80+). They complete in the
+// background, so a tile load can overlap computing on another tile: copies
+// issued since the last CpAsyncCommit() form a group, and CpAsyncWait<n>()
+// waits until at most n groups are still in flight (each thread for its own
+// copies; a __syncthreads() after it makes the data visible to the block).
+// Before sm80 the copies are ordinary loads and stores, done on return.
+__device__ __forceinline__ uint32_t SharedAddress(const void *p) {
+  uint32_t addr;
+  asm("{ .reg .u64 a; cvta.to.shared.u64 a, %1; cvt.u32.u64 %0, a; }"
+      : "=r"(addr)
+      : "l"(p));
+  return addr;
+}
+
+// Copies 16 bytes, or writes 16 zero bytes if !valid (src is then not read).
+__device__ __forceinline__ void CpAsync16(void *dst, const void *src,
+                                          bool valid) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
+  asm volatile("cp.async.cg.shared.global [%0], [%1], 16, %2;\n" ::"r"(
+                   SharedAddress(dst)),
+               "l"(src), "r"(valid ? 16 : 0));
+#else
+  *reinterpret_cast<::uint4 *>(dst) =
+      valid ? *reinterpret_cast<const ::uint4 *>(src) : make_uint4(0, 0, 0, 0);
+#endif
+}
+
+// Copies one float, or writes 0 if !valid (src is then not read).
+__device__ __forceinline__ void CpAsync4(float *dst, const float *src,
+                                         bool valid) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
+  asm volatile("cp.async.ca.shared.global [%0], [%1], 4, %2;\n" ::"r"(
+                   SharedAddress(dst)),
+               "l"(src), "r"(valid ? 4 : 0));
+#else
+  *dst = valid ? *src : 0.0f;
+#endif
+}
+
+__device__ __forceinline__ void CpAsyncCommit() {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
+  asm volatile("cp.async.commit_group;\n" ::);
+#endif
+}
+
+template <int N>
+__device__ __forceinline__ void CpAsyncWait() {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
+  asm volatile("cp.async.wait_group %0;\n" ::"n"(N));
+#endif
+}
+
+// Whether tiles can be loaded 16 bytes at a time: every row of the [.., D]
+// tensors starts on a 16-byte boundary.
+template <typename T>
+bool CanLoadChunks(std::initializer_list<const void *> ptrs,
+                   std::initializer_list<int> dims) {
+  constexpr int kChunk = 16 / sizeof(T);
+  for (int d : dims) {
+    if (d % kChunk != 0) return false;
+  }
+  for (const void *p : ptrs) {
+    if (reinterpret_cast<uintptr_t>(p) % 16 != 0) return false;
+  }
+  return true;
 }
 
 // Loads rows [tile_offset, tile_offset + b_size) of one (batch, head) sequence
@@ -242,12 +377,53 @@ __device__ __forceinline__ void load_tile(
   }
 }
 
+// Starts loading a tile as load_tile does. With chunks (see CanLoadChunks),
+// it copies whole 16-byte chunks with cp.async, so the caller must
+// CpAsyncCommit() and CpAsyncWait() before the __syncthreads() that precedes
+// reading the tile; otherwise it falls back to load_tile, which is done on
+// return.
+template <typename T, int D_MAX, int kShift>
+__device__ __forceinline__ void LoadTile(bool chunks, T *__restrict__ s_mem,
+                                         const T *__restrict__ g_mem, int tid,
+                                         int block_dim, int b_size,
+                                         int d_size, int s_size,
+                                         int tile_offset, size_t row_base,
+                                         int row_step) {
+  if (!chunks) {
+    load_tile<T, D_MAX, kShift>(s_mem, g_mem, tid, block_dim, b_size, d_size,
+                                s_size, tile_offset, row_base, row_step);
+    return;
+  }
+  using TileT = Tile<T, D_MAX, kShift>;
+  constexpr int kChunk = TileT::kChunk;
+  constexpr int kChunks = TileT::kChunks;
+  const int d_chunks = d_size / kChunk;
+  for (int i = tid; i < b_size * kChunks; i += block_dim) {
+    const int s = i / kChunks;
+    const int c = i - s * kChunks;
+    const int s_offset = tile_offset + s;
+    const bool valid = s_offset < s_size && c < d_chunks;
+    const T *src =
+        valid ? g_mem +
+                    (row_base + static_cast<size_t>(s_offset) * row_step) *
+                        d_size +
+                    c * kChunk
+              : g_mem;
+    CpAsync16(s_mem + TileT::Index(s, c * kChunk), src, valid);
+  }
+}
+
 namespace traits {
+
+// The fallback kernels' dynamic shared memory stays within the 48KB that needs
+// no opt-in. Tiles are double-buffered (kStages = 2, loading the next tile
+// while computing on this one) when two stages fit, single-buffered otherwise.
+inline constexpr int kMaxSmemBytes = 48 * 1024;
 
 /*
 forward pass:
-- (2Br+Bc) * size(float) * D_MAX <= 48KB
-- Br <= Th
+- Br <= Th; Bc % kKeys == 0
+- Q is read into registers for D_MAX <= 64, else kept as a [Br] tile
 */
 template <int D_MAX>
 struct FlashTraits;
@@ -256,36 +432,72 @@ struct FlashTraits<8> {
   static constexpr int Br = 256;  // Larger tile for Q since registers are free
   static constexpr int Bc = 256;  // Larger tile for K/V
   static constexpr int Th = 256;
+  static constexpr int kKeys = 4;  // keys per step of the inner loop
+  static constexpr int kMinBlocks = 1;  // __launch_bounds__ blocks per SM
 };
 template <>
 struct FlashTraits<16> {
   static constexpr int Br = 256;
-  static constexpr int Bc = 256;
+  static constexpr int Bc = 128;
   static constexpr int Th = 256;
+  static constexpr int kKeys = 4;
+  static constexpr int kMinBlocks = 1;
 };
 template <>
 struct FlashTraits<32> {
   static constexpr int Br = 128;
-  static constexpr int Bc = 128;
+  static constexpr int Bc = 64;
   static constexpr int Th = 128;
+  static constexpr int kKeys = 4;
+  static constexpr int kMinBlocks = 1;
 };
 template <>
 struct FlashTraits<64> {
   static constexpr int Br = 128;
   static constexpr int Bc = 32;
   static constexpr int Th = 128;
+  static constexpr int kKeys = 4;
+  // Keeps registers <= 168 so that 3 blocks fit per SM (2 at the 172 ptxas
+  // picks otherwise, too few warps to hide the shared memory latency).
+  static constexpr int kMinBlocks = 3;
 };
 template <>
 struct FlashTraits<128> {
   static constexpr int Br = 64;
   static constexpr int Bc = 16;
   static constexpr int Th = 64;
+  static constexpr int kKeys = 2;
+  static constexpr int kMinBlocks = 1;
 };
 
+template <typename T, int D_MAX>
+constexpr int FwdQTileBytes() {
+  return D_MAX <= 64 ? 0 : FlashTraits<D_MAX>::Br * D_MAX * sizeof(T);
+}
+template <typename T, int D_MAX>
+constexpr int FwdStageBytes() {  // K and V tiles
+  return 2 * FlashTraits<D_MAX>::Bc * D_MAX * sizeof(T);
+}
+template <typename T, int D_MAX>
+constexpr int FwdStages() {
+  return FwdQTileBytes<T, D_MAX>() + 2 * FwdStageBytes<T, D_MAX>() <=
+                 kMaxSmemBytes
+             ? 2
+             : 1;
+}
+template <typename T, int D_MAX>
+constexpr int FwdSmemBytes() {
+  constexpr int bytes = FwdQTileBytes<T, D_MAX>() +
+                        FwdStages<T, D_MAX>() * FwdStageBytes<T, D_MAX>();
+  static_assert(bytes <= kMaxSmemBytes);
+  return bytes;
+}
+
 /*
-backward KV pass (FlashAttnBwdKernel), including the float dS tile:
-- ((2Br + 2Bc) * D_MAX + 2Br + Br * (Bc + 1)) * size(float) <= 48KB
-- Bc <= Th
+backward KV pass (FlashAttnBwdKernel):
+- K, V tiles [Bc] + kStages x (Q, dO tiles [Br] + Stats, dOsum [Br]) + the
+  float dS tile [Br][Bc + 1] when accumulating dQ, within kMaxSmemBytes
+- Bc * kSplit <= Th, with kSplit threads per key; Br even
 */
 template <int D_MAX>
 struct FlashTraitsKV;
@@ -294,31 +506,69 @@ struct FlashTraitsKV<8> {
   static constexpr int Br = 16;
   static constexpr int Bc = 256;
   static constexpr int Th = 256;
+  static constexpr int kSplit = 1;
 };
 template <>
 struct FlashTraitsKV<16> {
   static constexpr int Br = 32;
   static constexpr int Bc = 128;
   static constexpr int Th = 128;
+  static constexpr int kSplit = 1;
 };
 template <>
 struct FlashTraitsKV<32> {
   static constexpr int Br = 16;
-  static constexpr int Bc = 128;
+  static constexpr int Bc = 64;
   static constexpr int Th = 128;
+  static constexpr int kSplit = 2;
 };
 template <>
 struct FlashTraitsKV<64> {
-  static constexpr int Br = 16;
+  static constexpr int Br = 8;
   static constexpr int Bc = 64;
-  static constexpr int Th = 64;
+  static constexpr int Th = 128;
+  static constexpr int kSplit = 2;
 };
 template <>
 struct FlashTraitsKV<128> {
   static constexpr int Br = 8;
   static constexpr int Bc = 32;
   static constexpr int Th = 64;
+  static constexpr int kSplit = 2;
 };
+
+template <typename T, int D_MAX>
+constexpr int BwdKVTileBytes() {  // K and V tiles
+  return 2 * FlashTraitsKV<D_MAX>::Bc * D_MAX * sizeof(T);
+}
+template <typename T, int D_MAX>
+constexpr int BwdQStageBytes() {  // Q, dO tiles, Stats, dOsum
+  constexpr int Br = FlashTraitsKV<D_MAX>::Br;
+  return 2 * Br * D_MAX * sizeof(T) + 2 * Br * sizeof(float);
+}
+template <int D_MAX, bool kAccumulateDQ>
+constexpr int BwdDSBytes() {
+  return kAccumulateDQ ? FlashTraitsKV<D_MAX>::Br *
+                             (FlashTraitsKV<D_MAX>::Bc + 1) * sizeof(float)
+                       : 0;
+}
+template <typename T, int D_MAX, bool kAccumulateDQ>
+constexpr int BwdKVStages() {
+  return BwdKVTileBytes<T, D_MAX>() + 2 * BwdQStageBytes<T, D_MAX>() +
+                     BwdDSBytes<D_MAX, kAccumulateDQ>() <=
+                 kMaxSmemBytes
+             ? 2
+             : 1;
+}
+template <typename T, int D_MAX, bool kAccumulateDQ>
+constexpr int BwdKVSmemBytes() {
+  constexpr int bytes =
+      BwdKVTileBytes<T, D_MAX>() +
+      BwdKVStages<T, D_MAX, kAccumulateDQ>() * BwdQStageBytes<T, D_MAX>() +
+      BwdDSBytes<D_MAX, kAccumulateDQ>();
+  static_assert(bytes <= kMaxSmemBytes);
+  return bytes;
+}
 
 /*
 backward Q pass:
