@@ -1143,6 +1143,16 @@ class BinaryOpTest(test.TestCase):
           self.assertTrue(
               np.all(np.isnan(neg.imag)),
               msg=f"{dtype.__name__} n={n} op={op.__name__}: {neg}")
+          # (0+0j)/(0+0j) is nan+nanj at every length.
+          zero_over_zero = divide_of(zeros, zeros, op)
+          self.assertTrue(
+              np.all(np.isnan(zero_over_zero.real)),
+              msg=(f"0/0 real {dtype.__name__} n={n} op={op.__name__}: "
+                   f"{zero_over_zero}"))
+          self.assertTrue(
+              np.all(np.isnan(zero_over_zero.imag)),
+              msg=(f"0/0 imag {dtype.__name__} n={n} op={op.__name__}: "
+                   f"{zero_over_zero}"))
 
       for op in (math_ops.divide, gen_math_ops.div):
         finite_numer = np.array([2.0 + 1.0j], dtype=dtype)
@@ -1157,6 +1167,14 @@ class BinaryOpTest(test.TestCase):
         one = filled(1, 1.0, 0.0, dtype)
         subnormal_ref = divide_of(one, subnormal, op)
         inf_ref = divide_of(one, filled(1, np.inf, 0.0, dtype), op)
+        # 1e-40 is subnormal for float32; complex128 uses 1e-310. A normal
+        # component must not hide the subnormal one.
+        tiny = np.float32(1e-40) if dtype == np.complex64 else np.float64(
+            1e-310)
+        normal_sub = filled(1, 1.0, tiny, dtype)
+        sub_normal = filled(1, tiny, 1.0, dtype)
+        normal_sub_ref = divide_of(one, normal_sub, op)
+        sub_normal_ref = divide_of(one, sub_normal, op)
         for n in lengths:
           if n == 0:
             continue
@@ -1196,9 +1214,21 @@ class BinaryOpTest(test.TestCase):
           self.assertTrue(
               matches_reference(got_inf, inf_ref, tol),
               msg=(f"inf {dtype.__name__} n={n} op={op.__name__}: {got_inf}"))
+          got_normal_sub = divide_of(filled(n, 1.0, 0.0, dtype),
+                                      np.repeat(normal_sub, n), op)
+          self.assertTrue(
+              matches_reference(got_normal_sub, normal_sub_ref, tol),
+              msg=(f"normal+sub {dtype.__name__} n={n} op={op.__name__}: "
+                   f"{got_normal_sub}"))
+          got_sub_normal = divide_of(filled(n, 1.0, 0.0, dtype),
+                                      np.repeat(sub_normal, n), op)
+          self.assertTrue(
+              matches_reference(got_sub_normal, sub_normal_ref, tol),
+              msg=(f"sub+normal {dtype.__name__} n={n} op={op.__name__}: "
+                   f"{got_sub_normal}"))
 
-        # Length 20 holds two AVX-512 packets plus a remainder, and every
-        # packet contains a zero, so packetOp's scalar fallback runs.
+        # Length 20 holds two AVX-512 packets plus a remainder. Each packet
+        # contains a zero, so those lanes are selected from scalar division.
         numer = filled(20, 1.0, 0.0, dtype)
         mixed = np.zeros(20, dtype=dtype)
         mixed[1::4] = 0.5 + 0.25j
