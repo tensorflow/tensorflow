@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
 #include "tensorflow/lite/types/half.h"
 
@@ -244,12 +245,18 @@ TfLiteStatus CheckBroadcastOutputCapacity(TfLiteContext* context,
   TfLiteIntArray* expected_dims = nullptr;
   TF_LITE_ENSURE_STATUS(
       CalculateShapeForBroadcast(context, input1, input2, &expected_dims));
-  int64_t expected_elements = 1;
+  size_t expected_elements = 1;
   for (int i = 0; i < expected_dims->size; ++i) {
-    expected_elements *= expected_dims->data[i];
+    const int dim = expected_dims->data[i];
+    if (dim < 0 ||
+        MultiplyAndCheckOverflow(expected_elements, static_cast<size_t>(dim),
+                                 &expected_elements) != kTfLiteOk) {
+      TfLiteIntArrayFree(expected_dims);
+      return kTfLiteError;
+    }
   }
   TfLiteIntArrayFree(expected_dims);
-  TF_LITE_ENSURE_EQ(context, static_cast<int64_t>(NumElements(output)),
+  TF_LITE_ENSURE_EQ(context, static_cast<size_t>(NumElements(output)),
                     expected_elements);
   return kTfLiteOk;
 }
