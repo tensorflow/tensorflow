@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/flash_attention/fa2_api.h"
 
-#if __has_include("flash.h")
+#if __has_include("src/flash.h")
 
 #include <c10/cuda/CUDAException.h>
 #include <cutlass/numeric_types.h>
@@ -28,12 +28,16 @@ limitations under the License.
 #include <atomic>
 #include <cmath>
 
-#include "flash.h"
+#include "src/flash.h"  // from @flash_attention
 
 namespace flash_attention_fa2 {
 namespace {
 
-using namespace flash_attention_fa2_impl;
+using flash_attention_fa2_impl::Flash_bwd_params;
+using flash_attention_fa2_impl::Flash_fwd_params;
+using flash_attention_fa2_impl::run_mha_bwd_;
+using flash_attention_fa2_impl::run_mha_fwd_;
+
 // Both fp16 and bf16 are 2 bytes; used for zero-filling outputs.
 constexpr size_t kElemBytes = 2;
 static_assert(sizeof(cutlass::half_t) == kElemBytes &&
@@ -95,7 +99,7 @@ struct Strides {
   int64_t batch, row;
 };
 Strides BSHDStrides(int S, int H, int D) {
-  return {int64_t(S) * H * D, int64_t(H) * D};
+  return {static_cast<int64_t>(S) * H * D, static_cast<int64_t>(H) * D};
 }
 
 void SetFwdParams(Flash_fwd_params &p, bool bf16, const void *q, const void *k,
@@ -131,11 +135,11 @@ void SetFwdParams(Flash_fwd_params &p, bool bf16, const void *q, const void *k,
 
   p.softcap = 0.0f;
   p.scale_softmax = scale;
-  p.scale_softmax_log2 = scale * float(M_LOG2E);
+  p.scale_softmax_log2 = scale * static_cast<float>(M_LOG2E);
 
   // FA2 works with the keep probability.
   p.p_dropout = 1.f - dropout;
-  p.p_dropout_in_uint8_t = uint8_t(std::floor(p.p_dropout * 255.0));
+  p.p_dropout_in_uint8_t = static_cast<uint8_t>(std::floor(p.p_dropout * 255.0));
   p.rp_dropout = 1.f / p.p_dropout;
   p.scale_softmax_rp_dropout = p.rp_dropout * p.scale_softmax;
   p.philox_args = seed_dev != nullptr
@@ -288,7 +292,7 @@ namespace {
 // num_sm SMs: one per column block, and it launches ceil(num_sm / (B * H)) of
 // them (run_flash_bwd_seqk_parallel in flash_bwd_launch_template.h).
 int DeterministicSplits(int num_sm, int B, int H) {
-  const int64_t bh = int64_t(B) * H;
+  const int64_t bh = static_cast<int64_t>(B) * H;
   if (bh <= 0) return 1;  // empty inputs; Backward returns before launching
   return static_cast<int>((num_sm + bh - 1) / bh);
 }
@@ -412,7 +416,7 @@ cudaError_t Backward(cudaStream_t stream, bool bf16, const void *q,
 
 }  // namespace flash_attention_fa2
 
-#else  // !__has_include("flash.h")
+#else  // !__has_include("src/flash.h")
 
 // Built without @flash_attention: report FA2 as unsupported everywhere, so the
 // op always uses its own memory-efficient kernels.
@@ -451,4 +455,4 @@ cudaError_t Backward(cudaStream_t stream, bool bf16, const void *q,
 
 }  // namespace flash_attention_fa2
 
-#endif  // __has_include("flash.h")
+#endif  // __has_include("src/flash.h")
