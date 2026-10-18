@@ -372,7 +372,6 @@ struct FlashAttentionFunctor<CPUDevice, T> {
               float v_val = static_cast<float>(V(b, j, h, k));
               O_accum[k] += v_val * ratio_curr_o;
             }
-
           }  // End Loop j
 
           // Write Output
