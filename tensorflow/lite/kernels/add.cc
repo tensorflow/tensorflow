@@ -237,6 +237,23 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   return context->ResizeTensor(context, output, output_size);
 }
 
+TfLiteStatus CheckBroadcastOutputCapacity(TfLiteContext* context,
+                                          const TfLiteTensor* input1,
+                                          const TfLiteTensor* input2,
+                                          const TfLiteTensor* output) {
+  TfLiteIntArray* expected_dims = nullptr;
+  TF_LITE_ENSURE_STATUS(
+      CalculateShapeForBroadcast(context, input1, input2, &expected_dims));
+  int64_t expected_elements = 1;
+  for (int i = 0; i < expected_dims->size; ++i) {
+    expected_elements *= expected_dims->data[i];
+  }
+  TfLiteIntArrayFree(expected_dims);
+  TF_LITE_ENSURE_EQ(context, static_cast<int64_t>(NumElements(output)),
+                    expected_elements);
+  return kTfLiteOk;
+}
+
 template <KernelType kernel_type>
 void EvalAdd(TfLiteContext* context, TfLiteNode* node, TfLiteAddParams* params,
              const OpData* data, const TfLiteTensor* input1,
@@ -425,6 +442,12 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
+  if (!HaveSameShapes(input1, input2)) {
+    TF_LITE_ENSURE_STATUS(
+        CheckBroadcastOutputCapacity(context, input1, input2, output));
+  } else {
+    TF_LITE_ENSURE_EQ(context, NumElements(output), NumElements(input1));
+  }
 
   if (output->type == kTfLiteFloat32 || output->type == kTfLiteFloat16 ||
       output->type == kTfLiteInt32 || output->type == kTfLiteInt64 ||

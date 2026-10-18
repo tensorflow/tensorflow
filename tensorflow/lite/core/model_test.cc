@@ -1169,6 +1169,29 @@ TEST(BasicFlatBufferModel, TestHandleZeroSizeConstant) {
 // These tests will occur with the evaluation tests of individual operators,
 // not here.
 
+TEST(BasicFlatBufferModel, ZeroSubgraphsRejected) {
+  flatbuffers::FlatBufferBuilder builder;
+  std::vector<flatbuffers::Offset<OperatorCode>> operator_codes;
+  std::vector<flatbuffers::Offset<SubGraph>> subgraphs;
+  std::vector<flatbuffers::Offset<Buffer>> buffers = {
+      CreateBufferDirect(builder)};
+  auto model_offset =
+      CreateModelDirect(builder, TFLITE_SCHEMA_VERSION, &operator_codes,
+                        &subgraphs, "empty", &buffers);
+  FinishModelBuffer(builder, model_offset);
+
+  auto model = FlatBufferModel::BuildFromBuffer(
+      reinterpret_cast<const char*>(builder.GetBufferPointer()),
+      builder.GetSize());
+  ASSERT_TRUE(model);
+
+  std::unique_ptr<Interpreter> interpreter;
+  TrivialResolver resolver;
+  ASSERT_EQ(InterpreterBuilder(*model, resolver)(&interpreter), kTfLiteOk);
+  ASSERT_NE(interpreter, nullptr);
+  EXPECT_NE(interpreter->Invoke(), kTfLiteOk);
+}
+
 #if FLATBUFFERS_LITTLEENDIAN == 0
 // A string tensor buffer records the string count in its leading int32 word.
 // When that (untrusted) count implies more offset words than the buffer holds,

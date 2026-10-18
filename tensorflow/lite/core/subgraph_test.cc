@@ -26,6 +26,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/stderr_reporter.h"
 #include "tensorflow/lite/util.h"
@@ -36,6 +37,7 @@ namespace ops {
 namespace builtin {
 TfLiteRegistration* Register_PADV2();
 TfLiteRegistration* Register_NEG();
+TfLiteRegistration* Register_ADD();
 }  // namespace builtin
 }  // namespace ops
 
@@ -416,6 +418,53 @@ TEST(ReplaceNodeSubsetsWithDelegateKernels,
 
   ASSERT_EQ(interpreter.ModifyGraphWithDelegate(&delegate), kTfLiteOk);
   EXPECT_TRUE(kernel_initialized);
+}
+
+TEST(SubgraphTest, RejectsNonTopologicalConsumerBeforeProducerPrepare) {
+  Interpreter interpreter;
+  ASSERT_EQ(interpreter.AddTensors(7), kTfLiteOk);
+  ASSERT_EQ(interpreter.SetInputs({0, 3, 4}), kTfLiteOk);
+  ASSERT_EQ(interpreter.SetOutputs({5}), kTfLiteOk);
+
+  TfLiteQuantizationParams quant{};
+  ASSERT_EQ(interpreter.SetTensorParametersReadWrite(
+                0, kTfLiteFloat32, "t0", {1, 8, 8, 3}, quant),
+            kTfLiteOk);
+  ASSERT_EQ(interpreter.SetTensorParametersReadWrite(
+                3, kTfLiteFloat32, "t3", {169, 1, 1, 1}, quant),
+            kTfLiteOk);
+  ASSERT_EQ(interpreter.SetTensorParametersReadWrite(
+                4, kTfLiteFloat32, "t4", {1, 8, 8, 3}, quant),
+            kTfLiteOk);
+  ASSERT_EQ(interpreter.SetTensorParametersReadWrite(
+                5, kTfLiteFloat32, "t5", {1, 8, 8, 3}, quant),
+            kTfLiteOk);
+  ASSERT_EQ(interpreter.SetTensorParametersReadWrite(
+                6, kTfLiteFloat32, "t6", {1, 8, 8, 3}, quant),
+            kTfLiteOk);
+
+  const TfLiteRegistration* add_reg = ops::builtin::Register_ADD();
+  ASSERT_NE(add_reg, nullptr);
+
+  auto* params1 = reinterpret_cast<TfLiteAddParams*>(
+      malloc(sizeof(TfLiteAddParams)));
+  params1->activation = kTfLiteActNone;
+  auto* params2 = reinterpret_cast<TfLiteAddParams*>(
+      malloc(sizeof(TfLiteAddParams)));
+  params2->activation = kTfLiteActNone;
+
+  int node1_index = -1;
+  int node2_index = -1;
+  // Consumer (reads t6, writes t5) added BEFORE producer (reads t3, t4, writes t6)
+  ASSERT_EQ(interpreter.AddNodeWithParameters(
+                {0, 6}, {5}, nullptr, 0, params1, add_reg, &node1_index),
+            kTfLiteOk);
+  ASSERT_EQ(interpreter.AddNodeWithParameters(
+                {3, 4}, {6}, nullptr, 0, params2, add_reg, &node2_index),
+            kTfLiteOk);
+
+  // AllocateTensors() must fail cleanly rather than leaving t5 undersized (768B vs 129792B).
+  EXPECT_EQ(interpreter.AllocateTensors(), kTfLiteError);
 }
 
 }  // namespace

@@ -1587,6 +1587,10 @@ TfLiteStatus Subgraph::PrepareOpsStartingAt(
     has_dynamic_tensors_ =
         HasDynamicTensorImpl(context_, outputs(), &dynamic_tensor_index_);
   }
+  // Track tensors already consumed by earlier prepared nodes in this pass so
+  // we can detect if a later op's Prepare() mutates an earlier consumer's
+  // input shape (e.g., in a non-topologically ordered graph).
+  std::vector<bool> tensor_consumed_by_prepared_op(tensors_.size(), false);
   for (int execution_plan_index = first_execution_plan_index;
        execution_plan_index < execution_plan.size(); execution_plan_index++) {
     int node_index = execution_plan[execution_plan_index];
@@ -1594,6 +1598,19 @@ TfLiteStatus Subgraph::PrepareOpsStartingAt(
     const TfLiteRegistration& registration =
         nodes_and_registration_[node_index].second;
     EnsureTensorsVectorCapacity();
+    for (int i = 0; i < node.outputs->size; ++i) {
+      const int tensor_index = node.outputs->data[i];
+      if (tensor_index >= 0 &&
+          static_cast<size_t>(tensor_index) <
+              tensor_consumed_by_prepared_op.size() &&
+          tensor_consumed_by_prepared_op[tensor_index]) {
+        ReportError(
+            "Output tensor %d of node %d is already consumed by an earlier "
+            "prepared node in execution_plan (non-topological operator order).",
+            tensor_index, node_index);
+        return kTfLiteError;
+      }
+    }
 #ifdef TF_LITE_TENSORFLOW_PROFILER
     tflite::OnTfLiteOpPrepare(GetTFLiteOpName(registration), subgraph_index_,
                               node_index);
@@ -1604,6 +1621,17 @@ TfLiteStatus Subgraph::PrepareOpsStartingAt(
       ReportOpError(&context_, node, registration, node_index,
                     "failed to prepare");
       return op_prepare_status;
+    }
+    if (tensors_.size() > tensor_consumed_by_prepared_op.size()) {
+      tensor_consumed_by_prepared_op.resize(tensors_.size(), false);
+    }
+    for (int i = 0; i < node.inputs->size; ++i) {
+      const int tensor_index = node.inputs->data[i];
+      if (tensor_index >= 0 &&
+          static_cast<size_t>(tensor_index) <
+              tensor_consumed_by_prepared_op.size()) {
+        tensor_consumed_by_prepared_op[tensor_index] = true;
+      }
     }
 
     *last_execution_plan_index_prepared = execution_plan_index;

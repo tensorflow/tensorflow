@@ -1036,4 +1036,51 @@ TEST_F(FlatbufferConversionsTest,
                         "operation 'stablehlo_gather'."));
 }
 
+TEST_F(FlatbufferConversionsTest, ParseStablehloGatherRejectsOversizedArrays) {
+  flatbuffers::FlatBufferBuilder builder;
+  std::vector<int64_t> oversized_dims(9, 0);  // Max capacity is 8
+  std::vector<int64_t> valid_dims = {0};
+  auto gather_options = CreateStablehloGatherOptionsDirect(
+      builder, &oversized_dims, &valid_dims, &valid_dims, /*index_vector_dim=*/0,
+      &valid_dims, /*indices_are_sorted=*/false);
+  auto op_offset = CreateOperator(
+      builder, /*opcode_index=*/0, /*inputs=*/0, /*outputs=*/0,
+      BuiltinOptions_NONE, /*builtin_options=*/0, /*custom_options=*/0,
+      CustomOptionsFormat_FLEXBUFFERS, /*mutating_variable_inputs=*/0,
+      /*intermediates=*/0, /*large_custom_options_offset=*/0,
+      /*large_custom_options_size=*/0,
+      BuiltinOptions2_StablehloGatherOptions, gather_options.Union());
+  builder.Finish(op_offset);
+  const Operator* op = flatbuffers::GetRoot<Operator>(builder.GetBufferPointer());
+
+  void* builtin_data = nullptr;
+  EXPECT_EQ(kTfLiteError,
+            ParseOpData(op, BuiltinOperator_STABLEHLO_GATHER, &mock_reporter_,
+                        &mock_allocator_, &builtin_data));
+  EXPECT_EQ(nullptr, builtin_data);
+}
+
+TEST_F(FlatbufferConversionsTest, ParseStablehloScatterRejectsOversizedArrays) {
+  flatbuffers::FlatBufferBuilder builder;
+  std::vector<int64_t> oversized_dims(9, 0);  // Max capacity is 8
+  auto scatter_options = CreateStablehloScatterOptionsDirect(
+      builder, /*indices_are_sorted=*/false, &oversized_dims, nullptr, nullptr,
+      /*index_vector_dim=*/0, /*unique_indices=*/false);
+  auto op_offset = CreateOperator(
+      builder, /*opcode_index=*/0, /*inputs=*/0, /*outputs=*/0,
+      BuiltinOptions_NONE, /*builtin_options=*/0, /*custom_options=*/0,
+      CustomOptionsFormat_FLEXBUFFERS, /*mutating_variable_inputs=*/0,
+      /*intermediates=*/0, /*large_custom_options_offset=*/0,
+      /*large_custom_options_size=*/0,
+      BuiltinOptions2_StablehloScatterOptions, scatter_options.Union());
+  builder.Finish(op_offset);
+  const Operator* op = flatbuffers::GetRoot<Operator>(builder.GetBufferPointer());
+
+  void* builtin_data = nullptr;
+  EXPECT_EQ(kTfLiteError,
+            ParseOpData(op, BuiltinOperator_STABLEHLO_SCATTER, &mock_reporter_,
+                        &mock_allocator_, &builtin_data));
+  EXPECT_EQ(nullptr, builtin_data);
+}
+
 }  // namespace tflite

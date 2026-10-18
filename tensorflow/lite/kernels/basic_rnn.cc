@@ -75,6 +75,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(
       context, GetInputSafe(context, node, kHiddenStateTensor, &hidden_state));
 
+  TF_LITE_ENSURE_EQ(context, NumDimensions(input), 2);
+  TF_LITE_ENSURE_EQ(context, NumDimensions(input_weights), 2);
+  TF_LITE_ENSURE_EQ(context, NumDimensions(recurrent_weights), 2);
+  TF_LITE_ENSURE_EQ(context, NumDimensions(bias), 1);
+  TF_LITE_ENSURE_EQ(context, NumDimensions(hidden_state), 2);
+
   // Check all the parameters of tensor match within themselves and match the
   // input configuration.
   const int batch_size = input->dims->data[0];

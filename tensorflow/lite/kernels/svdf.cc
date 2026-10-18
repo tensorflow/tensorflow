@@ -96,6 +96,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // Check all the parameters of tensor match within themselves and match the
   // input configuration.
+  TF_LITE_ENSURE_EQ(context, NumDimensions(input), 2);
+  TF_LITE_ENSURE_EQ(context, NumDimensions(weights_feature), 2);
+  TF_LITE_ENSURE_EQ(context, NumDimensions(weights_time), 2);
+
   const int rank = params->rank;
   const int batch_size = input->dims->data[0];
   const int num_filters = weights_feature->dims->data[0];
