@@ -146,6 +146,11 @@ absl::Status IsReduceScatterKernelSupported(
     return absl::UnimplementedError(
         "Cross-host symmetric memory collectives are not supported.");
   }
+  if (num_devices == 1) {
+    return absl::UnimplementedError(
+        "Degenerate collectives with a single device per replica group are not "
+        "supported by collective kernels.");
+  }
   if (!llvm::has_single_bit(static_cast<uint64_t>(num_devices))) {
     return absl::UnimplementedError(absl::StrFormat(
         "Collective kernels are only supported for power of 2 number of "

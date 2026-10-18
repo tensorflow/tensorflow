@@ -732,6 +732,7 @@ cc_library(
     srcs = ["all_reduce_reduce_scatter_reorder.cc"],
     hdrs = ["all_reduce_reduce_scatter_reorder.h"],
     deps = [
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/service:collective_ops_utils",

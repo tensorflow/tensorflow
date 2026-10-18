@@ -2465,7 +2465,6 @@ cc_library(
         "//xla/service:hlo_verifier",
         "//xla/service/gpu/llvm_gpu_backend:nvptx_backend",
         "//xla/service/gpu/llvm_gpu_backend:nvptx_utils",
-        "//xla/service/gpu/llvm_gpu_backend:ptx_version_util",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:dnn",
@@ -2478,7 +2477,6 @@ cc_library(
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/stream_executor/cuda:cuda_diagnostics",
         "//xla/stream_executor/cuda:cuda_platform_id",
-        "//xla/stream_executor/cuda:subprocess_compilation",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
@@ -2488,6 +2486,7 @@ cc_library(
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -2500,12 +2499,47 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:IRReader",
         "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:TargetParser",
         "@llvm-project//llvm:ir_headers",
         "@llvm-project//mlir:IR",
-        "@local_config_cuda//cuda:cuda_headers",
         "@tsl//tsl/platform:path",
         "@tsl//tsl/profiler/lib:scoped_annotation",
         "@tsl//tsl/profiler/lib:traceme",
+    ],
+)
+
+genrule(
+    name = "nvptx_compiler_target_test_ptxas",
+    testonly = True,
+    outs = ["nvptx_compiler_target_test_cuda/bin/ptxas"],
+    cmd = "printf '#!/bin/sh\\necho ptxas V13.0.0\\n' > $@",
+    executable = True,
+)
+
+xla_cc_test(
+    name = "nvptx_compiler_target_test",
+    srcs = ["nvptx_compiler_target_test.cc"],
+    data = [":nvptx_compiler_target_test_ptxas"],
+    tags = [
+        "cuda-only",
+        "gpu",
+        "nomsan",
+    ],
+    deps = [
+        ":nvptx_compiler_impl",
+        "//xla:xla_proto_cc",
+        "//xla/service:hlo_module_config",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/cuda:compilation_provider",
+        "//xla/stream_executor/cuda:compilation_provider_options",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
+        "//xla/stream_executor/cuda:mock_compilation_provider",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:ir_headers",
+        "@tsl//tsl/platform:path",
     ],
 )
 

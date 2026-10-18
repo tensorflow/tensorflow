@@ -821,6 +821,13 @@ absl::Status HloComputation::ForceRemoveInstruction(
 
 absl::Status HloComputation::RemoveInstructionImpl(HloInstruction* instruction,
                                                    bool ignore_safety_check) {
+  TF_RET_CHECK(instruction != nullptr);
+  TF_RET_CHECK(instruction->parent() == this)
+      << "instruction " << instruction->name()
+      << " does not belong to computation " << name();
+  TF_RET_CHECK(!instruction->IsMarkedAsDead())
+      << "instruction " << instruction->name() << " is already marked dead";
+
   VLOG(2) << "Removing instruction " << instruction << " "
           << instruction->name() << " from computation " << name();
   TF_RET_CHECK(ignore_safety_check || IsSafelyRemovable(instruction))
@@ -834,27 +841,43 @@ absl::Status HloComputation::RemoveInstructionImpl(HloInstruction* instruction,
       << "instruction " << instruction->name()
       << " has control successors and cannot be removed";
 
-  HloInstructionInfo* info = &instructions_[instruction->local_id_];
-  DCHECK_EQ(info->inst(), instruction);
-  to_be_deleted_.push_back(info->inst());  // Takes ownership
-  to_be_deleted_.back()->DetachFromOperandsAndUsers();
+  const int32_t local_id = instruction->local_id();
+  TF_RET_CHECK(local_id >= 0 && local_id < instructions_.size())
+      << "instruction " << instruction->name() << " has invalid local_id "
+      << local_id;
+
+  HloInstructionInfo* info = &instructions_[local_id];
+  TF_RET_CHECK(info->inst() == instruction)
+      << "instruction " << instruction->name()
+      << " does not match entry at local_id " << local_id;
+
+  if (instruction->opcode() == HloOpcode::kParameter) {
+    const int64_t param_no = instruction->parameter_number();
+    if (param_no >= 0 && param_no < param_instructions_.size() &&
+        param_instructions_[param_no] == instruction) {
+      param_instructions_[param_no] = nullptr;
+    }
+  }
+
+  instruction->DetachFromOperandsAndUsers();
   // Clear all operands to avoid Null operands.
-  to_be_deleted_.back()->RemoveAllOperands();
-  to_be_deleted_.back()->ClearCalledComputations();
-  to_be_deleted_.back()->MarkAsDead();
-  info->inst()->set_parent(nullptr);
+  instruction->RemoveAllOperands();
+  instruction->ClearCalledComputations();
+  instruction->MarkAsDead();
+  instruction->set_parent(nullptr);
 
   // If this instruction is a constant, clear the literal eagerly instead of
   // waiting for the instruction to be deleted in Cleanup(). This greatly
   // reduces the peak heap memory during constant folding.
-  if (auto constant = DynCast<HloConstantInstruction>(to_be_deleted_.back())) {
+  if (auto constant = DynCast<HloConstantInstruction>(instruction)) {
     *constant->mutable_literal() = Literal();
   }
-  // TODO(jeff): should we set info->opcode to something?
-  info->inst_ =
-      nullptr;  // Leave a hole: this is no longer part of "instructions()"
+  // Leave a hole: this is no longer part of "instructions()"
+  info->inst_ = nullptr;
   instruction->local_id_ = -1;
   instruction_count_--;
+
+  to_be_deleted_.push_back(instruction);  // Takes ownership
 
   return absl::OkStatus();
 }

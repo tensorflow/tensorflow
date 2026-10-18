@@ -24,10 +24,9 @@ limitations under the License.
 
 #include "cuda_tile/Dialect/CudaTile/IR/Dialect.h"
 #include "tensor_ir/Compiler/Compiler.h"
-#include "tensor_ir/Compiler/CudaTile/CudaTileCompiler.h"
-#include "tensor_ir/Conversion/TensorToCudaTile/Options.h"
 #include "tensor_ir/Dialect/TensorIR.h"
 #include "tensor_ir/Dialect/TensorIRAttrs.h"
+#include "tensor_ir/Options/Options.h"
 #include "tensor_ir/Options/OptionsEnums.h"
 #include "tensor_ir/Utils/ComputeCapability.h"
 #include "absl/log/log.h"
@@ -132,9 +131,10 @@ absl::StatusOr<KernelReuseCache::Entry> CompileFusion(
   // to the pipeline's own default instead.
   int64_t reduction_tile_size = tensor_ir_config.reduction_tile_size();
   if (reduction_tile_size == 0) {
-    reduction_tile_size = mlir::nv_tensor_ir::kDefaultReductionTileSize;
+    reduction_tile_size =
+        mlir::nv_tensor_ir::CudaTileOptions{}.reductionTileSize;
   }
-  mlir::nv_tensor_ir::TensorToCudaTilePipelineOptions pipeline_options =
+  mlir::nv_tensor_ir::CompilerInvocation compile_options =
       tensor_ir::GetPipelineOptions(
           ir_emitter_context.gpu_device_info().gpu_compute_capability(),
           tile_size, reduction_tile_size);
@@ -164,47 +164,34 @@ absl::StatusOr<KernelReuseCache::Entry> CompileFusion(
 
   // Compile the kernel.
   using ::mlir::nv_tensor_ir::ArchPortability;
-  using ::mlir::nv_tensor_ir::backend::cuda_tile::CudaTileArtifactKind;
-  using ::mlir::nv_tensor_ir::backend::cuda_tile::CudaTileCompileOptions;
+  using ::mlir::nv_tensor_ir::ArtifactKind;
   mlir::FailureOr<mlir::nv_tensor_ir::SmTarget> sm_target =
-      mlir::nv_tensor_ir::SmTarget::fromCc(pipeline_options.computeCapability,
-                                           ArchPortability::arch_conditional);
-  if (llvm::failed(sm_target)) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("TensorIrFusion: unsupported compute capability: ",
-                     pipeline_options.computeCapability));
-  }
-  CudaTileCompileOptions compile_options(*sm_target, pipeline_options.numCTAs,
-                                         pipeline_options.numWarps, tile_size);
+      compile_options.getKernelSmTarget();
   // Ask the compiler for device code rather than TileIR bytecode. Cubin
   // assembly requires an arch-conditional target, which `SmTarget::fromCc`
   // only grants from sm_90 on; below that it silently clamps the portability
-  // down and `CudaTileCompileOptions::validate()` then rejects the request.
+  // down and `CompilerInvocation::validate()` then rejects the request.
   // `IsSupportedComputeCapability` above has already ruled those out.
-  if (sm_target->getPortability() != ArchPortability::arch_conditional) {
+  if (llvm::failed(sm_target) ||
+      sm_target->getPortability() != ArchPortability::arch_conditional) {
     return absl::InvalidArgumentError(
         absl::StrCat("TensorIrFusion: unsupported compute capability: ",
-                     pipeline_options.computeCapability));
+                     compile_options.deviceTarget.kernelTarget));
   }
-  compile_options.artifactKind = CudaTileArtifactKind::Cubin;
-  // `ICompiler::compile()` rebuilds the pipeline options from the compile
-  // options (`makePipelineOptions`), so the reduction tile size has to travel
-  // through here as well; `pipeline_options.reductionTileSize` alone would be
-  // dropped. The field comes from third_party/tensor_ir/patches/hotfixes.patch.
-  compile_options.reductionTileSize = reduction_tile_size;
+  compile_options.cudaTile.artifactKind = ArtifactKind::Cubin;
 
   tensor_ir::SetUpTileIrAssembler();
   std::unique_ptr<mlir::nv_tensor_ir::ICompiler> compiler =
       mlir::nv_tensor_ir::ICompiler::create(
           mlir::nv_tensor_ir::CompilerBackend::CudaTile);
-  auto kernel_or = compiler->compile(module, compile_options);
-  if (!kernel_or.ok()) {
+  auto artifact_or = compiler->compile(module, compile_options);
+  if (!artifact_or.ok()) {
     return absl::InternalError(
         absl::StrCat("TensorIrFusion: failed to compile fusion ", fusion.name(),
-                     ": ", kernel_or.status().message()));
+                     ": ", artifact_or.status().message()));
   }
 
-  return tensor_ir::MakeKernelCacheEntry(**kernel_or);
+  return tensor_ir::MakeKernelCacheEntry(**artifact_or);
 }
 
 }  // namespace

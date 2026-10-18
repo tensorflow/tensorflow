@@ -12,18 +12,21 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #include <functional>
 #include <memory>
+#include <thread>  // NOLINT
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
+#include "absl/log/globals.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/synchronization/barrier.h"
+#include "absl/synchronization/notification.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/collectives_test_util.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
@@ -334,6 +337,44 @@ TEST(NcclCommunicatorTest, CliqueSemaphore) {
                 StatusIs(absl::StatusCode::kInternal));
   }
 }
+
+class NcclCommunicatorDestructorTest : public ::testing::TestWithParam<bool> {};
+
+TEST_P(NcclCommunicatorDestructorTest, DestroyWithVlogEnabled) {
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       se::PlatformManager::PlatformWithName("CUDA"));
+  ASSERT_OK_AND_ASSIGN(std::vector<se::StreamExecutor*> executors,
+                       CreateExecutors(platform, 1));
+  ASSERT_OK_AND_ASSIGN(auto comms,
+                       CreateCommunicators(executors, {kD0}, GetParam()));
+  ASSERT_EQ(comms.size(), 1);
+
+  const int old_vlog_level =
+      absl::SetVLogLevel("nccl_communicator", /*log_level=*/1);
+
+  auto destroyed = std::make_shared<absl::Notification>();
+  std::shared_ptr<GpuCommunicator> comm = std::move(comms[0]);
+  std::thread destroyer([destroyed, comm = std::move(comm)]() mutable {
+    comm.reset();
+    destroyed->Notify();
+  });
+
+  const bool finished =
+      destroyed->WaitForNotificationWithTimeout(absl::Seconds(60));
+  absl::SetVLogLevel("nccl_communicator", old_vlog_level);
+  if (finished) {
+    destroyer.join();
+  } else {
+    destroyer.detach();
+  }
+  EXPECT_TRUE(finished) << "NcclCommunicator destructor deadlocked";
+}
+
+INSTANTIATE_TEST_SUITE_P(Blocking, NcclCommunicatorDestructorTest,
+                         ::testing::Bool(),
+                         [](const ::testing::TestParamInfo<bool>& info) {
+                           return info.param ? "Blocking" : "Async";
+                         });
 
 }  // namespace
 }  // namespace xla::gpu

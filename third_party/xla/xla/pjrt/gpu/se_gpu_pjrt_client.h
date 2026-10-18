@@ -210,9 +210,18 @@ absl::Status ExchangeEmptyStreamExecutorGpuTopology(
     absl::Duration get_global_topology_timeout = absl::Minutes(5));
 
 // Creates allocator memory registration and adds the required suballocator
-// visitors to `allocator_config`.
+// visitors to `allocator_config`. Returns nullptr when registration is off or
+// the pool is not preallocated.
 std::shared_ptr<gpu::AllocatorMemoryRegistration>
 CreateAllocatorMemoryRegistration(GpuAllocatorConfig* allocator_config);
+
+// Memory fraction the BFC allocator is built with: the client's resolved
+// policy unless --xla_gpu_memory_fraction_policy is set, pinned to a
+// FixedMemFraction (with a warning) when
+// --xla_gpu_enable_nccl_user_buffers_in_default_space requires a fixed arena
+// for the shared spatial pool. Fails if the flag does not parse.
+absl::StatusOr<MemFraction> ResolveBfcMemFraction(
+    const GpuAllocatorConfig& allocator_config);
 
 }  // namespace xla
 

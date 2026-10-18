@@ -58,8 +58,6 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/platform.h"
@@ -557,6 +555,21 @@ absl::StatusOr<ArrayRef> PjRtArray::Copy(
     std::optional<xla::ifrt::DeviceListRef> devices,
     std::optional<xla::ifrt::MemoryKind> memory_kind,
     ArrayCopySemantics semantics) {
+  return CopyImpl(std::move(devices), memory_kind, /*donated_dst=*/nullptr,
+                  semantics);
+}
+
+absl::StatusOr<ArrayRef> PjRtArray::CopyWithDonatedDst(
+    PjRtArray* donated_dst, ArrayCopySemantics semantics) {
+  return CopyImpl(donated_dst->sharding().devices(),
+                  donated_dst->sharding().memory_kind(), donated_dst,
+                  semantics);
+}
+
+absl::StatusOr<ArrayRef> PjRtArray::CopyImpl(
+    std::optional<xla::ifrt::DeviceListRef> devices,
+    std::optional<xla::ifrt::MemoryKind> memory_kind, PjRtArray* donated_dst,
+    ArrayCopySemantics semantics) {
   DCHECK(this);
   ABSL_ASSIGN_OR_RETURN(auto new_sharding,
                    sharding().WithDeviceAssignment(devices, memory_kind));
@@ -572,15 +585,23 @@ absl::StatusOr<ArrayRef> PjRtArray::Copy(
   PjRtBuffers buffers;
   buffers.reserve(pjrt_buffers_.size());
   TF_RET_CHECK(!new_sharding->devices()->empty());
+  TF_RET_CHECK(donated_dst == nullptr ||
+               pjrt_buffers_.size() == donated_dst->pjrt_buffers_.size());
 
   const MemoryKind& sharding_memory_kind = new_sharding->memory_kind();
   const absl::Span<Device* const> new_sharding_devices =
       new_sharding->devices()->devices();
   PjRtCompatibleClient* new_client = nullptr;
   for (int i = 0; i < pjrt_buffers_.size(); ++i) {
-    ABSL_ASSIGN_OR_RETURN(std::shared_ptr<PjRtBuffer> copied_buffer,
-                     CopySinglePjRtBuffer(i, new_sharding_devices[i],
-                                          sharding_memory_kind, semantics));
+    std::shared_ptr<PjRtBuffer> copied_buffer;
+    if (donated_dst != nullptr) {
+      ABSL_ASSIGN_OR_RETURN(copied_buffer, pjrt_buffers_[i]->CopyToMemorySpace(
+                                          donated_dst->pjrt_buffers_[i].get()));
+    } else {
+      ABSL_ASSIGN_OR_RETURN(copied_buffer,
+                       CopySinglePjRtBuffer(i, new_sharding_devices[i],
+                                            sharding_memory_kind, semantics));
+    }
     buffers.push_back(std::move(copied_buffer));
     if (new_client == nullptr) {
       PjRtCompatibleDevice* pjrt_device =
@@ -588,6 +609,12 @@ absl::StatusOr<ArrayRef> PjRtArray::Copy(
       if (pjrt_device != nullptr) {
         new_client = dyn_cast<PjRtCompatibleClient>(pjrt_device->client());
       }
+    }
+  }
+  if (donated_dst != nullptr) {
+    donated_dst->Delete();
+    if (semantics == ArrayCopySemantics::kDonateInput) {
+      Delete();
     }
   }
   if (new_client == nullptr) {

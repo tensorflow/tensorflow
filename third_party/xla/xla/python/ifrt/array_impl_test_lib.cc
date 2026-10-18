@@ -1977,6 +1977,38 @@ TEST(ArrayImplTest, CopyMixedSourceDevices) {
                                MemoryKind(), ArrayCopySemantics::kAlwaysCopy)
                   .status(),
               StatusIs(absl::StatusCode::kInvalidArgument));
+
+  absl::StatusOr<std::vector<ArrayRef>> empty_copied =
+      client->CopyArraysWithDonatedDst({}, {}, ArrayCopySemantics::kAlwaysCopy);
+  if (!absl::IsUnimplemented(empty_copied.status())) {
+    EXPECT_THAT(empty_copied, IsOkAndHolds(SizeIs(0)));
+    EXPECT_THAT(
+        client->CopyArraysWithDonatedDst(absl::MakeSpan(arrays),
+                                         absl::MakeSpan(arrays).subspan(0, 1),
+                                         ArrayCopySemantics::kAlwaysCopy),
+        StatusIs(absl::StatusCode::kInvalidArgument));
+    EXPECT_THAT(
+        client->CopyArraysWithDonatedDst(absl::MakeSpan(arrays).subspan(0, 1),
+                                         absl::MakeSpan(arrays).subspan(1, 1),
+                                         ArrayCopySemantics::kReuseInput),
+        StatusIs(absl::StatusCode::kInvalidArgument));
+    EXPECT_THAT(
+        client->CopyArraysWithDonatedDst(absl::MakeSpan(arrays).subspan(0, 1),
+                                         absl::MakeSpan(arrays).subspan(0, 1),
+                                         ArrayCopySemantics::kAlwaysCopy),
+        StatusIs(absl::StatusCode::kInvalidArgument));
+    std::vector<ArrayRef> dup_dst = {arrays[1], arrays[1]};
+    EXPECT_THAT(client->CopyArraysWithDonatedDst(
+                    absl::MakeSpan(arrays).subspan(0, 2),
+                    absl::MakeSpan(dup_dst), ArrayCopySemantics::kAlwaysCopy),
+                StatusIs(absl::StatusCode::kInvalidArgument));
+    std::vector<ArrayRef> same_src = {arrays[0], arrays[0]};
+    std::vector<ArrayRef> mixed_dst = {arrays[0], arrays[1]};
+    EXPECT_THAT(client->CopyArraysWithDonatedDst(
+                    absl::MakeSpan(same_src), absl::MakeSpan(mixed_dst),
+                    ArrayCopySemantics::kAlwaysCopy),
+                StatusIs(absl::StatusCode::kInvalidArgument));
+  }
 }
 
 TEST(ArrayImplTest, CopyMixedSourceMemoryKind) {
@@ -2257,6 +2289,8 @@ TEST(ArrayImplTest, CopyArraysExhaustive) {
   Shape shape({2, 3});
   std::vector<float> data(6);
   absl::c_iota(data, 0);
+  std::vector<float> data2(6);
+  absl::c_iota(data2, 10);
 
   for (Memory* const src_memory : src_device->Memories()) {
     for (Device* const dst_device : client->addressable_devices()) {
@@ -2298,6 +2332,56 @@ TEST(ArrayImplTest, CopyArraysExhaustive) {
             ArrayCopySemantics::kAlwaysCopy);
         TF_ASSERT_OK(future.Await());
         EXPECT_THAT(out_data, ElementsAreArray(data));
+
+        ASSERT_OK_AND_ASSIGN(
+            ArrayRef array2,
+            client->MakeArrayFromHostBuffer(
+                data2.data(), dtype, shape,
+                /*byte_strides=*/std::nullopt, sharding,
+                /*layout=*/nullptr,
+                Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+                /*on_done_with_host_buffer=*/{}));
+        ASSERT_OK_AND_ASSIGN(DeviceListRef dst_device_list,
+                             client->MakeDeviceList({dst_device}));
+        ASSERT_OK_AND_ASSIGN(
+            std::vector<ArrayRef> copied2,
+            client->CopyArrays(absl::MakeSpan(&array, 1),
+                               std::move(dst_device_list), dst_memory->Kind(),
+                               ArrayCopySemantics::kAlwaysCopy));
+        std::vector<ArrayRef> src_batch = {array2, array};
+        std::vector<ArrayRef> dst_batch = {new_array, std::move(copied2[0])};
+        absl::StatusOr<std::vector<ArrayRef>> copied_with_donated_dst =
+            client->CopyArraysWithDonatedDst(absl::MakeSpan(src_batch),
+                                             absl::MakeSpan(dst_batch),
+                                             ArrayCopySemantics::kDonateInput);
+        if (!absl::IsUnimplemented(copied_with_donated_dst.status())) {
+          ASSERT_OK(copied_with_donated_dst.status());
+          EXPECT_TRUE(src_batch[0]->IsDeleted());
+          EXPECT_TRUE(src_batch[1]->IsDeleted());
+          EXPECT_TRUE(dst_batch[0]->IsDeleted());
+          EXPECT_TRUE(dst_batch[1]->IsDeleted());
+          ASSERT_THAT(*copied_with_donated_dst, SizeIs(2));
+          for (int i = 0; i < 2; ++i) {
+            ArrayRef donated_copy = std::move((*copied_with_donated_dst)[i]);
+            EXPECT_THAT(donated_copy->sharding().devices()->devices(),
+                        ElementsAre(dst_device));
+            EXPECT_EQ(donated_copy->sharding().memory_kind(),
+                      dst_memory->Kind());
+            ASSERT_OK(donated_copy
+                          ->CopyToHostBuffer(out_data.data(),
+                                             /*byte_strides=*/std::nullopt,
+                                             ArrayCopySemantics::kAlwaysCopy)
+                          .Await());
+            EXPECT_THAT(out_data, ElementsAreArray(i == 0 ? data2 : data));
+            if (i == 0) {
+              EXPECT_THAT(client->CopyArraysWithDonatedDst(
+                              absl::MakeSpan(&donated_copy, 1),
+                              absl::MakeSpan(&dst_batch[0], 1),
+                              ArrayCopySemantics::kAlwaysCopy),
+                          StatusIs(absl::StatusCode::kFailedPrecondition));
+            }
+          }
+        }
       }
     }
   }

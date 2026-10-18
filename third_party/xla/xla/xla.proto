@@ -807,6 +807,13 @@ message DebugOptions {
   // preallocation.
   optional bool xla_gpu_enable_allocator_spatial_partitioning = 494;
 
+  // Overrides the client's memory fraction for the GPU BFC allocator. Uses the
+  // START, START+, or START-CAP grammar: "0.75" is fixed at 75% of device
+  // memory, "0.75+" preallocates 75% and lets the shared spatial pool grow to
+  // all of it, and "0.75-0.85" caps growth at 85%.
+  // Empty (the default) keeps the client's setting.
+  optional string xla_gpu_memory_fraction_policy = 560;
+
   optional bool xla_gpu_enable_analytical_latency_estimator = 255;
 
   // Enables NCCL Speed-of-Light (SoL) analytical cost model
@@ -1967,7 +1974,7 @@ message DebugOptions {
   // when the cuDNN version changes).
   optional bool xla_autotune_cache_require_strict_codegen_match = 559;
 
-  // Next id: 560
+  // Next id: 561
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

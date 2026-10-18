@@ -1120,12 +1120,23 @@ StreamExecutorGpuRawClient::CrossHostReceiveBuffersInto(
                 ABSL_ASSIGN_OR_RETURN(
                     se::DeviceAddressBase range,
                     executor->GetAllocationRange(mem->mem().opaque()));
+                const uintptr_t buffer_offset =
+                    reinterpret_cast<intptr_t>(mem->mem().opaque()) -
+                    reinterpret_cast<intptr_t>(range.opaque());
+                // A growing BFC buffer may span physical mappings. This
+                // descriptor carries only one fabric handle, so it cannot
+                // represent that span.
+                if (buffer_offset > range.size() ||
+                    mem->mem().size() > range.size() - buffer_offset) {
+                  return Unimplemented(
+                      "Cross-host fabric transfer of a buffer spanning "
+                      "physical "
+                      "allocations is not supported.");
+                }
                 ABSL_ASSIGN_OR_RETURN(
                     *desc.mutable_buffer_handle(),
                     GetOrExportFabricHandle(executor, range.opaque()));
-                desc.set_buffer_offset(
-                    reinterpret_cast<intptr_t>(mem->mem().opaque()) -
-                    reinterpret_cast<intptr_t>(range.opaque()));
+                desc.set_buffer_offset(buffer_offset);
               }
               desc.set_rendezvous_key(rendezvous_key);
 
@@ -1158,6 +1169,9 @@ StreamExecutorGpuRawClient::CrossHostReceiveBuffersInto(
                  buffer_sequencing_events) {
               SetEventAsError(buffer_sequencing_event, results.status());
             }
+            // Descriptor consumers must also see the failure; they may be
+            // waiting for this callback before they can start or cancel the
+            // remote send.
             notifier(results.status());
             return;
           }
@@ -1412,6 +1426,39 @@ BuildLocalDeviceStates(
   return std::move(addressable_devices);
 }
 
+absl::StatusOr<MemFraction> ResolveBfcMemFraction(
+    const GpuAllocatorConfig& config, const DebugOptions& debug_options) {
+  MemFraction fraction = config.GetMemoryFraction();
+  if (!debug_options.xla_gpu_memory_fraction_policy().empty()) {
+    absl::StatusOr<MemFraction> from_flag =
+        ParseMemFraction(debug_options.xla_gpu_memory_fraction_policy());
+    if (!from_flag.ok()) {
+      return InvalidArgument("--xla_gpu_memory_fraction_policy: %s",
+                             from_flag.status().message());
+    }
+    fraction = *from_flag;
+  }
+  // Automatic registration of the arena's backing allocations requires a
+  // fixed, fully registered arena: if BFC grew later, ranks could register
+  // inconsistent sets of allocations. The explicit opt-in takes precedence.
+  const bool spatial_pool =
+      config.preallocate &&
+      debug_options.xla_gpu_enable_allocator_spatial_partitioning();
+  if (spatial_pool &&
+      debug_options.xla_gpu_enable_nccl_user_buffers_in_default_space() &&
+      std::holds_alternative<FlexMemFraction>(fraction)) {
+    const double start = MemFractionStart(fraction);
+    LOG(WARNING) << "Pinning the BFC pool to a fixed " << start
+                 << " of device memory (memory fraction "
+                 << MemFractionToString(fraction)
+                 << " requested) because "
+                    "--xla_gpu_enable_nccl_user_buffers_in_default_space "
+                    "requires a fixed, fully registered arena.";
+    fraction = FixedMemFraction{start};
+  }
+  return fraction;
+}
+
 // Constructs a GPU device memory allocator to use, according to the allocator
 // configuration the client requested.
 absl::StatusOr<std::unique_ptr<se::DeviceAddressAllocator>>
@@ -1419,7 +1466,7 @@ GetStreamExecutorGpuDeviceAllocator(
     se::Platform* platform, const GpuAllocatorConfig& allocator_config,
     const std::map<int, std::unique_ptr<LocalDeviceState>>& addressable_devices,
     bool preallocate_host_memory) {
-  const MemFraction memory_fraction = allocator_config.GetMemoryFraction();
+  MemFraction memory_fraction = allocator_config.GetMemoryFraction();
   std::vector<se::MultiDeviceAdapter::AllocatorInfo> allocators;
   const DebugOptions& debug_options = xla::GetDebugOptionsFromFlags();
   GpuAllocatorConfig::Kind effective_kind = allocator_config.kind;
@@ -1462,11 +1509,15 @@ GetStreamExecutorGpuDeviceAllocator(
       // Collective memory is anchored at the lower end: symmetric NCCL windows
       // need identical offsets across ranks, and the base of a preallocated
       // range is the one address that can never move. Default memory is served
-      // from the upper end, so the top of the range is the only boundary that
-      // would have to move if the range were ever extended.
+      // from the upper end. On CUDA, growth maps additional backing into the
+      // reserved VA range and advances the upper end without changing existing
+      // mappings or the collective allocation limit.
       shared_collective_pool =
           allocator_config.preallocate &&
           debug_options.xla_gpu_enable_allocator_spatial_partitioning();
+      // The separate collective pool below must use the same resolved policy.
+      ABSL_ASSIGN_OR_RETURN(memory_fraction,
+                       ResolveBfcMemFraction(allocator_config, debug_options));
       // Without spatial partitioning the BFC allocator only serves the lower
       // end, so default memory must keep the default allocation end.
       const tsl::AllocationEnd default_allocation_end =
@@ -1475,13 +1526,13 @@ GetStreamExecutorGpuDeviceAllocator(
       for (const auto& ordinal_and_device : addressable_devices) {
         ABSL_ASSIGN_OR_RETURN(
             auto bfc_allocator,
-            CreateBFCAllocator(ordinal_and_device.second->executor(),
-                               memory_fraction, allocator_config.preallocate,
-                               allocator_config.gpu_system_memory_size,
-                               allocator_config.sub_allocator_alloc_visitors,
-                               allocator_config.sub_allocator_free_visitors,
-                               /*enable_spatial_partitioning=*/
-                               shared_collective_pool));
+            CreateBFCAllocator(
+                ordinal_and_device.second->executor(), memory_fraction,
+                allocator_config.preallocate,
+                allocator_config.gpu_system_memory_size,
+                allocator_config.sub_allocator_alloc_visitors,
+                allocator_config.sub_allocator_free_visitors,
+                /*enable_spatial_partitioning=*/shared_collective_pool));
         allocators.push_back(
             {bfc_allocator, ordinal_and_device.second->compute_stream(),
              /*memory_space=*/
@@ -1675,8 +1726,8 @@ CreateAllocatorMemoryRegistration(GpuAllocatorConfig* allocator_config) {
     return nullptr;
   }
   // Automatic memory registration is only safe for preallocated BFC arenas.
-  // If BFC grows later, ranks may not see a consistent set of registered
-  // backing allocations, which can lead to undefined behavior or deadlocks.
+  // ResolveBfcMemFraction pins a growable shared pool to a fixed fraction when
+  // this flag is set, so the registered arena never grows.
   if (!allocator_config->preallocate) {
     return nullptr;
   }
@@ -1691,6 +1742,11 @@ CreateAllocatorMemoryRegistration(GpuAllocatorConfig* allocator_config) {
       memory_registration->free_visitor());
 
   return memory_registration;
+}
+
+absl::StatusOr<MemFraction> ResolveBfcMemFraction(
+    const GpuAllocatorConfig& allocator_config) {
+  return ResolveBfcMemFraction(allocator_config, GetDebugOptionsFromFlags());
 }
 
 struct PjRtDevicesAndTopology {
@@ -2359,17 +2415,10 @@ static absl::StatusOr<PjRtStreamExecutorExecutionOutput> RunGpuAsync(
   TF_RET_CHECK(result_definition_event_promises.empty() ||
                result_definition_event_promises.size() == results.size());
 
-  std::vector<const Shape*> argument_shapes;
-  if (exec.executable() != nullptr) {
-    const auto& layout = exec.executable()->module().entry_computation_layout();
-    argument_shapes.reserve(layout.parameter_count());
-    for (int i = 0; i < layout.parameter_count(); ++i) {
-      argument_shapes.push_back(&layout.parameter_shape(i));
-    }
-  }
-
+  // PJRT validates input buffers in ExecutePrepare. Only execution options and
+  // stream setup are needed here.
   ABSL_ASSIGN_OR_RETURN(auto options_and_stream,
-                   exec.RunHelper(argument_shapes, run_options_inp));
+                   exec.PrepareRunOptions(run_options_inp));
   auto* gpu_exec = absl::down_cast<gpu::GpuExecutable*>(exec.executable());
   const ServiceExecutableRunOptions* run_options = &options_and_stream.first;
   se::DeviceAddressAllocator* const memory_allocator = run_options->allocator();
