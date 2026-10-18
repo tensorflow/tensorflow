@@ -16,6 +16,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -23,6 +24,8 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -50,6 +53,7 @@ limitations under the License.
 #include "xla/python/ifrt/test_util.h"
 #include "xla/python/ifrt/topology.h"
 #include "xla/python/ifrt/value.h"
+#include "xla/python/pjrt_ifrt/executable_metadata.pb.h"
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
 #include "xla/python/pjrt_ifrt/xla_client.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
@@ -59,7 +63,9 @@ limitations under the License.
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace ifrt {
@@ -70,6 +76,7 @@ using ::absl_testing::StatusIs;
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 using ::testing::SizeIs;
+using ::tsl::proto_testing::EqualsProto;
 
 constexpr absl::string_view kModuleAddOne = R"mlir(
 module @add_one {
@@ -632,6 +639,104 @@ TEST(PjRtExecutableImplTest, LoadValidationErrors) {
                              absl::MakeSpan(&options, 1)),
                 StatusIs(absl::StatusCode::kInvalidArgument));
   }
+}
+
+TEST(PjRtExecutableImplTest, ExecutableSerializationWithTupledParameters) {
+  static constexpr absl::string_view kTupledParamsModule = R"mlir(
+    module @tupled_params {
+      func.func @main(%arg0: tuple<tensor<2x3xi32>, !stablehlo.token>)
+          -> tensor<2x3xi32> {
+        %0 = stablehlo.get_tuple_element %arg0[0]
+            : (tuple<tensor<2x3xi32>, !stablehlo.token>) -> tensor<2x3xi32>
+        return %0 : tensor<2x3xi32>
+      }
+    }
+  )mlir";
+
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  Compiler* compiler = client->GetDefaultCompiler();
+  Device* device = client->addressable_devices().at(0);
+  ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
+                       client->MakeDeviceList({device}));
+
+  mlir::MLIRContext context;
+  ASSERT_OK_AND_ASSIGN(
+      mlir::OwningOpRef<mlir::ModuleOp> module,
+      xla::ParseMlirModuleString(kTupledParamsModule, context));
+
+  xla::CompileOptions compile_options;
+  ExecutableBuildOptions& build_options =
+      compile_options.executable_build_options;
+  build_options.set_device_ordinal(device->Id().value());
+  build_options.set_num_replicas(1);
+  build_options.set_num_partitions(1);
+  build_options.set_use_spmd_partitioning(true);
+  DeviceAssignment device_assignment(1, 1);
+  device_assignment(0, 0) = device->Id().value();
+  build_options.set_device_assignment(device_assignment);
+
+  ASSERT_OK_AND_ASSIGN(
+      LoadedExecutableRef loaded_executable,
+      compiler
+          ->CompileAndLoad(
+              std::make_unique<HloProgram>(*module),
+              std::make_unique<XlaCompileOptions>(compile_options, device_list))
+          .Await());
+
+  absl::StatusOr<std::string> serialized_executable =
+      loaded_executable->Serialize();
+  if (absl::IsUnimplemented(serialized_executable.status())) {
+    GTEST_SKIP() << "Serialization is not supported on this platform.";
+  }
+  ASSERT_OK(serialized_executable);
+
+  SerializedXlaExecutableMetadata metadata;
+  tsl::protobuf::io::ArrayInputStream input_stream(
+      serialized_executable->data(), serialized_executable->size());
+  ASSERT_TRUE(tsl::protobuf::util::ParseDelimitedFromZeroCopyStream(
+      &metadata, &input_stream, nullptr));
+
+  ASSERT_EQ(metadata.parameter_specs_size(), 2);
+
+  ASSERT_TRUE(metadata.parameter_specs(0).has_dtype());
+  EXPECT_EQ(static_cast<int32_t>(metadata.parameter_specs(0).dtype().kind()),
+            static_cast<int32_t>(DType::kS32));
+  ASSERT_TRUE(metadata.parameter_specs(0).has_shape());
+  EXPECT_THAT(metadata.parameter_specs(0).shape().dims(), ElementsAre(2, 3));
+
+  ASSERT_TRUE(metadata.parameter_specs(1).has_dtype());
+  EXPECT_EQ(static_cast<int32_t>(metadata.parameter_specs(1).dtype().kind()),
+            static_cast<int32_t>(DType::kToken));
+  ASSERT_TRUE(metadata.parameter_specs(1).has_shape());
+  EXPECT_THAT(metadata.parameter_specs(1).shape().dims(), ElementsAre());
+
+  auto deserialize_options =
+      std::make_unique<XlaDeserializeExecutableOptions>();
+  deserialize_options->devices = device_list;
+  ASSERT_OK_AND_ASSIGN(
+      LoadedExecutableRef deserialized_executable,
+      compiler
+          ->DeserializeLoadedExecutable(absl::Cord(*serialized_executable),
+                                        std::move(deserialize_options))
+          .Await());
+  EXPECT_EQ(deserialized_executable->name(), "tupled_params");
+
+  ASSERT_OK_AND_ASSIGN(std::string reserialized_executable,
+                       deserialized_executable->Serialize());
+  SerializedXlaExecutableMetadata reserialized_metadata;
+  tsl::protobuf::io::ArrayInputStream reserialized_stream(
+      reserialized_executable.data(), reserialized_executable.size());
+  ASSERT_TRUE(tsl::protobuf::util::ParseDelimitedFromZeroCopyStream(
+      &reserialized_metadata, &reserialized_stream, nullptr));
+  ASSERT_EQ(reserialized_metadata.parameter_specs_size(), 2);
+  EXPECT_THAT(reserialized_metadata.parameter_specs(0).dtype(),
+              EqualsProto(metadata.parameter_specs(0).dtype()));
+  EXPECT_THAT(reserialized_metadata.parameter_specs(0).shape(),
+              EqualsProto(metadata.parameter_specs(0).shape()));
+  EXPECT_THAT(reserialized_metadata.parameter_specs(1).dtype(),
+              EqualsProto(metadata.parameter_specs(1).dtype()));
+  EXPECT_THAT(reserialized_metadata.parameter_specs(1).shape(),
+              EqualsProto(metadata.parameter_specs(1).shape()));
 }
 
 }  // namespace

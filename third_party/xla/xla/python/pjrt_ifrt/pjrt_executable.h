@@ -193,6 +193,11 @@ class PjRtExecutable final
     bool is_portable;
     std::vector<int> donatable_input_indices;
 
+    // Parameter array specs. `std::nullopt` if unknown (e.g., deserialized from
+    // an older payload without parameter dtype/shape metadata).
+    std::optional<std::vector<DType>> parameter_dtypes;
+    std::optional<std::vector<Shape>> parameter_shapes;
+
     // Output array specs.
     std::vector<DType> output_dtypes;
     std::vector<Shape> output_shapes;

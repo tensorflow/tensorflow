@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/test_util.h"
+#include "xla/python/ifrt/topology.h"
 #include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/pjrt_ifrt/basic_string_array.h"
@@ -1110,15 +1111,12 @@ TEST(ExecutableTest, ExecutableSerialization) {
     EXPECT_EQ(metadata.parameter_specs(i).donated_input(), expected_donated);
 
     // Verify shape and dtype fields
-    if (metadata.parameter_specs(i).has_dtype()) {
-      EXPECT_EQ(
-          static_cast<int32_t>(metadata.parameter_specs(i).dtype().kind()),
-          static_cast<int32_t>(xla::ifrt::DType::kS32));
-    }
-    if (metadata.parameter_specs(i).has_shape()) {
-      EXPECT_THAT(metadata.parameter_specs(i).shape().dims(),
-                  testing::ElementsAre(2, 3));
-    }
+    ASSERT_TRUE(metadata.parameter_specs(i).has_dtype());
+    EXPECT_EQ(static_cast<int32_t>(metadata.parameter_specs(i).dtype().kind()),
+              static_cast<int32_t>(xla::ifrt::DType::kS32));
+    ASSERT_TRUE(metadata.parameter_specs(i).has_shape());
+    EXPECT_THAT(metadata.parameter_specs(i).shape().dims(),
+                testing::ElementsAre(2, 3));
   }
 
   absl::string_view serialized_pjrt_executable = *serialized_executable;
@@ -1355,6 +1353,151 @@ TEST(ExecutableTest, ExecutableSerializationUsesExecutableOutputDimensions) {
                                         std::move(options))
           .Await());
   EXPECT_EQ(deserialized_executable->name(), "uneven_sharding");
+}
+
+TEST(ExecutableTest, ExecutableSerializationWithTokenParameters) {
+  static constexpr absl::string_view kTokenParamsModule = R"mlir(
+    module @token_params {
+      func.func @main(%arg0: tensor<2x3xi32>, %arg1: !stablehlo.token)
+          -> tensor<2x3xi32> {
+        return %arg0 : tensor<2x3xi32>
+      }
+    }
+  )mlir";
+
+  ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  Compiler* compiler = client->GetDefaultCompiler();
+  absl::Span<Device* const> devices =
+      client->addressable_devices().subspan(0, 1);
+
+  ASSERT_OK_AND_ASSIGN(
+      LoadedExecutableRef loaded_executable,
+      CompileOnDevices(client.get(), compiler, kTokenParamsModule, devices,
+                       /*replicated=*/false, /*serialize=*/false));
+
+  absl::StatusOr<std::string> serialized_executable =
+      loaded_executable->Serialize();
+  if (absl::IsUnimplemented(serialized_executable.status())) {
+    GTEST_SKIP() << "Serialization is not supported on this platform.";
+  }
+  ASSERT_OK(serialized_executable);
+
+  SerializedXlaExecutableMetadata metadata;
+  tsl::protobuf::io::ArrayInputStream input_stream(
+      serialized_executable->data(), serialized_executable->size());
+  ASSERT_TRUE(tsl::protobuf::util::ParseDelimitedFromZeroCopyStream(
+      &metadata, &input_stream, nullptr));
+
+  ASSERT_EQ(metadata.parameter_specs_size(), 2);
+
+  ASSERT_TRUE(metadata.parameter_specs(0).has_dtype());
+  EXPECT_EQ(static_cast<int32_t>(metadata.parameter_specs(0).dtype().kind()),
+            static_cast<int32_t>(DType::kS32));
+  ASSERT_TRUE(metadata.parameter_specs(0).has_shape());
+  EXPECT_THAT(metadata.parameter_specs(0).shape().dims(), ElementsAre(2, 3));
+
+  ASSERT_TRUE(metadata.parameter_specs(1).has_dtype());
+  EXPECT_EQ(static_cast<int32_t>(metadata.parameter_specs(1).dtype().kind()),
+            static_cast<int32_t>(DType::kToken));
+  ASSERT_TRUE(metadata.parameter_specs(1).has_shape());
+  EXPECT_THAT(metadata.parameter_specs(1).shape().dims(), ElementsAre());
+
+  ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
+                       client->MakeDeviceList(devices));
+  auto options = std::make_unique<XlaDeserializeExecutableOptions>();
+  options->devices = std::move(device_list);
+  ASSERT_OK_AND_ASSIGN(
+      LoadedExecutableRef deserialized_executable,
+      compiler
+          ->DeserializeLoadedExecutable(absl::Cord(*serialized_executable),
+                                        std::move(options))
+          .Await());
+  EXPECT_EQ(deserialized_executable->name(), "token_params");
+
+  // Re-serializing the deserialized executable preserves parameter dtypes and
+  // shapes.
+  ASSERT_OK_AND_ASSIGN(std::string reserialized_executable,
+                       deserialized_executable->Serialize());
+  SerializedXlaExecutableMetadata reserialized_metadata;
+  tsl::protobuf::io::ArrayInputStream reserialized_stream(
+      reserialized_executable.data(), reserialized_executable.size());
+  ASSERT_TRUE(tsl::protobuf::util::ParseDelimitedFromZeroCopyStream(
+      &reserialized_metadata, &reserialized_stream, nullptr));
+  ASSERT_EQ(reserialized_metadata.parameter_specs_size(), 2);
+  EXPECT_THAT(reserialized_metadata.parameter_specs(0).dtype(),
+              EqualsProto(metadata.parameter_specs(0).dtype()));
+  EXPECT_THAT(reserialized_metadata.parameter_specs(0).shape(),
+              EqualsProto(metadata.parameter_specs(0).shape()));
+  EXPECT_THAT(reserialized_metadata.parameter_specs(1).dtype(),
+              EqualsProto(metadata.parameter_specs(1).dtype()));
+  EXPECT_THAT(reserialized_metadata.parameter_specs(1).shape(),
+              EqualsProto(metadata.parameter_specs(1).shape()));
+}
+
+TEST(ExecutableTest, UnloadedExecutableSerialization) {
+  ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  Compiler* compiler = client->GetDefaultCompiler();
+  absl::Span<Device* const> devices =
+      client->addressable_devices().subspan(0, 2);
+  ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
+                       client->MakeDeviceList(devices));
+  absl::StatusOr<std::shared_ptr<Topology>> topology =
+      client->GetTopologyForDevices(device_list);
+  if (absl::IsUnimplemented(topology.status())) {
+    GTEST_SKIP() << "GetTopologyForDevices is not supported on this platform.";
+  }
+  ASSERT_OK(topology);
+
+  mlir::MLIRContext context;
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                       xla::ParseMlirModuleString(module_add_sub, context));
+
+  xla::CompileOptions compile_options;
+  ExecutableBuildOptions& build_options =
+      compile_options.executable_build_options;
+  build_options.set_num_replicas(1);
+  build_options.set_num_partitions(devices.size());
+  build_options.set_use_spmd_partitioning(true);
+  DeviceAssignment device_assignment(/*replica_count=*/1,
+                                     /*computation_count=*/devices.size());
+  for (int i = 0; i < devices.size(); ++i) {
+    device_assignment(0, i) = devices[i]->Id().value();
+  }
+  build_options.set_device_assignment(device_assignment);
+
+  auto xla_compile_options =
+      std::make_unique<XlaCompileOptions>(compile_options, device_list);
+  absl::StatusOr<ExecutableRef> executable =
+      compiler
+          ->Compile(std::make_unique<HloProgram>(*module), **topology,
+                    std::move(xla_compile_options))
+          .Await();
+  if (absl::IsUnimplemented(executable.status())) {
+    GTEST_SKIP() << "Compile is not supported on this platform.";
+  }
+  ASSERT_OK(executable);
+
+  absl::StatusOr<std::string> serialized_executable =
+      (*executable)->Serialize();
+  if (absl::IsUnimplemented(serialized_executable.status())) {
+    GTEST_SKIP() << "Serialization is not supported on this platform.";
+  }
+  ASSERT_OK(serialized_executable);
+
+  SerializedXlaExecutableMetadata metadata;
+  tsl::protobuf::io::ArrayInputStream input_stream(
+      serialized_executable->data(), serialized_executable->size());
+  ASSERT_TRUE(tsl::protobuf::util::ParseDelimitedFromZeroCopyStream(
+      &metadata, &input_stream, nullptr));
+
+  ASSERT_EQ(metadata.parameter_specs_size(), 2);
+  for (int i = 0; i < 2; ++i) {
+    ASSERT_TRUE(metadata.parameter_specs(i).has_dtype());
+    EXPECT_EQ(static_cast<int32_t>(metadata.parameter_specs(i).dtype().kind()),
+              static_cast<int32_t>(DType::kS32));
+    ASSERT_TRUE(metadata.parameter_specs(i).has_shape());
+    EXPECT_THAT(metadata.parameter_specs(i).shape().dims(), ElementsAre(2, 3));
+  }
 }
 
 }  // namespace

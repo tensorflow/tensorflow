@@ -360,6 +360,28 @@ absl::StatusOr<std::vector<int>> GetDonatableInputIndicesFromMlirModule(
   return donatable_input_indices;
 }
 
+// Returns a flat list of parameter shapes from the given MLIR module.
+absl::StatusOr<std::vector<xla::Shape>> ParameterShapesOfModule(
+    mlir::ModuleOp module) {
+  mlir::func::FuncOp main = module.lookupSymbol<mlir::func::FuncOp>("main");
+  if (!main) {
+    return InvalidArgument("MLIR module has no main function");
+  }
+  mlir::FunctionType type = main.getFunctionType();
+  mlir::TypeRange arg_types = type.getInputs();
+  if (type.getNumInputs() == 1) {
+    if (auto tuple_type = llvm::dyn_cast<mlir::TupleType>(type.getInput(0))) {
+      arg_types = tuple_type.getTypes();
+    }
+  }
+  std::vector<xla::Shape> parameter_shapes;
+  parameter_shapes.reserve(arg_types.size());
+  for (mlir::Type arg_type : arg_types) {
+    parameter_shapes.push_back(xla::TypeToShape(arg_type));
+  }
+  return parameter_shapes;
+}
+
 // Returns a list of result shapes from the given MLIR module.
 absl::StatusOr<std::vector<xla::Shape>> ResultShapesOfModule(
     mlir::ModuleOp module) {
@@ -452,6 +474,9 @@ absl::StatusOr<ExecutableRef> PjRtExecutable::Create(
   ABSL_ASSIGN_OR_RETURN(
       std::vector<int> donatable_input_indices,
       GetDonatableInputIndicesFromMlirModule(module.mlir_module()));
+  ABSL_ASSIGN_OR_RETURN(
+      const std::vector<xla::Shape> mlir_module_parameter_xla_shapes,
+      ParameterShapesOfModule(module.mlir_module()));
   ABSL_ASSIGN_OR_RETURN(const std::vector<xla::Shape> mlir_module_output_xla_shapes,
                    ResultShapesOfModule(module.mlir_module()));
   ABSL_ASSIGN_OR_RETURN(const std::vector<xla::LayoutMode> output_layout_modes,
@@ -461,6 +486,12 @@ absl::StatusOr<ExecutableRef> PjRtExecutable::Create(
                    PjRtCompile(std::move(compile_options), std::move(module),
                                topology, compile_client));
 
+  ABSL_ASSIGN_OR_RETURN(auto parameter_dtypes_and_shapes,
+                   GetDTypesAndShapes(mlir_module_parameter_xla_shapes));
+  std::vector<DType> parameter_dtypes =
+      std::move(parameter_dtypes_and_shapes.first);
+  std::vector<Shape> parameter_shapes =
+      std::move(parameter_dtypes_and_shapes.second);
   ABSL_ASSIGN_OR_RETURN(auto output_dtypes_and_shapes,
                    GetDTypesAndShapes(mlir_module_output_xla_shapes));
   std::vector<DType> output_dtypes = std::move(output_dtypes_and_shapes.first);
@@ -482,6 +513,8 @@ absl::StatusOr<ExecutableRef> PjRtExecutable::Create(
   CommonMetadata common_metadata;
   common_metadata.is_portable = is_portable;
   common_metadata.donatable_input_indices = std::move(donatable_input_indices);
+  common_metadata.parameter_dtypes = std::move(parameter_dtypes);
+  common_metadata.parameter_shapes = std::move(parameter_shapes);
   common_metadata.output_dtypes = std::move(output_dtypes);
   common_metadata.output_shapes = std::move(output_shapes);
   common_metadata.output_hlo_shardings = std::move(output_hlo_shardings);
@@ -602,8 +635,13 @@ absl::StatusOr<std::string> PjRtExecutable::CommonMetadata::Serialize(
     // layout style (default layouts are not using concrete PjRt layouts),
     // extract parameters directly from StableHLO and avoid calling
     // `GetParameterLayouts()`.
-    num_parameters =
-        parameter_shardings.has_value() ? parameter_shardings->size() : 0;
+    if (parameter_dtypes.has_value()) {
+      num_parameters = parameter_dtypes->size();
+    } else if (parameter_shardings.has_value()) {
+      num_parameters = parameter_shardings->size();
+    } else {
+      num_parameters = 0;
+    }
     parameter_layouts = std::vector<std::shared_ptr<const xla::PjRtLayout>>(
         /*size=*/num_parameters,
         /*value=*/nullptr);
@@ -616,6 +654,22 @@ absl::StatusOr<std::string> PjRtExecutable::CommonMetadata::Serialize(
           "Parameter shardings have a different size from parameter layouts: "
           "%d vs. %d",
           parameter_shardings->size(), num_parameters);
+    }
+  }
+  if (parameter_dtypes.has_value() != parameter_shapes.has_value()) {
+    return FailedPrecondition(
+        "Parameter dtypes and shapes must both be present or both be absent.");
+  }
+  if (parameter_dtypes.has_value()) {
+    if (parameter_dtypes->size() != num_parameters) {
+      return FailedPrecondition(
+          "Parameter dtypes have a different size from parameters: %d vs. %d",
+          parameter_dtypes->size(), num_parameters);
+    }
+    if (parameter_shapes->size() != num_parameters) {
+      return FailedPrecondition(
+          "Parameter shapes have a different size from parameters: %d vs. %d",
+          parameter_shapes->size(), num_parameters);
     }
   }
   absl::flat_hash_set<int> donated_inputs_set(donatable_input_indices.begin(),
@@ -645,6 +699,14 @@ absl::StatusOr<std::string> PjRtExecutable::CommonMetadata::Serialize(
     // Donated input
     bool is_donated = donated_inputs_set.contains(i);
     parameter_spec.set_donated_input(is_donated);
+
+    // Shape and DType
+    if (parameter_dtypes.has_value()) {
+      *parameter_spec.mutable_dtype() =
+          (*parameter_dtypes)[i].ToProto(serdes_version);
+      *parameter_spec.mutable_shape() =
+          (*parameter_shapes)[i].ToProto(serdes_version);
+    }
   }
 
   metadata.set_portable(is_portable);
@@ -712,6 +774,18 @@ PjRtExecutable::CommonMetadata::Deserialize(
   }
 
   std::vector<int> donated_input_indices;
+  std::optional<std::vector<DType>> parameter_dtypes;
+  std::optional<std::vector<Shape>> parameter_shapes;
+  if (metadata.parameter_specs().empty()) {
+    parameter_dtypes.emplace();
+    parameter_shapes.emplace();
+  } else if (metadata.parameter_specs(0).has_dtype() &&
+             metadata.parameter_specs(0).has_shape()) {
+    parameter_dtypes.emplace();
+    parameter_dtypes->reserve(metadata.parameter_specs_size());
+    parameter_shapes.emplace();
+    parameter_shapes->reserve(metadata.parameter_specs_size());
+  }
   std::vector<DType> output_dtypes;
   std::vector<Shape> output_shapes;
   std::optional<std::vector<xla::HloSharding>> output_hlo_shardings;
@@ -726,8 +800,20 @@ PjRtExecutable::CommonMetadata::Deserialize(
   output_layouts->reserve(metadata.output_specs_size());
 
   for (int i = 0; i < metadata.parameter_specs_size(); ++i) {
-    if (metadata.parameter_specs(i).donated_input()) {
+    const auto& parameter_spec = metadata.parameter_specs(i);
+    if (parameter_spec.donated_input()) {
       donated_input_indices.push_back(i);
+    }
+    if (parameter_spec.has_dtype() != parameter_dtypes.has_value() ||
+        parameter_spec.has_shape() != parameter_shapes.has_value()) {
+      return absl::InvalidArgumentError(
+          "All parameters must either have both dtype and shape, or neither.");
+    }
+    if (parameter_dtypes.has_value()) {
+      ABSL_ASSIGN_OR_RETURN(DType dtype, DType::FromProto(parameter_spec.dtype()));
+      parameter_dtypes->push_back(dtype);
+      ABSL_ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(parameter_spec.shape()));
+      parameter_shapes->push_back(std::move(shape));
     }
   }
 
@@ -776,6 +862,8 @@ PjRtExecutable::CommonMetadata::Deserialize(
   CommonMetadata common_metadata;
   common_metadata.is_portable = metadata.portable();
   common_metadata.donatable_input_indices = std::move(donated_input_indices);
+  common_metadata.parameter_dtypes = std::move(parameter_dtypes);
+  common_metadata.parameter_shapes = std::move(parameter_shapes);
   common_metadata.output_dtypes = std::move(output_dtypes);
   common_metadata.output_shapes = std::move(output_shapes);
   common_metadata.output_hlo_shardings = std::move(output_hlo_shardings);
@@ -824,6 +912,9 @@ absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::Create(
   ABSL_ASSIGN_OR_RETURN(
       std::vector<int> donatable_input_indices,
       GetDonatableInputIndicesFromMlirModule(module.mlir_module()));
+  ABSL_ASSIGN_OR_RETURN(
+      const std::vector<xla::Shape> mlir_module_parameter_xla_shapes,
+      ParameterShapesOfModule(module.mlir_module()));
   ABSL_ASSIGN_OR_RETURN(const std::vector<xla::Shape> mlir_module_output_xla_shapes,
                    ResultShapesOfModule(module.mlir_module()));
   ABSL_ASSIGN_OR_RETURN(const std::vector<xla::LayoutMode> output_layout_modes,
@@ -834,6 +925,12 @@ absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::Create(
       client->pjrt_client()->CompileAndLoad(std::move(module),
                                             std::move(compile_options)));
 
+  ABSL_ASSIGN_OR_RETURN(auto parameter_dtypes_and_shapes,
+                   GetDTypesAndShapes(mlir_module_parameter_xla_shapes));
+  std::vector<DType> parameter_dtypes =
+      std::move(parameter_dtypes_and_shapes.first);
+  std::vector<Shape> parameter_shapes =
+      std::move(parameter_dtypes_and_shapes.second);
   ABSL_ASSIGN_OR_RETURN(auto output_dtypes_and_shapes,
                    GetDTypesAndShapes(mlir_module_output_xla_shapes));
   std::vector<DType> output_dtypes = std::move(output_dtypes_and_shapes.first);
@@ -855,6 +952,8 @@ absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::Create(
   PjRtExecutable::CommonMetadata common_metadata;
   common_metadata.is_portable = is_portable;
   common_metadata.donatable_input_indices = std::move(donatable_input_indices);
+  common_metadata.parameter_dtypes = std::move(parameter_dtypes);
+  common_metadata.parameter_shapes = std::move(parameter_shapes);
   common_metadata.output_dtypes = std::move(output_dtypes);
   common_metadata.output_shapes = std::move(output_shapes);
   common_metadata.output_hlo_shardings = std::move(output_hlo_shardings);
