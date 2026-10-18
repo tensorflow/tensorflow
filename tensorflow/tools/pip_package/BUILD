@@ -507,13 +507,13 @@ py_test(
 
 verify_manylinux_compliance_test(
     name = "manylinux_compliance_test",
-    aarch64_compliance_tag = "manylinux_2_27_aarch64",
+    aarch64_compliance_tag = "manylinux_2_31_aarch64",
     ppc64le_compliance_tag = "manylinux_2_17_ppc64le",
     test_tags = [
         "manual",
     ],
     wheel = ":wheel",
-    x86_64_compliance_tag = "manylinux_2_27_x86_64",
+    x86_64_compliance_tag = "manylinux_2_31_x86_64",
 )
 
 filegroup(

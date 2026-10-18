@@ -1,0 +1,212 @@
+diff --git a/cc/config/aarch64_ubuntu18_gcc8.4/sysroot.BUILD b/cc/config/aarch64_ubuntu18_gcc8.4/sysroot.BUILD
+index 8c5cdfa..b92085d 100644
+--- a/cc/config/aarch64_ubuntu18_gcc8.4/sysroot.BUILD
++++ b/cc/config/aarch64_ubuntu18_gcc8.4/sysroot.BUILD
+@@ -67,7 +67,6 @@ cc_toolchain_import(
+         "usr/include/c++/{gcc_version}".format(gcc_version = GCC_VERSION),
+         "usr/include/aarch64-linux-gnu/c++/{gcc_version}".format(gcc_version = GCC_VERSION),
+         "usr/include/c++/{gcc_version}/backward".format(gcc_version = GCC_VERSION),
+-        "usr/include/c++/{gcc_version}/experimental".format(gcc_version = GCC_VERSION),
+     ],
+     visibility = ["//visibility:public"],
+ )
+diff --git a/cc/config/aarch64_ubuntu20_gcc10/sysroot.BUILD b/cc/config/aarch64_ubuntu20_gcc10/sysroot.BUILD
+index 2439f2f..462a954 100644
+--- a/cc/config/aarch64_ubuntu20_gcc10/sysroot.BUILD
++++ b/cc/config/aarch64_ubuntu20_gcc10/sysroot.BUILD
+@@ -67,7 +67,6 @@ cc_toolchain_import(
+         "usr/include/c++/{gcc_version}".format(gcc_version = GCC_VERSION),
+         "usr/include/aarch64-linux-gnu/c++/{gcc_version}".format(gcc_version = GCC_VERSION),
+         "usr/include/c++/{gcc_version}/backward".format(gcc_version = GCC_VERSION),
+-        "usr/include/c++/{gcc_version}/experimental".format(gcc_version = GCC_VERSION),
+     ],
+     visibility = ["//visibility:public"],
+ )
+diff --git a/cc/config/x86_64_ubuntu18_gcc8.4/sysroot.BUILD b/cc/config/x86_64_ubuntu18_gcc8.4/sysroot.BUILD
+index 905ec80..0a17587 100644
+--- a/cc/config/x86_64_ubuntu18_gcc8.4/sysroot.BUILD
++++ b/cc/config/x86_64_ubuntu18_gcc8.4/sysroot.BUILD
+@@ -67,7 +67,6 @@ cc_toolchain_import(
+         "usr/include/c++/{gcc_version}".format(gcc_version = GCC_VERSION),
+         "usr/include/x86_64-linux-gnu/c++/{gcc_version}".format(gcc_version = GCC_VERSION),
+         "usr/include/c++/{gcc_version}/backward".format(gcc_version = GCC_VERSION),
+-        "usr/include/c++/{gcc_version}/experimental".format(gcc_version = GCC_VERSION),
+     ],
+     visibility = ["//visibility:public"],
+ )
+diff --git a/cc/config/x86_64_ubuntu20_gcc10/sysroot.BUILD b/cc/config/x86_64_ubuntu20_gcc10/sysroot.BUILD
+index 85fb4fd..7b286da 100644
+--- a/cc/config/x86_64_ubuntu20_gcc10/sysroot.BUILD
++++ b/cc/config/x86_64_ubuntu20_gcc10/sysroot.BUILD
+@@ -67,7 +67,6 @@ cc_toolchain_import(
+         "usr/include/c++/{gcc_version}".format(gcc_version = GCC_VERSION),
+         "usr/include/x86_64-linux-gnu/c++/{gcc_version}".format(gcc_version = GCC_VERSION),
+         "usr/include/c++/{gcc_version}/backward".format(gcc_version = GCC_VERSION),
+-        "usr/include/c++/{gcc_version}/experimental".format(gcc_version = GCC_VERSION),
+     ],
+     visibility = ["//visibility:public"],
+ )
+diff --git a/cc/deps/cc_toolchain_deps.bzl b/cc/deps/cc_toolchain_deps.bzl
+index 655962b..31c67e7 100644
+--- a/cc/deps/cc_toolchain_deps.bzl
++++ b/cc/deps/cc_toolchain_deps.bzl
+@@ -48,7 +48,7 @@ def cc_toolchain_deps():
+     if "sysroot_linux_x86_64" not in native.existing_rules():
+         sysroot(
+             name = "sysroot_linux_x86_64",
+-            default_dist = "linux_glibc_2_27",
++            default_dist = "linux_glibc_2_31",
+             dists = {
+                 "@sysroot_linux_x86_64_glibc_2_27//:startup_libs": "linux_glibc_2_27",
+                 "@sysroot_linux_x86_64_glibc_2_31//:startup_libs": "linux_glibc_2_31",
+@@ -112,7 +112,7 @@ def cc_toolchain_deps():
+     if "sysroot_linux_aarch64" not in native.existing_rules():
+         sysroot(
+             name = "sysroot_linux_aarch64",
+-            default_dist = "linux_glibc_2_27",
++            default_dist = "linux_glibc_2_31",
+             dists = {
+                 "@sysroot_linux_aarch64_glibc_2_27//:startup_libs": "linux_glibc_2_27",
+                 "@sysroot_linux_aarch64_glibc_2_31//:startup_libs": "linux_glibc_2_31",
+diff --git a/cc/impls/linux_aarch64_linux_aarch64_cuda/wrappers/nvcc_wrapper b/cc/impls/linux_aarch64_linux_aarch64_cuda/wrappers/nvcc_wrapper
+index 2cfb314..24b1c47 100755
+--- a/cc/impls/linux_aarch64_linux_aarch64_cuda/wrappers/nvcc_wrapper
++++ b/cc/impls/linux_aarch64_linux_aarch64_cuda/wrappers/nvcc_wrapper
+@@ -210,7 +210,8 @@ def invoke_nvcc(argv, cuda_log=False):
+   nvcc_std_map = {}
+   if int(NVCC_VERSION.split('.')[0]) >= 11:
+       nvcc_std_map["c++1z"] = "c++17"
+-      nvcc_allowed_std_options += ["c++17", "c++1z"]
++      nvcc_std_map["c++2a"] = "c++20"
++      nvcc_allowed_std_options += ["c++17", "c++1z", "c++20", "c++2a"]
+   std_options = ''.join([' -std=' +
+       (nvcc_std_map[define] if define in nvcc_std_map else define)
+       for define in std_options if define in nvcc_allowed_std_options][-1:])
+@@ -276,8 +277,8 @@ def invoke_nvcc(argv, cuda_log=False):
+   nvccopts += warning_options
+   if int(NVCC_VERSION.split('.')[0]) >= 13:
+     nvccopts += ' --device-entity-has-hidden-visibility=false -static-global-template-stub=false '
+-  # Force C++17 dialect (note, everything in just one string!)
+-  nvccopts += ' --std c++17 '
++  # Force C++20 dialect (note, everything in just one string!)
++  nvccopts += ' --std c++20 '
+   nvccopts += fatbin_options
+   # The option `-allow-unsupported-compiler` is required for the combination of
+   # NVCC+clang compilers.
+diff --git a/cc/impls/linux_x86_64_linux_x86_64_cuda/wrappers/nvcc_wrapper b/cc/impls/linux_x86_64_linux_x86_64_cuda/wrappers/nvcc_wrapper
+index 2cfb314..24b1c47 100755
+--- a/cc/impls/linux_x86_64_linux_x86_64_cuda/wrappers/nvcc_wrapper
++++ b/cc/impls/linux_x86_64_linux_x86_64_cuda/wrappers/nvcc_wrapper
+@@ -210,7 +210,8 @@ def invoke_nvcc(argv, cuda_log=False):
+   nvcc_std_map = {}
+   if int(NVCC_VERSION.split('.')[0]) >= 11:
+       nvcc_std_map["c++1z"] = "c++17"
+-      nvcc_allowed_std_options += ["c++17", "c++1z"]
++      nvcc_std_map["c++2a"] = "c++20"
++      nvcc_allowed_std_options += ["c++17", "c++1z", "c++20", "c++2a"]
+   std_options = ''.join([' -std=' +
+       (nvcc_std_map[define] if define in nvcc_std_map else define)
+       for define in std_options if define in nvcc_allowed_std_options][-1:])
+@@ -276,8 +277,8 @@ def invoke_nvcc(argv, cuda_log=False):
+   nvccopts += warning_options
+   if int(NVCC_VERSION.split('.')[0]) >= 13:
+     nvccopts += ' --device-entity-has-hidden-visibility=false -static-global-template-stub=false '
+-  # Force C++17 dialect (note, everything in just one string!)
+-  nvccopts += ' --std c++17 '
++  # Force C++20 dialect (note, everything in just one string!)
++  nvccopts += ' --std c++20 '
+   nvccopts += fatbin_options
+   # The option `-allow-unsupported-compiler` is required for the combination of
+   # NVCC+clang compilers.
+diff --git a/cc/impls/linux_x86_64_linux_x86_64_rocm/BUILD b/cc/impls/linux_x86_64_linux_x86_64_rocm/BUILD
+index 9052de4..f288260 100644
+--- a/cc/impls/linux_x86_64_linux_x86_64_rocm/BUILD
++++ b/cc/impls/linux_x86_64_linux_x86_64_rocm/BUILD
+@@ -273,6 +273,7 @@ FEATURES_ESSENTIAL = [
+ 
+     # C++ standard flags
+     "//third_party/rules_cc_toolchain/features:c++17",
++    "//third_party/rules_cc_toolchain/features:c++20",
+ 
+     # Other flags
+     "//cc/features:allow_shlib_undefined",
+diff --git a/cc/impls/linux_x86_64_linux_x86_64_rocm/wrappers/hipcc_wrapper b/cc/impls/linux_x86_64_linux_x86_64_rocm/wrappers/hipcc_wrapper
+index 7290591..563923a 100755
+--- a/cc/impls/linux_x86_64_linux_x86_64_rocm/wrappers/hipcc_wrapper
++++ b/cc/impls/linux_x86_64_linux_x86_64_rocm/wrappers/hipcc_wrapper
+@@ -263,8 +263,8 @@ def InvokeHipcc(argv, log=False):
+     # This ensures proper macro setup before other headers
+     cmd.extend(["--include=hip/hip_runtime.h"])
+ 
+-    # Force C++17 dialect
+-    cmd.extend(["--std=c++17"])
++    # Force C++20 dialect
++    cmd.extend(["--std=c++20"])
+ 
+     # Use -fno-gpu-rdc by default
+     cmd.extend(["-fno-gpu-rdc", "-fcuda-flush-denormals-to-zero"])
+diff --git a/cc/impls/linux_x86_64_linux_x86_64_sycl/BUILD b/cc/impls/linux_x86_64_linux_x86_64_sycl/BUILD
+index a201cb2..92598ab 100644
+--- a/cc/impls/linux_x86_64_linux_x86_64_sycl/BUILD
++++ b/cc/impls/linux_x86_64_linux_x86_64_sycl/BUILD
+@@ -190,6 +190,7 @@ cc_toolchain_config(
+         "//third_party/rules_cc_toolchain/features:c++11",
+         "//third_party/rules_cc_toolchain/features:c++14",
+         "//third_party/rules_cc_toolchain/features:c++17",
++        "//third_party/rules_cc_toolchain/features:c++20",
+ 
+         #
+         "//cc/features:allow_shlib_undefined",
+diff --git a/cc/impls/linux_x86_64_linux_x86_64_sycl/wrappers/icpx_wrapper b/cc/impls/linux_x86_64_linux_x86_64_sycl/wrappers/icpx_wrapper
+index b684d9e..241b7be 100755
+--- a/cc/impls/linux_x86_64_linux_x86_64_sycl/wrappers/icpx_wrapper
++++ b/cc/impls/linux_x86_64_linux_x86_64_sycl/wrappers/icpx_wrapper
+@@ -106,7 +106,7 @@ def call_compiler(argv, link = False, sycl_compile = True):
+ 
+   compile_flags = []
+   compile_flags.append('-DDNNL_GRAPH_WITH_SYCL=1')
+-  compile_flags.append("-std=c++17")
++  compile_flags.append("-std=c++20")
+ 
+   link_flags = ['-fPIC']
+   link_flags.append('-lsycl')
+diff --git a/cc/rocm/features/rocm_hipcc_feature.bzl b/cc/rocm/features/rocm_hipcc_feature.bzl
+index f45a4f2..68457e6 100644
+--- a/cc/rocm/features/rocm_hipcc_feature.bzl
++++ b/cc/rocm/features/rocm_hipcc_feature.bzl
+@@ -108,8 +108,8 @@ def _rocm_hipcc_feature_impl(ctx):
+ 
+     # C++ only flags
+     cpp_only_flags = [
+-        # Force C++17 for HIP compilation (only valid for C++)
+-        "--std=c++17",
++        # Force C++20 for HIP compilation (only valid for C++)
++        "--std=c++20",
+     ]
+ 
+     return _feature(
+diff --git a/gpu/cuda/legacy/crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc.tpl b/gpu/cuda/legacy/crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc.tpl
+index 59497c9..c3b1954 100755
+--- a/gpu/cuda/legacy/crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc.tpl
++++ b/gpu/cuda/legacy/crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc.tpl
+@@ -193,7 +193,8 @@ def InvokeNvcc(argv, log=False):
+   nvcc_std_map = {}
+   if int(NVCC_VERSION.split('.')[0]) >= 11:
+       nvcc_std_map["c++1z"] = "c++17"
+-      nvcc_allowed_std_options += ["c++17", "c++1z"]
++      nvcc_std_map["c++2a"] = "c++20"
++      nvcc_allowed_std_options += ["c++17", "c++1z", "c++20", "c++2a"]
+   std_options = ''.join([' -std=' +
+       (nvcc_std_map[define] if define in nvcc_std_map else define)
+       for define in std_options if define in nvcc_allowed_std_options][-1:])
+@@ -259,8 +260,8 @@ def InvokeNvcc(argv, log=False):
+   nvccopts += warning_options
+   if int(NVCC_VERSION.split('.')[0]) >= 13:
+     nvccopts += ' --device-entity-has-hidden-visibility=false -static-global-template-stub=false '
+-  # Force C++17 dialect (note, everything in just one string!)
+-  nvccopts += ' --std c++17 '
++  # Force C++20 dialect (note, everything in just one string!)
++  nvccopts += ' --std c++20 '
+   nvccopts += fatbin_options
+   # The option `-allow-unsupported-compiler` is required for the combination of
+   # NVCC+clang compilers. 
