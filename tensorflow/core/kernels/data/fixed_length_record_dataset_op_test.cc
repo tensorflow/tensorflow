@@ -367,6 +367,52 @@ TEST_F(FixedLengthRecordDatasetOpTest, RestoreInvalidFileIndexUncompressed) {
   ExpectRestoreFailsForInvalidFileIndex(dataset_params);
 }
 
+// {num_files, -1} is the checkpoint of an exhausted iterator and must
+// still restore.
+TEST_F(FixedLengthRecordDatasetOpTest, RestoreExhaustedIteratorCompressed) {
+  auto dataset_params = FixedLengthRecordDatasetParams1();
+  TF_ASSERT_OK(Initialize(dataset_params));
+  VariantTensorDataWriter writer;
+  TF_ASSERT_OK(writer.WriteScalar(iterator_->prefix(), "current_file_index",
+                                  int64_t{2}));
+  TF_ASSERT_OK(
+      writer.WriteScalar(iterator_->prefix(), "current_pos", int64_t{-1}));
+  std::vector<const VariantTensorData*> data;
+  writer.GetData(&data);
+  VariantTensorDataReader reader(data);
+  std::unique_ptr<IteratorBase> iterator;
+  TF_ASSERT_OK(RestoreIterator(iterator_ctx_.get(), &reader,
+                               dataset_params.iterator_prefix(), *dataset_,
+                               &iterator));
+  bool end_of_sequence = false;
+  std::vector<Tensor> out_tensors;
+  TF_ASSERT_OK(
+      iterator->GetNext(iterator_ctx_.get(), &out_tensors, &end_of_sequence));
+  EXPECT_TRUE(end_of_sequence);
+}
+
+TEST_F(FixedLengthRecordDatasetOpTest, RestoreExhaustedIteratorUncompressed) {
+  auto dataset_params = FixedLengthRecordDatasetParams3();
+  TF_ASSERT_OK(Initialize(dataset_params));
+  VariantTensorDataWriter writer;
+  TF_ASSERT_OK(writer.WriteScalar(iterator_->prefix(), "current_file_index",
+                                  int64_t{2}));
+  TF_ASSERT_OK(
+      writer.WriteScalar(iterator_->prefix(), "current_pos", int64_t{-1}));
+  std::vector<const VariantTensorData*> data;
+  writer.GetData(&data);
+  VariantTensorDataReader reader(data);
+  std::unique_ptr<IteratorBase> iterator;
+  TF_ASSERT_OK(RestoreIterator(iterator_ctx_.get(), &reader,
+                               dataset_params.iterator_prefix(), *dataset_,
+                               &iterator));
+  bool end_of_sequence = false;
+  std::vector<Tensor> out_tensors;
+  TF_ASSERT_OK(
+      iterator->GetNext(iterator_ctx_.get(), &out_tensors, &end_of_sequence));
+  EXPECT_TRUE(end_of_sequence);
+}
+
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow
