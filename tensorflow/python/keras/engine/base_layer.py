@@ -1566,6 +1566,14 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   def add_metric(self, value, name=None, **kwargs):
     """Adds metric tensor to the layer.
 
+    Note: This documents the legacy Keras 2 API. In Keras 3 (the default
+    `tf.keras` since TensorFlow 2.16), `Layer.add_metric()` is permanently
+    disabled and raises a `NotImplementedError`. In Keras 3, either pass the
+    metric to `Model.compile(metrics=[...])`, or create a `keras.metrics.Metric`
+    object in `__init__()` (or `build()`), call its `update_state()` method
+    from `call()` or a custom `train_step()`, and expose it through the
+    `metrics` property.
+
     This method can be used inside the `call()` method of a subclassed layer
     or model.
 
