@@ -25,7 +25,6 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
@@ -52,7 +51,6 @@ limitations under the License.
 #include "xla/client/executable_build_options.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/debug_options_flags.h"
-#include "xla/executable_run_options.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
@@ -67,7 +65,6 @@ limitations under the License.
 #include "xla/service/gpu/dense_data_intermediate.h"
 #include "xla/service/gpu/gpu_executable.pb.h"
 #include "xla/service/gpu/gpu_executable_buffer_allocator.h"
-#include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu/gpu_module_globals.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu_topology.h"
@@ -83,13 +80,11 @@ limitations under the License.
 #include "xla/stream_executor/abi/executable_abi_version.pb.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_address.h"
-#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/mock_stream.h"
 #include "xla/stream_executor/mock_stream_executor.h"
 #include "xla/stream_executor/module_spec.h"
-#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -1345,103 +1340,6 @@ TEST_F(GpuExecutableTest, ExecutableAbiVersion) {
   ASSERT_OK_AND_ASSIGN(GpuExecutableProto proto, executable->ToProto());
   EXPECT_THAT(proto.executable_abi_version(),
               EqualsProto(executable_abi_version_proto));
-}
-
-class MockStreamWithErrorCallback : public se::MockStream {
- public:
-  using se::MockStream::DoHostCallbackWithStatus;
-  MOCK_METHOD(absl::Status, DoHostCallbackWithStatus,
-              (absl::AnyInvocable<absl::Status() &&> callback,
-               absl::AnyInvocable<void(absl::Status) &&> error_cb),
-              (override));
-};
-
-class FakeDeviceAddressAllocator : public se::DeviceAddressAllocator {
- public:
-  explicit FakeDeviceAddressAllocator(const se::Platform* platform)
-      : se::DeviceAddressAllocator(platform) {}
-  absl::StatusOr<se::ScopedDeviceAddress<uint8_t>> Allocate(
-      int device_ordinal, uint64_t size, bool retry_on_failure,
-      int64_t memory_space) override {
-    return se::ScopedDeviceAddress<uint8_t>();
-  }
-  absl::Status Deallocate(int device_ordinal,
-                          se::DeviceAddressBase mem) override {
-    return absl::OkStatus();
-  }
-  bool AllowsAsynchronousDeallocation() const override { return true; }
-  absl::StatusOr<se::Stream*> GetStream(int device_ordinal) override {
-    return nullptr;
-  }
-};
-
-// TODO(b/573818657): Re-enable once device_error_callback is wired without
-// per-step DoHostCallback overhead.
-TEST_F(GpuExecutableTest, DISABLED_InvokesDeviceErrorCallbackOnStreamError) {
-  ASSERT_OK_AND_ASSIGN(
-      se::Platform * platform,
-      se::PlatformManager::PlatformWithId(stream_executor_platform_id()));
-  se::MockStreamExecutor executor;
-  MockStreamWithErrorCallback stream;
-
-  EXPECT_CALL(executor, GetPlatform()).WillRepeatedly(Return(platform));
-  EXPECT_CALL(executor, device_ordinal()).WillRepeatedly(Return(0));
-  EXPECT_CALL(stream, parent()).WillRepeatedly(Return(&executor));
-
-  const se::GpuComputeCapability& compute_capability =
-      device_description().gpu_compute_capability();
-  if (const se::CudaComputeCapability* cuda_cc =
-          compute_capability.cuda_compute_capability()) {
-    EXPECT_CALL(stream, GetCudaComputeCapability())
-        .WillRepeatedly(Return(*cuda_cc));
-  }
-  if (const se::RocmComputeCapability* rocm_cc =
-          compute_capability.rocm_compute_capability()) {
-    EXPECT_CALL(stream, GetRocmComputeCapability())
-        .WillRepeatedly(Return(*rocm_cc));
-  }
-
-  GpuExecutable::Params params;
-  params.module_name = "test_module";
-  params.executable = std::make_unique<ThunkExecutor>(ThunkSequence{});
-  params.device_description = device_description();
-  params.enable_debug_info_manager = false;
-  SetDummyBufferAssignment(params);
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> executable,
-                       GpuExecutable::Create(std::move(params)));
-
-  int reported_device = -1;
-  absl::Status reported_status = absl::OkStatus();
-  GpuExecutableRunOptions gpu_opts;
-  gpu_opts.set_device_error_callback(
-      [&](int device_ordinal, const absl::Status& status) {
-        reported_device = device_ordinal;
-        reported_status = status;
-      });
-
-  FakeDeviceAddressAllocator allocator(platform);
-  ExecutableRunOptions exec_run_options;
-  exec_run_options.set_stream(&stream);
-  exec_run_options.set_allocator(&allocator);
-  exec_run_options.set_gpu_executable_run_options(&gpu_opts);
-  ServiceExecutableRunOptions service_run_options(exec_run_options);
-
-  EXPECT_CALL(stream, DoHostCallbackWithStatus(::testing::_, ::testing::_))
-      .WillOnce([](absl::AnyInvocable<absl::Status() &&> /*ok_cb*/,
-                   absl::AnyInvocable<void(absl::Status) &&> error_cb) {
-        std::move(error_cb)(absl::InternalError("CUDA_ERROR_ILLEGAL_ADDRESS"));
-        return absl::OkStatus();
-      });
-
-  BufferAllocations buffer_allocations(/*buffers=*/{}, /*device_ordinal=*/0,
-                                       &allocator);
-  ASSERT_OK(
-      executable->ExecuteThunks(buffer_allocations, &service_run_options));
-  EXPECT_EQ(reported_device, 0);
-  EXPECT_THAT(reported_status,
-              absl_testing::StatusIs(
-                  absl::StatusCode::kInternal,
-                  ::testing::HasSubstr("CUDA_ERROR_ILLEGAL_ADDRESS")));
 }
 
 int64_t BufferSizeBytes(const BufferValue& buffer) {

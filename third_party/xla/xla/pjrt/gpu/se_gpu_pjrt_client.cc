@@ -1337,20 +1337,77 @@ absl::StatusOr<std::shared_ptr<tsl::Allocator>> CreateCudaAsyncAllocator(
 
 #endif  // defined(GOOGLE_CUDA) && CUDA_VERSION >= 11020
 
+constexpr absl::string_view kFatalGpuErrorKey = "gpu_fatal_error";
+
+LocalDeviceState::DeviceErrorCallback MakeDistributedDeviceErrorCallback(
+    int node_id, int device_ordinal,
+    const std::shared_ptr<KeyValueStoreInterface>& kv_store,
+    const std::shared_ptr<std::atomic<bool>>& already_fired) {
+  return [kv_store, already_fired, node_id,
+          device_ordinal](const absl::Status& status) {
+    if (already_fired->exchange(true)) {
+      return;
+    }
+    LOG(ERROR) << absl::StreamFormat(
+        "Aborting local GPU collectives after fatal device error on "
+        "node %d device %d: %v",
+        node_id, device_ordinal, status);
+    if (absl::Status s = gpu::AbortAllCliques(); !s.ok()) {
+      LOG(WARNING) << "Failed to abort GPU cliques: " << s;
+    }
+    absl::Status set_status = kv_store->Set(
+        kFatalGpuErrorKey,
+        absl::StrFormat("Fatal GPU device error on node %d device %d: %v",
+                        node_id, device_ordinal, status));
+    if (!set_status.ok()) {
+      LOG(WARNING) << "Failed to broadcast GPU error via kv_store: "
+                   << set_status;
+    }
+  };
+}
+
+void RegisterDistributedDeviceErrorListener(
+    int node_id, const std::shared_ptr<KeyValueStoreInterface>& kv_store,
+    const std::shared_ptr<std::atomic<bool>>& already_fired) {
+  kv_store->AsyncGet(
+      kFatalGpuErrorKey,
+      [already_fired, node_id](const absl::StatusOr<std::string>& status) {
+        if (!status.ok() || already_fired->exchange(true)) {
+          return;
+        }
+        LOG(ERROR) << "Node " << node_id
+                   << " aborting local GPU collectives due to remote error: "
+                   << *status;
+        if (absl::Status s = gpu::AbortAllCliques(); !s.ok()) {
+          LOG(WARNING) << "Failed to abort GPU cliques: " << s;
+        }
+      });
+}
+
 // Builds a LocalDeviceState for each GPU present.
 absl::StatusOr<std::map<int, std::unique_ptr<LocalDeviceState>>>
-BuildLocalDeviceStates(LocalClient* xla_client, bool schedule_async,
-                       std::optional<int> max_inflight_computations) {
+BuildLocalDeviceStates(
+    LocalClient* xla_client, bool schedule_async,
+    std::optional<int> max_inflight_computations, int node_id, int num_nodes,
+    const std::shared_ptr<KeyValueStoreInterface>& kv_store,
+    const std::shared_ptr<std::atomic<bool>>& error_already_fired) {
   std::map<int, std::unique_ptr<LocalDeviceState>> addressable_devices;
   for (se::StreamExecutor* executor :
        xla_client->backend().stream_executors()) {
+    int device_ordinal = executor->device_ordinal();
+    LocalDeviceState::DeviceErrorCallback device_error_callback =
+        (num_nodes > 1 && kv_store != nullptr)
+            ? MakeDistributedDeviceErrorCallback(node_id, device_ordinal,
+                                                 kv_store, error_already_fired)
+            : nullptr;
     addressable_devices.emplace(
-        executor->device_ordinal(),
+        device_ordinal,
         std::make_unique<LocalDeviceState>(
             executor, xla_client, LocalDeviceState::kComputeSynchronized,
             max_inflight_computations, /*allow_event_reuse=*/true,
             /*use_callback_stream=*/true, /*device_ordinal=*/-1,
-            /*stream_options=*/std::nullopt, schedule_async));
+            /*stream_options=*/std::nullopt, schedule_async,
+            std::move(device_error_callback)));
   }
   return std::move(addressable_devices);
 }
@@ -1603,50 +1660,6 @@ void NameDeviceAndLauncherThread(const LocalTopologyProto& node,
   launcher_thread->Schedule([name = absl::StrCat("XlaLauncher", suffix)] {
     tsl::profiler::NameCurrentThread(name);
   });
-}
-
-constexpr absl::string_view kFatalGpuErrorKey = "gpu_fatal_error";
-
-void RegisterDistributedDeviceErrorPropagation(
-    int node_id, const std::shared_ptr<KeyValueStoreInterface>& kv_store,
-    gpu::GpuExecutableRunOptions* gpu_run_options) {
-  auto already_fired = std::make_shared<std::atomic<bool>>(false);
-  gpu_run_options->set_device_error_callback(
-      [kv_store, already_fired, node_id](int device_ordinal,
-                                         const absl::Status& status) {
-        if (already_fired->exchange(true)) {
-          return;
-        }
-        LOG(ERROR) << absl::StreamFormat(
-            "Aborting local GPU collectives after fatal device error on "
-            "node %d device %d: %v",
-            node_id, device_ordinal, status);
-        if (absl::Status s = gpu::AbortAllCliques(); !s.ok()) {
-          LOG(WARNING) << "Failed to abort GPU cliques: " << s;
-        }
-        absl::Status set_status = kv_store->Set(
-            kFatalGpuErrorKey,
-            absl::StrFormat("Fatal GPU device error on node %d device %d: %v",
-                            node_id, device_ordinal, status));
-        if (!set_status.ok()) {
-          LOG(WARNING) << "Failed to broadcast GPU error via kv_store: "
-                       << set_status;
-        }
-      });
-
-  kv_store->AsyncGet(
-      kFatalGpuErrorKey,
-      [already_fired, node_id](const absl::StatusOr<std::string>& status) {
-        if (!status.ok() || already_fired->exchange(true)) {
-          return;
-        }
-        LOG(ERROR) << "Node " << node_id
-                   << " aborting local GPU collectives due to remote error: "
-                   << *status;
-        if (absl::Status s = gpu::AbortAllCliques(); !s.ok()) {
-          LOG(WARNING) << "Failed to abort GPU cliques: " << s;
-        }
-      });
 }
 
 }  // namespace
@@ -2072,13 +2085,26 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
     use_async_dispatch = absl::string_view(v) == "1";
   }
 
+  std::shared_ptr<KeyValueStoreInterface> kv_store = options.kv_store;
+  if (options.enable_mock_nccl) {
+    kv_store = std::make_shared<InMemoryKeyValueStore>();
+  }
+  TF_RET_CHECK(options.num_nodes == 1 || kv_store != nullptr);
+  if (kv_store == nullptr) {
+    kv_store = std::make_shared<InMemoryKeyValueStore>();
+  }
+
+  auto error_already_fired = std::make_shared<std::atomic<bool>>(false);
+
   ABSL_ASSIGN_OR_RETURN(
       LocalClient * xla_client,
       GetGpuXlaClient(options.platform_name, options.allowed_devices));
   std::map<int, std::unique_ptr<LocalDeviceState>> local_device_states;
-  ABSL_ASSIGN_OR_RETURN(local_device_states,
-                   BuildLocalDeviceStates(xla_client, use_async_dispatch,
-                                          options.max_inflight_computations));
+  ABSL_ASSIGN_OR_RETURN(
+      local_device_states,
+      BuildLocalDeviceStates(xla_client, use_async_dispatch,
+                             options.max_inflight_computations, options.node_id,
+                             options.num_nodes, kv_store, error_already_fired));
   EnablePeerAccess(xla_client->backend().stream_executors());
 
   GpuAllocatorConfig allocator_config = options.allocator_config;
@@ -2118,21 +2144,12 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
     gpu_run_options->set_requires_exclusive_lock_on_gpu();
   }
 
-  std::shared_ptr<KeyValueStoreInterface> kv_store = options.kv_store;
-  if (options.enable_mock_nccl) {
-    kv_store = std::make_shared<InMemoryKeyValueStore>();
-  }
-  TF_RET_CHECK(options.num_nodes == 1 || kv_store != nullptr);
-  if (kv_store == nullptr) {
-    kv_store = std::make_shared<InMemoryKeyValueStore>();
-  }
-
   // Clear any stale fatal GPU error key left over from a prior incarnation
   // before entering the topology exchange barrier. Because ExchangeTopologies
   // inside BuildDistributedDevices is a full barrier across all nodes, no peer
   // can finish client initialization and Set a fresh error until every node has
   // completed this Delete. Note: AsyncGet in
-  // RegisterDistributedDeviceErrorPropagation is a single-shot subscription, so
+  // RegisterDistributedDeviceErrorListener is a single-shot subscription, so
   // peers that do not restart alongside a restarting node will not re-arm their
   // subscription after the first fatal error.
   if (options.num_nodes > 1 && kv_store != nullptr) {
@@ -2148,8 +2165,8 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
           options.partition_index, options.verify_topology_fingerprint));
 
   if (options.num_nodes > 1 && kv_store != nullptr) {
-    RegisterDistributedDeviceErrorPropagation(options.node_id, kv_store,
-                                              gpu_run_options.get());
+    RegisterDistributedDeviceErrorListener(options.node_id, kv_store,
+                                           error_already_fired);
   }
 
   se::StreamExecutor* first_executor =

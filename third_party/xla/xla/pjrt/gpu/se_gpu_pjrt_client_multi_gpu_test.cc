@@ -1986,12 +1986,12 @@ TEST(StreamExecutorGpuClientTest, DeviceErrorCallbackPropagatesToPeerNodes) {
   auto* se_client_0 = absl::down_cast<CommonPjRtClientImpl*>(client_0.get());
   auto* raw_client_0 =
       absl::down_cast<PjRtStreamExecutorRawClient*>(se_client_0->raw_client());
-  ASSERT_NE(raw_client_0->gpu_run_options(), nullptr);
-  ASSERT_NE(raw_client_0->gpu_run_options()->device_error_callback(), nullptr);
-  ASSERT_TRUE(*raw_client_0->gpu_run_options()->device_error_callback());
+  ASSERT_OK_AND_ASSIGN(LocalDeviceState * device_state_0,
+                       raw_client_0->GetLocalDeviceState(LocalDeviceId(0)));
+  ASSERT_TRUE(device_state_0->device_error_callback());
 
-  (*raw_client_0->gpu_run_options()->device_error_callback())(
-      /*device_ordinal=*/0, absl::InternalError("CUDA_ERROR_ILLEGAL_ADDRESS"));
+  device_state_0->device_error_callback()(
+      absl::InternalError("CUDA_ERROR_ILLEGAL_ADDRESS"));
 
   ASSERT_OK_AND_ASSIGN(std::string kv_error,
                        kv_store->Get("gpu_fatal_error", absl::Seconds(5)));
