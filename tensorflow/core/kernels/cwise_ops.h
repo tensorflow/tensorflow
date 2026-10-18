@@ -891,7 +891,8 @@ struct functor_traits<scalar_erfinv_op<float>> {
 // scalar_rsqrt_op; instead define a TensorFlow-owned functor that computes in
 // float and casts once, then wire functor::rsqrt<bfloat16> to it.
 //
-// See https://github.com/tensorflow/tensorflow/issues/123551.
+// Tracking upstreaming to Eigen (gitlab.com/libeigen/eigen) in:
+// https://github.com/tensorflow/tensorflow/issues/123551
 struct scalar_rsqrt_bfloat16_op {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE bfloat16
   operator()(const bfloat16& a) const {

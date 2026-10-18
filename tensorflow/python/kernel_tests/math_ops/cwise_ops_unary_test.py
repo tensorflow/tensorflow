@@ -478,22 +478,23 @@ class UnaryOpTest(test.TestCase):
     # Regression test for https://github.com/tensorflow/tensorflow/issues/123551
     # Scalar and packet CPU paths must agree for the same bfloat16 value.
     bfloat16 = dtypes_lib.bfloat16.as_numpy_dtype
-    value = np.array(0.53125, dtype=bfloat16)
-    # High-precision reference, rounded once to bfloat16 (matches the packet
-    # path and XLA).
-    reference = np.array(
-        1.0 / np.sqrt(np.float64(value)), dtype=bfloat16)
+    test_values = [0.53125, 0.0, 1.0, 2.0, float("inf")]
 
     # Pin to CPU: the length dependence comes from CPU SIMD packet
     # boundaries (8 lanes for AVX, 16 for AVX-512).
     with ops.device("/cpu:0"):
-      for length in (0, 1, 7, 8, 9, 15, 16, 17, 32):
-        x = np.full([length], value, dtype=bfloat16)
-        y = self.evaluate(math_ops.rsqrt(x))
-        self.assertAllEqual(
-            y,
-            np.full([length], reference, dtype=bfloat16),
-            msg="length=%d" % length)
+      for val in test_values:
+        value = np.array(val, dtype=bfloat16)
+        with np.errstate(divide="ignore"):
+          reference = np.array(
+              1.0 / np.sqrt(np.float64(value)), dtype=bfloat16)
+        for length in (0, 1, 7, 8, 9, 15, 16, 17, 32):
+          x = np.full([length], value, dtype=bfloat16)
+          y = self.evaluate(math_ops.rsqrt(x))
+          self.assertAllEqual(
+              y,
+              np.full([length], reference, dtype=bfloat16),
+              msg=f"value={val}, length={length}")
 
   def testInt8Basic(self):
     x = np.arange(-6, 6, 2).reshape(1, 3, 2).astype(np.int8)
