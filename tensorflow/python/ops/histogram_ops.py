@@ -71,6 +71,13 @@ def histogram_fixed_width_bins(values,
   >>> indices.numpy()
   array([0, 0, 1, 2, 4, 4], dtype=int32)
   """
+  # The sibling histogram_fixed_width() takes the same argument and passes it
+  # to an op whose dtype attr only accepts these two, so keep them in step.
+  dtype = dtypes.as_dtype(dtype)
+  if dtype not in (dtypes.int32, dtypes.int64):
+    raise TypeError(
+        f'dtype must be tf.int32 or tf.int64, got {dtype.name}')
+
   with ops.name_scope(name, 'histogram_fixed_width_bins',
                       [values, value_range, nbins]):
     values = ops.convert_to_tensor(values, name='values')
@@ -99,7 +106,7 @@ def histogram_fixed_width_bins(values,
 
     # Clip edge cases (e.g. value = value_range[1]) or "outliers."
     indices = math_ops.cast(
-        clip_ops.clip_by_value(indices, 0, nbins_float - 1), dtypes.int32)
+        clip_ops.clip_by_value(indices, 0, nbins_float - 1), dtype)
     return array_ops.reshape(indices, shape)
 
 

@@ -73,6 +73,27 @@ class BinValuesFixedWidth(test.TestCase, parameterized.TestCase):
       self.assertEqual(dtypes.int32, bins.dtype)
       self.assertAllClose(expected_bins, self.evaluate(bins))
 
+  def test_1d_values_int64_output(self):
+    # Bins will be:
+    #   (-inf, 1), [1, 2), [2, 3), [3, 4), [4, inf)
+    value_range = [0.0, 5.0]
+    values = [-1.0, 0.0, 1.5, 2.0, 5.0, 15]
+    expected_bins = [0, 0, 1, 2, 4, 4]
+    with self.cached_session():
+      bins = histogram_ops.histogram_fixed_width_bins(
+          values, value_range, nbins=5, dtype=dtypes.int64)
+      self.assertEqual(dtypes.int64, bins.dtype)
+      self.assertAllClose(expected_bins, self.evaluate(bins))
+
+  def test_invalid_dtype(self):
+    # histogram_fixed_width() only accepts int32 and int64 for this argument.
+    value_range = [0.0, 5.0]
+    values = [-1.0, 0.0, 1.5, 2.0, 5.0, 15]
+    for dtype in (dtypes.float32, dtypes.uint8):
+      with self.assertRaisesRegex(TypeError, 'tf.int32 or tf.int64'):
+        histogram_ops.histogram_fixed_width_bins(
+            values, value_range, nbins=5, dtype=dtype)
+
   def test_2d_values(self):
     # Bins will be:
     #   (-inf, 1), [1, 2), [2, 3), [3, 4), [4, inf)
