@@ -45,9 +45,8 @@ class CompositeDevice : public Device {
   // Helper for creating a CompositeDevice on the same task as the given host
   // CPU.
   static std::unique_ptr<CompositeDevice> MakeDevice(
-      const std::vector<std::string>& underlying_devices,
-      const int unique_device_id, const DeviceNameUtils::ParsedName& host_name,
-      absl::Status* status);
+      const std::vector<std::string>& underlying_devices, int unique_device_id,
+      const DeviceNameUtils::ParsedName& host_name, absl::Status* status);
 
   // Helper for creating a CompositeDevice with the given device name.
   static std::unique_ptr<CompositeDevice> MakeDevice(
