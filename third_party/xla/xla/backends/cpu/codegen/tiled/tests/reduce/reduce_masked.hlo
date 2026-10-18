@@ -24,7 +24,7 @@ fusion {
 
 // NEW-VECTOR: func.func @wrapped_fusion_impl
 
-// NEW-VECTOR: %[[MASK:.*]] = vector.constant_mask [250] : vector<256xi1>
+// NEW-VECTOR: %[[MASK:.*]] = vector.constant_mask [1, 250] : vector<1x256xi1>
 // NEW-VECTOR: arith.select %[[MASK]]
 
 ENTRY main {

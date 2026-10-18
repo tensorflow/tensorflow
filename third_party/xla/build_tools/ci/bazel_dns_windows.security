@@ -1,0 +1,33 @@
+# Copyright 2026 The OpenXLA Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
+# --- Rationale ---
+#
+# Bazel, by default, retries transient remote-execution failures five times
+# using exponential backoff, at roughly 100ms, 200ms, 400ms, 800ms, and 1.6s.
+#
+# Java normally caches a failed DNS lookup for 10 seconds, causing all of those
+# retries to receive the same cached failure.
+#
+# To work around this:
+# - Keep successful DNS lookups longer to bridge occasional, brief resolver
+#   outages.
+# - Allow Bazel's remote retries to retry failed lookups much quicker
+#   instead of using the JVM's default ten-second negative cache.
+
+# Up from 30 seconds
+networkaddress.cache.ttl=60
+# Down from 10 seconds
+networkaddress.cache.negative.ttl=1

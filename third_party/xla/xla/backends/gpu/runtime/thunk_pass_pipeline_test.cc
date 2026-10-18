@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/base/nullability.h"
 #include "absl/status/status.h"
@@ -30,7 +31,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
 namespace xla::gpu {
@@ -69,7 +69,7 @@ TEST(ThunkPassPipelineTest, PipelineRunsPass) {
   se::DeviceDescription device_info;
   FakeThunkPassBufferAllocator allocator;
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       bool changed,
       pipeline.Run(&thunk_sequence, debug_options, /*hlo_module=*/nullptr,
                    device_info, allocator));

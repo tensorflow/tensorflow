@@ -610,5 +610,34 @@ TEST(RamFileBlockCacheTest, Flush) {
   EXPECT_EQ(calls, 2);
 }
 
+// This test case reproduces a bug, now fixed, in which
+// RamFileBlockCache::Flush() used to clear the cache, invalidating the
+// lra_iterator field, without resetting the timestamp fields of the blocks.
+// This was a problem for the "reconcile_state" cleanup callback in
+// MaybeFetch(), which assumes that if the timestamp field is non-zero, the
+// lra_iterator is valid.  Later versions of Flush() should handle this case
+// correctly.
+TEST(RamFileBlockCacheTest, FlushDuringFetch) {
+  // The delays are sized to exceed the delay in RamFileBlockCache::Prune().
+  auto delayed_fetcher = [](const std::string& filename, size_t offset,
+                            size_t n, char* buffer,
+                            TF_Status* status) -> int64_t {
+    memset(buffer, 'x', n);
+    TF_SetStatus(status, TF_OK, "");
+    Env::Default()->SleepForMicroseconds(10 * 1000 * 1000);
+    return n;
+  };
+  tf_gcs_filesystem::RamFileBlockCache cache(16, 32, /*max_staleness=*/20,
+                                             delayed_fetcher);
+  std::vector<char> out;
+  std::unique_ptr<Thread> flush_thread(
+      Env::Default()->StartThread({}, "delayed_flush", [&cache] {
+        Env::Default()->SleepForMicroseconds(5 * 1000 * 1000);
+        cache.Flush();
+      }));
+  TF_EXPECT_OK(ReadCache(&cache, "", 0, 16, &out));
+  Env::Default()->SleepForMicroseconds(5 * 1000 * 1000);
+}
+
 }  // namespace
 }  // namespace tensorflow

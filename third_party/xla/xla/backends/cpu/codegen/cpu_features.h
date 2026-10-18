@@ -56,8 +56,8 @@ DetectedMachineAttributes DetectMachineAttributes(
 
 // TODO(penporn): PJRT's CPU client also calls this function. We should
 // make it get the same filtered attributes according to the `max_isa` setting.
-std::vector<std::string> DetectMachineAttributes()
-    ABSL_DEPRECATED("Use DetectMachineAttributes defined above instead.");
+[[deprecated("Use DetectMachineAttributes defined above instead.")]]
+std::vector<std::string> DetectMachineAttributes();
 
 }  // namespace xla::cpu
 

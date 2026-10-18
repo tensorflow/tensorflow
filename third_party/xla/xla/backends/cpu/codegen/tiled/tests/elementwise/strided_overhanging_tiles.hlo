@@ -1,0 +1,41 @@
+// RUN: test_correctness %s
+
+// RUN: fusion_to_xtile %s | fusion_compiler_opt \
+// RUN:   --xtile-cpu-new-xtile-to-vector --xla-simplify-arith \
+// RUN:   | FileCheck %s --check-prefix=NEW-VECTOR
+// RUN: fusion_to_xtile %s | fusion_compiler_opt \
+// RUN:   --xtile-cpu-new-xtile-to-vector --xtile-cpu-new-vector-to-llvm \
+// RUN:   | FileCheck %s --check-prefix=NEW-VECTOR-LLVM
+// RUN: test_correctness %s --xla_cpu_use_new_xtile_lowering=true
+
+fusion {
+  p0 = f32[224] parameter(0)
+  ROOT slice = f32[112] slice(p0), slice={[0:224:2]}
+}
+
+ENTRY main {
+  p0 = f32[224] parameter(0)
+  ROOT fusion = f32[112] fusion(p0), kind=kLoop, calls=fusion,
+    backend_config={
+      "fusion_backend_config":{
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["16"]}],
+          "num_ctas":"3"
+        }
+      }
+    }
+}
+
+// NEW-VECTOR:       #[[$UB_MAP:.*]] = #xla.indexing_map<"(pid, tid) -> (min(max(pid * -48 - tid * 16 + 112, 0), 16)), domain: pid in [0, 2], tid in [0, 2]">
+// NEW-VECTOR-LABEL: func.func @wrapped_fusion_impl(
+// NEW-VECTOR-SAME:      %[[PID:[^:]+]]: index {xla.range = [0 : index, 2 : index]}
+// NEW-VECTOR:           scf.for %[[TID:.*]] =
+// NEW-VECTOR:             %[[ALLOCA:.*]] = memref.alloca() : memref<16xf32>
+// NEW-VECTOR:             %[[UB:.*]] = xla.apply_indexing #[[$UB_MAP]](%[[PID]], %[[TID]])
+// NEW-VECTOR:             scf.for %[[IV:.*]] = %{{.*}} to %[[UB]]
+// NEW-VECTOR:               memref.load
+// NEW-VECTOR:               memref.store %{{.*}}, %[[ALLOCA]][%[[IV]]]
+
+// NEW-VECTOR-LLVM-NOT:   xla.apply_indexing
+// NEW-VECTOR-LLVM-LABEL: llvm.func internal @wrapped_fusion_impl
+// NEW-VECTOR-LLVM:         llvm.intr.smax

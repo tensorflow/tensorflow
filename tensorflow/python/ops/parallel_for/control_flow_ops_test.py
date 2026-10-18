@@ -1493,6 +1493,10 @@ class TensorTest(PForTestCase):
       self.skipTest(
           "Flaky in some GPU configurations due to TensorScatterNdUpdate "
           "nondeterminism.")
+    if test_util.is_xla_enabled():
+      self.skipTest(
+          "TensorScatterNdUpdate loop variant is not supported when compiled "
+          "with XLA.")
 
     @def_function.function(input_signature=[
         tensor_spec.TensorSpec(shape=None, dtype=dtypes.int32),
@@ -1515,6 +1519,10 @@ class TensorTest(PForTestCase):
       self.skipTest(
           "Flaky in some GPU configurations due to TensorScatterNdUpdate "
           "nondeterminism.")
+    if test_util.is_xla_enabled():
+      self.skipTest(
+          "TensorScatterNdUpdate loop variant is not supported when compiled "
+          "with XLA.")
 
     def loop_fn(i):
       tensor = [0, 0, 0, 0, 0, 0, 0, 0]
@@ -1529,6 +1537,10 @@ class TensorTest(PForTestCase):
       self.skipTest(
           "Flaky in some GPU configurations due to TensorScatterNdUpdate "
           "nondeterminism.")
+    if test_util.is_xla_enabled():
+      self.skipTest(
+          "TensorScatterNdUpdate loop variant is not supported when compiled "
+          "with XLA.")
 
     def loop_fn(i):
       tensor = array_ops.zeros([10, 3], dtype=dtypes.int32)
@@ -1543,6 +1555,10 @@ class TensorTest(PForTestCase):
       self.skipTest(
           "Flaky in some GPU configurations due to TensorScatterNdUpdate "
           "nondeterminism.")
+    if test_util.is_xla_enabled():
+      self.skipTest(
+          "TensorScatterNdUpdate loop variant is not supported when compiled "
+          "with XLA.")
 
     def loop_fn(i):
       tensor = array_ops.zeros([10, 3], dtype=dtypes.int32)
@@ -1557,6 +1573,10 @@ class TensorTest(PForTestCase):
       self.skipTest(
           "Flaky in some GPU configurations due to TensorScatterNdUpdate "
           "nondeterminism.")
+    if test_util.is_xla_enabled():
+      self.skipTest(
+          "TensorScatterNdUpdate loop variant is not supported when compiled "
+          "with XLA.")
 
     def loop_fn(i):
       tensor = array_ops.zeros([5, 5])

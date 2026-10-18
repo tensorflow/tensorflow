@@ -123,6 +123,10 @@ class HloFunctionImporter {
       mlir::ValueRange values, std::optional<int> reserve_size = std::nullopt);
 
  private:
+  // HloModuleImporter imports every computation of a module through one
+  // importer, so that they share the memo of stack frame locations.
+  friend class HloModuleImporter;
+
   HloFunctionImporter(mlir::SymbolTable& symbol_table,
                       std::unordered_map<const HloComputation*,
                                          mlir::func::FuncOp>* function_map,
@@ -201,8 +205,8 @@ class HloFunctionImporter {
   mlir::NamedAttribute ConvertComparisonDirection(
       ComparisonDirection direction);
 
-  // Converts an XLA Comparison::Type to the corresponding MLIR attribute.
-  mlir::NamedAttribute ConvertComparisonType(Comparison::Type type);
+  // Converts an XLA ComparisonOrder to the corresponding MLIR attribute.
+  mlir::NamedAttribute ConvertComparisonOrder(ComparisonOrder order);
 
   // Converts an XLA CustomCallSchedule to the corresponding MLIR attribute.
   mlir::NamedAttribute ConvertCustomCallSchedule(CustomCallSchedule schedule);
@@ -241,6 +245,11 @@ class HloFunctionImporter {
   std::unordered_map<const HloInstruction*, mlir::Value> instruction_value_map_;
 
   bool flatten_computation_args_result_;
+
+  // Memo of the stack frame locations built for the imported instructions,
+  // indexed by frame id (see GetLocationFromFrameIndex). One importer imports
+  // computations of one module, whose frame table the memo mirrors.
+  llvm::SmallVector<mlir::LocationAttr> frame_locations_;
 };
 
 // Returns a StringAttr that carries a prettyprinted representation of the

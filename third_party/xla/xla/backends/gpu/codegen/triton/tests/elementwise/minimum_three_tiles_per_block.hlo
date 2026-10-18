@@ -1,6 +1,5 @@
-// RUN: fusion_to_triton %s --xla_gpu_experimental_enable_tiling_propagation | FileCheck %s
-// RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation
-// RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation=false
+// RUN: fusion_to_triton %s | FileCheck %s
+// RUN: triton_test_correctness %s
 
 fusion {
   p0 = f32[8,4] parameter(0)
@@ -30,14 +29,14 @@ ENTRY main {
 // CHECK-SAME:    %[[LHS:[a-zA-Z0-9]*]]: memref<8x4xf32>,
 // CHECK-SAME:    %[[RHS:[a-zA-Z0-9]*]]: memref<8x4xf32>,
 // CHECK-SAME:    %[[OUT:[a-zA-Z0-9]*]]: memref<8x4xf32>,
-// CHECK-SAME:    %[[PID:[a-zA-Z0-9]*]]: index)
+// CHECK-SAME:    %[[PID:[a-zA-Z0-9]*]]: index {xla.range = [0 : index, 2 : index]})
 
 // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
 // CHECK-DAG: %[[C1:.*]] = arith.constant 1 : index
 
 // CHECK: %[[UB:.*]] = xla.apply_indexing #[[$UB_MAP]](%[[PID]])
 // CHECK: scf.for %[[TID:.*]] = %[[C0]] to %[[UB]] step %[[C1]] {
-// CHECK:   %[[GLOB_TID:.*]] = xla.apply_indexing #[[$TILE_ID_MAP]](%[[PID]], %[[TID]])
+// CHECK:   %[[GLOB_TID:.*]] = xla.apply_indexing #[[$TILE_ID_MAP]](%[[PID]], %[[TID]]) {xla.range = [0 : index, 7 : index]}
 // CHECK:   %[[LHS_TILE:.*]] = xtile.extract %[[LHS]][%[[GLOB_TID]], %[[C0]]] [1, 4] [1, 1] : memref<8x4xf32> -> tensor<1x4xf32>
 // CHECK:   %[[RHS_TILE:.*]] = xtile.extract %[[RHS]][%[[GLOB_TID]], %[[C0]]] [1, 4] [1, 1] : memref<8x4xf32> -> tensor<1x4xf32>
 // CHECK:   %[[MIN:.*]] = arith.minimumf %[[LHS_TILE]], %[[RHS_TILE]] : tensor<1x4xf32>

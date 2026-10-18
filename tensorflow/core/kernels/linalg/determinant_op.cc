@@ -128,15 +128,15 @@ class DeterminantOpGpu : public AsyncOpKernel {
   void ComputeAsync(OpKernelContext* context, DoneCallback done) final {
     const Tensor& input = context->input(0);
     const int ndims = input.dims();
-    const int64_t n = input.dim_size(ndims - 1);
     // Validate inputs.
     OP_REQUIRES_ASYNC(context, ndims >= 2,
                       absl::InvalidArgumentError(absl::StrCat(
                           "Input must have rank >= 2, got ", ndims)),
                       done);
+    const int64_t n = input.dim_size(ndims - 1);
     OP_REQUIRES_ASYNC(context, input.dim_size(ndims - 2) == n,
                       absl::InvalidArgumentError(
-                          absl::StrCat("Input matrices must be square, got",
+                          absl::StrCat("Input matrices must be square, got ",
                                        input.dim_size(ndims - 2), " != ", n)),
                       done);
 
@@ -267,15 +267,15 @@ class LogDeterminantOpGpu : public AsyncOpKernel {
   void ComputeAsync(OpKernelContext* context, DoneCallback done) final {
     const Tensor& input = context->input(0);
     const int ndims = input.dims();
-    const int64_t n = input.dim_size(ndims - 1);
     // Validate inputs.
     OP_REQUIRES_ASYNC(context, ndims >= 2,
                       absl::InvalidArgumentError(absl::StrCat(
                           "Input must have rank >= 2, got ", ndims)),
                       done);
+    const int64_t n = input.dim_size(ndims - 1);
     OP_REQUIRES_ASYNC(context, input.dim_size(ndims - 2) == n,
                       absl::InvalidArgumentError(
-                          absl::StrCat("Input matrices must be square, got",
+                          absl::StrCat("Input matrices must be square, got ",
                                        input.dim_size(ndims - 2), " != ", n)),
                       done);
 
@@ -377,7 +377,7 @@ class LogDeterminantOpGpu : public AsyncOpKernel {
     // input_copy by the Getrf{Batched} kernel.
     functor::LogDeterminantFromPivotedLUFunctor<GPUDevice, Scalar> functor;
     functor(d, input_copy_reshaped_const, pivots_mat.data(), sign_reshaped,
-            log_abs_det_reshaped);
+            log_abs_det_reshaped, dev_info.back().mutable_data());
 
     // Register callback to check info after kernels finish.
     auto info_checker = [context, done](
@@ -399,6 +399,7 @@ class LogDeterminantOpGpu : public AsyncOpKernel {
       }
       done();
     };
+
     GpuSolver::CheckLapackInfoAndDeleteSolverAsync(std::move(solver), dev_info,
                                                    std::move(info_checker));
   }

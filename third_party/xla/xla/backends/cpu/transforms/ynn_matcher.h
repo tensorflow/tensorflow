@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
-#include "xla/backends/cpu/transforms/library_fusion_kinds.h"
+#include "xla/backends/cpu/custom_fusion_configs.h"
 #include "xla/backends/cpu/transforms/library_matcher.h"
 #include "xla/backends/cpu/ynn_support.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -50,7 +50,7 @@ class YnnMatcher : public LibraryMatcher {
               HloOpcode::kConvolution,  HloOpcode::kReshape,
               HloOpcode::kBitcast,      HloOpcode::kBroadcast,
               HloOpcode::kTranspose,    HloOpcode::kPad,
-              HloOpcode::kIota};
+              HloOpcode::kCopy,         HloOpcode::kIota};
           for (const auto& [op, _] : GetYnnUnaryOpMap()) {
             supported_ops.insert(op);
           }
@@ -84,6 +84,9 @@ class YnnMatcher : public LibraryMatcher {
     }
     if (instr->opcode() == HloOpcode::kPad) {
       return IsPadOpSupportedByYnn(instr);
+    }
+    if (instr->opcode() == HloOpcode::kCopy) {
+      return IsCopyOpSupportedByYnn(instr);
     }
     if (!IsInstructionPreferredByYnn(instr)) {
       // TODO: It might make sense sometimes that even though an instruction is

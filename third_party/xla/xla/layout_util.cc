@@ -73,11 +73,11 @@ void SetDefaultLayoutToContainer(T* minor_to_major) {
   }
   for (const Tile& tile : tiles) {
     for (int64_t dim : tile.dimensions()) {
-      if (dim < 0 && dim != Tile::kCombineDimension) {
-        LOG(FATAL)
-            << "Tile dimension size needs to be minimum int64_t value if "
-               "it's negative. Value is "
-            << dim;
+      if (dim < 0 && dim != Tile::kCombineDimension &&
+          dim != Tile::kMatchDimension) {
+        LOG(FATAL) << "Tile dimension size needs to be kCombineDimension or "
+                      "kMatchDimension if it's negative. Value is "
+                   << dim;
       }
     }
     *layout.add_tiles() = tile;
@@ -230,6 +230,11 @@ Layout CreateDefaultLayoutForRank(int64_t num_dims) {
     return absl::OkStatus();
   }
 
+  if (layout.minor_to_major().empty() && layout.memory_space() != 0) {
+    // AUTO layout with non-default memory space is allowed.
+    return absl::OkStatus();
+  }
+
   if (layout.minor_to_major().size() != shape.dimensions().size()) {
     return InvalidArgument(
         "layout minor_to_major field contains %d elements, "
@@ -282,10 +287,11 @@ Layout CreateDefaultLayoutForRank(int64_t num_dims) {
       return InvalidArgument("layout has invalid tiles: %s", shape.ToString());
     }
     for (int64_t dim : tile.dimensions()) {
-      if (dim <= 0 && dim != Tile::kCombineDimension) {
+      if (dim <= 0 && dim != Tile::kCombineDimension &&
+          dim != Tile::kMatchDimension) {
         return InvalidArgument(
-            "layout has invalid tiles: tile dimension %d must be positive or "
-            "kCombineDimension: %s",
+            "layout has invalid tiles: tile dimension %d must be positive, "
+            "kCombineDimension, or kMatchDimension: %s",
             dim, shape.ToString());
       }
     }
@@ -399,6 +405,33 @@ Layout CreateDefaultLayoutForRank(int64_t num_dims) {
     return true;
   }
   return shape.has_layout();
+}
+
+/* static */ bool LayoutUtil::HasMinorToMajorSetInLayout(const Shape& shape) {
+  if (shape.IsTuple()) {
+    return absl::c_all_of(shape.tuple_shapes(), [](const Shape& s) {
+      return HasMinorToMajorSetInLayout(s);
+    });
+  }
+  if (!shape.IsArray()) {
+    return true;
+  }
+  return shape.has_layout() && (shape.dimensions().empty() ||
+                                !shape.layout().minor_to_major().empty());
+}
+
+/* static */ bool LayoutUtil::HasAnyMinorToMajorSetInLayout(
+    const Shape& shape) {
+  if (shape.IsTuple()) {
+    return absl::c_any_of(shape.tuple_shapes(), [](const Shape& s) {
+      return HasAnyMinorToMajorSetInLayout(s);
+    });
+  }
+  if (!shape.IsArray()) {
+    return true;
+  }
+  return shape.has_layout() && (shape.dimensions().empty() ||
+                                !shape.layout().minor_to_major().empty());
 }
 
 /* static */ bool LayoutUtil::HasLayout(const ProgramShape& program_shape) {
@@ -586,11 +619,38 @@ Layout LayoutUtil::MoveDimToMinor(const Layout& layout, const int64_t dim) {
     tile = shape.layout().tiles()[0];
   }
 
+  auto resolve_match_dim = [&](int64_t i, int64_t dim_size) {
+    absl::Span<const int64_t> tile_dims = tile.dimensions();
+    absl::Span<const int64_t> sub_tile_dims =
+        shape.layout().tiles().size() > 1 ? shape.layout().tiles(1).dimensions()
+                                          : absl::Span<const int64_t>();
+    int64_t sub_tile_offset = static_cast<int64_t>(sub_tile_dims.size()) -
+                              static_cast<int64_t>(tile_dims.size());
+    int64_t packing = 1;
+    if (i + sub_tile_offset >= 0 &&
+        static_cast<int64_t>(sub_tile_dims.size()) > i + sub_tile_offset) {
+      packing = std::max<int64_t>(1, sub_tile_dims[i + sub_tile_offset]);
+    } else if (i == static_cast<int64_t>(tile_dims.size()) - 2 &&
+               !sub_tile_dims.empty()) {
+      packing = std::max<int64_t>(1, sub_tile_dims[0]);
+    }
+    return RoundUpTo(std::max<int64_t>(dim_size, 1), packing);
+  };
+
   int64_t linear_index = 0;
   int64_t tile_multiplier = 1;
   // Initialize to number of elements in a tile.
-  for (int64_t i : tile.dimensions()) {
-    tile_multiplier *= i;
+  for (int64_t d_idx = 0; d_idx < tile.dimensions().size(); ++d_idx) {
+    int64_t tile_dim_size = tile.dimensions()[d_idx];
+    if (tile_dim_size == Tile::kMatchDimension) {
+      int64_t minor = tile.dimensions().size() - 1 - d_idx;
+      if (minor >= shape.layout().minor_to_major().size()) {
+        continue;
+      }
+      int64_t logical_dim = Minor(shape.layout(), minor);
+      tile_dim_size = resolve_match_dim(d_idx, shape.dimensions(logical_dim));
+    }
+    tile_multiplier *= tile_dim_size;
   }
   int64_t within_tile_multiplier = 1;
 
@@ -601,8 +661,11 @@ Layout LayoutUtil::MoveDimToMinor(const Layout& layout, const int64_t dim) {
     int64_t index = indices[logical_dim];
 
     if (minor < tile.dimensions().size()) {
-      int64_t tile_dim_size =
-          tile.dimensions()[tile.dimensions().size() - 1 - minor];
+      int64_t d_idx = tile.dimensions().size() - 1 - minor;
+      int64_t tile_dim_size = tile.dimensions()[d_idx];
+      if (tile_dim_size == Tile::kMatchDimension) {
+        tile_dim_size = resolve_match_dim(d_idx, shape_dim_size);
+      }
       linear_index += tile_multiplier * (index / tile_dim_size) +
                       within_tile_multiplier * (index % tile_dim_size);
       tile_multiplier *= CeilOfRatio(shape_dim_size, tile_dim_size);
@@ -671,6 +734,9 @@ Layout LayoutUtil::MoveDimToMinor(const Layout& layout, const int64_t dim) {
       int64_t d = current_shape[suffix_start + i];
       int64_t e = current_indices[suffix_start + i];
       int64_t t = tile.dimension(i);
+      if (t == Tile::kMatchDimension) {
+        t = d == 0 ? 1 : d;
+      }
       next_shape.push_back(CeilOfRatio(d, t));
       next_indices.push_back(e / t);
     }
@@ -678,8 +744,12 @@ Layout LayoutUtil::MoveDimToMinor(const Layout& layout, const int64_t dim) {
     // Inner tile dimensions: t.
     // Inner tile indices: e mod t.
     for (int i = 0; i < tile_rank; ++i) {
+      int64_t d = current_shape[suffix_start + i];
       int64_t e = current_indices[suffix_start + i];
       int64_t t = tile.dimension(i);
+      if (t == Tile::kMatchDimension) {
+        t = d == 0 ? 1 : d;
+      }
       next_shape.push_back(t);
       next_indices.push_back(e % t);
     }
@@ -708,6 +778,9 @@ Layout LayoutUtil::MoveDimToMinor(const Layout& layout, const int64_t dim) {
 
   if (num_dims == 0) {
     return {};
+  }
+  if (ShapeUtil::IsZeroElementArray(shape)) {
+    return std::vector<int64_t>(num_dims, 0);
   }
 
   // 1. Determine the final expanded physical shape (major-to-minor).
@@ -745,12 +818,21 @@ Layout LayoutUtil::MoveDimToMinor(const Layout& layout, const int64_t dim) {
     }
     // Outer tile dimensions: ceil(d/t).
     for (int i = 0; i < tile_rank; ++i) {
-      next_shape.push_back(
-          CeilOfRatio(current_shape[suffix_start + i], tile.dimension(i)));
+      int64_t d = current_shape[suffix_start + i];
+      int64_t t = tile.dimension(i);
+      if (t == Tile::kMatchDimension) {
+        t = d == 0 ? 1 : d;
+      }
+      next_shape.push_back(CeilOfRatio(d, t));
     }
     // Inner tile dimensions: t.
     for (int i = 0; i < tile_rank; ++i) {
-      next_shape.push_back(tile.dimension(i));
+      int64_t d = current_shape[suffix_start + i];
+      int64_t t = tile.dimension(i);
+      if (t == Tile::kMatchDimension) {
+        t = d == 0 ? 1 : d;
+      }
+      next_shape.push_back(t);
     }
     current_shape = std::move(next_shape);
   }
@@ -785,6 +867,10 @@ Layout LayoutUtil::MoveDimToMinor(const Layout& layout, const int64_t dim) {
       int64_t outer_idx = current_indices[suffix_start + i];
       int64_t inner_idx = current_indices[suffix_start + tile_rank + i];
       int64_t tile_dim = step.tile.dimension(i);
+      if (tile_dim == Tile::kMatchDimension) {
+        int64_t d = step.shape_before[suffix_start + i];
+        tile_dim = d == 0 ? 1 : d;
+      }
       prev_indices.push_back(outer_idx * tile_dim + inner_idx);
     }
     current_indices = std::move(prev_indices);

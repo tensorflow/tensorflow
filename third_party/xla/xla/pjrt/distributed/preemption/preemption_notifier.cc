@@ -60,11 +60,15 @@ SigtermNotifier::SigtermNotifier(tsl::Env* env) : PreemptionNotifier(env) {
 #if defined(PLATFORM_GOOGLE)
   thread::signal::Token unused_token;
 
+  // Override default SIGTERM handler so the process does not terminate
+  // immediately before preemption listeners are notified. Note that
+  // kOverrideDefault only suppresses the pre-existing kernel sigaction()
+  // handler; all handlers registered via thread::signal::AddHandler are still
+  // invoked.
   thread::signal::AddHandler(
       SIGTERM, thread::Executor::DefaultExecutor(),
       []() { sigterm_received.store(true); },
-      /*flags=*/0,  // Don't override existing signal handlers.
-      &unused_token);
+      /*flags=*/thread::signal::kOverrideDefault, &unused_token);
 #else
   std::signal(SIGTERM, [](int signal) { sigterm_received.store(true); });
 #endif

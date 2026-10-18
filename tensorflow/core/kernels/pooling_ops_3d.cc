@@ -564,6 +564,19 @@ class AvgPooling3dGradOp : public OpKernel {
                    Get3dOutputSizeV2(input_size, window, dilations, stride,
                                      padding_, &out, &padding));
 
+    TensorShape forward_output_shape;
+    OP_REQUIRES_OK(context, ShapeFromFormatWithStatus(
+                                data_format_,
+                                GetTensorDim(output_shape, data_format_, 'N'),
+                                {{out[2], out[1], out[0]}},
+                                GetTensorDim(output_shape, data_format_, 'C'),
+                                &forward_output_shape));
+    OP_REQUIRES(
+        context, out_backprop.shape() == forward_output_shape,
+        absl::InvalidArgumentError(absl::StrCat(
+            "Expected grad shape to be ", forward_output_shape.DebugString(),
+            ", but got ", out_backprop.shape().DebugString())));
+
     LaunchAvgPooling3dGradOp<Device, T>::launch(
         context, output_shape, out_backprop, window, stride, out, padding,
         data_format_, output);

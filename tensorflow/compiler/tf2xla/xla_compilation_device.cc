@@ -36,8 +36,8 @@ namespace tensorflow {
 // represented by the Tensor.
 class XlaCompilationAllocator : public Allocator {
  public:
-  XlaCompilationAllocator() {}
-  ~XlaCompilationAllocator() override {}
+  XlaCompilationAllocator() = default;
+  ~XlaCompilationAllocator() override = default;
 
   std::string Name() override { return "xla_compilation"; }
 
@@ -78,7 +78,7 @@ XlaCompilationDevice::XlaCompilationDevice(const SessionOptions& options,
                                             type.type()))),
       allocator_(new XlaCompilationAllocator()) {}
 
-XlaCompilationDevice::~XlaCompilationDevice() {}
+XlaCompilationDevice::~XlaCompilationDevice() = default;
 
 Allocator* XlaCompilationDevice::GetAllocator(AllocatorAttributes attr) {
   return allocator_.get();

@@ -98,7 +98,7 @@ xla_cc_binary(
 )
 
 xla_cc_binary(
-    name = "fusion_to_mlir",
+    name = "cpu_fusion_to_mlir",
     testonly = True,
     srcs = ["fusion_to_mlir.cc"],
     deps = [

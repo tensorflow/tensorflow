@@ -1081,8 +1081,9 @@ absl::Status BatchResourceBase::ConcatInputTensors(
         // the priority queue). If so, skip the output concatenation — the
         // output TensorMatrix may contain uninitialized entries that would
         // cause a crash in Concat/memcpy.
-        if (!input_task->status->status().ok()) {
-          input_task->FinishTask(input_task->status->status());
+        absl::Status task_status = input_task->status->status();
+        if (!task_status.ok()) {
+          input_task->FinishTask(task_status);
           return;
         }
         OpKernelContext* context = input_task->context;

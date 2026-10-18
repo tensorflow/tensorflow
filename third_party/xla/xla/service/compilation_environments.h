@@ -18,7 +18,10 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <string>
 
+#include "google/protobuf/any.pb.h"
+#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
@@ -112,7 +115,10 @@ class CompilationEnvironments {
   absl::Status InitializeAllKnownEnvs();
 
   // Removes all added environments.
-  void Clear() { environments_.clear(); }
+  void Clear() {
+    environments_.clear();
+    unknown_environments_.clear();
+  }
 
   // Serializes this CompilationEnvironments into a protobuf message.
   CompilationEnvironmentsProto ToProto() const;
@@ -139,6 +145,11 @@ class CompilationEnvironments {
   absl::flat_hash_map<const google::protobuf::Descriptor*,
                       std::unique_ptr<google::protobuf::Message>>
       environments_;
+
+  // Stores serialized environments whose proto type is not linked into this
+  // binary, as opaque google.protobuf.Any entries so that ToProto() can
+  // round-trip them back without data loss.
+  absl::btree_map<std::string, google::protobuf::Any> unknown_environments_;
 };
 
 // ----- Template implementation below -----

@@ -568,6 +568,62 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           )
       )
 
+  def testScatterIntoExistingListFailsWhenIndexBeyondMaxNumElements(self):
+    # Follow-up to the negative-index fix: scattering past the list's declared
+    # max_num_elements must raise instead of unbounded-growing the backing
+    # std::vector by an attacker-controlled index (a memory-exhaustion DoS,
+    # and at INT32_MAX a signed `max_index + 1` overflow). Mirrors
+    # TensorListPushBack, which already enforces this cap.
+    l = list_ops.empty_tensor_list(
+        element_dtype=dtypes.float32, element_shape=[], max_num_elements=3
+    )
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "is beyond the list's max_num_elements",
+    ):
+      self.evaluate(
+          list_ops.tensor_list_scatter(
+              tensor=[2.0, 3.0],
+              indices=[0, 5],
+              element_shape=[],
+              input_handle=l,
+          )
+      )
+
+  def testScatterIntoExistingListRejectsUnrepresentableLength(self):
+    l = list_ops.empty_tensor_list(
+        element_dtype=dtypes.float32, element_shape=[]
+    )
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "list length that is not representable as int32",
+    ):
+      self.evaluate(
+          list_ops.tensor_list_scatter(
+              tensor=[1.0],
+              indices=constant_op.constant(
+                  [np.iinfo(np.int32).max], dtype=dtypes.int32
+              ),
+              element_shape=[],
+              input_handle=l,
+          )
+      )
+
+  def testScatterRejectsUnrepresentableLength(self):
+    # Mirror TensorListScatterIntoExistingList: index INT32_MAX must not reach
+    # the signed `highest_index + 1` resize (undefined behavior).
+    c0 = constant_op.constant([1.0])
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "list length that is not representable as int32",
+    ):
+      l = list_ops.tensor_list_scatter(
+          c0,
+          constant_op.constant([np.iinfo(np.int32).max], dtype=dtypes.int32),
+          element_shape=[],
+      )
+      self.evaluate(l)
+
   def testScatterFailsWithInvalidNumElements(self):
     c0 = constant_op.constant([1.0, 2.0])
     with self.assertRaisesRegex(
@@ -1761,6 +1817,48 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                                 r"Shape must be rank 0 but is rank \d+|"
                                 r"\w+ must be a scalar"):
       self.evaluate(gen_list_ops.TensorListResize(input_handle=l, size=size))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testReserveExceedingMaxElementsFails(self):
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, "exceeds maximum allowed elements"
+    ):
+      l = list_ops.tensor_list_reserve(
+          element_shape=[],
+          num_elements=(1 << 24) + 1,
+          element_dtype=dtypes.float32,
+      )
+      self.evaluate(l)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testReserveAtModerateElementsSucceeds(self):
+    l = list_ops.tensor_list_reserve(
+        element_shape=[], num_elements=100000, element_dtype=dtypes.float32
+    )
+    self.assertEqual(self.evaluate(list_ops.tensor_list_length(l)), 100000)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testResizeExceedingMaxElementsFails(self):
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, "exceeds maximum allowed elements"
+    ):
+      l = list_ops.tensor_list_from_tensor([1.0, 2.0, 3.0], element_shape=[])
+      l = list_ops.tensor_list_resize(l, (1 << 24) + 1)
+      self.evaluate(l)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testResizeShrinkingSucceeds(self):
+    l = list_ops.tensor_list_from_tensor(
+        [1.0, 2.0, 3.0, 4.0, 5.0], element_shape=[]
+    )
+    l = list_ops.tensor_list_resize(l, 2)
+    self.assertEqual(self.evaluate(list_ops.tensor_list_length(l)), 2)
+    self.assertAllEqual(
+        self.evaluate(
+            list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)
+        ),
+        [1.0, 2.0],
+    )
 
   @test_util.run_deprecated_v1
   @test_util.enable_control_flow_v2

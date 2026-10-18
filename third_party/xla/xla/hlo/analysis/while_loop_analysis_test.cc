@@ -16,9 +16,11 @@ limitations under the License.
 #include "xla/hlo/analysis/while_loop_analysis.h"
 
 #include <cstdint>
+#include <initializer_list>
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -38,6 +40,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/literal_util.h"
 #include "xla/service/constant_value.h"
 #include "xla/service/value_range.h"
@@ -343,6 +346,55 @@ TEST_F(WhileLoopAnalysisTest, ExactBoundTrivialRange) {
       40, 5));
 }
 
+TEST_F(WhileLoopAnalysisTest, TrivialLoopInductionStep) {
+  constexpr absl::string_view kHloTemplate = R"(
+  HloModule ModuleWithWhile
+
+    body {
+      p_body = (f32[2], {{TYPE}}[]) parameter(0)
+      val = f32[2] get-tuple-element(p_body), index=0
+      index = {{TYPE}}[] get-tuple-element(p_body), index=1
+      step = {{TYPE}}[] constant({{STEP}})
+      inc = {{TYPE}}[] {{UPDATE}}(index, step)
+      ROOT root = (f32[2], {{TYPE}}[]) tuple(val, inc)
+    }
+
+    condition {
+      p_cond = (f32[2], {{TYPE}}[]) parameter(0)
+      gte = {{TYPE}}[] get-tuple-element(p_cond), index=1
+      const = {{TYPE}}[] constant(42)
+      ROOT result = pred[] compare(gte, const), direction=LT
+    }
+
+    ENTRY entry {
+      param.0 = f32[2] parameter(0)
+      param.1 = {{TYPE}}[] constant(0)
+      while_init = (f32[2], {{TYPE}}[]) tuple(param.0, param.1)
+      ROOT while = (f32[2], {{TYPE}}[]) while(while_init), condition=condition, body=body
+    }
+  )";
+  auto step_of = [&](absl::string_view update, int step,
+                     absl::string_view type = "s32") {
+    std::string hlo_string =
+        absl::StrReplaceAll(kHloTemplate, {{"{{UPDATE}}", update},
+                                           {"{{STEP}}", absl::StrCat(step)},
+                                           {"{{TYPE}}", type}});
+    absl::StatusOr<std::unique_ptr<VerifiedHloModule>> module =
+        ParseAndReturnVerifiedModule(hlo_string);
+    CHECK_OK(module.status());
+    return MatchTrivialLoopInductionStep(
+        (*module)->entry_computation()->root_instruction(),
+        /*indvar_tuple_idx=*/1);
+  };
+  EXPECT_EQ(step_of("add", 1), 1);
+  EXPECT_EQ(step_of("add", 7), 7);
+  EXPECT_EQ(step_of("add", 0), std::nullopt);
+  EXPECT_EQ(step_of("add", -2), std::nullopt);
+  EXPECT_EQ(step_of("multiply", 2), std::nullopt);
+  // A floating point counter has no integral step.
+  EXPECT_EQ(step_of("add", 1, "f32"), std::nullopt);
+}
+
 TEST_F(WhileLoopAnalysisTest, ExactBoundTrivialTripCount) {
   // LT cases
   EXPECT_EQ(
@@ -371,6 +423,22 @@ TEST_F(WhileLoopAnalysisTest, ExactBoundTrivialTripCount) {
   EXPECT_EQ(
       MakeWhileLoopAndGetTripCount(0, 40, 5, ComparisonDirection::kLe).value(),
       CalculateTripCount(0, 40, 5, ComparisonDirection::kLe));
+}
+
+TEST_F(WhileLoopAnalysisTest, NegativeAndZeroTripCountNonUnitStep) {
+  for (auto [init, bound, step, dir] : std::initializer_list<
+           std::tuple<int32_t, int32_t, int32_t, ComparisonDirection>>{
+           {-5, 0, 2, ComparisonDirection::kLt},
+           {-10, -3, 2, ComparisonDirection::kLt},
+           {-2, 1, 2, ComparisonDirection::kLt},
+           {5, 2, 4, ComparisonDirection::kLt},
+           {-5, 0, 2, ComparisonDirection::kLe},
+           {1, 0, 2, ComparisonDirection::kLe},
+           {5, 2, 4, ComparisonDirection::kLe}}) {
+    ASSERT_OK_AND_ASSIGN(int64_t tc,
+                         MakeWhileLoopAndGetTripCount(init, bound, step, dir));
+    EXPECT_EQ(tc, CalculateTripCount(init, bound, step, dir));
+  }
 }
 
 TEST_F(WhileLoopAnalysisTest, NoAIVNoConstChain) {
@@ -1066,7 +1134,7 @@ TEST_F(WhileLoopAnalysisTest, GetIndvarIndexShouldWorkWhenParamIsCopied) {
 }
 
 TEST_F(WhileLoopAnalysisTest,
-       MatchTrivialLoopCountFailsWhenIndvarIsNotIncrementedByConstant) {
+       MatchTrivialLoopFailsWhenIndvarIsNotIncrementedByConstant) {
   absl::string_view hlo_with_constant = R"(
   HloModule test
   body {
@@ -1125,6 +1193,7 @@ TEST_F(WhileLoopAnalysisTest,
       MatchTrivialLoopTripCount(while_op_without_constant, 0,
                                 LiteralUtil::CreateR0<int32_t>(0));
   EXPECT_EQ(trip_count_without_constant, std::nullopt);
+  EXPECT_EQ(MatchTrivialLoopRange(while_op_without_constant), std::nullopt);
 }
 
 TEST_F(WhileLoopAnalysisTest,

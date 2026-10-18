@@ -15,14 +15,20 @@ License.
 // Unit test for TFLite Lookup op.
 
 #include <stdint.h>
+#if defined(__LP64__) && !defined(_WIN32)
+#include <sys/mman.h>
+#endif
 
+#include <cstddef>
 #include <functional>
 #include <initializer_list>
+#include <limits>
 #include <memory>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/lite/array.h"
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/test_util.h"
@@ -30,6 +36,12 @@ License.
 #include "tensorflow/lite/types/half.h"
 
 namespace tflite {
+namespace ops {
+namespace builtin {
+TfLiteRegistration* Register_EMBEDDING_LOOKUP();
+}  // namespace builtin
+}  // namespace ops
+
 namespace {
 
 constexpr float kTestTolerance = 7.41e-03;
@@ -1109,5 +1121,164 @@ TEST(PerAxisHybridEmbeddingLookupHybridOpTest,
                                        },
                                        kFp16TestTolerance)));
 }
+
+void SilentReportError(TfLiteContext*, const char*, ...) {}
+
+struct DirectEvalFixture {
+  TfLiteContext context{};
+  TfLiteNode node{};
+  IntArrayUniquePtr node_inputs = BuildTfLiteArray<int>({0, 1});
+  IntArrayUniquePtr node_outputs = BuildTfLiteArray<int>({2});
+  TfLiteTensor tensors[3]{};
+
+  DirectEvalFixture() {
+    context.ReportError = SilentReportError;
+    context.tensors = tensors;
+    context.tensors_size = 3;
+    node.inputs = node_inputs.get();
+    node.outputs = node_outputs.get();
+  }
+
+  TfLiteStatus Invoke() {
+    return ops::builtin::Register_EMBEDDING_LOOKUP()->invoke(&context, &node);
+  }
+};
+
+#if !defined(MEMORY_SANITIZER) && !defined(GOOGLE_UNSUPPORTED_OS_LOONIX) && \
+    defined(__LP64__) && !defined(_WIN32)
+TEST(EmbeddingLookupKernelSanitizationTest, LargeInt4TableRowOffsetSucceeds) {
+  DirectEvalFixture f;
+  IntArrayUniquePtr lookup_dims = BuildTfLiteArray<int>({1});
+  IntArrayUniquePtr value_dims = BuildTfLiteArray<int>({262144, 8960});
+  int32_t idx = 239675;
+  std::vector<float> output_data(8960, 0.0f);
+
+  f.tensors[0].dims = lookup_dims.get();
+  f.tensors[0].type = kTfLiteInt32;
+  f.tensors[0].data.i32 = &idx;
+
+  const size_t bytes = size_t{262144} * 8960 / 2;
+  void* data = mmap(nullptr, bytes, PROT_READ | PROT_WRITE,
+                    MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
+  ASSERT_NE(data, MAP_FAILED);
+
+  f.tensors[1].dims = value_dims.get();
+  f.tensors[1].type = kTfLiteInt4;
+  f.tensors[1].params.scale = 1.0f;
+  f.tensors[1].data.int8 = static_cast<int8_t*>(data);
+  f.tensors[1].bytes = bytes;
+  f.tensors[1].data.int8[size_t{239675} * 8960 / 2] = 0x12;
+
+  f.tensors[2].type = kTfLiteFloat32;
+  f.tensors[2].data.f = output_data.data();
+
+  EXPECT_EQ(f.Invoke(), kTfLiteOk);
+  EXPECT_FLOAT_EQ(output_data[0], 2.0f);
+  EXPECT_FLOAT_EQ(output_data[1], 1.0f);
+
+  munmap(data, bytes);
+}
+#endif
+
+TEST(EmbeddingLookupKernelSanitizationTest,
+     HybridColumnAndRowOverflowRejected) {
+  DirectEvalFixture f;
+  IntArrayUniquePtr lookup_dims = BuildTfLiteArray<int>({1});
+  int32_t idx = 5;
+  int8_t dummy_value = 0;
+  float dummy_output[8]{};
+
+  f.tensors[0].dims = lookup_dims.get();
+  f.tensors[0].type = kTfLiteInt32;
+  f.tensors[0].data.i32 = &idx;
+
+  f.tensors[1].type = kTfLiteInt4;
+  f.tensors[1].params.scale = 1.0f;
+  f.tensors[1].data.int8 = &dummy_value;
+
+  f.tensors[2].type = kTfLiteFloat32;
+  f.tensors[2].data.f = dummy_output;
+
+  // col_size product overflows size_t.
+  IntArrayUniquePtr col_overflow_dims = BuildTfLiteArray<int>(
+      {6, std::numeric_limits<int>::max(), std::numeric_limits<int>::max(), 5});
+  f.tensors[1].dims = col_overflow_dims.get();
+  EXPECT_EQ(f.Invoke(), kTfLiteError);
+
+  // col_size fits in 64-bit size_t, but idx * col_size overflows size_t.
+  IntArrayUniquePtr row_overflow_dims = BuildTfLiteArray<int>(
+      {6, std::numeric_limits<int>::max(), std::numeric_limits<int>::max()});
+  f.tensors[1].dims = row_overflow_dims.get();
+  EXPECT_EQ(f.Invoke(), kTfLiteError);
+}
+
+TEST(EmbeddingLookupKernelSanitizationTest,
+     NegativeInt4AndInt2UnpackWithoutSignedShiftUb) {
+  DirectEvalFixture f;
+  IntArrayUniquePtr lookup_dims = BuildTfLiteArray<int>({1});
+  int32_t idx = 0;
+  float output_data[4]{};
+
+  f.tensors[0].dims = lookup_dims.get();
+  f.tensors[0].type = kTfLiteInt32;
+  f.tensors[0].data.i32 = &idx;
+  f.tensors[1].params.scale = 1.0f;
+  f.tensors[2].type = kTfLiteFloat32;
+  f.tensors[2].data.f = output_data;
+
+  // Negative INT4 nibbles: 0xFF (-1, -1) and 0x88 (-8, -8), even & odd cols.
+  for (int col_size : {1, 2, 3}) {
+    IntArrayUniquePtr value_dims = BuildTfLiteArray<int>({1, col_size});
+    int8_t packed[2] = {-1, static_cast<int8_t>(0x88)};
+    f.tensors[1].dims = value_dims.get();
+    f.tensors[1].type = kTfLiteInt4;
+    f.tensors[1].data.int8 = packed;
+    ASSERT_EQ(f.Invoke(), kTfLiteOk);
+    EXPECT_FLOAT_EQ(output_data[0], -1.0f);
+    if (col_size >= 2) EXPECT_FLOAT_EQ(output_data[1], -1.0f);
+    if (col_size >= 3) EXPECT_FLOAT_EQ(output_data[2], -8.0f);
+  }
+
+  // Negative INT2 crumbs: 0xFF (-1, -1, -1, -1) across col_size = 1..4.
+  for (int col_size : {1, 2, 3, 4}) {
+    IntArrayUniquePtr value_dims = BuildTfLiteArray<int>({1, col_size});
+    int8_t packed = -1;
+    f.tensors[1].dims = value_dims.get();
+    f.tensors[1].type = kTfLiteInt2;
+    f.tensors[1].data.int8 = &packed;
+    ASSERT_EQ(f.Invoke(), kTfLiteOk);
+    for (int c = 0; c < col_size; ++c) {
+      EXPECT_FLOAT_EQ(output_data[c], -1.0f);
+    }
+  }
+}
+
+TEST(EmbeddingLookupOpTest, EmptyTensorBoundaryCases) {
+  // Empty lookup [0] with non-empty table [3, 4] succeeds with empty output.
+  {
+    EmbeddingLookupOpModel m({0}, {3, 4}, TensorType_FLOAT32,
+                             TensorType_FLOAT32);
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    EXPECT_TRUE(m.GetOutput<float>().empty());
+  }
+
+  // Empty table [0, 4] with non-empty lookup [1] must fail (out of bounds).
+  {
+    EmbeddingLookupOpModel m({1}, {0, 4}, TensorType_FLOAT32,
+                             TensorType_FLOAT32);
+    m.SetInput({0});
+    EXPECT_EQ(m.Invoke(), kTfLiteError);
+  }
+
+  // Zero column size [3, 0] with valid lookup [2] succeeds with empty output.
+  {
+    EmbeddingLookupOpModel m({2}, {3, 0}, TensorType_FLOAT32,
+                             TensorType_FLOAT32);
+    m.SetInput({0, 2});
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    EXPECT_TRUE(m.GetOutput<float>().empty());
+  }
+}
+
 }  // namespace
 }  // namespace tflite

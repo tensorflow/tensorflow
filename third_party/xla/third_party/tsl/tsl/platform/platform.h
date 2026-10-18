@@ -92,6 +92,12 @@ limitations under the License.
 namespace tsl {
 // Constant which is false internally and true in open source.
 inline constexpr bool kIsOpenSource = TSL_IS_IN_OSS;
+
+#ifdef NDEBUG
+inline constexpr bool kIsDebugBuild = false;
+#else
+inline constexpr bool kIsDebugBuild = true;
+#endif
 }  // namespace tsl
 #endif
 

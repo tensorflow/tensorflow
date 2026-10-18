@@ -100,13 +100,13 @@ func.func @merge_reshards_for_same_devices_only(
 func.func @merge_copies_for_same_donated_only(
     %arg0: !array0, %arg1: !array0, %arg2: !array0, %arg3: !array0)
   -> (!array1, !array1, !array1, !array1) attributes {ifrt.function} {
-// CHECK-NEXT: %[[MERGED1:.*]]:2, %{{.*}} = ifrt.CopyArrays(%arg0, %arg1) {donated = true} :
+// CHECK-NEXT: %[[MERGED1:.*]]:2, %{{.*}} = ifrt.CopyArrays(%arg0, %arg1) <donated = true> :
 // CHECK-NEXT: %[[MERGED2:.*]]:2, %{{.*}} = ifrt.CopyArrays(%arg2, %arg3)
-// CHECK-NOT:      {donated = true}
+// CHECK-NOT:      <donated = true>
 // CHECK-NEXT: return %[[MERGED1]]#0, %[[MERGED1]]#1, %[[MERGED2]]#0, %[[MERGED2]]#1
-  %1, %ctrl_1 = ifrt.CopyArrays(%arg0) {donated = true} : (!array0) -> !array1
-  %2, %ctrl_2 = ifrt.CopyArrays(%arg1) {donated = true} : (!array0) -> !array1
-  %3, %ctrl_3 = ifrt.CopyArrays(%arg2) {donated = false} : (!array0) -> !array1
+  %1, %ctrl_1 = ifrt.CopyArrays(%arg0) <donated = true> : (!array0) -> !array1
+  %2, %ctrl_2 = ifrt.CopyArrays(%arg1) <donated = true> : (!array0) -> !array1
+  %3, %ctrl_3 = ifrt.CopyArrays(%arg2) <donated = false> : (!array0) -> !array1
   %4, %ctrl_4 = ifrt.CopyArrays(%arg3) : (!array0) -> !array1
   return %1, %2, %3, %4 : !array1, !array1, !array1, !array1
 }
@@ -115,13 +115,13 @@ func.func @merge_copies_for_same_donated_only(
 func.func @merge_reshards_for_same_donated_only(
     %arg0: !array0, %arg1: !array0, %arg2: !array0, %arg3: !array0)
   -> (!array1, !array1, !array1, !array1) attributes {ifrt.function} {
-// CHECK-NEXT: %[[MERGED1:.*]]:2, %{{.*}} = ifrt.Reshard(%arg0, %arg1) {donated = true} :
+// CHECK-NEXT: %[[MERGED1:.*]]:2, %{{.*}} = ifrt.Reshard(%arg0, %arg1) <donated = true> :
 // CHECK-NEXT: %[[MERGED2:.*]]:2, %{{.*}} = ifrt.Reshard(%arg2, %arg3)
-// CHECK-NOT:      {donated = true}
+// CHECK-NOT:      <donated = true>
 // CHECK-NEXT: return %[[MERGED1]]#0, %[[MERGED1]]#1, %[[MERGED2]]#0, %[[MERGED2]]#1
-  %1, %ctrl_1 = ifrt.Reshard(%arg0) {donated = true} : (!array0) -> !array1
-  %2, %ctrl_2 = ifrt.Reshard(%arg1) {donated = true} : (!array0) -> !array1
-  %3, %ctrl_3 = ifrt.Reshard(%arg2) {donated = false} : (!array0) -> !array1
+  %1, %ctrl_1 = ifrt.Reshard(%arg0) <donated = true> : (!array0) -> !array1
+  %2, %ctrl_2 = ifrt.Reshard(%arg1) <donated = true> : (!array0) -> !array1
+  %3, %ctrl_3 = ifrt.Reshard(%arg2) <donated = false> : (!array0) -> !array1
   %4, %ctrl_4 = ifrt.Reshard(%arg3) : (!array0) -> !array1
   return %1, %2, %3, %4 : !array1, !array1, !array1, !array1
 }

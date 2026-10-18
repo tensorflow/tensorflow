@@ -17,7 +17,7 @@
 sdy.mesh @mesh_0 = <["a"=4, "b"=2]>
 sdy.mesh @mesh_1 = <["a"=2, "b"=2, "c"=2, "d"=2]>
 sdy.mesh @mesh_2 = <["a"=4, "b"=4, "c"=4]>
-sdy.mesh @maximal_mesh_0 = <[], device_ids=[0]>
+sdy.mesh @single_device_0 = <[], device_ids=[0]>
 
 // CHECK-LABEL: func @single_manual_comp
 func.func @single_manual_comp(%arg0: tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_0, [{"a", ?}, {"b", ?}]>}, %arg1: tensor<16x32xf32> {sdy.sharding = #sdy.sharding<@mesh_0, [{"b", ?}, {?}]>}) -> (tensor<8x32xf32> {sdy.sharding = #sdy.sharding<@mesh_0, [{"a"}, {}]>}) {
@@ -193,7 +193,7 @@ func.func @manual_computation_with_tokens(
       out_shardings=[<@mesh_0, []>, <@mesh_0, [{"b"}]>]
       manual_axes={"a", "b"} (%arg2: !stablehlo.token, %arg3: tensor<1xi64>) {
     %1 = stablehlo.custom_call @sdy_testonly(%arg2) : (!stablehlo.token) -> (!stablehlo.token)
-    stablehlo.custom_call @sdy_testonly(%1) {sdy.sharding = #sdy.sharding_per_value<[<@maximal_mesh_0, []>]>} : (!stablehlo.token) -> ()
+    stablehlo.custom_call @sdy_testonly(%1) {sdy.sharding = #sdy.sharding_per_value<[<@single_device_0, []>]>} : (!stablehlo.token) -> ()
     sdy.return %1, %arg3 : !stablehlo.token, tensor<1xi64>
   } : (!stablehlo.token, tensor<2xi64>) -> (!stablehlo.token, tensor<2xi64>)
   return %0#0, %0#1 : !stablehlo.token, tensor<2xi64>
@@ -575,3 +575,43 @@ func.func private @bar(%arg0: tensor<8xi32>) -> tensor<8xi32> {
 // CHECK-NEXT:      %1 = call @bar(%0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>} : (tensor<8xi32>) -> tensor<8xi32>
 // CHECK-NEXT:      return %arg0 : tensor<4xi32>
 // CHECK-NEXT:  }
+
+// -----
+sdy.mesh @mesh = <["a"=2, "b"=4]>
+
+// Tests that when a function containing a `ManualComputationOp` (callee) is
+// called from within another `ManualComputationOp` (caller), the callee's
+// `ManualComputationOp` correctly inherits parent manual axes from the caller.
+//
+// 1. Caller passes parent manual axes {"a"} to callee's inputs/outputs:
+// CHECK-LABEL: func private @called_func_with_manual_comp(
+// CHECK-SAME:   %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {}]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>})
+// CHECK-SAME:   -> (tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {}]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>}) {
+// CHECK-NEXT:    %[[COPY:.*]] = mhlo.copy %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"b"}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>} : tensor<8x8xf32>
+//
+// 2. Full-to-shard inside callee inherits caller axis "a" + callee axis "b" -> manual axes {"a", "b"}:
+// CHECK-NEXT:    %[[FULL_TO_SHARD:.*]] = stablehlo.custom_call @SPMDFullToShardShape(%[[COPY]]) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"a", "b"}>} : (tensor<8x8xf32>) -> tensor<8x2xf32>
+//
+// 3. Inner body call runs with both axes manual:
+// CHECK-NEXT:    %[[CALL:.*]] = call @xla.sdy.inlinable_manual_computation_body(%[[FULL_TO_SHARD]]) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"a", "b"}>} : (tensor<8x2xf32>) -> tensor<8x2xf32>
+// CHECK-NEXT:    %[[COPY_1:.*]] = mhlo.copy %[[CALL]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"a", "b"}>} : tensor<8x2xf32>
+//
+// 4. Shard-to-full returns to caller scope, with manual axis {"a"} preserved:
+// CHECK-NEXT:    %[[SHARD_TO_FULL:.*]] = stablehlo.custom_call @SPMDShardToFullShape(%[[COPY_1]]) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"b"}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>} : (tensor<8x2xf32>) -> tensor<8x8xf32>
+// CHECK-NEXT:    return %[[SHARD_TO_FULL]] : tensor<8x8xf32>
+func.func private @called_func_with_manual_comp(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+  %0 = sdy.manual_computation(%arg0) in_shardings=[<@mesh, [{}, {"b"}]>] out_shardings=[<@mesh, [{}, {"b"}]>] manual_axes={"b"} (%arg1: tensor<8x2xf32>) {
+    %1 = stablehlo.add %arg1, %arg1 : tensor<8x2xf32>
+    sdy.return %1 : tensor<8x2xf32>
+  } : (tensor<8x8xf32>) -> tensor<8x8xf32>
+  return %0 : tensor<8x8xf32>
+}
+
+// CHECK-LABEL: func @manual_comp_calls_func_with_manual_comp(
+func.func @manual_comp_calls_func_with_manual_comp(%arg0: tensor<16x8xf32>) -> tensor<16x8xf32> {
+  %0 = sdy.manual_computation(%arg0) in_shardings=[<@mesh, [{"a"}, {}]>] out_shardings=[<@mesh, [{"a"}, {}]>] manual_axes={"a"} (%arg1: tensor<8x8xf32>) {
+    %1 = func.call @called_func_with_manual_comp(%arg1) : (tensor<8x8xf32>) -> tensor<8x8xf32>
+    sdy.return %1 : tensor<8x8xf32>
+  } : (tensor<16x8xf32>) -> tensor<16x8xf32>
+  return %0 : tensor<16x8xf32>
+}

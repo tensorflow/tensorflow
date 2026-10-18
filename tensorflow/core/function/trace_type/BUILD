@@ -108,6 +108,7 @@ py_test(
         ":default_types",
         ":serialization",
         #internal proto upb dep
+        "//third_party/py/numpy",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/types:trace",
         "@absl_py//absl/testing:parameterized",

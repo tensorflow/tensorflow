@@ -1099,12 +1099,10 @@ cc_test(
     name = "depthwiseconv_quantized_test",
     srcs = [
         "depthwiseconv_quantized_test.cc",
-        "optimized/depthwiseconv_uint8_transitional.h",
     ],
     copts = tflite_copts(),
     shard_count = 2,
     deps = [
-        ":compatibility",
         ":cpu_check",
         ":optimized_base",
         ":reference_base",
@@ -1385,6 +1383,20 @@ cc_test(
         ":avx2_quantization_utils",
         ":common",
         "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "kernel_utils_test",
+    srcs = ["kernel_utils_test.cc"],
+    deps = [
+        ":kernel_utils",
+        "//tensorflow/lite:array",
+        "//tensorflow/lite:util",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/kernels:test_util",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
 )

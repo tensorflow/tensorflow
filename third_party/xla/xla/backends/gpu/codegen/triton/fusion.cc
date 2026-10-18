@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/backends/gpu/codegen/triton/fusion.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -30,6 +31,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/Module.h"
@@ -54,6 +56,7 @@ limitations under the License.
 #include "xla/future.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_constants.h"
@@ -90,7 +93,10 @@ absl::StatusOr<EmitArgs> EmitCollectiveFusion(
 
   const HloInstructionAdaptor collective_hero = analysis.fusion_hero(0);
 
-  bool use_global_device_ids = collective_hero.use_global_device_ids();
+  std::optional<bool> use_global_device_ids;
+  if (collective_hero.opcode() != HloOpcode::kAllToAll) {
+    use_global_device_ids = collective_hero.use_global_device_ids();
+  }
 
   CollectiveConfig config = GetCollectiveConfig(&collective_hero.instruction(),
                                                 use_global_device_ids);
@@ -101,21 +107,31 @@ absl::StatusOr<EmitArgs> EmitCollectiveFusion(
                                 fusion_instr, Thunk::Kind::kCollectiveKernel,
                                 /*has_dynamic_root=*/false));
 
+  ABSL_ASSIGN_OR_RETURN(
+      const SymmetricMemoryType scratch_memory_type,
+      GetSymmetricMemoryType(ir_emitter_context.gpu_topology(), *fusion_instr));
+  int devices_in_process =
+      ir_emitter_context.gpu_topology().num_devices_per_process();
   TritonFusion::EmitThunk make_thunk =
       [info = std::move(info), buffers = std::move(buffers), config,
-       fusion_instr](TritonFusion::EmitResult result) mutable
+       fusion_instr, scratch_memory_type,
+       devices_in_process](TritonFusion::EmitResult result) mutable
       -> absl::StatusOr<ThunkSequence> {
-    ABSL_ASSIGN_OR_RETURN(CollectiveKernelSpec kernel_spec,
-                     CreateCollectiveKernelSpec(
-                         fusion_instr, result.entry.launch_dimensions));
-    auto cubin = result.entry.binary.empty()
-                     ? std::nullopt
-                     : std::make_optional(std::move(result.entry.binary));
+    ABSL_ASSIGN_OR_RETURN(
+        CollectiveKernelSpec kernel_spec,
+        CreateCollectiveKernelSpec(fusion_instr, result.entry.launch_dimensions,
+                                   scratch_memory_type));
+    // `CollectiveKernelThunk` owns its cubin, so we have to copy it out of the
+    // shared buffer here.
+    std::optional<std::vector<uint8_t>> cubin;
+    if (result.entry.binary != nullptr && !result.entry.binary->empty()) {
+      cubin = *result.entry.binary;
+    }
     return ThunkSequence::Of<CollectiveKernelThunk>(
         std::move(info), config, std::move(kernel_spec), std::move(buffers),
         /*is_collective_kernel_enabled=*/true, result.entry.kernel_name,
-        result.entry.launch_dimensions, result.entry.shmem_bytes,
-        std::move(cubin), result.entry.use_pdl);
+        result.entry.launch_dimensions, devices_in_process,
+        result.entry.shmem_bytes, std::move(cubin), result.entry.use_pdl);
   };
   ABSL_ASSIGN_OR_RETURN(std::vector<Shape> unmanaged_arguments,
                    GetCollectiveUnmanagedKernelArguments(fusion_instr));
@@ -191,20 +207,23 @@ AsyncThunkSequence TritonFusion::Emit(
                                           ir_emitter_context, fusion));
   } else {
     EmitThunk make_thunk =
-        [thunk_info = std::move(thunk_info)](
+        [thunk_info = std::move(thunk_info),
+         devices_in_process =
+             ir_emitter_context.gpu_topology().num_devices_per_process()](
             EmitResult result) -> absl::StatusOr<ThunkSequence> {
       ABSL_ASSIGN_OR_RETURN(
           CustomKernel custom_kernel,
-          kernel::CreateOwnedCubinCustomKernel(
-              result.entry.kernel_name, result.entry.binary,
+          kernel::CreateSharedCubinCustomKernel(
+              std::move(result.entry.kernel_name),
+              std::move(result.entry.binary),
               result.kernel_arguments.args().size(),
               result.entry.launch_dimensions.block_counts(),
               result.entry.launch_dimensions.thread_counts_per_block(),
               result.entry.shmem_bytes));
       return ThunkSequence::Of<CustomKernelThunk>(
           thunk_info, std::move(custom_kernel), result.kernel_arguments,
-          result.entry.use_pdl, std::vector<int64_t>{},
-          result.entry.tma_metadata);
+          devices_in_process, result.entry.use_pdl, std::vector<int64_t>{},
+          std::move(result.entry.tma_metadata));
     };
     emit_args = {
         std::move(make_thunk),
@@ -320,13 +339,14 @@ xla::Future<TritonFusion::EmitResult> TritonFusion::Emit(
                     shmem_bytes = triton_wrapper_result.shmem_bytes,
                     use_pdl = triton_wrapper_result.use_pdl](
                        const std::vector<uint8_t>& cubin) mutable {
-                return KernelReuseCache::Entry{std::move(kernel_name),
-                                               launch_dims,
-                                               /*cluster_dim=*/std::nullopt,
-                                               shmem_bytes,
-                                               cubin,
-                                               tma_metadata,
-                                               use_pdl};
+                return KernelReuseCache::Entry{
+                    std::move(kernel_name),
+                    launch_dims,
+                    /*cluster_dim=*/std::nullopt,
+                    shmem_bytes,
+                    std::make_shared<const std::vector<uint8_t>>(cubin),
+                    tma_metadata,
+                    use_pdl};
               });
         });
   };
@@ -336,9 +356,9 @@ xla::Future<TritonFusion::EmitResult> TritonFusion::Emit(
           hlo_computation, kernel_arguments.args(),
           /*discriminator=*/"TritonFusion", generate);
   return status_or_entry.Map([kernel_arguments = std::move(kernel_arguments)](
-                                 const KernelReuseCache::Entry* entry) mutable
+                                 const KernelReuseCache::Entry& entry) mutable
                                  -> absl::StatusOr<EmitResult> {
-    return EmitResult{*entry, std::move(kernel_arguments)};
+    return EmitResult{entry, std::move(kernel_arguments)};
   });
 }
 
@@ -364,15 +384,26 @@ std::optional<TritonFusion::LaunchConfig> TritonFusion::GetLaunchConfig(
       BlockLevelParameters::FromBlockLevelFusionConfig(
           analysis->fusion_backend_config().block_level_fusion_config());
 
-  // We expect all roots to have the same number of blocks. Otherwise we
-  // cannot codegen it.
+  CHECK_EQ(analysis->fusion_root_count(),
+           block_level_parameters.output_tile_sizes.size());
   int64_t num_blocks =
       GetNumberOfBlocks(analysis->fusion_root(0).shape().dimensions(),
                         block_level_parameters.output_tile_sizes[0]);
   for (int64_t i = 1; i < analysis->fusion_root_count(); ++i) {
-    CHECK_EQ(GetNumberOfBlocks(analysis->fusion_root(i).shape().dimensions(),
-                               block_level_parameters.output_tile_sizes[i]),
-             num_blocks);
+    int64_t root_blocks =
+        GetNumberOfBlocks(analysis->fusion_root(i).shape().dimensions(),
+                          block_level_parameters.output_tile_sizes[i]);
+    if (analysis->fusion_backend_config().kind() ==
+        kTritonCollectiveFusionKind) {
+      // Variadic collective fusion: each output has its own tile size, and
+      // smaller outputs are padded with masked-out blocks to match the largest
+      // output's block count. So the launch grid is the max across outputs.
+      num_blocks = std::max(num_blocks, root_blocks);
+    } else {
+      // We expect all roots to have the same number of blocks. Otherwise we
+      // cannot codegen it.
+      CHECK_EQ(root_blocks, num_blocks);
+    }
   }
 
   LaunchConfig launch_config;

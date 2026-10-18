@@ -28,6 +28,7 @@ load("@xla//third_party/benchmark:workspace.bzl", benchmark = "repo")
 load("@xla//third_party/clang_toolchain:cc_configure_clang.bzl", "cc_download_clang_toolchain")
 load("@xla//third_party/compute_library:workspace.bzl", compute_library = "repo")
 load("@xla//third_party/cpuinfo:workspace.bzl", cpuinfo = "repo")
+load("@xla//third_party/cuda_tile:workspace.bzl", cuda_tile = "repo")
 load("@xla//third_party/cudnn_frontend:workspace.bzl", cudnn_frontend = "repo")
 load("@xla//third_party/cutlass:workspace.bzl", cutlass = "repo")
 load("@xla//third_party/dlpack:workspace.bzl", dlpack = "repo")
@@ -63,10 +64,12 @@ load("@xla//third_party/shardy:workspace.bzl", shardy = "repo")
 load("@xla//third_party/slinky:workspace.bzl", slinky = "repo")
 load("@xla//third_party/spdlog:workspace.bzl", spdlog = "repo")
 load("@xla//third_party/stablehlo:workspace.bzl", stablehlo = "repo")
+load("@xla//third_party/tensor_ir:workspace.bzl", tensor_ir = "repo")
 load("@xla//third_party/tensorrt:tensorrt_configure.bzl", "tensorrt_configure")
 load("@xla//third_party/tensorrt:workspace.bzl", tensorrt = "repo")
 load("@xla//third_party/triton:workspace.bzl", triton = "repo")
 load("@xla//third_party/xnnpack:workspace.bzl", xnnpack = "repo")
+load("@xla//third_party/xz:workspace.bzl", xz = "repo")
 load("@xla//tools/def_file_filter:def_file_filter_configure.bzl", "def_file_filter_configure")
 load("@xla//tools/toolchains:cpus/aarch64/aarch64_compiler_configure.bzl", "aarch64_compiler_configure")
 load("@xla//tools/toolchains:cpus/arm/arm_compiler_configure.bzl", "arm_compiler_configure")
@@ -125,6 +128,7 @@ def _initialize_third_party():
     bazel_features_deps()
     benchmark()
     com_google_highway()
+    cuda_tile()
     ducc()
     dlpack()
     eigen3()
@@ -162,6 +166,7 @@ def _initialize_third_party():
     spdlog()
     sobol_data()
     stablehlo()
+    tensor_ir()
     vulkan_headers()
     tensorrt()
     nvshmem()
@@ -255,13 +260,14 @@ def _tf_repositories():
     )
 
     xnnpack()
+    xz()
 
     # XNNPack dependency.
     tf_http_archive(
         name = "KleidiAI",
-        sha256 = "b30044217e8e6f131aea4906e87a9908e78828822576d280af7ce68eda4578fd",
-        strip_prefix = "kleidiai-13cd35993d8439143aff1e756a862d366acded0d",
-        urls = tf_mirror_urls("https://gitlab.arm.com/kleidi/kleidiai/-/archive/13cd35993d8439143aff1e756a862d366acded0d/kleidiai-13cd35993d8439143aff1e756a862d366acded0d.zip"),
+        sha256 = "a424e81535ebb6d0117e9282fba45d70aee0bedb481f603df55e1805bed0e21b",
+        strip_prefix = "kleidiai-5147983e14600ce7f8a6583dc04ba07753ac54c4",
+        urls = tf_mirror_urls("https://gitlab.arm.com/kleidi/kleidiai/-/archive/5147983e14600ce7f8a6583dc04ba07753ac54c4/kleidiai-5147983e14600ce7f8a6583dc04ba07753ac54c4.zip"),
     )
 
     FXdiv()
@@ -423,10 +429,10 @@ def _tf_repositories():
     tf_http_archive(
         name = "curl",
         build_file = "@xla//third_party:curl.BUILD",
-        sha256 = "264537d90e58d2b09dddc50944baf3c38e7089151c8986715e2aaeaaf2b8118f",
-        strip_prefix = "curl-8.11.0",
+        sha256 = "d54dd598bf05927a726deb38df31c6a255ba83ff1de57c5d1464dac3ed8f44a1",
+        strip_prefix = "curl-8.22.0",
         system_build_file = "//third_party/systemlibs:curl.BUILD",
-        urls = tf_mirror_urls("https://curl.se/download/curl-8.11.0.tar.gz"),
+        urls = tf_mirror_urls("https://curl.se/download/curl-8.22.0.tar.gz"),
     )
 
     tf_http_archive(

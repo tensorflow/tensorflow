@@ -17,19 +17,13 @@ limitations under the License.
 #define XLA_HLO_TRANSFORMS_COLLECTIVES_COLLECTIVE_PERMUTE_COMBINER_H_
 
 #include <cstdint>
-#include <optional>
-#include <string>
-#include <tuple>
 
 #include "absl/container/flat_hash_set.h"
-#include "absl/functional/function_ref.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
-#include "xla/service/collective_permute_key.h"
-#include "xla/service/hlo_domain_map.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {

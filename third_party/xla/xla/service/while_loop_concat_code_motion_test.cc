@@ -20,6 +20,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -28,8 +29,6 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/hlo_verifier.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -78,10 +77,10 @@ TEST_F(WhileLoopConcatCodeMotionTest, SimpleMotion) {
       ROOT %while = (s32[], f32[1024,1024], f32[1024,1024]) while(%while_init), condition=%cond, body=%body
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          WhileLoopConcatCodeMotion(2).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       WhileLoopConcatCodeMotion(2).Run(module.get()));
   ASSERT_TRUE(changed);
   VLOG(1) << module->ToString();
   auto loop = op::While(
@@ -144,10 +143,10 @@ TEST_F(WhileLoopConcatCodeMotionTest, SharedBroadcastOperandNonZeroConcatDim) {
       ROOT %while = (s32[], f32[3,5], f32[3,5]) while(%while_init), condition=%cond, body=%body
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          WhileLoopConcatCodeMotion(2).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       WhileLoopConcatCodeMotion(2).Run(module.get()));
   EXPECT_TRUE(changed);
 }
 
@@ -191,11 +190,11 @@ TEST_F(WhileLoopConcatCodeMotionTest, SimpleMotionMultipleUses) {
       ROOT %while.1 = (s32[], f32[1024,1024], f32[1024,1024]) while(%while.0), condition=%cond, body=%body
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, WhileLoopConcatCodeMotion(
-                                            /*min_operand_count_to_optimize=*/2)
-                                            .Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(bool changed, WhileLoopConcatCodeMotion(
+                                         /*min_operand_count_to_optimize=*/2)
+                                         .Run(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -233,10 +232,10 @@ TEST_F(WhileLoopConcatCodeMotionTest, NoMotionWithChangedElementOrder) {
       ROOT %while = (s32[], f32[1024,1024], f32[1024,1024]) while(%while_init), condition=%cond, body=%body
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          WhileLoopConcatCodeMotion(2).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       WhileLoopConcatCodeMotion(2).Run(module.get()));
   ASSERT_FALSE(changed);
 }
 
@@ -284,10 +283,10 @@ TEST_F(WhileLoopConcatCodeMotionTest, CascadedConcats) {
         while(%while_init), condition=%cond, body=%body
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          WhileLoopConcatCodeMotion(2).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       WhileLoopConcatCodeMotion(2).Run(module.get()));
   ASSERT_TRUE(changed);
   VLOG(1) << module->ToString();
   auto loop = op::While(
@@ -352,10 +351,10 @@ TEST_F(WhileLoopConcatCodeMotionTest, TwoConcatsSharedGroups) {
         while(%while_init), condition=%cond, body=%body
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          WhileLoopConcatCodeMotion(2).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       WhileLoopConcatCodeMotion(2).Run(module.get()));
   ASSERT_TRUE(changed);
   VLOG(1) << module->ToString();
   auto loop = op::While(
@@ -424,10 +423,10 @@ TEST_F(WhileLoopConcatCodeMotionTest, TwoConcatsDifferentOrders) {
         while(%while_init), condition=%cond, body=%body
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          WhileLoopConcatCodeMotion(2).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       WhileLoopConcatCodeMotion(2).Run(module.get()));
   EXPECT_TRUE(changed);
   VLOG(1) << module->ToString();
   auto loop = op::While(
@@ -514,10 +513,10 @@ TEST_F(WhileLoopConcatCodeMotionTest, NonElementwiseOps) {
         while(%while_init), condition=%cond, body=%body
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          WhileLoopConcatCodeMotion(2).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       WhileLoopConcatCodeMotion(2).Run(module.get()));
   ASSERT_TRUE(changed);
   VLOG(1) << module->ToString();
   auto loop = op::While(
@@ -538,6 +537,212 @@ TEST_F(WhileLoopConcatCodeMotionTest, NonElementwiseOps) {
                         op::Reshape(op::Slice(op::GetTupleElement(loop))),
                         op::Slice(op::GetTupleElement(loop)),
                         op::Slice(op::GetTupleElement(loop))));
+}
+
+TEST_F(WhileLoopConcatCodeMotionTest, SimpleMotionWithOriginalValue) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule test
+
+    %cond {
+      %param = (s32[], f32[1024,1024], f32[1024,1024]) parameter(0), origin={({"cp0"}, {"cp1"}, {"cp2"})}
+      %gte.0 = s32[] get-tuple-element(%param), index=0, origin={{"cond_gte.0"}}
+      %constant = s32[] constant(5)
+      ROOT result = pred[] compare(%gte.0, %constant), direction=LT
+    }
+
+    %body {
+      %param = (s32[], f32[1024,1024], f32[1024,1024]) parameter(0), origin={({"bp0"}, {"bp1"}, {"bp2"})}
+      %gte.0 = s32[] get-tuple-element(%param), index=0, origin={{"gte.0"}}
+      %gte.1 = f32[1024,1024] get-tuple-element(%param), index=1, origin={{"gte.1"}}
+      %gte.2 = f32[1024,1024] get-tuple-element(%param), index=2, origin={{"gte.2"}}
+      %concat = f32[2048,1024] concatenate(%gte.1, %gte.2), dimensions={0}, origin={{"concat"}}
+      %ccall = f32[2048,1024] custom-call(%concat), custom_call_target="test", origin={{"ccall"}}
+      %slice.0 = f32[1024,1024] slice(%ccall), slice={[0:1024], [0:1024]}, origin={{"slice.0"}}
+      %slice.1 = f32[1024,1024] slice(%ccall), slice={[1024:2048], [0:1024]}, origin={{"slice.1"}}
+      %ccall2 = f32[1024,1024] custom-call(), custom_call_target="test2", origin={{"ccall2"}}
+      %add.0 = f32[1024,1024] add(%slice.0, %ccall2), origin={{"add.0"}}
+      %add.1 = f32[1024,1024] add(%slice.1, %ccall2), origin={{"add.1"}}
+      %t0 = token[] after-all()
+      %outfeed = token[] outfeed(%slice.1, %t0)
+      %constant = s32[] constant(1)
+      %increment_iteration = s32[] add(s32[] %gte.0, s32[] %constant), origin={{"inc"}}
+      ROOT %loop_result = (s32[], f32[1024,1024], f32[1024,1024])
+        tuple(%increment_iteration, %add.0, %add.1), origin={({"br0"}, {"br1"}, {"br2"})}
+    }
+
+    ENTRY test_main {
+      %param.0 = f32[1024,1024] parameter(0), origin={{"p0"}}
+      %param.1 = f32[1024,1024] parameter(1), origin={{"p1"}}
+      %constant.0 = s32[] constant(0), origin={{"c0"}}
+      %while_init = (s32[], f32[1024,1024], f32[1024,1024]) tuple(%constant.0, %param.0, %param.1), origin={({"c0"}, {"p0"}, {"p1"})}
+      ROOT %while = (s32[], f32[1024,1024], f32[1024,1024]) while(%while_init), condition=%cond, body=%body, origin={({"w0"}, {"w1"}, {"w2"}),["while#$"]}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       WhileLoopConcatCodeMotion(2).Run(module.get()));
+  ASSERT_TRUE(changed);
+  ASSERT_OK(HloVerifier(/*layout_sensitive=*/false,
+                        /*allow_mixed_precision=*/false)
+                .Run(module.get())
+                .status());
+
+  const HloInstruction* entry_root =
+      module->entry_computation()->root_instruction();
+  ASSERT_NE(entry_root->original_value(), nullptr);
+  EXPECT_EQ(entry_root->original_value()->ToString(),
+            R"(({"w0"}, {"w1"}, {"w2"}))");
+
+  const HloInstruction* out_gte0 = entry_root->operand(0);
+  ASSERT_NE(out_gte0->original_value(), nullptr);
+  EXPECT_EQ(out_gte0->original_value()->ToString(), R"({"w0"})");
+
+  const HloInstruction* out_slice0 = entry_root->operand(1);
+  ASSERT_NE(out_slice0->original_value(), nullptr);
+  EXPECT_EQ(out_slice0->original_value()->ToString(), R"({"w1"})");
+  EXPECT_EQ(out_slice0->operand(0)->original_value(), nullptr);
+
+  const HloInstruction* out_slice1 = entry_root->operand(2);
+  ASSERT_NE(out_slice1->original_value(), nullptr);
+  EXPECT_EQ(out_slice1->original_value()->ToString(), R"({"w2"})");
+
+  const HloInstruction* while_op = out_gte0->operand(0);
+  ASSERT_NE(while_op->original_value(), nullptr);
+  EXPECT_EQ(while_op->original_value()->ToString(),
+            R"(({"w0"}, {}),["while#$"])");
+
+  const HloInstruction* while_init = while_op->while_init();
+  ASSERT_NE(while_init->original_value(), nullptr);
+  EXPECT_EQ(while_init->original_value()->ToString(), R"(({"c0"}, {}))");
+
+  const HloComputation* body = while_op->while_body();
+  ASSERT_NE(body->parameter_instruction(0)->original_value(), nullptr);
+  EXPECT_EQ(body->parameter_instruction(0)->original_value()->ToString(),
+            R"(({"bp0"}, {}))");
+
+  const HloComputation* cond = while_op->while_condition();
+  ASSERT_NE(cond->parameter_instruction(0)->original_value(), nullptr);
+  EXPECT_EQ(cond->parameter_instruction(0)->original_value()->ToString(),
+            R"(({"cp0"}, {}))");
+
+  const HloInstruction* body_root = body->root_instruction();
+  ASSERT_NE(body_root->original_value(), nullptr);
+  EXPECT_EQ(body_root->original_value()->ToString(), R"(({"br0"}, {}))");
+
+  const HloInstruction* inc = body_root->operand(0);
+  ASSERT_NE(inc->original_value(), nullptr);
+  EXPECT_EQ(inc->original_value()->ToString(), R"({"inc"})");
+
+  const HloInstruction* combined_add = body_root->operand(1);
+  EXPECT_EQ(combined_add->original_value(), nullptr);
+
+  const HloInstruction* ccall = combined_add->operand(0);
+  ASSERT_NE(ccall->original_value(), nullptr);
+  EXPECT_EQ(ccall->original_value()->ToString(), R"({"ccall"})");
+
+  const HloInstruction* outfeed =
+      FindInstruction(module.get(), HloOpcode::kOutfeed);
+  ASSERT_NE(outfeed, nullptr);
+  ASSERT_NE(outfeed->operand(0)->original_value(), nullptr);
+  EXPECT_EQ(outfeed->operand(0)->original_value()->ToString(),
+            R"({"slice.1"})");
+}
+
+TEST_F(WhileLoopConcatCodeMotionTest, NonElementwiseOpsWithOriginalValue) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule test
+
+    %cond {
+      %param = (s32[], f32[1024,1024], f32[1024,1024], f32[1024], f32[1024], f32[1], f32[1]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %constant = s32[] constant(5)
+      ROOT result = pred[] compare(%gte.0, %constant), direction=LT
+    }
+
+    %sum {
+      %a = f32[] parameter(0)
+      %b = f32[] parameter(1)
+      ROOT %add = f32[] add(%a, %b)
+    }
+
+    %body {
+      %param = (s32[], f32[1024,1024], f32[1024,1024], f32[1024], f32[1024], f32[1], f32[1]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = f32[1024,1024] get-tuple-element(%param), index=1
+      %gte.2 = f32[1024,1024] get-tuple-element(%param), index=2
+      %reshape.0 = f32[1,1024,1024] reshape(%gte.1)
+      %reshape.1 = f32[1,1024,1024] reshape(%gte.2)
+      %concat = f32[2,1024,1024] concatenate(%reshape.0, %reshape.1), dimensions={0}
+      %ccall = f32[2,1024,1024] custom-call(%concat), custom_call_target="test"
+      %slice.0 = f32[1,1024,1024] slice(%ccall), slice={[0:1], [0:1024], [0:1024]}
+      %slice.1 = f32[1,1024,1024] slice(%ccall), slice={[1:2], [0:1024], [0:1024]}
+      %reshape.2 = f32[1024,1024] reshape(%slice.0)
+      %reshape.3 = f32[1024,1024] reshape(%slice.1)
+      %gte.3 = f32[1024] get-tuple-element(%param), index=3
+      %gte.4 = f32[1024] get-tuple-element(%param), index=4
+      %constant.0 = f32[] constant(0)
+      %reduce.0 = f32[1024] reduce(%reshape.0, %constant.0), to_apply=%sum, dimensions={0,1}
+      %reduce.1 = f32[1024] reduce(%reshape.1, %constant.0), to_apply=%sum, dimensions={0,1}
+      %add.0 = f32[1024] add(%reduce.0, %gte.3)
+      %add.1 = f32[1024] add(%reduce.1, %gte.4)
+      %br0 = f32[1024,1024] broadcast(%add.0), dimensions={1}
+      %br1 = f32[1024,1024] broadcast(%add.1), dimensions={1}
+      %sub.0 = f32[1024,1024] subtract(%reshape.2, %br0)
+      %sub.1 = f32[1024,1024] subtract(%reshape.3, %br1)
+      %gte.5 = f32[1] get-tuple-element(%param), index=5
+      %gte.6 = f32[1] get-tuple-element(%param), index=6
+      %reshape.4 = f32[] reshape(%gte.5)
+      %reshape.5 = f32[] reshape(%gte.6)
+      %br2 = f32[1024] broadcast(%reshape.4), dimensions={}
+      %br3 = f32[1024] broadcast(%reshape.5), dimensions={}
+      %add.2 = f32[1024] add(%add.0, %br2)
+      %add.3 = f32[1024] add(%add.1, %br3)
+      %inc0 = f32[] add(%constant.0, %reshape.4)
+      %inc1 = f32[] add(%constant.0, %reshape.5)
+      %reshape.6 = f32[1] reshape(%inc0)
+      %reshape.7 = f32[1] reshape(%inc1)
+      %constant = s32[] constant(1)
+      %increment_iteration = s32[] add(s32[] %gte.0, s32[] %constant)
+      ROOT %loop_result = (s32[], f32[1024,1024], f32[1024,1024], f32[1024], f32[1024], f32[1], f32[1])
+        tuple(%increment_iteration, %sub.0, %sub.1, %add.2, %add.3, %reshape.6, %reshape.7)
+    }
+
+    ENTRY test_main {
+      %param.0 = f32[1024,1024] parameter(0)
+      %param.1 = f32[1024,1024] parameter(1)
+      %param.2 = f32[1024] parameter(2)
+      %param.3 = f32[1024] parameter(3)
+      %param.4 = f32[1] parameter(4)
+      %param.5 = f32[1] parameter(5)
+      %constant.0 = s32[] constant(0)
+      %while_init = (s32[], f32[1024,1024], f32[1024,1024], f32[1024], f32[1024], f32[1], f32[1])
+        tuple(%constant.0, %param.0, %param.1, %param.2, %param.3, %param.4, %param.5)
+      ROOT %while = (s32[], f32[1024,1024], f32[1024,1024], f32[1024], f32[1024], f32[1], f32[1])
+        while(%while_init), condition=%cond, body=%body,
+        origin={({"w0"}, {"w1"}, {"w2"}, {"w3"}, {"w4"}, {"w5"}, {"w6"})}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       WhileLoopConcatCodeMotion(2).Run(module.get()));
+  ASSERT_TRUE(changed);
+  ASSERT_OK(HloVerifier(/*layout_sensitive=*/false,
+                        /*allow_mixed_precision=*/false)
+                .Run(module.get())
+                .status());
+
+  const HloInstruction* entry_root =
+      module->entry_computation()->root_instruction();
+  ASSERT_NE(entry_root->original_value(), nullptr);
+  EXPECT_EQ(entry_root->original_value()->ToString(),
+            R"(({"w0"}, {"w1"}, {"w2"}, {"w3"}, {"w4"}, {"w5"}, {"w6"}))");
+  for (int i = 0; i < 7; ++i) {
+    ASSERT_NE(entry_root->operand(i)->original_value(), nullptr);
+    EXPECT_EQ(entry_root->operand(i)->original_value()->ToString(),
+              absl::StrCat("{\"w", i, "\"}"));
+  }
 }
 
 }  // namespace

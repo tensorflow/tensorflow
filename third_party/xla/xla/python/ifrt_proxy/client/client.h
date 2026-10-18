@@ -174,6 +174,12 @@ class Client final : public RTTIExtends<Client, xla::ifrt::Client> {
   xla::ifrt::Compiler* GetDefaultCompiler() override {
     return &default_compiler_;
   }
+  absl::StatusOr<std::vector<tsl::Future<xla::ifrt::LoadedExecutableRef>>> Load(
+      absl::Span<const xla::ifrt::ExecutableRef> executables,
+      absl::Span<std::unique_ptr<xla::ifrt::LoadOptions>> options) override {
+    return absl::UnimplementedError(
+        "Load is not supported for the IFRT proxy client.");
+  }
   absl::StatusOr<std::shared_ptr<xla::ifrt::Topology>> GetTopologyForDevices(
       const xla::ifrt::DeviceListRef& devices) const override {
     return absl::UnimplementedError(

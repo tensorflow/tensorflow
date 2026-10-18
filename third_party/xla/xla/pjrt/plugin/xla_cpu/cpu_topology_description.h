@@ -109,7 +109,8 @@ class CpuTopologyDescription : public PjRtTopologyDescription {
     return attributes_;
   }
 
-  absl::StatusOr<int> GetMemorySpaceKindForShape(const Shape& shape) const;
+  absl::StatusOr<int> GetMemorySpaceKindForShape(
+      const Shape& shape) const override;
 
   absl::StatusOr<absl::string_view> KindIdToKind(int kind) const;
 
@@ -132,6 +133,10 @@ class CpuTopologyDescription : public PjRtTopologyDescription {
       int process_index, int num_replicas,
       std::optional<int> num_replicas_per_slice, int num_partitions,
       const MultiSliceConfig* multi_slice_config) const override;
+
+  bool IsMemorySpaceOnCpu(int memory_space_kind_id) const override {
+    return true;
+  }
 
  private:
   const PjRtPlatformId platform_id_;

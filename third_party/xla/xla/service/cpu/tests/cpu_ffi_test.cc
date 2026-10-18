@@ -27,7 +27,6 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -70,7 +69,7 @@ TEST_F(CpuFFITest, EmulateImpureCallbackWithTokens) {
   instr->set_custom_call_has_side_effect(true);
   module->AddEntryComputation(builder.Build());
 
-  TF_EXPECT_OK(Execute(std::move(module), {}));
+  EXPECT_OK(Execute(std::move(module), {}));
 }
 
 }  // namespace

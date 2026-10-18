@@ -28,12 +28,29 @@ def ShapeToConst : NativeCodeCall<"ShapeToConst($_builder, $0)">;
 def CreateTFLCastToInt32Op : NativeCodeCall<
   "CreateCastToInt32($0, $_loc, $_builder)">;
 
+// Builds a rank-0 constant with the same float element type as the given value.
+def ScalarZeroLike : NativeCodeCall<
+  "ScalarConstantLike($_builder, $0, 0.0)">;
+def ScalarOneLike : NativeCodeCall<
+  "ScalarConstantLike($_builder, $0, 1.0)">;
+
 def ConstDefaultResultAccuracyAttr :
   ConstantAttr<MHLO_ResultAccuracyAttr, "::mlir::mhlo::ResultAccuracyMode::DEFAULT">;
+
+def IsBuildableWithArithConstant : Constraint<
+  CPred<"::mlir::arith::ConstantOp::isBuildableWith($0, $1.getType())">
+>;
 
 def : Pat<
   (MHLO_ConstantOp:$output $value),
   (Arith_ConstantOp $value),
+  [(IsBuildableWithArithConstant $value, $output)],
+  [],
+  (addBenefit 10)>;
+
+def : Pat<
+  (MHLO_ConstantOp:$output $value),
+  (TFL_ConstOp $value),
   [(TFL_TensorOf<[AnyType]> $output)]>;
 
 
@@ -370,27 +387,24 @@ def : Pat<
   (TFL_CastOp $input)>;
 
 def : Pat<
-  (MHLO_Expm1Op F32Tensor:$x, ConstDefaultResultAccuracyAttr),
+  (MHLO_Expm1Op TensorOf<[AnyFloat]>:$x, ConstDefaultResultAccuracyAttr),
   (TFL_SubOp
     (TFL_ExpOp $x),
-    (Arith_ConstantOp
-      ConstantAttr<RankedF32ElementsAttr<[]>, "1.0f">),
+    (ScalarOneLike $x),
     TFL_AF_None)>;
 
 def : Pat<
-  (MHLO_IsFiniteOp F32Tensor:$x),
+  (MHLO_IsFiniteOp TensorOf<[AnyFloat]>:$x),
   (TFL_EqualOp
     (TFL_SubOp $x, $x, TFL_AF_None),
-    (Arith_ConstantOp
-      ConstantAttr<RankedF32ElementsAttr<[]>, "0.0f">))>;
+    (ScalarZeroLike $x))>;
 
 def : Pat<
-  (MHLO_Log1pOp F32Tensor:$x, ConstDefaultResultAccuracyAttr),
+  (MHLO_Log1pOp TensorOf<[AnyFloat]>:$x, ConstDefaultResultAccuracyAttr),
   (TFL_LogOp
     (TFL_AddOp
       $x,
-      (Arith_ConstantOp
-        ConstantAttr<RankedF32ElementsAttr<[]>, "1.0f">),
+      (ScalarOneLike $x),
       TFL_AF_None))>;
 
 //===----------------------------------------------------------------------===//

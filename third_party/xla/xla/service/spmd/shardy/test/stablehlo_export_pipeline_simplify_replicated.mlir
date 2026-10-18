@@ -17,7 +17,7 @@
 sdy.mesh @mesh_1 = <["axis_0"=16]>
 
 // CHECK-LABEL: func @simplify_replicated_sharding(
-// CHECK-SAME:      %arg0: tensor<8x8xf32> {mhlo.sharding = "{replicated}"},
+// CHECK-SAME:      %arg0: tensor<8x8xf32> {mhlo.sharding = "{mesh[], replicated}"},
 // CHECK-SAME:      %arg1: tensor<8x8xf32> {mhlo.sharding = "{mesh['axis_0'=16], [{?}, {}]}"})
 func.func @simplify_replicated_sharding(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh_1, [{}, {}]>},
                                         %arg1: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh_1, [{?}, {}]>}) -> tensor<8x8xf32> {
@@ -30,7 +30,7 @@ func.func @simplify_replicated_sharding(%arg0: tensor<8x8xf32> {sdy.sharding = #
 sdy.mesh @mesh_1 = <["axis_0"=16]>
 
 // CHECK-LABEL: func @simplify_explicit_replicated_sharding(
-// CHECK-SAME:      %arg0: tensor<8x8xf32> {mhlo.sharding = "{replicated}"})
+// CHECK-SAME:      %arg0: tensor<8x8xf32> {mhlo.sharding = "{mesh[], replicated}"})
 func.func @simplify_explicit_replicated_sharding(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh_1, [{}, {}], replicated={"axis_0"}>}) -> tensor<8x8xf32> {
   %0 = stablehlo.add %arg0, %arg0 : tensor<8x8xf32>
   return %0 : tensor<8x8xf32>
@@ -45,4 +45,33 @@ sdy.mesh @mesh_1 = <["axis_0"=16]>
 func.func @do_not_simplify_unreduced(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh_1, [{}, {}], unreduced={"axis_0"}>}) -> tensor<8x8xf32> {
   %0 = stablehlo.add %arg0, %arg0 : tensor<8x8xf32>
   return %0 : tensor<8x8xf32>
+}
+
+// -----
+
+sdy.mesh @empty_mesh = <[]>
+sdy.mesh @single_device = <[], device_ids=[0]>
+
+// CHECK-LABEL: func @simplify_replicated_sharding_empty_mesh(
+// CHECK-SAME:      %arg0: tensor<8x8xf32> {mhlo.sharding = "{mesh[], replicated}"},
+// CHECK-SAME:      %arg1: tensor<8x8xf32> {mhlo.sharding = "{mesh[], [{?}, {}]}"},
+// CHECK-SAME:      %arg2: tensor<8x8xf32> {mhlo.sharding = "{single_device[device_id=0]}"})
+func.func @simplify_replicated_sharding_empty_mesh(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@empty_mesh, [{}, {}]>},
+                                                   %arg1: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@empty_mesh, [{?}, {}]>},
+                                                   %arg2: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@single_device, []>}) -> tensor<8x8xf32> {
+  %0 = stablehlo.add %arg0, %arg1 : tensor<8x8xf32>
+  return %0 : tensor<8x8xf32>
+}
+
+// -----
+
+// CHECK-LABEL: module attributes
+// CHECK-SAME: {mhlo.spmd_output_sharding = "{mesh[], replicated}", mhlo.spmd_parameters_shardings = ["{mesh['x'=2,'y'=4], [{'x'}, {'y'}]}", "{mesh[], replicated}"]}
+module attributes {
+  sdy.output_shardings = #sdy.sharding_per_value<[<mesh<[]>, [{}, {}]>]>,
+  sdy.parameters_shardings = #sdy.sharding_per_value<[<mesh<["x"=2, "y"=4]>, [{"x"}, {"y"}]>, <mesh<["x"=2, "y"=4]>, [{}, {}]>]>
+} {
+  func.func @main(%arg0: tensor<4x4xf32>, %arg1: tensor<8x32xf32>) -> tensor<8x32xf32> {
+    return %arg1 : tensor<8x32xf32>
+  }
 }

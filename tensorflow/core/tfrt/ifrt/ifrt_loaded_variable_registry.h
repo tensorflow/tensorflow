@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/hash/hash.h"
 #include "absl/status/status.h"
@@ -151,6 +152,10 @@ class IfrtLoadedVariableRegistry {
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   absl::StatusOr<LoadedVariable> GetLoadedVariable(KeyView key_view) const
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
+  // Returns all input_names of variables currently loaded in the registry.
+  absl::flat_hash_set<std::string> GetLoadedVariableNames() const
       ABSL_LOCKS_EXCLUDED(mutex_);
 
  private:

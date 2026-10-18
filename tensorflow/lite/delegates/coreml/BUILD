@@ -83,14 +83,13 @@ objc_library(
     copts = CXX17_BAZEL_ONLY_COPTS,
     deps = [
         ":coreml_executor",
-        ":mlmodel_proto_cc",
         "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/coreml/builders:op_builder",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:optimized_base",
         "//tensorflow/lite/kernels/internal:types",
         "//tensorflow/lite/types:half",
-        "@FP16",
     ],
 )

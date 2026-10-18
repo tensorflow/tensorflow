@@ -199,9 +199,9 @@ TEST(NamedShardingTest, ToString) {
   EXPECT_EQ(sharding_dim.ToString(),
             "{mesh['a'=2,'b'=4,'c'=3,'d'=8], [{'c'}, {'a', 'b':(2)2, ?}]}");
 
-  Mesh maximal_mesh(5);
-  NamedSharding single_device_sharding(maximal_mesh);
-  EXPECT_EQ(single_device_sharding.ToString(), "{maximal_mesh[device_id=5]}");
+  Mesh single_device_mesh(5);
+  NamedSharding single_device_sharding(single_device_mesh);
+  EXPECT_EQ(single_device_sharding.ToString(), "{single_device[device_id=5]}");
 
   Mesh non_iota_mesh(
       TileAssignment(/*dims=*/{2, 4, 4, 2}, /*reshape_dims=*/{1, 4, 1, 16},
@@ -233,7 +233,7 @@ TEST(NamedShardingTest, ToStringReplicated) {
   Mesh mesh({2, 8}, {"a", "b"});
 
   NamedSharding sharding_fully_replicated = NamedSharding::Replicate();
-  EXPECT_EQ(sharding_fully_replicated.ToString(), "{replicated}");
+  EXPECT_EQ(sharding_fully_replicated.ToString(), "{mesh[], replicated}");
 
   NamedSharding sharding_fully_replicated_with_dims =
       test_utils::FromAxisNames(mesh, {{}, {}});
@@ -241,7 +241,8 @@ TEST(NamedShardingTest, ToStringReplicated) {
             "{mesh['a'=2,'b'=8], [{}, {}]}");
 
   NamedSharding sharding_fully_replicated_with_mesh(mesh);
-  EXPECT_EQ(sharding_fully_replicated_with_mesh.ToString(), "{replicated}");
+  EXPECT_EQ(sharding_fully_replicated_with_mesh.ToString(),
+            "{mesh['a'=2,'b'=8], replicated}");
 
   NamedSharding sharding_replicated =
       test_utils::FromAxisNames(mesh, {}, {"b"});
@@ -253,7 +254,8 @@ TEST(NamedShardingTest, ToStringUnreduced) {
   Mesh mesh({2, 8}, {"a", "b"});
 
   NamedSharding sharding_fully_unreduced = NamedSharding::Unreduced(mesh);
-  EXPECT_EQ(sharding_fully_unreduced.ToString(), "{unreduced}");
+  EXPECT_EQ(sharding_fully_unreduced.ToString(),
+            "{mesh['a'=2,'b'=8], unreduced}");
 
   NamedSharding sharding_fully_unreduced_with_dims = test_utils::FromAxisNames(
       mesh, {{}, {}}, {}, /*unreduced_axes=*/{"a", "b"});
@@ -572,8 +574,8 @@ TEST(NamedShardingTest, NumDevices) {
   NamedSharding sharding(mesh, {});
   EXPECT_EQ(sharding.num_devices(), 2 * 4 * 3 * 8);
 
-  Mesh maximal_mesh(5);
-  NamedSharding single_device_sharding(maximal_mesh);
+  Mesh single_device_mesh(5);
+  NamedSharding single_device_sharding(single_device_mesh);
   EXPECT_EQ(single_device_sharding.num_devices(), 1);
 
   Mesh empty_mesh;
@@ -861,7 +863,7 @@ TEST(NamedShardingTest, NamedShardingProtoConversion) {
   EXPECT_EQ(sharding, from_proto);
 }
 
-TEST(NamedShardingPredicatesTest, HasPartialReplication_Maximal) {
+TEST(NamedShardingPredicatesTest, HasPartialReplication_SingleDevice) {
   EXPECT_FALSE(NamedSharding(Mesh(5)).HasPartialReplication());
 }
 

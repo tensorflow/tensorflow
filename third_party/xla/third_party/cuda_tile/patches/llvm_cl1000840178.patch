@@ -1,0 +1,105 @@
+diff --git a/tools/cuda-tile-tblgen/AttrCodeGen.cpp b/tools/cuda-tile-tblgen/AttrCodeGen.cpp
+--- a/tools/cuda-tile-tblgen/AttrCodeGen.cpp
++++ b/tools/cuda-tile-tblgen/AttrCodeGen.cpp
+@@ -110,12 +110,12 @@
+ 
+ static const Record *findEnumByClassName(const RecordKeeper &records,
+                                          StringRef className) {
+-  for (const auto &def : records.getDefs()) {
+-    if (!isCudaTileEnumDef(records, def.second.get())) {
++  for (const Record* def : records.getDefs()) {
++    if (!isCudaTileEnumDef(records, def)) {
+       continue;
+     }
+-    if (def.second->getValueAsString("className") == className) {
+-      return def.second.get();
++    if (def->getValueAsString("className") == className) {
++      return def;
+     }
+   }
+   return nullptr;
+@@ -134,9 +134,9 @@
+   os << "#endif\n\n";
+ 
+   std::vector<EnumAttrInfo> infos;
+-  for (const auto &def : records.getDefs()) {
+-    if (isCudaTileEnumAttrWrapper(records, def.second.get())) {
+-      if (auto info = extractEnumAttrInfo(records, def.second.get())) {
++  for (const Record* def : records.getDefs()) {
++    if (isCudaTileEnumAttrWrapper(records, def)) {
++      if (auto info = extractEnumAttrInfo(records, def)) {
+         infos.push_back(*info);
+       }
+     }
+diff --git a/tools/cuda-tile-tblgen/SpecGen.cpp b/tools/cuda-tile-tblgen/SpecGen.cpp
+--- a/tools/cuda-tile-tblgen/SpecGen.cpp
++++ b/tools/cuda-tile-tblgen/SpecGen.cpp
+@@ -84,18 +84,15 @@
+ 
+   Regex includeRegex(opIncFilter), excludeRegex(opExcFilter);
+   std::vector<const Record *> defs;
+-  for (const auto &def : records.getDefs()) {
+-    if (!def.second->isSubClassOf(classDef))
+-      continue;
++  for (const Record* def : records.getDefs()) {
++    if (!def->isSubClassOf(classDef)) continue;
+     // Include if no include filter or include filter matches.
+-    if (!opIncFilter.empty() &&
+-        !includeRegex.match(getOperationName(*def.second)))
++    if (!opIncFilter.empty() && !includeRegex.match(getOperationName(*def)))
+       continue;
+     // Unless there is an exclude filter and it matches.
+-    if (!opExcFilter.empty() &&
+-        excludeRegex.match(getOperationName(*def.second)))
++    if (!opExcFilter.empty() && excludeRegex.match(getOperationName(*def)))
+       continue;
+-    defs.push_back(def.second.get());
++    defs.push_back(def);
+   }
+ 
+   return defs;
+@@ -565,11 +562,11 @@
+                            StringRef opClassName = "") {
+   // Find the HintKey enum.
+   const Record *hintKeyEnum = nullptr;
+-  for (const auto &def : records.getDefs()) {
++  for (const Record* def : records.getDefs()) {
+     const Record *cls = records.getClass("CudaTileI32EnumAttr");
+-    if (cls && def.second->isSubClassOf(cls) &&
+-        def.second->getValueAsString("className") == "HintKey") {
+-      hintKeyEnum = def.second.get();
++    if (cls && def->isSubClassOf(cls) &&
++        def->getValueAsString("className") == "HintKey") {
++      hintKeyEnum = def;
+       break;
+     }
+   }
+@@ -580,11 +577,11 @@
+   // Collect family -> SM prefix mapping for arch override docs.
+   std::map<std::string, std::vector<std::string>> familyPrefixes;
+   const Record *gpuArchEnum = nullptr;
+-  for (const auto &def : records.getDefs()) {
++  for (const Record* def : records.getDefs()) {
+     const Record *cls = records.getClass("CudaTileI32EnumAttr");
+-    if (cls && def.second->isSubClassOf(cls) &&
+-        def.second->getValueAsString("className") == "GpuArchitecture") {
+-      gpuArchEnum = def.second.get();
++    if (cls && def->isSubClassOf(cls) &&
++        def->getValueAsString("className") == "GpuArchitecture") {
++      gpuArchEnum = def;
+       break;
+     }
+   }
+@@ -888,9 +885,9 @@
+   auto orderedSections = splitBySections(records);
+ 
+   std::vector<const Record *> attrDefs;
+-  for (const auto &def : records.getDefs()) {
+-    if (def.second->isSubClassOf("AttrDef")) {
+-      attrDefs.push_back(def.second.get());
++  for (const Record* def : records.getDefs()) {
++    if (def->isSubClassOf("AttrDef")) {
++      attrDefs.push_back(def);
+     }
+   }
+ 

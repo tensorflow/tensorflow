@@ -16,8 +16,6 @@ limitations under the License.
 #ifndef XLA_PYTHON_PJRT_IFRT_XLA_SHARDING_H_
 #define XLA_PYTHON_PJRT_IFRT_XLA_SHARDING_H_
 
-#include <atomic>
-#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -26,7 +24,6 @@ limitations under the License.
 
 #include "absl/hash/hash.h"
 #include "absl/status/statusor.h"
-#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/index_domain.h"
@@ -35,6 +32,7 @@ limitations under the License.
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/sharding_spec.h"
+#include "xla/python/pjrt_ifrt/xla_sharding_spec.h"
 
 namespace xla {
 namespace ifrt {
@@ -62,7 +60,9 @@ class HloSharding final
                                              xla::HloSharding xla_hlo_sharding);
 
   // Returns the wrapped XLA `HloSharding`.
-  const xla::HloSharding& xla_hlo_sharding() const { return xla_hlo_sharding_; }
+  const xla::HloSharding& xla_hlo_sharding() const {
+    return sharding_spec_->xla_hlo_sharding();
+  }
 
   // Sharding implementation.
 
@@ -95,8 +95,10 @@ class HloSharding final
   static char ID;  // NOLINT
 
  private:
+  friend class HloShardingSpec;
+
   HloSharding(DeviceListRef devices, MemoryKind memory_kind,
-              xla::HloSharding xla_hlo_sharding);
+              std::shared_ptr<const HloShardingSpec> sharding_spec);
 
   std::string DebugString() const override;
 
@@ -110,20 +112,7 @@ class HloSharding final
       const Shape& shape,
       SingleDeviceShardSemantics single_device_shard_semantics) const;
 
-  const xla::HloSharding xla_hlo_sharding_;
-
-  // Cached information for computing shard shapes.
-  // If `std::nullopt`, the shard shape is the same as the shape.
-  struct TileInformation {
-    int64_t tiled_data_rank;
-    absl::Span<const int64_t> dimensions;
-  };
-  std::optional<TileInformation> tile_information_;
-
-  // Cached hash. 0 indicates the hash needs to be computed and cached.
-  // May be written multiple times with the same non-zero value.
-  static constexpr uint64_t kUnsetHash = 0;
-  mutable std::atomic<uint64_t> hash_ = kUnsetHash;
+  std::shared_ptr<const HloShardingSpec> sharding_spec_;
 };
 
 // Test only: returns `HloSharding::IndexDomains()`, using `xla::HloSharding`

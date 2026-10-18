@@ -58,6 +58,7 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
@@ -246,6 +247,15 @@ std::unique_ptr<AutotunerCacheInterface> CreateAutotunerCache(
     const DebugOptions& debug_options,
     const Compiler::GpuTargetConfig& target_config,
     const std::vector<std::unique_ptr<CodegenBackend>>& backends) {
+  // The autotune cache is process-wide and keyed without debug options, so it
+  // may contain timing-based picks inserted by other (non-deterministic)
+  // modules. Using them would make a deterministic compilation depend on what
+  // else was compiled in the process first, so don't use any cache.
+  if (debug_options.xla_gpu_deterministic_ops() ||
+      debug_options.xla_gpu_exclude_nondeterministic_ops()) {
+    return nullptr;
+  }
+
   std::string cache_dir = debug_options.xla_gpu_per_fusion_autotune_cache_dir();
 
   if (!debug_options.xla_gpu_use_new_autotune_cache_format()) {
@@ -263,9 +273,12 @@ std::unique_ptr<AutotunerCacheInterface> CreateAutotunerCache(
         cache_dir,
         GetCacheMode(debug_options.xla_gpu_experimental_autotune_cache_mode()));
   }
-  return std::make_unique<TieredCache>(cache_ctx, KeyMatchingMode::kLoose,
-                                       std::move(primary),
-                                       std::move(secondary));
+  KeyMatchingMode matching_mode =
+      debug_options.xla_autotune_cache_require_strict_codegen_match()
+          ? KeyMatchingMode::kStrict
+          : KeyMatchingMode::kLoose;
+  return std::make_unique<TieredCache>(
+      cache_ctx, matching_mode, std::move(primary), std::move(secondary));
 }
 
 }  // namespace
@@ -278,6 +291,10 @@ ConfigAssigner::Options GetConfigAssignerOptions(
       !debug_options.xla_gpu_exclude_nondeterministic_ops() &&
       debug_options.xla_gpu_autotune_level() > 0 && !is_deviceless;
 
+  options.prefer_estimated_configs =
+      debug_options.xla_gpu_experimental_cost_model_gemm_tiling_default() &&
+      !debug_options.xla_gpu_exhaustive_tiling_search();
+
   options.expect_all_instructions_in_cache =
       debug_options.xla_gpu_require_complete_aot_autotune_results();
   options.dump_hlos = debug_options.xla_gpu_dump_autotuned_gemm_fusions() ||
@@ -286,6 +303,7 @@ ConfigAssigner::Options GetConfigAssignerOptions(
       debug_options.xla_gpu_use_new_autotune_cache_format();
   options.compile_all_supported_configs =
       debug_options.xla_compile_all_supported_configs();
+  options.force_config = debug_options.xla_force_config();
 
   return options;
 }
@@ -293,7 +311,6 @@ ConfigAssigner::Options GetConfigAssignerOptions(
 CodegenOrchestrator::Options GetCodegenOrchestratorOptions(
     const DebugOptions& debug_options) {
   CodegenOrchestrator::Options options;
-  options.exclude_cublas_config = !debug_options.xla_gpu_cublas_fallback();
   if (!debug_options.xla_gpu_fail_ptx_compilation_on_register_spilling()) {
     options.allow_reg_spills_fn = [](const HloInstruction& instr,
                                      autotuner::Backend backend) {
@@ -310,6 +327,7 @@ CodegenOrchestrator::Options GetCodegenOrchestratorOptions(
     options.allow_reg_spills_fn = [](const HloInstruction&,
                                      autotuner::Backend) { return false; };
   }
+  options.candidate_configs_file = debug_options.xla_candidate_configs_file();
   return options;
 }
 
@@ -331,6 +349,14 @@ ProfileOptions GetProfileOptions(const DebugOptions& debug_options,
 Autotuner::Options GetAutotunerOptions(const DebugOptions& debug_options,
                                        bool is_buffer_check_supported) {
   Autotuner::Options autotuner_options;
+  if (!debug_options.xla_gpu_cublas_fallback()) {
+    autotuner_options.excluded_backends.push_back(
+        autotuner::Backend::CUBLASLT_FISSION);
+    autotuner_options.excluded_backends.push_back(
+        autotuner::Backend::HIPBLASLT_FISSION);
+  }
+  autotuner_options.preferred_backend =
+      debug_options.xla_autotuner_preferred_backend();
   autotuner_options.correctness_check_options.enable_correctness_check =
       is_buffer_check_supported && debug_options.xla_gpu_autotune_level() >= 4;
   autotuner_options.correctness_check_options.relative_tolerance =
@@ -348,8 +374,7 @@ InstructionFilterFn GetShouldAssignConfigToInstructionFn(
     const DebugOptions& debug_options,
     const se::GpuComputeCapability& gpu_version) {
   bool do_not_autotune_cublas =
-      debug_options.xla_gpu_experimental_disable_binary_libraries() ||
-      debug_options.xla_gpu_autotune_level() == 0;
+      debug_options.xla_gpu_experimental_disable_binary_libraries();
   bool do_not_autotune_cudnn =
       debug_options.xla_gpu_experimental_disable_binary_libraries() ||
       (do_not_autotune_cublas && !gpu_version.IsRocm());
@@ -360,17 +385,18 @@ InstructionFilterFn GetShouldAssignConfigToInstructionFn(
       !debug_options.xla_gpu_deterministic_ops() &&
       debug_options.xla_gpu_experimental_enable_fusion_autotuner();
 
-  return [do_not_autotune_cublas, do_not_autotune_cudnn,
-          enable_fusion_autotuner](const HloInstruction& instruction) -> bool {
-    AutotuneDecision decision = ShouldAssignConfigToInstruction(
-        do_not_autotune_cublas, do_not_autotune_cudnn, enable_fusion_autotuner,
-        instruction);
-    if (!decision) {
-      VLOG(3) << "Not assigning configs to " << instruction.name() << ": "
-              << decision.Explain();
-    }
-    return decision.IsAllowed();
-  };
+  return
+      [do_not_autotune_cublas, do_not_autotune_cudnn, enable_fusion_autotuner,
+       gpu_version](const HloInstruction& instruction) -> bool {
+        AutotuneDecision decision = ShouldAssignConfigToInstruction(
+            do_not_autotune_cublas, do_not_autotune_cudnn,
+            enable_fusion_autotuner, instruction);
+        if (!decision) {
+          VLOG(3) << "Not assigning configs to " << instruction.name() << ": "
+                  << decision.Explain();
+        }
+        return decision.IsAllowed();
+      };
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<CodegenBackend>>>
@@ -380,7 +406,8 @@ ConfigAssignerPass::GetEnabledBackends(
     const Compiler::GpuTargetConfig* target_config, const AliasInfo* alias_info,
     const DebugOptions& debug_options, mlir::MLIRContext* mlir_context,
     HloCostAnalysis::ShapeSizeFunction shape_size_fn, Compiler* compiler,
-    se::PlatformId platform_id) {
+    se::PlatformId platform_id, tsl::thread::ThreadPool* thread_pool,
+    MlirContextPool* mlir_context_pool) {
   std::vector<autotuner::Backend> autotune_backends;
   for (const auto& backend :
        debug_options.xla_gpu_experimental_autotune_backends()) {
@@ -405,9 +432,15 @@ ConfigAssignerPass::GetEnabledBackends(
         autotuner::Backend::BLOCK_LEVEL_EMITTER);
   }
 
-  if (debug_options.xla_gpu_exclude_nondeterministic_ops() ||
-      debug_options.xla_gpu_deterministic_ops()) {
+  if ((debug_options.xla_gpu_exclude_nondeterministic_ops() ||
+       debug_options.xla_gpu_deterministic_ops()) &&
+      debug_options.xla_gpu_experimental_deterministic_ops_triton() ==
+          DebugOptions::DETERMINISTIC_OPS_TRITON_MODE_OFF) {
     disabled_autotune_backends.push_back(autotuner::Backend::TRITON);
+  }
+
+  if (!debug_options.xla_gpu_experimental_enable_tensor_ir()) {
+    disabled_autotune_backends.push_back(autotuner::Backend::TENSOR_IR);
   }
 
   autotune_backends.erase(
@@ -423,7 +456,8 @@ ConfigAssignerPass::GetEnabledBackends(
                    registry.FindObject<GetCodegenBackends>(platform_id));
   std::vector<std::unique_ptr<CodegenBackend>> backends = get_codegen_backends(
       stream_exec, device_allocator, &debug_options, compiler, target_config,
-      alias_info, mlir_context, shape_size_fn, autotune_backends);
+      alias_info, mlir_context, shape_size_fn, autotune_backends, thread_pool,
+      mlir_context_pool);
 
   return backends;
 }
@@ -449,6 +483,7 @@ absl::StatusOr<std::unique_ptr<ConfigAssignerPass>> ConfigAssignerPass::Create(
       GetConfigAssignerOptions(debug_options, is_deviceless);
   CodegenOrchestrator::Options orchestrator_options =
       GetCodegenOrchestratorOptions(debug_options);
+  // Null in deterministic mode.
   std::unique_ptr<AutotunerCacheInterface> cache =
       CreateAutotunerCache(debug_options, *target_config, backends);
 
@@ -458,26 +493,25 @@ absl::StatusOr<std::unique_ptr<ConfigAssignerPass>> ConfigAssignerPass::Create(
 
   std::unique_ptr<Autotuner> autotuner = nullptr;
   if (!is_deviceless) {
-      // TODO(intel-tf): Enable buffer checking for SYCL once
-      // BufferComparatorKernel and RedzoneAllocatorKernel are registered for
-      // SYCL platform.
-      bool is_buffer_check_supported = stream_executor->GetPlatform()->id() !=
-                                       stream_executor::sycl::kSyclPlatformId;
-      std::unique_ptr<Profiler> profiler = GpuProfiler::Create(
-          stream_executor,
-          GetProfileOptions(debug_options, is_buffer_check_supported),
-          allocator);
-      Autotuner::Options autotuner_options =
-          GetAutotunerOptions(debug_options, is_buffer_check_supported);
-      autotuner_options.cache_context = AutotuneCacheContext::Create(
-          target_config->device_description, orchestrator->codegen_backends());
+    // TODO(intel-tf): Enable buffer checking for SYCL once
+    // BufferComparatorKernel and RedzoneAllocatorKernel are registered for
+    // SYCL platform.
+    bool is_buffer_check_supported = stream_executor->GetPlatform()->id() !=
+                                     stream_executor::sycl::kSyclPlatformId;
+    std::unique_ptr<Profiler> profiler = GpuProfiler::Create(
+        stream_executor,
+        GetProfileOptions(debug_options, is_buffer_check_supported), allocator);
+    Autotuner::Options autotuner_options =
+        GetAutotunerOptions(debug_options, is_buffer_check_supported);
+    autotuner_options.cache_context = AutotuneCacheContext::Create(
+        target_config->device_description, orchestrator->codegen_backends());
 
-      std::vector<std::unique_ptr<Profiler>> profilers;
-      profilers.push_back(std::move(profiler));
+    std::vector<std::unique_ptr<Profiler>> profilers;
+    profilers.push_back(std::move(profiler));
 
-      ABSL_ASSIGN_OR_RETURN(autotuner,
-                       Autotuner::Create(*orchestrator, std::move(profilers),
-                                         autotuner_options, thread_pool));
+    ABSL_ASSIGN_OR_RETURN(autotuner,
+                     Autotuner::Create(*orchestrator, std::move(profilers),
+                                       autotuner_options, thread_pool));
   }
 
   VLOG(1) << "ConfigAssigner options: " << assigner_options.ToString();
@@ -508,9 +542,8 @@ absl::StatusOr<bool> ConfigAssignerPass::RunImpl(
     ABSL_RETURN_IF_ERROR(
         config_assigner_->AssignConfigs(module, should_assign_config_to_));
   }
-  VLOG(1) << "Config assigner cache stats: hits="
-          << config_assigner_->GetCacheStats().hits
-          << ", misses=" << config_assigner_->GetCacheStats().misses;
+  VLOG(1) << "Config assigner cache stats: "
+          << config_assigner_->GetCacheStats().ToString();
   return true;
 }
 

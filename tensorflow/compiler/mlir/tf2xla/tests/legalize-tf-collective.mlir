@@ -290,7 +290,7 @@ func.func @inconsistent_collective_info(%input: tensor<f32>) -> tensor<f32> {
   %group_size1 = "tf.Const"() { value = dense<1> : tensor<i32> } : () -> tensor<i32>
   %group_size2 = "tf.Const"() { value = dense<2> : tensor<i32> } : () -> tensor<i32>
   %instance_key = "tf.Const"() { value = dense<3> : tensor<i32> } : () -> tensor<i32>
-  // expected-error@below {{op module already contains an attribute tf2xla.collective_info.group_size=2, overwritting to a new value 1 is not allowed.}}
+  // expected-error@below {{op module already contains an attribute tf2xla.collective_info.group_size=2, overwriting to a new value 1 is not allowed.}}
   %0 = "tf.CollectiveReduceV2"(%input, %group_size1, %group_key, %instance_key) {merge_op = "Add", final_op = "Id"} : (tensor<f32>, tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<f32>
   %1 = "tf.CollectiveReduceV2"(%input, %group_size2, %group_key, %instance_key) {merge_op = "Add", final_op = "Id"} : (tensor<f32>, tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<f32>
   %2 = "tf.Add"(%0, %1) : (tensor<f32>, tensor<f32>) -> tensor<f32>

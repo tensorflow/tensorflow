@@ -23,8 +23,10 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "llvm/IR/Attributes.h"
+#include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/Type.h"
 #include "xla/codegen/intrinsic/cpp/cpp_gen_intrinsics.h"
 #include "xla/codegen/intrinsic/intrinsic.h"
 #include "xla/codegen/intrinsic/type.h"
@@ -32,13 +34,18 @@ limitations under the License.
 
 namespace xla::codegen::intrinsics {
 
+inline llvm::FunctionType* UnaryFunctionType(llvm::Module* module, Type type) {
+  llvm::Type* ir_type = type.to_ir_type(module->getContext());
+  return llvm::FunctionType::get(ir_type, {ir_type}, /*isVarArg=*/false);
+}
+
 class EigenTanh : public Intrinsic<EigenTanh> {
  public:
   static constexpr absl::string_view kName = "tanh";
 
   static std::vector<std::vector<Type>> SupportedVectorTypes(
       absl::string_view features) {
-    if (!AreEigenIntrinsicsAvailable()) {
+    if (!AreEigenIntrinsicsAvailable(features)) {
       return {};
     }
     return {
@@ -50,7 +57,8 @@ class EigenTanh : public Intrinsic<EigenTanh> {
 
   static absl::StatusOr<llvm::Function*> CreateDefinition(
       llvm::Module* module, const IntrinsicOptions& options, Type type) {
-    return GetCppGenFunction(module, Name(type));
+    return GetCppGenFunction(module, Name(type),
+                             UnaryFunctionType(module, type));
   }
 };
 
@@ -60,31 +68,123 @@ class EigenAtan : public Intrinsic<EigenAtan> {
 
   static std::vector<std::vector<Type>> SupportedVectorTypes(
       absl::string_view features) {
-    if (!AreEigenIntrinsicsAvailable()) {
+    if (!AreEigenIntrinsicsAvailable(features)) {
       return {};
-    }
-    // On ARM NEON, Remez reciprocal division (1.0f / abs_x) can trigger
-    // division traps or underflow near zero under hardware Flush-To-Zero (FTZ)
-    // execution. We advertise scalar support only so that MLIR automatically
-    // unrolls vector lanes to scalar xla.atan.f32/f64, where genuine CPU
-    // short-circuit conditional branching (abs_x < 1e-3) bypasses Remez
-    // approximation.
-    if (absl::StrContains(features, "+neon")) {
-      return {
-          {Type::S(xla::F32)},
-          {Type::S(xla::F64)},
-      };
     }
     return {
         {Type::S(xla::F32)},     {Type::V(xla::F32, 4)}, {Type::V(xla::F32, 8)},
-        {Type::V(xla::F32, 16)}, {Type::S(xla::F64)},    {Type::V(xla::F64, 4)},
-        {Type::V(xla::F64, 8)},
+        {Type::V(xla::F32, 16)}, {Type::S(xla::F64)},    {Type::V(xla::F64, 2)},
+        {Type::V(xla::F64, 4)},  {Type::V(xla::F64, 8)},
     };
   }
 
   static absl::StatusOr<llvm::Function*> CreateDefinition(
       llvm::Module* module, const IntrinsicOptions& options, Type type) {
-    return GetCppGenFunction(module, Name(type));
+    return GetCppGenFunction(module, Name(type),
+                             UnaryFunctionType(module, type));
+  }
+};
+class Expm1 : public Intrinsic<Expm1> {
+ public:
+  static constexpr absl::string_view kName = "expm1";
+
+  static std::vector<std::vector<Type>> SupportedVectorTypes(
+      absl::string_view features = "") {
+    if (!AreCppGenIntrinsicsAvailable()) {
+      return {};
+    }
+    std::vector<std::vector<Type>> types = {
+        {Type::S(xla::F32)}, {Type::V(xla::F32, 4)}, {Type::V(xla::F32, 8)},
+        {Type::S(xla::F64)}, {Type::V(xla::F64, 4)},
+    };
+    if (absl::StrContains(features, "+avx512f")) {
+      types.push_back({Type::V(xla::F32, 16)});
+      types.push_back({Type::V(xla::F64, 8)});
+    }
+    return types;
+  }
+
+  static absl::StatusOr<llvm::Function*> CreateDefinition(
+      llvm::Module* module, const IntrinsicOptions& options, Type type) {
+    return GetCppGenFunction(module, Name(type),
+                             UnaryFunctionType(module, type));
+  }
+};
+class Sin : public Intrinsic<Sin> {
+ public:
+  static constexpr absl::string_view kName = "sin";
+
+  static std::vector<std::vector<Type>> SupportedVectorTypes(
+      absl::string_view features) {
+    if (!AreCppGenIntrinsicsAvailable()) {
+      return {};
+    }
+    std::vector<std::vector<Type>> types = {
+        {Type::S(xla::F32)}, {Type::V(xla::F32, 4)}, {Type::V(xla::F32, 8)},
+        {Type::S(xla::F64)}, {Type::V(xla::F64, 2)}, {Type::V(xla::F64, 4)},
+    };
+    if (absl::StrContains(features, "+avx512f")) {
+      types.push_back({Type::V(xla::F32, 16)});
+      types.push_back({Type::V(xla::F64, 8)});
+    }
+    return types;
+  }
+
+  static absl::StatusOr<llvm::Function*> CreateDefinition(
+      llvm::Module* module, const IntrinsicOptions& options, Type type) {
+    return GetCppGenFunction(module, Name(type),
+                             UnaryFunctionType(module, type));
+  }
+};
+
+class Cos : public Intrinsic<Cos> {
+ public:
+  static constexpr absl::string_view kName = "cos";
+
+  static std::vector<std::vector<Type>> SupportedVectorTypes(
+      absl::string_view features) {
+    if (!AreCppGenIntrinsicsAvailable()) {
+      return {};
+    }
+    std::vector<std::vector<Type>> types = {
+        {Type::S(xla::F32)}, {Type::V(xla::F32, 4)}, {Type::V(xla::F32, 8)},
+        {Type::S(xla::F64)}, {Type::V(xla::F64, 2)}, {Type::V(xla::F64, 4)},
+    };
+    if (absl::StrContains(features, "+avx512f")) {
+      types.push_back({Type::V(xla::F32, 16)});
+      types.push_back({Type::V(xla::F64, 8)});
+    }
+    return types;
+  }
+
+  static absl::StatusOr<llvm::Function*> CreateDefinition(
+      llvm::Module* module, const IntrinsicOptions& options, Type type) {
+    return GetCppGenFunction(module, Name(type),
+                             UnaryFunctionType(module, type));
+  }
+};
+
+class Sinh : public Intrinsic<Sinh> {
+ public:
+  static constexpr absl::string_view kName = "sinh";
+
+  static std::vector<std::vector<Type>> SupportedVectorTypes(
+      absl::string_view features) {
+    if (!AreCppGenIntrinsicsAvailable()) {
+      return {};
+    }
+    return {
+        {Type::S(xla::F32)},
+        {Type::V(xla::F32, 4)},
+        {Type::V(xla::F32, 8)},
+        {Type::V(xla::F32, 16)},
+    };
+  }
+
+  static absl::StatusOr<llvm::Function*> CreateDefinition(
+      llvm::Module* module, const IntrinsicOptions& options, Type type) {
+    return GetCppGenFunction(module, Name(type),
+                             UnaryFunctionType(module, type));
   }
 };
 }  // namespace xla::codegen::intrinsics

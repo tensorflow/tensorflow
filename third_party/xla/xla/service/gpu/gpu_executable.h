@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable_buffer_allocator.h"
 #include "xla/service/gpu/gpu_module_globals.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu_topology.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
@@ -71,8 +72,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-class ExecutionWatchdogScope;
-
 // GPU-targeting implementation of the XLA Executable interface.
 //
 // Launches the given GPU kernel via the StreamExecutor.
@@ -83,6 +82,8 @@ class GpuExecutable : public Executable {
   struct NumAdditionalStreams {
     int compute = 0;
     int communication = 0;
+    bool need_d2h_stream = false;
+    bool need_h2d_stream = false;
   };
 
   using ConstantInfo = GpuModuleGlobals::ConstantInfo;
@@ -127,13 +128,14 @@ class GpuExecutable : public Executable {
     std::unique_ptr<GpuAliasInfo> alias_info;
     DebugOptions debug_options;
     se::DeviceDescription device_description;
-    std::unique_ptr<HloModule> debug_module = nullptr;
+    std::shared_ptr<HloModule> debug_module = nullptr;
     bool enable_debug_info_manager = true;
     ModuleStats module_stats;
     se::ExecutableAbiVersion executable_abi_version;
     std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options;
     BufferAssignmentProto buffer_assignment_proto;
     std::string buffer_allocations_debug_summary;
+    std::optional<GpuTopology> gpu_topology;
   };
 
   static absl::StatusOr<std::unique_ptr<GpuExecutable>> Create(Params params);
@@ -242,12 +244,17 @@ class GpuExecutable : public Executable {
   absl::StatusOr<const BufferAllocToDeviceMemoryMap*> ResolveConstantGlobals(
       se::Stream* stream);
 
+  // Creates a `GpuExecutable` from its proto representation.
+  //
+  // If `debug_module` isn't populated, the HLO module is deserialized from the
+  // proto, which can be expensive.
   static absl::StatusOr<std::unique_ptr<GpuExecutable>> FromProto(
       const GpuExecutableProto&,
       const se::DeviceDescription& device_description,
       absl::string_view platform, DebugOptions debug_options,
       const std::optional<se::KernelLoaderSpec::SymbolResolver>&
-          symbol_resolver = std::nullopt);
+          symbol_resolver = std::nullopt,
+      std::shared_ptr<HloModule> debug_module = nullptr);
 
   absl::StatusOr<GpuExecutableProto> ToProto() const;
 
@@ -265,6 +272,12 @@ class GpuExecutable : public Executable {
     return cpu_target_machine_options_;
   }
 
+  // The GPU topology the executable was compiled for. Not set for executables
+  // deserialized from protos that predate the `gpu_topology` field.
+  const std::optional<GpuTopology>& gpu_topology() const {
+    return gpu_topology_;
+  }
+
  private:
   // Additional streams borrowed at run time for the execution.
   struct BorrowedStreams {
@@ -277,7 +290,7 @@ class GpuExecutable : public Executable {
 
   // Use GpuExecutable::Create() to create an instance.
   explicit GpuExecutable(
-      std::unique_ptr<HloModule> debug_module, std::vector<uint8_t> binary,
+      std::shared_ptr<HloModule> debug_module, std::vector<uint8_t> binary,
       BinaryMap dnn_compiled_graphs, se::DeviceDescription device_description,
       std::unique_ptr<ThunkExecutor> executable, std::string module_name,
       ProgramShape program_shape, std::vector<BufferAllocation> allocations,
@@ -291,7 +304,8 @@ class GpuExecutable : public Executable {
       std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options,
       BufferAssignmentProto buffer_assignment_proto,
       std::string buffer_allocations_debug_summary,
-      bool collective_use_minimal_resource);
+      bool collective_use_minimal_resource,
+      std::optional<GpuTopology> gpu_topology);
 
   // GpuExecutable check with either AMD's ISA version, or Nvidia's major minor
   // version for compute capability, depending on the hardware.
@@ -312,8 +326,7 @@ class GpuExecutable : public Executable {
           persistent_alloc_indices,
       NumAdditionalStreams num_additional_streams,
       CollectiveMemoryCache& collective_memory_cache,
-      bool collective_use_minimal_resource,
-      ExecutionWatchdogScope* absl_nullable execution_watchdog);
+      bool collective_use_minimal_resource);
 
   // Compare current allocation's address with previous run's address, and
   // report the allocation info if memory addressed changed. Useful for identify
@@ -418,6 +431,9 @@ class GpuExecutable : public Executable {
   std::string buffer_allocations_debug_summary_;
 
   const bool collective_use_minimal_resource_;
+
+  // The GPU topology the executable was compiled for, if known.
+  std::optional<GpuTopology> gpu_topology_;
 };
 
 absl::StatusOr<absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>>

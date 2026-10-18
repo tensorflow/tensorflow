@@ -15,6 +15,10 @@ limitations under the License.
 
 // See docs in ../ops/nn_ops.cc.
 
+#include <type_traits>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/kernels/xent_op.h"
@@ -62,7 +66,7 @@ class SoftmaxXentWithLogitsOp : public OpKernel {
                                    "2-dimensional, or broadcasted to be "
                                    "2-dimensional"));
 
-    if (std::is_same<Device, GPUDevice>::value) {
+    if (std::is_same_v<Device, GPUDevice>) {
       OP_REQUIRES(context, !OpDeterminismRequired(),
                   absl::UnimplementedError(
                       "The GPU implementation of SoftmaxCrossEntropyWithLogits"

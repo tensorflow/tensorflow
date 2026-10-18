@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 
 #include "absl/strings/string_view.h"
@@ -387,6 +388,7 @@ HLO_MATCHER(SetDimensionSize);
 HLO_MATCHER(ShiftLeft);
 HLO_MATCHER(ShiftRightArithmetic);
 HLO_MATCHER(ShiftRightLogical);
+HLO_MATCHER(Shuffle);
 HLO_MATCHER(Sign);
 HLO_MATCHER(Sinh);
 HLO_MATCHER(Slice);
@@ -642,6 +644,17 @@ std::vector<const HloInstruction*> Pointers(const Container& container) {
   result.reserve(container.size());
   for (const auto& entry : container) result.push_back(entry.get());
   return result;
+}
+
+MATCHER_P(HloInstructionHasName, name, "") {
+  return ::testing::ExplainMatchResult(
+      ::testing::Property("name", &HloInstruction::name, name), *arg,
+      result_listener);
+}
+
+MATCHER(HloInstructionHasName, "") {
+  return ::testing::ExplainMatchResult(HloInstructionHasName(std::get<1>(arg)),
+                                       std::get<0>(arg), result_listener);
 }
 
 }  // namespace testing

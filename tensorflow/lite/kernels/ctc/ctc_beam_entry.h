@@ -134,7 +134,7 @@ class BeamRoot {
 template <class CTCBeamState = EmptyBeamState>
 class BeamComparer {
  public:
-  virtual ~BeamComparer() {}
+  virtual ~BeamComparer() = default;
   virtual bool inline operator()(const BeamEntry<CTCBeamState>* a,
                                  const BeamEntry<CTCBeamState>* b) const {
     return a->newp.total > b->newp.total;

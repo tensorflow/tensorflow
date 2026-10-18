@@ -192,6 +192,7 @@ tf_proto_library(
     make_default_target_header_only = True,
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/core/common_runtime:request_cost_proto",
         "//tensorflow/core/example:protos_all",
         "//tensorflow/core/framework:protos_all",
         "//tensorflow/core/grappler/costs:op_performance_data",
@@ -1158,6 +1159,7 @@ cc_library(
     name = "mobile_additional_lib_deps",
     deps = tf_additional_lib_deps() + [
         ":platform_base",
+        "//tensorflow/core/common_runtime:request_cost_proto_cc",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -1565,7 +1567,6 @@ cc_library(
         "@xla//xla/service:hlo_proto_cc_impl",
         "@xla//xla/service:metrics_proto_cc_impl",
         "@xla//xla/service:buffer_assignment_proto_cc_impl",
-        "@xla//xla/service/memory_space_assignment:memory_space_assignment_proto_cc_impl",
         "@xla//xla/service/gpu:backend_configs_cc_impl",
         "@xla//xla/service/gpu/model:hlo_op_profile_proto_cc_impl",
         "@xla//xla/stream_executor:device_description_proto_cc_impl",
@@ -1695,6 +1696,7 @@ filegroup(
         "//tensorflow/core/framework:tensor_reference.h",
         "//tensorflow/core/framework:tracking_allocator.h",  # only needed for tests
         "//tensorflow/core/framework:variant.h",
+        "//tensorflow/core/framework:versions.h",
         "//tensorflow/core/util:framework_internal_public_hdrs",
         "@xla//xla/tsl/framework:tracking_allocator.h",  # only needed for tests
     ],

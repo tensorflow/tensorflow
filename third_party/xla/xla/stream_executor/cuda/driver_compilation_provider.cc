@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_status.h"
 #include "xla/stream_executor/cuda/ptx_compiler_helpers.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/errors.h"
 
@@ -84,6 +85,22 @@ absl::StatusOr<Assembly> DriverCompilationProvider::CompileAndLink(
   // (WGMMA, TMA, and more) are only supported in CUDA 12+.
   if (cc.feature_extension ==
       CudaComputeCapability::FeatureExtension::kAcceleratedFeatures) {
+    SemanticVersion min_driver_version = SemanticVersion{12, 0, 0};
+    if (cc.major == 9 && cc.minor == 0) {
+      min_driver_version = SemanticVersion{12, 0, 0};
+    } else if ((cc.major == 10 && (cc.minor == 0 || cc.minor == 1)) ||
+               (cc.major == 12 && cc.minor == 0)) {
+      min_driver_version = SemanticVersion{12, 8, 0};
+    } else {
+      min_driver_version = SemanticVersion{12, 9, 0};
+    }
+
+    if (stream_exec_->GetDeviceDescription().driver_version() <
+        min_driver_version) {
+      return absl::UnimplementedError(absl::StrCat(
+          "Accelerated target ", cc.GetPtxAsTargetName(),
+          " requires CUDA driver version >= ", min_driver_version.ToString()));
+    }
     target =
         static_cast<CUjit_target>(target + CU_COMPUTE_ACCELERATED_TARGET_BASE);
   }

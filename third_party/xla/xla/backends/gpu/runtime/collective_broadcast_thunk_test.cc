@@ -113,7 +113,8 @@ class NoOpCollectiveBroadcastThunk : public CollectiveBroadcastThunk {
                                CollectiveConfig config,
                                std::vector<CollectiveThunk::Buffer> buffers)
       : CollectiveBroadcastThunk(std::move(thunk_info), std::move(config),
-                                 std::move(buffers)) {}
+                                 std::move(buffers),
+                                 /*devices_per_host=*/1) {}
 
   absl::Status ExecuteOnStream(const ExecuteParams&) override {
     return absl::OkStatus();
@@ -207,12 +208,14 @@ ENTRY test_computation {
 
   // ThunkSequence Creation
   auto cb_start_thunk = std::make_unique<CollectiveBroadcastThunk>(
-      Thunk::ThunkInfo{}, cb_instr, std::move(buffers));
+      Thunk::ThunkInfo{}, cb_instr, std::move(buffers),
+      /*devices_per_host=*/1);
 
   ThunkSequence start_sequence;
   start_sequence.push_back(std::move(cb_start_thunk));
   auto async_start = std::make_unique<AsyncStartThunk>(
-      Thunk::ThunkInfo(), CommunicationStreamId(0), std::move(start_sequence));
+      Thunk::ThunkInfo(), CommunicationStreamId(0), std::move(start_sequence),
+      /*devices_per_host=*/1);
   auto async_done = std::make_unique<AsyncDoneThunk>(
       Thunk::ThunkInfo(), async_start->async_execution());
 
@@ -256,6 +259,12 @@ ENTRY test_computation {
                        ParseAndReturnVerifiedModule(hlo_text, config));
 
   se::StreamExecutor* executor = backend().default_stream_executor();
+
+  if (executor->GetDeviceDescription()
+          .gpu_compute_capability()
+          .oneapi_compute_capability()) {
+    GTEST_SKIP() << "oneAPI command buffers are not implemented yet.";
+  }
 
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> compiled_module,
@@ -310,7 +319,8 @@ TEST(CollectiveThunkTest, ProtoRoundTrip) {
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<CollectiveBroadcastThunk> thunk,
       CollectiveBroadcastThunk::FromProto(
-          thunk_info, proto.collective_broadcast_thunk(), buffer_allocations));
+          thunk_info, proto.collective_broadcast_thunk(), buffer_allocations,
+          /*devices_per_host=*/1));
 
   ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
 

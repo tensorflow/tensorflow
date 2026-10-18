@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <functional>
+#include <optional>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
@@ -25,12 +26,14 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/hlo_value.h"
+#include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 
 namespace xla {
@@ -62,17 +65,26 @@ class CopyInsertion : public HloModulePass {
   // backend specific function that decides whether an instruction
   // can share buffer with its operand.
   //
+  // `view_color` is the layout memory space color of view values (address
+  // stand ins with no storage of their own that alias their operand 0's
+  // buffer, see BufferAssigner::Options::dus_view_color). When set, copy
+  // removal counts the readers of a value's views as uses of that value, so
+  // no producer is merged into the viewed buffer between a view and its
+  // readers.
+  //
   // TODO(b/80315712): Find a better way to tell whether a fusion can share
   // buffer.
   explicit CopyInsertion(
       const AliasInfo* alias_info,
       int64_t use_region_based_live_range_analysis = kUseRegionAnalysisLimit,
       std::function<bool(const HloInstruction* copy)> should_skip_removal =
-          nullptr)
+          nullptr,
+      std::optional<int64_t> view_color = std::nullopt)
       : alias_info_(alias_info),
         should_skip_removal_(should_skip_removal),
         use_region_based_live_range_analysis_(
-            use_region_based_live_range_analysis) {}
+            use_region_based_live_range_analysis),
+        view_color_(view_color) {}
 
   // Try to remove as many copies from the module as possible without
   // introducing live range interference. Only copy instructions that are
@@ -104,23 +116,35 @@ class CopyInsertion : public HloModulePass {
       CustomBufferAnalysisFn custom_buffer_analysis = nullptr);
 
  protected:
-  // Override which requires the caller to pass in a call graph.
+  // Override which requires the caller to pass in a call graph. Runs the alias
+  // analysis, then ComputeSpecialCaseCopies and InsertSpecialCaseCopies.
   virtual absl::Status AddSpecialCaseCopies(
       const CallGraph& call_graph,
       const absl::flat_hash_set<absl::string_view>& execution_threads,
       HloModule* module, CustomBufferAnalysisFn custom_buffer_analysis);
 
+  // Records the shape indices that need special case copies without inserting
+  // them. `alias_analysis` must be current for `module`.
+  absl::StatusOr<HloInstructionMap<ShapeTree<bool>>> ComputeSpecialCaseCopies(
+      const CallGraph& call_graph,
+      const absl::flat_hash_set<absl::string_view>& execution_threads,
+      HloModule* module, const HloAliasAnalysis& alias_analysis,
+      CustomBufferAnalysisFn custom_buffer_analysis);
+
+  // Inserts the copies computed by ComputeSpecialCaseCopies.
+  static absl::Status InsertSpecialCaseCopies(
+      const HloInstructionMap<ShapeTree<bool>>& instructions_to_copy);
+
   // Add copies for conditional instructions.
   virtual absl::Status AddCopiesForConditional(
-      const HloAliasAnalysis& alias_analysis, HloInstruction* conditional);
+      const HloDataflowAnalysis& dataflow, HloInstruction* conditional);
 
   // Adds copies for transitioning into and out of non-copyable values.
-  absl::Status AddCopiesForNonCopyableTransitions(
-      const HloAliasAnalysis& alias_analysis, HloInstruction* chain_start);
+  absl::Status AddCopiesForNonCopyableTransitions(HloInstruction* chain_start);
   // Adds copies for transitioning into and out of non-copyable values for a
   // explicit non-copyable chain.
   absl::Status AddCopiesForExplicitNonCopyableTransitions(
-      const HloAliasAnalysis& alias_analysis, HloInstruction* chain_start);
+      HloInstruction* chain_start);
 
   // Backend specific information about whether an instruction can share buffer
   // with its operand.
@@ -136,10 +160,13 @@ class CopyInsertion : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
+  friend class CopyInsertionTestPeer;
+
   absl::Status AddCopiesToResolveInterference(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
   int64_t use_region_based_live_range_analysis_;
+  std::optional<int64_t> view_color_;
 };
 
 }  // namespace xla

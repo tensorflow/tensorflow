@@ -355,6 +355,12 @@ class CompileOnlyIfRtClient final
 
   ifrt::Compiler* GetDefaultCompiler() override { return &default_compiler_; }
 
+  absl::StatusOr<std::vector<tsl::Future<ifrt::LoadedExecutableRef>>> Load(
+      absl::Span<const ifrt::ExecutableRef> executables,
+      absl::Span<std::unique_ptr<ifrt::LoadOptions>> options) override {
+    return Unimplemented("Load not available with compile-only client.");
+  }
+
   static char ID;  // NOLINT
 
   const ifrt::PjRtTopology& topology() const { return *topology_; }

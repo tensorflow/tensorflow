@@ -19,6 +19,7 @@ load(
     "tf_cc_test",
 )
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load("//tensorflow/lite/toco:api_visibility.bzl", "TOCO_API_VISIBILITY")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
@@ -66,7 +67,7 @@ cc_library(
         "resolve_svdf.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
+    visibility = TOCO_API_VISIBILITY,
     deps = [
         ":cluster",
         ":cluster_utils",
@@ -105,7 +106,7 @@ cc_library(
         "resolve_cluster.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
+    visibility = TOCO_API_VISIBILITY,
     deps = [
         ":cluster",
         ":cluster_utils",

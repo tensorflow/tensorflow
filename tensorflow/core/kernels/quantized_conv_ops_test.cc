@@ -358,7 +358,7 @@ TEST_F(QuantizedConv2DTest, ValidPaddingZeroOutput) {
   AddInputFromArray<float>(TensorShape({}), {255.0f});
 
   EXPECT_THAT(RunOpKernel(),
-              testing::StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_F(QuantizedConv2DTest, ValidPaddingZeroOutputCols) {
@@ -393,7 +393,7 @@ TEST_F(QuantizedConv2DTest, ValidPaddingZeroOutputCols) {
   AddInputFromArray<float>(TensorShape({}), {255.0f});
 
   EXPECT_THAT(RunOpKernel(),
-              testing::StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_F(QuantizedConv2DTest, ZeroBatch) {
@@ -427,7 +427,7 @@ TEST_F(QuantizedConv2DTest, ZeroBatch) {
   AddInputFromArray<float>(TensorShape({}), {255.0f});
 
   EXPECT_THAT(RunOpKernel(),
-              testing::StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_F(QuantizedConv2DTest, ZeroFilterCount) {
@@ -461,7 +461,7 @@ TEST_F(QuantizedConv2DTest, ZeroFilterCount) {
   AddInputFromArray<float>(TensorShape({}), {255.0f});
 
   EXPECT_THAT(RunOpKernel(),
-              testing::StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_F(QuantizedConv2DTest, ZeroFilterRows) {
@@ -488,7 +488,7 @@ TEST_F(QuantizedConv2DTest, ZeroFilterRows) {
   AddInputFromArray<float>(TensorShape({}), {255.0f});
 
   EXPECT_THAT(RunOpKernel(),
-              testing::StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_F(QuantizedConv2DTest, ZeroFilterCols) {
@@ -515,7 +515,7 @@ TEST_F(QuantizedConv2DTest, ZeroFilterCols) {
   AddInputFromArray<float>(TensorShape({}), {255.0f});
 
   EXPECT_THAT(RunOpKernel(),
-              testing::StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 }  // namespace tensorflow

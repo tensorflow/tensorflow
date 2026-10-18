@@ -23,7 +23,10 @@ echoerr() {
   printf "${RED}ERROR:${NOCOLOR} %s\n" "$*" >&2
 }
 
-REAL_BIN="$PWD/external/%LLVM_REPO_NAME%/bin/clang-apply-replacements"
+REAL_BIN="$PWD/external/rules_ml_toolchain++toolchain_ext+%LLVM_REPO_NAME%/bin/clang-apply-replacements"
+if [ ! -f "$REAL_BIN" ]; then
+  REAL_BIN="$PWD/external/%LLVM_REPO_NAME%/bin/clang-apply-replacements"
+fi
 if [ ! -f "$REAL_BIN" ]; then
   echoerr "Failed to locate clang-apply-replacements binary at: $REAL_BIN"
   exit 1

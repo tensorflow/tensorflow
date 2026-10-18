@@ -36,7 +36,7 @@ namespace {
 
 template <typename T>
 std::string AddCommas(T n) {
-  static_assert(std::is_integral<T>::value, "is_integral");
+  static_assert(std::is_integral_v<T>, "is_integral");
   std::string s = strings::StrCat(n);
   if (s.size() > 3) {
     int extra = s.size() / 3 - (s.size() % 3 == 0 ? 1 : 0);

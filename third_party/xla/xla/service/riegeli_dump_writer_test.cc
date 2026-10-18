@@ -24,9 +24,7 @@ limitations under the License.
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/testing/temporary_directory.h"
 #include "xla/xla.pb.h"
@@ -39,7 +37,7 @@ using ::testing::HasSubstr;
 using ::testing::SizeIs;
 
 TEST(RiegeliDumpWriterTest, CreateRiegeliDumpWriter) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       tsl::testing::TemporaryDirectory dump_folder,
       tsl::testing::TemporaryDirectory::CreateForCurrentTestcase());
   DebugOptions debug_options = DefaultDebugOptionsIgnoringFlags();
@@ -47,20 +45,20 @@ TEST(RiegeliDumpWriterTest, CreateRiegeliDumpWriter) {
   debug_options.set_xla_enable_dumping(true);
 
   std::string filename = "test_dump";
-  TF_ASSERT_OK_AND_ASSIGN(auto writer,
-                          CreateRiegeliDumpWriter(debug_options, filename));
+  ASSERT_OK_AND_ASSIGN(auto writer,
+                       CreateRiegeliDumpWriter(debug_options, filename));
 
   writer->Write("hello world");
   EXPECT_TRUE(writer->Close());
 
   std::string file_path = tsl::io::JoinPath(dump_folder.path(), filename);
   std::string content;
-  TF_ASSERT_OK(tsl::ReadFileToString(tsl::Env::Default(), file_path, &content));
+  ASSERT_OK(tsl::ReadFileToString(tsl::Env::Default(), file_path, &content));
   EXPECT_THAT(content, HasSubstr("hello world"));
 }
 
 TEST(RiegeliDumpWriterTest, CreateRiegeliDumpWriterWithModule) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       tsl::testing::TemporaryDirectory dump_folder,
       tsl::testing::TemporaryDirectory::CreateForCurrentTestcase());
   const HloModule hlo_module("test_module", HloModuleConfig());
@@ -69,22 +67,20 @@ TEST(RiegeliDumpWriterTest, CreateRiegeliDumpWriterWithModule) {
   debug_options.set_xla_enable_dumping(true);
 
   std::string filename = "module_dump";
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto writer,
-      CreateRiegeliDumpWriter(debug_options, filename, &hlo_module));
+  ASSERT_OK_AND_ASSIGN(auto writer, CreateRiegeliDumpWriter(
+                                        debug_options, filename, &hlo_module));
 
   writer->Write("hello world");
   EXPECT_TRUE(writer->Close());
 
   std::vector<std::string> matches;
-  TF_ASSERT_OK(tsl::Env::Default()->GetMatchingPaths(
+  ASSERT_OK(tsl::Env::Default()->GetMatchingPaths(
       tsl::io::JoinPath(dump_folder.path(), "*module_dump*"), &matches));
   EXPECT_THAT(matches, SizeIs(1));
   EXPECT_THAT(matches[0], HasSubstr("test_module"));
 
   std::string content;
-  TF_ASSERT_OK(
-      tsl::ReadFileToString(tsl::Env::Default(), matches[0], &content));
+  ASSERT_OK(tsl::ReadFileToString(tsl::Env::Default(), matches[0], &content));
   EXPECT_THAT(content, HasSubstr("hello world"));
 }
 

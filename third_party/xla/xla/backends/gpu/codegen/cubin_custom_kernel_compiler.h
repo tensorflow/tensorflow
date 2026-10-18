@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/future.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu_topology.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/xla.pb.h"
@@ -63,11 +64,13 @@ class CubinCustomKernelCompiler final : public KernelCompiler {
   CubinCustomKernelCompiler(LlvmIrCompiler compiler,
                             const se::DeviceDescription& gpu_device_info,
                             const DebugOptions& debug_options,
+                            const GpuTopology& gpu_topology,
                             tsl::thread::ThreadPool* thread_pool = nullptr)
       : compiler_(std::move(compiler)),
         device_info_(gpu_device_info),
         debug_options_(debug_options),
-        thread_pool_(thread_pool) {}
+        thread_pool_(thread_pool),
+        gpu_topology_(gpu_topology) {}
 
   xla::Future<std::unique_ptr<Thunk>> Compile(
       Thunk::ThunkInfo thunk_info, LlvmKernelSource kernel_source,
@@ -105,6 +108,7 @@ class CubinCustomKernelCompiler final : public KernelCompiler {
   const se::DeviceDescription device_info_;
   const DebugOptions debug_options_;
   tsl::thread::ThreadPool* thread_pool_;
+  const GpuTopology& gpu_topology_;
 };
 
 }  // namespace xla::gpu

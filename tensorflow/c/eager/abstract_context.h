@@ -34,7 +34,7 @@ class AbstractContext {
  protected:
   enum AbstractContextKind { kGraph, kMlir, kEager, kTfrt, kTape, kOpHandler };
   explicit AbstractContext(AbstractContextKind kind) : kind_(kind) {}
-  virtual ~AbstractContext() {}
+  virtual ~AbstractContext() = default;
 
  public:
   AbstractContextKind getKind() const { return kind_; }

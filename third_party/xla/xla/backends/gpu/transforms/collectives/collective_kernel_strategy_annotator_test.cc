@@ -249,6 +249,34 @@ TEST_F(CollectiveKernelStrategyAnnotatorTest,
   EXPECT_EQ(strategy, CollectiveBackendConfig::KERNEL_STRATEGY_DEFAULT);
 }
 
+// 2 * 1024 * 1024 F32 elements per replica = 8 MB > 4 MB limit
+// → ineligible → KERNEL_STRATEGY_DEFAULT (falls back to NCCL).
+TEST_F(CollectiveKernelStrategyAnnotatorTest,
+       LargeAllGatherKeepsDefaultStrategy) {
+  constexpr int kNumReplicas = 8;
+  constexpr int64_t kInputElements = 2 * 1024 * 1024;
+  constexpr int64_t kOutputElements = kInputElements * kNumReplicas;
+  std::string replica_groups_str = "0,1,2,3,4,5,6,7";
+  std::string hlo = absl::StrFormat(kAllGatherHloTemplate, kInputElements,
+                                    kOutputElements, replica_groups_str);
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(hlo, kNumReplicas));
+  module->mutable_config()
+      .mutable_debug_options()
+      .add_xla_gpu_experimental_use_collective_kernels(
+          DebugOptions::COLLECTIVE_KERNEL_ALL_GATHER);
+  ASSERT_OK_AND_ASSIGN(auto local_topology, MakeLocalGpuTopology(kNumReplicas));
+
+  CollectiveKernelStrategyAnnotator annotator(*local_topology,
+                                              /*is_multimem_enabled=*/false);
+  ASSERT_OK(annotator.Run(module.get()).status());
+
+  ASSERT_OK_AND_ASSIGN(auto strategy,
+                       GetKernelStrategy(module.get(), HloOpcode::kAllGather));
+  EXPECT_EQ(strategy, CollectiveBackendConfig::KERNEL_STRATEGY_DEFAULT);
+}
+
 // Module with both AllReduce and AllGather: both should be annotated in a
 // single pass.
 TEST_F(CollectiveKernelStrategyAnnotatorTest,
@@ -301,6 +329,68 @@ TEST_F(CollectiveKernelStrategyAnnotatorTest,
   ASSERT_OK_AND_ASSIGN(auto ag_strategy,
                        GetKernelStrategy(module.get(), HloOpcode::kAllGather));
   EXPECT_EQ(ag_strategy,
+            CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_ONE_SHOT);
+}
+
+TEST_F(CollectiveKernelStrategyAnnotatorTest,
+       AllCollectivesPropertyAnnotatesAllSupportedCollectives) {
+  constexpr int kNumReplicas = 8;
+  constexpr absl::string_view kCombinedHlo = R"(
+    HloModule combined_all_collectives_test
+
+    add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT r = f32[] add(p0, p1)
+    }
+
+    ENTRY e {
+      p0 = f32[32768] parameter(0)
+      p1 = f32[4096] parameter(1)
+      all-reduce = f32[32768] all-reduce(p0),
+          replica_groups={{0,1,2,3,4,5,6,7}},
+          to_apply=add
+      all-gather = f32[32768] all-gather(p1),
+          dimensions={0},
+          replica_groups={{0,1,2,3,4,5,6,7}}
+      reduce-scatter = f32[4096] reduce-scatter(p0),
+          dimensions={0},
+          replica_groups={{0,1,2,3,4,5,6,7}},
+          to_apply=add
+      ROOT t = (f32[32768], f32[32768], f32[4096]) tuple(
+          all-reduce, all-gather, reduce-scatter)
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kCombinedHlo, kNumReplicas));
+  module->mutable_config()
+      .mutable_debug_options()
+      .clear_xla_gpu_experimental_use_collective_kernels();
+  module->mutable_config()
+      .mutable_debug_options()
+      .add_xla_gpu_experimental_use_collective_kernels(
+          DebugOptions::COLLECTIVE_KERNEL_ALL_COLLECTIVES);
+  ASSERT_OK_AND_ASSIGN(auto local_topology, MakeLocalGpuTopology(kNumReplicas));
+
+  CollectiveKernelStrategyAnnotator annotator(*local_topology,
+                                              /*is_multimem_enabled=*/false);
+  ASSERT_OK(annotator.Run(module.get()).status());
+
+  ASSERT_OK_AND_ASSIGN(auto ar_strategy,
+                       GetKernelStrategy(module.get(), HloOpcode::kAllReduce));
+  EXPECT_EQ(ar_strategy,
+            CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_ONE_SHOT);
+
+  ASSERT_OK_AND_ASSIGN(auto ag_strategy,
+                       GetKernelStrategy(module.get(), HloOpcode::kAllGather));
+  EXPECT_EQ(ag_strategy,
+            CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_ONE_SHOT);
+
+  ASSERT_OK_AND_ASSIGN(
+      auto rs_strategy,
+      GetKernelStrategy(module.get(), HloOpcode::kReduceScatter));
+  EXPECT_EQ(rs_strategy,
             CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_ONE_SHOT);
 }
 

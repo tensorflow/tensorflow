@@ -77,7 +77,15 @@ absl::StatusOr<Layout> CpuTopologyDescription::GetDefaultLayout(
                            PrimitiveType_Name(element_type));
   }
   Shape shape = ShapeUtil::MakeShape(element_type, dims);
-  return LayoutUtil::GetWithDefaultLayout(shape).layout();
+  Layout layout = LayoutUtil::GetWithDefaultLayout(shape).layout();
+  // `GetWithDefaultLayout` returns a padded layout for sub-byte types since the
+  // notion of "default" is context dependent and in this case means the default
+  // for literals for historical reasons. Because of this, we need to manually
+  // populate the `element_size_in_bits` for sub-byte types here.
+  if (primitive_util::IsSubByteNonPredType(element_type)) {
+    layout.set_element_size_in_bits(primitive_util::BitWidth(element_type));
+  }
+  return layout;
 }
 
 absl::StatusOr<int> CpuTopologyDescription::GetMemorySpaceKindForShape(

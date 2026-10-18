@@ -38,7 +38,7 @@ compatible `operator()` signature. Constructed handler decodes XLA FFI call
 frame (defined by the stable C API), type check all parameters, and forward
 decoded results to the user-defined callback.
 
-XLA FFI binding heavily relies on template metaprogramming to be be able to
+XLA FFI binding heavily relies on template metaprogramming to be able to
 compile constructed handler to the most efficient machine code. Run time
 overheads are in order of a couple of nanoseconds for each custom call
 parameter.
@@ -309,7 +309,7 @@ The external FFI API in `xla/ffi/api/ffi.h` returns `Error` from `Verify` and
 
 ```c++
 ABSL_ASSIGN_OR_RETURN(BufferR2<F32> input,
-                 Match("input", buffer, m::Buffer<F32, 2>()));
+                      Match("input", buffer, m::Buffer<F32, 2>()));
 ABSL_RETURN_IF_ERROR(Verify(
     "input", input,
     m::Buffer().WithDims(expected_rows, m::Dim())));
@@ -426,6 +426,33 @@ auto handler = Ffi::Bind().Attrs().To([](Dictionary attrs) -> Error {
   return Error::Success();
 });
 ```
+
+### Per-execution Custom Options
+
+FFI handlers can access runtime custom options as a `Dictionary` by binding
+`Ctx<CustomOptions>()`. In JAX, pass options with `jax.execution_options`:
+
+```python
+with jax.execution_options(custom_options={"foo": 42}):
+    result = compiled_fn(x)
+```
+
+Python integer options decode as `int64_t`:
+
+```c++
+auto handler =
+    Ffi::Bind().Ctx<CustomOptions>().To([](Dictionary options) -> Error {
+      ErrorOr<int64_t> foo = options.get<int64_t>("foo");
+      return Error::Success();
+    });
+```
+
+**WARNING:** GPU command buffers can replay recorded or captured work without
+invoking the FFI handler again. Changing custom options does not trigger a
+command buffer update or invalidate the stream-capture cache, so replay may use
+work recorded with earlier option values. Custom calls whose recorded work
+depends on options that change between executions must stay out of GPU command
+buffers until this is supported.
 
 ### User-defined Struct Attributes
 

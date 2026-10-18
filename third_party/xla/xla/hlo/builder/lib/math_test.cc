@@ -483,6 +483,27 @@ TEST_F(MathTest, Digamma) {
   ComputeAndCompareR1<float>(&builder, expected, {}, kErrorSpec);
 }
 
+TEST_F(MathTest, DigammaPoles) {
+  // digamma has a pole at zero and at every negative integer. The two one-sided
+  // limits agree at zero, so return -inf there (for -0.0 as well); at the
+  // negative integers they disagree, so return nan.
+  XlaBuilder builder(TestName());
+  auto x = ConstantR1<float>(&builder, {0.0, -0.0, -1.0, -2.0, -10.0, -1.5});
+  Digamma(x);
+
+  constexpr double euler_mascheroni =
+      0.57721566490153286060651209008240243104215933593992;
+  std::vector<float> expected = {
+      -std::numeric_limits<float>::infinity(),
+      -std::numeric_limits<float>::infinity(),
+      std::numeric_limits<float>::quiet_NaN(),
+      std::numeric_limits<float>::quiet_NaN(),
+      std::numeric_limits<float>::quiet_NaN(),
+      // digamma(-1.5) = 2/3 + 2 - 2 * log(2) - euler_mascheroni.
+      static_cast<float>(2 / 3.0 + 2 - 2 * std::log(2) - euler_mascheroni)};
+  ComputeAndCompareR1<float>(&builder, expected, {}, kErrorSpec);
+}
+
 TEST_F(MathTest, PolygammaNegativeInputs) {
   // Regression test for https://github.com/jax-ml/jax/issues/37635.
   // Polygamma for n >= 1 and x < 0 (non-integer) previously produced
@@ -608,6 +629,27 @@ TEST_F(MathTest, Igammac) {
                               {2.56560373e-01, 5.32968026e-01, 6.60764593e-01,
                                2.14889688e-04, 5.39314824e-03}}};
   ComputeAndCompareR3<float>(&builder, expected, {}, kErrorSpec);
+}
+
+TEST_F(MathTest, IgammacSpecialValues) {
+  SetFastMathDisabled(true);
+  XlaBuilder builder(TestName());
+  const float nan = std::numeric_limits<float>::quiet_NaN();
+  const float inf = std::numeric_limits<float>::infinity();
+  auto a = ConstantR1<float>(
+      &builder,
+      {nan, nan, 0.53327996, nan, 0.6374078, -1.6019852, -0.24963307,
+       0.53327996, 0.0, -2.0, -2.0, 0.53327996, 0.53327996, 0.53327996});
+  auto x = ConstantR1<float>(
+      &builder, {nan, 8.97671773, nan, 0.0, 0.6374078, -1.6019852, -0.24963307,
+                 -1.0, 2.0, 0.0, inf, 0.0, -0.0, inf});
+
+  Igammac(a, x);
+  // Domain errors (x < 0, a <= 0) and NaN inputs give NaN as in Eigen and
+  // Igamma; igammac(a, 0) = 1 and igammac(a, inf) = 0 for a > 0.
+  std::vector<float> expected = {nan, nan, nan, nan, 0.33642888, nan, nan,
+                                 nan, nan, nan, nan, 1.0,        1.0, 0.0};
+  ComputeAndCompareR1<float>(&builder, expected, {}, kErrorSpec);
 }
 
 TEST_F(MathTest, IgammacF16) {
@@ -840,6 +882,100 @@ TEST_F(MathTest, ZetaF64) {
 
   ComputeAndCompareR1<double>(&builder, expected, {},
                               ErrorSpec{0.00000000000001});
+}
+
+TEST_F(MathTest, ZetaLargeQ) {
+  XlaBuilder builder(TestName());
+  const float inf = std::numeric_limits<float>::infinity();
+  auto x = ConstantR1<float>(&builder, {2.0f, 4.0f, 4.0f});
+  auto q = ConstantR1<float>(&builder, {inf, inf, 1e12f});
+  Zeta(x, q);
+  std::vector<float> expected = {0.0f, 0.0f, 1e-36f / 3.0f};
+
+  ComputeAndCompareR1<float>(&builder, expected, {},
+                             ErrorSpec{/*aabs=*/0.0, /*arel=*/1e-4});
+
+  if (test::BackendSupportsFloat64()) {
+    XlaBuilder builder_f64(TestName());
+    const double inf_f64 = std::numeric_limits<double>::infinity();
+    auto x_f64 = ConstantR1<double>(&builder_f64, {2.0, 4.0, 4.0});
+    auto q_f64 = ConstantR1<double>(&builder_f64, {inf_f64, inf_f64, 1e100});
+    Zeta(x_f64, q_f64);
+    std::vector<double> expected_f64 = {0.0, 0.0, 1e-300 / 3.0};
+
+    ComputeAndCompareR1<double>(&builder_f64, expected_f64, {},
+                                ErrorSpec{/*aabs=*/0.0, /*arel=*/1e-12});
+  }
+}
+
+TEST_F(MathTest, IgammaDynamicDimensionMismatch) {
+  XlaBuilder builder(TestName());
+  // Logical shape is identical, but one operand carries a dynamic-dimension
+  // bit.
+  Shape shape_a = ShapeUtil::MakeShape(F32, {2, 2});
+  Shape shape_x = ShapeUtil::MakeShape(F32, {2, 2});
+  shape_x.set_dynamic_dimension(0, true);
+  XlaOp a = Parameter(&builder, 0, shape_a, "a");
+  XlaOp x = Parameter(&builder, 1, shape_x, "x");
+  Igamma(a, x);
+  EXPECT_OK(builder.Build().status());
+}
+
+TEST_F(MathTest, IgammacDynamicDimensionMismatch) {
+  XlaBuilder builder(TestName());
+  Shape shape_a = ShapeUtil::MakeShape(F32, {2, 2});
+  Shape shape_x = ShapeUtil::MakeShape(F32, {2, 2});
+  shape_x.set_dynamic_dimension(0, true);
+  XlaOp a = Parameter(&builder, 0, shape_a, "a");
+  XlaOp x = Parameter(&builder, 1, shape_x, "x");
+  Igammac(a, x);
+  EXPECT_OK(builder.Build().status());
+}
+
+TEST_F(MathTest, IgammaGradADynamicDimensionMismatch) {
+  XlaBuilder builder(TestName());
+  Shape shape_a = ShapeUtil::MakeShape(F32, {2, 2});
+  Shape shape_x = ShapeUtil::MakeShape(F32, {2, 2});
+  shape_x.set_dynamic_dimension(0, true);
+  XlaOp a = Parameter(&builder, 0, shape_a, "a");
+  XlaOp x = Parameter(&builder, 1, shape_x, "x");
+  IgammaGradA(a, x);
+  EXPECT_OK(builder.Build().status());
+}
+
+TEST_F(MathTest, RandomGammaGradDynamicDimensionMismatch) {
+  XlaBuilder builder(TestName());
+  Shape shape_a = ShapeUtil::MakeShape(F32, {2, 2});
+  Shape shape_x = ShapeUtil::MakeShape(F32, {2, 2});
+  shape_x.set_dynamic_dimension(0, true);
+  XlaOp a = Parameter(&builder, 0, shape_a, "a");
+  XlaOp x = Parameter(&builder, 1, shape_x, "x");
+  RandomGammaGrad(a, x);
+  EXPECT_OK(builder.Build().status());
+}
+
+TEST_F(MathTest, ZetaDynamicDimensionMismatch) {
+  XlaBuilder builder(TestName());
+  // x is static; q carries a dynamic-dimension bit.
+  Shape shape_x = ShapeUtil::MakeShape(F32, {2, 2});
+  Shape shape_q = ShapeUtil::MakeShape(F32, {2, 2});
+  shape_q.set_dynamic_dimension(0, true);
+  XlaOp x = Parameter(&builder, 0, shape_x, "x");
+  XlaOp q = Parameter(&builder, 1, shape_q, "q");
+  Zeta(x, q);
+  EXPECT_OK(builder.Build().status());
+}
+
+TEST_F(MathTest, PolygammaDynamicDimensionMismatch) {
+  XlaBuilder builder(TestName());
+  // n is static; x carries a dynamic-dimension bit.
+  Shape shape_n = ShapeUtil::MakeShape(F32, {2, 2});
+  Shape shape_x = ShapeUtil::MakeShape(F32, {2, 2});
+  shape_x.set_dynamic_dimension(0, true);
+  XlaOp n = Parameter(&builder, 0, shape_n, "n");
+  XlaOp x = Parameter(&builder, 1, shape_x, "x");
+  Polygamma(n, x);
+  EXPECT_OK(builder.Build().status());
 }
 
 }  // namespace

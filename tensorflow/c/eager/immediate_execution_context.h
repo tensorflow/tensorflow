@@ -272,7 +272,7 @@ class ImmediateExecutionContext : public AbstractContext {
  protected:
   explicit ImmediateExecutionContext(AbstractContextKind kind)
       : AbstractContext(kind) {}
-  ~ImmediateExecutionContext() override {}
+  ~ImmediateExecutionContext() override = default;
 };
 
 namespace internal {

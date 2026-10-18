@@ -68,7 +68,7 @@ PythonAPIDispatcher MakePythonAPIDispatcher(
 
 }  // namespace
 
-PYBIND11_MODULE(_pywrap_python_api_dispatcher, m) {
+PYBIND11_MODULE(_pywrap_python_api_dispatcher, m, py::mod_gil_not_used()) {
   py::enum_<PyTypeChecker::MatchType>(m, "MatchType")
       .value("NO_MATCH", PyTypeChecker::MatchType::NO_MATCH)
       .value("MATCH", PyTypeChecker::MatchType::MATCH)

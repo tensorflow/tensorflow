@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 
 #include <gtest/gtest.h>
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/literal.h"

@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -43,6 +44,7 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/device_assignment.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu_topology.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/side_effect_util.h"
 #include "xla/stream_executor/device_description.h"
@@ -225,6 +227,22 @@ bool IsLocalReplicaGroup(int64_t num_devices_per_host,
   });
 }
 
+// Returns true if xla_gpu_unsupported_use_cross_host_one_shot_kernel is enabled
+// for the given collective op type.
+bool IsCrossHostOneShotKernelEnabled(
+    const DebugOptions& debug_options,
+    std::optional<DebugOptions::CollectiveOpType> op_type) {
+  if (!op_type.has_value()) {
+    return false;
+  }
+  return absl::c_linear_search(
+             debug_options.xla_gpu_unsupported_use_cross_host_one_shot_kernel(),
+             *op_type) ||
+         absl::c_linear_search(
+             debug_options.xla_gpu_unsupported_use_cross_host_one_shot_kernel(),
+             DebugOptions::ALLCOLLECTIVES);
+}
+
 }  // namespace
 
 CollectivePermuteCostModelType GetCollectivePermuteCostModelType(
@@ -268,10 +286,10 @@ absl::StatusOr<GPUCommunicationType> CommunicationType(
     const se::GpuComputeCapability& gpu_version) {
   const bool is_supported_rocm =
       gpu_version.IsRocm() &&
-      gpu_version.rocm_compute_capability()->gfx9_mi350();
+      gpu_version.rocm_compute_capability()->gfx9_mi300_series();
   if (!gpu_version.IsCuda() && !is_supported_rocm) {
     return absl::FailedPreconditionError(
-        "Only CUDA and ROCm gfx950 (MI350) are supported.");
+        "Only CUDA and ROCm gfx942 (MI300) and gfx950 (MI350) are supported.");
   }
 
   if (const auto* collective = DynCast<HloCollectiveInstruction>(&instr)) {
@@ -331,6 +349,27 @@ bool IsSpmdGenerated(const HloInstruction& instr) {
   return backend_config->collective_backend_config().is_spmd_generated();
 }
 
+bool IsLsaPossible(const GpuTopology& gpu_topology) {
+  return gpu_topology.has_gpu_target_config() &&
+         gpu_topology.gpu_target_config()
+             .device_description.gpu_compute_capability()
+             .IsCuda();
+}
+
+int64_t GetCollectiveKernelDomainSize(
+    const GpuTopology& gpu_topology, const DebugOptions& debug_options,
+    std::optional<DebugOptions::CollectiveOpType> op_type) {
+  const int64_t num_devices_per_process =
+      gpu_topology.num_devices_per_process();
+  const int64_t slice_size = gpu_topology.slice_size();
+  if (IsLsaPossible(gpu_topology) &&
+      IsCrossHostOneShotKernelEnabled(debug_options, op_type) &&
+      num_devices_per_process > 0 && slice_size > num_devices_per_process) {
+    return slice_size;
+  }
+  return num_devices_per_process;
+}
+
 bool IsAllReplicasLocal(int64_t gpus_per_host,
                         absl::Span<const ReplicaGroup> replica_groups,
                         CollectiveOpGroupMode group_mode,
@@ -342,7 +381,7 @@ bool IsAllReplicasLocal(int64_t gpus_per_host,
             << (device_assignment != nullptr ? device_assignment->ToString()
                                              : "nullptr");
   }
-  // functional_hlo_runner assigns 0 for device assigments for multi-host
+  // functional_hlo_runner assigns 0 for device assignments for multi-host
   // cases. In this case we ignore the assignment.
   // See LoadAndCompile in functional_hlo_runner.cc for more details.
   const bool has_device_assignment =
@@ -370,6 +409,86 @@ bool IsAllReplicasLocal(int64_t gpus_per_host,
   });
 }
 
+absl::StatusOr<bool> IsCollectiveSingleHost(
+    const GpuTopology& gpu_topology, const HloInstruction& instruction,
+    const DeviceAssignment* device_assignment) {
+  const auto* collective = DynCast<HloCollectiveInstruction>(&instruction);
+  CHECK(collective != nullptr)
+      << "Instruction is not a collective instruction: " << instruction.name();
+  if (device_assignment == nullptr && instruction.GetModule() != nullptr &&
+      instruction.GetModule()->config().has_static_device_assignment()) {
+    device_assignment =
+        &instruction.GetModule()->config().static_device_assignment();
+  }
+  ABSL_ASSIGN_OR_RETURN(const CollectiveOpGroupMode group_mode,
+                   GetCollectiveOpGroupMode(collective));
+  return IsAllReplicasLocal(gpu_topology.num_devices_per_process(),
+                            collective->replica_groups(), group_mode,
+                            device_assignment);
+}
+
+absl::StatusOr<bool> IsCrossHostCollectiveKernelPossible(
+    const GpuTopology& gpu_topology, const HloInstruction& instruction,
+    const DeviceAssignment* device_assignment) {
+  const auto* collective = DynCast<HloCollectiveInstruction>(&instruction);
+  CHECK(collective != nullptr)
+      << "Instruction is not a collective instruction: " << instruction.name();
+  if (device_assignment == nullptr && instruction.GetModule() != nullptr &&
+      instruction.GetModule()->config().has_static_device_assignment()) {
+    device_assignment =
+        &instruction.GetModule()->config().static_device_assignment();
+  }
+  const DebugOptions& debug_options =
+      instruction.GetModule() != nullptr
+          ? instruction.GetModule()->config().debug_options()
+          : DebugOptions::default_instance();
+  if (!IsCrossHostOneShotKernelEnabled(debug_options,
+                                       GetCollectiveOpType(&instruction)) ||
+      gpu_topology.num_devices_per_process() <= 0 ||
+      gpu_topology.slice_size() <= gpu_topology.num_devices_per_process()) {
+    return false;
+  }
+  ABSL_ASSIGN_OR_RETURN(const CollectiveOpGroupMode group_mode,
+                   GetCollectiveOpGroupMode(collective));
+  return IsAllReplicasLocal(gpu_topology.slice_size(),
+                            collective->replica_groups(), group_mode,
+                            device_assignment);
+}
+
+bool AreAllReplicasOnSameSlice(
+    const GpuTopology& gpu_topology, const DebugOptions& debug_options,
+    std::optional<DebugOptions::CollectiveOpType> op_type,
+    absl::Span<const ReplicaGroup> replica_groups,
+    CollectiveOpGroupMode group_mode,
+    const DeviceAssignment* device_assignment) {
+  return IsAllReplicasLocal(
+      GetCollectiveKernelDomainSize(gpu_topology, debug_options, op_type),
+      replica_groups, group_mode, device_assignment);
+}
+
+absl::StatusOr<bool> AreAllReplicasOnSameSlice(
+    const GpuTopology& gpu_topology, const HloInstruction& instruction,
+    const DeviceAssignment* device_assignment) {
+  ABSL_ASSIGN_OR_RETURN(
+      const bool is_single_host,
+      IsCollectiveSingleHost(gpu_topology, instruction, device_assignment));
+  if (is_single_host) {
+    return true;
+  }
+  ABSL_ASSIGN_OR_RETURN(const bool is_cross_host_possible,
+                   IsCrossHostCollectiveKernelPossible(
+                       gpu_topology, instruction, device_assignment));
+  return is_cross_host_possible && IsLsaPossible(gpu_topology);
+}
+
+bool IsAllReplicasLocal(const GpuTopology& gpu_topology,
+                        absl::Span<const ReplicaGroup> replica_groups,
+                        CollectiveOpGroupMode group_mode,
+                        const DeviceAssignment* device_assignment) {
+  return IsAllReplicasLocal(gpu_topology.num_devices_per_process(),
+                            replica_groups, group_mode, device_assignment);
+}
+
 bool IsTritonCollectiveKernel(
     CollectiveBackendConfig::CollectiveKernelStrategy kernel_strategy) {
   return kernel_strategy ==
@@ -391,6 +510,15 @@ absl::StatusOr<absl::flat_hash_set<HloOpcode>> OpcodesForTritonCollectives(
       }
       case xla::DebugOptions::COLLECTIVE_KERNEL_ALL_GATHER:
         instructions_to_annotate.insert(HloOpcode::kAllGather);
+        break;
+      case xla::DebugOptions::COLLECTIVE_KERNEL_REDUCE_SCATTER:
+        instructions_to_annotate.insert(HloOpcode::kReduceScatter);
+        break;
+      case xla::DebugOptions::COLLECTIVE_KERNEL_ALL_COLLECTIVES:
+        instructions_to_annotate.insert(HloOpcode::kAllReduce);
+        instructions_to_annotate.insert(HloOpcode::kAllReduceStart);
+        instructions_to_annotate.insert(HloOpcode::kAllGather);
+        instructions_to_annotate.insert(HloOpcode::kReduceScatter);
         break;
       default:
         return absl::InvalidArgumentError(absl::StrFormat(

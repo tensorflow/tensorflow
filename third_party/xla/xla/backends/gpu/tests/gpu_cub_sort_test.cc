@@ -191,7 +191,7 @@ numpy_order_comparator {
   rhs_is_zero = pred[] compare(rhs, c_zero), direction=EQ
   rhs_no_neg_zero = bf16[] select(rhs_is_zero, c_zero, rhs)
   rhs_no_neg_zero_or_nan = bf16[] select(rhs_is_nan, c_nan, rhs_no_neg_zero)
-  ROOT compare.20017 = pred[] compare(lhs_no_neg_zero_or_nan, rhs_no_neg_zero_or_nan), direction=GT, type=TOTALORDER
+  ROOT compare.20017 = pred[] compare(lhs_no_neg_zero_or_nan, rhs_no_neg_zero_or_nan), direction=GT, order=TOTAL
 }
 
 ENTRY main {
@@ -223,7 +223,7 @@ TEST_P(CubSortKeysSpecialOrderingTest, CompareToReferenceTotalOrderLt) {
 compare {
   lhs = f32[] parameter(0)
   rhs = f32[] parameter(1)
-  ROOT comp = pred[] compare(lhs, rhs), direction=LT, type=TOTALORDER
+  ROOT comp = pred[] compare(lhs, rhs), direction=LT, order=TOTAL
 }
 
 ENTRY main {

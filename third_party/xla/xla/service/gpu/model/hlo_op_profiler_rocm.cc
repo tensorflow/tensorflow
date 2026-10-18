@@ -16,6 +16,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <numeric>
 #include <string>
 #include <vector>
 
@@ -57,6 +58,12 @@ class RocmKernelTracer : public HloOpProfiler::KernelTracer,
     }
     // Return average of the two middle values if the number of values is even.
     return (kernel_times_ns_[i - 1] + kernel_times_ns_[i] + 1) / 2;
+  }
+
+  uint64_t getSumKernelTimeNs() && override {
+    rocm_tracer_->Disable();  // Also flushes buffer.
+    return std::accumulate(kernel_times_ns_.begin(), kernel_times_ns_.end(),
+                           uint64_t{0});
   }
 
  private:

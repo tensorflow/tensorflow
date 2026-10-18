@@ -75,6 +75,10 @@ GpuModulePlugin::GpuModulePlugin(const TFLiteSettings& tflite_settings) {
                        ->c_str(),
                    dlopen_flags);
   if (!module_) {
+    TFLITE_LOG_PROD(TFLITE_LOG_WARNING, "Failed to load Gpu Module from %s",
+                    tflite_settings_->stable_delegate_loader_settings()
+                        ->delegate_path()
+                        ->c_str());
     error_code_ = kMinibenchmarkCannotLoadGpuModule;
     return;
   }

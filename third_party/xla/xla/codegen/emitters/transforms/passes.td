@@ -29,6 +29,13 @@ def LowerXlaIntrinsicLibPass : Pass<"xla-lower-xla-intrinsic-lib", "mlir::Module
     "mlir::func::FuncDialect",
     "mlir::vector::VectorDialect",
   ];
+
+  let options = [
+    Option<"cpu_features_", "cpu_features", "std::string", /*default=*/"",
+           "LLVM target feature string (e.g. '+avx,+avx2') used to select "
+           "feature-gated intrinsic variants. Must match the features of the "
+           "target machine that compiles the module.">,
+  ];
 }
 
 def ConvertPureCallOpsPass
@@ -111,7 +118,6 @@ def LowerTensorsPass : Pass<"xla-lower-tensors", "mlir::ModuleOp"> {
     "xla::gpu::XlaGpuDialect",
     "xla::XlaDialect",
     "mlir::vector::VectorDialect",
-    "mlir::ROCDL::ROCDLDialect",
   ];
   let options = [
     Option<"gpu_device_info_", "gpu_device_info", "std::string", /*default=*/"",

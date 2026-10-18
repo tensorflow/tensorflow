@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/escaping.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/op_def_util.h"
@@ -495,8 +496,7 @@ void FinalizeDoc(const std::string& text, OpDef* op_def,
   // Trim trailing blank lines from the description.
   while (start_l < end_l && lines[end_l - 1].empty()) --end_l;
   std::string desc = absl::StrJoin(
-      absl::Span<const std::string>(lines.data() + start_l, end_l - start_l),
-      "\n");
+      absl::MakeConstSpan(lines).subspan(start_l, end_l - start_l), "\n");
   if (!desc.empty()) op_def->set_description(desc);
 
   // name: description

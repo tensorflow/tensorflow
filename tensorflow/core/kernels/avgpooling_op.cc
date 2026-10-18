@@ -21,6 +21,8 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/numeric_op.h"
@@ -289,8 +291,9 @@ class AvgPoolingGradOp : public OpKernel {
     OP_REQUIRES(
         context,
         tensor_in_shape.dims() == 1 && tensor_in_shape.NumElements() == 4,
-        absl::InvalidArgumentError("out_backprop must be 1-dimensional and 4 "
-                                   "elements"));
+        absl::InvalidArgumentError(
+            "tensor_in_shape must be 1-dimensional and 4 "
+            "elements"));
     // For avgpooling, out_backprop should have 4 dimensions.
     OP_REQUIRES(
         context, out_backprop.dims() == 4,
@@ -337,32 +340,21 @@ class AvgPoolingGradOp : public OpKernel {
     OP_REQUIRES_OK(context, GetWindowedOutputSize(
                                 in_cols, window_cols, /*dilation_rate=*/1,
                                 col_stride, padding_, &out_width, &pad_cols));
+    TensorShape forward_output_shape;
+    OP_REQUIRES_OK(
+        context, ShapeFromFormatWithStatus(
+                     data_format_,
+                     GetTensorDim(output_shape, data_format_, 'N'), out_height,
+                     out_width, GetTensorDim(output_shape, data_format_, 'C'),
+                     &forward_output_shape));
+    OP_REQUIRES(
+        context, out_backprop.shape() == forward_output_shape,
+        absl::InvalidArgumentError(absl::StrCat(
+            "Expected grad shape to be ", forward_output_shape.DebugString(),
+            ", but got ", out_backprop.shape().DebugString())));
 
     const T* out_backprop_ptr = out_backprop.flat<T>().data();
     T* input_backprop_ptr = output->flat<T>().data();
-
-    for (int64_t r = 0; r < out_backprop_rows; ++r) {
-      int rindex, rsize;
-      OP_REQUIRES_OK(context,
-                     GetBroadcastSize(r, in_rows, window_rows, row_stride,
-                                      pad_rows, &rindex, &rsize));
-      for (int64_t c = 0; c < out_backprop_cols; ++c) {
-        int cindex, csize;
-        OP_REQUIRES_OK(context,
-                       GetBroadcastSize(c, in_cols, window_cols, col_stride,
-                                        pad_cols, &cindex, &csize));
-        int64_t input_max =
-            ((out_backprop_batch - 1) * in_rows + rindex + rsize - 1) *
-                in_cols +
-            cindex + csize - 1;
-        OP_REQUIRES(context, input_max < output->NumElements(),
-                    absl::InvalidArgumentError(absl::StrCat(
-                        "Output only has ", output->NumElements(),
-                        " elements but computation requested would "
-                        "use element with index=",
-                        input_max)));
-      }
-    }
 
     auto shard = [context, out_backprop_ptr, input_backprop_ptr,
                   out_backprop_rows, out_backprop_cols, out_backprop_depth,
@@ -474,8 +466,9 @@ class AvgPoolingGradOp<GPUDevice, T> : public OpKernel {
     OP_REQUIRES(
         context,
         tensor_in_shape.dims() == 1 && tensor_in_shape.NumElements() == 4,
-        absl::InvalidArgumentError("out_backprop must be 1-dimensional and 4 "
-                                   "elements"));
+        absl::InvalidArgumentError(
+            "tensor_in_shape must be 1-dimensional and 4 "
+            "elements"));
     // For avgpooling, out_backprop should have 4 dimensions.
     OP_REQUIRES(
         context, out_backprop.dims() == 4,
@@ -562,8 +555,9 @@ class AvgPoolingGradOpCustomGPUKernel : public OpKernel {
     OP_REQUIRES(
         context,
         tensor_in_shape.dims() == 1 && tensor_in_shape.NumElements() == 4,
-        absl::InvalidArgumentError("out_backprop must be 1-dimensional and 4 "
-                                   "elements"));
+        absl::InvalidArgumentError(
+            "tensor_in_shape must be 1-dimensional and 4 "
+            "elements"));
     // For avgpooling, out_backprop should have 4 dimensions.
     OP_REQUIRES(
         context, out_backprop.dims() == 4,
@@ -622,6 +616,19 @@ class AvgPoolingGradOpCustomGPUKernel : public OpKernel {
       OP_REQUIRES_OK(context, GetWindowedOutputSize(
                                   in_cols, window_cols, /*dilation_rate=*/1,
                                   col_stride, padding_, &out_width, &pad_cols));
+
+      TensorShape forward_output_shape;
+      OP_REQUIRES_OK(context, ShapeFromFormatWithStatus(
+                                  data_format_,
+                                  GetTensorDim(output_shape, data_format_, 'N'),
+                                  out_height, out_width,
+                                  GetTensorDim(output_shape, data_format_, 'C'),
+                                  &forward_output_shape));
+      OP_REQUIRES(
+          context, out_backprop.shape() == forward_output_shape,
+          absl::InvalidArgumentError(absl::StrCat(
+              "Expected grad shape to be ", forward_output_shape.DebugString(),
+              ", but got ", out_backprop.shape().DebugString())));
 
       OP_REQUIRES_OK(
           context,

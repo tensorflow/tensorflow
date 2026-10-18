@@ -25,19 +25,31 @@ class ShTestWithRunfiles(lit.formats.ShTest):
   def execute(self, test, lit_config):
     runfiles_env = os.environ.get("RUNFILES_DIR")
     created_symlinks = []
+
     if runfiles_env:
       rf_path = pathlib.Path(runfiles_env)
-      runfiles_dir = rf_path / "xla"
-      if runfiles_dir.is_dir():
-        dst = pathlib.Path(test.getExecPath()).parent
-        dst.mkdir(parents=True, exist_ok=True)
-        for item in runfiles_dir.iterdir():
-          target = dst / item.name
-          try:
-            target.symlink_to(item, target_is_directory=item.is_dir())
-            created_symlinks.append(target)
-          except FileExistsError:
-            pass
+
+      test_exec_dir = pathlib.Path(test.getExecPath()).parent
+      test_exec_dir.mkdir(parents=True, exist_ok=True)
+
+      # Symlink the entire runfiles structure to match what RUNPATH expects
+      # Binaries have RUNPATH like $ORIGIN/../../../../../_solib_x86_64/...
+      # They execute from lit_bin which is at runfiles/_main/xla/.../lit_bin/
+      # So we need _main accessible from there
+      # Symlink to test_exec_dir.parent to match RUNPATH patterns
+      for item in rf_path.iterdir():
+        if item.is_dir():
+          test_exec_symlink = test_exec_dir.parent / item.name
+          if not test_exec_symlink.exists():
+            try:
+              # Use relative symlinks for portability between local and RBE
+              relative_target = os.path.relpath(item, test_exec_dir.parent)
+              test_exec_symlink.symlink_to(
+                  relative_target, target_is_directory=True
+              )
+              created_symlinks.append(test_exec_symlink)
+            except FileExistsError:
+              pass
 
       # Dynamically resolve hermetic cuda_nvcc in runfiles if present.
       # Static relative paths (e.g. %S/../../..) break for deeply nested targets
@@ -70,7 +82,31 @@ class ShTestWithRunfiles(lit.formats.ShTest):
               f"{existing_flags} {flag}".strip()
           )
 
+      # For --dynamic_mode=fully, set LD_LIBRARY_PATH to point to
+      # library directories.
+      # Support both bzlmod and workspace mode layouts
+      lib_dirs = []
+
+      for candidate_root in [rf_path / "_main", rf_path / "xla", rf_path]:
+        if candidate_root.is_dir():
+          for solib in candidate_root.glob("_solib_*"):
+            if solib.is_dir():
+              lib_dirs.append(str(solib))
+
+      if lib_dirs:
+        existing_ld_path = test.config.environment.get("LD_LIBRARY_PATH", "")
+        new_ld_path = ":".join(lib_dirs)
+        if existing_ld_path:
+          new_ld_path = f"{new_ld_path}:{existing_ld_path}"
+        test.config.environment["LD_LIBRARY_PATH"] = new_ld_path
+
     result = super().execute(test, lit_config)
+
+    # Clean up created symlinks
     for target in created_symlinks:
-      target.unlink()
+      try:
+        target.unlink()
+      except FileNotFoundError:
+        pass
+
     return result

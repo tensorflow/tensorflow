@@ -70,7 +70,6 @@ API docstring: tensorflow.math
 import builtins
 import numpy as np
 
-from tensorflow.python.compat import compat as forward_compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -576,6 +575,10 @@ if gen_math_ops.mul.__doc__ is not None:
 @dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 def subtract(x, y, name=None):
+  if not tensor_util.is_tf_type(x) and tensor_util.is_tf_type(y):
+    x = ops.convert_to_tensor(x, dtype=y.dtype.base_dtype)
+  elif tensor_util.is_tf_type(x) and not tensor_util.is_tf_type(y):
+    y = ops.convert_to_tensor(y, dtype=x.dtype.base_dtype)
   return gen_math_ops.sub(x, y, name)
 
 
@@ -978,14 +981,35 @@ def round(x, name=None):  # pylint: disable=redefined-builtin
   tf.round(x)  # [ 1.0, 2.0, 2.0, 2.0, -4.0 ]
   ```
 
+  Note: This operation does not support complex dtypes. If you need to round
+  complex numbers, apply this operation separately to the real and imaginary
+  components:
+
+  ```python
+  x = tf.constant([1.4 + 2.6j, 3.2 + 4.8j])
+  rounded = tf.complex(
+      tf.math.round(tf.math.real(x)), tf.math.round(tf.math.imag(x)))
+  ```
+
   Args:
-    x: A `Tensor` of type `float16`, `float32`, `float64`, `int32`, or `int64`.
+    x: A `Tensor` of type `bfloat16`, `float16`, `float32`, `float64`, `int32`,
+      or `int64`.
     name: A name for the operation (optional).
 
   Returns:
     A `Tensor` of same shape and type as `x`.
+
+  Raises:
+    TypeError: If `x` is a complex dtype (`complex64`, `complex128`).
   """
   x = ops.convert_to_tensor(x, name="x")
+  if x.dtype.is_complex:
+    raise TypeError(
+        "tf.math.round does not support complex dtypes (received"
+        f" {x.dtype.name}). To round complex numbers, apply tf.math.round"
+        " separately to the real and imaginary components using tf.math.real()"
+        " and tf.math.imag()."
+    )
   if x.dtype.is_integer:
     return x
   else:
@@ -1132,53 +1156,47 @@ def saturate_cast(value, dtype, name=None):
     # in_dtype is real, but out_dtype could be complex.
     out_real_dtype = dtype.real_dtype
 
-    # TODO: b/288437118 - unconditionally apply `clip_by_value` to fix `inf`
-    #                     behavior.
-    if (
-        forward_compat.forward_compatible(2024, 11, 1)
-        or in_dtype.min < out_real_dtype.min
-        or in_dtype.max > out_real_dtype.max
-    ):
-      # The output min/max may not actually be representable in the
-      # in_dtype (e.g. casting float32 to uint32).  This can lead to undefined
-      # behavior when trying to cast a value outside the valid range of the
-      # target type. We work around this by nudging the min/max to fall within
-      # the valid output range.  The catch is that we may actually saturate
-      # to a value less than the true saturation limit, but this is the best we
-      # can do in order to avoid UB without introducing a separate SaturateCast
-      # op.
-      np_dtype = in_dtype.as_numpy_dtype
+    # b/288437118 - unconditionally apply `clip_by_value` to fix `inf`
+    #               behavior.
+    # The output min/max may not actually be representable in the
+    # in_dtype (e.g. casting float32 to uint32).  This can lead to undefined
+    # behavior when trying to cast a value outside the valid range of the
+    # target type. We work around this by nudging the min/max to fall within
+    # the valid output range.  The catch is that we may actually saturate
+    # to a value less than the true saturation limit, but this is the best we
+    # can do in order to avoid UB without introducing a separate SaturateCast
+    # op.
+    np_dtype = in_dtype.as_numpy_dtype
 
-      # We promote types *before* comparison in order to not lose precision.
-      # The Try/Except block is mostly to work around bfloat16 types which are
-      # not numpy dtypes.
-      try:
-        promoted_type = np.promote_types(
-            np_dtype, out_real_dtype.as_numpy_dtype
-        )
-      except TypeError:
-        # On newer numpy versions this is DTypePromotionError.
-        # Fall back to just floats. This should be sufficient in most cases
-        # since we only expect to hit this error in cases of bloat16.
-        promoted_type = float
+    # We promote types *before* comparison in order to not lose precision.
+    # The Try/Except block is mostly to work around bfloat16 types which are
+    # not numpy dtypes.
+    try:
+      promoted_type = np.promote_types(np_dtype, out_real_dtype.as_numpy_dtype)
+    except TypeError:
+      # On newer numpy versions this is DTypePromotionError.
+      # Fall back to just floats. This should be sufficient in most cases
+      # since we only expect to hit this error in cases of bloat16.
+      promoted_type = float
 
-      min_limit = np_dtype(np.maximum(in_dtype.min, out_real_dtype.min))
-      promoted = np.array([min_limit, out_real_dtype.min], dtype=promoted_type)
-      if promoted[0] < promoted[1]:
-        min_limit = np.nextafter(min_limit, np_dtype(0), dtype=np_dtype)
+    min_limit = np_dtype(np.maximum(in_dtype.min, out_real_dtype.min))
+    promoted = np.array([min_limit, out_real_dtype.min], dtype=promoted_type)
+    if promoted[0] < promoted[1]:
+      min_limit = np.nextafter(min_limit, np_dtype(0), dtype=np_dtype)
 
-      max_limit = np_dtype(np.minimum(float(in_dtype.max),
-                                      float(out_real_dtype.max)))
-      promoted = np.array([max_limit, out_real_dtype.max], dtype=promoted_type)
-      if promoted[0] > promoted[1]:
-        max_limit = np.nextafter(max_limit, np_dtype(0), dtype=np_dtype)
+    max_limit = np_dtype(
+        np.minimum(float(in_dtype.max), float(out_real_dtype.max))
+    )
+    promoted = np.array([max_limit, out_real_dtype.max], dtype=promoted_type)
+    if promoted[0] > promoted[1]:
+      max_limit = np.nextafter(max_limit, np_dtype(0), dtype=np_dtype)
 
-      value = gen_math_ops._clip_by_value(
-          value,
-          ops.convert_to_tensor(min_limit, dtype=in_dtype),
-          ops.convert_to_tensor(max_limit, dtype=in_dtype),
-          name="clamp",
-      )
+    value = gen_math_ops._clip_by_value(
+        value,
+        ops.convert_to_tensor(min_limit, dtype=in_dtype),
+        ops.convert_to_tensor(max_limit, dtype=in_dtype),
+        name="clamp",
+    )
     return cast(value, dtype, name=name)
 
 
@@ -2104,8 +2122,13 @@ def range(start, limit=None, delta=1, dtype=None, name="range"):  # pylint: disa
     # infer dtype if not explicitly provided
     if dtype is None:
       dtype_hierarchy = [
+          dtypes.int8,
+          dtypes.int16,
           dtypes.int32,
           dtypes.int64,
+          dtypes.uint16,
+          dtypes.uint32,
+          dtypes.uint64,
           dtypes.float16,
           dtypes.bfloat16,
           dtypes.float32,
@@ -2718,20 +2741,44 @@ def reduce_variance(input_tensor, axis=None, keepdims=False, name=None):
   name = name if name else "reduce_variance"
   with ops.name_scope(name):
     input_tensor = ops.convert_to_tensor(input_tensor)
-    means = reduce_mean(input_tensor, axis=axis, keepdims=True)
-    if means.dtype.is_integer:
-      raise TypeError(f"Input must be either real or complex. "
-                      f"Received integer type {means.dtype}.")
-    diff = input_tensor - means
-    if diff.dtype.is_complex:
-      # For complex values we need to take the absolute value before squaring.
-      # This is achieved by multiplying with the conjugate.
-      real_dtype = diff.dtype.real_dtype
-      squared_deviations = gen_math_ops.real(
-          gen_math_ops.mul(gen_math_ops.conj(diff), diff), Tout=real_dtype)
-    else:
-      squared_deviations = gen_math_ops.square(diff)
-    return reduce_mean(squared_deviations, axis=axis, keepdims=keepdims)
+    is_float16 = input_tensor.dtype == dtypes.float16
+    variance = _reduce_variance_in_stable_dtype(
+        input_tensor, is_float16, axis, keepdims
+    )
+    if is_float16:
+      variance = cast(variance, dtypes.float16)
+    return variance
+
+
+def _reduce_variance_in_stable_dtype(input_tensor, is_float16, axis, keepdims):
+  """Computes variance, promoting float16 to float32 first.
+
+  The dynamic range of float16 is too limited for the squared deviations
+  computed below, so this performs the computation on 32-bit floats before
+  returning, matching the approach `tf.nn.moments` uses for the same reason.
+  Unlike `reduce_variance`, this does not cast the result back to the
+  original dtype, so that `reduce_std` can take the square root while still
+  in the wider dtype.
+  """
+  if is_float16:
+    input_tensor = cast(input_tensor, dtypes.float32)
+  means = reduce_mean(input_tensor, axis=axis, keepdims=True)
+  if means.dtype.is_integer:
+    raise TypeError(
+        "Input must be either real or complex. "
+        f"Received integer type {means.dtype}."
+    )
+  diff = input_tensor - means
+  if diff.dtype.is_complex:
+    # For complex values we need to take the absolute value before squaring.
+    # This is achieved by multiplying with the conjugate.
+    real_dtype = diff.dtype.real_dtype
+    squared_deviations = gen_math_ops.real(
+        gen_math_ops.mul(gen_math_ops.conj(diff), diff), Tout=real_dtype
+    )
+  else:
+    squared_deviations = gen_math_ops.square(diff)
+  return reduce_mean(squared_deviations, axis=axis, keepdims=keepdims)
 
 
 @tf_export("math.reduce_std")
@@ -2781,8 +2828,17 @@ def reduce_std(input_tensor, axis=None, keepdims=False, name=None):
   name = name if name else "reduce_std"
   with ops.name_scope(name):
     input_tensor = ops.convert_to_tensor(input_tensor)
-    variance = reduce_variance(input_tensor, axis=axis, keepdims=keepdims)
-    return gen_math_ops.sqrt(variance)
+    is_float16 = input_tensor.dtype == dtypes.float16
+    # Preserve the `reduce_variance` sub-scope reduce_std has always had,
+    # rather than calling the private helper directly at this scope level.
+    with ops.name_scope("reduce_variance"):
+      variance = _reduce_variance_in_stable_dtype(
+          input_tensor, is_float16, axis, keepdims
+      )
+    std = gen_math_ops.sqrt(variance)
+    if is_float16:
+      std = cast(std, dtypes.float16)
+    return std
 
 
 @tf_export("math.reduce_prod", "reduce_prod", v1=[])
@@ -3559,6 +3615,15 @@ def matmul(
   This optimization is only available for plain matrices (rank-2 tensors) with
   datatypes `bfloat16` or `float32`.
 
+  Note: On NVIDIA GPUs of the Ampere generation and later, `float32` inputs are
+  rounded from 23 to 10 bits of mantissa (TensorFloat-32) before the
+  multiplication, and TPUs round to `bfloat16` similarly; accumulation stays in
+  `float32` in both cases. Results therefore differ from a CPU `float32` matmul
+  by considerably more than `float32` roundoff alone would suggest, and the gap
+  grows with the size of the contracted dimension. Use
+  `tf.config.experimental.enable_tensor_float_32_execution(False)` to run with
+  full `float32` precision instead.
+
   A simple 2-D tensor matrix multiplication:
 
   >>> a = tf.constant([1, 2, 3, 4, 5, 6], shape=[2, 3])
@@ -4280,7 +4345,7 @@ def log_sigmoid(x, name=None):
   we use `y = -tf.nn.softplus(-x)`.
 
   Args:
-    x: A Tensor with type `float32` or `float64`.
+    x: A Tensor with type `float16`, `bfloat16`, `float32`, or `float64`.
     name: A name for the operation (optional).
 
   Returns:
@@ -6002,6 +6067,59 @@ def floor(x, name=None):
   return gen_math_ops.floor(x, name)
 
 
+@tf_export("math.tanh", "nn.tanh", "tanh")
+@dispatch.register_unary_elementwise_api
+@dispatch.add_dispatch_support
+def tanh(x, name=None):
+  r"""Computes hyperbolic tangent of `x` element-wise.
+
+  Given an input tensor, this function computes hyperbolic tangent of every
+  element in the tensor. Input range is `[-inf, inf]` and output range is
+  `[-1, 1]`.
+
+  For example:
+
+  >>> x = tf.constant([-float("inf"), -5, -0.5, 1, 1.2, 2, 3, float("inf")])
+  >>> tf.math.tanh(x)
+  <tf.Tensor: shape=(8,), dtype=float32,
+  numpy=array([-1.        , -0.9999092 , -0.46211717,  0.7615942 ,  0.8336546 ,
+                0.9640276 ,  0.9950547 ,  1.        ], dtype=float32)>
+
+  Args:
+    x: A `Tensor`. Must be one of the following types: `bfloat16`, `half`,
+      `float32`, `float64`, `complex64`, `complex128`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor`. Has the same type as `x`.
+  """
+  x = ops.convert_to_tensor(x, name="x")
+  if x.dtype.base_dtype == dtypes.float64:
+    # pylint: disable=g-import-not-at-top
+    from tensorflow.python.ops import custom_gradient
+    # pylint: enable=g-import-not-at-top
+
+    @custom_gradient.custom_gradient
+    def _tanh_float64(x_val):
+      y = gen_math_ops.tanh(x_val, name=name)
+
+      def grad(dy):
+        with ops.control_dependencies([dy]):
+          two_abs_x = gen_math_ops._abs(x_val) * constant_op.constant(
+              2.0, dtype=x_val.dtype
+          )
+          e = gen_math_ops.exp(-two_abs_x)
+          one = constant_op.constant(1.0, dtype=x_val.dtype)
+          four = constant_op.constant(4.0, dtype=x_val.dtype)
+          deriv = four * e / gen_math_ops.square(one + e)
+          return dy * deriv
+
+      return y, grad
+
+    return _tanh_float64(x)
+  return gen_math_ops.tanh(x, name=name)
+
+
 # Register elementwise ops that don't have Python wrappers.
 # Binary elementwise ops.
 dispatch.register_binary_elementwise_api(gen_bitwise_ops.bitwise_and)
@@ -6055,4 +6173,3 @@ dispatch.register_unary_elementwise_api(gen_math_ops.sin)
 dispatch.register_unary_elementwise_api(gen_math_ops.sinh)
 dispatch.register_unary_elementwise_api(gen_math_ops.square)
 dispatch.register_unary_elementwise_api(gen_math_ops.tan)
-dispatch.register_unary_elementwise_api(gen_math_ops.tanh)

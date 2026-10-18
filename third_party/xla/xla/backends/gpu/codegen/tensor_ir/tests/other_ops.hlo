@@ -1,0 +1,45 @@
+// RUN: fusion_to_tensorir --hlo-to-tensorir --split-input-file %s | FileCheck %s
+
+// CHECK-LABEL: @test_iota_float
+// CHECK: %[[OUT:.*]] = iota dimension = 1 : tensor<8x16xf32>
+// CHECK: results %[[OUT]]
+
+test_iota_float {
+  %out = f32[8,16] iota(), iota_dimension=1
+}
+
+// -----
+
+// CHECK-LABEL: @test_iota_int
+// CHECK: %[[OUT:.*]] = iota dimension = 0 : tensor<8x16xui32>
+// CHECK: results %[[OUT]]
+
+test_iota_int {
+  %out = u32[8,16] iota(), iota_dimension=0
+}
+
+// -----
+
+// CHECK-LABEL: @test_concat_2
+// CHECK-SAME: %[[ARG0:.*]]: tensor<2x16xf32>, %[[ARG1:.*]]: tensor<4x16xf32>
+// CHECK: %[[OUT:.*]] = concatenate %[[ARG0]], %[[ARG1]] dimension = 0 : (tensor<2x16xf32>, tensor<4x16xf32>) -> tensor<6x16xf32>
+// CHECK: results %[[OUT]]
+
+test_concat_2 {
+  %p0 = f32[2,16] parameter(0)
+  %p1 = f32[4,16] parameter(1)
+  %out = f32[6,16] concatenate(%p0, %p1), dimensions={0}
+}
+
+// -----
+
+// CHECK-LABEL: @test_concat_3
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x8xf32>
+// CHECK: %[[OUT:.*]] = concatenate %[[ARG0]], %[[ARG0]], %[[ARG0]] dimension = 1 :
+// CHECK-SAME: (tensor<8x8xf32>, tensor<8x8xf32>, tensor<8x8xf32>) -> tensor<8x24xf32>
+// CHECK: results %[[OUT]]
+
+test_concat_3 {
+  %p0 = f32[8,8] parameter(0)
+  %out = f32[8,24] concatenate(%p0, %p0, %p0), dimensions={1}
+}

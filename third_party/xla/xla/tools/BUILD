@@ -597,6 +597,7 @@ xla_cc_test(
         "//xla/hlo/parser:hlo_parser",
         "//xla/service:hlo_runner",
         "//xla/tsl/lib/core:status_test_util",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:env",
@@ -763,6 +764,8 @@ cc_library(
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -780,15 +783,21 @@ cc_library(
 xla_test(
     name = "matmul_perf_table_gen_test",
     srcs = ["matmul_perf_table_gen_test.cc"],
+    # TODO(b/372714955): Remove once default CUDA ver is >= 13.4 (CUPTI session leak fixed in 13.4).
+    args = if_google(["--heap_check="]),
     backends = ["gpu"],
     local_defines = if_cuda(["GOOGLE_CUDA"]),
+    # TODO(b/372714955): Remove once default CUDA ver is >= 13.4 (CUPTI session leak fixed in 13.4).
+    tags = if_google(["noasan"]),
     deps = [
         ":matmul_perf_table_gen",
         "//xla:xla_data_proto_cc",
         "//xla/backends/gpu/tests:hlo_pjrt_gpu_test_base",
         "//xla/service/gpu/model:hlo_op_profile_proto_cc",
+        "//xla/service/gpu/model:hlo_op_profiler_lib",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@com_google_protobuf//:protobuf",
@@ -828,9 +837,9 @@ cc_library(
         "@com_google_protobuf//:protobuf",
         "@tsl//tsl/platform:platform_port",
     ] + if_cuda([
-        "//xla/stream_executor:cuda_platform",
+        "//xla/stream_executor:cuda_platform",  # buildcleaner: keep
     ]) + if_rocm_is_configured([
-        "//xla/stream_executor:rocm_platform",
+        "//xla/stream_executor:rocm_platform",  # buildcleaner: keep
     ]),
 )
 
@@ -1114,6 +1123,7 @@ cc_library(
         "//xla/service:compiled_module",
         "//xla/service:compiler",
         "//xla/service:executable",
+        "//xla/service:xla_compile_result_proto_cc",
         "//xla/service/cpu:cpu_compiler_pure",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
@@ -1163,6 +1173,7 @@ cc_library(
         "//xla/service:xla_compile_result_proto_cc_impl",
         "//xla/service/cpu:cpu_compiler",
         "//xla/service/cpu:cpu_executable",
+        "//xla/service/cpu:cpu_symbol_repository",
         "//xla/service/cpu:executable_proto_cc",
         "//xla/service/cpu:export_hlo",
         "//xla/service/gpu:export_hlo",
@@ -1196,6 +1207,7 @@ cc_library(
         "@com_google_protobuf//:duration_cc_proto",
         "@com_google_protobuf//:protobuf",
         "@llvm-project//llvm:Target",
+        "@llvm-project//llvm:TargetParser",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
@@ -1229,9 +1241,12 @@ xla_test(
     deps = [
         ":xla_compile_lib",
         "//xla:util",
+        "//xla/backends/cpu:target_machine_options",
         "//xla/hlo/ir:hlo",
         "//xla/service:symbol_repository",
         "//xla/service:xla_compile_result_proto_cc",
+        "//xla/service/cpu:cpu_symbol_repository",
+        "//xla/service/cpu:executable_proto_cc",
         "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//xla/tsl/lib/core:status_test_util",
@@ -1244,10 +1259,12 @@ xla_test(
         "//xla/tsl/protobuf:status_proto_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest",
         "@com_google_protobuf//:duration_cc_proto",
         "@tsl//tsl/platform:path",
+        "@tsl//tsl/platform:protobuf",
     ] + if_cuda([
         "//xla/tsl/cuda:nvml",
     ]),

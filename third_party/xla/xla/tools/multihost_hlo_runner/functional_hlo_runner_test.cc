@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/tools/multihost_hlo_runner/functional_hlo_runner.h"
 
+#include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <memory>
@@ -26,6 +28,7 @@ limitations under the License.
 #include "xla/tests/xla_test_backend_predicates.h"
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -37,12 +40,15 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "xla/client/executable_build_options.h"
 #include "xla/debug_options_flags.h"
+#include "xla/future.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/filecheck.h"
@@ -50,7 +56,9 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/mlir_to_hlo.h"
+#include "xla/pjrt/mock_pjrt_client.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_allocator_config.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
@@ -371,6 +379,35 @@ TEST_F(FunctionalHloRunnerTest, GPUProfilerKeepXSpaceReturnsNonNullXSpace) {
   TF_EXPECT_OK(env->FileExists(profile_dump_path));
 }
 
+TEST_F(FunctionalHloRunnerTest, GPUProfilerMultipleSessionsSaveUniqueFiles) {
+  if (test::DeviceTypeIs(test::kCpu)) {
+    GTEST_SKIP() << "GPU-only test";
+  }
+  std::string profile_dump_path =
+      tsl::io::JoinPath(testing::TempDir(), "multi_xspace.pb");
+  std::string second_profile_dump_path =
+      tsl::io::JoinPath(testing::TempDir(), "multi_xspace_1.pb");
+  std::string third_profile_dump_path =
+      tsl::io::JoinPath(testing::TempDir(), "multi_xspace_2.pb");
+  tsl::Env* env = tsl::Env::Default();
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HLORunnerProfiler> profiler,
+      HLORunnerProfiler::Create(profile_dump_path, /*keep_xspace=*/false));
+
+  profiler->CreateSession();
+  profiler->UploadSession();
+  EXPECT_OK(env->FileExists(profile_dump_path));
+
+  profiler->CreateSession();
+  profiler->UploadSession();
+  EXPECT_OK(env->FileExists(second_profile_dump_path));
+
+  profiler->CreateSession();
+  profiler->UploadSession();
+  EXPECT_OK(env->FileExists(third_profile_dump_path));
+}
+
 TEST_F(FunctionalHloRunnerTest,
        SingleDeviceHloWithGPUProfilerSavesXSpaceToDisk) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
@@ -422,6 +459,42 @@ TEST_F(FunctionalHloRunnerTest, Sharded2Devices) {
   TF_EXPECT_OK(FunctionalHloRunner::LoadAndRunAndDump(
       *client, preproc_options, raw_compile_options, running_options,
       {GetHloPath("sharded_2_devices.hlo")}, InputFormat::kText));
+}
+
+TEST_F(FunctionalHloRunnerTest, ExecutionProfileIsNotWrittenByMultipleDevices) {
+#ifndef ABSL_HAVE_THREAD_SANITIZER
+  GTEST_SKIP() << "TSan-only regression test";
+#endif
+
+  if (test::DeviceTypeIs(test::kCpu)) {
+    GTEST_SKIP() << "GPU-only test";
+  }
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                       GetPjRtClient());
+
+  constexpr int kRequiredDeviceCount = 2;
+  const int kDeviceCount = client->device_count();
+  if (kDeviceCount < kRequiredDeviceCount) {
+    GTEST_SKIP() << "Requires " << kRequiredDeviceCount
+                 << " devices, but found only " << kDeviceCount;
+  }
+
+  FunctionalHloRunner::RawCompileOptions raw_compile_options;
+  raw_compile_options.num_replicas = 1;
+  raw_compile_options.num_partitions = 2;
+  std::vector<ExecutionProfile> profiles;
+  FunctionalHloRunner::RunningOptions running_options;
+  running_options.execution_profiles = &profiles;
+  running_options.module_argument_mode =
+      FunctionalHloRunner::ModuleArgumentMode::kUninitialized;
+
+  EXPECT_OK(FunctionalHloRunner::LoadAndRunAndDump(
+      *client,
+      /*preproc_options=*/{}, raw_compile_options, running_options,
+      {GetHloPath("sharded_2_devices.hlo")}, InputFormat::kText));
+  ASSERT_EQ(profiles.size(), 1);
+  EXPECT_GT(profiles[0].compute_time_ns(), 0);
 }
 
 TEST_F(FunctionalHloRunnerTest, UseZerosAsInputs) {
@@ -733,20 +806,24 @@ absl::Status ShardedAutotuningWorksTestBody(const int node_id) {
           .status());
   if (node_id == 0) {
     ABSL_ASSIGN_OR_RETURN(std::string backend_fp, GetExpectedBackendFingerprint());
+    bool use_new_format =
+        xla::GetDebugOptionsFromFlags().xla_gpu_use_new_autotune_cache_format();
+    std::string key_prefix =
+        use_new_format ? "autotune_cache_" : "autotune_results_";
     ABSL_ASSIGN_OR_RETURN(
         std::string results0,
         env.kv_store->Get(
-            absl::StrCat("autotune_results_fda6faffd312182b0b13b647233621fc_",
+            absl::StrCat(key_prefix, "fda6faffd312182b0b13b647233621fc_",
                          backend_fp, "_0"),
             absl::Seconds(1)));
-    CHECK(absl::StrContains(results0, "result"));
+    CHECK(!results0.empty());
     ABSL_ASSIGN_OR_RETURN(
         std::string results1,
         env.kv_store->Get(
-            absl::StrCat("autotune_results_fda6faffd312182b0b13b647233621fc_",
+            absl::StrCat(key_prefix, "fda6faffd312182b0b13b647233621fc_",
                          backend_fp, "_1"),
             absl::Seconds(1)));
-    CHECK(absl::StrContains(results1, "result"));
+    CHECK(!results1.empty());
     // The nodes autotune different fusions.
     CHECK_NE(results0, results1);
   }
@@ -1231,6 +1308,40 @@ TEST(FunctionalHloRunnerTest, RespectUseSpmdPartitioning) {
       compile_options.executable_build_options.use_spmd_partitioning());
 }
 
+TEST(FunctionalHloRunnerTest, CreateCompileOptionsFromTopologyMatchesClient) {
+  FunctionalHloRunner::RawCompileOptions raw_compile_options;
+  raw_compile_options.num_replicas = 1;
+  raw_compile_options.num_partitions = 1;
+  raw_compile_options.hlo_passes_mode =
+      FunctionalHloRunner::HloPassesMode::kRunXLABackendOnly;
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                       GetPjRtClient());
+  ASSERT_OK_AND_ASSIGN(const PjRtTopologyDescription* topology,
+                       client->GetTopologyDescription());
+
+  ASSERT_OK_AND_ASSIGN(
+      CompileOptions from_client,
+      FunctionalHloRunner::CreateCompileOptions(*client, raw_compile_options));
+  ASSERT_OK_AND_ASSIGN(CompileOptions from_topology,
+                       FunctionalHloRunner::CreateCompileOptions(
+                           *topology, raw_compile_options));
+
+  const ExecutableBuildOptions& client_build_options =
+      from_client.executable_build_options;
+  const ExecutableBuildOptions& topology_build_options =
+      from_topology.executable_build_options;
+  EXPECT_EQ(topology_build_options.num_replicas(),
+            client_build_options.num_replicas());
+  EXPECT_EQ(topology_build_options.num_partitions(),
+            client_build_options.num_partitions());
+  EXPECT_TRUE(topology_build_options.run_backend_only());
+  ASSERT_TRUE(client_build_options.has_device_assignment());
+  ASSERT_TRUE(topology_build_options.has_device_assignment());
+  EXPECT_EQ(topology_build_options.device_assignment().ToString(),
+            client_build_options.device_assignment().ToString());
+}
+
 TEST_F(FunctionalHloRunnerTest, DumpsUnoptimizedHLOInUnoptimizedSnapshot) {
   // Unoptimized snapshots are only supported in the GPU PjRt plugins.
   if (test::DeviceTypeIs(test::kCpu)) {
@@ -1355,6 +1466,136 @@ TEST_F(FunctionalHloRunnerTest, SingleDeviceHloWithRandomData) {
   TF_EXPECT_OK(FunctionalHloRunner::LoadAndRunAndDump(
       *client, preproc_options, raw_compile_options, running_options,
       {GetHloPath("single_device.hlo")}, InputFormat::kText));
+}
+
+class FakeReadyFuturePjRtBuffer : public PjRtBuffer {
+ public:
+  explicit FakeReadyFuturePjRtBuffer(Future<> ready_future)
+      : ready_future_(std::move(ready_future)) {}
+
+  const Shape& on_device_shape() const override { return shape_; }
+  PjRtMemorySpace* memory_space() const override { return nullptr; }
+  PjRtDevice* device() const override { return nullptr; }
+  PjRtClient* client() const override { return nullptr; }
+  absl::StatusOr<std::unique_ptr<ExternalReference>> AcquireExternalReference()
+      override {
+    return absl::UnimplementedError("Not implemented");
+  }
+  Future<> ToLiteral(MutableLiteralBase* literal) override {
+    return Future<>(absl::UnimplementedError("Not implemented"));
+  }
+  Future<> LazyToLiteral(
+      absl::AnyInvocable<Future<MutableLiteralBase*>() &&> generator) override {
+    return Future<>(absl::UnimplementedError("Not implemented"));
+  }
+  absl::StatusOr<size_t> GetOnDeviceSizeInBytes() const override { return 0; }
+  Future<> CopyRawToHost(void* dst, int64_t offset,
+                         int64_t transfer_size) override {
+    return Future<>(absl::UnimplementedError("Not implemented"));
+  }
+  void Delete() override {}
+  absl::StatusOr<std::unique_ptr<ExternalReference>>
+  ReleaseDeviceMemoryOwnership(bool wait_for_operations_to_complete) override {
+    return absl::UnimplementedError("Not implemented");
+  }
+  bool IsDeleted() const override { return false; }
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToMemorySpace(
+      PjRtMemorySpace* dst_memory_space) override {
+    return absl::UnimplementedError("Not implemented");
+  }
+  void CopyToRemoteDevice(Future<std::string> serialized_descriptor,
+                          RemoteSendCallback on_done) override {}
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> Bitcast(
+      xla::PrimitiveType element_type, absl::Span<const int64_t> dims,
+      const Layout* device_layout) override {
+    return absl::UnimplementedError("Not implemented");
+  }
+  Future<> GetReadyFuture() override { return ready_future_; }
+  bool IsOnCpu() const override { return true; }
+
+ private:
+  Shape shape_;
+  Future<> ready_future_;
+};
+
+class HostLiteralMockPjRtClient : public MockPjRtClient {
+ public:
+  MOCK_METHOD(absl::StatusOr<std::unique_ptr<PjRtBuffer>>,
+              BufferFromHostLiteral,
+              (const LiteralSlice& literal, PjRtMemorySpace* memory_space,
+               const Layout* device_layout),
+              (override));
+};
+
+TEST_F(FunctionalHloRunnerTest,
+       CopyArgumentsToDeviceWaitsForPendingTransfersOnError) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> real_client,
+                       GetPjRtClient());
+  constexpr absl::string_view kTwoArgStablehlo = R"mlir(
+    module {
+      func.func @main(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>)
+          -> tensor<4xi32> {
+        %0 = stablehlo.add %arg0, %arg1 : tensor<4xi32>
+        func.return %0 : tensor<4xi32>
+      }
+    }
+  )mlir";
+  auto context = std::make_unique<mlir::MLIRContext>();
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> stablehlo_module,
+                       xla::ParseMlirModuleString(kTwoArgStablehlo, *context));
+  xla::CompileOptions compile_options;
+  *compile_options.executable_build_options.mutable_debug_options() =
+      GetDebugOptionsFromFlags();
+  compile_options.executable_build_options.set_num_replicas(1);
+  compile_options.executable_build_options.set_num_partitions(1);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
+                       real_client->CompileAndLoad(
+                           MaybeOwningMlirModule(std::move(context),
+                                                 std::move(stablehlo_module)),
+                           compile_options));
+
+  HostLiteralMockPjRtClient mock_client;
+  absl::Notification second_arg_reached;
+  std::atomic<bool> first_arg_transfer_finished{false};
+  std::unique_ptr<tsl::Thread> transfer_thread;
+
+  EXPECT_CALL(mock_client, BufferFromHostLiteral)
+      .WillOnce([&](const LiteralSlice& literal, PjRtMemorySpace* memory_space,
+                    const Layout* device_layout)
+                    -> absl::StatusOr<std::unique_ptr<PjRtBuffer>> {
+        absl::Span<const int32_t> host_data = literal.data<int32_t>();
+        auto [promise, future] = MakePromise<>();
+        transfer_thread.reset(tsl::Env::Default()->StartThread(
+            tsl::ThreadOptions(), "async_h2d_transfer",
+            [&second_arg_reached, &first_arg_transfer_finished, host_data,
+             promise = std::move(promise)]() mutable {
+              second_arg_reached.WaitForNotification();
+              // Read from `host_data` to verify the caller kept the host
+              // Literal alive until this transfer's ready future completed.
+              int32_t sum = 0;
+              for (int32_t v : host_data) {
+                sum += v;
+              }
+              CHECK_GE(sum, 0);
+              first_arg_transfer_finished.store(true);
+              promise.Set(absl::OkStatus());
+            }));
+        return std::make_unique<FakeReadyFuturePjRtBuffer>(std::move(future));
+      })
+      .WillOnce([&](const LiteralSlice& literal, PjRtMemorySpace* memory_space,
+                    const Layout* device_layout)
+                    -> absl::StatusOr<std::unique_ptr<PjRtBuffer>> {
+        second_arg_reached.Notify();
+        return absl::ResourceExhaustedError("Staging buffer allocation failed");
+      });
+
+  FunctionalHloRunner::RunningOptions running_options;
+  running_options.module_argument_mode =
+      FunctionalHloRunner::ModuleArgumentMode::kUseZerosAsInput;
+  EXPECT_THAT(FunctionalHloRunner::Run(mock_client, executable.get(),
+                                       /*arguments=*/{}, running_options),
+              absl_testing::StatusIs(absl::StatusCode::kResourceExhausted));
+  EXPECT_TRUE(first_arg_transfer_finished.load());
 }
 
 }  // namespace

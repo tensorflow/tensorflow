@@ -28,12 +28,18 @@ namespace xla {
 // identical then keep the first one (in postorder terms) and remove the rest.
 class HloComputationDeduplicator : public HloModulePass {
  public:
-  // Setting mark_fusion_duplications to true will only process fusions in the
+  // Setting `mark_fusion_duplications` to true will only process fusions in the
   // HLO. The comparator in this pass will mark duplicate fusions which is
   // needed for groupings in analysis (e.g. Xprof). Currently, the pass
-  // doesn't change the HLO if the flag is set to true.
-  explicit HloComputationDeduplicator(bool mark_fusion_duplications = false)
-      : mark_fusion_duplications_(mark_fusion_duplications) {}
+  // doesn't change the HLO if `mark_fusion_duplications` is set to true.
+  // Setting `deduplicate_large_computations` to true also deduplicates
+  // computations exceeding the default instruction-count and constant-size
+  // thresholds.
+  explicit HloComputationDeduplicator(
+      bool mark_fusion_duplications = false,
+      bool deduplicate_large_computations = false)
+      : mark_fusion_duplications_(mark_fusion_duplications),
+        deduplicate_large_computations_(deduplicate_large_computations) {}
   absl::string_view name() const override { return "computation-deduplicator"; }
 
  protected:
@@ -44,6 +50,7 @@ class HloComputationDeduplicator : public HloModulePass {
  private:
   bool ContainsLargeConstants(HloComputation* comp);
   bool mark_fusion_duplications_;
+  bool deduplicate_large_computations_;
 };
 
 }  // namespace xla

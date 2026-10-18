@@ -664,11 +664,25 @@ py_library(
     name = "pywrap_tensorflow",
     srcs = [
         "pywrap_tensorflow.py",
-    ] + if_static(
-        ["pywrap_dlopen_global_flags.py"],
-        # Import will fail, indicating no global dlopen flags
-        otherwise = [],
-    ),  # b/153585257
+    ] + select({
+        # Shared-object builds (default pip wheels: framework_shared_object=true)
+        # must NOT ship pywrap_dlopen_global_flags.py. That module forces
+        # RTLD_GLOBAL when loading _pywrap_tensorflow_internal, which leaks
+        # TF's statically linked LLVM/MLIR into the process global symbol
+        # table and can SIGSEGV later imports that ship their own LLVM
+        # (notably triton>=3.7). See tensorflow/tensorflow#124205 and the
+        # historical modular-op design in 5c7f9e31.
+        #
+        # Do not use if_static() here: under USE_PYWRAP_RULES=True it always
+        # takes the static branch (b/356020232), which reintroduced this file
+        # into shared wheels starting in TF 2.20 despite
+        # framework_shared_object still being true.
+        #
+        # Monolithic builds (--config=monolithic, framework_shared_object
+        # unset/false) still need RTLD_GLOBAL for custom-op symbol lookup.
+        "//tensorflow:framework_shared_object": [],
+        "//conditions:default": ["pywrap_dlopen_global_flags.py"],
+    }),
     strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
@@ -1487,6 +1501,19 @@ pybind_extension(
     pywrap_only = True,
     deps = [
         ":_pywrap_library_dependency_enforcer",
+        # The kernel C API for resource variables has no caller inside
+        # TensorFlow: it exists so that a PluggableDevice can implement the ops
+        # that read and write variables. It is a root of :tensorflow_framework,
+        # but a pywrap filter only partitions the linker inputs a link already
+        # has, so being a root does not make it reachable. It used to be
+        # reachable through pywrap_tensorflow_macro, which discards its deps
+        # under the pywrap rules, and since 2.20.0 no shipped binary has
+        # defined the fourteen entry points it exports. Naming it here restores
+        # the edge; the framework filter then places it in
+        # libtensorflow_framework, where the rest of the C API already lives,
+        # rather than duplicating //tensorflow/core:framework_internal_impl
+        # into the common library. See #126374.
+        "//tensorflow/c:kernels_experimental",
         "@pybind11",
     ],
 )
@@ -1635,9 +1662,12 @@ pywrap_library(
     # @unsorted-dict-items
     common_lib_version_scripts = {
         "tensorflow/tensorflow_cc": select({
-            "//tensorflow:windows": None,
             "//tensorflow:macos": "//tensorflow:tf_exported_symbols.lds",
             "//conditions:default": "//tensorflow:tf_version_script.lds",
+        }),
+        "tensorflow/tensorflow_framework": select({
+            "//tensorflow:macos": "//tensorflow:tf_framework_exported_symbols_macos.lds",
+            "//conditions:default": "//tensorflow:tf_framework_version_script.lds",
         }),
     },
     # buildifier: disable=unsorted-dict-items

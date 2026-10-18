@@ -16,6 +16,10 @@ limitations under the License.
 // Common DSO loading functionality: exposes callables that dlopen DSOs
 // in either the runfiles directories
 
+// IWYU pragma: private, include "tsl/platform/dso_loader.h"
+// IWYU pragma: friend ".*tsl/platform/.*dso_loader\.h"
+// IWYU pragma: friend ".*tsl/platform/default/.*"
+
 #ifndef XLA_TSL_PLATFORM_DEFAULT_DSO_LOADER_H_
 #define XLA_TSL_PLATFORM_DEFAULT_DSO_LOADER_H_
 
@@ -41,6 +45,7 @@ absl::StatusOr<void*> GetNcclDsoHandle();
 absl::StatusOr<void*> GetNvshmemDsoHandle();
 absl::StatusOr<void*> GetNvInferDsoHandle();
 absl::StatusOr<void*> GetNvInferPluginDsoHandle();
+absl::StatusOr<void*> GetNvJitLinkDsoHandle();
 absl::StatusOr<void*> GetNvmlDsoHandle();
 absl::StatusOr<void*> GetNvrtcDsoHandle();
 
@@ -69,6 +74,7 @@ absl::StatusOr<void*> GetCusolverDsoHandle();
 absl::StatusOr<void*> GetCusparseDsoHandle();
 absl::StatusOr<void*> GetCuptiDsoHandle();
 absl::StatusOr<void*> GetCudnnDsoHandle();
+absl::StatusOr<void*> GetNvJitLinkDsoHandle();
 }  // namespace CachedDsoLoader
 
 }  // namespace internal

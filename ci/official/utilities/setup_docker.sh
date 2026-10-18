@@ -68,6 +68,13 @@ if ! docker container inspect tf >/dev/null 2>&1 ; then
     # They may be causing sporadic "Permission denied" errors during Bazel builds.
     # b/461500885
     docker exec tf powershell -NoProfile -Command 'Stop-Service -Name SysMain,DiagTrack -Force -ErrorAction SilentlyContinue'
+
+    # Relocate SDK and MSVC headers to host-mounted C:\sdk to bypass
+    # wcifs.sys container filter driver race conditions on concurrent reads (b/556761966).
+    if [[ -d "/c/sdk" ]]; then
+      echo "Relocating SDK headers to host mount C:\sdk..."
+      docker exec tf powershell -NoProfile -ExecutionPolicy Bypass -Command "& 'C:/drive_t/src/github/tensorflow/ci/official/utilities/copy_sdk_headers.ps1'"
+    fi
   fi
 
 fi

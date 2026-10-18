@@ -1,4 +1,3 @@
-
 --- a/third_party/nvidia/lib/Dialect/NVWS/Transforms/InsertTmemAref.cpp
 +++ b/third_party/nvidia/lib/Dialect/NVWS/Transforms/InsertTmemAref.cpp
 @@ -66,8 +66,8 @@ struct TmemAccessDag {

@@ -29,9 +29,11 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/cpu/runtime/sort_lib.h"
 #include "xla/backends/cpu/runtime/thunk.h"
+#include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
 
@@ -42,6 +44,15 @@ class SortThunk final : public Thunk {
   using LessThan = internal::LessThan;
   using SortDims = internal::SortDims;
   using SortDirection = internal::SortDirection;
+
+  static constexpr int64_t kMaxSortDimSize = 65536;
+
+  static constexpr bool IsSupportedKeyType(PrimitiveType type) {
+    return (primitive_util::IsFloatingPointType(type) &&
+            primitive_util::BitWidth(type) >= 16) ||
+           (primitive_util::IsIntegralType(type) &&
+            primitive_util::BitWidth(type) >= 8);
+  }
 
   struct Input {
     BufferAllocation::Slice slice;

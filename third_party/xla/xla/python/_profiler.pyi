@@ -13,9 +13,8 @@
 # limitations under the License.
 
 from collections.abc import Callable, Sequence
+import types
 from typing import Self, overload
-
-from typing_extensions import CapsuleType
 
 from ._profile_data import ProfileData
 
@@ -23,7 +22,7 @@ class ProfilerServer:
   pass
 
 def start_server(port: int) -> ProfilerServer: ...
-def register_plugin_profiler(arg: CapsuleType, /) -> None: ...
+def register_plugin_profiler(arg: types.CapsuleType, /) -> None: ...
 def register_subprocess(pid: int, port: int) -> Callable[[], None]: ...
 
 class ProfilerSession:
@@ -34,7 +33,7 @@ class ProfilerSession:
 
   def stop_and_export(self, arg: str, /) -> None: ...
   def stop(self) -> bytes: ...
-  def stop_and_get_profile_data() -> ProfileData: ...
+  def stop_and_get_profile_data(self) -> ProfileData: ...
   def export(self, arg0: bytes, arg1: str, /) -> None: ...
 
 class ProfileOptions:
@@ -98,6 +97,11 @@ class TraceMe:
   @staticmethod
   def is_enabled() -> bool: ...
 
+def export_to_xprof(
+    profile_data: "tensorflow::profiler::python::ProfileData",
+    xprof_dir: str,
+    session_id: str = ...,
+) -> None: ...
 def get_profiled_instructions_proto(tensorboard_dir: str) -> bytes: ...
 def get_instructions_profile(
     tensorboard_dir: str,

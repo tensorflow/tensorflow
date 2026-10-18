@@ -70,5 +70,11 @@ TEST_F(BaseScopedDiagnosticHandlerTest,
       absl::StrContains(s.message(), "Second diagnostic message reported"));
 }
 
+TEST_F(BaseScopedDiagnosticHandlerTest, VerifyThatWarningsAreIgnored) {
+  BaseScopedDiagnosticHandler handler(&context_);
+  emitWarning(loc_) << "Warning message";
+  EXPECT_OK(handler.ConsumeStatus());
+}
+
 }  // namespace
 }  // namespace mlir

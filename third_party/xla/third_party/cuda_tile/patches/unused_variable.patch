@@ -1,0 +1,58 @@
+diff --git a/tools/cuda-tile-tblgen/BytecodeTypeAnalysis.cpp b/tools/cuda-tile-tblgen/BytecodeTypeAnalysis.cpp
+--- a/tools/cuda-tile-tblgen/BytecodeTypeAnalysis.cpp
++++ b/tools/cuda-tile-tblgen/BytecodeTypeAnalysis.cpp
+@@ -68,7 +68,7 @@
+     return Kind::OptionalEnum;
+   }
+ 
+-  if (const auto *defInit = dyn_cast_if_present<DefInit>(param.getDef())) {
++  if (const auto* defInit = dyn_cast_if_present<DefInit>(param.getDef())) {
+     if (defInit->getDef()->isSubClassOf("CudaTileAttrInterfaceParam")) {
+       return Kind::PolymorphicNestedAttr;
+     }
+@@ -110,7 +110,6 @@
+       cppType(param.getCppType().str()),
+       cppStorageType(param.getCppStorageType().str()),
+       isOptional(param.isOptional()), kind(classifyParameter(param)) {
+-
+   // Extract version from wrapped parameters (CudaTileTypeParam adds
+   // sinceVersion). Use getValue() to check if field exists before accessing -
+   // raw parameters like ArrayRefParameter don't have this field in their class
+@@ -153,8 +152,6 @@
+                         "::" + typeDef.getCppClassName().str()),
+       typeTagValue(tagValue), sinceVersion(version.str()),
+       needsReverseOrder(typeDef.getCppClassName() == "TileType") {
+-  const Record *typeRecord = typeDef.getDef();
+-
+   // Analyze and validate all parameters.
+   for (const auto &attrParam : typeDef.getParameters()) {
+     BytecodeTypeParameter param(attrParam);
+@@ -239,7 +236,7 @@
+   // through it. Both qualified forms ("ns::Foo" and "::ns::Foo") are indexed
+   // so lookups don't depend on how OptionalParameter spells the name.
+   llvm::StringSet<> enumAttrCppTypes;
+-  for (const Record *r : records.getAllDerivedDefinitions("CudaTileEnumAttr")) {
++  for (const Record* r : records.getAllDerivedDefinitions("CudaTileEnumAttr")) {
+     AttrOrTypeDef def(r);
+     std::string qualified =
+         (def.getDialect().getCppNamespace() + "::" + def.getCppClassName())
+@@ -250,7 +247,7 @@
+ 
+   // Build map of CudaTileTypeDef for matching.
+   StringMap<const Record *> cudaTileTypeDefRecords;
+-  for (const Record *typeRecord :
++  for (const Record* typeRecord :
+        records.getAllDerivedDefinitions("CudaTileTypeDef")) {
+     cudaTileTypeDefRecords[AttrOrTypeDef(typeRecord).getCppClassName()] =
+         typeRecord;
+@@ -327,8 +324,8 @@
+ 
+   // Validate every OptionalEnum-classified parameter is actually a
+   // CudaTileEnumAttr-derived enum-attribute wrapper.
+-  for (const CudaTileType &type : structure.cudaTileTypes) {
+-    for (const BytecodeTypeParameter &p : type.parameters) {
++  for (const CudaTileType& type : structure.cudaTileTypes) {
++    for (const BytecodeTypeParameter& p : type.parameters) {
+       if (p.kind != BytecodeTypeParameter::Kind::OptionalEnum) {
+         continue;
+       }

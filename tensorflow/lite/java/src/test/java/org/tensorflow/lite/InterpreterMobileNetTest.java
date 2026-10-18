@@ -125,6 +125,7 @@ public final class InterpreterMobileNetTest {
             k,
             new Comparator<Map.Entry<Integer, Float>>() {
               @Override
+              @SuppressWarnings("CompareToZero")
               public int compare(Map.Entry<Integer, Float> o1, Map.Entry<Integer, Float> o2) {
                 // Intentionally reversed to put high confidence at the head of the queue.
                 return o1.getValue().compareTo(o2.getValue()) * -1;

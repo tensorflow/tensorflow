@@ -17,10 +17,14 @@ limitations under the License.
 #define XLA_SERVICE_GPU_GPU_EXECUTABLE_RUN_OPTIONS_H_
 
 #include <functional>
+#include <memory>
 #include <optional>
+#include <vector>
 
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/any_invocable.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
@@ -36,10 +40,33 @@ namespace xla::gpu {
 using CliqueIdCallback =  // NOLINT
     std::function<absl::StatusOr<CliqueIds>(const CliqueKey&)>;
 
-// Called when GPU execution exceeds the HangWatchdog timeout. Used to abort
-// local collectives and report the failure to the coordination service.
-using ExecutionTimeoutHandler =
-    std::function<void(absl::string_view action, absl::Duration timeout)>;
+// A user-defined timeout handler attached to XLA:GPU execution.
+struct ExecutionTimeoutHandler {
+  enum class Scope {
+    // Monitors host-side execution: thunk execution and work submission to GPU
+    // streams.
+    kHost,
+    // Monitors device work enqueued by the execution, measured from the end of
+    // host dispatch until the device completes all enqueued work.
+    kDevice,
+  };
+
+  // Called when XLA:GPU execution exceeds the handler timeout. Runs on the
+  // HangWatchdog thread and must not block for long.
+  using Callback = absl::AnyInvocable<void(absl::string_view action,
+                                           absl::Duration timeout) &&>;
+
+  static bool IsHost(const ExecutionTimeoutHandler& handler) {
+    return handler.scope == Scope::kHost;
+  }
+  static bool IsDevice(const ExecutionTimeoutHandler& handler) {
+    return handler.scope == Scope::kDevice;
+  }
+
+  Scope scope;
+  absl::Duration timeout;
+  Callback callback;
+};
 
 // GPU-specific executable options.
 // We keep these separate from ExecutableRunOptions to avoid adding
@@ -91,9 +118,38 @@ class GpuExecutableRunOptions {
     return *this;
   }
 
-  GpuExecutableRunOptions& set_execution_timeout_handler(
-      ExecutionTimeoutHandler handler);
-  const ExecutionTimeoutHandler& execution_timeout_handler() const;
+  // Sets a function that builds timeout handlers for each XLA:GPU execution.
+  GpuExecutableRunOptions& set_execution_timeout_handlers(
+      std::function<std::vector<ExecutionTimeoutHandler>()> handlers);
+
+  // Returns timeout handlers for a new XLA:GPU execution, or an empty vector if
+  // timeout handlers are not set.
+  std::vector<ExecutionTimeoutHandler> execution_timeout_handlers() const;
+
+  // Callback invoked when an asynchronous device stream error (e.g.
+  // `CUDA_ERROR_ILLEGAL_ADDRESS` from a faulting kernel on `main_stream`) is
+  // detected at the end of an `ExecuteThunks` launch.
+  //
+  // Because GPU kernels execute asynchronously after host launch returns,
+  // device-side faults are detected asynchronously when XLA's background
+  // stream status monitor polls the poisoned stream (or synchronously on the
+  // host launch thread if host-callback registration fails).
+  //
+  // Typically used to abort local collective cliques (`AbortAllCliques`) and
+  // broadcast the fatal error via `kv_store` so peer devices/nodes abort their
+  // in-flight collectives immediately instead of hanging until timeout.
+  //
+  // Threading & lifetime: Invoked via `Stream::DoHostCallback`'s error path on
+  // XLA's background stream status monitor `tsl::Thread` (or synchronously on
+  // the host launch thread), not on a GPU driver callback thread. May be
+  // invoked after the run options are destroyed; capture only owning pointers
+  // or values.
+  using DeviceErrorCallback = absl::AnyInvocable<void(
+      int device_ordinal, const absl::Status& status) const>;
+
+  GpuExecutableRunOptions& set_device_error_callback(
+      DeviceErrorCallback callback);
+  std::shared_ptr<const DeviceErrorCallback> device_error_callback() const;
 
  private:
   bool requires_exclusive_lock_on_gpu_ = false;
@@ -103,7 +159,9 @@ class GpuExecutableRunOptions {
   GpuCollectives* collectives_ = nullptr;
   std::optional<absl::flat_hash_map<GlobalDeviceId, IncarnationId>>
       incarnations_;
-  ExecutionTimeoutHandler execution_timeout_handler_;
+  std::function<std::vector<ExecutionTimeoutHandler>()>
+      execution_timeout_handlers_;
+  std::shared_ptr<const DeviceErrorCallback> device_error_callback_;
 };
 
 }  // namespace xla::gpu

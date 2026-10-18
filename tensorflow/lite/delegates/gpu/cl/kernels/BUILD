@@ -34,7 +34,7 @@ cc_test(
         "noasan",
         "nomsan",
         "notsan",
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     # TODO(b/279977471) Once b/279347631 is resolved, check for heap again
     deps = [
@@ -52,7 +52,7 @@ cc_test(
         "noasan",
         "nomsan",
         "notsan",
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     deps = [
         ":cl_test",
@@ -85,7 +85,7 @@ cc_test(
         "noasan",
         "nomsan",
         "notsan",
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     deps = [
         ":cl_test",
@@ -102,7 +102,7 @@ cc_test(
         "noasan",
         "nomsan",
         "notsan",
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     deps = [
         ":cl_test",
@@ -119,7 +119,7 @@ cc_test(
         "noasan",
         "nomsan",
         "notsan",
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     deps = [
         ":cl_test",
@@ -136,7 +136,7 @@ cc_test(
         "noasan",
         "nomsan",
         "notsan",
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     deps = [
         ":cl_test",
@@ -181,7 +181,7 @@ cc_test(
         "noasan",
         "nomsan",
         "notsan",
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     deps = [
         ":cl_test",
@@ -198,7 +198,7 @@ cc_test(
         "noasan",
         "nomsan",
         "notsan",
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     deps = [
         ":cl_test",
@@ -215,7 +215,7 @@ cc_test(
         "noasan",
         "nomsan",
         "notsan",
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     deps = [
         ":cl_test",
@@ -232,7 +232,7 @@ cc_test(
         "noasan",
         "nomsan",
         "notsan",
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     deps = [
         ":cl_test",
@@ -249,7 +249,7 @@ cc_test(
         "noasan",
         "nomsan",
         "notsan",
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     deps = [
         ":cl_test",
@@ -266,7 +266,7 @@ cc_test(
         "noasan",
         "nomsan",
         "notsan",
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     deps = [
         ":cl_test",
@@ -283,7 +283,7 @@ cc_test(
         "noasan",
         "nomsan",
         "notsan",
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     deps = [
         ":cl_test",
@@ -300,7 +300,7 @@ cc_test(
         "noasan",
         "nomsan",
         "notsan",
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     deps = [
         ":cl_test",
@@ -318,7 +318,7 @@ cc_test(
         "noasan",
         "nomsan",
         "notsan",
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     deps = [
         ":cl_test",
@@ -335,7 +335,7 @@ cc_test(
         "noasan",
         "nomsan",
         "notsan",
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     deps = [
         ":cl_test",
@@ -357,7 +357,7 @@ cc_test(
         "noasan",
         "nomsan",
         "notsan",
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     deps = [
         ":cl_test",
@@ -374,7 +374,7 @@ cc_test(
         "noasan",
         "nomsan",
         "notsan",
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     deps = [
         ":cl_test",
@@ -410,7 +410,7 @@ cc_test(
         "noasan",
         "nomsan",
         "notsan",
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     deps = [
         ":cl_test",
@@ -427,7 +427,7 @@ cc_test(
         "noasan",
         "nomsan",
         "notsan",
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     deps = [
         ":cl_test",
@@ -444,7 +444,7 @@ cc_test(
         "noasan",
         "nomsan",
         "notsan",
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     deps = [
         ":cl_test",
@@ -461,7 +461,7 @@ cc_test(
         "noasan",
         "nomsan",
         "notsan",
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     deps = [
         ":cl_test",
@@ -478,7 +478,7 @@ cc_test(
         "noasan",
         "nomsan",
         "notsan",
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     deps = [
         ":cl_test",
@@ -495,7 +495,7 @@ cc_test(
         "noasan",
         "nomsan",
         "notsan",
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     deps = [
         ":cl_test",
@@ -512,7 +512,7 @@ cc_test(
         "noasan",
         "nomsan",
         "notsan",
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     deps = [
         ":cl_test",
@@ -529,7 +529,7 @@ cc_test(
         "noasan",
         "nomsan",
         "notsan",
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     deps = [
         ":cl_test",
@@ -546,7 +546,7 @@ cc_test(
         "noasan",
         "nomsan",
         "notsan",
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     deps = [
         ":cl_test",
@@ -563,7 +563,7 @@ cc_test(
         "noasan",
         "nomsan",
         "notsan",
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     deps = [
         "//tensorflow/lite/delegates/gpu/cl/kernels:cl_test",
@@ -580,7 +580,7 @@ cc_test(
         "noasan",
         "nomsan",
         "notsan",
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     deps = [
         ":cl_test",
@@ -597,7 +597,7 @@ cc_test(
         "noasan",
         "nomsan",
         "notsan",
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     deps = [
         ":cl_test",
@@ -614,7 +614,7 @@ cc_test(
         "noasan",
         "nomsan",
         "notsan",
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     deps = [
         ":cl_test",
@@ -631,7 +631,7 @@ cc_test(
         "noasan",
         "nomsan",
         "notsan",
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     deps = [
         ":cl_test",
@@ -648,7 +648,7 @@ cc_test(
         "noasan",
         "nomsan",
         "notsan",
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     deps = [
         ":cl_test",
@@ -665,7 +665,7 @@ cc_test(
         "noasan",
         "nomsan",
         "notsan",
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     deps = [
         ":cl_test",
@@ -682,7 +682,7 @@ cc_test(
         "noasan",
         "nomsan",
         "notsan",
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     deps = [
         ":cl_test",
@@ -699,7 +699,7 @@ cc_test(
         "noasan",
         "nomsan",
         "notsan",
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     deps = [
         ":cl_test",
@@ -716,7 +716,7 @@ cc_test(
         "noasan",
         "nomsan",
         "notsan",
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     deps = [
         ":cl_test",
@@ -733,7 +733,7 @@ cc_test(
         "noasan",
         "nomsan",
         "notsan",
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     deps = [
         ":cl_test",
@@ -750,7 +750,7 @@ cc_test(
         "noasan",
         "nomsan",
         "notsan",
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     deps = [
         ":cl_test",
@@ -767,7 +767,7 @@ cc_test(
         "noasan",
         "nomsan",
         "notsan",
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     deps = [
         ":cl_test",

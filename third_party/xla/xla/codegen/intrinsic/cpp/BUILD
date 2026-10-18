@@ -68,7 +68,8 @@ cc_binary(
         "//xla/util:embedded_constant_buffers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:AArch64CodeGen",
+        "@llvm-project//llvm:AArch64CodeGen",  # build_cleaner: keep
+        "@llvm-project//llvm:BitWriter",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:IRReader",
         "@llvm-project//llvm:Object",
@@ -104,6 +105,18 @@ cc_library(
     hdrs = ["vector_ops.h"],
     deps = [
         "@eigen_archive//:eigen3",
+    ],
+)
+
+xla_cc_test(
+    name = "vector_ops_test",
+    srcs = ["vector_ops_test.cc"],
+    copts = [
+        "-Wno-psabi",
+    ],
+    deps = [
+        ":vector_ops",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -144,18 +157,29 @@ cc_library(
 )
 
 cc_ir_header(
+    name = "eigen_unary_16_ll",
+    src = "eigen_unary.cc",
+    copts = [
+        "-DEIGEN_GENERIC_VECTOR_SIZE_BYTES=16",
+        "-mprefer-vector-width=128",
+        "-mllvm",
+        "-inline-threshold=500",
+    ],
+    deps = [
+        ":cpp_context_provider",
+        ":eigen_unary_lib",
+        ":vector_ops",
+        "@eigen_archive//:eigen3",
+    ],
+)
+
+cc_ir_header(
     name = "eigen_unary_32_ll",
     src = "eigen_unary.cc",
-    copts = if_oss(
-        [
-            "-DEIGEN_GENERIC_VECTOR_SIZE_BYTES=64",
-            "-mprefer-vector-width=512",
-        ],
-        [
-            "-DEIGEN_GENERIC_VECTOR_SIZE_BYTES=32",
-            "-mprefer-vector-width=256",
-        ],
-    ),
+    copts = [
+        "-DEIGEN_GENERIC_VECTOR_SIZE_BYTES=32",
+        "-mprefer-vector-width=256",
+    ],
     deps = [
         ":cpp_context_provider",
         ":eigen_unary_lib",
@@ -186,6 +210,23 @@ cc_ir_header(
 )
 
 xla_cc_test(
+    name = "cpp_gen_intrinsics_test",
+    srcs = ["cpp_gen_intrinsics_test.cc"],
+    deps = [
+        ":_cpp_gen_intrinsics",
+        ":eigen_unary_16_ll",
+        "//xla/codegen/intrinsic:simple_jit_runner",
+        "//xla/codegen/intrinsic:test_matchers",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:ir_headers",
+        "@tsl//tsl/platform:denormal",
+    ],
+)
+
+xla_cc_test(
     name = "eigen_unary_test",
     srcs = ["eigen_unary_test.cc"],
     copts = [
@@ -193,12 +234,78 @@ xla_cc_test(
     ],
     deps = [
         ":_cpp_gen_intrinsics",
+        ":eigen_unary_16_ll",
         ":eigen_unary_32_ll",
         ":eigen_unary_64_ll",
         ":eigen_unary_lib",
         ":vector_ops",
         "//xla/codegen/intrinsic",
         "//xla/codegen/intrinsic:test_matchers",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "expm1",
+    srcs = ["expm1.cc"],
+    hdrs = ["expm1.h"],
+    copts = [
+        "-Wno-psabi",
+    ],
+    deps = [
+        ":vector_ops",
+    ],
+)
+
+cc_ir_header(
+    name = "expm1_32_ll",
+    src = "expm1.cc",
+    copts = [
+        "-mprefer-vector-width=256",
+    ],
+    deps = [
+        ":cpp_context_provider",
+        ":expm1",
+        ":vector_ops",
+    ],
+)
+
+cc_ir_header(
+    name = "expm1_64_ll",
+    src = "expm1.cc",
+    copts = [
+        "-mprefer-vector-width=512",
+    ] + if_oss(
+        [],
+        select({
+            ":x86_64": ["-mavx512f"],
+            "//conditions:default": [],
+        }),
+    ),
+    deps = [
+        ":cpp_context_provider",
+        ":expm1",
+        ":vector_ops",
+    ],
+)
+
+xla_cc_test(
+    name = "expm1_test",
+    srcs = ["expm1_test.cc"],
+    copts = [
+        "-Wno-psabi",
+    ],
+    deps = [
+        ":_cpp_gen_intrinsics",
+        ":expm1",
+        ":expm1_32_ll",
+        ":expm1_64_ll",
+        ":vector_ops",
+        "//xla:types",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Core",
@@ -219,12 +326,97 @@ cc_binary(
 )
 
 cc_library(
+    name = "custom_cpp_intrinsics_lib",
+    srcs = ["custom_cpp_intrinsics.cc"],
+    hdrs = ["custom_cpp_intrinsics.h"],
+    copts = [
+        "-Wno-psabi",
+    ],
+    deps = [
+        ":vector_ops",
+    ],
+)
+
+cc_ir_header(
+    name = "custom_cpp_intrinsics_ll",
+    src = "custom_cpp_intrinsics.cc",
+    deps = [
+        ":cpp_context_provider",
+        ":custom_cpp_intrinsics_lib",
+        ":vector_ops",
+    ],
+)
+
+xla_cc_test(
+    name = "custom_cpp_intrinsics_test",
+    srcs = ["custom_cpp_intrinsics_test.cc"],
+    copts = [
+        "-Wno-psabi",
+    ],
+    deps = [
+        ":_cpp_gen_intrinsics",
+        ":custom_cpp_intrinsics_lib",
+        ":custom_cpp_intrinsics_ll",
+        ":vector_ops",
+        "//xla/codegen/intrinsic:test_matchers",
+        "@com_google_absl//absl/base",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:ir_headers",
+    ],
+)
+
+cc_library(
+    name = "trig_lib",
+    srcs = ["trig.cc"],
+    hdrs = ["trig.h"],
+    copts = [
+        "-Wno-psabi",
+    ],
+    deps = [
+        ":vector_ops",
+    ],
+)
+
+cc_ir_header(
+    name = "trig_ll",
+    src = "trig.cc",
+    deps = [
+        ":cpp_context_provider",
+        ":trig_lib",
+        ":vector_ops",
+    ],
+)
+
+xla_cc_test(
+    name = "trig_test",
+    srcs = ["trig_test.cc"],
+    copts = [
+        "-Wno-psabi",
+    ],
+    deps = [
+        ":_cpp_gen_intrinsics",
+        ":trig_lib",
+        ":trig_ll",
+        ":vector_ops",
+        "//xla/codegen/intrinsic:test_matchers",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
     name = "_cpp_gen_intrinsics",
     srcs = ["cpp_gen_intrinsics.cc"],
     hdrs = ["cpp_gen_intrinsics.h"],
     deps = [
+        ":custom_cpp_intrinsics_ll",
+        ":eigen_unary_16_ll",
         ":eigen_unary_32_ll",
         ":eigen_unary_64_ll",
+        ":expm1_32_ll",
+        ":expm1_64_ll",
         "//xla/codegen/intrinsic",
         "//xla/service/llvm_ir:llvm_util",
         "@com_google_absl//absl/log",

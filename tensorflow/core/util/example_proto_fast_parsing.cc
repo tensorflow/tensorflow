@@ -1884,10 +1884,17 @@ std::string ExampleName(const absl::Span<const tstring> example_names, int n) {
   return example_names.empty() ? "<unknown>" : example_names[n];
 }
 
+// The Parse*Feature functions below are used twice by FastParseSequenceExample:
+// first with a null `out` to count the values of a feature, and then, once the
+// output tensors have been allocated from those counts, to copy the values.
+// In the copying pass at most `out_size` values are written to `out`, and a
+// feature holding more values than that is reported as an error, so that a
+// disagreement between the two passes can't write past the end of an output.
+
 // Return the number of bytes elements parsed, or -1 on error. If out is null,
 // this method simply counts the number of elements without any copying.
 inline int ParseBytesFeature(protobuf::io::CodedInputStream* stream,
-                             tstring* out) {
+                             tstring* out, size_t out_size) {
   int num_elements = 0;
   uint32_t length;
   if (!stream->ExpectTag(kDelimitedTag(1)) || !stream->ReadVarint32(&length)) {
@@ -1906,6 +1913,9 @@ inline int ParseBytesFeature(protobuf::io::CodedInputStream* stream,
           return -1;
         }
       } else {
+        if (static_cast<size_t>(num_elements) >= out_size) {
+          return -1;
+        }
         if (static_cast<int64_t>(bytes_length) > stream->BytesUntilLimit()) {
           return -1;
         }
@@ -1922,22 +1932,10 @@ inline int ParseBytesFeature(protobuf::io::CodedInputStream* stream,
   return num_elements;
 }
 
-inline void PadFloatFeature(int num_to_pad, float* out) {
-  for (int i = 0; i < num_to_pad; i++) {
-    *out++ = 0.0;
-  }
-}
-
-inline void PadInt64Feature(int num_to_pad, int64_t* out) {
-  for (int i = 0; i < num_to_pad; i++) {
-    *out++ = 0;
-  }
-}
-
 // Return the number of float elements parsed, or -1 on error. If out is null,
 // this method simply counts the number of elements without any copying.
-inline int ParseFloatFeature(protobuf::io::CodedInputStream* stream,
-                             float* out) {
+inline int ParseFloatFeature(protobuf::io::CodedInputStream* stream, float* out,
+                             size_t out_size) {
   int num_elements = 0;
   uint32_t length;
   if (!stream->ExpectTag(kDelimitedTag(2)) || !stream->ReadVarint32(&length)) {
@@ -1959,6 +1957,9 @@ inline int ParseFloatFeature(protobuf::io::CodedInputStream* stream,
           return -1;
         }
         if (out != nullptr) {
+          if (static_cast<size_t>(num_elements) >= out_size) {
+            return -1;
+          }
           *out++ = absl::bit_cast<float>(buffer32);
         }
         num_elements++;
@@ -1972,6 +1973,9 @@ inline int ParseFloatFeature(protobuf::io::CodedInputStream* stream,
           return -1;
         }
         if (out != nullptr) {
+          if (static_cast<size_t>(num_elements) >= out_size) {
+            return -1;
+          }
           *out++ = absl::bit_cast<float>(buffer32);
         }
         num_elements++;
@@ -1988,7 +1992,7 @@ inline int ParseFloatFeature(protobuf::io::CodedInputStream* stream,
 // Return the number of int64 elements parsed, or -1 on error. If out is null,
 // this method simply counts the number of elements without any copying.
 inline int ParseInt64Feature(protobuf::io::CodedInputStream* stream,
-                             int64_t* out) {
+                             int64_t* out, size_t out_size) {
   int num_elements = 0;
   uint32_t length;
   if (!stream->ExpectTag(kDelimitedTag(3)) || !stream->ReadVarint32(&length)) {
@@ -2010,6 +2014,9 @@ inline int ParseInt64Feature(protobuf::io::CodedInputStream* stream,
           return -1;
         }
         if (out != nullptr) {
+          if (static_cast<size_t>(num_elements) >= out_size) {
+            return -1;
+          }
           *out++ = n;
         }
         num_elements++;
@@ -2022,6 +2029,9 @@ inline int ParseInt64Feature(protobuf::io::CodedInputStream* stream,
           return -1;
         }
         if (out != nullptr) {
+          if (static_cast<size_t>(num_elements) >= out_size) {
+            return -1;
+          }
           *out++ = n;
         }
         num_elements++;
@@ -2035,28 +2045,57 @@ inline int ParseInt64Feature(protobuf::io::CodedInputStream* stream,
   return num_elements;
 }
 
+// Returns the length of the next feature on `stream`.
+// Returns -1 if the next feature on `stream` doesn't match `dtype`.
+inline int GetFeatureLength(DataType dtype,
+                            protobuf::io::CodedInputStream* stream) {
+  switch (dtype) {
+    case DT_STRING:
+      return ParseBytesFeature(stream, nullptr, 0);
+    case DT_FLOAT:
+      return ParseFloatFeature(stream, nullptr, 0);
+    case DT_INT64:
+      return ParseInt64Feature(stream, nullptr, 0);
+    default:
+      ReportUnexpectedDataType(dtype);
+      return -1;
+  }
+}
+
 // Parses the next feature on `stream` into `out` starting at `out_offset`.
 // Updates `out_offset`, and returns the number of values added.
-// Returns -1 if the next feature on `stream` doesn't match `dtype`.
+// Returns -1 if the next feature on `stream` doesn't match `dtype`, if it has
+// more values than `out` has room for after `out_offset`, or if `dtype` isn't
+// supported.
 inline int ParseFeature(DataType dtype, protobuf::io::CodedInputStream* stream,
                         Tensor* out, size_t* out_offset) {
+  const size_t out_elements = out->NumElements();
+  if (*out_offset > out_elements) {
+    return -1;
+  }
+  const size_t out_size = out_elements - *out_offset;
+  if (out_size == 0) {
+    // `out` may have no buffer at all, and a null pointer would make the
+    // Parse*Feature functions count the values instead of storing them.
+    return GetFeatureLength(dtype, stream) == 0 ? 0 : -1;
+  }
   int delta;
   switch (dtype) {
     case DT_STRING:
-      delta =
-          ParseBytesFeature(stream, out->flat<tstring>().data() + *out_offset);
+      delta = ParseBytesFeature(
+          stream, out->flat<tstring>().data() + *out_offset, out_size);
       break;
     case DT_FLOAT:
-      delta =
-          ParseFloatFeature(stream, out->flat<float>().data() + *out_offset);
+      delta = ParseFloatFeature(stream, out->flat<float>().data() + *out_offset,
+                                out_size);
       break;
     case DT_INT64:
-      delta =
-          ParseInt64Feature(stream, out->flat<int64_t>().data() + *out_offset);
+      delta = ParseInt64Feature(
+          stream, out->flat<int64_t>().data() + *out_offset, out_size);
       break;
     default:
       ReportUnexpectedDataType(dtype);
-      delta = 0;
+      return -1;
   }
   if (delta > 0) {
     *out_offset += delta;
@@ -2064,21 +2103,35 @@ inline int ParseFeature(DataType dtype, protobuf::io::CodedInputStream* stream,
   return delta;
 }
 
-// Returns the length of the next feature on `stream`.
-// Returns -1 if the next feature on `stream` doesn't match `dtype`.
-inline int GetFeatureLength(DataType dtype,
-                            protobuf::io::CodedInputStream* stream) {
+// Fills `num_to_pad` values of `out` starting at `out_offset` with zeros (or
+// empty strings), and updates `out_offset`. Returns false if `out` doesn't have
+// room for them or if `dtype` isn't supported.
+inline bool PadFeature(DataType dtype, size_t num_to_pad, Tensor* out,
+                       size_t* out_offset) {
+  const size_t out_elements = out->NumElements();
+  if (*out_offset > out_elements || num_to_pad > out_elements - *out_offset) {
+    return false;
+  }
   switch (dtype) {
     case DT_STRING:
-      return ParseBytesFeature(stream, nullptr);
-    case DT_FLOAT:
-      return ParseFloatFeature(stream, nullptr);
-    case DT_INT64:
-      return ParseInt64Feature(stream, nullptr);
+      // Newly allocated string tensors already hold empty strings.
+      break;
+    case DT_FLOAT: {
+      float* begin = out->flat<float>().data() + *out_offset;
+      std::fill(begin, begin + num_to_pad, 0.0f);
+      break;
+    }
+    case DT_INT64: {
+      int64_t* begin = out->flat<int64_t>().data() + *out_offset;
+      std::fill(begin, begin + num_to_pad, 0);
+      break;
+    }
     default:
       ReportUnexpectedDataType(dtype);
-      return -1;
+      return false;
   }
+  *out_offset += num_to_pad;
+  return true;
 }
 
 inline DataType ParseDataType(protobuf::io::CodedInputStream* stream) {
@@ -2292,10 +2345,15 @@ absl::Status GetSequenceFeatureLengths(
 }
 
 // Copies src into dst[dst_offset:dst_offset+src.size], and then increments
-// dst_offset by src.size.
-void CopyTensorIntoTensor(DataType dtype, const Tensor& src, Tensor* dst,
+// dst_offset by src.size. Returns false if dst doesn't have room for src or if
+// dtype isn't supported.
+bool CopyTensorIntoTensor(DataType dtype, const Tensor& src, Tensor* dst,
                           size_t* dst_offset) {
-  size_t src_size = src.NumElements();
+  const size_t src_size = src.NumElements();
+  const size_t dst_size = dst->NumElements();
+  if (*dst_offset > dst_size || src_size > dst_size - *dst_offset) {
+    return false;
+  }
   switch (dtype) {
     case DT_INT64: {
       auto src_t = src.flat<int64_t>().data();
@@ -2317,8 +2375,10 @@ void CopyTensorIntoTensor(DataType dtype, const Tensor& src, Tensor* dst,
     }
     default:
       ReportUnexpectedDataType(dtype);
+      return false;
   }
   *dst_offset += src_size;
+  return true;
 }
 
 // Parses dense features in `context_features`, and writes their parsed
@@ -2365,14 +2425,26 @@ absl::Status ParseContextDenseFeatures(
                            " (data type: ", DataTypeString(c.dtype), ")",
                            " is required but could not be found."));
         }
-        CopyTensorIntoTensor(dtype, c.default_value, &out, &out_offset);
+        if (!CopyTensorIntoTensor(dtype, c.default_value, &out, &out_offset)) {
+          return absl::InvalidArgumentError(
+              absl::StrCat("Default value for context feature ", c.feature_name,
+                           " does not fit its output"));
+        }
         num_elements += c.default_value.NumElements();
       } else if (!feature_proto.empty()) {
         protobuf::io::CodedInputStream stream(
             reinterpret_cast<const uint8_t*>(feature_proto.data()),
             feature_proto.size());
         EnableAliasing(&stream);
-        num_elements += ParseFeature(dtype, &stream, &out, &out_offset);
+        const int num_added = ParseFeature(dtype, &stream, &out, &out_offset);
+        if (num_added < 0) {
+          // This should be unreachable -- we already scanned the feature in
+          // GetContextFeatureLengths, and it hasn't changed since then.
+          return absl::InvalidArgumentError(
+              absl::StrCat("Error in context feature ", c.feature_name,
+                           " in example ", ExampleName(example_names, e)));
+        }
+        num_elements += num_added;
       }
       if (num_elements != data_max_elements) {
         return absl::InvalidArgumentError(
@@ -2408,6 +2480,8 @@ absl::Status ParseContextSparseFeatures(
         Tensor(allocator, DT_INT64, TensorShape({is_batch ? 2 : 1}));
     Tensor& out_values = context_result->sparse_values[t];
     size_t out_values_offset = 0;
+    // There is one row of indices per value, and ParseFeature never adds more
+    // values than out_values can hold, so these writes stay in bounds too.
     int64_t* out_indices =
         context_result->sparse_indices[t].flat<int64_t>().data();
     auto out_shape = context_result->sparse_shapes[t].vec<int64_t>();
@@ -2422,10 +2496,17 @@ absl::Status ParseContextSparseFeatures(
           reinterpret_cast<const uint8_t*>(feature_proto.data()),
           feature_proto.size());
       EnableAliasing(&stream);
-      size_t num_added =
+      int num_added =
           ParseFeature(dtype, &stream, &out_values, &out_values_offset);
+      if (num_added < 0) {
+        // This should be unreachable -- we already scanned the feature in
+        // GetContextFeatureLengths, and it hasn't changed since then.
+        return absl::InvalidArgumentError(
+            absl::StrCat("Error in context feature ", c.feature_name,
+                         " in example ", ExampleName(example_names, e)));
+      }
       num_elements += num_added;
-      max_num_cols = std::max(max_num_cols, num_added);
+      max_num_cols = std::max(max_num_cols, static_cast<size_t>(num_added));
       for (int i = 0; i < num_added; i++) {
         if (is_batch) *out_indices++ = e;
         *out_indices++ = i;
@@ -2492,8 +2573,15 @@ absl::Status ParseContextRaggedFeatures(
             reinterpret_cast<const uint8_t*>(feature_proto.data()),
             feature_proto.size());
         EnableAliasing(&stream);
-        size_t num_added =
+        int num_added =
             ParseFeature(dtype, &stream, &out_values, &out_values_offset);
+        if (num_added < 0) {
+          // This should be unreachable -- we already scanned the feature in
+          // GetContextFeatureLengths, and it hasn't changed since then.
+          return absl::InvalidArgumentError(
+              absl::StrCat("Error in context feature ", c.feature_name,
+                           " in example ", ExampleName(example_names, e)));
+        }
         split += num_added;
       }
       if (int32_splits) {
@@ -2541,10 +2629,16 @@ absl::Status ParseSequenceDenseFeatures(
     TensorShape dense_shape, row_shape;
     DataType dtype = c.dtype;
     const size_t expected_max_elements = feature.length;
-    if (!c.shape.AsTensorShape(&row_shape) ||
-        expected_max_elements !=
-            (expected_max_elements / row_shape.num_elements()) *
-                row_shape.num_elements()) {
+    const int64_t row_num_elements =
+        c.shape.AsTensorShape(&row_shape) ? row_shape.num_elements() : -1;
+    // Guard against division by zero when any shape dimension is 0.  When
+    // row_num_elements==0, the only consistent state is zero total elements;
+    // any positive count would be impossible to fit into zero-element rows.
+    if (row_num_elements < 0 ||
+        (row_num_elements == 0
+             ? expected_max_elements != 0
+             : expected_max_elements % static_cast<size_t>(row_num_elements) !=
+                   0)) {
       PartialTensorShape total_shape = row_shape;
       total_shape.InsertDim(0, -1);
       return absl::InvalidArgumentError(absl::StrCat(
@@ -2554,7 +2648,10 @@ absl::Status ParseSequenceDenseFeatures(
           " is not consistent with output shape: ", total_shape.DebugString()));
     }
     int64_t expected_max_rows =
-        expected_max_elements / row_shape.num_elements();
+        row_num_elements == 0
+            ? 0
+            : static_cast<int64_t>(expected_max_elements /
+                                   static_cast<size_t>(row_num_elements));
     if (is_batch) {
       dense_shape.AddDim(num_examples);
     }
@@ -2566,23 +2663,8 @@ absl::Status ParseSequenceDenseFeatures(
     (*dense_feature_lengths)[t] =
         Tensor(allocator, DT_INT64, dense_length_shape);
     int64_t* out_lengths = (*dense_feature_lengths)[t].flat<int64_t>().data();
-
-    tstring* out_bytes = nullptr;
-    float* out_float = nullptr;
-    int64_t* out_int64 = nullptr;
-    switch (dtype) {
-      case DT_STRING:
-        out_bytes = sequence_result->dense_values[t].flat<tstring>().data();
-        break;
-      case DT_FLOAT:
-        out_float = sequence_result->dense_values[t].flat<float>().data();
-        break;
-      case DT_INT64:
-        out_int64 = sequence_result->dense_values[t].flat<int64_t>().data();
-        break;
-      default:
-        ReportUnexpectedDataType(dtype);
-    }
+    Tensor& out = sequence_result->dense_values[t];
+    size_t out_offset = 0;
 
     // Fill in the values.
     for (int e = 0; e < num_examples; e++) {
@@ -2616,23 +2698,7 @@ absl::Status ParseSequenceDenseFeatures(
           auto limit = stream.PushLimit(feature_length);
           int num_added = 0;
           if (feature_length > 2) {
-            switch (dtype) {
-              case DT_STRING:
-                num_added = ParseBytesFeature(&stream, out_bytes);
-                if (num_added >= 0) out_bytes += num_added;
-                break;
-              case DT_FLOAT:
-                num_added = ParseFloatFeature(&stream, out_float);
-                if (num_added >= 0) out_float += num_added;
-                break;
-              case DT_INT64:
-                num_added = ParseInt64Feature(&stream, out_int64);
-                if (num_added >= 0) out_int64 += num_added;
-                break;
-              default:
-                ReportUnexpectedDataType(dtype);
-                num_added = 0;
-            }
+            num_added = ParseFeature(dtype, &stream, &out, &out_offset);
             if (num_added < 0) {
               // This should be unreachable -- we already scanned the feature in
               // GetSequenceFeatureLengths, and it hasn't changed since then.
@@ -2655,21 +2721,14 @@ absl::Status ParseSequenceDenseFeatures(
       }
       *out_lengths++ = num_rows;
       // Pad as necessary.
-      int num_to_pad = expected_max_elements - num_elements;
-      switch (dtype) {
-        case DT_STRING:
-          out_bytes += num_to_pad;
-          break;
-        case DT_FLOAT:
-          PadFloatFeature(num_to_pad, out_float);
-          out_float += num_to_pad;
-          break;
-        case DT_INT64:
-          PadInt64Feature(num_to_pad, out_int64);
-          out_int64 += num_to_pad;
-          break;
-        default:
-          ReportUnexpectedDataType(dtype);
+      if (num_elements > expected_max_elements ||
+          !PadFeature(dtype, expected_max_elements - num_elements, &out,
+                      &out_offset)) {
+        // This should be unreachable -- we already scanned the feature in
+        // GetSequenceFeatureLengths, and it hasn't changed since then.
+        return absl::InvalidArgumentError(
+            absl::StrCat("Error in sequence feature ", c.feature_name,
+                         " in example ", ExampleName(example_names, e)));
       }
     }
   }
@@ -2699,22 +2758,10 @@ absl::Status ParseSequenceSparseFeatures(
     sequence_result->sparse_shapes[t] =
         Tensor(allocator, DT_INT64, TensorShape({is_batch ? 3 : 2}));
 
-    tstring* out_bytes = nullptr;
-    float* out_float = nullptr;
-    int64_t* out_int64 = nullptr;
-    switch (dtype) {
-      case DT_STRING:
-        out_bytes = sequence_result->sparse_values[t].flat<tstring>().data();
-        break;
-      case DT_FLOAT:
-        out_float = sequence_result->sparse_values[t].flat<float>().data();
-        break;
-      case DT_INT64:
-        out_int64 = sequence_result->sparse_values[t].flat<int64_t>().data();
-        break;
-      default:
-        ReportUnexpectedDataType(dtype);
-    }
+    Tensor& out_values = sequence_result->sparse_values[t];
+    size_t out_values_offset = 0;
+    // There is one row of indices per value, and ParseFeature never adds more
+    // values than out_values can hold, so these writes stay in bounds too.
     int64_t* out_indices =
         sequence_result->sparse_indices[t].flat<int64_t>().data();
     auto out_shape = sequence_result->sparse_shapes[t].vec<int64_t>();
@@ -2743,24 +2790,8 @@ absl::Status ParseSequenceSparseFeatures(
         }
         if (feature_length > 2) {
           auto limit = stream.PushLimit(feature_length);
-          int num_added;
-          switch (dtype) {
-            case DT_STRING:
-              num_added = ParseBytesFeature(&stream, out_bytes);
-              if (num_added >= 0) out_bytes += num_added;
-              break;
-            case DT_FLOAT:
-              num_added = ParseFloatFeature(&stream, out_float);
-              if (num_added >= 0) out_float += num_added;
-              break;
-            case DT_INT64:
-              num_added = ParseInt64Feature(&stream, out_int64);
-              if (num_added >= 0) out_int64 += num_added;
-              break;
-            default:
-              ReportUnexpectedDataType(dtype);
-              num_added = 0;
-          }
+          int num_added =
+              ParseFeature(dtype, &stream, &out_values, &out_values_offset);
           if (num_added < 0) {
             // This should be unreachable -- we already scanned the feature in
             // GetSequenceFeatureLengths, and it hasn't changed since then.
@@ -2914,6 +2945,13 @@ absl::Status ParseSequenceRaggedFeatures(
                 absl::StrCat("Error in sequence feature ", c.feature_name,
                              " in example ", ExampleName(example_names, e)));
           }
+          // The inner splits were sized from the row count found by
+          // GetSequenceFeatureLengths; don't write past them if this pass
+          // finds more rows.
+          if (outer_split >= expected_num_rows) {
+            return absl::InvalidArgumentError(absl::StrCat(
+                "Unexpected number of rows for feature ", c.feature_name));
+          }
           if (int32_inner_splits) {
             *int32_inner_splits++ = inner_split;
           } else if (int64_inner_splits) {
@@ -2964,6 +3002,25 @@ absl::Status ParseSequenceRaggedFeatures(
 }
 
 }  // namespace
+
+int TestParseFeature(DataType dtype, const std::string& serialized_feature,
+                     Tensor* out, size_t* out_offset) {
+  protobuf::io::CodedInputStream stream(
+      reinterpret_cast<const uint8_t*>(serialized_feature.data()),
+      serialized_feature.size());
+  EnableAliasing(&stream);
+  return ParseFeature(dtype, &stream, out, out_offset);
+}
+
+bool TestPadFeature(DataType dtype, size_t num_to_pad, Tensor* out,
+                    size_t* out_offset) {
+  return PadFeature(dtype, num_to_pad, out, out_offset);
+}
+
+bool TestCopyTensorIntoTensor(DataType dtype, const Tensor& src, Tensor* dst,
+                              size_t* dst_offset) {
+  return CopyTensorIntoTensor(dtype, src, dst, dst_offset);
+}
 
 // TODO(sundberg): Use the threadpool to parallelize example parsing.
 // TODO(b/111553342): Support extracting feature statistics from the examples.

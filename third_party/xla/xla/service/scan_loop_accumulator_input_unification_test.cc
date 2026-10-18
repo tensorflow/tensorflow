@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "xla/hlo/analysis/alias_info.h"
@@ -29,7 +30,6 @@ limitations under the License.
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/copy_insertion.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -115,9 +115,8 @@ TEST_F(ScanLoopAccumulatorInputUnificationTest, UnifyAccumulatorInput) {
   auto module = ParseAndReturnVerifiedModule(kModule).value();
   auto module_clone = module->Clone();
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool simplified_loop,
-      ScanLoopAccumulatorInputUnification().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                       ScanLoopAccumulatorInputUnification().Run(module.get()));
   EXPECT_TRUE(simplified_loop);
 
   // Index 2 and 3 of the while are replaced with the input arrays.
@@ -217,9 +216,8 @@ TEST_F(ScanLoopAccumulatorInputUnificationTest, UnifyAccumulatorInput2) {
   auto module = ParseAndReturnVerifiedModule(kModule).value();
   auto module_clone = module->Clone();
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool simplified_loop,
-      ScanLoopAccumulatorInputUnification().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                       ScanLoopAccumulatorInputUnification().Run(module.get()));
   EXPECT_TRUE(simplified_loop);
 
   // Index 2 and 3 of the while are replaced with the input arrays.
@@ -304,9 +302,8 @@ TEST_F(ScanLoopAccumulatorInputUnificationTest, AccumulatorAllocateOutside) {
   )";
 
   auto module = ParseAndReturnVerifiedModule(kModule).value();
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool simplified_loop,
-      ScanLoopAccumulatorInputUnification().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                       ScanLoopAccumulatorInputUnification().Run(module.get()));
   // Buffer is not replaced with input since it is allocated outside the outer
   // loop.
   EXPECT_FALSE(simplified_loop);
@@ -362,9 +359,8 @@ TEST_F(ScanLoopAccumulatorInputUnificationTest, InputDifferentShape) {
   )";
 
   auto module = ParseAndReturnVerifiedModule(kModule).value();
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool simplified_loop,
-      ScanLoopAccumulatorInputUnification().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                       ScanLoopAccumulatorInputUnification().Run(module.get()));
   EXPECT_FALSE(simplified_loop);
 }
 
@@ -459,9 +455,8 @@ TEST_F(ScanLoopAccumulatorInputUnificationTest, MultipleUsersInput) {
   auto module = ParseAndReturnVerifiedModule(kModule).value();
   auto module_clone = module->Clone();
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool simplified_loop,
-      ScanLoopAccumulatorInputUnification().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                       ScanLoopAccumulatorInputUnification().Run(module.get()));
   EXPECT_TRUE(simplified_loop);
 
   // Only index 2 is replaced with the array.
@@ -554,8 +549,8 @@ TEST_F(ScanLoopAccumulatorInputUnificationTest,
   // Check the inserted copies before applying the copy insertion pass.
   auto module_clone = module->Clone();
   AliasInfo alias_info;
-  TF_ASSERT_OK_AND_ASSIGN(bool clone_copy_inserted,
-                          CopyInsertion(&alias_info).Run(module_clone.get()));
+  ASSERT_OK_AND_ASSIGN(bool clone_copy_inserted,
+                       CopyInsertion(&alias_info).Run(module_clone.get()));
   EXPECT_TRUE(clone_copy_inserted);
   HloInstruction* while_instruction =
       GetTopLevelWhileInstruction(module_clone.get());
@@ -563,15 +558,14 @@ TEST_F(ScanLoopAccumulatorInputUnificationTest,
       while_instruction->while_body()->root_instruction()->operand(2)->opcode(),
       HloOpcode::kCopy);
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool simplified_loop,
-      ScanLoopAccumulatorInputUnification().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                       ScanLoopAccumulatorInputUnification().Run(module.get()));
   EXPECT_TRUE(simplified_loop);
 
   // Check the inserted copies after applying the copy insertion pass and
   // removing double buffers.
-  TF_ASSERT_OK_AND_ASSIGN(bool copy_inserted,
-                          CopyInsertion(&alias_info).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool copy_inserted,
+                       CopyInsertion(&alias_info).Run(module.get()));
   EXPECT_TRUE(copy_inserted);
   VLOG(3) << "After copy_insertion:\n" << module->ToString();
   while_instruction = GetTopLevelWhileInstruction(module.get());
@@ -671,9 +665,71 @@ TEST_F(ScanLoopAccumulatorInputUnificationTest, SharedLoopBody) {
   }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed, ScanLoopAccumulatorInputUnification().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       ScanLoopAccumulatorInputUnification().Run(module.get()));
+  EXPECT_FALSE(changed);
+}
+
+TEST_F(ScanLoopAccumulatorInputUnificationTest,
+       DoNotUnifyWhenSliceAndUpdateDimensionsDiffer) {
+  constexpr char kModule[] = R"(
+  HloModule cross_dim_scan
+
+  inner_body {
+    p = (s32[], s32[4,4], s32[4,4]) parameter(0)
+    iter = s32[] get-tuple-element(p), index=0
+    acc = s32[4,4] get-tuple-element(p), index=1
+    in_arr = s32[4,4] get-tuple-element(p), index=2
+    c0 = s32[] constant(0)
+    c1 = s32[] constant(1)
+    ds = s32[1,4] dynamic-slice(in_arr, iter, c0), dynamic_slice_sizes={1,4}
+    rs = s32[4,1] reshape(ds)
+    dus = s32[4,4] dynamic-update-slice(acc, rs, c0, iter)
+    next_iter = s32[] add(iter, c1)
+    ROOT t = (s32[], s32[4,4], s32[4,4]) tuple(next_iter, dus, in_arr)
+  }
+
+  inner_cond {
+    p = (s32[], s32[4,4], s32[4,4]) parameter(0)
+    iter = s32[] get-tuple-element(p), index=0
+    limit = s32[] constant(4)
+    ROOT cmp = pred[] compare(iter, limit), direction=LT
+  }
+
+  outer_body {
+    op = (s32[], s32[4,4]) parameter(0)
+    o_iter = s32[] get-tuple-element(op), index=0
+    o_arr = s32[4,4] get-tuple-element(op), index=1
+    c0 = s32[] constant(0)
+    c1 = s32[] constant(1)
+    zero_buf = s32[4,4] broadcast(c0), dimensions={}
+    t_init = (s32[], s32[4,4], s32[4,4]) tuple(c0, zero_buf, o_arr)
+    w = (s32[], s32[4,4], s32[4,4]) while(t_init), condition=inner_cond, body=inner_body
+    out_arr = s32[4,4] get-tuple-element(w), index=1
+    next_o_iter = s32[] add(o_iter, c1)
+    ROOT out_t = (s32[], s32[4,4]) tuple(next_o_iter, out_arr)
+  }
+
+  outer_cond {
+    op = (s32[], s32[4,4]) parameter(0)
+    o_iter = s32[] get-tuple-element(op), index=0
+    limit = s32[] constant(1)
+    ROOT cmp = pred[] compare(o_iter, limit), direction=LT
+  }
+
+  ENTRY main {
+    c0 = s32[] constant(0)
+    arr = s32[4,4] constant({{1,2,3,4},{5,6,7,8},{9,10,11,12},{13,14,15,16}})
+    o_init = (s32[], s32[4,4]) tuple(c0, arr)
+    w_out = (s32[], s32[4,4]) while(o_init), condition=outer_cond, body=outer_body
+    ROOT out = s32[4,4] get-tuple-element(w_out), index=1
+  }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       ScanLoopAccumulatorInputUnification().Run(module.get()));
   EXPECT_FALSE(changed);
 }
 

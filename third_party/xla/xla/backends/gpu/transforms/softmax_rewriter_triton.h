@@ -27,9 +27,14 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/gpu/alias_info.h"
+#include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/stream_executor/device_description.h"
+
+namespace tsl::thread {
+class ThreadPool;
+}  // namespace tsl::thread
 
 namespace xla {
 namespace gpu {
@@ -55,13 +60,17 @@ class SoftmaxRewriterTriton : public HloModulePass {
                                  const GpuAliasInfo* alias_info,
                                  mlir::MLIRContext* mlir_context,
                                  bool only_fuse_if_profitable,
-                                 bool use_experimental_tiling)
+                                 bool use_experimental_tiling,
+                                 tsl::thread::ThreadPool* thread_pool = nullptr,
+                                 MlirContextPool* mlir_context_pool = nullptr)
       : device_info_(device_info),
         shape_size_(shape_size),
         alias_info_(alias_info),
         use_cost_model_to_evaluate_fusions_(only_fuse_if_profitable),
         use_experimental_tiling_(use_experimental_tiling),
-        mlir_context_(mlir_context) {}
+        mlir_context_(mlir_context),
+        thread_pool_(thread_pool),
+        mlir_context_pool_(mlir_context_pool) {}
 
   absl::string_view name() const override { return "triton-softmax-rewriter"; }
 
@@ -114,6 +123,8 @@ class SoftmaxRewriterTriton : public HloModulePass {
   bool use_cost_model_to_evaluate_fusions_;
   bool use_experimental_tiling_;
   mlir::MLIRContext* mlir_context_;
+  tsl::thread::ThreadPool* thread_pool_ = nullptr;
+  MlirContextPool* mlir_context_pool_ = nullptr;
 };
 
 }  // namespace gpu

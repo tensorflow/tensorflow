@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include <algorithm>
 #include <limits>
-#include <memory>
 #include <utility>
 #include <vector>
 
@@ -91,9 +90,45 @@ void CollectArgs(SymbolicExpr expr, SymbolicExprType type,
   ret.push_back(expr);
 }
 
+// Returns true if the top-level operation of `expr` can be lowered to an
+// unsigned arith op. Operands of `expr` are not checked.
+bool IsUnsignedLoweringSupported(SymbolicExpr expr,
+                                 RangeEvaluator& range_evaluator) {
+  if (!expr.IsBinaryOp()) {
+    return true;
+  }
+  // Mod and div can be lowered if their LHS is >= 0 and their RHS is a
+  // constant positive number.
+  if (expr.GetType() == SymbolicExprType::kMod ||
+      expr.GetType() == SymbolicExprType::kFloorDiv ||
+      expr.GetType() == SymbolicExprType::kCeilDiv) {
+    if (!range_evaluator.IsAlwaysPositiveOrZero(expr.GetLHS())) {
+      return false;
+    }
+    auto rhs_range = range_evaluator.ComputeExpressionRange(expr.GetRHS());
+    if (!rhs_range.IsPoint() || rhs_range.lower <= 0) {
+      return false;
+    }
+  }
+  // Max and min can be lowered if both operands are >= 0.
+  if (expr.GetType() == SymbolicExprType::kMax ||
+      expr.GetType() == SymbolicExprType::kMin) {
+    if (!range_evaluator.IsAlwaysPositiveOrZero(expr.GetLHS()) ||
+        !range_evaluator.IsAlwaysPositiveOrZero(expr.GetRHS())) {
+      return false;
+    }
+  }
+  return true;
+}
+
 struct ExpressionEvaluator {
-  ExpressionEvaluator(ImplicitLocOpBuilder& builder, ValueRange operands)
-      : builder(builder), operands(operands) {
+  // If `range_evaluator` is null, all mod, div, min and max operations are
+  // lowered to unsigned arith ops. The caller must ensure that this is correct,
+  // e.g. by checking `IsLoweringSupported`. Otherwise, signed arith ops are
+  // emitted for the operations whose unsigned lowering is not provably correct.
+  ExpressionEvaluator(ImplicitLocOpBuilder& builder, ValueRange operands,
+                      RangeEvaluator* range_evaluator = nullptr)
+      : builder(builder), operands(operands), range_evaluator(range_evaluator) {
     for (int i = 0; i < operands.size(); ++i) {
       variable_distances.push_back(Distance(builder, operands[i]));
     }
@@ -124,6 +159,7 @@ struct ExpressionEvaluator {
 
   ImplicitLocOpBuilder& builder;
   ValueRange operands;
+  RangeEvaluator* range_evaluator;
   SmallVector<int> variable_distances;
 };
 
@@ -154,26 +190,56 @@ Value ExpressionEvaluator::EvaluateAddMul(SymbolicExpr expr) {
 }
 
 Value ExpressionEvaluator::EvaluateExpression(SymbolicExpr expr) {
+  bool use_signed = range_evaluator != nullptr &&
+                    !IsUnsignedLoweringSupported(expr, *range_evaluator);
   switch (expr.GetType()) {
     case SymbolicExprType::kAdd:
       return EvaluateAddMul<arith::AddIOp>(expr);
     case SymbolicExprType::kMul:
       return EvaluateAddMul<arith::MulIOp>(expr);
-    case SymbolicExprType::kMod:
-      return builder.create<arith::RemUIOp>(EvaluateExpression(expr.GetLHS()),
-                                            EvaluateExpression(expr.GetRHS()));
-    case SymbolicExprType::kFloorDiv:
-      return builder.create<arith::DivUIOp>(EvaluateExpression(expr.GetLHS()),
-                                            EvaluateExpression(expr.GetRHS()));
-    case SymbolicExprType::kCeilDiv:
-      return builder.create<arith::CeilDivUIOp>(
-          EvaluateExpression(expr.GetLHS()), EvaluateExpression(expr.GetRHS()));
-    case SymbolicExprType::kMax:
-      return builder.create<arith::MaxUIOp>(EvaluateExpression(expr.GetLHS()),
-                                            EvaluateExpression(expr.GetRHS()));
-    case SymbolicExprType::kMin:
-      return builder.create<arith::MinUIOp>(EvaluateExpression(expr.GetLHS()),
-                                            EvaluateExpression(expr.GetRHS()));
+    case SymbolicExprType::kMod: {
+      Value lhs = EvaluateExpression(expr.GetLHS());
+      Value rhs = EvaluateExpression(expr.GetRHS());
+      if (!use_signed) {
+        return builder.create<arith::RemUIOp>(lhs, rhs);
+      }
+      // SymbolicExpr uses floor semantics: lhs mod rhs has the sign of rhs.
+      Value quotient = builder.create<arith::FloorDivSIOp>(lhs, rhs);
+      return builder.create<arith::SubIOp>(
+          lhs, builder.create<arith::MulIOp>(quotient, rhs));
+    }
+    case SymbolicExprType::kFloorDiv: {
+      Value lhs = EvaluateExpression(expr.GetLHS());
+      Value rhs = EvaluateExpression(expr.GetRHS());
+      if (use_signed) {
+        return builder.create<arith::FloorDivSIOp>(lhs, rhs);
+      }
+      return builder.create<arith::DivUIOp>(lhs, rhs);
+    }
+    case SymbolicExprType::kCeilDiv: {
+      Value lhs = EvaluateExpression(expr.GetLHS());
+      Value rhs = EvaluateExpression(expr.GetRHS());
+      if (use_signed) {
+        return builder.create<arith::CeilDivSIOp>(lhs, rhs);
+      }
+      return builder.create<arith::CeilDivUIOp>(lhs, rhs);
+    }
+    case SymbolicExprType::kMax: {
+      Value lhs = EvaluateExpression(expr.GetLHS());
+      Value rhs = EvaluateExpression(expr.GetRHS());
+      if (use_signed) {
+        return builder.create<arith::MaxSIOp>(lhs, rhs);
+      }
+      return builder.create<arith::MaxUIOp>(lhs, rhs);
+    }
+    case SymbolicExprType::kMin: {
+      Value lhs = EvaluateExpression(expr.GetLHS());
+      Value rhs = EvaluateExpression(expr.GetRHS());
+      if (use_signed) {
+        return builder.create<arith::MinSIOp>(lhs, rhs);
+      }
+      return builder.create<arith::MinUIOp>(lhs, rhs);
+    }
     case SymbolicExprType::kConstant:
       return builder.create<arith::ConstantIndexOp>(expr.GetValue());
     case SymbolicExprType::kVariable:
@@ -183,32 +249,14 @@ Value ExpressionEvaluator::EvaluateExpression(SymbolicExpr expr) {
   }
 }
 
+// Returns true if all operations in `expr` can be lowered to unsigned arith
+// ops.
 bool IsLoweringSupported(SymbolicExpr expr, RangeEvaluator& range_evaluator) {
   if (!expr.IsBinaryOp()) {
     return true;
   }
-  // Mod and div can be lowered if their LHS is >= 0 and their RHS is a
-  // constant positive number.
-  if (expr.GetType() == SymbolicExprType::kMod ||
-      expr.GetType() == SymbolicExprType::kFloorDiv ||
-      expr.GetType() == SymbolicExprType::kCeilDiv) {
-    if (!range_evaluator.IsAlwaysPositiveOrZero(expr.GetLHS())) {
-      return false;
-    }
-    auto rhs_range = range_evaluator.ComputeExpressionRange(expr.GetRHS());
-    if (!rhs_range.IsPoint() || rhs_range.lower <= 0) {
-      return false;
-    }
-  }
-  // Max and min can be lowered if both operands are >= 0.
-  if (expr.GetType() == SymbolicExprType::kMax ||
-      expr.GetType() == SymbolicExprType::kMin) {
-    if (!range_evaluator.IsAlwaysPositiveOrZero(expr.GetLHS()) ||
-        !range_evaluator.IsAlwaysPositiveOrZero(expr.GetRHS())) {
-      return false;
-    }
-  }
-  return IsLoweringSupported(expr.GetLHS(), range_evaluator) &&
+  return IsUnsignedLoweringSupported(expr, range_evaluator) &&
+         IsLoweringSupported(expr.GetLHS(), range_evaluator) &&
          IsLoweringSupported(expr.GetRHS(), range_evaluator);
 }
 
@@ -275,23 +323,27 @@ struct RewriteApplyIndexingOp : OpRewritePattern<ApplyIndexingOp> {
     results.reserve(symbolic_map.GetNumResults());
     for (unsigned i = 0; i < symbolic_map.GetNumResults(); ++i) {
       SymbolicExpr result_expr = symbolic_map.GetResult(i);
-      // If the expression cannot be lowered, we convert it to affine.apply,
-      // since it supports more expression types.
       if (IsLoweringSupported(result_expr, range_evaluator)) {
         results.push_back(
             ExpressionEvaluator(b, operands).EvaluateExpression(result_expr));
-      } else {
-        // TODO: b/446856305 - Create a SymbolicApplyOp. For now, we convert the
-        // SymbolicMap back to AffineMap and fall back to AffineApplyOp.
-        AffineMap sub_map = SymbolicMapToAffineMap(symbolic_map.GetSubMap({i}));
-        if (!sub_map) {
-          return rewriter.notifyMatchFailure(op,
-                                             "cannot fallback to affine.apply");
-        }
+        continue;
+      }
+      // If the expression cannot be lowered to unsigned ops, we convert it to
+      // affine.apply, since it supports more expression types.
+      // TODO: b/446856305 - Create a SymbolicApplyOp. For now, we convert the
+      // SymbolicMap back to AffineMap and fall back to AffineApplyOp.
+      if (AffineMap sub_map =
+              SymbolicMapToAffineMap(symbolic_map.GetSubMap({i}))) {
         results.push_back(b.create<AffineApplyOp>(
             sub_map, operands.take_front(symbolic_map.GetNumDims() +
                                          symbolic_map.GetNumSymbols())));
+        continue;
       }
+      // affine.apply does not support min and max. Lower the expression to
+      // arith ops, using signed ops wherever unsigned ones are not provably
+      // correct.
+      results.push_back(ExpressionEvaluator(b, operands, &range_evaluator)
+                            .EvaluateExpression(result_expr));
     }
     rewriter.replaceOp(op, results);
     return mlir::success();

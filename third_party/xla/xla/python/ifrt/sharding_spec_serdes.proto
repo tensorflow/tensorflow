@@ -17,7 +17,6 @@ syntax = "proto3";
 
 package xla.ifrt;
 
-import "xla/python/ifrt/ir/sharding_param.proto";
 import "xla/python/ifrt/shape.proto";
 
 option java_multiple_files = true;
@@ -55,11 +54,4 @@ message ConcreteEvenShardingSpecProto {
   ShapeProto shape = 3;
   ShapeProto shard_shape = 4;
   bool is_fully_replicated = 5;
-}
-
-// Proto equivalent of C++ `ShardingParamShardingSpec`.
-message ShardingParamShardingSpecProto {
-  int32 version_number = 1;
-
-  ShardingParamProto sharding_param = 2;
 }

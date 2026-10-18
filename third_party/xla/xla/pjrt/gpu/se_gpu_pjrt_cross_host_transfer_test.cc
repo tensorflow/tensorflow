@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <atomic>
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <tuple>
@@ -21,18 +23,23 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/base/casts.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/notification.h"
+#include "absl/time/time.h"
 #include "xla/future.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client_test_helper.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
+#include "xla/pjrt/se/local_device_state.h"
+#include "xla/pjrt/se/pjrt_stream_executor_client.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/literal_test_util.h"
@@ -544,6 +551,137 @@ TEST(StreamExecutorGpuClientTest, CrossHostTransferRelayEcho) {
   ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> result_literal,
                        d0_recv_buffers[kNumPairs - 1][0]->ToLiteral().Await());
   EXPECT_TRUE(LiteralTestUtil::Equal(input_literal, *result_literal));
+}
+
+TEST(StreamExecutorGpuClientTest,
+     CrossHostReceiveWaitsForComputeStreamAllocationSyncPoint) {
+  GpuClientOptions options = GetTestGpuClientOptions(2);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> pjrt_client,
+                       GetStreamExecutorGpuClient(options));
+  ASSERT_GE(pjrt_client->devices().size(), 2);
+
+  PjRtDevice* const src_device = pjrt_client->addressable_devices()[0];
+  PjRtDevice* const dst_device = pjrt_client->addressable_devices()[1];
+
+  auto* common_client = absl::down_cast<CommonPjRtClient*>(pjrt_client.get());
+  auto* raw_client = absl::down_cast<PjRtStreamExecutorRawClient*>(
+      common_client->raw_client());
+  ASSERT_OK_AND_ASSIGN(
+      LocalDeviceState* const dst_local_device_state,
+      raw_client->GetLocalDeviceState(dst_device->local_device_id()));
+  ASSERT_EQ(dst_local_device_state->allocation_model(),
+            LocalDeviceState::kComputeSynchronized);
+
+  Literal input_literal =
+      LiteralUtil::CreateR1<float>({1.0f, 2.0f, 3.0f, 4.0f});
+  ASSERT_OK_AND_ASSIGN(PjRtMemorySpace* const src_memory_space,
+                       src_device->default_memory_space());
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> src_buffer,
+      pjrt_client->BufferFromHostLiteral(input_literal, src_memory_space));
+
+  // Block dst_device's compute stream to simulate an in-flight kernel whose
+  // freed buffer is reused by MakeCrossHostReceiveBuffers.
+  absl::Notification compute_callback_started;
+  absl::Notification unblock_compute_stream;
+  std::atomic<bool> compute_stream_finished = false;
+  ASSERT_OK(dst_local_device_state->compute_stream()->DoHostCallback([&]() {
+    compute_callback_started.Notify();
+    unblock_compute_stream.WaitForNotification();
+    compute_stream_finished.store(true);
+  }));
+  compute_callback_started.WaitForNotification();
+
+  const size_t sync_point =
+      dst_local_device_state->GetNextComputeStreamSyncPoint();
+  auto [desc_promise, desc_future] = MakePromise<std::string>();
+  auto desc_promise_ptr =
+      std::make_shared<Promise<std::string>>(std::move(desc_promise));
+  absl::Notification notifier_called;
+  std::atomic<bool> compute_finished_before_notifier = false;
+
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<std::unique_ptr<PjRtBuffer>> recv_buffers,
+      pjrt_client->MakeCrossHostReceiveBuffers(
+          {input_literal.shape()}, dst_device,
+          [&, desc_promise_ptr](
+              absl::StatusOr<PjRtCrossHostRecvState> descriptors) {
+            CHECK_OK(descriptors);
+            CHECK_EQ(descriptors->descriptors.size(), 1);
+            compute_finished_before_notifier.store(
+                compute_stream_finished.load());
+            desc_promise_ptr->Set(
+                descriptors->descriptors[0].serialized_descriptors[0]);
+            notifier_called.Notify();
+          }));
+  ASSERT_EQ(recv_buffers.size(), 1);
+
+  // The allocation sync point event is recorded synchronously when
+  // MakeCrossHostReceiveBuffers is scheduled, and the notifier must not fire
+  // while prior work on dst_device's compute stream is still in flight.
+  EXPECT_EQ(dst_local_device_state->GetNextComputeStreamSyncPoint(),
+            sync_point + 1);
+  EXPECT_FALSE(
+      notifier_called.WaitForNotificationWithTimeout(absl::Milliseconds(50)));
+
+  src_buffer->CopyToRemoteDevice(desc_future,
+                                 [](absl::Status s, bool dispatched) {
+                                   ASSERT_TRUE(dispatched);
+                                   ASSERT_OK(s);
+                                 });
+
+  unblock_compute_stream.Notify();
+  notifier_called.WaitForNotification();
+  EXPECT_TRUE(compute_finished_before_notifier.load());
+
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> recv_literal,
+                       recv_buffers[0]->ToLiteral().Await());
+  EXPECT_TRUE(LiteralTestUtil::Equal(input_literal, *recv_literal));
+}
+
+TEST(StreamExecutorGpuClientTest, CrossHostTransferWithoutPreallocate) {
+  GpuClientOptions options = GetTestGpuClientOptions(2);
+  options.allocator_config.preallocate = false;
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetStreamExecutorGpuClient(options));
+  ASSERT_GE(client->devices().size(), 2);
+
+  PjRtDevice* const src_device = client->addressable_devices()[0];
+  PjRtDevice* const dst_device = client->addressable_devices()[1];
+
+  Literal input_literal =
+      LiteralUtil::CreateR1<float>({1.0f, 2.0f, 3.0f, 4.0f});
+  ASSERT_OK_AND_ASSIGN(PjRtMemorySpace* const src_memory_space,
+                       src_device->default_memory_space());
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> src_buffer,
+      client->BufferFromHostLiteral(input_literal, src_memory_space));
+
+  auto [desc_promise, desc_future] = MakePromise<std::string>();
+  auto desc_promise_ptr =
+      std::make_shared<Promise<std::string>>(std::move(desc_promise));
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<std::unique_ptr<PjRtBuffer>> recv_buffers,
+      client->MakeCrossHostReceiveBuffers(
+          {input_literal.shape()}, dst_device,
+          [desc_promise_ptr](
+              absl::StatusOr<PjRtCrossHostRecvState> descriptors) {
+            CHECK_OK(descriptors);
+            CHECK_EQ(descriptors->descriptors.size(), 1);
+            desc_promise_ptr->Set(
+                descriptors->descriptors[0].serialized_descriptors[0]);
+          }));
+  ASSERT_EQ(recv_buffers.size(), 1);
+
+  src_buffer->CopyToRemoteDevice(desc_future,
+                                 [](absl::Status s, bool dispatched) {
+                                   ASSERT_TRUE(dispatched);
+                                   ASSERT_OK(s);
+                                 });
+
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> recv_literal,
+                       recv_buffers[0]->ToLiteral().Await());
+  EXPECT_TRUE(LiteralTestUtil::Equal(input_literal, *recv_literal));
 }
 
 }  // namespace

@@ -156,54 +156,54 @@ bool ParseOptions(const char* const* options_keys,
                   const char* const* options_values, size_t num_options,
                   TfLiteGpuDelegateOptionsV2* options) {
   for (size_t i = 0; i < num_options; ++i) {
-    if (strcmp(options_keys[i], "is_precision_loss_allowed")) {
+    if (strcmp(options_keys[i], "is_precision_loss_allowed") == 0) {
       if (!absl::SimpleAtoi(options_values[i],
                             &options->is_precision_loss_allowed)) {
         TFLITE_LOG(TFLITE_LOG_WARNING, "ParseOptions: malformed option %s.",
                    options_keys[i]);
         return false;
       }
-    } else if (strcmp(options_keys[i], "inference_preference")) {
+    } else if (strcmp(options_keys[i], "inference_preference") == 0) {
       if (!absl::SimpleAtoi(options_values[i],
                             &options->inference_preference)) {
         TFLITE_LOG(TFLITE_LOG_WARNING, "ParseOptions: malformed option %s.",
                    options_keys[i]);
         return false;
       }
-    } else if (strcmp(options_keys[i], "inference_priority1")) {
+    } else if (strcmp(options_keys[i], "inference_priority1") == 0) {
       if (!absl::SimpleAtoi(options_values[i], &options->inference_priority1)) {
         TFLITE_LOG(TFLITE_LOG_WARNING, "ParseOptions: malformed option %s.",
                    options_keys[i]);
         return false;
       }
-    } else if (strcmp(options_keys[i], "inference_priority2")) {
+    } else if (strcmp(options_keys[i], "inference_priority2") == 0) {
       if (!absl::SimpleAtoi(options_values[i], &options->inference_priority2)) {
         TFLITE_LOG(TFLITE_LOG_WARNING, "ParseOptions: malformed option %s.",
                    options_keys[i]);
         return false;
       }
-    } else if (strcmp(options_keys[i], "inference_priority3")) {
+    } else if (strcmp(options_keys[i], "inference_priority3") == 0) {
       if (!absl::SimpleAtoi(options_values[i], &options->inference_priority3)) {
         TFLITE_LOG(TFLITE_LOG_WARNING, "ParseOptions: malformed option %s.",
                    options_keys[i]);
         return false;
       }
-    } else if (strcmp(options_keys[i], "experimental_flags")) {
+    } else if (strcmp(options_keys[i], "experimental_flags") == 0) {
       if (!absl::SimpleAtoi(options_values[i], &options->experimental_flags)) {
         TFLITE_LOG(TFLITE_LOG_WARNING, "ParseOptions: malformed option %s.",
                    options_keys[i]);
         return false;
       }
-    } else if (strcmp(options_keys[i], "max_delegated_partitions")) {
+    } else if (strcmp(options_keys[i], "max_delegated_partitions") == 0) {
       if (!absl::SimpleAtoi(options_values[i],
                             &options->max_delegated_partitions)) {
         TFLITE_LOG(TFLITE_LOG_WARNING, "ParseOptions: malformed option %s.",
                    options_keys[i]);
         return false;
       }
-    } else if (strcmp(options_keys[i], "serialization_dir")) {
+    } else if (strcmp(options_keys[i], "serialization_dir") == 0) {
       options->serialization_dir = options_values[i];
-    } else if (strcmp(options_keys[i], "model_token")) {
+    } else if (strcmp(options_keys[i], "model_token") == 0) {
       options->model_token = options_values[i];
     } else {
       TFLITE_LOG(TFLITE_LOG_WARNING, "ParseOptions: unknown option %s.",
@@ -1597,6 +1597,7 @@ TfLiteDelegate* TfLiteGpuDelegateV2CreateAsync(
 #endif  // defined(__ANDROID__)
 
 void TfLiteGpuDelegateV2Delete(TfLiteDelegate* delegate) {
+  if (delegate == nullptr) return;
   delete tflite::gpu::GetDelegate(delegate);
 }
 

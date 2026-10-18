@@ -23,8 +23,7 @@ END
   attr {
     name: "container"
     description: <<END
-The name of `container` should start with `'.'` or `letter` or `digit`,
-with ['-', '.', '/'] or `letter` or `digit` follows several times.
+A non-empty `container` name must start with `'.'`, a letter, or a digit, and may contain only `'-'`, `'.'`, `'/'`, letters, and digits.
 END
   }
   summary: <<END

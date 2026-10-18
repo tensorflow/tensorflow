@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tsl/profiler/lib/connected_traceme.h"
 #include "tsl/profiler/lib/context_types.h"
+#include "tsl/profiler/lib/traceme.h"
 #include "tfrt/concurrency/chain.h"  // from @tf_runtime
 #include "tfrt/host_context/resource_context.h"  // from @tf_runtime
 
@@ -345,13 +346,14 @@ void MlrtBatchResource::ProcessFuncBatchImpl(
   fallback_request_state.set_runtime_config(
       caller_fallback_request_state.runtime_config());
 
+  const uint64_t batch_activity_id = tsl::profiler::TraceMe::NewActivityId();
   tsl::profiler::TraceMeProducer activity(
       // To TraceMeConsumers in WorkQueue.
       [step_id] {
         return tsl::profiler::TraceMeEncode("RunMlrtFunction",
                                             {{"id", step_id}, {"_r", 1}});
       },
-      tsl::profiler::ContextType::kTfrtExecutor, step_id,
+      tsl::profiler::ContextType::kTfrtExecutor, batch_activity_id,
       tsl::profiler::TraceMeLevel::kInfo);
   auto trace_me_context_id = activity.GetContextId();
 

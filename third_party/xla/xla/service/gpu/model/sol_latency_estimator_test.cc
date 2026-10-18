@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status_macros.h"
+#include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -892,6 +893,19 @@ TEST_F(IsSolLatencyEstimatorEnabledTest, EnabledBySolEstimatorFlagOnGfx950) {
       SolLatencyEstimator::IsSupportedForModule(*module, gpu_device_info_));
 }
 
+TEST_F(IsSolLatencyEstimatorEnabledTest, EnabledBySolEstimatorFlagOnGfx942) {
+  HloModuleConfig config;
+  config.mutable_debug_options()
+      .set_xla_gpu_enable_analytical_sol_latency_estimator(true);
+  gpu_device_info_.set_rocm_compute_capability("gfx942");
+
+  auto module = CreateTestModule(config);
+  AddAllReduce(module.get());
+
+  EXPECT_TRUE(
+      SolLatencyEstimator::IsSupportedForModule(*module, gpu_device_info_));
+}
+
 TEST_F(IsSolLatencyEstimatorEnabledTest, DisabledIfFlagIsOffOnGfx950) {
   HloModuleConfig config;
   config.mutable_debug_options()
@@ -912,11 +926,9 @@ TEST_F(IsSolLatencyEstimatorEnabledTest, DisabledForUnsupportedRocmArch) {
   auto module = CreateTestModule(config);
   AddAllReduce(module.get());
 
-  for (absl::string_view architecture : {"gfx942", "gfx90a"}) {
-    gpu_device_info_.set_rocm_compute_capability(std::string(architecture));
-    EXPECT_FALSE(
-        SolLatencyEstimator::IsSupportedForModule(*module, gpu_device_info_));
-  }
+  gpu_device_info_.set_rocm_compute_capability("gfx90a");
+  EXPECT_FALSE(
+      SolLatencyEstimator::IsSupportedForModule(*module, gpu_device_info_));
 }
 
 TEST_F(IsSolLatencyEstimatorEnabledTest,
@@ -969,8 +981,56 @@ TEST_F(IsSolLatencyEstimatorEnabledTest, CreatesEstimatorWithGfx950Profiles) {
     }
   )";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
-  gpu_device_info_ = TestGpuDeviceInfo::AMDMI210DeviceInfo();
-  gpu_device_info_.set_rocm_compute_capability("gfx950");
+  gpu_device_info_ = TestGpuDeviceInfo::AMDMI350DeviceInfo();
+
+  SchedulerConfig scheduler_config;
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<SolLatencyEstimator> estimator,
+      SolLatencyEstimator::Create(
+          scheduler_config, std::make_unique<DummyLatencyEstimator>(),
+          gpu_device_info_, HloCostAnalysis::DefaultShapeSize,
+          module->entry_computation()));
+
+  HloInstruction* dot =
+      module->entry_computation()->GetInstructionWithName("dot");
+  HloInstruction* all_reduce_start =
+      module->entry_computation()->GetInstructionWithName("ar-start");
+  HloInstruction* all_reduce_done =
+      module->entry_computation()->GetInstructionWithName("ar-done");
+  ASSERT_NE(dot, nullptr);
+  ASSERT_NE(all_reduce_start, nullptr);
+  ASSERT_NE(all_reduce_done, nullptr);
+  EXPECT_GT(estimator->NodeCost(dot), 0);
+  EXPECT_GT(estimator->GetLatencyBetween(
+                HloGraphNode(all_reduce_start, /*original_position=*/-1),
+                HloGraphNode(all_reduce_done, /*original_position=*/-1)),
+            0);
+}
+
+TEST_F(IsSolLatencyEstimatorEnabledTest, CreatesEstimatorWithGfx942Profiles) {
+  constexpr absl::string_view kHlo = R"(
+    HloModule m, num_partitions=8
+
+    add {
+      x = f32[] parameter(0)
+      y = f32[] parameter(1)
+      ROOT sum = f32[] add(x, y)
+    }
+
+    ENTRY main {
+      lhs = f32[256,256] parameter(0)
+      rhs = f32[256,256] parameter(1)
+      dot = f32[256,256] dot(lhs, rhs),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      p = f32[256] parameter(2)
+      ar-start = f32[256] all-reduce-start(p), to_apply=add,
+        replica_groups=[1,8]<=[8], channel_id=1, use_global_device_ids=true
+      ar-done = f32[256] all-reduce-done(ar-start)
+      ROOT result = (f32[256,256], f32[256]) tuple(dot, ar-done)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  gpu_device_info_ = TestGpuDeviceInfo::AMDMI300DeviceInfo();
 
   SchedulerConfig scheduler_config;
   ASSERT_OK_AND_ASSIGN(
@@ -999,14 +1059,18 @@ TEST_F(IsSolLatencyEstimatorEnabledTest, CreatesEstimatorWithGfx950Profiles) {
 // ---- Triton collective scheduler integration tests -----------------------
 //
 // These tests verify that SolLatencyEstimator correctly uses the NVLink-based
-// cost formula when an AllReduceStart is annotated with a Triton kernel
-// strategy, and that the sync case is correctly handled by NodeCost.
+// cost formula when an async-start wraps a __triton_collective custom fusion,
+// and that both async and sync cases are handled properly by NodeCost and
+// GetLatencyBetween.
 
 class TritonAllReduceSchedulerTest : public HloHardwareIndependentTestBase {
  protected:
   // 32768 F32 elements = 128 KB → one-shot strategy (< 256 KB threshold).
   // All 8 replicas in a single group → SINGLE_PARTITION communication type.
-  static constexpr absl::string_view kOneShotAllReduceHlo = R"(
+  // Mirrors the HLO produced by CollectivesScheduleLinearizer /
+  // FuseSupportedCollectives: async-start calls an async computation whose root
+  // is a kCustom fusion with kind="__triton_collective".
+  static constexpr absl::string_view kOneShotTritonAllReduceHlo = R"(
 HloModule m, num_partitions=8
 
 add {
@@ -1015,12 +1079,49 @@ add {
   ROOT r = f32[] add(p0, p1)
 }
 
-ENTRY e {
-  p = f32[32768] parameter(0)
-  ar-start = f32[32768] all-reduce-start(p),
+triton_collective_computation {
+  param_0 = f32[32768] parameter(0)
+  ROOT all-reduce = f32[32768] all-reduce(param_0),
       replica_groups={{0,1,2,3,4,5,6,7}},
       to_apply=add
-  ROOT ar-done = f32[32768] all-reduce-done(ar-start)
+}
+
+async_computation {
+  param_0 = f32[32768] parameter(0)
+  ROOT custom-fusion = f32[32768] fusion(param_0),
+      kind=kCustom, calls=triton_collective_computation,
+      backend_config={"fusion_backend_config":{"kind":"__triton_collective"}}
+}
+
+ENTRY e {
+  p = f32[32768] parameter(0)
+  ar-start = ((f32[32768]), f32[32768]) async-start(p),
+      calls=async_computation
+  ROOT ar-done = f32[32768] async-done(ar-start)
+})";
+
+  // Same 128 KB all-reduce without Triton fusion (NCCL path).
+  static constexpr absl::string_view kOneShotNcclAllReduceHlo = R"(
+HloModule m, num_partitions=8
+
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT r = f32[] add(p0, p1)
+}
+
+async_computation {
+  param_0 = f32[32768] parameter(0)
+  ROOT all-reduce = f32[32768] all-reduce(param_0),
+      replica_groups={{0,1,2,3,4,5,6,7}},
+      to_apply=add
+}
+
+ENTRY e {
+  p = f32[32768] parameter(0)
+  ar-start = ((f32[32768]), f32[32768]) async-start(p),
+      calls=async_computation
+  ROOT ar-done = f32[32768] async-done(ar-start)
 })";
 
   TritonAllReduceSchedulerTest() {
@@ -1044,15 +1145,6 @@ ENTRY e {
         /*nvlink_bw_per_lane_gbps=*/20.0,
         /*nvlink_barrier_latency=*/absl::Microseconds(1.5),
     };
-  }
-
-  // Annotates `instr` with the given Triton kernel strategy.
-  static void SetKernelStrategy(
-      HloInstruction* instr,
-      CollectiveBackendConfig::CollectiveKernelStrategy strategy) {
-    GpuBackendConfig cfg = instr->backend_config<GpuBackendConfig>().value();
-    cfg.mutable_collective_backend_config()->set_kernel_strategy(strategy);
-    CHECK_OK(instr->set_backend_config(cfg));
   }
 
   // Marks `instr` as synchronous (runs on compute stream, no async overlap).
@@ -1080,30 +1172,40 @@ ENTRY e {
         static_cast<int64_t>(estimator->NodeCost(&instr)));
   }
 
+  // Creates a SolLatencyEstimator and calls GetLatencyBetween.
+  absl::Duration GetLatencyBetween(const HloInstruction& from,
+                                   const HloInstruction& target,
+                                   const HloComputation* computation) {
+    auto estimator = *SolLatencyEstimator::Create(
+        scheduler_config_, std::make_unique<DummyLatencyEstimator>(),
+        gpu_device_info_, HloCostAnalysis::DefaultShapeSize, computation);
+    return absl::Microseconds(static_cast<int64_t>(estimator->GetLatencyBetween(
+        HloGraphNode(&from, /*original_position=*/-1),
+        HloGraphNode(&target, /*original_position=*/-1))));
+  }
+
   se::DeviceDescription gpu_device_info_;
   SolGPUCostModel::Config sol_flags_;
   SchedulerConfig scheduler_config_;
 };
 
 // Test 1: async Triton ONE_SHOT AllReduce.
-// With the KERNEL_STRATEGY_TRITON_ONE_SHOT annotation and 18 NVLink
-// links at 20 GB/s, ComputeCollectiveTime must return the NVLink formula
-// result:
+// When async-start wraps a __triton_collective custom fusion and the device has
+// 18 NVLink links at 20 GB/s, ComputeCollectiveTime and GetLatencyBetween must
+// return the NVLink formula result:
 //   transfer = 7 × 128 KB / (18 × 20 GB/s) ≈ 2.5 µs
 //   total ≈ launch(1µs) + 2.5µs + barrier(1.5µs) ≈ 5 µs
-// This must be different from the NCCL ring estimate (which uses nic_speed_gbps
-// and has a much larger RTT term).
+// This must be different from the NCCL estimate on an unfused all-reduce.
 TEST_F(TritonAllReduceSchedulerTest, AsyncTritonOneShotUsesNvlinkFormula) {
-  ASSERT_OK_AND_ASSIGN(auto module,
-                       ParseAndReturnVerifiedModule(kOneShotAllReduceHlo));
+  ASSERT_OK_AND_ASSIGN(auto triton_module, ParseAndReturnVerifiedModule(
+                                               kOneShotTritonAllReduceHlo));
 
-  HloInstruction* ar_start = hlo_query::FindInstruction(
-      module->entry_computation(), HloOpcode::kAllReduceStart);
-  ASSERT_NE(ar_start, nullptr);
-
-  // Annotate with Triton one-shot strategy (async: is_sync is false by default)
-  SetKernelStrategy(ar_start,
-                    CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_ONE_SHOT);
+  HloInstruction* triton_start = hlo_query::FindInstruction(
+      triton_module->entry_computation(), HloOpcode::kAsyncStart);
+  HloInstruction* triton_done = hlo_query::FindInstruction(
+      triton_module->entry_computation(), HloOpcode::kAsyncDone);
+  ASSERT_NE(triton_start, nullptr);
+  ASSERT_NE(triton_done, nullptr);
 
   // A real interpolator is passed so the NCCL fallback path doesn't crash.
   // If the Triton dispatch fires correctly, the interpolator is not called.
@@ -1113,99 +1215,124 @@ TEST_F(TritonAllReduceSchedulerTest, AsyncTritonOneShotUsesNvlinkFormula) {
   ASSERT_OK_AND_ASSIGN(
       absl::Duration triton_time,
       SolLatencyEstimator::ComputeCollectiveTime(
-          *ar_start, gpu_device_info_, HloCostAnalysis::DefaultShapeSize,
+          *triton_start, gpu_device_info_, HloCostAnalysis::DefaultShapeSize,
           sol_flags_, interpolator.get()));
   triton_time = absl::Trunc(triton_time, absl::Microseconds(1));
 
-  // The NVLink formula gives ~5 µs.
+  // The NVLink formula gives ~5 µs, and async-done has 0 collective time.
   EXPECT_EQ(triton_time, absl::Microseconds(5));
+  ASSERT_OK_AND_ASSIGN(absl::Duration done_time,
+                       ComputeCollectiveTime(*triton_done));
+  EXPECT_EQ(done_time, absl::ZeroDuration());
 
-  // Verify this is different from the NCCL ring estimate: remove annotation.
-  SetKernelStrategy(ar_start, CollectiveBackendConfig::KERNEL_STRATEGY_DEFAULT);
+  // For async Triton AllReduce, GetLatencyBetween(start, done) also returns the
+  // NVLink collective time (~5 µs).
+  EXPECT_EQ(GetLatencyBetween(*triton_start, *triton_done,
+                              triton_module->entry_computation()),
+            absl::Microseconds(5));
+
+  // Verify this is different from the NCCL estimate on an unfused all-reduce.
+  ASSERT_OK_AND_ASSIGN(auto nccl_module,
+                       ParseAndReturnVerifiedModule(kOneShotNcclAllReduceHlo));
+  HloInstruction* nccl_start = hlo_query::FindInstruction(
+      nccl_module->entry_computation(), HloOpcode::kAsyncStart);
+  ASSERT_NE(nccl_start, nullptr);
   ASSERT_OK_AND_ASSIGN(
       absl::Duration nccl_time,
       SolLatencyEstimator::ComputeCollectiveTime(
-          *ar_start, gpu_device_info_, HloCostAnalysis::DefaultShapeSize,
+          *nccl_start, gpu_device_info_, HloCostAnalysis::DefaultShapeSize,
           sol_flags_, interpolator.get()));
-  // NCCL ring with nic=100 GB/s and rtt=100 µs gives a much larger value.
   EXPECT_NE(absl::Trunc(nccl_time, absl::Microseconds(1)), triton_time);
 }
 
-// Test 2: sync Triton ONE_SHOT AllReduce - NodeCost must NOT return kLowCost.
-// When is_sync=true and kernel_strategy=TRITON_ONE_SHOT, NodeCost() must
-// delegate to ComputeCollectiveTime so the latency is on the critical path.
-// We verify this by calling ComputeCollectiveTime directly (which uses our
-// NVLink flags) and checking it returns > kLowCost (1.0 µs).
-TEST_F(TritonAllReduceSchedulerTest,
-       SyncTritonOneShotComputeCollectiveTimeExceedsLowCost) {
-  ASSERT_OK_AND_ASSIGN(auto module,
-                       ParseAndReturnVerifiedModule(kOneShotAllReduceHlo));
+// Test 2: async Triton AllReduce start and done have kLowCost = 1.0 µs NodeCost
+// because their latency is modelled on the edge via GetLatencyBetween.
+TEST_F(TritonAllReduceSchedulerTest, AsyncTritonAllReduceNodeCostIsLow) {
+  ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kOneShotTritonAllReduceHlo));
 
   HloInstruction* ar_start = hlo_query::FindInstruction(
-      module->entry_computation(), HloOpcode::kAllReduceStart);
+      module->entry_computation(), HloOpcode::kAsyncStart);
+  HloInstruction* ar_done = hlo_query::FindInstruction(
+      module->entry_computation(), HloOpcode::kAsyncDone);
+  ASSERT_NE(ar_start, nullptr);
+  ASSERT_NE(ar_done, nullptr);
+
+  EXPECT_EQ(NodeCost(*ar_start, module->entry_computation()),
+            absl::Microseconds(1));
+  EXPECT_EQ(NodeCost(*ar_done, module->entry_computation()),
+            absl::Microseconds(1));
+}
+
+// Test 3: sync Triton ONE_SHOT AllReduce - ComputeCollectiveTime returns ~5 µs.
+TEST_F(TritonAllReduceSchedulerTest,
+       SyncTritonOneShotComputeCollectiveTimeExceedsLowCost) {
+  ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kOneShotTritonAllReduceHlo));
+
+  HloInstruction* ar_start = hlo_query::FindInstruction(
+      module->entry_computation(), HloOpcode::kAsyncStart);
   ASSERT_NE(ar_start, nullptr);
 
-  // Mark as synchronous Triton one-shot.
   SetSync(ar_start);
-  SetKernelStrategy(ar_start,
-                    CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_ONE_SHOT);
 
   ASSERT_OK_AND_ASSIGN(absl::Duration cost, ComputeCollectiveTime(*ar_start));
 
   // The NVLink formula must return significantly more than kLowCost = 1.0 µs.
-  // We expect ~5 µs.  Any value > 2 µs confirms we are not returning kLowCost.
+  // We expect ~5 µs. Any value > 2 µs confirms we are not returning kLowCost.
   EXPECT_GT(cost, absl::Microseconds(2));
   EXPECT_EQ(absl::Trunc(cost, absl::Microseconds(1)), absl::Microseconds(5));
 }
 
-// Test 3: sync Triton ONE_SHOT AllReduce exercises the actual NodeCost
-// branching logic end-to-end via SolLatencyEstimator::Create.
+// Test 4: sync Triton ONE_SHOT AllReduce exercises NodeCost and
+// GetLatencyBetween end-to-end via SolLatencyEstimator::Create.
 // SolLatencyEstimator::Create derives sol_flags from GetConfig(module,
 // device_info), which calls GetIciBandwidthPerLaneGbps on the device.
 // For RTXA6000 with SM9.0 (Hopper) and 18 active NVLink links:
 //   nvlink_bw_per_lane_gbps = kSm90NvlinkBandwidth = 20.0 GB/s
 //   nvlink_barrier_latency  = 1.5 µs  (kUnknownKey table entry)
-// → NodeCost returns ~5 µs via ComputeCollectiveTime, confirming that the
-//   IsGPUSyncCollective + TRITON_ONE_SHOT branch in NodeCost fires correctly
-//   with production-derived (not test-injected) sol_flags.
+// → NodeCost(ar-start) returns ~5 µs on the critical path, while
+//   GetLatencyBetween(ar-start, ar-done) returns kLowLatency = 1 µs to avoid
+//   double-counting.
 TEST_F(TritonAllReduceSchedulerTest,
        SyncTritonOneShotNodeCostExceedsLowCostEndToEnd) {
-  ASSERT_OK_AND_ASSIGN(auto module,
-                       ParseAndReturnVerifiedModule(kOneShotAllReduceHlo));
+  ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kOneShotTritonAllReduceHlo));
 
   HloInstruction* ar_start = hlo_query::FindInstruction(
-      module->entry_computation(), HloOpcode::kAllReduceStart);
+      module->entry_computation(), HloOpcode::kAsyncStart);
+  HloInstruction* ar_done = hlo_query::FindInstruction(
+      module->entry_computation(), HloOpcode::kAsyncDone);
   ASSERT_NE(ar_start, nullptr);
+  ASSERT_NE(ar_done, nullptr);
 
   SetSync(ar_start);
-  SetKernelStrategy(ar_start,
-                    CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_ONE_SHOT);
 
-  // NodeCost() internally calls SolLatencyEstimator::Create which reads
-  // sol_flags from GetConfig(module, device_info).  For SM9.0 + 18 links
-  // the derived config gives nvlink_bw=20.0 GB/s and barrier=1.5 µs, so
-  // the Triton one-shot formula produces ~5 µs — well above kLowCost=1 µs.
   absl::Duration node_cost = NodeCost(*ar_start, module->entry_computation());
 
   // The Triton one-shot formula: launch(1µs) + 7×128KB/(18×20GB/s) + 1.5µs
-  // ≈ 5 µs.  Verify the NodeCost branch fires (> kLowCost) and matches.
+  // ≈ 5 µs. Verify the NodeCost branch fires (> kLowCost) and matches.
   EXPECT_GT(node_cost, absl::Microseconds(1))
       << "NodeCost for sync Triton AllReduce should exceed kLowCost=1µs; "
-         "verify that the TRITON_ONE_SHOT branch in NodeCost fired";
+         "verify that the sync Triton collective fusion branch in NodeCost "
+         "fired";
   EXPECT_EQ(node_cost, absl::Microseconds(5));
+  EXPECT_EQ(NodeCost(*ar_done, module->entry_computation()),
+            absl::Microseconds(1));
+  EXPECT_EQ(GetLatencyBetween(*ar_start, *ar_done, module->entry_computation()),
+            absl::Microseconds(1));
 }
 
-// Test 4: without the annotation (NCCL path), async AllReduceStart NodeCost
+// Test 5: without Triton fusion (NCCL path), async AllReduceStart NodeCost
 // returns SolLatencyEstimator::kLowCost = 1.0 (latency is hidden, not on
 // critical path).
 TEST_F(TritonAllReduceSchedulerTest, AsyncNcclAllReduceNodeCostIsLow) {
   ASSERT_OK_AND_ASSIGN(auto module,
-                       ParseAndReturnVerifiedModule(kOneShotAllReduceHlo));
+                       ParseAndReturnVerifiedModule(kOneShotNcclAllReduceHlo));
 
   HloInstruction* ar_start = hlo_query::FindInstruction(
-      module->entry_computation(), HloOpcode::kAllReduceStart);
+      module->entry_computation(), HloOpcode::kAsyncStart);
   ASSERT_NE(ar_start, nullptr);
-  // No annotation: is_sync=false (default), kernel_strategy=DEFAULT (default).
 
   absl::Duration node_cost = NodeCost(*ar_start, module->entry_computation());
 

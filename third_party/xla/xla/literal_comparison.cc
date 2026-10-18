@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "Eigen/Core"
 #include "xla/error_spec.h"
@@ -256,62 +257,15 @@ inline double RoundUpTo1SigFig(double val) {
   return std::ceil(val / factor - 1e-9) * factor;
 }
 
-// Helper class for comparing floating-point literals within an error bound.
-template <typename NativeT>
-class NearComparator {
- public:
-  // Compares the two array literals elementwise and returns a comparison
-  // result. The comparison is ok() if all actual and expected elements are
-  // within the given error bound. In case of error, the status contains a
-  // detailed message about the discrepancy.
-  static absl::Status Compare(const LiteralSlice& expected,
-                              const LiteralSlice& actual,
-                              const ShapeIndex& shape_index, ErrorSpec error,
-                              bool detailed_message,
-                              const MiscompareCallback& miscompare_callback) {
-    NearComparator<NativeT> comparator(expected, actual, shape_index, error,
-                                       detailed_message, miscompare_callback);
-    return comparator.Run();
-  }
-
- private:
-  // Data structure encapsulating metadata about a single element mismatch.
-  struct Mismatch {
-    NativeT actual;
-    NativeT expected;
-    double rel_error;
-    double abs_error;
-
-    // The linear index of the failure within the shape. This linear index is
-    // from the 'actual' literal.
-    int64_t linear_index;
-
-    int float_distance = -1;
-
-    bool operator<(const Mismatch& other) const {
-      return rel_error < other.rel_error;
-    }
-
-    std::string ToString(const Shape& shape) const {
-      auto s = absl::StrFormat(
-          "actual %s, expected %s, index %s, rel error %8.3g, abs error "
-          "%8.3g",
-          FpValueToString(actual), FpValueToString(expected),
-          LiteralUtil::MultiIndexAsString(
-              IndexUtil::LinearIndexToMultidimensionalIndex(shape,
-                                                            linear_index)),
-          rel_error, abs_error);
-      if (float_distance >= 0) {
-        StrAppendFormat(&s, ", float distance %d", float_distance);
-      }
-      return s;
-    }
-  };
-
-  NearComparator(const LiteralSlice& expected, const LiteralSlice& actual,
-                 const ShapeIndex& shape_index, ErrorSpec error,
-                 bool detailed_message,
-                 const MiscompareCallback& miscompare_callback)
+// Base class for NearComparator<NativeT> factored out to avoid duplicating
+// type-independent state, setup, and error formatting across all 17
+// floating-point and complex primitive type instantiations.
+class NearComparatorBase {
+ protected:
+  NearComparatorBase(const LiteralSlice& expected, const LiteralSlice& actual,
+                     const ShapeIndex& shape_index, ErrorSpec error,
+                     bool detailed_message,
+                     const MiscompareCallback& miscompare_callback)
       : expected_(expected),
         actual_(actual),
         shape_index_(shape_index),
@@ -323,8 +277,8 @@ class NearComparator {
         rel_error_buckets_(kErrorBucketBounds.size(), 0),
         candidates_({error}) {}
 
-  // Runs the comparison between expected and actual literals.
-  absl::Status Run() {
+  // Validates the input shapes and initializes mismatches_ before comparing.
+  absl::Status Prepare() {
     // If the shapes mismatch, we simply fail the expectation instead of
     // printing out data, as it's a type error rather than a value error.
     ABSL_RETURN_IF_ERROR(EqualShapes(expected_.shape(), actual_.shape()));
@@ -335,22 +289,24 @@ class NearComparator {
 
     mismatches_ = Literal(ShapeUtil::ChangeElementType(actual_.shape(), PRED));
     mismatches_.PopulateWithValue(false);
+    return absl::OkStatus();
+  }
 
-    CompareLiterals();
-
-    if (num_mismatches_ == 0) {
-      return absl::OkStatus();
-    } else if (!VLOG_IS_ON(1) && miscompare_callback_ != nullptr) {
+  // Invokes the miscompare callback (if any) and returns the formatted error
+  // status when mismatches are present.
+  absl::Status Finalize(absl::string_view top_mismatches) {
+    if (!VLOG_IS_ON(1) && miscompare_callback_ != nullptr) {
       miscompare_callback_(
           expected_, actual_, mismatches_, shape_index_,
           ErrorBuckets(abs_error_buckets_, rel_error_buckets_));
     }
-    return InvalidArgument("%s", ErrorMessage());
+    return InvalidArgument("%s", ErrorMessage(top_mismatches));
   }
 
   // Insert the given absolute value into the absolute value bucket vector. The
   // bounds of the buckets are given by kAbsValueBucketBounds.
-  void UpdateAbsValueBucket(NativeT value, bool is_mismatch) {
+  template <typename T>
+  void UpdateAbsValueBucket(T value, bool is_mismatch) {
     // Adjust the bucket containing the absolute values of the 'actual'
     // elements.
     const double abs_value = FpAbsoluteValue(value);
@@ -451,6 +407,218 @@ class NearComparator {
           }
         },
         error_.low_precision_fp_error_spec.type);
+  }
+
+  // Returns an error message string with a detailed breakdown of the
+  // mismatches. Called after calling Run().
+  std::string ErrorMessage(absl::string_view top_mismatches) {
+    std::string out;
+    int64_t element_count = ShapeUtil::ElementsIn(actual_.shape());
+
+    auto percent_string = [](double a, double b) {
+      double pct = b == 0.0 ? 0.0 : 100.0 * a / b;
+      return absl::StrFormat("%0.4f%%", pct);
+    };
+
+    StrAppendFormat(
+        &out,
+        "\nMismatch count %d (%s) in shape %s (%d elements), abs bound "
+        "%g, rel bound %g\n",
+        num_mismatches_, percent_string(num_mismatches_, element_count),
+        ShapeUtil::HumanString(actual_.shape()),
+        ShapeUtil::ElementsIn(actual_.shape()), error_.abs, error_.rel);
+    if (num_nan_mismatches_ > 0) {
+      StrAppend(&out, "nan mismatches ", num_nan_mismatches_, "\n");
+    }
+    StrAppendFormat(&out, "Top relative error mismatches:\n");
+    StrAppend(&out, top_mismatches);
+
+    if (!detailed_message_) {
+      return out;
+    }
+
+    StrAppend(&out, "Absolute magnitude breakdown of actual values:\n");
+    CHECK_EQ(abs_value_buckets_.size() + 1, kAbsValueBucketBounds.size());
+    for (int i = 0; i < abs_value_buckets_.size(); ++i) {
+      const int64_t bucket_size = abs_value_buckets_[i].first;
+      const int64_t bucket_mismatches = abs_value_buckets_[i].second;
+      std::string mismatch_str =
+          bucket_mismatches > 0
+              ? absl::StrFormat(", mismatches %d", bucket_mismatches)
+              : "";
+      StrAppendFormat(&out, "  %-6g <= x < %-6g : %7d (%9s)%s\n",
+                      kAbsValueBucketBounds[i], kAbsValueBucketBounds[i + 1],
+                      bucket_size, percent_string(bucket_size, element_count),
+                      mismatch_str);
+    }
+
+    auto print_accum_buckets = [&](const std::string& header, int64_t total,
+                                   absl::Span<const int64_t> buckets) {
+      StrAppend(&out, header, ":\n");
+      StrAppendFormat(&out, "  <  %-6g : %7d (%s)\n", kErrorBucketBounds[0],
+                      total - buckets[0],
+                      percent_string(total - buckets[0], total));
+      CHECK_EQ(buckets.size(), kErrorBucketBounds.size());
+      for (int i = 0; i < kErrorBucketBounds.size(); ++i) {
+        StrAppendFormat(&out, "  >= %-6g : %7d (%s)\n", kErrorBucketBounds[i],
+                        buckets[i], percent_string(buckets[i], total));
+      }
+    };
+    StrAppendFormat(&out, "Elements exceeding abs error bound %g: %d (%s)\n",
+                    error_.abs, num_abs_mismatches_,
+                    percent_string(num_abs_mismatches_, element_count));
+    print_accum_buckets(
+        "Relative error breakdown of elements exceeding abs error bound",
+        num_abs_mismatches_, rel_error_buckets_);
+    StrAppendFormat(&out, "Elements exceeding rel error bound %g: %d (%s)\n",
+                    error_.rel, num_rel_mismatches_,
+                    percent_string(num_rel_mismatches_, element_count));
+    print_accum_buckets(
+        "Absolute error breakdown of elements exceeding rel error bound",
+        num_rel_mismatches_, abs_error_buckets_);
+
+    if (num_mismatches_ > 0) {
+      StrAppendFormat(&out, "\nCurrent ErrorSpec: ErrorSpec{%g, %g}\n",
+                      error_.abs, error_.rel);
+      StrAppend(&out,
+                "Suggested ErrorSpec adjustments to make this test pass:\n");
+
+      std::vector<ErrorSpec> rounded_candidates;
+      for (const auto& c : candidates_) {
+        InsertCandidate(
+            ErrorSpec(RoundUpTo1SigFig(c.abs), RoundUpTo1SigFig(c.rel)),
+            rounded_candidates);
+      }
+
+      for (size_t i = 0; i < rounded_candidates.size(); ++i) {
+        StrAppendFormat(&out, "  Option %d: ErrorSpec{%g, %g}\n", i + 1,
+                        rounded_candidates[i].abs, rounded_candidates[i].rel);
+      }
+    }
+
+    return out;
+  }
+
+  // 'actual' and 'expected' literals being compared.
+  LiteralSlice expected_;
+  LiteralSlice actual_;
+
+  // The shape index of the LiteralSlice that is being compared.
+  ShapeIndex shape_index_;
+
+  // The error bounds of the comparison.
+  ErrorSpec error_;
+
+  // Whether to include detailed breakdown of mismatches in the error message.
+  bool detailed_message_;
+
+  // Callback to invoke on miscompare.
+  MiscompareCallback miscompare_callback_;
+
+  // Number of element mismatches encountered so far.
+  int64_t num_mismatches_ = 0;
+
+  // Number of elements with a nan mismatch.
+  int64_t num_nan_mismatches_ = 0;
+
+  // Number of elements which exceed the absolute/relative error bound.
+  int64_t num_abs_mismatches_ = 0;
+  int64_t num_rel_mismatches_ = 0;
+
+  // A Literal containing which elements did not match in the expected and
+  // actual literals. mismatches_ contains PREDs and is of the same sizes as
+  // the comparison literals.
+  Literal mismatches_;
+
+  // The number of mismatches to report in the output, sorted by relative error
+  // magnitude.
+  static constexpr int64_t kTopRelativeErrorCount = 5;
+
+  // Actual values are bucketed by absolute value. kAbsValueBucketBounds is the
+  // bounds of these buckets. abs_value_buckets_ contains a pair for each
+  // bucket: the element count and failure count.
+  static constexpr std::array<double, 7> kAbsValueBucketBounds = {
+      0.0, 0.0001, 0.001, 0.01, 0.1, 1, std::numeric_limits<double>::infinity(),
+  };
+  std::vector<std::pair<int64_t, int64_t>> abs_value_buckets_;
+
+  // Buckets for relative and absolute errors. The relative error buckets only
+  // contains those elements which exceed the *absolute* error bound, and vice
+  // versa. This makes it easy to see the effect of adjusting the relative (or
+  // absolute) error bound on the success of the comparison. kErrorBucketBounds
+  // are the lower bounds of the buckets in both vectors. The error buckets are
+  // a cumulative distribution so an error value may appear in more than one
+  // bucket. For example an error value of 0.003 may appear in the buckets
+  // bounded by 0.01, 0.1, and 1.0.
+  static constexpr std::array<double, 5> kErrorBucketBounds = {0.0001, 0.001,
+                                                               0.01, 0.1, 1};
+  std::vector<int64_t> abs_error_buckets_;
+  std::vector<int64_t> rel_error_buckets_;
+  std::vector<ErrorSpec> candidates_;
+};
+
+// Helper class for comparing floating-point literals within an error bound.
+template <typename NativeT>
+class NearComparator : private NearComparatorBase {
+ public:
+  // Compares the two array literals elementwise and returns a comparison
+  // result. The comparison is ok() if all actual and expected elements are
+  // within the given error bound. In case of error, the status contains a
+  // detailed message about the discrepancy.
+  static absl::Status Compare(const LiteralSlice& expected,
+                              const LiteralSlice& actual,
+                              const ShapeIndex& shape_index, ErrorSpec error,
+                              bool detailed_message,
+                              const MiscompareCallback& miscompare_callback) {
+    NearComparator<NativeT> comparator(expected, actual, shape_index, error,
+                                       detailed_message, miscompare_callback);
+    return comparator.Run();
+  }
+
+ private:
+  // Data structure encapsulating metadata about a single element mismatch.
+  struct Mismatch {
+    NativeT actual;
+    NativeT expected;
+    double rel_error;
+    double abs_error;
+
+    // The linear index of the failure within the shape. This linear index is
+    // from the 'actual' literal.
+    int64_t linear_index;
+
+    int float_distance = -1;
+
+    bool operator<(const Mismatch& other) const {
+      return rel_error < other.rel_error;
+    }
+
+    std::string ToString(const Shape& shape) const {
+      auto s = absl::StrFormat(
+          "actual %s, expected %s, index %s, rel error %8.3g, abs error "
+          "%8.3g",
+          FpValueToString(actual), FpValueToString(expected),
+          LiteralUtil::MultiIndexAsString(
+              IndexUtil::LinearIndexToMultidimensionalIndex(shape,
+                                                            linear_index)),
+          rel_error, abs_error);
+      if (float_distance >= 0) {
+        StrAppendFormat(&s, ", float distance %d", float_distance);
+      }
+      return s;
+    }
+  };
+
+  using NearComparatorBase::NearComparatorBase;
+
+  // Runs the comparison between expected and actual literals.
+  absl::Status Run() {
+    ABSL_RETURN_IF_ERROR(Prepare());
+    CompareLiterals();
+    if (num_mismatches_ == 0) {
+      return absl::OkStatus();
+    }
+    return Finalize(FormatTopMismatches());
   }
 
   // Compares the two given elements from the expected and actual literals at
@@ -632,159 +800,18 @@ class NearComparator {
     }
   }
 
-  // Returns an error message string with a detailed breakdown of the
-  // mismatches. Called after calling Run().
-  std::string ErrorMessage() {
+  std::string FormatTopMismatches() const {
     std::string out;
-    int64_t element_count = ShapeUtil::ElementsIn(actual_.shape());
-
-    auto percent_string = [](double a, double b) {
-      double pct = b == 0.0 ? 0.0 : 100.0 * a / b;
-      return absl::StrFormat("%0.4f%%", pct);
-    };
-
-    StrAppendFormat(
-        &out,
-        "\nMismatch count %d (%s) in shape %s (%d elements), abs bound "
-        "%g, rel bound %g\n",
-        num_mismatches_, percent_string(num_mismatches_, element_count),
-        ShapeUtil::HumanString(actual_.shape()),
-        ShapeUtil::ElementsIn(actual_.shape()), error_.abs, error_.rel);
-    if (num_nan_mismatches_ > 0) {
-      StrAppend(&out, "nan mismatches ", num_nan_mismatches_, "\n");
-    }
-    StrAppendFormat(&out, "Top relative error mismatches:\n");
     for (auto it = top_rel_mismatches_.rbegin();
          it != top_rel_mismatches_.rend(); ++it) {
       StrAppend(&out, "  ", it->ToString(actual_.shape()), "\n");
     }
-
-    if (!detailed_message_) {
-      return out;
-    }
-
-    StrAppend(&out, "Absolute magnitude breakdown of actual values:\n");
-    CHECK_EQ(abs_value_buckets_.size() + 1, kAbsValueBucketBounds.size());
-    for (int i = 0; i < abs_value_buckets_.size(); ++i) {
-      const int64_t bucket_size = abs_value_buckets_[i].first;
-      const int64_t bucket_mismatches = abs_value_buckets_[i].second;
-      std::string mismatch_str =
-          bucket_mismatches > 0
-              ? absl::StrFormat(", mismatches %d", bucket_mismatches)
-              : "";
-      StrAppendFormat(&out, "  %-6g <= x < %-6g : %7d (%9s)%s\n",
-                      kAbsValueBucketBounds[i], kAbsValueBucketBounds[i + 1],
-                      bucket_size, percent_string(bucket_size, element_count),
-                      mismatch_str);
-    }
-
-    auto print_accum_buckets = [&](const std::string& header, int64_t total,
-                                   absl::Span<const int64_t> buckets) {
-      StrAppend(&out, header, ":\n");
-      StrAppendFormat(&out, "  <  %-6g : %7d (%s)\n", kErrorBucketBounds[0],
-                      total - buckets[0],
-                      percent_string(total - buckets[0], total));
-      CHECK_EQ(buckets.size(), kErrorBucketBounds.size());
-      for (int i = 0; i < kErrorBucketBounds.size(); ++i) {
-        StrAppendFormat(&out, "  >= %-6g : %7d (%s)\n", kErrorBucketBounds[i],
-                        buckets[i], percent_string(buckets[i], total));
-      }
-    };
-    StrAppendFormat(&out, "Elements exceeding abs error bound %g: %d (%s)\n",
-                    error_.abs, num_abs_mismatches_,
-                    percent_string(num_abs_mismatches_, element_count));
-    print_accum_buckets(
-        "Relative error breakdown of elements exceeding abs error bound",
-        num_abs_mismatches_, rel_error_buckets_);
-    StrAppendFormat(&out, "Elements exceeding rel error bound %g: %d (%s)\n",
-                    error_.rel, num_rel_mismatches_,
-                    percent_string(num_rel_mismatches_, element_count));
-    print_accum_buckets(
-        "Absolute error breakdown of elements exceeding rel error bound",
-        num_rel_mismatches_, abs_error_buckets_);
-
-    if (num_mismatches_ > 0) {
-      StrAppendFormat(&out, "\nCurrent ErrorSpec: ErrorSpec{%g, %g}\n",
-                      error_.abs, error_.rel);
-      StrAppend(&out,
-                "Suggested ErrorSpec adjustments to make this test pass:\n");
-
-      std::vector<ErrorSpec> rounded_candidates;
-      for (const auto& c : candidates_) {
-        InsertCandidate(
-            ErrorSpec(RoundUpTo1SigFig(c.abs), RoundUpTo1SigFig(c.rel)),
-            rounded_candidates);
-      }
-
-      for (size_t i = 0; i < rounded_candidates.size(); ++i) {
-        StrAppendFormat(&out, "  Option %d: ErrorSpec{%g, %g}\n", i + 1,
-                        rounded_candidates[i].abs, rounded_candidates[i].rel);
-      }
-    }
-
     return out;
   }
-
-  // 'actual' and 'expected' literals being compared.
-  LiteralSlice expected_;
-  LiteralSlice actual_;
-
-  // The shape index of the LiteralSlice that is being compared.
-  ShapeIndex shape_index_;
-
-  // The error bounds of the comparison.
-  ErrorSpec error_;
-
-  // Whether to include detailed breakdown of mismatches in the error message.
-  bool detailed_message_;
-
-  // Callback to invoke on miscompare.
-  MiscompareCallback miscompare_callback_;
-
-  // Number of element mismatches encountered so far.
-  int64_t num_mismatches_ = 0;
-
-  // Number of elements with a nan mismatch.
-  int64_t num_nan_mismatches_ = 0;
-
-  // Number of elements which exceed the absolute/relative error bound.
-  int64_t num_abs_mismatches_ = 0;
-  int64_t num_rel_mismatches_ = 0;
-
-  // A Literal containing which elements did not match in the expected and
-  // actual literals. mismatches_ contains PREDs and is of the same sizes as
-  // the comparison literals.
-  Literal mismatches_;
-
-  // The number of mismatches to report in the output, sorted by relative error
-  // magnitude.
-  static constexpr int64_t kTopRelativeErrorCount = 5;
 
   // The set of mismatches with the largest relative error. The size of this set
   // is bounded by kTopRelativeErrorCount.
   std::multiset<Mismatch> top_rel_mismatches_;
-
-  // Actual values are bucketed by absolute value. kAbsValueBucketBounds is the
-  // bounds of these buckets. abs_value_buckets_ contains a pair for each
-  // bucket: the element count and failure count.
-  static constexpr std::array<double, 7> kAbsValueBucketBounds = {
-      0.0, 0.0001, 0.001, 0.01, 0.1, 1, std::numeric_limits<double>::infinity(),
-  };
-  std::vector<std::pair<int64_t, int64_t>> abs_value_buckets_;
-
-  // Buckets for relative and absolute errors. The relative error buckets only
-  // contains those elements which exceed the *absolute* error bound, and vice
-  // versa. This makes it easy to see the effect of adjusting the relative (or
-  // absolute) error bound on the success of the comparison. kErrorBucketBounds
-  // are the lower bounds of the buckets in both vectors. The error buckets are
-  // a cumulative distribution so an error value may appear in more than one
-  // bucket. For example an error value of 0.003 may appear in the buckets
-  // bounded by 0.01, 0.1, and 1.0.
-  static constexpr std::array<double, 5> kErrorBucketBounds = {0.0001, 0.001,
-                                                               0.01, 0.1, 1};
-  std::vector<int64_t> abs_error_buckets_;
-  std::vector<int64_t> rel_error_buckets_;
-  std::vector<ErrorSpec> candidates_;
 };
 
 absl::Status EqualHelper(const LiteralSlice& expected,

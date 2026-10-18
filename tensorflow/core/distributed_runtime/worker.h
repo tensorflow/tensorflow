@@ -43,7 +43,7 @@ class WorkerSession;
 class Worker : public WorkerInterface {
  public:
   Worker(WorkerEnv* env);
-  virtual ~Worker() {}
+  ~Worker() override {}
 
   void GetStatusAsync(CallOptions* opts, const GetStatusRequest* request,
                       GetStatusResponse* response, bool fail_fast,

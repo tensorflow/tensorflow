@@ -209,6 +209,8 @@ passthrough_stateful_ops = set([
     "VarHandleOp",
     "VariableShape",
     "ReadVariableOp",
+    "ResourceGather",
+    "ResourceGatherNd",
     "StackV2",
     "TensorArrayWriteV3",
     "TensorArrayReadV3",
@@ -2581,13 +2583,20 @@ def _convert_ones_like(pfor_input: _PforInput):
 
 @RegisterPFor("Gather")
 @RegisterPFor("GatherV2")
+@RegisterPFor("ResourceGather")
 def _convert_gather(pfor_input: _PforInput):
   param, param_stacked, _ = pfor_input.input(0)
+  op_type = pfor_input.op_type
+  if op_type == "ResourceGather":
+    # Resource handles are expected to be loop-invariant.
+    assert not param_stacked
+    param = resource_variable_ops.read_variable_op(
+        param, dtype=pfor_input.get_attr("dtype")
+    )
   indices, indices_stacked, _ = pfor_input.input(1)
   batch_dims = pfor_input.get_attr("batch_dims")
 
-  op_type = pfor_input.op_type
-  if op_type == "Gather":
+  if op_type in ("Gather", "ResourceGather"):
     validate_indices = pfor_input.get_attr("validate_indices")
     axis = 0
   else:
@@ -2625,8 +2634,12 @@ def _convert_gather(pfor_input: _PforInput):
       indices = array_ops.transpose(indices, order)
 
     output = array_ops.gather(
-        param, indices, validate_indices=validate_indices, axis=axis,
-        batch_dims=batch_dims)
+        param,
+        indices,
+        validate_indices=validate_indices,
+        axis=axis,
+        batch_dims=batch_dims,
+    )
     if axis != 0:
       axis = smart_cond.smart_cond(axis < 0,
                                    lambda: axis + array_ops.rank(param),
@@ -2640,16 +2653,18 @@ def _convert_gather(pfor_input: _PforInput):
           math_ops.equal(axis, 0), lambda: output,
           lambda: array_ops.transpose(output, order))
     return wrap(output, True)
-  if param_stacked:
-    pfor_input.stack_inputs(stack_indices=[1])
-    indices = pfor_input.stacked_input(1)
-    if isinstance(axis, tensor_lib.Tensor):
-      axis = array_ops.where(axis >= 0, axis + 1, axis)
-    else:
-      axis = axis + 1 if axis >= 0 else axis
-    batch_dims = batch_dims + 1 if batch_dims >= 0 else batch_dims
-    output = array_ops.gather(param, indices, axis=axis, batch_dims=batch_dims)
-    return wrap(output, True)
+  # At least one input must be stacked for the converter to be invoked. Since
+  # the unstacked param case was handled above, param must be stacked here.
+  assert param_stacked
+  pfor_input.stack_inputs(stack_indices=[1])
+  indices = pfor_input.stacked_input(1)
+  if isinstance(axis, tensor_lib.Tensor):
+    axis = array_ops.where(axis >= 0, axis + 1, axis)
+  else:
+    axis = axis + 1 if axis >= 0 else axis
+  batch_dims = batch_dims + 1 if batch_dims >= 0 else batch_dims
+  output = array_ops.gather(param, indices, axis=axis, batch_dims=batch_dims)
+  return wrap(output, True)
 
 
 @RegisterPFor("GatherNd")
@@ -2660,6 +2675,16 @@ def _convert_gather_nd(pfor_input: _PforInput):
   indices = pfor_input.stacked_input(1)
   stacked_result = array_ops.gather_nd(params, indices, batch_dims=1)
   return wrap(stacked_result, True)
+
+
+@RegisterPFor("ResourceGatherNd")
+def _convert_resource_gather_nd(pfor_input: _PforInput):
+  # Resource handles are expected to be loop-invariant.
+  resource = pfor_input.unstacked_input(0)
+  indices = pfor_input.stacked_input(1)
+  dtype = pfor_input.get_attr("dtype")
+  params = resource_variable_ops.read_variable_op(resource, dtype=dtype)
+  return wrap(array_ops.gather_nd(params, indices), True)
 
 
 @RegisterPFor("ConcatV2")

@@ -31,7 +31,7 @@ absl::StatusOr<bool> AddOriginalValue::RunImpl(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
 
-  for (const auto computation : module->computations()) {
+  for (const auto computation : module->computations(execution_threads)) {
     for (const auto instruction : computation->instructions()) {
       instruction->set_original_value(
           OriginalValue::CreateFromInstruction(instruction));

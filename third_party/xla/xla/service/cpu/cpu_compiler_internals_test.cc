@@ -19,17 +19,26 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/base/nullability.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "llvm/IR/Constants.h"
+#include "llvm/IR/Function.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/Casting.h"
 #include "xla/backends/cpu/codegen/emitters/cpu_fusion_emitter_config.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/cpu/cpu_compiler.h"
@@ -65,12 +74,9 @@ TEST_F(CpuCompilerInternalsTest, DotRootedLoopFusionRoutesToMlirEmitter) {
   )";
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
                        ParseAndReturnVerifiedModule(kDotFusionHlo));
-  if (!options::UseExperimentalLoopFusion(hlo_module->config())) {
-    GTEST_SKIP() << "Test covers the new-fusion-emitter configuration.";
-  }
   const auto* fusion = Cast<HloFusionInstruction>(
       hlo_module->entry_computation()->root_instruction());
-  EXPECT_TRUE(FusionRoutesToMlirEmitter(hlo_module->config(), fusion));
+  EXPECT_TRUE(FusionRoutesToMlirEmitter(fusion));
 }
 
 TEST_F(CpuCompilerInternalsTest, LoopFusionRoutesToMlirEmitter) {
@@ -87,12 +93,9 @@ TEST_F(CpuCompilerInternalsTest, LoopFusionRoutesToMlirEmitter) {
   )";
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
                        ParseAndReturnVerifiedModule(kLoopFusionHlo));
-  if (!options::UseExperimentalLoopFusion(hlo_module->config())) {
-    GTEST_SKIP() << "Test covers the new-fusion-emitter configuration.";
-  }
   const auto* fusion = Cast<HloFusionInstruction>(
       hlo_module->entry_computation()->root_instruction());
-  EXPECT_TRUE(FusionRoutesToMlirEmitter(hlo_module->config(), fusion));
+  EXPECT_TRUE(FusionRoutesToMlirEmitter(fusion));
 }
 
 std::optional<int64_t> GetMetadataInt(llvm::Metadata* absl_nullable value) {
@@ -217,6 +220,85 @@ TEST_F(CpuCompilerInternalsTest, JustOneDylibWithThunks) {
                          << "one dylib is allowed.";
 }
 
+TEST_F(CpuCompilerInternalsTest, IdenticalSmallWhileLoopsShareKernel) {
+  static constexpr absl::string_view kHlo = R"(
+    body {
+      state = (s32[], f32[4]) parameter(0)
+      i = s32[] get-tuple-element(state), index=0
+      x = f32[4] get-tuple-element(state), index=1
+      one = s32[] constant(1)
+      next_i = s32[] add(i, one)
+      c = f32[] constant(2)
+      cb = f32[4] broadcast(c), dimensions={}
+      sum = f32[4] add(x, cb)
+      next_x = f32[4] multiply(sum, cb)
+      ROOT next_state = (s32[], f32[4]) tuple(next_i, next_x)
+    }
+
+    cond {
+      state = (s32[], f32[4]) parameter(0)
+      i = s32[] get-tuple-element(state), index=0
+      limit = s32[] constant(5)
+      ROOT lt = pred[] compare(i, limit), direction=LT
+    }
+
+    ENTRY main {
+      p0 = f32[4] parameter(0)
+      p1 = f32[4] parameter(1)
+      zero = s32[] constant(0)
+      init0 = (s32[], f32[4]) tuple(zero, p0)
+      init1 = (s32[], f32[4]) tuple(zero, p1)
+      while0 = (s32[], f32[4]) while(init0), condition=cond, body=body
+      while1 = (s32[], f32[4]) while(init1), condition=cond, body=body
+      r0 = f32[4] get-tuple-element(while0), index=1
+      r1 = f32[4] get-tuple-element(while1), index=1
+      ROOT r = (f32[4], f32[4]) tuple(r0, r1)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kHlo));
+
+  CpuCompiler compiler;
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> optimized_module,
+      compiler.RunHloPasses(std::move(hlo_module), /*stream_exec=*/nullptr,
+                            /*options=*/{}));
+
+  std::vector<std::string> kernel_suffixes;
+  for (const HloComputation* computation : optimized_module->computations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      if (instruction->opcode() == HloOpcode::kCall &&
+          instruction->get_frontend_attribute("xla_cpu_small_call") == "true") {
+        kernel_suffixes.push_back(absl::StrCat(instruction->name(), "_kernel"));
+      }
+    }
+  }
+  ASSERT_EQ(kernel_suffixes.size(), 2) << optimized_module->ToString();
+
+  absl::Mutex mu;
+  int64_t num_kernels = 0;
+  auto pre_opt_hook = [&](const llvm::Module& llvm_module) {
+    absl::MutexLock lock(mu);
+    for (const llvm::Function& function : llvm_module) {
+      if (function.isDeclaration()) {
+        continue;
+      }
+      for (const std::string& suffix : kernel_suffixes) {
+        if (absl::EndsWith(function.getName(), suffix)) {
+          ++num_kernels;
+        }
+      }
+    }
+  };
+
+  compiler.SetPreOptimizationHook(pre_opt_hook);
+  ASSERT_OK(compiler.RunBackend(std::move(optimized_module),
+                                /*stream_exec=*/nullptr, /*options=*/{}));
+  compiler.RemovePreOptimizationHook();
+
+  EXPECT_EQ(num_kernels, 1);
+}
+
 TEST_F(CpuCompilerInternalsTest, DisablePlatformDependentMathUnified) {
   HloModuleConfig config;
   // Test default: platform dependent math should be enabled.
@@ -243,6 +325,79 @@ TEST_F(CpuCompilerInternalsTest, DisablePlatformDependentMathUnified) {
   config.mutable_debug_options().set_xla_cpu_enable_platform_dependent_math(
       true);
   EXPECT_FALSE(options::DisablePlatformDependentMath(config));
+}
+
+TEST_F(CpuCompilerInternalsTest, WeakOrderSortComparatorNotExpanded) {
+  static constexpr absl::string_view kHlo = R"(
+    compare {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      lhs_val = s32[] parameter(2)
+      rhs_val = s32[] parameter(3)
+      ROOT cmp = pred[] compare(lhs, rhs), direction=LT, order=WEAK
+    }
+
+    ENTRY main {
+      keys = f32[16] parameter(0)
+      vals = s32[16] parameter(1)
+      ROOT sorted = (f32[16], s32[16]) sort(keys, vals), dimensions={0}, to_apply=compare
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kHlo));
+
+  CpuCompiler compiler;
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> optimized_module,
+      compiler.RunHloPasses(std::move(hlo_module), /*stream_exec=*/nullptr,
+                            /*options=*/{}));
+
+  const HloInstruction* sort =
+      FindInstruction(optimized_module.get(), HloOpcode::kSort);
+  ASSERT_NE(sort, nullptr);
+  const HloInstruction* root = sort->to_apply()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kCompare);
+  EXPECT_EQ(root->comparison_order(), ComparisonOrder::kWeak);
+  EXPECT_TRUE(ThunkEmitter::MatchSortDirection(Cast<HloSortInstruction>(sort))
+                  .has_value());
+}
+
+TEST_F(CpuCompilerInternalsTest,
+       WeakOrderSortComparatorExpandedWhenUnsupported) {
+  static constexpr absl::string_view kHlo = R"(
+    compare {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      lhs_v1 = s32[] parameter(2)
+      rhs_v1 = s32[] parameter(3)
+      lhs_v2 = s32[] parameter(4)
+      rhs_v2 = s32[] parameter(5)
+      ROOT cmp = pred[] compare(lhs, rhs), direction=LT, order=WEAK
+    }
+
+    ENTRY main {
+      keys = f32[16] parameter(0)
+      v1 = s32[16] parameter(1)
+      v2 = s32[16] parameter(2)
+      ROOT sorted = (f32[16], s32[16], s32[16]) sort(keys, v1, v2), dimensions={0}, to_apply=compare
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kHlo));
+
+  CpuCompiler compiler;
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> optimized_module,
+      compiler.RunHloPasses(std::move(hlo_module), /*stream_exec=*/nullptr,
+                            /*options=*/{}));
+
+  const HloInstruction* sort =
+      FindInstruction(optimized_module.get(), HloOpcode::kSort);
+  ASSERT_NE(sort, nullptr);
+  const HloInstruction* root = sort->to_apply()->root_instruction();
+  EXPECT_NE(root->opcode(), HloOpcode::kCompare);
+  EXPECT_FALSE(ThunkEmitter::MatchSortDirection(Cast<HloSortInstruction>(sort))
+                   .has_value());
 }
 
 }  // namespace

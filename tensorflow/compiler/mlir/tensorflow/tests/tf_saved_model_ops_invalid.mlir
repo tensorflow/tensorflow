@@ -460,7 +460,7 @@ module attributes {tf_saved_model.semantics} {
 
 module attributes {tf_saved_model.semantics} {
 
-  // expected-error@+1 {{unknown symbol operation}}
+  // expected-error@+2 {{'tf_saved_model.bound_input' attribute must reference a valid symbol, got invalid symbol 'v'}}
   "some_dialect.some_op"() {sym_name = "v"} : () -> ()
   func.func @f(%arg0: tensor<!tf_type.resource<tensor<?xf32>>> {tf_saved_model.bound_input = @v})
     attributes { tf_saved_model.exported_names = ["a"] } {

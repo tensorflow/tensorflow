@@ -26,6 +26,7 @@ limitations under the License.
 
 #include <string.h>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 
@@ -209,6 +210,30 @@ absl::Status ComputeConv2DDimension(const Conv2DParameters& params,
   dimensions->pad_rows_after = pad_rows_after;
   dimensions->pad_cols_before = pad_cols_before;
   dimensions->pad_cols_after = pad_cols_after;
+
+  if (params.padding == Padding::VALID || params.padding == Padding::EXPLICIT) {
+    const int64_t effective_filter_rows =
+        (static_cast<int64_t>(filter_rows) - 1) * dilation_rows + 1;
+    const int64_t effective_filter_cols =
+        (static_cast<int64_t>(filter_cols) - 1) * dilation_cols + 1;
+    // For VALID padding all pads are 0.
+    const int64_t padded_rows = input_rows + pad_rows_before + pad_rows_after;
+    const int64_t padded_cols = input_cols + pad_cols_before + pad_cols_after;
+    const char* padding_name =
+        params.padding == Padding::VALID ? "VALID" : "EXPLICIT";
+    TF_REQUIRES(
+        padded_rows >= effective_filter_rows,
+        absl::InvalidArgumentError(absl::StrCat(
+            "input_rows + padding (", padded_rows,
+            ") must be at least effective_filter_size (", effective_filter_rows,
+            ") for ", padding_name, " padding.")));
+    TF_REQUIRES(
+        padded_cols >= effective_filter_cols,
+        absl::InvalidArgumentError(absl::StrCat(
+            "input_cols + padding (", padded_cols,
+            ") must be at least effective_filter_size (", effective_filter_cols,
+            ") for ", padding_name, " padding.")));
+  }
 
   return absl::OkStatus();
 }

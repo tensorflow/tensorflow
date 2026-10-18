@@ -24,7 +24,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace op = xla::testing::opcode_matchers;
 
@@ -59,9 +58,9 @@ TEST_F(MultiOutputFusionTest, TrivialReusedInput) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
-                          ParseAndReturnVerifiedModule(kTrivialReusedInput));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnVerifiedModule(kTrivialReusedInput));
+  ASSERT_OK_AND_ASSIGN(
       bool changed, CpuMultiOutputFusion(&alias_info_).Run(hlo_module.get()));
   EXPECT_TRUE(changed);
   HloComputation* entry_computation = hlo_module->entry_computation();
@@ -98,9 +97,9 @@ TEST_F(MultiOutputFusionTest, DoesNotFuseInsideScanBody) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
-                          ParseAndReturnVerifiedModule(kHloModule));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(
       bool changed, CpuMultiOutputFusion(&alias_info_).Run(hlo_module.get()));
   EXPECT_FALSE(changed) << hlo_module->ToString();
 
@@ -139,9 +138,9 @@ TEST_F(MultiOutputFusionTest, DoesNotFuseInsideSortComparator) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
-                          ParseAndReturnVerifiedModule(kHloModule));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(
       bool changed, CpuMultiOutputFusion(&alias_info_).Run(hlo_module.get()));
   EXPECT_FALSE(changed) << hlo_module->ToString();
 
@@ -157,6 +156,75 @@ TEST_F(MultiOutputFusionTest, DoesNotFuseInsideSortComparator) {
     EXPECT_NE(instr->opcode(), HloOpcode::kFusion)
         << "Found a kFusion inside a sort comparator: " << instr->ToString();
   }
+}
+
+// Regression test for https://github.com/openxla/xla/issues/47367: merging
+// scatter fusions creates a tuple-rooted fusion that bypasses the dedicated
+// scatter emitter and crashes the loop emitter's indexing analysis.
+TEST_F(MultiOutputFusionTest, DoesNotFuseScatterFusions) {
+  static constexpr absl::string_view kHloModule = R"(
+    HloModule module
+
+    %add_a {
+      %a = f32[] parameter(0)
+      %b = f32[] parameter(1)
+      ROOT %add = f32[] add(%a, %b)
+    }
+
+    %add_b {
+      %a = f32[] parameter(0)
+      %b = f32[] parameter(1)
+      ROOT %add = f32[] add(%a, %b)
+    }
+
+    %scatter_a {
+      %operand = f32[10,5] parameter(0)
+      %indices = s32[24,1] parameter(1)
+      %updates = f32[24,2,3] parameter(2)
+      ROOT %scatter = f32[10,5] scatter(%operand, %indices, %updates),
+        update_window_dims={1,2}, inserted_window_dims={},
+        scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=%add_a
+    }
+
+    %scatter_b {
+      %operand = f32[10,5] parameter(0)
+      %indices = s32[24,1] parameter(1)
+      %updates = f32[24,2,3] parameter(2)
+      ROOT %scatter = f32[10,5] scatter(%operand, %indices, %updates),
+        update_window_dims={1,2}, inserted_window_dims={},
+        scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=%add_b
+    }
+
+    ENTRY %main {
+      %arg0 = f32[10,5] parameter(0)
+      %arg1 = f32[10,5] parameter(1)
+      %indices = s32[24,1] parameter(2)
+      %updates = f32[24,2,3] parameter(3)
+      %scatter0 = f32[10,5] fusion(%arg0, %indices, %updates), kind=kLoop,
+        calls=%scatter_a
+      %scatter1 = f32[10,5] fusion(%arg1, %indices, %updates), kind=kLoop,
+        calls=%scatter_b
+      ROOT %sum = f32[10,5] add(%scatter0, %scatter1)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, CpuMultiOutputFusion(&alias_info_).Run(hlo_module.get()));
+  EXPECT_FALSE(changed) << hlo_module->ToString();
+  int num_scatter_fusions = 0;
+  for (const HloInstruction* instr :
+       hlo_module->entry_computation()->instructions()) {
+    if (instr->opcode() == HloOpcode::kFusion) {
+      EXPECT_NE(instr->fused_expression_root()->opcode(), HloOpcode::kTuple)
+          << "Scatter fusions must not be merged into a multi-output fusion: "
+          << instr->ToString();
+      num_scatter_fusions +=
+          instr->fused_expression_root()->opcode() == HloOpcode::kScatter;
+    }
+  }
+  EXPECT_EQ(num_scatter_fusions, 2);
 }
 
 }  // namespace

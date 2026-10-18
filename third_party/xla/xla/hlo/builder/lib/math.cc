@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -712,10 +713,17 @@ XlaOp Digamma(XlaOp input) {
         y - pi * Cos(pi * reduced_input) / Sin(pi * reduced_input);
     XlaOp real_result = Select(need_to_reflect, reflection, y);
 
-    // Digamma has poles at negative integers and zero; return nan for those.
-    return Select(And(Le(input, zero), Eq(input, Floor(input))),
+    // Digamma has poles at zero and at the negative integers. The two one-sided
+    // limits agree at zero, so return -inf there; at the negative integers they
+    // disagree, so return nan. This matches the eager CPU kernel in
+    // tensorflow/core/kernels/cwise_ops.h.
+    XlaOp is_negative_integer = And(Lt(input, zero), Eq(input, Floor(input)));
+    XlaOp result = Select(
+        Eq(input, zero),
+        FullLike(input, -std::numeric_limits<float>::infinity()), real_result);
+    return Select(is_negative_integer,
                   FullLike(input, std::numeric_limits<float>::quiet_NaN()),
-                  real_result);
+                  result);
   };
 
   auto& b = *input.builder();
@@ -968,7 +976,7 @@ XlaOp Igamma(XlaOp a, XlaOp x) {
   return b.ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     ABSL_ASSIGN_OR_RETURN(auto a_shape, b.GetShape(a));
     ABSL_ASSIGN_OR_RETURN(auto x_shape, b.GetShape(x));
-    if (a_shape != x_shape) {
+    if (!ShapeUtil::Compatible(a_shape, x_shape)) {
       return InvalidArgument(
           "Arguments to Igamma must have equal shapes and types; got %s and %s",
           a_shape.ToString(), x_shape.ToString());
@@ -1022,7 +1030,7 @@ XlaOp IgammaGradA(XlaOp a, XlaOp x) {
   return b.ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     ABSL_ASSIGN_OR_RETURN(auto a_shape, b.GetShape(a));
     ABSL_ASSIGN_OR_RETURN(auto x_shape, b.GetShape(x));
-    if (a_shape != x_shape) {
+    if (!ShapeUtil::Compatible(a_shape, x_shape)) {
       return InvalidArgument(
           "Arguments to IgammaGradA must have equal shapes and types; got %s "
           "and %s",
@@ -1076,7 +1084,7 @@ XlaOp RandomGammaGrad(XlaOp a, XlaOp x) {
   return b.ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     ABSL_ASSIGN_OR_RETURN(auto a_shape, b.GetShape(a));
     ABSL_ASSIGN_OR_RETURN(auto x_shape, b.GetShape(x));
-    if (a_shape != x_shape) {
+    if (!ShapeUtil::Compatible(a_shape, x_shape)) {
       return InvalidArgument(
           "Arguments to RandomGammaGrad must have equal shapes and types; got "
           "%s and %s",
@@ -1101,27 +1109,33 @@ XlaOp RandomGammaGrad(XlaOp a, XlaOp x) {
 XlaOp Igammac(XlaOp a, XlaOp x) {
   auto& b = *a.builder();
   auto doit = [&b](XlaOp a, XlaOp x, PrimitiveType type) -> XlaOp {
-    XlaOp out_of_range = Or(Le(x, ScalarLike(x, 0)), Le(a, ScalarLike(a, 0)));
+    XlaOp is_nan = Or(IsNan(a), IsNan(x));
+    XlaOp x_is_zero = Eq(x, ScalarLike(x, 0));
+    XlaOp x_is_infinity =
+        Eq(x, ScalarLike(x, std::numeric_limits<float>::infinity()));
+    // Same domain as Igamma: x < 0 or a <= 0 is a domain error (NaN), while
+    // x == 0 is a valid boundary where igammac(a, 0) = 1.
+    XlaOp domain_error = Or(Lt(x, ScalarLike(x, 0)), Le(a, ScalarLike(a, 0)));
     XlaOp use_igamma = Or(Lt(x, ScalarLike(x, 1)), Lt(x, a));
     XlaOp ax = a * Log(x) - x - Lgamma(a);
     XlaOp underflow = Lt(ax, -Log(MaxFiniteValue(&b, type)));
-    XlaOp enabled = Not(Or(out_of_range, underflow));
+    XlaOp enabled = Not(Or(Or(Or(x_is_zero, domain_error), underflow), is_nan));
     ax = Exp(ax);
+    const double nan = std::numeric_limits<double>::quiet_NaN();
     XlaOp result =
         Select(use_igamma,
                ScalarLike(a, 1) - IgammaSeries<VALUE>(
                                       ax, x, a, And(enabled, use_igamma), type),
                IgammacContinuedFraction<VALUE>(
                    ax, x, a, And(enabled, Not(use_igamma)), type));
-    XlaOp x_is_infinity =
-        Eq(x, ScalarLike(x, std::numeric_limits<float>::infinity()));
+    result = Select(x_is_zero, FullLike(result, 1), result);
     result = Select(x_is_infinity, ZerosLike(result), result);
-    return Select(out_of_range, FullLike(a, 1), result);
+    return Select(Or(domain_error, is_nan), FullLike(a, nan), result);
   };
   return b.ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     ABSL_ASSIGN_OR_RETURN(auto a_shape, b.GetShape(a));
     ABSL_ASSIGN_OR_RETURN(auto x_shape, b.GetShape(x));
-    if (a_shape != x_shape) {
+    if (!ShapeUtil::Compatible(a_shape, x_shape)) {
       return InvalidArgument(
           "Arguments to Igammac must have equal shapes and types; "
           "got %s and %s",
@@ -1191,7 +1205,7 @@ XlaOp Acos(XlaOp x, const std::optional<ResultAccuracy>& result_accuracy,
   });
 }
 
-// asin(x) = 2 * atan(x / (1 + sqrt(1 - x^2)))
+// asin(x) = atan2(x, sqrt((1 - x) * (1 + x)))
 XlaOp Asin(XlaOp x, const std::optional<ResultAccuracy>& result_accuracy,
            bool expand) {
   if (!expand) {
@@ -1398,51 +1412,9 @@ XlaOp Cosh(XlaOp x, const std::optional<ResultAccuracy>& result_accuracy,
   });
 }
 
-// Sinh(x) = (e^x - e^-x) / 2
-//         = e^(x + log(1/2)) - e^(-x + log(1/2)).
-//
-// The second formulation avoids overflowing when e^x = inf but (e^x)/2 is not
-// inf.
-//
-// This incorrectly overflows to +/-inf for two f32 input values, namely
-// +/-89.4159851, due to rounding error when computing x +/- log(1/2).  The
-// correct answer of 3.40281961e+38 (0x7f7fffec) is very close to max-float, so
-// we deem this acceptable.
-XlaOp Sinh(XlaOp x, const std::optional<ResultAccuracy>& result_accuracy,
-           bool expand) {
-  if (!expand) {
-    return x.builder()->UnaryOp(HloOpcode::kSinh, x, result_accuracy);
-  }
-  XlaBuilder* b = x.builder();
-  auto do_it = [&](XlaOp x) -> absl::StatusOr<XlaOp> {
-    ABSL_ASSIGN_OR_RETURN(auto shape, b->GetShape(x));
-    auto one_half = ScalarLike(x, 0.5);
-    auto log_one_half = Log(ScalarLike(x, 0.5));
-    auto large_sinh_result = Exp(x + log_one_half) - Exp(-x + log_one_half);
-
-    if (primitive_util::IsComplexType(shape.element_type())) {
-      return large_sinh_result;
-    }
-
-    // Here we use e^x = e^(x / 2) * e^(x / 2). This avoids overflow for large
-    // values of x.
-
-    // For smaller x, we get unwanted cancellations of e^x - e^-x, resulting in
-    // 0.
-    // Rewrite this to avoid that. We use expm1(x) because that preserves the
-    // first order term of the taylor series of e^x.
-    // (e^(x) - e^(-x)) / 2. =
-    // (e^(x) - 1 + 1 - e^(-x)) / 2.
-    // (expm1(x) + (e^(x) - 1) / e^x) / 2.
-    // (expm1(x) + expm1(x) / (expm1(x) + 1)) / 2.
-    auto expm1 = Expm1(x);
-    auto one = ScalarLike(x, 1.);
-    auto small_sinh_result = one_half * (expm1 + expm1 / (expm1 + one));
-    return Select(Lt(Abs(x), one), small_sinh_result, large_sinh_result);
-  };
-  return DoWithUpcastToF32(x, {BF16, F16}, [&](XlaOp x) {
-    return b->ReportErrorOrReturn(do_it(x));
-  });
+// Computes the hyperbolic sine of 'x'.
+XlaOp Sinh(XlaOp x, const std::optional<ResultAccuracy>& result_accuracy) {
+  return x.builder()->UnaryOp(HloOpcode::kSinh, x, result_accuracy);
 }
 
 XlaOp MaybeConjugate(XlaOp x, bool conjugate) {
@@ -2051,7 +2023,7 @@ XlaOp Polygamma(XlaOp n, XlaOp x) {
   return builder.ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     ABSL_ASSIGN_OR_RETURN(auto n_shape, builder.GetShape(n));
     ABSL_ASSIGN_OR_RETURN(auto x_shape, builder.GetShape(x));
-    if (n_shape != x_shape) {
+    if (!ShapeUtil::Compatible(n_shape, x_shape)) {
       return InvalidArgument(
           "Arguments to Polygamma must have equal shapes and types; "
           "got %s and %s",
@@ -2114,7 +2086,10 @@ XlaOp Zeta(XlaOp x, XlaOp q) {
     neg_power = Pow(acc, Neg(x));
 
     // Calculating `I`.
-    XlaOp I = neg_power * acc / (x - ScalarLike(acc, 1.));
+    // Compute acc^(1-x) directly rather than as acc^-x * acc: the latter
+    // underflows to 0 for large acc, and is 0 * inf = NaN for acc = inf.
+    XlaOp x_minus_one = x - ScalarLike(acc, 1.);
+    XlaOp I = Pow(acc, Neg(x_minus_one)) / x_minus_one;
 
     // Calculating the rest of the formula – `T`.
     // Use Horner's rule for this.
@@ -2170,7 +2145,7 @@ XlaOp Zeta(XlaOp x, XlaOp q) {
   return builder.ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     ABSL_ASSIGN_OR_RETURN(auto x_shape, builder.GetShape(x));
     ABSL_ASSIGN_OR_RETURN(auto q_shape, builder.GetShape(q));
-    if (x_shape != q_shape) {
+    if (!ShapeUtil::Compatible(x_shape, q_shape)) {
       return InvalidArgument(
           "Arguments to Zeta must have equal shapes and types; got %s and %s",
           x_shape.ToString(), q_shape.ToString());

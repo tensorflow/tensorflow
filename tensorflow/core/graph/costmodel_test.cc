@@ -458,7 +458,7 @@ TEST(CostModel, SuppressInfrequent) {
   auto graph = std::make_unique<Graph>(OpRegistry::Global());
   Node* A = AddNode(*graph, "A", "Mul", 2);
   Node* B = AddNode(*graph, "B", "Mul", 2);
-  Node* C = AddNode(*graph, "B", "Mul", 2);
+  Node* C = AddNode(*graph, "C", "Mul", 2);
   InitModelFromGraph(*graph, cm);
 
   // A and B are frequent, C is not.
@@ -536,7 +536,7 @@ TEST(CostModelTest, MergeFromLocal) {
   EXPECT_EQ(cm_global.TotalBytes(F, 0), cm_local.TotalBytes(F, 0));
   EXPECT_EQ(cm_global.TotalTime(F), cm_local.TotalTime(F));
   // Stats for C are added.
-  EXPECT_EQ(cm_global.TotalCount(C), Microseconds(24));
+  EXPECT_EQ(cm_global.TotalCount(C), 24);
   EXPECT_EQ(cm_global.TotalBytes(C, 0), Bytes(24));
   EXPECT_EQ(cm_global.TotalTime(C), Microseconds(223));
 }
@@ -587,7 +587,7 @@ TEST(CostModelTest, MergeFromGlobal) {
   EXPECT_EQ(cm1.TotalBytes(F, 0), cm2.TotalBytes(F, 0));
   EXPECT_EQ(cm1.TotalTime(F), cm2.TotalTime(F));
   // Stats for C are added.
-  EXPECT_EQ(cm1.TotalCount(C), Microseconds(24));
+  EXPECT_EQ(cm1.TotalCount(C), 24);
   EXPECT_EQ(cm1.TotalBytes(C, 0), Bytes(24));
   EXPECT_EQ(cm1.TotalTime(C), Microseconds(223));
 }

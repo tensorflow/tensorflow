@@ -1040,6 +1040,7 @@ cc_library(
         "//tensorflow/core/platform:types",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -1113,6 +1114,7 @@ cc_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:macros",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -1283,6 +1285,7 @@ tf_cc_test(
     name = "framework_run_handler_test",
     size = "medium",
     srcs = ["run_handler_test.cc"],
+    shard_count = 4,
     deps = [
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:direct_session_internal",

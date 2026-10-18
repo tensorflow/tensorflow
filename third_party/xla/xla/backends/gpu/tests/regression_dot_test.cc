@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/error_spec.h"
 #include "xla/literal_util.h"
@@ -45,11 +46,8 @@ ENTRY main {
   ROOT R = bf16[3072] reduce(prod, zero), dimensions={0}, to_apply=sum
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto fake_arguments,
-      MakeFakeArguments(module.get(), /*pseudo_random=*/true,
-                        /*use_large_range=*/false));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto fake_arguments, MakeFakeArguments(module.get()));
 
   EXPECT_TRUE(RunAndCompare(std::move(module),
                             LiteralUtil::MakePointers(fake_arguments),

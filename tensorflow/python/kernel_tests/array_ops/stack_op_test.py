@@ -14,6 +14,8 @@
 # ==============================================================================
 """Functional tests for Stack and ParallelStack Ops."""
 
+import warnings
+
 import numpy as np
 
 from tensorflow.python import tf2
@@ -70,6 +72,25 @@ class StackOpTest(test.TestCase):
             c = array_ops_stack.stack(xs, axis=axis)
             self.assertAllEqual(c, data)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testPackAtMaxRank(self):
+    value = array_ops.fill(
+        [0] + [1] * 252, constant_op.constant(0.0, dtype=dtypes.float32)
+    )
+    packed = array_ops_stack.stack([value], axis=0)
+    self.assertEqual(254, self.evaluate(array_ops.rank(packed)))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testPackExceedsMaxRank(self):
+    value = array_ops.fill(
+        [0] + [1] * 253, constant_op.constant(0.0, dtype=dtypes.float32)
+    )
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError),
+        "maximum supported rank|maximum allowed",
+    ):
+      self.evaluate(array_ops_stack.stack([value], axis=0))
+
   def testSimpleParallelCPU(self):
     # tf.parallel_stack is only supported in graph mode.
     with ops.Graph().as_default():
@@ -95,6 +116,22 @@ class StackOpTest(test.TestCase):
         errors.InvalidArgumentError, r"0th dimension .* must be greater than"
     ):
       f()
+
+  def testParallelConcatShapeOverflow(self):
+    # Regression test for GitHub issue 108663: a shape whose element count
+    # overflows int64 used to abort the process with a fatal CHECK failure
+    # in the ParallelConcat rewrite pass instead of raising a catchable
+    # error. Only the eager path reaches the rewrite pass with the invalid
+    # shape; graph construction already rejects it at op-creation time.
+    if not context.executing_eagerly():
+      self.skipTest("Exercises the eager function-optimization path.")
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, r"too large \(more than 2\*\*63 - 1"
+    ):
+      gen_array_ops.parallel_concat(
+          values=[array_ops.zeros([17, 5, 14], dtype=dtypes.int64)],
+          shape=[3037000500, 3037000500],
+      )
 
   def testSimpleParallelGPU(self):
     # tf.parallel_stack is only supported in graph mode.
@@ -394,6 +431,26 @@ class AutomaticStackingTest(test.TestCase):
 
     t_2 = ops.convert_to_tensor([t_0, t_0, t_1], dtype=dtypes.float64)
     self.assertEqual(dtypes.float64, t_2.dtype)
+
+  def testInvalidValuesTypeRaisesTypeError(self):
+    t = constant_op.constant([1, 2, 3])
+    with self.assertRaisesRegex(
+        TypeError, r"Argument `values` must be a sequence of Tensor objects"
+    ):
+      array_ops_stack.stack(t, axis=1)
+
+  def testSingleTensorAxis0EmitsDeprecationWarning(self):
+    t = constant_op.constant([1, 2, 3])
+    with warnings.catch_warnings(record=True) as w:
+      warnings.simplefilter("always")
+      res = array_ops_stack.stack(t, axis=0)
+      self.assertLen(w, 1)
+      self.assertTrue(issubclass(w[-1].category, DeprecationWarning))
+      self.assertIn(
+          "Passing a single Tensor to tf.stack is deprecated",
+          str(w[-1].message),
+      )
+      self.assertAllEqual(res, t)
 
 
 if __name__ == "__main__":

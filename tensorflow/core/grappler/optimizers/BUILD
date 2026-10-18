@@ -320,7 +320,7 @@ cc_library(
 
 tf_cuda_cc_test(
     name = "arithmetic_optimizer_test",
-    size = "small",
+    size = "medium",
     srcs = ["arithmetic_optimizer_test.cc"],
     deps = [
         ":arithmetic_optimizer",

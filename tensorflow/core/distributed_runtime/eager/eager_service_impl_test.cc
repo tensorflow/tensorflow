@@ -77,8 +77,8 @@ class TestEagerServiceImpl : public EagerServiceImpl {
 
 class FakeEagerClient : public EagerClient {
  public:
-  FakeEagerClient() {}
-  ~FakeEagerClient() override {}
+  FakeEagerClient() = default;
+  ~FakeEagerClient() override = default;
 
   void SetServiceImpl(TestEagerServiceImpl* impl) { impl_ = impl; }
 

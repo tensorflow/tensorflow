@@ -19,6 +19,7 @@ limitations under the License.
 #include <limits>
 
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
@@ -26,6 +27,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
+using ::absl_testing::IsOkAndHolds;
 using ::testing::Eq;
 
 TEST(Comparison, FloatsDefaultToPartialOrder) {
@@ -52,24 +54,16 @@ TEST(Comparison, IntegersDefaultToTotalOrder) {
       Comparison::Order::kTotal);
 }
 
-TEST(Comparison, LegacyConstructorDefaultsToX32) {
-  // We expect the legacy constructor to default to a {S,U,F}32 primitive type.
-  // This is legacy debt of the previous enumeration Comparison::Type, which
-  // attempted to combine ordering and numerical data classification in a single
-  // type.
-  EXPECT_EQ(Comparison(Comparison::Direction::kGe, Comparison::Type::kFloat)
-                .GetPrimitiveType(),
-            xla::PrimitiveType::F32);
-  EXPECT_EQ(
-      Comparison(Comparison::Direction::kGe, Comparison::Type::kFloatTotalOrder)
-          .GetPrimitiveType(),
-      xla::PrimitiveType::F32);
-  EXPECT_EQ(Comparison(Comparison::Direction::kGe, Comparison::Type::kSigned)
-                .GetPrimitiveType(),
-            xla::PrimitiveType::S32);
-  EXPECT_EQ(Comparison(Comparison::Direction::kGe, Comparison::Type::kUnsigned)
-                .GetPrimitiveType(),
-            xla::PrimitiveType::U32);
+TEST(Comparison, ComparisonTypeToOrder) {
+  EXPECT_THAT(ComparisonTypeToOrder("FLOAT"),
+              IsOkAndHolds(Comparison::Order::kPartial));
+  EXPECT_THAT(ComparisonTypeToOrder("TOTALORDER"),
+              IsOkAndHolds(Comparison::Order::kTotal));
+  EXPECT_THAT(ComparisonTypeToOrder("SIGNED"),
+              IsOkAndHolds(Comparison::Order::kTotal));
+  EXPECT_THAT(ComparisonTypeToOrder("UNSIGNED"),
+              IsOkAndHolds(Comparison::Order::kTotal));
+  EXPECT_FALSE(ComparisonTypeToOrder("INVALID").ok());
 }
 
 TEST(Comparison, PartialOrderReflexivity) {
@@ -174,6 +168,70 @@ TEST(Comparison, ToString) {
   EXPECT_EQ(Comparison(Comparison::Direction::kGe, PrimitiveType::C128)
                 .ToString("_1_", "_2_", "_3_"),
             "_1_GE_2_C128_3_PARTIALORDER");
+}
+
+TEST(Comparison, ComparisonOrderToString) {
+  EXPECT_EQ(ComparisonOrderToString(Comparison::Order::kTotal), "TOTALORDER");
+  EXPECT_EQ(ComparisonOrderToString(Comparison::Order::kWeak), "WEAKORDER");
+  EXPECT_EQ(ComparisonOrderToString(Comparison::Order::kPartial),
+            "PARTIALORDER");
+}
+
+TEST(Comparison, ComparisonOrderToShortString) {
+  EXPECT_EQ(ComparisonOrderToShortString(Comparison::Order::kTotal), "TOTAL");
+  EXPECT_EQ(ComparisonOrderToShortString(Comparison::Order::kWeak), "WEAK");
+  EXPECT_EQ(ComparisonOrderToShortString(Comparison::Order::kPartial),
+            "PARTIAL");
+}
+
+TEST(Comparison, ShortStringToComparisonOrder) {
+  EXPECT_THAT(ShortStringToComparisonOrder("TOTAL"),
+              IsOkAndHolds(Comparison::Order::kTotal));
+  EXPECT_THAT(ShortStringToComparisonOrder("WEAK"),
+              IsOkAndHolds(Comparison::Order::kWeak));
+  EXPECT_THAT(ShortStringToComparisonOrder("PARTIAL"),
+              IsOkAndHolds(Comparison::Order::kPartial));
+  EXPECT_FALSE(ShortStringToComparisonOrder("TOTALORDER").ok());
+  EXPECT_FALSE(ShortStringToComparisonOrder("WEAKORDER").ok());
+  EXPECT_FALSE(ShortStringToComparisonOrder("PARTIALORDER").ok());
+  EXPECT_FALSE(ShortStringToComparisonOrder("INVALID").ok());
+}
+
+TEST(Comparison, WeakOrderFloatComparison) {
+  const float qnan = std::numeric_limits<float>::quiet_NaN();
+  const float neg_qnan = -std::numeric_limits<float>::quiet_NaN();
+  const float inf = std::numeric_limits<float>::infinity();
+  const float neg_inf = -std::numeric_limits<float>::infinity();
+
+  EXPECT_TRUE(Comparison(Comparison::Direction::kEq, PrimitiveType::F32,
+                         Comparison::Order::kWeak)
+                  .Compare<float>(qnan, neg_qnan));
+  EXPECT_FALSE(Comparison(Comparison::Direction::kNe, PrimitiveType::F32,
+                          Comparison::Order::kWeak)
+                   .Compare<float>(qnan, neg_qnan));
+
+  EXPECT_TRUE(Comparison(Comparison::Direction::kEq, PrimitiveType::F32,
+                         Comparison::Order::kWeak)
+                  .Compare<float>(-0.0f, +0.0f));
+  EXPECT_FALSE(Comparison(Comparison::Direction::kLt, PrimitiveType::F32,
+                          Comparison::Order::kWeak)
+                   .Compare<float>(-0.0f, +0.0f));
+  EXPECT_TRUE(Comparison(Comparison::Direction::kLe, PrimitiveType::F32,
+                         Comparison::Order::kWeak)
+                  .Compare<float>(-0.0f, +0.0f));
+
+  EXPECT_TRUE(Comparison(Comparison::Direction::kLt, PrimitiveType::F32,
+                         Comparison::Order::kWeak)
+                  .Compare<float>(inf, neg_qnan));
+  EXPECT_FALSE(Comparison(Comparison::Direction::kLt, PrimitiveType::F32,
+                          Comparison::Order::kWeak)
+                   .Compare<float>(neg_qnan, neg_inf));
+  EXPECT_TRUE(Comparison(Comparison::Direction::kGt, PrimitiveType::F32,
+                         Comparison::Order::kWeak)
+                  .Compare<float>(neg_qnan, inf));
+  EXPECT_TRUE(Comparison(Comparison::Direction::kGe, PrimitiveType::F32,
+                         Comparison::Order::kWeak)
+                  .Compare<float>(neg_qnan, qnan));
 }
 
 TEST(Comparison, TotalOrderFloatComparison) {

@@ -644,30 +644,43 @@ HloInstructionIndexing ComputeOutputToInputScanOpIndexing(
 
   const Shape& output_shape = GetOutputShape(scan, output_id);
 
+  auto [inputs_indexing_map,
+        carries_indexing_map] = [&]() -> std::pair<IndexingMap, IndexingMap> {
+    if (output_id >= num_inputs) {
+      // Carry output: depends on all elements along the scan dimension of the
+      // array inputs (like a reduction along `scan_dimension`) and maps 1:1 to
+      // the carry inputs.
+      const Shape& input_shape = scan->operand(0)->shape();
+      return {ComputeReduceInputIndexingMap(
+                  input_shape.dimensions(), output_shape.dimensions(),
+                  {scan->scan_dimension()}, mlir_context),
+              IndexingMap::FromTensorSizes(
+                  SymbolicMap::GetMultiDimIdentityMap(
+                      output_shape.dimensions().size(), mlir_context),
+                  output_shape.dimensions(), {})};
+    }
+
+    // Array output: maps 1:1 (identity) to the array inputs and projects onto
+    // the non-scan dimensions for the carry inputs.
+    SmallVector<SymbolicExpr> carry_exprs;
+    carry_exprs.reserve(output_shape.dimensions().size() - 1);
+    for (int64_t dim = 0; dim < output_shape.dimensions().size(); ++dim) {
+      if (dim != scan->scan_dimension()) {
+        carry_exprs.push_back(CreateDimExpr(dim, mlir_context));
+      }
+    }
+    return {IndexingMap::FromTensorSizes(
+                SymbolicMap::GetMultiDimIdentityMap(
+                    output_shape.dimensions().size(), mlir_context),
+                output_shape.dimensions(), {}),
+            IndexingMap::FromTensorSizes(
+                SymbolicMap::Get(mlir_context, output_shape.dimensions().size(),
+                                 /*num_symbols=*/0, std::move(carry_exprs)),
+                output_shape.dimensions(), /*symbol_upper_bounds=*/{})};
+  }();
+
   HloInstructionIndexing instr_indexing;
   instr_indexing.indexing_maps.resize(scan->operand_count());
-
-  if (output_shape.dimensions().empty()) {
-    // It is a scalar output (carry).
-    // Map all operands to scalar indexing maps.
-    for (int64_t id = 0; id < scan->operand_count(); ++id) {
-      instr_indexing.indexing_maps[id].insert(
-          OperandIndexing(CreateScalarIndexingMap(output_shape, mlir_context)));
-    }
-    return instr_indexing;
-  }
-
-  // It is an array output.
-  // For the array inputs, the mapping is 1:1 (identity).
-  IndexingMap inputs_indexing_map = IndexingMap::FromTensorSizes(
-      SymbolicMap::GetMultiDimIdentityMap(output_shape.dimensions().size(),
-                                          mlir_context),
-      output_shape.dimensions(), {});
-
-  // For the carry inputs, the mapping is scalar.
-  IndexingMap carries_indexing_map =
-      CreateScalarIndexingMap(output_shape, mlir_context);
-
   for (int64_t id = 0; id < num_inputs; ++id) {
     instr_indexing.indexing_maps[id].insert(
         OperandIndexing(inputs_indexing_map));
@@ -1899,14 +1912,14 @@ OperandIndexing ComposeOperandIndexing(const OperandIndexing& first,
   std::vector<RuntimeVarIndexing> combined_runtime;
   combined_runtime.reserve(first.runtime_variables().size() +
                            second.runtime_variables().size());
-  combined_runtime.insert(combined_runtime.end(),
-                          first.runtime_variables().begin(),
-                          first.runtime_variables().end());
   for (const auto& rt_var : second.runtime_variables()) {
     IndexingMap combined_map = ComposeIndexingMaps(first.map(), rt_var.map);
     combined_runtime.push_back(
         RuntimeVarIndexing{rt_var.instruction_ref, combined_map});
   }
+  combined_runtime.insert(combined_runtime.end(),
+                          first.runtime_variables().begin(),
+                          first.runtime_variables().end());
 
   std::optional<IndexingMap> replica_id_map;
   if (first.replica_id_map().has_value()) {

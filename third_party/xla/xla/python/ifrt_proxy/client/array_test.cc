@@ -20,6 +20,7 @@
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
@@ -327,21 +328,24 @@ TEST_F(ArrayTest, RemapArraysSuccess) {
   std::vector<tsl::RCReference<xla::ifrt::Array>> arrays;
   arrays.push_back(array_1);
   arrays.push_back(array_2);
-  std::vector<RemapPlan::Mapping> mappings;
-  mappings.push_back({/*in_array=*/0, /*out_array=*/1});
-  mappings.push_back({/*in_array=*/1, /*out_array=*/0});
+  absl::flat_hash_map<int, std::vector<RemapPlan::InputDeviceRange>>
+      input_devices_for_output_map;
+  input_devices_for_output_map[0].push_back(
+      {/*in_array=*/1, sharding_->devices()});
+  input_devices_for_output_map[1].push_back(
+      {/*in_array=*/0, sharding_->devices()});
   std::vector<xla::ifrt::ArraySpec> input_specs;
   input_specs.push_back(xla::ifrt::ArraySpec{DType(DType::Kind::kBF16),
                                              Shape({}), sharding_, kLayout1});
   input_specs.push_back(xla::ifrt::ArraySpec{DType(DType::Kind::kBF16),
                                              Shape({}), sharding_, kLayout2});
   std::vector<xla::ifrt::ArraySpec> output_specs;
-  output_specs.push_back(
-      xla::ifrt::ArraySpec{DType(DType::Kind::kBF16), Shape({}), sharding_});
-  output_specs.push_back(
-      xla::ifrt::ArraySpec{DType(DType::Kind::kBF16), Shape({}), sharding_});
+  output_specs.push_back(xla::ifrt::ArraySpec{DType(DType::Kind::kBF16),
+                                              Shape({}), sharding_, kLayout2});
+  output_specs.push_back(xla::ifrt::ArraySpec{DType(DType::Kind::kBF16),
+                                              Shape({}), sharding_, kLayout1});
   RemapPlan plan(std::move(input_specs), std::move(output_specs),
-                 std::move(mappings));
+                 std::move(input_devices_for_output_map));
 
   absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>> result =
       Array::RemapArrays(mock_client_.get(), rpc_helper_, plan,

@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/macros.h"
@@ -162,7 +163,7 @@ class IfOp : public AsyncOpKernel {
     OP_REQUIRES_OK_ASYNC(ctx, GetHandles(ctx, &then_handle, &else_handle),
                          done);
     bool cond;
-    OP_REQUIRES_OK(ctx, ToBool({ctx->input(0)}, &cond));
+    OP_REQUIRES_OK_ASYNC(ctx, ToBool({ctx->input(0)}, &cond), done);
     (new State(this, ctx, cond, then_handle, else_handle, done))->Start();
   }
 
@@ -462,16 +463,17 @@ class WhileOp : public AsyncOpKernel {
   }
 
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
+    auto cleanup = gtl::MakeCleanup([&done]() { done(); });
     if (ctx->run_all_kernels_inline()) {
       // Use the non-callback-based implementation when kernels (and function
       // callbacks) execute inline to avoid stack overflow.
-      OP_REQUIRES_OK_ASYNC(ctx, DoComputeSync(ctx), done);
-      done();
+      OP_REQUIRES_OK_ASYNC(ctx, DoComputeSync(ctx), []() {});
     } else {
       FHandle cond_handle;
       FHandle body_handle;
       OP_REQUIRES_OK_ASYNC(ctx, GetHandles(ctx, &cond_handle, &body_handle),
-                           done);
+                           []() {});
+      cleanup.release();
       (new State(this, ctx, cond_handle, body_handle, done))->Start();
     }
   }

@@ -1012,6 +1012,23 @@ class EnsureShapeTest(test.TestCase):
     expected = [[1.0], [1.0]]
     self.assertAllEqual(gradient_values, expected)
 
+  def testRaisesErrorWhenDimensionSizeTooLarge(self):
+    x = constant_op.constant([1.0, 2.0])
+    shape = constant_op.constant([18446743219011059112, 1], dtype=dtypes.uint64)
+    with self.assertRaisesRegex(ValueError, "Dimension size must be at most"):
+      self.evaluate(check_ops.ensure_shape(x, shape))
+    with self.assertRaisesRegex(ValueError, "Dimension size must be at most"):
+      def_function.function(lambda: check_ops.ensure_shape(x, shape))()
+
+  def testSymbolicTensorInsideTfFunction(self):
+    @def_function.function
+    def f(val):
+      shape_tensor = constant_op.constant([2], dtype=dtypes.int32)
+      return check_ops.ensure_shape(val, shape_tensor)
+
+    x = constant_op.constant([1.0, 2.0])
+    self.assertAllEqual(f(x), [1.0, 2.0])
+
 
 class EnsureShapeBenchmark(test.Benchmark):
 

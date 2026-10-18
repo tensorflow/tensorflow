@@ -30,7 +30,7 @@ namespace {
 
 class UnpackQuantizeTest : public ::testing::Test {
  protected:
-  UnpackQuantizeTest() {}
+  UnpackQuantizeTest() = default;
 
   // Prepare a hypothetical TOCO model with one unpack operator in it
   // together with 2 arrays as its outputs.

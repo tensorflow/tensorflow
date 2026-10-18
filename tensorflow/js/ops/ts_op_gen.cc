@@ -231,7 +231,10 @@ void GenTypeScriptOp::AddMethodReturnAndClose() {
 
 void WriteTSOp(const OpDef& op_def, const ApiDef& api_def, WritableFile* ts) {
   GenTypeScriptOp ts_op(op_def, api_def);
-  TF_CHECK_OK(ts->Append(GenTypeScriptOp(op_def, api_def).Code()));
+  // Reuse the already-constructed `ts_op` instead of building a second,
+  // separate GenTypeScriptOp temporary just to call .Code() on it — the
+  // original built two identical objects per op (one unused) here.
+  TF_CHECK_OK(ts->Append(ts_op.Code()));
 }
 
 void StartFile(WritableFile* ts_file) {

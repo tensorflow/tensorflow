@@ -205,6 +205,10 @@ class Env {
   virtual absl::Status GetMatchingPaths(const std::string& pattern,
                                         std::vector<std::string>* results);
 
+  virtual absl::Status GetMatchingPaths(const std::string& pattern,
+                                        std::vector<std::string>* results,
+                                        bool multithreaded);
+
   // TODO(b/485502789): Remove the const std::string& versions of these
   // functions and move the actual implementation here, avoiding the string
   // copy.
@@ -218,6 +222,16 @@ class Env {
   absl::Status GetMatchingPaths(const T& pattern,
                                 std::vector<std::string>* results) {
     return GetMatchingPaths(std::string(pattern), results);
+  }
+
+  template <typename T,
+            typename = std::enable_if_t<
+                std::is_convertible_v<const T&, absl::string_view> &&
+                !std::is_same_v<std::decay_t<T>, std::string>>>
+  absl::Status GetMatchingPaths(const T& pattern,
+                                std::vector<std::string>* results,
+                                bool multithreaded) {
+    return GetMatchingPaths(std::string(pattern), results, multithreaded);
   }
 
   /// Deletes the named file.
@@ -396,9 +410,9 @@ class Env {
   ///
   /// Caller takes ownership of the result and must delete it eventually
   /// (the deletion will block until fn() stops running).
-  virtual Thread* StartThread(
+  TF_MUST_USE_RESULT virtual Thread* StartThread(
       const ThreadOptions& thread_options, const std::string& name,
-      absl::AnyInvocable<void()> fn) TF_MUST_USE_RESULT = 0;
+      absl::AnyInvocable<void()> fn) = 0;
 
   /// \brief Starts a new detached thread that runs fn() and is identified
   /// (for debugging/performance-analysis) by "name".

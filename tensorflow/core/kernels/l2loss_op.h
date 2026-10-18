@@ -25,7 +25,7 @@ template <typename Device, typename T>
 struct L2LossOp : public OpKernel {
   explicit L2LossOp(OpKernelConstruction* context) : OpKernel(context) {}
 
-  void Compute(OpKernelContext* context) {}
+  void Compute(OpKernelContext* context) override {}
 };
 
 }  // namespace tensorflow

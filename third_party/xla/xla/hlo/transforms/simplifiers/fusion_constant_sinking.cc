@@ -84,6 +84,14 @@ bool CanSink(HloInstruction* fusion, const HloInstruction* operand) {
     }
   }
 
+  // A FUSE_LIMIT operand is a fusion boundary. Custom fusions only take
+  // must-fuse operands (see above), and must-fuse takes precedence over
+  // FUSE_LIMIT.
+  if (!fusion->IsCustomFusion() &&
+      operand->frontend_attributes().map().contains(kFuseLimitAttr)) {
+    return false;
+  }
+
   if (fusion->operand_count() == 1) {
     return false;
   }

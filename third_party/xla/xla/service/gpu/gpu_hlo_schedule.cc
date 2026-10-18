@@ -45,7 +45,6 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/backends/gpu/transforms/pgle_accuracy_checker.h"
 #include "xla/backends/gpu/transforms/scheduling_instruction_annotator.h"
-#include "xla/backends/gpu/transforms/stream_attribute_async_wrapper.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
@@ -837,34 +836,6 @@ absl::Status RunLatencyHidingSchedulerPasses(
   return pipeline.Run(module).status();
 }
 
-bool IsLHSEnabled(const HloModule& module, absl::string_view fingerprint,
-                  const se::DeviceDescription& gpu_device_info) {
-  if (IsPassEnabledAtOptimizationEffort<LatencyHidingScheduler>(module)) {
-    // User specified opt level, we turn on the LHS.
-    return true;
-  }
-
-  if (module.config()
-          .debug_options()
-          .xla_gpu_enable_latency_hiding_scheduler()) {
-    // Similarly pass is enabled if the flag is on.
-    return true;
-  }
-
-  if (SolLatencyEstimator::IsSupportedForModule(module, gpu_device_info)) {
-    // We also enable LHS when we satisfy requirements for enabling unified
-    // latency estimator.
-    return true;
-  }
-  if (HasValidPGLEProfile(module, fingerprint)) {
-    VLOG(1) << "Profile data detected but "
-               "`xla_gpu_enable_latency_hiding_scheduler` unset. To use it "
-               "compiler will run Latency Hiding Scheduler anyway.";
-    return true;
-  }
-  return false;
-}
-
 absl::StatusOr<HloSchedule> ScheduleGpuModuleWithMemoryScheduler(
     HloModule* module, const GpuAliasInfo* alias_info, int64_t pointer_size,
     int64_t* peak_memory_bytes) {
@@ -882,11 +853,38 @@ absl::StatusOr<HloSchedule> ScheduleGpuModuleWithMemoryScheduler(
                                                PostProcessSchedule),
                         /*execution_threads=*/
                         {HloInstruction::kMainExecutionThread,
-                         StreamAttributeAsyncWrapper::kParallelExecutionThread},
+                         HloInstruction::kParallelExecutionThread},
                         peak_memory_bytes);
 }
 
 }  // end namespace
+
+bool IsLHSEnabled(const HloModule& module, absl::string_view fingerprint,
+                  const se::DeviceDescription& gpu_device_info) {
+  const auto& debug_options = module.config().debug_options();
+  if (debug_options.has_xla_gpu_enable_latency_hiding_scheduler()) {
+    // If explicitly configured (true or false), respect the user's setting.
+    return debug_options.xla_gpu_enable_latency_hiding_scheduler();
+  }
+
+  if (IsPassEnabledAtOptimizationEffort<LatencyHidingScheduler>(module)) {
+    // User specified opt level, we turn on the LHS.
+    return true;
+  }
+
+  if (SolLatencyEstimator::IsSupportedForModule(module, gpu_device_info)) {
+    // We also enable LHS when we satisfy requirements for enabling unified
+    // latency estimator.
+    return true;
+  }
+  if (HasValidPGLEProfile(module, fingerprint)) {
+    VLOG(1) << "Profile data detected but "
+               "`xla_gpu_enable_latency_hiding_scheduler` unset. To use it "
+               "compiler will run Latency Hiding Scheduler anyway.";
+    return true;
+  }
+  return false;
+}
 
 absl::Status RunAsyncCollectivesConversionPasses(HloModule* module) {
   HloPassPipeline pipeline("async-collective-conversion");
@@ -899,6 +897,12 @@ absl::Status RunAsyncCollectivesConversionPasses(HloModule* module) {
   config.convert_all_reduce = HloPredicateTrue;
   config.convert_all_to_all = HloPredicateTrue;
   config.convert_collective_broadcast = HloPredicateTrue;
+  config.convert_collective_reduce =
+      module->config()
+              .debug_options()
+              .xla_gpu_experimental_emit_collective_reduce()
+          ? HloPredicateTrue
+          : HloPredicateFalse;
   config.convert_collective_permute = HloPredicateTrue;
   config.convert_ragged_all_to_all = HloPredicateTrue;
   config.convert_reduce_scatter = HloPredicateTrue;
@@ -945,6 +949,8 @@ absl::Status RunAsyncCollectivesConversionPasses(HloModule* module) {
           case HloOpcode::kCollectiveBroadcast:
             return !disabled_async_ops.contains(
                 DebugOptions::COLLECTIVEBROADCAST);
+          case HloOpcode::kCollectiveReduce:
+            return !disabled_async_ops.contains(DebugOptions::ALLREDUCE);
           case HloOpcode::kReduceScatter:
             return !disabled_async_ops.contains(DebugOptions::REDUCESCATTER);
           case HloOpcode::kAllToAll:

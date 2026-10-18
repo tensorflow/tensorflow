@@ -36,7 +36,7 @@ limitations under the License.
 #include "xla/pjrt/proto/topology_description.pb.h"
 #include "xla/runtime/chip_id.h"
 #include "xla/runtime/device_id.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {

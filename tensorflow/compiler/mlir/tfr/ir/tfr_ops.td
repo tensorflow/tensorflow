@@ -41,6 +41,7 @@ def TFR_Dialect : Dialect {
   }];
 
   let cppNamespace = "::mlir::TFR";
+  let useStrictPropertiesInAssemblyFormat = 0;
 }
 
 //===----------------------------------------------------------------------===//
@@ -341,7 +342,7 @@ def TFR_GetElementOp : TFR_Op<"get_element", [Pure]> {
 def TFR_BuildListOp : TFR_Op<"build_list", [Pure]> {
   let description = [{
    The `build_list` operation builds a tensor list from a list of tensors, or
-   an tfr.attr from a list of scalars.
+   a tfr.attr from a list of scalars.
 
     Example:
 
@@ -389,7 +390,8 @@ def TFR_GetLengthOp : TFR_Op<"get_length", [Pure]> {
 
 def TFR_TFRFuncOp : TFR_Op<"func", [HasParent<"ModuleOp">,
                                     FunctionOpInterface,
-                                    IsolatedFromAbove, Symbol]> {
+                                    IsolatedFromAbove,
+                                    SymbolName, SymbolVisibility, Symbol]> {
   let summary = "TFR Function defines a composition of other ops";
 
   let description = [{
@@ -422,7 +424,8 @@ def TFR_TFRFuncOp : TFR_Op<"func", [HasParent<"ModuleOp">,
     TypeAttrOf<FunctionType>:$function_type,
     StrAttr:$sym_name,
     OptionalAttr<DictArrayAttr>:$arg_attrs,
-    OptionalAttr<DictArrayAttr>:$res_attrs
+    OptionalAttr<DictArrayAttr>:$res_attrs,
+    OptionalAttr<StrAttr>:$sym_visibility
   );
 
   let results = (outs);

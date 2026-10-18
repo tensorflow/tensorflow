@@ -27,7 +27,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-TensorResponse::Source::~Source() {}
+TensorResponse::Source::~Source() = default;
 
 void TensorResponse::Clear() {
   on_host_ = false;
@@ -165,6 +165,9 @@ bool TensorResponse::ParseTensorSubmessage(
         TensorShape shape;
         if (!TensorShape::BuildTensorShape(tensor_meta->tensor_shape(), &shape)
                  .ok()) {
+          return false;
+        }
+        if (shape.num_elements() != 0) {
           return false;
         }
         Tensor t(allocator_, tensor_meta->dtype(), shape);

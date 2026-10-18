@@ -13,12 +13,38 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
+#include "absl/log/log.h"
+#include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/platform/mutex.h"
 
 namespace tensorflow {
 namespace {
 
-REGISTER_XLA_OP(Name("CheckNumerics"), MlirXlaOpKernel);
+class CheckNumericsOp : public XlaOpKernel {
+ public:
+  explicit CheckNumericsOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
+  ~CheckNumericsOp() override = default;
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    static mutex mu(tensorflow::LINKER_INITIALIZED);
+    static int log_counter = 0;
+
+    mutex_lock l(mu);
+    if (log_counter < 20) {
+      ++log_counter;
+      LOG(WARNING) << "Ignoring CheckNumerics operator " << name();
+    }
+    ctx->SetOutput(0, ctx->Input(0));
+  }
+
+ private:
+  CheckNumericsOp(const CheckNumericsOp&) = delete;
+  void operator=(const CheckNumericsOp&) = delete;
+};
+
+REGISTER_XLA_OP(Name("CheckNumerics"), CheckNumericsOp);
 
 }  // anonymous namespace
 }  // namespace tensorflow

@@ -29,6 +29,7 @@ distribute_py_strict_test(
     exec_properties = select({
         # copybara:uncomment_begin(google-only)
         # "@bazel_tools//tools/cpp:asan_build": {"mem": "16g"},
+        # "//tools/cpp:msan_build": {"mem": "20g"},
         # copybara:uncomment_end
         "//conditions:default": None,
     }),

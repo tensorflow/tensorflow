@@ -17,6 +17,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/strings/match.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -599,12 +600,24 @@ TEST_F(NgramKernelTest, TestIntegerOverflow) {
 
   std::vector<tstring> data(21475, "a");
   AddInputFromArray<tstring>(TensorShape({21475}), data);
-  AddInputFromArray<int32>(TensorShape({2}), {0, 21475});
+  AddInputFromArray<int32_t>(TensorShape({2}), {0, 21475});
 
   Status s = RunOpKernel();
   EXPECT_FALSE(s.ok());
   EXPECT_NE(s.message().find("exceeds maximum for SPLITS_TYPE"),
             std::string::npos);
+}
+
+TEST_F(NgramKernelTest, TestFirstSplitValueOverflowRejected) {
+  MakeOp("|", {3}, "LP", "RP", -1, false);
+  AddInputFromArray<tstring>(TensorShape({1}), {"a"});
+  // A first split value of 2^32 was narrowed to int (== 0) before the
+  // "First split value must be 0" check, passing validation and then indexing
+  // `data` at the full-width offset. It must be rejected at full width.
+  AddInputFromArray<int64_t>(TensorShape({2}), {int64_t{1} << 32, 1});
+  Status s = RunOpKernel();
+  EXPECT_FALSE(s.ok());
+  EXPECT_TRUE(absl::StrContains(s.message(), "First split value must be 0"));
 }
 
 TEST_F(NgramKernelTest, ShapeFn) {

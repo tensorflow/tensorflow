@@ -1,3 +1,17 @@
+# Copyright 2026 The OpenXLA Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
 diff --git a/src/include/non_abi/device/pt-to-pt/utils_device.h b/src/include/non_abi/device/pt-to-pt/utils_device.h
 index 8342ebe06aeed8fcd5461e0fb45b36de266f7ae5..58a2a874d63e9a716544b17c9e3c55ea2b0e7e6c 100644
 --- a/src/include/non_abi/device/pt-to-pt/utils_device.h

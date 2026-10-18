@@ -22,6 +22,11 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif
 
+#include <cstdint>
+#include <limits>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -31,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 
@@ -347,10 +353,44 @@ class CSRSparseMatrix {
     Tensor col_indices(p.tensors_[3]);
     Tensor values(p.tensors_[4]);
 
+    // ValidateTypesAndShapes and the value checks below read dense_shape and
+    // the index arrays directly on the host (e.g. dense_shape.vec<int64_t>(),
+    // col_indices.flat<int32_t>().data()). A crafted or custom-pipeline variant
+    // could hand us device-resident tensors, or uninitialized ones whose buffer
+    // pointer is null, so reject both up front rather than dereference them
+    // from host.
+    auto is_invalid_for_host_check = [](const Tensor& t) {
+      if (!t.IsInitialized()) return true;
+      return t.NumElements() > 0 &&
+             t.GetMemoryType() == AllocatorMemoryType::kDevice;
+    };
+    if (is_invalid_for_host_check(dense_shape) ||
+        is_invalid_for_host_check(batch_pointers) ||
+        is_invalid_for_host_check(row_pointers) ||
+        is_invalid_for_host_check(col_indices)) {
+      return false;
+    }
+
     // Check that the validated bool is consistent with the data.
     absl::Status s = ValidateTypesAndShapes(dtype, dense_shape, batch_pointers,
                                             row_pointers, col_indices, values);
     if (s.ok() != validated) return false;
+
+    // ValidateTypesAndShapes only checks the dtypes and sizes of the index
+    // arrays, not their contents. A matrix decoded from an untrusted variant
+    // can therefore carry out-of-range col_indices or non-monotonic
+    // batch/row pointers while still reporting validated == true, which the
+    // consuming ops use directly as read/write offsets. The tensors here are
+    // always host-resident, so validate the CSR structure before accepting it.
+    if (validated) {
+      absl::Status values_status = ValidateComponentValues(
+          dense_shape, batch_pointers, row_pointers, col_indices);
+      if (!values_status.ok()) {
+        VLOG(2) << "CSRSparseMatrix::Decode component validation failed: "
+                << values_status;
+        return false;
+      }
+    }
 
     // Save to this object.
     metadata_ = metadata;
@@ -424,6 +464,16 @@ class CSRSparseMatrix {
     col_indices_vec_.reset();
   }
 
+  // Validates the contents (not just the shapes) of the host-resident CSR
+  // index arrays: batch_pointers and per-batch row_pointers must start at 0,
+  // be non-decreasing, and end at the batch's non-zero count, and every
+  // col_indices entry must fall in [0, num_cols). Used by Decode() to reject
+  // structurally invalid matrices coming from untrusted variants.
+  static absl::Status ValidateComponentValues(const Tensor& dense_shape,
+                                              const Tensor& batch_pointers,
+                                              const Tensor& row_pointers,
+                                              const Tensor& col_indices);
+
   static absl::Status ValidateTypesAndShapes(DataType dtype,
                                              const Tensor& dense_shape,
                                              const Tensor& batch_pointers,
@@ -460,6 +510,19 @@ class CSRSparseMatrix {
     auto dense_shape_t = dense_shape.vec<int64_t>();
     const int64_t batch_size = (rank == 2) ? 1 : dense_shape_t(0);
     const int64_t num_rows = (rank == 2) ? dense_shape_t(0) : dense_shape_t(1);
+    const int64_t num_cols = (rank == 2) ? dense_shape_t(1) : dense_shape_t(2);
+    if (batch_size < 0 || num_rows < 0 || num_cols < 0) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "CSRSparseMatrix::Validate: dense_shape has a negative dimension: ",
+          dense_shape.SummarizeValue(5)));
+    }
+    if (num_rows == std::numeric_limits<int64_t>::max() ||
+        (batch_size > 0 &&
+         (num_rows + 1) > std::numeric_limits<int64_t>::max() / batch_size)) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "CSRSparseMatrix::Validate: dense_shape dimensions overflow int64: ",
+          dense_shape.SummarizeValue(5)));
+    }
 
     if (batch_pointers.dtype() != DT_INT32) {
       return absl::InvalidArgumentError(

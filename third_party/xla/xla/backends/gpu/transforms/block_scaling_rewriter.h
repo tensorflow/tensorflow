@@ -93,6 +93,7 @@ class BlockScalingRewriter : public OpExpanderPass {
 
   // Common block size constants.
   static constexpr int kBlockSizeMXFP8 = 32;
+  static constexpr int kBlockSizeMXFP4 = 32;
   static constexpr int kBlockSizeNVFP4 = 16;
 
  private:

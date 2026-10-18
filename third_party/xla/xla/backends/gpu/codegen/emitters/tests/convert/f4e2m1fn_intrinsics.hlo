@@ -1,4 +1,4 @@
-// RUN: fusion_to_mlir %s | emitters_opt -xla-gpu-convert-float-nvidia='compute_capability_major=10 compute_capability_minor=0 ptx_version_major=8 ptx_version_minor=6' | FileCheck %s
+// RUN: gpu_fusion_to_mlir %s | emitters_opt -xla-gpu-convert-float-nvidia='compute_capability_major=10 compute_capability_minor=0 ptx_version_major=8 ptx_version_minor=6' | FileCheck %s
 // RUN: gpu_test_correctness %s
 
 f {

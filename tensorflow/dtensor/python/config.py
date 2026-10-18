@@ -156,7 +156,7 @@ def _bns_task_id(job: str) -> Union[int, str]:
 def jobs() -> List[str]:
   """Returns a list of job names of all clients in this DTensor cluster."""
   d_jobs = os.environ.get(_DT_JOBS)
-  if d_jobs is None:
+  if not d_jobs or not d_jobs.strip():
     return []
   d_jobs_list = d_jobs.split(",")
 
@@ -193,7 +193,7 @@ def is_tpu_present() -> bool:
 
 
 def is_gpu_present() -> bool:
-  """Returns true if TPU devices are present."""
+  """Returns true if GPU devices are present."""
   return bool(tf_config.list_physical_devices("GPU"))
 
 

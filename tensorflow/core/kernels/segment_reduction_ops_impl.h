@@ -48,8 +48,10 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/kernels/segment_reduction_ops.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/determinism.h"
@@ -239,16 +241,17 @@ class SegmentReductionGPUOp : public AsyncOpKernel {
       : AsyncOpKernel(context) {}
 
   void ComputeAsync(OpKernelContext* context, DoneCallback done) override {
+    auto cleanup = gtl::MakeCleanup([&done]() { done(); });
     const Tensor& input = context->input(0);
     const Tensor& segment_ids = context->input(1);
 
     OP_REQUIRES_ASYNC(
         context, TensorShapeUtils::IsVector(segment_ids.shape()),
-        absl::InvalidArgumentError("segment_ids should be a vector."), done);
+        absl::InvalidArgumentError("segment_ids should be a vector."), []() {});
 
     OP_REQUIRES_ASYNC(
         context, input.dims() >= 1,
-        absl::InvalidArgumentError("Shape must be at least rank 1"), done);
+        absl::InvalidArgumentError("Shape must be at least rank 1"), []() {});
 
     const int64_t num_indices = segment_ids.NumElements();
     OP_REQUIRES_ASYNC(
@@ -256,7 +259,7 @@ class SegmentReductionGPUOp : public AsyncOpKernel {
         absl::InvalidArgumentError(
             "segment_ids should be the same size as dimension 0 of"
             " input."),
-        done);
+        []() {});
 
     if (num_indices == 0) {
       TensorShape output_shape = input.shape();
@@ -264,8 +267,7 @@ class SegmentReductionGPUOp : public AsyncOpKernel {
 
       Tensor* output = nullptr;
       OP_REQUIRES_OK_ASYNC(
-          context, context->allocate_output(0, output_shape, &output), done);
-      done();
+          context, context->allocate_output(0, output_shape, &output), []() {});
       return;
     }
 
@@ -278,11 +280,12 @@ class SegmentReductionGPUOp : public AsyncOpKernel {
     OP_REQUIRES_OK_ASYNC(context,
                          stream->Memcpy(output_rows_host.mutable_data(),
                                         output_rows_device, sizeof(Index)),
-                         done);
+                         []() {});
 
     SegmentReductionFunctor functor_;
     auto create_and_check_output = [context, output_rows_host, &input,
                                     &segment_ids, &functor_, done]() {
+      auto cb_cleanup = gtl::MakeCleanup([&done]() { done(); });
       // Ensure that within the callback, the proper GPU settings are
       // configured.
       auto stream = context->op_device_context()->stream();
@@ -293,17 +296,17 @@ class SegmentReductionGPUOp : public AsyncOpKernel {
       output_rows++;
       OP_REQUIRES_ASYNC(context, output_rows > 0,
                         absl::InvalidArgumentError("segment ids must be >= 0"),
-                        done);
+                        []() {});
 
       TensorShape output_shape = input.shape();
       // Since we're changing the first dimension of the shape, we need to make
       // sure the new shape won't overflow.
-      OP_REQUIRES_OK_ASYNC(context,
-                           output_shape.SetDimWithStatus(0, output_rows), done);
+      OP_REQUIRES_OK_ASYNC(
+          context, output_shape.SetDimWithStatus(0, output_rows), []() {});
 
       Tensor* output = nullptr;
       OP_REQUIRES_OK_ASYNC(
-          context, context->allocate_output(0, output_shape, &output), done);
+          context, context->allocate_output(0, output_shape, &output), []() {});
 
       bool use_deterministic_kernels =
           UseDeterministicSegmentReductions() ||
@@ -323,7 +326,7 @@ class SegmentReductionGPUOp : public AsyncOpKernel {
           absl::UnimplementedError(
               "Deterministic GPU implementation of sorted segment reduction op"
               " not available."),
-          done);
+          []() {});
 
       auto output_flat = output->flat_outer_dims<T>();
       auto data_ptr = input.template flat<T>().data();
@@ -331,10 +334,9 @@ class SegmentReductionGPUOp : public AsyncOpKernel {
       functor_(context, context->eigen_device<GPUDevice>(), output_rows,
                segment_ids.shape(), IsMean, segment_flat, input.NumElements(),
                data_ptr, output_flat);
-
-      done();
     };
 
+    cleanup.release();
     context->device()
         ->tensorflow_accelerator_device_info()
         ->event_mgr->ThenExecute(stream, create_and_check_output);
@@ -518,12 +520,34 @@ class UnsortedSegmentReductionOp : public OpKernel {
                    internal::ValidateUnsortedSegmentReduction(
                        this, context, data, segment_ids, num_segments));
     const auto segment_flat = segment_ids.flat<Index>();
-    const Index output_rows = internal::SubtleMustCopy(static_cast<Index>(
-        num_segments.dtype() == DT_INT32 ? num_segments.scalar<int32_t>()()
-                                         : num_segments.scalar<int64_t>()()));
-    OP_REQUIRES(context, output_rows >= 0,
-                errors::InvalidArgument("Input num_segments == ", output_rows,
-                                        " must not be negative."));
+    // Copy the value out of the (possibly shared) input buffer before any
+    // validation, so that the value that is checked is the same one that is
+    // subsequently used (see SubtleMustCopy).
+    const int64_t num_segments_val =
+        num_segments.dtype() == DT_INT32
+            ? static_cast<int64_t>(
+                  internal::SubtleMustCopy(num_segments.scalar<int32_t>()()))
+            : internal::SubtleMustCopy(num_segments.scalar<int64_t>()());
+    OP_REQUIRES(context, num_segments_val >= 0,
+                absl::InvalidArgumentError(
+                    absl::StrCat("Input num_segments == ", num_segments_val,
+                                 " must not be negative.")));
+    // Guard against excessively large num_segments that would cause integer
+    // overflow in output tensor size calculations, leading to illegal memory
+    // access or process abort (see #117549).
+    //
+    // Use kint32max for every index type. Although an int64 index could
+    // represent 2^31, that value is not representable as a signed int32 and
+    // would wrap if any downstream code performs 32-bit indexing; a uniform
+    // bound avoids that edge case. Nothing practical is lost, since the CPU
+    // functor already allocates std::vector<Index> row_counter(num_segments).
+    const int64_t kMaxSegments =
+        static_cast<int64_t>(std::numeric_limits<int32_t>::max());
+    OP_REQUIRES(context, num_segments_val <= kMaxSegments,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Input num_segments == ", num_segments_val,
+                    " is too large. Must be at most ", kMaxSegments)));
+    const Index output_rows = static_cast<Index>(num_segments_val);
     TensorShape output_shape;
     OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(output_rows));
     for (int i = segment_ids.dims(); i < data.dims(); i++) {
@@ -714,15 +738,11 @@ class SparseSegmentReductionOpBase : public OpKernel {
   const DataType dtidx_;
 
   template <typename Tin>
-  using EnableIfBfloat16OrHalf =
-      typename std::enable_if<std::is_same<Tin, bfloat16>::value ||
-                                  std::is_same<Tin, Eigen::half>::value,
-                              int>::type;
+  using EnableIfBfloat16OrHalf = std::enable_if_t<
+      std::is_same_v<Tin, bfloat16> || std::is_same_v<Tin, Eigen::half>, int>;
   template <typename Tin>
-  using EnableIfNotBfloat16OrHalf =
-      typename std::enable_if<!std::is_same<Tin, bfloat16>::value &&
-                                  !std::is_same<Tin, Eigen::half>::value,
-                              int>::type;
+  using EnableIfNotBfloat16OrHalf = std::enable_if_t<
+      !std::is_same_v<Tin, bfloat16> && !std::is_same_v<Tin, Eigen::half>, int>;
 
   template <typename Tin, typename Tindex, EnableIfNotBfloat16OrHalf<Tin> = 0>
   EIGEN_ALWAYS_INLINE auto fetch_val(
@@ -920,6 +940,7 @@ class SparseSegmentReductionOpBase<GPUDevice, T, Index, SegmentId>
         default_value_(default_value) {}
 
   void ComputeAsync(OpKernelContext* context, DoneCallback done) override {
+    auto cleanup = gtl::MakeCleanup([&done]() { done(); });
     const Tensor& input = context->input(0);
     const Tensor& indices = context->input(1);
     const Tensor& segment_ids = context->input(2);
@@ -928,12 +949,13 @@ class SparseSegmentReductionOpBase<GPUDevice, T, Index, SegmentId>
         context,
         internal::ValidateSparseSegmentReduction(
             context, input, indices, segment_ids, has_num_segments_),
-        done);
+        []() {});
 
     ScratchSpace<SegmentId> last_segment_id_host(context, 1, /*on_host=*/true);
 
     auto create_and_check_output = [this, context, input, indices, segment_ids,
                                     last_segment_id_host, done]() {
+      auto async_cleanup = gtl::MakeCleanup([&done]() { done(); });
       // Ensure that within the callback, the proper GPU settings are
       // configured.
       auto stream = context->op_device_context()->stream();
@@ -944,14 +966,15 @@ class SparseSegmentReductionOpBase<GPUDevice, T, Index, SegmentId>
       SegmentId output_rows = last_segment_id + 1;
       OP_REQUIRES_ASYNC(context, output_rows > 0,
                         absl::InvalidArgumentError("segment ids must be >= 0"),
-                        done);
+                        []() {});
 
       TensorShape output_shape = input.shape();
-      output_shape.set_dim(0, output_rows);
+      OP_REQUIRES_OK_ASYNC(
+          context, output_shape.SetDimWithStatus(0, output_rows), []() {});
 
       Tensor* output = nullptr;
       OP_REQUIRES_OK_ASYNC(
-          context, context->allocate_output(0, output_shape, &output), done);
+          context, context->allocate_output(0, output_shape, &output), []() {});
 
       auto input_flat = input.flat_outer_dims<T>();
       const auto indices_vec = indices.vec<Index>();
@@ -963,8 +986,7 @@ class SparseSegmentReductionOpBase<GPUDevice, T, Index, SegmentId>
           context,
           functor(context, is_mean_, is_sqrtn_, default_value_, input_flat,
                   indices_vec, segment_ids_vec, output_flat),
-          done);
-      done();
+          []() {});
     };
 
     if (has_num_segments_) {
@@ -975,17 +997,19 @@ class SparseSegmentReductionOpBase<GPUDevice, T, Index, SegmentId>
                                        ? num_segments_t.scalar<int32_t>()()
                                        : num_segments_t.scalar<int64_t>()());
       *last_segment_id_host.mutable_data() = num_segments - 1;
+      cleanup.release();
       create_and_check_output();
     } else {
       const int64_t num_indices = indices.NumElements();
       if (num_indices == 0) {
         TensorShape output_shape = input.shape();
-        output_shape.set_dim(0, 0);
+        OP_REQUIRES_OK_ASYNC(context, output_shape.SetDimWithStatus(0, 0),
+                             []() {});
 
         Tensor* output = nullptr;
-        OP_REQUIRES_OK_ASYNC(
-            context, context->allocate_output(0, output_shape, &output), done);
-        done();
+        OP_REQUIRES_OK_ASYNC(context,
+                             context->allocate_output(0, output_shape, &output),
+                             []() {});
         return;
       }
 
@@ -999,7 +1023,8 @@ class SparseSegmentReductionOpBase<GPUDevice, T, Index, SegmentId>
           context,
           stream->Memcpy(last_segment_id_host.mutable_data(),
                          last_segment_id_device, sizeof(SegmentId)),
-          done);
+          []() {});
+      cleanup.release();
       context->device()
           ->tensorflow_accelerator_device_info()
           ->event_mgr->ThenExecute(stream, create_and_check_output);
@@ -1148,15 +1173,11 @@ struct SparseSegmentGradFunctor<CPUDevice, T, Index, SegmentId> {
 
  private:
   template <typename Tin>
-  using EnableIfBfloat16OrHalf =
-      typename std::enable_if<std::is_same<Tin, bfloat16>::value ||
-                                  std::is_same<Tin, Eigen::half>::value,
-                              int>::type;
+  using EnableIfBfloat16OrHalf = std::enable_if_t<
+      std::is_same_v<Tin, bfloat16> || std::is_same_v<Tin, Eigen::half>, int>;
   template <typename Tin>
-  using EnableIfNotBfloat16OrHalf =
-      typename std::enable_if<!std::is_same<Tin, bfloat16>::value &&
-                                  !std::is_same<Tin, Eigen::half>::value,
-                              int>::type;
+  using EnableIfNotBfloat16OrHalf = std::enable_if_t<
+      !std::is_same_v<Tin, bfloat16> && !std::is_same_v<Tin, Eigen::half>, int>;
 
   template <typename Tin, EnableIfNotBfloat16OrHalf<Tin> = 0>
   void Accumulate(
@@ -1342,7 +1363,20 @@ class SparseSegmentGradOpBase : public OpKernel {
     OP_REQUIRES_OK(context, output_shape.SetDimWithStatus(0, M));
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
-    if (M == 0 || N == 0) return;
+    if (M == 0 || N == 0) {
+      // `allocate_output` does not initialize the buffer, and the functor below
+      // only runs when N > 0. Without this, an empty `indices` combined with
+      // `output_dim0` > 0 returns the freshly allocated output uninitialized.
+      // Zero is the correct gradient for a row that received no contribution.
+      if (output->NumElements() > 0) {
+        functor::SetZeroFunctor<Device, T>()(context->eigen_device<Device>(),
+                                             output->flat<T>());
+      }
+      return;
+    }
+
+    OP_REQUIRES(context, input.dim_size(0) > 0,
+                absl::InvalidArgumentError("Invalid number of segments"));
 
     functor::SparseSegmentGradFunctor<Device, T, Index, SegmentId>()(
         context, operation_, input_flat, indices_vec, segment_vec, output);
@@ -1419,7 +1453,14 @@ class SparseSegmentGradV2OpCommon {
       Tensor* sorted_unique_indices = nullptr;
       TF_RETURN_IF_ERROR(context->allocate_output(1, TensorShape({0}),
                                                   &sorted_unique_indices));
+      if (done) {
+        done();
+      }
       return absl::OkStatus();
+    }
+
+    if (input.dim_size(0) == 0) {
+      return absl::InvalidArgumentError("Invalid number of segments");
     }
 
     auto input_flat = input.flat_outer_dims<T>();

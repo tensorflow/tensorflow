@@ -160,6 +160,7 @@ class BooleanMaskTest(test_util.TensorFlowTestCase):
     mask = make_mask(arr_shape[:ndims_mask])
     if axis is not None:
       mask = make_mask(arr_shape[axis:ndims_mask + axis])
+    masked_arr = None
     if axis is None or axis == 0:
       masked_arr = arr[mask]
     elif axis == 1:
@@ -392,6 +393,13 @@ class BooleanMaskTest(test_util.TensorFlowTestCase):
 @test_util.run_all_in_graph_and_eager_modes
 class OperatorShapeTest(test_util.TensorFlowTestCase):
 
+  def _zero_high_rank(self, rank):
+    # tf.zeros(high_rank) in graph mode calls np.empty, and NumPy rejects
+    # rank > 32. Fill takes a 1-D shape tensor instead.
+    return array_ops.fill(
+        [0] + [1] * (rank - 1), constant_op.constant(0.0, dtype=dtypes.float32)
+    )
+
   def testExpandScalar(self):
     scalar = "hello"
     scalar_expanded = array_ops.expand_dims(scalar, [0])
@@ -429,6 +437,20 @@ class OperatorShapeTest(test_util.TensorFlowTestCase):
               tensor=[[1]],
               shape=constant_op.constant([1 for i in range(254)],
                                          dtype=dtypes.int64)))
+
+  def testExpandDimsAtMaxRank(self):
+    # TensorShape::MaxDimensions() is 254.
+    value = self._zero_high_rank(253)
+    expanded = array_ops.expand_dims(value, 0)
+    self.assertEqual(254, self.evaluate(array_ops.rank(expanded)))
+
+  def testExpandDimsExceedsMaxRank(self):
+    value = self._zero_high_rank(254)
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError),
+        "maximum supported rank|Too many dimensions",
+    ):
+      self.evaluate(array_ops.expand_dims(value, 0))
 
 
 @test_util.with_eager_op_as_function
@@ -590,6 +612,45 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
     x = np.ndarray(shape=[0, 1, 1])
     v = array_ops.reverse_v2(x, axis=[1])
     self.assertAllEqual(self.evaluate(v), v)
+
+  def testReverseScalarOutOfRangeAxis(self):
+    # Regression test for GitHub issue 110038: a scalar has no valid axis, so
+    # any axis must be rejected. The kernel returned the input unchanged
+    # instead, which disagreed with the error shape inference raises for the
+    # same call in graph mode.
+    for axis in ([0], [1, 2, 3], [-1]):
+      with self.subTest(axis=axis):
+        with self.assertRaisesRegex(
+            (ValueError, errors.InvalidArgumentError), "out of valid range"
+        ):
+          self.evaluate(
+              array_ops.reverse_v2(constant_op.constant(4.0), axis=axis)
+          )
+
+  def testReverseScalarEmptyAxisIsValid(self):
+    # An empty axis list reverses nothing and stays valid for any input.
+    x = constant_op.constant(4.0)
+    self.assertAllEqual(4.0, self.evaluate(array_ops.reverse_v2(x, axis=[])))
+
+  def testReverseEmptyTensorOutOfRangeAxis(self):
+    # The same validation gap applied to empty tensors, whose axes can be out
+    # of range even though there is nothing to reverse.
+    for shape, axis in (([0], [5]), ([0, 3], [7]), ([0, 3], [-4])):
+      with self.subTest(shape=shape, axis=axis):
+        x = array_ops.zeros(shape, dtype=dtypes.float32)
+        with self.assertRaisesRegex(
+            (ValueError, errors.InvalidArgumentError), "out of valid range"
+        ):
+          self.evaluate(array_ops.reverse_v2(x, axis=axis))
+
+  def testReverseEmptyTensorValidAxis(self):
+    # In-range axes on empty tensors keep working.
+    for shape, axis in (([0], [0]), ([0, 3], [1]), ([0, 3], [-1])):
+      with self.subTest(shape=shape, axis=axis):
+        x = array_ops.zeros(shape, dtype=dtypes.float32)
+        self.assertAllEqual(
+            np.zeros(shape), self.evaluate(array_ops.reverse_v2(x, axis=axis))
+        )
 
 
 class MeshgridTest(test_util.TensorFlowTestCase):
@@ -756,6 +817,32 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
       strides = constant_op.constant([1], dtype=dtypes.int64)
       s = array_ops.strided_slice(x, begin, end, strides)
       self.assertAllEqual([3.], self.evaluate(s))
+
+  def testNewAxisAtMaxRank(self):
+    value = array_ops.fill(
+        [0] + [1] * 252, constant_op.constant(0.0, dtype=dtypes.float32)
+    )
+    # User-facing slice syntax.
+    sliced_syntax = value[None, ...]
+    self.assertEqual(254, self.evaluate(array_ops.rank(sliced_syntax)))
+
+    # Low-level op.
+    sliced = gen_array_ops.strided_slice(
+        value, begin=[0], end=[0], strides=[1], new_axis_mask=1
+    )
+    self.assertEqual(254, self.evaluate(array_ops.rank(sliced)))
+
+  def testNewAxisExceedsMaxRank(self):
+    value = array_ops.fill(
+        [0] + [1] * 224, constant_op.constant(0.0, dtype=dtypes.float32)
+    )
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError), "Too many dimensions"
+    ):
+      # Public slice syntax, not the generated op wrapper. evaluate() covers
+      # graph mode, where shape inference may defer the error until execution.
+      sliced = value[tuple([array_ops.newaxis] * 30 + [Ellipsis])]
+      self.evaluate(sliced)
 
   @test_util.assert_no_new_pyobjects_executing_eagerly()
   @test_util.assert_no_garbage_created
@@ -1650,6 +1737,24 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
     check_output_dtype("float64")
     check_output_dtype(np.float64)
 
+  def testXlaJitCompileWithStaticMaxlen(self):
+    if not context.executing_eagerly() or not test_util.is_xla_enabled():
+      return
+
+    @def_function.function(jit_compile=True)
+    def fn(lengths):
+      return array_ops.sequence_mask(lengths, maxlen=5)
+
+    res = fn(constant_op.constant([1, 3, 2]))
+    self.assertAllEqual(
+        res,
+        [
+            [True, False, False, False, False],
+            [True, True, True, False, False],
+            [True, True, False, False, False],
+        ],
+    )
+
 
 class ConcatSliceResourceTest(test_util.TensorFlowTestCase):
 
@@ -1794,6 +1899,26 @@ class UnravelIndexTest(test_util.TensorFlowTestCase):
                                     "dims cannot contain a dim of zero"):
           indices = constant_op.constant([2, 5, 7], dtype=dtype)
           dims = constant_op.constant([3, 0], dtype=dtype)
+          self.evaluate(array_ops.unravel_index(indices=indices, dims=dims))
+
+  def testUnravelIndexNegativeIndex(self):
+    with self.cached_session():
+      for dtype in [dtypes.int32, dtypes.int64]:
+        with self.assertRaisesRegex(
+            errors.InvalidArgumentError, "index is out of bound as with dims"
+        ):
+          indices = constant_op.constant(-14, dtype=dtype)
+          dims = constant_op.constant([10], dtype=dtype)
+          self.evaluate(array_ops.unravel_index(indices=indices, dims=dims))
+
+  def testUnravelIndexMixedNegativeIndex(self):
+    with self.cached_session():
+      for dtype in [dtypes.int32, dtypes.int64]:
+        with self.assertRaisesRegex(
+            errors.InvalidArgumentError, "index is out of bound as with dims"
+        ):
+          indices = constant_op.constant([0, 5, -1, 7], dtype=dtype)
+          dims = constant_op.constant([3, 4], dtype=dtype)
           self.evaluate(array_ops.unravel_index(indices=indices, dims=dims))
 
   def testUnravelIndexIntegerOverflow(self):
@@ -2026,6 +2151,19 @@ class SortedSearchTest(test_util.TensorFlowTestCase):
     result = np.searchsorted(cdf, arr, side="right")
     tf_result = self.evaluate(array_ops.searchsorted(cdf, arr, side="right"))
     self.assertAllEqual(result, tf_result)
+
+  def testScalarValue(self):
+    cdf = np.array([0, 0.2, 0.5, 0.6, 0.8, 1.0], dtype=np.float32)
+    values = (0.53, np.float32(0.53), constant_op.constant(0.53))
+
+    for value in values:
+      for side in ("left", "right"):
+        with self.subTest(value=value, side=side):
+          result = np.searchsorted(cdf, 0.53, side=side)
+          tf_result = self.evaluate(
+              array_ops.searchsorted(cdf, value, side=side)
+          )
+          self.assertAllEqual(result, tf_result)
 
   def testUpperBoundFloatRandomNd(self):
     dim_size = 7
@@ -2265,6 +2403,60 @@ class SortedSearchTest(test_util.TensorFlowTestCase):
       return array_ops.searchsorted(x, y)
 
     _ = g.get_concrete_function()
+
+  def testNaN(self):
+    """NaN should always be placed at the end of a sorted sequence."""
+    # Test NaN in values
+    sorted_sequence = np.array(
+        [2.0, 4.0, 8.0, 16.0, 32.0, 64.0], dtype=np.float32
+    )
+    values = np.array([np.nan, 8.0], dtype=np.float32)
+    for side in ("left", "right"):
+      with self.subTest(side=side, case="nan_in_values"):
+        expected = np.searchsorted(sorted_sequence, values, side=side)
+        actual = self.evaluate(
+            array_ops.searchsorted(sorted_sequence, values, side=side)
+        )
+        self.assertAllEqual(expected, actual)
+
+    # Test NaN in sorted_sequence
+    sorted_sequence_with_nan = np.array(
+        [2.0, 4.0, 8.0, np.nan, np.nan], dtype=np.float32
+    )
+    values_to_search = np.array([3.0, np.nan], dtype=np.float32)
+    for side in ("left", "right"):
+      with self.subTest(side=side, case="nan_in_sequence"):
+        expected = np.searchsorted(
+            sorted_sequence_with_nan, values_to_search, side=side
+        )
+        actual = self.evaluate(
+            array_ops.searchsorted(
+                sorted_sequence_with_nan, values_to_search, side=side
+            )
+        )
+        self.assertAllEqual(expected, actual)
+
+    # Regression test: NaN in sorted_sequence with multiple NaNs, searching
+    # for finite values that fall before, between, and after non-NaN elements.
+    sorted_sequence_with_nans = np.array(
+        [2.0, 4.0, np.nan, np.nan], dtype=np.float32
+    )
+    for val in [3.0, 5.0, np.nan]:
+      for side in ("left", "right"):
+        with self.subTest(side=side, val=val, case="nan_in_sorted_regression"):
+          expected = np.searchsorted(
+              sorted_sequence_with_nans,
+              np.array([val], dtype=np.float32),
+              side=side,
+          )
+          actual = self.evaluate(
+              array_ops.searchsorted(
+                  sorted_sequence_with_nans,
+                  np.array([val], dtype=np.float32),
+                  side=side,
+              )
+          )
+          self.assertAllEqual(expected, actual)
 
   def testInvalidValuesLowerBound(self):
     arg_0_tensor = random_ops.random_uniform([3, 3], dtype=dtypes.float32)

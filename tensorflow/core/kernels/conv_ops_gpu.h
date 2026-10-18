@@ -64,7 +64,7 @@ int64_t GetDnnWorkspaceLimitOrDefault();
 // the kernel finishes.
 class DnnScratchAllocator : public se::ScratchAllocator {
  public:
-  virtual ~DnnScratchAllocator() {}
+  ~DnnScratchAllocator() override {}
   DnnScratchAllocator(int64_t memory_limit, OpKernelContext* context)
       : memory_limit_(memory_limit), total_byte_size_(0), context_(context) {}
   int64_t GetMemoryLimitInBytes() override { return memory_limit_; }

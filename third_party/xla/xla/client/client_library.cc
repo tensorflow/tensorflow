@@ -180,4 +180,13 @@ ClientLibrary::GetOrCreateCompileOnlyClient(se::Platform* platform) {
   client_library.compile_only_instances_.clear();
 }
 
+/* static */ void ClientLibrary::DestroyLocalInstance(se::Platform* platform) {
+  if (platform == nullptr) {
+    return;
+  }
+  ClientLibrary& client_library = Singleton();
+  absl::MutexLock lock(client_library.service_mutex_);
+  client_library.local_instances_.erase(platform->id());
+}
+
 }  // namespace xla

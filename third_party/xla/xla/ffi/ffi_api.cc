@@ -37,8 +37,10 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "xla/custom_options.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/c_api_internal.h"  // IWYU pragma: keep
+#include "xla/ffi/attributes_storage.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/execution_state.h"
 #include "xla/ffi/ffi_internal_api.h"
@@ -247,7 +249,7 @@ static XLA_FFI_Error* XLA_FFI_Future_SetError(
     return new XLA_FFI_Error{InvalidArgument("Error must not be null or OK")};
   }
 
-  absl::Status error = TakeStatus(args->error);
+  absl::Status error = TakeError(args->error);
   args->future->async_value.SetError(std::move(error));
 
   return nullptr;
@@ -420,6 +422,29 @@ static XLA_FFI_Error* XLA_FFI_InvokeContext_Get(
   }
 
   args->data = *user_data;
+  return nullptr;
+}
+
+static XLA_FFI_Error* XLA_FFI_CustomOptions_Get(
+    XLA_FFI_CustomOptions_Get_Args* args) {
+  XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "XLA_FFI_CustomOptions_Get_Args",
+      XLA_FFI_CustomOptions_Get_Args_STRUCT_SIZE, args->struct_size));
+
+  static constexpr XLA_FFI_Attrs kEmptyAttrs = {
+      XLA_FFI_Attrs_STRUCT_SIZE, nullptr, 0, nullptr, nullptr, nullptr};
+
+  XLA_FFI_InvokeContext& ctx = *args->ctx;
+  if (ctx.custom_options == nullptr || ctx.custom_options->empty()) {
+    args->attrs = &kEmptyAttrs;
+    return nullptr;
+  }
+
+  if (!ctx.encoded_custom_options) {
+    ctx.encoded_custom_options = AttributesStorage::Create(*ctx.custom_options);
+  }
+
+  args->attrs = &ctx.encoded_custom_options->ffi_attrs();
   return nullptr;
 }
 
@@ -698,6 +723,7 @@ const XLA_FFI_Api* GetXlaFfiApi() {
       XLA_FFI_RunId_Get,
       XLA_FFI_DeviceOrdinal_Get,
       XLA_FFI_InvokeContext_FindExtension,
+      XLA_FFI_CustomOptions_Get,
   };
 
   return &api;

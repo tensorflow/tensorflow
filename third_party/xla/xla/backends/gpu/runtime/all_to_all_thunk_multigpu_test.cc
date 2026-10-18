@@ -44,8 +44,6 @@ namespace xla::gpu {
 namespace {
 
 static constexpr int kNumDevices = 2;
-static constexpr int64_t kLength = 4;
-static constexpr int64_t kByteLength = sizeof(float) * kLength;
 static constexpr int kNumBuffers = kNumDevices;
 
 static AllToAllConfig MakeAllToAllConfig() {
@@ -67,22 +65,23 @@ static std::vector<BufferAllocation> MakeThunkBufferAllocations() {
   std::vector<BufferAllocation> allocations;
   allocations.reserve(2 * kNumBuffers);
   for (int i = 0; i < 2 * kNumBuffers; ++i) {
-    allocations.emplace_back(/*index=*/i, kByteLength, /*color=*/0);
+    allocations.emplace_back(/*index=*/i, kFloatByteLength, /*color=*/0);
   }
   return allocations;
 }
 
-static AllToAllThunk MakeThunk(absl::Span<const BufferAllocation> allocations) {
+static AllToAllThunk MakeThunk(absl::Span<const BufferAllocation> allocations,
+                               bool p2p_memcpy_enabled = false) {
   std::vector<CollectiveThunk::Buffer> buffers;
   buffers.reserve(kNumBuffers);
   for (int i = 0; i < kNumBuffers; ++i) {
     ShapedSlice src_slice{
-        BufferAllocation::Slice(&allocations[i], 0, kByteLength),
-        ShapeUtil::MakeShape(F32, {kLength})};
-    ShapedSlice dst_slice{
-        BufferAllocation::Slice(&allocations[kNumBuffers + i], 0, kByteLength),
-        ShapeUtil::MakeShape(F32, {kLength})};
-    buffers.push_back(CollectiveThunk::Buffer{.element_count = kLength,
+        BufferAllocation::Slice(&allocations[i], 0, kFloatByteLength),
+        ShapeUtil::MakeShape(F32, {kNumElements})};
+    ShapedSlice dst_slice{BufferAllocation::Slice(&allocations[kNumBuffers + i],
+                                                  0, kFloatByteLength),
+                          ShapeUtil::MakeShape(F32, {kNumElements})};
+    buffers.push_back(CollectiveThunk::Buffer{.element_count = kNumElements,
                                               .source_buffer = src_slice,
                                               .destination_buffer = dst_slice,
                                               .source_memory_space = 0,
@@ -90,14 +89,14 @@ static AllToAllThunk MakeThunk(absl::Span<const BufferAllocation> allocations) {
   }
 
   return AllToAllThunk(Thunk::ThunkInfo(), MakeAllToAllConfig(),
-                       std::move(buffers),
-                       /*p2p_memcpy_enabled=*/false);
+                       std::move(buffers), p2p_memcpy_enabled,
+                       /*devices_per_host=*/kNumDevices);
 }
 
 using DeviceTestSlot = CollectiveThunkMultiGpuTestState;
 
 static std::vector<int64_t> DeviceBufferSizes() {
-  return std::vector<int64_t>(2 * kNumBuffers, kByteLength);
+  return std::vector<int64_t>(2 * kNumBuffers, kFloatByteLength);
 }
 
 static std::vector<BufferAllocation::Index> AllAllocationIndices() {
@@ -126,7 +125,7 @@ static float SourceValue(int source_rank, int target_rank, int phase) {
 static absl::Status FillDeviceBufferWithValue(se::Stream& stream,
                                               se::DeviceAddressBase buffer,
                                               float value) {
-  std::vector<float> data(kLength, value);
+  std::vector<float> data(kNumElements, value);
   return FillDeviceBuffer(stream, buffer, data);
 }
 
@@ -165,8 +164,8 @@ static absl::Status VerifyOutput(se::Stream& stream,
     float expected =
         SourceValue(source_rank, /*target_rank=*/device_ordinal, phase);
     ABSL_ASSIGN_OR_RETURN(std::vector<float> output,
-                     ReadDeviceBuffer(stream, dst[source_rank], kLength));
-    for (int i = 0; i < kLength; ++i) {
+                     ReadDeviceBuffer(stream, dst[source_rank], kNumElements));
+    for (int i = 0; i < kNumElements; ++i) {
       if (output[i] != expected) {
         return absl::InternalError(absl::StrFormat(
             "dst[%d][%d] on device %d = %g, expected %g", source_rank, i,
@@ -253,6 +252,40 @@ TEST(AllToAllThunkMultiGpuTest, ExecuteOnStream) {
         ABSL_RETURN_IF_ERROR(SetupDeviceSlot(d, slots[d], thunk, device_assignment));
         return RunExecuteOnStreamPhase(slots[d], thunk, d,
                                        /*phase=*/1);
+      }));
+}
+
+TEST(AllToAllThunkMultiGpuTest, ExecuteOnStreamP2PMemcpy) {
+  if (!HasEnoughGpus(kNumDevices)) {
+    GTEST_SKIP() << "Test requires at least " << kNumDevices << " GPUs";
+  }
+
+  DeviceAssignment device_assignment = MakeDeviceAssignment(kNumDevices);
+  std::vector<BufferAllocation> buffer_allocations =
+      MakeThunkBufferAllocations();
+  AllToAllThunk thunk =
+      MakeThunk(buffer_allocations, /*p2p_memcpy_enabled=*/true);
+  std::vector<DeviceTestSlot> slots(kNumDevices);
+
+  ASSERT_OK(RunOnDevices(
+      kNumDevices, "alltoall_p2p_execute", [&](int d) -> absl::Status {
+        ABSL_RETURN_IF_ERROR(SetupDeviceSlot(d, slots[d], thunk, device_assignment));
+        ABSL_RETURN_IF_ERROR(
+            RunExecuteOnStreamPhase(slots[d], thunk, d, /*phase=*/1));
+
+        BufferAllocations allocations =
+            MakeBufferAllocations(slots[d], slots[d].create_buffers);
+        Thunk::InitializeParams init_params;
+        init_params.executor = slots[d].executor;
+        init_params.stream = slots[d].stream.get();
+        init_params.command_buffer_trace_stream = slots[d].stream.get();
+        init_params.buffer_allocations = &allocations;
+        init_params.collective_params = &*slots[d].collective_params;
+        init_params.collective_cliques = &slots[d].collective_cliques;
+        init_params.local_device_count = kNumDevices;
+        ABSL_RETURN_IF_ERROR(thunk.Initialize(init_params));
+
+        return RunExecuteOnStreamPhase(slots[d], thunk, d, /*phase=*/2);
       }));
 }
 

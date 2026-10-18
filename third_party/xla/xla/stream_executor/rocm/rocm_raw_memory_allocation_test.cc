@@ -18,8 +18,8 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
-#include <gtest/gtest.h>
-#include "absl/status/status_matchers.h"
+#include <gmock/gmock.h>
+#include "absl/status/status_matchers.h"  // IWYU pragma: keep
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -30,7 +30,6 @@ limitations under the License.
 namespace stream_executor::gpu {
 namespace {
 
-using absl_testing::IsOk;
 
 static constexpr uint64_t kTestSize = 1024 * 1024;
 
@@ -52,24 +51,24 @@ class RocmRawMemoryAllocationTest : public ::testing::Test {
 };
 
 TEST_F(RocmRawMemoryAllocationTest, CreateAllocation) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto alloc, RocmRawMemoryAllocation::Create(executor_, kTestSize));
+  ASSERT_OK_AND_ASSIGN(auto alloc,
+                       RocmRawMemoryAllocation::Create(executor_, kTestSize));
 
   EXPECT_NE(alloc->GetHandle(), nullptr);
   EXPECT_GE(alloc->address().size(), kTestSize);
 }
 
 TEST_F(RocmRawMemoryAllocationTest, AddressReflectsHandle) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto alloc, RocmRawMemoryAllocation::Create(executor_, kTestSize));
+  ASSERT_OK_AND_ASSIGN(auto alloc,
+                       RocmRawMemoryAllocation::Create(executor_, kTestSize));
 
   EXPECT_EQ(alloc->address().opaque(), static_cast<void*>(alloc->GetHandle()));
   EXPECT_GE(alloc->address().size(), kTestSize);
 }
 
 TEST_F(RocmRawMemoryAllocationTest, SizeIsAtLeastRequested) {
-  TF_ASSERT_OK_AND_ASSIGN(auto alloc,
-                          RocmRawMemoryAllocation::Create(executor_, 1));
+  ASSERT_OK_AND_ASSIGN(auto alloc,
+                       RocmRawMemoryAllocation::Create(executor_, 1));
 
   EXPECT_NE(alloc->GetHandle(), nullptr);
   EXPECT_GE(alloc->address().size(), 1u);

@@ -100,3 +100,11 @@ GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
 
           "CopyKernel", arity);
     }));
+
+GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
+    DynShmemKernelRocm, stream_executor::gpu::internal::DynShmemKernel,
+    stream_executor::rocm::kROCmPlatformId, ([](size_t arity) {
+      return stream_executor::KernelLoaderSpec::CreateInProcessSymbolSpec(
+          absl::bit_cast<void*>(&stream_executor::gpu::DynShmemKernel),
+          "DynShmemKernel", arity);
+    }));

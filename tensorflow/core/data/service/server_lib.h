@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/data_transfer.h"
 #include "tensorflow/core/data/service/export.pb.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/profiler/rpc/profiler_service_impl.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
 
@@ -79,6 +80,8 @@ class GrpcDataServerBase {
   const std::string server_type_;
 
  private:
+  mutable mutex lifecycle_mu_;
+
   int bound_port_;
   bool started_ = false;
   bool stopped_ = false;
@@ -124,7 +127,7 @@ class DispatchGrpcDataServer : public GrpcDataServerBase {
  private:
   const experimental::DispatcherConfig config_;
   // Owned. We use a raw pointer because GrpcDispatcherImpl is forward-declared.
-  GrpcDispatcherImpl* service_;
+  GrpcDispatcherImpl* service_ = nullptr;
 };
 
 // A wrapper for `SnapshotTaskProgress` for use with pybind.
@@ -170,7 +173,7 @@ class WorkerGrpcDataServer : public GrpcDataServerBase {
 
   const experimental::WorkerConfig config_;
   // Owned. We use a raw pointer because GrpcWorkerImpl is forward-declared.
-  GrpcWorkerImpl* service_;
+  GrpcWorkerImpl* service_ = nullptr;
   std::shared_ptr<DataTransferServer> transfer_server_;
 };
 

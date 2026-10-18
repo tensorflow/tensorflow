@@ -111,8 +111,16 @@ void PopulateCallMapForCallLikeInstruction(
     const HloInstruction& optimized_instr,
     absl::flat_hash_map<std::string, std::vector<ScopeInstruction>>& call_map) {
   if (optimized_instr.original_value()) {
-    auto scope_instructions_str =
-        optimized_instr.original_value()->GetOriginalCallLikeInstructions();
+    std::optional<std::string> scope_instructions_str =
+        optimized_instr.original_value()->call_hierarchy();
+    if (!scope_instructions_str.has_value() &&
+        !optimized_instr.original_value()->IsEmpty()) {
+      const auto& first_leaf =
+          optimized_instr.original_value()->original_arrays().begin()->second;
+      if (first_leaf.has_value()) {
+        scope_instructions_str = first_leaf->instruction_name;
+      }
+    }
     if (scope_instructions_str.has_value()) {
       std::vector<std::string> scope_names =
           absl::StrSplit(*scope_instructions_str, '/');
@@ -262,17 +270,7 @@ HloOriginalValueAnalysis::Create(const HloModule* optimized_module,
           continue;
         }
 
-        if (absl::StrContains(oa.instruction_name, "__ovp")) {
-          std::vector<OriginalTensorInfo> results;
-          absl::flat_hash_set<OriginalArray> visited_placeholders;
-          BuildTransformationChain(oa, placeholder_to_recoverables,
-                                   optimized_key, optimized_tensor_sharding,
-                                   visited_placeholders, results);
-          for (auto& info : results) {
-            original_tensor_by_optimized_tensor_key[optimized_key].push_back(
-                std::move(info));
-          }
-        } else {
+        if (!absl::StrContains(oa.instruction_name, "__ovp")) {
           auto relative_key = RelativeScopedTensorKey::FromString(
               oa.instruction_name, oa.shape_index);
           HloOriginalValueAnalysis::OriginalTensorInfo info;
@@ -283,6 +281,22 @@ HloOriginalValueAnalysis::Create(const HloModule* optimized_module,
           info.original_array.instruction_name =
               relative_key.tensor_key.instruction_name;
           info.original_array.shape_index = relative_key.tensor_key.shape_index;
+          original_tensor_by_optimized_tensor_key[optimized_key].push_back(
+              std::move(info));
+        }
+        // Always traverse `BuildTransformationChain` even when `oa` is not a
+        // synthetic placeholder (no "__ovp" suffix). Passes such as
+        // `AlgebraicSimplifier` record recovery table entries whose source is
+        // an existing un-renamed instruction (e.g., `{"reshape.1"} : {"x.1"}`
+        // when `reshape.1 = reshape(x.1)` is folded into a consumer), so `x.1`
+        // both recovers `{"x.1"}` directly and serves as the source for
+        // recovering `{"reshape.1"}`.
+        std::vector<OriginalTensorInfo> results;
+        absl::flat_hash_set<OriginalArray> visited_placeholders;
+        BuildTransformationChain(oa, placeholder_to_recoverables, optimized_key,
+                                 optimized_tensor_sharding,
+                                 visited_placeholders, results);
+        for (auto& info : results) {
           original_tensor_by_optimized_tensor_key[optimized_key].push_back(
               std::move(info));
         }

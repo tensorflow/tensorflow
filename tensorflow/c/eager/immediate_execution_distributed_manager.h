@@ -33,7 +33,7 @@ class WorkerCacheInterface;
 
 class ImmediateExecutionDistributedManager {
  public:
-  virtual ~ImmediateExecutionDistributedManager() {}
+  virtual ~ImmediateExecutionDistributedManager() = default;
 
   // Set up distributed execution environment on local and remote tasks.
   // When `reset_context` is true, initialize new cluster context state based

@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status_macros.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/analysis/while_loop_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -41,8 +42,7 @@ limitations under the License.
 #include "xla/service/while_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -100,7 +100,11 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
     return false;
   }
 
-  std::string while_instr_name = while_instr->ToString(print_no_metadata);
+  // Only used by VLOG, and the string carries the whole loop state shape.
+  std::string while_instr_name;
+  if (VLOG_IS_ON(1)) {
+    while_instr_name = while_instr->ToString(print_no_metadata);
+  }
   VLOG(2) << "Trying to hoist from " << while_instr_name;
 
   auto maybe_upper_bound = ComputeWhileLoopTripCountUpperBound(while_instr);
@@ -146,7 +150,8 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
     return false;
   }
 
-  for (auto* instruction : while_body->MakeInstructionPostOrder()) {
+  // This scan bails on any match, so it does not need the post order.
+  for (const auto* instruction : while_body->instructions()) {
     // LICM in the presence of domain instructions is complex, bail.
     if (instruction->opcode() == HloOpcode::kDomain ||
         instruction->IsCustomCall("SPMDFullToShardShape") ||
@@ -167,6 +172,12 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
   std::vector<HloInstruction*> instructions_to_replace;
   std::vector<HloInstruction*> replacement_instructions;
 
+  const auto is_invariant = [&](HloInstruction* op) {
+    return op->opcode() == HloOpcode::kConstant ||
+           hoisted_instructions.contains(op) ||
+           unhoisted_invariant_instructions.contains(op);
+  };
+
   for (auto* instruction : while_body->MakeInstructionPostOrder()) {
     allowance->DeductCost(1);
     if (!allowance->ContinueAnalysis()) {
@@ -185,6 +196,13 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
         instruction->opcode() != HloOpcode::kReshape) {
       continue;
     }
+
+    // Cheap check first. Both checks are pure filters, so their order does not
+    // change which instructions are hoisted.
+    if (!absl::c_all_of(instruction->operands(), is_invariant)) {
+      continue;
+    }
+
     // Constants don't inflate, so size inflation check doesn't make sense for
     // constants.
     if (hoist_size_inflation_ratio_ &&
@@ -218,16 +236,6 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
       if (output_size > input_size * *hoist_size_inflation_ratio_) {
         continue;
       }
-    }
-
-    auto is_invariant = [&](HloInstruction* op) {
-      return hoisted_instructions.find(op) != hoisted_instructions.end() ||
-             unhoisted_invariant_instructions.contains(op) ||
-             op->opcode() == HloOpcode::kConstant;
-    };
-
-    if (!absl::c_all_of(instruction->operands(), is_invariant)) {
-      continue;
     }
 
     if (NotWorthHoistingIndividually(*instruction)) {

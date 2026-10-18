@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/strings/string_view.h"
 #include "xla/stream_executor/rocm/rocm_compute_capability.h"
 
 namespace stream_executor::gpu {
@@ -22,14 +23,17 @@ namespace stream_executor::gpu {
 // Returns the device memory (HBM/GDDR) bandwidth in bytes/second.
 //
 // The legacy `2 * bus_width * clock` formula lands at spec peak on HBM2/HBM2e
-// but falls short on HBM3/HBM3e and GDDR6. The value is resolved in two tiers,
-// first hit wins:
-//   1. a per-gfx peak for architectures the formula gets wrong;
-//   2. the legacy formula otherwise (correct on HBM2/HBM2e).
+// but falls short on HBM3/HBM3e and GDDR6. The value is resolved in three
+// tiers, first hit wins:
+//   1. the firmware reported peak, read over SMI;
+//   2. a per-gfx peak for architectures the formula gets wrong;
+//   3. the legacy formula otherwise (correct on HBM2/HBM2e).
 //
-// `mem_bus_width_bits` and `mem_clock_khz` come from hipDeviceProp_t
-// (memoryBusWidth, memoryClockRate) and feed the formula.
-int64_t GetRocmMemoryBandwidth(const RocmComputeCapability& cc,
+// `pci_bus_id` identifies the device to SMI. `mem_bus_width_bits` and
+// `mem_clock_khz` come from hipDeviceProp_t (memoryBusWidth, memoryClockRate)
+// and feed the formula.
+int64_t GetRocmMemoryBandwidth(absl::string_view pci_bus_id,
+                               const RocmComputeCapability& cc,
                                int64_t mem_bus_width_bits,
                                int64_t mem_clock_khz);
 

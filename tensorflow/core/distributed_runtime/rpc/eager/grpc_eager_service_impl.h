@@ -47,7 +47,7 @@ class GrpcEagerServiceImpl : public tsl::AsyncServiceInterface {
                                             RequestMessage, ResponseMessage>;
 
   GrpcEagerServiceImpl(WorkerEnv* env, ::grpc::ServerBuilder* server_builder);
-  virtual ~GrpcEagerServiceImpl() {}
+  ~GrpcEagerServiceImpl() override {}
 
   // Create a master context in eager service.
   absl::Status CreateMasterContext(uint64_t context_id, EagerContext* context);

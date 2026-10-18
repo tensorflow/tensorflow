@@ -41,8 +41,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/translate/hlo_to_mhlo/attribute_importer.h"
 #include "xla/service/algorithm_util.h"
+#include "xla/shape_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
@@ -91,6 +93,25 @@ absl::StatusOr<Value> ScaledDot(mlir::ImplicitLocOpBuilder& b,
                                 ScaledDotOperands& operands) {
   PrimitiveType lhs_primitive_type = dot.operand(0)->shape().element_type();
   PrimitiveType rhs_primitive_type = dot.operand(1)->shape().element_type();
+
+  // Scales that are not attached to tt.dot_scaled must not change the operand.
+  // A fusion extracted into its own module no longer has the scale's defining
+  // constant, so an effectively scalar shape also denotes an omitted scale.
+  for (int operand_index : {0, 1}) {
+    PrimitiveType operand_type =
+        dot.operand(operand_index)->shape().element_type();
+    if (IsTritonDotScaledOperandType(operand_type)) {
+      continue;
+    }
+    const HloInstruction* scale = dot.operand(operand_index + 2);
+    if (!IsAllOnesScale(*scale) &&
+        !ShapeUtil::IsEffectiveScalar(scale->shape())) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Cannot apply a scale to a ", PrimitiveType_Name(operand_type),
+          " scaled-dot operand: ",
+          scale->ToString(HloPrintOptions::ShortParsable())));
+    }
+  }
 
   Value lhs_scale;
   if (IsTritonDotScaledOperandType(lhs_primitive_type) && operands.lhs_scale) {

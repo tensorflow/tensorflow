@@ -1,0 +1,193 @@
+// Reproducer from https://github.com/openxla/xla/issues/50040:
+// jax.value_and_grad through lax.scan with an f64[3,3] carry (2794 steps).
+HloModule jit_objective, entry_computation_layout={(f64[3]{0})->(f64[], f64[3]{0})}, allow_spmd_sharding_propagation_to_parameters={true}, allow_spmd_sharding_propagation_to_output={true,true}
+
+%region_1.1 (reduce_sum.3: f64[], reduce_sum.4: f64[]) -> f64[] {
+  %reduce_sum.3 = f64[] parameter(0)
+  %reduce_sum.4 = f64[] parameter(1)
+  ROOT %reduce_sum.5 = f64[] add(%reduce_sum.3, %reduce_sum.4)
+}
+
+%dynamic_update_index_in_dim.2 (Arg_0.1: f64[2794,3,3], Arg_1.1: f64[3,3], Arg_2.1: s64[]) -> f64[2794,3,3] {
+  %Arg_0.1 = f64[2794,3,3]{2,1,0} parameter(0)
+  %Arg_1.1 = f64[3,3]{1,0} parameter(1)
+  %broadcast_in_dim.3 = f64[1,3,3]{2,1,0} reshape(%Arg_1.1)
+  %Arg_2.1 = s64[] parameter(2)
+  %constant.12 = s64[] constant(0)
+  ROOT %dynamic_update_slice.1 = f64[2794,3,3]{2,1,0} dynamic-update-slice(%Arg_0.1, %broadcast_in_dim.3, %Arg_2.1, %constant.12, %constant.12)
+}
+
+%dynamic_update_index_in_dim_0.3 (Arg_0.3: f64[2794,3,1], Arg_1.3: f64[3,1], Arg_2.3: s64[]) -> f64[2794,3,1] {
+  %Arg_0.3 = f64[2794,3,1]{2,1,0} parameter(0)
+  %Arg_1.3 = f64[3,1]{1,0} parameter(1)
+  %broadcast_in_dim.5 = f64[1,3,1]{2,1,0} reshape(%Arg_1.3)
+  %Arg_2.3 = s64[] parameter(2)
+  %constant.14 = s64[] constant(0)
+  ROOT %dynamic_update_slice.3 = f64[2794,3,1]{2,1,0} dynamic-update-slice(%Arg_0.3, %broadcast_in_dim.5, %Arg_2.3, %constant.14, %constant.14)
+}
+
+%region_0.4 (arg_tuple.1: (s64[], f64[3,3], f64[2794,3,3], f64[2794,3,3], f64[2794,3,1], /*index=5*/f64[2794,3,3], f64[2794,3,1], f64[1,3])) -> (s64[], f64[3,3], f64[2794,3,3], f64[2794,3,3], f64[2794,3,1], /*index=5*/f64[2794,3,3], f64[2794,3,1], f64[1,3]) {
+  %arg_tuple.1 = (s64[], f64[3,3]{1,0}, f64[2794,3,3]{2,1,0}, f64[2794,3,3]{2,1,0}, f64[2794,3,1]{2,1,0}, /*index=5*/f64[2794,3,3]{2,1,0}, f64[2794,3,1]{2,1,0}, f64[1,3]{1,0}) parameter(0)
+  %constant.15 = s64[] constant(1)
+  %add.13 = s64[] add(%arg_tuple.1#0, %constant.15)
+  %constant.17 = f64[] constant(0.99)
+  %broadcast.8 = f64[3,3]{1,0} broadcast(%constant.17), dimensions={}
+  %mul.5 = f64[3,3]{1,0} multiply(%arg_tuple.1#1, %broadcast.8)
+  %add.8 = f64[1,3]{1,0} broadcast(%arg_tuple.1#7), dimensions={0,1}
+  %add.9 = f64[3]{0} reshape(%add.8)
+  %add.10 = f64[3,3]{1,0} broadcast(%add.9), dimensions={1}
+  %add.11 = f64[3,3]{1,0} add(%arg_tuple.1#1, %add.10)
+  %sin.1 = f64[3,3]{1,0} sine(%add.11)
+  %constant.16 = f64[] constant(0.01)
+  %broadcast.7 = f64[3,3]{1,0} broadcast(%constant.16), dimensions={}
+  %mul.6 = f64[3,3]{1,0} multiply(%sin.1, %broadcast.7)
+  %mul.4 = f64[3,3]{1,0} multiply(%arg_tuple.1#1, %arg_tuple.1#1)
+  %constant.19 = f64[] constant(0)
+  %reduce_sum.7 = f64[3]{0} reduce(%mul.4, %constant.19), dimensions={1}, to_apply=%region_1.1
+  %broadcast_in_dim.6 = f64[3,1]{1,0} reshape(%reduce_sum.7)
+  %constant.18 = f64[] constant(1)
+  %broadcast.9 = f64[3,1]{1,0} broadcast(%constant.18), dimensions={}
+  %add.7 = f64[3,1]{1,0} add(%broadcast_in_dim.6, %broadcast.9)
+  %div.5 = f64[3,1]{1,0} broadcast(%add.7), dimensions={0,1}
+  %div.6 = f64[3]{0} reshape(%div.5)
+  %div.7 = f64[3,3]{1,0} broadcast(%div.6), dimensions={0}
+  %div.8 = f64[3,3]{1,0} divide(%mul.6, %div.7)
+  %add.12 = f64[3,3]{1,0} add(%mul.5, %div.8)
+  %jit_dynamic_update_index_in_dim_.5 = f64[2794,3,3]{2,1,0} call(%arg_tuple.1#2, %arg_tuple.1#1, %arg_tuple.1#0), to_apply=%dynamic_update_index_in_dim.2
+  %cos.1 = f64[3,3]{1,0} cosine(%add.11)
+  %jit_dynamic_update_index_in_dim_.6 = f64[2794,3,3]{2,1,0} call(%arg_tuple.1#3, %cos.1, %arg_tuple.1#0), to_apply=%dynamic_update_index_in_dim.2
+  %jit_dynamic_update_index_in_dim_.7 = f64[2794,3,1]{2,1,0} call(%arg_tuple.1#4, %add.7, %arg_tuple.1#0), to_apply=%dynamic_update_index_in_dim_0.3
+  %jit_dynamic_update_index_in_dim_.8 = f64[2794,3,3]{2,1,0} call(%arg_tuple.1#5, %mul.6, %arg_tuple.1#0), to_apply=%dynamic_update_index_in_dim.2
+  %mul.7 = f64[3,1]{1,0} multiply(%add.7, %add.7)
+  %div.9 = f64[3,1]{1,0} divide(%broadcast.9, %mul.7)
+  %jit_dynamic_update_index_in_dim_.9 = f64[2794,3,1]{2,1,0} call(%arg_tuple.1#6, %div.9, %arg_tuple.1#0), to_apply=%dynamic_update_index_in_dim_0.3
+  ROOT %tuple.1 = (s64[], f64[3,3]{1,0}, f64[2794,3,3]{2,1,0}, f64[2794,3,3]{2,1,0}, f64[2794,3,1]{2,1,0}, /*index=5*/f64[2794,3,3]{2,1,0}, f64[2794,3,1]{2,1,0}, f64[1,3]{1,0}) tuple(%add.13, %add.12, %jit_dynamic_update_index_in_dim_.5, %jit_dynamic_update_index_in_dim_.6, %jit_dynamic_update_index_in_dim_.7, /*index=5*/%jit_dynamic_update_index_in_dim_.8, %jit_dynamic_update_index_in_dim_.9, %arg_tuple.1#7)
+}
+
+%region_2.5 (arg_tuple.3: (s64[], f64[3,3], f64[2794,3,3], f64[2794,3,3], f64[2794,3,1], /*index=5*/f64[2794,3,3], f64[2794,3,1], f64[1,3])) -> pred[] {
+  %arg_tuple.3 = (s64[], f64[3,3]{1,0}, f64[2794,3,3]{2,1,0}, f64[2794,3,3]{2,1,0}, f64[2794,3,1]{2,1,0}, /*index=5*/f64[2794,3,3]{2,1,0}, f64[2794,3,1]{2,1,0}, f64[1,3]{1,0}) parameter(0)
+  %constant.21 = s64[] constant(2794)
+  ROOT %lt.1 = pred[] compare(%arg_tuple.3#0, %constant.21), direction=LT
+}
+
+%region_3.6 (reduce_sum.11: f64[], reduce_sum.12: f64[]) -> f64[] {
+  %reduce_sum.11 = f64[] parameter(0)
+  %reduce_sum.12 = f64[] parameter(1)
+  ROOT %reduce_sum.13 = f64[] add(%reduce_sum.11, %reduce_sum.12)
+}
+
+%dynamic_index_in_dim.7 (Arg_0.5: f64[2794,3,3], Arg_1.5: s64[]) -> f64[3,3] {
+  %Arg_0.5 = f64[2794,3,3]{2,1,0} parameter(0)
+  %Arg_1.5 = s64[] parameter(1)
+  %constant.28 = s64[] constant(0)
+  %dynamic_slice.1 = f64[1,3,3]{2,1,0} dynamic-slice(%Arg_0.5, %Arg_1.5, %constant.28, %constant.28), dynamic_slice_sizes={1,3,3}
+  ROOT %squeeze.1 = f64[3,3]{1,0} reshape(%dynamic_slice.1)
+}
+
+%dynamic_index_in_dim_1.8 (Arg_0.7: f64[2794,3,1], Arg_1.7: s64[]) -> f64[3,1] {
+  %Arg_0.7 = f64[2794,3,1]{2,1,0} parameter(0)
+  %Arg_1.7 = s64[] parameter(1)
+  %constant.30 = s64[] constant(0)
+  %dynamic_slice.3 = f64[1,3,1]{2,1,0} dynamic-slice(%Arg_0.7, %Arg_1.7, %constant.30, %constant.30), dynamic_slice_sizes={1,3,1}
+  ROOT %squeeze.3 = f64[3,1]{1,0} reshape(%dynamic_slice.3)
+}
+
+%region_5.9 (reduce_sum.18: f64[], reduce_sum.19: f64[]) -> f64[] {
+  %reduce_sum.18 = f64[] parameter(0)
+  %reduce_sum.19 = f64[] parameter(1)
+  ROOT %reduce_sum.20 = f64[] add(%reduce_sum.18, %reduce_sum.19)
+}
+
+%region_6.10 (reduce_sum.25: f64[], reduce_sum.26: f64[]) -> f64[] {
+  %reduce_sum.25 = f64[] parameter(0)
+  %reduce_sum.26 = f64[] parameter(1)
+  ROOT %reduce_sum.27 = f64[] add(%reduce_sum.25, %reduce_sum.26)
+}
+
+%region_7.11 (reduce_sum.32: f64[], reduce_sum.33: f64[]) -> f64[] {
+  %reduce_sum.32 = f64[] parameter(0)
+  %reduce_sum.33 = f64[] parameter(1)
+  ROOT %reduce_sum.34 = f64[] add(%reduce_sum.32, %reduce_sum.33)
+}
+
+%region_8.12 (reduce_sum.39: f64[], reduce_sum.40: f64[]) -> f64[] {
+  %reduce_sum.39 = f64[] parameter(0)
+  %reduce_sum.40 = f64[] parameter(1)
+  ROOT %reduce_sum.41 = f64[] add(%reduce_sum.39, %reduce_sum.40)
+}
+
+%region_4.13 (arg_tuple.5: (s64[], f64[3], f64[3,3], f64[2794,3,3], f64[2794,3,3], /*index=5*/f64[2794,3,1], f64[2794,3,3], f64[2794,3,1])) -> (s64[], f64[3], f64[3,3], f64[2794,3,3], f64[2794,3,3], /*index=5*/f64[2794,3,1], f64[2794,3,3], f64[2794,3,1]) {
+  %arg_tuple.5 = (s64[], f64[3]{0}, f64[3,3]{1,0}, f64[2794,3,3]{2,1,0}, f64[2794,3,3]{2,1,0}, /*index=5*/f64[2794,3,1]{2,1,0}, f64[2794,3,3]{2,1,0}, f64[2794,3,1]{2,1,0}) parameter(0)
+  %constant.34 = s64[] constant(1)
+  %add.15 = s64[] add(%arg_tuple.5#0, %constant.34)
+  %constant.35 = s64[] constant(2794)
+  %sub.2 = s64[] subtract(%constant.35, %arg_tuple.5#0)
+  %sub.3 = s64[] subtract(%sub.2, %constant.34)
+  %jit_dynamic_index_in_dim_.7 = f64[3,1]{1,0} call(%arg_tuple.5#5, %sub.3), to_apply=%dynamic_index_in_dim_1.8
+  %div.14 = f64[3,1]{1,0} broadcast(%jit_dynamic_index_in_dim_.7), dimensions={0,1}
+  %div.15 = f64[3]{0} reshape(%div.14)
+  %div.16 = f64[3,3]{1,0} broadcast(%div.15), dimensions={0}
+  %div.17 = f64[3,3]{1,0} divide(%arg_tuple.5#2, %div.16)
+  %constant.32 = f64[] constant(0.01)
+  %broadcast.13 = f64[3,3]{1,0} broadcast(%constant.32), dimensions={}
+  %mul.24 = f64[3,3]{1,0} multiply(%div.17, %broadcast.13)
+  %jit_dynamic_index_in_dim_.6 = f64[3,3]{1,0} call(%arg_tuple.5#4, %sub.3), to_apply=%dynamic_index_in_dim.7
+  %mul.25 = f64[3,3]{1,0} multiply(%mul.24, %jit_dynamic_index_in_dim_.6)
+  %constant.33 = f64[] constant(0)
+  %reduce_sum.44 = f64[3]{0} reduce(%mul.25, %constant.33), dimensions={0}, to_apply=%region_6.10
+  %reshape.3 = f64[1,3]{1,0} reshape(%reduce_sum.44)
+  %reduce_sum.45 = f64[3]{0} reduce(%reshape.3, %constant.33), dimensions={0}, to_apply=%region_7.11
+  %add_any.5 = f64[3]{0} add(%arg_tuple.5#1, %reduce_sum.45)
+  %constant.31 = f64[] constant(0.99)
+  %broadcast.12 = f64[3,3]{1,0} broadcast(%constant.31), dimensions={}
+  %mul.26 = f64[3,3]{1,0} multiply(%arg_tuple.5#2, %broadcast.12)
+  %add_any.6 = f64[3,3]{1,0} add(%mul.25, %mul.26)
+  %jit_dynamic_index_in_dim_.5 = f64[3,3]{1,0} call(%arg_tuple.5#3, %sub.3), to_apply=%dynamic_index_in_dim.7
+  %jit_dynamic_index_in_dim_.9 = f64[3,1]{1,0} call(%arg_tuple.5#7, %sub.3), to_apply=%dynamic_index_in_dim_1.8
+  %mul.19 = f64[3,1]{1,0} broadcast(%jit_dynamic_index_in_dim_.9), dimensions={0,1}
+  %mul.20 = f64[3]{0} reshape(%mul.19)
+  %mul.21 = f64[3,3]{1,0} broadcast(%mul.20), dimensions={0}
+  %mul.22 = f64[3,3]{1,0} multiply(%arg_tuple.5#2, %mul.21)
+  %jit_dynamic_index_in_dim_.8 = f64[3,3]{1,0} call(%arg_tuple.5#6, %sub.3), to_apply=%dynamic_index_in_dim.7
+  %mul.23 = f64[3,3]{1,0} multiply(%mul.22, %jit_dynamic_index_in_dim_.8)
+  %reduce_sum.43 = f64[3]{0} reduce(%mul.23, %constant.33), dimensions={1}, to_apply=%region_5.9
+  %reshape.2 = f64[3,1]{1,0} reshape(%reduce_sum.43)
+  %neg.1 = f64[3,1]{1,0} negate(%reshape.2)
+  %reduce_sum.46 = f64[3]{0} reduce(%neg.1, %constant.33), dimensions={1}, to_apply=%region_8.12
+  %broadcast_in_dim.8 = f64[3,3]{1,0} broadcast(%reduce_sum.46), dimensions={0}
+  %mul.27 = f64[3,3]{1,0} multiply(%jit_dynamic_index_in_dim_.5, %broadcast_in_dim.8)
+  %add_any.7 = f64[3,3]{1,0} add(%add_any.6, %mul.27)
+  %mul.28 = f64[3,3]{1,0} multiply(%broadcast_in_dim.8, %jit_dynamic_index_in_dim_.5)
+  %add_any.8 = f64[3,3]{1,0} add(%add_any.7, %mul.28)
+  ROOT %tuple.3 = (s64[], f64[3]{0}, f64[3,3]{1,0}, f64[2794,3,3]{2,1,0}, f64[2794,3,3]{2,1,0}, /*index=5*/f64[2794,3,1]{2,1,0}, f64[2794,3,3]{2,1,0}, f64[2794,3,1]{2,1,0}) tuple(%add.15, %add_any.5, %add_any.8, %arg_tuple.5#3, %arg_tuple.5#4, /*index=5*/%arg_tuple.5#5, %arg_tuple.5#6, %arg_tuple.5#7)
+}
+
+%region_9.14 (arg_tuple.7: (s64[], f64[3], f64[3,3], f64[2794,3,3], f64[2794,3,3], /*index=5*/f64[2794,3,1], f64[2794,3,3], f64[2794,3,1])) -> pred[] {
+  %arg_tuple.7 = (s64[], f64[3]{0}, f64[3,3]{1,0}, f64[2794,3,3]{2,1,0}, f64[2794,3,3]{2,1,0}, /*index=5*/f64[2794,3,1]{2,1,0}, f64[2794,3,3]{2,1,0}, f64[2794,3,1]{2,1,0}) parameter(0)
+  %constant.37 = s64[] constant(2794)
+  ROOT %lt.3 = pred[] compare(%arg_tuple.7#0, %constant.37), direction=LT
+}
+
+ENTRY %main.15 (p.1: f64[3]) -> (f64[], f64[3]) {
+  %constant.41 = s64[] constant(0)
+  %constant.43 = f64[] constant(0.1)
+  %broadcast.17 = f64[3,3]{1,0} broadcast(%constant.43), dimensions={}
+  %constant.40 = f64[] constant(0)
+  %broadcast.16 = f64[2794,3,3]{2,1,0} broadcast(%constant.40), dimensions={}
+  %constant.39 = f64[] constant(0)
+  %broadcast.15 = f64[2794,3,1]{2,1,0} broadcast(%constant.39), dimensions={}
+  %p.1 = f64[3]{0} parameter(0)
+  %broadcast_in_dim.9 = f64[1,3]{1,0} reshape(%p.1)
+  %while.14 = (s64[], f64[3,3]{1,0}, f64[2794,3,3]{2,1,0}, f64[2794,3,3]{2,1,0}, f64[2794,3,1]{2,1,0}, /*index=5*/f64[2794,3,3]{2,1,0}, f64[2794,3,1]{2,1,0}, f64[1,3]{1,0}) tuple(%constant.41, %broadcast.17, %broadcast.16, %broadcast.16, %broadcast.15, /*index=5*/%broadcast.16, %broadcast.15, %broadcast_in_dim.9)
+  %while.15 = (s64[], f64[3,3]{1,0}, f64[2794,3,3]{2,1,0}, f64[2794,3,3]{2,1,0}, f64[2794,3,1]{2,1,0}, /*index=5*/f64[2794,3,3]{2,1,0}, f64[2794,3,1]{2,1,0}, f64[1,3]{1,0}) while(%while.14), condition=%region_2.5, body=%region_0.4
+  %constant.38 = f64[] constant(0)
+  %broadcast.14 = f64[3]{0} broadcast(%constant.38), dimensions={}
+  %add_any.9 = f64[3,3]{1,0} add(%while.15#1, %while.15#1)
+  %while.23 = (s64[], f64[3]{0}, f64[3,3]{1,0}, f64[2794,3,3]{2,1,0}, f64[2794,3,3]{2,1,0}, /*index=5*/f64[2794,3,1]{2,1,0}, f64[2794,3,3]{2,1,0}, f64[2794,3,1]{2,1,0}) tuple(%constant.41, %broadcast.14, %add_any.9, %while.15#2, %while.15#3, /*index=5*/%while.15#4, %while.15#5, %while.15#6)
+  %while.24 = (s64[], f64[3]{0}, f64[3,3]{1,0}, f64[2794,3,3]{2,1,0}, f64[2794,3,3]{2,1,0}, /*index=5*/f64[2794,3,1]{2,1,0}, f64[2794,3,3]{2,1,0}, f64[2794,3,1]{2,1,0}) while(%while.23), condition=%region_9.14, body=%region_4.13
+  %mul.29 = f64[3,3]{1,0} multiply(%while.15#1, %while.15#1)
+  %constant.42 = f64[] constant(0)
+  %reduce_sum.47 = f64[] reduce(%mul.29, %constant.42), dimensions={0,1}, to_apply=%region_3.6
+  ROOT %tuple.5 = (f64[], f64[3]{0}) tuple(%reduce_sum.47, %while.24#1)
+}
+

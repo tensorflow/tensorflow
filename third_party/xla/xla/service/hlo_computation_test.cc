@@ -44,8 +44,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -190,8 +188,8 @@ TEST_F(HloComputationTest, PostOrderWithReshapeFirst) {
   }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   HloComputation* entry_computation =
       FindComputation(hlo_module.get(), "entry");
 
@@ -519,8 +517,8 @@ TEST_F(HloComputationTest, RemoveSeveralUnusedFusionParameters) {
   // Unverified because we don't allow a fusion with dead instructions. But we
   // can run into this case if we have a multi-output fusion with an unused
   // tuple output and then remove the tuple output.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHloModule));
   auto root = module->entry_computation()->root_instruction();
   auto dead_add = FindInstruction(module.get(), "add");
   ASSERT_IS_OK(root->fused_instructions_computation()
@@ -558,8 +556,8 @@ TEST_F(HloComputationTest, ReplaceParameter) {
       while = (f32[2], s32[]) while(while_init), condition=condition, body=body
       ROOT out = s32[] get-tuple-element(while), index=1
     })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHloModule));
   HloComputation* body = module->GetComputationWithName("body");
 
   Shape new_param_shape = ShapeUtil::MakeTupleShape(
@@ -843,8 +841,7 @@ ENTRY entry {
   add = f32[128] add(crs0, crs0), sharding={maximal device=0}
   ROOT t = (f32[128], f32[128]) tuple(add, crs1)
 })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   EXPECT_THAT(module->entry_computation()->MakeInstructionPostOrder(),
               ElementsAre(op::Parameter(), op::AllReduce(), op::Add(),
                           op::AllReduce(), op::Tuple()));
@@ -890,7 +887,7 @@ TEST_F(HloComputationTest, ComparisonWithCustomComparator) {
     ROOT multiply.14 = s32[] multiply(rd1, rd2)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(mod_txt));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(mod_txt));
 
   absl::flat_hash_map<absl::string_view, absl::string_view> replace_map;
   replace_map["region_X"] = "region_A";
@@ -935,8 +932,7 @@ TEST_F(HloComputationTest, CloneWrappedAsyncInstructionSameWrappedFunc) {
       ROOT reduce-scatter-done = u32[4]{0} async-done(((u32[8]{0}), u32[4]{0}) reduce-scatter-start),
         calls=async_wrapped
 })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* start = FindInstruction(module.get(), "reduce-scatter-start");
   HloInstruction* done = FindInstruction(module.get(), "reduce-scatter-done");
   EXPECT_EQ(start->async_wrapped_computation(),
@@ -967,8 +963,7 @@ TEST_F(HloComputationTest, CompositeCall) {
         composite.version="1"
       }
 })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* composite_call = FindInstruction(module.get(), "call");
   EXPECT_EQ(composite_call->opcode(), HloOpcode::kCall);
   EXPECT_TRUE(composite_call->is_composite());
@@ -989,10 +984,10 @@ ENTRY main {
   ROOT out.0 = () tuple()
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   HloComputation* comp0 = FindComputation(module.get(), "comp.0");
   HloInstruction* custom_call = FindInstruction(module.get(), "custom-call.0");
-  TF_ASSERT_OK(comp0->CreateAsyncInstructions(
+  ASSERT_OK(comp0->CreateAsyncInstructions(
       custom_call, /*context_shapes=*/{ShapeUtil::MakeScalarShape(U32)},
       /*async_execution_thread=*/HloInstruction::kMainExecutionThread,
       /*replace=*/true,
@@ -1018,8 +1013,8 @@ TEST_F(HloComputationTest, ToStringWhileCreatingReplacements) {
     add = f32[8,8] add(p0, p1)
     ROOT t = (f32[8,8], f32[8,8]) tuple(add, add)
   })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(hlo));
   HloComputation* entry = m->entry_computation();
 
   HloInstruction* add = FindInstruction(m.get(), HloOpcode::kAdd);
@@ -1060,15 +1055,15 @@ ENTRY main {
   // the operand from the callee, but that's not possible, due to all related
   // APIs being private/protected, hence the module will be left in an illegal
   // state and not verifiable.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo));
 
   HloInstruction* call0 = module->entry_computation()->root_instruction();
   ASSERT_EQ(call0->opcode(), HloOpcode::kCall);
   HloComputation* computation = call0->to_apply();
   ASSERT_TRUE(!computation->parameter_instruction(0)->has_backend_config());
   // Parameter 0 is dead and safe to remove.
-  TF_ASSERT_OK(computation->RemoveParameter(0));
+  ASSERT_OK(computation->RemoveParameter(0));
   // Parameter 1 shifted to parameter 0 and should preserve its backend config.
   EXPECT_TRUE(computation->parameter_instruction(0)->has_backend_config());
 }

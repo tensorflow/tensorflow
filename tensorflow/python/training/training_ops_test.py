@@ -198,6 +198,63 @@ class TrainingOpsTest(TensorFlowTestCase):
       grad = np.arange(100).astype(dtype)
       self._testTypesForAdagrad(x, y, lr, grad, use_gpu)
 
+  @test_util.run_v1_only(
+      "ApplyAdadelta op returns a ref, so it is not supported in eager mode."
+  )
+  def testApplyAdadeltaMismatchedShape(self):
+    for dtype in [dtypes.float32]:
+      var = variable_v1.VariableV1([1.0, 2.0], dtype=dtype)
+      accum = variable_v1.VariableV1([1.0, 2.0], dtype=dtype)
+      accum_update = variable_v1.VariableV1([1.0], dtype=dtype)
+      lr = constant_op.constant(1.0, dtype=dtype)
+      rho = constant_op.constant(0.9, dtype=dtype)
+      epsilon = constant_op.constant(1e-6, dtype=dtype)
+      grad = constant_op.constant([0.1, 0.2], dtype=dtype)
+      with self.cached_session() as sess:
+        self.evaluate(variables.global_variables_initializer())
+        with self.assertRaises((ValueError, errors.InvalidArgumentError)):
+          self.evaluate(
+              gen_training_ops.apply_adadelta(
+                  var,
+                  accum,
+                  accum_update,
+                  lr,
+                  rho,
+                  epsilon,
+                  grad,
+                  use_locking=False,
+              )
+          )
+
+  @test_util.run_v1_only(
+      "ResourceApplyAdadelta op returns a ref, so it is not "
+      "supported in eager mode."
+  )
+  def testResourceApplyAdadeltaMismatchedShape(self):
+    for dtype in [dtypes.float32]:
+      var = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
+      accum = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
+      accum_update = resource_variable_ops.ResourceVariable([1.0], dtype=dtype)
+      lr = constant_op.constant(1.0, dtype=dtype)
+      rho = constant_op.constant(0.9, dtype=dtype)
+      epsilon = constant_op.constant(1e-6, dtype=dtype)
+      grad = constant_op.constant([0.1, 0.2], dtype=dtype)
+      with self.cached_session() as sess:
+        self.evaluate(variables.global_variables_initializer())
+        with self.assertRaises((ValueError, errors.InvalidArgumentError)):
+          self.evaluate(
+              gen_training_ops.resource_apply_adadelta(
+                  var.handle,
+                  accum.handle,
+                  accum_update.handle,
+                  lr,
+                  rho,
+                  epsilon,
+                  grad,
+                  use_locking=False,
+              )
+          )
+
   @test_util.run_v1_only("ApplyFtrl op returns a ref, so it is not "
                          "supported in eager mode.")
   def testApplyFtrl(self):
@@ -602,6 +659,89 @@ class TrainingOpsTest(TensorFlowTestCase):
     for apply_op in cases:
       with self.assertRaises(errors.InvalidArgumentError):
         self.evaluate(apply_op())
+
+  @test_util.run_v2_only
+  def testResourceSparseApplyAdagradDAInvalidGradRank(self):
+    # A scalar `grad` with a higher-rank `var` used to hit a fatal CHECK
+    # instead of raising InvalidArgumentError (see GitHub issue #94130).
+    # ResourceSparseApplyAdagradDA only has a CPU kernel, so pin the whole
+    # test to CPU rather than relying on default placement.
+    with ops.device("/cpu:0"):
+      var = variables.Variable([[0.0, 0.0]] * 10, dtype=dtypes.float32)
+      gradient_accumulator = variables.Variable(
+          [[0.0, 0.0]] * 10, dtype=dtypes.float32
+      )
+      gradient_squared_accumulator = variables.Variable(
+          [[0.0, 0.0]] * 10, dtype=dtypes.float32
+      )
+      self.evaluate(variables.global_variables_initializer())
+
+      grad = constant_op.constant(0.0, dtype=dtypes.float32)  # wrong rank
+      indices = constant_op.constant([0, 0], dtype=dtypes.int32)
+
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError,
+          "grad must have the same number of dimensions as var",
+      ):
+        self.evaluate(
+            gen_training_ops.resource_sparse_apply_adagrad_da(
+                var.handle,
+                gradient_accumulator.handle,
+                gradient_squared_accumulator.handle,
+                grad,
+                indices,
+                constant_op.constant(0.0, dtype=dtypes.float32),
+                constant_op.constant(0.0, dtype=dtypes.float32),
+                constant_op.constant(0.0, dtype=dtypes.float32),
+                constant_op.constant(1, dtype=dtypes.int64),
+            )
+        )
+
+  @test_util.run_in_graph_and_eager_modes
+  @test_util.disable_xla("Tests C++ kernel validation in training_op_helpers.h")
+  def testResourceVariableDtypeMismatch(self):
+    # A resource variable whose dtype differs from optimizer dtype T
+    # previously caused a fatal CHECK failure in CheckTypeAndIsAligned
+    # instead of raising an InvalidArgumentError (see GitHub issue #113145).
+    var = variables.Variable([[0.0, 0.0]], dtype=dtypes.float32)
+    accum = variables.Variable([[0.0, 0.0]], dtype=dtypes.float32)
+    var_f16 = variables.Variable([[0.0, 0.0]], dtype=dtypes.float16)
+    self.evaluate(variables.global_variables_initializer())
+
+    lr = constant_op.constant(0.1, dtype=dtypes.float16)
+    grad = constant_op.constant([[0.1, 0.2]], dtype=dtypes.float16)
+    indices = constant_op.constant([0], dtype=dtypes.int32)
+
+    with self.assertRaisesRegex(errors.InvalidArgumentError, "dtype mismatch"):
+      self.evaluate(
+          gen_training_ops.resource_sparse_apply_adagrad(
+              var=var.handle,
+              accum=accum.handle,
+              lr=lr,
+              grad=grad,
+              indices=indices,
+          )
+      )
+
+    with self.assertRaisesRegex(errors.InvalidArgumentError, "dtype mismatch"):
+      self.evaluate(
+          gen_training_ops.resource_sparse_apply_adagrad(
+              var=var_f16.handle,
+              accum=accum.handle,
+              lr=lr,
+              grad=grad,
+              indices=indices,
+          )
+      )
+
+    with self.assertRaisesRegex(errors.InvalidArgumentError, "dtype mismatch"):
+      self.evaluate(
+          gen_training_ops.resource_apply_gradient_descent(
+              var=var.handle,
+              alpha=lr,
+              delta=grad,
+          )
+      )
 
 
 if __name__ == '__main__':
