@@ -27,23 +27,32 @@ limitations under the License.
 namespace tensorflow::functor {
 
 // __launch_bounds__ lets ptxas use as many registers as Th threads per block
-// allow; without it, the toolchain's --maxrregcount=0 clamps the kernel to 24
-// and the per-thread accumulators spill to local memory.
+// (and kMinBlocks blocks per SM) allow; without it, the toolchain's
+// --maxrregcount=0 clamps the kernel to 24 and the per-thread accumulators
+// spill to local memory.
 template <typename T, int D_MAX>
-__global__ void __launch_bounds__(traits::FlashTraits<D_MAX>::Th)
+__global__ void __launch_bounds__(traits::FlashTraits<D_MAX>::Th,
+                                  traits::FlashTraits<D_MAX>::kMinBlocks)
     FlashAttnFwdKernel(const T *__restrict__ Q, const T *__restrict__ K,
                        const T *__restrict__ V, T *__restrict__ Out,
                        float *__restrict__ stats_out, int BH, int H, int S_q,
                        int S_kv, int D_qk, int D_v, bool causal_mask,
-                       float dropout_rate, float scale, FlashAttentionRng rng) {
+                       float dropout_rate, float scale, FlashAttentionRng rng,
+                       bool load_chunks) {
   const uint64_t seed = ResolveSeed(rng);
   const uint64_t offset = ResolveOffset(rng);
   constexpr int Br = traits::FlashTraits<D_MAX>::Br;
   constexpr int Bc = traits::FlashTraits<D_MAX>::Bc;
-  // Each thread reads its own Q row: up to D_MAX = 64 it's copied into
-  // registers once (next to acc_o), beyond that it's read from a rotated tile.
+  // Keys per step of the inner loop: their dot products are independent, so
+  // they overlap, and the running max is updated once per step.
+  constexpr int kKeys = traits::FlashTraits<D_MAX>::kKeys;
+  static_assert(Bc % kKeys == 0);
+  constexpr int kStages = traits::FwdStages<T, D_MAX>();
+  // Each thread reads its own Q row: up to D_MAX = 64 it's read straight into
+  // registers (next to acc_o), beyond that it's read from a rotated tile.
   // Every thread reads the same K/V row, so those need no rotation.
   constexpr bool kQInRegisters = D_MAX <= 64;
+  static_assert(kQInRegisters == (traits::FwdQTileBytes<T, D_MAX>() == 0));
   constexpr int kShiftQ = kQInRegisters ? 0 : 1;
   using TileQ = Tile<T, D_MAX, kShiftQ>;
   using TileKV = Tile<T, D_MAX, 0>;
@@ -51,11 +60,11 @@ __global__ void __launch_bounds__(traits::FlashTraits<D_MAX>::Th)
       (dropout_rate > 0.0f) ? (1.0f / (1.0f - dropout_rate)) : 1.0f;
 
   // Shared Memory Layout:
-  // Q_tile[Br][D_qk] | K_tile[Bc][D_qk] | V_tile[Bc][D_v]
+  // kStages x (K_tile[Bc][D_qk] | V_tile[Bc][D_v]) | Q_tile[Br][D_qk] (only
+  // without kQInRegisters)
   extern __shared__ __align__(16) char smem_[];
-  T *s_Q = reinterpret_cast<T *>(smem_);
-  T *s_K = s_Q + Br * D_MAX;
-  T *s_V = s_K + Bc * D_MAX;
+  T *s_KV = reinterpret_cast<T *>(smem_);
+  T *s_Q = s_KV + kStages * 2 * Bc * D_MAX;
 
   // Grid Mapping
   // blockIdx.x covers all tiles: (Batch * Heads * S_q) / Br
@@ -89,75 +98,110 @@ __global__ void __launch_bounds__(traits::FlashTraits<D_MAX>::Th)
   const uint64_t global_rng_idx =
       seed + offset + static_cast<uint64_t>((batch_offset_q + q_offset) * S_kv);
 
-  // Load Q Tile
-  if (block_valid) {
-    load_tile<T, D_MAX, kShiftQ>(s_Q, Q, tid, blockDim.x, Br, D_qk, S_q,
-                                 tile_offset_q, row_base_q, H);
-  }
-
   float q_reg[kQInRegisters ? D_MAX : 1];
   if constexpr (kQInRegisters) {
-    __syncthreads();
-    if (tid < Br) TileQ::LoadRow(s_Q, tid, q_reg);
+    const T *q_row = Q + (row_base_q + static_cast<size_t>(q_offset) * H) * D_qk;
+#pragma unroll
+    for (int d = 0; d < D_MAX; ++d) {
+      q_reg[d] = (active && d < D_qk) ? static_cast<float>(q_row[d]) : ZEROF;
+    }
+  } else if (block_valid) {
+    // Arrives with the first K/V tile.
+    LoadTile<T, D_MAX, kShiftQ>(load_chunks, s_Q, Q, tid, blockDim.x, Br, D_qk,
+                                S_q, tile_offset_q, row_base_q, H);
   }
 
-  for (int tile_offset_kv = 0; tile_offset_kv < S_kv; tile_offset_kv += Bc) {
-    bool tile_is_masked =
-        (!block_valid) ||
-        (causal_mask && (tile_offset_kv > tile_offset_q + Br - 1));
+  // Causal: this Q tile's rows only attend to keys up to its last row, so KV
+  // tiles starting past tile_offset_q + Br - 1 are fully masked. The bound is
+  // the same for the whole block, so every thread runs the same iterations and
+  // the __syncthreads() stay matched.
+  const int kv_end =
+      !block_valid ? 0
+                   : (causal_mask ? std::min(S_kv, tile_offset_q + Br) : S_kv);
+  const int kv_tiles = (kv_end + Bc - 1) / Bc;
+  auto load_kv = [&](int t) {
+    T *s_K = s_KV + (t % kStages) * 2 * Bc * D_MAX;
+    LoadTile<T, D_MAX, 0>(load_chunks, s_K, K, tid, blockDim.x, Bc, D_qk, S_kv,
+                          t * Bc, row_base_kv, H);
+    LoadTile<T, D_MAX, 0>(load_chunks, s_K + Bc * D_MAX, V, tid, blockDim.x,
+                          Bc, D_v, S_kv, t * Bc, row_base_kv, H);
+  };
 
-    __syncthreads();
-
-    // Load KV Tile
-    if (!tile_is_masked) {
-      load_tile<T, D_MAX, 0>(s_K, K, tid, blockDim.x, Bc, D_qk, S_kv,
-                             tile_offset_kv, row_base_kv, H);
-      load_tile<T, D_MAX, 0>(s_V, V, tid, blockDim.x, Bc, D_v, S_kv,
-                             tile_offset_kv, row_base_kv, H);
+  if constexpr (kStages > 1) {
+    if (kv_tiles > 0) load_kv(0);
+    CpAsyncCommit();
+  }
+  for (int t = 0; t < kv_tiles; ++t) {
+    if constexpr (kStages == 1) {
+      load_kv(t);
+      CpAsyncCommit();
     }
-
+    CpAsyncWait<0>();
+    // Makes tile t visible to the block. With two stages, it also means every
+    // thread is done with tile t - 1, so its buffer can take tile t + 1, which
+    // then loads while this tile is processed.
     __syncthreads();
+    if constexpr (kStages > 1) {
+      if (t + 1 < kv_tiles) load_kv(t + 1);
+      CpAsyncCommit();
+    }
+    const T *s_K = s_KV + (t % kStages) * 2 * Bc * D_MAX;
+    const T *s_V = s_K + Bc * D_MAX;
+    const int tile_offset_kv = t * Bc;
 
-    // Compute attention inside this tile
-    if (active && !tile_is_masked) {
-      // find valid tile range
-      int valid_end =
-          (tile_offset_kv + Bc > S_kv) ? (S_kv - tile_offset_kv) : Bc;
-      if (causal_mask && (tile_offset_kv + valid_end > q_offset)) {
-        valid_end = q_offset - tile_offset_kv + 1;
+    if (active) {
+      int valid_end = std::min(Bc, S_kv - tile_offset_kv);
+      if (causal_mask) {
+        valid_end = std::min(valid_end, q_offset - tile_offset_kv + 1);
       }
-      // Online softmax, one key at a time, so no scores are buffered.
+      // Online softmax, kKeys keys at a time, so no scores are buffered.
       // acc_o and l_i are only rescaled when the running max grows, which
-      // becomes rare after the first few keys.
-      for (int j = 0; j < valid_end; ++j) {
-        float score;
+      // becomes rare after the first few keys. Keys past valid_end (rows of
+      // the tile past S_kv or masked by causality) get probability 0.
+      for (int j = 0; j < valid_end; j += kKeys) {
+        float score[kKeys];
         if constexpr (kQInRegisters) {
-          score = TileKV::Dot(q_reg, s_K, j) * scale;
+          TileKV::template DotN<kKeys>(q_reg, s_K, j, score);
         } else {
-          score = TileDot<TileQ, TileKV>(s_Q, tid, s_K, j) * scale;
+          TileDotN<TileKV, TileQ, kKeys>(s_K, j, s_Q, tid, score);
         }
-        if (score > m_i) {
-          const float ratio = Eigen::numext::exp(m_i - score);
+        float m_new = m_i;
+#pragma unroll
+        for (int k = 0; k < kKeys; ++k) {
+          score[k] = (j + k < valid_end) ? score[k] * scale : -INFINITY;
+          m_new = fmaxf(m_new, score[k]);
+        }
+        if (m_new > m_i) {
+          const float ratio = Eigen::numext::exp(m_i - m_new);
           l_i *= ratio;
 #pragma unroll
           for (int d = 0; d < D_MAX; ++d) {
             acc_o[d] *= ratio;
           }
-          m_i = score;
+          m_i = m_new;
         }
 
-        const int kv_offset = tile_offset_kv + j;
-        float p_ij = Eigen::numext::exp(score - m_i);
-        l_i += p_ij;
-        if (dropout_rate > 0.0f) {
-          if (get_random_float_v2(global_rng_idx, kv_offset) < dropout_rate) {
-            p_ij = ZEROF;
-          } else {
-            p_ij *= dp_inverse;
+        float p[kKeys];
+#pragma unroll
+        for (int k = 0; k < kKeys; ++k) {
+          p[k] = Eigen::numext::exp(score[k] - m_i);
+          l_i += p[k];
+          if (dropout_rate > 0.0f) {
+            const int kv_offset = tile_offset_kv + j + k;
+            if (get_random_float_v2(global_rng_idx, kv_offset) <
+                dropout_rate) {
+              p[k] = ZEROF;
+            } else {
+              p[k] *= dp_inverse;
+            }
           }
         }
-        TileKV::Axpy(acc_o, p_ij, s_V, j);
+        TileKV::template AxpyN<kKeys>(acc_o, p, s_V, j);
       }
+    }
+    if constexpr (kStages == 1) {
+      // The next iteration overwrites this tile.
+      __syncthreads();
     }
   }
 
@@ -264,9 +308,8 @@ struct FlashAttentionFunctor<GPUDevice, T> {
                             bool causal_mask, float dropout_rate, float scale,
                             FlashAttentionRng rng) const {
     constexpr int Br = traits::FlashTraits<D_MAX>::Br;
-    constexpr int Bc = traits::FlashTraits<D_MAX>::Bc;
     constexpr int threads_per_block = traits::FlashTraits<D_MAX>::Th;
-    int smem_size = (Br + Bc + Bc) * D_MAX * sizeof(T);
+    constexpr int smem_size = traits::FwdSmemBytes<T, D_MAX>();
     uint64_t blocks_per_batch = (S_q + Br - 1) / Br;
     const int BH = B * H;  // fits in int, see CheckDimsFitInt32
     uint64_t total_blocks = static_cast<uint64_t>(BH) * blocks_per_batch;
@@ -278,7 +321,9 @@ struct FlashAttentionFunctor<GPUDevice, T> {
                            threads_per_block, smem_size, d.stream(), Q.data(),
                            K.data(), V.data(), Out.data(), Stats.data(), BH, H,
                            S_q, S_kv, D_qk, D_v, causal_mask, dropout_rate,
-                           scale, rng);
+                           scale, rng,
+                           CanLoadChunks<T>({Q.data(), K.data(), V.data()},
+                                            {D_qk, D_v}));
   }
 };
 
