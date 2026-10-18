@@ -57,8 +57,12 @@ cc_library(
             _IBV_SHIM_SRC,
         ],
     ),
+    # Hide the GCC 8 std::filesystem code (libstdc++fs.a and inline members):
+    # it is ABI-incompatible with the libstdc++.so that other libraries use.
+    copts = ["-fvisibility-inlines-hidden"],
     linkopts = [
         "-ldl",
+        "-Wl,--exclude-libs,libstdc++fs.a",
     ],
     deps = [
         "@roc_mori//:mori_application_headers",

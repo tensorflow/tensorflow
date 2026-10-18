@@ -15,11 +15,11 @@ limitations under the License.
 
 #include "xla/backends/cpu/runtime/all_reduce_thunk.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <memory>
 #include <utility>
-#include <vector>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
@@ -104,17 +104,19 @@ tsl::AsyncValueRef<AllReduceThunk::ExecuteEvent> AllReduceThunk::Execute(
       [&, data = std::move(data)](const RendezvousKey& key,
                                   Communicator& comm) {
         CpuCollectives::Executor executor(key, DefaultCollectiveTimeout());
-        std::vector<Future<>> futures(data.source.size());
+        absl::InlinedVector<Communicator::AllReduceBuffer, 4> buffers;
+        buffers.reserve(data.source.size());
 
         for (int32_t i = 0; i < data.source.size(); ++i) {
           const Shape& shape = destination_shape(i);
 
-          futures[i] = comm.AllReduce(
-              data.source[i], data.destination[i], shape.element_type(),
-              ShapeUtil::ElementsIn(shape), reduction_kind_, executor);
+          buffers.push_back(
+              {data.source[i], data.destination[i],
+               static_cast<size_t>(ShapeUtil::ElementsIn(shape))});
         }
 
-        return JoinFutures(futures);
+        return comm.AllReduceMany(buffers, source_shape(0).element_type(),
+                                  reduction_kind_, executor);
       });
 
   return ToExecuteEvent(future);

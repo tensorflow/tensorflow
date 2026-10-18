@@ -119,11 +119,18 @@ absl::StatusOr<CollectiveKernelSpec> CreateCollectiveKernelSpec(
     SymmetricMemoryType scratch_memory_type,
     const DeviceAssignment* device_assignment = nullptr);
 
-// Reshapes a reduce-scatter fusion (whose root is a reduce-scatter that
-// satisfies IsReduceScatterFlattenable) to a 2D reduce-scatter along dimension
-// 0: the fused parameter becomes [R * R, OutputSize / R] and the root
-// [R, OutputSize / R], where R is the number of replicas per group.
-// Bitcasts are inserted around the fusion in the parent computation.
+// Returns true if `rs` needs to be reshaped by `FlattenReduceScatterFusion`
+// before tiling: either an output is not divisible by the replica group size
+// along the scatter dimension, or its per-rank element count is not a power of
+// two.
+bool ShouldFlattenReduceScatter(
+    const HloReduceScatterInstruction* absl_nonnull rs);
+
+// Reshapes a reduce-scatter fusion so every operand is scattered along dim 0
+// with output dim 0 equal to R (the number of ranks per group), and wraps the
+// fusion inputs and outputs in bitcasts in the parent computation.
+// For example, with R = 2, an operand `f32[2,4,8] -> f32[1,4,8]` is reshaped
+// to `f32[4,16] -> f32[2,16]`.
 absl::Status FlattenReduceScatterFusion(
     HloFusionInstruction* absl_nonnull fusion_instr);
 
@@ -131,6 +138,7 @@ absl::Status FlattenReduceScatterFusion(
 // reduce-scatter) of a collective fusion computation, or nullptr if there is
 // none.
 const HloInstruction* GetCollectiveHero(const HloComputation* computation);
+HloInstruction* GetMutableCollectiveHero(HloComputation* computation);
 
 }  // namespace xla::gpu
 #endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_COLLECTIVE_EMITTER_H_

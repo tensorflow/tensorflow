@@ -43,6 +43,10 @@ class GlooCommunicator : public Communicator {
                    size_t num_ranks);
   ~GlooCommunicator() override;
 
+  Future<> AllReduceMany(absl::Span<const AllReduceBuffer> buffers,
+                         PrimitiveType dtype, ReductionKind reduction_kind,
+                         const Executor& executor) override;
+
   Future<> AllReduce(se::DeviceAddressBase send_buffer,
                      se::DeviceAddressBase recv_buffer, PrimitiveType dtype,
                      size_t count, ReductionKind reduction_kind,

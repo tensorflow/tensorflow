@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/dynamic_slice_fusion_v2_thunk.h"
 #include "xla/backends/gpu/runtime/execution_stream_id.h"
 #include "xla/backends/gpu/runtime/gpublas_lt_matmul_thunk.h"
+#include "xla/backends/gpu/runtime/ragged_all_to_all_thunk.h"
 #include "xla/backends/gpu/runtime/replica_id_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -298,8 +299,50 @@ std::unique_ptr<ConvolutionThunk> CreateConvolutionThunk(
   return std::move(thunk).value();
 }
 
+std::unique_ptr<RaggedAllToAllThunk> CreateRaggedAllToAllThunk(
+    const BufferAllocation& alloc0, const BufferAllocation& alloc1,
+    int64_t num_replicas = 2,
+    bool use_multi_gpu_barrier_with_nccl_in_one_shot_kernel = true,
+    std::optional<int64_t> fast_interconnect_slice_size_override =
+        std::nullopt) {
+  ReplicaGroup group;
+  for (int64_t i = 0; i < num_replicas; ++i) {
+    group.add_replica_ids(i);
+  }
+  RaggedAllToAllConfig config;
+  config.config.operand_element_type = {F32, F32, S32, S32, S32, S32};
+  config.config.replica_groups = {group};
+  config.config.group_mode =
+      CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA;
+  config.num_total_updates = 1;
+  config.num_input_rows = 4;
+  config.num_row_elements = 4;
+  config.one_shot_kernel_enabled = true;
+  config.use_multi_gpu_barrier_with_nccl_in_one_shot_kernel =
+      use_multi_gpu_barrier_with_nccl_in_one_shot_kernel;
+  config.fast_interconnect_slice_size_override =
+      fast_interconnect_slice_size_override;
+
+  Shape data_shape = ShapeUtil::MakeShape(F32, {4, 4});
+  Shape meta_shape = ShapeUtil::MakeShape(S32, {num_replicas});
+  BufferAllocation::Slice slice0(&alloc0, 0, 16 * 4);
+  BufferAllocation::Slice slice1(&alloc1, 0, 16 * 4);
+
+  std::vector<CollectiveThunk::Buffer> buffers;
+  buffers.push_back({16, {slice0, data_shape}, {slice0, data_shape}});
+  buffers.push_back({16, {slice1, data_shape}, {slice1, data_shape}});
+  for (int i = 0; i < 4; ++i) {
+    buffers.push_back(
+        {num_replicas, {slice0, meta_shape}, {slice1, meta_shape}});
+  }
+
+  return std::make_unique<RaggedAllToAllThunk>(
+      Thunk::ThunkInfo(), config, std::move(buffers),
+      /*devices_per_host=*/num_replicas);
+}
+
 std::unique_ptr<AsyncStartThunk> WrapInAsyncStartThunk(
-    std::unique_ptr<AllGatherThunk> start_thunk) {
+    std::unique_ptr<Thunk> start_thunk) {
   static std::atomic<uint64_t> next_id{1};
   ThunkSequence sequence;
   sequence.push_back(std::move(start_thunk));
@@ -1617,6 +1660,107 @@ TEST(CommandBufferConversionPassTest, CollectivesFilterDefaultsToAll) {
                        device_info, allocator),
               IsOkAndHolds(true));
   EXPECT_THAT(thunks, ThunkKindsAre(Thunk::kCommandBuffer));
+}
+
+TEST(CommandBufferConversionPassTest,
+     ConvertsSymmetricRaggedAllToAllThunkWithCollectivesKernel) {
+  ThunkSequence thunks;
+  BufferAllocation alloc0(1, 16 * 4, 0);
+  BufferAllocation alloc1(1, 16 * 4, 0);
+  thunks.push_back(WrapInAsyncStartThunk(CreateRaggedAllToAllThunk(
+      alloc0, alloc1, /*num_replicas=*/16,
+      /*use_multi_gpu_barrier_with_nccl_in_one_shot_kernel=*/true,
+      /*fast_interconnect_slice_size_override=*/16)));
+  thunks.push_back(CreateAllGatherDoneThunk(thunks.back().get()));
+
+  DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
+  debug_options.set_xla_gpu_graph_min_graph_size(1);
+  debug_options.clear_xla_gpu_enable_command_buffer();
+  debug_options.add_xla_gpu_enable_command_buffer(
+      DebugOptions::COLLECTIVES_KERNEL);
+
+  se::DeviceDescription device_info = TestGpuDeviceInfo::CudaOrRocmDeviceInfo();
+  FakeErrorAllocator allocator;
+  CommandBufferConversionPass pass("test", /*devices_in_process=*/4);
+  ASSERT_THAT(pass.Run(&thunks, debug_options, /*hlo_module=*/nullptr,
+                       device_info, allocator),
+              IsOkAndHolds(true));
+  EXPECT_THAT(thunks, ThunkKindsAre(Thunk::kCommandBuffer));
+}
+
+TEST(CommandBufferConversionPassTest,
+     ConvertsNonSymmetricRaggedAllToAllThunkWithCollectives) {
+  BufferAllocation alloc0(1, 16 * 4, 0);
+  BufferAllocation alloc1(1, 16 * 4, 0);
+  se::DeviceDescription device_info = TestGpuDeviceInfo::CudaOrRocmDeviceInfo();
+  FakeErrorAllocator allocator;
+  CommandBufferConversionPass pass("test", /*devices_in_process=*/2);
+
+  // With only COLLECTIVES_KERNEL enabled, non-symmetric RaggedAllToAllThunk
+  // is not converted.
+  {
+    ThunkSequence thunks;
+    thunks.push_back(WrapInAsyncStartThunk(CreateRaggedAllToAllThunk(
+        alloc0, alloc1, /*num_replicas=*/2,
+        /*use_multi_gpu_barrier_with_nccl_in_one_shot_kernel=*/false)));
+    thunks.push_back(CreateAllGatherDoneThunk(thunks.back().get()));
+
+    DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
+    debug_options.set_xla_gpu_graph_min_graph_size(1);
+    debug_options.clear_xla_gpu_enable_command_buffer();
+    debug_options.add_xla_gpu_enable_command_buffer(
+        DebugOptions::COLLECTIVES_KERNEL);
+
+    ASSERT_THAT(pass.Run(&thunks, debug_options, /*hlo_module=*/nullptr,
+                         device_info, allocator),
+                IsOkAndHolds(false));
+    EXPECT_THAT(thunks, ThunkKindsAre(Thunk::kAsyncStart, Thunk::kAsyncDone));
+  }
+
+  // With COLLECTIVES enabled, non-symmetric RaggedAllToAllThunk is converted.
+  {
+    ThunkSequence thunks;
+    thunks.push_back(WrapInAsyncStartThunk(CreateRaggedAllToAllThunk(
+        alloc0, alloc1, /*num_replicas=*/2,
+        /*use_multi_gpu_barrier_with_nccl_in_one_shot_kernel=*/false)));
+    thunks.push_back(CreateAllGatherDoneThunk(thunks.back().get()));
+
+    DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
+    debug_options.set_xla_gpu_graph_min_graph_size(1);
+    debug_options.clear_xla_gpu_enable_command_buffer();
+    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::COLLECTIVES);
+
+    ASSERT_THAT(pass.Run(&thunks, debug_options, /*hlo_module=*/nullptr,
+                         device_info, allocator),
+                IsOkAndHolds(true));
+    EXPECT_THAT(thunks, ThunkKindsAre(Thunk::kCommandBuffer));
+  }
+}
+
+TEST(CommandBufferConversionPassTest,
+     DoesNotConvertCrossSliceRaggedAllToAllThunk) {
+  ThunkSequence thunks;
+  BufferAllocation alloc0(1, 16 * 4, 0);
+  BufferAllocation alloc1(1, 16 * 4, 0);
+  thunks.push_back(WrapInAsyncStartThunk(CreateRaggedAllToAllThunk(
+      alloc0, alloc1, /*num_replicas=*/16,
+      /*use_multi_gpu_barrier_with_nccl_in_one_shot_kernel=*/true,
+      /*fast_interconnect_slice_size_override=*/8)));
+  thunks.push_back(CreateAllGatherDoneThunk(thunks.back().get()));
+
+  DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
+  debug_options.set_xla_gpu_graph_min_graph_size(1);
+  debug_options.clear_xla_gpu_enable_command_buffer();
+  debug_options.add_xla_gpu_enable_command_buffer(
+      DebugOptions::COLLECTIVES_KERNEL);
+
+  se::DeviceDescription device_info = TestGpuDeviceInfo::CudaOrRocmDeviceInfo();
+  FakeErrorAllocator allocator;
+  CommandBufferConversionPass pass("test", /*devices_in_process=*/4);
+  ASSERT_THAT(pass.Run(&thunks, debug_options, /*hlo_module=*/nullptr,
+                       device_info, allocator),
+              IsOkAndHolds(false));
+  EXPECT_THAT(thunks, ThunkKindsAre(Thunk::kAsyncStart, Thunk::kAsyncDone));
 }
 
 }  // namespace

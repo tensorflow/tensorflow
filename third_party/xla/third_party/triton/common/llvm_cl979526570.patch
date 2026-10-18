@@ -1,6 +1,6 @@
 --- a/lib/Conversion/TritonGPUToLLVM/ElementwiseOpToLLVM.cpp
 +++ b/lib/Conversion/TritonGPUToLLVM/ElementwiseOpToLLVM.cpp
-@@ -277,7 +277,8 @@ struct ElementwiseInlineAsmOpConversion
+@@ -276,7 +276,8 @@ struct ElementwiseInlineAsmOpConversion
                             /*asm_string=*/op.getAsmString(),
                             /*constraints=*/op.getConstraints(),
                             /*has_side_effects=*/!op.getPure(),
@@ -10,7 +10,7 @@
                             /*asm_dialect=*/
                             LLVM::AsmDialectAttr::get(rewriter.getContext(),
                                                       LLVM::AsmDialect::AD_ATT),
-@@ -426,6 +427,7 @@ struct InlineAsmOpConversion
+@@ -425,6 +426,7 @@ struct InlineAsmOpConversion
      auto call = LLVM::InlineAsmOp::create(
          rewriter, loc, returnType, operands, op.getAsmString(),
          op.getConstraints(), !op.getPure(), false, LLVM::TailCallKind::None,

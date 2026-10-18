@@ -160,18 +160,24 @@ class CollectiveKernelThunk : public TracedCommand {
     std::unique_ptr<se::Kernel> kernel;
     uint32_t invocation_count = 0;
 
-    std::vector<se::DeviceAddressHandle> scratch_allocations;
-    std::vector<tsl::TiedRef<SymmetricMemory>> scratch_symmetric_memories;
+    // Single combined allocation backing all scratch buffer slices.
+    se::DeviceAddressHandle scratch_allocation;
+    // Aligned sub-slices within `scratch_allocation`, one per
+    // `kernel_spec_.scratch_buffers` entry.
+    std::vector<se::DeviceAddressBase> scratch_slices;
+    tsl::TiedRef<SymmetricMemory> scratch_symmetric_memory;
 
     // Constructor to make OSS builds happy.
     StreamState() = default;
     StreamState(int device_ordinal_arg, RankId rank_arg,
                 std::unique_ptr<se::Kernel> kernel_arg,
-                std::vector<se::DeviceAddressHandle> scratch_allocations_arg)
+                se::DeviceAddressHandle scratch_allocation_arg,
+                std::vector<se::DeviceAddressBase> scratch_slices_arg)
         : device_ordinal(device_ordinal_arg),
           rank(rank_arg),
           kernel(std::move(kernel_arg)),
-          scratch_allocations(std::move(scratch_allocations_arg)) {}
+          scratch_allocation(std::move(scratch_allocation_arg)),
+          scratch_slices(std::move(scratch_slices_arg)) {}
   };
 
   // Returns the input size in bytes for the collective.

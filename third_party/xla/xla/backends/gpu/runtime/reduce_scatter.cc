@@ -112,13 +112,12 @@ bool IsReduceScatterFlattenable(const HloReduceScatterInstruction* rs) {
 }
 
 // A broader check for reduce-scatter kernel support that verifies device,
-// operand count, replica group, reduction computation, element-type, layout,
-// and size constraints.
+// replica group, reduction computation, element-type, layout, and size
+// constraints.
 // Returns absl::OkStatus() if supported, or an absl::UnimplementedError
 // explaining why not.
 absl::Status IsReduceScatterKernelSupported(
     const se::DeviceDescription& device_info,        //
-    int32_t num_operands,                            //
     std::optional<ReductionKind> reduction_kind,     //
     int64_t num_devices,                             //
     int64_t num_output_elements,                     //
@@ -132,11 +131,6 @@ absl::Status IsReduceScatterKernelSupported(
         "Triton reduce-scatter requires CUDA compute capability >= 9.0. "
         "Got: %s.",
         device_info.gpu_compute_capability().ToString()));
-  }
-  // TODO(b/383125489): Support variadic arguments.
-  if (num_operands != 1) {
-    return absl::UnimplementedError(
-        "Reduce-scatter kernel only supports a single operand.");
   }
   if (replica_groups.empty()) {
     return absl::UnimplementedError(
@@ -246,9 +240,8 @@ absl::StatusOr<ReduceScatterInfo> BuildReduceScatterInfo(
     const int64_t output_elements =
         ShapeUtil::ElementsIn(OutputShape(reduce_scatter, k));
     ABSL_RETURN_IF_ERROR(IsReduceScatterKernelSupported(
-        device_info, num_operands, reduction_kind, num_devices, output_elements,
-        element_type, is_flattenable, is_local,
-        reduce_scatter->replica_groups()));
+        device_info, reduction_kind, num_devices, output_elements, element_type,
+        is_flattenable, is_local, reduce_scatter->replica_groups()));
     num_output_elements = std::max(num_output_elements, output_elements);
   }
   return ReduceScatterInfo{
