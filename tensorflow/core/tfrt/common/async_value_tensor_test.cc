@@ -15,12 +15,14 @@ limitations under the License.
 
 #include "tensorflow/core/tfrt/common/async_value_tensor.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 
 #include <gtest/gtest.h>
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -33,6 +35,30 @@ TEST(AsyncValueTensorTest, InvalidTensor) {
 
   AsyncValueTensor* avt = AsyncValueTensor::FromTensor(&tensor);
 
+  ASSERT_EQ(avt, nullptr);
+}
+
+class FakeAllocator : public Allocator {
+ public:
+  void* AllocateRaw(size_t alignment, size_t num_bytes) override {
+    return new char[num_bytes];
+  }
+  void DeallocateRaw(void* ptr) override {
+    delete[] static_cast<char*>(ptr);
+  }
+  bool AllocatesOpaqueHandle() const override { return true; }
+  std::string Name() override { return "fake-allocator"; }
+};
+
+TEST(AsyncValueTensorTest, SpoofedSlice) {
+  FakeAllocator fake_allocator;
+  tensorflow::Tensor tensor(&fake_allocator, tensorflow::DT_UINT8,
+                            tensorflow::TensorShape({2}));
+  // Slice it so data pointer is odd.
+  tensorflow::Tensor sliced = tensor.Slice(1, 2);
+  
+  AsyncValueTensor* avt = AsyncValueTensor::FromTensor(&sliced);
+  
   ASSERT_EQ(avt, nullptr);
 }
 
