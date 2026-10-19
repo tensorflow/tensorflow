@@ -18,6 +18,9 @@ limitations under the License.
 
 #include "xla/codegen/intrinsic/cpp/vector_ops.h"
 
+#if defined(__has_attribute) && __has_attribute(ext_vector_type) && \
+    defined(__has_builtin) && __has_builtin(__builtin_vectorelements)
+
 namespace xla::codegen {
 
 #if defined(__has_attribute) && __has_attribute(ext_vector_type) && \
@@ -30,5 +33,8 @@ Vec16f sinh_v16f32(Vec16f x) asm("xla.sinh.v16f32");
         // defined(__has_builtin) && __has_builtin(__builtin_vectorelements)
 
 }  // namespace xla::codegen
+
+#endif  // defined(__has_attribute) && __has_attribute(ext_vector_type) &&
+        // defined(__has_builtin) && __has_builtin(__builtin_vectorelements)
 
 #endif  // XLA_CODEGEN_INTRINSIC_CPP_TRIG_H_
