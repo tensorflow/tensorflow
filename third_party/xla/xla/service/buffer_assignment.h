@@ -1167,6 +1167,11 @@ class BufferAssigner {
     // FAST_SPLIT); unsupported colors use the DEFAULT algorithm.
     std::function<bool(LogicalBuffer::Color)> supports_fast_buffer_assignment =
         [](LogicalBuffer::Color) { return true; };
+
+    // If true, allows input-output aliased entry computation parameter
+    // allocations to be used for temporary HloBuffers, before the final output
+    // is written.
+    bool allow_reusing_aliased_entry_params_for_temp = true;
   };
 
   static std::unique_ptr<BufferAllocationsManagerForComputationsWithoutOrdering>

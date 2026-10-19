@@ -1289,6 +1289,82 @@ ENTRY main {
   EXPECT_EQ(neg_2_buffer.index(), neg_1_buffer.index());
 }
 
+TEST_F(BufferAssignmentTest, AliasedParamNotReusedForTempWhenDisabled) {
+  // Verifies that when `allow_reusing_aliased_entry_params_for_temp` is false,
+  // an entry parameter aliased with an output still shares its allocation with
+  // that output, but intermediate temporary values (`neg1`, which consumes `p0`
+  // directly, and `temp_p1` and `sum`, whose live ranges fall between `p0`'s
+  // last use and `out`'s definition) cannot reuse the aliased parameter's
+  // allocation.
+  const char* const hlo_text = R"(
+HloModule test, is_scheduled=true, input_output_alias={ {}: (0, {}, must-alias) }
+
+ENTRY main {
+  p0 = f32[100]{0} parameter(0)
+  p1 = f32[100]{0} parameter(1)
+  neg1 = f32[100]{0} negate(p0)
+  temp_p1 = f32[100]{0} negate(p1), control-predecessors={neg1}
+  sum = f32[100]{0} add(neg1, temp_p1)
+  ROOT out = f32[100]{0} negate(sum)
+}
+)";
+
+  for (bool use_sequential_ordering : {false, true}) {
+    for (auto algo :
+         {buffer_assignment::BufferAssignmentAlgorithmProto::DEFAULT,
+          buffer_assignment::BufferAssignmentAlgorithmProto::FAST_MERGE}) {
+      ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+      HloInstruction* p0 = FindInstruction(module.get(), "p0");
+      HloInstruction* neg1 = FindInstruction(module.get(), "neg1");
+      HloInstruction* temp_p1 = FindInstruction(module.get(), "temp_p1");
+      HloInstruction* sum = FindInstruction(module.get(), "sum");
+      HloInstruction* out = FindInstruction(module.get(), "out");
+
+      BufferAssigner::Options opts;
+      opts.allocate_buffers_for_constants = true;
+      opts.allow_reusing_aliased_entry_params_for_temp = false;
+      opts.buffer_assignment_algorithm = algo;
+      opts.assignment_algorithm_for_computations_without_ordering =
+          algo == buffer_assignment::BufferAssignmentAlgorithmProto::FAST_MERGE
+              ? buffer_assignment::
+                    AssignmentAlgorithmForComputationsWithoutOrderingProto::
+                        FAST_MERGE
+              : buffer_assignment::
+                    AssignmentAlgorithmForComputationsWithoutOrderingProto::
+                        DEFAULT;
+
+      std::unique_ptr<HloOrdering> ordering =
+          use_sequential_ordering
+              ? std::unique_ptr<HloOrdering>(
+                    std::make_unique<SequentialHloOrdering>(module->schedule()))
+              : std::unique_ptr<HloOrdering>(
+                    std::make_unique<DependencyHloOrdering>(module.get()));
+      ASSERT_OK_AND_ASSIGN(
+          std::unique_ptr<BufferAssignment> buffers,
+          BufferAssigner::Run(
+              module.get(), std::move(ordering), &BufferSizeBytes, &alias_info_,
+              [](LogicalBuffer::Color) { return 1; }, std::move(opts)));
+
+      BufferAllocation p0_buffer = GetAssignedInputAllocation(*buffers, p0);
+      BufferAllocation neg1_buffer = GetAllocation(*buffers, neg1, {});
+      BufferAllocation temp_p1_buffer = GetAllocation(*buffers, temp_p1, {});
+      BufferAllocation sum_buffer = GetAllocation(*buffers, sum, {});
+      BufferAllocation out_buffer = GetAllocation(*buffers, out, {});
+
+      // The aliased parameter `p0` and root output `out` must still share the
+      // donated input/output allocation, while all intermediate temporary
+      // buffers (`neg1`, `temp_p1`, `sum`) must be assigned to separate
+      // temporary allocations instead of reusing `p0_buffer`.
+      EXPECT_EQ(p0_buffer.index(), out_buffer.index());
+      EXPECT_NE(p0_buffer.index(), neg1_buffer.index());
+      EXPECT_NE(p0_buffer.index(), temp_p1_buffer.index());
+      EXPECT_NE(p0_buffer.index(), sum_buffer.index());
+      EXPECT_EQ(p0_buffer.assigned_buffers().size(), 2);
+      EXPECT_TRUE(neg1_buffer.IsPreallocatedTempBuffer());
+    }
+  }
+}
+
 TEST_F(BufferAssignmentTest,
        IntermediateValueWithMultiplePositionsCanBeReused) {
   // Verifies that an intermediate value with multiple positions (e.g. passed
