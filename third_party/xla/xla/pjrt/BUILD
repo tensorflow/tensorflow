@@ -64,6 +64,7 @@ cc_library(
         "//xla:future",
         "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/pjrt/distributed/coordination:coordination_service_proto_cc",
+        "//xla/runtime:device_id",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/concurrency:ref_count",
         "@com_google_absl//absl/functional:any_invocable",
@@ -265,6 +266,20 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "common_pjrt_client_test",
+    srcs = ["common_pjrt_client_test.cc"],
+    deps = [
+        ":common_pjrt_client",
+        ":pjrt_client",
+        "//xla/runtime:device_id",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "infer_dispatch_info",
     srcs = ["infer_dispatch_info.cc"],
@@ -402,6 +417,7 @@ cc_library(
         "//xla/pjrt/c:pjrt_c_api_hdrs",
         "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/pjrt/distributed/coordination:coordination_service_proto_cc",
+        "//xla/runtime:device_id",
         "//xla/service:device_assignment",
         "//xla/service:hlo_cost_analysis",
         "//xla/tsl/framework:allocator",

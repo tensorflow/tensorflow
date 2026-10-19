@@ -1400,6 +1400,20 @@ PjRtClient::CopyArraysForCrossHost(absl::Span<ArrayRef> arrays,
       LOG(ERROR) << "Cross-host receive buffer failed: " << status;
     }
   };
+  // Same snapshot execute uses. A missing cache keeps the historical key
+  // instead of failing the copy. Both hosts must pass this map; one side
+  // alone would make the clique keys diverge.
+  absl::flat_hash_map<TaskId, IncarnationId> incarnations;
+  absl::StatusOr<absl::flat_hash_map<int, IncarnationId>> incarnations_or =
+      Incarnations();
+  if (incarnations_or.ok()) {
+    incarnations.reserve(incarnations_or->size());
+    for (const auto& [task_id, incarnation_id] : *incarnations_or) {
+      incarnations.emplace(TaskId(task_id), incarnation_id);
+    }
+  } else {
+    VLOG(3) << "Unable to get incarnations: " << incarnations_or.status();
+  }
   int j = 0;  // Counter for the addressable buffers.
   for (int i = 0; i < dst_devices->size(); ++i) {
     // TODO(emilyaf): Extend CreateNewTransferKey to take N and return N keys
@@ -1445,8 +1459,9 @@ PjRtClient::CopyArraysForCrossHost(absl::Span<ArrayRef> arrays,
         // plugin's `CopyToRemoteDevice` API, getting the buffer descriptors
         // from the KV store.
         absl::StatusOr<std::vector<Future<>>> send_futures =
-            pjrt_client_->CrossHostSendBuffers(
-                send_buffers, std::move(dst_global_device_ids), transfer_keys);
+            pjrt_client_->CrossHostSendBuffers(send_buffers,
+                                               std::move(dst_global_device_ids),
+                                               transfer_keys, incarnations);
         if (send_futures.ok()) {
           for (Future<>& send_future : *send_futures) {
             send_future.OnReady(on_send_done);
@@ -1500,7 +1515,7 @@ PjRtClient::CopyArraysForCrossHost(absl::Span<ArrayRef> arrays,
       absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
           received_buffers = pjrt_client_->CrossHostReceiveBuffers(
               pjrt_device, recv_shapes, std::move(src_global_device_ids),
-              transfer_keys);
+              transfer_keys, incarnations);
       if (absl::IsUnimplemented(received_buffers.status())) {
         ABSL_ASSIGN_OR_RETURN(received_buffers,
                          CrossHostReceiveBuffers(recv_shapes, pjrt_device,

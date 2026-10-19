@@ -56,9 +56,8 @@ std::string SuccessfulCrossHostTransferTestName(
 absl::StatusOr<PJRT_Client_Create_Args> BuildCreateArg(
     ::pjrt::PJRT_KeyValueCallbackData* kv_callback_data,
     const std::vector<PJRT_NamedValue>& c_options) {
-  PJRT_Client_Create_Args args;
+  PJRT_Client_Create_Args args{};
   args.struct_size = PJRT_Client_Create_Args_STRUCT_SIZE;
-  args.extension_start = nullptr;
   args.create_options = c_options.data();
   args.num_options = c_options.size();
   args.kv_get_callback = kv_callback_data->c_kv_get;
@@ -67,15 +66,13 @@ absl::StatusOr<PJRT_Client_Create_Args> BuildCreateArg(
   args.kv_put_user_arg = &kv_callback_data->kv_put_c_func;
   args.kv_try_get_user_arg = &kv_callback_data->kv_try_get_c_func;
   args.kv_try_get_callback = kv_callback_data->c_kv_try_get;
-  args.client = nullptr;
   return args;
 }
 
 absl::Span<PJRT_Device* const> GetClientAddressableDevices(
     PJRT_Client* client, const PJRT_Api* api) {
-  PJRT_Client_AddressableDevices_Args addr_args;
+  PJRT_Client_AddressableDevices_Args addr_args{};
   addr_args.struct_size = PJRT_Client_AddressableDevices_Args_STRUCT_SIZE;
-  addr_args.extension_start = nullptr;
   addr_args.client = client;
   PJRT_Error* error = api->PJRT_Client_AddressableDevices(&addr_args);
   CHECK(error == nullptr);
@@ -131,21 +128,16 @@ TEST_P(SuccessfulCrossHostTransferTest, SuccessfulCrossHostTransfer) {
     transfer_keys.reserve(num_arrays);
     for (int i = 0; i < num_arrays; ++i) {
       std::vector<float> data = {1, 2, 3, 4, 5, 6 * static_cast<float>(i)};
-      PJRT_Client_BufferFromHostBuffer_Args args;
+      PJRT_Client_BufferFromHostBuffer_Args args{};
       args.struct_size = PJRT_Client_BufferFromHostBuffer_Args_STRUCT_SIZE;
-      args.extension_start = nullptr;
       args.data = data.data();
       args.type = ::pjrt::ConvertToPjRtBufferType(xla_shape.element_type());
       args.dims = xla_shape.dimensions().data();
       args.num_dims = xla_shape.dimensions().size();
-      args.byte_strides = nullptr;
-      args.num_byte_strides = 0;
-      args.device_layout = nullptr;
       args.host_buffer_semantics = ::pjrt::ConvertToPjRtHostBufferSemantics(
           xla::PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall);
       args.client = create_arg.client;
       args.device = GetClientAddressableDevices(create_arg.client, api)[0];
-      args.memory = nullptr;
 
       std::unique_ptr<PJRT_Error, ::pjrt::PJRT_ErrorDeleter> transfer_error(
           api->PJRT_Client_BufferFromHostBuffer(&args),
@@ -164,10 +156,9 @@ TEST_P(SuccessfulCrossHostTransferTest, SuccessfulCrossHostTransfer) {
       transfer_keys.push_back(xla::CrossHostTransferKey(i));
     }
 
-    PJRT_Transfers_PJRT_Client_CrossHostSendBuffers_Args send_args;
+    PJRT_Transfers_PJRT_Client_CrossHostSendBuffers_Args send_args{};
     send_args.struct_size =
         PJRT_Transfers_PJRT_Client_CrossHostSendBuffers_Args_STRUCT_SIZE;
-    send_args.extension_start = nullptr;
     send_args.client = create_arg.client;
     send_args.num_buffers = raw_buffers.size();
     send_args.buffers = raw_buffers.data();
@@ -221,10 +212,9 @@ TEST_P(SuccessfulCrossHostTransferTest, SuccessfulCrossHostTransfer) {
       layouts.push_back(nullptr);
     }
 
-    PJRT_Transfers_PJRT_Client_CrossHostReceiveBuffers_Args recv_args;
+    PJRT_Transfers_PJRT_Client_CrossHostReceiveBuffers_Args recv_args{};
     recv_args.struct_size =
         PJRT_Transfers_PJRT_Client_CrossHostReceiveBuffers_Args_STRUCT_SIZE;
-    recv_args.extension_start = nullptr;
     recv_args.client = create_arg.client;
     recv_args.num_shapes = shapes.size();
     recv_args.shape_num_dims = shape_num_dims.data();

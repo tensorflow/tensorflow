@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PJRT_RAW_PJRT_CLIENT_H_
 #define XLA_PJRT_RAW_PJRT_CLIENT_H_
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -38,6 +39,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/raw_buffer.h"
+#include "xla/runtime/device_id.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "tsl/platform/numa.h"
@@ -373,6 +375,12 @@ class PjRtRawClient {
     GlobalDeviceId src_global_device_id;
     GlobalDeviceId dst_global_device_id;
     PjRtRawBufferRef raw_buffer;
+    // Source and destination task incarnations, in that order. nullopt when
+    // the caller has no GetAliveTasks snapshot.
+    // TODO: Revisit making this non-optional once older jaxlib versions
+    // are no longer supported and the missing-snapshot fallback in
+    // CopyArraysForCrossHost is no longer needed.
+    std::optional<std::array<IncarnationId, 2>> incarnations;
   };
 
   virtual absl::StatusOr<PjRtDeviceEventRefVector> CrossHostTransferBuffers(

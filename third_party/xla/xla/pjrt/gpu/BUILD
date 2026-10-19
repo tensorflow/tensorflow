@@ -97,6 +97,27 @@ cc_library(
 )
 
 cc_library(
+    name = "cross_host_transfer_clique_key",
+    hdrs = ["cross_host_transfer_clique_key.h"],
+    deps = [
+        "//xla/backends/gpu/collectives:gpu_clique_key",
+        "//xla/runtime:device_id",
+        "@com_google_absl//absl/algorithm:container",
+    ],
+)
+
+xla_cc_test(
+    name = "cross_host_transfer_clique_key_test",
+    srcs = ["cross_host_transfer_clique_key_test.cc"],
+    deps = [
+        ":cross_host_transfer_clique_key",
+        "//xla/backends/gpu/collectives:gpu_clique_key",
+        "//xla/runtime:device_id",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "se_gpu_pjrt_client_impl",
     srcs = ["se_gpu_pjrt_client.cc"],
     hdrs = ["se_gpu_pjrt_client.h"],
@@ -105,6 +126,7 @@ cc_library(
     ]),
     deps = [
         ":allocator_config",
+        ":cross_host_transfer_clique_key",
         ":gpu_helpers",
         ":gpu_metrics",
         ":se_gpu_pjrt_cross_host_transfer_proto_cc",

@@ -56,6 +56,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/pjrt/scoped_async_tracking_event.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/device_assignment.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
@@ -488,6 +489,9 @@ struct PjRtPluginAttributes {
 // Each cross-host transfer in the second transfers API is associated with a
 // unique CrossHostTransferKey.
 TSL_LIB_GTL_DEFINE_INT_TYPE(CrossHostTransferKey, int64_t);
+
+// Task id of a distributed process. Transfer code uses process_index().
+TSL_LIB_GTL_DEFINE_INT_TYPE(TaskId, int32_t);
 
 // Encapsulates the state of Python session with XLA.
 //
@@ -1078,10 +1082,14 @@ class PjRtClient {
   // cross-host transfers API.
 
   // Send buffers to remote devices specified by dst_global_device_ids.
+  // `incarnations` is the last GetAliveTasks snapshot, keyed by task id. An
+  // empty map keeps the historical clique key. The cross-host transfers
+  // extension carries the same snapshot as task id and incarnation arrays.
   virtual absl::StatusOr<std::vector<Future<>>> CrossHostSendBuffers(
       absl::Span<PjRtBuffer* const> buffers,
       absl::Span<const GlobalDeviceId> dst_global_device_ids,
-      std::vector<CrossHostTransferKey> transfer_keys) {
+      std::vector<CrossHostTransferKey> transfer_keys,
+      absl::flat_hash_map<TaskId, IncarnationId> /*incarnations*/ = {}) {
     return absl::UnimplementedError(
         "Cross-host data transfers are not supported by this client.");
   }
@@ -1091,7 +1099,8 @@ class PjRtClient {
   CrossHostReceiveBuffers(
       xla::PjRtDevice* device, absl::Span<const xla::Shape> shapes,
       absl::Span<const GlobalDeviceId> src_global_device_ids,
-      std::vector<CrossHostTransferKey> transfer_keys) {
+      std::vector<CrossHostTransferKey> transfer_keys,
+      absl::flat_hash_map<TaskId, IncarnationId> /*incarnations*/ = {}) {
     return absl::UnimplementedError(
         "Cross-host data transfers are not supported.");
   }

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PJRT_COMMON_PJRT_CLIENT_H_
 #define XLA_PJRT_COMMON_PJRT_CLIENT_H_
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -62,6 +63,14 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 namespace xla {
+
+// Source and destination task incarnations, in that order. An empty snapshot
+// returns nullopt. A non-empty snapshot that is missing a participating task
+// returns FailedPrecondition.
+absl::StatusOr<std::optional<std::array<IncarnationId, 2>>>
+TransferIncarnations(
+    int src_process_index, int dst_process_index,
+    const absl::flat_hash_map<TaskId, IncarnationId>& incarnations);
 
 // A common base class for Pjrt clients based on raw buffers.
 class CommonPjRtClient : public PjRtClient {
@@ -468,13 +477,15 @@ class CommonPjRtClient : public PjRtClient {
   absl::StatusOr<std::vector<Future<>>> CrossHostSendBuffers(
       absl::Span<PjRtBuffer* const> buffers,
       absl::Span<const GlobalDeviceId> dst_global_device_ids,
-      std::vector<CrossHostTransferKey> transfer_keys) override;
+      std::vector<CrossHostTransferKey> transfer_keys,
+      absl::flat_hash_map<TaskId, IncarnationId> incarnations = {}) override;
 
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
   CrossHostReceiveBuffers(
       xla::PjRtDevice* device, absl::Span<const xla::Shape> shapes,
       absl::Span<const GlobalDeviceId> src_global_device_ids,
-      std::vector<CrossHostTransferKey> transfer_keys) override;
+      std::vector<CrossHostTransferKey> transfer_keys,
+      absl::flat_hash_map<TaskId, IncarnationId> incarnations = {}) override;
 
   using CrossHostTransferSpec = PjRtRawClient::CrossHostTransferSpec;
 

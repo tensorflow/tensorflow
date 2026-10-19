@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/pjrt/common_pjrt_client.h"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cinttypes>
 #include <cstddef>
@@ -2422,12 +2423,34 @@ CommonPjRtClient::MakeCrossHostReceiveBuffers(
   return buffers;
 }
 
+absl::StatusOr<std::optional<std::array<IncarnationId, 2>>>
+TransferIncarnations(
+    int src_process_index, int dst_process_index,
+    const absl::flat_hash_map<TaskId, IncarnationId>& incarnations) {
+  if (incarnations.empty()) {
+    return std::optional<std::array<IncarnationId, 2>>();
+  }
+  const auto src_it = incarnations.find(TaskId(src_process_index));
+  if (src_it == incarnations.end()) {
+    return FailedPrecondition("Incarnation for task %d not found.",
+                              src_process_index);
+  }
+  const auto dst_it = incarnations.find(TaskId(dst_process_index));
+  if (dst_it == incarnations.end()) {
+    return FailedPrecondition("Incarnation for task %d not found.",
+                              dst_process_index);
+  }
+  return std::optional<std::array<IncarnationId, 2>>(
+      std::array<IncarnationId, 2>{src_it->second, dst_it->second});
+}
+
 // Send functionality for second cross-host transfers API; wraps
 // CrossHostTransferBuffers.
 absl::StatusOr<std::vector<Future<>>> CommonPjRtClient::CrossHostSendBuffers(
     absl::Span<PjRtBuffer* const> buffers,
     absl::Span<const GlobalDeviceId> dst_global_device_ids,
-    std::vector<CrossHostTransferKey> transfer_keys) {
+    std::vector<CrossHostTransferKey> transfer_keys,
+    absl::flat_hash_map<TaskId, IncarnationId> incarnations) {
   // Validate arguments.
   if (dst_global_device_ids.size() != buffers.size() ||
       transfer_keys.size() != buffers.size()) {
@@ -2526,9 +2549,17 @@ absl::StatusOr<std::vector<Future<>>> CommonPjRtClient::CrossHostSendBuffers(
   std::vector<CrossHostTransferSpec> transfer_specs;
   transfer_specs.reserve(buffers.size());
   for (int i = 0; i < buffers.size(); ++i) {
+    PjRtDevice* src_device = buffers[i]->device();
+    ABSL_ASSIGN_OR_RETURN(PjRtDevice * dst_device,
+                     LookupDevice(dst_global_device_ids[i]));
+    ABSL_ASSIGN_OR_RETURN(
+        (std::optional<std::array<IncarnationId, 2>> transfer_incarnations),
+        TransferIncarnations(src_device->process_index(),
+                             dst_device->process_index(), incarnations));
     transfer_specs.push_back(CrossHostTransferSpec{
-        /*src_global_device_id=*/buffers[i]->device()->global_device_id(),
-        dst_global_device_ids[i], std::move(raw_buffers[i])});
+        /*src_global_device_id=*/src_device->global_device_id(),
+        dst_global_device_ids[i], std::move(raw_buffers[i]),
+        std::move(transfer_incarnations)});
   }
   std::move(fail_usage_promises).Cancel();
 
@@ -2558,7 +2589,8 @@ absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 CommonPjRtClient::CrossHostReceiveBuffers(
     xla::PjRtDevice* device, absl::Span<const xla::Shape> shapes,
     absl::Span<const GlobalDeviceId> src_global_device_ids,
-    std::vector<CrossHostTransferKey> transfer_keys) {
+    std::vector<CrossHostTransferKey> transfer_keys,
+    absl::flat_hash_map<TaskId, IncarnationId> incarnations) {
   // Validate arguments.
   if (shapes.empty()) {
     return InvalidArgument("shapes parameter empty in CrossHostReceiveBuffers");
@@ -2645,9 +2677,15 @@ CommonPjRtClient::CrossHostReceiveBuffers(
     ABSL_ASSIGN_OR_RETURN(PjRtDeviceEventRef allocation_event,
                      raw_buffer->MakeAllocationReadyEvent());
     allocation_events.push_back(std::move(allocation_event));
-    transfer_specs.push_back(CrossHostTransferSpec{src_global_device_ids[i],
-                                                   device->global_device_id(),
-                                                   std::move(raw_buffer)});
+    ABSL_ASSIGN_OR_RETURN(PjRtDevice * src_device,
+                     LookupDevice(src_global_device_ids[i]));
+    ABSL_ASSIGN_OR_RETURN(
+        (std::optional<std::array<IncarnationId, 2>> transfer_incarnations),
+        TransferIncarnations(src_device->process_index(),
+                             device->process_index(), incarnations));
+    transfer_specs.push_back(CrossHostTransferSpec{
+        src_global_device_ids[i], device->global_device_id(),
+        std::move(raw_buffer), std::move(transfer_incarnations)});
     buffers.push_back(std::move(buffer));
   }
   std::move(fail_definition).Cancel();
@@ -3386,74 +3424,73 @@ CommonPjRtLoadedExecutable::Execute(
         const int replica = addressable_device_logical_ids_[i].replica;
         const int partition = addressable_device_logical_ids_[i].partition;
         PjRtDevice* device = addressable_devices_[i];
-        client()->LaunchOnDevice(
-            device, [&, context_id, i, replica, partition, device] {
-              tsl::profiler::TraceMeConsumer consumer(
-                  [&] {
-                    return tsl::profiler::TraceMeEncode(
-                        absl::StrFormat(
-                            "[%d] CommonPjRtLoadedExecutable::Execute (%s)", i,
-                            name()),
-                        {{"name", name()},
-                         {"replica", replica},
-                         {"partition", partition},
-                         {"global_device_id", device->global_device_id()}});
-                  },
-                  tsl::profiler::ContextType::kPjRt, context_id);
+        client()->LaunchOnDevice(device, [&, context_id, i, replica, partition,
+                                          device] {
+          tsl::profiler::TraceMeConsumer consumer(
+              [&] {
+                return tsl::profiler::TraceMeEncode(
+                    absl::StrFormat(
+                        "[%d] CommonPjRtLoadedExecutable::Execute (%s)", i,
+                        name()),
+                    {{"name", name()},
+                     {"replica", replica},
+                     {"partition", partition},
+                     {"global_device_id", device->global_device_id()}});
+              },
+              tsl::profiler::ContextType::kPjRt, context_id);
 
-              // Two phase launch. Phase 1: Prepare on all cores. Abort
-              // launch on prepare failure.
-              ExecuteOptions device_options = options;
-              if (profiling_requested) {
-                device_options.execution_profile =
-                    &device_execution_profiles[i];
+          // Two phase launch. Phase 1: Prepare on all cores. Abort
+          // launch on prepare failure.
+          ExecuteOptions device_options = options;
+          if (profiling_requested) {
+            device_options.execution_profile = &device_execution_profiles[i];
+          }
+          std::optional<ExecuteLaunchArgs> launch_args;
+          absl::Status launch_status = ExecutePrepareWithOomRetries(
+              launch_args, argument_handles[i], run_id, replica, partition,
+              device_options,
+              /*host_callback_idx=*/i);
+          // Wait for prepare to finish on all cores.
+          if (client()->supports_two_phase_launch()) {
+            absl::MutexLock lock(mu);
+            if (!launch_status.ok()) {
+              if (failed == 0) {
+                first_failure_status = launch_status;
               }
-              std::optional<ExecuteLaunchArgs> launch_args;
-              absl::Status launch_status = ExecutePrepareWithOomRetries(
-                  launch_args, argument_handles[i], run_id, replica, partition,
-                  device_options,
-                  /*host_callback_idx=*/i);
-              // Wait for prepare to finish on all cores.
-              if (client()->supports_two_phase_launch()) {
-                absl::MutexLock lock(mu);
-                if (!launch_status.ok()) {
-                  if (failed == 0) {
-                    first_failure_status = launch_status;
-                  }
-                  failed++;
-                }
-                preparing--;
-                auto done_preparing = [&]() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu) {
-                  return preparing == 0;
-                };
-                mu.Await(absl::Condition(&done_preparing));
-                if (failed > 0) {
-                  // Poison results for all cores.
-                  results[i] = first_failure_status;
-                  // Abort phase 2 if Prepare fails for any core.
-                  --launching;
-                  return;
-                }
-              } else {
-                // Non-two-phase clients have no barrier to participate in, but
-                // the Prepare status must still be checked before Launch:
-                // launch_args.executable is only populated on Prepare success.
-                if (!launch_status.ok()) {
-                  results[i] = launch_status;
-                  absl::MutexLock lock(mu);
-                  --launching;
-                  return;
-                }
-              }
-
-              // Phase 2: Launch. It cannot fail.
-              results[i] =
-                  ExecuteLaunch(*launch_args, returned_futures.has_value() ||
-                                                  profiling_requested);
-
+              failed++;
+            }
+            preparing--;
+            auto done_preparing = [&]() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu) {
+              return preparing == 0;
+            };
+            mu.Await(absl::Condition(&done_preparing));
+            if (failed > 0) {
+              // Poison results for all cores.
+              results[i] = first_failure_status;
+              // Abort phase 2 if Prepare fails for any core.
+              --launching;
+              return;
+            }
+          } else {
+            // Non-two-phase clients have no barrier to participate in, but
+            // the Prepare status must still be checked before Launch:
+            // launch_args.executable is only populated on Prepare success.
+            if (!launch_status.ok()) {
+              results[i] = launch_status;
               absl::MutexLock lock(mu);
               --launching;
-            });
+              return;
+            }
+          }
+
+          // Phase 2: Launch. It cannot fail.
+          results[i] =
+              ExecuteLaunch(*launch_args, returned_futures.has_value() ||
+                                              profiling_requested);
+
+          absl::MutexLock lock(mu);
+          --launching;
+        });
       }
     }
 
