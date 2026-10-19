@@ -821,27 +821,42 @@ absl::Status GpuLayoutAssignment::AddBackendConstraints(
 
 absl::Status GpuLayoutAssignment::SetDotOperandLayout(
     const HloInstruction* instruction, int64_t operand,
-    absl::Span<const int64_t> batch_dims, absl::Span<const int64_t> row_dims,
-    absl::Span<const int64_t> col_dims, bool mandatory) {
+    absl::Span<const int64_t> batch_dims,
+    absl::Span<const int64_t> contracting_dims,
+    absl::Span<const int64_t> non_contracting_dims, bool mandatory) {
   Shape shape = instruction->operand(operand)->shape();
 
   // First, try to use the existing layout, if present.
   if (shape.has_layout() &&
-      MatrixLayout::For(shape, batch_dims, row_dims, col_dims).ok()) {
+      MatrixLayout::For(shape, batch_dims, contracting_dims,
+                        non_contracting_dims)
+          .ok()) {
     // Re-set the operand layout, so it becomes mandatory.
     return SetOperandLayout(shape, instruction, operand, mandatory);
   }
 
   // Next, try the default layout (for the sake of everybody's sanity).
   LayoutUtil::SetToDefaultLayout(&shape);
-  if (MatrixLayout::For(shape, batch_dims, row_dims, col_dims).ok()) {
+  if (MatrixLayout::For(shape, batch_dims, contracting_dims,
+                        non_contracting_dims)
+          .ok()) {
     return SetOperandLayout(shape, instruction, operand, mandatory);
   }
 
-  // Otherwise, fallback to forcing (batch, rows, cols) layout.
+  // Otherwise, place batch dimensions first and try to retain the relative
+  // order of contracting and non-contracting dimensions. Contracting is a
+  // single dimension (after dot normalization) and non-contracting dimensions
+  // are sorted, so comparing first to last is enough to check all of them.
+  const bool contracting_is_minor =
+      !contracting_dims.empty() && !non_contracting_dims.empty() &&
+      non_contracting_dims.back() < contracting_dims.front();
+  absl::Span<const int64_t> major_dims =
+      contracting_is_minor ? non_contracting_dims : contracting_dims;
+  absl::Span<const int64_t> minor_dims =
+      contracting_is_minor ? contracting_dims : non_contracting_dims;
   return SetOperandMajorToMinorLayout(
       instruction, operand,
-      /*dim_groups=*/{batch_dims, row_dims, col_dims}, mandatory);
+      /*dim_groups=*/{batch_dims, major_dims, minor_dims}, mandatory);
 }
 
 absl::Status GpuLayoutAssignment::SetDotOperandLayoutToMinorContracting(
