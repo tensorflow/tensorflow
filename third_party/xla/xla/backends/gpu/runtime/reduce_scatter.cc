@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/reduce_scatter.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <optional>
 #include <vector>
@@ -43,20 +44,25 @@ limitations under the License.
 #include "xla/service/gpu_topology.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 
-bool IsReduceScatterFlattenable(const HloReduceScatterInstruction* rs) {
-  if (rs->operand_count() != 1 || !rs->shape().IsArray()) {
-    VLOG(3) << "Reduce-scatter " << rs->name()
-            << " is not flattenable: expected a single array operand.";
-    return false;
-  }
-  const Shape& in = rs->operand(0)->shape();
-  const Shape& out = rs->shape();
+namespace {
+
+// Returns the shape of output `index` of `rs` (the shape itself for a
+// single-operand reduce-scatter).
+const Shape& OutputShape(const HloReduceScatterInstruction* rs, int64_t index) {
+  return rs->shape().IsTuple() ? rs->shape().tuple_shapes(index) : rs->shape();
+}
+
+// Returns true if the shard sent to rank `i` is the contiguous range
+// [i * O, (i + 1) * O) of `in`, where O is the number of elements of `out`.
+bool IsShardContiguous(const HloReduceScatterInstruction* rs, const Shape& in,
+                       const Shape& out) {
   if (!in.has_layout() || !out.has_layout() ||
       !LayoutUtil::Equal(in.layout(), out.layout())) {
     VLOG(3) << "Reduce-scatter " << rs->name()
@@ -83,6 +89,25 @@ bool IsReduceScatterFlattenable(const HloReduceScatterInstruction* rs) {
           << " is not flattenable: scatter dimension " << scatter_dim
           << " not found in layout.";
   return false;
+}
+
+}  // namespace
+
+bool IsReduceScatterFlattenable(const HloReduceScatterInstruction* rs) {
+  const int64_t num_operands = rs->operand_count();
+  if (num_operands == 0 || (num_operands == 1) != rs->shape().IsArray() ||
+      (rs->shape().IsTuple() &&
+       rs->shape().tuple_shapes().size() != num_operands)) {
+    VLOG(3) << "Reduce-scatter " << rs->name()
+            << " is not flattenable: expected one array output per operand.";
+    return false;
+  }
+  for (int64_t k = 0; k < num_operands; ++k) {
+    if (!IsShardContiguous(rs, rs->operand(k)->shape(), OutputShape(rs, k))) {
+      return false;
+    }
+  }
+  return true;
 }
 
 // A broader check for reduce-scatter kernel support that verifies device,
@@ -144,8 +169,12 @@ absl::Status IsReduceScatterKernelSupported(
   if (!is_flattenable) {
     return absl::UnimplementedError(
         "Reduce-scatter kernel requires the scatter dimension to be the "
-        "physically major-most non-trivial dimension and matching layouts.");
+        "physically major-most non-trivial dimension and matching layouts "
+        "for every operand.");
   }
+  // Triton pads tile sizes to powers of 2, so the output slice per rank
+  // (`num_output_elements / num_devices`) must be divisible by `num_devices`
+  // along the scatter dimension (or overall when flattenable).
   if (num_output_elements % num_devices != 0) {
     return absl::UnimplementedError(
         "Reduce-scatter kernel requires the output element count to be "
@@ -177,27 +206,45 @@ absl::StatusOr<ReduceScatterInfo> BuildReduceScatterInfo(
   const int64_t num_devices =
       reduce_scatter->device_list()->num_devices_per_group();
   const int32_t num_operands = reduce_scatter->operand_count();
-  const std::optional<ReductionKind> reduction_kind =
-      MatchReductionComputation(reduce_scatter->to_apply());
-  const PrimitiveType element_type =
-      reduce_scatter->operand(0)->shape().element_type();
-  const int64_t num_output_elements =
-      reduce_scatter->shape().IsArray()
-          ? ShapeUtil::ElementsIn(reduce_scatter->shape())
-          : 0;
-  const bool is_flattenable = IsReduceScatterFlattenable(reduce_scatter);
+  if (num_operands < 1) {
+    return absl::UnimplementedError(
+        "Reduce-scatter kernel requires at least one operand.");
+  }
   if (device_info.device_interconnect_info().active_links <= 0) {
     return absl::UnimplementedError(
         "Collective kernels are only supported on devices with NVLink "
         "support.");
   }
+  // A variadic reduce-scatter applies a single `to_apply` to all operands, so
+  // every operand has the same element type.
+  const PrimitiveType element_type =
+      reduce_scatter->operand(0)->shape().element_type();
+  for (const HloInstruction* operand : reduce_scatter->operands()) {
+    if (operand->shape().element_type() != element_type) {
+      return absl::UnimplementedError(absl::StrFormat(
+          "Reduce-scatter kernel requires all operands to have the same "
+          "element type. Got %s and %s.",
+          primitive_util::LowercasePrimitiveTypeName(element_type),
+          primitive_util::LowercasePrimitiveTypeName(
+              operand->shape().element_type())));
+    }
+  }
+  const std::optional<ReductionKind> reduction_kind =
+      MatchReductionComputation(reduce_scatter->to_apply());
+  const bool is_flattenable = IsReduceScatterFlattenable(reduce_scatter);
   ABSL_ASSIGN_OR_RETURN(const bool is_local,
                    AreAllReplicasOnSameSlice(gpu_topology, *reduce_scatter,
                                              device_assignment));
-  ABSL_RETURN_IF_ERROR(IsReduceScatterKernelSupported(
-      device_info, num_operands, reduction_kind, num_devices,
-      num_output_elements, element_type, is_flattenable, is_local,
-      reduce_scatter->replica_groups()));
+  int64_t num_output_elements = 0;
+  for (int64_t k = 0; k < num_operands; ++k) {
+    const int64_t output_elements =
+        ShapeUtil::ElementsIn(OutputShape(reduce_scatter, k));
+    ABSL_RETURN_IF_ERROR(IsReduceScatterKernelSupported(
+        device_info, num_operands, reduction_kind, num_devices, output_elements,
+        element_type, is_flattenable, is_local,
+        reduce_scatter->replica_groups()));
+    num_output_elements = std::max(num_output_elements, output_elements);
+  }
   return ReduceScatterInfo{
       /*.num_devices=*/num_devices,
       /*.num_output_elements=*/num_output_elements,
@@ -212,38 +259,57 @@ absl::StatusOr<CollectiveKernelSpec> CreateReduceScatterKernelSpec(
       instr->replica_groups()[0].replica_ids_size() > 0) {
     group_size = instr->replica_groups()[0].replica_ids_size();
   }
+  const int64_t num_operands = instr->operand_count();
+  TF_RET_CHECK(num_operands >= 1)
+      << "reduce-scatter requires at least one operand";
 
-  const int64_t input_size_bytes =
-      ShapeUtil::ByteSizeOf(instr->operand(0)->shape());
   const int64_t num_signal_flags = group_size * launch_dimensions.num_blocks();
   const int64_t signal_size = xla::RoundUpTo<uint64_t>(
       num_signal_flags * sizeof(int32_t), kXlaAllocatedBufferAlignBytes);
-  const int64_t remote_size =
-      xla::RoundUpTo<uint64_t>(input_size_bytes, kXlaAllocatedBufferAlignBytes);
 
-  CollectiveKernelSpec kernel_spec = {
-      /* .codegen_config= */ {
-          /* .copy_input_to_scratch= */ false,
-          /* .input_buffer_specs= */
-          {{/*requires_multimem=*/false, SymmetricMemoryType::kNone}},
-          /* .output_buffer_specs= */
-          {{/*requires_multimem=*/false, SymmetricMemoryType::kNone}},
-          /* .argument_descriptors= */
-          {{KernelArgType::kInputBuffer, /*index=*/0},
-           {KernelArgType::kOutputBuffer, /*index=*/0},
-           {KernelArgType::kRuntimeRank},
-           {KernelArgType::kScratchBuffer, /*index=*/0},  // signal buffers
-           {KernelArgType::kScratchBuffer,
-            /*index=*/1}},  // remote input buffer pointer table
-          /* .sync_count_increment= */ 1u,
-          /* .device_sync_count= */ true},
-      /* .scratch_buffers= */
-      {{signal_size, /*requires_multimem=*/false, scratch_memory_type,
-        /*should_memzero=*/true,
-        /*should_double_buffer=*/true},
-       {remote_size, /*requires_multimem=*/false, scratch_memory_type,
-        /*should_memzero=*/false,
-        /*should_double_buffer=*/true}}};
+  CollectiveKernelSpec kernel_spec;
+  CollectiveCodegenConfig& codegen_config = kernel_spec.codegen_config;
+  codegen_config.copy_input_to_scratch = false;
+  codegen_config.sync_count_increment = 1u;
+  codegen_config.device_sync_count = true;
+  // Argument layout (must match the Triton entry function): inputs, outputs,
+  // rank, signal flags, one remote scratch table per operand.
+  for (int32_t i = 0; i < num_operands; ++i) {
+    codegen_config.input_buffer_specs.push_back(
+        {/*requires_multimem=*/false, SymmetricMemoryType::kNone});
+    codegen_config.argument_descriptors.push_back(
+        {KernelArgType::kInputBuffer, /*index=*/i});
+  }
+  for (int32_t i = 0; i < num_operands; ++i) {
+    codegen_config.output_buffer_specs.push_back(
+        {/*requires_multimem=*/false, SymmetricMemoryType::kNone});
+    codegen_config.argument_descriptors.push_back(
+        {KernelArgType::kOutputBuffer, /*index=*/i});
+  }
+  codegen_config.argument_descriptors.push_back({KernelArgType::kRuntimeRank});
+  // Signal buffers.
+  codegen_config.argument_descriptors.push_back(
+      {KernelArgType::kScratchBuffer, /*index=*/0});
+  kernel_spec.scratch_buffers.push_back({signal_size,
+                                         /*requires_multimem=*/false,
+                                         scratch_memory_type,
+                                         /*should_memzero=*/true,
+                                         /*should_double_buffer=*/true});
+  // One symmetric scratch buffer per operand that holds this rank's full input
+  // (= input size). Double-buffering is handled by the should_double_buffer
+  // flag.
+  for (int32_t i = 0; i < num_operands; ++i) {
+    const int64_t remote_size = xla::RoundUpTo<uint64_t>(
+        ShapeUtil::ByteSizeOf(instr->operand(i)->shape()),
+        kXlaAllocatedBufferAlignBytes);
+    codegen_config.argument_descriptors.push_back(
+        {KernelArgType::kScratchBuffer, /*index=*/1 + i});
+    kernel_spec.scratch_buffers.push_back({remote_size,
+                                           /*requires_multimem=*/false,
+                                           scratch_memory_type,
+                                           /*should_memzero=*/false,
+                                           /*should_double_buffer=*/true});
+  }
   return kernel_spec;
 }
 

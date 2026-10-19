@@ -4206,6 +4206,7 @@ cc_library(
         ":all_reduce",
         ":collective_params",
         "//xla:shape_util",
+        "//xla:status_macros",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/backends/gpu/transforms/collectives:collective_ops_utils",
