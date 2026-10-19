@@ -123,7 +123,6 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/gemm_fusion_swap_operands.h"
 #include "xla/backends/gpu/transforms/gemm_rewriter.h"
 #include "xla/backends/gpu/transforms/gpu_copy_async_wrapper.h"
-#include "xla/backends/gpu/transforms/gpu_transpose_folding.h"
 #include "xla/backends/gpu/transforms/group_collectives_by_key.h"
 #include "xla/backends/gpu/transforms/hoist_fused_bitcasts.h"
 #include "xla/backends/gpu/transforms/layout_assignment.h"
@@ -324,6 +323,7 @@ limitations under the License.
 #include "xla/service/spmd/schedule_aware_collective_ops_cse.h"
 #include "xla/service/spmd/shardy/shardy_xla_pass.h"
 #include "xla/service/topk_rewriter.h"
+#include "xla/service/transpose_folding.h"
 #include "xla/service/while_loop_constant_sinking.h"
 #include "xla/service/while_loop_simplifier.h"
 #include "xla/service/xla_transform.h"
@@ -1020,7 +1020,12 @@ absl::Status RunOptimizationPasses(
     pipeline.AddPass<ReshapeMover>(reshape_mover_options);
     pipeline.AddPass<HloConstantFolding>();
     pipeline.AddPass<ConditionalSimplifier>();
-    pipeline.AddPass<GpuTransposeFolding>(gpu_version);
+    // Do not fold transpose operands into dots yet. This can undo the normal
+    // form established by DotDecomposer, which the DotMerger pass requires.
+    pipeline.AddPass<TransposeFolding>(
+        /*dot_can_fold_transpose_operand=*/
+        [&](const HloInstruction& dot,
+            int64_t operand) -> absl::StatusOr<bool> { return false; });
     pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
     pipeline.AddPass<HloDCE>();
   }();
@@ -1039,7 +1044,9 @@ absl::Status RunOptimizationPasses(
   // gpu_version) once Triton emitter supports multiple non-contracting
   // dimensions.
   pipeline.AddPass<DotDimensionNormalizer>(true);
-  pipeline.AddPass<GpuTransposeFolding>(gpu_version);
+  // Folding transpose operands into dots can undo the normal form established
+  // by DotDecomposer. Subsequent passes must not rely on it from this point on.
+  pipeline.AddPass<TransposeFolding>(CanFoldTransposeOperandIntoDot);
 
   // ConvertMover and ReshapeMover fight with each other: ConvertMover wants
   // to move some converts down the graph, but ReshapeMover wants to move them
@@ -2141,7 +2148,8 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     // GemmRewriter assumes that all transposes are folded into gemms, but,
     // since commit 7d529df, this is not always true at this point.
     // Therefore, rerun transpose folding.
-    pipeline.AddPass<GpuTransposeFolding>(gpu_version);
+    pipeline.AddPass<TransposeFolding>(CanFoldTransposeOperandIntoDot,
+                                       TransposeFolding::NeverFoldTranspose);
 
     pipeline.AddPass<ReshapeDecomposer>();
     pipeline.AddPass<ReduceDecomposer>([&](const HloInstruction* r) {

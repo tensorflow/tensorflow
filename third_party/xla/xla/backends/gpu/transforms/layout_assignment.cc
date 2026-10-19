@@ -485,6 +485,7 @@ absl::Status GpuLayoutAssignment::AddDotBackendConstraints(
     const HloInstruction* operand;
     absl::Span<const int64_t> batch_dims;
     absl::Span<const int64_t> contracting_dims;
+    PrimitiveType type;
     std::vector<int64_t> non_contracting_dims;
   };
   auto make_side =
@@ -492,6 +493,7 @@ absl::Status GpuLayoutAssignment::AddDotBackendConstraints(
           absl::Span<const int64_t> contracting_dims) -> absl::StatusOr<Side> {
     Side side = {operand_no, instruction->operand(operand_no), batch_dims,
                  contracting_dims};
+    side.type = side.operand->shape().element_type();
     ABSL_ASSIGN_OR_RETURN(
         side.non_contracting_dims,
         GetNonContractingDims(side.operand->shape(), side.batch_dims,
@@ -506,6 +508,8 @@ absl::Status GpuLayoutAssignment::AddDotBackendConstraints(
                    make_side(1, dot_dims.rhs_batch_dimensions(),
                              dot_dims.rhs_contracting_dimensions()));
 
+  const PrimitiveType& output_type = instruction->shape().element_type();
+
   // Matmuls require the batch dimensions to be in consecutive physical
   // dimensions and likewise for the contracting and non-contracting
   // dimensions. Additionally, no batch dimension can be in the most
@@ -517,8 +521,17 @@ absl::Status GpuLayoutAssignment::AddDotBackendConstraints(
           .debug_options()
           .xla_gpu_experimental_pack_dot_operands_along_k_dimension();
 
+  const bool is_s8_to_s32 = output_type == PrimitiveType::S32 &&
+                            lhs.type == PrimitiveType::S8 &&
+                            rhs.type == PrimitiveType::S8;
+  const bool is_fp8 = (lhs.type == PrimitiveType::F8E4M3FN ||
+                       lhs.type == PrimitiveType::F8E5M2FNUZ) &&
+                      (rhs.type == PrimitiveType::F8E4M3FN ||
+                       rhs.type == PrimitiveType::F8E5M2FNUZ);
+
+  const se::CudaComputeCapability* cc = gpu_version_.cuda_compute_capability();
   const bool both_operands_require_minor_contraction_dims =
-      DotRequiresMinorContractingDims(*instruction, gpu_version_);
+      is_s8_to_s32 || (is_fp8 && !(cc && cc->IsBlackwell()));
 
   for (const Side& side : {lhs, rhs}) {
     if ((IsPackedInstruction(side.operand) && pack_along_contracting_dims) ||
@@ -838,15 +851,28 @@ absl::Status GpuLayoutAssignment::SetDotOperandLayoutToMinorContracting(
     absl::Span<const int64_t> noncontracting_dims) {
   Shape shape = instruction->operand(operand)->shape();
 
-  // If contracting dims are already minor, and the layout is valid, keep it.
   if (shape.has_layout() &&
-      shape.layout().minor_to_major().size() >= contracting_dims.size() &&
-      AreContractingDimsMinor(shape.layout(), contracting_dims) &&
-      MatrixLayout::For(shape, batch_dims, noncontracting_dims,
-                        contracting_dims)
-          .ok()) {
-    // Re-set the operand layout, so it becomes mandatory.
-    return SetOperandLayout(shape, instruction, operand);
+      shape.layout().minor_to_major().size() >= contracting_dims.size()) {
+    // Check that the contracting dimensions are physically minor, i.e. check
+    // that minor physical dimensions all point to contracting logical
+    // dimensions.
+    bool contracting_dims_are_minor = true;
+    const auto& minor_to_major = shape.layout().minor_to_major();
+    for (int64_t i = 0; i < contracting_dims.size(); ++i) {
+      if (!absl::c_linear_search(contracting_dims, minor_to_major[i])) {
+        contracting_dims_are_minor = false;
+        break;
+      }
+    }
+
+    // If contracting dims are already minor, and the layout is valid, keep it.
+    if (contracting_dims_are_minor &&
+        MatrixLayout::For(shape, batch_dims, noncontracting_dims,
+                          contracting_dims)
+            .ok()) {
+      // Re-set the operand layout, so it becomes mandatory.
+      return SetOperandLayout(shape, instruction, operand);
+    }
   }
   return SetOperandMajorToMinorLayout(
       instruction, operand,
