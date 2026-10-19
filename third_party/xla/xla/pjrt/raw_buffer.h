@@ -104,6 +104,12 @@ class PjRtRawBufferInterface : public PJRT_RawBuffer {
       PjRtDeviceEventPromiseRef src_usage_event_promise,
       absl::AnyInvocable<void(absl::Status) &&> allocation_event);
 
+  void ScheduleUpdateSlice(PjRtDeviceEventRefVector transfer_dependency_events,
+                           const StridedGather& gather,
+                           PjRtRawBufferRef src_raw_buffer,
+                           PjRtDeviceEventPromiseRef definition_event_promise,
+                           PjRtDeviceEventPromiseRef src_usage_event_promise);
+
   void DecrefAfter(PjRtDeviceEventRefVector avs);
 
   template <typename T>
@@ -233,6 +239,16 @@ class PjRtRawBuffer : public PjRtRawBufferInterface,
       PjRtDeviceEventPromiseRef definition_event_promise,
       PjRtDeviceEventPromiseRef src_usage_event_promise,
       absl::AnyInvocable<void(absl::Status) &&> allocation_event);
+
+  // Blocks on a list of dependencies and then updates a strided slice of
+  // this buffer with the contents of src_raw_buffer. Must set
+  // definition_event_promise when this buffer is ready, and
+  // src_usage_event_promise when done using src_raw_buffer.
+  virtual void ScheduleUpdateSlice(
+      PjRtDeviceEventRefVector transfer_dependency_events,
+      const StridedGather& gather, PjRtRawBufferRef src_raw_buffer,
+      PjRtDeviceEventPromiseRef definition_event_promise,
+      PjRtDeviceEventPromiseRef src_usage_event_promise);
 
   // Returns the async value associated with the buffer.
   virtual PjRtDeviceEventPtr GetRawBufferAsyncValue() = 0;

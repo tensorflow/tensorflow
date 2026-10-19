@@ -2173,16 +2173,14 @@ absl::StatusOr<std::vector<TensorValue>> EmitScan(
           "Only extracting scan output (tuple index 0) is currently "
           "supported.");
     }
-    for (const HloInstruction* gte_user : user->users()) {
-      if (gte_user != root || root->opcode() != HloOpcode::kTuple) {
-        return absl::UnimplementedError(
-            "Epilogue fusion for scan is not supported yet.");
-      }
-    }
   }
 
   if (!tiled_hlo_scan.hlo_regions().empty()) {
     // Tiled scan with scf.for loop across the scan dimension.
+    if (emitter_ctx.open_scan_loop()) {
+      return absl::UnimplementedError(
+          "Only one tiled scan per fusion is currently supported.");
+    }
     const auto& dim_info = tiling_space.GetDimensionInfo(hlo_scan, scan_dim);
     int64_t scan_dim_size = dim_info.dimension_size;
     int64_t tile_size = *dim_info.tile_size;
@@ -2248,34 +2246,13 @@ absl::StatusOr<std::vector<TensorValue>> EmitScan(
     ABSL_RETURN_IF_ERROR(
         EmitScanComputation(b, &hlo_scan, hlo_scan.to_apply(), scan));
 
-    // Inside loop body, insert output tile into destination argument.
-    // TODO(b/390559452): Support multi-output scans by mapping each tuple_index
-    // to its corresponding scan output rather than hardcoding index 0.
-    for (const auto& [r_idx, root] :
-         llvm::enumerate(emitter_ctx.tiled_computation().roots())) {
-      const HloInstruction* root_hlo = root->hlo();
-      if ((root_hlo->opcode() == HloOpcode::kGetTupleElement &&
-           root->operand(0) == &tiled_hlo_scan &&
-           root_hlo->tuple_index() == 0) ||
-          root == &tiled_hlo_scan) {
-        Value output_arg =
-            emitter_ctx.entry_func()
-                .getArguments()[computation->num_parameters() + r_idx];
-        ABSL_ASSIGN_OR_RETURN(auto tile_info,
-                         TileInfo::Construct(emitter_ctx, *root));
-        xtile::InsertTileOp::create(
-            b, scan.getOutputs()[0], output_arg, tile_info.offsets(),
-            tile_info.padded_tile_sizes(), tile_info.tile_strides());
-      }
-    }
-
-    b.create<mlir::scf::YieldOp>(scan.getCarries());
-    b.setInsertionPointAfter(for_op);
+    emitter_ctx.SetOpenScanLoop(for_op, scan.getCarries(),
+                                std::move(iv_binding));
 
     std::vector<TensorValue> results;
-    results.reserve(for_op.getNumResults());
-    for (auto res : for_op.getResults()) {
-      results.push_back(mlir::cast<TensorValue>(res));
+    results.reserve(scan.getOutputs().size());
+    for (auto output : scan.getOutputs()) {
+      results.push_back(mlir::cast<TensorValue>(output));
     }
     return results;
   }
@@ -2288,6 +2265,13 @@ absl::StatusOr<std::vector<TensorValue>> EmitScan(
 
   ABSL_ASSIGN_OR_RETURN(SmallVector<int64_t> unpadded_tile_sizes,
                    tiled_hlo_scan.operand(0)->tile().GetStaticTileSizes());
+  if (int64_t scan_dim_size = hlo_scan.operand(0)->shape().dimensions(scan_dim);
+      unpadded_tile_sizes[scan_dim] < scan_dim_size) {
+    return Internal(
+        "Scan %s is tiled with size %d along its scan dimension of size %d "
+        "without a loop over the scan dimension.",
+        hlo_scan.name(), unpadded_tile_sizes[scan_dim], scan_dim_size);
+  }
 
   for (int i = 0; i < num_operands; ++i) {
     const ge::TiledHloInstruction* input_operand = tiled_hlo_scan.operand(i);
@@ -2693,6 +2677,9 @@ absl::StatusOr<std::vector<TensorValue>> EmitTiledComputation(
     EmitterContext& emitter_ctx, const ge::TiledHloRegion& region,
     absl::Span<const ge::TiledHloInstruction* const> roots) {
   for (const auto* tiled_hlo : region.instructions()) {
+    if (emitter_ctx.IsEmitted(*tiled_hlo)) {
+      continue;
+    }
     const HloInstruction* hlo = tiled_hlo->hlo();
     VLOG(8) << "Emitting " << hlo->ToString(HloPrintOptions::ShortParsable());
     ABSL_ASSIGN_OR_RETURN(EmittedResults results,
@@ -2997,6 +2984,19 @@ absl::Status EmitGeneric(ImplicitLocOpBuilder& b,
   ABSL_ASSIGN_OR_RETURN(
       std::vector<ScopedSequentialDimBinding> fully_tiled_dim_bindings,
       EmitFullyTiledSequentialDimensions(b, emitter_ctx, tiled_computation));
+  // Emit tiled scans first to open their loop and bind its induction variable,
+  // which epilogue instructions tiled along the scan dimension (e.g. an iota)
+  // depend on.
+  for (const ge::TiledHloInstruction* tiled_hlo :
+       tiled_computation.tiled_root_region().instructions()) {
+    if (tiled_hlo->hlo()->opcode() == HloOpcode::kScan &&
+        !tiled_hlo->hlo_regions().empty()) {
+      ABSL_RETURN_IF_ERROR(
+          EmitRegionInstructionWithDependencies(
+              emitter_ctx, tiled_computation.tiled_root_region(), tiled_hlo)
+              .status());
+    }
+  }
   ABSL_ASSIGN_OR_RETURN(
       auto results,
       EmitTiledComputation(emitter_ctx, tiled_computation.tiled_root_region(),
@@ -3005,19 +3005,6 @@ absl::Status EmitGeneric(ImplicitLocOpBuilder& b,
   for (const auto& [root, result, arg] :
        llvm::zip(tiled_computation.roots(), results,
                  fn.getArguments().drop_front(computation->num_parameters()))) {
-    // The array output of a looped scan is inserted inside the loop body.
-    // Handle scans and GTEs that extract the output of a scan.
-    if (root->hlo()->opcode() == HloOpcode::kScan &&
-        !root->hlo_regions().empty()) {
-      continue;
-    }
-    if (root->hlo()->opcode() == HloOpcode::kGetTupleElement &&
-        root->operand(0)->hlo()->opcode() == HloOpcode::kScan &&
-        !root->operand(0)->hlo_regions().empty() &&
-        root->hlo()->tuple_index() == 0) {
-      continue;
-    }
-
     // Workaround(i1_to_i8_workaround)
     // Some types are stored using different types, e.g. i1 is stored in memory
     // as i8. It's important to check converted types before storing if the type
@@ -3034,6 +3021,12 @@ absl::Status EmitGeneric(ImplicitLocOpBuilder& b,
     xtile::InsertTileOp::create(b, result, arg, tile_info.offsets(),
                                 tile_info.padded_tile_sizes(),
                                 tile_info.tile_strides());
+  }
+  // Close the loop of a tiled scan, see SetOpenScanLoop.
+  if (mlir::scf::ForOp for_op = emitter_ctx.open_scan_loop()) {
+    b.setInsertionPointToEnd(for_op.getBody());
+    mlir::scf::YieldOp::create(b, emitter_ctx.open_scan_carries());
+    emitter_ctx.ResetOpenScanLoop();
   }
   b.setInsertionPointToEnd(&fn.front());
   b.create<xtile::EntryFuncReturnOp>();

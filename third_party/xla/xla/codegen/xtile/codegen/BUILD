@@ -75,6 +75,7 @@ cc_library(
         "@llvm-project//mlir:ComplexDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MathDialect",
+        "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@stablehlo//:stablehlo_ops",

@@ -30,7 +30,7 @@ class MetaGraphDef;
 namespace grappler {
 
 struct ItemConfig {
-  ItemConfig() {}
+  ItemConfig() = default;
 
   // If true, ignore all user specified node placement.
   bool ignore_user_placement = true;

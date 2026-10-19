@@ -1383,6 +1383,14 @@ class PjRtBuffer {
     return absl::UnimplementedError("CopySlice is not supported.");
   }
 
+  // Updates a strided slice of the buffer's on-device bytes with the contents
+  // of `slice` in the same memory space. The original buffer will be donated,
+  // and underlying device memory will be handed over to the new buffer.
+  virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> UpdateSlice(
+      const StridedGather& gather, PjRtBuffer* slice) {
+    return absl::UnimplementedError("UpdateSlice is not supported.");
+  }
+
   // Donates 'this' and returns a new buffer that is ready only when both 'this'
   // and 'dependency' are ready.
   //

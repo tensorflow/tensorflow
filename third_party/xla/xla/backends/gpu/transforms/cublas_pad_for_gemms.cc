@@ -15,12 +15,12 @@ limitations under the License.
 
 #include "xla/backends/gpu/transforms/cublas_pad_for_gemms.h"
 
+#include <array>
 #include <cstdint>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/shape.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -81,57 +82,56 @@ static absl::StatusOr<bool> PadForGemm(HloDotInstruction* dot,
   VLOG(3) << "new shape: " << new_lshape << " " << new_rshape << " "
           << new_result_shape;
 
-  auto create_padding_config = [](Shape& shape, Shape& new_shape) {
+  HloComputation* parent = dot->parent();
+  HloInstruction* zero = parent->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::Zero(datatype)));
+  zero->set_metadata(dot->metadata());
+
+  auto pad = [&](HloInstruction* operand, const Shape& new_shape) {
+    const Shape& shape = operand->shape();
+    if (shape == new_shape) {
+      return operand;
+    }
     PaddingConfig padding_config;
     for (int i = 0; i < shape.dimensions().size(); ++i) {
-      auto dimension = padding_config.add_dimensions();
-      dimension->set_edge_padding_high(new_shape.dimensions()[i] -
-                                       shape.dimensions()[i]);
-      dimension->set_edge_padding_low(0);
-      dimension->set_interior_padding(0);
+      auto* dimension = padding_config.add_dimensions();
+      dimension->set_edge_padding_high(new_shape.dimensions(i) -
+                                       shape.dimensions(i));
     }
-    return padding_config;
+    HloInstruction* padded = parent->AddInstruction(
+        HloInstruction::CreatePad(new_shape, operand, zero, padding_config));
+    padded->set_metadata(dot->metadata());
+    return padded;
   };
 
-  auto l_padding_config = create_padding_config(lshape, new_lshape);
-  auto r_padding_config = create_padding_config(rshape, new_rshape);
+  HloInstruction* result = parent->AddInstruction(dot->CloneWithNewOperands(
+      new_result_shape, {pad(lhs, new_lshape), pad(rhs, new_rshape)}));
 
-  HloComputation* parent = dot->parent();
-
-  HloInstruction* zero_float = parent->AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::Zero(datatype)));
-  zero_float->set_metadata(dot->metadata());
-
-  HloInstruction* lpad = parent->AddInstruction(
-      HloInstruction::CreatePad(new_lshape, lhs, zero_float, l_padding_config));
-  lpad->set_metadata(dot->metadata());
-
-  HloInstruction* rpad = parent->AddInstruction(
-      HloInstruction::CreatePad(new_rshape, rhs, zero_float, r_padding_config));
-  rpad->set_metadata(dot->metadata());
-
-  HloInstruction* new_dot = parent->AddInstruction(
-      dot->CloneWithNewOperands(new_result_shape, {lpad, rpad}));
-
-  std::vector<int64_t> start_indices(result_shape.dimensions().size(), 0);
-  std::vector<int64_t> strides(result_shape.dimensions().size(), 1);
-  HloInstruction* slice = parent->AddInstruction(
-      HloInstruction::CreateSlice(result_shape, new_dot, start_indices,
-                                  result_shape.dimensions(), strides));
-  slice->set_metadata(dot->metadata());
-
-  bool is_root = dot->user_count() == 0;
-
-  CHECK_OK(parent->ReplaceInstruction(dot, slice));
-
-  if (is_root) {
-    parent->set_root_instruction(slice);
+  if (new_result_shape != result_shape) {
+    std::vector<int64_t> start_indices(result_shape.dimensions().size(), 0);
+    std::vector<int64_t> strides(result_shape.dimensions().size(), 1);
+    result = parent->AddInstruction(
+        HloInstruction::CreateSlice(result_shape, result, start_indices,
+                                    result_shape.dimensions(), strides));
+    result->set_metadata(dot->metadata());
   }
 
+  ABSL_RETURN_IF_ERROR(parent->ReplaceInstruction(dot, result));
   return true;
 }
 
 namespace {
+
+struct CublasPaddingRequirement {
+  se::CudaComputeCapability min_compute_capability;
+  PrimitiveType data_type;
+  int multiple_of;
+};
+
+constexpr std::array<CublasPaddingRequirement, 3> CublasPaddingRequirements{
+    {{se::CudaComputeCapability::Volta(), S8, 4},
+     {se::CudaComputeCapability::Volta(), F16, 8},
+     {se::CudaComputeCapability::Ampere(), BF16, 8}}};
 
 // We need this check because PadForGemm works in the assumption that
 // the dot instruction is canonicalized.
@@ -168,7 +168,6 @@ bool CheckCanonical(HloDotInstruction* dot) {
 }
 
 absl::StatusOr<std::vector<HloDotInstruction*>> GetRelevantDots(
-    const se::GpuComputeCapability& gpu_compute_capability,
     HloComputation* comp, PrimitiveType datatype) {
   std::vector<HloDotInstruction*> gemms;
 
@@ -193,15 +192,24 @@ absl::StatusOr<std::vector<HloDotInstruction*>> GetRelevantDots(
 absl::StatusOr<bool> CublasPadForGemms::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  const auto* cc = gpu_compute_capability_.cuda_compute_capability();
+  if (cc == nullptr) {
+    return false;
+  }
   bool changed = false;
   for (HloComputation* comp :
        module->MakeNonfusionComputations(execution_threads)) {
-    ABSL_ASSIGN_OR_RETURN(std::vector<HloDotInstruction*> dots,
-                     GetRelevantDots(gpu_compute_capability_, comp, datatype_));
-    for (HloDotInstruction* dot : dots) {
-      ABSL_ASSIGN_OR_RETURN(bool result,
-                       PadForGemm(dot, datatype_, pad_to_multiple_of_));
-      changed |= result;
+    for (const CublasPaddingRequirement& req : CublasPaddingRequirements) {
+      if (!cc->SupportsAllFeaturesOf(req.min_compute_capability)) {
+        continue;
+      }
+      ABSL_ASSIGN_OR_RETURN(std::vector<HloDotInstruction*> dots,
+                       GetRelevantDots(comp, req.data_type));
+      for (HloDotInstruction* dot : dots) {
+        ABSL_ASSIGN_OR_RETURN(bool result,
+                         PadForGemm(dot, req.data_type, req.multiple_of));
+        changed |= result;
+      }
     }
   }
   return changed;

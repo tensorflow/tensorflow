@@ -2698,8 +2698,22 @@ absl::Status LayoutAssignment::AssignLayouts(LayoutConstraints& constraints) {
   // Copy the root instruction's result if its layout does not match the result
   // layout constraint.
   if (constraints.ResultLayout() != nullptr &&
-      constraints.ResultLayout()->MinorToMajorInLayoutIsSet()) {
-    ShapeLayout result_layout = *constraints.ResultLayout();
+      constraints.ResultLayout()->AnyMinorToMajorInLayoutIsSet()) {
+    Shape result_shape = constraints.ResultLayout()->shape();
+    // A tuple can mix explicitly constrained and automatically chosen layouts.
+    // Fill only the unconstrained leaves from the assigned root so that a
+    // missing layout does not suppress copies for the constrained leaves.
+    ShapeUtil::ForEachMutableSubshape(
+        &result_shape, [&](Shape* subshape, const ShapeIndex& index) {
+          if (subshape->IsArray() &&
+              !LayoutUtil::HasMinorToMajorSetInLayout(*subshape)) {
+            *subshape->mutable_layout() =
+                ShapeUtil::GetSubshape(computation->root_instruction()->shape(),
+                                       index)
+                    .layout();
+          }
+        });
+    ShapeLayout result_layout(result_shape);
     // Clear out memory space in layout. Host offloader will do the
     // analysis later.
     ABSL_RETURN_IF_ERROR(ResetMemorySpaceInLayout(result_layout));
