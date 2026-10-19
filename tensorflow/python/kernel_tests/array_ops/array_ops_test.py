@@ -389,6 +389,66 @@ class BooleanMaskTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(
         self.evaluate(f(constant_op.constant(0, dtype=dtypes.int32))), [1, 3])
 
+  def testMaskWithNegativeAxis(self):
+    # A negative axis counts from the end of the tensor, as in numpy.
+    arr = np.arange(24).reshape(2, 3, 4)
+    for axis, mask in [
+        (-1, np.array([True, False, True, False])),
+        (-2, np.array([True, False, True])),
+        (-2, np.array([[True, False, True, False]] * 3)),
+        (-3, np.array([[True, False, True]] * 2)),
+    ]:
+      with self.subTest(axis=axis, mask_shape=mask.shape):
+        expected = arr[(slice(None),) * (arr.ndim + axis) + (mask,)]
+        result = array_ops.boolean_mask(arr, mask, axis=axis)
+        self.assertAllEqual(result.get_shape()[arr.ndim + axis + 1:],
+                            expected.shape[arr.ndim + axis + 1:])
+        self.assertAllEqual(self.evaluate(result), expected)
+
+  def testMaskWithNegativeAxisArrayNotModified(self):
+    arr = np.arange(24).reshape(2, 3, 4)
+    axis = np.array(-1)
+    array_ops.boolean_mask(arr, [True, False, True, False], axis=axis)
+    self.assertEqual(axis, -1)
+
+  def testMaskWithNegativeAxisOutOfRange(self):
+    arr = np.arange(24).reshape(2, 3, 4)
+    with self.assertRaisesRegex(ValueError, "axis -4 is out of range"):
+      array_ops.boolean_mask(arr, [True, False], axis=-4)
+
+  def testMaskWithNegativeAxisNonConstTensor(self):
+    arr = np.arange(24).reshape(2, 3, 4)
+    mask = [True, False, True, False]
+
+    @def_function.function(
+        autograph=False,
+        input_signature=[
+            tensor_lib.TensorSpec(shape=None, dtype=dtypes.int32)
+        ])
+    def f(axis):
+      return array_ops.boolean_mask(arr, mask, axis=axis)
+
+    self.assertAllEqual(
+        self.evaluate(f(constant_op.constant(-1, dtype=dtypes.int32))),
+        arr[..., mask])
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "axis is out of range"):
+      self.evaluate(f(constant_op.constant(-5, dtype=dtypes.int32)))
+
+  def testMaskWithNegativeAxisUnknownRank(self):
+    arr = np.arange(24).reshape(2, 3, 4)
+    mask = [True, False, True, False]
+
+    @def_function.function(
+        autograph=False,
+        input_signature=[
+            tensor_lib.TensorSpec(shape=None, dtype=dtypes.int64)
+        ])
+    def f(tensor):
+      return array_ops.boolean_mask(tensor, mask, axis=-1)
+
+    self.assertAllEqual(self.evaluate(f(arr)), arr[..., mask])
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class OperatorShapeTest(test_util.TensorFlowTestCase):

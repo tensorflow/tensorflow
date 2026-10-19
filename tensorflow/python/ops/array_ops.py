@@ -39,6 +39,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework.constant_op import constant
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gen_array_ops
+from tensorflow.python.ops import gen_logging_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import shape_util
 from tensorflow.python.ops import tensor_getitem_override  # pylint: disable=unused-import
@@ -1503,7 +1504,7 @@ def boolean_mask(tensor, mask, name="boolean_mask", axis=None):
     name:  A name for this operation (optional).
     axis:  A 0-D int Tensor representing the axis in `tensor` to mask from. By
       default, axis is 0 which will mask from the first dimension. Otherwise K +
-      axis <= N.
+      axis <= N. A negative axis counts from the end of `tensor`.
 
   Returns:
     (N-K+1)-dimensional tensor populated by entries in `tensor` corresponding
@@ -1533,6 +1534,26 @@ def boolean_mask(tensor, mask, name="boolean_mask", axis=None):
           " are None.  E.g. shape=[None] is ok, but shape=None is not.")
     axis = 0 if axis is None else axis
     axis_value = tensor_util.constant_value(axis)
+    # Count a negative axis from the end of `tensor`. Used as is, it slices the
+    # wrong dimensions of the shapes, e.g. [-1:0] for axis=-1 and a 1-D mask.
+    if (axis_value is not None and axis_value < 0 and
+        shape_tensor.ndims is not None):
+      if axis_value < -shape_tensor.ndims:
+        raise ValueError(
+            f"axis {axis_value} is out of range for a tensor of rank "
+            f"{shape_tensor.ndims}.")
+      # Not +=: constant_value may return the caller's numpy array.
+      axis_value = axis_value + shape_tensor.ndims
+    elif axis_value is None or axis_value < 0:
+      # The axis or the rank is only known at runtime.
+      axis = ops.convert_to_tensor(axis, name="axis")
+      ndims = gen_math_ops.cast(rank(tensor), axis.dtype)
+      axis = where_v2(axis < 0, axis + ndims, axis)
+      in_range = gen_logging_ops._assert(  # pylint: disable=protected-access
+          axis >= 0, ["axis is out of range for the rank of tensor"])
+      with ops.control_dependencies([in_range]):
+        axis = identity(axis)
+      axis_value = None
     flattened_shape = None
     if axis_value is not None:
       axis = axis_value
@@ -1611,7 +1632,7 @@ def boolean_mask_v2(tensor, mask, axis=None, name="boolean_mask"):
       in a future release.
     axis:  A 0-D int Tensor representing the axis in `tensor` to mask from. By
       default, axis is 0 which will mask from the first dimension. Otherwise K +
-      axis <= N.
+      axis <= N. A negative axis counts from the end of `tensor`.
     name:  A name for this operation (optional).
 
   Returns:
