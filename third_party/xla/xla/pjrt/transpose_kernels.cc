@@ -440,31 +440,40 @@ HWY_INLINE void BuildVecs256RectCPS(D d, DHalf d_half, const char* a,
   BuildVecs256RectCPS<0, T, bs>(d, d_half, a, lda, cont);
 }
 
-// Flatten inner Unpack/StoreLane helpers into this function while keeping it
-// out-of-line so calling it 4 times in TransposeMicroKernel32x32 doesn't spill
-// vector registers.
-template <typename T>
-HWY_NOINLINE HWY_FLATTEN void TransposeMicroKernel8x32(
-    const char* HWY_RESTRICT a, int64_t lda, char* HWY_RESTRICT b,
-    int64_t ldb) {
+// Transposes a strip of kRows = 8 / sizeof(T) rows of a bs x bs block with
+// 32-byte rows into bytes [0, 8) of every output row. Each row is one vector;
+// after the in-block unpack stages, each 64-bit lane holds kRows elements of
+// one output row. Lanes 0 and 1 of vector i are output rows 2i and 2i + 1, and
+// lanes 2 and 3 (the upper block) are output rows 2i + bs / 2 and
+// 2i + bs / 2 + 1. The strip's helpers are flattened into it, but the strip
+// itself is out of line so that TransposeMicroKernel256Strips' 4 calls can't
+// be interleaved into more live vectors than there are registers.
+template <typename T, int bs>
+HWY_NOINLINE HWY_FLATTEN void TransposeStrip256(const char* HWY_RESTRICT a,
+                                                int64_t lda,
+                                                char* HWY_RESTRICT b,
+                                                int64_t ldb) {
+  static_assert(sizeof(T) * bs == 2 * kBlockBytes);
+  static_assert(sizeof(T) <= sizeof(uint64_t));
+  constexpr int kRows = sizeof(uint64_t) / sizeof(T);
   using D = hn::FixedTag<uint8_t, 32>;
   const D d;
   using D64 = hn::Repartition<uint64_t, D>;
   const D64 d64;
-  LoadRowsCPS<0, T, 8, D, 32>(d, a, lda, [&](auto... loads) HWY_ATTR {
-    InterleaveWithinBlocksCPS<1, 1, 8>(
+  LoadRowsCPS<0, T, kRows, D, 32>(d, a, lda, [&](auto... loads) HWY_ATTR {
+    InterleaveWithinBlocksCPS<sizeof(T), 1, sizeof(uint64_t)>(
         [&](auto... interleaved) HWY_ATTR {
           ForEachIndexed(
               [&](auto idx_c, auto&& vec) HWY_ATTR {
                 constexpr size_t i = decltype(idx_c)::value;
+                constexpr size_t lo_row = 2 * i;
+                constexpr size_t hi_row = 2 * i + bs / 2;
                 auto v64 = hn::BitCast(d64, vec);
-                StoreLane<D64, sizeof(uint64_t), 0>(d64, b + (2 * i) * ldb,
+                StoreLane<D64, sizeof(uint64_t), 0>(d64, b + lo_row * ldb, v64);
+                StoreLane<D64, sizeof(uint64_t), 1>(d64, b + (lo_row + 1) * ldb,
                                                     v64);
-                StoreLane<D64, sizeof(uint64_t), 1>(d64, b + (2 * i + 1) * ldb,
-                                                    v64);
-                StoreLane<D64, sizeof(uint64_t), 2>(d64, b + (2 * i + 16) * ldb,
-                                                    v64);
-                StoreLane<D64, sizeof(uint64_t), 3>(d64, b + (2 * i + 17) * ldb,
+                StoreLane<D64, sizeof(uint64_t), 2>(d64, b + hi_row * ldb, v64);
+                StoreLane<D64, sizeof(uint64_t), 3>(d64, b + (hi_row + 1) * ldb,
                                                     v64);
               },
               interleaved...);
@@ -473,16 +482,24 @@ HWY_NOINLINE HWY_FLATTEN void TransposeMicroKernel8x32(
   });
 }
 
-// Transposes a 32x32 block of bytes as four 8x32 row strips.
-template <typename T>
-HWY_FLATTEN void TransposeMicroKernel32x32(const char* HWY_RESTRICT a,
-                                           int64_t lda, char* HWY_RESTRICT b,
-                                           int64_t ldb) {
-  static_assert(sizeof(T) == 1);
-  TransposeMicroKernel8x32<T>(a, lda, b, ldb);
-  TransposeMicroKernel8x32<T>(a + 8 * lda, lda, b + 8 * sizeof(T), ldb);
-  TransposeMicroKernel8x32<T>(a + 16 * lda, lda, b + 16 * sizeof(T), ldb);
-  TransposeMicroKernel8x32<T>(a + 24 * lda, lda, b + 24 * sizeof(T), ldb);
+// Transposes a bs x bs block with 32-byte rows as 4 strips of
+// kRows = 8 / sizeof(T) rows (see TransposeStrip256): strip s, input rows
+// [s * kRows, (s + 1) * kRows), becomes output columns
+// [s * kRows, (s + 1) * kRows). A strip only has kRows vectors live, so
+// nothing spills.
+template <typename T, int bs>
+HWY_FLATTEN void TransposeMicroKernel256Strips(const char* HWY_RESTRICT a,
+                                               int64_t lda,
+                                               char* HWY_RESTRICT b,
+                                               int64_t ldb) {
+  constexpr int kRows = sizeof(uint64_t) / sizeof(T);
+  static_assert(4 * kRows == bs);
+  const int64_t a_stride = kRows * lda;            // kRows input rows
+  constexpr int64_t b_stride = kRows * sizeof(T);  // kRows output columns
+  TransposeStrip256<T, bs>(a, lda, b, ldb);
+  TransposeStrip256<T, bs>(a + a_stride, lda, b + b_stride, ldb);
+  TransposeStrip256<T, bs>(a + 2 * a_stride, lda, b + 2 * b_stride, ldb);
+  TransposeStrip256<T, bs>(a + 3 * a_stride, lda, b + 3 * b_stride, ldb);
 }
 
 // 256-bit transpose of a bs x bs block with 16-byte rows. Rows I and
@@ -540,7 +557,7 @@ HWY_FLATTEN void TransposeMicroKernel(const char* HWY_RESTRICT a, int64_t lda,
   } else {
 #if HWY_MIN_BYTES >= 32
     if constexpr (sizeof(T) == 1 && bs == 32) {
-      TransposeMicroKernel32x32<T>(a, lda, b, ldb);
+      TransposeMicroKernel256Strips<T, bs>(a, lda, b, ldb);
       return;
     } else if constexpr (row_bytes == 2 * kBlockBytes) {
       TransposeMicroKernel256Square<T, bs>(a, lda, b, ldb);
