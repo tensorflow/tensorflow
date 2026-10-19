@@ -1751,6 +1751,19 @@ class ArrayMethodsTest(test.TestCase):
     y = np_array_ops.split(x, [3, 5, 6, 10])
     self.assertListEqual([([0, 1, 2]), ([3, 4]), ([5]), ([6, 7]), ([])], y)
 
+    # Negative boundaries are resolved like slice endpoints, as in NumPy.
+    x = np_array_ops.arange(10)
+    for boundaries in [[-1], [-7, -2], [3, -2], [-20], [-20, -5]]:
+      expected = np.split(np.arange(10), boundaries)
+      actual = np_array_ops.split(x, boundaries)
+      self.assertLen(actual, len(expected))
+      for e, a in zip(expected, actual):
+        self.assertAllEqual(e, a)
+    with self.assertRaisesRegex(ValueError, 'smaller than the previous'):
+      np_array_ops.split(x, [-2, -5])
+    with self.assertRaisesRegex(ValueError, 'smaller than the previous'):
+      np_array_ops.split(x, [8, -5])
+
   def testSplitOutOfBoundsAxis(self):
     x_2d = np_array_ops.arange(6).reshape(2, 3)
     with self.assertRaisesRegex(ValueError, 'out of bounds'):

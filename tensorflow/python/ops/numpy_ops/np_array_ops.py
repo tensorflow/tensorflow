@@ -444,17 +444,6 @@ def _promote_dtype(*arrays):
 
 
 def _promote_dtype_binary(t1, t2):
-  # Fast path: two tensors that already share a dtype need no promotion, so
-  # skip the NumPy `result_type` round-trip (the dominant Python-side cost of
-  # most binary ops). Not taken when float64 is disabled, because the result
-  # type must then be canonicalized (float64 -> float32).
-  if (
-      isinstance(t1, np_arrays.ndarray)
-      and isinstance(t2, np_arrays.ndarray)
-      and t1.dtype is t2.dtype
-      and np_dtypes.is_allow_float64()
-  ):
-    return t1, t2
   dtype = np_utils._result_type_binary(t1, t2)  # pylint: disable=protected-access
   if not (
       isinstance(t1, np_arrays.ndarray) and dtype == t1.dtype.as_numpy_dtype
@@ -1283,14 +1272,6 @@ def take(a, indices, axis=None, out=None, mode='clip'):
 
   a = asarray(a)
   indices = asarray(indices)
-  # `take` indices must be integer-typed. `asarray` infers float64 for an
-  # empty Python list/array (same default NumPy itself uses for an empty
-  # array), which previously reached `array_ops.shape(..., out_type=...)`
-  # and `array_ops.gather` as a float dtype and crashed both -- on any
-  # empty `indices`, regardless of `mode`. Normalize to int64 up front so
-  # the rest of this function can rely on an integer dtype.
-  if not dtypes.as_dtype(indices.dtype).is_integer:
-    indices = math_ops.cast(indices, dtypes.int64)
 
   if axis is None:
     a = array_ops.reshape(a, [-1])
@@ -1307,11 +1288,7 @@ def take(a, indices, axis=None, out=None, mode='clip'):
             f'for input of rank {maybe_rank}.'
         )
 
-  # `array_ops.shape`'s `out_type` only accepts int32/int64 (not e.g.
-  # int16), so compute the shape in a dtype known to be valid and cast the
-  # scalar to match `indices` afterward, which is always a legal cast.
-  axis_size = array_ops.shape(a, out_type=dtypes.int64)[axis]
-  axis_size = math_ops.cast(axis_size, indices.dtype)
+  axis_size = array_ops.shape(a, out_type=indices.dtype)[axis]
   if mode == 'clip':
     indices = clip_ops.clip_by_value(indices, 0, axis_size - 1)
   elif mode == 'wrap':
