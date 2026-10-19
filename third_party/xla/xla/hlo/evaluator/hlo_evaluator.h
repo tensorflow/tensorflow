@@ -521,23 +521,6 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
     DimensionVector contracting_dim_scale_divisors;
   };
 
-  struct DotDimensionInfo {
-    DotDimensionInfo(
-        const Shape& lhs_shape, const Shape& rhs_shape,
-        const DotDimensionNumbers& dnums,
-        std::optional<int64_t> extra_rhs_contracting_dim = std::nullopt);
-    ~DotDimensionInfo();
-
-    int64_t lhs_rank;
-    int64_t rhs_rank;
-    DimensionVector lhs_non_contracting_dims;
-    DimensionVector rhs_non_contracting_dims;
-    DimensionVector lhs_contracting_dims;
-    DimensionVector rhs_contracting_dims;
-    DimensionVector contracting_dim_sizes;
-    int64_t total_contraction_size;
-  };
-
   absl::Status EvaluateConvolution(
       const HloInstruction* conv, bool use_f32_fast_path,
       absl::FunctionRef<absl::Status(
@@ -545,31 +528,6 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
           const Shape& window_shape, const DimensionVector& lhs_dim_multipliers,
           const DimensionVector& rhs_dim_multipliers, Literal* result)>
           evaluate_impl);
-
-  absl::Status EvaluateDotSlowPath(
-      const HloInstruction* dot,
-      absl::FunctionRef<
-          absl::Status(const Literal& lhs_literal, const Literal& rhs_literal,
-                       const DotDimensionInfo& dot_info, Literal* result)>
-          evaluate_impl);
-
-  absl::Status EvaluateRaggedDot(
-      const HloInstruction* dot,
-      absl::FunctionRef<absl::Status(
-          const Literal& lhs_literal, const Literal& rhs_literal,
-          const Literal& gs_literal, const DotDimensionInfo& dot_info,
-          int64_t ragged_dim_as_contracting_dim, Literal* result)>
-          contracting_impl,
-      absl::FunctionRef<
-          absl::Status(const Literal& lhs_literal, const Literal& rhs_literal,
-                       const Literal& gs_literal,
-                       const DotDimensionInfo& dot_info, Literal* result)>
-          batch_impl,
-      absl::FunctionRef<
-          absl::Status(const Literal& lhs_literal, const Literal& rhs_literal,
-                       const Literal& gs_literal,
-                       const DotDimensionInfo& dot_info, Literal* result)>
-          non_contracting_impl);
 
   absl::Status EvaluateScaledDot(
       const HloInstruction* dot,
@@ -658,6 +616,8 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
   absl::Status HandleCustomCall(const HloInstruction* custom_call) override;
   absl::Status HandleOptimizationBarrier(
       const HloInstruction* optimization_barrier) override;
+  absl::Status HandleDot(const HloInstruction* dot) override;
+  absl::Status HandleRaggedDot(const HloInstruction* dot) override;
   absl::Status HandlePad(const HloInstruction* pad) override;
 
   // Unsupported HLOs, note some of them (such as BatchNorm*) are typically
