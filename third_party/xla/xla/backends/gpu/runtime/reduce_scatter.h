@@ -45,8 +45,9 @@ struct ReduceScatterInfo {
 };
 
 // Returns true if every operand's scatter dimension is its most-major
-// non-trivial physical dimension and its output has the same layout, so rank
-// `i`'s input shard is a contiguous slice `[i * O_k, (i + 1) * O_k)`.
+// non-trivial physical dimension and its output has the same layout, so the
+// part of the input reduced into rank `i` is the contiguous slice
+// `[i * O_k, (i + 1) * O_k)`.
 bool IsReduceScatterFlattenable(const HloReduceScatterInstruction* rs);
 
 // Constructs a ReduceScatterInfo object for the given (possibly variadic)

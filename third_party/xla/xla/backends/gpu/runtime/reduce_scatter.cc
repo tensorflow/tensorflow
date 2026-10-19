@@ -59,10 +59,10 @@ const Shape& OutputShape(const HloReduceScatterInstruction* rs, int64_t index) {
   return rs->shape().IsTuple() ? rs->shape().tuple_shapes(index) : rs->shape();
 }
 
-// Returns true if the shard sent to rank `i` is the contiguous range
-// [i * O, (i + 1) * O) of `in`, where O is the number of elements of `out`.
-bool IsShardContiguous(const HloReduceScatterInstruction* rs, const Shape& in,
-                       const Shape& out) {
+// Returns true if the part of `in` reduced into rank `i` is the contiguous
+// range [i * O, (i + 1) * O), where O is the number of elements of `out`.
+bool IsPerRankInputContiguous(const HloReduceScatterInstruction* rs,
+                              const Shape& in, const Shape& out) {
   if (!in.has_layout() || !out.has_layout() ||
       !LayoutUtil::Equal(in.layout(), out.layout())) {
     VLOG(3) << "Reduce-scatter " << rs->name()
@@ -103,7 +103,8 @@ bool IsReduceScatterFlattenable(const HloReduceScatterInstruction* rs) {
     return false;
   }
   for (int64_t k = 0; k < num_operands; ++k) {
-    if (!IsShardContiguous(rs, rs->operand(k)->shape(), OutputShape(rs, k))) {
+    if (!IsPerRankInputContiguous(rs, rs->operand(k)->shape(),
+                                  OutputShape(rs, k))) {
       return false;
     }
   }
