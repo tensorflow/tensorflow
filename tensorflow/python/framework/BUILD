@@ -2166,6 +2166,7 @@ py_library(
         ":errors",
         ":tensor_shape",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python/client:pywrap_tf_session",
         "//tensorflow/python/types:core",
         "//tensorflow/python/types:internal",
