@@ -291,6 +291,15 @@ class NcclCommunicator : public GpuCommunicator {
     return is_cross_device_barrier_initiated_;
   }
 
+  absl::StatusOr<stream_executor::DeviceAddressBase> GetCliqueSemaphore(
+      RankId peer_rank, int64_t collective_id) const final;
+
+  void InitializeCliqueSemaphore(
+      tsl::TiedRef<se::MemoryAllocation> tied_semaphore,
+      tsl::TiedRef<SymmetricMemory> tied_symmetric_memory) final;
+
+  bool IsCliqueSemaphoreInitialized() const final;
+
   // Executes f on executor_, or calls f directly if executor_ is null.
   Future<> Execute(absl::AnyInvocable<absl::Status() &&> f) const;
 
@@ -351,6 +360,12 @@ class NcclCommunicator : public GpuCommunicator {
       ABSL_GUARDED_BY(barrier_mu_);
   tsl::TiedRef<SymmetricMemory> tied_cross_device_barrier_symmetric_memory_
       ABSL_GUARDED_BY(barrier_mu_);
+
+  mutable absl::Mutex semaphore_mu_;
+  tsl::TiedRef<se::MemoryAllocation> tied_clique_semaphores_
+      ABSL_GUARDED_BY(semaphore_mu_);
+  tsl::TiedRef<SymmetricMemory> tied_clique_symmetric_memory_
+      ABSL_GUARDED_BY(semaphore_mu_);
 };
 
 //===----------------------------------------------------------------------===//

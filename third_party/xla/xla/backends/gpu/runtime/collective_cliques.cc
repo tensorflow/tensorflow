@@ -233,7 +233,8 @@ absl::StatusOr<CollectiveCliques> AcquireCollectiveCliques(
   std::unique_ptr<se::MemoryAllocator> collective_alloc = nullptr;
   if (std::any_of(ordered_cliques.begin(), ordered_cliques.end(),
                   [](const CollectiveCliqueRequests::CliqueRequest& r) {
-                    return r.use_cross_device_barrier_requested;
+                    return r.use_cross_device_barrier_requested ||
+                           r.use_barrier_semaphores;
                   })) {
     ABSL_ASSIGN_OR_RETURN(collective_alloc, params.executor->CreateMemoryAllocator(
                                            se::MemorySpace::kCollective));
@@ -336,7 +337,6 @@ absl::StatusOr<CollectiveCliques> AcquireCollectiveCliques(
                                            std::move(tied_symmetric_memory));
       }
     }
-
     if (r.use_gxl_requested) {
       auto* comm = dynamic_cast<GpuCommunicator*>(*(*clique)->comm(*rank));
       TF_RET_CHECK(comm) << "Communicator must be in the acquired clique";
@@ -384,6 +384,44 @@ absl::StatusOr<CollectiveCliques> AcquireCollectiveCliques(
                   return true;
                 })
                 .status());
+      }
+    }
+
+    if (r.use_barrier_semaphores) {
+      auto* comm = dynamic_cast<GpuCommunicator*>(*(*clique)->comm(*rank));
+      TF_RET_CHECK(comm) << "Communicator must be in the acquired clique";
+
+      if (!comm->IsCliqueSemaphoreInitialized()) {
+        int64_t total_semaphores =
+            CollectiveCliqueRequests::kMaxCollectiveIds *
+            CollectiveCliqueRequests::kMaxCliqueSemaphores;
+        XLA_VLOG_DEVICE(2, params.executor->device_ordinal())
+            << absl::StreamFormat(
+                   "Create clique semaphore buffer: rank=%v clique=%v count=%d",
+                   *rank, r.key, total_semaphores);
+        TF_RET_CHECK(collective_alloc != nullptr)
+            << "Collective alloc must be non-null";
+        ABSL_ASSIGN_OR_RETURN(
+            std::unique_ptr<se::MemoryAllocation> semaphore,
+            collective_alloc->Allocate(sizeof(uint32_t) * total_semaphores));
+        se::DeviceAddressBase semaphore_addr = semaphore->address();
+
+        ABSL_ASSIGN_OR_RETURN(std::unique_ptr<se::Stream> stream,
+                         params.executor->CreateStream());
+        ABSL_RETURN_IF_ERROR(
+            stream->MemZero(&semaphore_addr, semaphore_addr.size()));
+        ABSL_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+
+        ABSL_ASSIGN_OR_RETURN(std::unique_ptr<SymmetricMemory> symmetric_memory,
+                         comm->CreateSymmetricMemory(semaphore_addr));
+
+        ABSL_ASSIGN_OR_RETURN(tsl::TiedRef<se::MemoryAllocation> tied_semaphore,
+                         (*clique)->Tie(std::move(semaphore)));
+        ABSL_ASSIGN_OR_RETURN(tsl::TiedRef<SymmetricMemory> tied_symmetric_memory,
+                         (*clique)->Tie(std::move(symmetric_memory)));
+
+        comm->InitializeCliqueSemaphore(std::move(tied_semaphore),
+                                        std::move(tied_symmetric_memory));
       }
     }
   }

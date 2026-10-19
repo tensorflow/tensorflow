@@ -1181,6 +1181,58 @@ void NcclCommunicator::InitializeCrossDeviceBarrier(
       std::move(tied_symmetric_memory);
 }
 
+absl::StatusOr<se::DeviceAddressBase> NcclCommunicator::GetCliqueSemaphore(
+    RankId peer_rank, int64_t collective_id) const {
+  absl::MutexLock lock(semaphore_mu_);
+  int device = stream_executor_->device_ordinal();
+
+  auto locked_sym = tied_clique_symmetric_memory_.Lock();
+  if (locked_sym == nullptr) {
+    return absl::NotFoundError(
+        absl::StrFormat("%sSymmetric memory is not initialized for clique of "
+                        "rank %d",
+                        xla::XlaFormatDevice(device), peer_rank.value()));
+  }
+
+  ABSL_ASSIGN_OR_RETURN(se::DeviceAddressBase peer_addr,
+                   locked_sym->peer_addr(peer_rank));
+
+  if (collective_id < 0 || collective_id >= kMaxCollectiveIds) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "%sCollective ID %d is out of range [0, %d) for rank %d",
+        xla::XlaFormatDevice(device), collective_id, kMaxCollectiveIds,
+        peer_rank.value()));
+  }
+
+  constexpr uint64_t kSemaphoreSliceBytes =
+      kMaxCliqueSemaphores * sizeof(uint32_t);
+  uint64_t offset_bytes = collective_id * kSemaphoreSliceBytes;
+  if (offset_bytes + kSemaphoreSliceBytes > peer_addr.size()) {
+    return absl::InternalError(absl::StrFormat(
+        "%sSemaphore slice [%d, %d) bytes exceeds peer address size %d bytes",
+        xla::XlaFormatDevice(device), offset_bytes,
+        offset_bytes + kSemaphoreSliceBytes, peer_addr.size()));
+  }
+
+  return se::DeviceAddressBase(
+      static_cast<char*>(peer_addr.opaque()) + offset_bytes,
+      kSemaphoreSliceBytes);
+}
+
+void NcclCommunicator::InitializeCliqueSemaphore(
+    tsl::TiedRef<se::MemoryAllocation> tied_semaphore,
+    tsl::TiedRef<SymmetricMemory> tied_symmetric_memory) {
+  absl::MutexLock lock(semaphore_mu_);
+  tied_clique_semaphores_ = std::move(tied_semaphore);
+  tied_clique_symmetric_memory_ = std::move(tied_symmetric_memory);
+}
+
+bool NcclCommunicator::IsCliqueSemaphoreInitialized() const {
+  absl::MutexLock lock(semaphore_mu_);
+  return tied_clique_semaphores_.Lock() != nullptr &&
+         tied_clique_symmetric_memory_.Lock() != nullptr;
+}
+
 std::string NcclCommunicator::ToString() const {
   // comm_ should not be "touched" outside of executor_, but we are printing
   // the pointer itself and not touching the value, so this is safe.
