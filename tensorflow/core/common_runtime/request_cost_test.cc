@@ -16,20 +16,26 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/request_cost.h"
 
 #include <string>
+#include <utility>
 #include <variant>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 
 namespace tensorflow {
 namespace {
 
 using ::testing::ElementsAre;
+using ::testing::Field;
 using ::testing::FieldsAre;
+using ::testing::IsEmpty;
 using ::testing::Pair;
 using ::testing::UnorderedElementsAre;
+using ::testing::VariantWith;
 
 TEST(RequestCostTest, RecordCost) {
   RequestCost request_cost;
@@ -131,6 +137,169 @@ TEST(RequestCostTest, RecordStructuredMetrics) {
       metrics["metric_v2"].values));
   EXPECT_THAT(std::get<std::vector<std::string>>(metrics["metric_v2"].values),
               ElementsAre("c"));
+
+  const std::vector<std::pair<std::string, RequestCost::StructuredMetric>>
+      lvalue_metrics = {
+          {"metric_v1",
+           RequestCost::StructuredMetric{.values = std::vector<double>{3.3}}},
+          {"metric_v3",
+           RequestCost::StructuredMetric{
+               .values = std::vector<std::string>{"d", "e"}}},
+      };
+  request_cost.RecordStructuredMetrics(lvalue_metrics);
+  EXPECT_THAT(std::get<std::vector<double>>(lvalue_metrics[0].second.values),
+              ElementsAre(3.3));
+  EXPECT_THAT(
+      request_cost.GetStructuredMetrics(),
+      UnorderedElementsAre(
+          Pair("metric_v1",
+               Field(&RequestCost::StructuredMetric::values,
+                     VariantWith<std::vector<double>>(ElementsAre(3.3)))),
+          Pair("metric_v2",
+               Field(&RequestCost::StructuredMetric::values,
+                     VariantWith<std::vector<std::string>>(ElementsAre("c")))),
+          Pair("metric_v3", Field(&RequestCost::StructuredMetric::values,
+                                  VariantWith<std::vector<std::string>>(
+                                      ElementsAre("d", "e"))))));
+}
+
+TEST(RequestCostTest, RecordStructuredMetricsMoveVector) {
+  RequestCost request_cost;
+
+  // Empty rvalue vector on an initially empty RequestCost is a no-op.
+  std::vector<std::pair<std::string, RequestCost::StructuredMetric>>
+      empty_metrics;
+  request_cost.RecordStructuredMetrics(std::move(empty_metrics));
+  EXPECT_THAT(request_cost.GetStructuredMetrics(), IsEmpty());
+
+  std::vector<std::pair<std::string, RequestCost::StructuredMetric>>
+      structured_metrics = {
+          {"metric_v1",
+           RequestCost::StructuredMetric{.values =
+                                             std::vector<double>{1.1, 1.2}}},
+          {"metric_v2",
+           RequestCost::StructuredMetric{
+               .values = std::vector<std::string>{"block_1", "block_2"}}},
+      };
+  request_cost.RecordStructuredMetrics(std::move(structured_metrics));
+
+  EXPECT_THAT(
+      request_cost.GetStructuredMetrics(),
+      UnorderedElementsAre(
+          Pair("metric_v1",
+               Field(&RequestCost::StructuredMetric::values,
+                     VariantWith<std::vector<double>>(ElementsAre(1.1, 1.2)))),
+          Pair("metric_v2", Field(&RequestCost::StructuredMetric::values,
+                                  VariantWith<std::vector<std::string>>(
+                                      ElementsAre("block_1", "block_2"))))));
+
+  // Duplicate keys within the same moved vector and replacement of existing
+  // keys both retain the latest value.
+  std::vector<std::pair<std::string, RequestCost::StructuredMetric>>
+      replacement_metrics = {
+          {"metric_v1",
+           RequestCost::StructuredMetric{.values = std::vector<double>{4.4}}},
+          {"metric_v1",
+           RequestCost::StructuredMetric{.values = std::vector<double>{9.9}}},
+      };
+  request_cost.RecordStructuredMetrics(std::move(replacement_metrics));
+
+  // Recording an empty vector into a populated RequestCost preserves existing
+  // entries.
+  request_cost.RecordStructuredMetrics(
+      std::vector<std::pair<std::string, RequestCost::StructuredMetric>>{});
+
+  EXPECT_THAT(
+      request_cost.GetStructuredMetrics(),
+      UnorderedElementsAre(
+          Pair("metric_v1",
+               Field(&RequestCost::StructuredMetric::values,
+                     VariantWith<std::vector<double>>(ElementsAre(9.9)))),
+          Pair("metric_v2", Field(&RequestCost::StructuredMetric::values,
+                                  VariantWith<std::vector<std::string>>(
+                                      ElementsAre("block_1", "block_2"))))));
+}
+
+TEST(RequestCostTest, RecordStructuredMetricsFromMap) {
+  RequestCost dest_cost;
+
+  // Empty rvalue and lvalue maps on an initially empty RequestCost are no-ops.
+  absl::flat_hash_map<std::string, RequestCost::StructuredMetric> empty_map;
+  dest_cost.RecordStructuredMetrics(empty_map);
+  dest_cost.RecordStructuredMetrics(std::move(empty_map));
+  EXPECT_THAT(dest_cost.GetStructuredMetrics(), IsEmpty());
+
+  RequestCost source_cost;
+  source_cost.RecordStructuredMetrics(
+      {{"metric_v1",
+        RequestCost::StructuredMetric{.values = std::vector<double>{1.0, 2.0}}},
+       {"metric_v2", RequestCost::StructuredMetric{
+                         .values = std::vector<std::string>{"id_a", "id_b"}}}});
+
+  // Move map into an initially empty RequestCost.
+  dest_cost.RecordStructuredMetrics(source_cost.GetStructuredMetrics());
+  EXPECT_THAT(
+      dest_cost.GetStructuredMetrics(),
+      UnorderedElementsAre(
+          Pair("metric_v1",
+               Field(&RequestCost::StructuredMetric::values,
+                     VariantWith<std::vector<double>>(ElementsAre(1.0, 2.0)))),
+          Pair("metric_v2", Field(&RequestCost::StructuredMetric::values,
+                                  VariantWith<std::vector<std::string>>(
+                                      ElementsAre("id_a", "id_b"))))));
+
+  // Move map into a non-empty RequestCost (replaces existing keys and adds new
+  // keys).
+  absl::flat_hash_map<std::string, RequestCost::StructuredMetric> moved_map = {
+      {"metric_v1",
+       RequestCost::StructuredMetric{.values = std::vector<double>{5.0}}},
+      {"metric_v3",
+       RequestCost::StructuredMetric{.values =
+                                         std::vector<std::string>{"id_c"}}},
+  };
+  dest_cost.RecordStructuredMetrics(std::move(moved_map));
+  EXPECT_THAT(
+      dest_cost.GetStructuredMetrics(),
+      UnorderedElementsAre(
+          Pair("metric_v1",
+               Field(&RequestCost::StructuredMetric::values,
+                     VariantWith<std::vector<double>>(ElementsAre(5.0)))),
+          Pair("metric_v2", Field(&RequestCost::StructuredMetric::values,
+                                  VariantWith<std::vector<std::string>>(
+                                      ElementsAre("id_a", "id_b")))),
+          Pair("metric_v3", Field(&RequestCost::StructuredMetric::values,
+                                  VariantWith<std::vector<std::string>>(
+                                      ElementsAre("id_c"))))));
+
+  // Copy from a const lvalue map without modifying the source map.
+  const absl::flat_hash_map<std::string, RequestCost::StructuredMetric>
+      const_map = {
+          {"metric_v2",
+           RequestCost::StructuredMetric{
+               .values = std::vector<std::string>{"id_override"}}},
+      };
+  dest_cost.RecordStructuredMetrics(const_map);
+  EXPECT_THAT(
+      std::get<std::vector<std::string>>(const_map.at("metric_v2").values),
+      ElementsAre("id_override"));
+
+  // Recording an empty rvalue map into a populated RequestCost preserves
+  // existing entries.
+  dest_cost.RecordStructuredMetrics(
+      absl::flat_hash_map<std::string, RequestCost::StructuredMetric>{});
+
+  EXPECT_THAT(
+      dest_cost.GetStructuredMetrics(),
+      UnorderedElementsAre(
+          Pair("metric_v1",
+               Field(&RequestCost::StructuredMetric::values,
+                     VariantWith<std::vector<double>>(ElementsAre(5.0)))),
+          Pair("metric_v2", Field(&RequestCost::StructuredMetric::values,
+                                  VariantWith<std::vector<std::string>>(
+                                      ElementsAre("id_override")))),
+          Pair("metric_v3", Field(&RequestCost::StructuredMetric::values,
+                                  VariantWith<std::vector<std::string>>(
+                                      ElementsAre("id_c"))))));
 }
 
 TEST(RequestCostTest, RecordStructuredCosts) {
@@ -144,14 +313,151 @@ TEST(RequestCostTest, RecordStructuredCosts) {
         {{"dim1", absl::Milliseconds(20)}, {"dim2", absl::Milliseconds(10)}}},
        {"cost_b", {{"dim1", absl::Milliseconds(3)}}}});
 
-  auto costs = request_cost.GetStructuredCosts();
-  ASSERT_EQ(costs.size(), 2);
+  const std::vector<std::pair<absl::string_view, RequestCost::StructuredCost>>
+      lvalue_costs = {
+          {"cost_a", {{"dim1", absl::Milliseconds(5)}}},
+          {"cost_c", {{"dim3", absl::Milliseconds(7)}}},
+      };
+  request_cost.RecordStructuredCosts(lvalue_costs);
+  EXPECT_EQ(lvalue_costs[0].second.at("dim1"), absl::Milliseconds(5));
 
-  // cost_a should be summed.
-  EXPECT_EQ(costs["cost_a"]["dim1"], absl::Milliseconds(30));
+  auto costs = request_cost.GetStructuredCosts();
+  ASSERT_EQ(costs.size(), 3);
+
+  // cost_a should be summed across all calls.
+  EXPECT_EQ(costs["cost_a"]["dim1"], absl::Milliseconds(35));
   EXPECT_EQ(costs["cost_a"]["dim2"], absl::Milliseconds(15));
 
   EXPECT_EQ(costs["cost_b"]["dim1"], absl::Milliseconds(3));
+  EXPECT_EQ(costs["cost_c"]["dim3"], absl::Milliseconds(7));
+}
+
+TEST(RequestCostTest, RecordStructuredCostsMoveVector) {
+  RequestCost request_cost;
+
+  // Empty rvalue vector on an initially empty RequestCost is a no-op.
+  std::vector<std::pair<absl::string_view, RequestCost::StructuredCost>>
+      empty_costs;
+  request_cost.RecordStructuredCosts(std::move(empty_costs));
+  EXPECT_THAT(request_cost.GetStructuredCosts(), IsEmpty());
+
+  std::vector<std::pair<absl::string_view, RequestCost::StructuredCost>>
+      structured_costs = {
+          {"cost_a",
+           {{"dim1", absl::Milliseconds(10)}, {"dim2", absl::Milliseconds(5)}}},
+          {"cost_b", {{"dim1", absl::Milliseconds(3)}}},
+      };
+  request_cost.RecordStructuredCosts(std::move(structured_costs));
+
+  EXPECT_THAT(
+      request_cost.GetStructuredCosts(),
+      UnorderedElementsAre(
+          Pair("cost_a",
+               UnorderedElementsAre(Pair("dim1", absl::Milliseconds(10)),
+                                    Pair("dim2", absl::Milliseconds(5)))),
+          Pair("cost_b",
+               UnorderedElementsAre(Pair("dim1", absl::Milliseconds(3))))));
+
+  // Duplicate keys within the same moved vector and accumulation onto existing
+  // keys both sum dimensions properly.
+  std::vector<std::pair<absl::string_view, RequestCost::StructuredCost>>
+      additional_costs = {
+          {"cost_a", {{"dim1", absl::Milliseconds(4)}}},
+          {"cost_a",
+           {{"dim1", absl::Milliseconds(6)}, {"dim3", absl::Milliseconds(2)}}},
+          {"cost_c", {{"dim1", absl::Milliseconds(1)}}},
+          {"cost_c", {{"dim1", absl::Milliseconds(8)}}},
+      };
+  request_cost.RecordStructuredCosts(std::move(additional_costs));
+
+  // Recording an empty vector into a populated RequestCost preserves existing
+  // entries.
+  request_cost.RecordStructuredCosts(
+      std::vector<std::pair<absl::string_view, RequestCost::StructuredCost>>{});
+
+  EXPECT_THAT(
+      request_cost.GetStructuredCosts(),
+      UnorderedElementsAre(
+          Pair("cost_a",
+               UnorderedElementsAre(Pair("dim1", absl::Milliseconds(20)),
+                                    Pair("dim2", absl::Milliseconds(5)),
+                                    Pair("dim3", absl::Milliseconds(2)))),
+          Pair("cost_b",
+               UnorderedElementsAre(Pair("dim1", absl::Milliseconds(3)))),
+          Pair("cost_c",
+               UnorderedElementsAre(Pair("dim1", absl::Milliseconds(9))))));
+}
+
+TEST(RequestCostTest, RecordStructuredCostsFromMap) {
+  RequestCost dest_cost;
+
+  // Empty rvalue and lvalue maps on an initially empty RequestCost are no-ops.
+  absl::flat_hash_map<std::string, RequestCost::StructuredCost> empty_map;
+  dest_cost.RecordStructuredCosts(empty_map);
+  dest_cost.RecordStructuredCosts(std::move(empty_map));
+  EXPECT_THAT(dest_cost.GetStructuredCosts(), IsEmpty());
+
+  RequestCost source_cost;
+  source_cost.RecordStructuredCosts(
+      {{"cost_a",
+        {{"dim1", absl::Milliseconds(10)}, {"dim2", absl::Milliseconds(5)}}},
+       {"cost_b", {{"dim1", absl::Milliseconds(3)}}}});
+
+  // Move map into an initially empty RequestCost.
+  dest_cost.RecordStructuredCosts(source_cost.GetStructuredCosts());
+  EXPECT_THAT(
+      dest_cost.GetStructuredCosts(),
+      UnorderedElementsAre(
+          Pair("cost_a",
+               UnorderedElementsAre(Pair("dim1", absl::Milliseconds(10)),
+                                    Pair("dim2", absl::Milliseconds(5)))),
+          Pair("cost_b",
+               UnorderedElementsAre(Pair("dim1", absl::Milliseconds(3))))));
+
+  // Move map into a non-empty RequestCost (sums existing keys and inserts new
+  // keys).
+  absl::flat_hash_map<std::string, RequestCost::StructuredCost> moved_map = {
+      {"cost_a",
+       {{"dim1", absl::Milliseconds(15)}, {"dim3", absl::Milliseconds(2)}}},
+      {"cost_c", {{"dim2", absl::Milliseconds(8)}}},
+  };
+  dest_cost.RecordStructuredCosts(std::move(moved_map));
+  EXPECT_THAT(
+      dest_cost.GetStructuredCosts(),
+      UnorderedElementsAre(
+          Pair("cost_a",
+               UnorderedElementsAre(Pair("dim1", absl::Milliseconds(25)),
+                                    Pair("dim2", absl::Milliseconds(5)),
+                                    Pair("dim3", absl::Milliseconds(2)))),
+          Pair("cost_b",
+               UnorderedElementsAre(Pair("dim1", absl::Milliseconds(3)))),
+          Pair("cost_c",
+               UnorderedElementsAre(Pair("dim2", absl::Milliseconds(8))))));
+
+  // Copy from a const lvalue map without modifying the source map.
+  const absl::flat_hash_map<std::string, RequestCost::StructuredCost>
+      const_map = {
+          {"cost_b", {{"dim1", absl::Milliseconds(7)}}},
+      };
+  dest_cost.RecordStructuredCosts(const_map);
+  EXPECT_EQ(const_map.at("cost_b").at("dim1"), absl::Milliseconds(7));
+
+  // Recording an empty rvalue map into a populated RequestCost preserves
+  // existing entries.
+  dest_cost.RecordStructuredCosts(
+      absl::flat_hash_map<std::string, RequestCost::StructuredCost>{});
+
+  EXPECT_THAT(
+      dest_cost.GetStructuredCosts(),
+      UnorderedElementsAre(
+          Pair("cost_a",
+               UnorderedElementsAre(Pair("dim1", absl::Milliseconds(25)),
+                                    Pair("dim2", absl::Milliseconds(5)),
+                                    Pair("dim3", absl::Milliseconds(2)))),
+          Pair("cost_b",
+               UnorderedElementsAre(Pair("dim1", absl::Milliseconds(10)))),
+          Pair("cost_c",
+               UnorderedElementsAre(Pair("dim2", absl::Milliseconds(8))))));
 }
 
 TEST(RequestCostTest, ToProtoAndFromProtoRoundTrip) {

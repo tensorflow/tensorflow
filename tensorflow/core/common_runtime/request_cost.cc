@@ -53,6 +53,51 @@ void RequestCost::RecordStructuredCosts(
   }
 }
 
+void RequestCost::RecordStructuredCosts(
+    std::vector<std::pair<absl::string_view, StructuredCost>>&& costs) {
+  absl::MutexLock lock(mutex_);
+  for (auto& [name, cost] : costs) {
+    auto& entry = structured_cost_map_[name];
+    if (entry.empty()) {
+      entry = std::move(cost);
+    } else {
+      for (const auto& [dim, value] : cost) {
+        entry[dim] += value;
+      }
+    }
+  }
+}
+
+void RequestCost::RecordStructuredCostsMap(
+    const absl::flat_hash_map<std::string, StructuredCost>& costs) {
+  absl::MutexLock lock(mutex_);
+  for (const auto& [name, cost] : costs) {
+    auto& entry = structured_cost_map_[name];
+    for (const auto& [dim, value] : cost) {
+      entry[dim] += value;
+    }
+  }
+}
+
+void RequestCost::RecordStructuredCostsMap(
+    absl::flat_hash_map<std::string, StructuredCost>&& costs) {
+  absl::MutexLock lock(mutex_);
+  if (structured_cost_map_.empty()) {
+    structured_cost_map_ = std::move(costs);
+    return;
+  }
+  for (auto& [name, cost] : costs) {
+    auto& entry = structured_cost_map_[name];
+    if (entry.empty()) {
+      entry = std::move(cost);
+    } else {
+      for (const auto& [dim, value] : cost) {
+        entry[dim] += value;
+      }
+    }
+  }
+}
+
 absl::flat_hash_map<std::string, RequestCost::StructuredCost>
 RequestCost::GetStructuredCosts() const {
   absl::MutexLock lock(mutex_);
@@ -78,6 +123,36 @@ void RequestCost::RecordStructuredMetrics(
   absl::MutexLock lock(mutex_);
   for (const auto& [name, metric] : structured_metrics) {
     structured_metric_map_[name] = metric;
+  }
+}
+
+void RequestCost::RecordStructuredMetrics(
+    std::vector<std::pair<std::string, StructuredMetric>>&&
+        structured_metrics) {
+  absl::MutexLock lock(mutex_);
+  for (auto& [name, metric] : structured_metrics) {
+    structured_metric_map_[std::move(name)] = std::move(metric);
+  }
+}
+
+void RequestCost::RecordStructuredMetricsMap(
+    const absl::flat_hash_map<std::string, StructuredMetric>&
+        structured_metrics) {
+  absl::MutexLock lock(mutex_);
+  for (const auto& [name, metric] : structured_metrics) {
+    structured_metric_map_[name] = metric;
+  }
+}
+
+void RequestCost::RecordStructuredMetricsMap(
+    absl::flat_hash_map<std::string, StructuredMetric>&& structured_metrics) {
+  absl::MutexLock lock(mutex_);
+  if (structured_metric_map_.empty()) {
+    structured_metric_map_ = std::move(structured_metrics);
+    return;
+  }
+  for (auto& [name, metric] : structured_metrics) {
+    structured_metric_map_[name] = std::move(metric);
   }
 }
 

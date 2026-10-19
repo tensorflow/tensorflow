@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -48,11 +49,29 @@ class RequestCost {
   // Keys are dimension names, values are the cost in that dimension.
   using StructuredCost = absl::flat_hash_map<std::string, absl::Duration>;
 
-  // Records structured costs. The inputs should be pairs of cost type and
-  // StructuredCost. It's thread-safe, and can be called from different
-  // threads. Costs are summed up if recorded with the same key.
+  // Records structured costs (cost type -> StructuredCost) collected during
+  // request execution or aggregated from sub-requests (e.g. via
+  // GetStructuredCosts()).
+  // It's thread-safe, and can be called from different threads. Costs are
+  // summed up if recorded with the same key. Passing an rvalue vector or
+  // absl::flat_hash_map moves the StructuredCost map into RequestCost when
+  // inserting a new key without copying the inner dimension map.
+  //
+  // The absl::flat_hash_map overload is constrained as a template forwarding to
+  // RecordStructuredCostsMap so braced-initializer-list calls such as
+  // RecordStructuredCosts({{"cost", dims}}) unambiguously resolve to the
+  // std::vector overload.
   void RecordStructuredCosts(
       const std::vector<std::pair<absl::string_view, StructuredCost>>& costs);
+  void RecordStructuredCosts(
+      std::vector<std::pair<absl::string_view, StructuredCost>>&& costs);
+  template <
+      typename Map,
+      typename = std::enable_if_t<std::is_same_v<
+          std::decay_t<Map>, absl::flat_hash_map<std::string, StructuredCost>>>>
+  void RecordStructuredCosts(Map&& costs) {
+    RecordStructuredCostsMap(std::forward<Map>(costs));
+  }
 
   // Gets all types of structured costs for processing an rpc request.
   // It's thread-safe. It's expected to be called at the end of processing an
@@ -72,11 +91,31 @@ class RequestCost {
     std::variant<std::vector<double>, std::vector<std::string>> values;
   };
 
-  // Records structured metrics (name → StructuredMetric).
-  // It's thread-safe. Metrics are replaced if recorded with the same key.
+  // Records structured metrics (name -> StructuredMetric) collected during
+  // request execution or aggregated from sub-requests (e.g. via
+  // GetStructuredMetrics()).
+  // It's thread-safe, and can be called from different threads. Metrics are
+  // replaced if recorded with the same key. Passing an rvalue vector or
+  // absl::flat_hash_map moves the metric values into RequestCost without
+  // copying the underlying vectors.
+  //
+  // The absl::flat_hash_map overload is constrained as a template forwarding to
+  // RecordStructuredMetricsMap so braced-initializer-list calls such as
+  // RecordStructuredMetrics({{"name", metric}}) unambiguously resolve to the
+  // std::vector overload.
   void RecordStructuredMetrics(
       const std::vector<std::pair<std::string, StructuredMetric>>&
           structured_metrics);
+  void RecordStructuredMetrics(
+      std::vector<std::pair<std::string, StructuredMetric>>&&
+          structured_metrics);
+  template <typename Map,
+            typename = std::enable_if_t<std::is_same_v<
+                std::decay_t<Map>,
+                absl::flat_hash_map<std::string, StructuredMetric>>>>
+  void RecordStructuredMetrics(Map&& structured_metrics) {
+    RecordStructuredMetricsMap(std::forward<Map>(structured_metrics));
+  }
 
   // Gets all structured metrics for processing an rpc request.
   // It's thread-safe. It's expected to be called at the end of processing an
@@ -126,6 +165,19 @@ class RequestCost {
   void FromProto(const RequestCostProto& proto);
 
  private:
+  // Out-of-line helpers backing the template RecordStructuredCosts(Map&&) and
+  // RecordStructuredMetrics(Map&&) overloads so mutex acquisition and map
+  // updates stay in request_cost.cc.
+  void RecordStructuredCostsMap(
+      const absl::flat_hash_map<std::string, StructuredCost>& costs);
+  void RecordStructuredCostsMap(
+      absl::flat_hash_map<std::string, StructuredCost>&& costs);
+  void RecordStructuredMetricsMap(
+      const absl::flat_hash_map<std::string, StructuredMetric>&
+          structured_metrics);
+  void RecordStructuredMetricsMap(
+      absl::flat_hash_map<std::string, StructuredMetric>&& structured_metrics);
+
   mutable absl::Mutex mutex_;
 
   // Query costs. Map from cost type to cost.
