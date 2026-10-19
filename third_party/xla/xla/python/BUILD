@@ -831,7 +831,6 @@ py_test(
     deps = [
         ":_hlo",
         ":xla_client",
-        "//third_party/py/numpy",
         "@absl_py//absl/logging",
         "@absl_py//absl/testing:absltest",
         "@absl_py//absl/testing:parameterized",
