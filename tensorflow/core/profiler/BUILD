@@ -165,6 +165,7 @@ cc_library(
         "//tensorflow/core:framework_types_hdr",
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core/lib/core:status",
+        "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
