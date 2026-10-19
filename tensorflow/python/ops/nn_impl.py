@@ -2451,9 +2451,9 @@ def sampled_softmax_loss(weights,
   A common use case is to use this method for training, and calculate the full
   softmax loss for evaluation or inference. In this case, you must set
   `partition_strategy="div"` for the two losses to be consistent, as in the
-  following example. (The partition strategy only matters when `weights` is a
+  following example (the partition strategy only matters when `weights` is a
   list of more than one shard; for a single `weights` tensor `"div"` and
-  `"mod"` give the same result.)
+  `"mod"` give the same result):
 
   ```python
   if mode == "train":
