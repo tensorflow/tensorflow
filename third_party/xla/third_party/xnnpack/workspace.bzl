@@ -23,6 +23,10 @@ def repo():
         name = "XNNPACK",
         sha256 = "cb485a0fe76dec243568ec6ce6c0b75e18909ed7df5459921b46eaada332fe8f",
         strip_prefix = "XNNPACK-0a66ebb5817fce48df605451444dcfc27a5e4ee4",
+        # TODO: Remove once XNNPACK is updated past the upstream commit
+        # that switches the x86_avxvnni dot generators to
+        # _mm256_dpbusd_avx_epi32.
+        patch_file = ["//third_party/xnnpack:avxvnni.patch"],
         urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/0a66ebb5817fce48df605451444dcfc27a5e4ee4.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
