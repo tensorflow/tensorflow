@@ -184,14 +184,20 @@ def get_diff_base(base_sha: str, head_sha: str = "HEAD", cwd: str = ".") -> str:
 def ensure_base_fetched(
     base_sha: str, head_sha: str = "HEAD", cwd: str = "."
 ) -> None:
-  """Best-effort fetches base_sha and unshallows if merge-base is missing."""
+  """Best-effort fetches base_sha/head_sha and unshallows if merge-base is missing."""
   try:
     safe_base = validate_git_ref(base_sha)
     safe_head = validate_git_ref(head_sha)
   except ValueError:
     return
+  if get_merge_base(safe_base, safe_head, cwd=cwd):
+    return
+  fetch_refs = [safe_base]
+  if safe_head != "HEAD" and safe_head != safe_base:
+    fetch_refs.append(safe_head)
   run_git_best_effort(
-      ["fetch", "--depth=1", "--", "origin", safe_base], cwd=cwd
+      ["fetch", "--no-tags", "--depth=50", "--", "origin", *fetch_refs],
+      cwd=cwd,
   )
   if not get_merge_base(safe_base, safe_head, cwd=cwd):
     run_git_best_effort(["fetch", "--unshallow", "origin"], cwd=cwd)
