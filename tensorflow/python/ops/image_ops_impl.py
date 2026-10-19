@@ -4869,6 +4869,8 @@ def sobel_edges(image):
   """
   # Define vertical and horizontal Sobel filters.
   image = ops.convert_to_tensor(image, name='image')
+  if image.dtype.is_integer:
+    image = math_ops.cast(image, dtypes.float32)
   static_image_shape = image.get_shape()
   image_shape = array_ops.shape(image)
   kernels = [[[-1, -2, -1], [0, 0, 0], [1, 2, 1]],
