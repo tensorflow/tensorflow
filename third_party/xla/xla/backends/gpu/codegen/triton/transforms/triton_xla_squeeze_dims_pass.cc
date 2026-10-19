@@ -275,6 +275,9 @@ class PushSqueezeDimsUpThroughElementwise final
     state.addAttributes(op->getAttrs());
     Operation* new_op = rewriter.create(state);
     ReplaceOpWithExpandDimsOf(rewriter, op, new_op->getResults(), *axis);
+    // All uses now refer to the replacement. Side-effecting elementwise ops
+    // cannot be left for dead-code elimination: that would execute them twice.
+    rewriter.eraseOp(op);
     return success();
   }
 };
