@@ -1344,82 +1344,37 @@ struct SparseSegmentGradV2Functor<GPUDevice, T, Tindices, Tsegmentids> {
     const Toffsets ninner = static_cast<Toffsets>(ninner64);
 
     // Like the CPU functor and SparseSegmentGradFunctor, reject out-of-range
-    // indices and segment ids before they are downcast below.
+    // indices and segment ids. The check runs before they are downcast below,
+    // and async_finish_computation reads its result, so the host does not wait
+    // for the GPU here.
     const int64_t noutput64 = dense_output_shape.dim_size(0);
-    if (nouter64 > 0) {
-      se::Stream* stream = context->op_device_context()->stream();
-      OP_REQUIRES_ASYNC(context, stream != nullptr,
-                        absl::InternalError("No GPU stream available."), done);
+    se::Stream* stream = context->op_device_context()->stream();
+    OP_REQUIRES_ASYNC(context, stream != nullptr,
+                      absl::InternalError("No GPU stream available."), done);
 
-      Tensor bad_positions;
-      OP_REQUIRES_OK_ASYNC(
-          context,
-          context->allocate_temp(DT_INT32, TensorShape({2}), &bad_positions),
-          done);
-      int32_t* const bad_positions_ptr = bad_positions.flat<int32_t>().data();
-      int32_t* const bad_index_pos_ptr = bad_positions_ptr;
-      int32_t* const bad_segment_pos_ptr = bad_positions_ptr + 1;
-      stream_executor::DeviceAddressBase bad_positions_device(
-          bad_positions_ptr, 2 * sizeof(int32_t));
-      OP_REQUIRES_OK_ASYNC(context,
-                           stream->Memset32(&bad_positions_device,
-                                            std::numeric_limits<int32_t>::max(),
-                                            2 * sizeof(int32_t)),
-                           done);
-      OP_REQUIRES_OK_ASYNC(
-          context,
-          LaunchSparseSegmentGradBoundsCheckKernel(
-              device, static_cast<Tindices>(nouter64), noutput64, nsegments,
-              indices_vec.data(), segment_vec.data(), bad_index_pos_ptr,
-              bad_segment_pos_ptr),
-          done);
-      ScratchSpace<int32_t> bad_positions_host(context, 2, /*on_host=*/true);
-      OP_REQUIRES_OK_ASYNC(
-          context,
-          stream->Memcpy(bad_positions_host.mutable_data(),
-                         bad_positions_device, 2 * sizeof(int32_t)),
-          done);
-      OP_REQUIRES_OK_ASYNC(context, stream->BlockHostUntilDone(), done);
-      const int32_t bad_index_pos = bad_positions_host.data()[0];
-      const int32_t bad_segment_pos = bad_positions_host.data()[1];
-      if (bad_index_pos != std::numeric_limits<int32_t>::max()) {
-        ScratchSpace<Tindices> bad_index_host(context, 1, /*on_host=*/true);
-        OP_REQUIRES_OK_ASYNC(
-            context,
-            stream->Memcpy(
-                bad_index_host.mutable_data(),
-                stream_executor::DeviceAddressBase(
-                    const_cast<Tindices*>(indices_vec.data()) + bad_index_pos,
-                    sizeof(Tindices)),
-                sizeof(Tindices)),
-            done);
-        OP_REQUIRES_OK_ASYNC(context, stream->BlockHostUntilDone(), done);
-        OP_REQUIRES_ASYNC(context, false,
-                          absl::InvalidArgumentError(absl::StrCat(
-                              "Index ", *bad_index_host.data(),
-                              " out of range [0, ", noutput64, ").")),
-                          done);
-      }
-      if (bad_segment_pos != std::numeric_limits<int32_t>::max()) {
-        ScratchSpace<Tsegmentids> bad_segment_host(context, 1,
-                                                   /*on_host=*/true);
-        OP_REQUIRES_OK_ASYNC(
-            context,
-            stream->Memcpy(bad_segment_host.mutable_data(),
-                           stream_executor::DeviceAddressBase(
-                               const_cast<Tsegmentids*>(segment_vec.data()) +
-                                   bad_segment_pos,
-                               sizeof(Tsegmentids)),
-                           sizeof(Tsegmentids)),
-            done);
-        OP_REQUIRES_OK_ASYNC(context, stream->BlockHostUntilDone(), done);
-        OP_REQUIRES_ASYNC(context, false,
-                          absl::InvalidArgumentError(absl::StrCat(
-                              "Segment id ", *bad_segment_host.data(),
-                              " out of range [0, ", nsegments, ").")),
-                          done);
-      }
-    }
+    Tensor bad_positions;
+    OP_REQUIRES_OK_ASYNC(
+        context,
+        context->allocate_temp(DT_INT32, TensorShape({2}), &bad_positions),
+        done);
+    int32_t* const bad_positions_ptr = bad_positions.flat<int32_t>().data();
+    int32_t* const bad_index_pos_ptr = bad_positions_ptr;
+    int32_t* const bad_segment_pos_ptr = bad_positions_ptr + 1;
+    stream_executor::DeviceAddressBase bad_positions_device(
+        bad_positions_ptr, 2 * sizeof(int32_t));
+    OP_REQUIRES_OK_ASYNC(context,
+                         stream->Memset32(&bad_positions_device,
+                                          std::numeric_limits<int32_t>::max(),
+                                          2 * sizeof(int32_t)),
+                         done);
+    OP_REQUIRES_OK_ASYNC(context,
+                         LaunchSparseSegmentGradBoundsCheckKernel(
+                             device, static_cast<Tindices>(nouter64), noutput64,
+                             nsegments, indices_vec.data(), segment_vec.data(),
+                             bad_index_pos_ptr, bad_segment_pos_ptr),
+                         done);
+    const BoundsCheck bounds_check{bad_positions_ptr, indices_vec.data(),
+                                   segment_vec.data(), noutput64, nsegments};
 
     // Cast indices to 32-bit to save memory bandwidth (the cost of the cast is
     // worth it because the vector is used multiple times).
@@ -1447,23 +1402,62 @@ struct SparseSegmentGradV2Functor<GPUDevice, T, Tindices, Tsegmentids> {
       CastSegmentIdsThenImpl<Toffsets, TindicesCompact, int16_t>(
           context, operation, nouter, ninner, nsegments, input_flat.data(),
           tmp_indices_internal, indices_internal_ptr, segment_vec,
-          dense_output_shape, done);
+          dense_output_shape, bounds_check, done);
     } else if (sizeof(Tsegmentids) > sizeof(int32_t) &&
                nsegments <= std::numeric_limits<int32_t>::max()) {
       CastSegmentIdsThenImpl<Toffsets, TindicesCompact, int32_t>(
           context, operation, nouter, ninner, nsegments, input_flat.data(),
           tmp_indices_internal, indices_internal_ptr, segment_vec,
-          dense_output_shape, done);
+          dense_output_shape, bounds_check, done);
     } else {
       Impl<Toffsets, TindicesCompact, Tsegmentids>(
           context, operation, nouter, ninner, nsegments, input_flat.data(),
           tmp_indices_internal, indices_internal_ptr, Tensor(),
-          segment_vec.data(), dense_output_shape, done);
+          segment_vec.data(), dense_output_shape, bounds_check, done);
     }
   }
 
  private:
   using Tweights = typename RealTypeIfComplex<T>::type;
+
+  // The positions found by SparseSegmentGradBoundsCheckKernel, and the inputs
+  // and limits needed to report a bad value.
+  struct BoundsCheck {
+    const int32_t* positions;  // [2] on the device: bad index, bad segment id
+    const Tindices* indices;
+    const Tsegmentids* segment_ids;
+    int64_t noutput;
+    int64_t nsegments;
+  };
+
+  // Copies values[pos] from the device and fails the op with
+  // "<label> <value> out of range [0, <limit>).". It is called from an
+  // EventMgr callback, which must not block, so a second callback reports the
+  // error once the copy is done. Calls `done` exactly once.
+  template <typename Tvalue>
+  static void FailWithBadValue(OpKernelContext* context, const Tvalue* values,
+                               int32_t pos, const char* label, int64_t limit,
+                               typename AsyncOpKernel::DoneCallback done) {
+    se::Stream* stream = context->op_device_context()->stream();
+    ScratchSpace<Tvalue> value_host(context, 1, /*on_host=*/true);
+    OP_REQUIRES_OK_ASYNC(
+        context,
+        stream->Memcpy(value_host.mutable_data(),
+                       stream_executor::DeviceAddressBase(
+                           const_cast<Tvalue*>(values) + pos, sizeof(Tvalue)),
+                       sizeof(Tvalue)),
+        done);
+    context->device()
+        ->tensorflow_accelerator_device_info()
+        ->event_mgr->ThenExecute(
+            stream, [context, value_host, label, limit, done]() {
+              OP_REQUIRES_ASYNC(context, false,
+                                absl::InvalidArgumentError(absl::StrCat(
+                                    label, " ", *value_host.data(),
+                                    " out of range [0, ", limit, ").")),
+                                done);
+            });
+  }
 
   template <typename Toffsets, typename TindicesCompact,
             typename Tsegmentids_internal>
@@ -1472,7 +1466,7 @@ struct SparseSegmentGradV2Functor<GPUDevice, T, Tindices, Tsegmentids> {
       Toffsets nouter, Toffsets ninner, Tsegmentids_internal nsegments,
       const T* input, Tensor indices_tensor, const TindicesCompact* indices,
       typename TTypes<Tsegmentids>::ConstVec segment_vec,
-      const TensorShape& dense_output_shape,
+      const TensorShape& dense_output_shape, const BoundsCheck& bounds_check,
       typename AsyncOpKernel::DoneCallback done) {
     const GPUDevice& device = context->eigen_gpu_device();
     Tensor tmp_segment_internal;
@@ -1489,7 +1483,7 @@ struct SparseSegmentGradV2Functor<GPUDevice, T, Tindices, Tsegmentids> {
     Impl<Toffsets, TindicesCompact, Tsegmentids_internal>(
         context, operation, nouter, ninner, nsegments, input, indices_tensor,
         indices, tmp_segment_internal, segment_vec_internal.data(),
-        dense_output_shape, done);
+        dense_output_shape, bounds_check, done);
   }
 
   template <typename Toffsets, typename TindicesCompact,
@@ -1500,6 +1494,7 @@ struct SparseSegmentGradV2Functor<GPUDevice, T, Tindices, Tsegmentids> {
             const TindicesCompact* indices, Tensor segment_ids_tensor,
             const Tsegmentids_internal* segment_ids,
             const TensorShape& dense_output_shape,
+            const BoundsCheck& bounds_check,
             typename AsyncOpKernel::DoneCallback done) {
     auto cleanup = gtl::MakeCleanup([&done]() { done(); });
     const int64_t dense_output_dim0 = dense_output_shape.dim_size(0);
@@ -1591,19 +1586,48 @@ struct SparseSegmentGradV2Functor<GPUDevice, T, Tindices, Tsegmentids> {
             sizeof(*last_idx_host.data())),
         []() {});
 
+    // Copy the bounds check result to the host last, so that nothing returns
+    // early while the copy into bad_positions_host is pending.
+    ScratchSpace<int32_t> bad_positions_host(context, 2, /*on_host=*/true);
+    OP_REQUIRES_OK_ASYNC(
+        context,
+        stream->Memcpy(bad_positions_host.mutable_data(),
+                       stream_executor::DeviceAddressBase(
+                           const_cast<int32_t*>(bounds_check.positions),
+                           2 * sizeof(int32_t)),
+                       2 * sizeof(int32_t)),
+        []() {});
+
     auto async_finish_computation =
         [this, context, dense_output_shape, nouter, ninner, nsegments, input,
          indices_tensor, tmp_sorted_indices, sorted_indices_ptr,
          tmp_sorted_indices_unique_ids, sorted_indices_unique_ids_ptr,
          segment_ids_tensor, tmp_permuted_segment, permuted_segment_ptr,
          sorted_indices_edge_indicator, tmp_weights, weights_ptr, last_idx_host,
-         done]() -> void {
+         bad_positions_host, bounds_check, done]() -> void {
       auto cb_cleanup = gtl::MakeCleanup([&done]() { done(); });
       const GPUDevice& device = context->eigen_gpu_device();
       Toffsets num_unique = (*last_idx_host.data()) + 1;
 
       std::unique_ptr<se::ActivateContext> scoped_activation =
           context->op_device_context()->stream()->parent()->Activate();
+
+      // Report an out-of-range index or segment id found by
+      // SparseSegmentGradBoundsCheckKernel before the kernels below use it.
+      const int32_t bad_index_pos = bad_positions_host.data()[0];
+      const int32_t bad_segment_pos = bad_positions_host.data()[1];
+      if (bad_index_pos != std::numeric_limits<int32_t>::max()) {
+        cb_cleanup.release();
+        FailWithBadValue(context, bounds_check.indices, bad_index_pos, "Index",
+                         bounds_check.noutput, done);
+        return;
+      }
+      if (bad_segment_pos != std::numeric_limits<int32_t>::max()) {
+        cb_cleanup.release();
+        FailWithBadValue(context, bounds_check.segment_ids, bad_segment_pos,
+                         "Segment id", bounds_check.nsegments, done);
+        return;
+      }
 
       TensorShape output_shape = dense_output_shape;
       OP_REQUIRES_OK_ASYNC(
