@@ -890,11 +890,6 @@ class UnbatchResource : public ResourceBase {
           "Got: ",
           batch_index_t.shape().dim_size(1), "."));
     }
-    if (batch_index_t.NumElements() != batch_index_t.dim_size(0) * 3) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "batch_index should contain ", batch_index_t.dim_size(0) * 3,
-          " elements. Received ", batch_index_t.NumElements()));
-    }
 
     if (!TensorShapeUtils::IsScalar(context->input(2).shape())) {
       return absl::InvalidArgumentError(
@@ -914,7 +909,6 @@ class UnbatchResource : public ResourceBase {
     if (nonempty_input) {
       auto batch_indices =
           batch_index_t.shaped<int64_t, 2>({batch_index_t.dim_size(0), 3});
-      int64_t total_size = 0;
       for (int i = 0; i < batch_index_t.dim_size(0); ++i) {
         const int64_t start = batch_indices(i, 1);
         const int64_t end = batch_indices(i, 2);
@@ -928,13 +922,7 @@ class UnbatchResource : public ResourceBase {
               "Invalid end index in batch_index at row ", i, ": end=", end,
               " exceeds dimension 0 size ", data_t.shape().dim_size(0), "."));
         }
-        const int64_t size = end - start;
-        total_size += size;
-        if (total_size > data_t.shape().dim_size(0)) {
-          return absl::InvalidArgumentError(
-              "Sum of split sizes must not exceed dim0-size of input tensor");
-        }
-        sizes.push_back(size);
+        sizes.push_back(end - start);
         batch_keys.push_back(batch_indices(i, 0));
       }
 
@@ -1189,12 +1177,6 @@ class UnbatchGradResource : public ResourceBase {
             absl::StrCat("Wrong shape for index tensor. Expected a matrix of "
                          "shape [batch_size, 3]; Got: ",
                          batch_index_t.shape().DebugString(), "."));
-      }
-      if (batch_index_t.shape().dim_size(1) != 3) {
-        return absl::InvalidArgumentError(absl::StrCat(
-            "Wrong shape for index tensor. Expected 1st dimension size to be 3 ; "
-            "Got: ",
-            batch_index_t.shape().dim_size(1), "."));
       }
       if (batch_index_t.NumElements() != batch_index_t.dim_size(0) * 3) {
         return absl::InvalidArgumentError(absl::StrCat(

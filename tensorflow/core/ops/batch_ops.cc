@@ -196,13 +196,6 @@ REGISTER_OP("UnbatchGrad")
     .Attr("shared_name: string = ''")
     .Attr("T: type")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
-      shape_inference::ShapeHandle batch_index;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 2, &batch_index));
-      shape_inference::DimensionHandle unused_dim;
-      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(batch_index, 1), 3, &unused_dim));
-      shape_inference::ShapeHandle id;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &id));
-
       c->set_output(0, c->UnknownShapeOfRank(c->Rank(c->input(2))));
       return absl::OkStatus();
     });
