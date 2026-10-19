@@ -1033,7 +1033,8 @@ TEST(OpcodesForTritonCollectivesTest,
   EXPECT_THAT(OpcodesForTritonCollectives(debug_options),
               IsOkAndHolds(::testing::UnorderedElementsAre(
                   HloOpcode::kAllReduce, HloOpcode::kAllReduceStart,
-                  HloOpcode::kAllGather, HloOpcode::kReduceScatter)));
+                  HloOpcode::kAllGather, HloOpcode::kReduceScatter,
+                  HloOpcode::kAllToAll)));
 }
 
 }  // namespace

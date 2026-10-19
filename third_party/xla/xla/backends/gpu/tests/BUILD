@@ -1849,6 +1849,79 @@ xla_test(
 )
 
 xla_test(
+    name = "all_to_all_e2e_test",
+    srcs = ["all_to_all_e2e_test.cc"],
+    backend_tags = {
+        "gpu": [
+            "multi_gpu",
+        ],
+    },
+    backends = [
+        "gpu",
+    ],
+    deps = [
+        ":collective_ops_e2e_test_base",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/tests:literal_test_util",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/testing:temporary_directory",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_test(
+    name = "all_to_all_e2e_multiprocess_test",
+    srcs = ["all_to_all_e2e_multiprocess_test.cc"],
+    backend_tags = {
+        "gpu": [
+            "multi_gpu",
+        ],
+    },
+    backends = [
+        "gpu",
+    ],
+    deps = [
+        ":multi_process_gpu_test_base",
+        ":multi_process_gpu_test_main",
+        "//xla:debug_options_flags",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
+        "//xla/hlo/builder:xla_computation",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:pjrt_compiler",
+        "//xla/pjrt:pjrt_executable",
+        "//xla/service:device_assignment",
+        "//xla/service:platform_util",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
+        "//xla/tests:literal_test_util",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+xla_test(
     name = "all_reduce_multi_process_e2e_test",
     srcs = ["all_reduce_multi_process_e2e_test.cc"],
     backend_tags = {

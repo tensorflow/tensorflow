@@ -401,5 +401,40 @@ TEST_F(CollectiveFusionTest, FusesVariadicAllGatherIntoGteTupleRoot) {
                             /*after_pass_checks=*/nullptr, &config);
 }
 
+TEST_F(CollectiveFusionTest, FusesAllToAllOneShot) {
+  static constexpr absl::string_view kAllToAllHlo = R"(
+    HloModule all_to_all_test
+
+    ENTRY e {
+      p0 = f32[32768]{0} parameter(0)
+      ROOT a2a = f32[32768]{0} all-to-all(p0),
+          replica_groups={{0,1,2,3,4,5,6,7}},
+          dimensions={0}
+    }
+  )";
+  static constexpr absl::string_view kExpected = R"(
+    // CHECK: %[[FUSION_COMPUTATION:.*]] (param_0: f32[32768]) -> f32[32768] {
+    // CHECK:   %[[P0:.*]] = f32[32768]{0} parameter(0)
+    // CHECK:   ROOT {{.*}} = f32[32768]{0} all-to-all(%[[P0]]),
+    // CHECK-SAME: dimensions={0}
+    // CHECK: }
+    //
+    // CHECK: ENTRY %e (p0: f32[32768]) -> f32[32768] {
+    // CHECK:   %[[P0:.*]] = f32[32768]{0} parameter(0)
+    // CHECK:   ROOT {{.*}} = f32[32768]{0} fusion(%[[P0]]),
+    // CHECK-SAME: kind=kCustom,
+    // CHECK-SAME: calls=%[[FUSION_COMPUTATION]],
+    // CHECK-SAME: backend_config={
+    // CHECK-SAME: "kind":"__triton_collective"
+    // CHECK-SAME: "block_level_fusion_config"
+  )";
+  HloModuleConfig config = GetModuleConfigForTest(/*replica_count=*/8);
+  config.mutable_debug_options()
+      .add_xla_gpu_experimental_use_collective_kernels(
+          DebugOptions::COLLECTIVE_KERNEL_ALL_TO_ALL);
+  RunAndFilecheckHloRewrite(kAllToAllHlo,
+                            AnnotateAndFusePipeline(*gpu_topology_), kExpected,
+                            /*after_pass_checks=*/nullptr, &config);
+}
 }  // namespace
 }  // namespace xla::gpu

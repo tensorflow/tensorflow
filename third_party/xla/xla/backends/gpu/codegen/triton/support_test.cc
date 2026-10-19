@@ -1468,6 +1468,20 @@ ENTRY triton_computation {
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{2, 2}, cc);
 }
 
+TEST_P(CollectiveTest, IsTritonSupportedAllToAll) {
+  auto [data_type, cc] = GetParam();
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  input = $0[128,64] parameter(0)
+  ROOT all-to-all = $0[128,64] all-to-all(input),
+    replica_groups={{0,1}}, dimensions={1}
+})";
+  ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
+                       ParseTemplateAndGetInstruction(
+                           kHloTestTemplate, data_type, HloOpcode::kAllToAll));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{2, 2}, cc);
+}
+
 TEST_P(CollectiveTest, UnsupportedAllToAllFailsGracefullyWithTriton) {
   auto [data_type, cc] = GetParam();
   const std::string kHloTestTemplate = R"(
