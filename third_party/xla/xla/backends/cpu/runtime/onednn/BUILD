@@ -40,6 +40,7 @@ onednn_graph_cc_library(
     name = "onednn_interop",
     hdrs = ["onednn_interop.h"],
     compatible_with = get_compatible_with_portable(),
+    copts = tsl_copts(),
     deps = [
         "//xla:util",
         "//xla/tsl/mkl:onednn",
