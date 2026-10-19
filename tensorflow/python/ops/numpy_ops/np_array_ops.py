@@ -1373,7 +1373,15 @@ def _boundaries_to_sizes(a, boundaries, axis):
   sizes_sum = 0
   prev = 0
   for i, b in enumerate(boundaries):
-    size = b - prev
+    # NumPy resolves each boundary exactly like a plain slice endpoint
+    # (`ary[prev:b]`): a negative value counts from the end of the axis
+    # (e.g. -1 means "one before the end"), clamped at 0 if it still
+    # underflows. Comparing the raw, unresolved value against `prev` (as
+    # this used to do) rejected ordinary negative boundaries such as
+    # `np.split(a, [-1])`, even though NumPy accepts them.
+    b_resolved = b + total_size if b < 0 else b
+    b_resolved = builtins.max(b_resolved, 0)
+    size = b_resolved - prev
     if size < 0:
       raise ValueError(
           'The %s-th boundary %s is smaller than the previous boundary %s'
@@ -1382,7 +1390,7 @@ def _boundaries_to_sizes(a, boundaries, axis):
     size = builtins.min(size, builtins.max(0, total_size - sizes_sum))
     sizes.append(size)
     sizes_sum += size
-    prev = b
+    prev = b_resolved
   sizes.append(builtins.max(0, total_size - sizes_sum))
   return sizes
 
