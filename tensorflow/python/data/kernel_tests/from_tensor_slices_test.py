@@ -31,7 +31,6 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
 
@@ -71,13 +70,19 @@ class FromTensorSlicesTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(test_base.default_test_combinations())
   def testFromTensorSlicesHostPlacement(self):
     x = np.arange(10, dtype=np.int64)
-    if test_util.is_gpu_available():
-      with ops.device("/device:GPU:0"):
-        dataset = dataset_ops.Dataset.from_tensor_slices(x)
-    else:
-      dataset = dataset_ops.Dataset.from_tensor_slices(x)
-    for t in dataset._tensors:
+    with ops.device("/device:GPU:0"):
+      dataset = dataset_ops.DatasetV2.from_tensor_slices(x)
+    for t in dataset._tensors:  # pylint: disable=protected-access
       self.assertIn("CPU", t.device)
+    self.assertDatasetProduces(dataset, expected_output=list(x))
+
+  @combinations.generate(test_base.graph_only_combinations())
+  def testFromTensorSlicesExistingTensorPlacementPreserved(self):
+    with ops.device("/device:GPU:0"):
+      x = ops.convert_to_tensor(np.arange(10, dtype=np.int64))
+    dataset = dataset_ops.DatasetV2.from_tensor_slices(x)
+    for t in dataset._tensors:  # pylint: disable=protected-access
+      self.assertIn("GPU", t.device)
 
   @combinations.generate(test_base.default_test_combinations())
   def testFromTensorSlicesDataset(self):
