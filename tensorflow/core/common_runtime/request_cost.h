@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
-#include "tensorflow/core/common_runtime/request_cost.pb.h"
 
 namespace tensorflow {
 
@@ -115,15 +114,6 @@ class RequestCost {
   // It's thread-safe. It's expected to be called at the end of processing an
   // rpc request, when all batch processing has completed.
   std::vector<BatchMetrics> GetBatchMetrics() const;
-
-  // Serializes the costs and metrics into `proto`.
-  // It's thread-safe.
-  void ToProto(RequestCostProto& proto) const;
-  RequestCostProto ToProto() const;
-
-  // Replaces the costs and metrics with those from `proto`.
-  // It's thread-safe.
-  void FromProto(const RequestCostProto& proto);
 
  private:
   mutable absl::Mutex mutex_;

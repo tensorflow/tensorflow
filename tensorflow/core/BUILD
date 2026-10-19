@@ -1158,7 +1158,6 @@ cc_library(
     name = "mobile_additional_lib_deps",
     deps = tf_additional_lib_deps() + [
         ":platform_base",
-        "//tensorflow/core/common_runtime:request_cost_proto_cc",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
