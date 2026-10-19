@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/data/dataset_utils.h"
@@ -1260,11 +1261,19 @@ void ParallelInterleaveDatasetOp::MakeDataset(OpKernelContext* ctx,
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kCycleLength, &cycle_length));
   OP_REQUIRES(ctx, cycle_length > 0,
               absl::InvalidArgumentError("`cycle_length` must be > 0"));
+  OP_REQUIRES(
+      ctx, cycle_length <= kMaxCycleLength,
+      absl::InvalidArgumentError(absl::StrCat(
+          "`cycle_length` must be <= ", kMaxCycleLength)));
 
   int64_t block_length = 0;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kBlockLength, &block_length));
   OP_REQUIRES(ctx, block_length > 0,
               absl::InvalidArgumentError("`block_length` must be > 0"));
+  OP_REQUIRES(
+      ctx, block_length <= kMaxBlockLength,
+      absl::InvalidArgumentError(absl::StrCat(
+          "`block_length` must be <= ", kMaxBlockLength)));
 
   if (op_version_ == 1) {
     bool sloppy = false;
@@ -1291,6 +1300,11 @@ void ParallelInterleaveDatasetOp::MakeDataset(OpKernelContext* ctx,
   OP_REQUIRES(
       ctx, prefetch_input_elements >= 0,
       absl::InvalidArgumentError("`prefetch_input_elements` must be >= 0"));
+  OP_REQUIRES(
+      ctx, prefetch_input_elements <= kMaxCycleLength - cycle_length,
+      absl::InvalidArgumentError(absl::StrCat(
+          "`prefetch_input_elements` must be <= ", kMaxCycleLength,
+          " - `cycle_length`")));
 
   std::unique_ptr<CapturedFunction> captured_func;
   OP_REQUIRES_OK(ctx,
