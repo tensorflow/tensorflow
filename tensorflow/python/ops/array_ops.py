@@ -1504,7 +1504,8 @@ def boolean_mask(tensor, mask, name="boolean_mask", axis=None):
     name:  A name for this operation (optional).
     axis:  A 0-D int Tensor representing the axis in `tensor` to mask from. By
       default, axis is 0 which will mask from the first dimension. Otherwise K +
-      axis <= N. A negative axis counts from the end of `tensor`.
+      axis <= N, where a negative axis counts from the end of `tensor`, i.e.
+      it is treated as `axis + N`.
 
   Returns:
     (N-K+1)-dimensional tensor populated by entries in `tensor` corresponding
@@ -1538,12 +1539,7 @@ def boolean_mask(tensor, mask, name="boolean_mask", axis=None):
     # wrong dimensions of the shapes, e.g. [-1:0] for axis=-1 and a 1-D mask.
     if (axis_value is not None and axis_value < 0 and
         shape_tensor.ndims is not None):
-      if axis_value < -shape_tensor.ndims:
-        raise ValueError(
-            f"axis {axis_value} is out of range for a tensor of rank "
-            f"{shape_tensor.ndims}.")
-      # Not +=: constant_value may return the caller's numpy array.
-      axis_value = axis_value + shape_tensor.ndims
+      axis_value = get_positive_axis(int(axis_value), shape_tensor.ndims)
     elif axis_value is None or axis_value < 0:
       # The axis or the rank is only known at runtime.
       axis = ops.convert_to_tensor(axis, name="axis")
@@ -1632,7 +1628,8 @@ def boolean_mask_v2(tensor, mask, axis=None, name="boolean_mask"):
       in a future release.
     axis:  A 0-D int Tensor representing the axis in `tensor` to mask from. By
       default, axis is 0 which will mask from the first dimension. Otherwise K +
-      axis <= N. A negative axis counts from the end of `tensor`.
+      axis <= N, where a negative axis counts from the end of `tensor`, i.e.
+      it is treated as `axis + N`.
     name:  A name for this operation (optional).
 
   Returns:

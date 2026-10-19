@@ -413,7 +413,7 @@ class BooleanMaskTest(test_util.TensorFlowTestCase):
 
   def testMaskWithNegativeAxisOutOfRange(self):
     arr = np.arange(24).reshape(2, 3, 4)
-    with self.assertRaisesRegex(ValueError, "axis -4 is out of range"):
+    with self.assertRaisesRegex(ValueError, "axis=-4 out of bounds"):
       array_ops.boolean_mask(arr, [True, False], axis=-4)
 
   def testMaskWithNegativeAxisNonConstTensor(self):
