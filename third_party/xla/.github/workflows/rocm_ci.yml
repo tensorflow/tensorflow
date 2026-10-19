@@ -143,7 +143,7 @@ jobs:
         run: lscpu
 
       - name: Test XLA [single_gpu]
-        timeout-minutes: 120
+        timeout-minutes: 50
         run: |
           build_tools/rocm/run_xla_ci_build.sh \
             --config=rocm_ci_hermetic \
