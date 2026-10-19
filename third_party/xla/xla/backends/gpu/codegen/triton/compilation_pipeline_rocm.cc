@@ -63,6 +63,12 @@ static bool is_pingpong_schedule_enabled(
   return rocm_cc.gfx9_mi300() || (rocm_cc.gfx9_mi350() && use_async_copy);
 }
 
+static bool is_async_copy_enabled(
+    const stream_executor::RocmComputeCapability& rocm_cc) {
+  // Keep this default in sync with Triton's AMD backend.
+  return rocm_cc.gfx9_mi350() || rocm_cc.gfx1250();
+}
+
 static bool is_in_thread_transpose_enabled(
     const stream_executor::RocmComputeCapability& rocm_cc) {
   return rocm_cc.gfx9_mi300();
@@ -100,7 +106,7 @@ static void MakeTTGIR(mlir::OpPassManager* pm,
   // TODO(ROCm) Modify when corresponding run time flags are introduced.
   std::string schedule_hint = "none";
 
-  bool use_async_copy = false;  // Not enabled by default.
+  bool use_async_copy = is_async_copy_enabled(rocm_cc);
   bool use_block_pingpong =
       is_pingpong_schedule_enabled(rocm_cc, use_async_copy);
 
