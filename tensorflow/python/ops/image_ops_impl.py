@@ -4797,6 +4797,14 @@ def image_gradients(image):
     ValueError: If `image` is not a 4D tensor.
   """
   image = ops.convert_to_tensor(image, name='image')
+  if image.dtype.is_integer and image.dtype not in (
+      dtypes.int32,
+      dtypes.int64,
+  ):
+    image = math_ops.cast(
+        image,
+        dtypes.int64 if image.dtype.size >= 4 else dtypes.int32,
+    )
   if image.get_shape().ndims != 4:
     raise ValueError('image_gradients expects a 4D tensor '
                      '[batch_size, h, w, d], not {}.'.format(image.get_shape()))
