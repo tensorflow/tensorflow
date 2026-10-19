@@ -90,6 +90,7 @@ load(
 load(
     "@config_rocm_hipcc//rocm:build_defs.bzl",
     "rocm_library",
+	"rocm_copts",
 )
 load(
     "@xla//xla/tsl:tsl.bzl",
