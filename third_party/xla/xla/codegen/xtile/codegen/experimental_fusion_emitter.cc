@@ -69,6 +69,7 @@ limitations under the License.
 #include "xla/codegen/xtile/codegen/dot_algorithms.h"
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/codegen/xtile/ir/transforms/passes.h"
+#include "xla/codegen/xtile/ir/xtile_attrs.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/hlo/analysis/indexing_map.h"
@@ -212,6 +213,22 @@ absl::StatusOr<EmittedResults> EmitAllGather(
   return results;
 }
 
+std::optional<CollectiveStrategy> GetCollectiveStrategy(
+    const HloCollectiveInstruction& instr) {
+  auto gpu_config = instr.backend_config<xla::gpu::GpuBackendConfig>();
+  if (!gpu_config.ok()) {
+    return std::nullopt;
+  }
+  switch (gpu_config->collective_backend_config().kernel_strategy()) {
+    case xla::gpu::CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_ONE_SHOT:
+      return CollectiveStrategy::kOneShot;
+    case xla::gpu::CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_TWO_SHOT:
+      return CollectiveStrategy::kTwoShot;
+    default:
+      return std::nullopt;
+  }
+}
+
 absl::StatusOr<TensorValue> EmitAllToAll(
     EmitterContext& emitter_ctx, const HloAllToAllInstruction* all_to_all,
     const ge::TiledHloInstruction& tiled_all_to_all, ValueRange operands) {
@@ -272,6 +289,10 @@ absl::StatusOr<TensorValue> EmitAllToAll(
     auto all_to_all_op = mlir::stablehlo::AllToAllOp::create(
         b, mlir::TypeRange{padded_type}, ValueRange{cast_operand}, split_dim,
         split_dim, split_count, replica_groups_attr, channel_handle_attr);
+    if (std::optional<CollectiveStrategy> strategy =
+            GetCollectiveStrategy(*all_to_all)) {
+      SetCollectiveStrategy(all_to_all_op, *strategy);
+    }
     Value cast_result = mlir::UnrealizedConversionCastOp::create(
                             b, output_type, all_to_all_op.getResult(0))
                             .getResult(0);
@@ -281,6 +302,10 @@ absl::StatusOr<TensorValue> EmitAllToAll(
   auto all_to_all_op = mlir::stablehlo::AllToAllOp::create(
       b, mlir::TypeRange{output_type}, operands, split_dim, split_dim,
       split_count, replica_groups_attr, channel_handle_attr);
+  if (std::optional<CollectiveStrategy> strategy =
+          GetCollectiveStrategy(*all_to_all)) {
+    SetCollectiveStrategy(all_to_all_op, *strategy);
+  }
   return mlir::cast<TensorValue>(all_to_all_op.getResult(0));
 }
 
@@ -326,6 +351,10 @@ absl::StatusOr<TensorValue> EmitAllReduce(
   auto all_reduce_op = mlir::stablehlo::AllReduceOp::create(
       b, output_type, operands, replica_groups_attr, channel_handle_attr,
       use_global_device_ids);
+  if (std::optional<CollectiveStrategy> strategy =
+          GetCollectiveStrategy(*all_reduce)) {
+    SetCollectiveStrategy(all_reduce_op, *strategy);
+  }
 
   ABSL_RETURN_IF_ERROR(EmitReduceComputation(b, all_reduce->shape().element_type(),
                                         all_reduce->to_apply(), all_reduce_op));

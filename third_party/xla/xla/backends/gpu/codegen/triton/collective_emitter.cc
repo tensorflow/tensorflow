@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -28,7 +29,6 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
@@ -41,10 +41,8 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/bit.h"
 #include "llvm/Support/Casting.h"
-#include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
-#include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
@@ -71,6 +69,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"  // IWYU pragma: keep
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
+#include "xla/codegen/xtile/ir/xtile_attrs.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -90,7 +89,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -253,17 +251,20 @@ absl::StatusOr<AllReduceEmitterContext> CreateAllReduceEmitterContext(
     mlir::stablehlo::AllReduceOp op) {
   ABSL_ASSIGN_OR_RETURN(AllReduceEmitterContext ctx,
                    CreateReductionEmitterContext<AllReduceEmitterContext>(op));
-  int64_t input_byte_size = 0;
-  for (const ReductionOperandContext& operand : ctx.operands) {
-    input_byte_size +=
-        operand.num_elements *
-        llvm::divideCeil(
-            mlir::cast<mlir::ShapedType>(operand.input_tile.getType())
-                .getElementTypeBitWidth(),
-            8);
+  std::optional<xtile::CollectiveStrategy> strategy =
+      xtile::GetCollectiveStrategy(op);
+  if (!strategy.has_value()) {
+    return absl::InvalidArgumentError(
+        "AllReduce op must have a collective_strategy attribute.");
   }
-  ctx.strategy = GetAllReduceStrategy(input_byte_size, ctx.world_size,
-                                      /*is_multimem_enabled=*/false);
+  switch (*strategy) {
+    case xtile::CollectiveStrategy::kOneShot:
+      ctx.strategy = AllReduceStrategy::kOneShot;
+      break;
+    case xtile::CollectiveStrategy::kTwoShot:
+      ctx.strategy = AllReduceStrategy::kTwoShot;
+      break;
+  }
   return ctx;
 }
 
@@ -1957,10 +1958,20 @@ absl::StatusOr<AllToAllRewriteContext> BuildAllToAllContext(
     return absl::InvalidArgumentError(
         "AllToAll split dimension must be divisible by world size.");
   }
-  const int64_t input_byte_size =
-      Product(ctx.input_shape) *
-      ShapeUtil::ByteSizeOfPrimitiveType(ctx.element_type);
-  ctx.strategy = GetAllToAllStrategy(input_byte_size, ctx.world_size);
+  std::optional<xtile::CollectiveStrategy> strategy =
+      xtile::GetCollectiveStrategy(op);
+  if (!strategy.has_value()) {
+    return absl::InvalidArgumentError(
+        "AllToAll op must have a collective_strategy attribute.");
+  }
+  switch (*strategy) {
+    case xtile::CollectiveStrategy::kOneShot:
+      ctx.strategy = AllToAllStrategy::kOneShot;
+      break;
+    case xtile::CollectiveStrategy::kTwoShot:
+      ctx.strategy = AllToAllStrategy::kTwoShot;
+      break;
+  }
   ctx.shard_size = ctx.input_shape[ctx.split_dim] / ctx.world_size;
   const int64_t tile_size = ctx.tile_sizes[ctx.split_dim];
   if (ctx.shard_size % tile_size != 0) {

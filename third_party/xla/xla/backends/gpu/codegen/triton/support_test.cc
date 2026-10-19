@@ -1474,7 +1474,8 @@ TEST_P(CollectiveTest, IsTritonSupportedAllToAll) {
 ENTRY triton_computation {
   input = $0[128,64] parameter(0)
   ROOT all-to-all = $0[128,64] all-to-all(input),
-    replica_groups={{0,1}}, dimensions={1}
+    replica_groups={{0,1}}, dimensions={1},
+    backend_config={"collective_backend_config":{"kernel_strategy":"KERNEL_STRATEGY_TRITON_ONE_SHOT"}}
 })";
   ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
                        ParseTemplateAndGetInstruction(

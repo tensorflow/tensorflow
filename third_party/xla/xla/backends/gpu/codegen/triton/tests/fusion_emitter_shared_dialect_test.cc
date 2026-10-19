@@ -401,7 +401,7 @@ TEST_F(XTileDialectTest, HloAllReduceIsLoweredToStableHloAllReduce) {
 
       %wrapped_all-reduce {
         %param = f32[65536]{0} parameter(0)
-        ROOT %all-reduce = f32[65536]{0} all-reduce(%param), replica_groups={{0,1}}, to_apply=%apply_op
+        ROOT %all-reduce = f32[65536]{0} all-reduce(%param), replica_groups={{0,1}}, to_apply=%apply_op, backend_config={"collective_backend_config":{"kernel_strategy":"KERNEL_STRATEGY_TRITON_ONE_SHOT"}}
       }
 
       ENTRY %entry {
@@ -424,6 +424,7 @@ TEST_F(XTileDialectTest, HloAllReduceIsLoweredToStableHloAllReduce) {
       R"(
 CHECK: stablehlo.all_reduce
 CHECK: stablehlo.add
+CHECK: xtile.collective_strategy = #xtile.collective_strategy<one_shot>
 )"));
 }
 
@@ -520,7 +521,7 @@ TEST_F(XTileDialectTest, HloAllToAllIsLoweredToStableHloAllToAll) {
 
       %wrapped_all-to-all {
         %param = f32[4,16384]{1,0} parameter(0)
-        ROOT %all-to-all = f32[4,16384]{1,0} all-to-all(%param), replica_groups={{0,1}}, dimensions={0}
+        ROOT %all-to-all = f32[4,16384]{1,0} all-to-all(%param), replica_groups={{0,1}}, dimensions={0}, backend_config={"collective_backend_config":{"kernel_strategy":"KERNEL_STRATEGY_TRITON_ONE_SHOT"}}
       }
 
       ENTRY %entry {
@@ -540,7 +541,7 @@ TEST_F(XTileDialectTest, HloAllToAllIsLoweredToStableHloAllToAll) {
       block_level_parameters,
       R"(
 CHECK: %[[INPUT_TILE:.*]] = xtile.extract %arg0[%{{.*}}, %{{.*}}] [2, 1024] [1, 1] : memref<4x16384xf32> -> tensor<2x1024xf32>
-CHECK: stablehlo.all_to_all
+CHECK: stablehlo.all_to_all{{.*}}xtile.collective_strategy = #xtile.collective_strategy<one_shot>
 )"));
 }
 
@@ -552,7 +553,7 @@ TEST_F(XTileDialectTest,
 
       %wrapped_all-to-all {
         %param = f32[4,16384]{1,0} parameter(0)
-        ROOT %all-to-all = f32[4,16384]{1,0} all-to-all(%param), replica_groups={{0,1}}, dimensions={0}
+        ROOT %all-to-all = f32[4,16384]{1,0} all-to-all(%param), replica_groups={{0,1}}, dimensions={0}, backend_config={"collective_backend_config":{"kernel_strategy":"KERNEL_STRATEGY_TRITON_TWO_SHOT"}}
       }
 
       ENTRY %entry {
@@ -573,7 +574,7 @@ TEST_F(XTileDialectTest,
       R"(
 CHECK: %[[INPUT_TILE:.*]] = xtile.extract %arg0[%{{.*}}, %{{.*}}] [1, 1024] [1, 1] : memref<4x16384xf32> -> tensor<1x1024xf32>
 CHECK: %[[CAST_IN:.*]] = builtin.unrealized_conversion_cast %[[INPUT_TILE]] : tensor<1x1024xf32> to tensor<2x1024xf32>
-CHECK: %[[A2A:.*]] = "stablehlo.all_to_all"(%[[CAST_IN]]) <{concat_dimension = 0 : i64, replica_groups = dense<{{\[\[}}0, 1{{\]\]}}> : tensor<1x2xi64>, split_count = 2 : i64, split_dimension = 0 : i64}> : (tensor<2x1024xf32>) -> tensor<2x1024xf32>
+CHECK: %[[A2A:.*]] = "stablehlo.all_to_all"(%[[CAST_IN]]) <{concat_dimension = 0 : i64, replica_groups = dense<{{\[\[}}0, 1{{\]\]}}> : tensor<1x2xi64>, split_count = 2 : i64, split_dimension = 0 : i64}> {xtile.collective_strategy = #xtile.collective_strategy<two_shot>} : (tensor<2x1024xf32>) -> tensor<2x1024xf32>
 CHECK: %[[CAST_OUT:.*]] = builtin.unrealized_conversion_cast %[[A2A]] : tensor<2x1024xf32> to tensor<1x1024xf32>
 CHECK: xtile.insert %[[CAST_OUT]] into %arg1[%{{.*}}, %{{.*}}] [1, 1024] [1, 1] : tensor<1x1024xf32> -> memref<4x16384xf32>
 )"));
