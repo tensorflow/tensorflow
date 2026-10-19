@@ -630,7 +630,9 @@ tsl::Future<> PjRtArray::GetReadyFuture() const {
 tsl::Future<> PjRtArray::Delete() {
   DCHECK(this);
   for (auto& buffer : pjrt_buffers_) {
-    buffer->Delete();
+    if (buffer != nullptr) {
+      buffer->Delete();
+    }
   }
   is_deleted_ = true;
   // TODO(hyeontaek): Return a correct future.
@@ -639,10 +641,15 @@ tsl::Future<> PjRtArray::Delete() {
 
 bool PjRtArray::IsDeleted() const {
   DCHECK(this);
-  // TODO(hyeontaek): This may be incorrect if PjRtBuffers are shared and a
-  // portion of pjrt_buffers_ is deleted or not deleted.
-  return is_deleted_ ||
-         (!pjrt_buffers_.empty() && pjrt_buffers_.front()->IsDeleted());
+  if (is_deleted_) {
+    return true;
+  }
+  for (const auto& buffer : pjrt_buffers_) {
+    if (buffer == nullptr || buffer->IsDeleted()) {
+      return true;
+    }
+  }
+  return false;
 }
 
 std::string PjRtArray::DebugString() const {

@@ -952,6 +952,72 @@ module @add_sub {
   }
 }
 
+TEST_P(LoadedExecutableImplTest, DonationOfNonFirstShardMarksArrayDeleted) {
+  bool serialize = GetParam();
+
+  static constexpr absl::string_view kModule = R"mlir(
+module @add {
+  func.func @main(
+    %arg0: tensor<2x3xi32> {jax.buffer_donor = true}
+  ) -> tensor<2x3xi32> {
+    %0 = stablehlo.add %arg0, %arg0 : tensor<2x3xi32>
+    return %0 : tensor<2x3xi32>
+  }
+})mlir";
+  ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  if (client->runtime_type() != "pjrt_ifrt") {
+    GTEST_SKIP() << "Shard buffer sharing on DisassembleIntoSingleDeviceArrays "
+                    "is specific to pjrt_ifrt.";
+  }
+  if (client->addressable_devices().size() < 2) {
+    GTEST_SKIP() << "Requires at least 2 addressable devices.";
+  }
+  Compiler* compiler = client->GetDefaultCompiler();
+
+  absl::Span<Device* const> devices =
+      client->addressable_devices().subspan(0, 2);
+  ASSERT_OK_AND_ASSIGN(
+      const LoadedExecutableRef executable,
+      CompileOnDevices(client.get(), compiler, kModule, {devices[1]},
+                       /*replicated=*/false, serialize));
+
+  DType dtype(DType::kS32);
+  Shape shape({2, 3});
+  std::vector<int32_t> data(6);
+  absl::c_iota(data, 0);
+  ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
+                       client->MakeDeviceList(devices));
+  ShardingRef sharding = ConcreteEvenSharding::Create(
+      std::move(device_list), MemoryKind(), shape,
+      /*shard_shape=*/shape, /*is_fully_replicated=*/true);
+  ASSERT_OK_AND_ASSIGN(
+      ArrayRef array,
+      client->MakeArrayFromHostBuffer(
+          data.data(), dtype, shape, /*byte_strides=*/std::nullopt, sharding,
+          /*layout=*/nullptr,
+          Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+          /*on_done_with_host_buffer=*/{}));
+
+  ASSERT_OK_AND_ASSIGN(std::vector<ArrayRef> shards,
+                       array->DisassembleIntoSingleDeviceArrays(
+                           ArrayCopySemantics::kReuseInput,
+                           SingleDeviceShardSemantics::kAddressableShards));
+  ASSERT_THAT(shards, SizeIs(2));
+  EXPECT_FALSE(array->IsDeleted());
+
+  LoadedExecutable::ExecuteOptions execute_options;
+  execute_options.fill_status = true;
+  ASSERT_OK_AND_ASSIGN(
+      LoadedExecutable::ExecuteResult result,
+      executable->Execute(absl::MakeSpan(&shards[1], 1), execute_options,
+                          /*devices=*/std::nullopt));
+  ASSERT_OK(result.status.Await());
+
+  EXPECT_FALSE(shards[0]->IsDeleted());
+  EXPECT_TRUE(shards[1]->IsDeleted());
+  EXPECT_TRUE(array->IsDeleted());
+}
+
 // Regression test for a segfault during executable serialization when both a
 // sharded parameter and a token parameter are present.
 TEST_P(LoadedExecutableImplTest, ShardingsAndTokens) {
