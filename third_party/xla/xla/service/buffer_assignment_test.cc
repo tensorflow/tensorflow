@@ -6393,6 +6393,13 @@ TEST_F(BufferAssignmentTest,
 
   EXPECT_FALSE(proto.logical_buffers().empty());
   EXPECT_FALSE(proto.buffer_aliases().empty());
+  int64_t expected_aliases = 0;
+  for (const HloBuffer& buffer : buffers->alias_analysis().buffers()) {
+    if (buffers->HasAllocation(buffer) && buffer.values().size() > 1) {
+      expected_aliases += buffer.values().size() - 1;
+    }
+  }
+  EXPECT_EQ(proto.buffer_aliases_size(), expected_aliases);
   for (const BufferAllocationProto& alloc : proto.buffer_allocations()) {
     for (int i = 1; i < alloc.assigned_size(); ++i) {
       EXPECT_LT(alloc.assigned(i - 1).logical_buffer_id(),
