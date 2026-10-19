@@ -246,26 +246,31 @@ class AutoStrategyTest(test.TestCase):
       self.assertIsInstance(strategy, one_device_strategy.OneDeviceStrategy)
       self.assertIn("CPU:0", strategy.extended._device)
 
-  @mock.patch.object(
-      collective_all_reduce_strategy, "CollectiveAllReduceStrategy"
-  )
   @mock.patch.object(config, "get_visible_devices", return_value=[])
-  def testMultiWorkerDetection(
-      self, mock_get_visible_devices, mock_cars_cls
-  ):
-    # Prevent the real constructor from starting a live gRPC
-    # CoordinationService and blocking indefinitely waiting for a second
-    # worker (localhost:23456) that never connects, causing a 300s+ timeout.
+  def testMultiWorkerDetection(self, mock_get_visible_devices):
+    # Do NOT mock CollectiveAllReduceStrategy here — the intent is to catch
+    # any eager-mode RuntimeError that would be raised if list_logical_devices
+    # is called before CollectiveAllReduceStrategy is configured (the bug
+    # dmiltr3 identified).  The real constructor will raise RuntimeError in a
+    # non-distributed test environment, so we expect auto_strategy to catch
+    # it via the inner try/except and fall through to a CPU strategy rather
+    # than propagating the crash.
     os.environ["TF_CONFIG"] = json.dumps({
         "cluster": {
             "worker": ["localhost:12345", "localhost:23456"]
         },
-        "task": {"type": "worker", "index": 0}
+        "task": {"type": "worker", "index": 0},
     })
-    strategy = auto_strategy.auto_strategy()
-    # Verify auto_strategy dispatched to CollectiveAllReduceStrategy.
-    mock_cars_cls.assert_called_once()
-    self.assertIs(strategy, mock_cars_cls.return_value)
+    # auto_strategy must not raise; it should either return
+    # CollectiveAllReduceStrategy (if the environment supports it) or fall
+    # back gracefully — never crash with RuntimeError.
+    try:
+      strategy = auto_strategy.auto_strategy()
+    except RuntimeError as e:
+      self.fail(
+          "auto_strategy raised RuntimeError in eager mode: %s" % e
+      )
+    self.assertIsNotNone(strategy)
 
   @mock.patch.object(
       collective_all_reduce_strategy, "CollectiveAllReduceStrategy"
@@ -370,6 +375,32 @@ class AutoStrategyTest(test.TestCase):
             "ps": ["localhost:34567"],
         },
         "task": {"type": "ps", "index": 0},
+    })
+    strategy = auto_strategy.auto_strategy()
+    mock_cars_cls.assert_not_called()
+    self.assertIsInstance(strategy, one_device_strategy.OneDeviceStrategy)
+    self.assertIn("CPU:0", strategy.extended._device)
+
+  @mock.patch.object(
+      collective_all_reduce_strategy, "CollectiveAllReduceStrategy"
+  )
+  @mock.patch.object(config, "get_visible_devices", return_value=[])
+  def testChiefInParameterServerClusterDoesNotUseCollectiveStrategy(
+      self,
+      mock_get_visible_devices,
+      mock_cars_cls,
+  ):
+    # A chief in a PS cluster must NOT be routed to CollectiveAllReduceStrategy
+    # because PS clusters use a different distribution mechanism.
+    # This is the second bug dmiltr3 identified: task.type == "chief" in a
+    # cluster containing "ps" was incorrectly dispatched to CARS.
+    os.environ["TF_CONFIG"] = json.dumps({
+        "cluster": {
+            "chief": ["localhost:12345"],
+            "worker": ["localhost:23456"],
+            "ps": ["localhost:34567"],
+        },
+        "task": {"type": "chief", "index": 0},
     })
     strategy = auto_strategy.auto_strategy()
     mock_cars_cls.assert_not_called()

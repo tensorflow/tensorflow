@@ -49,6 +49,45 @@ def auto_strategy() -> distribute_lib.StrategyBase:
     model = ...
   ```
   """
+  # Check for Multi-worker setup in TF_CONFIG first.
+  # This must happen before any call to config.list_logical_devices("TPU"),
+  # which initialises the eager runtime context and would cause
+  # CollectiveAllReduceStrategy() to raise RuntimeError("Collective ops must
+  # be configured at program startup") in eager mode.
+  tf_config_str = os.environ.get("TF_CONFIG", "")
+  if tf_config_str:
+    try:
+      tf_config = json.loads(tf_config_str)
+    except (ValueError, TypeError):
+      tf_config = {}
+
+    if isinstance(tf_config, dict):
+      cluster = tf_config.get("cluster", {})
+      if isinstance(cluster, dict):
+        task = tf_config.get("task") or {}
+        # Exclude parameter-server clusters: a "chief" or "worker" in a cluster
+        # that contains a "ps" key must not be routed to
+        # CollectiveAllReduceStrategy.
+        is_ps_cluster = bool(cluster.get("ps"))
+        if (
+            isinstance(task, dict)
+            and task.get("type") in ("worker", "chief")
+            and not is_ps_cluster
+        ):
+          workers = cluster.get("worker") or []
+          chiefs = cluster.get("chief") or []
+          if (
+              isinstance(workers, (list, tuple))
+              and isinstance(chiefs, (list, tuple))
+              and len(workers) + len(chiefs) > 1
+          ):
+            try:
+              return (
+                  collective_all_reduce_strategy.CollectiveAllReduceStrategy()
+              )
+            except (ValueError, TypeError, KeyError):
+              pass
+
   # Check for TPUs
   tpu_visible = config.get_visible_devices("TPU")
   tpu_name = os.environ.get("TPU_NAME", "")
@@ -69,33 +108,6 @@ def auto_strategy() -> distribute_lib.StrategyBase:
       return tpu_strategy.TPUStrategy(resolver)
     except (ValueError, RuntimeError, ImportError, errors.OpError):
       pass
-
-  # Check for Multi-worker setup in TF_CONFIG
-  tf_config_str = os.environ.get("TF_CONFIG", "")
-  if tf_config_str:
-    try:
-      tf_config = json.loads(tf_config_str)
-    except (ValueError, TypeError):
-      tf_config = {}
-
-    if isinstance(tf_config, dict):
-      cluster = tf_config.get("cluster", {})
-      if isinstance(cluster, dict):
-        task = tf_config.get("task") or {}
-        if isinstance(task, dict) and task.get("type") in ("worker", "chief"):
-          workers = cluster.get("worker") or []
-          chiefs = cluster.get("chief") or []
-          if (
-              isinstance(workers, (list, tuple))
-              and isinstance(chiefs, (list, tuple))
-              and len(workers) + len(chiefs) > 1
-          ):
-            try:
-              return (
-                  collective_all_reduce_strategy.CollectiveAllReduceStrategy()
-              )
-            except (ValueError, TypeError, KeyError):
-              pass
 
   # Check for GPUs
   visible_gpus = config.get_visible_devices("GPU")
