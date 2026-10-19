@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_ALL_GATHER_H_
 #define XLA_BACKENDS_GPU_RUNTIME_ALL_GATHER_H_
 
-#include <array>
 #include <cstdint>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -27,15 +27,15 @@ limitations under the License.
 #include "xla/service/device_assignment.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu_topology.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 
-// Element types supported by the Triton all-gather kernel.
-// Complex types, tokens, tuples, and exotic types (e.g. 4-bit integers, 8-bit
-// floats) are not supported.
-inline constexpr auto kSupportedAllGatherTypes =
-    std::array{PRED, F16, BF16, F32, F64, S8, S16, S32, S64, U8, U16, U32, U64};
+// Returns the element types supported by the Triton all-gather kernel: all
+// Triton-supported data types that are not sub-byte types (except PRED).
+std::vector<PrimitiveType> SupportedAllGatherTypes(
+    const se::GpuComputeCapability& gpu_cc);
 
 // Maximum number of GPU thread-blocks launched per all-gather kernel.
 // This number is set by picking the max number of blocks for all reduce and

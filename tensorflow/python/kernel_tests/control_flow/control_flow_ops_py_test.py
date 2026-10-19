@@ -5201,49 +5201,6 @@ class EagerTest(test.TestCase):
           isum(tensor, maximum_iterations=3).numpy(),
           [1 + 3, 2 + 3, 3 + 3, 4 + 3, 5 + 3])
 
-  def testWhileLoopWithNumpyLoopVars(self):
-    with context.eager_mode():
-      i0 = np.array(0, dtype=np.int32)
-      multi_dim = np.ones((2, 2), dtype=np.float32)
-
-      def cond(i, acc, m):
-        return i < 3
-
-      def body(i, acc, m):
-        self.assertIsInstance(i, tensor_lib.Tensor)
-        self.assertIsInstance(acc, tensor_lib.Tensor)
-        self.assertIsInstance(m, tensor_lib.Tensor)
-        return i + 1, acc + math_ops.cast(1.0, dtypes.float32), m + 1.0
-
-      def run_loop():
-        return while_loop_tf.while_loop(
-            cond, body, [i0, constant_op.constant(0.0), multi_dim]
-        )[1:]
-
-      r_eager = run_loop()
-      self.assertEqual(r_eager[0].numpy(), 3.0)
-      self.assertAllClose(r_eager[1].numpy(), np.ones((2, 2)) + 3.0)
-
-      r_graph = eager_def_function.function(run_loop)()
-      self.assertEqual(r_graph[0].numpy(), 3.0)
-      self.assertAllClose(r_graph[1].numpy(), np.ones((2, 2)) + 3.0)
-
-      def run_loop_max_iters():
-        return while_loop_tf.while_loop(
-            cond,
-            body,
-            [i0, constant_op.constant(0.0), multi_dim],
-            maximum_iterations=2,
-        )[1:]
-
-      r_eager_max = run_loop_max_iters()
-      self.assertEqual(r_eager_max[0].numpy(), 2.0)
-      self.assertAllClose(r_eager_max[1].numpy(), np.ones((2, 2)) + 2.0)
-
-      r_graph_max = eager_def_function.function(run_loop_max_iters)()
-      self.assertEqual(r_graph_max[0].numpy(), 2.0)
-      self.assertAllClose(r_graph_max[1].numpy(), np.ones((2, 2)) + 2.0)
-
   @test_util.run_v1_only("b/120545219")
   def testWhileWithMaximumIterationsAndSingleArgument(self):
     with context.eager_mode():

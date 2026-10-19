@@ -167,10 +167,19 @@ TEST_F(BuildAllGatherInfoTest, FailsForNonPowerOfTwoDevices) {
                HasSubstr("only supported for power of 2")));
 }
 
-TEST_F(BuildAllGatherInfoTest, FailsForUnsupportedType) {
-  // F8E4M3FN is not supported by the Triton all-gather kernel.
+TEST_F(BuildAllGatherInfoTest, SucceedsForSupportedF8E4M3FN) {
   EXPECT_THAT(
       BuildInfo(F8E4M3FN, /*num_elements=*/512, /*replica_groups=*/{0, 1}),
+      IsOkAndHolds(AllOf(Field(&AllGatherInfo::num_devices, 2),
+                         Field(&AllGatherInfo::num_elements, 512),
+                         Field(&AllGatherInfo::element_type, F8E4M3FN))));
+}
+
+TEST_F(BuildAllGatherInfoTest, FailsForUnsupportedType) {
+  // Sub-byte types such as S4 are not supported by the Triton all-gather
+  // kernel.
+  EXPECT_THAT(
+      BuildInfo(S4, /*num_elements=*/512, /*replica_groups=*/{0, 1}),
       StatusIs(absl::StatusCode::kUnimplemented,
                HasSubstr("is not supported for the all-gather kernel")));
 }

@@ -46,8 +46,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-namespace {
-
 CodegenDecision IsTritonSupportedDataType(
     PrimitiveType type, const se::GpuComputeCapability& gpu_version) {
   switch (type) {
@@ -100,6 +98,8 @@ CodegenDecision IsTritonSupportedDataType(
                        primitive_util::LowercasePrimitiveTypeName(type)));
   }
 }
+
+namespace {
 
 // Like `IsTritonSupportedDataType`, but also allows types that are only
 // supported by some opcodes.
@@ -1001,8 +1001,9 @@ CodegenDecision IsTritonSupportedInstructionImpl(
       return IsTritonSupportedAllReduce(*Cast<HloAllReduceInstruction>(&instr),
                                         gpu_version);
     case HloOpcode::kAllGather:
-      return CodegenDecision(instr.shape().element_type() != S4,
-                             "S4 is not supported.");
+      return CodegenDecision(
+          !primitive_util::IsSubByteNonPredType(instr.shape().element_type()),
+          "Sub-byte types are not supported for AllGather.");
     case HloOpcode::kAllToAll:
       return IsTritonSupportedAllToAll(*Cast<HloAllToAllInstruction>(&instr));
     case HloOpcode::kReduceScatter:
