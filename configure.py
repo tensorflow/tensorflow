@@ -24,6 +24,100 @@ import shutil
 import subprocess
 import sys
 
+<<<<<<< Updated upstream
+=======
+# Ensure root tools package can be imported directly when running script
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+if _SCRIPT_DIR not in sys.path:
+  sys.path.insert(0, _SCRIPT_DIR)
+
+try:
+  from tools.configure_helper import (
+      BazelrcConfig,
+      PromptManager,
+      apply_cli_overrides,
+      safe_decode,
+      split_path_list,
+  )
+except ImportError:
+  # Standalone fallback if invoked outside repository tree
+  class BazelrcConfig:  # type: ignore[no-redef]
+    def __init__(self, filepath=None):
+      self.filepath = filepath
+      self.lines = []
+    def set_filepath(self, filepath):
+      self.filepath = filepath
+    def add_line(self, line):
+      self.lines.append(line)
+      if self.filepath:
+        parent = os.path.dirname(self.filepath)
+        if parent and not os.path.exists(parent):
+          os.makedirs(parent, exist_ok=True)
+        with open(self.filepath, 'a', encoding='utf-8') as f:
+          f.write(line + '\n')
+    def add_action_env(self, var_name, var_value):
+      self.add_line('build --action_env {}="{}"'.format(var_name, str(var_value)))
+    def add_repo_env(self, config_name, var_name, var_value):
+      self.add_line('build:{} --repo_env {}="{}"'.format(config_name, var_name, str(var_value)))
+    def reset(self):
+      self.lines.clear()
+      if self.filepath:
+        parent = os.path.dirname(self.filepath)
+        if parent and not os.path.exists(parent):
+          os.makedirs(parent, exist_ok=True)
+        with open(self.filepath, 'w', encoding='utf-8') as f:
+          pass
+    def to_string(self):
+      return '\n'.join(self.lines)
+
+  class PromptManager:  # type: ignore[no-redef]
+    def __init__(self, non_interactive=False, input_fn=None, output_fn=None):
+      self.non_interactive = non_interactive
+      self.input_fn = input_fn or input
+      self.output_fn = output_fn or print
+    def get_input(self, question):
+      if self.non_interactive:
+        return ''
+      try:
+        return self.input_fn(question)
+      except (EOFError, KeyboardInterrupt):
+        return ''
+
+  def split_path_list(path_str):  # type: ignore[no-redef]
+    if not path_str:
+      return []
+    path_str = path_str.strip()
+    if not path_str:
+      return []
+    if os.pathsep in path_str:
+      raw = path_str.split(os.pathsep)
+    elif sys.platform.startswith('win32') or sys.platform.startswith('cygwin'):
+      raw = [path_str]
+    else:
+      raw = path_str.split(':')
+    return [p.strip() for p in raw if p.strip()]
+
+  def safe_decode(output, encoding='utf-8'):  # type: ignore[no-redef]
+    if output is None:
+      return ''
+    if isinstance(output, str):
+      return output.strip()
+    return output.decode(encoding, errors='replace').strip()
+
+  def apply_cli_overrides(args, environ_cp):  # type: ignore[no-redef]
+    if getattr(args, 'python_bin_path', None):
+      environ_cp['PYTHON_BIN_PATH'] = args.python_bin_path
+    if getattr(args, 'python_lib_path', None):
+      environ_cp['PYTHON_LIB_PATH'] = args.python_lib_path
+    if getattr(args, 'cuda', None) is not None:
+      environ_cp['TF_NEED_CUDA'] = '1' if args.cuda else '0'
+    if getattr(args, 'rocm', None) is not None:
+      environ_cp['TF_NEED_ROCM'] = '1' if args.rocm else '0'
+    if getattr(args, 'clang', None) is not None:
+      environ_cp['TF_NEED_CLANG'] = '1' if args.clang else '0'
+    if getattr(args, 'xla', None) is not None:
+      environ_cp['TF_ENABLE_XLA'] = '1' if args.xla else '0'
+>>>>>>> Stashed changes
 
 _DEFAULT_CUDA_COMPUTE_CAPABILITIES = '3.5,7.0'
 
@@ -59,7 +153,7 @@ class UserInputError(Exception):
 
 
 def is_windows():
-  return platform.system() == 'Windows'
+  return sys.platform.startswith('win32')
 
 
 def is_linux():
@@ -79,7 +173,7 @@ def is_s390x():
 
 
 def is_cygwin():
-  return platform.system().startswith('CYGWIN_NT')
+  return sys.platform.startswith('cygwin')
 
 
 def get_input(question):
@@ -239,8 +333,14 @@ def setup_python(environ_cp):
   # If chosen python_lib_path is from a path specified in the PYTHONPATH
   # variable, need to tell bazel to include PYTHONPATH
   if environ_cp.get('PYTHONPATH'):
+<<<<<<< Updated upstream
     python_paths = environ_cp.get('PYTHONPATH').split(':')
     if python_lib_path in python_paths:
+=======
+    python_paths = split_path_list(environ_cp.get('PYTHONPATH'))
+    norm_python_paths = [os.path.normcase(p) for p in python_paths]
+    if os.path.normcase(python_lib_path) in norm_python_paths:
+>>>>>>> Stashed changes
       write_action_env_to_bazelrc('PYTHONPATH', environ_cp.get('PYTHONPATH'))
 
   # Write tools/python_bin_path.sh
