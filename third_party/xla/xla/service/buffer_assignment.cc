@@ -2254,6 +2254,13 @@ absl::StatusOr<bool> BufferAssigner::MaybeAssignBuffer(
     return false;
   }
 
+  if (!opts_.allow_reusing_aliased_entry_params_for_temp &&
+      allocation->is_parameter_aliased_with_output()) {
+    VLOG(4) << "Can't assign: reusing aliased parameter allocation for "
+               "temporary buffers is disabled";
+    return false;
+  }
+
   if (opts_.must_not_live_out.has_value()) {
     if (allocation->maybe_live_out()) {
       // If a buffer maybe live out, the allocation cannot contain any node
@@ -2457,7 +2464,8 @@ absl::StatusOr<bool> BufferAssigner::AssignSpecialHloBuffer(
 
       allocation->set_entry_computation_parameter(
           instruction->parameter_number(), value->index(), parameter_has_alias);
-      if (parameter_has_alias) {
+      if (parameter_has_alias &&
+          opts_.allow_reusing_aliased_entry_params_for_temp) {
         allocation_manager->RegisterAliasedEntryParameterAllocation(
             allocation->index());
       }

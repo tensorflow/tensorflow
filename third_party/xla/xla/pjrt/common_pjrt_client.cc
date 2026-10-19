@@ -500,9 +500,92 @@ CommonPjRtClient::CompileAndLoad(MaybeOwningMlirModule module,
                                  CompileOptions options) {
   ABSL_ASSIGN_OR_RETURN(const PjRtTopologyDescription* topology,
                    GetTopologyDescription());
-  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> executable,
-                   PjRtCompile(options, std::move(module), *topology, this));
-  return Load(std::move(executable), LoadOptions());
+  bool is_async_compile = enable_async_compilation();
+  if (options.multi_slice_config != nullptr) {
+    is_async_compile = false;
+  }
+  if (!is_async_compile) {
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> executable,
+                     PjRtCompile(options, std::move(module), *topology, this));
+    return Load(std::move(executable), LoadOptions());
+  }
+
+  LoadOptions load_options;
+  std::shared_ptr<DeviceAssignment> device_assignment;
+  int num_replicas;
+  int num_partitions;
+  ABSL_RETURN_IF_ERROR(ParseDeviceAssignmentCompileOptions(
+      options.compile_portable_executable, &options.executable_build_options,
+      [this, &options](int num_replicas, int num_partitions) {
+        return GetDefaultDeviceAssignment(
+            num_replicas, /*num_replicas_per_slice=*/std::nullopt,
+            num_partitions, options.multi_slice_config);
+      },
+      &num_replicas, &num_partitions, &device_assignment));
+
+  std::vector<PjRtLoadedExecutable::LogicalDeviceIds>
+      addressable_device_logical_ids;
+  std::vector<PjRtDevice*> addressable_devices;
+  ABSL_ASSIGN_OR_RETURN(
+      auto load_state,
+      MakeLoadStateAndResolveAddressableDevices(
+          /*executable=*/nullptr, &options, addressable_device_logical_ids,
+          addressable_devices, device_assignment, load_options));
+
+  ABSL_ASSIGN_OR_RETURN(auto info,
+                   InferDispatchInfo(topology, module.mlir_module(), options,
+                                     std::move(device_assignment),
+                                     std::move(addressable_device_logical_ids),
+                                     std::move(addressable_devices),
+                                     options.parameter_is_tupled_arguments));
+
+  auto make_executable = [this, topology, module = std::move(module),
+                          options = std::move(options), load_state]() mutable
+      -> absl::StatusOr<tsl::AsyncValueRef<PjRtExecutable>> {
+    tsl::profiler::TraceMe trace("CommonPjRtClient::CompileAndLoadAsync");
+    ABSL_ASSIGN_OR_RETURN(
+        std::shared_ptr<PjRtExecutable> executable,
+        PjRtCompile(options, std::move(module), *topology, /*client=*/this));
+
+    tsl::profiler::TraceMe trace2("CommonPjRtClient::LoadAsync");
+    if (IsEarlyExitCompilation(options)) {
+      return InvalidArgument(
+          "Executable compiled with xla_early_exit_with_layouts cannot be "
+          "loaded.");
+    }
+
+    // Reject the executable if the ABI version is not compatible.
+    if (!IsGpuId(platform_id())) {
+      absl::StatusOr<std::unique_ptr<PjRtRuntimeAbiVersion>>
+          runtime_abi_version = RuntimeAbiVersion();
+      if (!absl::IsUnimplemented(runtime_abi_version.status())) {
+        ABSL_RETURN_IF_ERROR(runtime_abi_version.status());
+        ABSL_ASSIGN_OR_RETURN(
+            std::unique_ptr<PjRtExecutableAbiVersion> executable_abi_version,
+            executable->GetAbiVersion());
+        ABSL_RETURN_IF_ERROR(
+            (*runtime_abi_version)->IsCompatibleWith(*executable_abi_version));
+      }
+    }
+
+    ABSL_RETURN_IF_ERROR(load_state->Preload(executable.get()));
+    return raw_client()->ToAsyncExecutable(std::move(executable));
+  };
+
+  auto [async_executable, fulfill_cb] =
+      raw_client()->CreateLinkedExecutablePromise();
+
+  async_work_runner()->Execute(
+      [fulfill_cb = std::move(fulfill_cb),
+       make_executable = std::move(make_executable)]() mutable {
+        std::move(fulfill_cb)(std::move(make_executable)());
+      });
+
+  auto loaded_executable = std::make_unique<CommonPjRtLoadedExecutable>(
+      this, std::move(async_executable), std::move(info),
+      std::move(load_state));
+
+  return std::unique_ptr<PjRtLoadedExecutable>(std::move(loaded_executable));
 }
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>>
@@ -4783,6 +4866,8 @@ CommonPjRtClientImpl::CommonPjRtClientImpl(
   set_bool_attr_from_plugin_attrs(
       "executable_compatibility_check_on_deserialization",
       executable_compatibility_check_on_deserialization_);
+  set_bool_attr_from_plugin_attrs("enable_async_compilation",
+                                  enable_async_compilation_);
 }
 
 void CommonPjRtClientImpl::AttachDevices(

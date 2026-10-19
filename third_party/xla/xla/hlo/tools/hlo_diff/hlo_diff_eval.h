@@ -45,6 +45,7 @@ struct DiffEval {
   int64_t len_right_unmatched = 0;
   int64_t len_changed = 0;
   int64_t len_unchanged = 0;
+  int64_t len_moved = 0;
 
   // Graph node counts.
   int64_t left_node_count = 0;

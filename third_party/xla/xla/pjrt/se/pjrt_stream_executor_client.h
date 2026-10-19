@@ -226,6 +226,10 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
   tsl::AsyncValueRef<PjRtExecutable> ToAsyncExecutable(
       std::shared_ptr<PjRtExecutable> executable) const override;
 
+  std::pair<tsl::AsyncValueRef<PjRtExecutable>,
+            PjRtFulfillAsyncExecutableCallback>
+  CreateLinkedExecutablePromise() const override;
+
   void ThenRecordEvent(BufferSequencingEventRef event,
                        LocalDeviceState* local_device,
                        EventPool::Handle device_event, se::Stream* stream);

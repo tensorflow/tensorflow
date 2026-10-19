@@ -6630,6 +6630,40 @@ TEST_F(HloVerifierTest, NonAssociativeScanAllowedInLayoutInsensitiveMode) {
   EXPECT_OK(verifier().Run(module.get()).status());
 }
 
+// A BF16 init feeding an F32 carry, as BF16 conversion folding leaves it.
+constexpr absl::string_view kMixedPrecisionScanHlo = R"(
+  HloModule scan_module
+
+  add {
+    lhs = f32[2] parameter(0)
+    rhs = f32[2] parameter(1)
+    add = f32[2] add(lhs, rhs)
+    ROOT t = (f32[2], f32[2]) tuple(add, add)
+  }
+
+  ENTRY entry {
+    input = f32[4,2] parameter(0)
+    init = bf16[2] parameter(1)
+    ROOT scan = (f32[4,2], f32[2]) scan(input, init), dimensions={0}, num_carries=1, is_associative=true, to_apply=add
+  }
+  )";
+
+TEST_F(HloVerifierTestAllowMixedPrecision, ScanMixedPrecisionAllowed) {
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnUnverifiedModule(kMixedPrecisionScanHlo));
+  EXPECT_OK(verifier().Run(module.get()).status());
+}
+
+TEST_F(HloVerifierTest, ScanMixedPrecisionRejected) {
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnUnverifiedModule(kMixedPrecisionScanHlo));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              HasSubstr("Shapes of operand 1 and to_apply computation "
+                        "parameter are inconsistent"));
+}
+
 TEST_F(HloVerifierTest, VerifyAsyncStartOutputToOperandAliasing) {
   const char* const hlo_string = R"(
   HloModule module
