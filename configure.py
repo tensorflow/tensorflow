@@ -24,8 +24,6 @@ import shutil
 import subprocess
 import sys
 
-<<<<<<< Updated upstream
-=======
 # Ensure root tools package can be imported directly when running script
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 if _SCRIPT_DIR not in sys.path:
@@ -117,7 +115,6 @@ except ImportError:
       environ_cp['TF_NEED_CLANG'] = '1' if args.clang else '0'
     if getattr(args, 'xla', None) is not None:
       environ_cp['TF_ENABLE_XLA'] = '1' if args.xla else '0'
->>>>>>> Stashed changes
 
 _DEFAULT_CUDA_COMPUTE_CAPABILITIES = '3.5,7.0'
 
@@ -129,6 +126,8 @@ _TF_BAZELRC_FILENAME = '.tf_configure.bazelrc'
 _TF_WORKSPACE_ROOT = ''
 _TF_BAZELRC = ''
 _TF_CURRENT_BAZEL_VERSION = None
+_TF_BAZELRC_CONFIG = BazelrcConfig()
+_PROMPT_MANAGER = PromptManager()
 
 NCCL_LIB_PATHS = [
     'lib64/', 'lib/powerpc64le-linux-gnu/', 'lib/x86_64-linux-gnu/', ''
@@ -177,14 +176,7 @@ def is_cygwin():
 
 
 def get_input(question):
-  try:
-    try:
-      answer = raw_input(question)
-    except NameError:
-      answer = input(question)  # pylint: disable=bad-builtin
-  except EOFError:
-    answer = ''
-  return answer
+  return _PROMPT_MANAGER.get_input(question)
 
 
 def symlink_force(target, link_name):
@@ -205,18 +197,15 @@ def symlink_force(target, link_name):
 
 
 def write_to_bazelrc(line):
-  with open(_TF_BAZELRC, 'a') as f:
-    f.write(line + '\n')
+  _TF_BAZELRC_CONFIG.add_line(line)
 
 
 def write_action_env_to_bazelrc(var_name, var):
-  write_to_bazelrc('build --action_env {}="{}"'.format(var_name, str(var)))
+  _TF_BAZELRC_CONFIG.add_action_env(var_name, var)
 
 
 def write_repo_env_to_bazelrc(config_name, var_name, var):
-  write_to_bazelrc(
-      'build:{} --repo_env {}="{}"'.format(config_name, var_name, str(var))
-  )
+  _TF_BAZELRC_CONFIG.add_repo_env(config_name, var_name, var)
 
 
 def run_shell(cmd, allow_non_zero=False, stderr=None):
@@ -226,10 +215,10 @@ def run_shell(cmd, allow_non_zero=False, stderr=None):
     try:
       output = subprocess.check_output(cmd, stderr=stderr)
     except subprocess.CalledProcessError as e:
-      output = e.output
+      output = e.output or b''
   else:
     output = subprocess.check_output(cmd, stderr=stderr)
-  return output.decode('UTF-8').strip()
+  return safe_decode(output)
 
 
 def cygpath(path):
@@ -241,21 +230,21 @@ def get_python_path(environ_cp, python_bin_path):
   """Get the python site package paths."""
   python_paths = []
   if environ_cp.get('PYTHONPATH'):
-    python_paths = environ_cp.get('PYTHONPATH').split(':')
+    python_paths = split_path_list(environ_cp.get('PYTHONPATH'))
   try:
-    stderr = open(os.devnull, 'wb')
     library_paths = run_shell([
         python_bin_path, '-c',
         'import site; print("\\n".join(site.getsitepackages()))'
     ],
-                              stderr=stderr).split('\n')
+                              stderr=subprocess.DEVNULL).split('\n')
   except subprocess.CalledProcessError:
     library_paths = [
         run_shell([
             python_bin_path,
             '-c',
             'import sysconfig; print(sysconfig.get_path("purelib"))',
-        ])
+        ],
+                  stderr=subprocess.DEVNULL)
     ]
 
   all_paths = set(python_paths + library_paths)
@@ -333,26 +322,25 @@ def setup_python(environ_cp):
   # If chosen python_lib_path is from a path specified in the PYTHONPATH
   # variable, need to tell bazel to include PYTHONPATH
   if environ_cp.get('PYTHONPATH'):
-<<<<<<< Updated upstream
-    python_paths = environ_cp.get('PYTHONPATH').split(':')
-    if python_lib_path in python_paths:
-=======
     python_paths = split_path_list(environ_cp.get('PYTHONPATH'))
     norm_python_paths = [os.path.normcase(p) for p in python_paths]
     if os.path.normcase(python_lib_path) in norm_python_paths:
->>>>>>> Stashed changes
       write_action_env_to_bazelrc('PYTHONPATH', environ_cp.get('PYTHONPATH'))
 
   # Write tools/python_bin_path.sh
+  tools_dir = os.path.join(_TF_WORKSPACE_ROOT, 'tools')
+  if not os.path.exists(tools_dir):
+    os.makedirs(tools_dir, exist_ok=True)
   with open(
-      os.path.join(_TF_WORKSPACE_ROOT, 'tools', 'python_bin_path.sh'),
-      'w') as f:
+      os.path.join(tools_dir, 'python_bin_path.sh'),
+      'w',
+      encoding='utf-8') as f:
     f.write('export PYTHON_BIN_PATH="{}"'.format(python_bin_path))
 
 
 def reset_tf_configure_bazelrc():
   """Reset file that contains customized config settings."""
-  open(_TF_BAZELRC, 'w').close()
+  _TF_BAZELRC_CONFIG.reset()
 
 
 def cleanup_makefile():
@@ -501,7 +489,9 @@ def convert_version_to_int(version):
   Returns:
     An integer if converted successfully, otherwise return None.
   """
-  version = version.split('-')[0]
+  if not version:
+    return None
+  version = str(version).strip().split('-')[0]
   version_segments = version.split('.')
   # Treat "0.24" as "0.24.0"
   if len(version_segments) == 2:
@@ -527,10 +517,9 @@ def retrieve_bazel_version():
       print('Cannot find bazel. Please install bazel/bazelisk.')
       sys.exit(1)
 
-  stderr = open(os.devnull, 'wb')
   curr_version = run_shell([bazel_executable, '--version'],
                            allow_non_zero=True,
-                           stderr=stderr)
+                           stderr=subprocess.DEVNULL)
   if curr_version.startswith('bazel '):
     curr_version = curr_version.split('bazel ')[1]
 
@@ -851,9 +840,9 @@ def get_ndk_api_level(environ_cp, android_ndk_home_path):
   # Now grab the NDK API level to use. Note that this is different from the
   # SDK API level, as the NDK API level is effectively the *min* target SDK
   # version.
-  meta = open(os.path.join(android_ndk_home_path, 'meta/platforms.json'))
-  platforms = json.load(meta)
-  meta.close()
+  platforms_json_path = os.path.join(android_ndk_home_path, 'meta', 'platforms.json')
+  with open(platforms_json_path, 'r', encoding='utf-8') as meta:
+    platforms = json.load(meta)
   aliases = platforms['aliases']
   api_levels = sorted(list(set([aliases[i] for i in aliases])))
 
@@ -1006,10 +995,9 @@ def retrieve_clang_version(clang_executable):
   Returns:
     The clang version detected.
   """
-  stderr = open(os.devnull, 'wb')
   curr_version = run_shell([clang_executable, '--version'],
                            allow_non_zero=True,
-                           stderr=stderr)
+                           stderr=subprocess.DEVNULL)
 
   curr_version_split = curr_version.lower().split('clang version ')
   if len(curr_version_split) <= 1:
@@ -1304,25 +1292,123 @@ def get_gcc_compiler(environ_cp):
   return None
 
 
+def setup_argument_parser():
+  """Constructs the argument parser for configure.py."""
+  parser = argparse.ArgumentParser(
+      description='Configure script to get build parameters from user or environment.'
+  )
+  parser.add_argument(
+      '--workspace',
+      type=str,
+      default=os.path.abspath(os.path.dirname(__file__)),
+      help='The absolute path to your active Bazel workspace.',
+  )
+  parser.add_argument(
+      '--output-bazelrc',
+      type=str,
+      default=None,
+      help='Explicit path for the generated .bazelrc file (defaults to workspace/.tf_configure.bazelrc).',
+  )
+  parser.add_argument(
+      '-y',
+      '--yes',
+      '--non-interactive',
+      dest='non_interactive',
+      action='store_true',
+      default=False,
+      help='Run in non-interactive mode using default configuration settings.',
+  )
+  parser.add_argument(
+      '--python-bin-path',
+      type=str,
+      default=None,
+      help='Path to the Python binary to configure.',
+  )
+  parser.add_argument(
+      '--python-lib-path',
+      type=str,
+      default=None,
+      help='Path to the Python library directory.',
+  )
+  parser.add_argument(
+      '--cuda',
+      dest='cuda',
+      action='store_true',
+      default=None,
+      help='Enable CUDA support.',
+  )
+  parser.add_argument(
+      '--no-cuda',
+      dest='cuda',
+      action='store_false',
+      help='Disable CUDA support.',
+  )
+  parser.add_argument(
+      '--rocm',
+      dest='rocm',
+      action='store_true',
+      default=None,
+      help='Enable ROCm support.',
+  )
+  parser.add_argument(
+      '--no-rocm',
+      dest='rocm',
+      action='store_false',
+      help='Disable ROCm support.',
+  )
+  parser.add_argument(
+      '--clang',
+      dest='clang',
+      action='store_true',
+      default=None,
+      help='Use Clang compiler.',
+  )
+  parser.add_argument(
+      '--no-clang',
+      dest='clang',
+      action='store_false',
+      help='Do not use Clang compiler.',
+  )
+  parser.add_argument(
+      '--xla',
+      dest='xla',
+      action='store_true',
+      default=None,
+      help='Enable XLA support.',
+  )
+  parser.add_argument(
+      '--no-xla',
+      dest='xla',
+      action='store_false',
+      help='Disable XLA support.',
+  )
+  return parser
+
+
 def main():
   global _TF_WORKSPACE_ROOT
   global _TF_BAZELRC
   global _TF_CURRENT_BAZEL_VERSION
 
-  parser = argparse.ArgumentParser()
-  parser.add_argument(
-      '--workspace',
-      type=str,
-      default=os.path.abspath(os.path.dirname(__file__)),
-      help='The absolute path to your active Bazel workspace.')
+  parser = setup_argument_parser()
   args = parser.parse_args()
 
   _TF_WORKSPACE_ROOT = args.workspace
-  _TF_BAZELRC = os.path.join(_TF_WORKSPACE_ROOT, _TF_BAZELRC_FILENAME)
+  if args.output_bazelrc:
+    _TF_BAZELRC = args.output_bazelrc
+  else:
+    _TF_BAZELRC = os.path.join(_TF_WORKSPACE_ROOT, _TF_BAZELRC_FILENAME)
+  _TF_BAZELRC_CONFIG.set_filepath(_TF_BAZELRC)
+
+  if args.non_interactive or os.environ.get('TF_NON_INTERACTIVE') == '1':
+    _PROMPT_MANAGER.non_interactive = True
 
   # Make a copy of os.environ to be clear when functions and getting and setting
   # environment variables.
   environ_cp = dict(os.environ)
+
+  # Apply CLI overrides onto environ_cp
+  apply_cli_overrides(args, environ_cp)
 
   try:
     current_bazel_version = retrieve_bazel_version()
