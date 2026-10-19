@@ -27,11 +27,38 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "llvm/CodeGen/MachinePassRegistry.h"
+#include "llvm/CodeGen/RegAllocRegistry.h"
 #include "llvm/Support/CommandLine.h"
 #include "xla/tsl/platform/logging.h"
 
 namespace xla {
 namespace llvm_ir {
+
+namespace {
+
+// LLVM caches the value of the `-regalloc` option in RegisterRegAlloc's
+// registry the first time any codegen pipeline is built in the process (see
+// TargetPassConfig::getOptimizeRegAlloc), and never refreshes it when the
+// command line is re-parsed. Other parts of TargetPassConfig read the live
+// option, so a client that passes a different `-regalloc` than the first one
+// sees inconsistent state (e.g. "Must use fast (default) register allocator
+// for unoptimized regalloc."). Re-sync the cached default with the option that
+// was just parsed.
+void SyncRegisterAllocatorDefault() {
+  using RegAllocOption =
+      llvm::cl::opt<llvm::RegisterRegAlloc::FunctionPassCtor, false,
+                    llvm::RegisterPassParser<llvm::RegisterRegAlloc>>;
+  auto& options = llvm::cl::getRegisteredOptions();
+  auto it = options.find("regalloc");
+  if (it == options.end()) {
+    return;  // TargetPassConfig isn't linked in; nothing to sync.
+  }
+  llvm::RegisterRegAlloc::setDefault(
+      static_cast<RegAllocOption*>(it->second)->getValue());
+}
+
+}  // namespace
 
 LLVMCommandLineOptionsLock::LLVMCommandLineOptionsLock(
     const std::vector<std::string>& client_options)
@@ -70,6 +97,7 @@ LLVMCommandLineOptionsLock::LLVMCommandLineOptionsLock(
 
     llvm::cl::ResetAllOptionOccurrences();
     llvm::cl::ParseCommandLineOptions(fake_argv.size(), fake_argv.data());
+    SyncRegisterAllocatorDefault();
 
     active_client_signature_ = client_signature_;
     GetActiveClientOptions() = client_options;
