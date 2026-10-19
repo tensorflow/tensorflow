@@ -212,6 +212,78 @@ absl::StatusOr<EmittedResults> EmitAllGather(
   return results;
 }
 
+absl::StatusOr<TensorValue> EmitAllToAll(
+    EmitterContext& emitter_ctx, const HloAllToAllInstruction* all_to_all,
+    const ge::TiledHloInstruction& tiled_all_to_all, ValueRange operands) {
+  if (all_to_all->device_list()->replica_groups().empty()) {
+    return Internal(
+        "Triton emitting AllToAll without replica groups is not supported.");
+  }
+  if (!all_to_all->split_dimension().has_value()) {
+    return Internal(
+        "Triton emitting AllToAll without split_dimension is not supported.");
+  }
+
+  llvm::SmallVector<int64_t> flattened_replica_group_ids;
+  for (const auto& replica_group : all_to_all->replica_groups()) {
+    for (const auto& replica_id : replica_group.replica_ids()) {
+      flattened_replica_group_ids.push_back(replica_id);
+    }
+  }
+
+  std::optional<int64_t> channel_handle = all_to_all->channel_id();
+  int64_t split_dim = *all_to_all->split_dimension();
+  int64_t split_count = all_to_all->replica_groups()[0].replica_ids_size();
+
+  ImplicitLocOpBuilder& b = emitter_ctx.b();
+  ABSL_ASSIGN_OR_RETURN(
+      auto output_element_type,
+      xtile::PrimitiveTypeToMlirType(b, all_to_all->shape().element_type()));
+  ABSL_ASSIGN_OR_RETURN(SmallVector<int64_t> tile_sizes,
+                   tiled_all_to_all.tile().GetStaticTileSizes());
+  auto output_type =
+      mlir::RankedTensorType::get(tile_sizes, output_element_type);
+
+  auto replica_groups_type = mlir::RankedTensorType::get(
+      {static_cast<int64_t>(all_to_all->replica_groups().size()), split_count},
+      b.getI64Type());
+  auto replica_groups_attr = mlir::DenseIntElementsAttr::get(
+      replica_groups_type, flattened_replica_group_ids);
+  auto channel_handle_attr =
+      channel_handle ? mlir::stablehlo::ChannelHandleAttr::get(b.getContext(),
+                                                               *channel_handle,
+                                                               /*type=*/0)
+                     : nullptr;
+
+  // stablehlo.all_to_all's type inference requires the split dimension of the
+  // operand to be divisible by split_count. When the per-rank tile size on the
+  // split dimension is smaller than split_count, wrap the operand and result in
+  // unrealized_conversion_cast to satisfy verification until collective
+  // lowering rewrites the op.
+  if (tile_sizes[split_dim] % split_count != 0) {
+    SmallVector<int64_t> padded_tile_sizes = tile_sizes;
+    padded_tile_sizes[split_dim] =
+        RoundUpTo(tile_sizes[split_dim], split_count);
+    auto padded_type =
+        mlir::RankedTensorType::get(padded_tile_sizes, output_element_type);
+    Value cast_operand =
+        mlir::UnrealizedConversionCastOp::create(b, padded_type, operands[0])
+            .getResult(0);
+    auto all_to_all_op = mlir::stablehlo::AllToAllOp::create(
+        b, mlir::TypeRange{padded_type}, ValueRange{cast_operand}, split_dim,
+        split_dim, split_count, replica_groups_attr, channel_handle_attr);
+    Value cast_result = mlir::UnrealizedConversionCastOp::create(
+                            b, output_type, all_to_all_op.getResult(0))
+                            .getResult(0);
+    return mlir::cast<TensorValue>(cast_result);
+  }
+
+  auto all_to_all_op = mlir::stablehlo::AllToAllOp::create(
+      b, mlir::TypeRange{output_type}, operands, split_dim, split_dim,
+      split_count, replica_groups_attr, channel_handle_attr);
+  return mlir::cast<TensorValue>(all_to_all_op.getResult(0));
+}
+
 absl::StatusOr<TensorValue> EmitAllReduce(
     EmitterContext& emitter_ctx, const HloAllReduceInstruction* all_reduce,
     const ge::TiledHloInstruction& tiled_all_reduce, ValueRange operands) {
@@ -2419,6 +2491,10 @@ EmitTiledHloInstructionImpl(EmitterContext& emitter_ctx,
       return EmitAllReduce(emitter_ctx,
                            xla::Cast<HloAllReduceInstruction>(root_instruction),
                            tiled_hlo, operands);
+    }
+    case HloOpcode::kAllToAll: {
+      return EmitAllToAll(emitter_ctx, xla::Cast<HloAllToAllInstruction>(hlo),
+                          tiled_hlo, operands);
     }
     case HloOpcode::kBitcast: {
       return EmitBitcast(emitter_ctx, tiled_hlo,
