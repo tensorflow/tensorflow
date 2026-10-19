@@ -65,6 +65,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/lowering_util.h"
 #include "xla/backends/gpu/runtime/all_gather.h"
 #include "xla/backends/gpu/runtime/all_reduce.h"
+#include "xla/backends/gpu/runtime/all_to_all.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/reduce_scatter.h"
 #include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
@@ -1458,6 +1459,40 @@ absl::StatusOr<BlockLevelFusionConfig> GetBlockLevelConfigForReduceScatter(
   return CreateBlockLevelFusionConfig(num_warps, tile_sizes);
 }
 
+absl::StatusOr<BlockLevelFusionConfig> GetBlockLevelConfigForAllToAll(
+    const GpuTopology& gpu_topology, const HloAllToAllInstruction* instr,
+    const DeviceAssignment* device_assignment) {
+  static constexpr int64_t kAllToAllMaxBlocksPerGrid = 64;
+
+  ABSL_ASSIGN_OR_RETURN(const AllToAllInfo all_to_all_info,
+                   BuildAllToAllInfo(gpu_topology, instr, device_assignment));
+
+  const int64_t num_devices = all_to_all_info.num_devices;
+  const int64_t elements_per_warp =
+      WarpSize(gpu_topology.gpu_target_config().device_description) *
+      se::gpu::kNumElementsPerThread;
+  const int64_t elements_per_rank =
+      CeilOfRatio(all_to_all_info.num_elements, num_devices);
+  const int64_t warps_per_rank =
+      CeilOfRatio(elements_per_rank, elements_per_warp);
+  const int64_t num_warps = std::min<int64_t>(
+      kMaxWarpsPerBlock, llvm::bit_ceil(static_cast<uint64_t>(warps_per_rank)));
+  const int64_t blocks_per_rank = CeilOfRatio(warps_per_rank, num_warps);
+  const int64_t num_blocks =
+      std::min(kAllToAllMaxBlocksPerGrid, num_devices * blocks_per_rank);
+
+  const Shape& output_shape = instr->shape();
+  const int64_t split_dim = *instr->split_dimension();
+  const int64_t per_rank_size =
+      output_shape.dimensions(split_dim) / num_devices;
+  Shape per_rank_shape = output_shape;
+  per_rank_shape.set_dimensions(split_dim, per_rank_size);
+  llvm::SmallVector<int64_t> tile_sizes = GreedyPowerOfTwoTiles(
+      per_rank_shape, std::max<int32_t>(1, num_blocks / num_devices));
+
+  return CreateBlockLevelFusionConfig(num_warps, tile_sizes);
+}
+
 // Per-operand state of an all-gather rewrite.
 struct AllGatherOperandContext {
   // Tile of the local input that feeds the all-gather. For booleans this is
@@ -1727,8 +1762,6 @@ mlir::Value EmitPullTileFromPeer(mlir::PatternRewriter& rewriter,
   return peer_cast->getResult(0);
 }
 
-constexpr int64_t kMaxOneShotAllToAllSizeBytes = 32LL * 1024 * 1024;  // 32 MB
-
 struct AllToAllRewriteContext {
   mlir::stablehlo::AllToAllOp op;
   xtile::ExtractTileOp input_extract;
@@ -1742,7 +1775,7 @@ struct AllToAllRewriteContext {
   int64_t split_dim = 0;
   int64_t shard_size = 0;
   int64_t signal_stride = 0;
-  bool is_one_shot = true;
+  AllToAllStrategy strategy = AllToAllStrategy::kOneShot;
   PrimitiveType element_type = PrimitiveType::PRIMITIVE_TYPE_INVALID;
   llvm::ArrayRef<int64_t> input_shape;
   llvm::ArrayRef<int64_t> tile_sizes;
@@ -1825,11 +1858,10 @@ absl::StatusOr<AllToAllRewriteContext> BuildAllToAllContext(
     return absl::InvalidArgumentError(
         "AllToAll split dimension must be divisible by world size.");
   }
-  // The threshold is per total transported data, therefore it is divided by the
-  // number of participating devices.
-  ctx.is_one_shot = Product(ctx.input_shape) *
-                        ShapeUtil::ByteSizeOfPrimitiveType(ctx.element_type) <=
-                    kMaxOneShotAllToAllSizeBytes / ctx.world_size;
+  const int64_t input_byte_size =
+      Product(ctx.input_shape) *
+      ShapeUtil::ByteSizeOfPrimitiveType(ctx.element_type);
+  ctx.strategy = GetAllToAllStrategy(input_byte_size, ctx.world_size);
   ctx.shard_size = ctx.input_shape[ctx.split_dim] / ctx.world_size;
   const int64_t tile_size = ctx.tile_sizes[ctx.split_dim];
   if (ctx.shard_size % tile_size != 0) {
@@ -1994,6 +2026,12 @@ absl::StatusOr<BlockLevelFusionConfig> GetCollectiveBlockLevelFusionConfig(
                                            device_assignment);
   }
 
+  if (const HloAllToAllInstruction* all_to_all =
+          DynCast<HloAllToAllInstruction>(instr)) {
+    return GetBlockLevelConfigForAllToAll(gpu_topology, all_to_all,
+                                          device_assignment);
+  }
+
   if (const HloReduceScatterInstruction* reduce_scatter =
           DynCast<HloReduceScatterInstruction>(instr)) {
     return GetBlockLevelConfigForReduceScatter(gpu_topology, reduce_scatter,
@@ -2139,6 +2177,9 @@ absl::StatusOr<CollectiveKernelSpec> CreateCollectiveKernelSpec(
     case HloOpcode::kAllGather:
       return CreateAllGatherKernelSpec(collective, launch_dimensions,
                                        scratch_memory_type);
+    case HloOpcode::kAllToAll:
+      return CreateAllToAllKernelSpec(collective, launch_dimensions,
+                                      scratch_memory_type);
     case HloOpcode::kReduceScatter:
       return CreateReduceScatterKernelSpec(collective, launch_dimensions,
                                            scratch_memory_type);
@@ -2228,7 +2269,7 @@ mlir::LogicalResult RewriteAllToAll(mlir::stablehlo::AllToAllOp op,
       builder, ctx.signal_buffers_arg, ctx.rank_arg, block_id, ctx.world_size);
 
   mlir::Value buffer_offset;
-  if (ctx.is_one_shot) {
+  if (ctx.strategy == AllToAllStrategy::kOneShot) {
     buffer_offset = EmitDoubleBufferOffset(
         builder, signal_value, Product(ctx.input_shape), ctx.element_type);
     // Push this program's tile of the local input tensor directly into

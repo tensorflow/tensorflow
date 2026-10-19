@@ -759,6 +759,7 @@ cc_library(
         "//xla/backends/gpu/codegen/triton/ir:triton_xla",
         "//xla/backends/gpu/runtime:all_gather",
         "//xla/backends/gpu/runtime:all_reduce",
+        "//xla/backends/gpu/runtime:all_to_all",
         "//xla/backends/gpu/runtime:collective_params",
         "//xla/backends/gpu/runtime:reduce_scatter",
         "//xla/backends/gpu/transforms/collectives:collective_ops_utils",

@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/all_gather.h"
 #include "xla/backends/gpu/runtime/all_reduce.h"
+#include "xla/backends/gpu/runtime/all_to_all.h"
 #include "xla/backends/gpu/runtime/reduce_scatter.h"
 #include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -131,6 +132,27 @@ TEST_F(CollectiveInfoUtilsTest, HandlesAllGather) {
   auto info_or = GetCollectiveInfo(instr, gpu_topology);
   ASSERT_OK(info_or);
   EXPECT_TRUE(std::holds_alternative<AllGatherInfo>(*info_or));
+}
+
+TEST_F(CollectiveInfoUtilsTest, HandlesAllToAll) {
+  constexpr absl::string_view kModuleStr = R"(
+  HloModule test
+  ENTRY test_computation {
+    param_0 = s32[128] parameter(0)
+    ROOT all-to-all = s32[128] all-to-all(param_0),
+        dimensions={0}, replica_groups={{0,1}}
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnVerifiedModule(kModuleStr, /*replica_count=*/2));
+  const HloInstruction* instr =
+      FindInstruction(module.get(), HloOpcode::kAllToAll);
+  GpuTopology gpu_topology = CreateGpuTopology();
+
+  auto info_or = GetCollectiveInfo(instr, gpu_topology);
+  ASSERT_OK(info_or);
+  EXPECT_TRUE(std::holds_alternative<AllToAllInfo>(*info_or));
 }
 
 TEST_F(CollectiveInfoUtilsTest, HandlesReduceScatter) {

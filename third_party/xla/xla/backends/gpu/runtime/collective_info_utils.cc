@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "xla/backends/gpu/runtime/all_gather.h"
 #include "xla/backends/gpu/runtime/all_reduce.h"
+#include "xla/backends/gpu/runtime/all_to_all.h"
 #include "xla/backends/gpu/runtime/reduce_scatter.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -39,6 +40,10 @@ absl::StatusOr<CollectiveKernelInfo> GetCollectiveInfo(
 
   if (const auto* all_gather = DynCast<HloAllGatherInstruction>(instr)) {
     return BuildAllGatherInfo(gpu_topology, all_gather, device_assignment);
+  }
+
+  if (const auto* all_to_all = DynCast<HloAllToAllInstruction>(instr)) {
+    return BuildAllToAllInfo(gpu_topology, all_to_all, device_assignment);
   }
 
   if (const auto* reduce_scatter =

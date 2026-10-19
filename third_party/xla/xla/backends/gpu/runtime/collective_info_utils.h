@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/backends/gpu/runtime/all_gather.h"
 #include "xla/backends/gpu/runtime/all_reduce.h"
+#include "xla/backends/gpu/runtime/all_to_all.h"
 #include "xla/backends/gpu/runtime/reduce_scatter.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/device_assignment.h"
@@ -29,7 +30,7 @@ limitations under the License.
 namespace xla::gpu {
 
 using CollectiveKernelInfo =
-    std::variant<AllReduceInfo, AllGatherInfo, ReduceScatterInfo>;
+    std::variant<AllReduceInfo, AllGatherInfo, AllToAllInfo, ReduceScatterInfo>;
 
 // Builds helper struct for the given collective instruction.
 absl::StatusOr<CollectiveKernelInfo> GetCollectiveInfo(
