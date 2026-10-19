@@ -1204,14 +1204,7 @@ def moveaxis(a, source, destination):  # pylint: disable=missing-docstring
       and builtins.all(isinstance(x, (int, np.integer)) for x in source)
       and builtins.all(isinstance(x, (int, np.integer)) for x in destination)
   ):
-    # NumPy rejects a repeated axis in `source` or `destination` with a
-    # clear ValueError. Without this check, a duplicate silently leaves
-    # `perm` the wrong length (since building it skips each `source` axis
-    # only once, while the insert loop below runs once per (dest, src)
-    # pair, including the duplicate), which either fails deep inside the
-    # Transpose op with a confusing "expects a vector of size N" error or,
-    # for other duplicate-value combinations, produces a malformed
-    # permutation without raising any error at all.
+    # NumPy rejects a repeated axis in `source` or `destination`.
     if len(set(source)) != len(source):
       raise ValueError('repeated axis in `source` argument')
     if len(set(destination)) != len(destination):
