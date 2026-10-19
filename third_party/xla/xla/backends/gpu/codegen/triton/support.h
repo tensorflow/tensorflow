@@ -38,6 +38,11 @@ using CodegenDecision = Decision;
 absl::Status EnsureTritonSupportsComputeCapability(
     const se::GpuComputeCapability& gpu_compute_capability);
 
+// Returns `CodegenDecision`'s equivalent of `true` if `type` is supported by
+// Triton for `gpu_version`.
+CodegenDecision IsTritonSupportedDataType(
+    PrimitiveType type, const se::GpuComputeCapability& gpu_version);
+
 // Return `CodegenDecision`'s equivalent of `true` if the parameter instruction
 // is supported by the Triton emitters for the given compute capability. Note
 // that this function makes no assumption about what happens if

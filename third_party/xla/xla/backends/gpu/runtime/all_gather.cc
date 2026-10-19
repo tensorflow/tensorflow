@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "llvm/ADT/bit.h"
+#include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -43,6 +44,22 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
+
+std::vector<PrimitiveType> SupportedAllGatherTypes(
+    const se::GpuComputeCapability& gpu_cc) {
+  std::vector<PrimitiveType> types;
+  for (int i = PrimitiveType_MIN; i <= PrimitiveType_MAX; ++i) {
+    if (!PrimitiveType_IsValid(i)) {
+      continue;
+    }
+    const PrimitiveType type = static_cast<PrimitiveType>(i);
+    if (!primitive_util::IsSubByteNonPredType(type) &&
+        IsTritonSupportedDataType(type, gpu_cc)) {
+      types.push_back(type);
+    }
+  }
+  return types;
+}
 
 // A broader check for all-gather kernel support that verifies device, replica
 // group, gather dimension, and element-type constraints.
@@ -94,13 +111,15 @@ absl::Status IsAllGatherKernelSupported(
         "dimension to be a power of 2. Got %d.",
         per_rank_gather_dim_size));
   }
-  // Only types in kSupportedAllGatherTypes are allowed. Complex types, tokens,
-  // tuples, and exotic types (e.g. 4-bit, 8-bit floats) are not supported.
-  if (!absl::c_linear_search(kSupportedAllGatherTypes, element_type)) {
+  // Only types in SupportedAllGatherTypes() are allowed. Complex types, tokens,
+  // tuples, and sub-byte types are not supported.
+  if (!absl::c_linear_search(
+          SupportedAllGatherTypes(device_info.gpu_compute_capability()),
+          element_type)) {
     return absl::UnimplementedError(absl::StrFormat(
         "Element type %s is not supported for the all-gather kernel. "
         "Supported types are predicates, 8/16/32/64-bit integers, and "
-        "standard floating-point types; use NCCL/RCCL for other types.",
+        "standard/8-bit floating-point types; use NCCL/RCCL for other types.",
         primitive_util::LowercasePrimitiveTypeName(element_type)));
   }
 
