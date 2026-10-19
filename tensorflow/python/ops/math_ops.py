@@ -651,6 +651,9 @@ def scalar_mul(scalar, x, name=None):
   Raises:
     ValueError: if scalar is not a 0-D `scalar`.
   """
+  if not hasattr(x, "dtype"):
+    # Python lists/tuples/scalars: convert like every other math op does.
+    x = ops.convert_to_tensor(x, name="x")
   base_dtype = dtypes.as_dtype(x.dtype).base_dtype
   scalar = ops.convert_to_tensor(
       scalar, dtype=base_dtype, name="scalar")
