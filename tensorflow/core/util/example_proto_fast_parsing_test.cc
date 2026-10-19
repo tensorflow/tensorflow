@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/util/example_proto_fast_parsing_test.pb.h"
@@ -483,8 +484,232 @@ TEST(FastParse, OOB_Write_Vulnerability_NonPacked_FloatList) {
 
   // We expect this to fail with INVALID_ARGUMENT due to size mismatch,
   // but WITHOUT crashing.
-  EXPECT_FALSE(parse_status.ok());
-  EXPECT_TRUE(absl::IsInvalidArgument(parse_status));
+  EXPECT_THAT(parse_status,
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInvalidArgument,
+                  ::testing::HasSubstr(
+                      "Key: f, Index: 0.  Number of float values != expected.  "
+                      "Values size: 10000 but output shape: [1]")));
+}
+
+namespace {
+void AppendVarint(uint32_t v, std::string* out) {
+  while (v >= 0x80) {
+    out->push_back((v & 0x7f) | 0x80);
+    v >>= 7;
+  }
+  out->push_back(v);
+}
+
+// Returns a serialized Example with a single feature "f" whose Feature has the
+// given oneof tag and holds `list`, declared as `declared_list_length` bytes.
+std::string ExampleWithFeatureList(char feature_oneof_tag,
+                                   uint32_t declared_list_length,
+                                   const std::string& list) {
+  std::string feature;
+  feature.push_back(feature_oneof_tag);
+  AppendVarint(declared_list_length, &feature);
+  feature.append(list);
+
+  std::string map_entry;
+  map_entry.push_back(10);  // kDelimitedTag(1): map key
+  map_entry.push_back(1);
+  map_entry.push_back('f');
+  map_entry.push_back(18);  // kDelimitedTag(2): map value
+  AppendVarint(feature.size(), &map_entry);
+  map_entry.append(feature);
+
+  std::string features;
+  features.push_back(10);  // kDelimitedTag(1): map entry
+  AppendVarint(map_entry.size(), &features);
+  features.append(map_entry);
+
+  std::string example;
+  example.push_back(10);  // kDelimitedTag(1): Features
+  AppendVarint(features.size(), &example);
+  example.append(features);
+  return example;
+}
+
+// Returns a serialized Example with a single feature "f" whose Feature has the
+// given oneof tag and a list holding one length-delimited field 1 that declares
+// `declared_length` bytes but is followed by `payload` only.
+std::string ExampleWithDeclaredListLength(char feature_oneof_tag,
+                                          uint32_t declared_length,
+                                          const std::string& payload) {
+  std::string list;
+  list.push_back(10);  // kDelimitedTag(1): BytesList.value / packed FloatList
+  AppendVarint(declared_length, &list);
+  list.append(payload);
+  return ExampleWithFeatureList(feature_oneof_tag, list.size(), list);
+}
+
+constexpr char kBytesListTag = 10;  // kDelimitedTag(1)
+constexpr char kFloatListTag = 18;  // kDelimitedTag(2)
+constexpr char kInt64ListTag = 26;  // kDelimitedTag(3)
+
+absl::Status ParseSparse(DataType dtype, const std::string& serialized,
+                         Result* result) {
+  FastParseExampleConfig config;
+  AddSparseFeature("f", dtype, &config);
+  return FastParseExample(config, {tstring(serialized)}, {}, nullptr, result);
+}
+
+// The error FastParseExample returns when feature "f" of the first example
+// can't be parsed.
+auto IsBatchParseError() {
+  return absl_testing::StatusIs(
+      absl::StatusCode::kInvalidArgument,
+      ::testing::HasSubstr(
+          "Key: f, Index: 0.  Can't parse serialized Example."));
+}
+
+// The error FastParseSingleExample returns when feature "f" can't be parsed.
+auto IsSingleParseError(absl::string_view description) {
+  return absl_testing::StatusIs(
+      absl::StatusCode::kInvalidArgument,
+      ::testing::HasSubstr(absl::StrCat(
+          "Key: f.  Can't parse serialized Example: ", description)));
+}
+}  // namespace
+
+// ReadRaw() takes an int, so a declared length of 2^31 or more turned into a
+// negative size and an out-of-bounds memcpy. A length past the end of the input
+// must be rejected before any allocation or copy.
+TEST(FastParse, BytesListLengthPastEndOfInput) {
+  const std::string payload = "A";
+  Result result;
+  absl::Status status = ParseSparse(
+      DT_STRING, ExampleWithDeclaredListLength(kBytesListTag, 1, payload),
+      &result);
+  ASSERT_TRUE(status.ok()) << status;
+  EXPECT_EQ(result.sparse_values[0].flat<tstring>()(0), "A");
+
+  for (uint32_t length : {2u, 0x7fffffffu, 0x80000000u, 0xffffffffu}) {
+    Result result;
+    EXPECT_THAT(ParseSparse(DT_STRING,
+                            ExampleWithDeclaredListLength(kBytesListTag, length,
+                                                          payload),
+                            &result),
+                IsBatchParseError())
+        << length;
+  }
+}
+
+TEST(FastParse, PackedFloatListLengthPastEndOfInput) {
+  float value = 1.5f;
+  const std::string payload(reinterpret_cast<const char*>(&value),
+                            sizeof(value));
+  Result result;
+  absl::Status status = ParseSparse(
+      DT_FLOAT, ExampleWithDeclaredListLength(kFloatListTag, 4, payload),
+      &result);
+  ASSERT_TRUE(status.ok()) << status;
+  EXPECT_EQ(result.sparse_values[0].flat<float>()(0), 1.5f);
+
+  for (uint32_t length : {8u, 0x7fffffffu, 0x80000000u, 0xffffffffu}) {
+    Result result;
+    EXPECT_THAT(ParseSparse(DT_FLOAT,
+                            ExampleWithDeclaredListLength(kFloatListTag, length,
+                                                          payload),
+                            &result),
+                IsBatchParseError())
+        << length;
+  }
+}
+
+TEST(FastParse, SingleExamplePackedFloatListLengthPastEndOfInput) {
+  FastParseSingleExampleConfig config;
+  AddSparseFeature("f", DT_FLOAT, &config);
+  float value = 1.5f;
+  const std::string payload(reinterpret_cast<const char*>(&value),
+                            sizeof(value));
+  Result result;
+  absl::Status status = FastParseSingleExample(
+      config, ExampleWithDeclaredListLength(kFloatListTag, 4, payload),
+      &result);
+  ASSERT_TRUE(status.ok()) << status;
+  EXPECT_EQ(result.sparse_values[0].flat<float>()(0), 1.5f);
+
+  for (uint32_t length : {8u, 0x7fffffffu, 0x80000000u, 0xffffffffu}) {
+    Result result;
+    EXPECT_THAT(FastParseSingleExample(config,
+                                       ExampleWithDeclaredListLength(
+                                           kFloatListTag, length, payload),
+                                       &result),
+                IsSingleParseError("Parsing float_list failed."))
+        << length;
+  }
+}
+
+// The length of the list itself must not run past the Feature either: a list
+// that declares more bytes than the Feature holds is malformed, as the proto
+// parser reports, for every list type and both of its encodings.
+TEST(FastParse, ListLengthPastEndOfFeature) {
+  float value = 1.5f;
+  const std::string float_bytes(reinterpret_cast<const char*>(&value),
+                                sizeof(value));
+  struct Case {
+    const char* name;
+    DataType dtype;
+    char feature_oneof_tag;
+    std::string list;
+    // FastParseSingleExample's description of the failure.
+    const char* single_error;
+  };
+  const std::vector<Case> cases = {
+      // BytesList {value: "A"}
+      {"bytes", DT_STRING, kBytesListTag,
+       std::string("\x0a\x01"
+                   "A",
+                   3),
+       "Could not get num elements in bytes_list."},
+      // FloatList {value: [1.5]}, packed and non-packed
+      {"packed float", DT_FLOAT, kFloatListTag,
+       std::string("\x0a\x04", 2) + float_bytes, "Parsing float_list failed."},
+      {"float", DT_FLOAT, kFloatListTag, std::string("\x0d", 1) + float_bytes,
+       "Parsing float_list failed."},
+      // Int64List {value: [5]}, packed and non-packed
+      {"packed int64", DT_INT64, kInt64ListTag, std::string("\x0a\x01\x05", 3),
+       "Parsing int64_list failed."},
+      {"int64", DT_INT64, kInt64ListTag, std::string("\x08\x05", 2),
+       "Parsing int64_list failed."},
+  };
+  for (const Case& c : cases) {
+    SCOPED_TRACE(c.name);
+    FastParseExampleConfig config;
+    AddSparseFeature("f", c.dtype, &config);
+    FastParseSingleExampleConfig single_config;
+    AddSparseFeature("f", c.dtype, &single_config);
+
+    const std::string valid =
+        ExampleWithFeatureList(c.feature_oneof_tag, c.list.size(), c.list);
+    Result result;
+    absl::Status status =
+        FastParseExample(config, {tstring(valid)}, {}, nullptr, &result);
+    ASSERT_TRUE(status.ok()) << status;
+    EXPECT_EQ(result.sparse_values[0].NumElements(), 1);
+    Result single_result;
+    status = FastParseSingleExample(single_config, valid, &single_result);
+    ASSERT_TRUE(status.ok()) << status;
+    EXPECT_EQ(single_result.sparse_values[0].NumElements(), 1);
+
+    for (uint32_t length : {static_cast<uint32_t>(c.list.size() + 1),
+                            0x7fffffffu, 0x80000000u, 0xffffffffu}) {
+      const std::string serialized =
+          ExampleWithFeatureList(c.feature_oneof_tag, length, c.list);
+      Result result;
+      EXPECT_THAT(
+          FastParseExample(config, {tstring(serialized)}, {}, nullptr, &result),
+          IsBatchParseError())
+          << length;
+      Result single_result;
+      EXPECT_THAT(
+          FastParseSingleExample(single_config, serialized, &single_result),
+          IsSingleParseError(c.single_error))
+          << length;
+    }
+  }
 }
 
 TEST(FastParse, DenseFloat_TooManyElements_ReportsError) {
