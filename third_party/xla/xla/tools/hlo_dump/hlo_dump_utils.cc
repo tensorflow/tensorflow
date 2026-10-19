@@ -48,8 +48,11 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "re2/re2.h"
+#include "riegeli/bytes/read_all.h"
+#include "riegeli/bytes/string_reader.h"
 #include "riegeli/bytes/string_writer.h"
 #include "riegeli/zlib/zlib_writer.h"
+#include "riegeli/zstd/zstd_reader.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -1509,12 +1512,22 @@ std::string ConvertHloToHtml(
   for (const FileToc* p = ::xla::tools::hlo_dump::hlo_dump_assets_create();
        p->name != nullptr; ++p) {
     absl::string_view name(p->name);
-    if (absl::EndsWith(name, "hlo_dump_ui_bin_sanitized.js")) {
-      hlo_dump_ui_js = std::string(p->data, p->size);
-    } else if (absl::EndsWith(name, "hlo_dump_template.html")) {
-      html_template = std::string(p->data, p->size);
-    } else if (absl::EndsWith(name, "hlo_dump_style.css")) {
-      hlo_dump_style_css = std::string(p->data, p->size);
+    std::string* target = nullptr;
+    if (absl::EndsWith(name, "hlo_dump_ui_bin_sanitized.js.zst")) {
+      target = &hlo_dump_ui_js;
+    } else if (absl::EndsWith(name, "hlo_dump_template.html.zst")) {
+      target = &html_template;
+    } else if (absl::EndsWith(name, "hlo_dump_style.css.zst")) {
+      target = &hlo_dump_style_css;
+    }
+    if (target != nullptr) {
+      absl::Status status = riegeli::ReadAll(
+          riegeli::ZstdReader(
+              riegeli::StringReader(absl::string_view(p->data, p->size))),
+          *target);
+      if (!status.ok()) {
+        LOG(ERROR) << "Failed to decompress " << name << ": " << status;
+      }
     }
   }
 
