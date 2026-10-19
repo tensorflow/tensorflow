@@ -18,9 +18,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "tensorflow/core/data/dataset_test_base.h"
 #include "tensorflow/core/data/serialization_utils.h"
-#include "tensorflow/core/platform/status_matchers.h"
 
 namespace tensorflow {
 namespace data {
@@ -112,11 +112,10 @@ class FixedLengthRecordDatasetOpTest : public DatasetOpsTestBase {
       absl::Status status = RestoreIterator(
           iterator_ctx_.get(), &reader, dataset_params.iterator_prefix(),
           *dataset_, &iterator);
-      EXPECT_THAT(
-          status,
-          ::tensorflow::testing::StatusIs(
-              absl::StatusCode::kInvalidArgument,
-              ::testing::HasSubstr("Invalid current_file_index")))
+      EXPECT_THAT(status,
+                  absl_testing::StatusIs(
+                      absl::StatusCode::kInvalidArgument,
+                      ::testing::HasSubstr("Invalid current_file_index")))
           << "current_file_index=" << file_index << " current_pos=" << pos;
     }
   }
