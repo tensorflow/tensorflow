@@ -30,6 +30,8 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -234,6 +236,66 @@ TEST(InterpreterClientTest, ConcurrentExecuteAndDelete) {
   EXPECT_FALSE(post_delete_result.ok());
   EXPECT_THAT(post_delete_result.status().message(),
               ::testing::HasSubstr("deleted"));
+}
+
+TEST(InterpreterClientTest, NonTupleDynamicConditionalOperand) {
+  // Regression test for https://github.com/openxla/xla/issues/47390: a
+  // conditional whose branch operand is a bare dynamic array used to fail
+  // compilation because the interpreter pipeline did not run
+  // ConditionalCanonicalizer before DynamicDimensionInference.
+  constexpr absl::string_view kHloText = R"(
+HloModule NonTupleConditionalDynamic
+
+add_s32 {
+  a = s32[] parameter(0)
+  b = s32[] parameter(1)
+  ROOT add = s32[] add(a, b)
+}
+
+true_branch {
+  tp = s32[<=4,2] parameter(0)
+  tc = s32[] constant(0)
+  ROOT tsum = s32[2] reduce(tp, tc), dimensions={0}, to_apply=add_s32
+}
+
+false_branch {
+  fp = s32[<=4,2] parameter(0)
+  fc = s32[] constant(1)
+  ROOT fsum = s32[2] reduce(fp, fc), dimensions={0}, to_apply=add_s32
+}
+
+ENTRY main {
+  pred_param = pred[] parameter(0)
+  minus_one = s32[] constant(-1)
+  full = s32[4,2] broadcast(minus_one), dimensions={}
+  four = s32[] constant(4)
+  dyn = s32[<=4,2] set-dimension-size(full, four), dimensions={0}
+  ROOT cond = s32[2] conditional(pred_param, dyn, dyn), true_computation=true_branch, false_computation=false_branch
+}
+)";
+  InterpreterClient client;
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnUnverifiedModule(kHloText));
+  XlaComputation computation(hlo_module->ToProto());
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
+                          client.CompileAndLoad(computation, CompileOptions()));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> argument,
+      client.BufferFromHostLiteral(LiteralUtil::CreateR0<bool>(false),
+                                   client.memory_spaces().front()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> results,
+      executable->Execute({{argument.get()}}, ExecuteOptions()));
+
+  ASSERT_EQ(results.size(), 1);
+  ASSERT_EQ(results.front().size(), 1);
+  Literal result_literal(ShapeUtil::MakeShape(S32, {2}));
+  TF_ASSERT_OK(results.front().front()->ToLiteralSync(&result_literal));
+  // The false branch sums the 4 rows of -1 with init 1: 4 * -1 + 1 = -3.
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      result_literal,
+      LiteralUtil::CreateR1(absl::Span<const int32_t>{-3, -3})));
 }
 
 }  // namespace
