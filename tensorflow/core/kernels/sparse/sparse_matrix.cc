@@ -90,7 +90,7 @@ absl::Status CSRSparseMatrix::ValidateComponentValues(
     const int64_t base = b * (num_rows + 1);
     const int32_t batch_nnz = batch_ptr[b + 1] - batch_ptr[b];
     if (row_ptr[base] != 0) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           absl::StrCat("CSRSparseMatrix::Validate: row_pointers for batch ", b,
                        " should start at 0, saw ", row_ptr[base]));
     }
