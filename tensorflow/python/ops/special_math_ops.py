@@ -1282,7 +1282,11 @@ def _einsum_v2(equation, *inputs, **kwargs):
         f'Valid arguments: name, optimize, greedy.')
 
   with ops.name_scope(name, 'einsum', [equation, inputs]) as name:
-    inputs = list(inputs)
+    # Accept Python lists/tuples as operands, as `tf.matmul` and friends do.
+    inputs = [
+        operand if hasattr(operand, 'shape') else ops.convert_to_tensor(operand)
+        for operand in inputs
+    ]
     input_shapes = []
     for operand in inputs:
       if isinstance(operand.shape, tensor_shape.TensorShape):
