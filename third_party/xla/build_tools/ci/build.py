@@ -478,8 +478,6 @@ Build(
         "-//xla/backends/gpu/...",
         "-//xla/codegen/emitters/tests/...",
         "-//xla/service/gpu/...",
-        # eigen is not windows compatible
-        "-//xla/codegen/intrinsic/cpp:eigen_unary_test",
     ),
     build_tag_filters=windows_x86_tag_filter,
     test_tag_filters=windows_x86_tag_filter,

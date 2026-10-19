@@ -89,9 +89,7 @@ bool AreEigenIntrinsicsAvailable(absl::string_view features) {
   return !GetCppGenIrString(options).empty();
 }
 
-bool AreCppGenIntrinsicsAvailable() {
-  return !GetCppGenIrString(intrinsics::IntrinsicOptions()).empty();
-}
+bool AreCppGenIntrinsicsAvailable() { return !::llvm_ir::kExpm132LlIr.empty(); }
 
 std::vector<CppGenIntrinsicLibrary> GetCppGenLibraries(
     const intrinsics::IntrinsicOptions& options) {

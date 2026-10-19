@@ -20,12 +20,39 @@ This rule is critical for generating LLVM IR bitcode that is embedded into the X
 It uses standard cc_library with clang flags to generate IR, then extracts it.
 """
 
-load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@rules_cc//cc/common:cc_info.bzl", "CcInfo")
 load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 visibility(DEFAULT_LOAD_VISIBILITY)
+
+def _to_clang_cl_flags(flags):
+    """Translates clang-style flags into the form clang-cl accepts.
+
+    clang-cl silently ignores (or rejects under -Werror) most GNU-style flags such
+    as -emit-llvm, so they must be forwarded to the clang driver with /clang:.
+
+    Args:
+      flags: A list of clang-style flags.
+
+    Returns:
+      The flags in a form accepted by clang-cl.
+    """
+    out = []
+    for flag in flags:
+        if flag == "-emit-llvm":
+            # With -emit-llvm clang-cl ignores /Fo and writes <src>.bc to the working
+            # directory, where Bazel cannot find it. -flto instead makes the declared
+            # .obj itself contain LLVM bitcode.
+            out.append("/clang:-flto")
+        elif flag.startswith("-D") or flag.startswith("/"):
+            out.append(flag)
+        elif flag.startswith("-std="):
+            # The Windows toolchain already passes /std:c++17.
+            continue
+        else:
+            out.append("/clang:" + flag)
+    return out
 
 def to_camel_case(s):
     """Converts a snake_case or kebab-case string to CamelCase."""
@@ -113,7 +140,7 @@ def cc_ir_header(name, src, deps = [], copts = [], **kwargs):
     out_o = name + ".o"
     out_header = name + ".h"
 
-    compile_flags = [
+    clang_flags = [
         "-emit-llvm",
         "-O3",
         "-g0",
@@ -131,7 +158,21 @@ def cc_ir_header(name, src, deps = [], copts = [], **kwargs):
         "-fno-profile-generate",
         "-fno-profile-arcs",
         "-fno-test-coverage",
-    ] + copts
+    ]
+    list_copts = copts if type(copts) == "list" else []
+    select_copts = copts if type(copts) != "list" else []
+
+    compile_flags = select({
+        # /GS- and /EHs- /EHc- (which override the toolchain's /EHsc) keep MSVC
+        # runtime hooks (stack-protector cookie, __CxxFrameHandler3 personality)
+        # out of the IR, matching the ELF output.
+        "//xla/tsl:windows": [
+            "/GS-",
+            "/EHs-",
+            "/EHc-",
+        ] + _to_clang_cl_flags(clang_flags + list_copts),
+        "//conditions:default": clang_flags + list_copts,
+    }) + select_copts
 
     # Disabled features to avoid instrumentations in the IR. ALL sanitizers must be disabled.
     # AND disable thin archives to ensure we have actual content to extract.
@@ -179,41 +220,18 @@ def cc_ir_header(name, src, deps = [], copts = [], **kwargs):
     variable_name = "k{}Ir".format(to_camel_case(base_name))
     embed_bitcode_tool = "//xla/codegen/intrinsic/cpp:embed_bitcode"
 
-    # Generate an empty bitcode file for Windows.
-    native.genrule(
-        name = name + "_empty_bc",
-        outs = [name + "_empty.bc"],
-        cmd = "touch $@",
-        tags = ["manual"],
-        **common_attrs
-    )
-
-    if "empty_bitcode" not in native.existing_rules():
-        selects.config_setting_group(
-            name = "empty_bitcode",
-            match_any = [
-                "//xla/tsl:windows",
-            ],
-        )
-
     native.genrule(
         name = name + "_gen_object_and_header",
-        srcs = select({
-            "empty_bitcode": [":" + name + "_empty_bc"],
-            "//conditions:default": [":" + name + "_extract_bc"],
-        }),
+        srcs = [":" + name + "_extract_bc"],
         outs = [out_o, out_header],
         tools = [embed_bitcode_tool],
-        cmd = "$(location {}) $< $(location {}) $(location {}) {} {}".format(
+        cmd = "$(location {}) $< $(location {}) $(location {}) {} {} --fail_if_no_bitcode".format(
             embed_bitcode_tool,
             out_o,
             out_header,
             variable_name,
             namespace,
-        ) + select({
-            "empty_bitcode": "",
-            "//conditions:default": " --fail_if_no_bitcode",
-        }),
+        ),
         tags = ["manual"],
         **common_attrs
     )
@@ -221,10 +239,7 @@ def cc_ir_header(name, src, deps = [], copts = [], **kwargs):
     # Exposed library
     cc_library(
         name = name,
-        srcs = select({
-            "empty_bitcode": [],
-            "//conditions:default": [":" + out_o],
-        }),
+        srcs = [":" + out_o],
         hdrs = [":" + out_header],
         deps = [
             "//xla/util:embedded_constant_buffers",
