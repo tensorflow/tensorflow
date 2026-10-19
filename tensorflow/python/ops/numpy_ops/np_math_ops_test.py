@@ -922,11 +922,13 @@ class MathTest(test.TestCase, parameterized.TestCase):
     run_test(1, 1000, num=5, endpoint=False)
     run_test(-1, -1000, num=5)
     run_test(-1, -1000, num=5, endpoint=False)
+    # Integer dtypes truncate, so only use sequences of exact powers of ten
+    # here. For anything else (e.g. 3 -> 3e5, where NumPy itself returns 29
+    # for 30) the result depends on the last ulp of the backend's pow.
     run_test(1, 1000, num=4, dtype=np.int32)
     run_test(1, 1e6, num=7, dtype=np.int64)
     run_test(-1, -1000, num=4, dtype=np.int32)
-    run_test(3, 3e5, num=6, dtype=np.int64)
-    run_test([1, 10], [1000, 1e5], num=3, dtype=np.int64)
+    run_test([1, 10], [1000, 1e5], num=3)
 
   def testGeomSpaceEndpointsAreExact(self):
     for start, stop in ((1.0, 1000.0), (0.001, 7.0), (-2.0, -5e8), (3.0, 1.0)):
