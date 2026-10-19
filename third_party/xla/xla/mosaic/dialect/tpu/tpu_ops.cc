@@ -32,6 +32,7 @@ limitations under the License.
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/MathExtras.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/CommonFolders.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -903,6 +904,62 @@ LogicalResult MemRefReshapeOp::verify() {
   if (expected_result_layout != result_ty.getLayout()) {
     return emitOpError("Expected result layout to be ")
            << expected_result_layout;
+  }
+  return success();
+}
+
+LogicalResult MemRefPadOp::verify() {
+  const MemRefType input_ty = getInput().getType();
+  const MemRefType result_ty = getType();
+  if (result_ty.getMemorySpace() != input_ty.getMemorySpace()) {
+    return emitOpError("Memory spaces do not match.");
+  }
+  if (result_ty.getElementType() != input_ty.getElementType()) {
+    return emitOpError("Element types don't match.");
+  }
+  if (result_ty.getRank() != input_ty.getRank()) {
+    return emitOpError("Input and result ranks must match.");
+  }
+  if (result_ty.getLayout() != input_ty.getLayout()) {
+    return emitOpError("Input and result layouts must match.");
+  }
+
+  auto tiled_layout = dyn_cast<TiledLayoutAttr>(input_ty.getLayout());
+  if (!tiled_layout && !input_ty.getLayout().isIdentity()) {
+    return emitOpError("Only tiled or identity layouts supported.");
+  }
+  ArrayRef<int64_t> first_tile;
+  if (tiled_layout && !tiled_layout.getTiles().empty()) {
+    first_tile = tiled_layout.getTiles().front().dimensions();
+  }
+  const int64_t first_tiled_dim = input_ty.getRank() - first_tile.size();
+  for (int64_t i = 0; i < input_ty.getRank(); ++i) {
+    const int64_t in_dim = input_ty.getDimSize(i);
+    const int64_t res_dim = result_ty.getDimSize(i);
+    if (in_dim == res_dim) {
+      continue;
+    }
+    if (ShapedType::isDynamic(in_dim) || ShapedType::isDynamic(res_dim)) {
+      return emitOpError("Cannot pad dynamic dimension ") << i << ".";
+    }
+    if (res_dim < in_dim) {
+      return emitOpError("Result dimension ")
+             << i << " (" << res_dim
+             << ") must be greater than or equal to input dimension (" << in_dim
+             << ").";
+    }
+    if (tiled_layout) {
+      const int64_t tile_size =
+          i < first_tiled_dim ? 1 : first_tile[i - first_tiled_dim];
+      const int64_t aligned_dim = llvm::alignTo(in_dim, tile_size);
+      if (res_dim > aligned_dim) {
+        return emitOpError("Result dimension ")
+               << i << " (" << res_dim
+               << ") must not exceed the tile-aligned bound (" << aligned_dim
+               << ") of input dimension " << in_dim << " for tile size "
+               << tile_size << ".";
+      }
+    }
   }
   return success();
 }

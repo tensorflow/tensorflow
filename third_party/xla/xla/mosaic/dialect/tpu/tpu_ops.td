@@ -1423,7 +1423,7 @@ def TPU_MemRefSqueezeOp : TPU_Op<"memref_squeeze", [Pure]> {
   }];
   let extraClassDeclaration = [{
     static ::mlir::FailureOr<::mlir::MemRefLayoutAttrInterface> inferResultLayout(
-        ::mlir::MemRefLayoutAttrInterface source_layout,
+        ::mlir::MemRefLayoutAttrInterface input_layout,
         ::mlir::ArrayRef<int64_t> squeezed,
         ::mlir::function_ref<::mlir::InFlightDiagnostic()> emit_error);
   }];
@@ -1441,6 +1441,33 @@ def TPU_MemRefReshapeOp : TPU_Op<"memref_reshape", [Pure]> {
     static ::mlir::FailureOr<::mlir::MemRefLayoutAttrInterface> inferResultLayout(
         ::mlir::MemRefType input_type, ::mlir::ArrayRef<int64_t> result_shape,
         ::mlir::function_ref<::mlir::InFlightDiagnostic()> emit_error);
+  }];
+  let hasVerifier = 1;
+}
+
+def TPU_MemRefPadOp : TPU_Op<"memref_pad", [Pure]> {
+  let summary = "Pads a memref's logical shape within its physical tile bounds.";
+  let description = [{
+    Pads the logical dimensions of a memref up to (at most) the tile-aligned
+    bounds of its underlying `TiledLayoutAttr` without modifying physical
+    memory or layout.
+
+    For each dimension `i` with input size `in_dim`, result size `res_dim`, and
+    first-tile size `tile_size` (`1` for untiled leading dimensions),
+    `in_dim <= res_dim <= alignTo(in_dim, tile_size)` must hold. Because the
+    padded region lies within the already-allocated physical tiles, this
+    operation is a zero-cost metadata view in lowering. Reading from the padded
+    region yields undefined values.
+
+    This operation is also allowed in user programs before tiling is inferred
+    (when the memref has an identity layout), in which case the compiler will
+    reject the program during tiling propagation if the op requests more
+    padding than is guaranteed by the inferred tiling.
+  }];
+  let arguments = (ins AnyMemRef:$input);
+  let results = (outs AnyMemRef:$result);
+  let assemblyFormat = [{
+    $input attr-dict `:` type($input) `->` type($result)
   }];
   let hasVerifier = 1;
 }
