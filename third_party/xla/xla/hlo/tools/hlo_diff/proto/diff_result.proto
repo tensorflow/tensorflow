@@ -29,6 +29,7 @@ message DiffResultProto {
   repeated string right_unmatched_instructions = 2;
   repeated MatchedInstructionPairProto unchanged_instructions = 3;
   repeated MatchedInstructionPairProto changed_instructions = 4;
+  repeated MatchedInstructionPairProto moved_instructions = 5;
 }
 
 message RenderDiffResultsProto {
@@ -63,6 +64,7 @@ message ComputationDiffPatternProto {
   uint64 changed_instruction_count = 3;
   uint64 left_unmatched_instruction_count = 4;
   uint64 right_unmatched_instruction_count = 5;
+  uint64 moved_instruction_count = 6;
 }
 
 // Represents the summary of the diff between two HLO modules.

@@ -59,8 +59,8 @@ void DiffResult::AddChangedInstruction(const HloInstruction* left,
 void DiffResult::AddMovedInstruction(const HloInstruction* left,
                                      const HloInstruction* right) {
   moved_instructions[left] = right;
-  left_diff_codes[left] = DiffType::kUnchanged;
-  right_diff_codes[right] = DiffType::kUnchanged;
+  left_diff_codes[left] = DiffType::kMoved;
+  right_diff_codes[right] = DiffType::kMoved;
 }
 
 void DiffResult::AddUnmatchedInstruction(const HloInstruction* left,
@@ -147,6 +147,8 @@ std::unique_ptr<const DiffResult> ConstructDiffResult(
 
 DiffResultProto DiffResult::ToProto() const {
   DiffResultProto proto;
+  // The order of the instructions in the proto is unspecified.
+  // NOLINTBEGIN(*-custom-deterministic-iteration-order)
   for (const auto& [left_instruction, right_instruction] :
        unchanged_instructions) {
     MatchedInstructionPairProto* pair = proto.add_unchanged_instructions();
@@ -159,6 +161,11 @@ DiffResultProto DiffResult::ToProto() const {
     pair->set_left(left_instruction->name());
     pair->set_right(right_instruction->name());
   }
+  for (const auto& [left_instruction, right_instruction] : moved_instructions) {
+    MatchedInstructionPairProto* pair = proto.add_moved_instructions();
+    pair->set_left(left_instruction->name());
+    pair->set_right(right_instruction->name());
+  }
   for (const HloInstruction* instruction : left_module_unmatched_instructions) {
     proto.add_left_unmatched_instructions(std::string(instruction->name()));
   }
@@ -166,6 +173,7 @@ DiffResultProto DiffResult::ToProto() const {
        right_module_unmatched_instructions) {
     proto.add_right_unmatched_instructions(std::string(instruction->name()));
   }
+  // NOLINTEND(*-custom-deterministic-iteration-order)
   return proto;
 }
 
@@ -199,6 +207,10 @@ DiffResult DiffResult::FromProto(const DiffResultProto& proto,
     diff_result.AddChangedInstruction(left_instructions_by_name[pair.left()],
                                       right_instructions_by_name[pair.right()]);
   }
+  for (const MatchedInstructionPairProto& pair : proto.moved_instructions()) {
+    diff_result.AddMovedInstruction(left_instructions_by_name[pair.left()],
+                                    right_instructions_by_name[pair.right()]);
+  }
   for (const std::string& name : proto.left_unmatched_instructions()) {
     diff_result.AddUnmatchedInstruction(left_instructions_by_name[name],
                                         nullptr);
@@ -218,6 +230,7 @@ void LogDiffResult(const DiffResult& diff_result) {
             << diff_result.right_module_unmatched_instructions.size();
   LOG(INFO) << "Changed instructions: "
             << diff_result.changed_instructions.size();
+  LOG(INFO) << "Moved instructions: " << diff_result.moved_instructions.size();
   LOG(INFO) << "Unchanged instructions: "
             << diff_result.unchanged_instructions.size();
 }
