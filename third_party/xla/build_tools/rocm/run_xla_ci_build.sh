@@ -33,6 +33,9 @@ for arg in "$@"; do
     if [[ "$arg" == "--config=ci_rocm_cpu" ]]; then
         TAG_FILTERS="${TAG_FILTERS},gpu,-requires-gpu-rocm,-requires-gpu-amd"
     fi
+    if [[ "$arg" == "--config=no_flaky" ]]; then
+        TAG_FILTERS="${TAG_FILTERS},-flaky"
+    fi
 done
 
 SCRIPT_DIR=$(dirname $0)
