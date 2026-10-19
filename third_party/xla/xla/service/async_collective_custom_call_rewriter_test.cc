@@ -450,5 +450,164 @@ TEST_F(AsyncCollectiveCustomCallRewriterTest,
   }
 }
 
+TEST_F(AsyncCollectiveCustomCallRewriterTest,
+       PreservesCollectiveFrontendAttributes) {
+  constexpr absl::string_view all_gather_hlo = R"(
+    HloModule PreservesCollectiveFrontendAttributesAllGather
+    ENTRY main {
+      p0 = f32[16,10] parameter(0)
+      start = f32[32,10] custom-call(p0), custom_call_target="all-gather-start",
+          frontend_attributes={async_collective_config="{\"all_gather_dimension\":0,\"replica_groups\":[[0,1]]}",_xla_stream_annotation="1",start_tag="gather"}
+      ROOT done = f32[32,10] custom-call(start), custom_call_target="all-gather-done",
+          frontend_attributes={_xla_stream_annotation="1",done_tag="wait"}
+    }
+  )";
+
+  for (bool use_legacy_collectives : {true, false}) {
+    SCOPED_TRACE(use_legacy_collectives ? "use_legacy_collectives=true"
+                                        : "use_legacy_collectives=false");
+
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         ParseAndReturnUnverifiedModule(all_gather_hlo));
+    const HloInstruction* original_done =
+        module->entry_computation()->root_instruction();
+    const auto done_attrs = original_done->frontend_attributes();
+    const auto start_attrs = original_done->operand(0)->frontend_attributes();
+
+    // Run the rewriter.
+    AsyncCollectiveCustomCallRewriter rewriter(use_legacy_collectives);
+    ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+    EXPECT_TRUE(changed);
+
+    // Get the updated start/done instructions.
+    const HloInstruction* done =
+        module->entry_computation()->root_instruction();
+    const HloInstruction* start = done->operand(0);
+
+    // Updated start/done have the expected opcodes.
+    EXPECT_EQ(start->opcode(), use_legacy_collectives
+                                   ? HloOpcode::kAllGatherStart
+                                   : HloOpcode::kAsyncStart);
+    EXPECT_EQ(done->opcode(), use_legacy_collectives ? HloOpcode::kAllGatherDone
+                                                     : HloOpcode::kAsyncDone);
+
+    //  Frontend attributes are still present.
+    EXPECT_THAT(start->frontend_attributes().map(),
+                ::testing::UnorderedElementsAreArray(start_attrs.map()));
+    EXPECT_THAT(done->frontend_attributes().map(),
+                ::testing::UnorderedElementsAreArray(done_attrs.map()));
+  }
+}
+
+TEST_F(AsyncCollectiveCustomCallRewriterTest,
+       PreservesComputeOnFrontendAttributes) {
+  constexpr absl::string_view compute_on_hlo = R"(
+    HloModule PreservesCollectiveFrontendAttributesComputeOn
+    gather {
+      p0 = f32[16,10] parameter(0)
+      ROOT ag = f32[32,10] all-gather(p0), replica_groups={{0,1}}, dimensions={0}
+    }
+    ENTRY main {
+      p0 = f32[16,10] parameter(0)
+      start = f32[32,10] custom-call(p0), custom_call_target="compute-on-start",
+          called_computations={gather},
+          frontend_attributes={_xla_stream_annotation="1",start_tag="gather"}
+      ROOT done = f32[32,10] custom-call(start), custom_call_target="compute-on-done",
+          frontend_attributes={_xla_stream_annotation="1",done_tag="wait"}
+    }
+  )";
+
+  for (bool use_legacy_collectives : {true, false}) {
+    SCOPED_TRACE(use_legacy_collectives ? "use_legacy_collectives=true"
+                                        : "use_legacy_collectives=false");
+
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         ParseAndReturnUnverifiedModule(compute_on_hlo));
+    const HloInstruction* original_done =
+        module->entry_computation()->root_instruction();
+    const auto done_attrs = original_done->frontend_attributes();
+    const auto start_attrs = original_done->operand(0)->frontend_attributes();
+
+    // Run the rewriter.
+    AsyncCollectiveCustomCallRewriter rewriter(use_legacy_collectives);
+    ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+    EXPECT_TRUE(changed);
+
+    // Get the updated start/done instructions.
+    const HloInstruction* done =
+        module->entry_computation()->root_instruction();
+    const HloInstruction* start = done->operand(0);
+
+    // Updated start/done have the expected opcodes.
+    EXPECT_EQ(start->opcode(), use_legacy_collectives
+                                   ? HloOpcode::kAllGatherStart
+                                   : HloOpcode::kAsyncStart);
+    EXPECT_EQ(done->opcode(), use_legacy_collectives ? HloOpcode::kAllGatherDone
+                                                     : HloOpcode::kAsyncDone);
+
+    //  Frontend attributes are still present.
+    EXPECT_THAT(start->frontend_attributes().map(),
+                ::testing::UnorderedElementsAreArray(start_attrs.map()));
+    EXPECT_THAT(done->frontend_attributes().map(),
+                ::testing::UnorderedElementsAreArray(done_attrs.map()));
+  }
+}
+
+TEST_F(AsyncCollectiveCustomCallRewriterTest,
+       SimplifiedComputeOnDoesNotPropagateAnnotations) {
+  constexpr absl::string_view compute_on_hlo = R"(
+    HloModule SimplifiedComputeOnDoesNotPropagateAnnotations
+    simplified {
+      ROOT p0 = f32[16,10] parameter(0)
+    }
+    ENTRY main {
+      p0 = f32[16,10] parameter(0),
+          frontend_attributes={input_tag="original"},
+          metadata={op_name="input" source_file="input.py" source_line=10}
+      start = f32[16,10] custom-call(p0), custom_call_target="compute-on-start",
+          called_computations={simplified},
+          frontend_attributes={_xla_stream_annotation="1",start_tag="identity"},
+          metadata={op_name="compute_on_start" source_file="compute_on.py" source_line=20}
+      ROOT done = f32[16,10] custom-call(start), custom_call_target="compute-on-done",
+          frontend_attributes={_xla_stream_annotation="1",done_tag="wait"},
+          metadata={op_name="compute_on_done" source_file="compute_on.py" source_line=30}
+    }
+  )";
+
+  for (bool use_legacy_collectives : {true, false}) {
+    SCOPED_TRACE(use_legacy_collectives ? "use_legacy_collectives=true"
+                                        : "use_legacy_collectives=false");
+
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         ParseAndReturnUnverifiedModule(compute_on_hlo));
+    const HloInstruction* original_input =
+        module->entry_computation()->parameter_instruction(0);
+    const auto input_attrs = original_input->frontend_attributes();
+    const auto input_metadata = original_input->metadata();
+
+    // Run the rewriter.
+    AsyncCollectiveCustomCallRewriter rewriter(use_legacy_collectives);
+    ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+    EXPECT_TRUE(changed);
+    ASSERT_OK(HloVerifier(HloVerifierOpts{}).Run(module.get()).status());
+
+    const HloInstruction* root =
+        module->entry_computation()->root_instruction();
+    ASSERT_EQ(root->opcode(), HloOpcode::kCall);
+    ASSERT_EQ(root->operand_count(), 1);
+    EXPECT_EQ(root->operand(0), original_input);
+
+    // The existing input keeps its own annotations.
+    EXPECT_THAT(original_input->frontend_attributes().map(),
+                ::testing::UnorderedElementsAreArray(input_attrs.map()));
+    EXPECT_EQ(original_input->metadata().SerializeAsString(),
+              input_metadata.SerializeAsString());
+
+    // The replacement identity call does not inherit start/done annotations.
+    EXPECT_TRUE(root->frontend_attributes().map().empty());
+    EXPECT_EQ(root->metadata().ByteSizeLong(), 0);
+  }
+}
+
 }  // namespace
 }  // namespace xla

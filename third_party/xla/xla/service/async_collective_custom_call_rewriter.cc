@@ -101,7 +101,7 @@ absl::Status FinishRewrite(
     HloInstruction* done_call, HloInstruction* async_start,
     HloInstruction* async_done,
     absl::Span<const hlo_instruction_utils::async::AsyncTraceStep> forward_path,
-    HloInstruction* final_result) {
+    HloInstruction* final_result, bool propagate_annotations = true) {
   ABSL_ASSIGN_OR_RETURN(HloInstruction * done_operand,
                    hlo_instruction_utils::async::PropagateDataflow(
                        forward_path, async_start));
@@ -110,10 +110,14 @@ absl::Status FinishRewrite(
         async_done->ReplaceOperandWithDifferentShape(0, done_operand));
   }
 
-  async_start->set_metadata(start_call->metadata());
-  async_done->set_metadata(done_call->metadata());
-  if (final_result != async_done) {
-    final_result->set_metadata(done_call->metadata());
+  if (propagate_annotations) {
+    async_start->set_metadata(start_call->metadata());
+    async_done->set_metadata(done_call->metadata());
+    if (final_result != async_done) {
+      final_result->set_metadata(done_call->metadata());
+    }
+    async_start->add_frontend_attributes(start_call->frontend_attributes());
+    async_done->add_frontend_attributes(done_call->frontend_attributes());
   }
 
   for (HloInstruction* pred : start_call->control_predecessors()) {
@@ -506,10 +510,14 @@ absl::StatusOr<bool> SimplifyEmptyComputeOn(
   HloInstruction* call_inst =
       computation->AddInstruction(HloInstruction::CreateCall(
           done_call->shape(), done_call->operands(), called_comp));
+
+  // We do not propagate annotations from the compute-on-start back upwards to
+  // its operand (start_call->mutable_operand(0)).
   ABSL_RETURN_IF_ERROR(FinishRewrite(computation, start_call, done_call,
                                 /*async_start=*/start_call->mutable_operand(0),
                                 /*async_done=*/call_inst, forward_path,
-                                /*final_result=*/call_inst));
+                                /*final_result=*/call_inst,
+                                /*propagate_annotations=*/false));
   return true;
 }
 
