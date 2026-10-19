@@ -1368,7 +1368,7 @@ def _boundaries_to_sizes(a, boundaries, axis):
   """
   if axis >= len(a.shape):
     raise ValueError('axis %s is out of bound for shape %s' % (axis, a.shape))
-  total_size = a.shape[axis]
+  total_size = tensor_shape.dimension_value(a.shape[axis])
   sizes = []
   sizes_sum = 0
   prev = 0
