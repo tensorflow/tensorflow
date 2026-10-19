@@ -533,6 +533,7 @@ filegroup(
         exclude = [
             "%{rocm_root}/lib/rocm_sysdeps/share/terminfo/**",
         ],
+        allow_empty = True,
     ),
 )
 
@@ -556,30 +557,47 @@ cc_library(
     }),
 )
 
-# System libraries bundled by TheRock ROCm under lib/rocm_sysdeps/lib, exposed
-# as real link targets (not just runtime data) so consumers like MORI's
-# libhsakmt.a resolve drm/numa symbols against the ROCm-shipped copies instead
-# of the host's /usr/lib. Requires a TheRock layout (hermetic distribution or a
-# TheRock-based local ROCm); classic ROCm installs do not ship rocm_sysdeps.
-rocm_lib_import(
+# System libraries needed by consumers like MORI's libhsakmt.a (drm/numa
+# symbols), exposed as real link targets (not just runtime data). On TheRock
+# 7.10+ they resolve to the copies bundled under lib/rocm_sysdeps/lib. Classic
+# ROCm 7.2.x does not ship rocm_sysdeps, so those installs also pass -ldrm etc.
+# to the host linker.
+_USE_HOST_SYSDEPS = rocm_version_number() < 71000
+
+cc_library(
     name = "drm",
+    srcs = glob(
+        ["%{rocm_root}/lib/rocm_sysdeps/lib/libdrm.so"],
+        allow_empty = True,
+    ),
     data = [":system_libs_data"],
-    interface_library = "%{rocm_root}/lib/rocm_sysdeps/lib/libdrm.so",
+    linkopts = ["-ldrm"] if _USE_HOST_SYSDEPS else [],
     deps = [":system_libs"],
+    visibility = ["//visibility:public"],
 )
 
-rocm_lib_import(
+cc_library(
     name = "drm_amdgpu",
+    srcs = glob(
+        ["%{rocm_root}/lib/rocm_sysdeps/lib/libdrm_amdgpu.so"],
+        allow_empty = True,
+    ),
     data = [":system_libs_data"],
-    interface_library = "%{rocm_root}/lib/rocm_sysdeps/lib/libdrm_amdgpu.so",
+    linkopts = ["-ldrm_amdgpu"] if _USE_HOST_SYSDEPS else [],
     deps = [":system_libs"],
+    visibility = ["//visibility:public"],
 )
 
-rocm_lib_import(
+cc_library(
     name = "numa",
+    srcs = glob(
+        ["%{rocm_root}/lib/rocm_sysdeps/lib/libnuma.so"],
+        allow_empty = True,
+    ),
     data = [":system_libs_data"],
-    interface_library = "%{rocm_root}/lib/rocm_sysdeps/lib/libnuma.so",
+    linkopts = ["-lnuma"] if _USE_HOST_SYSDEPS else [],
     deps = [":system_libs"],
+    visibility = ["//visibility:public"],
 )
 
 filegroup(
