@@ -1102,61 +1102,67 @@ absl::StatusOr<HloIsolationTestResult> RunIsolationTestOnModule(
       return result;
     }
 
-    // If there was a mismatch then we should re-run the failing HLO module
-    // with the fusion debugger enabled - to isolate the mismatch.
-    // Run the reference runner again with despecialization to dump reference
-    // binaries.
-    std::unique_ptr<HloModule> debug_despecialized_module =
-        module.Clone("despecialized");
-    ABSL_RETURN_IF_ERROR(
-        despecializer.Run(debug_despecialized_module.get()).status());
-    std::string debug_despecialized_module_name =
-        debug_despecialized_module->name();
+    if (options.enable_fusion_debugger) {
+      // If there was a mismatch then we should re-run the failing HLO module
+      // with the fusion debugger enabled - to isolate the mismatch.
+      // Run the reference runner again with despecialization to dump reference
+      // binaries.
+      std::unique_ptr<HloModule> debug_despecialized_module =
+          module.Clone("despecialized");
+      ABSL_RETURN_IF_ERROR(
+          despecializer.Run(debug_despecialized_module.get()).status());
+      std::string debug_despecialized_module_name =
+          debug_despecialized_module->name();
 
-    using GroupKey = std::pair<HloOpcode, std::string>;
-    absl::flat_hash_map<GroupKey, std::vector<std::string>> ref_groups;
-    for (const auto* computation : debug_despecialized_module->computations()) {
-      for (const auto* instruction : computation->MakeInstructionPostOrder()) {
-        GroupKey key(instruction->opcode(), instruction->shape().ToString());
-        ref_groups[key].push_back(std::string(instruction->name()));
+      using GroupKey = std::pair<HloOpcode, std::string>;
+      absl::flat_hash_map<GroupKey, std::vector<std::string>> ref_groups;
+      for (const auto* computation :
+           debug_despecialized_module->computations()) {
+        for (const auto* instruction :
+             computation->MakeInstructionPostOrder()) {
+          GroupKey key(instruction->opcode(), instruction->shape().ToString());
+          ref_groups[key].push_back(std::string(instruction->name()));
+        }
       }
-    }
 
-    auto expected_literals = std::make_shared<ExpectedLiteralsMap>();
+      auto expected_literals = std::make_shared<ExpectedLiteralsMap>();
 
-    RunModuleOptions reference_opts;
-    reference_opts.use_fusion_debugger = true;
-    reference_opts.expected_literals = expected_literals;
-    absl::StatusOr<Literal> debug_reference_output =
-        run_module(std::move(debug_despecialized_module), reference_runner,
-                   input_data, reference_opts);
-    if (!debug_reference_output.ok()) {
-      return fail_runner(
-          "REFERENCE_RUNNER_FAILURE",
-          "Reference runner failed (with fusion debugger enabled): ",
-          debug_reference_output.status(), debug_despecialized_module_name);
-    }
+      RunModuleOptions reference_opts;
+      reference_opts.use_fusion_debugger = true;
+      reference_opts.expected_literals = expected_literals;
+      absl::StatusOr<Literal> debug_reference_output =
+          run_module(std::move(debug_despecialized_module), reference_runner,
+                     input_data, reference_opts);
+      if (!debug_reference_output.ok()) {
+        return fail_runner(
+            "REFERENCE_RUNNER_FAILURE",
+            "Reference runner failed (with fusion debugger enabled): ",
+            debug_reference_output.status(), debug_despecialized_module_name);
+      }
 
-    std::shared_ptr<absl::Mutex> result_mutex = std::make_shared<absl::Mutex>();
-    HloIsolationTestResult* test_result = &result;
+      std::shared_ptr<absl::Mutex> result_mutex =
+          std::make_shared<absl::Mutex>();
+      HloIsolationTestResult* test_result = &result;
 
-    std::unique_ptr<HloModule> test_module_clone = module.Clone("");
+      std::unique_ptr<HloModule> test_module_clone = module.Clone("");
 
-    std::vector<xla::HloOutputCallback> dynamic_cbs =
-        CreateComparisonHloOutputCallbacks(test_module_clone.get(), ref_groups,
-                                           expected_literals, module, options,
-                                           result_mutex, test_result);
+      std::vector<xla::HloOutputCallback> dynamic_cbs =
+          CreateComparisonHloOutputCallbacks(
+              test_module_clone.get(), ref_groups, expected_literals, module,
+              options, result_mutex, test_result);
 
-    RunModuleOptions retry_opts;
-    retry_opts.hlo_output_callbacks = dynamic_cbs;
-    retry_opts.use_fusion_debugger = true;
-    retry_opts.expected_literals = expected_literals;
-    absl::StatusOr<Literal> retry_test_output = run_module(
-        std::move(test_module_clone), test_runner, input_data, retry_opts);
-    if (!retry_test_output.ok()) {
-      return fail_runner("TEST_RUNNER_FAILURE_ON_RETRY",
-                         "Test runner failed on retry (with fusion debugger): ",
-                         retry_test_output.status(), module.name());
+      RunModuleOptions retry_opts;
+      retry_opts.hlo_output_callbacks = dynamic_cbs;
+      retry_opts.use_fusion_debugger = true;
+      retry_opts.expected_literals = expected_literals;
+      absl::StatusOr<Literal> retry_test_output = run_module(
+          std::move(test_module_clone), test_runner, input_data, retry_opts);
+      if (!retry_test_output.ok()) {
+        return fail_runner(
+            "TEST_RUNNER_FAILURE_ON_RETRY",
+            "Test runner failed on retry (with fusion debugger): ",
+            retry_test_output.status(), module.name());
+      }
     }
   }
 
