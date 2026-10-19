@@ -1863,11 +1863,12 @@ XlaOp RegularizedIncompleteBeta(XlaOp a, XlaOp b, XlaOp x) {
       m = ConvertElementType(m, element_type);
       auto one = FullLike(a, 1.0);
       auto two = FullLike(a, 2.0);
-      // Partial numerator terms.
+      // Partial numerator terms, computed as products of ratios so that the
+      // intermediate products don't overflow for large a or b.
       auto even_numerator =
-          -(a + m) * (a + b + m) * x / ((a + two * m) * (a + two * m + one));
+          -((a + m) / (a + two * m)) * ((a + b + m) / (a + two * m + one)) * x;
       auto odd_numerator =
-          m * (b - m) * x / ((a + two * m - one) * (a + two * m));
+          (m / (a + two * m - one)) * ((b - m) / (a + two * m)) * x;
       auto one_numerator = ScalarLike(x, 1.0);
       auto numerator = Select(iteration_is_even, even_numerator, odd_numerator);
       return std::vector<XlaOp>{
