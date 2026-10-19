@@ -949,6 +949,14 @@ def repeat(a, repeats, axis=None):  # pylint: disable=missing-docstring
   return result
 
 
+_AROUND_MAX_DECIMALS = {
+    dtypes.float16: 4,
+    dtypes.bfloat16: 38,
+    dtypes.float32: 38,
+    dtypes.float64: 308,
+}
+
+
 @tf_export.tf_export('experimental.numpy.around', v1=[])
 @np_utils.np_doc('around')
 def around(a, decimals=0):  # pylint: disable=missing-docstring
@@ -968,14 +976,13 @@ def around(a, decimals=0):  # pylint: disable=missing-docstring
     # has been called, and is an alias of `math_ops.cast`; calling `cast`
     # directly keeps `around` working without that opt-in.
     a = math_ops.cast(a, float_dtype)
-  # Like NumPy, scale by 10**abs(decimals), which is exact in floating point,
-  # and divide by it for negative `decimals` instead of multiplying by an
-  # inexact 10**decimals. The factor is created directly in `float_dtype`:
-  # `math_ops.cast` on a Python float goes through float32 first, which would
-  # turn 10**-1 into 0.10000000149.
-  # Keep `decimals` within the float64 exponent range, outside of which
-  # `math.pow(10, ...)` raises OverflowError.
-  decimals = builtins.max(-308, builtins.min(308, decimals))
+  max_decimals = _AROUND_MAX_DECIMALS.get(
+      dtypes.as_dtype(float_dtype).real_dtype, 308
+  )
+  if decimals > max_decimals:
+    return math_ops.cast(a, dtype)
+  if decimals < -max_decimals:
+    return array_ops.zeros_like(a, dtype=dtype)
   factor = constant_op.constant(math.pow(10, abs(decimals)), float_dtype)
   if decimals >= 0:
     a = math_ops.divide(math_ops.round(math_ops.multiply(a, factor)), factor)
