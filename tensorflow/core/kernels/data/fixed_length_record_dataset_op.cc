@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/utils.h"
@@ -246,10 +247,19 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
       int64_t current_file_index;
       TF_RETURN_IF_ERROR(
           reader->ReadScalar(prefix(), kCurrentFileIndex, &current_file_index));
-      current_file_index_ = size_t(current_file_index);
       int64_t current_pos;
       TF_RETURN_IF_ERROR(
           reader->ReadScalar(prefix(), kCurrentPos, &current_pos));
+      // A file can only be open while current_file_index < filenames_.size();
+      // current_file_index == filenames_.size() marks an exhausted iterator.
+      const int64_t num_files = dataset()->filenames_.size();
+      if (current_file_index < 0 || current_file_index > num_files ||
+          (current_pos >= 0 && current_file_index == num_files)) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("Invalid current_file_index ", current_file_index,
+                         " in checkpoint for ", num_files, " files."));
+      }
+      current_file_index_ = size_t(current_file_index);
 
       // Seek to current_pos.
       input_buffer_.reset();
@@ -451,10 +461,19 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
       int64_t current_file_index;
       TF_RETURN_IF_ERROR(
           reader->ReadScalar(prefix(), kCurrentFileIndex, &current_file_index));
-      current_file_index_ = size_t(current_file_index);
       int64_t current_pos;
       TF_RETURN_IF_ERROR(
           reader->ReadScalar(prefix(), kCurrentPos, &current_pos));
+      // A file can only be open while current_file_index < filenames_.size();
+      // current_file_index == filenames_.size() marks an exhausted iterator.
+      const int64_t num_files = dataset()->filenames_.size();
+      if (current_file_index < 0 || current_file_index > num_files ||
+          (current_pos >= 0 && current_file_index == num_files)) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("Invalid current_file_index ", current_file_index,
+                         " in checkpoint for ", num_files, " files."));
+      }
+      current_file_index_ = size_t(current_file_index);
 
       // Seek to current_pos.
       buffered_input_stream_.reset();
