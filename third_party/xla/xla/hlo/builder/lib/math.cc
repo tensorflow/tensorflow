@@ -959,8 +959,8 @@ XlaOp Igamma(XlaOp a, XlaOp x) {
     XlaOp domain_error = Or(Lt(x, ScalarLike(x, 0)), Le(a, ScalarLike(a, 0)));
     XlaOp use_igammac = And(Gt(x, ScalarLike(x, 1)), Gt(x, a));
     XlaOp ax = a * Log(x) - x - Lgamma(a);
-    XlaOp underflow = Lt(ax, -Log(MaxFiniteValue(&b, type)));
-    ax = Exp(ax);
+    XlaOp underflow = Or(Lt(ax, -Log(MaxFiniteValue(&b, type))), IsNan(ax));
+    ax = Select(underflow, ZerosLike(ax), Exp(ax));
     XlaOp enabled = Not(Or(Or(Or(x_is_zero, domain_error), underflow), is_nan));
     const double nan = std::numeric_limits<double>::quiet_NaN();
     XlaOp output = Select(
@@ -1118,9 +1118,9 @@ XlaOp Igammac(XlaOp a, XlaOp x) {
     XlaOp domain_error = Or(Lt(x, ScalarLike(x, 0)), Le(a, ScalarLike(a, 0)));
     XlaOp use_igamma = Or(Lt(x, ScalarLike(x, 1)), Lt(x, a));
     XlaOp ax = a * Log(x) - x - Lgamma(a);
-    XlaOp underflow = Lt(ax, -Log(MaxFiniteValue(&b, type)));
+    XlaOp underflow = Or(Lt(ax, -Log(MaxFiniteValue(&b, type))), IsNan(ax));
     XlaOp enabled = Not(Or(Or(Or(x_is_zero, domain_error), underflow), is_nan));
-    ax = Exp(ax);
+    ax = Select(underflow, ZerosLike(ax), Exp(ax));
     const double nan = std::numeric_limits<double>::quiet_NaN();
     XlaOp result =
         Select(use_igamma,
