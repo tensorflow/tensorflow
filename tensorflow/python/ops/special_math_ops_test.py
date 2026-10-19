@@ -713,15 +713,15 @@ class EinsumTest(test.TestCase):
     self.assertAllClose(
         expected, self.evaluate(special_math_ops.einsum('ij,jk->ik', a, b))
     )
-    # Mixing sequences with tensors.
-    self.assertAllClose(
-        expected,
-        self.evaluate(
-            special_math_ops.einsum(
-                'ij,jk->ik', constant_op.constant(a, dtypes.float32), b
-            )
-        ),
-    )
+    # Mixing sequences with tensors of various dtypes and operand orders.
+    for dtype in (dtypes.float32, dtypes.float64):
+      for operands in (
+          (constant_op.constant(a, dtype), b),
+          (a, constant_op.constant(b, dtype)),
+      ):
+        result = special_math_ops.einsum('ij,jk->ik', *operands)
+        self.assertEqual(dtype, result.dtype)
+        self.assertAllClose(expected, self.evaluate(result))
     # Unary contraction and an int sequence.
     self.assertAllEqual(
         5, self.evaluate(special_math_ops.einsum('ii', [[1, 2], [3, 4]]))
