@@ -1030,7 +1030,8 @@ class CommonPjRtBufferImpl : public CommonPjRtBuffer {
       xla::Shape shape, PjRtMemorySpace* dst_memory_space);
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyFromCpuToMemorySpace(
-      xla::Shape shape, PjRtMemorySpace* dst_memory_space);
+      xla::Shape shape, PjRtMemorySpace* dst_memory_space,
+      PjRtBuffer* donated_dst = nullptr);
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>>
   CopyToMemorySpaceFallbackThroughLiteral(PjRtMemorySpace* dst_memory_space);

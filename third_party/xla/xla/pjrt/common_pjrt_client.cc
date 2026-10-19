@@ -3883,7 +3883,8 @@ static absl::Status CommonCopyToMemorySpace(
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 CommonPjRtBufferImpl::CopyFromCpuToMemorySpace(
-    xla::Shape dst_shape, PjRtMemorySpace* dst_memory_space) {
+    xla::Shape dst_shape, PjRtMemorySpace* dst_memory_space,
+    PjRtBuffer* donated_dst) {
   tsl::profiler::TraceMe traceme("CopyToMemorySpace_FromCpu");
   CommonPjRtClient* const src_client =
       absl::down_cast<CommonPjRtClient*>(client());
@@ -3900,6 +3901,24 @@ CommonPjRtBufferImpl::CopyFromCpuToMemorySpace(
   PjRtRawBufferRef dst_raw_buffer;
   std::unique_ptr<PjRtBuffer> dst_buffer;
   PjRtDeviceEventRefVector definition_events;
+  if (donated_dst != nullptr) {
+    auto* common_donated_dst = dynamic_cast<CommonPjRtBuffer*>(donated_dst);
+    if (!common_donated_dst) {
+      return absl::InvalidArgumentError(
+          "CopyFromCpuToMemorySpace requires a donated buffer backed by "
+          "CommonPjRtBuffer");
+    }
+    CommonPjRtBuffer::ScopedHold hold = common_donated_dst->GetBufferWithHold(
+        CommonPjRtBuffer::ScopedHold::kDonation);
+    if (!hold.ok()) {
+      return InvalidArgument("Invalid buffer passed to CopyToMemorySpace: %s",
+                             hold.status().ToString());
+    }
+    dst_raw_buffer = hold.buffer()->raw_buffer();
+    definition_events =
+        hold.buffer()->GetAsyncValueDefinitionAndUsageDeviceEvents();
+    hold.ConfirmDonation();
+  }
   ::tsl::AsyncValueRef<bool> allocation_event;
   auto shared_dst_shape =
       std::make_shared<const xla::Shape>(std::move(dst_shape));
@@ -4049,8 +4068,8 @@ CommonPjRtBufferImpl::CopyToMemorySpace(PjRtBuffer* donated_dst) {
           xla::LayoutUtil::IsMonotonicWithDim0Major(
               on_device_shape().layout()) &&
           on_device_shape().layout().tiles().empty()) {
-        return CopyFromCpuToMemorySpace(std::move(dest_shape),
-                                        dst_memory_space);
+        return CopyFromCpuToMemorySpace(std::move(dest_shape), dst_memory_space,
+                                        donated_dst);
       }
     }
   }
