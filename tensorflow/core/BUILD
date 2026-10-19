@@ -192,7 +192,6 @@ tf_proto_library(
     make_default_target_header_only = True,
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core/common_runtime:request_cost_proto",
         "//tensorflow/core/example:protos_all",
         "//tensorflow/core/framework:protos_all",
         "//tensorflow/core/grappler/costs:op_performance_data",
