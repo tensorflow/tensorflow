@@ -2995,7 +2995,15 @@ CommonPjRtLoadedExecutable::ExecuteLaunch(ExecuteLaunchArgs& launch_args,
   {
     tsl::profiler::TraceMe t3("Handle input event recording");
     // Handle input event recording.
-    for (CommonPjRtBuffer::ScopedHold& b : launch_args.device_buffers) {
+    absl::Span<int const> donated_params = ParametersThatMayBeDonated();
+    auto donate_it = donated_params.begin();
+    for (int i = 0; i < launch_args.device_buffers.size(); ++i) {
+      const bool donated_param =
+          donate_it != donated_params.end() && *donate_it == i;
+      if (donated_param) {
+        ++donate_it;
+      }
+      CommonPjRtBuffer::ScopedHold& b = launch_args.device_buffers[i];
       if (!b.ok()) {
         // Skip uninitialized holds used as placeholders for undonatable
         // buffers.
@@ -3003,6 +3011,10 @@ CommonPjRtLoadedExecutable::ExecuteLaunch(ExecuteLaunchArgs& launch_args,
       }
       if (b.type() == CommonPjRtBuffer::ScopedHold::kUsage) {
         b.ConvertUsageHold(results.primary_execute_event);
+        if (donated_param &&
+            !launch_args.options->non_donatable_input_indices.contains(i)) {
+          b.parent()->Delete();
+        }
       } else {
         CHECK(b.type() == CommonPjRtBuffer::ScopedHold::kDonation);
         b.ConfirmDonation();
