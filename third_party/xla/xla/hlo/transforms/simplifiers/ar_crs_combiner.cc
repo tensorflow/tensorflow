@@ -182,8 +182,13 @@ std::optional<ArCrsCombiner::ArCrsPair> ArCrsCombiner::MatchesArCrsPattern(
       case HloOpcode::kAdd:
       case HloOpcode::kSubtract:
       case HloOpcode::kMultiply:
-        // Only supported for floating point operands.
-        return ShapeUtil::ElementIsFloating(instruction->shape());
+        // Only supported for floating point operands with distinct inputs.
+        // Moving the reduction past identical operands would pass the unreduced
+        // shard to both inputs: rewriting (a + b)^2 into a^2 + b^2 for
+        // multiply, or dividing both operands by the partition count for add
+        // and subtract.
+        return instruction->operand(0) != instruction->operand(1) &&
+               ShapeUtil::ElementIsFloating(instruction->shape());
       default:
         return false;
     }
