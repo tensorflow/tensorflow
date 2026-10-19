@@ -15,26 +15,20 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <cstdlib>
-#include <cstring>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
-#include "absl/log/log.h"
-#include "absl/status/status.h"
-#include "absl/status/status_macros.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
-#include "absl/strings/string_view.h"
-#include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/tests/multi_process_gpu_test_base.h"
 #include "xla/client/client_library.h"
-#include "xla/debug_options_flags.h"
-#include "xla/ffi/api/ffi.h"
 #include "xla/future.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -43,27 +37,18 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/c/pjrt_c_api_status_utils.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
-#include "xla/pjrt/distributed/client.h"
-#include "xla/pjrt/distributed/distributed.h"
-#include "xla/pjrt/distributed/service.h"
 #include "xla/pjrt/extensions/cross_host_transfers/pjrt_c_api_cross_host_transfers_extension.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
-#include "xla/tsl/platform/statusor.h"
-#include "xla/tsl/platform/subprocess.h"
-#include "xla/tsl/util/command_line_flags.h"
 #include "xla/xla_data.pb.h"
 
 namespace pjrt {
 namespace {
 
-static std::string SuccessfulCrossHostTransferTestName(
+std::string SuccessfulCrossHostTransferTestName(
     const ::testing::TestParamInfo<int>& info) {
   return absl::StrFormat("num_arrays_%d", info.param);
 }
@@ -98,110 +83,38 @@ absl::Span<PJRT_Device* const> GetClientAddressableDevices(
                         addr_args.num_addressable_devices);
 }
 
-class SuccessfulCrossHostTransferTest : public ::testing::TestWithParam<int> {};
+using SuccessfulCrossHostTransferTest = xla::MultiProcessGpuTestWithParam<int>;
 
 TEST_P(SuccessfulCrossHostTransferTest, SuccessfulCrossHostTransfer) {
-  int num_arrays = GetParam();
+  const int num_arrays = GetParam();
+  const bool is_sender = (rank() == 0);
 
-  tsl::SubProcess sender;
-  tsl::SubProcess receiver;
-  absl::string_view log_dir = std::getenv("TEST_UNDECLARED_OUTPUTS_DIR");
-
-  std::vector<std::string> sender_argv;
-  sender_argv.push_back("successful_cross_host_transfer_test");
-  sender_argv.push_back("--cross_host_test_role=sender");
-  sender_argv.push_back(absl::StrFormat("--num_arrays=%d", num_arrays));
-  sender_argv.push_back(absl::StrFormat("--log_dir=%s", log_dir));
-
-  std::vector<std::string> receiver_argv;
-  receiver_argv.push_back("successful_cross_host_transfer_test");
-  receiver_argv.push_back("--cross_host_test_role=receiver");
-  receiver_argv.push_back(absl::StrFormat("--num_arrays=%d", num_arrays));
-  receiver_argv.push_back(absl::StrFormat("--log_dir=%s", log_dir));
-
-  sender.SetProgram("/proc/self/exe", sender_argv);
-  sender.SetChannelAction(tsl::CHAN_STDOUT, tsl::ACTION_PIPE);
-  sender.SetChannelAction(tsl::CHAN_STDERR, tsl::ACTION_PIPE);
-
-  receiver.SetProgram("/proc/self/exe", receiver_argv);
-  receiver.SetChannelAction(tsl::CHAN_STDOUT, tsl::ACTION_PIPE);
-  receiver.SetChannelAction(tsl::CHAN_STDERR, tsl::ACTION_PIPE);
-
-  ASSERT_TRUE(receiver.Start());
-  ASSERT_TRUE(sender.Start());
-
-  std::string sender_stdout, sender_stderr;
-  std::string receiver_stdout, receiver_stderr;
-
-  int sender_status =
-      sender.Communicate(nullptr, &sender_stdout, &sender_stderr);
-  int receiver_status =
-      receiver.Communicate(nullptr, &receiver_stdout, &receiver_stderr);
-
-  EXPECT_EQ(sender_status, 0) << "sender stdout:\n"
-                              << sender_stdout << "\nsender stderr:\n"
-                              << sender_stderr;
-  EXPECT_EQ(receiver_status, 0) << "receiver stdout:\n"
-                                << receiver_stdout << "\nreceiver stderr:\n"
-                                << receiver_stderr;
-}
-
-INSTANTIATE_TEST_SUITE_P(SuccessfulCrossHostTransfer,
-                         SuccessfulCrossHostTransferTest,
-                         ::testing::ValuesIn({1, 2, 3}),
-                         SuccessfulCrossHostTransferTestName);
-
-absl::Status SuccessfulCrossHostTransferTestBody(bool is_sender,
-                                                 int num_arrays) {
-  std::string log_prefix = is_sender ? "sender" : "receiver";
-
-  // Sender creates a coordination service on so both processes can find each
-  // other via the distributed runtime (port chosen arbitrarily).
-  std::unique_ptr<xla::DistributedRuntimeService> service;
-  if (is_sender) {
-    ABSL_ASSIGN_OR_RETURN(
-        service, xla::GetDistributedRuntimeService(
-                     "127.0.0.1:12347",
-                     xla::CoordinationServiceImpl::Options{/*num_nodes=*/2}));
-  }
-
-  // Connect to the coordination service.
-  int32_t node_id = is_sender ? 0 : 1;
-  xla::DistributedRuntimeClient::Options distributed_options;
-  distributed_options.node_id = node_id;
-  distributed_options.init_timeout = absl::Seconds(120);
-  auto distributed_client =
-      GetDistributedRuntimeClient("127.0.0.1:12347", distributed_options);
-  TF_QCHECK_OK(distributed_client->Connect());
-
-  auto kv_store = xla::GetDistributedKeyValueStore(distributed_client, "foo");
+  auto kv_store = CreateScopedKeyValueStore("c_api");
   std::shared_ptr<::pjrt::PJRT_KeyValueCallbackData> kv_callback_data =
       ::pjrt::ConvertToCKeyValueCallbacks(kv_store);
   xla::ClientLibrary::DestroyLocalInstances();
 
-  auto api = GetPjrtApi();
+  const PJRT_Api* api = GetPjrtApi();
   PJRT_CrossHostTransfers_Extension* cross_host_transfers_extension =
       pjrt::FindExtension<PJRT_CrossHostTransfers_Extension>(
           api, PJRT_Extension_Type::PJRT_Extension_Type_CrossHostTransfers);
-  CHECK_NE(cross_host_transfers_extension, nullptr);
-  CHECK_NE(cross_host_transfers_extension
-               ->PJRT_Transfers_PJRT_Buffer_CopyToRemoteDevice,
-           nullptr);
+  ASSERT_NE(cross_host_transfers_extension, nullptr);
+  ASSERT_NE(cross_host_transfers_extension
+                ->PJRT_Transfers_PJRT_Buffer_CopyToRemoteDevice,
+            nullptr);
 
   // Create the GPU client.
   absl::flat_hash_map<std::string, xla::PjRtValueType> options = {
-      {"num_nodes", static_cast<int64_t>(2)},
-      {"node_id", static_cast<int64_t>(node_id)},
-      {"visible_devices", std::vector<int64_t>({node_id})}};
-  ABSL_ASSIGN_OR_RETURN(std::vector<PJRT_NamedValue> c_options,
-                   ::pjrt::ConvertToPjRtNamedValueList(options));
-  ABSL_ASSIGN_OR_RETURN(PJRT_Client_Create_Args create_arg,
-                   BuildCreateArg(kv_callback_data.get(), c_options));
+      {"num_nodes", static_cast<int64_t>(num_ranks())},
+      {"node_id", static_cast<int64_t>(rank())},
+      {"visible_devices", std::vector<int64_t>({rank()})}};
+  ASSERT_OK_AND_ASSIGN(std::vector<PJRT_NamedValue> c_options,
+                       ::pjrt::ConvertToPjRtNamedValueList(options));
+  ASSERT_OK_AND_ASSIGN(PJRT_Client_Create_Args create_arg,
+                       BuildCreateArg(kv_callback_data.get(), c_options));
   std::unique_ptr<PJRT_Error, ::pjrt::PJRT_ErrorDeleter> error(
       api->PJRT_Client_Create(&create_arg), ::pjrt::MakeErrorDeleter(api));
-  if (error != nullptr) {
-    return PjrtErrorToStatus(error.get(), api);
-  }
+  ASSERT_EQ(error, nullptr) << PjrtErrorToStatus(error.get(), api);
   std::unique_ptr<PJRT_Client, ::pjrt::PJRT_ClientDeleter> client_deleter(
       create_arg.client, ::pjrt::MakeClientDeleter(api));
 
@@ -209,7 +122,6 @@ absl::Status SuccessfulCrossHostTransferTestBody(bool is_sender,
   xla::Shape xla_shape =
       xla::ShapeUtil::MakeShape(xla::F32, /*dimensions=*/shape);
 
-  // Sender logic.
   if (is_sender) {
     std::vector<PJRT_Buffer*> raw_buffers;
     std::vector<xla::GlobalDeviceId> dst_device_ids;
@@ -218,7 +130,6 @@ absl::Status SuccessfulCrossHostTransferTestBody(bool is_sender,
     dst_device_ids.reserve(num_arrays);
     transfer_keys.reserve(num_arrays);
     for (int i = 0; i < num_arrays; ++i) {
-      // Create buffers to send.
       std::vector<float> data = {1, 2, 3, 4, 5, 6 * static_cast<float>(i)};
       PJRT_Client_BufferFromHostBuffer_Args args;
       args.struct_size = PJRT_Client_BufferFromHostBuffer_Args_STRUCT_SIZE;
@@ -236,26 +147,23 @@ absl::Status SuccessfulCrossHostTransferTestBody(bool is_sender,
       args.device = GetClientAddressableDevices(create_arg.client, api)[0];
       args.memory = nullptr;
 
-      auto transfer_error =
-          std::unique_ptr<PJRT_Error, ::pjrt::PJRT_ErrorDeleter>{
-              api->PJRT_Client_BufferFromHostBuffer(&args),
-              ::pjrt::MakeErrorDeleter(api)};
-      if (transfer_error != nullptr) {
-        return PjrtErrorToStatus(transfer_error.get(), api);
-      }
-      CHECK_OK(args.buffer->buffer->GetReadyFuture().Await());
+      std::unique_ptr<PJRT_Error, ::pjrt::PJRT_ErrorDeleter> transfer_error(
+          api->PJRT_Client_BufferFromHostBuffer(&args),
+          ::pjrt::MakeErrorDeleter(api));
+      ASSERT_EQ(transfer_error, nullptr)
+          << PjrtErrorToStatus(transfer_error.get(), api);
+      ASSERT_OK(args.buffer->buffer->GetReadyFuture().Await());
       std::unique_ptr<PJRT_Event, PJRT_EventDeleter> event(
           args.done_with_host_buffer, MakeEventDeleter(api));
 
       raw_buffers.push_back(args.buffer);
-      CHECK_OK(event->future.Await());
+      ASSERT_OK(event->future.Await());
       xla::GlobalDeviceId src_device_id =
           args.device->device->global_device_id();
       dst_device_ids.push_back(1 - src_device_id);
       transfer_keys.push_back(xla::CrossHostTransferKey(i));
-    };
+    }
 
-    // Send the list of buffers.
     PJRT_Transfers_PJRT_Client_CrossHostSendBuffers_Args send_args;
     send_args.struct_size =
         PJRT_Transfers_PJRT_Client_CrossHostSendBuffers_Args_STRUCT_SIZE;
@@ -271,15 +179,14 @@ absl::Status SuccessfulCrossHostTransferTestBody(bool is_sender,
         ->PJRT_Transfers_PJRT_Client_CrossHostSendBuffers(&send_args);
 
     for (int i = 0; i < num_arrays; ++i) {
-      CHECK_OK(send_args.send_events[i]->future.Await());
+      ASSERT_OK(send_args.send_events[i]->future.Await());
       std::unique_ptr<PJRT_Buffer, ::pjrt::PJRT_BufferDeleter> buffer(
           raw_buffers[i], ::pjrt::MakeBufferDeleter(api));
       std::unique_ptr<PJRT_Event, PJRT_EventDeleter> send_event(
           send_args.send_events[i], MakeEventDeleter(api));
-      CHECK_OK(send_event->future.Await());
+      ASSERT_OK(send_event->future.Await());
     }
   } else {
-    // Receive some data.
     std::vector<xla::Literal> expected_literals;
     expected_literals.reserve(num_arrays);
     for (int i = 0; i < num_arrays; ++i) {
@@ -333,49 +240,22 @@ absl::Status SuccessfulCrossHostTransferTestBody(bool is_sender,
         ->PJRT_Transfers_PJRT_Client_CrossHostReceiveBuffers(&recv_args);
 
     for (int i = 0; i < num_arrays; ++i) {
-      ABSL_RETURN_IF_ERROR(recv_args.buffers[i]->buffer->GetReadyFuture().Await());
-      ABSL_ASSIGN_OR_RETURN(std::shared_ptr<xla::Literal> recv_literal,
-                       recv_args.buffers[i]->buffer->ToLiteral().Await());
+      ASSERT_OK(recv_args.buffers[i]->buffer->GetReadyFuture().Await());
+      ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::Literal> recv_literal,
+                           recv_args.buffers[i]->buffer->ToLiteral().Await());
 
-      TF_RET_CHECK(
+      EXPECT_TRUE(
           xla::LiteralTestUtil::Equal(expected_literals[i], *recv_literal));
       std::unique_ptr<PJRT_Buffer, ::pjrt::PJRT_BufferDeleter> buffer(
           recv_args.buffers[i], ::pjrt::MakeBufferDeleter(api));
     }
   }
-  return absl::OkStatus();
 }
+
+INSTANTIATE_TEST_SUITE_P(SuccessfulCrossHostTransfer,
+                         SuccessfulCrossHostTransferTest,
+                         ::testing::ValuesIn({1, 2, 3}),
+                         SuccessfulCrossHostTransferTestName);
 
 }  // namespace
 }  // namespace pjrt
-
-int main(int argc, char* argv[]) {
-  // Variables used by SuccessfulCrossHostTransfer.
-  std::string cross_host_test_role;
-  int num_arrays = -1;
-
-  std::vector<tsl::Flag> flag_list = {
-      tsl::Flag("cross_host_test_role", &cross_host_test_role,
-                "Test parameter for SuccessfulCrossHostTransfer; either "
-                "'sender' or 'receiver'."),
-      tsl::Flag("num_arrays", &num_arrays,
-                "Test parameter for SuccessfulCrossHostTransfer; number of "
-                "arrays to transfer.")};
-
-  xla::AppendDebugOptionsFlags(&flag_list);
-  std::string usage = tsl::Flags::Usage(argv[0], flag_list);
-  tsl::Flags::Parse(&argc, argv, flag_list);
-
-  testing::InitGoogleTest(&argc, argv);
-  if (cross_host_test_role == "sender") {
-    return pjrt::SuccessfulCrossHostTransferTestBody(/*is_sender=*/true,
-                                                     num_arrays)
-        .raw_code();
-  }
-  if (cross_host_test_role == "receiver") {
-    return pjrt::SuccessfulCrossHostTransferTestBody(/*is_sender=*/false,
-                                                     num_arrays)
-        .raw_code();
-  }
-  return RUN_ALL_TESTS();
-}
