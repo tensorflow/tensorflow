@@ -50,7 +50,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "llvm/ADT/STLExtras.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/backend_config.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
@@ -559,32 +558,31 @@ void HloModule::PrintStackFrameIndex(Printer* printer,
   }
   const auto& proto = stack_frames_.proto();
   printer->Append("\n\nFileNames\n");
-  for (const auto& [index, file_name] : llvm::enumerate(proto.file_names())) {
-    printer->Append(
-        absl::StrFormat("%d \"%s\"\n", index + 1, absl::CEscape(file_name)));
+  for (int i = 0; i < proto.file_names_size(); ++i) {
+    printer->Append(absl::StrFormat("%d \"%s\"\n", i + 1,
+                                    absl::CEscape(proto.file_names(i))));
   }
   printer->Append("\nFunctionNames\n");
-  for (const auto& [index, function_name] :
-       llvm::enumerate(proto.function_names())) {
-    printer->Append(absl::StrFormat("%d \"%s\"\n", index + 1,
-                                    absl::CEscape(function_name)));
+  for (int i = 0; i < proto.function_names_size(); ++i) {
+    printer->Append(absl::StrFormat("%d \"%s\"\n", i + 1,
+                                    absl::CEscape(proto.function_names(i))));
   }
   printer->Append("\nFileLocations\n");
-  for (const auto& [index, file_location] :
-       llvm::enumerate(proto.file_locations())) {
-    printer->Append(
-        absl::StrFormat("%d {file_name_id=%d function_name_id=%d line=%d "
-                        "end_line=%d column=%d end_column=%d}\n",
-                        index + 1, file_location.file_name_id(),
-                        file_location.function_name_id(), file_location.line(),
-                        file_location.end_line(), file_location.column(),
-                        file_location.end_column()));
+  for (int i = 0; i < proto.file_locations_size(); ++i) {
+    const auto& file_location = proto.file_locations(i);
+    printer->Append(absl::StrFormat(
+        "%d {file_name_id=%d function_name_id=%d line=%d "
+        "end_line=%d column=%d end_column=%d}\n",
+        i + 1, file_location.file_name_id(), file_location.function_name_id(),
+        file_location.line(), file_location.end_line(), file_location.column(),
+        file_location.end_column()));
   }
   printer->Append("\nStackFrames\n");
-  for (const auto& [index, frame] : llvm::enumerate(proto.stack_frames())) {
-    printer->Append(absl::StrFormat(
-        "%d {file_location_id=%d parent_frame_id=%d}\n", index + 1,
-        frame.file_location_id(), frame.parent_frame_id() + 1));
+  for (int i = 0; i < proto.stack_frames_size(); ++i) {
+    const auto& frame = proto.stack_frames(i);
+    printer->Append(
+        absl::StrFormat("%d {file_location_id=%d parent_frame_id=%d}\n", i + 1,
+                        frame.file_location_id(), frame.parent_frame_id() + 1));
   }
 }
 
