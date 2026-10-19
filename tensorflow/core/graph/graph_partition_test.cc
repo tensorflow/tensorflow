@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/const_op.h"
@@ -485,6 +486,32 @@ TEST_F(GraphPartitionTest, PartitionIncompleteGraph) {
   // Partitioning should fail, but not crash like it did before the
   // changes that accompanied the addition of this test.
   EXPECT_EQ(error::INVALID_ARGUMENT, status.code()) << status;
+}
+
+TEST_F(GraphPartitionTest, LoopCondOutsideWhileLoop) {
+  auto a1 = BoolInput(in_.WithOpName("A1"));
+  LoopCond(in_.WithOpName("A2"), a1);
+
+  Graph g(OpRegistry::Global());
+  TF_ASSERT_OK(
+      ConvertGraphDefToGraph(GraphConstructorOptions(), ToGraphDef(), &g));
+  for (Node* node : g.nodes()) {
+    node->set_assigned_device_name(DeviceName(node));
+  }
+
+  PartitionOptions popts;
+  popts.node_to_loc = SplitByDevice;
+  popts.new_name = [&g](const std::string& prefix) {
+    return g.NewName(prefix);
+  };
+  popts.get_incarnation = [](const std::string&) { return 1; };
+
+  std::unordered_map<std::string, GraphDef> partitions;
+  absl::Status status = Partition(popts, &g, &partitions);
+  EXPECT_EQ(error::INVALID_ARGUMENT, status.code()) << status;
+  EXPECT_TRUE(absl::StrContains(status.message(),
+                                "must be inside a while loop frame"))
+      << status;
 }
 
 TEST_F(GraphPartitionTest, Functions) {
