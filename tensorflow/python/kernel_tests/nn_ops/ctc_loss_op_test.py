@@ -224,6 +224,34 @@ class CTCLossValidationTest(test.TestCase, parameterized.TestCase):
       self.assertAllClose(loss_ref, loss_padded,
                           msg=f"Padding value {pad_val} should be ignored")
 
+  @parameterized.product(
+      ctc_loss_fn=[ctc_ops.ctc_loss_v2, ctc_ops.ctc_loss_v3],
+  )
+  def testUnknownRankLogitsRejected(self, ctc_loss_fn):
+    """Tests that unknown-rank logits do not crash _get_dim and reject OOB.
+
+    Dense labels route through ctc_loss_dense, which calls _get_dim on both
+    logits and labels.  Tracing with TensorSpec(shape=None) gives both tensors
+    an unknown rank, exercising the new fallback branch in _get_dim.
+    """
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)]
+    )
+    def test_fn(logits):
+      return ctc_loss_fn(
+          labels=self._make_labels(False, [10]),
+          logits=logits,
+          label_length=constant_op.constant([1], dtype=dtypes.int32),
+          logit_length=constant_op.constant([3], dtype=dtypes.int32),
+          blank_index=-1,
+      )
+
+    with self.assertRaisesRegex(
+        errors_impl.InvalidArgumentError,
+        r"All labels must be in the range \[0, num_classes\)",
+    ):
+      self.evaluate(test_fn(array_ops.zeros([3, 1, 10], dtype=dtypes.float32)))
+
 
 class CTCLossTest(test.TestCase):
 
