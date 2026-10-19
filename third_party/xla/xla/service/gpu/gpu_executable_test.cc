@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_executable.h"
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -32,11 +33,16 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/blocking_counter.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "riegeli/bytes/cfile_reader.h"
 #include "riegeli/bytes/string_reader.h"
 #include "xla/backends/cpu/target_machine_options.h"
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/backends/gpu/collectives/loopback_collectives.h"
+#include "xla/backends/gpu/runtime/collective_clique_requests.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd_emitter.h"
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
@@ -51,6 +57,7 @@ limitations under the License.
 #include "xla/client/executable_build_options.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/debug_options_flags.h"
+#include "xla/executable_run_options.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
@@ -59,12 +66,16 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/literal_util.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_value.h"
+#include "xla/service/device_assignment.h"
+#include "xla/service/executable.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/dense_data_intermediate.h"
 #include "xla/service/gpu/gpu_executable.pb.h"
 #include "xla/service/gpu/gpu_executable_buffer_allocator.h"
+#include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu/gpu_module_globals.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu_topology.h"
@@ -80,13 +91,17 @@ limitations under the License.
 #include "xla/stream_executor/abi/executable_abi_version.pb.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/mock_stream.h"
 #include "xla/stream_executor/mock_stream_executor.h"
 #include "xla/stream_executor/module_spec.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/stream_executor/semantic_version.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
@@ -1340,6 +1355,197 @@ TEST_F(GpuExecutableTest, ExecutableAbiVersion) {
   ASSERT_OK_AND_ASSIGN(GpuExecutableProto proto, executable->ToProto());
   EXPECT_THAT(proto.executable_abi_version(),
               EqualsProto(executable_abi_version_proto));
+}
+
+class FakeDeviceAddressAllocator : public se::DeviceAddressAllocator {
+ public:
+  explicit FakeDeviceAddressAllocator(const se::Platform* platform)
+      : se::DeviceAddressAllocator(platform) {}
+  absl::StatusOr<se::ScopedDeviceAddress<uint8_t>> Allocate(
+      int device_ordinal, uint64_t size, bool retry_on_failure,
+      int64_t memory_space) override {
+    return se::ScopedDeviceAddress<uint8_t>();
+  }
+  absl::Status Deallocate(int device_ordinal,
+                          se::DeviceAddressBase mem) override {
+    return absl::OkStatus();
+  }
+  bool AllowsAsynchronousDeallocation() const override { return true; }
+  absl::StatusOr<se::Stream*> GetStream(int device_ordinal) override {
+    return nullptr;
+  }
+};
+
+// Mimics Exec 1's CommandBufferThunk::ExecuteOnStream:
+// - Device 0 (slow) evicts its command buffer cache and calls BeginCapture
+//   (acquiring `driver_mutex`) before submitting the collective to the stream.
+// - Device 1 (fast) hits its cache and submits the collective immediately.
+class Exec1CollectiveThunk : public Thunk {
+ public:
+  Exec1CollectiveThunk(ThunkInfo thunk_info, absl::Mutex* driver_mutex,
+                       absl::Notification* d1_finished_exec1_thunk,
+                       absl::Notification* d1_entered_exec2,
+                       absl::BlockingCounter* exec1_collective_submitted,
+                       absl::Notification* exec1_collective_done)
+      : Thunk(Kind::kCommandBuffer, std::move(thunk_info)),
+        driver_mutex_(driver_mutex),
+        d1_finished_exec1_thunk_(d1_finished_exec1_thunk),
+        d1_entered_exec2_(d1_entered_exec2),
+        exec1_collective_submitted_(exec1_collective_submitted),
+        exec1_collective_done_(exec1_collective_done) {}
+
+  absl::Status Prepare(const PrepareParams& params) override {
+    return params.collective_clique_requests->RequestClique(
+        GpuCliqueKey({GlobalDeviceId(0), GlobalDeviceId(1)},
+                     /*num_local_participants=*/2),
+        /*device_groups=*/{{GlobalDeviceId(0), GlobalDeviceId(1)}});
+  }
+
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override {
+    if (params.stream->parent()->device_ordinal() == 0) {
+      d1_finished_exec1_thunk_->WaitForNotification();
+      // Give device 1 a window to race into exec2 if exec1 does not
+      // rendezvous after ExecuteOnStream.
+      d1_entered_exec2_->WaitForNotificationWithTimeout(absl::Milliseconds(50));
+      // Mimic cudaStreamBeginCapture acquiring libcuda's global lock before
+      // submitting the command buffer containing the collective.
+      absl::MutexLock lock(*driver_mutex_);
+      if (exec1_collective_submitted_->DecrementCount()) {
+        exec1_collective_done_->Notify();
+      }
+    } else {
+      if (exec1_collective_submitted_->DecrementCount()) {
+        exec1_collective_done_->Notify();
+      }
+      d1_finished_exec1_thunk_->Notify();
+    }
+    return absl::OkStatus();
+  }
+
+  BufferUses buffer_uses() const override { return {}; }
+
+  absl::StatusOr<ThunkProto> ToProto() const override { return ThunkProto(); }
+
+ private:
+  absl::Mutex* driver_mutex_;
+  absl::Notification* d1_finished_exec1_thunk_;
+  absl::Notification* d1_entered_exec2_;
+  absl::BlockingCounter* exec1_collective_submitted_;
+  absl::Notification* exec1_collective_done_;
+};
+
+TEST_F(GpuExecutableTest,
+       RendezvousAfterExecutionPreventsDriverLockDeadlockAcrossExecutables) {
+  ASSERT_OK_AND_ASSIGN(
+      se::Platform * platform,
+      se::PlatformManager::PlatformWithId(stream_executor_platform_id()));
+
+  constexpr int kNumDevices = 2;
+  absl::Mutex driver_mutex;
+  absl::Notification d1_finished_exec1_thunk;
+  absl::Notification d1_entered_exec2;
+  absl::BlockingCounter exec1_collective_submitted(kNumDevices);
+  absl::Notification exec1_collective_done;
+  std::atomic<int> d1_activate_calls{0};
+
+  se::MockStreamExecutor executors[kNumDevices];
+  se::MockStream streams[kNumDevices];
+  const se::GpuComputeCapability& compute_capability =
+      device_description().gpu_compute_capability();
+
+  ThunkSequence thunks1;
+  thunks1.push_back(std::make_unique<Exec1CollectiveThunk>(
+      ThunkInfoWithId(1), &driver_mutex, &d1_finished_exec1_thunk,
+      &d1_entered_exec2, &exec1_collective_submitted, &exec1_collective_done));
+
+  GpuExecutable::Params params1;
+  params1.module_name = "exec1";
+  params1.executable = std::make_unique<ThunkExecutor>(std::move(thunks1));
+  params1.device_description = device_description();
+  params1.enable_debug_info_manager = false;
+  SetDummyBufferAssignment(params1);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> exec1,
+                       GpuExecutable::Create(std::move(params1)));
+
+  // exec2 has a non-empty binary so ResolveConstantGlobals calls
+  // executor->LoadModule.
+  GpuExecutable::Params params2;
+  params2.module_name = "exec2";
+  params2.binary = {1, 2, 3, 4};
+  params2.executable = std::make_unique<ThunkExecutor>(ThunkSequence{});
+  params2.device_description = device_description();
+  params2.enable_debug_info_manager = false;
+  SetDummyBufferAssignment(params2);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> exec2,
+                       GpuExecutable::Create(std::move(params2)));
+
+  DeviceAssignment device_assn(/*replica_count=*/kNumDevices,
+                               /*computation_count=*/1);
+  device_assn.FillIota(0);
+  LoopbackCollectives loopback_collectives;
+  GpuExecutableRunOptions gpu_opts;
+  gpu_opts.set_collectives(&loopback_collectives);
+  FakeDeviceAddressAllocator allocator(platform);
+
+  tsl::thread::ThreadPool pool(tsl::Env::Default(), "driver_lock_deadlock_test",
+                               kNumDevices);
+  absl::BlockingCounter done(kNumDevices);
+  for (int d = 0; d < kNumDevices; ++d) {
+    EXPECT_CALL(executors[d], GetPlatform()).WillRepeatedly(Return(platform));
+    EXPECT_CALL(executors[d], device_ordinal()).WillRepeatedly(Return(d));
+    EXPECT_CALL(executors[d], SynchronizeAllActivity())
+        .WillRepeatedly(Return(true));
+    EXPECT_CALL(executors[d], EnablePeerAccessTo(::testing::_))
+        .WillRepeatedly(Return(absl::OkStatus()));
+    EXPECT_CALL(executors[d], Activate()).WillRepeatedly([&, d]() {
+      // Device 1's second Activate() call is its entry into exec2.
+      if (d == 1 && d1_activate_calls.fetch_add(1) == 1) {
+        d1_entered_exec2.Notify();
+      }
+      return nullptr;
+    });
+    // Mimic cuModuleLoadData in exec2's ResolveConstantGlobals holding
+    // `driver_mutex` while waiting for in-flight GPU work (exec1's collective)
+    // to finish on the device.
+    EXPECT_CALL(executors[d], LoadModule(::testing::_))
+        .WillRepeatedly([&](const se::MultiModuleLoaderSpec&) {
+          absl::MutexLock lock(driver_mutex);
+          exec1_collective_done.WaitForNotification();
+          return se::ModuleHandle(reinterpret_cast<void*>(0x1));
+        });
+    EXPECT_CALL(executors[d], UnloadModule(::testing::_))
+        .WillRepeatedly(Return(true));
+    EXPECT_CALL(streams[d], parent()).WillRepeatedly(Return(&executors[d]));
+    if (const se::CudaComputeCapability* cuda_cc =
+            compute_capability.cuda_compute_capability()) {
+      EXPECT_CALL(streams[d], GetCudaComputeCapability())
+          .WillRepeatedly(Return(*cuda_cc));
+    }
+    if (const se::RocmComputeCapability* rocm_cc =
+            compute_capability.rocm_compute_capability()) {
+      EXPECT_CALL(streams[d], GetRocmComputeCapability())
+          .WillRepeatedly(Return(*rocm_cc));
+    }
+
+    pool.Schedule([&, d]() {
+      auto run = [&](GpuExecutable& exec, int run_id) {
+        ExecutableRunOptions exec_run_options;
+        exec_run_options.set_stream(&streams[d]);
+        exec_run_options.set_allocator(&allocator);
+        exec_run_options.set_device_assignment(&device_assn);
+        exec_run_options.set_gpu_executable_run_options(&gpu_opts);
+        exec_run_options.set_run_id(RunId(run_id));
+        ServiceExecutableRunOptions run_opts(exec_run_options);
+        EXPECT_OK(exec.ExecuteAsyncOnStream(&run_opts,
+                                            std::vector<ExecutionInput>{}));
+      };
+
+      run(*exec1, 100);
+      run(*exec2, 101);
+      done.DecrementCount();
+    });
+  }
+  done.Wait();
 }
 
 int64_t BufferSizeBytes(const BufferValue& buffer) {

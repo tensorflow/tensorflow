@@ -580,6 +580,10 @@ absl::Status RendezvousAfterInitialization(
     const ServiceExecutableRunOptions& run_options,
     const DebugOptions* absl_nullable debug_options);
 
+absl::Status RendezvousAfterExecution(
+    const ServiceExecutableRunOptions& run_options,
+    const DebugOptions* absl_nullable debug_options);
+
 // Returns HangWatchdog guards for the given execution timeout handlers.
 static std::vector<std::shared_ptr<HangWatchdog::Guard>> ExecutionTimeoutGuards(
     absl::Span<ExecutionTimeoutHandler> handlers,
@@ -913,6 +917,16 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
   XLA_VLOG_DEVICE(1, run_options->device_ordinal())
       << "End GpuExecutable::ExecuteOnStream module: " << module_name;
 
+  // Join a round of rendezvous after thunk execution when the executable has
+  // collective operations. This ensures all participating local devices have
+  // enqueued their collective operations onto their streams before any device
+  // starts a subsequent execution that may acquire the CUDA driver lock (e.g.
+  // cuModuleLoadData or cuGraphInstantiate) while waiting for in-flight device
+  // work.
+  if (!collective_cliques.empty()) {
+    ABSL_RETURN_IF_ERROR(RendezvousAfterExecution(*run_options, debug_options));
+  }
+
   // Device monitoring is independent of host monitoring. The stream owns these
   // guards until the empty callback runs after the enqueued device work.
   std::string device_watchdog_name =
@@ -952,24 +966,30 @@ struct InitializationKey {
 bool operator==(const InitializationKey& a, const InitializationKey& b) {
   return a.run_id == b.run_id;
 }
-}  // namespace
 
-absl::Status RendezvousAfterInitialization(
-    const ServiceExecutableRunOptions& run_options,
-    const DebugOptions* absl_nullable debug_options) {
-  // Thunk initialization can allocate new control data structures on device
-  // that can lead to deadlocks if other replicas are executing concurrently
-  // (i.e. this happens if we try to instantiate CUDA graph when other replica
-  // is executing NCCL kernels). If we detect that we are running in multi-gpu
-  // setup we synchronize after first initialization to make sure that all
-  // replicas completed initialization process before we start execution.
+struct ExecutionCompletionKey {
+  RunId run_id;
+
+  template <typename H>
+  friend H AbslHashValue(H h, const ExecutionCompletionKey& key) {
+    return H::combine(std::move(h), key.run_id);
+  }
+
+  friend bool operator==(const ExecutionCompletionKey& a,
+                         const ExecutionCompletionKey& b) {
+    return a.run_id == b.run_id;
+  }
+};
+
+absl::StatusOr<int64_t> GetNumLocalParticipants(
+    const ServiceExecutableRunOptions& run_options) {
   auto* gpu_opts = run_options.run_options().gpu_executable_run_options();
   auto* device_assn = run_options.run_options().device_assignment();
 
   // If we don't have Gpu executable options or device assignment it means we
   // are running in a single Gpu config and don't need a rendezvous.
   if (!gpu_opts || !device_assn) {
-    return absl::OkStatus();
+    return 1;
   }
 
   // Assume that all participants execute locally first, if we have a local
@@ -992,6 +1012,24 @@ absl::Status RendezvousAfterInitialization(
           "Cound't find the number of local participants");
     }
   }
+  return num_local_participants;
+}
+}  // namespace
+
+absl::Status RendezvousAfterInitialization(
+    const ServiceExecutableRunOptions& run_options,
+    const DebugOptions* absl_nullable debug_options) {
+  // Thunk initialization can allocate new control data structures on device
+  // that can lead to deadlocks if other replicas are executing concurrently
+  // (i.e. this happens if we try to instantiate CUDA graph when other replica
+  // is executing NCCL kernels). If we detect that we are running in multi-gpu
+  // setup we synchronize after first initialization to make sure that all
+  // replicas completed initialization process before we start execution.
+  ABSL_ASSIGN_OR_RETURN(int64_t num_local_participants,
+                   GetNumLocalParticipants(run_options));
+  if (num_local_participants <= 1) {
+    return absl::OkStatus();
+  }
 
   XLA_VLOG_DEVICE(1, run_options.device_ordinal()) << absl::StreamFormat(
       "Join thunks initialization rendezvous with %d local participants",
@@ -1007,6 +1045,44 @@ absl::Status RendezvousAfterInitialization(
   auto rendezvous_key = InitializationKey{run_options.run_options().run_id()};
   auto rendezvous_name = absl::StrFormat(
       "thunk initialization completion for device ordinal %d; run_id=%d",
+      run_options.device_ordinal(), run_options.run_options().run_id().ToInt());
+
+  return Rendezvous(
+      rendezvous_name, rendezvous_key, num_local_participants,
+      absl::Seconds(
+          debug_options
+              ? debug_options->xla_gpu_executable_warn_stuck_timeout_seconds()
+              : 10),
+      absl::Seconds(
+          debug_options
+              ? debug_options->xla_gpu_executable_terminate_timeout_seconds()
+              : 30));
+}
+
+absl::Status RendezvousAfterExecution(
+    const ServiceExecutableRunOptions& run_options,
+    const DebugOptions* absl_nullable debug_options) {
+  ABSL_ASSIGN_OR_RETURN(int64_t num_local_participants,
+                   GetNumLocalParticipants(run_options));
+  if (num_local_participants <= 1) {
+    return absl::OkStatus();
+  }
+
+  XLA_VLOG_DEVICE(1, run_options.device_ordinal()) << absl::StreamFormat(
+      "Join thunks execution completion rendezvous with %d local participants",
+      num_local_participants);
+
+  tsl::profiler::TraceMe trace([&] {
+    return tsl::profiler::TraceMeEncode(
+        "RendezvousAfterExecution",
+        {{"run_id", run_options.run_options().run_id().ToInt()},
+         {"num_local_participants", num_local_participants}});
+  });
+
+  auto rendezvous_key =
+      ExecutionCompletionKey{run_options.run_options().run_id()};
+  auto rendezvous_name = absl::StrFormat(
+      "thunk execution completion for device ordinal %d; run_id=%d",
       run_options.device_ordinal(), run_options.run_options().run_id().ToInt());
 
   return Rendezvous(
