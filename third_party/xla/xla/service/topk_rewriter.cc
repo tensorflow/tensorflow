@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/service/topk_rewriter.h"
 
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -226,13 +225,21 @@ static std::optional<ComparisonOrder> MatchNanSafeGt(HloComputation* comp) {
 // Look for the instructions emitted from: xla/client/lib/sorting.cc
 static bool HasIota(HloSortInstruction* sort, HloInstruction* data) {
   namespace m = match;
-  const std::array<int64_t, 1> sort_dims = {
-      data->shape().dimensions(sort->sort_dimension())};
-  auto match_iota = [](auto dims) {
-    return m::Iota().WithShape(m::Shape().WithElementType(S32).WithDims(dims));
-  };
-  return Match(sort->operand(1), match_iota(data->shape().dimensions())) ||
-         Match(sort->operand(1), m::Broadcast(match_iota(sort_dims)));
+  const int64_t sort_dim = sort->sort_dimension();
+  const HloInstruction* iota = nullptr;
+  if (Match(sort->operand(1),
+            m::Iota(&iota).WithShape(m::Shape().WithElementType(S32).WithDims(
+                data->shape().dimensions())))) {
+    return Cast<HloIotaInstruction>(iota)->iota_dimension() == sort_dim;
+  }
+  if (Match(sort->operand(1),
+            m::Broadcast(m::Iota(&iota).WithElementType(S32))
+                .WithShape(m::Shape().WithElementType(S32).WithDims(
+                    data->shape().dimensions())))) {
+    return sort->operand(1)->dimensions(
+               Cast<HloIotaInstruction>(iota)->iota_dimension()) == sort_dim;
+  }
+  return false;
 }
 
 std::optional<int64_t> TopkRewriter::SortIsInTopK(HloInstruction* inst,
