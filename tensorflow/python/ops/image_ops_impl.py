@@ -3476,6 +3476,18 @@ def total_variation(images, name=None):
   """
 
   with ops.name_scope(name, 'total_variation'):
+    images = ops.convert_to_tensor(images, name='images')
+    if images.dtype.is_integer and images.dtype not in (
+        dtypes.int32,
+        dtypes.int64,
+    ):
+      # `abs` has no kernel for unsigned integers (e.g. `uint8` images), and
+      # signed integers narrower than 32 bits would overflow while taking the
+      # pixel differences, so compute them in a wider signed type.
+      images = math_ops.cast(
+          images,
+          dtypes.int64 if images.dtype.size >= 4 else dtypes.int32,
+      )
     ndims = images.get_shape().ndims
 
     if ndims == 3:
@@ -4784,6 +4796,7 @@ def image_gradients(image):
   Raises:
     ValueError: If `image` is not a 4D tensor.
   """
+  image = ops.convert_to_tensor(image, name='image')
   if image.get_shape().ndims != 4:
     raise ValueError('image_gradients expects a 4D tensor '
                      '[batch_size, h, w, d], not {}.'.format(image.get_shape()))
@@ -4847,6 +4860,7 @@ def sobel_edges(image):
     [dy[1], dx[1]], ..., [dy[d-1], dx[d-1]]] calculated using the Sobel filter.
   """
   # Define vertical and horizontal Sobel filters.
+  image = ops.convert_to_tensor(image, name='image')
   static_image_shape = image.get_shape()
   image_shape = array_ops.shape(image)
   kernels = [[[-1, -2, -1], [0, 0, 0], [1, 2, 1]],
