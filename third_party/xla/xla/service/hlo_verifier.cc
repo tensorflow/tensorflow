@@ -1453,23 +1453,34 @@ absl::Status ShapeVerifier::HandleScan(HloInstruction* scan) {
   int64_t num_inputs = operand_shapes.size() - num_carries;
   int64_t num_outputs = result_shapes.size() - num_carries;
 
-  // Build the shape-equality predicate. Layouts are always ignored:
-  // associative scans are lowered directly by an emitter, so the to_apply
-  // computation is never materialized and its parameter layouts are
-  // independent of the operand array layouts (which are freely assigned by
-  // layout assignment). The layout-sensitive guard above ensures
-  // non-associative scans never reach this point.
+  // shapes_match always ignores layouts: associative scans are lowered
+  // directly by an emitter, so the to_apply computation is never materialized
+  // and its parameter layouts are independent of the operand array layouts
+  // (which are freely assigned by layout assignment). The layout-sensitive
+  // guard above ensures non-associative scans never reach this point.
   //
-  // When mixed precision is allowed, also ignore FP precision: during BF16
+  // When mixed precision is allowed, it also ignores FP precision: during BF16
   // propagation the scan I/O and the body parameter/root shapes can
   // transiently disagree on element type (e.g. body root pinned at F32 while
   // the scan output has been lowered to BF16). ResolveInconsistentScans
-  // reconciles these mismatches before the final, strict verifier pass.
-  // This mirrors HandleReduce / HandleReduceWindow / HandleMap.
-  auto shape_equal = Shape::Equal().IgnoreLayout();
-  if (opts_.allow_mixed_precision) {
-    shape_equal.IgnoreFpPrecision();
-  }
+  // reconciles these mismatches before the final, strict verifier pass. BF16
+  // conversion folding can also leave a BF16 init feeding an F32 carry. This
+  // mirrors HandleReduce / HandleReduceWindow / HandleMap.
+  //
+  // ShapesSame applies its predicate only when the verifier is layout
+  // sensitive. Otherwise it uses ShapeUtil::Compatible, which also compares
+  // element types, so the layout insensitive mixed precision case calls
+  // ShapeUtil::CompatibleIgnoringFpPrecision directly.
+  auto shapes_match = [&](const Shape& a, const Shape& b) {
+    if (!opts_.layout_sensitive && opts_.allow_mixed_precision) {
+      return ShapeUtil::CompatibleIgnoringFpPrecision(a, b);
+    }
+    auto shape_equal = Shape::Equal().IgnoreLayout();
+    if (opts_.allow_mixed_precision) {
+      shape_equal.IgnoreFpPrecision();
+    }
+    return ShapesSame(a, b, shape_equal);
+  };
 
   // Check shapes of operands vs to_apply parameters.
   for (int64_t i = 0; i < operand_shapes.size(); ++i) {
@@ -1487,7 +1498,7 @@ absl::Status ShapeVerifier::HandleScan(HloInstruction* scan) {
       }
       expected_param_shape.DeleteDimension(scan_dim);
     }
-    if (!ShapesSame(param_shape, expected_param_shape, shape_equal)) {
+    if (!shapes_match(param_shape, expected_param_shape)) {
       return Internal(
           "Shapes of operand %d and to_apply computation parameter are "
           "inconsistent",
@@ -1501,7 +1512,7 @@ absl::Status ShapeVerifier::HandleScan(HloInstruction* scan) {
   for (int64_t i = 0; i < num_carries; ++i) {
     const Shape& param_shape = parameter_shapes[i + num_inputs];
     const Shape& root_shape = root_shapes[i + num_outputs];
-    if (!ShapesSame(param_shape, root_shape, shape_equal)) {
+    if (!shapes_match(param_shape, root_shape)) {
       return Internal(
           "Shapes of parameter %d and root in to_apply computation are "
           "inconsistent",
@@ -1509,9 +1520,9 @@ absl::Status ShapeVerifier::HandleScan(HloInstruction* scan) {
     }
   }
 
-  // Check shapes of results vs to_apply root. Use the same shape_equal
-  // predicate as above so allow_mixed_precision lets the body root and the
-  // scan result transiently disagree on FP precision during propagation.
+  // Check shapes of results vs to_apply root. Use shapes_match as above so
+  // allow_mixed_precision lets the body root and the scan result transiently
+  // disagree on FP precision during propagation.
   for (int64_t i = 0; i < root_shapes.size(); ++i) {
     const Shape& root_shape = root_shapes[i];
     const Shape& result_shape = result_shapes[i];
@@ -1527,7 +1538,7 @@ absl::Status ShapeVerifier::HandleScan(HloInstruction* scan) {
       }
       expected_root_shape.DeleteDimension(scan_dim);
     }
-    if (!ShapesSame(root_shape, expected_root_shape, shape_equal)) {
+    if (!shapes_match(root_shape, expected_root_shape)) {
       return Internal(
           "Shapes of result %d and to_apply computation root are "
           "inconsistent",
