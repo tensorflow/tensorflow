@@ -1384,7 +1384,7 @@ def _boundaries_to_sizes(a, boundaries, axis):
     size = b_resolved - prev
     if size < 0:
       raise ValueError(
-          'The %s-th boundary %s is smaller than the previous boundary %s'
+          'The %s-th boundary %s (after resolution) is smaller than the previous resolved boundary %s'
           % (i, b, prev)
       )
     size = builtins.min(size, builtins.max(0, total_size - sizes_sum))
