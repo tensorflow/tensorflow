@@ -700,6 +700,12 @@ tsl::AsyncValueRef<PjRtExecutable> PjRtCpuRawClient::ToAsyncExecutable(
       std::static_pointer_cast<PjRtCpuExecutable>(executable));
 }
 
+std::pair<tsl::AsyncValueRef<PjRtExecutable>,
+          PjRtRawClient::PjRtFulfillAsyncExecutableCallback>
+PjRtCpuRawClient::CreateLinkedExecutablePromise() const {
+  return CreateLinkedExecutablePromiseForType<PjRtCpuExecutable>();
+}
+
 static absl::StatusOr<std::unique_ptr<xla::Executable>> JitCompile(
     std::unique_ptr<HloModule> hlo_module,
     const ExecutableBuildOptions& build_options,

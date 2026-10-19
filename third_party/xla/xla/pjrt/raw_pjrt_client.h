@@ -308,6 +308,30 @@ class PjRtRawClient {
   virtual tsl::AsyncValueRef<PjRtExecutable> ToAsyncExecutable(
       std::shared_ptr<PjRtExecutable> executable) const = 0;
 
+  using PjRtFulfillAsyncExecutableCallback = absl::AnyInvocable<void(
+      absl::StatusOr<tsl::AsyncValueRef<PjRtExecutable>>) &&>;
+
+  virtual std::pair<tsl::AsyncValueRef<PjRtExecutable>,
+                    PjRtFulfillAsyncExecutableCallback>
+  CreateLinkedExecutablePromise() const = 0;
+
+  template <typename T>
+  static std::pair<tsl::AsyncValueRef<PjRtExecutable>,
+                   PjRtFulfillAsyncExecutableCallback>
+  CreateLinkedExecutablePromiseForType() {
+    auto indirect = tsl::MakeIndirectAsyncValue<T>();
+    auto fulfill_cb =
+        [indirect](
+            absl::StatusOr<tsl::AsyncValueRef<PjRtExecutable>> executable) {
+          if (executable.ok()) {
+            indirect->ForwardTo(executable->ReleaseRCRef());
+          } else {
+            indirect->SetError(executable.status());
+          }
+        };
+    return {tsl::AsyncValueRef<T>(std::move(indirect)), std::move(fulfill_cb)};
+  }
+
   virtual tsl::RCReference<PjRtExecutableLoadState> MakeLoadState() {
     LOG(FATAL) << "Implement MakeLoadState()";
   }
