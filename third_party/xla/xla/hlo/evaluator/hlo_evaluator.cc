@@ -5839,7 +5839,7 @@ absl::Status HloEvaluator::EvaluateConvolution(
 
   if (use_f32_fast_path) {
     auto is_row_major_r2 = [](const Shape& s) {
-      return s.dimensions_size() == 2 &&
+      return s.dimensions().size() == 2 &&
              (!s.has_layout() ||
               LayoutUtil::IsMonotonicWithDim0Major(s.layout()));
     };
