@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <complex>
 #include <cstddef>
+#include <iterator>
 
 #ifndef _WIN32
 #include <unistd.h>
