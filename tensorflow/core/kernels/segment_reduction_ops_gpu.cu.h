@@ -1031,16 +1031,16 @@ absl::Status SparseSegmentReductionFunctor<T, Index, SegmentId>::operator()(
 // violation (not necessarily the first in `i` order) otherwise.
 template <typename Index, typename SegmentId>
 __global__ void SparseSegmentGradBoundsCheckKernel(
-    Index nouter, Index noutput, SegmentId nsegments,
+    Index nouter, int64_t noutput, int64_t nsegments,
     const Index* __restrict__ indices_vec,      // [nouter]
     const SegmentId* __restrict__ segment_vec,  // [nouter]
     int32_t* __restrict__ bad_index_pos,        // [1]
     int32_t* __restrict__ bad_segment_pos) {    // [1]
   for (Index i : GpuGridRangeX(nouter)) {
-    if (!FastBoundsCheck(indices_vec[i], noutput)) {
+    if (!FastBoundsCheck(static_cast<int64_t>(indices_vec[i]), noutput)) {
       GpuAtomicMin(bad_index_pos, static_cast<int32_t>(i));
     }
-    if (!FastBoundsCheck(segment_vec[i], nsegments)) {
+    if (!FastBoundsCheck(static_cast<int64_t>(segment_vec[i]), nsegments)) {
       GpuAtomicMin(bad_segment_pos, static_cast<int32_t>(i));
     }
   }
@@ -1048,7 +1048,7 @@ __global__ void SparseSegmentGradBoundsCheckKernel(
 
 template <typename Index, typename SegmentId>
 absl::Status LaunchSparseSegmentGradBoundsCheckKernel(
-    const GPUDevice& d, Index nouter, Index noutput, SegmentId nsegments,
+    const GPUDevice& d, Index nouter, int64_t noutput, int64_t nsegments,
     const Index* indices_vec, const SegmentId* segment_vec,
     int32_t* bad_index_pos, int32_t* bad_segment_pos) {
   TF_ASSIGN_OR_RETURN(
@@ -1369,10 +1369,9 @@ struct SparseSegmentGradV2Functor<GPUDevice, T, Tindices, Tsegmentids> {
       OP_REQUIRES_OK_ASYNC(
           context,
           LaunchSparseSegmentGradBoundsCheckKernel(
-              device, static_cast<Tindices>(nouter64),
-              static_cast<Tindices>(noutput64),
-              static_cast<Tsegmentids>(nsegments), indices_vec.data(),
-              segment_vec.data(), bad_index_pos_ptr, bad_segment_pos_ptr),
+              device, static_cast<Tindices>(nouter64), noutput64, nsegments,
+              indices_vec.data(), segment_vec.data(), bad_index_pos_ptr,
+              bad_segment_pos_ptr),
           done);
       ScratchSpace<int32_t> bad_positions_host(context, 2, /*on_host=*/true);
       OP_REQUIRES_OK_ASYNC(
@@ -1383,22 +1382,43 @@ struct SparseSegmentGradV2Functor<GPUDevice, T, Tindices, Tsegmentids> {
       OP_REQUIRES_OK_ASYNC(context, stream->BlockHostUntilDone(), done);
       const int32_t bad_index_pos = bad_positions_host.data()[0];
       const int32_t bad_segment_pos = bad_positions_host.data()[1];
-      OP_REQUIRES_ASYNC(context,
-                        bad_index_pos == std::numeric_limits<int32_t>::max(),
-                        absl::InvalidArgumentError(absl::StrCat(
-                            "indices[", bad_index_pos,
-                            "] is out of range. Please note "
-                            "that the GPU op does not support out of "
-                            "range indices.")),
-                        done);
-      OP_REQUIRES_ASYNC(context,
-                        bad_segment_pos == std::numeric_limits<int32_t>::max(),
-                        absl::InvalidArgumentError(absl::StrCat(
-                            "segment_ids[", bad_segment_pos,
-                            "] is out of range. Please note "
-                            "that the GPU op does not support out of "
-                            "range segment_ids.")),
-                        done);
+      if (bad_index_pos != std::numeric_limits<int32_t>::max()) {
+        ScratchSpace<Tindices> bad_index_host(context, 1, /*on_host=*/true);
+        OP_REQUIRES_OK_ASYNC(
+            context,
+            stream->Memcpy(
+                bad_index_host.mutable_data(),
+                stream_executor::DeviceAddressBase(
+                    const_cast<Tindices*>(indices_vec.data()) + bad_index_pos,
+                    sizeof(Tindices)),
+                sizeof(Tindices)),
+            done);
+        OP_REQUIRES_OK_ASYNC(context, stream->BlockHostUntilDone(), done);
+        OP_REQUIRES_ASYNC(context, false,
+                          absl::InvalidArgumentError(absl::StrCat(
+                              "Index ", *bad_index_host.data(),
+                              " out of range [0, ", noutput64, ").")),
+                          done);
+      }
+      if (bad_segment_pos != std::numeric_limits<int32_t>::max()) {
+        ScratchSpace<Tsegmentids> bad_segment_host(context, 1,
+                                                   /*on_host=*/true);
+        OP_REQUIRES_OK_ASYNC(
+            context,
+            stream->Memcpy(bad_segment_host.mutable_data(),
+                           stream_executor::DeviceAddressBase(
+                               const_cast<Tsegmentids*>(segment_vec.data()) +
+                                   bad_segment_pos,
+                               sizeof(Tsegmentids)),
+                           sizeof(Tsegmentids)),
+            done);
+        OP_REQUIRES_OK_ASYNC(context, stream->BlockHostUntilDone(), done);
+        OP_REQUIRES_ASYNC(context, false,
+                          absl::InvalidArgumentError(absl::StrCat(
+                              "Segment id ", *bad_segment_host.data(),
+                              " out of range [0, ", nsegments, ").")),
+                          done);
+      }
     }
 
     // Cast indices to 32-bit to save memory bandwidth (the cost of the cast is
