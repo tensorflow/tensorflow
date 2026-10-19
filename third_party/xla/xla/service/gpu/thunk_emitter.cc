@@ -1890,6 +1890,48 @@ Future<ThunkSequence> ThunkEmitter::EmitDynamicSliceFusionV2(
             &embedded_allocations[parameters.size() + leaf_idx], 0, byte_size));
       });
 
+  // If the hero has output-to-operand aliasing, the hero expects its aliased
+  // operand and output leaf to point to the same buffer. When the fusion
+  // reads from and writes to different buffers (e.g. a scan reading from `in`
+  // and updating `out` via DUS), copy the input slice into the output slice
+  // first and point both the hero operand and output at the output slice.
+  ThunkSequence copy_thunks;
+  if (const auto* callable = DynCast<HloCallableInstruction>(hero)) {
+    for (const auto& [output_index, operand_pair] :
+         callable->output_to_operand_aliasing()) {
+      int64_t op_idx = operand_pair.first;
+      TF_RET_CHECK(op_idx >= 0 && op_idx < parameters.size());
+      TF_RET_CHECK(operand_pair.second.empty());
+      TF_RET_CHECK(output_index.size() <= 1);
+      int64_t leaf_idx = output_index.empty() ? 0 : output_index[0];
+      TF_RET_CHECK(leaf_idx >= 0 && leaf_idx < results.size());
+
+      BufferAllocation::Slice src_slice = overrides[hero->operand(op_idx)][0];
+      BufferAllocation::Slice dst_slice = overrides[hero][leaf_idx];
+      if (parameter_buffers[parameters[op_idx].parameter_number] !=
+          result_buffers[results[leaf_idx].result_number]) {
+        copy_thunks.Emplace<DeviceToDeviceCopyThunk>(
+            Thunk::ThunkInfo::WithProfileAnnotation(
+                instr, ir_emitter_context_->GetNextThunkId()),
+            /*source_buffer=*/
+            ShapedSlice{src_slice, hero->operand(op_idx)->shape()},
+            /*destination_buffer=*/
+            ShapedSlice{dst_slice,
+                        ShapeUtil::GetSubshape(hero->shape(), output_index)},
+            /*mem_size=*/src_slice.size());
+      } else {
+        // When the aliased input parameter and output result share the same
+        // underlying buffer, DynamicSliceFusionRewriterV2 only fuses the DUS if
+        // its DynamicSliceConfig matches the input slice's config (so both
+        // resolve to the exact same runtime slice and no copy is needed).
+        TF_RET_CHECK(parameters[op_idx].slice_config ==
+                     results[leaf_idx].update_config);
+      }
+
+      overrides[hero->operand(op_idx)] = {dst_slice};
+    }
+  }
+
   auto overrides_cleanup = InstallAllocationOverrides(std::move(overrides));
 
   Thunk::ThunkInfo info = Thunk::ThunkInfo::WithProfileAnnotation(
@@ -1904,7 +1946,13 @@ Future<ThunkSequence> ThunkEmitter::EmitDynamicSliceFusionV2(
        parameters = std::move(parameters),
        parameter_buffers = std::move(parameter_buffers),
        embedded_allocations = std::move(embedded_allocations),
+       copy_thunks = std::move(copy_thunks),
        verify_offsets](ThunkSequence embedded_thunks) mutable {
+        if (!copy_thunks.empty()) {
+          embedded_thunks.insert(embedded_thunks.begin(),
+                                 std::make_move_iterator(copy_thunks.begin()),
+                                 std::make_move_iterator(copy_thunks.end()));
+        }
         return ThunkSequence::Of<DynamicSliceFusionV2Thunk>(
             std::move(info), std::move(parameters), std::move(results),
             std::move(parameter_buffers), std::move(result_buffers),
