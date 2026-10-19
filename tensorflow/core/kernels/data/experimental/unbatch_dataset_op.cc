@@ -290,6 +290,10 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
             reader->ReadScalar(full_name("current_index"), &current_index_));
         TF_RETURN_IF_ERROR(
             reader->ReadScalar(full_name("n"), &current_batch_size_));
+        if (current_index_ < 0) {
+          return absl::InvalidArgumentError(absl::StrCat(
+              "Invalid current_index in checkpoint: ", current_index_));
+        }
         tensors_.clear();
         tensors_.resize(dataset()->output_dtypes().size());
         if (current_index_ < current_batch_size_) {
@@ -320,6 +324,23 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
             TF_RETURN_IF_ERROR(reader->ReadTensor(
                 ctx->flr(), full_name(absl::StrCat("tensors[", i, "]")),
                 &tensors_[i]));
+          }
+        }
+        // `current_index_`, `current_batch_size_` and `tensors_` all come from
+        // the checkpoint, and GetNextInternal slices `tensors_` at
+        // `current_index_` without further checks, so re-establish the
+        // invariants it relies on before computing `shapes_`.
+        for (size_t i = 0; i < tensors_.size(); ++i) {
+          if (tensors_[i].dims() == 0) {
+            return absl::InvalidArgumentError(
+                "Restored input element must have a non-scalar value in each "
+                "component.");
+          }
+          if (tensors_[i].dim_size(0) != current_batch_size_) {
+            return absl::InvalidArgumentError(absl::StrCat(
+                "Restored input element component ", i, " has batch size ",
+                tensors_[i].dim_size(0), " but the checkpoint recorded ",
+                current_batch_size_, "."));
           }
         }
         for (size_t i = 0; i < tensors_.size(); ++i) {
