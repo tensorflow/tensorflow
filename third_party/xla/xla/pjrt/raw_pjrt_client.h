@@ -261,8 +261,18 @@ class PjRtRawClient {
     return tsl::port::kNUMANoAffinity;
   }
 
+  // Returns the required alignment for device memory addresses when slicing.
+  virtual absl::StatusOr<size_t> GetDeviceAddressAlignment() const {
+    return absl::UnimplementedError(
+        "GetDeviceAddressAlignment is not implemented.");
+  }
+
   // Returns the required byte alignment for host memory when performing DMA.
   virtual size_t GetDmaHostAlignment() const { return 1; }
+
+  // Returns the required byte alignment for transfer sizes when performing DMA,
+  // or nullopt if unpadded DMA transfers are not supported.
+  virtual std::optional<size_t> GetDmaSizeAlignment() const { return 1; }
 
   virtual void LaunchOnDevice(LocalDeviceId device_id,
                               absl::AnyInvocable<void()> execute_fn) const {

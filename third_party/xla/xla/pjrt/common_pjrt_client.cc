@@ -1592,7 +1592,19 @@ absl::StatusOr<int64_t> CommonPjRtClient::GetOnDeviceBytesCount(
 
 absl::StatusOr<int64_t> CommonPjRtClient::GetDmaByteCount(
     const xla::Shape& shape) const {
-  return PjRtGetOnDeviceBytesCount(shape);
+  if (!shape.IsToken() && !shape.has_layout()) {
+    return absl::FailedPreconditionError(
+        "Buffer's on-device shape has no layout. Cannot determine on-device "
+        "bytes count.");
+  }
+  auto requirements = PjRtShapeAndMetadataTransferRequirements::Get(shape);
+  if (requirements.unpadded_size != requirements.size &&
+      raw_client() != nullptr) {
+    if (std::optional<size_t> alignment = raw_client()->GetDmaSizeAlignment()) {
+      return RoundUpTo<int64_t>(requirements.unpadded_size, *alignment);
+    }
+  }
+  return static_cast<int64_t>(requirements.size);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>

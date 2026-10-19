@@ -163,8 +163,7 @@ class CommonPjRtClient : public PjRtClient {
 
   // Computes the DMA transfer size for shape, omitting trailing 0-padding
   // beyond the DMA granule boundary when supported.
-  virtual absl::StatusOr<int64_t> GetDmaByteCount(
-      const xla::Shape& shape) const;
+  absl::StatusOr<int64_t> GetDmaByteCount(const xla::Shape& shape) const;
 
   // Gets the memory_space_kind for a particular XLA layout.
   virtual absl::StatusOr<int> GetMemorySpaceKindForShape(
@@ -629,7 +628,10 @@ class CommonPjRtClient : public PjRtClient {
       std::shared_ptr<PjRtExecutable> executable,
       const LoadOptions& load_options, bool dump);
   // Returns the required alignment for device memory addresses when slicing.
-  virtual absl::StatusOr<size_t> GetDeviceAddressAlignment() const {
+  absl::StatusOr<size_t> GetDeviceAddressAlignment() const {
+    if (raw_client() != nullptr) {
+      return raw_client()->GetDeviceAddressAlignment();
+    }
     return absl::UnimplementedError(
         "GetDeviceAddressAlignment is not implemented.");
   }
