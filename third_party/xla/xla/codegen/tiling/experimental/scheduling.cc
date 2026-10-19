@@ -513,16 +513,12 @@ absl::StatusOr<Schedule> BuildIndexWiseVariadicSchedule(
     if (root.tiles_per_peer > 1) {
       peer_tile_id = peer_tile_id + delinearized.back();
     }
-    if (root.num_tiles < max_tiles &&
-        (root.non_peer_block_counts.empty() ||
-         root.non_peer_block_counts.front() == 1)) {
-      // No non-trivial non-peer dimension can absorb the padding: a non-peer
-      // dimension covered by a single block folds its tile offset to 0, and
-      // an unpadded `tiles_per_peer` offset would step into the next peer
-      // instead of out of bounds. Push the peer tile id past the last peer.
+    if (root.num_tiles < max_tiles) {
+      // Push the peer tile id past the last peer on padded programs so both
+      // the output and input tiles are out of bounds.
       peer_tile_id =
           peer_tile_id + intra_peer_tile_id.floorDiv(root.num_tiles) *
-                             (info.num_peers * root.tiles_per_peer);
+                             (info.num_peers * root.num_tiles);
     }
     schedule.dim_id_to_pid_expr[*root.peer_dim_id] = peer_tile_id;
   }

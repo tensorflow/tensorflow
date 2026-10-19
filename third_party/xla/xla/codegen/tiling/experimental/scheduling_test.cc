@@ -295,12 +295,12 @@ TEST_F(SchedulingTest, VariadicAllGatherSharesPeerIndex) {
         kind=kCustom, calls=f
     })",
                                     {1, 1, 4, 16, 1, 1}));
-  EXPECT_THAT(
-      GetSchedule(tiled_computation),
-      IsOkAndHolds(MatchSchedule("d0 -> pid / 4, d1 -> (pid mod 4) / 2, "
-                                 "d2 -> pid mod 4 mod 2, d3 -> 0, "
-                                 "d4 -> pid / 4, d5 -> pid mod 4, "
-                                 "num_pids=16, num_tiles=16")));
+  EXPECT_THAT(GetSchedule(tiled_computation),
+              IsOkAndHolds(MatchSchedule(
+                  "d0 -> pid / 4, d1 -> (pid mod 4) / 2, "
+                  "d2 -> pid mod 4 mod 2, d3 -> 0, "
+                  "d4 -> pid / 4 + ((pid mod 4) / 2) * 8, d5 -> pid mod 4, "
+                  "num_pids=16, num_tiles=16")));
 }
 
 TEST_F(SchedulingTest, VariadicAllGatherNonZeroGatherDim) {
@@ -327,7 +327,7 @@ TEST_F(SchedulingTest, VariadicAllGatherNonZeroGatherDim) {
       GetSchedule(tiled_computation),
       IsOkAndHolds(MatchSchedule("d0 -> (pid mod 4) / 2, d1 -> pid / 4, "
                                  "d2 -> pid mod 4 mod 2, d3 -> pid mod 4, "
-                                 "d4 -> pid / 4, "
+                                 "d4 -> pid / 4 + ((pid mod 4) / 2) * 8, "
                                  "num_pids=16, num_tiles=16")));
 }
 
@@ -424,14 +424,16 @@ TEST_F(SchedulingTest, VariadicAllGatherWithMixedTileCounts) {
         calls=f
     })",
                    {1, 16384, 1, 64, 1, 128, 1, 1, 1, 1, 1, 4}));
-  EXPECT_THAT(GetSchedule(tiled_computation),
-              IsOkAndHolds(MatchSchedule("d0 -> pid / 10, d1 -> pid mod 10, "
-                                         "d2 -> pid / 10, d3 -> pid mod 10, "
-                                         "d4 -> pid / 10, d5 -> pid mod 10, "
-                                         "d6 -> pid / 10, d7 -> pid mod 10, "
-                                         "d8 -> pid / 10, d9 -> pid mod 10, "
-                                         "d10 -> pid / 10, d11 -> pid mod 10, "
-                                         "num_pids=40, num_tiles=40")));
+  EXPECT_THAT(
+      GetSchedule(tiled_computation),
+      IsOkAndHolds(MatchSchedule(
+          "d0 -> pid / 10, d1 -> pid mod 10, "
+          "d2 -> pid / 10 + ((pid mod 10) / 4) * 16, d3 -> pid mod 10, "
+          "d4 -> pid / 10 + ((pid mod 10) / 4) * 16, d5 -> pid mod 10, "
+          "d6 -> pid / 10 + ((pid mod 10) / 2) * 8, d7 -> pid mod 10, "
+          "d8 -> pid / 10 + ((pid mod 10) / 2) * 8, d9 -> pid mod 10, "
+          "d10 -> pid / 10 + ((pid mod 10) / 4) * 16, d11 -> pid mod 10, "
+          "num_pids=40, num_tiles=40")));
 }
 
 TEST_F(SchedulingTest, VariadicAllGatherTileSpanningPeersIsRejected) {
@@ -551,7 +553,7 @@ TEST_F(SchedulingTest, VariadicAllGatherWithDotProducersSharesPeerIndex) {
   EXPECT_THAT(
       GetSchedule(tiled_computation),
       IsOkAndHolds(MatchSchedule(
-          "d0 -> pid / 4, d1 -> pid mod 4, "
+          "d0 -> pid / 4 + ((pid mod 4) / 2) * 8, d1 -> pid mod 4, "
           "d2 -> (pid / 4) * 2 + pid mod 4 mod 2, d3 -> (pid mod 4) / 2, "
           "num_pids=16, num_tiles=16")));
 }
@@ -663,7 +665,7 @@ TEST_F(SchedulingTest, VariadicReduceScatterWithDotProducers) {
               IsOkAndHolds(MatchSchedule(
                   "d0 -> (pid mod 4) / 2, d1 -> pid mod 4 mod 2, "
                   "d2 -> (pid mod 4) / 2, d3 -> pid mod 4 mod 2, "
-                  "d4 -> pid / 4 + ((pid mod 4) / 2) * 4, d5 -> pid / 4, "
+                  "d4 -> pid / 4 + ((pid mod 4) / 2) * 8, d5 -> pid / 4, "
                   "num_pids=16, num_tiles=16")));
 }
 
@@ -691,6 +693,79 @@ TEST_F(SchedulingTest, SingleOperandReduceScatterReplicaDimension) {
               IsOkAndHolds(
                   MatchSchedule("d0 -> (pid mod 4) / 2, d1 -> pid mod 4 mod 2, "
                                 "d2 -> pid / 4, num_pids=8, num_tiles=8")));
+}
+
+// Output 1 (`f32[1,4]`, tile `[1, 1]`) has 2 tiles/peer along scatter dim 1;
+// padded programs push d5 by `((pid mod 4) / 2) * 4` past the last peer.
+TEST_F(SchedulingTest,
+       VariadicReduceScatterPaddedOutputWithTiledScatterDimIsMasked) {
+  ASSERT_OK_AND_ASSIGN(const TiledHloComputation tiled_computation,
+                       ParseAndTile(R"(
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+
+    f {
+      p0 = f32[1,32] parameter(0)
+      p1 = f32[1,8] parameter(1)
+      rs = (f32[1,16], f32[1,4]) reduce-scatter(p0, p1),
+        replica_groups={{0,1}}, dimensions={1}, to_apply=add
+      gte0 = f32[1,16] get-tuple-element(rs), index=0
+      gte1 = f32[1,4] get-tuple-element(rs), index=1
+      ROOT t = (f32[1,16], f32[1,4]) tuple(gte0, gte1)
+    }
+
+    ENTRY e {
+      arg0 = f32[1,32] parameter(0)
+      arg1 = f32[1,8] parameter(1)
+      ROOT fusion = (f32[1,16], f32[1,4]) fusion(arg0, arg1),
+        kind=kCustom, calls=f
+    })",
+                                    {1, 2, 1, 1}));
+  EXPECT_THAT(GetSchedule(tiled_computation),
+              IsOkAndHolds(MatchSchedule(
+                  "d0 -> (pid mod 4) / 4, d1 -> pid mod 4 mod 4, "
+                  "d2 -> (pid mod 4) / 2, d3 -> pid mod 4 mod 2, "
+                  "d4 -> pid / 4, d5 -> pid / 4 + ((pid mod 4) / 2) * 4, "
+                  "num_pids=8, num_tiles=8")));
+}
+
+// Output 1 (`f32[4,1]`, tile `[1, 1]`) has 2 tiles/peer along scatter dim 0;
+// padded programs push d4 by `((pid mod 4) / 2) * 4` past the last peer.
+TEST_F(SchedulingTest,
+       VariadicReduceScatterPaddedInputWithTiledScatterDimIsMasked) {
+  ASSERT_OK_AND_ASSIGN(const TiledHloComputation tiled_computation,
+                       ParseAndTile(R"(
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+
+    f {
+      p0 = f32[32] parameter(0)
+      p1 = f32[8,1] parameter(1)
+      rs = (f32[16], f32[4,1]) reduce-scatter(p0, p1),
+        replica_groups={{0,1}}, dimensions={0}, to_apply=add
+      gte0 = f32[16] get-tuple-element(rs), index=0
+      gte1 = f32[4,1] get-tuple-element(rs), index=1
+      ROOT t = (f32[16], f32[4,1]) tuple(gte0, gte1)
+    }
+
+    ENTRY e {
+      arg0 = f32[32] parameter(0)
+      arg1 = f32[8,1] parameter(1)
+      ROOT fusion = (f32[16], f32[4,1]) fusion(arg0, arg1),
+        kind=kCustom, calls=f
+    })",
+                                    {2, 1, 1}));
+  EXPECT_THAT(GetSchedule(tiled_computation),
+              IsOkAndHolds(MatchSchedule(
+                  "d0 -> pid mod 4, d1 -> pid mod 4, d2 -> 0, "
+                  "d3 -> pid / 4, d4 -> pid / 4 + ((pid mod 4) / 2) * 4, "
+                  "num_pids=8, num_tiles=8")));
 }
 
 }  // namespace xla::gpu::experimental
