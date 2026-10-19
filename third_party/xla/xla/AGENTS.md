@@ -89,9 +89,9 @@ suggesting, or modifying code within the OpenXLA codebase (everything under
         *   When you refactor code that uses the `TF_*` macros, replace them,
             but do not touch unrelated code.
     *   Put tests into an anonymous namespace.
-    *   Use `HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>` or
+    *   Use `HloInterpreterReferenceMixin<HloTestBase>` or
         `HloHardwareIndependentTestBase` for compiler pass tests locally where
-        possible.
+        possible (do not use `HloTestBaseLegacy`).
     *   When running GPU tests, pass `--config=cuda` to the test command.
     *   Ensure tests are deterministic and do not flake.
 

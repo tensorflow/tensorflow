@@ -141,7 +141,6 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@com_google_protobuf//:protobuf_lite",
         "@com_googlesource_code_re2//:re2",
-        "@llvm-project//llvm:Support",
         "@tsl//tsl/platform:fingerprint",
         "@tsl//tsl/platform:protobuf",
     ],
@@ -230,7 +229,6 @@ cc_library(
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Support",
     ],
 )
 
