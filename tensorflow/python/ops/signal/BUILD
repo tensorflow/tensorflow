@@ -189,7 +189,6 @@ py_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/ops:array_ops",
-        "//tensorflow/python/ops:check_ops",
         "//tensorflow/python/ops:cond",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:nn_ops",

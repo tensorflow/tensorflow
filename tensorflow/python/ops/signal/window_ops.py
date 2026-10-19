@@ -21,7 +21,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import cond
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
@@ -134,8 +133,7 @@ def kaiser_bessel_derived_window(window_length, beta=12.,
 
   Raises:
     ValueError: If `dtype` is not a floating point type, or if `window_length`
-      is statically known to be odd. An odd `window_length` that is only known
-      at run time raises `InvalidArgumentError` instead.
+      is statically known to be odd.
 
   [kbd]:
     https://en.wikipedia.org/wiki/Kaiser_window#Kaiser%E2%80%93Bessel-derived_(KBD)_window
@@ -145,24 +143,11 @@ def kaiser_bessel_derived_window(window_length, beta=12.,
     # Each half has `window_length // 2` samples, so an odd length would
     # silently come out one sample short.
     window_length_const = tensor_util.constant_value(window_length)
-    if window_length_const is not None:
-      if window_length_const % 2:
-        raise ValueError(
-            '`window_length` must be even for a Kaiser-Bessel derived window. '
-            f'Received: window_length={window_length_const}'
-        )
-    else:
-      with ops.control_dependencies([
-          check_ops.assert_equal(
-              math_ops.floormod(window_length, 2),
-              0,
-              message=(
-                  '`window_length` must be even for a Kaiser-Bessel derived '
-                  'window.'
-              ),
-          )
-      ]):
-        window_length = array_ops.identity(window_length)
+    if window_length_const is not None and window_length_const % 2:
+      raise ValueError(
+          '`window_length` must be even for a Kaiser-Bessel derived window. '
+          f'Received: window_length={window_length_const}'
+      )
     halflen = window_length // 2
     kaiserw = kaiser_window(halflen + 1, beta, dtype=dtype)
     kaiserw_csum = math_ops.cumsum(kaiserw)

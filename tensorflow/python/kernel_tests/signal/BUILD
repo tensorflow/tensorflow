@@ -182,7 +182,6 @@ cuda_py_strict_test(
         ":test_util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/framework:test_lib",

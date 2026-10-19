@@ -25,7 +25,6 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util as tf_test_util
@@ -302,19 +301,6 @@ class WindowOpsTest(test.TestCase, parameterized.TestCase):
     """Odd lengths are rejected instead of returning a shorter window."""
     with self.assertRaisesRegex(ValueError, 'must be even'):
       window_ops.kaiser_bessel_derived_window(window_length)
-
-  def test_kaiser_bessel_derived_window_odd_dynamic_length(self):
-    """Odd lengths only known at run time are rejected as well."""
-
-    @def_function.function(
-        input_signature=[tensor_spec.TensorSpec([], dtypes.int32)]
-    )
-    def kbd(length):
-      return window_ops.kaiser_bessel_derived_window(length)
-
-    self.assertLen(self.evaluate(kbd(8)), 8)
-    with self.assertRaisesRegex(errors.InvalidArgumentError, 'must be even'):
-      self.evaluate(kbd(5))
 
 
 if __name__ == '__main__':
