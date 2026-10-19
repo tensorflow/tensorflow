@@ -706,6 +706,37 @@ class EinsumTest(test.TestCase):
       _ = special_math_ops.einsum(
           'ij,jk->ik', a, b, name='name', invalid1='value1', invalid2='value2')
 
+  def test_python_sequence_operands(self):
+    a = [[1.0, 2.0], [3.0, 4.0]]
+    b = ((5.0, 6.0), (7.0, 8.0))
+    expected = np.einsum('ij,jk->ik', np.array(a), np.array(b))
+    self.assertAllClose(
+        expected, self.evaluate(special_math_ops.einsum('ij,jk->ik', a, b))
+    )
+    # Mixing sequences with tensors.
+    self.assertAllClose(
+        expected,
+        self.evaluate(
+            special_math_ops.einsum(
+                'ij,jk->ik', constant_op.constant(a, dtypes.float32), b
+            )
+        ),
+    )
+    # Unary contraction and an int sequence.
+    self.assertAllEqual(
+        5, self.evaluate(special_math_ops.einsum('ii', [[1, 2], [3, 4]]))
+    )
+
+  def test_numpy_operands_are_left_to_the_op(self):
+    # NumPy operands must keep being cast to the dtype of tensor operands by
+    # the einsum op; converting them up front would raise a dtype mismatch.
+    t = constant_op.constant(np.ones((2, 2)), dtypes.float32)
+    n = np.ones((2, 2), np.float64)
+    for operands in ((t, n), (n, t)):
+      result = special_math_ops.einsum('ij,jk->ik', *operands)
+      self.assertEqual(dtypes.float32, result.dtype)
+      self.assertAllClose(np.full((2, 2), 2.0), self.evaluate(result))
+
   def test_unary(self):
     self._check('a', (3,))
     self._check('aa', (3, 3))
