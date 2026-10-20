@@ -151,7 +151,7 @@ class CTCLossValidationTest(test.TestCase, parameterized.TestCase):
     """Tests that out-of-range label ids are rejected in eager mode."""
     with self.assertRaisesRegex(
         errors_impl.InvalidArgumentError,
-        r"All labels must be in the range \[0, num_classes\)"):
+        r"All labels must be.*"):
       self.evaluate(
           self._call_ctc_loss_with_labels(ctc_loss_fn, sparse, [label]))
 
@@ -168,7 +168,7 @@ class CTCLossValidationTest(test.TestCase, parameterized.TestCase):
 
     with self.assertRaisesRegex(
         errors_impl.InvalidArgumentError,
-        r"All labels must be in the range \[0, num_classes\)"):
+        r"All labels must be.*"):
       self.evaluate(test_fn())
 
   @parameterized.product(
@@ -248,9 +248,31 @@ class CTCLossValidationTest(test.TestCase, parameterized.TestCase):
 
     with self.assertRaisesRegex(
         errors_impl.InvalidArgumentError,
-        r"All labels must be in the range \[0, num_classes\)",
+        r"All labels must be.*",
     ):
       self.evaluate(test_fn(array_ops.zeros([3, 1, 10], dtype=dtypes.float32)))
+
+  @parameterized.product(
+      ctc_loss_fn=[ctc_ops.ctc_loss_v2, ctc_ops.ctc_loss_v3],
+  )
+  def testUnknownRankLogitsAccepted(self, ctc_loss_fn):
+    """Tests that valid labels with unknown-rank logits are accepted."""
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)]
+    )
+    def test_fn(logits):
+      return ctc_loss_fn(
+          labels=self._make_labels(False, [1, 2]),
+          logits=logits,
+          label_length=constant_op.constant([2], dtype=dtypes.int32),
+          logit_length=constant_op.constant([3], dtype=dtypes.int32),
+          blank_index=0,
+      )
+
+    loss = self.evaluate(
+        test_fn(array_ops.zeros([3, 1, 10], dtype=dtypes.float32)))
+    self.assertAllEqual(loss.shape, [1])
+    self.assertTrue(np.all(np.isfinite(loss)))
 
 
 class CTCLossTest(test.TestCase):

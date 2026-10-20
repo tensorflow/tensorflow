@@ -29,7 +29,6 @@ from tensorflow.python.framework import tensor_shape
 
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
-from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_array_ops
@@ -784,38 +783,6 @@ def _ctc_loss_shape(op):
   return [op.inputs[2].get_shape(), op.inputs[0].get_shape()]
 
 
-def _assert_label_ids_in_range(label_ids, num_classes, valid_mask=None):
-  """Returns an assert op checking that label ids are in `[0, num_classes)`.
-
-  Args:
-    label_ids: integer `Tensor` of class ids.
-    num_classes: number of classes (innermost dimension of the logits), as a
-      Python int or a scalar integer `Tensor`.
-    valid_mask: optional boolean `Tensor` broadcastable to `label_ids`. If
-      provided, only positions where it is True are checked, so that padding
-      values are ignored.
-
-  Returns:
-    The assert op (None when executing eagerly, where the check already ran).
-  """
-  num_classes = math_ops.cast(num_classes, label_ids.dtype)
-  in_range = math_ops.logical_and(label_ids >= 0, label_ids < num_classes)
-  if valid_mask is not None:
-    in_range = math_ops.logical_or(in_range, math_ops.logical_not(valid_mask))
-  return control_flow_assert.Assert(
-      math_ops.reduce_all(in_range),
-      [
-          "All labels must be in the range [0, num_classes) where "
-          "num_classes is the size of the last dimension of `logits`. "
-          "num_classes: ",
-          num_classes,
-          ", labels: ",
-          label_ids,
-      ],
-      name="assert_label_ids_in_range",
-  )
-
-
 def _validate_ctc_loss_logits(logits, blank_index):
   rank = logits.shape.rank
   if rank is not None and rank < 3:
@@ -910,13 +877,6 @@ def ctc_loss_v2(labels,
 
     if blank_index < 0:
       blank_index += _get_dim(logits, 2)
-
-    assert_op = _assert_label_ids_in_range(labels.values, _get_dim(logits, 2))
-    if assert_op is not None:
-      with ops.control_dependencies([assert_op]):
-        labels = sparse_tensor.SparseTensor(
-            labels.indices, array_ops.identity(labels.values),
-            labels.dense_shape)
 
     if blank_index != _get_dim(logits, 2) - 1:
       logits = array_ops.concat([
@@ -1062,13 +1022,6 @@ def ctc_loss_v3(labels,
     if blank_index < 0:
       blank_index += _get_dim(logits, 2)
 
-    assert_op = _assert_label_ids_in_range(labels.values, _get_dim(logits, 2))
-    if assert_op is not None:
-      with ops.control_dependencies([assert_op]):
-        labels = sparse_tensor.SparseTensor(
-            labels.indices, array_ops.identity(labels.values),
-            labels.dense_shape)
-
     params = {
         "labels": labels,
         "logits": logits,
@@ -1193,33 +1146,25 @@ def ctc_loss_dense(labels,
     if not logits_time_major:
       logits = array_ops.transpose(logits, perm=[1, 0, 2])
 
-    # Only the first `label_length` entries of each row are real labels; the
-    # remainder is padding and may hold arbitrary values.
-    label_mask = array_ops.sequence_mask(
-        label_length, _get_dim(labels, 1), dtype=dtypes.bool)
-    assert_op = _assert_label_ids_in_range(
-        labels, _get_dim(logits, 2), valid_mask=label_mask)
-    if assert_op is not None:
-      with ops.control_dependencies([assert_op]):
-        labels = array_ops.identity(labels)
-
     if blank_index != 0:
-      if blank_index < 0:
-        blank_index += _get_dim(logits, 2)
+      blank_index_val = (
+          blank_index + _get_dim(logits, 2) if blank_index < 0 else blank_index)
       logits = array_ops.concat([
-          logits[:, :, blank_index:blank_index + 1],
-          logits[:, :, :blank_index],
-          logits[:, :, blank_index + 1:],
+          logits[:, :, blank_index_val:blank_index_val + 1],
+          logits[:, :, :blank_index_val],
+          logits[:, :, blank_index_val + 1:],
       ],
                                 axis=2)
-      labels = array_ops.where(labels < blank_index, labels + 1, labels)
+      labels = array_ops.where(labels < blank_index_val, labels + 1, labels)
+    else:
+      blank_index_val = blank_index
 
     args = [logits, labels, label_length, logit_length]
 
     if unique:
       unique_y, unique_idx = unique
       if blank_index != 0:
-        unique_y = array_ops.where(unique_y < blank_index, unique_y + 1,
+        unique_y = array_ops.where(unique_y < blank_index_val, unique_y + 1,
                                    unique_y)
         label_mask_len = math_ops.reduce_max(unique_idx, axis=1) + 1
         max_label_length = _get_dim(unique_y, 1)
@@ -1625,7 +1570,7 @@ def _scan(fn, elems, initial, reverse=False, inclusive=False, final_only=False):
 
 def _get_dim(tensor, i):
   """Get value of tensor shape[i] preferring static value if available."""
-  if tensor.shape.rank is None:
+  if tensor.shape.rank is None or tensor.shape.rank <= i:
     return array_ops.shape(tensor)[i]
   return tensor_shape.dimension_value(
       tensor.shape[i]) or array_ops.shape(tensor)[i]

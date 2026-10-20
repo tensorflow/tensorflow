@@ -324,8 +324,19 @@ absl::Status CTCLossCalculator<T>::PopulateLPrimes(
     // Convert label from DistBelief
     bool finished_sequence = false;
     for (int i = 0; i < label.size(); ++i) {
+      // Validate each label before using it so out-of-range values do not
+      // silently alias as sequence terminators.
+      if (label[i] < 0) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("All labels must be nonnegative integers, batch: ", b,
+                         " labels: ", absl::StrJoin(label, ",")));
+      } else if (label[i] >= num_classes) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "No label may be greater than num_classes. ", "num_classes: ",
+            num_classes, ", batch: ", b, " labels: ", absl::StrJoin(label, ",")));
+      }
       if (i == 0 || !preprocess_collapse_repeated || label[i] != label[i - 1]) {
-        if (label[i] >= num_classes - 1) {
+        if (label[i] == num_classes - 1) {
           finished_sequence = true;
         } else {
           if (finished_sequence) {
@@ -340,18 +351,6 @@ absl::Status CTCLossCalculator<T>::PopulateLPrimes(
           }
           l.push_back(label[i]);
         }
-      }
-    }
-
-    for (int l_i : l) {
-      if (l_i < 0) {
-        return absl::InvalidArgumentError(
-            absl::StrCat("All labels must be nonnegative integers, batch: ", b,
-                         " labels: ", absl::StrJoin(l, ",")));
-      } else if (l_i >= num_classes) {
-        return absl::InvalidArgumentError(absl::StrCat(
-            "No label may be greater than num_classes. ", "num_classes: ",
-            num_classes, ", batch: ", b, " labels: ", absl::StrJoin(l, ",")));
       }
     }
     if (!ignore_longer_outputs_than_inputs) {
