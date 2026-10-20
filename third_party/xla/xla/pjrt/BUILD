@@ -1043,6 +1043,37 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "strided_gather",
+    srcs = ["strided_gather.cc"],
+    hdrs = ["strided_gather.h"],
+    visibility = internal_visibility([":friends"]),
+    deps = [
+        ":transpose",
+        "//xla:util",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "strided_gather_test",
+    srcs = ["strided_gather_test.cc"],
+    deps = [
+        ":strided_gather",
+        ":transpose",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "tf_pjrt_client",
     srcs = ["tf_pjrt_client.cc"],
     hdrs = ["tf_pjrt_client.h"],

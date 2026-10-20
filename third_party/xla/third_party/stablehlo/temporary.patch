@@ -81,6 +81,32 @@ diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.td b/stablehlo/stablehlo/dialec
  
      See
      https://www.tensorflow.org/xla/operation_semantics#element-wise_comparison_operations.
+diff --ruN a/stablehlo/stablehlo/dialect/Serialization.cpp b/stablehlo/stablehlo/dialect/Serialization.cpp
+--- stablehlo/stablehlo/dialect/Serialization.cpp
++++ stablehlo/stablehlo/dialect/Serialization.cpp
+@@ -15,10 +15,13 @@
+ 
+ #include "stablehlo/dialect/Serialization.h"
+ 
++#include <memory>
++
+ #include "llvm/Support/Debug.h"
+ #include "llvm/Support/MemoryBuffer.h"
+ #include "mlir/Bytecode/BytecodeReader.h"
+ #include "mlir/Bytecode/BytecodeWriter.h"
++#include "mlir/IR/BuiltinDialect.h"
+ #include "mlir/IR/BuiltinOps.h"
+ #include "mlir/IR/Diagnostics.h"
+ #include "mlir/IR/Location.h"
+@@ -84,6 +87,8 @@
+       vhlo::Version::fromString(targetVersion)->getBytecodeVersion();
+   if (failed(bytecodeVersion)) return failure();
+   writerConfig.setDesiredBytecodeVersion(bytecodeVersion.value());
++  writerConfig.setDialectVersion<BuiltinDialect>(
++      std::make_unique<BuiltinDialectVersion>(/*version=*/0));
+   return writeBytecodeToFile(module, os, writerConfig);
+ }
+ 
 diff --ruN a/stablehlo/stablehlo/dialect/StablehloEnums.td b/stablehlo/stablehlo/dialect/StablehloEnums.td
 --- stablehlo/stablehlo/dialect/StablehloEnums.td
 +++ stablehlo/stablehlo/dialect/StablehloEnums.td
@@ -95,6 +121,84 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloEnums.td b/stablehlo/stablehlo
  def STABLEHLO_COMPARISON_TYPE_WEAK_ORDER : I32EnumAttrCase<"WEAKORDER", 5>;
  
  def StableHLO_ComparisonType : I32EnumAttr<"ComparisonType",
+diff --ruN a/stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir b/stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir
+--- stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir
++++ stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir
+@@ -69,6 +69,74 @@
+ 
+ // -----
+ 
++// CHECK-LABEL:   func.func @acos_bf16(
++// CHECK-SAME:      %[[ARG0:.*]]: tensor<bf16>) -> tensor<bf16> {
++// CHECK:           %[[CONSTANT_0:.*]] = stablehlo.constant dense<1.000000e+00> : tensor<bf16>
++// CHECK:           %[[SUBTRACT_0:.*]] = stablehlo.subtract %[[CONSTANT_0]], %[[ARG0]] : tensor<bf16>
++// CHECK:           %[[ADD_0:.*]] = stablehlo.add %[[CONSTANT_0]], %[[ARG0]] : tensor<bf16>
++// CHECK:           %[[MULTIPLY_0:.*]] = stablehlo.multiply %[[SUBTRACT_0]], %[[ADD_0]] : tensor<bf16>
++// CHECK:           %[[SQRT_0:.*]] = stablehlo.sqrt %[[MULTIPLY_0]] : tensor<bf16>
++// CHECK:           %[[VAL_0:.*]] = stablehlo.atan2 %[[SQRT_0]], %[[ARG0]] : tensor<bf16>
++// CHECK:           return %[[VAL_0]] : tensor<bf16>
++// CHECK:         }
++func.func @acos_bf16(%arg : tensor<bf16>) -> tensor<bf16> {
++  %result = "chlo.acos"(%arg) : (tensor<bf16>) -> tensor<bf16>
++  func.return %result : tensor<bf16>
++}
++
++// -----
++
++// CHECK-LABEL:   func.func @acos_f16(
++// CHECK-SAME:      %[[ARG0:.*]]: tensor<f16>) -> tensor<f16> {
++// CHECK:           %[[CONSTANT_0:.*]] = stablehlo.constant dense<1.000000e+00> : tensor<f16>
++// CHECK:           %[[SUBTRACT_0:.*]] = stablehlo.subtract %[[CONSTANT_0]], %[[ARG0]] : tensor<f16>
++// CHECK:           %[[ADD_0:.*]] = stablehlo.add %[[CONSTANT_0]], %[[ARG0]] : tensor<f16>
++// CHECK:           %[[MULTIPLY_0:.*]] = stablehlo.multiply %[[SUBTRACT_0]], %[[ADD_0]] : tensor<f16>
++// CHECK:           %[[SQRT_0:.*]] = stablehlo.sqrt %[[MULTIPLY_0]] : tensor<f16>
++// CHECK:           %[[VAL_0:.*]] = stablehlo.atan2 %[[SQRT_0]], %[[ARG0]] : tensor<f16>
++// CHECK:           return %[[VAL_0]] : tensor<f16>
++// CHECK:         }
++func.func @acos_f16(%arg : tensor<f16>) -> tensor<f16> {
++  %result = "chlo.acos"(%arg) : (tensor<f16>) -> tensor<f16>
++  func.return %result : tensor<f16>
++}
++
++// -----
++
++// CHECK-LABEL:   func.func @acos_f32(
++// CHECK-SAME:      %[[ARG0:.*]]: tensor<f32>) -> tensor<f32> {
++// CHECK:           %[[CONSTANT_0:.*]] = stablehlo.constant dense<1.000000e+00> : tensor<f32>
++// CHECK:           %[[SUBTRACT_0:.*]] = stablehlo.subtract %[[CONSTANT_0]], %[[ARG0]] : tensor<f32>
++// CHECK:           %[[ADD_0:.*]] = stablehlo.add %[[CONSTANT_0]], %[[ARG0]] : tensor<f32>
++// CHECK:           %[[MULTIPLY_0:.*]] = stablehlo.multiply %[[SUBTRACT_0]], %[[ADD_0]] : tensor<f32>
++// CHECK:           %[[SQRT_0:.*]] = stablehlo.sqrt %[[MULTIPLY_0]] : tensor<f32>
++// CHECK:           %[[VAL_0:.*]] = stablehlo.atan2 %[[SQRT_0]], %[[ARG0]] : tensor<f32>
++// CHECK:           return %[[VAL_0]] : tensor<f32>
++// CHECK:         }
++func.func @acos_f32(%arg : tensor<f32>) -> tensor<f32> {
++  %result = "chlo.acos"(%arg) : (tensor<f32>) -> tensor<f32>
++  func.return %result : tensor<f32>
++}
++
++// -----
++
++// CHECK-LABEL:   func.func @acos_f64(
++// CHECK-SAME:      %[[ARG0:.*]]: tensor<f64>) -> tensor<f64> {
++// CHECK:           %[[CONSTANT_0:.*]] = stablehlo.constant dense<1.000000e+00> : tensor<f64>
++// CHECK:           %[[SUBTRACT_0:.*]] = stablehlo.subtract %[[CONSTANT_0]], %[[ARG0]] : tensor<f64>
++// CHECK:           %[[ADD_0:.*]] = stablehlo.add %[[CONSTANT_0]], %[[ARG0]] : tensor<f64>
++// CHECK:           %[[MULTIPLY_0:.*]] = stablehlo.multiply %[[SUBTRACT_0]], %[[ADD_0]] : tensor<f64>
++// CHECK:           %[[SQRT_0:.*]] = stablehlo.sqrt %[[MULTIPLY_0]] : tensor<f64>
++// CHECK:           %[[VAL_0:.*]] = stablehlo.atan2 %[[SQRT_0]], %[[ARG0]] : tensor<f64>
++// CHECK:           return %[[VAL_0]] : tensor<f64>
++// CHECK:         }
++func.func @acos_f64(%arg : tensor<f64>) -> tensor<f64> {
++  %result = "chlo.acos"(%arg) : (tensor<f64>) -> tensor<f64>
++  func.return %result : tensor<f64>
++}
++
++// -----
++
+ // CHECK-LABEL:   func.func @asin_complex_f32(
+ // CHECK-SAME:      %[[ARG0:.*]]: tensor<complex<f32>>) -> tensor<complex<f32>> {
+ // CHECK:           %[[REAL_0:.*]] = stablehlo.real %[[ARG0]] : (tensor<complex<f32>>) -> tensor<f32>
 diff --ruN a/stablehlo/stablehlo/tests/interpret/compare.mlir b/stablehlo/stablehlo/tests/interpret/compare.mlir
 --- stablehlo/stablehlo/tests/interpret/compare.mlir
 +++ stablehlo/stablehlo/tests/interpret/compare.mlir
@@ -343,6 +447,85 @@ diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplific
    // CHECK: return [[ARG0]], [[ARG0]]
    func.return %0, %1 : tensor<i1>, tensor<i1>
  }
+diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_compatibility_expander.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_compatibility_expander.mlir
+--- stablehlo/stablehlo/tests/transforms/stablehlo_compatibility_expander.mlir
++++ stablehlo/stablehlo/tests/transforms/stablehlo_compatibility_expander.mlir
+@@ -1,5 +1,5 @@
+ // RUN: stablehlo-opt %s -verify-diagnostics -split-input-file --stablehlo-compatibility-expander='target=1.0.0' --chlo-legalize-to-stablehlo | FileCheck %s --check-prefixes=CHECK
+-// RUN: stablehlo-opt %s -verify-diagnostics -split-input-file --stablehlo-compatibility-expander='target=1.6.0' --chlo-legalize-to-stablehlo | FileCheck %s --check-prefixes=CHECK-NO-DOWNGRADE
++// RUN: stablehlo-opt %s -verify-diagnostics -split-input-file --stablehlo-compatibility-expander='target=1.23.0' --chlo-legalize-to-stablehlo | FileCheck %s --check-prefixes=CHECK-NO-DOWNGRADE
+ 
+ // -----
+ 
+@@ -583,3 +583,68 @@
+   return %0 : tensor<4xf32>
+ }
+ 
++// -----
++
++// CHECK-LABEL: @exp2_op_non_complex
++// CHECK-DAG: %[[cst:.*]] = stablehlo.constant dense<0.69314718055994529> : tensor<4xf64>
++// CHECK-DAG: %[[mul:.*]] = stablehlo.multiply %arg0, %[[cst]] : tensor<4xf64>
++// CHECK: %[[exp:.*]] = stablehlo.exponential %[[mul]] : tensor<4xf64>
++// CHECK: return %[[exp]] : tensor<4xf64>
++func.func @exp2_op_non_complex(%arg0: tensor<4xf64>) -> tensor<4xf64> {
++  // CHECK-NO-DOWNGRADE: stablehlo.exp2 %arg0 : tensor<4xf64>
++  %0 = stablehlo.exp2 %arg0 : tensor<4xf64>
++  func.return %0 : tensor<4xf64>
++}
++
++// -----
++
++// CHECK-LABEL: @exp2_op_complex
++// CHECK-DAG: %[[cst:.*]] = stablehlo.constant dense<0.69314718055994529> : tensor<4xf64>
++// CHECK-DAG: %[[complex:.*]] = stablehlo.complex %arg0, %arg1 : tensor<4xcomplex<f64>>
++// CHECK: %[[real:.*]] = stablehlo.real %[[complex]] : (tensor<4xcomplex<f64>>) -> tensor<4xf64>
++// CHECK: %[[mul_real:.*]] = stablehlo.multiply %[[real]], %[[cst]] : tensor<4xf64>
++// CHECK: %[[imag:.*]] = stablehlo.imag %[[complex]] : (tensor<4xcomplex<f64>>) -> tensor<4xf64>
++// CHECK: %[[mul_imag:.*]] = stablehlo.multiply %[[imag]], %[[cst]] : tensor<4xf64>
++// CHECK: %[[scaled:.*]] = stablehlo.complex %[[mul_real]], %[[mul_imag]] : tensor<4xcomplex<f64>>
++// CHECK: %[[exp:.*]] = stablehlo.exponential %[[scaled]] : tensor<4xcomplex<f64>>
++// CHECK: return %[[exp]] : tensor<4xcomplex<f64>>
++func.func @exp2_op_complex(%arg0: tensor<4xf64>, %arg1: tensor<4xf64>) -> tensor<4xcomplex<f64>> {
++  %0 = stablehlo.complex %arg0, %arg1 : tensor<4xcomplex<f64>>
++  // CHECK-NO-DOWNGRADE: stablehlo.exp2 %0 : tensor<4xcomplex<f64>>
++  %1 = stablehlo.exp2 %0 : tensor<4xcomplex<f64>>
++  func.return %1 : tensor<4xcomplex<f64>>
++}
++
++// -----
++
++// CHECK-LABEL: @log2_op_non_complex
++// CHECK-DAG: %[[cst:.*]] = stablehlo.constant dense<0.69314718055994529> : tensor<4xf64>
++// CHECK-DAG: %[[log:.*]] = stablehlo.log %arg0 : tensor<4xf64>
++// CHECK: %[[div:.*]] = stablehlo.divide %[[log]], %[[cst]] : tensor<4xf64>
++// CHECK: return %[[div]] : tensor<4xf64>
++func.func @log2_op_non_complex(%arg0: tensor<4xf64>) -> tensor<4xf64> {
++  // CHECK-NO-DOWNGRADE: stablehlo.log2 %arg0 : tensor<4xf64>
++  %0 = stablehlo.log2 %arg0 : tensor<4xf64>
++  func.return %0 : tensor<4xf64>
++}
++
++// -----
++
++// CHECK-LABEL: @log2_op_complex
++// CHECK-DAG: %[[cst:.*]] = stablehlo.constant dense<0.69314718055994529> : tensor<4xf64>
++// CHECK-DAG: %[[complex:.*]] = stablehlo.complex %arg0, %arg1 : tensor<4xcomplex<f64>>
++// CHECK: %[[log:.*]] = stablehlo.log %[[complex]] : tensor<4xcomplex<f64>>
++// CHECK: %[[real:.*]] = stablehlo.real %[[log]] : (tensor<4xcomplex<f64>>) -> tensor<4xf64>
++// CHECK: %[[div_real:.*]] = stablehlo.divide %[[real]], %[[cst]] : tensor<4xf64>
++// CHECK: %[[imag:.*]] = stablehlo.imag %[[log]] : (tensor<4xcomplex<f64>>) -> tensor<4xf64>
++// CHECK: %[[div_imag:.*]] = stablehlo.divide %[[imag]], %[[cst]] : tensor<4xf64>
++// CHECK: %[[res:.*]] = stablehlo.complex %[[div_real]], %[[div_imag]] : tensor<4xcomplex<f64>>
++// CHECK: return %[[res]] : tensor<4xcomplex<f64>>
++func.func @log2_op_complex(%arg0: tensor<4xf64>, %arg1: tensor<4xf64>) -> tensor<4xcomplex<f64>> {
++  %0 = stablehlo.complex %arg0, %arg1 : tensor<4xcomplex<f64>>
++  // CHECK-NO-DOWNGRADE: stablehlo.log2 %0 : tensor<4xcomplex<f64>>
++  %1 = stablehlo.log2 %0 : tensor<4xcomplex<f64>>
++  func.return %1 : tensor<4xcomplex<f64>>
++}
++
++
 diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_target_independent_optimization.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_target_independent_optimization.mlir
 --- stablehlo/stablehlo/tests/transforms/stablehlo_target_independent_optimization.mlir
 +++ stablehlo/stablehlo/tests/transforms/stablehlo_target_independent_optimization.mlir
@@ -373,6 +556,85 @@ diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_target_independent_o
      stablehlo.return %1 : tensor<i1>
    } do {
      %1 = stablehlo.custom_call @something(%iterArg) {has_side_effect = false} : (tensor<i64>) -> tensor<i64>
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloCompatibilityExpander.cpp b/stablehlo/stablehlo/transforms/StablehloCompatibilityExpander.cpp
+--- stablehlo/stablehlo/transforms/StablehloCompatibilityExpander.cpp
++++ stablehlo/stablehlo/transforms/StablehloCompatibilityExpander.cpp
+@@ -477,6 +477,13 @@
+   // StableHLO RGV3 (replica_group_mesh_axes) is introduced in v1.16.0 or later.
+   if (targetVersion < vhlo::Version(1, 16, 0))
+     patterns->add<ReplicaGroupMeshAxesExpander>(context);
++
++  // StableHLO Exp2Op and Log2Op are introduced in v1.23.0.
++  if (targetVersion < vhlo::Version(1, 23, 0))
++    patterns->add<Exp2Op_ComplexElementType_CompatibilityExpander,
++                  Exp2Op_CompatibilityExpander,
++                  Log2Op_ComplexElementType_CompatibilityExpander,
++                  Log2Op_CompatibilityExpander>(context);
+ }
+ 
+ }  // namespace stablehlo
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloCompatibilityExpanderPatterns.td b/stablehlo/stablehlo/transforms/StablehloCompatibilityExpanderPatterns.td
+--- stablehlo/stablehlo/transforms/StablehloCompatibilityExpanderPatterns.td
++++ stablehlo/stablehlo/transforms/StablehloCompatibilityExpanderPatterns.td
+@@ -20,6 +20,10 @@
+   CPred<"isa<ComplexType>(cast<ShapedType>($_self).getElementType())">,
+   "Complex element type">;
+ 
++def FloatElementType : Type<
++  CPred<"isa<FloatType>(cast<ShapedType>($_self).getElementType())">,
++  "Float element type">;
++
+ def NonComplexElementType : Type<
+   CPred<"!isa<ComplexType>(cast<ShapedType>($_self).getElementType())">,
+   "Non-complex element type">;
+@@ -49,3 +53,47 @@
+       (StableHLO_ConstantLike<"1.0"> $tan),
+       (StableHLO_NegOp (StableHLO_MulOp $tan, $tanh)))
+   )>;
++
++// Express `exp2` as
++//   exponential(x * ln(2))
++def Exp2Op_CompatibilityExpander : Pat<
++  (StableHLO_Exp2Op FloatElementType:$input, ConstDefaultResultAccuracyAttr),
++  (StableHLO_ExpOp
++    (StableHLO_MulOp
++      $input,
++      (StableHLO_ConstantLike<"llvm::numbers::ln2"> $input)),
++    ConstDefaultResultAccuracyAttr)>;
++
++// Express `exp2(a + bi)` as
++//   exponential((a * ln(2)) + i (b * ln(2)))
++def Exp2Op_ComplexElementType_CompatibilityExpander : Pat<
++  (StableHLO_Exp2Op ComplexElementType:$input, ConstDefaultResultAccuracyAttr),
++  (StableHLO_ExpOp
++    (StableHLO_ComplexOp
++      (StableHLO_MulOp
++        (StableHLO_RealOp:$real $input),
++        (StableHLO_ConstantLike<"llvm::numbers::ln2">:$ln2 $real)),
++      (StableHLO_MulOp
++        (StableHLO_ImagOp $input),
++        $ln2)),
++    ConstDefaultResultAccuracyAttr)>;
++
++// Express `log2` as
++//   log(x) / ln(2)
++def Log2Op_CompatibilityExpander : Pat<
++  (StableHLO_Log2Op FloatElementType:$input, ConstDefaultResultAccuracyAttr),
++  (StableHLO_DivOp
++    (StableHLO_LogOp $input, ConstDefaultResultAccuracyAttr),
++    (StableHLO_ConstantLike<"llvm::numbers::ln2"> $input))>;
++
++// Express `log2(a + bi)` as
++//   (real(log(a + bi)) / ln(2)) + i (imag(log(a + bi)) / ln(2))
++def Log2Op_ComplexElementType_CompatibilityExpander : Pat<
++  (StableHLO_Log2Op ComplexElementType:$input, ConstDefaultResultAccuracyAttr),
++  (StableHLO_ComplexOp
++    (StableHLO_DivOp
++      (StableHLO_RealOp:$real (StableHLO_LogOp:$log $input, ConstDefaultResultAccuracyAttr)),
++      (StableHLO_ConstantLike<"llvm::numbers::ln2">:$ln2 $real)),
++    (StableHLO_DivOp
++      (StableHLO_ImagOp $log),
++      $ln2))>;
 diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
 --- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
 +++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp

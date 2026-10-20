@@ -391,7 +391,6 @@ tf_cc_test(
         "@xla//xla/tsl/platform:env_impl",
         "@xla//xla/tsl/platform:errors",
         "@xla//xla/tsl/platform:test",
-        "@xla//xla/tsl/platform:test_main",
         "@xla//xla/tsl/protobuf:coordination_config_proto_cc",
         "@xla//xla/tsl/protobuf:coordination_service_proto_cc",
         "@xla//xla/tsl/protobuf:error_codes_proto_impl_cc",

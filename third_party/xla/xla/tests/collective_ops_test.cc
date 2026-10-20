@@ -1205,6 +1205,36 @@ TEST_F(CollectiveOpsTest, AllToAll_SplitDimension) {
                                            results[3]);
 }
 
+// b/574079642: decomposed all-to-all operands may differ in layout before
+// layout assignment.
+TEST_F(CollectiveOpsTest, AllToAll_OperandLayoutsDifferBeforeLayoutAssignment) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY test_computation {
+    t = f32[2,2]{0,1} constant({{1, 2}, {3, 4}})
+    u = f32[1,2]{1,0} constant({{9, 9}})
+    zero = s32[] constant(0)
+    dus = f32[2,2]{0,1} dynamic-update-slice(t, u, zero, zero)
+    ROOT a2a = f32[2,2]{0,1} all-to-all(dus), replica_groups={{0,1}},
+      dimensions={0}
+  }
+  )";
+  const int64_t kNumReplicas = 2;
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
+                        kNumReplicas,
+                        /*use_threads=*/true, /*run_hlo_passes=*/true));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  LiteralTestUtil::ExpectR2Equal<float>({{9, 9}, {9, 9}}, results[0]);
+  LiteralTestUtil::ExpectR2Equal<float>({{3, 4}, {3, 4}}, results[1]);
+}
+
 TEST_F(CollectiveOpsTest, AllGather_Dim0) {
   const char* const kModuleStr = R"(
   HloModule test
