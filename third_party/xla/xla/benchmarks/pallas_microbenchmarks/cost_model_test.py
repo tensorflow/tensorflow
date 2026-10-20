@@ -645,11 +645,11 @@ class CostModelTest(parameterized.TestCase):
     )
     if model.lhs_quantized_dtype != model.matmul_lhs_dtype:
       expected_in_vpu = expected_in_vpu + model._alu_cycles(
-          block_m, block_k, model._NUM_UNPACK_ALU_OPS, in_dtype
+          block_m, block_k, model._NUM_UNPACK_ALU_OPS, model.matmul_lhs_dtype
       )
     if model.rhs_quantized_dtype != model.matmul_rhs_dtype:
       expected_in_vpu = expected_in_vpu + model._alu_cycles(
-          block_k, block_n, model._NUM_UNPACK_ALU_OPS, in_dtype
+          block_k, block_n, model._NUM_UNPACK_ALU_OPS, model.matmul_rhs_dtype
       )
     expected_out_vpu = subblocks_per_tile * model._alu_cycles(
         block_m, block_n, model._NUM_DEQUANT_ACCUM_ALU_OPS, out_dtype
@@ -781,10 +781,40 @@ class CostModelTest(parameterized.TestCase):
     self.assertNotEqual(model.rhs_quantized_dtype, model.matmul_rhs_dtype)
     in_cost = model._get_input_fusion_stage_cost()
     in_dtype = model._get_input_fusion_dtype()
-    unpack_alu = model._alu_cycles(
-        model._block_k, model._block_n, model._NUM_UNPACK_ALU_OPS, in_dtype
+    quantize_alu = model._alu_cycles(
+        model._block_m, model._block_k, model._NUM_QUANTIZE_ALU_OPS, in_dtype
     )
-    self.assertTrue(np.all(in_cost.alu_cycles >= unpack_alu))
+    if chip in (
+        pltpu.ChipVersion.TPU_V5E,
+        pltpu.ChipVersion.TPU_V5P,
+    ):
+      quantize_alu = quantize_alu + model._alu_cycles(
+          model._block_m,
+          model._block_k,
+          model._NUM_CONVERT_BF16_TO_F32_ALU_OPS,
+          in_dtype,
+      )
+    if model.lhs_quantized_dtype != model.matmul_lhs_dtype:
+      lhs_unpack_alu = model._alu_cycles(
+          model._block_m,
+          model._block_k,
+          model._NUM_UNPACK_ALU_OPS,
+          model.matmul_lhs_dtype,
+      )
+    else:
+      lhs_unpack_alu = 0.0
+    rhs_unpack_alu = model._alu_cycles(
+        model._block_k,
+        model._block_n,
+        model._NUM_UNPACK_ALU_OPS,
+        model.matmul_rhs_dtype,
+    )
+    np.testing.assert_allclose(
+        np.broadcast_to(in_cost.alu_cycles, model._grid_shape),
+        np.broadcast_to(
+            quantize_alu + lhs_unpack_alu + rhs_unpack_alu, model._grid_shape
+        ),
+    )
 
   @parameterized.product(
       chip=[
@@ -892,22 +922,21 @@ class CostModelTest(parameterized.TestCase):
     in_vregs = np.ceil(block_m / in_rows_per_vreg) * np.ceil(
         block_k / lane_count
     )
-    expected_in_alu = in_vregs * model._NUM_QUANTIZE_ALU_OPS * 2
+    expected_in_alu = in_vregs * model._NUM_QUANTIZE_ALU_OPS
     if pinfo.chip_version in (
         pltpu.ChipVersion.TPU_V5E,
         pltpu.ChipVersion.TPU_V5P,
     ) and jnp.dtype(lhs_dtype) == jnp.dtype(jnp.bfloat16):
       expected_in_alu = (
-          expected_in_alu
-          + in_vregs * model._NUM_CONVERT_BF16_TO_F32_ALU_OPS * 2
+          expected_in_alu + in_vregs * model._NUM_CONVERT_BF16_TO_F32_ALU_OPS
       )
     if model.lhs_quantized_dtype != model.matmul_lhs_dtype:
       expected_in_alu = expected_in_alu + model._alu_cycles(
-          block_m, block_k, model._NUM_UNPACK_ALU_OPS, in_dtype
+          block_m, block_k, model._NUM_UNPACK_ALU_OPS, model.matmul_lhs_dtype
       )
     if model.rhs_quantized_dtype != model.matmul_rhs_dtype:
       expected_in_alu = expected_in_alu + model._alu_cycles(
-          block_k, block_n, model._NUM_UNPACK_ALU_OPS, in_dtype
+          block_k, block_n, model._NUM_UNPACK_ALU_OPS, model.matmul_rhs_dtype
       )
     xlu_ops = subblocks * np.ceil(block_m / in_rows_per_vreg)
     expected_in_xlu = xlu_ops * xlu_cadence
@@ -934,14 +963,14 @@ class CostModelTest(parameterized.TestCase):
           first_op_rows,
           model._get_mxu_size()[0],
           model._NUM_UNPACK_ALU_OPS,
-          in_dtype,
+          model.matmul_lhs_dtype,
       )
     if model.rhs_quantized_dtype != model.matmul_rhs_dtype:
       expected_in_latency = expected_in_latency + model._alu_latency_cycles(
           model._get_mxu_size()[0],
           mxu_non_contracting_dim,
           model._NUM_UNPACK_ALU_OPS,
-          in_dtype,
+          model.matmul_rhs_dtype,
       )
 
     in_cost = model._get_input_fusion_stage_cost()
@@ -961,7 +990,7 @@ class CostModelTest(parameterized.TestCase):
     out_vregs = np.ceil(block_m / out_rows_per_vreg) * np.ceil(
         block_n / lane_count
     )
-    expected_out_alu = subblocks * out_vregs * 4 * 2
+    expected_out_alu = subblocks * out_vregs * 4
     last_op_vregs = np.ceil(last_op_rows / out_rows_per_vreg) * np.ceil(
         mxu_non_contracting_dim / lane_count
     )
