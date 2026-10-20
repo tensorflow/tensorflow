@@ -1832,8 +1832,7 @@ absl::Status MatrixSetDiagV2Shape(shape_inference::InferenceContext* c) {
     if (diag_index_known) {
       // Without the input's rank, the check above couldn't tell that a band
       // needs a dimension to hold its diagonals.
-      const int32_t diag_dims =
-          (lower_diag_index == upper_diag_index) ? 1 : 2;
+      const int32_t diag_dims = (lower_diag_index == upper_diag_index) ? 1 : 2;
       TF_RETURN_IF_ERROR(
           c->WithRankAtLeast(c->input(1), diag_dims, &diag_shape));
       num_batch_dims = c->Rank(diag_shape) - diag_dims;
