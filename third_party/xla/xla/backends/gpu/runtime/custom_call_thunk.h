@@ -16,9 +16,12 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_CUSTOM_CALL_THUNK_H_
 #define XLA_BACKENDS_GPU_RUNTIME_CUSTOM_CALL_THUNK_H_
 
+#include <atomic>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -31,6 +34,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_cliques.h"
 #include "xla/backends/gpu/runtime/collective_memory.h"
 #include "xla/backends/gpu/runtime/command.h"
+#include "xla/backends/gpu/runtime/per_device_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/traced_command.h"
@@ -44,7 +48,6 @@ limitations under the License.
 #include "xla/ffi/invoke.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/runtime/buffer_use.h"
-#include "xla/runtime/object_pool.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/shaped_slice.h"
@@ -192,7 +195,50 @@ class CustomCallThunk : public TracedCommand {
       const se::GpuComputeCapability& gpu_compute_capability,
       std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options);
 
+  // A buffer argument resolved at construction time. `present == false`
+  // represents a null pointer argument.
+  struct BufferArg {
+    BufferAllocation::Index index = -1;
+    int64_t offset = 0;
+    int64_t size = 0;
+    bool present = false;
+  };
+
  private:
+  // Per-device call frame reused across executions. `busy` is set while a
+  // `CallFrameLease` refers to `frame`; concurrent executions on the same
+  // device fall back to a private copy of the reference call frame.
+  struct CallFrameSlot {
+    std::optional<ffi::CallFrame> frame;
+    std::atomic<bool> busy{false};
+  };
+
+  // RAII handle to a call frame: either the per-device slot (released on
+  // destruction) or an owned copy.
+  class CallFrameLease {
+   public:
+    explicit CallFrameLease(CallFrameSlot* slot) : slot_(slot) {}
+    explicit CallFrameLease(ffi::CallFrame frame) : owned_(std::move(frame)) {}
+    ~CallFrameLease() {
+      if (slot_ != nullptr) {
+        slot_->busy.store(false, std::memory_order_release);
+      }
+    }
+    CallFrameLease(CallFrameLease&& other) noexcept
+        : slot_(std::exchange(other.slot_, nullptr)),
+          owned_(std::move(other.owned_)) {}
+    CallFrameLease& operator=(CallFrameLease&&) = delete;
+    CallFrameLease(const CallFrameLease&) = delete;
+    CallFrameLease& operator=(const CallFrameLease&) = delete;
+
+    ffi::CallFrame& operator*() { return slot_ ? *slot_->frame : *owned_; }
+    ffi::CallFrame* operator->() { return &**this; }
+
+   private:
+    CallFrameSlot* slot_ = nullptr;
+    std::optional<ffi::CallFrame> owned_;
+  };
+
   CustomCallThunk(
       ThunkInfo thunk_info, std::string target_name,
       std::variant<XLA_FFI_Handler_Bundle, OwnedHandlerBundle> bundle,
@@ -201,11 +247,12 @@ class CustomCallThunk : public TracedCommand {
       xla::ffi::AttributesMap attributes,
       std::unique_ptr<ffi::ExecutionState> execution_state,
       const HloComputation* called_computation,
+      const se::GpuComputeCapability& gpu_compute_capability,
       std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options,
       bool use_pdl = false);
 
-  absl::StatusOr<ObjectPool<xla::ffi::CallFrame>::BorrowedObject>
-  BuildCallFrame(const BufferAllocations* absl_nullable buffer_allocations);
+  absl::StatusOr<CallFrameLease> BuildCallFrame(
+      const BufferAllocations* absl_nullable buffer_allocations);
 
   xla::ffi::InvokeContext BuildInvokeContext(
       RunId run_id, se::Stream* absl_nullable stream,
@@ -254,6 +301,12 @@ class CustomCallThunk : public TracedCommand {
   std::vector<NullableShapedSlice> operands_;
   std::vector<NullableShapedSlice> results_;
 
+  // Compact copies of the operand/result slices iterated on every execution
+  // (`NullableShapedSlice` carries a `Shape` and is too large to stream over
+  // for thousands of thunks per step).
+  std::vector<BufferArg> operand_args_;
+  std::vector<BufferArg> result_args_;
+
   // registry) or an owned bundle (from xla::ffi::Bind()).
   std::variant<XLA_FFI_Handler_Bundle, OwnedHandlerBundle> bundle_;
   bool use_pdl_ = false;
@@ -262,9 +315,9 @@ class CustomCallThunk : public TracedCommand {
   // Reference call frame pre-initialized at construction time.
   std::optional<ffi::CallFrame> call_frame_;
 
-  // A pool of call frames used at run time. Newly created call frames are
-  // copied from the reference call frame and updated with buffer addresses.
-  std::optional<ObjectPool<ffi::CallFrame>> call_frames_;
+  // Per-device call frames used at run time, copied from the reference call
+  // frame on first use and updated with buffer addresses on every call.
+  PerDeviceState<CallFrameSlot> call_frames_;
 
   // Execution state bound to the FFI handler instance. Optional.
   std::shared_ptr<ffi::ExecutionState> execution_state_;
@@ -278,6 +331,9 @@ class CustomCallThunk : public TracedCommand {
   // bytecode of the computation serialized to StableHLO. Today we assume that
   // custom calls that access called computation can only be linked statically.
   const HloComputation* called_computation_ = nullptr;
+
+  // Compute capability of the target device, forwarded to FFI handlers.
+  se::GpuComputeCapability gpu_compute_capability_;
 
   std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options_;
 };

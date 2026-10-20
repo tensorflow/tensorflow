@@ -43,6 +43,9 @@ InfoProto ThunkInfoToProto(const Thunk::Info& info);
 
 absl::StatusOr<Thunk::Info> ThunkInfoFromProto(const InfoProto& proto);
 
+absl::StatusOr<Resource::Kind> ResourceKindFromProto(
+    const ResourceProto& proto);
+
 absl::StatusOr<std::shared_ptr<Resource>> CreateResourceFromProto(
     const ResourceProto& proto);
 

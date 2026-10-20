@@ -113,24 +113,28 @@ WhileThunk::WhileThunk(
       host_memory_pools_(devices_per_host) {}
 
 absl::Status WhileThunk::Prepare(const PrepareParams& params) {
-  ABSL_RETURN_IF_ERROR(condition_executor_.Prepare(params));
-  ABSL_RETURN_IF_ERROR(body_executor_.Prepare(params));
-  if (command_condition_executor_.has_value()) {
+  if (!condition_executor_.thunks().empty()) {
+    ABSL_RETURN_IF_ERROR(condition_executor_.Prepare(params));
+  } else if (command_condition_executor_.has_value()) {
     ABSL_RETURN_IF_ERROR(command_condition_executor_->Prepare(params));
   }
-  if (command_body_executor_.has_value()) {
+  if (!body_executor_.thunks().empty()) {
+    ABSL_RETURN_IF_ERROR(body_executor_.Prepare(params));
+  } else if (command_body_executor_.has_value()) {
     ABSL_RETURN_IF_ERROR(command_body_executor_->Prepare(params));
   }
   return absl::OkStatus();
 }
 
 absl::Status WhileThunk::Initialize(const InitializeParams& params) {
-  ABSL_RETURN_IF_ERROR(condition_executor_.Initialize(params));
-  ABSL_RETURN_IF_ERROR(body_executor_.Initialize(params));
-  if (command_condition_executor_.has_value()) {
+  if (!condition_executor_.thunks().empty()) {
+    ABSL_RETURN_IF_ERROR(condition_executor_.Initialize(params));
+  } else if (command_condition_executor_.has_value()) {
     ABSL_RETURN_IF_ERROR(command_condition_executor_->Initialize(params));
   }
-  if (command_body_executor_.has_value()) {
+  if (!body_executor_.thunks().empty()) {
+    ABSL_RETURN_IF_ERROR(body_executor_.Initialize(params));
+  } else if (command_body_executor_.has_value()) {
     ABSL_RETURN_IF_ERROR(command_body_executor_->Initialize(params));
   }
 

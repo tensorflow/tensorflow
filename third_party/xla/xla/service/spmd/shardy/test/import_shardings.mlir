@@ -143,10 +143,10 @@ func.func @unknown_sharding(%arg0: tensor<8x8xf32> {mhlo.sharding = "{devices=[4
 // CHECK-LABEL: sdy.mesh @mesh = <[]>
 // CHECK-LABEL: sdy.mesh @single_device_0 = <[], device_ids=[0]>
 
-// CHECK-LABEL: func @one_maximal_mesh(
+// CHECK-LABEL: func @one_single_device_mesh(
 // CHECK-SAME:      %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@single_device_0, []>}
-func.func @one_maximal_mesh(%arg0: tensor<8x8xf32> {mhlo.sharding = "{maximal device=0}"},
-                            %arg1: tensor<8x8xf32>) -> tensor<8x8xf32> {
+func.func @one_single_device_mesh(%arg0: tensor<8x8xf32> {mhlo.sharding = "{maximal device=0}"},
+                                  %arg1: tensor<8x8xf32>) -> tensor<8x8xf32> {
   %0 = stablehlo.add %arg0, %arg1 : tensor<8x8xf32>
   return %0 : tensor<8x8xf32>
 }

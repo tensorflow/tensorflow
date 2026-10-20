@@ -138,6 +138,10 @@ xla_cc_test(
 cc_library(
     name = "pjrt_c_api_megascale_extension_hdrs",
     hdrs = ["pjrt_c_api_megascale_extension.h"],
+    visibility = internal_visibility([
+        "//xla:internal",
+        "//xla/megascale:internal",
+    ]),
     deps = [
         ":pjrt_c_api_hdrs",
         ":pjrt_c_api_multi_slice_extension_hdrs",
@@ -147,6 +151,10 @@ cc_library(
 cc_library(
     name = "pjrt_c_api_multi_slice_extension_hdrs",
     hdrs = ["pjrt_c_api_multi_slice_extension.h"],
+    visibility = internal_visibility([
+        "//xla:internal",
+        "//xla/megascale:internal",
+    ]),
     deps = [":pjrt_c_api_hdrs"],
 )
 
@@ -667,11 +675,11 @@ cc_library(
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt/extensions/abi_version:gpu_abi_version_extension",
         "//xla/pjrt/extensions/cross_host_transfers:pjrt_c_api_cross_host_transfer_extension",
+        "//xla/pjrt/gpu:allocator_config",
         "//xla/pjrt/gpu:gpu_helpers",
         "//xla/pjrt/gpu:se_gpu_pjrt_client",
         "//xla/pjrt/gpu:se_gpu_pjrt_compiler",  # buildcleaner: keep to register GPU AOT compiler
         "//xla/pjrt/gpu:se_gpu_topology_description",
-        "//xla/pjrt/plugin/xla_gpu:xla_gpu_allocator_config",
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
         "//xla/python:custom_call_batch_partitioner",
         "//xla/python:custom_partition_callback",

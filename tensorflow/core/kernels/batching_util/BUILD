@@ -542,6 +542,7 @@ cc_library(
 tf_cc_test(
     name = "batch_resource_base_test",
     srcs = ["batch_resource_base_test.cc"],
+    shard_count = 4,
     deps = [
         ":batch_resource_base",
         ":batch_scheduler_hdrs",

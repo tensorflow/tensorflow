@@ -98,9 +98,6 @@ class HloPassPipeline : public HloPassInterface {
   absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-  absl::StatusOr<bool> RunImpl(
-      std::unique_ptr<HloModule>& module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   // Maybe dumps the given module depending on flag values contained in
@@ -113,31 +110,24 @@ class HloPassPipeline : public HloPassInterface {
   // Runs the invariant checker on the given HLO for specified
   // `execution_threads`. Empty `execution_threads` means all execution threads
   // are included.
-
-  template <typename HloT>
-  absl::Status RunInvariantCheckers(HloT hlo,
+  absl::Status RunInvariantCheckers(HloModule* hlo,
                                     absl::string_view after_pass_name) {
     return RunInvariantCheckers(hlo, after_pass_name, /*execution_threads=*/{});
   }
-  template <typename HloT>
   absl::Status RunInvariantCheckers(
-      HloT hlo, absl::string_view after_pass_name,
+      HloModule* hlo, absl::string_view after_pass_name,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
 
   // Helper which runs the given pass on the given HLO.
-  template <typename HloT>
   absl::StatusOr<bool> RunPassesInternal(
-      HloT hlo, const DebugOptions& debug_options,
+      HloModule* hlo, const DebugOptions& debug_options,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
 
-  // Helpers which run the given passes on the given HLO construct. Only
-  // computations with specified `execution_threads` are considered by the pass,
-  // empty thread list means all `execution_threads` are considered. These
-  // helpers enable templating of the core of the pipeline logic by providing
-  // HloModule specific methods with the same name.
-  template <typename HloT>
+  // Helper which runs the given pass on the given HLO module. Only
+  // computations with specified `execution_threads` are considered by the pass;
+  // an empty thread list means all `execution_threads` are considered.
   static absl::StatusOr<bool> RunHelper(
-      HloPassInterface* pass, HloT module,
+      HloPassInterface* pass, HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) {
     ABSL_ASSIGN_OR_RETURN(bool changed, pass->Run(module, execution_threads));
     module->Cleanup();

@@ -43,6 +43,7 @@ limitations under the License.
 #include "llvm/Linker/Linker.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/TargetParser/Triple.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Conversion/ComplexToStandard/ComplexToStandard.h"
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"
@@ -304,9 +305,11 @@ Value MlirKernelEmitter::EmitWorkGroupId(mlir::ImplicitLocOpBuilder& builder,
   return block_id;
 }
 
-Value MlirKernelEmitter::EmitBlockId(mlir::ImplicitLocOpBuilder& builder,
-                                     int dim) const {
-  const auto counts = launch_dimensions().block_counts();
+namespace {
+
+Value EmitBlockIdForLaunch(mlir::ImplicitLocOpBuilder& builder,
+                           const LaunchDimensions& launch_dims, int dim) {
+  const auto counts = launch_dims.block_counts();
   int64_t count = dim == 0 ? counts.x : dim == 1 ? counts.y : counts.z;
   auto block_id = mlir::gpu::BlockIdOp::create(
       builder, static_cast<mlir::gpu::Dimension>(dim));
@@ -314,9 +317,9 @@ Value MlirKernelEmitter::EmitBlockId(mlir::ImplicitLocOpBuilder& builder,
   return block_id;
 }
 
-Value MlirKernelEmitter::EmitThreadId(mlir::ImplicitLocOpBuilder& builder,
-                                      int dim) const {
-  const auto counts = launch_dimensions().thread_counts_per_block();
+Value EmitThreadIdForLaunch(mlir::ImplicitLocOpBuilder& builder,
+                            const LaunchDimensions& launch_dims, int dim) {
+  const auto counts = launch_dims.thread_counts_per_block();
   int64_t count = dim == 0 ? counts.x : dim == 1 ? counts.y : counts.z;
   auto thread_id = mlir::gpu::ThreadIdOp::create(
       builder, static_cast<mlir::gpu::Dimension>(dim));
@@ -324,11 +327,49 @@ Value MlirKernelEmitter::EmitThreadId(mlir::ImplicitLocOpBuilder& builder,
   return thread_id;
 }
 
+}  // namespace
+
+Value MlirKernelEmitter::EmitBlockId(mlir::ImplicitLocOpBuilder& builder,
+                                     int dim) const {
+  return EmitBlockIdForLaunch(builder, launch_dimensions(), dim);
+}
+
+Value MlirKernelEmitter::EmitThreadId(mlir::ImplicitLocOpBuilder& builder,
+                                      int dim) const {
+  return EmitThreadIdForLaunch(builder, launch_dimensions(), dim);
+}
+
+llvm::SmallVector<Value> MlirKernelEmitter::EmitThreadAndBlockIds(
+    mlir::ImplicitLocOpBuilder& builder, const LaunchDimensions& launch_dims) {
+  auto& b = builder;
+  return {EmitThreadIdForLaunch(b, launch_dims, 0),
+          EmitThreadIdForLaunch(b, launch_dims, 1),
+          EmitThreadIdForLaunch(b, launch_dims, 2),
+          EmitBlockIdForLaunch(b, launch_dims, 0),
+          EmitBlockIdForLaunch(b, launch_dims, 1),
+          EmitBlockIdForLaunch(b, launch_dims, 2)};
+}
+
 llvm::SmallVector<Value> MlirKernelEmitter::EmitThreadAndBlockIds(
     mlir::ImplicitLocOpBuilder& builder) const {
-  auto& b = builder;
-  return {EmitThreadId(b, 0), EmitThreadId(b, 1), EmitThreadId(b, 2),
-          EmitBlockId(b, 0),  EmitBlockId(b, 1),  EmitBlockId(b, 2)};
+  return EmitThreadAndBlockIds(builder, launch_dimensions());
+}
+
+absl::Status AnnotateMlirKernelLlvmModule(
+    const se::DeviceDescription& gpu_device_info,
+    const LaunchDimensions& launch_dims, absl::string_view kernel_name,
+    absl::string_view data_layout, const llvm::Triple& target_triple,
+    llvm::Module* module) {
+  llvm::Function* kernel_func = module->getFunction(kernel_name);
+  TF_RET_CHECK(kernel_func != nullptr)
+      << "Kernel " << kernel_name << " not found in LLVM module";
+  AddRanges(kernel_func, launch_dims, module);
+  module->setDataLayout(data_layout);
+  module->setTargetTriple(target_triple);
+  llvm::IRBuilder<> builder(module->getContext());
+  AnnotateFunctionAsGpuKernel(module, kernel_func, &builder);
+  return AnnotateKernelLaunchDimensions(gpu_device_info, launch_dims,
+                                        kernel_func, module);
 }
 
 xla::Future<KernelDefinition<LlvmKernelSource>>
@@ -350,17 +391,9 @@ MlirKernelFusion::EmitLlvmModule(const HloFusionInstruction& fusion,
             std::move(source).thread_safe_module();
         llvm::Module* module = safe_module.getModuleUnlocked();
 
-        auto* kernel_func = module->getFunction(kernel_name);
-
-        AddRanges(kernel_func, launch_dims, module);
-
-        module->setDataLayout(data_layout);
-        module->setTargetTriple(target_triple);
-
-        llvm::IRBuilder<> builder(module->getContext());
-        AnnotateFunctionAsGpuKernel(module, kernel_func, &builder);
-        ABSL_RETURN_IF_ERROR(AnnotateKernelLaunchDimensions(
-            gpu_device_info, launch_dims, kernel_func, module));
+        ABSL_RETURN_IF_ERROR(AnnotateMlirKernelLlvmModule(
+            gpu_device_info, launch_dims, kernel_name, data_layout,
+            target_triple, module));
 
         ABSL_ASSIGN_OR_RETURN(
             KernelSpec kernel_spec,

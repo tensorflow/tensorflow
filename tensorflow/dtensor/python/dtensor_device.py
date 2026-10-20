@@ -360,13 +360,19 @@ class DTensorDevice(object):
         self._device_info,
         mesh.to_string().encode("utf-8"))
     self._current_default_mesh = mesh
-    yield
-    _pywrap_dtensor_device.ExperimentalClearDefaultMesh(self._device_info)
-    if previous_default:
-      _pywrap_dtensor_device.ExperimentalSetDefaultMesh(
-          self._device_info,
-          previous_default.to_string().encode("utf-8"))
-    self._current_default_mesh = previous_default
+    try:
+      yield
+    finally:
+      # Always restore the previous default mesh, even if an exception was
+      # raised inside the `with` block. Otherwise both the native default
+      # mesh and `_current_default_mesh` are left stuck on `mesh` for the
+      # rest of the program.
+      _pywrap_dtensor_device.ExperimentalClearDefaultMesh(self._device_info)
+      if previous_default is not None:
+        _pywrap_dtensor_device.ExperimentalSetDefaultMesh(
+            self._device_info, previous_default.to_string().encode("utf-8")
+        )
+      self._current_default_mesh = previous_default
 
   @contextlib.contextmanager
   def _default_layout(self, layout: layout_lib.Layout):

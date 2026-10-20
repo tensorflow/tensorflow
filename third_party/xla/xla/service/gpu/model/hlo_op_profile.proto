@@ -31,6 +31,9 @@ message HloInstructionProfile {
 
 message HloInstructionProfileList {
   repeated HloInstructionProfile entries = 1;
+  // Number of devices in the NVLink partition the entries were measured on.
+  // 0 means unknown: entries are then classified with the current partition.
+  int64 partition_size = 2;
 }
 
 message DeviceHloInstructionProfiles {

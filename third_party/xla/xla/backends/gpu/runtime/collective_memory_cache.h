@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_MEMORY_CACHE_H_
 #define XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_MEMORY_CACHE_H_
 
-#include <cstdint>
 #include <memory>
 #include <utility>
 
@@ -24,10 +23,10 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/backends/gpu/runtime/per_device_state.h"
 #include "xla/core/collectives/symmetric_memory.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/multicast_memory.h"
-#include "xla/stream_executor/memory_allocation.h"
 #include "xla/tsl/util/tied_ref.h"
 
 namespace xla::gpu {
@@ -47,35 +46,45 @@ namespace xla::gpu {
 // valid as long as the clique exists.
 class CollectiveMemoryCache {
  public:
+  explicit CollectiveMemoryCache(int num_devices)
+      : device_caches_(num_devices) {}
+
   // Returns a locked shared_ptr to the cached memory, or nullptr if not cached
   // or if the underlying TiedRef has expired.
   std::shared_ptr<SymmetricMemory> FindSymmetricMemory(
-      const GpuCliqueKey& clique, stream_executor::DeviceAddressBase addr);
+      int device_ordinal, const GpuCliqueKey& clique,
+      stream_executor::DeviceAddressBase addr);
 
   std::shared_ptr<stream_executor::gpu::MulticastMemory> FindMulticastMemory(
-      const GpuCliqueKey& clique, stream_executor::DeviceAddressBase addr);
+      int device_ordinal, const GpuCliqueKey& clique,
+      stream_executor::DeviceAddressBase addr);
 
   // Inserts or replaces a cached entry. Returns a locked shared_ptr.
   std::shared_ptr<SymmetricMemory> AddSymmetricMemory(
-      const GpuCliqueKey& clique, stream_executor::DeviceAddressBase addr,
+      int device_ordinal, const GpuCliqueKey& clique,
+      stream_executor::DeviceAddressBase addr,
       tsl::TiedRef<SymmetricMemory> sym_memory);
 
   std::shared_ptr<stream_executor::gpu::MulticastMemory> AddMulticastMemory(
-      const GpuCliqueKey& clique, stream_executor::DeviceAddressBase addr,
+      int device_ordinal, const GpuCliqueKey& clique,
+      stream_executor::DeviceAddressBase addr,
       tsl::TiedRef<stream_executor::gpu::MulticastMemory> multicast_memory);
-
-
 
  private:
   using Key = std::pair<GpuCliqueKey, stream_executor::DeviceAddressBase>;
 
-  absl::Mutex mutex_;
+  struct DeviceCache {
+    absl::Mutex mutex;
 
-  absl::flat_hash_map<Key, tsl::TiedRef<SymmetricMemory>> sym_memories_
-      ABSL_GUARDED_BY(mutex_);
+    absl::flat_hash_map<Key, tsl::TiedRef<SymmetricMemory>> sym_memories
+        ABSL_GUARDED_BY(mutex);
 
-  absl::flat_hash_map<Key, tsl::TiedRef<stream_executor::gpu::MulticastMemory>>
-      multicast_memories_ ABSL_GUARDED_BY(mutex_);
+    absl::flat_hash_map<Key,
+                        tsl::TiedRef<stream_executor::gpu::MulticastMemory>>
+        multicast_memories ABSL_GUARDED_BY(mutex);
+  };
+
+  PerDeviceState<DeviceCache> device_caches_;
 };
 
 }  // namespace xla::gpu

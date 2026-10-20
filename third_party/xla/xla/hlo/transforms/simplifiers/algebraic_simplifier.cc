@@ -295,12 +295,12 @@ bool IsAllFpConstantPowerOf2(const HloInstruction* op) {
   return mantissa == 0.5 || mantissa == -0.5;
 }
 
-bool HasCombineDimensionTile(const Shape& shape) {
+bool HasMatchDimensionTile(const Shape& shape) {
   if (!shape.has_layout()) {
     return false;
   }
   for (const Tile& tile : shape.layout().tiles()) {
-    if (absl::c_linear_search(tile.dimensions(), Tile::kCombineDimension)) {
+    if (absl::c_linear_search(tile.dimensions(), Tile::kMatchDimension)) {
       return true;
     }
   }
@@ -316,8 +316,8 @@ bool TransposeIsBitcast(const HloInstruction* transpose) {
                                      transpose->dimensions())) {
     return false;
   }
-  if (!HasCombineDimensionTile(operand->shape()) &&
-      !HasCombineDimensionTile(transpose->shape())) {
+  if (!HasMatchDimensionTile(operand->shape()) &&
+      !HasMatchDimensionTile(transpose->shape())) {
     return true;
   }
   return absl::c_equal(operand->shape().layout().tiles(),
@@ -966,11 +966,14 @@ absl::Status AlgebraicSimplifierVisitor::HandleAdd(HloInstruction* add) {
   //
   VLOG(10) << "trying transform [(A + C1) + C2 => A + (C1 + C2)]";
   HloInstruction *a, *c1, *c2;
-  if (Match(add, m::Add(m::Add(m::NonConstant(&a), m::Constant(&c1)),
-                        m::Constant(&c2))) ||
-      Match(add, m::Add(m::Add(m::NonConstant(&a),
-                               m::Broadcast(m::ConstantScalar(&c1))),
-                        m::Broadcast(m::ConstantScalar(&c2))))) {
+  if (((!ShapeUtil::ElementIsFloating(add->shape()) &&
+        !ShapeUtil::ElementIsComplex(add->shape())) ||
+       options_.enable_fast_math()) &&
+      (Match(add, m::Add(m::Add(m::NonConstant(&a), m::Constant(&c1)),
+                         m::Constant(&c2))) ||
+       Match(add, m::Add(m::Add(m::NonConstant(&a),
+                                m::Broadcast(m::ConstantScalar(&c1))),
+                         m::Broadcast(m::ConstantScalar(&c2)))))) {
     ABSL_ASSIGN_OR_RETURN(auto* sum_of_constants,
                      MakeBinaryHlo(HloOpcode::kAdd, c1, c2));
     if (ShapeUtil::IsScalar(sum_of_constants->shape()) &&
@@ -984,11 +987,14 @@ absl::Status AlgebraicSimplifierVisitor::HandleAdd(HloInstruction* add) {
   }
 
   VLOG(10) << "trying transform [(C1 - A) + C2 => (C1 + C2) - A]";
-  if (Match(add, m::Add(m::Subtract(m::Constant(&c1), m::NonConstant(&a)),
-                        m::Constant(&c2))) ||
-      Match(add, m::Add(m::Subtract(m::Broadcast(m::ConstantScalar(&c1)),
-                                    m::NonConstant(&a)),
-                        m::Broadcast(m::ConstantScalar(&c2))))) {
+  if (((!ShapeUtil::ElementIsFloating(add->shape()) &&
+        !ShapeUtil::ElementIsComplex(add->shape())) ||
+       options_.enable_fast_math()) &&
+      (Match(add, m::Add(m::Subtract(m::Constant(&c1), m::NonConstant(&a)),
+                         m::Constant(&c2))) ||
+       Match(add, m::Add(m::Subtract(m::Broadcast(m::ConstantScalar(&c1)),
+                                     m::NonConstant(&a)),
+                         m::Broadcast(m::ConstantScalar(&c2)))))) {
     ABSL_ASSIGN_OR_RETURN(HloInstruction * sum_of_constants,
                      MakeBinaryHlo(HloOpcode::kAdd, c1, c2));
     if (ShapeUtil::IsScalar(sum_of_constants->shape()) &&
@@ -1896,8 +1902,8 @@ absl::Status AlgebraicSimplifierVisitor::HandleCopy(HloInstruction* copy) {
       copy->operand(0)->user_count() == 1 &&
       ShapeUtil::ReshapeIsBitcast(copy->operand(0)->shape(), copy->shape()) &&
       (!options_.is_layout_sensitive() ||
-       (!HasCombineDimensionTile(copy->operand(0)->shape()) &&
-        !HasCombineDimensionTile(copy->shape())) ||
+       (!HasMatchDimensionTile(copy->operand(0)->shape()) &&
+        !HasMatchDimensionTile(copy->shape())) ||
        absl::c_equal(copy->operand(0)->shape().layout().tiles(),
                      copy->shape().layout().tiles()))) {
     return ReplaceWithNewInstruction(
@@ -5110,7 +5116,10 @@ absl::Status AlgebraicSimplifierVisitor::HandleMultiply(
     HloInstruction *a, *b, *c1, *c2;
     // Mul(Mul(x, constant1), Mul(y, constant2)) => Mul(Mul(x, y),
     // constant1*constant2)
-    if (Match(multiply,
+    if (((!ShapeUtil::ElementIsFloating(multiply->shape()) &&
+          !ShapeUtil::ElementIsComplex(multiply->shape())) ||
+         options_.enable_fast_math()) &&
+        Match(multiply,
               m::MultiplyAnyOrder(
                   m::MultiplyAnyOrder(m::NonConstant(&a), m::Constant(&c1)),
                   m::MultiplyAnyOrder(m::NonConstant(&b), m::Constant(&c2))))) {
@@ -5135,7 +5144,10 @@ absl::Status AlgebraicSimplifierVisitor::HandleMultiply(
   {
     HloInstruction *a, *c1, *c2;
     // Mul(Mul(a, constant1), constant2) => Mul(a, constant1*constant2)
-    if (Match(multiply,
+    if (((!ShapeUtil::ElementIsFloating(multiply->shape()) &&
+          !ShapeUtil::ElementIsComplex(multiply->shape())) ||
+         options_.enable_fast_math()) &&
+        Match(multiply,
               m::MultiplyAnyOrder(
                   m::MultiplyAnyOrder(m::NonConstant(&a), m::Constant(&c1)),
                   m::Constant(&c2)))) {
@@ -5159,15 +5171,18 @@ absl::Status AlgebraicSimplifierVisitor::HandleMultiply(
     HloInstruction *a, *b, *constant, *op;
     // Mul(Mul(a, constant1), Broadcast(b)) =>
     // Mul(Broadcast(Mul(b, constant1), a))
-    if (Match(multiply,
-              m::MultiplyAnyOrder(m::MultiplyAnyOrder(m::NonConstant(&a),
-                                                      m::Constant(&constant)),
-                                  m::Op(&op))) ||
-        Match(multiply,
-              m::MultiplyAnyOrder(
-                  m::MultiplyAnyOrder(m::NonConstant(&a),
-                                      m::Broadcast(m::Constant(&constant))),
-                  m::Op(&op)))) {
+    if (((!ShapeUtil::ElementIsFloating(multiply->shape()) &&
+          !ShapeUtil::ElementIsComplex(multiply->shape())) ||
+         options_.enable_fast_math()) &&
+        (Match(multiply,
+               m::MultiplyAnyOrder(m::MultiplyAnyOrder(m::NonConstant(&a),
+                                                       m::Constant(&constant)),
+                                   m::Op(&op))) ||
+         Match(multiply,
+               m::MultiplyAnyOrder(
+                   m::MultiplyAnyOrder(m::NonConstant(&a),
+                                       m::Broadcast(m::Constant(&constant))),
+                   m::Op(&op))))) {
       // Check that the other side was a broadcast, and not of a constant.
       if (ShapeUtil::IsScalar(constant->shape()) &&
           Match(op, m::Broadcast(m::NonConstant()))) {
@@ -5193,13 +5208,16 @@ absl::Status AlgebraicSimplifierVisitor::HandleMultiply(
 
   VLOG(10) << "trying transform [(A * C1) * C2 => A * (C1 * C2)]";
   HloInstruction *a, *c1, *c2;
-  if (Match(multiply,
-            m::Multiply(m::Multiply(m::NonConstant(&a), m::Constant(&c1)),
-                        m::Constant(&c2))) ||
-      Match(multiply,
-            m::Multiply(
-                m::Multiply(m::Op(&a), m::Broadcast(m::ConstantScalar(&c1))),
-                m::Broadcast(m::ConstantScalar(&c2))))) {
+  if (((!ShapeUtil::ElementIsFloating(multiply->shape()) &&
+        !ShapeUtil::ElementIsComplex(multiply->shape())) ||
+       options_.enable_fast_math()) &&
+      (Match(multiply,
+             m::Multiply(m::Multiply(m::NonConstant(&a), m::Constant(&c1)),
+                         m::Constant(&c2))) ||
+       Match(multiply,
+             m::Multiply(
+                 m::Multiply(m::Op(&a), m::Broadcast(m::ConstantScalar(&c1))),
+                 m::Broadcast(m::ConstantScalar(&c2)))))) {
     ABSL_ASSIGN_OR_RETURN(auto* product_of_constants,
                      MakeBinaryHlo(HloOpcode::kMultiply, c1, c2));
     if (ShapeUtil::IsScalar(product_of_constants->shape()) &&
@@ -5358,7 +5376,8 @@ absl::Status AlgebraicSimplifierVisitor::HandleLog(HloInstruction* log) {
 
   // ln(pow(A,B)) => B*ln(abs(A))
   // or B*ln(A) if A is complex.
-  if (Match(log, m::Log(m::Power(m::Op(&a), m::Op(&b))))) {
+  if (options_.enable_fast_math() &&
+      Match(log, m::Log(m::Power(m::Op(&a), m::Op(&b))))) {
     auto abs_a = ShapeUtil::ElementIsComplex(a->shape())
                      ? a
                      : log->AddInstruction(HloInstruction::CreateUnary(
@@ -6284,7 +6303,7 @@ absl::Status AlgebraicSimplifierVisitor::HandlePower(HloInstruction* power) {
   }
 
   VLOG(10) << "trying transform [pow(A, -1) => 1/A]: " << power->ToString();
-  if (IsAll(rhs, -1)) {
+  if (!ShapeUtil::ElementIsIntegral(power->shape()) && IsAll(rhs, -1)) {
     return ReplaceWithNewInstruction(
         power, HloInstruction::CreateBinary(power->shape(), HloOpcode::kDivide,
                                             MakeScalarLike(lhs, 1), lhs));
@@ -7100,28 +7119,29 @@ absl::Status AlgebraicSimplifierVisitor::HandleReverse(
     };
     if (inner->IsElementwiseBinary()) {
       // produces incorrect result for rng.
-      if (inner->opcode() == HloOpcode::kRng ||
-          inner_opcode == HloOpcode::kCompare) {
+      if (inner_opcode == HloOpcode::kCompare ||
+          inner_opcode == HloOpcode::kFusion || inner->HasSideEffect()) {
         return absl::OkStatus();
       }
-      HloInstruction* hlo;
       if (match_with_scalar(inner->mutable_operand(0))) {
-        hlo = inner->mutable_operand(1);
+        HloInstruction* hlo = inner->mutable_operand(1);
+        ABSL_ASSIGN_OR_RETURN(HloInstruction * reverse_hlo,
+                         MakeReverseHlo(hlo, reverse_dims));
         return ReplaceWithNewInstruction(
             reverse,
-            HloInstruction::CreateBinary(inner->shape(), inner_opcode,
-                                         inner->mutable_operand(0),
-                                         *MakeReverseHlo(hlo, reverse_dims)));
-      } else if (match_with_scalar(inner->mutable_operand(1))) {
-        hlo = inner->mutable_operand(0);
-        return ReplaceWithNewInstruction(
-            reverse,
-            HloInstruction::CreateBinary(inner->shape(), inner_opcode,
-                                         *MakeReverseHlo(hlo, reverse_dims),
-                                         inner->mutable_operand(1)));
-      } else {
-        return absl::OkStatus();
+            inner->CloneWithNewOperands(
+                inner->shape(), {inner->mutable_operand(0), reverse_hlo}));
       }
+      if (match_with_scalar(inner->mutable_operand(1))) {
+        HloInstruction* hlo = inner->mutable_operand(0);
+        ABSL_ASSIGN_OR_RETURN(HloInstruction * reverse_hlo,
+                         MakeReverseHlo(hlo, reverse_dims));
+        return ReplaceWithNewInstruction(
+            reverse,
+            inner->CloneWithNewOperands(
+                inner->shape(), {reverse_hlo, inner->mutable_operand(1)}));
+      }
+      return absl::OkStatus();
     }
     // reverse(DegenerateDimensionAddingReshape(x)) ==>
     // DegenerateDimensionAddingReshape(reverse(x))

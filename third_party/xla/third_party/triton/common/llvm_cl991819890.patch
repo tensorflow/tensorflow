@@ -1,6 +1,6 @@
 --- a/python/src/llvm.cc
 +++ b/python/src/llvm.cc
-@@ -753,7 +753,7 @@ void init_triton_llvm(py::module_ &m) {
+@@ -788,7 +788,7 @@ void init_triton_llvm(py::module_ &m) {
          if (!pluginFile.empty()) {
            // TODO: Add some logging here that we inserted a pass into the LLVM
            // pass pipeline
@@ -12,7 +12,7 @@
 
 --- a/python/test/unit/language/test_compile_only.py
 +++ b/python/test/unit/language/test_compile_only.py
-@@ -99,8 +99,7 @@ def test_compile_only_mulhi_survives_llvm_opt(bits) -> None:
+@@ -99,8 +99,7 @@ def test_umulhi_truncated_input(seed_type, dtype):
      for kind, stage in stages.items():
          module = stage(module, metadata)
          if kind == "llir":
@@ -46,7 +46,7 @@
 
 --- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ElementwiseOpToLLVM.cpp
 +++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ElementwiseOpToLLVM.cpp
-@@ -949,8 +949,7 @@ struct MulhiUIOpConversion
+@@ -871,8 +871,7 @@ struct MulhiUIOpConversion
                                     Location loc) const {
      unsigned bitWidth = elemTy.getIntOrFloatBitWidth();
      assert(bitWidth == 32 || bitWidth == 64);

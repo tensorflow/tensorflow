@@ -1285,7 +1285,10 @@ tf_cc_test(
     name = "framework_run_handler_test",
     size = "medium",
     srcs = ["run_handler_test.cc"],
-    shard_count = 4,
+    # One test per shard: the tests setenv() TF_RUN_HANDLER_* flags that
+    # run_handler.cc latches in process-wide statics, so tests sharing a
+    # process interfere. Keep this equal to the number of test cases.
+    shard_count = 11,
     deps = [
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:direct_session_internal",

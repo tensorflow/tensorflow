@@ -63,6 +63,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/mlir_context_pool.h"
 #include "xla/service/gpu/model/combined_gpu_performance_model.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
@@ -79,6 +80,7 @@ limitations under the License.
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/threadpool.h"
+#include "xla/tsl/util/sorted_range.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -402,19 +404,19 @@ class PriorityFusionQueue {
 
   // Update priorities of all affected ops.
   absl::Status UpdatePriorities() {
-    // Revisit costs of all updated ops. It's important to update cost analysis
-    // before recalculating priorities.
-    for (auto instruction : to_update_priority_) {
+    // Revisit costs of all updated fusion ops. Unmodified operands in
+    // `to_update_priority_` only had their consumers updated; their own HLO
+    // costs and standalone runtime estimates have not changed.
+    for (HloInstruction* instruction : tsl::SortedRange(updated_fusions_)) {
       ABSL_RETURN_IF_ERROR(cost_analysis_->RevisitInstruction(instruction));
-    }
-    for (auto producer : to_update_priority_) {
-      ABSL_RETURN_IF_ERROR(UpdatePerformanceModelCache(producer));
+      ABSL_RETURN_IF_ERROR(UpdatePerformanceModelCache(instruction));
     }
 
     ABSL_RETURN_IF_ERROR(ComputeAndSetPriorities(std::vector<HloInstruction*>{
         to_update_priority_.begin(), to_update_priority_.end()}));
 
     to_update_priority_.clear();
+    updated_fusions_.clear();
     operands_to_new_consumers_.clear();
     operands_to_removed_consumers_runtimes_.clear();
     return absl::OkStatus();
@@ -583,11 +585,13 @@ class PriorityFusionQueue {
     // fuse. For now, as we only allow multi-output fusion if there is just a
     // single fusible consumer, this is not needed.
     to_update_priority_.insert(fusion);
+    updated_fusions_.insert(fusion);
   }
 
   // Removes data for the instruction.
   void RemoveInstruction(HloInstruction* instruction) {
     to_update_priority_.erase(instruction);
+    updated_fusions_.erase(instruction);
 
     auto reverse_it = reverse_map_.find(instruction);
     if (reverse_it == reverse_map_.end()) {
@@ -1252,6 +1256,10 @@ class PriorityFusionQueue {
   // avoid recomputing priorities multiple times before we dequeue a new
   // producer.
   absl::flat_hash_set<HloInstruction*> to_update_priority_;
+  // The subset of `to_update_priority_` consisting of newly created or modified
+  // fusion instructions whose HLO cost analysis and standalone performance
+  // model cache entries need to be updated before recomputing priorities.
+  absl::flat_hash_set<HloInstruction*> updated_fusions_;
   absl::flat_hash_map<HloInstruction*, std::vector<HloInstruction*>>
       operands_to_new_consumers_;
   absl::flat_hash_map<HloInstruction*, GpuPerformanceModel::RunTimes>
@@ -1382,10 +1390,7 @@ absl::StatusOr<bool> PriorityFusion::RunImpl(
           .debug_options()
           .xla_gpu_experimental_enable_triton_heroless_priority_fusion();
 
-  bool use_experimental_tiling =
-      module->config()
-          .debug_options()
-          .xla_gpu_experimental_enable_tiling_propagation();
+  bool use_experimental_tiling = true;
 
   FusionDeduplicationCache fusion_deduplication_cache =
       FusionDeduplicationCache::Create(*module, IsFusible);

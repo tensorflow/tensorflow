@@ -24,6 +24,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -2150,6 +2151,106 @@ ENTRY computation {
 // CHECK-NEXT:   ROOT [[tuple_22:%[^ ]+]] = (f16[100,200]{1,0}, f32[]) tuple([[a_scaled_converted_1_11]], [[r_1_20]].clone.1)
 // CHECK-NEXT: }
   )");
+}
+
+// A custom fusion producing a GEMM, read by an elementwise and a reduction
+// fusion. $0 is the custom fusion backend config.
+constexpr absl::string_view kCustomFusionConsumersHlo = R"(
+HloModule module
+
+add {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT c = f32[] add(a, b)
+}
+
+custom_gemm {
+  p0 = f32[64,32] parameter(0)
+  p1 = f32[32,128] parameter(1)
+  ROOT d = f32[64,128] dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+fused_elementwise {
+  p = f32[64,128] parameter(0)
+  ROOT r = f32[64,128] sqrt(p)
+}
+
+fused_reduction {
+  p = f32[64,128] parameter(0)
+  z = f32[] constant(0)
+  ROOT r = f32[64] reduce(p, z), dimensions={1}, to_apply=add
+}
+
+ENTRY computation {
+  p0 = f32[64,32] parameter(0)
+  p1 = f32[32,128] parameter(1)
+  gemm = f32[64,128] fusion(p0, p1), kind=kCustom, calls=custom_gemm,
+    backend_config=$0
+  o1 = f32[64,128] fusion(gemm), kind=kLoop, calls=fused_elementwise
+  o2 = f32[64] fusion(gemm), kind=kInput, calls=fused_reduction
+  ROOT out = (f32[64,128], f32[64]) tuple(o1, o2)
+}
+)";
+
+// The consumers of a custom fusion are sibling-fused, so that its output is
+// read once. The custom fusion itself keeps its single output and its body.
+constexpr absl::string_view kCustomFusionConsumersCheck = R"(
+// CHECK: %custom_gemm
+// CHECK: ROOT {{.*}} = f32[64,128]{1,0} dot(
+// CHECK: ENTRY
+// CHECK: [[gemm:%[^ ]+]] = f32[64,128]{1,0} fusion({{.*}}), kind=kCustom, calls=%custom_gemm
+// CHECK: [[mof:%[^ ]+]] = (f32[64,128]{1,0}, f32[64]{0}) fusion([[gemm]]), kind=kInput
+// CHECK-NOT: fusion([[gemm]])
+)";
+
+TEST_F(ReduceMultiOutputFusionTest, SiblingFusionOfTritonGemmConsumers) {
+  CheckMultiOutputFusion(
+      absl::Substitute(kCustomFusionConsumersHlo,
+                       R"({"fusion_backend_config":{"kind":"__triton_gemm"}})"),
+      kCustomFusionConsumersCheck);
+}
+
+TEST_F(ReduceMultiOutputFusionTest, SiblingFusionOfCustomKernelConsumers) {
+  CheckMultiOutputFusion(
+      absl::Substitute(
+          kCustomFusionConsumersHlo,
+          R"({"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"cutlass_gemm"}}})"),
+      kCustomFusionConsumersCheck);
+}
+
+// A custom fusion is never fused into its consumer by producer-consumer
+// multi-output fusion. Its body is elementwise, so the reduction would
+// otherwise absorb it.
+TEST_F(ReduceMultiOutputFusionTest, NoProducerConsumerFusionOfCustomFusion) {
+  CheckMultiOutputFusion(R"(
+HloModule module
+
+add {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT c = f32[] add(a, b)
+}
+
+triton_fusion {
+  p = f32[64,128] parameter(0)
+  ROOT n = f32[64,128] negate(p)
+}
+
+fused_reduction {
+  p = f32[64,128] parameter(0)
+  z = f32[] constant(0)
+  ROOT r = f32[64] reduce(p, z), dimensions={1}, to_apply=add
+}
+
+ENTRY computation {
+  p0 = f32[64,128] parameter(0)
+  t = f32[64,128] fusion(p0), kind=kCustom, calls=triton_fusion,
+    backend_config={"fusion_backend_config":{"kind":"__triton"}}
+  r = f32[64] fusion(t), kind=kInput, calls=fused_reduction
+  ROOT out = (f32[64,128], f32[64]) tuple(t, r)
+}
+)",
+                         std::nullopt);
 }
 
 TEST_F(ReduceMultiOutputFusionTest, SkipsDynamicSliceFusionV2Producer) {

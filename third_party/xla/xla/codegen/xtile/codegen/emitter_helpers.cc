@@ -199,8 +199,14 @@ mlir::Value OnesLike(mlir::ImplicitLocOpBuilder& b, mlir::Type type) {
   return cst;
 }
 
-Value ReducePrecision(mlir::ImplicitLocOpBuilder& b, const HloInstruction& hlo,
-                      Value value) {
+absl::StatusOr<Value> ReducePrecision(mlir::ImplicitLocOpBuilder& b,
+                                      const HloInstruction& hlo, Value value) {
+  // The lowering assumes an IEEE-like layout with a sign bit and a mantissa,
+  // which F8E8M0FNU does not have.
+  if (hlo.operand(0)->shape().element_type() == F8E8M0FNU) {
+    return absl::UnimplementedError(
+        "ReducePrecision is not supported for F8E8M0FNU.");
+  }
   // Check if it's a no-op.
   auto elem_type =
       GetPrimitiveType(mlir::getElementTypeOrSelf(value.getType()));
@@ -238,6 +244,17 @@ Value DivideBy(mlir::ImplicitLocOpBuilder& b, Value value,
                int64_t elements_per_byte) {
   return ma::DivSIOp::create(
       b, value, CreateConst(b, value.getType(), elements_per_byte));
+}
+
+Value MaybeBroadcastScalarToShape(mlir::ImplicitLocOpBuilder& b, Value input,
+                                  Type target_type) {
+  ArrayRef<int64_t> target_shape =
+      mlir::cast<ShapedType>(target_type).getShape();
+  if (!target_shape.empty() &&
+      mlir::cast<ShapedType>(input.getType()).getShape().empty()) {
+    return Splat(b, input, target_shape);
+  }
+  return input;
 }
 
 }  // namespace
@@ -446,6 +463,7 @@ absl::StatusOr<SmallVector<Value>> EmitterContext::EvaluateTilingParameters(
   for (const int64_t dim : dim_ids) {
     switch (tiling_space.dimensions()[dim].type) {
       case ge::TilingSpace::DimensionSemantics::kParallel:
+      case ge::TilingSpace::DimensionSemantics::kReplica:
         dim_replacements[dim] = schedule_.GetPidExpr(dim);
         break;
       case ge::TilingSpace::DimensionSemantics::kSequential: {
@@ -719,8 +737,13 @@ absl::StatusOr<Value> EmitElementwise(mlir::ImplicitLocOpBuilder& b,
       return Maximum(b, inputs);
     case HloOpcode::kMinimum:
       return Minimum(b, inputs);
-    case HloOpcode::kClamp:
-      return Minimum(b, {Maximum(b, {inputs[0], inputs[1]}), inputs[2]});
+    case HloOpcode::kClamp: {
+      Value min_val =
+          MaybeBroadcastScalarToShape(b, inputs[0], inputs[1].getType());
+      Value max_val =
+          MaybeBroadcastScalarToShape(b, inputs[2], inputs[1].getType());
+      return Minimum(b, {Maximum(b, {min_val, inputs[1]}), max_val});
+    }
     case HloOpcode::kAnd:
       return mlir::stablehlo::AndOp::create(b, inputs[0], inputs[1]);
     case HloOpcode::kOr:
@@ -735,12 +758,12 @@ absl::StatusOr<Value> EmitElementwise(mlir::ImplicitLocOpBuilder& b,
           mlir::stablehlo::symbolizeComparisonDirection(
               ComparisonDirectionToString(hlo.comparison_direction()))
               .value());
-    case HloOpcode::kSelect:
-      return ma::SelectOp::create(
-          b,
-          Compare(b, {inputs[0], ZerosLike(b, inputs[0])},
-                  mlir::stablehlo::ComparisonDirection::NE),
-          inputs[1], inputs[2]);
+    case HloOpcode::kSelect: {
+      Value pred = Compare(b, {inputs[0], ZerosLike(b, inputs[0])},
+                           mlir::stablehlo::ComparisonDirection::NE);
+      pred = MaybeBroadcastScalarToShape(b, pred, inputs[1].getType());
+      return ma::SelectOp::create(b, pred, inputs[1], inputs[2]);
+    }
     case HloOpcode::kReducePrecision:
       return ReducePrecision(b, hlo, inputs[0]);
     case HloOpcode::kAcos:
@@ -1253,12 +1276,10 @@ TensorValue EmitTiledTranspose(mlir::ImplicitLocOpBuilder& b,
 }
 
 absl::Status EmitReduceComputation(mlir::ImplicitLocOpBuilder& b,
-                                   const HloInstruction* hlo_reduction,
+                                   PrimitiveType element_type,
                                    const HloComputation* reduction_computation,
                                    mlir::Operation* reduction) {
-  ABSL_ASSIGN_OR_RETURN(
-      Type result_ty,
-      PrimitiveTypeToMlirType(b, hlo_reduction->shape().element_type()));
+  ABSL_ASSIGN_OR_RETURN(Type result_ty, PrimitiveTypeToMlirType(b, element_type));
   result_ty = mlir::RankedTensorType::get({}, result_ty);
 
   mlir::Location loc = b.getLoc();

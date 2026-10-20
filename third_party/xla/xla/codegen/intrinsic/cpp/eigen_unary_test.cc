@@ -36,7 +36,9 @@ limitations under the License.
 
 namespace xla::codegen {
 namespace {
+using ::testing::AnyOf;
 using ::testing::ContainsRegex;
+using ::testing::HasSubstr;
 using ::testing::Not;
 using ::xla::codegen::intrinsic::NearUlps;
 
@@ -207,11 +209,15 @@ TEST(EigenUnaryTest, AtanIsVectorized16) {
   std::string v2f64_ir = GetFunctionIr(*module, "xla.atan.v2f64");
   std::string v8f32_ir = GetFunctionIr(*module, "xla.atan.v8f32");
 
-  EXPECT_THAT(v4f32_ir, ContainsRegex("(fmuladd\\.v4f32|fmul <4 x float>)"));
+  // gtest's Windows regex engine has no alternation, so use AnyOf.
+  EXPECT_THAT(v4f32_ir,
+              AnyOf(HasSubstr("fmuladd.v4f32"), HasSubstr("fmul <4 x float>")));
   EXPECT_THAT(v4f32_ir, Not(ContainsRegex("llvm.atan")));
-  EXPECT_THAT(v2f64_ir, ContainsRegex("(fmuladd\\.v2f64|fmul <2 x double>)"));
+  EXPECT_THAT(v2f64_ir, AnyOf(HasSubstr("fmuladd.v2f64"),
+                              HasSubstr("fmul <2 x double>")));
   EXPECT_THAT(v2f64_ir, Not(ContainsRegex("@atan")));
-  EXPECT_THAT(v8f32_ir, ContainsRegex("(fmuladd\\.v4f32|fmul <4 x float>)"));
+  EXPECT_THAT(v8f32_ir,
+              AnyOf(HasSubstr("fmuladd.v4f32"), HasSubstr("fmul <4 x float>")));
   EXPECT_THAT(v8f32_ir, Not(ContainsRegex("llvm.atan")));
 }
 

@@ -16951,6 +16951,105 @@ ENTRY entry {
                   op::DynamicSlice(op::Pad(_, op::Constant()), _, _, _, _), _));
 }
 
+TEST_P(SpmdPartitioningTest,
+       ReshapeOfBroadcastDoesNotFalselyMarkMergedShardedDimAsBroadcast) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %p = f32[4] parameter(0), sharding={devices=[4]<=[4]}
+  %br = f32[4,2] broadcast(%p), dimensions={0}, sharding={devices=[4,1]<=[4]}
+  %reshape = f32[2,4] reshape(%br), sharding={devices=[2,2]<=[4]}
+  ROOT %copy = f32[2,4] copy(%reshape), sharding={devices=[2,2]1,0,3,2}
+})";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       PartitionComputation(hlo_string, /*num_devices=*/4));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Copy(op::CollectivePermute(_)));
+}
+
+TEST_P(SpmdPartitioningTest,
+       ScatterIndexPassthroughUnevenUpdatesPadsIndicesWithMinusOne) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY entry {
+  %operand = f32[4,2] parameter(0), sharding={replicated}
+  %indices = s32[3,1] parameter(1), sharding={replicated}
+  %updates = f32[3,2] parameter(2), sharding={devices=[2,1]0,1}
+  ROOT %scatter = f32[4,2] scatter(%operand, %indices, %updates),
+      update_window_dims={1},
+      inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0},
+      index_vector_dim=1,
+      to_apply=add,
+      sharding={replicated}
+})";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/2));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::AllReduce(op::Scatter(
+                  _,
+                  op::DynamicSlice(
+                      op::Pad(op::Parameter(1),
+                              op::Constant(LiteralUtil::CreateR0<int32_t>(-1))),
+                      _, _),
+                  _)));
+}
+
+TEST_P(SpmdPartitioningTest,
+       ScatterTrivialSlicedOperandUnevenUpdatesPadsIndicesWithMinusOne) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY entry {
+  %operand = f32[4,2] parameter(0),
+      sharding={devices=[2,1,2]0,1,2,3 last_tile_dim_replicate}
+  %indices = s32[3,1] parameter(1), sharding={replicated}
+  %updates = f32[3,2] parameter(2),
+      sharding={devices=[2,1,2]0,2,1,3 last_tile_dim_replicate}
+  ROOT %scatter = f32[4,2] scatter(%operand, %indices, %updates),
+      update_window_dims={1},
+      inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0},
+      index_vector_dim=1,
+      to_apply=add,
+      sharding={devices=[2,1,2]0,1,2,3 last_tile_dim_replicate}
+})";
+
+  SpmdPartitionerOptions options;
+  options.preferred_scatter_partition_methods = {
+      GatherScatterPartitioningMethod::kTrivialSlicedOperand};
+  ASSERT_OK_AND_ASSIGN(
+      auto module,
+      PartitionComputation(hlo_string, /*num_devices=*/4, options));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      op::AllReduce(op::Scatter(
+          _,
+          op::Subtract(
+              op::DynamicSlice(
+                  op::Pad(op::Parameter(1),
+                          op::Constant(LiteralUtil::CreateR0<int32_t>(-1))),
+                  _, _),
+              _),
+          _)));
+}
+
 TEST_P(SpmdPartitioningTest, KeepPartitionedNonSlicedDimension) {
   const char* const hlo_string = R"(
 HloModule module

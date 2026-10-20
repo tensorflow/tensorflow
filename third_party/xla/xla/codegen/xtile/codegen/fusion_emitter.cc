@@ -73,6 +73,7 @@ limitations under the License.
 #include "xla/codegen/xtile/codegen/dot_algorithms.h"
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/codegen/xtile/ir/transforms/passes.h"
+#include "xla/codegen/xtile/ir/xtile_attrs.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/interval.h"
@@ -169,8 +170,8 @@ absl::StatusOr<TensorValue> EmitReduce(
 
   stablehlo::ReduceOp reduction = stablehlo::ReduceOp::create(
       b, input, init_value, hlo_reduce.dimensions());
-  ABSL_RETURN_IF_ERROR(
-      EmitReduceComputation(b, &hlo_reduce, hlo_reduce.to_apply(), reduction));
+  ABSL_RETURN_IF_ERROR(EmitReduceComputation(b, hlo_reduce.shape().element_type(),
+                                        hlo_reduce.to_apply(), reduction));
 
   return mlir::cast<TensorValue>(reduction.getResult(0));
 }
@@ -944,9 +945,22 @@ absl::StatusOr<TensorValue> EmitAllReduce(
   auto all_reduce_op = mlir::stablehlo::AllReduceOp::create(
       b, b.getLoc(), output_type, mlir::ValueRange(operands),
       replica_groups_attr, channel_handle_attr, use_global_device_ids);
+  if (auto gpu_config = all_reduce.backend_config<xla::gpu::GpuBackendConfig>();
+      gpu_config.ok()) {
+    switch (gpu_config->collective_backend_config().kernel_strategy()) {
+      case xla::gpu::CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_ONE_SHOT:
+        SetCollectiveStrategy(all_reduce_op, CollectiveStrategy::kOneShot);
+        break;
+      case xla::gpu::CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_TWO_SHOT:
+        SetCollectiveStrategy(all_reduce_op, CollectiveStrategy::kTwoShot);
+        break;
+      default:
+        break;
+    }
+  }
 
-  ABSL_RETURN_IF_ERROR(EmitReduceComputation(b, &all_reduce, all_reduce.to_apply(),
-                                        all_reduce_op));
+  ABSL_RETURN_IF_ERROR(EmitReduceComputation(b, all_reduce.shape().element_type(),
+                                        all_reduce.to_apply(), all_reduce_op));
 
   return mlir::cast<TensorValue>(all_reduce_op.getResult(0));
 }
@@ -1256,7 +1270,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
     return absl::InvalidArgumentError("Multi-output fusion is disabled.");
   }
 
-  CHECK(!debug_options.xla_gpu_experimental_enable_tiling_propagation());
+  LOG(FATAL) << "Calling into legacy fusion emitter is disallowed. "
+             << "Please use experimental tiling propagation instead.";
 
   const HloComputation* hlo_computation =
       fusion.fused_instructions_computation();

@@ -110,9 +110,7 @@ absl::StatusOr<tsl::profiler::ConsumeResult> PythonTracer::Consume() {
     chunk.consumed_data = PythonHooks::GetSingleton()->Consume();
   } else if (context_) {
     if (Py_IsInitialized()) {
-      PyGILState_STATE gil_state = PyGILState_Ensure();
       chunk.consumed_data = context_->Consume();
-      PyGILState_Release(gil_state);
     }
   }
 

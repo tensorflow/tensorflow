@@ -719,6 +719,136 @@ TFE_TensorHandle* NumpyToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj) {
       tensorflow::unwrap(ctx)->CreateLocalHandle(tf_tensor->tensor));
 }
 
+// ---------------------------------------------------------------------------
+// Non-finite guard for floating point -> integer conversions.
+// ---------------------------------------------------------------------------
+
+// `npy_half` holds the IEEE binary16 bit pattern (see NPY_HALF_PINF /
+// NPY_HALF_NAN in numpy/halffloat.h): an all-ones exponent marks Inf (zero
+// mantissa) and NaN (non-zero mantissa).
+inline bool ElementIsFinite(npy_half value) {
+  return (value & 0x7c00u) != 0x7c00u;
+}
+
+inline bool ElementIsFinite(float value) { return std::isfinite(value); }
+inline bool ElementIsFinite(double value) { return std::isfinite(value); }
+inline bool ElementIsFinite(long double value) { return std::isfinite(value); }
+
+// Walks a contiguous buffer once and stops at the first non-finite element.
+template <typename T>
+bool BufferHasNonFinite(const char* data, npy_intp count) {
+  const T* values = reinterpret_cast<const T*>(data);
+  for (npy_intp i = 0; i < count; ++i) {
+    if (!ElementIsFinite(values[i])) return true;
+  }
+  return false;
+}
+
+// Fallback for the dtypes whose in-memory representation this file does not
+// hard-code (bfloat16, float8_*, ...) and for non-contiguous inputs: defer to
+// NumPy's `isfinite` ufunc. If NumPy cannot form an opinion about the dtype,
+// the input is reported as finite so that the historical conversion behaviour
+// is left untouched.
+bool UfuncHasNonFinite(PyObject* array) {
+  Safe_PyObjectPtr numpy = make_safe(PyImport_ImportModule("numpy"));
+  Safe_PyObjectPtr isfinite;
+  Safe_PyObjectPtr finite;
+  PyObject* all_finite = nullptr;
+  if (numpy.get() != nullptr) {
+    isfinite = make_safe(PyObject_GetAttrString(numpy.get(), "isfinite"));
+  }
+  if (isfinite.get() != nullptr) {
+    finite =
+        make_safe(PyObject_CallFunctionObjArgs(isfinite.get(), array, nullptr));
+  }
+  if (finite.get() != nullptr) {
+    all_finite = PyObject_CallMethod(finite.get(), "all", nullptr);
+  }
+  if (all_finite == nullptr) {
+    PyErr_Clear();
+    return false;
+  }
+  const int result = PyObject_IsTrue(all_finite);
+  Py_DECREF(all_finite);
+  if (result < 0) {
+    PyErr_Clear();
+    return false;
+  }
+  return result == 0;
+}
+
+// Returns true if `array` holds at least one NaN or infinite value. Only
+// floating point and complex dtypes are inspected; every other dtype yields
+// false.
+bool ArrayHasNonFiniteValue(PyArrayObject* array) {
+  const npy_intp size = PyArray_SIZE(array);
+  if (size == 0) return false;
+  const int type_num = PyArray_TYPE(array);
+  if (!PyTypeNum_ISFLOAT(type_num) && !PyTypeNum_ISCOMPLEX(type_num)) {
+    // TensorFlow's 16- and 8-bit float types (bfloat16, float8_e4m3fn,
+    // float8_e5m2, ...) are NumPy user dtypes, so their representation is
+    // opaque here.
+    return PyTypeNum_ISUSERDEF(type_num)
+               ? UfuncHasNonFinite(reinterpret_cast<PyObject*>(array))
+               : false;
+  }
+  if (!PyArray_ISCONTIGUOUS(array)) {
+    return UfuncHasNonFinite(reinterpret_cast<PyObject*>(array));
+  }
+  const char* data = reinterpret_cast<const char*>(PyArray_DATA(array));
+  switch (type_num) {
+    case NPY_HALF:
+      return BufferHasNonFinite<npy_half>(data, size);
+    case NPY_FLOAT:
+      return BufferHasNonFinite<npy_float>(data, size);
+    case NPY_DOUBLE:
+      return BufferHasNonFinite<npy_double>(data, size);
+    case NPY_LONGDOUBLE:
+      return BufferHasNonFinite<npy_longdouble>(data, size);
+    // A complex buffer interleaves the real and imaginary planes, so it holds
+    // 2 * size real components.
+    case NPY_CFLOAT:
+      return BufferHasNonFinite<npy_float>(data, 2 * size);
+    case NPY_CDOUBLE:
+      return BufferHasNonFinite<npy_double>(data, 2 * size);
+    case NPY_CLONGDOUBLE:
+      return BufferHasNonFinite<npy_longdouble>(data, 2 * size);
+    default:
+      return UfuncHasNonFinite(reinterpret_cast<PyObject*>(array));
+  }
+}
+
+// Renders the shape of `array` as "(d0, d1, ...)".
+std::string ArrayShapeString(PyArrayObject* array) {
+  const int ndim = PyArray_NDIM(array);
+  std::string text = "(";
+  for (int i = 0; i < ndim; ++i) {
+    if (i > 0) text += ", ";
+    text += std::to_string(static_cast<long long int>(PyArray_DIM(array, i)));
+  }
+  if (ndim == 1) text += ",";  // NumPy prints one-element shapes as "(n,)".
+  text += ")";
+  return text;
+}
+
+// Renders the NumPy dtype name of `descr`, e.g. "float32".
+std::string DtypeString(PyArray_Descr* descr) {
+  Safe_PyObjectPtr name =
+      make_safe(PyObject_Str(reinterpret_cast<PyObject*>(descr)));
+  const char* utf8 =
+      name.get() == nullptr ? nullptr : PyUnicode_AsUTF8(name.get());
+  if (utf8 == nullptr) {
+    PyErr_Clear();
+    return "<unknown>";
+  }
+  return utf8;
+}
+
+// Renders the NumPy dtype name of `array`, e.g. "float32".
+std::string ArrayDtypeString(PyArrayObject* array) {
+  return DtypeString(PyArray_DESCR(array));
+}
+
 }  // namespace
 
 // TODO(b/147743551): This function handles enough conversions to justify
@@ -778,6 +908,28 @@ TFE_TensorHandle* PySeqToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj,
 
     PyArrayObject* array = reinterpret_cast<PyArrayObject*>(obj);
     int array_dtype = PyArray_TYPE(array);
+
+    // NumPy's float -> integer cast silently maps NaN and Inf onto the smallest
+    // representable integer (INT_MIN for int32, 0 for the float8 types), while
+    // the equivalent Python list raises TypeError. Reject the conversion here,
+    // in C++, so that the check runs as a single pass over the buffer and also
+    // covers callers that never route through the Python wrappers: objects
+    // exposing `__array__` / `__array_interface__` (e.g. pandas.Series), which
+    // the Python wrappers cannot see, and any graph-level construction.
+    if (desired_np_dtype >= 0 && PyTypeNum_ISINTEGER(desired_np_dtype) &&
+        ArrayHasNonFiniteValue(array)) {
+      PyErr_SetString(
+          PyExc_TypeError,
+          absl::StrCat("Cannot convert a NumPy array of shape ",
+                       ArrayShapeString(array), " and dtype ",
+                       ArrayDtypeString(array), " to a tensor of dtype ",
+                       DataTypeString(dtype),
+                       ": NaN and Inf cannot be represented as an integer. Use "
+                       "a floating point dtype, or replace the non-finite "
+                       "values before converting.")
+              .c_str());
+      return nullptr;
+    }
 
     Safe_PyObjectPtr safe_value(nullptr);
     // Use Numpy to convert between types if needed.
@@ -938,6 +1090,49 @@ TFE_TensorHandle* PySeqToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj,
   }
 
   return handle;
+}
+
+PyObject* PyArrayToIntegerArray(PyObject* obj, PyObject* numpy_dtype) {
+  if (obj == nullptr) {
+    PyErr_SetString(PyExc_ValueError, "None values not supported.");
+    return nullptr;
+  }
+  // `PyArray_DescrConverter` returns 1 on success and 0 on failure.
+  PyArray_Descr* descr = nullptr;
+  if (PyArray_DescrConverter(numpy_dtype, &descr) != 1) return nullptr;
+  Safe_PyObjectPtr safe_descr(reinterpret_cast<PyObject*>(descr));
+
+  // `obj` may be an `np.generic` scalar; normalise it to an array so that the
+  // finiteness scan and the cast see the same object.
+  PyArrayObject* array = reinterpret_cast<PyArrayObject*>(
+      PyArray_FromAny(obj, nullptr, 0, 0, 0, nullptr));
+  if (array == nullptr) return nullptr;
+  Safe_PyObjectPtr safe_array(reinterpret_cast<PyObject*>(array));
+
+  // NumPy's float -> integer cast silently maps NaN and Inf onto the smallest
+  // representable integer, while the equivalent Python list raises TypeError.
+  // Reject the conversion here, in C++, so that the guard and the cast form a
+  // single entry point -- exactly the structure the eager conversion uses. The
+  // scan is skipped for source dtypes that cannot hold a non-finite value.
+  if (ArrayHasNonFiniteValue(array)) {
+    PyErr_SetString(
+        PyExc_TypeError,
+        absl::StrCat("Cannot convert a NumPy array of shape ",
+                     ArrayShapeString(array), " and dtype ",
+                     ArrayDtypeString(array), " to a tensor of dtype ",
+                     DtypeString(descr),
+                     ": NaN and Inf cannot be represented as an integer. Use "
+                     "a floating point dtype, or replace the non-finite "
+                     "values before converting.")
+            .c_str());
+    return nullptr;
+  }
+
+  // `PyArray_FromAny` takes ownership of the descriptor reference.
+  return PyArray_FromAny(reinterpret_cast<PyObject*>(array),
+                         reinterpret_cast<PyArray_Descr*>(safe_descr.release()),
+                         0, 0, NPY_ARRAY_CARRAY_RO | NPY_ARRAY_FORCECAST,
+                         nullptr);
 }
 
 }  // namespace tensorflow

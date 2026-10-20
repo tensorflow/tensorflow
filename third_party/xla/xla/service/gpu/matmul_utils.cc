@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/blas.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/engine_options.h"
@@ -1223,6 +1224,28 @@ bool IsDotSupportedByClassicalEmitters(const HloInstruction& dot) {
     default:
       return false;
   }
+}
+
+bool DotRequiresMinorContractingDims(
+    const HloInstruction& dot, const se::GpuComputeCapability& gpu_version) {
+  const PrimitiveType lhs = dot.operand(0)->shape().element_type();
+  const PrimitiveType rhs = dot.operand(1)->shape().element_type();
+  if (dot.shape().element_type() == S32 && lhs == S8 && rhs == S8) {
+    return true;
+  }
+  auto is_fp8 = [](PrimitiveType type) {
+    return type == F8E4M3FN || type == F8E5M2FNUZ;
+  };
+  const se::CudaComputeCapability* cc = gpu_version.cuda_compute_capability();
+  return is_fp8(lhs) && is_fp8(rhs) && !(cc && cc->IsBlackwell());
+}
+
+bool AreContractingDimsMinor(const Layout& layout,
+                             absl::Span<const int64_t> contracting_dims) {
+  return absl::c_all_of(layout.minor_to_major().first(contracting_dims.size()),
+                        [&](int64_t dim) {
+                          return absl::c_linear_search(contracting_dims, dim);
+                        });
 }
 
 PrimitiveType GetGemmAccumulatorType(const HloDotInstruction* dot) {

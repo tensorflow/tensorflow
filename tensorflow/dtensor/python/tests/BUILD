@@ -109,6 +109,18 @@ py_test(
     ],
 )
 
+py_test(
+    name = "heartbeat_test",
+    srcs = [
+        "heartbeat_test.py",
+    ],
+    strict_deps = True,
+    deps = [
+        "//tensorflow/dtensor/python:heartbeat",
+        "//tensorflow/python/platform:client_testlib",
+    ],
+)
+
 # TODO(b/301286466): Investigate why python annotation type mismatch is not catptured by the type
 # strict BUILD rules.
 
@@ -690,8 +702,15 @@ dtensor_test(
     main = "numpy_util_test.py",
     deps = [
         ":test_util",
+        "//tensorflow/dtensor/python:api",
         "//tensorflow/dtensor/python:layout",
         "//tensorflow/dtensor/python:numpy_util",
+        "//tensorflow/python/eager/polymorphic_function",
+        "//tensorflow/python/framework:config",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:array_ops_stack",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
     ],
@@ -932,6 +951,7 @@ dtensor_test(
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:stateless_random_ops",
         "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/trackable:base",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],

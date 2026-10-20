@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PJRT_RAW_PJRT_CLIENT_H_
 #define XLA_PJRT_RAW_PJRT_CLIENT_H_
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -38,6 +39,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/raw_buffer.h"
+#include "xla/runtime/device_id.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "tsl/platform/numa.h"
@@ -259,12 +261,31 @@ class PjRtRawClient {
     return tsl::port::kNUMANoAffinity;
   }
 
+  // Returns the required alignment for device memory addresses when slicing.
+  virtual absl::StatusOr<size_t> GetDeviceAddressAlignment() const {
+    return absl::UnimplementedError(
+        "GetDeviceAddressAlignment is not implemented.");
+  }
+
   // Returns the required byte alignment for host memory when performing DMA.
   virtual size_t GetDmaHostAlignment() const { return 1; }
+
+  // Returns the required byte alignment for transfer sizes when performing DMA,
+  // or nullopt if unpadded DMA transfers are not supported.
+  virtual std::optional<size_t> GetDmaSizeAlignment() const { return 1; }
 
   virtual void LaunchOnDevice(LocalDeviceId device_id,
                               absl::AnyInvocable<void()> execute_fn) const {
     async_work_runner()->Execute(std::move(execute_fn));
+  }
+
+  // Backend specific handlers for when an oom is detected during execute.
+  virtual void CallOomHandlers() const {}
+
+  virtual bool ShouldRetryOnOom(int attempts, PjRtDevice* device,
+                                PjRtExecutableLoadState* load_state,
+                                absl::Status prepare_status) {
+    return false;
   }
 
   virtual void UpdateGlobalProcessInfo(
@@ -286,6 +307,30 @@ class PjRtRawClient {
 
   virtual tsl::AsyncValueRef<PjRtExecutable> ToAsyncExecutable(
       std::shared_ptr<PjRtExecutable> executable) const = 0;
+
+  using PjRtFulfillAsyncExecutableCallback = absl::AnyInvocable<void(
+      absl::StatusOr<tsl::AsyncValueRef<PjRtExecutable>>) &&>;
+
+  virtual std::pair<tsl::AsyncValueRef<PjRtExecutable>,
+                    PjRtFulfillAsyncExecutableCallback>
+  CreateLinkedExecutablePromise() const = 0;
+
+  template <typename T>
+  static std::pair<tsl::AsyncValueRef<PjRtExecutable>,
+                   PjRtFulfillAsyncExecutableCallback>
+  CreateLinkedExecutablePromiseForType() {
+    auto indirect = tsl::MakeIndirectAsyncValue<T>();
+    auto fulfill_cb =
+        [indirect](
+            absl::StatusOr<tsl::AsyncValueRef<PjRtExecutable>> executable) {
+          if (executable.ok()) {
+            indirect->ForwardTo(executable->ReleaseRCRef());
+          } else {
+            indirect->SetError(executable.status());
+          }
+        };
+    return {tsl::AsyncValueRef<T>(std::move(indirect)), std::move(fulfill_cb)};
+  }
 
   virtual tsl::RCReference<PjRtExecutableLoadState> MakeLoadState() {
     LOG(FATAL) << "Implement MakeLoadState()";
@@ -364,6 +409,12 @@ class PjRtRawClient {
     GlobalDeviceId src_global_device_id;
     GlobalDeviceId dst_global_device_id;
     PjRtRawBufferRef raw_buffer;
+    // Source and destination task incarnations, in that order. nullopt when
+    // the caller has no GetAliveTasks snapshot.
+    // TODO: Revisit making this non-optional once older jaxlib versions
+    // are no longer supported and the missing-snapshot fallback in
+    // CopyArraysForCrossHost is no longer needed.
+    std::optional<std::array<IncarnationId, 2>> incarnations;
   };
 
   virtual absl::StatusOr<PjRtDeviceEventRefVector> CrossHostTransferBuffers(

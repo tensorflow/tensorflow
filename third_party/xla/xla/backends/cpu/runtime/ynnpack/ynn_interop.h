@@ -87,16 +87,16 @@ namespace internal {
 struct YnnDeleter {
   void operator()(ynn_subgraph* subgraph) { ynn_delete_subgraph(subgraph); }
   void operator()(ynn_runtime* runtime) { ynn_delete_runtime(runtime); }
-  void operator()(ynn_threadpool* threadpool) {
-    ynn_delete_threadpool(threadpool);
-  }
 };
 
 }  // namespace internal
 
 using YnnSubgraph = std::unique_ptr<ynn_subgraph, internal::YnnDeleter>;
 using YnnRuntime = std::unique_ptr<ynn_runtime, internal::YnnDeleter>;
-using YnnThreadpool = std::unique_ptr<ynn_threadpool, internal::YnnDeleter>;
+// Uses a function-pointer deleter instead of `internal::YnnDeleter` to match
+// `Thunk::YnnParams::Threadpool`, which cannot depend on YNNPACK headers.
+using YnnThreadpool =
+    std::unique_ptr<ynn_threadpool, void (*)(ynn_threadpool*)>;
 
 absl::StatusOr<YnnSubgraph> CreateYnnSubgraph(
     absl::FunctionRef<ynn_status(ynn_subgraph_t*)> builder);

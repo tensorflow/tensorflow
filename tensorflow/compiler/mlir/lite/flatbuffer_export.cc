@@ -186,6 +186,11 @@ constexpr size_t kInitialBufferSize = 10240;
 // Flatbuffer fields to be padded to 16 bytes aligned.
 constexpr size_t kFbAlignment = 16;
 
+// Extra trailing bytes to pad after constant tensor buffers to prevent
+// out-of-bounds reads by SIMD kernels (e.g. XNNPACK microkernels require up to
+// 128 bytes on Qualcomm Hexagon DSP).
+constexpr size_t kFbTailPadding = 128;
+
 // Set `isSigned` to false if the `type` is an 8-bit unsigned integer type.
 // Since tflite doesn't support unsigned for other types, returns error if
 // `isSigned` is set to false for other types.
@@ -1584,10 +1589,9 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
                             /*hash=*/0);
 
     std::string buffer_data = buffer.GetData();
-    if (custom_option_alignment_.has_value()) {
-      builder_.ForceVectorAlignment(buffer_data.size(), sizeof(uint8_t),
-                                    custom_option_alignment_.value());
-    }
+    builder_.ForceVectorAlignment(
+        buffer_data.size(), sizeof(uint8_t),
+        custom_option_alignment_.value_or(kFbAlignment));
     ReleaseBufferData(buffer);
     return tflite::CreateBuffer(
         builder_, builder_.CreateVector(
@@ -3969,6 +3973,7 @@ std::optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
 BufferOffset<tflite::Metadata> Translator::BuildMetadata(StringRef name,
                                                          StringRef content) {
   auto buffer_index = buffers_.size();
+  builder_.ForceVectorAlignment(content.size(), sizeof(uint8_t), kFbAlignment);
   auto buffer_data = builder_.CreateVector(
       reinterpret_cast<const uint8_t*>(content.data()), content.size());
   buffers_.push_back(tflite::CreateBuffer(builder_, buffer_data));
@@ -4715,9 +4720,18 @@ absl::Status Translator::TranslateInternal() {
         reinterpret_cast<const char*>(builder_.GetBufferPointer()),
         builder_.GetSize(), /*offset=*/0);
   } else {
+    // When use_buffer_offset_ is false (the default for models under 2GB,
+    // whereas large models like LLMs enable `--use_buffer_offset` to append
+    // buffers at the end), all tensor buffers are stored inline inside the
+    // FlatBuffer builder. In this mode, buffers near the end of the FlatBuffer
+    // may lack trailing bytes before the file boundary. We write the
+    // FlatBuffer directly to the stream and append trailing zeros to ensure
+    // that the last tensor buffer has sufficient trailing padding for SIMD
+    // kernels (e.g. XNNPACK) when memory-mapped.
     export_stream_.get().write(
         reinterpret_cast<const char*>(builder_.GetBufferPointer()),
         builder_.GetSize());
+    export_stream_.get().write_zeros(kFbTailPadding);
   }
   return absl::OkStatus();
 }
@@ -4788,8 +4802,6 @@ absl::Status Translator::AppendBufferData() {
       ReleaseBufferData(*buffer);
     }
   }
-  // pad 16 bytes for the last buffer for XNNPack
-  export_stream_.get().write_zeros(16);
 
   // pad to be 16 bytes aligned
   export_stream_.get().write_zeros(kFbAlignment - offset() % kFbAlignment);
@@ -4814,6 +4826,9 @@ absl::Status Translator::AppendBufferData() {
     }
     custom_op_idx_map_[key] = std::make_pair(buffer_offset, size);
   }
+
+  // Pad trailing bytes for the last tensor buffer for SIMD/XNNPack kernels
+  export_stream_.get().write_zeros(kFbTailPadding);
 
   // pad to be 16 bytes aligned
   export_stream_.get().write_zeros(kFbAlignment - offset() % kFbAlignment);

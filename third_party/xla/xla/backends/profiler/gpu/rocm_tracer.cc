@@ -744,13 +744,14 @@ absl::Status RocmTracer::InitProfiling(void* tool_data) {
   // scoped_annotation.h takes its AnnotationStack branch and XLA emits no
   // roctx call. Only code that links librocprofiler-sdk-roctx and calls it
   // directly reaches this callback. A follow-up adds the XLA-side emitter.
-  // Log and continue rather than ABSL_RETURN_IF_ERROR. A failure here propagates to
-  // toolInit, which returns -1 and tears down HIP-API, kernel-dispatch and
-  // memcpy tracing along with it. That is far too much collateral for an
-  // optional feature whose producer is the application: MARKER_CORE_API may be
-  // absent in an older rocprofiler-sdk, or already claimed by another tool in
-  // the process (ROCPROFILER_STATUS_ERROR_SERVICE_ALREADY_CONFIGURED). Losing
-  // ROCTX bands is acceptable; losing all GPU profiling is not.
+  // Log and continue rather than ABSL_RETURN_IF_ERROR. A failure here
+  // propagates to toolInit, which returns -1 and tears down HIP-API,
+  // kernel-dispatch and memcpy tracing along with it. That is far too much
+  // collateral for an optional feature whose producer is the application:
+  // MARKER_CORE_API may be absent in an older rocprofiler-sdk, or already
+  // claimed by another tool in the process
+  // (ROCPROFILER_STATUS_ERROR_SERVICE_ALREADY_CONFIGURED). Losing ROCTX bands
+  // is acceptable; losing all GPU profiling is not.
   if (absl::Status marker_status = RocprofilerStatusToAbslStatus(
           rocprofiler_configure_callback_tracing_service(
               context_, ROCPROFILER_CALLBACK_TRACING_MARKER_CORE_API, nullptr,
@@ -860,10 +861,7 @@ static int toolInitStatic(rocprofiler_client_finalize_t finalize_func,
                                                        tool_data);
 }
 
-// ----------------------------------------------------------------------------
-// C‑linkage entry‑point expected by rocprofiler-sdk.
-// ----------------------------------------------------------------------------
-extern "C" rocprofiler_tool_configure_result_t* rocprofiler_configure(
+static rocprofiler_tool_configure_result_t* rocprofiler_configure(
     uint32_t version, const char* runtime_version, uint32_t priority,
     rocprofiler_client_id_t* id) {
   auto& obj = RocmTracer::GetRocmTracerSingleton();  // Ensure constructed,

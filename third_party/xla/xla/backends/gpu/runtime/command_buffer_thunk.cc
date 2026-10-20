@@ -142,25 +142,13 @@ absl::Status CommandBufferThunk::Prepare(const PrepareParams& params) {
     return absl::OkStatus();
   }
 
-  // Always prepare thunks if they are present so we are ready to fall back
-  // on them if we detect profiling activity.
+  // `commands_` borrows pointers to the same Thunk objects owned by `thunks_`,
+  // so preparing `thunks_` (when present) already prepares all commands.
   if (thunks_) {
-    ABSL_RETURN_IF_ERROR(thunks_->Prepare(params));
+    return thunks_->Prepare(params);
   }
 
-  // TODO(b/290773547): Disabled CUDA graphs when profiling is active because of
-  // memory corruption.
-  if (tsl::profiler::ProfilerLock::HasActiveSession() && thunks_ &&
-      !enable_command_buffers_during_profiling_) {
-    VLOG(1) << "Prepare command buffer thunk as a regular thunk sequence "
-               "because we detected active profiling session";
-    TraceMe trace("WARNING: CommandBuffer disabled when profiling");
-    return absl::OkStatus();
-  }
-
-  ABSL_RETURN_IF_ERROR(commands_.Prepare(params));
-
-  return absl::OkStatus();
+  return commands_.Prepare(params);
 }
 
 absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
@@ -170,13 +158,14 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
     return absl::OkStatus();
   }
 
-  // Initialize commands.
-  ABSL_RETURN_IF_ERROR(commands_.Initialize(params));
-
-  // Always initialize thunks if they are present so we are ready to fall back
-  // on them if we detect profiling activity.
+  // Always initialize fallback thunks (or commands when there are no fallback
+  // thunks). `commands_` borrows pointers to the same Thunk objects owned by
+  // `thunks_`, so initializing `thunks_` (when present) already initializes all
+  // commands.
   if (thunks_) {
     ABSL_RETURN_IF_ERROR(thunks_->Initialize(params));
+  } else {
+    ABSL_RETURN_IF_ERROR(commands_.Initialize(params));
   }
 
   // TODO(b/290773547): Disabled CUDA graphs when profiling is active because of
@@ -209,6 +198,10 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
     cmd_buffer->warmup_done = true;
   }
 
+  if (!cmd_buffer->warmup_done) {
+    return absl::OkStatus();
+  }
+
   // Construct ExecuteParams with empty fields for everything that is not needed
   // for recording commands.
   Thunk::ExecuteParams execute_params(
@@ -223,10 +216,6 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
       /*additional_compute_streams=*/{}, params.execution_scoped_state,
       /*mock_collectives=*/false, /*execution_id=*/0,
       /*rng_seed=*/0, params.persistent_alloc_indices);
-
-  if (!cmd_buffer->warmup_done) {
-    return absl::OkStatus();
-  }
 
   // If command buffer is in `kCreate` state it means that command buffer
   // sequence was never recorded into it. We initialize all command buffers

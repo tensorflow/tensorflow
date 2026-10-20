@@ -11,11 +11,16 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/fixed_length_record_dataset_op.h"
 
+#include <cstdint>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "tensorflow/core/data/dataset_test_base.h"
+#include "tensorflow/core/data/serialization_utils.h"
 
 namespace tensorflow {
 namespace data {
@@ -90,7 +95,31 @@ class FixedLengthRecordDatasetParams : public DatasetParams {
   CompressionType compression_type_;
 };
 
-class FixedLengthRecordDatasetOpTest : public DatasetOpsTestBase {};
+class FixedLengthRecordDatasetOpTest : public DatasetOpsTestBase {
+ protected:
+  void ExpectRestoreFailsForInvalidFileIndex(
+      const FixedLengthRecordDatasetParams& dataset_params) {
+    for (const auto& [file_index, pos] :
+         std::vector<std::pair<int64_t, int64_t>>{{3, -1}, {-1, -1}, {2, 0}}) {
+      VariantTensorDataWriter writer;
+      TF_ASSERT_OK(writer.WriteScalar(iterator_->prefix(), "current_file_index",
+                                      file_index));
+      TF_ASSERT_OK(writer.WriteScalar(iterator_->prefix(), "current_pos", pos));
+      std::vector<const VariantTensorData*> data;
+      writer.GetData(&data);
+      VariantTensorDataReader reader(data);
+      std::unique_ptr<IteratorBase> iterator;
+      absl::Status status = RestoreIterator(iterator_ctx_.get(), &reader,
+                                            dataset_params.iterator_prefix(),
+                                            *dataset_, &iterator);
+      EXPECT_THAT(status,
+                  absl_testing::StatusIs(
+                      absl::StatusCode::kInvalidArgument,
+                      ::testing::HasSubstr("Invalid current_file_index")))
+          << "current_file_index=" << file_index << " current_pos=" << pos;
+    }
+  }
+};
 
 absl::Status CreateTestFiles(const std::vector<tstring>& filenames,
                              const std::vector<std::string>& contents,
@@ -322,6 +351,66 @@ IteratorSaveAndRestoreTestCases() {
 ITERATOR_SAVE_AND_RESTORE_TEST_P(FixedLengthRecordDatasetOpTest,
                                  FixedLengthRecordDatasetParams,
                                  IteratorSaveAndRestoreTestCases())
+
+// The dataset has 2 files, so these {current_file_index, current_pos} pairs
+// would index past `filenames_` on restore or on the next GetNext call.
+TEST_F(FixedLengthRecordDatasetOpTest, RestoreInvalidFileIndexCompressed) {
+  auto dataset_params = FixedLengthRecordDatasetParams1();
+  TF_ASSERT_OK(Initialize(dataset_params));
+  ExpectRestoreFailsForInvalidFileIndex(dataset_params);
+}
+
+TEST_F(FixedLengthRecordDatasetOpTest, RestoreInvalidFileIndexUncompressed) {
+  auto dataset_params = FixedLengthRecordDatasetParams3();
+  TF_ASSERT_OK(Initialize(dataset_params));
+  ExpectRestoreFailsForInvalidFileIndex(dataset_params);
+}
+
+// {num_files, -1} is the checkpoint of an exhausted iterator and must
+// still restore.
+TEST_F(FixedLengthRecordDatasetOpTest, RestoreExhaustedIteratorCompressed) {
+  auto dataset_params = FixedLengthRecordDatasetParams1();
+  TF_ASSERT_OK(Initialize(dataset_params));
+  VariantTensorDataWriter writer;
+  TF_ASSERT_OK(writer.WriteScalar(iterator_->prefix(), "current_file_index",
+                                  int64_t{2}));
+  TF_ASSERT_OK(
+      writer.WriteScalar(iterator_->prefix(), "current_pos", int64_t{-1}));
+  std::vector<const VariantTensorData*> data;
+  writer.GetData(&data);
+  VariantTensorDataReader reader(data);
+  std::unique_ptr<IteratorBase> iterator;
+  TF_ASSERT_OK(RestoreIterator(iterator_ctx_.get(), &reader,
+                               dataset_params.iterator_prefix(), *dataset_,
+                               &iterator));
+  bool end_of_sequence = false;
+  std::vector<Tensor> out_tensors;
+  TF_ASSERT_OK(
+      iterator->GetNext(iterator_ctx_.get(), &out_tensors, &end_of_sequence));
+  EXPECT_TRUE(end_of_sequence);
+}
+
+TEST_F(FixedLengthRecordDatasetOpTest, RestoreExhaustedIteratorUncompressed) {
+  auto dataset_params = FixedLengthRecordDatasetParams3();
+  TF_ASSERT_OK(Initialize(dataset_params));
+  VariantTensorDataWriter writer;
+  TF_ASSERT_OK(writer.WriteScalar(iterator_->prefix(), "current_file_index",
+                                  int64_t{2}));
+  TF_ASSERT_OK(
+      writer.WriteScalar(iterator_->prefix(), "current_pos", int64_t{-1}));
+  std::vector<const VariantTensorData*> data;
+  writer.GetData(&data);
+  VariantTensorDataReader reader(data);
+  std::unique_ptr<IteratorBase> iterator;
+  TF_ASSERT_OK(RestoreIterator(iterator_ctx_.get(), &reader,
+                               dataset_params.iterator_prefix(), *dataset_,
+                               &iterator));
+  bool end_of_sequence = false;
+  std::vector<Tensor> out_tensors;
+  TF_ASSERT_OK(
+      iterator->GetNext(iterator_ctx_.get(), &out_tensors, &end_of_sequence));
+  EXPECT_TRUE(end_of_sequence);
+}
 
 }  // namespace
 }  // namespace data

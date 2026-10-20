@@ -60,12 +60,32 @@ absl::StatusOr<int64_t> PjRtGetOnDeviceBytesCount(const xla::Shape& shape,
   return static_cast<int64_t>(requirements.size);
 }
 
+namespace {
+
+bool CanOmitPaddingForTransfer(const xla::Shape& shape) {
+  if (!shape.is_static() || !shape.IsArray()) {
+    return false;
+  }
+  if (xla::ShapeUtil::ElementHasBitWidth(shape, 32) &&
+      shape.dimensions().size() == 1) {
+    return true;
+  }
+  return shape.has_layout() && !shape.layout().tiles().empty() &&
+         shape.layout().tiles(0).dimensions() == absl::Span<const int64_t>({1});
+}
+
+}  // namespace
+
 PjRtShapeAndMetadataTransferRequirements
 PjRtShapeAndMetadataTransferRequirements::Get(const xla::Shape& shape,
                                               PjRtDynamicShapeKind kind) {
   PjRtShapeAndMetadataTransferRequirements requirements;
   int64_t array_size = shape.IsToken() ? 0 : xla::ShapeUtil::ArraySize(shape);
+  int64_t unpadded_array_size = CanOmitPaddingForTransfer(shape)
+                                    ? xla::ShapeUtil::ByteSizeOfElements(shape)
+                                    : array_size;
   requirements.size = array_size;
+  requirements.unpadded_size = unpadded_array_size;
   requirements.metadata_alignment = sizeof(int32_t);
   requirements.array_offset = 0;
   requirements.array_size = array_size;
@@ -81,6 +101,7 @@ PjRtShapeAndMetadataTransferRequirements::Get(const xla::Shape& shape,
         metadata_size = shape.layout().dynamic_shape_metadata_prefix_bytes();
       }
       requirements.size = array_size + metadata_size;
+      requirements.unpadded_size = unpadded_array_size + metadata_size;
       requirements.metadata_alignment = sizeof(int32_t);
       requirements.metadata_offset = 0;
       requirements.metadata_size = metadata_size;
@@ -92,6 +113,7 @@ PjRtShapeAndMetadataTransferRequirements::Get(const xla::Shape& shape,
         metadata_size = sizeof(int32_t) * shape.dimensions().size();
       }
       requirements.size = array_size + metadata_size;
+      requirements.unpadded_size = unpadded_array_size + metadata_size;
       requirements.metadata_offset = array_size;
       requirements.metadata_size = metadata_size;
       requirements.array_offset = 0;

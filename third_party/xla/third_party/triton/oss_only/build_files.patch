@@ -2854,7 +2854,7 @@ diff --git b/third_party/nvidia/BUILD b/third_party/nvidia/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/third_party/nvidia/BUILD
-@@ -0,0 +1,568 @@
+@@ -0,0 +1,569 @@
 +load("@rules_cc//cc:cc_library.bzl", "cc_library")
 +load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 +
@@ -2986,6 +2986,7 @@ new file mode 100644
 +        "@llvm-project//llvm:Support",
 +        "@llvm-project//llvm:ir_headers",
 +        "@llvm-project//mlir:Analysis",
++        "@llvm-project//mlir:ArithCommonConversion",
 +        "@llvm-project//mlir:ArithToLLVM",
 +        "@llvm-project//mlir:ArithTransforms",
 +        "@llvm-project//mlir:ControlFlowDialect",
@@ -4049,7 +4050,7 @@ diff --git b/unittest/BUILD b/unittest/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/unittest/BUILD
-@@ -0,0 +1,159 @@
+@@ -0,0 +1,162 @@
 +load("@rules_cc//cc:cc_test.bzl", "cc_test")
 +load("//tools/build_defs/build_test:build_test.bzl", "build_test")
 +
@@ -4065,10 +4066,13 @@ new file mode 100644
 +    deps = [
 +        "@com_google_googletest//:gtest_main",
 +        "@llvm-project//llvm:Support",
++        "@llvm-project//mlir:IR",
 +        "@llvm-project//mlir:Parser",
 +        "@triton//:TritonDialects",
++        "@triton//:TritonGPUTransforms",
 +        "@triton//:TritonNvidiaGPUTransforms",
 +        "@triton//:TritonTransforms",
++        "@triton//:WarpSpecialization",
 +    ],
 +)
 +

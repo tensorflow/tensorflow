@@ -245,6 +245,54 @@ TEST_F(ConfigAssignerTest, CacheHit) {
   EXPECT_THAT(config_assigner->AssignConfig(dummy_instr.get()), IsOk());
 }
 
+TEST_F(ConfigAssignerTest, NullCacheAutotunesWithoutCaching) {
+  config_.allow_autotuning = true;
+
+  auto backend = std::make_unique<MockCodegenBackend>();
+  EXPECT_CALL(*backend, name()).WillRepeatedly(Return("mock_backend"));
+  EXPECT_CALL(*backend, GetSupportedConfigs(_))
+      .WillOnce([](const HloInstruction&) {
+        std::vector<std::unique_ptr<BackendConfig>> configs;
+        configs.push_back(GetTestConfig("test_config_1"));
+        configs.push_back(GetTestConfig("test_config_2"));
+        return configs;
+      });
+  EXPECT_CALL(*backend, Compile(_, _)).Times(2).WillRepeatedly([] {
+    return std::unique_ptr<Executable>();
+  });
+  EXPECT_CALL(*backend, ApplyConfig(_, ConfigMatcher("test_config_1")))
+      .WillOnce(Return(absl::OkStatus()));
+
+  auto profiler = std::make_unique<MockProfiler>();
+  EXPECT_CALL(*profiler, CreateInputBuffers(_, _))
+      .WillOnce(Return(std::make_unique<InputBuffers>()));
+  EXPECT_CALL(*profiler, Profile(_, _))
+      .WillOnce(Return(ProfileResult({absl::Seconds(1)})))
+      .WillOnce(Return(ProfileResult({absl::Seconds(2)})));
+
+  std::vector<std::unique_ptr<CodegenBackend>> backends;
+  backends.push_back(std::move(backend));
+  ASSERT_OK_AND_ASSIGN(auto orchestrator,
+                       CodegenOrchestrator::Create(std::move(backends), {}));
+  Autotuner::Options autotuner_options;
+  autotuner_options.correctness_check_options.enable_correctness_check = false;
+  std::vector<std::unique_ptr<Profiler>> profilers;
+  profilers.push_back(std::move(profiler));
+  ASSERT_OK_AND_ASSIGN(
+      auto autotuner,
+      Autotuner::Create(*orchestrator, std::move(profilers), autotuner_options,
+                        /*thread_pool=*/nullptr));
+  ASSERT_OK_AND_ASSIGN(
+      auto config_assigner,
+      ConfigAssigner::Create(config_, /*optimal_config_cache=*/nullptr,
+                             std::move(orchestrator), std::move(autotuner)));
+
+  auto dummy_instr = HloInstruction::CreateConstant(LiteralUtil::CreateR0(1));
+  EXPECT_THAT(config_assigner->AssignConfig(dummy_instr.get()), IsOk());
+  EXPECT_EQ(config_assigner->GetCacheStats(),
+            AutotunerCacheInterface::CacheStats());
+}
+
 TEST_F(ConfigAssignerTest, ForceConfigBypassesCacheAndAutotuning) {
   auto cache_manager = std::make_unique<MockAutotunerCache>();
   EXPECT_CALL(*cache_manager, Lookup(_)).Times(0);

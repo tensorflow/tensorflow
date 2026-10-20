@@ -386,7 +386,9 @@ cc_library(
         "@llvm-project//mlir:Transforms",
         "@shardy//shardy/dialect/sdy/ir:dialect",
         "@shardy//shardy/dialect/sdy/transforms/common:passes",
+        "@shardy//shardy/dialect/sdy/transforms/common:propagation_options",
         "@shardy//shardy/dialect/sdy/transforms/import:passes",
+        "@shardy//shardy/dialect/sdy/transforms/propagation:passes",
         "@stablehlo//:chlo_ops",
         "@stablehlo//:stablehlo_ops",
         "@stablehlo//:stablehlo_passes",
@@ -400,6 +402,7 @@ cc_library(
         "@xla//xla/python:refine_polymorphic_shapes",
         "@xla//xla/service:hlo_proto_cc",
         "@xla//xla/service/spmd/shardy/sdy_round_trip:pipelines",
+        "@xla//xla/service/spmd/shardy/stablehlo_round_trip:stablehlo_export",
         "@xla//xla/tsl/platform:errors",
         "@xla//xla/tsl/platform:statusor",
     ],
@@ -1600,7 +1603,6 @@ tf_kernel_library(
         "@xla//xla/hlo/builder:value_inference",
         "@xla//xla/hlo/builder:xla_builder",
         "@xla//xla/hlo/builder/lib:constants",
-        "@xla//xla/hlo/builder/lib:dynamic_shaped_ops",
     ],
 )
 

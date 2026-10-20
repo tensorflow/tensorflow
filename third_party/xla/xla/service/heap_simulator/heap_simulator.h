@@ -879,9 +879,17 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
     // (spatially) should be allocated. Such a slice has size
     // sorted_slice_sizes_[i] and would be allocated at offset +
     // sum(sorted_slice_sizes[j], for j in [0, i-1]).
+    //
+    // If it does not fit, *min_next_offset (which must be non-null) is set to
+    // the earliest offset > offset at which this permutation could possibly fit
+    // in root. If there is no chance of fitting in this root, *min_next_offset
+    // is set to INT64_MAX. This function is unaware of any alignment
+    // requirements - it is the responsibility of the caller to adjust
+    // *min_next_offset to satisfy any alignment constraints.
     bool DoesPermutationFit(
         absl::Span<const int64_t> permutation_of_slice_times,
-        const FreeChunkRoot& root, int64_t offset) const;
+        const FreeChunkRoot& root, int64_t offset,
+        int64_t* min_next_offset) const;
 
     // Same as Find() except only checks root, to see if it can hold the sliced
     // allocation request. If only_try_this_offset is set, we only evaluate the

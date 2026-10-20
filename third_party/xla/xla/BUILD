@@ -1379,6 +1379,29 @@ cc_library(
         ],
 )
 
+cc_library(
+    name = "debug_options_runtime_fields",
+    srcs = ["debug_options_runtime_fields.cc"],
+    hdrs = ["debug_options_runtime_fields.h"],
+    visibility = internal_visibility([":friends"]),
+    deps = [
+        ":xla_proto_cc",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "debug_options_runtime_fields_test",
+    srcs = ["debug_options_runtime_fields_test.cc"],
+    deps = [
+        ":debug_options_runtime_fields",
+        ":xla_proto_cc",
+        "//xla/tsl/platform:test_main",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 xla_cc_test(
     name = "debug_options_flags_test",
     srcs = ["debug_options_flags_test.cc"],

@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 
 #include <cstdint>
+#include <cstring>
 #include <memory>
 #include <string>
 #include <utility>
@@ -32,6 +33,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/comparison_util.h"
@@ -50,14 +52,17 @@ limitations under the License.
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
+#include "xla/literal.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
@@ -4055,6 +4060,109 @@ ENTRY %ShortConstant.v4 () -> f32[67,89] {
   EXPECT_EQ(result.value()->ToString(HloPrintOptions()), original);
 }
 
+// Returns the literals of the entry computation's constants, in parse order.
+std::vector<Literal> EntryConstantLiterals(const HloModule& module) {
+  std::vector<Literal> literals;
+  for (const HloInstruction* instruction :
+       module.entry_computation()->instructions()) {
+    if (instruction->opcode() == HloOpcode::kConstant) {
+      literals.push_back(instruction->literal().Clone());
+    }
+  }
+  return literals;
+}
+
+std::vector<uint8_t> RawBytes(const Literal& literal) {
+  const auto* data = static_cast<const uint8_t*>(literal.untyped_data());
+  return std::vector<uint8_t>(data, data + literal.size_bytes());
+}
+
+constexpr absl::string_view kElidedConstantsModule = R"(
+HloModule elided_constants
+
+ENTRY main {
+  a = s32[4] constant({...})
+  b = s32[4] constant({...})
+  c = s8[3] constant({...})
+  d = s8[3] constant({...})
+  ROOT t = (s32[4], s32[4], s8[3], s8[3]) tuple(a, b, c, d)
+}
+)";
+
+TEST_F(HloParserTest, ElidedConstantsAreTheSameInEveryParse) {
+  ASSERT_OK_AND_ASSIGN(auto first,
+                       ParseAndReturnUnverifiedModule(kElidedConstantsModule));
+  ASSERT_OK_AND_ASSIGN(auto second,
+                       ParseAndReturnUnverifiedModule(kElidedConstantsModule));
+  const std::vector<Literal> literals = EntryConstantLiterals(*first);
+  ASSERT_EQ(literals.size(), 4);
+  // Elided constants of one module still differ, so CSE cannot merge them.
+  EXPECT_NE(literals[0], literals[1]);
+  EXPECT_NE(literals[2], literals[3]);
+  EXPECT_EQ(EntryConstantLiterals(*second), literals);
+}
+
+TEST_F(HloParserTest, ElidedConstantFillsTheBytesAfterItsLastWord) {
+  constexpr absl::string_view kHlo = R"(
+HloModule elided_constant_tails
+
+ENTRY main {
+  a = s32[2] constant({...})
+  b = s8[7] constant({...})
+  c = bf16[3] constant({...})
+  d = pred[5] constant({...})
+  ROOT t = (s32[2], s8[7], bf16[3], pred[5]) tuple(a, b, c, d)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+  const std::vector<Literal> literals = EntryConstantLiterals(*module);
+  ASSERT_EQ(literals.size(), 4);
+  // Whole 32 bit words count 0, 1, 2, ... in host byte order. The bytes after
+  // the last whole word count 0, 1, 2, ... separately.
+  auto words_then_bytes = [](std::vector<uint32_t> words,
+                             std::vector<uint8_t> tail) {
+    std::vector<uint8_t> bytes(words.size() * sizeof(uint32_t));
+    std::memcpy(bytes.data(), words.data(), bytes.size());
+    bytes.insert(bytes.end(), tail.begin(), tail.end());
+    return bytes;
+  };
+  EXPECT_EQ(RawBytes(literals[0]), words_then_bytes({0, 1}, {}));
+  EXPECT_EQ(RawBytes(literals[1]), words_then_bytes({2}, {0, 1, 2}));
+  EXPECT_EQ(RawBytes(literals[2]), words_then_bytes({3}, {3, 4}));
+  // PRED keeps only the lowest bit of each byte: word 4 and byte 5 become 0
+  // and 1.
+  EXPECT_EQ(RawBytes(literals[3]), words_then_bytes({0}, {1}));
+}
+
+TEST_F(HloParserTest, ConcurrentParsesFillElidedConstantsAlike) {
+  ASSERT_OK_AND_ASSIGN(auto reference,
+                       ParseAndReturnUnverifiedModule(kElidedConstantsModule));
+  const std::vector<Literal> expected = EntryConstantLiterals(*reference);
+
+  constexpr int kNumThreads = 8;
+  constexpr int kParsesPerThread = 4;
+  std::vector<absl::StatusOr<std::unique_ptr<HloModule>>> modules(
+      kNumThreads * kParsesPerThread);
+  {
+    absl::Notification start;
+    tsl::thread::ThreadPool pool(tsl::Env::Default(), "parse", kNumThreads);
+    for (int t = 0; t < kNumThreads; ++t) {
+      pool.Schedule([&, t] {
+        start.WaitForNotification();
+        for (int i = 0; i < kParsesPerThread; ++i) {
+          modules[t * kParsesPerThread + i] =
+              ParseAndReturnUnverifiedModule(kElidedConstantsModule);
+        }
+      });
+    }
+    start.Notify();
+  }  // The pool's destructor waits for every parse.
+  for (const absl::StatusOr<std::unique_ptr<HloModule>>& module : modules) {
+    ASSERT_OK(module);
+    EXPECT_EQ(EntryConstantLiterals(**module), expected);
+  }
+}
+
 TEST_F(HloParserTest, NegativeNan) {
   const std::string original =
       R"(HloModule NegativeNan_module, entry_computation_layout={()->bf16[2]{0}}
@@ -5846,6 +5954,16 @@ TEST_F(HloParserTest, ParseShapeStringWithTilingLayout) {
   expected = ShapeUtil::MakeShapeWithDenseLayout(
       BF16, {123, 456, 789}, {2, 1, 0},
       {Tile({2, Tile::kCombineDimension, 128}), Tile({2, 1})});
+  EXPECT_EQ(expected, actual)
+      << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
+      << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
+
+  // Tile with matching dimension ('d').
+  shape_string = "bf16[123,456]{1,0:T(d,128)(2,1)}";
+  ASSERT_OK_AND_ASSIGN(actual, ParseShape(shape_string));
+  expected = ShapeUtil::MakeShapeWithDenseLayout(
+      BF16, {123, 456}, {1, 0},
+      {Tile({Tile::kMatchDimension, 128}), Tile({2, 1})});
   EXPECT_EQ(expected, actual)
       << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
       << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);

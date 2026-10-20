@@ -187,6 +187,12 @@ InterpolationSpecification Spec(const HloFusionInstruction& dot_fusion,
 absl::StatusOr<GemmPerfTableEntryValues> ReadDefaultProfile(
     const se::DeviceDescription& device_info) {
   std::string key = HloOpProfiles::GetDeviceSpecificProfileName(device_info);
+  // B200 numbers should be close enough to GB200 for scheduling.
+  // TODO(https://github.com/openxla/xla/issues/48627): remove when the GB200
+  // matmul perf table is ready.
+  if (key == "sm_100_GB200") {
+    key = "sm_100_B200";
+  }
 
   if (!Profile().entries().contains(key)) {
     return absl::NotFoundError(absl::StrCat("Cannot find key: ", key));

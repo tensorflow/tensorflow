@@ -138,6 +138,8 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
+        "@llvm-project//llvm:CodeGen",
+        "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -148,6 +150,7 @@ xla_cc_test(
     deps = [
         ":llvm_command_line_options",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Core",
     ],
 )
 

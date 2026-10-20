@@ -289,7 +289,6 @@ xla_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
@@ -1511,6 +1510,42 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "gpu_transpose_folding",
+    srcs = ["gpu_transpose_folding.cc"],
+    hdrs = ["gpu_transpose_folding.h"],
+    deps = [
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/analysis:shape_tracker",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/service:matmul_indexing_utils",
+        "//xla/service/gpu:matmul_utils",
+        "//xla/stream_executor:device_description",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "gpu_transpose_folding_test",
+    srcs = ["gpu_transpose_folding_test.cc"],
+    deps = [
+        ":gpu_transpose_folding",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:filecheck",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "dot_operand_converter",
     srcs = ["dot_operand_converter.cc"],
     hdrs = ["dot_operand_converter.h"],
@@ -2611,6 +2646,7 @@ cc_library(
         "//xla/service/gpu:gpu_fusible",
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/service/gpu:ir_emission_utils",
+        "//xla/service/gpu:mlir_context_pool",
         "//xla/service/gpu/model:combined_gpu_performance_model",
         "//xla/service/gpu/model:fusion_analysis_cache",
         "//xla/service/gpu/model:gpu_hlo_cost_analysis",
@@ -2623,6 +2659,7 @@ cc_library(
         "//xla/tsl/concurrency:future",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:logging",
+        "//xla/tsl/util:sorted_range",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:nullability",
@@ -2647,6 +2684,7 @@ xla_cc_test(
     srcs = ["priority_fusion_test.cc"],
     deps = [
         ":priority_fusion",
+        "//xla:shape_util",
         "//xla:xla_proto_cc",
         "//xla/backends/gpu/codegen/emitters:mlir_kernel_emitter",
         "//xla/codegen/xtile:xtile_config_proto_cc",

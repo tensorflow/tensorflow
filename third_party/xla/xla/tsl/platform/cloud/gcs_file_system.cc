@@ -1514,10 +1514,9 @@ absl::Status GcsFileSystem::FileExists(absl::string_view fname) {
     ABSL_RETURN_IF_ERROR(BucketExists(bucket, &result));
     if (result) {
       return absl::OkStatus();
-    } else {
+    }
       return absl::NotFoundError(
           absl::StrCat("The specified bucket ", fname, " was not found."));
-    }
   }
 
   // Check if the object exists.
@@ -1766,9 +1765,9 @@ absl::Status GcsFileSystem::FolderExists(absl::string_view dirname,
     if (!children.empty()) {
       stat->base = DIRECTORY_STAT;
       return absl::OkStatus();
-    } else {
-      return absl::InvalidArgumentError("Not a directory!");
     }
+    return absl::InvalidArgumentError("Not a directory!");
+    
   };
   GcsFileStat stat;
   absl::Status s = stat_cache_->LookupOrCompute(MaybeAppendSlash(dirname),

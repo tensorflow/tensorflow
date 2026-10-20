@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/c/eager/unified_api_testutil.h"
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/types/span.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
 #include "tensorflow/c/eager/c_api_test_util.h"
 #include "tensorflow/c/eager/c_api_unified_experimental.h"
@@ -102,9 +103,7 @@ absl::Status RunModel(Model model, AbstractContext* ctx,
     }
     int retvals = outputs.size() - null_indices.size();
     std::vector<AbstractTensorHandle*> fn_outputs(retvals);
-    TF_RETURN_IF_ERROR(fn_op->Execute(
-        absl::Span<AbstractTensorHandle*>(fn_outputs.data(), fn_outputs.size()),
-        &retvals));
+    TF_RETURN_IF_ERROR(fn_op->Execute(absl::MakeSpan(fn_outputs), &retvals));
     int skipped_indices = 0;
     for (int i = 0; i < outputs.size(); i++) {
       if (!null_indices.contains(i)) {

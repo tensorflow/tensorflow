@@ -718,8 +718,9 @@ bool AllowedInGemmFusion(const HloInstruction& instr) {
     // the moment. Includes kFusion, kReduce, kAllReduce, etc.
     return false;
   }
-  return HloPredicateIsNotOp<HloOpcode::kDot, HloOpcode::kParameter,
-                             HloOpcode::kAllGather, HloOpcode::kAllGatherStart,
+  return HloPredicateIsNotOp<HloOpcode::kDot, HloOpcode::kScaledDot,
+                             HloOpcode::kParameter, HloOpcode::kAllGather,
+                             HloOpcode::kAllGatherStart,
                              HloOpcode::kAllGatherDone>(&instr);
 }
 
@@ -1265,7 +1266,8 @@ FusionDecision CanUnpackS4ParametersInFusion(
   }
 
   if (tiled_computation->roots().size() != 1 ||
-      tiled_computation->roots()[0]->hlo()->opcode() != HloOpcode::kDot) {
+      !HloPredicateIsOp<HloOpcode::kDot, HloOpcode::kScaledDot>(
+          tiled_computation->roots()[0]->hlo())) {
     return FusionDecision::Forbid(
         "Expected tiled computation root to be a single dot instruction.");
   }
@@ -1290,54 +1292,42 @@ FusionDecision CanUnpackS4ParametersInFusion(
 FusionDecision CanTile(mlir::MLIRContext& mlir_context,
                        const HloFusionAdaptor& fusion,
                        const se::DeviceDescription& device_description) {
-  if (fusion.GetRoots()[0]
-          .instruction()
-          .GetModule()
-          ->config()
-          .debug_options()
-          .xla_gpu_experimental_enable_tiling_propagation()) {
-    namespace ge = ::xla::gpu::experimental;
-    auto ts = ge::TilingSpace::Create(fusion, &mlir_context);
-    if (!ts.ok()) {
-      return FusionDecision::Forbid(absl::StrCat(
-          "Failed to create tiling space: ", ts.status().message()));
-    }
-    auto tiled_computation =
-        ge::TiledHloComputation::Tile(fusion, std::move(ts.value()));
-    if (!tiled_computation.ok()) {
-      return FusionDecision::Forbid(
-          absl::StrCat("Fusion is not tileable with experimental tiling: ",
-                       tiled_computation.status().message()));
-    }
-
-    // The symbolic tiling may be satisfiable in theory, but we don't have any
-    // tiles that we will actually try. For example, the constraints may require
-    // a tile size to be divisible by 3, but all Triton tiles are powers of 2.
-    std::optional<HloInstructionAdaptor> dot =
-        HloBfsFindIf(fusion.GetRoots(), fusion, [](HloInstructionAdaptor node) {
-          return node.opcode() == HloOpcode::kDot;
-        });
-    if (!dot.has_value()) {
-      return FusionDecision::Forbid("No dot instruction found in the fusion.");
-    }
-    for (const TritonGemmConfig& config :
-         GetDefaultTritonConfigs(device_description.gpu_compute_capability())) {
-      absl::StatusOr<xtile::BlockLevelParameters> params =
-          FindBlockLevelParameters(fusion, &dot->instruction(), config,
-                                   &mlir_context, device_description);
-      if (params.ok()) {
-        return FusionDecision::Allow();
-      }
-    }
+  namespace ge = ::xla::gpu::experimental;
+  auto ts = ge::TilingSpace::Create(fusion, &mlir_context);
+  if (!ts.ok()) {
     return FusionDecision::Forbid(
-        "None of the default Triton configs can be used to tile the fusion.");
+        absl::StrCat("Failed to create tiling space: ", ts.status().message()));
   }
-  auto fusion_analysis =
-      SymbolicTileAnalysis::AnalyzeFusion(fusion, &mlir_context);
-  if (std::holds_alternative<FusionDecision>(fusion_analysis)) {
-    return std::get<FusionDecision>(fusion_analysis);
+  auto tiled_computation =
+      ge::TiledHloComputation::Tile(fusion, std::move(ts.value()));
+  if (!tiled_computation.ok()) {
+    return FusionDecision::Forbid(
+        absl::StrCat("Fusion is not tileable with experimental tiling: ",
+                     tiled_computation.status().message()));
   }
-  return FusionDecision::Allow();
+
+  // The symbolic tiling may be satisfiable in theory, but we don't have any
+  // tiles that we will actually try. For example, the constraints may require
+  // a tile size to be divisible by 3, but all Triton tiles are powers of 2.
+  std::optional<HloInstructionAdaptor> dot =
+      HloBfsFindIf(fusion.GetRoots(), fusion, [](HloInstructionAdaptor node) {
+        return HloPredicateIsOp<HloOpcode::kDot, HloOpcode::kScaledDot>(
+              &node.instruction());
+      });
+  if (!dot.has_value()) {
+    return FusionDecision::Forbid("No dot instruction found in the fusion.");
+  }
+  for (const TritonGemmConfig& config :
+       GetDefaultTritonConfigs(device_description.gpu_compute_capability())) {
+    absl::StatusOr<xtile::BlockLevelParameters> params =
+        FindBlockLevelParameters(fusion, &dot->instruction(), config,
+                                 &mlir_context, device_description);
+    if (params.ok()) {
+      return FusionDecision::Allow();
+    }
+  }
+  return FusionDecision::Forbid(
+      "None of the default Triton configs can be used to tile the fusion.");
 }
 
 // Returns true if fusing `producer` into `consumer` is possible and supported.
@@ -1650,25 +1640,44 @@ std::optional<TrackerInfo> ComputeCandidateTracker(
   return std::nullopt;
 }
 
+// Returns true if the only user of `transpose`, looking through bitcasts and
+// reshapes, can absorb it at no extra memory cost. `transpose` must be from
+// the original module so that all its users are visible.
+bool UserCanAbsorbTranspose(const HloInstruction& transpose) {
+  const HloInstruction* user = &transpose;
+  do {
+    if (user->user_count() != 1) {
+      return false;
+    }
+    user = user->users()[0];
+  } while (HloPredicateIsOp<HloOpcode::kBitcast, HloOpcode::kReshape>(user));
+  return user->IsElementwise() || user->opcode() == HloOpcode::kConcatenate;
+}
+
 FusionDecision ShouldFuseUserTranspose(const HloInstruction& transpose,
+                                       const HloInstruction& original_transpose,
                                        const HloInstruction& fusion,
                                        const ShapeTracker& tracker) {
-  const HloInstruction* dot = hlo_query::FindInstruction(
-      fusion.fused_instructions_computation(), HloOpcode::kDot);
+  const HloInstruction* dot = hlo_query::GetFirstInstructionWithOpcode(
+      *fusion.fused_instructions_computation(),
+      {HloOpcode::kDot, HloOpcode::kScaledDot});
   if (dot == nullptr) {
     return FusionDecision::Forbid("Dot not found in fusion.");
   }
 
-  absl::StatusOr<std::array<DotOperandDims, 2>> dot_dims =
-      DotOperandDims::FromDot(dot);
-  if (!dot_dims.ok()) {
+  // The output of a scaled dot has the same layout as the output of a dot of
+  // its LHS and RHS, so the dims of operands 0 and 1 are sufficient.
+  absl::StatusOr<DotOperandDims> lhs_dims =
+      DotOperandDims::FromDotOperand(dot, 0);
+  absl::StatusOr<DotOperandDims> rhs_dims =
+      DotOperandDims::FromDotOperand(dot, 1);
+  if (!lhs_dims.ok() || !rhs_dims.ok()) {
     return FusionDecision::Forbid("Failed to get dot operand dims.");
   }
-  const auto& [lhs_dims, rhs_dims] = *dot_dims;
 
-  int64_t num_batch = lhs_dims.Rank(DotOperandDims::kBatch);
-  int64_t num_lhs_nc = lhs_dims.Rank(DotOperandDims::kNonContracting);
-  int64_t num_rhs_nc = rhs_dims.Rank(DotOperandDims::kNonContracting);
+  int64_t num_batch = lhs_dims->Rank(DotOperandDims::kBatch);
+  int64_t num_lhs_nc = lhs_dims->Rank(DotOperandDims::kNonContracting);
+  int64_t num_rhs_nc = rhs_dims->Rank(DotOperandDims::kNonContracting);
 
   // Dot result always maps to [batch..., lhs_nc..., rhs_nc...].
   absl::InlinedVector<int64_t, 4> batch_dims(num_batch);
@@ -1692,6 +1701,16 @@ FusionDecision ShouldFuseUserTranspose(const HloInstruction& transpose,
     }
   }
 
+  // As in ShouldFuseTranspose, leave a transpose that splits M or N without
+  // moving the minor dimension to its user if the user can absorb it.
+  if ((!transpose_tracker.MapsToOneStride(lhs_nc_dims) ||
+       !transpose_tracker.MapsToOneStride(rhs_nc_dims)) &&
+      !TransposesMinorDimension(&original_transpose) &&
+      UserCanAbsorbTranspose(original_transpose)) {
+    return FusionDecision::Forbid(
+        "Transpose within a non-contracting dimension can be fused into its "
+        "user instead.");
+  }
   return FusionDecision::Allow();
 }
 
@@ -1723,7 +1742,7 @@ FusionDecision ShouldFuseUser(const HloInstruction* user,
         return FusionDecision::Forbid(
             "No shape tracker found for transpose user.");
       }
-      return ShouldFuseUserTranspose(*user, *fusion, *tracker);
+      return ShouldFuseUserTranspose(*user, original_user, *fusion, *tracker);
     case HloOpcode::kConcatenate:
       return FusionDecision::Forbid("Not fusing concatenate into epilogue.");
     default:
@@ -1885,18 +1904,22 @@ absl::StatusOr<std::variant<Fusion, FusionDecision>> CreateTileableFusion(
     return FusionDecision::Forbid("Cannot tile the dot instruction.");
   }
 
-  // Initialize queue with trackers for dot operands.
-  absl::StatusOr<std::array<DotOperandDims, 2>> dot_dims =
-      DotOperandDims::FromDot(dot);
-  if (!dot_dims.ok()) {
-    return FusionDecision::Forbid("Failed to get dot operand dims.");
+  // Initialize queue with trackers for the LHS and RHS. Scaled dot scales get
+  // no tracker, so transposes and concatenates are not fused into them.
+  std::queue<std::pair<HloInstruction*, std::optional<TrackerInfo>>> queue;
+  for (int64_t i = 0; i < dot->operand_count(); ++i) {
+    HloInstruction* operand = dot->mutable_operand(i);
+    std::optional<TrackerInfo> tracker;
+    if (i < 2) {
+      absl::StatusOr<DotOperandDims> dims =
+          DotOperandDims::FromDotOperand(dot, i);
+      if (!dims.ok()) {
+        return FusionDecision::Forbid("Failed to get dot operand dims.");
+      }
+      tracker = TrackerInfo{ShapeTracker(operand->shape()), i, *dims};
+    }
+    queue.push({operand, std::move(tracker)});
   }
-  std::queue<std::pair<HloInstruction*, std::optional<TrackerInfo>>> queue(
-      {{dot->mutable_operand(0),
-        TrackerInfo{ShapeTracker(dot->operand(0)->shape()), 0, (*dot_dims)[0]}},
-       {dot->mutable_operand(1),
-        TrackerInfo{ShapeTracker(dot->operand(1)->shape()), 1,
-                    (*dot_dims)[1]}}});
 
   // Start with a fusion containing only the dot instruction.
   auto entry = fusion_search_space.entry();
@@ -1988,9 +2011,13 @@ absl::StatusOr<std::variant<Fusion, FusionDecision>> CreateTileableFusion(
                 fusion_computation->Clone(std::string(name)), original_output};
 }
 
+// Creates a GEMM fusion around a dot-like instruction (kDot or kScaledDot)
+// using the GemmFusionV2 algorithm.
 absl::StatusOr<std::variant<Fusion, FusionDecision>> CreateDotFusionV2(
-    HloDotInstruction& dot, const se::DeviceDescription& device_description,
+    HloInstruction& dot, const se::DeviceDescription& device_description,
     absl::string_view name) {
+  CHECK((HloPredicateIsOp<HloOpcode::kDot, HloOpcode::kScaledDot>(&dot)))
+      << dot.ToString();
   VLOG(3) << "Creating dot fusion v2 around dot: " << dot.ToString();
   FusionSearchSpace fusion_search_space(&dot, device_description);
   VLOG(3) << "Found fusion search space: \n"
@@ -2104,8 +2131,7 @@ absl::StatusOr<std::variant<Fusion, FusionDecision>> CreateDotFusion(
 class GemmFusionVisitor : public DfsHloRewriteVisitor {
  public:
   explicit GemmFusionVisitor(const se::DeviceDescription& device_description)
-      : device_description_(device_description),
-        gpu_version_(device_description.gpu_compute_capability()) {}
+      : device_description_(device_description) {}
   // Checks that a dot() should be targeting the triton GEMM emitter;
   // if so - fuses all its compatible inputs and outputs as a new computation
   // and replaces the original dot() with a call to the computation.
@@ -2137,18 +2163,43 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
       return absl::OkStatus();
     }
 
-    Fusion fusion = std::get<Fusion>(std::move(fusion_or_decision));
+    return InsertGemmFusion(
+        dot, std::get<Fusion>(std::move(fusion_or_decision)), fusion_name);
+  }
 
+  absl::Status HandleScaledDot(HloInstruction* scaled_dot) override {
+    CHECK_EQ(scaled_dot->opcode(), HloOpcode::kScaledDot);
+    std::string fusion_name = absl::StrCat("gemm_fusion_", scaled_dot->name());
+    ABSL_ASSIGN_OR_RETURN(
+        auto fusion_or_decision,
+        CreateDotFusionV2(*scaled_dot, device_description_,
+                          absl::StrCat(fusion_name, "_computation")));
+    if (std::holds_alternative<FusionDecision>(fusion_or_decision)) {
+      VLOG(3) << "Not fusing: "
+              << std::get<FusionDecision>(fusion_or_decision).Explain();
+      return absl::OkStatus();
+    }
+    return InsertGemmFusion(scaled_dot,
+                            std::get<Fusion>(std::move(fusion_or_decision)),
+                            fusion_name);
+  }
+
+ private:
+  // Wraps `fusion` into a fusion instruction and replaces `fusion.output` in
+  // the original computation with it. `dot_like` is the dot-like instruction
+  // the fusion was created around.
+  absl::Status InsertGemmFusion(HloInstruction* dot_like, Fusion fusion,
+                                absl::string_view fusion_name) {
     HloComputation* computation =
-        dot->GetModule()->AddComputationAndUnifyNamesAndIds(
+        dot_like->GetModule()->AddComputationAndUnifyNamesAndIds(
             std::move(fusion.computation), /*is_entry=*/false);
     HloInstruction* dot_fusion =
-        dot->parent()->AddInstruction(HloInstruction::CreateFusion(
+        dot_like->parent()->AddInstruction(HloInstruction::CreateFusion(
             computation->root_instruction()->shape(),
             HloInstruction::FusionKind::kCustom, fusion.inputs, computation));
-    // Copy the metadata of the `dot` to the newly created `fusion` op. This
+    // Copy the metadata of `dot_like` to the newly created `fusion` op. This
     // is convenient for handling metadata in split-k rewriting subsequently.
-    dot_fusion->set_metadata(dot->metadata());
+    dot_fusion->set_metadata(dot_like->metadata());
     dot_fusion->GetModule()->SetAndUniquifyInstrName(dot_fusion, fusion_name);
 
     ABSL_ASSIGN_OR_RETURN(auto gpu_config,
@@ -2160,7 +2211,7 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
 
     HloInstruction* replacement = dot_fusion;
     if (fusion.output->shape() != dot_fusion->shape()) {
-      replacement = dot->parent()->AddInstruction(
+      replacement = dot_like->parent()->AddInstruction(
           HloInstruction::CreateBitcast(fusion.output->shape(), dot_fusion));
     }
 
@@ -2177,62 +2228,7 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
     return absl::OkStatus();
   }
 
-  absl::Status HandleScaledDot(HloInstruction* scaled_dot) override {
-    CHECK_EQ(scaled_dot->opcode(), HloOpcode::kScaledDot);
-    HloComputation::Builder builder(
-        absl::StrCat("fusion_", scaled_dot->name()));
-
-    std::vector<HloInstruction*> fusion_inputs;
-
-    std::vector<HlosAndRequirements> hlos_and_reqs;
-    hlos_and_reqs.reserve(scaled_dot->operand_count());
-    ABSL_ASSIGN_OR_RETURN(HlosAndRequirements lhs_hlos_and_reqs,
-                     FuseDotOperand(*scaled_dot, /*operand_index=*/0,
-                                    gpu_version_, builder, fusion_inputs));
-    hlos_and_reqs.push_back(lhs_hlos_and_reqs);
-    ABSL_ASSIGN_OR_RETURN(HlosAndRequirements rhs_hlos_and_reqs,
-                     FuseDotOperand(*scaled_dot, /*operand_index=*/1,
-                                    gpu_version_, builder, fusion_inputs));
-    hlos_and_reqs.push_back(rhs_hlos_and_reqs);
-    ABSL_ASSIGN_OR_RETURN(HlosAndRequirements lhs_scale_hlos_and_reqs,
-                     FuseDotOperand(*scaled_dot, /*operand_index=*/2,
-                                    gpu_version_, builder, fusion_inputs));
-    hlos_and_reqs.push_back(lhs_scale_hlos_and_reqs);
-    ABSL_ASSIGN_OR_RETURN(HlosAndRequirements rhs_scale_hlos_and_reqs,
-                     FuseDotOperand(*scaled_dot, /*operand_index=*/3,
-                                    gpu_version_, builder, fusion_inputs));
-    hlos_and_reqs.push_back(rhs_scale_hlos_and_reqs);
-
-    HloInstruction& fused_dot = FuseDot(*scaled_dot, hlos_and_reqs, builder);
-
-    HlosAndRequirements fused_output_and_reqs =
-        FuseDotOutput(*scaled_dot, fused_dot, gpu_version_,
-                      lhs_hlos_and_reqs.requirements, builder, fusion_inputs);
-    HloComputation* computation =
-        scaled_dot->GetModule()->AddComputationAndUnifyNamesAndIds(
-            builder.Build(),
-            /*is_entry=*/false);
-
-    HloInstruction* fusion =
-        scaled_dot->parent()->AddInstruction(HloInstruction::CreateFusion(
-            computation->root_instruction()->shape(),
-            HloInstruction::FusionKind::kCustom, fusion_inputs, computation));
-
-    ABSL_ASSIGN_OR_RETURN(auto gpu_config,
-                     fusion->backend_config<GpuBackendConfig>());
-    FusionBackendConfig& backend_config =
-        *gpu_config.mutable_fusion_backend_config();
-    backend_config.set_kind(kTritonGemmFusionKind);
-    ABSL_RETURN_IF_ERROR(fusion->set_backend_config(gpu_config));
-    HloInstruction* fusion_output = fused_output_and_reqs.original_hlo;
-    ABSL_RETURN_IF_ERROR(ReplaceInstruction(fusion_output, fusion));
-    MarkAsChanged();
-    return absl::OkStatus();
-  }
-
- private:
   const se::DeviceDescription& device_description_;
-  se::GpuComputeCapability gpu_version_;
 };
 
 absl::StatusOr<bool> RunOnComputation(

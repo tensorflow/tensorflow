@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -78,11 +79,10 @@ class CollectiveReduceThunk : public AllReduceReduceScatterThunkBase {
 
   absl::StatusOr<ThunkProto> ToProto() const override;
 
+  absl::Status Initialize(const InitializeParams& params) override;
+
  protected:
   bool RequiresRendezvous() const override { return true; }
-
-  absl::Status InitializeCollective(const InitializeParams& params,
-                                    const GpuCliqueKey& clique_key) override;
 
   absl::Status RunCollective(const ExecuteParams& params,
                              const GpuCliqueKey& clique_key, se::Stream& stream,

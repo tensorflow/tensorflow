@@ -297,9 +297,15 @@ absl::Status Env::GetChildren(const std::string& dir,
 
 absl::Status Env::GetMatchingPaths(const std::string& pattern,
                                    std::vector<std::string>* results) {
+  return GetMatchingPaths(pattern, results, /*multithreaded=*/true);
+}
+
+absl::Status Env::GetMatchingPaths(const std::string& pattern,
+                                   std::vector<std::string>* results,
+                                   bool multithreaded) {
   FileSystem* fs;
   ABSL_RETURN_IF_ERROR(GetFileSystemForFile(pattern, &fs));
-  return fs->GetMatchingPaths(pattern, results);
+  return fs->GetMatchingPaths(pattern, results, multithreaded);
 }
 
 absl::Status Env::DeleteFile(const std::string& fname) {

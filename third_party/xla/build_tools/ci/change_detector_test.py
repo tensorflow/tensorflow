@@ -140,6 +140,67 @@ class ChangeDetectorTest(parameterized.TestCase):
         change_detector.get_diff_base("base_sha", "head_sha"), "base_sha"
     )
 
+  @mock.patch.object(
+      change_detector, "run_git_best_effort", autospec=True, spec_set=True
+  )
+  @mock.patch.object(
+      change_detector, "get_merge_base", autospec=True, spec_set=True
+  )
+  def test_ensure_base_fetched_already_present(self, mock_mb, mock_git):
+    mock_mb.return_value = "merge_base_sha"
+    change_detector.ensure_base_fetched("base_sha", "head_sha", cwd="/repo")
+    mock_mb.assert_called_once_with("base_sha", "head_sha", cwd="/repo")
+    mock_git.assert_not_called()
+
+  @mock.patch.object(
+      change_detector, "run_git_best_effort", autospec=True, spec_set=True
+  )
+  @mock.patch.object(
+      change_detector, "get_merge_base", autospec=True, spec_set=True
+  )
+  def test_ensure_base_fetched_shallow_fetch_succeeds(self, mock_mb, mock_git):
+    mock_mb.side_effect = [None, "merge_base_sha"]
+    change_detector.ensure_base_fetched("base_sha", "head_sha", cwd="/repo")
+    mock_git.assert_called_once_with(
+        [
+            "fetch",
+            "--no-tags",
+            "--depth=50",
+            "--",
+            "origin",
+            "base_sha",
+            "head_sha",
+        ],
+        cwd="/repo",
+    )
+
+  @mock.patch.object(
+      change_detector, "run_git_best_effort", autospec=True, spec_set=True
+  )
+  @mock.patch.object(
+      change_detector, "get_merge_base", autospec=True, spec_set=True
+  )
+  def test_ensure_base_fetched_falls_back_to_unshallow(self, mock_mb, mock_git):
+    mock_mb.side_effect = [None, None]
+    change_detector.ensure_base_fetched("base_sha", "HEAD", cwd="/repo")
+    self.assertEqual(
+        mock_git.call_args_list,
+        [
+            mock.call(
+                [
+                    "fetch",
+                    "--no-tags",
+                    "--depth=50",
+                    "--",
+                    "origin",
+                    "base_sha",
+                ],
+                cwd="/repo",
+            ),
+            mock.call(["fetch", "--unshallow", "origin"], cwd="/repo"),
+        ],
+    )
+
   @parameterized.named_parameters(
       dict(
           testcase_name="docs_only_xla_build",

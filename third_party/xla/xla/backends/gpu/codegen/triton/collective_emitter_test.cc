@@ -143,6 +143,10 @@ class CollectiveBlockLevelConfigTest : public HloHardwareIndependentTestBase {
     module->mutable_config()
         .mutable_debug_options()
         .add_xla_gpu_experimental_use_collective_kernels(
+            xla::DebugOptions::COLLECTIVE_KERNEL_ALL_TO_ALL);
+    module->mutable_config()
+        .mutable_debug_options()
+        .add_xla_gpu_experimental_use_collective_kernels(
             xla::DebugOptions::COLLECTIVE_KERNEL_REDUCE_SCATTER);
     CollectiveKernelStrategyAnnotator annotator(*gpu_topology_,
                                                 /*is_multimem_enabled=*/false);
@@ -161,6 +165,35 @@ class CollectiveBlockLevelConfigTest : public HloHardwareIndependentTestBase {
     return ModuleWithFusion{std::move(module_with_fusion)};
   }
 
+  // Wraps the (variadic) all-gather of `module_str` into a custom fusion with
+  // a get-tuple-element + tuple root.
+  absl::StatusOr<ModuleWithFusion> BuildVariadicAllGatherModule(
+      absl::string_view module_str, int64_t replica_count) const {
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                     ParseAndReturnVerifiedModule(module_str, replica_count,
+                                                  /*num_partitions=*/1));
+    const HloInstruction* all_gather = hlo_query::GetFirstInstructionWithOpcode(
+        *module->entry_computation(), HloOpcode::kAllGather);
+    TF_RET_CHECK(all_gather != nullptr);
+    std::unique_ptr<HloModule> fused_module =
+        NewModuleWithFusion(all_gather, HloInstruction::FusionKind::kCustom);
+    HloComputation* fused_comp = fused_module->entry_computation()
+                                     ->root_instruction()
+                                     ->fused_instructions_computation();
+    HloInstruction* fused_ag = fused_comp->root_instruction();
+    if (fused_ag->shape().IsTuple()) {
+      std::vector<HloInstruction*> gtes;
+      gtes.reserve(fused_ag->shape().tuple_shapes().size());
+      for (int64_t i = 0; i < fused_ag->shape().tuple_shapes().size(); ++i) {
+        gtes.push_back(fused_comp->AddInstruction(
+            HloInstruction::CreateGetTupleElement(fused_ag, i)));
+      }
+      fused_comp->set_root_instruction(
+          fused_comp->AddInstruction(HloInstruction::CreateTuple(gtes)));
+    }
+    return ModuleWithFusion{std::move(fused_module)};
+  }
+
  protected:
   static std::string GetModuleStr(const Shape& shape,
                                   absl::string_view replica_groups = "{0,1}",
@@ -170,6 +203,16 @@ class CollectiveBlockLevelConfigTest : public HloHardwareIndependentTestBase {
     absl::string_view reduction_kind = "add";
     if (shape.element_type() == PRED) {
       reduction_kind = "or";
+    }
+    if (opcode == HloOpcode::kAllToAll) {
+      return absl::StrFormat(R"(
+        HloModule test
+        ENTRY test_computation {
+          param_0 = %1$s parameter(0)
+          ROOT all-to-all = %1$s all-to-all(param_0), replica_groups={%2$s}, dimensions={0}
+        }
+      )",
+                             shape.ToString(), replica_groups);
     }
     if (opcode == HloOpcode::kReduceScatter) {
       Shape output_shape = shape;
@@ -406,11 +449,20 @@ INSTANTIATE_TEST_SUITE_P(
          {ShapeUtil::MakeShape(F32, {65536}), HloOpcode::kReduceScatter},
          {ShapeUtil::MakeShape(BF16, {200, 100}), HloOpcode::kReduceScatter},
          {ShapeUtil::MakeShape(PRED, {200, 64}), HloOpcode::kReduceScatter},
-         {ShapeUtil::MakeShape(F32, {131072}), HloOpcode::kReduceScatter}}),
+         {ShapeUtil::MakeShape(F32, {131072}), HloOpcode::kReduceScatter},
+         {ShapeUtil::MakeShape(F32, {65536}), HloOpcode::kAllToAll},
+         {ShapeUtil::MakeShape(BF16, {256, 100}), HloOpcode::kAllToAll},
+         {ShapeUtil::MakeShape(PRED, {256, 64}), HloOpcode::kAllToAll},
+         {ShapeUtil::MakeShape(F32, {131072}), HloOpcode::kAllToAll},
+         {ShapeUtil::MakeShape(F32, {1048576}), HloOpcode::kAllToAll}}),
     [](const ::testing::TestParamInfo<
         CollectiveEmitterParameterizedTest::ParamType>& info) {
-      std::string op_prefix =
-          info.param.opcode == HloOpcode::kReduceScatter ? "rs_" : "ar_";
+      std::string op_prefix = "ar_";
+      if (info.param.opcode == HloOpcode::kReduceScatter) {
+        op_prefix = "rs_";
+      } else if (info.param.opcode == HloOpcode::kAllToAll) {
+        op_prefix = "a2a_";
+      }
       return op_prefix +
              primitive_util::LowercasePrimitiveTypeName(
                  info.param.shape.element_type()) +
@@ -483,43 +535,6 @@ INSTANTIATE_TEST_SUITE_P(
          }}),
     [](const ::testing::TestParamInfo<GreedyPowerOfTwoTilesTest::ParamType>&
            info) { return info.param.test_name; });
-
-TEST_F(CollectiveEmitterTest, FlattenCollectiveComputation) {
-  Shape shape_3d = ShapeUtil::MakeShape(F32, {2, 4, 8});
-  Shape shape_1d = ShapeUtil::MakeShape(F32, {64});  // 2 * 4 * 8
-  ASSERT_OK_AND_ASSIGN(ModuleWithFusion module_with_fusion,
-                       BuildModuleWithFusion(GetModuleStr(shape_3d)));
-  HloFusionInstruction* fusion_instr = module_with_fusion.MutableFusionInstr();
-  EXPECT_THAT(fusion_instr,
-              AllOf(HasOpcode(HloOpcode::kFusion), HasShape(shape_3d)));
-
-  HloComputation* entry_computation =
-      module_with_fusion.module->entry_computation();
-  EXPECT_OK(FlattenCollectiveFusion(fusion_instr));
-
-  // Output bitcast should have the original 3D shape.
-  HloInstruction* root = entry_computation->root_instruction();
-  EXPECT_THAT(root, AllOf(HasOpcode(HloOpcode::kBitcast), HasShape(shape_3d),
-                          HasNumOperands(1)));
-
-  // All other ops should have the flattened 1D shape.
-  HloInstruction* new_fusion_instr = root->mutable_operand(0);
-  EXPECT_THAT(new_fusion_instr, AllOf(HasOpcode(HloOpcode::kFusion),
-                                      HasShape(shape_1d), HasNumOperands(1)));
-
-  HloInstruction* input_bitcast = new_fusion_instr->mutable_operand(0);
-  EXPECT_THAT(input_bitcast, AllOf(HasOpcode(HloOpcode::kBitcast),
-                                   HasShape(shape_1d), HasNumOperands(1)));
-  EXPECT_THAT(input_bitcast->operand(0), HasOpcode(HloOpcode::kParameter));
-
-  HloComputation* fused_comp =
-      new_fusion_instr->fused_instructions_computation();
-  EXPECT_THAT(
-      fused_comp->parameter_instructions(),
-      ElementsAre(AllOf(HasOpcode(HloOpcode::kParameter), HasShape(shape_1d))));
-  EXPECT_THAT(fused_comp->root_instruction(),
-              AllOf(HasOpcode(HloOpcode::kAllReduce), HasShape(shape_1d)));
-}
 
 TEST_F(CollectiveBlockLevelConfigTest, AllGatherBlockLevelConfig) {
   constexpr absl::string_view kAllGatherHloStr = R"(
@@ -607,6 +622,76 @@ TEST_F(CollectiveBlockLevelConfigTest, AllGatherBlockLevelConfigAtMaxBlocks) {
                            *gpu_topology_, module_with_fusion.FusionInstr()));
   // 131072 elements / kAllGatherMaxBlocksPerGrid (64) blocks.
   EXPECT_THAT(block_level_config.output_tiles(0).sizes(), ElementsAre(2048));
+}
+
+TEST_F(CollectiveBlockLevelConfigTest, AllToAllBlockLevelConfig) {
+  constexpr absl::string_view kAllToAllHloStr = R"(
+    HloModule test
+    ENTRY test_computation {
+      param_0 = f32[65536] parameter(0)
+      ROOT all-to-all = f32[65536] all-to-all(param_0), replica_groups={{0,1}},
+        dimensions={0}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(
+      ModuleWithFusion module_with_fusion,
+      BuildModuleWithFusion(kAllToAllHloStr, HloOpcode::kAllToAll));
+  ASSERT_OK_AND_ASSIGN(BlockLevelFusionConfig block_level_config,
+                       GetCollectiveBlockLevelFusionConfig(
+                           *gpu_topology_, module_with_fusion.FusionInstr()));
+
+  EXPECT_EQ(block_level_config.num_warps(), 16);
+  EXPECT_EQ(block_level_config.num_ctas(), 1);
+  EXPECT_EQ(block_level_config.num_stages(), 1);
+  EXPECT_THAT(block_level_config.output_tiles(0).sizes(), ElementsAre(2048));
+}
+
+TEST_F(CollectiveEmitterTest, AllToAllGetCollectiveUnmanagedKernelArguments) {
+  constexpr absl::string_view kAllToAllHloStr = R"(
+    HloModule test
+    ENTRY test_computation {
+      param_0 = f32[65536] parameter(0)
+      ROOT all-to-all = f32[65536] all-to-all(param_0), replica_groups={{0,1}},
+        dimensions={0}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(
+      ModuleWithFusion module_with_fusion,
+      BuildModuleWithFusion(kAllToAllHloStr, HloOpcode::kAllToAll));
+  ASSERT_OK_AND_ASSIGN(
+      const auto unmanaged_arguments,
+      GetCollectiveUnmanagedKernelArguments(module_with_fusion.FusionInstr()));
+  ASSERT_EQ(unmanaged_arguments.size(), 4);
+  // [0]: rank (S32[])
+  EXPECT_EQ(unmanaged_arguments[0].dimensions().size(), 0);
+  // [1]: signal_value (S32[])
+  EXPECT_EQ(unmanaged_arguments[1].dimensions().size(), 0);
+  // [2]: signal_buffers (S32[num_devices, kMaxBlocksPerGrid])
+  ASSERT_EQ(unmanaged_arguments[2].dimensions().size(), 2);
+  EXPECT_EQ(unmanaged_arguments[2].dimensions()[0], 2);
+  // [3]: remote buffers of param_0 (F32[num_devices, 65536])
+  EXPECT_THAT(unmanaged_arguments[3].dimensions(), ElementsAre(2, 65536));
+}
+
+TEST_F(CollectiveBlockLevelConfigTest,
+       AllToAllBlockLevelConfigClampsSplitDimToPerRankSize) {
+  constexpr absl::string_view kAllToAllHloStr = R"(
+    HloModule test
+    ENTRY test_computation {
+      param_0 = f32[2,64] parameter(0)
+      ROOT all-to-all = f32[2,64] all-to-all(param_0), replica_groups={{0,1}},
+        dimensions={0}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(
+      ModuleWithFusion module_with_fusion,
+      BuildModuleWithFusion(kAllToAllHloStr, HloOpcode::kAllToAll));
+  ASSERT_OK_AND_ASSIGN(const BlockLevelFusionConfig block_level_config,
+                       GetCollectiveBlockLevelFusionConfig(
+                           *gpu_topology_, module_with_fusion.FusionInstr()));
+  ASSERT_EQ(block_level_config.output_tiles_size(), 1);
+  EXPECT_EQ(block_level_config.num_warps(), 1);
+  EXPECT_THAT(block_level_config.output_tiles(0).sizes(), ElementsAre(1, 64));
 }
 
 TEST_F(CollectiveEmitterTest, FlattenReduceScatterFusion) {
@@ -909,6 +994,99 @@ TEST_F(CollectiveEmitterTest,
               llvm::Triple(""), /*data_layout=*/"", std::move(borrowed_context),
               &kernel_compiler)
           .Await());
+}
+
+constexpr absl::string_view kVariadicAllGatherTwoDevicesHloStr = R"(
+  HloModule test
+  ENTRY test_computation {
+    param_0 = f32[4,4096] parameter(0)
+    param_1 = pred[2] parameter(1)
+    ROOT ag = (f32[8,4096], pred[4]) all-gather(param_0, param_1),
+      dimensions={0}, replica_groups={{0,1}},
+      backend_config={"collective_backend_config":{"kernel_strategy":"KERNEL_STRATEGY_TRITON_ONE_SHOT"}}
+  }
+)";
+
+// Every output is tiled independently for `num_blocks / num_devices` programs
+// per peer: 32768 output elements -> 16 blocks -> 8 blocks per peer. The f32
+// output gets 8 tiles per peer, the pred output only 2; the schedule pads the
+// latter so the grid is 2 * 8 programs.
+TEST_F(CollectiveBlockLevelConfigTest,
+       VariadicAllGatherBlockLevelConfigTilesOutputsIndependently) {
+  ASSERT_OK_AND_ASSIGN(
+      ModuleWithFusion module_with_fusion,
+      BuildVariadicAllGatherModule(kVariadicAllGatherTwoDevicesHloStr,
+                                   /*replica_count=*/2));
+  HloFusionInstruction* fusion = module_with_fusion.MutableFusionInstr();
+  ASSERT_OK(TrySetGpuBackendConfigForCollective(*gpu_topology_, fusion));
+  ASSERT_OK_AND_ASSIGN(
+      BlockLevelFusionConfig block_level_config,
+      GetCollectiveBlockLevelFusionConfig(*gpu_topology_, fusion));
+  ASSERT_EQ(block_level_config.output_tiles_size(), 2);
+  EXPECT_THAT(block_level_config.output_tiles(0).sizes(), ElementsAre(1, 2048));
+  EXPECT_THAT(block_level_config.output_tiles(1).sizes(), ElementsAre(1));
+
+  HloFusionAnalysis analysis = HloFusionAnalysis::Create(*fusion, device_info_);
+  std::optional<TritonFusion::LaunchConfig> launch_config =
+      TritonFusion::GetLaunchConfig(&analysis);
+  ASSERT_TRUE(launch_config.has_value());
+  EXPECT_EQ(launch_config->launch_dimensions.num_blocks(), 16);
+}
+
+// Shape from `all-gather.170` on 16 ranks.
+// Total output is ~10.5 MB -> 64 blocks (4 blocks per peer).
+// Each output is tiled independently:
+// - Output 0 (`f32[32,8,10240]`, per-peer `[2,8,10240]`): 4 tiles of
+//   `[1,4,16384]`.
+// - Output 3 (`pred[32]`, per-peer `[2]`): 2 tiles of `[1]` (padded to 4 by
+//   the schedule).
+TEST_F(CollectiveBlockLevelConfigTest,
+       VariadicAllGatherBlockLevelConfigSmallOutputsDoNotLimitGrid) {
+  constexpr absl::string_view kHloStr = R"(
+    HloModule test
+    ENTRY test_computation {
+      param_0 = f32[2,8,10240] parameter(0)
+      param_1 = pred[2,128] parameter(1)
+      param_2 = s32[2,256] parameter(2)
+      param_3 = pred[2] parameter(3)
+      param_4 = pred[2] parameter(4)
+      param_5 = s32[8,2] parameter(5)
+      ROOT ag = (f32[32,8,10240], pred[32,128], s32[32,256], pred[32], pred[32],
+                 s32[128,2]) all-gather(param_0, param_1, param_2, param_3,
+                 param_4, param_5), dimensions={0},
+        replica_groups={{0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}},
+        backend_config={"collective_backend_config":{"kernel_strategy":"KERNEL_STRATEGY_TRITON_ONE_SHOT"}}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(
+      ModuleWithFusion module_with_fusion,
+      BuildVariadicAllGatherModule(kHloStr, /*replica_count=*/16));
+  HloFusionInstruction* fusion = module_with_fusion.MutableFusionInstr();
+  ASSERT_OK_AND_ASSIGN(GpuTopology topology_16,
+                       GetGpuTopologyForPlatform("nvidia_h100", 1, 1, 16));
+  ASSERT_OK(TrySetGpuBackendConfigForCollective(topology_16, fusion));
+  ASSERT_OK_AND_ASSIGN(
+      BlockLevelFusionConfig block_level_config,
+      GetCollectiveBlockLevelFusionConfig(topology_16, fusion));
+  ASSERT_EQ(block_level_config.output_tiles_size(), 6);
+  // 4 tiles per peer: 128 elements per thread with 512 threads, the same as
+  // the single-operand all-gather of f32[2,8,10240].
+  EXPECT_THAT(block_level_config.output_tiles(0).sizes(),
+              ElementsAre(1, 4, 16384));
+  EXPECT_THAT(block_level_config.output_tiles(1).sizes(), ElementsAre(1, 64));
+  EXPECT_THAT(block_level_config.output_tiles(2).sizes(), ElementsAre(1, 128));
+  // 2 tiles per peer each; padded to 4 by the schedule.
+  EXPECT_THAT(block_level_config.output_tiles(3).sizes(), ElementsAre(1));
+  EXPECT_THAT(block_level_config.output_tiles(4).sizes(), ElementsAre(1));
+  // 4 tiles per peer.
+  EXPECT_THAT(block_level_config.output_tiles(5).sizes(), ElementsAre(2, 2));
+
+  HloFusionAnalysis analysis = HloFusionAnalysis::Create(*fusion, device_info_);
+  std::optional<TritonFusion::LaunchConfig> launch_config =
+      TritonFusion::GetLaunchConfig(&analysis);
+  ASSERT_TRUE(launch_config.has_value());
+  EXPECT_EQ(launch_config->launch_dimensions.num_blocks(), 64);
+  EXPECT_EQ(launch_config->launch_dimensions.num_threads_per_block(), 512);
 }
 
 }  // namespace

@@ -41,10 +41,6 @@ namespace mori::collective {
 class CollectivesFacade;
 }  // namespace mori::collective
 
-namespace mori::collective {
-class CollectivesFacade;
-}  // namespace mori::collective
-
 namespace xla::gpu {
 
 class MoriCollectives;
@@ -205,12 +201,12 @@ class MoriCommunicator : public GpuCommunicator {
 
   MoriCollectives* collectives_;  // Parent MoriCollectives instance
 
-  // This communicator's participant set (NOT the global MORI clique). `rank_`
-  // is this rank within the collective, `num_ranks_` the participant count.
-  // is this rank within the collective, `num_ranks_` the participant count.
+  // `rank_` is this rank within the collective, `num_ranks_` the participant
+  // count. MoriCollectives only creates communicators over the global MORI
+  // clique, so these match the facade's PE id and PE count.
   int rank_ = 0;
   int num_ranks_ = 0;
-  // Reference to the CollectivesFacade singleton for the current device.
+  // Non-owning; the CollectivesFacade singleton for this communicator's device.
   mori::collective::CollectivesFacade* facade_ = nullptr;
   // Should all pending collectives cancel?
   std::shared_ptr<CancellationToken> cancel_;

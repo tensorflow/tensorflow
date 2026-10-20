@@ -587,6 +587,12 @@ FusionDecision IsProducerMultiOutputFusible(
     return FusionDecision::Forbid("Producer is a multi-output fusion");
   }
 
+  // Custom fusions cannot be fused into consumers. Their consumers can still be
+  // sibling-fused.
+  if (producer.IsCustomFusion()) {
+    return FusionDecision::Forbid("Producer is a custom fusion");
+  }
+
   // Allowing multi-output fusions that contain in-place operations makes code
   // generation more difficult. For the generated loop to iterate over all
   // outputs in parallel, it must find an iteration order that guarantees that

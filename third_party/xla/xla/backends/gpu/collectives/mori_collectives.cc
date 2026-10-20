@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -84,8 +85,6 @@ absl::StatusOr<CliqueId> MoriCollectives::CreateUniqueCliqueId() const {
   return CliqueId(absl::string_view(id.internal, sizeof(id.internal)));
 }
 
-// TODO(cco): decode the CliqueId back into a mori::cco::ccoUniqueId and feed it
-// to ccoCommCreate once the per-device comm init routine is wired up.
 static absl::StatusOr<::mori::cco::ccoUniqueId> AsMoriUniqueId(
     const CliqueId& clique_id) {
   ::mori::cco::ccoUniqueId id;
@@ -98,41 +97,56 @@ static absl::StatusOr<::mori::cco::ccoUniqueId> AsMoriUniqueId(
 }
 
 void MoriCollectives::Finalize() {
-  VLOG(3) << "Finilizing MORI";
+  VLOG(3) << "Finalizing MORI";
   CollectivesFacade::TearDown();
 }
 
 absl::Status MoriCollectives::InitPe(size_t rank, size_t nranks,
                                      const CliqueId& clique_id,
                                      se::StreamExecutor* executor) {
-  // Activate `executor`'s HIP context so the per-device MORI state keys off the
-  // right device once real init is wired up.
+  // The CollectivesFacade is keyed by the calling thread's current HIP device.
   auto activate_context = executor->Activate();
   ABSL_ASSIGN_OR_RETURN(auto uid, AsMoriUniqueId(clique_id));
 
-  int64_t poolSizeInMB = 2048, maxStagingInMB = 0;  // 2GB pool default.
-  tsl::ReadInt64FromEnvVar("MORI_COLLECTIVES_POOL_SIZE_IN_MB", poolSizeInMB,
-                           &poolSizeInMB)
-      .IgnoreError();
-  tsl::ReadInt64FromEnvVar("MORI_COLLECTIVES_MAX_STAGING_IN_MB", maxStagingInMB,
-                           &maxStagingInMB)
-      .IgnoreError();
-  poolSizeInMB <<= 20;    // convert to bytes
-  maxStagingInMB <<= 20;  // convert to bytes
+  int64_t pool_size_mb = 2048;  // 2GB pool by default.
+  int64_t max_staging_mb = 0;   // 0 lets MORI use a quarter of the pool.
+  ABSL_RETURN_IF_ERROR(tsl::ReadInt64FromEnvVar("MORI_COLLECTIVES_POOL_SIZE_IN_MB",
+                                           pool_size_mb, &pool_size_mb));
+  ABSL_RETURN_IF_ERROR(tsl::ReadInt64FromEnvVar("MORI_COLLECTIVES_MAX_STAGING_IN_MB",
+                                           max_staging_mb, &max_staging_mb));
+  // CollectivesFacade::Create rejects these before it takes ownership of the
+  // CCO comm, which would then leak, so they are validated up front.
+  static constexpr int64_t kMaxSizeMb =
+      std::numeric_limits<int64_t>::max() >> 20;
+  if (pool_size_mb <= 0 || pool_size_mb > kMaxSizeMb) {
+    return InvalidArgument(
+        "MORI_COLLECTIVES_POOL_SIZE_IN_MB must be in [1, %d], got %d",
+        kMaxSizeMb, pool_size_mb);
+  }
+  if (max_staging_mb < 0 || max_staging_mb >= pool_size_mb) {
+    return InvalidArgument(
+        "MORI_COLLECTIVES_MAX_STAGING_IN_MB must be in [0, %d), got %d",
+        pool_size_mb, max_staging_mb);
+  }
+  const size_t pool_size_bytes = static_cast<size_t>(pool_size_mb) << 20;
+  const size_t max_staging_bytes = static_cast<size_t>(max_staging_mb) << 20;
 
   mori::cco::ccoComm* comm = nullptr;
   // MORI's per rank VMM size is the pool size rounded up to 4G.
   XLA_MORI_RETURN_IF_ERROR(
-      mori::cco::ccoCommCreate(uid, nranks, rank, poolSizeInMB, &comm),
+      mori::cco::ccoCommCreate(uid, nranks, rank, pool_size_bytes, &comm),
       "Failed to create CCO comm");
+  if (comm == nullptr) {
+    return Internal("ccoCommCreate succeeded but returned a null comm");
+  }
   VLOG(1) << "Created CCO comm for rank " << rank << " sz "
           << comm->perRankSize;
 
-  // In case of failure, ccoCommDestroy is called by
-  // CollectivesFacade::TearDown.
+  // With the sizes validated above, the facade for this device owns `comm` by
+  // the time Create can fail, so `comm` must not be destroyed here.
   XLA_MORI_RETURN_IF_ERROR(
-      CollectivesFacade::Create(comm, rank, nranks, poolSizeInMB,
-                                maxStagingInMB),
+      CollectivesFacade::Create(comm, rank, nranks, pool_size_bytes,
+                                max_staging_bytes),
       "Failed to create CollectivesFacade");
 
   VLOG(1) << "Initialized MORI PE rank " << rank << " of " << nranks;
@@ -254,7 +268,7 @@ absl::Status MoriCollectives::EagerInitLocalPes(ProcessId process_id,
   absl::Status status;
   absl::once_flag once;
   {
-    // All PEs must initialize concurrently, so ShmemInitAttr's socket bootstrap
+    // All PEs must initialize concurrently, so ccoCommCreate's socket bootstrap
     // collective can rendezvous.
     tsl::thread::ThreadPool pool(tsl::Env::Default(), "MoriEagerInit",
                                  nranks_local);
@@ -288,8 +302,8 @@ MoriCollectives::InitializeTopology(const Topology& topology) {
   if (topology.num_processes <= 1) {
     // Single process: eagerly initialize MORI for every local device as a
     // single global clique so that collective-memory allocations can use MORI's
-    // static heap (ShmemMalloc) before any executable runs. The MORI PE equals
-    // the local device ordinal.
+    // static heap (CollectivesFacade::Allocate) before any executable runs. The
+    // MORI PE equals the local device ordinal.
     if (nranks_local == 0) {
       return absl::InvalidArgumentError("Wrong device_count_per_process");
     }
@@ -305,8 +319,8 @@ MoriCollectives::InitializeTopology(const Topology& topology) {
   // the full world. One root process generates the unique id and publishes it
   // via the key-value store; all other processes fetch it. Every PE across all
   // processes then initializes concurrently so MORI's socket bootstrap can
-  // rendezvous, making the symmetric heap (ShmemMalloc/Allocate) available
-  // before any executable runs.
+  // rendezvous, making the symmetric heap (CollectivesFacade::Allocate)
+  // available before any executable runs.
   if (topology.kv_store == nullptr) {
     return InvalidArgument(
         "A key-value store is required for multi-process MORI initialization");

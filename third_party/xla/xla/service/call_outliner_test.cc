@@ -118,14 +118,14 @@ ENTRY entry {
   const absl::string_view expected_hlo =
       R"(HloModule outline, entry_computation_layout={()->(f32[], f32[])}
 
-a {
+a.1 {
   p0 = f32[] parameter(0)
   ROOT add.2 = f32[] add(p0, p0)
 }
 
 ENTRY entry {
   c = f32[] constant(1)
-  call = f32[] call(c), to_apply=a
+  call = f32[] call(c), to_apply=a.1
   ROOT tuple = (f32[], f32[]) tuple(call, c)
 }
 
@@ -154,14 +154,14 @@ ENTRY inline {
   const absl::string_view expected_hlo =
       R"(HloModule inline_module, entry_computation_layout={()->f32[]}
 
-a {
+a.1 {
   p0 = f32[] parameter(0)
   ROOT add.2 = f32[] add(p0, p0)
 }
 
 ENTRY inline {
   c = f32[] constant(1)
-  ROOT a = f32[] call(c), to_apply=a
+  ROOT a = f32[] call(c), to_apply=a.1
 }
 
 )";
@@ -199,24 +199,24 @@ ENTRY inline {
   const absl::string_view expected_hlo =
       R"(HloModule inline_module, entry_computation_layout={()->f32[]}
 
-c {
+c.1 {
   p0 = f32[] parameter(0)
   ROOT result.7 = f32[] add(p0, p0)
 }
 
-b {
+b.1 {
   p0.1 = f32[] parameter(0)
-  ROOT result.8 = f32[] call(p0.1), to_apply=c
+  ROOT result.8 = f32[] call(p0.1), to_apply=c.1
 }
 
-a {
+a.1 {
   p0.2 = f32[] parameter(0)
-  ROOT result.9 = f32[] call(p0.2), to_apply=b
+  ROOT result.9 = f32[] call(p0.2), to_apply=b.1
 }
 
 ENTRY inline {
   c = f32[] constant(1)
-  ROOT result.3 = f32[] call(c), to_apply=a
+  ROOT result.3 = f32[] call(c), to_apply=a.1
 }
 
 )";
@@ -285,25 +285,72 @@ ENTRY inline {
   const absl::string_view expected_hlo =
       R"(HloModule inline_module, entry_computation_layout={()->f32[]}
 
-a {
+a.1 {
   p0 = f32[] parameter(0)
   ROOT add.2 = f32[] add(p0, p0)
 }
 
-b {
+b.1 {
   p0.1 = f32[] parameter(0)
   ROOT mul.2 = f32[] multiply(p0.1, p0.1)
 }
 
 ENTRY inline {
   c = f32[] constant(1)
-  call_a = f32[] call(c), to_apply=a
-  ROOT call_b = f32[] call(call_a), to_apply=b
+  call_a = f32[] call(c), to_apply=a.1
+  ROOT call_b = f32[] call(call_a), to_apply=b.1
 }
 
 )";
 
   EXPECT_EQ(module->ToString(HloPrintOptions::ShortParsable()), expected_hlo);
+}
+
+TEST_F(CallOutlinerTest, OutlinedComputationsWithSameMarkerHaveUniqueNames) {
+  // Two separate blocks carry the same marked name, as happens when one
+  // computation is called twice and both call sites are inlined.
+  const absl::string_view hlo_string = R"(
+  HloModule inline_module
+
+  ENTRY inline {
+    p0 = f32[] parameter(0)
+    before0 = (f32[]) custom-call(p0), custom_call_target="__xla_internal_call_marker_before", frontend_attributes={xla_call_marked_computation="a"}
+    gte0 = f32[] get-tuple-element(before0), index=0
+    add0 = f32[] add(gte0, gte0)
+    after0 = f32[] custom-call(add0), custom_call_target="__xla_internal_call_marker_after", frontend_attributes={xla_call_marked_computation="a"}
+    before1 = (f32[]) custom-call(after0), custom_call_target="__xla_internal_call_marker_before", frontend_attributes={xla_call_marked_computation="a"}
+    gte1 = f32[] get-tuple-element(before1), index=0
+    add1 = f32[] add(gte1, gte1)
+    ROOT after1 = f32[] custom-call(add1), custom_call_target="__xla_internal_call_marker_after", frontend_attributes={xla_call_marked_computation="a"}
+  })";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       OutlineModule(hlo_string));
+
+  EXPECT_EQ(CountCalls(module->entry_computation()), 2);
+  EXPECT_OK(module->CheckUniqueNamesAndIdsForComputationsAndInstructions());
+}
+
+TEST_F(CallOutlinerTest, ComputationCalledTwiceRoundTripsWithUniqueNames) {
+  const absl::string_view hlo_string = R"(
+  HloModule inline_module
+
+  a {
+    p = f32[] parameter(0)
+    ROOT add = f32[] add(p, p)
+  }
+
+  ENTRY inline {
+    c = f32[] constant(1)
+    call0 = f32[] call(c), to_apply=a
+    ROOT call1 = f32[] call(call0), to_apply=a
+  })";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseInlineAndOutline(hlo_string));
+
+  EXPECT_EQ(CountCalls(module->entry_computation()), 2);
+  EXPECT_OK(module->CheckUniqueNamesAndIdsForComputationsAndInstructions());
 }
 
 TEST_F(CallOutlinerTest, CallWithMultipleArguments) {
@@ -328,7 +375,7 @@ ENTRY inline {
   const absl::string_view expected_hlo =
       R"(HloModule inline_module, entry_computation_layout={()->f32[]}
 
-a {
+a.1 {
   p0.1 = f32[] parameter(0)
   p1.1 = f32[] parameter(1)
   ROOT add.2 = f32[] add(p0.1, p1.1)
@@ -337,7 +384,7 @@ a {
 ENTRY inline {
   c1 = f32[] constant(1)
   c2 = f32[] constant(2)
-  ROOT result = f32[] call(c1, c2), to_apply=a
+  ROOT result = f32[] call(c1, c2), to_apply=a.1
 }
 
 )";
@@ -367,14 +414,14 @@ ENTRY inline {
   const absl::string_view expected_hlo =
       R"(HloModule inline_module, entry_computation_layout={()->f32[]}
 
-a {
+a.1 {
   p0 = f32[] parameter(0)
   ROOT result.3 = f32[] bitcast(p0)
 }
 
 ENTRY inline {
   c = f32[] constant(1)
-  ROOT result.1 = f32[] call(c), to_apply=a
+  ROOT result.1 = f32[] call(c), to_apply=a.1
 }
 
 )";

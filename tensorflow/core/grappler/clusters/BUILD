@@ -107,6 +107,7 @@ cc_library(
         "//tensorflow/core/grappler/costs:analytical_cost_estimator",
         "//tensorflow/core/grappler/costs:op_level_cost_estimator",
         "//tensorflow/core/grappler/costs:virtual_scheduler",
+        "//tensorflow/core/platform:mutex",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],

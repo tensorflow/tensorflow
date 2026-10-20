@@ -64,6 +64,11 @@ REGISTER_PJRT_TOPOLOGY_DESERIALIZER(
     [](const xla::PjRtTopologyDescriptionProto& proto) {
       return StreamExecutorGpuTopologyDescription::FromProto(proto);
     });
+REGISTER_PJRT_TOPOLOGY_DESERIALIZER(
+    Oneapi, xla::OneapiId(), xla::OneapiName(),
+    [](const xla::PjRtTopologyDescriptionProto& proto) {
+      return StreamExecutorGpuTopologyDescription::FromProto(proto);
+    });
 
 /*static*/ void StreamExecutorGpuTopologyDescription::SetupDeviceDescription(
     PjRtStreamExecutorDeviceDescription& description,
@@ -386,7 +391,9 @@ StreamExecutorGpuTopologyDescription::FromProto(
                        proto.platform_name() == xla::CudaName();
   const bool is_rocm = proto.platform_id() == xla::RocmId() ||
                        proto.platform_name() == xla::RocmName();
-  if (!is_cuda && !is_rocm) {
+  const bool is_oneapi = proto.platform_id() == xla::OneapiId() ||
+                         proto.platform_name() == xla::OneapiName();
+  if (!is_cuda && !is_rocm && !is_oneapi) {
     return absl::InvalidArgumentError(absl::StrCat(
         "The platform is not a GPU platform. platform_id: ",
         proto.platform_id(), ", platform_name: '", proto.platform_name(), "'"));

@@ -46,6 +46,8 @@ limitations under the License.
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -1762,6 +1764,86 @@ CHECK: ENTRY
 CHECK: %[[SCAN_FUSION:.*]] = f32[100]{0} fusion(%{{.*}}, %{{.*}}), kind=kCustom
 CHECK: ROOT %[[EPILOGUE_FUSION:.*]] = f32[100]{0} fusion(%[[SCAN_FUSION]]), kind=kCustom
       )");
+}
+
+TEST_F(PriorityFusionTest, DoesNotRevisitCostAnalysisForUnmodifiedOperands) {
+  // Construct an HLO graph where `unfused_producer` is a kInput reduction
+  // fusion with a distinct internal broadcast shape `f32[17,33]`. It feeds a
+  // chain of downstream consumers (`consumer_red` -> `add1` -> `mul1` -> `add2`
+  // -> `exp1`) that get fused together over multiple PriorityFusion steps.
+  // Because both `unfused_producer` and the consumer chain contain reductions,
+  // `unfused_producer` cannot fuse into the consumer fusion and remains an
+  // unmodified operand across every consumer fusion step.
+  constexpr absl::string_view kHlo = R"(
+    HloModule test_module
+
+    add_scalar {
+      a = f32[] parameter(0)
+      b = f32[] parameter(1)
+      ROOT sum = f32[] add(a, b)
+    }
+
+    producer_R {
+      p = f32[17] parameter(0)
+      bcast = f32[17,33] broadcast(p), dimensions={0}
+      z = f32[] constant(0)
+      ROOT red = f32[17] reduce(bcast, z), dimensions={1}, to_apply=add_scalar
+    }
+
+    ENTRY main {
+      p0 = f32[17] parameter(0)
+      p1 = f32[17,32] parameter(1)
+      p2 = f32[17] parameter(2)
+      z = f32[] constant(0)
+      unfused_producer = f32[17] fusion(p0), kind=kInput, calls=producer_R
+      consumer_red = f32[17] reduce(p1, z), dimensions={1}, to_apply=add_scalar
+      add1 = f32[17] add(consumer_red, unfused_producer)
+      mul1 = f32[17] multiply(add1, p2)
+      add2 = f32[17] add(mul1, unfused_producer)
+      ROOT exp1 = f32[17] exponential(add2)
+    })";
+
+  // Count how many times `GpuHloCostAnalysis` queries the byte size of the
+  // internal shape `f32[17,33]` inside `producer_R`. This shape only exists
+  // inside `unfused_producer`'s fused computation, so any call to
+  // `cost_analysis_->RevisitInstruction(unfused_producer)` re-traverses
+  // `producer_R` and increments `internal_shape_size_calls`.
+  int internal_shape_size_calls = 0;
+  GpuHloCostAnalysis::Options options;
+  options.count_multiple_input_accesses = true;
+  options.shape_size = [&](const Shape& shape) {
+    if (shape.IsArray() && shape.dimensions().size() == 2 &&
+        shape.dimensions(0) == 17 && shape.dimensions(1) == 33) {
+      ++internal_shape_size_calls;
+    }
+    return ShapeUtil::ByteSizeOf(shape, /*pointer_size=*/8);
+  };
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+
+  // Measure how many times a single initial GpuHloCostAnalysis pass queries the
+  // internal shape `f32[17,33]` of `unfused_producer`.
+  GpuHloCostAnalysis baseline_analysis(options, device_info_);
+  ASSERT_THAT(module->entry_computation()->Accept(&baseline_analysis),
+              absl_testing::IsOk());
+  const int initial_calls = internal_shape_size_calls;
+  ASSERT_GT(initial_calls, 0);
+
+  internal_shape_size_calls = 0;
+  PriorityFusion priority_fusion(/*thread_pool=*/nullptr, device_info_,
+                                 &alias_info_, options, &mlir_context_);
+  EXPECT_THAT(priority_fusion.Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
+
+  // `unfused_producer` is an operand of the consumer fusion that gets updated
+  // across multiple fusion steps (`consumer_red`, `add1`, `mul1`, `add2`,
+  // `exp1`), so its priority is recomputed at each step
+  // (`to_update_priority_`). However, `unfused_producer` itself is never
+  // modified (`updated_fusions_`), so its HLO cost analysis should only be
+  // visited once during initial queue creation and never revisited during
+  // `UpdatePriorities()`.
+  EXPECT_EQ(internal_shape_size_calls, initial_calls);
 }
 
 }  // namespace gpu

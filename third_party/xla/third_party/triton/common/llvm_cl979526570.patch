@@ -1,6 +1,6 @@
 --- a/lib/Conversion/TritonGPUToLLVM/ElementwiseOpToLLVM.cpp
 +++ b/lib/Conversion/TritonGPUToLLVM/ElementwiseOpToLLVM.cpp
-@@ -268,7 +268,8 @@ struct ElementwiseInlineAsmOpConversion
+@@ -277,7 +277,8 @@ struct ElementwiseInlineAsmOpConversion
                             /*asm_string=*/op.getAsmString(),
                             /*constraints=*/op.getConstraints(),
                             /*has_side_effects=*/!op.getPure(),
@@ -10,7 +10,7 @@
                             /*asm_dialect=*/
                             LLVM::AsmDialectAttr::get(rewriter.getContext(),
                                                       LLVM::AsmDialect::AD_ATT),
-@@ -417,6 +418,7 @@ struct InlineAsmOpConversion
+@@ -426,6 +427,7 @@ struct InlineAsmOpConversion
      auto call = LLVM::InlineAsmOp::create(
          rewriter, loc, returnType, operands, op.getAsmString(),
          op.getConstraints(), !op.getPure(), false, LLVM::TailCallKind::None,
@@ -30,20 +30,9 @@
                 /*operand_attrs=*/ArrayAttr())
          ->getResult(0);
 
---- a/third_party/amd/lib/TritonAMDGPUToLLVM/GCNAsmFormat.cpp
-+++ b/third_party/amd/lib/TritonAMDGPUToLLVM/GCNAsmFormat.cpp
-@@ -83,6 +83,7 @@ mlir::Value GCNBuilder::launch(RewriterBase &rewriter, Location loc, Type resTy,
-       hasSideEffect,                          // has_side_effects
-       isAlignStack,                           // is_align_stack
-       LLVM::TailCallKind::None,
-+      /*convergent=*/false,
-       LLVM::AsmDialectAttr::get(ctx,
-                                 LLVM::AsmDialect::AD_ATT), // asm_dialect
-       ArrayAttr::get(ctx, attrs)                           // operand_attrs
-
 --- a/third_party/amd/lib/TritonAMDGPUToLLVM/TDMUtility.cpp
 +++ b/third_party/amd/lib/TritonAMDGPUToLLVM/TDMUtility.cpp
-@@ -37,6 +37,7 @@ Value sequenceGroup0(RewriterBase &rewriter, Location loc, Value group0) {
+@@ -39,6 +39,7 @@ Value sequenceGroup0(RewriterBase &rewriter, Location loc, Value group0) {
               /*asm_string=*/"", /*constraints=*/"=s,0",
               /*has_side_effects=*/true, /*is_align_stack=*/false,
               LLVM::TailCallKind::None,
@@ -54,7 +43,7 @@
 
 --- a/third_party/amd/lib/TritonAMDGPUToLLVM/TargetInfo.cpp
 +++ b/third_party/amd/lib/TritonAMDGPUToLLVM/TargetInfo.cpp
-@@ -749,6 +749,7 @@ void TargetInfo::assertFail(RewriterBase &rewriter, Location loc,
+@@ -726,6 +726,7 @@ void TargetInfo::assertTrap(RewriterBase &rewriter, Location loc) const {
        "s_trap 2", /*constraints=*/"",
        /*has_side_effects=*/true, /*is_align_stack=*/false,
        LLVM::TailCallKind::None,

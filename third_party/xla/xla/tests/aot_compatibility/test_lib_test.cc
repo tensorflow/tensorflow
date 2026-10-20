@@ -19,14 +19,18 @@ limitations under the License.
 
 #include <cstdint>
 #include <cstdlib>
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/debug_options_runtime_fields.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/service/cpu/executable.pb.h"
 #include "xla/service/gpu/gpu_executable.pb.h"
@@ -261,6 +265,40 @@ TEST(TestLibTest, CompareGPUExecutables_IgnoresMachineCodeAndXlaDumpTo) {
   EXPECT_OK(AOTInterceptionPjrtClient::CompareGPUExecutables(fresh, golden));
 }
 
+TEST(TestLibTest, CompareGPUExecutables_IgnoresBufferAssignmentFields) {
+  auto golden = ParseTextProtoOrDie<HumanReadableAotExecutable>(R"pb(
+    gpu_executable {
+      buffer_allocations { values { index: 0 size: 16 } }
+      buffer_assignment {
+        logical_buffers { id: 1 size: 16 }
+        buffer_aliases {
+          source_buffer_id: 1
+          location { instruction_id: 10 }
+        }
+        buffer_aliases {
+          source_buffer_id: 1
+          location { instruction_id: 20 }
+        }
+      }
+      buffer_allocations_debug_summary: "golden_summary"
+    }
+  )pb");
+  auto fresh = ParseTextProtoOrDie<HumanReadableAotExecutable>(R"pb(
+    gpu_executable {
+      buffer_allocations { values { index: 0 size: 32 } }
+      buffer_assignment {
+        logical_buffers { id: 2 size: 32 }
+        buffer_aliases {
+          source_buffer_id: 2
+          location { instruction_id: 10 }
+        }
+      }
+      buffer_allocations_debug_summary: "fresh_summary"
+    }
+  )pb");
+  EXPECT_OK(AOTInterceptionPjrtClient::CompareGPUExecutables(fresh, golden));
+}
+
 // Where in the executable a copy of the debug options lives. Both copies must
 // be compared, except for the fields the comparator ignores.
 enum class DebugOptionsCopy { kModuleConfig, kCompileOptions };
@@ -287,68 +325,306 @@ HumanReadableAotExecutable GpuExecutableWithDebugOptions(
   return executable;
 }
 
+// Returns an enum value of `field` other than its default, or null if the enum
+// has no other value.
+const tsl::protobuf::EnumValueDescriptor* NonDefaultEnumValue(
+    const tsl::protobuf::FieldDescriptor* field) {
+  const tsl::protobuf::EnumValueDescriptor* default_value =
+      field->default_value_enum();
+  const tsl::protobuf::EnumDescriptor* type = field->enum_type();
+  for (int i = 0; i < type->value_count(); ++i) {
+    if (default_value == nullptr ||
+        type->value(i)->number() != default_value->number()) {
+      return type->value(i);
+    }
+  }
+  return nullptr;
+}
+
+// Sets `field` of `message` to a value that differs from its default: a
+// singular field gets a value other than its default, a repeated field gets one
+// such element, and a message gets its first field set the same way. Returns
+// false if it cannot, e.g. for a type it does not know.
+bool SetToNonDefault(const tsl::protobuf::FieldDescriptor* field,
+                     tsl::protobuf::Message* message, int depth = 0) {
+  using FieldDescriptor = tsl::protobuf::FieldDescriptor;
+  const tsl::protobuf::Reflection* reflection = message->GetReflection();
+  const bool repeated = field->is_repeated();
+  switch (field->cpp_type()) {
+    case FieldDescriptor::CPPTYPE_BOOL: {
+      const bool value = !field->default_value_bool();
+      if (repeated) {
+        reflection->AddBool(message, field, value);
+      } else {
+        reflection->SetBool(message, field, value);
+      }
+      return true;
+    }
+    case FieldDescriptor::CPPTYPE_INT32: {
+      const int32_t value = field->default_value_int32() + 1;
+      if (repeated) {
+        reflection->AddInt32(message, field, value);
+      } else {
+        reflection->SetInt32(message, field, value);
+      }
+      return true;
+    }
+    case FieldDescriptor::CPPTYPE_INT64: {
+      const int64_t value = field->default_value_int64() + 1;
+      if (repeated) {
+        reflection->AddInt64(message, field, value);
+      } else {
+        reflection->SetInt64(message, field, value);
+      }
+      return true;
+    }
+    case FieldDescriptor::CPPTYPE_UINT32: {
+      const uint32_t value = field->default_value_uint32() + 1;
+      if (repeated) {
+        reflection->AddUInt32(message, field, value);
+      } else {
+        reflection->SetUInt32(message, field, value);
+      }
+      return true;
+    }
+    case FieldDescriptor::CPPTYPE_UINT64: {
+      const uint64_t value = field->default_value_uint64() + 1;
+      if (repeated) {
+        reflection->AddUInt64(message, field, value);
+      } else {
+        reflection->SetUInt64(message, field, value);
+      }
+      return true;
+    }
+    case FieldDescriptor::CPPTYPE_FLOAT: {
+      const float value = field->default_value_float() + 1;
+      if (repeated) {
+        reflection->AddFloat(message, field, value);
+      } else {
+        reflection->SetFloat(message, field, value);
+      }
+      return true;
+    }
+    case FieldDescriptor::CPPTYPE_DOUBLE: {
+      const double value = field->default_value_double() + 1;
+      if (repeated) {
+        reflection->AddDouble(message, field, value);
+      } else {
+        reflection->SetDouble(message, field, value);
+      }
+      return true;
+    }
+    case FieldDescriptor::CPPTYPE_STRING: {
+      std::string value =
+          absl::StrCat(field->default_value_string(), "_non_default");
+      if (repeated) {
+        reflection->AddString(message, field, std::move(value));
+      } else {
+        reflection->SetString(message, field, std::move(value));
+      }
+      return true;
+    }
+    case FieldDescriptor::CPPTYPE_ENUM: {
+      const tsl::protobuf::EnumValueDescriptor* value =
+          NonDefaultEnumValue(field);
+      if (value == nullptr) {
+        return false;
+      }
+      if (repeated) {
+        reflection->AddEnum(message, field, value);
+      } else {
+        reflection->SetEnum(message, field, value);
+      }
+      return true;
+    }
+    case FieldDescriptor::CPPTYPE_MESSAGE: {
+      // An empty submessage equals an unset one in an EQUIVALENT comparison,
+      // so one of its fields must be set as well. The depth limit stops a
+      // message type that contains itself.
+      constexpr int kMaxDepth = 4;
+      const tsl::protobuf::Descriptor* type = field->message_type();
+      if (depth >= kMaxDepth || type->field_count() == 0) {
+        return false;
+      }
+      tsl::protobuf::Message* child =
+          repeated ? reflection->AddMessage(message, field)
+                   : reflection->MutableMessage(message, field);
+      return SetToNonDefault(type->field(0), child, depth + 1);
+    }
+  }
+  return false;
+}
+
+// Returns `DebugOptions` with only `field` set, to a non-default value. Fails
+// the test and returns nullopt if `SetToNonDefault` cannot set it.
+std::optional<DebugOptions> DebugOptionsWithNonDefault(
+    const tsl::protobuf::FieldDescriptor* field) {
+  DebugOptions debug_options;
+  if (!SetToNonDefault(field, &debug_options)) {
+    ADD_FAILURE() << "Cannot set DebugOptions." << field->name() << " of type "
+                  << field->type_name()
+                  << " to a non-default value; teach SetToNonDefault to.";
+    return std::nullopt;
+  }
+  // Guards against a helper bug that would make every "ignores" check pass.
+  EXPECT_FALSE(tsl::protobuf::util::MessageDifferencer::Equivalent(
+      debug_options, DebugOptions()))
+      << field->name();
+  return debug_options;
+}
+
 class CompareGPUExecutablesDebugOptionsTest
-    : public ::testing::TestWithParam<DebugOptionsCopy> {};
+    : public ::testing::TestWithParam<DebugOptionsCopy> {
+ protected:
+  // Compares two GPU executables that differ only in the `GetParam()` copy of
+  // their debug options.
+  static absl::Status Compare(const DebugOptions& fresh,
+                              const DebugOptions& golden) {
+    return AOTInterceptionPjrtClient::CompareGPUExecutables(
+        GpuExecutableWithDebugOptions(GetParam(), fresh),
+        GpuExecutableWithDebugOptions(GetParam(), golden));
+  }
+};
 
-// Dump paths and host-specific paths cannot change the compiled executable, so
-// a difference in them must not cause a mismatch.
-TEST_P(CompareGPUExecutablesDebugOptionsTest, IgnoresDenylistedFields) {
-  DebugOptions golden_options;
-  golden_options.set_xla_dump_to("/tmp/golden_dir");
-  golden_options.set_xla_gpu_cuda_data_dir("/host_a/cuda");
+// The fields whose defaults changed since the v3 goldens of the GPU collective
+// AOT tests. None can change a loaded executable, so a difference in them must
+// not cause a mismatch.
+TEST_P(CompareGPUExecutablesDebugOptionsTest, IgnoresCompileOnlyFields) {
+  constexpr int kCompileOnlyFields[] = {
+      DebugOptions::kXlaGpuExperimentalAutotuneBackendsFieldNumber,
+      DebugOptions::kXlaGpuExperimentalDeterministicOpsTritonFieldNumber,
+      DebugOptions::kXlaGpuExperimentalEnableConvFusionFieldNumber,
+      DebugOptions::kXlaGpuExperimentalGemmFusionV2FieldNumber,
+      DebugOptions::kXlaGpuUnsupportedUseCrossHostOneShotKernelFieldNumber,
+  };
   DebugOptions fresh_options;
-  fresh_options.set_xla_dump_to("/tmp/fresh_dir");
-  fresh_options.set_xla_gpu_cuda_data_dir("/host_b/cuda");
+  for (const int number : kCompileOnlyFields) {
+    ASSERT_FALSE(IsRuntimeDebugOptionsField(number)) << number;
+    const tsl::protobuf::FieldDescriptor* field =
+        DebugOptions::descriptor()->FindFieldByNumber(number);
+    ASSERT_NE(field, nullptr) << number;
+    ASSERT_TRUE(SetToNonDefault(field, &fresh_options)) << field->name();
+  }
 
-  EXPECT_OK(AOTInterceptionPjrtClient::CompareGPUExecutables(
-      GpuExecutableWithDebugOptions(GetParam(), fresh_options),
-      GpuExecutableWithDebugOptions(GetParam(), golden_options)));
+  EXPECT_OK(Compare(fresh_options, DebugOptions()));
 }
 
 TEST_P(CompareGPUExecutablesDebugOptionsTest, DetectsNumericsFlagDifference) {
+  ASSERT_TRUE(
+      IsRuntimeDebugOptionsField(DebugOptions::kXlaGpuDetectNanFieldNumber));
   DebugOptions golden_options;
-  golden_options.set_xla_gpu_enable_fast_min_max(true);
+  golden_options.set_xla_gpu_detect_nan(DebugOptions::DETECTION_MODE_WARNING);
   DebugOptions fresh_options;
-  fresh_options.set_xla_gpu_enable_fast_min_max(false);
+  fresh_options.set_xla_gpu_detect_nan(DebugOptions::DETECTION_MODE_FAIL);
 
-  EXPECT_THAT(AOTInterceptionPjrtClient::CompareGPUExecutables(
-                  GpuExecutableWithDebugOptions(GetParam(), fresh_options),
-                  GpuExecutableWithDebugOptions(GetParam(), golden_options)),
-              StatusIs(absl::StatusCode::kInternal,
-                       HasSubstr("xla_gpu_enable_fast_min_max")));
+  EXPECT_THAT(
+      Compare(fresh_options, golden_options),
+      StatusIs(absl::StatusCode::kInternal, HasSubstr("xla_gpu_detect_nan")));
 }
 
 TEST_P(CompareGPUExecutablesDebugOptionsTest, DetectsCollectiveFlagDifference) {
+  ASSERT_TRUE(IsRuntimeDebugOptionsField(
+      DebugOptions::kXlaGpuNcclTerminationTimeoutSecondsFieldNumber));
   DebugOptions golden_options;
-  golden_options.set_xla_gpu_all_reduce_combine_threshold_bytes(31457287);
+  golden_options.set_xla_gpu_nccl_termination_timeout_seconds(600);
   DebugOptions fresh_options;
-  fresh_options.set_xla_gpu_all_reduce_combine_threshold_bytes(1024);
+  fresh_options.set_xla_gpu_nccl_termination_timeout_seconds(30);
 
-  EXPECT_THAT(
-      AOTInterceptionPjrtClient::CompareGPUExecutables(
-          GpuExecutableWithDebugOptions(GetParam(), fresh_options),
-          GpuExecutableWithDebugOptions(GetParam(), golden_options)),
-      StatusIs(absl::StatusCode::kInternal,
-               HasSubstr("xla_gpu_all_reduce_combine_threshold_bytes")));
+  EXPECT_THAT(Compare(fresh_options, golden_options),
+              StatusIs(absl::StatusCode::kInternal,
+                       HasSubstr("xla_gpu_nccl_termination_timeout_seconds")));
 }
 
-// Ignoring a denylisted field must not hide a compared field that differs
-// alongside it.
+// Ignoring fields, `xla_dump_to` included, must not hide a runtime field that
+// differs alongside them, and must keep the ignored ones out of the report.
 TEST_P(CompareGPUExecutablesDebugOptionsTest,
-       DetectsComparedFlagDifferenceNextToDenylistedOne) {
+       DetectsRuntimeFlagDifferenceNextToIgnoredOnes) {
+  ASSERT_TRUE(
+      IsRuntimeDebugOptionsField(DebugOptions::kXlaGpuDetectInfFieldNumber));
+  ASSERT_FALSE(IsRuntimeDebugOptionsField(
+      DebugOptions::kXlaGpuExperimentalEnableConvFusionFieldNumber));
   DebugOptions golden_options;
   golden_options.set_xla_dump_to("/tmp/golden_dir");
-  golden_options.set_xla_gpu_enable_fast_min_max(true);
+  golden_options.set_xla_gpu_experimental_enable_conv_fusion(false);
+  golden_options.set_xla_gpu_detect_inf(DebugOptions::DETECTION_MODE_NONE);
   DebugOptions fresh_options;
   fresh_options.set_xla_dump_to("/tmp/fresh_dir");
-  fresh_options.set_xla_gpu_enable_fast_min_max(false);
+  fresh_options.set_xla_gpu_experimental_enable_conv_fusion(true);
+  fresh_options.set_xla_gpu_detect_inf(DebugOptions::DETECTION_MODE_FAIL);
 
-  EXPECT_THAT(AOTInterceptionPjrtClient::CompareGPUExecutables(
-                  GpuExecutableWithDebugOptions(GetParam(), fresh_options),
-                  GpuExecutableWithDebugOptions(GetParam(), golden_options)),
-              StatusIs(absl::StatusCode::kInternal,
-                       AllOf(HasSubstr("xla_gpu_enable_fast_min_max"),
-                             Not(HasSubstr("xla_dump_to")))));
+  EXPECT_THAT(
+      Compare(fresh_options, golden_options),
+      StatusIs(
+          absl::StatusCode::kInternal,
+          AllOf(HasSubstr("xla_gpu_detect_inf"), Not(HasSubstr("xla_dump_to")),
+                Not(HasSubstr("xla_gpu_experimental_enable_conv_fusion")))));
+}
+
+// `xla_dump_to` is ignored although it is a runtime field: the path is
+// host-specific, and the loading process sets its own. So two different dump
+// directories must not cause a mismatch.
+TEST_P(CompareGPUExecutablesDebugOptionsTest, IgnoresXlaDumpToPath) {
+  DebugOptions golden_options;
+  golden_options.set_xla_dump_to("/tmp/golden_dir");
+  DebugOptions fresh_options;
+  fresh_options.set_xla_dump_to("/tmp/fresh_dir");
+
+  EXPECT_OK(Compare(fresh_options, golden_options));
+}
+
+// Nor must an empty `xla_dump_to` vs a non-empty one, in either direction.
+TEST_P(CompareGPUExecutablesDebugOptionsTest, IgnoresXlaDumpToEmptiness) {
+  ASSERT_TRUE(IsRuntimeDebugOptionsField(DebugOptions::kXlaDumpToFieldNumber));
+  DebugOptions empty_options;
+  DebugOptions set_options;
+  set_options.set_xla_dump_to("/tmp/dump_dir");
+
+  EXPECT_OK(Compare(/*fresh=*/set_options, /*golden=*/empty_options));
+  EXPECT_OK(Compare(/*fresh=*/empty_options, /*golden=*/set_options));
+}
+
+// Every runtime field must be compared, whatever its type, except
+// `xla_dump_to`, which is ignored and has its own tests.
+TEST_P(CompareGPUExecutablesDebugOptionsTest,
+       DetectsEveryRuntimeFieldDifference) {
+  for (const int number : RuntimeDebugOptionsFieldNumbers()) {
+    if (number == DebugOptions::kXlaDumpToFieldNumber) {
+      continue;
+    }
+    const tsl::protobuf::FieldDescriptor* field =
+        DebugOptions::descriptor()->FindFieldByNumber(number);
+    ASSERT_NE(field, nullptr) << "No DebugOptions field number " << number;
+    SCOPED_TRACE(field->name());
+    std::optional<DebugOptions> fresh_options =
+        DebugOptionsWithNonDefault(field);
+    if (!fresh_options.has_value()) {
+      continue;
+    }
+
+    EXPECT_THAT(Compare(*fresh_options, DebugOptions()),
+                StatusIs(absl::StatusCode::kInternal,
+                         HasSubstr(std::string(field->name()))));
+  }
+}
+
+// Every field outside the runtime list must be ignored, whatever its type.
+TEST_P(CompareGPUExecutablesDebugOptionsTest,
+       IgnoresEveryNonRuntimeFieldDifference) {
+  const tsl::protobuf::Descriptor* descriptor = DebugOptions::descriptor();
+  for (int i = 0; i < descriptor->field_count(); ++i) {
+    const tsl::protobuf::FieldDescriptor* field = descriptor->field(i);
+    if (IsRuntimeDebugOptionsField(field->number())) {
+      continue;
+    }
+    SCOPED_TRACE(field->name());
+    std::optional<DebugOptions> fresh_options =
+        DebugOptionsWithNonDefault(field);
+    if (!fresh_options.has_value()) {
+      continue;
+    }
+
+    EXPECT_OK(Compare(*fresh_options, DebugOptions()));
+  }
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -376,9 +652,23 @@ TEST(TestLibTest, CompareGPUExecutables_FailsOnGenuineDifferences) {
                      HasSubstr("different_module"))));
 }
 
+// An executable whose payload is not a `gpu_executable` must still be compared
+// in full, not treated as equal.
+TEST(TestLibTest, CompareGPUExecutables_DetectsDifferencesInNonGpuPayload) {
+  HumanReadableAotExecutable golden;
+  golden.mutable_cpu_executable()->set_entry_function_name("golden_entry");
+  HumanReadableAotExecutable fresh;
+  fresh.mutable_cpu_executable()->set_entry_function_name("fresh_entry");
+
+  EXPECT_THAT(AOTInterceptionPjrtClient::CompareGPUExecutables(fresh, golden),
+              StatusIs(absl::StatusCode::kInternal,
+                       AllOf(HasSubstr("entry_function_name"),
+                             HasSubstr("fresh_entry"))));
+}
+
 // The CPU comparator must ignore both copies of debug_options as well as the
 // compiled machine-code fields (object_files, target_machine_options,
-// data_layout). See b/528258781.
+// data_layout). See b/567825028.
 TEST(TestLibTest, CompareGoldenCPUExecutable_IgnoresDebugOptionsAndReturnsOk) {
   HumanReadableAotExecutable golden;
   golden.mutable_cpu_executable()->set_entry_function_name("main");

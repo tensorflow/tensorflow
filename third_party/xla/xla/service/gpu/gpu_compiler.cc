@@ -123,6 +123,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/gemm_fusion_swap_operands.h"
 #include "xla/backends/gpu/transforms/gemm_rewriter.h"
 #include "xla/backends/gpu/transforms/gpu_copy_async_wrapper.h"
+#include "xla/backends/gpu/transforms/gpu_transpose_folding.h"
 #include "xla/backends/gpu/transforms/group_collectives_by_key.h"
 #include "xla/backends/gpu/transforms/hoist_fused_bitcasts.h"
 #include "xla/backends/gpu/transforms/layout_assignment.h"
@@ -191,6 +192,7 @@ limitations under the License.
 #include "xla/hlo/transforms/expanders/dot_decomposer.h"
 #include "xla/hlo/transforms/expanders/dynamic_index_splitter.h"
 #include "xla/hlo/transforms/expanders/eigh_expander.h"
+#include "xla/hlo/transforms/expanders/elementary_function_expander.h"
 #include "xla/hlo/transforms/expanders/logistic_expander.h"
 #include "xla/hlo/transforms/expanders/optimization_barrier_expander.h"
 #include "xla/hlo/transforms/expanders/permutation_sort_expander.h"
@@ -322,7 +324,6 @@ limitations under the License.
 #include "xla/service/spmd/schedule_aware_collective_ops_cse.h"
 #include "xla/service/spmd/shardy/shardy_xla_pass.h"
 #include "xla/service/topk_rewriter.h"
-#include "xla/service/transpose_folding.h"
 #include "xla/service/while_loop_constant_sinking.h"
 #include "xla/service/while_loop_simplifier.h"
 #include "xla/service/xla_transform.h"
@@ -920,6 +921,10 @@ absl::Status RunOptimizationPasses(
       /*rewrite_inference_op=*/true,
       /*rewrite_grad_op=*/true);
 
+  pipeline.AddPass<ElementaryFunctionExpander>(
+      [](const HloInstruction* instruction) {
+        return ShapeUtil::ElementIsComplex(instruction->shape());
+      });
   pipeline.AddPass<LogisticExpander>();
   pipeline.AddPass<ConditionalCanonicalizer>();
   pipeline.AddPass<DynamicDimensionSimplifier>();
@@ -1015,12 +1020,8 @@ absl::Status RunOptimizationPasses(
     pipeline.AddPass<ReshapeMover>(reshape_mover_options);
     pipeline.AddPass<HloConstantFolding>();
     pipeline.AddPass<ConditionalSimplifier>();
-    // Do not fold transpose operands into dots yet. This can undo the normal
-    // form established by DotDecomposer, which the DotMerger pass requires.
-    pipeline.AddPass<TransposeFolding>(
-        /*dot_can_fold_transpose_operand=*/
-        [&](const HloInstruction& dot,
-            int64_t operand) -> absl::StatusOr<bool> { return false; });
+    pipeline.AddPass<GpuTransposeFolding>(gpu_version,
+                                          /*fold_into_convolutions=*/true);
     pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
     pipeline.AddPass<HloDCE>();
   }();
@@ -1039,9 +1040,8 @@ absl::Status RunOptimizationPasses(
   // gpu_version) once Triton emitter supports multiple non-contracting
   // dimensions.
   pipeline.AddPass<DotDimensionNormalizer>(true);
-  // Folding transpose operands into dots can undo the normal form established
-  // by DotDecomposer. Subsequent passes must not rely on it from this point on.
-  pipeline.AddPass<TransposeFolding>(CanFoldTransposeOperandIntoDot);
+  pipeline.AddPass<GpuTransposeFolding>(gpu_version,
+                                        /*fold_into_convolutions=*/true);
 
   // ConvertMover and ReshapeMover fight with each other: ConvertMover wants
   // to move some converts down the graph, but ReshapeMover wants to move them
@@ -2142,9 +2142,10 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 
     // GemmRewriter assumes that all transposes are folded into gemms, but,
     // since commit 7d529df, this is not always true at this point.
-    // Therefore, rerun transpose folding.
-    pipeline.AddPass<TransposeFolding>(CanFoldTransposeOperandIntoDot,
-                                       TransposeFolding::NeverFoldTranspose);
+    // Therefore, rerun transpose folding. Convolution layouts are already
+    // assigned at this point, so do not fold into convolutions.
+    pipeline.AddPass<GpuTransposeFolding>(gpu_version,
+                                          /*fold_into_convolutions=*/false);
 
     pipeline.AddPass<ReshapeDecomposer>();
     pipeline.AddPass<ReduceDecomposer>([&](const HloInstruction* r) {
@@ -2213,9 +2214,7 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
           gpu_target_config.device_description, ShapeSizeBytesFunction(),
           alias_info, mlir_context,
           /*only_fuse_if_profitable=*/true,
-          /*use_experimental_tiling=*/
-          debug_options.xla_gpu_experimental_enable_tiling_propagation(),
-          thread_pool, &mlir_context_pool_);
+          /*use_experimental_tiling=*/true, thread_pool, &mlir_context_pool_);
     }
 
     pipeline.AddPass<ReductionDimensionGrouper>();
@@ -3126,9 +3125,7 @@ absl::Status GpuCompiler::RunPreSchedulingPasses(
     // Cost model analysis for compute.
     pipeline.AddPass<GpuCostModelStatsCollection>(
         gpu_device_info, cost_analysis_options, mlir_context,
-        module->config()
-            .debug_options()
-            .xla_gpu_experimental_enable_tiling_propagation(),
+        /*use_experimental_tiling=*/true,
         module->config()
             .debug_options()
             .xla_gpu_experimental_enable_same_shape_multi_output_fusion());

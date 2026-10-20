@@ -547,7 +547,7 @@ def compute_impacted_targets(
 
     # Generate base hashes
     subprocess.run(
-        ["git", "checkout", "-f", "--end-of-options", diff_base],
+        ["git", "checkout", "-f", diff_base],
         cwd=workspace_dir,
         check=True,
         capture_output=True,
@@ -563,7 +563,7 @@ def compute_impacted_targets(
 
     # Generate head hashes
     subprocess.run(
-        ["git", "checkout", "-f", "--end-of-options", safe_head],
+        ["git", "checkout", "-f", safe_head],
         cwd=workspace_dir,
         check=True,
         capture_output=True,
@@ -601,7 +601,7 @@ def compute_impacted_targets(
     try:
       safe_original_head = change_detector.validate_git_ref(original_head)
       change_detector.run_git_best_effort(
-          ["checkout", "-f", "--end-of-options", safe_original_head],
+          ["checkout", "-f", safe_original_head],
           cwd=workspace_dir,
       )
     except ValueError:

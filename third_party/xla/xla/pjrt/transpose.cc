@@ -112,9 +112,7 @@ namespace xla {
 
 namespace {
 #ifdef __AVX__
-static constexpr int kMaxInnerBlockSizeBytes = sizeof(__m256i);
-#elif defined(XLA_HAS_VEC128)
-static constexpr int kMaxInnerBlockSizeBytes = sizeof(Vec128);
+static constexpr int kMaxInnerBlockSizeBytes = 32;
 #else
 static constexpr int kMaxInnerBlockSizeBytes = 16;
 #endif
@@ -336,13 +334,8 @@ void MacroKernel(const char* __restrict a, int64_t lda, int outer_bs_a,
     ldb = outer_bs_b * inner_bs * sizeof(T);
   }
 
-  for (int i = 0; i < outer_bs_a; ++i) {
-    for (int j = 0; j < outer_bs_b; ++j) {
-      TransposeMicroKernel<T, inner_bs>::Apply(
-          a + inner_bs * j * lda + i * inner_bs * sizeof(T), lda,
-          b + inner_bs * i * ldb + j * inner_bs * sizeof(T), ldb);
-    }
-  }
+  TransposeMacroKernelDispatch<T, inner_bs>(a, lda, outer_bs_a, b, ldb,
+                                            outer_bs_b);
 
   if constexpr (transformation == TransposePlan::Transformation::kPackSubbyte) {
     int elements_per_byte = 8 / bits_per_element;
@@ -660,6 +653,10 @@ void TransposePlan::ExecuteTyped(const char* a, char* b,
           break;
         case 16:
           handle_inner_block_elems(std::integral_constant<int, 16>{},
+                                   const_kind);
+          break;
+        case 32:
+          handle_inner_block_elems(std::integral_constant<int, 32>{},
                                    const_kind);
           break;
         default:
@@ -1525,6 +1522,8 @@ absl::Status TransposePlan::Initialize() {
   } else {
     // What are the smallest and largest block sizes for which we have a
     // vectorized kernel for this element size?
+    const int max_outer_block_elems =
+        kMaxOuterBlockSizeBytes / elem_size_in_bytes_;
     int min_inner_block_elems;
     int max_inner_block_elems;
     switch (elem_size_in_bytes_) {
@@ -1533,8 +1532,9 @@ absl::Status TransposePlan::Initialize() {
       case 4:
       case 8:
         min_inner_block_elems = 1;
-        max_inner_block_elems = std::min<int>(
-            kMaxOuterBlockElems, kMaxInnerBlockSizeBytes / elem_size_in_bytes_);
+        max_inner_block_elems =
+            std::min<int>(max_outer_block_elems,
+                          kMaxInnerBlockSizeBytes / elem_size_in_bytes_);
         break;
       case 16:
         min_inner_block_elems = 1;
@@ -1546,13 +1546,13 @@ absl::Status TransposePlan::Initialize() {
     if (inner_kernel_kind_ == InnerKernelKind::kInterleave) {
       inner_block_elems_ = 1;
       outer_block_elems_a_ = std::min<int64_t>(
-          large_loop_size, max_inner_block_elems * kMaxOuterBlockElems);
+          large_loop_size, max_inner_block_elems * max_outer_block_elems);
       outer_block_elems_b_ = 1;
     } else if (inner_kernel_kind_ == InnerKernelKind::kDeinterleave) {
       inner_block_elems_ = 1;
       outer_block_elems_a_ = 1;
       outer_block_elems_b_ = std::min<int64_t>(
-          large_loop_size, max_inner_block_elems * kMaxOuterBlockElems);
+          large_loop_size, max_inner_block_elems * max_outer_block_elems);
     } else {
       inner_block_elems_ = max_inner_block_elems;
       while (inner_block_elems_ > std::min(a_stride1_size, b_stride1_size)) {
@@ -1564,11 +1564,11 @@ absl::Status TransposePlan::Initialize() {
         inner_block_elems_ = 1;
       }
       outer_block_elems_a_ = FloorOfRatio<int64_t>(
-          std::min<int64_t>(kMaxOuterBlockElems, a_stride1_size),
+          std::min<int64_t>(max_outer_block_elems, a_stride1_size),
           inner_block_elems_);
       outer_block_elems_a_ = std::max<int64_t>(outer_block_elems_a_, 1);
       outer_block_elems_b_ = FloorOfRatio<int64_t>(
-          std::min<int64_t>(kMaxOuterBlockElems, b_stride1_size),
+          std::min<int64_t>(max_outer_block_elems, b_stride1_size),
           inner_block_elems_);
       outer_block_elems_b_ = std::max<int64_t>(outer_block_elems_b_, 1);
     }

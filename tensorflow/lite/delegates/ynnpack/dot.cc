@@ -21,7 +21,6 @@ limitations under the License.
 #include <cstdio>
 #include <cstring>
 #include <numeric>
-#include <utility>
 #include <vector>
 
 #include "ynnpack/composites/composites.h"  // from @XNNPACK

@@ -72,7 +72,7 @@ class PaddingFIFOQueue : public FIFOQueue {
   std::vector<PartialTensorShape> partial_shapes_;
 
  private:
-  ~PaddingFIFOQueue() override {}
+  ~PaddingFIFOQueue() override = default;
 
   static absl::Status GetElementComponent(const PaddingFIFOQueue::Tuple& tuple,
                                           int component, OpKernelContext* ctx,

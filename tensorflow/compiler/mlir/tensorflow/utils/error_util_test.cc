@@ -73,13 +73,6 @@ TEST_F(StatusScopedDiagnosticHandlerTest,
   EXPECT_THAT(s.message(), HasSubstr("Second diagnostic message reported"));
 }
 
-TEST_F(StatusScopedDiagnosticHandlerTest, VerifyThatWarningsAreIgnored) {
-  // Note: this logic is actually implemented in BaseScopedDiagnosticHandler's
-  // handler() function, but only StatusScopedDiagnosticHandler uses it.
-  StatusScopedDiagnosticHandler handler(&context_);
-  emitWarning(loc_) << "Warning message";
-  TF_EXPECT_OK(handler.ConsumeStatus());
-}
 
 TEST(ErrorUtilTest, StatusScopedDiagnosticHandlerWithFilter) {
   // Filtering logic is based on tensorflow::IsInternalFrameForFilename()

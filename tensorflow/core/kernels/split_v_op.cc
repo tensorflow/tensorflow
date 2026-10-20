@@ -450,10 +450,10 @@ class SplitVOpGPU : public SplitVOpBase<GPUDevice, T, Tlen> {
       GpuDeviceArrayOnHost<T*> ptrs(context, num_split);
       OP_REQUIRES_OK(context, ptrs.Init());
 
-      GpuDeviceArrayOnHost<Tlen> offsets(context, num_split + 1);
+      GpuDeviceArrayOnHost<int32_t> offsets(context, num_split + 1);
       OP_REQUIRES_OK(context, offsets.Init());
 
-      Tlen offset = 0;
+      int32_t offset = 0;
       int entry = split_sizes_vec[0];
       bool fixed_size =
           std::all_of(split_sizes_vec.begin(), split_sizes_vec.end(),
@@ -474,7 +474,7 @@ class SplitVOpGPU : public SplitVOpBase<GPUDevice, T, Tlen> {
       OP_REQUIRES_OK(context, offsets.Finalize());
 
       if (input.NumElements() > 0) {
-        SplitVOpGPULaunch<T, Tlen>().Run(
+        SplitVOpGPULaunch<T, int32_t>().Run(
             context->eigen_device<GPUDevice>(), fixed_size,
             input.flat<T>().data(), prefix_dim_size,
             input.NumElements() / prefix_dim_size, offsets.data(), ptrs.data());

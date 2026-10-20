@@ -16,64 +16,7 @@ limitations under the License.
 #ifndef XLA_PJRT_PLUGIN_XLA_GPU_XLA_GPU_ALLOCATOR_CONFIG_H_
 #define XLA_PJRT_PLUGIN_XLA_GPU_XLA_GPU_ALLOCATOR_CONFIG_H_
 
-#include <cstddef>
-#include <cstdint>
-#include <optional>
-#include <vector>
-
-#include "xla/tsl/framework/allocator.h"
-
-namespace xla {
-
-struct GpuAllocatorConfig {
-  enum class Kind {
-    kDefault,   // Client picks the best option for the platform.
-    kPlatform,  // Synchronous passthrough allocator that calls the
-                // StreamExecutor Allocate/Deallocate APIs directly via a
-                // MultiDeviceAdapter wrapping StreamExecutorAllocator
-                // instances, with no BFC caching or pooled growth.
-    kBFC,  // Allocator using a "Best-Fit with Coalescing" algorithm. Currently
-           // only available for GPU.
-    kCudaAsync,  // Use the CUDA async allocator.
-    kVmm,  // Use Virtual Memory Management (VMM) allocator. This allocator
-           // uses CUDA VMM APIs to manage virtual address space separately from
-           // physical memory, enabling features like memory oversubscription
-           // and fine-grained memory mapping control.
-  };
-  Kind kind = Kind::kDefault;
-
-  // Only used if kind == kBFC. The maximum fraction of available memory to
-  // allocate. This is the default value of XLA_CLIENT_MEM_FRACTION.
-  //
-  // If `gpu_system_memory_size` is set, it determines memory allocation.
-  // `memory_fraction` won't be used in this case.
-  double memory_fraction = 0.75;
-
-  // Only used if kind == kBFC. The absolute size of reserved memory space for
-  // GPU system in bytes.
-  //
-  // If null, the default value `memory_fraction` will be used.
-  std::optional<int64_t> gpu_system_memory_size = std::nullopt;
-
-  // Only used if kind == kBFC. If true, the allocator will immediately allocate
-  // the maximum amount allowed by `memory_fraction`. This reduces
-  // fragmentation, allowing more of the total memory to be used. If false, the
-  // allocator will allocate more memory as allocations are requested.
-  bool preallocate = true;
-
-  // Amount of collective memory (ncclMemAlloc) to preallocate. If this value is
-  // 0, collective memory space will be grown as needed to fit the application's
-  // usage, with the drawback of potentially higher fragmentation. If set,
-  // should be set to a multiple of 512MB to avoid wasting memory due to
-  // granularity requirements.
-  size_t collective_memory_size = 0;
-
-  // Callbacks that get called when the underlying suballocator allocates or
-  // deallocates memory. See `SubAllocator::Visitor` for more details.
-  std::vector<tsl::SubAllocator::Visitor> sub_allocator_alloc_visitors;
-  std::vector<tsl::SubAllocator::Visitor> sub_allocator_free_visitors;
-};
-
-}  // namespace xla
+// Compatibility header. New users should include allocator_config.h directly.
+#include "xla/pjrt/gpu/allocator_config.h"  // IWYU pragma: export
 
 #endif  // XLA_PJRT_PLUGIN_XLA_GPU_XLA_GPU_ALLOCATOR_CONFIG_H_

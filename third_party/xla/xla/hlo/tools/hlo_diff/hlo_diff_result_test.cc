@@ -505,6 +505,55 @@ ENTRY entry {
             1);
 }
 
+TEST_F(HloDiffTest, MovedInstructionsToAndFromProtoWork) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_l,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule module
+
+ENTRY entry {
+  x = f32[] parameter(0)
+  sine = f32[] sine(x)
+  cosine = f32[] cosine(x)
+  ROOT subtract = f32[] subtract(sine, cosine)
+}
+)"));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_r,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule module
+
+ENTRY entry {
+  x = f32[] parameter(0)
+  sine = f32[] sine(x)
+  cosine = f32[] cosine(x)
+  ROOT subtract = f32[] subtract(cosine, sine)
+}
+)"));
+  HloComputation* left = module_l->entry_computation();
+  HloComputation* right = module_r->entry_computation();
+  DiffResult diff_result;
+  diff_result.AddMovedInstruction(left->GetInstructionWithName("sine"),
+                                  right->GetInstructionWithName("sine"));
+
+  EXPECT_EQ(
+      diff_result.left_diff_codes.at(left->GetInstructionWithName("sine")),
+      DiffType::kMoved);
+  EXPECT_EQ(
+      diff_result.right_diff_codes.at(right->GetInstructionWithName("sine")),
+      DiffType::kMoved);
+
+  DiffResultProto proto = diff_result.ToProto();
+  ASSERT_EQ(proto.moved_instructions_size(), 1);
+  EXPECT_EQ(proto.moved_instructions(0).left(), "sine");
+  EXPECT_EQ(proto.moved_instructions(0).right(), "sine");
+
+  DiffResult diff_result_from_proto =
+      DiffResult::FromProto(proto, *module_l, *module_r);
+  EXPECT_THAT(diff_result_from_proto.moved_instructions,
+              UnorderedElementsAre(
+                  Pair(Pointee(Property(&HloInstruction::name, "sine")),
+                       Pointee(Property(&HloInstruction::name, "sine")))));
+}
+
 TEST_F(HloDiffTest, DebugInfoIsAttached) {
   // Create left module with entry computation containing the following
   // structure:

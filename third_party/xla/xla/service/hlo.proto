@@ -829,6 +829,17 @@ message MemoryUsageReportProto {
 message BufferAssignmentProto {
   // Alias represents a source LogicalBuffer, and the buffer location that
   // aliases it.
+  //
+  // Aliases are emitted once per HloBuffer (the set of LogicalBuffers that
+  // must share an allocation). Within each HloBuffer, the first allocated
+  // LogicalBuffer acts as the canonical `source_buffer_id`, and one
+  // BufferAlias is emitted for the location of every *other* LogicalBuffer in
+  // that HloBuffer. The aliasing relation is symmetric and transitive, so an
+  // HloBuffer with K LogicalBuffers is encoded with K - 1 entries (rather than
+  // all K * (K - 1) ordered pairs). Consumers that need the full alias set for
+  // a LogicalBuffer should treat `source_buffer_id` and `location` as members
+  // of the same equivalence class rather than assuming every LogicalBuffer
+  // appears as a `source_buffer_id`.
   message BufferAlias {
     int64 source_buffer_id = 1;
     LogicalBufferProto.Location location = 2;

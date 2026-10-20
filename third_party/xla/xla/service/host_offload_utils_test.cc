@@ -565,6 +565,79 @@ TEST_F(HostOffloadUtilsTest, SortTupleSuccessorsAndPredecessorsTest) {
   EXPECT_EQ(pred_sort1, expected_pred_sort1);
 }
 
+TEST_F(HostOffloadUtilsTest,
+       CustomCallTupleAliasingSuccessorsAndPredecessorsTest) {
+  absl::string_view hlo_string = R"hlo(
+    HloModule my_module
+    ENTRY main {
+      dev_param = s32[1,128] parameter(0)
+      host_param = s32[4,1,128] parameter(1)
+      cc = (s32[1,128], s32[4,1,128]) custom-call(dev_param, host_param),
+          custom_call_target="tpu_custom_call",
+          output_to_operand_aliasing={{0}: (0, {}), {1}: (1, {})}
+      gte0 = s32[1,128] get-tuple-element(cc), index=0
+      ROOT gte1 = s32[4,1,128] get-tuple-element(cc), index=1
+    }
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
+  HloInstruction* host_param = FindInstruction(module.get(), "host_param");
+  ASSERT_NE(host_param, nullptr);
+  HloInstruction* cc = FindInstruction(module.get(), "cc");
+  ASSERT_NE(cc, nullptr);
+  HloInstruction* gte1 = FindInstruction(module.get(), "gte1");
+  ASSERT_NE(gte1, nullptr);
+
+  // Successor of host_param (operand 1) is {cc, {1}}, not {cc, {}}.
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<InstructionAndShapeIndex> succ_host,
+      GetSuccessors(InstructionAndShapeIndex(host_param, {}), *call_graph));
+  EXPECT_THAT(succ_host, ElementsAre(InstructionAndShapeIndex(cc, {1})));
+
+  // Successor of {cc, {1}} is gte1 with shape_index {}, not gte0.
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<InstructionAndShapeIndex> succ_cc1,
+      GetSuccessors(InstructionAndShapeIndex(cc, {1}), *call_graph));
+  EXPECT_THAT(succ_cc1, ElementsAre(InstructionAndShapeIndex(gte1, {})));
+
+  // Predecessor of {cc, {1}} is {host_param, {}}.
+  std::vector<InstructionAndShapeIndex> pred_cc1 =
+      GetPredecessors(InstructionAndShapeIndex(cc, {1}), *call_graph);
+  EXPECT_THAT(pred_cc1, ElementsAre(InstructionAndShapeIndex(host_param, {})));
+}
+
+TEST_F(HostOffloadUtilsTest,
+       CustomCallNonTupleAliasingSuccessorsAndPredecessorsTest) {
+  absl::string_view hlo_string = R"hlo(
+    HloModule my_module
+    ENTRY main {
+      host_param = s32[4,1,128] parameter(0)
+      ROOT cc = s32[4,1,128] custom-call(host_param),
+          custom_call_target="tpu_custom_call",
+          output_to_operand_aliasing={{}: (0, {})}
+    }
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
+  HloInstruction* host_param = FindInstruction(module.get(), "host_param");
+  ASSERT_NE(host_param, nullptr);
+  HloInstruction* cc = FindInstruction(module.get(), "cc");
+  ASSERT_NE(cc, nullptr);
+
+  // Successor of host_param (non-tuple aliased output) is {cc, {}}.
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<InstructionAndShapeIndex> succ_host,
+      GetSuccessors(InstructionAndShapeIndex(host_param, {}), *call_graph));
+  EXPECT_THAT(succ_host, ElementsAre(InstructionAndShapeIndex(cc, {})));
+
+  // Predecessor of {cc, {}} is {host_param, {}}.
+  std::vector<InstructionAndShapeIndex> pred_cc =
+      GetPredecessors(InstructionAndShapeIndex(cc, {}), *call_graph);
+  EXPECT_THAT(pred_cc, ElementsAre(InstructionAndShapeIndex(host_param, {})));
+}
+
 }  // namespace
 }  // namespace host_offload_utils
 }  // namespace xla

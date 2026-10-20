@@ -337,31 +337,6 @@ class MemoryUsageTracker {
   // EndInstruction memory for dead operand(s) is freed.
   absl::Status BeginInstruction(HloRematItem* item);
 
-  int64_t RematerializationCost(const std::vector<HloRematItem*>& items,
-                                int64_t memory_reduced,
-                                int64_t memory_limit_bytes) const {
-    // If none of the users of any 'item' have been placed in the
-    // sequence (as tracked by memory_tracker), then rematerialization of
-    // 'item' is a zero-cost move of 'item->instruction' in the sequence.
-    bool zero_cost_move = true;
-    for (auto* item : items) {
-      auto* instruction = item->instruction;
-      if (absl::c_any_of(
-              instruction->users(),
-              [this](const HloInstruction* inst) { return IsPlaced(inst); })) {
-        zero_cost_move = false;
-        break;
-      }
-    }
-    if (zero_cost_move) {
-      return 0;
-    }
-
-    CHECK_GT(memory_reduced, 0);
-    // Return the inverse of the benefit of rematerialization.
-    return memory_limit_bytes / memory_reduced;
-  }
-
   // Finishes the placement of the current instruction. This frees any dead
   // operands or dead result of the instruction. This must be called after
   // each call to BeginInstruction.
@@ -371,11 +346,6 @@ class MemoryUsageTracker {
   // if the given instruction is compact.
   int64_t MemoryReducedIfCompressed(const HloRematItem* item,
                                     const Shape& compact_shape) const;
-
-  // Returns the number of bytes that the current memory usage will be reduced
-  // by if the given sequence of instructions is rematerialized.
-  int64_t MemoryReducedIfRematerialized(
-      absl::Span<const HloRematItem* const> items) const;
 
   absl::Status AddCompressInstructions(HloRematItem* original_item,
                                        HloRematItem* compressed_item,
@@ -422,11 +392,6 @@ class MemoryUsageTracker {
   // memory.
   std::optional<int64_t> GetCostOfHostOffload(
       const HloRematItem* candidate_item, int64_t memory_limit_bytes) const;
-
-  // Calculates the cost of recomputing the candidate_item's output.
-  std::optional<int64_t> GetCostOfRecompute(
-      const std::vector<HloRematItem*>& candidate_items,
-      int64_t memory_limit_bytes) const;
 
   // Selects and returns the best candidate instructions for rematerialization.
   // A sequence of candidate instructions of length between min_block_size and
@@ -530,6 +495,22 @@ class MemoryUsageTracker {
   // Adjusts our tracked memory usage as a result of this new item coming into
   // scope.
   void CountAllocatedMemory(HloRematItem* item);
+
+  // Tracks incremental memory reduction, placed user dependencies, and operand
+  // live range extensions during candidate block evaluation in
+  // ExtendRecomputeBlock.
+  struct BlockRematState {
+    int64_t memory_reduced = 0;
+    bool zero_cost_move = true;
+    absl::InlinedVector<const HloRematItem*, 16> items;
+    absl::InlinedVector<BufferId, 16> extended_dead_buffers;
+  };
+
+  // Incrementally evaluates whether appending item to the candidate block is
+  // legal and updates state with net memory changes and required live range
+  // extensions. Returns false if the block cannot be extended with item.
+  bool ExtendRecomputeBlock(const HloRematItem* item,
+                            BlockRematState* state) const;
 
   // Adjusts our tracked memory usage as a result of this item going out of
   // scope.
@@ -852,62 +833,60 @@ int64_t MemoryUsageTracker::MemoryReducedIfCompressed(
   return memory_reduced;
 }
 
-int64_t MemoryUsageTracker::MemoryReducedIfRematerialized(
-    absl::Span<const HloRematItem* const> items) const {
+bool MemoryUsageTracker::ExtendRecomputeBlock(const HloRematItem* item,
+                                              BlockRematState* state) const {
   CHECK_NE(in_progress_item_, nullptr);
-  int64_t memory_reduced = 0;
-  absl::flat_hash_set<const HloRematItem*> remat_candidates;
-
-  for (const HloRematItem* item : items) {
-    if (!item->placed || item == in_progress_item_) {
-      LOG(WARNING) << "Unplaced item or in progress item being checked for "
-                      "rematerialization.";
-      return 0;
-    }
-
-    // Compute the amount of memory reduced (if any) by rematerializing
-    // 'item->instruction'. The HloValues defined by 'item->instruction'
-    // will no longer be live at this program point, so initially set
-    // memory_reduced to the size of its defined values.
-    for (BufferId buffer_id : item->buffers_defined) {
-      const Buffer& buffer = buffers_.at(buffer_id);
-      // Avoid rematerializing instructions with indirect uses as it is
-      // difficult to reason about liveness after rematerializing the
-      // instruction.
-      // Avoid rematerializing instructions with live out buffers.
-      // Avoid rematerializing buffers that are in nested tuples.
-      // TODO(mpurohit): Check why live_out buffers are an issue here.
-      if (buffer.has_indirect_uses || buffer.live_out ||
-          buffer.index.size() > 1) {
-        return 0;
-      }
-      if (IsInUse(buffer_id)) {
-        return 0;
-      }
-      if (IsCurrentlyLive(buffer_id)) {
-        memory_reduced += AllocatedSize(buffer_id);
-      }
-    }
-
-    // Account for any logical buffers whose live range must be extended across
-    // this program point.
-    for (BufferId buffer_id : item->buffers_used) {
-      if (!IsCurrentlyLive(buffer_id)) {
-        // This logical buffer is used by 'item->instruction' but is not live at
-        // this program point. Rematerializing 'item->instruction' will extend
-        // the buffer's live range across this program point unless it is
-        // defined by an instruction that is also being rematerialized.
-        HloRematItem* defining_instruction =
-            buffers_.at(buffer_id).defining_instruction;
-        if (!remat_candidates.contains(defining_instruction)) {
-          memory_reduced -= AllocatedSize(buffer_id);
-        }
-      }
-    }
-    remat_candidates.insert(item);
+  if (!item->placed || item == in_progress_item_) {
+    LOG(WARNING) << "Unplaced item or in progress item being checked for "
+                    "rematerialization.";
+    return false;
   }
 
-  return memory_reduced;
+  const HloInstruction* candidate = item->instruction;
+  if (absl::c_any_of(
+          candidate->control_successors(),
+          [this](const HloInstruction* inst) { return IsPlaced(inst); })) {
+    return false;
+  }
+
+  for (BufferId buffer_id : item->buffers_defined) {
+    const Buffer& buffer = buffers_.at(buffer_id);
+    // Avoid rematerializing instructions with indirect uses as it is
+    // difficult to reason about liveness after rematerializing the
+    // instruction.
+    // Avoid rematerializing instructions with live out buffers.
+    // Avoid rematerializing buffers that are in nested tuples.
+    // TODO(mpurohit): Check why live_out buffers are an issue here.
+    if (buffer.has_indirect_uses || buffer.live_out ||
+        buffer.index.size() > 1 || IsInUse(buffer_id)) {
+      return false;
+    }
+    if (IsCurrentlyLive(buffer_id)) {
+      state->memory_reduced += AllocatedSize(buffer_id);
+    }
+  }
+
+  for (BufferId buffer_id : item->buffers_used) {
+    if (!IsCurrentlyLive(buffer_id)) {
+      HloRematItem* defining_instruction =
+          buffers_.at(buffer_id).defining_instruction;
+      if (!absl::c_linear_search(state->items, defining_instruction) &&
+          !absl::c_linear_search(state->extended_dead_buffers, buffer_id)) {
+        state->extended_dead_buffers.push_back(buffer_id);
+        state->memory_reduced -= AllocatedSize(buffer_id);
+      }
+    }
+  }
+
+  if (state->zero_cost_move &&
+      absl::c_any_of(candidate->users(), [this](const HloInstruction* inst) {
+        return IsPlaced(inst);
+      })) {
+    state->zero_cost_move = false;
+  }
+
+  state->items.push_back(item);
+  return true;
 }
 
 std::tuple<UsesList, UsesList> MemoryUsageTracker::GetPlacedAndUnplacedUsers(
@@ -1655,35 +1634,6 @@ std::optional<int64_t> MemoryUsageTracker::GetCostOfHostOffload(
   return memory_limit_bytes / bytes_used_by_buffers;
 }
 
-std::optional<int64_t> MemoryUsageTracker::GetCostOfRecompute(
-    const std::vector<HloRematItem*>& candidate_items,
-    int64_t memory_limit_bytes) const {
-  // If any of the candidate's control successor has been placed, we need
-  // to skip this candidate. Otherwise we will violate control dependency.
-  for (auto* item : candidate_items) {
-    HloInstruction* candidate = item->instruction;
-    if (std::any_of(
-            candidate->control_successors().begin(),
-            candidate->control_successors().end(),
-            [this](const HloInstruction* inst) { return IsPlaced(inst); })) {
-      return {};
-    }
-  }
-
-  // Evaluate this block as a candidate for recompute rematerialization.
-  VLOG(5) << "Block contains:";
-  for (auto* hlo : candidate_items) {
-    VLOG(5) << hlo->instruction->name();
-  }
-  const int64_t memory_reduced = MemoryReducedIfRematerialized(candidate_items);
-  if (memory_reduced <= 0) {
-    return {};
-  }
-
-  return RematerializationCost(candidate_items, memory_reduced,
-                               memory_limit_bytes);
-}
-
 std::tuple<std::vector<HloRematItem*>, RematStrategy, int>
 MemoryUsageTracker::PickRematerializationCandidates(
     const HloRematInstructionList& instruction_list, int64_t memory_limit_bytes,
@@ -1777,25 +1727,47 @@ MemoryUsageTracker::PickRematerializationCandidates(
       continue;
     }
 
-    while (block.size() <= max_block_size) {
-      auto cost = GetCostOfRecompute(block, memory_limit_bytes);
+    BlockRematState block_state;
+    bool valid_initial_block = true;
+    for (const HloRematItem* item : block) {
+      if (!ExtendRecomputeBlock(item, &block_state)) {
+        valid_initial_block = false;
+        break;
+      }
+    }
+    if (!valid_initial_block) {
       ++effort;
-      if (cost && *cost < best_cost) {
-        VLOG(1) << "Found new best cost; from " << best_cost << " to " << *cost
-                << " with strategy kRecompute on block of size "
-                << block.size();
-        best_strategy.kind = RematStrategy::kRecompute;
-        best_items = block;
-        best_cost = *cost;
+      continue;
+    }
+
+    while (block.size() <= max_block_size) {
+      ++effort;
+      if (block_state.memory_reduced > 0) {
+        int64_t cost = block_state.zero_cost_move
+                           ? 0
+                           : memory_limit_bytes / block_state.memory_reduced;
+        if (cost < best_cost) {
+          VLOG(1) << "Found new best cost; from " << best_cost << " to " << cost
+                  << " with strategy kRecompute on block of size "
+                  << block.size();
+          best_strategy.kind = RematStrategy::kRecompute;
+          best_items = block;
+          best_cost = cost;
+        }
+      }
+
+      if (block.size() == max_block_size) {
+        break;
       }
 
       // Try to add the next instruction to this block to evaluate as a possibly
       // better candidate for rematerialization.
-      auto* last_item = block[block.size() - 1];
+      auto* last_item = block.back();
       auto* next_item = instruction_list.next(last_item);
       if (next_item == nullptr || next_item->denylisted || !next_item->placed ||
           next_item == in_progress_item_ ||
-          !CanBeRematerialized(next_item->instruction, rematerializable_map)) {
+          !CanBeRematerialized(next_item->instruction, rematerializable_map) ||
+          !ExtendRecomputeBlock(next_item, &block_state)) {
         break;
       }
       block.push_back(next_item);
@@ -3365,8 +3337,8 @@ absl::StatusOr<bool> HloRematerialization::RunImpl(
   changed |= dead_code_removed;
 
   // After DCE, the module sequence may include instructions which no longer
-  // exist. Update the schedule and restore it.
-  ABSL_RETURN_IF_ERROR(saved_schedule.Update(execution_threads));
+  // exist. Update the schedule across all execution threads and restore it.
+  ABSL_RETURN_IF_ERROR(saved_schedule.Update());
   ABSL_RETURN_IF_ERROR(module->set_schedule(std::move(saved_schedule)));
   VLOG(1) << "Rematerialized " << instructions_rematerialized_
           << " instructions in module " << module->name() << "; "

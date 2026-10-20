@@ -44,7 +44,7 @@ using test::graph::Constant;
 
 class QuantizedConcatTest : public OpsTestBase {
  protected:
-  QuantizedConcatTest() {}
+  QuantizedConcatTest() = default;
 
   void TestSmall8Bit(float first_min, float first_max, float second_min,
                      float second_max);

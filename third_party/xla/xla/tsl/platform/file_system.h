@@ -159,6 +159,12 @@ class FileSystem {
   virtual absl::Status GetMatchingPaths(const std::string& pattern,
                                         std::vector<std::string>* results) = 0;
 
+  virtual absl::Status GetMatchingPaths(const std::string& pattern,
+                                        std::vector<std::string>* results,
+                                        bool multithreaded) {
+    return GetMatchingPaths(pattern, results);
+  }
+
   /// \brief Checks if the given filename matches the pattern.
   ///
   /// This function provides the equivalent of posix fnmatch, however it is

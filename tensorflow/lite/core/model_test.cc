@@ -18,6 +18,7 @@ limitations under the License.
 #include <stdlib.h>
 #include <string.h>
 
+#include <limits>
 #include <map>
 #include <memory>
 #include <string>
@@ -509,6 +510,89 @@ TEST(BasicFlatBufferModel, TestInvalidBlockwiseQuantizationDetails) {
   TrivialResolver resolver;
   ASSERT_EQ(InterpreterBuilder(*fb_model, resolver)(&interpreter),
             kTfLiteError);
+}
+
+// A constant tensor whose Buffer lives outside the flatbuffer, addressed by an
+// (offset, size) pair chosen so that offset + size wraps around uint64 to a
+// small value. The model is loaded without the verifier on purpose, so the
+// bounds check in InterpreterBuilder::ParseTensors is what has to reject it.
+TEST(BasicFlatBufferModel, TestRejectsWrappingExternalBufferOffset) {
+  flatbuffers::FlatBufferBuilder builder;
+  const uint64_t offset = std::numeric_limits<uint64_t>::max() - 10;
+  const uint64_t size = 20;          // offset + size wraps to 9.
+  std::vector<int32_t> shape = {5};  // 5 x float32 == 20 bytes == size.
+  auto tensor =
+      ::tflite::CreateTensorDirect(builder, &shape, tflite::TensorType_FLOAT32,
+                                   /*buffer=*/1, "weights");
+  std::vector<flatbuffers::Offset<::tflite::Tensor>> tensors = {tensor};
+  auto subgraph = ::tflite::CreateSubGraphDirect(
+      builder, &tensors, /*inputs=*/nullptr, /*outputs=*/nullptr,
+      /*operators=*/nullptr, "subgraph");
+  std::vector<flatbuffers::Offset<::tflite::SubGraph>> subgraphs = {subgraph};
+  std::vector<flatbuffers::Offset<::tflite::Buffer>> buffers = {
+      ::tflite::CreateBuffer(builder),
+      ::tflite::CreateBuffer(builder, /*data=*/0, offset, size)};
+  auto model = ::tflite::CreateModelDirect(builder, TFLITE_SCHEMA_VERSION,
+                                           /*operator_codes=*/nullptr,
+                                           &subgraphs, "model", &buffers);
+  ::tflite::FinishModelBuffer(builder, model);
+  auto fb_model = FlatBufferModel::BuildFromBuffer(
+      reinterpret_cast<const char*>(builder.GetBufferPointer()),
+      builder.GetSize());
+  ASSERT_TRUE(fb_model);
+  std::unique_ptr<Interpreter> interpreter;
+  TrivialResolver resolver;
+  EXPECT_NE(InterpreterBuilder(*fb_model, resolver)(&interpreter), kTfLiteOk);
+}
+
+// The same wrapping pair on a custom op's large_custom_options, which is the
+// InterpreterBuilder::ParseNodes side of the check.
+TEST(BasicFlatBufferModel, TestRejectsWrappingLargeCustomOptionsOffset) {
+  flatbuffers::FlatBufferBuilder builder;
+  const uint64_t offset = std::numeric_limits<uint64_t>::max() - 10;
+  const uint64_t size = 20;  // offset + size wraps to 9.
+  std::vector<int32_t> shape = {1};
+  auto tensor =
+      ::tflite::CreateTensorDirect(builder, &shape, tflite::TensorType_FLOAT32,
+                                   /*buffer=*/0, "t");
+  std::vector<flatbuffers::Offset<::tflite::Tensor>> tensors = {tensor};
+  std::vector<int32_t> inputs = {0};
+  std::vector<int32_t> outputs = {0};
+  auto inputs_vector = builder.CreateVector(inputs);
+  auto outputs_vector = builder.CreateVector(outputs);
+  ::tflite::OperatorBuilder op(builder);
+  op.add_opcode_index(0);
+  op.add_inputs(inputs_vector);
+  op.add_outputs(outputs_vector);
+  op.add_large_custom_options_offset(offset);
+  op.add_large_custom_options_size(size);
+  std::vector<flatbuffers::Offset<::tflite::Operator>> operators = {
+      op.Finish()};
+  auto subgraph = ::tflite::CreateSubGraphDirect(
+      builder, &tensors, &inputs, &outputs, &operators, "subgraph");
+  std::vector<flatbuffers::Offset<::tflite::SubGraph>> subgraphs = {subgraph};
+  std::vector<flatbuffers::Offset<::tflite::OperatorCode>> operator_codes = {
+      ::tflite::CreateOperatorCodeDirect(
+          builder, /*deprecated_builtin_code=*/tflite::BuiltinOperator_CUSTOM,
+          "WRAP", /*version=*/1, tflite::BuiltinOperator_CUSTOM)};
+  std::vector<flatbuffers::Offset<::tflite::Buffer>> buffers = {
+      ::tflite::CreateBuffer(builder)};
+  auto model = ::tflite::CreateModelDirect(builder, TFLITE_SCHEMA_VERSION,
+                                           &operator_codes, &subgraphs, "model",
+                                           &buffers);
+  ::tflite::FinishModelBuffer(builder, model);
+  auto fb_model = FlatBufferModel::BuildFromBuffer(
+      reinterpret_cast<const char*>(builder.GetBufferPointer()),
+      builder.GetSize());
+  ASSERT_TRUE(fb_model);
+  std::unique_ptr<Interpreter> interpreter;
+  // ParseNodes keys off registration->builtin_code, so the resolved
+  // registration itself must be marked CUSTOM.
+  TfLiteRegistration custom_reg = dummy_reg;
+  custom_reg.builtin_code = tflite::BuiltinOperator_CUSTOM;
+  custom_reg.custom_name = "WRAP";
+  TrivialResolver resolver(&custom_reg);
+  EXPECT_NE(InterpreterBuilder(*fb_model, resolver)(&interpreter), kTfLiteOk);
 }
 
 TEST(BasicFlatBufferModel, TestWithNumThreads) {

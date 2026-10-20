@@ -1713,7 +1713,7 @@ absl::Status CuptiTracer::DisableActivityTracing() {
       // bug (https://partners.nvidia.com/Bug/ViewBug/5350647). Re-enable after
       // the fix. CUDA 13.0 has the fix, so no longer skip.
       if (activity == CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL &&
-          cuda_versions::GetSafeCudaVersion() < 13000) {
+          !CanDisableConcurrentKernelActivity()) {
         VLOG(1) << "Skip disabling activity tracing for: " << activity
                 << " due to deadlock";
         continue;
@@ -2034,6 +2034,10 @@ absl::Status CuptiTracer::ProcessActivityBuffer(CUcontext context,
         "Insufficient privilege to run libcupti (you need root permission).");
   }
   return "";
+}
+
+/*static*/ bool CuptiTracer::CanDisableConcurrentKernelActivity() {
+  return cuda_versions::GetSafeCudaVersion() >= 13000;
 }
 
 /*static*/ absl::Status CuptiTracer::EnableHES() {

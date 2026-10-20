@@ -63,7 +63,7 @@ class TilingSpace {
   TilingSpace(const TilingSpace&) = delete;
   TilingSpace& operator=(const TilingSpace&) = delete;
 
-  enum class DimensionSemantics { kParallel, kSequential };
+  enum class DimensionSemantics { kParallel, kSequential, kReplica };
   struct DimensionInfo {
     // Unique ID for the dimension within the tiling space.
     TiledDimId id;
@@ -90,6 +90,13 @@ class TilingSpace {
 
     // Tile size for the dimension.
     std::optional<int64_t> tile_size;
+
+    // If this dimension is partitioned across peers (e.g. the scatter
+    // dimension of a reduce-scatter), the ID of the associated `kReplica`
+    // dimension. When set, the root tile offset along this dimension is split
+    // into an intra-shard tile index (`id`, with `dimension_size / (tile_size
+    // * R)` tiles) and a peer index (`*replica_dim`, with `R` values).
+    std::optional<TiledDimId> replica_dim;
 
     std::string ToString() const;
   };
@@ -160,6 +167,11 @@ class TilingSpace {
   const DimensionInfo& GetDimensionInfo(const HloInstruction& hlo,
                                         int64_t dim_position) const;
 
+  // Returns the number of tiles along `dim` after tile sizes have been
+  // assigned. For a dimension associated with a `replica_dim`, this is the
+  // number of intra-peer tiles (`CeilOfRatio(dimension_size, tile_size * R)`).
+  int64_t GetNumTiles(const DimensionInfo& dim) const;
+
   // Assigns tile sizes to the dimensions and checks if the constraints derived
   // from the operations are satisfied. That does NOT include backend-specific
   // constraints.
@@ -189,6 +201,7 @@ class TilingSpace {
 
   int64_t num_dimensions() const { return dimensions_.size(); }
   int64_t num_parallel_dimensions() const;
+  int64_t num_sequential_dimensions() const;
   int64_t num_rt_vars() const { return rt_vars_.size(); }
 
   void AppendDimension(const HloInstruction* hlo, int64_t dim_position,
@@ -231,8 +244,12 @@ class TilingSpace {
       const llvm::SmallVector<SymbolicExpr>& expressions,
       llvm::ArrayRef<std::pair<SymbolicExpr, Interval>> constraints = {}) const;
 
-  // Returns the list of valid tilings for the tiling space.
-  absl::StatusOr<std::vector<llvm::SmallVector<int64_t, 4>>> GetValidTilings();
+  // Returns the list of valid tilings for the tiling space. If
+  // `tile_reduction_dimensions` is set, tile sizes for the sequential
+  // dimensions of reduces are enumerated too; otherwise each of them is covered
+  // by a single tile of the dimension size.
+  absl::StatusOr<std::vector<llvm::SmallVector<int64_t, 4>>> GetValidTilings(
+      bool tile_reduction_dimensions = false);
 
  private:
   absl::Status InitializeDimensions(
@@ -242,6 +259,7 @@ class TilingSpace {
 
   void ProcessDotLike(const HloInstruction& hlo);
   void ProcessReduce(const HloInstruction& hlo);
+  void ProcessReduceScatter(const HloInstruction& hlo);
   void ProcessScan(const HloInstruction& hlo);
   void ProcessDynamicSlice(const HloInstruction& hlo);
   void ProcessGetTupleElement(const HloInstruction& hlo);
@@ -256,8 +274,9 @@ class TilingSpace {
   void InitSimplificationIndexing();
 
   // Returns the default symbolic tile, in this space's context, for the root
-  // dimension `id` of size `dim_size`.
-  DimTile GetDefaultRootDimTile(TiledDimId id, int64_t dim_size) const;
+  // dimension `dim_info` of size `dim_size`.
+  DimTile GetDefaultRootDimTile(const DimensionInfo& dim_info,
+                                int64_t dim_size) const;
 
   // Maps from (hlo, dim_position) to the dimension info.
   absl::flat_hash_map<std::pair<const HloInstruction*, int64_t>,
@@ -303,12 +322,19 @@ const Shape& GetFirstShape(const HloInstruction* instr, int64_t index = 0);
 // Returns true if `hlo` is a tuple-producing instruction whose output `k`
 // depends only on operand `k`, with the same tile mapping for every `k`.
 //
-// Currently only multi-operand all-gather qualifies.
+// Currently multi-operand all-gather and reduce-scatter qualify.
 bool IsIndexWiseVariadic(const HloInstruction& hlo);
+
+// Returns the position of the first dimension of result `result_index` in the
+// ordered list of dimensions of `hlo`. For an index-wise variadic instruction
+// the dimensions of all results are laid out back to back: result k starts at
+// the sum of the ranks of results 0..k-1.
+int64_t GetResultDimensionOffset(const HloInstruction& hlo,
+                                 int64_t result_index);
 
 // Returns a symbol replacement map to set concrete tile sizes.
 llvm::DenseMap<SymbolicExpr, SymbolicExpr> GetTileSizeReplacementMap(
-    const TilingSpace& tiling_space, absl::Span<const int64_t> tile_sizes);
+    const TilingSpace& tiling_space);
 
 }  // namespace xla::gpu::experimental
 

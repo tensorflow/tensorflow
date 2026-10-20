@@ -93,8 +93,8 @@ std::string EmitModuleToSPIRV(llvm::Module* module,
   // TODO(intel-tf): Revisit this once the SPIR-V backend is fixed to support
   // O2.
   target_machine->setOptLevel(llvm::CodeGenOptLevel::None);
-  target_machine->getObjFileLowering()->Initialize(mmiwp->getMMI().getContext(),
-                                                   *target_machine);
+  target_machine->getObjFileLowering()->initialize(mmiwp->getMMI().getContext(),
+                                                   *target_machine, *module);
   target_machine->addPassesToEmitFile(pm, buffered_stream, nullptr,
                                       llvm::CodeGenFileType::ObjectFile);
 

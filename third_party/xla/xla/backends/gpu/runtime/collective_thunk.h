@@ -130,7 +130,6 @@ class CollectiveThunk : public Command {
   bool requires_warmup() const override { return true; }
 
   absl::Status Prepare(const PrepareParams& params) override;
-  absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
   absl::StatusOr<const se::CommandBuffer::Command*> Record(
       const ExecuteParams& execute_params, const RecordParams& record_params,
@@ -168,15 +167,6 @@ class CollectiveThunk : public Command {
   // for one-sided or device-initiated collectives.
   virtual absl::Status PrepareCollective(const PrepareParams& params,
                                          const GpuCliqueKey& clique_key) {
-    return absl::OkStatus();
-  }
-
-  // Initializes collective operation for execution.
-  //
-  // At this stage it is possible to resolve buffer slices from a buffer
-  // assignment, but the content of all buffers is undefined.
-  virtual absl::Status InitializeCollective(const InitializeParams& params,
-                                            const GpuCliqueKey& clique_key) {
     return absl::OkStatus();
   }
 

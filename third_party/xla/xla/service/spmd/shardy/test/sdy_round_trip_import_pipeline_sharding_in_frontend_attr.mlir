@@ -16,7 +16,7 @@
 
 // CHECK-LABEL: module @multiple_func_result_shardings
 module @multiple_func_result_shardings attributes {mhlo.frontend_attributes = {xla.sdy.meshes =
-    "{mesh = #sdy.mesh<[\"a\"=8, \"b\"=8, \"c\"=8]>, mesh2 = #sdy.mesh<[\"a\"=1, \"b\"=4, \"c\"=1]>, maximal_mesh = #sdy.mesh<[], device_ids=[0]>}"}} {
+    "{mesh = #sdy.mesh<[\"a\"=8, \"b\"=8, \"c\"=8]>, mesh2 = #sdy.mesh<[\"a\"=1, \"b\"=4, \"c\"=1]>, single_device = #sdy.mesh<[], device_ids=[0]>}"}} {
   // CHECK: sdy.mesh @mesh = <["a"=8, "b"=8, "c"=8]>
   // CHECK: sdy.mesh @mesh2 = <["a"=1, "b"=4, "c"=1]>
 
@@ -66,28 +66,45 @@ module @multiple_func_result_shardings attributes {mhlo.frontend_attributes = {x
     return %4 : tensor<16xi64>
   }
 
-  // CHECK-LABEL: func @func_result_sharding_used_by_x64_combine_tuple(%arg0: tensor<16xi64>)
-  // CHECK-SAME:    -> (tensor<16xi64> {sdy.sharding = #sdy.sharding<@mesh, [{"a"}]>}) {
+  // CHECK-LABEL: func @func_result_sharding_used_by_x64_combine_tuple(
+  // CHECK-SAME:    %arg0: tensor<16xi64>, %arg1: tensor<16xi64>)
+  // CHECK-SAME:    -> (tensor<16xi64> {sdy.sharding = #sdy.sharding<@mesh, [{"a"}]>},
+  // CHECK-SAME:        tensor<16xi64> {sdy.sharding = #sdy.sharding<@mesh, [{"b"}]>}) {
   func.func @func_result_sharding_used_by_x64_combine_tuple(
-    %arg0: tensor<16xi64>) -> tensor<16xi64> {
-    // CHECK-NEXT: %[[SPLIT_LOW:.*]] = stablehlo.custom_call @X64SplitLow(%arg0) : (tensor<16xi64>) -> tensor<16xui32>
-    // CHECK-NEXT: %[[SPLIT_HIGH:.*]] = stablehlo.custom_call @X64SplitHigh(%arg0) : (tensor<16xi64>) -> tensor<16xui32>
-    // CHECK-NEXT: %[[COMBINE:.*]] = stablehlo.custom_call @X64Combine(%[[SPLIT_LOW]], %[[SPLIT_HIGH]])
+    %arg0: tensor<16xi64>, %arg1: tensor<16xi64>) -> (tensor<16xi64>, tensor<16xi64>) {
+    // CHECK-NEXT: %[[SPLIT_LOW_0:.*]] = stablehlo.custom_call @X64SplitLow(%arg0) : (tensor<16xi64>) -> tensor<16xui32>
+    // CHECK-NEXT: %[[SPLIT_HIGH_0:.*]] = stablehlo.custom_call @X64SplitHigh(%arg0) : (tensor<16xi64>) -> tensor<16xui32>
+    // CHECK-NEXT: %[[SPLIT_LOW_1:.*]] = stablehlo.custom_call @X64SplitLow(%arg1) : (tensor<16xi64>) -> tensor<16xui32>
+    // CHECK-NEXT: %[[SPLIT_HIGH_1:.*]] = stablehlo.custom_call @X64SplitHigh(%arg1) : (tensor<16xi64>) -> tensor<16xui32>
+    // CHECK-NEXT: %[[COMBINE_0:.*]] = stablehlo.custom_call @X64Combine(%[[SPLIT_LOW_0]], %[[SPLIT_HIGH_0]])
     // CHECK-SAME:   {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"a"}]>]>} : (tensor<16xui32>, tensor<16xui32>) -> tensor<16xi64>
-    // CHECK-NEXT: return %[[COMBINE]]
+    // CHECK-NEXT: %[[COMBINE_1:.*]] = stablehlo.custom_call @X64Combine(%[[SPLIT_LOW_1]], %[[SPLIT_HIGH_1]])
+    // CHECK-SAME:   {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"b"}]>]>} : (tensor<16xui32>, tensor<16xui32>) -> tensor<16xi64>
+    // CHECK-NEXT: return %[[COMBINE_0]], %[[COMBINE_1]]
     %0 = stablehlo.custom_call @X64SplitLow(%arg0) : (tensor<16xi64>) -> tensor<16xui32>
     %1 = stablehlo.custom_call @X64SplitHigh(%arg0) : (tensor<16xi64>) -> tensor<16xui32>
-    %2 = stablehlo.custom_call @xla.sdy.FuncResultSharding(%0)
+    %2 = stablehlo.custom_call @X64SplitLow(%arg1) : (tensor<16xi64>) -> tensor<16xui32>
+    %3 = stablehlo.custom_call @X64SplitHigh(%arg1) : (tensor<16xi64>) -> tensor<16xui32>
+    %4 = stablehlo.custom_call @xla.sdy.FuncResultSharding(%0)
         {has_side_effect = true, mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding_per_value<[<@mesh, [{\"a\"}]>]>"}} :
         (tensor<16xui32>) -> tensor<16xui32>
-    %3 = stablehlo.custom_call @xla.sdy.FuncResultSharding(%1)
+    %5 = stablehlo.custom_call @xla.sdy.FuncResultSharding(%1)
         {has_side_effect = true, mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding_per_value<[<@mesh, [{\"a\"}]>]>"}} :
         (tensor<16xui32>) -> tensor<16xui32>
-    %4 = stablehlo.tuple %2, %3 : tuple<tensor<16xui32>, tensor<16xui32>>
-    %5 = stablehlo.get_tuple_element %4[0] : (tuple<tensor<16xui32>, tensor<16xui32>>) -> tensor<16xui32>
-    %6 = stablehlo.get_tuple_element %4[1] : (tuple<tensor<16xui32>, tensor<16xui32>>) -> tensor<16xui32>
-    %7 = stablehlo.custom_call @X64Combine(%5, %6) : (tensor<16xui32>, tensor<16xui32>) -> tensor<16xi64>
-    return %7 : tensor<16xi64>
+    %6 = stablehlo.custom_call @xla.sdy.FuncResultSharding(%2)
+        {has_side_effect = true, mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding_per_value<[<@mesh, [{\"b\"}]>]>"}} :
+        (tensor<16xui32>) -> tensor<16xui32>
+    %7 = stablehlo.custom_call @xla.sdy.FuncResultSharding(%3)
+        {has_side_effect = true, mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding_per_value<[<@mesh, [{\"b\"}]>]>"}} :
+        (tensor<16xui32>) -> tensor<16xui32>
+    %8 = stablehlo.tuple %4, %5, %6, %7 : tuple<tensor<16xui32>, tensor<16xui32>, tensor<16xui32>, tensor<16xui32>>
+    %9 = stablehlo.get_tuple_element %8[0] : (tuple<tensor<16xui32>, tensor<16xui32>, tensor<16xui32>, tensor<16xui32>>) -> tensor<16xui32>
+    %10 = stablehlo.get_tuple_element %8[1] : (tuple<tensor<16xui32>, tensor<16xui32>, tensor<16xui32>, tensor<16xui32>>) -> tensor<16xui32>
+    %11 = stablehlo.custom_call @X64Combine(%9, %10) : (tensor<16xui32>, tensor<16xui32>) -> tensor<16xi64>
+    %12 = stablehlo.get_tuple_element %8[2] : (tuple<tensor<16xui32>, tensor<16xui32>, tensor<16xui32>, tensor<16xui32>>) -> tensor<16xui32>
+    %13 = stablehlo.get_tuple_element %8[3] : (tuple<tensor<16xui32>, tensor<16xui32>, tensor<16xui32>, tensor<16xui32>>) -> tensor<16xui32>
+    %14 = stablehlo.custom_call @X64Combine(%12, %13) : (tensor<16xui32>, tensor<16xui32>) -> tensor<16xi64>
+    return %11, %14 : tensor<16xi64>, tensor<16xi64>
   }
 
   // This might happen due to inlined funcs that originally had result shardings
@@ -259,19 +276,19 @@ module @multiple_func_result_shardings attributes {mhlo.frontend_attributes = {x
     %arg0: tensor<16x8xf32> {mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding<@mesh2, [{\"b\"}, {?}]>"}},
     %arg1: tensor<16x8xf32> {mhlo.frontend_attributes = {baz = 1 : i32, foo = "bar"}},
     %arg2: !stablehlo.token) -> tensor<16x8xf32> {
-    // CHECK-NEXT: %[[SEND:.*]] = "stablehlo.send"(%arg0, %arg2) <{channel_handle = #stablehlo.channel_handle<handle = 1, type = 2>, is_host_transfer = true}> {mhlo.frontend_attributes = {baz = 1 : i32}, sdy.sharding = #sdy.sharding_per_value<[<@maximal_mesh, []>]>} : (tensor<16x8xf32>, !stablehlo.token) -> !stablehlo.token
-    // CHECK-NEXT: %[[RECV:.*]]:2 = "stablehlo.recv"(%[[SEND]]) <{channel_handle = #stablehlo.channel_handle<handle = 1, type = 3>, is_host_transfer = true}> {mhlo.frontend_attributes = {baz = 1 : i32}, sdy.sharding = #sdy.sharding_per_value<[<@maximal_mesh, []>, <@maximal_mesh, []>]>} : (!stablehlo.token) -> (tensor<16x8xf32>, !stablehlo.token)
+    // CHECK-NEXT: %[[SEND:.*]] = "stablehlo.send"(%arg0, %arg2) <{channel_handle = #stablehlo.channel_handle<handle = 1, type = 2>, is_host_transfer = true}> {mhlo.frontend_attributes = {baz = 1 : i32}, sdy.sharding = #sdy.sharding_per_value<[<@single_device, []>]>} : (tensor<16x8xf32>, !stablehlo.token) -> !stablehlo.token
+    // CHECK-NEXT: %[[RECV:.*]]:2 = "stablehlo.recv"(%[[SEND]]) <{channel_handle = #stablehlo.channel_handle<handle = 1, type = 3>, is_host_transfer = true}> {mhlo.frontend_attributes = {baz = 1 : i32}, sdy.sharding = #sdy.sharding_per_value<[<@single_device, []>, <@single_device, []>]>} : (!stablehlo.token) -> (tensor<16x8xf32>, !stablehlo.token)
     // CHECK-NEXT: %[[ADD:.*]] = stablehlo.add %[[RECV]]#0, %arg1 : tensor<16x8xf32>
     // CHECK-NEXT: return %[[ADD]] : tensor<16x8xf32>
     %0 = "stablehlo.send"(%arg0, %arg2) {
       channel_handle = #stablehlo.channel_handle<handle = 1, type = 2>,
       is_host_transfer = true,
-      mhlo.frontend_attributes = {baz = 1 : i32, xla.sdy.sharding = "#sdy.sharding_per_value<[<@maximal_mesh, []>]>"}
+      mhlo.frontend_attributes = {baz = 1 : i32, xla.sdy.sharding = "#sdy.sharding_per_value<[<@single_device, []>]>"}
     } : (tensor<16x8xf32>, !stablehlo.token) -> !stablehlo.token
     %1:2 = "stablehlo.recv"(%0) {
       channel_handle = #stablehlo.channel_handle<handle = 1, type = 3>,
       is_host_transfer = true,
-      mhlo.frontend_attributes = {baz = 1 : i32, xla.sdy.sharding = "#sdy.sharding_per_value<[<@maximal_mesh, []>, <@maximal_mesh, []>]>"}
+      mhlo.frontend_attributes = {baz = 1 : i32, xla.sdy.sharding = "#sdy.sharding_per_value<[<@single_device, []>, <@single_device, []>]>"}
     } : (!stablehlo.token) -> (tensor<16x8xf32>, !stablehlo.token)
     %2 = stablehlo.add %1#0, %arg1 : tensor<16x8xf32>
     return %2 : tensor<16x8xf32>
@@ -280,18 +297,18 @@ module @multiple_func_result_shardings attributes {mhlo.frontend_attributes = {x
 
 // -----
 
-module @maximal_sharding_module attributes {mhlo.frontend_attributes = {xla.sdy.meshes = "{maximal_mesh_0 = #sdy.mesh<[], device_ids=[0]>}"}} {
-  // CHECK-LABEL: @maximal_sharding_empty_tuple
-  func.func @maximal_sharding_empty_tuple(%arg0: tensor<2xi64>) -> tensor<2xi64> {
+module @single_device_sharding_module attributes {mhlo.frontend_attributes = {xla.sdy.meshes = "{single_device_0 = #sdy.mesh<[], device_ids=[0]>}"}} {
+  // CHECK-LABEL: @single_device_sharding_empty_tuple
+  func.func @single_device_sharding_empty_tuple(%arg0: tensor<2xi64>) -> tensor<2xi64> {
     // CHECK-NEXT: stablehlo.custom_call @xla_ffi_python_cpu_callback(%arg0) {
     // CHECK-SAME:   api_version = 4 : i32, backend_config = {descriptor = 126001424235520 : ui64},
     // CHECK-SAME:   has_side_effect = true, operand_layouts = [dense<0> : tensor<1xindex>], result_layouts = [],
-    // CHECK-SAME:   sdy.sharding = #sdy.sharding_per_value<[<@maximal_mesh_0, []>]>, xla_shape = "()"
+    // CHECK-SAME:   sdy.sharding = #sdy.sharding_per_value<[<@single_device_0, []>]>, xla_shape = "()"
     // CHECK-SAME: } : (tensor<2xi64>) -> ()
     // CHECK-NEXT: return %arg0 : tensor<2xi64>
     %2 = stablehlo.custom_call @xla_ffi_python_cpu_callback(%arg0) {
       api_version = 4 : i32, backend_config = {descriptor = 126001424235520 : ui64},
-      has_side_effect = true, mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding_per_value<[<@maximal_mesh_0, []>]>"},
+      has_side_effect = true, mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding_per_value<[<@single_device_0, []>]>"},
       mhlo.sharding = "{{maximal device=0}}",
       operand_layouts = [dense<0> : tensor<1xindex>], result_layouts = [], xla_shape = "()"
     } : (tensor<2xi64>) -> tuple<>

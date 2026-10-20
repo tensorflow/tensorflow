@@ -167,6 +167,9 @@ class GpuDeviceCommunicator {
 // `GpuCommunicator::LaunchAllReduce` method which returns an `absl::Status`.
 class GpuCommunicator : public Communicator {
  public:
+  static constexpr int64_t kMaxCliqueSemaphores = 1024;
+  static constexpr int64_t kMaxCollectiveIds = 32;
+
   ~GpuCommunicator() override = default;
 
   // Returns a platform-specific handle to the underlying communicator object.
@@ -327,6 +330,19 @@ class GpuCommunicator : public Communicator {
       tsl::TiedRef<SymmetricMemory> tied_symmetric_memory) {}
 
   virtual bool IsCrossDeviceBarrierInitiated() const { return false; }
+
+  // Returns the device address of the semaphore for the given rank in the
+  // clique (including the local rank) and collective id.
+  virtual absl::StatusOr<stream_executor::DeviceAddressBase> GetCliqueSemaphore(
+      RankId peer_rank, int64_t collective_id) const {
+    return Unimplemented("GetCliqueSemaphore is not implemented");
+  }
+
+  virtual void InitializeCliqueSemaphore(
+      tsl::TiedRef<se::MemoryAllocation> tied_semaphore,
+      tsl::TiedRef<SymmetricMemory> tied_symmetric_memory) {}
+
+  virtual bool IsCliqueSemaphoreInitialized() const { return false; }
 
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const GpuCommunicator& comm) {

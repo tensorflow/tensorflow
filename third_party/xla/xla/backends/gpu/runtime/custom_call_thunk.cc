@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -64,7 +65,6 @@ limitations under the License.
 #include "xla/ffi/record_ffi.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/primitive_util.h"
-#include "xla/runtime/object_pool.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/hlo.pb.h"
@@ -242,7 +242,7 @@ absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
       thunk_info, std::move(target_name), std::move(bundle),
       std::move(operands), std::move(results), std::move(call_frame),
       std::move(attributes), std::move(execution_state), called_computation,
-      cpu_target_machine_options, use_pdl));
+      gpu_compute_capability, cpu_target_machine_options, use_pdl));
 }
 
 absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
@@ -282,7 +282,22 @@ absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
       thunk_info, std::move(target_name), std::move(bundle),
       std::move(operands), std::move(results), std::move(call_frame),
       std::move(attributes), std::move(execution_state), called_computation,
-      cpu_target_machine_options));
+      gpu_compute_capability, cpu_target_machine_options));
+}
+
+static std::vector<CustomCallThunk::BufferArg> ToBufferArgs(
+    absl::Span<const NullableShapedSlice> slices) {
+  std::vector<CustomCallThunk::BufferArg> args;
+  args.reserve(slices.size());
+  for (const NullableShapedSlice& slice : slices) {
+    if (slice.has_value()) {
+      args.push_back({slice->slice.index(), slice->slice.offset(),
+                      slice->slice.size(), /*present=*/true});
+    } else {
+      args.push_back(CustomCallThunk::BufferArg{});
+    }
+  }
+  return args;
 }
 
 CustomCallThunk::CustomCallThunk(
@@ -293,52 +308,70 @@ CustomCallThunk::CustomCallThunk(
     ffi::AttributesMap attributes,
     std::unique_ptr<ffi::ExecutionState> execution_state,
     const HloComputation* called_computation,
+    const se::GpuComputeCapability& gpu_compute_capability,
     std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options,
     bool use_pdl)
     : TracedCommand(Thunk::kCustomCall, thunk_info),
       target_name_(std::move(target_name)),
       operands_(std::move(operands)),
       results_(std::move(results)),
+      operand_args_(ToBufferArgs(operands_)),
+      result_args_(ToBufferArgs(results_)),
       bundle_(std::move(bundle)),
       use_pdl_(use_pdl),
       attributes_(std::move(attributes)),
       call_frame_(std::move(call_frame)),
-      call_frames_([this] { return call_frame_->Copy(); }),
       execution_state_(std::move(execution_state)),
       called_computation_(called_computation),
+      gpu_compute_capability_(gpu_compute_capability),
       cpu_target_machine_options_(std::move(cpu_target_machine_options)) {}
 
-absl::StatusOr<ObjectPool<CallFrame>::BorrowedObject>
-CustomCallThunk::BuildCallFrame(
+absl::StatusOr<CustomCallThunk::CallFrameLease> CustomCallThunk::BuildCallFrame(
     const BufferAllocations* absl_nullable buffer_allocations) {
-  auto device_memory = [&](BufferAllocation::Slice slice) {
-    return buffer_allocations ? buffer_allocations->GetDeviceAddress(slice)
-                              : se::DeviceAddressBase{};
+  if (!call_frame_.has_value()) {
+    return Internal("Call frame prototype is not initialized");
+  }
+
+  auto device_memory = [&](const BufferArg& arg) -> se::DeviceAddressBase {
+    if (!arg.present || buffer_allocations == nullptr) {
+      return se::DeviceAddressBase{};
+    }
+    se::DeviceAddressBase base =
+        buffer_allocations->GetDeviceAddress(arg.index);
+    DCHECK_LE(arg.offset + arg.size, base.size());
+    return base.GetByteSlice(arg.offset, arg.size);
   };
 
-  absl::InlinedVector<se::DeviceAddressBase, 8> arguments;
-  arguments.reserve(operands_.size());
-  for (auto& operand : operands_) {
-    if (!operand.has_value()) {
-      arguments.push_back(se::DeviceAddressBase{});
-    } else {
-      arguments.push_back(device_memory(operand->slice));
-    }
+  absl::InlinedVector<se::DeviceAddressBase, 32> arguments;
+  arguments.reserve(operand_args_.size());
+  for (const BufferArg& arg : operand_args_) {
+    arguments.push_back(device_memory(arg));
   }
 
-  absl::InlinedVector<se::DeviceAddressBase, 4> results;
-  results.reserve(results_.size());
-  for (auto& result : results_) {
-    if (!result.has_value()) {
-      results.push_back(se::DeviceAddressBase{});
-    } else {
-      results.push_back(device_memory(result->slice));
-    }
+  absl::InlinedVector<se::DeviceAddressBase, 8> results;
+  results.reserve(result_args_.size());
+  for (const BufferArg& arg : result_args_) {
+    results.push_back(device_memory(arg));
   }
 
-  ABSL_ASSIGN_OR_RETURN(auto call_frame, call_frames_->GetOrCreate());
-  ABSL_RETURN_IF_ERROR(call_frame->UpdateWithBuffers(arguments, results));
-  return call_frame;
+  // Fast path: the per-device call frame, if no other execution on this
+  // device currently holds it. Otherwise fall back to a private copy.
+  int device_ordinal =
+      buffer_allocations ? buffer_allocations->device_ordinal() : 0;
+  ABSL_ASSIGN_OR_RETURN(CallFrameSlot * slot,
+                   call_frames_.GetOrCreate(device_ordinal));
+  std::optional<CallFrameLease> lease;
+  if (!slot->busy.exchange(true, std::memory_order_acquire)) {
+    if (!slot->frame.has_value()) {
+      slot->frame.emplace(call_frame_->Copy());
+    }
+    lease.emplace(slot);
+  } else {
+    lease.emplace(call_frame_->Copy());
+  }
+
+  ABSL_RETURN_IF_ERROR((*lease)->UpdateWithBuffers(arguments, results));
+  return std::move(*lease);
 }
 
 InvokeContext CustomCallThunk::BuildInvokeContext(
@@ -360,20 +393,20 @@ InvokeContext CustomCallThunk::BuildInvokeContext(
     allocator = buffer_allocations->memory_allocator();
   }
 
-  const se::GpuComputeCapability* gpu_compute_capability = nullptr;
-  if (stream != nullptr) {
-    gpu_compute_capability =
-        &stream->parent()->GetDeviceDescription().gpu_compute_capability();
-  }
+  const se::GpuComputeCapability* gpu_compute_capability =
+      &gpu_compute_capability_;
 
   ffi::ExecutionState* prepare_state = nullptr;
   ffi::ExecutionState* initialize_state = nullptr;
 
   if (execution_scoped_state) {
-    PrepareAndInitState& prepare_and_init = tsl::any_cast<PrepareAndInitState>(
-        execution_scoped_state->at(this->thunk_info().thunk_id));
-    prepare_state = &prepare_and_init.prepare;
-    initialize_state = &prepare_and_init.init;
+    if (auto it = execution_scoped_state->find(this->thunk_info().thunk_id);
+        it != execution_scoped_state->end()) {
+      PrepareAndInitState& prepare_and_init =
+          tsl::any_cast<PrepareAndInitState>(it->second);
+      prepare_state = &prepare_and_init.prepare;
+      initialize_state = &prepare_and_init.init;
+    }
   }
 
   // `called_computation_` is forwarded to the FFI handler both for direct
@@ -471,9 +504,14 @@ absl::Status CustomCallThunk::ExecuteFfiHandler(
 }
 
 absl::Status CustomCallThunk::Prepare(const PrepareParams& params) {
-  // Run the prepare stage at most once per execution. When lowered into a
-  // command buffer, CommandBufferThunk drives this same object via both its
-  // command sequence and its fallback thunk sequence; see PrepareAndInitState.
+  const auto* c_bundle = std::get_if<XLA_FFI_Handler_Bundle>(&bundle_);
+  const auto* owned_bundle = std::get_if<OwnedHandlerBundle>(&bundle_);
+  if ((c_bundle == nullptr || c_bundle->prepare == nullptr) &&
+      (owned_bundle == nullptr || owned_bundle->prepare == nullptr)) {
+    return absl::OkStatus();
+  }
+
+  // Run the prepare stage at most once per execution.
   if (params.execution_scoped_state != nullptr) {
     auto [it, _] = params.execution_scoped_state->try_emplace(
         thunk_info().thunk_id, std::in_place_type<PrepareAndInitState>);
@@ -487,8 +525,7 @@ absl::Status CustomCallThunk::Prepare(const PrepareParams& params) {
   const RunId run_id =
       params.collective_params ? params.collective_params->run_id : RunId{-1};
 
-  if (const auto* c_bundle = std::get_if<XLA_FFI_Handler_Bundle>(&bundle_);
-      c_bundle && c_bundle->prepare) {
+  if (c_bundle && c_bundle->prepare) {
     return ExecuteFfiHandler(
         run_id, c_bundle->prepare, XLA_FFI_ExecutionStage_PREPARE,
         /*stream=*/nullptr,
@@ -502,8 +539,7 @@ absl::Status CustomCallThunk::Prepare(const PrepareParams& params) {
         /*collective_memory=*/nullptr,
         /*computation_streams=*/{});
   }
-  if (const auto* owned_bundle = std::get_if<OwnedHandlerBundle>(&bundle_);
-      owned_bundle && owned_bundle->prepare) {
+  if (owned_bundle && owned_bundle->prepare) {
     return ExecuteFfiHandler(
         run_id, *owned_bundle->prepare, xla::ffi::ExecutionStage::kPrepare,
         /*stream=*/nullptr,
@@ -522,9 +558,14 @@ absl::Status CustomCallThunk::Prepare(const PrepareParams& params) {
 }
 
 absl::Status CustomCallThunk::Initialize(const InitializeParams& params) {
-  // Run the initialize stage at most once per execution. When lowered into a
-  // command buffer, CommandBufferThunk drives this same object via both its
-  // command sequence and its fallback thunk sequence; see PrepareAndInitState.
+  const auto* c_bundle = std::get_if<XLA_FFI_Handler_Bundle>(&bundle_);
+  const auto* owned_bundle = std::get_if<OwnedHandlerBundle>(&bundle_);
+  if ((c_bundle == nullptr || c_bundle->initialize == nullptr) &&
+      (owned_bundle == nullptr || owned_bundle->initialize == nullptr)) {
+    return absl::OkStatus();
+  }
+
+  // Run the initialize stage at most once per execution.
   if (params.execution_scoped_state != nullptr) {
     auto [it, _] = params.execution_scoped_state->try_emplace(
         thunk_info().thunk_id, std::in_place_type<PrepareAndInitState>);
@@ -538,8 +579,7 @@ absl::Status CustomCallThunk::Initialize(const InitializeParams& params) {
   const RunId run_id =
       params.collective_params ? params.collective_params->run_id : RunId{-1};
 
-  if (const auto* c_bundle = std::get_if<XLA_FFI_Handler_Bundle>(&bundle_);
-      c_bundle && c_bundle->initialize) {
+  if (c_bundle && c_bundle->initialize) {
     return ExecuteFfiHandler(
         run_id, *c_bundle->initialize, XLA_FFI_ExecutionStage_INITIALIZE,
         params.stream, params.execution_scoped_state,
@@ -550,8 +590,7 @@ absl::Status CustomCallThunk::Initialize(const InitializeParams& params) {
         params.collective_memory,
         /*computation_streams=*/{});
   }
-  if (const auto* owned_bundle = std::get_if<OwnedHandlerBundle>(&bundle_);
-      owned_bundle && owned_bundle->initialize) {
+  if (owned_bundle && owned_bundle->initialize) {
     return ExecuteFfiHandler(
         run_id, *owned_bundle->initialize,
         xla::ffi::ExecutionStage::kInitialize, params.stream,
@@ -604,8 +643,6 @@ absl::StatusOr<const se::CommandBuffer::Command*> CustomCallThunk::Record(
     const RecordParams& record_params, RecordAction record_action,
     se::CommandBuffer* command_buffer) {
   se::StreamExecutor* executor = execute_params.stream->parent();
-  ABSL_ASSIGN_OR_RETURN(auto call_frame,
-                   BuildCallFrame(execute_params.buffer_allocations));
 
   // Retrieve or create the state for recording.
   auto* state = record_params.state.GetOrCreate<CustomCallRecordState>(

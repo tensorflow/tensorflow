@@ -194,6 +194,11 @@ class MockClient : public RTTIExtends<MockClient, Client> {
                std::optional<MemoryKind> memory_kind,
                ArrayCopySemantics semantics),
               (final));
+  MOCK_METHOD(absl::StatusOr<std::vector<ArrayRef>>, CopyArraysWithDonatedDst,
+              (absl::Span<ArrayRef> arrays,
+               absl::Span<ArrayRef> donated_dst_arrays,
+               ArrayCopySemantics semantics),
+              (final));
   MOCK_METHOD(absl::StatusOr<std::vector<ArrayRef>>, RemapArrays,
               (const RemapPlan& plan, absl::Span<ArrayRef> arrays,
                ArrayCopySemantics semantics),

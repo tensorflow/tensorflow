@@ -120,13 +120,19 @@ bool DimIsFullyCovered(const DimTile& tile, int64_t dim) {
 }
 
 Tiles PropagateTileToInputForCwiseOp(const HloInstruction& hlo,
-                                     const Tile& input_tile) {
-  return Tiles(hlo.operand_count(), input_tile);
-}
-
-Tiles PropagateTileToOutputForCwiseOp(const HloInstruction& hlo,
-                                      const Tile& output_tile) {
-  return {output_tile};
+                                     const Tile& output_tile) {
+  Tiles input_tiles;
+  input_tiles.reserve(hlo.operand_count());
+  for (const HloInstruction* operand : hlo.operands()) {
+    // kClamp and kSelect allow scalar operands alongside non-scalar operands.
+    if (operand->shape().IsArray() && operand->shape().dimensions().empty() &&
+        !output_tile.dim_tiles().empty()) {
+      input_tiles.push_back(output_tile.CloneWithNewDims({}));
+    } else {
+      input_tiles.push_back(output_tile);
+    }
+  }
+  return input_tiles;
 }
 
 Tiles PropagateTileToInputForBroadcastOp(const HloBroadcastInstruction& bcast,
@@ -167,6 +173,18 @@ Tiles PropagateTileToOutputForBroadcastOp(const HloBroadcastInstruction& bcast,
                                           const Tile& input_tile) {
   return {PropagateTileToOutputForBroadcastOpImpl(
       bcast.shape(), bcast.dimensions(), input_tile)};
+}
+
+Tiles PropagateTileToOutputForCwiseOp(const HloInstruction& hlo,
+                                      const Tile& input_tile,
+                                      int64_t input_index) {
+  const Shape& operand_shape = hlo.operand(input_index)->shape();
+  if (operand_shape.IsArray() && operand_shape.dimensions().empty() &&
+      hlo.shape().IsArray() && !hlo.shape().dimensions().empty()) {
+    return {PropagateTileToOutputForBroadcastOpImpl(
+        hlo.shape(), /*bcast_dims=*/{}, input_tile)};
+  }
+  return {input_tile};
 }
 
 absl::Status VerifyConcatenateAlignment(
@@ -1589,17 +1607,24 @@ absl::StatusOr<Tiles> PropagateTileToOutputForBitcastOp(
 //    (64 rows). This guarantees that the tile never crosses the boundary
 //    between shards (e.g., crossing row 64), meaning this thread block
 //    only ever has to send its data to exactly *one* target GPU.
+//
+// For a variadic reduce-scatter, output `output_index` depends only on operand
+// `output_index`; the scatter dimension and replica count are shared by all
+// operands, so the same mapping applies to each of them independently.
 absl::StatusOr<Tiles> PropagateTileToInputForReduceScatterOp(
     const TilingSpace& tiling_space,
-    const HloReduceScatterInstruction& reduce_scatter,
-    const Tile& output_tile) {
-  // Crash OK. Must be checked while forming the fusion.
-  CHECK_EQ(reduce_scatter.operand_count(), 1)
-      << "Multi-operand ReduceScatter is not yet supported.";
+    const HloReduceScatterInstruction& reduce_scatter, const Tile& output_tile,
+    int64_t output_index) {
+  if (output_index < 0 || output_index >= reduce_scatter.operand_count()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Output index ", output_index, " is out of range for ",
+                     reduce_scatter.ToString()));
+  }
   const int64_t scatter_dim = reduce_scatter.scatter_dimension();
-  const int64_t shard_size = reduce_scatter.shape().dimensions(scatter_dim);
+  const int64_t shard_size =
+      GetFirstShape(&reduce_scatter, output_index).dimensions(scatter_dim);
   const int64_t num_replicas =
-      reduce_scatter.operand(0)->shape().dimensions(scatter_dim) / shard_size;
+      reduce_scatter.device_list()->num_devices_per_group();
 
   SmallVector<DimTile> dim_tiles(output_tile.dim_tiles());
   DimTile& scatter_tile = dim_tiles[scatter_dim];
@@ -1608,18 +1633,31 @@ absl::StatusOr<Tiles> PropagateTileToInputForReduceScatterOp(
         absl::StrCat("Non-unit stride on the scatter dimension of ",
                      reduce_scatter.ToString()));
   }
-  scatter_tile.offset = scatter_tile.offset * num_replicas;
-  scatter_tile.size = scatter_tile.size * num_replicas;
-  scatter_tile.upper_bound = scatter_tile.upper_bound * num_replicas;
+  if (num_replicas <= 1) {
+    return Tiles{output_tile};
+  }
+  const int64_t total_result_dims =
+      GetResultDimensionOffset(reduce_scatter, reduce_scatter.operand_count());
+  const TilingSpace::DimensionInfo& replica_dim_info =
+      tiling_space.GetDimensionInfo(reduce_scatter,
+                                    total_result_dims + output_index);
+  SymbolicExpr replica_id =
+      CreateDimExpr(replica_dim_info.id.value(), tiling_space.mlir_context());
+  scatter_tile.offset = (scatter_tile.offset + replica_id * shard_size -
+                         replica_id * scatter_tile.size)
+                            .Canonicalize();
+  scatter_tile.size = (scatter_tile.size * num_replicas).Canonicalize();
+  scatter_tile.upper_bound =
+      (scatter_tile.upper_bound * num_replicas).Canonicalize();
 
   if (!tiling_space.IsSymbolic()) {
     std::optional<int64_t> size = TryGetConstantValue(scatter_tile.size);
     if (!size.has_value() || shard_size % *size != 0 ||
-        !scatter_tile.offset.Canonicalize().IsMultipleOf(*size)) {
+        !scatter_tile.offset.IsMultipleOf(*size)) {
       return absl::FailedPreconditionError(absl::StrCat(
-          "Tiling propagation rejected for ", reduce_scatter.ToString(),
-          ": operand tile ", scatter_tile.size.ToString(), " at ",
-          scatter_tile.offset.ToString(),
+          "Tiling propagation rejected for output ", output_index, " of ",
+          reduce_scatter.ToString(), ": operand tile ",
+          scatter_tile.size.ToString(), " at ", scatter_tile.offset.ToString(),
           " crosses shard boundary (shard_size=", shard_size, ")"));
     }
   }
@@ -1650,8 +1688,9 @@ absl::StatusOr<Tiles> PropagateTileToInputForAllGatherOp(
   // with the same index.
   const Shape& input_shape = hlo.operand(output_index)->shape();
   const Shape& output_shape = GetFirstShape(&hlo, output_index);
+  int64_t output_dim_size = output_shape.dimensions(gather_dim);
   int64_t local_size = input_shape.dimensions(gather_dim);
-  int64_t num_replicas = output_shape.dimensions(gather_dim) / local_size;
+  int64_t num_replicas = output_dim_size / local_size;
 
   const DimTile& output_dim_tile = output_tile.dim_tiles()[gather_dim];
 
@@ -1670,7 +1709,15 @@ absl::StatusOr<Tiles> PropagateTileToInputForAllGatherOp(
   }
 
   SymbolicExpr replica_id = output_dim_tile.offset / local_size;
-  SymbolicExpr input_offset = output_dim_tile.offset % local_size;
+  // `offset % local_size` maps an output offset into `[0, local_size)`.
+  // However, if the variadic schedule padded this tile past `output_dim_size`
+  // (e.g., offset = 5 when local_size = 2 and output_dim_size = 4), `5 % 2 = 1`
+  // would wrap it back in-bounds. Adding
+  // `(offset / output_dim_size) * local_size` is 0 for valid tiles and pushes
+  // padded tiles to `>= local_size` so they get masked out.
+  SymbolicExpr input_offset =
+      (output_dim_tile.offset % local_size) +
+      (output_dim_tile.offset / output_dim_size) * local_size;
 
   llvm::SmallVector<DimTile> input_dim_tiles;
   input_dim_tiles.reserve(output_tile.num_dim_tiles());
@@ -1680,6 +1727,87 @@ absl::StatusOr<Tiles> PropagateTileToInputForAllGatherOp(
       input_dim_tiles.push_back(DimTile{
           input_offset, output_dim_tile.size, output_dim_tile.stride,
           CreateSymbolicConstant(local_size, output_tile.mlir_context())});
+    } else {
+      input_dim_tiles.push_back(output_tile.dim_tiles()[i]);
+    }
+  }
+
+  mlir::MLIRContext* ctx = output_tile.mlir_context();
+  llvm::SmallVector<DimTile> replica_id_dim_tiles =
+      llvm::to_vector(output_tile.replica_ids());
+  replica_id_dim_tiles.push_back(DimTile{
+      /*offset=*/replica_id,
+      /*size=*/CreateSymbolicConstant(1, ctx),
+      /*stride=*/CreateSymbolicConstant(1, ctx),
+      /*upper_bound=*/
+      CreateSymbolicConstant(num_replicas, ctx),
+  });
+
+  Tile input_tile(output_tile.tiling_space(), std::move(input_dim_tiles),
+                  std::move(replica_id_dim_tiles), output_tile.constraints());
+
+  return Tiles{input_tile};
+}
+
+absl::StatusOr<Tiles> PropagateTileToInputForAllToAllOp(
+    const TilingSpace& tiling_space, const HloInstruction& hlo,
+    const Tile& output_tile, int64_t output_index) {
+  const auto& all_to_all = *Cast<HloAllToAllInstruction>(&hlo);
+  if (!all_to_all.split_dimension().has_value()) {
+    return absl::UnimplementedError(absl::StrCat(
+        "Tuple all-to-all without split_dimension is not supported: ",
+        hlo.ToString()));
+  }
+  int64_t split_dim = *all_to_all.split_dimension();
+  if (output_index < 0 || output_index >= hlo.operand_count()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Output index ", output_index, " is out of range for ",
+                     hlo.ToString()));
+  }
+  const Shape& input_shape = hlo.operand(output_index)->shape();
+  int64_t num_replicas =
+      all_to_all.device_list()->replica_groups().empty()
+          ? 1
+          : all_to_all.device_list()->replica_groups()[0].replica_ids_size();
+  int64_t shard_size = input_shape.dimensions(split_dim) / num_replicas;
+
+  const DimTile& output_dim_tile = output_tile.dim_tiles()[split_dim];
+  if (!IsConstantValue(output_dim_tile.stride, 1)) {
+    return absl::UnimplementedError(absl::StrCat(
+        "Non-unit stride on the split dimension of ", all_to_all.ToString()));
+  }
+
+  if (!tiling_space.IsSymbolic()) {
+    DimTile simplified_dim_tile = output_dim_tile;
+    simplified_dim_tile.Simplify(tiling_space);
+    if (simplified_dim_tile.size.GetType() != SymbolicExprType::kConstant ||
+        simplified_dim_tile.size.GetValue() <= 0 ||
+        shard_size % simplified_dim_tile.size.GetValue() != 0 ||
+        !simplified_dim_tile.offset.Canonicalize().IsMultipleOf(
+            simplified_dim_tile.size.GetValue())) {
+      return absl::UnimplementedError(absl::StrCat(
+          "Output ", output_index, " of ", hlo.name(), " is tiled with size ",
+          simplified_dim_tile.size.ToString(), " at offset ",
+          simplified_dim_tile.offset.ToString(), " on split dimension ",
+          split_dim, ", expected tile size to divide per-rank shard size ",
+          shard_size,
+          " and offset to be a multiple of tile size (one peer per tile)"));
+    }
+  }
+
+  SymbolicExpr replica_id =
+      (output_dim_tile.offset / shard_size).Canonicalize();
+  SymbolicExpr input_offset =
+      (output_dim_tile.offset % shard_size).Canonicalize();
+
+  llvm::SmallVector<DimTile> input_dim_tiles;
+  input_dim_tiles.reserve(output_tile.num_dim_tiles());
+
+  for (int64_t i = 0; i < output_tile.num_dim_tiles(); ++i) {
+    if (i == split_dim) {
+      input_dim_tiles.push_back(DimTile{
+          input_offset, output_dim_tile.size, output_dim_tile.stride,
+          CreateSymbolicConstant(shard_size, output_tile.mlir_context())});
     } else {
       input_dim_tiles.push_back(output_tile.dim_tiles()[i]);
     }
@@ -1720,9 +1848,14 @@ absl::StatusOr<Tiles> PropagateTileToInput(TilingSpace& tiling_space,
     return PropagateTileToInputForAllGatherOp(tiling_space, hlo, output_tile,
                                               output_index);
   }
+  if (hlo.opcode() == HloOpcode::kAllToAll) {
+    return PropagateTileToInputForAllToAllOp(tiling_space, hlo, output_tile,
+                                             output_index);
+  }
   if (hlo.opcode() == HloOpcode::kReduceScatter) {
     return PropagateTileToInputForReduceScatterOp(
-        tiling_space, *Cast<HloReduceScatterInstruction>(&hlo), output_tile);
+        tiling_space, *Cast<HloReduceScatterInstruction>(&hlo), output_tile,
+        output_index);
   }
   if (hlo.opcode() == HloOpcode::kBitcast) {
     return PropagateTileToInputForBitcastOp(hlo, output_tile);
@@ -1818,7 +1951,7 @@ absl::StatusOr<Tiles> PropagateTileToOutput(const TilingSpace& tiling_space,
   VLOG(2) << "tiling_space: " << tiling_space.ToString();
   if (HloInstruction::IsOpElementwise(hlo.opcode()) ||
       hlo.opcode() == HloOpcode::kMap) {
-    return PropagateTileToOutputForCwiseOp(hlo, input_tile);
+    return PropagateTileToOutputForCwiseOp(hlo, input_tile, input_index);
   }
   if (hlo.opcode() == HloOpcode::kBitcast) {
     return PropagateTileToOutputForBitcastOp(hlo, input_tile);

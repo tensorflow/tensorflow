@@ -484,6 +484,10 @@ class NonMaxSuppressionOp : public XlaOpKernel {
         context,
         TensorShapeUtils::IsScalar(context->InputShape("iou_threshold")),
         absl::InvalidArgumentError("IOU Threshold isn't a scalar"));
+    OP_REQUIRES(
+        context,
+        TensorShapeUtils::IsScalar(context->InputShape("score_threshold")),
+        absl::InvalidArgumentError("Score Threshold isn't a scalar"));
     OP_REQUIRES_OK(context, context->ConstantInputAsIntScalar(2, &output_size));
     OP_REQUIRES(context, output_size >= 0,
                 absl::InvalidArgumentError(
@@ -491,8 +495,6 @@ class NonMaxSuppressionOp : public XlaOpKernel {
     OP_REQUIRES(context, output_size <= std::numeric_limits<int32_t>::max(),
                 absl::InvalidArgumentError(absl::StrCat(
                     "Need output_size <= kint32Max, got ", output_size)));
-    const xla::XlaOp score_thresh = context->Input("score_threshold");
-    const xla::XlaOp iou_thresh = context->Input("iou_threshold");
     xla::XlaBuilder* const builder = context->builder();
 
     if (num_boxes == 0) {
@@ -520,6 +522,14 @@ class NonMaxSuppressionOp : public XlaOpKernel {
       if (pad_to_max_output_size) context->SetOutput(1, num_valid);
       return;
     }
+
+    // The thresholds' type, T_threshold, can differ from T, the type of boxes
+    // and scores. Compare in T, as the TensorFlow kernels do, since XLA
+    // doesn't mix floating-point types in one operation.
+    const xla::XlaOp score_thresh = xla::ConvertElementType(
+        context->Input("score_threshold"), scores_xla_type);
+    const xla::XlaOp iou_thresh = xla::ConvertElementType(
+        context->Input("iou_threshold"), boxes_xla_type);
 
     // Choose a more convenient layout.
     const xla::XlaOp boxes = xla::Transpose(boxes_input, {1, 0});

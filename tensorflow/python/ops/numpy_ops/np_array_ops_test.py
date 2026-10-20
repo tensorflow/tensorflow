@@ -1659,6 +1659,74 @@ class ArrayMethodsTest(test.TestCase):
     with self.assertRaisesRegex(errors_impl.InvalidArgumentError, kernel_err):
       self.evaluate(flip_unknown_rank_invalid_pos(a))
 
+  def testRoll(self):
+    np.random.seed(0)
+    random_seed.set_seed(0)
+
+    def _test(*args, **kwargs):
+      expected = np.roll(*args, **kwargs)
+      raw_ans = np_array_ops.roll(*args, **kwargs)
+
+      self.assertAllEqual(expected, raw_ans)
+
+    a = np.random.rand(2, 3, 4)
+
+    # No axis rolls the flattened array.
+    _test(a, 1)
+    # A scalar shift on a single axis, including negative values.
+    _test(a, 1, axis=0)
+    _test(a, -1, axis=2)
+    _test(a, 2, axis=-1)
+    # A sequence of shifts across multiple axes.
+    _test(a, (1, 2, 3), axis=(0, 1, 2))
+    _test(a, [1, -2], axis=[-3, 2])
+    _test(a, np.array([0, 1]), axis=np.array([-1, 1]))
+
+    # Empty and scalar arrays, including rolls on the empty dimension itself
+    # (exercising the max(dim_size, 1) safeguard).
+    _test(np.empty((0, 3, 4)), 1, axis=0)
+    _test(np.empty((0, 3, 4)), 1, axis=1)
+    _test(np.empty((3, 4, 0)), 1, axis=1)
+    _test(np.empty((3, 4, 0)), 1, axis=2)
+    _test(np.array(42.0), 1)
+
+    # Out-of-bounds axes raise, checked by the backend kernel.
+    for shift, invalid_axis in [
+        (1, 3),
+        (1, -4),
+        ((1, 2), (0, 3)),
+        ((1, -1), [0, -4]),
+        (range(2), range(2, 4)),
+        (1, 1 << 33),
+        (1, -(1 << 33)),
+    ]:
+      with self.assertRaisesRegex(
+          (errors_impl.InvalidArgumentError, ValueError), 'out of range'
+      ):
+        np_array_ops.roll(a, shift, axis=invalid_axis)
+
+    # Graph-mode tracing of roll with concrete axes.
+    @def_function.function
+    def f(x, s, ax):
+      return np_array_ops.roll(x, s, axis=ax)
+
+    self.assertAllEqual(
+        np.roll(a, 1, axis=0),
+        f(a, 1, 0),
+    )
+    self.assertAllEqual(
+        np.roll(a, 1, axis=0),
+        f(a, constant_op.constant(1), constant_op.constant(0)),
+    )
+    with self.assertRaisesRegex(
+        (errors_impl.InvalidArgumentError, ValueError), 'out of range'
+    ):
+      f(a, 1, 3)
+    with self.assertRaisesRegex(
+        (errors_impl.InvalidArgumentError, ValueError), 'out of range'
+    ):
+      f(a, constant_op.constant(1), constant_op.constant(3))
+
   def testNdim(self):
     self.assertAllEqual(0, np_array_ops.ndim(0.5))
     self.assertAllEqual(1, np_array_ops.ndim([1, 2]))
@@ -1682,6 +1750,63 @@ class ArrayMethodsTest(test.TestCase):
     x = np_array_ops.arange(8)
     y = np_array_ops.split(x, [3, 5, 6, 10])
     self.assertListEqual([([0, 1, 2]), ([3, 4]), ([5]), ([6, 7]), ([])], y)
+
+  def testSplitNegativeBoundaries(self):
+    x = np.arange(9)
+    for boundaries in (
+        [2, -2],
+        [-6, -2],
+        [-15],
+        [-15, -10, 3],
+        [-9, 0, -1],
+    ):
+      self.assertListEqual(
+          np.split(x, boundaries),
+          np_array_ops.split(x, boundaries),
+      )
+
+    x_2d = np.arange(12).reshape(2, 6)
+    for axis in (1, -1):
+      self.assertListEqual(
+          np.split(x_2d, [1, -1], axis=axis),
+          np_array_ops.split(x_2d, [1, -1], axis=axis),
+      )
+
+    x_empty = np.zeros((0, 4), dtype=np.int32)
+    self.assertListEqual(
+        np.split(x_empty, [-2, 0, 2], axis=0),
+        np_array_ops.split(x_empty, [-2, 0, 2], axis=0),
+    )
+
+    for bad_boundaries in ([7, -5], [-2, -5]):
+      with self.assertRaisesRegex(
+          ValueError, 'smaller than the previous boundary'
+      ):
+        np_array_ops.split(x, bad_boundaries)
+
+    for dyn_boundaries in ([-2], [2, -2], [2, 4]):
+
+      @def_function.function(
+          input_signature=[tensor_spec.TensorSpec([None], dtypes.int32)]
+      )
+      def split_dynamic(arr, b=dyn_boundaries):
+        return np_array_ops.split(arr, b)
+
+      with self.assertRaisesRegex(
+          ValueError, 'Split boundaries are not supported for dynamic shapes.'
+      ):
+        split_dynamic(np_array_ops.arange(9, dtype=np.int32))
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.int32)]
+    )
+    def split_unknown_rank(arr):
+      return np_array_ops.split(arr, [-2])
+
+    with self.assertRaisesRegex(
+        ValueError, 'Split boundaries are not supported for unknown rank.'
+    ):
+      split_unknown_rank(np_array_ops.arange(9, dtype=np.int32))
 
   def testSplitOutOfBoundsAxis(self):
     x_2d = np_array_ops.arange(6).reshape(2, 3)

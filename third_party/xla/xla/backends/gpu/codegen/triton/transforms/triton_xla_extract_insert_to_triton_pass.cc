@@ -127,6 +127,16 @@ bool IsOffsetDivisibilityGuaranteed(mlir::Value offset_val,
   return xtriton::IsGuaranteedDivisible(offset_val, divisor);
 }
 
+// Returns true if `layout` is major-to-minor up to unit dimensions of `shape`,
+// i.e. transposing between logical and physical order is a reshape.
+bool IsMajorToMinorIgnoringUnitDims(ArrayRef<int64_t> shape,
+                                    ArrayRef<int64_t> layout) {
+  int64_t last_non_unit_dim = -1;
+  return absl::c_all_of(llvm::reverse(layout), [&](int64_t dim) {
+    return shape[dim] == 1 || std::exchange(last_non_unit_dim, dim) < dim;
+  });
+}
+
 // Limitations of TMA are documented in IsTmaCompatible
 // in third_party/tensorflow/compiler/xla/stream_executor/gpu/tma_metadata.h.
 // Additionally:
@@ -377,13 +387,16 @@ class RewriteExtract : public mlir::OpRewritePattern<ExtractOp> {
           xtriton::IndexCast(builder, builder.getI32Type(), ordered_offsets),
           /*cachePolicy=*/nullptr);
 
-      // Insert a transpose if the layout is not major-to-minor.
-      if (!xtriton::IsMajorToMinorLayout(src_layout)) {
+      // Insert a transpose if the layout is not major-to-minor, unless it only
+      // moves unit dimensions. A reshape suffices then, and lets Triton feed
+      // the TMA-loaded shared memory directly to a dot.
+      if (!IsMajorToMinorIgnoringUnitDims(sizes, src_layout)) {
         result = TransOp::create(
             builder, result, xtriton::GetInverseLayoutPermutation(src_layout));
       }
-      // Insert a reshape if the result is rank-reduced.
-      if (sizes.size() != tile_shape.size()) {
+      // Insert a reshape if the result is rank-reduced or still in physical
+      // order.
+      if (result.getType() != tile_type) {
         result = ReshapeOp::create(builder, tile_shape, result,
                                    /*allowReorder=*/false);
       }
@@ -519,16 +532,21 @@ class RewriteInsert : public mlir::OpRewritePattern<InsertOp> {
           builder, desc_type, op.getDst());
 
       Value src = op.getSrc();
-      // Insert a expand_dims if the source is rank-reduced.
-      for (auto dim : reduced_dims) {
-        src = ExpandDimsOp::create(builder, src, dim);
-      }
-      // Insert a transpose if the layout is not major-to-minor.
-      if (!xtriton::IsMajorToMinorLayout(dst_layout)) {
+      if (!IsMajorToMinorIgnoringUnitDims(sizes, dst_layout)) {
+        // Insert an expand_dims if the source is rank-reduced.
+        for (auto dim : reduced_dims) {
+          src = ExpandDimsOp::create(builder, src, dim);
+        }
         // Transpose to a major-to-minor tensor by simply reversing the layout.
-        auto transpose_order = llvm::to_vector_of<int32_t>(dst_layout);
-        std::reverse(transpose_order.begin(), transpose_order.end());
-        src = TransOp::create(builder, src, transpose_order);
+        src = TransOp::create(
+            builder, src,
+            llvm::to_vector_of<int32_t>(llvm::reverse(dst_layout)));
+      }
+      // Insert a reshape if the source is rank-reduced or still in logical
+      // order.
+      if (src.getType() != result_type) {
+        src = ReshapeOp::create(builder, result_type.getShape(), src,
+                                /*allowReorder=*/false);
       }
 
       auto ordered_offsets = xtriton::GetMajorToMinorOrder(offsets, dst_layout);

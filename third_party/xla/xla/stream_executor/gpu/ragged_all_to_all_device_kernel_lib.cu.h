@@ -80,6 +80,32 @@ __device__ void RaggedAllToAllCopy(
     unsigned int signal_index) {
   using T = DeviceVec<kVectorSize>;
 
+  if (gin != nullptr) {
+    const int tid = threadIdx.x + blockIdx.x * blockDim.x;
+    const int nthreads = blockDim.x * gridDim.x;
+    const int64_t total_updates = num_updates_per_replica * num_ranks;
+
+    for (int64_t flat_idx = tid; flat_idx < total_updates;
+         flat_idx += nthreads) {
+      const int peer = flat_idx / num_updates_per_replica;
+      if (peer >= start_lsa && peer < start_lsa + lsa_size) {
+        continue;
+      }
+
+      RaggedAllToAllUpdateMetadata<kVectorSize> meta;
+      if (!LoadRaggedAllToAllUpdateMetadata<kVectorSize>(
+              flat_idx, num_updates_per_replica, num_row_elements,
+              input_buffer_offset_bytes, output_buffer_offset_bytes,
+              input_offsets_ptr, send_sizes_ptr, output_offsets_ptr, &meta)) {
+        continue;
+      }
+
+      gin->put(world, meta.peer, recv_win, meta.dst_byte_offset, send_win,
+               meta.src_byte_offset, meta.byte_count,
+               ncclGin_SignalInc{signal_index});
+    }
+  }
+
   if (lsa_size > 0) {
     // Work-proportional CTA assignment: CTA k copies the global element range
     // [total*k/grid, total*(k+1)/grid), walking update boundaries as needed.
@@ -139,33 +165,6 @@ __device__ void RaggedAllToAllCopy(
       }
       update_begin = update_end;
     }
-  }
-
-  if (gin == nullptr) {
-    return;
-  }
-
-  const int tid = threadIdx.x + blockIdx.x * blockDim.x;
-  const int nthreads = blockDim.x * gridDim.x;
-  const int64_t total_updates = num_updates_per_replica * num_ranks;
-
-  for (int64_t flat_idx = tid; flat_idx < total_updates; flat_idx += nthreads) {
-    const int peer = flat_idx / num_updates_per_replica;
-    if (peer >= start_lsa && peer < start_lsa + lsa_size) {
-      continue;
-    }
-
-    RaggedAllToAllUpdateMetadata<kVectorSize> meta;
-    if (!LoadRaggedAllToAllUpdateMetadata<kVectorSize>(
-            flat_idx, num_updates_per_replica, num_row_elements,
-            input_buffer_offset_bytes, output_buffer_offset_bytes,
-            input_offsets_ptr, send_sizes_ptr, output_offsets_ptr, &meta)) {
-      continue;
-    }
-
-    gin->put(world, meta.peer, recv_win, meta.dst_byte_offset, send_win,
-             meta.src_byte_offset, meta.byte_count,
-             ncclGin_SignalInc{signal_index});
   }
 }
 

@@ -192,7 +192,7 @@ benchmarks {
 
   environment_configs {
     id: "gpu_l4"
-    runner_label: "linux-x86-g2-16-l4-1gpu"
+    runner_label: "linux-x86-16cpu-l4-1gpu"
     container_image: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build-cuda12.8-cudnn9.8:latest"
     workload_action_inputs {
       key: "hardware_category"

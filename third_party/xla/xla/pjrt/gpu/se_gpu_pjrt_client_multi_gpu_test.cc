@@ -1949,6 +1949,56 @@ INSTANTIATE_TEST_SUITE_P(
         {2, 0}, {2, 1}, {2, 2}}),
     ShardedAutotuningTestInfo::Name);
 
+TEST(StreamExecutorGpuClientTest, DeviceErrorCallbackPropagatesToPeerNodes) {
+  constexpr int kNumNodes = 2;
+  auto kv_store = std::make_shared<InMemoryKeyValueStore>();
+  ASSERT_OK(kv_store->Set("gpu_fatal_error", "stale_error_from_previous_run"));
+
+  absl::StatusOr<std::unique_ptr<PjRtClient>> client_0_or;
+  absl::StatusOr<std::unique_ptr<PjRtClient>> client_1_or;
+  {
+    tsl::thread::ThreadPool pool(tsl::Env::Default(), "create_clients",
+                                 kNumNodes);
+    pool.Schedule([&]() {
+      GpuClientOptions options = GetTestGpuClientOptions(2);
+      options.node_id = 0;
+      options.num_nodes = kNumNodes;
+      options.allowed_devices = {0};
+      options.kv_store = kv_store;
+      client_0_or = GetStreamExecutorGpuClient(options);
+    });
+    pool.Schedule([&]() {
+      GpuClientOptions options = GetTestGpuClientOptions(2);
+      options.node_id = 1;
+      options.num_nodes = kNumNodes;
+      options.allowed_devices = {1};
+      options.kv_store = kv_store;
+      client_1_or = GetStreamExecutorGpuClient(options);
+    });
+  }
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client_0,
+                       std::move(client_0_or));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client_1,
+                       std::move(client_1_or));
+  EXPECT_THAT(kv_store->TryGet("gpu_fatal_error"),
+              StatusIs(absl::StatusCode::kNotFound));
+
+  auto* se_client_0 = absl::down_cast<CommonPjRtClientImpl*>(client_0.get());
+  auto* raw_client_0 =
+      absl::down_cast<PjRtStreamExecutorRawClient*>(se_client_0->raw_client());
+  ASSERT_OK_AND_ASSIGN(LocalDeviceState * device_state_0,
+                       raw_client_0->GetLocalDeviceState(LocalDeviceId(0)));
+  ASSERT_TRUE(device_state_0->device_error_callback());
+
+  device_state_0->device_error_callback()(
+      absl::InternalError("CUDA_ERROR_ILLEGAL_ADDRESS"));
+
+  ASSERT_OK_AND_ASSIGN(std::string kv_error,
+                       kv_store->Get("gpu_fatal_error", absl::Seconds(5)));
+  EXPECT_THAT(kv_error, HasSubstr("Fatal GPU device error on node 0 device 0"));
+  EXPECT_THAT(kv_error, HasSubstr("CUDA_ERROR_ILLEGAL_ADDRESS"));
+}
+
 }  // namespace
 }  // namespace xla
 

@@ -73,6 +73,10 @@ _XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS = (
     "//xla/tools:compute_xspace_stats_main_gpu",
 )
 _GITHUB_WORKSPACE = os.environ.get("GITHUB_WORKSPACE", "$GITHUB_WORKSPACE")
+_WINDOWS_BAZEL_DNS_SECURITY_PROPERTIES = (
+    f"-Djava.security.properties={_GITHUB_WORKSPACE}"
+    r"\openxla\xla\build_tools\ci\bazel_dns_windows.security"
+)
 
 
 def retry(
@@ -474,8 +478,6 @@ Build(
         "-//xla/backends/gpu/...",
         "-//xla/codegen/emitters/tests/...",
         "-//xla/service/gpu/...",
-        # eigen is not windows compatible
-        "-//xla/codegen/intrinsic/cpp:eigen_unary_test",
     ),
     build_tag_filters=windows_x86_tag_filter,
     test_tag_filters=windows_x86_tag_filter,
@@ -486,6 +488,7 @@ Build(
     subcommand="build",
     startup_options={
         "output_user_root": "C:/x",
+        "host_jvm_args": _WINDOWS_BAZEL_DNS_SECURITY_PROPERTIES,
     },
     # Retry failed Bazel builds against the warm local cache to mitigate
     # transient Windows lld-link wcifs.sys file-open races (b/571438464) until
@@ -691,14 +694,18 @@ Build(
 Build(
     type_=BuildType.XLA_LINUX_X86_GPU_A4_224_VCPU_BENCHMARK_PRESUBMIT_GITHUB_ACTIONS,
     repo="openxla/xla",
-    configs=("cuda_libraries_from_stubs",),
+    configs=(
+        "warnings",
+        "rbe_linux_cuda_nvcc",
+        "hermetic_cuda_umd",
+        "cuda_libraries_from_stubs",
+    ),
     target_patterns=_XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
     test_tag_filters=nvidia_single_gpu_test_filters
     + _tag_filters_for_compute_capability(compute_capability=100),
     build_tag_filters=nvidia_single_gpu_build_filters,
     options={
         "run_under": "//build_tools/ci:parallel_gpu_execute",
-        # Use User Mode and Kernel Mode Drivers pre-installed on the system.
         "//xla/tsl:ci_build": True,
         **_DEFAULT_BAZEL_OPTIONS,
     },
@@ -832,6 +839,7 @@ Build(
     subcommand="build",
     startup_options={
         "output_base": f"{_GITHUB_WORKSPACE}\\bazel_output_base",
+        "host_jvm_args": _WINDOWS_BAZEL_DNS_SECURITY_PROPERTIES,
     },
     # Retry failed Bazel builds against the warm local cache to mitigate
     # transient Windows lld-link wcifs.sys file-open races (b/571438464) until

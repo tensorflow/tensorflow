@@ -43,11 +43,13 @@ class PjRtLayout {
     xla_layout_.set_memory_space(xla::Layout::kDefaultMemorySpace);
 
     for (const auto& tile : xla_layout_.tiles()) {
-      CHECK(absl::c_none_of(
-          tile.dimensions(),
-          [](int64_t d) { return d == xla::Tile::kCombineDimension; }))
+      CHECK(absl::c_none_of(tile.dimensions(),
+                            [](int64_t d) {
+                              return d == xla::Tile::kCombineDimension ||
+                                     d == xla::Tile::kMatchDimension;
+                            }))
           << "Runtime buffers must not have layouts with `kCombineDimension` "
-             "in tile dimensions, but got "
+             "or `kMatchDimension` in tile dimensions, but got "
           << xla_layout_;
     }
   }

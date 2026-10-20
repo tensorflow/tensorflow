@@ -47,6 +47,17 @@ class BuildTest(parameterized.TestCase):
         0,
     )
 
+  def test_windows_builds_configure_dns_security_properties(self) -> None:
+    builds = build.Build.all_builds()
+    for build_type in (
+        build.BuildType.XLA_WINDOWS_X86_CPU_GITHUB_ACTIONS,
+        build.BuildType.JAX_WINDOWS_X86_CPU_GITHUB_ACTIONS,
+    ):
+      self.assertIn(
+          r"\openxla\xla\build_tools\ci\bazel_dns_windows.security",
+          builds[build_type].startup_options.get("host_jvm_args", ""),
+      )
+
   @parameterized.named_parameters(
       dict(
           testcase_name="xla_windows_succeeds_on_first_attempt",

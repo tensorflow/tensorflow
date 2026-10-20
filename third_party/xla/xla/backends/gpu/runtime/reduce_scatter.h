@@ -25,12 +25,10 @@ limitations under the License.
 #include "xla/service/device_assignment.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu_topology.h"
-#include "xla/stream_executor/device_description.h"
 
 namespace xla::gpu {
 
-// Maximum size of the reduce-scatter *input* (per device, before the scatter)
-// for which the Triton reduce-scatter kernel is used.
+// Maximum input byte size per operand for the custom reduce-scatter kernel.
 inline constexpr int64_t kMaxReduceScatterSizeBytes =
     16 * 1024 * 1024;  // 16 MB
 
@@ -41,39 +39,35 @@ inline constexpr int64_t kReduceScatterMaxBlocksPerGrid = 64;
 // Triton collective kernel backend.
 struct ReduceScatterInfo {
   int64_t num_devices;
-  // Number of elements of the output (per device, after the scatter).
+  // Number of elements of the largest output (per device, after the scatter)
+  // across the operands of a (possibly variadic) reduce-scatter.
   int64_t num_output_elements;
 };
 
-// Returns true if the reduce-scatter can be flattened to a 1D reduce-scatter
-// along dimension 0, i.e. the scatter dimension is the physically major-most
-// non-trivial dimension of the operand and the result has the same layout as
-// the operand. In that case, the chunk sent to rank `i` is the contiguous
-// range [i * O, (i + 1) * O) of the operand where O is the number of elements
-// in the result.
+// Returns true if every operand's scatter dimension is its most-major
+// non-trivial physical dimension and its output has the same layout, so the
+// part of the input reduced into rank `i` is the contiguous slice
+// `[i * O_k, (i + 1) * O_k)`.
 bool IsReduceScatterFlattenable(const HloReduceScatterInstruction* rs);
 
-// Constructs a ReduceScatterInfo object for the given reduce-scatter
-// instruction. Returns absl::UnimplementedError if the Triton reduce-scatter
-// kernel is not supported for this instruction's configuration.
+// Constructs a ReduceScatterInfo object for the given (possibly variadic)
+// reduce-scatter instruction. Returns absl::UnimplementedError if the Triton
+// reduce-scatter kernel is not supported for this instruction's configuration.
 absl::StatusOr<ReduceScatterInfo> BuildReduceScatterInfo(
-    bool is_collective_kernel_enabled, const GpuTopology& gpu_topology,
+    const GpuTopology& gpu_topology,
     const HloReduceScatterInstruction* reduce_scatter,
     const DeviceAssignment* device_assignment);
 
-// Returns the launch dimensions for the reduce-scatter kernel.
-LaunchDimensions ReduceScatterLaunchDimensions(
-    int64_t num_output_elements, int64_t num_ranks,
-    const se::DeviceDescription& device_info);
-
 // Creates a CollectiveKernelSpec describing the resource requirements of a
-// Triton one-shot reduce-scatter kernel. The kernel argument layout is:
-//   [0] input buffer  (kInputBuffer, index 0)
-//   [1] output buffer (kOutputBuffer, index 0)
-//   [2] runtime rank  (kRuntimeRank)
-//   [3] signal flags (kScratchBuffer, index 0)
-//   [4] remote input buffer pointer table (kScratchBuffer, index 1)
-// `scratch_memory_type` is used for both scratch buffers.
+// Triton one-shot reduce-scatter kernel with N operands. The kernel argument
+// layout is:
+//   [0, N)       input buffers  (kInputBuffer, index k)
+//   [N, 2N)      output buffers (kOutputBuffer, index k)
+//   [2N]         runtime rank   (kRuntimeRank)
+//   [2N + 1]     signal flags   (kScratchBuffer, index 0)
+//   [2N + 2 + k] remote input buffer pointer table of operand k
+//                (kScratchBuffer, index 1 + k)
+// `scratch_memory_type` is used for all scratch buffers.
 absl::StatusOr<CollectiveKernelSpec> CreateReduceScatterKernelSpec(
     const HloInstruction* instr, const LaunchDimensions& launch_dimensions,
     SymmetricMemoryType scratch_memory_type);

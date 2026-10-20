@@ -245,6 +245,14 @@ class CompileOnlyIfRtClient final
     return Unimplemented("CopyArrays not available with compile-only client.");
   }
 
+  absl::StatusOr<std::vector<ifrt::ArrayRef>> CopyArraysWithDonatedDst(
+      absl::Span<ifrt::ArrayRef> arrays,
+      absl::Span<ifrt::ArrayRef> donated_dst_arrays,
+      ifrt::ArrayCopySemantics semantics) override {
+    return Unimplemented(
+        "CopyArraysWithDonatedDst not available with compile-only client.");
+  }
+
   absl::StatusOr<std::vector<ifrt::ArrayRef>> RemapArrays(
       const ifrt::RemapPlan& plan, absl::Span<ifrt::ArrayRef> arrays,
       ifrt::ArrayCopySemantics semantics) override {

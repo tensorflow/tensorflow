@@ -111,8 +111,8 @@ namespace {
 
 bool IsCollectiveFusion(const HloFusionInstruction& fusion) {
   HloOpcode root_opcode = fusion.fused_expression_root()->opcode();
-  std::vector<HloOpcode> collective_opcodes = {HloOpcode::kAllGather,
-                                               HloOpcode::kAllReduce};
+  std::vector<HloOpcode> collective_opcodes = {
+      HloOpcode::kAllGather, HloOpcode::kAllReduce, HloOpcode::kAllToAll};
   return absl::c_linear_search(collective_opcodes, root_opcode);
 }
 

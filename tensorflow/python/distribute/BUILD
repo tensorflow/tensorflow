@@ -350,6 +350,18 @@ py_library(
     ],
 )
 
+distribute_py_strict_test(
+    name = "tpu_util_test",
+    srcs = ["tpu_util_test.py"],
+    deps = [
+        ":tpu_util",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:control_flow_ops",
+        "//tensorflow/python/tpu:tpu_replication",
+    ],
+)
+
 py_library(
     name = "mirrored_strategy",
     srcs = ["mirrored_strategy.py"],
@@ -2690,6 +2702,15 @@ pytype_strict_library(
     name = "load_context",
     srcs = ["load_context.py"],
     deps = ["//tensorflow/python/util:tf_export"],
+)
+
+tf_py_strict_test(
+    name = "load_context_test",
+    srcs = ["load_context_test.py"],
+    deps = [
+        ":load_context",
+        "//tensorflow/python/eager:test",
+    ],
 )
 
 py_library(

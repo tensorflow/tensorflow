@@ -401,5 +401,78 @@ TEST_F(CollectiveOpsCommandBufferPeerAccessTest, FilterRaggedAllToAllOnly) {
       << dump_content;
 }
 
+TEST_F(CollectiveOpsCommandBufferTest, WhileWithAsyncAllReduce) {
+  constexpr absl::string_view kHloText = R"(
+  HloModule module, replica_count=2
+
+  add {
+    lhs = f32[] parameter(0)
+    rhs = f32[] parameter(1)
+    ROOT add = f32[] add(lhs, rhs)
+  }
+
+  cond {
+    param = (s32[], f32[2]) parameter(0)
+    iter = s32[] get-tuple-element(param), index=0
+    limit = s32[] constant(2)
+    ROOT cmp = pred[] compare(iter, limit), direction=LT
+  }
+
+  body {
+    param = (s32[], f32[2]) parameter(0)
+    iter = s32[] get-tuple-element(param), index=0
+    data = f32[2] get-tuple-element(param), index=1
+    one = s32[] constant(1)
+    next_iter = s32[] add(iter, one)
+    ar = f32[2] all-reduce(data), replica_groups={{0,1}}, to_apply=add
+    ROOT out = (s32[], f32[2]) tuple(next_iter, ar)
+  }
+
+  ENTRY main {
+    c0 = s32[] parameter(0)
+    data = f32[2] parameter(1)
+    init = (s32[], f32[2]) tuple(c0, data)
+    while_res = (s32[], f32[2]) while(init), condition=cond, body=body
+    ROOT res = f32[2] get-tuple-element(while_res), index=1
+  }
+  )";
+
+  constexpr int64_t kNumReplicas = 2;
+  if (device_count() < kNumReplicas) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
+                 << device_count() << " available)";
+  }
+
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  config.mutable_debug_options().clear_xla_gpu_enable_command_buffer();
+  config.mutable_debug_options().add_xla_gpu_enable_command_buffer(
+      DebugOptions::FUSION);
+  config.mutable_debug_options().add_xla_gpu_enable_command_buffer(
+      DebugOptions::WHILE);
+  config.mutable_debug_options().add_xla_gpu_enable_command_buffer(
+      DebugOptions::COLLECTIVES);
+  config.mutable_debug_options().set_xla_gpu_graph_min_graph_size(1);
+  config.mutable_debug_options().add_xla_disable_hlo_passes(
+      "collective-fusion");
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kHloText, config));
+
+  Literal iter_init = LiteralUtil::CreateR0<int32_t>(0);
+  Literal input = LiteralUtil::CreateR1<float>({1.0f, 2.0f});
+  ASSERT_OK_AND_ASSIGN(
+      ExecutionResult execution_result,
+      ExecuteReplicated(std::move(module),
+                        std::vector<Literal*>{&iter_init, &input},
+                        /*run_hlo_passes=*/true));
+  const std::vector<Literal>& results = execution_result.results;
+  ASSERT_EQ(results.size(), kNumReplicas);
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<float>({4.0f, 8.0f}),
+                                     results[0]));
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<float>({4.0f, 8.0f}),
+                                     results[1]));
+}
+
 }  // namespace
 }  // namespace xla

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/backends/gpu/codegen/triton/fusion.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -30,6 +31,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/Module.h"
@@ -54,6 +56,7 @@ limitations under the License.
 #include "xla/future.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_constants.h"
@@ -90,7 +93,10 @@ absl::StatusOr<EmitArgs> EmitCollectiveFusion(
 
   const HloInstructionAdaptor collective_hero = analysis.fusion_hero(0);
 
-  bool use_global_device_ids = collective_hero.use_global_device_ids();
+  std::optional<bool> use_global_device_ids;
+  if (collective_hero.opcode() != HloOpcode::kAllToAll) {
+    use_global_device_ids = collective_hero.use_global_device_ids();
+  }
 
   CollectiveConfig config = GetCollectiveConfig(&collective_hero.instruction(),
                                                 use_global_device_ids);
@@ -378,15 +384,26 @@ std::optional<TritonFusion::LaunchConfig> TritonFusion::GetLaunchConfig(
       BlockLevelParameters::FromBlockLevelFusionConfig(
           analysis->fusion_backend_config().block_level_fusion_config());
 
-  // We expect all roots to have the same number of blocks. Otherwise we
-  // cannot codegen it.
+  CHECK_EQ(analysis->fusion_root_count(),
+           block_level_parameters.output_tile_sizes.size());
   int64_t num_blocks =
       GetNumberOfBlocks(analysis->fusion_root(0).shape().dimensions(),
                         block_level_parameters.output_tile_sizes[0]);
   for (int64_t i = 1; i < analysis->fusion_root_count(); ++i) {
-    CHECK_EQ(GetNumberOfBlocks(analysis->fusion_root(i).shape().dimensions(),
-                               block_level_parameters.output_tile_sizes[i]),
-             num_blocks);
+    int64_t root_blocks =
+        GetNumberOfBlocks(analysis->fusion_root(i).shape().dimensions(),
+                          block_level_parameters.output_tile_sizes[i]);
+    if (analysis->fusion_backend_config().kind() ==
+        kTritonCollectiveFusionKind) {
+      // Variadic collective fusion: each output has its own tile size, and
+      // smaller outputs are padded with masked-out blocks to match the largest
+      // output's block count. So the launch grid is the max across outputs.
+      num_blocks = std::max(num_blocks, root_blocks);
+    } else {
+      // We expect all roots to have the same number of blocks. Otherwise we
+      // cannot codegen it.
+      CHECK_EQ(root_blocks, num_blocks);
+    }
   }
 
   LaunchConfig launch_config;

@@ -46,7 +46,6 @@ class RecvThunk : public CollectiveThunk {
             const Buffer& buffer);
   RecvThunk(ThunkInfo thunk_info, const P2PConfig& config, const Buffer& buffer,
             absl::string_view instr_name);
-  absl::Status Initialize(const InitializeParams& params) override;
 
   static absl::StatusOr<std::unique_ptr<RecvThunk>> FromProto(
       ThunkInfo thunk_info, const RecvThunkProto& thunk_proto,
