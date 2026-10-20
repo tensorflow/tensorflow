@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <memory>
@@ -32,6 +33,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/synchronization/mutex.h"
 #include "Eigen/Core"
 #include "xla/index_util.h"
 #include "xla/primitive_util.h"
@@ -42,11 +44,13 @@ limitations under the License.
 #include "xla/stream_executor/gpu/buffer_comparator_kernel.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
 #include "xla/stream_executor/launch_dim.h"
-#include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/cpu_info.h"
 
 namespace xla {
 namespace gpu {
@@ -229,38 +233,36 @@ static absl::StatusOr<bool> HostCompare(const ComparisonParams& params) {
   stats.relative_tol = params.relative_tol;
   constexpr int kMaxSamples = 5;
 
-  for (int64_t i = 0; i < n; ++i) {
+  // Per-element comparison that accumulates into a (thread-local) stats object.
+  const auto process_element = [&](int64_t i, BufferMismatchStats& out) {
     auto current_value = static_cast<ComparisonType>(host_current[i]);
     auto expected_value = static_cast<ComparisonType>(host_expected[i]);
     ComparisonType current_value_canonical = canonicalize(current_value);
     ComparisonType expected_value_canonical = canonicalize(expected_value);
     if (std::isnan(current_value_canonical) &&
         std::isnan(expected_value_canonical)) {
-      continue;
+      return;
     }
     if (std::isinf(current_value_canonical) &&
         std::isinf(expected_value_canonical) &&
         current_value_canonical == expected_value_canonical) {
-      continue;
+      return;
     }
-
     const bool is_current_nan = std::isnan(current_value_canonical);
     const bool is_expected_nan = std::isnan(expected_value_canonical);
     const bool is_current_inf = std::isinf(current_value_canonical);
     const bool is_expected_inf = std::isinf(expected_value_canonical);
-
     bool is_mismatch = false;
     double abs_diff = 0.0;
     double rel_diff = 0.0;
-
     if (is_current_nan || is_expected_nan) {
       is_mismatch = true;
-      ++stats.nan_count;
+      ++out.nan_count;
       abs_diff = std::numeric_limits<double>::quiet_NaN();
       rel_diff = std::numeric_limits<double>::quiet_NaN();
     } else if (is_current_inf || is_expected_inf) {
       is_mismatch = true;
-      ++stats.inf_count;
+      ++out.inf_count;
       abs_diff = std::numeric_limits<double>::infinity();
       rel_diff = std::numeric_limits<double>::infinity();
     } else {
@@ -275,33 +277,127 @@ static absl::StatusOr<bool> HostCompare(const ComparisonParams& params) {
         is_mismatch = true;
       }
     }
+    if (!is_mismatch) {
+      return;
+    }
+    ++out.mismatch_count;
+    if (std::isfinite(rel_diff) && rel_diff > out.max_rel_diff) {
+      out.max_rel_diff = rel_diff;
+      out.max_rel_diff_sample = {i, static_cast<double>(current_value),
+                                 static_cast<double>(expected_value), abs_diff,
+                                 rel_diff};
+    }
+    if (std::isfinite(abs_diff) && abs_diff > out.max_abs_diff) {
+      out.max_abs_diff = abs_diff;
+      out.max_abs_diff_sample = {i, static_cast<double>(current_value),
+                                 static_cast<double>(expected_value), abs_diff,
+                                 rel_diff};
+    }
+    if (out.sample_mismatches.size() < static_cast<size_t>(kMaxSamples)) {
+      out.sample_mismatches.push_back({i, static_cast<double>(current_value),
+                                       static_cast<double>(expected_value),
+                                       abs_diff, rel_diff});
+    }
+  };
 
-    if (is_mismatch) {
+  // Reduce a shard's local stats into the shared accumulator.
+  const auto merge_stats = [](BufferMismatchStats& dst,
+                              const BufferMismatchStats& src) {
+    dst.mismatch_count += src.mismatch_count;
+    dst.nan_count += src.nan_count;
+    dst.inf_count += src.inf_count;
+    if (src.max_rel_diff_sample.linear_index != -1 &&
+        (src.max_rel_diff > dst.max_rel_diff ||
+         (src.max_rel_diff == dst.max_rel_diff &&
+          (dst.max_rel_diff_sample.linear_index == -1 ||
+           src.max_rel_diff_sample.linear_index <
+               dst.max_rel_diff_sample.linear_index)))) {
+      dst.max_rel_diff = src.max_rel_diff;
+      dst.max_rel_diff_sample = src.max_rel_diff_sample;
+    }
+    if (src.max_abs_diff_sample.linear_index != -1 &&
+        (src.max_abs_diff > dst.max_abs_diff ||
+         (src.max_abs_diff == dst.max_abs_diff &&
+          (dst.max_abs_diff_sample.linear_index == -1 ||
+           src.max_abs_diff_sample.linear_index <
+               dst.max_abs_diff_sample.linear_index)))) {
+      dst.max_abs_diff = src.max_abs_diff;
+      dst.max_abs_diff_sample = src.max_abs_diff_sample;
+    }
+    // Keep dst.sample_mismatches sorted by linear index and capped at
+    // kMaxSamples so the merged vector never grows past the cap.
+    for (const auto& s : src.sample_mismatches) {
+      auto it = std::lower_bound(
+          dst.sample_mismatches.begin(), dst.sample_mismatches.end(), s,
+          [](const MismatchSample& a, const MismatchSample& b) {
+            return a.linear_index < b.linear_index;
+          });
+      dst.sample_mismatches.insert(it, s);
+      if (dst.sample_mismatches.size() > static_cast<size_t>(kMaxSamples)) {
+        dst.sample_mismatches.pop_back();
+      }
+    }
+  };
+
+  // Only take the parallel full-scan path when a full scan is actually needed.
+  //
+  // kParallelThreshold is the crossover point where the per-element work of a
+  // full scan outweighs the thread-pool spin-up cost; below it the serial scan
+  // is cheaper. Retune here if the thread-pool cost or per-element work
+  // changes.
+  constexpr int64_t kParallelThreshold = 1 << 20;
+  const bool needs_full_scan = params.error_report != nullptr;
+  if (n >= kParallelThreshold && needs_full_scan) {
+    // The thread pool is a function-local static so its OS threads are created
+    // once and reused across the many HostCompare calls made during autotuning,
+    // rather than spawning/joining a fresh pool on every call.
+    const int num_threads = std::max(1, tsl::port::MaxParallelism());
+    static tsl::thread::ThreadPool* pool = new tsl::thread::ThreadPool(
+        tsl::Env::Default(), "buffer_comparator_host", num_threads);
+    absl::Mutex mu;
+    pool->ParallelFor(
+        n,
+        tsl::thread::ThreadPool::SchedulingParams::Fixed(
+            /*block_size=*/std::max<int64_t>(1, n / (num_threads * 4))),
+        [&](int64_t start, int64_t limit) {
+          BufferMismatchStats local;
+          for (int64_t i = start; i < limit; ++i) {
+            process_element(i, local);
+          }
+          absl::MutexLock lock(mu);
+          merge_stats(stats, local);
+        });
+    // Keep the lowest-index samples for a deterministic report.
+    std::sort(stats.sample_mismatches.begin(), stats.sample_mismatches.end(),
+              [](const MismatchSample& a, const MismatchSample& b) {
+                return a.linear_index < b.linear_index;
+              });
+    if (stats.sample_mismatches.size() > static_cast<size_t>(kMaxSamples)) {
+      stats.sample_mismatches.resize(kMaxSamples);
+    }
+  } else {
+    // Serial path. Shares the exact per-element logic with the parallel path by
+    // calling `process_element` directly into `stats`, then adds only the extra
+    // behaviors the serial path is responsible for: the fast early-exit on the
+    // first mismatch (when no full scan is needed), the verbose per-element
+    // logging of the first 10 mismatches, and the 10-mismatch break when no
+    // error report is requested. `process_element` increments
+    // `stats.mismatch_count`, so we detect a mismatch by observing that counter
+    // grow.
+    for (int64_t i = 0; i < n; ++i) {
+      const int64_t prev_mismatch_count = stats.mismatch_count;
+      process_element(i, stats);
+      if (stats.mismatch_count == prev_mismatch_count) {
+        continue;  // Not a mismatch.
+      }
       if (!params.verbose && params.error_report == nullptr) {
-        return false;  // Fast path: return immediately if verbose is off and no
-                       // report needed.
-      }
-      ++stats.mismatch_count;
-      if (std::isfinite(rel_diff) && rel_diff > stats.max_rel_diff) {
-        stats.max_rel_diff = rel_diff;
-        stats.max_rel_diff_sample = {i, static_cast<double>(current_value),
-                                     static_cast<double>(expected_value),
-                                     abs_diff, rel_diff};
-      }
-      if (std::isfinite(abs_diff) && abs_diff > stats.max_abs_diff) {
-        stats.max_abs_diff = abs_diff;
-        stats.max_abs_diff_sample = {i, static_cast<double>(current_value),
-                                     static_cast<double>(expected_value),
-                                     abs_diff, rel_diff};
-      }
-      if (stats.sample_mismatches.size() < kMaxSamples) {
-        stats.sample_mismatches.push_back(
-            {i, static_cast<double>(current_value),
-             static_cast<double>(expected_value), abs_diff, rel_diff});
+        return false;  // Fast early-exit: no logging or report requested.
       }
       if (params.verbose && stats.mismatch_count <= 10) {
-        LOG(ERROR) << "Difference at " << i << ": " << current_value
-                   << ", expected " << expected_value;
+        LOG(ERROR) << "Difference at " << i << ": "
+                   << static_cast<ComparisonType>(host_current[i])
+                   << ", expected "
+                   << static_cast<ComparisonType>(host_expected[i]);
       }
       if (params.error_report == nullptr && stats.mismatch_count >= 10) {
         break;

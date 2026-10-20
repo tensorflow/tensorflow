@@ -105,6 +105,8 @@ class AllReducePattern : public OpConversionPattern<AllReduceOp> {
   }
 };
 
+// TODO(b/420837831): Remove PropagationBarrierPattern once we don't need to
+// fall back to GSPMD in ExportShardyForGSPMD.
 class PropagationBarrierPattern
     : public OpConversionPattern<PropagationBarrierOp> {
  public:
@@ -167,8 +169,7 @@ class ShardingPattern : public OpConversionPattern<OpTy> {
         return mlir::sdy::isSingleDeviceSharding(s1, symbolTable) &&
                isReplicatedSharding(s2, symbolTable);
       };
-      TensorShardingAttr inSharding =
-          mlir::sdy::getShardingBypassingBarriers(op.getInput());
+      TensorShardingAttr inSharding = mlir::sdy::getSharding(op.getInput());
       TensorShardingAttr outSharding = op.getSharding();
       if (isSingleDeviceToReplicated(inSharding, outSharding) ||
           isSingleDeviceToReplicated(outSharding, inSharding)) {
@@ -221,9 +222,12 @@ class ExportOpsPass
     mlir::MLIRContext& context = getContext();
     SymbolTable symbolTable(getOperation());
     mlir::ConversionTarget target(context);
-    // We do not expect to see ShardingConstraintOp in the input module.
-    // ShardingConstraintOp should be replaced by ReshardOp before this pass.
-    // Hence, we add ShardingConstraintOp as an illegal op.
+    // We do not expect to see ShardingConstraintOp or PropagationBarrierOp in
+    // the input module after sdy::addExportPipeline, which replaces
+    // ShardingConstraintOp with ReshardOp and erases PropagationBarrierOp.
+    // TODO(b/420837831): Remove ShardingConstraintOp and PropagationBarrierOp
+    // handling once we don't need to fall back to GSPMD in
+    // ExportShardyForGSPMD.
     target.addIllegalOp<ConstantOp, ReshardOp, AllGatherOp, AllReduceOp,
                         AllSliceOp, AllToAllOp, CollectivePermuteOp,
                         ReduceScatterOp, ShardingConstraintOp,

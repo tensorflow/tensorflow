@@ -1,15 +1,3 @@
-diff --git a/lib/Conversion/TensorToCudaTile/OutlinedComputeOps.cpp b/lib/Conversion/TensorToCudaTile/OutlinedComputeOps.cpp
---- a/lib/Conversion/TensorToCudaTile/OutlinedComputeOps.cpp
-+++ b/lib/Conversion/TensorToCudaTile/OutlinedComputeOps.cpp
-@@ -293,7 +293,7 @@
-                 getSignedness(exponentType),
-                 cuda_tile::RoundingMode::NEAREST_EVEN);
-           }
--          rewriter.replaceOpWithNewOp<cuda_tile::PowOp>(op, operands[0], rhs);
-+          rewriter.replaceOpWithNewOp<cuda_tile::FPowFOp>(op, operands[0], rhs);
-           return success();
-         })
-         .Case<Atan2Op>([&](auto) {
 diff --git a/test/Conversion/TensorToCudaTile/iterspace_matmul.mlir b/test/Conversion/TensorToCudaTile/iterspace_matmul.mlir
 --- a/test/Conversion/TensorToCudaTile/iterspace_matmul.mlir
 +++ b/test/Conversion/TensorToCudaTile/iterspace_matmul.mlir

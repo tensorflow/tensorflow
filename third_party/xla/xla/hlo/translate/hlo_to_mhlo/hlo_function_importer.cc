@@ -1276,9 +1276,7 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
         // we don't want to expose this implementation detail to MHLO/StableHLO
         // users.
         if (!custom_call->IsCustomCall(kPinCustomCallTarget) &&
-            !custom_call->IsCustomCall(kUnpinCustomCallTarget) &&
-            !custom_call->IsCustomCall(kFanOutCustomCallTarget) &&
-            !custom_call->IsCustomCall(kFanInCustomCallTarget)) {
+            !custom_call->IsCustomCall(kUnpinCustomCallTarget)) {
           attributes.push_back(builder_->getNamedAttr(
               "output_operand_aliases",
               ConvertOutputOperandAliasing(
@@ -1298,9 +1296,7 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           "api_version", mlir::stablehlo::CustomCallApiVersionAttr::get(
                              builder_->getContext(), mlir_api_version)));
       if (!custom_call->IsCustomCall(kPinCustomCallTarget) &&
-          !custom_call->IsCustomCall(kUnpinCustomCallTarget) &&
-          !custom_call->IsCustomCall(kFanOutCustomCallTarget) &&
-          !custom_call->IsCustomCall(kFanInCustomCallTarget)) {
+          !custom_call->IsCustomCall(kUnpinCustomCallTarget)) {
         attributes.push_back(builder_->getNamedAttr(
             "output_operand_aliases",
             stablehlo::ConvertOutputOperandAliasing(

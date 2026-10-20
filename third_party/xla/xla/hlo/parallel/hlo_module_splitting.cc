@@ -270,7 +270,9 @@ absl::StatusOr<std::unique_ptr<HloModuleSplit>> CreateHloModuleSplit(
     mapped_call_instruction->set_to_apply(replacement);
   }
 
-  entry_computation->SetAndSanitizeName(kEntryName);
+  // A computation cloned into the split, such as a fusion, can already be named
+  // `kEntryName`. Consumers find the entry by pointer, so a suffix is safe.
+  submodule->SetAndUniquifyComputationName(entry_computation, kEntryName);
   computation_map.insert({computation, entry_computation});
 
   VLOG(3) << submodule->ToString();

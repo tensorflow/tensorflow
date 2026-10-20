@@ -406,6 +406,21 @@ TEST_F(BufferComparatorTest, VeryLargeArray) {
   ASSERT_OK_AND_ASSIGN(bool equal2,
                        comparator.CompareEqual(stream.get(), lhs, rhs));
   EXPECT_FALSE(equal2);
+
+  // Make *every* element mismatch and verify the comparator still reports
+  // inequality. This is a regression test for a 32-bit overflow: the device
+  // kernel accumulates into an int32 counter, so if it summed the per-element
+  // mismatch count (~2^32 here) it would wrap modulo 2^32 and could land back
+  // on 0, making DeviceCompare spuriously report equality. The kernel instead
+  // counts mismatching *blocks* (bounded by the grid size), which cannot
+  // overflow. The byte pattern 0x00FF00FF alternates 0xFF/0x00 bytes, so
+  // buffer[i] != buffer[i + 1] for every i, i.e. lhs[i] != rhs[i] everywhere
+  // (rhs is lhs shifted by one element).
+  constexpr uint32_t alternating_pattern = 0x00FF00FF;
+  CHECK_OK(stream->Memset32(&lhs, alternating_pattern, buf_size));
+  ASSERT_OK_AND_ASSIGN(bool equal3,
+                       comparator.CompareEqual(stream.get(), lhs, rhs));
+  EXPECT_FALSE(equal3);
 }
 
 TEST_F(BufferComparatorTest, ErrorReportGeneratedOnMismatch) {
@@ -500,6 +515,159 @@ TEST_F(BufferComparatorTest, ErrorReportOnMultidimensionalMismatch) {
   EXPECT_THAT(error_report, ::testing::HasSubstr("[1, 0] (linear index 2)"));
   EXPECT_THAT(error_report, ::testing::HasSubstr("Max relative difference:"));
   EXPECT_THAT(error_report, ::testing::HasSubstr("Max absolute difference:"));
+}
+
+// The mismatch counter used by DeviceCompare is allocated in host memory
+// (via StreamExecutor::HostMemoryAllocate) and MemZero'd before each kernel
+// launch. This test runs many comparisons back-to-back on the same executor,
+// alternating between equal and mismatching buffers, to pin that the counter
+// is correctly re-zeroed between calls and that a prior mismatch never leaks
+// into a subsequent equal comparison (or vice versa).
+TEST_F(BufferComparatorTest, CounterIsRezeroedAcrossComparisons) {
+  const std::vector<float> equal_a = {1.0f, 2.0f, 3.0f, 4.0f};
+  const std::vector<float> equal_b = {1.0f, 2.0f, 3.0f, 4.0f};
+  const std::vector<float> mismatch_b = {1.0f, 99.0f, 3.0f, 4.0f};
+
+  for (int i = 0; i < 50; ++i) {
+    // Equal comparison must return true even right after a mismatch.
+    EXPECT_TRUE(CompareEqualFloatBuffers<float>(equal_a, equal_b, 0.01))
+        << "equal comparison failed on iteration " << i;
+    // Mismatch comparison must return false even right after an equal compare.
+    EXPECT_FALSE(CompareEqualFloatBuffers<float>(equal_a, mismatch_b, 0.01))
+        << "mismatch comparison failed on iteration " << i;
+  }
+}
+
+// The following tests exercise the *parallel* host-compare path, which is only
+// taken for buffers with at least `kParallelThreshold` (1 << 20) elements AND a
+// non-null error_report. Because the parallel path is a second, independent
+// implementation of the comparison logic, these tests pin its results against
+// the same expectations the serial path satisfies, and pin down the
+// deterministic (lowest-index) tie-breaking in the shard reduction.
+
+// Must stay in sync with kParallelThreshold in buffer_comparator.cc.
+constexpr int64_t kParallelThreshold = 1 << 20;
+
+// A single mismatch in an otherwise-equal large buffer should be found and
+// reported by the parallel path, at the correct linear index.
+TEST_F(BufferComparatorTest, ParallelPathSingleMismatch) {
+  const int64_t n = kParallelThreshold;
+  std::vector<float> current(n, 1.0f);
+  std::vector<float> expected(n, 1.0f);
+  const int64_t mismatch_index = n - 7;  // Not in the first shard.
+  current[mismatch_index] = 100.0f;
+
+  HostCompareResult r =
+      CompareEqualF32WithReport(current, expected, /*tolerance=*/0.01);
+  EXPECT_FALSE(r.equal);
+  EXPECT_THAT(r.error_report,
+              ::testing::HasSubstr("Mismatch count: 1 / " + std::to_string(n)));
+  EXPECT_THAT(
+      r.error_report,
+      ::testing::HasSubstr("linear index " + std::to_string(mismatch_index)));
+  EXPECT_THAT(r.error_report,
+              ::testing::HasSubstr("First 1 mismatch sample(s):"));
+}
+
+// Just below the threshold the serial path is taken; just at/above it the
+// parallel path is taken. Both must find the single mismatch and agree on the
+// reported linear index (pins the branch boundary).
+TEST_F(BufferComparatorTest, ParallelPathBranchBoundary) {
+  for (int64_t n : {kParallelThreshold - 1, kParallelThreshold}) {
+    std::vector<float> current(n, 2.0f);
+    std::vector<float> expected(n, 2.0f);
+    const int64_t mismatch_index = n - 1;
+    current[mismatch_index] = 5.0f;
+
+    HostCompareResult r =
+        CompareEqualF32WithReport(current, expected, /*tolerance=*/0.01);
+    EXPECT_FALSE(r.equal) << "n=" << n;
+    EXPECT_THAT(r.error_report, ::testing::HasSubstr("Mismatch count: 1 / " +
+                                                     std::to_string(n)))
+        << "n=" << n;
+    EXPECT_THAT(
+        r.error_report,
+        ::testing::HasSubstr("linear index " + std::to_string(mismatch_index)))
+        << "n=" << n;
+  }
+}
+
+// Every element mismatches: the parallel reduction must count all of them and
+// report exactly the first kMaxSamples (=5) lowest-index samples.
+TEST_F(BufferComparatorTest, ParallelPathAllMismatch) {
+  const int64_t n = kParallelThreshold;
+  std::vector<float> current(n, 1.0f);
+  std::vector<float> expected(n, 100.0f);
+
+  HostCompareResult r =
+      CompareEqualF32WithReport(current, expected, /*tolerance=*/0.01);
+  EXPECT_FALSE(r.equal);
+  EXPECT_THAT(r.error_report,
+              ::testing::HasSubstr("Mismatch count: " + std::to_string(n) +
+                                   " / " + std::to_string(n)));
+  // The first (lowest-index) samples must be 0..4 regardless of shard order.
+  EXPECT_THAT(r.error_report,
+              ::testing::HasSubstr("First 5 mismatch sample(s):"));
+  EXPECT_THAT(r.error_report, ::testing::HasSubstr("linear index 0"));
+  EXPECT_THAT(r.error_report, ::testing::HasSubstr("linear index 1"));
+  EXPECT_THAT(r.error_report, ::testing::HasSubstr("linear index 4"));
+}
+
+// NaN/Inf-only mismatches exercise the linear_index != -1 guards in
+// merge_stats: the max relative/absolute difference samples are non-finite, so
+// they must be reported as N/A while the NaN/Inf counts are still tallied.
+TEST_F(BufferComparatorTest, ParallelPathNanInfOnly) {
+  const int64_t n = kParallelThreshold;
+  const float nan = std::nanf("");
+  const float inf = std::numeric_limits<float>::infinity();
+  std::vector<float> current(n, 1.0f);
+  std::vector<float> expected(n, 1.0f);
+  // A NaN mismatch and an Inf mismatch, both past the first shard.
+  const int64_t nan_index = n - 3;
+  const int64_t inf_index = n - 5;
+  current[nan_index] = nan;  // expected is finite -> NaN mismatch.
+  current[inf_index] = inf;  // expected is finite -> Inf mismatch.
+
+  HostCompareResult r =
+      CompareEqualF32WithReport(current, expected, /*tolerance=*/0.01);
+  EXPECT_FALSE(r.equal);
+  EXPECT_THAT(r.error_report,
+              ::testing::HasSubstr("Mismatch count: 2 / " + std::to_string(n)));
+  EXPECT_THAT(r.error_report, ::testing::HasSubstr("NaN count: 1"));
+  EXPECT_THAT(r.error_report, ::testing::HasSubstr("Inf count: 1"));
+  // All mismatches are NaN/Inf, so both max-diff samples are N/A.
+  EXPECT_THAT(r.error_report,
+              ::testing::HasSubstr(
+                  "Max relative difference: N/A (all mismatches are NaN/Inf)"));
+  EXPECT_THAT(r.error_report,
+              ::testing::HasSubstr(
+                  "Max absolute difference: N/A (all mismatches are NaN/Inf)"));
+}
+
+// Many equal maxima: several elements share the exact same (maximal) diff. The
+// reported "Max ... difference at ..." sample must be the lowest linear index
+// among them, deterministically, no matter how shards are scheduled.
+TEST_F(BufferComparatorTest, ParallelPathEqualMaximaTieBreak) {
+  const int64_t n = kParallelThreshold;
+  std::vector<float> current(n, 1.0f);
+  std::vector<float> expected(n, 1.0f);
+  // Give a set of elements, spread across shards, the identical large delta.
+  const int64_t first_max_index = 3;
+  for (int64_t idx : {first_max_index, n / 4, n / 2, 3 * n / 4, n - 2}) {
+    current[idx] = 1000.0f;  // Identical value -> identical abs/rel diff.
+  }
+
+  HostCompareResult r =
+      CompareEqualF32WithReport(current, expected, /*tolerance=*/0.01);
+  EXPECT_FALSE(r.equal);
+  EXPECT_THAT(r.error_report,
+              ::testing::HasSubstr("Mismatch count: 5 / " + std::to_string(n)));
+  // The max-diff samples must tie-break to the lowest linear index (3).
+  EXPECT_THAT(r.error_report,
+              ::testing::HasSubstr("Max relative difference: "));
+  EXPECT_THAT(
+      r.error_report,
+      ::testing::HasSubstr("linear index " + std::to_string(first_max_index)));
 }
 
 }  // namespace

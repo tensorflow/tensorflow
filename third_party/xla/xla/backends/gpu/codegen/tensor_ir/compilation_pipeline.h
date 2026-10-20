@@ -18,8 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 
-#include "tensor_ir/Conversion/TensorToCudaTile/Options.h"
-#include "mlir/Pass/PassManager.h"
+#include "tensor_ir/Options/Options.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/stream_executor/device_description.h"
 
@@ -29,16 +28,11 @@ namespace xla::gpu::tensor_ir {
 // and tiling configuration. `tile_size` is the output tile shape and
 // `reduction_tile_size` is the tile size for the contracting dimension (only
 // relevant for fusions that contain a reduction).
-mlir::nv_tensor_ir::TensorToCudaTilePipelineOptions GetPipelineOptions(
+mlir::nv_tensor_ir::CompilerInvocation GetPipelineOptions(
     const stream_executor::GpuComputeCapability& gpu_cc,
     llvm::ArrayRef<int32_t> tile_size,
     int64_t reduction_tile_size =
-        mlir::nv_tensor_ir::kDefaultReductionTileSize);
-
-// Adds the TensorIR-to-CudaTile analysis and conversion pipeline to `pm`.
-void CreateTensorIrPipeline(
-    mlir::OpPassManager* pm,
-    const mlir::nv_tensor_ir::TensorToCudaTilePipelineOptions& options);
+        mlir::nv_tensor_ir::CudaTileOptions{}.reductionTileSize);
 
 // Points TensorIR's Tile IR assembler at the `tileiras` binary staged in the
 // runfiles. TensorIR only looks on `$PATH` by default, where a Bazel-staged
