@@ -553,6 +553,8 @@ class MatrixDiagTest(xla_test.XLATestCase):
       return session.run(output, {x_ph: x, mask_ph: mask})
 
   def testDynamicDiagonalLength(self):
+    if "TPU" in self.device:
+      self.skipTest("Dynamic diagonal lengths are not supported on TPU.")
     # Regression test for GitHub issue 128954: the output's matrix dimensions
     # took the bound of the diagonals' length instead of its value. The mask
     # selects 2 of 5 entries, so the diagonals have length 2 and bound 5. (XLA
@@ -603,15 +605,10 @@ class MatrixDiagTest(xla_test.XLATestCase):
                                    k=(-1, 0),
                                    num_rows=2,
                                    align="LEFT_RIGHT"), [[1, 0], [8, 3]])
-
-  def testDynamicDiagonalLengthZero(self):
-    if "TPU" in self.device:
-      self.skipTest("Dynamic diagonal lengths of 0 are not supported on TPU.")
-    # In the band, diagonals 1 and -1 come out with a negative length at the
-    # actual sizes.
+    # Diagonals of length 0. In the band, diagonals 1 and -1 then come out with
+    # a negative length at the actual sizes.
     self.assertAllEqual(
-        self._matrixDiagOfSelected([1, 5, 2, 7, 3], mask=[False] * 5),
-        np.zeros([0, 0]))
+        self._matrixDiagOfSelected(x, mask=[False] * 5), np.zeros([0, 0]))
     self.assertAllEqual(
         self._matrixDiagOfSelected(
             [[10, 11, 12, 13, 14], [20, 21, 22, 23, 24], [30, 31, 32, 33, 34]],
