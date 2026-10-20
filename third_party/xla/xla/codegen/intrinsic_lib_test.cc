@@ -252,6 +252,31 @@ TEST(IntrinsicLibTest, CoshVectorizations) {
                            "xla.cosh.f32:xla.cosh.v16f32:16:_ZGV_LLVM_N16v"));
 }
 
+TEST(IntrinsicLibTest, AsinAndAcosVectorizations) {
+  IntrinsicOptions options;
+  auto lib = IntrinsicFunctionLib(options);
+  std::vector<llvm::VecDesc> vec_descs = lib.Vectorizations();
+  std::vector<std::string> asin_descs;
+  std::vector<std::string> acos_descs;
+  for (const auto& vec_desc : vec_descs) {
+    if (vec_desc.getScalarFnName().starts_with("xla.asin")) {
+      asin_descs.push_back(ToString(vec_desc));
+    } else if (vec_desc.getScalarFnName().starts_with("xla.acos")) {
+      acos_descs.push_back(ToString(vec_desc));
+    }
+  }
+
+  EXPECT_THAT(
+      asin_descs,
+      UnorderedElementsAre("xla.asin.f32:xla.asin.v4f32:4:_ZGV_LLVM_N4v",
+                           "xla.asin.f32:xla.asin.v8f32:8:_ZGV_LLVM_N8v",
+                           "xla.asin.f32:xla.asin.v16f32:16:_ZGV_LLVM_N16v"));
+  EXPECT_THAT(
+      acos_descs,
+      UnorderedElementsAre("xla.acos.f32:xla.acos.v4f32:4:_ZGV_LLVM_N4v",
+                           "xla.acos.f32:xla.acos.v8f32:8:_ZGV_LLVM_N8v",
+                           "xla.acos.f32:xla.acos.v16f32:16:_ZGV_LLVM_N16v"));
+}
 TEST(IntrinsicLibTest, CppGenIntrinsicLibraryPreservesNoInline) {
   llvm::LLVMContext context;
   llvm::Module dst_module("dst_module", context);

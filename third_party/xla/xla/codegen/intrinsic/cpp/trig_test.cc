@@ -25,6 +25,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/base/casts.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/raw_ostream.h"
@@ -276,6 +277,247 @@ TEST(TrigTest, CoshIsVectorized) {
   llvm::raw_string_ostream stream(ir);
   module->print(stream, nullptr);
   EXPECT_THAT(ir, ContainsRegex("xla.cosh.v16f32"));
+  EXPECT_THAT(ir, ContainsRegex("fmul.*<16 x float>"));
+}
+
+TEST(TrigTest, AsinF32IsCorrect) {
+  double max_ulp_error = 0.0;
+  float worst_x = 0.0f;
+  int64_t max_int_ulp_diff = 0;
+
+  auto check_point = [&](uint32_t bits) {
+    float x = absl::bit_cast<float>(bits);
+    double expected = std::asin(static_cast<double>(x));
+    float actual = asin_f32(x);
+
+    float expected_f32 = static_cast<float>(expected);
+    uint32_t actual_bits = absl::bit_cast<uint32_t>(actual);
+    uint32_t expected_bits = absl::bit_cast<uint32_t>(expected_f32);
+    int64_t int_diff = std::abs(static_cast<int64_t>(actual_bits) -
+                                static_cast<int64_t>(expected_bits));
+    if (int_diff > max_int_ulp_diff) {
+      max_int_ulp_diff = int_diff;
+    }
+
+    if (expected == 0.0) {
+      EXPECT_EQ(actual, expected_f32);
+      return;
+    }
+    int exp;
+    std::frexp(expected, &exp);
+    double ulp = std::ldexp(1.0, std::max(exp - 24, -149));
+    double ulp_error = std::abs(static_cast<double>(actual) - expected) / ulp;
+    if (ulp_error > max_ulp_error) {
+      max_ulp_error = ulp_error;
+      worst_x = x;
+    }
+  };
+
+  constexpr uint32_t kOneBits = 0x3f800000;
+  constexpr uint32_t kHalfBits = 0x3f000000;
+  constexpr uint32_t kSignBit = 0x80000000;
+
+  // Sweep [0.0f, 1.0f] and [-1.0f, -0.0f] with stride 256.
+  for (uint32_t bits = 0; bits <= kOneBits; bits += 256) {
+    check_point(bits);
+    check_point(bits | kSignBit);
+  }
+  // Exhaustive checks around the branch threshold |x| = 0.5f and boundary |x| =
+  // 1.0f.
+  for (uint32_t bits = kHalfBits - 8192; bits <= kHalfBits + 8192; ++bits) {
+    check_point(bits);
+    check_point(bits | kSignBit);
+  }
+  for (uint32_t bits = kOneBits - 65536; bits <= kOneBits; ++bits) {
+    check_point(bits);
+    check_point(bits | kSignBit);
+  }
+
+  EXPECT_LE(max_int_ulp_diff, 1) << "worst_x = " << worst_x;
+  EXPECT_LT(max_ulp_error, 1.0) << "worst_x = " << worst_x;
+}
+
+TEST(TrigTest, AsinF32EdgeCases) {
+  EXPECT_EQ(asin_f32(0.0f), 0.0f);
+  EXPECT_FALSE(std::signbit(asin_f32(0.0f)));
+  EXPECT_EQ(asin_f32(-0.0f), -0.0f);
+  EXPECT_TRUE(std::signbit(asin_f32(-0.0f)));
+
+  float denorm_min = std::numeric_limits<float>::denorm_min();
+  EXPECT_EQ(asin_f32(denorm_min), denorm_min);
+  EXPECT_EQ(asin_f32(-denorm_min), -denorm_min);
+
+  EXPECT_THAT(asin_f32(1.0f), NearUlps(static_cast<float>(std::asin(1.0)), 1));
+  EXPECT_THAT(asin_f32(-1.0f),
+              NearUlps(static_cast<float>(std::asin(-1.0)), 1));
+
+  // Out-of-domain inputs return NaN.
+  EXPECT_TRUE(std::isnan(asin_f32(std::nextafter(1.0f, 2.0f))));
+  EXPECT_TRUE(std::isnan(asin_f32(std::nextafter(-1.0f, -2.0f))));
+  EXPECT_TRUE(std::isnan(asin_f32(2.0f)));
+  EXPECT_TRUE(std::isnan(asin_f32(-2.0f)));
+  EXPECT_TRUE(std::isnan(asin_f32(std::numeric_limits<float>::infinity())));
+  EXPECT_TRUE(std::isnan(asin_f32(-std::numeric_limits<float>::infinity())));
+  EXPECT_TRUE(std::isnan(asin_f32(std::numeric_limits<float>::quiet_NaN())));
+}
+
+TEST(TrigTest, AsinF32VectorWidthsAreCorrect) {
+  Vec4f x4 = {-1.0f, -0.5f, 0.5f, 1.0f};
+  Vec4f y4 = asin_v4f32(x4);
+  for (int i = 0; i < 4; ++i) {
+    EXPECT_THAT(
+        y4[i],
+        NearUlps(static_cast<float>(std::asin(static_cast<double>(x4[i]))), 1));
+  }
+
+  Vec8f x8 = {-1.0f, -0.9f, -0.5f, -0.1f, 0.1f, 0.5f, 0.9f, 1.0f};
+  Vec8f y8 = asin_v8f32(x8);
+  for (int i = 0; i < 8; ++i) {
+    EXPECT_THAT(
+        y8[i],
+        NearUlps(static_cast<float>(std::asin(static_cast<double>(x8[i]))), 1));
+  }
+
+  Vec16f x16 = {-2.0f, -1.0f, -0.99f, -0.75f, -0.5f, -0.25f, -0.01f, -0.0f,
+                0.0f,  0.01f, 0.25f,  0.5f,   0.75f, 0.99f,  1.0f,   2.0f};
+  Vec16f y16 = asin_v16f32(x16);
+  EXPECT_TRUE(std::isnan(y16[0]));
+  EXPECT_TRUE(std::isnan(y16[15]));
+  for (int i = 1; i < 15; ++i) {
+    EXPECT_THAT(
+        y16[i],
+        NearUlps(static_cast<float>(std::asin(static_cast<double>(x16[i]))),
+                 1));
+  }
+}
+
+TEST(TrigTest, AsinIsVectorized) {
+  llvm::LLVMContext context;
+  std::unique_ptr<llvm::Module> module =
+      ParseEmbeddedBitcode(context, llvm_ir::kTrigLlIr);
+
+  std::string ir;
+  llvm::raw_string_ostream stream(ir);
+  module->print(stream, nullptr);
+  EXPECT_THAT(ir, ContainsRegex("xla.asin.v16f32"));
+  EXPECT_THAT(ir, ContainsRegex("fmul.*<16 x float>"));
+}
+
+TEST(TrigTest, AcosF32IsCorrect) {
+  double max_ulp_error = 0.0;
+  float worst_x = 0.0f;
+  int64_t max_int_ulp_diff = 0;
+
+  auto check_point = [&](uint32_t bits) {
+    float x = absl::bit_cast<float>(bits);
+    double expected = std::acos(static_cast<double>(x));
+    float actual = acos_f32(x);
+
+    float expected_f32 = static_cast<float>(expected);
+    uint32_t actual_bits = absl::bit_cast<uint32_t>(actual);
+    uint32_t expected_bits = absl::bit_cast<uint32_t>(expected_f32);
+    int64_t int_diff = std::abs(static_cast<int64_t>(actual_bits) -
+                                static_cast<int64_t>(expected_bits));
+    if (int_diff > max_int_ulp_diff) {
+      max_int_ulp_diff = int_diff;
+    }
+
+    if (expected == 0.0) {
+      EXPECT_EQ(actual, expected_f32);
+      return;
+    }
+    int exp;
+    std::frexp(expected, &exp);
+    double ulp = std::ldexp(1.0, std::max(exp - 24, -149));
+    double ulp_error = std::abs(static_cast<double>(actual) - expected) / ulp;
+    if (ulp_error > max_ulp_error) {
+      max_ulp_error = ulp_error;
+      worst_x = x;
+    }
+  };
+
+  constexpr uint32_t kOneBits = 0x3f800000;
+  constexpr uint32_t kHalfBits = 0x3f000000;
+  constexpr uint32_t kSignBit = 0x80000000;
+
+  // Sweep [0.0f, 1.0f] and [-1.0f, -0.0f] with stride 256.
+  for (uint32_t bits = 0; bits <= kOneBits; bits += 256) {
+    check_point(bits);
+    check_point(bits | kSignBit);
+  }
+  // Exhaustive checks around the branch threshold |x| = 0.5f and boundary |x| =
+  // 1.0f.
+  for (uint32_t bits = kHalfBits - 8192; bits <= kHalfBits + 8192; ++bits) {
+    check_point(bits);
+    check_point(bits | kSignBit);
+  }
+  for (uint32_t bits = kOneBits - 65536; bits <= kOneBits; ++bits) {
+    check_point(bits);
+    check_point(bits | kSignBit);
+  }
+
+  EXPECT_LE(max_int_ulp_diff, 1) << "worst_x = " << worst_x;
+  EXPECT_LT(max_ulp_error, 1.0) << "worst_x = " << worst_x;
+}
+
+TEST(TrigTest, AcosF32EdgeCases) {
+  EXPECT_EQ(acos_f32(1.0f), 0.0f);
+  EXPECT_FALSE(std::signbit(acos_f32(1.0f)));
+  EXPECT_THAT(acos_f32(-1.0f),
+              NearUlps(static_cast<float>(std::acos(-1.0)), 1));
+  EXPECT_THAT(acos_f32(0.0f), NearUlps(static_cast<float>(std::acos(0.0)), 1));
+  EXPECT_THAT(acos_f32(-0.0f),
+              NearUlps(static_cast<float>(std::acos(-0.0)), 1));
+
+  // Out-of-domain inputs return NaN.
+  EXPECT_TRUE(std::isnan(acos_f32(std::nextafter(1.0f, 2.0f))));
+  EXPECT_TRUE(std::isnan(acos_f32(std::nextafter(-1.0f, -2.0f))));
+  EXPECT_TRUE(std::isnan(acos_f32(2.0f)));
+  EXPECT_TRUE(std::isnan(acos_f32(-2.0f)));
+  EXPECT_TRUE(std::isnan(acos_f32(std::numeric_limits<float>::infinity())));
+  EXPECT_TRUE(std::isnan(acos_f32(-std::numeric_limits<float>::infinity())));
+  EXPECT_TRUE(std::isnan(acos_f32(std::numeric_limits<float>::quiet_NaN())));
+}
+
+TEST(TrigTest, AcosF32VectorWidthsAreCorrect) {
+  Vec4f x4 = {-1.0f, -0.5f, 0.5f, 1.0f};
+  Vec4f y4 = acos_v4f32(x4);
+  for (int i = 0; i < 4; ++i) {
+    EXPECT_THAT(
+        y4[i],
+        NearUlps(static_cast<float>(std::acos(static_cast<double>(x4[i]))), 1));
+  }
+
+  Vec8f x8 = {-1.0f, -0.9f, -0.5f, -0.1f, 0.1f, 0.5f, 0.9f, 1.0f};
+  Vec8f y8 = acos_v8f32(x8);
+  for (int i = 0; i < 8; ++i) {
+    EXPECT_THAT(
+        y8[i],
+        NearUlps(static_cast<float>(std::acos(static_cast<double>(x8[i]))), 1));
+  }
+
+  Vec16f x16 = {-2.0f, -1.0f, -0.99f, -0.75f, -0.5f, -0.25f, -0.01f, -0.0f,
+                0.0f,  0.01f, 0.25f,  0.5f,   0.75f, 0.99f,  1.0f,   2.0f};
+  Vec16f y16 = acos_v16f32(x16);
+  EXPECT_TRUE(std::isnan(y16[0]));
+  EXPECT_TRUE(std::isnan(y16[15]));
+  for (int i = 1; i < 15; ++i) {
+    EXPECT_THAT(
+        y16[i],
+        NearUlps(static_cast<float>(std::acos(static_cast<double>(x16[i]))),
+                 1));
+  }
+}
+
+TEST(TrigTest, AcosIsVectorized) {
+  llvm::LLVMContext context;
+  std::unique_ptr<llvm::Module> module =
+      ParseEmbeddedBitcode(context, llvm_ir::kTrigLlIr);
+
+  std::string ir;
+  llvm::raw_string_ostream stream(ir);
+  module->print(stream, nullptr);
+  EXPECT_THAT(ir, ContainsRegex("xla.acos.v16f32"));
   EXPECT_THAT(ir, ContainsRegex("fmul.*<16 x float>"));
 }
 

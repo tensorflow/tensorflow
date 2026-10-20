@@ -382,5 +382,144 @@ TEST_F(ElementaryFunctionExpanderTest, CoshComplexExpandedAndAccurate) {
   }
 }
 
+TEST_F(ElementaryFunctionExpanderTest, AcosAndAsinF32AndSub32BitTypesHandling) {
+  const char* hlo_string = R"(
+    HloModule module
+
+    ENTRY main {
+      p_f32 = f32[4] parameter(0)
+      p_f16 = f16[4] parameter(1)
+      p_bf16 = bf16[4] parameter(2)
+      acos_f32 = f32[4] acos(p_f32)
+      acos_f16 = f16[4] acos(p_f16)
+      acos_bf16 = bf16[4] acos(p_bf16)
+      asin_f32 = f32[4] asin(p_f32)
+      asin_f16 = f16[4] asin(p_f16)
+      asin_bf16 = bf16[4] asin(p_bf16)
+      ROOT out = (f32[4], f16[4], bf16[4], f32[4], f16[4], bf16[4]) tuple(
+          acos_f32, acos_f16, acos_bf16, asin_f32, asin_f16, asin_bf16)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ElementaryFunctionExpander default_expander;
+  ASSERT_OK_AND_ASSIGN(bool changed, default_expander.Run(module.get()));
+  EXPECT_FALSE(changed);
+
+  ElementaryFunctionExpander unfiltered_expander(/*extra_filter=*/nullptr);
+  ASSERT_OK_AND_ASSIGN(changed, unfiltered_expander.Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_FALSE(ContainsOpcode(*module, HloOpcode::kAcos));
+  EXPECT_FALSE(ContainsOpcode(*module, HloOpcode::kAsin));
+}
+
+TEST_F(ElementaryFunctionExpanderTest, AcosAndAsinF64ExpandedAndAccurate) {
+  const char* hlo_string = R"(
+    HloModule module
+
+    ENTRY main {
+      p = f64[13] parameter(0)
+      acos_val = f64[13] acos(p)
+      asin_val = f64[13] asin(p)
+      ROOT out = (f64[13], f64[13]) tuple(acos_val, asin_val)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ElementaryFunctionExpander expander;
+  ASSERT_OK_AND_ASSIGN(bool changed, expander.Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_FALSE(ContainsOpcode(*module, HloOpcode::kAcos));
+  EXPECT_FALSE(ContainsOpcode(*module, HloOpcode::kAsin));
+
+  const double nan = std::numeric_limits<double>::quiet_NaN();
+  std::vector<double> inputs = {0.0,  -0.0,       1e-16,       -1e-16, 0.5,
+                                -0.5, 1.0 - 1e-9, -1.0 + 1e-9, 1.0,    -1.0,
+                                1.5,  -1.5,       nan};
+  Literal input_literal = LiteralUtil::CreateR1<double>(inputs);
+  HloEvaluator evaluator;
+  ASSERT_OK_AND_ASSIGN(Literal result_literal,
+                       evaluator.Evaluate(*module, {&input_literal}));
+  std::vector<Literal> tuple_elements = result_literal.DecomposeTuple();
+  auto acos_results = tuple_elements[0].data<double>();
+  auto asin_results = tuple_elements[1].data<double>();
+
+  // Verify signed zero preservation for asin.
+  EXPECT_EQ(asin_results[0], 0.0);
+  EXPECT_FALSE(std::signbit(asin_results[0]));
+  EXPECT_EQ(asin_results[1], -0.0);
+  EXPECT_TRUE(std::signbit(asin_results[1]));
+
+  for (size_t i = 0; i < 10; ++i) {
+    double expected_acos = std::acos(inputs[i]);
+    double expected_asin = std::asin(inputs[i]);
+    double tol_acos =
+        2.0 * std::abs(expected_acos) * std::numeric_limits<double>::epsilon();
+    double tol_asin =
+        2.0 * std::abs(expected_asin) * std::numeric_limits<double>::epsilon();
+    EXPECT_NEAR(acos_results[i], expected_acos, tol_acos) << "i=" << i;
+    EXPECT_NEAR(asin_results[i], expected_asin, tol_asin) << "i=" << i;
+  }
+  for (size_t i = 10; i < inputs.size(); ++i) {
+    EXPECT_TRUE(std::isnan(acos_results[i])) << "i=" << i;
+    EXPECT_TRUE(std::isnan(asin_results[i])) << "i=" << i;
+  }
+}
+
+TEST_F(ElementaryFunctionExpanderTest, AcosAndAsinComplexExpandedAndAccurate) {
+  const char* hlo_string = R"(
+    HloModule module
+
+    ENTRY main {
+      p64 = c64[2] parameter(0)
+      p128 = c128[2] parameter(1)
+      acos_c64 = c64[2] acos(p64)
+      acos_c128 = c128[2] acos(p128)
+      asin_c64 = c64[2] asin(p64)
+      asin_c128 = c128[2] asin(p128)
+      ROOT out = (c64[2], c128[2], c64[2], c128[2]) tuple(
+          acos_c64, acos_c128, asin_c64, asin_c128)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ElementaryFunctionExpander expander;
+  ASSERT_OK_AND_ASSIGN(bool changed, expander.Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_FALSE(ContainsOpcode(*module, HloOpcode::kAcos));
+  EXPECT_FALSE(ContainsOpcode(*module, HloOpcode::kAsin));
+
+  std::vector<complex64> inputs_c64 = {{0.5f, 0.3f}, {-1.2f, 0.8f}};
+  std::vector<complex128> inputs_c128 = {{0.5, 0.3}, {-1.2, 0.8}};
+  Literal input_c64_lit = LiteralUtil::CreateR1<complex64>(inputs_c64);
+  Literal input_c128_lit = LiteralUtil::CreateR1<complex128>(inputs_c128);
+
+  HloEvaluator evaluator;
+  ASSERT_OK_AND_ASSIGN(
+      Literal result_literal,
+      evaluator.Evaluate(*module, {&input_c64_lit, &input_c128_lit}));
+  std::vector<Literal> tuple_elements = result_literal.DecomposeTuple();
+  auto acos_c64 = tuple_elements[0].data<complex64>();
+  auto acos_c128 = tuple_elements[1].data<complex128>();
+  auto asin_c64 = tuple_elements[2].data<complex64>();
+  auto asin_c128 = tuple_elements[3].data<complex128>();
+
+  for (size_t i = 0; i < inputs_c64.size(); ++i) {
+    std::complex<double> z(inputs_c64[i].real(), inputs_c64[i].imag());
+    std::complex<double> exp_acos = std::acos(z);
+    std::complex<double> exp_asin = std::asin(z);
+    float eps = std::numeric_limits<float>::epsilon();
+    EXPECT_NEAR(acos_c64[i].real(), exp_acos.real(), 4.0 * eps);
+    EXPECT_NEAR(acos_c64[i].imag(), exp_acos.imag(), 4.0 * eps);
+    EXPECT_NEAR(asin_c64[i].real(), exp_asin.real(), 4.0 * eps);
+    EXPECT_NEAR(asin_c64[i].imag(), exp_asin.imag(), 4.0 * eps);
+  }
+  for (size_t i = 0; i < inputs_c128.size(); ++i) {
+    std::complex<double> exp_acos = std::acos(inputs_c128[i]);
+    std::complex<double> exp_asin = std::asin(inputs_c128[i]);
+    double eps = std::numeric_limits<double>::epsilon();
+    EXPECT_NEAR(acos_c128[i].real(), exp_acos.real(), 4.0 * eps);
+    EXPECT_NEAR(acos_c128[i].imag(), exp_acos.imag(), 4.0 * eps);
+    EXPECT_NEAR(asin_c128[i].real(), exp_asin.real(), 4.0 * eps);
+    EXPECT_NEAR(asin_c128[i].imag(), exp_asin.imag(), 4.0 * eps);
+  }
+}
 }  // namespace
 }  // namespace xla

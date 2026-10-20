@@ -225,6 +225,225 @@ inline T CoshF32(T x_in) {
   return use_small ? small_cosh : poly_cosh;
 }
 
+// Evaluates the degree-4 polynomial P(t) for asin(sqrt(t)) ~= sqrt(t) +
+// sqrt(t) * t * P(t) on t in [0, 0.25], ordered c4..c0 for HornerPoly.
+// Generated in Sollya:
+//   display = hexadecimal!;
+//   p = fpminimax(asin(sqrt(x)) / sqrt(x) - 1, [|1, 2, 3, 4, 5|], [|SG...|],
+//                 [1b-20, 0.25], floating, absolute);
+template <typename T>
+inline T AsinPoly(T t) {
+  return HornerPoly(t,
+                    0x1.59c9d8p-5f,   // c4 = 0.042210400104522705078125f
+                    0x1.8bb842p-6f,   // c3 = 0.0241528190672397613525390625f
+                    0x1.7489e6p-5f,   // c2 = 0.045475892722606658935546875f
+                    0x1.33016cp-4f,   // c1 = 0.0749525129795074462890625f
+                    0x1.5555cap-3f);  // c0 = 0.166667282581329345703125f
+}
+
+// Computes float32 asin(x) to within 1 ULP for x in [-1, 1].
+//
+// Because asin(-x) = -asin(x), we evaluate asin(|x|) and restore the sign of x
+// at the end. The steps are:
+// 1. Split [0, 1] at |x| = 0.5 and express both branches in terms of
+//    asin(sqrt(t)) with t in [0, 0.25]:
+//      - |x| <= 0.5: asin(|x|) = asin(sqrt(t)) by choosing t = x^2.
+//      - |x| > 0.5:  asin(|x|) = pi/2 - 2 * asin(sqrt(t)) by choosing
+//        t = (1 - |x|) / 2.
+//
+//        With a = asin(sqrt(t)), we have
+//          |x| = 1 - 2*t = 1 - 2*sin^2(a) = cos(2*a) = sin(pi/2 - 2*a),
+//        so asin(|x|) = pi/2 - 2*a.
+// 2. Approximate asin(sqrt(t)) ~= sqrt(t) + sqrt(t) * t * P(t) with a
+//    degree-4 polynomial P(t) on [0, 0.25]. Substituting this into step 1
+//    gives:
+//      - |x| <= 0.5: asin(|x|) ~= |x| + |x| * t * P(t).
+//      - |x| > 0.5:  asin(|x|) ~= pi/2 - 2 * sqrt(t) - 2 * sqrt(t) * t * P(t).
+// 3. For the |x| > 0.5 branch, split -2 * sqrt(t) and pi/2 into high and low
+//    parts so subtracting 2 * sqrt(t) from pi/2 stays within 1 ULP.
+// 4. Sum the smaller terms into a correction tail before adding the high part.
+// 5. Restore the sign of x.
+template <typename T>
+inline T AsinF32(T x) {
+#pragma clang fp contract(off)
+  using IntType = typename internal::CorrespondingIntVector<T>::type;
+
+  // 1. Reduce the input to t in [0, 0.25].
+  T abs_x = BitwiseAbs(x);
+  T one = Splat<T>(1.0f);
+  T abs_x_minus_1 = abs_x - one;
+  T t_high = Splat<T>(-0.5f) * abs_x_minus_1;
+  T x2 = x * x;
+  T half = Splat<T>(0.5f);
+  auto cond = abs_x <= half;
+  T t = cond ? x2 : t_high;
+
+  // 2. Evaluate the degree-4 polynomial P(t) on [0, 0.25].
+  // For u = sqrt(t) in [0, 0.5], asin(u) = u + u^3/6 + 3*u^5/40 + ..., which we
+  // approximate as sqrt(t) + sqrt(t) * t * P(t). Keeping the leading sqrt(t)
+  // term separate from sqrt(t) * t * P(t) preserves accuracy when t is small.
+  T tp = t * AsinPoly(t);
+
+  // 3. Compute -2 * sqrt(t) and split it into high and low parts.
+  // We compute inv_s = 1 / sqrt(t) and reuse it both to form -2 * sqrt(t) and
+  // for the high/low correction below. Step 1 already computed
+  // abs_x_minus_1 = |x| - 1 = -2 * t for |x| > 0.5, so multiplying
+  // abs_x_minus_1 by inv_s avoids an extra multiply by -2. Adding the smallest
+  // normal float32 (2^-126) handles the boundary cases:
+  //   - |x| < 1.0: t >= 2^-25, so t + 2^-126 rounds back to t in float32.
+  //   - |x| == 1.0: t == 0.0, so safe_t == 2^-126 keeps inv_s finite (2^63)
+  //     and avoids 0 * inf = NaN in (|x| - 1) * inv_s = 0.0.
+  //   - |x| > 1.0: t <= -2^-24, so safe_t < 0 and sqrt(safe_t) returns NaN,
+  //     which propagates through the |x| > 0.5 path.
+  constexpr float kMinNorm = 0x1.0p-126f;  // 1.17549435e-38f
+  T safe_t = t + Splat<T>(kMinNorm);
+  T inv_s = one / __builtin_elementwise_sqrt(safe_t);
+  T neg_twos = abs_x_minus_1 * inv_s;
+
+  // Split neg_twos (-2 * sqrt(t)) into a 13-bit high part neg_twos_hi
+  // (-2 * s_hi) and a correction (s_hi^2 - t) * inv_s.
+  // Near |x| = 0.5, pi/2 (~1.571) and 2 * sqrt(t) (up to ~1.414) are close, so
+  // subtracting them cancels several leading bits and requires more than 24
+  // bits of accuracy in 2 * sqrt(t). Clearing the low 11 bits of neg_twos
+  // leaves 13 significant bits in s_hi, so s_hi^2 loses at most 2 low bits in
+  // float32. From t - s_hi^2 = (sqrt(t) - s_hi) * (sqrt(t) + s_hi) ~=
+  // (sqrt(t) - s_hi) * 2 * sqrt(t), we get
+  // -2 * sqrt(t) ~= -2 * s_hi + (s_hi^2 - t) * inv_s.
+  T neg_twos_hi = __builtin_bit_cast(
+      T, __builtin_bit_cast(IntType, neg_twos) & Splat<IntType>(0xfffff800u));
+  T s_hi = half * neg_twos_hi;
+  T s_hi2 = s_hi * s_hi;
+  T neg_rem = s_hi2 - t;
+
+  // 4. Sum the smaller terms into a correction tail before adding the high
+  // part.
+  // For |x| > 0.5, we split pi/2 into kPio2Hi + kPio2Lo. Because neg_twos_hi
+  // has its low 11 bits zeroed, sum_hi = kPio2Hi + neg_twos_hi has no rounding
+  // error whenever neg_twos_hi is large enough to cancel bits of kPio2Hi. We
+  // sum all the smaller pieces into tail first, then add sum_hi + tail so the
+  // final result rounds only once. Selecting poly_scale and addend before the
+  // FMA shares that instruction across both branches:
+  //   - |x| <= 0.5: tail = |x| + |x| * t * P(t).
+  //   - |x| > 0.5:  tail = (kPio2Lo + neg_rem * inv_s) + neg_twos * t * P(t),
+  //                 res_high = (kPio2Hi + neg_twos_hi) + tail.
+  constexpr float kPio2Hi = 0x1.921fb6p0f;
+  constexpr float kPio2Lo = -0x1.777a5cp-25f;
+  T poly_scale = cond ? abs_x : neg_twos;
+  T sum_hi = Splat<T>(kPio2Hi) + neg_twos_hi;
+  T corr = Fmuladd(neg_rem, inv_s, Splat<T>(kPio2Lo));
+  T addend = cond ? abs_x : corr;
+  T tail = Fmuladd(poly_scale, tp, addend);
+  T res_high = sum_hi + tail;
+  T res_mag = cond ? tail : res_high;
+
+  // 5. Restore the sign of x: asin(-x) = -asin(x).
+  return BitwiseCopysign(res_mag, x);
+}
+
+// Computes float32 acos(x) to within 1 ULP for x in [-1, 1].
+//
+// The steps are:
+// 1. Split [-1, 1] into three intervals and express each in terms of
+//    asin(sqrt(t)) with t in [0, 0.25]:
+//      - -1 <= x < -0.5: acos(x) = pi - 2 * asin(sqrt(t)) by choosing
+//        t = (1 - |x|) / 2.
+//      - |x| <= 0.5:     acos(x) = pi/2 - asin(x), where |asin(x)| =
+//        asin(sqrt(t)) by choosing t = x^2.
+//      - 0.5 < x <= 1:   acos(x) = 2 * asin(sqrt(t)) by choosing
+//        t = (1 - x) / 2.
+//
+//        With a = asin(sqrt(t)), we have
+//          x = 1 - 2*t = 1 - 2*sin^2(a) = cos(2*a),
+//        so acos(x) = 2*a.
+// 2. Approximate asin(sqrt(t)) ~= sqrt(t) + sqrt(t) * t * P(t) using the same
+//    degree-4 polynomial P(t) on [0, 0.25] as asin. Substituting this into
+//    step 1 gives acos(x) ~= C - u - u * t * P(t), where:
+//      - -1 <= x < -0.5: C = pi,   u = +2 * sqrt(t).
+//      - |x| <= 0.5:     C = pi/2, u = x.
+//      - 0.5 < x <= 1:   C = 0,    u = -2 * sqrt(t).
+// 3. For |x| > 0.5, split u = +/-2 * sqrt(t) and the angle constant C into high
+//    and low parts so C - u stays within 1 ULP.
+// 4. Sum the smaller terms into a correction tail before adding the high part.
+template <typename T>
+inline T AcosF32(T x) {
+#pragma clang fp contract(off)
+  using IntType = typename internal::CorrespondingIntVector<T>::type;
+
+  // 1. Reduce the input to t in [0, 0.25].
+  T abs_x = BitwiseAbs(x);
+  T zero = Splat<T>(0.0f);
+  T half = Splat<T>(0.5f);
+  T one = Splat<T>(1.0f);
+
+  auto cond = abs_x <= half;
+  auto le_half = x <= half;
+
+  T one_minus_abs_x = one - abs_x;
+  T t_low = abs_x * abs_x;
+  T t_high = half * one_minus_abs_x;
+  T t = cond ? t_low : t_high;
+
+  // 2. Evaluate the degree-4 polynomial P(t) on [0, 0.25].
+  T tp = t * AsinPoly(t);
+
+  // 3. Compute u = +/-2 * sqrt(t) for |x| > 0.5 and split it into high and low
+  // parts.
+  // We compute inv_s = 1 / sqrt(t) and reuse it both to form +/-2 * sqrt(t)
+  // and for the high/low correction below. Step 1 already computed
+  // one_minus_abs_x = 1 - |x| = 2 * t for |x| > 0.5, so multiplying
+  // one_minus_abs_x by signed_inv_s avoids an extra multiply by 2. We choose
+  // +1 / sqrt(t) for x <= 0.5 and -1 / sqrt(t) for x > 0.5 so that neg_twos is
+  // +2 * sqrt(t) when x < -0.5 and -2 * sqrt(t) when x > 0.5. Adding 2^-126
+  // keeps inv_s finite at |x| = 1 (where t = 0, so 0 * inv_s = 0) and produces
+  // NaN for |x| > 1 (where t < 0).
+  constexpr float kMinNorm = 0x1.0p-126f;  // 1.17549435e-38f
+  T safe_t = t + Splat<T>(kMinNorm);
+  T inv_s = one / __builtin_elementwise_sqrt(safe_t);
+  T signed_inv_s = le_half ? inv_s : -inv_s;
+  T neg_twos = one_minus_abs_x * signed_inv_s;
+
+  // Select u (x for |x| <= 0.5, neg_twos for |x| > 0.5) and split it into a
+  // 13-bit high part u_hi and neg_rem = s_hi^2 - t.
+  // Near x = -0.5, pi (~3.142) and 2 * sqrt(t) (up to ~1.414) cancel in the
+  // top bit, so 2 * sqrt(t) needs more than 24 bits of accuracy. Clearing the
+  // low 11 bits of u gives u_hi = +/-2 * s_hi with 13 significant bits. Because
+  // s_hi is so short, s_hi^2 loses at most 2 low bits, and
+  // u ~= u_hi - (s_hi^2 - t) * signed_inv_s.
+  T u = cond ? x : neg_twos;
+  T u_hi = __builtin_bit_cast(
+      T, __builtin_bit_cast(IntType, u) & Splat<IntType>(0xfffff800u));
+  T s_hi = half * u_hi;
+  T s_hi2 = s_hi * s_hi;
+  T neg_rem = s_hi2 - t;
+
+  // 4. Sum the smaller terms into a correction tail before adding the high
+  // part.
+  // Splitting C = C_hi + C_lo keeps C accurate to 48 bits. On |x| > 0.5,
+  // c_hi_outer - u_hi is exact in float32 because the low 11 bits of u_hi are
+  // zero. We sum the smaller pieces into tail first, then add sum_hi + tail:
+  //   - |x| <= 0.5: sum_hi = kPio2Hi,
+  //                 tail   = (kPio2Lo - x) - x * t * P(t).
+  //   - |x| > 0.5:  sum_hi = c_hi_outer - u_hi,
+  //                 tail   = (c_lo_outer + neg_rem * signed_inv_s)
+  //                          - u * t * P(t).
+  constexpr float kPio2Hi = 0x1.921fb6p0f;
+  constexpr float kPio2Lo = -0x1.777a5cp-25f;
+  constexpr float kPiHi = 0x1.921fb6p1f;
+  constexpr float kPiLo = -0x1.777a5cp-24f;
+
+  T c_hi_outer = le_half ? Splat<T>(kPiHi) : zero;
+  T outer_sum_hi = c_hi_outer - u_hi;
+  T sum_hi = cond ? Splat<T>(kPio2Hi) : outer_sum_hi;
+
+  T c_lo_outer = le_half ? Splat<T>(kPiLo) : zero;
+  T outer_corr = Fmuladd(neg_rem, signed_inv_s, c_lo_outer);
+  T inner_corr = Splat<T>(kPio2Lo) - x;
+  T corr = cond ? inner_corr : outer_corr;
+
+  T tail = Fmuladd(-u, tp, corr);
+  return sum_hi + tail;
+}
+
 }  // namespace
 
 float sinh_f32(float x) { return SinhF32(x); }
@@ -236,6 +455,16 @@ float cosh_f32(float x) { return CoshF32(x); }
 Vec4f cosh_v4f32(Vec4f x) { return CoshF32(x); }
 Vec8f cosh_v8f32(Vec8f x) { return CoshF32(x); }
 Vec16f cosh_v16f32(Vec16f x) { return CoshF32(x); }
+
+float asin_f32(float x) { return AsinF32(x); }
+Vec4f asin_v4f32(Vec4f x) { return AsinF32(x); }
+Vec8f asin_v8f32(Vec8f x) { return AsinF32(x); }
+Vec16f asin_v16f32(Vec16f x) { return AsinF32(x); }
+
+float acos_f32(float x) { return AcosF32(x); }
+Vec4f acos_v4f32(Vec4f x) { return AcosF32(x); }
+Vec8f acos_v8f32(Vec8f x) { return AcosF32(x); }
+Vec16f acos_v16f32(Vec16f x) { return AcosF32(x); }
 
 }  // namespace xla::codegen
 

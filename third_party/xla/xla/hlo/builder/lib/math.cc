@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/hlo/builder/lib/arithmetic.h"
 #include "xla/hlo/builder/lib/constants.h"
 #include "xla/hlo/builder/lib/loops.h"
-#include "xla/hlo/builder/lib/math_impl.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
@@ -1175,66 +1174,14 @@ XlaOp RoundToEven(XlaOp x) {
 
 // Trigonometric functions.
 
-// acos(x) = 2 * atan(sqrt(1 - x^2) / (1 + x)) if x != -1
-//           pi                                if x == -1
-// For complex:
-// acos(x) = -(i * log(x + i * sqrt((1 + x) * (1 - x))))
-XlaOp Acos(XlaOp x, const std::optional<ResultAccuracy>& result_accuracy,
-           bool expand) {
-  if (!expand) {
-    return x.builder()->UnaryOp(HloOpcode::kAcos, x, result_accuracy);
-  }
-  XlaBuilder* b = x.builder();
-  return b->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
-    ABSL_ASSIGN_OR_RETURN(auto shape, b->GetShape(x));
-
-    if (primitive_util::IsComplexType(shape.element_type())) {
-      auto one = ScalarLike(x, 1);
-      auto imag_one = Complex(
-          Zero(b, primitive_util::ComplexComponentType(shape.element_type())),
-          One(b, primitive_util::ComplexComponentType(shape.element_type())));
-
-      auto result =
-          Neg(imag_one * Log(x + imag_one * Sqrt((one + x) * (one - x))));
-      return result;
-    }
-    return Select(Ne(x, FullLike(x, -1)),
-                  ScalarLike(x, 2.0) * Atan2(Sqrt(ScalarLike(x, 1.0) - x * x),
-                                             ScalarLike(x, 1.0) + x),
-                  FullLike(x, M_PI));
-  });
+// Computes the arc cosine of 'x'.
+XlaOp Acos(XlaOp x, const std::optional<ResultAccuracy>& result_accuracy) {
+  return x.builder()->UnaryOp(HloOpcode::kAcos, x, result_accuracy);
 }
 
-// asin(x) = atan2(x, sqrt((1 - x) * (1 + x)))
-XlaOp Asin(XlaOp x, const std::optional<ResultAccuracy>& result_accuracy,
-           bool expand) {
-  if (!expand) {
-    return x.builder()->UnaryOp(HloOpcode::kAsin, x, result_accuracy);
-  }
-  XlaBuilder* b = x.builder();
-  auto do_it = [&](XlaOp z) -> absl::StatusOr<XlaOp> {
-    ABSL_ASSIGN_OR_RETURN(auto shape, b->GetShape(z));
-    auto elem_ty = shape.element_type();
-    switch (elem_ty) {
-      case C128:
-        return math_impl::AsinComplex<double>(z);
-      case C64:
-        return math_impl::AsinComplex<float>(z);
-      case F64:
-        return math_impl::AsinReal<double>(z);
-      case F32:
-        return math_impl::AsinReal<float>(z);
-        // todo(pearu): add implementations for BF16 and F16 to avoid
-        // the upcast below
-      default:
-        return InvalidArgument("Asin got unsupported element type %s",
-                               PrimitiveType_Name(elem_ty));
-    }
-  };
-  // These upcasts are not strictly necessary on all platforms to get within our
-  // error tolerances, so we could relax this if it ever mattered.
-  return DoWithUpcastToF32(
-      x, {}, [&](XlaOp x) { return b->ReportErrorOrReturn(do_it(x)); });
+// Computes the arc sine of 'x'.
+XlaOp Asin(XlaOp x, const std::optional<ResultAccuracy>& result_accuracy) {
+  return x.builder()->UnaryOp(HloOpcode::kAsin, x, result_accuracy);
 }
 
 XlaOp Atan(XlaOp x) { return Atan2(x, ScalarLike(x, 1.0)); }

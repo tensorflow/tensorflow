@@ -548,6 +548,83 @@ TEST_F(Avx512JitVectorizationTest, CoshF32) {
                                /*match_optimized_ir=*/true));
 }
 
+TEST_F(Avx512JitVectorizationTest, AsinF32) {
+  if (!tsl::port::IsX86CPU()) {
+    GTEST_SKIP() << "This feature only works for x86 CPUs.";
+  }
+
+  const absl::string_view hlo_text = R"(
+    HloModule AsinF32
+
+    ENTRY AsinF32 {
+      p0 = f32[1024] parameter(0)
+      ROOT asin = f32[1024] asin(p0)
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_text));
+
+  auto compiler = GetCpuCompiler();
+  auto llvm_compiler = absl::down_cast<LLVMCompiler*>(compiler.get());
+  Compiler::CompileOptions compile_options;
+  compile_options.device_allocator = nullptr;
+
+  int num_elements = 16;
+  if (!tsl::port::TestCPUFeature(tsl::port::CPUFeature::AVX512F)) {
+    if (tsl::port::TestCPUFeature(tsl::port::CPUFeature::AVX2)) {
+      num_elements = 8;
+    } else {
+      num_elements = 4;
+    }
+  }
+
+  std::string check_lines =
+      absl::StrFormat("CHECK: fdiv{{.*}}<%d x float>", num_elements);
+
+  ASSERT_OK(CompileAndVerifyIr(llvm_compiler, compile_options,
+                               std::move(hlo_module), check_lines,
+                               /*match_optimized_ir=*/true));
+}
+
+TEST_F(Avx512JitVectorizationTest, AcosF32) {
+  if (!tsl::port::IsX86CPU()) {
+    GTEST_SKIP() << "This feature only works for x86 CPUs.";
+  }
+
+  const absl::string_view hlo_text = R"(
+    HloModule AcosF32
+
+    ENTRY AcosF32 {
+      p0 = f32[1024] parameter(0)
+      ROOT acos = f32[1024] acos(p0)
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_text));
+
+  auto compiler = GetCpuCompiler();
+  auto llvm_compiler = absl::down_cast<LLVMCompiler*>(compiler.get());
+  Compiler::CompileOptions compile_options;
+  compile_options.device_allocator = nullptr;
+
+  int num_elements = 16;
+  if (!tsl::port::TestCPUFeature(tsl::port::CPUFeature::AVX512F)) {
+    if (tsl::port::TestCPUFeature(tsl::port::CPUFeature::AVX2)) {
+      num_elements = 8;
+    } else {
+      num_elements = 4;
+    }
+  }
+
+  std::string check_lines =
+      absl::StrFormat("CHECK: fdiv{{.*}}<%d x float>", num_elements);
+
+  ASSERT_OK(CompileAndVerifyIr(llvm_compiler, compile_options,
+                               std::move(hlo_module), check_lines,
+                               /*match_optimized_ir=*/true));
+}
 }  // namespace
 }  // namespace cpu
 }  // namespace xla

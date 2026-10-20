@@ -211,6 +211,53 @@ class Cosh : public Intrinsic<Cosh> {
   }
 };
 
+class Asin : public Intrinsic<Asin> {
+ public:
+  static constexpr absl::string_view kName = "asin";
+
+  static std::vector<std::vector<Type>> SupportedVectorTypes(
+      absl::string_view features) {
+    if (!AreCppGenIntrinsicsAvailable()) {
+      return {};
+    }
+    return {
+        {Type::S(xla::F32)},
+        {Type::V(xla::F32, 4)},
+        {Type::V(xla::F32, 8)},
+        {Type::V(xla::F32, 16)},
+    };
+  }
+
+  static absl::StatusOr<llvm::Function*> CreateDefinition(
+      llvm::Module* module, const IntrinsicOptions& options, Type type) {
+    return GetCppGenFunction(module, Name(type),
+                             UnaryFunctionType(module, type));
+  }
+};
+
+class Acos : public Intrinsic<Acos> {
+ public:
+  static constexpr absl::string_view kName = "acos";
+
+  static std::vector<std::vector<Type>> SupportedVectorTypes(
+      absl::string_view features) {
+    if (!AreCppGenIntrinsicsAvailable()) {
+      return {};
+    }
+    return {
+        {Type::S(xla::F32)},
+        {Type::V(xla::F32, 4)},
+        {Type::V(xla::F32, 8)},
+        {Type::V(xla::F32, 16)},
+    };
+  }
+
+  static absl::StatusOr<llvm::Function*> CreateDefinition(
+      llvm::Module* module, const IntrinsicOptions& options, Type type) {
+    return GetCppGenFunction(module, Name(type),
+                             UnaryFunctionType(module, type));
+  }
+};
 }  // namespace xla::codegen::intrinsics
 
 #endif  // XLA_CODEGEN_INTRINSIC_CPP_INTRINSIC_DECLARATIONS_H_

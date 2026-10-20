@@ -401,6 +401,7 @@ xla_cc_test(
         ":trig_ll",
         ":vector_ops",
         "//xla/codegen/intrinsic:test_matchers",
+        "@com_google_absl//absl/base",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",

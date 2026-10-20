@@ -34,6 +34,16 @@ float cosh_f32(float x) asm("xla.cosh.f32");
 Vec4f cosh_v4f32(Vec4f x) asm("xla.cosh.v4f32");
 Vec8f cosh_v8f32(Vec8f x) asm("xla.cosh.v8f32");
 Vec16f cosh_v16f32(Vec16f x) asm("xla.cosh.v16f32");
+
+float asin_f32(float x) asm("xla.asin.f32");
+Vec4f asin_v4f32(Vec4f x) asm("xla.asin.v4f32");
+Vec8f asin_v8f32(Vec8f x) asm("xla.asin.v8f32");
+Vec16f asin_v16f32(Vec16f x) asm("xla.asin.v16f32");
+
+float acos_f32(float x) asm("xla.acos.f32");
+Vec4f acos_v4f32(Vec4f x) asm("xla.acos.v4f32");
+Vec8f acos_v8f32(Vec8f x) asm("xla.acos.v8f32");
+Vec16f acos_v16f32(Vec16f x) asm("xla.acos.v16f32");
 #endif  // defined(__has_attribute) && __has_attribute(ext_vector_type) &&
         // defined(__has_builtin) && __has_builtin(__builtin_vectorelements)
 

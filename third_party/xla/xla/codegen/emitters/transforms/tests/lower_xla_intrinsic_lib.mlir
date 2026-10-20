@@ -480,7 +480,6 @@ module {
 // CHECK-NOT: math.sinh
 // CHECK: %[[SINH_CALL:.*]] = call @xla.sinh.v8f32(%arg0) : (vector<8xf32>) -> vector<8xf32>
 // CHECK: return %[[SINH_CALL]]
-
 // -----
 
 func.func @sin_cos_of_neg(%arg0: f32) -> (f32, f32) {
@@ -522,3 +521,59 @@ module {
 // CHECK-NOT: math.cosh
 // CHECK: %[[COSH_CALL:.*]] = call @xla.cosh.v8f32(%arg0) : (vector<8xf32>) -> vector<8xf32>
 // CHECK: return %[[COSH_CALL]]
+
+// -----
+
+module {
+  func.func @asin_f32(%arg0: f32) -> f32 {
+    %ret = math.asin %arg0 : f32
+    return %ret : f32
+  }
+}
+
+// CHECK-LABEL: @asin_f32
+// CHECK-NOT: math.asin
+// CHECK: %[[RESULT:.*]] = call @xla.asin.f32(%arg0) : (f32) -> f32
+// CHECK: return %[[RESULT]] : f32
+
+// -----
+
+module {
+  func.func @asin_vector(%arg0: vector<8xf32>) -> vector<8xf32> {
+    %ret = math.asin %arg0 : vector<8xf32>
+    return %ret : vector<8xf32>
+  }
+}
+
+// CHECK-LABEL: @asin_vector
+// CHECK-NOT: math.asin
+// CHECK: %[[ASIN_CALL:.*]] = call @xla.asin.v8f32(%arg0) : (vector<8xf32>) -> vector<8xf32>
+// CHECK: return %[[ASIN_CALL]]
+
+// -----
+
+module {
+  func.func @acos_f32(%arg0: f32) -> f32 {
+    %ret = math.acos %arg0 : f32
+    return %ret : f32
+  }
+}
+
+// CHECK-LABEL: @acos_f32
+// CHECK-NOT: math.acos
+// CHECK: %[[RESULT:.*]] = call @xla.acos.f32(%arg0) : (f32) -> f32
+// CHECK: return %[[RESULT]] : f32
+
+// -----
+
+module {
+  func.func @acos_vector(%arg0: vector<8xf32>) -> vector<8xf32> {
+    %ret = math.acos %arg0 : vector<8xf32>
+    return %ret : vector<8xf32>
+  }
+}
+
+// CHECK-LABEL: @acos_vector
+// CHECK-NOT: math.acos
+// CHECK: %[[ACOS_CALL:.*]] = call @xla.acos.v8f32(%arg0) : (vector<8xf32>) -> vector<8xf32>
+// CHECK: return %[[ACOS_CALL]]

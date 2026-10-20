@@ -86,13 +86,11 @@ XlaOp RoundToEven(XlaOp x);
 
 // Computes the arc cosine of 'x'.
 XlaOp Acos(XlaOp x,
-           const std::optional<ResultAccuracy>& result_accuracy = std::nullopt,
-           bool expand = true);
+           const std::optional<ResultAccuracy>& result_accuracy = std::nullopt);
 
 // Computes the arc sine of 'x'.
 XlaOp Asin(XlaOp x,
-           const std::optional<ResultAccuracy>& result_accuracy = std::nullopt,
-           bool expand = true);
+           const std::optional<ResultAccuracy>& result_accuracy = std::nullopt);
 
 // Computes the arc tangent of 'x'.
 XlaOp Atan(XlaOp x);

@@ -294,6 +294,7 @@ cc_library(
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/builder/lib:constants",
+        "//xla/hlo/builder/lib:math",
         "//xla/hlo/ir:hlo",
         "//xla/service:call_inliner",
         "//xla/service:hlo_creation_utils",

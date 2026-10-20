@@ -4823,6 +4823,19 @@ LogicalResult ExportXlaOp(BitcastOp op, OpLoweringContext ctx) {
 
 template <typename Op,
           xla::XlaOp OpFunc(xla::XlaOp,
+                            const std::optional<xla::ResultAccuracy>&)>
+LogicalResult ExportElementwiseXlaOp(Op op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::XlaOp operand;
+  if (failed(GetXlaOp(op.getOperand(), value_map, &operand, op))) {
+    return failure();
+  }
+  value_map[op] = OpFunc(operand, /*result_accuracy=*/std::nullopt);
+  return success();
+}
+
+template <typename Op,
+          xla::XlaOp OpFunc(xla::XlaOp,
                             const std::optional<xla::ResultAccuracy>&, bool)>
 LogicalResult ExportElementwiseXlaOp(Op op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
@@ -4836,26 +4849,13 @@ LogicalResult ExportElementwiseXlaOp(Op op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(AsinOp op, OpLoweringContext ctx) {
-  auto& value_map = *ctx.values;
-  xla::XlaOp operand;
-  if (failed(GetXlaOp(op.getOperand(), value_map, &operand, op))) {
-    return failure();
-  }
-  value_map[op] =
-      xla::Asin(operand, /*result_accuracy=*/std::nullopt, /*expand=*/false);
-  return success();
+  return ExportElementwiseXlaOp<AsinOp, xla::Asin>(op, ctx);
 }
 
 LogicalResult ExportXlaOp(AsinhOp op, OpLoweringContext ctx) {
-  auto& value_map = *ctx.values;
-  xla::XlaOp operand;
-  if (failed(GetXlaOp(op.getOperand(), value_map, &operand, op))) {
-    return failure();
-  }
-  value_map[op] =
-      xla::Asinh(operand, /*result_accuracy=*/std::nullopt, /*expand=*/false);
-  return success();
+  return ExportElementwiseXlaOp<AsinhOp, xla::Asinh>(op, ctx);
 }
+
 LogicalResult ExportXlaOp(MulhiOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   xla::XlaOp lhs;
@@ -4875,23 +4875,11 @@ LogicalResult ExportXlaOp(AcosOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(CoshOp op, OpLoweringContext ctx) {
-  auto& value_map = *ctx.values;
-  xla::XlaOp operand;
-  if (failed(GetXlaOp(op.getOperand(), value_map, &operand, op))) {
-    return failure();
-  }
-  value_map[op] = xla::Cosh(operand, /*result_accuracy=*/std::nullopt);
-  return success();
+  return ExportElementwiseXlaOp<CoshOp, xla::Cosh>(op, ctx);
 }
 
 LogicalResult ExportXlaOp(SinhOp op, OpLoweringContext ctx) {
-  auto& value_map = *ctx.values;
-  xla::XlaOp operand;
-  if (failed(GetXlaOp(op.getOperand(), value_map, &operand, op))) {
-    return failure();
-  }
-  value_map[op] = xla::Sinh(operand, /*result_accuracy=*/std::nullopt);
-  return success();
+  return ExportElementwiseXlaOp<SinhOp, xla::Sinh>(op, ctx);
 }
 
 LogicalResult ExportXlaOp(AcoshOp op, OpLoweringContext ctx) {

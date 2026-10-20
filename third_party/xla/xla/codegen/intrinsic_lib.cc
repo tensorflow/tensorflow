@@ -151,6 +151,10 @@ IntrinsicFunctionLib::IntrinsicFunctionLib(const IntrinsicOptions& options)
       std::make_unique<IntrinsicAdapter<intrinsics::Sinh>>());
   intrinsic_functions_.push_back(
       std::make_unique<IntrinsicAdapter<intrinsics::Cosh>>());
+  intrinsic_functions_.push_back(
+      std::make_unique<IntrinsicAdapter<intrinsics::Asin>>());
+  intrinsic_functions_.push_back(
+      std::make_unique<IntrinsicAdapter<intrinsics::Acos>>());
 }
 
 namespace {

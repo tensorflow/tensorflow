@@ -238,12 +238,15 @@ UNARY_TEST(Atanh, {
 // Tests for inverse trigonometric functions.
 UNARY_TEST(Acos, {
   AcosOp<kT>(this)
-      .CpuError(+[](NativeT x) {
-        if constexpr (std::is_same_v<NativeT, tsl::float8_e4m3fn> ||
-                      std::is_same_v<NativeT, tsl::float8_e5m2>) {
+      .CpuError(+[](NativeT) {
+        if constexpr (std::is_same_v<NativeT, bfloat16> ||
+                      std::is_same_v<NativeT, half>) {
+          return ErrorSpec::Builder().distance_err(0).build();
+        } else if constexpr (std::is_same_v<NativeT, double>) {
+          return ErrorSpec::Builder().distance_err(2).build();
+        } else {
           return ErrorSpec::Builder().distance_err(1).build();
         }
-        return GetDefaultSpecGenerator()(x);
       })
       .GpuError(+[](NativeT x) {
         NativeT eps = std::numeric_limits<NativeT>::epsilon();
@@ -260,6 +263,16 @@ UNARY_TEST(Asin, {
             .abs_err(2.0f * min)
             .rel_err(10 * eps)
             .build();
+      })
+      .CpuError(+[](NativeT) {
+        if constexpr (std::is_same_v<NativeT, bfloat16> ||
+                      std::is_same_v<NativeT, half>) {
+          return ErrorSpec::Builder().distance_err(0).build();
+        } else if constexpr (std::is_same_v<NativeT, double>) {
+          return ErrorSpec::Builder().distance_err(2).build();
+        } else {
+          return ErrorSpec::Builder().distance_err(1).build();
+        }
       })
       .Run();
 })

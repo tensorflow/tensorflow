@@ -1938,14 +1938,12 @@ class XlaBuilder {
       XlaOp init_value, XlaComputationId scatter);
   friend XlaOp Abs(XlaOp operand);
   friend XlaOp Acos(XlaOp x,
-                    const std::optional<ResultAccuracy>& result_accuracy,
-                    bool expand);
+                    const std::optional<ResultAccuracy>& result_accuracy);
   friend XlaOp Acosh(XlaOp x,
                      const std::optional<ResultAccuracy>& result_accuracy,
                      bool expand);
   friend XlaOp Asin(XlaOp x,
-                    const std::optional<ResultAccuracy>& result_accuracy,
-                    bool expand);
+                    const std::optional<ResultAccuracy>& result_accuracy);
   friend XlaOp Asinh(XlaOp x,
                      const std::optional<ResultAccuracy>& result_accuracy,
                      bool expand);
