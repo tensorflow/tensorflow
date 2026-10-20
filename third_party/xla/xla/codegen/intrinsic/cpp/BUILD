@@ -418,6 +418,7 @@ cc_library(
         ":eigen_unary_64_ll",
         ":expm1_32_ll",
         ":expm1_64_ll",
+        ":trig_ll",
         "//xla/codegen/intrinsic",
         "//xla/service/llvm_ir:llvm_util",
         "@com_google_absl//absl/log",

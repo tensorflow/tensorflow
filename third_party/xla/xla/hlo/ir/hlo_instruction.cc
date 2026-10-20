@@ -3514,12 +3514,9 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kTan:
     case HloOpcode::kTanh:
     case HloOpcode::kTuple:
-      return true;
-
-    // This opcode has complex or special behavior so just return false.
     case HloOpcode::kAfterAll:
     case HloOpcode::kAddDependency:
-      return false;
+      return true;
 
     // Remaining instructions with special values.
     case HloOpcode::kCall:

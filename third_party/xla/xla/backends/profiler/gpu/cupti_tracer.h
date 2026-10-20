@@ -162,6 +162,11 @@ class CuptiTracer {
   // Once enabled, it stays enabled for the process lifetime.
   static absl::Status EnableHES();
 
+  // Whether profile stop can disable concurrent-kernel activity. When false
+  // (CUDA runtime or driver < 13.0, b/422262733), only cuptiFinalize() stops
+  // it, so callers must not skip cuptiFinalize().
+  static bool CanDisableConcurrentKernelActivity();
+
   // Returns true if the number of annotation strings is too large. The input
   // count is the per-thread count.
   bool TooManyAnnotationStrings(size_t count) const;
