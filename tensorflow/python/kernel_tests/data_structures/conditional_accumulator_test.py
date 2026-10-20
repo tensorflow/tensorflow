@@ -25,6 +25,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
@@ -133,6 +134,28 @@ class ConditionalAccumulatorTest(test.TestCase):
 
     with self.assertRaises(ValueError):
       q.apply_grad([[1.0], [2.0], [3.0]])
+
+  def testResourceAccumulatorApplyGradWithWrongDtype(self):
+    handle = gen_data_flow_ops.resource_conditional_accumulator(
+        dtype=dtypes_lib.float32, shape=[2, 3], shared_name="wrong_dtype")
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                "Signature mismatch"):
+      self.evaluate(
+          gen_data_flow_ops.resource_accumulator_apply_gradient(
+              handle=handle,
+              local_step=0,
+              gradient=array_ops.ones([2, 3], dtype=dtypes_lib.float16)))
+
+  def testResourceAccumulatorApplyGradWithNonScalarLocalStep(self):
+    handle = gen_data_flow_ops.resource_conditional_accumulator(
+        dtype=dtypes_lib.float32, shape=[2, 3], shared_name="local_step")
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                "local_step must be scalar"):
+      self.evaluate(
+          gen_data_flow_ops.resource_accumulator_apply_gradient(
+              handle=handle,
+              local_step=[0, 1],
+              gradient=array_ops.ones([2, 3], dtype=dtypes_lib.float32)))
 
   @test_util.run_deprecated_v1
   def testAccumulatorDynamicShape(self):
