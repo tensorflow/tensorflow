@@ -695,7 +695,14 @@ absl::Status HloComputation::RemoveInstructionAndUnusedOperands(
       if (operand->opcode() == HloOpcode::kGetTupleElement) {
         source = operand->operand(0);
       }
-      if (source->HasSideEffect()) {
+      // Do not allow DCE to remove a sink `after-all` that is the sole consumer
+      // of a side-effecting instruction's token (or its token GTE, which would
+      // otherwise become dead and be deleted by the worklist below). However,
+      // if `operand` has other users (`user_count() > 1`)—for example, when CSE
+      // replaces a duplicate `after-all` with an equivalent representative that
+      // shares the same operands—`operand` remains live and anchored, so the
+      // redundant `after-all` is safe to remove.
+      if (source->HasSideEffect() && operand->user_count() == 1) {
         return absl::OkStatus();
       }
     }

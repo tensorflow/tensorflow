@@ -1260,6 +1260,30 @@ TEST_F(HloCseTest, PadsOfAllocateBuffersAreNotCombined) {
               absl_testing::IsOkAndHolds(false));
 }
 
+TEST_F(HloCseTest, AfterAllWithSideEffectingOperandsIsRemoved) {
+  constexpr absl::string_view kHlo = R"(
+    HloModule m
+
+    ENTRY test {
+      tok0 = token[] after-all()
+      infeed = (f32[4], token[]) infeed(tok0)
+      infeed_tok = token[] get-tuple-element(infeed), index=1
+      custom_tok = token[] custom-call(tok0), custom_call_target="side_effect", custom_call_has_side_effect=true
+      aa0 = token[] after-all(infeed_tok, custom_tok)
+      aa1 = token[] after-all(infeed_tok, custom_tok)
+      ROOT t = (token[], token[]) tuple(aa0, aa1)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> m,
+                       ParseAndReturnVerifiedModule(kHlo));
+  HloCSE cse(/*is_layout_sensitive=*/false);
+  EXPECT_THAT(cse.Run(m.get()), ::absl_testing::IsOkAndHolds(true));
+  const HloInstruction* root = m->entry_computation()->root_instruction();
+  EXPECT_EQ(root->operand(0), root->operand(1));
+  EXPECT_EQ(m->entry_computation()->instruction_count(), 6);
+  EXPECT_THAT(cse.Run(m.get()), ::absl_testing::IsOkAndHolds(false));
+}
+
 class HloCseCommutativeOpTest
     : public HloCseTest,
       public ::testing::WithParamInterface<std::string /*op*/> {};
