@@ -1914,60 +1914,83 @@ bool HloComputation::EqualInternal(
   if (this == &other) {
     return true;
   }
-  if (this->num_parameters() != other.num_parameters()) {
+  if (num_parameters() != other.num_parameters()) {
     // There are situations where the number of parameters matters, even if
     // some of them are unused, and the computations are otherwise equivalent.
     return false;
   }
-  absl::flat_hash_set<std::pair<const HloInstruction*, const HloInstruction*>>
-      visited;
-  std::vector<std::pair<const HloInstruction*, const HloInstruction*>> worklist;
+  if (!ignore_execution_thread &&
+      execution_thread() != other.execution_thread()) {
+    return false;
+  }
 
-  worklist.push_back({root_instruction(), other.root_instruction()});
+  // To avoid stack overflow with deeply nested subcomputations (b/123082518),
+  // we compare computations iteratively using a worklist rather than recursion.
+  std::vector<std::pair<const HloComputation*, const HloComputation*>>
+      computation_worklist;
+  absl::flat_hash_set<std::pair<const HloComputation*, const HloComputation*>>
+      visited_computations;
 
-  while (!worklist.empty()) {
-    auto pair = worklist.back();
-    worklist.pop_back();
+  computation_worklist.push_back({this, &other});
+  visited_computations.insert({this, &other});
 
-    if (visited.contains(pair)) {
-      continue;
-    }
-    visited.emplace(pair);
-    // TODO(b/123082518): Avoid recursively invoking Equal because it may
-    // cause a stack overflow with deeply nested subcomputations.
-    auto operands_eq = [](const HloInstruction*, const HloInstruction*) {
+  auto enqueue_subcomputations = [&](const HloComputation* a,
+                                     const HloComputation* b) {
+    if (a == b) {
       return true;
-    };
-
-    auto comp_eq = [&](const HloComputation* a, const HloComputation* b) {
-      return a->EqualInternal(*b, is_layout_sensitive, computations_comparator,
-                              ignore_channel_id_values,
-                              ignore_execution_thread);
-    };
-
-    bool identical_ignoring_operands =
-        ignore_channel_id_values
-            ? pair.first->IdenticalIgnoringChannelIdValues(
-                  *pair.second, operands_eq,
-                  (computations_comparator ? *computations_comparator
-                                           : comp_eq),
-                  is_layout_sensitive)
-            : pair.first->Identical(
-                  *pair.second, operands_eq,
-                  (computations_comparator ? *computations_comparator
-                                           : comp_eq),
-                  is_layout_sensitive);
-    if (!identical_ignoring_operands) {
+    }
+    if (a->num_parameters() != b->num_parameters()) {
       return false;
     }
-    for (size_t i = 0; i < pair.first->operands().size(); ++i) {
-      worklist.push_back({pair.first->operand(i), pair.second->operand(i)});
+    if (!ignore_execution_thread &&
+        a->execution_thread() != b->execution_thread()) {
+      return false;
+    }
+    if (visited_computations.insert({a, b}).second) {
+      computation_worklist.push_back({a, b});
+    }
+    return true;
+  };
+
+  auto comp_eq = computations_comparator.value_or(enqueue_subcomputations);
+  constexpr auto operands_eq = [](const HloInstruction*,
+                                  const HloInstruction*) { return true; };
+
+  while (!computation_worklist.empty()) {
+    const auto [comp1, comp2] = computation_worklist.back();
+    computation_worklist.pop_back();
+
+    absl::flat_hash_set<std::pair<const HloInstruction*, const HloInstruction*>>
+        visited_instructions;
+    std::vector<std::pair<const HloInstruction*, const HloInstruction*>>
+        instruction_worklist;
+
+    instruction_worklist.push_back(
+        {comp1->root_instruction(), comp2->root_instruction()});
+
+    while (!instruction_worklist.empty()) {
+      const auto [inst1, inst2] = instruction_worklist.back();
+      instruction_worklist.pop_back();
+
+      if (!visited_instructions.insert({inst1, inst2}).second) {
+        continue;
+      }
+
+      bool identical_ignoring_operands =
+          ignore_channel_id_values
+              ? inst1->IdenticalIgnoringChannelIdValues(
+                    *inst2, operands_eq, comp_eq, is_layout_sensitive)
+              : inst1->Identical(*inst2, operands_eq, comp_eq,
+                                 is_layout_sensitive);
+      if (!identical_ignoring_operands) {
+        return false;
+      }
+      for (int64_t i = 0; i < inst1->operand_count(); ++i) {
+        instruction_worklist.push_back({inst1->operand(i), inst2->operand(i)});
+      }
     }
   }
 
-  if (!ignore_execution_thread) {
-    return execution_thread() == other.execution_thread();
-  }
   return true;
 }
 
