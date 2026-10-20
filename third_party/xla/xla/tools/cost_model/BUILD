@@ -1,5 +1,6 @@
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("//xla:xla.default.bzl", "xla_cc_binary")
 load("//xla/tests:build_defs.bzl", "xla_test")
 load(
     "//xla/tsl/platform/default:cuda_build_defs.bzl",
@@ -38,6 +39,19 @@ cc_library(
     ]) + if_rocm_is_configured([
         "//xla/stream_executor:rocm_platform",
     ]),
+)
+
+xla_cc_binary(
+    name = "gpu_bandwidth_benchmark_main",
+    srcs = ["gpu_bandwidth_benchmark_main.cc"],
+    deps = [
+        ":gpu_bandwidth_benchmark",
+        "//xla/tsl/util:command_line_flags",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@tsl//tsl/platform:platform_port",
+    ],
 )
 
 xla_test(
