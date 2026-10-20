@@ -265,6 +265,40 @@ TEST(TestLibTest, CompareGPUExecutables_IgnoresMachineCodeAndXlaDumpTo) {
   EXPECT_OK(AOTInterceptionPjrtClient::CompareGPUExecutables(fresh, golden));
 }
 
+TEST(TestLibTest, CompareGPUExecutables_IgnoresBufferAssignmentFields) {
+  auto golden = ParseTextProtoOrDie<HumanReadableAotExecutable>(R"pb(
+    gpu_executable {
+      buffer_allocations { values { index: 0 size: 16 } }
+      buffer_assignment {
+        logical_buffers { id: 1 size: 16 }
+        buffer_aliases {
+          source_buffer_id: 1
+          location { instruction_id: 10 }
+        }
+        buffer_aliases {
+          source_buffer_id: 1
+          location { instruction_id: 20 }
+        }
+      }
+      buffer_allocations_debug_summary: "golden_summary"
+    }
+  )pb");
+  auto fresh = ParseTextProtoOrDie<HumanReadableAotExecutable>(R"pb(
+    gpu_executable {
+      buffer_allocations { values { index: 0 size: 32 } }
+      buffer_assignment {
+        logical_buffers { id: 2 size: 32 }
+        buffer_aliases {
+          source_buffer_id: 2
+          location { instruction_id: 10 }
+        }
+      }
+      buffer_allocations_debug_summary: "fresh_summary"
+    }
+  )pb");
+  EXPECT_OK(AOTInterceptionPjrtClient::CompareGPUExecutables(fresh, golden));
+}
+
 // Where in the executable a copy of the debug options lives. Both copies must
 // be compared, except for the fields the comparator ignores.
 enum class DebugOptionsCopy { kModuleConfig, kCompileOptions };

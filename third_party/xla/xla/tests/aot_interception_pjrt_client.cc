@@ -279,6 +279,10 @@ absl::Status AOTInterceptionPjrtClient::CompareGPUExecutables(
           gpu::GpuExecutableProto::descriptor()->FindFieldByName(
               "buffer_allocations"),
           gpu::GpuExecutableProto::descriptor()->FindFieldByName(
+              "buffer_assignment"),
+          gpu::GpuExecutableProto::descriptor()->FindFieldByName(
+              "buffer_allocations_debug_summary"),
+          gpu::GpuExecutableProto::descriptor()->FindFieldByName(
               "gpu_compute_capability"),
           // Non-deterministic kernel binaries in custom-kernel thunks. Both
           // oneof variants are ignored, so a ptx<->cubin flip is tolerated.
