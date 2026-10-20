@@ -4,7 +4,7 @@ This example shows how you can build a simple TensorFlow Lite application.
 
 #### Step 1. Install CMake tool
 
-It requires CMake 3.16 or higher. On Ubuntu, you can simply run the following
+It requires CMake 3.18 or higher. On Ubuntu, you can simply run the following
 command.
 
 ```sh

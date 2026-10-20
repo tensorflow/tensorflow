@@ -156,6 +156,25 @@ TEST_CAST(uint4, uint4)
 #undef TEST_INT_CASTS_TO
 #undef TEST_CAST
 
+TEST_F(CastOpTest, CastDoubleToBfloat16RoundsOnce) {
+  // 1 + 2^-8 + 2^-26 must round up to 1.0078125; converting through float32
+  // drops the 2^-26 and the resulting tie rounds to 1.0. The exact midpoints
+  // pin ties-to-even.
+  const double kHalfUlp = 1.0 / 256.0;
+  const double kTiny = 1.0 / (1 << 26);
+  MakeOp(DT_DOUBLE, DT_BFLOAT16, /*trunc=*/false);
+  AddInputFromArray<double>(
+      TensorShape({5}),
+      {1.0 + kHalfUlp + kTiny, 1.0 + kHalfUlp, 1.0078125 + kHalfUlp,
+       1.0078125 + kHalfUlp - kTiny, -(1.0 + kHalfUlp + kTiny)});
+  TF_ASSERT_OK(RunOpKernel());
+  Tensor expected(allocator(), DT_BFLOAT16, TensorShape({5}));
+  test::FillValues<bfloat16>(
+      &expected, {bfloat16(1.0078125f), bfloat16(1.0f), bfloat16(1.015625f),
+                  bfloat16(1.0078125f), bfloat16(-1.0078125f)});
+  test::ExpectTensorEqual<bfloat16>(expected, *GetOutput(0));
+}
+
 // TODO(wicke): check conversions from/to bool, and bfloat16
 
 static void BM_cpu_float_int64(::testing::benchmark::State& state) {

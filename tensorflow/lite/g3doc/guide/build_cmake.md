@@ -11,7 +11,7 @@ The following instructions have been tested on Ubuntu 16.04.3 64-bit PC (AMD64)
 
 ### Step 1. Install CMake tool
 
-It requires CMake 3.16 or higher. On Ubuntu, you can simply run the following
+It requires CMake 3.18 or higher. On Ubuntu, you can simply run the following
 command.
 
 ```sh
@@ -259,7 +259,7 @@ You need to have add_subdirectory() for TensorFlow Lite directory and link
 `tensorflow-lite` with target_link_libraries().
 
 ```
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.18)
 project(minimal C CXX)
 
 set(TENSORFLOW_SOURCE_DIR "" CACHE PATH
