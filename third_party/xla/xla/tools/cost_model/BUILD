@@ -25,6 +25,7 @@ cc_library(
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_address_allocator",
+        "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/gpu:gpu_init",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
@@ -51,6 +52,7 @@ xla_test(
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest",
     ],
 )
