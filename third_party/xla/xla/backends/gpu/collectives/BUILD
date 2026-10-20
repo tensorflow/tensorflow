@@ -1,7 +1,10 @@
 load(
+    "@config_rocm_hipcc//rocm:build_defs.bzl",
+    "rocm_library",
+)
+load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
-    "rocm_library",
 )
 load("@local_config_sycl//sycl:build_defs.bzl", "if_sycl_is_configured")
 load("//xla:xla.default.bzl", "xla_cc_test")
@@ -479,9 +482,11 @@ xla_test(
         "//xla/tsl/util:tied_ref",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/log:globals",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",  # buildcleaner: keep
     ],

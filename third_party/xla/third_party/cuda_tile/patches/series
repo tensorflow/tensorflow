@@ -1,5 +1,2 @@
 constructor.patch
 unused_variable.patch
-pow_op_alias.patch
-llvm_cl_989877215.patch
-llvm_cl1000840178.patch

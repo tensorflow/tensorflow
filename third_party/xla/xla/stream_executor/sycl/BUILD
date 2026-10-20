@@ -50,7 +50,7 @@ cc_library(
     deps = ["//xla/stream_executor:platform_id"],
 )
 
-cc_library(
+sycl_library(
     name = "sycl_platform",
     srcs = ["sycl_platform.cc"],
     hdrs = ["sycl_platform.h"],
@@ -280,11 +280,10 @@ sycl_library(
     ],
 )
 
-cc_library(
+sycl_library(
     name = "sycl_executor",
     srcs = ["sycl_executor.cc"],
     hdrs = ["sycl_executor.h"],
-    compatible_with = [],
     tags = [
         "gpu",
         "oneapi-only",
@@ -517,11 +516,10 @@ xla_test(
     ],
 )
 
-cc_library(
+sycl_library(
     name = "sycl_device_description",
     srcs = ["sycl_device_description.cc"],
     hdrs = ["sycl_device_description.h"],
-    compatible_with = [],
     tags = [
         "gpu",
         "oneapi-only",
@@ -560,7 +558,7 @@ xla_test(
     ],
 )
 
-cc_library(
+sycl_library(
     name = "sycl_blas_lt_plugin",
     srcs = ["sycl_blas_lt.cc"],
     hdrs = ["sycl_blas_lt.h"],
@@ -584,7 +582,7 @@ cc_library(
     alwayslink = True,
 )
 
-cc_library(
+sycl_library(
     name = "onemkl_util_headers",
     hdrs = ["onemkl_util.h"],
     tags = [
@@ -595,7 +593,6 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@local_config_sycl//sycl:sycl_headers",
     ],
 )
 
@@ -617,7 +614,7 @@ xla_test(
     ],
 )
 
-cc_library(
+sycl_library(
     name = "onednn_util",
     srcs = ["onednn_util.cc"],
     hdrs = ["onednn_util.h"],
@@ -640,7 +637,7 @@ cc_library(
     ],
 )
 
-cc_library(
+sycl_library(
     name = "sycl_dnn",
     srcs = ["sycl_dnn.cc"],
     hdrs = ["sycl_dnn.h"],
@@ -669,7 +666,7 @@ cc_library(
     alwayslink = True,
 )
 
-cc_library(
+sycl_library(
     name = "sycl_matmul_utils",
     srcs = ["sycl_matmul_utils.cc"],
     hdrs = ["sycl_matmul_utils.h"],
@@ -707,7 +704,7 @@ xla_test(
     ],
 )
 
-cc_library(
+sycl_library(
     name = "sycl_conv_utils",
     srcs = ["sycl_conv_utils.cc"],
     hdrs = ["sycl_conv_utils.h"],

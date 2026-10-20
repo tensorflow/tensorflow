@@ -164,8 +164,9 @@ class HloLinker {
     HloComputation* linked_computation =
         module_->DeepCloneComputation(mutable_principal, &clone_context_);
     // TODO: b/429370488 - Add original names to `HloLinkingManifest`.
-    linked_computation->SetAndSanitizeName(
-        absl::StrCat("linked.", linked_count_++));
+    // Nested computations are cloned under their original names, which can
+    // already take any name we pick, so let the uniquer number them.
+    module_->SetAndUniquifyComputationName(linked_computation, "linked");
     VLOG(6) << "Processed: " << linked_computation->ToString() << " unique_id("
             << linked_computation->unique_id() << ")";
 
@@ -187,7 +188,6 @@ class HloLinker {
   std::stack<TraversalState> stack_;
 
   HloCloneContext clone_context_;
-  int linked_count_ = 0;
 };
 }  // namespace
 
