@@ -724,9 +724,22 @@ absl::Status ShapeVerifier::HandleAllToAll(HloInstruction* hlo) {
                  *all_to_all->split_dimension(), split_count));
   }
   TF_RET_CHECK(hlo->operand_count() == split_count);
+  // InferAllToAllTupleShape compares operand layouts, so strip them if layouts
+  // haven't been assigned.
+  const bool compare_layouts =
+      opts_.layout_sensitive || all_to_all->constrain_layout();
+  std::vector<Shape> operand_shapes_storage;
+  operand_shapes_storage.reserve(hlo->operand_count());
   std::vector<const Shape*> operand_shapes;
+  operand_shapes.reserve(hlo->operand_count());
   for (const HloInstruction* operand : hlo->operands()) {
-    operand_shapes.push_back(&operand->shape());
+    if (compare_layouts) {
+      operand_shapes.push_back(&operand->shape());
+    } else {
+      operand_shapes_storage.push_back(operand->shape());
+      LayoutUtil::ClearLayout(&operand_shapes_storage.back());
+      operand_shapes.push_back(&operand_shapes_storage.back());
+    }
   }
   return CheckShape(hlo,
                     ShapeInference::InferAllToAllTupleShape(operand_shapes));
