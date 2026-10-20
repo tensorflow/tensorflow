@@ -95,6 +95,13 @@ LLVMCommandLineOptionsLock::LLVMCommandLineOptionsLock(
       ++idx;
     }
 
+    // Parse the per-context library options into a context that is copied
+    // into each LLVMContext by ApplyLibraryOptions, then parse the options
+    // globally.
+    delete GetActiveLibraryOptions();
+    GetActiveLibraryOptions() = new llvm::cl::LibraryOptionsContext();
+    llvm::cl::ResetAllOptionOccurrences();
+    llvm::cl::parseCommandLineOptions(*GetActiveLibraryOptions(), fake_argv);
     llvm::cl::ResetAllOptionOccurrences();
     llvm::cl::ParseCommandLineOptions(fake_argv.size(), fake_argv.data());
     SyncRegisterAllocatorDefault();
@@ -109,6 +116,12 @@ LLVMCommandLineOptionsLock::LLVMCommandLineOptionsLock(
   // We're good to start compilation.
   num_active_clients_ += 1;
   lock_.unlock();
+}
+
+void LLVMCommandLineOptionsLock::ApplyLibraryOptions(
+    llvm::LLVMContext& context) {
+  absl::MutexLock lock(lock_);
+  context.getLibraryOptions().assign(*GetActiveLibraryOptions());
 }
 
 LLVMCommandLineOptionsLock::~LLVMCommandLineOptionsLock() {
