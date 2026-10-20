@@ -16,18 +16,20 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_STABLEHLO_TRANSFORMS_HLO_MATCHERS_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_STABLEHLO_TRANSFORMS_HLO_MATCHERS_H_
 
+#include "llvm/ADT/ArrayRef.h"
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 
 namespace mlir {
 namespace odml {
-// The following 5 different forms of mhlo::iota will be matched:
+// The following 5 different forms of stablehlo::iota will be matched:
 // 1. IotaOp.
 // 2. IotaOp + BroadCastInDim.
 // 3. IotaOp + Reshape.
 // 4. Constant (folded Iota) + BroadCastInDim.
 // 5. Constant (folded result).
 // Moreover, the dimensions has to match the iota_dimension.
+bool MatchIota(ArrayRef<int64_t> dimensions, Value iota);
 bool MatchIota(DenseIntElementsAttr dimensions, Value iota);
 }  // namespace odml
 }  // namespace mlir

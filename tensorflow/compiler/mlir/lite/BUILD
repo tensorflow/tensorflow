@@ -1658,7 +1658,6 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@stablehlo//:stablehlo_ops",
-        "@xla//xla/mlir_hlo",
     ],
 )
 
@@ -2160,8 +2159,10 @@ tf_cc_binary(
         "@llvm-project//mlir:Support",
         "@stablehlo//:chlo_ops",
         "@stablehlo//:stablehlo_ops",
-        "@xla//xla/hlo/translate/hlo_to_mhlo:translate",
-        "@xla//xla/mlir_hlo",
+        "@tsl//tsl/platform:protobuf",
+        "@xla//xla/hlo/parser:hlo_parser",
+        "@xla//xla/hlo/translate:stablehlo",
+        "@xla//xla/service:hlo_proto_cc",
     ],
 )
 
@@ -2214,7 +2215,6 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
         "@stablehlo//:stablehlo_passes",
-        "@xla//xla/mlir_hlo:mhlo_passes",
         "@xla//xla/mlir_hlo:stablehlo_extension_passes",
     ],
 )
