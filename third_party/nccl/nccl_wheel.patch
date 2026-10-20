@@ -1,8 +1,29 @@
+diff --git a/include/nccl.h b/include/nccl.h
+--- a/include/nccl.h
++++ b/include/nccl.h
+@@ -1022,4 +1022,7 @@
+ } // end extern "C"
+ #endif
+ 
++#undef major
++#undef minor
++
+ #endif // end include guard
+diff --git a/include/nccl_device.h b/include/nccl_device.h
+--- a/include/nccl_device.h
++++ b/include/nccl_device.h
+@@ -24,4 +24,7 @@
+ #include "nccl_device/impl/ptr__funcs.h"
+ #include "nccl_device/impl/reduce_copy__funcs.h"
+ 
++#undef major
++#undef minor
++
+ #endif // _NCCL_DEVICE_H_
 diff --git a/include/nccl_device/gin/proxy/gin_proxy.h b/include/nccl_device/gin/proxy/gin_proxy.h
-index 8a6d7dd2..78bd809e 100644
 --- a/include/nccl_device/gin/proxy/gin_proxy.h
 +++ b/include/nccl_device/gin/proxy/gin_proxy.h
-@@ -85,8 +85,8 @@ NCCL_DEVICE_INLINE void postGfd(Coop coop, ncclGinProxyGpuCtx_t* proxyCtx, ncclG
+@@ -122,8 +122,8 @@
      // ncclGinProxyGfd_t is declared __attribute__((packed, aligned(16))) in
      // gin_proxy_device_host_common.h; static_asserts there enforce the contract.
      NVCC_PRAGMA_UNROLL_AUTO
@@ -13,24 +34,10 @@ index 8a6d7dd2..78bd809e 100644
      }
      if (isGet) {
        // Atomic max with rolling logic.
-diff --git a/include/nccl_device/utility.h b/include/nccl_device/utility.h
-index 6e09fc10..dbc1cc28 100644
---- a/include/nccl_device/utility.h
-+++ b/include/nccl_device/utility.h
-@@ -17,7 +17,7 @@
- #define NCCL_CHECK_CUDACC 0
- #endif
- #else
--#if __CUDACC__
-+#ifdef __CUDACC__
- #define NCCL_CHECK_CUDACC 1
- #else
- #define NCCL_CHECK_CUDACC 0
 diff --git a/include/nccl_device/gin/gpi/gin_gpi_device_host_common.h b/include/nccl_device/gin/gpi/gin_gpi_device_host_common.h
-index 4a2cf812..e38f7fc2 100644
 --- a/include/nccl_device/gin/gpi/gin_gpi_device_host_common.h
 +++ b/include/nccl_device/gin/gpi/gin_gpi_device_host_common.h
-@@ -170,7 +170,7 @@ enum gpi_post_mode {
+@@ -170,7 +170,7 @@
  };
  
  #ifndef GPI_ACCESS_ONCE
@@ -40,10 +47,9 @@ index 4a2cf812..e38f7fc2 100644
  
  #ifndef GPI_READ_ONCE
 diff --git a/include/nccl_device/gin/gpi/gin_gpi.h b/include/nccl_device/gin/gpi/gin_gpi.h
-index c004b4cb..7357c4c0 100644
 --- a/include/nccl_device/gin/gpi/gin_gpi.h
 +++ b/include/nccl_device/gin/gpi/gin_gpi.h
-@@ -212,7 +212,7 @@ __device__ static inline void gpi_gpu_channel_post_gfd_thread(gpi_gpu_channel_t*
+@@ -217,7 +217,7 @@
      // Manual PTX for MMIO 128-bit store (b128 needs CUDA 12.3+ / PTX 8.3)
      uint64_t val_lo = segment[0].raw;
      uint64_t val_hi = segment[1].raw;
@@ -52,3 +58,36 @@ index c004b4cb..7357c4c0 100644
      asm volatile(R"YYY(
        .reg .b128 _v%=;
        mov.b128 _v%=, {%1, %2};
+diff --git a/include/nccl_device/transport/net_efa_gda/efa-dp-direct/include/device/efa_cuda_dp_impl.cuh b/include/nccl_device/transport/net_efa_gda/efa-dp-direct/include/device/efa_cuda_dp_impl.cuh
+--- a/include/nccl_device/transport/net_efa_gda/efa-dp-direct/include/device/efa_cuda_dp_impl.cuh
++++ b/include/nccl_device/transport/net_efa_gda/efa-dp-direct/include/device/efa_cuda_dp_impl.cuh
+@@ -31,25 +31,25 @@
+ 
+ #define EFA_FIELD_GET(_mask, _reg)						\
+ 	({									\
+-		(typeof(_mask))(((_reg) & (_mask)) >> __bf_shf(_mask));		\
++		(__typeof__(_mask))(((_reg) & (_mask)) >> __bf_shf(_mask));		\
+ 	})
+ 
+ #define EFA_FIELD_PREP(_mask, _val)						\
+ 	({									\
+-		((typeof(_mask))(_val) << __bf_shf(_mask)) & (_mask);		\
++		((__typeof__(_mask))(_val) << __bf_shf(_mask)) & (_mask);		\
+ 	})
+ 
+ #define BITS_PER_LONG	(8 * sizeof(long))
+ 
+ #define GENMASK(h, l)								\
+ 	(((~0UL) - (1UL << (l)) + 1) & (~0UL >> (BITS_PER_LONG - 1 - (h))))
+ 
+ #define EFA_GET(ptr, mask)							\
+-	EFA_FIELD_GET(mask##_MASK, *(typeof(*ptr) volatile *)(ptr))
++	EFA_FIELD_GET(mask##_MASK, *(__typeof__(*ptr) volatile *)(ptr))
+ 
+ #define EFA_SET(ptr, mask, value)						\
+ 	({									\
+-		typeof(ptr) _ptr = ptr;				        	\
++		__typeof__(ptr) _ptr = ptr;				        	\
+ 		*_ptr = (*_ptr & ~(mask##_MASK)) |				\
+ 			EFA_FIELD_PREP(mask##_MASK, value);		        \
+ 	})

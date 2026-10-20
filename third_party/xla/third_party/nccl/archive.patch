@@ -3,7 +3,6 @@ similarity index 100%
 rename from src/device/common.cu
 rename to src/device/common.cu.cc
 diff --git a/src/device/common.h b/src/device/common.h
-index 1c1f5d6f..700c27a7 100644
 --- a/src/device/common.h
 +++ b/src/device/common.h
 @@ -26,9 +26,9 @@
@@ -19,10 +18,9 @@ index 1c1f5d6f..700c27a7 100644
  
  struct ncclShmemGroup {
 diff --git a/src/device/generate.py b/src/device/generate.py
-index 88ddcef9..73b88d2b 100755
 --- a/src/device/generate.py
 +++ b/src/device/generate.py
-@@ -207,8 +207,8 @@ kernel_funcs = sorted(set(best_kernel(*fn) for fn in primary_funcs))
+@@ -233,8 +233,8 @@
  
  ################################################################################
  
@@ -33,7 +31,7 @@ index 88ddcef9..73b88d2b 100755
    out = f.write
    out('#include "common.h"\n')
    out("\n")
-@@ -227,9 +227,9 @@ with open(os.path.join(gensrc, "device_table.cu"), "w") as f:
+@@ -253,9 +253,9 @@
    # an internal array + pointer alias.  On Linux/GCC the array is named directly
    # to avoid an extra device-memory indirection on every kernel dispatch.
    out("#if defined(NCCL_OS_WINDOWS)\n")
@@ -45,9 +43,15 @@ index 88ddcef9..73b88d2b 100755
    out("#endif\n")
    index = 0
    for fn in primary_funcs:
-@@ -292,8 +292,16 @@ with open(os.path.join(gensrc, "host_table.cc"), "w") as f:
+@@ -317,14 +317,21 @@
+ 
+   # List of all kernel function pointers.
+   out("extern int const ncclDevKernelCount = %d;\n" % len(kernel_funcs))
+-  out("void* ncclDevKernelList[] = {\n")
+   index = 0
+   for kfn in kernel_funcs:
      cudart, _ = required_cuda(*kfn)
-     sym = paste("_", "ncclDevKernel", *kfn)
+     sym = kernel_full_name(kfn)
      if cudart != 0: out("#if CUDART_VERSION >= %d\n" % cudart)
 -    out("/*%4d*/ (void*)%s,\n" % (index, sym));
 -    if cudart != 0: out("#else\n" "/*%4d*/ nullptr,\n" "#endif\n" % index)
@@ -56,15 +60,15 @@ index 88ddcef9..73b88d2b 100755
 +      out("#else\n/*%4d*/ void* %s_ptr = nullptr;\n#endif\n" % (index, sym));
 +    index += 1
 +
-+  out("extern void* const ncclDevKernelList[] = {\n")
++  out("void* ncclDevKernelList[] = {\n")
 +  index = 0
 +  for kfn in kernel_funcs:
-+    sym = paste("_", "ncclDevKernel", *kfn)
++    sym = kernel_full_name(kfn)
 +    out("/*%4d*/ %s_ptr,\n" % (index, sym));
      index += 1
    out("nullptr};\n")
    out("\n")
-@@ -307,15 +315,23 @@ with open(os.path.join(gensrc, "host_table.cc"), "w") as f:
+@@ -338,15 +345,23 @@
    out("\n")
  
    # Maps primary id to kernel function pointer.
@@ -72,7 +76,7 @@ index 88ddcef9..73b88d2b 100755
    index = 0
    for fn in primary_funcs:
      kfn = best_kernel(*fn)
-     sym = paste("_", "ncclDevKernel", *kfn)
+     sym = kernel_full_name(kfn)
      cudart, _ = required_cuda(*kfn)
      if cudart != 0: out("#if CUDART_VERSION >= %d\n" % cudart)
 -    out("/*%4d*/ (void*)%s,\n" % (index, sym))
@@ -86,12 +90,12 @@ index 88ddcef9..73b88d2b 100755
 +  index = 0
 +  for fn in primary_funcs:
 +    kfn = best_kernel(*fn)
-+    sym = paste("_", "ncclDevKernel", *kfn)
++    sym = kernel_full_name(kfn)
 +    out("/*%4d*/ %s_ptr_%d,\n" % (index, sym, index))
      index += 1
    out("nullptr};\n")
    out("\n")
-@@ -334,7 +350,7 @@ with open(os.path.join(gensrc, "host_table.cc"), "w") as f:
+@@ -365,7 +380,7 @@
  # "coll" is reflected in the name: formally that no two funcs having different
  # coll's map to the same filename.
  def impl_filename(coll, redop, ty, algo, proto):
@@ -100,7 +104,7 @@ index 88ddcef9..73b88d2b 100755
  
  # Partition the functions and kernels to the .cu filenames. The partition is
  # a dictionary mapping filename to (coll, func-tuple list)
-@@ -366,7 +382,7 @@ if os.environ.get("NCCL_USE_CMAKE", "0") != "1":
+@@ -397,7 +412,7 @@
    with open(os.path.join(gensrc, "rules.mk"), "w") as f:
      out = f.write
      impl_names = sorted(name_to_funcs.keys())
@@ -114,10 +118,9 @@ similarity index 100%
 rename from src/device/onerank.cu
 rename to src/device/onerank.cu.cc
 diff --git a/src/device/symmetric/data_ops.cuh b/src/device/symmetric/data_ops.cuh
-index 25b6a922..315b04d4 100644
 --- a/src/device/symmetric/data_ops.cuh
 +++ b/src/device/symmetric/data_ops.cuh
-@@ -41,7 +41,7 @@ static __device__ __forceinline__ T loadMem(GMemTag, T* p) {
+@@ -41,7 +41,7 @@
      for (int i = 0; i < sizeof(T) / 4; i++) u32[i] = __ldcs((uint32_t*)p + i);
      break;
    case 8:
@@ -126,7 +129,7 @@ index 25b6a922..315b04d4 100644
      break;
    case 16:
      for (int i = 0; i < sizeof(T) / 16; i++) u32v4[i] = __ldcs((uint4*)p + i);
-@@ -89,7 +89,7 @@ static __device__ __forceinline__ void storeMem(GMemTag, T* p, T val) {
+@@ -89,7 +89,7 @@
      for (int i = 0; i < sizeof(T) / 4; i++) __stcs((uint32_t*)p + i, u32[i]);
      break;
    case 8:
@@ -136,7 +139,6 @@ index 25b6a922..315b04d4 100644
    case 16:
      for (int i = 0; i < sizeof(T) / 16; i++) __stcs((uint4*)p + i, u32v4[i]);
 diff --git a/src/include/nccl_common.h b/src/include/nccl_common.h
-index 70b669a5..2667e055 100644
 --- a/src/include/nccl_common.h
 +++ b/src/include/nccl_common.h
 @@ -11,7 +11,9 @@
@@ -149,11 +151,32 @@ index 70b669a5..2667e055 100644
  #undef _GLIBCXX_VISIBILITY
  #define _GLIBCXX_VISIBILITY(V)
  #endif
+diff --git a/src/include/nccl_device.h b/src/include/nccl_device.h
+--- a/src/include/nccl_device.h
++++ b/src/include/nccl_device.h
+@@ -24,4 +24,7 @@
+ #include "nccl_device/impl/ptr__funcs.h"
+ #include "nccl_device/impl/reduce_copy__funcs.h"
+ 
++#undef major
++#undef minor
++
+ #endif // _NCCL_DEVICE_H_
+diff --git a/src/nccl.h.in b/src/nccl.h.in
+--- a/src/nccl.h.in
++++ b/src/nccl.h.in
+@@ -1022,4 +1022,7 @@
+ } // end extern "C"
+ #endif
+ 
++#undef major
++#undef minor
++
+ #endif // end include guard
 diff --git a/src/include/nccl_device/gin/proxy/gin_proxy.h b/src/include/nccl_device/gin/proxy/gin_proxy.h
-index 8a6d7dd2..78bd809e 100644
 --- a/src/include/nccl_device/gin/proxy/gin_proxy.h
 +++ b/src/include/nccl_device/gin/proxy/gin_proxy.h
-@@ -85,8 +85,8 @@ NCCL_DEVICE_INLINE void postGfd(Coop coop, ncclGinProxyGpuCtx_t* proxyCtx, ncclG
+@@ -122,8 +122,8 @@
      // ncclGinProxyGfd_t is declared __attribute__((packed, aligned(16))) in
      // gin_proxy_device_host_common.h; static_asserts there enforce the contract.
      NVCC_PRAGMA_UNROLL_AUTO
@@ -165,10 +188,9 @@ index 8a6d7dd2..78bd809e 100644
      if (isGet) {
        // Atomic max with rolling logic.
 diff --git a/src/include/nccl_device/gin/gpi/gin_gpi.h b/src/include/nccl_device/gin/gpi/gin_gpi.h
-index c004b4cb..7357c4c0 100644
 --- a/src/include/nccl_device/gin/gpi/gin_gpi.h
 +++ b/src/include/nccl_device/gin/gpi/gin_gpi.h
-@@ -212,7 +212,7 @@ __device__ static inline void gpi_gpu_channel_post_gfd_thread(gpi_gpu_channel_t*
+@@ -217,7 +217,7 @@
      // Manual PTX for MMIO 128-bit store (b128 needs CUDA 12.3+ / PTX 8.3)
      uint64_t val_lo = segment[0].raw;
      uint64_t val_hi = segment[1].raw;
@@ -177,3 +199,48 @@ index c004b4cb..7357c4c0 100644
      asm volatile(R"YYY(
        .reg .b128 _v%=;
        mov.b128 _v%=, {%1, %2};
+diff --git a/src/include/nccl_device/gin/gpi/gin_gpi_device_host_common.h b/src/include/nccl_device/gin/gpi/gin_gpi_device_host_common.h
+--- a/src/include/nccl_device/gin/gpi/gin_gpi_device_host_common.h
++++ b/src/include/nccl_device/gin/gpi/gin_gpi_device_host_common.h
+@@ -170,7 +170,7 @@
+ };
+ 
+ #ifndef GPI_ACCESS_ONCE
+-#define GPI_ACCESS_ONCE(x) (*(volatile typeof(x)*)&(x))
++#define GPI_ACCESS_ONCE(x) (*(volatile __typeof__(x)*)&(x))
+ #endif
+ 
+ #ifndef GPI_READ_ONCE
+diff --git a/src/transport/net_efa_gda/efa-dp-direct/include/device/efa_cuda_dp_impl.cuh b/src/transport/net_efa_gda/efa-dp-direct/include/device/efa_cuda_dp_impl.cuh
+--- a/src/transport/net_efa_gda/efa-dp-direct/include/device/efa_cuda_dp_impl.cuh
++++ b/src/transport/net_efa_gda/efa-dp-direct/include/device/efa_cuda_dp_impl.cuh
+@@ -31,25 +31,25 @@
+ 
+ #define EFA_FIELD_GET(_mask, _reg)						\
+ 	({									\
+-		(typeof(_mask))(((_reg) & (_mask)) >> __bf_shf(_mask));		\
++		(__typeof__(_mask))(((_reg) & (_mask)) >> __bf_shf(_mask));		\
+ 	})
+ 
+ #define EFA_FIELD_PREP(_mask, _val)						\
+ 	({									\
+-		((typeof(_mask))(_val) << __bf_shf(_mask)) & (_mask);		\
++		((__typeof__(_mask))(_val) << __bf_shf(_mask)) & (_mask);		\
+ 	})
+ 
+ #define BITS_PER_LONG	(8 * sizeof(long))
+ 
+ #define GENMASK(h, l)								\
+ 	(((~0UL) - (1UL << (l)) + 1) & (~0UL >> (BITS_PER_LONG - 1 - (h))))
+ 
+ #define EFA_GET(ptr, mask)							\
+-	EFA_FIELD_GET(mask##_MASK, *(typeof(*ptr) volatile *)(ptr))
++	EFA_FIELD_GET(mask##_MASK, *(__typeof__(*ptr) volatile *)(ptr))
+ 
+ #define EFA_SET(ptr, mask, value)						\
+ 	({									\
+-		typeof(ptr) _ptr = ptr;				        	\
++		__typeof__(ptr) _ptr = ptr;				        	\
+ 		*_ptr = (*_ptr & ~(mask##_MASK)) |				\
+ 			EFA_FIELD_PREP(mask##_MASK, value);		        \
+ 	})
