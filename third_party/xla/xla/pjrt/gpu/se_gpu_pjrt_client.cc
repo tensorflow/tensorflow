@@ -2359,17 +2359,10 @@ static absl::StatusOr<PjRtStreamExecutorExecutionOutput> RunGpuAsync(
   TF_RET_CHECK(result_definition_event_promises.empty() ||
                result_definition_event_promises.size() == results.size());
 
-  std::vector<const Shape*> argument_shapes;
-  if (exec.executable() != nullptr) {
-    const auto& layout = exec.executable()->module().entry_computation_layout();
-    argument_shapes.reserve(layout.parameter_count());
-    for (int i = 0; i < layout.parameter_count(); ++i) {
-      argument_shapes.push_back(&layout.parameter_shape(i));
-    }
-  }
-
+  // PJRT validates input buffers in ExecutePrepare. Only execution options and
+  // stream setup are needed here.
   ABSL_ASSIGN_OR_RETURN(auto options_and_stream,
-                   exec.RunHelper(argument_shapes, run_options_inp));
+                   exec.PrepareRunOptions(run_options_inp));
   auto* gpu_exec = absl::down_cast<gpu::GpuExecutable*>(exec.executable());
   const ServiceExecutableRunOptions* run_options = &options_and_stream.first;
   se::DeviceAddressAllocator* const memory_allocator = run_options->allocator();
