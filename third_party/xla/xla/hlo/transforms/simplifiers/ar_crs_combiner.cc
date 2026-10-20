@@ -542,6 +542,9 @@ absl::Status ArCrsCombiner::KeepProvablyEqualInstructionGroupsMPMD() {
 
 absl::Status ArCrsCombiner::KeepProvablyEqualInstructionGroupsSPMD(
     HloModule* module) {
+  if (all_reduce_map_.empty()) {
+    return absl::OkStatus();
+  }
   // For SPMD mode, use HloReplicationAnalysis to figure out HLO value
   // equivalence across partitions.
   ABSL_ASSIGN_OR_RETURN(
@@ -647,7 +650,9 @@ absl::StatusOr<bool> ArCrsCombiner::RewriteGraph() {
 absl::StatusOr<bool> ArCrsCombiner::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  call_graph_ = CallGraph::Build(module);
+  if (!spmd_partition_) {
+    call_graph_ = CallGraph::Build(module);
+  }
 
   GroupAllReducesById(module);
 

@@ -173,11 +173,9 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@tensor_ir//:NVTensorIRDialect",
         "@tensor_ir//:NVTensorIRTilingAnalysis",
-        "@tensor_ir//:NVTensorIRTransform",
         "@tensor_ir//:NVTensorIRUtils",
     ],
 )

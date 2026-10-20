@@ -364,6 +364,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_nccl_user_buffers(false);
   opts.set_xla_gpu_enable_nccl_user_buffers_in_default_space(false);
   opts.set_xla_gpu_enable_allocator_spatial_partitioning(true);
+  opts.set_xla_gpu_memory_fraction_policy("");
   opts.set_xla_gpu_experimental_enable_nccl_symmetric_buffers(false);
   opts.set_xla_gpu_experimental_vmm_disabled(false);
   opts.set_xla_gpu_experimental_emit_collective_reduce(false);
@@ -2433,6 +2434,15 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Enables spatial partitioning of the GPU BFC allocator so default and "
       "collective allocations share one fixed address range. Requires BFC "
       "preallocation."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_memory_fraction_policy",
+      string_setter_for(&DebugOptions::set_xla_gpu_memory_fraction_policy),
+      debug_options->xla_gpu_memory_fraction_policy(),
+      "Overrides the client's memory fraction for the GPU BFC allocator, as "
+      "START, START+, or START-CAP fractions of total device memory: \"0.75\" "
+      "is fixed at 75%, \"0.75+\" preallocates 75% and lets the shared spatial "
+      "pool grow to all device memory, and \"0.75-0.85\" caps growth at 85%. "
+      "Empty keeps the client's setting."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_enable_nccl_symmetric_buffers",
       bool_setter_for(

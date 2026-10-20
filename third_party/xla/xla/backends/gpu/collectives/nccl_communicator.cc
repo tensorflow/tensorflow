@@ -328,17 +328,22 @@ NcclCommunicator::~NcclCommunicator() {
       return absl::OkStatus();
     }
 
+    // NcclCommunicator::ToString() acquires comm_->mutex, which is not
+    // reentrant, so we must not stream `*this` while holding that mutex.
+    // Get the string before locking.
+    const std::string description = ToString();
+
     // Note that we intentionally don't call PollUntilDone. Once comm_ has
     // been destroyed, we can no longer safely touch it.
     absl::MutexLock lock(comm_->mutex);
     if (comm_->comm == nullptr) {
       XLA_VLOG_DEVICE(1, stream_executor_->device_ordinal())
-          << "Skipping destruction; null comm " << *this;
+          << "Skipping destruction; null comm " << description;
       return absl::OkStatus();
     }
 
     XLA_VLOG_DEVICE(1, stream_executor_->device_ordinal())
-        << "Destroy " << *this;
+        << "Destroy " << description;
     return XLA_NCCL_STATUS(ncclCommDestroy(comm_->comm));
   };
 

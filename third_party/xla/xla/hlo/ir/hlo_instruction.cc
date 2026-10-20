@@ -3390,10 +3390,8 @@ bool HloInstruction::IdenticalInternal(
 }
 
 void HloInstruction::AppendOperand(HloInstruction* operand) {
-  if (operand->parent() != nullptr) {
-    DCHECK(!operand->parent()->IsMarkedAsDead(operand))
-        << "Operand " << operand->name() << " is already marked dead";
-  }
+  DCHECK(!operand->IsMarkedAsDead())
+      << "Operand " << operand->name() << " is already marked dead";
   operands_.push_back(operand);
   operand->AddUser(this);
 }

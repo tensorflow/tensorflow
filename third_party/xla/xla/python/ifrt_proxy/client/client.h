@@ -98,6 +98,13 @@ class Client final : public RTTIExtends<Client, xla::ifrt::Client> {
       std::optional<MemoryKind> memory_kind,
       ArrayCopySemantics semantics) override;
 
+  absl::StatusOr<std::vector<ArrayRef>> CopyArraysWithDonatedDst(
+      absl::Span<ArrayRef> arrays, absl::Span<ArrayRef> donated_dst_arrays,
+      ArrayCopySemantics semantics) override {
+    return absl::UnimplementedError(
+        "CopyArraysWithDonatedDst is not supported for the IFRT proxy client.");
+  }
+
   absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> RemapArrays(
       const RemapPlan& plan, absl::Span<xla::ifrt::ArrayRef> arrays,
       ArrayCopySemantics semantics) override;

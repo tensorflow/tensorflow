@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -653,6 +654,57 @@ ENTRY entry {
 
   EXPECT_DEATH(entry->set_root_instruction(p1, /*accept_different_shape=*/true),
                "Cannot overwrite non-empty input_output_alias_config");
+}
+
+std::unique_ptr<HloComputation> MakeComputationWithParameters(
+    int num_parameters, absl::string_view name = "comp") {
+  const Shape shape = ShapeUtil::MakeShape(F32, {});
+  auto builder = HloComputation::Builder(std::string(name));
+  HloInstruction* root = nullptr;
+  for (int i = 0; i < num_parameters; ++i) {
+    HloInstruction* param = builder.AddInstruction(
+        HloInstruction::CreateParameter(i, shape, absl::StrCat("p", i)));
+    if (i == 0) {
+      root = param;
+    }
+  }
+  return builder.Build(root);
+}
+
+TEST_F(HLOComputationTest,
+       RemoveInstructionRejectsUnparentedOrForeignInstruction) {
+  auto comp1 = MakeComputationWithParameters(1, "comp1");
+  auto comp2 = MakeComputationWithParameters(1, "comp2");
+  HloInstruction* foreign = comp2->root_instruction();
+
+  // Foreign instruction from another computation.
+  EXPECT_FALSE(comp1->RemoveInstruction(foreign).ok());
+
+  // Null instruction.
+  EXPECT_FALSE(comp1->RemoveInstruction(nullptr).ok());
+}
+
+TEST_F(HLOComputationTest, RemoveInstructionRejectsAlreadyDeadInstruction) {
+  auto comp = MakeComputationWithParameters(1);
+  HloInstruction* dead_neg = comp->AddInstruction(HloInstruction::CreateUnary(
+      comp->root_instruction()->shape(), HloOpcode::kNegate,
+      comp->root_instruction()));
+
+  ASSERT_OK(comp->RemoveInstruction(dead_neg));
+  EXPECT_TRUE(comp->IsMarkedAsDead(dead_neg));
+  EXPECT_EQ(dead_neg->parent(), nullptr);
+
+  // Removing it again should return an error, not crash with negative index.
+  EXPECT_FALSE(comp->RemoveInstruction(dead_neg).ok());
+}
+
+TEST_F(HLOComputationTest, RemoveInstructionClearsParameterSlot) {
+  auto comp = MakeComputationWithParameters(2, "fusion");
+  HloInstruction* p1 = comp->parameter_instruction(1);
+
+  ASSERT_NE(p1, nullptr);
+  ASSERT_OK(comp->ForceRemoveInstruction(p1));
+  EXPECT_EQ(comp->parameter_instruction(1), nullptr);
 }
 
 }  // namespace

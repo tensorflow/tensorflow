@@ -1788,9 +1788,9 @@ class LegalizeStablehloToTensorIrPass
           builder.getFunctionType(new_inputs, new_results);
 
       auto graph_op = mlir::nv_tensor_ir::GraphOp::create(
-          builder, func_op.getLoc(), func_op.getName(),
-          /*sym_visibility=*/nullptr, converted_func_type,
-          func_op.getArgAttrsAttr(), func_op.getResAttrsAttr());
+          builder, func_op.getLoc(), func_op.getName(), converted_func_type,
+          func_op.getArgAttrsAttr(), func_op.getResAttrsAttr(),
+          /*sym_visibility=*/nullptr);
 
       // Move the function's body region into the graph's graphBody region.
       graph_op.getGraphBody().takeBody(func_op.getBody());

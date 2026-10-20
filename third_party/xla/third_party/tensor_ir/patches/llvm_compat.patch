@@ -1,0 +1,118 @@
+diff --git a/include/tensor_ir/Dialect/TensorDialect.td b/include/tensor_ir/Dialect/TensorDialect.td
+--- a/include/tensor_ir/Dialect/TensorDialect.td
++++ b/include/tensor_ir/Dialect/TensorDialect.td
+@@ -111,6 +111,7 @@
+ 
+   // Add this line when we define attributes in this dialect.
+   let useDefaultAttributePrinterParser = 1;
++  let useStrictPropertiesInAssemblyFormat = 0;
+   // OSS has no dialect-defined types, so TableGen emits no type parser/printer
+   // bodies. Only declare the overrides when their type definitions are present.
+   let hasOperationAttrVerify = 1;
+diff --git a/lib/Conversion/TensorToCudaTile/TensorToCudaTile.cpp b/lib/Conversion/TensorToCudaTile/TensorToCudaTile.cpp
+--- a/lib/Conversion/TensorToCudaTile/TensorToCudaTile.cpp
++++ b/lib/Conversion/TensorToCudaTile/TensorToCudaTile.cpp
+@@ -56,6 +56,10 @@
+     // Convert tensor types to 0-D tiles, as the actual tile shape is not
+     // available during the type conversion (depends on the iteration space).
+     addConversion([=](RankedTensorType tensorTy) -> Type {
++      if (isa<Float4E2M1FNType>(tensorTy.getElementType())) {
++        return cuda_tile::TileType::get(/*shape=*/llvm::ArrayRef<int64_t>{2},
++                                        tensorTy.getElementType());
++      }
+       return convertType(tensorTy.getElementType());
+     });
+   }
+diff --git a/lib/Registration/Registration.cpp b/lib/Registration/Registration.cpp
+--- a/lib/Registration/Registration.cpp
++++ b/lib/Registration/Registration.cpp
+@@ -11,12 +11,14 @@
+ #include "tensor_ir/Transform/Passes.h"
+ 
+ #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
++#include "mlir/Conversion/ComplexToLLVM/ComplexToLLVM.h"
+ #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h"
+ #include "mlir/Conversion/GPUCommon/GPUToLLVM.h"
+ #include "mlir/Conversion/MathToLLVM/MathToLLVM.h"
+ #include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"
+ #include "mlir/Conversion/Passes.h"
+ #include "mlir/Conversion/PtrToLLVM/PtrToLLVM.h"
++#include "mlir/Conversion/UBToLLVM/UBToLLVM.h"
+ #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"
+ #include "mlir/Dialect/Arith/IR/Arith.h"
+ #include "mlir/Dialect/Arith/IR/ValueBoundsOpInterfaceImpl.h"
+@@ -46,6 +48,7 @@
+ #include "mlir/Dialect/Tensor/IR/ValueBoundsOpInterfaceImpl.h"
+ #include "mlir/Dialect/Tensor/Transforms/BufferizableOpInterfaceImpl.h"
+ #include "mlir/Dialect/Tensor/Transforms/SubsetInsertionOpInterfaceImpl.h"
++#include "mlir/Dialect/UB/IR/UBOps.h"
+ #include "mlir/Dialect/Vector/IR/ValueBoundsOpInterfaceImpl.h"
+ #include "mlir/Dialect/Vector/IR/VectorOps.h"
+ #include "mlir/Dialect/Vector/Transforms/IndexedAccessOpInterfaceImpl.h"
+@@ -85,6 +88,7 @@
+     ptr::PtrDialect,
+     scf::SCFDialect,
+     tensor::TensorDialect,
++    ub::UBDialect,
+     vector::VectorDialect,
+     cuda_tile::CudaTileDialect,
+     nv_tensor_ir::TensorIRDialect
+@@ -103,12 +107,14 @@
+   // Register ConvertToLLVM interfaces for every upstream dialect above that
+   // provides one.
+   arith::registerConvertArithToLLVMInterface(registry);
++  registerConvertComplexToLLVMInterface(registry);
+   registerConvertFuncToLLVMInterface(registry);
+   cf::registerConvertControlFlowToLLVMInterface(registry);
+   gpu::registerConvertGpuToLLVMInterface(registry);
+   registerConvertMathToLLVMInterface(registry);
+   registerConvertMemRefToLLVMInterface(registry);
+   ptr::registerConvertPtrToLLVMInterface(registry);
++  ub::registerConvertUBToLLVMInterface(registry);
+   vector::registerConvertVectorToLLVMInterface(registry);
+ 
+   // Register bufferization models used by the Linalg pipeline.
+diff --git a/lib/Transform/HostToLLVM.cpp b/lib/Transform/HostToLLVM.cpp
+--- a/lib/Transform/HostToLLVM.cpp
++++ b/lib/Transform/HostToLLVM.cpp
+@@ -6,6 +6,7 @@
+ #include "tensor_ir/Transform/Passes.h" // IWYU pragma: keep
+ 
+ #include "mlir/Analysis/DataLayoutAnalysis.h"
++#include "mlir/Conversion/ArithCommon/CeilFloorDivExpansion.h"
+ #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
+ #include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"
+ #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h"
+diff --git a/test/Dialect/exp-rounding-mode.mlir b/test/Dialect/exp-rounding-mode.mlir
+--- a/test/Dialect/exp-rounding-mode.mlir
++++ b/test/Dialect/exp-rounding-mode.mlir
+@@ -5,7 +5,7 @@
+ // CHECK-LABEL: nv_tensor_ir.graph @different_policies(
+ // CHECK-SAME: %[[INPUT:.*]]: tensor<128xf32>
+ // CHECK: %[[FULL:.*]] = exp %[[INPUT]] : tensor<128xf32>
+-// CHECK: %[[APPROX:.*]] = exp %[[INPUT]] {{<\{?rounding_mode = (#nv_tensor_ir.exp_rounding_mode)?<approx>\}?>}}
++// CHECK: %[[APPROX:.*]] = exp %[[INPUT]] {{<\{?rounding_mode = (#nv_tensor_ir.exp_rounding_mode)?<?approx>?\}?>}}
+ // CHECK-NOT: = exp
+ // CHECK: results %[[FULL]], %[[APPROX]], %[[FULL]]
+ nv_tensor_ir.graph @different_policies(%x: tensor<128xf32>) -> (tensor<128xf32>, tensor<128xf32>, tensor<128xf32>) {
+@@ -17,7 +17,7 @@
+ 
+ // Properties and discardable attributes print in separate dictionaries.
+ // CHECK-LABEL: nv_tensor_ir.graph @separate_dictionaries(
+-// CHECK: exp %{{.*}} {{<\{?rounding_mode = (#nv_tensor_ir.exp_rounding_mode)?<approx>\}?>}} {test.tag = "kept"} : tensor<128xf32>
++// CHECK: exp %{{.*}} {{<\{?rounding_mode = (#nv_tensor_ir.exp_rounding_mode)?<?approx>?\}?>}} {test.tag = "kept"} : tensor<128xf32>
+ nv_tensor_ir.graph @separate_dictionaries(%x: tensor<128xf32>) -> tensor<128xf32> {
+   %y = exp %x <{rounding_mode = #nv_tensor_ir.exp_rounding_mode<approx>}> {test.tag = "kept"} : tensor<128xf32>
+   results %y : tensor<128xf32>
+diff --git a/test/Transform/native-host.mlir b/test/Transform/native-host.mlir
+--- a/test/Transform/native-host.mlir
++++ b/test/Transform/native-host.mlir
+@@ -85,7 +85,7 @@
+   //       CHECK: %[[OK2:.+]] = llvm.icmp "eq" %[[STATUS2]], %[[COPY_ID]] : i32
+   //       CHECK: llvm.cond_br %[[OK2]], ^[[LATCH:.+]], ^[[ERROR_COPY_AGAIN:.+]]
+   //       CHECK: ^[[LATCH]]:
+-  //       CHECK: %[[NEXT_IV:.+]] = llvm.add %[[IV]], %[[STEP]] : i64
++  //       CHECK: %[[NEXT_IV:.+]] = llvm.add %[[IV]], %[[STEP]]{{( overflow<nsw>)?}} : i64
+   //       CHECK: llvm.br ^[[LOOP]](%[[NEXT_IV]] : i64)
+   //       CHECK: ^[[DONE]]:
+   //       CHECK: llvm.return %[[COPY_ID]] : i32
