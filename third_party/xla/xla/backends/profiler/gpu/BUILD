@@ -891,7 +891,10 @@ cc_library(
 
 xla_cc_test(
     name = "cupti_buffer_events_test",
-    srcs = ["cupti_buffer_events_test.cc"],
+    srcs = ["cupti_buffer_events_test.cc"] + if_cuda_newer_than(
+        "13_4",
+        ["cupti_buffer_events_cuda_13040_test.cc"],
+    ),
     tags = [
         "cuda-only",
         "gpu",
@@ -902,6 +905,7 @@ xla_cc_test(
         ":cupti_buffer_events",
         ":cupti_collector",  # buildcleaner: keep
         ":cupti_utils",
+        ":mock_cupti",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
         "@local_config_cuda//cuda:cupti_headers",

@@ -62,6 +62,8 @@ TEST(CuptiBufferEventsTest, EventInitialization) {
   EXPECT_EQ(event.graph_id, 5);
   EXPECT_EQ(event.scope_range_id, 10);
   EXPECT_EQ(event.graph_node_id, 11);
+  EXPECT_EQ(event.source_graph_id, 0);
+  EXPECT_EQ(event.source_graph_node_id, 0);
 }
 
 TEST(CuptiBufferEventsTest, GetActivityOverheadKindString) {
