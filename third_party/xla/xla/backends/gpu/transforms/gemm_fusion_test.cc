@@ -3080,6 +3080,26 @@ ENTRY e {
                   m::Bitcast(m::Fusion(m::Parameter(), m::Parameter()))))));
 }
 
+TEST_F(GemmFusionTestV2, DoNotFuseCollective) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY e {
+  p0 = bf16[8,64,128] parameter(0)
+  a2a = bf16[8,64,128] all-to-all(p0),
+    replica_groups={{0,1,2,3,4,5,6,7}}, dimensions={0}
+  p1 = bf16[8,128,256] parameter(1)
+  ROOT dot = bf16[8,64,256] dot(a2a, p1),
+    lhs_batch_dims={0}, lhs_contracting_dims={2},
+    rhs_batch_dims={0}, rhs_contracting_dims={1}
+})"));
+  ASSERT_THAT(GemmFusion(device_info_).Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Fusion(m::AllToAll(m::Parameter()), m::Parameter())));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
