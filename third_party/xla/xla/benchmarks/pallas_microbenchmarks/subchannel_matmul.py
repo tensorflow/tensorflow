@@ -160,6 +160,8 @@ def main(_):
         lhs_quantized_dtype=lhs_quantized_dtype,
         rhs_quantized_dtype=rhs_quantized_dtype,
         pre_quantize_lhs=pre_quantize_lhs,
+        inner_acc_dtype=inner_acc_dtype,
+        subchannel_size=subchannel_size,
     )
     logging.info(
         "Selected window size from Pallas cost model: %s, %s, %s",
