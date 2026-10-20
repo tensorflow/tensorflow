@@ -193,8 +193,31 @@ PjRtDynamicShapeKind CommonPjRtClient::GetDynamicShapeKind(
   return PjRtDynamicShapeKind::kPrefix;
 }
 
+bool CommonPjRtClient::SupportsPredeterminedError(
+    PjRtMemorySpace* memory_space) const {
+  return supports_predetermined_error() &&
+         memory_space->kind_id() != UnpinnedHostMemorySpace::kKindId;
+}
+
+absl::StatusOr<xla::Shape> CommonPjRtClient::UpdateLayoutForDynamicShapes(
+    int memory_space_kind_id, xla::Shape shape) const {
+  ABSL_ASSIGN_OR_RETURN(const PjRtTopologyDescription* topology,
+                   GetTopologyDescription());
+  return topology->UpdateLayoutForDynamicShapes(memory_space_kind_id,
+                                                std::move(shape));
+}
+
 absl::StatusOr<std::unique_ptr<HloCostAnalysis>>
 CommonPjRtClient::GetHloCostAnalysis() const {
+  absl::StatusOr<const PjRtTopologyDescription*> topology =
+      GetTopologyDescription();
+  if (topology.ok()) {
+    absl::StatusOr<std::unique_ptr<HloCostAnalysis>> analysis =
+        (*topology)->GetHloCostAnalysis();
+    if (!absl::IsUnimplemented(analysis.status())) {
+      return analysis;
+    }
+  }
   return std::make_unique<HloCostAnalysis>(
       [](const xla::Shape& shape) -> int64_t {
         if (shape.IsTuple()) {
@@ -4887,6 +4910,8 @@ CommonPjRtClientImpl::CommonPjRtClientImpl(
       executable_compatibility_check_on_deserialization_);
   set_bool_attr_from_plugin_attrs("enable_async_compilation",
                                   enable_async_compilation_);
+  set_bool_attr_from_plugin_attrs("include_raw_buffer_in_ready_event",
+                                  include_raw_buffer_in_ready_event_);
 }
 
 void CommonPjRtClientImpl::AttachDevices(
