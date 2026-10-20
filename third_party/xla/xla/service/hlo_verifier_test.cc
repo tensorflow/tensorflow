@@ -4109,6 +4109,34 @@ ENTRY computation {
                 .status());
 }
 
+TEST_F(HloVerifierTest, ComputationNamesMustBeUnique) {
+  const char* const hlo = R"(
+HloModule module
+
+reducer {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT add = f32[] add(a, b)
+}
+
+ENTRY entry {
+  p0 = f32[8] parameter(0)
+  zero = f32[] constant(0)
+  ROOT r = f32[] reduce(p0, zero), dimensions={0}, to_apply=reducer
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  // The parser rejects duplicate names, so rename behind the uniquer's back,
+  // which is how passes have produced duplicates in practice.
+  module->GetComputationWithName("reducer")->SetAndSanitizeName("entry");
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              HasSubstr("Computation has name that is not unique"));
+}
+
 TEST_F(HloVerifierTest, VerifyInstructionNameChanged) {
   const char* const hlo = R"(
 HloModule module

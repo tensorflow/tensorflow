@@ -4763,7 +4763,14 @@ absl::StatusOr<bool> HloVerifier::RunImpl(
         target_metadata_->GetVerifier();
     InstructionVerifier instruction_verifier(
         module, target_metadata_->GetVerifierOpts());
+    absl::flat_hash_map<absl::string_view, const HloComputation*>
+        computations_by_name;
     for (auto* computation : module->computations(execution_threads)) {
+      auto [it, inserted] =
+          computations_by_name.emplace(computation->name(), computation);
+      TF_RET_CHECK(inserted)
+          << "Computation has name that is not unique within module: "
+          << computation->name();
       ABSL_RETURN_IF_ERROR(computation->Accept(shape_verifier.get()));
       ABSL_RETURN_IF_ERROR(computation->Accept(&instruction_verifier));
       // Verify that async computations contain a single instruction unless
