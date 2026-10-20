@@ -372,11 +372,10 @@ class MatrixDiagOp : public XlaOpKernel {
     xla::XlaOp actual_num_cols;
     if (dynamic_diag_len) {
       const xla::XlaOp diag_len = xla::GetDimensionSize(diag, diag_rank - 1);
-      // Each inferred size gets its own Add, even of 0: XLA:TPU failed to
-      // compile outputs whose two dynamic dimensions had the same size op.
       const auto actual_size = [&](bool inferred, int64_t size,
                                    int64_t requested_size) {
         if (!inferred) return xla::ScalarLike(diag_len, requested_size);
+        if (size == max_diag_len) return diag_len;
         return xla::Add(diag_len,
                         xla::ScalarLike(diag_len, size - max_diag_len));
       };
