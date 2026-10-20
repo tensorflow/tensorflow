@@ -65,7 +65,7 @@ class FusedLinearCrossEntropyOp : public OpKernel {
     auto labels_flat = labels.matrix<T>();
     auto loss_flat = loss_output->flat<T>();
 
-    using AccT = std::conditional_t<std::is_same_v<T, bfloat16>, float, T>;
+    using AccT = std::conditional_t<std::is_same_v<T, Eigen::bfloat16>, float, T>;
 
     // Hoisted outside the batch loop to prevent allocation thrashing
     std::vector<T> logits(num_classes);
