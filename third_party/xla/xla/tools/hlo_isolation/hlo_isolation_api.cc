@@ -387,8 +387,8 @@ void DetectSubnormalFlushInLiteral(
     const literal_comparison::MiscompareCallback& callback,
     const ShapeIndex& shape_index, SubnormalFlushReport& report) {
   if (expected.shape().IsTuple() && actual.shape().IsTuple()) {
-    const int64_t count = std::min(expected.shape().tuple_shapes_size(),
-                                   actual.shape().tuple_shapes_size());
+    const int64_t count = std::min(expected.shape().tuple_shapes().size(),
+                                   actual.shape().tuple_shapes().size());
     for (int64_t i = 0; i < count; ++i) {
       ShapeIndex next_index = shape_index;
       next_index.push_back(i);
@@ -482,7 +482,7 @@ absl::Status NearWithSubnormalFlushCheck(
 
 bool LiteralContainsSubnormal(const LiteralSlice& literal) {
   if (literal.shape().IsTuple()) {
-    for (int64_t i = 0; i < literal.shape().tuple_shapes_size(); ++i) {
+    for (int64_t i = 0; i < literal.shape().tuple_shapes().size(); ++i) {
       if (LiteralContainsSubnormal(LiteralSlice(literal, {i}))) {
         return true;
       }

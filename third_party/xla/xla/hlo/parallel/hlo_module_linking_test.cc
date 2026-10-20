@@ -61,15 +61,15 @@ void NormalizeHloModule(xla::HloModule& module) {
     }
     VLOG(6) << computation->ToString()
             << " instr count: " << computation->instruction_count();
-    computation->SetAndSanitizeName(
-        absl::StrCat("computation_", computation_counter++));
+    module.SetAndUniquifyComputationName(
+        computation, absl::StrCat("computation_", computation_counter++));
     // 5. Number instructions inside the computation
     int instruction_counter = 0;
     for (HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
       VLOG(6) << "  " << instruction->ToString();
-      instruction->SetAndSanitizeName(
-          absl::StrCat("instruction_", instruction_counter++));
+      module.SetAndUniquifyInstrName(
+          instruction, absl::StrCat("instruction_", instruction_counter++));
     }
   }
 }
@@ -304,6 +304,43 @@ TEST_F(LinkingTest, DiamondGraphLinking) {
   EXPECT_OK(compiler->RunHloPasses(std::move(linked_module),
                                    /*executor=*/nullptr,
                                    Compiler::CompileOptions{}));
+}
+
+TEST_F(LinkingTest, LinkedNamesDoNotCollideWithClonedComputations) {
+  // Nested computations are cloned into the linked module under their original
+  // names, so one can already hold a name the linker assigns.
+  constexpr absl::string_view module_text = R"(
+    HloModule linked_name_clash
+
+    linked.0 {
+      x = f32[] parameter(0)
+      ROOT neg = f32[] negate(x)
+    }
+
+    comp {
+      p = f32[] parameter(0)
+      ROOT f = f32[] fusion(p), kind=kLoop, calls=linked.0
+    }
+
+    ENTRY main {
+      p = f32[] parameter(0)
+      ROOT result = f32[] call(p), to_apply=comp
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto original_module,
+                       ParseAndReturnVerifiedModule(module_text));
+  ASSERT_OK_AND_ASSIGN(auto module_split_group,
+                       CreateHloModuleSplitGroup(*original_module));
+  auto* original_root = FindComputation(original_module.get(), "main");
+  ASSERT_OK_AND_ASSIGN(const HloComputation* split_group_root,
+                       module_split_group->GetClonedComputation(original_root));
+
+  ASSERT_OK_AND_ASSIGN(
+      auto linked_module,
+      LinkComputation(module_split_group->linking_manifest, split_group_root));
+
+  EXPECT_OK(
+      linked_module->CheckUniqueNamesAndIdsForComputationsAndInstructions());
 }
 
 }  // namespace
