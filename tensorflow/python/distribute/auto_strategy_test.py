@@ -52,10 +52,8 @@ class AutoStrategyTest(test.TestCase):
       os.environ.pop("TPU_NAME", None)
     super(AutoStrategyTest, self).tearDown()
 
-  @mock.patch.object(tpu_cluster_resolver, "TPUClusterResolver")
   @mock.patch.object(config, "get_visible_devices", return_value=[])
-  def testFallbackToCPU(self, mock_get_visible_devices, mock_resolver_cls):
-    mock_resolver_cls.side_effect = ValueError("No TPU found")
+  def testFallbackToCPU(self, mock_get_visible_devices):
     strategy = auto_strategy.auto_strategy()
     self.assertIsInstance(strategy, one_device_strategy.OneDeviceStrategy)
     # device_util.resolve() returns a fully-qualified device string; the
@@ -63,6 +61,34 @@ class AutoStrategyTest(test.TestCase):
     # "/job:localhost/replica:0/task:0/device:CPU:0" on CI runners).
     # Assert only on the meaningful suffix that is always present.
     self.assertIn("CPU:0", strategy.extended._device)
+
+  @mock.patch.object(remote, "connect_to_cluster")
+  @mock.patch.object(
+      tpu_strategy_util, "get_initialized_tpu_systems", return_value=[]
+  )
+  @mock.patch.object(tpu_cluster_resolver, "initialize_tpu_system")
+  @mock.patch.object(tpu_cluster_resolver, "TPUClusterResolver")
+  @mock.patch.object(tpu_strategy, "TPUStrategy")
+  @mock.patch.object(config, "get_visible_devices", return_value=["TPU:0"])
+  def testCloudTPUVMResolution(
+      self,
+      mock_get_visible_devices,
+      mock_tpu_strategy_cls,
+      mock_resolver_cls,
+      mock_init,
+      mock_get_init,
+      mock_connect,
+  ):
+    mock_resolver = mock.MagicMock()
+    mock_resolver_cls.return_value = mock_resolver
+
+    with mock.patch.dict(os.environ, {"TPU_NAME": "local"}):
+      strategy = auto_strategy.auto_strategy()
+      mock_resolver_cls.assert_called_once_with(tpu="local")
+      mock_connect.assert_called_once_with(mock_resolver)
+      mock_init.assert_called_once_with(mock_resolver)
+      mock_tpu_strategy_cls.assert_called_once_with(mock_resolver)
+      self.assertIs(strategy, mock_tpu_strategy_cls.return_value)
 
   @mock.patch.object(remote, "connect_to_cluster")
   @mock.patch.object(

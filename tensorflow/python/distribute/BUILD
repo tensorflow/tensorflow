@@ -2757,6 +2757,7 @@ py_library(
         "//tensorflow/python/eager:remote",
         "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:errors",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/tpu:tpu_strategy_util",
         "//tensorflow/python/util:tf_export",
     ],

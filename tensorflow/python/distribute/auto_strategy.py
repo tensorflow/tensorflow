@@ -26,6 +26,7 @@ from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.eager import remote
 from tensorflow.python.framework import config
 from tensorflow.python.framework import errors
+from tensorflow.python.platform import tf_logging
 from tensorflow.python.tpu import tpu_strategy_util
 from tensorflow.python.util.tf_export import tf_export
 
@@ -56,8 +57,8 @@ def auto_strategy() -> distribute_lib.StrategyBase:
   )
 
   # Check for Multi-worker setup in TF_CONFIG first when no TPU is
-  # present. This must happen before config.list_logical_devices("TPU"),
-  # which initializes the eager runtime context and would cause
+  # present. This must happen before TPU initialization to avoid
+  # initializing the eager runtime context, which would cause
   # CollectiveAllReduceStrategy() to raise RuntimeError("Collective ops must
   # be configured at program startup") in eager mode.
   tf_config_str = os.environ.get("TF_CONFIG", "")
@@ -95,19 +96,24 @@ def auto_strategy() -> distribute_lib.StrategyBase:
               pass
 
   # Check for TPUs
-  if has_tpu or config.list_logical_devices("TPU"):
+  if has_tpu or bool(tpu_strategy_util.get_initialized_tpu_systems()):
     try:
+      is_local_tpu = bool(
+          tpu_visible and (not tpu_name or tpu_name.lower() == "local")
+      )
       resolver = (
           tpu_cluster_resolver.TPUClusterResolver(tpu="local")
-          if tpu_visible and not os.environ.get("TPU_NAME")
+          if is_local_tpu
           else tpu_cluster_resolver.TPUClusterResolver()
       )
       if not tpu_strategy_util.get_initialized_tpu_systems():
         remote.connect_to_cluster(resolver)
         tpu_cluster_resolver.initialize_tpu_system(resolver)
       return tpu_strategy.TPUStrategy(resolver)
-    except (ValueError, RuntimeError, ImportError, errors.OpError):
-      pass
+    except (ValueError, RuntimeError, ImportError, errors.OpError) as e:
+      tf_logging.warning(
+          "Failed to initialize TPU, falling back to next strategy: %s", e
+      )
 
   # Check for GPUs
   visible_gpus = config.get_visible_devices("GPU")
