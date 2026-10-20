@@ -52,7 +52,7 @@ class GPUBFCAllocator : public tsl::BFCAllocator {
                   size_t total_memory, const std::string& name,
                   const Options& opts);
 
-  ~GPUBFCAllocator() override {}
+  ~GPUBFCAllocator() override = default;
 
   GPUBFCAllocator(const GPUBFCAllocator&) = delete;
   void operator=(const GPUBFCAllocator&) = delete;

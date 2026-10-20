@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef XLA_SERVICE_SCATTER_SIMPLIFIER_H_
 #define XLA_SERVICE_SCATTER_SIMPLIFIER_H_
 
+#include <cstdint>
+
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/transforms/expanders/op_expander_pass.h"
 
@@ -25,10 +28,12 @@ namespace xla {
 // reshapes and a simpler scatter.
 //
 // It implements the first two steps of the algorithm described in
-// ScatterExpander::ExpandInstruction (scatter_expander.cc). Additionally, it
-// transposes updates and operands to transform scatter_dims_to_operand_dims
-// into the identity mapping. This is different from the algorithm in
-// ScatterExpander, which instead applies the mapping in scatter_indices.
+// ScatterExpander::ExpandInstruction (scatter_expander.cc). With
+// `reorder_operand_dims_for_coalescing` set, it additionally transposes
+// updates and operands to transform scatter_dims_to_operand_dims into the
+// identity mapping when that makes the written windows contiguous. This is
+// different from the algorithm in ScatterExpander, which instead applies the
+// mapping in scatter_indices.
 //
 // The semantics of the output "simple" scatter are indeed simpler than that
 // of a general scatter. If a scatter is simple (see IsSimplifiedScatter() for
@@ -58,15 +63,36 @@ namespace xla {
 // Examples of simple scatter can be found in scatter_simplifier_test.cc.
 class ScatterSimplifier : public OpExpanderPass {
  public:
+  // If `reorder_operand_dims_for_coalescing` is set, scatters whose window
+  // writes would be strided under default layouts are additionally rewritten
+  // to permute the operand dimensions so that scatter_dims_to_operand_dims
+  // becomes the identity mapping and the written windows become more
+  // contiguous. The scatter is wrapped in transposes that restore the
+  // original dimension order.
+  explicit ScatterSimplifier(bool reorder_operand_dims_for_coalescing = false)
+      : reorder_operand_dims_for_coalescing_(
+            reorder_operand_dims_for_coalescing) {}
+
   absl::string_view name() const override { return "scatter_simplifier"; }
 
   static bool IsSimplifiedScatter(const HloScatterInstruction* scatter);
+
+  // Returns the length of the contiguous run of operand elements that each
+  // scatter index writes, assuming default (descending) layouts, if the
+  // operand dimensions were reordered by `permutation`. An empty
+  // `permutation` keeps the current dimension order. Longer runs coalesce
+  // better on GPUs.
+  static int64_t WriteRunLength(const HloScatterInstruction* scatter,
+                                absl::Span<const int64_t> permutation = {});
 
  protected:
   bool InstructionMatchesPattern(HloInstruction* inst) override;
 
   absl::StatusOr<HloInstruction*> ExpandInstruction(
       HloInstruction* inst) override;
+
+ private:
+  const bool reorder_operand_dims_for_coalescing_;
 };
 
 }  // namespace xla

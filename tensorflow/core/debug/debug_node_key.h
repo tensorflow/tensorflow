@@ -35,8 +35,7 @@ struct DebugNodeKey {
   // Converts a device name string to a device path string.
   // E.g., /job:localhost/replica:0/task:0/cpu:0 will be converted to
   //   ,job_localhost,replica_0,task_0,cpu_0.
-  static const std::string DeviceNameToDevicePath(
-      const std::string& device_name);
+  static std::string DeviceNameToDevicePath(const std::string& device_name);
 
   bool operator==(const DebugNodeKey& other) const;
   bool operator!=(const DebugNodeKey& other) const;

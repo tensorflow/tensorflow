@@ -73,6 +73,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/platform.h"
 
 namespace xla {
 namespace {
@@ -130,7 +131,7 @@ absl::Status ShapeVerifier::Preprocess(HloInstruction* hlo) {
     return InvalidArgument("Unbounded dynamism is disabled for instruction: %s",
                            hlo->ToString());
   }
-  if (hlo->shape().has_layout()) {
+  if (opts_.layout_sensitive && hlo->shape().has_layout()) {
     if (hlo->shape().layout().minor_to_major().size() !=
         hlo->shape().dimensions().size()) {
       return InvalidArgument(
@@ -191,12 +192,73 @@ absl::Status ShapeVerifier::HandleCopy(HloInstruction* copy) {
   return CheckUnaryShape(copy);
 }
 
+absl::Status VerifySparsityAndBlockScaling(const HloInstruction* hlo) {
+  if (hlo->operand_count() < 2) {
+    return InvalidArgument("%s must have at least 2 operands, got %d",
+                           HloOpcodeString(hlo->opcode()),
+                           hlo->operand_count());
+  }
+  std::vector<char> seen_indices(hlo->operand_count(), false);
+  int64_t seen_count = 0;
+  auto check_idx = [&](int32_t idx, absl::string_view desc) -> absl::Status {
+    if (idx < 2 || idx >= hlo->operand_count()) {
+      return InvalidArgument("%s %d out of bounds", desc, idx);
+    }
+    if (!hlo->operand(idx)->shape().IsArray()) {
+      return InvalidArgument(
+          "Expected array argument for %s at index %d, but got %s", desc, idx,
+          ShapeUtil::HumanString(hlo->operand(idx)->shape()));
+    }
+    if (seen_indices[idx]) {
+      return InvalidArgument("Duplicate index %d for %s", idx, desc);
+    }
+    seen_indices[idx] = true;
+    ++seen_count;
+    return absl::OkStatus();
+  };
+
+  if (hlo->sparsity_config().has_lhs()) {
+    ABSL_RETURN_IF_ERROR(
+        check_idx(hlo->sparsity_config().lhs().idx(), "Sparsity idx for lhs"));
+  }
+  if (hlo->sparsity_config().has_rhs()) {
+    ABSL_RETURN_IF_ERROR(
+        check_idx(hlo->sparsity_config().rhs().idx(), "Sparsity idx for rhs"));
+  }
+  if (hlo->block_scaling_config().has_lhs()) {
+    ABSL_RETURN_IF_ERROR(check_idx(hlo->block_scaling_config().lhs().scale_idx(),
+                              "Block scaling scale_idx for lhs"));
+    if (hlo->block_scaling_config().lhs().has_zero_idx()) {
+      ABSL_RETURN_IF_ERROR(check_idx(hlo->block_scaling_config().lhs().zero_idx(),
+                                "Block scaling zero_idx for lhs"));
+    }
+  }
+  if (hlo->block_scaling_config().has_rhs()) {
+    ABSL_RETURN_IF_ERROR(check_idx(hlo->block_scaling_config().rhs().scale_idx(),
+                              "Block scaling scale_idx for rhs"));
+    if (hlo->block_scaling_config().rhs().has_zero_idx()) {
+      ABSL_RETURN_IF_ERROR(check_idx(hlo->block_scaling_config().rhs().zero_idx(),
+                                "Block scaling zero_idx for rhs"));
+    }
+  }
+  if (seen_count != hlo->operand_count() - 2) {
+    return InvalidArgument(
+        "Expected all %d extra operands to be referenced by sparsity_config or "
+        "block_scaling_config, but %d were referenced",
+        hlo->operand_count() - 2, seen_count);
+  }
+
+  return absl::OkStatus();
+}
+
 absl::Status ShapeVerifier::HandleDot(HloInstruction* dot) {
+  ABSL_RETURN_IF_ERROR(VerifySparsityAndBlockScaling(dot));
   ABSL_ASSIGN_OR_RETURN(const Shape expected,
                    ShapeInference::InferDotOpShape(
                        dot->operand(0)->shape(), dot->operand(1)->shape(),
                        dot->dot_dimension_numbers(),
-                       /*preferred_element_type=*/dot->shape().element_type()));
+                       /*preferred_element_type=*/dot->shape().element_type(),
+                       dot->sparsity_config()));
 
   return CheckShape(dot, expected);
 }
@@ -303,65 +365,7 @@ absl::Status ShapeVerifier::HandleScaledDot(HloInstruction* scaled_dot) {
 }
 
 absl::Status ShapeVerifier::HandleConvolution(HloInstruction* convolution) {
-  auto check_idx_in_range = [&](int32_t idx, int32_t low, int32_t high,
-                                absl::string_view desc) -> absl::Status {
-    if (idx < low || idx >= high) {
-      return InvalidArgument("%s %d out of bounds", desc, idx);
-    }
-    return absl::OkStatus();
-  };
-
-  if (convolution->sparsity_config().has_lhs()) {
-    ABSL_RETURN_IF_ERROR(check_idx_in_range(
-        convolution->sparsity_config().lhs().idx(), 2,
-        convolution->operand_count(), "Sparsity idx for lhs"));
-  }
-  if (convolution->sparsity_config().has_rhs()) {
-    ABSL_RETURN_IF_ERROR(check_idx_in_range(
-        convolution->sparsity_config().rhs().idx(), 2,
-        convolution->operand_count(), "Sparsity idx for rhs"));
-  }
-  if (convolution->block_scaling_config().has_lhs()) {
-    ABSL_RETURN_IF_ERROR(check_idx_in_range(
-        convolution->block_scaling_config().lhs().scale_idx(), 2,
-        convolution->operand_count(), "Block scaling scale_idx for lhs"));
-    if (convolution->block_scaling_config().lhs().has_zero_idx()) {
-      ABSL_RETURN_IF_ERROR(check_idx_in_range(
-          convolution->block_scaling_config().lhs().zero_idx(), 2,
-          convolution->operand_count(), "Block scaling zero_idx for lhs"));
-      if (convolution->block_scaling_config().lhs().scale_idx() ==
-          convolution->block_scaling_config().lhs().zero_idx()) {
-        return InvalidArgument(
-            "LHS block scaling scale_idx and zero_idx cannot be the same (%d)",
-            convolution->block_scaling_config().lhs().scale_idx());
-      }
-    }
-  }
-  if (convolution->block_scaling_config().has_rhs()) {
-    ABSL_RETURN_IF_ERROR(check_idx_in_range(
-        convolution->block_scaling_config().rhs().scale_idx(), 2,
-        convolution->operand_count(), "Block scaling scale_idx for rhs"));
-    if (convolution->block_scaling_config().rhs().has_zero_idx()) {
-      ABSL_RETURN_IF_ERROR(check_idx_in_range(
-          convolution->block_scaling_config().rhs().zero_idx(), 2,
-          convolution->operand_count(), "Block scaling zero_idx for rhs"));
-      if (convolution->block_scaling_config().rhs().scale_idx() ==
-          convolution->block_scaling_config().rhs().zero_idx()) {
-        return InvalidArgument(
-            "RHS block scaling scale_idx and zero_idx cannot be the same (%d)",
-            convolution->block_scaling_config().rhs().scale_idx());
-      }
-    }
-  }
-  if (convolution->block_scaling_config().has_lhs() &&
-      convolution->block_scaling_config().has_rhs()) {
-    if (convolution->block_scaling_config().lhs().scale_idx() ==
-        convolution->block_scaling_config().rhs().scale_idx()) {
-      return InvalidArgument(
-          "LHS and RHS block scaling scale_idx cannot be the same (%d)",
-          convolution->block_scaling_config().lhs().scale_idx());
-    }
-  }
+  ABSL_RETURN_IF_ERROR(VerifySparsityAndBlockScaling(convolution));
 
   ABSL_ASSIGN_OR_RETURN(
       Shape expected,
@@ -459,12 +463,12 @@ static absl::Status CheckReplicaGroups(HloInstruction* hlo,
     // on the second pass we only add to `seen_replica_ids` iff we see a replica
     // id in the range [0, n) for the first time. So, there is no need to check
     // that all `seen_replica_ids` values are true.
-#ifndef NDEBUG
-    for (int64_t i = 0; i < n; ++i) {
-      CHECK(seen_replica_ids[i])
-          << "Programming error: seen_replica_ids[" << i << "] is false!";
+    if constexpr (tsl::kIsDebugBuild) {
+      for (int64_t i = 0; i < n; ++i) {
+        CHECK(seen_replica_ids[i])
+            << "Programming error: seen_replica_ids[" << i << "] is false!";
+      }
     }
-#endif  // NDEBUG
 
     // replica-groups have numbers [0, n). This n should be either replica or
     // partition count, or their product. In some cases, replica and/or
@@ -1190,6 +1194,14 @@ absl::Status ShapeVerifier::HandleReverse(HloInstruction* reverse) {
                                                  reverse->dimensions()));
 }
 
+absl::Status ShapeVerifier::HandleShuffle(HloInstruction* shuffle) {
+  HloShuffleInstruction* shuffle_instr = Cast<HloShuffleInstruction>(shuffle);
+  return CheckShape(
+      shuffle, ShapeInference::InferShuffleShape(
+                   shuffle_instr->operand(0)->shape(),
+                   shuffle_instr->dimensions(), shuffle_instr->shuffle_mode()));
+}
+
 absl::Status ShapeVerifier::HandleTopK(HloInstruction* hlo) {
   return CheckShape(
       hlo, ShapeInference::InferTopKShape(hlo->operand(0)->shape(),
@@ -1441,23 +1453,34 @@ absl::Status ShapeVerifier::HandleScan(HloInstruction* scan) {
   int64_t num_inputs = operand_shapes.size() - num_carries;
   int64_t num_outputs = result_shapes.size() - num_carries;
 
-  // Build the shape-equality predicate. Layouts are always ignored:
-  // associative scans are lowered directly by an emitter, so the to_apply
-  // computation is never materialized and its parameter layouts are
-  // independent of the operand array layouts (which are freely assigned by
-  // layout assignment). The layout-sensitive guard above ensures
-  // non-associative scans never reach this point.
+  // shapes_match always ignores layouts: associative scans are lowered
+  // directly by an emitter, so the to_apply computation is never materialized
+  // and its parameter layouts are independent of the operand array layouts
+  // (which are freely assigned by layout assignment). The layout-sensitive
+  // guard above ensures non-associative scans never reach this point.
   //
-  // When mixed precision is allowed, also ignore FP precision: during BF16
+  // When mixed precision is allowed, it also ignores FP precision: during BF16
   // propagation the scan I/O and the body parameter/root shapes can
   // transiently disagree on element type (e.g. body root pinned at F32 while
   // the scan output has been lowered to BF16). ResolveInconsistentScans
-  // reconciles these mismatches before the final, strict verifier pass.
-  // This mirrors HandleReduce / HandleReduceWindow / HandleMap.
-  auto shape_equal = Shape::Equal().IgnoreLayout();
-  if (opts_.allow_mixed_precision) {
-    shape_equal.IgnoreFpPrecision();
-  }
+  // reconciles these mismatches before the final, strict verifier pass. BF16
+  // conversion folding can also leave a BF16 init feeding an F32 carry. This
+  // mirrors HandleReduce / HandleReduceWindow / HandleMap.
+  //
+  // ShapesSame applies its predicate only when the verifier is layout
+  // sensitive. Otherwise it uses ShapeUtil::Compatible, which also compares
+  // element types, so the layout insensitive mixed precision case calls
+  // ShapeUtil::CompatibleIgnoringFpPrecision directly.
+  auto shapes_match = [&](const Shape& a, const Shape& b) {
+    if (!opts_.layout_sensitive && opts_.allow_mixed_precision) {
+      return ShapeUtil::CompatibleIgnoringFpPrecision(a, b);
+    }
+    auto shape_equal = Shape::Equal().IgnoreLayout();
+    if (opts_.allow_mixed_precision) {
+      shape_equal.IgnoreFpPrecision();
+    }
+    return ShapesSame(a, b, shape_equal);
+  };
 
   // Check shapes of operands vs to_apply parameters.
   for (int64_t i = 0; i < operand_shapes.size(); ++i) {
@@ -1475,7 +1498,7 @@ absl::Status ShapeVerifier::HandleScan(HloInstruction* scan) {
       }
       expected_param_shape.DeleteDimension(scan_dim);
     }
-    if (!ShapesSame(param_shape, expected_param_shape, shape_equal)) {
+    if (!shapes_match(param_shape, expected_param_shape)) {
       return Internal(
           "Shapes of operand %d and to_apply computation parameter are "
           "inconsistent",
@@ -1489,7 +1512,7 @@ absl::Status ShapeVerifier::HandleScan(HloInstruction* scan) {
   for (int64_t i = 0; i < num_carries; ++i) {
     const Shape& param_shape = parameter_shapes[i + num_inputs];
     const Shape& root_shape = root_shapes[i + num_outputs];
-    if (!ShapesSame(param_shape, root_shape, shape_equal)) {
+    if (!shapes_match(param_shape, root_shape)) {
       return Internal(
           "Shapes of parameter %d and root in to_apply computation are "
           "inconsistent",
@@ -1497,9 +1520,9 @@ absl::Status ShapeVerifier::HandleScan(HloInstruction* scan) {
     }
   }
 
-  // Check shapes of results vs to_apply root. Use the same shape_equal
-  // predicate as above so allow_mixed_precision lets the body root and the
-  // scan result transiently disagree on FP precision during propagation.
+  // Check shapes of results vs to_apply root. Use shapes_match as above so
+  // allow_mixed_precision lets the body root and the scan result transiently
+  // disagree on FP precision during propagation.
   for (int64_t i = 0; i < root_shapes.size(); ++i) {
     const Shape& root_shape = root_shapes[i];
     const Shape& result_shape = result_shapes[i];
@@ -1515,7 +1538,7 @@ absl::Status ShapeVerifier::HandleScan(HloInstruction* scan) {
       }
       expected_root_shape.DeleteDimension(scan_dim);
     }
-    if (!ShapesSame(root_shape, expected_root_shape, shape_equal)) {
+    if (!shapes_match(root_shape, expected_root_shape)) {
       return Internal(
           "Shapes of result %d and to_apply computation root are "
           "inconsistent",
@@ -3680,12 +3703,12 @@ std::string FormatShapeIndexValidationError(
   }
   return absl::StrFormat(
       "Mismatched tuple structure in shape and original value.\n%s"
-      "Instruction: %s\nShape indices in shape only: {%s}\nShape indices in "
-      "original value "
-      "only: {%s}",
-      module_info, instruction->ToString(),
-      absl::StrJoin(shape_only, ", ", shape_index_formatter),
-      absl::StrJoin(ov_only, ", ", shape_index_formatter));
+      "Shape indices in shape only: {%s}\nShape indices in "
+      "original value only: {%s}\n"
+      "Instruction: %s\n",
+      module_info, absl::StrJoin(shape_only, ", ", shape_index_formatter),
+      absl::StrJoin(ov_only, ", ", shape_index_formatter),
+      instruction->ToString());
 }
 
 }  // namespace

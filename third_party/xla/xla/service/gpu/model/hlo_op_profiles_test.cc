@@ -145,6 +145,20 @@ TEST_F(HloOpProfilesTest, GetProfileSm103) {
       372);
 }
 
+TEST_F(HloOpProfilesTest, GetProfileSm107) {
+  auto hlo_op_profiles = HloOpProfiles::Load(kDeviceHloOpProfiles,
+                                             /*default_profile_name=*/"sm_80");
+  auto device_info = TestGpuDeviceInfo::VRNVL72DeviceInfo();
+
+  EXPECT_EQ(HloOpProfiles::GetProfileName(device_info), "sm_107");
+  const auto& op_profile = hlo_op_profiles->GetProfile(device_info);
+  ASSERT_TRUE(op_profile.contains(
+      std::make_pair(HloOpcode::kDivide, PrimitiveType::S8)));
+  EXPECT_EQ(
+      op_profile.at(std::make_pair(HloOpcode::kDivide, PrimitiveType::S8)),
+      392);
+}
+
 TEST_F(HloOpProfilesTest, GetProfileSm100) {
   auto hlo_op_profiles = HloOpProfiles::Load(kDeviceHloOpProfiles,
                                              /*default_profile_name=*/"sm_80");

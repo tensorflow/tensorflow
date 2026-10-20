@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/tfrt/ifrt/ifrt_device_utils.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -24,8 +25,9 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "xla/python/ifrt/attribute_map.h"
+#include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
-#include "xla/python/ifrt/mock.h"
+#include "xla/python/ifrt/test_util.h"
 #include "xla/service/device_assignment.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
@@ -34,99 +36,93 @@ namespace tensorflow {
 namespace ifrt_serving {
 namespace {
 using ::testing::ElementsAre;
-using ::testing::Return;
-using ::testing::ReturnRef;
 
 static constexpr int kNumReplicas = 1;
 static constexpr int kNumCoresPerReplica = 2;
 // Intentionally have more devices than kNumReplicas * kNumCoresPerReplica for
 // testing purposes.
-static constexpr int kNumDevices = 4;
-static constexpr int kDeviceIdOffset = 8;
+static constexpr int kNumDevices = 2;
 
 class IfrtDeviceUtilsTest : public ::testing::Test {
  protected:
   void SetUp() override {
-    mocked_devices_.reserve(kNumDevices);
-    devices_.reserve(kNumDevices);
-    for (int i = 0; i < kNumDevices; ++i) {
-      mocked_devices_.push_back(std::make_unique<xla::ifrt::MockDevice>());
-      ON_CALL(*mocked_devices_[i], Attributes())
-          .WillByDefault(ReturnRef(device_attributes_maps_[i]));
-      ON_CALL(*mocked_devices_[i], Id())
-          .WillByDefault(Return(xla::ifrt::DeviceId(kDeviceIdOffset + i)));
-      ON_CALL(client_, LookupDevice(xla::ifrt::DeviceId(kDeviceIdOffset + i)))
-          .WillByDefault(Return(mocked_devices_[i].get()));
-
-      devices_.push_back(mocked_devices_[i].get());
-    };
-
-    ON_CALL(client_, devices()).WillByDefault(Return(devices_));
-
-    // Default use the last two devices.
-    xla::DeviceAssignment assignment(kNumReplicas, kNumCoresPerReplica);
-    assignment(0, 0) = kDeviceIdOffset + 2;
-    assignment(0, 1) = kDeviceIdOffset + 3;
-
-    ON_CALL(client_,
-            GetDefaultDeviceAssignment(kNumReplicas, kNumCoresPerReplica))
-        .WillByDefault(Return(assignment));
+    ASSERT_OK_AND_ASSIGN(client_, xla::ifrt::test_util::GetClient());
+    for (auto* device : client_->devices()) {
+      ASSERT_OK_AND_ASSIGN(
+          auto coords,
+          device->Attributes().Get<std::vector<int64_t>>("coords"));
+      ASSERT_OK_AND_ASSIGN(auto core,
+                           device->Attributes().Get<int64_t>("core_on_chip"));
+      ASSERT_EQ(coords.size(), 3);
+      devices_.push_back(device);
+      device_coords_.push_back(
+          {static_cast<int>(coords[0]), static_cast<int>(coords[1]),
+           static_cast<int>(coords[2]), static_cast<int>(core)});
+    }
+    ASSERT_GE(devices_.size(), kNumDevices);
   }
 
-  xla::ifrt::MockClient client_;
-  std::vector<std::unique_ptr<xla::ifrt::MockDevice>> mocked_devices_;
-
+  std::shared_ptr<xla::ifrt::Client> client_;
   std::vector<xla::ifrt::Device*> devices_;
-  std::vector<xla::ifrt::AttributeMap> device_attributes_maps_ = {
-      xla::ifrt::AttributeMap(xla::ifrt::AttributeMap::Map{
-          {"coords", xla::ifrt::AttributeMap::Int64ListValue({1, 0, 0})},
-          {"core_on_chip", xla::ifrt::AttributeMap::Int64Value(0)}}),
-      xla::ifrt::AttributeMap(xla::ifrt::AttributeMap::Map{
-          {"coords", xla::ifrt::AttributeMap::Int64ListValue({1, 0, 0})},
-          {"core_on_chip", xla::ifrt::AttributeMap::Int64Value(1)}}),
-      xla::ifrt::AttributeMap(xla::ifrt::AttributeMap::Map{
-          {"coords", xla::ifrt::AttributeMap::Int64ListValue({2, 0, 0})},
-          {"core_on_chip", xla::ifrt::AttributeMap::Int64Value(0)}}),
-      xla::ifrt::AttributeMap(xla::ifrt::AttributeMap::Map{
-          {"coords", xla::ifrt::AttributeMap::Int64ListValue({2, 0, 0})},
-          {"core_on_chip", xla::ifrt::AttributeMap::Int64Value(1)}}),
-  };
+  std::vector<std::vector<int>> device_coords_;
 };
 
 TEST_F(IfrtDeviceUtilsTest, Basic) {
-  std::vector<int> device_assignment_attr = {1, 0, 0, 1, 1, 0, 0, 0};
+  std::vector<int> device_assignment_attr;
+  device_assignment_attr.insert(device_assignment_attr.end(),
+                                device_coords_[1].begin(),
+                                device_coords_[1].end());
+  device_assignment_attr.insert(device_assignment_attr.end(),
+                                device_coords_[0].begin(),
+                                device_coords_[0].end());
   TF_ASSERT_OK_AND_ASSIGN(
       auto devices_from_attribute,
-      GetAssignedIfrtDevices(client_, kNumReplicas, kNumCoresPerReplica,
+      GetAssignedIfrtDevices(*client_, kNumReplicas, kNumCoresPerReplica,
                              device_assignment_attr));
   EXPECT_THAT(devices_from_attribute, ElementsAre(devices_[1], devices_[0]));
 }
 
-TEST_F(IfrtDeviceUtilsTest, SeparateXCoordinates) {
-  std::vector<int> device_assignment_attr = {1, 0, 0, 1, 2, 0, 0, 0};
+TEST_F(IfrtDeviceUtilsTest, InvertCoordinates) {
+  std::vector<int> device_assignment_attr;
+  device_assignment_attr.insert(device_assignment_attr.end(),
+                                device_coords_[0].begin(),
+                                device_coords_[0].end());
+  device_assignment_attr.insert(device_assignment_attr.end(),
+                                device_coords_[1].begin(),
+                                device_coords_[1].end());
   TF_ASSERT_OK_AND_ASSIGN(
       auto devices_from_attribute,
-      GetAssignedIfrtDevices(client_, kNumReplicas, kNumCoresPerReplica,
+      GetAssignedIfrtDevices(*client_, kNumReplicas, kNumCoresPerReplica,
                              device_assignment_attr));
-  EXPECT_THAT(devices_from_attribute, ElementsAre(devices_[1], devices_[2]));
+  EXPECT_THAT(devices_from_attribute, ElementsAre(devices_[0], devices_[1]));
 }
 
 TEST_F(IfrtDeviceUtilsTest, EmptyDeviceAssignmentShallReturnDefault) {
   TF_ASSERT_OK_AND_ASSIGN(
+      xla::DeviceAssignment default_assignment,
+      client_->GetDefaultDeviceAssignment(kNumReplicas, kNumCoresPerReplica));
+  TF_ASSERT_OK_AND_ASSIGN(
+      xla::ifrt::Device * dev0,
+      client_->LookupDevice(xla::ifrt::DeviceId(default_assignment(0, 0))));
+  TF_ASSERT_OK_AND_ASSIGN(
+      xla::ifrt::Device * dev1,
+      client_->LookupDevice(xla::ifrt::DeviceId(default_assignment(0, 1))));
+
+  TF_ASSERT_OK_AND_ASSIGN(
       auto devices_from_attribute,
-      GetAssignedIfrtDevices(client_, kNumReplicas, kNumCoresPerReplica,
+      GetAssignedIfrtDevices(*client_, kNumReplicas, kNumCoresPerReplica,
                              std::nullopt));
-  EXPECT_THAT(devices_from_attribute, ElementsAre(devices_[2], devices_[3]));
+  EXPECT_THAT(devices_from_attribute, ElementsAre(dev0, dev1));
 }
 
 TEST_F(IfrtDeviceUtilsTest, MismatchCoordinatesShallFail) {
-  std::vector<int> device_assignment_attr = {1, 0, 0, 1, 3, 0, 0, 0};
-  auto status = GetAssignedIfrtDevices(client_, 1, 2, device_assignment_attr);
+  std::vector<int> device_assignment_attr = {999, 999, 999, 999,
+                                             999, 999, 999, 998};
+  auto status = GetAssignedIfrtDevices(*client_, 1, 2, device_assignment_attr);
   EXPECT_THAT(status,
               absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 }  // namespace
-
 }  // namespace ifrt_serving
 }  // namespace tensorflow

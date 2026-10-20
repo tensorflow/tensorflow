@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <functional>
 #include <tuple>
+#include <vector>
 
 #include "ynnpack/include/ynnpack.h"
 #include "absl/algorithm/container.h"
@@ -130,7 +132,16 @@ bool IsLayoutSupportedByYnn(const Shape& shape) {
     // TODO(b/460602165): We should eliminate this limitation.
     return false;
   }
-  return !shape.has_layout() || LayoutUtil::HasDescendingLayout(shape.layout());
+  if (!shape.has_layout()) {
+    return true;
+  }
+  std::vector<int64_t> minor_to_major;
+  for (int64_t dim : shape.layout().minor_to_major()) {
+    if (shape.dimensions(dim) != 1) {
+      minor_to_major.push_back(dim);
+    }
+  }
+  return absl::c_is_sorted(minor_to_major, std::greater<int64_t>());
 }
 
 namespace {
@@ -163,6 +174,28 @@ bool IsBitcastOpSupportedByYnn(const HloInstruction* hlo) {
   }
 
   return hlo->shape().element_type() == input->shape().element_type();
+}
+
+bool IsCopyOpSupportedByYnn(const HloInstruction* hlo) {
+  CHECK_EQ(hlo->opcode(), HloOpcode::kCopy);
+  if (!CheckOperandCount(hlo, 1)) {
+    return false;
+  }
+  if (!YnnType(hlo->shape().element_type()).ok()) {
+    return false;
+  }
+  const HloInstruction* input = hlo->operand(0);
+  if (hlo->shape().element_type() != input->shape().element_type()) {
+    return false;
+  }
+  if (hlo->shape().dimensions() != input->shape().dimensions()) {
+    return false;
+  }
+  if (!IsLayoutSupportedByYnn(hlo->shape()) ||
+      !IsLayoutSupportedByYnn(input->shape())) {
+    return false;
+  }
+  return true;
 }
 
 bool IsReshapeOpSupportedByYnn(const HloInstruction* hlo) {
@@ -358,7 +391,8 @@ bool IsElementwiseOpSupportedByYnn(const HloInstruction* hlo) {
   }
 }
 
-absl::StatusOr<bool> IsDotSupportedByYnn(const HloInstruction* hlo) {
+absl::StatusOr<bool> IsDotSupportedByYnn(const HloInstruction* hlo,
+                                         bool allow_non_canonical_lhs) {
   CHECK_EQ(hlo->opcode(), HloOpcode::kDot);
   if (!CheckOperandCount(hlo, 2)) {
     return false;
@@ -425,9 +459,10 @@ absl::StatusOr<bool> IsDotSupportedByYnn(const HloInstruction* hlo) {
   }
 
   // YNNPACK supports transposing the inputs efficiently if possible (they will
-  // fuse with dot packing), but we don't currently support generating the
-  // necessary transposes.
-  if (!dot_canonical_dims.lhs_canonical ||
+  // fuse with dot packing). The emitter can transpose a non-canonical LHS, but
+  // we don't fuse it yet.
+  // TODO(b/575584834): Enable non-canonical LHS once the regression is fixed.
+  if (!(dot_canonical_dims.lhs_canonical || allow_non_canonical_lhs) ||
       dot_canonical_dims.lhs_column_major ||
       dot_canonical_dims.rhs_column_major) {
     return false;

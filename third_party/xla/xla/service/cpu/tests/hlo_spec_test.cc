@@ -132,7 +132,7 @@ HloTestSpec HloTestCases[] = {
         /*features=*/"+neon,+sve2",
         // Check if it still vectorizes
         /*check_lines=*/R"(
-CHECK: fmul <1 x float>
+CHECK: fmul contract <1 x float>
 )",
     },
     HloTestSpec{
@@ -143,7 +143,7 @@ CHECK: fmul <1 x float>
         /*features=*/"+avx2",
         // Check if it still vectorizes
         /*check_lines=*/R"(
-CHECK: fmul <8 x float>
+CHECK: fmul contract <8 x float>
 )",
     },
     // TODO(b/495870398): The compiler should be generating <4 x float> (or <8 x
@@ -155,7 +155,7 @@ CHECK: fmul <8 x float>
         /*triple=*/"aarch64-unknown-linux-gnu",
         /*features=*/"+neon,+sve2",
         /*check_lines=*/R"(
-CHECK: fmul <1 x float>
+CHECK: fmul contract <1 x float>
 )",
     },
 };

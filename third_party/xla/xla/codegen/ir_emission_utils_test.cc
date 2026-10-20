@@ -459,5 +459,68 @@ ENTRY main {
               absl_testing::IsOkAndHolds(true));
 }
 
+TEST_F(IrEmissionUtilsTest, CanEmitFusedDynamicUpdateSlice_ValidDusFusion) {
+  const char* hlo = R"(
+HloModule fusion
+
+fused_computation {
+  param_0.1 = s32[6]{0} parameter(0)
+  bitcast = s32[2,3]{1,0} bitcast(param_0.1)
+  zero = s32[] constant(0)
+  param_1.1 = s32[] parameter(1)
+  dynamic-slice = s32[1,1]{1,0} dynamic-slice(bitcast, param_1.1, zero), dynamic_slice_sizes={1,1}
+  one = s32[] constant(1)
+  bitcasted_one = s32[1,1]{1,0} bitcast(one)
+  add = s32[1,1] add(dynamic-slice, bitcasted_one)
+  dynamic-update-slice = s32[2,3]{1,0} dynamic-update-slice(bitcast, add, param_1.1, zero)
+  ROOT bitcast.1 = s32[6]{0} bitcast(dynamic-update-slice)
+}
+
+ENTRY main {
+  param_0 = s32[6]{0} parameter(0)
+  param_1 = s32[] parameter(1)
+  ROOT fusion = s32[6]{0} fusion(param_0, param_1), kind=kLoop, calls=fused_computation
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
+  auto fusion = module->entry_computation()->root_instruction();
+  auto adaptor = HloFusionAdaptor::ForInstruction(fusion);
+  EXPECT_THAT(CanEmitFusedDynamicUpdateSlice(*adaptor),
+              absl_testing::IsOkAndHolds(true));
+}
+
+TEST_F(IrEmissionUtilsTest,
+       CanEmitFusedDynamicUpdateSlice_ElementwiseOnPathToParameter) {
+  const char* hlo = R"(
+HloModule fusion
+
+fused_computation {
+  param_0.1 = s32[2,3]{1,0} parameter(0)
+  bitcast = s32[2,3]{1,0} negate(param_0.1)
+  zero = s32[] constant(0)
+  param_1.1 = s32[] parameter(1)
+  dynamic-slice = s32[1,1]{1,0} dynamic-slice(bitcast, param_1.1, zero), dynamic_slice_sizes={1,1}
+  one = s32[] constant(1)
+  bitcasted_one = s32[1,1]{1,0} bitcast(one)
+  add = s32[1,1] add(dynamic-slice, bitcasted_one)
+  dynamic-update-slice = s32[2,3]{1,0} dynamic-update-slice(bitcast, add, param_1.1, zero)
+  ROOT bitcast.1 = s32[6]{0} bitcast(dynamic-update-slice)
+}
+
+ENTRY main {
+  param_0 = s32[2,3]{1,0} parameter(0)
+  param_1 = s32[] parameter(1)
+  ROOT fusion = s32[6]{0} fusion(param_0, param_1), kind=kLoop, calls=fused_computation
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
+  auto fusion = module->entry_computation()->root_instruction();
+  auto adaptor = HloFusionAdaptor::ForInstruction(fusion);
+  EXPECT_THAT(CanEmitFusedDynamicUpdateSlice(*adaptor),
+              absl_testing::IsOkAndHolds(false));
+}
+
 }  // namespace
 }  // namespace xla

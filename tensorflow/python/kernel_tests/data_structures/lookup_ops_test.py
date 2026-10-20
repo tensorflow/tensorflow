@@ -116,6 +116,25 @@ class StaticHashTableTest(BaseLookupTableTest, parameterized.TestCase):
     )
     self.assertCountEqual([0, 1, 2], self.evaluate(exported_values_tensor))
 
+  def testExportSignatureMismatch(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
+    table = self.getHashTable()(
+        lookup_ops.KeyValueTensorInitializer(
+            constant_op.constant([0], dtype=dtypes.int64),
+            constant_op.constant([1], dtype=dtypes.int64),
+        ),
+        -1,
+        experimental_is_anonymous=is_anonymous,
+    )
+    self.initialize_table(table)
+    with self.assertRaises((errors_impl.InvalidArgumentError, ValueError)):
+      self.evaluate(
+          gen_lookup_ops.lookup_table_export_v2(
+              table.resource_handle, Tkeys=dtypes.string, Tvalues=dtypes.string
+          )
+      )
+
   def testStaticHashTableFindHighRank(self, is_anonymous):
     if is_anonymous and not tf2.enabled():
       self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
@@ -4382,6 +4401,29 @@ class MutableHashTableOpTest(test.TestCase):
     self.assertLen(inferred_shapes, 2)
     self.assertTrue(inferred_shapes[0].is_compatible_with(actual_shapes[0]))
     self.assertTrue(inferred_shapes[1].is_compatible_with(actual_shapes[1]))
+
+
+class ResourceHandleNameSecurityTest(test.TestCase):
+  """Verify that anonymous resource handle names do not leak heap addresses."""
+
+  @test_util.run_v2_only
+  def testAnonymousHashTableHandleDoesNotLeakAddress(self):
+    # AnonymousHashTable creates a ResourceBase whose handle name was
+    # previously formatted as "Resource-<id>-at-0x<hex_address>", leaking
+    # the glibc heap address to callers via error messages.
+    table = gen_lookup_ops.anonymous_hash_table(
+        key_dtype=dtypes.int64, value_dtype=dtypes.int64
+    )
+    handle_name = str(table)
+    self.assertRegex(handle_name, r'name="Resource-\d+"')
+    self.assertNotIn(
+        "-at-", handle_name, "Handle name must not contain raw pointer"
+    )
+    self.assertNotRegex(
+        handle_name,
+        r"0x[0-9a-fA-F]{8,}",
+        "Handle name must not contain hex address",
+    )
 
 
 class MutableHashTableBenchmark(test.Benchmark):

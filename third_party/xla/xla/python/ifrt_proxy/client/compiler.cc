@@ -27,6 +27,7 @@
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "xla/debug_options_flags.h"
 #include "xla/pjrt/host_callback.h"
@@ -231,16 +232,15 @@ Compiler::CreateExecutableFromResponse(
   if (is_mpmd_executable) {
     return std::make_unique<MpmdLoadedExecutable>(
         client_, rpc_helper_, response->loaded_executable_handle(),
-        response->name(), response->num_devices(), device_list,
-        std::move(addressable_devices), std::move(mpmd_addressable_devices),
-        std::move(fingerprint), std::move(loaded_host_callbacks),
+        response->name(), device_list, std::move(addressable_devices),
+        std::move(mpmd_addressable_devices), std::move(fingerprint),
+        std::move(loaded_host_callbacks),
         std::move(loaded_host_callback_handles));
   }
   return std::make_unique<LoadedExecutable>(
       client_, rpc_helper_, response->loaded_executable_handle(),
-      response->name(), response->num_devices(), device_list,
-      std::move(addressable_devices), std::move(fingerprint),
-      std::move(loaded_host_callbacks),
+      response->name(), device_list, std::move(addressable_devices),
+      std::move(fingerprint), std::move(loaded_host_callbacks),
       std::move(loaded_host_callback_handles));
 }
 

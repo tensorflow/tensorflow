@@ -20,6 +20,7 @@ package xla.gpu;
 import "xla/backends/gpu/runtime/thunk.proto";
 import "xla/service/cpu/executable.proto";
 import "xla/service/gpu/dense_data_intermediate.proto";
+import "xla/service/gpu_topology.proto";
 import "xla/service/hlo.proto";
 import "xla/shape_util.proto";
 import "xla/stream_executor/abi/executable_abi_version.proto";
@@ -121,6 +122,10 @@ message GpuExecutableProto {
   // OOMs, includes the Hlo op metadata for every buffer associated with each
   // allocation.
   string buffer_allocations_debug_summary = 16;
+
+  // The GPU topology the executable was compiled for. Not set for executables
+  // serialized before this field was introduced (cl/989587532).
+  optional xla.GpuTopologyProto gpu_topology = 17;
 
   reserved 7;
 }

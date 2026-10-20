@@ -47,9 +47,10 @@ LogicalResult DynamicReduceWindowOpAdaptor::verify() {
     // called_computations carries the body.
     if (attr.getName() != "api_version" && attr.getName() != "backend_config" &&
         attr.getName() != "call_target_name" &&
-        attr.getName() != "called_computations")
+        attr.getName() != "called_computations") {
       return op_.emitError()
              << attr.getName() << " is not a supported attribute";
+    }
   }
   if (!op_.hasEmptyBackendConfig())
     return op_.emitError() << "expects an empty backend_config";
@@ -77,9 +78,10 @@ LogicalResult DynamicReduceWindowOpAdaptor::verify() {
   for (auto [index, input] : llvm::enumerate(inputs)) {
     auto inputType = dyn_cast<ShapedType>(input.getType());
     inputTypes.push_back(inputType);
-    if (!inputType)
+    if (!inputType) {
       return op_.emitError()
              << "expects inputs (e.g. operand #" << index << ") to be tensors";
+    }
   }
 
   // reduce_window_i2
@@ -88,10 +90,11 @@ LogicalResult DynamicReduceWindowOpAdaptor::verify() {
     auto initValueType = dyn_cast<ShapedType>(initValue.getType());
     initValueTypes.push_back(initValueType);
     if (!initValueType || !initValueType.hasRank() ||
-        initValueType.getRank() != 0)
+        initValueType.getRank() != 0) {
       return op_.emitError()
              << "expects init_values (e.g. operand #" << numInputs + index
              << ") " << "to be 0-dimensional tensors";
+    }
   }
 
   // reduce_window_i3...reduce_window_i7
@@ -119,29 +122,32 @@ LogicalResult DynamicReduceWindowOpAdaptor::verify() {
   auto paddingType = dyn_cast<ShapedType>(getPadding().getType());
   if (!paddingType || !paddingType.hasRank() || paddingType.getRank() != 2 ||
       paddingType.getDimSize(1) != 2 ||
-      !paddingType.getElementType().isIntOrIndex())
+      !paddingType.getElementType().isIntOrIndex()) {
     return op_.emitError()
            << "expects padding_type (operand #" << op_.getNumOperands() - 1
            << ") to be a 2-dimensional tensor of integer or index type";
+  }
 
   // reduce_window_c2
   std::optional<ArrayRef<int64_t>> inputShape;
   for (auto inputType : inputTypes) {
     if (!inputType.hasRank()) continue;
     if (!inputShape) inputShape = inputType.getShape();
-    if (failed(verifyCompatibleShape(inputType.getShape(), *inputShape)))
+    if (failed(verifyCompatibleShape(inputType.getShape(), *inputShape))) {
       return op_.emitError() << "expects all inputs (operands 0.." << numInputs
                              << ") to have compatible shapes";
+    }
   }
 
   // reduce_window_c3
   for (auto [inputType, initValueType] :
        llvm::zip(inputTypes, initValueTypes)) {
-    if (inputType.getElementType() != initValueType.getElementType())
+    if (inputType.getElementType() != initValueType.getElementType()) {
       return op_.emitError() << "expects inputs (operands 0.." << numInputs
                              << ") and init_values (operands " << numInputs
                              << ".." << numInputs * 2 << ") to have pairwise "
                              << "the same element types";
+    }
   }
 
   // reduce_window_c4...reduce_window_c12
@@ -179,9 +185,10 @@ LogicalResult DynamicReduceWindowOpAdaptor::verify() {
   auto bodyAttr = cast<FlatSymbolRefAttr>(op_.getCalledComputations()[0]);
   auto bodyFunc =
       op_->getParentOfType<ModuleOp>().lookupSymbol<func::FuncOp>(bodyAttr);
-  if (!bodyFunc)
+  if (!bodyFunc) {
     return op_.emitError() << "expects called_computations to refer to "
                            << "a function that exists within a parent module";
+  }
 
   // reduce_window_c13
   SmallVector<Type> expectedBodyInputs;
@@ -217,10 +224,11 @@ LogicalResult DynamicReduceWindowOpAdaptor::verify() {
   // reduce_window_c16
   for (auto [resultType, initValueType] :
        llvm::zip(resultTypes, initValueTypes)) {
-    if (resultType.getElementType() != initValueType.getElementType())
+    if (resultType.getElementType() != initValueType.getElementType()) {
       return op_.emitError() << "expects results and init_values (operands "
                              << numInputs << ".." << numInputs * 2 << ") "
                              << "to have pairwise the same element types";
+    }
   }
 
   return success();
@@ -292,9 +300,10 @@ LogicalResult DynamicRngBitGeneratorOpAdaptor::verify() {
     // rng_algorithm comes from the operation.
     if (attr.getName() != "api_version" && attr.getName() != "backend_config" &&
         attr.getName() != "call_target_name" &&
-        attr.getName() != "rng_algorithm")
+        attr.getName() != "rng_algorithm") {
       return op_.emitError()
              << attr.getName() << " is not a supported attribute";
+    }
   }
   if (!op_.hasEmptyBackendConfig())
     return op_.emitError() << "expects an empty backend_config";
@@ -312,55 +321,63 @@ LogicalResult DynamicRngBitGeneratorOpAdaptor::verify() {
   auto output = op_.getResults()[1];
 
   // dynamic_rng_bit_generator_i1
-  if (!isa<stablehlo::RngAlgorithmAttr>(rngAlgorithmAttr))
+  if (!isa<stablehlo::RngAlgorithmAttr>(rngAlgorithmAttr)) {
     return op_.emitError()
            << "expects a #stablehlo<rng_algorithm ...> rng_algorithm";
+  }
 
   // dynamic_rng_bit_generator_i2
   // TODO(#643): Clarify supported types for RngBitGeneratorOp.
   auto initialStateType = dyn_cast<ShapedType>(initialState.getType());
-  if (!initialStateType || !initialStateType.getElementType().isIntOrFloat())
+  if (!initialStateType || !initialStateType.getElementType().isIntOrFloat()) {
     return op_.emitError()
            << "expects initial_state (operand #0) "
            << "to be a tensor of integer or floating-point type";
+  }
 
   // dynamic_rng_bit_generator_i3
   auto outputShapeType = dyn_cast<ShapedType>(outputShape.getType());
   if (!outputShapeType || !outputShapeType.hasRank() ||
       outputShapeType.getRank() != 1 ||
-      !outputShapeType.getElementType().isIntOrIndex())
+      !outputShapeType.getElementType().isIntOrIndex()) {
     return op_.emitError()
            << "expects output_shape (operand #1) "
            << "to be a 1-dimensional tensor of integer or index type";
+  }
 
   // dynamic_rng_bit_generator_o1
   // TODO(#643): Clarify supported types for RngBitGeneratorOp.
   auto outputStateType = dyn_cast<ShapedType>(outputState.getType());
-  if (!outputStateType || !outputStateType.getElementType().isIntOrFloat())
+  if (!outputStateType || !outputStateType.getElementType().isIntOrFloat()) {
     return op_.emitError()
            << "expects output_state (result #0) "
            << "to be a tensor of integer or floating-point type";
+  }
 
   // dynamic_rng_bit_generator_o2
   auto outputType = dyn_cast<ShapedType>(output.getType());
-  if (!outputType || !outputType.getElementType().isIntOrFloat())
+  if (!outputType || !outputType.getElementType().isIntOrFloat()) {
     return op_.emitError()
            << "expects output (result #1) "
            << "to be a tensor of integer or floating-point type";
+  }
 
   // dynamic_rng_bit_generator_c1
-  if (!hlo::isCompatibleForHloTypeInference(initialStateType, outputStateType))
+  if (!hlo::isCompatibleForHloTypeInference(initialStateType,
+                                            outputStateType)) {
     return op_.emitError()
            << "expects initial_state (operand #0) and output_state (result #0) "
            << "to have compatible shapes";
+  }
 
   // dynamic_rng_bit_generator_c2
   // TODO(#486): Verify rng_algorithm in RngBitGeneratorOp.
 
   // dynamic_rng_bit_generator_c3
-  if (!hlo::isCompatibleForHloTypeInference(outputShape, outputType))
+  if (!hlo::isCompatibleForHloTypeInference(outputShape, outputType)) {
     return op_.emitError() << "expects output (result #1) to have shape  "
                            << "compatible with output_shape (operand #2)";
+  }
 
   return success();
 }
@@ -421,65 +438,74 @@ LogicalResult DynamicTopKOpAdaptor::verify() {
   // dynamic_top_k_i1
   auto operandType = dyn_cast<ShapedType>(operand.getType());
   if (!operandType || !operandType.hasRank() || operandType.getRank() < 1 ||
-      !operandType.getElementType().isIntOrFloat())
+      !operandType.getElementType().isIntOrFloat()) {
     return op_.emitError()
            << "expects operand #0 "
            << "to be a tensor of integer or floating-point type "
            << "of rank at least 1";
+  }
 
   // dynamic_top_k_i2
   auto kType = dyn_cast<ShapedType>(k.getType());
   if (!kType || !kType.hasRank() || kType.getRank() != 0 ||
-      !kType.getElementType().isIntOrIndex())
+      !kType.getElementType().isIntOrIndex()) {
     return op_.emitError()
            << "expects k (operand #1) "
            << "to be a 0-dimensional tensor of integer or index type";
+  }
 
   // dynamic_top_k_o1
   auto valuesType = dyn_cast<ShapedType>(values.getType());
   if (!valuesType || !valuesType.hasRank() || valuesType.getRank() < 1 ||
-      !valuesType.getElementType().isIntOrFloat())
+      !valuesType.getElementType().isIntOrFloat()) {
     return op_.emitError()
            << "expects values (result #0) "
            << "to be a tensor of integer or floating-point type "
            << "of rank at least 1";
+  }
 
   // dynamic_top_k_o2
   auto indicesType = dyn_cast<ShapedType>(indices.getType());
   if (!indicesType || !indicesType.hasRank() || indicesType.getRank() < 1 ||
-      !indicesType.getElementType().isSignlessInteger(32))
+      !indicesType.getElementType().isSignlessInteger(32)) {
     return op_.emitError() << "expects indices (result #1) "
                            << "to be a tensor of si32 of rank at least 1";
+  }
 
   // dynamic_top_k_c1
   auto operandLastDim = operandType.getRank() - 1;
   SmallVector<int64_t> expectedValuesShape(operandType.getShape());
   expectedValuesShape[operandLastDim] =
       valuesType.getDimSize(valuesType.getRank() - 1);
-  if (failed(verifyCompatibleShape(expectedValuesShape, valuesType.getShape())))
+  if (failed(
+          verifyCompatibleShape(expectedValuesShape, valuesType.getShape()))) {
     return op_.emitError() << "expects the values shape to match the operand "
                               "shape in all but the last dimension";
+  }
 
   // dynamic_top_k_c2
-  if (valuesType.getElementType() != operandType.getElementType())
+  if (valuesType.getElementType() != operandType.getElementType()) {
     return op_.emitError()
            << "expects the values element type to be the same as the operand "
            << "element type";
+  }
 
   // dynamic_top_k_c3
   if (!operandType.isDynamicDim(operandLastDim) &&
       !valuesType.isDynamicDim(operandLastDim) &&
       operandType.getDimSize(operandLastDim) <
-          valuesType.getDimSize(operandLastDim))
+          valuesType.getDimSize(operandLastDim)) {
     return op_.emitError() << "expects the values last dimension to have size "
                               "at least as large "
                            << "as operand last dimension";
+  }
 
   // dynamic_top_k_c4
-  if (failed(
-          verifyCompatibleShape(indicesType.getShape(), valuesType.getShape())))
+  if (failed(verifyCompatibleShape(indicesType.getShape(),
+                                   valuesType.getShape()))) {
     return op_.emitError()
            << "expects the indices shape to match the values shape";
+  }
 
   return success();
 }
@@ -520,10 +546,11 @@ LogicalResult DynamicApproxTopKOpAdaptor::verify() {
            name == "called_computations" || name == "has_side_effect";
   };
   for (const auto& attr : op_->getAttrs()) {
-    if (!isSupportedAttrName(attr))
+    if (!isSupportedAttrName(attr)) {
       return op_.emitOpError()
              << attr.getName().getValue()
              << " is not a supported attribute for DynamicApproxTopK";
+    }
   }
 
   if (op_.getCallTargetName() != "stablehlo.dynamic_approx_top_k")
@@ -545,14 +572,16 @@ LogicalResult DynamicApproxTopKOpAdaptor::verify() {
     return op_.emitOpError("mhlo.backend_config attribute contains top_k");
 
   // C2
-  if (!backend_config.contains("reduction_dim"))
+  if (!backend_config.contains("reduction_dim")) {
     return op_.emitOpError(
         "mhlo.backend_config attribute does not contain "
         "reduction_dim");
+  }
   auto reduction_dim_attr = backend_config.getAs<IntegerAttr>("reduction_dim");
-  if (!reduction_dim_attr || !reduction_dim_attr.getType().isInteger(64))
+  if (!reduction_dim_attr || !reduction_dim_attr.getType().isInteger(64)) {
     return op_.emitOpError()
            << "mhlo.backend_config attribute reduction_dim must be i64";
+  }
   int64_t reduction_dim = reduction_dim_attr.getInt();
 
   // C3
@@ -561,39 +590,46 @@ LogicalResult DynamicApproxTopKOpAdaptor::verify() {
     return op_.emitError() << "size(operands) is even or less than 3";
   size_t num_inputs = getNumInputs();
 
-  if (op_->getNumResults() != num_inputs)
+  if (op_->getNumResults() != num_inputs) {
     return op_.emitError()
            << "size(results) is not the same as the number of inputs";
+  }
 
   for (size_t i = 0; i < num_inputs; ++i) {
     // C4
     if (!getInput(i).getType().hasRank())
       return op_.emitError() << "input " << i << " is unranked";
-    if (getInput(i).getType().getShape() != getInput(0).getType().getShape())
+    if (getInput(i).getType().getShape() != getInput(0).getType().getShape()) {
       return op_.emitError()
              << "input " << i << " shape does not match input 0 shape";
+    }
     // C5
     if (!getInitialValue(i).getType().hasRank())
       return op_.emitError() << "initial value " << i << " is unranked";
-    if (0 != getInitialValue(i).getType().getRank())
+    if (0 != getInitialValue(i).getType().getRank()) {
       return op_.emitError()
              << "initial value " << i << " does not have rank 0";
+    }
     // C6
     if (getInitialValue(i).getType().getElementType() !=
-        getInput(i).getType().getElementType())
+        getInput(i).getType().getElementType()) {
       return op_.emitError() << "initial value " << i
                              << " element type does not match input type";
+    }
     // C7
     if (!getOutput(i).getType().hasRank())
       return op_.emitError() << "output " << i << " is unranked";
-    if (getOutput(i).getType().getShape() != getOutput(0).getType().getShape())
+    if (getOutput(i).getType().getShape() !=
+        getOutput(0).getType().getShape()) {
       return op_.emitError()
              << "output " << i << " shape does not match output 0 shape";
+    }
     // C8
     if (getOutput(i).getType().getElementType() !=
-        getInput(i).getType().getElementType())
+        getInput(i).getType().getElementType()) {
       return op_.emitError()
              << "output " << i << " element type does not match input type";
+    }
   }
 
   // C9
@@ -604,11 +640,12 @@ LogicalResult DynamicApproxTopKOpAdaptor::verify() {
 
   // C10
   for (size_t i = 0; i < inputShape.size(); ++i) {
-    if (i != (size_t)reduction_dim && inputShape[i] != outputShape[i])
+    if (i != (size_t)reduction_dim && inputShape[i] != outputShape[i]) {
       return op_.emitError()
              << "output values dimension " << i << " has size "
              << outputShape[i] << " different than operand dimension size "
              << inputShape[i];
+    }
   }
   return success();
 }

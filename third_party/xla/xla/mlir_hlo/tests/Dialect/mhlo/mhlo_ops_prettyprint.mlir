@@ -208,8 +208,8 @@ func.func @pairwise_ops(%arg0 : tensor<4xf32>) -> () {
 // CHECK-LABEL: func @select_op
 func.func @select_op(%arg0: tensor<2x3xi1>, %arg1: tensor<2x3xi32>,
                   %arg2: tensor<2x?xi32>, %arg3: tensor<?x2xi32>) -> () {
-  // CHECK      %0 = mhlo.select %arg0, %arg1, %arg1 : tensor<2x3xi1>, tensor<2x3xi32>
-  // CHECK-NEXT %1 = mhlo.select %arg0, %arg2, %arg3 : (tensor<2x3xi1>, tensor<2x?xi32>, tensor<?x2xi32>) -> tensor<2x?xi32>
+  // CHECK:      %0 = mhlo.select %arg0, %arg1, %arg1 : tensor<2x3xi1>, tensor<2x3xi32>
+  // CHECK-NEXT: %1 = mhlo.select %arg0, %arg2, %arg3 : (tensor<2x3xi1>, tensor<2x?xi32>, tensor<?x2xi32>) -> tensor<2x?xi32>
   %0 = "mhlo.select"(%arg0, %arg1, %arg1) : (tensor<2x3xi1>, tensor<2x3xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>
   %1 = "mhlo.select"(%arg0, %arg2, %arg3) : (tensor<2x3xi1>, tensor<2x?xi32>, tensor<?x2xi32>) -> tensor<2x?xi32>
   "mhlo.return"() : () -> ()

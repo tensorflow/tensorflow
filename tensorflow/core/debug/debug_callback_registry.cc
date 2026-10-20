@@ -17,7 +17,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-DebugCallbackRegistry::DebugCallbackRegistry() {}
+DebugCallbackRegistry::DebugCallbackRegistry() = default;
 
 /*static */ DebugCallbackRegistry* DebugCallbackRegistry::instance_ = nullptr;
 

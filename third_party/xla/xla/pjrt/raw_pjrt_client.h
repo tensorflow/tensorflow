@@ -16,14 +16,17 @@ limitations under the License.
 #ifndef XLA_PJRT_RAW_PJRT_CLIENT_H_
 #define XLA_PJRT_RAW_PJRT_CLIENT_H_
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/functional/any_invocable.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -31,14 +34,52 @@ limitations under the License.
 #include "xla/executable_run_options.h"
 #include "xla/future.h"
 #include "xla/pjrt/device_event.h"
+#include "xla/pjrt/distributed/coordination/coordination_service.pb.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/raw_buffer.h"
+#include "xla/runtime/device_id.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "tsl/platform/numa.h"
 
 namespace xla {
+
+// Tracks device and client events for profiling and debugging.
+class PjRtEventTracker {
+ public:
+  virtual ~PjRtEventTracker() = default;
+
+  virtual void TrackAllocationEvent(
+      PjRtMemorySpace* memory_space, const tsl::AsyncValueRef<bool>& event,
+      const std::optional<std::string>& debug_info) = 0;
+
+  virtual void TrackFuture(PjRtMemorySpace* memory_space,
+                           absl::string_view debug_info,
+                           const Future<>& future) = 0;
+
+  virtual void AppendDescriptionToEvent(
+      PjRtMemorySpace* memory_space, PjRtDeviceEventPtr device_event,
+      absl::string_view description,
+      absl::Span<const PjRtDeviceEventPtr> waiters) = 0;
+
+  virtual void AddEventDependencies(
+      PjRtMemorySpace* memory_space, PjRtDeviceEventPtr device_event,
+      absl::Span<const PjRtDeviceEventRef> dependencies) = 0;
+
+  virtual void AddEventDependencies(PjRtMemorySpace* memory_space,
+                                    PjRtDeviceEventPtr device_event,
+                                    PjRtDeviceEventSpan dependencies) = 0;
+
+  virtual void RegisterClientThreadWait(PjRtMemorySpace* memory_space,
+                                        tsl::RCReference<tsl::AsyncValue> event,
+                                        absl::string_view description) = 0;
+
+  virtual void RegisterClientThreadWait(PjRtMemorySpace* memory_space,
+                                        PjRtDeviceEventPtr device_event,
+                                        absl::string_view description) = 0;
+};
 
 // Represents the launch state for a loaded executable. This state must be
 // reconstructed each time we want to launch the executable.
@@ -83,6 +124,9 @@ class PjRtExecutableLoadState
 
   struct DeviceAndAssignment {
     PjRtDevice* device;
+    LocalDeviceId local_device_id;
+    GlobalDeviceId global_device_id;
+    int process_index;
     std::shared_ptr<DeviceAssignment> device_assignment;
     std::optional<int32_t> slice_id;
     int replica;
@@ -93,6 +137,12 @@ class PjRtExecutableLoadState
   virtual bool IsDeleted() const = 0;
 
   virtual absl::Status Preload(PjRtExecutable* executable) {
+    return absl::OkStatus();
+  }
+
+  virtual absl::Status SetupMultiSliceConfig(
+      PjRtExecutable* executable,
+      const MultiSliceConfig* multi_slice_config) const {
     return absl::OkStatus();
   }
 
@@ -112,6 +162,16 @@ class PjRtRawClient {
   virtual ~PjRtRawClient() = default;
 
   virtual AsyncWorkRunner* async_work_runner() const = 0;
+
+  // Returns the event tracker for this client, or nullptr if event tracking
+  // is not enabled.
+  virtual PjRtEventTracker* event_tracker() const { return nullptr; }
+
+  // Returns true if memory allocations for async transfers in `memory_space`
+  // should be deferred behind an allocation event.
+  virtual bool ShouldCreateAsyncAllocationEvent(int memory_kind_id) const {
+    return false;
+  }
 
   using PjRtFulfillAliasRawBufferCallback =
       absl::AnyInvocable<absl::Status(absl::StatusOr<PjRtRawBufferRef>) &&>;
@@ -149,7 +209,7 @@ class PjRtRawClient {
   // setting an event into the event promise populates the device-event.
   virtual absl::StatusOr<
       std::pair<PjRtDeviceEventPromiseRef, PjRtDeviceEventRef>>
-  CreateLinkedEventPromise(PjRtMemorySpace* memory_space,
+  CreateLinkedEventPromise(LocalDeviceId local_device_id, int memory_kind_id,
                            absl::string_view debug_info) {
     return absl::UnimplementedError(
         "CreateLinkedEventPromise is not supported");
@@ -157,12 +217,13 @@ class PjRtRawClient {
 
   // Creates a device event that signals completion of a dependency future.
   virtual absl::StatusOr<PjRtDeviceEventRef> CreateDeviceEvent(
-      PjRtMemorySpace* memory_space, Future<> dependency) = 0;
+      LocalDeviceId local_device_id, int memory_kind_id,
+      Future<> dependency) = 0;
 
   // Creates a device event that signals completion of work on an external
   // stream.
   virtual absl::StatusOr<PjRtDeviceEventRef> CreateDeviceEventForStream(
-      PjRtMemorySpace* memory_space, std::intptr_t stream) {
+      LocalDeviceId local_device_id, std::intptr_t stream) {
     return absl::UnimplementedError(
         "CreateDeviceEventForStream is not supported");
   }
@@ -185,17 +246,46 @@ class PjRtRawClient {
     return absl::UnimplementedError("DmaUnmap is not supported.");
   }
 
+  // Returns true if the host memory range [data, data + transfer_size) is
+  // already DMA-mapped (e.g. pinned on GPU or in a premapped buffer on TPU).
+  virtual bool IsDmaMapped(const void* data, int64_t transfer_size) const {
+    return false;
+  }
+
   // Returns the host memory allocator for the client or null if not supported.
   virtual HostMemoryAllocator* GetHostMemoryAllocator() const {
     return nullptr;
   }
 
+  virtual int GetNumaNode(LocalDeviceId local_device_id) const {
+    return tsl::port::kNUMANoAffinity;
+  }
+
+  // Returns the required alignment for device memory addresses when slicing.
+  virtual absl::StatusOr<size_t> GetDeviceAddressAlignment() const {
+    return absl::UnimplementedError(
+        "GetDeviceAddressAlignment is not implemented.");
+  }
+
   // Returns the required byte alignment for host memory when performing DMA.
   virtual size_t GetDmaHostAlignment() const { return 1; }
+
+  // Returns the required byte alignment for transfer sizes when performing DMA,
+  // or nullopt if unpadded DMA transfers are not supported.
+  virtual std::optional<size_t> GetDmaSizeAlignment() const { return 1; }
 
   virtual void LaunchOnDevice(LocalDeviceId device_id,
                               absl::AnyInvocable<void()> execute_fn) const {
     async_work_runner()->Execute(std::move(execute_fn));
+  }
+
+  // Backend specific handlers for when an oom is detected during execute.
+  virtual void CallOomHandlers() const {}
+
+  virtual bool ShouldRetryOnOom(int attempts, PjRtDevice* device,
+                                PjRtExecutableLoadState* load_state,
+                                absl::Status prepare_status) {
+    return false;
   }
 
   virtual void UpdateGlobalProcessInfo(
@@ -218,8 +308,37 @@ class PjRtRawClient {
   virtual tsl::AsyncValueRef<PjRtExecutable> ToAsyncExecutable(
       std::shared_ptr<PjRtExecutable> executable) const = 0;
 
+  using PjRtFulfillAsyncExecutableCallback = absl::AnyInvocable<void(
+      absl::StatusOr<tsl::AsyncValueRef<PjRtExecutable>>) &&>;
+
+  virtual std::pair<tsl::AsyncValueRef<PjRtExecutable>,
+                    PjRtFulfillAsyncExecutableCallback>
+  CreateLinkedExecutablePromise() const = 0;
+
+  template <typename T>
+  static std::pair<tsl::AsyncValueRef<PjRtExecutable>,
+                   PjRtFulfillAsyncExecutableCallback>
+  CreateLinkedExecutablePromiseForType() {
+    auto indirect = tsl::MakeIndirectAsyncValue<T>();
+    auto fulfill_cb =
+        [indirect](
+            absl::StatusOr<tsl::AsyncValueRef<PjRtExecutable>> executable) {
+          if (executable.ok()) {
+            indirect->ForwardTo(executable->ReleaseRCRef());
+          } else {
+            indirect->SetError(executable.status());
+          }
+        };
+    return {tsl::AsyncValueRef<T>(std::move(indirect)), std::move(fulfill_cb)};
+  }
+
   virtual tsl::RCReference<PjRtExecutableLoadState> MakeLoadState() {
     LOG(FATAL) << "Implement MakeLoadState()";
+  }
+
+  virtual std::unique_ptr<ScopedAsyncTrackingEvent> CreateAsyncTrackingEvent(
+      LocalDeviceId local_device_id, absl::string_view description) const {
+    return nullptr;
   }
 
   virtual absl::StatusOr<bool> PoisonExecution(LocalDeviceId local_device_id,
@@ -238,7 +357,7 @@ class PjRtRawClient {
     return absl::UnimplementedError("TransferToOutfeed is not supported");
   }
 
-  virtual absl::Status WaitOnStream(PjRtMemorySpace* memory_space,
+  virtual absl::Status WaitOnStream(LocalDeviceId local_device_id,
                                     PjRtDeviceEventRef event,
                                     std::intptr_t stream) {
     return absl::UnimplementedError(
@@ -260,7 +379,8 @@ class PjRtRawClient {
     return absl::UnimplementedError("ClearMemoryStats is not supported.");
   }
 
-  virtual void ScheduleRemoteSend(PjRtMemorySpace* memory_space,
+  virtual void ScheduleRemoteSend(LocalDeviceId local_device_id,
+                                  int memory_kind_id,
                                   PjRtRawBufferRef raw_buffer,
                                   PjRtDeviceEventRefVector definition_events,
                                   PjRtDeviceEventPromiseRef usage_event_promise,
@@ -289,6 +409,12 @@ class PjRtRawClient {
     GlobalDeviceId src_global_device_id;
     GlobalDeviceId dst_global_device_id;
     PjRtRawBufferRef raw_buffer;
+    // Source and destination task incarnations, in that order. nullopt when
+    // the caller has no GetAliveTasks snapshot.
+    // TODO: Revisit making this non-optional once older jaxlib versions
+    // are no longer supported and the missing-snapshot fallback in
+    // CopyArraysForCrossHost is no longer needed.
+    std::optional<std::array<IncarnationId, 2>> incarnations;
   };
 
   virtual absl::StatusOr<PjRtDeviceEventRefVector> CrossHostTransferBuffers(

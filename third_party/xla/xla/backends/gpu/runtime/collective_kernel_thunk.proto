@@ -18,6 +18,7 @@ syntax = "proto3";
 package xla.gpu;
 
 import "xla/backends/gpu/runtime/collective_thunk.proto";
+import "xla/backends/gpu/runtime/collective_types.proto";
 import "xla/service/gpu/launch_dimensions.proto";
 
 option java_outer_classname = "CollectiveKernelThunk";
@@ -30,12 +31,6 @@ enum KernelArgTypeProto {
   KERNEL_ARG_TYPE_RUNTIME_RANK = 3;
   KERNEL_ARG_TYPE_INVOCATION_COUNT = 4;
   KERNEL_ARG_TYPE_SCRATCH_BUFFER = 5;
-}
-
-enum SymmetricMemoryTypeProto {
-  SYMMETRIC_MEMORY_TYPE_NONE = 0;
-  SYMMETRIC_MEMORY_TYPE_LOAD_STORE_ACCESSIBLE = 1;
-  SYMMETRIC_MEMORY_TYPE_XLA_RENDEZVOUS = 2;
 }
 
 message IoBufferSpecProto {
@@ -63,6 +58,12 @@ message CollectiveKernelSpecProto {
   repeated KernelArgDescriptorProto argument_descriptors = 4;
   int32 invocation_count_increment = 5;
   bool copy_input_to_scratch = 6;
+  // If true, the kernel derives its invocation counter from its own barrier
+  // slot in device memory (`SignalBuffers[rank][block_id * world_size + rank]`)
+  // and ignores the invocation count argument. Unset (false) for legacy kernels
+  // that read the invocation count argument.
+  // Will be deprecated and enabled by default by 01/03/2026.
+  bool device_sync_count = 7;
 }
 
 message CollectiveKernelThunkProto {

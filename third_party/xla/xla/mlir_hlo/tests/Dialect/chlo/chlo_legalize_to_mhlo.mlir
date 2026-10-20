@@ -22,10 +22,8 @@
 // CHECK-NEXT:     %[[TMP_3:.*]] = mhlo.add %[[TMP_1]], %[[TMP_arg0]] : tensor<bf16>
 // CHECK-NEXT:     %[[TMP_4:.*]] = mhlo.multiply %[[TMP_2]], %[[TMP_3]] : tensor<bf16>
 // CHECK-NEXT:     %[[TMP_5:.*]] = mhlo.sqrt %[[TMP_4]] : tensor<bf16>
-// CHECK-NEXT:     %[[TMP_6:.*]] = mhlo.add %[[TMP_1]], %[[TMP_5]] : tensor<bf16>
-// CHECK-NEXT:     %[[TMP_7:.*]] = mhlo.atan2 %[[TMP_arg0]], %[[TMP_6]] : tensor<bf16>
-// CHECK-NEXT:     %[[TMP_8:.*]] = mhlo.add %[[TMP_7]], %[[TMP_7]] : tensor<bf16>
-// CHECK-NEXT:     return %[[TMP_8]] : tensor<bf16>
+// CHECK-NEXT:     %[[TMP_6:.*]] = mhlo.atan2 %[[TMP_arg0]], %[[TMP_5]] : tensor<bf16>
+// CHECK-NEXT:     return %[[TMP_6]] : tensor<bf16>
 func.func @asin_bf16(%arg : tensor<bf16>) -> tensor<bf16> {
   %result = "chlo.asin"(%arg) : (tensor<bf16>) -> tensor<bf16>
   func.return %result : tensor<bf16>
@@ -41,10 +39,8 @@ func.func @asin_bf16(%arg : tensor<bf16>) -> tensor<bf16> {
 // CHECK-NEXT:    %[[TMP_3:.*]] = mhlo.add %[[TMP_1]], %[[TMP_arg0]] : tensor<f16>
 // CHECK-NEXT:    %[[TMP_4:.*]] = mhlo.multiply %[[TMP_2]], %[[TMP_3]] : tensor<f16>
 // CHECK-NEXT:    %[[TMP_5:.*]] = mhlo.sqrt %[[TMP_4]] : tensor<f16>
-// CHECK-NEXT:    %[[TMP_6:.*]] = mhlo.add %[[TMP_1]], %[[TMP_5]] : tensor<f16>
-// CHECK-NEXT:    %[[TMP_7:.*]] = mhlo.atan2 %[[TMP_arg0]], %[[TMP_6]] : tensor<f16>
-// CHECK-NEXT:    %[[TMP_8:.*]] = mhlo.add %[[TMP_7]], %[[TMP_7]] : tensor<f16>
-// CHECK-NEXT:    return %[[TMP_8]] : tensor<f16>
+// CHECK-NEXT:    %[[TMP_6:.*]] = mhlo.atan2 %[[TMP_arg0]], %[[TMP_5]] : tensor<f16>
+// CHECK-NEXT:    return %[[TMP_6]] : tensor<f16>
 func.func @asin_f16(%arg : tensor<f16>) -> tensor<f16> {
   // CHECK-HIGH-LEVEL: mhlo.asin
   %result = "chlo.asin"(%arg) : (tensor<f16>) -> tensor<f16>
@@ -61,10 +57,8 @@ func.func @asin_f16(%arg : tensor<f16>) -> tensor<f16> {
 // CHECK-NEXT:    %[[TMP_3:.*]] = mhlo.add %[[TMP_1]], %[[TMP_arg0]] : tensor<f32>
 // CHECK-NEXT:    %[[TMP_4:.*]] = mhlo.multiply %[[TMP_2]], %[[TMP_3]] : tensor<f32>
 // CHECK-NEXT:    %[[TMP_5:.*]] = mhlo.sqrt %[[TMP_4]] : tensor<f32>
-// CHECK-NEXT:    %[[TMP_6:.*]] = mhlo.add %[[TMP_1]], %[[TMP_5]] : tensor<f32>
-// CHECK-NEXT:    %[[TMP_7:.*]] = mhlo.atan2 %[[TMP_arg0]], %[[TMP_6]] : tensor<f32>
-// CHECK-NEXT:    %[[TMP_8:.*]] = mhlo.add %[[TMP_7]], %[[TMP_7]] : tensor<f32>
-// CHECK-NEXT:    return %[[TMP_8]] : tensor<f32>
+// CHECK-NEXT:    %[[TMP_6:.*]] = mhlo.atan2 %[[TMP_arg0]], %[[TMP_5]] : tensor<f32>
+// CHECK-NEXT:    return %[[TMP_6]] : tensor<f32>
 func.func @asin_f32(%arg : tensor<f32>) -> tensor<f32> {
   // CHECK-HIGH-LEVEL: mhlo.asin
   %result = "chlo.asin"(%arg) : (tensor<f32>) -> tensor<f32>
@@ -80,10 +74,8 @@ func.func @asin_f32(%arg : tensor<f32>) -> tensor<f32> {
 // CHECK-NEXT:    %[[TMP_3:.*]] = mhlo.add %[[TMP_1]], %[[TMP_arg0]] : tensor<f64>
 // CHECK-NEXT:    %[[TMP_4:.*]] = mhlo.multiply %[[TMP_2]], %[[TMP_3]] : tensor<f64>
 // CHECK-NEXT:    %[[TMP_5:.*]] = mhlo.sqrt %[[TMP_4]] : tensor<f64>
-// CHECK-NEXT:    %[[TMP_6:.*]] = mhlo.add %[[TMP_1]], %[[TMP_5]] : tensor<f64>
-// CHECK-NEXT:    %[[TMP_7:.*]] = mhlo.atan2 %[[TMP_arg0]], %[[TMP_6]] : tensor<f64>
-// CHECK-NEXT:    %[[TMP_8:.*]] = mhlo.add %[[TMP_7]], %[[TMP_7]] : tensor<f64>
-// CHECK-NEXT:    return %[[TMP_8]] : tensor<f64>
+// CHECK-NEXT:    %[[TMP_6:.*]] = mhlo.atan2 %[[TMP_arg0]], %[[TMP_5]] : tensor<f64>
+// CHECK-NEXT:    return %[[TMP_6]] : tensor<f64>
 func.func @asin_f64(%arg : tensor<f64>) -> tensor<f64> {
   // CHECK-HIGH-LEVEL: mhlo.asin
   %result = "chlo.asin"(%arg) : (tensor<f64>) -> tensor<f64>
@@ -1573,8 +1565,9 @@ func.func @zeta_f16(%arg0: tensor<f16>, %arg1: tensor<f16>) -> tensor<f16> {
   // CHECK: %[[TMP_33:.*]] = mhlo.add %[[TMP_30]], %[[TMP_3]]
   // CHECK: %[[TMP_34:.*]] = mhlo.power %[[TMP_33]], %[[TMP_4]]
   // CHECK: %[[TMP_35:.*]] = mhlo.constant dense<1.000000e+00>
-  // CHECK-DAG: %[[TMP_36:.*]] = mhlo.multiply %[[TMP_34]], %[[TMP_33]]
-  // CHECK-DAG: %[[TMP_37:.*]] = mhlo.subtract %[[TMP_0]], %[[TMP_35]]
+  // CHECK: %[[TMP_37:.*]] = mhlo.subtract %[[TMP_0]], %[[TMP_35]]
+  // CHECK: %[[TMP_36_NEG:.*]] = mhlo.negate %[[TMP_37]]
+  // CHECK: %[[TMP_36:.*]] = mhlo.power %[[TMP_33]], %[[TMP_36_NEG]]
   // CHECK: %[[TMP_38:.*]] = mhlo.divide %[[TMP_36]], %[[TMP_37]]
   // CHECK: %[[TMP_39:.*]] = mhlo.multiply %[[TMP_33]], %[[TMP_33]]
   // CHECK: %[[TMP_40:.*]] = mhlo.divide %[[TMP_3]], %[[TMP_39]]
@@ -1848,8 +1841,9 @@ func.func @polygamma_f32(%lhs : tensor<f32>, %rhs : tensor<f32>) -> tensor<f32> 
   // CHECK: %[[TMP_121:.*]] = mhlo.add %[[TMP_118]], %[[TMP_91]]
   // CHECK: %[[TMP_122:.*]] = mhlo.power %[[TMP_121]], %[[TMP_92]]
   // CHECK: %[[TMP_123:.*]] = mhlo.constant dense<1.000000e+00>
-  // CHECK-DAG: %[[TMP_124:.*]] = mhlo.multiply %[[TMP_122]], %[[TMP_121]]
-  // CHECK-DAG: %[[TMP_125:.*]] = mhlo.subtract %[[TMP_5]], %[[TMP_123]]
+  // CHECK: %[[TMP_125:.*]] = mhlo.subtract %[[TMP_5]], %[[TMP_123]]
+  // CHECK: %[[TMP_124_NEG:.*]] = mhlo.negate %[[TMP_125]]
+  // CHECK: %[[TMP_124:.*]] = mhlo.power %[[TMP_121]], %[[TMP_124_NEG]]
   // CHECK: %[[TMP_126:.*]] = mhlo.divide %[[TMP_124]], %[[TMP_125]]
   // CHECK: %[[TMP_127:.*]] = mhlo.multiply %[[TMP_121]], %[[TMP_121]]
   // CHECK: %[[TMP_128:.*]] = mhlo.divide %[[TMP_91]], %[[TMP_127]]
@@ -2238,8 +2232,9 @@ func.func @polygamma_f64(%lhs : tensor<f64>, %rhs : tensor<f64>) -> tensor<f64> 
   // CHECK: %[[TMP_121:.*]] = mhlo.add %[[TMP_118]], %[[TMP_91]]
   // CHECK: %[[TMP_122:.*]] = mhlo.power %[[TMP_121]], %[[TMP_92]]
   // CHECK: %[[TMP_123:.*]] = mhlo.constant dense<1.000000e+00>
-  // CHECK-DAG: %[[TMP_124:.*]] = mhlo.multiply %[[TMP_122]], %[[TMP_121]]
-  // CHECK-DAG: %[[TMP_125:.*]] = mhlo.subtract %[[TMP_5]], %[[TMP_123]]
+  // CHECK: %[[TMP_125:.*]] = mhlo.subtract %[[TMP_5]], %[[TMP_123]]
+  // CHECK: %[[TMP_124_NEG:.*]] = mhlo.negate %[[TMP_125]]
+  // CHECK: %[[TMP_124:.*]] = mhlo.power %[[TMP_121]], %[[TMP_124_NEG]]
   // CHECK: %[[TMP_126:.*]] = mhlo.divide %[[TMP_124]], %[[TMP_125]]
   // CHECK: %[[TMP_127:.*]] = mhlo.multiply %[[TMP_121]], %[[TMP_121]]
   // CHECK: %[[TMP_128:.*]] = mhlo.divide %[[TMP_91]], %[[TMP_127]]

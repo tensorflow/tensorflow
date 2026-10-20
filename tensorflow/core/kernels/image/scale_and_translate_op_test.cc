@@ -36,7 +36,7 @@ using Eigen::Vector2f;
 
 class DynamicKernel {
  public:
-  virtual ~DynamicKernel() {}
+  virtual ~DynamicKernel() = default;
   virtual float Value(const float x) const = 0;
   virtual float Radius() const = 0;
 };

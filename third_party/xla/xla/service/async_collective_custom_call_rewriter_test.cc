@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instruction_utils.h"
@@ -215,5 +216,53 @@ TEST_F(AsyncCollectiveCustomCallRewriterTest,
   }
 }
 
+TEST_F(AsyncCollectiveCustomCallRewriterTest,
+       PreservesCollectiveFrontendAttributes) {
+  constexpr absl::string_view all_gather_hlo = R"(
+    HloModule PreservesCollectiveFrontendAttributesAllGather
+    ENTRY main {
+      p0 = f32[16,10] parameter(0)
+      start = f32[32,10] custom-call(p0), custom_call_target="all-gather-start",
+          frontend_attributes={async_collective_config="{\"all_gather_dimension\":0,\"replica_groups\":[[0,1]]}",_xla_stream_annotation="1",start_tag="gather"}
+      ROOT done = f32[32,10] custom-call(start), custom_call_target="all-gather-done",
+          frontend_attributes={_xla_stream_annotation="1",done_tag="wait"}
+    }
+  )";
+
+  for (bool use_legacy_collectives : {true, false}) {
+    SCOPED_TRACE(use_legacy_collectives ? "use_legacy_collectives=true"
+                                        : "use_legacy_collectives=false");
+
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         ParseAndReturnUnverifiedModule(all_gather_hlo));
+    const HloInstruction* original_done =
+        module->entry_computation()->root_instruction();
+    const auto done_attrs = original_done->frontend_attributes();
+    const auto start_attrs = original_done->operand(0)->frontend_attributes();
+
+    // Run the rewriter.
+    AsyncCollectiveCustomCallRewriter rewriter(use_legacy_collectives);
+    ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+    EXPECT_TRUE(changed);
+
+    // Get the updated start/done instructions.
+    const HloInstruction* done =
+        module->entry_computation()->root_instruction();
+    const HloInstruction* start = done->operand(0);
+
+    // Updated start/done have the expected opcodes.
+    EXPECT_EQ(start->opcode(), use_legacy_collectives
+                                   ? HloOpcode::kAllGatherStart
+                                   : HloOpcode::kAsyncStart);
+    EXPECT_EQ(done->opcode(), use_legacy_collectives ? HloOpcode::kAllGatherDone
+                                                     : HloOpcode::kAsyncDone);
+
+    //  Frontend attributes are still present.
+    EXPECT_THAT(start->frontend_attributes().map(),
+                ::testing::UnorderedElementsAreArray(start_attrs.map()));
+    EXPECT_THAT(done->frontend_attributes().map(),
+                ::testing::UnorderedElementsAreArray(done_attrs.map()));
+  }
+}
 }  // namespace
 }  // namespace xla

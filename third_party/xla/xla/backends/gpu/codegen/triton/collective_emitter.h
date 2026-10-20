@@ -24,12 +24,12 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Builders.h"
-#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Support/LLVM.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
+#include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -45,15 +45,6 @@ class GpuTopology;
 }  // namespace xla
 
 namespace xla::gpu {
-
-// Flattens instructions inside a > 1D collective fusion to 1D instructions
-// inplace. For example, a 2D computation with shape [2, 3] will be flattened to
-// a 1D computation with shape [6] with surrounding bitcasts inserted in the
-// parent computation.
-// NB: This should only be used if the fused computation  only contains
-// elementwise operations (and the collective itself).
-absl::Status FlattenCollectiveFusion(
-    HloFusionInstruction* absl_nonnull fusion_instr);
 
 // Returns a tile such that each dimension is a power of two and that the total
 // number of blocks does not exceed num_blocks. Returns the tile sizes in
@@ -101,23 +92,43 @@ absl::StatusOr<std::vector<Shape>> GetCollectiveUnmanagedKernelArguments(
 mlir::LogicalResult RewriteAllReduce(mlir::stablehlo::AllReduceOp op,
                                      mlir::PatternRewriter& rewriter);
 
-// Creates a lightweight codegen config from the collective HLO instruction.
-// The returned config drives codegen decisions (e.g. whether the runtime must
-// copy the input to scratch before kernel launch).
-CollectiveCodegenConfig CreateCollectiveCodegenConfig(
-    const HloInstruction* instr);
+// Rewrites stablehlo all-gather op to a triton implementation.
+mlir::LogicalResult RewriteAllGather(mlir::stablehlo::AllGatherOp op,
+                                     mlir::PatternRewriter& rewriter);
 
+// Rewrites stablehlo all-to-all op to a triton implementation.
+mlir::LogicalResult RewriteAllToAll(mlir::stablehlo::AllToAllOp op,
+                                    mlir::PatternRewriter& rewriter);
+
+// Rewrites xtile reduce-scatter op to a triton implementation.
+mlir::LogicalResult RewriteReduceScatter(xla::xtile::ReduceScatterOp op,
+                                         mlir::PatternRewriter& rewriter);
+
+// Returns the symmetric memory type for the scratch buffers of the collective
+// kernel emitted for `instr` (a collective or a collective fusion), or an error
+// if the collective is cross-host and cross-host symmetric memory collectives
+// are not supported on `gpu_topology`.
+absl::StatusOr<SymmetricMemoryType> GetSymmetricMemoryType(
+    const GpuTopology& gpu_topology, const HloInstruction& instr,
+    const DeviceAssignment* device_assignment = nullptr);
 // Creates a CollectiveKernelSpec for a given collective or fusion instruction.
+// `scratch_memory_type` is used for all scratch buffers.
 absl::StatusOr<CollectiveKernelSpec> CreateCollectiveKernelSpec(
-    const HloInstruction* instr, const LaunchDimensions& launch_dimensions);
+    const HloInstruction* instr, const LaunchDimensions& launch_dimensions,
+    SymmetricMemoryType scratch_memory_type);
 
-// Emits a collective entry barrier at the start of the entry function in
-// |module|. The barrier ensures all ranks have completed their D2D copies
-// before any rank starts reading from the symmetric scratch buffers.
-// Uses the opaque metadata args (rank, signal_value, signal_buffers) already
-// present in the EntryFuncOp.
-absl::Status EmitCollectiveEntryBarrier(mlir::ModuleOp module,
-                                        int32_t world_size);
+// Reshapes a reduce-scatter fusion (whose root is a reduce-scatter that
+// satisfies IsReduceScatterFlattenable) to a 2D reduce-scatter along dimension
+// 0: the fused parameter becomes [R * R, OutputSize / R] and the root
+// [R, OutputSize / R], where R is the number of replicas per group.
+// Bitcasts are inserted around the fusion in the parent computation.
+absl::Status FlattenReduceScatterFusion(
+    HloFusionInstruction* absl_nonnull fusion_instr);
+
+// Returns the collective instruction (all-reduce, all-gather, all-to-all, or
+// reduce-scatter) of a collective fusion computation, or nullptr if there is
+// none.
+const HloInstruction* GetCollectiveHero(const HloComputation* computation);
 
 }  // namespace xla::gpu
 #endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_COLLECTIVE_EMITTER_H_

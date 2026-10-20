@@ -70,9 +70,11 @@ class ConfigAssigner {
 
   using Config = CodegenOrchestrator::Config;
 
+  // If `optimal_config_cache` is null, the config-assigner neither reads from
+  // nor writes to any autotune cache.
   static absl::StatusOr<std::unique_ptr<ConfigAssigner>> Create(
       Options options,
-      absl_nonnull std::unique_ptr<AutotunerCacheInterface>
+      absl_nullable std::unique_ptr<AutotunerCacheInterface>
           optimal_config_cache,
       absl_nonnull std::unique_ptr<CodegenOrchestrator> orchestrator,
       absl_nullable std::unique_ptr<Autotuner> autotuner,
@@ -94,7 +96,7 @@ class ConfigAssigner {
 
  private:
   ConfigAssigner(Options options,
-                 absl_nonnull std::unique_ptr<AutotunerCacheInterface> cache,
+                 absl_nullable std::unique_ptr<AutotunerCacheInterface> cache,
                  absl_nonnull std::unique_ptr<CodegenOrchestrator> orchestrator,
                  absl_nullable std::unique_ptr<Autotuner> autotuner,
                  tsl::thread::ThreadPool* thread_pool,
@@ -142,16 +144,18 @@ class ConfigAssigner {
       const HloInstruction* instr);
 
   // Returns the cached config for the given HLO instruction, if any.
-  // Otherwise, returns std::nullopt.
+  // Otherwise (including when there is no cache), returns std::nullopt.
   std::optional<Config> LookUp(const HloInstruction* instr) const;
   // Inserts the given config into the cache for the given HLO instruction.
+  // No-op if there is no cache.
   absl::Status Insert(const HloInstruction* instr, const Config& config);
 
   // Dumps HLO before and after applying the config.
   absl::Status DumpHlo(const HloInstruction& instr, const Config& config);
 
   Options options_;
-  absl_nonnull std::unique_ptr<AutotunerCacheInterface> optimal_config_cache_;
+  // Null if the config-assigner must not use any autotune cache.
+  absl_nullable std::unique_ptr<AutotunerCacheInterface> optimal_config_cache_;
   absl_nonnull std::unique_ptr<CodegenOrchestrator> orchestrator_;
   absl_nullable std::unique_ptr<Autotuner> autotuner_;
   tsl::thread::ThreadPool* thread_pool_ = nullptr;

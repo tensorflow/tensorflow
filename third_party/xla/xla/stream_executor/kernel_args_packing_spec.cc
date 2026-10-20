@@ -90,6 +90,39 @@ KernelArgPackingSpec KernelArgPackingSpec::BuildArgRelocation(
           KernelArgPackingRelocation::Kind::kBits64Absolute, argument_index)});
 }
 
+KernelArgsPackingSpec KernelArgsPackingSpec::Identity(int num_args) {
+  CHECK_GE(num_args, 0);
+  std::vector<KernelArgPackingSpec> kernel_arguments;
+  kernel_arguments.reserve(num_args);
+  for (int i = 0; i < num_args; ++i) {
+    kernel_arguments.push_back(KernelArgPackingSpec::BuildArgRelocation(i));
+  }
+  return KernelArgsPackingSpec(std::move(kernel_arguments));
+}
+
+std::optional<int> KernelArgsPackingSpec::MaxArgumentIndex() const {
+  std::optional<int> max_index;
+  for (const KernelArgPackingSpec& kernel_argument : kernel_arguments_) {
+    std::optional<int> index = kernel_argument.relocation_argument_index();
+    if (index.has_value() && (!max_index.has_value() || *index > *max_index)) {
+      max_index = index;
+    }
+  }
+  return max_index;
+}
+
+absl::Status KernelArgsPackingSpec::Validate(size_t num_available_args) const {
+  std::optional<int> max_index = MaxArgumentIndex();
+  if (max_index.has_value() &&
+      static_cast<size_t>(*max_index) >= num_available_args) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "Kernel arguments packing spec refers to device buffer %d, but only "
+        "%zu buffers are available",
+        *max_index, num_available_args));
+  }
+  return absl::OkStatus();
+}
+
 absl::StatusOr<std::unique_ptr<KernelArgsPackedVector>>
 KernelArgsPackingSpec::BuildArguments(
     absl::Span<const std::unique_ptr<PackedArgBase>> args,

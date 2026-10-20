@@ -46,7 +46,7 @@ class Tensor;
 // that interfaces with the `Session` layer.
 class NodeExecStatsInterface {
  public:
-  virtual ~NodeExecStatsInterface() {}
+  virtual ~NodeExecStatsInterface() = default;
 
   // Called when the statistics collection for the node has finished. Once this
   // method is called, the caller should not make assumptions about the validity
@@ -137,7 +137,7 @@ class NodeExecStatsWrapper : public NodeExecStatsInterface {
 // that interfaces with the `Session` layer.
 class StepStatsCollectorInterface {
  public:
-  virtual ~StepStatsCollectorInterface() {}
+  virtual ~StepStatsCollectorInterface() = default;
 
   // Creates an instance of `NodeExecStatsInterface` that should be used for
   // collecting statistics about individual node execution.

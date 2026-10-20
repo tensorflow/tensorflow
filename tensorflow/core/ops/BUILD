@@ -165,6 +165,7 @@ tf_gen_op_libs(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -556,6 +557,7 @@ tf_cc_test(
         "linalg_ops_test.cc",
         "lookup_ops_test.cc",
         "math_ops_test.cc",
+        "nccl_ops_test.cc",
         "nn_ops_test.cc",
         "parsing_ops_test.cc",
         "random_ops_test.cc",

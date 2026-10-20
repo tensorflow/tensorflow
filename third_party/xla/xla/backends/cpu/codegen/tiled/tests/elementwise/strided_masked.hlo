@@ -31,7 +31,7 @@ ENTRY main {
 // CHECK-LABEL: xtile.entry_func @wrapped_fusion
 // CHECK-SAME:    %[[ARG0:[^:]+]]: memref<10xf32>,
 // CHECK-SAME:    %[[ARG1:[^:]+]]: memref<3xf32>,
-// CHECK-SAME:    %[[PID:[^:]+]]: index)
+// CHECK-SAME:    %[[PID:[^:]+]]: index {xla.range = [0 : index, 0 : index]})
 // CHECK:         %[[C1:.*]] = arith.constant 1 : index
 // CHECK:         %[[EXT:.*]] = xtile.extract %[[ARG0]][%[[C1]]] [16] [2] : memref<10xf32> -> tensor<16xf32>
 // CHECK:         %[[C0:.*]] = arith.constant 0 : index

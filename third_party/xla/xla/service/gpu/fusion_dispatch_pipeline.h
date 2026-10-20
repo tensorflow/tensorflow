@@ -18,9 +18,14 @@ limitations under the License.
 
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"
+
+namespace tsl::thread {
+class ThreadPool;
+}  // namespace tsl::thread
 
 namespace xla {
 namespace gpu {
@@ -30,7 +35,9 @@ namespace gpu {
 HloPassPipeline FusionDispatchPipeline(
     const se::DeviceDescription& device_description,
     HloCostAnalysis::ShapeSizeFunction shape_size_fn,
-    mlir::MLIRContext* mlir_context);
+    mlir::MLIRContext* mlir_context,
+    tsl::thread::ThreadPool* thread_pool = nullptr,
+    MlirContextPool* mlir_context_pool = nullptr);
 
 }  // namespace gpu
 }  // namespace xla

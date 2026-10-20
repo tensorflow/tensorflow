@@ -138,6 +138,10 @@ xla_cc_test(
 cc_library(
     name = "pjrt_c_api_megascale_extension_hdrs",
     hdrs = ["pjrt_c_api_megascale_extension.h"],
+    visibility = internal_visibility([
+        "//xla:internal",
+        "//xla/megascale:internal",
+    ]),
     deps = [
         ":pjrt_c_api_hdrs",
         ":pjrt_c_api_multi_slice_extension_hdrs",
@@ -147,6 +151,10 @@ cc_library(
 cc_library(
     name = "pjrt_c_api_multi_slice_extension_hdrs",
     hdrs = ["pjrt_c_api_multi_slice_extension.h"],
+    visibility = internal_visibility([
+        "//xla:internal",
+        "//xla/megascale:internal",
+    ]),
     deps = [":pjrt_c_api_hdrs"],
 )
 
@@ -434,6 +442,7 @@ cc_library(
         ":pjrt_c_api_multi_slice_internal_types",
         ":pjrt_c_api_shardings_extension_hdrs",
         ":pjrt_c_api_status_utils",
+        "//xla:custom_options",
         "//xla:future",
         "//xla:literal",
         "//xla:shape_util",
@@ -451,7 +460,6 @@ cc_library(
         "//xla/pjrt:pjrt_device_dimensions",
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:pjrt_layout",
-        "//xla/pjrt:pjrt_stream_executor_client",
         "//xla/pjrt:raw_buffer",
         "//xla/pjrt:scoped_async_tracking_event",
         "//xla/pjrt/distributed:key_value_store_interface",
@@ -667,11 +675,11 @@ cc_library(
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt/extensions/abi_version:gpu_abi_version_extension",
         "//xla/pjrt/extensions/cross_host_transfers:pjrt_c_api_cross_host_transfer_extension",
+        "//xla/pjrt/gpu:allocator_config",
         "//xla/pjrt/gpu:gpu_helpers",
         "//xla/pjrt/gpu:se_gpu_pjrt_client",
         "//xla/pjrt/gpu:se_gpu_pjrt_compiler",  # buildcleaner: keep to register GPU AOT compiler
         "//xla/pjrt/gpu:se_gpu_topology_description",
-        "//xla/pjrt/plugin/xla_gpu:xla_gpu_allocator_config",
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
         "//xla/python:custom_call_batch_partitioner",
         "//xla/python:custom_partition_callback",
@@ -690,6 +698,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/time",
         "@com_google_protobuf//:protobuf",
     ] + if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",

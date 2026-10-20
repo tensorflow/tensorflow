@@ -15,7 +15,7 @@ fusion {
 // CHECK-LABEL: xtile.entry_func @wrapped_fusion(
 // CHECK-SAME:     %[[LHS:[^:]+]]: memref<4x8xcomplex<f32>>,
 // CHECK-SAME:     %[[OUT:[^:]+]]: memref<4x8xcomplex<f32>>,
-// CHECK-SAME:     %[[PID:[^:]+]]: index)
+// CHECK-SAME:     %[[PID:[^:]+]]: index {xla.range = [0 : index, 0 : index]})
 
 // CHECK-DAG:   %[[CST:.*]] = arith.constant dense<(1.000000e+00,2.000000e+00)> : tensor<complex<f32>>
 // CHECK:       %[[T_0:.*]] = xtile.extract %[[LHS]]
@@ -26,7 +26,7 @@ fusion {
 // NEW-VECTOR-LABEL: func.func @wrapped_fusion_impl(
 // NEW-VECTOR-SAME:    %[[LHS:[^:]+]]: memref<4x8x2xf32>,
 // NEW-VECTOR-SAME:    %[[OUT:[^:]+]]: memref<4x8x2xf32>,
-// NEW-VECTOR-SAME:    %[[PID:[^:]+]]: index)
+// NEW-VECTOR-SAME:    %[[PID:[^:]+]]: index {xla.range = [0 : index, 0 : index]})
 
 // NEW-VECTOR-DAG:   %[[CST:.*]] = arith.constant dense<[1.000000e+00, 2.000000e+00]> : vector<2xf32>
 // NEW-VECTOR:       vector.transfer_read %[[LHS]]

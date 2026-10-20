@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/layout.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/blas.h"
@@ -59,6 +60,16 @@ absl::StatusOr<bool> IsMatrixMultiplicationTooSmallForRewriting(
 // emitters cannot handle some dots, e.g., i8[] x i8[] -> i32[] dots,
 // so we need to always use cuBLAS or Triton for those.
 bool IsDotSupportedByClassicalEmitters(const HloInstruction& dot);
+
+// Returns true if GEMMs require the contracting dimensions of both operands of
+// `dot` to be physically minor (s8 x s8 -> s32, and FP8 before Blackwell).
+bool DotRequiresMinorContractingDims(
+    const HloInstruction& dot, const se::GpuComputeCapability& gpu_version);
+
+// Returns true if the most minor physical dimensions of `layout` are exactly
+// `contracting_dims`.
+bool AreContractingDimsMinor(const Layout& layout,
+                             absl::Span<const int64_t> contracting_dims);
 
 // Returns the accumulator type for the given dot instruction (either extracted
 // from the dot algorithm or inferred from the output type).

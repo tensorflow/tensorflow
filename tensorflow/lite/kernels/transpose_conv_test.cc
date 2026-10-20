@@ -186,6 +186,45 @@ TEST(TransposeConvPrepareSecurityTest, RejectsCol2ImOverflow) {
   EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
 }
 
+TEST(TransposeConvPrepareSecurityTest, RejectsCol2ImTotalElementsOverflow) {
+  if (sizeof(void*) <= 4) {
+    GTEST_SKIP() << "Interpreter construction overflows before kernel Prepare "
+                    "on 32-bit.";
+  }
+  // col2im_rows = 512 * 512 = 262,144 and col2im_columns = 2048 * 2 * 2 = 8192
+  // both fit in int32_t, but col2im_rows * col2im_columns = 2^31 overflows
+  // 32-bit signed int.
+  PrepareOnlyTransposeConvOpModel<uint8_t> m(
+      ops::builtin::Register_TRANSPOSECONV_GENERIC_OPT(), {1, 512, 512, 2048},
+      {TensorType_UINT8, {2048, 2, 2, 1}, 0.0f, 255.0f},
+      {TensorType_UINT8, {1, 512, 512, 1}, 0.0f, 255.0f},
+      {TensorType_UINT8, {}, 0.0f, 255.0f}, Padding_SAME, /*stride_w=*/1,
+      /*stride_h=*/1, ActivationFunctionType_NONE);
+
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST(TransposeConvPrepareSecurityTest, RejectsOutputElementCountOverflow) {
+  if (sizeof(void*) <= 4) {
+    GTEST_SKIP() << "Interpreter construction overflows before kernel Prepare "
+                    "on 32-bit.";
+  }
+  // With stride 2, input has 23171 * 23171 = 536,895,241 <= INT32_MAX elements,
+  // while output_shape has 46342 * 46342 = 2,147,580,964 > INT32_MAX elements.
+  for (TfLiteRegistration* registration :
+       {ops::builtin::Register_TRANSPOSECONV_REF(),
+        ops::builtin::Register_TRANSPOSECONV_GENERIC_OPT()}) {
+    PrepareOnlyTransposeConvOpModel<int8_t> m(
+        registration, {1, 46342, 46342, 1},
+        {TensorType_INT8, {1, 1, 1, 1}, -1.0f, 1.0f},
+        {TensorType_INT8, {1, 23171, 23171, 1}, -1.0f, 1.0f},
+        {TensorType_INT8, {}, -1.0f, 1.0f}, Padding_SAME, /*stride_w=*/2,
+        /*stride_h=*/2, ActivationFunctionType_NONE);
+
+    EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+  }
+}
+
 TEST(TransposeConvPrepareSecurityTest, RejectsHybridInputOverflow) {
   if (sizeof(void*) <= 4) {
     GTEST_SKIP() << "Interpreter construction overflows before kernel Prepare "

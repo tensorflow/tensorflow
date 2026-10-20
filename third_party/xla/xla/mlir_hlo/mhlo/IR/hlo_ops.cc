@@ -384,10 +384,12 @@ INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(DivOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(DomainOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(ErfOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(ExpOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(Exp2Op)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(Expm1Op)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(FloorOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(LogOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(Log1pOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(Log2Op)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(LogisticOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(MaxOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(MinOp)
@@ -1307,6 +1309,19 @@ LogicalResult ExpOp::verify() {
 }
 
 // ===---------------------------------------------------------------------===//
+// Exp2Op
+//===----------------------------------------------------------------------===//
+
+LogicalResult Exp2Op::verify() {
+  if (auto attr = getResultAccuracyAttr()) {
+    return ResultAccuracyAttr::verify([&] { return emitError(); },
+                                      attr.getAtol(), attr.getRtol(),
+                                      attr.getUlps(), attr.getMode());
+  }
+  return success();
+}
+
+// ===---------------------------------------------------------------------===//
 // Expm1Op
 //===----------------------------------------------------------------------===//
 
@@ -1337,6 +1352,19 @@ LogicalResult LogOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult Log1pOp::verify() {
+  if (auto attr = getResultAccuracyAttr()) {
+    return ResultAccuracyAttr::verify([&] { return emitError(); },
+                                      attr.getAtol(), attr.getRtol(),
+                                      attr.getUlps(), attr.getMode());
+  }
+  return success();
+}
+
+// ===---------------------------------------------------------------------===//
+// Log2Op
+//===----------------------------------------------------------------------===//
+
+LogicalResult Log2Op::verify() {
   if (auto attr = getResultAccuracyAttr()) {
     return ResultAccuracyAttr::verify([&] { return emitError(); },
                                       attr.getAtol(), attr.getRtol(),
@@ -6325,7 +6353,10 @@ LogicalResult CompareOp::inferReturnTypeComponents(
     mlir::PropertyRef properties, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   CompareOp::Adaptor adaptor(operands, attributes, properties, regions);
-  return hlo::inferCompareOp(context, location, adaptor.getLhs(),
+  std::optional<StringRef> compareType;
+  if (auto attr = adaptor.getCompareType())
+    compareType = stringifyComparisonType(*attr);
+  return hlo::inferCompareOp(context, location, adaptor.getLhs(), compareType,
                              inferredReturnShapes);
 }
 
@@ -6422,6 +6453,12 @@ OpFoldResult CompareOp::fold(FoldAdaptor adaptor) {
   }
 
   if (!operands[0] || !operands[1]) {
+    return {};
+  }
+
+  if (isa<FloatType>(opElType) && getCompareType() &&
+      *getCompareType() != ComparisonType::NOTYPE &&
+      *getCompareType() != ComparisonType::FLOAT) {
     return {};
   }
 

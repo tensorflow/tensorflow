@@ -22,12 +22,15 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <type_traits>
 
+#include "absl/base/casts.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
 #include "xla/stream_executor/gpu/topk_kernel.h"
 #include "xla/stream_executor/kernel_symbol_registry.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/tsl/lib/math/math_util.h"
+#include "xla/types.h"
 
 // https://rocm.docs.amd.com/en/latest/about/release-notes.html#amdgpu-wavefront-size-compiler-macro-deprecation
 #if defined(__GFX9__)
@@ -65,15 +68,103 @@ __device__ __forceinline__ NT GpuShuffle(NT val, uint32_t idx,
   return res.v;
 }
 
+// Converts IEEE 754 floating-point keys (e.g., 32-bit float and 16-bit
+// bfloat16) to order-preserving unsigned integers. This establishes a
+// well-defined total ordering, properly handling special values such as NaNs
+// and signed zeroes during integer sorting.
+namespace details {
+
+template <typename T>
+struct OrderedTraits {
+  using Type = T;
+  static __device__ __forceinline__ Type ToOrdered(T x) { return x; }
+  static __device__ __forceinline__ T FromOrdered(Type val) { return val; }
+};
+
+template <>
+struct OrderedTraits<float> {
+  using Type = uint32_t;
+
+  static __device__ __forceinline__ Type ToOrdered(float x) {
+    uint32_t val = absl::bit_cast<uint32_t>(x);
+    return (val & 0x80000000u) ? ~val : (val | 0x80000000u);
+  }
+
+  static __device__ __forceinline__ float FromOrdered(Type val) {
+    uint32_t u = (val & 0x80000000u) ? (val ^ 0x80000000u) : ~val;
+    return absl::bit_cast<float>(u);
+  }
+};
+
+template <>
+struct OrderedTraits<xla::bfloat16> {
+  using Type = uint16_t;
+
+  static __device__ __forceinline__ Type ToOrdered(xla::bfloat16 x) {
+    uint16_t val = absl::bit_cast<uint16_t>(x);
+    return (val & 0x8000u) ? static_cast<uint16_t>(~val)
+                           : static_cast<uint16_t>(val | 0x8000u);
+  }
+
+  static __device__ __forceinline__ xla::bfloat16 FromOrdered(Type val) {
+    uint16_t u = (val & 0x8000u) ? static_cast<uint16_t>(val ^ 0x8000u)
+                                 : static_cast<uint16_t>(~val);
+    return absl::bit_cast<xla::bfloat16>(u);
+  }
+};
+
+template <>
+struct OrderedTraits<xla::half> {
+  using Type = uint16_t;
+
+  static __device__ __forceinline__ Type ToOrdered(xla::half x) {
+    uint16_t val = absl::bit_cast<uint16_t>(x);
+    return (val & 0x8000u) ? static_cast<uint16_t>(~val)
+                           : static_cast<uint16_t>(val | 0x8000u);
+  }
+
+  static __device__ __forceinline__ xla::half FromOrdered(Type val) {
+    uint16_t u = (val & 0x8000u) ? static_cast<uint16_t>(val ^ 0x8000u)
+                                 : static_cast<uint16_t>(~val);
+    return absl::bit_cast<xla::half>(u);
+  }
+};
+
+}  // namespace details
+
 // Default implementation for KV holder. Useful for testing while adding support
 // for a new type, but generally bitpacking those values is more efficient. See
 // implementations below.
 template <typename T, typename V>
 struct Descending {
+  using OrderedKey = typename details::OrderedTraits<T>::Type;
   struct KVT {
-    T key;
+    OrderedKey key;
     V idx;
   };
+
+  static __device__ __forceinline__ OrderedKey ToOrdered(T x) {
+    return details::OrderedTraits<T>::ToOrdered(x);
+  }
+  static __device__ __forceinline__ T FromOrdered(OrderedKey x) {
+    return details::OrderedTraits<T>::FromOrdered(x);
+  }
+
+  __device__ __forceinline__ static bool cmp(const KVT& lhs, const KVT& rhs) {
+    return lhs.key == rhs.key ? lhs.idx < rhs.idx : lhs.key > rhs.key;
+  }
+};
+
+template <typename T, typename V>
+struct PartialOrderDescending {
+  using OrderedKey = T;
+  struct KVT {
+    OrderedKey key;
+    V idx;
+  };
+
+  static __device__ __forceinline__ OrderedKey ToOrdered(T x) { return x; }
+  static __device__ __forceinline__ T FromOrdered(OrderedKey x) { return x; }
 
   __device__ __forceinline__ static bool cmp(const KVT& lhs, const KVT& rhs) {
     return lhs.key == rhs.key ? lhs.idx < rhs.idx : lhs.key > rhs.key;
@@ -156,7 +247,7 @@ struct TopK {
   using Trait = Traits<KT, VT>;
   using KVT = typename Trait::KVT;
 
-  __device__ TopK(void* buffer, int num_outputs)
+  __device__ __forceinline__ TopK(void* buffer, int num_outputs)
       : buffer_(reinterpret_cast<KVT*>(buffer)), num_outputs_(num_outputs) {}
 
   __device__ __forceinline__ uint32_t Idx(uint32_t i) {
@@ -164,12 +255,12 @@ struct TopK {
   }
 
   // Compute a per-warp topk of a slice of data.
-  __device__ void PerWarpTopK(KT* key, int n) {
+  __device__ __forceinline__ void PerWarpTopK(KT* key, int n) {
     KVT tmp[K];
     // TODO(doak): Use bitonic sort.
 #pragma unroll
     for (int i = 0; i < K; i++) {
-      tmp[i] = {key[Idx(i)], VT(Idx(i))};
+      tmp[i] = {Trait::ToOrdered(key[Idx(i)]), VT(Idx(i))};
     }
 #pragma unroll
     for (int i = 0; i < K; i++) {
@@ -185,7 +276,7 @@ struct TopK {
     constexpr uint32_t WarpSize = WAVEFRONT_SIZE;
 
     for (int idx = K; idx < n; idx++) {
-      KVT kv{key[Idx(idx)], VT(Idx(idx))};
+      KVT kv{Trait::ToOrdered(key[Idx(idx)]), VT(Idx(idx))};
       Push(tmp, kv);
     }
     Reduce(tmp, WarpSize);
@@ -200,7 +291,7 @@ struct TopK {
 
   // Merge the per-warp topks into a single topk. The final data is written to
   // `keys` and `idxs`
-  __device__ void MergeTopKs(KT* keys, uint32_t* idxs) {
+  __device__ __forceinline__ void MergeTopKs(KT* keys, uint32_t* idxs) {
     constexpr uint32_t WarpSize = WAVEFRONT_SIZE;
     KVT tmp[K];
     // We only use one warp for this step.
@@ -213,7 +304,7 @@ struct TopK {
     Reduce(tmp, blockDim.x / WarpSize);
     if (threadIdx.x != 0) return;
     for (int i = 0; i < num_outputs_; ++i) {
-      keys[i] = tmp[i].key;
+      keys[i] = Trait::FromOrdered(tmp[i].key);
       idxs[i] = tmp[i].idx;
     }
   }
@@ -285,9 +376,28 @@ __launch_bounds__(stream_executor::gpu::kTopKMaxThreadsPerBlock, 1) __global__
   obj.MergeTopKs(vals_out, idxs_out);
 }
 
+template <size_t K, typename KT, typename VT>
+__launch_bounds__(stream_executor::gpu::kTopKMaxThreadsPerBlock, 1) __global__
+    void RunPartialOrder(KT* data, int n, KT* result, uint32_t* result_idxs,
+                         int k) {
+  TopK<K, KT, VT, PartialOrderDescending> obj(shmem, k);
+
+  const uint32_t bidx = blockIdx.x;
+  auto in = data + n * bidx;
+  auto vals_out = result + k * bidx;
+  auto idxs_out = result_idxs + k * bidx;
+  int slice_size = n / blockDim.x;
+  if (threadIdx.x < n % blockDim.x) {
+    slice_size++;
+  }
+
+  obj.PerWarpTopK(in, slice_size);
+  obj.MergeTopKs(vals_out, idxs_out);
+}
+
 #define KERNEL_TRAIT(K_VAL, TYPE, VT) \
-  stream_executor::gpu::TopKKernel<K_VAL, TYPE, VT>
-#define REGISTER_TOPK_KERNEL(K_VAL, TYPE, VT)                                 \
+  stream_executor::gpu::TopKTotalOrderKernel<K_VAL, TYPE, VT>
+#define REGISTER_TOPK_TOTAL_ORDER_KERNEL(K_VAL, TYPE, VT)                     \
   GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(                             \
       TopKKernelRocm_K##K_VAL##_##TYPE##_##VT, KERNEL_TRAIT(K_VAL, TYPE, VT), \
       stream_executor::rocm::kROCmPlatformId, ([](size_t arity) {             \
@@ -300,6 +410,25 @@ __launch_bounds__(stream_executor::gpu::kTopKMaxThreadsPerBlock, 1) __global__
   KERNEL_SYMBOL_REGISTRY_REGISTER_SYMBOL_STATICALLY(                          \
       topk_k##K_VAL##_##TYPE##_##VT, stream_executor::rocm::kROCmPlatformId,  \
       (&Run<K_VAL, TYPE, VT>));
+
+#define PARTIAL_ORDER_KERNEL_TRAIT(K_VAL, TYPE, VT) \
+  stream_executor::gpu::TopKPartialOrderKernel<K_VAL, TYPE, VT>
+#define REGISTER_TOPK_PARTIAL_ORDER_KERNEL(K_VAL, TYPE, VT)               \
+  GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(                         \
+      TopKPartialOrderKernelRocm_K##K_VAL##_##TYPE##_##VT,                \
+      PARTIAL_ORDER_KERNEL_TRAIT(K_VAL, TYPE, VT),                        \
+      stream_executor::rocm::kROCmPlatformId, ([](size_t arity) {         \
+        return stream_executor::KernelLoaderSpec::                        \
+            CreateSerializableInProcessSymbolSpec(                        \
+                /*persistent_kernel_name=*/"topk_partial_order_k" #K_VAL  \
+                                           "_" #TYPE "_" #VT,             \
+                absl::bit_cast<void*>(&RunPartialOrder<K_VAL, TYPE, VT>), \
+                "topk_partial_order_k" #K_VAL "_" #TYPE "_" #VT, arity);  \
+      }));                                                                \
+  KERNEL_SYMBOL_REGISTRY_REGISTER_SYMBOL_STATICALLY(                      \
+      topk_partial_order_k##K_VAL##_##TYPE##_##VT,                        \
+      stream_executor::rocm::kROCmPlatformId,                             \
+      (&RunPartialOrder<K_VAL, TYPE, VT>));
 
 }  // namespace stream_executor::rocm
 

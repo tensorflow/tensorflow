@@ -25,11 +25,13 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "flatbuffers/buffer.h"  // from @flatbuffers
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
+#include "tensorflow/compiler/mlir/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/kernels/register.h"
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 #include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
 
@@ -52,6 +54,75 @@ NewXnnPackDelegateSupportingVariableOps() {
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(&options),
                        TfLiteXNNPackDelegateDelete);
   return xnnpack_delegate;
+}
+
+std::vector<char> VariableOpsTester::CreateModelAssignOnly() const {
+  constexpr int32_t kInputTensorIndex = 0;
+  constexpr int32_t kVarHandleTensorIndex = 1;
+  constexpr size_t kNumSubgraphs = 1;
+  constexpr char kContainerName[] = "container";
+  constexpr char kSharedName[] = "shared_name";
+  constexpr char kModelDescription[] = "AssignVariable model";
+
+  flatbuffers::FlatBufferBuilder builder;
+
+  // Keep the same operator code indices (VAR_HANDLE, READ_VARIABLE,
+  // ASSIGN_VARIABLE) used across all VariableOpsTester models.
+  const std::vector<flatbuffers::Offset<OperatorCode>> operator_codes = {
+      CreateOperatorCode(builder, BuiltinOperator_VAR_HANDLE),
+      CreateOperatorCode(builder, BuiltinOperator_READ_VARIABLE),
+      CreateOperatorCode(builder, BuiltinOperator_ASSIGN_VARIABLE),
+  };
+
+  const std::vector<flatbuffers::Offset<Buffer>> buffers{{
+      CreateBuffer(builder, builder.CreateVector({})),
+  }};
+
+  // Tensor 0 is the graph input; tensor 1 is the VAR_HANDLE resource output.
+  const std::vector<flatbuffers::Offset<Tensor>> tensors{{
+      CreateTensor(
+          builder,
+          builder.CreateVector<int32_t>(Shape().data(), Shape().size()),
+          TensorType_FLOAT32),
+      CreateTensor(builder,
+                   builder.CreateVector<int32_t>(ResourceShape().data(),
+                                                 ResourceShape().size()),
+                   TensorType_RESOURCE),
+  }};
+
+  // Create VAR_HANDLE and ASSIGN_VARIABLE operators with no subgraph outputs.
+  const flatbuffers::Offset<Operator> var_handle_op = CreateOperator(
+      builder, /*opcode_index=*/VAR_HANDLE,
+      /*inputs=*/builder.CreateVector<int32_t>({}),
+      /*outputs=*/builder.CreateVector<int32_t>({kVarHandleTensorIndex}),
+      tflite::BuiltinOptions_VarHandleOptions,
+      CreateVarHandleOptions(builder, builder.CreateString(kContainerName),
+                             builder.CreateString(kSharedName))
+          .Union());
+
+  const flatbuffers::Offset<Operator> assign_op = CreateOperator(
+      builder, /*opcode_index=*/ASSIGN_VARIABLE,
+      /*inputs=*/
+      builder.CreateVector<int32_t>({kVarHandleTensorIndex, kInputTensorIndex}),
+      /*outputs=*/builder.CreateVector<int32_t>({}));
+
+  const flatbuffers::Offset<SubGraph> subgraph = CreateSubGraph(
+      builder, builder.CreateVector(tensors.data(), tensors.size()),
+      /*inputs=*/builder.CreateVector<int32_t>({kInputTensorIndex}),
+      /*outputs=*/builder.CreateVector<int32_t>({}),
+      builder.CreateVector({var_handle_op, assign_op}));
+
+  const flatbuffers::Offset<Model> model_buffer = CreateModel(
+      builder, /*version=*/TFLITE_SCHEMA_VERSION,
+      builder.CreateVector(operator_codes.data(), operator_codes.size()),
+      builder.CreateVector(&subgraph, /*len=*/kNumSubgraphs),
+      builder.CreateString(kModelDescription),
+      builder.CreateVector(buffers.data(), buffers.size()));
+
+  builder.Finish(model_buffer);
+
+  return std::vector<char>(builder.GetBufferPointer(),
+                           builder.GetBufferPointer() + builder.GetSize());
 }
 
 std::vector<char> VariableOpsTester::CreateModelAssignThenRead() const {

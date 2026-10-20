@@ -20,6 +20,10 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/shape.h"
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -36,13 +40,55 @@ class BroadcastToOp : public XlaOpKernel {
     OP_REQUIRES_OK(context,
                    context->ConstantInputAsShape(
                        1, &output_shape, xla::ValueInferenceMode::kUpperBound));
+    std::vector<bool> dynamic_dims;
+    OP_REQUIRES_OK(
+        context, context->ResolveInputDynamismIntoPredVector(1, &dynamic_dims));
+
+    // xla::BroadcastTo also tiles an input dimension into an output dimension
+    // that is a multiple of it, but TensorFlow only broadcasts dimensions of
+    // size 1. Check TensorFlow's rules, with the BroadcastTo kernel's errors.
+    // A dynamic size is only known by its bound here.
+    const TensorShape input_shape = context->InputShape(0);
+    OP_REQUIRES(context, input_shape.dims() <= output_shape.dims(),
+                errors::InvalidArgument(
+                    "Rank of input (", input_shape.dims(),
+                    ") must be no greater than rank of output shape (",
+                    output_shape.dims(), ")."));
+    // The input's XLA shape is only needed to check whether a dimension that
+    // doesn't match is dynamic, so look it up only then.
+    bool has_input_xla_shape = false;
+    xla::Shape input_xla_shape;
+    const int rank_difference = output_shape.dims() - input_shape.dims();
+    for (int i = 0; i < input_shape.dims(); ++i) {
+      const int64_t input_size = input_shape.dim_size(i);
+      const int64_t output_size = output_shape.dim_size(i + rank_difference);
+      if (input_size != output_size && input_size != 1) {
+        if (!has_input_xla_shape) {
+          OP_REQUIRES_VALUE(input_xla_shape, context,
+                            context->InputXlaShape(0));
+          has_input_xla_shape = true;
+        }
+        if (!input_xla_shape.is_dynamic_dimension(i)) {
+          // A static input dimension other than 1 only broadcasts to its own
+          // size, so a dynamic output dimension must have that size at run
+          // time. Make it static, so that xla::BroadcastTo doesn't tile the
+          // input into the output's bound.
+          OP_REQUIRES(
+              context,
+              dynamic_dims[i + rank_difference] && input_size <= output_size,
+              errors::InvalidArgument(
+                  "Incompatible shapes: ", input_shape.DebugString(), " vs. ",
+                  output_shape.DebugString()));
+          output_shape.set_dim(i + rank_difference, input_size);
+          dynamic_dims[i + rank_difference] = false;
+        }
+      }
+    }
+
     auto output_status_or =
         BroadcastTo(context->Input(0), output_shape.dim_sizes());
     OP_REQUIRES_OK(context, output_status_or.status());
     auto output = output_status_or.value();
-    std::vector<bool> dynamic_dims;
-    OP_REQUIRES_OK(
-        context, context->ResolveInputDynamismIntoPredVector(1, &dynamic_dims));
     for (int64_t dim = 0; dim < dynamic_dims.size(); ++dim) {
       if (dynamic_dims[dim]) {
         output = xla::SetDimensionSize(

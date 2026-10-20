@@ -29,10 +29,10 @@ func.func @alloc(%ctx: !tf_framework.op_kernel_context,
 // CHECK-LABEL: func @forwarding_alloc
 func.func @forwarding_alloc(%ctx: !tf_framework.op_kernel_context,
                        %size_0 : index , %size_2 : index) {
-  %buf = tf_framework.alloc(%ctx, %size_0, %size_2) {
+  %buf = tf_framework.alloc(%ctx, %size_0, %size_2) <
     input_indices = [0 : i32, 1 : i32],
-    output_index = 0 : i32
-  } : memref<?x10x?xi8>
+    output_index = 0
+  > : memref<?x10x?xi8>
   func.return
 }
 
@@ -94,20 +94,20 @@ func.func @jit_compile(%ctx : !tf_framework.op_kernel_context)
 
 // CHECK-LABEL: func @jit_compile_from_str_wo_ctx
 func.func @jit_compile_from_str_wo_ctx() -> !tf_framework.jit_callable {
-  %callable = tf_framework.jit_compile_from_str "placeholder" {
-      architectures = ["sm_123", "sm_456"], tileSizes = [1, 2, 3],
-      unrollFactors = [4], enableFtz = false,
-      index64Bit = false, cpuCodegen = false }
+  %callable = tf_framework.jit_compile_from_str "placeholder" <
+      tileSizes = [1, 2, 3], unrollFactors = [4], enableFtz = false,
+      index64Bit = false, cpuCodegen = false> {
+      architectures = ["sm_123", "sm_456"] }
   func.return %callable : !tf_framework.jit_callable
 }
 
 // CHECK-LABEL: func @jit_compile_from_str
 func.func @jit_compile_from_str(%ctx : !tf_framework.op_kernel_context)
     -> !tf_framework.jit_callable {
-  %callable = tf_framework.jit_compile_from_str %ctx , "placeholder" {
-      architectures = ["sm_123", "sm_456"], tileSizes = [1, 2, 3],
-      unrollFactors = [4], enableFtz = false,
-      index64Bit = false, cpuCodegen = false }
+  %callable = tf_framework.jit_compile_from_str %ctx , "placeholder" <
+      tileSizes = [1, 2, 3], unrollFactors = [4], enableFtz = false,
+      index64Bit = false, cpuCodegen = false> {
+      architectures = ["sm_123", "sm_456"] }
   func.return %callable : !tf_framework.jit_callable
 }
 

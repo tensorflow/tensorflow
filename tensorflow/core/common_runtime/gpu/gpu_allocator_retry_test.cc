@@ -124,7 +124,7 @@ class AlternatingBarrier {
 
 class GPUAllocatorRetryTest : public ::testing::Test {
  protected:
-  GPUAllocatorRetryTest() {}
+  GPUAllocatorRetryTest() = default;
 
   void LaunchConsumerThreads(int num_consumers, int cap_needed) {
     barrier_ = std::make_unique<AlternatingBarrier>(num_consumers);

@@ -588,7 +588,6 @@ REGISTER_OP("TakeManySparseFromTensorsMap")
     .Attr("shared_name: string = ''")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
-      // serialized sparse is [?,1] matrix.
       ShapeHandle sparse_handles;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &sparse_handles));
 

@@ -58,7 +58,7 @@ class GradientFunction {
       AbstractContext* ctx,
       absl::Span<AbstractTensorHandle* const> grad_outputs,
       absl::Span<AbstractTensorHandle*> grad_inputs) = 0;
-  virtual ~GradientFunction() {}
+  virtual ~GradientFunction() = default;
 };
 
 // Metadata from the forward operation that is made available to the

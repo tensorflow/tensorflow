@@ -20,18 +20,53 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/event.h"
+#include "xla/stream_executor/mock_stream_executor.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 namespace {
 
+using ::testing::Return;
 using ::tsl::proto_testing::ParseTextProtoOrDie;
+
+TEST(HostSendRecvAsyncEventsTest, EmplaceAndExtractAcrossDevices) {
+  se::MockStreamExecutor executor0;
+  se::MockStreamExecutor executor1;
+  EXPECT_CALL(executor0, device_ordinal()).WillRepeatedly(Return(0));
+  EXPECT_CALL(executor1, device_ordinal()).WillRepeatedly(Return(1));
+
+  HostSendRecvAsyncEvents events(/*devices_per_host=*/2);
+
+  auto event0 =
+      tsl::MakeConstructedAsyncValueRef<std::unique_ptr<se::Event>>(nullptr);
+  auto event1 =
+      tsl::MakeConstructedAsyncValueRef<std::unique_ptr<se::Event>>(nullptr);
+
+  ASSERT_OK(events.Emplace(&executor0, /*channel_id=*/42, event0));
+  ASSERT_OK(events.Emplace(&executor1, /*channel_id=*/42, event1));
+  EXPECT_THAT(events.Emplace(&executor0, /*channel_id=*/42, event0),
+              absl_testing::StatusIs(absl::StatusCode::kInternal));
+
+  ASSERT_OK_AND_ASSIGN(auto extracted0,
+                       events.Extract(&executor0, /*channel_id=*/42));
+  EXPECT_EQ(extracted0.GetAsyncValue(), event0.GetAsyncValue());
+  EXPECT_THAT(events.Extract(&executor0, /*channel_id=*/42),
+              absl_testing::StatusIs(absl::StatusCode::kInternal));
+
+  ASSERT_OK_AND_ASSIGN(auto extracted1,
+                       events.Extract(&executor1, /*channel_id=*/42));
+  EXPECT_EQ(extracted1.GetAsyncValue(), event1.GetAsyncValue());
+}
 
 TEST(HostSendRecvThunkTest, LinkSendAndSendDone) {
   Thunk::ThunkInfo thunk_info;

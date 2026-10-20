@@ -527,7 +527,7 @@ cc_library(
     srcs = ["warmup.cc"],
     hdrs = ["warmup.h"],
     deps = [
-        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/hash",
@@ -542,6 +542,7 @@ cc_library(
 tf_cc_test(
     name = "batch_resource_base_test",
     srcs = ["batch_resource_base_test.cc"],
+    shard_count = 4,
     deps = [
         ":batch_resource_base",
         ":batch_scheduler_hdrs",

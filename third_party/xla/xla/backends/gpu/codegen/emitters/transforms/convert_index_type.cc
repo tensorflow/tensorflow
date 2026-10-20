@@ -116,7 +116,8 @@ struct ConvertIndexTypePass
                  RewriteIndexBinaryElementwiseOp<arith::MulIOp>,
                  RewriteIndexBinaryElementwiseOp<arith::RemUIOp>,
                  RewriteIndexBinaryElementwiseOp<arith::RemSIOp>,
-                 RewriteIndexBinaryElementwiseOp<arith::SubIOp>>(
+                 RewriteIndexBinaryElementwiseOp<arith::SubIOp>,
+                 RewriteIndexBinaryElementwiseOp<arith::XOrIOp>>(
         ctx, *index_bitwidth);
     arith::IndexCastOp::getCanonicalizationPatterns(patterns, ctx);
 

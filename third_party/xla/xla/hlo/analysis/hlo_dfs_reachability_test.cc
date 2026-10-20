@@ -31,7 +31,7 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"  // IWYU pragma: keep
 #include "xla/tsl/platform/test_benchmark.h"
 #include "xla/xla_data.pb.h"
 
@@ -120,7 +120,7 @@ TEST_F(HloDfsReachabilityTest, NonTrivialReachability) {
 }
 
 TEST_F(HloDfsReachabilityTest, ReplaceInstructionAfterFusion) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
   HloModule m
 
   ENTRY main {
@@ -170,6 +170,35 @@ TEST_F(HloDfsReachabilityTest, ChannelReachability) {
   EXPECT_FALSE(reachability->IsReachable(param, recv_done));
   EXPECT_FALSE(reachability->IsReachable(send, recv));
   EXPECT_FALSE(reachability->IsReachable(send_done, recv));
+}
+
+TEST_F(HloDfsReachabilityTest, ControlDependencyToZeroOperandInstruction) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  HloModule m
+
+  ENTRY main {
+    p0 = f32[] parameter(0)
+    neg = f32[] negate(p0)
+    tok0 = token[] after-all(), control-predecessors={neg}
+    ROOT tok1 = token[] after-all(), control-predecessors={tok0}
+  })"));
+  auto computation = module->entry_computation();
+  auto reachability = HloDfsReachability::Build(computation);
+  const HloInstruction* p0 = computation->parameter_instruction(0);
+  const HloInstruction* neg = p0->users()[0];
+  const HloInstruction* tok0 = neg->control_successors()[0];
+  const HloInstruction* tok1 = computation->root_instruction();
+
+  EXPECT_TRUE(reachability->IsReachable(p0, neg));
+  EXPECT_TRUE(reachability->IsReachable(neg, tok0));
+  EXPECT_TRUE(reachability->IsReachable(p0, tok0));
+  EXPECT_TRUE(reachability->IsReachable(tok0, tok1));
+  EXPECT_TRUE(reachability->IsReachable(neg, tok1));
+  EXPECT_TRUE(reachability->IsReachable(p0, tok1));
+
+  EXPECT_FALSE(reachability->IsReachable(tok1, tok0));
+  EXPECT_FALSE(reachability->IsReachable(tok0, neg));
+  EXPECT_FALSE(reachability->IsReachable(tok0, p0));
 }
 
 class HloDfsReachabilityBenchmark {

@@ -1,0 +1,40 @@
+// RUN: fusion_to_xtile %s | fusion_compiler_opt \
+// RUN:   --xtile-cpu-new-xtile-to-vector \
+// RUN:   | FileCheck %s --check-prefix=NEW-VECTOR
+// RUN: test_correctness %s --xla_cpu_use_new_xtile_lowering=true
+
+// f16 has the same problem as bf16 on x86 without AVX512-FP16. The broadcast
+// and the transpose only move data, so they run on i16; f16 is only visible
+// at the compute.
+
+fusion {
+  p0 = f16[64,48] parameter(0)
+  p1 = f16[48] parameter(1)
+  t = f16[48,64] transpose(p0), dimensions={1,0}
+  b = f16[48,64] broadcast(p1), dimensions={0}
+  ROOT a = f16[48,64] add(t, b)
+}
+
+// NEW-VECTOR-LABEL: func.func @wrapped_fusion_impl
+// NEW-VECTOR-DAG:     xtile.memref_bitcast %{{.*}} : memref<64x48xf16> -> memref<64x48xi16>
+// NEW-VECTOR-DAG:     xtile.memref_bitcast %{{.*}} : memref<48xf16> -> memref<48xi16>
+// NEW-VECTOR-DAG:     xtile.memref_bitcast %{{.*}} : memref<48x64xf16> -> memref<48x64xi16>
+// NEW-VECTOR:         vector.transpose %{{.*}} : vector<8x8xi16> to vector<8x8xi16>
+// NEW-VECTOR:         vector.broadcast %{{.*}} : vector<8x1xi16> to vector<8x8xi16>
+// NEW-VECTOR-NOT:     vector.transpose {{.*}}f16>
+// NEW-VECTOR-NOT:     vector.broadcast {{.*}}f16>
+// NEW-VECTOR-NOT:     vector.transfer_{{.*}}f16>
+
+ENTRY main {
+  p0 = f16[64,48] parameter(0)
+  p1 = f16[48] parameter(1)
+  ROOT fusion = f16[48,64] fusion(p0, p1), kind=kLoop, calls=fusion,
+    backend_config={
+      "fusion_backend_config":{
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["8", "8"]}],
+          "num_ctas":"1"
+        }
+      }
+    }
+}

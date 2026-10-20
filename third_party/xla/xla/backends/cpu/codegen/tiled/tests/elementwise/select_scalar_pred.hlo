@@ -1,0 +1,58 @@
+// RUN: fusion_to_xtile %s --xla_cpu_use_new_xtile_lowering | FileCheck %s
+// RUN: fusion_to_xtile %s --xla_cpu_use_new_xtile_lowering | fusion_compiler_opt \
+// RUN:   --xtile-cpu-new-xtile-to-vector --xla-simplify-arith \
+// RUN:   | FileCheck %s --check-prefix=NEW-VECTOR
+// RUN: fusion_to_xtile %s --xla_cpu_use_new_xtile_lowering | fusion_compiler_opt \
+// RUN:   --xtile-cpu-new-xtile-to-vector --xtile-cpu-new-vector-to-llvm \
+// RUN:   | FileCheck %s --check-prefix=NEW-VECTOR-LLVM
+// RUN: test_correctness %s --xla_cpu_use_new_xtile_lowering
+
+fusion {
+  p0 = pred[] parameter(0)
+  p1 = f32[128,64] parameter(1)
+  p2 = f32[128,64] parameter(2)
+  ROOT select = f32[128,64] select(p0, p1, p2)
+}
+
+ENTRY main {
+  p0 = pred[] parameter(0)
+  p1 = f32[128,64] parameter(1)
+  p2 = f32[128,64] parameter(2)
+  ROOT fusion = f32[128,64] fusion(p0, p1, p2), kind=kLoop, calls=fusion,
+    backend_config={
+      "fusion_backend_config":{
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["4", "4"]}],
+          "num_ctas":"1"
+        }
+      }
+    }
+}
+
+// CHECK:        xtile.entry_func @wrapped_fusion(
+// CHECK-SAME:     %[[ARG0:[^:]+]]: memref<i8>,
+// CHECK-SAME:     %[[ARG1:[^:]+]]: memref<128x64xf32>,
+// CHECK-SAME:     %[[ARG2:[^:]+]]: memref<128x64xf32>,
+// CHECK-SAME:     %[[ARG3:[^:]+]]: memref<128x64xf32>,
+// CHECK-SAME:     %{{.*}}: index {xla.range = [0 : index, 0 : index]})
+
+// CHECK:        scf.for %[[IDX:.*]] = %{{.*}} to %{{.*}} step %{{.*}} {
+// CHECK:          %[[COND_I8:.*]] = xtile.extract %[[ARG0]][] [] [] : memref<i8> -> tensor<i8>
+// CHECK:          %[[COND_I1:.*]] = stablehlo.convert %[[COND_I8]] : (tensor<i8>) -> tensor<i1>
+// CHECK:          %[[ON_TRUE:.*]] = xtile.extract %[[ARG1]][%{{.*}}, %{{.*}}] [4, 4] [1, 1] : memref<128x64xf32> -> tensor<4x4xf32>
+// CHECK:          %[[ON_FALSE:.*]] = xtile.extract %[[ARG2]][%{{.*}}, %{{.*}}] [4, 4] [1, 1] : memref<128x64xf32> -> tensor<4x4xf32>
+// CHECK:          %[[CMP:.*]] = stablehlo.compare NE, %[[COND_I1]], %{{.*}} : (tensor<i1>, tensor<i1>) -> tensor<i1>
+// CHECK:          %[[BCAST:.*]] = stablehlo.broadcast_in_dim %[[CMP]], dims = [] : (tensor<i1>) -> tensor<4x4xi1>
+// CHECK:          %[[SEL:.*]] = arith.select %[[BCAST]], %[[ON_TRUE]], %[[ON_FALSE]] : tensor<4x4xi1>, tensor<4x4xf32>
+// CHECK:          xtile.insert %[[SEL]] into %[[ARG3]][%{{.*}}, %{{.*}}] [4, 4] [1, 1] : tensor<4x4xf32> -> memref<128x64xf32>
+
+// NEW-VECTOR-LABEL: func.func @wrapped_fusion_impl(
+// NEW-VECTOR-SAME:    %[[ARG0:[^:]+]]: memref<i8>,
+// NEW-VECTOR-SAME:    %[[ARG1:[^:]+]]: memref<128x64xf32>,
+// NEW-VECTOR-SAME:    %[[ARG2:[^:]+]]: memref<128x64xf32>,
+// NEW-VECTOR-SAME:    %[[ARG3:[^:]+]]: memref<128x64xf32>,
+// NEW-VECTOR:         scf.for
+// NEW-VECTOR:           arith.select
+
+// NEW-VECTOR-LLVM-LABEL: llvm.func internal @wrapped_fusion_impl
+// NEW-VECTOR-LLVM-NOT: llvm.alloc

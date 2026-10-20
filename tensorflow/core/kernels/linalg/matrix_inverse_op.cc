@@ -142,15 +142,15 @@ class MatrixInverseOpGpu : public AsyncOpKernel {
   void ComputeAsync(OpKernelContext* context, DoneCallback done) final {
     const Tensor& input = context->input(0);
     const int ndims = input.dims();
-    const int64_t n = input.dim_size(ndims - 1);
     // Validate inputs.
     OP_REQUIRES_ASYNC(context, ndims >= 2,
                       absl::InvalidArgumentError(absl::StrCat(
                           "Input must have rank >= 2, got ", ndims)),
                       done);
+    const int64_t n = input.dim_size(ndims - 1);
     OP_REQUIRES_ASYNC(context, input.dim_size(ndims - 2) == n,
                       absl::InvalidArgumentError(
-                          absl::StrCat("Input matrices must be squares, got",
+                          absl::StrCat("Input matrices must be square, got ",
                                        input.dim_size(ndims - 2), " != ", n)),
                       done);
 

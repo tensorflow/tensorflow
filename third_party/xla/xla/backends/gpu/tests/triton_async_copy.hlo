@@ -1,0 +1,48 @@
+// REQUIRES: IS_ROCM
+// RUN: hlo-opt %s --platform=gpu --stage=llvm-before-optimizations --xla_gpu_target_config_filename=%S/../target_config/specs/%{GPU}.txtpb | FileCheck %s --check-prefixes=CHECK-COMMON,CHECK-%{GPU}
+
+// The LHS batch dimension is physically minor and singleton in each tile.
+// Folding it makes the next surviving dimension globally strided, so TDM is
+// inapplicable on MI450. Each pointer load is nevertheless 32 bits and
+// async-copy eligible. Triton defaults async copy off on MI300 and on for
+// MI350 and MI450.
+// CHECK-COMMON-LABEL: define amdgpu_kernel void @triton_gemm(
+
+// CHECK-mi300-NOT: call void @llvm.amdgcn.{{(raw\.ptr\.buffer|global)\.load\.async\.lds}}
+// CHECK-mi300: call {{.*}}@llvm.amdgcn.raw.ptr.buffer.load
+// CHECK-mi300-NOT: call void @llvm.amdgcn.{{(raw\.ptr\.buffer|global)\.load\.async\.lds}}
+// CHECK-mi300: ret void
+
+// CHECK-mi350: call void @llvm.amdgcn.{{(raw\.ptr\.buffer|global)\.load\.async\.lds}}
+// CHECK-mi350: ret void
+
+// CHECK-mi450: call void @llvm.amdgcn.global.load.async.to.lds.b{{(32|64|128)}}
+// CHECK-mi450: ret void
+
+HloModule triton_async_copy, is_scheduled=true, entry_computation_layout={(f32[32,2,64]{1,2,0},f32[64,2,64]{2,0,1})->f32[2,32,64]{2,1,0}}
+
+dot_computation {
+  lhs = f32[32,2,64]{1,2,0} parameter(0)
+  rhs = f32[64,2,64]{2,0,1} parameter(1)
+  ROOT dot = f32[2,32,64]{2,1,0} dot(lhs, rhs),
+    lhs_batch_dims={1}, rhs_batch_dims={1},
+    lhs_contracting_dims={2}, rhs_contracting_dims={0},
+    algorithm=dot_f32_f32_f32, backend_config={sizes:[16]}
+}
+
+ENTRY main (lhs: f32[32,2,64], rhs: f32[64,2,64]) -> f32[2,32,64] {
+  lhs = f32[32,2,64]{1,2,0} parameter(0)
+  rhs = f32[64,2,64]{2,0,1} parameter(1)
+  ROOT triton_gemm = f32[2,32,64]{2,1,0} fusion(lhs, rhs),
+    kind=kCustom, calls=dot_computation, backend_config={
+      fusion_backend_config:{
+        kind:"__triton_nested_gemm_fusion",
+        block_level_fusion_config:{
+          output_tiles:[{sizes:[1,32,32]}],
+          num_stages:2,
+          num_warps:4,
+          num_ctas:1
+        }
+      }
+    }
+}

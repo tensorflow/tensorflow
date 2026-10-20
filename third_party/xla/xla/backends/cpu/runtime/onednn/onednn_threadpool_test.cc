@@ -114,5 +114,51 @@ TEST(OneDnnThreadPoolTest, Binary) {
   }
 }
 
+TEST(OneDnnThreadPoolTest, FallbackThreadPool) {
+  Eigen::ThreadPoolInterface* fallback_pool = GetFallbackThreadPoolForOneDnn();
+  ASSERT_NE(fallback_pool, nullptr);
+  EXPECT_EQ(fallback_pool->NumThreads(), 1);
+
+  OneDnnThreadPool threadpool(fallback_pool);
+
+  int64_t d0 = 4;
+  int64_t d1 = 8;
+  int64_t num_elements = d0 * d1;
+
+  dnnl::graph::logical_tensor::dims dims = {d0, d1};
+  dnnl::graph::logical_tensor::dims strides = {d1, 1};
+
+  dnnl::graph::logical_tensor src_tensor(
+      0, dnnl::graph::logical_tensor::data_type::f32, dims, strides);
+  dnnl::graph::logical_tensor dst_tensor(
+      1, dnnl::graph::logical_tensor::data_type::f32, dims, strides);
+
+  TF_ASSERT_OK_AND_ASSIGN(dnnl::graph::graph g,
+                          CreateExpGraph(src_tensor, dst_tensor));
+  std::vector<dnnl::graph::partition> partitions = g.get_partitions();
+
+  dnnl::engine engine(dnnl::engine::kind::cpu, 0);
+  dnnl::stream stream =
+      dnnl::stream(dnnl::threadpool_interop::make_stream(engine, &threadpool));
+
+  std::vector<dnnl::graph::compiled_partition> compiled_partitions;
+  for (const auto& partition : partitions) {
+    compiled_partitions.push_back(
+        partition.compile({src_tensor}, {dst_tensor}, engine));
+  }
+
+  std::vector<float> src_data(num_elements, 1.0f);
+  std::vector<float> dst_data(num_elements, 0.0f);
+
+  dnnl::graph::tensor src(src_tensor, engine, src_data.data());
+  dnnl::graph::tensor dst(dst_tensor, engine, dst_data.data());
+
+  compiled_partitions[0].execute(stream, {src}, {dst});
+
+  for (int i = 0; i < num_elements; ++i) {
+    EXPECT_NEAR(dst_data[i], std::exp(1.0f), 1e-5);
+  }
+}
+
 }  // namespace
 }  // namespace xla::cpu

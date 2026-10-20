@@ -15,9 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_backend_compiler.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -27,13 +30,16 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/InitAllDialects.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/host_runtime/tfrt_ops.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/test_util.h"
 #include "xla/tsl/framework/test_util/mock_serving_device_selector.h"
@@ -115,7 +121,19 @@ class IfrtBackendCompilerTest : public ::testing::Test {
 };
 
 namespace {
+using ::testing::ElementsAre;
 using ::testing::HasSubstr;
+
+std::vector<uint64_t> CollectIfrtCallProgramIds(mlir::ModuleOp module) {
+  std::vector<uint64_t> program_ids;
+  module.walk([&](mlir::TF::IfrtCallOp call) {
+    program_ids.push_back(call.getProgramId());
+  });
+  module.walk([&](mlir::TF::AsyncIfrtCallOp call) {
+    program_ids.push_back(call.getProgramId());
+  });
+  return program_ids;
+}
 
 struct IfrtBackendCompilerTestParams {
   std::string mlir_file_name;
@@ -149,12 +167,55 @@ INSTANTIATE_TEST_SUITE_P(IfrtBackendCompilerParameterizedTest,
                              {.mlir_file_name = "restore_with_reference.mlir"},
                          }));
 
+TEST_F(IfrtBackendCompilerTest,
+       ReusesProgramIdForIdenticalClusterAcrossCompilations) {
+  constexpr absl::string_view kDataDirectory =
+      "tensorflow/compiler/mlir/tfrt/transforms/ifrt/testdata";
+  std::string mlir_module_path = tensorflow::GetDataDependencyFilepath(
+      absl::StrCat(kDataDirectory, "/ifrt_cluster.mlir"));
+
+  mlir::OwningOpRef<mlir::ModuleOp> first_module =
+      mlir::parseSourceFile<mlir::ModuleOp>(mlir_module_path, &context_);
+  ASSERT_TRUE(first_module);
+  TF_ASSERT_OK(
+      compiler_.CompileTensorflow(runtime_context_, first_module.get()));
+  std::vector<uint64_t> first_program_ids =
+      CollectIfrtCallProgramIds(first_module.get());
+  ASSERT_EQ(first_program_ids.size(), 1);
+
+  mlir::OwningOpRef<mlir::ModuleOp> second_module =
+      mlir::parseSourceFile<mlir::ModuleOp>(mlir_module_path, &context_);
+  ASSERT_TRUE(second_module);
+  TF_ASSERT_OK(
+      compiler_.CompileTensorflow(runtime_context_, second_module.get()));
+  std::vector<uint64_t> second_program_ids =
+      CollectIfrtCallProgramIds(second_module.get());
+
+  EXPECT_THAT(second_program_ids, ElementsAre(first_program_ids[0]));
+  verifyModules();
+
+  std::optional<IfrtModelContext*> ifrt_model_context =
+      runtime_context_.resource_context().GetResource<IfrtModelContext>(
+          "IfrtModelContext");
+  ASSERT_TRUE(ifrt_model_context.has_value());
+  TF_ASSERT_OK((*ifrt_model_context)->Freeze());
+
+  mlir::OwningOpRef<mlir::ModuleOp> frozen_module =
+      mlir::parseSourceFile<mlir::ModuleOp>(mlir_module_path, &context_);
+  ASSERT_TRUE(frozen_module);
+  TF_ASSERT_OK(
+      compiler_.CompileTensorflow(runtime_context_, frozen_module.get()));
+  std::vector<uint64_t> frozen_program_ids =
+      CollectIfrtCallProgramIds(frozen_module.get());
+  EXPECT_THAT(frozen_program_ids, ElementsAre(first_program_ids[0]));
+}
+
 TEST_F(IfrtBackendCompilerTest, CompileShallFailAfterModelIsFrozen) {
   // Create test input module
   constexpr absl::string_view kDataDirectory =
       "tensorflow/compiler/mlir/tfrt/transforms/ifrt/testdata";
   std::string mlir_module_path = tensorflow::GetDataDependencyFilepath(
-      absl::StrCat(kDataDirectory, "/ifrt_cluster.mlir"));
+      absl::StrCat(kDataDirectory, "/restore_with_reference.mlir"));
   mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
       mlir::parseSourceFile<mlir::ModuleOp>(mlir_module_path, &context_);
 
@@ -171,14 +232,121 @@ TEST_F(IfrtBackendCompilerTest, CompileShallFailAfterModelIsFrozen) {
 
   TF_ASSERT_OK((*ifrt_model_context)->Freeze());
 
+  std::string unseen_mlir_module_path = tensorflow::GetDataDependencyFilepath(
+      absl::StrCat(kDataDirectory, "/ifrt_cluster.mlir"));
   mlir::OwningOpRef<mlir::ModuleOp> another_mlir_module =
-      mlir::parseSourceFile<mlir::ModuleOp>(mlir_module_path, &context_);
+      mlir::parseSourceFile<mlir::ModuleOp>(unseen_mlir_module_path, &context_);
 
   EXPECT_THAT(
       compiler_.CompileTensorflow(runtime_context_, another_mlir_module.get()),
       absl_testing::StatusIs(
           absl::StatusCode::kFailedPrecondition,
           HasSubstr("Cannot compile IFRT programs after the model is frozen")));
+}
+
+std::vector<std::vector<int>> CollectVariableArgIndices(mlir::ModuleOp module) {
+  std::vector<std::vector<int>> all_indices;
+  auto collect = [&](auto call) {
+    std::vector<int> indices;
+    for (mlir::Attribute attr : call.getVariableArgIndices()) {
+      indices.push_back(mlir::cast<mlir::IntegerAttr>(attr).getInt());
+    }
+    all_indices.push_back(std::move(indices));
+  };
+  module.walk([&](mlir::TF::IfrtCallOp call) { collect(call); });
+  module.walk([&](mlir::TF::AsyncIfrtCallOp call) { collect(call); });
+  return all_indices;
+}
+
+// The same TPU cluster called with different `variable_arg_indices` must not
+// share a program id, since the executable binds variables by those indices.
+TEST_F(IfrtBackendCompilerTest,
+       DoesNotReuseProgramIdForDifferentVariableArgIndices) {
+  constexpr absl::string_view kDataDirectory =
+      "tensorflow/compiler/mlir/tfrt/transforms/ifrt/testdata";
+  std::string variable_path = tensorflow::GetDataDependencyFilepath(
+      absl::StrCat(kDataDirectory, "/ifrt_cluster_variable_arg.mlir"));
+  std::string non_variable_path = tensorflow::GetDataDependencyFilepath(
+      absl::StrCat(kDataDirectory, "/ifrt_cluster_non_variable_arg.mlir"));
+
+  mlir::OwningOpRef<mlir::ModuleOp> variable_module =
+      mlir::parseSourceFile<mlir::ModuleOp>(variable_path, &context_);
+  ASSERT_TRUE(variable_module);
+  TF_ASSERT_OK(
+      compiler_.CompileTensorflow(runtime_context_, variable_module.get()));
+  ASSERT_THAT(CollectVariableArgIndices(variable_module.get()),
+              ElementsAre(ElementsAre(0)));
+  std::vector<uint64_t> variable_program_ids =
+      CollectIfrtCallProgramIds(variable_module.get());
+  ASSERT_EQ(variable_program_ids.size(), 1);
+
+  mlir::OwningOpRef<mlir::ModuleOp> non_variable_module =
+      mlir::parseSourceFile<mlir::ModuleOp>(non_variable_path, &context_);
+  ASSERT_TRUE(non_variable_module);
+  TF_ASSERT_OK(
+      compiler_.CompileTensorflow(runtime_context_, non_variable_module.get()));
+  ASSERT_THAT(CollectVariableArgIndices(non_variable_module.get()),
+              ElementsAre(ElementsAre()));
+  std::vector<uint64_t> non_variable_program_ids =
+      CollectIfrtCallProgramIds(non_variable_module.get());
+  ASSERT_EQ(non_variable_program_ids.size(), 1);
+  EXPECT_NE(non_variable_program_ids[0], variable_program_ids[0]);
+
+  std::optional<IfrtModelContext*> ifrt_model_context =
+      runtime_context_.resource_context().GetResource<IfrtModelContext>(
+          "IfrtModelContext");
+  ASSERT_TRUE(ifrt_model_context.has_value());
+  TF_ASSERT_OK((*ifrt_model_context)->Freeze());
+
+  // After freeze, each call site reuses the program compiled for its indices.
+  mlir::OwningOpRef<mlir::ModuleOp> frozen_variable_module =
+      mlir::parseSourceFile<mlir::ModuleOp>(variable_path, &context_);
+  ASSERT_TRUE(frozen_variable_module);
+  TF_ASSERT_OK(compiler_.CompileTensorflow(runtime_context_,
+                                           frozen_variable_module.get()));
+  EXPECT_THAT(CollectIfrtCallProgramIds(frozen_variable_module.get()),
+              ElementsAre(variable_program_ids[0]));
+
+  mlir::OwningOpRef<mlir::ModuleOp> frozen_non_variable_module =
+      mlir::parseSourceFile<mlir::ModuleOp>(non_variable_path, &context_);
+  ASSERT_TRUE(frozen_non_variable_module);
+  TF_ASSERT_OK(compiler_.CompileTensorflow(runtime_context_,
+                                           frozen_non_variable_module.get()));
+  EXPECT_THAT(CollectIfrtCallProgramIds(frozen_non_variable_module.get()),
+              ElementsAre(non_variable_program_ids[0]));
+}
+
+// After freeze, a call site whose TPU cluster was compiled during warmup but
+// with different `variable_arg_indices` fails with a specific error.
+TEST_F(IfrtBackendCompilerTest,
+       CompileFailsAfterFreezeForDifferentVariableArgIndices) {
+  constexpr absl::string_view kDataDirectory =
+      "tensorflow/compiler/mlir/tfrt/transforms/ifrt/testdata";
+  mlir::OwningOpRef<mlir::ModuleOp> variable_module =
+      mlir::parseSourceFile<mlir::ModuleOp>(
+          tensorflow::GetDataDependencyFilepath(
+              absl::StrCat(kDataDirectory, "/ifrt_cluster_variable_arg.mlir")),
+          &context_);
+  ASSERT_TRUE(variable_module);
+  TF_ASSERT_OK(
+      compiler_.CompileTensorflow(runtime_context_, variable_module.get()));
+
+  std::optional<IfrtModelContext*> ifrt_model_context =
+      runtime_context_.resource_context().GetResource<IfrtModelContext>(
+          "IfrtModelContext");
+  ASSERT_TRUE(ifrt_model_context.has_value());
+  TF_ASSERT_OK((*ifrt_model_context)->Freeze());
+
+  mlir::OwningOpRef<mlir::ModuleOp> non_variable_module =
+      mlir::parseSourceFile<mlir::ModuleOp>(
+          tensorflow::GetDataDependencyFilepath(absl::StrCat(
+              kDataDirectory, "/ifrt_cluster_non_variable_arg.mlir")),
+          &context_);
+  ASSERT_TRUE(non_variable_module);
+  EXPECT_THAT(
+      compiler_.CompileTensorflow(runtime_context_, non_variable_module.get()),
+      absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition,
+                             HasSubstr("different variable_arg_indices")));
 }
 
 }  // namespace

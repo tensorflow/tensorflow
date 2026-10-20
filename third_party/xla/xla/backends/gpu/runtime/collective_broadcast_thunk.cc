@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
@@ -53,18 +52,22 @@ namespace xla::gpu {
 CollectiveBroadcastThunk::CollectiveBroadcastThunk(ThunkInfo thunk_info,
                                                    CollectiveConfig config,
                                                    std::vector<Buffer> buffers,
+                                                   int devices_per_host,
                                                    bool has_dynamic_root)
     : CollectiveThunk(Thunk::kCollectiveBroadcast, thunk_info,
                       std::move(buffers)),
       config_(config),
+      per_device_cb_metadata_(devices_per_host),
       has_dynamic_root_(has_dynamic_root) {}
 
 CollectiveBroadcastThunk::CollectiveBroadcastThunk(
     ThunkInfo thunk_info, const HloCollectiveBroadcastInstruction* instr,
-    std::vector<Buffer> buffers, bool p2p_memcpy_enabled, bool has_dynamic_root)
+    std::vector<Buffer> buffers, int devices_per_host, bool p2p_memcpy_enabled,
+    bool has_dynamic_root)
     : CollectiveThunk(Thunk::kCollectiveBroadcast, thunk_info,
                       std::move(buffers)),
       config_(GetCollectiveConfig(instr, std::nullopt)),
+      per_device_cb_metadata_(devices_per_host),
       has_dynamic_root_(has_dynamic_root) {}
 
 /*static*/ absl::Status CollectiveBroadcastThunk::CheckImplementable(
@@ -84,28 +87,25 @@ absl::Status CollectiveBroadcastThunk::Initialize(
     return absl::OkStatus();
   }
   se::StreamExecutor* executor = params.executor;
-  absl::MutexLock lock(mutex_);
-  std::unique_ptr<CollectiveBroadcastMetadata>& cb_metadata =
-      per_executor_cb_metadata_[executor];
-  if (cb_metadata == nullptr) {
-    cb_metadata = std::make_unique<CollectiveBroadcastMetadata>();
-  }
-  if (cb_metadata->bcast_roots == nullptr) {
-    // The last buffer holds the runtime-selected root ranks (one S32 per
-    // broadcast); all other buffers are the data being broadcast.
-    cb_metadata->num_roots = buffers().size() - 1;
-    ABSL_ASSIGN_OR_RETURN(
-        std::unique_ptr<se::MemoryAllocation> alloc,
-        executor->HostMemoryAllocate(cb_metadata->num_roots * sizeof(int32_t)));
-    cb_metadata->bcast_roots = std::move(alloc);
-  }
-  return absl::OkStatus();
+  return per_device_cb_metadata_.GetOrCreateAndInitialize(
+      executor->device_ordinal(),
+      [&](CollectiveBroadcastMetadata* cb_metadata) -> absl::Status {
+        // The last buffer holds the runtime-selected root ranks (one S32 per
+        // broadcast); all other buffers are the data being broadcast.
+        cb_metadata->num_roots = buffers().size() - 1;
+        ABSL_ASSIGN_OR_RETURN(std::unique_ptr<se::MemoryAllocation> alloc,
+                         executor->HostMemoryAllocate(cb_metadata->num_roots *
+                                                      sizeof(int32_t)));
+        cb_metadata->bcast_roots = std::move(alloc);
+        return absl::OkStatus();
+      });
 }
 
 absl::StatusOr<std::unique_ptr<CollectiveBroadcastThunk>>
 CollectiveBroadcastThunk::FromProto(
     ThunkInfo thunk_info, const CollectiveBroadcastThunkProto& thunk_proto,
-    absl::Span<const BufferAllocation> buffer_allocations) {
+    absl::Span<const BufferAllocation> buffer_allocations,
+    int devices_per_host) {
   CollectiveConfig config =
       CollectiveConfig::FromProto(thunk_proto.collective_config());
 
@@ -119,7 +119,7 @@ CollectiveBroadcastThunk::FromProto(
   }
 
   return std::make_unique<CollectiveBroadcastThunk>(
-      std::move(thunk_info), config, std::move(buffers),
+      std::move(thunk_info), config, std::move(buffers), devices_per_host,
       thunk_proto.has_dynamic_root());
 }
 
@@ -146,11 +146,8 @@ absl::Status CollectiveBroadcastThunk::RunCollective(
   ABSL_ASSIGN_OR_RETURN(std::vector<DeviceBufferPair> device_buffers,
                    ConvertToDeviceBuffers(params.buffer_allocations, buffers(),
                                           config_.operand_element_type));
-  CollectiveBroadcastMetadata* cb_metadata = nullptr;
-  {
-    absl::MutexLock lock(mutex_);
-    cb_metadata = per_executor_cb_metadata_[stream.parent()].get();
-  }
+  CollectiveBroadcastMetadata* cb_metadata =
+      per_device_cb_metadata_.Find(stream.parent()->device_ordinal());
 
   return ::xla::gpu::RunCollectiveBroadcast(device_buffers, stream, comm,
                                             cb_metadata, has_dynamic_root_);

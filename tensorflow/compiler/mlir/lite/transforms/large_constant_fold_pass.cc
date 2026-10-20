@@ -26,6 +26,7 @@ limitations under the License.
 #include "Eigen/Core"  // from @eigen_archive
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
@@ -34,12 +35,15 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops_in_place_transpose.h"
 #include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_utils.h"
@@ -460,10 +464,167 @@ LogicalResult FoldResourceOpPattern(ModuleOp module) {
   return success();
 }
 
+struct PushTransposeThroughBlockwiseDequantize
+    : public OpRewritePattern<TransposeOp> {
+  explicit PushTransposeThroughBlockwiseDequantize(MLIRContext* ctx)
+      : OpRewritePattern<TransposeOp>(ctx) {}
+
+  LogicalResult matchAndRewrite(TransposeOp op,
+                                PatternRewriter& rewriter) const override {
+    auto deq = op.getOperand(0).getDefiningOp<BlockwiseDequantizeOp>();
+    if (!deq) return failure();
+
+    if (!deq.getOutput().hasOneUse()) return failure();
+
+    ElementsAttr input_attr;
+    if (!matchPattern(deq.getInput(), m_Constant(&input_attr))) {
+      if (auto const_op = deq.getInput().getDefiningOp<TFL::ConstOp>()) {
+        input_attr = const_op.getValue();
+      } else {
+        return failure();
+      }
+    }
+
+    ElementsAttr perm_attr;
+    if (!matchPattern(op.getOperand(1), m_Constant(&perm_attr))) {
+      if (auto const_op = op.getOperand(1).getDefiningOp<TFL::ConstOp>()) {
+        perm_attr = const_op.getValue();
+      } else {
+        return failure();
+      }
+    }
+    auto int_perm_attr = mlir::dyn_cast<DenseIntElementsAttr>(perm_attr);
+    if (!int_perm_attr) return failure();
+
+    auto input_type =
+        mlir::dyn_cast<RankedTensorType>(deq.getInput().getType());
+    auto output_type = mlir::dyn_cast<RankedTensorType>(op.getType());
+    if (!input_type || !output_type) return failure();
+
+    int rank = input_type.getRank();
+    auto perms = llvm::to_vector<4>(
+        llvm::map_range(int_perm_attr.getValues<APInt>(),
+                        [](const APInt& val) { return val.getSExtValue(); }));
+    if (perms.size() != rank) return failure();
+
+    llvm::SmallDenseSet<int64_t, 4> seen_dims;
+    for (int64_t p : perms) {
+      if (p < 0 || p >= rank || !seen_dims.insert(p).second) return failure();
+    }
+
+    ArrayAttr new_block_shape_attr = nullptr;
+    if (auto block_shape_attr = deq.getBlockShapeAttr()) {
+      if (block_shape_attr.size() != rank) return failure();
+      SmallVector<int64_t, 4> new_block_shape(rank);
+      for (int i = 0; i < rank; ++i) {
+        new_block_shape[i] =
+            mlir::cast<IntegerAttr>(block_shape_attr[perms[i]]).getInt();
+      }
+      new_block_shape_attr = rewriter.getI64ArrayAttr(new_block_shape);
+    } else {
+      return failure();
+    }
+
+    SmallVector<int64_t, 4> transposed_input_shape;
+    for (int64_t p : perms) {
+      transposed_input_shape.push_back(input_type.getDimSize(p));
+    }
+    auto transposed_input_type = RankedTensorType::get(
+        transposed_input_shape, input_type.getElementType());
+    Value new_input = rewriter.create<TransposeOp>(
+        op.getLoc(), transposed_input_type, deq.getInput(), op.getOperand(1));
+
+    Value new_scales = deq.getScales();
+    if (new_scales &&
+        !(new_scales.getDefiningOp() &&
+          mlir::isa<TFL::NoValueOp>(new_scales.getDefiningOp()))) {
+      auto scales_type = mlir::dyn_cast<RankedTensorType>(new_scales.getType());
+      if (!scales_type || scales_type.getRank() != rank) {
+        return failure();
+      }
+      SmallVector<int64_t, 4> transposed_scales_shape;
+      for (int64_t p : perms) {
+        transposed_scales_shape.push_back(scales_type.getDimSize(p));
+      }
+      auto transposed_scales_type = RankedTensorType::get(
+          transposed_scales_shape, scales_type.getElementType());
+      ElementsAttr scales_attr;
+      if (matchPattern(new_scales, m_Constant(&scales_attr))) {
+        if (auto dense_attr = mlir::dyn_cast<DenseElementsAttr>(scales_attr)) {
+          if (dense_attr.isSplat()) {
+            new_scales = rewriter.create<arith::ConstantOp>(
+                op.getLoc(), dense_attr.reshape(transposed_scales_type));
+          } else {
+            new_scales = rewriter.create<TransposeOp>(
+                op.getLoc(), transposed_scales_type, new_scales,
+                op.getOperand(1));
+          }
+        } else {
+          new_scales =
+              rewriter.create<TransposeOp>(op.getLoc(), transposed_scales_type,
+                                           new_scales, op.getOperand(1));
+        }
+      } else {
+        new_scales = rewriter.create<TransposeOp>(
+            op.getLoc(), transposed_scales_type, new_scales, op.getOperand(1));
+      }
+    }
+
+    Value new_zp = deq.getZeroPoints();
+    if (new_zp && !(new_zp.getDefiningOp() &&
+                    mlir::isa<TFL::NoValueOp>(new_zp.getDefiningOp()))) {
+      auto zp_type = mlir::dyn_cast<RankedTensorType>(new_zp.getType());
+      if (!zp_type || zp_type.getRank() != rank) {
+        return failure();
+      }
+      SmallVector<int64_t, 4> transposed_zp_shape;
+      for (int64_t p : perms) {
+        transposed_zp_shape.push_back(zp_type.getDimSize(p));
+      }
+      auto transposed_zp_type =
+          RankedTensorType::get(transposed_zp_shape, zp_type.getElementType());
+      ElementsAttr zp_attr;
+      if (matchPattern(new_zp, m_Constant(&zp_attr))) {
+        if (auto dense_attr = mlir::dyn_cast<DenseElementsAttr>(zp_attr)) {
+          if (dense_attr.isSplat()) {
+            new_zp = rewriter.create<arith::ConstantOp>(
+                op.getLoc(), dense_attr.reshape(transposed_zp_type));
+          } else {
+            new_zp = rewriter.create<TransposeOp>(
+                op.getLoc(), transposed_zp_type, new_zp, op.getOperand(1));
+          }
+        } else {
+          new_zp = rewriter.create<TransposeOp>(op.getLoc(), transposed_zp_type,
+                                                new_zp, op.getOperand(1));
+        }
+      } else {
+        new_zp = rewriter.create<TransposeOp>(op.getLoc(), transposed_zp_type,
+                                              new_zp, op.getOperand(1));
+      }
+    }
+
+    auto new_deq = rewriter.create<BlockwiseDequantizeOp>(
+        op.getLoc(), output_type, new_input, new_scales, new_zp,
+        new_block_shape_attr, deq.getSymmetricAttr());
+    rewriter.replaceOp(op, new_deq.getOutput());
+    return success();
+  }
+};
+
 }  // namespace
 
 void LargeConstantFoldPass::runOnOperation() {
   ModuleOp module = getOperation();
+  MLIRContext* ctx = &getContext();
+
+  RewritePatternSet patterns(ctx);
+  patterns.add<PushTransposeThroughBlockwiseDequantize>(ctx);
+  GreedyRewriteConfig config;
+  config.enableFolding(false);
+  if (failed(applyPatternsGreedily(module, std::move(patterns), config))) {
+    signalPassFailure();
+    return;
+  }
   if (failed(FoldResourceOpPattern<TFL::TransposeOp>(module))) {
     signalPassFailure();
   }

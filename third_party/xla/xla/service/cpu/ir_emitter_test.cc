@@ -255,7 +255,6 @@ CreateIrEmitterForConstantEmissionTests(HloModule& module,
   };
 
   llvm::TargetOptions target_options;
-  target_options.AllowFPOpFusion = llvm::FPOpFusion::Fast;
 
   // Returns a global (per-process) thread pool for XLA CPU compilation tasks.
   auto compilation_task_runner = [](cpu::JitCompiler::Task task) {

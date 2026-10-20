@@ -55,7 +55,7 @@ class StepStatsCollector;
 // Multiple threads can call Executor::Run concurrently.
 class Executor {
  public:
-  virtual ~Executor() {}
+  virtual ~Executor() = default;
 
   // RunAsync() executes the graph computation. "done" is run when the
   // graph computation completes. If any error happens during the
@@ -182,7 +182,7 @@ class ExecutorBarrier {
   ExecutorBarrier(size_t num, Rendezvous* r, StatusCallback done)
       : rendez_(r), done_cb_(done), pending_(num) {}
 
-  ~ExecutorBarrier() {}
+  ~ExecutorBarrier() = default;
 
   // Returns a closure that Executors must call when they are done
   // computing, passing the status of their execution as an argument.

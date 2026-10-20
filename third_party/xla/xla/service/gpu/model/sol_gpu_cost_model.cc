@@ -313,11 +313,12 @@ absl::StatusOr<absl::Duration> SolGPUCostModel::IntraNodeAllReduceLatency(
   const double bw_bytes_per_sec =
       active_nvlink_links * xla_flag_config_.nvlink_bw_per_lane_gbps * 1e9;
 
-  // Derive the strategy from the buffer size, mirroring GetAllReduceStrategy()
-  // in all_reduce.cc (thresholds: 256 KB for one-shot, 4 MB for two-shot).
+  // Derive the strategy from the total read bytes, mirroring
+  // GetAllReduceStrategy() in all_reduce.cc (thresholds: 2 MB for one-shot,
+  // 32 MB for two-shot).
   using stream_executor::gpu::AllReduceStrategy;
   const AllReduceStrategy strategy =
-      GetAllReduceStrategy(size_bytes, /*is_multimem_enabled=*/false);
+      GetAllReduceStrategy(size_bytes, num_gpus, /*is_multimem_enabled=*/false);
 
   const absl::Duration launch = GpuPerformanceModelBase::kKernelLaunchOverhead;
   const absl::Duration barrier = xla_flag_config_.nvlink_barrier_latency;

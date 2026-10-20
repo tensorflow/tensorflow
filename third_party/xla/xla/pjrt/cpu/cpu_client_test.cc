@@ -16,6 +16,8 @@ limitations under the License.
 #include <array>
 #include <numeric>
 
+#include "absl/base/casts.h"
+#include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
@@ -230,6 +232,57 @@ ENTRY RuntimeDonationDenial() -> f32[2, 2] {
 
     EXPECT_TRUE(buffer->IsDeleted());
   }
+}
+
+TEST(PjRtCpuClientTest, DonateWithExternalReference) {
+  static constexpr char kProgram[] =
+      R"(
+HloModule DonateWithExternalReference,
+          input_output_alias={ {}: (0, {}, may-alias) }
+
+ENTRY DonateWithExternalReference() -> f32[2, 2] {
+    %param = f32[2, 2] parameter(0)
+    %one = f32[] constant(1.0)
+    %one_bcast = f32[2, 2] broadcast(%one), dimensions={}
+    ROOT %result = f32[2, 2] add(%param, %one_bcast)
+})";
+
+  ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnUnverifiedModule(kProgram, {}));
+  XlaComputation xla_computation(hlo_module->ToProto());
+  ASSERT_OK_AND_ASSIGN(auto pjrt_executable,
+                       client->CompileAndLoad(xla_computation, {}));
+
+  std::vector<float> data = {1.0f, 2.0f, 3.0f, 4.0f};
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
+  ASSERT_OK_AND_ASSIGN(
+      auto buffer,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall,
+          /*on_done_with_host_buffer=*/nullptr, client->memory_spaces()[0],
+          /*device_layout=*/nullptr));
+
+  ASSERT_OK_AND_ASSIGN(auto external_ref, buffer->AcquireExternalReference());
+  const float* ext_data =
+      static_cast<const float*>(external_ref->OpaqueDeviceMemoryDataPointer());
+
+  ASSERT_OK_AND_ASSIGN(auto result, pjrt_executable->Execute(
+                                        /*argument_handles=*/{{buffer.get()}},
+                                        /*options=*/{}));
+  // Even though an external reference prevented in-place buffer reuse and
+  // forced a fallback copy, the donated PjRtBuffer itself must be marked
+  // deleted while the external reference's underlying memory remains intact.
+  EXPECT_TRUE(buffer->IsDeleted());
+  ASSERT_EQ(result.size(), 1);
+  ASSERT_EQ(result[0].size(), 1);
+  ASSERT_OK_AND_ASSIGN(auto result_literal, result[0][0]->ToLiteral().Await());
+  EXPECT_EQ(*result_literal,
+            LiteralUtil::CreateR2<float>({{2.0f, 3.0f}, {4.0f, 5.0f}}));
+  EXPECT_THAT(absl::MakeConstSpan(ext_data, 4),
+              ElementsAre(1.0f, 2.0f, 3.0f, 4.0f));
 }
 
 TEST(PjRtCpuClientTest, ArgumentMemorySpace) {

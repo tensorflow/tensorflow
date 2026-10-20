@@ -234,12 +234,13 @@ class ReshardTestBase : public testing::Test {
 };
 
 class ReshardTest : public ReshardTestBase,
-                    public testing::WithParamInterface<ReshardMethod> {};
+                    public testing::WithParamInterface<
+                        std::tuple<ReshardMethod, xla::PrimitiveType>> {};
 
 TEST_P(ReshardTest, BatchedWithDifferentSharding) {
-  const ReshardMethod method = GetParam();
+  const auto [method, primitive_type] = GetParam();
   TF_ASSERT_OK_AND_ASSIGN(const xla::Literal literal,
-                          CreateIotaLiteral(xla::PrimitiveType::S32, {4, 8}));
+                          CreateIotaLiteral(primitive_type, {4, 8}));
 
   TF_ASSERT_OK_AND_ASSIGN(const DeviceListRef src_device_list,
                           client_->MakeDeviceList(client_->devices()));
@@ -287,9 +288,9 @@ TEST_P(ReshardTest, BatchedWithDifferentSharding) {
 }
 
 TEST_P(ReshardTest, BatchedWithDifferentDeviceLists) {
-  const ReshardMethod method = GetParam();
+  const auto [method, primitive_type] = GetParam();
   TF_ASSERT_OK_AND_ASSIGN(const xla::Literal literal,
-                          CreateIotaLiteral(xla::PrimitiveType::S32, {4, 8}));
+                          CreateIotaLiteral(primitive_type, {4, 8}));
 
   std::vector<ArrayRef> src_arrays;
   {
@@ -353,9 +354,10 @@ TEST_P(ReshardTest, BatchedWithDifferentDeviceLists) {
 }
 
 TEST_P(ReshardTest, PoisonedInput) {
-  const ReshardMethod method = GetParam();
+  const auto [method, primitive_type] = GetParam();
   TF_ASSERT_OK_AND_ASSIGN(const xla::Literal literal,
-                          CreateIotaLiteral(xla::PrimitiveType::S32, {4, 8}));
+                          CreateIotaLiteral(primitive_type, {4, 8}));
+  TF_ASSERT_OK_AND_ASSIGN(const DType dtype, ToDType(primitive_type));
   const absl::Status error = absl::InternalError("injected error");
 
   std::vector<ArrayRef> src_arrays;
@@ -378,7 +380,7 @@ TEST_P(ReshardTest, PoisonedInput) {
         auto arrays,
         client_->MakeErrorArrays(
             error, {{
-                       /*dtype=*/DType(DType::kS32),
+                       /*dtype=*/dtype,
                        /*shape=*/Shape({4, 8}),
                        /*sharding=*/
                        HloSharding::Create(src_device_list, MemoryKind(),
@@ -429,9 +431,9 @@ TEST_P(ReshardTest, DifferentDestinationLayout) {
     GTEST_SKIP() << "PjRt CPU does not support custom layouts";
   }
 
-  const ReshardMethod method = GetParam();
+  const auto [method, primitive_type] = GetParam();
   TF_ASSERT_OK_AND_ASSIGN(const xla::Literal literal,
-                          CreateIotaLiteral(xla::PrimitiveType::S32, {4, 8}));
+                          CreateIotaLiteral(primitive_type, {4, 8}));
 
   TF_ASSERT_OK_AND_ASSIGN(const DeviceListRef src_device_list,
                           client_->MakeDeviceList(client_->devices()));
@@ -450,13 +452,12 @@ TEST_P(ReshardTest, DifferentDestinationLayout) {
       ifrt_topology.ok()) {
     const xla::PjRtTopologyDescription* topology =
         (*ifrt_topology)->description().get();
-    TF_ASSERT_OK_AND_ASSIGN(
-        xla::Shape shape,
-        topology->MakeCanonicalShapeForMemorySpace(
-            topology->GetDefaultMemorySpaceKindId(),
-            xla::ShapeUtil::MakeShape(xla::PrimitiveType::S32,
-                                      src_array->shape().dims()),
-            &layout));
+    TF_ASSERT_OK_AND_ASSIGN(xla::Shape shape,
+                            topology->MakeCanonicalShapeForMemorySpace(
+                                topology->GetDefaultMemorySpaceKindId(),
+                                xla::ShapeUtil::MakeShape(
+                                    primitive_type, src_array->shape().dims()),
+                                &layout));
     layout = shape.layout();
   }
 
@@ -508,9 +509,9 @@ TEST_P(ReshardTest, DifferentSourceLayout) {
     GTEST_SKIP() << "PjRt CPU does not support custom layouts";
   }
 
-  const ReshardMethod method = GetParam();
+  const auto [method, primitive_type] = GetParam();
   ASSERT_OK_AND_ASSIGN(const xla::Literal literal,
-                       CreateIotaLiteral(xla::PrimitiveType::S32, {4, 8}));
+                       CreateIotaLiteral(primitive_type, {4, 8}));
 
   ASSERT_OK_AND_ASSIGN(const DeviceListRef src_device_list,
                        client_->MakeDeviceList(client_->devices()));
@@ -520,13 +521,12 @@ TEST_P(ReshardTest, DifferentSourceLayout) {
       ifrt_topology.ok()) {
     const xla::PjRtTopologyDescription* topology =
         (*ifrt_topology)->description().get();
-    ASSERT_OK_AND_ASSIGN(
-        xla::Shape shape,
-        topology->MakeCanonicalShapeForMemorySpace(
-            topology->GetDefaultMemorySpaceKindId(),
-            xla::ShapeUtil::MakeShape(xla::PrimitiveType::S32,
-                                      literal.shape().dimensions()),
-            &layout));
+    ASSERT_OK_AND_ASSIGN(xla::Shape shape,
+                         topology->MakeCanonicalShapeForMemorySpace(
+                             topology->GetDefaultMemorySpaceKindId(),
+                             xla::ShapeUtil::MakeShape(
+                                 primitive_type, literal.shape().dimensions()),
+                             &layout));
     layout = shape.layout();
   }
   auto src_layout = std::make_shared<const xla::PjRtLayout>(std::move(layout));
@@ -592,12 +592,17 @@ TEST_P(ReshardTest, DifferentSourceLayout) {
               absl_testing::IsOkAndHolds(Eq(std::cref(literal))));
 }
 
-INSTANTIATE_TEST_SUITE_P(ReshardTest, ReshardTest,
-                         testing::Values(ReshardMethod::kArray,
-                                         ReshardMethod::kBundle),
-                         [](const testing::TestParamInfo<ReshardMethod>& info) {
-                           return absl::StrCat(info.param);
-                         });
+INSTANTIATE_TEST_SUITE_P(
+    ReshardTest, ReshardTest,
+    testing::Combine(
+        testing::Values(ReshardMethod::kArray, ReshardMethod::kBundle),
+        testing::Values(xla::PrimitiveType::S32, xla::PrimitiveType::S64)),
+    ([](const testing::TestParamInfo<ReshardTest::ParamType>& info) {
+      const auto& [method, primitive_type] = info.param;
+      return absl::StrCat(
+          method, "_",
+          xla::primitive_util::LowercasePrimitiveTypeName(primitive_type));
+    }));
 
 class ReshardMemoryKindTest : public ReshardTestBase,
                               public testing::WithParamInterface<
@@ -607,6 +612,42 @@ TEST_P(ReshardMemoryKindTest, Int4) {
   const auto& [method, memory_kind] = GetParam();
   TF_ASSERT_OK_AND_ASSIGN(const xla::Literal literal,
                           CreateIotaLiteral(xla::PrimitiveType::S4, {4, 8}));
+
+  TF_ASSERT_OK_AND_ASSIGN(const DeviceListRef src_device_list,
+                          client_->MakeDeviceList(client_->devices()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      ArrayRef src_array,
+      MakeArrayFromLiteral(
+          client_.get(), literal,
+          HloSharding::Create(src_device_list, memory_kind,
+                              xla::HloSharding::IotaTile({4, 2}))));
+
+  TF_ASSERT_OK_AND_ASSIGN(const DeviceListRef dst_device_list,
+                          client_->MakeDeviceList(client_->devices()));
+  ArraySpec dst_array_spec = {
+      /*dtype=*/src_array->dtype(),
+      /*shape=*/src_array->shape(),
+      /*sharding=*/
+      HloSharding::Create(dst_device_list, memory_kind,
+                          xla::HloSharding::IotaTile({2, 4})),
+  };
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<ArrayRef> dst_arrays,
+      ReshardArrays(method, client_.get(), absl::MakeSpan(&src_array, 1),
+                    {dst_array_spec}, ArrayCopySemantics::kDonateInput));
+  ASSERT_EQ(dst_arrays.size(), 1);
+
+  const ArrayRef& dst_array = dst_arrays[0];
+  EXPECT_EQ(dst_array->sharding(), *dst_array_spec.sharding);
+  EXPECT_THAT(CopyArrayToLiteral(dst_array),
+              absl_testing::IsOkAndHolds(Eq(std::cref(literal))));
+}
+
+TEST_P(ReshardMemoryKindTest, Int64) {
+  const auto& [method, memory_kind] = GetParam();
+  TF_ASSERT_OK_AND_ASSIGN(const xla::Literal literal,
+                          CreateIotaLiteral(xla::PrimitiveType::S64, {4, 8}));
 
   TF_ASSERT_OK_AND_ASSIGN(const DeviceListRef src_device_list,
                           client_->MakeDeviceList(client_->devices()));
@@ -670,11 +711,12 @@ struct ReshardTestParam {
 class ReshardParameterizedTest
     : public ReshardTestBase,
       public testing::WithParamInterface<
-          std::tuple<ReshardMethod, ReshardTestParam, MemoryKind, MemoryKind>> {
-};
+          std::tuple<ReshardMethod, ReshardTestParam, MemoryKind, MemoryKind,
+                     xla::PrimitiveType>> {};
 
 TEST_P(ReshardParameterizedTest, RoundTrip) {
-  const auto& [method, param, src_memory_kind, dst_memory_kind] = GetParam();
+  const auto& [method, param, src_memory_kind, dst_memory_kind,
+               primitive_type] = GetParam();
 
   absl::InlinedVector<Device*, 1> src_devices;
   src_devices.reserve(param.src_device_indices.size());
@@ -698,7 +740,7 @@ TEST_P(ReshardParameterizedTest, RoundTrip) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       const xla::Literal literal,
-      CreateIotaLiteral(xla::PrimitiveType::S32, param.shape.dims()));
+      CreateIotaLiteral(primitive_type, param.shape.dims()));
   TF_ASSERT_OK_AND_ASSIGN(
       ArrayRef src_array,
       MakeArrayFromLiteral(client_.get(), literal, src_sharding));
@@ -809,13 +851,16 @@ INSTANTIATE_TEST_SUITE_P(
                 /*dst_sharding=*/xla::HloSharding::IotaTile({2, 4}),
                 /*dst_device_indices=*/{0, 1, 2, 3, 4, 5, 6, 7},
             }),
-        AllMemoryKinds(), AllMemoryKinds()),
+        AllMemoryKinds(), AllMemoryKinds(),
+        testing::Values(xla::PrimitiveType::S32, xla::PrimitiveType::S64)),
     ([](const testing::TestParamInfo<ReshardParameterizedTest::ParamType>&
             info) {
-      const auto& [method, param, src_memory_kind, dst_memory_kind] =
-          info.param;
-      return absl::StrCat(method, "_", param.name, "_", src_memory_kind, "_to_",
-                          dst_memory_kind);
+      const auto& [method, param, src_memory_kind, dst_memory_kind,
+                   primitive_type] = info.param;
+      return absl::StrCat(
+          method, "_", param.name, "_", src_memory_kind, "_to_",
+          dst_memory_kind, "_",
+          xla::primitive_util::LowercasePrimitiveTypeName(primitive_type));
     }));
 
 INSTANTIATE_TEST_SUITE_P(
@@ -879,14 +924,25 @@ INSTANTIATE_TEST_SUITE_P(
                 /*src_device_indices=*/{0, 1},
                 /*dst_sharding=*/xla::HloSharding::IotaTile({2, 4}),
                 /*dst_device_indices=*/{0, 1, 2, 3, 4, 5, 6, 7},
+            },
+            ReshardTestParam{
+                /*name=*/"TileGather",
+                /*shape=*/Shape({12, 1, 32, 128}),
+                /*src_sharding=*/xla::HloSharding::IotaTile({4, 1, 1, 1}),
+                /*src_device_indices=*/{0, 1, 2, 3},
+                /*dst_sharding=*/xla::HloSharding::IotaTile({1, 1, 1, 1}),
+                /*dst_device_indices=*/{0},
             }),
-        AllMemoryKinds(), AllMemoryKinds()),
+        AllMemoryKinds(), AllMemoryKinds(),
+        testing::Values(xla::PrimitiveType::S32, xla::PrimitiveType::S64)),
     ([](const testing::TestParamInfo<ReshardParameterizedTest::ParamType>&
             info) {
-      const auto& [method, param, src_memory_kind, dst_memory_kind] =
-          info.param;
-      return absl::StrCat(method, "_", param.name, "_", src_memory_kind, "_to_",
-                          dst_memory_kind);
+      const auto& [method, param, src_memory_kind, dst_memory_kind,
+                   primitive_type] = info.param;
+      return absl::StrCat(
+          method, "_", param.name, "_", src_memory_kind, "_to_",
+          dst_memory_kind, "_",
+          xla::primitive_util::LowercasePrimitiveTypeName(primitive_type));
     }));
 
 }  // namespace

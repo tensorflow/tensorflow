@@ -94,7 +94,7 @@ class TopkSplitterVisitor : public DfsHloRewriteVisitor {
     HloInstruction* batch_topk =
         comp->AddInstruction(HloInstruction::CreateCustomCall(
             batch_topk_shape, {reshaped}, topk->to_apply(), "TopK",
-            /*opaque=*/""));
+            topk->raw_backend_config_string()));
     // Fix indices, adding j*split_N to the j-th batch of indices.
     ABSL_ASSIGN_OR_RETURN(HloInstruction * indices,
                      MakeGetTupleElementHlo(batch_topk, 1));

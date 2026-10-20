@@ -98,7 +98,15 @@ DotDimensions GetDotDimensions(const HloInstruction* instr) {
   };
 
   auto get_side_size = [](const HloInstruction* instr) {
-    while (instr->IsElementwise() && instr->operand_count() == 1) {
+    // Follow unary elementwise ops and same-type transposes/reshapes/bitcasts
+    // to find the element size at the fusion edge.
+    while (instr->operand_count() == 1 &&
+           (instr->IsElementwise() ||
+            ((instr->opcode() == HloOpcode::kBitcast ||
+              instr->opcode() == HloOpcode::kReshape ||
+              instr->opcode() == HloOpcode::kTranspose) &&
+             ShapeUtil::SameElementType(instr->shape(),
+                                        instr->operand(0)->shape())))) {
       instr = instr->operand(0);
     }
     return ShapeUtil::ElementSizeInBits(instr->shape());
@@ -246,13 +254,15 @@ HloInstruction* PadInstruction(HloInstruction* instr, int64_t dimension_idx,
       HloInstruction::CreatePad(new_shape, instr, zero, padding_config));
 }
 
-// Returns the padded K dimension so that it is a multiple of split_k and 16B.
+// Returns the padded K dimension so that it is a multiple of split_k and 16B,
+// using the dot's own operand element sizes rather than the pre-convert sizes
+// at the fusion edge.
 int64_t GetPaddedK(HloInstruction& dot, int64_t split_k) {
-  DotDimensions dims = GetDotDimensions(&dot);
   const int64_t alignment_in_bits = 16 * 8;
-  int64_t min_element_size_in_bits = std::min(
-      {alignment_in_bits, dims.lhs_element_bits, dims.rhs_element_bits});
-  return RoundUpTo(dims.k,
+  const int64_t min_element_size_in_bits = std::min(
+      {alignment_in_bits, ShapeUtil::ElementSizeInBits(dot.operand(0)->shape()),
+       ShapeUtil::ElementSizeInBits(dot.operand(1)->shape())});
+  return RoundUpTo(GetDotDimensions(&dot).k,
                    split_k * alignment_in_bits / min_element_size_in_bits);
 }
 

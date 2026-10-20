@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/platform.h"

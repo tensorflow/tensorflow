@@ -199,9 +199,9 @@ TEST(NamedShardingTest, ToString) {
   EXPECT_EQ(sharding_dim.ToString(),
             "{mesh['a'=2,'b'=4,'c'=3,'d'=8], [{'c'}, {'a', 'b':(2)2, ?}]}");
 
-  Mesh maximal_mesh(5);
-  NamedSharding single_device_sharding(maximal_mesh);
-  EXPECT_EQ(single_device_sharding.ToString(), "{maximal_mesh[device_id=5]}");
+  Mesh single_device_mesh(5);
+  NamedSharding single_device_sharding(single_device_mesh);
+  EXPECT_EQ(single_device_sharding.ToString(), "{single_device[device_id=5]}");
 
   Mesh non_iota_mesh(
       TileAssignment(/*dims=*/{2, 4, 4, 2}, /*reshape_dims=*/{1, 4, 1, 16},
@@ -574,8 +574,8 @@ TEST(NamedShardingTest, NumDevices) {
   NamedSharding sharding(mesh, {});
   EXPECT_EQ(sharding.num_devices(), 2 * 4 * 3 * 8);
 
-  Mesh maximal_mesh(5);
-  NamedSharding single_device_sharding(maximal_mesh);
+  Mesh single_device_mesh(5);
+  NamedSharding single_device_sharding(single_device_mesh);
   EXPECT_EQ(single_device_sharding.num_devices(), 1);
 
   Mesh empty_mesh;
@@ -863,7 +863,7 @@ TEST(NamedShardingTest, NamedShardingProtoConversion) {
   EXPECT_EQ(sharding, from_proto);
 }
 
-TEST(NamedShardingPredicatesTest, HasPartialReplication_Maximal) {
+TEST(NamedShardingPredicatesTest, HasPartialReplication_SingleDevice) {
   EXPECT_FALSE(NamedSharding(Mesh(5)).HasPartialReplication());
 }
 

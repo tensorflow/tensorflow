@@ -258,9 +258,11 @@ CUptiResult CuptiErrorManager::GetTimestampV2(CUpti_SubscriberHandle subscriber,
   // Treat recoverable V2 timestamp failures as nonfatal so the caller can
   // clean up the V2 subscriber and fall back to the V1 subscriber API.
   // NOT_SUPPORTED means subscriber-scoped timestamps are unavailable.
+  // NOT_COMPATIBLE occurs when CUPTI is in legacy V1 timestamp mode.
   // UNKNOWN preserves fallback for an unclassified failure in the optional V2
   // path.
   ALLOW_ERROR(error, CUPTI_ERROR_NOT_SUPPORTED);
+  ALLOW_ERROR(error, CUPTI_ERROR_NOT_COMPATIBLE);
   ALLOW_ERROR(error, CUPTI_ERROR_UNKNOWN);
   LOG_AND_DISABLE_IF_ERROR(error);
   return error;
@@ -339,6 +341,7 @@ CUptiResult CuptiErrorManager::SubscribeV2(CUpti_SubscriberHandle* subscriber,
   }
   // Optional V2 subscriber path unavailable; callers can fall back to V1.
   ALLOW_ERROR(error, CUPTI_ERROR_NOT_SUPPORTED);
+  ALLOW_ERROR(error, CUPTI_ERROR_NOT_COMPATIBLE);
   ALLOW_ERROR(error, CUPTI_ERROR_UNKNOWN);
   LOG_AND_DISABLE_IF_ERROR(error);
   return error;

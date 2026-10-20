@@ -204,7 +204,7 @@ std::string GetRendezvousKey(const std::string& tensor_name,
 
 class DirectSessionFactory : public SessionFactory {
  public:
-  DirectSessionFactory() {}
+  DirectSessionFactory() = default;
 
   bool AcceptsOptions(const SessionOptions& options) override {
     return options.target.empty() &&

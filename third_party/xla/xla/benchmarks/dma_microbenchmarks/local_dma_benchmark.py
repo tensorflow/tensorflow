@@ -38,11 +38,6 @@ _NUMBER_OF_DMAS = flags.DEFINE_integer(
     default=16,
     help="Number of overlapping DMAs running in parallel. Default: 16",
 )
-_NUMBER_OF_MEASUREMENTS = flags.DEFINE_integer(
-    "number_of_measurements",
-    default=5,
-    help="Number of measurements to take. Default: 5",
-)
 
 
 class LocalDmaBenchmarks(memory_base.MemoryBenchmarks):
@@ -54,6 +49,7 @@ class LocalDmaBenchmarks(memory_base.MemoryBenchmarks):
     vmem_capacity_kib = tpu_info.vmem_capacity_bytes // 1024
     smem_capacity_kib = tpu_info.smem_capacity_bytes // 1024
 
+    self.vmem_capacity_kib = vmem_capacity_kib
     if _VMEM_DMA_SIZE_KIB.value is None:
       self.vmem_dma_size_kib = vmem_capacity_kib - 1024  # capacity - 1 MiB
     else:
@@ -77,7 +73,6 @@ class LocalDmaBenchmarks(memory_base.MemoryBenchmarks):
         )
 
     self.num_dmas = _NUMBER_OF_DMAS.value
-    self.number_of_measurements = _NUMBER_OF_MEASUREMENTS.value
 
   def _dma_bandwidth_test(
       self, kernel_fn, dma_size_kib, memory_space, num_dmas=1
@@ -93,6 +88,9 @@ class LocalDmaBenchmarks(memory_base.MemoryBenchmarks):
             memory_space((dma_size_kib, 1024), jnp.uint8),
             *[pltpu.SemaphoreType.DMA] * num_dmas,
         ]),
+        compiler_params=pltpu.CompilerParams(
+            vmem_limit_bytes=self.vmem_capacity_kib * 1024
+        ),
         name=self._KERNEL_NAME,
         interpret=False,
     )

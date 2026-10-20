@@ -21,16 +21,10 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "rocm/rocm_config.h"
+#include "rocm/include/rccl/rccl.h"
 #include "xla/backends/gpu/collectives/rccl_errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/util.h"
-
-#if (TF_ROCM_VERSION >= 50200)
-#include "rocm/include/rccl/rccl.h"
-#else
-#include "rocm/include/rccl.h"
-#endif  // TF_ROCM_VERSION >= 50200
 
 namespace xla::gpu {
 namespace {

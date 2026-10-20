@@ -166,7 +166,8 @@ absl::StatusOr<std::unique_ptr<Thunk>> CubinCustomKernelCompiler::CompileImpl(
           launch_dimensions.thread_counts_per_block(), 0));
 
   return std::make_unique<CustomKernelThunk>(
-      thunk_info, std::move(custom_kernel), kernel_arguments);
+      thunk_info, std::move(custom_kernel), kernel_arguments,
+      gpu_topology_.num_devices_per_process());
 }
 
 xla::Future<TritonWrapperResult> CubinCustomKernelCompiler::CompileTritonToLlvm(

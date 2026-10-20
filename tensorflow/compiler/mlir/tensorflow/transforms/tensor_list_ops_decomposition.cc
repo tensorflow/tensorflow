@@ -714,6 +714,26 @@ LogicalResult HandleTensorListGetItemOp(
 LogicalResult HandleTensorListSetItemOp(
     TF::TensorListSetItemOp set_item,
     llvm::SmallDenseMap<Value, SizeInfo>* buffer_to_size) {
+  // A tf.TensorArray built with dynamic_size=True sets this attribute, and the
+  // non-XLA kernel grows the list when the index is past the end. The buffer
+  // built here has a static shape and cannot grow, and cutil::SetElement lowers
+  // to a DynamicUpdateSlice, which clamps an out-of-range index rather than
+  // failing, so the write is dropped and the program returns a truncated
+  // result.
+  //
+  // This is only a warning rather than an error, because the attribute is set
+  // by every dynamic_size TensorArray, including the many that never actually
+  // write past the end and compile correctly today. The classic tf2xla
+  // lowering warns in the same case, see TensorListSetItemOp in
+  // tensorflow/compiler/tf2xla/kernels/tensor_list_ops.cc.
+  if (set_item.getResizeIfIndexOutOfBounds()) {
+    set_item.emitWarning(
+        "TensorLists that grow on an out-of-bounds write are not supported by "
+        "XLA. This is typically a tf.TensorArray created with "
+        "dynamic_size=True; give it a static size large enough to hold every "
+        "write instead.");
+  }
+
   auto buffer = set_item.getInputHandle();
   auto it = buffer_to_size->find(buffer);
   if (it == buffer_to_size->end()) {

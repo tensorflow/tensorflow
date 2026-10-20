@@ -169,7 +169,7 @@ static RaggedAllToAllThunk MakeOneRankThunk(
     buffers.push_back(MakeBuffer(allocations[i], S64, kNumOneRankUpdates));
   }
   return RaggedAllToAllThunk(Thunk::ThunkInfo(), MakeOneRankConfig(),
-                             std::move(buffers));
+                             std::move(buffers), /*devices_per_host=*/1);
 }
 
 static std::vector<se::DeviceAddressBase> AllocateOneRankDeviceBuffers(
@@ -430,12 +430,13 @@ TEST_F(GpuRaggedAllToAllTest, TestConvertToCommands) {
   // ThunkSequence Creation
   auto ra2a_start_thunk = std::make_unique<RaggedAllToAllThunk>(
       Thunk::ThunkInfo{}, ra2a_instr, std::move(buffers),
-      /*p2p_memcpy_enabled=*/false);
+      /*p2p_memcpy_enabled=*/false, /*devices_per_host=*/1);
 
   ThunkSequence start_sequence;
   start_sequence.push_back(std::move(ra2a_start_thunk));
   auto async_start = std::make_unique<AsyncStartThunk>(
-      Thunk::ThunkInfo(), CommunicationStreamId(0), std::move(start_sequence));
+      Thunk::ThunkInfo(), CommunicationStreamId(0), std::move(start_sequence),
+      /*devices_per_host=*/1);
   auto async_done = std::make_unique<AsyncDoneThunk>(
       Thunk::ThunkInfo(), async_start->async_execution());
 
@@ -552,7 +553,8 @@ TEST(CollectiveThunkTest, ProtoRoundTrip) {
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<RaggedAllToAllThunk> thunk,
       RaggedAllToAllThunk::FromProto(
-          thunk_info, proto.ragged_all_to_all_thunk(), buffer_allocations));
+          thunk_info, proto.ragged_all_to_all_thunk(), buffer_allocations,
+          /*devices_per_host=*/1));
 
   // We're not setting the fast interconnect slice size override in the
   // proto, so it should be nullopt in the thunk.

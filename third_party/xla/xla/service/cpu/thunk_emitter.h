@@ -85,14 +85,14 @@ class ThunkEmitter {
 
   absl::StatusOr<std::vector<EmittedKernel>> ConsumeKernels();
 
+  static std::optional<SortThunk::SortDirection> MatchSortDirection(
+      const HloSortInstruction* sort);
+
  private:
   struct HostKernelAllocationSlices {
     std::vector<ShapedSlice> arguments;
     std::vector<ShapedSlice> results;
   };
-
-  std::optional<SortThunk::SortDirection> MatchSortDirection(
-      const HloComputation* hlo_comparator) const;
 
   // Returns the buffer allocation slice assigned to the given instruction at
   // the given shape index. Instruction must have a unique slice assigned to it!
@@ -133,18 +133,12 @@ class ThunkEmitter {
   absl::StatusOr<ThunkSequence> EmitCopyThunk(
       const HloInstruction* instruction);
 
-  absl::StatusOr<ThunkSequence> EmitElementalKernelThunk(
-      const HloInstruction* instruction);
-
   absl::StatusOr<ThunkSequence> EmitPadKernelThunk(
       const HloInstruction* instruction);
 
   absl::StatusOr<ThunkSequence> EmitFftThunk(const HloInstruction* instruction);
 
   absl::StatusOr<ThunkSequence> EmitFusionKernelThunk(
-      const HloInstruction* instruction);
-
-  absl::StatusOr<ThunkSequence> EmitReductionKernelThunk(
       const HloInstruction* instruction);
 
   absl::StatusOr<ThunkSequence> EmitRngThunk(const HloInstruction* instruction);
@@ -206,9 +200,6 @@ class ThunkEmitter {
       const HloCustomCallInstruction* custom_call);
 
   absl::StatusOr<ThunkSequence> EmitOneDnnOpThunk(
-      const HloInstruction* instruction);
-
-  absl::StatusOr<ThunkSequence> EmitSliceThunk(
       const HloInstruction* instruction);
 
   absl::StatusOr<ThunkSequence> EmitSortThunk(
@@ -276,8 +267,7 @@ class ThunkEmitter {
   ParallelFusionEmitter parallel_fusion_emitter_;
 };
 
-bool FusionRoutesToMlirEmitter(const HloModuleConfig& config,
-                               const HloFusionInstruction* fusion);
+bool FusionRoutesToMlirEmitter(const HloFusionInstruction* fusion);
 
 }  // namespace xla::cpu
 

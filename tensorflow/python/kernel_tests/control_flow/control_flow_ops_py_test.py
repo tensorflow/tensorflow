@@ -1476,7 +1476,6 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(self.evaluate(pruned_nested_cond()), 10)
     self.assertEqual(["C"], filter_test_messages(printed.contents()))
 
-
   @test_util.run_in_graph_and_eager_modes
   @test_util.disable_tfrt("b/179459136")
   def testWhileAutoControlDeps(self):
@@ -1667,7 +1666,6 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         self.assertEqual(op.inputs[0].op.type, "Shape")
         self.assertEqual(op.inputs[1].op.type, "Shape")
     xla_context.Exit()
-
 
   @test_util.disable_control_flow_v2("b/115776323 (max_iters)")
   @test_util.run_v1_only("b/120545219")
@@ -2735,8 +2733,9 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       def loop_iterator(j, _):
         return math_ops.less(j, 3)
 
-      def loop_body(j, _):
-        ns = state_ops.scatter_update(select, j, 10.0)
+      def loop_body(j, value):
+        with ops.control_dependencies([value]):
+          ns = state_ops.scatter_update(select, j, 10.0)
         nj = math_ops.add(j, 1)
         return [nj, ns]
 
@@ -4610,7 +4609,6 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
             len([op for op in x.graph.get_operations() if op.type == "StackV2"
                 ]), 1)
 
-
   @test_util.run_v1_only("b/120545219")
   def testQIntSwitchMerge(self):
     with self.cached_session(force_gpu=test.is_gpu_available()) as sess:
@@ -4972,6 +4970,78 @@ class AssertTest(test.TestCase):
       # No copy was performed for the guarded assert
       self.assertEqual([], guarded_memcpy_nodestat_names)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testAssertRaisesWithRaggedTensorData(self):
+    rt = ragged_factory_ops.constant([[1], [2]])
+    cond = math_ops.reduce_all(math_ops.equal(rt.row_lengths(), 2))
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                r"\[\[1\], \[2\]\]"):
+      self.evaluate(control_flow_assert.Assert(cond, [rt]))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testAssertPassesWithRaggedTensorData(self):
+    rt = ragged_factory_ops.constant([[1], [2]])
+    cond = math_ops.reduce_all(math_ops.equal(rt.row_lengths(), 1))
+    self.evaluate(control_flow_assert.Assert(cond, [rt]))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testAssertRaisesWithDenseAndRaggedTensorData(self):
+    dense = constant_op.constant([7.5, 8.5])
+    rt = ragged_factory_ops.constant([[1, 2, 3, 4], [5]])
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                r"(?s)7\.5.*\[\[1, 2, 3, 4\], \[5\]\]"):
+      self.evaluate(
+          control_flow_assert.Assert(False, [dense, rt], summarize=-1))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testAssertSummarizesRaggedTensorData(self):
+    rt = ragged_factory_ops.constant([[i] for i in range(8)])
+    with self.assertRaisesRegex(
+        errors_impl.InvalidArgumentError,
+        r"\[\[0\], \[1\], \[2\], \.\.\., \[5\], \[6\], \[7\]\]"):
+      self.evaluate(control_flow_assert.Assert(False, [rt]))
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                r"\[\[0\], \[1\], \[2\], \[3\], \[4\]"):
+      self.evaluate(control_flow_assert.Assert(False, [rt], summarize=-2))
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                r"\[\[0\], \[1\], \.\.\., \[6\], \[7\]\]"):
+      self.evaluate(
+          control_flow_assert.Assert(False, [rt], summarize=np.int64(2)))
+    with self.assertRaises(errors_impl.InvalidArgumentError):
+      self.evaluate(control_flow_assert.Assert(False, [rt], summarize=0))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testAssertWithUnknownRankRaggedTensorData(self):
+
+    @eager_def_function.function(input_signature=[
+        ragged_tensor.RaggedTensorSpec(ragged_rank=1, dtype=dtypes.int32),
+        tensor_lib.TensorSpec([], dtypes.bool),
+    ])
+    def f(rt, cond):
+      with ops.control_dependencies([control_flow_assert.Assert(cond, [rt])]):
+        return array_ops.identity(rt.flat_values)
+
+    rt = ragged_factory_ops.constant([[1, 2], [3]])
+    self.assertAllEqual([1, 2, 3], self.evaluate(f(rt, True)))
+    with self.assertRaisesRegex(
+        errors_impl.InvalidArgumentError,
+        r"flat_values=\[1 2 3\], nested_row_splits=\[\[0 2 3\]\]"):
+      self.evaluate(f(rt, False))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testAssertWithRaggedTensorDataCompilesWithXla(self):
+    if not test_util.is_xla_enabled():
+      self.skipTest("Requires XLA.")
+
+    @eager_def_function.function(jit_compile=True)
+    def f(rt):
+      cond = math_ops.reduce_all(math_ops.greater(rt.row_lengths(), 0))
+      with ops.control_dependencies([control_flow_assert.Assert(cond, [rt])]):
+        return math_ops.reduce_sum(rt.flat_values)
+
+    self.assertEqual(6, self.evaluate(f(ragged_factory_ops.constant([[1, 2],
+                                                                      [3]]))))
+
 
 class WhileOpBenchmark(test.Benchmark):
   """Evaluate the performance of while_loop op."""
@@ -5130,6 +5200,49 @@ class EagerTest(test.TestCase):
       self.assertAllEqual(
           isum(tensor, maximum_iterations=3).numpy(),
           [1 + 3, 2 + 3, 3 + 3, 4 + 3, 5 + 3])
+
+  def testWhileLoopWithNumpyLoopVars(self):
+    with context.eager_mode():
+      i0 = np.array(0, dtype=np.int32)
+      multi_dim = np.ones((2, 2), dtype=np.float32)
+
+      def cond(i, acc, m):
+        return i < 3
+
+      def body(i, acc, m):
+        self.assertIsInstance(i, tensor_lib.Tensor)
+        self.assertIsInstance(acc, tensor_lib.Tensor)
+        self.assertIsInstance(m, tensor_lib.Tensor)
+        return i + 1, acc + math_ops.cast(1.0, dtypes.float32), m + 1.0
+
+      def run_loop():
+        return while_loop_tf.while_loop(
+            cond, body, [i0, constant_op.constant(0.0), multi_dim]
+        )[1:]
+
+      r_eager = run_loop()
+      self.assertEqual(r_eager[0].numpy(), 3.0)
+      self.assertAllClose(r_eager[1].numpy(), np.ones((2, 2)) + 3.0)
+
+      r_graph = eager_def_function.function(run_loop)()
+      self.assertEqual(r_graph[0].numpy(), 3.0)
+      self.assertAllClose(r_graph[1].numpy(), np.ones((2, 2)) + 3.0)
+
+      def run_loop_max_iters():
+        return while_loop_tf.while_loop(
+            cond,
+            body,
+            [i0, constant_op.constant(0.0), multi_dim],
+            maximum_iterations=2,
+        )[1:]
+
+      r_eager_max = run_loop_max_iters()
+      self.assertEqual(r_eager_max[0].numpy(), 2.0)
+      self.assertAllClose(r_eager_max[1].numpy(), np.ones((2, 2)) + 2.0)
+
+      r_graph_max = eager_def_function.function(run_loop_max_iters)()
+      self.assertEqual(r_graph_max[0].numpy(), 2.0)
+      self.assertAllClose(r_graph_max[1].numpy(), np.ones((2, 2)) + 2.0)
 
   @test_util.run_v1_only("b/120545219")
   def testWhileWithMaximumIterationsAndSingleArgument(self):

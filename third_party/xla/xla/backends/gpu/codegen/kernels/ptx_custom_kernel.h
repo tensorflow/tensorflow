@@ -17,7 +17,10 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_CODEGEN_KERNELS_PTX_CUSTOM_KERNEL_H_
 
 #include <cstddef>
+#include <cstdint>
+#include <memory>
 #include <string>
+#include <vector>
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -46,6 +49,17 @@ absl::StatusOr<CustomKernel> GetOwnedPtxCustomKernel(
 absl::StatusOr<CustomKernel> CreateOwnedCubinCustomKernel(
     std::string kernel_name, std::vector<uint8_t> cubin, int num_args,
     se::BlockDim block_dim, se::ThreadDim thread_dim,
+    size_t shared_memory_bytes);
+
+// Like CreateOwnedCubinCustomKernel, but the CUBIN buffer is shared instead of
+// copied. Prefer this whenever the CUBIN is already held in a reference counted
+// buffer (e.g. it comes from the KernelReuseCache), so that a kernel that is
+// invoked multiple times in a module is only stored once.
+//
+// `cubin` must not be null.
+absl::StatusOr<CustomKernel> CreateSharedCubinCustomKernel(
+    std::string kernel_name, std::shared_ptr<const std::vector<uint8_t>> cubin,
+    int num_args, se::BlockDim block_dim, se::ThreadDim thread_dim,
     size_t shared_memory_bytes);
 
 }  // namespace xla::gpu::kernel

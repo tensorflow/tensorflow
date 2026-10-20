@@ -990,10 +990,8 @@ TEST_F(HloVerifierTest, ConvBlockScalingConfigSameScaleAndZeroIdxNotAllowed) {
   config.mutable_lhs()->set_zero_idx(2);
   conv->set_block_scaling_config(config);
 
-  EXPECT_THAT(
-      verifier().Run(module.get()).status().message(),
-      HasSubstr(
-          "LHS block scaling scale_idx and zero_idx cannot be the same (2)"));
+  EXPECT_THAT(verifier().Run(module.get()).status().message(),
+              HasSubstr("Duplicate index 2"));
 }
 
 TEST_F(HloVerifierTest, ConvBlockScalingConfigLhsAndRhsSameScaleIdxNotAllowed) {
@@ -1005,9 +1003,56 @@ TEST_F(HloVerifierTest, ConvBlockScalingConfigLhsAndRhsSameScaleIdxNotAllowed) {
   config.mutable_rhs()->set_scale_idx(2);
   conv->set_block_scaling_config(config);
 
-  EXPECT_THAT(
-      verifier().Run(module.get()).status().message(),
-      HasSubstr("LHS and RHS block scaling scale_idx cannot be the same (2)"));
+  EXPECT_THAT(verifier().Run(module.get()).status().message(),
+              HasSubstr("Duplicate index 2"));
+}
+
+static const char* const kDotWith4OperandsHloString = R"(
+HloModule module
+ENTRY entry_computation {
+  param0 = bf16[64,128] parameter(0)
+  param1 = bf16[128,64] parameter(1)
+  param2 = f8e8m0fnu[64,4] parameter(2)
+  param3 = f8e8m0fnu[4,64] parameter(3)
+  ROOT dot = bf16[64,64] dot(param0, param1, param2, param3),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})";
+
+TEST_F(HloVerifierTest, DotBlockScalingConfigScaleIdxOutOfBoundsNotAllowed) {
+  ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnUnverifiedModule(kDotWith4OperandsHloString));
+  auto* dot = module->entry_computation()->root_instruction();
+  BlockScalingConfig config;
+  config.mutable_rhs()->set_scale_idx(5);
+  dot->set_block_scaling_config(config);
+
+  EXPECT_THAT(verifier().Run(module.get()).status().message(),
+              HasSubstr("Block scaling scale_idx for rhs 5 out of bounds"));
+}
+
+TEST_F(HloVerifierTest, DotSparsityConfigLhsAndRhsSameIdxNotAllowed) {
+  ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnUnverifiedModule(kDotWith4OperandsHloString));
+  auto* dot = module->entry_computation()->root_instruction();
+  SparsityConfig config;
+  config.mutable_lhs()->set_idx(2);
+  config.mutable_rhs()->set_idx(2);
+  dot->set_sparsity_config(config);
+
+  EXPECT_THAT(verifier().Run(module.get()).status().message(),
+              HasSubstr("Duplicate index 2"));
+}
+
+TEST_F(HloVerifierTest, DotUnreferencedExtraOperandsNotAllowed) {
+  ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnUnverifiedModule(kDotWith4OperandsHloString));
+  auto* dot = module->entry_computation()->root_instruction();
+  BlockScalingConfig config;
+  config.mutable_lhs()->set_scale_idx(2);
+  dot->set_block_scaling_config(config);
+
+  EXPECT_THAT(verifier().Run(module.get()).status().message(),
+              HasSubstr("Expected all 2 extra operands to be referenced"));
 }
 
 static const char* const kAddWithLayoutChangeHlo = R"(
@@ -4403,6 +4448,76 @@ ENTRY TopK {
   ASSERT_TRUE(status.ok());
 }
 
+TEST_F(HloVerifierTest, ShuffleRotateOK) {
+  constexpr absl::string_view kHlo = R"(
+HloModule shuffle, entry_computation_layout={(f32[10,20]{1,0})->f32[10,20]{1,0}}
+
+ENTRY Shuffle {
+  x = f32[10,20]{1,0} parameter(0)
+  ROOT shuffle = f32[10,20]{1,0} shuffle(x), dimensions={0,1}, mode=rotate, shifts={2,5}
+}
+  )";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHlo));
+  const absl::StatusOr<bool> result = verifier().Run(module.get());
+
+  EXPECT_THAT(result, absl_testing::IsOk());
+}
+
+TEST_F(HloVerifierTest, ShuffleInvalidDimensions) {
+  constexpr absl::string_view kHlo = R"(
+HloModule shuffle, entry_computation_layout={(f32[10,20]{1,0})->f32[10,20]{1,0}}
+
+ENTRY Shuffle {
+  x = f32[10,20]{1,0} parameter(0)
+  ROOT shuffle = f32[10,20]{1,0} shuffle(x), dimensions={0,2}, mode=rotate, shifts={2,5}
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHlo));
+  const absl::StatusOr<bool> result = verifier().Run(module.get());
+
+  EXPECT_THAT(result, StatusIs(absl::StatusCode::kInvalidArgument,
+                               HasSubstr("out-of-bounds")));
+}
+
+TEST_F(HloVerifierTest, ShuffleRotateMismatchedShiftsSize) {
+  constexpr absl::string_view kHlo = R"(
+HloModule shuffle, entry_computation_layout={(f32[10,20]{1,0})->f32[10,20]{1,0}}
+
+ENTRY Shuffle {
+  x = f32[10,20]{1,0} parameter(0)
+  ROOT shuffle = f32[10,20]{1,0} shuffle(x), dimensions={0,1}, mode=rotate, shifts={2}
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHlo));
+  const absl::StatusOr<bool> result = verifier().Run(module.get());
+
+  EXPECT_THAT(result,
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("dimensions and shifts must have the same "
+                                 "size")));
+}
+
+TEST_F(HloVerifierTest, ShuffleDuplicatedDimensions) {
+  constexpr absl::string_view kHlo = R"(
+HloModule shuffle, entry_computation_layout={(f32[10,20]{1,0})->f32[10,20]{1,0}}
+
+ENTRY Shuffle {
+  x = f32[10,20]{1,0} parameter(0)
+  ROOT shuffle = f32[10,20]{1,0} shuffle(x), dimensions={0,0}, mode=rotate, shifts={2,5}
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHlo));
+  const absl::StatusOr<bool> result = verifier().Run(module.get());
+
+  EXPECT_THAT(result, StatusIs(absl::StatusCode::kInvalidArgument,
+                               HasSubstr("duplicated")));
+}
+
 TEST_F(HloVerifierTest, InputLayoutMismatchIgnored) {
   // Note: The mismatch is between the entry_computation_layout and the layout
   // of parameter(1).
@@ -6513,6 +6628,40 @@ TEST_F(HloVerifierTest, NonAssociativeScanAllowedInLayoutInsensitiveMode) {
   )";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
   EXPECT_OK(verifier().Run(module.get()).status());
+}
+
+// A BF16 init feeding an F32 carry, as BF16 conversion folding leaves it.
+constexpr absl::string_view kMixedPrecisionScanHlo = R"(
+  HloModule scan_module
+
+  add {
+    lhs = f32[2] parameter(0)
+    rhs = f32[2] parameter(1)
+    add = f32[2] add(lhs, rhs)
+    ROOT t = (f32[2], f32[2]) tuple(add, add)
+  }
+
+  ENTRY entry {
+    input = f32[4,2] parameter(0)
+    init = bf16[2] parameter(1)
+    ROOT scan = (f32[4,2], f32[2]) scan(input, init), dimensions={0}, num_carries=1, is_associative=true, to_apply=add
+  }
+  )";
+
+TEST_F(HloVerifierTestAllowMixedPrecision, ScanMixedPrecisionAllowed) {
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnUnverifiedModule(kMixedPrecisionScanHlo));
+  EXPECT_OK(verifier().Run(module.get()).status());
+}
+
+TEST_F(HloVerifierTest, ScanMixedPrecisionRejected) {
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnUnverifiedModule(kMixedPrecisionScanHlo));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              HasSubstr("Shapes of operand 1 and to_apply computation "
+                        "parameter are inconsistent"));
 }
 
 TEST_F(HloVerifierTest, VerifyAsyncStartOutputToOperandAliasing) {

@@ -683,10 +683,8 @@ TEST(GpuCollectivesTest, AllocatorMemoryRegistrationRegistersWithClique) {
   ASSERT_OK(registration->RegisterWithClique(clique));
 }
 
-// Smoke test for the MORI backbone: creates a MORI communicator and exercises
-// MoriCollectives::Allocate/Deallocate. MORI is a ROCm-only backend and the
-// current implementation is bindings-free (stubbed), so this only verifies the
-// plumbing is reachable and does not crash.
+// Smoke test for the MORI backend: creates MORI communicators over the global
+// clique and allocates from every device's symmetric heap.
 TEST(GpuCollectivesTest, MoriCreateCommunicatorAndAllocate) {
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
                        PlatformUtil::GetPlatform("gpu"));
@@ -699,6 +697,10 @@ TEST(GpuCollectivesTest, MoriCreateCommunicatorAndAllocate) {
   if (platform->VisibleDeviceCount() < 4) {
     GTEST_SKIP() << "Test requires at least 4 GPUs";
   }
+
+  // MORI's CCO backend requires the SDMA copy path. Enable it unless the
+  // environment already overrides it, before MORI is resolved/initialized.
+  tsl::setenv("MORI_ENABLE_SDMA", "1", /*overwrite=*/0);
 
   auto* mori = xla::gpu::GpuCollectives::Resolve("ROCM", "mori");
   ASSERT_NE(mori, nullptr);
@@ -713,12 +715,14 @@ TEST(GpuCollectivesTest, MoriCreateCommunicatorAndAllocate) {
   ASSERT_OK_AND_ASSIGN(size_t num_ranks, comms[0]->NumRanks());
   EXPECT_EQ(num_ranks, 4u);
 
-  // Exercise Allocate/Deallocate wiring. The bindings-free stubs are inert
-  // (Allocate returns an error, Deallocate is unimplemented), so we only verify
-  // the calls are reachable and do not crash.
-  auto buffer_or = mori->Allocate(1024);
-  void* buffer = buffer_or.ok() ? *buffer_or : nullptr;
-  ASSERT_OK(mori->Deallocate(buffer));
+  // MoriCollectives::Allocate uses the current device's facade, and every PE
+  // must issue the same allocation sequence, so allocate once per device.
+  for (se::StreamExecutor* executor : executors) {
+    auto activate_context = executor->Activate();
+    ASSERT_OK_AND_ASSIGN(void* buffer, mori->Allocate(1024));
+    EXPECT_NE(buffer, nullptr);
+    ASSERT_OK(mori->Deallocate(buffer));
+  }
 }
 
 }  // namespace

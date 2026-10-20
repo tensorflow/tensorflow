@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
 
 #include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/debugging/leak_check.h"
 #include "absl/log/check.h"
 #include "xla/stream_executor/platform.h"

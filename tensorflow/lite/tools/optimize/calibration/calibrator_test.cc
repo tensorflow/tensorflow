@@ -711,6 +711,55 @@ TEST(CalibratorTest, CalibrationWithCallOnce) {
     EXPECT_NEAR(e.second.max, expected_result.max, eps);
   }
 }
+
+TEST(CalibratorTest, NonVariableInputsNotReLoggedPostInvocation) {
+  auto model = ReadModel("multi_add.bin");
+  ASSERT_TRUE(model);
+  std::unique_ptr<Interpreter> interpreter;
+  std::unique_ptr<CalibrationReader> reader;
+  auto status = BuildLoggingInterpreter(
+      *model, ops::builtin::BuiltinOpResolver{}, &interpreter, &reader);
+  EXPECT_EQ(kTfLiteOk, status);
+
+  ASSERT_TRUE(interpreter);
+  ASSERT_TRUE(reader);
+
+  status = interpreter->AllocateTensors();
+  ASSERT_EQ(kTfLiteOk, status);
+
+  const size_t tensor_size = 1 * 8 * 8 * 3;
+  for (size_t i = 0; i < interpreter->inputs().size(); i++) {
+    int input_tensor_idx = interpreter->inputs()[i];
+    TfLiteTensor* tensor = interpreter->tensor(input_tensor_idx);
+    ASSERT_NE(tensor, nullptr);
+    ASSERT_EQ(tensor->bytes, tensor_size * sizeof(float));
+    for (size_t j = 0; j < tensor_size; j++) {
+      tensor->data.f[j] = i + 1;
+    }
+  }
+
+  // Simulate memory planner buffer reuse where an output tensor shares the
+  // buffer of an input tensor.
+  ASSERT_NE(interpreter->tensor(5), nullptr);
+  char* original_output_data = interpreter->tensor(5)->data.raw;
+  interpreter->tensor(5)->data.raw = interpreter->tensor(0)->data.raw;
+
+  status = interpreter->Invoke();
+  ASSERT_EQ(kTfLiteOk, status);
+
+  absl::flat_hash_map<std::tuple<int, int>, CalibrationReader::CalibrationStats>
+      stats;
+  status = reader->GetTensorStatsAsMap(&stats);
+  EXPECT_EQ(kTfLiteOk, status);
+  const float eps = 1e-6f;
+  for (int tensor_idx = 0; tensor_idx < 4; tensor_idx++) {
+    auto it = stats.find({0, tensor_idx});
+    ASSERT_NE(it, stats.end());
+    EXPECT_NEAR(it->second.min, tensor_idx + 1, eps);
+    EXPECT_NEAR(it->second.max, tensor_idx + 1, eps);
+  }
+  interpreter->tensor(5)->data.raw = original_output_data;
+}
 }  // namespace
 }  // namespace calibration
 }  // namespace optimize

@@ -2799,3 +2799,18 @@ ENTRY %main.4 (Arg_0.1: f32[16,16], Arg_1.2: s32[16,16]) -> () {
   %Arg_1.2 = s32[16,16] parameter(1)
   ROOT %tuple.3 = () tuple()
 }
+// -----
+
+// Test that collective-broadcast with has_dynamic_root=true imports the
+// has_dynamic_root attribute on the stablehlo op.
+// CHECK-LABEL: module @main attributes
+// CHECK:         func.func @main(%[[VAL_0:.*]]: tensor<4xf32>, %[[VAL_1:.*]]: tensor<1xi32>) -> tensor<4xf32> {
+// CHECK:           %[[VAL_2:.*]] = "stablehlo.collective_broadcast"(%[[VAL_0]], %[[VAL_1]]) <{channel_handle = #stablehlo.channel_handle<handle = 1, type = 0>, has_dynamic_root, replica_groups = dense<{{\[\[}}0, 1]]> : tensor<1x2xi64>}> : (tensor<4xf32>, tensor<1xi32>) -> tensor<4xf32>
+// CHECK:           return %[[VAL_2]] : tensor<4xf32>
+HloModule main, entry_computation_layout={(f32[4]{0}, s32[1]{0})->f32[4]{0}}
+
+ENTRY %main.3 (data: f32[4], source_ids: s32[1]) -> f32[4] {
+  %data = f32[4]{0} parameter(0)
+  %source_ids = s32[1]{0} parameter(1)
+  ROOT %collective-broadcast.1 = f32[4]{0} collective-broadcast(%data, %source_ids), channel_id=1, replica_groups={{0,1}}, has_dynamic_root=true
+}

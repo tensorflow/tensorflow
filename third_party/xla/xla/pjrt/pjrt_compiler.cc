@@ -125,6 +125,19 @@ absl::StatusOr<PjRtCompiler*> PjRtCompilerRegistry::GetCompiler(
   return GetOrCreateCompiler(platform_name, variant_name);
 }
 
+bool PjRtCompilerRegistry::IsCompilerRegistered(
+    absl::string_view platform_name, absl::string_view variant_name) {
+  PjRtCompilerType key{platform_name, variant_name};
+  {
+    absl::MutexLock l(compiler_mutex_);
+    if (compilers_.contains(key)) {
+      return true;
+    }
+  }
+  absl::MutexLock l(factory_mutex_);
+  return factories_.contains(key);
+}
+
 absl::Status PjRtCompilerRegistry::InitializeVariant(
     absl::string_view platform_name, absl::string_view variant_name) {
   return GetOrCreateCompiler(platform_name, variant_name).status();
@@ -184,6 +197,12 @@ absl::Status PjRtInitializeCompilerVariant(absl::string_view platform_name,
 
 absl::Status PjRtInitializeCompilerVariants() {
   return PjRtCompilerRegistry::Global().InitializeAllVariants();
+}
+
+bool PjRtIsCompilerVariantRegistered(absl::string_view platform_name,
+                                     absl::string_view variant_name) {
+  return PjRtCompilerRegistry::Global().IsCompilerRegistered(platform_name,
+                                                             variant_name);
 }
 
 void PjRtRegisterDefaultCompiler(absl::string_view platform_name,
@@ -279,10 +298,12 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtDeserializeExecutable(
     const PjRtTopologyDescription& topology,
     riegeli::Any<riegeli::Reader*> reader,
-    std::optional<CompileOptions> options) {
+    std::optional<CompileOptions> options,
+    bool executable_compatibility_check_on_deserialization) {
   ABSL_ASSIGN_OR_RETURN(PjRtCompiler * compiler, GetPjRtCompiler(topology));
-  return compiler->DeserializeExecutable(topology, std::move(reader),
-                                         std::move(options));
+  return compiler->DeserializeExecutable(
+      topology, std::move(reader), std::move(options),
+      executable_compatibility_check_on_deserialization);
 }
 
 absl::Status PjRtPhaseCompiler::RegisterPhase(

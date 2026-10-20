@@ -321,25 +321,42 @@ TEST_P(HloEvaluatorBf16Test, DoesClampInt64) {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
-TEST_P(HloEvaluatorBf16Test, DISABLED_DoesClampSpecialBroadcast) {
-  auto low = LiteralUtil::CreateR0<float>(0.f);
-  auto value = LiteralUtil::CreateR2<float>({{-1.f, 0.f}, {1.f, 2.f}});
-  auto high = LiteralUtil::CreateR0<float>(1.f);
+TEST_P(HloEvaluatorBf16Test, DoesClampSpecialBroadcast) {
+  Literal low = LiteralUtil::CreateR0<float>(0.f);
+  Literal value = LiteralUtil::CreateR2<float>({{-1.f, 0.f}, {1.f, 2.f}});
+  Literal high = LiteralUtil::CreateR0<float>(1.f);
+  Literal expected = LiteralUtil::CreateR2<float>({{0.f, 0.f}, {1.f, 1.f}});
+  TestTernaryOp(HloOpcode::kClamp, std::move(expected), std::move(low),
+                std::move(value), std::move(high));
+}
 
-  Shape shape = value.shape();
-  HloComputation::Builder b(TestName());
-  auto c1 = b.AddInstruction(HloInstruction::CreateConstant(std::move(low)));
-  auto c2 = b.AddInstruction(HloInstruction::CreateConstant(std::move(value)));
-  auto c3 = b.AddInstruction(HloInstruction::CreateConstant(std::move(high)));
-  b.AddInstruction(
-      HloInstruction::CreateTernary(shape, HloOpcode::kClamp, c1, c2, c3));
-  m_->AddEntryComputation(b.Build());
+TEST_P(HloEvaluatorBf16Test, DoesClampScalarLowerBound) {
+  Literal low = LiteralUtil::CreateR0<float>(0.f);
+  Literal value = LiteralUtil::CreateR2<float>({{-1.f, 5.f}, {1.f, 4.f}});
+  Literal high = LiteralUtil::CreateR2<float>({{2.f, 4.f}, {4.f, 3.f}});
+  Literal expected = LiteralUtil::CreateR2<float>({{0.f, 4.f}, {1.f, 3.f}});
+  TestTernaryOp(HloOpcode::kClamp, std::move(expected), std::move(low),
+                std::move(value), std::move(high));
+}
 
-  TF_ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
+TEST_P(HloEvaluatorBf16Test, DoesClampScalarUpperBound) {
+  Literal low = LiteralUtil::CreateR2<float>({{0.f, 2.f}, {2.f, 0.f}});
+  Literal value = LiteralUtil::CreateR2<float>({{-1.f, 5.f}, {1.f, 4.f}});
+  Literal high = LiteralUtil::CreateR0<float>(3.f);
+  Literal expected = LiteralUtil::CreateR2<float>({{0.f, 3.f}, {2.f, 3.f}});
+  TestTernaryOp(HloOpcode::kClamp, std::move(expected), std::move(low),
+                std::move(value), std::move(high));
+}
 
-  auto expected = LiteralUtil::CreateR2<float>({{0, 0}, {1, 1}});
-
-  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+TEST_F(HloEvaluatorTest, DoesClampScalarBoundDifferentResultLayout) {
+  Literal low = LiteralUtil::CreateR0<int64_t>(0);
+  Literal value = LiteralUtil::CreateR2<int64_t>({{-5, 10}, {2, -1}});
+  Literal high = LiteralUtil::CreateR2<int64_t>({{4, 8}, {6, 1}});
+  Layout layout({0, 1});
+  Literal expected =
+      LiteralUtil::CreateR2WithLayout<int64_t>({{0, 8}, {2, 0}}, layout);
+  TestTernaryOp(HloOpcode::kClamp, std::move(expected), std::move(low),
+                std::move(value), std::move(high));
 }
 
 // Verifies that HloEvaluator evaluates a HLO instruction that performs select
@@ -6871,6 +6888,31 @@ TEST_F(HloEvaluatorTest, AsyncOpsWithLayout) {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
+TEST_F(HloEvaluatorTest, AsyncStartWithTiledLayout) {
+  // The reshape drops the tiling, so the result can't be moved.
+  const absl::string_view hlo_text = R"(
+  HloModule test
+
+  async_computation {
+    p0 = f32[8,128]{1,0:T(8,128)} parameter(0)
+    ROOT reshape = f32[8,128]{1,0:T(8,128)} reshape(p0)
+  }, execution_thread="thread"
+
+  ENTRY entry {
+    x = f32[8,128]{1,0:T(8,128)} parameter(0)
+    async-start = ((f32[8,128]{1,0:T(8,128)}), f32[8,128]{1,0:T(8,128)}) async-start(x), calls=async_computation, async_execution_thread="thread"
+    ROOT async-done = f32[8,128]{1,0:T(8,128)} async-done(async-start)
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Array2D<float> input(8, 128);
+  input.FillIota(1.0f);
+  Literal arg = LiteralUtil::CreateR2FromArray2D<float>(input);
+  ASSERT_OK_AND_ASSIGN(Literal result, HloEvaluator().Evaluate(
+                                           *m_->entry_computation(), {&arg}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(arg, result));
+}
+
 TEST_F(HloEvaluatorTest, LateBindingAsyncStartAndUpdate) {
   const absl::string_view hlo_text = R"(
   HloModule test
@@ -7398,6 +7440,46 @@ TEST_F(HloEvaluatorTest, ParameterThroughCallSucceedsWithPrecomputation) {
       evaluator_.Evaluate(parameter_instruction, {dataflow.get()},
                           /*recursively_evaluate_nonconstant_operands=*/true));
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest,
+       EvaluateWhileInductionVarWithNonUnitStepAndNonZeroInit) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule while_induction_var
+
+    %while_condition {
+      %param = (s32[], f32[4]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %loop_bound = s32[] constant(23)
+      ROOT %result = pred[] compare(%gte.0, %loop_bound), direction=LT
+    }
+
+    %while_body {
+      %param = (s32[], f32[4]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = f32[4] get-tuple-element(%param), index=1
+      %step = s32[] constant(4)
+      %next_indvar = s32[] add(%gte.0, %step)
+      %next_buf = f32[4] add(%gte.1, %gte.1)
+      ROOT %loop_result = (s32[], f32[4]) tuple(%next_indvar, %next_buf)
+    }
+
+    ENTRY main {
+      %param.0 = f32[4] parameter(0)
+      %init = s32[] constant(3)
+      %while_init = (s32[], f32[4]) tuple(%init, %param.0)
+      %while = (s32[], f32[4]) while(%while_init), condition=%while_condition, body=%while_body
+      ROOT %indvar = s32[] get-tuple-element(%while), index=0
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(
+      Literal result,
+      evaluator_.Evaluate(hlo_module->entry_computation()->root_instruction(),
+                          /*precomputed_analyses=*/{},
+                          /*recursively_evaluate_nonconstant_operands=*/true));
+  EXPECT_EQ(result, LiteralUtil::CreateR0<int32_t>(23));
 }
 
 class PatternMatchParseWhileLoopTest : public HloHardwareIndependentTestBase {};
@@ -8563,7 +8645,8 @@ TEST_F(HloEvaluatorTest, ConstructorEnablesCacheCallComputationEvals) {
 }
 
 TEST_F(HloEvaluatorTest, MemoizationSameComputationIdenticalArguments) {
-  evaluator_.set_cache_call_computation_evals(true);
+  HloEvaluator evaluator(/*max_loop_iterations=*/-1,
+                         /*cache_call_computation_evals=*/true);
   const char* const hlo_string = R"(
   HloModule MemoizationSameArgs
 
@@ -8581,14 +8664,16 @@ TEST_F(HloEvaluatorTest, MemoizationSameComputationIdenticalArguments) {
   }
   )";
   ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
+  ASSERT_OK_AND_ASSIGN(Literal result,
+                       evaluator.Evaluate(*m_->entry_computation(), {}));
   EXPECT_TRUE(
       LiteralTestUtil::Equal(LiteralUtil::CreateR0<float>(30.0f), result));
-  EXPECT_EQ(evaluator_.specialization_cache()->size(), 1);
+  EXPECT_EQ(evaluator.specialization_cache()->size(), 1);
 }
 
 TEST_F(HloEvaluatorTest, MemoizationDifferentArguments) {
-  evaluator_.set_cache_call_computation_evals(true);
+  HloEvaluator evaluator(/*max_loop_iterations=*/-1,
+                         /*cache_call_computation_evals=*/true);
   const char* const hlo_string = R"(
   HloModule MemoizationDiffArgs
 
@@ -8607,14 +8692,16 @@ TEST_F(HloEvaluatorTest, MemoizationDifferentArguments) {
   }
   )";
   ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
+  ASSERT_OK_AND_ASSIGN(Literal result,
+                       evaluator.Evaluate(*m_->entry_computation(), {}));
   EXPECT_TRUE(
       LiteralTestUtil::Equal(LiteralUtil::CreateR0<float>(32.0f), result));
-  EXPECT_EQ(evaluator_.specialization_cache()->size(), 2);
+  EXPECT_EQ(evaluator.specialization_cache()->size(), 2);
 }
 
 TEST_F(HloEvaluatorTest, MemoizationMultipleParameters) {
-  evaluator_.set_cache_call_computation_evals(true);
+  HloEvaluator evaluator(/*max_loop_iterations=*/-1,
+                         /*cache_call_computation_evals=*/true);
   const char* const hlo_string = R"(
   HloModule MemoizationMultiParams
 
@@ -8635,18 +8722,20 @@ TEST_F(HloEvaluatorTest, MemoizationMultipleParameters) {
   }
   )";
   ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
+  ASSERT_OK_AND_ASSIGN(Literal result,
+                       evaluator.Evaluate(*m_->entry_computation(), {}));
   // call1 = 10 - 3 = 7
   // call2 = 10 - 3 = 7 (cache hit)
   // call3 = 3 - 10 = -7 (cache miss, order matters)
   // final = 7 + 7 + (-7) = 7
   EXPECT_TRUE(
       LiteralTestUtil::Equal(LiteralUtil::CreateR0<float>(7.0f), result));
-  EXPECT_EQ(evaluator_.specialization_cache()->size(), 2);
+  EXPECT_EQ(evaluator.specialization_cache()->size(), 2);
 }
 
 TEST_F(HloEvaluatorTest, MemoizationZeroParameters) {
-  evaluator_.set_cache_call_computation_evals(true);
+  HloEvaluator evaluator(/*max_loop_iterations=*/-1,
+                         /*cache_call_computation_evals=*/true);
   const char* const hlo_string = R"(
   HloModule MemoizationZeroParams
 
@@ -8661,14 +8750,16 @@ TEST_F(HloEvaluatorTest, MemoizationZeroParameters) {
   }
   )";
   ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
+  ASSERT_OK_AND_ASSIGN(Literal result,
+                       evaluator.Evaluate(*m_->entry_computation(), {}));
   EXPECT_TRUE(
       LiteralTestUtil::Equal(LiteralUtil::CreateR0<float>(84.0f), result));
-  EXPECT_EQ(evaluator_.specialization_cache()->size(), 1);
+  EXPECT_EQ(evaluator.specialization_cache()->size(), 1);
 }
 
 TEST_F(HloEvaluatorTest, NestedCallSharedCache) {
-  evaluator_.set_cache_call_computation_evals(true);
+  HloEvaluator evaluator(/*max_loop_iterations=*/-1,
+                         /*cache_call_computation_evals=*/true);
   const char* const hlo_string = R"(
   HloModule NestedCalls
 
@@ -8700,7 +8791,8 @@ TEST_F(HloEvaluatorTest, NestedCallSharedCache) {
   }
   )";
   ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
+  ASSERT_OK_AND_ASSIGN(Literal result,
+                       evaluator.Evaluate(*m_->entry_computation(), {}));
   // comp_b(5) = 15
   // comp_a(5) = 15 * 2 = 30
   // comp_c(5) = 15 * 3 = 45
@@ -8710,23 +8802,21 @@ TEST_F(HloEvaluatorTest, NestedCallSharedCache) {
   // comp_a, comp_c, and comp_b should each have 1 entry in the specialization
   // cache. comp_b with argument 5 is evaluated only once and shared between
   // comp_a and comp_c.
-  EXPECT_EQ(evaluator_.specialization_cache()->size(), 3);
+  EXPECT_EQ(evaluator.specialization_cache()->size(), 3);
 
   const HloComputation* comp_b = m_->GetComputationWithName("comp_b");
   ASSERT_NE(comp_b, nullptr);
-  int comp_b_entries = 0;
-  for (const auto& [key, val] : *evaluator_.specialization_cache()) {
-    if (key.computation == comp_b) {
-      ++comp_b_entries;
-      EXPECT_TRUE(
-          LiteralTestUtil::Equal(LiteralUtil::CreateR0<float>(15.0f), val));
-    }
-  }
-  EXPECT_EQ(comp_b_entries, 1);
+  Literal arg_5 = LiteralUtil::CreateR0<float>(5.0f);
+  std::optional<Literal> cached_b =
+      evaluator.specialization_cache()->Find(comp_b, {&arg_5});
+  ASSERT_TRUE(cached_b.has_value());
+  EXPECT_TRUE(
+      LiteralTestUtil::Equal(LiteralUtil::CreateR0<float>(15.0f), *cached_b));
 }
 
 TEST_F(HloEvaluatorTest, ClearSpecializationCache) {
-  evaluator_.set_cache_call_computation_evals(true);
+  HloEvaluator evaluator(/*max_loop_iterations=*/-1,
+                         /*cache_call_computation_evals=*/true);
   const char* const hlo_string = R"(
   HloModule ClearCacheModule
 
@@ -8742,24 +8832,27 @@ TEST_F(HloEvaluatorTest, ClearSpecializationCache) {
   }
   )";
   ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
+  ASSERT_OK_AND_ASSIGN(Literal result,
+                       evaluator.Evaluate(*m_->entry_computation(), {}));
   EXPECT_TRUE(
       LiteralTestUtil::Equal(LiteralUtil::CreateR0<float>(15.0f), result));
-  EXPECT_EQ(evaluator_.specialization_cache()->size(), 1);
+  EXPECT_EQ(evaluator.specialization_cache()->size(), 1);
 
-  evaluator_.ClearSpecializationCache();
-  EXPECT_EQ(evaluator_.specialization_cache()->size(), 0);
+  evaluator.ClearSpecializationCache();
+  EXPECT_EQ(evaluator.specialization_cache()->size(), 0);
 
-  // Re-evaluating on the top-level evaluator should repopulate the cache
-  evaluator_.ResetVisitStates();
-  ASSERT_OK_AND_ASSIGN(Literal result2, Evaluate());
+  // Re-evaluating on the evaluator should repopulate the cache
+  evaluator.ResetVisitStates();
+  ASSERT_OK_AND_ASSIGN(Literal result2,
+                       evaluator.Evaluate(*m_->entry_computation(), {}));
   EXPECT_TRUE(
       LiteralTestUtil::Equal(LiteralUtil::CreateR0<float>(15.0f), result2));
-  EXPECT_EQ(evaluator_.specialization_cache()->size(), 1);
+  EXPECT_EQ(evaluator.specialization_cache()->size(), 1);
 }
 
 TEST_F(HloEvaluatorTest, MemoizationConsecutiveTopLevelEvaluations) {
-  evaluator_.set_cache_call_computation_evals(true);
+  HloEvaluator evaluator(/*max_loop_iterations=*/-1,
+                         /*cache_call_computation_evals=*/true);
   const char* const hlo_string1 = R"(
   HloModule Module1
 
@@ -8775,10 +8868,14 @@ TEST_F(HloEvaluatorTest, MemoizationConsecutiveTopLevelEvaluations) {
   }
   )";
   ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_string1));
-  ASSERT_OK_AND_ASSIGN(Literal result1, Evaluate());
+  ASSERT_OK_AND_ASSIGN(Literal result1,
+                       evaluator.Evaluate(*m_->entry_computation(), {}));
   EXPECT_TRUE(
       LiteralTestUtil::Equal(LiteralUtil::CreateR0<float>(15.0f), result1));
-  EXPECT_EQ(evaluator_.specialization_cache()->size(), 1);
+  EXPECT_EQ(evaluator.specialization_cache()->size(), 1);
+
+  // Explicitly clearing the cache removes all entries.
+  evaluator.ClearSpecializationCache();
 
   const char* const hlo_string2 = R"(
   HloModule Module2
@@ -8796,13 +8893,16 @@ TEST_F(HloEvaluatorTest, MemoizationConsecutiveTopLevelEvaluations) {
   )";
   ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_string2));
   // Reset visitor state before running visitor on the new module.
-  evaluator_.ResetVisitStates();
-  // Second top-level Evaluate() must automatically clear previous cache
-  // entries.
-  ASSERT_OK_AND_ASSIGN(Literal result2, Evaluate());
+  evaluator.ResetVisitStates();
+  ASSERT_OK_AND_ASSIGN(Literal result2,
+                       evaluator.Evaluate(*m_->entry_computation(), {}));
   EXPECT_TRUE(
       LiteralTestUtil::Equal(LiteralUtil::CreateR0<float>(27.0f), result2));
-  EXPECT_EQ(evaluator_.specialization_cache()->size(), 1);
+  EXPECT_EQ(evaluator.specialization_cache()->size(), 1);
+
+  // Explicitly clearing the cache removes all entries.
+  evaluator.ClearSpecializationCache();
+  EXPECT_EQ(evaluator.specialization_cache()->size(), 0);
 }
 
 TEST(EvalErrorTest, OK) {
@@ -8826,7 +8926,7 @@ TEST(EvalErrorTest, Payload) {
     DCHECK(absl::endian::native == absl::endian::big);
     error_detail = absl::byteswap(error_detail);
   }
-  (*payload.data()) = error_detail;
+  (payload[0]) = error_detail;
 
   s.SetPayload(internal::kEvalErrorDetailUrl, absl::Cord(payload));
 
@@ -8922,6 +9022,149 @@ BENCHMARK(BM_BinaryOp)
     ->Arg(128)
     ->Arg(512)
     ->Arg(1024);
+
+static void BM_EvaluateConvolution(benchmark::State& state) {
+  int64_t d = state.range(0);
+
+  std::unique_ptr<HloInstruction> lhs = HloInstruction::CreateConstant(
+      LiteralUtil::CreateFull({1, 2, d, d}, 1.0f));
+  std::unique_ptr<HloInstruction> rhs = HloInstruction::CreateConstant(
+      LiteralUtil::CreateFull({2, 2, 3, 3}, 1.0f));
+
+  Window window;
+  WindowDimension dim;
+  dim.set_size(3);
+  dim.set_stride(1);
+  dim.set_padding_low(1);
+  dim.set_padding_high(1);
+  dim.set_window_dilation(1);
+  dim.set_base_dilation(1);
+  *window.add_dimensions() = dim;
+  *window.add_dimensions() = dim;
+
+  ConvolutionDimensionNumbers dnums =
+      XlaBuilder::CreateDefaultConvDimensionNumbers(2);
+  std::unique_ptr<HloInstruction> conv = HloInstruction::CreateConvolve(
+      ShapeUtil::MakeShape(F32, {1, 2, d, d}), {lhs.get(), rhs.get()},
+      /*feature_group_count=*/1, /*batch_group_count=*/1, window, dnums,
+      HloHardwareIndependentTestBase::DefaultPrecisionConfig(2));
+
+  HloEvaluator evaluator;
+  for (auto s : state) {
+    CHECK_OK(evaluator.Evaluate(conv.get()).status());
+  }
+}
+
+BENCHMARK(BM_EvaluateConvolution)->MeasureProcessCPUTime()->Arg(4)->Arg(16);
+
+static void BM_EvaluateDotSlowPath(benchmark::State& state) {
+  int64_t d = state.range(0);
+
+  std::unique_ptr<HloInstruction> lhs = HloInstruction::CreateConstant(
+      LiteralUtil::CreateFull<int32_t>({d, d}, 1));
+  std::unique_ptr<HloInstruction> rhs = HloInstruction::CreateConstant(
+      LiteralUtil::CreateFull<int32_t>({d, d}, 2));
+
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  std::unique_ptr<HloInstruction> dot = HloInstruction::CreateDot(
+      ShapeUtil::MakeShape(S32, {d, d}), lhs.get(), rhs.get(), dot_dnums,
+      HloHardwareIndependentTestBase::DefaultPrecisionConfig(2));
+
+  HloEvaluator evaluator;
+  for (auto s : state) {
+    CHECK_OK(evaluator.Evaluate(dot.get()).status());
+  }
+}
+
+BENCHMARK(BM_EvaluateDotSlowPath)->MeasureProcessCPUTime()->Arg(4)->Arg(32);
+
+static void BM_EvaluateRaggedDot(benchmark::State& state) {
+  int64_t d = state.range(0);
+
+  HloComputation::Builder b("BM_EvaluateRaggedDot");
+  HloModuleConfig config;
+  config.set_seed(1);
+  HloModule module("BM_EvaluateRaggedDot", config);
+
+  HloInstruction* lhs = b.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateFull({d, d}, 1.0f)));
+  HloInstruction* rhs = b.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateFull({2, d, d}, 2.0f)));
+  HloInstruction* gs = b.AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::CreateR1<int64_t>({d / 2, d / 2})));
+
+  RaggedDotDimensionNumbers ragged_dnums;
+  ragged_dnums.add_lhs_ragged_dimensions(0);
+  ragged_dnums.add_rhs_group_dimensions(0);
+  ragged_dnums.mutable_dot_dimension_numbers()->add_lhs_contracting_dimensions(
+      1);
+  ragged_dnums.mutable_dot_dimension_numbers()->add_rhs_contracting_dimensions(
+      1);
+  b.AddInstruction(HloInstruction::CreateRaggedDot(
+      ShapeUtil::MakeShape(F32, {d, d}), lhs, rhs, gs, ragged_dnums,
+      HloHardwareIndependentTestBase::DefaultPrecisionConfig(2)));
+  module.AddEntryComputation(b.Build());
+
+  HloEvaluator evaluator;
+  for (auto s : state) {
+    evaluator.ResetVisitStates();
+    CHECK_OK(evaluator.Evaluate(*module.entry_computation(), {}).status());
+  }
+}
+
+BENCHMARK(BM_EvaluateRaggedDot)->MeasureProcessCPUTime()->Arg(4)->Arg(32);
+
+static void BM_EvaluateScaledDot(benchmark::State& state) {
+  int64_t d = state.range(0);
+
+  std::unique_ptr<HloInstruction> lhs =
+      HloInstruction::CreateConstant(LiteralUtil::CreateFull({d, d}, 1.0f));
+  std::unique_ptr<HloInstruction> lhs_scale =
+      HloInstruction::CreateConstant(LiteralUtil::CreateFull({d, 2}, 2.0f));
+  std::unique_ptr<HloInstruction> rhs =
+      HloInstruction::CreateConstant(LiteralUtil::CreateFull({d, d}, 1.0f));
+  std::unique_ptr<HloInstruction> rhs_scale =
+      HloInstruction::CreateConstant(LiteralUtil::CreateFull({2, d}, 3.0f));
+
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  std::unique_ptr<HloInstruction> scaled_dot = HloInstruction::CreateScaledDot(
+      ShapeUtil::MakeShape(F32, {d, d}), lhs.get(), rhs.get(), lhs_scale.get(),
+      rhs_scale.get(), dot_dnums,
+      HloHardwareIndependentTestBase::DefaultPrecisionConfig(4));
+
+  HloEvaluator evaluator;
+  for (auto s : state) {
+    CHECK_OK(evaluator.Evaluate(scaled_dot.get()).status());
+  }
+}
+
+BENCHMARK(BM_EvaluateScaledDot)->MeasureProcessCPUTime()->Arg(4)->Arg(32);
+
+static void BM_EvaluatePad(benchmark::State& state) {
+  int64_t d = state.range(0);
+
+  std::unique_ptr<HloInstruction> operand =
+      HloInstruction::CreateConstant(LiteralUtil::CreateFull({d, d}, 1.0f));
+  std::unique_ptr<HloInstruction> pad_value =
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f));
+
+  PaddingConfig padding_config =
+      CreatePaddingConfig({{{1, 1, 0}}, {{1, 1, 0}}});
+  std::unique_ptr<HloInstruction> pad =
+      HloInstruction::CreatePad(ShapeUtil::MakeShape(F32, {d + 2, d + 2}),
+                                operand.get(), pad_value.get(), padding_config);
+
+  HloEvaluator evaluator;
+  for (auto s : state) {
+    CHECK_OK(evaluator.Evaluate(pad.get()).status());
+  }
+}
+
+BENCHMARK(BM_EvaluatePad)->MeasureProcessCPUTime()->Arg(4)->Arg(64);
 
 }  // namespace
 }  // namespace xla

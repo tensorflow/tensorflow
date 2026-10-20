@@ -40,6 +40,8 @@ limitations under the License.
 #include <limits>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/hlo/builder/xla_builder.h"
@@ -61,14 +63,15 @@ class UnravelIndexOp : public XlaOpKernel {
     OP_REQUIRES(ctx,
                 TensorShapeUtils::IsVector(indices_shape) ||
                     TensorShapeUtils::IsScalar(indices_shape),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "The indices can only be scalar or vector, got \"",
-                    indices_shape.DebugString(), "\""));
+                    indices_shape.DebugString(), "\"")));
 
     const TensorShape dims_shape = ctx->InputShape(1);
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(dims_shape),
-                errors::InvalidArgument("The dims can only be 1-D, got \"",
-                                        dims_shape.DebugString(), "\""));
+                absl::InvalidArgumentError(
+                    absl::StrCat("The dims can only be 1-D, got \"",
+                                 dims_shape.DebugString(), "\"")));
 
     std::vector<int64_t> dims;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(1, &dims));
@@ -77,11 +80,11 @@ class UnravelIndexOp : public XlaOpKernel {
     int64_t product = 1;
     for (int64_t i = 0; i < rank; ++i) {
       OP_REQUIRES(ctx, dims[i] > 0,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "Input dims cannot be zero or negative, got dim = ",
-                      dims[i], " at index ", i));
+                      dims[i], " at index ", i)));
       OP_REQUIRES(ctx, product <= std::numeric_limits<int64_t>::max() / dims[i],
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(
                       "Input dims product is causing integer overflow"));
       product *= dims[i];
     }
@@ -116,9 +119,10 @@ class UnravelIndexOp : public XlaOpKernel {
       // [rank] stride/dims constants along a new trailing indices
       // dimension via BroadcastInDim, then combine elementwise.
       const int64_t num_indices = indices_shape.num_elements();
-      OP_REQUIRES(ctx, num_indices > 0,
-                  errors::InvalidArgument("received empty tensor indices: ",
-                                          indices_shape.DebugString()));
+      OP_REQUIRES(
+          ctx, num_indices > 0,
+          absl::InvalidArgumentError(absl::StrCat(
+              "received empty tensor indices: ", indices_shape.DebugString())));
       xla::XlaOp indices_bcast = xla::Broadcast(indices, {rank});
       xla::XlaOp trailing_bcast =
           xla::BroadcastInDim(trailing_const, {rank, num_indices}, {0});

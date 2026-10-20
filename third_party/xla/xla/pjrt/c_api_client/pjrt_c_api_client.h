@@ -494,13 +494,15 @@ class PjRtCApiClient : public PjRtClient {
   absl::StatusOr<std::vector<Future<>>> CrossHostSendBuffers(
       absl::Span<PjRtBuffer* const> buffers,
       absl::Span<const GlobalDeviceId> dst_global_device_ids,
-      std::vector<CrossHostTransferKey> transfer_keys) override;
+      std::vector<CrossHostTransferKey> transfer_keys,
+      absl::flat_hash_map<TaskId, IncarnationId> incarnations = {}) override;
 
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
   CrossHostReceiveBuffers(
       xla::PjRtDevice* device, absl::Span<const xla::Shape> shapes,
       absl::Span<const GlobalDeviceId> src_global_device_ids,
-      std::vector<CrossHostTransferKey> transfer_keys) override;
+      std::vector<CrossHostTransferKey> transfer_keys,
+      absl::flat_hash_map<TaskId, IncarnationId> incarnations = {}) override;
 
   absl::Status DmaMap(void* data, size_t size) override;
 
@@ -997,7 +999,8 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
       SendRecvCallbackData& send_recv_callback_data,
       std::vector<int64_t>& non_donatable_input_indices_storage,
       std::vector<int>& task_ids_storage,
-      std::vector<int64_t>& incarnation_ids_storage) const;
+      std::vector<int64_t>& incarnation_ids_storage,
+      std::vector<PJRT_NamedValue>& c_custom_options) const;
 
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
   ExecuteWithSingleDevice(absl::Span<PjRtBuffer* const> argument_handles,

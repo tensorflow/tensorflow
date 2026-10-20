@@ -301,12 +301,30 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
       node_info.outputs.assign(node->outputs->data,
                                node->outputs->data + node->outputs->size);
       node_info.activation = GetFusedActivation(reg, node);
+      node_info.builtin_data = node->builtin_data;
+      node_info.custom_name = reg->custom_name;
+      node_info.custom_initial_data = node->custom_initial_data;
+      node_info.custom_initial_data_size = node->custom_initial_data_size;
       if (IsRuntimeBmm(reg, node)) {
         node_info.composite_op_type = CompositeOpType::kRuntimeBmm;
       } else if (IsSdpa(reg, node)) {
         node_info.composite_op_type = CompositeOpType::kSdpa;
       } else if (IsMoe(reg, node)) {
         node_info.composite_op_type = CompositeOpType::kMoe;
+      }
+      if (node_info.composite_op_type != CompositeOpType::kNone) {
+        auto* subgraph = reinterpret_cast<tflite::Subgraph*>(context->impl_);
+        const auto* composite_params =
+            static_cast<const TfLiteStablehloCompositeParams*>(
+                node->builtin_data);
+        if (subgraph != nullptr && subgraph->GetSubgraphs() != nullptr &&
+            composite_params != nullptr &&
+            composite_params->subgraph_index > 0 &&
+            static_cast<size_t>(composite_params->subgraph_index) <
+                subgraph->GetSubgraphs()->size()) {
+          TF_LITE_ENSURE_STATUS(subgraph->MarkSubgraphAsDelegationSkippable(
+              composite_params->subgraph_index));
+        }
       }
       nodes_info_.push_back(node_info);
     }

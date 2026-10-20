@@ -173,7 +173,7 @@ void setOpManualAxes(Operation* op, ManualAxesAttr manualAxes,
     if (opSharding.getMeshOrRef() != meshOrRef) {
       hasOtherMesh = true;
       MeshAttr otherMesh = opSharding.getMesh(op);
-      CHECK(otherMesh.getAxes().empty() || otherMesh.isMaximal());
+      CHECK(otherMesh.getAxes().empty() || otherMesh.isSingleDevice());
     }
   }
   if (hasOtherMesh) {

@@ -714,6 +714,7 @@ cc_library(
         ":worker_client",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:mutex",
         "//tensorflow/core/profiler/rpc:profiler_service_impl",
         "@com_google_absl//absl/strings",
     ] + tf_grpc_cc_dependencies(),

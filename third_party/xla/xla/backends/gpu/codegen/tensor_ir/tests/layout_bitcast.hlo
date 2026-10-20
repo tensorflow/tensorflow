@@ -1,5 +1,12 @@
 // RUN: fusion_to_tensorir --hlo-to-tensorir --split-input-file %s | FileCheck %s
 
+// These tests check how non-default HLO layouts are turned into explicit
+// `transpose`/`reshape` ops, and into `nv_tensor_ir.stride` attributes on the
+// graph boundary. The strides are attached by `AttachLayoutStrides` from
+// inside `ImportAndLegalizeComputation`, so they are part of what this tool
+// prints. The matching `nv_tensor_ir.alignment` attributes need buffer
+// assignment and are added later, by the emitter only.
+
 // CHECK-LABEL: @test_reshape_split
 // CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xf32>
 // CHECK: %[[OUT:.*]] = reshape %[[ARG0]] : tensor<8x16xf32> -> tensor<8x4x4xf32>

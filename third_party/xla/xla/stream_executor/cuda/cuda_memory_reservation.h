@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "xla/stream_executor/cuda/cuda_device_allocator.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/memory_reservation.h"
@@ -37,11 +38,26 @@ class CudaMemoryReservation : public MemoryReservation {
  public:
   // Reserves a virtual address range of at least `size` bytes using
   // cuMemAddressReserve. StreamExecutor is used only for context activation.
+  // Probes the device's allocator options on every call; prefer the overload
+  // below when the caller already holds them.
   static absl::StatusOr<std::unique_ptr<CudaMemoryReservation>> Create(
       StreamExecutor* executor, uint64_t size);
 
+  // Same, but derives the mapping granularity from `options` instead of
+  // probing the device, so it matches physical allocations created with the
+  // same options. Like CudaDeviceAllocator, the range is aligned and padded to
+  // the larger of `options.alignment` and the mapping granularity. Fails with
+  // InvalidArgument when `options.use_vmm` is false.
+  static absl::StatusOr<std::unique_ptr<CudaMemoryReservation>> Create(
+      StreamExecutor* executor, uint64_t size,
+      const CudaDeviceAllocator::Options& options);
+
   // Returns the base address and padded size of the reserved virtual range.
   DeviceAddressBase address() const override;
+
+  // The mapping granularity reported by the driver for the handle types in
+  // use; mapping offsets and sizes must be multiples of it.
+  size_t granularity() const override { return granularity_; }
 
   ~CudaMemoryReservation() override;
   CudaMemoryReservation(CudaMemoryReservation&&) = delete;
@@ -49,7 +65,13 @@ class CudaMemoryReservation : public MemoryReservation {
 
  private:
   explicit CudaMemoryReservation(StreamExecutor* executor, CUdeviceptr ptr,
-                                 uint64_t size);
+                                 uint64_t size, size_t granularity);
+
+  // Shared by both Create overloads. The caller has activated the context and
+  // resolved `device`.
+  static absl::StatusOr<std::unique_ptr<CudaMemoryReservation>>
+  CreateWithDevice(StreamExecutor* executor, CUdevice device, uint64_t size,
+                   const CudaDeviceAllocator::Options& options);
 
   // Maps [reservation_offset, reservation_offset+size) in the reservation to
   // [allocation_offset, allocation_offset+size) in allocation via cuMemMap.
@@ -57,8 +79,8 @@ class CudaMemoryReservation : public MemoryReservation {
   absl::Status Map(size_t reservation_offset, size_t allocation_offset,
                    size_t size, MemoryAllocation& allocation) override;
 
-  // Enables read/write access to the full reservation for the owning device
-  // via cuMemSetAccess.
+  // Enables read/write access to this slice for the owning device and its
+  // P2P-capable peers via cuMemSetAccess.
   absl::Status SetAccess(uint64_t reservation_offset, size_t size) override;
 
   // Unmaps [offset, offset+size) within this reservation via cuMemUnmap.
@@ -67,6 +89,7 @@ class CudaMemoryReservation : public MemoryReservation {
   StreamExecutor* executor_;
   CUdeviceptr ptr_;  // 0 means moved-from / released
   uint64_t size_;
+  size_t granularity_;
 };
 
 }  // namespace stream_executor::gpu

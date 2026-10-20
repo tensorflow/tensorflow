@@ -459,10 +459,16 @@ absl::StatusOr<std::string> KernelApiIrBuilder::GetKernelName(
 }
 
 std::unique_ptr<llvm::Module> KernelApiIrBuilder::CreateModule(
-    absl::string_view name, llvm::LLVMContext& context) {
+    absl::string_view name, llvm::LLVMContext& context,
+    const TargetMachineFeatures* target_machine_features) {
   constexpr absl::string_view kXlaModuleIdentifier = "__compute_module";
-  return std::make_unique<llvm::Module>(
+  std::unique_ptr<llvm::Module> llvm_module = std::make_unique<llvm::Module>(
       absl::StrCat(kXlaModuleIdentifier, "_", name), context);
+  llvm_module->setTargetTriple(
+      target_machine_features->target_machine()->getTargetTriple());
+  llvm_module->setDataLayout(
+      target_machine_features->target_machine()->createDataLayout());
+  return llvm_module;
 }
 
 auto KernelApiIrBuilder::EmitKernelNumWorkGroups(llvm::IRBuilderBase& builder,

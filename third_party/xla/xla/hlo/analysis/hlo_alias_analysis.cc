@@ -476,9 +476,13 @@ absl::StatusOr<std::unique_ptr<HloAliasAnalysis>> HloAliasAnalysis::Run(
   XLA_VLOG_LINES(2, module->ToString());
 
   auto alias_analysis = absl::WrapUnique(new HloAliasAnalysis(module));
-  ABSL_ASSIGN_OR_RETURN(alias_analysis->dataflow_analysis_,
-                   HloDataflowAnalysis::Run(*module, /*ssa_form=*/true,
-                                            /*bitcast_defines_value=*/false));
+  // CreateBuffers reads the uses of every value.
+  ABSL_ASSIGN_OR_RETURN(
+      alias_analysis->dataflow_analysis_,
+      HloDataflowAnalysis::Run(
+          *module, /*ssa_form=*/true, /*bitcast_defines_value=*/false,
+          /*execution_threads=*/{}, /*propagate_through_calls=*/true,
+          /*precompute_uses=*/[](const HloValue&) { return true; }));
 
   size_t num_values = alias_analysis->dataflow_analysis_->values().size();
   alias_analysis->buffers_ =

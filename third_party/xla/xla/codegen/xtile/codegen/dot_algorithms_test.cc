@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 
 #include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"

@@ -1,0 +1,993 @@
+--- a/python/src/llvm.cc
++++ b/python/src/llvm.cc
+@@ -24,6 +24,7 @@
+ #include "llvm/IR/LegacyPassManager.h"
+ #include "llvm/IR/Metadata.h"
+ #include "llvm/IR/Module.h"
++#include "llvm/IR/Operator.h"
+ #include "llvm/IR/PassManager.h"
+ #include "llvm/IR/Verifier.h"
+ #include "llvm/IRReader/IRReader.h"
+@@ -196,6 +197,14 @@ void installTritonDAGScheduler() {
+       ->setInitialValue(createTritonDAGScheduler);
+ }
+ 
++// Marks every floating-point operation in the module as contractable.
++void allowFPOpFusion(llvm::Module &module) {
++  for (llvm::Function &function : module)
++    for (llvm::Instruction &instruction : llvm::instructions(function))
++      if (llvm::isa<llvm::FPMathOperator>(&instruction))
++        instruction.setHasAllowContract(true);
++}
++
+ std::unique_ptr<TargetMachine>
+ createTargetMachine(llvm::Module *module, std::string proc,
+                     bool enable_fp_fusion, const std::string &features) {
+@@ -205,7 +214,7 @@ createTargetMachine(llvm::Module *module, std::string proc,
+   llvm::TargetOptions opt;
+   bool disableLLVMOpt = mlir::triton::tools::getBoolEnv("DISABLE_LLVM_OPT");
+   if (enable_fp_fusion)
+-    opt.AllowFPOpFusion = llvm::FPOpFusion::Fast;
++    allowFPOpFusion(*module);
+   opt.TrapUnreachable = true;
+   opt.MCOptions.AsmVerbose = true;
+   opt.MCOptions.PreserveAsmComments = true;
+
+--- a/test/Conversion/amd/async-ops-alias-scopes.mlir
++++ b/test/Conversion/amd/async-ops-alias-scopes.mlir
+@@ -18,7 +18,7 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 1 : i32, ttg.targ
+ 
+     // COMMON: rocdl.global.load.async.lds {{.*}} <alias_scopes = [[[$ASYNC_COPY_SCOPE]]]
+     // Check that store for 'other' has alias information set
+-    // COMMON: llvm.store {{.*}} {alias_scopes = [[[$LOCAL_LOAD_SCOPE]]], {{.*}}, noalias_scopes = [[[$ASYNC_COPY_SCOPE]]]
++    // COMMON: llvm.store {{.*}} <{{.*}}alias_scopes = [[[$LOCAL_LOAD_SCOPE]]], {{.*}}noalias_scopes = [[[$ASYNC_COPY_SCOPE]]]
+     %0 = ttg.async_copy_global_to_local %ptr, %arg1 mask %mask other %other : tensor<64x1x!tt.ptr<f32>, #blocked> -> <64x1xf32, #shared, #smem, mutable>
+ 
+     // COMMON: llvm.return
+@@ -44,7 +44,7 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.shar
+ 
+     // COMMON: rocdl.raw.ptr.buffer.load.async.lds {{.*}} <alias_scopes = [[[$ASYNC_COPY_SCOPE]]]
+     // Check that store for 'other' has alias information set
+-    // COMMON: llvm.store {{.*}} {alias_scopes = [[[$LOCAL_LOAD_SCOPE]]], {{.*}}, noalias_scopes = [[[$ASYNC_COPY_SCOPE]]]
++    // COMMON: llvm.store {{.*}} <{{.*}}alias_scopes = [[[$LOCAL_LOAD_SCOPE]]], {{.*}}noalias_scopes = [[[$ASYNC_COPY_SCOPE]]]
+     %65 = amdg.buffer_load_to_local %arg1[%arg2] mask=%mask other=%other into %arg3 : !tt.ptr<f32>[tensor<8x64xi32, #blocked>] tensor<8x64xf32, #blocked> -> <8x64xf32, #shared, #smem, mutable>
+ 
+     // COMMON: llvm.return
+@@ -71,11 +71,11 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 1 : i32, ttg.targ
+     // Check alias information is added for different lowering paths
+ 
+     // Test lowering path in common MemoryOpToLLVM pattern
+-    // COMMON: llvm.load {{.*}} {alias_scopes = [[[$LOCAL_LOAD_SCOPE]]], noalias_scopes = [[[$ASYNC_COPY_SCOPE]]]
++    // COMMON: llvm.load {{.*}} <alias_scopes = [[[$LOCAL_LOAD_SCOPE]]], noalias_scopes = [[[$ASYNC_COPY_SCOPE]]]
+     %4 = ttg.local_load %arg1 token %3 : !ttg.memdesc<64x1xf16, #shared, #smem, mutable> -> tensor<64x1xf16, #blocked>
+ 
+     // Test lowering path in AMD's MemoryOpToLLVM pattern
+-    // GFX942: llvm.load {{.*}} {alias_scopes = [[[$LOCAL_LOAD_SCOPE]]], noalias_scopes = [[[$ASYNC_COPY_SCOPE]]]
++    // GFX942: llvm.load {{.*}} <alias_scopes = [[[$LOCAL_LOAD_SCOPE]]], noalias_scopes = [[[$ASYNC_COPY_SCOPE]]]
+     // GFX950: rocdl.ds.read.tr16.b64 {{.*}} <alias_scopes = [[[$LOCAL_LOAD_SCOPE]]], noalias_scopes = [[[$ASYNC_COPY_SCOPE]]]
+     %5 = ttg.local_load %arg2 token %3 : !ttg.memdesc<16x16xf16, #shared, #smem, mutable> -> tensor<16x16xf16, #ttg.dot_op<{opIdx = 0, parent = #mma, kWidth = 8}>>
+ 
+@@ -152,7 +152,7 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 1 : i32, ttg.targ
+     %2 = ttg.local_load %arg1 token %1 : !ttg.memdesc<64x1xf16, #shared, #smem, mutable> -> tensor<64x1xf16, #blocked>
+ 
+     %loop_result:2 = scf.for %arg14 = %c0_i32 to %loopIterCount step %c1_i32 iter_args(%arg10 = %1, %arg11 = %2) -> (!ttg.async.token, tensor<64x1xf16, #blocked>)  : i32 {
+-      // COMMON: llvm.load {{.*}} {alias_scopes = [[[$LOCAL_LOAD_SCOPE]]], noalias_scopes = [[[$ASYNC_COPY_SCOPE]]]
++      // COMMON: llvm.load {{.*}} <alias_scopes = [[[$LOCAL_LOAD_SCOPE]]], noalias_scopes = [[[$ASYNC_COPY_SCOPE]]]
+       %3 = ttg.local_load %arg1 token %arg10 : !ttg.memdesc<64x1xf16, #shared, #smem, mutable> -> tensor<64x1xf16, #blocked>
+       %4 = amdg.async_wait {num_inst = 1 : i32}
+       scf.yield %4, %3: !ttg.async.token, tensor<64x1xf16, #blocked>
+
+--- a/test/Conversion/amd/in_thread_transpose.mlir
++++ b/test/Conversion/amd/in_thread_transpose.mlir
+@@ -18,11 +18,11 @@ module attributes {"ttg.target" = "hip:gfx942", "ttg.num-ctas" = 1 : i32, "ttg.n
+ 
+     // CHECK-DAG: [[VEC1_TMP:%.*]] = llvm.insertelement [[VAL0]], [[VEC_UNDEF]]{{\[}}[[CST_0]] : i32] : vector<2xf16>
+     // CHECK-DAG: [[VEC1:%.*]] = llvm.insertelement [[VAL2]], [[VEC1_TMP]]{{\[}}[[CST_1]] : i32] : vector<2xf16>
+-    // CHECK-DAG: llvm.store [[VEC1]], {{.*}} {alignment = 4 : i64} : vector<2xf16>, !llvm.ptr<3>
++    // CHECK-DAG: llvm.store [[VEC1]], {{.*}} <alignment = 4> : vector<2xf16>, !llvm.ptr<3>
+ 
+     // CHECK-DAG: [[VEC2_TMP:%.*]] = llvm.insertelement [[VAL1]], [[VEC_UNDEF]]{{\[}}[[CST_0]] : i32] : vector<2xf16>
+     // CHECK-DAG: [[VEC2:%.*]] = llvm.insertelement [[VAL3]], [[VEC2_TMP]]{{\[}}[[CST_1]] : i32] : vector<2xf16>
+-    // CHECK-DAG: llvm.store [[VEC2]], {{.*}} {alignment = 4 : i64} : vector<2xf16>, !llvm.ptr<3>
++    // CHECK-DAG: llvm.store [[VEC2]], {{.*}} <alignment = 4> : vector<2xf16>, !llvm.ptr<3>
+ 
+     %0 = amdg.in_thread_transpose %arg0 : tensor<16x16xf16, #blocked> -> tensor<16x16xf16, #linear>
+     ttg.local_alloc %0 : (tensor<16x16xf16, #linear>) -> !ttg.memdesc<16x16xf16, #shared, #smem, mutable>
+
+--- a/test/Conversion/tritongpu_to_llvm.mlir
++++ b/test/Conversion/tritongpu_to_llvm.mlir
+@@ -1401,7 +1401,7 @@
+     %BB_DOT = ttg.local_load %BB : !ttg.memdesc<16x16xf16, #shared0, #smem> -> tensor<16x16xf16, #dot_operand_b>
+     %cst0 = arith.constant dense<0.000000e+00> : tensor<16x16xf32, #mma0>
+ 
+-    // CHECK-COUNT-2: nvvm.mma.sync {{.*}}layoutA = #nvvm.mma_layout<row>, layoutB = #nvvm.mma_layout<col>{{.*}}shape = #nvvm.shape<m = 16, n = 8, k = 16>} : (vector<2xf16>, vector<2xf16>, f32)
++    // CHECK-COUNT-2: nvvm.mma.sync {{.*}}shape = <m = 16, n = 8, k = 16>, layout_a = row, layout_b = col : (vector<2xf16>, vector<2xf16>, f32)
+     %D = tt.dot %AA_DOT, %BB_DOT, %cst0 : tensor<16x16xf16, #dot_operand_a> * tensor<16x16xf16, #dot_operand_b> -> tensor<16x16xf32, #mma0>
+ 
+     tt.return
+@@ -1428,7 +1428,7 @@
+     %BB_DOT = ttg.local_load %BB : !ttg.memdesc<16x16xf16, #shared0, #smem> -> tensor<16x16xf16, #dot_operand_b>
+     %cst0 = arith.constant dense<0.000000e+00> : tensor<16x16xf32, #mma0>
+ 
+-    // CHECK-COUNT-2: nvvm.mma.sync {{.*}}layoutA = #nvvm.mma_layout<row>, layoutB = #nvvm.mma_layout<col>{{.*}}shape = #nvvm.shape<m = 16, n = 8, k = 16>} : (vector<2xf16>, vector<2xf16>, f32)
++    // CHECK-COUNT-2: nvvm.mma.sync {{.*}}shape = <m = 16, n = 8, k = 16>, layout_a = row, layout_b = col : (vector<2xf16>, vector<2xf16>, f32)
+     %D = tt.dot %AA_DOT, %BB_DOT, %cst0 : tensor<16x16xf16, #dot_operand_a> * tensor<16x16xf16, #dot_operand_b> -> tensor<16x16xf32, #mma0>
+ 
+     tt.return
+@@ -1453,7 +1453,7 @@
+     %BB_DOT = ttg.local_load %BB : !ttg.memdesc<16x16xf16, #shared0, #smem> -> tensor<16x16xf16, #dot_operand_b>
+     %cst0 = arith.constant dense<0.000000e+00> : tensor<16x16xf32, #mma0>
+ 
+-    // CHECK-COUNT-2: nvvm.mma.sync {{.*}}layoutA = #nvvm.mma_layout<row>, layoutB = #nvvm.mma_layout<col>{{.*}}shape = #nvvm.shape<m = 16, n = 8, k = 16>} : (vector<2xf16>, vector<2xf16>, f32)
++    // CHECK-COUNT-2: nvvm.mma.sync {{.*}}shape = <m = 16, n = 8, k = 16>, layout_a = row, layout_b = col : (vector<2xf16>, vector<2xf16>, f32)
+     %D = tt.dot %AA_DOT, %BB_DOT, %cst0 : tensor<16x16xf16, #dot_operand_a> * tensor<16x16xf16, #dot_operand_b> -> tensor<16x16xf32, #mma0>
+ 
+     tt.return
+@@ -1503,7 +1503,7 @@
+     %BB_DOT = ttg.local_load %BB : !ttg.memdesc<16x16xf8E5M2, #shared0, #smem> -> tensor<16x16xf8E5M2, #dot_operand_b>
+     %cst0 = arith.constant dense<0.000000e+00> : tensor<16x16xf32, #mma0>
+ 
+-    // CHECK-COUNT-2: nvvm.mma.sync {{.*}}layoutA = #nvvm.mma_layout<row>, layoutB = #nvvm.mma_layout<col>{{.*}}multiplicandAPtxType = #nvvm.mma_type<e5m2>, multiplicandBPtxType = #nvvm.mma_type<e5m2>{{.*}}shape = #nvvm.shape<m = 16, n = 8, k = 32>} : (i32, i32, f32)
++    // CHECK-COUNT-2: nvvm.mma.sync {{.*}}shape = <m = 16, n = 8, k = 32>, layout_a = row, layout_b = col, multiplicand_a_ptx_type = e5m2, multiplicand_b_ptx_type = e5m2 : (i32, i32, f32)
+     %D = tt.dot %AA_DOT, %BB_DOT, %cst0 : tensor<16x16xf8E5M2, #dot_operand_a> * tensor<16x16xf8E5M2, #dot_operand_b> -> tensor<16x16xf32, #mma0>
+ 
+     tt.return
+@@ -1946,7 +1946,7 @@
+     %a_mat = ttg.local_load %a : !ttg.memdesc<32x16xf32, #shared, #smem> -> tensor<32x16xf32, #dot_operand_a>
+     %b_mat = ttg.local_load %b : !ttg.memdesc<16x32xf32, #shared, #smem> -> tensor<16x32xf32, #dot_operand_b>
+ 
+-    // CHECK-COUNT-4: nvvm.mma.sync {{.*}}layoutA = #nvvm.mma_layout<row>, layoutB = #nvvm.mma_layout<col>{{.*}}multiplicandAPtxType = #nvvm.mma_type<tf32>, multiplicandBPtxType = #nvvm.mma_type<tf32>{{.*}}shape = #nvvm.shape<m = 16, n = 8, k = 8>} : (i32, i32, f32)
++    // CHECK-COUNT-4: nvvm.mma.sync {{.*}}shape = <m = 16, n = 8, k = 8>, layout_a = row, layout_b = col, multiplicand_a_ptx_type = tf32, multiplicand_b_ptx_type = tf32 : (i32, i32, f32)
+     %28 = tt.dot %a_mat, %b_mat, %cst, inputPrecision = tf32 : tensor<32x16xf32, #dot_operand_a> * tensor<16x32xf32, #dot_operand_b> -> tensor<32x32xf32, #mma>
+     %38 = ttg.convert_layout %28 : tensor<32x32xf32, #mma> -> tensor<32x32xf32, #blocked>
+ 
+@@ -1967,7 +1967,7 @@
+   tt.func @matmul_signed_i8dot(%a: tensor<16x32xi8, #dot_operand_a>,
+                                %b: tensor<32x8xi8, #dot_operand_b>,
+                                %c: tensor<16x8xi32, #mma>) {
+-    // CHECK: nvvm.mma.sync {{.*}}intOverflowBehavior = #nvvm.mma_int_overflow<satfinite>{{.*}}layoutA = #nvvm.mma_layout<row>, layoutB = #nvvm.mma_layout<col>{{.*}}multiplicandAPtxType = #nvvm.mma_type<s8>, multiplicandBPtxType = #nvvm.mma_type<s8>{{.*}}shape = #nvvm.shape<m = 16, n = 8, k = 32>} : (i32, i32, i32)
++    // CHECK: nvvm.mma.sync {{.*}}shape = <m = 16, n = 8, k = 32>, int_overflow = satfinite, layout_a = row, layout_b = col, multiplicand_a_ptx_type = s8, multiplicand_b_ptx_type = s8 : (i32, i32, i32)
+     %d = tt.dot %a, %b, %c : tensor<16x32xi8, #dot_operand_a> * tensor<32x8xi8, #dot_operand_b> -> tensor<16x8xi32, #mma>
+     tt.return
+   }
+@@ -1984,10 +1984,10 @@
+                                      %b: tensor<32x8xi8, #dot_operand_b>,
+                                      %c: tensor<16x8xi32, #mma>) {
+     // CHECK-NOT: satfinite
+-    // CHECK: nvvm.mma.sync {{.*}}intOverflowBehavior = #nvvm.mma_int_overflow<wrapped>{{.*}}layoutA = #nvvm.mma_layout<row>, layoutB = #nvvm.mma_layout<col>{{.*}}multiplicandAPtxType = #nvvm.mma_type<s8>, multiplicandBPtxType = #nvvm.mma_type<s8>{{.*}}shape = #nvvm.shape<m = 16, n = 8, k = 32>} : (i32, i32, i32)
+-    // CHECK: nvvm.mma.sync {{.*}}intOverflowBehavior = #nvvm.mma_int_overflow<wrapped>{{.*}}layoutA = #nvvm.mma_layout<row>, layoutB = #nvvm.mma_layout<col>{{.*}}multiplicandAPtxType = #nvvm.mma_type<s8>, multiplicandBPtxType = #nvvm.mma_type<u8>{{.*}}shape = #nvvm.shape<m = 16, n = 8, k = 32>} : (i32, i32, i32)
+-    // CHECK: nvvm.mma.sync {{.*}}intOverflowBehavior = #nvvm.mma_int_overflow<wrapped>{{.*}}layoutA = #nvvm.mma_layout<row>, layoutB = #nvvm.mma_layout<col>{{.*}}multiplicandAPtxType = #nvvm.mma_type<u8>, multiplicandBPtxType = #nvvm.mma_type<s8>{{.*}}shape = #nvvm.shape<m = 16, n = 8, k = 32>} : (i32, i32, i32)
+-    // CHECK: nvvm.mma.sync {{.*}}intOverflowBehavior = #nvvm.mma_int_overflow<wrapped>{{.*}}layoutA = #nvvm.mma_layout<row>, layoutB = #nvvm.mma_layout<col>{{.*}}multiplicandAPtxType = #nvvm.mma_type<u8>, multiplicandBPtxType = #nvvm.mma_type<u8>{{.*}}shape = #nvvm.shape<m = 16, n = 8, k = 32>} : (i32, i32, i32)
++    // CHECK: nvvm.mma.sync {{.*}}shape = <m = 16, n = 8, k = 32>, int_overflow = wrapped, layout_a = row, layout_b = col, multiplicand_a_ptx_type = s8, multiplicand_b_ptx_type = s8 : (i32, i32, i32)
++    // CHECK: nvvm.mma.sync {{.*}}shape = <m = 16, n = 8, k = 32>, int_overflow = wrapped, layout_a = row, layout_b = col, multiplicand_a_ptx_type = s8, multiplicand_b_ptx_type = u8 : (i32, i32, i32)
++    // CHECK: nvvm.mma.sync {{.*}}shape = <m = 16, n = 8, k = 32>, int_overflow = wrapped, layout_a = row, layout_b = col, multiplicand_a_ptx_type = u8, multiplicand_b_ptx_type = s8 : (i32, i32, i32)
++    // CHECK: nvvm.mma.sync {{.*}}shape = <m = 16, n = 8, k = 32>, int_overflow = wrapped, layout_a = row, layout_b = col, multiplicand_a_ptx_type = u8, multiplicand_b_ptx_type = u8 : (i32, i32, i32)
+     // CHECK-NOT: satfinite
+     %d0 = tti.dot_i8 %a, %b, %c, aSigned = true, bSigned = true : tensor<16x32xi8, #dot_operand_a> * tensor<32x8xi8, #dot_operand_b> -> tensor<16x8xi32, #mma>
+     %d1 = tti.dot_i8 %a, %b, %d0, aSigned = true, bSigned = false : tensor<16x32xi8, #dot_operand_a> * tensor<32x8xi8, #dot_operand_b> -> tensor<16x8xi32, #mma>
+@@ -2469,7 +2469,7 @@
+   // CHECK: %[[CST:.+]] = llvm.mlir.constant(1.000000e+00 : f32) : f32
+   // CHECK: %[[V:.+]] = llvm.insertelement %[[CST]], {{.*}} : vector<1xf32>
+   // CHECK: llvm.bitcast %[[V]] : vector<1xf32> to i32
+-  // CHECK: nvvm.mma.sync {{.*}}layoutA = #nvvm.mma_layout<row>, layoutB = #nvvm.mma_layout<col>{{.*}}multiplicandAPtxType = #nvvm.mma_type<tf32>, multiplicandBPtxType = #nvvm.mma_type<tf32>{{.*}}shape = #nvvm.shape<m = 16, n = 8, k = 8>} : (i32, i32, f32)
++  // CHECK: nvvm.mma.sync {{.*}}shape = <m = 16, n = 8, k = 8>, layout_a = row, layout_b = col, multiplicand_a_ptx_type = tf32, multiplicand_b_ptx_type = tf32 : (i32, i32, f32)
+     %b_mat = arith.constant dense<1.000000e+00> : tensor<16x32xf32, #dot_operand_b>
+     %28 = tt.dot %a, %b_mat, %c, inputPrecision = tf32 : tensor<32x16xf32, #dot_operand_a> * tensor<16x32xf32, #dot_operand_b> -> tensor<32x32xf32, #mma>
+     %38 = ttg.convert_layout %28 : tensor<32x32xf32, #mma> -> tensor<32x32xf32, #blocked>
+@@ -2494,7 +2494,7 @@
+   // CHECK: %[[V0:.+]] = llvm.insertelement %{{.*}}, %[[U]][%[[C0]] : i32] : vector<2xf16>
+   // CHECK: %[[V1:.+]] = llvm.insertelement %{{.*}}, %[[V0]][%[[C1]] : i32] : vector<2xf16>
+   // CHECK: nvvm.mma.sync A[%[[V1]],
+-  // CHECK-SAME: shape = #nvvm.shape<m = 16, n = 8, k = 16>} : (vector<2xf16>,
++  // CHECK-SAME: shape = <m = 16, n = 8, k = 16>, layout_a = row, layout_b = col : (vector<2xf16>,
+     %cst_0 = arith.constant dense<1.000000e+00> : tensor<32x32xf16, #ttg.dot_op<{opIdx = 0, parent = #mma, kWidth = 2}>>
+     %cst_1 = arith.constant dense<1.000000e+00> : tensor<32x32xf16, #ttg.dot_op<{opIdx = 1, parent = #mma, kWidth = 2}>>
+     %cst_2 = arith.constant dense<32> : tensor<32x1xi32, #blocked>
+@@ -2738,7 +2738,7 @@
+     %converted_i16 = arith.sitofp %i16_dot : tensor<16x16xi16, #dot_operand_b> to tensor<16x16xf16, #dot_operand_b>
+     %cst0 = arith.constant dense<0.000000e+00> : tensor<16x16xf32, #mma>
+ 
+-    // CHECK-COUNT-2: nvvm.mma.sync {{.*}}layoutA = #nvvm.mma_layout<row>, layoutB = #nvvm.mma_layout<col>{{.*}}shape = #nvvm.shape<m = 16, n = 8, k = 16>} : (vector<2xf16>, vector<2xf16>, f32)
++    // CHECK-COUNT-2: nvvm.mma.sync {{.*}}shape = <m = 16, n = 8, k = 16>, layout_a = row, layout_b = col : (vector<2xf16>, vector<2xf16>, f32)
+ 
+     %out = tt.dot %f16_dot, %converted_i16, %cst0 : tensor<16x16xf16, #dot_operand_a> * tensor<16x16xf16, #dot_operand_b> -> tensor<16x16xf32, #mma>
+ 
+@@ -2763,7 +2763,7 @@
+ 
+     %3 = ttg.local_load %1 : !ttg.memdesc<16x16xf64, #shared1, #smem, mutable> -> tensor<16x16xf64, #ttg.dot_op<{opIdx = 1, parent = #mma, kWidth = 1}>>
+ 
+-    // CHECK-COUNT-2: nvvm.mma.sync {{.*}}layoutA = #nvvm.mma_layout<row>, layoutB = #nvvm.mma_layout<col>{{.*}}shape = #nvvm.shape<m = 8, n = 8, k = 4>} : (f64, f64, f64)
++    // CHECK-COUNT-2: nvvm.mma.sync {{.*}}shape = <m = 8, n = 8, k = 4>, layout_a = row, layout_b = col : (f64, f64, f64)
+ 
+     %out = tt.dot %2, %3, %cst, inputPrecision = tf32 : tensor<16x16xf64, #ttg.dot_op<{opIdx = 0, parent = #mma, kWidth = 1}>> * tensor<16x16xf64, #ttg.dot_op<{opIdx = 1, parent = #mma, kWidth = 1}>> -> tensor<16x16xf64, #mma>
+ 
+@@ -2815,7 +2815,7 @@ module attributes {"ttg.target" = "cuda:75", "ttg.num-ctas" = 1 : i32, "ttg.num-
+ module attributes {"ttg.target" = "cuda:90", "ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, "ttg.threads-per-warp" = 32 : i32} {
+   // CHECK-LABEL: @vectorize_shmem_load
+   // CHECK: llvm.load
+-  // CHECK-SAME: {alignment = 8 : i64} : !llvm.ptr<3> -> vector<2xi32>
++  // CHECK-SAME: <alignment = 8> : !llvm.ptr<3> -> vector<2xi32>
+   // CHECK-NOT: llvm.load
+   tt.func private @vectorize_shmem_load(%shmem : !ttg.memdesc<16x16xi8, #shared, #smem>) -> tensor<16x16xi8, #blocked> {
+     %0 = ttg.local_load %shmem : !ttg.memdesc<16x16xi8, #shared, #smem> -> tensor<16x16xi8, #blocked>
+@@ -2830,7 +2830,7 @@ module attributes {"ttg.target" = "cuda:90", "ttg.num-ctas" = 1 : i32, "ttg.num-
+ #smem = #ttg.shared_memory
+ module attributes {"ttg.target" = "cuda:90", "ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 8 : i32, "ttg.threads-per-warp" = 32 : i32} {
+   // CHECK-LABEL: @vectorize_shmem_store
+-  // CHECK-COUNT-4:  llvm.store {{.*}} {alignment = 16 : i64} : vector<4xi32>, !llvm.ptr<3>
++  // CHECK-COUNT-4:  llvm.store {{.*}} <alignment = 16> : vector<4xi32>, !llvm.ptr<3>
+   tt.func public @vectorize_shmem_store(%block : tensor<64x64xi32, #blocked>) {
+     %0 = ttg.local_alloc %block : (tensor<64x64xi32, #blocked>) -> !ttg.memdesc<64x64xi32, #shared, #smem>
+     tt.return
+@@ -3284,28 +3284,28 @@
+ module attributes {"ttg.num-warps" = 8 : i32, ttg.target = "cuda:120"} {
+   // CHECK-LABEL: mmav2_e5m2_e5m2_fp16
+   tt.func public @mmav2_e5m2_e5m2_fp16(%arg0: tensor<32x32xf8E5M2, #ttg.dot_op<{opIdx = 0, parent = #mma, kWidth = 4}>>, %arg1: tensor<32x32xf8E5M2, #ttg.dot_op<{opIdx = 1, parent = #mma, kWidth = 4}>>, %arg2: tensor<32x32xf16, #mma>) {
+-    // CHECK: nvvm.mma.sync {{.*}}multiplicandAPtxType = #nvvm.mma_type<e5m2>, multiplicandBPtxType = #nvvm.mma_type<e5m2>{{.*}}shape = #nvvm.shape<m = 16, n = 8, k = 32>} : (i32, i32, vector<2xf16>)
++    // CHECK: nvvm.mma.sync {{.*}}shape = <m = 16, n = 8, k = 32>, layout_a = row, layout_b = col, multiplicand_a_ptx_type = e5m2, multiplicand_b_ptx_type = e5m2 : (i32, i32, vector<2xf16>)
+     %0 = tt.dot %arg0, %arg1, %arg2 {maxNumImpreciseAcc = 1073741824 : i32} : tensor<32x32xf8E5M2, #ttg.dot_op<{opIdx = 0, parent = #mma, kWidth = 4}>> * tensor<32x32xf8E5M2, #ttg.dot_op<{opIdx = 1, parent = #mma, kWidth = 4}>> -> tensor<32x32xf16, #mma>
+     tt.return
+   }
+ 
+   // CHECK-LABEL: mmav2_e5m2_e4m3_fp16
+   tt.func public @mmav2_e5m2_e4m3_fp16(%arg0: tensor<32x32xf8E5M2, #ttg.dot_op<{opIdx = 0, parent = #mma, kWidth = 4}>>, %arg1: tensor<32x32xf8E4M3FN, #ttg.dot_op<{opIdx = 1, parent = #mma, kWidth = 4}>>, %arg2: tensor<32x32xf16, #mma>) {
+-    // CHECK: nvvm.mma.sync {{.*}}multiplicandAPtxType = #nvvm.mma_type<e5m2>, multiplicandBPtxType = #nvvm.mma_type<e4m3>{{.*}}shape = #nvvm.shape<m = 16, n = 8, k = 32>} : (i32, i32, vector<2xf16>)
++    // CHECK: nvvm.mma.sync {{.*}}shape = <m = 16, n = 8, k = 32>, layout_a = row, layout_b = col, multiplicand_a_ptx_type = e5m2, multiplicand_b_ptx_type = e4m3 : (i32, i32, vector<2xf16>)
+     %0 = tt.dot %arg0, %arg1, %arg2 {maxNumImpreciseAcc = 1073741824 : i32} : tensor<32x32xf8E5M2, #ttg.dot_op<{opIdx = 0, parent = #mma, kWidth = 4}>> * tensor<32x32xf8E4M3FN, #ttg.dot_op<{opIdx = 1, parent = #mma, kWidth = 4}>> -> tensor<32x32xf16, #mma>
+     tt.return
+   }
+ 
+   // CHECK-LABEL: mmav2_e4m3_e5m2_fp16
+   tt.func public @mmav2_e4m3_e5m2_fp16(%arg0: tensor<32x32xf8E4M3FN, #ttg.dot_op<{opIdx = 0, parent = #mma, kWidth = 4}>>, %arg1: tensor<32x32xf8E5M2, #ttg.dot_op<{opIdx = 1, parent = #mma, kWidth = 4}>>, %arg2: tensor<32x32xf16, #mma>) {
+-    // CHECK: nvvm.mma.sync {{.*}}multiplicandAPtxType = #nvvm.mma_type<e4m3>, multiplicandBPtxType = #nvvm.mma_type<e5m2>{{.*}}shape = #nvvm.shape<m = 16, n = 8, k = 32>} : (i32, i32, vector<2xf16>)
++    // CHECK: nvvm.mma.sync {{.*}}shape = <m = 16, n = 8, k = 32>, layout_a = row, layout_b = col, multiplicand_a_ptx_type = e4m3, multiplicand_b_ptx_type = e5m2 : (i32, i32, vector<2xf16>)
+     %0 = tt.dot %arg0, %arg1, %arg2 {maxNumImpreciseAcc = 1073741824 : i32} : tensor<32x32xf8E4M3FN, #ttg.dot_op<{opIdx = 0, parent = #mma, kWidth = 4}>> * tensor<32x32xf8E5M2, #ttg.dot_op<{opIdx = 1, parent = #mma, kWidth = 4}>> -> tensor<32x32xf16, #mma>
+     tt.return
+   }
+ 
+   // CHECK-LABEL: mmav2_e4m3_e4m3_fp16
+   tt.func public @mmav2_e4m3_e4m3_fp16(%arg0: tensor<32x32xf8E4M3FN, #ttg.dot_op<{opIdx = 0, parent = #mma, kWidth = 4}>>, %arg1: tensor<32x32xf8E4M3FN, #ttg.dot_op<{opIdx = 1, parent = #mma, kWidth = 4}>>, %arg2: tensor<32x32xf16, #mma>) {
+-    // CHECK: nvvm.mma.sync {{.*}}multiplicandAPtxType = #nvvm.mma_type<e4m3>, multiplicandBPtxType = #nvvm.mma_type<e4m3>{{.*}}shape = #nvvm.shape<m = 16, n = 8, k = 32>} : (i32, i32, vector<2xf16>)
++    // CHECK: nvvm.mma.sync {{.*}}shape = <m = 16, n = 8, k = 32>, layout_a = row, layout_b = col, multiplicand_a_ptx_type = e4m3, multiplicand_b_ptx_type = e4m3 : (i32, i32, vector<2xf16>)
+     %0 = tt.dot %arg0, %arg1, %arg2 {maxNumImpreciseAcc = 1073741824 : i32} : tensor<32x32xf8E4M3FN, #ttg.dot_op<{opIdx = 0, parent = #mma, kWidth = 4}>> * tensor<32x32xf8E4M3FN, #ttg.dot_op<{opIdx = 1, parent = #mma, kWidth = 4}>> -> tensor<32x32xf16, #mma>
+     tt.return
+   }
+@@ -3579,7 +3579,7 @@
+ 
+   // CHECK-LABEL: approx_div
+   tt.func private @approx_div(%arg0 : tensor<256xf32, #blocked>, %arg1 : tensor<256xf32, #blocked>) -> tensor<256xf32, #blocked> {
+-    // CHECK: llvm.fdiv %{{.*}}, %{{.*}} {fastmathFlags = #llvm.fastmath<afn>} : f32
++    // CHECK: llvm.fdiv %{{.*}}, %{{.*}} fastmath<afn> : f32
+     %0 = tt.approx_divf %arg0, %arg1 : tensor<256xf32, #blocked>
+     tt.return %0 : tensor<256xf32, #blocked>
+   }
+@@ -3602,7 +3602,7 @@
+     %arg1: tensor<32x32x32xf16, #dot_operand_b>
+   ) {
+     %cst = arith.constant dense<0.000000e+00> : tensor<32x1x32xf32, #mma>
+-    // CHECK: nvvm.mma.sync {{.*}}layoutA = #nvvm.mma_layout<row>, layoutB = #nvvm.mma_layout<col>{{.*}}shape = #nvvm.shape<m = 16, n = 8, k = 16>} : (vector<2xf16>, vector<2xf16>, f32)
++    // CHECK: nvvm.mma.sync {{.*}}shape = <m = 16, n = 8, k = 16>, layout_a = row, layout_b = col : (vector<2xf16>, vector<2xf16>, f32)
+     %result = tt.dot %arg0, %arg1, %cst, inputPrecision = tf32 :
+       tensor<32x1x32xf16, #dot_operand_a> * tensor<32x32x32xf16, #dot_operand_b> -> tensor<32x1x32xf32, #mma>
+     tt.return
+@@ -3929,7 +3929,7 @@
+ module attributes {"ttg.target" = "cuda:80", "ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 1 : i32} {
+   // SM89-LABEL: @fp32_to_fp8e5_rtne
+   // SM89-NOT: llvm.nvvm.f2f16.rz
+-  // SM89: nvvm.convert.f32x2.to.f8x2 {{.*}} {rnd = #nvvm.fp_rnd_mode<rn>, sat = #nvvm.sat_mode<satfinite>} : vector<2xi8>(f8E5M2)
++  // SM89: nvvm.convert.f32x2.to.f8x2 {{.*}} rnd = <rn> sat = <satfinite> : vector<2xi8>(f8E5M2)
+   // CHECK-LABEL: @fp32_to_fp8e5_rtne
+   // CHECK-NOT: llvm.fpext
+   // CHECK-NOT: llvm.fcmp
+
+--- a/test/Conversion/tritongpu_to_llvm_blackwell.mlir
++++ b/test/Conversion/tritongpu_to_llvm_blackwell.mlir
+@@ -253,7 +253,7 @@
+   // CHECK: nvg.tensor_memory_base
+   // CHECK: tcgen05.st.sync.aligned.32x32b.x128.b32
+   // CHECK: nvvm.tcgen05.wait <store>
+-  // CHECK: nvvm.tcgen05.ld {{.*}}shape = #nvvm.tcgen05_ldst_shape<shape_32x32b>} : vector<128xi32>
++  // CHECK: nvvm.tcgen05.ld {{.*}}shape = shape_32x32b : vector<128xi32>
+   // CHECK: nvvm.tcgen05.wait <load>
+   tt.func public @tensor_memory_ld(%arg0: !tt.ptr<f16>, %arg1: !tt.ptr<f16>, %arg2: !tt.ptr<f16>) {
+     %cst_0 = arith.constant dense<0.000000e+00> : tensor<128x128xf32, #blocked1>
+@@ -271,7 +271,7 @@
+   // CHECK-LABEL: @tensor_memory_ld_16x256
+   // CHECK: tcgen05.st.sync.aligned.16x256b.x16.b32
+   // CHECK: tcgen05.st.sync.aligned.16x256b.x16.b32
+-  // CHECK-COUNT-2: nvvm.tcgen05.ld {{.*}}shape = #nvvm.tcgen05_ldst_shape<shape_16x256b>} : vector<64xi32>
++  // CHECK-COUNT-2: nvvm.tcgen05.ld {{.*}}shape = shape_16x256b : vector<64xi32>
+   tt.func public @tensor_memory_ld_16x256(%arg0: !tt.ptr<f16>, %arg1: !tt.ptr<f16>, %arg2: !tt.ptr<f16>) {
+     %cst_0 = arith.constant dense<0.000000e+00> : tensor<128x128xf32, #linear>
+     %0 = ttng.tmem_alloc %cst_0 {tensor_memory_col_offset = 0 : i32, tensor_memory_row_offset = 0 : i32} : (tensor<128x128xf32, #linear>) -> !ttg.memdesc<128x128xf32, #tmem, #ttng.tensor_memory, mutable>
+@@ -301,7 +301,7 @@
+   // CHECK: nvg.tensor_memory_base
+   // CHECK: tcgen05.st.sync.aligned.32x32b.x128.b32
+   // CHECK: nvvm.tcgen05.wait <store>
+-  // CHECK: nvvm.tcgen05.ld {{.*}}shape = #nvvm.tcgen05_ldst_shape<shape_32x32b>} : vector<128xi32>
++  // CHECK: nvvm.tcgen05.ld {{.*}}shape = shape_32x32b : vector<128xi32>
+   // CHECK: nvvm.tcgen05.wait <load>
+   tt.func public @tensor_memory_ld_m64(%arg0: !tt.ptr<f16>, %arg1: !tt.ptr<f16>, %arg2: !tt.ptr<f16>) {
+     %cst_0 = arith.constant dense<0.000000e+00> : tensor<128x128xf32, #linear>
+@@ -321,7 +321,7 @@
+   // CHECK-DAG: nvg.tensor_memory_base
+   // CHECK: tcgen05.st.sync.aligned.32x32b.x64.unpack::16b.b32
+   // CHECK: nvvm.tcgen05.wait <store>
+-  // CHECK: nvvm.tcgen05.ld {{.*}} pack {shape = #nvvm.tcgen05_ldst_shape<shape_32x32b>} : vector<64xi32>
++  // CHECK: nvvm.tcgen05.ld {{.*}} pack shape = shape_32x32b : vector<64xi32>
+   // CHECK: nvvm.tcgen05.wait <load>
+   tt.func public @tensor_memory_unpack_f16() {
+     %cst_0 = arith.constant dense<0.000000e+00> : tensor<128x128xf16, #blocked1>
+@@ -647,7 +647,7 @@
+   // CHECK-COUNT-4: tcgen05.st.sync.aligned.32x32b.x64.b32
+   // CHECK-NOT: tcgen05.st
+   // CHECK: nvvm.tcgen05.wait <store>
+-  // CHECK-COUNT-4: nvvm.tcgen05.ld {{.*}}shape = #nvvm.tcgen05_ldst_shape<shape_32x32b>} : vector<64xi32>
++  // CHECK-COUNT-4: nvvm.tcgen05.ld {{.*}}shape = shape_32x32b : vector<64xi32>
+   // CHECK-NOT: tcgen05.ld
+   // CHECK: nvvm.tcgen05.wait <load>
+   tt.func public @tensor_memory_ld_128x256(%arg0: !tt.ptr<f16>, %arg1: !tt.ptr<f16>, %arg2: !tt.ptr<f16>) {
+@@ -667,7 +667,7 @@
+   // CHECK-LABEL: @tensor_memory_ld_128x256_8_warps
+   // CHECK: tcgen05.st.sync.aligned.32x32b.x128.b32
+   // CHECK: nvvm.tcgen05.wait <store>
+-  // CHECK: nvvm.tcgen05.ld {{.*}}shape = #nvvm.tcgen05_ldst_shape<shape_32x32b>} : vector<128xi32>
++  // CHECK: nvvm.tcgen05.ld {{.*}}shape = shape_32x32b : vector<128xi32>
+   // CHECK: nvvm.tcgen05.wait <load>
+   tt.func public @tensor_memory_ld_128x256_8_warps(%arg0: !tt.ptr<f16>, %arg1: !tt.ptr<f16>, %arg2: !tt.ptr<f16>) {
+     %cst_0 = arith.constant dense<0.000000e+00> : tensor<128x256xf32, #blocked>
+@@ -685,7 +685,7 @@
+ module attributes {"ttg.num-warps" = 8 : i32} {
+   // CHECK-LABEL: @tensor_memory_ld_256x64_8_warps_blocked
+   tt.func public @tensor_memory_ld_256x64_8_warps_blocked(%tmem: !ttg.memdesc<256x64xf32, #tmem, #ttng.tensor_memory, mutable>) {
+-    // CHECK-COUNT-1: nvvm.tcgen05.ld {{.*}}shape = #nvvm.tcgen05_ldst_shape<shape_32x32b>} : vector<64xi32>
++    // CHECK-COUNT-1: nvvm.tcgen05.ld {{.*}}shape = shape_32x32b : vector<64xi32>
+     // CHECK-NOT: tcgen05.ld
+     %result = ttng.tmem_load %tmem : !ttg.memdesc<256x64xf32, #tmem, #ttng.tensor_memory, mutable> -> tensor<256x64xf32, #blocked>
+     tt.return
+@@ -700,7 +700,7 @@
+ module attributes {"ttg.num-warps" = 8 : i32} {
+   // CHECK-LABEL: @tensor_memory_ld_256x64_8_warps_splitM
+   tt.func public @tensor_memory_ld_256x64_8_warps_splitM(%tmem: !ttg.memdesc<256x64xf32, #tmem, #ttng.tensor_memory, mutable>) {
+-    // CHECK: nvvm.tcgen05.ld {{.*}}shape = #nvvm.tcgen05_ldst_shape<shape_32x32b>} : vector<64xi32>
++    // CHECK: nvvm.tcgen05.ld {{.*}}shape = shape_32x32b : vector<64xi32>
+     // CHECK-NOT: tcgen05.ld
+     %result = ttng.tmem_load %tmem : !ttg.memdesc<256x64xf32, #tmem, #ttng.tensor_memory, mutable> -> tensor<256x64xf32, #linear>
+     tt.return
+@@ -715,7 +715,7 @@
+ module attributes {"ttg.num-warps" = 8 : i32} {
+   // CHECK-LABEL: @tensor_memory_ld_128x128_8_warps_splitM
+   tt.func public @tensor_memory_ld_128x128_8_warps_splitM(%tmem: !ttg.memdesc<128x128xf32, #tmem, #ttng.tensor_memory, mutable>) {
+-    // CHECK-COUNT-1: nvvm.tcgen05.ld {{.*}}shape = #nvvm.tcgen05_ldst_shape<shape_32x32b>} : vector<64xi32>
++    // CHECK-COUNT-1: nvvm.tcgen05.ld {{.*}}shape = shape_32x32b : vector<64xi32>
+     // CHECK-NOT: tcgen05.ld
+     %result = ttng.tmem_load %tmem : !ttg.memdesc<128x128xf32, #tmem, #ttng.tensor_memory, mutable> -> tensor<128x128xf32, #linear>
+     tt.return
+@@ -730,7 +730,7 @@
+ module attributes {"ttg.num-warps" = 8 : i32} {
+   // CHECK-LABEL: @tensor_memory_ld_128x64_8_warps_splitM
+   tt.func public @tensor_memory_ld_128x64_8_warps_splitM(%tmem: !ttg.memdesc<128x64xf32, #tmem, #ttng.tensor_memory, mutable>) {
+-    // CHECK-COUNT-1: nvvm.tcgen05.ld {{.*}}shape = #nvvm.tcgen05_ldst_shape<shape_32x32b>} : vector<32xi32>
++    // CHECK-COUNT-1: nvvm.tcgen05.ld {{.*}}shape = shape_32x32b : vector<32xi32>
+     // CHECK-NOT: tcgen05.ld
+     %result = ttng.tmem_load %tmem : !ttg.memdesc<128x64xf32, #tmem, #ttng.tensor_memory, mutable> -> tensor<128x64xf32, #linear>
+     tt.return
+@@ -747,9 +747,9 @@
+ // CHECK-LABEL: @tmem_message_maxnreg_80
+ tt.func public @tmem_message_maxnreg_80(%desc: !ttg.memdesc<128x64xf32, #tmem, #ttng.tensor_memory>) {
+   // CHECK: [[BASE:%.*]] = llvm.inttoptr {{.*}} : i32 to !llvm.ptr<6>
+-  // CHECK: nvvm.tcgen05.ld [[BASE]] {{.*}}{shape = #nvvm.tcgen05_ldst_shape<shape_32x32b>} : vector<32xi32>
++  // CHECK: nvvm.tcgen05.ld [[BASE]] {{.*}}shape = shape_32x32b : vector<32xi32>
+   // CHECK: [[PTR:%.*]] = llvm.getelementptr [[BASE]][32]
+-  // CHECK: nvvm.tcgen05.ld [[PTR]] {{.*}}{shape = #nvvm.tcgen05_ldst_shape<shape_32x32b>} : vector<32xi32>
++  // CHECK: nvvm.tcgen05.ld [[PTR]] {{.*}}shape = shape_32x32b : vector<32xi32>
+   // CHECK-NOT: tcgen05.ld
+   ttng.tmem_load %desc : !ttg.memdesc<128x64xf32, #tmem, #ttng.tensor_memory> -> tensor<128x64xf32, #blocked>
+   tt.return
+@@ -759,14 +759,14 @@
+ tt.func public @module_constraint_supercedes_local(%desc: !ttg.memdesc<128x64xf32, #tmem, #ttng.tensor_memory>) {
+   ttg.warp_specialize(%desc) attributes {actualRegisters = array<i32: 256, 256>}
+   default {
+-    // CHECK-COUNT-2: nvvm.tcgen05.ld {{.*}}shape = #nvvm.tcgen05_ldst_shape<shape_32x32b>} : vector<32xi32>
++    // CHECK-COUNT-2: nvvm.tcgen05.ld {{.*}}shape = shape_32x32b : vector<32xi32>
+     // CHECK-NOT: tcgen05.ld
+     // CHECK: ttg.warp_yield
+     ttng.tmem_load %desc : !ttg.memdesc<128x64xf32, #tmem, #ttng.tensor_memory> -> tensor<128x64xf32, #blocked>
+     ttg.warp_yield
+   }
+   partition0(%arg0: !ttg.memdesc<128x64xf32, #tmem, #ttng.tensor_memory>) num_warps(4) {
+-    // CHECK-COUNT-2: nvvm.tcgen05.ld {{.*}}shape = #nvvm.tcgen05_ldst_shape<shape_32x32b>} : vector<32xi32>
++    // CHECK-COUNT-2: nvvm.tcgen05.ld {{.*}}shape = shape_32x32b : vector<32xi32>
+     // CHECK-NOT: tcgen05.ld
+     // CHECK: ttg.warp_return
+     ttng.tmem_load %arg0 : !ttg.memdesc<128x64xf32, #tmem, #ttng.tensor_memory> -> tensor<128x64xf32, #blocked>
+@@ -784,9 +784,9 @@
+   ttg.warp_specialize(%desc) attributes {actualRegisters = array<i32: 80, 48>}
+   default {
+     // CHECK: [[BASE:%.*]] = llvm.inttoptr {{.*}} : i32 to !llvm.ptr<6>
+-    // CHECK: nvvm.tcgen05.ld [[BASE]] {{.*}}{shape = #nvvm.tcgen05_ldst_shape<shape_32x32b>} : vector<32xi32>
++    // CHECK: nvvm.tcgen05.ld [[BASE]] {{.*}}shape = shape_32x32b : vector<32xi32>
+     // CHECK: [[PTR:%.*]] = llvm.getelementptr [[BASE]][32]
+-    // CHECK: nvvm.tcgen05.ld [[PTR]] {{.*}}{shape = #nvvm.tcgen05_ldst_shape<shape_32x32b>} : vector<32xi32>
++    // CHECK: nvvm.tcgen05.ld [[PTR]] {{.*}}shape = shape_32x32b : vector<32xi32>
+     // CHECK-NOT: tcgen05.ld
+     // CHECK: ttg.warp_yield
+     ttng.tmem_load %desc : !ttg.memdesc<128x64xf32, #tmem, #ttng.tensor_memory> -> tensor<128x64xf32, #blocked>
+@@ -794,13 +794,13 @@
+   }
+   partition0(%arg0: !ttg.memdesc<128x64xf32, #tmem, #ttng.tensor_memory>) num_warps(4) {
+     // CHECK: [[BASE:%.*]] = llvm.inttoptr {{.*}} : i32 to !llvm.ptr<6>
+-    // CHECK: nvvm.tcgen05.ld [[BASE]] {{.*}}{shape = #nvvm.tcgen05_ldst_shape<shape_32x32b>} : vector<16xi32>
++    // CHECK: nvvm.tcgen05.ld [[BASE]] {{.*}}shape = shape_32x32b : vector<16xi32>
+     // CHECK: [[PTR:%.*]] = llvm.getelementptr [[BASE]][16]
+-    // CHECK: nvvm.tcgen05.ld [[PTR]] {{.*}}{shape = #nvvm.tcgen05_ldst_shape<shape_32x32b>} : vector<16xi32>
++    // CHECK: nvvm.tcgen05.ld [[PTR]] {{.*}}shape = shape_32x32b : vector<16xi32>
+     // CHECK: [[PTR:%.*]] = llvm.getelementptr [[BASE]][32]
+-    // CHECK: nvvm.tcgen05.ld [[PTR]] {{.*}}{shape = #nvvm.tcgen05_ldst_shape<shape_32x32b>} : vector<16xi32>
++    // CHECK: nvvm.tcgen05.ld [[PTR]] {{.*}}shape = shape_32x32b : vector<16xi32>
+     // CHECK: [[PTR:%.*]] = llvm.getelementptr [[BASE]][48]
+-    // CHECK: nvvm.tcgen05.ld [[PTR]] {{.*}}{shape = #nvvm.tcgen05_ldst_shape<shape_32x32b>} : vector<16xi32>
++    // CHECK: nvvm.tcgen05.ld [[PTR]] {{.*}}shape = shape_32x32b : vector<16xi32>
+     // CHECK-NOT: tcgen05.ld
+     // CHECK: ttg.warp_return
+     ttng.tmem_load %arg0 : !ttg.memdesc<128x64xf32, #tmem, #ttng.tensor_memory> -> tensor<128x64xf32, #blocked>
+@@ -977,7 +977,7 @@
+ // CHECK-LABEL: @load_store_x1
+ tt.func @load_store_x1(%arg0: !ttg.memdesc<128x2xf16, #tmem_x1, #ttng.tensor_memory, mutable>) {
+   %true = arith.constant true
+-  // CHECK: [[LOAD:%.*]] = nvvm.tcgen05.ld {{.*}}shape = #nvvm.tcgen05_ldst_shape<shape_32x32b>} : vector<1xi32>
++  // CHECK: [[LOAD:%.*]] = nvvm.tcgen05.ld {{.*}}shape = shape_32x32b : vector<1xi32>
+   // CHECK: [[V:%.*]] = llvm.extractelement [[LOAD]]{{.*}} : vector<1xi32>
+   // CHECK: [[F:%.*]] = llvm.bitcast [[V]] : i32 to vector<2xf16>
+   // CHECK: [[E0:%.*]] = llvm.extractelement [[F]]{{.*}} : vector<2xf16>
+@@ -996,7 +996,7 @@
+ // CHECK-DAG: [[C1:%.*]] = llvm.mlir.constant(1 : i32)
+ tt.func @load_store_x1_unpacked(%arg0: !ttg.memdesc<128x2xf16, #tmem_x1_unpacked, #ttng.tensor_memory, mutable>) {
+   %true = arith.constant true
+-  // CHECK: [[LOAD:%.*]] = nvvm.tcgen05.ld {{.*}}shape = #nvvm.tcgen05_ldst_shape<shape_32x32b>} : vector<1xi32>
++  // CHECK: [[LOAD:%.*]] = nvvm.tcgen05.ld {{.*}}shape = shape_32x32b : vector<1xi32>
+   // CHECK: [[V:%.*]] = llvm.extractelement [[LOAD]]{{.*}} : vector<1xi32>
+   // CHECK: [[F:%.*]] = llvm.bitcast [[V]] : i32 to vector<2xf16>
+   // CHECK: extractelement [[F]][[[C0]] : i32]
+@@ -1294,7 +1294,7 @@
+ #tmem = #ttng.tensor_memory_encoding<blockM = 128, blockN = 128, colStride = 1>
+ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.shared = 65544 : i32, ttg.target = "cuda:103", ttg.tensor_memory_size = 128 : i32, "ttg.threads-per-warp" = 32 : i32} {
+   // CHECK-LABEL: @tensor_memory_ld_red_min
+-  // CHECK: nvvm.tcgen05.ld.red min {{.*}} {shape = #nvvm.tcgen05_ldst_shape<shape_32x32b>} : vector<128xf32>, f32
++  // CHECK: nvvm.tcgen05.ld.red min {{.*}} shape = shape_32x32b : vector<128xf32>, f32
+   // CHECK: tcgen05.wait <load>
+   tt.func public @tensor_memory_ld_red_min() {
+     %cst_0 = arith.constant dense<0.000000e+00> : tensor<128x128xf32, #blocked1>
+@@ -1430,7 +1430,7 @@
+ #tmem = #ttng.tensor_memory_encoding<blockM = 128, blockN = 128, colStride = 1>
+ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.shared = 65544 : i32, ttg.target = "cuda:103", ttg.tensor_memory_size = 128 : i32, "ttg.threads-per-warp" = 32 : i32} {
+   // CHECK-LABEL: @tensor_memory_ld_red_max
+-  // CHECK: nvvm.tcgen05.ld.red max {{.*}} {shape = #nvvm.tcgen05_ldst_shape<shape_32x32b>} : vector<128xf32>, f32
++  // CHECK: nvvm.tcgen05.ld.red max {{.*}} shape = shape_32x32b : vector<128xf32>, f32
+   // CHECK: tcgen05.wait <load>
+   tt.func public @tensor_memory_ld_red_max() {
+     %cst_0 = arith.constant dense<0.000000e+00> : tensor<128x128xf32, #blocked1>
+@@ -1448,7 +1448,7 @@
+ #tmem = #ttng.tensor_memory_encoding<blockM = 128, blockN = 128, colStride = 1>
+ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.shared = 65544 : i32, ttg.target = "cuda:103", ttg.tensor_memory_size = 128 : i32, "ttg.threads-per-warp" = 32 : i32} {
+   // CHECK-LABEL: @tensor_memory_ld_red_min_abs
+-  // CHECK: nvvm.tcgen05.ld.red min {{.*}} {abs, shape = #nvvm.tcgen05_ldst_shape<shape_32x32b>} : vector<128xf32>, f32
++  // CHECK: nvvm.tcgen05.ld.red min {{.*}} shape = shape_32x32b abs : vector<128xf32>, f32
+   // CHECK: tcgen05.wait <load>
+   tt.func public @tensor_memory_ld_red_min_abs() {
+     %cst_0 = arith.constant dense<0.000000e+00> : tensor<128x128xf32, #blocked1>
+@@ -1466,7 +1466,7 @@
+ #tmem = #ttng.tensor_memory_encoding<blockM = 128, blockN = 128, colStride = 1>
+ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.shared = 65544 : i32, ttg.target = "cuda:103", ttg.tensor_memory_size = 128 : i32, "ttg.threads-per-warp" = 32 : i32} {
+   // CHECK-LABEL: @tensor_memory_ld_red_max_nan
+-  // CHECK: nvvm.tcgen05.ld.red max {{.*}} {nan, shape = #nvvm.tcgen05_ldst_shape<shape_32x32b>} : vector<128xf32>, f32
++  // CHECK: nvvm.tcgen05.ld.red max {{.*}} shape = shape_32x32b nan : vector<128xf32>, f32
+   // CHECK: tcgen05.wait <load>
+   tt.func public @tensor_memory_ld_red_max_nan() {
+     %cst_0 = arith.constant dense<0.000000e+00> : tensor<128x128xf32, #blocked1>
+@@ -1484,7 +1484,7 @@
+ #tmem = #ttng.tensor_memory_encoding<blockM = 128, blockN = 128, colStride = 1>
+ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.shared = 65544 : i32, ttg.target = "cuda:103", ttg.tensor_memory_size = 128 : i32, "ttg.threads-per-warp" = 32 : i32} {
+   // CHECK-LABEL: @tensor_memory_ld_red_max_abs_nan
+-  // CHECK: nvvm.tcgen05.ld.red max {{.*}} {abs, nan, shape = #nvvm.tcgen05_ldst_shape<shape_32x32b>} : vector<128xf32>, f32
++  // CHECK: nvvm.tcgen05.ld.red max {{.*}} shape = shape_32x32b abs nan : vector<128xf32>, f32
+   // CHECK: tcgen05.wait <load>
+   tt.func public @tensor_memory_ld_red_max_abs_nan() {
+     %cst_0 = arith.constant dense<0.000000e+00> : tensor<128x128xf32, #blocked1>
+@@ -1504,7 +1504,7 @@
+ #tmem_8w = #ttng.tensor_memory_encoding<blockM = 128, blockN = 64, colStride = 1>
+ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 8 : i32, ttg.shared = 65544 : i32, ttg.target = "cuda:103", ttg.tensor_memory_size = 128 : i32, "ttg.threads-per-warp" = 32 : i32} {
+   // CHECK-LABEL: @tensor_memory_ld_red_min_8_warps
+-  // CHECK: nvvm.tcgen05.ld.red min {{.*}} {shape = #nvvm.tcgen05_ldst_shape<shape_32x32b>} : vector<64xf32>, f32
++  // CHECK: nvvm.tcgen05.ld.red min {{.*}} shape = shape_32x32b : vector<64xf32>, f32
+   // CHECK: tcgen05.wait <load>
+   tt.func public @tensor_memory_ld_red_min_8_warps() {
+     %cst_0 = arith.constant dense<0.000000e+00> : tensor<256x64xf32, #blocked_8w>
+@@ -1525,7 +1525,7 @@
+ #tmem_256N = #ttng.tensor_memory_encoding<blockM = 128, blockN = 256, colStride = 1>
+ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.shared = 65544 : i32, ttg.target = "cuda:103", ttg.tensor_memory_size = 128 : i32, "ttg.threads-per-warp" = 32 : i32} {
+   // CHECK-LABEL: @tensor_memory_ld_red_min_128x256_4_warps
+-  // CHECK-COUNT-4: nvvm.tcgen05.ld.red min {{.*}} {shape = #nvvm.tcgen05_ldst_shape<shape_32x32b>} : vector<64xf32>, f32
++  // CHECK-COUNT-4: nvvm.tcgen05.ld.red min {{.*}} shape = shape_32x32b : vector<64xf32>, f32
+   // CHECK-NOT: tcgen05.wait <load>
+   // CHECK-COUNT-3: llvm.intr.minnum
+   // CHECK: tcgen05.wait <load>
+@@ -1537,7 +1537,7 @@
+   }
+ 
+   // CHECK-LABEL: @tensor_memory_ld_red_max_128x256_4_warps
+-  // CHECK-COUNT-4: nvvm.tcgen05.ld.red max {{.*}} {shape = #nvvm.tcgen05_ldst_shape<shape_32x32b>} : vector<64xf32>, f32
++  // CHECK-COUNT-4: nvvm.tcgen05.ld.red max {{.*}} shape = shape_32x32b : vector<64xf32>, f32
+   // CHECK-COUNT-3: llvm.intr.maxnum
+   // CHECK: tcgen05.wait <load>
+   tt.func private @tensor_memory_ld_red_max_128x256_4_warps() -> tensor<128xf32, #blocked_red_256N_4w> {
+@@ -1557,7 +1557,7 @@
+ #tmem_256N_nan = #ttng.tensor_memory_encoding<blockM = 128, blockN = 256, colStride = 1>
+ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.shared = 65544 : i32, ttg.target = "cuda:103", ttg.tensor_memory_size = 128 : i32, "ttg.threads-per-warp" = 32 : i32} {
+   // CHECK-LABEL: @tensor_memory_ld_red_min_128x256_4_warps_nan
+-  // CHECK-COUNT-4: nvvm.tcgen05.ld.red min {{.*}} {nan, shape = #nvvm.tcgen05_ldst_shape<shape_32x32b>} : vector<64xf32>, f32
++  // CHECK-COUNT-4: nvvm.tcgen05.ld.red min {{.*}} shape = shape_32x32b nan : vector<64xf32>, f32
+   // CHECK-COUNT-3: llvm.intr.minimum
+   // CHECK: tcgen05.wait <load>
+   tt.func private @tensor_memory_ld_red_min_128x256_4_warps_nan() -> tensor<128xf32, #blocked_red_256N_4w_nan> {
+@@ -1568,7 +1568,7 @@
+   }
+ 
+   // CHECK-LABEL: @tensor_memory_ld_red_max_128x256_4_warps_nan
+-  // CHECK-COUNT-4: nvvm.tcgen05.ld.red max {{.*}} {nan, shape = #nvvm.tcgen05_ldst_shape<shape_32x32b>} : vector<64xf32>, f32
++  // CHECK-COUNT-4: nvvm.tcgen05.ld.red max {{.*}} shape = shape_32x32b nan : vector<64xf32>, f32
+   // CHECK-COUNT-3: llvm.intr.maximum
+   // CHECK: tcgen05.wait <load>
+   tt.func private @tensor_memory_ld_red_max_128x256_4_warps_nan() -> tensor<128xf32, #blocked_red_256N_4w_nan> {
+
+--- a/test/Conversion/tritongpu_to_llvm_blackwell_256bit.mlir
++++ b/test/Conversion/tritongpu_to_llvm_blackwell_256bit.mlir
+@@ -100,16 +100,16 @@
+ #blocked_fp8 = #ttg.blocked<{sizePerThread = [2], threadsPerWarp = [32], warpsPerCTA = [1], order = [0]}>
+ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 1 : i32} {
+   // FP8-LABEL: @bf16_to_fp8e4
+-  // PACKED: nvvm.convert.bf16x2.to.f8x2 {{.*}} {rnd = #nvvm.fp_rnd_mode<rn>, sat = #nvvm.sat_mode<satfinite>} : vector<2xbf16> -> vector<2xi8>(f8E4M3FN)
+-  // LEGACY: nvvm.convert.f32x2.to.f8x2 {{.*}} {rnd = #nvvm.fp_rnd_mode<rn>, sat = #nvvm.sat_mode<satfinite>} : vector<2xi8>(f8E4M3FN)
++  // PACKED: nvvm.convert.bf16x2.to.f8x2 {{.*}} rnd = <rn> sat = <satfinite> : vector<2xbf16> -> vector<2xi8>(f8E4M3FN)
++  // LEGACY: nvvm.convert.f32x2.to.f8x2 {{.*}} rnd = <rn> sat = <satfinite> : vector<2xi8>(f8E4M3FN)
+   tt.func private @bf16_to_fp8e4(%in: tensor<64xbf16, #blocked_fp8>) -> tensor<64xf8E4M3FN, #blocked_fp8> {
+     %out = tt.fp_to_fp %in, rounding = rtne : tensor<64xbf16, #blocked_fp8> -> tensor<64xf8E4M3FN, #blocked_fp8>
+     tt.return %out : tensor<64xf8E4M3FN, #blocked_fp8>
+   }
+ 
+   // FP8-LABEL: @bf16_to_fp8e5
+-  // PACKED: nvvm.convert.bf16x2.to.f8x2 {{.*}} {rnd = #nvvm.fp_rnd_mode<rn>, sat = #nvvm.sat_mode<satfinite>} : vector<2xbf16> -> vector<2xi8>(f8E5M2)
+-  // LEGACY: nvvm.convert.f32x2.to.f8x2 {{.*}} {rnd = #nvvm.fp_rnd_mode<rn>, sat = #nvvm.sat_mode<satfinite>} : vector<2xi8>(f8E5M2)
++  // PACKED: nvvm.convert.bf16x2.to.f8x2 {{.*}} rnd = <rn> sat = <satfinite> : vector<2xbf16> -> vector<2xi8>(f8E5M2)
++  // LEGACY: nvvm.convert.f32x2.to.f8x2 {{.*}} rnd = <rn> sat = <satfinite> : vector<2xi8>(f8E5M2)
+   tt.func private @bf16_to_fp8e5(%in: tensor<64xbf16, #blocked_fp8>) -> tensor<64xf8E5M2, #blocked_fp8> {
+     %out = tt.fp_to_fp %in, rounding = rtne : tensor<64xbf16, #blocked_fp8> -> tensor<64xf8E5M2, #blocked_fp8>
+     tt.return %out : tensor<64xf8E5M2, #blocked_fp8>
+
+--- a/test/Conversion/tritongpu_to_llvm_hopper.mlir
++++ b/test/Conversion/tritongpu_to_llvm_hopper.mlir
+@@ -224,9 +224,9 @@
+     // CHECK-COUNT-2: nvvm.convert.f16x2.to.f8x2 {{.*}} : vector<2xf16> -> vector<2xi8>(f8E4M3FN)
+     %out4 = tt.fp_to_fp %in2, rounding = rtne : tensor<128xf16, #blocked> -> tensor<128xf8E4M3FN, #blocked>
+ 
+-    // CHECK-COUNT-2: nvvm.convert.f32x2.to.f8x2 {{.*}} {rnd = #nvvm.fp_rnd_mode<rn>, sat = #nvvm.sat_mode<satfinite>} : vector<2xi8>(f8E5M2)
++    // CHECK-COUNT-2: nvvm.convert.f32x2.to.f8x2 {{.*}} rnd = <rn> sat = <satfinite> : vector<2xi8>(f8E5M2)
+     %out5 = tt.fp_to_fp %in3, rounding = rtne : tensor<128xf32, #blocked> -> tensor<128xf8E5M2, #blocked>
+-    // CHECK-COUNT-2: nvvm.convert.f32x2.to.f8x2 {{.*}} {rnd = #nvvm.fp_rnd_mode<rn>, sat = #nvvm.sat_mode<satfinite>} : vector<2xi8>(f8E4M3FN)
++    // CHECK-COUNT-2: nvvm.convert.f32x2.to.f8x2 {{.*}} rnd = <rn> sat = <satfinite> : vector<2xi8>(f8E4M3FN)
+     %out6 = tt.fp_to_fp %in3, rounding = rtne : tensor<128xf32, #blocked> -> tensor<128xf8E4M3FN, #blocked>
+     tt.return %out0, %out1, %out2, %out3, %out4, %out5, %out6 :
+         tensor<128xf16, #blocked>,
+@@ -686,7 +686,7 @@
+ 
+     %3 = ttg.local_load %1 : !ttg.memdesc<16x16xf64, #shared1, #smem, mutable> -> tensor<16x16xf64, #ttg.dot_op<{opIdx = 1, parent = #mma, kWidth = 1}>>
+ 
+-    // CHECK-COUNT-2: nvvm.mma.sync {{.*}}layoutA = #nvvm.mma_layout<row>, layoutB = #nvvm.mma_layout<col>{{.*}}shape = #nvvm.shape<m = 8, n = 8, k = 4>} : (f64, f64, f64)
++    // CHECK-COUNT-2: nvvm.mma.sync {{.*}}shape = <m = 8, n = 8, k = 4>, layout_a = row, layout_b = col : (f64, f64, f64)
+ 
+     %out = tt.dot %2, %3, %cst, inputPrecision = tf32 : tensor<16x16xf64, #ttg.dot_op<{opIdx = 0, parent = #mma, kWidth = 1}>> * tensor<16x16xf64, #ttg.dot_op<{opIdx = 1, parent = #mma, kWidth = 1}>> -> tensor<16x16xf64, #mma>
+ 
+
+--- a/test/Conversion/tritongpu_to_llvm_rubin.mlir
++++ b/test/Conversion/tritongpu_to_llvm_rubin.mlir
+@@ -489,13 +489,13 @@
+   // CHECK: nvvm.addf {{.*}} : vector<2xf16>
+   // CHECK: nvvm.subf {{.*}} : vector<2xf16>
+   // CHECK: llvm.inline_asm {{.*}} "mul.f16x2 $0, $1, $2;", "=r,r,r"
+-  // CHECK: nvvm.fma {{.*}} {rnd = #nvvm.fp_rnd_mode<rn>} : vector<2xf16>
++  // CHECK: nvvm.fma {{.*}} rnd = <rn> : vector<2xf16>
+   // CHECK: llvm.call_intrinsic "llvm.nvvm.fmin.f16x2"
+   // CHECK: llvm.call_intrinsic "llvm.nvvm.fmax.f16x2"
+   // CHECK: nvvm.addf {{.*}} : vector<2xbf16>
+   // CHECK: nvvm.subf {{.*}} : vector<2xbf16>
+   // CHECK: llvm.inline_asm {{.*}} "mul.bf16x2 $0, $1, $2;", "=r,r,r"
+-  // CHECK: nvvm.fma {{.*}} {rnd = #nvvm.fp_rnd_mode<rn>} : vector<2xbf16>
++  // CHECK: nvvm.fma {{.*}} rnd = <rn> : vector<2xbf16>
+   // CHECK: llvm.call_intrinsic "llvm.nvvm.fmin.bf16x2"
+   // CHECK: llvm.call_intrinsic "llvm.nvvm.fmax.bf16x2"
+   tt.func private @packed_arith_homogeneous_half(
+@@ -573,7 +573,7 @@
+ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.target = "cuda:107", "ttg.threads-per-warp" = 32 : i32} {
+   // CHECK-LABEL: @packed_arith_mixed
+   // CHECK: llvm.inline_asm {{.*}} "mul.f16x2 $0, $1, $2;", "=r,r,r" {{.*}} : (i32, i32) -> i32
+-  // CHECK: nvvm.fma {{.*}} {rnd = #nvvm.fp_rnd_mode<rn>} : vector<2xbf16>
++  // CHECK: nvvm.fma {{.*}} rnd = <rn> : vector<2xbf16>
+   // CHECK: llvm.inline_asm {{.*}} "add.f32x2.f16x2.f32x2 $0, $1, $2;", "=l,r,l" {{.*}} : (i32, i64) -> i64
+   // CHECK: llvm.inline_asm {{.*}} "add.f32x2.bf16x2.f32x2 $0, $1, $2;", "=l,r,l" {{.*}} : (i32, i64) -> i64
+   // CHECK: llvm.inline_asm {{.*}} "sub.f32x2.f16x2.f32x2 $0, $1, $2;", "=l,r,l" {{.*}} : (i32, i64) -> i64
+
+--- a/test/Conversion/warp_specialize_to_llvm.mlir
++++ b/test/Conversion/warp_specialize_to_llvm.mlir
+@@ -197,7 +197,7 @@
+   // CHECK-NEXT: llvm.cond_br [[IS_DEFAULT]], [[BODY:\^.*]], [[SWITCH_LOOP:\^.*]]
+ 
+   // CHECK: [[SWITCH_LOOP]]:
+-  // CHECK-NEXT: nvvm.barrier id = [[C1]] {aligned = false}
++  // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
+   // CHECK-NEXT: [[SMEM_BASE:%.*]] = llvm.getelementptr [[SMEM_ADDR]][32] : (!llvm.ptr<3>) -> !llvm.ptr<3>, i8
+   // CHECK-NEXT: [[REL_WID:%.*]] = llvm.sub [[WARP_ID]], [[C4]]
+ 
+@@ -210,29 +210,29 @@
+   // CHECK-NEXT: 3: [[EXIT:\^.*]]
+ 
+   // CHECK: [[DEFAULT]]:
+-  // CHECK-NEXT: nvvm.barrier id = [[C1]] {aligned = false}
+-  // CHECK-NEXT: nvvm.barrier id = [[C1]] {aligned = false}
+-  // CHECK-NEXT: llvm.br [[SWITCH_LOOP]] {loop_annotation = #llvm.loop_annotation<licm = <disable = true>>}
++  // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
++  // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
++  // CHECK-NEXT: llvm.br [[SWITCH_LOOP]] loop_annotation = <licm = <disable = true>>
+ 
+   // CHECK: [[EXIT]]:
+   // CHECK-NEXT: llvm.return
+ 
+   // CHECK: [[PARTITION0]]:
+-  // CHECK: nvvm.barrier id = [[C1]] {aligned = false}
++  // CHECK: nvvm.barrier id = [[C1]] aligned = false
+   // CHECK-NEXT: "partition0"
+-  // CHECK-NEXT: nvvm.barrier id = [[C1]] {aligned = false}
++  // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
+   // CHECK-NEXT: llvm.br [[SWITCH_LOOP]]
+ 
+   // CHECK: [[PARTITION1]]:
+-  // CHECK: nvvm.barrier id = [[C1]] {aligned = false}
++  // CHECK: nvvm.barrier id = [[C1]] aligned = false
+   // CHECK-NEXT: "partition1"
+-  // CHECK-NEXT: nvvm.barrier id = [[C1]] {aligned = false}
++  // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
+   // CHECK-NEXT: llvm.br [[SWITCH_LOOP]]
+ 
+   // CHECK: [[PARTITION2]]:
+-  // CHECK: nvvm.barrier id = [[C1]] {aligned = false}
++  // CHECK: nvvm.barrier id = [[C1]] aligned = false
+   // CHECK-NEXT: "partition2"
+-  // CHECK-NEXT: nvvm.barrier id = [[C1]] {aligned = false}
++  // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
+   // CHECK-NEXT: llvm.br [[SWITCH_LOOP]]
+ 
+   // CHECK: [[BODY]]:
+@@ -255,12 +255,12 @@
+   // CHECK-NEXT: [[PTR:%.*]] = llvm.getelementptr [[SMEM_BASE]][6]
+   // CHECK-NEXT: llvm.store [[C2_i8]], [[PTR]]
+ 
+-  // CHECK: nvvm.barrier id = [[C1]] {aligned = false}
+-  // CHECK-NEXT: nvvm.barrier id = [[C1]] {aligned = false}
++  // CHECK: nvvm.barrier id = [[C1]] aligned = false
++  // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
+   // CHECK-NEXT: llvm.br [[DEFAULT_PARTITION:\^.*]]
+   // CHECK: [[DEFAULT_PARTITION]]:
+   // CHECK-NEXT: "default"
+-  // CHECK-NEXT: nvvm.barrier id = [[C1]] {aligned = false}
++  // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
+   // CHECK-NEXT: llvm.br [[AFTER:\^.*]]
+ 
+   // AMD: [[WID:%.*]] = rocdl.wave.id : i32
+@@ -283,7 +283,7 @@ llvm.func @generate_switch_loop() attributes {allocation.offset = 32 : i32} {
+   // AMD: [[DEFAULT]]:
+   // AMD-NEXT: rocdl.barrier
+   // AMD-NEXT: rocdl.barrier
+-  // AMD-NEXT: llvm.br [[SWITCH_LOOP]] {loop_annotation = #llvm.loop_annotation<licm = <disable = true>>}
++  // AMD-NEXT: llvm.br [[SWITCH_LOOP]] loop_annotation = <licm = <disable = true>>
+ 
+   // AMD: [[EXIT]]:
+   // AMD-NEXT: llvm.return
+@@ -370,7 +370,7 @@
+   // CHECK-NEXT: llvm.store [[C3_i8]], [[PTR]]
+   // CHECK-NEXT: [[PTR:%.*]] = llvm.getelementptr [[SMEM_BASE]][6]
+   // CHECK-NEXT: llvm.store [[C3_i8]], [[PTR]]
+-  // CHECK-NEXT: nvvm.barrier id = [[C1]] {aligned = false}
++  // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
+   // CHECK-NEXT: llvm.return
+ 
+   // AMD: [[AFTER:\^bb[0-9]+]]:
+@@ -414,36 +414,36 @@ llvm.func @pass_captures() attributes {allocation.offset = 32 : i32} {
+ 
+   // CHECK: ^bb4:
+   // CHECK-NEXT: [[ARG0_PTR:%.*]] = llvm.getelementptr [[SMEM_ADDR]][0, 0] : (!llvm.ptr<3>) -> !llvm.ptr<3>, !llvm.struct<packed (i32, i64)>
+-  // CHECK-NEXT: [[ARG0:%.*]] = llvm.load [[ARG0_PTR]] {alignment = 1 : i64}
++  // CHECK-NEXT: [[ARG0:%.*]] = llvm.load [[ARG0_PTR]] <alignment = 1> : !llvm.ptr<3> -> i32
+   // CHECK-NEXT: [[ARG1_PTR:%.*]] = llvm.getelementptr [[SMEM_ADDR]][0, 1] : (!llvm.ptr<3>) -> !llvm.ptr<3>, !llvm.struct<packed (i32, i64)>
+-  // CHECK-NEXT: [[ARG1:%.*]] = llvm.load [[ARG1_PTR]] {alignment = 1 : i64}
+-  // CHECK-NEXT: nvvm.barrier id = [[C1]] {aligned = false}
++  // CHECK-NEXT: [[ARG1:%.*]] = llvm.load [[ARG1_PTR]] <alignment = 1> : !llvm.ptr<3> -> i64
++  // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
+   // CHECK-NEXT: "use"([[ARG0]], [[ARG1]])
+-  // CHECK-NEXT: nvvm.barrier id = [[C1]] {aligned = false}
++  // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
+ 
+   // CHECK: ^bb5:
+   // CHECK: [[INS:%.*]]:2 = "produce"()
+   // CHECK: [[ARG0_PTR:%.*]] = llvm.getelementptr [[SMEM_ADDR]][0, 0] : (!llvm.ptr<3>) -> !llvm.ptr<3>, !llvm.struct<packed (i32, i64)>
+-  // CHECK-NEXT: llvm.store [[INS]]#0, [[ARG0_PTR]] {alignment = 1 : i64}
++  // CHECK-NEXT: llvm.store [[INS]]#0, [[ARG0_PTR]] <alignment = 1> : i32, !llvm.ptr<3>
+   // CHECK-NEXT: [[ARG1_PTR:%.*]] = llvm.getelementptr [[SMEM_ADDR]][0, 1] : (!llvm.ptr<3>) -> !llvm.ptr<3>, !llvm.struct<packed (i32, i64)>
+-  // CHECK-NEXT: llvm.store [[INS]]#1, [[ARG1_PTR]] {alignment = 1 : i64}
+-  // CHECK-NEXT: nvvm.barrier id = [[C1]] {aligned = false}
+-  // CHECK-NEXT: nvvm.barrier id = [[C1]] {aligned = false}
++  // CHECK-NEXT: llvm.store [[INS]]#1, [[ARG1_PTR]] <alignment = 1> : i64, !llvm.ptr<3>
++  // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
++  // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
+ 
+   // AMD: ^bb4:
+   // AMD-NEXT: [[ARG0_PTR:%.*]] = llvm.getelementptr [[SMEM_ADDR]][0, 0] : (!llvm.ptr<3>) -> !llvm.ptr<3>, !llvm.struct<packed (i32, i64)>
+-  // AMD-NEXT: [[ARG0:%.*]] = llvm.load [[ARG0_PTR]] {alignment = 1 : i64}
++  // AMD-NEXT: [[ARG0:%.*]] = llvm.load [[ARG0_PTR]] <alignment = 1> : !llvm.ptr<3> -> i32
+   // AMD-NEXT: [[ARG1_PTR:%.*]] = llvm.getelementptr [[SMEM_ADDR]][0, 1] : (!llvm.ptr<3>) -> !llvm.ptr<3>, !llvm.struct<packed (i32, i64)>
+-  // AMD-NEXT: [[ARG1:%.*]] = llvm.load [[ARG1_PTR]] {alignment = 1 : i64}
++  // AMD-NEXT: [[ARG1:%.*]] = llvm.load [[ARG1_PTR]] <alignment = 1> : !llvm.ptr<3> -> i64
+   // AMD-NEXT: rocdl.barrier
+   // AMD-NEXT: "use"([[ARG0]], [[ARG1]])
+   // AMD-NEXT: rocdl.barrier
+ 
+   // AMD: ^bb5:
+   // AMD: [[INS:%.*]]:2 = "produce"()
+   // AMD: [[ARG0_PTR:%.*]] = llvm.getelementptr [[SMEM_ADDR]][0, 0] : (!llvm.ptr<3>) -> !llvm.ptr<3>, !llvm.struct<packed (i32, i64)>
+-  // AMD-NEXT: llvm.store [[INS]]#0, [[ARG0_PTR]] {alignment = 1 : i64}
++  // AMD-NEXT: llvm.store [[INS]]#0, [[ARG0_PTR]] <alignment = 1> : i32, !llvm.ptr<3>
+   // AMD-NEXT: [[ARG1_PTR:%.*]] = llvm.getelementptr [[SMEM_ADDR]][0, 1] : (!llvm.ptr<3>) -> !llvm.ptr<3>, !llvm.struct<packed (i32, i64)>
+-  // AMD-NEXT: llvm.store [[INS]]#1, [[ARG1_PTR]] {alignment = 1 : i64}
++  // AMD-NEXT: llvm.store [[INS]]#1, [[ARG1_PTR]] <alignment = 1> : i64, !llvm.ptr<3>
+   // AMD-NEXT: rocdl.barrier
+   // AMD-NEXT: rocdl.barrier
+@@ -642,7 +642,7 @@
+   // CHECK-NEXT: llvm.store [[C2_i8]], [[PTR]]
+   // CHECK-NEXT: [[PTR:%.*]] = llvm.getelementptr %{{[0-9]+}}[7]
+   // CHECK-NEXT: llvm.store [[Cn1_i8]], [[PTR]]
+-  // CHECK: nvvm.barrier id = [[C1]] {aligned = false}
++  // CHECK: nvvm.barrier id = [[C1]] aligned = false
+   // CHECK: "ws0_default"
+ 
+   // AMD: llvm.switch
+@@ -720,7 +720,7 @@
+   // CHECK-NEXT: llvm.store [[C3_i8]], [[PTR]]
+   // CHECK-NEXT: [[PTR:%.*]] = llvm.getelementptr %{{[0-9]+}}[7]
+   // CHECK-NEXT: llvm.store [[C3_i8]], [[PTR]]
+-  // CHECK: nvvm.barrier id = [[C1]] {aligned = false}
++  // CHECK: nvvm.barrier id = [[C1]] aligned = false
+   // CHECK: "ws1_default"
+ 
+   // AMD: getelementptr
+@@ -772,7 +772,7 @@
+   // CHECK-NEXT: llvm.store [[Cn1_i8]], [[PTR]]
+   // CHECK-NEXT: [[PTR:%.*]] = llvm.getelementptr %{{[0-9]+}}[7]
+   // CHECK-NEXT: llvm.store [[Cn1_i8]], [[PTR]]
+-  // CHECK: nvvm.barrier id = [[C1]] {aligned = false}
++  // CHECK: nvvm.barrier id = [[C1]] aligned = false
+   // CHECK: "ws2_default"
+ 
+   // AMD: getelementptr
+@@ -816,7 +816,7 @@
+   // CHECK-NEXT: llvm.store [[C5_i8]], [[PTR]]
+   // CHECK-NEXT: [[PTR:%.*]] = llvm.getelementptr %{{[0-9]+}}[7]
+   // CHECK-NEXT: llvm.store [[C5_i8]], [[PTR]]
+-  // CHECK: nvvm.barrier id = [[C1]] {aligned = false}
++  // CHECK: nvvm.barrier id = [[C1]] aligned = false
+   // CHECK: "ws3_default"
+ 
+   // AMD: getelementptr
+@@ -868,29 +868,29 @@
+   // COMMON-NEXT: 1: [[EXIT:\^.*]]
+ 
+   // CHECK: [[PARTITION]]:
+-  // CHECK: nvvm.barrier id = [[C1]] {aligned = false}
++  // CHECK: nvvm.barrier id = [[C1]] aligned = false
+   // CHECK-NEXT: "something"()[[[A:\^.*]], [[B:\^.*]]]
+   // CHECK: [[A]]:
+   // CHECK-NEXT: "A"
+-  // CHECK-NEXT: nvvm.barrier id = [[C1]] {aligned = false}
++  // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
+   // CHECK-NEXT: llvm.br [[SWITCH_LOOP]]
+   // CHECK: [[B]]:
+   // CHECK-NEXT: "B"
+-  // CHECK-NEXT: nvvm.barrier id = [[C1]] {aligned = false}
++  // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
+   // CHECK-NEXT: llvm.br [[SWITCH_LOOP]]
+ 
+-  // CHECK: nvvm.barrier id = [[C1]] {aligned = false}
+-  // CHECK-NEXT: nvvm.barrier id = [[C1]] {aligned = false}
++  // CHECK: nvvm.barrier id = [[C1]] aligned = false
++  // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
+   // CHECK: llvm.br [[DEFAULT:\^.*]]
+   // CHECK: [[DEFAULT]]:
+   // CHECK-NEXT: "something"()[[[A:\^.*]], [[B:\^.*]]]
+   // CHECK: [[A]]:
+   // CHECK-NEXT: "A"
+-  // CHECK-NEXT: nvvm.barrier id = [[C1]] {aligned = false}
++  // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
+   // CHECK-NEXT: llvm.br [[AFTER:\^.*]]
+   // CHECK: [[B]]:
+   // CHECK-NEXT: "B"
+-  // CHECK-NEXT: nvvm.barrier id = [[C1]] {aligned = false}
++  // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
+   // CHECK-NEXT: llvm.br [[AFTER]]
+ 
+   // AMD: [[PARTITION]]:
+@@ -1045,13 +1045,13 @@
+   }
+   partition0(%arg0: i32, %arg1: !llvm.ptr<3>) num_warps(1) {
+   // CHECK: ^bb4:
+-    // CHECK-NEXT: nvvm.barrier id = [[C1]] {aligned = false}
++    // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
+     // CHECK-NEXT: "use"([[CAP0]], [[CAP1]])
+   // AMD: ^bb4:
+     // AMD-NEXT: rocdl.barrier
+     // AMD-NEXT: "use"([[CAP0]], [[CAP1]])
+     "use"(%arg0, %arg1) : (i32, !llvm.ptr<3>) -> ()
+-    // CHECK-NEXT: nvvm.barrier id = [[C1]] {aligned = false}
++    // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
+     // AMD-NEXT: rocdl.barrier
+     ttg.warp_return
+   } : (i32, !llvm.ptr<3>) -> ()
+@@ -1074,7 +1074,7 @@
+   }
+   partition0(%arg2: !llvm.ptr<3>, %arg3: i32) num_warps(1) {
+   // CHECK: ^bb4:
+-    // CHECK-NEXT: nvvm.barrier id = [[C1]] {aligned = false}
++    // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
+     // CHECK-NEXT: [[ADD:%.*]] = llvm.add %arg0, %arg1 : i32
+     // CHECK-NEXT: [[MUL:%.*]] = llvm.mul [[ADD]], %arg1 : i32
+     // CHECK-NEXT: [[UREM:%.*]] = llvm.urem [[ADD]], [[MUL]] : i32
+@@ -1088,7 +1088,7 @@
+     // AMD-NEXT: [[PTR:%.*]] = llvm.getelementptr [[ADDR]][%arg0]
+     // AMD-NEXT: "use"([[PTR]], [[UREM]])
+     "use"(%arg2, %arg3) : (!llvm.ptr<3>, i32) -> ()
+-    // CHECK-NEXT: nvvm.barrier id = [[C1]] {aligned = false}
++    // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
+     // AMD-NEXT: rocdl.barrier
+     ttg.warp_return
+   } : (!llvm.ptr<3>, i32) -> ()
+@@ -1111,7 +1111,7 @@
+ 
+   // CHECK: [[SWITCH_LOOP]]:
+   // CHECK-NEXT: nvvm.setmaxregister decrease 24
+-  // CHECK-NEXT: nvvm.barrier id = [[C1]] {aligned = false}
++  // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
+   // CHECK: llvm.switch
+   // CHECK-NEXT: 0: [[PARTITION0:\^.*]],
+   // CHECK-NEXT: 1: [[PARTITION1:\^.*]],
+@@ -1120,33 +1120,33 @@
+ 
+   // CHECK: [[PARTITION0]]:
+   // CHECK-NEXT: nvvm.setmaxregister increase 80
+-  // CHECK-NEXT: nvvm.barrier id = [[C1]] {aligned = false}
++  // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
+   // CHECK-NEXT: "partition0"()
+-  // CHECK-NEXT: nvvm.barrier id = [[C1]] {aligned = false}
++  // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
+   // CHECK-NEXT: nvvm.setmaxregister decrease 24
+ 
+   // CHECK: [[PARTITION1]]:
+   // CHECK-NEXT: nvvm.setmaxregister increase 48
+-  // CHECK-NEXT: nvvm.barrier id = [[C1]] {aligned = false}
++  // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
+   // CHECK-NEXT: "partition1"()
+-  // CHECK-NEXT: nvvm.barrier id = [[C1]] {aligned = false}
++  // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
+   // CHECK-NEXT: nvvm.setmaxregister decrease 24
+ 
+   // CHECK: [[PARTITION2]]:
+   // CHECK-NEXT: nvvm.setmaxregister increase 128
+-  // CHECK-NEXT: nvvm.barrier id = [[C1]] {aligned = false}
++  // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
+   // CHECK-NEXT: "partition2"()
+-  // CHECK-NEXT: nvvm.barrier id = [[C1]] {aligned = false}
++  // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
+   // CHECK-NEXT: nvvm.setmaxregister decrease 24
+ 
+   // CHECK: [[ENTRY]]:
+   // CHECK-NEXT: nvvm.setmaxregister increase 248
+ 
+-  // CHECK: nvvm.barrier id = [[C1]] {aligned = false}
++  // CHECK: nvvm.barrier id = [[C1]] aligned = false
+   // CHECK-NEXT: setmaxregister decrease 152
+-  // CHECK-NEXT: nvvm.barrier id = [[C1]] {aligned = false}
++  // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
+   // CHECK: "default"
+-  // CHECK: nvvm.barrier id = [[C1]] {aligned = false}
++  // CHECK: nvvm.barrier id = [[C1]] aligned = false
+   // CHECK-NEXT: setmaxregister increase 248
+ 
+   ttg.warp_specialize() attributes {allocation.offset = 0 : i32, warpGroupStartIds = array<i32: 4, 8, 12>, actualRegisters = array<i32: 152, 80, 48, 128>}
+@@ -1185,7 +1185,7 @@
+ 
+   // CHECK: [[SWITCH_LOOP]]:
+   // CHECK-NEXT: nvvm.setmaxregister decrease 80
+-  // CHECK-NEXT: nvvm.barrier id = [[C1]] {aligned = false}
++  // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
+   // CHECK: llvm.switch
+   // CHECK-NEXT: 0: [[PARTITION0:\^.*]],
+   // CHECK-NEXT: 1: [[PARTITION1:\^.*]],
+@@ -1194,33 +1194,33 @@
+ 
+   // CHECK: [[PARTITION0]]:
+   // CHECK-NEXT: nvvm.setmaxregister decrease 24
+-  // CHECK-NEXT: nvvm.barrier id = [[C1]] {aligned = false}
++  // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
+   // CHECK-NEXT: "partition0"()
+-  // CHECK-NEXT: nvvm.barrier id = [[C1]] {aligned = false}
++  // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
+   // CHECK-NEXT: nvvm.setmaxregister increase 80
+ 
+   // CHECK: [[PARTITION1]]:
+   // CHECK-NEXT: nvvm.setmaxregister increase 192
+-  // CHECK-NEXT: nvvm.barrier id = [[C1]] {aligned = false}
++  // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
+   // CHECK-NEXT: "partition1"()
+-  // CHECK-NEXT: nvvm.barrier id = [[C1]] {aligned = false}
++  // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
+   // CHECK-NEXT: nvvm.setmaxregister decrease 80
+ 
+   // CHECK: [[PARTITION2]]:
+   // CHECK-NEXT: nvvm.setmaxregister increase 192
+-  // CHECK-NEXT: nvvm.barrier id = [[C1]] {aligned = false}
++  // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
+   // CHECK-NEXT: "partition2"()
+-  // CHECK-NEXT: nvvm.barrier id = [[C1]] {aligned = false}
++  // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
+   // CHECK-NEXT: nvvm.setmaxregister decrease 80
+ 
+   // CHECK: [[ENTRY]]:
+   // CHECK-NEXT: nvvm.setmaxregister increase 256
+ 
+-  // CHECK: nvvm.barrier id = [[C1]] {aligned = false}
++  // CHECK: nvvm.barrier id = [[C1]] aligned = false
+   // CHECK-NEXT: setmaxregister decrease 104
+-  // CHECK-NEXT: nvvm.barrier id = [[C1]] {aligned = false}
++  // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
+   // CHECK: "default"
+-  // CHECK: nvvm.barrier id = [[C1]] {aligned = false}
++  // CHECK: nvvm.barrier id = [[C1]] aligned = false
+   // CHECK-NEXT: setmaxregister increase 256
+ 
+   ttg.warp_specialize() attributes {allocation.offset = 0 : i32, warpGroupStartIds = array<i32: 4, 8, 12>, actualRegisters = array<i32: 104, 24, 192, 192>}
+
+
+--- a/third_party/amd/lib/TritonAMDGPUToLLVM/ConvertWarpSpecializeToLLVM.cpp
++++ b/third_party/amd/lib/TritonAMDGPUToLLVM/ConvertWarpSpecializeToLLVM.cpp
+@@ -2,6 +2,7 @@
+ #include "TritonAMDGPUToLLVM/Passes.h"
+ #include "TritonAMDGPUToLLVM/TypeConverter.h"
+ #include "Utility.h"
++#include "llvm/Support/AMDGPUAddrSpace.h"
+ #include "mlir/Analysis/TopologicalSortUtils.h"
+ #include "mlir/Conversion/Passes.h"
+ #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+@@ -49,7 +50,7 @@ public:
+   }
+ 
+   Type getBarrierHandleType(MLIRContext *ctx) const override {
+-    return LLVM::LLVMPointerType::get(ctx, targetInfo.getSharedAddressSpace());
++    return LLVM::LLVMPointerType::get(ctx, llvm::AMDGPUAS::BARRIER);
+   }
+ 
+   FailureOr<Value>
+@@ -80,7 +81,7 @@ public:
+       nbarGV = LLVM::GlobalOp::create(
+           b, uloc, nbarTy, /*isConstant=*/false, LLVM::Linkage::Internal,
+           nbarAttr.getValue(), /*value=*/Attribute(), /*alignment=*/0,
+-          targetInfo.getSharedAddressSpace());
++          llvm::AMDGPUAS::BARRIER);
+       // Add initializer region that returns 'poison'
+       Block *initBlock = b.createBlock(&nbarGV.getInitializerRegion());
+       b.setInsertionPointToStart(initBlock);
+

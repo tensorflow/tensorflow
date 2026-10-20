@@ -17,13 +17,13 @@ limitations under the License.
 
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/algorithm/container.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/runtime/device_id.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
 
@@ -48,9 +48,9 @@ TEST(CollectiveCliqueRequestsTest, OrderedRequests) {
   std::vector<std::vector<GlobalDeviceId>> rg2 = {{d0, d1, d2, d3}};
 
   CollectiveCliqueRequests requests;
-  TF_ASSERT_OK(requests.RequestClique(k0, rg0));
-  TF_ASSERT_OK(requests.RequestClique(k1, rg1));
-  TF_ASSERT_OK(requests.RequestClique(k2, rg2));
+  ASSERT_OK(requests.RequestClique(k0, rg0));
+  ASSERT_OK(requests.RequestClique(k1, rg1));
+  ASSERT_OK(requests.RequestClique(k2, rg2));
 
   // Check that we acquire larger cliques first, and then cliques with smaller
   // id first, as acquiring cliques according to natural clique key order might
@@ -74,8 +74,8 @@ TEST(CollectiveCliqueRequestsTest, RequestDevComms) {
   GpuDeviceCommunicator::Requirements dev_comm1{16};
 
   CollectiveCliqueRequests requests;
-  TF_ASSERT_OK(requests.RequestClique(k0, rg0, {dev_comm0}));
-  TF_ASSERT_OK(requests.RequestClique(k0, rg0, {dev_comm1}));
+  ASSERT_OK(requests.RequestClique(k0, rg0, {dev_comm0}));
+  ASSERT_OK(requests.RequestClique(k0, rg0, {dev_comm1}));
 
   auto ordered_requests = requests.OrderedRequestedCliques();
   ASSERT_EQ(ordered_requests.size(), 1);
@@ -98,7 +98,7 @@ TEST(CollectiveCliqueRequestsTest, DeviceGroupsMismatch) {
   std::vector<std::vector<GlobalDeviceId>> dg0b = {{d0, d1}, {d2, d3}};
 
   CollectiveCliqueRequests requests;
-  TF_ASSERT_OK(requests.RequestClique(k0, dg0a));
+  ASSERT_OK(requests.RequestClique(k0, dg0a));
 
   ASSERT_THAT(
       requests.RequestClique(k0, dg0b),
@@ -145,6 +145,57 @@ TEST(CollectiveCliqueRequestsTest, DeviceGroupsLexicographicSort) {
   EXPECT_EQ(groups[0], (std::vector{d0, d1}));
   EXPECT_EQ(groups[1], (std::vector{d2, d3}));
   EXPECT_EQ(groups[2], (std::vector{d4, d5}));
+}
+
+TEST(CollectiveCliqueRequestsTest, RequestCliqueSemaphore) {
+  GlobalDeviceId d0 = GlobalDeviceId(0);
+  GlobalDeviceId d1 = GlobalDeviceId(1);
+
+  GpuCliqueKey k0({d0, d1}, 2);
+  std::vector<std::vector<GlobalDeviceId>> rg0 = {{d0, d1}};
+
+  CollectiveCliqueRequests::BarrierRequirements barrier_reqs;
+  barrier_reqs.use_barrier_semaphores = true;
+
+  CollectiveCliqueRequests requests;
+  ASSERT_OK(
+      requests.RequestClique(k0, rg0,
+                             CollectiveCliqueRequests::CliqueRequirements{
+                                 /*dev_comm=*/std::nullopt, barrier_reqs}));
+
+  auto ordered_requests = requests.OrderedRequestedCliques();
+  ASSERT_EQ(ordered_requests.size(), 1);
+  EXPECT_TRUE(ordered_requests[0].use_barrier_semaphores);
+  EXPECT_FALSE(ordered_requests[0].use_cross_device_barrier_requested);
+}
+
+TEST(CollectiveCliqueRequestsTest, RequestCliqueSemaphoreMultipleRequests) {
+  GlobalDeviceId d0 = GlobalDeviceId(0);
+  GlobalDeviceId d1 = GlobalDeviceId(1);
+
+  GpuCliqueKey k0({d0, d1}, 2);
+  std::vector<std::vector<GlobalDeviceId>> rg0 = {{d0, d1}};
+
+  CollectiveCliqueRequests::BarrierRequirements barrier_reqs1;
+  barrier_reqs1.use_cross_device_barrier = true;
+
+  CollectiveCliqueRequests::BarrierRequirements barrier_reqs2;
+  barrier_reqs2.use_barrier_semaphores = true;
+
+  CollectiveCliqueRequests requests;
+  ASSERT_OK(
+      requests.RequestClique(k0, rg0,
+                             CollectiveCliqueRequests::CliqueRequirements{
+                                 /*dev_comm=*/std::nullopt, barrier_reqs1}));
+  ASSERT_OK(
+      requests.RequestClique(k0, rg0,
+                             CollectiveCliqueRequests::CliqueRequirements{
+                                 /*dev_comm=*/std::nullopt, barrier_reqs2}));
+
+  auto ordered_requests = requests.OrderedRequestedCliques();
+  ASSERT_EQ(ordered_requests.size(), 1);
+  EXPECT_TRUE(ordered_requests[0].use_barrier_semaphores);
+  EXPECT_TRUE(ordered_requests[0].use_cross_device_barrier_requested);
 }
 
 }  // namespace

@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
@@ -176,6 +177,50 @@ mlir::LogicalResult EntryFuncOp::verify() {
   return mlir::success();
 }
 
+mlir::LogicalResult MemRefBitcastOp::verify() {
+  mlir::MemRefType source_type = getSource().getType();
+  mlir::MemRefType result_type = getResult().getType();
+
+  if (source_type.getLayout() != result_type.getLayout()) {
+    return emitOpError() << "source layout: " << source_type.getLayout()
+                         << " does not match result layout: "
+                         << result_type.getLayout();
+  }
+  if (source_type.getMemorySpace() != result_type.getMemorySpace()) {
+    return emitOpError() << "source and result memory spaces differ";
+  }
+
+  mlir::Type source_element_type = source_type.getElementType();
+  mlir::Type result_element_type = result_type.getElementType();
+  if (!source_element_type.isIntOrFloat() ||
+      !result_element_type.isIntOrFloat()) {
+    return emitOpError() << "element types must be integer or float, got: "
+                         << source_element_type << " and "
+                         << result_element_type;
+  }
+  if (source_element_type.getIntOrFloatBitWidth() !=
+      result_element_type.getIntOrFloatBitWidth()) {
+    return emitOpError() << "element bit widths differ: " << source_element_type
+                         << " vs " << result_element_type;
+  }
+  return mlir::success();
+}
+
+mlir::OpFoldResult MemRefBitcastOp::fold(FoldAdaptor) {
+  if (getSource().getType() == getType()) {
+    return getSource();
+  }
+  // bitcast(bitcast(x)) -> x, or a single bitcast from x otherwise.
+  if (auto producer = getSource().getDefiningOp<MemRefBitcastOp>()) {
+    if (producer.getSource().getType() == getType()) {
+      return producer.getSource();
+    }
+    getSourceMutable().assign(producer.getSource());
+    return getResult();
+  }
+  return {};
+}
+
 mlir::TypedValue<mlir::MemRefType> ExtractTileOp::getBuffer() {
   return getSource();
 }
@@ -239,6 +284,120 @@ mlir::OpFoldResult MaskOp::fold(FoldAdaptor) {
   }
 
   return {};
+}
+
+mlir::LogicalResult ScanOp::verify() {
+  mlir::ValueRange inputs = getInputs();
+  if (getInits().size() != inputs.size() ||
+      getOutputs().size() != inputs.size() ||
+      getCarries().size() != inputs.size()) {
+    return emitOpError() << "expects one init, output and carry per input, but "
+                            "got "
+                         << inputs.size() << " inputs, " << getInits().size()
+                         << " inits, " << getOutputs().size() << " outputs and "
+                         << getCarries().size() << " carries";
+  }
+
+  int64_t dimension = getDimension();
+  for (auto [index, input] : llvm::enumerate(inputs)) {
+    mlir::RankedTensorType input_type =
+        mlir::cast<mlir::RankedTensorType>(input.getType());
+    if (dimension < 0 || dimension >= input_type.getRank()) {
+      return emitOpError() << "scan dimension " << dimension
+                           << " is out of range for input #" << index
+                           << " of rank " << input_type.getRank();
+    }
+    if (getOutputs()[index].getType() != input_type) {
+      return emitOpError() << "output #" << index << " type "
+                           << getOutputs()[index].getType()
+                           << " does not match input type " << input_type;
+    }
+
+    // The inits and carries keep the scan dimension as a unit dimension, so
+    // that they have the same rank as the inputs and outputs.
+    llvm::SmallVector<int64_t> carry_shape(input_type.getShape());
+    carry_shape[dimension] = 1;
+    mlir::RankedTensorType carry_type =
+        mlir::RankedTensorType::get(carry_shape, input_type.getElementType());
+    if (getInits()[index].getType() != carry_type) {
+      return emitOpError() << "init #" << index << " type "
+                           << getInits()[index].getType()
+                           << " does not match expected type " << carry_type;
+    }
+    if (getCarries()[index].getType() != carry_type) {
+      return emitOpError() << "carry #" << index << " type "
+                           << getCarries()[index].getType()
+                           << " does not match expected type " << carry_type;
+    }
+  }
+
+  return mlir::success();
+}
+
+mlir::LogicalResult ReduceScatterOp::verify() {
+  mlir::ValueRange inputs = getInputs();
+  if (inputs.empty()) {
+    return emitOpError() << "expects at least one input";
+  }
+  if (getOutputs().size() != inputs.size()) {
+    return emitOpError() << "expects one output per input, but got "
+                         << inputs.size() << " inputs and "
+                         << getOutputs().size() << " outputs";
+  }
+
+  const int64_t scatter_dimension = getScatterDimension();
+  mlir::Type element_type =
+      mlir::cast<mlir::RankedTensorType>(inputs.front().getType())
+          .getElementType();
+  for (auto [index, input] : llvm::enumerate(inputs)) {
+    mlir::RankedTensorType input_type =
+        mlir::cast<mlir::RankedTensorType>(input.getType());
+    mlir::RankedTensorType output_type =
+        mlir::cast<mlir::RankedTensorType>(getOutputs()[index].getType());
+    if (input_type.getElementType() != element_type) {
+      return emitOpError() << "input #" << index << " element type "
+                           << input_type.getElementType()
+                           << " does not match the element type of input #0 "
+                           << element_type;
+    }
+    if (scatter_dimension < 0 || scatter_dimension >= input_type.getRank()) {
+      return emitOpError() << "scatter dimension " << scatter_dimension
+                           << " is out of range for input #" << index
+                           << " of rank " << input_type.getRank();
+    }
+    if (output_type.getRank() != input_type.getRank() ||
+        output_type.getElementType() != input_type.getElementType()) {
+      return emitOpError() << "output #" << index << " type " << output_type
+                           << " does not match the rank and element type of "
+                              "input type "
+                           << input_type;
+    }
+    for (int64_t dim = 0; dim < input_type.getRank(); ++dim) {
+      if (dim != scatter_dimension &&
+          output_type.getDimSize(dim) != input_type.getDimSize(dim)) {
+        return emitOpError() << "output #" << index << " type " << output_type
+                             << " differs from input type " << input_type
+                             << " in non-scatter dimension " << dim;
+      }
+    }
+  }
+
+  mlir::Block& body = getComputation().front();
+  if (body.getNumArguments() != 2) {
+    return emitOpError() << "expects a binary reduction computation, but the "
+                            "region has "
+                         << body.getNumArguments() << " arguments";
+  }
+  mlir::RankedTensorType scalar_type =
+      mlir::RankedTensorType::get({}, element_type);
+  for (mlir::BlockArgument argument : body.getArguments()) {
+    if (argument.getType() != scalar_type) {
+      return emitOpError() << "expects reduction computation arguments of "
+                              "type "
+                           << scalar_type << ", but got " << argument.getType();
+    }
+  }
+  return mlir::success();
 }
 
 static bool IsSupportedScaleElementType(mlir::Type type) {

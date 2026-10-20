@@ -438,9 +438,8 @@ template <typename NativeT>
 int64_t GetDistanceErr(NativeT expected, NativeT actual) {
   if constexpr (std::is_same_v<NativeT, xla::complex64> ||
                 std::is_same_v<NativeT, xla::complex128>) {
-    return std::max(
-        CalculateDistanceInFloats(expected.real(), actual.real()),
-        CalculateDistanceInFloats(expected.imag(), expected.imag()));
+    return std::max(CalculateDistanceInFloats(expected.real(), actual.real()),
+                    CalculateDistanceInFloats(expected.imag(), actual.imag()));
   } else {
     return CalculateDistanceInFloats(expected, actual);
   }

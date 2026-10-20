@@ -579,6 +579,22 @@ ENTRY e {
   EXPECT_FALSE(IsFusibleAsMultiOutputFusionRoot(*root));
 }
 
+TEST_F(GpuFusibleTest, CustomFusionIsNotMultiOutputFusibleAsProducer) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+triton_fusion {
+  p = s32[20,3] parameter(0)
+  ROOT neg = s32[20,3] negate(p)
+}
+
+ENTRY e {
+  p = s32[20,3] parameter(0)
+  ROOT r = s32[20,3] fusion(p), kind=kCustom, calls=triton_fusion
+})"));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_FALSE(IsProducerMultiOutputFusible(*root));
+}
+
 TEST_F(GpuFusibleTest, FusionHeroesAreCompatible_TransposeFusionCompatible) {
   auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_computation_1 {

@@ -23,8 +23,6 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
-#include "absl/base/call_once.h"
-#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
@@ -41,6 +39,7 @@ limitations under the License.
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "tsl/profiler/lib/nvtx_utils.h"
@@ -54,50 +53,55 @@ CuDnnThunk::CuDnnThunk(std::string fingerprint, ThunkInfo thunk_info,
                        std::optional<int64_t> sdpa_dropout_seed)
     : TracedCommand(Kind::kCuDnn, std::move(thunk_info)),
       fingerprint_(std::move(fingerprint)),
-      graph_(std::make_shared<se::dnn::LazyDnnGraph>(nullptr)),
       args_(std::move(args)),
       output_args_(std::move(output_args)),
       should_memzero_(should_memzero),
       sdpa_dropout_seed_(sdpa_dropout_seed) {}
 
 absl::Status CuDnnThunk::Initialize(const InitializeParams& params) {
-  absl::Status ret = absl::OkStatus();
-  // Calling AsDnn outside call_once ensures that cuDNN handles get created for
-  // all GPUs in programs using cuDNN during the executable initialization
-  // phase. It's sufficient to deserialize the graph once using just one of
-  // them.
+  return graphs_.GetOrCreateAndInitialize(
+      params.stream->parent()->device_ordinal(),
+      [&](std::unique_ptr<se::dnn::DnnGraph>* graph) -> absl::Status {
+        ABSL_ASSIGN_OR_RETURN(*graph, CreateGraph(params));
+        if (sdpa_dropout_seed_.has_value()) {
+          (*graph)->InitDropoutState(params.local_device_count,
+                                     *sdpa_dropout_seed_, 16);
+        }
+        return absl::OkStatus();
+      });
+}
+
+absl::StatusOr<std::unique_ptr<se::dnn::DnnGraph>> CuDnnThunk::CreateGraph(
+    const InitializeParams& params) {
   se::dnn::DnnSupport* dnn = params.stream->parent()->AsDnn();
   if (dnn == nullptr) {
     return absl::InternalError(
         "Failed to initialize DNN support for CuDnnThunk");
   }
-  absl::call_once(once_flag_, [&] {
-    // If the graph was externally populated (e.g. by tests that bypass the
-    // fingerprint deserialization path), skip deserialization. Checking
-    // inside call_once keeps the read synchronized with concurrent
-    // Initialize() calls from other streams/devices.
-    if (graph_->get() != nullptr) {
-      return;
-    }
-    auto result = dnn->DeserializeGraph(
-        *params.stream, params.src.dnn_compiled_graphs.at(fingerprint_));
-    std::string().swap(fingerprint_);
-    if (result.ok()) {
-      graph_->swap(*result);
-      if (sdpa_dropout_seed_.has_value()) {
-        graph_->get()->InitDropoutState(params.local_device_count,
-                                        *sdpa_dropout_seed_, 16);
-      }
-    }
-    ret = result.status();
-  });
-  return ret;
+  auto serialized = params.src.dnn_compiled_graphs.find(fingerprint_);
+  if (serialized == params.src.dnn_compiled_graphs.end()) {
+    return Internal("No serialized cuDNN graph with fingerprint '%s'",
+                    fingerprint_);
+  }
+  return dnn->DeserializeGraph(*params.stream, serialized->second);
+}
+
+absl::StatusOr<se::dnn::DnnGraph*> CuDnnThunk::GetGraph(
+    const se::StreamExecutor* executor) const {
+  std::unique_ptr<se::dnn::DnnGraph>* graph =
+      graphs_.Find(executor->device_ordinal());
+  if (graph == nullptr || *graph == nullptr) {
+    return Internal(
+        "cuDNN graph for device ordinal %d has not been initialized; "
+        "CuDnnThunk::Initialize() must run on every device before use",
+        executor->device_ordinal());
+  }
+  return graph->get();
 }
 
 absl::Status CuDnnThunk::ExecuteOnStream(const ExecuteParams& params) {
-  InitializeParams initialize_params;
-  initialize_params.stream = params.stream;
-  ABSL_RETURN_IF_ERROR(Initialize(initialize_params));
+  ABSL_ASSIGN_OR_RETURN(se::dnn::DnnGraph * graph,
+                   GetGraph(params.stream->parent()));
   std::vector<se::DeviceAddressBase> buffer_args;
   buffer_args.reserve(args_.size());
   for (const ShapedSlice& arg : args_) {
@@ -113,16 +117,17 @@ absl::Status CuDnnThunk::ExecuteOnStream(const ExecuteParams& params) {
     }
     buffer_args.push_back(addr);
   }
-  return graph_->get()->Execute(
-      *params.stream, absl::Span<se::DeviceAddressBase>(buffer_args),
-      params.collective_params->local_device_id.value());
+  return graph->Execute(*params.stream,
+                        absl::Span<se::DeviceAddressBase>(buffer_args),
+                        params.collective_params->local_device_id.value());
 }
 
 absl::StatusOr<const se::CommandBuffer::Command*> CuDnnThunk::Record(
     const Thunk::ExecuteParams& execute_params,
     const RecordParams& record_params, RecordAction record_action,
     se::CommandBuffer* command_buffer) {
-  CHECK(graph_ != nullptr);
+  ABSL_ASSIGN_OR_RETURN(se::dnn::DnnGraph * graph,
+                   GetGraph(execute_params.stream->parent()));
   std::vector<se::DeviceAddressBase> operands;
   operands.reserve(args_.size());
   for (const ShapedSlice& arg : args_) {
@@ -133,16 +138,16 @@ absl::StatusOr<const se::CommandBuffer::Command*> CuDnnThunk::Record(
   }
 
   ABSL_ASSIGN_OR_RETURN(const bool supports_explicit,
-                   graph_->get()->SupportsExplicitCommandBufferConstruction());
+                   graph->SupportsExplicitCommandBufferConstruction());
   if (supports_explicit) {
     if (auto* create = std::get_if<RecordCreate>(&record_action)) {
       return command_buffer->CreateDnnGraphCommand(
-          *graph_->get(), *execute_params.stream,
+          *graph, *execute_params.stream,
           absl::Span<se::DeviceAddressBase>(operands), create->dependencies);
     }
     if (auto* update = std::get_if<RecordUpdate>(&record_action)) {
       ABSL_RETURN_IF_ERROR(command_buffer->UpdateDnnGraphCommand(
-          update->command, *graph_->get(), *execute_params.stream,
+          update->command, *graph, *execute_params.stream,
           absl::Span<se::DeviceAddressBase>(operands)));
       return update->command;
     }
@@ -151,7 +156,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> CuDnnThunk::Record(
   return RecordTracedCommand(
       execute_params, record_params, std::move(record_action), command_buffer,
       [&](se::Stream* stream) {
-        return graph_->get()->Execute(
+        return graph->Execute(
             *stream, absl::Span<se::DeviceAddressBase>(operands),
             execute_params.collective_params->local_device_id.value());
       });

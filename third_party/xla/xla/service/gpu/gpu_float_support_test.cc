@@ -628,8 +628,10 @@ ENTRY main {
                         se::GpuComputeCapability{cc}, BF16, F32));
 }
 
-TEST_F(FloatSupportTest, BF16LogAndExpOnRocmIsNormalized) {
-  auto cc = se::RocmComputeCapability();
+TEST_F(FloatSupportTest, BF16LogAndExpOnRocmAreNotNormalized) {
+  // bf16 log and exp are lowered as log2 / exp2 evaluated in f32 and rounded to
+  // bf16 once. That needs only the f32 transcendentals every AMD GPU has, so
+  // these ops are kept as bf16 regardless of the architecture.
   constexpr absl::string_view kHloModule = R"(
 HloModule module
 
@@ -638,17 +640,17 @@ ENTRY main {
       ROOT r = bf16[4] $0(p0)
 })";
 
-  ASSERT_OK_AND_ASSIGN(
-      auto module_log,
-      ParseAndReturnVerifiedModule(absl::Substitute(kHloModule, "log")));
-  EXPECT_TRUE(
-      Normalize(module_log.get(), se::GpuComputeCapability{cc}, BF16, F32));
-
-  ASSERT_OK_AND_ASSIGN(auto module_exp,
-                       ParseAndReturnVerifiedModule(
-                           absl::Substitute(kHloModule, "exponential")));
-  EXPECT_TRUE(
-      Normalize(module_exp.get(), se::GpuComputeCapability{cc}, BF16, F32));
+  for (const char* gfx :
+       {"gfx90a", "gfx942", "gfx1100", "gfx1200", "gfx1250"}) {
+    auto cc = se::RocmComputeCapability(gfx);
+    for (absl::string_view op : {"log", "exponential"}) {
+      ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                            absl::Substitute(kHloModule, op)));
+      EXPECT_FALSE(
+          Normalize(module.get(), se::GpuComputeCapability{cc}, BF16, F32))
+          << "bf16 " << op << " should not be normalized on " << gfx;
+    }
+  }
 }
 
 TEST_F(FloatSupportTest, BF16TranscendentalsOnGfx1250AreNotNormalized) {
@@ -678,6 +680,27 @@ ENTRY main {
       ParseAndReturnVerifiedModule(absl::Substitute(kHloModule, "sine")));
   EXPECT_TRUE(
       Normalize(module_sin.get(), se::GpuComputeCapability{cc}, BF16, F32));
+}
+
+TEST_F(FloatSupportTest, BF16TranscendentalsWithoutNativeSupportAreNormalized) {
+  // Unlike exp and log, these ops are only kept as bf16 where a native bf16
+  // instruction computes them directly, so without one they are upcast to f32.
+  auto cc = se::RocmComputeCapability("gfx942");
+  constexpr absl::string_view kHloModule = R"(
+HloModule module
+
+ENTRY main {
+      p0 = bf16[4] parameter(0)
+      ROOT r = bf16[4] $0(p0)
+})";
+
+  for (absl::string_view op : {"sqrt", "rsqrt", "tanh"}) {
+    ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                          absl::Substitute(kHloModule, op)));
+    EXPECT_TRUE(
+        Normalize(module.get(), se::GpuComputeCapability{cc}, BF16, F32))
+        << "bf16 " << op << " should be normalized on gfx942";
+  }
 }
 
 TEST_F(FloatSupportTest, ScaledDotIsIgnored) {

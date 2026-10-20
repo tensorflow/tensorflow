@@ -365,6 +365,56 @@ TEST_F(RaggedDotRewriterTest, RaggedContractingWithBatchDims) {
   )");
 }
 
+TEST_F(RaggedDotRewriterTest, RaggedContractingWithMultipleBatchDims) {
+  absl::string_view module_string = R"(
+  HloModule module
+
+  ENTRY main {
+    p0 = f32[2,4,11,5]{3,2,1,0} parameter(0)
+    p1 = f32[2,4,5,7]{3,2,1,0} parameter(1)
+    p2 = s32[2,4,6]{2,1,0} parameter(2)
+    ROOT ragged-dot = f32[6,2,4,11,7]{4,3,2,1,0} ragged-dot(p0, p1, p2),
+                                      lhs_contracting_dims={3},
+                                      rhs_contracting_dims={2},
+                                      lhs_batch_dims={0,1},
+                                      rhs_batch_dims={0,1},
+                                      lhs_ragged_dims={3}
+  })";
+
+  RunAndFilecheckHloRewrite(module_string,
+                            RaggedDotRewriter(GetCudaComputeCapability()), R"(
+  // CHECK: f32[6,2,4,11,5]{4,3,2,1,0} transpose({{.*}}), dimensions={2,0,1,3,4}
+  // CHECK: f32[6,2,4,5,7]{4,3,2,1,0} transpose({{.*}}), dimensions={2,0,1,3,4}
+  // CHECK: ROOT [[dot:%[^ ]+]] = f32[6,2,4,11,7]{4,3,2,1,0}
+  // CHECK-SAME: lhs_batch_dims={0,1,2}, lhs_contracting_dims={4},
+  // CHECK-SAME: rhs_batch_dims={0,1,2}, rhs_contracting_dims={3}
+  )");
+}
+
+TEST_F(RaggedDotRewriterTest, RaggedContractingWithMultipleContractingDims) {
+  absl::string_view module_string = R"(
+  HloModule module
+
+  ENTRY main {
+    p0 = f32[2,11,3,5]{3,2,1,0} parameter(0)
+    p1 = f32[2,7,3,5]{3,2,1,0} parameter(1)
+    p2 = s32[6]{0} parameter(2)
+    ROOT ragged-dot = f32[6,2,11,7]{3,2,1,0} ragged-dot(p0, p1, p2),
+                                      lhs_contracting_dims={2,3},
+                                      rhs_contracting_dims={2,3},
+                                      lhs_batch_dims={0},
+                                      rhs_batch_dims={0},
+                                      lhs_ragged_dims={3}
+  })";
+
+  RunAndFilecheckHloRewrite(module_string,
+                            RaggedDotRewriter(GetCudaComputeCapability()), R"(
+  // CHECK: ROOT [[dot:%[^ ]+]] = f32[6,2,11,7]{3,2,1,0}
+  // CHECK-SAME: lhs_batch_dims={0,1}, lhs_contracting_dims={3,4},
+  // CHECK-SAME: rhs_batch_dims={0,1}, rhs_contracting_dims={3,4}
+  )");
+}
+
 TEST_F(RaggedDotRewriterTest, BatchContracting) {
   absl::string_view module_string = R"(
   HloModule module

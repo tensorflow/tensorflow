@@ -30,6 +30,7 @@ limitations under the License.
 #include "flatbuffers/buffer.h"  // from @flatbuffers
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "flatbuffers/string.h"  // from @flatbuffers
+#include "flatbuffers/vector.h"  // from @flatbuffers
 #include "tensorflow/compiler/mlir/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/lite/core/interpreter_builder.h"
 #include "tensorflow/lite/core/kernels/register.h"
@@ -54,17 +55,18 @@ std::function<float(std::mt19937&)> GetDist() {
 template <typename T>
 void SliceTester::Test(Interpreter* default_interpreter,
                        Interpreter* delegate_interpreter) const {
-  std::random_device random_device;
-  auto rng = std::mt19937(random_device());
+  auto rng = std::mt19937();
   auto input_distribution = GetDist<T>();
   auto input_rng = std::bind(input_distribution, std::ref(rng));
+  const auto* input = default_interpreter->input_tensor(0);
+  const int input_size =
+      std::accumulate(input->dims->data, input->dims->data + input->dims->size,
+                      1, std::multiplies<int32_t>());
   T* default_input_data = default_interpreter->typed_input_tensor<T>(0);
-  std::generate_n(default_input_data, ComputeSize(InputShape()),
-                  std::ref(input_rng));
+  std::generate_n(default_input_data, input_size, std::ref(input_rng));
 
   T* delegate_input_data = delegate_interpreter->typed_input_tensor<T>(0);
-  std::copy_n(default_input_data, ComputeSize(InputShape()),
-              delegate_input_data);
+  std::copy_n(default_input_data, input_size, delegate_input_data);
 
   ASSERT_EQ(default_interpreter->Invoke(), kTfLiteOk);
   ASSERT_EQ(delegate_interpreter->Invoke(), kTfLiteOk);
@@ -72,7 +74,15 @@ void SliceTester::Test(Interpreter* default_interpreter,
   T* default_output_data = default_interpreter->typed_output_tensor<T>(0);
   T* delegate_output_data = delegate_interpreter->typed_output_tensor<T>(0);
 
-  for (size_t i = 0; i < ComputeSize(OutputShape()); i++) {
+  const auto* expected = default_interpreter->output_tensor(0);
+  const auto* actual = delegate_interpreter->output_tensor(0);
+  ASSERT_EQ(expected->dims->size, actual->dims->size);
+  int output_size = 1;
+  for (int i = 0; i < expected->dims->size; ++i) {
+    ASSERT_EQ(expected->dims->data[i], actual->dims->data[i]);
+    output_size *= expected->dims->data[i];
+  }
+  for (int i = 0; i < output_size; i++) {
     EXPECT_EQ(default_output_data[i], delegate_output_data[i]);
   }
 }
@@ -126,19 +136,64 @@ void SliceTester::Test(TensorType tensor_type, TfLiteDelegate* delegate) const {
 
   ASSERT_EQ(delegate_interpreter->ModifyGraphWithDelegate(delegate), kTfLiteOk);
 
-  switch (tensor_type) {
-    case TensorType_FLOAT32:
-      Test<float>(delegate_interpreter.get(), default_interpreter.get());
-      break;
-    case TensorType_INT8:
-      Test<int8_t>(delegate_interpreter.get(), default_interpreter.get());
-      break;
-    case TensorType_UINT8:
-      Test<uint8_t>(delegate_interpreter.get(), default_interpreter.get());
-      break;
-    default:
-      GTEST_FAIL();
+  auto shapes = reshape_input_shapes_;
+  shapes.insert(shapes.begin(), InputShape());
+  for (const auto& shape : shapes) {
+    ASSERT_EQ(default_interpreter->ResizeInputTensor(0, shape), kTfLiteOk);
+    ASSERT_EQ(delegate_interpreter->ResizeInputTensor(0, shape), kTfLiteOk);
+    ASSERT_EQ(default_interpreter->AllocateTensors(), kTfLiteOk);
+    ASSERT_EQ(delegate_interpreter->AllocateTensors(), kTfLiteOk);
+    if (require_delegation_) {
+      ASSERT_EQ(delegate_interpreter->execution_plan().size(), 1);
+      ASSERT_EQ(
+          delegate_interpreter
+              ->node_and_registration(delegate_interpreter->execution_plan()[0])
+              ->first.delegate,
+          delegate);
+    }
+    switch (tensor_type) {
+      case TensorType_FLOAT32:
+        Test<float>(default_interpreter.get(), delegate_interpreter.get());
+        break;
+      case TensorType_INT8:
+        Test<int8_t>(default_interpreter.get(), delegate_interpreter.get());
+        break;
+      case TensorType_UINT8:
+        Test<uint8_t>(default_interpreter.get(), delegate_interpreter.get());
+        break;
+      default:
+        GTEST_FAIL();
+    }
   }
+}
+
+void SliceTester::TestUnsupported(TensorType tensor_type,
+                                  TfLiteDelegate* delegate) const {
+  const std::vector<char> buffer = CreateTfLiteModel(tensor_type);
+  const Model* model = GetModel(buffer.data());
+
+  std::unique_ptr<Interpreter> delegate_interpreter;
+  ASSERT_EQ(
+      InterpreterBuilder(
+          model,
+          ::tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates())(
+          &delegate_interpreter),
+      kTfLiteOk);
+  ASSERT_TRUE(delegate_interpreter);
+
+  ASSERT_EQ(delegate_interpreter->AllocateTensors(), kTfLiteOk);
+  ASSERT_EQ(delegate_interpreter->ModifyGraphWithDelegate(delegate), kTfLiteOk);
+  for (const auto& shape : reshape_input_shapes_) {
+    ASSERT_EQ(delegate_interpreter->ResizeInputTensor(0, shape), kTfLiteOk);
+    ASSERT_EQ(delegate_interpreter->AllocateTensors(), kTfLiteOk);
+  }
+  ASSERT_EQ(delegate_interpreter->execution_plan().size(), 1);
+  EXPECT_EQ(
+      delegate_interpreter
+          ->node_and_registration(delegate_interpreter->execution_plan()[0])
+          ->first.delegate,
+      nullptr);
+  EXPECT_NE(delegate_interpreter->Invoke(), kTfLiteOk);
 }
 
 std::vector<char> SliceTester::CreateTfLiteModel(TensorType tensor_type) const {
@@ -162,23 +217,34 @@ std::vector<char> SliceTester::CreateTfLiteModel(TensorType tensor_type) const {
           builder.CreateVector<float>({/*scale=*/1.0f}),
           builder.CreateVector<int64_t>({/*zero_point=*/0}));
 
-  const int32_t num_dims = Offsets().size();
+  const int32_t begin_num_dims = OffsetsCount();
+  const int32_t size_num_dims = SizesCount();
   TensorType offsets_and_sizes_tensor_type =
       UseInt64OffsetsAndSize() ? TensorType_INT64 : TensorType_INT32;
+  const auto input_signature =
+      input_shape_signature_.empty()
+          ? flatbuffers::Offset<flatbuffers::Vector<int32_t>>()
+          : builder.CreateVector(input_shape_signature_);
+  const auto output_signature =
+      reshape_input_shapes_.empty()
+          ? flatbuffers::Offset<flatbuffers::Vector<int32_t>>()
+          : builder.CreateVector(std::vector<int32_t>(begin_num_dims, -1));
 
   const std::array<flatbuffers::Offset<Tensor>, 4> tensors{{
       CreateTensor(builder,
                    builder.CreateVector<int32_t>(InputShape().data(),
                                                  InputShape().size()),
-                   tensor_type, /*buffer=*/0, /*name=*/0, quantization_params),
-      CreateTensor(builder, builder.CreateVector<int32_t>({num_dims}),
+                   tensor_type, /*buffer=*/0, /*name=*/0, quantization_params,
+                   /*is_variable=*/false, /*sparsity=*/0, input_signature),
+      CreateTensor(builder, builder.CreateVector<int32_t>({begin_num_dims}),
                    offsets_and_sizes_tensor_type, /*buffer=*/1),
-      CreateTensor(builder, builder.CreateVector<int32_t>({num_dims}),
+      CreateTensor(builder, builder.CreateVector<int32_t>({size_num_dims}),
                    offsets_and_sizes_tensor_type, /*buffer=*/2),
       CreateTensor(builder,
                    builder.CreateVector<int32_t>(OutputShape().data(),
                                                  OutputShape().size()),
-                   tensor_type, /*buffer=*/0, /*name=*/0, quantization_params),
+                   tensor_type, /*buffer=*/0, /*name=*/0, quantization_params,
+                   /*is_variable=*/false, /*sparsity=*/0, output_signature),
   }};
 
   const flatbuffers::Offset<Operator> op = CreateOperator(

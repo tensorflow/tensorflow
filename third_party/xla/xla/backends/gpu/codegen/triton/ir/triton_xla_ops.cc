@@ -323,6 +323,26 @@ LogicalResult PtrToMemrefOp::verify() {
   return success();
 }
 
+LogicalResult BlockBarrierOp::verify() {
+  if (getBarrierMode() == BarrierMode::kSymmetric) {
+    if (getSignalSlot() || getSignalStride() != 0) {
+      return emitOpError(
+          "symmetric barrier_mode requires signal_slot to be omitted and "
+          "signal_stride to be 0");
+    }
+    return success();
+  }
+  if (getSignalStride() <= 0) {
+    return emitOpError(
+        "asymmetric barrier_mode requires a positive signal_stride");
+  }
+  if (!getSignalSlot()) {
+    return emitOpError(
+        "asymmetric barrier_mode requires signal_slot to be specified");
+  }
+  return success();
+}
+
 }  // namespace mlir::triton::xla
 
 #define GET_OP_CLASSES

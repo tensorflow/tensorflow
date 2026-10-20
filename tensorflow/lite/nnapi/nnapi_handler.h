@@ -20,7 +20,6 @@ limitations under the License.
 #include <string>
 
 #include "absl/log/check.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
 

@@ -641,10 +641,11 @@ absl::StatusOr<bool> HloHostDeviceTypeCallWrapper::RunImpl(
        module->MakeNonfusionComputations({execution_threads})) {
     std::vector<HloInstruction*> callers =
         call_graph->GetComputationCallers(computation);
-    bool caller_is_single_host_instr =
-        callers.size() == 1 &&
-        host_offload_utils::ComputeTypeIsHost(callers.front());
-    if (caller_is_single_host_instr) {
+    bool all_callers_are_host_instrs =
+        !callers.empty() &&
+        absl::c_all_of(callers, host_offload_utils::ComputeTypeIsHost);
+    if (all_callers_are_host_instrs ||
+        call_graph->GetNode(computation).context() == CallContext::kEmbedded) {
       // Skip offloading instructions inside of computations that are already
       // part of an offloaded program (while, conditional, host utility
       // function).

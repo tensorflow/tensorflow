@@ -1109,22 +1109,28 @@ XlaOp RandomGammaGrad(XlaOp a, XlaOp x) {
 XlaOp Igammac(XlaOp a, XlaOp x) {
   auto& b = *a.builder();
   auto doit = [&b](XlaOp a, XlaOp x, PrimitiveType type) -> XlaOp {
-    XlaOp out_of_range = Or(Le(x, ScalarLike(x, 0)), Le(a, ScalarLike(a, 0)));
+    XlaOp is_nan = Or(IsNan(a), IsNan(x));
+    XlaOp x_is_zero = Eq(x, ScalarLike(x, 0));
+    XlaOp x_is_infinity =
+        Eq(x, ScalarLike(x, std::numeric_limits<float>::infinity()));
+    // Same domain as Igamma: x < 0 or a <= 0 is a domain error (NaN), while
+    // x == 0 is a valid boundary where igammac(a, 0) = 1.
+    XlaOp domain_error = Or(Lt(x, ScalarLike(x, 0)), Le(a, ScalarLike(a, 0)));
     XlaOp use_igamma = Or(Lt(x, ScalarLike(x, 1)), Lt(x, a));
     XlaOp ax = a * Log(x) - x - Lgamma(a);
     XlaOp underflow = Lt(ax, -Log(MaxFiniteValue(&b, type)));
-    XlaOp enabled = Not(Or(out_of_range, underflow));
+    XlaOp enabled = Not(Or(Or(Or(x_is_zero, domain_error), underflow), is_nan));
     ax = Exp(ax);
+    const double nan = std::numeric_limits<double>::quiet_NaN();
     XlaOp result =
         Select(use_igamma,
                ScalarLike(a, 1) - IgammaSeries<VALUE>(
                                       ax, x, a, And(enabled, use_igamma), type),
                IgammacContinuedFraction<VALUE>(
                    ax, x, a, And(enabled, Not(use_igamma)), type));
-    XlaOp x_is_infinity =
-        Eq(x, ScalarLike(x, std::numeric_limits<float>::infinity()));
+    result = Select(x_is_zero, FullLike(result, 1), result);
     result = Select(x_is_infinity, ZerosLike(result), result);
-    return Select(out_of_range, FullLike(a, 1), result);
+    return Select(Or(domain_error, is_nan), FullLike(a, nan), result);
   };
   return b.ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     ABSL_ASSIGN_OR_RETURN(auto a_shape, b.GetShape(a));
@@ -1199,7 +1205,7 @@ XlaOp Acos(XlaOp x, const std::optional<ResultAccuracy>& result_accuracy,
   });
 }
 
-// asin(x) = 2 * atan(x / (1 + sqrt(1 - x^2)))
+// asin(x) = atan2(x, sqrt((1 - x) * (1 + x)))
 XlaOp Asin(XlaOp x, const std::optional<ResultAccuracy>& result_accuracy,
            bool expand) {
   if (!expand) {
@@ -1372,85 +1378,14 @@ XlaOp Atanh(XlaOp x, const std::optional<ResultAccuracy>& result_accuracy,
   });
 }
 
-// Cosh(x) = (e^x + e^-x) / 2
-//         = e^(x + log(1/2)) + e^(-x + log(1/2)).
-//
-// The second formulation avoids overflowing when e^x = inf but (e^x)/2 is not
-// inf.
-//
-// This incorrectly overflows to inf for two f32 input values, namely
-// +/-89.4159851, due to rounding error when computing x +/- log(1/2).  The
-// correct answer of 3.40281961e+38 (0x7f7fffec) is very close to max-float, so
-// we deem this acceptable.
-XlaOp Cosh(XlaOp x, const std::optional<ResultAccuracy>& result_accuracy,
-           bool expand) {
-  if (!expand) {
-    return x.builder()->UnaryOp(HloOpcode::kCosh, x, result_accuracy);
-  }
-  XlaBuilder* b = x.builder();
-  auto do_it = [&](XlaOp x) -> absl::StatusOr<XlaOp> {
-    ABSL_ASSIGN_OR_RETURN(auto shape, b->GetShape(x));
-
-    auto log_one_half = Log(ScalarLike(x, 0.5));
-    auto result = Exp(x + log_one_half) + Exp(-x + log_one_half);
-    if (primitive_util::IsComplexType(shape.element_type())) {
-      return result;
-    }
-
-    // Cosh(x) has a minimum value of 1.0 near 0.0, clamp to 1.0 to handle
-    // rounding errors in Exp().
-    return Max(result, ScalarLike(result, 1.0));
-  };
-  return DoWithUpcastToF32(x, {BF16, F16}, [&](XlaOp x) {
-    return b->ReportErrorOrReturn(do_it(x));
-  });
+// Computes the hyperbolic cosine of 'x'.
+XlaOp Cosh(XlaOp x, const std::optional<ResultAccuracy>& result_accuracy) {
+  return x.builder()->UnaryOp(HloOpcode::kCosh, x, result_accuracy);
 }
 
-// Sinh(x) = (e^x - e^-x) / 2
-//         = e^(x + log(1/2)) - e^(-x + log(1/2)).
-//
-// The second formulation avoids overflowing when e^x = inf but (e^x)/2 is not
-// inf.
-//
-// This incorrectly overflows to +/-inf for two f32 input values, namely
-// +/-89.4159851, due to rounding error when computing x +/- log(1/2).  The
-// correct answer of 3.40281961e+38 (0x7f7fffec) is very close to max-float, so
-// we deem this acceptable.
-XlaOp Sinh(XlaOp x, const std::optional<ResultAccuracy>& result_accuracy,
-           bool expand) {
-  if (!expand) {
-    return x.builder()->UnaryOp(HloOpcode::kSinh, x, result_accuracy);
-  }
-  XlaBuilder* b = x.builder();
-  auto do_it = [&](XlaOp x) -> absl::StatusOr<XlaOp> {
-    ABSL_ASSIGN_OR_RETURN(auto shape, b->GetShape(x));
-    auto one_half = ScalarLike(x, 0.5);
-    auto log_one_half = Log(ScalarLike(x, 0.5));
-    auto large_sinh_result = Exp(x + log_one_half) - Exp(-x + log_one_half);
-
-    if (primitive_util::IsComplexType(shape.element_type())) {
-      return large_sinh_result;
-    }
-
-    // Here we use e^x = e^(x / 2) * e^(x / 2). This avoids overflow for large
-    // values of x.
-
-    // For smaller x, we get unwanted cancellations of e^x - e^-x, resulting in
-    // 0.
-    // Rewrite this to avoid that. We use expm1(x) because that preserves the
-    // first order term of the taylor series of e^x.
-    // (e^(x) - e^(-x)) / 2. =
-    // (e^(x) - 1 + 1 - e^(-x)) / 2.
-    // (expm1(x) + (e^(x) - 1) / e^x) / 2.
-    // (expm1(x) + expm1(x) / (expm1(x) + 1)) / 2.
-    auto expm1 = Expm1(x);
-    auto one = ScalarLike(x, 1.);
-    auto small_sinh_result = one_half * (expm1 + expm1 / (expm1 + one));
-    return Select(Lt(Abs(x), one), small_sinh_result, large_sinh_result);
-  };
-  return DoWithUpcastToF32(x, {BF16, F16}, [&](XlaOp x) {
-    return b->ReportErrorOrReturn(do_it(x));
-  });
+// Computes the hyperbolic sine of 'x'.
+XlaOp Sinh(XlaOp x, const std::optional<ResultAccuracy>& result_accuracy) {
+  return x.builder()->UnaryOp(HloOpcode::kSinh, x, result_accuracy);
 }
 
 XlaOp MaybeConjugate(XlaOp x, bool conjugate) {
@@ -1899,11 +1834,12 @@ XlaOp RegularizedIncompleteBeta(XlaOp a, XlaOp b, XlaOp x) {
       m = ConvertElementType(m, element_type);
       auto one = FullLike(a, 1.0);
       auto two = FullLike(a, 2.0);
-      // Partial numerator terms.
+      // Partial numerator terms, computed as products of ratios so that the
+      // intermediate products don't overflow for large a or b.
       auto even_numerator =
-          -(a + m) * (a + b + m) * x / ((a + two * m) * (a + two * m + one));
+          -((a + m) / (a + two * m)) * ((a + b + m) / (a + two * m + one)) * x;
       auto odd_numerator =
-          m * (b - m) * x / ((a + two * m - one) * (a + two * m));
+          (m / (a + two * m - one)) * ((b - m) / (a + two * m)) * x;
       auto one_numerator = ScalarLike(x, 1.0);
       auto numerator = Select(iteration_is_even, even_numerator, odd_numerator);
       return std::vector<XlaOp>{
@@ -2122,7 +2058,10 @@ XlaOp Zeta(XlaOp x, XlaOp q) {
     neg_power = Pow(acc, Neg(x));
 
     // Calculating `I`.
-    XlaOp I = neg_power * acc / (x - ScalarLike(acc, 1.));
+    // Compute acc^(1-x) directly rather than as acc^-x * acc: the latter
+    // underflows to 0 for large acc, and is 0 * inf = NaN for acc = inf.
+    XlaOp x_minus_one = x - ScalarLike(acc, 1.);
+    XlaOp I = Pow(acc, Neg(x_minus_one)) / x_minus_one;
 
     // Calculating the rest of the formula – `T`.
     // Use Horner's rule for this.

@@ -205,6 +205,9 @@ class ScatterWithDistributedIndices : public ScatterFusion {
   // Creates a 2D vector to store the accumulated updates in each thread.
   mlir::Value InitializeAccumulator(mlir::ImplicitLocOpBuilder& b) const;
 
+  IndexingMap ComputeThreadIdToUpdateIdMap(
+      mlir::MLIRContext* mlir_context) const;
+
   // The number of warps that process a single slice of the update.
   int64_t num_warps_per_slice_;
   // The number of indices that every warp iterates over. This is a useful

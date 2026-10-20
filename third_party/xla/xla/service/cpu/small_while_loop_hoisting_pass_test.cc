@@ -15,28 +15,39 @@ limitations under the License.
 
 #include "xla/service/cpu/small_while_loop_hoisting_pass.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
+#include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/service/cpu/backend_config.pb.h"
+#include "xla/service/cpu/target_machine_features_stub.h"
 
 namespace xla {
 namespace {
 
 class SmallWhileLoopHoistingPassTest : public HloHardwareIndependentTestBase {
  protected:
-  absl::StatusOr<bool> RunSmallWhileLoopHoistingPass(HloModule* module) {
-    return cpu::SmallWhileLoopHoistingPass(1024).Run(module);
+  absl::StatusOr<bool> RunSmallWhileLoopHoistingPass(
+      HloModule* module, int64_t small_buffer_access_size = 1024) {
+    return cpu::SmallWhileLoopHoistingPass(small_buffer_access_size,
+                                           &target_machine_features_)
+        .Run(module);
   }
+
+  cpu::TargetMachineFeaturesStub target_machine_features_{[](int64_t) {
+    return cpu::TargetMachineFeatures::kEigenExpectedTensorAlignment;
+  }};
 };
 
 TEST_F(SmallWhileLoopHoistingPassTest, SmallWhileLoopHoisting) {
@@ -261,6 +272,83 @@ TEST_F(SmallWhileLoopHoistingPassTest, NoYnnWhileLoopHoisting) {
                        ParseAndReturnVerifiedModule(hlo_string));
   ASSERT_OK_AND_ASSIGN(bool changed, RunSmallWhileLoopHoistingPass(m.get()));
   EXPECT_FALSE(changed);
+}
+
+TEST_F(SmallWhileLoopHoistingPassTest, DotAndConvolutionWhileLoopHoisting) {
+  constexpr absl::string_view kHloTemplate = R"(
+    HloModule while_loop
+
+    while_body {
+      state = (s32[], $lhs, $rhs) parameter(0)
+      counter = s32[] get-tuple-element(state), index=0
+      one = s32[] constant(1)
+      next = s32[] add(counter, one)
+      lhs = $lhs get-tuple-element(state), index=1
+      rhs = $rhs get-tuple-element(state), index=2
+      op = $op
+      ROOT tuple = (s32[], $lhs, $rhs) tuple(next, lhs, rhs)
+    }
+
+    while_condition {
+      state = (s32[], $lhs, $rhs) parameter(0)
+      counter = s32[] get-tuple-element(state), index=0
+      limit = s32[] constant(10)
+      ROOT less_than = pred[] compare(counter, limit), direction=LT
+    }
+
+    ENTRY main {
+      zero = s32[] constant(0)
+      lhs = $lhs parameter(0)
+      rhs = $rhs parameter(1)
+      init = (s32[], $lhs, $rhs) tuple(zero, lhs, rhs)
+      ROOT while_loop = (s32[], $lhs, $rhs) while(init),
+          condition=while_condition, body=while_body
+    }
+    )";
+
+  struct TestCase {
+    absl::string_view lhs;
+    absl::string_view rhs;
+    absl::string_view op;
+    bool expect_hoisted;
+  };
+  // Only the matrix-vector product is emitted inline without Eigen and in a
+  // type the legacy emitter supports.
+  const TestCase kTestCases[] = {
+      {"f32[256,256]", "f32[256,1]",
+       "f32[256,1] dot(lhs, rhs), lhs_contracting_dims={1}, "
+       "rhs_contracting_dims={0}",
+       true},
+      {"f32[512,256]", "f32[256,256]",
+       "f32[512,256] dot(lhs, rhs), lhs_contracting_dims={1}, "
+       "rhs_contracting_dims={0}",
+       false},
+      {"bf16[256,256]", "bf16[256,1]",
+       "bf16[256,1] dot(lhs, rhs), lhs_contracting_dims={1}, "
+       "rhs_contracting_dims={0}",
+       false},
+      {"f32[8,512,256]", "f32[8,256,256]",
+       "f32[8,512,256] dot(lhs, rhs), lhs_batch_dims={0}, "
+       "lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}",
+       false},
+      {"f32[1,32,32,16]", "f32[3,3,16,16]",
+       "f32[1,32,32,16] convolution(lhs, rhs), window={size=3x3 pad=1_1x1_1}, "
+       "dim_labels=b01f_01io->b01f",
+       false},
+  };
+  for (const TestCase& test_case : kTestCases) {
+    SCOPED_TRACE(test_case.op);
+    std::string hlo_string =
+        absl::StrReplaceAll(kHloTemplate, {{"$lhs", test_case.lhs},
+                                           {"$rhs", test_case.rhs},
+                                           {"$op", test_case.op}});
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                         ParseAndReturnVerifiedModule(hlo_string));
+    ASSERT_OK_AND_ASSIGN(bool changed,
+                         RunSmallWhileLoopHoistingPass(
+                             m.get(), /*small_buffer_access_size=*/1000000000));
+    EXPECT_EQ(changed, test_case.expect_hoisted);
+  }
 }
 
 }  // namespace

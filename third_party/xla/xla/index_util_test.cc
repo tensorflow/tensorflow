@@ -144,6 +144,12 @@ TEST(IndexUtilTest, LinearToMultiToLinear) {
   }
 }
 
+TEST(IndexUtilTest, BumpIndicesScalar) {
+  const Shape shape = ShapeUtil::MakeShape(S32, {});
+  std::vector<int64_t> indices;
+  EXPECT_FALSE(IndexUtil::BumpIndices(shape, absl::MakeSpan(indices)));
+}
+
 TEST(IndexUtilTest, BumpIndices2x2) {
   auto shape = ShapeUtil::MakeShape(S32, {2, 2});
   std::vector<int64_t> indices = {0, 0};

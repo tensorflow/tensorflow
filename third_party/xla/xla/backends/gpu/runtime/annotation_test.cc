@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "tsl/profiler/lib/nvtx_utils.h"
 
 namespace xla::gpu {
 namespace {
@@ -162,6 +163,67 @@ TEST(AnnotationTest, AsyncCollectiveMetadata) {
   EXPECT_THAT(xprof_name, HasSubstr("replica_groups={{0;1};{2;3}}"));
   EXPECT_THAT(xprof_name, HasSubstr("is_pipelined=1"));
   EXPECT_THAT(xprof_name, HasSubstr("is_spmd_generated=1"));
+}
+
+TEST(AnnotationTest, ModuleAnnotationsWithStackFrames) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(R"(
+    HloModule test
+
+    FileNames
+    1 "model.py"
+
+    FunctionNames
+    1 "forward"
+    2 "layer"
+
+    FileLocations
+    1 {file_name_id=1 function_name_id=1 line=10 end_line=12 column=4 end_column=20}
+    2 {file_name_id=1 function_name_id=2 line=42 end_line=42 column=8 end_column=30}
+
+    StackFrames
+    1 {file_location_id=1 parent_frame_id=1}
+    2 {file_location_id=2 parent_frame_id=2}
+
+    fused_computation {
+      p0 = f32[4] parameter(0)
+      p1 = f32[4] parameter(1)
+      ROOT add = f32[4] add(p0, p1),
+          metadata={op_type="add", op_name="jit(forward)/layer/add", stack_frame_id=2}
+    }
+
+    ENTRY main {
+      a = f32[4] parameter(0)
+      b = f32[4] parameter(1)
+      ROOT fusion = f32[4] fusion(a, b), kind=kLoop, calls=fused_computation,
+          metadata={op_type="fusion", op_name="jit(forward)/layer/fusion", stack_frame_id=2}
+    }
+  )"));
+
+  ModuleAnnotations basic_annotations(*module, TraceAnnotationLevel::kBasic);
+  EXPECT_EQ(basic_annotations.top_level.common_stack_frames(),
+            tsl::profiler::DefaultProfilerDomain() == nullptr ? 0 : 1);
+  EXPECT_EQ(basic_annotations.instructions.size(), module->instruction_count());
+  const InstructionAnnotation& basic_fusion =
+      basic_annotations.instructions.at("fusion");
+  EXPECT_FALSE(basic_fusion.has_detailed_annotations());
+  EXPECT_EQ(basic_fusion.nvtx_name(), basic_fusion.xprof_name());
+  EXPECT_THAT(basic_fusion.xprof_name(), HasSubstr("hlo_op=fusion"));
+
+  ModuleAnnotations detailed_annotations(*module,
+                                         TraceAnnotationLevel::kDetailed);
+  EXPECT_EQ(detailed_annotations.instructions.size(),
+            module->instruction_count());
+  const InstructionAnnotation& detailed_fusion =
+      detailed_annotations.instructions.at("fusion");
+  EXPECT_TRUE(detailed_fusion.has_detailed_annotations());
+  EXPECT_FALSE(detailed_fusion.is_collective_annotation());
+  EXPECT_EQ(detailed_fusion.nvtx_name(), basic_fusion.nvtx_name());
+  EXPECT_THAT(detailed_fusion.xprof_name(), HasSubstr("op_type=fusion"));
+  EXPECT_THAT(detailed_fusion.xprof_name(),
+              HasSubstr("op_name=jit(forward)/layer/fusion"));
+  EXPECT_THAT(detailed_fusion.xprof_name(), HasSubstr("source_file=model.py"));
+  EXPECT_THAT(detailed_fusion.xprof_name(), HasSubstr("source_line=42"));
+  EXPECT_THAT(detailed_fusion.xprof_name(), HasSubstr("shape=f32[4]"));
 }
 
 }  // namespace

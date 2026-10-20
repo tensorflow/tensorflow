@@ -207,6 +207,45 @@ TEST_F(HloInstructionTest, BlockScalingConfigToString) {
   }
 }
 
+TEST_F(HloInstructionTest, DotBlockScalingAndSparsityToString) {
+  HloComputation::Builder builder("main");
+  auto lhs = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(BF16, {64, 64}), "lhs"));
+  auto rhs = builder.AddInstruction(HloInstruction::CreateParameter(
+      1, ShapeUtil::MakeShape(BF16, {128, 64}), "rhs"));
+  auto lhs_scale = builder.AddInstruction(HloInstruction::CreateParameter(
+      2, ShapeUtil::MakeShape(F8E8M0FNU, {64, 2}), "lhs_scale"));
+  auto lhs_indices = builder.AddInstruction(HloInstruction::CreateParameter(
+      3, ShapeUtil::MakeShape(S8, {64, 16}), "lhs_indices"));
+
+  DotDimensionNumbers dnums;
+  dnums.add_lhs_contracting_dimensions(1);
+  dnums.add_rhs_contracting_dimensions(0);
+  PrecisionConfig precision_config;
+
+  SparsityConfig sp;
+  sp.mutable_lhs()->set_idx(3);
+  sp.mutable_lhs()->set_num_non_zero(2);
+  sp.mutable_lhs()->set_block_size(4);
+  sp.mutable_lhs()->set_dimension(1);
+  sp.mutable_lhs()->set_stride(1);
+
+  BlockScalingConfig bs;
+  bs.mutable_lhs()->set_scale_idx(2);
+  bs.mutable_lhs()->add_strides(1);
+  bs.mutable_lhs()->add_strides(32);
+  bs.mutable_lhs()->add_steps(1);
+  bs.mutable_lhs()->add_steps(1);
+
+  auto dot = builder.AddInstruction(HloInstruction::CreateDot(
+      ShapeUtil::MakeShape(BF16, {64, 64}), {lhs, rhs, lhs_scale, lhs_indices},
+      dnums, precision_config, sp, bs));
+
+  EXPECT_EQ(
+      dot->ToString(),
+      R"(%dot = bf16[64,64]{1,0} dot(%lhs, %rhs, %lhs_scale, %lhs_indices), lhs_contracting_dims={1}, rhs_contracting_dims={0}, sparsity_config={lhs={sparsity=2x4 dimension=1 stride=1 idx=3}}, block_scaling_config={lhs={scale_idx=2 strides=1x32 steps=1x1}})");
+}
+
 TEST_F(HloInstructionTest, GetStackTraceStringFromStackFrameId) {
   auto module = CreateNewVerifiedModule();
   HloComputation::Builder builder("main");
@@ -875,6 +914,38 @@ TEST_F(HloInstructionTest, DetachFromOperandsWithDuplicateOperands) {
   EXPECT_OK(module->entry_computation()->RemoveInstruction(tuple));
 }
 
+// Each aliasing entry keeps naming the same operand: the entry on the second
+// x moves to the x that stays, and the entry on y follows y down a slot.
+TEST_F(HloInstructionTest, DeduplicateFusionOperandsRemapsAliasing) {
+  constexpr absl::string_view kHlo = R"(
+HloModule m
+
+f {
+  p0 = f32[8] parameter(0)
+  p1 = f32[8] parameter(1)
+  p2 = f32[8] parameter(2)
+  a = f32[8] add(p0, p1)
+  b = f32[8] add(p1, p2)
+  ROOT t = (f32[8], f32[8]) tuple(a, b)
+}
+
+ENTRY e {
+  x = f32[8] parameter(0)
+  y = f32[8] parameter(1)
+  ROOT fusion = (f32[8], f32[8]) fusion(x, x, y), kind=kLoop, output_to_operand_aliasing={{0}: (1, {}), {1}: (2, {})}, calls=f
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  auto* fusion = Cast<HloFusionInstruction>(
+      module->entry_computation()->root_instruction());
+  ASSERT_OK(fusion->DeduplicateFusionOperands());
+  ASSERT_EQ(fusion->operand_count(), 2);
+  const std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
+      expected = {{{0}, {0, {}}}, {{1}, {1, {}}}};
+  EXPECT_EQ(fusion->output_to_operand_aliasing(), expected);
+}
+
 TEST_F(HloInstructionTest, AsyncChainTraversalAndShapesWithIntermediaries) {
   constexpr absl::string_view kHlo = R"(
 HloModule test
@@ -1050,5 +1121,107 @@ TEST_F(HloInstructionTest, CompareProtoRoundTripWithOrder) {
   EXPECT_EQ(compare_clone->order(), ComparisonOrder::kTotal);
 }
 
+TEST_F(HloInstructionTest,
+       AsyncUpdatePreservesOutputToOperandAliasingRoundTrip) {
+  constexpr absl::string_view kHloString = R"(
+HloModule AsyncUpdateAliasing
+
+%async_computation (param_0: f32[10]) -> f32[10] {
+  %param_0 = f32[10] parameter(0)
+  ROOT %neg = f32[10] negate(%param_0)
+}
+
+ENTRY %main (p0: f32[10]) -> f32[10] {
+  %p0 = f32[10] parameter(0)
+  %async-start = ((f32[10]), f32[10], u32[]) async-start(%p0), calls=%async_computation
+  %async-update = ((f32[10]), f32[10], u32[]) async-update(%async-start), output_to_operand_aliasing={{2}: (0, {2})}
+  ROOT %async-done = f32[10] async-done(%async-update)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
+  HloInstruction* async_update =
+      module->entry_computation()->root_instruction()->mutable_operand(0);
+  ASSERT_EQ(async_update->opcode(), HloOpcode::kAsyncUpdate);
+  ASSERT_FALSE(async_update->output_operand_aliasing().empty());
+
+  HloModuleProto proto = module->ToProto();
+  ASSERT_OK_AND_ASSIGN(auto roundtrip_module,
+                       HloModule::CreateFromProto(proto, module->config()));
+  HloInstruction* roundtrip_async_update = roundtrip_module->entry_computation()
+                                               ->root_instruction()
+                                               ->mutable_operand(0);
+  ASSERT_EQ(roundtrip_async_update->opcode(), HloOpcode::kAsyncUpdate);
+  EXPECT_EQ(roundtrip_async_update->output_operand_aliasing(),
+            async_update->output_operand_aliasing());
+}
+
+TEST_F(HloInstructionTest, DefuseRelaysControlDependencies) {
+  constexpr absl::string_view kHloString = R"(
+HloModule DefuseControlDeps
+
+%fused_comp (p: f32[8]) -> f32[8] {
+  %p = f32[8] parameter(0)
+  %cp = f32[8] copy(%p)
+  ROOT %bc = f32[8] bitcast(%cp)
+}
+
+ENTRY %main (x: f32[8], y: f32[8]) -> f32[8] {
+  %x = f32[8] parameter(0)
+  %y = f32[8] parameter(1)
+  %ctrl_pred = f32[8] negate(%y)
+  %fus = f32[8] fusion(%x), kind=kLoop, calls=%fused_comp, control-predecessors={%ctrl_pred}
+  ROOT %out = f32[8] add(%fus, %ctrl_pred), control-predecessors={%fus}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* ctrl_pred = entry->GetInstructionWithName("ctrl_pred");
+  HloInstruction* fus = entry->GetInstructionWithName("fus");
+  HloInstruction* out = entry->GetInstructionWithName("out");
+  ASSERT_OK(fus->Defuse());
+  HloInstruction* defused_root = out->mutable_operand(0);
+  ASSERT_EQ(defused_root->opcode(), HloOpcode::kBitcast);
+  HloInstruction* defused_copy = defused_root->mutable_operand(0);
+  ASSERT_EQ(defused_copy->opcode(), HloOpcode::kCopy);
+  EXPECT_THAT(defused_copy->control_predecessors(),
+              ::testing::ElementsAre(ctrl_pred));
+  EXPECT_THAT(out->control_predecessors(),
+              ::testing::ElementsAre(defused_root));
+}
+
+TEST_F(HloInstructionTest, DefusePreservesControlDependencies) {
+  constexpr absl::string_view kHlo = R"(
+HloModule m
+
+fused {
+  p = f32[8,16] parameter(0)
+  c = f32[8,16] copy(p)
+  ROOT b = f32[128] bitcast(c)
+}
+
+ENTRY e {
+  p0 = f32[8,16] parameter(0)
+  before = f32[8,16] negate(p0)
+  fus = f32[128] fusion(p0), kind=kLoop, calls=fused, control-predecessors={before}
+  after = f32[8,16] exponential(p0), control-predecessors={fus}
+  ROOT t = (f32[8,16], f32[128], f32[8,16]) tuple(before, fus, after)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  HloInstruction* fus = FindInstruction(module.get(), "fus");
+  HloInstruction* before = FindInstruction(module.get(), "before");
+  HloInstruction* after = FindInstruction(module.get(), "after");
+  ASSERT_OK(fus->Defuse());
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  HloInstruction* defused_root = root->mutable_operand(1);
+  ASSERT_EQ(defused_root->opcode(), HloOpcode::kBitcast);
+  HloInstruction* defused_copy = defused_root->mutable_operand(0);
+  ASSERT_EQ(defused_copy->opcode(), HloOpcode::kCopy);
+  EXPECT_THAT(before->control_successors(),
+              ::testing::UnorderedElementsAre(defused_copy, defused_root));
+  EXPECT_THAT(defused_root->control_successors(),
+              ::testing::ElementsAre(after));
+}
 }  // namespace
 }  // namespace xla

@@ -93,8 +93,8 @@ std::string EmitModuleToSPIRV(llvm::Module* module,
   // TODO(intel-tf): Revisit this once the SPIR-V backend is fixed to support
   // O2.
   target_machine->setOptLevel(llvm::CodeGenOptLevel::None);
-  target_machine->getObjFileLowering()->Initialize(mmiwp->getMMI().getContext(),
-                                                   *target_machine);
+  target_machine->getObjFileLowering()->initialize(mmiwp->getMMI().getContext(),
+                                                   *target_machine, *module);
   target_machine->addPassesToEmitFile(pm, buffered_stream, nullptr,
                                       llvm::CodeGenFileType::ObjectFile);
 
@@ -162,6 +162,14 @@ std::vector<std::string> GetSPIRVBackendOptions(
   // Feed all customized flags here, so we can override them with llvm_cl_opts
   // without redeploy the compiler for development purpose.
   std::vector<std::string> backend_llvm_opts;
+  // Without the SPV_EXT_long_vector extension, SPIR-V supports only vectors
+  // of 2, 3, 4, 8, or 16 elements. Only newer Intel GPU drivers support the
+  // extension, so disable the vector optimizations that can produce other
+  // vector lengths.
+  // TODO(intel-tf): Remove these workarounds once the oneAPI toolchain is
+  // upgraded to 2026.3 or later.
+  backend_llvm_opts.emplace_back("-disable-vector-combine");
+  backend_llvm_opts.emplace_back("-slp-vectorize-hor=false");
 
   auto backend_extra_llvm_opts = llvm_ir::ExtractXlaBackendExtraOptions(
       debug_options.xla_backend_extra_options());

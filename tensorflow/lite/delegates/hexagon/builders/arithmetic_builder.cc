@@ -121,7 +121,7 @@ TfLiteStatus ArithmeticOpBuilder::RegisterOutputs(const TfLiteIntArray* outputs,
   return kTfLiteOk;
 }
 
-ArithmeticOpBuilder::~ArithmeticOpBuilder() {}
+ArithmeticOpBuilder::~ArithmeticOpBuilder() = default;
 
 OpBuilder* CreateArithmeticBuilder(GraphBuilder* graph_builder, int op_type) {
   return new ArithmeticOpBuilder(graph_builder, op_type);

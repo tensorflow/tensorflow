@@ -33,7 +33,9 @@ namespace detail {
 template <typename T>
 __global__ void RangeInitKernel(const T start, const T delta, const T size,
                                 T* out) {
-  GPU_1D_KERNEL_LOOP(i, size) { out[i] = start + i * delta; }
+  for (T i : GpuGridRangeX<T>(size)) {
+    out[i] = start + i * delta;
+  }
 }
 
 // Initialize out with range start, start + delta, start + 2 * delta, ...
@@ -178,8 +180,7 @@ absl::Status GpuInclusivePrefixSum(OpKernelContext* context, int size,
                                    InputIteratorT input,
                                    OutputIteratorT output) {
   static_assert(
-      !std::is_same<typename std::remove_reference<decltype(*input)>::type,
-                    bool>::value,
+      !std::is_same_v<std::remove_reference_t<decltype(*input)>, bool>,
       "GpuInclusivePrefixSum does not work correct with booleans, please use "
       "TransformInputIterator to explicitly cast to an integer.");
   if (size == 0) return absl::OkStatus();

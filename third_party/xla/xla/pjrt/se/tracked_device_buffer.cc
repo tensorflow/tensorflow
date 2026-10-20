@@ -86,6 +86,21 @@ class AllocatedRawSEDeviceMemory : public RawSEDeviceMemory {
     return BufferSequencingEventRef();
   }
 
+  absl::Status MaterializeDefinitionEvent(
+      AsyncWorkRunner* async_work_runner) const override {
+    // Only the next sync point may not have been recorded yet. Earlier sync
+    // points were either recorded already or failed to record, in which case
+    // `GetDefinitionEvent` retries and reports the error.
+    if (sync_point_ == std::numeric_limits<size_t>::max() ||
+        sync_point_ != local_device_->GetNextComputeStreamSyncPoint()) {
+      return absl::OkStatus();
+    }
+    return local_device_
+        ->GetEventForComputeStreamSyncPoint(sync_point_, async_work_runner,
+                                            /*nullptr_if_past=*/true)
+        .status();
+  }
+
  private:
   se::DeviceAddressAllocator* allocator_;
   LocalDeviceState* local_device_;

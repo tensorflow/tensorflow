@@ -53,6 +53,7 @@ cc_library(
     visibility = internal_visibility([":friends"]),
     deps = [
         ":pjrt_c_api_multi_slice_config",
+        "//xla:custom_options",
         "//xla:future",
         "//xla:literal",
         "//xla:shape_util",
@@ -117,6 +118,7 @@ cc_library(
         "//xla/tsl/platform:statusor",
         "//xla/tsl/protobuf:coordination_service_proto_cc",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",

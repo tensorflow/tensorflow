@@ -50,10 +50,13 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/DialectImplementation.h"  // IWYU pragma: keep.
+#include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/Location.h"
+#include "mlir/IR/Matchers.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
+#include "mlir/Interfaces/FoldInterfaces.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "xla/layout.h"
@@ -77,6 +80,61 @@ llvm::hash_code hash_value(const ::xla::Tile& p) { return absl::HashOf(p); }
 
 namespace mlir::tpu {
 
+namespace {
+
+// Folds div(rem(x, c), c) to 0.
+template <typename DivOp, typename RemOp>
+LogicalResult foldDivOfRem(DivOp div_op, ArrayRef<Attribute> operands,
+                           SmallVectorImpl<OpFoldResult>& results) {
+  CHECK_EQ(operands.size(), 2);
+  auto rem_op = div_op.getLhs().template getDefiningOp<RemOp>();
+  if (!rem_op) {
+    return failure();
+  }
+  Attribute div_cst = operands[1];
+  Attribute rem_cst;
+  matchPattern(rem_op.getRhs(), m_Constant(&rem_cst));
+
+  const bool divisors_match =
+      rem_op.getRhs() == div_op.getRhs() || (div_cst && div_cst == rem_cst);
+  if (!divisors_match) {
+    return failure();
+  }
+  Type type = div_op.getType();
+  if (auto shaped_type = dyn_cast<ShapedType>(type)) {
+    // OpBuilder::getZeroAttr asserts that the type has a static shape. This
+    // can only be triggered by tensor types, which Mosaic does not use.
+    if (!shaped_type.hasStaticShape()) {
+      return failure();
+    }
+  }
+  Attribute zero_attr = Builder(div_op.getContext()).getZeroAttr(type);
+  if (!zero_attr) {
+    return failure();
+  }
+  results.push_back(zero_attr);
+  return success();
+}
+
+struct TpuDialectFoldInterface : public DialectFoldInterface {
+  using DialectFoldInterface::DialectFoldInterface;
+
+  LogicalResult fold(Operation* op, ArrayRef<Attribute> operands,
+                     SmallVectorImpl<OpFoldResult>& results) const final {
+    if (auto div_op = dyn_cast<arith::DivUIOp>(op)) {
+      return foldDivOfRem<arith::DivUIOp, arith::RemUIOp>(div_op, operands,
+                                                          results);
+    }
+    if (auto div_op = dyn_cast<arith::DivSIOp>(op)) {
+      return foldDivOfRem<arith::DivSIOp, arith::RemSIOp>(div_op, operands,
+                                                          results);
+    }
+    return failure();
+  }
+};
+
+}  // namespace
+
 void TPUDialect::initialize() {
   addAttributes<
 #define GET_ATTRDEF_LIST
@@ -90,6 +148,14 @@ void TPUDialect::initialize() {
 #define GET_OP_LIST
 #include "xla/mosaic/dialect/tpu/tpu_ops.cc.inc"
       >();
+  addInterfaces<TpuDialectFoldInterface>();
+
+  DialectRegistry registry;
+  registry.addExtension(
+      +[](MLIRContext* ctx, arith::ArithDialect* arith_dialect) {
+        arith_dialect->addInterfaces<TpuDialectFoldInterface>();
+      });
+  getContext()->appendDialectRegistry(registry);
 }
 
 Operation* TPUDialect::materializeConstant(OpBuilder& builder, Attribute value,
@@ -194,11 +260,11 @@ struct MemRefDimOfSqueeze : public OpRewritePattern<memref::DimOp> {
     }
     MemRefType source_type = squeeze_op.getInput().getType();
     FAILUREOR_ASSIGN_OR_RETURN(
-        SmallVector<int> squeezed,
+        SmallVector<int64_t> squeezed,
         computeSqueezedDimsChecked(squeeze_op, source_type.getShape(),
                                    result_type.getShape()));
     int64_t source_dim = dim;
-    for (int squeezed_dim : squeezed) {
+    for (int64_t squeezed_dim : squeezed) {
       if (squeezed_dim <= source_dim) {
         ++source_dim;
       }
@@ -615,6 +681,37 @@ LogicalResult TiledLayoutAttr::verifyLayout(
   return success();
 }
 
+LogicalResult MemorySpaceAttr::verify(
+    function_ref<InFlightDiagnostic()> emitError, MemorySpace value,
+    std::optional<CoreType> core_type) {
+  if (!core_type.has_value()) {
+    return success();
+  }
+  switch (value) {
+    case MemorySpace::kAny:
+    case MemorySpace::kHbm:
+    case MemorySpace::kHost:
+    case MemorySpace::kVmemShared:
+      return emitError() << "Memory space " << value
+                         << " cannot be owned by a core";
+    case MemorySpace::kVmem:
+      if (*core_type == CoreType::kScScalarSubcore) {
+        return emitError() << "Memory space " << value
+                           << " cannot be owned by core " << *core_type;
+      }
+      return success();
+    case MemorySpace::kCmem:
+      if (*core_type != CoreType::kTc) {
+        return emitError() << "Memory space " << value
+                           << " cannot be owned by core " << *core_type;
+      }
+      return success();
+    case MemorySpace::kSmem:
+    case MemorySpace::kSemaphoreMem:
+      return success();
+  }
+}
+
 MemRefType getMemRefType(Value value) {
   if (auto erase_op = value.getDefiningOp<tpu::EraseLayoutOp>()) {
     value = erase_op.getOperand();
@@ -714,8 +811,8 @@ std::optional<bool> isStructurallyDivisible(Value value, int64_t divisor,
     return true;
   }
   if (auto block_arg = dyn_cast<BlockArgument>(value)) {
-    if (auto for_op =
-            dyn_cast<scf::ForOp>(block_arg.getOwner()->getParentOp())) {
+    if (auto for_op = dyn_cast_if_present<scf::ForOp>(
+            block_arg.getOwner()->getParentOp())) {
       if (for_op.getInductionVar() == value) {
         return areAllDivisible(for_op.getLowerBound(), for_op.getStep(),
                                divisor, fuel);

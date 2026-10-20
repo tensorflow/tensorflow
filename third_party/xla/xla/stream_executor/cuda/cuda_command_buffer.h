@@ -55,6 +55,8 @@ class CudaCommandBuffer final : public GpuCommandBuffer {
 
   std::string ToString() const override;
 
+  bool has_node_priority() const { return has_node_priority_; }
+
   ~CudaCommandBuffer() override;
 
  private:
@@ -173,11 +175,24 @@ class CudaCommandBuffer final : public GpuCommandBuffer {
       const std::optional<ClusterDim>& cluster_dims, const Kernel& kernel,
       const KernelArgsPackedArrayBase& args) override;
 
+  absl::StatusOr<GraphNodeHandle> CreateKernelNode(
+      absl::Span<const GraphNodeHandle> dependencies, StreamPriority priority,
+      const ThreadDim& threads, const BlockDim& blocks,
+      const std::optional<ClusterDim>& cluster_dims, const NativeKernel& kernel,
+      const KernelArgsPackedArrayBase& args) override;
+
   absl::Status UpdateKernelNode(GraphNodeHandle node_handle,
                                 const ThreadDim& threads,
                                 const BlockDim& blocks,
                                 const std::optional<ClusterDim>& cluster_dims,
                                 const Kernel& kernel,
+                                const KernelArgsPackedArrayBase& args) override;
+
+  absl::Status UpdateKernelNode(GraphNodeHandle node_handle,
+                                const ThreadDim& threads,
+                                const BlockDim& blocks,
+                                const std::optional<ClusterDim>& cluster_dims,
+                                const NativeKernel& kernel,
                                 const KernelArgsPackedArrayBase& args) override;
 
   absl::StatusOr<GraphNodeHandle> CreateEmptyNode(
@@ -206,6 +221,8 @@ class CudaCommandBuffer final : public GpuCommandBuffer {
   CommandBuffer* parent() const { return parent_; }
 
   CUgraphExec graph_exec() const;
+
+  void SetHasNodePriority();
 
   absl::Status CheckCanBeUpdated() override;
 
@@ -253,6 +270,7 @@ class CudaCommandBuffer final : public GpuCommandBuffer {
 
   CUgraph graph_ = nullptr;
   bool is_owned_graph_ = true;
+  bool has_node_priority_ = false;
   CUgraphExec graph_exec_ = nullptr;
 };
 

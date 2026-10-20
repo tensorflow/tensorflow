@@ -357,6 +357,17 @@ class TupleTree {
     return entry_or.value()->children_start_id == -1;
   }
 
+  // Returns the number of children of the node at the given index, or 0 if the
+  // node does not exist or is a leaf.
+  size_t num_children(ShapeIndexView index = {}) const {
+    absl::StatusOr<const internal::IndexTable::Entry*> entry_or =
+        index_table_.GetEntry(index);
+    if (!entry_or.ok() || entry_or.value()->children_start_id == -1) {
+      return 0;
+    }
+    return entry_or.value()->num_children;
+  }
+
   // Checks if the structure of this TupleTree is compatible with the given
   // shape.
   bool IsStructurallyCompatible(const Shape& shape) const {

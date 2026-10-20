@@ -62,7 +62,6 @@ xla_test(
         ":ffi",
         "//xla:error_spec",
         "//xla/backends/gpu/tests:hlo_pjrt_gpu_test_base",
-        "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/strings:string_view",

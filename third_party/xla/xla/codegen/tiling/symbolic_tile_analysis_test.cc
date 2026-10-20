@@ -177,9 +177,48 @@ class FakeEmitterSpecificConstraints : public EmitterSpecificConstraints {
   int64_t dim0_tile_size_;
 };
 
+using SymbolicTileAnalysisDeathTest = HloHardwareIndependentTestBase;
+
+TEST_F(SymbolicTileAnalysisDeathTest, CallingSymbolicTileAnalysisFailsCheck) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+fused_computation {
+  p0 = f32[10,10] parameter(0)
+  ROOT r = f32[10,10] abs(p0)
+}
+
+ENTRY main {
+  p0 = f32[10,10] parameter(0)
+  ROOT fusion = f32[10,10] fusion(p0), kind=kCustom, calls=fused_computation
+}
+)"));
+  mlir::MLIRContext mlir_context;
+  EXPECT_DEATH(SymbolicTileAnalysis::AnalyzeComputation(
+                   *module->entry_computation()
+                        ->root_instruction()
+                        ->fused_instructions_computation(),
+                   &mlir_context),
+               "Calling into symbolic tile analysis is disallowed");
+
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_enable_tiling_propagation(false);
+  EXPECT_DEATH(SymbolicTileAnalysis::AnalyzeComputation(
+                   *module->entry_computation()
+                        ->root_instruction()
+                        ->fused_instructions_computation(),
+                   &mlir_context),
+               "Calling into symbolic tile analysis is disallowed");
+}
+
 class SymbolicTileAnalysisTest : public HloHardwareIndependentTestBase {
  public:
   SymbolicTileAnalysisTest() = default;
+
+  void SetUp() override {
+    GTEST_SKIP() << "Legacy symbolic tile analysis is disallowed.";
+  }
 
   std::optional<SymbolicTileAnalysis> TryAnalyzeModule(
       HloModule* module,
@@ -1654,14 +1693,14 @@ ENTRY entry_computation {
   )"));
   EXPECT_THAT(convert->runtime_variables(), SizeIs(2));
   const TiledHloInstruction* convert_rt0 = convert->runtime_variables()[0];
-  EXPECT_EQ(convert_rt0->hlo()->name(), "off2");
+  EXPECT_EQ(convert_rt0->hlo()->name(), "off");
   EXPECT_THAT(*convert_rt0, MatchTiledHloInstruction(
                                 /*tile_sizes=*/{},
                                 /*tile_strides=*/{},
                                 /*tile_offsets_indexing=*/R"(
     (pid_0) -> (), domain: pid_0 in [0, 9]
   )"));
-  EXPECT_EQ(convert->runtime_variables()[1]->hlo()->name(), "off");
+  EXPECT_EQ(convert->runtime_variables()[1]->hlo()->name(), "off2");
 
   EXPECT_THAT(*off, MatchTiledHloInstruction(
                         /*tile_sizes=*/{},

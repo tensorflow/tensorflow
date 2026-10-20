@@ -174,7 +174,7 @@ void HloOriginalValueGrouper::OnOriginalTensorReady(
         LOG(INFO)
             << "Invoking group ready callback (hoisted fill) for callback_id="
             << key.callback_id;
-        on_group_ready_(key.callback_id, 0, partition_id, group.literals);
+        on_group_ready_(key.callback_id, partition_id, group.literals);
         pending_groups_.erase(key);
       }
     }
@@ -333,7 +333,7 @@ void HloOriginalValueGrouper::OnOriginalTensorReady(
     auto& group = pending_groups_[key];
     LOG(INFO) << "Invoking group ready callback for callback_id="
               << key.callback_id;
-    on_group_ready_(key.callback_id, 0, partition_id, group.literals);
+    on_group_ready_(key.callback_id, partition_id, group.literals);
     pending_groups_.erase(key);
   }
 }

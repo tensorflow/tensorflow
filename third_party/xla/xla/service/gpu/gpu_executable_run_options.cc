@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_executable_run_options.h"
 
+#include <functional>
 #include <optional>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
@@ -67,15 +69,19 @@ GpuExecutableRunOptions::incarnations() const {
   return incarnations_;
 }
 
-GpuExecutableRunOptions& GpuExecutableRunOptions::set_execution_timeout_handler(
-    ExecutionTimeoutHandler handler) {
-  execution_timeout_handler_ = std::move(handler);
+GpuExecutableRunOptions&
+GpuExecutableRunOptions::set_execution_timeout_handlers(
+    std::function<std::vector<ExecutionTimeoutHandler>()> handlers) {
+  execution_timeout_handlers_ = std::move(handlers);
   return *this;
 }
 
-const ExecutionTimeoutHandler&
-GpuExecutableRunOptions::execution_timeout_handler() const {
-  return execution_timeout_handler_;
+std::vector<ExecutionTimeoutHandler>
+GpuExecutableRunOptions::execution_timeout_handlers() const {
+  if (!execution_timeout_handlers_) {
+    return {};
+  }
+  return execution_timeout_handlers_();
 }
 
 }  // namespace xla::gpu

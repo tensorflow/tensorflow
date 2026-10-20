@@ -311,27 +311,32 @@ class FractionalAvgTest(test.TestCase):
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
         r"Row sequence tensor values must not be negative.*"):
-      y = nn_ops.gen_nn_ops.fractional_avg_pool_grad(
-          orig_input_tensor_shape=[2, 2, 2, 2],
-          out_backprop=[[[[1, 2], [3, 4], [5, 6]], [[7, 8], [9, 10], [11,
-                                                                      12]]]],
-          row_pooling_sequence=[-10, 1, 2, 3],
-          col_pooling_sequence=[1, 2, 3, 4],
-          overlapping=True)
-
-      self.evaluate(y)
-      with self.assertRaisesRegex(
-          errors.InvalidArgumentError,
-          r"Column sequence tensor values must not be negative.*"):
-        z = nn_ops.gen_nn_ops.fractional_avg_pool_grad(
-            orig_input_tensor_shape=[2, 2, 2, 2],
-            out_backprop=[[[[1, 2], [3, 4], [5, 6]], [[7, 8], [9, 10], [11,
-                                                                        12]]]],
-            row_pooling_sequence=[10, 1, 2, 3],
-            col_pooling_sequence=[1, 2, -3, 4],
-            overlapping=True)
-
-        self.evaluate(z)
+      self.evaluate(
+          nn_ops.gen_nn_ops.fractional_avg_pool_grad(
+              orig_input_tensor_shape=[1, 2, 2, 2],
+              out_backprop=[
+                  [[[1, 2], [3, 4], [5, 6]], [[7, 8], [9, 10], [11, 12]]]
+              ],
+              row_pooling_sequence=[-10, 1, 2, 3],
+              col_pooling_sequence=[1, 2, 3, 4],
+              overlapping=True,
+          )
+      )
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        r"Column sequence tensor values must not be negative.*",
+    ):
+      self.evaluate(
+          nn_ops.gen_nn_ops.fractional_avg_pool_grad(
+              orig_input_tensor_shape=[1, 2, 2, 2],
+              out_backprop=[
+                  [[[1, 2], [3, 4], [5, 6]], [[7, 8], [9, 10], [11, 12]]]
+              ],
+              row_pooling_sequence=[10, 1, 2, 3],
+              col_pooling_sequence=[1, 2, -3, 4],
+              overlapping=True,
+          )
+      )
 
   def testPoolingRatioHasMoreDimThanInput(self):
     with self.cached_session() as _:
@@ -606,6 +611,35 @@ class FractionalAvgPoolGradTest(test.TestCase):
             col_pooling_sequence=col_pooling_sequence,
             overlapping=overlapping)
         self.evaluate(t)
+
+  def testShapeMismatchRaiseErrorForFractionalAvgPoolGrad(self):
+    # in_backprop is sized from orig_input_tensor_shape, but the op walks
+    # out_backprop's batch and depth; an out_backprop with more batches or
+    # channels than orig_input_tensor_shape used to write past that buffer.
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, r"same batch size"
+    ):
+      with self.cached_session():
+        self.evaluate(
+            gen_nn_ops.fractional_avg_pool_grad(
+                orig_input_tensor_shape=[1, 2, 2, 1],
+                out_backprop=np.ones([8, 1, 1, 1], dtype=np.float64),
+                row_pooling_sequence=[0, 2],
+                col_pooling_sequence=[0, 2],
+                overlapping=False,
+            )
+        )
+    with self.assertRaisesRegex(errors.InvalidArgumentError, r"same depth"):
+      with self.cached_session():
+        self.evaluate(
+            gen_nn_ops.fractional_avg_pool_grad(
+                orig_input_tensor_shape=[1, 2, 2, 1],
+                out_backprop=np.ones([1, 1, 1, 8], dtype=np.float64),
+                row_pooling_sequence=[0, 2],
+                col_pooling_sequence=[0, 2],
+                overlapping=False,
+            )
+        )
 
 
 if __name__ == "__main__":

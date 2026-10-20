@@ -16,6 +16,12 @@ limitations under the License.
 #ifndef XLA_UNION_FIND_H_
 #define XLA_UNION_FIND_H_
 
+#include <cstdint>
+#include <utility>
+#include <vector>
+
+#include "absl/log/check.h"
+
 namespace xla {
 
 // Union-Find data structure.
@@ -76,6 +82,75 @@ UnionFind<T>* UnionFind<T>::FindRoot() {
   parent_ = parent_->FindRoot();
   return parent_;
 }
+
+// Union-Find optimized for a dense index range [0, num_elements). Use it
+// instead of UnionFind<T> when the elements already have dense ids (for
+// example the local ids of a computation's instructions). Avoids per element
+// allocations and the need for a hash_map from element to cluster: the whole
+// structure is two flat arrays.
+class DenseUnionFind {
+ public:
+  // Every element starts in its own cluster: both arrays zero initialized.
+  explicit DenseUnionFind(int num_elements)
+      : parent_plus_one_(CheckNonNegative(num_elements), 0),
+        rank_(num_elements, 0) {}
+
+  int num_elements() const { return parent_plus_one_.size(); }
+
+  // Returns the representative of the cluster containing 'element'. Compresses
+  // the path on the way up by path halving, the one pass variant of path
+  // compression: every other node on the path is pointed at its grandparent.
+  int Find(int element) {
+    DCHECK_GE(element, 0);
+    DCHECK_LT(element, num_elements());
+    while (true) {
+      const int parent = Parent(element);
+      if (parent == element) {
+        return element;
+      }
+      const int grandparent = Parent(parent);
+      parent_plus_one_[element] = grandparent + 1;
+      element = grandparent;
+    }
+  }
+
+  // Merges the clusters of 'a' and 'b' by rank: the root of higher rank
+  // becomes the representative of the merged cluster, and equal ranks grow the
+  // surviving root's rank by one.
+  void Merge(int a, int b) {
+    a = Find(a);
+    b = Find(b);
+    if (a == b) {
+      return;
+    }
+    if (rank_[a] < rank_[b]) {
+      std::swap(a, b);
+    }
+    if (rank_[a] == rank_[b]) {
+      ++rank_[a];
+    }
+    parent_plus_one_[b] = a + 1;
+  }
+
+ private:
+  static int CheckNonNegative(int count) {
+    DCHECK_GE(count, 0);
+    return count;
+  }
+
+  // A root is its own parent.
+  int Parent(int element) const {
+    const int stored = parent_plus_one_[element];
+    return stored == 0 ? element : stored - 1;
+  }
+
+  // The parent of each element plus one; 0 marks a root, so the zero
+  // initialized array holds singletons and needs no iota.
+  std::vector<int> parent_plus_one_;
+  // The rank of a root bounds the height of its tree and stays below
+  // log2(num_elements), so a byte holds it.
+  std::vector<uint8_t> rank_;
+};
 
 }  // namespace xla
 

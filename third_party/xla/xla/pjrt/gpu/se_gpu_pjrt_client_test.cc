@@ -16,8 +16,10 @@ limitations under the License.
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <new>
@@ -58,6 +60,7 @@ limitations under the License.
 #include "google/protobuf/text_format.h"
 #include "riegeli/bytes/string_reader.h"
 #include "riegeli/bytes/string_writer.h"
+#include "xla/backends/gpu/ffi.h"
 #include "xla/debug_options_flags.h"
 #include "xla/ffi/ffi.h"
 #include "xla/future.h"
@@ -91,6 +94,8 @@ limitations under the License.
 #include "xla/pjrt/se/pjrt_stream_executor_client.h"
 #include "xla/pjrt/se/stream_executor_executable.h"
 #include "xla/runtime/device_id.h"
+#include "xla/service/gpu/gpu_executable_run_options.h"
+#include "xla/service/gpu/gpu_memory_space_assignment.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/service/gpu_topology.pb.h"
 #include "xla/service/platform_util.h"
@@ -105,7 +110,10 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocm_device_address_vmm_allocator.h"
 #endif  // GOOGLE_CUDA
 #include "xla/pjrt/gpu/se_gpu_pjrt_client_test_helper.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/integrations/tf_allocator_adapter.h"
+#include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_address_allocator.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -120,7 +128,6 @@ limitations under the License.
 #include "xla/util/split_proto/split_proto_reader.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/casts.h"
 #include "tsl/platform/mem.h"
 #include "tsl/platform/numa.h"
 #include "tsl/platform/platform.h"
@@ -141,6 +148,7 @@ using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::Pair;
 using ::testing::SizeIs;
+using ::testing::VariantWith;
 
 absl::StatusOr<PjRtDeviceEventPtr::DefinitionStreamInfo>
 GetDefinitionStreamInfo(PjRtBuffer* buffer) {
@@ -342,7 +350,8 @@ TEST(StreamExecutorGpuClientTest, PlatformVersionIsDerivedAtRuntime) {
   const absl::string_view version = client->platform_version();
   EXPECT_NE(version, "<unknown>");
   EXPECT_TRUE(absl::StartsWith(version, "cuda ") ||
-              absl::StartsWith(version, "rocm "))
+              absl::StartsWith(version, "rocm ") ||
+              absl::StartsWith(version, "oneapi"))
       << "unexpected platform version: " << version;
 }
 
@@ -365,6 +374,9 @@ TEST(StreamExecutorGpuClientTest, MemorySpacesUniqueIds) {
 TEST(StreamExecutorGpuClientTest, NumaNode) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto client, GetStreamExecutorGpuClient(GetTestGpuClientOptions()));
+  if (client->platform_id() == RocmId()) {
+    GTEST_SKIP() << "not working on ROCm, enable once fixed";  // TODO: ROCm
+  }
   ASSERT_GE(client->devices().size(), 1);
 
   for (auto* device : client->devices()) {
@@ -494,6 +506,63 @@ ENTRY %Add.6 (a.1: f32[], b.2: f32[]) -> (f32[], f32[]) {
 
   ASSERT_EQ(result.size(), 1);
   ASSERT_EQ(result[0].size(), 2);
+  for (const auto& b : result[0]) {
+    EXPECT_THAT(b->GetReadyFuture().Await(),
+                StatusIs(input_error.code(), HasSubstr(input_error.message())));
+  }
+}
+
+TEST(StreamExecutorGpuClientTest, PropagateAsyncHostToDeviceDelayedError) {
+  ASSERT_OK_AND_ASSIGN(auto client,
+                       GetStreamExecutorGpuClient(GetTestGpuClientOptions()));
+
+  Shape shape = xla::ShapeUtil::MakeScalarShape(xla::F32);
+  ASSERT_OK_AND_ASSIGN(
+      auto* memory_space,
+      client->addressable_devices()[0]->default_memory_space());
+  ASSERT_OK_AND_ASSIGN(
+      auto transfer_manager,
+      client->CreateBuffersForAsyncHostToDevice({shape}, memory_space));
+  std::unique_ptr<PjRtBuffer> buffer = transfer_manager->RetrieveBuffer(0);
+
+  static constexpr char const* kAddProgram =
+      R"(
+HloModule Add.6, entry_computation_layout={(f32[], f32[])->(f32[], f32[])}
+
+ENTRY %Add.6 (a.1: f32[], b.2: f32[]) -> (f32[], f32[]) {
+  %a.1 = f32[] parameter(0)
+  %b.2 = f32[] parameter(1)
+  %add.3 = f32[] add(f32[] %a.1, f32[] %b.2)
+  %add.4 = f32[] add(f32[] %add.3, f32[] %add.3)
+  ROOT %tuple.5 = (f32[], f32[]) tuple(f32[] %add.3, f32[] %add.4)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto executable,
+                       CompileExecutable(kAddProgram, *client));
+
+  absl::Status input_error =
+      absl::UnavailableError("ReadHostBuffer connection timeout");
+  std::unique_ptr<tsl::Thread> error_thread(tsl::Env::Default()->StartThread(
+      tsl::ThreadOptions(), "set_buffer_error", [&]() {
+        // Allow Execute() to enter
+        // launch_on_device() and block in
+        // BufferSequencingEvent::WaitForEventOnStream()
+        // before poisoning the transfer.
+        absl::SleepFor(absl::Milliseconds(100));
+        transfer_manager->SetBufferError(0, input_error);
+      }));
+
+  std::optional<std::vector<Future<>>> returned_futures =
+      std::vector<Future<>>();
+  ASSERT_OK_AND_ASSIGN(auto result,
+                       executable->Execute({{buffer.get(), buffer.get()}},
+                                           /*options=*/{}, returned_futures));
+
+  ASSERT_EQ(result.size(), 1);
+  ASSERT_EQ(result[0].size(), 2);
+  ASSERT_EQ(returned_futures->size(), 1);
+  EXPECT_THAT((*returned_futures)[0].Await(),
+              StatusIs(input_error.code(), HasSubstr(input_error.message())));
   for (const auto& b : result[0]) {
     EXPECT_THAT(b->GetReadyFuture().Await(),
                 StatusIs(input_error.code(), HasSubstr(input_error.message())));
@@ -776,6 +845,79 @@ TEST(StreamExecutorGpuClientTest, PassAttrToFfiHandler) {
                           ExtractSingleResult(result));
   EXPECT_TRUE(LiteralTestUtil::Equal(
       LiteralUtil::CreateR1<float>({3.0f, 3.0f, 3.0f, 3.0f}), *result_literal));
+}
+
+// Blocks host execution and then device execution until execution timeout
+// handlers unblock them.
+struct ExecutionTimeoutState {
+  absl::Notification host_timeout;
+  absl::Notification device_timeout;
+};
+
+static absl::Status BlockUntilTimeout(se::Stream* stream,
+                                      ffi::Result<ffi::AnyBuffer>,
+                                      ExecutionTimeoutState* state) {
+  state->host_timeout.WaitForNotification();
+  return stream->DoHostCallback(
+      [state] { state->device_timeout.WaitForNotification(); });
+}
+
+XLA_FFI_DEFINE_HANDLER(kBlockUntilTimeout, BlockUntilTimeout,
+                       ffi::Ffi::Bind()
+                           .Ctx<ffi::Stream>()
+                           .Ret<ffi::AnyBuffer>()
+                           .Ctx<ffi::UserData<ExecutionTimeoutState>>());
+
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "BlockUntilTimeout", "CUDA",
+                         kBlockUntilTimeout);
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "BlockUntilTimeout", "ROCM",
+                         kBlockUntilTimeout);
+
+TEST(StreamExecutorGpuClientTest, ExecutionTimeoutHandlers) {
+  static constexpr char const* kProgram = R"(
+    HloModule execution_timeout
+    ENTRY main {
+      ROOT %custom-call = f32[4] custom-call(),
+                          custom_call_target="BlockUntilTimeout",
+                          api_version=API_VERSION_TYPED_FFI
+    })";
+
+  ASSERT_OK_AND_ASSIGN(auto client,
+                       GetStreamExecutorGpuClient(GetTestGpuClientOptions()));
+  ASSERT_OK_AND_ASSIGN(auto executable, CompileExecutable(kProgram, *client));
+
+  ExecuteContext context;
+  ASSERT_OK(context.ffi_context().Emplace<ExecutionTimeoutState>());
+  ASSERT_OK_AND_ASSIGN(ExecutionTimeoutState * state,
+                       context.ffi_context().Lookup<ExecutionTimeoutState>());
+
+  // Execution can complete only if both timeout handlers are called.
+  gpu::GpuExecutableRunOptions* run_options =
+      absl::down_cast<PjRtStreamExecutorRawClient*>(
+          absl::down_cast<CommonPjRtClient*>(client.get())->raw_client())
+          ->gpu_run_options();
+  ASSERT_NE(run_options, nullptr);
+
+  run_options->set_execution_timeout_handlers([state] {
+    std::vector<gpu::ExecutionTimeoutHandler> handlers;
+    handlers.push_back({gpu::ExecutionTimeoutHandler::Scope::kHost,
+                        absl::Milliseconds(100),
+                        [state](absl::string_view, absl::Duration) {
+                          state->host_timeout.Notify();
+                        }});
+    handlers.push_back({gpu::ExecutionTimeoutHandler::Scope::kDevice,
+                        absl::Milliseconds(100),
+                        [state](absl::string_view, absl::Duration) {
+                          state->device_timeout.Notify();
+                        }});
+    return handlers;
+  });
+
+  ExecuteOptions opts;
+  opts.context = &context;
+
+  auto result = executable->Execute(/*argument_handles=*/{{}}, opts);
+  EXPECT_OK(ExtractSingleResult(result));
 }
 
 TEST(StreamExecutorGpuClientTest, ToLiteralAsync) {
@@ -1633,6 +1775,42 @@ TEST(StreamExecutorGpuClientTest, CopyFromPinnedHostMemorySpace) {
   std::vector<int32_t> expected{1, 2, 3, 4};
   EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(expected),
                                      *literal));
+}
+
+namespace {
+
+class FailingHostMemoryAllocator : public HostMemoryAllocator {
+ public:
+  OwnedPtr Allocate(size_t size, const AllocateOptions& options) override {
+    return nullptr;
+  }
+};
+
+}  // namespace
+
+TEST(StreamExecutorGpuClientTest,
+     ToLiteralReturnsResourceExhaustedWhenHostStagingPoolIsFull) {
+  GpuClientOptions options = GetTestGpuClientOptions();
+  options.host_memory_allocator_factory =
+      [](HostMemoryAllocator::Options options)
+      -> absl::StatusOr<std::unique_ptr<HostMemoryAllocator>> {
+    return std::make_unique<FailingHostMemoryAllocator>();
+  };
+
+  ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
+  ASSERT_OK_AND_ASSIGN(
+      auto* device_memory_space,
+      client->addressable_devices()[0]->default_memory_space());
+
+  constexpr int64_t kTransferBytes = int64_t{1} << 20;
+  ASSERT_OK_AND_ASSIGN(
+      auto device_buffer,
+      client->CreateUninitializedBuffer(
+          ShapeUtil::MakeShape(U8, {kTransferBytes}), device_memory_space));
+
+  EXPECT_THAT(device_buffer->ToLiteral().Await(),
+              StatusIs(absl::StatusCode::kResourceExhausted,
+                       HasSubstr("host staging buffer")));
 }
 
 TEST(StreamExecutorGpuClientTest, CopyToPinnedHostMemorySpaceInt4) {
@@ -2654,6 +2832,54 @@ TEST(StreamExecutorGpuClientTest, LinkedEventPromise) {
   ASSERT_EQ(literal, *new_literal);
 }
 
+TEST(StreamExecutorGpuClientTest,
+     DeferredTransferMaterializesAllocationEventWhenScheduled) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtClient> pjrt_client,
+      GetStreamExecutorGpuClient(GetTestGpuClientOptions()));
+  auto* client = absl::down_cast<CommonPjRtClient*>(pjrt_client.get());
+  auto* raw_client =
+      absl::down_cast<PjRtStreamExecutorRawClient*>(client->raw_client());
+  PjRtDevice* device = client->addressable_devices()[0];
+  TF_ASSERT_OK_AND_ASSIGN(PjRtMemorySpace * memory_space,
+                          device->default_memory_space());
+  TF_ASSERT_OK_AND_ASSIGN(
+      LocalDeviceState * local_device_state,
+      raw_client->GetLocalDeviceState(device->local_device_id()));
+  ASSERT_EQ(local_device_state->allocation_model(),
+            LocalDeviceState::kComputeSynchronized);
+
+  constexpr int64_t kSize = 16;
+  TF_ASSERT_OK_AND_ASSIGN(
+      PjRtRawBufferRef raw_buffer,
+      client->AllocateRawBuffer(memory_space, kSize, /*retry_on_oom=*/true,
+                                /*allocate_after=*/{}));
+  size_t sync_point = local_device_state->GetNextComputeStreamSyncPoint();
+
+  // Schedule a transfer whose dependency is not ready yet, so the transfer
+  // itself (including `WaitForAllocation`) is deferred.
+  PjRtDeviceEventPromiseRef promise;
+  PjRtDeviceEventRef dependency;
+  TF_ASSERT_OK_AND_ASSIGN(std::tie(promise, dependency),
+                          client->CreateLinkedEventPromise(memory_space, ""));
+  std::vector<char> src(kSize, 1);
+  PjRtDeviceEventRefVector dependencies;
+  dependencies.push_back(std::move(dependency));
+  TF_ASSERT_OK_AND_ASSIGN(
+      PjRtDeviceEventRef transfer_event,
+      raw_buffer->CopyRawHostToDeviceAndReturnEvent(
+          src.data(), /*offset=*/0, kSize, std::move(dependencies)));
+
+  // The allocation event is recorded when the transfer is scheduled, so it is
+  // ahead of any work enqueued on the compute stream afterwards.
+  EXPECT_EQ(local_device_state->GetNextComputeStreamSyncPoint(),
+            sync_point + 1);
+
+  promise.SetReady();
+  tsl::BlockUntilReady(transfer_event.async_value());
+  EXPECT_EQ(transfer_event.GetErrorIfPresent(), std::nullopt);
+}
+
 TEST(StreamExecutorGpuClientTest, GetAbiVersion) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
                        GetStreamExecutorGpuClient(GetTestGpuClientOptions()));
@@ -2716,6 +2942,464 @@ TEST(StreamExecutorGpuClientTest, PlatformAllocatorIsSynchronousPassthrough) {
       absl::down_cast<CommonPjRtClient*>(client.get())->raw_client());
   EXPECT_NE(dynamic_cast<se::MultiDeviceAdapter*>(raw_client->allocator()),
             nullptr);
+}
+
+// With a preallocated, spatially partitioned BFC allocator, one shared arena
+// serves collective memory from its lower end and default memory from its
+// upper end. Anchoring collective memory at the base keeps its offsets
+// identical across ranks even if the top of the arena were ever to move.
+TEST(StreamExecutorGpuClientTest, SharedPoolAnchorsCollectiveMemoryAtLowerEnd) {
+  const DebugOptions debug_options = GetDebugOptionsFromFlags();
+  if (!debug_options.xla_gpu_enable_allocator_spatial_partitioning()) {
+    GTEST_SKIP() << "Requires xla_gpu_enable_allocator_spatial_partitioning.";
+  }
+  if (debug_options.xla_gpu_command_buffer_update_mode() !=
+      DebugOptions::ALWAYS_UPDATE) {
+    GTEST_SKIP() << "xla_gpu_command_buffer_update_mode overrides the "
+                    "allocator kind to kVmm.";
+  }
+
+  GpuClientOptions options;
+  options.allocator_config.kind = GpuAllocatorConfig::Kind::kBFC;
+  options.allocator_config.preallocate = true;
+  // The layout does not depend on the arena size; keep preallocation small.
+  options.allocator_config.memory_fraction = 0.05;
+  options.allowed_devices = {0};
+  ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
+
+  auto* raw_client = absl::down_cast<PjRtStreamExecutorRawClient*>(
+      absl::down_cast<CommonPjRtClient*>(client.get())->raw_client());
+  se::DeviceAddressAllocator* allocator = raw_client->allocator();
+  ASSERT_NE(allocator, nullptr);
+
+  constexpr int kDefault = static_cast<int>(gpu::MemorySpaceColor::kDefault);
+  constexpr int kCollective =
+      static_cast<int>(gpu::MemorySpaceColor::kCollective);
+  constexpr uint64_t kBytes = uint64_t{1} << 20;
+  auto address = [](const se::ScopedDeviceAddress<uint8_t>& memory) {
+    return absl::bit_cast<uintptr_t>(memory->opaque());
+  };
+
+  ASSERT_OK_AND_ASSIGN(
+      se::ScopedDeviceAddress<uint8_t> collective0,
+      allocator->Allocate(/*device_ordinal=*/0, 8 * kBytes,
+                          /*retry_on_failure=*/false, kCollective));
+  ASSERT_OK_AND_ASSIGN(
+      se::ScopedDeviceAddress<uint8_t> collective1,
+      allocator->Allocate(/*device_ordinal=*/0, kBytes,
+                          /*retry_on_failure=*/false, kCollective));
+  ASSERT_OK_AND_ASSIGN(
+      se::ScopedDeviceAddress<uint8_t> default0,
+      allocator->Allocate(/*device_ordinal=*/0, kBytes,
+                          /*retry_on_failure=*/false, kDefault));
+  ASSERT_OK_AND_ASSIGN(
+      se::ScopedDeviceAddress<uint8_t> default1,
+      allocator->Allocate(/*device_ordinal=*/0, kBytes,
+                          /*retry_on_failure=*/false, kDefault));
+
+  // Collective memory grows upward from the arena base ...
+  EXPECT_LT(address(collective0), address(collective1));
+  // ... default memory grows downward from the arena top ...
+  EXPECT_GT(address(default0), address(default1));
+  // ... and every collective buffer sits below every default buffer.
+  EXPECT_LT(address(collective1), address(default1));
+
+  // Collective hole reuse keeps exact splitting after the direction swap.
+  // The live collective1 allocation keeps collective0's hole out of the gap.
+  const uintptr_t collective_hole = address(collective0);
+  ASSERT_OK(collective0.Free());
+  ASSERT_OK_AND_ASSIGN(
+      se::ScopedDeviceAddress<uint8_t> collective_reuse,
+      allocator->Allocate(/*device_ordinal=*/0, 6 * kBytes,
+                          /*retry_on_failure=*/false, kCollective));
+  EXPECT_EQ(address(collective_reuse), collective_hole);
+  ASSERT_OK_AND_ASSIGN(
+      tsl::Allocator * bfc,
+      absl::down_cast<se::MultiDeviceAdapter*>(allocator)->GetAllocator(0));
+  EXPECT_EQ(bfc->AllocatedSize(collective_reuse->opaque()), 6 * kBytes);
+
+  // Equal-size default holes prefer the high address, leaving the hole next
+  // to the central boundary available to coalesce with a later boundary free.
+  ASSERT_OK_AND_ASSIGN(
+      se::ScopedDeviceAddress<uint8_t> default2,
+      allocator->Allocate(/*device_ordinal=*/0, kBytes,
+                          /*retry_on_failure=*/false, kDefault));
+  ASSERT_OK_AND_ASSIGN(
+      se::ScopedDeviceAddress<uint8_t> default3,
+      allocator->Allocate(/*device_ordinal=*/0, kBytes,
+                          /*retry_on_failure=*/false, kDefault));
+  const uintptr_t default_hole = address(default0);
+  const uintptr_t default_boundary = address(default3);
+  ASSERT_OK(default0.Free());
+  ASSERT_OK(default2.Free());
+  ASSERT_OK_AND_ASSIGN(
+      se::ScopedDeviceAddress<uint8_t> default_reuse,
+      allocator->Allocate(/*device_ordinal=*/0, kBytes,
+                          /*retry_on_failure=*/false, kDefault));
+  EXPECT_EQ(address(default_reuse), default_hole);
+  ASSERT_OK(default3.Free());
+  ASSERT_OK_AND_ASSIGN(
+      se::ScopedDeviceAddress<uint8_t> default_coalesced,
+      allocator->Allocate(/*device_ordinal=*/0, 2 * kBytes,
+                          /*retry_on_failure=*/false, kDefault));
+  EXPECT_EQ(address(default_coalesced), default_boundary);
+}
+
+// Parses `flags` as XLA_FLAGS for the lifetime of the object and restores the
+// original flag values on destruction. nullptr parses with XLA_FLAGS unset.
+class ScopedXlaFlags {
+ public:
+  explicit ScopedXlaFlags(const char* flags) {
+    if (const char* original = std::getenv("XLA_FLAGS")) {
+      original_flags_ = original;
+    }
+    Apply(flags);
+  }
+  ~ScopedXlaFlags() {
+    Apply(original_flags_ ? original_flags_->c_str() : nullptr);
+  }
+
+  ScopedXlaFlags(const ScopedXlaFlags&) = delete;
+  ScopedXlaFlags& operator=(const ScopedXlaFlags&) = delete;
+
+ private:
+  static void Apply(const char* flags) {
+    int* pargc;
+    std::vector<char*>* pargv;
+    ResetFlagsFromEnvForTesting("XLA_FLAGS", &pargc, &pargv);
+    if (flags != nullptr) {
+      tsl::setenv("XLA_FLAGS", flags, 1);
+    } else {
+      tsl::unsetenv("XLA_FLAGS");
+    }
+    ResetFlagValues();
+    ParseDebugOptionFlagsFromEnv(/*reset_envvar=*/true);
+  }
+
+  std::optional<std::string> original_flags_;
+};
+
+TEST(ScopedXlaFlagsTest, RestoresNestedFlags) {
+  ScopedXlaFlags outer("--xla_gpu_memory_fraction_policy=0.85");
+  {
+    ScopedXlaFlags inner("--xla_gpu_memory_fraction_policy=0.5+");
+    EXPECT_EQ(GetDebugOptionsFromFlags().xla_gpu_memory_fraction_policy(),
+              "0.5+");
+  }
+  EXPECT_STREQ(std::getenv("XLA_FLAGS"),
+               "--xla_gpu_memory_fraction_policy=0.85");
+  EXPECT_EQ(GetDebugOptionsFromFlags().xla_gpu_memory_fraction_policy(),
+            "0.85");
+}
+
+TEST(ScopedXlaFlagsTest, RestoresUnsetAndEmptyFlags) {
+  for (const char* original : {static_cast<const char*>(nullptr), ""}) {
+    ScopedXlaFlags outer(original);
+    {
+      ScopedXlaFlags inner("--xla_gpu_memory_fraction_policy=0.5+");
+      EXPECT_EQ(GetDebugOptionsFromFlags().xla_gpu_memory_fraction_policy(),
+                "0.5+");
+    }
+    EXPECT_STREQ(std::getenv("XLA_FLAGS"), original);
+    EXPECT_TRUE(
+        GetDebugOptionsFromFlags().xla_gpu_memory_fraction_policy().empty());
+  }
+}
+
+// Choose a representable fraction whose byte conversion does not undershoot
+// the requested cap. This avoids losing a granule to division/multiplication
+// round-off while leaving the allocator's strict downward rounding unchanged.
+double MemoryFractionForBytes(int64_t bytes, int64_t total_memory) {
+  double fraction = static_cast<double>(bytes) / total_memory;
+  while (static_cast<int64_t>(total_memory * fraction) < bytes) {
+    fraction = std::nextafter(fraction, 1.0);
+  }
+  return fraction;
+}
+
+TEST(MemoryFractionForBytesTest, PreservesAlignedCapAtRoundOffBoundary) {
+  constexpr int64_t kTotal = int64_t{66199} << 20;
+  constexpr int64_t kCap = 16 << 20;
+  const double fraction = MemoryFractionForBytes(kCap, kTotal);
+  EXPECT_EQ(static_cast<int64_t>(kTotal * fraction), kCap);
+}
+
+bool SharedSpatialPoolIsDefault(const DebugOptions& debug_options) {
+  return debug_options.xla_gpu_enable_allocator_spatial_partitioning() &&
+         debug_options.xla_gpu_command_buffer_update_mode() ==
+             DebugOptions::ALWAYS_UPDATE;
+}
+
+#if GOOGLE_CUDA
+TEST(StreamExecutorGpuClientTest, CrossMappingReceiveNotifiesFailure) {
+  ScopedXlaFlags flags("--xla_gpu_enable_allocator_spatial_partitioning=true");
+  ASSERT_OK_AND_ASSIGN(auto* platform, PlatformUtil::GetDefaultPlatform());
+  ASSERT_OK_AND_ASSIGN(auto* executor, platform->ExecutorForDevice(0));
+  ASSERT_OK_AND_ASSIGN(auto reservation, executor->CreateMemoryReservation(1));
+  const int64_t initial_bytes =
+      RoundUpTo<int64_t>(8 << 20, reservation->granularity());
+  const int64_t cap_bytes = 2 * initial_bytes;
+  reservation.reset();
+  int64_t free_memory = 0;
+  int64_t total_memory = 0;
+  ASSERT_TRUE(executor->DeviceMemoryUsage(&free_memory, &total_memory));
+
+  GpuClientOptions options = GetTestGpuClientOptions(1);
+  options.allocator_config.kind = GpuAllocatorConfig::Kind::kBFC;
+  options.allocator_config.gpu_system_memory_size = initial_bytes;
+  const double cap = MemoryFractionForBytes(cap_bytes, total_memory);
+  options.allocator_config.memory_fraction_policy =
+      FlexMemFraction{cap / 2, cap};
+  ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
+
+  struct ReceiveResult {
+    absl::Notification notified;
+    absl::Status status;
+  };
+  auto result = std::make_shared<ReceiveResult>();
+  // The nonempty buffer consumes the entire cap, so it must span the initial
+  // mapping and its extension. Rejection happens before fabric export and
+  // needs only one GPU. The whole batch must fail, including its empty buffer.
+  ASSERT_OK_AND_ASSIGN(
+      auto buffers, client->MakeCrossHostReceiveBuffers(
+                        {ShapeUtil::MakeShape(U8, {0}),
+                         ShapeUtil::MakeShape(U8, {cap_bytes})},
+                        client->addressable_devices()[0],
+                        [result](absl::StatusOr<PjRtCrossHostRecvState> state) {
+                          result->status = state.status();
+                          result->notified.Notify();
+                        }));
+  ASSERT_EQ(buffers.size(), 2);
+  ASSERT_TRUE(
+      result->notified.WaitForNotificationWithTimeout(absl::Seconds(10)))
+      << "Receive failed without notifying descriptor consumers";
+  EXPECT_THAT(result->status,
+              StatusIs(absl::StatusCode::kUnimplemented,
+                       HasSubstr("spanning physical allocations")));
+  for (const auto& buffer : buffers) {
+    EXPECT_THAT(buffer->GetReadyFuture().Await(),
+                StatusIs(absl::StatusCode::kUnimplemented,
+                         HasSubstr("spanning physical allocations")));
+  }
+}
+#endif  // GOOGLE_CUDA
+
+TEST(StreamExecutorGpuClientTest,
+     MemoryFractionOverrideSizesSeparateCollectivePool) {
+  ASSERT_OK_AND_ASSIGN(auto* platform, PlatformUtil::GetDefaultPlatform());
+  ASSERT_OK_AND_ASSIGN(auto* executor, platform->ExecutorForDevice(0));
+  int64_t free_memory = 0;
+  int64_t total_memory = 0;
+  ASSERT_TRUE(executor->DeviceMemoryUsage(&free_memory, &total_memory));
+  // Leave a small collective budget so testing its boundary needs little GPU
+  // memory, even if the override is accidentally ignored.
+  constexpr double kFraction = 0.9999;
+  constexpr int64_t kGranularity = 2 << 20;
+  const int64_t collective_limit = RoundUpTo<int64_t>(
+      static_cast<int64_t>(total_memory * (1.0 - kFraction)), kGranularity);
+  constexpr int kCollective =
+      static_cast<int>(gpu::MemorySpaceColor::kCollective);
+  // Both configurations create separate pools: no preallocation, or no
+  // spatial partitioning. Explicit collective sizes must still take priority.
+  for (bool preallocate : {false, true}) {
+    ScopedXlaFlags flags(
+        preallocate ? "--xla_gpu_memory_fraction_policy=0.9999 "
+                      "--xla_gpu_enable_allocator_spatial_partitioning=false "
+                      "--xla_gpu_command_buffer_update_mode=ALWAYS_UPDATE"
+                    : "--xla_gpu_memory_fraction_policy=0.9999 "
+                      "--xla_gpu_enable_allocator_spatial_partitioning=true "
+                      "--xla_gpu_command_buffer_update_mode=ALWAYS_UPDATE");
+    for (bool explicit_collective_size : {false, true}) {
+      SCOPED_TRACE(preallocate);
+      SCOPED_TRACE(explicit_collective_size);
+      GpuClientOptions options = GetTestGpuClientOptions(1);
+      options.allocator_config.kind = GpuAllocatorConfig::Kind::kBFC;
+      options.allocator_config.preallocate = preallocate;
+      options.allocator_config.memory_fraction_policy = FixedMemFraction{0.75};
+      // Keep the default pool small; only the collective limit is under test.
+      options.allocator_config.gpu_system_memory_size = 8 << 20;
+      if (explicit_collective_size) {
+        options.allocator_config.collective_memory_size =
+            collective_limit + (8 << 20);
+      }
+      ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
+      auto* raw_client = absl::down_cast<PjRtStreamExecutorRawClient*>(
+          absl::down_cast<CommonPjRtClient*>(client.get())->raw_client());
+      auto* allocator = raw_client->allocator();
+      auto over_fraction_limit =
+          allocator->Allocate(0, collective_limit + kGranularity,
+                              /*retry_on_failure=*/false, kCollective);
+      EXPECT_EQ(over_fraction_limit.ok(), explicit_collective_size)
+          << over_fraction_limit.status();
+    }
+  }
+}
+
+TEST(StreamExecutorGpuClientTest, SharedPoolGrowthRequiresOptIn) {
+  const DebugOptions debug_options = GetDebugOptionsFromFlags();
+  if (!debug_options.xla_gpu_enable_allocator_spatial_partitioning() ||
+      debug_options.xla_gpu_command_buffer_update_mode() !=
+          DebugOptions::ALWAYS_UPDATE) {
+    GTEST_SKIP() << "Requires the shared spatial BFC pool.";
+  }
+  constexpr int kDefault = static_cast<int>(gpu::MemorySpaceColor::kDefault);
+  constexpr int kCollective =
+      static_cast<int>(gpu::MemorySpaceColor::kCollective);
+  constexpr int64_t kInitialBytes = 8 << 20;
+  for (bool enable_growth : {false, true}) {
+    SCOPED_TRACE(enable_growth);
+    GpuClientOptions options;
+    options.allocator_config.kind = GpuAllocatorConfig::Kind::kBFC;
+    options.allocator_config.gpu_system_memory_size = kInitialBytes;
+    options.allowed_devices = {0};
+    if (enable_growth) {
+      ASSERT_OK_AND_ASSIGN(options.allocator_config.memory_fraction_policy,
+                           ParseMemFraction("0.75+"));
+    }
+    ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
+    auto* raw_client = absl::down_cast<PjRtStreamExecutorRawClient*>(
+        absl::down_cast<CommonPjRtClient*>(client.get())->raw_client());
+    auto* allocator = raw_client->allocator();
+    ASSERT_OK_AND_ASSIGN(
+        auto collective,
+        allocator->Allocate(0, kInitialBytes,
+                            /*retry_on_failure=*/false, kCollective));
+    // The initial shared region is full. Only an explicitly growable policy
+    // extends for ordinary memory; the default fixed pool reports OOM.
+    auto ordinary = allocator->Allocate(0, 4 << 20,
+                                        /*retry_on_failure=*/false, kDefault);
+    EXPECT_EQ(ordinary.ok(), enable_growth) << ordinary.status();
+    EXPECT_FALSE(
+        allocator->Allocate(0, 2 << 20, /*retry_on_failure=*/false, kCollective)
+            .ok());
+  }
+}
+
+TEST(StreamExecutorGpuClientTest, SharedPoolGrowthDisabledByXlaFlag) {
+  ScopedXlaFlags flags("--xla_gpu_memory_fraction_policy=0.75");
+  const DebugOptions debug_options = GetDebugOptionsFromFlags();
+  ASSERT_EQ(debug_options.xla_gpu_memory_fraction_policy(), "0.75");
+  if (!SharedSpatialPoolIsDefault(debug_options)) {
+    GTEST_SKIP() << "Requires the shared spatial BFC pool.";
+  }
+  constexpr int kDefault = static_cast<int>(gpu::MemorySpaceColor::kDefault);
+  constexpr int kCollective =
+      static_cast<int>(gpu::MemorySpaceColor::kCollective);
+  constexpr int64_t kInitialBytes = 8 << 20;
+  GpuClientOptions options;
+  options.allocator_config.kind = GpuAllocatorConfig::Kind::kBFC;
+  options.allocator_config.gpu_system_memory_size = kInitialBytes;
+  options.allowed_devices = {0};
+  // The client config enables growth; the bare-fraction flag must disable it.
+  options.allocator_config.memory_fraction_policy = FlexMemFraction{};
+  ASSERT_TRUE(std::holds_alternative<FlexMemFraction>(
+      options.allocator_config.GetMemoryFraction()));
+  ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
+  auto* raw_client = absl::down_cast<PjRtStreamExecutorRawClient*>(
+      absl::down_cast<CommonPjRtClient*>(client.get())->raw_client());
+  auto* allocator = raw_client->allocator();
+  ASSERT_OK_AND_ASSIGN(
+      auto collective,
+      allocator->Allocate(0, kInitialBytes,
+                          /*retry_on_failure=*/false, kCollective));
+  EXPECT_FALSE(
+      allocator->Allocate(0, 4 << 20, /*retry_on_failure=*/false, kDefault)
+          .ok());
+}
+
+TEST(StreamExecutorGpuClientTest,
+     SharedPoolGrowthCapRejectsOversizedInitialAllocation) {
+  if (!SharedSpatialPoolIsDefault(GetDebugOptionsFromFlags())) {
+    GTEST_SKIP() << "Requires the shared spatial BFC pool.";
+  }
+  GpuClientOptions options;
+  options.allocator_config.kind = GpuAllocatorConfig::Kind::kBFC;
+  options.allocator_config.gpu_system_memory_size = 8 << 20;
+  // A cap far below 8 MiB on any device, so the initial allocation cannot fit.
+  options.allocator_config.memory_fraction_policy = FlexMemFraction{1e-7, 1e-6};
+  options.allowed_devices = {0};
+  EXPECT_THAT(
+      GetStreamExecutorGpuClient(options),
+      StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr("growth cap")));
+}
+
+TEST(StreamExecutorGpuClientTest, SharedPoolGrowthCapLimitsExtension) {
+  if (!SharedSpatialPoolIsDefault(GetDebugOptionsFromFlags())) {
+    GTEST_SKIP() << "Requires the shared spatial BFC pool.";
+  }
+  ASSERT_OK_AND_ASSIGN(auto* platform, PlatformUtil::GetDefaultPlatform());
+  ASSERT_OK_AND_ASSIGN(auto* executor, platform->ExecutorForDevice(0));
+  int64_t free_memory = 0;
+  int64_t total_memory = 0;
+  ASSERT_TRUE(executor->DeviceMemoryUsage(&free_memory, &total_memory));
+
+  constexpr int kDefault = static_cast<int>(gpu::MemorySpaceColor::kDefault);
+  constexpr int kCollective =
+      static_cast<int>(gpu::MemorySpaceColor::kCollective);
+  constexpr int64_t kInitialBytes = 8 << 20;
+  constexpr int64_t kCapBytes = 64 << 20;
+  GpuClientOptions options;
+  options.allocator_config.kind = GpuAllocatorConfig::Kind::kBFC;
+  options.allocator_config.gpu_system_memory_size = kInitialBytes;
+  const double cap = MemoryFractionForBytes(kCapBytes, total_memory);
+  options.allocator_config.memory_fraction_policy =
+      FlexMemFraction{cap / 2, cap};
+  options.allowed_devices = {0};
+  ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
+  auto* raw_client = absl::down_cast<PjRtStreamExecutorRawClient*>(
+      absl::down_cast<CommonPjRtClient*>(client.get())->raw_client());
+  auto* allocator = raw_client->allocator();
+  ASSERT_OK_AND_ASSIGN(
+      auto collective,
+      allocator->Allocate(0, kInitialBytes,
+                          /*retry_on_failure=*/false, kCollective));
+  // Growth below the cap still works.
+  ASSERT_OK_AND_ASSIGN(
+      auto ordinary,
+      allocator->Allocate(0, 4 << 20, /*retry_on_failure=*/false, kDefault));
+  // A request that would need to grow past the cap is refused.
+  EXPECT_FALSE(
+      allocator
+          ->Allocate(0, 2 * kCapBytes, /*retry_on_failure=*/false, kDefault)
+          .ok());
+}
+
+// Without preallocation there is no shared partitioned pool: default memory
+// comes from a growable BFC allocator that only serves its lower end, and
+// collective memory comes from a separate allocator. Both must keep working.
+TEST(StreamExecutorGpuClientTest, GrowableBfcServesBothMemorySpaces) {
+  if (GetDebugOptionsFromFlags().xla_gpu_command_buffer_update_mode() !=
+      DebugOptions::ALWAYS_UPDATE) {
+    GTEST_SKIP() << "xla_gpu_command_buffer_update_mode overrides the "
+                    "allocator kind to kVmm.";
+  }
+
+  GpuClientOptions options;
+  options.allocator_config.kind = GpuAllocatorConfig::Kind::kBFC;
+  options.allocator_config.preallocate = false;
+  options.allowed_devices = {0};
+  ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
+
+  auto* raw_client = absl::down_cast<PjRtStreamExecutorRawClient*>(
+      absl::down_cast<CommonPjRtClient*>(client.get())->raw_client());
+  se::DeviceAddressAllocator* allocator = raw_client->allocator();
+  ASSERT_NE(allocator, nullptr);
+
+  constexpr int kDefault = static_cast<int>(gpu::MemorySpaceColor::kDefault);
+  constexpr int kCollective =
+      static_cast<int>(gpu::MemorySpaceColor::kCollective);
+  constexpr uint64_t kBytes = uint64_t{1} << 20;
+
+  ASSERT_OK_AND_ASSIGN(
+      se::ScopedDeviceAddress<uint8_t> default_memory,
+      allocator->Allocate(/*device_ordinal=*/0, kBytes,
+                          /*retry_on_failure=*/false, kDefault));
+  EXPECT_NE(default_memory->opaque(), nullptr);
+  ASSERT_OK_AND_ASSIGN(
+      se::ScopedDeviceAddress<uint8_t> collective_memory,
+      allocator->Allocate(/*device_ordinal=*/0, kBytes,
+                          /*retry_on_failure=*/false, kCollective));
+  EXPECT_NE(collective_memory->opaque(), nullptr);
 }
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -3073,7 +3757,7 @@ constexpr char kAttrPlacedModule[] = R"(
     s = f32[512,1024] custom-call(t), custom_call_target="RecordBufferAddress",
       api_version=API_VERSION_TYPED_FFI,
       output_to_operand_aliasing={{}: (0, {})},
-      frontend_attributes={results_memory_spaces="{0:1}"}
+      frontend_attributes={results_memory_spaces="{0:7}"}
     ROOT r = f32[512,1024] add(s, s)
   })";
 
@@ -3117,34 +3801,100 @@ TEST_F(VmmTest, CollectiveSpacePlacementKeepsAddressStableAcrossExecutions) {
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 TEST(StreamExecutorGpuClientTest, MemoryRegistrationDisabledByDefault) {
-  int* pargc;
-  std::vector<char*>* pargv;
-  ResetFlagsFromEnvForTesting("XLA_FLAGS", &pargc, &pargv);
-  tsl::unsetenv("XLA_FLAGS");
-  ResetFlagValues();
-  ParseDebugOptionFlagsFromEnv(/*reset_envvar=*/true);
-
+  ScopedXlaFlags flags(nullptr);
   GpuAllocatorConfig config;
   auto registration = CreateAllocatorMemoryRegistration(&config);
   EXPECT_EQ(registration, nullptr);
   EXPECT_TRUE(config.sub_allocator_alloc_visitors.empty());
   EXPECT_TRUE(config.sub_allocator_free_visitors.empty());
+  // Without the flag the default policy stays fixed.
+  EXPECT_THAT(ResolveBfcMemFraction(config),
+              IsOkAndHolds(VariantWith<FixedMemFraction>(_)));
 }
 
 TEST(StreamExecutorGpuClientTest, MemoryRegistrationEnabledWithFlag) {
-  int* pargc;
-  std::vector<char*>* pargv;
-  ResetFlagsFromEnvForTesting("XLA_FLAGS", &pargc, &pargv);
-  tsl::setenv("XLA_FLAGS",
-              "--xla_gpu_enable_nccl_user_buffers_in_default_space=true", 1);
-  ResetFlagValues();
-  ParseDebugOptionFlagsFromEnv(/*reset_envvar=*/true);
-
+  ScopedXlaFlags flags(
+      "--xla_gpu_enable_nccl_user_buffers_in_default_space=true");
   GpuAllocatorConfig config;
+  config.memory_fraction_policy = FixedMemFraction{0.5};
   auto registration = CreateAllocatorMemoryRegistration(&config);
   EXPECT_NE(registration, nullptr);
   EXPECT_FALSE(config.sub_allocator_alloc_visitors.empty());
   EXPECT_FALSE(config.sub_allocator_free_visitors.empty());
+}
+
+TEST(StreamExecutorGpuClientTest, MemoryRegistrationPinsSpatialGrowth) {
+  ScopedXlaFlags flags(
+      "--xla_gpu_enable_nccl_user_buffers_in_default_space=true");
+  GpuAllocatorConfig config;
+  config.memory_fraction_policy = FlexMemFraction{};
+  ASSERT_TRUE(
+      std::holds_alternative<FlexMemFraction>(config.GetMemoryFraction()));
+  // The explicit registration flag wins: registration is created and the
+  // pool the allocator is built with is pinned at the start fraction.
+  EXPECT_NE(CreateAllocatorMemoryRegistration(&config), nullptr);
+  ASSERT_OK_AND_ASSIGN(MemFraction fraction, ResolveBfcMemFraction(config));
+  const auto* fixed = std::get_if<FixedMemFraction>(&fraction);
+  ASSERT_NE(fixed, nullptr);
+  EXPECT_EQ(fixed->fraction, 0.75);
+}
+
+TEST(StreamExecutorGpuClientTest, MemoryRegistrationSkipsNonPreallocatedPool) {
+  ScopedXlaFlags flags(
+      "--xla_gpu_enable_nccl_user_buffers_in_default_space=true");
+  GpuAllocatorConfig config;
+  config.memory_fraction_policy = FlexMemFraction{};
+  config.preallocate = false;
+  EXPECT_EQ(CreateAllocatorMemoryRegistration(&config), nullptr);
+  EXPECT_TRUE(config.sub_allocator_alloc_visitors.empty());
+  // No shared spatial pool, so nothing is pinned.
+  EXPECT_THAT(ResolveBfcMemFraction(config),
+              IsOkAndHolds(VariantWith<FlexMemFraction>(_)));
+}
+
+TEST(StreamExecutorGpuClientTest, NonSpatialPoolKeepsMemoryRegistration) {
+  ScopedXlaFlags flags(
+      "--xla_gpu_enable_nccl_user_buffers_in_default_space=true "
+      "--xla_gpu_enable_allocator_spatial_partitioning=false");
+  GpuAllocatorConfig config;
+  config.memory_fraction_policy = FlexMemFraction{};
+  auto registration = CreateAllocatorMemoryRegistration(&config);
+  EXPECT_NE(registration, nullptr);
+  EXPECT_FALSE(config.sub_allocator_alloc_visitors.empty());
+  EXPECT_FALSE(config.sub_allocator_free_visitors.empty());
+  EXPECT_THAT(ResolveBfcMemFraction(config),
+              IsOkAndHolds(VariantWith<FlexMemFraction>(_)));
+}
+
+TEST(StreamExecutorGpuClientTest, MemoryFractionPolicyFlagOverridesConfig) {
+  ScopedXlaFlags flags("--xla_gpu_memory_fraction_policy=0.5-0.9");
+  GpuAllocatorConfig config;
+  config.memory_fraction_policy = FixedMemFraction{0.3};
+  ASSERT_OK_AND_ASSIGN(MemFraction fraction, ResolveBfcMemFraction(config));
+  const auto* flex = std::get_if<FlexMemFraction>(&fraction);
+  ASSERT_NE(flex, nullptr);
+  EXPECT_EQ(flex->start, 0.5);
+  EXPECT_EQ(flex->cap, 0.9);
+}
+
+TEST(StreamExecutorGpuClientTest, MemoryFractionPolicyFlagEnablesGrowth) {
+  ScopedXlaFlags flags("--xla_gpu_memory_fraction_policy=0.5+");
+  GpuAllocatorConfig config;
+  ASSERT_TRUE(
+      std::holds_alternative<FixedMemFraction>(config.GetMemoryFraction()));
+  ASSERT_OK_AND_ASSIGN(MemFraction fraction, ResolveBfcMemFraction(config));
+  const auto* flex = std::get_if<FlexMemFraction>(&fraction);
+  ASSERT_NE(flex, nullptr);
+  EXPECT_EQ(flex->start, 0.5);
+  EXPECT_EQ(flex->cap, 1.0);
+}
+
+TEST(StreamExecutorGpuClientTest, InvalidMemoryFractionPolicyFlagIsReported) {
+  ScopedXlaFlags flags("--xla_gpu_memory_fraction_policy=0.9-0.5");
+  GpuAllocatorConfig config;
+  EXPECT_THAT(ResolveBfcMemFraction(config),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("--xla_gpu_memory_fraction_policy")));
 }
 
 }  // namespace

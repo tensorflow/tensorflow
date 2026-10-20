@@ -135,11 +135,24 @@ class GpuCommandBuffer : public CommandBuffer {
       const KernelArgs& args, absl::Span<const Command* const> dependencies,
       StreamPriority priority) override;
 
+  absl::StatusOr<const Command*> CreateLaunch(
+      const ThreadDim& threads, const BlockDim& blocks,
+      const std::optional<ClusterDim>& cluster_dims, const NativeKernel& kernel,
+      const KernelArgsPackedArrayBase& args,
+      absl::Span<const Command* const> dependencies,
+      StreamPriority priority) override;
+
   absl::Status UpdateLaunch(const Command* command, const ThreadDim& threads,
                             const BlockDim& blocks,
                             const std::optional<ClusterDim>& cluster_dims,
                             const Kernel& kernel,
                             const KernelArgs& args) override;
+
+  absl::Status UpdateLaunch(const Command* command, const ThreadDim& threads,
+                            const BlockDim& blocks,
+                            const std::optional<ClusterDim>& cluster_dims,
+                            const NativeKernel& kernel,
+                            const KernelArgsPackedArrayBase& args) override;
 
   absl::StatusOr<const Command*> CreateChildCommand(
       const CommandBuffer& nested,
@@ -420,12 +433,23 @@ class GpuCommandBuffer : public CommandBuffer {
       const std::optional<ClusterDim>& cluster_dims, const Kernel& kernel,
       const KernelArgsPackedArrayBase& args) = 0;
 
+  virtual absl::StatusOr<GraphNodeHandle> CreateKernelNode(
+      absl::Span<const GraphNodeHandle> dependencies, StreamPriority priority,
+      const ThreadDim& threads, const BlockDim& blocks,
+      const std::optional<ClusterDim>& cluster_dims, const NativeKernel& kernel,
+      const KernelArgsPackedArrayBase& args) = 0;
+
   // Updates the kernel launch node with the given parameters. Will return an
   // error if the given node has not been created as a kernel launch node.
   virtual absl::Status UpdateKernelNode(
       GraphNodeHandle node_handle, const ThreadDim& threads,
       const BlockDim& blocks, const std::optional<ClusterDim>& cluster_dims,
       const Kernel& kernel, const KernelArgsPackedArrayBase& args) = 0;
+
+  virtual absl::Status UpdateKernelNode(
+      GraphNodeHandle node_handle, const ThreadDim& threads,
+      const BlockDim& blocks, const std::optional<ClusterDim>& cluster_dims,
+      const NativeKernel& kernel, const KernelArgsPackedArrayBase& args) = 0;
 
   virtual absl::StatusOr<GraphNodeHandle> CreateHostNode(
       absl::Span<const GraphNodeHandle> dependencies,

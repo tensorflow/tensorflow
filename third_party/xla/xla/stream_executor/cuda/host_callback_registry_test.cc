@@ -133,6 +133,63 @@ TEST_F(RegistryHandleTest, AddAndExecuteCallback) {
   EXPECT_TRUE(called);
 }
 
+// Captures must be released by invocation, even while the completed callback
+// node remains in the registry. Device watchdogs rely on this ownership rule.
+TEST(StreamCallbackRegistryTest, ReleasesCapturesAfterExecution) {
+  StreamCallbackRegistry registry([] { return absl::OkStatus(); },
+                                  [] { return absl::OkStatus(); });
+  auto guard = std::make_shared<int>(0);
+  std::weak_ptr<int> weak_guard = guard;
+  StreamCallbackRegistry::DeviceCb pending_callback = nullptr;
+  void* pending_data = nullptr;
+  EXPECT_THAT(registry.AddCallback(
+                  [guard = std::move(guard)] { return absl::OkStatus(); },
+                  /*error_cb=*/nullptr,
+                  [&](StreamCallbackRegistry::DeviceCb callback, void* data) {
+                    pending_callback = callback;
+                    pending_data = data;
+                    return absl::OkStatus();
+                  }),
+              IsOk());
+
+  EXPECT_FALSE(weak_guard.expired());
+  ASSERT_NE(pending_callback, nullptr);
+  pending_callback(pending_data);
+  EXPECT_TRUE(weak_guard.expired());
+}
+
+TEST(StreamCallbackRegistryTest, ReleasesCapturesWhenEnqueueFails) {
+  StreamCallbackRegistry registry([] { return absl::OkStatus(); },
+                                  [] { return absl::OkStatus(); });
+  auto guard = std::make_shared<int>(0);
+  std::weak_ptr<int> weak_guard = guard;
+  EXPECT_THAT(registry.AddCallback(
+                  [guard = std::move(guard)] { return absl::OkStatus(); },
+                  /*error_cb=*/nullptr,
+                  [](StreamCallbackRegistry::DeviceCb, void*) {
+                    return absl::InternalError("enqueue failed");
+                  }),
+              StatusIs(absl::StatusCode::kInternal, "enqueue failed"));
+  EXPECT_TRUE(weak_guard.expired());
+}
+
+TEST(StreamCallbackRegistryTest, ReleasesCapturesWhenStreamFails) {
+  StreamCallbackRegistry registry([] { return absl::OkStatus(); },
+                                  [] { return absl::OkStatus(); });
+  auto guard = std::make_shared<int>(0);
+  std::weak_ptr<int> weak_guard = guard;
+  EXPECT_THAT(registry.AddCallback(
+                  [guard = std::move(guard)] { return absl::OkStatus(); },
+                  /*error_cb=*/nullptr,
+                  [](StreamCallbackRegistry::DeviceCb, void*) {
+                    return absl::OkStatus();
+                  }),
+              IsOk());
+  EXPECT_FALSE(weak_guard.expired());
+  registry.FailAll(absl::InternalError("stream failed"));
+  EXPECT_TRUE(weak_guard.expired());
+}
+
 TEST_F(RegistryHandleTest, MultipleCallbacks) {
   int count = 0;
   RegistryTuple registry_tuple = CreateRegistry();

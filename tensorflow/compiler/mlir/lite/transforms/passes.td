@@ -354,6 +354,52 @@ def LowerQuantAnnotationsPass : Pass<"tfl-lower-quant-annotations", "mlir::Modul
   ];
 }
 
+def FoldStablehloConstantTransformsPass : Pass<"tfl-fold-stablehlo-constant-transforms", "mlir::func::FuncOp"> {
+  let summary = "Folds stablehlo.transpose and stablehlo.reshape operations on constants.";
+  let description = [{
+      Unlike the upstream folders, this handles `DenseResourceElementsAttr`
+      operands, which is what large weights are stored as by the time they
+      reach this point in the pipeline.
+  }];
+  let constructor = "CreateFoldStablehloConstantTransformsPass()";
+  let dependentDialects = [
+    "TFL::TensorFlowLiteDialect",
+    "mlir::arith::ArithDialect",
+    "stablehlo::StablehloDialect"
+  ];
+}
+
+def FuseA4W2DRQFullyConnectedPass : Pass<"tfl-fuse-a4w2-drq-fully-connected", "mlir::func::FuncOp"> {
+  let summary = "Collapses a blockwise a4w2 dynamic range quantized pattern into a single fully_connected.";
+  let description = [{
+      Matches a `blockwise_quantize` / `blockwise_dequantize` pair feeding the
+      activations of a `tfl.fully_connected` whose filter is a
+      `blockwise_dequantize` of an i2 constant, and rewrites it into one
+      `tfl.fully_connected` with per-axis i2 weights and a `tfl.quant_spec`
+      naming the `cint2_fp32_int4_e8m0_drq` contract.
+  }];
+  let constructor = "CreateFuseA4W2DRQFullyConnectedPass()";
+  let dependentDialects = [
+    "TFL::TensorFlowLiteDialect",
+    "mlir::quant::QuantDialect"
+  ];
+}
+
+def FoldFp16CastsIntoFullyConnectedPass : Pass<"tfl-fold-fp16-casts-into-fully-connected", "mlir::func::FuncOp"> {
+  let summary = "Folds f16 <-> f32 casts around a float fully_connected into it.";
+  let description = [{
+      Rewrites `cast(f32 -> f16)(fully_connected(cast(f16 -> f32)(x), w, b))`
+      into `fully_connected(x, w, b)` with an f16 result. The filter and bias
+      keep their types, so the result is a mixed precision fully_connected
+      (f16 activations, f32 or quantized weights) that only runtimes supporting
+      that combination can execute.
+  }];
+  let constructor = "CreateFoldFp16CastsIntoFullyConnectedPass()";
+  let dependentDialects = [
+    "TFL::TensorFlowLiteDialect"
+  ];
+}
+
 def PropagateQParamsPass : Pass<"tfl-propagate-qparams", "mlir::ModuleOp"> {
   let summary = "Propagates Quantization Parameters (scale and zero point) information through the graph.";
   let description = [{

@@ -29,8 +29,8 @@ fusion {
 // CHECK:       %[[INSERTED_2:.*]] = tensor.insert %[[SCALARS_1]] into %{{.*}}[%[[RA]]]
 // CHECK:       xla.yield %[[INSERTED_1]], %[[INSERTED_2]]
 // CHECK:     scf.forall.in_parallel {
-// CHECK        tensor.parallel_insert_slice %[[L1]]
-// CHECK        tensor.parallel_insert_slice %[[L2]]
+// CHECK:       tensor.parallel_insert_slice %[[L1]]
+// CHECK:       tensor.parallel_insert_slice %[[L2]]
 // CHECK:     }
 // CHECK:   return %[[FA]]#0, %[[FA]]#1
 

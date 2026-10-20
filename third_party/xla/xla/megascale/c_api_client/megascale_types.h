@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_MEGASCALE_C_API_CLIENT_MEGASCALE_TYPES_H_
 
 #include <cstdint>
+#include <optional>
 
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
@@ -80,7 +81,8 @@ class CApiPjRtClientContext {
 
   PJRT_Megascale_ClientContext* get() const { return client_context_; }
 
-  absl::Status Initialize();
+  absl::Status Initialize(
+      std::optional<uint64_t> incarnation_id = std::nullopt);
 
   absl::Status UnblockPendingWork(int32_t launch_id,
                                   absl::Duration expire_after);

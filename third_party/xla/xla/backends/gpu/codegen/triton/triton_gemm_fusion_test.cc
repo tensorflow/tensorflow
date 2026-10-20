@@ -57,7 +57,6 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_interpreter_reference_mixin.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/test.h"
@@ -743,11 +742,12 @@ ENTRY r {
 })";
 
   MatchOptimizedHlo(kHloText, R"(
-; CHECK: %[[p0:.*]] = f16[10,3,128]{2,0,1} parameter
-; CHECK: %[[cv:.*]] = f32[10,3,128]{2,0,1} convert(%[[p0]])
-; CHECK: %[[tr:.*]] = f32[3,10,128]{2,0,1} transpose(%[[cv]]), dimensions={1,0,2}
+; CHECK-NOT: transpose
+; CHECK: %[[p0:.*]] = f16[3,10,128]{2,1,0} parameter
+; CHECK: %[[cv:.*]] = f32[3,10,128]{2,1,0} convert(%[[p0]])
 ; CHECK: %[[p1:.*]] = f32[3,10,123]{2,1,0} parameter
-; CHECK: f32[3,128,123]{2,1,0} dot(%[[tr]], %[[p1]])
+; CHECK: f32[3,128,123]{2,1,0} dot(%[[cv]], %[[p1]])
+; CHECK-NOT: transpose
 )");
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
@@ -914,11 +914,11 @@ ENTRY entry {
   const HloFusionInstruction* fusion2 = Cast<HloFusionInstruction>(
       module1_and_metadata.computation->FusionInstruction());
 
-  TF_EXPECT_OK(TritonWrapper("test_fn", *fusion2, se::GpuComputeCapability{cc},
-                             device_info,
-                             module2_and_metadata.block_level_parameters,
-                             target_triple, data_layout, mlir_context_)
-                   .status());
+  EXPECT_OK(TritonWrapper("test_fn", *fusion2, se::GpuComputeCapability{cc},
+                          device_info,
+                          module2_and_metadata.block_level_parameters,
+                          target_triple, data_layout, mlir_context_)
+                .status());
 }
 
 // TODO(b/393299275): this test may have some value while Triton tiling
@@ -1762,10 +1762,12 @@ ENTRY e {
     instr = instr->operand(0);
     ASSERT_TRUE(instr->IsCustomFusion());
   }
-  EXPECT_THAT(
-      instr,
-      GmockMatch(m::Fusion(m::Parameter(), m::Parameter(), m::Parameter())
-                     .WithFusionKind(HloInstruction::FusionKind::kCustom)));
+  EXPECT_THAT(instr, GmockMatch(m::Fusion().WithNumOperands(3).WithFusionKind(
+                         HloInstruction::FusionKind::kCustom)));
+  // Layout-only bitcasts of parameters may be hoisted out of the fusion.
+  EXPECT_THAT(instr->operands(), ::testing::Each(::testing::AnyOf(
+                                     GmockMatch(m::Parameter()),
+                                     GmockMatch(m::Bitcast(m::Parameter())))));
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/2e-2, /*arel=*/2e-2}));
 }

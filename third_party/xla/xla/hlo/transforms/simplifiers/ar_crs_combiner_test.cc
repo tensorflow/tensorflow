@@ -1868,5 +1868,65 @@ ENTRY %entrycomp (p: bf16[]) -> (f32[]) {
   EXPECT_TRUE(changed);
 }
 
+TEST_F(ArCrsCombinerTest, ArMultiplySameOperandDontRewriteSPMD) {
+  constexpr absl::string_view kModuleStr = R"(
+HloModule foobar
+
+%sum.f32 (x: f32[], y: f32[]) -> f32[] {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %add = f32[] add(%x, %y)
+}
+
+ENTRY %entrycomp (p: f32[]) -> (f32[]) {
+  %p = f32[] parameter(0)
+  %all-reduce.ar.1 = f32[] all-reduce(%p), replica_groups={{0},{1}},
+      channel_id=1, to_apply=%sum.f32
+  %multiply.1 = f32[] multiply(%all-reduce.ar.1, %all-reduce.ar.1)
+  %all-reduce.1 = f32[] all-reduce(%multiply.1), replica_groups={{0,1}},
+      to_apply=%sum.f32, sharding={maximal device=0}
+  ROOT %tuple = (f32[]) tuple(%all-reduce.1)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnVerifiedModule(kModuleStr, /*replica_count=*/2));
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
+                         /*spmd_partition=*/true);
+  ASSERT_OK_AND_ASSIGN(bool changed, combiner.Run(module.get()));
+  EXPECT_FALSE(changed);
+}
+
+TEST_F(ArCrsCombinerTest, ArAddSameOperandDontRewriteSPMD) {
+  constexpr absl::string_view kModuleStr = R"(
+HloModule foobar
+
+%sum.f32 (x: f32[], y: f32[]) -> f32[] {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %add = f32[] add(%x, %y)
+}
+
+ENTRY %entrycomp (p: f32[]) -> (f32[]) {
+  %p = f32[] parameter(0)
+  %all-reduce.ar.1 = f32[] all-reduce(%p), replica_groups={{0},{1}},
+      channel_id=1, to_apply=%sum.f32
+  %add.1 = f32[] add(%all-reduce.ar.1, %all-reduce.ar.1)
+  %all-reduce.1 = f32[] all-reduce(%add.1), replica_groups={{0,1}},
+      to_apply=%sum.f32, sharding={maximal device=0}
+  ROOT %tuple = (f32[]) tuple(%all-reduce.1)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnVerifiedModule(kModuleStr, /*replica_count=*/2));
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
+                         /*spmd_partition=*/true);
+  ASSERT_OK_AND_ASSIGN(bool changed, combiner.Run(module.get()));
+  EXPECT_FALSE(changed);
+}
+
 }  // namespace
 }  // namespace xla

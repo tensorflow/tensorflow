@@ -28,7 +28,6 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/strings/escaping.h"
-#include "absl/strings/match.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
@@ -87,6 +86,13 @@ bool IsGpublasLtSupportedGroupedMatMul(const HloInstruction& instr) {
   return false;
 }
 
+bool IsRaggedDotWgrad(const RaggedDotDimensionNumbers& dnums) {
+  const auto& lhs_contracting_dims =
+      dnums.dot_dimension_numbers().lhs_contracting_dimensions();
+  return absl::c_linear_search(lhs_contracting_dims,
+                               dnums.lhs_ragged_dimensions(0));
+}
+
 bool IsTritonSupportedRaggedDot(
     const se::GpuComputeCapability& gpu_compute_capability,
     const HloInstruction& instr) {
@@ -103,15 +109,6 @@ bool IsTritonSupportedRaggedDot(
     return false;
   }
 
-  // Tiling propagation must be enabled.  TritonBackend::IsSupported gates
-  // kRaggedDot fusions on this flag — the xtile pipeline needs
-  // TiledHloComputation::Tile to drive code generation.
-  if (!instr.GetModule()
-           ->config()
-           .debug_options()
-           .xla_gpu_experimental_enable_tiling_propagation()) {
-    return false;
-  }
 
   // The xtile emitter's PrimitiveTypeToMlirType conversion supports the
   // following element types for ragged-dot operands and output.
@@ -220,26 +217,10 @@ bool IsCustomCallToMosaicGpu(const HloInstruction& hlo) {
           hlo.custom_call_target() == "mosaic_gpu_v2");
 }
 
-bool IsMosaicWithSymmetricParameter(const HloInstruction& hlo) {
-  if (!IsCustomCallToMosaicGpu(hlo)) {
-    return false;
-  }
-
-  const std::string& backend_config = hlo.raw_backend_config_string();
-  // TODO(b/546817872): Remove multimem_parameters check once backward
-  // compatibility period is over.
-  return absl::StrContains(backend_config, "symmetric_memory_parameters") ||
-         absl::StrContains(backend_config, "multimem_parameters");
-}
-
 bool IsMosaicWithCollectiveMetadata(const HloInstruction& hlo) {
   return IsCustomCallToMosaicGpu(hlo) &&
          RE2::PartialMatch(hlo.raw_backend_config_string(),
                            "uses_xla_collective_metadata\\s*=\\s*[tT]rue");
-}
-
-bool IsCollectiveMosaicGpuInstruction(const HloInstruction& hlo) {
-  return IsMosaicWithSymmetricParameter(hlo);
 }
 
 static bool IsContiguousSlice(

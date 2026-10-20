@@ -163,11 +163,13 @@ tsl_pybind_extension(
         ":mlir_kernel_emitter",
         # placeholder for index annotation deps  # buildcleaner: keep
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//mlir:IR",
         "@nanobind",
         "@rules_python//python/cc:current_py_cc_headers",  # buildcleaner: keep
+        "//xla/backends/cpu/codegen:computation_kernel_arguments",
         "//xla/backends/cpu/codegen:computation_kernel_emitter",
         "//xla/backends/cpu/codegen:fusion_compiler",
         "//xla/backends/cpu/codegen:fusion_emitter",
@@ -175,7 +177,6 @@ tsl_pybind_extension(
         "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/backends/cpu/codegen/dot:dot_kernel_emitter",
         "//xla/backends/cpu/codegen/elemental:concatenate_kernel_emitter",
-        "//xla/backends/cpu/codegen/elemental:elemental_kernel_emitter",
         "//xla/backends/cpu/codegen/emitters:cpu_fusion_emitters",
         "//xla/codegen:kernel_definition",
         "//xla/codegen:kernel_emitter",
@@ -237,23 +238,5 @@ py_test(
         "//third_party/py/numpy",
         "//xla/codegen/testlib",
         "@absl_py//absl/testing:absltest",
-    ],
-)
-
-py_test(
-    name = "elemental_kernel_emitter_test",
-    srcs = ["elemental_kernel_emitter_test.py"],
-    main = "elemental_kernel_emitter_test.py",
-    strict_deps = True,
-    tags = [
-        "no_oss",
-    ],
-    deps = [
-        ":testlib",
-        "//third_party/py/numpy",
-        "//xla/codegen/testlib",
-        "//xla/python:xla_extension",
-        "@absl_py//absl/testing:absltest",
-        "@absl_py//absl/testing:parameterized",
     ],
 )

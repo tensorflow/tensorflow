@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/backends/cpu/alignment.h"
 #include "xla/backends/cpu/nanort/nanort_client.h"
 #include "xla/backends/cpu/nanort/nanort_executable.h"
+#include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/host_offloading/host_offloading_executable.h"
 #include "xla/executable_run_options.h"
@@ -50,7 +51,9 @@ limitations under the License.
 #include "xla/service/shaped_slice.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/event.h"
 #include "xla/stream_executor/memory_space.h"
+#include "xla/stream_executor/mock_stream_executor.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_address_allocator.h"
@@ -60,6 +63,7 @@ limitations under the License.
 #include "xla/tsl/platform/test_benchmark.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/util.h"
+#include "tsl/platform/platform.h"
 
 namespace xla {
 namespace gpu {
@@ -168,6 +172,88 @@ TEST(HostExecuteStartThunkTest, SingleArgSingleResult) {
   ASSERT_OK(stream->BlockHostUntilDone());
 
   xla::Literal result_literal(ShapeUtil::MakeShape(S32, {}));
+  ASSERT_OK(stream->Memcpy(result_literal.untyped_data(), result,
+                           ShapeUtil::ByteSizeOf(result_literal.shape())));
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR0<int32_t>(10),
+                                     result_literal));
+}
+
+TEST(HostExecuteStartThunkTest, RecordCommandBufferSingleArgSingleResult) {
+  se::StreamExecutor* stream_executor = GpuExecutor();
+  if (stream_executor->GetDeviceDescription()
+          .gpu_compute_capability()
+          .IsRocm()) {
+    GTEST_SKIP() << "Not supported on ROCM yet.";
+  }
+
+  ASSERT_OK_AND_ASSIGN(auto stream, stream_executor->CreateStream());
+
+  static constexpr char const* kHloModule = R"(
+    HloModule module
+    ENTRY add_inplace {
+      p0 = s32[] parameter(0)
+      ROOT add = s32[] add(p0, p0)
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnUnverifiedModule(kHloModule, {}));
+
+  se::DeviceAddressBase arg = stream_executor->Allocate(1 * sizeof(int32_t));
+  se::DeviceAddressBase result = stream_executor->Allocate(1 * sizeof(int32_t));
+
+  ASSERT_OK(stream->Memset32(&arg, 5, 4));
+  ASSERT_OK(stream->MemZero(&result, 4));
+
+  BufferAllocation alloc_arg(/*index=*/0, 4, /*color=*/0);
+  BufferAllocation alloc_result(/*index=*/1, 4, /*color=*/0);
+
+  BufferAllocation::Slice slice_arg(&alloc_arg, 0, 4);
+  BufferAllocation::Slice slice_result(&alloc_result, 0, 4);
+
+  ASSERT_OK_AND_ASSIGN(auto thunk,
+                       CreateHostExecuteStartThunk(
+                           Thunk::ThunkInfo(), *hlo_module,
+                           {{slice_arg, ShapeUtil::MakeShape(S32, {})}},
+                           {{slice_result, ShapeUtil::MakeShape(S32, {})}}));
+
+  stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
+  ExecutableRunOptions executable_run_options;
+  executable_run_options.set_device_to_host_stream(stream.get());
+  executable_run_options.set_host_to_device_stream(stream.get());
+  ServiceExecutableRunOptions service_executable_run_options(
+      executable_run_options);
+
+  BufferAllocations allocations({arg, result}, 0, &allocator);
+
+  Thunk::ExecutionScopedState scoped_state;
+  Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
+      service_executable_run_options, allocations, stream.get(), stream.get(),
+      nullptr, nullptr, nullptr, {}, &scoped_state);
+
+  Thunk::InitializeParams init_params{.executor = stream_executor,
+                                      .buffer_allocations = &allocations,
+                                      .stream = stream.get(),
+                                      .execution_scoped_state = &scoped_state};
+
+  CommandStateManager state;
+  Command::RecordParams record_params = {state};
+
+  ASSERT_OK_AND_ASSIGN(
+      auto command_buffer,
+      stream_executor->CreateCommandBuffer(se::CommandBuffer::Mode::kPrimary));
+
+  ASSERT_OK(thunk->Initialize(init_params));
+  ASSERT_OK_AND_ASSIGN(
+      const se::CommandBuffer::Command* cmd,
+      thunk->Record(execute_params, record_params, Command::RecordCreate{{}},
+                    command_buffer.get()));
+  ASSERT_NE(cmd, nullptr);
+  ASSERT_OK(command_buffer->Finalize());
+  ASSERT_OK(command_buffer->Submit(stream.get()));
+  ASSERT_OK(stream->BlockHostUntilDone());
+
+  Literal result_literal(ShapeUtil::MakeShape(S32, {}));
   ASSERT_OK(stream->Memcpy(result_literal.untyped_data(), result,
                            ShapeUtil::ByteSizeOf(result_literal.shape())));
   EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR0<int32_t>(10),
@@ -487,11 +573,10 @@ TEST(HostExecuteStartThunkTest, ArgAndResultNonRegisteredHostMemory) {
 }
 
 TEST(HostExecuteStartThunkTest, TestErrorPropagationFromExecuteEvent) {
-#ifdef NDEBUG
-  GTEST_SKIP() << "Skipping test in optimized mode because XLA:CPU won't "
-                  "check for the alignment error.";
-  return;
-#endif
+  if constexpr (!tsl::kIsDebugBuild) {
+    GTEST_SKIP() << "Skipping test in optimized mode because XLA:CPU won't "
+                    "check for the alignment error.";
+  }
   se::StreamExecutor* stream_executor = GpuExecutor();
   ASSERT_OK_AND_ASSIGN(auto stream, stream_executor->CreateStream());
 
@@ -623,6 +708,46 @@ TEST(HostExecuteDoneThunkTest, WaitingOnErrorEvent) {
   ASSERT_OK(thunk.Initialize(init_params));
   EXPECT_THAT(thunk.ExecuteOnStream(params),
               absl_testing::StatusIs(absl::StatusCode::kInternal));
+}
+
+TEST(HostExecuteAsyncEventsTest, CreateAndExtractEvents) {
+  se::MockStreamExecutor executor0;
+  se::MockStreamExecutor executor1;
+  EXPECT_CALL(executor0, device_ordinal()).WillRepeatedly(::testing::Return(0));
+  EXPECT_CALL(executor1, device_ordinal()).WillRepeatedly(::testing::Return(1));
+  EXPECT_CALL(executor0, CreateEvent()).WillRepeatedly([]() {
+    return std::unique_ptr<se::Event>(nullptr);
+  });
+  EXPECT_CALL(executor1, CreateEvent()).WillRepeatedly([]() {
+    return std::unique_ptr<se::Event>(nullptr);
+  });
+
+  HostExecuteAsyncEvents events(/*devices_per_host=*/2);
+
+  ASSERT_OK_AND_ASSIGN(auto event0_run1,
+                       events.CreateEvent(&executor0, RunId(1)));
+  ASSERT_OK_AND_ASSIGN(auto event1_run1,
+                       events.CreateEvent(&executor1, RunId(1)));
+  ASSERT_OK_AND_ASSIGN(auto event0_run2,
+                       events.CreateEvent(&executor0, RunId(2)));
+  EXPECT_THAT(events.CreateEvent(&executor0, RunId(1)),
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
+  EXPECT_THAT(events.ExtractEvent(&executor1, RunId(2)),
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
+
+  ASSERT_OK_AND_ASSIGN(auto extracted0_run1,
+                       events.ExtractEvent(&executor0, RunId(1)));
+  EXPECT_EQ(extracted0_run1.GetAsyncValue(), event0_run1.GetAsyncValue());
+  EXPECT_THAT(events.ExtractEvent(&executor0, RunId(1)),
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
+
+  ASSERT_OK_AND_ASSIGN(auto extracted1_run1,
+                       events.ExtractEvent(&executor1, RunId(1)));
+  EXPECT_EQ(extracted1_run1.GetAsyncValue(), event1_run1.GetAsyncValue());
+
+  ASSERT_OK_AND_ASSIGN(auto extracted0_run2,
+                       events.ExtractEvent(&executor0, RunId(2)));
+  EXPECT_EQ(extracted0_run2.GetAsyncValue(), event0_run2.GetAsyncValue());
 }
 
 TEST(HostExecuteStartThunkTest, ProtoRoundTrip) {

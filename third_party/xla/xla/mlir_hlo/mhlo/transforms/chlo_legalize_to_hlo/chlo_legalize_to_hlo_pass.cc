@@ -356,7 +356,24 @@ LogicalResult convertMulhiChloToMhlo(chlo::MulhiOp op,
 }  // namespace
 
 ChloLegalizeToHighLevelMhloPassOptions getDefaultChloToHighLevelMhloOptions() {
-  return ChloLegalizeToHighLevelMhloPassOptions();
+  ChloLegalizeToHighLevelMhloPassOptions opts;
+  opts.enable_cosh_ = true;
+  opts.enable_sinh_ = true;
+  return opts;
+}
+
+ChloLegalizeToHighLevelMhloPassOptions getCpuChloToHighLevelMhloOptions() {
+  ChloLegalizeToHighLevelMhloPassOptions opts;
+  opts.enable_cosh_ = true;
+  opts.enable_sinh_ = true;
+  return opts;
+}
+
+ChloLegalizeToHighLevelMhloPassOptions getTpuChloToHighLevelMhloOptions() {
+  ChloLegalizeToHighLevelMhloPassOptions opts;
+  opts.enable_cosh_ = true;
+  opts.enable_sinh_ = true;
+  return opts;
 }
 
 ChloLegalizeToHighLevelMhloPassOptions getGpuChloToHighLevelMhloOptions() {
@@ -379,7 +396,7 @@ namespace {
 }  // namespace
 
 void populateChloToHighLevelMhloOpPatterns(
-    MLIRContext*, RewritePatternSet* patterns,
+    MLIRContext* context, RewritePatternSet* patterns,
     const mhlo::ChloLegalizeToHighLevelMhloPassOptions& options) {
   constexpr unsigned kBenefit = 10;
   if (options.enable_acosh_) {
@@ -412,13 +429,14 @@ void populateChloToHighLevelMhloOpPatterns(
 void populateChloToHighLevelMhloOpPatterns(MLIRContext* context,
                                            RewritePatternSet* patterns) {
   populateChloToHighLevelMhloOpPatterns(
-      context, patterns, mhlo::ChloLegalizeToHighLevelMhloPassOptions());
+      context, patterns, mhlo::getDefaultChloToHighLevelMhloOptions());
 }
 
 void populateChloToHloPatterns(MLIRContext* context,
                                TypeConverter* typeConverter,
                                RewritePatternSet* patterns) {
-  populateChloToHighLevelMhloOpPatterns(context, patterns);
+  populateChloToHighLevelMhloOpPatterns(
+      context, patterns, mhlo::ChloLegalizeToHighLevelMhloPassOptions());
   stablehlo::populateChloToStablehloPatterns(context, patterns);
   stablehlo::populateStablehloToHloPatterns(patterns, typeConverter, context);
 }

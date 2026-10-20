@@ -104,9 +104,9 @@ module @aliasing_output_to_io_aliases {
       attributes {topology = #mpmd.topology<<"mesh1" : <["x"=2]>>>} {
     // CHECK: %[[OUT:.+]], %{{.+}} = ifrt.Call @add_args(%arg0, %arg0)
     // CHECK-SAME: on devices [0, 1]
+    // CHECK-SAME: <io_aliases = [array<i32: 1, 0>]>
     // CHECK-SAME: {
     // CHECK-DAG:    ifrt.mesh_name = "mesh1"
-    // CHECK-DAG:    io_aliases = [array<i32: 1, 0>]
     // CHECK-SAME: }
     %0 = mpmd.fragment_call<mesh="mesh1", origin=[]> @add_args(%arg0, %arg0) : (!tensor, !tensor) -> (!tensor)
     return %0 : !tensor

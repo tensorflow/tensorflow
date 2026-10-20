@@ -612,6 +612,24 @@ func.func @main(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> {
 // CHECK-SAME{LITERAL}:  replica_groups={{0,1},{2,3}}
 // -----
 
+// Test that stablehlo.collective_broadcast with has_dynamic_root exports
+// has_dynamic_root=true to HLO.
+// CHECK:  HloModule
+func.func @main(%arg0: tensor<4xf32>, %arg1: tensor<1xi32>) -> tensor<4xf32> {
+  %0 = "stablehlo.collective_broadcast"(%arg0, %arg1) <{
+    channel_handle = #stablehlo.channel_handle<handle = 1, type = 0>,
+    has_dynamic_root,
+    replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>
+  }> : (tensor<4xf32>, tensor<1xi32>) -> tensor<4xf32>
+  func.return %0 : tensor<4xf32>
+}
+// CHECK:  ENTRY
+// CHECK:  [[DATA:%.*]] = f32[4] parameter(0)
+// CHECK:  [[SOURCE:%.*]] = s32[1] parameter(1)
+// CHECK:  ROOT [[RESULT:%.*]] = f32[4] collective-broadcast([[DATA]], [[SOURCE]]), channel_id=1,
+// CHECK-SAME{LITERAL}:  replica_groups={{0,1}}, has_dynamic_root=true
+// -----
+
 // CHECK:  HloModule
 func.func @main(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> {
   %0 = "mhlo.collective_permute"(%arg0) {

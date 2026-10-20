@@ -74,6 +74,9 @@ absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateMovedChildNodeImpl(
 
   child_command_buffer->parent_ = this;
   child_command_buffer->is_owned_graph_ = false;
+  if (child_command_buffer->has_node_priority_) {
+    SetHasNodePriority();
+  }
 
   return FromCudaGraphHandle(node_handle);
 }

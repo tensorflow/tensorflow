@@ -101,6 +101,52 @@ TEST_F(HloReachabilityTest, Reachability) {
   EXPECT_FALSE(reachability.SetReachabilityToUnion({b, c}, d));
 }
 
+// The row of the instruction is written once: the first input row replaces
+// it, unless the instruction is among its own inputs, in which case the row
+// keeps its bits; without inputs only the diagonal bit remains.
+TEST_F(HloReachabilityTest, SetReachabilityToUnionWritesTheRowOnce) {
+  auto builder = HloComputation::Builder(TestName());
+  auto a = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
+  auto b = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
+  auto c = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
+  auto d = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(builder.Build());
+
+  HloReachabilityMap reachability({a, b, c, d});
+  reachability.SetReachable(a, b);
+  reachability.SetReachable(b, c);
+
+  // The only input row replaces row d: b and c reach d, a does not.
+  EXPECT_TRUE(reachability.SetReachabilityToUnion({c}, d));
+  EXPECT_FALSE(reachability.IsReachable(a, d));
+  EXPECT_TRUE(reachability.IsReachable(b, d));
+  EXPECT_TRUE(reachability.IsReachable(c, d));
+
+  // Listed among its own inputs, row d keeps its bits and takes the others.
+  EXPECT_TRUE(reachability.SetReachabilityToUnion({d, a}, d));
+  EXPECT_TRUE(reachability.IsReachable(a, d));
+  EXPECT_TRUE(reachability.IsReachable(b, d));
+  EXPECT_TRUE(reachability.IsReachable(c, d));
+  EXPECT_FALSE(reachability.SetReachabilityToUnion({d, a}, d));
+
+  // Not listed, the first input row replaces it again: only a reaches d.
+  EXPECT_TRUE(reachability.SetReachabilityToUnion({a}, d));
+  EXPECT_TRUE(reachability.IsReachable(a, d));
+  EXPECT_FALSE(reachability.IsReachable(b, d));
+  EXPECT_FALSE(reachability.IsReachable(c, d));
+  EXPECT_TRUE(reachability.IsReachable(d, d));
+
+  // Without inputs the row is cleared down to the diagonal bit.
+  EXPECT_TRUE(reachability.SetReachabilityToUnion({}, d));
+  EXPECT_FALSE(reachability.IsReachable(a, d));
+  EXPECT_TRUE(reachability.IsReachable(d, d));
+}
+
 TEST_F(HloReachabilityTest, NonTrivialReachability) {
   // Test reachability of a non-trivial computation:
   //
@@ -201,6 +247,91 @@ TEST_F(HloReachabilityTest, NonTrivialReachability) {
   EXPECT_FALSE(reachability->IsReachable(constant2, exp));
   EXPECT_TRUE(reachability->IsReachable(constant2, mul));
   EXPECT_FALSE(reachability->IsReachable(constant2, copy));
+}
+
+// Build writes each row of an unzeroed matrix exactly once. Check it against
+// the incremental construction on a graph wide enough for multi word rows and
+// tall enough for several row blocks, with input free instructions, repeated
+// operands, wide fan in and control dependencies in the mix.
+TEST_F(HloReachabilityTest, BuildMatchesIncrementalConstruction) {
+  constexpr int kSize = 1200;
+  Shape r0f32 = ShapeUtil::MakeShape(F32, {});
+  auto builder = HloComputation::Builder(TestName());
+  std::vector<HloInstruction*> instructions;
+  for (int i = 0; i < kSize; ++i) {
+    HloInstruction* instruction;
+    if (i % 97 == 0) {
+      instruction = builder.AddInstruction(
+          HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(i)));
+    } else if (i % 5 == 0) {
+      HloInstruction* x = instructions[i - 1];
+      instruction = builder.AddInstruction(
+          HloInstruction::CreateBinary(r0f32, HloOpcode::kAdd, x, x));
+    } else if (i % 3 == 0) {
+      instruction = builder.AddInstruction(HloInstruction::CreateBinary(
+          r0f32, HloOpcode::kMultiply, instructions[i - 1],
+          instructions[i - std::min(i, 7 + i % 11)]));
+    } else {
+      instruction = builder.AddInstruction(HloInstruction::CreateUnary(
+          r0f32, HloOpcode::kExp,
+          instructions[i - 1 - std::min(i - 1, (i % 2) * (i % 13))]));
+    }
+    instructions.push_back(instruction);
+  }
+  std::vector<HloInstruction*> roots;
+  for (int i = kSize - 100; i < kSize; ++i) {
+    if (instructions[i]->user_count() == 0) {
+      roots.push_back(instructions[i]);
+    }
+  }
+  HloInstruction* root =
+      builder.AddInstruction(HloInstruction::CreateTuple(roots));
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation =
+      module->AddEntryComputation(builder.Build(root));
+  for (int i = 200; i + 300 < kSize; i += 250) {
+    CHECK_OK(instructions[i]->AddControlDependencyTo(instructions[i + 300]));
+  }
+
+  std::vector<HloInstruction*> post_order =
+      computation->MakeInstructionPostOrder();
+  HloReachabilityMap expected(post_order);
+  std::vector<HloInstruction*> inputs;
+  for (HloInstruction* instruction : post_order) {
+    inputs.assign(instruction->operands().begin(),
+                  instruction->operands().end());
+    inputs.insert(inputs.end(), instruction->control_predecessors().begin(),
+                  instruction->control_predecessors().end());
+    expected.FastSetReachabilityToUnion(inputs, instruction);
+  }
+
+  std::unique_ptr<HloReachabilityMap> built =
+      HloReachabilityMap::Build(computation);
+  int reachable_pairs = 0;
+  for (HloInstruction* a : post_order) {
+    for (HloInstruction* b : post_order) {
+      ASSERT_EQ(built->IsReachable(a, b), expected.IsReachable(a, b))
+          << a->name() << " -> " << b->name();
+      reachable_pairs += built->IsReachable(a, b);
+    }
+  }
+  // The graph is far from both extremes, so a matrix left all zero or all
+  // one would fail above rather than pass by accident.
+  EXPECT_GT(reachable_pairs, post_order.size() * 2);
+  EXPECT_LT(reachable_pairs, post_order.size() * post_order.size() / 2);
+  // The last two control edges connect instructions that no operand path
+  // connects, so they show that Build reads control predecessors.
+  std::unique_ptr<HloReachabilityMap> operands_only =
+      HloReachabilityMap::BuildWithRestrictions(
+          computation,
+          [](const HloInstruction* hlo, std::vector<HloInstruction*>* inputs) {
+            inputs->assign(hlo->operands().begin(), hlo->operands().end());
+          });
+  for (int i = 450; i + 300 < kSize; i += 250) {
+    EXPECT_FALSE(
+        operands_only->IsReachable(instructions[i], instructions[i + 300]));
+    EXPECT_TRUE(built->IsReachable(instructions[i], instructions[i + 300]));
+  }
 }
 
 TEST_F(HloReachabilityTest, ChannelReachability) {

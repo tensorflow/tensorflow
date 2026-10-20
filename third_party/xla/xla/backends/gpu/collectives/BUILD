@@ -1,7 +1,10 @@
 load(
+    "@config_rocm_hipcc//rocm:build_defs.bzl",
+    "rocm_library",
+)
+load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
-    "rocm_library",
 )
 load("@local_config_sycl//sycl:build_defs.bzl", "if_sycl_is_configured")
 load("//xla:xla.default.bzl", "xla_cc_test")
@@ -246,6 +249,8 @@ xla_test(
     backends = [
         "gpu",
     ],
+    # Non-blocking NCCL initialization is required to cancel pending cliques.
+    env = {"XLA_FLAGS": "--xla_gpu_nccl_async_execution=true --xla_gpu_nccl_blocking_communicators=false"},
     deps = [
         ":gpu_clique",
         ":gpu_clique_key",
@@ -269,6 +274,7 @@ xla_test(
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
@@ -278,10 +284,6 @@ xla_test(
 xla_test(
     name = "gpu_cliques_test",
     srcs = ["gpu_cliques_test.cc"],
-    backend_args = if_google(
-        {"gpu": ["--heap_check="]},
-        {},
-    ),
     backend_tags = {
         "gpu": [
             "multi_gpu",
@@ -393,10 +395,6 @@ cc_library(
 xla_test(
     name = "gpu_collectives_test",
     srcs = ["gpu_collectives_test.cc"],
-    backend_args = if_google(
-        {"gpu": ["--heap_check="]},
-        {},
-    ),
     backend_tags = {
         "gpu": [
             "multi_gpu",
@@ -438,7 +436,7 @@ xla_test(
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",  # buildcleaner: keep
     ] + if_cuda_or_rocm_is_configured([
-        ":nccl_or_rccl_collectives",
+        ":nccl_or_rccl_collectives",  # buildcleaner: keep
     ]) + if_rocm_is_configured([
         ":mori_collectives",
     ]),
@@ -447,10 +445,6 @@ xla_test(
 xla_test(
     name = "nccl_communicator_test",
     srcs = ["nccl_communicator_test.cc"],
-    backend_args = if_google(
-        {"gpu": ["--heap_check="]},
-        {},
-    ),
     backend_tags = {
         "h100": [
             "full",
@@ -472,8 +466,10 @@ xla_test(
         ":nccl_or_rccl_collectives",  # buildcleaner: keep
         "//xla:future",
         "//xla:xla_data_proto_cc",
+        "//xla/core/collectives:rank_id",
         "//xla/core/collectives:reduction_kind",
         "//xla/runtime:device_id",
+        "//xla/stream_executor:device_address",
         "//xla/stream_executor:memory_allocation",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
@@ -483,10 +479,14 @@ xla_test(
         "//xla/stream_executor/cuda:cuda_platform",  # buildcleaner: keep
         "//xla/tsl/concurrency:executor",
         "//xla/tsl/platform:env",
+        "//xla/tsl/util:tied_ref",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/log:globals",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",  # buildcleaner: keep
     ],
@@ -505,10 +505,12 @@ cc_library(
         "//xla/core/collectives:reduction_kind",
         "//xla/core/collectives:registered_memory",
         "//xla/core/collectives:symmetric_memory",
+        "//xla/ffi/api:c_api",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:kernel_args",
         "//xla/stream_executor:memory_allocation",
         "//xla/tsl/util:tied_ref",
+        "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status",
@@ -877,6 +879,7 @@ cc_library(
         "//xla/tsl/cuda:nccl",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:logging",
+        "//xla:xla_proto_cc",
         "@tsl//tsl/platform:numbers",
         "@tsl//tsl/profiler/lib:traceme",
     ],
@@ -1122,6 +1125,7 @@ cc_library(
         "//xla/core/collectives:reduction_kind",
         "//xla/core/collectives:registered_memory",
         "//xla/core/collectives:symmetric_memory",
+        "//xla/ffi/api:c_api",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:kernel_args",
         "//xla/stream_executor:memory_allocation",
@@ -1161,12 +1165,10 @@ xla_cc_test(
         "rocm-only",
     ],
     deps = [
-        ":rccl_errors",
         ":rccl_symmetric_memory",
         "//xla/stream_executor:device_address",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
-        "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_main",
         "@local_config_rocm//rocm:hip",  # buildcleaner: keep
         "@local_config_rocm//rocm:rocm_headers",
@@ -1186,12 +1188,10 @@ cc_library(
     deps = [
         ":rccl_errors",
         "//xla:util",
-        "//xla/core/collectives:rank_id",
         "//xla/core/collectives:symmetric_memory",
         "//xla/stream_executor:device_address",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@local_config_rocm//rocm:rccl",  # buildcleaner: keep
@@ -1283,19 +1283,18 @@ rocm_library(
     srcs = [
         "mori_kernels.cu.cc",
     ],
-    hdrs = [
-        "mori_kernels.h",
-        "mori_stub.h",
-    ],
+    hdrs = ["mori_kernels.h"],
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
-    copts = ["-U__HIP_DISABLE_CPP_FUNCTIONS__"],  # <-- only if needed
-    linkstatic = True,
     tags = [
         "gpu",
         "no-oneapi",
         "rocm-only",
     ],
-    deps = [],
+    deps = [
+        "@roc_mori//:mori_application_headers",
+        "@roc_mori//src/application:mori_application",  # build_cleaner: keep
+        "@roc_mori//src/cco:mori_cco",  # build_cleaner: keep
+    ],
 )
 
 cc_library(
@@ -1307,8 +1306,6 @@ cc_library(
     hdrs = [
         "mori_collectives.h",
         "mori_communicator.h",
-        "mori_kernels.h",
-        "mori_stub.h",
     ],
     tags = [
         "gpu",
@@ -1318,12 +1315,10 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":cancellation_token",
-        ":gpu_clique_key",
         ":gpu_collectives",
         ":gpu_communicator",
         "//xla:future",
         "//xla:shape_util",
-        "//xla:status_macros",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/core/collectives",
@@ -1344,15 +1339,13 @@ cc_library(
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/rocm:rocm_status",
         "//xla/tsl/platform:env",
+        "//xla/tsl/util:env_var",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
@@ -1360,7 +1353,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@tsl//tsl/platform:casts",

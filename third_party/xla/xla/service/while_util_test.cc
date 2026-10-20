@@ -26,10 +26,12 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_matchers.h"
+#include "xla/shape.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/util.h"
 
@@ -501,6 +503,205 @@ ENTRY entry {
 
   // dus4 is NOT write-only because it has 0 users (dead code)
   EXPECT_FALSE(WhileUtil::IsUpdatedBufferWriteOnly(dus4));
+}
+
+TEST_F(WhileUtilTest,
+       AppendToWhileLoopOriginalValueUpdatesAllLoopInstructions) {
+  const char* const hlo_string = R"(
+HloModule ModuleWithWhile
+
+while_body {
+  ROOT p_body = (f32[], f32[]) parameter(0), origin={({"p0"}, {"p1"})}
+}
+
+while_condition {
+  p_cond = (f32[], f32[]) parameter(0), origin={({"p0"}, {"p1"})}
+  ROOT result = pred[] constant(true)
+}
+
+ENTRY entry {
+  p0 = f32[] parameter(0), origin={{"p0"}}
+  p1 = f32[] parameter(1), origin={{"p1"}}
+  p2 = f32[] parameter(2), origin={{"p2"}}
+  init = (f32[], f32[]) tuple(p0, p1), origin={({"p0"}, {"p1"})}
+  while = (f32[], f32[]) while(init), condition=while_condition, body=while_body, origin={({"p0"}, {"p1"}),["while#$"]}
+  gte0 = f32[] get-tuple-element(while), index=0
+  ROOT root = (f32[]) tuple(gte0)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* while_instr = FindInstruction(module.get(), "while");
+  HloInstruction* p2 = module->entry_computation()->parameter_instruction(2);
+
+  HloComputation* body = while_instr->while_body();
+  HloComputation* cond = while_instr->while_condition();
+
+  Shape widened_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeScalarShape(F32), ShapeUtil::MakeScalarShape(F32),
+       ShapeUtil::MakeScalarShape(F32)});
+  *while_instr->mutable_shape() = widened_shape;
+  *body->parameter_instruction(0)->mutable_shape() = widened_shape;
+  *cond->parameter_instruction(0)->mutable_shape() = widened_shape;
+  *body->root_instruction()->mutable_shape() = widened_shape;
+
+  HloInstruction* p0 = module->entry_computation()->parameter_instruction(0);
+  HloInstruction* p1 = module->entry_computation()->parameter_instruction(1);
+  HloInstruction* new_init = module->entry_computation()->AddInstruction(
+      HloInstruction::CreateTuple({p0, p1, p2}));
+  ASSERT_OK(while_instr->ReplaceOperandWithDifferentShape(0, new_init));
+
+  AppendToWhileLoopOriginalValue(while_instr, {p2});
+
+  ASSERT_NE(while_instr->original_value(), nullptr);
+  EXPECT_TRUE(while_instr->original_value()->IsCompatibleWith(widened_shape));
+  EXPECT_THAT(while_instr->original_value()->original_array({2}),
+              ::testing::Optional(::testing::Eq(OriginalArray{"p2"})));
+  ASSERT_TRUE(while_instr->original_value()->call_hierarchy().has_value());
+  EXPECT_EQ(*while_instr->original_value()->call_hierarchy(), "while#$");
+
+  ASSERT_NE(body->parameter_instruction(0)->original_value(), nullptr);
+  EXPECT_TRUE(
+      body->parameter_instruction(0)->original_value()->IsCompatibleWith(
+          widened_shape));
+  EXPECT_THAT(
+      body->parameter_instruction(0)->original_value()->original_array({2}),
+      ::testing::Optional(::testing::Eq(OriginalArray{"p2"})));
+
+  ASSERT_NE(cond->parameter_instruction(0)->original_value(), nullptr);
+  EXPECT_TRUE(
+      cond->parameter_instruction(0)->original_value()->IsCompatibleWith(
+          widened_shape));
+  EXPECT_THAT(
+      cond->parameter_instruction(0)->original_value()->original_array({2}),
+      ::testing::Optional(::testing::Eq(OriginalArray{"p2"})));
+
+  ASSERT_NE(body->root_instruction()->original_value(), nullptr);
+  EXPECT_TRUE(body->root_instruction()->original_value()->IsCompatibleWith(
+      widened_shape));
+}
+
+TEST_F(WhileUtilTest,
+       AppendToWhileLoopOriginalValueIncompatibleSubtreeCrashes) {
+  const char* const hlo_string = R"(
+HloModule ModuleWithWhile
+
+while_body {
+  ROOT p_body = (f32[], f32[]) parameter(0), origin={({"p0"}, {"p1"})}
+}
+
+while_condition {
+  p_cond = (f32[], f32[]) parameter(0), origin={({"p0"}, {"p1"})}
+  ROOT result = pred[] constant(true)
+}
+
+ENTRY entry {
+  p0 = f32[] parameter(0), origin={{"p0"}}
+  p1 = f32[] parameter(1), origin={{"p1"}}
+  p2 = (f32[], f32[]) parameter(2), origin={({"p2_0"}, {"p2_1"})}
+  init = (f32[], f32[]) tuple(p0, p1), origin={({"p0"}, {"p1"})}
+  while = (f32[], f32[]) while(init), condition=while_condition, body=while_body, origin={({"p0"}, {"p1"}),["while#$"]}
+  gte0 = f32[] get-tuple-element(while), index=0
+  ROOT root = (f32[]) tuple(gte0)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* while_instr = FindInstruction(module.get(), "while");
+  HloInstruction* p2 = module->entry_computation()->parameter_instruction(2);
+
+  EXPECT_DEATH(
+      {
+        Shape widened_shape = ShapeUtil::MakeTupleShape(
+            {ShapeUtil::MakeScalarShape(F32), ShapeUtil::MakeScalarShape(F32),
+             ShapeUtil::MakeScalarShape(F32)});
+        *while_instr->mutable_shape() = widened_shape;
+        AppendToWhileLoopOriginalValue(while_instr, {p2});
+      },
+      "Incompatible OriginalValue subtree for appended while input element 0");
+}
+
+TEST_F(WhileUtilTest, MakeInstructionsLiveInPropagatesOriginalValue) {
+  const char* const hlo_string = R"(
+HloModule ModuleWithWhile
+
+while_body {
+  ROOT p_body = (f32[], f32[]) parameter(0), origin={({"p0"}, {"p1"})}
+}
+
+while_condition {
+  p_cond = (f32[], f32[]) parameter(0), origin={({"p0"}, {"p1"})}
+  ROOT result = pred[] constant(true)
+}
+
+ENTRY entry {
+  p0 = f32[] parameter(0), origin={{"p0"}}
+  p1 = f32[] parameter(1), origin={{"p1"}}
+  p2 = f32[] parameter(2), origin={{"p2"}}
+  init = (f32[], f32[]) tuple(p0, p1), origin={({"p0"}, {"p1"})}
+  while = (f32[], f32[]) while(init), condition=while_condition, body=while_body, origin={({"p0"}, {"p1"}),["while#$"]}
+  gte0 = f32[] get-tuple-element(while), index=0
+  ROOT root = (f32[]) tuple(gte0)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* while_instr = FindInstruction(module.get(), "while");
+  HloInstruction* p2 = module->entry_computation()->parameter_instruction(2);
+
+  ASSERT_OK_AND_ASSIGN(WhileUtil::MakeInstructionsLiveInResult result,
+                       WhileUtil::MakeInstructionsLiveIn(while_instr, {p2}));
+
+  HloInstruction* new_while = result.new_while_instr;
+  ASSERT_NE(new_while->original_value(), nullptr);
+  EXPECT_TRUE(
+      new_while->original_value()->IsCompatibleWith(new_while->shape()));
+  EXPECT_THAT(new_while->original_value()->original_array({2}),
+              ::testing::Optional(::testing::Eq(OriginalArray{"p2"})));
+
+  ASSERT_NE(new_while->while_init()->original_value(), nullptr);
+  EXPECT_TRUE(new_while->while_init()->original_value()->IsCompatibleWith(
+      new_while->while_init()->shape()));
+  EXPECT_THAT(new_while->while_init()->original_value()->original_array({2}),
+              ::testing::Optional(::testing::Eq(OriginalArray{"p2"})));
+
+  ASSERT_NE(new_while->while_body()->parameter_instruction(0)->original_value(),
+            nullptr);
+  EXPECT_TRUE(
+      new_while->while_body()
+          ->parameter_instruction(0)
+          ->original_value()
+          ->IsCompatibleWith(
+              new_while->while_body()->parameter_instruction(0)->shape()));
+  EXPECT_THAT(new_while->while_body()
+                  ->parameter_instruction(0)
+                  ->original_value()
+                  ->original_array({2}),
+              ::testing::Optional(::testing::Eq(OriginalArray{"p2"})));
+
+  ASSERT_NE(
+      new_while->while_condition()->parameter_instruction(0)->original_value(),
+      nullptr);
+  EXPECT_TRUE(
+      new_while->while_condition()
+          ->parameter_instruction(0)
+          ->original_value()
+          ->IsCompatibleWith(
+              new_while->while_condition()->parameter_instruction(0)->shape()));
+
+  ASSERT_NE(new_while->while_body()->root_instruction()->original_value(),
+            nullptr);
+  EXPECT_TRUE(new_while->while_body()
+                  ->root_instruction()
+                  ->original_value()
+                  ->IsCompatibleWith(
+                      new_while->while_body()->root_instruction()->shape()));
+
+  ASSERT_NE(result.replacement_instr->original_value(), nullptr);
+  EXPECT_TRUE(result.replacement_instr->original_value()->IsCompatibleWith(
+      result.replacement_instr->shape()));
+  ASSERT_EQ(result.while_body_live_in_values.size(), 1);
+  ASSERT_NE(result.while_body_live_in_values[0]->original_value(), nullptr);
+  EXPECT_THAT(
+      result.while_body_live_in_values[0]->original_value()->original_array({}),
+      ::testing::Optional(::testing::Eq(OriginalArray{"p2"})));
 }
 
 }  // namespace

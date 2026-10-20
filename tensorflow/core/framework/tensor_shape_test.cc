@@ -263,7 +263,7 @@ TEST(TensorShapeTest, InsertDimWithStatusWithTooManyDims) {
   }
   EXPECT_THAT(s.InsertDimWithStatus(1, 1),
               absl_testing::StatusIs(
-                  error::Code::INTERNAL,
+                  error::Code::INVALID_ARGUMENT,
                   ::testing::ContainsRegex(
                       "Shape has.*dimensions which is the maximum allowed")));
 }

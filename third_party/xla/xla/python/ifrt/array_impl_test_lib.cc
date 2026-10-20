@@ -838,6 +838,176 @@ TEST(ArrayImplTest, CopyArraysToHostBufferShardsReplicated) {
   EXPECT_THAT(out, ElementsAre(0, 1, 2, 3, 4, 5));
 }
 
+// Creates an `Array` of `shape` using `MakeArraysFromHostBufferShards` and
+// copies its addressable shards back to host buffers using
+// `CopyArraysToHostBufferShards`. Returns one output shard buffer per unique
+// index domain (each initialized to `-1.0f` prior to copying).
+absl::StatusOr<std::vector<std::vector<float>>> MakeAndCopyArrayToHost(
+    Client* client, Shape shape, ShardingRef sharding,
+    absl::Span<const std::vector<float>> addressable_shard_data) {
+  DType dtype(DType::kF32);
+  ABSL_ASSIGN_OR_RETURN(Shape shard_shape, sharding->GetShardShape(shape));
+
+  Client::MakeArraysFromHostBufferShardsSpec::Buffers make_buffers;
+  make_buffers.reserve(addressable_shard_data.size());
+  for (int i = 0; i < addressable_shard_data.size(); ++i) {
+    make_buffers.push_back(
+        {{i},
+         {addressable_shard_data[i].data(), dtype, shard_shape,
+          /*byte_strides=*/std::nullopt,
+          /*on_done_with_host_buffer=*/nullptr}});
+  }
+
+  std::vector<Client::MakeArraysFromHostBufferShardsSpec> make_specs;
+  make_specs.push_back({
+      /*buffers=*/std::move(make_buffers),
+      /*array_spec=*/{dtype, shape, std::move(sharding), /*layout=*/nullptr},
+  });
+
+  ABSL_ASSIGN_OR_RETURN(std::vector<ArrayRef> arrays,
+                   client->MakeArraysFromHostBufferShards(
+                       absl::MakeSpan(make_specs),
+                       Client::HostBufferSemantics::kImmutableOnlyDuringCall));
+  if (arrays.size() != 1) {
+    return absl::InternalError("Expected exactly 1 array.");
+  }
+
+  using UniqueIndexDomains =
+      absl::InlinedVector<Sharding::IndexDomainAndShardIndices, 1>;
+  ABSL_ASSIGN_OR_RETURN(
+      UniqueIndexDomains unique_index_domains,
+      arrays[0]->sharding().UniqueIndexDomains(arrays[0]->shape()));
+
+  std::vector<std::vector<float>> out_shards;
+  out_shards.reserve(unique_index_domains.size());
+  Client::CopyArraysToHostBufferShardsSpec::Buffers copy_buffers;
+  copy_buffers.reserve(unique_index_domains.size());
+  for (const auto& [index_domain, _] : unique_index_domains) {
+    out_shards.emplace_back(index_domain.shape().num_elements(), -1.0f);
+    copy_buffers.push_back({out_shards.back().data(), dtype,
+                            index_domain.shape(),
+                            /*byte_strides=*/std::nullopt});
+  }
+
+  std::vector<Client::CopyArraysToHostBufferShardsSpec> copy_specs;
+  copy_specs.push_back({
+      /*array=*/arrays[0],
+      /*buffers=*/std::move(copy_buffers),
+  });
+
+  ABSL_ASSIGN_OR_RETURN(
+      std::vector<tsl::Future<>> futures,
+      client->CopyArraysToHostBufferShards(absl::MakeSpan(copy_specs),
+                                           ArrayCopySemantics::kAlwaysCopy));
+  if (futures.size() != 1) {
+    return absl::InternalError("Expected exactly 1 future.");
+  }
+  ABSL_RETURN_IF_ERROR(futures[0].Await());
+  return out_shards;
+}
+
+TEST(ArrayImplTest,
+     CopyArraysToHostBufferShardsFullyReplicatedWithNonAddressableDevice) {
+  ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+
+  std::vector<Device*> non_addressable_devices =
+      GetNonAddressableDevices(client.get());
+  if (non_addressable_devices.empty()) {
+    GTEST_SKIP() << "Skipping test; needs at least 1 non-addressable device.";
+  }
+
+  Shape shape({2, 3});
+  std::vector<Device*> devices = {non_addressable_devices.at(0),
+                                  client->addressable_devices().at(0)};
+  ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
+                       client->MakeDeviceList(devices));
+  ShardingRef sharding =
+      ConcreteEvenSharding::Create(std::move(device_list), MemoryKind(), shape,
+                                   /*shard_shape=*/shape,
+                                   /*is_fully_replicated=*/true);
+
+  std::vector<float> data = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<std::vector<float>> out_shards,
+      MakeAndCopyArrayToHost(client.get(), shape, std::move(sharding), {data}));
+
+  ASSERT_THAT(out_shards, SizeIs(1));
+  EXPECT_THAT(out_shards[0], ElementsAre(0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f));
+}
+
+TEST(ArrayImplTest,
+     CopyArraysToHostBufferShardsFullyShardedWithNonAddressableDevice) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+
+  std::vector<Device*> non_addressable_devices =
+      GetNonAddressableDevices(client.get());
+  if (non_addressable_devices.empty()) {
+    GTEST_SKIP() << "Skipping test; needs at least 1 non-addressable device.";
+  }
+
+  Shape shape({2, 3});
+  Shape shard_shape({1, 3});
+  std::vector<Device*> devices = {non_addressable_devices.at(0),
+                                  client->addressable_devices().at(0)};
+  ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
+                       client->MakeDeviceList(devices));
+  ShardingRef sharding = ConcreteSharding::Create(
+      std::move(device_list), MemoryKind(), shape,
+      /*shard_shapes=*/{shard_shape},
+      /*index_domains=*/
+      std::vector<IndexDomain>{IndexDomain(Index({0, 0}), shard_shape),
+                               IndexDomain(Index({1, 0}), shard_shape)});
+
+  std::vector<float> data1 = {3.0f, 4.0f, 5.0f};
+  EXPECT_THAT(
+      MakeAndCopyArrayToHost(client.get(), shape, std::move(sharding), {data1}),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("has no addressable devices to fulfill host buffer")));
+}
+
+TEST(ArrayImplTest,
+     CopyArraysToHostBufferShardsPartiallyReplicatedWithNonAddressableDevice) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+
+  std::vector<Device*> non_addressable_devices =
+      GetNonAddressableDevices(client.get());
+  if (client->addressable_devices().size() < 2 ||
+      non_addressable_devices.size() < 2) {
+    GTEST_SKIP() << "Skipping test; needs at least 2 addressable and 2 "
+                    "non-addressable devices.";
+  }
+
+  // 2x1 tiling with replication factor 2 across 4 devices:
+  // Tile 0 replicas: devices[0] (non-addressable), devices[1] (addressable)
+  // Tile 1 replicas: devices[2] (non-addressable), devices[3] (addressable)
+  Shape shape({2, 3});
+  Shape shard_shape({1, 3});
+  std::vector<Device*> devices = {
+      non_addressable_devices.at(0), client->addressable_devices().at(0),
+      non_addressable_devices.at(1), client->addressable_devices().at(1)};
+  ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
+                       client->MakeDeviceList(devices));
+  ShardingRef sharding = ConcreteSharding::Create(
+      std::move(device_list), MemoryKind(), shape,
+      /*shard_shapes=*/{shard_shape, shard_shape},
+      /*index_domains=*/
+      std::vector<IndexDomain>{IndexDomain(Index({0, 0}), shard_shape),
+                               IndexDomain(Index({0, 0}), shard_shape),
+                               IndexDomain(Index({1, 0}), shard_shape),
+                               IndexDomain(Index({1, 0}), shard_shape)});
+
+  std::vector<float> data0 = {0.0f, 1.0f, 2.0f};
+  std::vector<float> data1 = {3.0f, 4.0f, 5.0f};
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<std::vector<float>> out_shards,
+      MakeAndCopyArrayToHost(client.get(), shape, std::move(sharding),
+                             {data0, data1}));
+
+  ASSERT_THAT(out_shards, SizeIs(2));
+  EXPECT_THAT(out_shards[0], ElementsAre(0.0f, 1.0f, 2.0f));
+  EXPECT_THAT(out_shards[1], ElementsAre(3.0f, 4.0f, 5.0f));
+}
+
 TEST(ArrayImplTest, MakeArraysFromHostBufferShardsWithDifferentDevices) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
   if (client->addressable_devices().size() < 2) {
@@ -1807,6 +1977,38 @@ TEST(ArrayImplTest, CopyMixedSourceDevices) {
                                MemoryKind(), ArrayCopySemantics::kAlwaysCopy)
                   .status(),
               StatusIs(absl::StatusCode::kInvalidArgument));
+
+  absl::StatusOr<std::vector<ArrayRef>> empty_copied =
+      client->CopyArraysWithDonatedDst({}, {}, ArrayCopySemantics::kAlwaysCopy);
+  if (!absl::IsUnimplemented(empty_copied.status())) {
+    EXPECT_THAT(empty_copied, IsOkAndHolds(SizeIs(0)));
+    EXPECT_THAT(
+        client->CopyArraysWithDonatedDst(absl::MakeSpan(arrays),
+                                         absl::MakeSpan(arrays).subspan(0, 1),
+                                         ArrayCopySemantics::kAlwaysCopy),
+        StatusIs(absl::StatusCode::kInvalidArgument));
+    EXPECT_THAT(
+        client->CopyArraysWithDonatedDst(absl::MakeSpan(arrays).subspan(0, 1),
+                                         absl::MakeSpan(arrays).subspan(1, 1),
+                                         ArrayCopySemantics::kReuseInput),
+        StatusIs(absl::StatusCode::kInvalidArgument));
+    EXPECT_THAT(
+        client->CopyArraysWithDonatedDst(absl::MakeSpan(arrays).subspan(0, 1),
+                                         absl::MakeSpan(arrays).subspan(0, 1),
+                                         ArrayCopySemantics::kAlwaysCopy),
+        StatusIs(absl::StatusCode::kInvalidArgument));
+    std::vector<ArrayRef> dup_dst = {arrays[1], arrays[1]};
+    EXPECT_THAT(client->CopyArraysWithDonatedDst(
+                    absl::MakeSpan(arrays).subspan(0, 2),
+                    absl::MakeSpan(dup_dst), ArrayCopySemantics::kAlwaysCopy),
+                StatusIs(absl::StatusCode::kInvalidArgument));
+    std::vector<ArrayRef> same_src = {arrays[0], arrays[0]};
+    std::vector<ArrayRef> mixed_dst = {arrays[0], arrays[1]};
+    EXPECT_THAT(client->CopyArraysWithDonatedDst(
+                    absl::MakeSpan(same_src), absl::MakeSpan(mixed_dst),
+                    ArrayCopySemantics::kAlwaysCopy),
+                StatusIs(absl::StatusCode::kInvalidArgument));
+  }
 }
 
 TEST(ArrayImplTest, CopyMixedSourceMemoryKind) {
@@ -2087,6 +2289,8 @@ TEST(ArrayImplTest, CopyArraysExhaustive) {
   Shape shape({2, 3});
   std::vector<float> data(6);
   absl::c_iota(data, 0);
+  std::vector<float> data2(6);
+  absl::c_iota(data2, 10);
 
   for (Memory* const src_memory : src_device->Memories()) {
     for (Device* const dst_device : client->addressable_devices()) {
@@ -2128,6 +2332,56 @@ TEST(ArrayImplTest, CopyArraysExhaustive) {
             ArrayCopySemantics::kAlwaysCopy);
         TF_ASSERT_OK(future.Await());
         EXPECT_THAT(out_data, ElementsAreArray(data));
+
+        ASSERT_OK_AND_ASSIGN(
+            ArrayRef array2,
+            client->MakeArrayFromHostBuffer(
+                data2.data(), dtype, shape,
+                /*byte_strides=*/std::nullopt, sharding,
+                /*layout=*/nullptr,
+                Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+                /*on_done_with_host_buffer=*/{}));
+        ASSERT_OK_AND_ASSIGN(DeviceListRef dst_device_list,
+                             client->MakeDeviceList({dst_device}));
+        ASSERT_OK_AND_ASSIGN(
+            std::vector<ArrayRef> copied2,
+            client->CopyArrays(absl::MakeSpan(&array, 1),
+                               std::move(dst_device_list), dst_memory->Kind(),
+                               ArrayCopySemantics::kAlwaysCopy));
+        std::vector<ArrayRef> src_batch = {array2, array};
+        std::vector<ArrayRef> dst_batch = {new_array, std::move(copied2[0])};
+        absl::StatusOr<std::vector<ArrayRef>> copied_with_donated_dst =
+            client->CopyArraysWithDonatedDst(absl::MakeSpan(src_batch),
+                                             absl::MakeSpan(dst_batch),
+                                             ArrayCopySemantics::kDonateInput);
+        if (!absl::IsUnimplemented(copied_with_donated_dst.status())) {
+          ASSERT_OK(copied_with_donated_dst.status());
+          EXPECT_TRUE(src_batch[0]->IsDeleted());
+          EXPECT_TRUE(src_batch[1]->IsDeleted());
+          EXPECT_TRUE(dst_batch[0]->IsDeleted());
+          EXPECT_TRUE(dst_batch[1]->IsDeleted());
+          ASSERT_THAT(*copied_with_donated_dst, SizeIs(2));
+          for (int i = 0; i < 2; ++i) {
+            ArrayRef donated_copy = std::move((*copied_with_donated_dst)[i]);
+            EXPECT_THAT(donated_copy->sharding().devices()->devices(),
+                        ElementsAre(dst_device));
+            EXPECT_EQ(donated_copy->sharding().memory_kind(),
+                      dst_memory->Kind());
+            ASSERT_OK(donated_copy
+                          ->CopyToHostBuffer(out_data.data(),
+                                             /*byte_strides=*/std::nullopt,
+                                             ArrayCopySemantics::kAlwaysCopy)
+                          .Await());
+            EXPECT_THAT(out_data, ElementsAreArray(i == 0 ? data2 : data));
+            if (i == 0) {
+              EXPECT_THAT(client->CopyArraysWithDonatedDst(
+                              absl::MakeSpan(&donated_copy, 1),
+                              absl::MakeSpan(&dst_batch[0], 1),
+                              ArrayCopySemantics::kAlwaysCopy),
+                          StatusIs(absl::StatusCode::kFailedPrecondition));
+            }
+          }
+        }
       }
     }
   }

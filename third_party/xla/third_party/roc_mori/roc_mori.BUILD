@@ -29,11 +29,13 @@ licenses(["notice"])  # MIT
 # ----------------------------------------------------------------------------
 # System-library shims required by MORI.
 #
-# These four libraries (libibverbs, libdrm/libdrm_amdgpu, libnuma, libpci) are
-# not bundled in hermetic ROCm (rocm_dist/lib/) — they live under /usr/lib on
-# Debian/Ubuntu (rdma-core, libdrm-dev, libnuma-dev, libpci-dev). Each shim is
-# a one-line cc_library with the appropriate -l linkopt; headers come from
-# the toolchain's default system include path.
+# Coverage differs per library:
+#   * libibverbs: NOT linked at all. MORI dlopen()s it at runtime (ibv_shim.cpp);
+#     this shim only carries the vendored @rdma_core headers.
+#   * libdrm/libdrm_amdgpu, libnuma: exposed as @local_config_rocm//rocm:{drm,
+#     drm_amdgpu,numa}. These resolve to the copies bundled by therock ROCm
+#     under rocm_dist/lib/rocm_sysdeps/lib, or to the host libraries (-ldrm,
+#     -ldrm_amdgpu, -lnuma) on classic ROCm installs without rocm_sysdeps.
 #
 # They are hosted here (not under xla/third_party/ as separate repos) because
 # right now only @roc_mori references them. If a future ROCm release bundles
@@ -42,39 +44,33 @@ licenses(["notice"])  # MIT
 # ----------------------------------------------------------------------------
 
 # libibverbs (rdma-core). Used by transport/rdma/ providers and shmem fabric.
-# Headers are vendored hermetically via @rdma_core (see //third_party/rdma_core);
-# the shared library itself is resolved at link time from the host (-libverbs),
-# which works because the hermetic ROCm toolchain links with CppLink=local.
-cc_library(
+# This shim carries the vendored headers only; libibverbs is resolved at runtime
+# via dlopen
+alias(
     name = "ibverbs",
-    linkopts = ["-libverbs"],
-    deps = ["@rdma_core//:verbs_headers"],
+    actual = "@rdma_core//:verbs_headers",
 )
 
 # libdrm + libdrm_amdgpu. Pulled in transitively by libhsakmt.a (amdgpu_*,
 # drmClose). Only listed by mori_application, since :hsakmt itself is a
 # static archive whose link-time deps must be resolved by the consumer.
+#
+# @local_config_rocm//rocm:{drm,drm_amdgpu,numa} resolve to the therock copies
+# under rocm_dist/lib/rocm_sysdeps/lib when present (hermetic dist or a local
+# therock /opt/rocm), and to the host -ldrm/-ldrm_amdgpu/-lnuma on classic ROCm,
+# whose libhsakmt.a was built against the host libraries.
 cc_library(
     name = "libdrm",
-    linkopts = [
-        "-ldrm",
-        "-ldrm_amdgpu",
+    deps = [
+        "@local_config_rocm//rocm:drm",
+        "@local_config_rocm//rocm:drm_amdgpu",
     ],
 )
 
 # libnuma. Pulled in transitively by libhsakmt.a (numa_*, mbind).
-cc_library(
+alias(
     name = "libnuma",
-    linkopts = ["-lnuma"],
-)
-
-# libpci (pciutils). Used by topology/pci.cpp (pci_alloc / pci_scan_bus /...).
-# Headers come from the ROCm CI image via @system_libpci (the hermetic sysroot
-# has none); libpci.so is linked from the image (-lpci, resolved CppLink=local).
-cc_library(
-    name = "libpci",
-    linkopts = ["-lpci"],
-    deps = ["@system_libpci//:pci_headers"],
+    actual = "@local_config_rocm//rocm:numa",
 )
 
 # Public shmem headers (everything under include/mori/shmem). Sources live

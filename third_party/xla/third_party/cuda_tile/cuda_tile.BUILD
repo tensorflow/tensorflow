@@ -157,6 +157,35 @@ gentbl_cc_library(
 )
 
 gentbl_cc_library(
+    name = "CudaTileAttrCodeGenIncGen",
+    tbl_outs = [
+        (
+            ["-gen-enum-attr-list"],
+            "include/cuda_tile/Dialect/CudaTile/IR/CudaTileEnumAttrs.inc",
+        ),
+        (
+            ["-gen-gpu-arch-def"],
+            "include/cuda_tile/Dialect/CudaTile/IR/GpuArchitectures.inc",
+        ),
+        (
+            ["-gen-gpu-arch-constants"],
+            "include/cuda_tile/Dialect/CudaTile/IR/GpuArchConstants.inc",
+        ),
+        (
+            ["-gen-hint-key-accessors"],
+            "include/cuda_tile/Dialect/CudaTile/IR/HintKeyAccessors.inc",
+        ),
+        (
+            ["-gen-hint-key-impl"],
+            "include/cuda_tile/Dialect/CudaTile/IR/HintKeyImpl.inc",
+        ),
+    ],
+    tblgen = ":cuda-tile-tblgen",
+    td_file = "include/cuda_tile/Dialect/CudaTile/IR/AttrDefs.td",
+    deps = [":CudaTileTdFiles"],
+)
+
+gentbl_cc_library(
     name = "CudaTileRemarksIncGen",
     tbl_outs = [
         (
@@ -219,12 +248,15 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":CudaTileAttrCodeGenIncGen",
         ":CudaTileAttrDefsIncGen",
         ":CudaTileDialectIncGen",
         ":CudaTileInterfacesIncGen",
         ":CudaTileOpsCanonicalizationIncGen",
         ":CudaTileOpsIncGen",
+        ":CudaTileRemarksIncGen",
         ":CudaTileTypesIncGen",
+        "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:BytecodeOpInterface",
@@ -276,6 +308,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SideEffectInterfaces",
         "@llvm-project//mlir:TransformUtils",
     ],
 )
@@ -363,7 +396,9 @@ cc_library(
         ":CudaTileBytecodeTypeIncGen",
         ":CudaTileDialect",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FunctionInterfaces",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TranslateLib",
     ],
 )

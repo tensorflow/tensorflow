@@ -302,6 +302,12 @@ class HloReachabilityMap {
     size_t words_;  // Number of bits in the set.
   };
 
+  // Allocates the matrix for `instructions`. Without `should_fill_with_zeros`
+  // the rows hold whatever the allocator returns and every row must be written
+  // before it is read; Build does that and skips a full pass over the matrix.
+  HloReachabilityMap(absl::Span<const HloInstruction* const> instructions,
+                     bool should_fill_with_zeros);
+
   BitSet BitSetFromIndex(Index i) const {
     const uint64_t block = i >> kRowsPerAllocationPowerLog2;
     const uint64_t row_within_block = i & (kRowsPerAllocation - 1);

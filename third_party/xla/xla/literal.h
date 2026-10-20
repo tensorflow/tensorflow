@@ -64,6 +64,7 @@ limitations under the License.
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/platform.h"
 
 namespace xla {
 
@@ -104,16 +105,21 @@ class LiteralBase {
   // ShapeIndex is not array. See primitive_util.h for the mapping from XLA type
   // to native type.
   template <typename NativeT>
-  absl::Span<const NativeT> data(const ShapeIndex& shape_index = {}) const;
+  absl::Span<const NativeT> data() const;
+  template <typename NativeT>
+  absl::Span<const NativeT> data(const ShapeIndex& shape_index) const;
 
   // Returns a const pointer to (or size of) the underlying buffer holding the
   // array at the given shape index. CHECKs if the subshape of the literal at
   // the given ShapeIndex is not array.
-  const void* untyped_data(const ShapeIndex& shape_index = {}) const;
-  int64_t size_bytes(const ShapeIndex& shape_index = {}) const;
+  const void* untyped_data() const;
+  const void* untyped_data(const ShapeIndex& shape_index) const;
+  int64_t size_bytes() const;
+  int64_t size_bytes(const ShapeIndex& shape_index) const;
   // total size in bytes of the literal (including pre-allocated dynamic
   // metadata)
-  int64_t total_size_bytes(const ShapeIndex& shape_index = {}) const;
+  int64_t total_size_bytes() const;
+  int64_t total_size_bytes(const ShapeIndex& shape_index) const;
 
   // Computes the size in bytes of the output of the Serialize method.
   // If `pack_pred` is true, PRED elements are bit-packed (8 elements per byte);
@@ -380,13 +386,8 @@ class LiteralBase {
 
   // Returns the count of the elements in the array at the given shape index in
   // this literal.
-  int64_t element_count(const ShapeIndex& index = {}) const {
-    if (index.empty()) {
-      // Common case, avoid GetSubshape().
-      return ShapeUtil::ElementsIn(shape());
-    }
-    return ShapeUtil::ElementsIn(ShapeUtil::GetSubshape(shape(), index));
-  }
+  int64_t element_count() const;
+  int64_t element_count(const ShapeIndex& index) const;
 
   // This definition is here to ensure that nobody accidentally implements this
   // function which would lead to inconsistencies. Use Hash instead.
@@ -634,10 +635,13 @@ class LiteralBase {
           primitive_util::NativeToPrimitiveType<NativeT>();
       constexpr int bits_per_element = primitive_util::BitWidth(primitive_type);
       if constexpr (bits_per_element < 8) {
+        static_assert(sizeof(NativeT) == 1);
+        const uint8_t* raw_bytes =
+            reinterpret_cast<const uint8_t*>(elements.data());
         if constexpr (primitive_type == PRED) {
           if (!pack_pred_) {
-            for (NativeT element : elements) {
-              WriteElement(element);
+            for (size_t i = 0; i < elements.size(); ++i) {
+              WriteElement(raw_bytes[i]);
             }
             return;
           }
@@ -650,8 +654,7 @@ class LiteralBase {
         for (int64_t i = 0; i < bytes; ++i) {
           uint8_t byte = 0;
           for (int b = 0; b < elements_per_byte; ++b) {
-            uint8_t src = Eigen::numext::bit_cast<uint8_t>(
-                              elements[i * elements_per_byte + b]) &
+            uint8_t src = raw_bytes[i * elements_per_byte + b] &
                           LsbMask<uint8_t>(bits_per_element);
             byte |= src << (b * bits_per_element);
           }
@@ -661,8 +664,7 @@ class LiteralBase {
         if (rest != 0) {
           uint8_t byte = 0;
           for (int64_t b = 0; b < rest; ++b) {
-            uint8_t src = Eigen::numext::bit_cast<uint8_t>(
-                              elements[bytes * elements_per_byte + b]) &
+            uint8_t src = raw_bytes[bytes * elements_per_byte + b] &
                           LsbMask<uint8_t>(bits_per_element);
             byte |= src << (b * bits_per_element);
           }
@@ -703,7 +705,7 @@ class LiteralBase {
     int64_t num_read() const { return num_read_; }
 
     template <typename NativeT>
-    ABSL_MUST_USE_RESULT bool ReadElement(NativeT& element) {
+    [[nodiscard]] bool ReadElement(NativeT& element) {
       constexpr PrimitiveType primitive_type =
           primitive_util::NativeToPrimitiveType<NativeT>();
       static_assert(primitive_util::StorageBitWidth(primitive_type) % 8 == 0);
@@ -750,15 +752,16 @@ class LiteralBase {
     }
 
     template <typename NativeT>
-    ABSL_MUST_USE_RESULT bool ReadElements(absl::Span<NativeT> elements) {
+    [[nodiscard]] bool ReadElements(absl::Span<NativeT> elements) {
       constexpr PrimitiveType primitive_type =
           primitive_util::NativeToPrimitiveType<NativeT>();
       constexpr int bits_per_element = primitive_util::BitWidth(primitive_type);
       if constexpr (bits_per_element < 8) {
         if constexpr (primitive_type == PRED) {
           if (!pack_pred_) {
-            for (NativeT& element : elements) {
-              if (!ReadElement(element)) {
+            uint8_t* raw_bytes = reinterpret_cast<uint8_t*>(elements.data());
+            for (size_t i = 0; i < elements.size(); ++i) {
+              if (!ReadElement(raw_bytes[i])) {
                 return false;
               }
             }
@@ -1307,7 +1310,9 @@ class MutableLiteralBase : public LiteralBase {
   // given ShapeIndex is not array. See primitive_util.h for the mapping from
   // XLA type to native type.
   template <typename NativeT>
-  absl::Span<NativeT> data(const ShapeIndex& shape_index = {});
+  absl::Span<NativeT> data();
+  template <typename NativeT>
+  absl::Span<NativeT> data(const ShapeIndex& shape_index);
   // Unhide const method from parent class.
   using LiteralBase::data;
 
@@ -1323,7 +1328,8 @@ class MutableLiteralBase : public LiteralBase {
   // Returns a pointer to the underlying buffer holding the array at the given
   // shape index. CHECKs if the subshape of the literal at the given ShapeIndex
   // is not array.
-  void* untyped_data(const ShapeIndex& shape_index = {});
+  void* untyped_data();
+  void* untyped_data(const ShapeIndex& shape_index);
   // Unhide const method from parent class.
   using LiteralBase::untyped_data;
 
@@ -1536,16 +1542,17 @@ class MutableLiteralBase : public LiteralBase {
   // Implementation details shared between Populate() and PopulateParallel().
   template <typename NativeT, typename Generator>
   absl::Status PopulateInternal(Generator&& generator, bool parallel);
-  void PopulateInplaceInternal(
+  absl::Status PopulateInplaceInternal(
       absl::FunctionRef<void(void*, absl::Span<const int64_t>, int)> populator,
-      bool parallel);
+      bool parallel, PrimitiveType element_type = PRIMITIVE_TYPE_INVALID);
 
   // Implementation details shared between PopulateLinear() and
   // PopulateLinearParallel().
   template <typename NativeT, typename Generator>
   absl::Status PopulateLinearInternal(Generator&& generator, bool parallel);
-  void PopulateLinearInplaceInternal(
-      absl::FunctionRef<void(void*, int64_t, int)> populator, bool parallel);
+  absl::Status PopulateLinearInplaceInternal(
+      absl::FunctionRef<void(void*, int64_t, int)> populator, bool parallel,
+      PrimitiveType element_type = PRIMITIVE_TYPE_INVALID);
 
   friend class LiteralBase;
   friend class MutableBorrowingLiteral;
@@ -1816,10 +1823,10 @@ absl::Status LiteralBase::SerializeWithShapeProto(const ShapeProto& shape_proto,
             subshape.element_type());
         return absl::OkStatus();
       }));
-#ifndef NDEBUG
-  ABSL_ASSIGN_OR_RETURN(int64_t expected_size, SerializedSize(pack_pred));
-  DCHECK_EQ(state.num_written(), expected_size) << shape().ToString();
-#endif
+  if constexpr (tsl::kIsDebugBuild) {
+    ABSL_ASSIGN_OR_RETURN(int64_t expected_size, SerializedSize(pack_pred));
+    DCHECK_EQ(state.num_written(), expected_size) << shape().ToString();
+  }
   return absl::OkStatus();
 }
 
@@ -1858,11 +1865,11 @@ absl::StatusOr<Literal> Literal::Deserialize(InputIterator begin,
             }
             return absl::OkStatus();
           }));
-#ifndef NDEBUG
-  ABSL_ASSIGN_OR_RETURN(int64_t expected_size,
-                   ShapeUtil::SerializedSize(shape, pack_pred));
-  DCHECK_EQ(state.num_read(), expected_size) << shape.ToString();
-#endif
+  if constexpr (tsl::kIsDebugBuild) {
+    ABSL_ASSIGN_OR_RETURN(int64_t expected_size,
+                     ShapeUtil::SerializedSize(shape, pack_pred));
+    DCHECK_EQ(state.num_read(), expected_size) << shape.ToString();
+  }
   if (!state.at_end()) {
     return InvalidArgument("Did not consume all input data");
   }
@@ -1927,25 +1934,37 @@ template <typename NativeT>
 NativeT LiteralBase::Piece::GetLinear(int64_t linear_index) const {
   DCHECK(subshape().IsArray())
       << __func__ << " is only supported for dense arrays: " << subshape();
-  DCHECK_LT(linear_index, element_count()) << "linear_index out of bounds";
-  if (subshape().element_type() == PRED) {
-    return static_cast<NativeT>(buffer()[linear_index] ? true : false);
+  DCHECK_LT(linear_index, data<NativeT>().size())
+      << "linear_index out of bounds";
+  if constexpr (std::is_same_v<NativeT, bool>) {
+    return buffer()[linear_index] != 0;
   }
-  return data<NativeT>().data()[linear_index];
+  return tsl::safe_reinterpret_cast<const NativeT*>(buffer())[linear_index];
 }
 
 template <typename NativeT>
 void LiteralBase::Piece::SetLinear(int64_t linear_index, NativeT value) {
   DCHECK(subshape().IsArray())
       << __func__ << " is only supported for dense arrays: " << subshape();
-  DCHECK_LT(linear_index, element_count()) << "linear_index out of bounds";
-  data<NativeT>().data()[linear_index] = value;
+  DCHECK_LT(linear_index, data<NativeT>().size())
+      << "linear_index out of bounds";
+  tsl::safe_reinterpret_cast<NativeT*>(buffer())[linear_index] = value;
+}
+
+template <typename NativeT>
+absl::Span<const NativeT> LiteralBase::data() const {
+  return root_piece().data<NativeT>();
 }
 
 template <typename NativeT>
 absl::Span<const NativeT> LiteralBase::data(
     const ShapeIndex& shape_index) const {
   return piece(shape_index).data<NativeT>();
+}
+
+template <typename NativeT>
+absl::Span<NativeT> MutableLiteralBase::data() {
+  return mutable_root_piece().data<NativeT>();
 }
 
 template <typename NativeT>
@@ -2172,28 +2191,16 @@ void MutableLiteralBase::PopulateR4FromArray4D(const Array4D<NativeT>& values) {
 template <typename NativeT, typename Generator>
 absl::Status MutableLiteralBase::PopulateInternal(Generator&& generator,
                                                   bool parallel) {
-  const Shape& this_shape = shape();
-  DCHECK(this_shape.IsArray());
-  TF_RET_CHECK(this_shape.element_type() ==
-               primitive_util::NativeToPrimitiveType<NativeT>())
-      << "Failing to populate literal with element type "
-      << primitive_util::LowercasePrimitiveTypeName(this_shape.element_type())
-      << " using data of type "
-      << primitive_util::LowercasePrimitiveTypeName(
-             primitive_util::NativeToPrimitiveType<NativeT>());
-  PopulateInplaceInternal(
+  return PopulateInplaceInternal(
       [&](void* dest, absl::Span<const int64_t> indices, int thread_id) {
         *static_cast<NativeT*>(dest) = generator(indices, thread_id);
       },
-      parallel);
-  return absl::OkStatus();
+      parallel, primitive_util::NativeToPrimitiveType<NativeT>());
 }
 
 template <typename NativeT, typename Generator,
           MutableLiteralBase::IsGenerator<NativeT, Generator>*>
 absl::Status MutableLiteralBase::Populate(Generator&& generator) {
-  TF_RET_CHECK(shape().IsArray())
-      << __func__ << " is only supported for dense arrays: " << shape();
   return PopulateInternal<NativeT>(
       [&](absl::Span<const int64_t> indexes, int /*thread_id*/) {
         return generator(indexes);
@@ -2203,37 +2210,23 @@ absl::Status MutableLiteralBase::Populate(Generator&& generator) {
 template <typename NativeT, typename Generator,
           MutableLiteralBase::IsParallelGenerator<NativeT, Generator>*>
 absl::Status MutableLiteralBase::PopulateParallel(Generator&& generator) {
-  TF_RET_CHECK(shape().IsArray())
-      << __func__ << " is only supported for dense arrays: " << shape();
-  return PopulateInternal<NativeT>(generator,
-                                   /*parallel=*/data<NativeT>().size() > 32);
+  return PopulateInternal<NativeT>(std::forward<Generator>(generator),
+                                   /*parallel=*/true);
 }
 
 template <typename NativeT, typename Generator>
 absl::Status MutableLiteralBase::PopulateLinearInternal(Generator&& generator,
                                                         bool parallel) {
-  const Shape& this_shape = shape();
-  DCHECK(this_shape.IsArray());
-  TF_RET_CHECK(this_shape.element_type() ==
-               primitive_util::NativeToPrimitiveType<NativeT>())
-      << "Failing to populate literal with element type "
-      << primitive_util::LowercasePrimitiveTypeName(this_shape.element_type())
-      << " using data of type "
-      << primitive_util::LowercasePrimitiveTypeName(
-             primitive_util::NativeToPrimitiveType<NativeT>());
-  PopulateLinearInplaceInternal(
+  return PopulateLinearInplaceInternal(
       [&](void* dest, int64_t linear_index, int thread_id) {
         *static_cast<NativeT*>(dest) = generator(linear_index, thread_id);
       },
-      parallel);
-  return absl::OkStatus();
+      parallel, primitive_util::NativeToPrimitiveType<NativeT>());
 }
 
 template <typename NativeT, typename Generator,
           MutableLiteralBase::IsLinearGenerator<NativeT, Generator>*>
 absl::Status MutableLiteralBase::PopulateLinear(Generator&& generator) {
-  TF_RET_CHECK(shape().IsArray())
-      << __func__ << " is only supported for dense arrays: " << shape();
   return PopulateLinearInternal<NativeT>(
       [&](int64_t linear_index, int /*thread_id*/) {
         return generator(linear_index);
@@ -2243,57 +2236,42 @@ absl::Status MutableLiteralBase::PopulateLinear(Generator&& generator) {
 template <typename NativeT, typename Generator,
           MutableLiteralBase::IsLinearParallelGenerator<NativeT, Generator>*>
 absl::Status MutableLiteralBase::PopulateLinearParallel(Generator&& generator) {
-  TF_RET_CHECK(shape().IsArray())
-      << __func__ << " is only supported for dense arrays: " << shape();
-  return PopulateLinearInternal<NativeT>(
-      std::forward<Generator>(generator),
-      /*parallel=*/data<NativeT>().size() > 32);
+  return PopulateLinearInternal<NativeT>(std::forward<Generator>(generator),
+                                         /*parallel=*/true);
 }
 
 template <typename Populator, MutableLiteralBase::IsPopulator<Populator>*>
 absl::Status MutableLiteralBase::PopulateInplace(Populator&& populator) {
-  TF_RET_CHECK(shape().IsArray())
-      << __func__ << " is only supported for dense arrays: " << shape();
-  PopulateInplaceInternal(
+  return PopulateInplaceInternal(
       [&](void* dest, absl::Span<const int64_t> indexes, int /*thread_id*/) {
         return populator(dest, indexes);
       },
       /*parallel=*/false);
-  return absl::OkStatus();
 }
 
 template <typename Populator,
           MutableLiteralBase::IsParallelPopulator<Populator>*>
 absl::Status MutableLiteralBase::PopulateInplaceParallel(
     Populator&& populator) {
-  TF_RET_CHECK(shape().IsArray())
-      << __func__ << " is only supported for dense arrays: " << shape();
-  PopulateInplaceInternal(std::forward<Populator>(populator),
-                          /*parallel=*/element_count() > 32);
-  return absl::OkStatus();
+  return PopulateInplaceInternal(std::forward<Populator>(populator),
+                                 /*parallel=*/true);
 }
 
 template <typename Populator, MutableLiteralBase::IsLinearPopulator<Populator>*>
 absl::Status MutableLiteralBase::PopulateLinearInplace(Populator&& populator) {
-  TF_RET_CHECK(shape().IsArray())
-      << __func__ << " is only supported for dense arrays: " << shape();
-  PopulateLinearInplaceInternal(
+  return PopulateLinearInplaceInternal(
       [&](void* dest, int64_t linear_index, int /*thread_id*/) {
         return populator(dest, linear_index);
       },
       /*parallel=*/false);
-  return absl::OkStatus();
 }
 
 template <typename Populator,
           MutableLiteralBase::IsLinearParallelPopulator<Populator>*>
 absl::Status MutableLiteralBase::PopulateLinearInplaceParallel(
     Populator&& populator) {
-  TF_RET_CHECK(shape().IsArray())
-      << __func__ << " is only supported for dense arrays: " << shape();
-  PopulateLinearInplaceInternal(std::forward<Populator>(populator),
-                                /*parallel=*/element_count() > 32);
-  return absl::OkStatus();
+  return PopulateLinearInplaceInternal(std::forward<Populator>(populator),
+                                       /*parallel=*/true);
 }
 
 template <typename NativeT>

@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ExecutionEngine/JITEventListener.h"
+#include "llvm/ExecutionEngine/JITLink/JITLinkMemoryManager.h"
 #include "llvm/ExecutionEngine/Orc/CompileUtils.h"
 #include "llvm/ExecutionEngine/Orc/Core.h"
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
@@ -98,6 +99,10 @@ JitRunner::JitRunner(std::unique_ptr<llvm::Module> module,
         llvm::Twine(llvm::toString(jit_or_err.takeError())));
   }
   jit_ = std::move(jit_or_err.get());
+  // Match what production XLA:CPU codegen does as the last step of
+  // `IrCompiler::RunIrPasses`, so that accuracy tests measure the contracted
+  // (FMA-fused) code that actually ships rather than an unfused variant.
+  llvm_ir::SetAllowContractOnFpArithmetic(*module);
   llvm::orc::ThreadSafeModule tsm(std::move(module), *tsc_);
   llvm::ExitOnError exit_on_err;
   exit_on_err(jit_->addIRModule(std::move(tsm)));

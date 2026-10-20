@@ -192,9 +192,13 @@ FindAccumulatorInputPairs(const HloDataflowAnalysis& dataflow_analysis,
     // dynamic-slice.
     HloInstruction* gte_user = input_gte_inner->users().at(0);
     VLOG(3) << "User of the inner loop input = " << gte_user->ToString();
-    if (MatchShapeCoveringDynamicIndexInstruction(
-            gte_user, input_gte_inner, HloOpcode::kDynamicSlice, config)
-            .has_value()) {
+    std::optional<int64_t> slice_dim =
+        MatchShapeCoveringDynamicIndexInstruction(
+            gte_user, input_gte_inner, HloOpcode::kDynamicSlice, config);
+    std::optional<int64_t> update_dim =
+        MatchShapeCoveringDynamicIndexInstruction(
+            acc->users().at(0), acc, HloOpcode::kDynamicUpdateSlice, config);
+    if (slice_dim.has_value() && slice_dim == update_dim) {
       acc_input_pairs.emplace_back(acc, input_gte_inner);
     }
   }
@@ -257,7 +261,10 @@ absl::StatusOr<bool> ScanLoopAccumulatorInputUnification::RunImpl(
   XLA_VLOG_LINES(2, module->ToString());
 
   ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloDataflowAnalysis> dataflow_analysis,
-                   HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
+                   HloDataflowAnalysis::Run(*module, /*ssa_form=*/true,
+                                            /*bitcast_defines_value=*/false,
+                                            /*execution_threads=*/{},
+                                            /*propagate_through_calls=*/false));
 
   // This pass can only be applied to unrollable loops since we need to find the
   // accumulators and inputs that are by definition updated and read fully via

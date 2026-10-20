@@ -145,12 +145,12 @@ class DInputs {
 
   std::byte* ptr(size_t i, size_t offset) const {
     DCHECK_LT(i, n_) << "Input index out of bounds";
-    auto& [ptr, primitive_size] = ptrs_and_primitive_sizes_.data()[i];
+    auto& [ptr, primitive_size] = ptrs_and_primitive_sizes_[i];
     return ptr + offset * primitive_size;
   }
 
   size_t primitive_size(size_t i) const {
-    return ptrs_and_primitive_sizes_.data()[i].second;
+    return ptrs_and_primitive_sizes_[i].second;
   }
 
  private:
@@ -300,7 +300,7 @@ ABSL_ATTRIBUTE_ALWAYS_INLINE void Value<n>::FillComparedValues(
 
 ABSL_ATTRIBUTE_ALWAYS_INLINE DValue::DValue(const DRef& ref) : values(ref.n()) {
   for (size_t i = 0, end = ref.n(); i < end; ++i) {
-    Memcpy(values.data()[i].data(), ref.ptr(i), ref.primitive_size(i));
+    Memcpy(values[i].data(), ref.ptr(i), ref.primitive_size(i));
   }
 }
 
@@ -316,7 +316,7 @@ ABSL_ATTRIBUTE_ALWAYS_INLINE void DValue::FillComparedValues(
 template <size_t n>
 ABSL_ATTRIBUTE_ALWAYS_INLINE Ref<n>& Ref<n>::operator=(const Value<n>& value) {
   for (size_t i = 0; i < n; ++i) {
-    Memcpy(ptr(i), value.values.data()[i].data(), primitive_size(i));
+    Memcpy(ptr(i), value.values[i].data(), primitive_size(i));
   }
   return *this;
 }
@@ -341,7 +341,7 @@ ABSL_ATTRIBUTE_ALWAYS_INLINE void Ref<n>::FillComparedValues(
 
 ABSL_ATTRIBUTE_ALWAYS_INLINE DRef& DRef::operator=(const DValue& value) {
   for (size_t i = 0, end = n(); i < end; ++i) {
-    Memcpy(ptr(i), value.values.data()[i].data(), primitive_size(i));
+    Memcpy(ptr(i), value.values[i].data(), primitive_size(i));
   }
   return *this;
 }

@@ -189,8 +189,9 @@ class ParameterizedBenchmark(_BenchmarkRegistrar):
         params = param_config[1:]
         benchmark_name = name + "__" + test_name_suffix
         if benchmark_name in attrs:
-          raise Exception(
-              "Benchmark named {} already defined.".format(benchmark_name))
+          raise ValueError(
+              "Benchmark named {} already defined.".format(benchmark_name)
+          )
 
         benchmark = create_benchmark_function(original_benchmark, params)
         # Renaming is important because `report_benchmark` function looks up the
@@ -397,7 +398,7 @@ class TensorFlowBenchmark(Benchmark):
         "wall_time": median_delta,
         "extras": extras,
         "name": name,
-        "throughput": mbs / median_delta
+        "throughput": mbs / median_delta if median_delta > 0 else 0.0,
     }
     self.report_benchmark(**benchmark_values)
 
@@ -483,7 +484,7 @@ def benchmarks_main(true_main, argv=None):
     # Remove --benchmark_filter arg from sys.argv
     argv.remove(found_arg[0])
 
-    regex = found_arg[0].split("=")[1]
+    regex = found_arg[0].split("=", 1)[1]
     app.run(lambda _: _run_benchmarks(regex), argv=argv)
   else:
     true_main()

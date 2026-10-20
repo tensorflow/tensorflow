@@ -221,8 +221,8 @@ void NeonPackInner(const int8_t* src, uint8_t* box, int src_rows, int src_cols,
   int real_col = col / 2;
   const int8_t* src_data = src + row * real_src_cols + real_col;
   int real_src_depth = src_depth / 2;
-  const int8x16_t seven = vdupq_n_s8(7);
-  const int8x8_t seven8 = vdup_n_s8(7);
+  const int8x16_t zero_point_offset = vdupq_n_s8(-zero_point_4bit);
+  const int8x8_t zero_point_offset8 = vdup_n_s8(-zero_point_4bit);
   for (int m = 0; m < src_width; ++m) {
     int i = 0;
     int k = 0;
@@ -230,9 +230,9 @@ void NeonPackInner(const int8_t* src, uint8_t* box, int src_rows, int src_cols,
       int8x16_t values_16x8 = vld1q_s8(src_data + i);
       int8x16_t uv1 = vshrq_n_s8(values_16x8, 4);
       int8x16_t lv1 = vshlq_n_s8(values_16x8, 4);
-      uv1 = vaddq_s8(uv1, seven);
+      uv1 = vaddq_s8(uv1, zero_point_offset);
       lv1 = vshrq_n_s8(lv1, 4);
-      lv1 = vaddq_s8(lv1, seven);
+      lv1 = vaddq_s8(lv1, zero_point_offset);
       int8x8_t iuvl = vget_low_s8(uv1);
       int8x8_t iuvh = vget_high_s8(uv1);
       int8x8_t ilvl = vget_low_s8(lv1);
@@ -252,9 +252,9 @@ void NeonPackInner(const int8_t* src, uint8_t* box, int src_rows, int src_cols,
         int8x8_t values_8x8 = vld1_s8(src_data + i);
         int8x8_t uv1 = vshr_n_s8(values_8x8, 4);
         int8x8_t lv1 = vshl_n_s8(values_8x8, 4);
-        uv1 = vadd_s8(uv1, seven8);
+        uv1 = vadd_s8(uv1, zero_point_offset8);
         lv1 = vshr_n_s8(lv1, 4);
-        lv1 = vadd_s8(lv1, seven8);
+        lv1 = vadd_s8(lv1, zero_point_offset8);
         uint8x8_t uvl = vshl_n_u8(vreinterpret_u8_s8(uv1), 4);
         uint8x8_t lvl = vshl_n_u8(vreinterpret_u8_s8(lv1), 4);
         uint8x8x2_t zipped = vzip_u8(lvl, uvl);
@@ -295,7 +295,9 @@ void NeonPrepack(uint8_t* dest, const int8_t* tensor, int layout_rows,
                  int depth) {
   // depth is always cols
   size_t size = layout_rows * layout_cols / 2;
-  memset(dest, static_cast<uint8_t>(119), sizeof(uint8_t) * size);
+  memset(dest,
+         static_cast<uint8_t>((-zero_point_4bit << 4) | (-zero_point_4bit)),
+         sizeof(uint8_t) * size);
   // basically, we need to make a new 4D matrix
   // [rows / width, cols / depth, width, depth] in depth-first
   int outer_cols = layout_cols / depth;

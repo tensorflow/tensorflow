@@ -121,6 +121,10 @@ tf_module {
     argspec: "args=[\'image\', \'format\', \'quality\', \'progressive\', \'optimize_size\', \'chroma_downsampling\', \'density_unit\', \'x_density\', \'y_density\', \'xmp_metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'95\', \'False\', \'False\', \'True\', \'in\', \'300\', \'300\', \'\', \'None\'], "
   }
   member_method {
+    name: "encode_jxl"
+    argspec: "args=[\'image\', \'quality\', \'effort\', \'name\'], varargs=None, keywords=None, defaults=[\'95.0\', \'7\', \'None\'], "
+  }
+  member_method {
     name: "encode_png"
     argspec: "args=[\'image\', \'compression\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'None\'], "
   }

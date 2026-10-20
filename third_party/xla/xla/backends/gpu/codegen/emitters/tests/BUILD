@@ -41,7 +41,7 @@ lit_test_suite(
     default_tags = tf_cuda_tests_tags(),
     exec_properties = tf_exec_properties({"tags": tf_cuda_tests_tags()}),
     tools = [
-        "//xla/backends/gpu/codegen/tools:fusion_to_mlir",
+        "//xla/backends/gpu/codegen/tools:gpu_fusion_to_mlir",
         "//xla/backends/gpu/codegen/tools:gpu_test_correctness",
         "//xla/codegen/tools:emitters_opt",
         "@llvm-project//llvm:FileCheck",
@@ -54,7 +54,7 @@ lit_test_suite(
     cfg = "//xla:lit.cfg.py",
     default_tags = ["gpu"],
     tools = [
-        "//xla/backends/gpu/codegen/tools:fusion_to_mlir",
+        "//xla/backends/gpu/codegen/tools:gpu_fusion_to_mlir",
         "//xla/codegen/tools:emitters_opt",
         "@llvm-project//llvm:FileCheck",
     ],

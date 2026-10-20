@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/target_config/target_config.h"
+#include "xla/backends/gpu/transforms/block_scaling_rewriter.h"
 #include "xla/backends/gpu/transforms/cudnn_fusion_compiler.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -148,9 +149,18 @@ bool IsSupportedCudnnFusion(const HloInstruction& instr,
   }
 
   if (hero->opcode() == HloOpcode::kConvolution ||
-      hero->opcode() == HloOpcode::kRaggedDot ||
-      hero->opcode() == HloOpcode::kScaledDot) {
+      hero->opcode() == HloOpcode::kRaggedDot) {
     return true;
+  }
+
+  if (hero->opcode() == HloOpcode::kScaledDot) {
+    return target_config.device_description.cuda_compute_capability()
+               .IsAtLeastBlackwell() &&
+           se::dnn::VersionInfo(
+               target_config.device_description.dnn_version()) >=
+               kCudnnSupportsBlockScaledDot &&
+           CudnnScaledDotHelper::IsSupported(
+               Cast<HloScaledDotInstruction>(hero));
   }
 
   if (hero->shape().element_type() == PrimitiveType::F64) {
@@ -269,11 +279,6 @@ GetCudnnFusionConfigs(const HloInstruction& instr,
       break;
   }
   if (use_deviceless) {
-    if (target_config.device_description.dnn_version() <
-        se::SemanticVersion(9, 8, 0)) {
-      return absl::FailedPreconditionError(
-          "Deviceless cuDNN compilation requires cuDNN >= 9.8.");
-    }
     stream_executor = nullptr;
   } else if (stream_executor == nullptr) {
     return absl::InvalidArgumentError(
@@ -349,13 +354,22 @@ GetConvolutionCustomCallConfigs(const HloCustomCallInstruction* instr,
 
 absl::Status ApplyConfigToCudnnFusion(HloInstruction& instr,
                                       const CudnnBackendConfig& config) {
+  HloInstruction* fusion_instr = &instr;
+  auto* fusion = Cast<HloFusionInstruction>(&instr);
+  if (hlo_query::GetFirstInstructionWithOpcode(
+          *fusion->fused_instructions_computation(), HloOpcode::kScaledDot) !=
+      nullptr) {
+    ABSL_ASSIGN_OR_RETURN(fusion_instr,
+                     CudnnScaledDotHelper::AddScaleSwizzle(fusion));
+  }
   ABSL_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
-                   instr.backend_config<GpuBackendConfig>());
+                   fusion_instr->backend_config<GpuBackendConfig>());
   FusionBackendConfig* backend_config =
       gpu_config.mutable_fusion_backend_config();
   backend_config->set_kind(kCuDnnFusionKind);
   backend_config->mutable_cudnn_fusion_config()->set_plan_id(config.algo_id());
-  ABSL_RETURN_IF_ERROR(instr.set_backend_config(std::move(gpu_config)));
+  ABSL_RETURN_IF_ERROR(fusion_instr->set_backend_config(std::move(gpu_config)));
+  fusion_instr->set_fusion_kind(HloInstruction::FusionKind::kCustom);
   return absl::OkStatus();
 }
 

@@ -92,6 +92,11 @@ class IndexDomain {
     return *this;
   }
 
+  // Returns the intersection of this `IndexDomain` with `other`. Returns an
+  // `IndexDomain` with zero-sized shape and zero origin if the two domains do
+  // not overlap.
+  absl::StatusOr<IndexDomain> Intersect(const IndexDomain& other) const;
+
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const IndexDomain& index_domain) {
     sink.Append(absl::StrCat("IndexDomain(origin=", index_domain.origin_,

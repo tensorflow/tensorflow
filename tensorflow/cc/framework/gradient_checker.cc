@@ -69,14 +69,14 @@ SET_BASE_UNITS_FOR_TYPE(complex128, ({{1, 0}, {0, 1}}));
 // When T is complex, it assigns the real and complex values to successive rows
 // or columns in the matrix depending on the expand_by_row parameter
 template <typename T, typename JAC_T>
-typename std::enable_if<std::is_floating_point<T>::value>::type SetJacobian(
+std::enable_if_t<std::is_floating_point_v<T>> SetJacobian(
     typename TTypes<JAC_T>::Matrix* jacobian, const int row, const int col,
     const T& value, const bool expand_by_row) {
   (*jacobian)(row, col) = JAC_T{value};
 }
 
 template <typename T, typename JAC_T>
-typename std::enable_if<is_complex<T>::value>::type SetJacobian(
+std::enable_if_t<is_complex<T>::value> SetJacobian(
     typename TTypes<JAC_T>::Matrix* jacobian, const int row, const int col,
     const T& value, const bool expand_by_row) {
   (*jacobian)(row, col) = JAC_T{value.real()};

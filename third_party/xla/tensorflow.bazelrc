@@ -81,13 +81,9 @@ common --@rules_python//python/config_settings:bootstrap_impl=script --repo_env=
 
 common --incompatible_default_to_explicit_init_py
 
-# Use a downloader config to mirror GitHub and Python package downloads.
+# Use a downloader config to mirror GitHub, Python package, and BCR downloads.
 # We use the experimental_ name for better compatibility with different Bazel versions.
-build --experimental_downloader_config=bazel_downloader.cfg
-test --experimental_downloader_config=bazel_downloader.cfg
-fetch --experimental_downloader_config=bazel_downloader.cfg
-sync --experimental_downloader_config=bazel_downloader.cfg
-query --experimental_downloader_config=bazel_downloader.cfg
+common --experimental_downloader_config=bazel_downloader.cfg
 
 # For local build, without dependency on rbe
 common:linux_cpu --config=avx_linux
@@ -142,6 +138,13 @@ common --incompatible_enforce_config_setting_visibility
 # TODO: also enable this flag after fixing the visibility violations
 # common --incompatible_config_setting_private_default_visibility
 
+# external_include_paths feature forces passing external repositories headers
+# via -isystem alters how Clang resolves their file paths. This feature with
+# old versions of rules_cc triggering errors.
+# Following lines can be removed after rules_cc will be updated to >= 0.2.22
+common --features=-external_include_paths
+common --host_features=-external_include_paths
+
 # Print a stacktrace when a test is killed
 build --test_env="GTEST_INSTALL_FAILURE_SIGNAL_HANDLER=1"
 
@@ -180,10 +183,16 @@ common:monolithic --experimental_link_static_libraries_once=false  # b/229868128
 # Config setting to build oneDNN with Compute Library for the Arm Architecture (ACL).
 # with Eigen threadpool support
 common:mkl_aarch64_threadpool --define=build_with_mkl_aarch64=true
+common:mkl_aarch64_threadpool --@compute_library//:openmp=false
 common:mkl_aarch64_threadpool -c opt
 
 # This is an alias for the mkl_aarch64_threadpool build.
 common:mkl_aarch64 --config=mkl_aarch64_threadpool
+
+# Config setting to build oneDNN with async runtime support on AArch64.
+common:onednn_async_aarch64 --define=build_with_onednn_async=true
+common:onednn_async_aarch64 --define=ynn_enable_arm64_neonfp8=false
+common:onednn_async_aarch64 -c opt
 
 # Default CUDA, CUDNN, NCCL and NVSHMEM versions.
 common:cuda_version --repo_env=HERMETIC_CUDA_VERSION="13.2.0"
@@ -293,8 +302,8 @@ common:rocm_clang_hermetic --@rules_ml_toolchain//common:enable_cuda=False
 common:rocm_clang_hermetic --@rules_ml_toolchain//common:enable_sycl=False
 common:rocm_clang_hermetic --@rules_ml_toolchain//common:enable_hermetic_cc=True
 common:rocm_clang_hermetic --@local_config_rocm//rocm:rocm_path_type=hermetic
-common:rocm_clang_hermetic --strategy=CppLink=local
 common:rocm_clang_hermetic --@rules_ml_toolchain//common:static_libcxx=False
+common:rocm_clang_hermetic --strategy=CppLink=local
 
 common:rocm --config=rocm_clang_hermetic
 common:rocm_ci --config=rocm
@@ -302,9 +311,9 @@ common:rocm_ci --@local_config_rocm//rocm:rocm_path_type=hermetic
 
 common:rocm_ci_hermetic --dynamic_mode=fully
 common:rocm_ci_hermetic --@rules_ml_toolchain//common:enable_xla_test_global_symbol_version=True
+common:rocm_ci_hermetic --@rules_ml_toolchain//common:enable_hermetic_libraries=True
 common:rocm_ci_hermetic --config=rocm_clang_hermetic
-common:rocm_ci_hermetic --repo_env=TF_ROCM_AMDGPU_TARGETS="gfx908,gfx90a"
-common:rocm_ci_hermetic --repo_env=ROCM_DISTRO_VERSION="rocm_7.13.0_gfx90a"
+common:rocm_ci_hermetic --repo_env=TF_ROCM_AMDGPU_TARGETS="gfx908,gfx90a,gfx950"
 common:rocm_ci_hermetic --repo_env=SYSROOT_DIST=linux_glibc_2_31
 common:rocm_ci_hermetic --@local_config_rocm//rocm:rocm_path_type=hermetic
 
@@ -583,6 +592,7 @@ common:rbe_win_base --nobuild_runfile_links
 common:rbe_win_base --define=override_eigen_strong_inline=true
 
 common:rbe_windows_x86_cpu_2022 --config=rbe_win_base --config=windows_x86_cpu_2022
+common:rbe_windows_x86_cpu_2022 --features=-with_wrapper
 
 # Override the remote instance and BES instance names to use the new RBE pools
 common:rbe_windows_x86_cpu_2022 --remote_instance_name=projects/ml-oss-rbe-general/instances/default_instance

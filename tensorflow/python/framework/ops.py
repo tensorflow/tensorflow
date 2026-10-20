@@ -76,6 +76,7 @@ from tensorflow.python.util import decorator_utils
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import lock_util
+from tensorflow.python.util import numpy_compat
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_stack
@@ -422,11 +423,7 @@ class _EagerTensorBase(
       raise core._status_to_exception(e) from None
 
   def __array__(self, dtype=None) -> np.ndarray:
-    a = self._numpy()
-    if not dtype:
-      return cast(np.ndarray, a)
-
-    return np.array(a, dtype=dtype)
+    return numpy_compat.np_asarray(self._numpy(), dtype=dtype)
 
   def __dlpack__(
       self, *, stream=None, max_version=None, dl_device=None, copy=None  # pylint: disable=redefined-outer-name
@@ -1072,6 +1069,11 @@ _VALID_OP_NAME_REGEX: Pattern[str] = re.compile(
     r"^[A-Za-z0-9.][A-Za-z0-9_.\\/>-]*$")
 _VALID_SCOPE_NAME_REGEX: Pattern[str] = re.compile(
     r"^[A-Za-z0-9_.\\/>-]*$")
+# Eager scope names are also built from tensor names, which carry an output
+# index (e.g. "video:0_accumulators"), so a colon is additionally allowed.
+_VALID_EAGER_SCOPE_NAME_REGEX: Pattern[str] = re.compile(
+    r"^[A-Za-z0-9_.:\\/>-]*$"
+)
 
 
 @tf_export("__internal__.create_c_op", v1=[])
@@ -5860,6 +5862,13 @@ class name_scope_v2(contextlib.AbstractContextManager[str]):
       # This also prevents auto-incrementing.
       old_name = ctx.scope_name
       name = self._name
+      if name and not _VALID_EAGER_SCOPE_NAME_REGEX.match(name):
+        raise ValueError(
+            f"'{name}' is not a valid scope name. A scope name has to "
+            "match the following pattern: "
+            f"{_VALID_EAGER_SCOPE_NAME_REGEX.pattern}"
+        )
+
       if not name:
         scope_name = ""
       elif name[-1] == "/":

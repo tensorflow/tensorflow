@@ -30,7 +30,7 @@ namespace {
 class CrashOnErrorCollector
     : public tensorflow::protobuf::compiler::MultiFileErrorCollector {
  public:
-  ~CrashOnErrorCollector() override {}
+  ~CrashOnErrorCollector() override = default;
 
   void RecordError(absl::string_view filename, int line, int column,
                    absl::string_view message) override {

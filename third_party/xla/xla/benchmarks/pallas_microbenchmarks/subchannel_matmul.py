@@ -19,8 +19,10 @@ from absl import flags
 from absl import logging
 import immutabledict
 from jax.experimental.pallas import tpu as pltpu
+import jax.numpy as jnp
 
 from xla.benchmarks.core import benchmark
+from xla.benchmarks.core import platform_info
 from xla.benchmarks.pallas_microbenchmarks import subchannel_matmul_lib
 
 immutabledict = immutabledict.immutabledict
@@ -111,7 +113,12 @@ def main(_):
   lhs_dtype = benchmark.str_to_dtype(_FMT.value[0])
   rhs_dtype = benchmark.str_to_dtype(_FMT.value[1])
   out_dtype = benchmark.str_to_dtype(_FMT.value[2])
-  acc_dtype = benchmark.str_to_dtype(_ACC_DTYPE.value)
+  pinfo = platform_info.get_platform_info()
+  if jnp.issubdtype(lhs_dtype, jnp.integer) and pinfo.generation < 8:
+    inner_acc_dtype = jnp.int32
+  else:
+    inner_acc_dtype = jnp.float32
+  outer_acc_dtype = benchmark.str_to_dtype(_ACC_DTYPE.value)
 
   lhs_quantized_dtype = benchmark.str_to_dtype(_LHS_QUANTIZED_DTYPE.value)
   rhs_quantized_dtype = benchmark.str_to_dtype(_RHS_QUANTIZED_DTYPE.value)
@@ -149,7 +156,7 @@ def main(_):
         lhs_dtype=lhs_dtype,
         rhs_dtype=rhs_dtype,
         out_dtype=out_dtype,
-        acc_dtype=acc_dtype,
+        outer_acc_dtype=outer_acc_dtype,
         lhs_quantized_dtype=lhs_quantized_dtype,
         rhs_quantized_dtype=rhs_quantized_dtype,
         pre_quantize_lhs=pre_quantize_lhs,
@@ -185,7 +192,8 @@ def main(_):
       lhs_dtype=lhs_dtype,
       rhs_dtype=rhs_dtype,
       out_dtype=out_dtype,
-      acc_dtype=acc_dtype,
+      inner_acc_dtype=inner_acc_dtype,
+      outer_acc_dtype=outer_acc_dtype,
       lhs_quantized_dtype=lhs_quantized_dtype,
       rhs_quantized_dtype=rhs_quantized_dtype,
       pre_quantize_lhs=pre_quantize_lhs,

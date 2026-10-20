@@ -15,6 +15,7 @@
 
 """Tests for c_api utils."""
 import gc
+from unittest import mock
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
@@ -121,6 +122,44 @@ class UniquePtrTest(test_util.TensorFlowTestCase):
 
     gc.collect()
     self.assertTrue(self.obj.deleted)
+
+
+class ScopedTFBufferTest(test_util.TensorFlowTestCase):
+
+  def testDeleteRunsUnderNormalConditions(self):
+    # Mock TF_DeleteBuffer rather than letting __del__ actually free the
+    # buffer here: calling __del__() directly on a live ScopedTFBuffer frees
+    # the real C buffer immediately, and the object's own garbage collection
+    # later calls __del__() again for the same (already-freed) buffer,
+    # double-freeing it. Mocking out the delete call lets us call __del__()
+    # directly (CPython prints and swallows any exception raised inside a
+    # GC-triggered __del__ instead of propagating it, so a plain
+    # `del buf; gc.collect()` would let a broken destructor pass silently)
+    # while leaving the real deletion to happen exactly once, naturally,
+    # when the object is actually collected.
+    with mock.patch.object(c_api_util.c_api, "TF_DeleteBuffer") as mock_delete:
+      buf = c_api_util.ScopedTFBuffer(b"test")
+      buf.__del__()  # should not raise
+      mock_delete.assert_called_once()
+
+  def testDeleteGuardsAgainstNoneCApi(self):
+    buf = c_api_util.ScopedTFBuffer(b"test")
+    # Regression test for the __del__ fix: during interpreter shutdown,
+    # `c_api_util.c_api` can already have been torn down to None by the time
+    # this object is collected, so __del__ must guard against that rather
+    # than unconditionally calling into it.
+    with mock.patch.object(c_api_util, "c_api", None):
+      buf.__del__()  # should not raise
+
+  def testDeletePartiallyInitializedObjectDoesNotRaise(self):
+    # Regression test: if __init__ raises before `self.buffer` is ever
+    # assigned (e.g. compat.as_bytes failing on bad input), __del__ still
+    # runs on the partially-constructed object. It must not raise an
+    # AttributeError from accessing the missing `self.buffer`, which would
+    # mask whatever real exception caused __init__ to fail.
+    buf = c_api_util.ScopedTFBuffer.__new__(c_api_util.ScopedTFBuffer)
+    buf.__del__()  # should not raise
+
 
 if __name__ == "__main__":
   googletest.main()

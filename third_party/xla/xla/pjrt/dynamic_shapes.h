@@ -55,6 +55,7 @@ struct PjRtShapeAndMetadataTransferRequirements {
   }
 
   size_t size = 0;
+  size_t unpadded_size = 0;
   size_t metadata_alignment = 0;
   size_t metadata_offset = 0;
   size_t metadata_size = 0;
@@ -67,7 +68,13 @@ absl::StatusOr<xla::Shape> ReadDynamicShapeMetadata(
     absl::Span<const uint8_t> metadata, const xla::Shape& shape,
     PjRtDynamicShapeKind kind);
 
-// Returns a view sliced to exclude dynamic shape metadata.
+// Returns a view sliced to exclude dynamic shape metadata prefix up to the end
+// of the buffer.
+absl::StatusOr<PjRtRawBufferRef> RemoveDynamicShapeMetadataPrefixIfPresent(
+    PjRtRawBufferRef raw_buffer, const xla::Shape& device_shape);
+
+// Returns a view sliced to exclude dynamic shape metadata and sized to
+// logical_shape.
 absl::StatusOr<PjRtRawBufferRef> RemoveDynamicShapeMetadataIfPresent(
     PjRtRawBufferRef raw_buffer, const xla::Shape& device_shape,
     const xla::Shape& logical_shape, PjRtDynamicShapeKind kind);

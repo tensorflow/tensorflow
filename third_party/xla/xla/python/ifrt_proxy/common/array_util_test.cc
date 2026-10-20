@@ -41,6 +41,7 @@ using ::testing::TestWithParam;
 
 constexpr DType::Kind kF64 = DType::Kind::kF64;
 constexpr DType::Kind kS32 = DType::Kind::kS32;
+constexpr DType::Kind kU8 = DType::Kind::kU8;
 constexpr DType::Kind kString = DType::Kind::kString;
 using Strides = std::vector<int64_t>;
 
@@ -97,7 +98,10 @@ INSTANTIATE_TEST_SUITE_P(
         // Non-compact strides.
         TC{"NonCompactSingleDimension", kS32, {5}, Strides({16}), 68},
         TC{"NonCompactDim0", kS32, {4, 3, 5}, Strides({120, 20, 4}), 420},
-        TC{"PaddedElements", kS32, {4, 3, 5}, Strides({120, 40, 8}), 476}),
+        TC{"PaddedElements", kS32, {4, 3, 5}, Strides({120, 40, 8}), 476},
+        // Products individually fit in int64; the accumulated span also fits.
+        TC{"U8ThreeDimsDefault", kU8, {2, 2, 2}, std::nullopt},
+        TC{"U8ThreeDimsCompactStrides", kU8, {2, 2, 2}, Strides({4, 2, 1})}),
     testing::PrintToStringParamName());
 TEST_P(ArrayMemRegionSuccess, TestCase) {
   const TC tc = GetParam();
@@ -148,7 +152,20 @@ INSTANTIATE_TEST_SUITE_P(
         TC{"ByteStrideOverflowMultiDim",
            kS32,
            {5, 3},
-           Strides({INT64_C(4611686018427387904), 4})}),
+           Strides({INT64_C(4611686018427387904), 4})},
+        // Each product stride*(dim-1) fits in int64 (the #46604 mul check
+        // succeeds) but the uint64 accumulation wraps:
+        // (INT64_MAX) + (INT64_MAX) + 2 == 2^64 == 0.
+        TC{"ByteStrideAccumOverflowUint64",
+           kU8,
+           {2, 2, 2},
+           Strides({INT64_MAX, INT64_MAX, 2})},
+        // Accumulation itself fits (INT64_MAX + INT64_MAX + 1 == UINT64_MAX);
+        // the final last-element-offset + dtype-size add is what overflows.
+        TC{"ByteStrideFinalSizeOverflowUint64",
+           kU8,
+           {2, 2, 2},
+           Strides({INT64_MAX, INT64_MAX, 1})}),
     testing::PrintToStringParamName());
 TEST_P(ArrayMemRegionFailure, TestCase) {
   const TC tc = GetParam();

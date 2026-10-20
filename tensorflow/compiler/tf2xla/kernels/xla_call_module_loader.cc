@@ -42,6 +42,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinDialect.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
@@ -57,7 +58,9 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "shardy/dialect/sdy/ir/dialect.h"  // from @shardy
 #include "shardy/dialect/sdy/transforms/common/passes.h"  // from @shardy
+#include "shardy/dialect/sdy/transforms/common/propagation_options.h"  // from @shardy
 #include "shardy/dialect/sdy/transforms/import/passes.h"  // from @shardy
+#include "shardy/dialect/sdy/transforms/propagation/passes.h"  // from @shardy
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
 #include "stablehlo/dialect/Serialization.h"  // from @stablehlo
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
@@ -73,6 +76,7 @@ limitations under the License.
 #include "xla/python/refine_polymorphic_shapes.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/pipelines.h"
+#include "xla/service/spmd/shardy/stablehlo_round_trip/stablehlo_export.h"
 #include "xla/shape.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -522,18 +526,61 @@ absl::Status XlaCallModuleLoader::ValidateStaticShapes() {
   return xla::ValidateStaticShapes(*module_);
 }
 
-absl::Status XlaCallModuleLoader::PrepareStablehloForLowering() {
+absl::Status XlaCallModuleLoader::PrepareStablehloForLowering(
+    bool compiler_use_shardy_partitioner) {
   mlir::StatusScopedDiagnosticHandler diag_handler(module_->getContext());
+
+  if (use_shardy_partitioner_) {
+    // Sink 0-D scalar integer constants (such as `_platform_index` and
+    // resolved dimension variables) into `sdy.manual_computation` bodies so
+    // `StablehloTargetIndependentOptimizationPass` can fold `stablehlo.case`
+    // and shape computations inside `shard_map` regions.
+    module_->walk<mlir::WalkOrder::PreOrder>(
+        [&](mlir::sdy::ManualComputationOp manual_computation) {
+          mlir::OpBuilder builder(manual_computation.getContext());
+          mlir::Block& body = manual_computation.getBody().front();
+          for (mlir::BlockArgument arg : body.getArguments()) {
+            if (arg.use_empty()) continue;
+            auto arg_type =
+                mlir::dyn_cast<mlir::RankedTensorType>(arg.getType());
+            if (!arg_type || arg_type.getRank() != 0 ||
+                !arg_type.getElementType().isInteger()) {
+              continue;
+            }
+            mlir::Value operand =
+                manual_computation.getOperand(arg.getArgNumber());
+            mlir::ElementsAttr const_attr;
+            if (mlir::matchPattern(operand, mlir::m_Constant(&const_attr))) {
+              builder.setInsertionPointToStart(&body);
+              auto inner_const = mlir::stablehlo::ConstantOp::create(
+                  builder, arg.getLoc(), const_attr);
+              arg.replaceAllUsesWith(inner_const);
+            }
+          }
+        });
+  }
 
   mlir::PassManager pm(module_->getContext());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::stablehlo::createStablehloTargetIndependentOptimizationPass());
   if (use_shardy_partitioner_) {
-    // We need to export shardings because the lowering path go directly to
-    // HLO but not the MLIR to HLO path that invokes SdyRoundTripExport.
-    // We keep meshes inlined to avoid naming collisions when multiple
-    // XlaCallModules are combined.
-    xla::sdy::addSdyRoundTripExportPipeline(pm, /*keepMeshesInlined=*/true);
+    if (compiler_use_shardy_partitioner) {
+      // We need to export shardings because the lowering path go directly to
+      // HLO but not the MLIR to HLO path that invokes SdyRoundTripExport.
+      // We keep meshes inlined to avoid naming collisions when multiple
+      // XlaCallModules are combined.
+      xla::sdy::addSdyRoundTripExportPipeline(pm, /*keepMeshesInlined=*/true);
+    } else {
+      // When the outer TF compiler is not using Shardy, propagate Shardy
+      // shardings within this module and export directly to HLO shardings so
+      // GSPMD can partition the lowered HLO computation.
+      mlir::sdy::PropagationOptions options;
+      mlir::sdy::addPropagationPipeline(pm, options);
+      xla::sdy::StablehloExportPipelineOptions export_options;
+      export_options.keepHloShardingConstraints = true;
+      export_options.simplifyReplicatedShardings = true;
+      xla::sdy::addStablehloExportPipeline(pm, export_options);
+    }
   }
 
   if (failed(pm.run(*module_))) {

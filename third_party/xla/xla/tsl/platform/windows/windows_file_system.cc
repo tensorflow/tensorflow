@@ -701,6 +701,12 @@ absl::Status WindowsFileSystem::RenameFile(const std::string& src,
 
 absl::Status WindowsFileSystem::GetMatchingPaths(
     const std::string& pattern, std::vector<std::string>* results) {
+  return GetMatchingPaths(pattern, results, /*multithreaded=*/true);
+}
+
+absl::Status WindowsFileSystem::GetMatchingPaths(
+    const std::string& pattern, std::vector<std::string>* results,
+    bool multithreaded) {
   // NOTE(mrry): The existing implementation of FileSystem::GetMatchingPaths()
   // does not handle Windows paths containing backslashes correctly. Since
   // Windows APIs will accept forward and backslashes equivalently, we
@@ -709,8 +715,8 @@ absl::Status WindowsFileSystem::GetMatchingPaths(
   // but no code appears to rely on this behavior.
   std::string converted_pattern(pattern);
   std::replace(converted_pattern.begin(), converted_pattern.end(), '\\', '/');
-  ABSL_RETURN_IF_ERROR(internal::GetMatchingPaths(this, Env::Default(),
-                                             converted_pattern, results));
+  ABSL_RETURN_IF_ERROR(internal::GetMatchingPaths(
+      this, Env::Default(), converted_pattern, results, multithreaded));
   for (std::string& result : *results) {
     std::replace(result.begin(), result.end(), '/', '\\');
   }

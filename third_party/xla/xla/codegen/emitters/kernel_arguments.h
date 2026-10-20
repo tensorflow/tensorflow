@@ -16,15 +16,18 @@ limitations under the License.
 #define XLA_CODEGEN_EMITTERS_KERNEL_ARGUMENTS_H_
 
 #include <cstdint>
+#include <optional>
 #include <utility>
 #include <vector>
 
+#include "absl/functional/function_ref.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
 
 namespace xla::emitters {
 
@@ -101,6 +104,28 @@ class KernelArguments {
     int64_t constant_buffer_align_bytes;
   };
 
+  // Resolves the buffer slice backing the subshape of `instruction` at
+  // `index`.
+  //
+  // Emitters that can redirect an instruction's buffers (for example
+  // `ThunkEmitter`, which lets specialized emitters override an allocation)
+  // must pass their own resolver instead of handing over a `BufferAssignment`,
+  // otherwise those overrides are silently ignored and the kernel would be
+  // launched on the wrong buffers.
+  using SliceProvider =
+      absl::FunctionRef<absl::StatusOr<BufferAllocation::Slice>(
+          const HloInstruction& instruction, const ShapeIndex& index)>;
+
+  // Creates a KernelArguments object for the given HLO instruction, resolving
+  // buffer slices through `slice_provider`. Argument order is the same as for
+  // the `BufferAssignment` overloads below: operands in operand order, then
+  // the array leaves of the result shape in shape-index order, then
+  // `unmanaged_arguments`.
+  static absl::StatusOr<KernelArguments> Create(
+      SliceProvider slice_provider, const BufferAlignment& buffer_alignment,
+      const HloInstruction* hlo_instruction,
+      absl::Span<const Shape> unmanaged_arguments = {});
+
   // Creates a KernelArguments object for the given HLO instruction.
   // The unmanaged_arguments are added to the end of the list of input/output
   // arguments.
@@ -122,6 +147,10 @@ class KernelArguments {
   // Example: If hlo_instruction->operands() has 3 elements and hlo_instruction
   // shape yields 2 output arguments, and interleaved_output_indices = {1, 4}:
   // - Final argument order will be: input0, output0, input1, input2, output1
+  //
+  // `interleaved_output_indices` must be strictly increasing and must name a
+  // position for every output argument; an empty span requests no
+  // interleaving. Returns `InvalidArgument` otherwise.
   static absl::StatusOr<KernelArguments> Create(
       const BufferAssignment& buffer_assignment,
       const BufferAlignment& buffer_alignment,
@@ -132,6 +161,28 @@ class KernelArguments {
       : args_(std::move(args)) {}
 
   const std::vector<KernelArgument>& args() const { return args_; }
+
+  // Position, in this argument list, of the argument that carries operand
+  // `operand_number_in_hlo` of the HLO instruction these arguments were
+  // created for.
+  //
+  // Use this instead of hardcoding argument positions when building a
+  // `stream_executor::KernelArgsPackingSpec`, whose relocation indices refer
+  // to exactly this list.
+  //
+  // Returns `FailedPrecondition` if the arguments were not built by one of the
+  // `Create` factories, and `OutOfRange` if there is no such operand.
+  absl::StatusOr<int64_t> PositionOfOperand(
+      int64_t operand_number_in_hlo) const;
+
+  // Position, in this argument list, of the argument that carries the result
+  // subshape at `shape_index` of the HLO instruction these arguments were
+  // created for. For a non-tuple result that is `PositionOfResult({})`; for a
+  // one-element tuple result, `PositionOfResult({0})`.
+  //
+  // Returns `FailedPrecondition` if the arguments were not built by one of the
+  // `Create` factories, and `OutOfRange` if there is no such result.
+  absl::StatusOr<int64_t> PositionOfResult(const ShapeIndex& shape_index) const;
 
   std::vector<ShapedSlice> GetArgumentShapedSlices() const {
     std::vector<ShapedSlice> arg_slices;
@@ -179,7 +230,29 @@ class KernelArguments {
   }
 
  private:
+  // Where each operand and each result of the originating instruction ended up
+  // in `args_`. Only populated by the `Create` factories.
+  struct ArgumentPositions {
+    // Position in `args_` of each operand, indexed by operand number.
+    std::vector<int64_t> operands;
+    // Position in `args_` of each result array leaf, paired with its shape
+    // index. Result shapes have few leaves, so a linear scan is fine.
+    std::vector<std::pair<ShapeIndex, int64_t>> results;
+  };
+
+  KernelArguments(std::vector<KernelArgument> args, ArgumentPositions positions)
+      : args_(std::move(args)), positions_(std::move(positions)) {}
+
+  // Shared implementation of all `Create` overloads. See the interleaving
+  // `Create` overload above for the meaning of `interleaved_output_indices`.
+  static absl::StatusOr<KernelArguments> CreateInternal(
+      SliceProvider slice_provider, const BufferAlignment& buffer_alignment,
+      const HloInstruction* hlo_instruction,
+      absl::Span<const Shape> unmanaged_arguments,
+      absl::Span<const int32_t> interleaved_output_indices);
+
   std::vector<KernelArgument> args_;
+  std::optional<ArgumentPositions> positions_;
 };
 
 }  // namespace xla::emitters

@@ -131,10 +131,27 @@ absl::StatusOr<ArrayMemRegion> ArrayMemRegion::FromZerothElementPointer(
             "byte_stride[", i, "] * (dim[", i,
             "] - 1) overflows: stride=", stride, " dim=", shape.dims()[i]));
       }
-      last_element_byte_offset += static_cast<uint64_t>(product);
+      // Each product is independently in int64 range (checked above), but the
+      // uint64 accumulation of those products can still wrap. Example:
+      // shape=[2,2,2], strides=[INT64_MAX, INT64_MAX, 2] -> each mul succeeds
+      // and the running sum is 2^64 == 0.
+      const uint64_t term = static_cast<uint64_t>(product);
+      if (__builtin_add_overflow(last_element_byte_offset, term,
+                                 &last_element_byte_offset)) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "byte-stride span overflows uint64 while accumulating byte_stride[",
+            i, "] * (dim[", i, "] - 1): stride=", stride,
+            " dim=", shape.dims()[i]));
+      }
     }
   }
-  return ArrayMemRegion(mem_region_start, last_element_byte_offset + byte_size);
+  uint64_t total_size;
+  if (__builtin_add_overflow(last_element_byte_offset,
+                             static_cast<uint64_t>(byte_size), &total_size)) {
+    return absl::InvalidArgumentError(
+        "byte-stride span overflows uint64: last-element offset + dtype size");
+  }
+  return ArrayMemRegion(mem_region_start, total_size);
 }
 
 absl::StatusOr<ArrayMemRegion> ArrayMemRegion::FromMinimalMemRegion(

@@ -57,6 +57,8 @@ limitations under the License.
 
 namespace xla {
 
+class CustomOptions;
+
 class PjRtClient;
 
 // Provides configuration for implementations that support compile and execute
@@ -307,6 +309,9 @@ struct ExecuteOptions {
   // executed in program order.  Executions with different execution stream IDs
   // may be executed in any order and concurrently.
   int64_t execution_stream_id = 0;
+
+  // If non-null, per-execution custom options passed to the runtime.
+  std::shared_ptr<const CustomOptions> custom_options;
 
   // The `call_location` field is used to pass down call site location
   // information from higher-level frameworks like JAX and PyTorch to the PJRT

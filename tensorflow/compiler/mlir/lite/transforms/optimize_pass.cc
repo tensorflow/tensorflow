@@ -123,21 +123,37 @@ bool L2NormalizeReduceAxis(Value sq_op, DenseElementsAttr axis) {
   if (axis.getNumElements() == 0) {
     return false;
   }
-  if (mlir::cast<ShapedType>(sq_op.getType()).getRank() - 1 ==
-          *axis.getValues<int>().begin() ||
-      *axis.getValues<int>().begin() == -1) {
-    return true;
-  }
-  if (mlir::cast<ShapedType>(sq_op.getType()).getRank() !=
-      axis.getNumElements()) {
+
+  auto shape = mlir::dyn_cast<ShapedType>(sq_op.getType());
+  if (!shape || !shape.hasRank() || shape.getRank() < 1) {
     return false;
   }
-  auto shape = mlir::cast<ShapedType>(sq_op.getType());
-  SmallVector<int, 4> elems{axis.getValues<int>().begin(),
-                            axis.getValues<int>().end()};
-  for (int i = 0; i < shape.getRank(); ++i) {
-    if (i != elems[i]) return false;
+
+  const int64_t rank = shape.getRank();
+  if (axis.getNumElements() == 1) {
+    const int reduce_axis = *axis.getValues<int>().begin();
+    return reduce_axis == rank - 1 || reduce_axis == -1;
   }
+
+  if (!shape.hasStaticShape() || shape.getNumElements() == 0) {
+    return false;
+  }
+  if (axis.getNumElements() != rank) {
+    return false;
+  }
+
+  int expected_axis = 0;
+  for (int reduce_axis : axis.getValues<int>()) {
+    if (reduce_axis != expected_axis++) return false;
+  }
+
+  // Reducing across all dimensions is only equivalent to TFL L2 normalization
+  // (which reduces along the trailing dimension) if all leading dimensions
+  // have size 1.
+  for (int i = 0; i < rank - 1; ++i) {
+    if (shape.getDimSize(i) != 1) return false;
+  }
+
   return true;
 }
 
@@ -1931,12 +1947,24 @@ struct FuseFullyConnectedAndMul : public OpRewritePattern<TFL::MulOp> {
                            /*fusedActivationFunction=*/
                            rewriter.getStringAttr("NONE"))
             .getOutput();
-    // If bias isn't None, it needs to be multiplied as well.
+    // If bias isn't None, it needs to be multiplied as well. Use the
+    // multiplier flattened to 1-D: `cst` may have leading unit dims (e.g.
+    // [1, 1, 1, C]), and multiplying the 1-D bias by it directly would
+    // broadcast the bias to that rank.
     if (!mlir::isa<NoneType>(bias.getType())) {
-      bias = TFL::MulOp::create(rewriter, mul_op.getLoc(), bias, constant_val,
-                                /*fusedActivationFunction=*/
-                                rewriter.getStringAttr("NONE"))
-                 .getOutput();
+      Value bias_multiplier = constant_val;
+      auto bias_type = mlir::dyn_cast<RankedTensorType>(bias.getType());
+      if (bias_type && bias_type.getRank() == 1 && shape.size() != 1) {
+        auto flat_cst = cst.reshape(RankedTensorType::get(
+            {element_size}, cst.getType().getElementType()));
+        bias_multiplier = arith::ConstantOp::create(
+            rewriter, mul_op.getLoc(), flat_cst.getType(), flat_cst);
+      }
+      bias =
+          TFL::MulOp::create(rewriter, mul_op.getLoc(), bias, bias_multiplier,
+                             /*fusedActivationFunction=*/
+                             rewriter.getStringAttr("NONE"))
+              .getOutput();
     }
 
     auto fc = TFL::FullyConnectedOp::create(

@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_address.h"
@@ -159,6 +160,41 @@ INSTANTIATE_TEST_SUITE_P(RdmaSupport, CudaDeviceAllocatorTest,
                          ::testing::Bool(), [](const auto& info) {
                            return info.param ? "RdmaEnabled" : "RdmaDisabled";
                          });
+
+TEST(CudaDeviceAllocatorNonVmmTest, AllocateMemcpyAndFreeWithoutVmm) {
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       PlatformManager::PlatformWithName("CUDA"));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Stream> stream,
+                       executor->CreateStream());
+
+  CudaDeviceAllocator::Options options;
+  options.use_vmm = false;
+  CudaDeviceAllocator allocator(executor, options);
+
+  constexpr int kSize = 1024;
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
+                       allocator.Allocate(kSize));
+  ASSERT_NE(allocation, nullptr);
+  EXPECT_NE(allocation->address().opaque(), nullptr);
+  EXPECT_EQ(allocation->address().size(), kSize);
+
+  std::vector<uint8_t> host_src(kSize);
+  for (int i = 0; i < kSize; i++) {
+    host_src[i] = static_cast<uint8_t>(i);
+  }
+
+  DeviceAddress<uint8_t> addr(
+      DeviceAddressBase(allocation->address().opaque(), kSize));
+  ASSERT_OK(stream->MemcpyH2D(absl::MakeConstSpan(host_src), &addr));
+
+  std::vector<uint8_t> host_dst(kSize, 0);
+  ASSERT_OK(stream->MemcpyD2H(addr, absl::MakeSpan(host_dst)));
+  ASSERT_OK(stream->BlockHostUntilDone());
+
+  EXPECT_EQ(host_src, host_dst);
+}
 
 }  // namespace
 }  // namespace stream_executor::gpu

@@ -50,7 +50,7 @@ cc_library(
     deps = ["//xla/stream_executor:platform_id"],
 )
 
-cc_library(
+sycl_library(
     name = "sycl_platform",
     srcs = ["sycl_platform.cc"],
     hdrs = ["sycl_platform.h"],
@@ -101,6 +101,7 @@ cc_library(
     copts = tsl_copts(),
     visibility = ["//visibility:public"],
     deps = if_sycl_is_configured([
+        ":cub_sort_kernel_sycl",
         ":sycl_platform",
         ":sycl_blas_lt_plugin",
         ":sycl_dnn",
@@ -279,11 +280,10 @@ sycl_library(
     ],
 )
 
-cc_library(
+sycl_library(
     name = "sycl_executor",
     srcs = ["sycl_executor.cc"],
     hdrs = ["sycl_executor.h"],
-    compatible_with = [],
     tags = [
         "gpu",
         "oneapi-only",
@@ -520,7 +520,6 @@ sycl_library(
     name = "sycl_device_description",
     srcs = ["sycl_device_description.cc"],
     hdrs = ["sycl_device_description.h"],
-    compatible_with = [],
     tags = [
         "gpu",
         "oneapi-only",
@@ -559,7 +558,7 @@ xla_test(
     ],
 )
 
-cc_library(
+sycl_library(
     name = "sycl_blas_lt_plugin",
     srcs = ["sycl_blas_lt.cc"],
     hdrs = ["sycl_blas_lt.h"],
@@ -583,7 +582,39 @@ cc_library(
     alwayslink = True,
 )
 
-cc_library(
+sycl_library(
+    name = "onemkl_util_headers",
+    hdrs = ["onemkl_util.h"],
+    tags = [
+        "gpu",
+        "oneapi-only",
+    ],
+    deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_test(
+    name = "onemkl_util_test",
+    srcs = ["onemkl_util_test.cc"],
+    backends = ["gpu"],
+    tags = [
+        "gpu",
+        "oneapi-only",
+    ],
+    deps = [
+        ":onemkl_util_headers",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
+        "@local_config_sycl//sycl:sycl_headers",
+    ],
+)
+
+sycl_library(
     name = "onednn_util",
     srcs = ["onednn_util.cc"],
     hdrs = ["onednn_util.h"],
@@ -597,16 +628,16 @@ cc_library(
         "//xla/tsl/mkl:onednn",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
+        "//xla/tsl/protobuf:dnn_proto_cc",
         "//xla/tsl/util:env_var",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
-        "@tsl//tsl/platform:logging",
         "@tsl//tsl/platform:str_util",
     ],
 )
 
-cc_library(
+sycl_library(
     name = "sycl_dnn",
     srcs = ["sycl_dnn.cc"],
     hdrs = ["sycl_dnn.h"],
@@ -616,9 +647,9 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":sycl_conv_utils",
         ":sycl_platform_id",
-        "//xla/service/gpu:gpu_conv_runner",
-        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:device_address",
         "//xla/stream_executor:dnn",
         "//xla/stream_executor:plugin_registry",
         "//xla/stream_executor:scratch_allocator",
@@ -628,13 +659,14 @@ cc_library(
         "//xla/tsl/mkl:onednn",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
     ],
     alwayslink = True,
 )
 
-cc_library(
+sycl_library(
     name = "sycl_matmul_utils",
     srcs = ["sycl_matmul_utils.cc"],
     hdrs = ["sycl_matmul_utils.h"],
@@ -670,4 +702,78 @@ xla_test(
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
     ],
+)
+
+sycl_library(
+    name = "sycl_conv_utils",
+    srcs = ["sycl_conv_utils.cc"],
+    hdrs = ["sycl_conv_utils.h"],
+    tags = [
+        "gpu",
+        "oneapi-only",
+    ],
+    deps = [
+        ":onednn_util",
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:dnn",
+        "//xla/stream_executor:stream",
+        "//xla/tsl/mkl:onednn",
+        "//xla/tsl/protobuf:dnn_proto_cc",
+        "//xla/tsl/util:env_var",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+sycl_library(
+    name = "cub_sort_kernel_sycl_impl",
+    srcs = ["cub_sort_kernel_sycl_impl.dp.cpp"],
+    hdrs = ["cub_sort_kernel_sycl.h"],
+    # Enables oneDPL's bfloat16 radix sort, which older DPC++ compilers do not
+    # turn on by default.
+    # TODO(intel-tf): Remove once we require DPC++ 2026.0 or newer.
+    copts = ["-DSYCL_EXT_ONEAPI_BFLOAT16=1"],
+    tags = [
+        "gpu",
+        "oneapi-only",
+    ],
+    deps = [
+        "//xla:status_macros",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/strings",
+        "@onedpl",
+    ],
+    alwayslink = 1,
+)
+
+sycl_library(
+    name = "cub_sort_kernel_sycl",
+    srcs = ["cub_sort_kernel_sycl.cc"],
+    hdrs = ["cub_sort_kernel_sycl.h"],
+    tags = [
+        "gpu",
+        "oneapi-only",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":cub_sort_kernel_sycl_impl",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/backends/gpu:ffi",
+        "//xla/ffi",
+        "//xla/ffi:ffi_api",
+        "//xla/service/gpu:cublas_cudnn",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+    alwayslink = True,
 )

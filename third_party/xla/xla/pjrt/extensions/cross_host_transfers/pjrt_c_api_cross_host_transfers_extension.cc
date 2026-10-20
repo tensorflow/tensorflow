@@ -16,14 +16,17 @@ limitations under the License.
 #include "xla/pjrt/extensions/cross_host_transfers/pjrt_c_api_cross_host_transfers_extension.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -33,6 +36,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_status_utils.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/runtime/device_id.h"
 #include "xla/shape.h"
 
 namespace pjrt {
@@ -54,18 +58,33 @@ using CrossHostSendCancelNotifierFunction = std::function<void(
 using CrossHostOnCanceledCallbackFunction =
     std::function<void(PJRT_Error* error)>;
 
+// Shared state managing the lifetime of CrossHostSendCancelNotifierFunction
+// so that cancel_notifier_user_arg is safely owned within the backend DSO and
+// freed when all receive buffers are completed or cancelled.
+struct CrossHostRecvSharedState {
+  CrossHostSendCancelNotifierFunction cancel_notifier_fn;
+};
+
 // Callback function for the C API version of
 // xla::PjRtBuffer::CopyToRemoteDevice.
 using RemoteSendCallbackFunction =
     std::function<void(PJRT_Error* error, bool sends_were_enqueued)>;
 
 xla::PjRtCrossHostRecvNotifier CCrossHostRecvNotifierToCpp(
-    const PJRT_Transfers_CrossHostRecvNotifierInfo& c_notifier) {
-  return [user_arg = c_notifier.user_arg, notifier = c_notifier.notifier](
+    const PJRT_Transfers_CrossHostRecvNotifierInfo& c_notifier,
+    std::shared_ptr<CrossHostRecvSharedState> shared_state,
+    bool allow_cancel_notifier) {
+  return [user_arg = c_notifier.user_arg, notifier = c_notifier.notifier,
+          shared_state = std::move(shared_state), allow_cancel_notifier](
              absl::StatusOr<xla::PjRtCrossHostRecvState> recv_state) {
-    // Define the function to pass as `cancel_notifier_user_arg` to
-    // `notifier`.
-    auto cancel_notifier_function = new CrossHostSendCancelNotifierFunction(
+    if (!recv_state.ok()) {
+      auto error = StatusToPjRtError(recv_state.status());
+      notifier(error, nullptr, nullptr, 0, user_arg, nullptr, nullptr);
+      DestroyPjRtError(error);
+      return;
+    }
+
+    shared_state->cancel_notifier_fn =
         [cpp_cancel_notifier = std::move(recv_state->cancel_notifier)](
             const char* serialized_descriptor,
             size_t serialized_descriptor_size, PJRT_Error_Code error_code,
@@ -87,27 +106,28 @@ xla::PjRtCrossHostRecvNotifier CCrossHostRecvNotifierToCpp(
           return cpp_cancel_notifier(std::move(serialized_descriptor_str),
                                      std::move(state),
                                      std::move(cpp_on_canceled));
-        });
+        };
     PJRT_Transfers_CrossHostSendCancelNotifier cancel_notifier =
         [](const char* serialized_descriptor, size_t serialized_descriptor_size,
            PJRT_Error_Code error, const char* error_message,
            size_t error_message_size,
            PJRT_Transfers_CrossHostOnCanceledCallback on_canceled,
            void* on_canceled_user_arg, void* user_arg) {
-          CrossHostSendCancelNotifierFunction* cancel_notifier_fn =
-              reinterpret_cast<CrossHostSendCancelNotifierFunction*>(user_arg);
-          (*cancel_notifier_fn)(serialized_descriptor,
-                                serialized_descriptor_size, error,
-                                error_message, error_message_size, on_canceled,
-                                on_canceled_user_arg);
+          if (user_arg == nullptr) {
+            if (on_canceled != nullptr) {
+              on_canceled(nullptr, on_canceled_user_arg);
+            }
+            return;
+          }
+          auto* state = static_cast<CrossHostRecvSharedState*>(user_arg);
+          state->cancel_notifier_fn(serialized_descriptor,
+                                    serialized_descriptor_size, error,
+                                    error_message, error_message_size,
+                                    on_canceled, on_canceled_user_arg);
         };
-    if (!recv_state.ok()) {
-      auto error = StatusToPjRtError(recv_state.status());
-      notifier(error, nullptr, nullptr, 0, user_arg, cancel_notifier,
-               cancel_notifier_function);
-      DestroyPjRtError(error);
-      return;
-    }
+    void* cancel_notifier_user_arg =
+        allow_cancel_notifier ? shared_state.get() : nullptr;
+
     // Convert serialized descriptors to char*.
     std::vector<xla::PjRtCrossHostRecvDescriptors>& descriptors =
         recv_state->descriptors;
@@ -123,17 +143,47 @@ xla::PjRtCrossHostRecvNotifier CCrossHostRecvNotifierToCpp(
     }
     notifier(nullptr, serialized_descriptors.data(), descriptors_sizes.data(),
              descriptors.size(), user_arg, cancel_notifier,
-             cancel_notifier_function);
+             cancel_notifier_user_arg);
   };
 }
+
+absl::StatusOr<absl::flat_hash_map<xla::TaskId, xla::IncarnationId>>
+IncarnationsFromC(size_t num_tasks, const int* task_ids,
+                  const int64_t* incarnation_ids) {
+  absl::flat_hash_map<xla::TaskId, xla::IncarnationId> incarnations;
+  if (num_tasks == 0) {
+    return incarnations;
+  }
+  if (task_ids == nullptr || incarnation_ids == nullptr) {
+    return absl::InvalidArgumentError(
+        "task_ids and incarnation_ids must be non-null when num_tasks > 0");
+  }
+  incarnations.reserve(num_tasks);
+  for (size_t i = 0; i < num_tasks; ++i) {
+    // Duplicate task ids keep the first incarnation, matching execute.
+    incarnations.insert(
+        {xla::TaskId(task_ids[i]), xla::IncarnationId(incarnation_ids[i])});
+  }
+  return incarnations;
+}
+
 }  // namespace
 
 PJRT_Error* PJRT_Transfers_PJRT_Client_CrossHostReceiveBuffers(
     PJRT_Transfers_PJRT_Client_CrossHostReceiveBuffers_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Transfers_PJRT_Client_CrossHostReceiveBuffers_Args",
-      PJRT_Transfers_PJRT_Client_CrossHostReceiveBuffers_Args_STRUCT_SIZE,
+      PJRT_STRUCT_SIZE(PJRT_Transfers_PJRT_Client_CrossHostReceiveBuffers_Args,
+                       buffers),
       args->struct_size));
+  absl::flat_hash_map<xla::TaskId, xla::IncarnationId> incarnations;
+  if (args->struct_size >=
+      PJRT_STRUCT_SIZE(PJRT_Transfers_PJRT_Client_CrossHostReceiveBuffers_Args,
+                       incarnation_ids)) {
+    PJRT_ASSIGN_OR_RETURN(incarnations,
+                          IncarnationsFromC(args->num_tasks, args->task_ids,
+                                            args->incarnation_ids));
+  }
 
   std::vector<xla::Shape> shapes;
   shapes.reserve(args->num_shapes);
@@ -159,7 +209,7 @@ PJRT_Error* PJRT_Transfers_PJRT_Client_CrossHostReceiveBuffers(
   PJRT_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<xla::PjRtBuffer>> buffers,
                         args->client->client->CrossHostReceiveBuffers(
                             args->device->device, shapes, src_global_device_ids,
-                            std::move(transfer_keys)));
+                            std::move(transfer_keys), std::move(incarnations)));
 
   for (int i = 0; i < buffers.size(); ++i) {
     args->buffers[i] = new PJRT_Buffer{std::move(buffers[i]), args->client};
@@ -186,10 +236,19 @@ PJRT_Error* PJRT_Transfers_PJRT_Client_CrossHostSendBuffers(
     transfer_keys.push_back(args->transfer_keys[i]);
   }
 
-  PJRT_ASSIGN_OR_RETURN(
-      std::vector<tsl::Future<>> send_futures,
-      args->client->client->CrossHostSendBuffers(buffers, dst_global_device_ids,
-                                                 std::move(transfer_keys)));
+  absl::flat_hash_map<xla::TaskId, xla::IncarnationId> incarnations;
+  if (args->struct_size >=
+      PJRT_STRUCT_SIZE(PJRT_Transfers_PJRT_Client_CrossHostSendBuffers_Args,
+                       incarnation_ids)) {
+    PJRT_ASSIGN_OR_RETURN(incarnations,
+                          IncarnationsFromC(args->num_tasks, args->task_ids,
+                                            args->incarnation_ids));
+  }
+
+  PJRT_ASSIGN_OR_RETURN(std::vector<tsl::Future<>> send_futures,
+                        args->client->client->CrossHostSendBuffers(
+                            buffers, dst_global_device_ids,
+                            std::move(transfer_keys), std::move(incarnations)));
 
   for (int i = 0; i < buffers.size(); ++i) {
     args->send_events[i] = new PJRT_Event{std::move(send_futures[i])};
@@ -248,7 +307,7 @@ PJRT_Transfers_CrossHostRecvNotifierInfo CppCrossHostRecvNotifierToC(
           state.descriptors.push_back(std::move(descriptors));
         }
 
-        state.cancel_notifier = cpp_cancel_notifier;
+        state.cancel_notifier = std::move(cpp_cancel_notifier);
         return cpp_notifier(std::move(state));
       });
   return PJRT_Transfers_CrossHostRecvNotifierInfo{
@@ -264,12 +323,6 @@ PJRT_Transfers_CrossHostRecvNotifierInfo CppCrossHostRecvNotifierToC(
                        num_descriptors, cancel_notifier,
                        cancel_notifier_user_arg);
         delete notifier_fn;
-        // The cancellation callback isn't always called, so instead of freeing
-        // it after usage, we free it here after the notifier is called.
-        CrossHostSendCancelNotifierFunction* cancel_notifier_fn =
-            reinterpret_cast<CrossHostSendCancelNotifierFunction*>(
-                cancel_notifier_user_arg);
-        delete cancel_notifier_fn;
       }};
 }
 
@@ -297,8 +350,17 @@ PJRT_Error* PJRT_Transfers_PJRT_Client_MakeCrossHostReceiveBuffers(
     PJRT_Transfers_PJRT_Client_MakeCrossHostReceiveBuffers_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Client_MakeCrossHostReceiveBuffers_Args",
-      PJRT_Transfers_PJRT_Client_MakeCrossHostReceiveBuffers_Args_STRUCT_SIZE,
+      PJRT_STRUCT_SIZE(
+          PJRT_Transfers_PJRT_Client_MakeCrossHostReceiveBuffers_Args,
+          num_buffers),
       args->struct_size));
+  bool allow_cancel_notifier = false;
+  if (args->struct_size >=
+      PJRT_STRUCT_SIZE(
+          PJRT_Transfers_PJRT_Client_MakeCrossHostReceiveBuffers_Args,
+          allow_cancel_notifier)) {
+    allow_cancel_notifier = args->allow_cancel_notifier;
+  }
   std::vector<xla::Shape> shapes;
   shapes.reserve(args->num_shapes);
   for (int i = 0; i < args->num_shapes; ++i) {
@@ -308,12 +370,16 @@ PJRT_Error* PJRT_Transfers_PJRT_Client_MakeCrossHostReceiveBuffers(
                                  args->shape_num_dims[i], args->layouts[i]));
     shapes.push_back(std::move(shape));
   }
-  xla::PjRtCrossHostRecvNotifier notifier =
-      CCrossHostRecvNotifierToCpp(args->notifier);
+  auto shared_state = std::make_shared<CrossHostRecvSharedState>();
+  xla::PjRtCrossHostRecvNotifier notifier = CCrossHostRecvNotifierToCpp(
+      args->notifier, shared_state, allow_cancel_notifier);
   PJRT_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<xla::PjRtBuffer>> buffers,
       args->client->client->MakeCrossHostReceiveBuffers(
           absl::MakeSpan(shapes), args->device->device, std::move(notifier)));
+  for (const auto& buffer : buffers) {
+    buffer->GetReadyFuture().OnReady([shared_state](absl::Status) {});
+  }
   args->num_buffers = buffers.size();
   for (int i = 0; i < buffers.size(); ++i) {
     args->buffers[i] = new PJRT_Buffer{std::move(buffers[i]), args->client};
