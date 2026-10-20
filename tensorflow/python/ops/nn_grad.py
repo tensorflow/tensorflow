@@ -20,14 +20,11 @@ import operator
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.framework import ops
-
-
-
 
 @ops.RegisterGradient("Conv2DBackpropInput")
 def _Conv2DBackpropInputGrad(op: ops.Operation, grad):
