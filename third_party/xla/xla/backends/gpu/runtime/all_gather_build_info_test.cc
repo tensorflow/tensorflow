@@ -160,6 +160,13 @@ TEST_F(BuildAllGatherInfoTest, SucceedsForFourDevices) {
                          Field(&AllGatherInfo::element_type, F32))));
 }
 
+TEST_F(BuildAllGatherInfoTest, FailsForSingleDevicePerReplicaGroup) {
+  EXPECT_THAT(
+      BuildInfo(F32, /*num_elements=*/512, /*replica_groups=*/{0}),
+      StatusIs(absl::StatusCode::kUnimplemented,
+               HasSubstr("Degenerate collectives with a single device")));
+}
+
 TEST_F(BuildAllGatherInfoTest, FailsForNonPowerOfTwoDevices) {
   EXPECT_THAT(
       BuildInfo(F32, /*num_elements=*/512, /*replica_groups=*/{0, 1, 2}),

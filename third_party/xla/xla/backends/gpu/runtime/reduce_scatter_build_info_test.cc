@@ -180,6 +180,14 @@ TEST_F(BuildReduceScatterInfoTest, SucceedsForFourDevices) {
                          Field(&ReduceScatterInfo::num_output_elements, 512))));
 }
 
+TEST_F(BuildReduceScatterInfoTest, FailsForSingleDevicePerReplicaGroup) {
+  EXPECT_THAT(
+      BuildInfo(F32, /*num_output_elements=*/512, HloOpcode::kAdd,
+                /*replica_groups=*/{0}),
+      StatusIs(absl::StatusCode::kUnimplemented,
+               HasSubstr("Degenerate collectives with a single device")));
+}
+
 TEST_F(BuildReduceScatterInfoTest, FailsForNonPowerOfTwoDevices) {
   EXPECT_THAT(BuildInfo(F32, /*num_output_elements=*/512, HloOpcode::kAdd,
                         /*replica_groups=*/{0, 1, 2}),

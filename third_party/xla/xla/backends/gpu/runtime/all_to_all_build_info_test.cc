@@ -146,6 +146,13 @@ TEST_F(BuildAllToAllInfoTest, SucceedsForFourDevices) {
                                  Field(&AllToAllInfo::element_type, F32))));
 }
 
+TEST_F(BuildAllToAllInfoTest, FailsForSingleDevicePerReplicaGroup) {
+  EXPECT_THAT(
+      BuildInfo(F32, /*num_elements=*/512, /*replica_groups=*/{0}),
+      StatusIs(absl::StatusCode::kUnimplemented,
+               HasSubstr("Degenerate collectives with a single device")));
+}
+
 TEST_F(BuildAllToAllInfoTest, FailsForNonPowerOfTwoDevices) {
   EXPECT_THAT(BuildInfo(F32, /*num_elements=*/768,
                         /*replica_groups=*/{0, 1, 2}),
