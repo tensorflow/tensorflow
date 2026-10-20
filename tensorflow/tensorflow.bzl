@@ -84,7 +84,12 @@ load(
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm",
-    "rocm_copts",
+    "if_rocm_is_configured",
+    "is_rocm_configured",
+)
+load(
+    "@config_rocm_hipcc//rocm:build_defs.bzl",
+    "rocm_library",
 )
 load(
     "@xla//xla/tsl:tsl.bzl",
@@ -1997,10 +2002,11 @@ def tf_gpu_kernel_library(
         deps = [],
         hdrs = [],
         **kwargs):
-    copts = copts + tf_copts() + _cuda_copts(opts = cuda_copts) + rocm_copts(opts = cuda_copts)
+    copts = copts + tf_copts() + _cuda_copts(opts = cuda_copts) + if_rocm_is_configured(cuda_copts)
     kwargs["features"] = kwargs.get("features", []) + ["-use_header_modules"]
+    gpu_library = rocm_library if is_rocm_configured() else cuda_library
 
-    cuda_library(
+    gpu_library(
         srcs = srcs,
         hdrs = hdrs,
         copts = copts,
@@ -2378,10 +2384,11 @@ def tf_custom_op_library(
 
     if gpu_srcs:
         basename = name.split(".")[0]
-        cuda_library(
+        gpu_library = rocm_library if is_rocm_configured() else cuda_library
+        gpu_library(
             name = basename + "_gpu",
             srcs = gpu_srcs,
-            copts = copts + tf_copts() + _cuda_copts() + rocm_copts() +
+            copts = copts + tf_copts() + _cuda_copts() +
                     if_tensorrt(["-DGOOGLE_TENSORRT=1"]),
             deps = deps + gpu_deps,
             **kwargs
