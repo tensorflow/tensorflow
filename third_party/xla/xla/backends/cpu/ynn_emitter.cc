@@ -456,6 +456,19 @@ absl::StatusOr<uint32_t> DefineBinaryOp(ynn_subgraph_t subgraph,
   return out;
 }
 
+uint32_t GetReduceFlags(const HloInstruction* instr) {
+  uint32_t flags = 0;
+  if (primitive_util::IsFloatingPointType(instr->shape().element_type())) {
+    if (!instr->GetModule()
+             ->config()
+             .debug_options()
+             .xla_cpu_enable_fast_min_max()) {
+      flags |= YNN_NODE_FLAG_PROPAGATE_NAN;
+    }
+  }
+  return flags;
+}
+
 absl::StatusOr<uint32_t> DefineReduceOp(ynn_subgraph_t subgraph,
                                         TensorIdMap& tensor_ids,
                                         const HloInstruction* instr) {
@@ -480,9 +493,9 @@ absl::StatusOr<uint32_t> DefineReduceOp(ynn_subgraph_t subgraph,
   ABSL_ASSIGN_OR_RETURN(auto init_id, FindTensorValue(tensor_ids, init));
   ABSL_ASSIGN_OR_RETURN(auto out, DefineTensorValue(subgraph, instr));
 
-  YNN_RETURN_IF_ERROR(
-      ynn_define_reduce(subgraph, ynn_reduce_op, /*num_axes=*/dims.size(),
-                        /*axes=*/dims.data(), in, init_id, &out, /*flags=*/0));
+  YNN_RETURN_IF_ERROR(ynn_define_reduce(
+      subgraph, ynn_reduce_op, /*num_axes=*/dims.size(),
+      /*axes=*/dims.data(), in, init_id, &out, GetReduceFlags(instr)));
   return out;
 }
 
@@ -632,7 +645,7 @@ absl::StatusOr<uint32_t> DefineReduceWindowOp(ynn_subgraph_t subgraph,
 
   YNN_RETURN_IF_ERROR(ynn_define_reduce(
       subgraph, ynn_reduce_op, reduce_axes.size(), reduce_axes.data(),
-      stencil_id, init_id, &output_id, /*flags=*/0));
+      stencil_id, init_id, &output_id, GetReduceFlags(instr)));
 
   return output_id;
 }
