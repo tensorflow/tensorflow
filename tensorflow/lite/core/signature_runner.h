@@ -84,7 +84,7 @@ namespace impl {
 /// float* input = runner->input_tensor(0)->data.f;
 /// for (int i = 0; i < input_size; i++) {
 ///   input[i] = ...;
-//  }
+/// }
 /// runner->Invoke();
 /// </code></pre>
 ///
