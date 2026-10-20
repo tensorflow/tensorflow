@@ -1575,6 +1575,15 @@ absl::StatusOr<std::vector<ifrt::ArrayRef>> NanoIfrtClient::CopyArrays(
   return result;
 }
 
+absl::StatusOr<std::vector<ifrt::ArrayRef>>
+NanoIfrtClient::CopyArraysWithDonatedDst(
+    absl::Span<ifrt::ArrayRef> arrays,
+    absl::Span<ifrt::ArrayRef> donated_dst_arrays,
+    ifrt::ArrayCopySemantics semantics) {
+  return absl::UnimplementedError(
+      "CopyArraysWithDonatedDst is not implemented.");
+}
+
 absl::StatusOr<std::vector<ifrt::ArrayRef>> NanoIfrtClient::RemapArrays(
     const ifrt::RemapPlan& plan, absl::Span<ifrt::ArrayRef> arrays,
     ifrt::ArrayCopySemantics semantics) {
