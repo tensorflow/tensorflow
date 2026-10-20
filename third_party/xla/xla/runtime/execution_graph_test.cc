@@ -195,13 +195,11 @@ TEST(ExecutionGraphTest, CollectivesResourceOrdering) {
   EXPECT_THAT(execution_graph.sink(), ElementsAre(2));
 
   EXPECT_THAT(execution_graph.out_edges(0),
-              ElementsAre(NodeEdge{kScheduling, 1}));
+              ElementsAre(NodeEdge{kExecution, 1}));
 
   EXPECT_THAT(execution_graph.in_edges(1),
-              ElementsAre(NodeEdge{kScheduling, 0}));
+              ElementsAre(NodeEdge{kExecution, 0}));
 
-  // We have buffer conflicts, and a resource conflict, so in this case we
-  // must add an execution edge as it provides stronger ordering guarantee
   EXPECT_THAT(execution_graph.out_edges(1),
               ElementsAre(NodeEdge{kExecution, 2}));
   EXPECT_THAT(execution_graph.in_edges(2),
@@ -245,7 +243,7 @@ TEST(ExecutionGraphTest, TransitiveReduction) {
   EXPECT_EQ(execution_graph.priority(2), 0);
 }
 
-TEST(ExecutionGraphTest, TransitiveReductionKeepsExecutionEdge) {
+TEST(ExecutionGraphTest, TransitiveReductionWithResourceEdge) {
   BufferAllocation alloc(/*index=*/0, /*size=*/80, /*color=*/0);
   Shape slice_shape = ShapeUtil::MakeShape(F32, {10});
   BufferAllocation::Slice slice(&alloc, /*offset=*/0, /*size=*/40);
@@ -254,9 +252,8 @@ TEST(ExecutionGraphTest, TransitiveReductionKeepsExecutionEdge) {
 
   std::vector<Operation> operations;
 
-  // All three operations connected with scheduling edges, but because execution
-  // edge provides stronger ordering guarantee, we must keep an 0-2 execution
-  // edge, or we might get a data race.
+  // All three operations are connected with resource execution edges, so
+  // transitive reduction removes the direct 0-2 buffer execution edge.
   operations.push_back(Operation({BufferUse::Write(slice, slice_shape)},
                                  {ResourceUse::Write(resource)}));
   operations.push_back(
@@ -271,15 +268,15 @@ TEST(ExecutionGraphTest, TransitiveReductionKeepsExecutionEdge) {
   EXPECT_THAT(execution_graph.sink(), ElementsAre(2));
 
   EXPECT_THAT(execution_graph.out_edges(0),
-              ElementsAre(NodeEdge{kScheduling, 1}, NodeEdge{kExecution, 2}));
+              ElementsAre(NodeEdge{kExecution, 1}));
 
   EXPECT_THAT(execution_graph.in_edges(1),
-              ElementsAre(NodeEdge{kScheduling, 0}));
+              ElementsAre(NodeEdge{kExecution, 0}));
   EXPECT_THAT(execution_graph.out_edges(1),
-              ElementsAre(NodeEdge{kScheduling, 2}));
+              ElementsAre(NodeEdge{kExecution, 2}));
 
   EXPECT_THAT(execution_graph.in_edges(2),
-              ElementsAre(NodeEdge{kExecution, 0}, NodeEdge{kScheduling, 1}));
+              ElementsAre(NodeEdge{kExecution, 1}));
 
   EXPECT_EQ(execution_graph.priority(0), 2);
   EXPECT_EQ(execution_graph.priority(1), 1);

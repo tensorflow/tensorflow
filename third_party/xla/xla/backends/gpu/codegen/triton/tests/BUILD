@@ -371,6 +371,11 @@ xla_cc_test(
 xla_test(
     name = "fusion_emitter_int4_device_test",
     srcs = ["fusion_emitter_int4_device_test.cc"],
+    backend_tags = {
+        # Intermittently aborts with HSA_STATUS_ERROR_ILLEGAL_INSTRUCTION on the
+        # MI350X CI runners; excluded from ROCm CI via --config=no_flaky.
+        "amdgpu_any": ["flaky"],
+    },
     backends = [
         "a100",
         "h100",

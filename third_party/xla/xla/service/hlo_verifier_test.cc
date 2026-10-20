@@ -3061,6 +3061,62 @@ TEST_F(HloVerifierTest, AllToAll_LayoutConstrained) {
     p0 = f32[128,4]{0,1} parameter(0)
     p1 = f32[128,4]{1,0} parameter(1)
     ROOT a2a = (f32[128,4]{0,1}, f32[128,4]{1,0}) all-to-all(p0, p1),
+      replica_groups={{0,1}}, constrain_layout=true
+  }
+  )";
+  HloModuleConfig config;
+  config.set_replica_count(2);
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnUnverifiedModule(kModuleStr, config));
+  EXPECT_THAT(verifier().Run(module.get()).status().message(),
+              HasSubstr("HLO all-to-all has operands with different shapes"));
+}
+
+TEST_F(HloVerifierTestLayoutSensitive, AllToAll_DifferentOperandLayouts) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY entry {
+    p0 = f32[128,4]{0,1} parameter(0)
+    p1 = f32[128,4]{1,0} parameter(1)
+    ROOT a2a = (f32[128,4]{0,1}, f32[128,4]{1,0}) all-to-all(p0, p1),
+      replica_groups={{0,1}}
+  }
+  )";
+  HloModuleConfig config;
+  config.set_replica_count(2);
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnUnverifiedModule(kModuleStr, config));
+  EXPECT_THAT(verifier().Run(module.get()).status().message(),
+              HasSubstr("HLO all-to-all has operands with different shapes"));
+}
+
+TEST_F(HloVerifierTest,
+       AllToAll_DifferentOperandLayoutsBeforeLayoutAssignment) {
+  // Layout-insensitive passes may leave tuple all-to-all operands with
+  // different layouts; this is fine until layouts are assigned.
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY entry {
+    p0 = f32[128,4]{0,1} parameter(0)
+    p1 = f32[128,4]{1,0} parameter(1)
+    ROOT a2a = (f32[128,4]{0,1}, f32[128,4]{1,0}) all-to-all(p0, p1),
+      replica_groups={{0,1}}
+  }
+  )";
+  HloModuleConfig config;
+  config.set_replica_count(2);
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnUnverifiedModule(kModuleStr, config));
+  EXPECT_OK(verifier().Run(module.get()).status());
+}
+
+TEST_F(HloVerifierTest, AllToAll_DifferentOperandDimensions) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY entry {
+    p0 = f32[128,4] parameter(0)
+    p1 = f32[128,8] parameter(1)
+    ROOT a2a = (f32[128,4], f32[128,8]) all-to-all(p0, p1),
       replica_groups={{0,1}}
   }
   )";

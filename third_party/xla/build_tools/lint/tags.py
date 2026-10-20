@@ -42,6 +42,10 @@ _TAGS_TO_DOCUMENTATION_MAP = {
         "Not ran on ARM. Currently OpenXLA CI doesn't make a distinction and"
         " doesn't build things tagged with this either."
     ),
+    "flaky": (
+        "Test is known to be flaky. `xla_test` and `xla_cc_test` set"
+        " `flaky = True`, and ROCm CI excludes it via `--config=no_flaky`."
+    ),
     # Various disable tags (currently *unrecognized* by OpenXLA CI)
     "notap": "Internal tag which disables the test. Not used on OpenXLA CI.",
     "nosan": "Disabled under all sanitizers. Not used on OpenXLA CI.",

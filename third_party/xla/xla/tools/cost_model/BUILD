@@ -1,5 +1,6 @@
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("//xla:xla.default.bzl", "xla_cc_binary")
 load("//xla/tests:build_defs.bzl", "xla_test")
 load(
     "//xla/tsl/platform/default:cuda_build_defs.bzl",
@@ -25,6 +26,7 @@ cc_library(
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_address_allocator",
+        "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/gpu:gpu_init",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
@@ -39,6 +41,19 @@ cc_library(
     ]),
 )
 
+xla_cc_binary(
+    name = "gpu_bandwidth_benchmark_main",
+    srcs = ["gpu_bandwidth_benchmark_main.cc"],
+    deps = [
+        ":gpu_bandwidth_benchmark",
+        "//xla/tsl/util:command_line_flags",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@tsl//tsl/platform:platform_port",
+    ],
+)
+
 xla_test(
     name = "gpu_bandwidth_benchmark_test",
     srcs = ["gpu_bandwidth_benchmark_test.cc"],
@@ -51,6 +66,7 @@ xla_test(
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest",
     ],
 )
