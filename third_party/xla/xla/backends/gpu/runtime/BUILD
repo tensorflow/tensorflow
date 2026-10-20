@@ -479,6 +479,7 @@ xla_test(
         "//xla:debug_options_flags",
         "//xla:executable_run_options",
         "//xla/service:buffer_assignment",
+        "//xla/service:hlo_proto_cc",
         "//xla/service:platform_util",
         "//xla/service:service_executable_run_options",
         "//xla/service:shaped_buffer",
