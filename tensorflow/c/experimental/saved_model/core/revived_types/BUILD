@@ -180,6 +180,10 @@ cc_library(
     hdrs = [
         "variable.h",
     ],
+    visibility = [
+        "//tensorflow/c/experimental/saved_model/core:__pkg__",
+        "//tensorflow/c/experimental/saved_model/internal:__pkg__",
+    ],
     deps = [
         ":tensorhandle_convertible",
         "//tensorflow/c/eager:immediate_execution_context",
