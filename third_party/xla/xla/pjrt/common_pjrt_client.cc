@@ -220,6 +220,277 @@ absl::Status ValidateStridedGatherBounds(const StridedGather& gather,
   return absl::OkStatus();
 }
 
+int64_t DeviceChunkOffsetBytes(const TransposePlan& plan, bool is_h2d,
+                               int chunk_id) {
+  return is_h2d ? plan.OutputChunkOffsetBytes(chunk_id)
+                : plan.InputChunkOffsetBytes(chunk_id);
+}
+
+int64_t DeviceChunkSizeBytes(const TransposePlan& plan, bool is_h2d,
+                             int chunk_id) {
+  return is_h2d ? plan.OutputChunkSizeBytes(chunk_id)
+                : plan.InputChunkSizeBytes(chunk_id);
+}
+
+// Pipelines multi-chunk host<->staging transposes and staging<->device DMAs
+// across at most `kMaxStages` staging buffer slots:
+//   - H2D: Stage 1 transposes `host_ptr_ -> slot`; Stage 2 DMAs `slot ->
+//     raw_buffer_`.
+//   - D2H: Stage 1 DMAs `raw_buffer_ -> slot`; Stage 2 transposes `slot ->
+//     host_ptr_`.
+class PipelinedChunkedTransfer {
+ public:
+  static constexpr int kMaxStages = 4;
+  using HostPtr = std::variant<const void*, void*>;
+
+  PipelinedChunkedTransfer(
+      CommonPjRtClient* client, std::shared_ptr<TransposePlan> plan,
+      HostPtr host_ptr, int total_chunks, int num_stages, size_t slot_bytes,
+      uint64_t context_id, tsl::AsyncValueRef<PjRtStagingBuffer> staging_buf,
+      PjRtRawBufferRef raw_buffer, PjRtDeviceEventPromiseRef dma_promise,
+      absl::AnyInvocable<void(const absl::Status&) &&> on_host_done)
+      : client_(client),
+        plan_(std::move(plan)),
+        host_ptr_(host_ptr),
+        total_chunks_(total_chunks),
+        is_h2d_(std::holds_alternative<const void*>(host_ptr_)),
+        zero_h2d_slot_(is_h2d_ &&
+                       plan_->InputNumElems() < plan_->OutputNumElems()),
+        slot_bytes_(slot_bytes),
+        context_id_(context_id),
+        context_(tsl::ContextKind::kThread),
+        staging_buf_(std::move(staging_buf)),
+        raw_buffer_(std::move(raw_buffer)),
+        dma_promise_(std::move(dma_promise)),
+        on_host_done_(std::move(on_host_done)),
+        next_chunk_(num_stages),
+        in_flight_stages_(num_stages) {}
+
+  void Start(std::shared_ptr<PipelinedChunkedTransfer> self, int num_stages) {
+    if (const absl::Status* error = staging_buf_.GetErrorIfPresent()) {
+      return Finish(*error);
+    }
+    uint8_t* base_ptr = staging_buf_->data().data();
+    const bool exact_slots = total_chunks_ <= kMaxStages;
+    for (int s = 0; s < num_stages; ++s) {
+      uint8_t* slot =
+          exact_slots ? base_ptr + DeviceChunkOffsetBytes(*plan_, is_h2d_, s)
+                      : base_ptr + s * slot_bytes_;
+      IssueChunk(self, s, slot);
+    }
+  }
+
+ private:
+  // Once all chunks complete Stage 1 (host->staging transpose for H2D, or
+  // device->staging DMA for D2H), release the Stage 1 source (`host_ptr_` for
+  // H2D, `raw_buffer_` for D2H) while Stage 2 drains `staging_buf_`.
+  void CompleteStage1Chunk() {
+    absl::AnyInvocable<void(const absl::Status&) &&> host_done;
+    PjRtRawBufferRef raw_to_release;
+    PjRtDeviceEventPromiseRef promise;
+    {
+      absl::MutexLock lock(mu_);
+      if (++stage1_done_chunks_ < total_chunks_ || !status_.ok()) {
+        return;
+      }
+      if (is_h2d_) {
+        host_done = std::move(on_host_done_);
+      } else {
+        raw_to_release = std::move(raw_buffer_);
+        promise = std::move(dma_promise_);
+      }
+    }
+    raw_to_release.reset();
+    if (host_done) {
+      std::move(host_done)(absl::OkStatus());
+    }
+    if (promise) {
+      promise.SetReady();
+    }
+  }
+
+  void Finish(const absl::Status& final_status) {
+    tsl::AsyncValueRef<PjRtStagingBuffer> staging_to_release;
+    PjRtRawBufferRef raw_to_release;
+    absl::AnyInvocable<void(const absl::Status&) &&> host_done;
+    PjRtDeviceEventPromiseRef promise;
+    {
+      absl::MutexLock lock(mu_);
+      staging_to_release = std::move(staging_buf_);
+      raw_to_release = std::move(raw_buffer_);
+      host_done = std::move(on_host_done_);
+      promise = std::move(dma_promise_);
+    }
+    staging_to_release.reset();
+    raw_to_release.reset();
+    if (host_done) {
+      std::move(host_done)(final_status);
+    }
+    if (promise) {
+      final_status.ok() ? promise.SetReady() : promise.SetError(final_status);
+    }
+  }
+
+  // Advances `slot` to the next chunk after Stage 2 completes, or finishes the
+  // transfer once all in-flight slots drain.
+  void CompleteStage2Chunk(std::shared_ptr<PipelinedChunkedTransfer> self,
+                           uint8_t* slot, const absl::Status& chunk_status) {
+    int next = -1;
+    absl::Status final_status;
+    {
+      absl::MutexLock lock(mu_);
+      status_.Update(chunk_status);
+      if (status_.ok() && next_chunk_ < total_chunks_) {
+        next = next_chunk_++;
+      } else if (--in_flight_stages_ > 0) {
+        return;
+      } else {
+        final_status = status_;
+      }
+    }
+    if (next >= 0) {
+      return IssueChunk(std::move(self), next, slot);
+    }
+    Finish(final_status);
+  }
+
+  void IssueChunk(std::shared_ptr<PipelinedChunkedTransfer> self, int chunk_id,
+                  uint8_t* slot) {
+    client_->async_work_runner()->Execute([this, self = std::move(self),
+                                           chunk_id, slot]() mutable {
+      tsl::WithContext wc(context_);
+      const size_t bytes = DeviceChunkSizeBytes(*plan_, is_h2d_, chunk_id);
+      tsl::profiler::TraceMeConsumer traceme(
+          [&] {
+            return tsl::profiler::TraceMeEncode(
+                is_h2d_ ? "PipelinedChunkedTransfer::H2DChunk"
+                        : "PipelinedChunkedTransfer::D2HIssueChunk",
+                {{"chunk_id", chunk_id}, {"bytes", bytes}});
+          },
+          tsl::profiler::ContextType::kPjRt, context_id_);
+      CHECK_LE(bytes, slot_bytes_);
+      if (is_h2d_) {
+        if (zero_h2d_slot_) {
+          std::memset(slot, 0, bytes);
+        }
+        plan_->ExecuteChunk(chunk_id, std::get<const void*>(host_ptr_), slot,
+                            /*input_is_global=*/true,
+                            /*output_is_global=*/false);
+      }
+      const size_t offset = DeviceChunkOffsetBytes(*plan_, is_h2d_, chunk_id);
+      absl::StatusOr<PjRtDeviceEventRef> dma_event =
+          is_h2d_ ? raw_buffer_->CopyRawHostToDeviceAndReturnEvent(slot, offset,
+                                                                   bytes)
+                  : raw_buffer_->CopyRawDeviceToHostAndReturnEvent(slot, offset,
+                                                                   bytes);
+      if (!dma_event.ok()) {
+        return CompleteStage2Chunk(std::move(self), slot, dma_event.status());
+      }
+      if (is_h2d_) {
+        CompleteStage1Chunk();
+      }
+      PjRtDeviceEventPtr event_ptr = dma_event->ptr();
+      event_ptr.AndThen([this, self = std::move(self), chunk_id, slot, bytes,
+                         dma_event = *std::move(dma_event)]() mutable {
+        if (std::optional<absl::Status> err = dma_event.GetErrorIfPresent()) {
+          return CompleteStage2Chunk(std::move(self), slot, *err);
+        }
+        if (is_h2d_) {
+          return CompleteStage2Chunk(std::move(self), slot, absl::OkStatus());
+        }
+        CompleteStage1Chunk();
+        client_->async_work_runner()->Execute(
+            [this, self = std::move(self), chunk_id, slot, bytes]() mutable {
+              tsl::WithContext wc(context_);
+              tsl::profiler::TraceMeConsumer traceme(
+                  [&] {
+                    return tsl::profiler::TraceMeEncode(
+                        "PipelinedChunkedTransfer::D2HTransposeChunk",
+                        {{"chunk_id", chunk_id}, {"bytes", bytes}});
+                  },
+                  tsl::profiler::ContextType::kPjRt, context_id_);
+              plan_->ExecuteChunk(chunk_id, slot, std::get<void*>(host_ptr_),
+                                  /*input_is_global=*/false,
+                                  /*output_is_global=*/true);
+              CompleteStage2Chunk(std::move(self), slot, absl::OkStatus());
+            });
+      });
+    });
+  }
+
+  CommonPjRtClient* const client_;
+  const std::shared_ptr<TransposePlan> plan_;
+  const HostPtr host_ptr_;
+  const int total_chunks_;
+  const bool is_h2d_;
+  const bool zero_h2d_slot_;
+  const size_t slot_bytes_;
+  const uint64_t context_id_;
+  const tsl::Context context_;
+
+  absl::Mutex mu_;
+  // Read without `mu_` in `Start` before any chunk is issued; moved out under
+  // `mu_` in `Finish` only after all in-flight chunks drain.
+  tsl::AsyncValueRef<PjRtStagingBuffer> staging_buf_;
+  // Read without `mu_` in `IssueChunk` before Stage 1 completes; moved out
+  // under `mu_` only after all chunks finish Stage 1 (`CompleteStage1Chunk` on
+  // D2H) or all in-flight chunks drain (`Finish`).
+  PjRtRawBufferRef raw_buffer_;
+  PjRtDeviceEventPromiseRef dma_promise_ ABSL_GUARDED_BY(mu_);
+  absl::AnyInvocable<void(const absl::Status&) &&> on_host_done_
+      ABSL_GUARDED_BY(mu_);
+  int next_chunk_ ABSL_GUARDED_BY(mu_);
+  int in_flight_stages_ ABSL_GUARDED_BY(mu_);
+  int stage1_done_chunks_ ABSL_GUARDED_BY(mu_) = 0;
+  absl::Status status_ ABSL_GUARDED_BY(mu_);
+};
+
+void RunPipelinedChunkedTransfer(
+    CommonPjRtClient* client, std::shared_ptr<TransposePlan> plan,
+    const Shape& device_shape, PjRtRawBufferRef raw_buffer,
+    PipelinedChunkedTransfer::HostPtr host_ptr, bool sync, uint64_t context_id,
+    PjRtDeviceEventPromiseRef dma_promise,
+    absl::AnyInvocable<void(const absl::Status&) &&> on_host_done) {
+  const bool is_h2d = std::holds_alternative<const void*>(host_ptr);
+  const int total_chunks = plan->Parallelism();
+  const int num_stages =
+      std::min(total_chunks, PipelinedChunkedTransfer::kMaxStages);
+  const size_t slot_bytes =
+      is_h2d ? plan->MaxOutputChunkSizeBytes() : plan->MaxInputChunkSizeBytes();
+  const size_t total_device_bytes = ShapeUtil::ArraySize(device_shape);
+  // Record total linearized/delinearized bytes up front when the chunked
+  // transfer is scheduled.
+  if (client->raw_client() != nullptr) {
+    client->raw_client()->RecordLinearizeBytes(is_h2d, total_device_bytes);
+  }
+  const size_t staging_bytes =
+      total_chunks <= PipelinedChunkedTransfer::kMaxStages
+          ? total_device_bytes
+          : num_stages * slot_bytes;
+
+  tsl::AsyncValueRef<PjRtStagingBuffer> staging_buf;
+  if (is_h2d) {
+    absl::StatusOr<tsl::AsyncValueRef<PjRtStagingBuffer>> staging =
+        client->AllocateLinearizeDest(sync, staging_bytes, raw_buffer);
+    staging_buf = staging.ok() ? *std::move(staging)
+                               : tsl::MakeErrorAsyncValueRef(staging.status());
+  } else {
+    staging_buf = client->AllocateForDelinearizationAsync(
+        staging_bytes, raw_buffer->memory_space());
+  }
+
+  tsl::RCReference<tsl::AsyncValue> staging_ready = staging_buf.CopyRCRef();
+  auto transfer = std::make_shared<PipelinedChunkedTransfer>(
+      client, std::move(plan), host_ptr, total_chunks, num_stages, slot_bytes,
+      context_id, std::move(staging_buf), std::move(raw_buffer),
+      std::move(dma_promise), std::move(on_host_done));
+  client->async_work_runner()->ExecuteWhenReady(
+      {std::move(staging_ready)},
+      [transfer = std::move(transfer), num_stages]() {
+        transfer->Start(transfer, num_stages);
+      });
+}
+
 }  // namespace
 
 CommonPjRtClient::CommonPjRtClient()
@@ -386,34 +657,17 @@ CommonPjRtClient::CreateStagingForZeroCopyLinearize(
 }
 
 absl::StatusOr<tsl::AsyncValueRef<PjRtStagingBuffer>>
-CommonPjRtClient::AllocateLinearizeDest(bool sync,
-                                        const xla::Shape& device_shape,
-                                        absl::Span<const int64_t> byte_strides,
+CommonPjRtClient::AllocateLinearizeDest(bool sync, size_t size,
                                         PjRtRawBufferRef dest_buffer) {
-  PjRtMemorySpace* memory_space = dest_buffer->memory_space();
   if (dest_buffer->GetHostPointer() != nullptr) {
-    ABSL_ASSIGN_OR_RETURN(size_t size, GetOnDeviceBytesCount(memory_space->kind_id(),
-                                                        device_shape));
     absl::Span<uint8_t> span(
         static_cast<uint8_t*>(dest_buffer->GetHostPointer()), size);
     return PjRtStagingBuffer::Create(
         span, [dest_buffer = std::move(dest_buffer)]() {});
   }
+  PjRtMemorySpace* memory_space = dest_buffer->memory_space();
   CHECK_EQ(memory_space->devices().size(), 1);
   PjRtDevice* device = memory_space->devices()[0];
-  ABSL_ASSIGN_OR_RETURN(size_t size, GetOnDeviceBytesCount(memory_space->kind_id(),
-                                                      device_shape));
-  // TODO(parkers): Compute staging_size consistently for all backends and also
-  // fix tpu linearization not to rely on byte_strides.
-  if (device_shape.is_static() &&
-      !(device_shape.has_layout() &&
-        device_shape.layout().dynamic_shape_metadata_prefix_bytes() != 0) &&
-      (byte_strides.empty() ||
-       byte_strides[0] ==
-           primitive_util::ByteWidth(device_shape.element_type()))) {
-    ABSL_ASSIGN_OR_RETURN(int64_t dma_size, GetDmaByteCount(device_shape));
-    size = std::min<size_t>(dma_size, size);
-  }
   if (linearize_throttler() != nullptr) {
     return linearize_throttler()->AllocateStagingDest(
         sync, size, dest_buffer,
@@ -443,6 +697,28 @@ CommonPjRtClient::AllocateLinearizeDest(bool sync,
   auto vec = std::make_unique<std::vector<uint8_t>>(size);
   absl::Span<uint8_t> span = absl::MakeSpan(*vec);
   return PjRtStagingBuffer::Create(span, [vec = std::move(vec)]() {});
+}
+
+absl::StatusOr<tsl::AsyncValueRef<PjRtStagingBuffer>>
+CommonPjRtClient::AllocateLinearizeDest(bool sync,
+                                        const xla::Shape& device_shape,
+                                        absl::Span<const int64_t> byte_strides,
+                                        PjRtRawBufferRef dest_buffer) {
+  PjRtMemorySpace* memory_space = dest_buffer->memory_space();
+  ABSL_ASSIGN_OR_RETURN(size_t size, GetOnDeviceBytesCount(memory_space->kind_id(),
+                                                      device_shape));
+  // TODO(parkers): Compute staging_size consistently for all backends and also
+  // fix tpu linearization not to rely on byte_strides.
+  if (device_shape.is_static() &&
+      !(device_shape.has_layout() &&
+        device_shape.layout().dynamic_shape_metadata_prefix_bytes() != 0) &&
+      (byte_strides.empty() ||
+       byte_strides[0] ==
+           primitive_util::ByteWidth(device_shape.element_type()))) {
+    ABSL_ASSIGN_OR_RETURN(int64_t dma_size, GetDmaByteCount(device_shape));
+    size = std::min<size_t>(dma_size, size);
+  }
+  return AllocateLinearizeDest(sync, size, std::move(dest_buffer));
 }
 
 absl::Status CommonPjRtClient::Linearize(
@@ -1047,6 +1323,40 @@ absl::StatusOr<PjRtDeviceEventRef> CommonPjRtClient::LinearizeIntoImpl(
                                      byte_strides, memory_space)) {
     linearized = CreateStagingForZeroCopyLinearize(
         data, device_shape, memory_space, std::move(on_done_with_host_buffer));
+  } else if (std::shared_ptr<TransposePlan> plan =
+                 (raw_buffer->GetHostPointer() == nullptr &&
+                  dynamic_sizes.empty())
+                     ? CreateChunkedTransposePlan(
+                           /*is_h2d=*/true, ShapeUtil::MakeShape(type, dims),
+                           byte_strides, device_shape)
+                     : nullptr) {
+    PjRtDeviceEventPromiseRef copy_event_promise;
+    PjRtDeviceEventRef copy_event;
+    ABSL_ASSIGN_OR_RETURN(
+        std::tie(copy_event_promise, copy_event),
+        CreateLinkedEventPromise(memory_space, "BufferFromHostBuffer"));
+    const bool sync =
+        host_buffer_semantics == HostBufferSemantics::kImmutableOnlyDuringCall;
+    auto host_read_done = tsl::MakeUnconstructedAsyncValueRef<bool>();
+    RunPipelinedChunkedTransfer(this, std::move(plan), device_shape, raw_buffer,
+                                data, sync, producer.GetContextId(),
+                                std::move(copy_event_promise),
+                                [host_read_done = host_read_done.CopyRef(),
+                                 on_done = std::move(on_done_with_host_buffer)](
+                                    const absl::Status& status) mutable {
+                                  if (on_done) {
+                                    std::move(on_done)();
+                                  }
+                                  status.ok() ? host_read_done.emplace(true)
+                                              : host_read_done.SetError(status);
+                                });
+    if (sync) {
+      tsl::BlockUntilReady(host_read_done.GetAsyncValue());
+      if (const absl::Status* err = host_read_done.GetErrorIfPresent()) {
+        return *err;
+      }
+    }
+    return copy_event;
   } else {
     ABSL_ASSIGN_OR_RETURN(
         linearized,
@@ -5018,6 +5328,23 @@ Future<> CommonPjRtBufferImpl::ToLiteralImpl(
                     },
                     common_client->async_work_runner());
                 launcher.AddDependency(device_promise.event());
+                return;
+              }
+              if (std::shared_ptr<TransposePlan> plan =
+                      raw_buffer->GetHostPointer() == nullptr
+                          ? common_client->CreateChunkedTransposePlan(
+                                /*is_h2d=*/false, literal->shape(),
+                                /*host_byte_strides=*/std::nullopt,
+                                device_shape)
+                          : nullptr) {
+                RunPipelinedChunkedTransfer(
+                    common_client, std::move(plan), device_shape,
+                    std::move(raw_buffer), literal->untyped_data(),
+                    /*sync=*/false, context_id, std::move(device_promise),
+                    [promise = std::move(promise)](
+                        const absl::Status& status) mutable {
+                      promise.Set(status);
+                    });
                 return;
               }
               PjRtMemorySpace* memory_space = raw_buffer->memory_space();

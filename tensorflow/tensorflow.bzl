@@ -1512,10 +1512,10 @@ def tf_gen_op_wrapper_py(
         linkopts = if_not_windows(["-lm", "-Wl,-ldl"]) + cc_linkopts,
         linkstatic = 1,  # Faster to link this one-time-use binary dynamically
         visibility = [clean_dep("//tensorflow:internal")],
-        deps = ([
+        deps = (deps + [
             clean_dep("//tensorflow/core:framework"),
             clean_dep("//tensorflow/python/framework:python_op_gen_main"),
-        ] + deps),
+        ]),
         testonly = testonly,
     )
 
