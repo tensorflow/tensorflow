@@ -10212,6 +10212,9 @@ absl::Status AlgebraicSimplifierVisitor::HandleTranspose(
   if (std::is_sorted(transpose->dimensions().begin(),
                      transpose->dimensions().end())) {
     VLOG(10) << "deleting no-op transpose";
+    HloModule* module = transpose->parent()->parent();
+    module->mutable_original_value_recovery_table().AddRecoveryComputation(
+        operand, transpose);
     return ReplaceInstruction(transpose, operand);
   }
 
