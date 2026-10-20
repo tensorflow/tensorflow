@@ -878,26 +878,30 @@ class Conv2DTest(parameterized.TestCase, test.TestCase):
     self.assertEqual(self.evaluate(output).shape, (0, 2, 2, 5))
 
   @test_util.run_in_graph_and_eager_modes
-  def testConv2DBackpropEmptyOutBackprop(self):
-    # A filter larger than the input gives an empty out_backprop. The forward
-    # op rejects that configuration, but the gradient ops can be called with
-    # it directly, and then the gradients are zero.
-    for strides in ([1, 1, 1, 1], [1, 2, 2, 1]):
-      out_backprop = array_ops.zeros([2, 0, 0, 2])
+  def testConv2DBackpropEmptyInput(self):
+    # An empty batch, or an input with no rows under SAME padding, gives an
+    # empty out_backprop, and the gradients are zero.
+    for input_sizes, out_backprop_sizes, stride, padding in (
+        ([0, 4, 4, 3], [0, 2, 2, 2], 1, "VALID"),
+        ([2, 0, 4, 3], [2, 0, 4, 2], 1, "SAME"),
+        ([2, 0, 4, 3], [2, 0, 2, 2], 2, "SAME"),
+    ):
+      strides = [1, stride, stride, 1]
+      out_backprop = array_ops.zeros(out_backprop_sizes)
       input_grad = gen_nn_ops.conv2d_backprop_input(
-          input_sizes=[2, 4, 4, 3],
-          filter=array_ops.ones([5, 5, 3, 2]),
+          input_sizes=input_sizes,
+          filter=array_ops.ones([3, 3, 3, 2]),
           out_backprop=out_backprop,
           strides=strides,
-          padding="VALID")
+          padding=padding)
       filter_grad = gen_nn_ops.conv2d_backprop_filter(
-          input=array_ops.ones([2, 4, 4, 3]),
-          filter_sizes=[5, 5, 3, 2],
+          input=array_ops.ones(input_sizes),
+          filter_sizes=[3, 3, 3, 2],
           out_backprop=out_backprop,
           strides=strides,
-          padding="VALID")
-      self.assertAllEqual(np.zeros([2, 4, 4, 3]), self.evaluate(input_grad))
-      self.assertAllEqual(np.zeros([5, 5, 3, 2]), self.evaluate(filter_grad))
+          padding=padding)
+      self.assertAllEqual(np.zeros(input_sizes), self.evaluate(input_grad))
+      self.assertAllEqual(np.zeros([3, 3, 3, 2]), self.evaluate(filter_grad))
 
   @parameterized.named_parameters(*TEST_PARAMS)
   @test_util.run_in_graph_and_eager_modes
