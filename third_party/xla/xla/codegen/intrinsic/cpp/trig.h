@@ -29,6 +29,11 @@ float sinh_f32(float x) asm("xla.sinh.f32");
 Vec4f sinh_v4f32(Vec4f x) asm("xla.sinh.v4f32");
 Vec8f sinh_v8f32(Vec8f x) asm("xla.sinh.v8f32");
 Vec16f sinh_v16f32(Vec16f x) asm("xla.sinh.v16f32");
+
+float cosh_f32(float x) asm("xla.cosh.f32");
+Vec4f cosh_v4f32(Vec4f x) asm("xla.cosh.v4f32");
+Vec8f cosh_v8f32(Vec8f x) asm("xla.cosh.v8f32");
+Vec16f cosh_v16f32(Vec16f x) asm("xla.cosh.v16f32");
 #endif  // defined(__has_attribute) && __has_attribute(ext_vector_type) &&
         // defined(__has_builtin) && __has_builtin(__builtin_vectorelements)
 

@@ -357,18 +357,21 @@ LogicalResult convertMulhiChloToMhlo(chlo::MulhiOp op,
 
 ChloLegalizeToHighLevelMhloPassOptions getDefaultChloToHighLevelMhloOptions() {
   ChloLegalizeToHighLevelMhloPassOptions opts;
+  opts.enable_cosh_ = true;
   opts.enable_sinh_ = true;
   return opts;
 }
 
 ChloLegalizeToHighLevelMhloPassOptions getCpuChloToHighLevelMhloOptions() {
   ChloLegalizeToHighLevelMhloPassOptions opts;
+  opts.enable_cosh_ = true;
   opts.enable_sinh_ = true;
   return opts;
 }
 
 ChloLegalizeToHighLevelMhloPassOptions getTpuChloToHighLevelMhloOptions() {
   ChloLegalizeToHighLevelMhloPassOptions opts;
+  opts.enable_cosh_ = true;
   opts.enable_sinh_ = true;
   return opts;
 }
@@ -393,7 +396,7 @@ namespace {
 }  // namespace
 
 void populateChloToHighLevelMhloOpPatterns(
-    MLIRContext*, RewritePatternSet* patterns,
+    MLIRContext* context, RewritePatternSet* patterns,
     const mhlo::ChloLegalizeToHighLevelMhloPassOptions& options) {
   constexpr unsigned kBenefit = 10;
   if (options.enable_acosh_) {

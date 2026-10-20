@@ -233,6 +233,25 @@ TEST(IntrinsicLibTest, SinhVectorizations) {
                            "xla.sinh.f32:xla.sinh.v8f32:8:_ZGV_LLVM_N8v",
                            "xla.sinh.f32:xla.sinh.v16f32:16:_ZGV_LLVM_N16v"));
 }
+
+TEST(IntrinsicLibTest, CoshVectorizations) {
+  IntrinsicOptions options;
+  auto lib = IntrinsicFunctionLib(options);
+  std::vector<llvm::VecDesc> vec_descs = lib.Vectorizations();
+  std::vector<std::string> vec_descs_str;
+  for (const auto& vec_desc : vec_descs) {
+    if (vec_desc.getScalarFnName().starts_with("xla.cosh")) {
+      vec_descs_str.push_back(ToString(vec_desc));
+    }
+  }
+
+  EXPECT_THAT(
+      vec_descs_str,
+      UnorderedElementsAre("xla.cosh.f32:xla.cosh.v4f32:4:_ZGV_LLVM_N4v",
+                           "xla.cosh.f32:xla.cosh.v8f32:8:_ZGV_LLVM_N8v",
+                           "xla.cosh.f32:xla.cosh.v16f32:16:_ZGV_LLVM_N16v"));
+}
+
 TEST(IntrinsicLibTest, CppGenIntrinsicLibraryPreservesNoInline) {
   llvm::LLVMContext context;
   llvm::Module dst_module("dst_module", context);

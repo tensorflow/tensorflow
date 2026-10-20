@@ -157,5 +157,127 @@ TEST(TrigTest, SinhIsVectorized) {
   EXPECT_THAT(ir, ContainsRegex("fmul.*<16 x float>"));
 }
 
+TEST(TrigTest, CoshF32IsCorrect) {
+  double max_ulp_error = 0.0;
+  float worst_x = 0.0f;
+  int64_t max_int_ulp_diff = 0;
+
+  auto check_point = [&](uint32_t bits) {
+    float x;
+    std::memcpy(&x, &bits, sizeof(x));
+    double expected = std::cosh(static_cast<double>(x));
+    float actual = cosh_f32(x);
+
+    float expected_f32 = static_cast<float>(expected);
+    uint32_t actual_bits, expected_bits;
+    std::memcpy(&actual_bits, &actual, sizeof(actual_bits));
+    std::memcpy(&expected_bits, &expected_f32, sizeof(expected_bits));
+    int64_t int_diff = std::abs(static_cast<int64_t>(actual_bits) -
+                                static_cast<int64_t>(expected_bits));
+    if (int_diff > max_int_ulp_diff) {
+      max_int_ulp_diff = int_diff;
+    }
+
+    int exp;
+    std::frexp(expected, &exp);
+    double ulp = std::ldexp(1.0, std::max(exp - 24, -149));
+    double ulp_error = std::abs(static_cast<double>(actual) - expected) / ulp;
+    if (ulp_error > max_ulp_error) {
+      max_ulp_error = ulp_error;
+      worst_x = x;
+    }
+  };
+
+  // Sweep the full finite positive domain [0.0f, 89.4159851f] with stride 64,
+  // plus exhaustive coverage around the range-reduction transition points.
+  constexpr uint32_t kMaxFiniteCoshBits = 0x42b2d4fc;
+  for (uint32_t bits = 0; bits <= kMaxFiniteCoshBits; bits += 64) {
+    check_point(bits);
+  }
+  constexpr uint32_t kSmallTransitionBits = 0x3f317218;  // 0.69314718f
+  for (uint32_t bits = kSmallTransitionBits - 4096;
+       bits <= kSmallTransitionBits + 4096; ++bits) {
+    check_point(bits);
+  }
+  constexpr uint32_t kTransitionBits = 0x3f8533bf;  // 1.0406416654586792f
+  for (uint32_t bits = kTransitionBits - 4096; bits <= kTransitionBits + 4096;
+       ++bits) {
+    check_point(bits);
+  }
+
+  EXPECT_LE(max_int_ulp_diff, 1);
+  EXPECT_LE(max_ulp_error, 0.89)
+      << "max_ulp_error = " << max_ulp_error << " worst_x = " << worst_x;
+}
+
+TEST(TrigTest, CoshF32EdgeCases) {
+  EXPECT_EQ(cosh_f32(0.0f), 1.0f);
+  EXPECT_EQ(cosh_f32(-0.0f), 1.0f);
+
+  // Overflow threshold: cosh(89.4159851f) < FLT_MAX, cosh(89.4159927f) >
+  // FLT_MAX
+  float just_below = 89.4159851f;
+  EXPECT_FALSE(std::isinf(cosh_f32(just_below)));
+  EXPECT_THAT(
+      cosh_f32(just_below),
+      NearUlps(static_cast<float>(std::cosh(static_cast<double>(just_below))),
+               1));
+  EXPECT_FALSE(std::isinf(cosh_f32(-just_below)));
+  EXPECT_THAT(
+      cosh_f32(-just_below),
+      NearUlps(static_cast<float>(std::cosh(static_cast<double>(-just_below))),
+               1));
+
+  float just_above = 89.4159927f;
+  EXPECT_EQ(cosh_f32(just_above), std::numeric_limits<float>::infinity());
+  EXPECT_EQ(cosh_f32(-just_above), std::numeric_limits<float>::infinity());
+
+  EXPECT_EQ(cosh_f32(std::numeric_limits<float>::infinity()),
+            std::numeric_limits<float>::infinity());
+  EXPECT_EQ(cosh_f32(-std::numeric_limits<float>::infinity()),
+            std::numeric_limits<float>::infinity());
+  EXPECT_TRUE(std::isnan(cosh_f32(std::numeric_limits<float>::quiet_NaN())));
+}
+
+TEST(TrigTest, CoshF32VectorWidthsAreCorrect) {
+  Vec4f x4 = {-10.0f, -0.5f, 0.5f, 10.0f};
+  Vec4f y4 = cosh_v4f32(x4);
+  for (int i = 0; i < 4; ++i) {
+    EXPECT_THAT(
+        y4[i],
+        NearUlps(static_cast<float>(std::cosh(static_cast<double>(x4[i]))), 1));
+  }
+
+  Vec8f x8 = {-50.0f, -10.0f, -1.0f, -0.1f, 0.1f, 1.0f, 10.0f, 50.0f};
+  Vec8f y8 = cosh_v8f32(x8);
+  for (int i = 0; i < 8; ++i) {
+    EXPECT_THAT(
+        y8[i],
+        NearUlps(static_cast<float>(std::cosh(static_cast<double>(x8[i]))), 1));
+  }
+
+  Vec16f x16 = {-80.0f, -50.0f, -20.0f, -5.0f, -1.5f, -0.5f, -0.01f, -0.0f,
+                0.0f,   0.01f,  0.5f,   1.5f,  5.0f,  20.0f, 50.0f,  80.0f};
+  Vec16f y16 = cosh_v16f32(x16);
+  for (int i = 0; i < 16; ++i) {
+    EXPECT_THAT(
+        y16[i],
+        NearUlps(static_cast<float>(std::cosh(static_cast<double>(x16[i]))),
+                 1));
+  }
+}
+
+TEST(TrigTest, CoshIsVectorized) {
+  llvm::LLVMContext context;
+  std::unique_ptr<llvm::Module> module =
+      ParseEmbeddedBitcode(context, llvm_ir::kTrigLlIr);
+
+  std::string ir;
+  llvm::raw_string_ostream stream(ir);
+  module->print(stream, nullptr);
+  EXPECT_THAT(ir, ContainsRegex("xla.cosh.v16f32"));
+  EXPECT_THAT(ir, ContainsRegex("fmul.*<16 x float>"));
+}
+
 }  // namespace
 }  // namespace xla::codegen
