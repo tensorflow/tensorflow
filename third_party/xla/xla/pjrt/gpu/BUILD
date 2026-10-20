@@ -984,6 +984,7 @@ xla_cc_test(
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_device_description",
         "//xla/pjrt:pjrt_device_dimensions",
+        "//xla/pjrt:pjrt_topology_description_registry",
         "//xla/pjrt/se:pjrt_stream_executor_device_description",
         "//xla/runtime:process_id",
         "//xla/service:gpu_topology",

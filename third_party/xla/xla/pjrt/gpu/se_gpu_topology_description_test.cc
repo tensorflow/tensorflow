@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_device_dimensions.h"
+#include "xla/pjrt/pjrt_topology_description_registry.h"
 #include "xla/pjrt/se/pjrt_stream_executor_device_description.h"
 #include "xla/runtime/process_id.h"
 #include "xla/service/gpu_topology.h"
@@ -209,6 +210,28 @@ TEST(PjRtTopologyUtilsGPUTest, GetDeviceCoordsMultipleHostScopedPartition) {
   auto [device_coords3, core_id3] = std::move(device_core3);
   ASSERT_EQ(device_coords3, (PjRtDeviceDimensions{0, 2, 2}));
   ASSERT_EQ(core_id3, 0);
+}
+
+TEST(StreamExecutorGpuTopologyDescriptionTest, OneApiRegistryDeserialization) {
+  // This tests oneAPI platform deserialization. It verifies that the oneAPI
+  // deserializer is registered and can be invoked.
+  std::shared_ptr<xla::GpuTopology> gpu_topology =
+      std::make_shared<xla::GpuTopology>(
+          /*platform_version=*/"Xe2", /*num_partitions=*/1,
+          /*num_hosts_per_partition=*/1, /*num_devices_per_host=*/2);
+
+  StreamExecutorGpuTopologyDescription topology_desc(
+      xla::OneapiId(), xla::OneapiName(), gpu_topology);
+
+  ASSERT_OK_AND_ASSIGN(auto proto, topology_desc.ToProto());
+  ASSERT_OK_AND_ASSIGN(
+      auto deserialized_topology,
+      PjRtTopologyDescriptionRegistry::Global().Deserialize(proto));
+
+  // Verify deserialized topology matches original.
+  EXPECT_EQ(deserialized_topology->platform_id(), xla::OneapiId());
+  EXPECT_EQ(deserialized_topology->platform_name(), xla::OneapiName());
+  EXPECT_EQ(deserialized_topology->platform_version(), "Xe2");
 }
 
 }  // namespace
