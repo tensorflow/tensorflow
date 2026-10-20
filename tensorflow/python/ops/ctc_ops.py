@@ -29,6 +29,7 @@ from tensorflow.python.framework import tensor_shape
 
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_array_ops
@@ -749,10 +750,14 @@ def _ctc_loss_op_standard(labels, logits, logit_length, logits_time_major,
   part_after = logits[:, :, blank_index + 1:]
   part_blank = logits[:, :, blank_index:blank_index + 1]
   logits = array_ops.concat([part_before, part_after, part_blank], axis=2)
+  # Keep out-of-range ids unchanged so the kernel rejects them instead of
+  # aliasing num_classes onto the blank index num_classes - 1.
+  values = labels.values
+  shift = math_ops.logical_and(values >= blank_index,
+                               values < _get_dim(logits, 2))
   labels = sparse_tensor.SparseTensor(
-      labels.indices,
-      array_ops.where(labels.values < blank_index, labels.values,
-                      labels.values - 1), labels.dense_shape)
+      labels.indices, array_ops.where(shift, values - 1, values),
+      labels.dense_shape)
   return _ctc_loss_impl(
       labels=labels,
       inputs=logits,
@@ -767,10 +772,13 @@ def _ctc_loss_op_cudnn(labels, logits, logit_length, logits_time_major,
   part_after = logits[:, :, blank_index + 1:]
   part_blank = logits[:, :, blank_index:blank_index + 1]
   logits = array_ops.concat([part_blank, part_before, part_after], axis=2)
+  # Keep out-of-range ids unchanged so the kernel rejects them instead of
+  # shifting -1 to 0 (the blank index in cuDNN layout).
+  values = labels.values
+  shift = math_ops.logical_and(values >= 0, values < blank_index)
   labels = sparse_tensor.SparseTensor(
-      labels.indices,
-      array_ops.where(labels.values < blank_index, labels.values + 1,
-                      labels.values), labels.dense_shape)
+      labels.indices, array_ops.where(shift, values + 1, values),
+      labels.dense_shape)
   return _ctc_loss_impl(
       labels=labels,
       inputs=logits,
@@ -781,6 +789,17 @@ def _ctc_loss_op_cudnn(labels, logits, logit_length, logits_time_major,
 
 def _ctc_loss_shape(op):
   return [op.inputs[2].get_shape(), op.inputs[0].get_shape()]
+
+
+def _assert_label_ids_in_range(labels, num_classes, valid_mask):
+  """Returns an Assert that unmasked labels are in [0, num_classes)."""
+  num_classes = math_ops.cast(num_classes, labels.dtype)
+  in_range = math_ops.logical_and(labels >= 0, labels < num_classes)
+  in_range = math_ops.logical_or(in_range, math_ops.logical_not(valid_mask))
+  return control_flow_assert.Assert(
+      math_ops.reduce_all(in_range),
+      ["All labels must be in the range [0, num_classes), got "
+       "num_classes =", num_classes])
 
 
 def _validate_ctc_loss_logits(logits, blank_index):
@@ -885,10 +904,14 @@ def ctc_loss_v2(labels,
           logits[:, :, blank_index:blank_index + 1],
       ],
                                 axis=2)
+      # Keep out-of-range ids unchanged so the kernel rejects them instead of
+      # aliasing num_classes onto the blank index num_classes - 1.
+      values = labels.values
+      shift = math_ops.logical_and(values >= blank_index,
+                                   values < _get_dim(logits, 2))
       labels = sparse_tensor.SparseTensor(
-          labels.indices,
-          array_ops.where(labels.values < blank_index, labels.values,
-                          labels.values - 1), labels.dense_shape)
+          labels.indices, array_ops.where(shift, values - 1, values),
+          labels.dense_shape)
 
     return ctc_loss(
         labels=labels,
@@ -1145,6 +1168,17 @@ def ctc_loss_dense(labels,
 
     if not logits_time_major:
       logits = array_ops.transpose(logits, perm=[1, 0, 2])
+
+    # Only the first label_length entries per row are real labels; padding may
+    # hold arbitrary values.  Validate before the blank_index remap so that -1
+    # is checked before it could be mapped to 0.
+    label_mask = array_ops.sequence_mask(
+        label_length, maxlen=_get_dim(labels, 1))
+    assert_op = _assert_label_ids_in_range(
+        labels, _get_dim(logits, 2), valid_mask=label_mask)
+    if assert_op is not None:
+      with ops.control_dependencies([assert_op]):
+        labels = array_ops.identity(labels)
 
     if blank_index != 0:
       blank_index_val = (

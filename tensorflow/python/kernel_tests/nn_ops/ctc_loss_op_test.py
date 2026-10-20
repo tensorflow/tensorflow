@@ -119,6 +119,14 @@ class CTCLossValidationTest(test.TestCase, parameterized.TestCase):
           self._callCtcLoss(ctc_loss_fn, logits, blank_index=-4)
 
 
+  def _out_of_range_error(self, sparse, label):
+    """Returns the error regex expected for an out-of-range label id."""
+    if not sparse:
+      return r"All labels must be in the range \[0, num_classes\)"
+    if label < 0:
+      return r"All labels must be nonnegative integers"
+    return r"No label may be greater than num_classes"
+
   def _make_labels(self, sparse, values):
     """Creates a labels tensor for CTC loss testing."""
     if sparse:
@@ -151,7 +159,7 @@ class CTCLossValidationTest(test.TestCase, parameterized.TestCase):
     """Tests that out-of-range label ids are rejected in eager mode."""
     with self.assertRaisesRegex(
         errors_impl.InvalidArgumentError,
-        r"All labels must be.*"):
+        self._out_of_range_error(sparse, label)):
       self.evaluate(
           self._call_ctc_loss_with_labels(ctc_loss_fn, sparse, [label]))
 
@@ -168,7 +176,7 @@ class CTCLossValidationTest(test.TestCase, parameterized.TestCase):
 
     with self.assertRaisesRegex(
         errors_impl.InvalidArgumentError,
-        r"All labels must be.*"):
+        self._out_of_range_error(sparse, label)):
       self.evaluate(test_fn())
 
   @parameterized.product(
@@ -231,8 +239,9 @@ class CTCLossValidationTest(test.TestCase, parameterized.TestCase):
     """Tests that unknown-rank logits do not crash _get_dim and reject OOB.
 
     Dense labels route through ctc_loss_dense, which calls _get_dim on both
-    logits and labels.  Tracing with TensorSpec(shape=None) gives both tensors
-    an unknown rank, exercising the new fallback branch in _get_dim.
+    logits and labels.  Tracing with TensorSpec(shape=None) gives logits an
+    unknown rank (labels keep a static shape), exercising the fallback in
+    _get_dim.
     """
     @def_function.function(
         input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)]
@@ -248,7 +257,7 @@ class CTCLossValidationTest(test.TestCase, parameterized.TestCase):
 
     with self.assertRaisesRegex(
         errors_impl.InvalidArgumentError,
-        r"All labels must be.*",
+        self._out_of_range_error(False, 10),
     ):
       self.evaluate(test_fn(array_ops.zeros([3, 1, 10], dtype=dtypes.float32)))
 
@@ -256,7 +265,11 @@ class CTCLossValidationTest(test.TestCase, parameterized.TestCase):
       ctc_loss_fn=[ctc_ops.ctc_loss_v2, ctc_ops.ctc_loss_v3],
   )
   def testUnknownRankLogitsAccepted(self, ctc_loss_fn):
-    """Tests that valid labels with unknown-rank logits are accepted."""
+    """Tests that valid labels with unknown-rank logits are accepted.
+
+    Uses blank_index=-1 so blank_index + _get_dim(logits, 2) is computed at
+    trace time, exercising blank_index_val under unknown rank.
+    """
     @def_function.function(
         input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)]
     )
@@ -266,13 +279,35 @@ class CTCLossValidationTest(test.TestCase, parameterized.TestCase):
           logits=logits,
           label_length=constant_op.constant([2], dtype=dtypes.int32),
           logit_length=constant_op.constant([3], dtype=dtypes.int32),
-          blank_index=0,
+          blank_index=-1,
       )
 
     loss = self.evaluate(
         test_fn(array_ops.zeros([3, 1, 10], dtype=dtypes.float32)))
     self.assertAllEqual(loss.shape, [1])
     self.assertTrue(np.all(np.isfinite(loss)))
+
+  def testDensePaddingMixedLengths(self):
+    """Padding past each row's label_length is ignored per row."""
+    logits = array_ops.zeros([4, 2, 10], dtype=dtypes.float32)
+    label_length = constant_op.constant([1, 2], dtype=dtypes.int32)
+    logit_length = constant_op.constant([4, 4], dtype=dtypes.int32)
+
+    def loss(values):
+      return ctc_ops.ctc_loss_v3(
+          labels=constant_op.constant(values, dtype=dtypes.int32),
+          logits=logits,
+          label_length=label_length,
+          logit_length=logit_length,
+          blank_index=-1)
+
+    self.assertAllClose(
+        self.evaluate(loss([[3, 0], [4, 5]])),
+        self.evaluate(loss([[3, 99], [4, 5]])))
+    with self.assertRaisesRegex(
+        errors_impl.InvalidArgumentError,
+        r"All labels must be in the range \[0, num_classes\)"):
+      self.evaluate(loss([[3, 0], [4, 10]]))
 
 
 class CTCLossTest(test.TestCase):
