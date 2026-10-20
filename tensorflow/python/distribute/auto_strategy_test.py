@@ -22,6 +22,8 @@ from unittest import mock
 from tensorflow.python.distribute import auto_strategy
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import mirrored_strategy
+from tensorflow.python.distribute import multi_process_runner
+from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import one_device_strategy
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
@@ -246,31 +248,22 @@ class AutoStrategyTest(test.TestCase):
       self.assertIsInstance(strategy, one_device_strategy.OneDeviceStrategy)
       self.assertIn("CPU:0", strategy.extended._device)
 
-  @mock.patch.object(config, "get_visible_devices", return_value=[])
-  def testMultiWorkerDetection(self, mock_get_visible_devices):
-    # Do NOT mock CollectiveAllReduceStrategy here — the intent is to catch
-    # any eager-mode RuntimeError that would be raised if list_logical_devices
-    # is called before CollectiveAllReduceStrategy is configured (the bug
-    # dmiltr3 identified).  The real constructor will raise RuntimeError in a
-    # non-distributed test environment, so we expect auto_strategy to catch
-    # it via the inner try/except and fall through to a CPU strategy rather
-    # than propagating the crash.
-    os.environ["TF_CONFIG"] = json.dumps({
-        "cluster": {
-            "worker": ["localhost:12345", "localhost:23456"]
-        },
-        "task": {"type": "worker", "index": 0},
-    })
-    # auto_strategy must not raise; it should either return
-    # CollectiveAllReduceStrategy (if the environment supports it) or fall
-    # back gracefully — never crash with RuntimeError.
-    try:
+  def testMultiWorkerDetection(self):
+
+    def worker_fn():
       strategy = auto_strategy.auto_strategy()
-    except RuntimeError as e:
-      self.fail(
-          "auto_strategy raised RuntimeError in eager mode: %s" % e
+      return isinstance(
+          strategy,
+          collective_all_reduce_strategy.CollectiveAllReduceStrategy,
       )
-    self.assertIsNotNone(strategy)
+
+    result = multi_process_runner.run(
+        worker_fn,
+        cluster_spec=multi_worker_test_base.create_cluster_spec(
+            num_workers=2
+        ),
+    )
+    self.assertEqual(result.return_value, [True, True])
 
   @mock.patch.object(
       collective_all_reduce_strategy, "CollectiveAllReduceStrategy"
@@ -409,5 +402,5 @@ class AutoStrategyTest(test.TestCase):
 
 
 if __name__ == "__main__":
-  test.main()
+  multi_process_runner.test_main()
 

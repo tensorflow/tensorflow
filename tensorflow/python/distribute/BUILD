@@ -2769,6 +2769,8 @@ tf_py_strict_test(
         ":auto_strategy",
         ":collective_all_reduce_strategy",
         ":mirrored_strategy",
+        ":multi_process_runner",
+        ":multi_worker_test_base",
         ":one_device_strategy",
         ":tpu_strategy",
         "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",

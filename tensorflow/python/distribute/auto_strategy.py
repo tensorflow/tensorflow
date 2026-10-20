@@ -49,13 +49,19 @@ def auto_strategy() -> distribute_lib.StrategyBase:
     model = ...
   ```
   """
-  # Check for Multi-worker setup in TF_CONFIG first.
-  # This must happen before any call to config.list_logical_devices("TPU"),
-  # which initialises the eager runtime context and would cause
+  tpu_visible = config.get_visible_devices("TPU")
+  tpu_name = os.environ.get("TPU_NAME", "")
+  has_tpu = bool(
+      tpu_visible or (tpu_name and tpu_name.lower() != "local")
+  )
+
+  # Check for Multi-worker setup in TF_CONFIG first when no TPU is
+  # present. This must happen before config.list_logical_devices("TPU"),
+  # which initializes the eager runtime context and would cause
   # CollectiveAllReduceStrategy() to raise RuntimeError("Collective ops must
   # be configured at program startup") in eager mode.
   tf_config_str = os.environ.get("TF_CONFIG", "")
-  if tf_config_str:
+  if tf_config_str and not has_tpu:
     try:
       tf_config = json.loads(tf_config_str)
     except (ValueError, TypeError):
@@ -89,13 +95,7 @@ def auto_strategy() -> distribute_lib.StrategyBase:
               pass
 
   # Check for TPUs
-  tpu_visible = config.get_visible_devices("TPU")
-  tpu_name = os.environ.get("TPU_NAME", "")
-  if (
-      tpu_visible
-      or config.list_logical_devices("TPU")
-      or (tpu_name and tpu_name.lower() != "local")
-  ):
+  if has_tpu or config.list_logical_devices("TPU"):
     try:
       resolver = (
           tpu_cluster_resolver.TPUClusterResolver(tpu="local")
