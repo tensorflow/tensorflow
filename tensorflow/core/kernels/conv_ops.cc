@@ -15,6 +15,14 @@ limitations under the License.
 
 // See docs in ../ops/nn_ops.cc.
 
+#include <cstdint>
+#include <cstdlib>
+#include <limits>
+#include <string>
+
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/numbers.h"
 #define USE_EIGEN_TENSOR
 #define EIGEN_USE_THREADS
 
