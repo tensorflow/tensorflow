@@ -52,8 +52,7 @@ inline constexpr int64_t kMaxAllGatherSizeBytes = 16 * 1024 * 1024;  // 16 MB
 // collective kernel backend.
 struct AllGatherInfo {
   int64_t num_devices;
-  int64_t num_elements;
-  PrimitiveType element_type;
+  int64_t max_output_elements;
 };
 
 // Constructs an AllGatherInfo object for the given all-gather instruction.

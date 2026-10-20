@@ -67,7 +67,7 @@ std::vector<PrimitiveType> SupportedAllGatherTypes(
 // explaining why not.
 absl::Status IsAllGatherKernelSupported(
     const se::DeviceDescription& device_info, int64_t num_devices,
-    int64_t num_elements, int64_t per_rank_gather_dim_size,
+    int64_t num_output_elements, int64_t per_rank_gather_dim_size,
     PrimitiveType element_type, bool is_local,
     const std::vector<ReplicaGroup>& replica_groups) {
   // Check if the device supports Triton collective codegen:
@@ -129,7 +129,7 @@ absl::Status IsAllGatherKernelSupported(
   }
 
   const int64_t output_byte_size =
-      num_elements * num_devices * primitive_util::ByteWidth(element_type);
+      num_output_elements * primitive_util::ByteWidth(element_type);
   if (output_byte_size > kMaxAllGatherSizeBytes) {
     return absl::UnimplementedError(
         "Custom all-gather strategy is only supported for small outputs.");
@@ -162,21 +162,21 @@ absl::StatusOr<AllGatherInfo> BuildAllGatherInfo(
       const bool is_local,
       AreAllReplicasOnSameSlice(gpu_topology, *all_gather, device_assignment));
 
-  int64_t num_elements = 0;
+  int64_t max_output_elements = 0;
   for (const HloInstruction* operand : all_gather->operands()) {
-    const int64_t operand_elements = ShapeUtil::ElementsIn(operand->shape());
+    const int64_t output_elements =
+        ShapeUtil::ElementsIn(operand->shape()) * num_devices;
     const int64_t per_rank_gather_dim_size =
         operand->shape().dimensions(all_gather->all_gather_dimension());
     ABSL_RETURN_IF_ERROR(IsAllGatherKernelSupported(
-        device_info, num_devices, operand_elements, per_rank_gather_dim_size,
+        device_info, num_devices, output_elements, per_rank_gather_dim_size,
         operand->shape().element_type(), is_local,
         all_gather->replica_groups()));
-    num_elements = std::max(num_elements, operand_elements);
+    max_output_elements = std::max(max_output_elements, output_elements);
   }
   return AllGatherInfo{
       /*.num_devices =*/num_devices,
-      /*.num_elements =*/num_elements,
-      /*.element_type =*/all_gather->operand(0)->shape().element_type(),
+      /*.max_output_elements =*/max_output_elements,
   };
 }
 

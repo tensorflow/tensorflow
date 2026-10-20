@@ -1502,9 +1502,8 @@ absl::StatusOr<BlockLevelFusionConfig> GetBlockLevelConfigForAllGather(
   // All-gather always uses a one-shot strategy: every rank reads its peers'
   // slices directly, so the work is proportional to the full output element
   // count with no rank-based partitioning.
-  const int64_t output_elements =
-      all_gather_info.num_elements * all_gather_info.num_devices;
-  const int64_t total_warps = CeilOfRatio(output_elements, elements_per_warp);
+  const int64_t total_warps =
+      CeilOfRatio(all_gather_info.max_output_elements, elements_per_warp);
   const int64_t num_warps = std::min<int64_t>(
       kMaxWarpsPerBlock, llvm::bit_ceil(static_cast<uint64_t>(total_warps)));
   const int64_t num_blocks =
