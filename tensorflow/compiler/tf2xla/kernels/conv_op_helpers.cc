@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/hlo/builder/lib/constants.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/literal_util.h"
+#include "xla/shape_util.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/bounds_check.h"
@@ -386,11 +387,8 @@ absl::StatusOr<xla::XlaOp> MakeXlaBackpropInputConvOp(
 
   // With an empty `out_backprop` and a stride above 1, the convolution below
   // doesn't produce `input_shape`. The input gradient is zero then.
-  TensorShape out_backprop_tensor_shape;
-  TF_RETURN_IF_ERROR(
-      XLAShapeToTensorShape(out_backprop_shape, &out_backprop_tensor_shape));
-  if (out_backprop_tensor_shape.num_elements() == 0) {
-    return xla::Broadcast(xla::Zero(builder, out_backprop_shape.element_type()),
+  if (xla::ShapeUtil::IsZeroElementArray(out_backprop_shape)) {
+    return xla::Broadcast(xla::Zero(builder, input_shape.element_type()),
                           input_shape.dimensions());
   }
 
