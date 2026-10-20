@@ -670,6 +670,22 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         list_ops.tensor_list_stack(l, element_dtype=dtypes.float32),
         [1., 2., 3.])
 
+  def testScatterIntoExistingListLeavesGapsUnset(self):
+    l = list_ops.empty_tensor_list(
+        element_dtype=dtypes.int32, element_shape=[2], max_num_elements=5)
+    l = list_ops.tensor_list_scatter(
+        tensor=[[1, 2], [3, 4], [5, 6]],
+        indices=[0, 2, 4],
+        element_shape=[2],
+        input_handle=l)
+    self.assertAllEqual(
+        list_ops.tensor_list_get_item(
+            l, 1, element_dtype=dtypes.int32, element_shape=[2]), [0, 0])
+    self.assertAllEqual(
+        list_ops.tensor_list_stack(
+            l, element_dtype=dtypes.int32, element_shape=[2]),
+        [[1, 2], [0, 0], [3, 4], [0, 0], [5, 6]])
+
   def testScatterGrad(self):
     with backprop.GradientTape() as tape:
       c0 = constant_op.constant([1.0, 2.0])
