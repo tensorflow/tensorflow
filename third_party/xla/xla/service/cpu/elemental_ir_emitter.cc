@@ -86,6 +86,21 @@ absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAcosh(
 
 absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitCosh(
     PrimitiveType prim_type, llvm::Value* value) {
+  if (prim_type == F32) {
+    llvm::Function* cosh =
+        xla::codegen::intrinsics::Cosh::GetOrInsertDeclaration(module(),
+                                                               Type::S(F32));
+    return b()->CreateCall(cosh, value);
+  }
+  if (prim_type == F16 || prim_type == BF16) {
+    llvm::Type* f32_type = b()->getFloatTy();
+    llvm::Value* f32_value = b()->CreateFPCast(value, f32_type, "upcast");
+    llvm::Function* cosh =
+        xla::codegen::intrinsics::Cosh::GetOrInsertDeclaration(module(),
+                                                               Type::S(F32));
+    llvm::Value* f32_result = b()->CreateCall(cosh, f32_value);
+    return b()->CreateFPCast(f32_result, value->getType(), "downcast");
+  }
   return Unimplemented("cosh");
 }
 

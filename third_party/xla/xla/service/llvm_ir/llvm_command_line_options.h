@@ -29,6 +29,8 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/strings/match.h"
 #include "absl/synchronization/mutex.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/Support/LibraryOptionsContext.h"
 
 namespace xla {
 namespace llvm_ir {
@@ -87,6 +89,13 @@ class ABSL_SCOPED_LOCKABLE LLVMCommandLineOptionsLock {
     return *global_options;
   }
 
+  // Copies the per-context LLVM library options (e.g. GVN, InstCombine and
+  // VectorCombine options) parsed from the active client options into
+  // `context`. LLVM reads these options from the LLVMContext rather than from
+  // their global values, so options set through this lock only take effect for
+  // a context after calling this. Should be called while holding the lock.
+  static void ApplyLibraryOptions(llvm::LLVMContext& context);
+
  private:
   // Global XLA LLVM options lock.
   static inline absl::Mutex lock_{absl::kConstInit};
@@ -102,6 +111,14 @@ class ABSL_SCOPED_LOCKABLE LLVMCommandLineOptionsLock {
     static std::vector<std::string>* active_client_options =
         new std::vector<std::string>();
     return *active_client_options;
+  }
+
+  // Per-context library options parsed from the active client options.
+  static llvm::cl::LibraryOptionsContext*& GetActiveLibraryOptions() {
+    // absl::NoDestructor is not available in OSS XLA.
+    static llvm::cl::LibraryOptionsContext* active_library_options =
+        new llvm::cl::LibraryOptionsContext();
+    return active_library_options;
   }
 
   // Signature of the current clients LLVM options.

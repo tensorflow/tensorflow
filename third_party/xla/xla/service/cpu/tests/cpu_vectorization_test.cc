@@ -379,7 +379,7 @@ INSTANTIATE_TEST_SUITE_P(JitVectorizationTestInstantiation,
                          ::testing::ValuesIn(GetJitVectorizationTestCases()),
                          JitVectorizationTest::Name);
 
-class AtanJitVectorizationTest : public HloHardwareIndependentTestBase {
+class Avx512JitVectorizationTest : public HloHardwareIndependentTestBase {
  protected:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options =
@@ -390,7 +390,7 @@ class AtanJitVectorizationTest : public HloHardwareIndependentTestBase {
   }
 };
 
-TEST_F(AtanJitVectorizationTest, AtanF32) {
+TEST_F(Avx512JitVectorizationTest, AtanF32) {
   if (!tsl::port::IsX86CPU()) {
     GTEST_SKIP() << "This feature only works for x86 CPUs.";
   }
@@ -431,18 +431,7 @@ TEST_F(AtanJitVectorizationTest, AtanF32) {
                                /*match_optimized_ir=*/true));
 }
 
-class Expm1JitVectorizationTest : public HloHardwareIndependentTestBase {
- protected:
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options =
-        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
-    debug_options.set_xla_cpu_max_isa("AVX512");
-    debug_options.set_xla_cpu_prefer_vector_width(512);
-    return debug_options;
-  }
-};
-
-TEST_F(Expm1JitVectorizationTest, Expm1F32) {
+TEST_F(Avx512JitVectorizationTest, Expm1F32) {
   if (!tsl::port::IsX86CPU()) {
     GTEST_SKIP() << "This feature only works for x86 CPUs.";
   }
@@ -481,7 +470,7 @@ TEST_F(Expm1JitVectorizationTest, Expm1F32) {
                                /*match_optimized_ir=*/true));
 }
 
-TEST_F(AtanJitVectorizationTest, SinhF32) {
+TEST_F(Avx512JitVectorizationTest, SinhF32) {
   if (!tsl::port::IsX86CPU()) {
     GTEST_SKIP() << "This feature only works for x86 CPUs.";
   }
@@ -519,6 +508,46 @@ TEST_F(AtanJitVectorizationTest, SinhF32) {
                                std::move(hlo_module), check_lines,
                                /*match_optimized_ir=*/true));
 }
+
+TEST_F(Avx512JitVectorizationTest, CoshF32) {
+  if (!tsl::port::IsX86CPU()) {
+    GTEST_SKIP() << "This feature only works for x86 CPUs.";
+  }
+
+  const absl::string_view hlo_text = R"(
+    HloModule CoshF32
+
+    ENTRY CoshF32 {
+      p0 = f32[1024] parameter(0)
+      ROOT cosh = f32[1024] cosh(p0)
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_text));
+
+  auto compiler = GetCpuCompiler();
+  auto llvm_compiler = absl::down_cast<LLVMCompiler*>(compiler.get());
+  Compiler::CompileOptions compile_options;
+  compile_options.device_allocator = nullptr;
+
+  int num_elements = 16;
+  if (!tsl::port::TestCPUFeature(tsl::port::CPUFeature::AVX512F)) {
+    if (tsl::port::TestCPUFeature(tsl::port::CPUFeature::AVX2)) {
+      num_elements = 8;
+    } else {
+      num_elements = 4;
+    }
+  }
+
+  std::string check_lines =
+      absl::StrFormat("CHECK: fdiv{{.*}}<%d x float>", num_elements);
+
+  ASSERT_OK(CompileAndVerifyIr(llvm_compiler, compile_options,
+                               std::move(hlo_module), check_lines,
+                               /*match_optimized_ir=*/true));
+}
+
 }  // namespace
 }  // namespace cpu
 }  // namespace xla

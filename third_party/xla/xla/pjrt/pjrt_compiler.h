@@ -497,6 +497,16 @@ class PjRtTopologyDescription {
       const PjRtDeviceDimensions& host_bounds) const {
     return absl::UnimplementedError("Subslice is not supported.");
   }
+
+  virtual absl::StatusOr<xla::Shape> UpdateLayoutForDynamicShapes(
+      int memory_space_kind_id, xla::Shape shape) const {
+    return std::move(shape);
+  }
+
+  virtual absl::StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis()
+      const {
+    return absl::UnimplementedError("GetHloCostAnalysis is not supported.");
+  }
 };
 
 // Returns true if it's TPU id.

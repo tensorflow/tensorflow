@@ -1378,38 +1378,9 @@ XlaOp Atanh(XlaOp x, const std::optional<ResultAccuracy>& result_accuracy,
   });
 }
 
-// Cosh(x) = (e^x + e^-x) / 2
-//         = e^(x + log(1/2)) + e^(-x + log(1/2)).
-//
-// The second formulation avoids overflowing when e^x = inf but (e^x)/2 is not
-// inf.
-//
-// This incorrectly overflows to inf for two f32 input values, namely
-// +/-89.4159851, due to rounding error when computing x +/- log(1/2).  The
-// correct answer of 3.40281961e+38 (0x7f7fffec) is very close to max-float, so
-// we deem this acceptable.
-XlaOp Cosh(XlaOp x, const std::optional<ResultAccuracy>& result_accuracy,
-           bool expand) {
-  if (!expand) {
-    return x.builder()->UnaryOp(HloOpcode::kCosh, x, result_accuracy);
-  }
-  XlaBuilder* b = x.builder();
-  auto do_it = [&](XlaOp x) -> absl::StatusOr<XlaOp> {
-    ABSL_ASSIGN_OR_RETURN(auto shape, b->GetShape(x));
-
-    auto log_one_half = Log(ScalarLike(x, 0.5));
-    auto result = Exp(x + log_one_half) + Exp(-x + log_one_half);
-    if (primitive_util::IsComplexType(shape.element_type())) {
-      return result;
-    }
-
-    // Cosh(x) has a minimum value of 1.0 near 0.0, clamp to 1.0 to handle
-    // rounding errors in Exp().
-    return Max(result, ScalarLike(result, 1.0));
-  };
-  return DoWithUpcastToF32(x, {BF16, F16}, [&](XlaOp x) {
-    return b->ReportErrorOrReturn(do_it(x));
-  });
+// Computes the hyperbolic cosine of 'x'.
+XlaOp Cosh(XlaOp x, const std::optional<ResultAccuracy>& result_accuracy) {
+  return x.builder()->UnaryOp(HloOpcode::kCosh, x, result_accuracy);
 }
 
 // Computes the hyperbolic sine of 'x'.
