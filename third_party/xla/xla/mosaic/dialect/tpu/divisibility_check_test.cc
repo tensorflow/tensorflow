@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -56,6 +57,16 @@ class DivisibilityCheckTest : public ::testing::Test {
     OpTy op = OpTy::create(builder_, std::forward<Args>(args)...);
     ops_.push_back(op.getOperation());
     return op;
+  }
+
+  Block* CreateEntryBlock(int num_index_args) {
+    Location loc = builder_.getUnknownLoc();
+    std::vector<Type> arg_types(num_index_args, builder_.getIndexType());
+    auto func = Create<func::FuncOp>(loc, "test_func",
+                                     builder_.getFunctionType(arg_types, {}));
+    Block* entry = func.addEntryBlock();
+    builder_.setInsertionPointToStart(entry);
+    return entry;
   }
 
   MLIRContext context_;
@@ -114,6 +125,91 @@ TEST_F(DivisibilityCheckTest, DynamicMulIOpAddIsDivisible) {
   std::optional<bool> result = isDivisible(add, /*divisor=*/8);
   ASSERT_TRUE(result.has_value());
   EXPECT_TRUE(*result);
+}
+
+TEST_F(DivisibilityCheckTest, NegativeConstantGetRemainder) {
+  Location loc = builder_.getUnknownLoc();
+  auto neg = Create<arith::ConstantIndexOp>(loc, -1);
+  auto pos = Create<arith::ConstantIndexOp>(loc, 5);
+  auto add = Create<arith::AddIOp>(loc, neg, pos);
+
+  EXPECT_EQ(getRemainder(neg, /*divisor=*/4), std::optional<int64_t>(3));
+  EXPECT_EQ(isDivisible(add, /*divisor=*/4), std::optional<bool>(true));
+}
+
+TEST_F(DivisibilityCheckTest, MinMaxAndRemOpsAreDivisible) {
+  Location loc = builder_.getUnknownLoc();
+  Block* entry = CreateEntryBlock(2);
+  auto c8 = Create<arith::ConstantIndexOp>(loc, 8);
+  auto mul_x = Create<arith::MulIOp>(loc, entry->getArgument(0), c8);
+  auto mul_y = Create<arith::MulIOp>(loc, entry->getArgument(1), c8);
+
+  for (Value v : {Create<arith::MinSIOp>(loc, mul_x, mul_y).getResult(),
+                  Create<arith::MinUIOp>(loc, mul_x, mul_y).getResult(),
+                  Create<arith::MaxSIOp>(loc, mul_x, mul_y).getResult(),
+                  Create<arith::MaxUIOp>(loc, mul_x, mul_y).getResult(),
+                  Create<arith::RemSIOp>(loc, mul_x, mul_y).getResult()}) {
+    EXPECT_EQ(isDivisible(v, /*divisor=*/8), std::optional<bool>(true));
+  }
+}
+
+TEST_F(DivisibilityCheckTest, DivisorOneSucceedsWhenFuelExhausted) {
+  Value x = CreateEntryBlock(1)->getArgument(0);
+
+  EXPECT_EQ(getRemainder(x, /*divisor=*/1, /*fuel=*/0),
+            std::optional<int64_t>(0));
+  EXPECT_EQ(isDivisible(x, /*divisor=*/1, /*fuel=*/0),
+            std::optional<bool>(true));
+  EXPECT_EQ(getRemainder(x, /*divisor=*/2, /*fuel=*/0), std::nullopt);
+  EXPECT_EQ(isDivisible(x, /*divisor=*/2, /*fuel=*/0), std::nullopt);
+}
+
+TEST_F(DivisibilityCheckTest, DivOpsOnlyPropagateTrue) {
+  Location loc = builder_.getUnknownLoc();
+  Value x = CreateEntryBlock(1)->getArgument(0);
+
+  auto c1 = Create<arith::ConstantIndexOp>(loc, 1);
+  auto c2 = Create<arith::ConstantIndexOp>(loc, 2);
+  auto c16 = Create<arith::ConstantIndexOp>(loc, 16);
+  auto c17 = Create<arith::ConstantIndexOp>(loc, 17);
+
+  // 17 / 2 == 8 is divisible by 8 even though 17 is not divisible by 16, so
+  // isDivisible must return nullopt rather than false.
+  EXPECT_EQ(isDivisible(Create<arith::DivSIOp>(loc, c17, c2), /*divisor=*/8),
+            std::nullopt);
+  EXPECT_EQ(isDivisible(Create<arith::DivUIOp>(loc, c17, c2), /*divisor=*/8),
+            std::nullopt);
+
+  // (16 * x + 1) / 2 is divisible by 8 for nonnegative x even though
+  // 16 * x + 1 is not divisible by 16, so isDivisible must return nullopt
+  // rather than false.
+  auto mul16 = Create<arith::MulIOp>(loc, x, c16);
+  auto add1 = Create<arith::AddIOp>(loc, mul16, c1);
+  EXPECT_EQ(isDivisible(Create<arith::DivSIOp>(loc, add1, c2), /*divisor=*/8),
+            std::nullopt);
+  EXPECT_EQ(isDivisible(Create<arith::DivUIOp>(loc, add1, c2), /*divisor=*/8),
+            std::nullopt);
+
+  // When lhs is proven divisible by divisor * rhs, isDivisible returns true.
+  EXPECT_EQ(isDivisible(Create<arith::DivSIOp>(loc, mul16, c2), /*divisor=*/8),
+            std::optional<bool>(true));
+  EXPECT_EQ(isDivisible(Create<arith::DivUIOp>(loc, mul16, c2), /*divisor=*/8),
+            std::optional<bool>(true));
+}
+
+TEST_F(DivisibilityCheckTest, OverflowGuardsInMulAndDiv) {
+  Location loc = builder_.getUnknownLoc();
+  Value x = CreateEntryBlock(1)->getArgument(0);
+
+  auto int64_min =
+      Create<arith::ConstantIndexOp>(loc, std::numeric_limits<int64_t>::min());
+  auto mul_min = Create<arith::MulIOp>(loc, x, int64_min);
+  EXPECT_EQ(isDivisible(mul_min, /*divisor=*/8), std::optional<bool>(true));
+
+  auto large =
+      Create<arith::ConstantIndexOp>(loc, std::numeric_limits<int64_t>::max());
+  auto div_large = Create<arith::DivSIOp>(loc, x, large);
+  EXPECT_EQ(isDivisible(div_large, /*divisor=*/8), std::nullopt);
 }
 
 }  // namespace
