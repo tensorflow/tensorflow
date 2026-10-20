@@ -164,6 +164,9 @@ ExecuteOptions UpdateOrCreateDefaultExecuteOptions(
     out_options.hlo_output_callbacks =
         replicated_execute_options.hlo_output_callbacks;
   }
+
+  // Always enable strict shape checking.
+  out_options.strict_shape_checking = true;
   return out_options;
 }
 
@@ -387,17 +390,6 @@ HloRunner::TransferLiteralsToDefaultDevice(
   return TransferLiteralsToDevice(layouts, literals, device);
 }
 
-absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
-HloRunner::TransferLiteralsToDefaultDevice(
-    absl::Span<const Literal* const> literals) {
-  std::vector<ShapeLayout> layouts;
-  layouts.reserve(literals.size());
-  for (const Literal* literal : literals) {
-    layouts.push_back(ShapeLayout(literal->shape()));
-  }
-  return TransferLiteralsToDefaultDevice(layouts, literals);
-}
-
 absl::StatusOr<Literal> HloRunner::TransferLiteralsFromDevice(
     absl::Span<const std::unique_ptr<PjRtBuffer>> output_buffers,
     const bool untuple_result) {
@@ -444,13 +436,11 @@ HloRunner::ExecuteWithDeviceBuffers(
                    HloRunnerExecutable::TryUnwrap(*this, executable));
 
   HloRunnerInterface::ReplicatedExecuteOptions replicated_execute_options;
-  ExecuteOptions new_execute_options = UpdateOrCreateDefaultExecuteOptions(
-      replicated_execute_options, execute_options != nullptr
-                                      ? std::make_optional(*execute_options)
-                                      : std::nullopt);
-  if (execute_options == nullptr) {
-    new_execute_options.strict_shape_checking = true;
-  }
+  const ExecuteOptions new_execute_options =
+      UpdateOrCreateDefaultExecuteOptions(
+          replicated_execute_options, execute_options != nullptr
+                                          ? std::make_optional(*execute_options)
+                                          : std::nullopt);
 
   ABSL_ASSIGN_OR_RETURN(PjRtLoadedExecutable * pjrt_executable,
                    wrapped_executable->GetOrLoadExecutable(pjrt_client_.get()));
@@ -486,7 +476,6 @@ HloRunner::ExecuteWithExecutable(OpaqueExecutable* executable,
   HloRunnerInterface::ReplicatedExecuteOptions replicated_execute_options;
   ExecuteOptions execute_options =
       UpdateOrCreateDefaultExecuteOptions(replicated_execute_options);
-  execute_options.strict_shape_checking = true;
 
   std::vector<absl::StatusOr<Literal>> results;
   results.reserve(num_repeats);
