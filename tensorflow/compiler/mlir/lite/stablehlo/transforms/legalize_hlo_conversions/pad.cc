@@ -27,19 +27,19 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/op_util_common.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/pad_util.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir::odml {
 namespace {
 
-bool IsPadLegal(mhlo::PadOp op) {
+bool IsPadLegal(stablehlo::PadOp op) {
   return AnyNegativePads(op) || !TrivialInterior(op);
 }
 
-bool IsPadValCstZero(mhlo::PadOp op) {
+bool IsPadValCstZero(stablehlo::PadOp op) {
   if (matchPattern(op.getPaddingValue(), m_AnyZeroFloat())) {
     return true;
   }
@@ -49,9 +49,9 @@ bool IsPadValCstZero(mhlo::PadOp op) {
   return false;
 }
 
-DenseIntElementsAttr BuildTFLPaddingAttr(OpBuilder& b, mhlo::PadOp op) {
-  auto lows = UnrollI64Splat(op.getEdgePaddingLow());
-  auto highs = UnrollI64Splat(op.getEdgePaddingHigh());
+DenseIntElementsAttr BuildTFLPaddingAttr(OpBuilder& b, stablehlo::PadOp op) {
+  auto lows = op.getEdgePaddingLow();
+  auto highs = op.getEdgePaddingHigh();
 
   llvm::SmallVector<int64_t> res;
   for (auto [l, h] : llvm::zip(lows, highs)) {
@@ -66,19 +66,19 @@ DenseIntElementsAttr BuildTFLPaddingAttr(OpBuilder& b, mhlo::PadOp op) {
 }
 
 //===------------------------------------------------------------------------===
-// mhlo.pad -> tfl.pad
+// stablehlo.pad -> tfl.pad
 //===------------------------------------------------------------------------===
 
-class LegalizePad : public OpConversionPattern<mhlo::PadOp> {
+class LegalizePad : public OpConversionPattern<stablehlo::PadOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
   LogicalResult matchAndRewrite(
-      mhlo::PadOp op, OpAdaptor adaptor,
+      stablehlo::PadOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final;
 };
 
 LogicalResult LegalizePad::matchAndRewrite(
-    mhlo::PadOp op, OpAdaptor adaptor,
+    stablehlo::PadOp op, OpAdaptor adaptor,
     ConversionPatternRewriter& rewriter) const {
   if (IsPadLegal(op)) {
     return rewriter.notifyMatchFailure(op, "Matching an already legal pad op.");
@@ -98,19 +98,19 @@ LogicalResult LegalizePad::matchAndRewrite(
 }
 
 //===------------------------------------------------------------------------===
-// mhlo.pad -> tfl.padv2
+// stablehlo.pad -> tfl.padv2
 //===------------------------------------------------------------------------===
 
-class LegalizePadV2 : public OpConversionPattern<mhlo::PadOp> {
+class LegalizePadV2 : public OpConversionPattern<stablehlo::PadOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
   LogicalResult matchAndRewrite(
-      mhlo::PadOp op, OpAdaptor adaptor,
+      stablehlo::PadOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final;
 };
 
 LogicalResult LegalizePadV2::matchAndRewrite(
-    mhlo::PadOp op, OpAdaptor adaptor,
+    stablehlo::PadOp op, OpAdaptor adaptor,
     ConversionPatternRewriter& rewriter) const {
   if (IsPadLegal(op)) {
     return rewriter.notifyMatchFailure(op, "Matching an already legal pad op.");
@@ -135,7 +135,7 @@ void PopulatePadPatterns(MLIRContext* ctx, RewritePatternSet& patterns,
                          ConversionTarget& target) {
   patterns.add<LegalizePad>(ctx);
   patterns.add<LegalizePadV2>(ctx);
-  target.addDynamicallyLegalOp<mhlo::PadOp>(IsPadLegal);
+  target.addDynamicallyLegalOp<stablehlo::PadOp>(IsPadLegal);
 }
 
 }  // namespace mlir::odml
