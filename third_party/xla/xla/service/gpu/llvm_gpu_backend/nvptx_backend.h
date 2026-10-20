@@ -34,10 +34,14 @@ limitations under the License.
 namespace xla::gpu::nvptx {
 
 // Returns the maximum PTX ISA version advertised by LLVM's NVPTX target,
-// encoded as major * 10 + minor. Returns an error if the target or its MC
-// subtarget information is not registered.
+// encoded as major * 10 + minor. Initializes the NVPTX backend if necessary.
 absl::StatusOr<int> GetMaxPtxVersionSupportedByLlvm(
     const llvm::Triple& target_triple);
+
+// Returns the minimum of LLVM's and the compilation provider's PTX limits.
+// Without a provider limit, uses LLVM's maximum supported PTX version.
+absl::StatusOr<stream_executor::SemanticVersion> GetPtxVersionForCompilation(
+    const llvm::Triple& target_triple, std::optional<int> max_ptx_isa_version);
 
 // Resolves the compute capability that XLA actually compiles for given the
 // compute capability of the target device. If the device's compute capability
