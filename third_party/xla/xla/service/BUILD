@@ -2877,10 +2877,25 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "async_custom_call_utils",
+    srcs = ["async_custom_call_utils.cc"],
+    hdrs = ["async_custom_call_utils.h"],
+    deps = [
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:hlo_instruction_utils",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "async_collective_custom_call_rewriter",
     srcs = ["async_collective_custom_call_rewriter.cc"],
     hdrs = ["async_collective_custom_call_rewriter.h"],
     deps = [
+        ":async_custom_call_utils",
         ":collective_ops_utils",
         "//xla:shape_util",
         "//xla:status_macros",
@@ -2890,7 +2905,6 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
@@ -2909,8 +2923,44 @@ xla_cc_test(
         "//xla/hlo/ir:hlo_instruction_utils",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "async_compute_on_rewriter",
+    srcs = ["async_compute_on_rewriter.cc"],
+    hdrs = ["async_compute_on_rewriter.h"],
+    deps = [
+        ":async_custom_call_utils",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:hlo_instruction_utils",
+        "//xla/hlo/pass:hlo_pass",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "async_compute_on_rewriter_test",
+    srcs = ["async_compute_on_rewriter_test.cc"],
+    deps = [
+        ":async_compute_on_rewriter",
+        ":hlo_verifier",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:hlo_instruction_utils",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings:string_view",
