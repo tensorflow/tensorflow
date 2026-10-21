@@ -30,7 +30,6 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/numeric/bits.h"
 #include "absl/strings/string_view.h"
-#include "absl/synchronization/mutex.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -678,23 +677,9 @@ static int64_t SharedMemoryUsageNoCache(
 }
 
 int64_t FusionInfoCache::GetSharedMemoryUsage(const HloInstruction& instr) {
-  {
-    absl::MutexLock lock(mutex_);
-    auto it = shared_memory_usage_.find(&instr);
-    if (it != shared_memory_usage_.end()) {
-      return it->second;
-    }
-  }
-
-  // nb: Users are only expected to call cache.Invalidate() on top-level
-  // instructions, not instructions inside fusion nodes.  Therefore we can only
-  // cache top-level instructions; it would not be valid to pass the cache to
-  // SharedMemoryUsageNoCache and use the cache *within* the fusion.
-  int64_t shared_memory_usage = SharedMemoryUsageNoCache(instr, device_info_);
-
-  absl::MutexLock lock(mutex_);
-  shared_memory_usage_.emplace(&instr, shared_memory_usage);
-  return shared_memory_usage;
+  return GetOrCompute(instr, &FusionInfoCache::shared_memory_usage_, [&]() {
+    return SharedMemoryUsageNoCache(instr, device_info_);
+  });
 }
 
 int64_t SharedMemoryUsage(const HloInstruction& instr, FusionInfoCache* cache,
@@ -728,24 +713,9 @@ static int64_t NumUnnestedReductionsNoCache(
 }
 
 int64_t FusionInfoCache::GetNumUnnestedReductions(const HloInstruction& instr) {
-  {
-    absl::MutexLock lock(mutex_);
-    auto it = num_unnested_reductions_.find(&instr);
-    if (it != num_unnested_reductions_.end()) {
-      return it->second;
-    }
-  }
-
-  // nb: Users are only expected to call cache.Invalidate() on top-level
-  // instructions, not instructions inside fusion nodes.  Therefore we can only
-  // cache top-level instructions; it would not be valid to pass the cache to
-  // NumUnnestedReductionsNoCache and use the cache *within* the fusion.
-  int64_t num_unnested_reductions =
-      NumUnnestedReductionsNoCache(instr, device_info_);
-
-  absl::MutexLock lock(mutex_);
-  num_unnested_reductions_.emplace(&instr, num_unnested_reductions);
-  return num_unnested_reductions;
+  return GetOrCompute(instr, &FusionInfoCache::num_unnested_reductions_, [&]() {
+    return NumUnnestedReductionsNoCache(instr, device_info_);
+  });
 }
 
 static int64_t NumUnnestedReductions(const HloInstruction& instr,
@@ -1105,26 +1075,8 @@ static bool ContainsScanNoCache(const HloInstruction& instr) {
 }
 
 bool FusionInfoCache::ContainsScan(const HloInstruction& instr) {
-  if (instr.opcode() == HloOpcode::kScan) {
-    return true;
-  }
-  if (instr.opcode() != HloOpcode::kFusion) {
-    return false;
-  }
-
-  {
-    absl::MutexLock lock(mutex_);
-    auto it = contains_scan_.find(&instr);
-    if (it != contains_scan_.end()) {
-      return it->second;
-    }
-  }
-
-  bool contains_scan = ContainsScanNoCache(instr);
-
-  absl::MutexLock lock(mutex_);
-  contains_scan_.emplace(&instr, contains_scan);
-  return contains_scan;
+  return GetOrCompute(instr, &FusionInfoCache::contains_scan_,
+                      [&]() { return ContainsScanNoCache(instr); });
 }
 
 bool ContainsScan(const HloInstruction& instr, FusionInfoCache* cache) {
@@ -1132,6 +1084,49 @@ bool ContainsScan(const HloInstruction& instr, FusionInfoCache* cache) {
     return ContainsScanNoCache(instr);
   }
   return cache->ContainsScan(instr);
+}
+
+// Returns whether `instr` is an array reduction whose reduction factor (ratio
+// of input elements to output elements) is at least 16.
+static bool IsSignificantReduce(const HloInstruction& instr) {
+  if (!(instr.opcode() == HloOpcode::kReduce && instr.shape().IsArray())) {
+    return false;
+  }
+  int64_t output_elements = ShapeUtil::ElementsIn(instr.shape());
+  if (output_elements == 0) {
+    return false;
+  }
+  int64_t reduction_size =
+      ShapeUtil::ElementsIn(instr.operand(0)->shape()) / output_elements;
+  // Small reductions are emitted using the elemental emitter anyway.
+  return reduction_size >= 16;
+}
+
+static bool ContainsSignificantReduceNoCache(const HloInstruction& instr) {
+  if (IsSignificantReduce(instr)) {
+    return true;
+  }
+  if (instr.opcode() != HloOpcode::kFusion) {
+    return false;
+  }
+  return absl::c_any_of(instr.fused_instructions_computation()->instructions(),
+                        [](const HloInstruction* node) {
+                          return ContainsSignificantReduceNoCache(*node);
+                        });
+}
+
+bool FusionInfoCache::ContainsSignificantReduce(const HloInstruction& instr) {
+  return GetOrCompute(
+      instr, &FusionInfoCache::contains_significant_reduce_,
+      [&]() { return ContainsSignificantReduceNoCache(instr); });
+}
+
+bool ContainsSignificantReduce(const HloInstruction& instr,
+                               FusionInfoCache* cache) {
+  if (cache == nullptr) {
+    return ContainsSignificantReduceNoCache(instr);
+  }
+  return cache->ContainsSignificantReduce(instr);
 }
 
 }  // namespace gpu

@@ -297,3 +297,15 @@ For implementation details, see the
 [option enums](https://github.com/openxla/xla/blob/main/xla/xla.proto),
 [capture eligibility checks](https://github.com/openxla/xla/blob/main/xla/backends/gpu/runtime/command_buffer_conversion_pass.cc),
 and [VMM allocation policy](https://github.com/openxla/xla/blob/main/xla/service/gpu/gpu_executable_va_remap_allocator.cc).
+
+## Debugging
+
+Enable relevant logging - for example:
+
+```bash
+env TF_CPP_VMODULE=command_buffer_conversion_pass=2,command_buffer_thunk=3,command_executor=3,traced_command_buffer=6,cuda_command_buffer=2 ...
+```
+
+Command buffer conversion runs on thunks, so inspect the
+`*.thunk_sequence_after_thunk_passes.txt` dump files using `--xla_dump_to`
+to see the resulting command buffer structure.

@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -27,6 +28,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
@@ -45,37 +47,87 @@ namespace gpu {
 // properties of `a` and `b` individually.  This cache lets us avoid recomputing
 // those properties n^2 times.
 //
+// Thread-safe: concurrent queries use shared reader locks on cache hits and
+// exclusive writer locks only on cache misses or invalidations.
+//
 // Invariant: After modifying or removing a fusion node, call Invalidate(node).
 class FusionInfoCache {
  public:
   explicit FusionInfoCache(const se::DeviceDescription& device_info)
       : device_info_(device_info) {}
+
   // Must be called after modifying or removing a fusion node (or other node
-  // that's part of this cache).
-  void Invalidate(const HloInstruction* instr) {
+  // that's part of this cache). Acquires an exclusive lock on `mutex_` to
+  // erase cached properties for `instr` across all maps.
+  void Invalidate(const HloInstruction* instr) ABSL_LOCKS_EXCLUDED(mutex_) {
+    absl::MutexLock lock(mutex_);
     shared_memory_usage_.erase(instr);
     num_unnested_reductions_.erase(instr);
     contains_scan_.erase(instr);
+    contains_significant_reduce_.erase(instr);
   }
 
   // Returns expected shared memory usage of a given instruction in bytes.
-  int64_t GetSharedMemoryUsage(const HloInstruction& instr);
+  int64_t GetSharedMemoryUsage(const HloInstruction& instr)
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
   // Returns the number of unnested reductions in the instruction output.
-  int64_t GetNumUnnestedReductions(const HloInstruction& instr);
+  int64_t GetNumUnnestedReductions(const HloInstruction& instr)
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
   // Returns whether the instruction is a scan or, in the case of a fusion,
   // contains a scan operation.
-  bool ContainsScan(const HloInstruction& instr);
+  bool ContainsScan(const HloInstruction& instr) ABSL_LOCKS_EXCLUDED(mutex_);
+
+  // Returns whether the instruction is a significant reduction (reducing by a
+  // factor of at least 16) or, in the case of a fusion, contains one.
+  bool ContainsSignificantReduce(const HloInstruction& instr)
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
  private:
+  // Evaluates `compute` directly for non-fusion instructions (which are O(1) to
+  // check and do not traverse a subcomputation). For fusion instructions, looks
+  // up `instr` in `cache_member` under a shared reader lock, computes the
+  // property outside `mutex_` on a cache miss so concurrent threads are not
+  // blocked during fusion traversal, and inserts the result under an exclusive
+  // writer lock.
+  //
+  // Note: Users only call Invalidate() on top-level instructions, not
+  // instructions inside fusion nodes. Therefore, only top-level instructions
+  // may be cached here, and `compute` must not recursively query this cache for
+  // instructions inside a fusion.
+  template <typename Value, typename ComputeFn>
+  Value GetOrCompute(const HloInstruction& instr,
+                     absl::flat_hash_map<const HloInstruction*, Value>
+                         FusionInfoCache::* cache_member,
+                     ComputeFn&& compute) ABSL_LOCKS_EXCLUDED(mutex_) {
+    if (instr.opcode() != HloOpcode::kFusion) {
+      return compute();
+    }
+    {
+      absl::ReaderMutexLock lock(mutex_);
+      const auto& cache = this->*cache_member;
+      if (auto it = cache.find(&instr); it != cache.end()) {
+        return it->second;
+      }
+    }
+    Value value = compute();
+    absl::MutexLock lock(mutex_);
+    return (this->*cache_member).emplace(&instr, value).first->second;
+  }
+
   const se::DeviceDescription& device_info_;
 
   absl::Mutex mutex_;
 
-  absl::flat_hash_map<const HloInstruction*, int64_t> shared_memory_usage_;
-  absl::flat_hash_map<const HloInstruction*, int64_t> num_unnested_reductions_;
-  absl::flat_hash_map<const HloInstruction*, bool> contains_scan_;
+  absl::flat_hash_map<const HloInstruction*, int64_t> shared_memory_usage_
+      ABSL_GUARDED_BY(mutex_);
+  absl::flat_hash_map<const HloInstruction*, int64_t> num_unnested_reductions_
+      ABSL_GUARDED_BY(mutex_);
+  absl::flat_hash_map<const HloInstruction*, bool> contains_scan_
+      ABSL_GUARDED_BY(mutex_);
+  absl::flat_hash_map<const HloInstruction*, bool> contains_significant_reduce_
+      ABSL_GUARDED_BY(mutex_);
 };
 
 // Returns the computations within `module` whose instructions can still be
@@ -253,6 +305,11 @@ int ComputeLoopFusionConfig(const HloFusionAnalysis& analysis,
 // contains a scan operation.
 bool ContainsScan(const HloInstruction& instr,
                   FusionInfoCache* cache = nullptr);
+
+// Returns whether the instruction is a significant reduction (reducing by a
+// factor of at least 16) or, in the case of a fusion, contains one.
+bool ContainsSignificantReduce(const HloInstruction& instr,
+                               FusionInfoCache* cache = nullptr);
 
 }  // namespace gpu
 }  // namespace xla

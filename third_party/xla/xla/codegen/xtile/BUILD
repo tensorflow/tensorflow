@@ -49,8 +49,6 @@ cc_library(
         ":xtile_config_proto_cc",
         "//xla:status_macros",
         "//xla:util",
-        "//xla/codegen/tiling:symbolic_tile_analysis",
-        "//xla/codegen/tiling:tiling_specification",
         "//xla/codegen/tiling/experimental:tile",
         "//xla/codegen/tiling/experimental:tiling_space_utils",
         "//xla/hlo/ir:hlo",

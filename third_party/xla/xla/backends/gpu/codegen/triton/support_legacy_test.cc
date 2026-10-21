@@ -33,7 +33,6 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/test_utils.h"
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
 #include "xla/codegen/xtile/block_level_parameters.h"
-#include "xla/codegen/xtile/codegen/fusion_emitter.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
