@@ -52,6 +52,8 @@ def _check_elems_not_scalar(elems_flat):
   Raises:
     ValueError: if the first element has a statically known rank below 1.
   """
+  if not elems_flat:
+    raise ValueError("elems must contain at least one Tensor.")
   shape = elems_flat[0].shape
   if shape.ndims is not None and shape.ndims < 1:
     raise ValueError(
