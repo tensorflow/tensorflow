@@ -61,6 +61,7 @@ limitations under the License.
 #include "xla/service/gpu/mlir_context_pool.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/service/hlo_creation_utils.h"
+#include "xla/service/hlo_verifier.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -740,6 +741,218 @@ TEST_F(CollectiveEmitterTest,
   ASSERT_EQ(unmanaged_arguments[1].dimensions().size(), 2);
   EXPECT_EQ(unmanaged_arguments[1].dimensions()[0], 2);
   EXPECT_THAT(unmanaged_arguments[2].dimensions(), ElementsAre(2, 65536));
+}
+
+constexpr absl::string_view kVariadicReduceScatterModuleStr = R"(
+  HloModule test
+  apply_op {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT apply_op = f32[] add(x, y)
+  }
+
+  ENTRY test_computation {
+    param_0 = f32[2,4,8] parameter(0)
+    param_1 = f32[4,2] parameter(1)
+    ROOT rs = (f32[1,4,8], f32[2,2]) reduce-scatter(param_0, param_1),
+      to_apply=apply_op, replica_groups={{0,1}}, dimensions={0}
+  }
+)";
+
+TEST_F(CollectiveEmitterTest, FlattenVariadicReduceScatterFusion) {
+  ASSERT_OK_AND_ASSIGN(ModuleWithFusion module_with_fusion,
+                       BuildModuleWithFusion(kVariadicReduceScatterModuleStr));
+  HloFusionInstruction* fusion_instr = module_with_fusion.MutableFusionInstr();
+  HloComputation* entry_computation =
+      module_with_fusion.module->entry_computation();
+  EXPECT_FALSE(ShouldFlattenReduceScatter(Cast<HloReduceScatterInstruction>(
+      GetCollectiveHero(fusion_instr->fused_instructions_computation()))));
+
+  const Shape output_0 = ShapeUtil::MakeShape(F32, {1, 4, 8});
+  const Shape output_1 = ShapeUtil::MakeShape(F32, {2, 2});
+  HloInstruction* root = entry_computation->root_instruction();
+  EXPECT_THAT(root, AllOf(HasOpcode(HloOpcode::kTuple), HasNumOperands(2)));
+  EXPECT_THAT(root->operand(0),
+              AllOf(HasOpcode(HloOpcode::kBitcast), HasShape(output_0)));
+  EXPECT_THAT(root->operand(1),
+              AllOf(HasOpcode(HloOpcode::kBitcast), HasShape(output_1)));
+  EXPECT_THAT(root->operand(0)->operand(0),
+              HasOpcode(HloOpcode::kGetTupleElement));
+  EXPECT_EQ(root->operand(0)->operand(0)->operand(0), fusion_instr);
+  EXPECT_EQ(root->operand(1)->operand(0)->operand(0), fusion_instr);
+
+  // Operand 0: f32[2,4,8] -> f32[4,16] -> f32[2,16].
+  // Operand 1: f32[4,2]   -> f32[4,2]  -> f32[2,2].
+  const Shape param_0 = ShapeUtil::MakeShape(F32, {4, 16});
+  const Shape param_1 = ShapeUtil::MakeShape(F32, {4, 2});
+  const Shape new_output_0 = ShapeUtil::MakeShape(F32, {2, 16});
+  const Shape new_output_1 = ShapeUtil::MakeShape(F32, {2, 2});
+  const Shape new_fusion_shape =
+      ShapeUtil::MakeTupleShape({new_output_0, new_output_1});
+  EXPECT_THAT(fusion_instr, HasShape(new_fusion_shape));
+  EXPECT_THAT(fusion_instr->operand(0),
+              AllOf(HasOpcode(HloOpcode::kBitcast), HasShape(param_0)));
+  EXPECT_THAT(fusion_instr->operand(1),
+              AllOf(HasOpcode(HloOpcode::kBitcast), HasShape(param_1)));
+
+  HloComputation* fused_comp = fusion_instr->fused_instructions_computation();
+  EXPECT_THAT(fused_comp->parameter_instructions(),
+              ElementsAre(HasShape(param_0), HasShape(param_1)));
+  const HloInstruction* fused_root = fused_comp->root_instruction();
+  EXPECT_THAT(fused_root, AllOf(HasOpcode(HloOpcode::kTuple), HasNumOperands(2),
+                                HasShape(new_fusion_shape)));
+  const HloInstruction* rs = GetCollectiveHero(fused_comp);
+  ASSERT_NE(rs, nullptr);
+  EXPECT_THAT(rs, AllOf(HasOpcode(HloOpcode::kReduceScatter), HasNumOperands(2),
+                        HasShape(new_fusion_shape)));
+  EXPECT_EQ(rs->operand(0), fused_comp->parameter_instruction(0));
+  EXPECT_EQ(rs->operand(1), fused_comp->parameter_instruction(1));
+  EXPECT_EQ(Cast<HloReduceScatterInstruction>(rs)->scatter_dimension(), 0);
+  EXPECT_THAT(verifier().Run(module_with_fusion.module.get()),
+              absl_testing::IsOkAndHolds(false));
+}
+
+TEST_F(CollectiveBlockLevelConfigTest, VariadicReduceScatterBlockLevelConfig) {
+  ASSERT_OK_AND_ASSIGN(ModuleWithFusion module_with_fusion,
+                       BuildModuleWithFusion(kVariadicReduceScatterModuleStr));
+  ASSERT_OK_AND_ASSIGN(BlockLevelFusionConfig block_level_config,
+                       GetCollectiveBlockLevelFusionConfig(
+                           *gpu_topology_, module_with_fusion.FusionInstr()));
+
+  EXPECT_EQ(block_level_config.num_ctas(), 1);
+  EXPECT_EQ(block_level_config.num_stages(), 1);
+  ASSERT_EQ(block_level_config.output_tiles_size(), 2);
+  EXPECT_THAT(block_level_config.output_tiles(0).sizes(), ElementsAre(1, 16));
+  EXPECT_THAT(block_level_config.output_tiles(1).sizes(), ElementsAre(1, 2));
+}
+
+TEST_F(CollectiveBlockLevelConfigTest,
+       VariadicReduceScatterBlockLevelConfigTilesOutputsIndependently) {
+  ASSERT_OK_AND_ASSIGN(ModuleWithFusion module_with_fusion,
+                       BuildModuleWithFusion(R"(
+  HloModule test
+  apply_op {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT apply_op = f32[] add(x, y)
+  }
+
+  ENTRY test_computation {
+    param_0 = f32[16384] parameter(0)
+    param_1 = f32[4,1] parameter(1)
+    ROOT rs = (f32[8192], f32[2,1]) reduce-scatter(param_0, param_1),
+      to_apply=apply_op, replica_groups={{0,1}}, dimensions={0}
+  }
+)"));
+  EXPECT_FALSE(ShouldFlattenReduceScatter(Cast<HloReduceScatterInstruction>(
+      GetCollectiveHero(module_with_fusion.FusionInstr()
+                            ->fused_instructions_computation()))));
+  ASSERT_OK_AND_ASSIGN(BlockLevelFusionConfig block_level_config,
+                       GetCollectiveBlockLevelFusionConfig(
+                           *gpu_topology_, module_with_fusion.FusionInstr()));
+
+  // 2 blocks/rank:
+  // - Output 0 (f32[8192], 4096/rank) -> 2 tiles of [2048].
+  // - Output 1 (f32[2,1], [1,1]/rank) -> 1 tile of [1,1].
+  EXPECT_EQ(block_level_config.num_warps(), 16);
+  ASSERT_EQ(block_level_config.output_tiles_size(), 2);
+  EXPECT_THAT(block_level_config.output_tiles(0).sizes(), ElementsAre(2048));
+  EXPECT_THAT(block_level_config.output_tiles(1).sizes(), ElementsAre(1, 1));
+}
+
+constexpr absl::string_view kVariadicReduceScatterNonPowerOfTwoModuleStr = R"(
+  HloModule test
+  apply_op {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT apply_op = f32[] add(x, y)
+  }
+
+  ENTRY test_computation {
+    param_0 = f32[2,24576] parameter(0)
+    param_1 = f32[4,2] parameter(1)
+    ROOT rs = (f32[1,24576], f32[2,2]) reduce-scatter(param_0, param_1),
+      to_apply=apply_op, replica_groups={{0,1}}, dimensions={0}
+  }
+)";
+
+TEST_F(CollectiveEmitterTest,
+       FlattenVariadicReduceScatterFusionNonPowerOfTwoInner) {
+  ASSERT_OK_AND_ASSIGN(
+      ModuleWithFusion module_with_fusion,
+      BuildModuleWithFusion(kVariadicReduceScatterNonPowerOfTwoModuleStr));
+  HloFusionInstruction* fusion_instr = module_with_fusion.MutableFusionInstr();
+  HloComputation* entry_computation =
+      module_with_fusion.module->entry_computation();
+
+  // Operand 0 (12288/rank, non-pow2):
+  //   f32[2,24576] -> f32[4,32,384] -> f32[2,32,384].
+  // Operand 1 (2/rank, pow2):
+  //   f32[4,2] -> f32[4,2] -> f32[2,2].
+  const Shape param_0 = ShapeUtil::MakeShape(F32, {4, 32, 384});
+  const Shape param_1 = ShapeUtil::MakeShape(F32, {4, 2});
+  const Shape new_output_0 = ShapeUtil::MakeShape(F32, {2, 32, 384});
+  const Shape new_output_1 = ShapeUtil::MakeShape(F32, {2, 2});
+  const Shape new_fusion_shape =
+      ShapeUtil::MakeTupleShape({new_output_0, new_output_1});
+  EXPECT_THAT(fusion_instr, HasShape(new_fusion_shape));
+  EXPECT_THAT(fusion_instr->operand(0),
+              AllOf(HasOpcode(HloOpcode::kBitcast), HasShape(param_0)));
+  EXPECT_THAT(fusion_instr->operand(1),
+              AllOf(HasOpcode(HloOpcode::kBitcast), HasShape(param_1)));
+  HloComputation* fused_comp = fusion_instr->fused_instructions_computation();
+  EXPECT_THAT(fused_comp->parameter_instructions(),
+              ElementsAre(HasShape(param_0), HasShape(param_1)));
+  EXPECT_THAT(fused_comp->root_instruction(),
+              AllOf(HasOpcode(HloOpcode::kTuple), HasShape(new_fusion_shape)));
+  EXPECT_THAT(
+      GetCollectiveHero(fused_comp),
+      AllOf(HasOpcode(HloOpcode::kReduceScatter), HasShape(new_fusion_shape)));
+
+  HloInstruction* root = entry_computation->root_instruction();
+  EXPECT_THAT(root, AllOf(HasOpcode(HloOpcode::kTuple), HasNumOperands(2)));
+  EXPECT_THAT(root->operand(0),
+              AllOf(HasOpcode(HloOpcode::kBitcast),
+                    HasShape(ShapeUtil::MakeShape(F32, {1, 24576}))));
+  EXPECT_THAT(root->operand(1),
+              AllOf(HasOpcode(HloOpcode::kBitcast),
+                    HasShape(ShapeUtil::MakeShape(F32, {2, 2}))));
+  EXPECT_THAT(verifier().Run(module_with_fusion.module.get()),
+              absl_testing::IsOkAndHolds(false));
+}
+
+TEST_F(CollectiveBlockLevelConfigTest,
+       VariadicReduceScatterBlockLevelConfigNonPowerOfTwoInner) {
+  ASSERT_OK_AND_ASSIGN(
+      ModuleWithFusion module_with_fusion,
+      BuildModuleWithFusion(kVariadicReduceScatterNonPowerOfTwoModuleStr));
+  ASSERT_OK_AND_ASSIGN(BlockLevelFusionConfig block_level_config,
+                       GetCollectiveBlockLevelFusionConfig(
+                           *gpu_topology_, module_with_fusion.FusionInstr()));
+
+  // 4 blocks/rank:
+  // - Output 0 (f32[2,32,384]) -> 4 tiles of [1,8,512].
+  // - Output 1 (f32[2,2])      -> 2 tiles of [1,1].
+  EXPECT_EQ(block_level_config.num_warps(), 16);
+  ASSERT_EQ(block_level_config.output_tiles_size(), 2);
+  EXPECT_THAT(block_level_config.output_tiles(0).sizes(),
+              ElementsAre(1, 8, 512));
+  EXPECT_THAT(block_level_config.output_tiles(1).sizes(), ElementsAre(1, 1));
+}
+
+TEST_F(CollectiveEmitterTest,
+       VariadicReduceScatterGetCollectiveUnmanagedKernelArguments) {
+  ASSERT_OK_AND_ASSIGN(ModuleWithFusion module_with_fusion,
+                       BuildModuleWithFusion(kVariadicReduceScatterModuleStr));
+  ASSERT_OK_AND_ASSIGN(
+      const auto unmanaged_arguments,
+      GetCollectiveUnmanagedKernelArguments(module_with_fusion.FusionInstr()));
+  ASSERT_EQ(unmanaged_arguments.size(), 4);
+  EXPECT_EQ(unmanaged_arguments[0].dimensions().size(), 0);
+  ASSERT_EQ(unmanaged_arguments[1].dimensions().size(), 2);
+  EXPECT_EQ(unmanaged_arguments[1].dimensions()[0], 2);
+  EXPECT_THAT(unmanaged_arguments[2].dimensions(), ElementsAre(2, 4, 16));
+  EXPECT_THAT(unmanaged_arguments[3].dimensions(), ElementsAre(2, 4, 2));
 }
 
 GpuTopology MakeGpuTopology(int32_t num_partitions,

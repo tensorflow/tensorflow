@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
+#include "xla/layout_util.h"
 #include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
@@ -109,7 +110,6 @@ bool IsTritonSupportedRaggedDot(
     return false;
   }
 
-
   // The xtile emitter's PrimitiveTypeToMlirType conversion supports the
   // following element types for ragged-dot operands and output.
   // Complex types (C64, C128) fall to the default branch and return
@@ -155,10 +155,9 @@ absl::StatusOr<bool> IsCublasSupportedMatMul(
     if (dims.Rank(DotOperandDims::kContracting) != 1) {
       return false;
     }
-    // cuBLAS doesn't support minor batch dimension.
-    if (absl::c_any_of(dims.Indices(DotOperandDims::kBatch), [&](int64_t dim) {
-          return dim == dims.shape().dimensions().size() - 1;
-        })) {
+    // cuBLAS doesn't support a physically minor batch dimension.
+    if (absl::c_linear_search(dims.Indices(DotOperandDims::kBatch),
+                              LayoutUtil::Minor(dims.shape().layout(), 0))) {
       return false;
     }
     // cuBLAS supports up to one non-contracting dimension.

@@ -17,9 +17,13 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <limits>
 #include <memory>
 #include <optional>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -31,7 +35,9 @@ limitations under the License.
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/memory_reservation.h"
 #include "xla/stream_executor/mock_stream_executor.h"
+#include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/framework/bfc_allocator.h"
+#include "xla/tsl/platform/env.h"
 
 namespace xla {
 namespace {
@@ -39,7 +45,9 @@ namespace {
 using ::absl_testing::StatusIs;
 using ::testing::_;
 using ::testing::HasSubstr;
+using ::testing::IsEmpty;
 using ::testing::NiceMock;
+using ::testing::UnorderedElementsAre;
 
 constexpr int64_t kMiB = 1 << 20;
 
@@ -156,6 +164,153 @@ TEST_F(BfcMemorySizingTest, EqualEndpointsMatchFixedPolicy) {
   ASSERT_OK_AND_ASSIGN(auto equal, Create(FlexMemFraction{0.75, 0.75}));
   EXPECT_EQ(equal->GetStats()->bytes_limit, fixed->GetStats()->bytes_limit);
   EXPECT_EQ(executor_.reservations_, 0);
+}
+
+constexpr size_t kPoolLimit = 24 * kMiB;
+
+class GpuBFCAllocatorTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    const char* value = std::getenv("TF_ENABLE_GPU_GARBAGE_COLLECTION");
+    if (value != nullptr) {
+      original_garbage_collection_ = value;
+    }
+    ASSERT_EQ(tsl::unsetenv("TF_ENABLE_GPU_GARBAGE_COLLECTION"), 0);
+  }
+
+  void TearDown() override {
+    if (original_garbage_collection_.has_value()) {
+      EXPECT_EQ(tsl::setenv("TF_ENABLE_GPU_GARBAGE_COLLECTION",
+                            original_garbage_collection_->c_str(), 1),
+                0);
+    } else {
+      EXPECT_EQ(tsl::unsetenv("TF_ENABLE_GPU_GARBAGE_COLLECTION"), 0);
+    }
+  }
+
+  GpuBFCAllocatorTest() {
+    ON_CALL(executor_, DeviceMemoryUsage(_, _))
+        .WillByDefault([](int64_t* free, int64_t* total) {
+          *free = kPoolLimit;
+          *total = kPoolLimit;
+          return true;
+        });
+    // Fake, non-dereferenceable device addresses. Separate regions cannot be
+    // coalesced, just as with ordinary device allocations in a growing pool.
+    ON_CALL(executor_, Allocate(_, _))
+        .WillByDefault([this](uint64_t size, int64_t) {
+          void* ptr = reinterpret_cast<void*>(next_address_);
+          next_address_ += size + kMiB;
+          allocations_[ptr] = size;
+          return se::DeviceAddressBase(ptr, size);
+        });
+    ON_CALL(executor_, Deallocate(_))
+        .WillByDefault([this](se::DeviceAddressBase* memory) {
+          freed_sizes_.push_back(allocations_.at(memory->opaque()));
+          freed_addresses_.push_back(memory->opaque());
+          allocations_.erase(memory->opaque());
+        });
+  }
+
+  NiceMock<se::MockStreamExecutor> executor_;
+  uintptr_t next_address_ = uintptr_t{1} << 40;
+  std::unordered_map<void*, size_t> allocations_;
+  std::vector<size_t> freed_sizes_;
+  std::vector<void*> freed_addresses_;
+  std::optional<std::string> original_garbage_collection_;
+};
+
+class GpuBFCGarbageCollectionTest
+    : public GpuBFCAllocatorTest,
+      public ::testing::WithParamInterface<const char*> {
+ protected:
+  void SetUp() override {
+    GpuBFCAllocatorTest::SetUp();
+    if (GetParam() != nullptr) {
+      ASSERT_EQ(tsl::setenv("TF_ENABLE_GPU_GARBAGE_COLLECTION", GetParam(), 1),
+                0);
+    }
+  }
+};
+
+TEST_P(GpuBFCGarbageCollectionTest,
+       GrowingPoolReclaimsWholeFreeRegionsBeforeOom) {
+  ASSERT_OK_AND_ASSIGN(
+      auto allocator,
+      CreateBFCAllocator(&executor_, FixedMemFraction{1.0},
+                         /*preallocate=*/false, std::nullopt, {}, {}));
+  constexpr size_t kAlignment = tsl::Allocator::kAllocatorAlignment;
+  tsl::AllocationAttributes no_retry;
+  no_retry.retry_on_failure = false;
+
+  void* live = allocator->AllocateRaw(kAlignment, 2 * kMiB, no_retry);
+  ASSERT_NE(live, nullptr);
+  void* temporary = allocator->AllocateRaw(kAlignment, 4 * kMiB, no_retry);
+  ASSERT_NE(temporary, nullptr);
+  allocator->DeallocateRaw(temporary);
+  temporary = allocator->AllocateRaw(kAlignment, 8 * kMiB, no_retry);
+  ASSERT_NE(temporary, nullptr);
+  allocator->DeallocateRaw(temporary);
+  ASSERT_EQ(*allocator->GetStats()->pool_bytes, 14 * kMiB);
+  EXPECT_THAT(freed_sizes_, IsEmpty());
+
+  // The 16 MiB request fits neither the largest free region (8 MiB) nor the
+  // remaining growth allowance (10 MiB). Returning the 4 and 8 MiB regions
+  // permits it without releasing the live allocation or increasing the cap.
+  void* large = allocator->AllocateRaw(kAlignment, 16 * kMiB, no_retry);
+  if (GetParam() != nullptr && std::string(GetParam()) == "false") {
+    EXPECT_EQ(large, nullptr);
+    EXPECT_THAT(freed_sizes_, IsEmpty());
+    EXPECT_EQ(*allocator->GetStats()->pool_bytes, 14 * kMiB);
+    EXPECT_EQ(allocator->RequestedSize(live), 2 * kMiB);
+    allocator->DeallocateRaw(live);
+    return;
+  }
+  ASSERT_NE(large, nullptr);
+  EXPECT_THAT(freed_sizes_, UnorderedElementsAre(4 * kMiB, 8 * kMiB));
+  EXPECT_THAT(freed_addresses_, ::testing::Not(::testing::Contains(live)));
+  EXPECT_EQ(allocator->RequestedSize(live), 2 * kMiB);
+  EXPECT_EQ(allocator->GetStats()->bytes_in_use, 18 * kMiB);
+  EXPECT_LE(*allocator->GetStats()->pool_bytes, kPoolLimit);
+  // Reclamation must not evict live regions or exceed the configured limit.
+  EXPECT_EQ(allocator->AllocateRaw(kAlignment, 8 * kMiB, no_retry), nullptr);
+  EXPECT_THAT(freed_sizes_, UnorderedElementsAre(4 * kMiB, 8 * kMiB));
+  EXPECT_EQ(allocator->RequestedSize(live), 2 * kMiB);
+  allocator->DeallocateRaw(large);
+  allocator->DeallocateRaw(live);
+}
+
+TEST_P(GpuBFCGarbageCollectionTest, PreallocatedPoolStaysReserved) {
+  ASSERT_OK_AND_ASSIGN(
+      auto allocator,
+      CreateBFCAllocator(&executor_, FixedMemFraction{1.0},
+                         /*preallocate=*/true, std::nullopt, {}, {}));
+  void* ptr =
+      allocator->AllocateRaw(tsl::Allocator::kAllocatorAlignment, 2 * kMiB);
+  ASSERT_NE(ptr, nullptr);
+  EXPECT_EQ(*allocator->GetStats()->pool_bytes, kPoolLimit);
+  allocator->DeallocateRaw(ptr);
+  EXPECT_EQ(*allocator->GetStats()->pool_bytes, kPoolLimit);
+  EXPECT_THAT(freed_sizes_, IsEmpty());
+}
+
+INSTANTIATE_TEST_SUITE_P(GarbageCollection, GpuBFCGarbageCollectionTest,
+                         ::testing::Values(nullptr, "true", "false"));
+
+TEST_F(GpuBFCAllocatorTest, GrowingPoolRejectsInvalidGarbageCollectionSetting) {
+  ASSERT_EQ(tsl::setenv("TF_ENABLE_GPU_GARBAGE_COLLECTION", "invalid", 1), 0);
+  EXPECT_THAT(CreateBFCAllocator(&executor_, FixedMemFraction{1.0},
+                                 /*preallocate=*/false, std::nullopt, {}, {}),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("TF_ENABLE_GPU_GARBAGE_COLLECTION")));
+}
+
+TEST_F(GpuBFCAllocatorTest, PreallocatedPoolIgnoresGarbageCollectionSetting) {
+  ASSERT_EQ(tsl::setenv("TF_ENABLE_GPU_GARBAGE_COLLECTION", "invalid", 1), 0);
+  ASSERT_OK_AND_ASSIGN(
+      auto allocator,
+      CreateBFCAllocator(&executor_, FixedMemFraction{1.0},
+                         /*preallocate=*/true, std::nullopt, {}, {}));
 }
 
 }  // namespace

@@ -763,6 +763,30 @@ cc_library(
     alwayslink = 1,
 )
 
+tf_cc_test(
+    name = "tpu_functional_ops_test",
+    srcs = ["tpu_functional_ops_test.cc"],
+    deps = [
+        ":tpu_functional_ops",
+        ":tpu_ordinal_selector",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:ops",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:array",
+        "//tensorflow/core/kernels:function_ops",
+        "//tensorflow/core/kernels:ops_testutil",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_googletest//:gtest_main",
+        "@xla//xla/tpu:tpu_api",
+        "@xla//xla/tpu:tpu_ops_c_api_hdrs",
+        "@xla//xla/tsl/lib/core:status_test_util",
+    ],
+)
+
 cc_library(
     name = "sharding_util_ops",
     srcs = ["sharding_util_ops.cc"],
