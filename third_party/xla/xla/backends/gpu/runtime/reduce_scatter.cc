@@ -210,6 +210,11 @@ absl::StatusOr<ReduceScatterInfo> BuildReduceScatterInfo(
     return absl::UnimplementedError(
         "Reduce-scatter kernel requires at least one operand.");
   }
+  if (num_operands > kReduceScatterMaxNumOperands) {
+    return absl::UnimplementedError(absl::StrFormat(
+        "Reduce-scatter kernel supports at most %d operands. Got %d.",
+        kReduceScatterMaxNumOperands, num_operands));
+  }
   if (device_info.device_interconnect_info().active_links <= 0) {
     return absl::UnimplementedError(
         "Collective kernels are only supported on devices with NVLink "

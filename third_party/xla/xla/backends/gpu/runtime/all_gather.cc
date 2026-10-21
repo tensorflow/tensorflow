@@ -153,6 +153,11 @@ absl::StatusOr<AllGatherInfo> BuildAllGatherInfo(
   }
   const int64_t num_devices =
       all_gather->device_list()->num_devices_per_group();
+  if (all_gather->operand_count() > kAllGatherMaxNumOperands) {
+    return absl::UnimplementedError(absl::StrFormat(
+        "All-gather kernel supports at most %d operands. Got %d.",
+        kAllGatherMaxNumOperands, all_gather->operand_count()));
+  }
   if (device_info.device_interconnect_info().active_links <= 0) {
     return absl::UnimplementedError(
         "Collective kernels are only supported on devices with NVLink/UALink "
