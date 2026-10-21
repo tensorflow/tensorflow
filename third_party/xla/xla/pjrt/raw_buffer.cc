@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/pjrt/device_event_utils.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/staging_buffer.h"
+#include "xla/pjrt/strided_gather.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -113,6 +114,25 @@ absl::StatusOr<std::vector<PjRtRawBufferRef>> PjRtRawBuffer::MultiSlice(
 
 void PjRtRawBuffer::DecrefAfter(PjRtDeviceEventRefVector events) {
   xla::RunWhenReady(events, [this]() { DropRef(); });
+}
+
+void PjRtRawBuffer::ScheduleCopySliceTo(
+    PjRtDeviceEventRefVector transfer_dependency_events,
+    const StridedGather& gather, PjRtRawBufferRef dst_raw_buffer,
+    PjRtDeviceEventPromiseRef definition_event_promise,
+    PjRtDeviceEventPromiseRef src_usage_event_promise,
+    absl::AnyInvocable<void(absl::Status) &&> allocation_event) {
+  absl::Status status =
+      absl::UnimplementedError("ScheduleCopySliceTo is not supported.");
+  if (allocation_event) {
+    std::move(allocation_event)(status);
+  }
+  if (definition_event_promise) {
+    definition_event_promise.SetError(status);
+  }
+  if (src_usage_event_promise) {
+    src_usage_event_promise.SetError(status);
+  }
 }
 
 absl::StatusOr<PjRtRawBufferRef> PjRtRawBuffer::CreateRawAliasOfBuffer(
@@ -514,6 +534,32 @@ void PjRtRawBufferInterface::DecrefAfter(PjRtDeviceEventRefVector events) {
     cpp_buf->DecrefAfter(std::move(events));
   } else {
     xla::RunWhenReady(events, [this]() { DropRef(); });
+  }
+}
+
+void PjRtRawBufferInterface::ScheduleCopySliceTo(
+    PjRtDeviceEventRefVector transfer_dependency_events,
+    const StridedGather& gather, PjRtRawBufferRef dst_raw_buffer,
+    PjRtDeviceEventPromiseRef definition_event_promise,
+    PjRtDeviceEventPromiseRef src_usage_event_promise,
+    absl::AnyInvocable<void(absl::Status) &&> allocation_event) {
+  if (auto* cpp_buf = down_cast<PjRtRawBuffer>()) {
+    cpp_buf->ScheduleCopySliceTo(
+        std::move(transfer_dependency_events), gather,
+        std::move(dst_raw_buffer), std::move(definition_event_promise),
+        std::move(src_usage_event_promise), std::move(allocation_event));
+    return;
+  }
+  absl::Status status =
+      absl::UnimplementedError("ScheduleCopySliceTo is not supported.");
+  if (allocation_event) {
+    std::move(allocation_event)(status);
+  }
+  if (definition_event_promise) {
+    definition_event_promise.SetError(status);
+  }
+  if (src_usage_event_promise) {
+    src_usage_event_promise.SetError(status);
   }
 }
 

@@ -1488,6 +1488,49 @@ TEST(ArrayImplTest, MakeErrorArrays) {
   EXPECT_EQ(arrays[1]->user_context()->Id(), UserContextId(100));
 }
 
+TEST(ArrayImplTest, MakeErrorArraysWithCustomLayout) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
+                       client->MakeDeviceList(client->addressable_devices()));
+
+  DType dtype(DType::kF32);
+  Shape shape({2, 3});
+  Device* device = client->addressable_devices().front();
+  ASSERT_OK_AND_ASSIGN(
+      std::shared_ptr<const xla::PjRtLayout> default_layout,
+      client->GetDefaultPjRtLayout(dtype, shape.dims(), device, MemoryKind()));
+  xla::Layout xla_layout = default_layout->xla_layout();
+  absl::c_reverse(*xla_layout.mutable_minor_to_major());
+  auto layout = std::make_shared<const xla::PjRtLayout>(std::move(xla_layout));
+
+  ArraySpec array_spec = {
+      /*dtype=*/dtype,
+      /*shape=*/shape,
+      /*sharding=*/
+      ConcreteEvenSharding::Create(std::move(device_list), MemoryKind(), shape,
+                                   /*shard_shape=*/shape,
+                                   /*is_fully_replicated=*/true),
+      /*layout=*/layout,
+  };
+
+  const absl::Status error = absl::InternalError("injected error");
+  UserContextScope user_context_scope(test_util::MakeUserContext(100));
+  ASSERT_OK_AND_ASSIGN(
+      const std::vector<ArrayRef> arrays,
+      client->MakeErrorArrays(error, {array_spec, array_spec}));
+  ASSERT_EQ(arrays.size(), 2);
+
+  for (const ArrayRef& array : arrays) {
+    EXPECT_THAT(array->GetReadyFuture().Await(),
+                StatusIs(_, HasSubstr("injected error")));
+    ASSERT_OK_AND_ASSIGN(std::shared_ptr<const xla::PjRtLayout> result_layout,
+                         array->pjrt_layout());
+    ASSERT_NE(result_layout, nullptr);
+    EXPECT_EQ(*result_layout, *layout);
+    EXPECT_EQ(array->user_context()->Id(), UserContextId(100));
+  }
+}
+
 TEST(ArrayImplTest, MakeErrorArraysWithAddressableAndNonAddressableDevice) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
 

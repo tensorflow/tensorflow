@@ -17,18 +17,28 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <optional>
 
 #include "absl/log/check.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/IR/Block.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/Operation.h"
+#include "mlir/IR/OperationSupport.h"
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/SymbolTable.h"
+#include "mlir/IR/Types.h"
+#include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LLVM.h"
+#include "mlir/Support/LogicalResult.h"
+#include "mlir/Transforms/DialectConversion.h"
+#include "shardy/dialect/sdy/ir/constants.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/enums.h"
 #include "shardy/dialect/sdy/ir/utils.h"
@@ -222,9 +232,12 @@ struct TopKShardingRuleOpInterface
 // dimensions are independent across iterations, so those dimensions can be
 // sharded (the body can be evaluated on any slice of them).
 bool isElementwiseScanBody(mhlo::ScanOp scan) {
-  for (mlir::Operation& bodyOp : scan.getBody().front()) {
-    if (bodyOp.hasTrait<mlir::OpTrait::IsTerminator>() ||
-        bodyOp.hasTrait<mlir::OpTrait::Elementwise>()) {
+  if (scan.getBody().empty()) {
+    return false;
+  }
+  mlir::Block& bodyBlock = scan.getBody().front();
+  for (mlir::Operation& bodyOp : bodyBlock.without_terminator()) {
+    if (bodyOp.hasTrait<mlir::OpTrait::Elementwise>()) {
       continue;
     }
     if (bodyOp.hasTrait<mlir::OpTrait::ConstantLike>()) {
@@ -270,6 +283,71 @@ bool isElementwiseScanBody(mhlo::ScanOp scan) {
     return false;
   }
   return true;
+}
+
+// Returns `type` with dimension `dim` removed.
+mlir::RankedTensorType eraseDim(mlir::RankedTensorType type, uint64_t dim) {
+  mlir::SmallVector<int64_t> shape(type.getShape());
+  shape.erase(shape.begin() + dim);
+  return mlir::RankedTensorType::get(shape, type.getElementType());
+}
+
+// Detect the "shape-preserving" pattern produced by chlo.ScanOp/JAX. In that
+// pattern the per-iteration body output has the same shape as the
+// per-iteration body input, so each input[i] has a corresponding output of
+// identical shape, and each init[j] has shape equal to input[j] with the scan
+// dim removed.
+bool isShapePreservingScan(mhlo::ScanOp scan) {
+  int64_t scanDim = scan.getDimension();
+  mlir::ValueRange inputs = scan.getInputs();
+  mlir::ValueRange inits = scan.getInits();
+  mlir::ValueRange outputs = scan.getOutputs();
+  int64_t numInputs = inputs.size();
+  int64_t numInits = inits.size();
+  if (numInputs == 0) {
+    return false;
+  }
+  auto representative =
+      llvm::dyn_cast<mlir::RankedTensorType>(inputs.front().getType());
+  if (!representative || scanDim < 0 || scanDim >= representative.getRank()) {
+    return false;
+  }
+  if (numInputs != outputs.size() || numInputs != numInits) {
+    return false;
+  }
+  for (int64_t i = 0; i < numInputs; ++i) {
+    auto inT = llvm::dyn_cast<mlir::RankedTensorType>(inputs[i].getType());
+    auto outT = llvm::dyn_cast<mlir::RankedTensorType>(outputs[i].getType());
+    // The mapping loop below indexes every input and init with the
+    // representative's dimensions, so all inputs must share the
+    // representative's shape, not just match their own output.
+    if (!inT || !outT || inT.getShape() != outT.getShape() ||
+        inT.getShape() != representative.getShape()) {
+      return false;
+    }
+  }
+  for (int64_t j = 0; j < numInits; ++j) {
+    auto initT = llvm::dyn_cast<mlir::RankedTensorType>(inits[j].getType());
+    auto inT = llvm::dyn_cast<mlir::RankedTensorType>(inputs[j].getType());
+    if (!initT || !inT || inT.getRank() != initT.getRank() + 1) {
+      return false;
+    }
+    for (int64_t d = 0, m = 0; d < inT.getRank(); ++d) {
+      if (d == scanDim) {
+        continue;
+      }
+      if (inT.getDimSize(d) != initT.getDimSize(m++)) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+// Returns true if `sharding` shards dimension `dim`.
+bool isDimSharded(mlir::sdy::TensorShardingAttr sharding, uint64_t dim) {
+  return sharding && dim < static_cast<uint64_t>(sharding.getRank()) &&
+         !sharding.getDimSharding(dim).emptyAxes();
 }
 
 // Sharding rule for `mhlo.scan`.
@@ -330,7 +408,6 @@ struct ScanShardingRuleOpInterface
     int64_t numInputs = inputs.size();
     int64_t numInits = inits.size();
     bool isAssociative = scan.getIsAssociative().value_or(false);
-    bool elementwiseBody = isElementwiseScanBody(scan);
 
     // Pick a representative input/output tensor to derive the rank and the
     // scan dim size. Bail out with an empty (no-factor) rule if the
@@ -341,47 +418,12 @@ struct ScanShardingRuleOpInterface
     if (!representative) {
       return builder.build();
     }
+    if (scanDim < 0 || scanDim >= representative.getRank()) {
+      return builder.build();
+    }
     int64_t rank = representative.getRank();
     int64_t scanDimSize = representative.getDimSize(scanDim);
-
-    // Detect the "shape-preserving" pattern produced by chlo.ScanOp/JAX. In
-    // that pattern the per-iteration body output has the same shape as the
-    // per-iteration body input, so each input[i] has a corresponding output
-    // of identical shape, and each init[j] has shape equal to input[j] with
-    // the scan dim removed.
-    auto isShapePreserving = [&]() {
-      if (numInputs != outputs.size() || numInputs != numInits) {
-        return false;
-      }
-      for (int64_t i = 0; i < numInputs; ++i) {
-        auto inT = llvm::dyn_cast<mlir::RankedTensorType>(inputs[i].getType());
-        auto outT =
-            llvm::dyn_cast<mlir::RankedTensorType>(outputs[i].getType());
-        // The mapping loop below indexes every input and init with the
-        // representative's dimensions, so all inputs must share the
-        // representative's shape, not just match their own output.
-        if (!inT || !outT || inT.getShape() != outT.getShape() ||
-            inT.getShape() != representative.getShape()) {
-          return false;
-        }
-      }
-      for (int64_t j = 0; j < numInits; ++j) {
-        auto initT = llvm::dyn_cast<mlir::RankedTensorType>(inits[j].getType());
-        auto inT = llvm::dyn_cast<mlir::RankedTensorType>(inputs[j].getType());
-        if (!initT || !inT || inT.getRank() != initT.getRank() + 1) {
-          return false;
-        }
-        for (int64_t d = 0, m = 0; d < inT.getRank(); ++d) {
-          if (d == scanDim) {
-            continue;
-          }
-          if (inT.getDimSize(d) != initT.getDimSize(m++)) {
-            return false;
-          }
-        }
-      }
-      return true;
-    }();
+    bool isShapePreserving = isShapePreservingScan(scan);
 
     // The scan dimension can be sharded when the scan is associative (the
     // distributed parallel prefix) and shape preserving; sharding it never
@@ -392,23 +434,20 @@ struct ScanShardingRuleOpInterface
     FactorType scanDimFactorType = isAssociative && isShapePreserving
                                        ? FactorType::kPermutation
                                        : FactorType::kNeedReplication;
-    FactorType nonScanDimFactorType = isShapePreserving && elementwiseBody
-                                          ? FactorType::kPassThrough
-                                          : FactorType::kNeedReplication;
 
     // Layout of the operand/result mapping vectors mirrors the variadic op:
     //   operandDims = [input_0, ..., input_{N-1}, init_0, ..., init_{M-1}]
     //   resultDims  = [output_0, ..., output_{N-1}, carry_0, ..., carry_{M-1}]
     int64_t numOperands = numInputs + numInits;
     int64_t numResults = outputs.size() + carries.size();
+    mlir::SmallVector<int64_t> operandDims(numOperands, kNullDim);
+    mlir::SmallVector<int64_t> resultDims(numResults, kNullDim);
 
     if (!isShapePreserving) {
       // Conservative fallback: only model the scan dim factor (which we know
       // is shared across all inputs and outputs at position `scanDim`), and
       // leave every other dim unmapped. Unmapped dims are treated as needing
       // replication by Shardy, which is safe for arbitrary body shapes.
-      mlir::SmallVector<int64_t> operandDims(numOperands, kNullDim);
-      mlir::SmallVector<int64_t> resultDims(numResults, kNullDim);
       std::fill_n(operandDims.begin(), numInputs, scanDim);
       std::fill_n(resultDims.begin(), outputs.size(), scanDim);
       builder.addFactor(operandDims, resultDims, scanDimSize,
@@ -416,34 +455,150 @@ struct ScanShardingRuleOpInterface
       return builder.build();
     }
 
+    bool elementwiseBody = isElementwiseScanBody(scan);
+    FactorType nonScanDimFactorType = elementwiseBody
+                                          ? FactorType::kPassThrough
+                                          : FactorType::kNeedReplication;
+
     // Shape-preserving common case: one factor per input dim, shared across
     // input[i]/output[i] (and init[j]/carry[j] for the non-scan dims).
-    mlir::SmallVector<int64_t> operandDims(numOperands, kNullDim);
-    mlir::SmallVector<int64_t> resultDims(numResults, kNullDim);
-
     int64_t initDim = 0;
     for (int64_t inDim = 0; inDim < rank; ++inDim) {
       int64_t dimSize = representative.getDimSize(inDim);
-      // Inputs and outputs always map to inDim.
+      int64_t carryDim = (inDim == scanDim) ? kNullDim : initDim++;
+      FactorType factorType =
+          (inDim == scanDim) ? scanDimFactorType : nonScanDimFactorType;
       std::fill_n(operandDims.begin(), numInputs, inDim);
       std::fill_n(resultDims.begin(), numInputs, inDim);
-      if (inDim == scanDim) {
-        // Scan dim: not present on inits/carries.
-        std::fill_n(operandDims.begin() + numInputs, numInits, kNullDim);
-        std::fill_n(resultDims.begin() + numInputs, numInits, kNullDim);
-        builder.addFactor(operandDims, resultDims, dimSize, scanDimFactorType);
-      } else {
-        // Non-scan dim: pass-through across inputs/outputs/inits/carries,
-        // unless the body forces the partitioner to replicate the scan.
-        std::fill_n(operandDims.begin() + numInputs, numInits, initDim);
-        std::fill_n(resultDims.begin() + numInputs, numInits, initDim);
-        builder.addFactor(operandDims, resultDims, dimSize,
-                          nonScanDimFactorType);
-        ++initDim;
-      }
+      std::fill_n(operandDims.begin() + numInputs, numInits, carryDim);
+      std::fill_n(resultDims.begin() + numInputs, numInits, carryDim);
+      builder.addFactor(operandDims, resultDims, dimSize, factorType);
     }
 
     return builder.build();
+  }
+};
+
+// Returns true if the scan dimension is sharded on any output of `scan`.
+// The sharding rule only allows shape-preserving scans to partition the scan
+// dimension, in which case `numInputs == numOutputs` and the scan dimension is
+// sharded the same way in all inputs and outputs.
+bool isScanDimSharded(mhlo::ScanOp scan) {
+  uint64_t scanDim = scan.getDimension();
+  return llvm::any_of(scan.getOutputs(), [scanDim](mlir::Value val) {
+    return isDimSharded(mlir::sdy::getSharding(val), scanDim);
+  });
+}
+
+// Updates non-scalar ranked results in `bodyBlock` to `perStepSliceShape`.
+void localizeElementwiseBodyToPerStepSliceShape(
+    mlir::Block& bodyBlock, ArrayRef<int64_t> perStepSliceShape) {
+  for (mlir::Operation& bodyOp : bodyBlock.without_terminator()) {
+    if (bodyOp.hasTrait<mlir::OpTrait::ConstantLike>()) {
+      continue;
+    }
+    for (mlir::OpResult res : bodyOp.getResults()) {
+      if (auto resType = llvm::dyn_cast<mlir::RankedTensorType>(res.getType());
+          resType && resType.getRank() > 0) {
+        res.setType(mlir::RankedTensorType::get(perStepSliceShape,
+                                                resType.getElementType()));
+      }
+    }
+  }
+}
+
+// Rebuilds `scan` with updated `operands`, converted result types, and
+// per-step slice shapes in its body.
+mlir::LogicalResult rebuildScanWithUpdatedOperandsAndResultTypes(
+    mhlo::ScanOp scan, mlir::ValueRange operands,
+    const mlir::TypeConverter& typeConverter,
+    mlir::ConversionPatternRewriter& rewriter) {
+  mlir::SmallVector<mlir::Type> newResultTypes;
+  if (mlir::failed(
+          typeConverter.convertTypes(scan->getResults(), newResultTypes))) {
+    return mlir::failure();
+  }
+
+  int64_t numInputs = scan.getInputs().size();
+  uint64_t scanDim = scan.getDimension();
+
+  // Update scan_dim_size to the local size and drop sdy.sharding_rule.
+  mlir::NamedAttrList discardableAttrs(scan->getDiscardableAttrDictionary());
+  discardableAttrs.erase(mlir::sdy::kShardingRuleAttr);
+
+  auto newScan =
+      mhlo::ScanOp::create(rewriter, scan.getLoc(), newResultTypes, operands,
+                           scan.getProperties(), discardableAttrs.getAttrs());
+  if (scan.getScanDimSize().has_value() && numInputs > 0) {
+    auto localIn0Type =
+        llvm::dyn_cast<mlir::RankedTensorType>(operands[0].getType());
+    if (localIn0Type && !localIn0Type.isDynamicDim(scanDim)) {
+      newScan.setScanDimSize(localIn0Type.getDimSize(scanDim));
+    }
+  }
+  rewriter.cloneRegionBefore(scan.getBody(), newScan.getBody(),
+                             newScan.getBody().end());
+
+  mlir::Block& bodyBlock = newScan.getBody().front();
+  bool perStepSliceShapeChanged = false;
+  for (auto [i, arg] : llvm::enumerate(bodyBlock.getArguments())) {
+    auto oldArgType = llvm::cast<mlir::RankedTensorType>(arg.getType());
+    auto operandType =
+        llvm::cast<mlir::RankedTensorType>(operands[i].getType());
+    mlir::RankedTensorType newArgType;
+    if (static_cast<int64_t>(i) < numInputs) {
+      // Strip scanDim from scan input operands to form the per-step slice type.
+      newArgType = eraseDim(operandType, scanDim);
+    } else {
+      // Use the full init operand type for carry block arguments.
+      newArgType = operandType;
+    }
+    if (oldArgType.getShape() != newArgType.getShape()) {
+      perStepSliceShapeChanged = true;
+    }
+    arg.setType(newArgType);
+  }
+
+  if (perStepSliceShapeChanged) {
+    // If the per-step slice shape is changed, it means that non-scan dimensions
+    // are sharded or padded, and that we need to retype the body.
+    auto arg0Type =
+        llvm::cast<mlir::RankedTensorType>(bodyBlock.getArgument(0).getType());
+    localizeElementwiseBodyToPerStepSliceShape(bodyBlock, arg0Type.getShape());
+  }
+
+  rewriter.replaceOp(scan, newScan.getResults());
+  return mlir::success();
+}
+
+struct ScanPartitioningOpInterface
+    : public mlir::sdy::PartitioningOpInterface::ExternalModel<
+          ScanPartitioningOpInterface, mhlo::ScanOp> {
+  std::optional<mlir::LogicalResult> resolvePermutationFactors(
+      mlir::Operation* op, mlir::sdy::OpShardingRuleAttr shardingRule,
+      mlir::IRRewriter& rewriter, const mlir::SymbolTable& symbolTable) const {
+    auto scan = llvm::cast<mhlo::ScanOp>(op);
+    if (!isScanDimSharded(scan)) {
+      return mlir::success();
+    }
+    // TODO(b/537364058): Support scan dimension sharding.
+    return std::nullopt;
+  }
+
+  // TODO(b/537364058): Support padForDivisibility for indivisible dimensions.
+  std::optional<mlir::LogicalResult> convertGlobalToLocal(
+      mlir::Operation* op, mlir::ValueRange operands,
+      mlir::ConversionPatternRewriter& rewriter,
+      const mlir::TypeConverter& typeConverter,
+      const mlir::SymbolTable& symbolTable) const {
+    auto scan = llvm::cast<mhlo::ScanOp>(op);
+    if (isScanDimSharded(scan)) {
+      return scan.emitOpError(
+          "expected scan dimension to be unsharded during global-to-local "
+          "conversion");
+    }
+    return rebuildScanWithUpdatedOperandsAndResultTypes(
+        scan, operands, typeConverter, rewriter);
   }
 };
 
@@ -456,7 +611,8 @@ void registerMhloExtensions(mlir::DialectRegistry& registry) {
                                 mhlo::CoshOp, mhlo::ErfOp, mhlo::MulhiOp,
                                 mhlo::SinhOp, mhlo::StochasticConvertOp>(ctx);
     mhlo::RaggedDotOp::attachInterface<RaggedDotShardingRuleOpInterface>(*ctx);
-    mhlo::ScanOp::attachInterface<ScanShardingRuleOpInterface>(*ctx);
+    mhlo::ScanOp::attachInterface<ScanShardingRuleOpInterface,
+                                  ScanPartitioningOpInterface>(*ctx);
     mhlo::TopKOp::attachInterface<TopKShardingRuleOpInterface>(*ctx);
   });
 }

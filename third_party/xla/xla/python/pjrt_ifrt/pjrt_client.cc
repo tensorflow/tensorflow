@@ -1175,10 +1175,14 @@ absl::StatusOr<std::vector<ArrayRef>> PjRtClient::MakeErrorArrays(
     ABSL_ASSIGN_OR_RETURN(Shape shard_shape,
                      array_spec.sharding->GetShardShape(array_spec.shape));
     xla::Shape xla_shape;
+    const xla::Layout* layout = nullptr;
     if (primitive_type == xla::TOKEN) {
       xla_shape = xla::ShapeUtil::MakeTokenShape();
     } else {
       xla_shape = xla::ShapeUtil::MakeShape(primitive_type, shard_shape.dims());
+      if (array_spec.layout != nullptr) {
+        layout = &array_spec.layout->xla_layout();
+      }
     }
 
     PjRtArray::PjRtBuffers buffers;
@@ -1207,7 +1211,7 @@ absl::StatusOr<std::vector<ArrayRef>> PjRtClient::MakeErrorArrays(
           buffers.emplace_back(),
           pjrt_client_->CreateErrorBuffer(
               error, xla_shape,
-              absl::down_cast<PjRtMemory*>(memory)->pjrt_memory()));
+              absl::down_cast<PjRtMemory*>(memory)->pjrt_memory(), layout));
     }
     ABSL_ASSIGN_OR_RETURN(
         arrays.emplace_back(),

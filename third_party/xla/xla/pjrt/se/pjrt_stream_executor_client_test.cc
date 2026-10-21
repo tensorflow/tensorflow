@@ -740,7 +740,7 @@ TEST(PjRtStreamExecutorClientTest, CrossHostReceiveBuffersCleanupAfterFailure) {
   EXPECT_THAT(
       client->CrossHostReceiveBuffers(client->addressable_devices()[0], shapes,
                                       src_device_ids, transfer_keys),
-      absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 }  // namespace

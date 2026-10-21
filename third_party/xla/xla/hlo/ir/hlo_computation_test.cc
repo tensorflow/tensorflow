@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -35,7 +37,6 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -659,7 +660,7 @@ ENTRY entry {
 std::unique_ptr<HloComputation> MakeComputationWithParameters(
     int num_parameters, absl::string_view name = "comp") {
   const Shape shape = ShapeUtil::MakeShape(F32, {});
-  auto builder = HloComputation::Builder(std::string(name));
+  auto builder = HloComputation::Builder(name);
   HloInstruction* root = nullptr;
   for (int i = 0; i < num_parameters; ++i) {
     HloInstruction* param = builder.AddInstruction(
@@ -705,6 +706,38 @@ TEST_F(HLOComputationTest, RemoveInstructionClearsParameterSlot) {
   ASSERT_NE(p1, nullptr);
   ASSERT_OK(comp->ForceRemoveInstruction(p1));
   EXPECT_EQ(comp->parameter_instruction(1), nullptr);
+}
+
+std::vector<std::unique_ptr<HloComputation>> MakeNestedComputationChain(
+    const Shape& leaf_shape, int depth) {
+  std::vector<std::unique_ptr<HloComputation>> chain;
+  chain.reserve(depth + 1);
+
+  auto leaf_builder = HloComputation::Builder("leaf");
+  HloInstruction* p = leaf_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, leaf_shape, "p"));
+  chain.push_back(leaf_builder.Build(p));
+
+  for (int i = 0; i < depth; ++i) {
+    auto builder = HloComputation::Builder(absl::StrCat("comp_", i));
+    HloInstruction* call = builder.AddInstruction(
+        HloInstruction::CreateCall(leaf_shape, {}, chain.back().get()));
+    chain.push_back(builder.Build(call));
+  }
+  return chain;
+}
+
+TEST_F(HLOComputationTest, DeeplyNestedComputationsEqualIterative) {
+  constexpr int kDepth = 2000;
+  const Shape f32_shape = ShapeUtil::MakeShape(F32, {});
+  const Shape s32_shape = ShapeUtil::MakeShape(S32, {});
+
+  auto chain1 = MakeNestedComputationChain(f32_shape, kDepth);
+  auto chain2 = MakeNestedComputationChain(f32_shape, kDepth);
+  auto chain3 = MakeNestedComputationChain(s32_shape, kDepth);
+
+  EXPECT_TRUE(chain1.back()->Equal(*chain2.back(), true));
+  EXPECT_FALSE(chain1.back()->Equal(*chain3.back(), true));
 }
 
 }  // namespace
