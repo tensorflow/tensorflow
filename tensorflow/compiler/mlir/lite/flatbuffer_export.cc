@@ -4622,10 +4622,11 @@ absl::Status Translator::TranslateInternal() {
         GetOpsSummary(flex_ops_, /*summary_title=*/"Flex");
     LOG(WARNING) << "TFLite interpreter needs to link Flex delegate in order "
                     "to run the model since it contains the following Select TF"
-                    "op(s):\n"
+                    " op(s):\n"
                  << flex_ops_summary
                  << "\nSee instructions: "
-                    "https://www.tensorflow.org/lite/guide/ops_select";
+                    "https://developers.google.com/edge/litert/conversion/"
+                    "tensorflow/ops_select";
   }
 
   if (!custom_ops_.empty()) {
@@ -4635,7 +4636,8 @@ absl::Status Translator::TranslateInternal() {
                     "implementation(s):\n"
                  << custom_ops_summary
                  << "\nSee instructions: "
-                    "https://www.tensorflow.org/lite/guide/ops_custom";
+                    "https://developers.google.com/edge/litert/conversion/"
+                    "tensorflow/ops_custom";
   }
 
   if (first_failed_func != -1) {
@@ -4649,13 +4651,15 @@ absl::Status Translator::TranslateInternal() {
           "\nSome ops are not supported by the native TFLite runtime, you "
           "can "
           "enable TF kernels fallback using TF Select. See instructions: "
-          "https://www.tensorflow.org/lite/guide/ops_select \n" +
+          "https://developers.google.com/edge/litert/conversion/"
+          "tensorflow/ops_select \n" +
           failed_flex_ops_summary + "\n";
     if (!failed_custom_ops_.empty())
       err +=
           "\nSome ops in the model are custom ops, "
           "See instructions to implement "
-          "custom ops: https://www.tensorflow.org/lite/guide/ops_custom \n" +
+          "custom ops: https://developers.google.com/edge/litert/conversion/"
+          "tensorflow/ops_custom \n" +
           failed_custom_ops_summary + "\n";
 
     auto& failed_region = named_regions[first_failed_func];
