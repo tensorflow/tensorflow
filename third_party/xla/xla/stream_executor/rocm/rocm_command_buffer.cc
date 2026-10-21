@@ -519,6 +519,11 @@ absl::StatusOr<size_t> RocmCommandBuffer::GetNodeCount() const {
 }
 
 absl::Status RocmCommandBuffer::PrepareFinalization() {
+  // Only Create* methods add nodes, and they all require State::kCreate, so
+  // the create-time finalization already made this graph non-empty.
+  if (state() == State::kUpdate) {
+    return absl::OkStatus();
+  }
   ABSL_ASSIGN_OR_RETURN(auto node_count, GetNodeCount());
   if (node_count > 0) {
     return absl::OkStatus();
