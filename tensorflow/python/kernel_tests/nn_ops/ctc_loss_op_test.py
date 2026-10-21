@@ -1236,6 +1236,69 @@ class CTCLossTestV3(test.TestCase, parameterized.TestCase):
     self.assertAllClose(loss, ref_loss, atol=1e-6)
     self.assertAllClose(grad, ref_grad, atol=2e-6)
 
+  @test_util.run_v2_only
+  def testGPULabelsIndicesOOBBatchIndexRaisesError(self):
+    """GPU CTCLossV2 rejects out-of-range labels_indices batch indices."""
+    if not test.is_gpu_available():
+      self.skipTest("Need GPU for testing.")
+    batch_size = 2
+    num_frames = 4
+    num_classes = 3
+    labels_values = constant_op.constant([1, 1], dtype=dtypes.int32)
+    logits = constant_op.constant(
+        np.zeros([num_frames, batch_size, num_classes], dtype=np.float32)
+    )
+    sequence_length = constant_op.constant(
+        [num_frames] * batch_size, dtype=dtypes.int32
+    )
+    for bad_batch in (99, -1):
+      labels_indices = constant_op.constant(
+          [[bad_batch, 0], [0, 1]], dtype=dtypes.int64
+      )
+      with ops.device("/GPU:0"):
+        with self.assertRaisesRegex(
+            errors_impl.InvalidArgumentError,
+            rf"labels_indices batch index {bad_batch} out of range",
+        ):
+          self.evaluate(
+              gen_ctc_ops.ctc_loss_v2(
+                  logits,
+                  labels_indices,
+                  labels_values,
+                  sequence_length,
+                  preprocess_collapse_repeated=False,
+                  ctc_merge_repeated=True,
+                  ignore_longer_outputs_than_inputs=False,
+              )
+          )
+
+  @test_util.run_v2_only
+  def testGPULabelsIndicesWrongColumnCountRaisesError(self):
+    """GPU CTCLossV2 requires labels_indices to have 2 columns."""
+    if not test.is_gpu_available():
+      self.skipTest("Need GPU for testing.")
+    logits = constant_op.constant(np.zeros([4, 2, 3], dtype=np.float32))
+    labels_values = constant_op.constant([1, 1], dtype=dtypes.int32)
+    sequence_length = constant_op.constant([4, 4], dtype=dtypes.int32)
+    for bad_indices in ([[0], [1]], [[0, 0, 99], [1, 0, 0]]):
+      labels_indices = constant_op.constant(bad_indices, dtype=dtypes.int64)
+      with ops.device("/GPU:0"):
+        with self.assertRaisesRegex(
+            errors_impl.InvalidArgumentError,
+            r"labels_indices second dimension must be 2",
+        ):
+          self.evaluate(
+              gen_ctc_ops.ctc_loss_v2(
+                  logits,
+                  labels_indices,
+                  labels_values,
+                  sequence_length,
+                  preprocess_collapse_repeated=False,
+                  ctc_merge_repeated=True,
+                  ignore_longer_outputs_than_inputs=False,
+              )
+          )
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class CTCLossDeterministicTest(test.TestCase, parameterized.TestCase):

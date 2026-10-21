@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/layout_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_indexing_performance_model.h"
@@ -217,12 +218,33 @@ absl::StatusOr<bool> ProcessFusionInstruction(
                                        .debug_options()
                                        .xla_dump_fusion_visualization();
 
-  ABSL_ASSIGN_OR_RETURN(bool should_try_rewrite,
-                   ShouldTryRewriteFusion(fusion_instruction, device_info));
-  if (!should_try_rewrite) {
-    VLOG(2) << "Not rewriting fusion " << fusion_instruction->ToString()
-            << " because it is not supported.";
+  ABSL_ASSIGN_OR_RETURN(auto backend_config,
+                   fusion_instruction->backend_config<GpuBackendConfig>());
+  const FusionBackendConfig& fusion_backend_config =
+      backend_config.fusion_backend_config();
+  if (fusion_backend_config.kind() == kTensorIrFusionKind) {
+    // The fusion was explicitly assigned to the TensorIR emitter (by the
+    // autotuner or by hand). Rewriting it into a Triton block-level fusion
+    // would silently discard that assignment.
+    VLOG(2) << "Not rewriting fusion " << fusion_instruction->name()
+            << " because it is assigned to the TensorIR emitter.";
     return false;
+  }
+  if (fusion_backend_config.has_block_level_fusion_config()) {
+    // Fusion is already block-level! Skip.
+    return false;
+  }
+
+  // The Triton emitter requires a block-level config, so Triton fusions
+  // without one (e.g. from ScanRewriterTriton) are always tiled.
+  if (!IsGenericTritonFusion(*fusion_instruction)) {
+    ABSL_ASSIGN_OR_RETURN(bool should_try_rewrite,
+                     ShouldTryRewriteFusion(fusion_instruction, device_info));
+    if (!should_try_rewrite) {
+      VLOG(2) << "Not rewriting fusion " << fusion_instruction->ToString()
+              << " because it is not supported.";
+      return false;
+    }
   }
 
   const HloComputation* fusion_computation =
@@ -240,25 +262,6 @@ absl::StatusOr<bool> ProcessFusionInstruction(
                        "|: not supported by Triton: ", can_codegen.Explain()),
           *fusion_instruction);
     }
-    return false;
-  }
-
-  ABSL_ASSIGN_OR_RETURN(auto backend_config,
-                   fusion_instruction->backend_config<GpuBackendConfig>());
-
-  if (backend_config.has_fusion_backend_config() &&
-      backend_config.fusion_backend_config().kind() == kTensorIrFusionKind) {
-    // The fusion was explicitly assigned to the TensorIR emitter (by the
-    // autotuner or by hand). Rewriting it into a Triton block-level fusion
-    // would silently discard that assignment.
-    VLOG(2) << "Not rewriting fusion " << fusion_instruction->name()
-            << " because it is assigned to the TensorIR emitter.";
-    return false;
-  }
-
-  if (backend_config.has_fusion_backend_config() &&
-      backend_config.fusion_backend_config().has_block_level_fusion_config()) {
-    // Fusion is already block-level! Skip.
     return false;
   }
 

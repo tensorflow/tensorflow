@@ -1460,6 +1460,45 @@ ENTRY %PreservePartiallySetResultLayout {
             Layout::kDefaultMemorySpace);
 }
 
+TEST_F(LayoutAssignmentTest, PartiallySetNestedResultLayoutInsertsCopy) {
+  const char* module_str = R"(
+HloModule test_module
+
+ENTRY main {
+  p0 = f32[2,3]{1,0} parameter(0)
+  p1 = f32[4,5]{0,1} parameter(1)
+  nested = (f32[2,3], f32[4,5]) tuple(p0, p1)
+  ROOT result = ((f32[2,3], f32[4,5]), f32[2,3]) tuple(nested, p0)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
+  ComputationLayout computation_layout = module->entry_computation_layout();
+  computation_layout.mutable_result_layout()->ResetLayout(
+      LayoutUtil::MakeLayout({0, 1}), {0, 0});
+  computation_layout.mutable_result_layout()->Clear({0, 1});
+  computation_layout.mutable_result_layout()->Clear({1});
+
+  LayoutAssignment layout_assignment(&computation_layout);
+  ASSERT_OK_AND_ASSIGN(bool changed, layout_assignment.Run(module.get()));
+  EXPECT_TRUE(changed);
+  const Shape& result =
+      module->entry_computation()->root_instruction()->shape();
+  EXPECT_THAT(ShapeUtil::GetSubshape(result, {0, 0}).layout().minor_to_major(),
+              ElementsAre(0, 1));
+  EXPECT_THAT(ShapeUtil::GetSubshape(result, {0, 1}).layout().minor_to_major(),
+              ElementsAre(0, 1));
+  EXPECT_THAT(ShapeUtil::GetSubshape(result, {1}).layout().minor_to_major(),
+              ElementsAre(1, 0));
+  EXPECT_THAT(module->entry_computation()
+                  ->parameter_instruction(0)
+                  ->shape()
+                  .layout()
+                  .minor_to_major(),
+              ElementsAre(1, 0));
+  EXPECT_TRUE(computation_layout.result_layout().MatchesLayoutInShape(result));
+}
+
 TEST_F(LayoutAssignmentTest, PreservePartiallySetParameterLayout) {
   // Note the two parameters are passed as a single tuple.
   const char* module_str = R"(
@@ -1576,14 +1615,14 @@ ENTRY %PreserveMemorySpaceOnConflict {
                   .layout()
                   .minor_to_major(),
               ElementsAre(1, 0));
-  // Result layouts are not mandatory. Thus the first parameter's layout is not
-  // the same as the original layout.
+  // The constrained result keeps its requested layout even though another
+  // result has AUTO layout. A copy reconciles the conflicting parameter layout.
   EXPECT_THAT(computation_layout.result_layout()
                   .shape()
                   .tuple_shapes(0)
                   .layout()
                   .minor_to_major(),
-              ElementsAre(0, 1));
+              ElementsAre(1, 0));
   EXPECT_THAT(computation_layout.result_layout()
                   .shape()
                   .tuple_shapes(1)

@@ -616,7 +616,7 @@ se::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory, uint64_t size) {
 // into base class.
 class CufftScratchAllocator : public se::ScratchAllocator {
  public:
-  ~CufftScratchAllocator() override {}
+  ~CufftScratchAllocator() override = default;
   CufftScratchAllocator(int64_t memory_limit, OpKernelContext* context)
       : memory_limit_(memory_limit), total_byte_size_(0), context_(context) {}
   int64_t GetMemoryLimitInBytes() override { return memory_limit_; }
