@@ -176,11 +176,6 @@ class GpuCompiler : public LLVMCompiler {
   static std::unique_ptr<HloPassPipeline> GetCustomKernelRewriterPipeline(
       const stream_executor::DeviceDescription& device_description);
 
-  // Run right before GemmRewriter to add pads for gpublas gemms.
-  virtual void AddPaddingForGpublasGemms(
-      HloPassPipeline& pipeline, const DebugOptions& debug_options,
-      const se::GpuComputeCapability& gpu_version) = 0;
-
   // During compilation with device, stream_exec != null and autotune_results
   // == null. During deviceless AOT compilation, stream_exec == null and
   // autotune_results != null.
@@ -302,11 +297,6 @@ class GpuCompiler : public LLVMCompiler {
 
   MlirContextPool mlir_context_pool_;
 };
-
-void GpuCollectiveBufferAnalysis(
-    HloModule* module, const HloAliasAnalysis& alias_analysis,
-    std::function<void(HloInstruction*, const ShapeIndex&)> add_index_to_copy,
-    const GpuTopology* gpu_topology = nullptr);
 
 }  // namespace gpu
 }  // namespace xla

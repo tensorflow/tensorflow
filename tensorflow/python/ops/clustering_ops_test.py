@@ -52,6 +52,47 @@ class KmeansPlusPlusInitializationTest(test.TestCase):
     for seed in range(100):
       self.runTestWithSeed(seed)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testIdenticalPoints(self):
+    points = np.array([[1.0, 2.0], [1.0, 2.0]], dtype=np.float32)
+    with self.cached_session():
+      for retries in (0, 3):
+        sampled = clustering_ops.kmeans_plus_plus_initialization(
+            points, num_to_sample=2, seed=12345, num_retries_per_sample=retries
+        )
+        result = self.evaluate(sampled)
+        self.assertEqual(result.shape, (2, 2))
+        self.assertAllClose(result, points)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testNaNPoints(self):
+    points = np.full((2, 2), float("nan"), dtype=np.float32)
+    with self.cached_session():
+      for retries in (0, 3):
+        sampled = clustering_ops.kmeans_plus_plus_initialization(
+            points, num_to_sample=2, seed=12345, num_retries_per_sample=retries
+        )
+        result = self.evaluate(sampled)
+        self.assertEqual(result.shape, (2, 2))
+        self.assertEqual(result.dtype, np.float32)
+        self.assertTrue(np.isnan(result).all())
+
+  @test_util.run_in_graph_and_eager_modes
+  def testOverflowPoints(self):
+    # Values large enough that squared distance overflows float32 to +inf
+    # without individual norms overflowing to +inf (which would yield NaN),
+    # exercising the std::isinf(total) fallback in draw_one_sample.
+    points = np.array([[1e19, 1e19], [-1e19, -1e19]], dtype=np.float32)
+    with self.cached_session():
+      for retries in (0, 3):
+        sampled = clustering_ops.kmeans_plus_plus_initialization(
+            points, num_to_sample=2, seed=12345, num_retries_per_sample=retries
+        )
+        result = self.evaluate(sampled)
+        self.assertEqual(result.shape, (2, 2))
+        self.assertEqual(result.dtype, np.float32)
+        self.assertCountEqual(result.tolist(), points.tolist())
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class KMC2InitializationTest(test.TestCase):

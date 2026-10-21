@@ -260,14 +260,19 @@ class TilingSpace {
   void ProcessDotLike(const HloInstruction& hlo);
   void ProcessReduce(const HloInstruction& hlo);
   void ProcessReduceScatter(const HloInstruction& hlo);
-  void ProcessScan(const HloInstruction& hlo);
+  // Marks the scan dimension as sequential; fails if it cannot be located.
+  absl::Status ProcessScan(const HloInstruction& hlo);
   void ProcessDynamicSlice(const HloInstruction& hlo);
   void ProcessGetTupleElement(const HloInstruction& hlo);
+  // Propagates dimensions to the operands of an elementwise instruction, also
+  // across the producer-consumer fusion boundary, so that a scan in the
+  // producer finds its dimension below an elementwise epilogue in the consumer.
+  void ProcessElementwise(const HloInstructionAdaptor& adaptor);
   // Registers the sequential dimensions and RTVars for a kRaggedDot
   // instruction.  Handles kRaggedNonContracting (G is a kSequential outer
   // loop) and kRaggedContracting (G is kParallel, M is kSequential).
   void ProcessRaggedDot(const HloInstruction& hlo);
-  void ProcessInstruction(const HloInstruction& hlo);
+  absl::Status ProcessInstruction(const HloInstruction& hlo);
 
   // Initializes cached indexing map variables. This is necessary to allow
   // building indexing maps during simplification.

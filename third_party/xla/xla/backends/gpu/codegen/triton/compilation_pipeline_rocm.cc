@@ -168,8 +168,8 @@ static void MakeLLIR(mlir::OpPassManager* pm,
   pm->addPass(mt::createAllocateAMDGPUSharedMemoryPass(rocm_cc.gfx_version()));
   pm->addPass(mt::createTritonAMDGPUMembar({rocm_cc.gfx_version()}));
   pm->addPass(mt::gpu::createTritonGPUGlobalScratchAllocationPass());
-  pm->addPass(
-      mt::createConvertTritonAMDGPUToLLVMPass(rocm_cc.gfx_version(), true));
+  pm->addPass(mt::createConvertTritonAMDGPUToLLVMPass(
+      rocm_cc.gfx_version(), /*ftz=*/true, /*cuMode=*/false));
   pm->addPass(
       mlir::triton::AMD::createTritonAMDGPUConvertWarpSpecializeToLLVMPass(
           rocm_cc.gfx_version()));
