@@ -89,11 +89,10 @@ void DefineFingerprintingModule(py::module main_module) {
   m.def(
       "CreateFingerprintDef",
       [](std::string export_dir) -> absl::StatusOr<py::bytes> {
-        absl::StatusOr<FingerprintDef> fingerprint;
-        {
+        absl::StatusOr<FingerprintDef> fingerprint = [&]() {
           py::gil_scoped_release release;
-          fingerprint = fingerprinting::CreateFingerprintDef(export_dir);
-        }
+          return fingerprinting::CreateFingerprintDef(export_dir);
+        }();
         if (fingerprint.ok()) {
           return py::bytes(fingerprint.value().SerializeAsString());
         }
@@ -111,11 +110,10 @@ void DefineFingerprintingModule(py::module main_module) {
   m.def(
       "ReadSavedModelFingerprint",
       [](std::string export_dir) {
-        absl::StatusOr<FingerprintDef> fingerprint;
-        {
+        absl::StatusOr<FingerprintDef> fingerprint = [&]() {
           py::gil_scoped_release release;
-          fingerprint = fingerprinting::ReadSavedModelFingerprint(export_dir);
-        }
+          return fingerprinting::ReadSavedModelFingerprint(export_dir);
+        }();
         if (fingerprint.ok()) {
           return py::bytes(fingerprint.value().SerializeAsString());
         } else if (fingerprint.status().code() == absl::StatusCode::kNotFound) {
@@ -144,11 +142,10 @@ void DefineFingerprintingModule(py::module main_module) {
   m.def(
       "SingleprintFromFP",
       [](std::string export_dir) {
-        absl::StatusOr<std::string> singleprint;
-        {
+        absl::StatusOr<std::string> singleprint = [&]() {
           py::gil_scoped_release release;
-          singleprint = fingerprinting::Singleprint(export_dir);
-        }
+          return fingerprinting::Singleprint(export_dir);
+        }();
         if (singleprint.ok()) {
           return py::str(singleprint.value());
         }
@@ -165,11 +162,10 @@ void DefineFingerprintingModule(py::module main_module) {
   m.def(
       "SingleprintFromSM",
       [](std::string export_dir) {
-        absl::StatusOr<FingerprintDef> fingerprint_def;
-        {
+        absl::StatusOr<FingerprintDef> fingerprint_def = [&]() {
           py::gil_scoped_release release;
-          fingerprint_def = fingerprinting::CreateFingerprintDef(export_dir);
-        }
+          return fingerprinting::CreateFingerprintDef(export_dir);
+        }();
         if (!fingerprint_def.ok()) {
           throw FingerprintException(
               absl::StrCat(
