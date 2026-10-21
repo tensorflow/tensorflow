@@ -4,7 +4,7 @@
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-#      http://www.apache.org/licenses/LICENSE-2.0
+#       http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -43,8 +43,12 @@ class FusedLinearCrossEntropyOpTest(test_util.TensorFlowTestCase):
     in_features = 8
     num_classes = 5
 
-    x_val = np.random.randn(batch_size, in_features).astype(np.float32)
-    w_val = np.random.randn(in_features, num_classes).astype(np.float32)
+    x_val = np.random.randn(batch_size, in_features).astype(
+        np.float32
+    )
+    w_val = np.random.randn(in_features, num_classes).astype(
+        np.float32
+    )
 
     # Generate probability distribution labels
     labels_val = np.random.dirichlet(
@@ -53,14 +57,20 @@ class FusedLinearCrossEntropyOpTest(test_util.TensorFlowTestCase):
 
     x = constant_op.constant(x_val, dtype=dtypes.float32)
     w = constant_op.constant(w_val, dtype=dtypes.float32)
-    labels = constant_op.constant(labels_val, dtype=dtypes.float32)
+    labels = constant_op.constant(
+        labels_val, dtype=dtypes.float32
+    )
 
-    expected_loss = self._unfused_linear_cross_entropy(x, w, labels)
+    expected_loss = self._unfused_linear_cross_entropy(
+        x, w, labels
+    )
     actual_loss = nn_ops.fused_linear_cross_entropy(
         labels=labels, features=x, weights=w
     )
 
-    self.assertAllClose(expected_loss, actual_loss, rtol=1e-4, atol=1e-4)
+    self.assertAllClose(
+        expected_loss, actual_loss, rtol=1e-4, atol=1e-4
+    )
 
   @test_util.run_in_graph_and_eager_modes
   def testFusedLinearCrossEntropyGradients(self):
@@ -69,13 +79,21 @@ class FusedLinearCrossEntropyOpTest(test_util.TensorFlowTestCase):
     in_features = 4
     num_classes = 3
 
-    x_val = np.random.randn(batch_size, in_features).astype(np.float32)
-    w_val = np.random.randn(in_features, num_classes).astype(np.float32)
-    labels_val = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]], dtype=np.float32)
+    x_val = np.random.randn(batch_size, in_features).astype(
+        np.float32
+    )
+    w_val = np.random.randn(in_features, num_classes).astype(
+        np.float32
+    )
+    labels_val = np.array(
+        [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]], dtype=np.float32
+    )
 
     x = constant_op.constant(x_val, dtype=dtypes.float32)
     w = constant_op.constant(w_val, dtype=dtypes.float32)
-    labels = constant_op.constant(labels_val, dtype=dtypes.float32)
+    labels = constant_op.constant(
+        labels_val, dtype=dtypes.float32
+    )
 
     def forward_fn_x(x_in):
       return nn_ops.fused_linear_cross_entropy(
@@ -99,28 +117,42 @@ class FusedLinearCrossEntropyOpTest(test_util.TensorFlowTestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def test_empty_batch(self):
-    features = constant_op.constant([], shape=[0, 4], dtype=dtypes.float32)
-    weights = constant_op.constant([], shape=[4, 3], dtype=dtypes.float32)
-    labels = constant_op.constant([], shape=[0, 3], dtype=dtypes.float32)
-    
-    loss = nn_ops.fused_linear_cross_entropy(labels, features, weights)
+    features = constant_op.constant(
+        [], shape=[0, 4], dtype=dtypes.float32
+    )
+    weights = constant_op.constant(
+        [], shape=[4, 3], dtype=dtypes.float32
+    )
+    labels = constant_op.constant(
+        [], shape=[0, 3], dtype=dtypes.float32
+    )
+
+    loss = nn_ops.fused_linear_cross_entropy(
+        labels, features, weights
+    )
     self.assertEqual(self.evaluate(loss).shape, (0,))
 
   @test_util.run_in_graph_and_eager_modes
   def test_invalid_ranks_and_bounds(self):
-    features = constant_op.constant([1.0, 2.0], dtype=dtypes.float32)
-    weights = constant_op.constant(
-      [[1.0, 2.0], [3.0, 4.0]], dtype=dtypes.float32)
-    labels = constant_op.constant([[1.0, 0.0]], dtype=dtypes.float32
+    features = constant_op.constant(
+        [1.0, 2.0], dtype=dtypes.float32
     )
-    
+    weights = constant_op.constant(
+        [[1.0, 2.0], [3.0, 4.0]], dtype=dtypes.float32
+    )
+    labels = constant_op.constant(
+        [[1.0, 0.0]], dtype=dtypes.float32
+    )
+
     with self.assertRaisesRegex(
         (errors.InvalidArgumentError, ValueError),
         r"features must be 2-D|Shape must be rank 2",
     ):
-     self.evaluate(
-    nn_ops.fused_linear_cross_entropy(labels, features, weights)
-)
+      self.evaluate(
+          nn_ops.fused_linear_cross_entropy(
+              labels, features, weights
+          )
+      )
 
 
 if __name__ == "__main__":
