@@ -303,7 +303,7 @@ tf_kernel_library(
         "//tensorflow/core/platform:tstring",
         "@eigen_archive//:eigen3",
     ],
-    alwayslink = 0,
+    alwayslink = False,
 )
 
 cc_library(
@@ -8678,17 +8678,6 @@ tf_cc_test(
         "@com_google_absl//absl/strings",
     ],
 )
-
-feature/fused-linear-cross-entropy
-cc_library(
-    name = "fused_linear_cross_entropy_op",
-    srcs = ["fused_linear_cross_entropy_op.cc"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/kernels:eigen_helpers",
-    ],
-    alwayslink = True,
 
 tf_cc_test(
     name = "decode_proto_op_test",
