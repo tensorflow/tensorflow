@@ -984,25 +984,12 @@ class PriorityFusionQueue {
     }
 
     // Avoid fusing reduce into reduce. Our cost model doesn't currently
-    // understand this case due to a lack of tiling analysis.
+    // understand this case due to a lack of tiling analysis. Query
+    // `fusion_info_cache_` to avoid repeatedly traversing the producer and
+    // consumer fusion computations on every candidate pair.
     // TODO(b/312200883): Remove this.
-    auto contains_significant_reduce = [&](const HloInstruction* instr) {
-      auto fusion = HloFusionAdaptor::ForInstruction(instr);
-      return HloAnyOf(*fusion, [](auto node) {
-        if (!(node.opcode() == HloOpcode::kReduce && node.shape().IsArray())) {
-          return false;
-        }
-
-        int64_t reduction_size =
-            ShapeUtil::ElementsIn(node.instruction().operand(0)->shape()) /
-            ShapeUtil::ElementsIn(node.shape());
-
-        // Small reductions are emitted using the elemental emitter anyway.
-        return reduction_size >= 16;
-      });
-    };
-    if (contains_significant_reduce(producer) &&
-        contains_significant_reduce(consumer)) {
+    if (ContainsSignificantReduce(*producer, &fusion_info_cache_) &&
+        ContainsSignificantReduce(*consumer, &fusion_info_cache_)) {
       return FusionDecision::Forbid(
           "both the producer and the consumer contain a reduce");
     }
