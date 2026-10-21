@@ -34,10 +34,11 @@ namespace {
 absl::Status GetSingleElementInput(OpKernelContext* ctx, absl::string_view name,
                                    const Tensor** t) {
   TF_RETURN_IF_ERROR(ctx->input(name, t));
-  if ((*t)->NumElements() != 1) {
+  const Tensor* tensor = *t;
+  if (tensor->NumElements() != 1) {
     return absl::InvalidArgumentError(
         absl::StrCat(name, " must contain exactly one element, got shape ",
-                     (*t)->shape().DebugString()));
+                     tensor->shape().DebugString()));
   }
   return absl::OkStatus();
 }
