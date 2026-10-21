@@ -1207,5 +1207,112 @@ TEST_F(TilingSpaceTest,
               ElementsAre(ElementsAre(1, 4, 8), ElementsAre(2, 4, 8)));
 }
 
+TEST_F(TilingSpaceTest, ScanWithElementwiseEpiloguePropagatesDimensions) {
+  auto root = ParseAndGetRoot(R"(
+    HloModule m
+    add {
+      p0 = f32[8] parameter(0)
+      p1 = f32[8] parameter(1)
+      a = f32[8] add(p0, p1)
+      ROOT t = (f32[8], f32[8]) tuple(a, a)
+    }
+    fused_computation {
+      p0 = f32[8,128] parameter(0)
+      init = f32[8] parameter(1)
+      scan = (f32[8,128], f32[8]) scan(p0, init), dimensions={1},
+        num_carries=1, is_associative=true, to_apply=add
+      gte = f32[8,128] get-tuple-element(scan), index=0
+      ROOT exp = f32[8,128] exponential(gte)
+    }
+    ENTRY e {
+      p0 = f32[8,128] parameter(0)
+      init = f32[8] parameter(1)
+      ROOT fusion = f32[8,128] fusion(p0, init), kind=kCustom, calls=fused_computation
+    }
+  )");
+  const HloInstruction* exp = root->fused_expression_root();
+  const HloInstruction* scan = exp->operand(0)->operand(0);
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  ASSERT_OK_AND_ASSIGN(auto tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+  EXPECT_EQ(tiling_space->GetDimensionInfo(*scan, 0).type,
+            TilingSpace::DimensionSemantics::kParallel);
+  EXPECT_EQ(tiling_space->GetDimensionInfo(*scan, 1).type,
+            TilingSpace::DimensionSemantics::kSequential);
+}
+
+TEST_F(TilingSpaceTest, ScanWithProducerConsumerEpiloguePropagatesDimensions) {
+  auto root = ParseAndGetRoot(R"(
+    HloModule m
+    add {
+      p0 = f32[8] parameter(0)
+      p1 = f32[8] parameter(1)
+      a = f32[8] add(p0, p1)
+      ROOT t = (f32[8], f32[8]) tuple(a, a)
+    }
+    scan_computation {
+      p0 = f32[8,128] parameter(0)
+      init = f32[8] parameter(1)
+      scan = (f32[8,128], f32[8]) scan(p0, init), dimensions={1},
+        num_carries=1, is_associative=true, to_apply=add
+      ROOT gte = f32[8,128] get-tuple-element(scan), index=0
+    }
+    epilogue_computation {
+      p0 = f32[8,128] parameter(0)
+      ROOT exp = f32[8,128] exponential(p0)
+    }
+    ENTRY e {
+      p0 = f32[8,128] parameter(0)
+      init = f32[8] parameter(1)
+      scan_fusion = f32[8,128] fusion(p0, init), kind=kCustom,
+        calls=scan_computation
+      ROOT epilogue_fusion = f32[8,128] fusion(scan_fusion), kind=kCustom,
+        calls=epilogue_computation
+    }
+  )");
+  const HloInstruction* epilogue_fusion = root;
+  const HloInstruction* scan_fusion = epilogue_fusion->operand(0);
+  const HloInstruction* scan =
+      scan_fusion->fused_instructions_computation()->GetInstructionWithName(
+          "scan");
+  auto fusion_adaptor =
+      HloFusionAdaptor::ForProducerConsumer(scan_fusion, epilogue_fusion);
+  ASSERT_OK_AND_ASSIGN(auto tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+  EXPECT_EQ(tiling_space->GetDimensionInfo(*scan, 0).type,
+            TilingSpace::DimensionSemantics::kParallel);
+  EXPECT_EQ(tiling_space->GetDimensionInfo(*scan, 1).type,
+            TilingSpace::DimensionSemantics::kSequential);
+}
+
+TEST_F(TilingSpaceTest, ScanWithNonElementwiseEpilogueIsRejected) {
+  // The transpose stops the propagation of the scan dimension.
+  auto root = ParseAndGetRoot(R"(
+    HloModule m
+    add {
+      p0 = f32[8] parameter(0)
+      p1 = f32[8] parameter(1)
+      a = f32[8] add(p0, p1)
+      ROOT t = (f32[8], f32[8]) tuple(a, a)
+    }
+    fused_computation {
+      p0 = f32[8,128] parameter(0)
+      init = f32[8] parameter(1)
+      scan = (f32[8,128], f32[8]) scan(p0, init), dimensions={1},
+        num_carries=1, is_associative=true, to_apply=add
+      gte = f32[8,128] get-tuple-element(scan), index=0
+      ROOT transpose = f32[128,8] transpose(gte), dimensions={1,0}
+    }
+    ENTRY e {
+      p0 = f32[8,128] parameter(0)
+      init = f32[8] parameter(1)
+      ROOT fusion = f32[128,8] fusion(p0, init), kind=kCustom, calls=fused_computation
+    }
+  )");
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  EXPECT_THAT(TilingSpace::Create(*fusion_adaptor, &mlir_context_),
+              StatusIs(absl::StatusCode::kUnimplemented,
+                       HasSubstr("could not be located in the tiling space")));
+}
 }  // namespace
 }  // namespace xla::gpu::experimental
