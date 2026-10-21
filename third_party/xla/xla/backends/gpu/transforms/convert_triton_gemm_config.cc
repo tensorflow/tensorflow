@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -37,11 +36,6 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/codegen/tiling/experimental/tiled_hlo.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
-#include "xla/codegen/tiling/experimental/tiling_space_utils.h"
-#include "xla/codegen/tiling/symbolic_tile.h"
-#include "xla/codegen/tiling/symbolic_tile_analysis.h"
-#include "xla/codegen/tiling/symbolic_tiled_hlo_instruction.h"
-#include "xla/codegen/tiling/tiling_specification.h"
 #include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -59,13 +53,10 @@ limitations under the License.
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/model/triton_emitter_constraints.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/instruction_fusion.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tools/hlo_decomposer.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
-#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 namespace {

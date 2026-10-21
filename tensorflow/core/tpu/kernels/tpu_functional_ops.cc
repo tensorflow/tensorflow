@@ -80,6 +80,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_partition.h"
 #include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/hash.h"
@@ -1230,11 +1231,22 @@ absl::Status InsertReshapeNodePairs(Graph* graph,
 
 void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
                                         DoneCallback done) {
-  absl::Status init_status;
+  int64_t ordinal_selector_req_id = -1;
+  int32_t device_ordinal = 0;
+  DoneCallback orig_done = std::move(done);
+  auto cleanup = gtl::MakeCleanup(
+      [this, &orig_done, &device_ordinal, &ordinal_selector_req_id]() {
+        if (ordinal_selector_req_id >= 0) {
+          ordinal_selector_->DequeueFromCoreSelector(device_ordinal,
+                                                     ordinal_selector_req_id);
+        }
+        std::move(orig_done)();
+      });
+  done = []() {};
   absl::call_once(once_, [&]() {
     library_runtime_ = ctx->function_library();
     if (library_runtime_ == nullptr) {
-      init_status = absl::InternalError("No function library is provided.");
+      init_status_ = absl::InternalError("No function library is provided.");
       return;
     }
     flib_def_ = std::make_unique<FunctionLibraryDefinition>(
@@ -1250,7 +1262,7 @@ void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
     std::vector<Device*> tpu_devices;
     device_set_.FindMatchingDevices(tpu_device_name, &tpu_devices_);
   });
-  OP_REQUIRES_OK_ASYNC(ctx, init_status, done);
+  OP_REQUIRES_OK_ASYNC(ctx, init_status_, done);
 
   // Initialize the ordinal selector with information from the graph if it is
   // the first time we are running this op.
@@ -1267,7 +1279,7 @@ void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
                                              &enable_spmd_xla_partitioning,
                                              &tpu_metadata);
           !status.ok()) {
-        init_status = std::move(status);
+        init_status_ = std::move(status);
         return;
       }
     }
@@ -1284,13 +1296,11 @@ void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
   OP_REQUIRES_ASYNC(ctx, ordinal_selector_ != nullptr,
                     absl::InternalError(absl::StrCat(
                         "The TPUOrdinalSelector is not initialized: ",
-                        init_status.message())),
+                        init_status_.message())),
                     done);
 
   uint64_t input_hash = GetInputHash(ctx);
-  int64_t ordinal_selector_req_id = -1;
   // Select a TPU core.
-  int32_t device_ordinal = 0;
   OP_REQUIRES_OK_ASYNC(
       ctx,
       GetTpuCoreOrdinal(ctx, input_hash, &ordinal_selector_req_id,
@@ -1388,8 +1398,9 @@ void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
   functions = &partition_cache_[cache_hash];
   lock.Release();
 
+  cleanup.release();
   ExecuteFunctions(*functions, ctx, device_ordinal, ordinal_selector_req_id,
-                   std::move(done));
+                   std::move(orig_done));
 }
 
 absl::Status TPUPartitionedCallOp::GetTpuCoreOrdinal(
@@ -2624,8 +2635,7 @@ absl::Status TPUPartitionedCallOp::InstantiateFunctionsFromSubgraphs(
     int num_cores_per_replica,
     std::unordered_map<std::string, std::unique_ptr<Graph>> subgraphs) {
   const Device* reference_device = nullptr;
-  auto entry =
-      partition_cache_.emplace(cache_hash, std::vector<DeviceAndFHandle>());
+  std::vector<DeviceAndFHandle> functions;
 
   bool rewritten = false;
   for (auto& pair : subgraphs) {
@@ -2672,12 +2682,11 @@ absl::Status TPUPartitionedCallOp::InstantiateFunctionsFromSubgraphs(
     std::unique_ptr<FunctionLibraryDefinition> sub_flib_def;
     TF_RETURN_IF_ERROR(InstantiatePartition(*subgraph, function_name, target,
                                             &handle, &sub_flib_def));
-    // Add handle to the cache entry.
-    entry.first->second.push_back(
-        DeviceAndFHandle{.device = target,
-                         .handle = handle,
-                         .flib_def = std::move(sub_flib_def)});
+    functions.push_back(DeviceAndFHandle{.device = target,
+                                         .handle = handle,
+                                         .flib_def = std::move(sub_flib_def)});
   }
+  partition_cache_.emplace(cache_hash, std::move(functions));
 
   if (!rewritten) {
     // For regular use cases, TPUPartitionedCallOp only works when the
@@ -2779,7 +2788,8 @@ void TPUPartitionedCallOp::ExecuteFunctions(
       });
 
   auto* refcounted_done = new ReffedStatusCallback(std::move(callback));
-  for (int i = 1; i < functions.size(); ++i) {
+  core::ScopedUnref unref_done(refcounted_done);
+  for (int i = 0; i < functions.size(); ++i) {
     refcounted_done->Ref();
   }
   for (const DeviceAndFHandle& entry : functions) {
