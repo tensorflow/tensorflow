@@ -296,7 +296,11 @@ TEST_F(BuildReduceScatterInfoTest, FailsWhenInputAndOutputLayoutsDoNotMatch) {
   EXPECT_FALSE(IsReduceScatterFlattenable(rs));
 }
 
-TEST_F(BuildReduceScatterInfoTest, FailsForVariadicReduceScatter) {
+TEST_F(BuildReduceScatterInfoTest,
+       VariadicChecksSizePerOperandAndUsesMaxElements) {
+  // 8 MB + 16 MB = 24 MB total input across operands, but each operand is <=
+  // the 16 MB per-operand limit, and `num_output_elements` is the maximum
+  // across operands (2M elements from the second operand).
   constexpr absl::string_view kModuleStr = R"(
   HloModule test
   apply_op {
@@ -305,9 +309,10 @@ TEST_F(BuildReduceScatterInfoTest, FailsForVariadicReduceScatter) {
     ROOT apply_op = f32[] add(x, y)
   }
   ENTRY test_computation {
-    param_0 = f32[1024] parameter(0)
-    param_1 = f32[1024] parameter(1)
-    ROOT reduce-scatter = (f32[512], f32[512]) reduce-scatter(param_0, param_1),
+    param_0 = f32[2097152] parameter(0)
+    param_1 = f32[4194304] parameter(1)
+    ROOT reduce-scatter = (f32[1048576], f32[2097152])
+        reduce-scatter(param_0, param_1),
         dimensions={0}, replica_groups={{0,1}}, to_apply=apply_op
   }
   )";
@@ -329,10 +334,11 @@ TEST_F(BuildReduceScatterInfoTest, FailsForVariadicReduceScatter) {
       HloHardwareIndependentTestBase::FindInstruction(
           module.get(), HloOpcode::kReduceScatter));
   EXPECT_TRUE(IsReduceScatterFlattenable(rs));
-  EXPECT_THAT(BuildReduceScatterInfo(gpu_topology, rs,
-                                     /*device_assignment=*/nullptr),
-              StatusIs(absl::StatusCode::kUnimplemented,
-                       HasSubstr("only supports a single operand")));
+  EXPECT_THAT(
+      BuildReduceScatterInfo(gpu_topology, rs, /*device_assignment=*/nullptr),
+      IsOkAndHolds(AllOf(
+          Field(&ReduceScatterInfo::num_devices, 2),
+          Field(&ReduceScatterInfo::num_output_elements, 2 * 1024 * 1024))));
 }
 
 TEST_F(BuildReduceScatterInfoTest, FailsForVariadicWhenSecondOperandInvalid) {

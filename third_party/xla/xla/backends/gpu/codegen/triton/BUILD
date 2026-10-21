@@ -850,6 +850,7 @@ xla_cc_test(
         "//xla/runtime:object_pool",
         "//xla/service:gpu_topology",
         "//xla/service:hlo_creation_utils",
+        "//xla/service:hlo_verifier",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/service/gpu:mlir_context_pool",
