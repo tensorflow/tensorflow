@@ -134,6 +134,7 @@ EXPORTS
  ??0TensorFlowDialect@TF@mlir@@QEAA@PEAVMLIRContext@2@@Z
  ??0VirtualCluster@grappler@tensorflow@@QEAA@AEBV?$unordered_map@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@VDeviceProperties@tensorflow@@U?$hash@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@U?$equal_to@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@VDeviceProperties@tensorflow@@@std@@@2@@std@@@Z
  ??0WorkerConfig@experimental@data@tensorflow@@IEAA@PEAVArena@protobuf@google@@@Z
+ ??0ZlibOutputBuffer@io@tsl@@QEAA@PEAVWritableFile@2@HHAEBVZlibCompressionOptions@12@@Z
  ??1ApiDefMap@tensorflow@@QEAA@XZ
  ??1AttrValue@tensorflow@@UEAA@XZ
  ??1Block@mlir@@QEAA@XZ
@@ -196,6 +197,7 @@ EXPORTS
  ??1ThreadPool@thread@tsl@@QEAA@XZ
  ??1Variant@tensorflow@@QEAA@XZ
  ??1WorkerConfig@experimental@data@tensorflow@@UEAA@XZ
+ ??1ZlibOutputBuffer@io@tsl@@UEAA@XZ
  ??6LogMessage@log_internal@lts_20260526@absl@@QEAAAEAV0123@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
  ??8Layout@dtensor@tensorflow@@QEBA_NAEBV012@@Z
  ??8Mesh@dtensor@tensorflow@@QEBA_NAEBV012@@Z
@@ -250,6 +252,7 @@ EXPORTS
  ?Close@DebugEventsWriter@tfdbg@tensorflow@@QEAA?AVStatus@lts_20260526@absl@@XZ
  ?Close@EventsWriter@tensorflow@@QEAA?AVStatus@lts_20260526@absl@@XZ
  ?Close@RecordWriter@io@tsl@@QEAA?AVStatus@lts_20260526@absl@@XZ
+ ?Close@ZlibOutputBuffer@io@tsl@@UEAA?AVStatus@lts_20260526@absl@@XZ
  ?CollectUnreachableRoots@HloComputation@xla@@AEBA?AV?$vector@PEAVHloInstruction@xla@@V?$allocator@PEAVHloInstruction@xla@@@std@@@std@@XZ
  ?CommittedChunksDirectory@data@tensorflow@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$basic_string_view@DU?$char_traits@D@std@@@4@@Z
  ?Compare@DefaultFieldComparator@util@protobuf@google@@UEAA?AW4ComparisonResult@FieldComparator@234@AEBVMessage@34@0PEBVFieldDescriptor@34@HHPEBVFieldContext@234@@Z
@@ -452,6 +455,7 @@ EXPORTS
  ?InfoAboutUnusedCPUFeatures@port@tensorflow@@YAXXZ
  ?Init@DebugEventsWriter@tfdbg@tensorflow@@QEAA?AVStatus@lts_20260526@absl@@XZ
  ?Init@PyExceptionRegistry@tensorflow@@SAXPEAU_object@@@Z
+ ?Init@ZlibOutputBuffer@io@tsl@@QEAA?AVStatus@lts_20260526@absl@@XZ
  ?InitInternal@OpKernelRegistrar@kernel_factory@tensorflow@@AEAAXPEBVKernelDef@3@V?$basic_string_view@DU?$char_traits@D@std@@@std@@V?$unique_ptr@VOpKernelFactory@kernel_factory@tensorflow@@U?$default_delete@VOpKernelFactory@kernel_factory@tensorflow@@@std@@@6@@Z
  ?InitRepImpl@StatusBuilder@lts_20260526@absl@@CAPEAURep@123@VStatus@23@@Z
  ?InitWithSuffix@EventsWriter@tensorflow@@QEAA?AVStatus@lts_20260526@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
