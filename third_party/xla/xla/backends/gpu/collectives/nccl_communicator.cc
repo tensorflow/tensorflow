@@ -21,6 +21,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -58,6 +59,7 @@ limitations under the License.
 #include "xla/ffi/api/record_c_api.h"
 #include "xla/future.h"
 #include "xla/primitive_util.h"
+#include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/kernel_args.h"
 #include "xla/stream_executor/memory_allocation.h"
@@ -1133,57 +1135,77 @@ absl::Status NcclCommunicator::LaunchWaitSignals(
   return absl::OkStatus();
 }
 
-absl::Status NcclCommunicator::LaunchMultiGpuBarrier(const Executor& executor) {
-  if (!IsCrossDeviceBarrierInitiated()) {
+template <typename Fn>
+std::invoke_result_t<Fn, const NcclCommunicator::CrossDeviceBarrierParams&>
+NcclCommunicator::WithCrossDeviceBarrier(Fn&& fn) {
+  absl::MutexLock lock(barrier_mu_);
+  if (!is_cross_device_barrier_initiated_) {
     return FailedPrecondition(
         "Cross device barrier buffers are not set on this communicator. Did "
         "you set use_cross_device_barrier=true in BarrierRequirements?");
   }
-  absl::MutexLock lock(barrier_mu_);
   if (cancel_->IsCancelled()) {
     return FailedPrecondition("NcclCommunicator aborted");
   }
-  se::Stream* stream = ToStream(executor);
   ABSL_ASSIGN_OR_RETURN(size_t num_ranks, NumRanks());
   ABSL_ASSIGN_OR_RETURN(size_t current_rank, CurrentRank());
+  auto sym_mem = tied_cross_device_barrier_symmetric_memory_.Lock();
+  auto signal_value = tied_cross_device_barrier_signal_value_.Lock();
+  if (sym_mem == nullptr || signal_value == nullptr) {
+    return FailedPrecondition(
+        "Cross device barrier buffers have been released on this communicator");
+  }
+  return fn(CrossDeviceBarrierParams{cross_device_barrier_kernel_, num_ranks,
+                                     RankId(current_rank), sym_mem.get(),
+                                     signal_value->address()});
+}
 
-  return xla::gpu::LaunchMultiGpuBarrierWithNccl(
-      stream, num_ranks, RankId(current_rank),
-      tied_cross_device_barrier_symmetric_memory_.Lock().get(),
-      tied_cross_device_barrier_signal_value_.Lock()->address());
+absl::Status NcclCommunicator::LaunchMultiGpuBarrier(const Executor& executor) {
+  se::Stream* stream = ToStream(executor);
+  return WithCrossDeviceBarrier([&](const CrossDeviceBarrierParams& p) {
+    return xla::gpu::LaunchMultiGpuBarrierWithNccl(
+        stream, p.kernel, p.num_ranks, p.rank, p.sym_mem, p.signal_value);
+  });
 }
 
 absl::StatusOr<const XLA_FFI_Command*> NcclCommunicator::RecordMultiGpuBarrier(
     xla::ffi::RecordContext& record_ctx,
     const XLA_FFI_Command* absl_nullable cmd) {
-  if (!IsCrossDeviceBarrierInitiated()) {
-    return FailedPrecondition(
-        "Cross device barrier buffers are not set on this communicator. Did "
-        "you set use_cross_device_barrier=true in BarrierRequirements?");
-  }
-  absl::MutexLock lock(barrier_mu_);
-  if (cancel_->IsCancelled()) {
-    return FailedPrecondition("NcclCommunicator aborted");
-  }
-  ABSL_ASSIGN_OR_RETURN(size_t num_ranks, NumRanks());
-  ABSL_ASSIGN_OR_RETURN(size_t current_rank, CurrentRank());
-
-  return xla::gpu::RecordMultiGpuBarrierWithNccl(
-      stream_executor_, record_ctx, num_ranks, RankId(current_rank),
-      tied_cross_device_barrier_symmetric_memory_.Lock().get(),
-      tied_cross_device_barrier_signal_value_.Lock()->address(), cmd);
+  return WithCrossDeviceBarrier([&](const CrossDeviceBarrierParams& p) {
+    return xla::gpu::RecordMultiGpuBarrierWithNccl(
+        p.kernel, record_ctx, p.num_ranks, p.rank, p.sym_mem, p.signal_value,
+        cmd);
+  });
 }
 
-void NcclCommunicator::InitializeCrossDeviceBarrier(
+absl::StatusOr<const se::CommandBuffer::Command*>
+NcclCommunicator::RecordMultiGpuBarrier(
+    se::CommandBuffer* command_buffer,
+    const se::CommandBuffer::Command* absl_nullable cmd,
+    absl::Span<const se::CommandBuffer::Command* const> dependencies) {
+  return WithCrossDeviceBarrier([&](const CrossDeviceBarrierParams& p) {
+    return xla::gpu::RecordMultiGpuBarrierWithNccl(
+        command_buffer, p.kernel, p.num_ranks, p.rank, p.sym_mem,
+        p.signal_value, cmd, dependencies);
+  });
+}
+
+absl::Status NcclCommunicator::InitializeCrossDeviceBarrier(
     tsl::TiedRef<se::MemoryAllocation> tied_signal_value,
     tsl::TiedRef<se::MemoryAllocation> tied_signal,
     tsl::TiedRef<SymmetricMemory> tied_symmetric_memory) {
   absl::MutexLock lock(barrier_mu_);
+  if (!cross_device_barrier_kernel_) {
+    ABSL_ASSIGN_OR_RETURN(
+        cross_device_barrier_kernel_,
+        xla::gpu::LoadMultiGpuBarrierWithNcclKernel(stream_executor_));
+  }
   is_cross_device_barrier_initiated_ = true;
   tied_cross_device_barrier_signal_value_ = std::move(tied_signal_value);
   tied_cross_device_barrier_signal_ = std::move(tied_signal);
   tied_cross_device_barrier_symmetric_memory_ =
       std::move(tied_symmetric_memory);
+  return absl::OkStatus();
 }
 
 absl::StatusOr<se::DeviceAddressBase> NcclCommunicator::GetCliqueSemaphore(

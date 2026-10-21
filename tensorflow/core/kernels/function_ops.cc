@@ -230,7 +230,7 @@ class SymbolicGradientOp : public AsyncOpKernel {
  public:
   explicit SymbolicGradientOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {}
 
-  ~SymbolicGradientOp() override {}
+  ~SymbolicGradientOp() override = default;
 
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
     FunctionLibraryRuntime* lib = ctx->function_library();

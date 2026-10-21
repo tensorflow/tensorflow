@@ -77,6 +77,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/hlo/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "xla/layout_util.h"
 #include "xla/mlir/utils/type_util.h"
@@ -91,7 +92,6 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
 #include "xla/util.h"
-#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/Triton/IR/Types.h"
@@ -161,12 +161,18 @@ struct ReduceScatterEmitterContext : public ReductionEmitterContext {
 
 template <typename ContextT, typename OpTy>
 absl::StatusOr<ContextT> CreateReductionEmitterContext(
-    OpTy op, bool has_invocation_count = true) {
+    OpTy op, bool has_invocation_count = true,
+    bool allow_multiple_operands = false) {
   ContextT ctx;
-  if (op->getNumOperands() != 1) {
+  if (op->getNumOperands() < 1 ||
+      (!allow_multiple_operands && op->getNumOperands() != 1)) {
     return absl::InvalidArgumentError(
-        "Collective op must have exactly one operand in order to be lowered "
-        "to triton.");
+        "Collective op must have at least one operand (or exactly one when "
+        "variadic is unsupported) in order to be lowered to triton.");
+  }
+  if (op->getNumOperands() != op->getNumResults()) {
+    return absl::InvalidArgumentError(
+        "Collective op must have one result per operand.");
   }
   ctx.xtile_entry_fn = op->template getParentOfType<xtile::EntryFuncOp>();
   if (!ctx.xtile_entry_fn) {
@@ -174,10 +180,9 @@ absl::StatusOr<ContextT> CreateReductionEmitterContext(
         "Collective op must be in an XTile entry function in order to be "
         "lowered to triton.");
   }
-  // Variadics are not supported yet so we can fix inputs to 1.
-  // Which means 2 arguments for input/output, one for scratch buffers,
-  // metadata arguments (3 with invocation count, 2 without), plus 1 for the
-  // tile index.
+  // Layout: 2 arguments per operand for input/output, metadata arguments
+  // (3 with invocation count, 2 without), one per operand for scratch buffers,
+  // plus 1 for the tile index.
   ctx.num_input_output_args = op->getNumOperands() * 2;
   ctx.num_scratch_buffers = op->getNumOperands();
   ctx.has_invocation_count = has_invocation_count;
@@ -275,7 +280,16 @@ absl::StatusOr<ReduceScatterEmitterContext> CreateReduceScatterEmitterContext(
     xtile::ReduceScatterOp op) {
   ABSL_ASSIGN_OR_RETURN(ReduceScatterEmitterContext ctx,
                    CreateReductionEmitterContext<ReduceScatterEmitterContext>(
-                       op, /*has_invocation_count=*/false));
+                       op, /*has_invocation_count=*/false,
+                       /*allow_multiple_operands=*/true));
+  // The rank a block copies for is derived from the program id (see
+  // signal_slot below).
+  // This requires one tile per program, i.e. no tile loop around the op.
+  if (op->getParentOp() != ctx.xtile_entry_fn.getOperation()) {
+    return absl::InvalidArgumentError(
+        "ReduceScatter op must be directly nested in the XTile entry "
+        "function.");
+  }
   const int64_t scatter_dim = op.getScatterDimension();
   int64_t signal_stride = 1;
   for (int64_t i = 0; i < ctx.operands.size(); ++i) {
@@ -293,32 +307,33 @@ absl::StatusOr<ReduceScatterEmitterContext> CreateReduceScatterEmitterContext(
       return absl::InvalidArgumentError(
           "Reduce-scatter scatter dimension is not divisible by world size.");
     }
-    const int64_t per_rank_size = input_shape[scatter_dim] / ctx.world_size;
-    if (input_tile_shape[scatter_dim] != per_rank_size) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "Reduce-scatter input tile must cover exactly one rank's part along "
-          "the scatter dimension. Tile size: ",
-          input_tile_shape[scatter_dim], ", per-rank size: ", per_rank_size));
-    }
-    for (auto [dim_size, tile_size] :
-         llvm::zip(input_shape.take_front(scatter_dim),
-                   input_tile_shape.take_front(scatter_dim))) {
-      if (xla::CeilOfRatio(dim_size, tile_size) != 1) {
-        return absl::InvalidArgumentError(
-            "Reduce-scatter requires dimensions major to the scatter "
-            "dimension to be covered by a single tile.");
-      }
-    }
-    int64_t operand_signal_stride = 1;
-    for (auto [dim_size, tile_size] :
-         llvm::zip(input_shape.drop_front(scatter_dim + 1),
-                   input_tile_shape.drop_front(scatter_dim + 1))) {
-      operand_signal_stride *= xla::CeilOfRatio(dim_size, tile_size);
-    }
-    signal_stride = std::max(signal_stride, operand_signal_stride);
-    operand.per_rank_size = per_rank_size;
     const llvm::ArrayRef<int64_t> output_tile_shape =
         mlir::cast<mlir::RankedTensorType>(op.getType(i)).getShape();
+    if (output_tile_shape.size() != input_shape.size()) {
+      return absl::InvalidArgumentError(
+          "Reduce-scatter output tile rank must match input rank.");
+    }
+    const int64_t per_rank_size = input_shape[scatter_dim] / ctx.world_size;
+    if (input_tile_shape[scatter_dim] !=
+            output_tile_shape[scatter_dim] * ctx.world_size ||
+        per_rank_size % input_tile_shape[scatter_dim] != 0) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Reduce-scatter input tile size along the scatter dimension (",
+          input_tile_shape[scatter_dim],
+          ") must equal output_tile_size * world_size (",
+          output_tile_shape[scatter_dim] * ctx.world_size,
+          ") and divide the per-rank size (", per_rank_size, ")."));
+    }
+    int64_t programs_per_rank = per_rank_size / input_tile_shape[scatter_dim];
+    for (int64_t d = 0; d < static_cast<int64_t>(input_shape.size()); ++d) {
+      if (d == scatter_dim) {
+        continue;
+      }
+      programs_per_rank *=
+          xla::CeilOfRatio(input_shape[d], input_tile_shape[d]);
+    }
+    signal_stride = std::max(signal_stride, programs_per_rank);
+    operand.per_rank_size = per_rank_size;
     operand.output_tile_shape.assign(output_tile_shape.begin(),
                                      output_tile_shape.end());
   }
@@ -1336,8 +1351,16 @@ class ReduceScatterEmitter : public ReductionEmitter {
                      mtx::BarrierMode::kProducerSymmetric);
 
     // 3. Reduce phase: pull this rank's output tiles from every peer.
+    //
+    // Each block copies one input tile (step 1) and writes one output tile.
+    // The input tile is R (world_size) times the output tile. Example with
+    // R = 2, input f32[16] -> output f32[8] and two blocks, on rank 0:
+    //   block 0: copies input 0..8 (for rank 0). Writes output 0..4.
+    //   block 1: copies input 8..16 (for rank 1). Writes output 4..8.
     mlir::Value local_rank = arith::IndexCastOp::create(
         builder_, builder_.getIndexType(), device_rank_);
+    mlir::Value copy_rank = arith::IndexCastOp::create(
+        builder_, builder_.getIndexType(), signal_slot);
     llvm::SmallVector<mlir::Value, 2> results;
     results.reserve(ctx_.operands.size());
     for (int64_t i = 0; i < ctx_.operands.size(); ++i) {
@@ -1345,12 +1368,20 @@ class ReduceScatterEmitter : public ReductionEmitter {
       llvm::SmallVector<mlir::Value> pull_offsets =
           operand.input_extract.getOffsets();
       llvm::SmallVector<int64_t> strides{operand.input_extract.getStrides()};
-      mlir::Value output_offset = arith::DivUIOp::create(
-          builder_, pull_offsets[scatter_dim],
-          arith::ConstantIndexOp::create(builder_, ctx_.world_size));
-      mlir::Value local_rank_offset = arith::MulIOp::create(
-          builder_, local_rank,
-          arith::ConstantIndexOp::create(builder_, operand.per_rank_size));
+      mlir::Value per_rank_size =
+          arith::ConstantIndexOp::create(builder_, operand.per_rank_size);
+      mlir::Value copy_rank_offset =
+          arith::MulIOp::create(builder_, copy_rank, per_rank_size);
+      mlir::Value intra_rank_offset = arith::SubIOp::create(
+          builder_, pull_offsets[scatter_dim], copy_rank_offset);
+      mlir::Value subtile_size = arith::ConstantIndexOp::create(
+          builder_, operand.output_tile_shape[scatter_dim]);
+      mlir::Value subtile_offset =
+          arith::MulIOp::create(builder_, copy_rank, subtile_size);
+      mlir::Value output_offset =
+          arith::AddIOp::create(builder_, intra_rank_offset, subtile_offset);
+      mlir::Value local_rank_offset =
+          arith::MulIOp::create(builder_, local_rank, per_rank_size);
       pull_offsets[scatter_dim] =
           arith::AddIOp::create(builder_, local_rank_offset, output_offset);
 
@@ -1398,26 +1429,32 @@ BlockLevelFusionConfig CreateBlockLevelFusionConfig(
       num_warps, absl::MakeConstSpan(&tile_sizes, /*size=*/1));
 }
 
-// Computes the output tile for an all-gather output of `output_shape`.
-// We divide `gather_dim` by `num_devices` to get one rank's slice and tile
-// that across `blocks_per_peer` programs, so each tile stays within a single
-// peer.
-absl::StatusOr<llvm::SmallVector<int64_t>> GetAllGatherOutputTile(
-    const Shape& output_shape, int64_t gather_dim, int64_t num_devices,
-    int32_t blocks_per_peer) {
-  TF_RET_CHECK(output_shape.dimensions(gather_dim) % num_devices == 0)
-      << "All-gather output " << output_shape.ToString()
-      << " must be divisible by " << num_devices
-      << " along the gather dimension " << gather_dim;
+// Tiles one rank's part of a collective output across `blocks_per_rank`
+// programs. `collective_dim` is first divided by `num_devices` (R).
+//
+// All-gather: output f32[16] on 2 ranks -> one rank's part is f32[8].
+//
+// Reduce-scatter: output f32[8] on 2 ranks. Each block copies one input tile
+// and writes one output tile. The input tile is R times the output tile.
+// With two blocks on rank 0:
+//   block 0: copies input 0..8 (for rank 0). Reduces and writes output 0..4.
+//   block 1: copies input 8..16 (for rank 1). Reduces and writes output 4..8.
+absl::StatusOr<llvm::SmallVector<int64_t>> GetCollectiveOutputTile(
+    const Shape& output_shape, int64_t collective_dim, int64_t num_devices,
+    int32_t blocks_per_rank) {
+  TF_RET_CHECK(output_shape.dimensions(collective_dim) % num_devices == 0)
+      << "Collective output " << output_shape.ToString()
+      << " must be divisible by " << num_devices << " along dimension "
+      << collective_dim;
   const int64_t per_rank_size =
-      output_shape.dimensions(gather_dim) / num_devices;
-  Shape per_peer_shape = output_shape;
-  per_peer_shape.set_dimensions(gather_dim, per_rank_size);
+      output_shape.dimensions(collective_dim) / num_devices;
+  Shape per_rank_shape = output_shape;
+  per_rank_shape.set_dimensions(collective_dim, per_rank_size);
   llvm::SmallVector<int64_t> tile_sizes =
-      GreedyPowerOfTwoTiles(per_peer_shape, blocks_per_peer);
-  tile_sizes[gather_dim] = std::min(tile_sizes[gather_dim],
-                                    static_cast<int64_t>(llvm::bit_floor(
-                                        static_cast<uint64_t>(per_rank_size))));
+      GreedyPowerOfTwoTiles(per_rank_shape, blocks_per_rank);
+  tile_sizes[collective_dim] = std::min(
+      tile_sizes[collective_dim], static_cast<int64_t>(llvm::bit_floor(
+                                      static_cast<uint64_t>(per_rank_size))));
   return tile_sizes;
 }
 
@@ -1429,23 +1466,23 @@ absl::Span<const Shape> GetOutputShapes(const HloInstruction* instr) {
              : absl::MakeConstSpan(&instr->shape(), 1);
 }
 
-// Computes one output tile per operand of an all-gather. Each output is tiled
-// independently using `num_blocks / num_devices` programs per peer; for
-// variadic all-gathers, smaller outputs get padded with masked-out blocks by
+// Computes one output tile per output of an all-gather or reduce-scatter
+// `instr` (see GetCollectiveOutputTile). Each output is tiled independently
+// using `num_blocks / num_devices` programs per rank; for variadic collectives,
+// smaller outputs get padded with masked-out blocks by
 // `GetIndexWiseVariadicSchedule`.
-absl::StatusOr<std::vector<llvm::SmallVector<int64_t>>> GetAllGatherOutputTiles(
-    const HloAllGatherInstruction* all_gather, int64_t num_devices,
-    int32_t num_blocks) {
-  const int64_t gather_dim = all_gather->all_gather_dimension();
-  const int32_t blocks_per_peer =
+absl::StatusOr<std::vector<llvm::SmallVector<int64_t>>>
+GetCollectiveOutputTiles(const HloInstruction* instr, int64_t collective_dim,
+                         int64_t num_devices, int32_t num_blocks) {
+  const int32_t blocks_per_rank =
       std::max<int32_t>(1, num_blocks / static_cast<int32_t>(num_devices));
-  const absl::Span<const Shape> output_shapes = GetOutputShapes(all_gather);
+  const absl::Span<const Shape> output_shapes = GetOutputShapes(instr);
   std::vector<llvm::SmallVector<int64_t>> tiles;
   tiles.reserve(output_shapes.size());
   for (const Shape& output_shape : output_shapes) {
     ABSL_ASSIGN_OR_RETURN(llvm::SmallVector<int64_t> tile_sizes,
-                     GetAllGatherOutputTile(output_shape, gather_dim,
-                                            num_devices, blocks_per_peer));
+                     GetCollectiveOutputTile(output_shape, collective_dim,
+                                             num_devices, blocks_per_rank));
     tiles.push_back(std::move(tile_sizes));
   }
   return tiles;
@@ -1511,7 +1548,8 @@ absl::StatusOr<BlockLevelFusionConfig> GetBlockLevelConfigForAllGather(
 
   ABSL_ASSIGN_OR_RETURN(
       std::vector<llvm::SmallVector<int64_t>> output_tiles,
-      GetAllGatherOutputTiles(instr, all_gather_info.num_devices, num_blocks));
+      GetCollectiveOutputTiles(instr, instr->all_gather_dimension(),
+                               all_gather_info.num_devices, num_blocks));
   return CreateBlockLevelFusionConfig(num_warps, output_tiles);
 }
 
@@ -1522,14 +1560,7 @@ absl::StatusOr<BlockLevelFusionConfig> GetBlockLevelConfigForReduceScatter(
       const ReduceScatterInfo reduce_scatter_info,
       BuildReduceScatterInfo(gpu_topology, instr, device_assignment));
 
-  const Shape& output_shape = instr->shape();
   const int64_t num_devices = reduce_scatter_info.num_devices;
-  const int64_t scatter_dim = instr->scatter_dimension();
-  TF_RET_CHECK(output_shape.dimensions(scatter_dim) % num_devices == 0)
-      << "Reduce-scatter output scatter dimension "
-      << output_shape.dimensions(scatter_dim)
-      << " is not divisible by the number of devices " << num_devices;
-
   const int64_t elements_per_warp =
       WarpSize(gpu_topology.gpu_target_config().device_description) *
       se::gpu::kNumElementsPerThread;
@@ -1547,15 +1578,10 @@ absl::StatusOr<BlockLevelFusionConfig> GetBlockLevelConfigForReduceScatter(
                num_devices * static_cast<int64_t>(llvm::bit_floor(
                                  static_cast<uint64_t>(blocks_per_rank_tile))));
 
-  llvm::SmallVector<int64_t> tile_sizes =
-      GreedyPowerOfTwoTiles(output_shape, num_blocks);
-  // The pull-based reduce-scatter kernel requires the input tile of every
-  // program to cover exactly one shard along the scatter dimension, i.e. an
-  // output tile of `shard_size / num_devices` along the scatter dimension.
-  // FlattenReduceScatterFusion reshapes the fusion so that this is 1.
-  tile_sizes[scatter_dim] = output_shape.dimensions(scatter_dim) / num_devices;
-
-  return CreateBlockLevelFusionConfig(num_warps, tile_sizes);
+  ABSL_ASSIGN_OR_RETURN(std::vector<llvm::SmallVector<int64_t>> output_tiles,
+                   GetCollectiveOutputTiles(instr, instr->scatter_dimension(),
+                                            num_devices, num_blocks));
+  return CreateBlockLevelFusionConfig(num_warps, output_tiles);
 }
 
 absl::StatusOr<BlockLevelFusionConfig> GetBlockLevelConfigForAllToAll(
@@ -2087,6 +2113,168 @@ absl::StatusOr<FlatReduceScatterShapes> GetFlatReduceScatterShapes(
           element_type, {num_devices, inner_elements}, {1, 0})};
 }
 
+// Validates that `fused_computation` is a single-operand or canonicalized
+// variadic reduce-scatter fusion whose operands are direct fusion parameters
+// and satisfies `IsReduceScatterFlattenable`. Returns the mutable
+// `HloReduceScatterInstruction*`.
+absl::StatusOr<HloReduceScatterInstruction*>
+ValidateReduceScatterFusionForFlattening(HloComputation* fused_computation) {
+  HloInstruction* old_root = fused_computation->root_instruction();
+  auto* rs = DynCast<HloReduceScatterInstruction>(
+      GetMutableCollectiveHero(fused_computation));
+  TF_RET_CHECK(rs != nullptr)
+      << "Expected a reduce-scatter in fusion computation.";
+  const int64_t num_operands = rs->operand_count();
+  TF_RET_CHECK(num_operands >= 1);
+  if (num_operands > 1) {
+    TF_RET_CHECK(rs->shape().IsTuple() &&
+                 rs->shape().tuple_shapes().size() == num_operands)
+        << "Expected one output per reduce-scatter operand.";
+    TF_RET_CHECK(old_root->opcode() == HloOpcode::kTuple &&
+                 old_root->operand_count() == num_operands)
+        << "Expected a tuple of get-tuple-elements root for variadic "
+           "reduce-scatter.";
+    for (int64_t k = 0; k < num_operands; ++k) {
+      const HloInstruction* gte = old_root->operand(k);
+      TF_RET_CHECK(gte->opcode() == HloOpcode::kGetTupleElement &&
+                   gte->operand(0) == rs && gte->tuple_index() == k)
+          << "Expected root tuple operand " << k
+          << " to be get-tuple-element(rs, " << k << ").";
+    }
+  } else {
+    TF_RET_CHECK(old_root == rs && rs->shape().IsArray())
+        << "Expected a reduce-scatter fusion root.";
+  }
+  TF_RET_CHECK(fused_computation->num_parameters() == num_operands)
+      << "Expected one parameter per reduce-scatter operand.";
+  for (int64_t k = 0; k < num_operands; ++k) {
+    TF_RET_CHECK(rs->operand(k) == fused_computation->parameter_instruction(k))
+        << "Expected operand " << k << " to be parameter " << k;
+  }
+  TF_RET_CHECK(IsReduceScatterFlattenable(rs))
+      << "Reduce-scatter is not flattenable.";
+  return rs;
+}
+
+// Bitcasts `fusion_instr`'s inputs to `param_shapes` and replaces `rs` inside
+// the fusion with a reduce-scatter on `param_shapes` and `new_fusion_shape`
+// with `scatter_dimension=0`.
+absl::Status ApplyFlatShapesToRs(HloFusionInstruction* fusion_instr,
+                                 HloReduceScatterInstruction* rs,
+                                 absl::Span<const Shape> param_shapes,
+                                 const Shape& new_fusion_shape) {
+  HloComputation* parent = fusion_instr->parent();
+  HloComputation* fused_computation =
+      fusion_instr->fused_instructions_computation();
+  HloInstruction* old_root = fused_computation->root_instruction();
+  const int64_t num_operands = rs->operand_count();
+
+  std::vector<HloInstruction*> params;
+  params.reserve(num_operands);
+  for (int64_t k = 0; k < num_operands; ++k) {
+    HloInstruction* param = fused_computation->parameter_instruction(k);
+    *param->mutable_shape() = param_shapes[k];
+    params.push_back(param);
+  }
+  HloInstruction* new_rs =
+      fused_computation->AddInstruction(HloInstruction::CreateReduceScatter(
+          new_fusion_shape, params, rs->to_apply(), rs->device_list(),
+          rs->constrain_layout(), rs->channel_id(), rs->use_global_device_ids(),
+          /*scatter_dimension=*/0));
+  new_rs->CopyBackendConfigFrom(rs);
+  new_rs->set_metadata(rs->metadata());
+  new_rs->set_frontend_attributes(rs->frontend_attributes());
+
+  HloInstruction* new_root = new_rs;
+  std::vector<HloInstruction*> old_gtes;
+  if (num_operands > 1) {
+    old_gtes.assign(old_root->operands().begin(), old_root->operands().end());
+    std::vector<HloInstruction*> gtes;
+    gtes.reserve(num_operands);
+    for (int64_t k = 0; k < num_operands; ++k) {
+      gtes.push_back(fused_computation->AddInstruction(
+          HloInstruction::CreateGetTupleElement(new_rs, k)));
+    }
+    new_root =
+        fused_computation->AddInstruction(HloInstruction::CreateTuple(gtes));
+    new_root->add_frontend_attribute(kDisableTupleSimplifierAttribute, "true");
+  }
+  fused_computation->set_root_instruction(new_root,
+                                          /*accept_different_shape=*/true);
+  const std::string rs_name(rs->name());
+  if (num_operands > 1) {
+    ABSL_RETURN_IF_ERROR(fused_computation->RemoveInstruction(old_root));
+    for (HloInstruction* old_gte : old_gtes) {
+      ABSL_RETURN_IF_ERROR(fused_computation->RemoveInstruction(old_gte));
+    }
+  }
+  ABSL_RETURN_IF_ERROR(fused_computation->RemoveInstruction(rs));
+  // Keep the original name so that the flattened reduce-scatter can still be
+  // matched to the original HLO (e.g. in profiles).
+  new_rs->SetAndSanitizeName(rs_name);
+
+  for (int64_t k = 0; k < num_operands; ++k) {
+    HloInstruction* bitcast =
+        parent->AddInstruction(HloInstruction::CreateBitcast(
+            param_shapes[k], fusion_instr->mutable_operand(k)));
+    ABSL_RETURN_IF_ERROR(fusion_instr->ReplaceOperandWithDifferentShape(k, bitcast));
+  }
+  *fusion_instr->mutable_shape() = new_fusion_shape;
+  return absl::OkStatus();
+}
+
+// Bitcasts the outputs of `fusion_instr` back to `original_output_shapes` in
+// its parent computation.
+absl::Status RestoreOriginalShapeForRs(
+    HloFusionInstruction* fusion_instr,
+    absl::Span<const Shape> original_output_shapes) {
+  HloComputation* parent = fusion_instr->parent();
+  const int64_t num_operands = original_output_shapes.size();
+  if (num_operands == 1) {
+    HloInstruction* bitcast = parent->AddInstruction(
+        HloInstruction::CreateBitcast(original_output_shapes[0], fusion_instr));
+    return fusion_instr->ReplaceAllUsesWithDifferentShape(bitcast);
+  }
+
+  const std::vector<HloInstruction*> old_users(fusion_instr->users().begin(),
+                                               fusion_instr->users().end());
+  std::vector<HloInstruction*> original_outputs;
+  original_outputs.reserve(num_operands);
+  for (int64_t k = 0; k < num_operands; ++k) {
+    HloInstruction* gte = parent->AddInstruction(
+        HloInstruction::CreateGetTupleElement(fusion_instr, k));
+    original_outputs.push_back(parent->AddInstruction(
+        HloInstruction::CreateBitcast(original_output_shapes[k], gte)));
+  }
+  HloInstruction* original_tuple =
+      parent->AddInstruction(HloInstruction::CreateTuple(original_outputs));
+  return fusion_instr->ReplaceAllUsesWithDifferentShape(old_users,
+                                                        original_tuple);
+}
+
+template <typename ComputationT>
+auto FindCollectiveHero(ComputationT* computation)
+    -> decltype(computation->root_instruction()) {
+  if (computation == nullptr) {
+    return nullptr;
+  }
+  auto is_collective = [](const HloInstruction* instr) {
+    return instr->opcode() == HloOpcode::kAllReduce ||
+           instr->opcode() == HloOpcode::kAllGather ||
+           instr->opcode() == HloOpcode::kAllToAll ||
+           instr->opcode() == HloOpcode::kReduceScatter;
+  };
+  if (auto* root = computation->root_instruction(); is_collective(root)) {
+    return root;
+  }
+  for (auto* instr : computation->instructions()) {
+    if (is_collective(instr)) {
+      return instr;
+    }
+  }
+  return nullptr;
+}
+
 }  // namespace
 
 llvm::SmallVector<int64_t> GreedyPowerOfTwoTiles(const Shape& output_shape,
@@ -2118,25 +2306,11 @@ llvm::SmallVector<int64_t> GreedyPowerOfTwoTiles(const Shape& output_shape,
 }
 
 const HloInstruction* GetCollectiveHero(const HloComputation* computation) {
-  if (computation == nullptr) {
-    return nullptr;
-  }
-  auto is_collective = [](const HloInstruction* instr) {
-    return instr->opcode() == HloOpcode::kAllReduce ||
-           instr->opcode() == HloOpcode::kAllGather ||
-           instr->opcode() == HloOpcode::kAllToAll ||
-           instr->opcode() == HloOpcode::kReduceScatter;
-  };
-  const HloInstruction* root = computation->root_instruction();
-  if (is_collective(root)) {
-    return root;
-  }
-  for (const HloInstruction* instr : computation->instructions()) {
-    if (is_collective(instr)) {
-      return instr;
-    }
-  }
-  return nullptr;
+  return FindCollectiveHero(computation);
+}
+
+HloInstruction* GetMutableCollectiveHero(HloComputation* computation) {
+  return FindCollectiveHero(computation);
 }
 
 absl::StatusOr<BlockLevelFusionConfig> GetCollectiveBlockLevelFusionConfig(
@@ -2481,64 +2655,62 @@ mlir::LogicalResult RewriteAllToAll(mlir::stablehlo::AllToAllOp op,
   return mlir::success();
 }
 
+bool ShouldFlattenReduceScatter(
+    const HloReduceScatterInstruction* absl_nonnull rs) {
+  const int64_t num_devices = rs->device_list()->num_devices_per_group();
+  if (num_devices <= 0) {
+    return false;
+  }
+  const int64_t scatter_dim = rs->scatter_dimension();
+  for (const Shape& output_shape : GetOutputShapes(rs)) {
+    if (scatter_dim < 0 ||
+        scatter_dim >= static_cast<int64_t>(output_shape.dimensions().size()) ||
+        output_shape.dimensions(scatter_dim) % num_devices != 0) {
+      return true;
+    }
+    const int64_t per_peer_elements =
+        ShapeUtil::ElementsIn(output_shape) / num_devices;
+    if (per_peer_elements <= 0 ||
+        !llvm::has_single_bit(static_cast<uint64_t>(per_peer_elements))) {
+      return true;
+    }
+  }
+  return false;
+}
+
 absl::Status FlattenReduceScatterFusion(
     HloFusionInstruction* absl_nonnull fusion_instr) {
-  HloComputation* parent = fusion_instr->parent();
   HloComputation* fused_computation =
       fusion_instr->fused_instructions_computation();
-  auto* rs = DynCast<HloReduceScatterInstruction>(
-      fused_computation->root_instruction());
-  TF_RET_CHECK(rs != nullptr) << "Expected a reduce-scatter fusion root.";
-  TF_RET_CHECK(fused_computation->num_parameters() == 1 &&
-               rs->operand(0) == fused_computation->parameter_instruction(0))
-      << "Expected a single parameter feeding the reduce-scatter.";
-  TF_RET_CHECK(IsReduceScatterFlattenable(rs))
-      << "Reduce-scatter is not flattenable.";
-  const Shape original_input_shape = rs->operand(0)->shape();
-  const Shape original_output_shape = rs->shape();
+  ABSL_ASSIGN_OR_RETURN(HloReduceScatterInstruction * rs,
+                   ValidateReduceScatterFusionForFlattening(fused_computation));
+  const int64_t num_operands = rs->operand_count();
   const int64_t num_devices = rs->device_list()->num_devices_per_group();
-  ABSL_ASSIGN_OR_RETURN(FlatReduceScatterShapes flat_shapes,
-                   GetFlatReduceScatterShapes(
-                       original_output_shape.element_type(), num_devices,
-                       ShapeUtil::ElementsIn(original_output_shape)));
-  const Shape& flat_input_shape = flat_shapes.input;
-  const Shape& flat_output_shape = flat_shapes.output;
-  if (original_input_shape == flat_input_shape &&
-      original_output_shape == flat_output_shape &&
-      rs->scatter_dimension() == 0) {
-    return absl::OkStatus();
+
+  std::vector<Shape> original_output_shapes;
+  std::vector<Shape> param_shapes;
+  std::vector<Shape> output_shapes;
+  original_output_shapes.reserve(num_operands);
+  param_shapes.reserve(num_operands);
+  output_shapes.reserve(num_operands);
+  for (const Shape& output_shape : GetOutputShapes(rs)) {
+    ABSL_ASSIGN_OR_RETURN(
+        FlatReduceScatterShapes flat_shapes,
+        GetFlatReduceScatterShapes(output_shape.element_type(), num_devices,
+                                   ShapeUtil::ElementsIn(output_shape)));
+    original_output_shapes.push_back(output_shape);
+    param_shapes.push_back(std::move(flat_shapes.input));
+    output_shapes.push_back(std::move(flat_shapes.output));
   }
 
-  HloInstruction* param = fused_computation->parameter_instruction(0);
-  *param->mutable_shape() = flat_input_shape;
-  HloInstruction* flat_rs =
-      fused_computation->AddInstruction(HloInstruction::CreateReduceScatter(
-          flat_output_shape, {param}, rs->to_apply(), rs->device_list(),
-          rs->constrain_layout(), rs->channel_id(), rs->use_global_device_ids(),
-          /*scatter_dimension=*/0));
-  flat_rs->CopyBackendConfigFrom(rs);
-  flat_rs->set_metadata(rs->metadata());
-  flat_rs->set_frontend_attributes(rs->frontend_attributes());
-  fused_computation->set_root_instruction(flat_rs,
-                                          /*accept_different_shape=*/true);
-  const std::string rs_name(rs->name());
-  ABSL_RETURN_IF_ERROR(fused_computation->RemoveInstruction(rs));
-  // Keep the original name so that the flattened reduce-scatter can still be
-  // matched to the original HLO (e.g. in profiles).
-  flat_rs->SetAndSanitizeName(rs_name);
-
-  *fusion_instr->mutable_shape() = flat_output_shape;
-  HloInstruction* bitcast_to_flat =
-      parent->AddInstruction(HloInstruction::CreateBitcast(
-          flat_input_shape, fusion_instr->mutable_operand(0)));
+  const Shape new_fusion_shape = num_operands == 1
+                                     ? output_shapes.front()
+                                     : ShapeUtil::MakeTupleShape(output_shapes);
   ABSL_RETURN_IF_ERROR(
-      fusion_instr->ReplaceOperandWithDifferentShape(0, bitcast_to_flat));
-  HloInstruction* bitcast_to_original = parent->AddInstruction(
-      HloInstruction::CreateBitcast(original_output_shape, fusion_instr));
+      ApplyFlatShapesToRs(fusion_instr, rs, param_shapes, new_fusion_shape));
   VLOG(3) << "Flattened reduce-scatter fusion " << fusion_instr->name()
-          << " from " << original_input_shape.ToString() << " -> "
-          << original_output_shape.ToString();
-  return fusion_instr->ReplaceAllUsesWithDifferentShape(bitcast_to_original);
+          << " to " << new_fusion_shape.ToString();
+  return RestoreOriginalShapeForRs(fusion_instr, original_output_shapes);
 }
 
 }  // namespace xla::gpu

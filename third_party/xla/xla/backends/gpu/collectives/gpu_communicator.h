@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/core/collectives/symmetric_memory.h"
 #include "xla/ffi/api/record_c_api.h"
 #include "xla/future.h"
+#include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/kernel_args.h"
 #include "xla/stream_executor/memory_allocation.h"
@@ -324,10 +325,20 @@ class GpuCommunicator : public Communicator {
     return Unimplemented("RecordMultiGpuBarrier is not implemented");
   }
 
-  virtual void InitializeCrossDeviceBarrier(
+  virtual absl::StatusOr<const se::CommandBuffer::Command*>
+  RecordMultiGpuBarrier(
+      se::CommandBuffer* command_buffer,
+      const se::CommandBuffer::Command* absl_nullable cmd,
+      absl::Span<const se::CommandBuffer::Command* const> dependencies) {
+    return Unimplemented("RecordMultiGpuBarrier is not implemented");
+  }
+
+  virtual absl::Status InitializeCrossDeviceBarrier(
       tsl::TiedRef<se::MemoryAllocation> tied_signal_value,
       tsl::TiedRef<se::MemoryAllocation> tied_signal,
-      tsl::TiedRef<SymmetricMemory> tied_symmetric_memory) {}
+      tsl::TiedRef<SymmetricMemory> tied_symmetric_memory) {
+    return Unimplemented("InitializeCrossDeviceBarrier is not implemented");
+  }
 
   virtual bool IsCrossDeviceBarrierInitiated() const { return false; }
 
