@@ -2023,6 +2023,115 @@ void CommonPjRtRawBufferImpl::ScheduleCopySliceTo(
       });
 }
 
+void CommonPjRtRawBufferImpl::ScheduleUpdateSlice(
+    PjRtDeviceEventRefVector transfer_dependency_events,
+    const StridedGather& gather, PjRtRawBufferRef src_raw_buffer,
+    PjRtDeviceEventPromiseRef definition_event_promise,
+    PjRtDeviceEventPromiseRef src_usage_event_promise) {
+  auto notify_error = [&](absl::Status status) {
+    if (definition_event_promise) {
+      definition_event_promise.SetError(status);
+    }
+    if (src_usage_event_promise) {
+      src_usage_event_promise.SetError(status);
+    }
+  };
+
+  if (src_raw_buffer == nullptr) {
+    notify_error(absl::InvalidArgumentError("src_raw_buffer cannot be null"));
+    return;
+  }
+
+  if (src_raw_buffer->memory_space() != memory_space()) {
+    notify_error(absl::InvalidArgumentError(absl::StrFormat(
+        "ScheduleUpdateSlice requires source and destination to be in the same "
+        "memory space, got %s and %s.",
+        src_raw_buffer->memory_space()->DebugString(),
+        memory_space()->DebugString())));
+    return;
+  }
+
+  if (absl::Status status = ValidateStridedGatherBounds(
+          gather, static_cast<int64_t>(GetOnDeviceSizeInBytes()));
+      !status.ok()) {
+    notify_error(std::move(status));
+    return;
+  }
+
+  const int64_t slice_size = gather.num_chunks() * gather.chunk_size();
+  if (static_cast<int64_t>(src_raw_buffer->GetOnDeviceSizeInBytes()) <
+      slice_size) {
+    notify_error(absl::InvalidArgumentError(absl::StrCat(
+        "src_raw_buffer size (", src_raw_buffer->GetOnDeviceSizeInBytes(),
+        ") is smaller than slice size (", slice_size, ")")));
+    return;
+  }
+
+  PjRtDeviceEventSpan events_span(transfer_dependency_events);
+  CommonPjRtClient* client =
+      absl::down_cast<CommonPjRtClient*>(memory_space()->client());
+  AsyncWorkRunner* async_work_runner = client->async_work_runner();
+
+  xla::ExecuteWhenReady(
+      events_span, async_work_runner,
+      [dst_raw_buffer = tsl::FormRef(this),
+       src_raw_buffer = std::move(src_raw_buffer), gather = gather,
+       definition_event_promise = std::move(definition_event_promise),
+       src_usage_event_promise = std::move(src_usage_event_promise),
+       transfer_dependency_events =
+           std::move(transfer_dependency_events)]() mutable {
+        auto notify_error_async = [&](absl::Status status) {
+          if (definition_event_promise) {
+            definition_event_promise.SetError(status);
+          }
+          if (src_usage_event_promise) {
+            src_usage_event_promise.SetError(status);
+          }
+        };
+
+        absl::Status status = xla::GetErrors(transfer_dependency_events);
+        if (!status.ok()) {
+          notify_error_async(status);
+          return;
+        }
+
+        void* dst_ptr_void = dst_raw_buffer->GetHostPointer();
+        void* src_ptr_void = src_raw_buffer->GetHostPointer();
+        if (dst_ptr_void == nullptr || src_ptr_void == nullptr) {
+          notify_error_async(absl::UnimplementedError(absl::StrCat(
+              "ScheduleUpdateSlice is only supported for host buffers; got "
+              "memory space: ",
+              dst_raw_buffer->memory_space()->DebugString())));
+          return;
+        }
+
+        if (gather.num_chunks() == 0) {
+          if (src_usage_event_promise) {
+            src_usage_event_promise.SetReady();
+          }
+          if (definition_event_promise) {
+            definition_event_promise.SetReady();
+          }
+          return;
+        }
+
+        char* dst_ptr = static_cast<char*>(dst_ptr_void);
+        const char* src_ptr = static_cast<const char*>(src_ptr_void);
+
+        for (const StridedGather::Chunk& chunk : gather.chunks()) {
+          std::memcpy(dst_ptr + chunk.offset, src_ptr, chunk.size);
+          src_ptr += chunk.size;
+        }
+
+        if (src_usage_event_promise) {
+          src_usage_event_promise.SetReady();
+        }
+        if (definition_event_promise) {
+          definition_event_promise.SetReady();
+        }
+      });
+}
+
 void CommonPjRtBufferImpl::CopyToRemoteDevice(
     Future<std::string> serialized_descriptor, RemoteSendCallback on_done) {
   auto* common_client = absl::down_cast<CommonPjRtClient*>(client());
@@ -4527,6 +4636,76 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> CommonPjRtBufferImpl::CopySlice(
         std::move(definition_events), gather, std::move(dst_raw_buffer),
         std::move(definition_event_promise), std::move(src_usage_event_promise),
         ToAllocationCallback(std::move(allocation_event)));
+  }
+  return dst_buffer;
+}
+
+absl::StatusOr<std::unique_ptr<PjRtBuffer>> CommonPjRtBufferImpl::UpdateSlice(
+    const StridedGather& gather, PjRtBuffer* slice) {
+  tsl::profiler::TraceMe traceme("CommonPjRtBufferImpl::UpdateSlice");
+  if (slice == nullptr) {
+    return absl::InvalidArgumentError("slice cannot be null");
+  }
+  if (slice == this) {
+    return absl::InvalidArgumentError(
+        "UpdateSlice source slice cannot be the same buffer as target.");
+  }
+  auto* common_slice = dynamic_cast<CommonPjRtBuffer*>(slice);
+  if (common_slice == nullptr) {
+    return absl::InvalidArgumentError(
+        "UpdateSlice requires slice to be a CommonPjRtBuffer.");
+  }
+  if (common_slice->memory_space() != memory_space()) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "UpdateSlice requires source and destination to be in the same memory "
+        "space, got %s and %s.",
+        common_slice->memory_space()->DebugString(),
+        memory_space()->DebugString()));
+  }
+  ABSL_ASSIGN_OR_RETURN(const size_t dst_bytes, GetOnDeviceSizeInBytes());
+  ABSL_RETURN_IF_ERROR(
+      ValidateStridedGatherBounds(gather, static_cast<int64_t>(dst_bytes)));
+  ABSL_ASSIGN_OR_RETURN(const size_t slice_bytes,
+                   common_slice->GetOnDeviceSizeInBytes());
+  const int64_t expected_slice_size = gather.num_chunks() * gather.chunk_size();
+  if (static_cast<int64_t>(slice_bytes) != expected_slice_size) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "UpdateSlice requires slice buffer size (%d bytes) to match "
+        "gather slice size (%d bytes).",
+        slice_bytes, expected_slice_size));
+  }
+
+  CommonPjRtBuffer::ScopedHold hold =
+      GetBufferWithHold(CommonPjRtBuffer::ScopedHold::kDonation);
+  if (!hold.ok()) {
+    return InvalidArgument("Invalid buffer for UpdateSlice: %s",
+                           hold.status().ToString());
+  }
+  PjRtRawBufferRef dst_raw_buffer = hold.buffer()->raw_buffer();
+  PjRtDeviceEventRefVector definition_events =
+      hold.buffer()->GetAsyncValueDefinitionAndUsageDeviceEvents();
+
+  PjRtDeviceEventPromiseRef definition_event_promise;
+  PjRtDeviceEventPromiseRef src_usage_event_promise;
+  PjRtRawBufferRef src_raw_buffer;
+  std::unique_ptr<PjRtBuffer> dst_buffer;
+  ::tsl::AsyncValueRef<bool> allocation_event;
+
+  ABSL_RETURN_IF_ERROR(CommonCopyToMemorySpace(
+      common_slice, memory_space(), on_device_shape_, definition_event_promise,
+      src_usage_event_promise, src_raw_buffer, dst_raw_buffer, dst_buffer,
+      definition_events, allocation_event));
+
+  hold.ConfirmDonation();
+
+  if (src_raw_buffer) {
+    if (allocation_event) {
+      allocation_event.SetStateConcrete();
+    }
+    dst_raw_buffer->ScheduleUpdateSlice(std::move(definition_events), gather,
+                                        std::move(src_raw_buffer),
+                                        std::move(definition_event_promise),
+                                        std::move(src_usage_event_promise));
   }
   return dst_buffer;
 }
