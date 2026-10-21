@@ -467,6 +467,9 @@ tf_gen_op_strict_wrapper_private_py(
         "//tensorflow/python/tools:__pkg__",
         "//tensorflow/security/fuzzing/google:__pkg__",
     ],
+    deps = [
+        "//tensorflow/core:nn_ops_op_lib",
+    ],
 )
 
 tf_gen_op_strict_wrapper_private_py(
