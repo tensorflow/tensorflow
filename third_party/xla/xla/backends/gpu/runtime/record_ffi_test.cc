@@ -336,17 +336,19 @@ TEST(RecordFfiTest, RecordMultiGpuBarrierWithNccl) {
   ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
   FakeSymmetricMemory sym_mem;
+  ASSERT_OK_AND_ASSIGN(auto kernel,
+                       LoadMultiGpuBarrierWithNcclKernel(executor));
   std::unique_ptr<ffi::Ffi> handler =
       ffi::Ffi::BindRecord()
           .Ctx<ffi::Extension<ffi::RecordExtension>>()
           .Arg<ffi::AnyBuffer>()
-          .To([executor, &sym_mem](ffi::RecordContext record_ctx,
-                                   ffi::AnyBuffer counter) -> absl::Status {
+          .To([&kernel, &sym_mem](ffi::RecordContext record_ctx,
+                                  ffi::AnyBuffer counter) -> absl::Status {
             const XLA_FFI_Command* cmd =
                 record_ctx.action() == ffi::RecordAction::kUpdate
                     ? record_ctx.commands()[0]
                     : nullptr;
-            return RecordMultiGpuBarrierWithNccl(executor, record_ctx,
+            return RecordMultiGpuBarrierWithNccl(kernel, record_ctx,
                                                  /*num_devices=*/0, RankId(0),
                                                  &sym_mem,
                                                  counter.device_memory(), cmd)

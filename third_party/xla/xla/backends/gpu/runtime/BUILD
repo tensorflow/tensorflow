@@ -3461,7 +3461,9 @@ cc_library(
         "//xla/ffi:record_ffi",
         "//xla/ffi/api:c_api",
         "//xla/ffi/api:record_api",
+        "//xla/stream_executor:command_buffer",
         "//xla/stream_executor:device_address",
+        "//xla/stream_executor:kernel",
         "//xla/stream_executor:launch_dim",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
@@ -3472,6 +3474,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
