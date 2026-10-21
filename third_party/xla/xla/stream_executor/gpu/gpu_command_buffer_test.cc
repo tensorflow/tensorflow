@@ -937,6 +937,27 @@ TEST_F(GpuCommandBufferTest, EmptyNodeOnly) {
   ASSERT_OK(stream->BlockHostUntilDone());
 }
 
+// Tests that an empty command buffer can be updated and submitted again.
+TEST_F(GpuCommandBufferTest, UpdateEmptyCommandBuffer) {
+  Platform* platform = GpuPlatform();
+  StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  if (executor->GetPlatform()->id() == cuda::kCudaPlatformId) {
+    GTEST_SKIP() << "Tests a ROCm-only code path";
+  }
+
+  ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+
+  ASSERT_OK_AND_ASSIGN(auto cmd_buffer, executor->CreateCommandBuffer(primary));
+  ASSERT_OK(cmd_buffer->Finalize());
+  ASSERT_OK(cmd_buffer->Submit(stream.get()));
+
+  ASSERT_OK(cmd_buffer->Update());
+  ASSERT_OK(cmd_buffer->Finalize());
+  ASSERT_OK(cmd_buffer->Submit(stream.get()));
+  ASSERT_OK(stream->BlockHostUntilDone());
+}
+
 // Tests a chain of empty nodes followed by a kernel: exercises dependency
 // propagation through multiple empty nodes.
 TEST_F(GpuCommandBufferTest, EmptyNodeChain) {

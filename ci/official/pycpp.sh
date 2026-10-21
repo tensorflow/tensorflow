@@ -31,12 +31,6 @@ if [[ $(uname -s) == "MSYS_NT"* ]] || [[ $(uname -s) == "MINGW64_NT"* ]]; then
   fi
 fi
 
-# TODO(b/361369076) Remove the following block after TF NumPy 1 is dropped
-# Move hermetic requirement lock files for NumPy 1 to the root
-if [[ "$TFCI_WHL_NUMPY_VERSION" == 1 ]]; then
-  cp ./ci/official/requirements_updater/numpy1_requirements/*.txt .
-fi
-
 if [[ $TFCI_PYCPP_SWAP_TO_BUILD_ENABLE == 1 ]]; then
   tfrun bazel $TFCI_BAZEL_BAZELRC_ARGS build $TFCI_BAZEL_COMMON_ARGS --profile "$PROFILE_JSON_PATH" $HERMETIC_CUDA_UMD_FLAGS --config="${TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX}_pycpp_test"
 else

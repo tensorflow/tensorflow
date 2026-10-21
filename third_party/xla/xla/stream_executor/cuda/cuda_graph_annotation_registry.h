@@ -21,6 +21,7 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
@@ -211,6 +212,11 @@ class CudaGraphAnnotationRegistry {
   void SetStrategy(TelemetryStrategy strategy);
 
   Stats GetStats() const ABSL_LOCKS_EXCLUDED(mu_);
+
+  // For tests that can't reach the recorded CUgraph nodes: returns a copy of
+  // every live and parked annotation in `space`, sorted.
+  std::vector<std::string> GetNodeAnnotationsForTesting(KeySpace space) const
+      ABSL_LOCKS_EXCLUDED(mu_);
 
   // For tests: drops all live and parked entries and resets `strategy()` to
   // `kDisabled`, but keeps the active holds.
