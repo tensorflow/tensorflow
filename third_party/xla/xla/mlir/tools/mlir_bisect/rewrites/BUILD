@@ -30,7 +30,6 @@ cc_library(
         "//xla/mlir/tools/mlir_replay/public:execution_trace_utils",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
-        "@llvm-project//mlir:DialectUtils",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:SCFDialect",
