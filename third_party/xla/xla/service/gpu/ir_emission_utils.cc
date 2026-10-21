@@ -109,7 +109,6 @@ bool IsTritonSupportedRaggedDot(
     return false;
   }
 
-
   // The xtile emitter's PrimitiveTypeToMlirType conversion supports the
   // following element types for ragged-dot operands and output.
   // Complex types (C64, C128) fall to the default branch and return

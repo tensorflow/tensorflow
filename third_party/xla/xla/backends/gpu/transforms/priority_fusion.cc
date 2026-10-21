@@ -206,7 +206,7 @@ class PriorityFusionQueue {
       HloFusionAnalysisCache& fusion_analysis_cache,
       FusionDeduplicationCache& fusion_deduplication_cache,
       bool triton_heroless_fusion_enabled, const AliasInfo* alias_info,
-      bool use_experimental_tiling, MlirContextPool* mlir_context_pool) {
+      MlirContextPool* mlir_context_pool) {
     auto cost_analysis = std::make_unique<GpuHloCostAnalysis>(
         cost_analysis_options, *device_info);
     VLOG(2) << "Running full HLO cost analysis for " << computation->name();
@@ -216,8 +216,7 @@ class PriorityFusionQueue {
         computation, std::move(cost_analysis), cost_analysis_options,
         device_info, fusion_process_dump, thread_pool, mlir_context,
         fusion_analysis_cache, fusion_deduplication_cache,
-        triton_heroless_fusion_enabled, alias_info, use_experimental_tiling,
-        mlir_context_pool);
+        triton_heroless_fusion_enabled, alias_info, mlir_context_pool);
 
     std::vector<HloInstruction*> instructions;
     for (auto* instruction : computation->MakeInstructionPostOrder()) {
@@ -246,14 +245,14 @@ class PriorityFusionQueue {
                       HloFusionAnalysisCache& fusion_analysis_cache,
                       FusionDeduplicationCache& fusion_deduplication_cache,
                       bool triton_heroless_fusion_enabled,
-                      const AliasInfo* alias_info, bool use_experimental_tiling,
+                      const AliasInfo* alias_info,
                       MlirContextPool* mlir_context_pool)
       : computation_(computation),
         device_info_(device_info),
         cost_analysis_(std::move(cost_analysis)),
         combined_gpu_performance_model_(
             *device_info, fusion_analysis_cache, *mlir_context,
-            cost_analysis_options.shape_size, use_experimental_tiling,
+            cost_analysis_options.shape_size,
             computation->parent()
                 ->config()
                 .debug_options()
@@ -1402,8 +1401,6 @@ absl::StatusOr<bool> PriorityFusion::RunImpl(
           .debug_options()
           .xla_gpu_experimental_enable_triton_heroless_priority_fusion();
 
-  bool use_experimental_tiling = true;
-
   FusionDeduplicationCache fusion_deduplication_cache =
       FusionDeduplicationCache::Create(*module, IsFusible);
 
@@ -1417,8 +1414,7 @@ absl::StatusOr<bool> PriorityFusion::RunImpl(
             computation, cost_analysis_options_, &device_info_,
             fusion_process_dump_.get(), thread_pool_, mlir_context_,
             fusion_analysis_cache_, fusion_deduplication_cache,
-            triton_heroless_fusion_enabled, alias_info_,
-            use_experimental_tiling, mlir_context_pool_));
+            triton_heroless_fusion_enabled, alias_info_, mlir_context_pool_));
 
     while (fusion_queue->DequeueNextProducer()) {
       auto producer = fusion_queue->current_producer();

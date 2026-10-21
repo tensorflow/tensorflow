@@ -46,13 +46,11 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/autotuner/triton/triton_configs.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
-#include "xla/backends/gpu/codegen/triton/support_legacy.h"
 #include "xla/backends/gpu/transforms/bitcast_utils.h"
 #include "xla/backends/gpu/transforms/convert_triton_gemm_config.h"
 #include "xla/codegen/tiling/experimental/tile.h"
 #include "xla/codegen/tiling/experimental/tiled_hlo.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
-#include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/hlo/analysis/shape_tracker.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
@@ -1291,7 +1289,6 @@ FusionDecision CanUnpackS4ParametersInFusion(
   return FusionDecision::Allow();
 }
 
-// Checks if the fusion can be tiled by SymbolicTileAnalysis.
 FusionDecision CanTile(mlir::MLIRContext& mlir_context,
                        const HloFusionAdaptor& fusion,
                        const se::DeviceDescription& device_description) {

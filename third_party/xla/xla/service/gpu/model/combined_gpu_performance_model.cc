@@ -49,14 +49,14 @@ CombinedGpuPerformanceModel::CombinedGpuPerformanceModel(
     const se::DeviceDescription& device_info,
     HloFusionAnalysisCache& fusion_analysis_cache,
     mlir::MLIRContext& mlir_context,
-    HloCostAnalysis::ShapeSizeFunction shape_size, bool use_experimental_tiling,
+    HloCostAnalysis::ShapeSizeFunction shape_size,
     bool enable_same_shape_multi_output_fusion,
     MlirContextPool* mlir_context_pool)
     : device_info_(device_info),
       fusion_analysis_cache_(fusion_analysis_cache),
       indexing_model_(&device_info, &fusion_analysis_cache, shape_size,
-                      &mlir_context, use_experimental_tiling,
-                      enable_same_shape_multi_output_fusion, mlir_context_pool),
+                      &mlir_context, enable_same_shape_multi_output_fusion,
+                      mlir_context_pool),
       model_(device_info, fusion_analysis_cache, cache_) {}
 
 absl::StatusOr<EstimateRunTimeData>
