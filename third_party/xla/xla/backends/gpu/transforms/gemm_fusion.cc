@@ -2235,7 +2235,17 @@ absl::StatusOr<bool> RunOnComputation(
     HloComputation* computation,
     const se::DeviceDescription& device_description) {
   GemmFusionVisitor visitor(device_description);
-  ABSL_RETURN_IF_ERROR(computation->Accept(&visitor));
+  // Collect the dots up front: fusing an epilogue can remove an unvisited
+  // operand (e.g. bitcast(other_dot)), hiding other dots from a DFS traversal.
+  std::vector<HloInstruction*> dots;
+  for (HloInstruction* instruction : computation->MakeInstructionPostOrder()) {
+    if (HloPredicateIsOp<HloOpcode::kDot, HloOpcode::kScaledDot>(instruction)) {
+      dots.push_back(instruction);
+    }
+  }
+  for (HloInstruction* dot : dots) {
+    ABSL_RETURN_IF_ERROR(dot->Visit(&visitor));
+  }
   return visitor.changed();
 }
 
