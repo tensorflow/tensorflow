@@ -1347,6 +1347,27 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
     return absl::OkStatus();
   }
 
+  if (hlo->custom_call_target() == "compute-on-start") {
+    std::vector<HloInstruction*> call_args;
+    call_args.reserve(hlo->operand_count());
+    for (int64_t i = 0; i < hlo->operand_count(); ++i) {
+      call_args.push_back(GetPartitionedHlo(hlo->operand(i)).hlo());
+    }
+    SetPartitionedHlo(hlo, [&] {
+      auto* custom_call = b_.AddInstruction(hlo->CloneWithNewOperands(
+          MakePartitionedShape(hlo->shape(), hlo->sharding()), call_args));
+      custom_call->set_raw_backend_config_string(
+          hlo->raw_backend_config_string());
+      custom_call->set_frontend_attributes(hlo->frontend_attributes());
+      return custom_call;
+    });
+    return absl::OkStatus();
+  }
+
+  if (hlo->custom_call_target() == "compute-on-done") {
+    return HandleElementwise(hlo);
+  }
+
   if (hlo->custom_call_target() == "TopK") {
     return HandleCustomCallTopK(hlo);
   }

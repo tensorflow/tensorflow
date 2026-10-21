@@ -93,7 +93,6 @@ class GpuIndexingPerformanceModelTest : public HloHardwareIndependentTestBase {
       &fusion_analysis_cache_,
       HloCostAnalysis::DefaultShapeSize,
       &mlir_context_,
-      /*use_experimental_tiling=*/true,
       /*enable_same_shape_multi_output_fusion=*/false,
       &mlir_context_pool_};
 

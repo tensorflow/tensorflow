@@ -50,6 +50,7 @@ namespace tsl {
 class Thread;
 class ThreadNote;
 struct ThreadOptions;
+class ThreadPoolInterface;
 
 /// \brief An interface used by the tensorflow implementation to
 /// access operating system functionality like the filesystem etc.
@@ -386,7 +387,6 @@ class Env {
   /// the directory the executable is located in if not running under bazel.
   virtual std::string GetRunfilesDir() = 0;
 
-  // TODO(jeff,sanjay): Add back thread/thread-pool support if needed.
   // TODO(jeff,sanjay): if needed, tighten spec so relative to epoch, or
   // provide a routine to get the absolute time.
 
@@ -434,6 +434,10 @@ class Env {
 
   // Returns true if the current thread is a cooperatively scheduled fiber.
   virtual bool IsCurrentThreadFiber() { return false; }
+
+  virtual ThreadPoolInterface* CreateThreadPoolInterface(
+      const ThreadOptions& thread_options, const std::string& name,
+      int num_threads, bool low_latency_hint);
 
   // \brief Schedules the given closure on a thread-pool.
   //
