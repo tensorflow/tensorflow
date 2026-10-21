@@ -26,7 +26,7 @@ namespace reference_integer_ops {
 
 // For per-channel functions, since it is defined in quantization spec that
 // weights are symmetric
-// (https://www.tensorflow.org/lite/performance/quantization_spec#symmetric_vs_asymmetric),
+// (https://developers.google.com/edge/litert/conversion/tensorflow/quantization/quantization_spec#symmetric_vs_asymmetric),
 // zero_point (params.weights_offset) is always 0.
 // However, for per-tensor functions, params.weights_offset is still applied for
 // backward compatibility.
