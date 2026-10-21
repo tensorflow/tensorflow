@@ -196,15 +196,6 @@ bool CudaGraphAnnotationRegistry::empty() const {
   return num_graphs_.load(std::memory_order_acquire) == 0;
 }
 
-CudaGraphAnnotationRegistry::TelemetryStrategy
-CudaGraphAnnotationRegistry::strategy() const {
-  return strategy_.load(std::memory_order_acquire);
-}
-
-void CudaGraphAnnotationRegistry::SetStrategy(TelemetryStrategy strategy) {
-  strategy_.store(strategy, std::memory_order_release);
-}
-
 CudaGraphAnnotationRegistry::Stats CudaGraphAnnotationRegistry::GetStats()
     const {
   absl::ReaderMutexLock lock(mu_);
@@ -261,7 +252,6 @@ void CudaGraphAnnotationRegistry::ClearForTesting() {
   // `next_token_` keeps counting, so that the cleanups of graphs tracked before
   // the `Clear()` stay stale.
   UpdateNumGraphsLocked();
-  strategy_.store(TelemetryStrategy::kDisabled, std::memory_order_release);
 }
 
 CudaGraphAnnotationRegistry::GraphEntry*
