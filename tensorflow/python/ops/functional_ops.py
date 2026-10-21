@@ -38,6 +38,26 @@ from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
 
+def _check_elems_not_scalar(elems_flat):
+  """Rejects elements whose known rank is below 1.
+
+  foldl, foldr and scan all take the number of iterations from
+  `elems_flat[0].shape[0]`, which raises IndexError out of tensor_shape for a
+  scalar instead of saying what is wrong. map_fn already reports this, so use
+  the same message.
+
+  Args:
+    elems_flat: the flattened, converted `elems`.
+
+  Raises:
+    ValueError: if the first element has a statically known rank below 1.
+  """
+  shape = elems_flat[0].shape
+  if shape.ndims is not None and shape.ndims < 1:
+    raise ValueError(
+        "Elements in elems must be 1+ dimensional Tensors, not scalars")
+
+
 # TODO(yuanbyu, mrry): Handle stride to support sliding windows.
 @tf_export(v1=["foldl"])
 @dispatch.add_dispatch_support
@@ -124,6 +144,7 @@ def foldl(fn,
     elems_flat = [
         ops.convert_to_tensor(elem, name="elem") for elem in nest.flatten(elems)
     ]
+    _check_elems_not_scalar(elems_flat)
     n = (
         tensor_shape.dimension_value(elems_flat[0].shape[0]) or
         array_ops.shape(elems_flat[0])[0])
@@ -320,6 +341,7 @@ def foldr(fn,
     elems_flat = [
         ops.convert_to_tensor(elem, name="elem") for elem in nest.flatten(elems)
     ]
+    _check_elems_not_scalar(elems_flat)
     n = (
         tensor_shape.dimension_value(elems_flat[0].shape[0]) or
         array_ops.shape(elems_flat[0])[0])
@@ -579,6 +601,7 @@ def scan(fn,
     elems_flat = [
         ops.convert_to_tensor(elem, name="elem") for elem in elems_flat
     ]
+    _check_elems_not_scalar(elems_flat)
 
     # Convert elems to tensor array. n may be known statically.
     n = tensor_shape.dimension_value(elems_flat[0].shape[0])
