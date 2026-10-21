@@ -319,11 +319,14 @@ absl::Status ComparisonManager::RegisterHloModule(ComparisonVariant variant,
                    hlo_diff::ComputeDiff(*baseline_module, *target_module));
 
   auto& state = comparison_states_[module_name];
-  for (const auto& instructions :
-       {diff_results.diff_result->unchanged_instructions,
-        diff_results.diff_result->changed_instructions}) {
+  // Moved instructions are unchanged themselves but used differently, so they
+  // are compared too.
+  for (const auto* instructions :
+       {&diff_results.diff_result->unchanged_instructions,
+        &diff_results.diff_result->changed_instructions,
+        &diff_results.diff_result->moved_instructions}) {
     // NOLINTNEXTLINE
-    for (const auto& [baseline_inst, target_inst] : instructions) {
+    for (const auto& [baseline_inst, target_inst] : *instructions) {
       LOG(INFO) << "[Comparison Tool] diff pair: " << baseline_inst->name()
                 << " vs " << target_inst->name();
       state.instruction_diff_map_left.insert(

@@ -30,6 +30,7 @@ package(
     default_visibility = [
         "//tensorflow:__subpackages__",
         "//tensorflow:internal",
+        "//third_party/litert_zero:__subpackages__",
         "//third_party/odml/infra/genai/conversion:__subpackages__",
         "//third_party/odml/litert:__subpackages__",
         "//third_party/odml/model_customization/quantization:__subpackages__",

@@ -20249,6 +20249,42 @@ ENTRY entry {
   EXPECT_THAT(entry->root_instruction(), op::Shape("f32[4,4,4]"));
 }
 
+TEST_P(SpmdPartitioningTest, CustomCallComputeOnStartAndDone) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+compute_on_body {
+  arg = f32[8,4]{1,0} parameter(0), sharding={devices=[2,2]<=[4]}
+  to_shard = f32[4,2]{1,0} custom-call(arg), custom_call_target="SPMDFullToShardShape", sharding={manual}
+  ag = f32[4,4]{1,0} all-gather(to_shard), channel_id=1, replica_groups={{0,1},{2,3}}, dimensions={1}, use_global_device_ids=true, sharding={manual}
+  ROOT to_full = f32[8,4]{1,0} custom-call(ag), custom_call_target="SPMDShardToFullShape", sharding={devices=[2,1,2]<=[4] last_tile_dim_replicate}
+}
+
+ENTRY entry {
+  param = f32[8,4]{1,0} parameter(0), sharding={devices=[2,2]<=[4]}
+  start = f32[8,4]{1,0} custom-call(param), custom_call_target="compute-on-start", to_apply=compute_on_body, sharding={devices=[2,1,2]<=[4] last_tile_dim_replicate}
+  ROOT done = f32[8,4]{1,0} custom-call(start), custom_call_target="compute-on-done", sharding={devices=[2,1,2]<=[4] last_tile_dim_replicate}
+})";
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(
+      root,
+      AllOf(op::CustomCall("compute-on-done",
+                           AllOf(op::CustomCall("compute-on-start",
+                                                AllOf(op::Parameter(0),
+                                                      op::Shape("f32[4,2]"))),
+                                 op::Shape("f32[4,4]"))),
+            op::Shape("f32[4,4]")));
+  const HloInstruction* start = root->operand(0);
+  const HloComputation* body = start->to_apply();
+  EXPECT_THAT(body->root_instruction(),
+              AllOf(op::Copy(op::AllGather(op::Copy(
+                        AllOf(op::Parameter(0), op::Shape("f32[4,2]"))))),
+                    op::Shape("f32[4,4]")));
+}
+
 }  // namespace
 }  // namespace spmd
 }  // namespace xla

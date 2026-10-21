@@ -1204,6 +1204,11 @@ def moveaxis(a, source, destination):  # pylint: disable=missing-docstring
       and builtins.all(isinstance(x, (int, np.integer)) for x in source)
       and builtins.all(isinstance(x, (int, np.integer)) for x in destination)
   ):
+    # NumPy rejects a repeated axis in `source` or `destination`.
+    if len(set(source)) != len(source):
+      raise ValueError('repeated axis in `source` argument')
+    if len(set(destination)) != len(destination):
+      raise ValueError('repeated axis in `destination` argument')
     perm = [i for i in range(a_rank) if i not in source]
     for dest, src in sorted(zip(destination, source)):
       assert dest <= len(perm)

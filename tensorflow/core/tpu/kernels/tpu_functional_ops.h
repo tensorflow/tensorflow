@@ -331,6 +331,7 @@ class TPUPartitionedCallOp : public AsyncOpKernel {
   // Init once flagas.
   absl::once_flag once_;
   absl::once_flag ordinal_selector_once_;
+  absl::Status init_status_;
 
   // Device manager and device set.
   const DeviceMgr* device_mgr_;

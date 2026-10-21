@@ -22,7 +22,6 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/log/vlog_is_on.h"
 #include "absl/status/status_macros.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"
@@ -50,46 +49,39 @@ CombinedGpuPerformanceModel::CombinedGpuPerformanceModel(
     const se::DeviceDescription& device_info,
     HloFusionAnalysisCache& fusion_analysis_cache,
     mlir::MLIRContext& mlir_context,
-    HloCostAnalysis::ShapeSizeFunction shape_size, bool use_experimental_tiling,
+    HloCostAnalysis::ShapeSizeFunction shape_size,
     bool enable_same_shape_multi_output_fusion,
     MlirContextPool* mlir_context_pool)
     : device_info_(device_info),
       fusion_analysis_cache_(fusion_analysis_cache),
       indexing_model_(&device_info, &fusion_analysis_cache, shape_size,
-                      &mlir_context, use_experimental_tiling,
-                      enable_same_shape_multi_output_fusion, mlir_context_pool),
+                      &mlir_context, enable_same_shape_multi_output_fusion,
+                      mlir_context_pool),
       model_(device_info, fusion_analysis_cache, cache_) {}
 
 absl::StatusOr<EstimateRunTimeData>
 CombinedGpuPerformanceModel::EstimateRunTimeForInstruction(
     const HloInstruction* instr, const GpuHloCostAnalysis* cost_analysis) {
-  {
-    {
-      absl::MutexLock lock(cache_mutex_);
-      if (auto cached = cache_.Get(*instr)) {
-        return *cached;
-      }
-    }
-
-    absl::StatusOr<EstimateRunTimeData> result;
-
-    if (IsGenericTritonFusion(*instr)) {
-      result = indexing_model_.EstimateRunTimeForTriton(instr);
-    } else {
-      result = model_.EstimateRunTimeForInstruction(instr, cost_analysis);
-    }
-
-    // In case multiple threads race to compute estimates for the same
-    // instruction, always return the first result.
-    if (result.ok()) {
-      absl::MutexLock lock(cache_mutex_);
-      if (auto cached = cache_.Get(*instr)) {
-        return *cached;
-      }
-      cache_.Set(*instr, *result);
-    }
-    return result;
+  // Delegate non-Triton instructions directly to `model_`:
+  // `GpuPerformanceModel::EstimateRunTimeForInstruction` already queries and
+  // updates the shared `cache_` (`GpuPerformanceModelCache`, which is
+  // internally synchronized by its own `absl::Mutex`), so checking `cache_`
+  // here first would duplicate the mutex acquisition and hash-map lookup on
+  // every call.
+  if (!IsGenericTritonFusion(*instr)) {
+    return model_.EstimateRunTimeForInstruction(instr, cost_analysis);
   }
+
+  // `indexing_model_` does not consult `cache_`, so cache standalone Triton
+  // fusion runtime estimates here.
+  if (auto cached = cache_.Get(*instr)) {
+    return *cached;
+  }
+
+  ABSL_ASSIGN_OR_RETURN(EstimateRunTimeData result,
+                   indexing_model_.EstimateRunTimeForTriton(instr));
+  cache_.Set(*instr, result);
+  return result;
 }
 
 absl::StatusOr<CombinedGpuPerformanceModel::RunTimes>
@@ -129,23 +121,17 @@ absl::Duration CombinedGpuPerformanceModel::EstimateRunTimeForFusion(
   VLOG(8) << "EstimateRunTimeForFusion, producer: " << producer->name()
           << " consumer: " << consumer->name();
 
-  {
-    absl::MutexLock lock(cache_mutex_);
-    if (auto cached = cache_.Get(*producer, *consumer)) {
-      return *cached;
-    }
+  // `cache_` (`GpuPerformanceModelCache`) is internally synchronized by its own
+  // `absl::Mutex`, and `PriorityFusionQueue` evaluates each producer on at most
+  // one thread at a time, so no external mutex is needed here.
+  if (auto cached = cache_.Get(*producer, *consumer)) {
+    return *cached;
   }
 
   absl::Duration result = EstimateRunTimeForFusionUncached(
       producer, consumer, producer_runtime, consumer_runtime, cost_analysis,
       producer_writes_side_output);
 
-  // In case multiple threads race to compute estimates for the same
-  // instruction, always return the first result.
-  absl::MutexLock lock(cache_mutex_);
-  if (auto cached = cache_.Get(*producer, *consumer)) {
-    return *cached;
-  }
   cache_.Set(*producer, *consumer, result);
   return result;
 }
@@ -261,7 +247,6 @@ CombinedGpuPerformanceModel::EstimateRunTimesForMultiOutput(
 
 void CombinedGpuPerformanceModel::Invalidate(
     const HloInstruction& instruction) {
-  absl::MutexLock lock(cache_mutex_);
   cache_.Invalidate(instruction);
 }
 

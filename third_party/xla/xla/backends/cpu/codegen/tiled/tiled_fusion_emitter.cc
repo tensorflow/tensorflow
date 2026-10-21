@@ -52,14 +52,9 @@ limitations under the License.
 #include "xla/codegen/tiling/experimental/tile.h"
 #include "xla/codegen/tiling/experimental/tiled_hlo.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
-#include "xla/codegen/tiling/symbolic_tile_analysis.h"
-#include "xla/codegen/tiling/tiled_hlo_computation.h"
-#include "xla/codegen/tiling/tiling_specification.h"
 #include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/codegen/xtile/codegen/experimental_fusion_emitter.h"
-#include "xla/codegen/xtile/codegen/fusion_emitter.h"
-#include "xla/codegen/xtile/codegen/tiled_emitter_constraints.h"
 #include "xla/codegen/xtile/ir/xtile_attrs.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/codegen/xtile/tiling_from_block_parameters.h"
@@ -91,58 +86,12 @@ namespace ge = ::xla::gpu::experimental;
 
 constexpr int64_t kCacheLineSize = 64;
 
-template <typename TiledInstructionT>
-int64_t PerTileCacheLines(const TiledInstructionT& inst) {
-  const Shape& shape = inst.hlo()->shape();
-  if (ShapeUtil::IsEffectiveScalar(shape)) {
-    return 1;
-  }
-
-  int64_t minor_dim_idx = LayoutUtil::Minor(shape.layout(), 0);
-  // The tiled emitter pads all tile dimensions to the next power of 2, we
-  // therefore must take that into account.
-  int64_t tile_minor_size = llvm::PowerOf2Ceil(inst.tile_size(minor_dim_idx));
-  int64_t element_bytes =
-      ShapeUtil::ByteSizeOfPrimitiveType(shape.element_type());
-  int64_t tile_minor_bytes = tile_minor_size * element_bytes;
-
-  int64_t non_minor_size = 1;
-  for (auto [dim_idx, size] : llvm::enumerate(inst.tile_sizes())) {
-    if (dim_idx != minor_dim_idx) {
-      // See above comment
-      non_minor_size *= llvm::PowerOf2Ceil(size);
-    }
-  }
-  return non_minor_size * CeilOfRatio(tile_minor_bytes, kCacheLineSize);
-}
-
 // Super simple cost model that calculates the total number of cache line hits
 // for the tiled computation. This doesn't take into account cache re-use
 // between tiles or computation overheads, but it is a quick and easy heuristic
 // that seems to give ok results.
 // TODO(willfroom): Implement a cost model similar to
 // GpuPerformanceModelWithIndexingAnalysis.
-template <typename TiledComputationT>
-int64_t TotalCacheLineHits(
-    const TiledComputationT& tiling,
-    const absl::flat_hash_set<const HloInstruction*>& operands) {
-  int64_t per_tile_cost = 0;
-  for (const auto* root : tiling.roots()) {
-    per_tile_cost += PerTileCacheLines(*root);
-  }
-
-  for (const auto* inst : tiling.instructions()) {
-    // The tiling computation doesn't explicitly contain the parameter
-    // instructions so we instead just check which instructions are operands to
-    // the fusion.
-    if (operands.contains(inst->hlo())) {
-      per_tile_cost += PerTileCacheLines(*inst);
-    }
-  }
-
-  return tiling.num_output_tiles() * per_tile_cost;
-}
-
 int64_t EvaluateSymbolicCost(
     const ge::TiledHloComputation& symbolic_computation,
     llvm::ArrayRef<int64_t> candidate_tile_sizes,
@@ -216,6 +165,9 @@ int64_t EvaluateSymbolicCost(
     cost_inst(*root);
   }
   for (const auto* inst : symbolic_computation.instructions()) {
+    // The tiling computation doesn't explicitly contain the parameter
+    // instructions so we instead just check which instructions are operands to
+    // the fusion.
     if (operands.contains(inst->hlo())) {
       cost_inst(*inst);
     }

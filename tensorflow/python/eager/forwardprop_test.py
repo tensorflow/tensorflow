@@ -728,6 +728,9 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
       )
 
   @parameterized.parameters(dtypes.float32, dtypes.float64)
+  @test_util.run_without_tensor_float_32(
+      "Fails on sm90 where TF32 is the default"
+  )
   def testNestedForwardWithReusedMatrixIntermediate(self, dtype):
     x = constant_op.constant(0.7, dtype=dtype)
     with forwardprop.ForwardAccumulator(x, array_ops.ones_like(x)) as outer:

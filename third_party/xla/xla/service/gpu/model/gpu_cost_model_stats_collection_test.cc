@@ -52,7 +52,7 @@ class GpuCostModelStatsCollectionTest : public HloHardwareIndependentTestBase {
   GpuCostModelStatsCollection cost_model_stats_{
       TestGpuDeviceInfo::H100SXMDeviceInfo(),
       GpuHloCostAnalysis::Options{.count_multiple_input_accesses = true},
-      &mlir_context_, /*use_experimental_tiling=*/true,
+      &mlir_context_,
       /*enable_same_shape_multi_output_fusion=*/false};
 };
 

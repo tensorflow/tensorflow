@@ -21,6 +21,7 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
@@ -64,7 +65,8 @@ class CudaGraphAnnotationRegistry {
     kPre134ExecGraph = 1,
   };
 
-  // Which CUPTI record IDs are resolved, and in which KeySpace.
+  // Which graph and node IDs `CudaCommandBuffer` registers, and in which
+  // KeySpace. Readers look up by the IDs each CUPTI record carries.
   enum class TelemetryStrategy : uint8_t {
     kDisabled = 0,
     // CUDA 13.2-13.3: `(graphId, graphNodeId)` in `kPre134ExecGraph`.
@@ -206,14 +208,14 @@ class CudaGraphAnnotationRegistry {
   // so consumers can skip lookups cheaply while telemetry is off.
   bool empty() const;
 
-  // Returns or sets the active telemetry lookup strategy. Lock-free.
-  TelemetryStrategy strategy() const;
-  void SetStrategy(TelemetryStrategy strategy);
-
   Stats GetStats() const ABSL_LOCKS_EXCLUDED(mu_);
 
-  // For tests: drops all live and parked entries and resets `strategy()` to
-  // `kDisabled`, but keeps the active holds.
+  // For tests that can't reach the recorded CUgraph nodes: returns a copy of
+  // every live and parked annotation in `space`, sorted.
+  std::vector<std::string> GetNodeAnnotationsForTesting(KeySpace space) const
+      ABSL_LOCKS_EXCLUDED(mu_);
+
+  // For tests: drops all live and parked entries, but keeps the active holds.
   void ClearForTesting() ABSL_LOCKS_EXCLUDED(mu_);
 
  private:
@@ -262,7 +264,6 @@ class CudaGraphAnnotationRegistry {
   uint64_t park_dropped_in_session_ ABSL_GUARDED_BY(mu_) = 0;
   // `live_.size() + parked_.size()`, readable without the lock by `empty()`.
   std::atomic<size_t> num_graphs_{0};
-  std::atomic<TelemetryStrategy> strategy_{TelemetryStrategy::kDisabled};
 };
 
 }  // namespace stream_executor::gpu

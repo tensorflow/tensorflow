@@ -1911,6 +1911,10 @@ TEST_F(CublasLtGemmRewriteTest,
   if (IsRocm()) {
     GTEST_SKIP() << "TODO: Unsupported blas-lt epilogue on ROCM";
   }
+  if (IsSycl()) {
+    GTEST_SKIP()
+        << "TODO: Unsupported blas-lt epilogue not yet supported on SYCL";
+  }
   const char* hlo_text = R"(
 HloModule test
 
@@ -1978,6 +1982,10 @@ TEST_F(CublasLtGemmRewriteTest,
        ApproxGeluActivationWithAuxAndBitcastAndExtraDotUser) {
   if (IsRocm()) {
     GTEST_SKIP() << "TODO: Unsupported blas-lt epilogue on ROCM";
+  }
+  if (IsSycl()) {
+    GTEST_SKIP()
+        << "TODO: Unsupported blas-lt epilogue not yet supported on SYCL";
   }
   const char* hlo_text = R"(
 HloModule test
@@ -3698,6 +3706,117 @@ ENTRY main {
                        /*allow_mixed_precision=*/false);
   auto verify_status = verifier.Run(module.get());
   EXPECT_TRUE(verify_status.ok());
+}
+
+class NormalizeBatchDimensionsTest : public GemmRewriteTest {
+ protected:
+  void RunAndCheck(absl::string_view hlo, absl::string_view pattern) {
+    RunAndFilecheckHloRewrite(
+        hlo,
+        GemmRewriter(se::CudaComputeCapability::Hopper(),
+                     stream_executor::SemanticVersion{12, 4, 0}),
+        pattern);
+  }
+};
+
+TEST_F(NormalizeBatchDimensionsTest, KeepsCublasCompatibleLayouts) {
+  // The batch dimensions are physically sequential in both operands and in the
+  // output, so cuBLAS handles the dot as is and alpha folds into the GEMM.
+  RunAndCheck(R"(
+HloModule module
+
+ENTRY main {
+  p0 = f32[512,64,4,64]{1,3,2,0} parameter(0)
+  p1 = f32[512,42,4,64]{3,1,2,0} parameter(1)
+  dot = f32[512,4,64,42]{2,3,1,0} dot(p0, p1),
+      lhs_batch_dims={0,2}, lhs_contracting_dims={1},
+      rhs_batch_dims={0,2}, rhs_contracting_dims={3}
+  alpha = f32[] constant(0.25)
+  alpha_bcast = f32[512,4,64,42]{2,3,1,0} broadcast(alpha), dimensions={}
+  ROOT mul = f32[512,4,64,42]{2,3,1,0} multiply(dot, alpha_bcast)
+}
+)",
+              R"(
+; CHECK-NOT: bitcast
+; CHECK: %[[GEMM:.*]] = (f32[512,4,64,42]{2,3,1,0}, s8[{{[0-9]+}}]{0}) custom-call(%p0, %p1),
+; CHECK-SAME: custom_call_target="__cublas$lt$matmul"
+; CHECK-SAME: "alpha_real":0.25
+; CHECK-SAME: "lhs_batch_dimensions":["0","2"]
+; CHECK: ROOT {{.*}} = f32[512,4,64,42]{2,3,1,0} get-tuple-element(%[[GEMM]]), index=0
+)");
+}
+
+TEST_F(NormalizeBatchDimensionsTest, PassesManyBatchDimensionsToCublas) {
+  RunAndCheck(R"(
+HloModule module
+
+ENTRY main {
+  p0 = f32[2,3,2,2,3,16,32] parameter(0)
+  p1 = f32[2,3,2,2,3,32,8] parameter(1)
+  ROOT dot = f32[2,3,2,2,3,16,8] dot(p0, p1),
+      lhs_batch_dims={0,1,2,3,4}, lhs_contracting_dims={6},
+      rhs_batch_dims={0,1,2,3,4}, rhs_contracting_dims={5}
+}
+)",
+              R"(
+; CHECK-NOT: bitcast
+; CHECK: custom-call(%p0, %p1)
+; CHECK-SAME: "lhs_batch_dimensions":["0","1","2","3","4"]
+; CHECK-NOT: bitcast
+)");
+}
+
+TEST_F(NormalizeBatchDimensionsTest, TransposesPhysicallyNonAdjacentBatchDims) {
+  // The batch dimensions are logically adjacent, but dimension 1 is physically
+  // more major than dimension 0, so merging them needs a transpose.
+  RunAndCheck(R"(
+HloModule module
+
+ENTRY main {
+  p0 = f32[4,8,64,32]{2,3,0,1} parameter(0)
+  p1 = f32[4,8,32,16]{3,2,1,0} parameter(1)
+  ROOT dot = f32[4,8,64,16]{3,2,1,0} dot(p0, p1),
+      lhs_batch_dims={0,1}, lhs_contracting_dims={3},
+      rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+}
+)",
+              R"(
+; CHECK-NOT: reshape
+; CHECK-DAG: %[[TRANSPOSE:.*]] = f32[4,8,64,32]{3,2,1,0} transpose(%p0), dimensions={0,1,2,3}
+; CHECK-DAG: %[[LHS:.*]] = f32[32,64,32]{2,1,0} bitcast(%[[TRANSPOSE]])
+; CHECK-DAG: %[[RHS:.*]] = f32[32,32,16]{2,1,0} bitcast(%p1)
+; CHECK: %[[GEMM:.*]] = (f32[32,64,16]{2,1,0}, s8[{{[0-9]+}}]{0}) custom-call(%[[LHS]], %[[RHS]])
+; CHECK: %[[GTE:.*]] = f32[32,64,16]{2,1,0} get-tuple-element(%[[GEMM]]), index=0
+; CHECK: ROOT {{.*}} = f32[4,8,64,16]{3,2,1,0} bitcast(%[[GTE]])
+)");
+}
+
+TEST_F(NormalizeBatchDimensionsTest, MergesInterleavedBatchDimensions) {
+  // The lhs batch dimensions are interleaved with the non-contracting one, so
+  // they are moved to the front and merged.
+  RunAndCheck(R"(
+HloModule module
+
+ENTRY main {
+  p0 = f32[2,16,3,4,32] parameter(0)
+  p1 = f32[2,3,4,32,8] parameter(1)
+  ROOT dot = f32[2,3,4,16,8] dot(p0, p1),
+      lhs_batch_dims={0,2,3}, lhs_contracting_dims={4},
+      rhs_batch_dims={0,1,2}, rhs_contracting_dims={3}
+}
+)",
+              R"(
+; CHECK-NOT: reshape
+; CHECK-DAG: %[[TRANSPOSE:.*]] = f32[2,3,4,16,32]{4,3,2,1,0} transpose(%p0), dimensions={0,2,3,1,4}
+; CHECK-DAG: %[[LHS:.*]] = f32[24,16,32]{2,1,0} bitcast(%[[TRANSPOSE]])
+; CHECK-DAG: %[[RHS:.*]] = f32[24,32,8]{2,1,0} bitcast(%p1)
+; CHECK: %[[GEMM:.*]] = (f32[24,16,8]{2,1,0}, s8[{{[0-9]+}}]{0}) custom-call(%[[LHS]], %[[RHS]])
+; CHECK-SAME: "lhs_contracting_dimensions":["2"]
+; CHECK-SAME: "rhs_contracting_dimensions":["1"]
+; CHECK-SAME: "lhs_batch_dimensions":["0"]
+; CHECK: %[[GTE:.*]] = f32[24,16,8]{2,1,0} get-tuple-element(%[[GEMM]]), index=0
+; CHECK: ROOT {{.*}} = f32[2,3,4,16,8]{4,3,2,1,0} bitcast(%[[GTE]])
+)");
 }
 
 }  // namespace
