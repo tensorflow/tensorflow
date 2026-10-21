@@ -583,6 +583,9 @@ void ReferenceTranspose(absl::Span<int64_t const> dims,
                         absl::Span<int64_t const> output_striding,
                         absl::Span<const T> input, absl::Span<T> output,
                         int64_t input_base_offset_bytes = 0) {
+  if (input.empty() || output.empty()) {
+    return;
+  }
   std::vector<int64_t> output_dims = Permute(dims, permutation);
   std::vector<int64_t> indices(dims.size(), 0);
   std::vector<int64_t> output_indices(dims.size());
@@ -640,6 +643,7 @@ std::ostream& operator<<(std::ostream& os, const TransposeTestCase& test) {
 std::vector<TransposeTestCase> GetTransposeTestCases() {
   std::vector<TransposeTestCase> cases = {
       TransposeTestCase(/*dims=*/{}, /*permutation=*/{}),
+      TransposeTestCase(/*dims=*/{0, 4}, /*permutation=*/{1, 0}),
       TransposeTestCase(/*dims=*/{1}, /*permutation=*/{0}),
       TransposeTestCase(/*dims=*/{4}, /*permutation=*/{0}),
       TransposeTestCase(/*dims=*/{27}, /*permutation=*/{0}),
@@ -1006,11 +1010,15 @@ void ExecuteTestWithT(const TransposeTestCase& test, int parallelism,
       EXPECT_EQ(sum, output_total);
     }
 
+    int64_t max_input_chunk_bytes = 0;
+    int64_t max_output_chunk_bytes = 0;
     for (int chunk = 0; chunk < num_chunks; ++chunk) {
       int64_t input_offset = plan->InputChunkOffsetBytes(chunk);
       int64_t input_bytes = plan->InputChunkSizeBytes(chunk);
       int64_t output_offset = plan->OutputChunkOffsetBytes(chunk);
       int64_t output_bytes = plan->OutputChunkSizeBytes(chunk);
+      max_input_chunk_bytes = std::max(max_input_chunk_bytes, input_bytes);
+      max_output_chunk_bytes = std::max(max_output_chunk_bytes, output_bytes);
 
       std::vector<char> input_temp(input_bytes);
       std::memcpy(input_temp.data(),
@@ -1031,6 +1039,8 @@ void ExecuteTestWithT(const TransposeTestCase& test, int parallelism,
                            /*output_is_global=*/true);
       }
     }
+    EXPECT_EQ(plan->MaxInputChunkSizeBytes(), max_input_chunk_bytes);
+    EXPECT_EQ(plan->MaxOutputChunkSizeBytes(), max_output_chunk_bytes);
   } else {
     plan->Execute(
         reinterpret_cast<const char*>(input.data()) + input_base_offset_bytes,
@@ -1709,9 +1719,12 @@ void TestPackIntN(
 
     std::vector<char> local_chunked_output(output_size_bytes, 0);
     int64_t sum_chunk_bytes = 0;
+    int64_t max_in_chunk_bytes = 0;
+    int64_t max_out_chunk_bytes = 0;
     for (int i = 0; i < plan->Parallelism(); ++i) {
       const int64_t in_offset = plan->InputChunkOffsetBytes(i);
       const int64_t in_bytes = plan->InputChunkSizeBytes(i);
+      max_in_chunk_bytes = std::max(max_in_chunk_bytes, in_bytes);
       ASSERT_GE(input_base_offset_bytes + in_offset, 0);
       ASSERT_LE(input_base_offset_bytes + in_offset + in_bytes,
                 static_cast<int64_t>(input.size()));
@@ -1722,6 +1735,7 @@ void TestPackIntN(
       const int64_t out_bytes = plan->OutputChunkSizeBytes(i);
       EXPECT_EQ(out_offset, sum_chunk_bytes);
       sum_chunk_bytes += out_bytes;
+      max_out_chunk_bytes = std::max(max_out_chunk_bytes, out_bytes);
       std::vector<char> out_slot(out_bytes, 0);
       plan->ExecuteChunk(i, in_slot.data(), out_slot.data(),
                          /*input_is_global=*/false,
@@ -1730,6 +1744,8 @@ void TestPackIntN(
                   out_bytes);
     }
     EXPECT_EQ(sum_chunk_bytes, output_size_bytes);
+    EXPECT_EQ(plan->MaxInputChunkSizeBytes(), max_in_chunk_bytes);
+    EXPECT_EQ(plan->MaxOutputChunkSizeBytes(), max_out_chunk_bytes);
     EXPECT_EQ(local_chunked_output, expected_output);
   }
 }

@@ -200,7 +200,7 @@ class SplitVOpBase : public OpKernel {
   template <typename IndexType>
   std::tuple<IndexType, IndexType, IndexType> SetDims(
       const TensorShape& input_shape, const int32_t split_dim) const {
-    static_assert(std::is_integral<IndexType>::value,
+    static_assert(std::is_integral_v<IndexType>,
                   "IndexType must be an integer type");
     int32_t prefix_dim_size = 1;
     for (int i = 0; i < split_dim; ++i) {

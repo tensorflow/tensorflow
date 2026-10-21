@@ -41,7 +41,7 @@ class OpKernelContext;
 template <typename T>
 class DeepConv2DTransform {
  public:
-  virtual ~DeepConv2DTransform() {}
+  virtual ~DeepConv2DTransform() = default;
 
   virtual void GetFilterTransformMatrix(int64_t rows, int64_t cols,
                                         T* transform_matrix) const = 0;

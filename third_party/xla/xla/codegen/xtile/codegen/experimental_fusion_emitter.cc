@@ -2288,6 +2288,13 @@ absl::StatusOr<std::vector<TensorValue>> EmitScan(
 
   ABSL_ASSIGN_OR_RETURN(SmallVector<int64_t> unpadded_tile_sizes,
                    tiled_hlo_scan.operand(0)->tile().GetStaticTileSizes());
+  if (int64_t scan_dim_size = hlo_scan.operand(0)->shape().dimensions(scan_dim);
+      unpadded_tile_sizes[scan_dim] < scan_dim_size) {
+    return Internal(
+        "Scan %s is tiled with size %d along its scan dimension of size %d "
+        "without a loop over the scan dimension.",
+        hlo_scan.name(), unpadded_tile_sizes[scan_dim], scan_dim_size);
+  }
 
   for (int i = 0; i < num_operands; ++i) {
     const ge::TiledHloInstruction* input_operand = tiled_hlo_scan.operand(i);
