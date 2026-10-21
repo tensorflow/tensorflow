@@ -1530,22 +1530,6 @@ xla_cc_test(
     ],
 )
 
-cc_library(
-    name = "cublas_padding_requirements",
-    srcs = ["cublas_padding_requirements.cc"],
-    hdrs = ["cublas_padding_requirements.h"],
-    deps = [
-        "//xla:shape_util",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/stream_executor:device_description",
-        "//xla/stream_executor/cuda:cuda_compute_capability",
-        "//xla/stream_executor/rocm:rocm_compute_capability",
-        "@com_google_absl//absl/functional:overload",
-    ],
-)
-
 tf_proto_library(
     name = "kernel_reuse_cache_proto",
     srcs = ["kernel_reuse_cache.proto"],
@@ -1829,6 +1813,7 @@ cc_library(
         "//xla/backends/gpu/transforms:composite_rewriter",
         "//xla/backends/gpu/transforms:conv_rewriter",
         "//xla/backends/gpu/transforms:convert_triton_gemm_config",
+        "//xla/backends/gpu/transforms:cublas_pad_for_gemms",
         "//xla/backends/gpu/transforms:cudnn_custom_call_converter",
         "//xla/backends/gpu/transforms:deviceless_estimate_cub_sort_scratch_size",
         "//xla/backends/gpu/transforms:dot_algorithm_rewriter",
@@ -2422,7 +2407,6 @@ cc_library(
     ],
     deps = [
         ":alias_info",
-        ":cublas_padding_requirements",
         ":gpu_compiler",
         ":ir_emission_utils",
         ":metrics",
@@ -2439,7 +2423,6 @@ cc_library(
         "//xla/backends/gpu/transforms:conv_kind_assignment",
         "//xla/backends/gpu/transforms:conv_padding_legalization",
         "//xla/backends/gpu/transforms:conv_rewriter",
-        "//xla/backends/gpu/transforms:cublas_pad_for_gemms",
         "//xla/backends/gpu/transforms:cudnn_custom_call_compiler",
         "//xla/backends/gpu/transforms:cudnn_fused_conv_rewriter",
         "//xla/backends/gpu/transforms:cudnn_fusion_compiler",
@@ -2750,7 +2733,6 @@ cc_library(
     ],
     deps = [
         ":alias_info",
-        ":cublas_padding_requirements",
         ":gpu_compiler",
         ":target_constants",
         "//xla:util",
@@ -2759,7 +2741,6 @@ cc_library(
         "//xla/backends/gpu/transforms:algebraic_simplifier",
         "//xla/backends/gpu/transforms:conv_padding_legalization",
         "//xla/backends/gpu/transforms:conv_rewriter",
-        "//xla/backends/gpu/transforms:cublas_pad_for_gemms",
         "//xla/backends/gpu/transforms:cudnn_fused_conv_rewriter",
         "//xla/backends/gpu/transforms:triangular_solve_rewriter",
         "//xla/hlo/ir:hlo",
