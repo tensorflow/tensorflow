@@ -317,19 +317,31 @@ class PriorityFusionQueue {
 
   absl::StatusOr<std::vector<Priority>> ComputePriorities(
       const std::vector<HloInstruction*>& instructions) {
-    auto schedule_or_run = [this](std::function<void()> fn) {
-      if (thread_pool_) {
-        thread_pool_->Schedule(std::move(fn));
-      } else {
-        fn();
+    if (instructions.empty()) {
+      return std::vector<Priority>{};
+    }
+    // Fast-path single-instruction updates (the common case during incremental
+    // `UpdatePriorities()` after fusing a producer into a single consumer) and
+    // single-threaded runs inline on the calling thread. This avoids
+    // constructing an `absl::BlockingCounter`, scheduling a thread-pool task,
+    // and paying cross-thread wakeup latency for a single instruction.
+    if (instructions.size() == 1 || thread_pool_ == nullptr) {
+      std::vector<Priority> priorities;
+      priorities.reserve(instructions.size());
+      for (HloInstruction* instruction : instructions) {
+        ABSL_ASSIGN_OR_RETURN(Priority priority,
+                         CalculateProducerPriorityAsync(instruction).Await());
+        priorities.push_back(priority);
       }
-    };
+      return priorities;
+    }
+
     absl::BlockingCounter counter(instructions.size());
     std::vector<absl::StatusOr<Priority>> priorities_or_status(
         instructions.size());
 
     for (size_t i = 0; i < instructions.size(); ++i) {
-      schedule_or_run([&, i] {
+      thread_pool_->Schedule([&, i] {
         CalculateProducerPriorityAsync(instructions[i])
             .OnReady([&priorities_or_status, &counter,
                       i](const absl::StatusOr<Priority>& priority) {
@@ -412,8 +424,10 @@ class PriorityFusionQueue {
       ABSL_RETURN_IF_ERROR(UpdatePerformanceModelCache(instruction));
     }
 
-    ABSL_RETURN_IF_ERROR(ComputeAndSetPriorities(std::vector<HloInstruction*>{
-        to_update_priority_.begin(), to_update_priority_.end()}));
+    if (!to_update_priority_.empty()) {
+      ABSL_RETURN_IF_ERROR(ComputeAndSetPriorities(std::vector<HloInstruction*>{
+          to_update_priority_.begin(), to_update_priority_.end()}));
+    }
 
     to_update_priority_.clear();
     updated_fusions_.clear();
@@ -856,6 +870,14 @@ class PriorityFusionQueue {
       return FusionDecision::Forbid("the consumer is not fusible");
     }
 
+    // Check O(1) Triton eligibility flags before querying `ContainsScan` (which
+    // may lock and lookup in `fusion_info_cache_`).
+    if (!(IsGenericTritonFusion(*producer) ||
+          IsGenericTritonFusion(*consumer) ||
+          triton_heroless_fusion_enabled_)) {
+      return FusionDecision::Forbid("triton heroless fusion is not enabled");
+    }
+
     if (ContainsScan(*producer, &fusion_info_cache_) &&
         !IsGenericTritonFusion(*producer)) {
       return FusionDecision::Forbid(
@@ -865,12 +887,6 @@ class PriorityFusionQueue {
     if (ContainsScan(*consumer, &fusion_info_cache_)) {
       return FusionDecision::Forbid(
           "producer fusion into scan fusions is not supported");
-    }
-
-    if (!(IsGenericTritonFusion(*producer) ||
-          IsGenericTritonFusion(*consumer) ||
-          triton_heroless_fusion_enabled_)) {
-      return FusionDecision::Forbid("triton heroless fusion is not enabled");
     }
 
     if (auto fusion_decision = IsTritonSupported(*producer); !fusion_decision) {
@@ -1036,11 +1052,14 @@ class PriorityFusionQueue {
       HloInstruction* producer, HloInstruction* consumer) {
     {
       absl::MutexLock lock(can_fuse_cache_mutex_);
-      auto& producer_cache = can_fuse_cache_[producer];
-
-      auto it = producer_cache.find(consumer);
-      if (it != producer_cache.end()) {
-        return it->second;
+      // Use `find(producer)` rather than `operator[]` on cache lookup so a
+      // cache miss does not default-construct an empty inner `flat_hash_map`.
+      auto producer_it = can_fuse_cache_.find(producer);
+      if (producer_it != can_fuse_cache_.end()) {
+        auto it = producer_it->second.find(consumer);
+        if (it != producer_it->second.end()) {
+          return it->second;
+        }
       }
     }
     return CanFuseAsync(producer, consumer)
