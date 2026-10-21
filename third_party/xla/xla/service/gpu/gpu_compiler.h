@@ -176,11 +176,6 @@ class GpuCompiler : public LLVMCompiler {
   static std::unique_ptr<HloPassPipeline> GetCustomKernelRewriterPipeline(
       const stream_executor::DeviceDescription& device_description);
 
-  // Run right before GemmRewriter to add pads for gpublas gemms.
-  virtual void AddPaddingForGpublasGemms(
-      HloPassPipeline& pipeline, const DebugOptions& debug_options,
-      const se::GpuComputeCapability& gpu_version) = 0;
-
   // During compilation with device, stream_exec != null and autotune_results
   // == null. During deviceless AOT compilation, stream_exec == null and
   // autotune_results != null.

@@ -4202,17 +4202,37 @@ absl::Status AlgebraicSimplifierVisitor::RewriteBatchPlusContractingAsReduce(
   int64_t rhs_outer_dims = rhs->shape().dimensions().size() -
                            (dnums.rhs_batch_dimensions_size() +
                             dnums.rhs_contracting_dimensions_size());
-  CHECK(lhs_outer_dims == 0 || rhs_outer_dims == 0);
+  Shape broadcast_shape = new_lhs->shape();
+  if (lhs_outer_dims == 0) {
+    broadcast_shape = new_rhs->shape();
+  } else if (rhs_outer_dims > 0) {
+    std::vector<int64_t> broadcast_dims(dot->shape().dimensions().begin(),
+                                        dot->shape().dimensions().end());
+    std::vector<bool> dynamic_dims(dot->shape().dynamic_dimensions().begin(),
+                                   dot->shape().dynamic_dimensions().end());
+    const int64_t contracting_start =
+        dnums.lhs_batch_dimensions_size() + lhs_outer_dims;
+    for (int64_t i = contracting_start;
+         i < new_lhs->shape().dimensions().size(); ++i) {
+      broadcast_dims.push_back(new_lhs->shape().dimensions(i));
+      dynamic_dims.push_back(new_lhs->shape().is_dynamic_dimension(i));
+    }
+    broadcast_shape = ShapeUtil::MakeShape(dot->shape().element_type(),
+                                           broadcast_dims, dynamic_dims);
+    simplifier_->UpdateLayout(&broadcast_shape);
+  }
   if (rhs_outer_dims > 0) {
-    std::vector<int64_t> lhs_broadcast_dims(dnums.lhs_batch_dimensions_size());
+    const int64_t prefix_dims =
+        dnums.lhs_batch_dimensions_size() + lhs_outer_dims;
+    std::vector<int64_t> lhs_broadcast_dims(prefix_dims);
     absl::c_iota(lhs_broadcast_dims, 0);
     lhs_broadcast_dims.resize(lhs->shape().dimensions().size());
-    std::iota(lhs_broadcast_dims.begin() + dnums.lhs_batch_dimensions_size(),
-              lhs_broadcast_dims.end(),
-              dnums.lhs_batch_dimensions_size() + rhs_outer_dims);
+    std::iota(lhs_broadcast_dims.begin() + prefix_dims,
+              lhs_broadcast_dims.end(), prefix_dims + rhs_outer_dims);
     new_lhs = dot->AddInstruction(HloInstruction::CreateBroadcast(
-        new_rhs->shape(), new_lhs, lhs_broadcast_dims));
-  } else if (lhs_outer_dims > 0) {
+        broadcast_shape, new_lhs, lhs_broadcast_dims));
+  }
+  if (lhs_outer_dims > 0) {
     std::vector<int64_t> rhs_broadcast_dims(dnums.rhs_batch_dimensions_size());
     absl::c_iota(rhs_broadcast_dims, 0);
     rhs_broadcast_dims.resize(rhs->shape().dimensions().size());
@@ -4220,7 +4240,7 @@ absl::Status AlgebraicSimplifierVisitor::RewriteBatchPlusContractingAsReduce(
               rhs_broadcast_dims.end(),
               dnums.rhs_batch_dimensions_size() + lhs_outer_dims);
     new_rhs = dot->AddInstruction(HloInstruction::CreateBroadcast(
-        new_lhs->shape(), new_rhs, rhs_broadcast_dims));
+        broadcast_shape, new_rhs, rhs_broadcast_dims));
   }
 
   ABSL_ASSIGN_OR_RETURN(HloInstruction * new_dot,
@@ -4232,7 +4252,7 @@ absl::Status AlgebraicSimplifierVisitor::RewriteBatchPlusContractingAsReduce(
           ? (dot->shape().element_type() == F64 ? F64 : F32)
           : dot->shape().element_type();
   new_dot = AsType(new_dot, dot_type);
-  const int64_t outer_dims = std::max(rhs_outer_dims, lhs_outer_dims);
+  const int64_t outer_dims = lhs_outer_dims + rhs_outer_dims;
   absl::c_iota(reduce_dims, outer_dims + dnums.lhs_batch_dimensions_size());
   new_dot = AddReduce(new_dot, reduce_dims, dot_type);
   new_dot = AsType(new_dot, dot->shape().element_type());

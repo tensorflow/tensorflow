@@ -319,7 +319,6 @@ xla_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",  # fixdeps: keep
-        "@tsl//tsl/platform:casts",
     ] + if_cuda_or_rocm_is_configured([
         ":nccl_or_rccl_collectives",
     ]),

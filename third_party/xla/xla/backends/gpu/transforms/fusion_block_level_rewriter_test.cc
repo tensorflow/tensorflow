@@ -29,6 +29,7 @@ License.
 #include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
+#include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -408,6 +409,12 @@ ENTRY entry {
 
   const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_TRUE(HasTritonBlockLevelFusionConfig(root));
+  ASSERT_OK_AND_ASSIGN(GpuBackendConfig backend_config,
+                       root->backend_config<GpuBackendConfig>());
+  EXPECT_THAT(backend_config.fusion_backend_config()
+                  .block_level_fusion_config()
+                  .sequential_tile_sizes(),
+              testing::SizeIs(1));
 }
 
 TEST_P(FusionBlockLevelRewriterTest, DoesNotRewriteScanFusionWithCarryOutput) {

@@ -53,8 +53,7 @@ namespace internal {
 
 template <typename Scalar, typename IntResultType, typename Generator>
 struct StochasticRoundToIntOp {
-  static_assert(std::is_integral<IntResultType>::value,
-                "Integer type expected");
+  static_assert(std::is_integral_v<IntResultType>, "Integer type expected");
   typedef tensorflow::random::UniformDistribution<Generator, Scalar>
       Distribution;
   const Scalar max =

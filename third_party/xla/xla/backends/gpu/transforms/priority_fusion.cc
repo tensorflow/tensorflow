@@ -856,9 +856,15 @@ class PriorityFusionQueue {
       return FusionDecision::Forbid("the consumer is not fusible");
     }
 
-    if (ContainsScan(*producer, &fusion_info_cache_)) {
+    if (ContainsScan(*producer, &fusion_info_cache_) &&
+        !IsGenericTritonFusion(*producer)) {
       return FusionDecision::Forbid(
-          "epilogue fusion for scan is not supported");
+          "epilogue fusion for a non-Triton scan is not supported");
+    }
+
+    if (ContainsScan(*consumer, &fusion_info_cache_)) {
+      return FusionDecision::Forbid(
+          "producer fusion into scan fusions is not supported");
     }
 
     if (!(IsGenericTritonFusion(*producer) ||

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <array>
+#include <cstddef>
 #include <string>
 
 #include "absl/container/inlined_vector.h"

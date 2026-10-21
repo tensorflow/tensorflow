@@ -1027,7 +1027,11 @@ cc_library(
 tf_kernel_library(
     name = "bcast_ops",
     prefix = "bcast_ops",
-    deps = ARRAY_DEPS,
+    deps = ARRAY_DEPS + [
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(
@@ -1979,10 +1983,8 @@ tf_cuda_cc_test(
         ":ops_testutil",
         ":ops_util",
         "//tensorflow/cc:cc_ops",
-        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -2725,7 +2727,13 @@ tf_kernel_library(
 tf_kernel_library(
     name = "barrier_ops",
     prefix = "barrier_ops",
-    deps = DATA_FLOW_DEPS,
+    deps = DATA_FLOW_DEPS + [
+        "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
 )
 
 tf_kernel_library(
@@ -3881,7 +3889,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "cross_op",
     prefix = "cross_op",
-    deps = MATH_DEPS,
+    deps = MATH_DEPS + [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(
@@ -4361,17 +4372,17 @@ tf_kernel_library(
         ":conv_2d",
         ":conv_3d",
         ":conv_grad_shape_utils",
-        ":cwise_lib_hdrs",
         ":fill_functor",
         ":fused_eigen_output_kernels",
         ":loose_headers",
         ":ops_util",
-        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/platform:tensor_float_32_hdr_lib",
         "//tensorflow/core/profiler/lib:scoped_annotation",
         "//tensorflow/core/protobuf:autotuning_proto_cc",
         "//tensorflow/core/util:image_resizer_state",
@@ -4379,11 +4390,21 @@ tf_kernel_library(
         "@com_google_absl//absl/base:dynamic_annotations",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@eigen_archive//:eigen3",
+        "@local_config_cuda//cuda:cudnn_header",
+        "@xla//xla/stream_executor:data_type",
+        "@xla//xla/stream_executor:device_memory",
+        "@xla//xla/stream_executor:dnn",
+        "@xla//xla/stream_executor:scratch_allocator",
+        "@xla//xla/stream_executor:stream",
+        "@xla//xla/stream_executor/gpu:asm_compiler",
+        "@xla//xla/stream_executor/gpu:gpu_asm_opts",
         "@xla//xla/tsl/framework/contraction:eigen_contraction_kernel",
+        "@xla//xla/tsl/protobuf:dnn_proto_cc",
     ] + if_cuda([
         ":numeric_options_utils",
         "@xla//xla/stream_executor/cuda:cublas_plugin",
@@ -5774,7 +5795,12 @@ STATE_DEPS = [
 tf_kernel_library(
     name = "count_up_to_op",
     prefix = "count_up_to_op",
-    deps = STATE_DEPS + [":variable_ops"],
+    deps = STATE_DEPS + [
+        ":variable_ops",
+        "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(
