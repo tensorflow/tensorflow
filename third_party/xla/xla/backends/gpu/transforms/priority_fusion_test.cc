@@ -1725,7 +1725,7 @@ TEST_F(PriorityFusionRocmMemoryBandwidthTest, MemoryBandwidthTipsReduceFusion) {
   EXPECT_EQ(RunAndCountFusions(kHlo, kFixedBandwidth), 2);
 }
 
-TEST_F(HerolessPriorityFusionTest, DoNotFuseScanEpilogue) {
+TEST_F(HerolessPriorityFusionTest, FuseScanEpilogue) {
   constexpr absl::string_view kHlo = R"(
 HloModule module
 
@@ -1760,9 +1760,11 @@ ENTRY entry {
   PriorityFusion priority_fusion(nullptr, device_info_, &alias_info_, options,
                                  &mlir_context_);
   RunAndFilecheckHloRewrite(kHlo, std::move(priority_fusion), R"(
+CHECK: %fused_computation{{.*}} (
+CHECK: scan(
+CHECK: ROOT %[[ADD:.*]] = f32[100]{0} add(
 CHECK: ENTRY
-CHECK: %[[SCAN_FUSION:.*]] = f32[100]{0} fusion(%{{.*}}, %{{.*}}), kind=kCustom
-CHECK: ROOT %[[EPILOGUE_FUSION:.*]] = f32[100]{0} fusion(%[[SCAN_FUSION]]), kind=kCustom
+CHECK: ROOT %fusion = f32[100]{0} fusion(%{{.*}}, %{{.*}}), kind=kCustom, calls=%fused_computation
       )");
 }
 

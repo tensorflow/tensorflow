@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/algebraic_simplifier.h"
 #include "xla/backends/gpu/transforms/conv_padding_legalization.h"
 #include "xla/backends/gpu/transforms/conv_rewriter.h"
-#include "xla/backends/gpu/transforms/cublas_pad_for_gemms.h"
 #include "xla/backends/gpu/transforms/cudnn_fused_conv_rewriter.h"
 #include "xla/backends/gpu/transforms/triangular_solve_rewriter.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -50,7 +49,6 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/float_support.h"
 #include "xla/service/gpu/alias_info.h"
-#include "xla/service/gpu/cublas_padding_requirements.h"
 #include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/gpu/llvm_gpu_backend/amdgpu_backend.h"
 #include "xla/service/gpu/target_constants.h"
@@ -175,20 +173,6 @@ absl::Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
           .status());
 
   return absl::OkStatus();
-}
-
-void AMDGPUCompiler::AddPaddingForGpublasGemms(
-    HloPassPipeline& pipeline, const DebugOptions& debug_options,
-    const se::GpuComputeCapability& gpu_version) {
-  if (!debug_options.xla_gpu_experimental_disable_binary_libraries()) {
-    for (const auto& req : HipblasPaddingRequirements) {
-      pipeline.AddPass<CublasPadForGemms>(gpu_version, req.data_type,
-                                          req.multiple_of);
-    }
-    // Padding a gemm operand that's a constant results in pad(constant).  Run
-    // constant-folding to simplify this into a new constant.
-    pipeline.AddPass<HloConstantFolding>();
-  }
 }
 
 absl::Status AMDGPUCompiler::OptimizeHloPostLayoutAssignment(

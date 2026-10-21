@@ -75,6 +75,7 @@ namespace stream_executor {
 // | Address                          | Role                | Deallocate | Map | UnMap |
 // +----------------------------------+---------------------+------------+-----+-------+
 // | Allocate() return                | allocator address   | yes        | yes | no    |
+// | Allocate() return, kHost         | host address        | yes        | no  | no    |
 // | mapped Allocate() return         | allocator address   | yes        | yes | no    |
 // | reservation slice from Map()     | reservation address | no         | no  | yes   |
 // +----------------------------------+---------------------+------------+-----+-------+
@@ -120,6 +121,14 @@ namespace stream_executor {
 // When the sequence completes, dropping the ScopedMapping objects performs the
 // real unmap, then the allocator releases any owned reservation and raw
 // physical memory.
+//
+// When a host allocator is set (see the constructor), MemorySpace::kHost
+// allocations are not VMM allocations: Allocate() serves them from it without
+// charging the PA budget, Map() rejects them, and Deallocate() returns them to
+// it immediately instead of deferring them. AllowsAsynchronousDeallocation() is
+// therefore true only if the host allocator's is, and such a host allocator
+// must order reuse on the same per-device stream as this allocator, as the BFC
+// path does with the compute stream.
 //
 // Stale records are also the fast reuse path. Allocate() first looks for a
 // compatible stale allocator address before creating new VMM state. Map() does
@@ -175,7 +184,8 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
 
   // Allocates raw physical memory and maps it into a caller-owned
   // MemoryReservation range.
-  // `allocation_size` and `mapping_size` must be equal.
+  // `allocation_size` and `mapping_size` must be equal, and `memory_space`
+  // must not be MemorySpace::kHost.
   //
   // The mapped reservation slice is returned and is treated as the allocator
   // address. The caller releases it with Deallocate(), may use it as a Map()
@@ -213,7 +223,8 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
   // alias, the caller must release that alias with UnMap() before calling
   // Deallocate(). The caller can call this function while device kernels are
   // still consuming the data; the actual release is deferred until earlier work
-  // on the device stream completes.
+  // on the device stream completes. MemorySpace::kHost allocations are the
+  // exception; see the class comment.
   absl::Status Deallocate(int device_ordinal, DeviceAddressBase mem) override;
 
   // Adds a reservation-address alias for an existing allocator address by
@@ -247,8 +258,12 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
   absl::Status UnMap(int device_ordinal, MemoryReservation* reservation,
                      uint64_t reservation_offset, uint64_t size);
 
-  // Returns true: this allocator supports asynchronous deallocation.
-  bool AllowsAsynchronousDeallocation() const override { return true; }
+  // Returns true unless the host allocator does not allow asynchronous
+  // deallocation; see the class comment.
+  bool AllowsAsynchronousDeallocation() const override {
+    return host_allocator_ == nullptr ||
+           host_allocator_->AllowsAsynchronousDeallocation();
+  }
 
   // Returns the stream for the given device ordinal.
   absl::StatusOr<Stream*> GetStream(int device_ordinal) override;
@@ -261,16 +276,16 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
   absl::StatusOr<StreamExecutor*> GetStreamExecutor(int device_ordinal) const;
 
   // Returns the MemoryAllocation (physical memory) backing the given virtual
-  // address on the specified device, or nullptr if the address was not
-  // allocated by this allocator. The returned pointer is valid until the
-  // allocation is deallocated.
+  // address on the specified device, or nullptr if the address is not a VMM
+  // allocation of this allocator (MemorySpace::kHost allocations are not). The
+  // returned pointer is valid until the allocation is deallocated.
   MemoryAllocation* GetRawAllocation(int device_ordinal,
                                      DeviceAddressBase addr) const;
 
   // Returns the MemoryReservation (virtual address range) for the given
-  // virtual address on the specified device, or nullptr if the address was not
-  // allocated by this allocator. The returned pointer is valid until the
-  // allocation is deallocated.
+  // virtual address on the specified device, or nullptr if the address is not
+  // a VMM allocation of this allocator (MemorySpace::kHost allocations are
+  // not). The returned pointer is valid until the allocation is deallocated.
   MemoryReservation* GetReservation(int device_ordinal,
                                     DeviceAddressBase addr) const;
 
@@ -497,11 +512,22 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
     // Active/stale state is stored in the record.
     absl::btree_map<uintptr_t, AllocationRecord*> reservation_records
         ABSL_GUARDED_BY(mu);
+
+    // Addresses returned by Allocate() from host_allocator_, keyed by start
+    // address, so Deallocate() can return them there.
+    absl::flat_hash_map<uintptr_t, DeviceAddressBase> host_allocations
+        ABSL_GUARDED_BY(mu);
   };
 
+  // `host_allocator`, if set, serves Allocate() requests for
+  // MemorySpace::kHost instead of device VMM memory, which the CPU cannot
+  // access; see the class comment. It is called without this allocator's locks
+  // held, so it must be thread-safe. Without it, MemorySpace::kHost requests
+  // are served from device VMM memory like any other memory space.
   explicit DeviceAddressVmmAllocator(
       const Platform* platform,
-      std::optional<int64_t> reclaim_exempt_memory_space = std::nullopt);
+      std::optional<int64_t> reclaim_exempt_memory_space = std::nullopt,
+      std::unique_ptr<DeviceAddressAllocator> host_allocator = nullptr);
 
   // Validates no duplicate ordinals in `devices`, then iterates over each
   // device config, constructs a PerDeviceState (setting executor, stream,
@@ -745,6 +771,9 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
 
   // This space is never reclaimed and is freed only at executable destruction.
   const std::optional<int64_t> reclaim_exempt_memory_space_;
+
+  // Serves MemorySpace::kHost requests when set. See the constructor.
+  const std::unique_ptr<DeviceAddressAllocator> host_allocator_;
 };
 
 }  // namespace stream_executor

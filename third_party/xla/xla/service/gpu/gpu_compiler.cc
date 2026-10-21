@@ -100,6 +100,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/composite_rewriter.h"
 #include "xla/backends/gpu/transforms/conv_rewriter.h"
 #include "xla/backends/gpu/transforms/convert_triton_gemm_config.h"
+#include "xla/backends/gpu/transforms/cublas_pad_for_gemms.h"
 #include "xla/backends/gpu/transforms/cudnn_custom_call_converter.h"
 #include "xla/backends/gpu/transforms/deviceless_estimate_cub_sort_scratch_size.h"
 #include "xla/backends/gpu/transforms/dot_algorithm_rewriter.h"
@@ -2073,6 +2074,13 @@ void AddGemmRewriterPasses(HloPassPipeline& pipeline,
   // above.
   pipeline.AddPass<DotAlgorithmRewriter>(gpu_version);
 
+  if (!debug_options.xla_gpu_experimental_disable_binary_libraries()) {
+    pipeline.AddPass<CublasPadForGemms>(gpu_version);
+    // Padding a gemm operand that's a constant results in pad(constant). Run
+    // constant-folding to simplify this into a new constant.
+    pipeline.AddPass<HloConstantFolding>();
+  }
+
   pipeline.AddPass<GemmRewriter>(
       gpu_version, toolkit_version,
       GemmRewriterOptions{GemmRewriterOptions::DType::kNonFp8Only, bias_mode});
@@ -2175,7 +2183,6 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     }
 
     // Rewrite GEMMs into custom calls.
-    AddPaddingForGpublasGemms(pipeline, debug_options, gpu_version);
     AddGemmRewriterPasses(
         pipeline, debug_options, gpu_version,
         gpu_target_config.device_description.runtime_version());
@@ -2427,24 +2434,14 @@ absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
   return std::move(module);
 }
 
+namespace {
+
 void GpuCollectiveBufferAnalysis(
     HloModule* module, const HloAliasAnalysis& alias_analysis,
-    std::function<void(HloInstruction*, const ShapeIndex&)> add_index_to_copy,
-    const GpuTopology* gpu_topology) {
+    std::function<void(HloInstruction*, const ShapeIndex&)> add_index_to_copy) {
   const auto& opts = module->config().debug_options();
   VLOG(2) << "Running unified GPU Custom Buffer Analysis for collective memory "
              "spaces";
-
-  bool allow_persistent_symmetric_memory = false;
-  if (opts.xla_gpu_enable_persistent_symmetric_memory()) {
-    int64_t module_device_count =
-        module->config().replica_count() * module->config().num_partitions();
-    if (gpu_topology == nullptr ||
-        (gpu_topology->number_of_devices() > 0 &&
-         module_device_count == gpu_topology->number_of_devices())) {
-      allow_persistent_symmetric_memory = true;
-    }
-  }
 
   for (const HloBuffer& buffer : alias_analysis.buffers()) {
     // Entry inputs or constants contained in this buffer
@@ -2502,24 +2499,6 @@ void GpuCollectiveBufferAnalysis(
     // Special Copy Insertion Case A: Entry input
     if (is_hlo_buffer_s1 && !entry_input_values.empty()) {
       for (const HloValue* input_value : entry_input_values) {
-        if (allow_persistent_symmetric_memory &&
-            input_value->defining_instruction()->opcode() ==
-                HloOpcode::kParameter) {
-          const Shape& shape = input_value->shape();
-          int64_t param_no =
-              input_value->defining_instruction()->parameter_number();
-          if (shape.has_layout() &&
-              shape.layout().memory_space() ==
-                  static_cast<int64_t>(MemorySpaceColor::kCollective) &&
-              module->input_output_alias_config().ParameterHasAlias(
-                  param_no, input_value->defining_index())) {
-            VLOG(2)
-                << "Skipping Case A copy insertion for S1 aliased persistent "
-                   "parameter: "
-                << input_value->ToShortString();
-            continue;
-          }
-        }
         VLOG(2) << "Special Copy Insertion Case A: Entry input "
                 << input_value->ToShortString()
                 << " is associated with S1 HloBuffer. Inserting copy.";
@@ -2550,18 +2529,6 @@ void GpuCollectiveBufferAnalysis(
               continue;
             }
 
-            if (allow_persistent_symmetric_memory && pos.shape().has_layout() &&
-                pos.shape().layout().memory_space() ==
-                    static_cast<int64_t>(MemorySpaceColor::kCollective) &&
-                module->input_output_alias_config().OutputHasAlias(pos.index)) {
-              VLOG(2)
-                  << "Skipping Case B copy insertion for S1 aliased entry ROOT "
-                     "at index "
-                  << pos.index.ToString();
-              marked_for_copy = true;
-              continue;
-            }
-
             VLOG(2) << "Marking ENTRY ROOT instruction for S1 output copy: "
                     << pos.instruction->name() << " at index "
                     << pos.index.ToString();
@@ -2581,10 +2548,7 @@ void GpuCollectiveBufferAnalysis(
   }
 }
 
-namespace {
-
 absl::Status RunPostSchedulingCopyInsertion(HloModule* module,
-                                            const GpuTopology* gpu_topology,
                                             const GpuAliasInfo* alias_info) {
   // We run a separate pass of copy elision here because the sequential ordering
   // from the HLO schedule potentially allows for more copies to be eliminated.
@@ -2613,11 +2577,10 @@ absl::Status RunPostSchedulingCopyInsertion(HloModule* module,
   ABSL_RETURN_IF_ERROR(copy_insertion.CopyInsertion::AddSpecialCaseCopies(
       module, /*execution_threads=*/{},
       /*custom_buffer_analysis=*/
-      [gpu_topology](HloModule* mod, const HloAliasAnalysis& alias_analysis,
-                     std::function<void(HloInstruction*, const ShapeIndex&)>
-                         add_index_to_copy) {
-        GpuCollectiveBufferAnalysis(mod, alias_analysis, add_index_to_copy,
-                                    gpu_topology);
+      [](HloModule* mod, const HloAliasAnalysis& alias_analysis,
+         std::function<void(HloInstruction*, const ShapeIndex&)>
+             add_index_to_copy) {
+        GpuCollectiveBufferAnalysis(mod, alias_analysis, add_index_to_copy);
       }));
 
   ABSL_RETURN_IF_ERROR(HloDCE().Run(module).status());
@@ -3228,8 +3191,7 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
     const GpuTopology& gpu_topology, const GpuAliasInfo* alias_info,
     mlir::MLIRContext* mlir_context, tsl::thread::ThreadPool* thread_pool) {
   tsl::profiler::TraceMe traceme("RunPostSchedulingPipelines");
-  ABSL_RETURN_IF_ERROR(
-      RunPostSchedulingCopyInsertion(module, &gpu_topology, alias_info));
+  ABSL_RETURN_IF_ERROR(RunPostSchedulingCopyInsertion(module, alias_info));
   {
     HloPassPipeline post_scheduler_pipeline("post-scheduler-xla-transforms");
     post_scheduler_pipeline.AddPass<ApplyXlaTransforms>(

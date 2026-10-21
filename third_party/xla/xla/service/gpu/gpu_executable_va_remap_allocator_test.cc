@@ -33,9 +33,14 @@ limitations under the License.
 #include "absl/synchronization/blocking_counter.h"
 #include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/command.h"
+#include "xla/backends/gpu/runtime/command_buffer_thunk.h"
+#include "xla/backends/gpu/runtime/command_executor.h"
+#include "xla/backends/gpu/runtime/memset_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
 #include "xla/executable_run_options.h"
+#include "xla/layout.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_executable_buffer_allocator.h"
@@ -1432,6 +1437,196 @@ TEST_F(GpuExecutableVaRemapAllocatorTest,
   }
   all_scopes_held.Wait();
   release_scopes.Notify();
+}
+
+// Returns a thunk executor with one command buffer thunk that writes each of
+// `allocations`, so the allocator constructor collects them as command buffer
+// allocations.
+absl::StatusOr<ThunkExecutor> MakeCommandBufferThunkExecutor(
+    absl::Span<const BufferAllocation* const> allocations) {
+  CommandSequence commands;
+  for (const BufferAllocation* allocation : allocations) {
+    commands.Append(std::make_unique<Memset32BitValueThunk>(
+        Thunk::ThunkInfo(), /*value=*/0,
+        BufferAllocation::Slice(allocation, 0, allocation->size())));
+  }
+  ABSL_ASSIGN_OR_RETURN(CommandExecutor executor,
+                   CommandExecutor::Create(
+                       std::move(commands),
+                       CommandExecutor::SynchronizationMode::kSerialize));
+  ThunkSequence thunks;
+  thunks.push_back(std::make_unique<CommandBufferThunk>(
+      std::move(executor), Thunk::ThunkInfo(), /*devices_in_process=*/1));
+  return ThunkExecutor(std::move(thunks));
+}
+
+constexpr int64_t kHostColor = Layout::kHostMemorySpace;
+
+absl::StatusOr<GpuExecutableBufferAllocator::ParameterBuffer> NoParameters(
+    const BufferAllocation& /*allocation*/) {
+  return absl::InternalError("unexpected parameter");
+}
+
+// Control for the host memory space tests below: the same thunk executor
+// exposes a device temp to the constructor.
+TEST_F(GpuExecutableVaRemapAllocatorTest,
+       SkipTempCollectsDeviceTempFromCommandBufferThunk) {
+  BufferAllocation device_temp(/*index=*/0, /*size=*/1024, /*color=*/0);
+  ASSERT_TRUE(device_temp.IsPreallocatedTempBuffer());
+  std::vector<const BufferAllocation*> allocations = {&device_temp};
+
+  ASSERT_OK_AND_ASSIGN(ThunkExecutor thunk_executor,
+                       MakeCommandBufferThunkExecutor(allocations));
+  DebugOptions debug_options;
+  debug_options.set_xla_gpu_command_buffer_update_mode(DebugOptions::SKIP_TEMP);
+  GpuExecutableVaRemapAllocator allocator(
+      "test", allocations, ShapeUtil::MakeShape(F32, {256}), &debug_options,
+      &thunk_executor, /*num_devices=*/1);
+  EXPECT_EQ(allocator.command_buffer_allocation_count(), 1);
+}
+
+TEST_F(GpuExecutableVaRemapAllocatorTest,
+       SkipTempDoesNotRemapHostMemorySpaceTemp) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<TestVmmAllocator> vmm_allocator,
+                       CreateAllocator());
+
+  constexpr int64_t kBufferSize = 1024;
+  BufferAllocation host_temp(/*index=*/0, kBufferSize, kHostColor);
+  ASSERT_TRUE(host_temp.IsPreallocatedTempBuffer());
+  std::vector<const BufferAllocation*> allocations = {&host_temp};
+
+  ASSERT_OK_AND_ASSIGN(ThunkExecutor thunk_executor,
+                       MakeCommandBufferThunkExecutor(allocations));
+  DebugOptions debug_options;
+  debug_options.set_xla_gpu_command_buffer_update_mode(DebugOptions::SKIP_TEMP);
+  GpuExecutableVaRemapAllocator allocator(
+      "test", allocations, ShapeUtil::MakeShape(F32, {256}), &debug_options,
+      &thunk_executor, /*num_devices=*/1);
+  EXPECT_EQ(allocator.command_buffer_allocation_count(), 0);
+
+  for (int run = 0; run < 2; ++run) {
+    ASSERT_OK_AND_ASSIGN(ExecutionResult result,
+                         RunExecution(allocator, vmm_allocator.get(),
+                                      NoParameters, allocations));
+    EXPECT_FALSE(result.va_remap_enabled) << "run " << run;
+    ASSERT_TRUE(result.persistent.has_value()) << "run " << run;
+    EXPECT_THAT(*result.persistent, IsEmpty()) << "run " << run;
+    EXPECT_EQ(result.address_during_execute.opaque(),
+              result.owning_address_after_execute.opaque())
+        << "run " << run;
+  }
+}
+
+TEST_F(GpuExecutableVaRemapAllocatorTest,
+       SkipTempRemapsDeviceTempButNotHostMemorySpaceTemp) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<TestVmmAllocator> vmm_allocator,
+                       CreateAllocator());
+
+  constexpr int64_t kBufferSize = 1024;
+  BufferAllocation device_temp(/*index=*/0, kBufferSize, /*color=*/0);
+  BufferAllocation host_temp(/*index=*/1, kBufferSize, kHostColor);
+  std::vector<const BufferAllocation*> allocations = {&device_temp, &host_temp};
+
+  ASSERT_OK_AND_ASSIGN(ThunkExecutor thunk_executor,
+                       MakeCommandBufferThunkExecutor(allocations));
+  DebugOptions debug_options;
+  debug_options.set_xla_gpu_command_buffer_update_mode(DebugOptions::SKIP_TEMP);
+  GpuExecutableVaRemapAllocator allocator(
+      "test", allocations, ShapeUtil::MakeShape(F32, {256}), &debug_options,
+      &thunk_executor, /*num_devices=*/1);
+  EXPECT_EQ(allocator.command_buffer_allocation_count(), 1);
+
+  GpuExecutableBufferAllocator::BufferAllocToDeviceMemoryMap globals;
+  const void* device_temp_address = nullptr;
+  TestMemoryReservation* va_reservation = nullptr;
+  for (int run = 0; run < 2; ++run) {
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<GpuExecutableBufferAllocator::ExecutionScope> scope,
+        allocator.CreateExecutionScope(&service_run_options_,
+                                       vmm_allocator.get(),
+                                       /*device_ordinal=*/0));
+    EXPECT_TRUE(scope->va_remap_enabled()) << "run " << run;
+    ASSERT_OK_AND_ASSIGN(BufferAllocations buffer_allocations,
+                         scope->GenerateBufferAllocations(
+                             &service_run_options_, NoParameters, &globals,
+                             vmm_allocator.get(), /*device_ordinal=*/0));
+    const void* host_temp_address =
+        buffer_allocations.GetDeviceAddress(1).opaque();
+
+    ASSERT_OK(scope->ExecuteWithBufferAllocations(
+        buffer_allocations, /*device_ordinal=*/0,
+        [&](const BufferAllocations& execution_buffers,
+            std::optional<absl::Span<const BufferAllocation::Index>>
+                persistent_alloc_indices) {
+          EXPECT_THAT(persistent_alloc_indices, Optional(ElementsAre(0)))
+              << "run " << run;
+          const void* device_address =
+              execution_buffers.GetDeviceAddress(0).opaque();
+          if (run == 0) {
+            device_temp_address = device_address;
+            va_reservation =
+                vmm_allocator->FindReservationContaining(device_address);
+            if (va_reservation == nullptr) {
+              return absl::InternalError(
+                  "device temp is outside the VA reservation");
+            }
+          }
+          EXPECT_EQ(device_address, device_temp_address) << "run " << run;
+          const void* host_address =
+              execution_buffers.GetDeviceAddress(1).opaque();
+          EXPECT_EQ(host_address, host_temp_address) << "run " << run;
+          EXPECT_FALSE(va_reservation->Contains(host_address)) << "run " << run;
+          return absl::OkStatus();
+        }));
+
+    std::set<se::DeviceAddressBase> no_live_addresses;
+    ASSERT_OK(buffer_allocations.TearDown(no_live_addresses, allocations));
+  }
+
+  ASSERT_NE(va_reservation, nullptr);
+  ASSERT_OK(vmm_allocator->SynchronizePendingOperations(/*device_ordinal=*/0));
+  EXPECT_EQ(va_reservation->active_mapping_count(), 0);
+}
+
+TEST_F(GpuExecutableVaRemapAllocatorTest,
+       SkipProfiledDoesNotMapStableHostMemorySpaceOutput) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<TestVmmAllocator> vmm_allocator,
+                       CreateAllocator());
+
+  constexpr int64_t kBufferSize = 1024;
+  BufferAllocation host_output(/*index=*/0, kBufferSize, kHostColor);
+  host_output.set_maybe_live_out(true);
+  std::vector<const BufferAllocation*> allocations = {&host_output};
+
+  ASSERT_OK_AND_ASSIGN(ThunkExecutor thunk_executor,
+                       MakeCommandBufferThunkExecutor(allocations));
+  DebugOptions debug_options;
+  debug_options.set_xla_gpu_command_buffer_update_mode(
+      DebugOptions::SKIP_PROFILED);
+  GpuExecutableVaRemapAllocator allocator(
+      "test", allocations, ShapeUtil::MakeShape(F32, {256}), &debug_options,
+      &thunk_executor, /*num_devices=*/1);
+  EXPECT_EQ(allocator.command_buffer_allocation_count(), 0);
+
+  // The host output keeps the same address on every execution, so it would be
+  // selected by profiling if it were a candidate.
+  const void* host_output_address = nullptr;
+  for (int run = 0; run < 5; ++run) {
+    ASSERT_OK_AND_ASSIGN(ExecutionResult result,
+                         RunExecution(allocator, vmm_allocator.get(),
+                                      NoParameters, allocations));
+    EXPECT_FALSE(result.va_remap_enabled) << "run " << run;
+    ASSERT_TRUE(result.persistent.has_value()) << "run " << run;
+    EXPECT_THAT(*result.persistent, IsEmpty()) << "run " << run;
+    if (host_output_address == nullptr) {
+      host_output_address = result.address_during_execute.opaque();
+    }
+    EXPECT_EQ(result.address_during_execute.opaque(), host_output_address)
+        << "run " << run;
+    EXPECT_EQ(result.address_during_execute.opaque(),
+              result.owning_address_after_execute.opaque())
+        << "run " << run;
+  }
 }
 
 }  // namespace
