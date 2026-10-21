@@ -149,6 +149,7 @@ struct GraphNode {
   double diff_score;
   std::string key;
   int64_t anchor_id;
+  std::string execution_thread;  // Empty for the main thread.
 };
 
 struct GraphEdge {
