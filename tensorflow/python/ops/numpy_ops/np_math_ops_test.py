@@ -730,6 +730,42 @@ class MathTest(test.TestCase, parameterized.TestCase):
         self.assertEqual((2, 3, 3), fn(start, stop, 3, axis=2).shape)
         self.assertEqual((3, 2, 3), fn(start, stop, 3, axis=-3).shape)
 
+  def testCrossAxisOutOfBounds(self):
+    x = np_array_ops.array(np.ones([2, 3]))
+    with self.assertRaisesRegex(
+        ValueError, 'axisa: axis 5 is out of bounds for array of dimension 2'
+    ):
+      np_math_ops.cross(x, x, axisa=5)
+    with self.assertRaisesRegex(
+        ValueError, 'axisb: axis 7 is out of bounds for array of dimension 2'
+    ):
+      np_math_ops.cross(x, x, axisb=7)
+    with self.assertRaisesRegex(
+        ValueError, 'axisc: axis -9 is out of bounds for array of dimension 2'
+    ):
+      np_math_ops.cross(x, x, axisc=-9)
+    # NumPy reports the `axis=` parameter through its `axisa` check.
+    with self.assertRaisesRegex(
+        ValueError, 'axisa: axis 5 is out of bounds for array of dimension 2'
+    ):
+      np_math_ops.cross(x, x, axis=5)
+    # Out-of-range negative axes.
+    with self.assertRaisesRegex(
+        ValueError, 'axisa: axis -3 is out of bounds for array of dimension 2'
+    ):
+      np_math_ops.cross(x, x, axisa=-3)
+    with self.assertRaisesRegex(
+        ValueError, 'axisb: axis -3 is out of bounds for array of dimension 2'
+    ):
+      np_math_ops.cross(x, x, axisb=-3)
+    # The `axisc` bound is the output rank, i.e. the max of the input ranks.
+    b = np_array_ops.array(np.ones([3]))
+    self.assertAllClose(np_math_ops.cross(x, b, axisc=0).shape, [2, 3])
+    with self.assertRaisesRegex(
+        ValueError, 'axisc: axis -4 is out of bounds for array of dimension 2'
+    ):
+      np_math_ops.cross(x, b, axisc=-4)
+
   def testAverageWrongShape(self):
     with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError, r''):
       np_math_ops.average(np.ones([2, 3]), weights=np.ones([2, 4]))

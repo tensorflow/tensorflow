@@ -299,6 +299,39 @@ def inner(a, b):  # pylint: disable=missing-function-docstring
 @tf_export.tf_export('experimental.numpy.cross', v1=[])
 @np_utils.np_doc('cross')
 def cross(a, b, axisa=-1, axisb=-1, axisc=-1, axis=None):  # pylint: disable=missing-docstring
+  # NumPy raises AxisError for out-of-bounds axes instead of letting the
+  # backend kernel fail with a confusing error. All checks engage only for
+  # statically-known ranks and Python-int axes, so tensor axes or unknown
+  # ranks (e.g. `@tf.function` with an unspecified input signature) behave
+  # exactly as before. The output rank that bounds `axisc` is the broadcast
+  # of the input ranks, i.e. the max of the statically-known ones.
+  if isinstance(axis, (int, np.integer)):
+    axisa = axisb = axisc = axis
+  a_arr = np_array_ops.asarray(a)
+  b_arr = np_array_ops.asarray(b)
+  maybe_rank_a = a_arr.shape.rank
+  maybe_rank_b = b_arr.shape.rank
+  axis_checks = []
+  if maybe_rank_a is not None and isinstance(axisa, (int, np.integer)):
+    axis_checks.append(('axisa', axisa, maybe_rank_a))
+  if maybe_rank_b is not None and isinstance(axisb, (int, np.integer)):
+    axis_checks.append(('axisb', axisb, maybe_rank_b))
+  if (
+      maybe_rank_a is not None
+      and maybe_rank_b is not None
+      and isinstance(axisc, (int, np.integer))
+  ):
+    axis_checks.append(('axisc', axisc, max(maybe_rank_a, maybe_rank_b)))
+  for axis_name, axis_value, axis_rank in axis_checks:
+    normalized = int(axis_value) + axis_rank if axis_value < 0 else int(
+        axis_value
+    )
+    if normalized < 0 or normalized >= axis_rank:
+      raise ValueError(
+          f'{axis_name}: axis {axis_value} is out of bounds for array of '
+          f'dimension {axis_rank}'
+      )
+
   def f(a, b):  # pylint: disable=missing-docstring
     # We can't assign to captured variable `axisa`, so make a new variable
     if axis is None:
