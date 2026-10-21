@@ -49,7 +49,10 @@ enum DebugEventFileType {
 // TFRecord files, and hence utilizes multiple objects of this helper class.
 class SingleDebugEventFileWriter {
  public:
-  explicit SingleDebugEventFileWriter(const std::string& file_path);
+  // If `append` is true, an existing file is appended to instead of being
+  // overwritten.
+  explicit SingleDebugEventFileWriter(const std::string& file_path,
+                                      bool append = false);
 
   absl::Status Init();
 
@@ -66,6 +69,7 @@ class SingleDebugEventFileWriter {
 
   Env* env_;
   const std::string file_path_;
+  const bool append_;
   std::atomic_int_fast32_t num_outstanding_events_;
 
   std::unique_ptr<WritableFile> writable_file_ TF_GUARDED_BY(writer_mu_);
@@ -129,6 +133,8 @@ class DebugEventsWriter {
   // Idempotent: if the metadata file exists and is open, this is a no-op.
   // If on the other hand the file was opened, but has since disappeared (e.g.
   // deleted by another process), this will open a new file.
+  // After Close(), only a direct call to Init() reopens the files, which are
+  // then appended to.
   absl::Status Init();
 
   // The four DebugEvent fields below are written _without_ the circular
@@ -233,6 +239,12 @@ class DebugEventsWriter {
   // suffix.
   std::string FileName(DebugEventFileType type);
 
+  // Same as Init(), but a no-op if Close() has been called since the files
+  // were last opened.
+  absl::Status InitUnlessClosed();
+
+  absl::Status InitLocked() TF_EXCLUSIVE_LOCKS_REQUIRED(initialization_mu_);
+
   // Initialize the TFRecord writer for non-metadata file type.
   absl::Status InitNonMetadataFile(DebugEventFileType type)
       TF_EXCLUSIVE_LOCKS_REQUIRED(initialization_mu_);
@@ -258,6 +270,7 @@ class DebugEventsWriter {
 
   std::string file_prefix_ TF_GUARDED_BY(initialization_mu_);
   bool is_initialized_ TF_GUARDED_BY(initialization_mu_);
+  bool is_closed_ TF_GUARDED_BY(initialization_mu_);
   mutex initialization_mu_;
 
   const int64_t circular_buffer_size_;
