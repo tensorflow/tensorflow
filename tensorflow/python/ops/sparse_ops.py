@@ -2924,10 +2924,10 @@ def sparse_transpose(sp_input, perm=None, name=None):
 
     perm_ = tensor_util.constant_value(ops.convert_to_tensor(perm))
     if perm_ is not None and sp_input.shape.rank is not None:
-      if sorted(np.reshape(perm_, [-1]).tolist()) != list(
+      if perm_.ndim != 1 or sorted(perm_.tolist()) != list(
           range(sp_input.shape.rank)):
         raise ValueError(
-            f"`perm` must be a permutation of the dimensions of `sp_input`. "
+            f"'perm' must be a 1-D permutation of the dimensions of 'sp_input'. "
             f"Received perm={perm_.tolist()} for rank {sp_input.shape.rank}.")
     if perm_ is not None and sp_input.get_shape().is_fully_defined():
       old_shape_ = sp_input.get_shape().as_list()
