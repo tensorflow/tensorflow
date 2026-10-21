@@ -1504,6 +1504,29 @@ def geomspace(start, stop, num=50, endpoint=True, dtype=None, axis=0):  # pylint
 @tf_export.tf_export('experimental.numpy.ptp', v1=[])
 @np_utils.np_doc('ptp')
 def ptp(a, axis=None, keepdims=None):
+  # NumPy raises AxisError for out-of-bounds axes instead of letting the
+  # backend kernel fail with a confusing error. The check only engages for
+  # statically-known ranks and Python-int axis values (including the
+  # elements of a tuple/list axis), so a tensor `axis` or an unknown rank
+  # (e.g. `@tf.function` with an unspecified input signature) behaves
+  # exactly as before, and no graph ops are added on the eager path.
+  if axis is not None:
+    maybe_rank = np_array_ops.asarray(a).shape.rank
+    if maybe_rank is not None:
+      if isinstance(axis, (tuple, list)):
+        axis_elements = axis
+      else:
+        axis_elements = (axis,)
+      for axis_element in axis_elements:
+        if isinstance(axis_element, (int, np.integer)):
+          normalized = int(axis_element) + maybe_rank if axis_element < 0 else int(
+              axis_element
+          )
+          if normalized < 0 or normalized >= maybe_rank:
+            raise ValueError(
+                f'axis {axis_element} is out of bounds for array of '
+                f'dimension {maybe_rank}'
+            )
   return np_array_ops.amax(a, axis=axis, keepdims=keepdims) - np_array_ops.amin(
       a, axis=axis, keepdims=keepdims
   )
