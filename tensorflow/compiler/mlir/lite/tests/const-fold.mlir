@@ -1315,3 +1315,80 @@ func.func @slice_big_float() -> tensor<1x1x1792x256xf32> {
 
 
 
+
+// CHECK-LABEL: @ConstFoldBatchMatMul
+func.func @ConstFoldBatchMatMul() -> tensor<2x2x2xf32> {
+  %x = arith.constant dense<[[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]]> : tensor<2x2x3xf32>
+  %y = arith.constant dense<[[[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]], [[2.0, 3.0], [4.0, 5.0], [6.0, 7.0]]]> : tensor<2x3x2xf32>
+  %0 = "tfl.batch_matmul"(%x, %y) {adj_x = false, adj_y = false} : (tensor<2x2x3xf32>, tensor<2x3x2xf32>) -> tensor<2x2x2xf32>
+  func.return %0 : tensor<2x2x2xf32>
+  // CHECK: %[[CST:.*]] = arith.constant dense<{{\[\[\[}}4.000000e+00, 5.000000e+00], [1.000000e+01, 1.100000e+01]], {{\[\[}}2.000000e+00, 3.000000e+00], [4.000000e+00, 5.000000e+00]]]> : tensor<2x2x2xf32>
+  // CHECK-NOT: tfl.batch_matmul
+  // CHECK: return %[[CST]]
+}
+
+// CHECK-LABEL: @ConstFoldBatchMatMulAdjY
+func.func @ConstFoldBatchMatMulAdjY() -> tensor<1x2x2xf32> {
+  %x = arith.constant dense<[[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]]> : tensor<1x2x3xf32>
+  %y = arith.constant dense<[[[1.0, 0.0, 1.0], [0.0, 1.0, 1.0]]]> : tensor<1x2x3xf32>
+  %0 = "tfl.batch_matmul"(%x, %y) {adj_x = false, adj_y = true} : (tensor<1x2x3xf32>, tensor<1x2x3xf32>) -> tensor<1x2x2xf32>
+  func.return %0 : tensor<1x2x2xf32>
+  // CHECK: %[[CST:.*]] = arith.constant dense<{{\[\[\[}}4.000000e+00, 5.000000e+00], [1.000000e+01, 1.100000e+01]]]> : tensor<1x2x2xf32>
+  // CHECK-NOT: tfl.batch_matmul
+  // CHECK: return %[[CST]]
+}
+
+// CHECK-LABEL: @ConstFoldBatchMatMulAdjX
+func.func @ConstFoldBatchMatMulAdjX() -> tensor<1x2x2xf32> {
+  %x = arith.constant dense<[[[1.0, 4.0], [2.0, 5.0], [3.0, 6.0]]]> : tensor<1x3x2xf32>
+  %y = arith.constant dense<[[[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]]]> : tensor<1x3x2xf32>
+  %0 = "tfl.batch_matmul"(%x, %y) {adj_x = true, adj_y = false} : (tensor<1x3x2xf32>, tensor<1x3x2xf32>) -> tensor<1x2x2xf32>
+  func.return %0 : tensor<1x2x2xf32>
+  // CHECK: %[[CST:.*]] = arith.constant dense<{{\[\[\[}}4.000000e+00, 5.000000e+00], [1.000000e+01, 1.100000e+01]]]> : tensor<1x2x2xf32>
+  // CHECK-NOT: tfl.batch_matmul
+  // CHECK: return %[[CST]]
+}
+
+// Rank-2 rhs broadcasts over the lhs batch dim.
+// CHECK-LABEL: @ConstFoldBatchMatMulBroadcastBatch
+func.func @ConstFoldBatchMatMulBroadcastBatch() -> tensor<2x2x2xf32> {
+  %x = arith.constant dense<[[[1.0, 2.0], [3.0, 4.0]], [[5.0, 6.0], [7.0, 8.0]]]> : tensor<2x2x2xf32>
+  %y = arith.constant dense<[[0.0, 1.0], [1.0, 0.0]]> : tensor<2x2xf32>
+  %0 = "tfl.batch_matmul"(%x, %y) {adj_x = false, adj_y = false} : (tensor<2x2x2xf32>, tensor<2x2xf32>) -> tensor<2x2x2xf32>
+  func.return %0 : tensor<2x2x2xf32>
+  // CHECK: %[[CST:.*]] = arith.constant dense<{{\[\[\[}}2.000000e+00, 1.000000e+00], [4.000000e+00, 3.000000e+00]], {{\[\[}}6.000000e+00, 5.000000e+00], [8.000000e+00, 7.000000e+00]]]> : tensor<2x2x2xf32>
+  // CHECK-NOT: tfl.batch_matmul
+  // CHECK: return %[[CST]]
+}
+
+// CHECK-LABEL: @NotFoldBatchMatMulRuntimeInput
+func.func @NotFoldBatchMatMulRuntimeInput(%arg0: tensor<1x2x3xf32>) -> tensor<1x2x2xf32> {
+  %y = arith.constant dense<[[[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]]]> : tensor<1x3x2xf32>
+  %0 = "tfl.batch_matmul"(%arg0, %y) {adj_x = false, adj_y = false} : (tensor<1x2x3xf32>, tensor<1x3x2xf32>) -> tensor<1x2x2xf32>
+  func.return %0 : tensor<1x2x2xf32>
+  // CHECK: %[[BMM:.*]] = "tfl.batch_matmul"(%arg0
+  // CHECK: return %[[BMM]]
+}
+
+// Zero-sized m must not divide by zero.
+// CHECK-LABEL: @ConstFoldBatchMatMulZeroSized
+func.func @ConstFoldBatchMatMulZeroSized() -> tensor<1x0x2xf32> {
+  %x = arith.constant dense<> : tensor<1x0x3xf32>
+  %y = arith.constant dense<[[[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]]]> : tensor<1x3x2xf32>
+  %0 = "tfl.batch_matmul"(%x, %y) {adj_x = false, adj_y = false} : (tensor<1x0x3xf32>, tensor<1x3x2xf32>) -> tensor<1x0x2xf32>
+  func.return %0 : tensor<1x0x2xf32>
+  // CHECK: %[[CST:.*]] = arith.constant dense<> : tensor<1x0x2xf32>
+  // CHECK-NOT: tfl.batch_matmul
+  // CHECK: return %[[CST]]
+}
+
+// 2 x 1024 x 1024 x 1024 = 2^31 multiply-accumulates exceeds the fold budget.
+// CHECK-LABEL: @NotFoldBatchMatMulTooExpensive
+func.func @NotFoldBatchMatMulTooExpensive() -> tensor<2x1024x1024xf32> {
+  %x = arith.constant dense<1.0> : tensor<2x1024x1024xf32>
+  %y = arith.constant dense<1.0> : tensor<1024x1024xf32>
+  %0 = "tfl.batch_matmul"(%x, %y) {adj_x = false, adj_y = false} : (tensor<2x1024x1024xf32>, tensor<1024x1024xf32>) -> tensor<2x1024x1024xf32>
+  func.return %0 : tensor<2x1024x1024xf32>
+  // CHECK: %[[BMM:.*]] = "tfl.batch_matmul"
+  // CHECK: return %[[BMM]]
+}

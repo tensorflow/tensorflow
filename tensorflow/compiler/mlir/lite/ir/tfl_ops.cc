@@ -2014,6 +2014,94 @@ LogicalResult BatchMatMulOp::verify() {
   return success();
 }
 
+// Folds a BATCH_MATMUL whose operands are both f32 constants. Left unfolded,
+// such an op survives into the flatbuffer and is recomputed on every
+// inference; delegates that require a runtime input also reject it (e.g. ML
+// Drift), splitting the graph. This shows up in DETR-style decoders, where
+// step-0 self-attention runs on constant query embeddings.
+OpFoldResult BatchMatMulOp::fold(FoldAdaptor adaptor) {
+  auto x = mlir::dyn_cast_or_null<DenseElementsAttr>(adaptor.getX());
+  auto y = mlir::dyn_cast_or_null<DenseElementsAttr>(adaptor.getY());
+  if (!x || !y) return {};
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+
+  auto out_type = mlir::dyn_cast<RankedTensorType>(getType());
+  auto x_type = mlir::dyn_cast<RankedTensorType>(x.getType());
+  auto y_type = mlir::dyn_cast<RankedTensorType>(y.getType());
+  if (!out_type || !x_type || !y_type || !out_type.hasStaticShape() ||
+      !x_type.hasStaticShape() || !y_type.hasStaticShape() ||
+      !out_type.getElementType().isF32() || !x_type.getElementType().isF32() ||
+      !y_type.getElementType().isF32() || x_type.getRank() < 2 ||
+      y_type.getRank() < 2 || out_type.getRank() < 2) {
+    return {};
+  }
+
+  const ArrayRef<int64_t> x_shape = x_type.getShape();
+  const ArrayRef<int64_t> y_shape = y_type.getShape();
+  const ArrayRef<int64_t> out_shape = out_type.getShape();
+  const bool adj_x = getAdjX();
+  const bool adj_y = getAdjY();
+  const int64_t m = adj_x ? x_shape.back() : x_shape[x_shape.size() - 2];
+  const int64_t k = adj_x ? x_shape[x_shape.size() - 2] : x_shape.back();
+  const int64_t k_y = adj_y ? y_shape.back() : y_shape[y_shape.size() - 2];
+  const int64_t n = adj_y ? y_shape[y_shape.size() - 2] : y_shape.back();
+  if (k != k_y || out_shape[out_shape.size() - 2] != m ||
+      out_shape.back() != n) {
+    return {};
+  }
+
+  // Batch dims broadcast right-aligned; the verifier guarantees compatibility.
+  const ArrayRef<int64_t> out_batch = out_shape.drop_back(2);
+  const ArrayRef<int64_t> x_batch = x_shape.drop_back(2);
+  const ArrayRef<int64_t> y_batch = y_shape.drop_back(2);
+  // Computed from the batch dims directly (rather than dividing the element
+  // count by m * n) so zero-sized m or n cannot divide by zero.
+  const int64_t num_batches = ShapedType::getNumElements(out_batch);
+
+  // ShouldFoldOperation bounds tensor sizes but not compute; cap the
+  // multiply-accumulate count so canonicalization stays fast.
+  constexpr int64_t kMaxFoldMacs = int64_t{1} << 30;
+  if (num_batches * m * n * k > kMaxFoldMacs) return {};
+
+  // Maps a flat output batch index to the flat batch index of an operand.
+  auto operand_batch = [&](int64_t out_flat, ArrayRef<int64_t> batch) {
+    int64_t flat = 0;
+    int64_t out_stride = num_batches;
+    int64_t offset = out_batch.size() - batch.size();
+    for (int64_t i = 0; i < static_cast<int64_t>(out_batch.size()); ++i) {
+      out_stride /= out_batch[i];
+      const int64_t idx = (out_flat / out_stride) % out_batch[i];
+      const int64_t j = i - offset;
+      if (j >= 0) flat = flat * batch[j] + (batch[j] == 1 ? 0 : idx);
+    }
+    return flat;
+  };
+
+  const std::vector<float> x_vals(x.getValues<float>().begin(),
+                                  x.getValues<float>().end());
+  const std::vector<float> y_vals(y.getValues<float>().begin(),
+                                  y.getValues<float>().end());
+  std::vector<float> result(out_type.getNumElements(), 0.0f);
+  for (int64_t b = 0; b < num_batches; ++b) {
+    const float* xb = x_vals.data() + operand_batch(b, x_batch) * m * k;
+    const float* yb = y_vals.data() + operand_batch(b, y_batch) * k * n;
+    float* ob = result.data() + b * m * n;
+    for (int64_t i = 0; i < m; ++i) {
+      for (int64_t j = 0; j < n; ++j) {
+        // Accumulate in double to limit rounding error for large k.
+        double acc = 0.0;
+        for (int64_t p = 0; p < k; ++p) {
+          const double xv = adj_x ? xb[p * m + i] : xb[i * k + p];
+          const double yv = adj_y ? yb[j * k + p] : yb[p * n + j];
+          acc += xv * yv;
+        }
+        ob[i * n + j] = static_cast<float>(acc);
+      }
+    }
+  }
+  return DenseElementsAttr::get(out_type, llvm::ArrayRef<float>(result));
+}
+
 //===----------------------------------------------------------------------===//
 // BlockwiseQuantizeOp / BlockwiseDequantizeOp
 //===----------------------------------------------------------------------===//
