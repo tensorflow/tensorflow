@@ -155,7 +155,7 @@ void TilingSpace::AppendRTVar(const HloInstruction* hlo, int64_t operand_id,
   hlo_to_rt_var_[std::make_pair(hlo, operand_id)] = &rt_vars_.back();
 }
 
-void TilingSpace::ProcessInstruction(const HloInstruction& hlo) {
+absl::Status TilingSpace::ProcessInstruction(const HloInstruction& hlo) {
   switch (hlo.opcode()) {
     case HloOpcode::kDot:
     case HloOpcode::kScaledDot:
@@ -168,8 +168,7 @@ void TilingSpace::ProcessInstruction(const HloInstruction& hlo) {
       ProcessReduceScatter(hlo);
       break;
     case HloOpcode::kScan:
-      ProcessScan(hlo);
-      break;
+      return ProcessScan(hlo);
     case HloOpcode::kDynamicSlice:
       ProcessDynamicSlice(hlo);
       break;
@@ -197,6 +196,7 @@ void TilingSpace::ProcessInstruction(const HloInstruction& hlo) {
       // TODO(goncharov): should have a explicit list of supported instructions?
       break;
   }
+  return absl::OkStatus();
 }
 
 // Add dot contraction dimensions in the order of contracting dimensions.
@@ -363,19 +363,24 @@ void TilingSpace::ProcessRaggedDot(const HloInstruction& hlo) {
 }
 
 // Ensure scan dimensions are sequential within the thread block.
-void TilingSpace::ProcessScan(const HloInstruction& hlo) {
+absl::Status TilingSpace::ProcessScan(const HloInstruction& hlo) {
   auto scan = Cast<HloScanInstruction>(&hlo);
   int64_t scan_dim_idx = scan->scan_dimension();
 
   auto it = hlo_to_dimension_.find(std::make_pair(&hlo, scan_dim_idx));
   if (it == hlo_to_dimension_.end()) {
-    // Without indexing maps, we cannot express constraints for intermediate
-    // scan operations in TilingSpace.
-    return;
+    // Otherwise the scan dimension would stay parallel and each block would
+    // compute an independent prefix sum of its tile.
+    return absl::UnimplementedError(absl::StrCat(
+        "Scan dimension ", scan_dim_idx, " of ", hlo.name(),
+        " could not be located in the tiling space. Only get-tuple-element and "
+        "elementwise instructions are supported between a scan and the fusion "
+        "root."));
   }
 
   dimensions_[it->second->id.value()].type = DimensionSemantics::kSequential;
   dimensions_[it->second->id.value()].hlo = &hlo;
+  return absl::OkStatus();
 }
 
 // Add offsets of dynamic slice.
@@ -407,6 +412,25 @@ void TilingSpace::ProcessGetTupleElement(const HloInstruction& hlo) {
     if (it != hlo_to_dimension_.end()) {
       const DimensionInfo* dim_info = it->second;
       hlo_to_dimension_[std::make_pair(hlo.operand(0), offset + i)] = dim_info;
+    }
+  }
+}
+
+void TilingSpace::ProcessElementwise(const HloInstructionAdaptor& adaptor) {
+  const HloInstruction& hlo = adaptor.instruction();
+  int64_t rank = hlo.shape().dimensions().size();
+  for (const HloInstructionAdaptor& operand : adaptor.GetOperands()) {
+    const HloInstruction* operand_hlo = &operand.instruction();
+    if (GetFirstShape(operand_hlo).dimensions() != hlo.shape().dimensions()) {
+      continue;
+    }
+    for (int64_t i = 0; i < rank; ++i) {
+      auto it = hlo_to_dimension_.find(std::make_pair(&hlo, i));
+      if (it != hlo_to_dimension_.end()) {
+        // Do not overwrite: the operand may own the dimension already, for
+        // example as another root of a multi-output fusion.
+        hlo_to_dimension_.insert({std::make_pair(operand_hlo, i), it->second});
+      }
     }
   }
 }
@@ -621,7 +645,10 @@ absl::StatusOr<std::unique_ptr<TilingSpace>> TilingSpace::Create(
   // Iterator in reversed post-order (use-before-def).
   auto post_order = fusion.MakeInstructionPostOrder();
   for (auto it = post_order.rbegin(); it != post_order.rend(); ++it) {
-    tiling_space->ProcessInstruction(it->instruction());
+    ABSL_RETURN_IF_ERROR(tiling_space->ProcessInstruction(it->instruction()));
+    if (HloInstruction::IsOpElementwise(it->opcode())) {
+      tiling_space->ProcessElementwise(*it);
+    }
   }
 
   // Second pass: Create the root tiles now that

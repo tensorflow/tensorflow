@@ -30,6 +30,13 @@ on:
         default: ""
 
   pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      # Trigger on `closed` so the concurrency group cancels any in-progress
+      # `synchronize` run when a PR is closed or merged by Copybara.
+      - closed
     branches:
       - main
     paths:
@@ -52,6 +59,9 @@ concurrency:
 
 jobs:
   run_benchmarks:
+    # Skip job execution on `closed` events; the run only exists to cancel
+    # in-progress runs in the same concurrency group.
+    if: github.event_name != 'pull_request' || github.event.action != 'closed'
     name: Run XLA Presubmit Benchmarks
     uses: google-ml-infra/bap/.github/workflows/run-benchmarks.yaml@aabe067ccf0612e9fe5dfb280176df43b12babf9
     with:

@@ -20,19 +20,23 @@ limitations under the License.
 #include <functional>
 #include <initializer_list>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/memory_reservation.h"
+#include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/mock_platform.h"
 #include "xla/stream_executor/mock_stream.h"
 #include "xla/stream_executor/mock_stream_executor.h"
@@ -43,6 +47,7 @@ namespace stream_executor {
 namespace {
 
 using ::absl_testing::StatusIs;
+using ::testing::ElementsAre;
 using ::testing::NiceMock;
 using ::testing::Return;
 
@@ -118,10 +123,12 @@ class TestDeviceAddressVmmAllocator final : public DeviceAddressVmmAllocator {
   static absl::StatusOr<std::unique_ptr<TestDeviceAddressVmmAllocator>> Create(
       const Platform* platform, absl::Span<const DeviceConfig> devices,
       uint64_t physical_size_padding = 0,
-      std::function<void(int)> on_device_destroy = nullptr) {
+      std::function<void(int)> on_device_destroy = nullptr,
+      std::unique_ptr<DeviceAddressAllocator> host_allocator = nullptr) {
     auto allocator = std::unique_ptr<TestDeviceAddressVmmAllocator>(
         new TestDeviceAddressVmmAllocator(platform, physical_size_padding,
-                                          on_device_destroy));
+                                          on_device_destroy,
+                                          std::move(host_allocator)));
     absl::Status status = PopulateDevices(allocator.get(), devices);
     if (!status.ok()) {
       return status;
@@ -132,12 +139,23 @@ class TestDeviceAddressVmmAllocator final : public DeviceAddressVmmAllocator {
   int allocation_count() const { return allocation_count_; }
   int timeline_write_count() const { return timeline_write_count_; }
 
+  // Whether no thread, including the caller, holds the device's lock.
+  bool DeviceLockIsFree(int device_ordinal) const {
+    absl::Mutex& mu = device_states_.at(device_ordinal)->mu;
+    if (!mu.try_lock()) {
+      return false;
+    }
+    mu.unlock();
+    return true;
+  }
+
  protected:
   absl::Status InitializeDeviceState(PerDeviceState& state) override {
     state.allocation_granularity = kGranularity;
     auto* timeline = new uint64_t(0);
     state.pinned_timeline = timeline;
     int ordinal = state.executor->device_ordinal();
+    device_states_[ordinal] = &state;
     state.destroy_fn = [timeline, ordinal,
                         on_device_destroy = on_device_destroy_] {
       delete timeline;
@@ -169,15 +187,19 @@ class TestDeviceAddressVmmAllocator final : public DeviceAddressVmmAllocator {
   }
 
  private:
-  TestDeviceAddressVmmAllocator(const Platform* platform,
-                                uint64_t physical_size_padding,
-                                std::function<void(int)> on_device_destroy)
-      : DeviceAddressVmmAllocator(platform),
+  TestDeviceAddressVmmAllocator(
+      const Platform* platform, uint64_t physical_size_padding,
+      std::function<void(int)> on_device_destroy,
+      std::unique_ptr<DeviceAddressAllocator> host_allocator)
+      : DeviceAddressVmmAllocator(platform,
+                                  /*reclaim_exempt_memory_space=*/std::nullopt,
+                                  std::move(host_allocator)),
         physical_size_padding_(physical_size_padding),
         on_device_destroy_(on_device_destroy) {}
 
   uint64_t physical_size_padding_;
   std::function<void(int)> on_device_destroy_;
+  absl::flat_hash_map<int, PerDeviceState*> device_states_;
   int allocation_count_ = 0;
   int timeline_write_count_ = 0;
 };
@@ -670,6 +692,274 @@ TEST_F(DeviceAddressVmmAllocatorTest,
   ASSERT_THAT(allocator->SynchronizePendingOperations(0), absl_testing::IsOk());
   EXPECT_EQ(reservation.active_mapping_count(), 0);
   EXPECT_EQ(allocator->timeline_write_count(), 2);
+}
+
+class TestHostAllocator final : public DeviceAddressAllocator {
+ public:
+  explicit TestHostAllocator(const Platform* platform,
+                             bool allows_asynchronous_deallocation = false)
+      : DeviceAddressAllocator(platform),
+        allows_asynchronous_deallocation_(allows_asynchronous_deallocation) {}
+
+  bool AllowsAsynchronousDeallocation() const override {
+    return allows_asynchronous_deallocation_;
+  }
+
+  absl::StatusOr<ScopedDeviceAddress<uint8_t>> Allocate(
+      int device_ordinal, uint64_t size, bool retry_on_failure,
+      int64_t memory_space) override {
+    EXPECT_EQ(memory_space, static_cast<int64_t>(MemorySpace::kHost));
+    if (on_call_) {
+      on_call_();
+    }
+    last_retry_on_failure_ = retry_on_failure;
+    if (fail_next_allocate_) {
+      fail_next_allocate_ = false;
+      return absl::ResourceExhaustedError("injected allocation failure");
+    }
+    if (repeat_next_address_) {
+      // As a broken host allocator would: the address is still live.
+      repeat_next_address_ = false;
+      return ScopedDeviceAddress<uint8_t>(
+          DeviceAddressBase(live_[device_ordinal].back().get(), size),
+          device_ordinal, this);
+    }
+    auto& storage =
+        live_[device_ordinal].emplace_back(std::make_unique<uint8_t[]>(size));
+    return ScopedDeviceAddress<uint8_t>(DeviceAddressBase(storage.get(), size),
+                                        device_ordinal, this);
+  }
+
+  absl::Status Deallocate(int device_ordinal, DeviceAddressBase mem) override {
+    if (on_call_) {
+      on_call_();
+    }
+    if (fail_next_deallocate_) {
+      fail_next_deallocate_ = false;
+      return absl::UnavailableError("injected deallocation failure");
+    }
+    auto& storage = live_[device_ordinal];
+    for (auto it = storage.begin(); it != storage.end(); ++it) {
+      if (it->get() == mem.opaque()) {
+        storage.erase(it);
+        ++deallocation_count_;
+        return absl::OkStatus();
+      }
+    }
+    return absl::NotFoundError("not a host allocation");
+  }
+
+  absl::StatusOr<Stream*> GetStream(int /*device_ordinal*/) override {
+    return absl::UnimplementedError("unused");
+  }
+
+  size_t live_count(int device_ordinal) const {
+    auto it = live_.find(device_ordinal);
+    return it == live_.end() ? 0 : it->second.size();
+  }
+  int deallocation_count() const { return deallocation_count_; }
+  std::optional<bool> last_retry_on_failure() const {
+    return last_retry_on_failure_;
+  }
+  void FailNextAllocate() { fail_next_allocate_ = true; }
+  void FailNextDeallocate() { fail_next_deallocate_ = true; }
+  // The next Allocate() returns the last live address again.
+  void RepeatNextAddress() { repeat_next_address_ = true; }
+  // Runs at the start of every Allocate() and Deallocate().
+  void set_on_call(std::function<void()> on_call) {
+    on_call_ = std::move(on_call);
+  }
+
+ private:
+  const bool allows_asynchronous_deallocation_;
+  std::function<void()> on_call_;
+  absl::flat_hash_map<int, std::vector<std::unique_ptr<uint8_t[]>>> live_;
+  int deallocation_count_ = 0;
+  std::optional<bool> last_retry_on_failure_;
+  bool fail_next_allocate_ = false;
+  bool fail_next_deallocate_ = false;
+  bool repeat_next_address_ = false;
+};
+
+// Two devices, with MemorySpace::kHost served by `host_`.
+class DeviceAddressVmmAllocatorHostTest : public DeviceAddressVmmAllocatorTest {
+ protected:
+  void SetUp() override {
+    DeviceAddressVmmAllocatorTest::SetUp();
+    ON_CALL(executor_1_, device_ordinal()).WillByDefault(Return(1));
+    ON_CALL(executor_1_, SynchronizeAllActivity()).WillByDefault(Return(true));
+    ON_CALL(stream_1_, parent()).WillByDefault(Return(&executor_1_));
+    auto host = std::make_unique<TestHostAllocator>(&platform_);
+    host_ = host.get();
+    ASSERT_OK_AND_ASSIGN(
+        allocator_,
+        TestDeviceAddressVmmAllocator::Create(
+            &platform_,
+            {Config(UINT64_MAX), {&executor_1_, &stream_1_, UINT64_MAX}},
+            /*physical_size_padding=*/0, /*on_device_destroy=*/nullptr,
+            std::move(host)));
+  }
+
+  absl::StatusOr<ScopedDeviceAddress<uint8_t>> AllocateHost() {
+    return allocator_->Allocate(/*device_ordinal=*/0, kGranularity,
+                                /*retry_on_failure=*/true,
+                                static_cast<int64_t>(MemorySpace::kHost));
+  }
+
+  NiceMock<MockStreamExecutor> executor_1_;
+  NiceMock<MockStream> stream_1_;
+  TestHostAllocator* host_ = nullptr;
+  std::unique_ptr<TestDeviceAddressVmmAllocator> allocator_;
+};
+
+TEST_F(DeviceAddressVmmAllocatorTest, HostMemorySpaceUsesHostAllocator) {
+  auto host_allocator = std::make_unique<TestHostAllocator>(&platform_);
+  TestHostAllocator* host = host_allocator.get();
+  ASSERT_OK_AND_ASSIGN(
+      auto allocator,
+      TestDeviceAddressVmmAllocator::Create(
+          &platform_, {Config(/*pa_budget=*/kGranularity)},
+          /*physical_size_padding=*/0, /*on_device_destroy=*/nullptr,
+          std::move(host_allocator)));
+
+  // Larger than the PA budget: host memory is not charged to it.
+  constexpr uint64_t kHostSize = 4 * kGranularity;
+  ASSERT_OK_AND_ASSIGN(
+      auto host_mem,
+      allocator->Allocate(/*device_ordinal=*/0, kHostSize,
+                          /*retry_on_failure=*/false,
+                          static_cast<int64_t>(MemorySpace::kHost)));
+  EXPECT_EQ(host->last_retry_on_failure(), false);
+  EXPECT_EQ(allocator->allocation_count(), 0);
+  EXPECT_EQ(host->live_count(0), 1);
+  EXPECT_EQ(allocator->GetRawAllocation(0, host_mem.cref()), nullptr);
+
+  ASSERT_OK_AND_ASSIGN(
+      auto device_mem,
+      allocator->Allocate(/*device_ordinal=*/0, kGranularity,
+                          /*retry_on_failure=*/true, /*memory_space=*/0));
+  EXPECT_EQ(allocator->allocation_count(), 1);
+  EXPECT_EQ(host->live_count(0), 1);
+
+  host_mem = ScopedDeviceAddress<uint8_t>();
+  EXPECT_EQ(host->deallocation_count(), 1);
+  EXPECT_EQ(host->live_count(0), 0);
+
+  ASSERT_THAT(allocator->Deallocate(/*device_ordinal=*/0, device_mem.Release()),
+              absl_testing::IsOk());
+  EXPECT_EQ(host->deallocation_count(), 1);
+
+  ASSERT_OK_AND_ASSIGN(
+      auto empty,
+      allocator->Allocate(/*device_ordinal=*/0, /*size=*/0,
+                          /*retry_on_failure=*/true,
+                          static_cast<int64_t>(MemorySpace::kHost)));
+  EXPECT_TRUE(empty.is_null());
+  EXPECT_EQ(host->live_count(0), 0);
+}
+
+TEST_F(DeviceAddressVmmAllocatorTest,
+       AsynchronousDeallocationFollowsHostAllocator) {
+  {
+    ASSERT_OK_AND_ASSIGN(auto allocator, TestDeviceAddressVmmAllocator::Create(
+                                             &platform_, {Config(UINT64_MAX)}));
+    EXPECT_TRUE(allocator->AllowsAsynchronousDeallocation());
+  }
+  for (bool host_allows : {false, true}) {
+    ASSERT_OK_AND_ASSIGN(
+        auto allocator,
+        TestDeviceAddressVmmAllocator::Create(
+            &platform_, {Config(UINT64_MAX)}, /*physical_size_padding=*/0,
+            /*on_device_destroy=*/nullptr,
+            std::make_unique<TestHostAllocator>(&platform_, host_allows)));
+    EXPECT_EQ(allocator->AllowsAsynchronousDeallocation(), host_allows);
+  }
+}
+
+TEST_F(DeviceAddressVmmAllocatorHostTest,
+       HostAllocatorIsCalledWithoutDeviceLock) {
+  std::vector<bool> lock_free_in_host_calls;
+  host_->set_on_call([&] {
+    lock_free_in_host_calls.push_back(allocator_->DeviceLockIsFree(0));
+  });
+
+  ASSERT_OK_AND_ASSIGN(auto host_mem, AllocateHost());
+  ASSERT_THAT(allocator_->Deallocate(/*device_ordinal=*/0, host_mem.Release()),
+              absl_testing::IsOk());
+  // One call from Allocate(), one from Deallocate().
+  EXPECT_THAT(lock_free_in_host_calls, ElementsAre(true, true));
+}
+
+TEST_F(DeviceAddressVmmAllocatorHostTest,
+       HostMemoryIsNeverMappedIntoAReservation) {
+  TestMemoryReservation reservation(kGranularity);
+  EXPECT_THAT(allocator_->Allocate(/*device_ordinal=*/0, kGranularity,
+                                   /*retry_on_failure=*/true,
+                                   static_cast<int64_t>(MemorySpace::kHost),
+                                   &reservation, /*reservation_offset=*/0,
+                                   kGranularity),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_EQ(host_->live_count(0), 0);
+
+  ASSERT_OK_AND_ASSIGN(auto host_mem, AllocateHost());
+  EXPECT_THAT(
+      allocator_->Map(/*device_ordinal=*/0, host_mem.cref(), &reservation,
+                      /*reservation_offset=*/0, kGranularity),
+      StatusIs(absl::StatusCode::kNotFound));
+  EXPECT_EQ(reservation.mapping_count(), 0);
+  EXPECT_EQ(allocator_->allocation_count(), 0);
+}
+
+TEST_F(DeviceAddressVmmAllocatorHostTest,
+       HostDeallocateMustMatchOrdinalAndSize) {
+  ASSERT_OK_AND_ASSIGN(auto host_mem, AllocateHost());
+  DeviceAddressBase address = host_mem.Release();
+
+  EXPECT_THAT(allocator_->Deallocate(/*device_ordinal=*/1, address),
+              StatusIs(absl::StatusCode::kNotFound));
+  EXPECT_THAT(allocator_->Deallocate(
+                  /*device_ordinal=*/0,
+                  DeviceAddressBase(address.opaque(), kGranularity / 2)),
+              StatusIs(absl::StatusCode::kNotFound));
+  EXPECT_EQ(host_->deallocation_count(), 0);
+  EXPECT_THAT(allocator_->Deallocate(/*device_ordinal=*/0, address),
+              absl_testing::IsOk());
+  EXPECT_EQ(host_->deallocation_count(), 1);
+}
+
+TEST_F(DeviceAddressVmmAllocatorHostTest, FailedHostDeallocateCanBeRetried) {
+  ASSERT_OK_AND_ASSIGN(auto host_mem, AllocateHost());
+
+  // After a failed Free(), `host_mem` still owns the address.
+  host_->FailNextDeallocate();
+  EXPECT_THAT(host_mem.Free(), StatusIs(absl::StatusCode::kUnavailable));
+  ASSERT_FALSE(host_mem.is_null());
+  EXPECT_EQ(host_->live_count(0), 1);
+
+  // Retried through Release() so that a failing retry cannot crash in the
+  // ScopedDeviceAddress destructor.
+  EXPECT_THAT(allocator_->Deallocate(/*device_ordinal=*/0, host_mem.Release()),
+              absl_testing::IsOk());
+  EXPECT_EQ(host_->live_count(0), 0);
+}
+
+TEST_F(DeviceAddressVmmAllocatorHostTest, HostAllocatorFailurePropagates) {
+  host_->FailNextAllocate();
+  EXPECT_THAT(AllocateHost(), StatusIs(absl::StatusCode::kResourceExhausted));
+  EXPECT_EQ(allocator_->allocation_count(), 0);
+}
+
+TEST_F(DeviceAddressVmmAllocatorHostTest, DuplicateHostAddressIsNotFreed) {
+  ASSERT_OK_AND_ASSIGN(auto first, AllocateHost());
+
+  // The second allocation gets the address `first` still owns. It must fail
+  // without freeing that address.
+  host_->RepeatNextAddress();
+  EXPECT_THAT(AllocateHost(), StatusIs(absl::StatusCode::kInternal));
+  EXPECT_EQ(host_->deallocation_count(), 0);
+
+  first = ScopedDeviceAddress<uint8_t>();
+  EXPECT_EQ(host_->deallocation_count(), 1);
 }
 
 }  // namespace

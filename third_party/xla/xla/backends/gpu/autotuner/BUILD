@@ -631,6 +631,7 @@ cc_library(
         "//xla:xla_proto_cc",
         "//xla/backends/autotuner:backends_proto_cc",
         "//xla/backends/autotuner:codegen_backend",
+        "//xla/backends/gpu/transforms:cublas_pad_for_gemms",
         "//xla/backends/gpu/transforms:dot_algorithm_rewriter",
         "//xla/backends/gpu/transforms:gemm_rewriter",
         "//xla/backends/gpu/transforms:scaled_dot_rewriter",
