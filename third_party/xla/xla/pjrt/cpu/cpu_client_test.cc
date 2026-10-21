@@ -893,6 +893,46 @@ TEST(PjRtCpuClientTest, CreateErrorBuffer) {
   }
 }
 
+TEST(PjRtCpuClientTest, CreateErrorBufferWithCustomLayout) {
+  ASSERT_OK_AND_ASSIGN(auto client, GetXlaPjrtCpuClient(CpuClientOptions()));
+  xla::Shape shape = ShapeUtil::MakeShapeWithDenseLayout(U32, {3, 2}, {0, 1});
+  *shape.mutable_layout()->add_tiles() = Tile({2, 2});
+  Layout default_layout = LayoutUtil::MakeDescendingLayout(2);
+  Layout custom_layout = LayoutUtil::MakeAscendingLayout(2);
+  Layout invalid_layout = LayoutUtil::MakeLayout({0});
+  for (PjRtMemorySpace* memory_space : client->memory_spaces()) {
+    // Without an explicit layout argument, `shape.layout()` is ignored and the
+    // default layout is used.
+    ASSERT_OK_AND_ASSIGN(
+        auto default_layout_buffer,
+        client->CreateErrorBuffer(Internal("foobar"), shape, memory_space));
+    EXPECT_EQ(default_layout_buffer->layout()->xla_layout(), default_layout);
+
+    // With an explicit layout argument, the custom layout is used and any
+    // pre-existing layout fields on `shape` are cleared.
+    ASSERT_OK_AND_ASSIGN(
+        auto custom_layout_buffer,
+        client->CreateErrorBuffer(Internal("foobar"), shape, memory_space,
+                                  &custom_layout));
+    EXPECT_THAT(
+        custom_layout_buffer->ToLiteral().Await(),
+        absl_testing::StatusIs(tsl::error::INTERNAL, HasSubstr("foobar")));
+    EXPECT_EQ(custom_layout_buffer->memory_space(), memory_space);
+    EXPECT_EQ(custom_layout_buffer->layout()->xla_layout(), custom_layout);
+
+    // An invalid layout for `shape` is rejected.
+    EXPECT_THAT(client->CreateErrorBuffer(Internal("foobar"), shape,
+                                          memory_space, &invalid_layout),
+                absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+
+    // Tuple shapes are rejected.
+    EXPECT_THAT(client->CreateErrorBuffer(Internal("foobar"),
+                                          ShapeUtil::MakeTupleShape({shape}),
+                                          memory_space),
+                absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  }
+}
+
 TEST(PjRtCpuClientTest, CreateErrorBufferToken) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
   xla::Shape shape = ShapeUtil::MakeTokenShape();

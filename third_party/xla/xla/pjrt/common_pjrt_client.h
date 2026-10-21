@@ -329,8 +329,10 @@ class CommonPjRtClient : public PjRtClient {
         std::move(dependency));
   }
 
+  using PjRtClient::CreateErrorBuffer;
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateErrorBuffer(
-      absl::Status error, const Shape& shape, PjRtMemorySpace* memory) override;
+      absl::Status error, const Shape& shape, PjRtMemorySpace* memory,
+      const Layout* layout) override;
 
   // Registers the necessary debug information for an allocation event.
   // TODO(parkers): Once everything is unified this should be controlled

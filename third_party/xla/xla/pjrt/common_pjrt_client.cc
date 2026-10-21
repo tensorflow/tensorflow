@@ -1258,7 +1258,12 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> CommonPjRtClient::DefineBuffer(
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>> CommonPjRtClient::CreateErrorBuffer(
-    absl::Status error, const Shape& shape, PjRtMemorySpace* memory) {
+    absl::Status error, const Shape& shape, PjRtMemorySpace* memory,
+    const Layout* layout) {
+  if (shape.IsTuple()) {
+    return InvalidArgument(
+        "Tuples are not supported in CommonPjRtClient::CreateErrorBuffer");
+  }
   if (memory->client() != this) {
     return absl::InvalidArgumentError(
         "Memory space is not attached to this client");
@@ -1266,10 +1271,11 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> CommonPjRtClient::CreateErrorBuffer(
   auto* device = memory->devices()[0];
   VLOG(1) << "CommonPjRtBufferImpl::CreateErrorBuffer: shape: "
           << shape.ToString() << " device: " << device->DebugString()
+          << " layout: " << (layout != nullptr ? layout->ToString() : "nullptr")
           << " error: " << error;
 
-  ABSL_ASSIGN_OR_RETURN(Shape device_shape, MakeDefaultShapeForMemorySpace(
-                                           memory, shape, /*layout=*/nullptr));
+  ABSL_ASSIGN_OR_RETURN(Shape device_shape,
+                   MakeDefaultShapeForMemorySpace(memory, shape, layout));
 
   ABSL_ASSIGN_OR_RETURN(auto definition_event,
                    CreateDeviceEvent(memory, tsl::Future<>(std::move(error))));

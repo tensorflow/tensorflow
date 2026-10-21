@@ -453,8 +453,10 @@ class PjRtCApiClient : public PjRtClient {
       std::pair<std::unique_ptr<PjRtBuffer>, PjRtFulfillAliasBufferCallback>>
   CreateAliasBuffer(const Shape& shape, PjRtMemorySpace* memory_space) override;
 
+  using PjRtClient::CreateErrorBuffer;
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateErrorBuffer(
-      absl::Status error, const Shape& shape, PjRtMemorySpace* memory) override;
+      absl::Status error, const Shape& shape, PjRtMemorySpace* memory,
+      const Layout* layout) override;
 
   absl::StatusOr<const PjRtTopologyDescription*> GetTopologyDescription()
       const override;

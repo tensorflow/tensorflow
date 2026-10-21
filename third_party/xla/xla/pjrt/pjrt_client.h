@@ -771,9 +771,18 @@ class PjRtClient {
   }
 
   // Creates buffer in the given memory space that carries an error future
-  // without allocating memory.
+  // without allocating memory. If `layout` is not provided, a default layout
+  // for `shape` and `memory` will be used, and any layout in `shape` will be
+  // ignored.
   virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateErrorBuffer(
       absl::Status error, const Shape& shape, PjRtMemorySpace* memory) {
+    return CreateErrorBuffer(std::move(error), shape, memory,
+                             /*layout=*/nullptr);
+  }
+
+  virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateErrorBuffer(
+      absl::Status error, const Shape& shape, PjRtMemorySpace* memory,
+      const Layout* layout) {
     return absl::UnimplementedError("CreateErrorBuffer not supported.");
   }
 
