@@ -74,6 +74,8 @@ TF_CONST_INIT const absl::string_view kXlaOpLineName = "XLA Ops";
 TF_CONST_INIT const absl::string_view kXlaAsyncOpLineName = "Async XLA Ops";
 TF_CONST_INIT const absl::string_view kKernelLaunchLineName = "Launch Stats";
 TF_CONST_INIT const absl::string_view kSourceLineName = "Source code";
+TF_CONST_INIT const absl::string_view kCommandBufferLineName =
+    "Command Buffers";
 TF_CONST_INIT const absl::string_view kHostOffloadOpLineName =
     "Host Offload Ops";
 TF_CONST_INIT const absl::string_view kCounterEventsLineName = "_counters_";
