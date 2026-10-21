@@ -587,6 +587,29 @@ TEST_F(IndexingMapTest, RemoveUnusedVars_ConstraintsWithManyDims) {
                   {true, false, true, false, true, false, true, false}));
 }
 
+TEST_F(IndexingMapTest,
+       RemoveUnusedVars_OnlyDimsRemovedShiftsSymbolsInConstraints) {
+  auto indexing_map = Parse(R"(
+    (d0, d1)[s0] -> (d1 + s0),
+    domain:
+    d0 in [0, 10],
+    d1 in [0, 20],
+    s0 in [0, 30],
+    d1 + s0 in [0, 25]
+  )");
+  auto unused_vars = indexing_map.RemoveUnusedVars();
+  EXPECT_THAT(indexing_map, MatchIndexingMap(R"(
+                              (d0)[s0] -> (d0 + s0),
+                              domain:
+                              d0 in [0, 20],
+                              s0 in [0, 30],
+                              d0 + s0 in [0, 25]
+                            )"));
+  EXPECT_THAT(ConvertToSTL(unused_vars),
+              ::testing::ElementsAreArray({true, false, false}));
+  EXPECT_TRUE(indexing_map.RemoveUnusedVars().empty());
+}
+
 TEST_F(IndexingMapTest, RemoveUnusedSymbols_ConstraintUsesSymbol) {
   auto indexing_map = Parse(R"(
     (d0, d1)[s0, s1] -> (d1, d0, s1),

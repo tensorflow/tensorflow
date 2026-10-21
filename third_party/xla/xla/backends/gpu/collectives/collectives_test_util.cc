@@ -170,14 +170,16 @@ absl::StatusOr<std::vector<std::unique_ptr<se::MemoryAllocation>>> Allocate(
 std::vector<Future<std::unique_ptr<SymmetricMemory>>> CreateSymmetricMemory(
     tsl::Executor& exec,
     absl::Span<const std::unique_ptr<GpuCommunicator>> comms,
-    absl::Span<const std::unique_ptr<se::MemoryAllocation>> allocs) {
+    absl::Span<const std::unique_ptr<se::MemoryAllocation>> allocs,
+    bool symmetric_window) {
   CHECK_EQ(comms.size(), allocs.size());
 
   std::vector<Future<std::unique_ptr<SymmetricMemory>>> futures;
   futures.reserve(allocs.size());
   for (size_t i = 0; i < comms.size(); ++i) {
     futures.emplace_back(MakeFutureOn(exec, [=] {
-      return comms[i]->CreateSymmetricMemory(allocs[i]->address());
+      return comms[i]->CreateSymmetricMemory(allocs[i]->address(),
+                                             symmetric_window);
     }));
   }
 

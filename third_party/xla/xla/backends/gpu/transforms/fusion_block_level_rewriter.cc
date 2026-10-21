@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/fusion_block_level_rewriter.h"
 
 #include <cstdint>
+#include <memory>
 #include <utility>
 #include <variant>
 
@@ -32,6 +33,7 @@ limitations under the License.
 #include "llvm/Support/MathExtras.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
+#include "xla/codegen/tiling/experimental/tiling_space.h"
 #include "xla/codegen/tiling/tiling_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -44,6 +46,7 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/mlir_context_pool.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 #include "xla/service/hlo_cost_analysis.h"
@@ -205,6 +208,33 @@ absl::StatusOr<bool> ShouldTryRewriteFusion(
          IsScanFusion(fusion);
 }
 
+// Returns whether the `sequential_tile_sizes` of a Triton fusion's block-level
+// config no longer match the number of sequential dimensions of its tiling
+// space, e.g. because HloCSE merged reductions that producer fusion had
+// duplicated.
+absl::StatusOr<bool> HasStaleSequentialTileSizes(
+    const HloFusionInstruction& fusion,
+    const FusionBackendConfig& fusion_backend_config,
+    mlir::MLIRContext* mlir_context, MlirContextPool* mlir_context_pool) {
+  if (fusion_backend_config.kind() != kTritonFusionKind) {
+    return false;
+  }
+  const auto& block_config = fusion_backend_config.block_level_fusion_config();
+  if (block_config.sequential_tile_sizes().empty()) {
+    return false;
+  }
+  ABSL_ASSIGN_OR_RETURN(PooledOrFallbackMlirContext context,
+                   BorrowMlirContextOr(mlir_context_pool, mlir_context));
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(&fusion);
+  absl::StatusOr<std::unique_ptr<experimental::TilingSpace>> tiling_space =
+      experimental::TilingSpace::Create(*fusion_adaptor, context.get());
+  if (!tiling_space.ok()) {
+    return false;
+  }
+  return block_config.sequential_tile_sizes_size() !=
+         (*tiling_space)->num_sequential_dimensions();
+}
+
 absl::StatusOr<bool> ProcessFusionInstruction(
     HloFusionInstruction* fusion_instruction,
     const se::DeviceDescription& device_info,
@@ -230,8 +260,19 @@ absl::StatusOr<bool> ProcessFusionInstruction(
     return false;
   }
   if (fusion_backend_config.has_block_level_fusion_config()) {
-    // Fusion is already block-level! Skip.
-    return false;
+    ABSL_ASSIGN_OR_RETURN(
+        bool has_stale_config,
+        HasStaleSequentialTileSizes(*fusion_instruction, fusion_backend_config,
+                                    mlir_context, mlir_context_pool));
+    if (!has_stale_config) {
+      // Fusion is already block-level! Skip.
+      return false;
+    }
+    VLOG(2) << "Re-tiling " << fusion_instruction->name()
+            << " because its sequential tile sizes are stale.";
+    backend_config.mutable_fusion_backend_config()
+        ->clear_block_level_fusion_config();
+    ABSL_RETURN_IF_ERROR(fusion_instruction->set_backend_config(backend_config));
   }
 
   // The Triton emitter requires a block-level config, so Triton fusions

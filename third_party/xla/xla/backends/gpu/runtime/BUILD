@@ -4144,6 +4144,7 @@ cc_library(
         "//xla/stream_executor/gpu:gpu_kernel_registry",
         "//xla/stream_executor/gpu:make_batch_pointers_kernel",
         "//xla/stream_executor/rocm:rocm_platform_id",
+        "//xla/stream_executor/sycl:sycl_platform_id",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",

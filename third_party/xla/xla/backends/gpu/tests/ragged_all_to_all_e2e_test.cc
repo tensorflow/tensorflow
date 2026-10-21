@@ -275,6 +275,7 @@ class RaggedAllToAllTestBase : public CollectiveOpsWithFlagsBase {
     }
     if (IsSymmetricNcclPath()) {
       opts.set_xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel(false);
+      opts.set_xla_gpu_experimental_nccl_window_symmetric(true);
     }
     if (impl_type_ == RaggedAllToAllImplType::kOneShotWithMultiGpuBarrier) {
       opts.set_xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel(true);

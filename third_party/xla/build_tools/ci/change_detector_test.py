@@ -349,6 +349,37 @@ class ChangeDetectorTest(parameterized.TestCase):
     self.assertIn("SKIP", content)
     self.assertIn("Modified files do not affect JAX builds", content)
 
+  @mock.patch.object(
+      change_detector, "evaluate_skip", autospec=True, spec_set=True
+  )
+  def test_main_writes_github_output(self, mock_eval):
+    output_file = self.create_tempfile("github_output.txt")
+    mock_eval.return_value = change_detector.SkipDecision(
+        should_skip=True,
+        reason="Modified files do not affect JAX builds",
+        changed_files_count=1,
+        elapsed_seconds=0.01,
+    )
+    rc = change_detector.main([
+        "--base_sha=base_sha",
+        "--head_sha=head_sha",
+        "--is_jax_build",
+        "--build_name=JAX ROCm",
+        f"--github_output={output_file.full_path}",
+    ])
+    self.assertEqual(rc, 0)
+    self.assertEqual(output_file.read_text(), "should_skip=true\n")
+
+  def test_main_disabled_via_env(self):
+    output_file = self.create_tempfile("github_output.txt")
+    with mock.patch.dict(os.environ, {"XLA_CI_DISABLE_BAZEL_DIFF": "true"}):
+      rc = change_detector.main([
+          "--base_sha=base_sha",
+          f"--github_output={output_file.full_path}",
+      ])
+    self.assertEqual(rc, 0)
+    self.assertEqual(output_file.read_text(), "should_skip=false\n")
+
 
 if __name__ == "__main__":
   absltest.main()

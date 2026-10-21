@@ -470,11 +470,13 @@ TEST(GpuCollectivesTest, PutAndWaitSignal) {
   tsl::thread::ThreadPool pool(tsl::Env::Default(), "collectives", 2);
   tsl::Executor& exec = *pool.AsExecutor();
 
-  auto fsymm_send = CreateSymmetricMemory(exec, comms, send_allocs);
+  auto fsymm_send = CreateSymmetricMemory(exec, comms, send_allocs,
+                                          /*symmetric_window=*/true);
   ASSERT_OK_AND_ASSIGN(auto symm_send,
                        AwaitSymmetricMemory(std::move(fsymm_send)));
 
-  auto fsymm_recv = CreateSymmetricMemory(exec, comms, recv_allocs);
+  auto fsymm_recv = CreateSymmetricMemory(exec, comms, recv_allocs,
+                                          /*symmetric_window=*/true);
   ASSERT_OK_AND_ASSIGN(auto symm_recv,
                        AwaitSymmetricMemory(std::move(fsymm_recv)));
 
@@ -580,11 +582,13 @@ TEST(GpuCollectivesTest, PutAndWaitSignals) {
   tsl::thread::ThreadPool pool(tsl::Env::Default(), "collectives", 4);
   tsl::Executor& exec = *pool.AsExecutor();
 
-  auto fsymm_send = CreateSymmetricMemory(exec, comms, send_allocs);
+  auto fsymm_send = CreateSymmetricMemory(exec, comms, send_allocs,
+                                          /*symmetric_window=*/true);
   ASSERT_OK_AND_ASSIGN(auto symm_send,
                        AwaitSymmetricMemory(std::move(fsymm_send)));
 
-  auto fsymm_recv = CreateSymmetricMemory(exec, comms, recv_allocs);
+  auto fsymm_recv = CreateSymmetricMemory(exec, comms, recv_allocs,
+                                          /*symmetric_window=*/true);
   ASSERT_OK_AND_ASSIGN(auto symm_recv,
                        AwaitSymmetricMemory(std::move(fsymm_recv)));
 

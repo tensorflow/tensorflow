@@ -3719,6 +3719,7 @@ cc_library(
         "//xla:status_macros",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
+        "//xla/backends/gpu/runtime:collective_kernel_thunk_proto_cc",
         "//xla/hlo/builder:xla_computation",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_common",

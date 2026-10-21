@@ -1748,11 +1748,14 @@ bzl_library(
     srcs = [
         "build_config_root.bzl",
         "build_config_root.default.bzl",
-    ] + tf_platform_alias("build_config_root.bzl"),
+    ],
+    # Copybara strips the build_cleaner dep for OSS; keep it so the export is reversible.
+    tags = ["nofixdeps"],
     visibility = [
         "//learning/brain/google/xla/tests:__pkg__",
         "//tensorflow:__subpackages__",
     ],
+    deps = tf_platform_alias("build_config_root_bzl"),
 )
 
 bzl_library(

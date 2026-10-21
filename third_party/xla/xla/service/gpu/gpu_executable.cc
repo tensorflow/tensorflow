@@ -633,6 +633,10 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
       debug_options
           ? debug_options->xla_gpu_enable_highest_priority_async_stream()
           : false;
+  bool nccl_window_symmetric =
+      debug_options
+          ? debug_options->xla_gpu_experimental_nccl_window_symmetric()
+          : false;
 
   se::Stream* main_stream = run_options->stream();
   se::StreamExecutor* executor = main_stream->parent();
@@ -799,7 +803,7 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
                        *run_options, communication_streams.streams,
                        LocalDeviceId(main_stream->parent()->device_ordinal()),
                        collective_max_nchannels, p2p_max_nchannels,
-                       collective_use_minimal_resource));
+                       collective_use_minimal_resource, nccl_window_symmetric));
 
   CollectiveCliqueRequests collective_clique_requests;
   CollectiveMemoryRequests collective_memory_requests(buffer_allocations);
@@ -1642,6 +1646,11 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::FromProto(
       params.debug_module->mutable_config()
           .mutable_debug_options()
           .set_xla_dump_to(params.debug_options.xla_dump_to());
+    }
+    if (params.debug_options.xla_gpu_experimental_nccl_window_symmetric()) {
+      params.debug_module->mutable_config()
+          .mutable_debug_options()
+          .set_xla_gpu_experimental_nccl_window_symmetric(false);
     }
   }
   if (!proto.has_buffer_assignment()) {

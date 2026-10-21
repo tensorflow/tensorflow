@@ -787,6 +787,23 @@ class HloToStablehloOpConverter<stablehlo::UnaryEinsumOp>
   }
 };
 
+// TODO(phawkins): Remove once MHLO_FmaOp is added in Phase 2.
+template <>
+class HloToStablehloOpConverter<stablehlo::FmaOp>
+    : public OpConversionPattern<stablehlo::FmaOp> {
+ public:
+  HloToStablehloOpConverter(TypeConverter& converter, MLIRContext* context,
+                            bool /*allowExperimentalFeatures*/,
+                            bool /*allowXlaFeatures*/)
+      : OpConversionPattern<stablehlo::FmaOp>::OpConversionPattern(converter,
+                                                                   context) {}
+  LogicalResult matchAndRewrite(stablehlo::FmaOp stablehloOp,
+                                typename stablehlo::FmaOp::Adaptor,
+                                ConversionPatternRewriter&) const final {
+    return stablehloOp.emitError("FmaOp is not yet supported in MHLO");
+  }
+};
+
 template <typename... StablehloOpTypes>
 void populateHloToStablehloPatterns(RewritePatternSet* patterns,
                                     TypeConverter* converter,

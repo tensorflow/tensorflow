@@ -611,9 +611,10 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
                    params.collective_cliques->GetComm(clique_key, *rank));
 
   if (!state->scratch_allocation.address().is_null()) {
-    ABSL_ASSIGN_OR_RETURN(
-        std::unique_ptr<SymmetricMemory> symmetric_memory,
-        comm->CreateSymmetricMemory(state->scratch_allocation.address()));
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<SymmetricMemory> symmetric_memory,
+                     comm->CreateSymmetricMemory(
+                         state->scratch_allocation.address(),
+                         params.collective_params->nccl_window_symmetric));
     ABSL_ASSIGN_OR_RETURN(state->scratch_symmetric_memory,
                      params.collective_cliques->Tie(
                          clique_key, std::move(symmetric_memory)));
