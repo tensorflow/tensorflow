@@ -23,10 +23,13 @@ limitations under the License.
 #include "absl/base/nullability.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/symmetric_memory.h"
 #include "xla/ffi/api/record_c_api.h"
+#include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/gpu/multi_gpu_barrier_kernel.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 
@@ -42,21 +45,37 @@ absl::Status LaunchMultiGpuBarrier(
     const std::vector<stream_executor::DeviceAddressBase>& barrier_addresses,
     stream_executor::DeviceAddressBase local_barrier_signal_value);
 
+absl::StatusOr<stream_executor::gpu::MultiGpuBarrierWithNcclKernel::KernelType>
+LoadMultiGpuBarrierWithNcclKernel(stream_executor::StreamExecutor* executor);
+
 // Additionally to the barrier synchronization, this kernel also can exchange
 // pointers to another buffer between peers.
 // If ptr_to_store is not null, the pointer to the buffer will be stored in the
 // symmetric memory on all peer devices at rank's position.
 absl::Status LaunchMultiGpuBarrierWithNccl(
-    stream_executor::Stream* stream, int64_t num_devices, RankId rank,
-    xla::SymmetricMemory* symmetric_memory,
+    stream_executor::Stream* stream,
+    stream_executor::gpu::MultiGpuBarrierWithNcclKernel::KernelType& kernel,
+    int64_t num_devices, RankId rank, xla::SymmetricMemory* symmetric_memory,
     stream_executor::DeviceAddressBase local_barrier_signal_value);
 
 absl::StatusOr<const XLA_FFI_Command*> RecordMultiGpuBarrierWithNccl(
-    stream_executor::StreamExecutor* executor,
+    const stream_executor::gpu::MultiGpuBarrierWithNcclKernel::KernelType&
+        kernel,
     xla::ffi::RecordContext& record_ctx, int64_t num_devices, RankId rank,
     xla::SymmetricMemory* symmetric_memory,
     stream_executor::DeviceAddressBase local_barrier_signal_value,
     const XLA_FFI_Command* absl_nullable cmd);
+
+absl::StatusOr<const stream_executor::CommandBuffer::Command*>
+RecordMultiGpuBarrierWithNccl(
+    stream_executor::CommandBuffer* command_buffer,
+    const stream_executor::gpu::MultiGpuBarrierWithNcclKernel::KernelType&
+        kernel,
+    int64_t num_devices, RankId rank, xla::SymmetricMemory* symmetric_memory,
+    stream_executor::DeviceAddressBase local_barrier_signal_value,
+    const stream_executor::CommandBuffer::Command* absl_nullable cmd,
+    absl::Span<const stream_executor::CommandBuffer::Command* const>
+        dependencies);
 
 // Returns the size of the barrier signal buffer in bytes.
 size_t GetMultiGpuBarrierSignalBufferSize();

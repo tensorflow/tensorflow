@@ -257,8 +257,12 @@ absl::Status FuseCandidate(HloInstruction* candidate,
   if (should_flatten) {
     ABSL_RETURN_IF_ERROR(FlattenCollectiveFusion(fusion_instr));
   }
-  if (fusion_instr->fused_expression_root()->opcode() ==
-      HloOpcode::kReduceScatter) {
+  // NB: FlattenReduceScatterFusion replaces the fused root; do not hold on to
+  // the pointer.
+  if (const HloInstruction* hero =
+          GetCollectiveHero(fusion_instr->fused_instructions_computation());
+      hero != nullptr && hero->opcode() == HloOpcode::kReduceScatter &&
+      ShouldFlattenReduceScatter(Cast<HloReduceScatterInstruction>(hero))) {
     ABSL_RETURN_IF_ERROR(FlattenReduceScatterFusion(fusion_instr));
   }
   // NB: Must be done after flattening.

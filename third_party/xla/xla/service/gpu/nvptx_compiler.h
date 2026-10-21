@@ -74,10 +74,6 @@ class NVPTXCompiler : public GpuCompiler {
       const se::SemanticVersion& toolkit_version,
       CompilationStats* compilation_stats) override;
 
-  void AddPaddingForGpublasGemms(
-      HloPassPipeline& pipeline, const DebugOptions& debug_options,
-      const se::GpuComputeCapability& gpu_version) override;
-
   bool IsScaledDotSupportedByBackend(
       const HloInstruction* instr,
       const GpuTargetConfig& gpu_target_config) const override;

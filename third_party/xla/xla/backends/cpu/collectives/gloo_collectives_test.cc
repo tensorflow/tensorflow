@@ -21,25 +21,31 @@ limitations under the License.
 #include <complex>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <tuple>
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/collectives/cpu_clique_key.h"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
+#include "xla/backends/cpu/collectives/gloo_communicator.h"
 #include "xla/backends/cpu/collectives/gloo_kv_store.h"
 #include "xla/backends/cpu/collectives/gloo_reduce_scatter.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/reduction_kind.h"
 #include "xla/executable_run_options.h"
+#include "xla/future.h"
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/runtime/device_id.h"
@@ -62,6 +68,7 @@ limitations under the License.
 namespace xla::cpu {
 
 namespace {
+using ::absl_testing::StatusIs;
 using ::testing::Each;
 using ::testing::Eq;
 
@@ -161,6 +168,193 @@ TEST(GlooCollectives, AllReduce) {
     ASSERT_TRUE(output_buffers[rank].ok()) << output_buffers[rank].status();
     EXPECT_THAT(output_buffers[rank].value(),
                 Each(Eq(kNumParticipants * (kNumParticipants + 1) / 2)));
+  }
+}
+
+// Exercise packing independently of the transport, and count actual reductions.
+class CountingGlooCommunicator final : public GlooCommunicator {
+ public:
+  explicit CountingGlooCommunicator(absl::Status status = absl::OkStatus())
+      : GlooCommunicator(/*context=*/nullptr, /*rank=*/0, /*num_ranks=*/1),
+        status_(std::move(status)) {}
+
+  Future<> AllReduce(se::DeviceAddressBase send_buffer,
+                     se::DeviceAddressBase recv_buffer, PrimitiveType dtype,
+                     size_t count, ReductionKind reduction_kind,
+                     const Executor& executor) override {
+    ++calls_;
+    if (!status_.ok()) {
+      return status_;
+    }
+    if (count != 0) {
+      if (send_buffer.opaque() == recv_buffer.opaque()) {
+        ++in_place_calls_;
+      } else {
+        std::memcpy(recv_buffer.opaque(), send_buffer.opaque(),
+                    send_buffer.size());
+      }
+    }
+    return absl::OkStatus();
+  }
+
+  int calls() const { return calls_; }
+  int in_place_calls() const { return in_place_calls_; }
+
+ private:
+  int calls_ = 0;
+  int in_place_calls_ = 0;
+  absl::Status status_;
+};
+
+TEST(GlooCollectives, AllReduceManyCoalescesBuffers) {
+  CountingGlooCommunicator communicator;
+  Communicator::Executor executor;
+  std::vector<float> a = {1, 2}, b = {3, 4, 5}, out_a(2), out_b(3);
+  std::vector<Communicator::AllReduceBuffer> buffers = {
+      {AsDeviceMemory(a), AsDeviceMemory(out_a), a.size()},
+      {AsDeviceMemory(b), AsDeviceMemory(out_b), b.size()},
+      {se::DeviceAddressBase(), se::DeviceAddressBase(), 0}};
+  ASSERT_OK(
+      communicator.AllReduceMany(buffers, F32, ReductionKind::SUM, executor)
+          .Await());
+  EXPECT_EQ(communicator.calls(), 1);
+  EXPECT_EQ(communicator.in_place_calls(), 1);
+  EXPECT_EQ(out_a, a);
+  EXPECT_EQ(out_b, b);
+}
+
+TEST(GlooCollectives, BaseCommunicatorAllReduceManyCallsPerBuffer) {
+  CountingGlooCommunicator communicator;
+  Communicator::Executor executor;
+  std::vector<float> a = {1, 2}, b = {3, 4, 5}, out_a(2), out_b(3);
+  std::vector<Communicator::AllReduceBuffer> buffers = {
+      {AsDeviceMemory(a), AsDeviceMemory(out_a), a.size()},
+      {AsDeviceMemory(b), AsDeviceMemory(out_b), b.size()},
+      {se::DeviceAddressBase(), se::DeviceAddressBase(), 0}};
+  ASSERT_OK(communicator
+                .Communicator::AllReduceMany(buffers, F32, ReductionKind::SUM,
+                                             executor)
+                .Await());
+  EXPECT_EQ(communicator.calls(), buffers.size());
+  EXPECT_EQ(communicator.in_place_calls(), 0);
+  EXPECT_EQ(out_a, a);
+  EXPECT_EQ(out_b, b);
+}
+
+TEST(GlooCollectives, AllReduceManyEmptyBuffers) {
+  CountingGlooCommunicator communicator;
+  Communicator::Executor executor;
+  ASSERT_OK(communicator.AllReduceMany({}, F32, ReductionKind::SUM, executor)
+                .Await());
+  std::vector<Communicator::AllReduceBuffer> empty(2);
+  ASSERT_OK(communicator.AllReduceMany(empty, F32, ReductionKind::SUM, executor)
+                .Await());
+  EXPECT_EQ(communicator.calls(), 0);
+}
+
+TEST(GlooCollectives, AllReduceManySingleBuffer) {
+  CountingGlooCommunicator communicator;
+  Communicator::Executor executor;
+  std::vector<float> input = {1, 2}, output(2);
+  ASSERT_OK(communicator
+                .AllReduceMany({{AsDeviceMemory(input), AsDeviceMemory(output),
+                                 input.size()}},
+                               F32, ReductionKind::SUM, executor)
+                .Await());
+  EXPECT_EQ(communicator.calls(), 1);
+  EXPECT_EQ(communicator.in_place_calls(), 0);
+  EXPECT_EQ(output, input);
+}
+
+TEST(GlooCollectives, AllReduceManyPropagatesFailureWithoutUnpacking) {
+  CountingGlooCommunicator communicator(
+      absl::UnknownError("collective failed"));
+  Communicator::Executor executor;
+  std::vector<float> input = {1, 2}, output(2, -1);
+  std::vector<Communicator::AllReduceBuffer> buffers(
+      2, {AsDeviceMemory(input), AsDeviceMemory(output), input.size()});
+  EXPECT_THAT(
+      communicator.AllReduceMany(buffers, F32, ReductionKind::SUM, executor)
+          .Await(),
+      StatusIs(absl::StatusCode::kUnknown));
+  EXPECT_EQ(communicator.calls(), 1);
+  EXPECT_THAT(output, Each(-1));
+}
+
+TEST(GlooCollectives, AllReduceManyRejectsOverflowCount) {
+  CountingGlooCommunicator communicator;
+  Communicator::Executor executor;
+  std::vector<float> input = {1, 2}, output(2, -1);
+  std::vector<Communicator::AllReduceBuffer> buffers(
+      2, {AsDeviceMemory(input), AsDeviceMemory(output), input.size()});
+  buffers[0].count = std::numeric_limits<size_t>::max();
+  EXPECT_THAT(
+      communicator.AllReduceMany(buffers, F32, ReductionKind::SUM, executor)
+          .Await(),
+      StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_EQ(communicator.calls(), 0);
+}
+
+TEST(GlooCollectives, AllReduceManyAcrossRanks) {
+  for (ReductionKind kind : {ReductionKind::SUM, ReductionKind::PRODUCT,
+                             ReductionKind::MIN, ReductionKind::MAX}) {
+    for (bool in_place : {false, true}) {
+      auto kv_store = std::make_shared<InMemoryKeyValueStore>();
+      std::vector<GlobalDeviceId> devices = {GlobalDeviceId(0),
+                                             GlobalDeviceId(1)};
+      tsl::thread::ThreadPool pool(tsl::Env::Default(), "AllReduceMany", 2);
+      for (int rank = 0; rank < 2; ++rank) {
+        pool.Schedule([&, rank] {
+          ASSERT_OK_AND_ASSIGN(auto communicator,
+                               GetCommunicator(devices, kv_store, rank));
+          RendezvousKey key = MakeRendezvousKey(devices);
+          CpuCollectives::Executor executor(key, kTimeout);
+          std::vector<std::vector<float>> inputs(64), outputs(64);
+          std::vector<int32_t> integers = {rank + 1, rank + 2};
+          std::vector<int32_t> integer_output(2);
+          std::vector<Communicator::AllReduceBuffer> buffers;
+          std::vector<Communicator::AllReduceBuffer> integer_buffers;
+          for (size_t i = 0; i < inputs.size(); ++i) {
+            inputs[i].assign(i, rank + 1 + i);
+            outputs[i].resize(i);
+            buffers.push_back(
+                {AsDeviceMemory(inputs[i]),
+                 AsDeviceMemory(in_place ? inputs[i] : outputs[i]), i});
+            if (i < integers.size()) {
+              int32_t* destination =
+                  in_place ? integers.data() : integer_output.data();
+              integer_buffers.push_back(
+                  {se::DeviceAddressBase(&integers[i], sizeof(int32_t)),
+                   se::DeviceAddressBase(&destination[i], sizeof(int32_t)), 1});
+            }
+          }
+          ASSERT_OK(communicator->AllReduceMany(buffers, F32, kind, executor)
+                        .Await());
+          ASSERT_OK(
+              communicator->AllReduceMany(integer_buffers, S32, kind, executor)
+                  .Await());
+          auto expected = [kind](int i) {
+            switch (kind) {
+              case ReductionKind::SUM:
+                return 2 * i + 3;
+              case ReductionKind::PRODUCT:
+                return (i + 1) * (i + 2);
+              case ReductionKind::MIN:
+                return i + 1;
+              case ReductionKind::MAX:
+                return i + 2;
+            }
+            return 0;
+          };
+          for (int i = 0; i < inputs.size(); ++i) {
+            EXPECT_THAT(in_place ? inputs[i] : outputs[i], Each(expected(i)));
+          }
+          for (int i = 0; i < integers.size(); ++i) {
+            EXPECT_EQ(in_place ? integers[i] : integer_output[i], expected(i));
+          }
+        });
+      }
+    }
   }
 }
 
