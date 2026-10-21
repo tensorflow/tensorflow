@@ -642,7 +642,8 @@ def scalar_mul(scalar, x, name=None):
 
   Args:
     scalar: A 0-D scalar `Tensor`. Must have known shape.
-    x: A `Tensor` or `IndexedSlices` to be scaled.
+    x: A `Tensor` or `IndexedSlices` to be scaled. Python sequences and other
+      values convertible to a `Tensor` are also accepted.
     name: A name for the operation (optional).
 
   Returns:
@@ -651,10 +652,14 @@ def scalar_mul(scalar, x, name=None):
   Raises:
     ValueError: if scalar is not a 0-D `scalar`.
   """
-  if not hasattr(x, "dtype"):
-    # Python lists/tuples/scalars: convert like every other math op does.
-    x = ops.convert_to_tensor(x, name="x")
-  base_dtype = dtypes.as_dtype(x.dtype).base_dtype
+  x_dtype = getattr(x, "dtype", None)
+  if x_dtype is None:
+    # Python lists/tuples/scalars: convert like every other math op does,
+    # preferring the dtype of an explicitly typed `scalar`.
+    x = ops.convert_to_tensor(
+        x, dtype_hint=getattr(scalar, "dtype", None), name="x")
+    x_dtype = x.dtype
+  base_dtype = dtypes.as_dtype(x_dtype).base_dtype
   scalar = ops.convert_to_tensor(
       scalar, dtype=base_dtype, name="scalar")
   shape = scalar.get_shape()

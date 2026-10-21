@@ -727,6 +727,15 @@ class ScalarMulTest(test_util.TensorFlowTestCase):
         self.assertEqual(dtypes.int64, result.dtype)
         self.assertAllEqual([2, 4], self.evaluate(result))
 
+  def testPythonSequenceInheritsTypedScalarDtype(self):
+    with test_util.device(use_gpu=True):
+      for scalar_mul_fn in (math_ops.scalar_mul, math_ops.scalar_mul_v2):
+        for dtype in (dtypes.float16, dtypes.float64):
+          scalar = constant_op.constant(2.0, dtype=dtype)
+          result = scalar_mul_fn(scalar, [1.0, 2.0])
+          self.assertEqual(dtype, result.dtype)
+          self.assertAllClose([2.0, 4.0], self.evaluate(result))
+
   def testAcceptsIndexedSlices(self):
     values = constant_op.constant([2, 3, 5, 7, 0, -1], shape=[3, 2])
     indices = constant_op.constant([0, 2, 5])
