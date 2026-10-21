@@ -706,6 +706,30 @@ class MathTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(ValueError, 'out of bounds'):
       np_math_ops.average(scalar, axis=0)
 
+  def testSpacesDestinationAxisOutOfBounds(self):  # pylint: disable=invalid-name
+    # NumPy raises AxisError for out-of-bounds destination axes instead of
+    # letting the backend fail with a confusing error.
+    start = np.ones([2, 3])
+    stop = np.ones([2, 3])
+    fns = (np_math_ops.linspace, np_math_ops.logspace, np_math_ops.geomspace)
+    for axis in (3, -4):
+      for fn in fns:
+        with self.subTest(fn=fn.__name__, axis=axis):
+          with self.assertRaisesRegex(
+              ValueError,
+              r'destination: axis %d is out of bounds for array of dimension'
+              % axis,
+          ):
+            fn(start, stop, 3, axis=axis)
+
+    # Valid boundary axes: NumPy allows the destination axis to equal bd (the
+    # broadcast rank of start/stop), which inserts the samples axis last, or
+    # -(bd + 1), which inserts it first.
+    for fn in fns:
+      with self.subTest(fn=fn.__name__):
+        self.assertEqual((2, 3, 3), fn(start, stop, 3, axis=2).shape)
+        self.assertEqual((3, 2, 3), fn(start, stop, 3, axis=-3).shape)
+
   def testAverageWrongShape(self):
     with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError, r''):
       np_math_ops.average(np.ones([2, 3]), weights=np.ones([2, 4]))
