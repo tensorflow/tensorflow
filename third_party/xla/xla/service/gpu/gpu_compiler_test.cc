@@ -751,6 +751,69 @@ ENTRY main {
                                           ErrorSpec{1e-6, 1e-6}));
 }
 
+class CublasPaddingTest : public GpuCompilerTest {
+ protected:
+  void SetUp() override {
+    if (!device_description().gpu_compute_capability().IsCuda() ||
+        !get_cuda_cc().IsAtLeastAmpere()) {
+      GTEST_SKIP() << "Requires an Ampere or newer CUDA GPU.";
+    }
+  }
+
+  // Compiles `hlo` with `config`, checks that it is rewritten to a padded
+  // cuBLASLt call, and compares the results with the interpreter.
+  void ExpectPaddedCublasLtMatmul(absl::string_view hlo,
+                                  absl::string_view expected_pad,
+                                  HloModuleConfig config) {
+    ASSERT_OK_AND_ASSIGN(auto module_and_executable,
+                         GetOptimizedModuleForExecutable(hlo, config));
+    std::string optimized = module_and_executable.first->ToString();
+    EXPECT_THAT(optimized, HasSubstr(expected_pad));
+    EXPECT_THAT(optimized,
+                HasSubstr(R"(custom_call_target="__cublas$lt$matmul")"));
+    ASSERT_OK_AND_ASSIGN(auto module,
+                         ParseAndReturnVerifiedModule(hlo, config));
+    EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{1e-2, 1e-2}));
+  }
+
+  // Leaves cuBLASLt fission as the only option for Triton GEMM fusions.
+  HloModuleConfig FissionOnlyConfig() {
+    HloModuleConfig config = GetModuleConfigForTest();
+    DebugOptions& debug_options = config.mutable_debug_options();
+    debug_options.clear_xla_gpu_experimental_autotune_backends();
+    debug_options.add_xla_gpu_experimental_autotune_backends(
+        autotuner::Backend::CUBLASLT_FISSION);
+    debug_options.add_xla_gpu_experimental_autotune_backends(
+        autotuner::Backend::NATIVE_EMITTER);
+    return config;
+  }
+};
+
+TEST_F(CublasPaddingTest, FissionPadsUnalignedGemmFusionWithNonDefaultLayouts) {
+  ExpectPaddedCublasLtMatmul(R"(
+    ENTRY e {
+      p0 = f16[63,61]{0,1} parameter(0)
+      p1 = f16[61,67]{0,1} parameter(1)
+      ROOT dot = f16[63,67]{0,1} dot(p0, p1),
+          lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    })",
+                             "f16[64,64]{0,1} pad(", FissionOnlyConfig());
+}
+
+TEST_F(CublasPaddingTest, PadsBf16DotsFromDotAlgorithmRewriter) {
+  HloModuleConfig config = GetModuleConfigForTest();
+  config.mutable_debug_options().set_xla_gpu_enable_triton_gemm(false);
+  ExpectPaddedCublasLtMatmul(R"(
+    ENTRY e {
+      p0 = f32[63,61]{1,0} parameter(0)
+      p1 = f32[61,67]{1,0} parameter(1)
+      ROOT dot = f32[63,67]{1,0} dot(p0, p1),
+          lhs_contracting_dims={1}, rhs_contracting_dims={0},
+          algorithm=dot_bf16_bf16_f32
+    })",
+                             "bf16[64,64]{1,0} pad(", config);
+}
+
 class FloatNormalizationTest : public GpuCompilerTest,
                                public ::testing::WithParamInterface<
                                    std::pair<PrimitiveType, PrimitiveType>> {};

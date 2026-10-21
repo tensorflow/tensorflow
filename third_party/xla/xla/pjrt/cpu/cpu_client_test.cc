@@ -1886,6 +1886,381 @@ TEST(PjRtCpuClientTest, PjRtBufferCopySliceInvalidArgument) {
   }
 }
 
+TEST(PjRtCpuClientTest, PjRtBufferUpdateSliceSingleChunk) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetPjRtCpuClient(CpuClientOptions()));
+  PjRtDevice* device = client->addressable_devices().front();
+  ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * pinned_space,
+      device->memory_space_by_kind(PinnedHostMemorySpace::kKind));
+
+  Literal target_literal = LiteralUtil::CreateR1<int32_t>({10, 20, 30, 40});
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> target_buffer,
+      client->BufferFromHostLiteral(target_literal, pinned_space,
+                                    /*device_layout=*/nullptr));
+
+  Literal slice_literal = LiteralUtil::CreateR1<int32_t>({99, 100});
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> slice_buffer,
+      client->BufferFromHostLiteral(slice_literal, pinned_space,
+                                    /*device_layout=*/nullptr));
+
+  StridedGather::Spec spec = {
+      /*element_size=*/4,
+      /*counts=*/{2},
+      /*src_byte_offset=*/4,
+      /*src_byte_size=*/16,
+      /*src_byte_strides=*/{4},
+  };
+  StridedGather gather(spec);
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> updated_buffer,
+                       target_buffer->UpdateSlice(gather, slice_buffer.get()));
+
+  EXPECT_TRUE(target_buffer->IsDeleted());
+  EXPECT_FALSE(slice_buffer->IsDeleted());
+
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> out_literal,
+                       updated_buffer->ToLiteralSync());
+  EXPECT_EQ(*out_literal, LiteralUtil::CreateR1<int32_t>({10, 99, 100, 40}));
+
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> slice_out_literal,
+                       slice_buffer->ToLiteralSync());
+  EXPECT_EQ(*slice_out_literal, LiteralUtil::CreateR1<int32_t>({99, 100}));
+}
+
+TEST(PjRtCpuClientTest, PjRtBufferUpdateSliceMultiChunk) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetPjRtCpuClient(CpuClientOptions()));
+  PjRtDevice* device = client->addressable_devices().front();
+  ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * pinned_space,
+      device->memory_space_by_kind(PinnedHostMemorySpace::kKind));
+
+  Literal target_literal = LiteralUtil::CreateR2<int32_t>({
+      {1, 2, 3, 4},
+      {5, 6, 7, 8},
+      {9, 10, 11, 12},
+      {13, 14, 15, 16},
+  });
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> target_buffer,
+      client->BufferFromHostLiteral(target_literal, pinned_space,
+                                    /*device_layout=*/nullptr));
+
+  Literal slice_literal =
+      LiteralUtil::CreateR2<int32_t>({{60, 70}, {100, 110}});
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> slice_buffer,
+      client->BufferFromHostLiteral(slice_literal, pinned_space,
+                                    /*device_layout=*/nullptr));
+
+  // Update a 2x2 sub-block at row 1, col 1:
+  // Offsets are: row 1 (16 + 4 = 20) and row 2 (32 + 4 = 36).
+  StridedGather::Spec spec = {
+      /*element_size=*/4,
+      /*counts=*/{2, 2},
+      /*src_byte_offset=*/20,
+      /*src_byte_size=*/64,
+      /*src_byte_strides=*/{16, 4},
+  };
+  StridedGather gather(spec);
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> updated_buffer,
+                       target_buffer->UpdateSlice(gather, slice_buffer.get()));
+
+  EXPECT_TRUE(target_buffer->IsDeleted());
+  EXPECT_FALSE(slice_buffer->IsDeleted());
+
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> out_literal,
+                       updated_buffer->ToLiteralSync());
+  Literal expected_literal = LiteralUtil::CreateR2<int32_t>({
+      {1, 2, 3, 4},
+      {5, 60, 70, 8},
+      {9, 100, 110, 12},
+      {13, 14, 15, 16},
+  });
+  EXPECT_EQ(*out_literal, expected_literal);
+}
+
+TEST(PjRtCpuClientTest, PjRtBufferUpdateSliceZeroSizedGather) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetPjRtCpuClient(CpuClientOptions()));
+  PjRtDevice* device = client->addressable_devices().front();
+  ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * pinned_space,
+      device->memory_space_by_kind(PinnedHostMemorySpace::kKind));
+
+  Literal target_literal = LiteralUtil::CreateR1<int32_t>({1, 2, 3});
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> target_buffer,
+      client->BufferFromHostLiteral(target_literal, pinned_space,
+                                    /*device_layout=*/nullptr));
+
+  Literal slice_literal = LiteralUtil::CreateR1<int32_t>({});
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> slice_buffer,
+      client->BufferFromHostLiteral(slice_literal, pinned_space,
+                                    /*device_layout=*/nullptr));
+
+  StridedGather::Spec spec = {
+      /*element_size=*/4,
+      /*counts=*/{0},
+      /*src_byte_offset=*/0,
+      /*src_byte_size=*/12,
+      /*src_byte_strides=*/{4},
+  };
+  StridedGather gather(spec);
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> updated_buffer,
+                       target_buffer->UpdateSlice(gather, slice_buffer.get()));
+
+  EXPECT_TRUE(target_buffer->IsDeleted());
+  EXPECT_FALSE(slice_buffer->IsDeleted());
+
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> out_literal,
+                       updated_buffer->ToLiteralSync());
+  EXPECT_EQ(*out_literal, LiteralUtil::CreateR1<int32_t>({1, 2, 3}));
+}
+
+TEST(PjRtCpuClientTest, PjRtBufferUpdateSliceDelayedReadiness) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetPjRtCpuClient(CpuClientOptions()));
+  PjRtDevice* device = client->addressable_devices().front();
+  ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * pinned_space,
+      device->memory_space_by_kind(PinnedHostMemorySpace::kKind));
+
+  Literal target_literal = LiteralUtil::CreateR1<int32_t>({10, 20, 30, 40});
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> target_buffer,
+      client->BufferFromHostLiteral(target_literal, pinned_space,
+                                    /*device_layout=*/nullptr));
+
+  Literal slice_literal = LiteralUtil::CreateR1<int32_t>({77, 88});
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> slice_buffer,
+      client->BufferFromHostLiteral(slice_literal, pinned_space,
+                                    /*device_layout=*/nullptr));
+
+  auto [target_promise, target_future] = MakePromise<>();
+  auto [slice_promise, slice_future] = MakePromise<>();
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> delayed_target,
+      target_buffer->DonateWithControlDependency(target_future));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> delayed_slice,
+                       slice_buffer->DonateWithControlDependency(slice_future));
+
+  StridedGather::Spec spec = {
+      /*element_size=*/4,
+      /*counts=*/{2},
+      /*src_byte_offset=*/4,
+      /*src_byte_size=*/16,
+      /*src_byte_strides=*/{4},
+  };
+  StridedGather gather(spec);
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> updated_buffer,
+      delayed_target->UpdateSlice(gather, delayed_slice.get()));
+
+  Future<> ready_future = updated_buffer->GetReadyFuture();
+  EXPECT_FALSE(ready_future.IsReady());
+
+  slice_promise.Set();
+  EXPECT_FALSE(ready_future.IsReady());
+
+  target_promise.Set();
+  EXPECT_THAT(ready_future.Await(), ::absl_testing::IsOk());
+
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> out_literal,
+                       updated_buffer->ToLiteralSync());
+  EXPECT_EQ(*out_literal, LiteralUtil::CreateR1<int32_t>({10, 77, 88, 40}));
+}
+
+TEST(PjRtCpuClientTest, PjRtBufferUpdateSliceControlDependencyError) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetPjRtCpuClient(CpuClientOptions()));
+  PjRtDevice* device = client->addressable_devices().front();
+  ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * pinned_space,
+      device->memory_space_by_kind(PinnedHostMemorySpace::kKind));
+
+  StridedGather::Spec spec = {
+      /*element_size=*/4,
+      /*counts=*/{1},
+      /*src_byte_offset=*/0,
+      /*src_byte_size=*/8,
+      /*src_byte_strides=*/{4},
+  };
+  StridedGather gather(spec);
+
+  // Case 1: Target buffer dependency transitions to error.
+  {
+    Literal target_literal = LiteralUtil::CreateR1<int32_t>({1, 2});
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<PjRtBuffer> target_buffer,
+        client->BufferFromHostLiteral(target_literal, pinned_space,
+                                      /*device_layout=*/nullptr));
+    Literal slice_literal = LiteralUtil::CreateR1<int32_t>({99});
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<PjRtBuffer> slice_buffer,
+        client->BufferFromHostLiteral(slice_literal, pinned_space,
+                                      /*device_layout=*/nullptr));
+
+    auto [promise, future] = MakePromise<>();
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> delayed_target,
+                         target_buffer->DonateWithControlDependency(future));
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<PjRtBuffer> updated_buffer,
+        delayed_target->UpdateSlice(gather, slice_buffer.get()));
+
+    promise.Set(absl::InternalError("target dependency failed"));
+    EXPECT_THAT(updated_buffer->GetReadyFuture().Await(),
+                ::absl_testing::StatusIs(
+                    absl::StatusCode::kInternal,
+                    ::testing::HasSubstr("target dependency failed")));
+  }
+
+  // Case 2: Slice buffer dependency transitions to error.
+  {
+    Literal target_literal = LiteralUtil::CreateR1<int32_t>({1, 2});
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<PjRtBuffer> target_buffer,
+        client->BufferFromHostLiteral(target_literal, pinned_space,
+                                      /*device_layout=*/nullptr));
+    Literal slice_literal = LiteralUtil::CreateR1<int32_t>({99});
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<PjRtBuffer> slice_buffer,
+        client->BufferFromHostLiteral(slice_literal, pinned_space,
+                                      /*device_layout=*/nullptr));
+
+    auto [promise, future] = MakePromise<>();
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> delayed_slice,
+                         slice_buffer->DonateWithControlDependency(future));
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<PjRtBuffer> updated_buffer,
+        target_buffer->UpdateSlice(gather, delayed_slice.get()));
+
+    promise.Set(absl::InternalError("slice dependency failed"));
+    EXPECT_THAT(updated_buffer->GetReadyFuture().Await(),
+                ::absl_testing::StatusIs(
+                    absl::StatusCode::kInternal,
+                    ::testing::HasSubstr("slice dependency failed")));
+  }
+}
+
+TEST(PjRtCpuClientTest, PjRtBufferUpdateSliceInvalidArgument) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetPjRtCpuClient(CpuClientOptions()));
+  PjRtDevice* device = client->addressable_devices().front();
+  ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * pinned_space,
+      device->memory_space_by_kind(PinnedHostMemorySpace::kKind));
+
+  Literal target_literal = LiteralUtil::CreateR1<int32_t>({1, 2, 3, 4});
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> target_buffer,
+      client->BufferFromHostLiteral(target_literal, pinned_space,
+                                    /*device_layout=*/nullptr));
+
+  Literal slice_literal = LiteralUtil::CreateR1<int32_t>({99});
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> slice_buffer,
+      client->BufferFromHostLiteral(slice_literal, pinned_space,
+                                    /*device_layout=*/nullptr));
+
+  StridedGather::Spec valid_spec = {
+      /*element_size=*/4,
+      /*counts=*/{1},
+      /*src_byte_offset=*/0,
+      /*src_byte_size=*/16,
+      /*src_byte_strides=*/{4},
+  };
+  StridedGather valid_gather(valid_spec);
+
+  // Case 1: slice == nullptr.
+  EXPECT_THAT(target_buffer->UpdateSlice(valid_gather, nullptr),
+              ::absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+
+  // Case 2: slice == this.
+  EXPECT_THAT(target_buffer->UpdateSlice(valid_gather, target_buffer.get()),
+              ::absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+
+  // Case 3a: src_byte_size exceeds target buffer size (32 > 16).
+  {
+    StridedGather::Spec out_of_bounds_spec = {
+        /*element_size=*/4,
+        /*counts=*/{1},
+        /*src_byte_offset=*/0,
+        /*src_byte_size=*/32,
+        /*src_byte_strides=*/{4},
+    };
+    StridedGather out_of_bounds_gather(out_of_bounds_spec);
+    EXPECT_THAT(
+        target_buffer->UpdateSlice(out_of_bounds_gather, slice_buffer.get()),
+        ::absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  }
+
+  // Case 3b: max accessed byte offset exceeds target buffer size (20 > 16).
+  {
+    StridedGather::Spec out_of_bounds_spec = {
+        /*element_size=*/4,
+        /*counts=*/{1},
+        /*src_byte_offset=*/16,
+        /*src_byte_size=*/16,
+        /*src_byte_strides=*/{4},
+    };
+    StridedGather out_of_bounds_gather(out_of_bounds_spec);
+    EXPECT_THAT(
+        target_buffer->UpdateSlice(out_of_bounds_gather, slice_buffer.get()),
+        ::absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  }
+
+  // Case 4: slice byte size does not match gather slice size (4 != 8).
+  {
+    StridedGather::Spec mismatched_spec = {
+        /*element_size=*/4,
+        /*counts=*/{2},
+        /*src_byte_offset=*/0,
+        /*src_byte_size=*/16,
+        /*src_byte_strides=*/{4},
+    };
+    StridedGather mismatched_gather(mismatched_spec);
+    EXPECT_THAT(
+        target_buffer->UpdateSlice(mismatched_gather, slice_buffer.get()),
+        ::absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  }
+
+  // Case 5: Deleted slice buffer. Target buffer must remain usable and NOT
+  // donated.
+  {
+    Literal temp_slice_literal = LiteralUtil::CreateR1<int32_t>({88});
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<PjRtBuffer> temp_slice,
+        client->BufferFromHostLiteral(temp_slice_literal, pinned_space,
+                                      /*device_layout=*/nullptr));
+    temp_slice->Delete();
+
+    EXPECT_THAT(target_buffer->UpdateSlice(valid_gather, temp_slice.get()),
+                ::absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+    EXPECT_FALSE(target_buffer->IsDeleted());
+
+    ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> out_literal,
+                         target_buffer->ToLiteralSync());
+    EXPECT_EQ(*out_literal, LiteralUtil::CreateR1<int32_t>({1, 2, 3, 4}));
+  }
+
+  // Case 6: Target buffer is deleted.
+  {
+    target_buffer->Delete();
+    EXPECT_THAT(target_buffer->UpdateSlice(valid_gather, slice_buffer.get()),
+                ::absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  }
+}
+
 }  // namespace
 
 //===----------------------------------------------------------------------===//

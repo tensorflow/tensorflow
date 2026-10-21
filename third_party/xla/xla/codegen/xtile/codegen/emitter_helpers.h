@@ -32,6 +32,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Complex/IR/Complex.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -188,6 +189,24 @@ class EmitterContext {
   absl::StatusOr<mlir::SmallVector<mlir::Value>> EvaluateTilingParameters(
       mlir::ArrayRef<SymbolicExpr> exprs);
 
+  // A tiled scan leaves its `scf.for` over the scan dimension open, so that
+  // the epilogue and the writes of the output tiles are emitted inside the
+  // loop. EmitGeneric closes it by yielding `carries`; `binding` keeps the
+  // induction variable bound until then.
+  void SetOpenScanLoop(mlir::scf::ForOp for_op, mlir::ValueRange carries,
+                       ScopedSequentialDimBinding binding) {
+    open_scan_loop_ = for_op;
+    open_scan_carries_.assign(carries.begin(), carries.end());
+    open_scan_binding_.emplace(std::move(binding));
+  }
+  void ResetOpenScanLoop() {
+    open_scan_loop_ = nullptr;
+    open_scan_carries_.clear();
+    open_scan_binding_.reset();
+  }
+  mlir::scf::ForOp open_scan_loop() const { return open_scan_loop_; }
+  mlir::ValueRange open_scan_carries() const { return open_scan_carries_; }
+
  private:
   mlir::ImplicitLocOpBuilder& b_;
   mlir::Value pid_;
@@ -200,6 +219,9 @@ class EmitterContext {
   xtile::EntryFuncOp entry_func_;
   const gpu::experimental::TiledHloComputation& tiled_computation_;
   SequentialDimValueMap sequential_dim_id_to_value_;
+  std::optional<ScopedSequentialDimBinding> open_scan_binding_;
+  mlir::scf::ForOp open_scan_loop_;
+  llvm::SmallVector<mlir::Value> open_scan_carries_;
 };
 
 // Constructs and holds information needed to construct a tile. This information

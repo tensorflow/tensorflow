@@ -40,7 +40,7 @@ typedef std::map<std::tuple<int, int, int>, Tensor> ExampleTensorMap;
 // Fillers to fill the underlying repeated array in protobuf.
 class BytesFiller {
  public:
-  BytesFiller() {}
+  BytesFiller() = default;
   void operator()(Feature* f, int feature_size) const {
     for (int i = 0; i < feature_size; ++i) {
       f->mutable_bytes_list()->add_value("abcd1234abcd1234abcd1234abcd1234!");
@@ -54,7 +54,7 @@ class BytesFiller {
 
 class Int64Filler {
  public:
-  Int64Filler() {}
+  Int64Filler() = default;
   void operator()(Feature* f, int feature_size) const {
     for (int i = 0; i < feature_size; ++i) {
       f->mutable_int64_list()->add_value(1729);
@@ -68,7 +68,7 @@ class Int64Filler {
 
 class FloatFiller {
  public:
-  FloatFiller() {}
+  FloatFiller() = default;
   void operator()(Feature* f, int feature_size) const {
     for (int i = 0; i < feature_size; ++i) {
       f->mutable_float_list()->add_value(1.729);

@@ -98,7 +98,7 @@ INSTANTIATE_TEST_SUITE_P(
 
 class SortingTest : public HloInterpreterReferenceMixin<HloTestBase> {
  protected:
-  SortingTest() {}
+  SortingTest() = default;
 };
 
 TEST_F(SortingTest, Regression1) {
