@@ -63,6 +63,10 @@ xla_test(
     ],
     deps = [
         ":gpu_bandwidth_benchmark",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor/gpu:gpu_init",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
