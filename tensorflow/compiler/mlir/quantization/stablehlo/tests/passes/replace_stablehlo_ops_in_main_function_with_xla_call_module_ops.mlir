@@ -533,3 +533,53 @@ module @functions_with_no_xla_call_module attributes {tf_saved_model.semantics} 
   // CHECK: func.func private @some_other_func
   // CHECK-NOT: tf.XlaCallModule
 }
+
+// -----
+
+// main function contains While and If ops. This test makes sure stablehlo ops
+// in their branch/loop functions are lifted.
+
+// CHECK-LABEL: functions_with_while_and_if_ops
+module @functions_with_while_and_if_ops attributes {tf_saved_model.semantics} {
+  func.func @main(%arg0: tensor<i1> {tf_saved_model.index_path = ["cond"]}, %arg1: tensor<3x3xf32> {tf_saved_model.index_path = ["input"]}) -> (tensor<3x3xf32> {tf_saved_model.index_path = ["output"]}) attributes {tf.entry_function = {control_outputs = "", inputs = "cond:0,input:0", outputs = "If:0"}, tf_saved_model.exported_names = ["serving_default"]} {
+    %0 = "tf.While"(%arg1) <{body = @while_body, cond = @while_cond, is_stateless = true}> : (tensor<3x3xf32>) -> tensor<3x3xf32>
+    %1 = "tf.If"(%arg0, %0) <{else_branch = @if_else, is_stateless = true, then_branch = @if_then}> : (tensor<i1>, tensor<3x3xf32>) -> tensor<3x3xf32>
+    return %1 : tensor<3x3xf32>
+  }
+
+  func.func private @while_cond(%arg0: tensor<3x3xf32>) -> tensor<i1> {
+    %0 = stablehlo.constant dense<false> : tensor<i1>
+    return %0 : tensor<i1>
+  }
+  // CHECK: func.func private @while_cond
+  // CHECK: tf.XlaCallModule
+  // CHECK-NOT: stablehlo.constant
+  // CHECK: return
+
+  func.func private @while_body(%arg0: tensor<3x3xf32>) -> tensor<3x3xf32> {
+    %0 = stablehlo.add %arg0, %arg0 : tensor<3x3xf32>
+    return %0 : tensor<3x3xf32>
+  }
+  // CHECK: func.func private @while_body
+  // CHECK: tf.XlaCallModule
+  // CHECK-NOT: stablehlo.add
+  // CHECK: return
+
+  func.func private @if_then(%arg0: tensor<3x3xf32>) -> tensor<3x3xf32> {
+    %0 = stablehlo.multiply %arg0, %arg0 : tensor<3x3xf32>
+    return %0 : tensor<3x3xf32>
+  }
+  // CHECK: func.func private @if_then
+  // CHECK: tf.XlaCallModule
+  // CHECK-NOT: stablehlo.multiply
+  // CHECK: return
+
+  func.func private @if_else(%arg0: tensor<3x3xf32>) -> tensor<3x3xf32> {
+    %0 = stablehlo.subtract %arg0, %arg0 : tensor<3x3xf32>
+    return %0 : tensor<3x3xf32>
+  }
+  // CHECK: func.func private @if_else
+  // CHECK: tf.XlaCallModule
+  // CHECK-NOT: stablehlo.subtract
+  // CHECK: return
+}
