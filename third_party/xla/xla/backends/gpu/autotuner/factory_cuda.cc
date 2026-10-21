@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/backends/gpu/autotuner/native_emitter.h"
 #include "xla/backends/gpu/autotuner/tensor_ir.h"
 #include "xla/backends/gpu/autotuner/triton.h"
+#include "xla/backends/gpu/transforms/cublas_pad_for_gemms.h"
 #include "xla/backends/gpu/transforms/dot_algorithm_rewriter.h"
 #include "xla/backends/gpu/transforms/gemm_rewriter.h"
 #include "xla/backends/gpu/transforms/scaled_dot_rewriter.h"
@@ -64,6 +65,8 @@ std::unique_ptr<HloPassPipeline> GetCublasLtRewriterPipeline(
       device_description.runtime_version(),
       GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}));
   pipeline->AddPass(std::make_unique<DotAlgorithmRewriter>(
+      device_description.gpu_compute_capability()));
+  pipeline->AddPass(std::make_unique<CublasPadForGemms>(
       device_description.gpu_compute_capability()));
   pipeline->AddPass(std::make_unique<GemmRewriter>(
       device_description.gpu_compute_capability(),

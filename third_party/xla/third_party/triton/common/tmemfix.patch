@@ -3,7 +3,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
 
 --- a/lib/Analysis/Utility.cpp
 +++ b/lib/Analysis/Utility.cpp
-@@ -1046,7 +1046,7 @@ bool supportMMA(triton::DotOp op, int version) {
+@@ -1047,7 +1047,7 @@ bool supportMMA(triton::DotOp op, int version) {
      if (k < 256 / aElemTy.getIntOrFloatBitWidth())
        return false;
      if (!(retShapePerCTA[rank - 2] % 64 == 0 &&
@@ -12,7 +12,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
        return false;
      if (aElemTy.isF64() || bElemTy.isF64() ||
          retType.getElementType().isF64()) {
-@@ -1071,7 +1071,7 @@ bool supportMMA(triton::DotOp op, int version) {
+@@ -1072,7 +1072,7 @@ bool supportMMA(triton::DotOp op, int version) {
      if (rank == 3)
        return false;
      if (!(numWarps % 4 == 0 && retShapePerCTA[rank - 2] % 64 == 0 &&
@@ -145,7 +145,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
 
 --- a/python/test/gluon/test_fpsan.py
 +++ b/python/test/gluon/test_fpsan.py
-@@ -1933,6 +1933,8 @@ _WMMA_DOT_CASES = [
+@@ -1963,6 +1963,8 @@ _WMMA_DOT_CASES = [
  
  
  def _native_mma_k(type_a: str) -> int:
@@ -169,7 +169,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
 
 --- a/python/test/unit/language/test_core.py
 +++ b/python/test/unit/language/test_core.py
-@@ -4450,10 +4450,7 @@ def get_test_small_dots_cases():
+@@ -4527,10 +4527,7 @@ def get_test_small_dots_cases():
      if not is_cuda():
          return []
      return [(2, 4, 32, 1, False, False, 'None', 'ieee', 'float16', 'float32', 1, None),
@@ -181,7 +181,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
  
  
  @pytest.mark.interpreter
-@@ -4692,21 +4689,19 @@ def test_dot(M, N, K, num_warps, col_a, col_b, epilogue, input_precision, in_dty
+@@ -4772,21 +4769,19 @@ def test_dot(M, N, K, num_warps, col_a, col_b, epilogue, input_precision, in_dty
      # make sure ld/st are vectorized
      ptx = pgm.asm['ptx']
  
@@ -312,8 +312,8 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
 -  // CHECK: @$7 tcgen05.mma.cta_group::1.kind::mxf4.block_scale.block32 [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %[[TMEM_BASE]], %{{.+}}, %{{.+}}, %[[DESC1]]
 +  // CHECK: @$7 tcgen05.mma.cta_group::1.kind::mxf4.block_scale.scale_vec::2X [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %[[TMEM_BASE]], %{{.+}}, %{{.+}}, %[[DESC0]]
 +  // CHECK: @$7 tcgen05.mma.cta_group::1.kind::mxf4.block_scale.scale_vec::2X [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %[[TMEM_BASE]], %{{.+}}, %{{.+}}, %[[DESC1]]
-   tt.func @tc_gen5_mma_block_scale_mxfp4(%a: !ttg.memdesc<128x64xi8, #shared, #ttg.shared_memory>,
-                        %b: !ttg.memdesc<64x256xi8, #shared1, #ttg.shared_memory>,
+   tt.func @tc_gen5_mma_block_scale_mxfp4(%a: !ttg.memdesc<128x64x!tt.fp4e2m1x2, #shared, #ttg.shared_memory>,
+                        %b: !ttg.memdesc<64x256x!tt.fp4e2m1x2, #shared1, #ttg.shared_memory>,
                         %c: !ttg.memdesc<128x256xf32, #tmem, #ttng.tensor_memory, mutable>,
 @@ -1246,7 +1246,7 @@ module attributes {"ttg.num-warps" = 8 : i32} {
  // CHECK-LABEL: @load_store_16x32bx1_broadcast
