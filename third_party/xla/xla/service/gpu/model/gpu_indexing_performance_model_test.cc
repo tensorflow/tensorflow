@@ -66,6 +66,8 @@ namespace {
 namespace dot_model = ::xla::gpu::gpu_dot_fusion_cost_model::detail;
 
 using ::testing::ElementsAre;
+using ::testing::IsEmpty;
+using ::testing::SizeIs;
 using ::xla::xtile::BlockLevelParameters;
 
 class GpuIndexingPerformanceModelTest : public HloHardwareIndependentTestBase {
@@ -813,6 +815,202 @@ ENTRY main {
 }
 
 TEST_F(GpuIndexingPerformanceModelTest,
+       EstimateRunTimeForTiledFusion_ScanWithEpilogue) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  p0 = f32[64] parameter(0)
+  p1 = f32[64] parameter(1)
+  add = f32[64] add(p0, p1)
+  ROOT tuple = (f32[64], f32[64]) tuple(add, add)
+}
+
+scan_fusion {
+  p0 = f32[64,1024] parameter(0)
+  p1 = f32[64,1024] parameter(1)
+  init = f32[64] parameter(2)
+  scan = (f32[64,1024], f32[64]) scan(p0, init), dimensions={1},
+    num_carries=1, is_associative=true, to_apply=add
+  gte = f32[64,1024] get-tuple-element(scan), index=0
+  ROOT add = f32[64,1024] add(gte, p1)
+}
+
+ENTRY main {
+  p0 = f32[64,1024] parameter(0)
+  p1 = f32[64,1024] parameter(1)
+  init = f32[64] parameter(2)
+  ROOT fusion = f32[64,1024] fusion(p0, p1, init), kind=kCustom, calls=scan_fusion
+})"));
+
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+
+  BlockLevelParameters block_level_parameters;
+  block_level_parameters.output_tile_sizes = {{1}};
+  block_level_parameters.sequential_tile_sizes = {128};
+  block_level_parameters.num_warps = 4;
+  ASSERT_OK_AND_ASSIGN(auto result,
+                       indexing_cost_model_.EstimateRunTimeForTiledFusion(
+                           *fusion_adaptor, block_level_parameters));
+
+  // One block per row, each block loops 1024 / 128 = 8 times over the scan
+  // dimension. The scan and its epilogue are executed on every iteration.
+  int64_t num_blocks = 64;
+  int64_t num_root_tile_executions = num_blocks * 8;
+
+  // The flops contribution for a single instruction is calculated as:
+  // flops_per_element * padded_tile_size * num_blocks_cur_hlo
+  EXPECT_EQ(result.flops,
+            3 * 128 * num_root_tile_executions        // ==> %scan
+                + 3 * 128 * num_root_tile_executions  // ==> %add
+  );
+  // The bytes read contribution for a single instruction is calculated as:
+  // element_type_size * tile_size * num_blocks_cur_hlo
+  EXPECT_EQ(result.bytes_read,
+            4 * 128 * num_root_tile_executions        // ==> %p0
+                + 4 * 128 * num_root_tile_executions  // ==> %p1
+                + 4 * 1 * num_root_tile_executions    // ==> %init
+  );
+  EXPECT_EQ(result.bytes_written, 4 * 64 * 1024);
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
+       EstimateRunTimeForTriton_ScanFusionWithoutBlockLevelConfig) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  p0 = f32[64] parameter(0)
+  p1 = f32[64] parameter(1)
+  add = f32[64] add(p0, p1)
+  ROOT tuple = (f32[64], f32[64]) tuple(add, add)
+}
+
+scan_fusion {
+  p0 = f32[64,131072] parameter(0)
+  init = f32[64] parameter(1)
+  scan = (f32[64,131072], f32[64]) scan(p0, init), dimensions={1},
+    num_carries=1, is_associative=true, to_apply=add
+  ROOT gte = f32[64,131072] get-tuple-element(scan), index=0
+}
+
+ENTRY main {
+  p0 = f32[64,131072] parameter(0)
+  init = f32[64] parameter(1)
+  ROOT fusion = f32[64,131072] fusion(p0, init), kind=kCustom, calls=scan_fusion,
+    backend_config={"fusion_backend_config":{"kind":"__triton"}}
+})"));
+
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+
+  // Estimated with the tiling that FusionBlockLevelRewriter would pick.
+  ASSERT_OK_AND_ASSIGN(EstimateRunTimeData runtime,
+                       indexing_cost_model_.EstimateRunTimeForTriton(root));
+  EXPECT_FALSE(runtime.IsInfinite());
+
+  ASSERT_OK_AND_ASSIGN(auto tiled_runtime_data_or_error,
+                       indexing_cost_model_
+                           .TryFindBestTilingForFusionAsync(
+                               *HloFusionAdaptor::ForInstruction(root))
+                           .Await());
+  ASSERT_TRUE(
+      std::holds_alternative<TiledRunTimeData>(tiled_runtime_data_or_error));
+  const TiledRunTimeData& tiled_runtime_data =
+      std::get<TiledRunTimeData>(tiled_runtime_data_or_error);
+  EXPECT_EQ(runtime.exec_time, tiled_runtime_data.runtime_data.exec_time);
+  EXPECT_THAT(tiled_runtime_data.block_level_parameters.output_tile_sizes,
+              ElementsAre(SizeIs(1)));
+  EXPECT_THAT(tiled_runtime_data.block_level_parameters.sequential_tile_sizes,
+              SizeIs(1));
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
+       TryFindBestTilingForFusionAsync_NonScanReductionNoSequentialTiles) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+
+reduce_fusion {
+  p0 = f32[64,1024] parameter(0)
+  init = f32[] constant(0)
+  ROOT reduce = f32[64] reduce(p0, init), dimensions={1}, to_apply=add
+}
+
+ENTRY main {
+  p0 = f32[64,1024] parameter(0)
+  ROOT fusion = f32[64] fusion(p0), kind=kCustom, calls=reduce_fusion,
+    backend_config={"fusion_backend_config":{"kind":"__triton"}}
+})"));
+
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+
+  ASSERT_OK_AND_ASSIGN(auto tiled_runtime_data_or_error,
+                       indexing_cost_model_
+                           .TryFindBestTilingForFusionAsync(
+                               *HloFusionAdaptor::ForInstruction(root))
+                           .Await());
+  ASSERT_TRUE(
+      std::holds_alternative<TiledRunTimeData>(tiled_runtime_data_or_error));
+  const TiledRunTimeData& tiled_runtime_data =
+      std::get<TiledRunTimeData>(tiled_runtime_data_or_error);
+  EXPECT_THAT(tiled_runtime_data.block_level_parameters.sequential_tile_sizes,
+              IsEmpty());
+}
+
+TEST_F(
+    GpuIndexingPerformanceModelTest,
+    TryFindTopKBestTilingsForFusionAsync_ReductionCandidatesSortedByExecTime) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+
+reduce_fusion {
+  p0 = f32[64,4096] parameter(0)
+  init = f32[] constant(0)
+  ROOT reduce = f32[64] reduce(p0, init), dimensions={1}, to_apply=add
+}
+
+ENTRY main {
+  p0 = f32[64,4096] parameter(0)
+  ROOT fusion = f32[64] fusion(p0), kind=kCustom, calls=reduce_fusion,
+    backend_config={"fusion_backend_config":{"kind":"__triton"}}
+})"));
+
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_enable_reduction_dimension_tiling(true);
+
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+
+  ASSERT_OK_AND_ASSIGN(
+      auto top_k_result,
+      indexing_cost_model_
+          .TryFindTopKBestTilingsForFusionAsync(
+              *HloFusionAdaptor::ForInstruction(root), /*top_k=*/10)
+          .Await());
+  ASSERT_TRUE((std::holds_alternative<absl::InlinedVector<TiledRunTimeData, 4>>(
+      top_k_result)));
+  const auto& candidates =
+      std::get<absl::InlinedVector<TiledRunTimeData, 4>>(top_k_result);
+  ASSERT_GE(candidates.size(), 2);
+  for (int i = 1; i < candidates.size(); ++i) {
+    EXPECT_GE(candidates[i].runtime_data.exec_time,
+              candidates[i - 1].runtime_data.exec_time);
+  }
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
        EstimateRunTimeForTiledFusion_Softmax_RegisterSpill_ReturnsInfinite) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
@@ -1227,6 +1425,61 @@ ENTRY entry_computation {
   // Elementwise f32 add = 3 FLOPs per operation.
   // FLOPs per output element = (256 - 1) * 3 = 765.
   EXPECT_EQ(indexing_cost_model_.FlopsPerElement(instr), 765);
+}
+
+TEST_F(FlopsPerElementTest, Scan) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  param_0 = f32[] parameter(0)
+  param_1 = f32[] parameter(1)
+  add.0 = f32[] add(param_0, param_1)
+  ROOT tuple.0 = (f32[], f32[]) tuple(add.0, add.0)
+}
+
+ENTRY entry_computation {
+  param_0.3 = f32[64] parameter(0)
+  constant = f32[] constant(0)
+  ROOT scan = (f32[64], f32[]) scan(param_0.3, constant), dimensions={0},
+    num_carries=1, is_associative=true, to_apply=add
+}
+)"));
+  auto* instr = module->entry_computation()->root_instruction();
+
+  // The combiner is applied once per element: an f32 add, 3 FLOPs.
+  EXPECT_EQ(indexing_cost_model_.FlopsPerElement(instr), 3);
+}
+
+TEST_F(FlopsPerElementTest, GetTupleElementIsThreadSafe) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  param_0 = f32[] parameter(0)
+  param_1 = f32[] parameter(1)
+  add.0 = f32[] add(param_0, param_1)
+  ROOT tuple.0 = (f32[], f32[]) tuple(add.0, add.0)
+}
+
+ENTRY entry_computation {
+  param_0.3 = f32[64] parameter(0)
+  constant = f32[] constant(0)
+  scan = (f32[64], f32[]) scan(param_0.3, constant), dimensions={0},
+    num_carries=1, is_associative=true, to_apply=add
+  ROOT gte = f32[64] get-tuple-element(scan), index=0
+}
+)"));
+  auto* gte = module->entry_computation()->root_instruction();
+
+  // PriorityFusion estimates overlapping fusions concurrently.
+  {
+    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test", 8);
+    for (int i = 0; i < 200; ++i) {
+      thread_pool.Schedule(
+          [&]() { EXPECT_EQ(indexing_cost_model_.FlopsPerElement(gte), 0); });
+    }
+  }
 }
 
 TEST_F(FlopsPerElementTest, MatchesGpuHloCostAnalysis_Elementwise_Cosine) {

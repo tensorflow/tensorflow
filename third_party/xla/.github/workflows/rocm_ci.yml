@@ -19,6 +19,13 @@ permissions:
   packages: read
 on:
   pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      # Trigger on `closed` so the concurrency group cancels any in-progress
+      # `synchronize` run when a PR is closed or merged by Copybara.
+      - closed
   workflow_dispatch:
   workflow_call:
     inputs:
@@ -45,6 +52,9 @@ env:
 
 jobs:
   rocm-config:
+    # Skip job execution on `closed` events; the run only exists to cancel
+    # in-progress runs in the same concurrency group.
+    if: github.event_name != 'pull_request' || github.event.action != 'closed'
     runs-on: ubuntu-latest
     outputs:
       docker-image: ${{ steps.out.outputs.docker-image }}

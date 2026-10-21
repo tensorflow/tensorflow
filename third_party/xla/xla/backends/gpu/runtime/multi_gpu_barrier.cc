@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -29,6 +30,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/per_device_state.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/symmetric_memory.h"
@@ -36,9 +38,11 @@ limitations under the License.
 #include "xla/ffi/api/record_c_api.h"
 #include "xla/ffi/record_ffi.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
 #include "xla/stream_executor/gpu/multi_gpu_barrier_kernel.h"
+#include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -71,6 +75,18 @@ absl::StatusOr<typename Kernel::KernelType*> GetCachedKernel(
         return absl::OkStatus();
       }));
   return kernel_per_device->Find(device_ordinal)->get();
+}
+
+absl::Status ValidateBarrierWithNcclInputs(
+    int64_t num_devices, RankId rank,
+    const xla::SymmetricMemory* symmetric_memory) {
+  using Kernel = se::gpu::MultiGpuBarrierWithNcclKernel;
+  TF_RET_CHECK(symmetric_memory != nullptr)
+      << "Symmetric memory is required on rank " << rank.value();
+  TF_RET_CHECK(num_devices <= Kernel::kMaxPeers)
+      << "Number of participants exceeds "
+         "MultiGpuBarrierWithNcclKernel::kMaxPeers";
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -117,37 +133,39 @@ absl::Status LaunchMultiGpuBarrier(
       signal_buffers, typed_sync_counter);
 }
 
+absl::StatusOr<se::gpu::MultiGpuBarrierWithNcclKernel::KernelType>
+LoadMultiGpuBarrierWithNcclKernel(se::StreamExecutor* executor) {
+  TF_RET_CHECK(executor != nullptr) << "StreamExecutor is required";
+  return se::gpu::GpuKernelRegistry::GetGlobalRegistry()
+      .LoadKernel<se::gpu::MultiGpuBarrierWithNcclKernel>(executor);
+}
+
 // See MultiGpuBarrierWithNcclKernel for more details.
 absl::Status LaunchMultiGpuBarrierWithNccl(
-    stream_executor::Stream* stream, int64_t num_devices, RankId rank,
-    xla::SymmetricMemory* symmetric_memory,
+    stream_executor::Stream* stream,
+    se::gpu::MultiGpuBarrierWithNcclKernel::KernelType& kernel,
+    int64_t num_devices, RankId rank, xla::SymmetricMemory* symmetric_memory,
     stream_executor::DeviceAddressBase local_barrier_signal_value) {
   using MultiGpuBarrierWithNcclKernel =
       stream_executor::gpu::MultiGpuBarrierWithNcclKernel;
 
-  TF_RET_CHECK(symmetric_memory != nullptr)
-      << "Symmetric memory is required on rank " << rank.value();
-  TF_RET_CHECK(num_devices <= MultiGpuBarrierWithNcclKernel::kMaxPeers)
-      << "Number of participants exceeds "
-         "MultiGpuBarrierWithNcclKernel::kMaxPeers";
-
-  ABSL_ASSIGN_OR_RETURN(
-      MultiGpuBarrierWithNcclKernel::KernelType * kernel,
-      GetCachedKernel<MultiGpuBarrierWithNcclKernel>(stream->parent()));
+  TF_RET_CHECK(static_cast<bool>(kernel)) << "Barrier kernel must be loaded";
+  ABSL_RETURN_IF_ERROR(
+      ValidateBarrierWithNcclInputs(num_devices, rank, symmetric_memory));
 
   stream_executor::DeviceAddress<uint32_t> typed_sync_counter(
       local_barrier_signal_value);
 
-  return kernel->Launch(stream_executor::ThreadDim(
-                            MultiGpuBarrierWithNcclKernel::kMaxPeers, 1, 1),
-                        stream_executor::BlockDim(1, 1, 1), stream,
-                        static_cast<int64_t>(rank.value()),
-                        static_cast<int64_t>(num_devices), symmetric_memory,
-                        typed_sync_counter);
+  return kernel.Launch(stream_executor::ThreadDim(
+                           MultiGpuBarrierWithNcclKernel::kMaxPeers, 1, 1),
+                       stream_executor::BlockDim(1, 1, 1), stream,
+                       static_cast<int64_t>(rank.value()),
+                       static_cast<int64_t>(num_devices), symmetric_memory,
+                       typed_sync_counter);
 }
 
 absl::StatusOr<const XLA_FFI_Command*> RecordMultiGpuBarrierWithNccl(
-    stream_executor::StreamExecutor* executor,
+    const se::gpu::MultiGpuBarrierWithNcclKernel::KernelType& kernel,
     xla::ffi::RecordContext& record_ctx, int64_t num_devices, RankId rank,
     xla::SymmetricMemory* symmetric_memory,
     stream_executor::DeviceAddressBase local_barrier_signal_value,
@@ -155,8 +173,9 @@ absl::StatusOr<const XLA_FFI_Command*> RecordMultiGpuBarrierWithNccl(
   using MultiGpuBarrierWithNcclKernel =
       stream_executor::gpu::MultiGpuBarrierWithNcclKernel;
 
-  TF_RET_CHECK(symmetric_memory != nullptr)
-      << "Symmetric memory is required on rank " << rank.value();
+  TF_RET_CHECK(static_cast<bool>(kernel)) << "Barrier kernel must be loaded";
+  ABSL_RETURN_IF_ERROR(
+      ValidateBarrierWithNcclInputs(num_devices, rank, symmetric_memory));
 
   int64_t rank_val = rank.value();
   int64_t num_devices_val = num_devices;
@@ -168,17 +187,14 @@ absl::StatusOr<const XLA_FFI_Command*> RecordMultiGpuBarrierWithNccl(
   };
 
   if (record_ctx.action() == ffi::RecordAction::kCreate) {
-    TF_RET_CHECK(executor != nullptr) << "StreamExecutor is required";
-    ABSL_ASSIGN_OR_RETURN(MultiGpuBarrierWithNcclKernel::KernelType * kernel,
-                     GetCachedKernel<MultiGpuBarrierWithNcclKernel>(executor));
     XLA_FFI_LaunchDims launch_dims = {
         /*grid=*/{1, 1, 1},
         /*block=*/
         {static_cast<int32_t>(MultiGpuBarrierWithNcclKernel::kMaxPeers), 1, 1},
         /*cluster=*/{0, 0, 0}};
     return record_ctx.CreateLaunch(
-        std::string((*kernel)->name()).c_str(),
-        (*kernel)->platform_specific_handle().kernel,
+        std::string(kernel->name()).c_str(),
+        kernel->platform_specific_handle().kernel,
         /*kernel_size=*/0, ffi::SourceFormat::kFunctionPtr, launch_dims,
         /*shared_mem_bytes=*/0, /*uses_pdl=*/false, kernel_args);
   }
@@ -188,6 +204,39 @@ absl::StatusOr<const XLA_FFI_Command*> RecordMultiGpuBarrierWithNccl(
   TF_RET_CHECK(cmd != nullptr)
       << "Command pointer is required for RecordAction::kUpdate";
   ABSL_RETURN_IF_ERROR(record_ctx.UpdateLaunch(cmd, kernel_args));
+  return cmd;
+}
+
+absl::StatusOr<const se::CommandBuffer::Command*> RecordMultiGpuBarrierWithNccl(
+    se::CommandBuffer* command_buffer,
+    const se::gpu::MultiGpuBarrierWithNcclKernel::KernelType& kernel,
+    int64_t num_devices, RankId rank, xla::SymmetricMemory* symmetric_memory,
+    se::DeviceAddressBase local_barrier_signal_value,
+    const se::CommandBuffer::Command* absl_nullable cmd,
+    absl::Span<const se::CommandBuffer::Command* const> dependencies) {
+  using MultiGpuBarrierWithNcclKernel = se::gpu::MultiGpuBarrierWithNcclKernel;
+
+  TF_RET_CHECK(command_buffer != nullptr) << "CommandBuffer is required";
+  TF_RET_CHECK(static_cast<bool>(kernel)) << "Barrier kernel must be loaded";
+  ABSL_RETURN_IF_ERROR(
+      ValidateBarrierWithNcclInputs(num_devices, rank, symmetric_memory));
+
+  const se::ThreadDim thread_dims(MultiGpuBarrierWithNcclKernel::kMaxPeers, 1,
+                                  1);
+  const se::BlockDim block_dims(1, 1, 1);
+  se::DeviceAddress<uint32_t> typed_sync_counter(local_barrier_signal_value);
+
+  if (cmd == nullptr) {
+    return command_buffer->CreateLaunch(
+        kernel, thread_dims, block_dims, /*cluster_dims=*/std::nullopt,
+        dependencies, static_cast<int64_t>(rank.value()),
+        static_cast<int64_t>(num_devices), symmetric_memory,
+        typed_sync_counter);
+  }
+  ABSL_RETURN_IF_ERROR(command_buffer->UpdateLaunch(
+      cmd, kernel, thread_dims, block_dims, /*cluster_dims=*/std::nullopt,
+      static_cast<int64_t>(rank.value()), static_cast<int64_t>(num_devices),
+      symmetric_memory, typed_sync_counter));
   return cmd;
 }
 
