@@ -226,34 +226,197 @@ struct RematStrategy {
   Shape compact_shape;
 };
 
-// Returns true if the fused parameter of 'fusion' corresponding to 'op_idx'
-// accesses the buffer at 'shape_idx'.
-bool FusedParameterUsesBuffer(const HloInstruction* fusion, int64_t op_idx,
-                              const ShapeIndex& shape_idx,
-                              const HloDataflowAnalysis& dataflow_analysis) {
-  DCHECK(fusion->IsLoopFusion());
-  DCHECK_GE(op_idx, 0);
-  DCHECK_LT(op_idx, fusion->operand_count());
-  if (op_idx >= fusion->fused_instructions_computation()->num_parameters()) {
+constexpr HloCallBoundaryOptions kRematCallBoundaryOptions(
+    /*include_calls_in=*/true, /*include_control_flow_in=*/true,
+    /*include_fusions_in=*/true, /*include_associative_scans_in=*/true);
+
+bool InstructionOperandUsesBuffer(const HloInstruction* user, int64_t op_idx,
+                                  const ShapeIndex& shape_idx,
+                                  const HloDataflowAnalysis& dataflow_analysis,
+                                  absl::flat_hash_set<HloPosition>* visited);
+
+// Returns true if the value at ('instruction', 'shape_idx') is used by any
+// instruction or live out of the module, propagating across call, control flow,
+// and fusion boundaries.
+bool PositionIsUsed(const HloInstruction* instruction,
+                    const ShapeIndex& shape_idx,
+                    const HloDataflowAnalysis& dataflow_analysis,
+                    absl::flat_hash_set<HloPosition>* visited) {
+  if (!visited
+           ->insert(
+               HloPosition{const_cast<HloInstruction*>(instruction), shape_idx})
+           .second) {
     return false;
   }
-  const HloInstruction* fused_param = fusion->fused_parameter(op_idx);
-  if (!dataflow_analysis.ValueIsDefinedAt(fused_param, shape_idx)) {
-    return false;
-  }
-  const HloValue& value =
-      dataflow_analysis.GetValueDefinedAt(fused_param, shape_idx);
-  if (value.IsRootOf(fusion->fused_instructions_computation())) {
-    return true;
-  }
-  for (const HloUse& use : value.GetUses()) {
-    if (!use.instruction->IsLoopFusion() ||
-        FusedParameterUsesBuffer(use.instruction, use.operand_number,
-                                 use.operand_index, dataflow_analysis)) {
-      return true;
+  const HloComputation* computation = instruction->parent();
+  const HloInstruction* root = computation->root_instruction();
+  for (const HloValue* value :
+       dataflow_analysis.GetValueSet(instruction, shape_idx).values()) {
+    for (const HloUse& use : value->GetUses()) {
+      if (use.instruction == root &&
+          (root->opcode() == HloOpcode::kTuple ||
+           root->opcode() == HloOpcode::kDomain ||
+           ((root->opcode() == HloOpcode::kGetTupleElement ||
+             root->opcode() == HloOpcode::kCopy) &&
+            !use.operand_index.empty()))) {
+        // Forwarding into the computation root is checked via root positions
+        // below so tuple and domain roots only count when the corresponding
+        // caller output (or while backedge) is used.
+        continue;
+      }
+      if (InstructionOperandUsesBuffer(use.instruction, use.operand_number,
+                                       use.operand_index, dataflow_analysis,
+                                       visited)) {
+        return true;
+      }
+    }
+    for (const HloPosition& alias : value->positions()) {
+      if (alias.instruction != root) {
+        continue;
+      }
+      if (computation->IsEntryComputation() ||
+          computation->IsFusionComputation()) {
+        return true;
+      }
+      bool has_caller_boundary = false;
+      bool used_in_caller = false;
+      HloDataflowPropagation::ForEachCallerBoundary(
+          computation,
+          [&](const HloCallBoundary& boundary) {
+            has_caller_boundary = true;
+            if (!boundary.root_feeds_callsite) {
+              used_in_caller = true;
+              return;
+            }
+            if (boundary.callsite->opcode() == HloOpcode::kWhile) {
+              HloDataflowPropagation::ForEachCalledParameter(
+                  boundary.callsite, /*operand_number=*/0,
+                  [&](HloInstruction* while_param) {
+                    if (PositionIsUsed(while_param, alias.index,
+                                       dataflow_analysis, visited)) {
+                      used_in_caller = true;
+                    }
+                  },
+                  kRematCallBoundaryOptions);
+            }
+            if (!used_in_caller &&
+                PositionIsUsed(boundary.callsite,
+                               boundary.CallerOutputIndex(alias.index),
+                               dataflow_analysis, visited)) {
+              used_in_caller = true;
+            }
+          },
+          kRematCallBoundaryOptions);
+      if (!has_caller_boundary || used_in_caller) {
+        return true;
+      }
     }
   }
   return false;
+}
+
+// Returns true if 'user' accesses the buffer at 'shape_idx' of its operand
+// 'op_idx', looking through call, control flow, and fusion boundaries.
+bool InstructionOperandUsesBuffer(const HloInstruction* user, int64_t op_idx,
+                                  const ShapeIndex& shape_idx,
+                                  const HloDataflowAnalysis& dataflow_analysis,
+                                  absl::flat_hash_set<HloPosition>* visited) {
+  if (user->opcode() == HloOpcode::kGetTupleElement && !shape_idx.empty()) {
+    return false;
+  }
+  if (user->opcode() == HloOpcode::kConditional && op_idx == 0) {
+    return true;
+  }
+  bool has_boundary = false;
+  bool used_in_callee = false;
+  HloDataflowPropagation::ForEachCallBoundary(
+      user,
+      [&](const HloCallBoundary& boundary) {
+        has_boundary = true;
+        const int64_t param_no = op_idx - boundary.first_operand_index;
+        if (param_no >= 0 && param_no < boundary.num_parameters() &&
+            PositionIsUsed(boundary.callee_parameter(param_no), shape_idx,
+                           dataflow_analysis, visited)) {
+          used_in_callee = true;
+        }
+      },
+      kRematCallBoundaryOptions);
+  if (has_boundary) {
+    return used_in_callee;
+  }
+  return true;
+}
+
+bool InstructionOperandUsesBuffer(
+    const HloInstruction* user, int64_t op_idx, const ShapeIndex& shape_idx,
+    const HloDataflowAnalysis& dataflow_analysis) {
+  absl::flat_hash_set<HloPosition> visited;
+  return InstructionOperandUsesBuffer(user, op_idx, shape_idx,
+                                      dataflow_analysis, &visited);
+}
+
+// If ('instruction', 'index') reuses or forwards a buffer from an operand of
+// 'instruction' (as in kWhile or a passthrough kCall/kConditional output),
+// returns that operand HloValue; otherwise returns nullptr.
+const HloValue* FindPassthroughSourceValue(
+    const HloInstruction* instruction, const ShapeIndex& index,
+    const HloDataflowAnalysis& dataflow_analysis) {
+  if (instruction->opcode() == HloOpcode::kWhile) {
+    return &dataflow_analysis.GetUniqueValueAt(instruction->operand(0), index);
+  }
+  if (instruction->opcode() != HloOpcode::kCall &&
+      instruction->opcode() != HloOpcode::kConditional) {
+    return nullptr;
+  }
+  const HloValue* common_source = nullptr;
+  bool all_passthrough = true;
+  bool has_boundary = false;
+  HloDataflowPropagation::ForEachCallBoundary(
+      instruction,
+      [&](const HloCallBoundary& boundary) {
+        if (!boundary.root_feeds_callsite || !all_passthrough) {
+          return;
+        }
+        has_boundary = true;
+        std::optional<ShapeIndex> root_index = boundary.CalleeRootIndex(index);
+        if (!root_index.has_value()) {
+          all_passthrough = false;
+          return;
+        }
+        const HloValueSet& root_values =
+            dataflow_analysis.GetValueSet(boundary.callee_root(), *root_index);
+        if (root_values.values().size() != 1) {
+          all_passthrough = false;
+          return;
+        }
+        const HloValue& callee_value = root_values.GetUniqueValue();
+        if (callee_value.defining_instruction()->opcode() !=
+                HloOpcode::kParameter ||
+            callee_value.defining_instruction()->parent() != boundary.callee) {
+          all_passthrough = false;
+          return;
+        }
+        const int64_t param_no =
+            callee_value.defining_instruction()->parameter_number();
+        if (param_no >= boundary.num_parameters()) {
+          all_passthrough = false;
+          return;
+        }
+        const HloValueSet& caller_values = dataflow_analysis.GetValueSet(
+            boundary.caller_operand(param_no), callee_value.defining_index());
+        if (caller_values.values().size() != 1) {
+          all_passthrough = false;
+          return;
+        }
+        const HloValue* source = &caller_values.GetUniqueValue();
+        if (common_source == nullptr) {
+          common_source = source;
+        } else if (common_source != source) {
+          all_passthrough = false;
+        }
+      },
+      kRematCallBoundaryOptions);
+  return (has_boundary && all_passthrough) ? common_source : nullptr;
 }
 
 // Return the items which use the given HloValue. Sets
@@ -298,17 +461,15 @@ UsesList GetUsers(const HloRematInstructionList& instruction_list,
       };
 
       if (user->operand_count() == 1) {
-        if (!user->IsLoopFusion() ||
-            FusedParameterUsesBuffer(user, 0, position.index,
-                                     dataflow_analysis)) {
+        if (InstructionOperandUsesBuffer(user, 0, position.index,
+                                         dataflow_analysis)) {
           record_use(0);
         }
       } else {
         for (int64_t op_idx = 0; op_idx < user->operand_count(); ++op_idx) {
           if (user->operand(op_idx) == position.instruction) {
-            if (!user->IsLoopFusion() ||
-                FusedParameterUsesBuffer(user, op_idx, position.index,
-                                         dataflow_analysis)) {
+            if (InstructionOperandUsesBuffer(user, op_idx, position.index,
+                                             dataflow_analysis)) {
               record_use(op_idx);
             }
           }
@@ -679,22 +840,26 @@ MemoryUsageTracker::MemoryUsageTracker(
       }
       const HloValue* value = &value_set.GetUniqueValue();
       Buffer* buffer;
-      if (instruction->opcode() == HloOpcode::kWhile) {
-        // The while instruction defines no new buffers. Instead it reuses the
-        // buffers of its operand. Find the Buffer of its operand at the
-        // proper ShapeIndex.
-        const HloValue& source_value = dataflow_analysis.GetUniqueValueAt(
-            instruction->operand(0), value->index());
-        buffer = &buffers_.at(value_to_buffer_id.at(&source_value));
+      if (const HloValue* source_value = FindPassthroughSourceValue(
+              instruction, value->index(), dataflow_analysis);
+          source_value != nullptr) {
+        // The instruction defines no new buffer at this index and instead
+        // reuses the buffer of its operand.
+        buffer = &buffers_.at(value_to_buffer_id.at(source_value));
 
-        // Mark buffer as has indirect use and live out.
-        buffer->has_indirect_uses = true;
+        bool unused = false;
+        UsesList passthrough_users =
+            GetUsers(instruction_list_, value, dataflow_analysis, &unused);
+        if (!passthrough_users.empty() ||
+            (instruction->opcode() == HloOpcode::kWhile &&
+             InstructionOperandUsesBuffer(instruction, 0, value->index(),
+                                          dataflow_analysis))) {
+          buffer->has_indirect_uses = true;
+        }
         buffer->live_out = buffer->live_out || ContainsKey(live_out_set, value);
 
-        // Add users of while to Buffer users.
-        bool unused;
-        for (HloRematItemUse& user_item :
-             GetUsers(instruction_list_, value, dataflow_analysis, &unused)) {
+        // Add users of passthrough instruction to Buffer users.
+        for (HloRematItemUse& user_item : passthrough_users) {
           auto existing_user_it =
               absl::c_find_if(buffer->users, [&](const HloRematItemUse& use) {
                 return user_item.user == use.user;
