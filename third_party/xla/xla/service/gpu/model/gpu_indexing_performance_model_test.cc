@@ -93,7 +93,6 @@ class GpuIndexingPerformanceModelTest : public HloHardwareIndependentTestBase {
       &fusion_analysis_cache_,
       HloCostAnalysis::DefaultShapeSize,
       &mlir_context_,
-      /*use_experimental_tiling=*/true,
       /*enable_same_shape_multi_output_fusion=*/false,
       &mlir_context_pool_};
 
@@ -925,8 +924,9 @@ ENTRY main {
               SizeIs(1));
 }
 
-TEST_F(GpuIndexingPerformanceModelTest,
-       TryFindBestTilingForFusionAsync_NonScanReductionNoSequentialTiles) {
+TEST_F(
+    GpuIndexingPerformanceModelTest,
+    TryFindBestTilingForFusionAsync_UntiledReduceHasEmptySequentialTileSizes) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
 
@@ -961,53 +961,6 @@ ENTRY main {
       std::get<TiledRunTimeData>(tiled_runtime_data_or_error);
   EXPECT_THAT(tiled_runtime_data.block_level_parameters.sequential_tile_sizes,
               IsEmpty());
-}
-
-TEST_F(
-    GpuIndexingPerformanceModelTest,
-    TryFindTopKBestTilingsForFusionAsync_ReductionCandidatesSortedByExecTime) {
-  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
-HloModule m
-
-add {
-  p0 = f32[] parameter(0)
-  p1 = f32[] parameter(1)
-  ROOT add = f32[] add(p0, p1)
-}
-
-reduce_fusion {
-  p0 = f32[64,4096] parameter(0)
-  init = f32[] constant(0)
-  ROOT reduce = f32[64] reduce(p0, init), dimensions={1}, to_apply=add
-}
-
-ENTRY main {
-  p0 = f32[64,4096] parameter(0)
-  ROOT fusion = f32[64] fusion(p0), kind=kCustom, calls=reduce_fusion,
-    backend_config={"fusion_backend_config":{"kind":"__triton"}}
-})"));
-
-  module->mutable_config()
-      .mutable_debug_options()
-      .set_xla_gpu_experimental_enable_reduction_dimension_tiling(true);
-
-  const HloInstruction* root = module->entry_computation()->root_instruction();
-
-  ASSERT_OK_AND_ASSIGN(
-      auto top_k_result,
-      indexing_cost_model_
-          .TryFindTopKBestTilingsForFusionAsync(
-              *HloFusionAdaptor::ForInstruction(root), /*top_k=*/10)
-          .Await());
-  ASSERT_TRUE((std::holds_alternative<absl::InlinedVector<TiledRunTimeData, 4>>(
-      top_k_result)));
-  const auto& candidates =
-      std::get<absl::InlinedVector<TiledRunTimeData, 4>>(top_k_result);
-  ASSERT_GE(candidates.size(), 2);
-  for (int i = 1; i < candidates.size(); ++i) {
-    EXPECT_GE(candidates[i].runtime_data.exec_time,
-              candidates[i - 1].runtime_data.exec_time);
-  }
 }
 
 TEST_F(GpuIndexingPerformanceModelTest,

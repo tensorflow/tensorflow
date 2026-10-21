@@ -52,11 +52,8 @@ class CombinedGpuPerformanceModelTest : public HloHardwareIndependentTestBase {
   HloFusionAnalysisCache fusion_analysis_cache_{device_info_};
   GpuHloCostAnalysis analysis_;
   CombinedGpuPerformanceModel model_{
-      device_info_,
-      fusion_analysis_cache_,
-      mlir_context_,
+      device_info_, fusion_analysis_cache_, mlir_context_,
       [](const Shape& shape) { return ShapeUtil::ByteSizeOf(shape); },
-      /*use_experimental_tiling=*/true,
       /*enable_same_shape_multi_output_fusion=*/false};
 };
 

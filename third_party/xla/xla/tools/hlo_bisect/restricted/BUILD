@@ -33,8 +33,6 @@ xla_cc_binary(
     srcs = ["hlo_bisect.cc"],
     deps = [
         ":hlo_bisect_utils",
-        "//xla:debug_options_flags",
-        "//xla/service:backend",
         "//xla/service:cpu_plugin",
         "//xla/service:gpu_plugin",
         "//xla/service:interpreter_plugin",
