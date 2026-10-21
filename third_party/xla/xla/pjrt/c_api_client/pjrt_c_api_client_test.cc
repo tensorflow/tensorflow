@@ -147,7 +147,9 @@ TEST(PjRtCApiClientTest, CreateErrorBuffer) {
 
   absl::Status error = absl::InternalError("Test Error");
   error.SetPayload("test_key", absl::Cord("test_payload_value"));
-  Shape shape = ShapeUtil::MakeShape(S32, {2, 3});
+  Shape shape = ShapeUtil::MakeShapeWithDenseLayout(S32, {2, 3}, {0, 1});
+  Layout default_layout = LayoutUtil::MakeDescendingLayout(2);
+  Layout custom_layout = LayoutUtil::MakeAscendingLayout(2);
 
   ASSERT_OK_AND_ASSIGN(
       auto error_buffer,
@@ -158,6 +160,36 @@ TEST(PjRtCApiClientTest, CreateErrorBuffer) {
   EXPECT_THAT(awaited_status.message(), HasSubstr("Test Error"));
   EXPECT_EQ(awaited_status.GetPayload("test_key"),
             absl::Cord("test_payload_value"));
+  EXPECT_EQ(error_buffer->layout()->xla_layout(), default_layout);
+
+  ASSERT_OK_AND_ASSIGN(
+      auto custom_layout_error_buffer,
+      client->CreateErrorBuffer(error, shape, client->memory_spaces()[0],
+                                &custom_layout));
+  EXPECT_EQ(custom_layout_error_buffer->layout()->xla_layout(), custom_layout);
+
+  Layout invalid_layout = LayoutUtil::MakeLayout({0});
+  EXPECT_THAT(client->CreateErrorBuffer(
+                  error, shape, client->memory_spaces()[0], &invalid_layout),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+
+  EXPECT_THAT(
+      client->CreateErrorBuffer(error, ShapeUtil::MakeTupleShape({shape}),
+                                client->memory_spaces()[0]),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+
+  Shape token_shape = ShapeUtil::MakeTokenShape();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> token_error_buffer,
+                       client->CreateErrorBuffer(error, token_shape,
+                                                 client->memory_spaces()[0]));
+  EXPECT_EQ(token_error_buffer->on_device_shape(), token_shape);
+  EXPECT_THAT(token_error_buffer->GetReadyFuture().Await(),
+              absl_testing::StatusIs(absl::StatusCode::kInternal,
+                                     HasSubstr("Test Error")));
+  EXPECT_THAT(
+      client->CreateErrorBuffer(error, token_shape, client->memory_spaces()[0],
+                                &custom_layout),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(PjRtCApiClientTest, ConcurrentGetReadyFuture) {
@@ -1150,6 +1182,20 @@ TEST(PjRtCApiClientTest, MakeCanonicalShapeForMemorySpace) {
   EXPECT_TRUE(canonical_shape_specific.has_layout());
   EXPECT_EQ(canonical_shape_specific.layout().minor_to_major(),
             specific_layout.minor_to_major());
+
+  Shape token_shape = ShapeUtil::MakeTokenShape();
+  EXPECT_THAT(topology->MakeCanonicalShapeForMemorySpace(
+                  /*memory_space_kind_id=*/0, token_shape, /*layout=*/nullptr),
+              IsOkAndHolds(token_shape));
+  EXPECT_THAT(topology->MakeCanonicalShapeForMemorySpace(
+                  /*memory_space_kind_id=*/0, token_shape, &specific_layout),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+
+  EXPECT_THAT(
+      topology->MakeCanonicalShapeForMemorySpace(
+          /*memory_space_kind_id=*/0, ShapeUtil::MakeTupleShape({input_shape}),
+          /*layout=*/nullptr),
+      StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(PjRtCApiClientTest, IsCApi) {

@@ -242,23 +242,23 @@ absl::Status FissionBackend::ApplyConfig(HloInstruction& instr,
   ABSL_ASSIGN_OR_RETURN(std::vector<HloInstruction*> supported_instrs,
                    FindSupportedInstructions(hlo_module.get()));
 
-  for (size_t i = 0; i < supported_instrs.size(); ++i) {
-    HloInstruction* supported_instr = supported_instrs[i];
-    if (i > 0) {
-      if (supported_instr->opcode() != supported_instrs[0]->opcode()) {
-        return absl::InternalError(absl::StrCat(
-            "FissionBackend expected isomorphic supported instructions, but "
-            "found different opcodes: ",
-            HloOpcodeString(supported_instrs[0]->opcode()), " vs ",
-            HloOpcodeString(supported_instr->opcode())));
-      }
-      if (!ShapeUtil::Compatible(supported_instr->shape(),
-                                 supported_instrs[0]->shape())) {
-        return absl::InternalError(
-            "FissionBackend expected isomorphic supported instructions with "
-            "compatible shapes, but found incompatible shapes.");
-      }
+  for (size_t i = 1; i < supported_instrs.size(); ++i) {
+    const HloInstruction* supported_instr = supported_instrs[i];
+    if (supported_instr->opcode() != supported_instrs[0]->opcode()) {
+      return absl::InternalError(absl::StrCat(
+          "FissionBackend expected isomorphic supported instructions, but "
+          "found different opcodes: ",
+          HloOpcodeString(supported_instrs[0]->opcode()), " vs ",
+          HloOpcodeString(supported_instr->opcode())));
     }
+    if (!ShapeUtil::Compatible(supported_instr->shape(),
+                               supported_instrs[0]->shape())) {
+      return absl::InternalError(
+          "FissionBackend expected isomorphic supported instructions with "
+          "compatible shapes, but found incompatible shapes.");
+    }
+  }
+  for (HloInstruction* supported_instr : supported_instrs) {
     ABSL_RETURN_IF_ERROR(codegen_backend_->ApplyConfig(*supported_instr, config));
   }
 
