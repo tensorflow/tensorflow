@@ -309,6 +309,8 @@ xla_cc_test(
         "//xla/pjrt:maybe_owning_mlir_module",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_executable",
+        "//xla/pjrt:raw_buffer",
+        "//xla/pjrt:strided_gather",
         "//xla/pjrt/plugin/xla_cpu:cpu_client_options",
         "//xla/pjrt/plugin/xla_cpu:cpu_memory",
         "//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",

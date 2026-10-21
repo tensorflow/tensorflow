@@ -93,6 +93,7 @@ limitations under the License.
 #include "xla/pjrt/se/local_device_state.h"
 #include "xla/pjrt/se/pjrt_stream_executor_client.h"
 #include "xla/pjrt/se/stream_executor_executable.h"
+#include "xla/pjrt/strided_gather.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu/gpu_memory_space_assignment.h"
@@ -1775,6 +1776,210 @@ TEST(StreamExecutorGpuClientTest, CopyFromPinnedHostMemorySpace) {
   std::vector<int32_t> expected{1, 2, 3, 4};
   EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(expected),
                                      *literal));
+}
+
+TEST(StreamExecutorGpuClientTest, PjRtBufferCopySlicePinnedHostSingleChunk) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtClient> client,
+      GetStreamExecutorGpuClient(GetTestGpuClientOptions()));
+  std::vector<int32_t> data{10, 11, 12, 13, 14, 15, 16, 17};
+  Shape shape = ShapeUtil::MakeShape(S32, {8});
+  PjRtDevice* device = client->addressable_devices()[0];
+  TF_ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * pinned_space,
+      device->memory_space_by_kind(PinnedHostMemorySpace::kKind));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> src_buffer,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          pinned_space, /*device_layout=*/nullptr));
+
+  // Slice 4 elements (16 bytes) starting at element 2 (byte offset 8).
+  StridedGather::Spec spec = {
+      /*element_size=*/16,
+      /*counts=*/{1},
+      /*src_byte_offset=*/8,
+      /*src_byte_size=*/32,
+      /*src_byte_strides=*/{16},
+  };
+  StridedGather gather(spec);
+  ASSERT_EQ(gather.num_chunks(), 1);
+  ASSERT_EQ(gather.chunk_size(), 16);
+
+  Shape dst_shape = ShapeUtil::MakeShape(S32, {4});
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> sliced_buffer,
+                          src_buffer->CopySlice(gather, dst_shape));
+  EXPECT_TRUE(
+      ShapeUtil::Compatible(sliced_buffer->on_device_shape(), dst_shape));
+  EXPECT_EQ(sliced_buffer->memory_space()->kind(), "pinned_host");
+  EXPECT_TRUE(sliced_buffer->IsOnCpu());
+
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> literal,
+                          sliced_buffer->ToLiteral().Await());
+  std::vector<int32_t> expected{12, 13, 14, 15};
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(expected),
+                                     *literal));
+}
+
+TEST(StreamExecutorGpuClientTest,
+     PjRtBufferCopySlicePinnedHostMultiChunkWithTranspose) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtClient> client,
+      GetStreamExecutorGpuClient(GetTestGpuClientOptions()));
+  std::vector<int32_t> data{10, 11, 12, 20, 21, 22};
+  Shape shape = ShapeUtil::MakeShape(S32, {2, 3});
+  PjRtDevice* device = client->addressable_devices()[0];
+  TF_ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * pinned_space,
+      device->memory_space_by_kind(PinnedHostMemorySpace::kKind));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> src_buffer,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          pinned_space, /*device_layout=*/nullptr));
+
+  // Slice columns 1 and 2 transposed: counts={2, 2}, strides={4, 12},
+  // offset=4.
+  StridedGather::Spec spec = {
+      /*element_size=*/sizeof(int32_t),
+      /*counts=*/{2, 2},
+      /*src_byte_offset=*/sizeof(int32_t),
+      /*src_byte_size=*/6 * sizeof(int32_t),
+      /*src_byte_strides=*/{sizeof(int32_t), 3 * sizeof(int32_t)},
+  };
+  StridedGather gather(spec);
+  ASSERT_GT(gather.num_chunks(), 1);
+
+  Shape dst_shape = ShapeUtil::MakeShape(S32, {2, 2});
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> sliced_buffer,
+                          src_buffer->CopySlice(gather, dst_shape));
+  EXPECT_TRUE(
+      ShapeUtil::Compatible(sliced_buffer->on_device_shape(), dst_shape));
+  EXPECT_EQ(sliced_buffer->memory_space()->kind(), "pinned_host");
+  EXPECT_TRUE(sliced_buffer->IsOnCpu());
+
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> literal,
+                          sliced_buffer->ToLiteral().Await());
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      LiteralUtil::CreateR2<int32_t>({{11, 21}, {12, 22}}), *literal));
+}
+
+TEST(StreamExecutorGpuClientTest, PjRtBufferScheduleCopySliceToPinnedHost) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtClient> client,
+      GetStreamExecutorGpuClient(GetTestGpuClientOptions()));
+  std::vector<int32_t> src_data{10, 11, 12, 13, 14, 15, 16, 17};
+  std::vector<int32_t> dst_data{0, 0, 0, 0};
+  Shape src_shape = ShapeUtil::MakeShape(S32, {8});
+  Shape dst_shape = ShapeUtil::MakeShape(S32, {4});
+  PjRtDevice* device = client->addressable_devices()[0];
+  TF_ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * pinned_space,
+      device->memory_space_by_kind(PinnedHostMemorySpace::kKind));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> src_buffer,
+      client->BufferFromHostBuffer(
+          src_data.data(), src_shape.element_type(), src_shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          pinned_space, /*device_layout=*/nullptr));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> dst_buffer,
+      client->BufferFromHostBuffer(
+          dst_data.data(), dst_shape.element_type(), dst_shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          pinned_space, /*device_layout=*/nullptr));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      PjRtRawBufferRef src_raw,
+      PjRtRawBuffer::CreateRawAliasOfBuffer(src_buffer.get()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      PjRtRawBufferRef dst_raw,
+      PjRtRawBuffer::CreateRawAliasOfBuffer(dst_buffer.get()));
+  ASSERT_NE(src_raw, nullptr);
+  ASSERT_NE(dst_raw, nullptr);
+
+  StridedGather::Spec spec = {
+      /*element_size=*/16,
+      /*counts=*/{1},
+      /*src_byte_offset=*/8,
+      /*src_byte_size=*/32,
+      /*src_byte_strides=*/{16},
+  };
+  StridedGather gather(spec);
+
+  CommonPjRtClient* common_client =
+      absl::down_cast<CommonPjRtClient*>(client.get());
+  PjRtDeviceEventPromiseRef definition_event_promise;
+  PjRtDeviceEventRef definition_event;
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::tie(definition_event_promise, definition_event),
+      common_client->CreateLinkedEventPromise(pinned_space, "definition"));
+
+  PjRtDeviceEventPromiseRef src_usage_event_promise;
+  PjRtDeviceEventRef src_usage_event;
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::tie(src_usage_event_promise, src_usage_event),
+      common_client->CreateLinkedEventPromise(pinned_space, "src_usage"));
+
+  src_raw->ScheduleCopySliceTo(
+      /*transfer_dependency_events=*/{}, gather, dst_raw,
+      std::move(definition_event_promise), std::move(src_usage_event_promise),
+      /*allocation_event=*/nullptr);
+
+  tsl::BlockUntilReady(definition_event.async_value());
+  EXPECT_EQ(definition_event.GetErrorIfPresent(), std::nullopt);
+  tsl::BlockUntilReady(src_usage_event.async_value());
+  EXPECT_EQ(src_usage_event.GetErrorIfPresent(), std::nullopt);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> literal,
+                          dst_buffer->ToLiteral().Await());
+  std::vector<int32_t> expected{12, 13, 14, 15};
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(expected),
+                                     *literal));
+}
+
+TEST(StreamExecutorGpuClientTest,
+     PjRtBufferCopySliceDeviceMemorySpaceReturnsUnimplemented) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtClient> client,
+      GetStreamExecutorGpuClient(GetTestGpuClientOptions()));
+  std::vector<int32_t> data{1, 2, 3, 4};
+  Shape shape = ShapeUtil::MakeShape(S32, {4});
+  PjRtDevice* device = client->addressable_devices()[0];
+  PjRtMemorySpace* device_memory_space = *device->default_memory_space();
+  EXPECT_EQ(device_memory_space->kind(), "device");
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> buffer,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          device_memory_space, /*device_layout=*/nullptr));
+
+  StridedGather::Spec spec = {
+      /*element_size=*/4,
+      /*counts=*/{1},
+      /*src_byte_offset=*/0,
+      /*src_byte_size=*/16,
+      /*src_byte_strides=*/{4},
+  };
+  StridedGather gather(spec);
+  Shape dst_shape = ShapeUtil::MakeShape(S32, {1});
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> sliced_buffer,
+                          buffer->CopySlice(gather, dst_shape));
+  EXPECT_THAT(sliced_buffer->GetReadyFuture().Await(),
+              ::absl_testing::StatusIs(absl::StatusCode::kUnimplemented));
 }
 
 namespace {

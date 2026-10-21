@@ -56,6 +56,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/pjrt/scoped_async_tracking_event.h"
+#include "xla/pjrt/strided_gather.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/device_assignment.h"
 #include "xla/service/hlo_cost_analysis.h"
@@ -1374,6 +1375,13 @@ class PjRtBuffer {
   virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> Bitcast(
       xla::PrimitiveType element_type, absl::Span<const int64_t> dims,
       const Layout* device_layout) = 0;
+
+  // Copies a strided slice of the buffer's on-device bytes into a new buffer
+  // of `dst_shape` in the same memory space.
+  virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopySlice(
+      const StridedGather& gather, const xla::Shape& dst_shape) {
+    return absl::UnimplementedError("CopySlice is not supported.");
+  }
 
   // Donates 'this' and returns a new buffer that is ready only when both 'this'
   // and 'dependency' are ready.
