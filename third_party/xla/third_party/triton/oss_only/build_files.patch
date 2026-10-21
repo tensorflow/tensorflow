@@ -5,7 +5,7 @@ diff --git b/BUILD b/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/BUILD
-@@ -0,0 +1,1337 @@
+@@ -0,0 +1,1338 @@
 +# This package imports OpenAI's Triton (https://github.com/triton-lang/triton).
 +
 +# copybara:uncomment load("@rules:copybara.bzl", "copybara_config_test")
@@ -1063,6 +1063,7 @@ new file mode 100644
 +        "@llvm-project//llvm:Passes",
 +        "@llvm-project//llvm:Support",
 +        "@llvm-project//llvm:Target",
++        "@llvm-project//llvm:TransformUtils",
 +        "@llvm-project//mlir:ArithToLLVM",
 +        "@llvm-project//mlir:BuiltinToLLVMIRTranslation",
 +        "@llvm-project//mlir:ConversionPasses",

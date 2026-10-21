@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <exception>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -42,6 +43,7 @@ limitations under the License.
 #include "gloo/types.h"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/backends/cpu/collectives/gloo_reduce_scatter.h"
+#include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/reduction_kind.h"
 #include "xla/future.h"
@@ -59,15 +61,82 @@ GlooCommunicator::GlooCommunicator(std::shared_ptr<gloo::Context> context,
 
 GlooCommunicator::~GlooCommunicator() = default;
 
+Future<> GlooCommunicator::AllReduceMany(
+    absl::Span<const AllReduceBuffer> buffers, PrimitiveType dtype,
+    ReductionKind reduction_kind, const Executor& executor) {
+  if (buffers.size() <= 1) {
+    return Communicator::AllReduceMany(buffers, dtype, reduction_kind,
+                                       executor);
+  }
+
+  if (!primitive_util::IsArrayType(dtype)) {
+    return absl::InvalidArgumentError("Invalid all-reduce datatype");
+  }
+  const size_t width = primitive_util::ByteWidth(dtype);
+  size_t bytes = 0;
+  for (const AllReduceBuffer& buffer : buffers) {
+    if (buffer.count > std::numeric_limits<size_t>::max() / width ||
+        buffer.count * width > buffer.send_buffer.size() ||
+        buffer.count * width > buffer.recv_buffer.size()) {
+      return absl::InvalidArgumentError("Invalid all-reduce buffer size");
+    }
+    const size_t size = buffer.count * width;
+    if (size > std::numeric_limits<size_t>::max() - bytes) {
+      return absl::InvalidArgumentError("All-reduce packed size overflow");
+    }
+    bytes += size;
+  }
+  if (bytes == 0) {
+    return absl::OkStatus();
+  }
+
+  // Align scratch storage for any supported scalar type. Reduce in place and
+  // avoid initializing storage that will be overwritten when packing inputs.
+  const size_t words = bytes / sizeof(std::max_align_t) +
+                       (bytes % sizeof(std::max_align_t) != 0);
+  std::unique_ptr<std::max_align_t[]> scratch(new std::max_align_t[words]);
+  char* scratch_data = reinterpret_cast<char*>(scratch.get());
+  size_t offset = 0;
+  for (const AllReduceBuffer& buffer : buffers) {
+    const size_t size = buffer.count * width;
+    if (size != 0) {
+      std::memcpy(scratch_data + offset, buffer.send_buffer.opaque(), size);
+    }
+    offset += size;
+  }
+
+  // Gloo completes synchronously. Keep scratch alive until the reduction
+  // succeeds, then scatter to the original destinations (which may be
+  // in-place).
+  se::DeviceAddressBase packed_buffer(scratch_data, bytes);
+  ABSL_RETURN_IF_ERROR(AllReduce(packed_buffer, packed_buffer, dtype, bytes / width,
+                            reduction_kind, executor)
+                      .Await());
+  offset = 0;
+  for (const AllReduceBuffer& buffer : buffers) {
+    const size_t size = buffer.count * width;
+    if (size != 0) {
+      std::memcpy(buffer.recv_buffer.opaque(), scratch_data + offset, size);
+    }
+    offset += size;
+  }
+  return absl::OkStatus();
+}
+
 template <typename T>
 static absl::Status SetAllReduceOptions(ReductionKind reduction_kind,
                                         se::DeviceAddressBase input_buffer,
                                         se::DeviceAddressBase output_buffer,
                                         size_t num_elements,
                                         gloo::AllreduceOptions& options) {
-  options.setInput(reinterpret_cast<T*>(  // REINTERPRET_CAST_OK=existing code.
-                       input_buffer.opaque()),
-                   num_elements);
+  // With no separate input, Gloo reduces the output buffer in place instead of
+  // first copying input to output.
+  if (input_buffer.opaque() != output_buffer.opaque()) {
+    options.setInput(
+        reinterpret_cast<T*>(  // REINTERPRET_CAST_OK=existing code.
+            input_buffer.opaque()),
+        num_elements);
+  }
   options.setOutput(reinterpret_cast<T*>(  // REINTERPRET_CAST_OK=existing code.
                         output_buffer.opaque()),
                     num_elements);
@@ -183,7 +252,6 @@ Future<> GlooCommunicator::AllReduce(se::DeviceAddressBase send_buffer,
   }
   return absl::OkStatus();
 }
-
 
 Future<> GlooCommunicator::CollectivePermute(
     se::DeviceAddressBase send_buffer, se::DeviceAddressBase recv_buffer,
