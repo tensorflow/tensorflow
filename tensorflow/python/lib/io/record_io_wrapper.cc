@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/record_reader.h"
 #include "tensorflow/core/lib/io/record_writer.h"
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
+#include "tensorflow/core/lib/io/zlib_outputbuffer.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/file_system.h"
@@ -186,11 +187,51 @@ class PyRecordRandomReader {
   void operator=(const PyRecordRandomReader&) = delete;
 };
 
+// A WritableFile that discards everything written to it.
+class NullWritableFile : public tensorflow::WritableFile {
+ public:
+  absl::Status Append(absl::string_view data) override {
+    return absl::OkStatus();
+  }
+  absl::Status Close() override { return absl::OkStatus(); }
+  absl::Status Flush() override { return absl::OkStatus(); }
+  absl::Status Sync() override { return absl::OkStatus(); }
+};
+
+// RecordWriter aborts the process when its zlib stream fails to initialize.
+// Run the same ZlibOutputBuffer::Init() on a NullWritableFile first, so that
+// invalid options are returned as an error instead.
+absl::Status CheckZlibOptions(
+    const tensorflow::io::RecordWriterOptions& options) {
+  if (options.compression_type !=
+      tensorflow::io::RecordWriterOptions::ZLIB_COMPRESSION) {
+    return absl::OkStatus();
+  }
+  const tensorflow::io::ZlibCompressionOptions& zlib = options.zlib_options;
+  NullWritableFile null_file;
+  tensorflow::io::ZlibOutputBuffer buffer(&null_file, zlib.input_buffer_size,
+                                          zlib.output_buffer_size, zlib);
+  absl::Status status = buffer.Init();
+  if (!status.ok()) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Invalid TFRecordWriter options for ZLIB/GZIP compression: ",
+        status.message(), " (window_bits=", static_cast<int>(zlib.window_bits),
+        ", compression_level=", static_cast<int>(zlib.compression_level),
+        ", compression_method=", static_cast<int>(zlib.compression_method),
+        ", mem_level=", static_cast<int>(zlib.mem_level),
+        ", compression_strategy=", static_cast<int>(zlib.compression_strategy),
+        ", input_buffer_size=", zlib.input_buffer_size,
+        ", output_buffer_size=", zlib.output_buffer_size, ")"));
+  }
+  return buffer.Close();
+}
+
 class PyRecordWriter {
  public:
   static absl::Status New(const std::string& filename,
                           const tensorflow::io::RecordWriterOptions& options,
                           PyRecordWriter** out) {
+    TF_RETURN_IF_ERROR(CheckZlibOptions(options));
     std::unique_ptr<tensorflow::WritableFile> file;
     TF_RETURN_IF_ERROR(
         tensorflow::Env::Default()->NewWritableFile(filename, &file));
