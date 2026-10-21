@@ -4134,11 +4134,13 @@ def one_hot(indices,
 
     if not on_exists:
       # on_value not provided: assign to value 1 of type dtype
-      on_value = ops.convert_to_tensor(1, dtype, name="on_value")
+      on_value = ops.convert_to_tensor(
+          True if dtype == dtypes.bool else 1, dtype, name="on_value")
       on_dtype = dtype
     if not off_exists:
       # off_value not provided: assign to value 0 of type dtype
-      off_value = ops.convert_to_tensor(0, dtype, name="off_value")
+      off_value = ops.convert_to_tensor(
+          False if dtype == dtypes.bool else 0, dtype, name="off_value")
       off_dtype = dtype
 
     if on_dtype != off_dtype:
