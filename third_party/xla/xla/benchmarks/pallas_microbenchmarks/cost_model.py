@@ -845,9 +845,10 @@ class SubchannelCostModel(CostModel):
   # where all ALU and XLU ops must be done in float32 (vunpack.c.l and
   # vunpack.c.u).
   _NUM_CONVERT_BF16_TO_F32_ALU_OPS = 1
-  # Number of ALU ops per VREG for unpacking an emulated quantized dtype (e.g.
-  # s4 -> f8e4m3fn via vunpack.c.l, vunpack.c.u, and vcvt).
-  _NUM_UNPACK_ALU_OPS = 3
+  # Number of ALU ops per unpacked VREG for unpacking an emulated quantized
+  # dtype (e.g. s4 -> f8e4m3fn via one of vunpack.c.{l,u} and vcvt per unpacked
+  # VREG).
+  _NUM_UNPACK_ALU_OPS = 2
   # Number of ALU ops per VREG for subchannel output dequantization (vpack, 2x
   # vmul) and accumulation (vadd).
   _NUM_DEQUANT_ACCUM_ALU_OPS = 4
@@ -1002,9 +1003,7 @@ class SubchannelCostModel(CostModel):
       dtype: jax.typing.DTypeLike,
   ) -> np.ndarray:
     """Returns unnormalized ALU throughput cycles for `num_ops` on a (rows, cols) tile."""
-    return (
-        self._num_vregs(rows, cols, dtype) * num_ops * self._ALU_LATENCY_CYCLES
-    )
+    return self._num_vregs(rows, cols, dtype) * num_ops
 
   def _alu_latency_cycles(
       self,
@@ -1016,6 +1015,7 @@ class SubchannelCostModel(CostModel):
     """Returns latency cycles to execute `num_ops` on a (rows, cols) tile across ALUs."""
     return (
         self._alu_cycles(rows, cols, num_ops, dtype)
+        * self._ALU_LATENCY_CYCLES
         / self._platform_info.num_alus
     )
 
@@ -1086,23 +1086,29 @@ class SubchannelCostModel(CostModel):
         )
     if self.lhs_quantized_dtype != self.matmul_lhs_dtype:
       alu_cycles = alu_cycles + self._alu_cycles(
-          self._block_m, self._block_k, self._NUM_UNPACK_ALU_OPS, input_dtype
+          self._block_m,
+          self._block_k,
+          self._NUM_UNPACK_ALU_OPS,
+          self.matmul_lhs_dtype,
       )
       latency_cycles = latency_cycles + self._alu_latency_cycles(
           first_op_rows,
           mxu_contracting_dim,
           self._NUM_UNPACK_ALU_OPS,
-          input_dtype,
+          self.matmul_lhs_dtype,
       )
     if self.rhs_quantized_dtype != self.matmul_rhs_dtype:
       alu_cycles = alu_cycles + self._alu_cycles(
-          self._block_k, self._block_n, self._NUM_UNPACK_ALU_OPS, input_dtype
+          self._block_k,
+          self._block_n,
+          self._NUM_UNPACK_ALU_OPS,
+          self.matmul_rhs_dtype,
       )
       latency_cycles = latency_cycles + self._alu_latency_cycles(
           mxu_contracting_dim,
           mxu_non_contracting_dim,
           self._NUM_UNPACK_ALU_OPS,
-          input_dtype,
+          self.matmul_rhs_dtype,
       )
     return PipelineStageCost(
         alu_cycles=alu_cycles,

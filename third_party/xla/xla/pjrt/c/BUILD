@@ -665,7 +665,6 @@ cc_library(
         "//xla/backends/profiler/plugin:profiler_error",
         "//xla/client:local_client",
         "//xla/ffi",
-        "//xla/ffi:ffi_api",
         "//xla/ffi:ffi_interop",
         "//xla/ffi/api:c_api",
         "//xla/pjrt:pjrt_client",
