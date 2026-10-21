@@ -447,6 +447,7 @@ xla_test(
         "//xla/pjrt:pjrt_device_description",
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:raw_buffer",
+        "//xla/pjrt:strided_gather",
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_allocator_config",
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
         "//xla/pjrt/profiling:device_time_measurement",

@@ -61,6 +61,8 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
 #include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
+#include "xla/pjrt/raw_buffer.h"
+#include "xla/pjrt/strided_gather.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -1596,6 +1598,292 @@ TEST(PjRtCpuClientTest, DonateWithControlDependencyError) {
   EXPECT_THAT(to_literal_status,
               StatusIs(absl::StatusCode::kInternal,
                        HasSubstr("control dependency failed")));
+}
+
+TEST(PjRtCpuClientTest, PjRtBufferCopySliceSingleChunk) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetPjRtCpuClient(CpuClientOptions()));
+  PjRtDevice* device = client->addressable_devices().front();
+  ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * pinned_space,
+      device->memory_space_by_kind(PinnedHostMemorySpace::kKind));
+  ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * unpinned_space,
+      device->memory_space_by_kind(UnpinnedHostMemorySpace::kKind));
+
+  std::vector<PjRtMemorySpace*> memory_spaces = {pinned_space, unpinned_space};
+
+  for (PjRtMemorySpace* memory_space : memory_spaces) {
+    Literal literal =
+        LiteralUtil::CreateR1<int32_t>({10, 11, 12, 13, 14, 15, 16, 17});
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<PjRtBuffer> src_buffer,
+        client->BufferFromHostLiteral(literal, memory_space,
+                                      /*device_layout=*/nullptr));
+
+    // Slice 4 elements (16 bytes) starting at element 2 (byte offset 8).
+    StridedGather::Spec spec = {
+        /*element_size=*/16,
+        /*counts=*/{1},
+        /*src_byte_offset=*/8,
+        /*src_byte_size=*/32,
+        /*src_byte_strides=*/{16},
+    };
+    StridedGather gather(spec);
+    ASSERT_EQ(gather.num_chunks(), 1);
+    ASSERT_EQ(gather.chunk_size(), 16);
+
+    Shape dst_shape = ShapeUtil::MakeShape(S32, {4});
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> sliced_buffer,
+                         src_buffer->CopySlice(gather, dst_shape));
+    EXPECT_EQ(sliced_buffer->on_device_shape(), dst_shape);
+    EXPECT_EQ(sliced_buffer->memory_space(), memory_space);
+
+    ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> result_literal,
+                         sliced_buffer->ToLiteralSync());
+    EXPECT_THAT(result_literal->data<int32_t>(),
+                ::testing::ElementsAre(12, 13, 14, 15));
+  }
+}
+
+TEST(PjRtCpuClientTest, PjRtBufferCopySliceMultiChunkWithTranspose) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetPjRtCpuClient(CpuClientOptions()));
+  PjRtDevice* device = client->addressable_devices().front();
+  ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * pinned_space,
+      device->memory_space_by_kind(PinnedHostMemorySpace::kKind));
+  ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * unpinned_space,
+      device->memory_space_by_kind(UnpinnedHostMemorySpace::kKind));
+
+  std::vector<PjRtMemorySpace*> memory_spaces = {pinned_space, unpinned_space};
+
+  for (PjRtMemorySpace* memory_space : memory_spaces) {
+    Literal literal =
+        LiteralUtil::CreateR2<int32_t>({{10, 11, 12}, {20, 21, 22}});
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<PjRtBuffer> src_buffer,
+        client->BufferFromHostLiteral(literal, memory_space,
+                                      /*device_layout=*/nullptr));
+
+    // Slice columns 1 and 2 transposed: counts={2, 2}, strides={4, 12},
+    // offset=4.
+    StridedGather::Spec spec = {
+        /*element_size=*/sizeof(int32_t),
+        /*counts=*/{2, 2},
+        /*src_byte_offset=*/sizeof(int32_t),
+        /*src_byte_size=*/6 * sizeof(int32_t),
+        /*src_byte_strides=*/{sizeof(int32_t), 3 * sizeof(int32_t)},
+    };
+    StridedGather gather(spec);
+    ASSERT_GT(gather.num_chunks(), 1);
+
+    Shape dst_shape = ShapeUtil::MakeShape(S32, {2, 2});
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> sliced_buffer,
+                         src_buffer->CopySlice(gather, dst_shape));
+    EXPECT_EQ(sliced_buffer->on_device_shape(), dst_shape);
+    EXPECT_EQ(sliced_buffer->memory_space(), memory_space);
+
+    ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> result_literal,
+                         sliced_buffer->ToLiteralSync());
+    EXPECT_THAT(result_literal->data<int32_t>(),
+                ::testing::ElementsAre(11, 21, 12, 22));
+  }
+}
+
+TEST(PjRtCpuClientTest, PjRtBufferCopySliceZeroSizedGather) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetPjRtCpuClient(CpuClientOptions()));
+  PjRtDevice* device = client->addressable_devices().front();
+  ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * pinned_space,
+      device->memory_space_by_kind(PinnedHostMemorySpace::kKind));
+
+  Literal literal = LiteralUtil::CreateR1<int32_t>({10, 11, 12, 13});
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> src_buffer,
+      client->BufferFromHostLiteral(literal, pinned_space,
+                                    /*device_layout=*/nullptr));
+
+  StridedGather::Spec spec = {
+      /*element_size=*/4,
+      /*counts=*/{0},
+      /*src_byte_offset=*/0,
+      /*src_byte_size=*/16,
+      /*src_byte_strides=*/{4},
+  };
+  StridedGather gather(spec);
+  ASSERT_EQ(gather.num_chunks(), 0);
+
+  Shape dst_shape = ShapeUtil::MakeShape(S32, {0});
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> sliced_buffer,
+                       src_buffer->CopySlice(gather, dst_shape));
+  EXPECT_EQ(sliced_buffer->on_device_shape(), dst_shape);
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> result_literal,
+                       sliced_buffer->ToLiteralSync());
+  EXPECT_EQ(result_literal->element_count(), 0);
+}
+
+TEST(PjRtCpuClientTest, PjRtBufferCopySliceDelayedReadiness) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetPjRtCpuClient(CpuClientOptions()));
+  PjRtDevice* device = client->addressable_devices().front();
+  ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * pinned_space,
+      device->memory_space_by_kind(PinnedHostMemorySpace::kKind));
+
+  Literal literal = LiteralUtil::CreateR1<int32_t>({10, 11, 12, 13});
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> src_buffer,
+      client->BufferFromHostLiteral(literal, pinned_space,
+                                    /*device_layout=*/nullptr));
+
+  auto [promise, future] = MakePromise<>();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> blocked_buffer,
+                       src_buffer->DonateWithControlDependency(future));
+
+  StridedGather::Spec spec = {
+      /*element_size=*/8,
+      /*counts=*/{1},
+      /*src_byte_offset=*/4,
+      /*src_byte_size=*/16,
+      /*src_byte_strides=*/{8},
+  };
+  StridedGather gather(spec);
+
+  Shape dst_shape = ShapeUtil::MakeShape(S32, {2});
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> sliced_buffer,
+                       blocked_buffer->CopySlice(gather, dst_shape));
+
+  Future<> ready_future = sliced_buffer->GetReadyFuture();
+  EXPECT_FALSE(ready_future.IsReady());
+
+  promise.Set();
+  EXPECT_THAT(ready_future.Await(), ::absl_testing::IsOk());
+
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> result_literal,
+                       sliced_buffer->ToLiteralSync());
+  EXPECT_THAT(result_literal->data<int32_t>(), ::testing::ElementsAre(11, 12));
+}
+
+TEST(PjRtCpuClientTest, PjRtBufferCopySliceControlDependencyError) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetPjRtCpuClient(CpuClientOptions()));
+  PjRtDevice* device = client->addressable_devices().front();
+  ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * pinned_space,
+      device->memory_space_by_kind(PinnedHostMemorySpace::kKind));
+
+  Literal literal = LiteralUtil::CreateR1<int32_t>({10, 11, 12, 13});
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> src_buffer,
+      client->BufferFromHostLiteral(literal, pinned_space,
+                                    /*device_layout=*/nullptr));
+
+  auto [promise, future] = MakePromise<>();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> blocked_buffer,
+                       src_buffer->DonateWithControlDependency(future));
+
+  StridedGather::Spec spec = {
+      /*element_size=*/8,
+      /*counts=*/{1},
+      /*src_byte_offset=*/4,
+      /*src_byte_size=*/16,
+      /*src_byte_strides=*/{8},
+  };
+  StridedGather gather(spec);
+
+  Shape dst_shape = ShapeUtil::MakeShape(S32, {2});
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> sliced_buffer,
+                       blocked_buffer->CopySlice(gather, dst_shape));
+
+  Future<> ready_future = sliced_buffer->GetReadyFuture();
+  EXPECT_FALSE(ready_future.IsReady());
+
+  promise.Set(absl::InternalError("control dependency failed"));
+
+  EXPECT_THAT(ready_future.Await(),
+              ::absl_testing::StatusIs(
+                  absl::StatusCode::kInternal,
+                  ::testing::HasSubstr("control dependency failed")));
+}
+
+TEST(PjRtCpuClientTest, PjRtBufferCopySliceInvalidArgument) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetPjRtCpuClient(CpuClientOptions()));
+  PjRtDevice* device = client->addressable_devices().front();
+  ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * pinned_space,
+      device->memory_space_by_kind(PinnedHostMemorySpace::kKind));
+
+  Literal literal = LiteralUtil::CreateR1<int32_t>({1, 2, 3, 4});
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> buffer,
+      client->BufferFromHostLiteral(literal, pinned_space,
+                                    /*device_layout=*/nullptr));
+
+  // Case 1a: src_byte_size exceeds buffer size (32 > 16).
+  {
+    StridedGather::Spec spec = {
+        /*element_size=*/4,
+        /*counts=*/{1},
+        /*src_byte_offset=*/0,
+        /*src_byte_size=*/32,
+        /*src_byte_strides=*/{4},
+    };
+    StridedGather gather(spec);
+    Shape dst_shape = ShapeUtil::MakeShape(S32, {1});
+    EXPECT_THAT(buffer->CopySlice(gather, dst_shape),
+                ::absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  }
+
+  // Case 1b: max accessed byte offset exceeds buffer size (20 > 16).
+  {
+    StridedGather::Spec spec = {
+        /*element_size=*/4,
+        /*counts=*/{1},
+        /*src_byte_offset=*/16,
+        /*src_byte_size=*/16,
+        /*src_byte_strides=*/{4},
+    };
+    StridedGather gather(spec);
+    Shape dst_shape = ShapeUtil::MakeShape(S32, {1});
+    EXPECT_THAT(buffer->CopySlice(gather, dst_shape),
+                ::absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  }
+
+  // Case 2: dst_shape byte size does not match slice size (8 != 4).
+  {
+    StridedGather::Spec spec = {
+        /*element_size=*/4,
+        /*counts=*/{1},
+        /*src_byte_offset=*/0,
+        /*src_byte_size=*/16,
+        /*src_byte_strides=*/{4},
+    };
+    StridedGather gather(spec);
+    Shape mismatched_dst_shape =
+        ShapeUtil::MakeShape(S32, {2});  // 8 bytes != 4 bytes
+    EXPECT_THAT(buffer->CopySlice(gather, mismatched_dst_shape),
+                ::absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  }
+
+  // Case 3: CopySlice called on a deleted buffer.
+  {
+    buffer->Delete();
+    StridedGather::Spec spec = {
+        /*element_size=*/4,
+        /*counts=*/{1},
+        /*src_byte_offset=*/0,
+        /*src_byte_size=*/16,
+        /*src_byte_strides=*/{4},
+    };
+    StridedGather gather(spec);
+    Shape dst_shape = ShapeUtil::MakeShape(S32, {1});
+    EXPECT_THAT(buffer->CopySlice(gather, dst_shape),
+                ::absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  }
 }
 
 }  // namespace
