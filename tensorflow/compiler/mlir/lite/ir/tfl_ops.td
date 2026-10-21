@@ -744,6 +744,8 @@ def TFL_TransposeConvOp: TFL_Op<"transpose_conv", [
 
   let hasVerifier = 1;
 
+  let hasFolder = 1;
+
   let extraClassDeclaration = [{
     // AffineQuantizedOpInterface:
     int GetChannelDimIndex() { return 0; }
@@ -1018,6 +1020,7 @@ def TFL_Conv2DOp : TFL_ConvOp<"conv_2d", "Convolution", 0,
   );
 
   let hasCanonicalizer = 1;
+  let hasFolder = 1;
 
   let extraClassDeclaration = [{
     // AffineQuantizedOpInterface:
@@ -1108,6 +1111,7 @@ def TFL_DepthwiseConv2DOp :
   );
 
   let hasCanonicalizer = 1;
+  let hasFolder = 1;
 
   let extraClassDeclaration = [{
     // AffineQuantizedOpInterface:
@@ -1245,6 +1249,8 @@ in the batch dimensions and broadcasting.
   let hasOptions = 1;
 
   let hasVerifier = 1;
+
+  let hasFolder = 1;
 
   let extraClassDeclaration = [{
     // DynamicRangeQuantizedOpInterface:
@@ -1990,6 +1996,8 @@ def TFL_FloorDivOp : TFL_Op<"floor_div", [
 
   let builders = [TFL_BroadcastableBinaryBuilder];
 
+  let hasFolder = 1;
+
   let hasCustomAssemblyFormat = 1;
 
   let extraClassDefinition = [{
@@ -2456,6 +2464,8 @@ def TFL_MeanOp : TFL_Op<"mean", [
 
   let hasOptions = 1;
   let customOption = "ReducerOptions";
+
+  let hasFolder = 1;
 }
 
 def TFL_OneHotOp : TFL_Op<"one_hot", [
@@ -4006,6 +4016,8 @@ def TFL_ResizeBilinearOp: TFL_Op<"resize_bilinear", [
   );
 
   let hasOptions = 1;
+
+  let hasFolder = 1;
 }
 
 def TFL_ResizeNearestNeighborOp : TFL_Op<"resize_nearest_neighbor", [
@@ -4035,6 +4047,8 @@ def TFL_ResizeNearestNeighborOp : TFL_Op<"resize_nearest_neighbor", [
   );
 
   let hasOptions = 1;
+
+  let hasFolder = 1;
 }
 
 def TFL_SparseToDenseOp : TFL_Op<"sparse_to_dense", [
@@ -5738,6 +5752,8 @@ subsequent operation and then be optimized away, however.)
   }];
 
   let hasCanonicalizer = 1;
+
+  let hasFolder = 1;
 }
 
 def TFL_RFFT2dOp : TFL_Op<"rfft2d", [Pure]> {

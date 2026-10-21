@@ -60,14 +60,12 @@ class SoftmaxRewriterTriton : public HloModulePass {
                                  const GpuAliasInfo* alias_info,
                                  mlir::MLIRContext* mlir_context,
                                  bool only_fuse_if_profitable,
-                                 bool use_experimental_tiling,
                                  tsl::thread::ThreadPool* thread_pool = nullptr,
                                  MlirContextPool* mlir_context_pool = nullptr)
       : device_info_(device_info),
         shape_size_(shape_size),
         alias_info_(alias_info),
         use_cost_model_to_evaluate_fusions_(only_fuse_if_profitable),
-        use_experimental_tiling_(use_experimental_tiling),
         mlir_context_(mlir_context),
         thread_pool_(thread_pool),
         mlir_context_pool_(mlir_context_pool) {}
@@ -121,7 +119,6 @@ class SoftmaxRewriterTriton : public HloModulePass {
   const HloCostAnalysis::ShapeSizeFunction shape_size_;
   const GpuAliasInfo* alias_info_;
   bool use_cost_model_to_evaluate_fusions_;
-  bool use_experimental_tiling_;
   mlir::MLIRContext* mlir_context_;
   tsl::thread::ThreadPool* thread_pool_ = nullptr;
   MlirContextPool* mlir_context_pool_ = nullptr;

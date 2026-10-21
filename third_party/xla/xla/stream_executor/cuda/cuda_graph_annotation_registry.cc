@@ -15,12 +15,14 @@ limitations under the License.
 
 #include "xla/stream_executor/cuda/cuda_graph_annotation_registry.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <initializer_list>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/base/no_destructor.h"
 #include "absl/functional/function_ref.h"
@@ -223,6 +225,28 @@ CudaGraphAnnotationRegistry::Stats CudaGraphAnnotationRegistry::GetStats()
     stats.parked_nodes += entry.nodes.size();
   }
   return stats;
+}
+
+std::vector<std::string>
+CudaGraphAnnotationRegistry::GetNodeAnnotationsForTesting(
+    KeySpace space) const {
+  std::vector<std::string> annotations;
+  absl::ReaderMutexLock lock(mu_);
+  for (const GraphMap* graphs : {&live_, &parked_}) {
+    // The result is sorted below, so iteration order doesn't matter.
+    // NOLINTNEXTLINE(*-custom-deterministic-iteration-order)
+    for (const auto& [key, entry] : *graphs) {
+      if ((key >> 32) != static_cast<uint64_t>(space)) {
+        continue;
+      }
+      // NOLINTNEXTLINE(*-custom-deterministic-iteration-order)
+      for (const auto& [node_id, annotation] : entry.nodes) {
+        annotations.push_back(annotation);
+      }
+    }
+  }
+  std::sort(annotations.begin(), annotations.end());
+  return annotations;
 }
 
 void CudaGraphAnnotationRegistry::ClearForTesting() {

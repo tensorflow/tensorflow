@@ -442,6 +442,16 @@ alias(
 # is compiled in, matching the library :smi resolves to.
 _SMI_BACKEND_SRCS = ["smi_util_amd_smi.cc"] if _USE_AMD_SMI else ["smi_util_rocm_smi.cc"]
 
+# Keeps the label of the backend not compiled in resolvable, for tools that
+# query changed files, such as build_tools/ci/run_clang_tidy.sh.
+exports_files(
+    [
+        "smi_util_amd_smi.cc",
+        "smi_util_rocm_smi.cc",
+    ],
+    visibility = ["//visibility:private"],
+)
+
 cc_library(
     name = "smi_util",
     srcs = ["smi_util.cc"] + _SMI_BACKEND_SRCS,

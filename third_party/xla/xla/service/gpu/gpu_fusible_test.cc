@@ -1991,6 +1991,66 @@ ENTRY main {
   EXPECT_TRUE(ContainsScan(*root->operand(1), &cache));
 }
 
+TEST_F(GpuFusibleTest, ContainsSignificantReduce) {
+  ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+significant_reduce_computation {
+  p0.1 = f32[16] parameter(0)
+  c0.1 = f32[] constant(0)
+  ROOT reduce.1 = f32[] reduce(p0.1, c0.1), dimensions={0}, to_apply=scalar_add
+}
+
+small_reduce_computation {
+  p0.2 = f32[15] parameter(0)
+  c0.2 = f32[] constant(0)
+  ROOT reduce.2 = f32[] reduce(p0.2, c0.2), dimensions={0}, to_apply=scalar_add
+}
+
+loop_computation {
+  p0.3 = f32[16] parameter(0)
+  ROOT mul = f32[16] multiply(p0.3, p0.3)
+}
+
+ENTRY main {
+  p16 = f32[16] parameter(0)
+  p15 = f32[15] parameter(1)
+  p0_16 = f32[0,16] parameter(2)
+  c = f32[] constant(0)
+  significant_reduce = f32[] reduce(p16, c), dimensions={0}, to_apply=scalar_add
+  small_reduce = f32[] reduce(p15, c), dimensions={0}, to_apply=scalar_add
+  zero_extent_reduce = f32[0] reduce(p0_16, c), dimensions={1}, to_apply=scalar_add
+  significant_reduce_fusion = f32[] fusion(p16), kind=kInput, calls=significant_reduce_computation
+  small_reduce_fusion = f32[] fusion(p15), kind=kLoop, calls=small_reduce_computation
+  loop_fusion = f32[16] fusion(p16), kind=kLoop, calls=loop_computation
+  ROOT tuple = tuple(significant_reduce, small_reduce, significant_reduce_fusion, small_reduce_fusion, loop_fusion, zero_extent_reduce)
+}
+)")));
+  const HloComputation* entry = module->entry_computation();
+  const HloInstruction* root = entry->root_instruction();
+  // Uncached checks: only reductions with reduction factor >= 16 (unfused or
+  // inside a fusion) should be reported as significant reductions.
+  EXPECT_TRUE(ContainsSignificantReduce(*root->operand(0)));
+  EXPECT_FALSE(ContainsSignificantReduce(*root->operand(1)));
+  EXPECT_TRUE(ContainsSignificantReduce(*root->operand(2)));
+  EXPECT_FALSE(ContainsSignificantReduce(*root->operand(3)));
+  EXPECT_FALSE(ContainsSignificantReduce(*root->operand(4)));
+  EXPECT_FALSE(ContainsSignificantReduce(*root->operand(5)));
+  EXPECT_FALSE(ContainsSignificantReduce(*root));
+
+  // Verify that `FusionInfoCache` returns identical results (fast-pathing
+  // non-fusions and caching fusion lookups) and recomputes after `Invalidate`.
+  FusionInfoCache cache(device_description());
+  EXPECT_TRUE(ContainsSignificantReduce(*root->operand(0), &cache));
+  EXPECT_FALSE(ContainsSignificantReduce(*root->operand(1), &cache));
+  EXPECT_TRUE(ContainsSignificantReduce(*root->operand(2), &cache));
+  EXPECT_FALSE(ContainsSignificantReduce(*root->operand(3), &cache));
+  EXPECT_FALSE(ContainsSignificantReduce(*root->operand(4), &cache));
+  EXPECT_FALSE(ContainsSignificantReduce(*root->operand(5), &cache));
+  EXPECT_FALSE(ContainsSignificantReduce(*root, &cache));
+  cache.Invalidate(root->operand(2));
+  EXPECT_TRUE(ContainsSignificantReduce(*root->operand(2), &cache));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

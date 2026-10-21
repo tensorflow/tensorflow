@@ -181,8 +181,7 @@ absl::StatusOr<bool> ShouldTryRewriteFusion(
   const DebugOptions& debug_options =
       fusion->GetModule()->config().debug_options();
 
-  // Same-shape multi-output fusions require the new tiling propagation
-  // infrastructure.
+  // Same-shape multi-output fusions.
   if (IsSameShapeMultiOutputFusion(*fusion,
                                    Shape::Equal().IgnoreElementType()) &&
       debug_options
@@ -210,7 +209,7 @@ absl::StatusOr<bool> ProcessFusionInstruction(
     HloFusionInstruction* fusion_instruction,
     const se::DeviceDescription& device_info,
     HloCostAnalysis::ShapeSizeFunction shape_size,
-    mlir::MLIRContext* mlir_context, bool use_experimental_tiling,
+    mlir::MLIRContext* mlir_context,
     tsl::thread::ThreadPool* thread_pool = nullptr,
     MlirContextPool* mlir_context_pool = nullptr) {
   bool dump_fusion_visualization = fusion_instruction->GetModule()
@@ -268,7 +267,6 @@ absl::StatusOr<bool> ProcessFusionInstruction(
   HloFusionAnalysisCache fusion_analysis_cache(device_info);
   GpuPerformanceModelWithIndexingAnalysis indexing_performance_model(
       &device_info, &fusion_analysis_cache, shape_size, mlir_context,
-      use_experimental_tiling,
       fusion_instruction->GetModule()
           ->config()
           .debug_options()
@@ -289,8 +287,7 @@ absl::StatusOr<bool> ProcessFusionInstruction(
           std::get_if<FusionDecision>(&tiled_runtime_data_or_error)) {
     // Can't rewrite this fusion because we can't tile it, skip!
     VLOG(2) << "Can't rewrite fusion " << fusion_instruction->ToString()
-            << " because tiling search failed. (The most likely cause for "
-            << "is that SymbolicTileAnalysis failed.)";
+            << " because tiling search failed: " << fusion_decision->Explain();
     if (dump_fusion_visualization) {
       RegisterFusionState(
           *fusion_instruction->parent(),
@@ -347,11 +344,10 @@ absl::StatusOr<bool> FusionBlockLevelRewriter::RunImpl(
     }
     HloFusionInstruction* fusion_instruction =
         ::xla::Cast<HloFusionInstruction>(computation->FusionInstruction());
-    ABSL_ASSIGN_OR_RETURN(bool changed, ProcessFusionInstruction(
-                                       fusion_instruction, device_info_,
-                                       shape_size_, mlir_context_,
-                                       /*use_experimental_tiling=*/true,
-                                       thread_pool_, mlir_context_pool_));
+    ABSL_ASSIGN_OR_RETURN(bool changed,
+                     ProcessFusionInstruction(
+                         fusion_instruction, device_info_, shape_size_,
+                         mlir_context_, thread_pool_, mlir_context_pool_));
 
     has_changed |= changed;
   }

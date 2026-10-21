@@ -3347,8 +3347,31 @@ struct FullyConnectedSwapOperandsWhenLHSIsConst
     auto input = fc.getInput();
     auto filter = fc.getFilter();
 
-    if (!matchPattern(input, m_Constant()) ||
-        matchPattern(filter, m_Constant()))
+    auto is_const_or_qconst = [](Value v) {
+      return matchPattern(v, m_Constant()) ||
+             llvm::isa_and_nonnull<TFL::QConstOp, TFL::SparseConstOp,
+                                   TFL::SparseQConstOp>(v.getDefiningOp());
+    };
+    // Guard against swapping operands if the filter is already a constant or
+    // a dequantize of a 4- or 8-bit quantized constant that the constant folder
+    // will fold. Dequantized constants that the folder cannot fold (such as f16
+    // or i16 weights) are left to swap so the filter slot receives a real
+    // constant for downstream legalization (e.g. DarwiNN).
+    auto is_foldable_dequant_qconst = [](Value v) {
+      auto dequant = v.getDefiningOp<TFL::DequantizeOp>();
+      if (!dequant) return false;
+      auto qconst = dequant.getInput().getDefiningOp<TFL::QConstOp>();
+      if (!qconst) return false;
+      auto shaped_type = mlir::dyn_cast<ShapedType>(qconst.getType());
+      if (!shaped_type) return false;
+      auto quant_type =
+          mlir::dyn_cast<quant::QuantizedType>(shaped_type.getElementType());
+      if (!quant_type) return false;
+      unsigned bit_width = quant_type.getStorageTypeIntegralWidth();
+      return bit_width == 4 || bit_width == 8;
+    };
+    if (!matchPattern(input, m_Constant()) || is_const_or_qconst(filter) ||
+        is_foldable_dequant_qconst(filter))
       return failure();
 
     auto input_type = mlir::dyn_cast<RankedTensorType>(input.getType());
