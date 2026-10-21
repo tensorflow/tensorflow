@@ -420,7 +420,6 @@ CodegenDecision CanTritonHandleReduce(
         "Unsupported reduction computation by Triton.");
   }
 
-
   if (reduce.operand_count() != 2) {
     return CodegenDecision::Forbid(
         "Reduction is not a reduction of a single operand.");
@@ -430,7 +429,6 @@ CodegenDecision CanTritonHandleReduce(
     return CodegenDecision::Forbid(
         "Reduction must have at least one dimension.");
   }
-
 
   return CodegenDecision::Allow();
 }

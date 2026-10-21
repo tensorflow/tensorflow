@@ -2441,9 +2441,11 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       RESULT_ACCURACY_CASE(kCbrt, CbrtOp);
       RESULT_ACCURACY_CASE(kCos, CosineOp);
       RESULT_ACCURACY_CASE(kExp, ExpOp);
+      RESULT_ACCURACY_CASE(kExp2, Exp2Op);
       RESULT_ACCURACY_CASE(kExpm1, Expm1Op);
       RESULT_ACCURACY_CASE(kLog, LogOp);
       RESULT_ACCURACY_CASE(kLog1p, Log1pOp);
+      RESULT_ACCURACY_CASE(kLog2, Log2Op);
       RESULT_ACCURACY_CASE(kLogistic, LogisticOp);
       RESULT_ACCURACY_CASE(kRsqrt, RsqrtOp);
       RESULT_ACCURACY_CASE(kSin, SineOp);

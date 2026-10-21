@@ -63,7 +63,7 @@ static std::optional<llvm::SmallVector<int64_t>> GetNativeShape(
   if (!unrollable) {
     return std::nullopt;
   }
-  auto shape = unrollable.getShapeForUnroll();
+  auto shape = unrollable.getIterationShapeToUnroll();
   if (!shape || shape->size() <= 1) {
     return std::nullopt;
   }
@@ -102,7 +102,7 @@ struct UnrollConstantMaskPattern
 
     mlir::VectorType result_type = constant_mask_op.getVectorType();
     std::optional<llvm::SmallVector<int64_t>> original_size =
-        constant_mask_op.getShapeForUnroll();
+        constant_mask_op.getIterationShapeToUnroll();
     if (!original_size) {
       return mlir::failure();
     }

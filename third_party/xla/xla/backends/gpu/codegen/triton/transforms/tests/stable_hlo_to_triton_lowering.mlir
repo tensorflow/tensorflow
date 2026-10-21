@@ -546,6 +546,54 @@ xtile.entry_func @all_to_all_tile_not_dividing_shard_size_doesnt_lower(%input: m
   xtile.return
 }
 
+// CHECK-LABEL: xtile.entry_func @variadic_reduce_scatter_one_shot(
+// CHECK-SAME: %[[REMOTE0:[a-zA-Z0-9_]+]]: !tt.ptr<i64>, %[[REMOTE1:[a-zA-Z0-9_]+]]: !tt.ptr<i64>, %{{[a-zA-Z0-9_]+}}: index
+xtile.entry_func @variadic_reduce_scatter_one_shot(%input0: memref<4x1024xf32>, %input1: memref<4x16xf32>, %output0: memref<2x1024xf32>, %output1: memref<2x16xf32>, %device_rank: i32, %signal_buffer: !tt.ptr<i64>, %remote_input_buffer0: !tt.ptr<i64>, %remote_input_buffer1: !tt.ptr<i64>, %tile_id: index) attributes {num_opaque_args = 4 : i32} {
+  %c0 = arith.constant 0 : index
+  %tile0 = xtile.extract %input0[%c0, %tile_id][2, 64][1, 1] : memref<4x1024xf32> -> tensor<2x64xf32>
+  %tile1 = xtile.extract %input1[%c0, %tile_id][2, 1][1, 1] : memref<4x16xf32> -> tensor<2x1xf32>
+  // Copy phase: one store per operand into its own symmetric buffer.
+  // CHECK: tt.addptr %[[REMOTE0]], %{{.*}} : !tt.ptr<i64>, i32
+  // CHECK: tt.addptr %[[REMOTE1]], %{{.*}} : !tt.ptr<i64>, i32
+  // A single barrier covers both operands.
+  // CHECK: triton_xla.block_barrier {{.*}} <world_size = 2, signal_stride = 16, barrier_mode = producer_symmetric>
+  // CHECK-NOT: triton_xla.block_barrier
+  // CHECK-NOT: xtile.reduce_scatter
+  // Reduce phase: pull from both ranks and reduce, per operand.
+  // CHECK: tt.load %[[REMOTE0]] : !tt.ptr<i64>
+  // CHECK: tt.addptr %[[REMOTE0]], %{{.*}} : !tt.ptr<i64>, i64
+  // CHECK: arith.addf {{.*}} : tensor<1x64xf32>
+  // CHECK: tt.load %[[REMOTE1]] : !tt.ptr<i64>
+  // CHECK: tt.addptr %[[REMOTE1]], %{{.*}} : !tt.ptr<i64>, i64
+  // CHECK: arith.addf {{.*}} : tensor<1x1xf32>
+  %out0, %out1 = xtile.reduce_scatter(%tile0, %tile1) scatter_dimension = 0 <replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>> : (tensor<2x64xf32>, tensor<2x1xf32>) -> (tensor<1x64xf32>, tensor<1x1xf32>) {
+  ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>):
+    %add = arith.addf %arg0, %arg1 : tensor<f32>
+    stablehlo.return %add : tensor<f32>
+  }
+  xtile.insert %out0 into %output0[%c0, %tile_id][1, 64][1, 1] : tensor<1x64xf32> -> memref<2x1024xf32>
+  xtile.insert %out1 into %output1[%c0, %tile_id][1, 1][1, 1] : tensor<1x1xf32> -> memref<2x16xf32>
+  xtile.return
+}
+
+// Operand 1 is covered by 8 programs per rank, operand 0 by 16: the signal
+// stride is the maximum and the excess programs of operand 1 are masked.
+// CHECK-LABEL: xtile.entry_func @variadic_reduce_scatter_mismatched_programs_per_rank(
+xtile.entry_func @variadic_reduce_scatter_mismatched_programs_per_rank(%input0: memref<4x1024xf32>, %input1: memref<4x16xf32>, %output0: memref<2x1024xf32>, %output1: memref<2x16xf32>, %device_rank: i32, %signal_buffer: !tt.ptr<i64>, %remote_input_buffer0: !tt.ptr<i64>, %remote_input_buffer1: !tt.ptr<i64>, %tile_id: index) attributes {num_opaque_args = 4 : i32} {
+  %c0 = arith.constant 0 : index
+  %tile0 = xtile.extract %input0[%c0, %tile_id][2, 64][1, 1] : memref<4x1024xf32> -> tensor<2x64xf32>
+  %tile1 = xtile.extract %input1[%c0, %tile_id][2, 2][1, 1] : memref<4x16xf32> -> tensor<2x2xf32>
+  // CHECK: triton_xla.block_barrier {{.*}} <world_size = 2, signal_stride = 16, barrier_mode = producer_symmetric>
+  // CHECK-NOT: xtile.reduce_scatter
+  %out0, %out1 = xtile.reduce_scatter(%tile0, %tile1) scatter_dimension = 0 <replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>> : (tensor<2x64xf32>, tensor<2x2xf32>) -> (tensor<1x64xf32>, tensor<1x2xf32>) {
+  ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>):
+    %add = arith.addf %arg0, %arg1 : tensor<f32>
+    stablehlo.return %add : tensor<f32>
+  }
+  xtile.insert %out0 into %output0[%c0, %tile_id][1, 64][1, 1] : tensor<1x64xf32> -> memref<2x1024xf32>
+  xtile.insert %out1 into %output1[%c0, %tile_id][1, 2][1, 1] : tensor<1x2xf32> -> memref<2x16xf32>
+  xtile.return
+}
 // CHECK: func @lower_dot_with_warp_specialization_to_triton
 func.func @lower_dot_with_warp_specialization_to_triton(
     %arg0: tensor<2x4xf32>,

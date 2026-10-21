@@ -55,7 +55,6 @@ limitations under the License.
 #include "xla/codegen/tiling/experimental/reshape_analysis.h"
 #include "xla/codegen/tiling/experimental/tiled_hlo.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
-#include "xla/codegen/tiling/tiled_hlo_instruction.h"
 #include "xla/codegen/xtile/ir/xtile_attrs.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/comparison_util.h"
@@ -114,36 +113,6 @@ Value EmitClampedIndex(mlir::ImplicitLocOpBuilder& b, Value value,
   clamped_index = ma::MinSIOp::create(b, clamped_index,
                                       CreateConst(b, value.getType(), upper));
   return ma::IndexCastOp::create(b, b.getIndexType(), clamped_index);
-}
-
-absl::StatusOr<SmallVector<Value>> ComputeOffsetsForTile(
-    mlir::ImplicitLocOpBuilder& b, Value pid, ValueRange runtime_values,
-    const TiledHloInstruction& tiled_hlo) {
-  ABSL_ASSIGN_OR_RETURN(IndexingMap tile_offsets_indexing,
-                   tiled_hlo.tile_offsets_indexing());
-  const std::vector<IndexingMap::Variable>& rt_vars =
-      tile_offsets_indexing.GetRTVars();
-  CHECK_EQ(rt_vars.size(), runtime_values.size())
-      << absl::StrCat(tiled_hlo.ToString(), " has ", rt_vars.size(),
-                      " runtime variables in tile_offsets_indexing but only ",
-                      runtime_values.size(), " runtime values were provided");
-  CHECK_EQ(tile_offsets_indexing.GetRangeVars().size(), 0)
-      << "Range variables must be converted to dimensions. Instruction: "
-      << tiled_hlo.ToString();
-  // emitters::ApplyIndexing does not support symbols at the moment. As a
-  // workaround we convert them to dimensions.
-  IndexingMap dim_only_tiling =
-      tile_offsets_indexing.ConvertSymbolsToDimensions();
-  SmallVector<Value> dims;
-  dims.reserve(1 /* pid */ + runtime_values.size());
-  dims.push_back(pid);
-  for (const auto& [rt_var, value] : llvm::zip(rt_vars, runtime_values)) {
-    Value clamped_index =
-        EmitClampedIndex(b, value, rt_var.bounds.lower, rt_var.bounds.upper);
-    dims.push_back(Cast(b, clamped_index, pid.getType()));
-  }
-  return emitters::ApplyIndexing(dim_only_tiling, /*dims=*/dims,
-                                 /*symbols=*/{}, b);
 }
 
 // Emit code corresponding to a fusion instruction somehow nested within the
@@ -860,46 +829,6 @@ Value Bitcast(mlir::ImplicitLocOpBuilder& b, Value value, Type type) {
   auto value_type = value.getType();
   value_type = mlir::dyn_cast<ShapedType>(value_type).clone(type);
   return mlir::arith::BitcastOp::create(b, value_type, value);
-}
-
-/*static */ absl::StatusOr<TileInfo> TileInfo::Construct(
-    mlir::ImplicitLocOpBuilder& b, Value pid, ValueRange runtime_values,
-    const TiledHloInstruction& tiled_hlo) {
-  const Shape& logical_shape = tiled_hlo.hlo()->shape();
-  auto logical_tile_strides = tiled_hlo.tile_strides();
-  ABSL_ASSIGN_OR_RETURN(SmallVector<int64_t> storage_tile_strides,
-                   GetStorageTileStrides(logical_tile_strides, logical_shape));
-  ABSL_ASSIGN_OR_RETURN(IndexingMap logical_tile_offsets_indexing,
-                   tiled_hlo.tile_offsets_indexing());
-  auto logical_tile_offsets =
-      logical_tile_offsets_indexing.GetSymbolicMap().GetResults();
-  ABSL_ASSIGN_OR_RETURN(SmallVector<Value> logical_offsets,
-                   ComputeOffsetsForTile(b, pid, runtime_values, tiled_hlo));
-  ABSL_ASSIGN_OR_RETURN(SmallVector<Value> storage_offsets,
-                   GetStorageOffsets(b, logical_shape, logical_tile_offsets,
-                                     std::move(logical_offsets)));
-
-  // Triton requires that all block dimensions are a power of 2.
-  SmallVector<int64_t> padded_logical_tile_sizes =
-      GetPaddedTileSizes(tiled_hlo.tile_sizes());
-  SmallVector<int64_t> logical_shape_dims(logical_shape.dimensions().begin(),
-                                          logical_shape.dimensions().end());
-  ABSL_ASSIGN_OR_RETURN(SmallVector<int64_t> storage_shape,
-                   GetStorageShape(logical_shape_dims, logical_shape));
-  ABSL_ASSIGN_OR_RETURN(SmallVector<int64_t> padded_storage_tile_sizes,
-                   GetStorageShape(padded_logical_tile_sizes, logical_shape));
-
-  ABSL_ASSIGN_OR_RETURN(Type expected_element_type,
-                   PrimitiveTypeToMlirType(b, logical_shape.element_type()));
-  auto storage_type = StorageType(expected_element_type);
-
-  auto minor_to_major_layout =
-      llvm::to_vector(LayoutUtil::MinorToMajor(logical_shape));
-  // Replica id is only supported for ge::TiledHloInstruction.
-  return TileInfo(storage_offsets, storage_tile_strides, storage_shape,
-                  padded_storage_tile_sizes, minor_to_major_layout,
-                  storage_type,
-                  /*replica_id_offsets=*/{}, /*replica_id_bounds=*/{});
 }
 
 /*static */ absl::StatusOr<TileInfo> TileInfo::Construct(

@@ -1754,6 +1754,9 @@ class WhileV1Test(PForTestCase):
     self._test_loop_fn(loop_fn, 3)
 
   @test_util.run_v1_only("b/122612051")
+  @test_util.run_without_tensor_float_32(
+      "Fails on sm90 where TF32 is the default"
+  )
   def test_while_jacobian(self):
     x = random_ops.random_uniform([1, 3])
     y = random_ops.random_uniform([3, 3])

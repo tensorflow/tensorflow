@@ -22,7 +22,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/tiling/experimental/tiled_hlo.h"
-#include "xla/codegen/tiling/tiled_hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/stream_executor/device_description.h"
@@ -83,10 +82,6 @@ bool IsReadCoalescedHeuristic(HloFusionAnalysis::EmitterFusionKind fusion_kind,
 //
 // Note: the assumption is that the tile sizes do not include padding beyond
 // the end of the shape.
-double BandwidthUtilizationRateHeuristicForTiledMemoryAccess(
-    const TiledHloInstruction& hbm_access_instr,
-    const se::DeviceDescription& device_info);
-
 double BandwidthUtilizationRateHeuristicForTiledMemoryAccess(
     const experimental::TiledHloInstruction& hbm_access_instr,
     const se::DeviceDescription& device_info);

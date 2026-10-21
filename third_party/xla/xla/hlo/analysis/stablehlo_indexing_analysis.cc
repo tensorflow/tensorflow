@@ -1011,8 +1011,8 @@ HloInstructionIndexing ComputeOutputToInputIndexing(Operation* op,
           // Elementwise identity operations, all operands use identity mapping.
           .Case<AddOp, SubtractOp, MulOp, DivOp, RemOp, MaxOp, MinOp, AndOp,
                 OrOp, XorOp, AbsOp, NegOp, SignOp, CosineOp, SineOp, TanhOp,
-                SqrtOp, RsqrtOp, ExpOp, Expm1Op, LogOp, Log1pOp, FloorOp,
-                CeilOp, ConvertOp, SelectOp, ClampOp, CompareOp,
+                SqrtOp, RsqrtOp, ExpOp, Exp2Op, Expm1Op, LogOp, Log1pOp, Log2Op,
+                FloorOp, CeilOp, ConvertOp, SelectOp, ClampOp, CompareOp,
                 PopulationCountOp, NotOp, IsFiniteOp, RoundNearestEvenOp,
                 OptimizationBarrierOp, MapOp, SortOp>([&](Operation* op) {
             if (!dyn_cast<RankedTensorType>(op->getResult(0).getType())) {
