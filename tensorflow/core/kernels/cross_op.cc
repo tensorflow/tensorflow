@@ -14,10 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 // See docs in ../ops/math_ops.cc.
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #define EIGEN_USE_THREADS
-
-#include <algorithm>
-#include <cmath>
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"

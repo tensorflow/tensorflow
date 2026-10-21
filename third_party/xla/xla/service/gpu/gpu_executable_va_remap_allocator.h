@@ -60,6 +60,8 @@ class ThunkExecutor;
 //    non-constant, non-thread-local allocations over the first executions,
 //    and then remaps the union of the temp buffers and stable profile
 //    candidates.
+// Host memory space allocations are never remapped: remapping backs an
+// allocation with VMM device memory, and these must stay host memory.
 //
 // When VA remapping is unavailable for an execution (no VMM allocator,
 // nothing to remap, or SKIP_PROFILED has neither automatically selected temp

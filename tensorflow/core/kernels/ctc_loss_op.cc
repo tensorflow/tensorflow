@@ -54,17 +54,6 @@ using se::StreamExecutor;
 using se::dnn::RnnStateTensorDescriptor;
 using se::dnn::ToDataType;
 
-template <typename T>
-void DoHistogram(OpKernelContext* ctx, const Tensor* labels_indices,
-                 int num_indices, int batch_size,
-                 std::vector<int>* labels_lengths) {
-  const T* h_in = labels_indices->flat<T>().data();
-  for (int i = 0; i < num_indices; i++) {
-    const T& key = h_in[i * 2];
-    (*labels_lengths)[key]++;
-  }
-}
-
 }  // end namespace
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -283,6 +272,10 @@ class CTCLossOpGPU : public OpKernel {
                 absl::InvalidArgumentError("labels_indices is not a matrix"));
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(labels_values->shape()),
                 absl::InvalidArgumentError("labels_values is not a vector"));
+    OP_REQUIRES(ctx, labels_indices->dim_size(1) == 2,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "labels_indices second dimension must be 2. Received ",
+                    labels_indices->dim_size(1))));
 
     const TensorShape& inputs_shape = inputs->shape();
     const int64_t max_time_raw = inputs_shape.dim_size(0);
@@ -318,17 +311,24 @@ class CTCLossOpGPU : public OpKernel {
     OP_REQUIRES(ctx, batch_size != 0,
                 absl::InvalidArgumentError("batch_size must not be 0"));
 
+    // Validate batch indices and convert labels_indices to labels_lengths.
+    std::vector<int> labels_lengths(batch_size, 0);
+    const auto labels_mat = labels_indices->matrix<int64_t>();
+    for (int64_t i = 0; i < num_indices; ++i) {
+      const int64_t batch_idx = labels_mat(i, 0);
+      OP_REQUIRES(ctx, FastBoundsCheck(batch_idx, batch_size),
+                  absl::InvalidArgumentError(
+                      absl::StrCat("labels_indices batch index ", batch_idx,
+                                   " out of range [0, ", batch_size, ")")));
+      ++labels_lengths[batch_idx];
+    }
+
     Tensor* loss = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output("loss", seq_len->shape(), &loss));
 
     Tensor* gradient = nullptr;
     OP_REQUIRES_OK(ctx,
                    ctx->allocate_output("gradient", inputs_shape, &gradient));
-
-    // Convert the labels_indices to labels_lengths.
-    std::vector<int> labels_lengths(batch_size, 0);
-    DoHistogram<int64_t>(ctx, labels_indices, num_indices, batch_size,
-                         &labels_lengths);
 
     StreamExecutor* executor = ctx->op_device_context()->stream()->parent();
     se::dnn::DataType data_type = ToDataType<float>::value;

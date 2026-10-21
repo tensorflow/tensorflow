@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/memory_reservation.h"
+#include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -211,9 +212,11 @@ static bool AddressRangesOverlap(DeviceAddressBase lhs, DeviceAddressBase rhs) {
 
 DeviceAddressVmmAllocator::DeviceAddressVmmAllocator(
     const Platform* platform,
-    std::optional<int64_t> reclaim_exempt_memory_space)
+    std::optional<int64_t> reclaim_exempt_memory_space,
+    std::unique_ptr<DeviceAddressAllocator> host_allocator)
     : DeviceAddressAllocator(platform),
-      reclaim_exempt_memory_space_(reclaim_exempt_memory_space) {}
+      reclaim_exempt_memory_space_(reclaim_exempt_memory_space),
+      host_allocator_(std::move(host_allocator)) {}
 
 absl::Status DeviceAddressVmmAllocator::PopulateDevices(
     DeviceAddressVmmAllocator* allocator,
@@ -652,7 +655,7 @@ DeviceAddressVmmAllocator::TryWithPendingReclaim(PerDeviceState& state,
 // tries a fresh allocator-address mapping.
 absl::StatusOr<ScopedDeviceAddress<uint8_t>>
 DeviceAddressVmmAllocator::Allocate(int device_ordinal, uint64_t size,
-                                    bool /*retry_on_failure*/,
+                                    bool retry_on_failure,
                                     int64_t memory_space) {
   if (size == 0) {
     return ScopedDeviceAddress<uint8_t>(DeviceAddressBase(), device_ordinal,
@@ -660,6 +663,25 @@ DeviceAddressVmmAllocator::Allocate(int device_ordinal, uint64_t size,
   }
 
   ABSL_ASSIGN_OR_RETURN(auto state, GetPerDeviceState(device_ordinal));
+
+  if (memory_space == static_cast<int64_t>(MemorySpace::kHost) &&
+      host_allocator_ != nullptr) {
+    ABSL_ASSIGN_OR_RETURN(ScopedDeviceAddress<uint8_t> host_mem,
+                     host_allocator_->Allocate(device_ordinal, size,
+                                               retry_on_failure, memory_space));
+    // Released before the check: on failure the address still belongs to the
+    // owner already tracked for it, so it must not be freed here.
+    DeviceAddressBase address = host_mem.Release();
+    absl::MutexLock lock(state->mu);
+    if (!state->host_allocations.emplace(AddressStart(address), address)
+             .second) {
+      return absl::InternalError(
+          absl::StrFormat("host allocator returned already tracked address %p",
+                          address.opaque()));
+    }
+    return ScopedDeviceAddress<uint8_t>(address, device_ordinal, this);
+  }
+
   const bool multi_device = CurrentMultiDevice();
 
   absl::MutexLock lock(state->mu);
@@ -755,6 +777,10 @@ DeviceAddressVmmAllocator::Allocate(
     return ScopedDeviceAddress<uint8_t>(DeviceAddressBase(), device_ordinal,
                                         this);
   }
+  if (memory_space == static_cast<int64_t>(MemorySpace::kHost)) {
+    return absl::InvalidArgumentError(
+        "MemorySpace::kHost cannot be mapped into a device VA reservation");
+  }
 
   ABSL_ASSIGN_OR_RETURN(auto state, GetPerDeviceState(device_ordinal));
   const bool multi_device = CurrentMultiDevice();
@@ -804,7 +830,30 @@ absl::Status DeviceAddressVmmAllocator::Deallocate(int device_ordinal,
 
   ABSL_ASSIGN_OR_RETURN(auto state, GetPerDeviceState(device_ordinal));
 
-  absl::MutexLock lock(state->mu);
+  absl::ReleasableMutexLock lock(state->mu);
+  auto host_it = state->host_allocations.find(AddressStart(mem));
+  if (host_it != state->host_allocations.end() &&
+      host_it->second.IsSameAs(mem)) {
+    // Erased before the call, so that once the host allocator frees the
+    // address, a concurrent Allocate() that gets it back can track it.
+    state->host_allocations.erase(host_it);
+    // Call the host allocator without state->mu, as Allocate() does. It has
+    // its own locks, held across a driver call while its pool grows, and
+    // waiting on them under state->mu would stall every VMM request on this
+    // device.
+    lock.Release();
+    absl::Status status = host_allocator_->Deallocate(device_ordinal, mem);
+    if (!status.ok()) {
+      // The caller still owns `mem` and may retry, so keep routing it to the
+      // host allocator.
+      absl::MutexLock relock(state->mu);
+      bool inserted =
+          state->host_allocations.emplace(AddressStart(mem), mem).second;
+      DCHECK(inserted) << "host allocator handed out " << mem.opaque()
+                       << " again after failing to free it";
+    }
+    return status;
+  }
 
   auto record_it = state->records_by_allocator_address.find(AddressStart(mem));
   if (record_it == state->records_by_allocator_address.end() ||
