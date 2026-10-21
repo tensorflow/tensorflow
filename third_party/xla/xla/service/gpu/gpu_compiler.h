@@ -298,11 +298,6 @@ class GpuCompiler : public LLVMCompiler {
   MlirContextPool mlir_context_pool_;
 };
 
-void GpuCollectiveBufferAnalysis(
-    HloModule* module, const HloAliasAnalysis& alias_analysis,
-    std::function<void(HloInstruction*, const ShapeIndex&)> add_index_to_copy,
-    const GpuTopology* gpu_topology = nullptr);
-
 }  // namespace gpu
 }  // namespace xla
 

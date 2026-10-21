@@ -30,9 +30,11 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/per_device_state.h"
+#include "xla/backends/gpu/runtime/ragged_all_to_all.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
@@ -124,6 +126,9 @@ struct RaggedAllToAllStreamState {
   // Contains the output buffer pointers and barrier signal buffers for all
   // peers.
   std::shared_ptr<std::vector<RaggedAllToAllRendezvousValue>> participants;
+
+  // Pre-loaded symmetric-memory kernel for the NCCL one-shot path.
+  RaggedAllToAllWithSymmetricMemoryKernelType sym_mem_kernel;
 
   RaggedAllToAllStreamState() = default;
   RaggedAllToAllStreamState(int device_ordinal, RankId rank,
@@ -231,6 +236,10 @@ class RaggedAllToAllThunk : public CollectiveThunk {
   // Returns true if one shot kernel is supported
   bool IsOneShotKernelSupported() const;
 
+  // Returns true if the symmetric-memory kernel with NCCL multi-GPU barrier is
+  // supported.
+  bool IsSymmetricMemoryKernelSupported() const;
+
   static absl::StatusOr<std::unique_ptr<RaggedAllToAllThunk>> FromProto(
       ThunkInfo thunk_info, const RaggedAllToAllThunkProto& thunk_proto,
       absl::Span<const BufferAllocation> buffer_allocations,
@@ -296,9 +305,10 @@ absl::Status RunOneShotRaggedAllToAll(
 // requiring Event-based coordination, enabling compatibility with CUDA Graphs.
 absl::Status RunOneShotRaggedAllToAllWithNccl(
     const GpuCliqueKey& clique_key, se::Stream& stream, RankId rank,
-    GpuCommunicator* comm, SymmetricMemory* output_sym_mem,
-    size_t output_sym_offset, int64_t num_total_updates, int64_t num_input_rows,
-    int64_t num_row_elements, absl::Span<DeviceBufferPair const> buffers);
+    GpuCommunicator* comm, RaggedAllToAllWithSymmetricMemoryKernelType& kernel,
+    SymmetricMemory* output_sym_mem, size_t output_sym_offset,
+    int64_t num_total_updates, int64_t num_input_rows, int64_t num_row_elements,
+    absl::Span<DeviceBufferPair const> buffers);
 
 }  // namespace gpu
 }  // namespace xla

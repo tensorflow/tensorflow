@@ -1,6 +1,6 @@
 --- a/include/triton/Dialect/Triton/IR/TritonOps.td
 +++ b/include/triton/Dialect/Triton/IR/TritonOps.td
-@@ -1213,8 +1213,8 @@ def CallOp : TT_Op<"call", [CallOpInterface, /*MemRefsNormalizable, */DeclareOpI
+@@ -1212,8 +1212,8 @@ def CallOp : TT_Op<"call", [CallOpInterface, /*MemRefsNormalizable, */DeclareOpI
  }
  
  def FuncOp : TT_Op<"func", [

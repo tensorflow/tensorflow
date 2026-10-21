@@ -530,10 +530,10 @@ filegroup(
             "%{rocm_root}/lib/rocm_sysdeps/lib/*.so*",
             "%{rocm_root}/lib/rocm_sysdeps/share/**",
         ],
+        allow_empty = True,
         exclude = [
             "%{rocm_root}/lib/rocm_sysdeps/share/terminfo/**",
         ],
-        allow_empty = True,
     ),
 )
 
@@ -572,8 +572,8 @@ cc_library(
     ),
     data = [":system_libs_data"],
     linkopts = ["-ldrm"] if _USE_HOST_SYSDEPS else [],
-    deps = [":system_libs"],
     visibility = ["//visibility:public"],
+    deps = [":system_libs"],
 )
 
 cc_library(
@@ -584,8 +584,8 @@ cc_library(
     ),
     data = [":system_libs_data"],
     linkopts = ["-ldrm_amdgpu"] if _USE_HOST_SYSDEPS else [],
-    deps = [":system_libs"],
     visibility = ["//visibility:public"],
+    deps = [":system_libs"],
 )
 
 cc_library(
@@ -596,8 +596,8 @@ cc_library(
     ),
     data = [":system_libs_data"],
     linkopts = ["-lnuma"] if _USE_HOST_SYSDEPS else [],
-    deps = [":system_libs"],
     visibility = ["//visibility:public"],
+    deps = [":system_libs"],
 )
 
 filegroup(
@@ -639,6 +639,19 @@ platform(
     ],
     exec_properties = {
         "container-image": "docker://%{rocm_rbe_docker_image}",
+        "Pool": "%{rocm_rbe_pool}",
+        "OSFamily": "Linux",
+    },
+)
+
+platform(
+    name = "linux_x64_bb",
+    constraint_values = [
+        "@platforms//os:linux",
+        "@platforms//cpu:x86_64",
+        "@bazel_tools//tools/cpp:clang",
+    ],
+    exec_properties = {
         "Pool": "%{rocm_rbe_pool}",
         "OSFamily": "Linux",
     },

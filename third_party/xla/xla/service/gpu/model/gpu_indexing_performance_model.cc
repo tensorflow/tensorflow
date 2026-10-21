@@ -22,7 +22,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <tuple>
 #include <type_traits>
 #include <utility>
 #include <variant>
@@ -880,36 +879,9 @@ FilterAndSortCandidates(
   VLOG(1) << absl::StrCat("Found ", candidates.size(),
                           " valid tiling candidates.");
 
-  // Above the tile size that saturates memory bandwidth, the cost model
-  // estimates nearly the same time for all sequential tile sizes and would
-  // pick the smallest one, i.e. the most loop iterations. For scan fusions,
-  // break near-ties towards larger sequential tiles. Comparing against the best
-  // time rather than pairwise keeps the comparator a strict weak ordering.
-  // TODO(b/469020791): Remove once the cost model accounts for occupancy and
-  // memory latency.
-  const bool contains_scan =
-      HloAnyOf(fusion_adaptor, [](HloInstructionAdaptor instr) {
-        return instr.opcode() == HloOpcode::kScan;
-      });
-  absl::Duration best_exec_time = absl::InfiniteDuration();
-  for (const TiledRunTimeData& candidate : candidates) {
-    best_exec_time = std::min(best_exec_time, candidate.runtime_data.exec_time);
-  }
-  constexpr double kNearTieRatio = 1.01;
-  const absl::Duration near_best_exec_time = kNearTieRatio * best_exec_time;
-  auto sort_key = [&](const TiledRunTimeData& candidate)
-      -> std::tuple<bool, int64_t, absl::Duration> {
-    const bool is_near_best =
-        contains_scan &&
-        candidate.runtime_data.exec_time <= near_best_exec_time;
-    const int64_t sequential_tile_size =
-        Product(candidate.block_level_parameters.sequential_tile_sizes);
-    return {!is_near_best, is_near_best ? -sequential_tile_size : 0,
-            candidate.runtime_data.exec_time};
-  };
   absl::c_stable_sort(
-      candidates, [&](const TiledRunTimeData& a, const TiledRunTimeData& b) {
-        return sort_key(a) < sort_key(b);
+      candidates, [](const TiledRunTimeData& a, const TiledRunTimeData& b) {
+        return a.runtime_data.exec_time < b.runtime_data.exec_time;
       });
   if (candidates.size() > top_k) {
     candidates.resize(top_k);

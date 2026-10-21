@@ -1006,7 +1006,6 @@ xla_cc_test(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/service:gpu_topology",
         "//xla/service:hlo_module_config",
-        "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu:gpu_hlo_schedule",
         "//xla/stream_executor:device_description",

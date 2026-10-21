@@ -18,6 +18,9 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/transforms/expanders/op_expander_pass.h"
 #include "xla/util.h"
 
