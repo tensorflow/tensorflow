@@ -387,7 +387,13 @@ def matrix_exponential(input, name=None):  # pylint: disable=redefined-builtin
       return i + 1, array_ops.where_v2(
           math_ops.less(i, squarings), math_ops.matmul(r, r), r)
 
-    _, result = while_loop.while_loop(c, b, [i, result])
+    max_iters = tf_cond.cond(
+        is_finite,
+        lambda: math_ops.maximum(1, math_ops.cast(max_squarings, dtypes.int32)),
+        lambda: constant_op.constant(1, dtypes.int32))
+
+    _, result = while_loop.while_loop(
+        c, b, [i, result], maximum_iterations=max_iters)
     if not matrix.shape.is_fully_defined():
       result = array_ops.reshape(
           result,

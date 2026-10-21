@@ -20,9 +20,11 @@ import numpy as np
 
 from tensorflow.python.client import session
 from tensorflow.python.eager import backprop
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import forwardprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -247,6 +249,64 @@ class ExponentialOpTest(test.TestCase):
       g2 = t2.gradient(g1, x)
       self.assertAllClose(
           expected, self.evaluate(g2), rtol=rtol_hess, atol=atol_hess
+      )
+
+  @test_util.run_v2_only
+  def testGradientJitCompile(self):
+    # Regression test for Issue #77693.
+    def compute_grad(x):
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y = linalg_impl.matrix_exponential(x)
+      return y, tape.gradient(y, x)
+
+    jit_grad_fn = def_function.function(compute_grad, jit_compile=True)
+
+    for dtype in [dtypes.float32, dtypes.float64]:
+      # Inputs triggering squarings == 0 and squarings > 0
+      test_matrices = [
+          constant_op.constant([[0.4, 1.5], [0.6, 0.1]], dtype=dtype),
+          constant_op.constant([[10.0, 2.0], [3.0, 8.0]], dtype=dtype),
+          constant_op.constant([[-0.0, 0.0], [0.0, -0.0]], dtype=dtype),
+      ]
+      for x in test_matrices:
+        eager_y, eager_g = compute_grad(x)
+        jit_y, jit_g = jit_grad_fn(x)
+        self.assertAllClose(eager_y, jit_y, rtol=1e-4, atol=1e-4)
+        self.assertAllClose(eager_g, jit_g, rtol=1e-4, atol=1e-4)
+
+      # Empty tensors (N=0)
+      for empty_shape in [(0, 0), (0, 2, 2)]:
+        x_empty = constant_op.constant([], shape=empty_shape, dtype=dtype)
+        jit_y, jit_g = jit_grad_fn(x_empty)
+        self.assertAllEqual(jit_y.shape, empty_shape)
+        self.assertAllEqual(jit_g.shape, empty_shape)
+
+      # Non-finite inputs: NaN, +inf, -inf
+      for non_finite_val in [float("nan"), float("inf"), float("-inf")]:
+        x_nf = constant_op.constant(
+            [[non_finite_val, 0.0], [0.0, 1.0]], dtype=dtype
+        )
+        eager_y, _ = compute_grad(x_nf)
+        jit_y, _ = jit_grad_fn(x_nf)
+        self.assertAllEqual(math_ops.is_nan(jit_y), math_ops.is_nan(eager_y))
+
+    # Unsupported dtypes
+    with self.assertRaises(ValueError):
+      linalg_impl.matrix_exponential(
+          constant_op.constant(
+              [[1.0, 0.0], [0.0, 1.0]], dtype=dtypes.bfloat16
+          )
+      )
+
+    with self.assertRaises((errors_impl.InvalidArgumentError,
+                            errors_impl.NotFoundError)):
+      self.evaluate(
+          linalg_impl.matrix_exponential(
+              constant_op.constant(
+                  [[1.0, 0.0], [0.0, 1.0]], dtype=dtypes.float16
+              )
+          )
       )
 
 
