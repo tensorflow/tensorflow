@@ -16,18 +16,24 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_command_buffer.h"
 
 #include <array>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <thread>  // NOLINT
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/base/casts.h"
+#include "absl/log/log_entry.h"
+#include "absl/log/log_sink.h"
+#include "absl/log/log_sink_registry.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/ascii.h"
+#include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "third_party/cudnn_frontend/include/cudnn_frontend.h"  // IWYU pragma: keep - cudnn frontend headers are not hermetic
@@ -507,6 +513,78 @@ TEST_F(CudaCommandBufferTest,
       dynamic_cast<gpu::CudaCommandBuffer*>(cmd_buffer.get());
   ASSERT_NE(cuda_cmd_buffer, nullptr);
   EXPECT_TRUE(cuda_cmd_buffer->has_node_priority());
+}
+
+TEST_F(CudaCommandBufferTest,
+       ConcurrentVmmDeallocationDuringGetConvolveRunners) {
+  Platform* platform = CudaPlatform();
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+  dnn::DnnSupport* dnn = executor->AsDnn();
+  ASSERT_NE(dnn, nullptr);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Stream> stream,
+                       executor->CreateStream());
+
+  class CaptureErrorSink : public absl::LogSink {
+   public:
+    void Send(const absl::LogEntry& entry) override {
+      if (absl::StrContains(entry.text_message(),
+                            "CUDA_ERROR_STREAM_CAPTURE_UNSUPPORTED")) {
+        capture_errors.fetch_add(1, std::memory_order_relaxed);
+      }
+    }
+    std::atomic<int> capture_errors{0};
+  } sink;
+  absl::AddLogSink(&sink);
+
+  std::atomic<bool> stop{false};
+  std::thread dealloc_thread([&]() {
+    while (!stop.load(std::memory_order_relaxed)) {
+      DeviceAddressBase buf = executor->Allocate(4096);
+      ASSERT_FALSE(buf.is_null());
+      executor->Deallocate(&buf);
+    }
+  });
+
+  for (int iter = 0; iter < 5; ++iter) {
+    dnn::BatchDescriptor input_desc;
+    input_desc.set_count(2)
+        .set_feature_map_count(3)
+        .set_height(9 + iter)
+        .set_width(10 + iter)
+        .set_layout(dnn::DataLayout::kBatchDepthYX);
+    dnn::FilterDescriptor filter_desc;
+    filter_desc.set_input_feature_map_count(3)
+        .set_output_feature_map_count(4)
+        .set_input_filter_height(3)
+        .set_input_filter_width(3)
+        .set_layout(dnn::FilterLayout::kOutputInputYX);
+    dnn::ConvolutionDescriptor conv_desc;
+    conv_desc.set_vertical_filter_stride(1)
+        .set_horizontal_filter_stride(1)
+        .set_zero_padding_height(1)
+        .set_zero_padding_width(1);
+    dnn::BatchDescriptor output_desc;
+    output_desc.set_count(2)
+        .set_feature_map_count(4)
+        .set_height(9 + iter)
+        .set_width(10 + iter)
+        .set_layout(dnn::DataLayout::kBatchDepthYX);
+
+    std::vector<std::unique_ptr<const dnn::ConvRunner>> runners;
+    EXPECT_OK(dnn->GetConvolveRunners(
+        dnn::ConvolutionKind::FORWARD, dnn::DataType::kHalf,
+        dnn::DataType::kHalf, stream.get(), input_desc,
+        DeviceAddressBase(nullptr, 0), filter_desc,
+        DeviceAddressBase(nullptr, 0), output_desc,
+        DeviceAddressBase(nullptr, 0), conv_desc, /*use_fallback=*/false,
+        /*scratch_allocator=*/nullptr, EngineOptions{}, &runners));
+  }
+
+  stop.store(true, std::memory_order_relaxed);
+  dealloc_thread.join();
+  absl::RemoveLogSink(&sink);
+  EXPECT_EQ(sink.capture_errors.load(), 0);
 }
 }  // namespace
 }  // namespace stream_executor::cuda

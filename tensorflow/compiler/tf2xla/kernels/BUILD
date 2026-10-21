@@ -510,6 +510,7 @@ tf_kernel_library(
         "@com_google_absl//absl/types:span",
         "@xla//xla:literal",
         "@xla//xla:shape_util",
+        "@xla//xla:xla_data_proto_cc",
         "@xla//xla/hlo/builder:xla_builder",
         "@xla//xla/hlo/builder/lib:dynamic_shaped_ops",
         "@xla//xla/tsl/platform:errors",

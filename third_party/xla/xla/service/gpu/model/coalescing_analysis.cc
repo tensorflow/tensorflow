@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/fusions.h"
 #include "xla/codegen/tiling/experimental/tiled_hlo.h"
-#include "xla/codegen/tiling/tiled_hlo_instruction.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/interval.h"
@@ -109,11 +108,8 @@ bool IsReadCoalescedHeuristic(HloFusionAnalysis::EmitterFusionKind fusion_kind,
   return true;
 }
 
-namespace {
-
-template <typename TiledHloInstructionType>
-double BandwidthUtilizationRateHeuristicForTiledMemoryAccessImpl(
-    const TiledHloInstructionType& hbm_access_instr,
+double BandwidthUtilizationRateHeuristicForTiledMemoryAccess(
+    const experimental::TiledHloInstruction& hbm_access_instr,
     const se::DeviceDescription& device_info) {
   const HloInstruction* hlo = hbm_access_instr.hlo();
   const Shape& shape = hlo->shape();
@@ -152,21 +148,6 @@ double BandwidthUtilizationRateHeuristicForTiledMemoryAccessImpl(
       transaction_size_bytes *
       CeilOfRatio(contiguous_bytes_accessed, transaction_size_bytes);
   return 1.0 * contiguous_bytes_accessed / effective_bytes_accessed;
-}
-}  // namespace
-
-double BandwidthUtilizationRateHeuristicForTiledMemoryAccess(
-    const TiledHloInstruction& hbm_access_instr,
-    const se::DeviceDescription& device_info) {
-  return BandwidthUtilizationRateHeuristicForTiledMemoryAccessImpl(
-      hbm_access_instr, device_info);
-}
-
-double BandwidthUtilizationRateHeuristicForTiledMemoryAccess(
-    const experimental::TiledHloInstruction& hbm_access_instr,
-    const se::DeviceDescription& device_info) {
-  return BandwidthUtilizationRateHeuristicForTiledMemoryAccessImpl(
-      hbm_access_instr, device_info);
 }
 
 namespace {

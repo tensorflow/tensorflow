@@ -240,6 +240,13 @@ absl::StatusOr<std::shared_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
 
   tsl::BFCAllocator::Options opts;
   opts.allow_growth = !preallocate;
+  // Growing pools can retain entirely free regions that are individually too
+  // small for a later request. Let BFC return those regions and retry with a
+  // larger region before reporting OOM. Preallocated pools must stay reserved.
+  if (!preallocate) {
+    ABSL_RETURN_IF_ERROR(tsl::ReadBoolFromEnvVar("TF_ENABLE_GPU_GARBAGE_COLLECTION",
+                                            true, &opts.garbage_collection));
+  }
   opts.enable_spatial_partitioning = enable_spatial_partitioning;
   if (enable_spatial_partitioning) {
     // Default memory (S(0), upper end) mixes buffers with different lifetimes.

@@ -46,7 +46,6 @@ limitations under the License.
 #include "xla/codegen/tiling/experimental/scheduling.h"
 #include "xla/codegen/tiling/experimental/tiled_hlo.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
-#include "xla/codegen/tiling/tiled_hlo_instruction.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
@@ -229,10 +228,6 @@ class EmitterContext {
 // tiles.
 class TileInfo {
  public:
-  static absl::StatusOr<TileInfo> Construct(
-      mlir::ImplicitLocOpBuilder& b, mlir::Value pid,
-      mlir::ValueRange runtime_values, const TiledHloInstruction& tiled_hlo);
-
   static absl::StatusOr<TileInfo> Construct(
       EmitterContext& ctx,
       const gpu::experimental::TiledHloInstruction& tiled_hlo);

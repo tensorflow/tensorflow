@@ -2220,8 +2220,7 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
       pipeline.AddPass<SoftmaxRewriterTriton>(
           gpu_target_config.device_description, ShapeSizeBytesFunction(),
           alias_info, mlir_context,
-          /*only_fuse_if_profitable=*/true,
-          /*use_experimental_tiling=*/true, thread_pool, &mlir_context_pool_);
+          /*only_fuse_if_profitable=*/true, thread_pool, &mlir_context_pool_);
     }
 
     pipeline.AddPass<ReductionDimensionGrouper>();
@@ -3088,7 +3087,6 @@ absl::Status GpuCompiler::RunPreSchedulingPasses(
     // Cost model analysis for compute.
     pipeline.AddPass<GpuCostModelStatsCollection>(
         gpu_device_info, cost_analysis_options, mlir_context,
-        /*use_experimental_tiling=*/true,
         module->config()
             .debug_options()
             .xla_gpu_experimental_enable_same_shape_multi_output_fusion());

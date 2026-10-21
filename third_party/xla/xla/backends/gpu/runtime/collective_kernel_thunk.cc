@@ -469,8 +469,8 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
             buffers_[i].destination_buffer.slice));
       }
     }
-    for (const auto& alloc : state.scratch_allocations) {
-      parameters.push_back(alloc.address());
+    for (const se::DeviceAddressBase& slice : state.scratch_slices) {
+      parameters.push_back(slice);
     }
     return parameters;
   };
@@ -495,28 +495,40 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
     return multimem_addresses;
   };
 
+  int64_t total_scratch_bytes = 0;
+  std::vector<int64_t> slice_offsets;
+  std::vector<int64_t> slice_sizes;
+  slice_offsets.reserve(kernel_spec_.scratch_buffers.size());
+  slice_sizes.reserve(kernel_spec_.scratch_buffers.size());
+  for (const ScratchBufferSpec& buf_spec : kernel_spec_.scratch_buffers) {
+    const int64_t slice_bytes = xla::RoundUpTo<uint64_t>(
+        buf_spec.size_bytes * (buf_spec.should_double_buffer ? kNumBuffers : 1),
+        kXlaAllocatedBufferAlignBytes);
+    slice_offsets.push_back(total_scratch_bytes);
+    slice_sizes.push_back(slice_bytes);
+    total_scratch_bytes += slice_bytes;
+  }
+
   ABSL_RETURN_IF_ERROR(per_device_state_.GetOrCreateAndInitialize(
       params.executor->device_ordinal(),
       [&](StreamState* state) -> absl::Status {
-        std::vector<se::DeviceAddressHandle> scratch_allocations;
-        scratch_allocations.reserve(kernel_spec_.scratch_buffers.size());
-        for (int32_t i = 0; i < kernel_spec_.scratch_buffers.size(); ++i) {
-          const ScratchBufferSpec& buf_spec = kernel_spec_.scratch_buffers[i];
-          const int64_t total_bytes = xla::RoundUpTo<uint64_t>(
-              buf_spec.size_bytes *
-                  (buf_spec.should_double_buffer ? kNumBuffers : 1),
-              kXlaAllocatedBufferAlignBytes);
-          ABSL_ASSIGN_OR_RETURN(se::DeviceAddressHandle alloc_handle,
-                           AllocateMemory(params.executor, total_bytes,
-                                          absl::StrCat("Scratch ", i)));
-          scratch_allocations.push_back(std::move(alloc_handle));
+        se::DeviceAddressHandle scratch_allocation;
+        std::vector<se::DeviceAddressBase> scratch_slices;
+        scratch_slices.reserve(kernel_spec_.scratch_buffers.size());
+        if (total_scratch_bytes > 0) {
+          ABSL_ASSIGN_OR_RETURN(
+              scratch_allocation,
+              AllocateMemory(params.executor, total_scratch_bytes, "Scratch"));
+          for (size_t i = 0; i < kernel_spec_.scratch_buffers.size(); ++i) {
+            scratch_slices.push_back(scratch_allocation.address().GetByteSlice(
+                slice_offsets[i], slice_sizes[i]));
+          }
         }
         // Step1: Zero out scratch buffers if needed.
-        for (size_t i = 0; i < kernel_spec_.scratch_buffers.size(); ++i) {
+        for (size_t i = 0; i < scratch_slices.size(); ++i) {
           if (kernel_spec_.scratch_buffers[i].should_memzero) {
-            ABSL_RETURN_IF_ERROR(params.stream->MemZero(
-                scratch_allocations[i].address_ptr(),
-                scratch_allocations[i].address().size()));
+            ABSL_RETURN_IF_ERROR(params.stream->MemZero(&scratch_slices[i],
+                                                   scratch_slices[i].size()));
           }
         }
         ABSL_RETURN_IF_ERROR(params.stream->BlockHostUntilDone());
@@ -541,7 +553,8 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
         kernel->set_use_pdl(use_pdl_);
         // Step2: Populate the stream state.
         *state = StreamState(params.executor->device_ordinal(), rank.value(),
-                             std::move(kernel), std::move(scratch_allocations));
+                             std::move(kernel), std::move(scratch_allocation),
+                             std::move(scratch_slices));
 
         std::vector<se::DeviceAddressBase> parameters = get_parameters(*state);
         const size_t num_parameters = parameters.size();
@@ -580,11 +593,7 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
   StreamState* state =
       per_device_state_.Find(params.executor->device_ordinal());
   TF_RET_CHECK(state != nullptr);
-  if (!state->scratch_symmetric_memories.empty() &&
-      absl::c_none_of(state->scratch_symmetric_memories,
-                      [](const tsl::TiedRef<SymmetricMemory>& ref) {
-                        return ref.Expired();
-                      })) {
+  if (!state->scratch_symmetric_memory.Expired()) {
     return absl::OkStatus();
   }
 
@@ -601,17 +610,13 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
   ABSL_ASSIGN_OR_RETURN(GpuCommunicator * comm,
                    params.collective_cliques->GetComm(clique_key, *rank));
 
-  state->scratch_symmetric_memories.clear();
-  state->scratch_symmetric_memories.reserve(state->scratch_allocations.size());
-  for (size_t i = 0; i < state->scratch_allocations.size(); ++i) {
-    se::DeviceAddressBase addr = state->scratch_allocations[i].address();
-    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<SymmetricMemory> symmetric_memory,
-                     comm->CreateSymmetricMemory(addr));
-    ABSL_ASSIGN_OR_RETURN(tsl::TiedRef<SymmetricMemory> tied_symmetric_memory,
+  if (!state->scratch_allocation.address().is_null()) {
+    ABSL_ASSIGN_OR_RETURN(
+        std::unique_ptr<SymmetricMemory> symmetric_memory,
+        comm->CreateSymmetricMemory(state->scratch_allocation.address()));
+    ABSL_ASSIGN_OR_RETURN(state->scratch_symmetric_memory,
                      params.collective_cliques->Tie(
                          clique_key, std::move(symmetric_memory)));
-    state->scratch_symmetric_memories.push_back(
-        std::move(tied_symmetric_memory));
   }
 
   std::vector<se::DeviceAddressBase> parameters = get_parameters(*state);
@@ -628,18 +633,23 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
                        is_multimem_buffer);
   std::vector<void*> param_to_peers_ptrs(num_parameters *
                                          clique_key.num_devices());
-  for (size_t i = scratch_buffers_index; i < num_parameters; ++i) {
-    const size_t scratch_index = i - scratch_buffers_index;
-    auto sym_mem = state->scratch_symmetric_memories[scratch_index].Lock();
-    TF_RET_CHECK(sym_mem != nullptr) << "Symmetric memory for scratch buffer "
-                                     << scratch_index << " is no longer valid";
-    const size_t parameter_offset = i * clique_key.num_devices();
-    for (int device_rank = 0; device_rank < clique_key.num_devices();
-         ++device_rank) {
-      ABSL_ASSIGN_OR_RETURN(se::DeviceAddressBase peer_address,
-                       sym_mem->peer_addr(RankId(device_rank)));
-      param_to_peers_ptrs[parameter_offset + device_rank] =
-          peer_address.opaque();
+  if (scratch_buffers_index < num_parameters) {
+    auto sym_mem = state->scratch_symmetric_memory.Lock();
+    TF_RET_CHECK(sym_mem != nullptr)
+        << "Symmetric memory for scratch allocation is no longer valid";
+    for (size_t i = scratch_buffers_index; i < num_parameters; ++i) {
+      const size_t scratch_index = i - scratch_buffers_index;
+      const size_t parameter_offset = i * clique_key.num_devices();
+      for (int device_rank = 0; device_rank < clique_key.num_devices();
+           ++device_rank) {
+        ABSL_ASSIGN_OR_RETURN(se::DeviceAddressBase peer_base,
+                         sym_mem->peer_addr(RankId(device_rank)));
+        param_to_peers_ptrs[parameter_offset + device_rank] =
+            peer_base
+                .GetByteSlice(slice_offsets[scratch_index],
+                              slice_sizes[scratch_index])
+                .opaque();
+      }
     }
   }
 
@@ -705,11 +715,11 @@ CollectiveKernelThunk::PrepareLaunch(const ExecuteParams& params) {
   // before kernel launch. All ranks perform this copy, then the entry barrier
   // in the kernel waits until every rank has finished its copy.
   if (kernel_spec_.codegen_config.copy_input_to_scratch) {
-    // scratch_allocations[1] is the symmetric remote buffer that holds this
-    // rank's input slice. scratch_allocations[0] is the signal buffer.
-    TF_RET_CHECK(state->scratch_allocations.size() >= 2)
-        << "Expected at least 2 scratch allocations for D2D copy.";
-    plan.copy_dst = state->scratch_allocations[1].address_ptr();
+    // scratch_slices[1] is the symmetric remote buffer that holds this
+    // rank's input slice. scratch_slices[0] is the signal buffer.
+    TF_RET_CHECK(state->scratch_slices.size() >= 2)
+        << "Expected at least 2 scratch slices for D2D copy.";
+    plan.copy_dst = &state->scratch_slices[1];
     plan.copy_src = params.buffer_allocations->GetDeviceAddress(
         buffers_[0].source_buffer.slice);
     plan.copy_size = GetInputSizeBytes();

@@ -57,6 +57,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/cuda/cuda_device_allocator.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
@@ -213,15 +214,39 @@ class CudnnHandle {
   // Takes ownership of the lock to access cuDNN using handle.
   CudnnHandle(StreamExecutor* executor, std::unique_ptr<absl::MutexLock> lock,
               cudnnHandle_t handle)
-      : context_(executor->Activate()),
+      : executor_(executor),
+        context_(executor->Activate()),
         lock_(std::move(lock)),
-        handle_(handle) {}
+        handle_(handle) {
+    // cuDNN v9 internally captures temporary CUDA graphs during heuristic
+    // queries and execution plan creation (e.g. via
+    // cudnnBackendGetMetadataFromGraph), which does not go through
+    // CudaStream::CaptureHandle. Defer VMM deallocations (which call
+    // cuCtxSynchronize()) while a cuDNN handle is active on this executor.
+    CudaDeviceAllocator::EnterStreamCapture(executor_);
+  }
+
+  CudnnHandle(CudnnHandle&& other) noexcept
+      : executor_(std::exchange(other.executor_, nullptr)),
+        context_(std::move(other.context_)),
+        lock_(std::move(other.lock_)),
+        handle_(other.handle_) {}
+
+  CudnnHandle& operator=(CudnnHandle&&) = delete;
+  CudnnHandle(const CudnnHandle&) = delete;
+  CudnnHandle& operator=(const CudnnHandle&) = delete;
+
+  ~CudnnHandle() {
+    lock_.reset();
+    CudaDeviceAllocator::ExitStreamCapture(executor_);
+  }
 
   // Returns cuDNN handle. To be passed directly to cuDNN APIs, don't keep
   // a copy.
   cudnnHandle_t handle() const { return handle_; }
 
  private:
+  StreamExecutor* executor_;
   std::unique_ptr<ActivateContext> context_;
   std::unique_ptr<absl::MutexLock> lock_;
   cudnnHandle_t handle_;  // Not owned.

@@ -21,28 +21,10 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "llvm/ADT/SmallVector.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
-#include "xla/codegen/tiling/symbolic_tile_analysis.h"
-#include "xla/codegen/tiling/tiling_specification.h"
 #include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/codegen/xtile/xtile_config.pb.h"
 
 namespace xla::xtile {
-
-// Given a tiling specification for an annotated fusion, derives a tiling for
-// this fusion.
-//
-// Note that the tiling extracted here is voluntarily not checked against the
-// specification, which means that it could be invalid. This should only be the
-// case, though, if this logic gets stale, or if the fusion does not contain
-// the required annotations. Checking constraints is not cheap, so we left it up
-// to the caller to decide when to check the constraints.
-//
-// `dot_tiling_config_override` allows to override tiling parameters. Note that
-// if there are several dots present they will all use this override.
-absl::StatusOr<Tiling> TilingFromAnnotatedFusion(
-    const SymbolicTileAnalysis& symbolic_tile_analysis,
-    const xla::xtile::BlockLevelParameters& block_level_parameters,
-    const Tile* dot_tiling_config_override = nullptr);
 
 // Returns concrete tiles sizes tiling space dimensions - in the order of
 // dimensions in the tiling space.

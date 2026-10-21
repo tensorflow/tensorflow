@@ -38,7 +38,6 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/tree_reduction_rewriter.h"
 #include "xla/codegen/tiling/experimental/tiled_hlo.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
-#include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -60,7 +59,6 @@ limitations under the License.
 #include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 #include "xla/service/gpu/model/gpu_performance_model.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
-#include "xla/service/gpu/model/triton_emitter_constraints.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape.h"
@@ -200,7 +198,7 @@ bool IsTriviallyConnectedProducerOf(
 //
 // TODO(b/347956491): this awkward abstraction is needed to work around
 // limitations of HloFusionAdaptor, which underpins the implementation of
-// SymbolicTileAnalysis. We need to come up with a better solution.
+// TilingSpace. We need to come up with a better solution.
 absl::StatusOr<HloFusionInstruction*> MakeFusionForDiamond(
     const DiamondDescriptor& diamond) {
   auto [root, producer] = diamond;
@@ -443,11 +441,8 @@ absl::StatusOr<bool> MaybeFuseDiamondImpl(
   return true;
 }
 
-// Returns `true` if the diamond passed as a parameter can be tiled correctly
-// using `SymbolicTileAnalysis`.
-absl::StatusOr<bool> CanSymbolicTileAnalysisTileDiamond(
-    const DiamondDescriptor& diamond,
-    const se::DeviceDescription& device_info) {
+// Returns `true` if the diamond passed as a parameter can be tiled correctly.
+absl::StatusOr<bool> CanTileDiamond(const DiamondDescriptor& diamond) {
   ABSL_ASSIGN_OR_RETURN(HloFusionInstruction * normalization_fusion,
                    MakeFusionForDiamond(diamond));
   mlir::MLIRContext mlir_context;
@@ -626,11 +621,8 @@ SoftmaxRewriterTriton::FindAllFusibleNormalizationDiamonds(
       if (std::holds_alternative<HloInstruction*>(producer)) {
         DiamondDescriptor diamond{
             /*root=*/instr, /*producer=*/std::get<HloInstruction*>(producer)};
-        // We filter out the diamonds that cannot be tiled correctly using
-        // `SymbolicTileAnalysis`.
-        ABSL_ASSIGN_OR_RETURN(
-            bool can_tile_diamond,
-            CanSymbolicTileAnalysisTileDiamond(diamond, device_info_));
+        // We filter out the diamonds that cannot be tiled correctly.
+        ABSL_ASSIGN_OR_RETURN(bool can_tile_diamond, CanTileDiamond(diamond));
         if (can_tile_diamond) {
           matched_diamonds.push_back(diamond);
         } else {
@@ -639,7 +631,6 @@ SoftmaxRewriterTriton::FindAllFusibleNormalizationDiamonds(
                   << std::get<HloInstruction*>(producer)->ToString() << ".";
           continue;
         }
-
       } else {
         VLOG(2) << "Cannot match the diamond pattern for instruction "
                 << instr->ToString()
@@ -656,7 +647,6 @@ absl::StatusOr<bool> SoftmaxRewriterTriton::MaybeFuseNormalizationDiamond(
   HloFusionAnalysisCache fusion_analysis_cache(device_info_);
   GpuPerformanceModelWithIndexingAnalysis indexing_performance_model(
       &device_info_, &fusion_analysis_cache, shape_size_, mlir_context_,
-      use_experimental_tiling_,
       diamond.root->GetModule()
           ->config()
           .debug_options()
