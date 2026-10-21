@@ -499,8 +499,9 @@ void ReplaceStablehloOpsInMainFunctionWithXlaCallModuleOpsPass::
   func::FuncOp main_func = quant::FindMainFuncOp(module_op);
   if (!main_func) return;
 
-  // In case the model has tf.StatefulPartitionedCallOp or tf.PartitionedCallOp,
-  // we recursively find called functions and process StableHLO ops in them.
+  // In case the model has tf.StatefulPartitionedCallOp, tf.PartitionedCallOp,
+  // tf.WhileOp, or tf.IfOp, we recursively find called functions and process
+  // StableHLO ops in them.
   SmallVector<func::FuncOp> func_ops;
   func_ops.push_back(main_func);
   int stablehlo_func_id = -1;
@@ -524,6 +525,14 @@ void ReplaceStablehloOpsInMainFunctionWithXlaCallModuleOpsPass::
     for (auto call_op : func_op.getOps<TF::StatefulPartitionedCallOp>()) {
       func_ops.push_back(
           dyn_cast_or_null<func::FuncOp>(symbol_table.lookup(call_op.getF())));
+    }
+    for (auto while_op : func_op.getOps<TF::WhileOp>()) {
+      func_ops.push_back(while_op.cond_function());
+      func_ops.push_back(while_op.body_function());
+    }
+    for (auto if_op : func_op.getOps<TF::IfOp>()) {
+      func_ops.push_back(if_op.then_function());
+      func_ops.push_back(if_op.else_function());
     }
 
     DuplicateSmallConstantOps(module_op, func_op);

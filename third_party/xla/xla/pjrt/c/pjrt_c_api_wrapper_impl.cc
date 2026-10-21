@@ -3021,6 +3021,7 @@ PJRT_Error* PJRT_Buffer_IncreaseExternalReferenceCount(
   PJRT_ASSIGN_OR_RETURN(
       std::unique_ptr<xla::PjRtBuffer::ExternalReference> external_reference,
       args->buffer->buffer->AcquireExternalReference());
+  absl::MutexLock lock(args->buffer->mu);
   args->buffer->external_references.push_back(std::move(external_reference));
   return nullptr;
 }
@@ -3032,14 +3033,21 @@ PJRT_Error* PJRT_Buffer_DecreaseExternalReferenceCount(
       PJRT_Buffer_DecreaseExternalReferenceCount_Args_STRUCT_SIZE,
       args->struct_size));
 
-  if (!args->buffer->external_references.empty()) {
+  // Destroy external_reference outside args->buffer->mu to avoid holding it
+  // while acquiring the underlying buffer lock.
+  std::unique_ptr<xla::PjRtBuffer::ExternalReference> external_reference;
+  {
+    absl::MutexLock lock(args->buffer->mu);
+    if (args->buffer->external_references.empty()) {
+      absl::Status status = xla::InvalidArgument(
+          "Attempting to decrease reference on a buffer with zero reference "
+          "count.");
+      return StatusToPjRtError(std::move(status));
+    }
+    external_reference = std::move(args->buffer->external_references.back());
     args->buffer->external_references.pop_back();
-    return nullptr;
   }
-  absl::Status status = xla::InvalidArgument(
-      "Attempting to decrease reference on a buffer with zero reference "
-      "count.");
-  return StatusToPjRtError(std::move(status));
+  return nullptr;
 }
 
 PJRT_Error* PJRT_Buffer_OpaqueDeviceMemoryDataPointer(
