@@ -556,7 +556,7 @@ class FFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
   def testNDEmptyFFTLengthEmptyOutput(self):
     if not test_util.is_gpu_available():
       return
-    x = array_ops.zeros([1, 1], dtype=dtypes.complex64)
+    x = array_ops.zeros([1, 0], dtype=dtypes.complex64)
     # A zero fft_length sizes the output dim to 0.
     y = gen_spectral_ops.fftnd(x, [0], [-1])
     self.assertEqual(self.evaluate(y).shape, (1, 0))
@@ -705,7 +705,7 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
   def testEmptyFFTLengthEmptyOutput(self):
     if not test_util.is_gpu_available():
       return
-    x = array_ops.zeros([1, 1], dtype=dtypes.float32)
+    x = array_ops.zeros([1, 0], dtype=dtypes.float32)
     y1 = gen_spectral_ops.rfft(x, [0])
     self.assertEqual(self.evaluate(y1).shape, (1, 0))
     y2 = gen_spectral_ops.rfftnd(x, [0], [-1])

@@ -1,0 +1,24 @@
+diff --git a/include/tfrt/host_context/async_dispatch.h b/include/tfrt/host_context/async_dispatch.h
+--- a/include/tfrt/host_context/async_dispatch.h
++++ b/include/tfrt/host_context/async_dispatch.h
+@@ -40,7 +40,7 @@ struct UnwrapExpected<Expected<T>> {
+ };
+ 
+ template <typename F>
+-using AsyncResultTypeT = typename UnwrapExpected<std::result_of_t<F()>>::type;
++using AsyncResultTypeT = typename UnwrapExpected<std::invoke_result_t<F>>::type;
+ 
+ }  // namespace internal
+ 
+diff --git a/include/tfrt/support/type_traits.h b/include/tfrt/support/type_traits.h
+--- a/include/tfrt/support/type_traits.h
++++ b/include/tfrt/support/type_traits.h
+@@ -60,7 +60,7 @@ namespace detail {
+ struct is_invocable_impl : std::false_type {};
+ 
+ template <typename F, typename... Args>
+-struct is_invocable_impl<F(Args...), std::result_of_t<F(Args...)>>
++struct is_invocable_impl<F(Args...), std::invoke_result_t<F, Args...>>
+     : std::true_type {};
+ }  // namespace detail
+ 
