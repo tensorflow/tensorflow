@@ -109,14 +109,18 @@ class FusedLinearCrossEntropyOpTest(test_util.TensorFlowTestCase):
   @test_util.run_in_graph_and_eager_modes
   def test_invalid_ranks_and_bounds(self):
     features = constant_op.constant([1.0, 2.0], dtype=dtypes.float32)
-    weights = constant_op.constant([[1.0, 2.0], [3.0, 4.0]], dtype=dtypes.float32)
-    labels = constant_op.constant([[1.0, 0.0]], dtype=dtypes.float32)
+    weights = constant_op.constant(
+      [[1.0, 2.0], [3.0, 4.0]], dtype=dtypes.float32)
+    labels = constant_op.constant([[1.0, 0.0]], dtype=dtypes.float32
+    )
     
     with self.assertRaisesRegex(
         (errors.InvalidArgumentError, ValueError),
         r"features must be 2-D|Shape must be rank 2",
     ):
-      self.evaluate(nn_ops.fused_linear_cross_entropy(labels, features, weights))
+     self.evaluate(
+    nn_ops.fused_linear_cross_entropy(labels, features, weights)
+)
 
 
 if __name__ == "__main__":
