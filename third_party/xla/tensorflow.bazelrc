@@ -260,6 +260,8 @@ common:nvcc_clang --config=cuda_nvcc
 common:cuda_nvcc_clang_local --config=cuda_nvcc
 common:cuda_nvcc_clang_local --config=clang_local
 common:cuda_nvcc_clang_local --crosstool_top=@local_config_cuda//crosstool:toolchain
+common:cuda_nvcc_clang_local --host_linkopt="-lm"
+common:cuda_nvcc_clang_local --linkopt="-lm"
 
 # Debug config. Enables Bazel's 'dbg' compilation mode, build with debugging enabled
 common:dbg -c dbg
