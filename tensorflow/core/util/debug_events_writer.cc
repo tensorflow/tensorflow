@@ -248,43 +248,53 @@ absl::Status DebugEventsWriter::InitLocked() {
 }
 
 absl::Status DebugEventsWriter::WriteSourceFile(SourceFile* source_file) {
+  std::unique_ptr<SourceFile> file(source_file);
+  TF_RETURN_IF_ERROR(InitUnlessClosed());
   DebugEvent debug_event;
-  debug_event.set_allocated_source_file(source_file);
+  debug_event.set_allocated_source_file(file.release());
   return SerializeAndWriteDebugEvent(&debug_event, SOURCE_FILES);
 }
 
 absl::Status DebugEventsWriter::WriteStackFrameWithId(
     StackFrameWithId* stack_frame_with_id) {
+  std::unique_ptr<StackFrameWithId> frame(stack_frame_with_id);
+  TF_RETURN_IF_ERROR(InitUnlessClosed());
   DebugEvent debug_event;
-  debug_event.set_allocated_stack_frame_with_id(stack_frame_with_id);
+  debug_event.set_allocated_stack_frame_with_id(frame.release());
   return SerializeAndWriteDebugEvent(&debug_event, STACK_FRAMES);
 }
 
 absl::Status DebugEventsWriter::WriteGraphOpCreation(
     GraphOpCreation* graph_op_creation) {
+  std::unique_ptr<GraphOpCreation> op_creation(graph_op_creation);
+  TF_RETURN_IF_ERROR(InitUnlessClosed());
   DebugEvent debug_event;
-  debug_event.set_allocated_graph_op_creation(graph_op_creation);
+  debug_event.set_allocated_graph_op_creation(op_creation.release());
   return SerializeAndWriteDebugEvent(&debug_event, GRAPHS);
 }
 
 absl::Status DebugEventsWriter::WriteDebuggedGraph(
     DebuggedGraph* debugged_graph) {
+  std::unique_ptr<DebuggedGraph> graph(debugged_graph);
+  TF_RETURN_IF_ERROR(InitUnlessClosed());
   DebugEvent debug_event;
-  debug_event.set_allocated_debugged_graph(debugged_graph);
+  debug_event.set_allocated_debugged_graph(graph.release());
   return SerializeAndWriteDebugEvent(&debug_event, GRAPHS);
 }
 
 absl::Status DebugEventsWriter::WriteExecution(Execution* execution) {
+  std::unique_ptr<Execution> exec(execution);
+  TF_RETURN_IF_ERROR(InitUnlessClosed());
   if (circular_buffer_size_ <= 0) {
     // No cyclic-buffer behavior.
     DebugEvent debug_event;
-    debug_event.set_allocated_execution(execution);
+    debug_event.set_allocated_execution(exec.release());
     return SerializeAndWriteDebugEvent(&debug_event, EXECUTION);
   } else {
     // Circular buffer behavior.
     DebugEvent debug_event;
     MaybeSetDebugEventTimestamp(&debug_event, env_);
-    debug_event.set_allocated_execution(execution);
+    debug_event.set_allocated_execution(exec.release());
     std::string serialized;
     debug_event.SerializeToString(&serialized);
 
@@ -353,6 +363,7 @@ absl::Status DebugEventsWriter::WriteGraphExecutionTrace(
 
 void DebugEventsWriter::WriteSerializedNonExecutionDebugEvent(
     const std::string& debug_event_str, DebugEventFileType type) {
+  InitUnlessClosed().IgnoreError();
   tf_shared_lock l(writers_mu_);
   std::unique_ptr<SingleDebugEventFileWriter>* writer = nullptr;
   SelectWriter(type, &writer);
@@ -363,6 +374,7 @@ void DebugEventsWriter::WriteSerializedNonExecutionDebugEvent(
 
 void DebugEventsWriter::WriteSerializedExecutionDebugEvent(
     const std::string& debug_event_str, DebugEventFileType type) {
+  InitUnlessClosed().IgnoreError();
   tf_shared_lock writers_lock(writers_mu_);
   const std::unique_ptr<SingleDebugEventFileWriter>* writer = nullptr;
   std::deque<std::string>* buffer = nullptr;
@@ -534,7 +546,7 @@ absl::Status DebugEventsWriter::Close() {
   if (failed_to_close_files.empty()) {
     return absl::OkStatus();
   }
-  return absl::FailedPreconditionError(absl::StrCat(
+  return absl::FailedPreconditionError(absl::StrFormat(
       "Failed to close %d debug-events files associated with tfdbg",
       failed_to_close_files.size()));
 }

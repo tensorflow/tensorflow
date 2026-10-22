@@ -1150,6 +1150,19 @@ class DumpingCallbackTest(
       self.assertEqual(reader.num_graph_execution_traces(), 0)
       self.assertFalse(reader.outermost_graphs())
 
+  def testDisableTracingKeepsTracedFunctions(self):
+
+    @def_function.function
+    def times_two(x):
+      return x * 2.0
+
+    x = constant_op.constant([1.0, 2.0])
+    dumping_callback.enable_dump_debug_info(
+        self.dump_root, tensor_debug_mode="FULL_HEALTH")
+    self.evaluate(times_two(x))
+    dumping_callback.disable_dump_debug_info()
+    self.assertAllClose(self.evaluate(times_two(x)), [2.0, 4.0])
+
   def testReenablingWithSameDumpRootKeepsDataFromBothRuns(self):
 
     @def_function.function
