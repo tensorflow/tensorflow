@@ -986,6 +986,8 @@ xla_cc_test(
     deps = [
         ":se_gpu_pjrt_compiler",  # buildcleaner: keep
         ":se_gpu_topology_description",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/pjrt:pjrt_common",
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_device_description",
@@ -995,6 +997,8 @@ xla_cc_test(
         "//xla/runtime:process_id",
         "//xla/service:gpu_topology",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
     ],
 )
