@@ -1511,6 +1511,63 @@ class ConstantValueTest(test.TestCase):
     c_val = tensor_util.constant_value(tf_val)
     self.assertAllEqual(input_, c_val)
 
+  # Every Python-level index or slice produces a `StridedSlice`. These tests run
+  # inside an explicit graph because `constant_value()` short-circuits to
+  # `.numpy()` for eager tensors, and the branch under test is only reachable
+  # during graph construction.
+
+  def testStridedSliceScalarIndex(self):
+    with ops.Graph().as_default():
+      self.assertEqual(8,
+                       tensor_util.constant_value(constant_op.constant([8, 9, 10])[0]))
+      self.assertEqual(10,
+                       tensor_util.constant_value(constant_op.constant([8, 9, 10])[-1]))
+
+  def testStridedSliceBasicSlices(self):
+    with ops.Graph().as_default():
+      c = constant_op.constant([8, 9, 10, 11])
+      self.assertAllEqual([8, 9], tensor_util.constant_value(c[0:2]))
+      self.assertAllEqual([9, 10, 11], tensor_util.constant_value(c[1:]))
+      self.assertAllEqual([8, 9], tensor_util.constant_value(c[:2]))
+
+  def testStridedSliceWithStrides(self):
+    with ops.Graph().as_default():
+      c = constant_op.constant([8, 9, 10, 11])
+      self.assertAllEqual([8, 10], tensor_util.constant_value(c[::2]))
+      self.assertAllEqual([11, 10, 9, 8], tensor_util.constant_value(c[::-1]))
+
+  def testStridedSliceMultipleAxes(self):
+    with ops.Graph().as_default():
+      m = constant_op.constant([[1, 2, 3], [4, 5, 6]])
+      self.assertAllEqual([4, 5, 6], tensor_util.constant_value(m[1, :]))
+      self.assertAllEqual([1, 4], tensor_util.constant_value(m[:, 0]))
+      self.assertAllEqual([[3, 2, 1]], tensor_util.constant_value(m[0:1, ::-1]))
+      self.assertEqual(6, tensor_util.constant_value(m[-1, -1]))
+
+  def testStridedSliceOfShape(self):
+    # `tf.shape(x)[i]` is the idiomatic way to read a single dimension and the
+    # case that motivated the branch: `Shape` is already folded above, so the
+    # index should not silently drop the value again.
+    with ops.Graph().as_default():
+      x = array_ops.placeholder(dtypes.float32, shape=[2, 3])
+      s = array_ops.shape(x)
+      self.assertEqual(2, tensor_util.constant_value(s[0]))
+      self.assertEqual(3, tensor_util.constant_value(s[1]))
+
+  def testStridedSliceNotStaticallyKnownIsNone(self):
+    with ops.Graph().as_default():
+      # Ellipsis and new_axis shift the meaning of the following indices, so the
+      # branch stays conservative there rather than risk a wrong value.
+      m = constant_op.constant([[1, 2], [3, 4]])
+      self.assertIsNone(tensor_util.constant_value(m[..., 0]))
+      # The sliced source is not constant.
+      x = array_ops.placeholder(dtypes.float32, shape=[4])
+      self.assertIsNone(tensor_util.constant_value(x[0:2]))
+      # The index is not constant.
+      c = constant_op.constant([1, 2, 3])
+      i = array_ops.placeholder(dtypes.int32, shape=[])
+      self.assertIsNone(tensor_util.constant_value(c[i]))
+
   def testLiteral(self):
     x = "hi"
     self.assertIs(x, tensor_util.constant_value(x))
