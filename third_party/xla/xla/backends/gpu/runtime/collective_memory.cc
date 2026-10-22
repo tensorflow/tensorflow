@@ -24,7 +24,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/base/casts.h"
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
@@ -48,13 +47,10 @@ limitations under the License.
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/rendezvous.h"
 #include "xla/stream_executor/device_address.h"
-#include "xla/stream_executor/gpu/gpu_executor.h"
-#include "xla/stream_executor/gpu/multicast_memory.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/tsl/util/tied_ref.h"
 #include "xla/util.h"
-#include "tsl/platform/casts.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla::gpu {
@@ -62,11 +58,9 @@ namespace xla::gpu {
 CollectiveMemory::CollectiveMemory(
     const BufferAllocations& buffers,
     absl::flat_hash_map<Key, std::shared_ptr<SymmetricMemory>> sym_memories,
-    absl::flat_hash_map<Key, MulticastMemory> mcast_memories,
     absl::flat_hash_map<Key, PeerMemory> peer_memories)
     : buffers_(buffers),
       sym_memories_(std::move(sym_memories)),
-      mcast_memories_(std::move(mcast_memories)),
       peer_memories_(std::move(peer_memories)) {}
 
 std::pair<SymmetricMemory*, size_t> CollectiveMemory::FindSymmetricMemory(
@@ -98,38 +92,6 @@ std::pair<SymmetricMemory*, size_t> CollectiveMemory::FindSymmetricMemory(
 
   auto [sym, sym_offset] = FindSymmetricMemory(clique, *allocation);
   return std::make_pair(sym, sym_offset + offset);
-}
-
-std::pair<void*, size_t> CollectiveMemory::FindMultimemAddress(
-    const GpuCliqueKey& clique, BufferAllocation::Index allocation) const {
-  auto it = mcast_memories_.find(std::make_pair(clique, allocation));
-  if (it == mcast_memories_.end()) {
-    return std::make_pair(nullptr, 0);
-  }
-
-  return std::make_pair(it->second.multimem_ptr, 0);
-}
-
-std::pair<void*, size_t> CollectiveMemory::FindMultimemAddress(
-    const GpuCliqueKey& clique, BufferAllocation::Slice slice) const {
-  auto [mmem, mmem_offset] = FindMultimemAddress(clique, slice.index());
-  return std::make_pair(mmem, mmem_offset + slice.offset());
-}
-
-std::pair<void*, size_t> CollectiveMemory::FindMultimemAddress(
-    const GpuCliqueKey& clique, se::DeviceAddressBase addr) const {
-  auto allocation = buffers_.FindAllocationIndex(addr);
-  if (!allocation.has_value()) {
-    return std::make_pair(nullptr, 0);
-  }
-
-  // Find offset from the base allocation.
-  se::DeviceAddressBase base = buffers_.GetDeviceAddress(*allocation);
-  size_t offset = tsl::safe_reinterpret_cast<uintptr_t>(addr.opaque()) -
-                  tsl::safe_reinterpret_cast<uintptr_t>(base.opaque());
-
-  auto [mmem, mmem_offset] = FindMultimemAddress(clique, *allocation);
-  return std::make_pair(mmem, mmem_offset + offset);
 }
 
 std::optional<se::DeviceAddressBase> CollectiveMemory::FindPeerAddress(
@@ -286,171 +248,6 @@ AcquireSymmetricMemory(
 }
 
 //===----------------------------------------------------------------------===//
-// Multicast memory acquisition.
-//===----------------------------------------------------------------------===//
-
-namespace {
-
-using MulticastMemoryMap =
-    absl::flat_hash_map<CollectiveMemory::Key,
-                        CollectiveMemory::MulticastMemory>;
-
-struct MappedPtrFormatter {
-  void operator()(std::string* out,
-                  const std::pair<RankId, void*>& mapped_ptr) const {
-    auto& [rank, ptr] = mapped_ptr;
-    absl::StrAppend(out, absl::StrFormat("%d:%p", rank.value(), ptr));
-  }
-};
-
-// A multicast object and a multimem mapping for all participating ranks.
-struct MappedMulticastMemory {
-  std::shared_ptr<se::gpu::MulticastMemory> multicast_memory;
-  absl::btree_map<RankId, void*> rank_multimem_ptr;
-};
-
-using MappedMulticastMemoryMap =
-    absl::flat_hash_map<CollectiveMemory::Key, MappedMulticastMemory>;
-
-}  // namespace
-
-// Acquire multicast memory for all requested allocation.
-absl::StatusOr<MulticastMemoryMap> AcquireMulticastMemory(
-    const CollectiveParams& params, CollectiveCliques& cliques,
-    const BufferAllocations& buffers,
-    absl::Span<const CollectiveMemoryRequests::CollectiveAllocations> allocs,
-    CollectiveMemoryCache& memory_cache) {
-  int32_t device_ordinal = params.executor->device_ordinal();
-
-  MulticastMemoryMap mcast_memories;
-
-  for (const CollectiveMemoryRequests::CollectiveAllocations& r : allocs) {
-    std::optional<RankId> rank = r.clique.rank(params.global_device_id);
-
-    if (!rank.has_value()) {
-      return Internal("[%d] Can't find global device id %v in clique key %v",
-                      device_ordinal, params.global_device_id, r.clique);
-    }
-
-    // We rely on in-process rendezvous to allocate the multicast memory and set
-    // up memory mapping on all ranks, and don't support multi-process mode.
-    if (!r.clique.is_local()) {
-      return Unimplemented(
-          "[%d] Multicast is not supported in multi-process mode in clique %v",
-          device_ordinal, r.clique);
-    }
-
-    std::string rendezvous_name = absl::StrFormat(
-        "[%d] [rank=%v] AcquireMulticastMemory for clique %v: allocs=[%s]",
-        device_ordinal, *rank, r.clique, absl::StrJoin(r.allocations, ","));
-
-    // Collect device addresses for mapped allocations.
-    std::vector<se::DeviceAddressBase> map_to;
-    map_to.reserve(r.allocations.size());
-    for (BufferAllocation::Index i : r.allocations) {
-      map_to.emplace_back(buffers.GetDeviceAddress(i));
-    }
-
-    // A callback for rendezvous to allocate and map the multicast memory. We
-    // do one round of rendezvous for each clique.
-    auto allocate = [&](absl::Span<RendezvousParams*> params)
-        -> absl::StatusOr<MappedMulticastMemoryMap> {
-      // Sort all participants by rank to get deterministic execution.
-      absl::c_sort(params, RankCmp{});
-
-      VLOG(3) << absl::StrFormat(
-          "[%s] [ranks=%s] Allocate collective multimem for clique: %v",
-          absl::StrJoin(params, ",", DeviceOrdinalFormatter{}),
-          absl::StrJoin(params, ",", RankFormatter{}), r.clique);
-
-      // We deterministically choose the first device to create the
-      // multicast memory. We will map the rest of participants to it later.
-      auto* gpu_executor = absl::down_cast<stream_executor::gpu::GpuExecutor*>(
-          params[0]->executor);
-      if (gpu_executor == nullptr) {
-        return Unimplemented("Unsupported stream executor type");
-      }
-
-      // As a result of rendezvous we collective multicast memory and mapping
-      // for all participating ranks to the multimem address.
-      MappedMulticastMemoryMap clique_mcast_memories;
-
-      for (BufferAllocation::Index i : r.allocations) {
-        // Allocate a multicast object for all participating devices.
-        size_t multicast_size;
-
-        multicast_size = params[0]->buffers.GetDeviceAddress(i).size();
-        ABSL_ASSIGN_OR_RETURN(
-            std::unique_ptr<se::gpu::MulticastMemory> multicast_memory,
-            gpu_executor->CreateMulticastMemory(multicast_size, params.size()));
-
-        // For all participating devices, subscribe to the multicast object.
-        for (const auto* param : params) {
-          ABSL_RETURN_IF_ERROR(multicast_memory->SubscribeDevice(
-              param->executor->device_ordinal()));
-        }
-
-        // For all participating devices, map to the multicast memory.
-        absl::btree_map<RankId, void*> mapped_ptrs;
-        for (const auto* param : params) {
-          ABSL_ASSIGN_OR_RETURN(
-              mapped_ptrs[param->rank],
-              multicast_memory->MapMemory(
-                  param->buffers.GetDeviceAddress(i),
-                  absl::down_cast<stream_executor::gpu::GpuExecutor*>(
-                      param->executor)));
-        }
-
-        VLOG(3) << absl::StrFormat(
-            "[%s] [ranks=%s] Allocated collective multimem for clique: %v; "
-            "mapped_ptrs=[%s]",
-            absl::StrJoin(params, ",", DeviceOrdinalFormatter{}),
-            absl::StrJoin(params, ",", RankFormatter{}), r.clique,
-            absl::StrJoin(mapped_ptrs, ", ", MappedPtrFormatter{}));
-
-        // Tie the lifetime of constructed multicast memory to the clique.
-        ABSL_ASSIGN_OR_RETURN(
-            tsl::TiedRef<se::gpu::MulticastMemory> tied_multicast_memory,
-            cliques.Tie(r.clique, std::move(multicast_memory)));
-
-        // Add to cache inside the rendezvous (single-threaded) to avoid a race
-        // where multiple ranks std::move from the same TiedRef.
-        se::DeviceAddressBase mcast_addr =
-            params[0]->buffers.GetDeviceAddress(i);
-        std::shared_ptr<se::gpu::MulticastMemory> cached =
-            memory_cache.AddMulticastMemory(
-                params[0]->executor->device_ordinal(), r.clique, mcast_addr,
-                std::move(tied_multicast_memory));
-
-        clique_mcast_memories[std::make_pair(r.clique, i)] =
-            MappedMulticastMemory{std::move(cached), std::move(mapped_ptrs)};
-      }
-      return clique_mcast_memories;
-    };
-
-    // We expect that all local participants will collectively allocate the
-    // multicast memory. We do one rendezvous for each clique, and from the
-    // rendezvous callback allocate multicast memory for all allocations.
-    RendezvousKey rendezvous_key = {r.clique};
-    RendezvousParams allocate_params = {*rank, params.executor, buffers};
-
-    int64_t num_participants = r.clique.num_local_participants();
-    ABSL_ASSIGN_OR_RETURN(
-        std::shared_ptr<MappedMulticastMemoryMap> clique_mcast_memories,
-        Rendezvous<MappedMulticastMemoryMap>(rendezvous_name, rendezvous_key,
-                                             allocate_params, num_participants,
-                                             allocate));
-
-    // Copy clique multicast memory to each participating thread.
-    for (auto& [k, v] : *clique_mcast_memories) {
-      mcast_memories[k] = {v.multicast_memory, v.rank_multimem_ptr.at(*rank)};
-    }
-  }
-
-  return mcast_memories;
-}
-
-//===----------------------------------------------------------------------===//
 // Peer memory acquisition.
 //===----------------------------------------------------------------------===//
 
@@ -515,20 +312,19 @@ absl::StatusOr<PeerMemoryMap> AcquirePeerMemory(
       return clique_peer_memories;
     };
 
-    // We expect that all local participants will collectively allocate the
-    // multicast memory. We do one rendezvous for each clique, and from the
-    // rendezvous callback allocate multicast memory for all allocations.
+    // We expect that all local participants will collectively exchange peer
+    // memory. We do one rendezvous for each clique.
     RendezvousKey rendezvous_key = {r.clique};
     RendezvousParams allocate_params = {*rank, params.executor, buffers};
 
     int64_t num_participants = r.clique.num_local_participants();
     ABSL_ASSIGN_OR_RETURN(
-        std::shared_ptr<PeerMemoryMap> clique_mcast_memories,
+        std::shared_ptr<PeerMemoryMap> clique_peer_memories,
         Rendezvous<PeerMemoryMap>(rendezvous_name, rendezvous_key,
                                   allocate_params, num_participants, exchange));
 
     // Copy clique peer memory to each participating thread.
-    for (auto& [k, v] : *clique_mcast_memories) {
+    for (auto& [k, v] : *clique_peer_memories) {
       peer_memories[k] = v;
     }
   }
@@ -549,37 +345,26 @@ absl::StatusOr<CollectiveMemory> AcquireCollectiveMemory(
   // a deadlock.
   std::vector<CollectiveMemoryRequests::CollectiveAllocations> sym_allocs =
       requests.OrderedSymmetricAllocations();
-  std::vector<CollectiveMemoryRequests::CollectiveAllocations> mcast_allocs =
-      requests.OrderedMulticastAllocations();
   std::vector<CollectiveMemoryRequests::CollectiveAllocations> peer_allocs =
       requests.OrderedPeerAllocations();
 
   // Short-circuit if we have nothing to allocate.
-  if (sym_allocs.empty() && mcast_allocs.empty() && peer_allocs.empty()) {
+  if (sym_allocs.empty() && peer_allocs.empty()) {
     return CollectiveMemory(requests.buffers(), /*sym_memories=*/{},
-                            /*mcast_memories=*/{}, /*peer_memories=*/{});
+                            /*peer_memories=*/{});
   }
 
   XLA_VLOG_DEVICE(2, params.executor->device_ordinal()) << absl::StreamFormat(
       " Acquire collective memory for global device id %v: run_id=%v "
-      "symmetric=%d multicast=%d peer=%d",
+      "symmetric=%d peer=%d",
       params.global_device_id, params.run_id, sym_allocs.size(),
-      mcast_allocs.size(), peer_allocs.size());
+      peer_allocs.size());
   absl::Time start = absl::Now();
 
   for (size_t i = 0; i < sym_allocs.size(); ++i) {
     const CollectiveMemoryRequests::CollectiveAllocations& r = sym_allocs[i];
     XLA_VLOG_DEVICE(2, params.executor->device_ordinal()) << absl::StreamFormat(
         "    symmetric memory #%d (global device %v): id=%d; clique=%v; "
-        "allocations=[%s]",
-        i, params.global_device_id, r.id, r.clique,
-        absl::StrJoin(r.allocations, ", "));
-  }
-
-  for (size_t i = 0; i < mcast_allocs.size(); ++i) {
-    const CollectiveMemoryRequests::CollectiveAllocations& r = mcast_allocs[i];
-    XLA_VLOG_DEVICE(2, params.executor->device_ordinal()) << absl::StreamFormat(
-        "    multicast memory #%d (global device %v): id=%d; clique=%v; "
         "allocations=[%s]",
         i, params.global_device_id, r.id, r.clique,
         absl::StrJoin(r.allocations, ", "));
@@ -597,7 +382,6 @@ absl::StatusOr<CollectiveMemory> AcquireCollectiveMemory(
   tsl::profiler::TraceMe trace([&] {
     return tsl::profiler::TraceMeEncode("AcquireCollectiveMemory",
                                         {{"sym_allocs", sym_allocs.size()},
-                                         {"mcast_allocs", mcast_allocs.size()},
                                          {"peer_allocs", peer_allocs.size()}});
   });
 
@@ -605,23 +389,18 @@ absl::StatusOr<CollectiveMemory> AcquireCollectiveMemory(
                    AcquireSymmetricMemory(params, cliques, requests.buffers(),
                                           sym_allocs, memory_cache));
 
-  ABSL_ASSIGN_OR_RETURN(MulticastMemoryMap mcast_memories,
-                   AcquireMulticastMemory(params, cliques, requests.buffers(),
-                                          mcast_allocs, memory_cache));
-
   ABSL_ASSIGN_OR_RETURN(
       auto peer_memories,
       AcquirePeerMemory(params, cliques, requests.buffers(), peer_allocs));
 
   XLA_VLOG_DEVICE(2, params.executor->device_ordinal()) << absl::StreamFormat(
       "Acquired collective memory in %s for global device id %v; "
-      "run_id=%v symmetric=%d multicast=%d peer=%d",
+      "run_id=%v symmetric=%d peer=%d",
       absl::FormatDuration(absl::Now() - start), params.global_device_id,
-      params.run_id, sym_allocs.size(), mcast_allocs.size(),
-      peer_allocs.size());
+      params.run_id, sym_allocs.size(), peer_allocs.size());
 
   return CollectiveMemory(requests.buffers(), std::move(sym_memories),
-                          std::move(mcast_memories), std::move(peer_memories));
+                          std::move(peer_memories));
 }
 
 }  // namespace xla::gpu

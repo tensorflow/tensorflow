@@ -26,12 +26,11 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/per_device_state.h"
 #include "xla/core/collectives/symmetric_memory.h"
 #include "xla/stream_executor/device_address.h"
-#include "xla/stream_executor/gpu/multicast_memory.h"
 #include "xla/tsl/util/tied_ref.h"
 
 namespace xla::gpu {
 
-// Caches collective memories (symmetric, multicast) across executable
+// Caches collective memories (symmetric) across executable
 // invocations. On the first invocation, collective memory windows are
 // registered with the communication library (a collective operation). On
 // subsequent invocations, the cached windows are reused to avoid redundant
@@ -55,20 +54,11 @@ class CollectiveMemoryCache {
       int device_ordinal, const GpuCliqueKey& clique,
       stream_executor::DeviceAddressBase addr);
 
-  std::shared_ptr<stream_executor::gpu::MulticastMemory> FindMulticastMemory(
-      int device_ordinal, const GpuCliqueKey& clique,
-      stream_executor::DeviceAddressBase addr);
-
   // Inserts or replaces a cached entry. Returns a locked shared_ptr.
   std::shared_ptr<SymmetricMemory> AddSymmetricMemory(
       int device_ordinal, const GpuCliqueKey& clique,
       stream_executor::DeviceAddressBase addr,
       tsl::TiedRef<SymmetricMemory> sym_memory);
-
-  std::shared_ptr<stream_executor::gpu::MulticastMemory> AddMulticastMemory(
-      int device_ordinal, const GpuCliqueKey& clique,
-      stream_executor::DeviceAddressBase addr,
-      tsl::TiedRef<stream_executor::gpu::MulticastMemory> multicast_memory);
 
  private:
   using Key = std::pair<GpuCliqueKey, stream_executor::DeviceAddressBase>;
@@ -78,10 +68,6 @@ class CollectiveMemoryCache {
 
     absl::flat_hash_map<Key, tsl::TiedRef<SymmetricMemory>> sym_memories
         ABSL_GUARDED_BY(mutex);
-
-    absl::flat_hash_map<Key,
-                        tsl::TiedRef<stream_executor::gpu::MulticastMemory>>
-        multicast_memories ABSL_GUARDED_BY(mutex);
   };
 
   PerDeviceState<DeviceCache> device_caches_;

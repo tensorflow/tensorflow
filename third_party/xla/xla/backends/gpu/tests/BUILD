@@ -1450,7 +1450,6 @@ xla_test(
         "//xla/stream_executor/gpu:gpu_kernel_registry",
         "//xla/tests:literal_test_util",
         "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/platform:errors",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/status",
