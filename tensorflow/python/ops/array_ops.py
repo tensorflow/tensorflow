@@ -1542,11 +1542,21 @@ def boolean_mask(tensor, mask, name="boolean_mask", axis=None):
       axis_value = get_positive_axis(int(axis_value), shape_tensor.ndims)
     elif axis_value is None or axis_value < 0:
       # The axis or the rank is only known at runtime.
+      # Check both bounds here: an out-of-range axis can still give a valid
+      # reshape below and silently return the wrong elements.
       axis = ops.convert_to_tensor(axis, name="axis")
-      ndims = gen_math_ops.cast(rank(tensor), axis.dtype)
+      ndims = (
+          shape_tensor.ndims
+          if shape_tensor.ndims is not None
+          else gen_math_ops.cast(rank(tensor), axis.dtype)
+      )
+      given_axis = axis
       axis = where_v2(axis < 0, axis + ndims, axis)
       in_range = gen_logging_ops._assert(  # pylint: disable=protected-access
-          axis >= 0, ["axis is out of range for the rank of tensor"])
+          gen_math_ops.logical_and(axis >= 0, axis + ndims_mask <= ndims),
+          ["axis is out of range for the rank of tensor and mask. axis =",
+           given_axis, "rank of tensor =", ndims, "rank of mask =",
+           ndims_mask])
       with ops.control_dependencies([in_range]):
         axis = identity(axis)
       axis_value = None

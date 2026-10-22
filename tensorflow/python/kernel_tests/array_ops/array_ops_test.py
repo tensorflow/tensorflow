@@ -431,9 +431,51 @@ class BooleanMaskTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(
         self.evaluate(f(constant_op.constant(-1, dtype=dtypes.int32))),
         arr[..., mask])
+    self.assertAllEqual(
+        self.evaluate(f(constant_op.constant(2, dtype=dtypes.int32))),
+        arr[..., mask])
+    # Without the range check, axis=-5 returns the wrong elements instead of
+    # raising, and -4 and 3 fail later with an unrelated shape error.
+    for axis in [-5, -4, 3]:
+      with self.subTest(axis=axis):
+        with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                    "axis is out of range"):
+          self.evaluate(f(constant_op.constant(axis, dtype=dtypes.int32)))
+
+  def testMaskWithNonNegativeAxisNonConstTensor(self):
+    arr = np.arange(24).reshape(2, 3, 4)
+
+    @def_function.function(
+        autograph=False,
+        input_signature=[
+            tensor_lib.TensorSpec(shape=None, dtype=dtypes.int32)
+        ])
+    def f(axis):
+      return array_ops.boolean_mask(arr, [True, False, True], axis=axis)
+
+    self.assertAllEqual(
+        self.evaluate(f(constant_op.constant(1, dtype=dtypes.int32))),
+        arr[:, [True, False, True]])
+
+  def testMaskWithNegativeAxisRank1(self):
+    arr = np.array([1, 2, 3])
+    mask = [True, False, True]
+
+    @def_function.function(
+        autograph=False,
+        input_signature=[
+            tensor_lib.TensorSpec(shape=None, dtype=dtypes.int32)
+        ])
+    def f(axis):
+      return array_ops.boolean_mask(arr, mask, axis=axis)
+
+    self.assertAllEqual(array_ops.boolean_mask(arr, mask, axis=-1), [1, 3])
+    self.assertAllEqual(
+        self.evaluate(f(constant_op.constant(-1, dtype=dtypes.int32))), [1, 3])
+    # Without the range check, axis=-2 returns a result instead of raising.
     with self.assertRaisesRegex(errors.InvalidArgumentError,
                                 "axis is out of range"):
-      self.evaluate(f(constant_op.constant(-5, dtype=dtypes.int32)))
+      self.evaluate(f(constant_op.constant(-2, dtype=dtypes.int32)))
 
   def testMaskWithNegativeAxisUnknownRank(self):
     arr = np.arange(24).reshape(2, 3, 4)
