@@ -29,6 +29,7 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -89,6 +90,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/dump.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/concurrency/async_value.h"
