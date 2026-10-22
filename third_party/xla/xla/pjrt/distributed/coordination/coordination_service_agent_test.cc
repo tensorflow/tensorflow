@@ -184,8 +184,13 @@ TEST_F(CoordinationServiceAgentTest, GetKeyValue_Simple_Success) {
   kv->set_key(test_key);
   kv->set_value(test_value);
   ON_CALL(*GetClient(), GetKeyValueAsync(_, _, _, _))
-      .WillByDefault(DoAll(SetArgPointee<2>(mocked_response),
-                           InvokeArgument<3>(absl::OkStatus())));
+      .WillByDefault(DoAll(
+          WithArgs<0>([](tsl::CallOptions* call_opts) {
+            EXPECT_EQ(call_opts->GetTimeout(),
+                      absl::ToInt64Milliseconds(absl::InfiniteDuration()));
+          }),
+          SetArgPointee<2>(mocked_response),
+          InvokeArgument<3>(absl::OkStatus())));
   // Initialize coordination agent.
   InitializeAgent();
 

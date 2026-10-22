@@ -293,6 +293,7 @@ void CoordinationServiceAgent::StartPollingForError() {
 
 void CoordinationServiceAgent::PollForErrorAsync(tsl::StatusCallback done) {
   auto call_opts = std::make_shared<tsl::CallOptions>();
+  call_opts->SetTimeout(absl::ToInt64Milliseconds(absl::InfiniteDuration()));
 
   absl::Status agent_running_status =
       ValidateRunningAgent(/*allow_disconnected=*/true);
@@ -341,6 +342,7 @@ std::shared_ptr<tsl::CallOptions> CoordinationServiceAgent::WatchTasksAsync(
   auto request = std::make_shared<WatchTasksRequest>();
   auto response = std::make_shared<WatchTasksResponse>();
   auto call_opts = std::make_shared<tsl::CallOptions>();
+  call_opts->SetTimeout(absl::ToInt64Milliseconds(absl::InfiniteDuration()));
   WatchTasksRequest* request_ptr = request.get();
   WatchTasksResponse* response_ptr = response.get();
   request->set_version_number(version_number.value_or(-1));
@@ -497,6 +499,7 @@ std::shared_ptr<tsl::CallOptions> CoordinationServiceAgent::GetKeyValueAsync(
   VLOG(3) << "GetKeyValueRequest: " << request->DebugString();
   auto response = std::make_shared<GetKeyValueResponse>();
   auto call_opts = std::make_shared<tsl::CallOptions>();
+  call_opts->SetTimeout(absl::ToInt64Milliseconds(absl::InfiniteDuration()));
 
   const tsl::CancellationToken token =
       cancellation_manager_.get_cancellation_token();
@@ -806,6 +809,7 @@ void CoordinationServiceAgent::WaitAtBarrierAsync(
   }
 
   auto call_opts = std::make_shared<tsl::CallOptions>();
+  call_opts->SetTimeout(absl::ToInt64Milliseconds(absl::InfiniteDuration()));
 
   const tsl::CancellationToken token =
       cancellation_manager_.get_cancellation_token();
