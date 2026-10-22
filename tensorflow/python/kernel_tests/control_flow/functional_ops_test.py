@@ -79,10 +79,17 @@ class FunctionalOpsTest(test.TestCase):
     # IndexError out of tensor_shape for a scalar. map_fn already reports it,
     # so they should say the same thing.
     elems = constant_op.constant(5, name="data")
+    vec = constant_op.constant([1, 2], name="vec")
     for op in (functional_ops.foldl, functional_ops.foldr,
                functional_ops.scan):
       with self.assertRaisesRegex(ValueError, "must be 1\\+ dimensional"):
         op(lambda a, x: a + x, elems)
+      # a scalar anywhere in elems is a problem, not just the first one
+      with self.assertRaisesRegex(ValueError, "must be 1\\+ dimensional"):
+        op(lambda a, x: a + x[0] + x[1], (vec, elems), initializer=0)
+      with self.assertRaisesRegex(
+          ValueError, "elems must contain at least one Tensor"):
+        op(lambda a, x: a + x, [])
     with self.assertRaisesRegex(ValueError, "must be 1\\+ dimensional"):
       functional_ops.foldl(lambda a, x: a + x, elems, initializer=0)
 

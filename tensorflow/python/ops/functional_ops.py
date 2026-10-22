@@ -43,21 +43,24 @@ def _check_elems_not_scalar(elems_flat):
 
   foldl, foldr and scan all take the number of iterations from
   `elems_flat[0].shape[0]`, which raises IndexError out of tensor_shape for a
-  scalar instead of saying what is wrong. map_fn already reports this, so use
-  the same message.
+  scalar instead of saying what is wrong. They then unstack every element, so
+  a scalar anywhere in `elems` is a problem, not just the first one. map_fn
+  reports this for its first element, so use the same message.
 
   Args:
     elems_flat: the flattened, converted `elems`.
 
   Raises:
-    ValueError: if the first element has a statically known rank below 1.
+    ValueError: if `elems_flat` is empty or any element has a statically known
+      rank below 1.
   """
   if not elems_flat:
     raise ValueError("elems must contain at least one Tensor.")
-  shape = elems_flat[0].shape
-  if shape.ndims is not None and shape.ndims < 1:
-    raise ValueError(
-        "Elements in elems must be 1+ dimensional Tensors, not scalars")
+  for elem in elems_flat:
+    shape = elem.shape
+    if shape.ndims is not None and shape.ndims < 1:
+      raise ValueError(
+          "Elements in elems must be 1+ dimensional Tensors, not scalars")
 
 
 # TODO(yuanbyu, mrry): Handle stride to support sliding windows.
