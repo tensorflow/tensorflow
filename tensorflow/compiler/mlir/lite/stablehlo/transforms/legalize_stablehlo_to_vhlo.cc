@@ -261,11 +261,11 @@ struct LegalizeStablehloToVhloPass
           LegalizeStablehloToVhloPass> {
   void runOnOperation() override {
     ModuleOp module = getOperation();
-    std::string target_version = tflite_supported_stablehlo_version;
+    std::string target_version = tflite_vhlo_serialization_version;
     VhloToStablehloTypeConverter to_builtin_converter;
 
     // StableHLO --> VHLO (allow funcs)
-    //   VHLO -> Downgrade to tflite_supported_stablehlo_version
+    //   VHLO -> Downgrade to tflite_vhlo_serialization_version
     //     VHLO Tensor --> Builtin Tensor
     //       Remove cast(tensor->vhlo) -> cast(vhlo->tensor) pattern
     if (failed(ApplyStablehloToVhloPatterns(module,

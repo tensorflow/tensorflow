@@ -49,7 +49,5 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: "Run bazel build --nobuild //xla/... with retries"
-        run: parallel --ungroup --retries 3 --delay 15 --nonall -- bazel build --nobuild //xla/...
       - name: "Assert all tags are documented"
         run: bazel query //xla/... --output=build | python3 build_tools/lint/tags.py

@@ -354,6 +354,14 @@ TEST(StreamExecutorGpuClientTest, PlatformVersionIsDerivedAtRuntime) {
               absl::StartsWith(version, "rocm ") ||
               absl::StartsWith(version, "oneapi"))
       << "unexpected platform version: " << version;
+
+  ASSERT_OK_AND_ASSIGN(const PjRtTopologyDescription* topology,
+                       client->GetTopologyDescription());
+  EXPECT_EQ(topology->platform_version(), version);
+  const auto device_descs = topology->DeviceDescriptions();
+  ASSERT_EQ(device_descs.size(), client->devices().size());
+  EXPECT_EQ(device_descs[0]->device_kind(),
+            client->devices()[0]->device_kind());
 }
 
 TEST(StreamExecutorGpuClientTest, MemorySpacesUniqueIds) {
