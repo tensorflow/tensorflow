@@ -1238,9 +1238,11 @@ def tf_gen_op_wrapper_cc(
         ],
         srcs = srcs,
         tools = [":" + tool] + tf_binary_additional_srcs(),
-        cmd = ("$(location :" + tool + ") $(location :" + out_ops_file + ".h) " +
-               "$(location :" + out_ops_file + ".cc) " +
-               str(include_internal_ops) + " " + api_def_args_str),
+        cmd = ("TOOL=$(location :" + tool + "); " +
+               "(cd $${TOOL}.runfiles && $$(realpath --relative-to=. $${TOOL}) " +
+               "$$(realpath --relative-to=. $(location :" + out_ops_file + ".h)) " +
+               "$$(realpath --relative-to=. $(location :" + out_ops_file + ".cc)) " +
+               str(include_internal_ops) + " " + api_def_args_str + ")"),
         compatible_with = compatible_with,
     )
 
@@ -1568,7 +1570,9 @@ def tf_gen_op_wrapper_py(
         outs = [out],
         srcs = api_def_srcs + extra_srcs,
         tools = [tool_name] + tf_binary_additional_srcs(),
-        cmd = ("$(location " + tool_name + ") " + " ".join(pygen_args) + " > $@"),
+        cmd = ("TOOL=$(location " + tool_name + "); " +
+               "(cd $${TOOL}.runfiles && $$(realpath --relative-to=. $${TOOL}) " +
+               " ".join(pygen_args) + " > $$(realpath --relative-to=. $@))"),
         compatible_with = compatible_with,
         testonly = testonly,
     )

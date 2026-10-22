@@ -34,7 +34,6 @@ bazel test \
       --jobs=200 \
       --local_test_jobs=4 \
       --repo_env=ROCM_PATH="" \
-      --test_env=TF_GPU_COUNT=${TF_GPU_COUNT} \
       --test_env=TF_TESTS_PER_GPU=1 \
       --test_timeout 600,900,2400,7200 \
       --build_tests_only \
