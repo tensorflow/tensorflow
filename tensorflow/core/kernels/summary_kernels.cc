@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_handle.h"
@@ -257,11 +260,7 @@ class WriteScalarSummaryOp : public OpKernel {
     const std::string& tag = tmp->scalar<tstring>()();
 
     const Tensor* t;
-    OP_REQUIRES_OK(ctx, ctx->input("value", &t));
-    OP_REQUIRES(ctx, t->NumElements() == 1,
-                absl::InvalidArgumentError(absl::StrCat(
-                    "value must contain exactly one element, got shape ",
-                    t->shape().DebugString())));
+    OP_REQUIRES_OK(ctx, GetSingleElementInput(ctx, "value", &t));
 
     OP_REQUIRES_OK(ctx, s->WriteScalar(step, *t, tag));
   }
