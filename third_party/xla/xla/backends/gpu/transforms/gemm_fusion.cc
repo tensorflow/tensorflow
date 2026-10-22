@@ -39,7 +39,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/span.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
@@ -705,23 +704,6 @@ struct Fusion {
   HloInstruction* output = nullptr;
 };
 
-// Triton emitter requires concatenate operands to be aligned to the tile size
-// to avoid tiles straddling operand boundaries. Since we don't know the
-// concrete tile size yet, we enforce divisibility by a minimum reasonable
-// tile size (64).
-bool IsTritonSupportedConcatenateForGemm(const HloInstruction& hlo) {
-  constexpr int64_t kMinConcatFragmentSize = 64;
-  const int64_t concatenate_dimension = hlo.concatenate_dimension();
-  // The last operand does not need to be aligned.
-  return absl::c_all_of(
-      absl::MakeConstSpan(hlo.operands()).first(hlo.operand_count() - 1),
-      [&](const HloInstruction* operand) {
-        return operand->shape().dimensions(concatenate_dimension) %
-                   kMinConcatFragmentSize ==
-               0;
-      });
-}
-
 // Some instructions can be codegened by Triton, but we don't allow them in
 // GEMM fusions specifically or it doesn't make sense to fuse.
 bool AllowedInGemmFusion(const HloInstruction& instr) {
@@ -736,10 +718,6 @@ bool AllowedInGemmFusion(const HloInstruction& instr) {
   }
   // Collectives need runtime collective parameters, so keep them separate.
   if (hlo_query::IsCollectiveCommunicationOp(instr.opcode())) {
-    return false;
-  }
-  if (instr.opcode() == HloOpcode::kConcatenate &&
-      !IsTritonSupportedConcatenateForGemm(instr)) {
     return false;
   }
   return HloPredicateIsNotOp<HloOpcode::kDot, HloOpcode::kScaledDot,
