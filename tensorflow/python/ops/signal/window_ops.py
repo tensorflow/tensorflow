@@ -81,8 +81,16 @@ def kaiser_window(window_length, beta=12., dtype=dtypes.float32, name=None):
     arg = math_ops.cast(arg, dtype=dtype)
     one = math_ops.cast(1.0, dtype=dtype)
     halflen_float = math_ops.cast(halflen_float, dtype=dtype)
+    # A window of length 1 has `halflen_float == 0`, which would make
+    # `arg / halflen_float` 0/0. Its single sample sits at the center, where
+    # `shape` is 1, so dividing by 1 instead gives the expected window of
+    # ones. A static length of 1 already returned above; this covers lengths
+    # that are only known at run time, e.g. inside a `tf.function`.
+    safe_halflen = array_ops.where_v2(
+        math_ops.equal(window_length, 1), one, halflen_float
+    )
     shape = math_ops.sqrt(
-        nn_ops.relu(one - math_ops.square(arg / halflen_float))
+        nn_ops.relu(one - math_ops.square(arg / safe_halflen))
     )
     # `bessel_i0e` is an even function, i.e. i0e(-x) = i0e(x), so `beta` is
     # passed to it with its original sign.  Applying `abs` to `beta` before
@@ -110,8 +118,12 @@ def kaiser_bessel_derived_window(window_length, beta=12.,
                                  dtype=dtypes.float32, name=None):
   """Generate a [Kaiser Bessel derived window][kbd].
 
+  The window is made of two mirrored halves, so it is only defined for an even
+  `window_length`.
+
   Args:
     window_length: A scalar `Tensor` indicating the window length to generate.
+      Must be even.
     beta: Beta parameter for Kaiser window.
     dtype: The data type to produce. Must be a floating point type.
     name: An optional name for the operation.
@@ -119,11 +131,23 @@ def kaiser_bessel_derived_window(window_length, beta=12.,
   Returns:
     A `Tensor` of shape `[window_length]` of type `dtype`.
 
+  Raises:
+    ValueError: If `dtype` is not a floating point type, or if `window_length`
+      is statically known to be odd.
+
   [kbd]:
     https://en.wikipedia.org/wiki/Kaiser_window#Kaiser%E2%80%93Bessel-derived_(KBD)_window
   """
   with ops.name_scope(name, 'kaiser_bessel_derived_window'):
     window_length = _check_params(window_length, dtype)
+    # Each half has `window_length // 2` samples, so an odd length would
+    # silently come out one sample short.
+    window_length_const = tensor_util.constant_value(window_length)
+    if window_length_const is not None and window_length_const % 2:
+      raise ValueError(
+          '`window_length` must be even for a Kaiser-Bessel derived window. '
+          f'Received: window_length={window_length_const}'
+      )
     halflen = window_length // 2
     kaiserw = kaiser_window(halflen + 1, beta, dtype=dtype)
     kaiserw_csum = math_ops.cumsum(kaiserw)
