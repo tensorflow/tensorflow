@@ -1595,6 +1595,7 @@ cc_library(
     srcs = ["dot_strength_reduction.cc"],
     hdrs = ["dot_strength_reduction.h"],
     deps = [
+        "//xla:comparison_util",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
@@ -1620,12 +1621,16 @@ xla_cc_test(
     srcs = ["dot_strength_reduction_test.cc"],
     deps = [
         ":dot_strength_reduction",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla/hlo/evaluator:hlo_evaluator",
         "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:verified_hlo_module",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],
 )
