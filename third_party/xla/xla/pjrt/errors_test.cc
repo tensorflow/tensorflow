@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/pjrt/errors.h"
 
+#include <optional>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
@@ -31,6 +33,19 @@ TEST(ErrorsTest, SetCompilationErrorWithPayload) {
   EXPECT_THAT(status_with_payload, StatusIs(absl::StatusCode::kInvalidArgument,
                                             HasSubstr("test error")));
   EXPECT_TRUE(HasCompilationErrorPayload(status_with_payload));
+}
+
+TEST(ErrorsTest, SetOomErrorWithPayloadAndReason) {
+  absl::Status status = SetOomErrorWithPayload(
+      absl::ResourceExhaustedError("test error"), OomReason::kFragmentation);
+  EXPECT_TRUE(HasOomErrorPayload(status));
+  EXPECT_EQ(GetOomErrorReason(status), OomReason::kFragmentation);
+}
+
+TEST(ErrorsTest, NoOomErrorPayload) {
+  absl::Status status = absl::ResourceExhaustedError("test error");
+  EXPECT_FALSE(HasOomErrorPayload(status));
+  EXPECT_EQ(GetOomErrorReason(status), std::nullopt);
 }
 
 }  // namespace xla

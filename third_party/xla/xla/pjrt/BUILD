@@ -1416,6 +1416,7 @@ cc_library(
     visibility = internal_visibility([":friends"]),
     deps = [
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/strings:string_view",
     ],
