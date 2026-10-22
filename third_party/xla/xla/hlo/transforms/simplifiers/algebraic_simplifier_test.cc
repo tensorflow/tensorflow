@@ -1261,6 +1261,36 @@ TEST_F(AlgebraicSimplifierTest, SelectFalseMixedPrecision) {
   ASSERT_FALSE(simplifier.Run(module.get()).value());
 }
 
+// The degenerate broadcast becomes a reshape before the select is visited, so
+// the select must see through the reshape (and other element-subset ops) to
+// simplify in a single pass.
+TEST_F(AlgebraicSimplifierTest, SelectTrueDegenerateBroadcastInSinglePass) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule m
+
+    ENTRY main {
+      p0 = f32[1,2] parameter(0)
+      p1 = f32[1,2] parameter(1)
+      idx = s32[] parameter(2)
+      zero = s32[] constant(0)
+      c_true = pred[] constant(true)
+      b_true = pred[] broadcast(c_true), dimensions={}
+      r_true = pred[3,2] broadcast(b_true), dimensions={}
+      t_true = pred[2,3] transpose(r_true), dimensions={1,0}
+      rev_true = pred[2,3] reverse(t_true), dimensions={0}
+      cp_true = pred[2,3] copy(rev_true)
+      sl_true = pred[2,2] slice(cp_true), slice={[0:2], [0:2]}
+      ds_true = pred[1,2] dynamic-slice(sl_true, idx, zero), dynamic_slice_sizes={1,2}
+      ROOT sel = f32[1,2] select(ds_true, p0, p1)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  EXPECT_THAT(AlgebraicSimplifier(default_options_).Run(m.get()),
+              absl_testing::IsOkAndHolds(true));
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Parameter(0)));
+}
+
 // Test that select(a, b, b) is simplified to b
 TEST_F(AlgebraicSimplifierTest, SelectIdentical) {
   Shape r0s32 = ShapeUtil::MakeShape(S32, {});
