@@ -892,6 +892,16 @@ std::optional<bool> isStructurallyDivisible(Value value, int64_t divisor,
         }
         return std::nullopt;
       })
+      .Case([&](arith::AndIOp and_op) -> std::optional<bool> {
+        // A mask keeps the low zero bits of either operand which preserves
+        // divisibility by powers of two.
+        if (llvm::isPowerOf2_64(divisor) &&
+            (isGuaranteedDivisible(and_op.getRhs(), divisor, fuel / 2) ||
+             isGuaranteedDivisible(and_op.getLhs(), divisor, (fuel + 1) / 2))) {
+          return true;
+        }
+        return std::nullopt;
+      })
       .Case<arith::MinSIOp, arith::MinUIOp, arith::MaxSIOp, arith::MaxUIOp>(
           [&](auto minmax_op) -> std::optional<bool> {
             std::optional<bool> lhs_div =
