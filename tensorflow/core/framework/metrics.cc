@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/metrics.h"
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -23,6 +24,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/lib/monitoring/counter.h"
 #include "xla/tsl/lib/monitoring/gauge.h"
 #include "xla/tsl/lib/monitoring/sampler.h"
@@ -226,6 +228,53 @@ auto* tf_data_service_cross_trainer_cache_size_bytes =
     tsl::monitoring::Gauge<int64_t, 0>::New(
         "/tensorflow/data/service/cross_trainer_cache_size_bytes",
         "tf.data service cross-trainer cache memory usage in bytes.");
+
+auto* tf_data_service_cross_trainer_cache_trainer_queries_counter =
+    tsl::monitoring::Counter<3>::New(
+        "/tensorflow/data/service/cross_trainer_cache/trainer_queries",
+        "tf.data service cross-trainer cache queries counter per trainer. The "
+        "result can be hit or miss, and source indicates whether the element "
+        "was served immediately from the cache ('cache'), from the cache "
+        "after waiting on an in-flight extension ('cache_waited'), or pulled "
+        "for the first time from the upstream prefetch buffer ('prefetch').",
+        "trainer_id", "cache_hit", "source");
+
+auto* tf_data_service_cross_trainer_cache_blocked_wait_usecs_counter =
+    tsl::monitoring::Counter<1>::New(
+        "/tensorflow/data/service/cross_trainer_cache/blocked_wait_usecs",
+        "Total time (in microseconds) that tf.data service cross-trainer cache "
+        "queries spent blocked waiting for another thread to extend the cache.",
+        "trainer_id");
+
+auto* tf_data_service_cross_trainer_cache_elements_skipped_counter =
+    tsl::monitoring::Counter<1>::New(
+        "/tensorflow/data/service/cross_trainer_cache/elements_skipped",
+        "Number of elements skipped by a trainer due to eviction from the "
+        "tf.data service cross-trainer cache.",
+        "trainer_id");
+
+auto* tf_data_service_cross_trainer_cache_cursor_offset_sampler =
+    tsl::monitoring::Sampler<1>::New(
+        {"/tensorflow/data/service/cross_trainer_cache/cursor_offset",
+         "Distribution of element offsets of each trainer from the eviction "
+         "edge in the tf.data service cross-trainer cache.",
+         "trainer_id"},
+        {tsl::monitoring::Buckets::Exponential(1, 1.189, 77)});
+
+auto* tf_data_service_cross_trainer_cache_total_size_bytes_gauge =
+    tsl::monitoring::Gauge<int64_t, 0>::New(
+        "/tensorflow/data/service/cross_trainer_cache/size_bytes",
+        "tf.data service cross-trainer cache total size in bytes across "
+        "all active caches on the worker (unlike "
+        "/tensorflow/data/service/cross_trainer_cache_size_bytes, which is "
+        "overwritten with a single cache's size on each Get). Can exceed "
+        "max_size_bytes when multiple caches are simultaneously active.");
+
+auto* tf_data_service_cross_trainer_cache_max_size_bytes_gauge =
+    tsl::monitoring::Gauge<int64_t, 0>::New(
+        "/tensorflow/data/service/cross_trainer_cache/max_size_bytes",
+        "tf.data service cross-trainer cache configured maximum size in "
+        "bytes per cache instance.");
 
 auto* tf_data_service_snapshot_bytes_committed =
     tsl::monitoring::Counter<0>::New(
@@ -741,6 +790,57 @@ void RecordTFDataServiceCrossTrainerCacheQuery(bool cache_hit) {
 void RecordTFDataServiceCrossTrainerCacheSizeBytes(size_t bytes) {
   tf_data_service_cross_trainer_cache_size_bytes->GetCell()->Set(
       static_cast<int64_t>(bytes));
+}
+
+void RecordTFDataServiceCrossTrainerCacheTrainerQuery(
+    absl::string_view trainer_id, bool cache_hit, absl::string_view source) {
+  tf_data_service_cross_trainer_cache_trainer_queries_counter
+      ->GetCell(trainer_id, "false", "prefetch")
+      ->IncrementBy(0);
+  tf_data_service_cross_trainer_cache_trainer_queries_counter
+      ->GetCell(trainer_id, "true", "cache")
+      ->IncrementBy(0);
+  tf_data_service_cross_trainer_cache_trainer_queries_counter
+      ->GetCell(trainer_id, "true", "cache_waited")
+      ->IncrementBy(0);
+  std::string cache_hit_str = cache_hit ? "true" : "false";
+  tf_data_service_cross_trainer_cache_trainer_queries_counter
+      ->GetCell(trainer_id, cache_hit_str, source)
+      ->IncrementBy(1);
+}
+
+void RecordTFDataServiceCrossTrainerCacheBlockedWaitUsecs(
+    absl::string_view trainer_id, uint64_t wait_usecs) {
+  tf_data_service_cross_trainer_cache_blocked_wait_usecs_counter
+      ->GetCell(trainer_id)
+      ->IncrementBy(static_cast<int64_t>(wait_usecs));
+}
+
+void RecordTFDataServiceCrossTrainerCacheElementsSkipped(
+    absl::string_view trainer_id, size_t num_elements) {
+  tf_data_service_cross_trainer_cache_elements_skipped_counter
+      ->GetCell(trainer_id)
+      ->IncrementBy(static_cast<int64_t>(num_elements));
+}
+
+void RecordTFDataServiceCrossTrainerCacheCursorOffset(
+    absl::string_view trainer_id, size_t cursor_offset) {
+  tf_data_service_cross_trainer_cache_cursor_offset_sampler->GetCell(trainer_id)
+      ->Add(static_cast<double>(cursor_offset));
+}
+
+void UpdateTFDataServiceCrossTrainerCacheTotalSizeBytes(int64_t delta_bytes) {
+  static std::atomic<int64_t> total_size_bytes{0};
+  int64_t new_size =
+      total_size_bytes.fetch_add(delta_bytes, std::memory_order_relaxed) +
+      delta_bytes;
+  tf_data_service_cross_trainer_cache_total_size_bytes_gauge->GetCell()->Set(
+      new_size);
+}
+
+void RecordTFDataServiceCrossTrainerCacheMaxSizeBytes(size_t max_size_bytes) {
+  tf_data_service_cross_trainer_cache_max_size_bytes_gauge->GetCell()->Set(
+      static_cast<int64_t>(max_size_bytes));
 }
 
 void RecordTFDataServiceSnapshotBytesCommitted(int64_t bytes) {

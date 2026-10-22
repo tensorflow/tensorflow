@@ -588,9 +588,12 @@ impl::SignatureRunner* Interpreter::GetSignatureRunner(
 
   for (const auto& signature : signature_defs_) {
     if (signature.signature_key == signature_key) {
+      Subgraph* target_subgraph = subgraph(signature.subgraph_index);
+      if (target_subgraph == nullptr) {
+        return nullptr;
+      }
       auto status = signature_runner_map_.insert(
-          {signature_key,
-           SignatureRunner(&signature, subgraph(signature.subgraph_index))});
+          {signature_key, SignatureRunner(&signature, target_subgraph)});
       return &(status.first->second);
     }
   }

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -24,6 +25,10 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/gpu/gpu_init.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
 
 namespace xla::gpu {
 namespace {
@@ -109,11 +114,21 @@ TEST(GpuBandwidthBenchmarkTest, MeasureBandwidthTableScalesWithTransferSize) {
     EXPECT_GT(entry.bandwidth_fraction, 0.0f);
     EXPECT_LE(entry.bandwidth_fraction, 1.0f);
   }
+  ASSERT_OK_AND_ASSIGN(stream_executor::Platform * platform,
+                       stream_executor::PlatformManager::PlatformWithName(
+                           stream_executor::GpuPlatformName()));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<stream_executor::DeviceDescription> device,
+      platform->DescriptionForDevice(/*ordinal=*/0));
   for (size_t i = 1; i < entries->size(); ++i) {
     EXPECT_EQ((*entries)[i].dma_size_bytes,
               2 * (*entries)[i - 1].dma_size_bytes);
-    EXPECT_GT((*entries)[i].bandwidth_fraction,
-              (*entries)[i - 1].bandwidth_fraction);
+    // The benchmark is not calibrated on non-NVIDIA platforms, so measured
+    // bandwidth fractions may not increase monotonically with transfer size.
+    if (device->gpu_compute_capability().IsCuda()) {
+      EXPECT_GT((*entries)[i].bandwidth_fraction,
+                (*entries)[i - 1].bandwidth_fraction);
+    }
   }
 }
 

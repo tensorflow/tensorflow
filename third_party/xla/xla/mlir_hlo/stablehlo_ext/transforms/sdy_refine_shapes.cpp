@@ -296,7 +296,7 @@ LogicalResult refineManualComputationBody(
   rewriter.setInsertionPointToStart(&manualComputation.getRegion().front());
 
   SymbolTable symbolTable(manualComputation->getParentOfType<ModuleOp>());
-  ArrayRef<StringAttr> manualAxes = manualComputation.getManualAxes();
+  ArrayRef<sdy::AxisRefAttr> manualAxes = manualComputation.getManualAxes();
   sdy::MeshAttr mesh = sdy::getCommonMesh(
       manualComputation.getInShardings().getShardings(),
       manualComputation.getOutShardings().getShardings(), symbolTable);

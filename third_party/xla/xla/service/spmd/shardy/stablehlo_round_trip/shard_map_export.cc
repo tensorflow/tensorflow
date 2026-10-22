@@ -85,6 +85,7 @@ using ::mlir::stablehlo::CustomCallOp;
 
 namespace sdy = ::mlir::sdy;
 
+using sdy::AxisRefAttr;
 using sdy::kShardingAttr;
 using sdy::ManualAxesAttr;
 using sdy::ManualComputationOp;
@@ -95,20 +96,21 @@ using sdy::TensorShardingPerValueAttr;
 
 // Mapping from ManualComputationOp to all manual axes it's nested in.
 using ManualComputationToParentManualAxes =
-    llvm::SmallDenseMap<ManualComputationOp, SmallVector<StringAttr>>;
+    llvm::SmallDenseMap<ManualComputationOp, SmallVector<AxisRefAttr>>;
 
 // Given an ManualComputationOp `op`, `op.getManualAxes()` is the local manual
 // axes. `parent` is the manual axes of its parent ManualComputationOp,
 // recursively. `region` is the concatenation of `parent` and
 // `op.getManualAxes()`.
 struct ManualAxesHierarchy {
-  ArrayRef<StringAttr> parent;
-  SmallVector<StringAttr> region;
+  ArrayRef<AxisRefAttr> parent;
+  SmallVector<AxisRefAttr> region;
 };
 
 ManualAxesHierarchy getManualAxesHierarchy(
     ManualComputationOp op,
-    const ManualComputationToParentManualAxes& parentManualCompAxes) {
+    const ManualComputationToParentManualAxes& parentManualCompAxes,
+    MeshAttr mesh) {
   ManualAxesHierarchy hierarchy;
 
   if (auto parentManualAxes = parentManualCompAxes.find(op);
@@ -116,9 +118,10 @@ ManualAxesHierarchy getManualAxesHierarchy(
     hierarchy.parent = parentManualAxes->getSecond();
   }
 
-  hierarchy.region =
-      SmallVector<StringAttr>(hierarchy.parent.begin(), hierarchy.parent.end());
+  hierarchy.region = SmallVector<AxisRefAttr>(hierarchy.parent.begin(),
+                                              hierarchy.parent.end());
   hierarchy.region.append(op.getManualAxes().begin(), op.getManualAxes().end());
+  sdy::sortAndMergeAxes(hierarchy.region, mesh);
   return hierarchy;
 }
 
@@ -262,8 +265,11 @@ void setManualAxesForOpsInBody(
     return;
   }
 
+  MeshAttr mesh = sharding.getMesh(symbolTable);
+  CHECK(mesh);
+
   ManualAxesHierarchy manualAxes =
-      getManualAxesHierarchy(op, parentManualCompAxes);
+      getManualAxesHierarchy(op, parentManualCompAxes, mesh);
   if (manualAxes.region.empty()) {
     return;
   }
@@ -339,7 +345,7 @@ void convertManualComputationOp(
 
   // The axes that are manual inside `op`'s region.
   ManualAxesHierarchy manualAxes =
-      getManualAxesHierarchy(op, parentManualCompAxes);
+      getManualAxesHierarchy(op, parentManualCompAxes, mesh);
   ManualAxesAttr parentManualAxesAttr =
       ManualAxesAttr::get(context, manualAxes.parent);
   ManualAxesAttr regionManualAxesAttr =
@@ -365,7 +371,7 @@ void convertManualComputationOp(
                                             shardingConstraint->getResult(0));
     fullToShard.setCallTargetName(kSPMDFullToShardShapeCallTargetName);
     sdy::setShardings(fullToShard,
-                      eraseManualAxes(inSharding, manualAxes.region));
+                      eraseManualAxes(inSharding, manualAxes.region, mesh));
     setNonEmptyManualAxes(fullToShard, regionManualAxesAttr);
 
     fullToShardResults.push_back(fullToShard.getResult(0));
@@ -390,7 +396,8 @@ void convertManualComputationOp(
   auto setShardingAndManualAxes = [&](ArrayRef<TensorShardingAttr> shardings) {
     return [&, shardings](mlir::NamedAttrList& attrs, int64_t index) {
       if (TensorShardingAttr sharding = shardings[index]) {
-        attrs.set(kShardingAttr, eraseManualAxes(sharding, manualAxes.region));
+        attrs.set(kShardingAttr,
+                  eraseManualAxes(sharding, manualAxes.region, mesh));
         if (!regionManualAxesAttr.empty()) {
           attrs.set(kManualAxes, regionManualAxesAttr);
         }
@@ -412,7 +419,7 @@ void convertManualComputationOp(
        llvm::zip_equal(callOp->getResults(), op.getResults(),
                        op.getOutShardings().getShardings())) {
     erasedManualAxisOutShardings.push_back(
-        eraseManualAxes(outSharding, manualAxes.region));
+        eraseManualAxes(outSharding, manualAxes.region, mesh));
     if (!mlir::isa<mlir::ShapedType>(oldResult.getType())) {
       oldResult.replaceAllUsesWith(localResult);
       continue;
@@ -460,13 +467,18 @@ class ShardMapExportPass
     // walk.
     module->walk<mlir::WalkOrder::PreOrder>([&](ManualComputationOp op) {
       if (auto parentOp = op->getParentOfType<ManualComputationOp>()) {
-        SmallVector<StringAttr> parentAxes;
+        SmallVector<AxisRefAttr> parentAxes;
         if (auto it = parentManualCompAxes.find(parentOp);
             it != parentManualCompAxes.end()) {
           parentAxes = it->second;
         }
         parentAxes.append(parentOp.getManualAxes().begin(),
                           parentOp.getManualAxes().end());
+        if (TensorShardingAttr sharding = getFirstSharding(op)) {
+          if (MeshAttr mesh = sharding.getMesh(symbolTable)) {
+            sdy::sortAndMergeAxes(parentAxes, mesh);
+          }
+        }
         parentManualCompAxes[op] = std::move(parentAxes);
       }
       setManualAxesForOpsInBody(op, symbolTable, parentManualCompAxes);

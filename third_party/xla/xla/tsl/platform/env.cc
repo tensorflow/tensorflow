@@ -17,14 +17,18 @@ limitations under the License.
 
 #include <sys/stat.h>
 
+#include <cfenv>  // NOLINT
 #include <cstdint>
 #include <cstdio>
+#include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "absl/base/optimization.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
@@ -40,9 +44,15 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/file_statistics.h"
 #include "xla/tsl/platform/file_system.h"
+#include "xla/tsl/platform/threadpool_interface.h"
+#include "tsl/platform/context.h"
+#include "tsl/platform/denormal.h"
 #include "tsl/platform/host_info.h"
+#include "tsl/platform/numa.h"
 #include "tsl/platform/path.h"
+#include "tsl/platform/setround.h"
 #include "tsl/platform/thread_annotations.h"
+#include "tsl/platform/tracing.h"
 
 #if defined(__APPLE__)
 #include <mach-o/dyld.h>
@@ -64,6 +74,95 @@ limitations under the License.
 #endif
 
 namespace tsl {
+namespace {
+class EigenEnvironment {
+ public:
+  using EnvThread = Thread;
+
+  struct TaskImpl {
+    std::function<void()> fn;
+    Context context;
+    uint64_t trace_id;
+  };
+
+  struct Task {
+    Task() = default;
+
+    Task(std::function<void()> fn, Context context, uint64_t trace_id)
+        : f(TaskImpl{std::move(fn), std::move(context), trace_id}) {}
+
+    Task(Task&&) = default;
+    Task& operator=(Task&&) = default;
+
+    std::optional<TaskImpl> f;
+  };
+
+  EigenEnvironment(Env* env, const ThreadOptions& thread_options,
+                   std::string name)
+      : env_(env), thread_options_(thread_options), name_(std::move(name)) {}
+
+  EnvThread* CreateThread(std::function<void()> f) {
+    return env_->StartThread(
+        thread_options_, name_, [this, f = std::move(f)]() {
+          // Set the processor flag to flush denormals to zero.
+          port::ScopedFlushDenormal flush;
+          // Set the processor rounding mode to ROUND TO NEAREST.
+          tsl::port::ScopedSetRound round(FE_TONEAREST);
+          if (thread_options_.numa_node != port::kNUMANoAffinity) {
+            port::NUMASetThreadNodeAffinity(thread_options_.numa_node);
+          }
+          f();
+        });
+  }
+
+  Task CreateTask(std::function<void()> f) {
+    uint64_t id = 0;
+    if (ABSL_PREDICT_FALSE(tracing::EventCollector::IsEnabled())) {
+      id = tracing::GetUniqueArg();
+      tracing::RecordEvent(tracing::EventCategory::kScheduleClosure, id);
+    }
+    return Task(std::move(f), Context(ContextKind::kThread), id);
+  }
+
+  void ExecuteTask(const Task& t) {
+    WithContext wc(t.f->context);
+    tracing::ScopedRegion region(tracing::EventCategory::kRunClosure,
+                                 t.f->trace_id);
+    t.f->fn();
+  }
+
+ private:
+  Env* const env_;
+  const ThreadOptions thread_options_;
+  const std::string name_;
+};
+
+template <typename EigenThreadPool>
+class EigenThreadPoolInterfaceAdapter final : public ThreadPoolInterface {
+ public:
+  template <typename... Args>
+  explicit EigenThreadPoolInterfaceAdapter(Args&&... args)
+      : impl_(std::forward<Args>(args)...) {};
+
+  void Schedule(std::function<void()> fn) override {
+    impl_.Schedule(std::move(fn));
+  }
+
+  void ScheduleWithHint(std::function<void()> fn, int start, int end) override {
+    impl_.ScheduleWithHint(std::move(fn), start, end);
+  }
+
+  void Cancel() override { impl_.Cancel(); }
+
+  int NumThreads() const override { return impl_.NumThreads(); }
+
+  int CurrentThreadId() const override { return impl_.CurrentThreadId(); }
+
+ private:
+  EigenThreadPool impl_;
+};
+
+}  // namespace
 
 // 128KB copy buffer
 constexpr size_t kCopyFileBufferSize = 128 * 1024;
@@ -508,6 +607,15 @@ int32_t Env::GetProcessId() {
 #endif
 }
 
+ThreadPoolInterface* Env::CreateThreadPoolInterface(
+    const ThreadOptions& thread_options, const std::string& name,
+    int num_threads, bool low_latency_hint) {
+  return new EigenThreadPoolInterfaceAdapter<
+      Eigen::ThreadPoolTempl<EigenEnvironment>>(
+      num_threads, low_latency_hint,
+      EigenEnvironment(this, thread_options, "tf_" + name));
+}
+
 Thread::~Thread() {}
 
 EnvWrapper::~EnvWrapper() {}
@@ -595,8 +703,8 @@ absl::Status FileSystemCopyFile(FileSystem* src_fs, const std::string& src,
   return target_file->Close();
 }
 
-// A ZeroCopyInputStream on a RandomAccessFile.
 namespace {
+// A ZeroCopyInputStream on a RandomAccessFile.
 class FileStream : public protobuf::io::ZeroCopyInputStream {
  public:
   explicit FileStream(RandomAccessFile* file) : file_(file), pos_(0) {}
@@ -631,7 +739,6 @@ class FileStream : public protobuf::io::ZeroCopyInputStream {
   absl::Status status_;
   char scratch_[kBufSize];
 };
-
 }  // namespace
 
 absl::Status WriteBinaryProto(Env* env, const std::string& fname,

@@ -264,9 +264,9 @@ class ThreadPool {
   // provided in the constructor. Otherwise it is the eigen_threadpool_.
   Eigen::ThreadPoolInterface* underlying_threadpool_;
 
-  // eigen_threadpool_ is instantiated and owned by thread::ThreadPool if
+  // owned_threadpool_ is instantiated and owned by thread::ThreadPool if
   // user_threadpool is not in the constructor.
-  std::unique_ptr<Eigen::ThreadPoolTempl<EigenEnvironment>> eigen_threadpool_;
+  std::unique_ptr<ThreadPoolInterface> owned_threadpool_;
   std::unique_ptr<Eigen::ThreadPoolDevice> threadpool_device_;
 
   ThreadPool(const ThreadPool&) = delete;

@@ -935,5 +935,39 @@ TEST_F(IrEmissionUtilsTest, NoNonContractingDims) {
               absl_testing::IsOkAndHolds(false));
 }
 
+TEST_F(IrEmissionUtilsTest, LogicallyMinorBatchDimIsSupported) {
+  const char* hlo_string = R"(
+  HloModule t
+
+  ENTRY entry {
+    p0 = f32[30,40,10]{1,0,2} parameter(0)
+    p1 = f32[10,40,50] parameter(1)
+    ROOT t = f32[10,30,50] dot(p0, p1),
+        lhs_batch_dims={2}, lhs_contracting_dims={1},
+        rhs_batch_dims={0}, rhs_contracting_dims={1}
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  auto* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(IsCublasSupportedMatMul(*root, false),
+              absl_testing::IsOkAndHolds(true));
+}
+
+TEST_F(IrEmissionUtilsTest, PhysicallyMinorBatchDimIsNotSupported) {
+  const char* hlo_string = R"(
+  HloModule t
+
+  ENTRY entry {
+    p0 = f32[10,30,40]{0,2,1} parameter(0)
+    p1 = f32[10,40,50] parameter(1)
+    ROOT t = f32[10,30,50] dot(p0, p1),
+        lhs_batch_dims={0}, lhs_contracting_dims={2},
+        rhs_batch_dims={0}, rhs_contracting_dims={1}
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  auto* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(IsCublasSupportedMatMul(*root, false),
+              absl_testing::IsOkAndHolds(false));
+}
+
 }  // namespace gpu
 }  // namespace xla

@@ -67,6 +67,81 @@ func.func @cumsum_chained_pipeline() -> tensor<3xf32> {
   func.return %res_pipeline : tensor<3xf32>
 }
 
+// The DETR sine position embedding pattern: dim_t // 2 on a constant arange.
+// CHECK-LABEL: @floor_div_f32
+func.func @floor_div_f32() -> tensor<4xf32> {
+  %lhs = arith.constant dense<[0.0, 3.0, -3.0, 7.5]> : tensor<4xf32>
+  %rhs = arith.constant dense<2.0> : tensor<f32>
+
+  // CHECK: %[[CST:.*]] = arith.constant dense<[0.000000e+00, 1.000000e+00, -2.000000e+00, 3.000000e+00]> : tensor<4xf32>
+  // CHECK-NOT: tfl.floor_div
+  // CHECK: return %[[CST]]
+
+  %0 = "tfl.floor_div"(%lhs, %rhs) : (tensor<4xf32>, tensor<f32>) -> tensor<4xf32>
+  func.return %0 : tensor<4xf32>
+}
+
+// Rounds toward negative infinity, not toward zero.
+// CHECK-LABEL: @floor_div_i32
+func.func @floor_div_i32() -> tensor<4xi32> {
+  %lhs = arith.constant dense<[7, -7, 7, -7]> : tensor<4xi32>
+  %rhs = arith.constant dense<[2, 2, -2, -2]> : tensor<4xi32>
+
+  // CHECK: %[[CST:.*]] = arith.constant dense<[3, -4, -4, 3]> : tensor<4xi32>
+  // CHECK-NOT: tfl.floor_div
+  // CHECK: return %[[CST]]
+
+  %0 = "tfl.floor_div"(%lhs, %rhs) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+  func.return %0 : tensor<4xi32>
+}
+
+// CHECK-LABEL: @floor_div_i32_by_zero_not_folded
+func.func @floor_div_i32_by_zero_not_folded() -> tensor<2xi32> {
+  %lhs = arith.constant dense<[4, 5]> : tensor<2xi32>
+  %rhs = arith.constant dense<[2, 0]> : tensor<2xi32>
+
+  // CHECK: tfl.floor_div
+
+  %0 = "tfl.floor_div"(%lhs, %rhs) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
+  func.return %0 : tensor<2xi32>
+}
+
+// Like the kernel, divides in double: 1.0f / 0.1f rounds to exactly 10.0f in
+// f32, but is 9.99999985 in double, so the floor is 9.
+// CHECK-LABEL: @floor_div_f32_divides_in_double
+func.func @floor_div_f32_divides_in_double() -> tensor<f32> {
+  %lhs = arith.constant dense<1.0> : tensor<f32>
+  %rhs = arith.constant dense<0.1> : tensor<f32>
+
+  // CHECK: %[[CST:.*]] = arith.constant dense<9.000000e+00> : tensor<f32>
+  // CHECK-NOT: tfl.floor_div
+  // CHECK: return %[[CST]]
+
+  %0 = "tfl.floor_div"(%lhs, %rhs) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+  func.return %0 : tensor<f32>
+}
+
+// CHECK-LABEL: @floor_div_f32_by_zero_not_folded
+func.func @floor_div_f32_by_zero_not_folded() -> tensor<2xf32> {
+  %lhs = arith.constant dense<[4.0, 5.0]> : tensor<2xf32>
+  %rhs = arith.constant dense<[2.0, -0.0]> : tensor<2xf32>
+
+  // CHECK: tfl.floor_div
+
+  %0 = "tfl.floor_div"(%lhs, %rhs) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+}
+
+// CHECK-LABEL: @floor_div_runtime_not_folded
+func.func @floor_div_runtime_not_folded(%arg0: tensor<4xf32>) -> tensor<4xf32> {
+  %rhs = arith.constant dense<2.0> : tensor<f32>
+
+  // CHECK: tfl.floor_div
+
+  %0 = "tfl.floor_div"(%arg0, %rhs) : (tensor<4xf32>, tensor<f32>) -> tensor<4xf32>
+  func.return %0 : tensor<4xf32>
+}
+
 // CHECK-LABEL: @rank
 func.func @rank() -> tensor<1xi32> {
   %cst = arith.constant dense<[[1], [2]]> : tensor<2x1xi32>

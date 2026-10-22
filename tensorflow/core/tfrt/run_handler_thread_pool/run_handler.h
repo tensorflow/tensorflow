@@ -26,8 +26,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/histogram/histogram.h"
 #include "tensorflow/core/platform/context.h"
@@ -118,11 +120,14 @@ class RunHandlerPool {
   // Returns an inactive RunHandler from the pool.
   //
   // RunHandlers in RunHandlerPool are initially 'inactive'.
-  // A RunHandler becomes 'active' when its unique_ptr its returned by Get()
-  // and is being used by a client.  It becomes 'inactive' once more when the
-  // unique_ptr is destroyed.
+  // A RunHandler becomes 'active' when its unique_ptr is returned by Get()
+  // and is being used by a client. When the unique_ptr is destroyed, any
+  // unpopped closures are drained on the calling thread and destruction blocks
+  // until all in-flight closures (and nested closures they schedule) complete,
+  // after which the RunHandler becomes 'inactive' once more.
   //
-  // Will block unless there is an inactive handler.
+  // Will block unless there is an inactive handler (or `timeout_in_ms` > 0
+  // elapses, returning nullptr).
   std::unique_ptr<RunHandler> Get(
       int64_t step_id = 0, int64_t timeout_in_ms = 0,
       const RunHandlerOptions& options = RunHandlerOptions());
@@ -164,6 +169,14 @@ class RunHandler {
 
   int64_t step_id() const;
 
+  // Drains any unpopped closures queued on this handler on the calling thread
+  // and blocks until all in-flight closures (including nested closures they
+  // schedule and closure capture destruction) complete before returning the
+  // handler to the pool.
+  //
+  // Preconditions: Must not be destroyed from within a closure (or capture
+  // destructor) executing on this RunHandler, and callers must not hold locks
+  // acquired by closures scheduled on this RunHandler.
   ~RunHandler();
 
  private:
@@ -230,7 +243,15 @@ class ThreadWorkSource {
 
   ~ThreadWorkSource();
 
-  Task EnqueueTask(Task t, bool is_blocking, bool enable_wake_up);
+  // Increments pending_tasks_ and attempts to push `t` onto the target queue.
+  // When queued, increments enqueue_count_ (signaling pending_cv_ if any
+  // thread is waiting in WaitForWorkOrCompletion()) and returns an empty Task
+  // (`f == nullptr`). When the target queue is full, leaves enqueue_count_
+  // unchanged and returns the unqueued `t` (`f != nullptr`) with
+  // pending_tasks_ still incremented, so the caller must either pass the
+  // returned Task to ExecuteTask() or call DecrementPendingTaskCount().
+  [[nodiscard]] Task EnqueueTask(Task t, bool is_blocking, bool enable_wake_up)
+      ABSL_LOCKS_EXCLUDED(pending_mu_);
 
   Task PopBlockingTask();
 
@@ -250,11 +271,26 @@ class ThreadWorkSource {
 
   void DecrementInflightTaskCount(bool is_blocking);
 
-  int64_t GetPendingTaskCount();
+  int64_t GetPendingTaskCount() ABSL_LOCKS_EXCLUDED(pending_mu_);
 
-  void IncrementPendingTaskCount();
+  void IncrementPendingTaskCount() ABSL_LOCKS_EXCLUDED(pending_mu_);
 
-  void DecrementPendingTaskCount();
+  void DecrementPendingTaskCount() ABSL_LOCKS_EXCLUDED(pending_mu_);
+
+  // Returns the monotonic count of tasks successfully pushed into this
+  // source's queues. Sampled by QuiesceWorkSource() before scanning queues so
+  // WaitForWorkOrCompletion() can detect concurrent enqueues without races.
+  uint64_t GetEnqueueCount() ABSL_LOCKS_EXCLUDED(pending_mu_);
+
+  // Blocks the draining caller in QuiesceWorkSource() until either
+  // pending_tasks_ reaches 0 (returns true) or a new task is pushed after
+  // `observed_enqueue_count` (returns false so the caller can pop and run it).
+  bool WaitForWorkOrCompletion(uint64_t observed_enqueue_count)
+      ABSL_LOCKS_EXCLUDED(pending_mu_);
+
+  // Returns the number of threads currently blocked in
+  // WaitForWorkOrCompletion().
+  int64_t GetDrainingWaiterCount() ABSL_LOCKS_EXCLUDED(pending_mu_);
 
   unsigned NonBlockingWorkShardingFactor();
 
@@ -274,8 +310,19 @@ class ThreadWorkSource {
   std::atomic<int64_t> blocking_inflight_;
   std::atomic<int64_t> non_blocking_inflight_;
 
-  // The number of tasks that are enqueued and not finished.
-  std::atomic<int64_t> pending_tasks_;
+  // Guards pending task accounting and wakeups for threads draining this
+  // source during handler release.
+  absl::Mutex pending_mu_;
+  // Signaled when draining_waiters_ > 0 and either pending_tasks_ reaches 0
+  // or enqueue_count_ advances.
+  absl::CondVar pending_cv_ ABSL_GUARDED_BY(pending_mu_);
+  // Number of tasks currently queued in or executing for this source
+  // (including unqueued overflow tasks about to execute inline).
+  int64_t pending_tasks_ ABSL_GUARDED_BY(pending_mu_) = 0;
+  // Monotonic count of tasks successfully pushed into this source's queues.
+  uint64_t enqueue_count_ ABSL_GUARDED_BY(pending_mu_) = 0;
+  // Number of threads blocked in WaitForWorkOrCompletion().
+  int64_t draining_waiters_ ABSL_GUARDED_BY(pending_mu_) = 0;
 
   Queue blocking_work_queue_;
   tensorflow::mutex blocking_queue_op_mu_;
@@ -345,6 +392,17 @@ class RunHandlerThreadPool {
 
   void AddWorkToQueue(ThreadWorkSource* tws, bool is_blocking, TaskFunction fn);
 
+  // Drains any queued tasks in `tws` on the calling thread and blocks until
+  // all in-flight tasks (including nested tasks they schedule and task capture
+  // destruction) have completed. Called by
+  // RunHandlerPool::Impl::ReleaseHandler() before returning a handler to
+  // free_handlers_.
+  //
+  // Preconditions: Must not be called from within a task (or task capture
+  // destructor) executing on `tws` (enforced via CHECK), and the caller must
+  // not hold locks acquired by tasks scheduled on `tws`.
+  void QuiesceWorkSource(ThreadWorkSource* tws);
+
   // Set work queues from which the thread 'tid' can steal its work.
   void SetThreadWorkSources(
       int tid, uint64_t version,
@@ -376,6 +434,11 @@ class RunHandlerThreadPool {
                                   int sub_thread_pool_id);
 
  private:
+  // Executes `t` for `tws` (`t` must already be counted in `tws`'s
+  // pending_tasks_ on entry), updating inflight counters and destroying `t`'s
+  // closure captures and context before decrementing pending_tasks_.
+  void ExecuteTask(ThreadWorkSource* tws, bool is_blocking, Task t);
+
   struct ThreadData {
     ThreadData();
     tensorflow::mutex mu;

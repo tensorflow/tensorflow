@@ -360,3 +360,30 @@ func.func private @xla.sdy.manual_computation_body_9(%arg0: tensor<0x8xf32>, %ar
 func.func private @xla.sdy.manual_computation_body_11(%arg0: !stablehlo.token, %arg1: tensor<1xi64>) -> (!stablehlo.token, tensor<1xi64>) {
   return %arg0, %arg1 : !stablehlo.token, tensor<1xi64>
 }
+
+// -----
+
+sdy.mesh @mesh_0 = <["a"=4, "b"=2]>
+
+// CHECK-LABEL: func @manual_computation_sub_axis
+func.func @manual_computation_sub_axis(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+  // CHECK-NOT: call @xla.sdy.manual_computation_body_sub_axis
+  // CHECK:               %[[MAN_COMP:.*]] = sdy.manual_computation(%arg0)
+  // CHECK-SAME{LITERAL}:     in_shardings=[<@mesh_0, [{"a"}, {}]>]
+  // CHECK-SAME{LITERAL}:     out_shardings=[<@mesh_0, [{"a"}, {}]>]
+  // CHECK-SAME{LITERAL}:     manual_axes={"a":(1)2}
+  // CHECK-SAME:              (%arg1: tensor<4x8xf32>) {
+  // CHECK-NEXT:            sdy.return %arg1 : tensor<4x8xf32>
+  // CHECK-NEXT:          } : (tensor<8x8xf32>) -> tensor<8x8xf32>
+  // CHECK-NEXT:          return %[[MAN_COMP]] : tensor<8x8xf32>
+  %s0 = stablehlo.custom_call @Sharding(%arg0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{"a"}, {}]>]>} : (tensor<8x8xf32>) -> tensor<8x8xf32>
+  %0 = stablehlo.custom_call @xla.sdy.GlobalToLocalShape(%s0) {has_side_effect = true, sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{"a":(2)2}, {}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"a":(1)2}>} : (tensor<8x8xf32>) -> tensor<4x8xf32>
+  %1 = call @xla.sdy.manual_computation_body_sub_axis(%0) : (tensor<4x8xf32>) -> tensor<4x8xf32>
+  %2 = stablehlo.custom_call @xla.sdy.LocalToGlobalShape(%1) {has_side_effect = true, sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{"a"}, {}]>]>} : (tensor<4x8xf32>) -> tensor<8x8xf32>
+  return %2 : tensor<8x8xf32>
+}
+
+// CHECK-NOT: func private @xla.sdy.manual_computation_body_sub_axis(
+func.func private @xla.sdy.manual_computation_body_sub_axis(%arg0: tensor<4x8xf32>) -> tensor<4x8xf32> {
+  return %arg0 : tensor<4x8xf32>
+}

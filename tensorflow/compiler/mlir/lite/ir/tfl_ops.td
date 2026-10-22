@@ -1996,6 +1996,8 @@ def TFL_FloorDivOp : TFL_Op<"floor_div", [
 
   let builders = [TFL_BroadcastableBinaryBuilder];
 
+  let hasFolder = 1;
+
   let hasCustomAssemblyFormat = 1;
 
   let extraClassDefinition = [{

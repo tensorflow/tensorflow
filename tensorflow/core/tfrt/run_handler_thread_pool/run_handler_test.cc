@@ -18,9 +18,12 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/base/thread_annotations.h"
+#include "absl/cleanup/cleanup.h"
 #include "absl/strings/match.h"
 #include "tensorflow/core/platform/mutex.h"
 #define EIGEN_USE_THREADS
@@ -30,11 +33,13 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "absl/synchronization/barrier.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/blocking_counter.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 #include "tfrt/host_context/task_function.h"  // from @tf_runtime
@@ -248,6 +253,400 @@ TEST(RunHandlerUtilTest, ScheduleIntraOpClosureRoutesToNonBlockingQueue) {
   blocker_release.Notify();
 }
 
+// Copyable RAII token for std::function closures that invokes `on_destroy`
+// when the last copy of the closure stored in TaskImpl is destroyed.
+class ClosureLifetimeToken {
+ public:
+  explicit ClosureLifetimeToken(std::function<void()> on_destroy)
+      : guard_(nullptr,
+               [on_destroy = std::move(on_destroy)](void*) { on_destroy(); }) {}
+
+ private:
+  // Shared guard whose deleter runs once all copies of the closure are
+  // destroyed.
+  std::shared_ptr<void> guard_;
+};
+
+// Verifies that destroying a RunHandler while intra-op or inter-op closures
+// remain unpopped in its queue drains and executes those closures (including
+// cross-queue closures enqueued during draining) instead of crashing on
+// non-empty TaskQueueSize.
+TEST(RunHandlerUtilTest, ReleaseHandlerDrainsUnpoppedClosures) {
+  constexpr int64_t kGetTimeoutMs = 5000;
+  constexpr absl::Duration kWaitTimeout = absl::Seconds(10);
+
+  RunHandlerPool::Options options;
+  options.num_inter_op_threads = 1;
+  options.num_intra_op_threads = 1;
+  options.max_concurrent_handler = 2;
+
+  absl::Notification inter_blocker_started;
+  absl::Notification intra_blocker_started;
+  absl::Notification release_blockers;
+
+  absl::Mutex mu;
+  int completed_intra ABSL_GUARDED_BY(mu) = 0;
+  int completed_nested_inter ABSL_GUARDED_BY(mu) = 0;
+  int completed_inter ABSL_GUARDED_BY(mu) = 0;
+
+  auto pool = std::make_unique<RunHandlerPool>(options);
+  auto blocker_handler = pool->Get(/*step_id=*/1, kGetTimeoutMs);
+  ASSERT_NE(blocker_handler, nullptr);
+  auto unblock_workers = absl::MakeCleanup([&]() {
+    if (!release_blockers.HasBeenNotified()) {
+      release_blockers.Notify();
+    }
+  });
+
+  // Deterministically occupy both worker threads in the pool.
+  blocker_handler->ScheduleInterOpClosure(TaskFunction([&]() {
+    inter_blocker_started.Notify();
+    release_blockers.WaitForNotification();
+  }));
+  blocker_handler->ScheduleIntraOpClosure(TaskFunction([&]() {
+    intra_blocker_started.Notify();
+    release_blockers.WaitForNotification();
+  }));
+  ASSERT_TRUE(
+      inter_blocker_started.WaitForNotificationWithTimeout(kWaitTimeout));
+  ASSERT_TRUE(
+      intra_blocker_started.WaitForNotificationWithTimeout(kWaitTimeout));
+
+  // Schedule intra-op closures via AsIntraThreadPoolInterface() and have the
+  // first unpopped intra-op closure enqueue a nested inter-op closure while
+  // draining so QuiesceWorkSource must loop back to PopBlockingTask().
+  auto intra_handler = pool->Get(/*step_id=*/2, kGetTimeoutMs);
+  ASSERT_NE(intra_handler, nullptr);
+  RunHandler* raw_intra_handler = intra_handler.get();
+  constexpr int kNumIntraClosures = 4;
+  for (int i = 0; i < kNumIntraClosures; ++i) {
+    intra_handler->AsIntraThreadPoolInterface()->Schedule(
+        [&, i, raw_intra_handler]() {
+          if (i == 0) {
+            raw_intra_handler->ScheduleInterOpClosure(TaskFunction([&]() {
+              absl::MutexLock lock(mu);
+              ++completed_nested_inter;
+            }));
+          }
+          absl::MutexLock lock(mu);
+          ++completed_intra;
+        });
+  }
+  intra_handler.reset();
+  {
+    absl::MutexLock lock(mu);
+    EXPECT_EQ(completed_intra, kNumIntraClosures);
+    EXPECT_EQ(completed_nested_inter, 1);
+  }
+
+  // Reuse the second handler slot and verify unpopped inter-op closures are
+  // also drained cleanly on destruction.
+  auto inter_handler = pool->Get(/*step_id=*/3, kGetTimeoutMs);
+  ASSERT_NE(inter_handler, nullptr);
+  EXPECT_EQ(inter_handler->step_id(), 3);
+  constexpr int kNumInterClosures = 2;
+  for (int i = 0; i < kNumInterClosures; ++i) {
+    inter_handler->ScheduleInterOpClosure(TaskFunction([&]() {
+      absl::MutexLock lock(mu);
+      ++completed_inter;
+    }));
+  }
+  inter_handler.reset();
+  {
+    absl::MutexLock lock(mu);
+    EXPECT_EQ(completed_inter, kNumInterClosures);
+  }
+
+  release_blockers.Notify();
+  blocker_handler.reset();
+  pool->Quiesce();
+}
+
+// Verifies that destroying a RunHandler waits for an already-popped, in-flight
+// closure, any nested child closures it schedules, and closure capture
+// destruction before recycling the handler back to free_handlers_.
+TEST(RunHandlerUtilTest,
+     ReleaseHandlerWaitsForInFlightClosureSchedulingNestedWork) {
+  constexpr int64_t kGetTimeoutMs = 5000;
+  constexpr absl::Duration kWaitTimeout = absl::Seconds(10);
+
+  // Use a single blocking worker thread (which steals both inter-op and
+  // intra-op tasks) so keeping `parent` alive pins the sole pool worker and
+  // guarantees `child` can only run once `releaser` enters QuiesceWorkSource().
+  RunHandlerPool::Options options;
+  options.num_inter_op_threads = 1;
+  options.num_intra_op_threads = 0;
+  options.max_concurrent_handler = 1;
+
+  absl::Notification parent_started;
+  absl::Notification allow_parent_to_schedule_child;
+  absl::Notification child_started;
+  absl::Notification allow_child_to_finish;
+  absl::Notification child_done;
+  absl::Notification allow_parent_to_finish;
+  absl::Notification reset_done;
+
+  absl::Mutex mu;
+  bool parent_finished ABSL_GUARDED_BY(mu) = false;
+  bool parent_capture_destroyed ABSL_GUARDED_BY(mu) = false;
+  bool child_finished ABSL_GUARDED_BY(mu) = false;
+  bool child_capture_destroyed ABSL_GUARDED_BY(mu) = false;
+
+  auto pool = std::make_unique<RunHandlerPool>(options);
+  auto handler = pool->Get(/*step_id=*/1, kGetTimeoutMs);
+  ASSERT_NE(handler, nullptr);
+  auto* intra_pool = handler->AsIntraThreadPoolInterface();
+  std::unique_ptr<tensorflow::Thread> releaser;
+  auto unblock_all = absl::MakeCleanup([&]() {
+    if (!allow_parent_to_schedule_child.HasBeenNotified()) {
+      allow_parent_to_schedule_child.Notify();
+    }
+    if (!allow_child_to_finish.HasBeenNotified()) {
+      allow_child_to_finish.Notify();
+    }
+    if (!allow_parent_to_finish.HasBeenNotified()) {
+      allow_parent_to_finish.Notify();
+    }
+  });
+
+  intra_pool->Schedule([&, parent_token = ClosureLifetimeToken([&]() {
+                             absl::MutexLock lock(mu);
+                             parent_capture_destroyed = true;
+                           })]() {
+    (void)parent_token;
+    parent_started.Notify();
+    allow_parent_to_schedule_child.WaitForNotification();
+    intra_pool->Schedule([&, child_token = ClosureLifetimeToken([&]() {
+                               absl::MutexLock lock(mu);
+                               child_capture_destroyed = true;
+                             })]() {
+      (void)child_token;
+      child_started.Notify();
+      allow_child_to_finish.WaitForNotification();
+      {
+        absl::MutexLock lock(mu);
+        child_finished = true;
+      }
+      child_done.Notify();
+    });
+    allow_parent_to_finish.WaitForNotification();
+    absl::MutexLock lock(mu);
+    parent_finished = true;
+  });
+
+  // Once parent_started is notified, the parent closure has been popped from
+  // the queue (TaskQueueSize == 0) and pins the sole worker in the pool.
+  ASSERT_TRUE(parent_started.WaitForNotificationWithTimeout(kWaitTimeout));
+
+  releaser.reset(tensorflow::Env::Default()->StartThread(
+      tensorflow::ThreadOptions(), "releaser", [&]() {
+        handler.reset();
+        {
+          absl::MutexLock lock(mu);
+          EXPECT_TRUE(parent_finished);
+          EXPECT_TRUE(parent_capture_destroyed);
+          EXPECT_TRUE(child_finished);
+          EXPECT_TRUE(child_capture_destroyed);
+        }
+        reset_done.Notify();
+      }));
+
+  allow_parent_to_schedule_child.Notify();
+  // Because the sole pool worker is blocked inside `parent`, `child_started`
+  // proves `releaser` is actively inside handler.reset() ->
+  // QuiesceWorkSource().
+  ASSERT_TRUE(child_started.WaitForNotificationWithTimeout(kWaitTimeout));
+  EXPECT_FALSE(reset_done.HasBeenNotified());
+
+  // Finish `child` while `parent` remains in-flight on the pool worker so
+  // `releaser` must stay blocked in WaitForWorkOrCompletion().
+  allow_child_to_finish.Notify();
+  ASSERT_TRUE(child_done.WaitForNotificationWithTimeout(kWaitTimeout));
+  EXPECT_FALSE(reset_done.HasBeenNotified());
+
+  allow_parent_to_finish.Notify();
+  ASSERT_TRUE(reset_done.WaitForNotificationWithTimeout(kWaitTimeout));
+  releaser.reset();
+
+  // The single handler in the pool should now be cleanly reusable.
+  auto reused_handler = pool->Get(/*step_id=*/2, kGetTimeoutMs);
+  ASSERT_NE(reused_handler, nullptr);
+  EXPECT_EQ(reused_handler->step_id(), 2);
+}
+
+// Models xla::cpu::Worker::Parallelize under contention and early parallel
+// branch failure: recursive binary-split intra-op worker closures steal from a
+// shared work-item pool, and the request destroys its RunHandler either as soon
+// as all work items finish or mid-split before all work items are claimed.
+TEST(RunHandlerUtilTest, ConcurrentWorkStealingEarlyRelease) {
+  // Shared per-request state modeling xla::cpu::ParallelizeContext. Inherits
+  // enable_shared_from_this so scheduled worker closures retain state after
+  // `all_items_done` unblocks the caller (avoiding test-side UAF even if
+  // draining regressed).
+  struct WorkStealingState
+      : public std::enable_shared_from_this<WorkStealingState> {
+    WorkStealingState(tensorflow::thread::ThreadPoolInterface* pool,
+                      int total_items)
+        : intra_pool(pool), num_items(total_items) {}
+
+    bool HasRemainingItems() {
+      absl::MutexLock lock(mu);
+      return next_item < num_items;
+    }
+
+    bool TryStealItem() {
+      absl::MutexLock lock(mu);
+      if (next_item >= num_items) {
+        return false;
+      }
+      ++next_item;
+      return true;
+    }
+
+    void CompleteItems(int count) {
+      if (count == 0) {
+        return;
+      }
+      absl::MutexLock lock(mu);
+      completed_items += count;
+      if (completed_items == num_items) {
+        all_items_done.Notify();
+      }
+    }
+
+    void Parallelize(int start_worker, int end_worker) {
+      while (end_worker - start_worker > 1) {
+        if (!HasRemainingItems()) {
+          return;
+        }
+        int mid_worker = (start_worker + end_worker) / 2;
+        auto self = shared_from_this();
+        {
+          absl::MutexLock lock(mu);
+          ++scheduled_closures;
+        }
+        intra_pool->Schedule([self, mid_worker, end_worker,
+                              token = ClosureLifetimeToken([self]() {
+                                absl::MutexLock lock(self->mu);
+                                ++self->destroyed_captures;
+                              })]() {
+          (void)token;
+          self->Parallelize(mid_worker, end_worker);
+          absl::MutexLock lock(self->mu);
+          ++self->completed_closures;
+        });
+        end_worker = mid_worker;
+      }
+      int local_completed = 0;
+      while (TryStealItem()) {
+        ++local_completed;
+      }
+      CompleteItems(local_completed);
+    }
+
+    void ScheduleRootOnInterOp(RunHandler* handler, int num_workers) {
+      auto self = shared_from_this();
+      {
+        absl::MutexLock lock(mu);
+        ++scheduled_closures;
+      }
+      handler->ScheduleInterOpClosure(TaskFunction(
+          [self, num_workers, token = ClosureLifetimeToken([self]() {
+                                absl::MutexLock lock(self->mu);
+                                ++self->destroyed_captures;
+                              })]() {
+            (void)token;
+            self->Parallelize(/*start_worker=*/0, /*end_worker=*/num_workers);
+            absl::MutexLock lock(self->mu);
+            ++self->completed_closures;
+          }));
+    }
+
+    // Intra-op thread pool interface owned by the request's RunHandler.
+    tensorflow::thread::ThreadPoolInterface* const intra_pool;
+    // Total work items in the parallel loop (distinct from worker count).
+    const int num_items;
+    // Guards work-item claiming and closure completion/destruction counters.
+    absl::Mutex mu;
+    // Index of the next unclaimed work item; consulted by HasRemainingItems()
+    // before execution so binary splitting stops once all items are claimed.
+    int next_item ABSL_GUARDED_BY(mu) = 0;
+    // Count of stolen work items that have finished execution; triggers
+    // `all_items_done` when it reaches `num_items`.
+    int completed_items ABSL_GUARDED_BY(mu) = 0;
+    // Total closures scheduled onto `handler` for this request.
+    int scheduled_closures ABSL_GUARDED_BY(mu) = 0;
+    // Total scheduled closures whose bodies finished running.
+    int completed_closures ABSL_GUARDED_BY(mu) = 0;
+    // Total scheduled closures whose TaskImpl captures were destroyed.
+    int destroyed_captures ABSL_GUARDED_BY(mu) = 0;
+    // Notified once all `num_items` stolen work items finish execution.
+    absl::Notification all_items_done;
+  };
+
+  constexpr int64_t kGetTimeoutMs = 5000;
+  constexpr absl::Duration kWaitTimeout = absl::Seconds(10);
+
+  RunHandlerPool::Options options;
+  options.num_inter_op_threads = 2;
+  options.num_intra_op_threads = 2;
+  options.max_concurrent_handler = 4;
+  auto pool = std::make_unique<RunHandlerPool>(options);
+
+  constexpr int kNumCallers = 6;
+  constexpr int kIterationsPerCaller = 30;
+  constexpr int kWorkItemsPerRequest = 8;
+  constexpr int kWorkersPerRequest = 16;
+  tensorflow::BlockingCounter callers_done(kNumCallers);
+  tensorflow::thread::ThreadPool caller_pool(tensorflow::Env::Default(),
+                                             "callers", kNumCallers);
+
+  for (int c = 0; c < kNumCallers; ++c) {
+    caller_pool.Schedule([&, c]() {
+      for (int iter = 0; iter < kIterationsPerCaller; ++iter) {
+        const int64_t expected_step_id = c * 1000 + iter;
+        auto handler = pool->Get(expected_step_id, kGetTimeoutMs);
+        EXPECT_NE(handler, nullptr);
+        if (handler == nullptr) {
+          break;
+        }
+        auto state = std::make_shared<WorkStealingState>(
+            handler->AsIntraThreadPoolInterface(), kWorkItemsPerRequest);
+        if (iter % 2 == 0) {
+          // Even iterations: caller steals work items and releases the handler
+          // as soon as all work items finish while excess worker closures may
+          // remain queued or in-flight.
+          state->Parallelize(/*start_worker=*/0,
+                             /*end_worker=*/kWorkersPerRequest);
+          const bool waited =
+              state->all_items_done.WaitForNotificationWithTimeout(
+                  kWaitTimeout);
+          EXPECT_TRUE(waited);
+          if (!waited) {
+            break;
+          }
+        } else {
+          // Odd iterations: release the handler immediately while binary
+          // splitting is still in progress on another branch (modeling early
+          // error unwinding on a parallel graph branch).
+          state->ScheduleRootOnInterOp(handler.get(), kWorkersPerRequest);
+        }
+        EXPECT_EQ(handler->step_id(), expected_step_id);
+        handler.reset();
+
+        EXPECT_TRUE(state->all_items_done.HasBeenNotified());
+        absl::MutexLock lock(state->mu);
+        EXPECT_EQ(state->completed_items, kWorkItemsPerRequest);
+        EXPECT_EQ(state->completed_closures, state->scheduled_closures);
+        EXPECT_EQ(state->destroyed_captures, state->scheduled_closures);
+      }
+      callers_done.DecrementCount();
+    });
+  }
+  callers_done.Wait();
+  pool->Quiesce();
+}
+
 class RunHandlerThreadPoolTest
     : public testing::TestWithParam<std::tuple<bool, bool>> {
  protected:
@@ -301,6 +700,244 @@ TEST_P(RunHandlerThreadPoolTest, EnqueueTask) {
   tws.PopNonBlockingTask(0, true).f->f();
   EXPECT_EQ(result, 2);
   EXPECT_TRUE(absl::StrContains(tws.ToString(), "traceme_id = 0"));
+}
+
+template <typename Work, unsigned kSize>
+constexpr int RunQueueCapacity(const Eigen::RunQueue<Work, kSize>*) {
+  return static_cast<int>(kSize);
+}
+
+class ThreadWorkSourceOverflowTest : public testing::TestWithParam<bool> {};
+
+// Verifies that overflowing a full Eigen::RunQueue executes the overflowed
+// task inline via ExecuteTask() with proper inflight/pending accounting (and
+// no transient zero pending count) for both blocking and non-blocking queues.
+TEST_P(ThreadWorkSourceOverflowTest,
+       OverflowTaskExecutesInlineWithoutLeakingPendingTaskCount) {
+  const bool is_blocking = GetParam();
+  Eigen::MaxSizeVector<tensorflow::mutex> waiters_mu(1);
+  waiters_mu.resize(1);
+  Eigen::MaxSizeVector<internal::Waiter> waiters(1);
+  waiters.resize(1);
+  internal::RunHandlerThreadPool run_handler_thread_pool(
+      internal::RunHandlerThreadPool::Options(
+          /*num_blocking_threads=*/0, /*num_non_blocking_threads=*/0,
+          /*wait_if_no_active_request=*/true,
+          /*non_blocking_threads_sleep_time_micro_sec=*/250,
+          /*blocking_threads_max_sleep_time_micro_sec=*/250,
+          /*use_adaptive_waiting_time=*/true,
+          /*enable_wake_up=*/true,
+          /*max_concurrent_handler=*/128,
+          /*num_threads_in_sub_thread_pool=*/{0},
+          /*sub_thread_request_percentage=*/{1}),
+      tensorflow::Env::Default(), tensorflow::ThreadOptions(),
+      "tf_run_handler_pool", &waiters_mu, &waiters);
+  internal::ThreadWorkSource tws;
+  tws.SetWaiter(1, &waiters[0], &waiters_mu[0]);
+
+  constexpr int kSingleQueueCapacity =
+      RunQueueCapacity(static_cast<const internal::Queue*>(nullptr));
+  const int queue_capacity =
+      is_blocking ? kSingleQueueCapacity
+                  : kSingleQueueCapacity *
+                        static_cast<int>(tws.NonBlockingWorkShardingFactor());
+  const int total_tasks = queue_capacity + 1;
+
+  absl::Mutex mu;
+  int completed ABSL_GUARDED_BY(mu) = 0;
+  int destroyed_captures ABSL_GUARDED_BY(mu) = 0;
+  int64_t overflow_pending_during_exec ABSL_GUARDED_BY(mu) = -1;
+  int64_t overflow_inflight_during_exec ABSL_GUARDED_BY(mu) = -1;
+  int64_t overflow_other_inflight_during_exec ABSL_GUARDED_BY(mu) = -1;
+
+  for (int i = 0; i < total_tasks; ++i) {
+    run_handler_thread_pool.AddWorkToQueue(
+        &tws, is_blocking,
+        TaskFunction([&, i, token = ClosureLifetimeToken([&]() {
+                              absl::MutexLock lock(mu);
+                              ++destroyed_captures;
+                            })]() {
+          (void)token;
+          const int64_t pending_now = tws.GetPendingTaskCount();
+          const int64_t inflight_now = tws.GetInflightTaskCount(is_blocking);
+          const int64_t other_inflight_now =
+              tws.GetInflightTaskCount(!is_blocking);
+          absl::MutexLock lock(mu);
+          if (i == queue_capacity) {
+            overflow_pending_during_exec = pending_now;
+            overflow_inflight_during_exec = inflight_now;
+            overflow_other_inflight_during_exec = other_inflight_now;
+          }
+          ++completed;
+        }));
+  }
+
+  {
+    absl::MutexLock lock(mu);
+    EXPECT_EQ(completed, 1);
+    EXPECT_EQ(destroyed_captures, 1);
+    EXPECT_EQ(overflow_pending_during_exec, queue_capacity + 1);
+    EXPECT_EQ(overflow_inflight_during_exec, 1);
+    EXPECT_EQ(overflow_other_inflight_during_exec, 0);
+  }
+  EXPECT_EQ(tws.TaskQueueSize(is_blocking), queue_capacity);
+  EXPECT_EQ(tws.GetPendingTaskCount(), queue_capacity);
+  EXPECT_EQ(tws.GetInflightTaskCount(is_blocking), 0);
+  EXPECT_EQ(tws.GetEnqueueCount(), static_cast<uint64_t>(queue_capacity));
+
+  run_handler_thread_pool.QuiesceWorkSource(&tws);
+
+  {
+    absl::MutexLock lock(mu);
+    EXPECT_EQ(completed, total_tasks);
+    EXPECT_EQ(destroyed_captures, total_tasks);
+  }
+  EXPECT_EQ(tws.TaskQueueSize(is_blocking), 0);
+  EXPECT_EQ(tws.GetPendingTaskCount(), 0);
+  EXPECT_EQ(tws.GetInflightTaskCount(is_blocking), 0);
+}
+
+// Verifies with 0 pool workers that QuiesceWorkSource() detects enqueues via
+// both the pre-park enqueue_count_ check and the parked pending_cv_.SignalAll()
+// wakeup in ThreadWorkSource::EnqueueTask().
+TEST(RunHandlerUtilTest, QuiesceWorkSourceWakesOnConcurrentEnqueue) {
+  constexpr absl::Duration kWaitTimeout = absl::Seconds(10);
+
+  Eigen::MaxSizeVector<tensorflow::mutex> waiters_mu(1);
+  waiters_mu.resize(1);
+  Eigen::MaxSizeVector<internal::Waiter> waiters(1);
+  waiters.resize(1);
+  internal::RunHandlerThreadPool run_handler_thread_pool(
+      internal::RunHandlerThreadPool::Options(
+          /*num_blocking_threads=*/0, /*num_non_blocking_threads=*/0,
+          /*wait_if_no_active_request=*/true,
+          /*non_blocking_threads_sleep_time_micro_sec=*/250,
+          /*blocking_threads_max_sleep_time_micro_sec=*/250,
+          /*use_adaptive_waiting_time=*/true,
+          /*enable_wake_up=*/true,
+          /*max_concurrent_handler=*/128,
+          /*num_threads_in_sub_thread_pool=*/{0},
+          /*sub_thread_request_percentage=*/{1}),
+      tensorflow::Env::Default(), tensorflow::ThreadOptions(),
+      "tf_run_handler_pool", &waiters_mu, &waiters);
+  internal::ThreadWorkSource tws;
+  tws.SetWaiter(1, &waiters[0], &waiters_mu[0]);
+
+  absl::Notification first_nested_done;
+  absl::Notification second_nested_done;
+  absl::Notification quiesce_done;
+
+  // Simulate an already-popped in-flight parent task holding pending_tasks_ > 0
+  // while the queues are empty.
+  const uint64_t initial_enqueue_count = tws.GetEnqueueCount();
+  tws.IncrementPendingTaskCount();
+  bool simulated_parent_active = true;
+
+  // Verify the pre-park race guard: when enqueue_count_ advances after
+  // `initial_enqueue_count` was sampled, WaitForWorkOrCompletion returns false
+  // immediately without parking.
+  run_handler_thread_pool.AddWorkToQueue(
+      &tws, /*is_blocking=*/false,
+      TaskFunction([&]() { first_nested_done.Notify(); }));
+  EXPECT_EQ(tws.GetEnqueueCount(), initial_enqueue_count + 1);
+  EXPECT_FALSE(tws.WaitForWorkOrCompletion(initial_enqueue_count));
+
+  std::unique_ptr<tensorflow::Thread> drainer;
+  auto release_simulated_parent = absl::MakeCleanup([&]() {
+    if (simulated_parent_active) {
+      tws.DecrementPendingTaskCount();
+      simulated_parent_active = false;
+    }
+  });
+
+  drainer.reset(tensorflow::Env::Default()->StartThread(
+      tensorflow::ThreadOptions(), "drainer", [&]() {
+        run_handler_thread_pool.QuiesceWorkSource(&tws);
+        quiesce_done.Notify();
+      }));
+
+  // `drainer` drains `first_nested` and then parks in WaitForWorkOrCompletion()
+  // because `simulated_parent_active` still holds pending_tasks_ == 1.
+  ASSERT_TRUE(first_nested_done.WaitForNotificationWithTimeout(kWaitTimeout));
+  const absl::Time park_deadline = absl::Now() + kWaitTimeout;
+  while (tws.GetDrainingWaiterCount() < 1 && absl::Now() < park_deadline) {
+    tensorflow::Env::Default()->SleepForMicroseconds(1000);
+  }
+  ASSERT_EQ(tws.GetDrainingWaiterCount(), 1);
+  EXPECT_FALSE(quiesce_done.HasBeenNotified());
+
+  // With 0 pool worker threads and `drainer` parked on pending_cv_,
+  // `second_nested` can only execute if EnqueueTask() signals pending_cv_.
+  run_handler_thread_pool.AddWorkToQueue(
+      &tws, /*is_blocking=*/false,
+      TaskFunction([&]() { second_nested_done.Notify(); }));
+  ASSERT_TRUE(second_nested_done.WaitForNotificationWithTimeout(kWaitTimeout));
+
+  const absl::Time repark_deadline = absl::Now() + kWaitTimeout;
+  while (tws.GetDrainingWaiterCount() < 1 && absl::Now() < repark_deadline) {
+    tensorflow::Env::Default()->SleepForMicroseconds(1000);
+  }
+  ASSERT_EQ(tws.GetDrainingWaiterCount(), 1);
+  EXPECT_FALSE(quiesce_done.HasBeenNotified());
+
+  // Complete the simulated in-flight parent and verify QuiesceWorkSource exits.
+  tws.DecrementPendingTaskCount();
+  simulated_parent_active = false;
+  ASSERT_TRUE(quiesce_done.WaitForNotificationWithTimeout(kWaitTimeout));
+  drainer.reset();
+  EXPECT_EQ(tws.GetPendingTaskCount(), 0);
+}
+
+// Verifies that ScopedActiveWorkSource allows nested draining of a *different*
+// ThreadWorkSource while failing fast with a CHECK on re-entrant draining of
+// the *same* ThreadWorkSource.
+TEST(RunHandlerDeathTest, ReentrantQuiesceWorkSourceCheckFails) {
+  Eigen::MaxSizeVector<tensorflow::mutex> waiters_mu(1);
+  waiters_mu.resize(1);
+  Eigen::MaxSizeVector<internal::Waiter> waiters(1);
+  waiters.resize(1);
+  internal::RunHandlerThreadPool run_handler_thread_pool(
+      internal::RunHandlerThreadPool::Options(
+          /*num_blocking_threads=*/0, /*num_non_blocking_threads=*/0,
+          /*wait_if_no_active_request=*/true,
+          /*non_blocking_threads_sleep_time_micro_sec=*/250,
+          /*blocking_threads_max_sleep_time_micro_sec=*/250,
+          /*use_adaptive_waiting_time=*/true,
+          /*enable_wake_up=*/true,
+          /*max_concurrent_handler=*/128,
+          /*num_threads_in_sub_thread_pool=*/{0},
+          /*sub_thread_request_percentage=*/{1}),
+      tensorflow::Env::Default(), tensorflow::ThreadOptions(),
+      "tf_run_handler_pool", &waiters_mu, &waiters);
+  internal::ThreadWorkSource outer_tws;
+  outer_tws.SetWaiter(1, &waiters[0], &waiters_mu[0]);
+  outer_tws.SetTracemeId(42);
+  internal::ThreadWorkSource inner_tws;
+  inner_tws.SetWaiter(1, &waiters[0], &waiters_mu[0]);
+  inner_tws.SetTracemeId(99);
+
+  bool inner_drained = false;
+  run_handler_thread_pool.AddWorkToQueue(
+      &inner_tws, /*is_blocking=*/true,
+      TaskFunction([&]() { inner_drained = true; }));
+  run_handler_thread_pool.AddWorkToQueue(
+      &outer_tws, /*is_blocking=*/true, TaskFunction([&]() {
+        run_handler_thread_pool.QuiesceWorkSource(&inner_tws);
+      }));
+  run_handler_thread_pool.QuiesceWorkSource(&outer_tws);
+  EXPECT_TRUE(inner_drained);
+  EXPECT_EQ(inner_tws.GetPendingTaskCount(), 0);
+  EXPECT_EQ(outer_tws.GetPendingTaskCount(), 0);
+
+  EXPECT_DEATH(
+      {
+        run_handler_thread_pool.AddWorkToQueue(
+            &outer_tws, /*is_blocking=*/true, TaskFunction([&]() {
+              run_handler_thread_pool.QuiesceWorkSource(&outer_tws);
+            }));
+        run_handler_thread_pool.QuiesceWorkSource(&outer_tws);
+      },
+      "Cannot quiesce ThreadWorkSource \\(traceme_id=42\\)");
 }
 
 TEST_P(RunHandlerThreadPoolTest, FindTask) {
@@ -753,6 +1390,13 @@ TEST_P(RunHandlerThreadPoolTest, MultipleSubThreadPool) {
 
   delete run_handler_thread_pool;
 }
+
+INSTANTIATE_TEST_SUITE_P(BlockingAndNonBlocking, ThreadWorkSourceOverflowTest,
+                         ::testing::Bool(),
+                         [](const ::testing::TestParamInfo<bool>& info) {
+                           return info.param ? "BlockingInterOp"
+                                             : "NonBlockingIntraOp";
+                         });
 
 INSTANTIATE_TEST_SUITE_P(Parameter, RunHandlerThreadPoolTest,
                          testing::Combine(::testing::Bool(),
