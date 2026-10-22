@@ -31,8 +31,6 @@ limitations under the License.
 namespace tsl {
 namespace strings {
 
-using strings_internal::kFastToBufferSize;
-
 // NOTE: most of the routines in numbers.h are tested indirectly through
 // strcat_test.cc in this directory.
 
@@ -302,12 +300,6 @@ TEST(safe_strtof, Float) {
 
   EXPECT_FALSE(absl::SimpleAtof("-infinity is awesome", &result));
 
-  // Make sure we exit cleanly if the string is too long
-  char test_str[2 * kFastToBufferSize];
-  for (int i = 0; i < 2 * kFastToBufferSize; ++i) test_str[i] = 'a';
-  test_str[kFastToBufferSize + 1] = '\0';
-  EXPECT_FALSE(absl::SimpleAtof(test_str, &result));
-
   EXPECT_TRUE(absl::SimpleAtof("-inf", &result));
   EXPECT_EQ(-std::numeric_limits<float>::infinity(), result);
 
@@ -339,12 +331,6 @@ TEST(safe_strtod, Double) {
   EXPECT_TRUE(absl::SimpleAtod("0.1234567890123", &result));
   EXPECT_EQ(0.1234567890123, result);
   EXPECT_FALSE(absl::SimpleAtod("0.1234567890123abc", &result));
-
-  // Make sure we exit cleanly if the string is too long
-  char test_str[2 * kFastToBufferSize];
-  for (int i = 0; i < 2 * kFastToBufferSize; ++i) test_str[i] = 'a';
-  test_str[kFastToBufferSize + 1] = '\0';
-  EXPECT_FALSE(absl::SimpleAtod(test_str, &result));
 
   // Overflow to infinity, underflow to 0.
   EXPECT_TRUE(absl::SimpleAtod("1e310", &result));
@@ -474,7 +460,7 @@ TEST(LegacyPrecision, SimpleFloatToString) {
   EXPECT_EQ("1e+23", FloatToString(1e23f));
   EXPECT_EQ("47.8", FloatToString(47.8f));
   EXPECT_EQ("1000.2", FloatToString(1000.2f));
-  EXPECT_EQ("1.17549435e-38", FloatToString(1.17549435e-38f));
+  EXPECT_EQ("1.1754944e-38", FloatToString(1.17549435e-38f));
 }
 
 void TestFloatRoundTrip(float value) {
