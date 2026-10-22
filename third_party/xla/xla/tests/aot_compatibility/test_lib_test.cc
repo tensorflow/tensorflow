@@ -299,6 +299,49 @@ TEST(TestLibTest, CompareGPUExecutables_IgnoresBufferAssignmentFields) {
   EXPECT_OK(AOTInterceptionPjrtClient::CompareGPUExecutables(fresh, golden));
 }
 
+TEST(TestLibTest, CompareGPUExecutables_IgnoresOnlyCollectiveKernelCubin) {
+  auto golden = ParseTextProtoOrDie<HumanReadableAotExecutable>(R"pb(
+    gpu_executable {
+      thunks {
+        collective_kernel_thunk {
+          kernel_name: "collective_kernel"
+          shmem_bytes: 64
+          cubin: "golden_cubin"
+        }
+      }
+    }
+  )pb");
+  auto fresh_cubin = ParseTextProtoOrDie<HumanReadableAotExecutable>(R"pb(
+    gpu_executable {
+      thunks {
+        collective_kernel_thunk {
+          kernel_name: "collective_kernel"
+          shmem_bytes: 64
+          cubin: "fresh_cubin_that_should_be_ignored"
+        }
+      }
+    }
+  )pb");
+  EXPECT_OK(
+      AOTInterceptionPjrtClient::CompareGPUExecutables(fresh_cubin, golden));
+
+  // Fields next to the cubin that the runtime acts on are still compared.
+  auto fresh_shmem = ParseTextProtoOrDie<HumanReadableAotExecutable>(R"pb(
+    gpu_executable {
+      thunks {
+        collective_kernel_thunk {
+          kernel_name: "collective_kernel"
+          shmem_bytes: 128
+          cubin: "golden_cubin"
+        }
+      }
+    }
+  )pb");
+  EXPECT_THAT(
+      AOTInterceptionPjrtClient::CompareGPUExecutables(fresh_shmem, golden),
+      StatusIs(absl::StatusCode::kInternal, HasSubstr("shmem_bytes")));
+}
+
 // Where in the executable a copy of the debug options lives. Both copies must
 // be compared, except for the fields the comparator ignores.
 enum class DebugOptionsCopy { kModuleConfig, kCompileOptions };

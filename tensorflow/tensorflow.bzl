@@ -62,6 +62,7 @@ load(
     "tf_additional_xla_deps_py",
     "tf_exec_properties",
     "tf_gpu_tests_tags",
+    "tf_override_test_tags_by_target_name",
     _tf_cuda_2gpu_tests_tags = "tf_cuda_2gpu_tests_tags",
     _tf_cuda_base_tests_tags = "tf_cuda_base_tests_tags",
     _tf_cuda_tests_tags = "tf_cuda_tests_tags",
@@ -1616,6 +1617,11 @@ def tf_cc_test(
         linkopts = lrt_if_needed(),
         kernels = [],
         **kwargs):
+    if "tags" in kwargs:
+        kwargs["tags"] = tf_override_test_tags_by_target_name(
+            "%s%s" % (name, suffix),
+            kwargs["tags"],
+        )
     cc_test(
         name = "%s%s" % (name, suffix),
         srcs = srcs + tf_binary_additional_srcs(),
@@ -1802,7 +1808,7 @@ def tf_gpu_only_cc_test(
         linkopts = [],
         features = [],
         extra_copts = []):
-    tags = tags + tf_gpu_tests_tags()
+    tags = tf_override_test_tags_by_target_name("%s%s" % (name, "_gpu"), tags + tf_gpu_tests_tags())
 
     gpu_lib_name = "%s%s" % (name, "_gpu_lib")
     tf_gpu_kernel_library(
@@ -2667,6 +2673,8 @@ def py_test(
         env = {},
         extra_pywrap_deps = [clean_dep("//tensorflow/python:_pywrap_tensorflow")],
         **kwargs):
+    if "tags" in kwargs and "name" in kwargs:
+        kwargs["tags"] = tf_override_test_tags_by_target_name(kwargs["name"], kwargs["tags"])
     if not exec_properties:
         exec_properties = tf_exec_properties(kwargs)
 

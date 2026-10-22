@@ -34,6 +34,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/algorithm/container.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/strings/cord.h"
@@ -720,6 +721,9 @@ absl::Status WindowsFileSystem::GetMatchingPaths(
   for (std::string& result : *results) {
     std::replace(result.begin(), result.end(), '/', '\\');
   }
+  // '\\' sorts after alphanumeric characters while '/' sorts before them, so
+  // the conversion above can reorder the paths. Sort them again.
+  absl::c_sort(*results);
   return absl::OkStatus();
 }
 

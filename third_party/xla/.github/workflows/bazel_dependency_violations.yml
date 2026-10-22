@@ -54,9 +54,33 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: "Run bazel build --nobuild //xla/... with retries"
-        run: parallel --ungroup --retries 3 --delay 15 --nonall -- bazel build --nobuild //xla/...
+      - name: "Check if build or configuration files changed"
+        if: github.event_name == 'pull_request'
+        id: check_changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          # `actions/checkout` defaults to `fetch-depth: 1` (only the PR merge
+          # commit), so the PR's base commit (`$BASE_SHA`) is not present in the
+          # local git object database. Fetch that single commit if missing so we
+          # can diff against it.
+          if ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+            git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          fi
+          CHANGED_BUILD_FILES=$(git diff --name-only "$BASE_SHA" HEAD |
+            grep -E '(^|/)(BUILD(\.bazel)?|WORKSPACE(\.bzlmod)?|MODULE\.bazel(\.lock)?|.*\.bzl|.*\.bazelrc)$' || true)
+          if [ -z "$CHANGED_BUILD_FILES" ]; then
+            echo "No BUILD, .bzl, WORKSPACE, MODULE.bazel, or .bazelrc files changed; skipping dependency violation cquery."
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Modified build/config files:"
+            echo "$CHANGED_BUILD_FILES"
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+          fi
       - name: "Run bazel cquery ... //xla/..."
+        if: github.event_name != 'pull_request' || steps.check_changes.outputs.should_run == 'true'
         run: |
           set -euo pipefail
           TAG_WITH_UNDERSCORES="${{ matrix.tag }}"

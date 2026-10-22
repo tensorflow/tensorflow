@@ -357,6 +357,7 @@ xla_test(
         ":xtile_compiler",
         "//xla:autotuning_proto_cc",
         "//xla:error_spec",
+        "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/backends/gpu/tests:gpu_pjrt_codegen_test",

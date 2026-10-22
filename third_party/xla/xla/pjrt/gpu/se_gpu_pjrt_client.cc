@@ -125,7 +125,6 @@ limitations under the License.
 #include "xla/stream_executor/integrations/tf_allocator_adapter.h"
 #include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_address_allocator.h"
@@ -231,8 +230,9 @@ CreateSEGpuTopology(absl::string_view platform_name,
   }
 
   return std::make_shared<xla::StreamExecutorGpuTopologyDescription>(
-      tsl::Fingerprint64(platform_name), platform_name, std::move(gpu_topology),
-      attrs, target_config);
+      tsl::Fingerprint64(platform_name), platform_name,
+      s ? GetGpuPlatformVersion(s->GetDeviceDescription()) : "<unknown>",
+      std::move(gpu_topology), attrs, target_config);
 }
 
 static se::StreamExecutor* GetFirstExecutor(
@@ -260,23 +260,9 @@ static std::string GpuPlatformVersionFromDevices(
     }
     const se::DeviceDescription& desc =
         local_device_state.value()->executor()->GetDeviceDescription();
-    const se::SemanticVersion v = desc.runtime_version();
-    const se::GpuComputeCapability& cc = desc.gpu_compute_capability();
-    if (cc.rocm_compute_capability() != nullptr) {
-      const int encoded_version = v.major_version() * 10000000 +
-                                  v.minor_version() * 100000 +
-                                  v.patch_version();
-      return absl::StrCat("rocm ", encoded_version);
-    }
-    if (cc.cuda_compute_capability() != nullptr) {
-      const int encoded_version =
-          v.major_version() * 1000 + v.minor_version() * 10 + v.patch_version();
-      return absl::StrCat("cuda ", encoded_version);
-    }
-    if (cc.oneapi_compute_capability() != nullptr) {
-      // TODO(intel-tf): Oneapi multiple platform version support
-      // will be added in future, for now, oneapi 2026.0 is supported
-      return absl::StrCat("oneapi ", v.IsValid() ? v.ToString() : "2026.0");
+    std::string version = GetGpuPlatformVersion(desc);
+    if (version != "<unknown>") {
+      return version;
     }
   }
   return "<unknown>";

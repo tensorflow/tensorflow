@@ -264,6 +264,36 @@ ENTRY entry_computation {
       std::move(module), LiteralUtil::MakePointers(parameters), kExactMatch));
 }
 
+// The offset of `ds` must dominate both concatenate branches.
+TEST_P(EmitDynamicSliceTest, LowerDynamicSliceUsedByAllConcatenateOperands) {
+  int32_t offset = GetParam();
+  constexpr absl::string_view kHloText = R"hlo(
+f {
+  p0 = f32[64] parameter(0)
+  c0 = s32[] parameter(1)
+  ds = f32[16] dynamic-slice(p0, c0), dynamic_slice_sizes={16}
+  ROOT concat = f32[32] concatenate(ds, ds), dimensions={0}
+}
+
+ENTRY entry_computation {
+  p0 = f32[64] parameter(0)
+  p1 = s32[] parameter(1)
+  ROOT fusion = f32[32] fusion(p0, p1), kind=kCustom, calls=f,
+    backend_config={"fusion_backend_config":{"kind":"__triton",
+      "block_level_fusion_config":{
+      "output_tiles":[{"sizes":["16"]}],
+        "num_warps":1,"num_ctas":1,"num_stages":1}}}
+})hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> parameters,
+                       MakeFakeArguments(module.get()));
+  parameters[1].Set<int32_t>({}, offset);
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      std::move(module), LiteralUtil::MakePointers(parameters), kExactMatch));
+}
+
 TEST_P(EmitDynamicSliceTest, LowerDynamicSliceOfWithDimensions) {
   constexpr absl::string_view kHloText = R"(
 HloModule m

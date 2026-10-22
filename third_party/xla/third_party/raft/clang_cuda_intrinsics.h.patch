@@ -15,10 +15,10 @@
 diff --git a/cpp/include/raft/compat/clang_cuda_intrinsics.h b/cpp/include/raft/compat/clang_cuda_intrinsics.h
 --- /dev/null
 +++ b/cpp/include/raft/compat/clang_cuda_intrinsics.h
-@@ -0,0 +1,274 @@
+@@ -0,0 +1,286 @@
 +#pragma once
 +
-+#if defined(__clang__) && defined(__CUDA__) && !defined(__NVCC__) && (__clang_major__ < 21)
++#if defined(__clang__) && defined(__CUDA__) && !defined(__NVCC__) && (__clang_major__ < 23)
 +
 +#if defined(__cplusplus) && (__cplusplus >= 201103L)
 +
@@ -86,6 +86,7 @@ diff --git a/cpp/include/raft/compat/clang_cuda_intrinsics.h b/cpp/include/raft/
 +    }                                                                          \
 +  }
 +
++#pragma push_macro("__INTRINSIC_LOAD_FAMILY")
 +#define __INTRINSIC_LOAD_FAMILY(__Mode, __Volatile, __Clobber)                 \
 +  __INTRINSIC_LOAD(__ld##__Mode, "ld.global." #__Mode ".s8", char,             \
 +                   unsigned int, "=r", __Volatile, __Clobber)                  \
@@ -148,9 +149,15 @@ diff --git a/cpp/include/raft/compat/clang_cuda_intrinsics.h b/cpp/include/raft/
 +  __INTRINSIC_LOAD_ULONG(__Mode)
 +
 +__INTRINSIC_LOAD_FAMILY(ca, __volatile__, /* no clobber */)
++#if __clang_major__ < 21
 +__INTRINSIC_LOAD_FAMILY(cg, __volatile__, /* no clobber */)
 +__INTRINSIC_LOAD_FAMILY(cs, __volatile__, /* no clobber */)
 +__INTRINSIC_LOAD_FAMILY(cv, /* not volatile */, : "memory")
++#else
++__INTRINSIC_LOAD_ULONG(cg)
++__INTRINSIC_LOAD_ULONG(cs)
++__INTRINSIC_LOAD_ULONG(cv)
++#endif
 +__INTRINSIC_LOAD_FAMILY(lu, /* not volatile */, : "memory")
 +
 +#pragma pop_macro("__INTRINSIC_LOAD")
@@ -278,7 +285,12 @@ diff --git a/cpp/include/raft/compat/clang_cuda_intrinsics.h b/cpp/include/raft/
 +__INTRINSIC_STORE_FAMILY(cg)
 +__INTRINSIC_STORE_FAMILY(cs)
 +__INTRINSIC_STORE_FAMILY(wb)
++#if __clang_major__ < 21
 +__INTRINSIC_STORE_FAMILY(wt)
++#else
++__INTRINSIC_STORE_LONG(wt)
++__INTRINSIC_STORE_ULONG(wt)
++#endif
 +
 +#pragma pop_macro("__INTRINSIC_STORE")
 +#pragma pop_macro("__INTRINSIC_STORE2")
@@ -289,7 +301,7 @@ diff --git a/cpp/include/raft/compat/clang_cuda_intrinsics.h b/cpp/include/raft/
 +
 +#endif // defined(__cplusplus) && (__cplusplus >= 201103L)
 +
-+#endif  // clang < 21
++#endif  // clang < 23
 diff --git a/cpp/include/raft/matrix/detail/select_warpsort.cuh b/cpp/include/raft/matrix/detail/select_warpsort.cuh
 --- a/cpp/include/raft/matrix/detail/select_warpsort.cuh
 +++ b/cpp/include/raft/matrix/detail/select_warpsort.cuh
