@@ -691,7 +691,7 @@ struct ScanLoweringContext {
   int64_t localScanSize;
   mlir::ValueRange scanInputs;
   mlir::ValueRange inits;
-  mlir::SmallVector<mlir::StringAttr> manualAxes;
+  mlir::SmallVector<mlir::sdy::AxisRefAttr> manualAxes;
   mlir::SmallVector<mlir::sdy::TensorShardingAttr> inShardings;
   mlir::SmallVector<mlir::sdy::TensorShardingAttr> outShardings;
   mlir::SmallVector<mlir::sdy::TensorShardingAttr> carryShardings;
@@ -708,8 +708,7 @@ struct CrossShardPrefixScanResult {
 
 // Validates preconditions and populates `ScanLoweringContext` for `scan`.
 std::optional<ScanLoweringContext> createScanLoweringContext(
-    mhlo::ScanOp scan, const mlir::SymbolTable& symbolTable,
-    mlir::IRRewriter& rewriter) {
+    mhlo::ScanOp scan, const mlir::SymbolTable& symbolTable) {
   mlir::ValueRange inputs = scan.getInputs();
   mlir::ValueRange inits = scan.getInits();
   mlir::ValueRange outputs = scan.getOutputs();
@@ -740,13 +739,13 @@ std::optional<ScanLoweringContext> createScanLoweringContext(
     return std::nullopt;
   }
 
-  mlir::SmallVector<mlir::StringAttr> manualAxes;
+  mlir::SmallVector<mlir::sdy::AxisRefAttr> manualAxes;
   manualAxes.reserve(scanAxes.size());
   for (mlir::sdy::AxisRefAttr axisRef : scanAxes) {
     if (axisRef.getSubAxisInfo()) {
       return std::nullopt;
     }
-    manualAxes.push_back(rewriter.getStringAttr(axisRef.getName()));
+    manualAxes.push_back(axisRef);
   }
 
   mlir::sdy::MeshAttr mesh = in0Sharding.getMesh(symbolTable);
@@ -982,7 +981,7 @@ struct ScanPartitioningOpInterface
       return mlir::success();
     }
     std::optional<ScanLoweringContext> scanContext =
-        createScanLoweringContext(scan, symbolTable, rewriter);
+        createScanLoweringContext(scan, symbolTable);
     if (!scanContext) {
       // Fall back to default replication behavior if not eligible for lowering.
       return std::nullopt;
