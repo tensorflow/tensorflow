@@ -4043,8 +4043,9 @@ def one_hot(indices,
   `on_value`, `off_value`, or `dtype` are provided, `dtype` will default to the
   value `tf.float32`.
 
-  Note: If a non-numeric data type output is desired (`tf.string`, `tf.bool`,
-  etc.), both `on_value` and `off_value` _must_ be provided to `one_hot`.
+  Note: If a non-numeric data type output other than `tf.bool` is desired
+  (e.g. `tf.string`), both `on_value` and `off_value` _must_ be provided to
+  `one_hot`.
 
   For example:
 
