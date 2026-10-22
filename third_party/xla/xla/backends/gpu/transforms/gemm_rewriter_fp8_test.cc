@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/test_utils.h"
+#include "xla/types.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -522,6 +523,214 @@ TEST_F(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDF8) {
 ; CHECK-DAG:         "epilogue":"DEFAULT"
 ; CHECK:           }
       )");
+}
+
+// The dequantization as rewritten by FloatNormalization for a bf16 multiply on
+// platforms without bf16 arithmetic: computed in f32 with a converted scale and
+// converted back to bf16 before the dot.
+TEST_F(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDNormalizedBF16F8) {
+  const char* hlo_text = R"(
+    HloModule test
+
+    ENTRY test {
+      x = <<F8E4M3>>[16,32] parameter(0)
+      y = <<F8E4M3>>[32,16] parameter(1)
+      x_f32 = f32[16,32] convert(x)
+      y_f32 = f32[32,16] convert(y)
+      x_scale = bf16[] parameter(2)
+      y_scale = bf16[] parameter(3)
+      x_scale_bcast = bf16[16,32] broadcast(x_scale), dimensions={}
+      y_scale_bcast = bf16[32,16] broadcast(y_scale), dimensions={}
+      x_scale_f32 = f32[16,32] convert(x_scale_bcast)
+      y_scale_f32 = f32[32,16] convert(y_scale_bcast)
+      x_unscaled_f32 = f32[16,32] multiply(x_f32, x_scale_f32)
+      y_unscaled_f32 = f32[32,16] multiply(y_f32, y_scale_f32)
+      x_unscaled = bf16[16,32] convert(x_unscaled_f32)
+      y_unscaled = bf16[32,16] convert(y_unscaled_f32)
+      ROOT out = bf16[16,16] dot(x_unscaled, y_unscaled), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+          }
+
+)";
+
+  CheckFp8IfSupported(hlo_text);
+  RunAndFilecheckHloRewrite(
+      hlo_text,
+      GemmRewriter(CudaHopperOrRocmCapability(), GetToolkitVersion(),
+                   GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}),
+      R"(
+; CHECK-LABEL: ENTRY %test
+; CHECK-DAG:     [[P0:%[^ ]+]] = <<F8E4M3>>[16,32]{1,0} parameter(0)
+; CHECK-DAG:     [[P1:%[^ ]+]] = <<F8E4M3>>[32,16]{1,0} parameter(1)
+; CHECK-DAG:     [[P1_TRANSPOSE:%[^ ]+]] = <<F8E4M3>>[16,32]{1,0} transpose([[P1]])
+; CHECK-DAG:     [[P2:%[^ ]+]] = bf16[] parameter(2)
+; CHECK-DAG:     [[P2_CV:%[^ ]+]] = f32[] convert([[P2]])
+; CHECK-DAG:     [[P3:%[^ ]+]] = bf16[] parameter(3)
+; CHECK-DAG:     [[P3_CV:%[^ ]+]] = f32[] convert([[P3]])
+; CHECK:         [[OUT:%[^ ]+]] = (bf16[16,16]{1,0}, s8[{{[0-9]+}}]{0}) custom-call([[P0]], [[P1_TRANSPOSE]], [[P2_CV]], [[P3_CV]]),
+; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
+      )");
+}
+
+// As above, with the scales applied by a division.
+TEST_F(ParameterizedFp8GemmRewriteTest, InvScaledABUnscaledDNormalizedBF16F8) {
+  const char* hlo_text = R"(
+    HloModule test
+
+    ENTRY test {
+      x = <<F8E4M3>>[16,32] parameter(0)
+      y = <<F8E4M3>>[32,16] parameter(1)
+      x_f32 = f32[16,32] convert(x)
+      y_f32 = f32[32,16] convert(y)
+      x_scale = bf16[] parameter(2)
+      y_scale = bf16[] parameter(3)
+      x_scale_bcast = bf16[16,32] broadcast(x_scale), dimensions={}
+      y_scale_bcast = bf16[32,16] broadcast(y_scale), dimensions={}
+      x_scale_f32 = f32[16,32] convert(x_scale_bcast)
+      y_scale_f32 = f32[32,16] convert(y_scale_bcast)
+      x_unscaled_f32 = f32[16,32] divide(x_f32, x_scale_f32)
+      y_unscaled_f32 = f32[32,16] divide(y_f32, y_scale_f32)
+      x_unscaled = bf16[16,32] convert(x_unscaled_f32)
+      y_unscaled = bf16[32,16] convert(y_unscaled_f32)
+      ROOT out = bf16[16,16] dot(x_unscaled, y_unscaled), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+          }
+
+)";
+
+  // The reference rounds every dequantized element x/s to bf16 before the dot,
+  // the FP8 GEMM scales the exact product once. With power-of-two scales both
+  // are exact, so the results can be compared tightly.
+  if (HasFp8Support()) {
+    ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+    ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
+                         MakeFakeArguments(module.get()));
+    args[2] = LiteralUtil::CreateR0<bfloat16>(static_cast<bfloat16>(0.5f));
+    args[3] = LiteralUtil::CreateR0<bfloat16>(static_cast<bfloat16>(4.0f));
+    std::vector<const Literal*> arg_ptrs;
+    arg_ptrs.reserve(args.size());
+    for (const Literal& arg : args) {
+      arg_ptrs.push_back(&arg);
+    }
+    EXPECT_TRUE(
+        RunAndCompare(std::move(module), arg_ptrs, ErrorSpec{1e-2, 1e-2}));
+    MatchOptimizedHlo(hlo_text, R"(
+; CHECK: custom_call_target="__cublas$lt$matmul$f8"
+    )");
+  }
+  RunAndFilecheckHloRewrite(
+      hlo_text,
+      GemmRewriter(CudaHopperOrRocmCapability(), GetToolkitVersion(),
+                   GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}),
+      R"(
+; CHECK-LABEL: ENTRY %test
+; CHECK-DAG:     [[P0:%[^ ]+]] = <<F8E4M3>>[16,32]{1,0} parameter(0)
+; CHECK-DAG:     [[P1:%[^ ]+]] = <<F8E4M3>>[32,16]{1,0} parameter(1)
+; CHECK-DAG:     [[P1_TRANSPOSE:%[^ ]+]] = <<F8E4M3>>[16,32]{1,0} transpose([[P1]])
+; CHECK-DAG:     [[P2:%[^ ]+]] = bf16[] parameter(2)
+; CHECK-DAG:     [[P2_CV:%[^ ]+]] = f32[] convert([[P2]])
+; CHECK-DAG:     [[P2_INV:%[^ ]+]] = f32[] divide({{.*}}, [[P2_CV]])
+; CHECK-DAG:     [[P3:%[^ ]+]] = bf16[] parameter(3)
+; CHECK-DAG:     [[P3_CV:%[^ ]+]] = f32[] convert([[P3]])
+; CHECK-DAG:     [[P3_INV:%[^ ]+]] = f32[] divide({{.*}}, [[P3_CV]])
+; CHECK:         [[OUT:%[^ ]+]] = (bf16[16,16]{1,0}, s8[{{[0-9]+}}]{0}) custom-call([[P0]], [[P1_TRANSPOSE]], [[P2_INV]], [[P3_INV]]),
+; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
+      )");
+}
+
+TEST_F(ParameterizedFp8GemmRewriteTest, UnscaledABUnscaledDNormalizedBF16F8) {
+  const char* hlo_text = R"(
+    HloModule test
+
+    ENTRY test {
+      x = <<F8E4M3>>[16,32] parameter(0)
+      y = <<F8E4M3>>[32,16] parameter(1)
+      x_f32 = f32[16,32] convert(x)
+      y_f32 = f32[32,16] convert(y)
+      x_bf16 = bf16[16,32] convert(x_f32)
+      y_bf16 = bf16[32,16] convert(y_f32)
+      ROOT out = bf16[16,16] dot(x_bf16, y_bf16), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+          }
+
+)";
+
+  CheckFp8IfSupported(hlo_text);
+  RunAndFilecheckHloRewrite(
+      hlo_text,
+      GemmRewriter(CudaHopperOrRocmCapability(), GetToolkitVersion(),
+                   GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}),
+      R"(
+; CHECK-LABEL: ENTRY %test
+; CHECK-DAG:     [[P0:%[^ ]+]] = <<F8E4M3>>[16,32]{1,0} parameter(0)
+; CHECK-DAG:     [[P1:%[^ ]+]] = <<F8E4M3>>[32,16]{1,0} parameter(1)
+; CHECK-DAG:     [[P1_TRANSPOSE:%[^ ]+]] = <<F8E4M3>>[16,32]{1,0} transpose([[P1]])
+; CHECK-DAG:     [[C1:[^ ]+]] = f32[] constant(1)
+; CHECK:         [[OUT:%[^ ]+]] = (bf16[16,16]{1,0}, s8[{{[0-9]+}}]{0}) custom-call([[P0]], [[P1_TRANSPOSE]], [[C1]], [[C1]]),
+; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
+      )");
+}
+
+// A scale is only matched if it is a floating-point value.
+TEST_F(ParameterizedFp8GemmRewriteTest, IntegerScaleNotMatchedF8) {
+  const char* hlo_text = R"(
+    HloModule test
+
+    ENTRY test {
+      x = <<F8E4M3>>[16,32] parameter(0)
+      y = <<F8E4M3>>[32,16] parameter(1)
+      x_f32 = f32[16,32] convert(x)
+      y_f32 = f32[32,16] convert(y)
+      x_scale = s32[] parameter(2)
+      y_scale = s32[] parameter(3)
+      x_scale_bcast = s32[16,32] broadcast(x_scale), dimensions={}
+      y_scale_bcast = s32[32,16] broadcast(y_scale), dimensions={}
+      x_scale_f32 = f32[16,32] convert(x_scale_bcast)
+      y_scale_f32 = f32[32,16] convert(y_scale_bcast)
+      x_unscaled_f32 = f32[16,32] divide(x_f32, x_scale_f32)
+      y_unscaled_f32 = f32[32,16] divide(y_f32, y_scale_f32)
+      x_unscaled = bf16[16,32] convert(x_unscaled_f32)
+      y_unscaled = bf16[32,16] convert(y_unscaled_f32)
+      ROOT out = bf16[16,16] dot(x_unscaled, y_unscaled), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+          }
+
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  GemmRewriter pass(CudaHopperOrRocmCapability(), GetToolkitVersion(),
+                    GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only});
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, module.get()));
+  EXPECT_FALSE(changed) << module->ToString();
+}
+
+// Only a single float-to-float convert after the dequantization is treated as
+// part of it.
+TEST_F(ParameterizedFp8GemmRewriteTest, ScaledABTwoConvertsAfterDequantNotF8) {
+  const char* hlo_text = R"(
+    HloModule test
+
+    ENTRY test {
+      x = <<F8E4M3>>[16,32] parameter(0)
+      y = <<F8E4M3>>[32,16] parameter(1)
+      x_f32 = f32[16,32] convert(x)
+      y_f32 = f32[32,16] convert(y)
+      x_scale = f32[] parameter(2)
+      y_scale = f32[] parameter(3)
+      x_scale_bcast = f32[16,32] broadcast(x_scale), dimensions={}
+      y_scale_bcast = f32[32,16] broadcast(y_scale), dimensions={}
+      x_unscaled = f32[16,32] multiply(x_f32, x_scale_bcast)
+      y_unscaled = f32[32,16] multiply(y_f32, y_scale_bcast)
+      x_bf16 = bf16[16,32] convert(x_unscaled)
+      y_bf16 = bf16[32,16] convert(y_unscaled)
+      x_f16 = f16[16,32] convert(x_bf16)
+      y_f16 = f16[32,16] convert(y_bf16)
+      ROOT out = f16[16,16] dot(x_f16, y_f16), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+          }
+
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  GemmRewriter pass(CudaHopperOrRocmCapability(), GetToolkitVersion(),
+                    GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only});
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, module.get()));
+  EXPECT_FALSE(changed) << module->ToString();
 }
 
 TEST_F(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDPaddedF8) {
