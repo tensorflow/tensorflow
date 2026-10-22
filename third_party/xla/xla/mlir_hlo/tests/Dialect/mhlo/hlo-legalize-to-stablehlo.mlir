@@ -1279,6 +1279,8 @@ func.func @quantized_op_floor(%arg0: tensor<!quant.uniform<i8:f32, 0.00391329082
   func.return %0 : tensor<!quant.uniform<i8:f32, 0.0039132908278820561:-128>>
 }
 
+// FmaOp is not yet supported in MHLO.
+
 // FusionOp aka mhlo.fusion is unsupported at the moment (see negative test below).
 
 // CHECK-LABEL: "op_gather"
