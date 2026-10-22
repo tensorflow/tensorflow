@@ -17,34 +17,19 @@
 set -e
 set -x
 
-N_BUILD_JOBS=$(grep -c ^processor /proc/cpuinfo)
-N_TEST_JOBS=1 # run tests serially
-
-echo ""
-echo "Bazel will use ${N_BUILD_JOBS} concurrent build job(s) and ${N_TEST_JOBS} concurrent test job(s)."
-echo ""
-
-# First positional argument (if any) specifies the ROCM_INSTALL_DIR
-ROCM_INSTALL_DIR=/opt/rocm-5.3.0
-if [[ -n $1 ]]; then
-    ROCM_INSTALL_DIR=$1
-fi
-
-# Run configure.
-export PYTHON_BIN_PATH=`which python3`
-
-export TF_NEED_ROCM=1
-export ROCM_PATH=$ROCM_INSTALL_DIR
-
-yes "" | $PYTHON_BIN_PATH configure.py
+SCRIPT_DIR=$(realpath $(dirname $0))
+# Get base ROCm tag filters
+TAG_FILTERS=$(${SCRIPT_DIR}/rocm_tag_filters.sh)
+# Add TensorFlow-specific filters (no tpu, v1only, benchmark-test for multi-gpu)
+TAG_FILTERS="${TAG_FILTERS},requires-gpu-rocm"
 
 # Run bazel test command. Double test timeouts to avoid flakes.
 bazel test \
-      --config=rocm \
+      --config=rocm_ci_hermetic \
       -k \
-      --test_tag_filters=-no_gpu,-no_rocm \
-      --jobs=${N_BUILD_JOBS} \
-      --local_test_jobs=${N_TEST_JOBS} \
+      --build_tag_filters=${TAG_FILTERS} \
+      --test_tag_filters=${TAG_FILTERS} \
+      --local_test_jobs=1 \
       --test_timeout 600,900,2400,7200 \
       --build_tests_only \
       --test_output=errors \

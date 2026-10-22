@@ -17,44 +17,32 @@
 set -e
 set -x
 
-N_BUILD_JOBS=$(grep -c ^processor /proc/cpuinfo)
-TF_GPU_COUNT=$(lspci|grep 'controller'|grep 'AMD/ATI'|wc -l)
-TF_TESTS_PER_GPU=1
-N_TEST_JOBS=$(expr ${TF_GPU_COUNT} \* ${TF_TESTS_PER_GPU})
-
-echo ""
-echo "Bazel will use ${N_BUILD_JOBS} concurrent build job(s) and ${N_TEST_JOBS} concurrent test job(s)."
-echo ""
-
-# First positional argument (if any) specifies the ROCM_INSTALL_DIR
-ROCM_INSTALL_DIR=/opt/rocm-5.3.0
-if [[ -n $1 ]]; then
-    ROCM_INSTALL_DIR=$1
-fi
-
-# Run configure.
-export PYTHON_BIN_PATH=`which python3`
-
-export TF_NEED_ROCM=1
-export ROCM_PATH=$ROCM_INSTALL_DIR
-
-yes "" | $PYTHON_BIN_PATH configure.py
+SCRIPT_DIR=$(realpath $(dirname $0))
+# Get base ROCm tag filters (all the exclusions)
+TAG_FILTERS=$(${SCRIPT_DIR}/rocm_tag_filters.sh)
+# Add TensorFlow-specific filters
+# Note: requires-gpu-rocm is added as positive filter (tf_gpu_tests_tags() adds this during ROCm builds)
+#       rocm_multi_gpu is excluded as we're running single GPU tests
+TAG_FILTERS="${TAG_FILTERS},requires-gpu-rocm,-rocm_multi_gpu"
 
 # Run bazel test command. Double test timeouts to avoid flakes.
 bazel test \
-      --config=rocm \
+      --config=rocm_ci_hermetic \
       -k \
-      --test_tag_filters=gpu,-no_oss,-oss_excluded,-oss_serial,-no_gpu,-no_rocm,-benchmark-test,-rocm_multi_gpu,-tpu,-v1only \
-      --jobs=${N_BUILD_JOBS} \
-      --local_test_jobs=${N_TEST_JOBS} \
-      --test_env=TF_GPU_COUNT=$TF_GPU_COUNT \
-      --test_env=TF_TESTS_PER_GPU=$TF_TESTS_PER_GPU \
+      --build_tag_filters=${TAG_FILTERS} \
+      --test_tag_filters=${TAG_FILTERS} \
+      --jobs=200 \
+      --local_test_jobs=4 \
+      --repo_env=ROCM_PATH="" \
+      --test_env=TF_GPU_COUNT=${TF_GPU_COUNT} \
+      --test_env=TF_TESTS_PER_GPU=1 \
       --test_timeout 600,900,2400,7200 \
       --build_tests_only \
       --test_output=errors \
       --test_sharding_strategy=disabled \
       --test_size_filters=small,medium,large \
       --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute \
+      "$@" \
       -- \
       //tensorflow/... \
       -//tensorflow/core/tpu/... \

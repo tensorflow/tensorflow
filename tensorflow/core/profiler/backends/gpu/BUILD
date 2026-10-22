@@ -31,6 +31,7 @@ tf_cuda_cc_test(
     srcs = ["device_tracer_test.cc"],
     args = ["--heap_check="],
     tags = tf_cuda_tests_tags() + [
+        "cuda-only",
         "gpu_cupti",
         "nomac",
     ],
