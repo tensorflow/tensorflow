@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/log/check.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -115,9 +116,8 @@ bool FloatSupport::SupportsMixedPrecisions(const HloInstruction& hlo) const {
   return false;
 }
 
-/* static */
 bool FloatSupport::EffectiveOperandPrecisionIsOutputPrecision(
-    const HloInstruction& hlo, int64_t operand_index) {
+    const HloInstruction& hlo, int64_t operand_index) const {
   switch (hlo.opcode()) {
     case HloOpcode::kAbs:
     case HloOpcode::kAllGather:
@@ -127,7 +127,6 @@ bool FloatSupport::EffectiveOperandPrecisionIsOutputPrecision(
     case HloOpcode::kCollectiveBroadcast:
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kConcatenate:
-    case HloOpcode::kConvert:
     case HloOpcode::kCopy:
     case HloOpcode::kDomain:
     case HloOpcode::kGetTupleElement:
@@ -144,6 +143,18 @@ bool FloatSupport::EffectiveOperandPrecisionIsOutputPrecision(
     case HloOpcode::kTuple:
     case HloOpcode::kOptimizationBarrier:
       return true;
+    case HloOpcode::kConvert: {
+      if (operand_index != 0) {
+        return false;
+      }
+      const PrimitiveType in_type = hlo.operand(0)->shape().element_type();
+      const PrimitiveType out_type = hlo.shape().element_type();
+      return in_type == out_type ||
+             (in_type == high_precision_type_ &&
+              out_type == low_precision_type_) ||
+             (in_type == low_precision_type_ &&
+              out_type == high_precision_type_);
+    }
     case HloOpcode::kBitcast:
       return hlo.shape().element_type() ==
              hlo.operand(0)->shape().element_type();
