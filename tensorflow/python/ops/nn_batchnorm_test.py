@@ -355,8 +355,7 @@ class BatchNormalizationTest(test.TestCase):
                              (dtypes.float32, 1e8),
                              (dtypes.float64, 1e300)]:
       with self.cached_session():
-        x = constant_op.constant(
-            np.full([2, 2], magnitude, dtype=dtype.as_numpy_dtype))
+        x = constant_op.constant(magnitude, dtype=dtype, shape=[2, 2])
         mean, variance = nn_impl.moments(x, [0, 1], keep_dims=True)
         offset = constant_op.constant(5.0, dtype=dtype)
         bn = nn_impl.batch_normalization(x, mean, variance, offset, None, 1e-3)
