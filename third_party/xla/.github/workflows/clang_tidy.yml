@@ -57,14 +57,6 @@ jobs:
           # Keep this fetch unshallow so clang-tidy can find the merge base even
           # when the PR branch is more than checkout fetch-depth commits behind.
           git fetch origin "refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
-      - name: Configure Workspace
-      # The actual compute capability does not matter. This allows deviceless run for this pipeline.
-      # The common configs ensure that bazel query and bazel build don't refetch repo mappings.
-        run: |
-          set -euo pipefail
-          ./configure.py --backend=CUDA --cuda_compute_capabilities="9.0"
-          echo "common --config cuda_nvcc" >> xla_configure.bazelrc
-          echo "common --config rbe_linux_cpu" >> xla_configure.bazelrc
       - name: "Run Clang Tidy"
         env:
           TARGET_REF: "origin/${{ github.base_ref || 'main' }}"
@@ -72,4 +64,4 @@ jobs:
           BAZEL_CMD: "bazel"
         run: |
           set -euo pipefail
-          ./build_tools/ci/run_clang_tidy.sh
+          ./build_tools/ci/run_clang_tidy.sh --config rbe_linux_cpu --config cuda_nvcc --config nonccl

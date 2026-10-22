@@ -55,9 +55,16 @@ get_targets_from_diff() {
     QUERY="${BASE_QUERY}"
   fi
   
-  # Populate global TARGETS variable
-  # We use readarray to handle multi-line output from bazel cquery
-  CQUERY_OUT=$($BAZEL_CMD cquery --output=starlark --starlark:expr="target.label" --config="$CONFIG" "$QUERY")
+  # Populate global TARGETS variable.
+  # xla_test expands into multiple per-backend cc_test targets (e.g., _a100,
+  # _h100, _b200, _nvgpu_any, _cpu) that compile the exact same sources. Keep
+  # at most one variant per xla_test so clang-tidy only analyzes each test once.
+  CQUERY_OUT=$($BAZEL_CMD cquery --output=starlark --starlark:expr="target.label" "${CONFIG_ARGS[@]}" "$QUERY" |
+    awk '{
+      key = $0
+      sub(/_(cpu(_fast_compile)?|interpreter|gpu|nvgpu_any|p100|v100|a100|h100|b200|gb200|gb300|vr_nvl72|rtx6000pro|amdgpu_any|intelgpu_any)$/, "__xla_test_variant", key)
+      if (!seen[key]++) print $0
+    }')
   if [ -n "$CQUERY_OUT" ]; then
     readarray -t TARGETS <<< "$CQUERY_OUT"
   fi
@@ -72,7 +79,7 @@ get_targets_from_diff() {
 BUILD_WORKSPACE_DIRECTORY=${BUILD_WORKSPACE_DIRECTORY:-$(pwd)}
 cd "$BUILD_WORKSPACE_DIRECTORY"
 BAZEL_CMD=${BAZEL_CMD:-bazelisk}
-CONFIG="clang-tidy-noerrors"
+CONFIG_ARGS=("--config=clang-tidy-noerrors")
 
 FIX=false
 # Explicitly specify targets to run clang-tidy on.
@@ -84,13 +91,17 @@ while [[ $# -gt 0 ]]; do
       FIX=true
       shift
       ;;
+    --config)
+      CONFIG_ARGS+=("--config=$2")
+      shift 2
+      ;;
     --target)
       TARGETS+=("$2")
       shift 2
       ;;
     *)
       echo "Unknown option: $1"
-      echo "Usage: $0 [--fix] [--target <target> ...]"
+      echo "Usage: $0 [--fix] [--config <config> ...] [--target <target> ...]"
       exit 1
       ;;
   esac
@@ -110,7 +121,7 @@ BEP_FILE=$(mktemp)
 trap 'rm -f "$PATCH_FILE" "$BEP_FILE"' EXIT
 
 
-$BAZEL_CMD build --config="$CONFIG" --build_event_json_file="$BEP_FILE" --keep_going \
+$BAZEL_CMD build "${CONFIG_ARGS[@]}" --build_event_json_file="$BEP_FILE" --keep_going \
   "${TARGETS[@]}"
 EXTRA_ARGS=()
 if [ "$FIX" = true ]; then
@@ -122,7 +133,15 @@ if [ "$USE_DIFF" = true ]; then
   EXTRA_ARGS+=("--patch" "$PATCH_FILE")
 fi
 
-$BAZEL_CMD run //build_tools/ci:clang_tidy_diff -- \
-  --repo-root "$BUILD_WORKSPACE_DIRECTORY" \
-  --bep-file "$BEP_FILE" \
-  "${EXTRA_ARGS[@]}"
+if [ "$FIX" = true ]; then
+  $BAZEL_CMD run "${CONFIG_ARGS[@]}" //build_tools/ci:clang_tidy_diff -- \
+    --repo-root "$BUILD_WORKSPACE_DIRECTORY" \
+    --bep-file "$BEP_FILE" \
+    "${EXTRA_ARGS[@]}"
+else
+  PYTHONPATH="$BUILD_WORKSPACE_DIRECTORY:${PYTHONPATH:-}" \
+    python3 "$BUILD_WORKSPACE_DIRECTORY/build_tools/ci/clang_tidy_diff.py" \
+    --repo-root "$BUILD_WORKSPACE_DIRECTORY" \
+    --bep-file "$BEP_FILE" \
+    "${EXTRA_ARGS[@]}"
+fi

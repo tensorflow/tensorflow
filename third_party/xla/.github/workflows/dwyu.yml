@@ -36,6 +36,7 @@ env:
   GOBIN: "/usr/local/bin"
   PYTHONPATH: "."
   BANT_VERSION: "0.3.6"
+  BANT_SHA256: "ed1a2a559608a53863f28f0c5f164d8005d946de2ada6cf76a983d8ee9e60941"
 
 jobs:
   dwyu:
@@ -52,32 +53,41 @@ jobs:
       - name: "Checking out repository"
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: '0'
+          fetch-depth: '100'
           persist-credentials: false
-      - name: "Install bant"
-        run: |
-          curl -fSL "https://github.com/hzeller/bant/releases/download/v${BANT_VERSION}/bant-v${BANT_VERSION}-linux-static-x86_64.tar.gz" -o /tmp/bant.tar.gz
-          tar xzf /tmp/bant.tar.gz -C /tmp
-          sudo install "/tmp/bant-v${BANT_VERSION}-linux-static-x86_64/bin/bant" /usr/local/bin/bant
       - name: "Test DWYU target selection and repository resolution"
         run: python3 -m unittest build_tools.lint.check_dwyu_test build_tools.lint.run_dwyu_test
-      - name: "Install bazelisk"
-        run: parallel --ungroup --retries 3 --delay 15 --nonall -- go install github.com/bazelbuild/bazelisk@24651ab # v1.20.0
-      - name: "Run bazel build --nobuild //xla/... with retries"
-        run: parallel --ungroup --retries 3 --delay 15 --nonall -- bazelisk build --nobuild //xla/...
       - name: "Find targets owning modified sources and run bant dwyu"
         env:
           BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
           set -euo pipefail
+          # Checkout only fetches the last 100 commits. If the PR's base commit
+          # is older than that (and therefore missing from the local git object
+          # database), fetch it from origin so `check_dwyu.py` can diff against
+          # it.
+          if ! git cat-file -e "${BASE_REF}^{commit}" 2>/dev/null; then
+            git fetch --no-tags origin "$BASE_REF"
+          fi
           TARGETS=$(python3 build_tools/lint/check_dwyu.py --base_ref "$BASE_REF")
           if [ -z "$TARGETS" ]; then
             echo "No targets to check."
             exit 0
           fi
           echo "Checking targets: $TARGETS"
+          curl -fSL "https://github.com/hzeller/bant/releases/download/v${BANT_VERSION}/bant-v${BANT_VERSION}-linux-static-x86_64.tar.gz" -o /tmp/bant.tar.gz
+          echo "${BANT_SHA256}  /tmp/bant.tar.gz" | sha256sum --check
+          tar xzf /tmp/bant.tar.gz -C /tmp
+          sudo install "/tmp/bant-v${BANT_VERSION}-linux-static-x86_64/bin/bant" /usr/local/bin/bant
+          # `bazelisk` is pre-installed on `ubuntu-22.04` runners; if a fallback
+          # install is needed, `go install` verifies module checksums against
+          # `sum.golang.org`.
+          if ! command -v bazelisk >/dev/null 2>&1; then
+            parallel --ungroup --retries 3 --delay 15 --nonall -- go install github.com/bazelbuild/bazelisk@24651ab # v1.20.0
+          fi
           mapfile -t TARGET_ARRAY <<< "$TARGETS"
+          mapfile -t PACKAGE_ARRAY < <(echo "$TARGETS" | sed 's/:.*$/:all/' | sort -u)
+          bazelisk build --nobuild -- "${PACKAGE_ARRAY[@]}"
           # Analysis-only builds do not create the checkout's bazel-out symlink.
           OUTPUT_BASE=$(bazelisk info output_base)
           python3 build_tools/lint/run_dwyu.py \

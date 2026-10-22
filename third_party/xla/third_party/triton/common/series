@@ -38,3 +38,4 @@ cxx17_support.patch
 llvm_cl996124567.patch
 llvm_cl998243985.patch
 llvm_cl1000840178.patch
+llvm_cl1004097735.patch

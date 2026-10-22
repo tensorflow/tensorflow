@@ -2005,6 +2005,54 @@ ENTRY e {
       /*run_hlo_passes=*/false));
 }
 
+TEST_P(CompareTest, LhsWithoutNonContractingDimension) {
+  constexpr absl::string_view kHloText = R"(
+triton_dot {
+  p0 = f32[200] parameter(0)
+  p1 = f32[200,300] parameter(1)
+  ROOT dot = f32[300] dot(p0, p1),
+    lhs_contracting_dims={0}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = f32[200] parameter(0)
+  p1 = f32[200,300] parameter(1)
+  ROOT _ = f32[300] fusion(p0, p1), kind=kCustom, calls=triton_dot,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
+    triton_gemm_config: {"block_m":16,"block_n":64,"block_k":32,
+                         "num_stages":1,"num_warps":4,"num_ctas":1}}}
+})";
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(kHloText));
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(std::move(module_and_metadata.module),
+                               ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+TEST_P(CompareTest, RhsWithoutNonContractingDimension) {
+  constexpr absl::string_view kHloText = R"(
+triton_dot {
+  p0 = f32[300,200] parameter(0)
+  p1 = f32[200] parameter(1)
+  ROOT dot = f32[300] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = f32[300,200] parameter(0)
+  p1 = f32[200] parameter(1)
+  ROOT _ = f32[300] fusion(p0, p1), kind=kCustom, calls=triton_dot,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
+    triton_gemm_config: {"block_m":64,"block_n":16,"block_k":32,
+                         "num_stages":1,"num_warps":4,"num_ctas":1}}}
+})";
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(kHloText));
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(std::move(module_and_metadata.module),
+                               ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
 // TODO(b/353484968, b/393299275): the e2e test path was never really testing
 // anything useful until now---it used to not actually set opt-in shared memory
 // on properly. Additionally, it claimed to be testing Ampere specifically but

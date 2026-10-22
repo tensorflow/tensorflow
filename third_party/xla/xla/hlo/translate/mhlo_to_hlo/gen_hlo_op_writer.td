@@ -82,6 +82,7 @@ defvar CustomHloConverterOps = [
   StableHLO_DynamicIotaOp,
   StableHLO_DynamicPadOp,
   StableHLO_DynamicReshapeOp,
+  StableHLO_FmaOp,
   StableHLO_IfOp,
   StableHLO_InfeedOp,
   StableHLO_IotaOp,
