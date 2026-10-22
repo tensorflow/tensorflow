@@ -4280,6 +4280,7 @@ cc_library(
         "//xla/service:call_graph",
         "//xla/service:decision",
         "//xla/service:hlo_module_config",
+        "//xla/service:matmul_indexing_utils",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu:matmul_utils",

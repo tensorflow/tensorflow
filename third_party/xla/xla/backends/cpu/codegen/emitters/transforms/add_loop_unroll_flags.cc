@@ -68,7 +68,7 @@ class AddLoopUnrollFlagsPass
         /*followupUnrolled=*/nullptr, /*followupRemainder=*/nullptr,
         /*followupAll=*/nullptr);
     auto loop_annotation = mlir::LLVM::LoopAnnotationAttr::get(
-        context,
+        context, /*id=*/nullptr,
         /*disableNonforced=*/nullptr, /*vectorize=*/nullptr,
         /*interleave=*/nullptr, loop_unroll,
         /*unrollAndJam=*/nullptr, /*licm=*/nullptr, /*distribute=*/nullptr,

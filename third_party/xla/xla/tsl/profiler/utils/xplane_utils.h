@@ -319,9 +319,11 @@ Timespan GetDeviceEventTimespan(const XEventVisitor& event);
 // This function performs a zero-copy merge by transferring ownership of planes,
 // lines, and events out of `from` to avoid memory duplication. It dynamically
 // maps and builds new metadata IDs to prevent collisions on duplicate names.
-// After the merge, `from` will be left as an empty shell and safely
-// deallocated. Events of merged lines are kept sorted (see `SortXLine`) as long
-// as the input lines are sorted.
+// Supports both arena-allocated and heap-allocated XSpaces.
+// After the merge, `from` will be left as an empty shell (and deallocated for
+// the `std::unique_ptr<XSpace>` overload). Events of merged lines are kept
+// sorted (see `SortXLine`) as long as the input lines are sorted.
+void MergeXSpace(XSpace* from, XSpace* to);
 void MergeXSpace(std::unique_ptr<XSpace> from, XSpace* to);
 
 }  // namespace profiler

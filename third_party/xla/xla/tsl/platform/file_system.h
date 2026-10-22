@@ -137,6 +137,9 @@ class FileSystem {
   /// \brief Given a pattern, stores in *results the set of paths that matches
   /// that pattern. *results is cleared.
   ///
+  /// Implementations should return the paths sorted in ascending lexicographic
+  /// order. Env::GetMatchingPaths sorts them regardless of the implementation.
+  ///
   /// pattern must match all of a name, not just a substring.
   ///
   /// pattern: { term }

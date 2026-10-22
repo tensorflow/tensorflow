@@ -360,6 +360,14 @@ absl::Status InferenceContext::InitFromGpuModel(
       tuning_type = TuningType::kFast;
     }
   }
+  if (env->device().GetInfo().IsPowerVR()) {
+    const PowerVRInfo& info = env->device().GetInfo().powervr_info;
+    if (info.IsImgCxx() || info.IsImgDxx()) {
+      // PowerVR has weird behavior and long init time with kExhaustive tuning.
+      // b/397798684
+      tuning_type = TuningType::kFast;
+    }
+  }
   RETURN_IF_ERROR(
       Tune(tuning_type, env->device().GetInfo(), env->profiling_queue()));
   if (external_mutable_tensors_.empty()) {

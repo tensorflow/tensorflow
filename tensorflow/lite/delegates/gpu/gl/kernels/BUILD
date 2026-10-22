@@ -54,7 +54,7 @@ cc_test(
     tags = [
         "gpu",
         "notsan",
-        "requires-gpu-sm70",
+        "requires-gpu-sm80",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -93,7 +93,7 @@ cc_test(
     tags = [
         "gpu",
         "notsan",
-        "requires-gpu-sm70",
+        "requires-gpu-sm80",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -124,7 +124,7 @@ cc_test(
     tags = [
         "gpu",
         "notsan",
-        "requires-gpu-sm70",
+        "requires-gpu-sm80",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -160,7 +160,7 @@ cc_test(
     tags = [
         "gpu",
         "notsan",
-        "requires-gpu-sm70",
+        "requires-gpu-sm80",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -205,7 +205,7 @@ cc_test(
     tags = [
         "gpu",
         "notsan",
-        "requires-gpu-sm70",
+        "requires-gpu-sm80",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -241,7 +241,7 @@ cc_test(
     tags = [
         "gpu",
         "notsan",
-        "requires-gpu-sm70",
+        "requires-gpu-sm80",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -276,7 +276,7 @@ cc_test(
     tags = [
         "gpu",
         "notsan",
-        "requires-gpu-sm70",
+        "requires-gpu-sm80",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -306,7 +306,7 @@ cc_test(
     tags = [
         "gpu",
         "notsan",
-        "requires-gpu-sm70",
+        "requires-gpu-sm80",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -337,7 +337,7 @@ cc_test(
     tags = [
         "gpu",
         "notsan",
-        "requires-gpu-sm70",
+        "requires-gpu-sm80",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -369,7 +369,7 @@ cc_test(
     tags = [
         "gpu",
         "notsan",
-        "requires-gpu-sm70",
+        "requires-gpu-sm80",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -405,7 +405,7 @@ cc_test(
     tags = [
         "gpu",
         "notsan",
-        "requires-gpu-sm70",
+        "requires-gpu-sm80",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -436,7 +436,7 @@ cc_test(
     tags = [
         "gpu",
         "notsan",
-        "requires-gpu-sm70",
+        "requires-gpu-sm80",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -467,7 +467,7 @@ cc_test(
     tags = [
         "gpu",
         "notsan",
-        "requires-gpu-sm70",
+        "requires-gpu-sm80",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -500,7 +500,7 @@ cc_test(
     tags = [
         "gpu",
         "notsan",
-        "requires-gpu-sm70",
+        "requires-gpu-sm80",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -532,7 +532,7 @@ cc_test(
     tags = [
         "gpu",
         "notsan",
-        "requires-gpu-sm70",
+        "requires-gpu-sm80",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -564,7 +564,7 @@ cc_test(
     tags = [
         "gpu",
         "notsan",
-        "requires-gpu-sm70",
+        "requires-gpu-sm80",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -594,7 +594,7 @@ cc_test(
     tags = [
         "gpu",
         "notsan",
-        "requires-gpu-sm70",
+        "requires-gpu-sm80",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -625,7 +625,7 @@ cc_test(
     tags = [
         "gpu",
         "notsan",
-        "requires-gpu-sm70",
+        "requires-gpu-sm80",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -655,7 +655,7 @@ cc_test(
     tags = [
         "gpu",
         "notsan",
-        "requires-gpu-sm70",
+        "requires-gpu-sm80",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -686,7 +686,7 @@ cc_test(
     tags = [
         "gpu",
         "notsan",
-        "requires-gpu-sm70",
+        "requires-gpu-sm80",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -719,7 +719,7 @@ cc_test(
     tags = [
         "gpu",
         "notsan",
-        "requires-gpu-sm70",
+        "requires-gpu-sm80",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -750,7 +750,7 @@ cc_test(
     tags = [
         "gpu",
         "notsan",
-        "requires-gpu-sm70",
+        "requires-gpu-sm80",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -821,7 +821,7 @@ cc_test(
     tags = [
         "gpu",
         "notsan",
-        "requires-gpu-sm70",
+        "requires-gpu-sm80",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -855,7 +855,7 @@ cc_test(
     tags = [
         "gpu",
         "notsan",
-        "requires-gpu-sm70",
+        "requires-gpu-sm80",
         "tflite_not_portable_ios",
     ],
     deps = [

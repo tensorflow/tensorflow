@@ -385,7 +385,10 @@ tf_cuda_cc_test(
         "gpu_device_test.cc",
     ],
     features = ["-layering_check"],
-    tags = ["multi_and_single_gpu"],
+    tags = [
+        "multi_and_single_gpu",
+        "no_cuda_on_cpu_tap",
+    ],
     deps = [
         ":gpu_id",
         ":gpu_runtime",

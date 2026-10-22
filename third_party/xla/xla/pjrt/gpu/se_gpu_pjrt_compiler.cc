@@ -264,7 +264,7 @@ StreamExecutorGpuCompiler::Compile(
     LOG_EVERY_N(INFO, 60) << "Early exit after layout assignment is enabled. "
                              "Note that this is always "
                              "a deviceless compilation.";
-  } else if (client != nullptr) {
+  } else if (se_client != nullptr) {
     ABSL_ASSIGN_OR_RETURN(stream_executor::StreamExecutor * stream_executor,
                      GetStreamExecutor(client));
     gpu::GpuTargetConfig local_gpu_target_config(stream_executor);
@@ -324,7 +324,7 @@ StreamExecutorGpuCompiler::Compile(
   aot_options.set_gpu_topology(xla_gpu_topology);
   aot_options.set_run_backend_only(
       options.executable_build_options.run_backend_only());
-  if (client != nullptr) {
+  if (se_client != nullptr) {
     ABSL_ASSIGN_OR_RETURN(stream_executor::StreamExecutor * stream_executor,
                      GetStreamExecutor(client));
     aot_options.set_executor(stream_executor);
@@ -407,7 +407,7 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
     return executable;
   }
 
-  if (topology_with_target_config.ok() && client != nullptr) {
+  if (topology_with_target_config.ok() && se_client != nullptr) {
     ABSL_ASSIGN_OR_RETURN(stream_executor::StreamExecutor * stream_executor,
                      GetStreamExecutor(client));
     gpu::GpuTargetConfig local_gpu_target_config(stream_executor);

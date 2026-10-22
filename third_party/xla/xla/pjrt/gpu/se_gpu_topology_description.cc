@@ -152,7 +152,7 @@ StreamExecutorGpuTopologyDescription::CreateDeviceDescription(
           : (process_index / num_processes_per_partition);
   auto description = std::make_unique<PjRtStreamExecutorDeviceDescription>(
       device_id, local_device_id, process_index, process_index_in_partition,
-      partition_index, std::string(platform_version()));
+      partition_index, std::string(gpu_topology_->platform_version()));
   if (target_config_.has_value()) {
     std::string compute_capability = "<unknown compute-capability>";
     std::string gpu_vendor = "<unknown gpu vendor>";
@@ -428,8 +428,8 @@ StreamExecutorGpuTopologyDescription::FromProto(
                        target_config->gpu_device_info().device_memory_size()});
   }
   return std::make_unique<StreamExecutorGpuTopologyDescription>(
-      proto.platform_id(), proto.platform_name(), std::move(gpu_topology),
-      attributes, std::move(target_config));
+      proto.platform_id(), proto.platform_name(), proto.platform_version(),
+      std::move(gpu_topology), attributes, std::move(target_config));
 }
 
 absl::StatusOr<int>

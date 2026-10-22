@@ -800,11 +800,10 @@ CopyArgumentsToDevice(PjRtClient& client,
     return device_buffers;
   };
 
-  absl::Span<const PjRtLoadedExecutable::LogicalDeviceIds>
-      addressable_device_logical_ids =
-          executable->addressable_device_logical_ids();
   ABSL_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<HloModule>> hlo_modules,
                    executable->GetHloModules());
+  CHECK_EQ(hlo_modules.size(), 1);
+  HloModule* module = hlo_modules.front().get();
 
   absl::Status status = [&]() -> absl::Status {
     for (int i = 0; i < num_addressable_devices; ++i) {
@@ -823,11 +822,6 @@ CopyArgumentsToDevice(PjRtClient& client,
       }
 
       const std::vector<Literal>& curr_device_arguments = it->second;
-
-      int executable_idx = hlo_modules.size() == 1
-                               ? 0
-                               : addressable_device_logical_ids[i].partition;
-      HloModule* module = hlo_modules[executable_idx].get();
 
       argument_buffers[i].reserve(curr_device_arguments.size());
       for (int arg_i = 0; arg_i < curr_device_arguments.size(); ++arg_i) {
@@ -867,26 +861,18 @@ CreateUninitializedArgumentsOnDevice(PjRtClient& client,
                                      bool flatten_arguments = false) {
   absl::Span<PjRtDevice* const> addressable_devices =
       executable->addressable_devices();
-  absl::Span<const PjRtLoadedExecutable::LogicalDeviceIds>
-      addressable_device_logical_ids =
-          executable->addressable_device_logical_ids();
   ABSL_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<HloModule>> hlo_modules,
                    executable->GetHloModules());
   VLOG(1) << "FunctionalHloRunner: local_executable count = "
           << hlo_modules.size();
+  CHECK_EQ(hlo_modules.size(), 1);
+  const HloModule& hlo_module = *hlo_modules.front();
 
   LOG(INFO) << "Starting argument buffer shape calculation.";
   PerDeviceShapeVecType argument_shapes_per_device;
-  // This must be true, based on the comment on
-  // PjRtLoadedExecutable::addressable_devices().
-  CHECK_EQ(addressable_devices.size(), addressable_device_logical_ids.size());
   for (int i = 0; i < static_cast<int>(addressable_devices.size()); ++i) {
     VLOG(3) << "Calculating fake argument shapes for device " << i;
     PjRtDevice* device = addressable_devices[i];
-    int executable_idx = hlo_modules.size() == 1
-                             ? 0
-                             : addressable_device_logical_ids[i].partition;
-    const HloModule& hlo_module = *hlo_modules[executable_idx];
 
     std::vector<Shape> argument_shapes;
     if (flatten_arguments) {
@@ -972,13 +958,12 @@ CreateArgumentsOnDevice(PjRtClient& client,
   size_t num_addressable_devices = addressable_devices.size();
 
   PerDeviceLiteralVecType per_device_argument_literals;
-  absl::Span<const PjRtLoadedExecutable::LogicalDeviceIds>
-      addressable_device_logical_ids =
-          executable->addressable_device_logical_ids();
   ABSL_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<HloModule>> hlo_modules,
                    executable->GetHloModules());
   VLOG(1) << "FunctionalHloRunner: local_executable count = "
           << hlo_modules.size();
+  CHECK_EQ(hlo_modules.size(), 1);
+  HloModule* my_hlo_module = hlo_modules.front().get();
 
   const bool kUseRandomInputs = running_options.module_argument_mode ==
                                     ModuleArgumentMode::kUseRandomInputs ||
@@ -1005,10 +990,6 @@ CreateArgumentsOnDevice(PjRtClient& client,
     VLOG(3) << "Creating fake arguments for device " << i;
     LiteralVec& argument_literals =
         per_device_argument_literals[addressable_devices[i]->id()];
-    int executable_idx = hlo_modules.size() == 1
-                             ? 0
-                             : addressable_device_logical_ids[i].partition;
-    HloModule* my_hlo_module = hlo_modules[executable_idx].get();
     if (flatten_arguments) {
       ABSL_RETURN_IF_ERROR(EnsureSingleTupleForFlattening(*my_hlo_module));
     }
