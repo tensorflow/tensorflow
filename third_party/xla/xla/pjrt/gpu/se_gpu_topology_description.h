@@ -40,6 +40,7 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
  public:
   StreamExecutorGpuTopologyDescription(
       const PjRtPlatformId platform_id, const absl::string_view platform_name,
+      const absl::string_view platform_version,
       std::shared_ptr<const GpuTopology> gpu_topology,
       const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& attributes =
           {},
@@ -47,11 +48,30 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
           std::nullopt)
       : platform_id_(platform_id),
         platform_name_(platform_name),
+        platform_version_(platform_version),
         gpu_topology_(std::move(gpu_topology)),
         attributes_(attributes),
         target_config_(std::move(target_config)) {
     CHECK(gpu_topology_ != nullptr);
   }
+
+  // Legacy overload that derives `platform_version` from `gpu_topology`.
+  // Prefer the constructor above, which decouples the software version
+  // (e.g. "cuda 12030") from the GPU model stored in `GpuTopology`.
+  // TODO(b/576193442): Remove once all callers pass `platform_version`.
+  StreamExecutorGpuTopologyDescription(
+      const PjRtPlatformId platform_id, const absl::string_view platform_name,
+      std::shared_ptr<const GpuTopology> gpu_topology,
+      const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& attributes =
+          {},
+      std::optional<stream_executor::GpuTargetConfigProto> target_config =
+          std::nullopt)
+      // `gpu_topology` is intentionally copied (not moved) into the delegated
+      // call, as argument evaluation order is unspecified.
+      : StreamExecutorGpuTopologyDescription(
+            platform_id, platform_name,
+            gpu_topology != nullptr ? gpu_topology->platform_version() : "",
+            gpu_topology, attributes, std::move(target_config)) {}
 
   bool operator==(const StreamExecutorGpuTopologyDescription& other) const {
     return this->platform_id() == other.platform_id() &&
@@ -65,7 +85,7 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
   absl::string_view platform_name() const override { return platform_name_; }
 
   absl::string_view platform_version() const override {
-    return gpu_topology_->platform_version();
+    return platform_version_;
   }
 
   static void SetupDeviceDescription(
@@ -165,6 +185,8 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
 
   const PjRtPlatformId platform_id_;
   const std::string platform_name_;
+  // Software version, distinct from the GPU model in GpuTopology.
+  const std::string platform_version_;
   std::shared_ptr<const GpuTopology> gpu_topology_;
   absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute> attributes_;
   std::optional<stream_executor::GpuTargetConfigProto> target_config_;
