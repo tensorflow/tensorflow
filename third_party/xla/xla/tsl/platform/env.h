@@ -200,7 +200,8 @@ class Env {
   virtual bool MatchPath(absl::string_view path, absl::string_view pattern) = 0;
 
   /// \brief Given a pattern, stores in *results the set of paths that matches
-  /// that pattern. *results is cleared.
+  /// that pattern, sorted in ascending lexicographic order. *results is
+  /// cleared.
   ///
   /// More details about `pattern` in FileSystem::GetMatchingPaths.
   virtual absl::Status GetMatchingPaths(const std::string& pattern,
