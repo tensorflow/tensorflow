@@ -704,6 +704,7 @@ cc_library(
     srcs = ["dot_dimension_normalizer.cc"],
     hdrs = ["dot_dimension_normalizer.h"],
     deps = [
+        "//xla:permutation_util",
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",

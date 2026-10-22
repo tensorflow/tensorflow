@@ -95,6 +95,50 @@ ENTRY e {
   )");
 }
 
+TEST_F(DotDimensionNormalizerTest, DescendingContractingDimsAreSortedByLhs) {
+  const std::string kHloText = R"(
+HloModule m
+
+ENTRY e {
+ p0 = bf16[12,2,4] parameter(0)
+ p1 = bf16[2,4,44] parameter(1)
+ ROOT d = bf16[12,44] dot(p0, p1),
+  lhs_batch_dims={}, lhs_contracting_dims={2,1},
+  rhs_batch_dims={}, rhs_contracting_dims={1,0}
+})";
+
+  RunAndFilecheckHloRewrite(kHloText, DotDimensionNormalizer(), R"(
+; CHECK-NOT: transpose
+; CHECK: %[[R0:.*]] = bf16[12,8]{1,0} reshape(%p0)
+; CHECK: %[[R1:.*]] = bf16[8,44]{1,0} reshape(%p1)
+; CHECK: ROOT {{[^ ]+}} = bf16[12,44]{1,0} dot(%[[R0]], %[[R1]])
+; CHECK-SAME: lhs_contracting_dims={1}
+; CHECK-SAME: rhs_contracting_dims={0}
+  )");
+}
+
+TEST_F(DotDimensionNormalizerTest, ContractingDimsAreSortedByRhsIfLhsIsSplit) {
+  const std::string kHloText = R"(
+HloModule m
+
+ENTRY e {
+ p0 = bf16[2,12,4] parameter(0)
+ p1 = bf16[4,2,44] parameter(1)
+ ROOT d = bf16[12,44] dot(p0, p1),
+  lhs_batch_dims={}, lhs_contracting_dims={0,2},
+  rhs_batch_dims={}, rhs_contracting_dims={1,0}
+})";
+
+  RunAndFilecheckHloRewrite(kHloText, DotDimensionNormalizer(), R"(
+; CHECK: %[[T0:.*]] = bf16[12,4,2]{{.*}} transpose(%p0), dimensions={1,2,0}
+; CHECK: %[[R0:.*]] = bf16[12,8]{{.*}} reshape(%[[T0]])
+; CHECK: %[[R1:.*]] = bf16[8,44]{1,0} reshape(%p1)
+; CHECK: ROOT {{[^ ]+}} = bf16[12,44]{1,0} dot(%[[R0]], %[[R1]])
+; CHECK-SAME: lhs_contracting_dims={1}
+; CHECK-SAME: rhs_contracting_dims={0}
+  )");
+}
+
 TEST_F(DotDimensionNormalizerTest, NoChangeWhenOneContractingDim) {
   const std::string kHloText = R"(
 HloModule m

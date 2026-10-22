@@ -964,6 +964,11 @@ class HloComputation {
     }
   };
 
+  // Returns true if any instruction in this computation calls another
+  // computation. Includes instructions that have not been removed from the
+  // computation, even if they are unreachable from the root.
+  bool HasCalledComputations() const { return !callee_computations_.empty(); }
+
   // Count of times this computation calls other computations.
   absl::btree_map<HloComputation*, int, UniqueIdComparator>
   callee_computations() const {
