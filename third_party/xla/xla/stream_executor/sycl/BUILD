@@ -102,6 +102,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = if_sycl_is_configured([
         ":cub_sort_kernel_sycl",
+        ":make_batch_pointers_kernel_sycl",
         ":sycl_platform",
         ":sycl_blas_lt_plugin",
         ":sycl_dnn",
@@ -315,6 +316,7 @@ sycl_library(
         "//xla/stream_executor/gpu:gpu_executor_header",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
@@ -556,6 +558,26 @@ xla_test(
         "//xla/tsl/platform:logging",
         "@com_google_googletest//:gtest_main",
     ],
+)
+
+sycl_library(
+    name = "make_batch_pointers_kernel_sycl",
+    srcs = ["make_batch_pointers_kernel_sycl.cc"],
+    tags = [
+        "gpu",
+        "oneapi-only",
+    ],
+    deps = [
+        ":sycl_platform_id",
+        "//xla/stream_executor:kernel_spec",
+        "//xla/stream_executor/gpu:gpu_kernel_registry",
+        "//xla/stream_executor/gpu:make_batch_pointers_kernel",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+    alwayslink = 1,
 )
 
 sycl_library(
