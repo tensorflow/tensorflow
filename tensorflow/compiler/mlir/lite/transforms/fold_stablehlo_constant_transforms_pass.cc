@@ -244,6 +244,108 @@ struct FoldStablehloTransposeOpPattern
   }
 };
 
+// Copies the elements selected by a static, strided slice from `raw_input`
+// (laid out row-major with `input_shape`) into `raw_output`.
+static void ComputeSlice(llvm::ArrayRef<int64_t> input_strides,
+                         llvm::ArrayRef<int64_t> start_indices,
+                         llvm::ArrayRef<int64_t> slice_strides,
+                         llvm::ArrayRef<int64_t> output_shape,
+                         const char* raw_input, const int element_byte_size,
+                         const int64_t current_axis, int64_t input_offset,
+                         char*& output_element_addr) {
+  const bool is_last_axis = current_axis == output_shape.size() - 1;
+  const int64_t start = start_indices[current_axis];
+  const int64_t step = slice_strides[current_axis];
+  const int64_t axis_stride = input_strides[current_axis];
+  for (int64_t i = 0; i < output_shape[current_axis]; ++i) {
+    const int64_t offset = input_offset + (start + i * step) * axis_stride;
+    if (is_last_axis) {
+      std::memcpy(output_element_addr, raw_input + offset * element_byte_size,
+                  element_byte_size);
+      output_element_addr += element_byte_size;
+    } else {
+      ComputeSlice(input_strides, start_indices, slice_strides, output_shape,
+                   raw_input, element_byte_size, current_axis + 1, offset,
+                   output_element_addr);
+    }
+  }
+}
+
+// Pattern to fold stablehlo.slice on constant inputs. This is needed for
+// DenseResourceElementsAttr inputs, which the upstream StableHLO folders skip.
+struct FoldStablehloSliceOpPattern
+    : public OpRewritePattern<stablehlo::SliceOp> {
+  using OpRewritePattern<stablehlo::SliceOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(stablehlo::SliceOp op,
+                                PatternRewriter& rewriter) const override {
+    ElementsAttr input_attr = GetElementsAttrFromValue(op.getOperand());
+    if (!input_attr) return failure();
+
+    auto input_type = mlir::cast<mlir::ShapedType>(input_attr.getType());
+    auto result_type = mlir::cast<mlir::ShapedType>(op.getType());
+    if (!result_type.hasStaticShape() || !input_type.hasStaticShape()) {
+      return failure();
+    }
+    if (input_type.getRank() == 0) return failure();
+
+    const mlir::Type element_type = input_type.getElementType();
+    if (!element_type.isIntOrIndexOrFloat()) return failure();
+    const int64_t bit_width = element_type.getIntOrFloatBitWidth();
+    // Sub-byte element types are stored packed, which this pattern does not
+    // handle.
+    if (bit_width % 8 != 0) return failure();
+    const int element_byte_size = bit_width / 8;
+
+    // DenseElementsAttr inputs are handled by the upstream folders.
+    auto dense_resource = mlir::dyn_cast<DenseResourceElementsAttr>(input_attr);
+    if (!dense_resource) return failure();
+    AsmResourceBlob* blob = dense_resource.getRawHandle().getBlob();
+    if (!blob && dense_resource.getRawHandle().getResource()) {
+      blob = dense_resource.getRawHandle().getResource()->getBlob();
+    }
+    if (!blob) return failure();
+    if (static_cast<int64_t>(blob->getData().size()) !=
+        input_type.getNumElements() * element_byte_size) {
+      return failure();
+    }
+    const char* raw_input = blob->getData().data();
+    if (!raw_input) return failure();
+
+    const int64_t rank = input_type.getRank();
+    llvm::ArrayRef<int64_t> start_indices = op.getStartIndices();
+    llvm::ArrayRef<int64_t> slice_strides = op.getStrides();
+    if (static_cast<int64_t>(start_indices.size()) != rank ||
+        static_cast<int64_t>(slice_strides.size()) != rank ||
+        result_type.getRank() != rank) {
+      return failure();
+    }
+
+    llvm::SmallVector<int64_t> input_strides(rank, 1);
+    for (int64_t i = rank - 2; i >= 0; --i) {
+      input_strides[i] = input_strides[i + 1] * input_type.getDimSize(i + 1);
+    }
+
+    const size_t total_bytes = result_type.getNumElements() * element_byte_size;
+    auto raw_output_blob = mlir::HeapAsmResourceBlob::allocate(
+        total_bytes, /*align=*/64, /*dataIsMutable=*/true);
+    if (total_bytes > 0) {
+      char* raw_output = raw_output_blob.getMutableData().data();
+      ComputeSlice(input_strides, start_indices, slice_strides,
+                   result_type.getShape(), raw_input, element_byte_size,
+                   /*current_axis=*/0, /*input_offset=*/0, raw_output);
+    }
+
+    static std::atomic<int64_t> slice_counter{0};
+    std::string new_key =
+        llvm::formatv("stablehlo_slice_fold_result_{0}", slice_counter++);
+    auto new_attr = DenseResourceElementsAttr::get(result_type, new_key,
+                                                   std::move(raw_output_blob));
+    rewriter.replaceOpWithNewOp<stablehlo::ConstantOp>(op, new_attr);
+    return success();
+  }
+};
+
 struct FoldStablehloConstantTransformsPass
     : public impl::FoldStablehloConstantTransformsPassBase<
           FoldStablehloConstantTransformsPass> {
@@ -256,9 +358,8 @@ struct FoldStablehloConstantTransformsPass
     MLIRContext* context = func.getContext();
 
     RewritePatternSet patterns(context);
-    patterns
-        .add<FoldStablehloTransposeOpPattern, FoldStablehloReshapeOpPattern>(
-            context);
+    patterns.add<FoldStablehloTransposeOpPattern, FoldStablehloReshapeOpPattern,
+                 FoldStablehloSliceOpPattern>(context);
 
     if (failed(applyPatternsGreedily(func, std::move(patterns)))) {
       signalPassFailure();

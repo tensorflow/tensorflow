@@ -290,5 +290,34 @@ ENTRY entry {
 )"));
 }
 
+TEST_F(ConvertTritonGemmConfigTest, VectorMatrixDot) {
+  absl::string_view hlo = R"(
+dot {
+  lhs = f32[512] parameter(0)
+  rhs = f32[512,8192] parameter(1)
+  ROOT dot = f32[8192] dot(lhs, rhs),
+    lhs_contracting_dims={0}, rhs_contracting_dims={0}
+}
+
+ENTRY entry {
+  p0 = f32[512] parameter(0)
+  p1 = f32[512,8192] parameter(1)
+  ROOT fusion = f32[8192] fusion(p0, p1),
+    kind=kCustom, calls=dot, backend_config={
+      "fusion_backend_config": {
+        "kind":"__triton_gemm", "triton_gemm_config": {
+          "block_m":"16", "block_n":"256", "block_k":"32",
+          "num_stages":"5", "num_warps":"4", "num_ctas":"1"
+        }
+      }
+    }
+})";
+
+  std::unique_ptr<VerifiedHloModule> module = RunConvertTritonGemmConfig(hlo);
+  EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
+    CHECK: "output_tiles":[{"sizes":["256"]}]
+)"));
+}
+
 }  // namespace
 }  // namespace xla::gpu

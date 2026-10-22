@@ -377,7 +377,7 @@ class TPUPartitionedCallOp : public AsyncOpKernel {
   // List of TPU devices
   std::vector<Device*> tpu_devices_;
 
-  TpuPartitionedCall_Params runtime_params_;
+  TpuPartitionedCall_Params runtime_params_{};
 };
 
 }  // namespace tensorflow

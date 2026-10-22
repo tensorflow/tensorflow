@@ -3665,8 +3665,19 @@ func.func @replaceOneHotFullyConnectedWithLookup(%arg: tensor<2xi32>) -> tensor<
 
   func.return %result : tensor<2x5xf32>
 
-  // CHECK: %[[CST:.*]] = arith.constant dense<{{\[\[}}7.000000e+00, 1.700000e+01, 2.900000e+01, 4.100000e+01, 5.300000e+01], [1.100000e+01, 1.900000e+01, 3.100000e+01, 4.300000e+01, 5.900000e+01], [1.300000e+01, 2.300000e+01, 3.700000e+01, 4.700000e+01, 6.100000e+01]]> : tensor<3x5xf32>
-  // CHECK: %[[RES:.*]] = "tfl.embedding_lookup"(%arg0, %[[CST]]) : (tensor<2xi32>, tensor<3x5xf32>) -> tensor<2x5xf32>
+  // Out-of-range indices produce all-zero OneHot rows, so the lookup clamps the
+  // indices and zeroes the rows whose index was out of range.
+  // CHECK-DAG: %[[ZERO:.*]] = arith.constant dense<0.000000e+00> : tensor<f32>
+  // CHECK-DAG: %[[MASK_SHAPE:.*]] = arith.constant dense<[2, 1]> : tensor<2xi32>
+  // CHECK-DAG: %[[CST:.*]] = arith.constant dense<{{\[\[}}7.000000e+00, 1.700000e+01, 2.900000e+01, 4.100000e+01, 5.300000e+01], [1.100000e+01, 1.900000e+01, 3.100000e+01, 4.300000e+01, 5.900000e+01], [1.300000e+01, 2.300000e+01, 3.700000e+01, 4.700000e+01, 6.100000e+01]]> : tensor<3x5xf32>
+  // CHECK-DAG: %[[MIN_INDEX:.*]] = arith.constant dense<0> : tensor<i32>
+  // CHECK-DAG: %[[MAX_INDEX:.*]] = arith.constant dense<2> : tensor<i32>
+  // CHECK: %[[MAX:.*]] = "tfl.maximum"(%arg0, %[[MIN_INDEX]]) : (tensor<2xi32>, tensor<i32>) -> tensor<2xi32>
+  // CHECK: %[[CLAMPED:.*]] = "tfl.minimum"(%[[MAX]], %[[MAX_INDEX]]) : (tensor<2xi32>, tensor<i32>) -> tensor<2xi32>
+  // CHECK: %[[IN_RANGE:.*]] = "tfl.equal"(%[[CLAMPED]], %arg0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
+  // CHECK: %[[LOOKUP:.*]] = "tfl.embedding_lookup"(%[[CLAMPED]], %[[CST]]) : (tensor<2xi32>, tensor<3x5xf32>) -> tensor<2x5xf32>
+  // CHECK: %[[MASK:.*]] = "tfl.reshape"(%[[IN_RANGE]], %[[MASK_SHAPE]]) : (tensor<2xi1>, tensor<2xi32>) -> tensor<2x1xi1>
+  // CHECK: %[[RES:.*]] = "tfl.select_v2"(%[[MASK]], %[[LOOKUP]], %[[ZERO]]) : (tensor<2x1xi1>, tensor<2x5xf32>, tensor<f32>) -> tensor<2x5xf32>
   // CHECK: return %[[RES]] : tensor<2x5xf32>
 }
 
@@ -3734,9 +3745,15 @@ func.func @ReplaceOneHotFullyConnectedWithLookup2DRank(%arg: tensor<11x2xi32>) -
   // CHECK-DAG: %[[CST0:.*]] = "tfl.pseudo_const"(){{.*}}dense<22> : tensor<1xi32>
   // CHECK-DAG: %[[CST1:.*]] = arith.constant dense<7.000000e+00> : tensor<3x5xf32>
   // CHECK-DAG: %[[CST2:.*]] = arith.constant dense<[11, 2, 5]> : tensor<3xi32>
+  // CHECK-DAG: %[[MASK_SHAPE:.*]] = arith.constant dense<[22, 1]> : tensor<2xi32>
   // CHECK: %[[RESHAPE:.*]] = "tfl.reshape"(%arg0, %[[CST0]]) : (tensor<11x2xi32>, tensor<1xi32>) -> tensor<22xi32>
-  // CHECK: %[[TMP:.*]] = "tfl.embedding_lookup"(%[[RESHAPE]], %[[CST1]]) : (tensor<22xi32>, tensor<3x5xf32>) -> tensor<22x5xf32>
-  // CHECK: %[[RES:.*]] = "tfl.reshape"(%[[TMP]], %[[CST2]]) : (tensor<22x5xf32>, tensor<3xi32>) -> tensor<11x2x5xf32>
+  // CHECK: %[[MAX:.*]] = "tfl.maximum"(%[[RESHAPE]], %{{.*}}) : (tensor<22xi32>, tensor<i32>) -> tensor<22xi32>
+  // CHECK: %[[CLAMPED:.*]] = "tfl.minimum"(%[[MAX]], %{{.*}}) : (tensor<22xi32>, tensor<i32>) -> tensor<22xi32>
+  // CHECK: %[[IN_RANGE:.*]] = "tfl.equal"(%[[CLAMPED]], %[[RESHAPE]]) : (tensor<22xi32>, tensor<22xi32>) -> tensor<22xi1>
+  // CHECK: %[[TMP:.*]] = "tfl.embedding_lookup"(%[[CLAMPED]], %[[CST1]]) : (tensor<22xi32>, tensor<3x5xf32>) -> tensor<22x5xf32>
+  // CHECK: %[[MASK:.*]] = "tfl.reshape"(%[[IN_RANGE]], %[[MASK_SHAPE]]) : (tensor<22xi1>, tensor<2xi32>) -> tensor<22x1xi1>
+  // CHECK: %[[SELECT:.*]] = "tfl.select_v2"(%[[MASK]], %[[TMP]], %{{.*}}) : (tensor<22x1xi1>, tensor<22x5xf32>, tensor<f32>) -> tensor<22x5xf32>
+  // CHECK: %[[RES:.*]] = "tfl.reshape"(%[[SELECT]], %[[CST2]]) : (tensor<22x5xf32>, tensor<3xi32>) -> tensor<11x2x5xf32>
   // CHECK: return %[[RES]] : tensor<11x2x5xf32>
 }
 
@@ -3825,8 +3842,14 @@ func.func @replaceOneHotFullyConnectedWithLookupWithDynamicIndexShapeRank1(%arg:
 
   func.return %result : tensor<?x5xf32>
 
-  // CHECK: %[[CST:.*]] = arith.constant dense<{{\[\[}}7.000000e+00, 1.700000e+01, 2.900000e+01, 4.100000e+01, 5.300000e+01], [1.100000e+01, 1.900000e+01, 3.100000e+01, 4.300000e+01, 5.900000e+01], [1.300000e+01, 2.300000e+01, 3.700000e+01, 4.700000e+01, 6.100000e+01]]> : tensor<3x5xf32>
-  // CHECK: %[[RES:.*]] = "tfl.embedding_lookup"(%arg0, %[[CST]]) : (tensor<?xi32>, tensor<3x5xf32>) -> tensor<?x5xf32>
+  // CHECK-DAG: %[[CST:.*]] = arith.constant dense<{{\[\[}}7.000000e+00, 1.700000e+01, 2.900000e+01, 4.100000e+01, 5.300000e+01], [1.100000e+01, 1.900000e+01, 3.100000e+01, 4.300000e+01, 5.900000e+01], [1.300000e+01, 2.300000e+01, 3.700000e+01, 4.700000e+01, 6.100000e+01]]> : tensor<3x5xf32>
+  // CHECK-DAG: %[[MASK_SHAPE:.*]] = arith.constant dense<[-1, 1]> : tensor<2xi32>
+  // CHECK: %[[MAX:.*]] = "tfl.maximum"(%arg0, %{{.*}}) : (tensor<?xi32>, tensor<i32>) -> tensor<?xi32>
+  // CHECK: %[[CLAMPED:.*]] = "tfl.minimum"(%[[MAX]], %{{.*}}) : (tensor<?xi32>, tensor<i32>) -> tensor<?xi32>
+  // CHECK: %[[IN_RANGE:.*]] = "tfl.equal"(%[[CLAMPED]], %arg0) : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi1>
+  // CHECK: %[[LOOKUP:.*]] = "tfl.embedding_lookup"(%[[CLAMPED]], %[[CST]]) : (tensor<?xi32>, tensor<3x5xf32>) -> tensor<?x5xf32>
+  // CHECK: %[[MASK:.*]] = "tfl.reshape"(%[[IN_RANGE]], %[[MASK_SHAPE]]) : (tensor<?xi1>, tensor<2xi32>) -> tensor<?x1xi1>
+  // CHECK: %[[RES:.*]] = "tfl.select_v2"(%[[MASK]], %[[LOOKUP]], %{{.*}}) : (tensor<?x1xi1>, tensor<?x5xf32>, tensor<f32>) -> tensor<?x5xf32>
   // CHECK: return %[[RES]] : tensor<?x5xf32>
 }
 

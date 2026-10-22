@@ -243,15 +243,19 @@ struct MatchedFp8Param {
 // or there is a there is a path from an FP8 instruction 'fp8_input' to 'instr'
 // consisting of the following.
 // 1. A convert to a wider type.
-// 2. Optionally, a multiplication/division by a scalar, representing the scale.
-//    If present, the scalar scale is returned as 'scale' and 'mult_scale'
-//    is set to true or false depending on whether there is a multiplication or
-//    a division.
+// 2. Optionally, a multiplication/division by a broadcast scalar, possibly
+//    converted to the type of the dequantization, representing the scale. If
+//    present, the scalar scale is returned as 'scale' and 'mult_scale' is set
+//    to true or false depending on whether there is a multiplication or a
+//    division.
+// 2a. Optionally, a convert from F32 to BF16/F16 of the result of (1) or (2),
+//    as produced by FloatNormalization when the dequantization is computed in
+//    F32.
 // 3. A possibly-empty set of ops communative with steps (1) and (2), meaning
 //    they can be safely moved before step (1). Such ops are returned in
 //    'commutative_ops'.
-// Steps (1) and (2) together are a dequantization, and can be fused into a
-// cublas LT matmul. Step (3) can be moved before the cublas LT matmul.
+// Steps (1), (2) and (2a) together are a dequantization, and can be fused into
+// a cublas LT matmul. Step (3) can be moved before the cublas LT matmul.
 std::optional<MatchedFp8Param> MatchFp8Param(HloInstruction* instr) {
   absl::flat_hash_set<int> visited_instrs;
   std::optional<InstrPath> maybe_subgraph =
@@ -271,19 +275,34 @@ std::optional<MatchedFp8Param> MatchFp8Param(HloInstruction* instr) {
   }
 
   int num_dequant_ops;
+  // The broadcast scale may be converted to the dequantization type, e.g. when
+  // FloatNormalization computes a bf16 dequantization in f32.
+  auto is_float_scale = [](const HloInstruction* scale) {
+    PrimitiveType type = scale->shape().element_type();
+    return primitive_util::IsFloatingPointType(type) &&
+           !primitive_util::IsF8Type(type);
+  };
+  auto scale_pattern = [&param, &is_float_scale]() {
+    return m::AnyOf<HloInstruction>(
+        m::Broadcast(m::Op(&param.scale)),
+        m::Convert(
+            m::Broadcast(m::Op(&param.scale).WithPredicate(is_float_scale))));
+  };
   // When not operating directly on an FP8 operand, the second and
   // third instructions in the subgraph can describe a dequantization, i.e. a
   // convert instruction followed by a multiply/divide instruction.
   if (subgraph.size() > 2 &&
       Match(subgraph[2].first,
-            m::MultiplyAnyOrder(m::Convert(m::Op(&param.fp8_input)),
-                                m::Broadcast(m::Op(&param.scale))))) {
+            m::MultiplyAnyOrder(
+                m::Convert(m::Op(&param.fp8_input).Is(subgraph[0].first)),
+                scale_pattern()))) {
     param.mult_scale = true;
     num_dequant_ops = 2;
   } else if (subgraph.size() > 2 &&
              Match(subgraph[2].first,
-                   m::Divide(m::Convert(m::Op(&param.fp8_input)),
-                             m::Broadcast(m::Op(&param.scale))))) {
+                   m::Divide(m::Convert(
+                                 m::Op(&param.fp8_input).Is(subgraph[0].first)),
+                             scale_pattern()))) {
     param.mult_scale = false;
     num_dequant_ops = 2;
   } else if (subgraph.size() > 1 &&
@@ -295,6 +314,20 @@ std::optional<MatchedFp8Param> MatchFp8Param(HloInstruction* instr) {
     VLOG(1) << "Possible intended FP8 GEMM operating on "
             << instr->ToShortString() << " not rewritten into FP8 Custom Call.";
     return std::nullopt;
+  }
+
+  // FloatNormalization may compute a BF16/F16 dequantization in F32 and
+  // convert the result back, e.g. bf16 convert(f32 multiply(f32 convert(fp8),
+  // ...)). Treat that convert as part of the dequantization.
+  if (subgraph.size() > 1 + num_dequant_ops) {
+    const HloInstruction* next = subgraph[1 + num_dequant_ops].first;
+    PrimitiveType next_type = next->shape().element_type();
+    if (Match(next, m::Convert(m::Op()
+                                   .Is(subgraph[num_dequant_ops].first)
+                                   .WithElementType(F32))) &&
+        (next_type == BF16 || next_type == F16)) {
+      ++num_dequant_ops;
+    }
   }
 
   auto preserves_element_type = [](const HloInstruction* instr) -> bool {
@@ -1382,8 +1415,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // cuBLASLt FP8 GEMM kernels require the scaling factors to be in F32
     // format. Set the factors to one when no scaling factors were captured.
     std::array<bool, 2> mult_scale{a.mult_scale, b.mult_scale};
-    std::array<HloInstruction*, 2> scales{a.scale, b.scale}, inv_scales,
-        scales_f32;
+    std::array<HloInstruction*, 2> scales{a.scale, b.scale}, scales_f32;
     HloInstruction* one_constant = nullptr;
     auto one = [&one_constant, instr]() -> HloInstruction* {
       if (!one_constant) {
@@ -1401,14 +1433,15 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                      "scalars.";
           return false;
         }
-        if (!mult_scale[i]) {
-          inv_scales[i] = instr->AddInstruction(HloInstruction::CreateBinary(
-              scales[i]->shape(), HloOpcode::kDivide, one(), scales[i]));
-        }
-        scales_f32[i] = mult_scale[i] ? scales[i] : inv_scales[i];
+        scales_f32[i] = scales[i];
         if (scales_f32[i]->shape().element_type() != F32) {
           scales_f32[i] = instr->AddInstruction(HloInstruction::CreateConvert(
               ShapeUtil::MakeScalarShape(F32), scales_f32[i]));
+        }
+        if (!mult_scale[i]) {
+          scales_f32[i] = instr->AddInstruction(HloInstruction::CreateBinary(
+              ShapeUtil::MakeScalarShape(F32), HloOpcode::kDivide, one(),
+              scales_f32[i]));
         }
       } else {
         scales_f32[i] = one();

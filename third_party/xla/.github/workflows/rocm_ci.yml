@@ -58,25 +58,55 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       docker-image: ${{ steps.out.outputs.docker-image }}
+      skip-jax: ${{ steps.detect_jax.outputs.should_skip }}
+      skip-xla: ${{ steps.detect_xla.outputs.should_skip }}
     steps:
       - id: out
         shell: bash
         run: |
           echo "docker-image=ghcr.io/rocm/jax-build-ubu24.rocmless@sha256:68854ed30b800d3e8c390f6e651721e2bead58830da1c59e1b828354eb8f077f" >> "$GITHUB_OUTPUT"
 
+      - name: Checking out openxla/xla
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 100
+          persist-credentials: false
+
+      - name: Detect Changed Files (JAX)
+        id: detect_jax
+        if: ${{ github.event_name == 'pull_request' }}
+        shell: bash
+        env:
+          XLA_CI_BAZEL_DIFF_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          XLA_CI_BAZEL_DIFF_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          XLA_CI_DISABLE_BAZEL_DIFF: ${{ contains(github.event.pull_request.labels.*.name, 'ci:disable-bazel-diff') }}
+        run: |
+          python3 -m build_tools.ci.change_detector \
+            --is_jax_build \
+            --build_name="JAX Linux x86 AMD Instinct GPU"
+
+      - name: Detect Changed Files (XLA)
+        id: detect_xla
+        if: ${{ github.event_name == 'pull_request' }}
+        shell: bash
+        env:
+          XLA_CI_BAZEL_DIFF_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          XLA_CI_BAZEL_DIFF_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          XLA_CI_DISABLE_BAZEL_DIFF: ${{ contains(github.event.pull_request.labels.*.name, 'ci:disable-bazel-diff') }}
+        run: |
+          python3 -m build_tools.ci.change_detector \
+            --build_name="XLA Linux x86 AMD Instinct GPU"
+
   jax:
     needs: rocm-config
     if: ${{ github.event_name != 'pull_request' || github.base_ref == 'main' }}
     name: JAX Linux x86 AMD Instinct GPU
-    runs-on: ${{ inputs.runner_label || 'amd-do-linux-xla-gpu-gfx950-dpx-1' }}
-    timeout-minutes: 220
+    runs-on: ${{ needs.rocm-config.outputs.skip-jax == 'true' && 'ubuntu-latest' || inputs.runner_label || 'amd-do-linux-xla-gpu-gfx950-dpx-1' }}
+    timeout-minutes: 50
     # Remove this once the JAX CI is stable.
     continue-on-error: true
-    container: &rocm_container
-      image: ${{ needs.rocm-config.outputs.docker-image }}  # zizmor: ignore[unpinned-images]
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
+    container: ${{ needs.rocm-config.outputs.skip-jax != 'true' && needs.rocm-config.outputs.docker-image || null }}  # zizmor: ignore[unpinned-images]
     env:
       DOCKER_IMAGE: ${{ needs.rocm-config.outputs.docker-image }}
     defaults:
@@ -84,11 +114,13 @@ jobs:
         shell: bash
     steps:
       - name: Checking out openxla/xla
+        if: ${{ needs.rocm-config.outputs.skip-jax != 'true' }}
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Checkout JAX
+        if: ${{ needs.rocm-config.outputs.skip-jax != 'true' }}
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: jax-ml/jax
@@ -96,10 +128,12 @@ jobs:
           persist-credentials: false
 
       - name: CPU Info
+        if: ${{ needs.rocm-config.outputs.skip-jax != 'true' }}
         run: lscpu
 
       - name: Run JAX Unit Tests
-        timeout-minutes: 120
+        if: ${{ needs.rocm-config.outputs.skip-jax != 'true' }}
+        timeout-minutes: 45
         working-directory: jax
         run: |
           ./ci/run_bazel_test_rocm_rbe.sh \
@@ -126,7 +160,7 @@ jobs:
             --build_event_json_file=jax_build_events.json
 
       - name: Upload JAX BEP File
-        if: always()
+        if: ${{ always() && needs.rocm-config.outputs.skip-jax != 'true' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: jax-bep
@@ -135,9 +169,9 @@ jobs:
   xla:
     needs: rocm-config
     name: XLA Linux x86 AMD Instinct GPU
-    runs-on: ${{ inputs.runner_label || 'amd-do-linux-xla-gpu-gfx950-dpx-1' }}
-    timeout-minutes: 220
-    container: *rocm_container
+    runs-on: ${{ needs.rocm-config.outputs.skip-xla == 'true' && 'ubuntu-latest' || inputs.runner_label || 'amd-do-linux-xla-gpu-gfx950-dpx-1' }}
+    timeout-minutes: 50
+    container: ${{ needs.rocm-config.outputs.skip-xla != 'true' && needs.rocm-config.outputs.docker-image || null }}  # zizmor: ignore[unpinned-images]
     env:
       DOCKER_IMAGE: ${{ needs.rocm-config.outputs.docker-image }}
     defaults:
@@ -145,15 +179,46 @@ jobs:
         shell: bash
     steps:
       - name: Checking out openxla/xla
+        if: ${{ needs.rocm-config.outputs.skip-xla != 'true' }}
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 100
           persist-credentials: false
 
+      - name: Compute Impacted Targets (bazel-diff)
+        id: bazel_diff
+        if: ${{ github.event_name == 'pull_request' && needs.rocm-config.outputs.skip-xla != 'true' }}
+        env:
+          XLA_CI_BAZEL_DIFF_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          XLA_CI_BAZEL_DIFF_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          XLA_CI_DISABLE_BAZEL_DIFF: ${{ contains(github.event.pull_request.labels.*.name, 'ci:disable-bazel-diff') }}
+        run: |
+          git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+          python3 -m build_tools.ci.bazel_diff \
+            --build_name="XLA Linux x86 AMD Instinct GPU" \
+            --use_cquery \
+            --bazelrc="build_tools/rocm/rocm_xla_ci.bazelrc" \
+            --config=rocm_ci_hermetic \
+            --config=rocm_rbe_dynamic \
+            --config=ci_single_gpu \
+            --repo_env="TF_ROCM_RBE_DOCKER_IMAGE=${DOCKER_IMAGE}" \
+            --repo_env="ROCM_PATH=" \
+            --repo_env="ROCM_DISTRO_URL=${ROCM_DISTRO_URL}" \
+            --repo_env="ROCM_DISTRO_HASH=${ROCM_DISTRO_HASH}" \
+            --repo_env="TF_ROCM_AMDGPU_TARGETS=${ROCM_AMD_GPU_TARGETS}" \
+            --repo_env="TF_ROCM_RBE_SINGLE_GPU_POOL=${ROCM_SINGLE_GPU_RBE_POOL}" \
+            --target_pattern="//xla/..." \
+            --output_target_pattern_file="${RUNNER_TEMP:-/tmp}/rocm_impacted_targets.txt"
+
       - name: CPU Info
+        if: ${{ needs.rocm-config.outputs.skip-xla != 'true' && steps.bazel_diff.outputs.should_skip != 'true' }}
         run: lscpu
 
       - name: Test XLA [single_gpu]
-        timeout-minutes: 50
+        if: ${{ needs.rocm-config.outputs.skip-xla != 'true' && steps.bazel_diff.outputs.should_skip != 'true' }}
+        timeout-minutes: 45
+        env:
+          XLA_ROCM_TARGET_PATTERN_FILE: ${{ steps.bazel_diff.outputs.target_pattern_file }}
         run: |
           build_tools/rocm/run_xla_ci_build.sh \
             --config=rocm_ci_hermetic \
@@ -177,7 +242,10 @@ jobs:
             //xla/...
 
       - name: Test XLA [rocm_cpu]
-        timeout-minutes: 80
+        if: ${{ needs.rocm-config.outputs.skip-xla != 'true' && steps.bazel_diff.outputs.should_skip != 'true' }}
+        timeout-minutes: 30
+        env:
+          XLA_ROCM_TARGET_PATTERN_FILE: ${{ steps.bazel_diff.outputs.target_pattern_file }}
         run: |
           build_tools/rocm/run_xla_ci_build.sh \
             --config=rocm_ci_hermetic \
@@ -201,7 +269,7 @@ jobs:
             //xla/...
 
       - name: Upload XLA BEP Files
-        if: always()
+        if: ${{ always() && needs.rocm-config.outputs.skip-xla != 'true' && steps.bazel_diff.outputs.should_skip != 'true' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: xla-bep

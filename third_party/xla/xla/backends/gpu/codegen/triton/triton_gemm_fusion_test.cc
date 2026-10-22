@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/layout_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/target_constants.h"
@@ -85,6 +86,18 @@ HloInstruction* GetNonBitcastRoot(const HloComputation* computation) {
     root = root->mutable_operand(0);
   }
   return root;
+}
+
+// Returns the first kCustom fusion of the computation, or nullptr if there is
+// none.
+const HloInstruction* FindCustomFusion(const HloComputation& computation) {
+  for (const HloInstruction* instr : computation.instructions()) {
+    if (instr->opcode() == HloOpcode::kFusion &&
+        instr->fusion_kind() == HloInstruction::FusionKind::kCustom) {
+      return instr;
+    }
+  }
+  return nullptr;
 }
 
 class TritonTestBase : public HloInterpreterReferenceMixin<GpuPjRtCodegenTest> {
@@ -607,6 +620,75 @@ ENTRY e {
                   .WithShape(match::Shape().WithRank(4))
                   .WithFusionKind(HloInstruction::FusionKind::kCustom))
               .WithFusionKind(HloInstruction::FusionKind::kLoop)));
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      std::move(module), ErrorSpec{/*aabs=*/2e-2, /*arel=*/2e-2}));
+}
+
+// Two quantized projections (q and kv) of the same activations, as emitted
+// for a quantized attention block: the dequantized weights are the LHS of the
+// dots, the results are transposed and scaled per output channel. The weight
+// layouts are chosen such that no physical transpose of the weights is needed.
+// DotMerger merges the two dots, SplitkRewriter splits the merged dot and the
+// scaled, transposed results are consumed after the split-K reduction.
+constexpr absl::string_view kQuantizedQkvProjectionHlo = R"(
+HloModule m, entry_computation_layout={(bf16[32,8,1024]{2,1,0}, s8[4,1024,64]{2,0,1}, bf16[4,64]{1,0}, s8[2,1,1024,64]{3,1,0,2}, bf16[2,64]{1,0})->(bf16[32,8,4,64]{3,2,1,0}, bf16[2,32,8,1,64]{4,3,2,1,0})}
+
+ENTRY e {
+  x = bf16[32,8,1024] parameter(0)
+  qw_q = s8[4,1024,64] parameter(1)
+  w_q = bf16[4,1024,64] convert(qw_q)
+  dot_q = bf16[4,64,32,8] dot(w_q, x),
+    lhs_contracting_dims={1}, rhs_contracting_dims={2}
+  t_q = bf16[32,8,4,64] transpose(dot_q), dimensions={2,3,0,1}
+  qws_q = bf16[4,64] parameter(2)
+  bq = bf16[32,8,4,64] broadcast(qws_q), dimensions={2,3}
+  q = bf16[32,8,4,64] multiply(t_q, bq)
+  qw_kv = s8[2,1,1024,64] parameter(3)
+  w_kv = bf16[2,1,1024,64] convert(qw_kv)
+  dot_kv = bf16[2,1,64,32,8] dot(w_kv, x),
+    lhs_contracting_dims={2}, rhs_contracting_dims={2}
+  t_kv = bf16[2,32,8,1,64] transpose(dot_kv), dimensions={0,3,4,1,2}
+  qws_kv = bf16[2,64] parameter(4)
+  bkv = bf16[2,32,8,1,64] broadcast(qws_kv), dimensions={0,4}
+  kv = bf16[2,32,8,1,64] multiply(t_kv, bkv)
+  ROOT t = (bf16[32,8,4,64], bf16[2,32,8,1,64]) tuple(q, kv)
+})";
+
+TEST_P(TritonGemmTest, SplitKReductionDoesNotTransposeDotResult) {
+  if (!SupportsBF16(GpuComputeCapability())) {
+    GTEST_SKIP() << "BF16 not supported.";
+  }
+  // Layout assignment gives the merged dot a result layout with the
+  // non-contracting dimension of the weights as the minor one. The split-K dot
+  // must keep this physical layout (with the split-K dimension as the most
+  // major one), so that the reductions over the split-K dimension read and
+  // write their operands in the same (default) layout instead of transposing.
+  HloModuleConfig config = GetModuleConfigForTest();
+  DebugOptions debug_options = config.debug_options();
+  debug_options.clear_xla_disable_hlo_passes();
+  debug_options.set_xla_gpu_experimental_force_split_k(4);
+  config.set_debug_options(debug_options);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       GetOptimizedModule(kQuantizedQkvProjectionHlo, config));
+  const HloInstruction* gemm_fusion =
+      FindCustomFusion(*module->entry_computation());
+  ASSERT_NE(gemm_fusion, nullptr);
+  int num_reduces = 0;
+  for (const HloComputation* computation : module->computations()) {
+    for (const HloInstruction* instr : computation->instructions()) {
+      if (instr->opcode() != HloOpcode::kReduce) {
+        continue;
+      }
+      ++num_reduces;
+      EXPECT_TRUE(LayoutUtil::IsMonotonicWithDim0Major(
+          instr->operand(0)->shape().layout()))
+          << instr->ToString();
+      EXPECT_TRUE(LayoutUtil::IsMonotonicWithDim0Major(instr->shape().layout()))
+          << instr->ToString();
+    }
+  }
+  EXPECT_GT(num_reduces, 0);
 
   EXPECT_TRUE(RunAndCompareNoHloPasses(
       std::move(module), ErrorSpec{/*aabs=*/2e-2, /*arel=*/2e-2}));
@@ -2003,6 +2085,54 @@ ENTRY e {
       std::move(ref_module), std::move(test_module_and_metadata.module),
       ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3},
       /*run_hlo_passes=*/false));
+}
+
+TEST_P(CompareTest, LhsWithoutNonContractingDimension) {
+  constexpr absl::string_view kHloText = R"(
+triton_dot {
+  p0 = f32[200] parameter(0)
+  p1 = f32[200,300] parameter(1)
+  ROOT dot = f32[300] dot(p0, p1),
+    lhs_contracting_dims={0}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = f32[200] parameter(0)
+  p1 = f32[200,300] parameter(1)
+  ROOT _ = f32[300] fusion(p0, p1), kind=kCustom, calls=triton_dot,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
+    triton_gemm_config: {"block_m":16,"block_n":64,"block_k":32,
+                         "num_stages":1,"num_warps":4,"num_ctas":1}}}
+})";
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(kHloText));
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(std::move(module_and_metadata.module),
+                               ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+TEST_P(CompareTest, RhsWithoutNonContractingDimension) {
+  constexpr absl::string_view kHloText = R"(
+triton_dot {
+  p0 = f32[300,200] parameter(0)
+  p1 = f32[200] parameter(1)
+  ROOT dot = f32[300] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = f32[300,200] parameter(0)
+  p1 = f32[200] parameter(1)
+  ROOT _ = f32[300] fusion(p0, p1), kind=kCustom, calls=triton_dot,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
+    triton_gemm_config: {"block_m":64,"block_n":16,"block_k":32,
+                         "num_stages":1,"num_warps":4,"num_ctas":1}}}
+})";
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(kHloText));
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(std::move(module_and_metadata.module),
+                               ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 // TODO(b/353484968, b/393299275): the e2e test path was never really testing

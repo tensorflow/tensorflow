@@ -630,6 +630,49 @@ func.func @lower_dot_with_non_canonical_operands(
   return %1 : tensor<1x2x8xf32>
 }
 
+// CHECK-LABEL: func @lower_vector_matrix_dot
+func.func @lower_vector_matrix_dot(
+    %arg0: tensor<4xf32>,
+    %arg1: tensor<8x4xf32>,
+    %arg2: tensor<8xf32>) -> tensor<8xf32> {
+  // CHECK-DAG: %[[LHS_RESHAPE:.*]] = tt.reshape %arg0 : tensor<4xf32> -> tensor<1x4xf32>
+  // CHECK-DAG: %[[RHS_TRANSPOSE:.*]] = tt.trans %arg1 {order = array<i32: 1, 0>} : tensor<8x4xf32> -> tensor<4x8xf32>
+  // CHECK-DAG: %[[ACC_RESHAPE:.*]] = tt.reshape %arg2 : tensor<8xf32> -> tensor<1x8xf32>
+  // CHECK: %[[DOT:.*]] = tt.dot %[[LHS_RESHAPE]], %[[RHS_TRANSPOSE]], %[[ACC_RESHAPE]], inputPrecision = tf32 : tensor<1x4xf32> * tensor<4x8xf32> -> tensor<1x8xf32>
+  // CHECK: %[[FINAL_R:.*]] = tt.reshape %[[DOT]] : tensor<1x8xf32> -> tensor<8xf32>
+  %0 = stablehlo.dot_general %arg0, %arg1, contracting_dims = [0] x [1], precision = [DEFAULT, DEFAULT] : (tensor<4xf32>, tensor<8x4xf32>) -> tensor<8xf32>
+  %1 = arith.addf %0, %arg2 : tensor<8xf32>
+  // CHECK: return %[[FINAL_R]] : tensor<8xf32>
+  return %1 : tensor<8xf32>
+}
+
+// CHECK-LABEL: func @lower_matrix_vector_dot
+func.func @lower_matrix_vector_dot(
+    %arg0: tensor<2x4xf32>,
+    %arg1: tensor<4xf32>,
+    %arg2: tensor<2xf32>) -> tensor<2xf32> {
+  // CHECK-DAG: %[[RHS_RESHAPE:.*]] = tt.reshape %arg1 : tensor<4xf32> -> tensor<4x1xf32>
+  // CHECK-DAG: %[[ACC_RESHAPE:.*]] = tt.reshape %arg2 : tensor<2xf32> -> tensor<2x1xf32>
+  // CHECK: %[[DOT:.*]] = tt.dot %arg0, %[[RHS_RESHAPE]], %[[ACC_RESHAPE]], inputPrecision = tf32 : tensor<2x4xf32> * tensor<4x1xf32> -> tensor<2x1xf32>
+  // CHECK: %[[FINAL_R:.*]] = tt.reshape %[[DOT]] : tensor<2x1xf32> -> tensor<2xf32>
+  %0 = stablehlo.dot_general %arg0, %arg1, contracting_dims = [1] x [0], precision = [DEFAULT, DEFAULT] : (tensor<2x4xf32>, tensor<4xf32>) -> tensor<2xf32>
+  %1 = arith.addf %0, %arg2 : tensor<2xf32>
+  // CHECK: return %[[FINAL_R]] : tensor<2xf32>
+  return %1 : tensor<2xf32>
+}
+
+// CHECK-LABEL: func @lower_dot_with_unit_non_contracting_dim
+func.func @lower_dot_with_unit_non_contracting_dim(
+    %arg0: tensor<8x4xf32>,
+    %arg1: tensor<1x4xf32>,
+    %arg2: tensor<8x1xf32>) -> tensor<8x1xf32> {
+  // CHECK: %[[RHS_RESHAPE:.*]] = tt.reshape %arg1 : tensor<1x4xf32> -> tensor<4x1xf32>
+  // CHECK: tt.dot %arg0, %[[RHS_RESHAPE]], %arg2, inputPrecision = tf32 : tensor<8x4xf32> * tensor<4x1xf32> -> tensor<8x1xf32>
+  %0 = stablehlo.dot_general %arg0, %arg1, contracting_dims = [1] x [1], precision = [DEFAULT, DEFAULT] : (tensor<8x4xf32>, tensor<1x4xf32>) -> tensor<8x1xf32>
+  %1 = arith.addf %0, %arg2 : tensor<8x1xf32>
+  return %1 : tensor<8x1xf32>
+}
+
 // CHECK-LABEL: func @lower_fused_dot_in_loop_non_canonical
 func.func @lower_fused_dot_in_loop_non_canonical(
     %arg0: tensor<1x4x2xf32>,

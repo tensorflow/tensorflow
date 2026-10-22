@@ -131,6 +131,7 @@ TEST_P(DataMovementCollectivesAotTest, SymmetricMemory) {
   DebugOptions& debug_options = config.mutable_debug_options();
   debug_options.set_xla_gpu_all_gather_mode(
       DebugOptions::COLLECTIVES_SYMMETRIC_MEMORY);
+  debug_options.set_xla_gpu_experimental_nccl_window_symmetric(true);
   EnableNcclSymmetricBuffers(debug_options);
 
   ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
