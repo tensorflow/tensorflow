@@ -209,58 +209,52 @@ class KubernetesClusterResolverTest(test.TestCase):
     """
     self._verifyClusterSpecEquality(actual_cluster_spec, str(expected_proto))
 
-  def testClusterSpecLoadsInClusterConfigWithinCluster(self):
-    # The constructor loads the in-cluster config. cluster_spec() must load the
-    # same config, not a kubeconfig file, which does not exist inside a pod.
+  def _mockKubernetesWithOnePod(self):
+    """Mocks the kubernetes module with one running pod and returns it."""
     _mock_kubernetes_module()
     k8s_module = sys.modules['kubernetes']
     k8s_module.client.CoreV1Api.return_value = _mock_kubernetes_client({
         'job-name=tensorflow': _create_pod_list(
             ('tensorflow-abc123', 'Running', '10.1.2.3')),
     })
+    return k8s_module
 
-    cluster_resolver = KubernetesClusterResolver(
-        executable_location=ExecutableLocation.WITHIN_CLUSTER)
+  def _assertClusterSpecLoadsConfig(self, cluster_resolver, k8s_module,
+                                    loaded, not_loaded):
     k8s_module.config.reset_mock()
 
     actual_cluster_spec = cluster_resolver.cluster_spec()
     self.assertEqual(actual_cluster_spec.as_dict(),
                      {'worker': ['10.1.2.3:8470']})
-    k8s_module.config.load_incluster_config.assert_called_once_with()
-    k8s_module.config.load_kube_config.assert_not_called()
+    getattr(k8s_module.config, loaded).assert_called_once_with()
+    getattr(k8s_module.config, not_loaded).assert_not_called()
+
+  def testClusterSpecLoadsInClusterConfigWithinCluster(self):
+    # The constructor loads the in-cluster config. cluster_spec() must load the
+    # same config, not a kubeconfig file, which does not exist inside a pod.
+    k8s_module = self._mockKubernetesWithOnePod()
+    cluster_resolver = KubernetesClusterResolver(
+        executable_location=ExecutableLocation.WITHIN_CLUSTER)
+    self._assertClusterSpecLoadsConfig(
+        cluster_resolver, k8s_module,
+        loaded='load_incluster_config', not_loaded='load_kube_config')
 
   def testClusterSpecLoadsKubeConfigOffCluster(self):
-    _mock_kubernetes_module()
-    k8s_module = sys.modules['kubernetes']
-    k8s_module.client.CoreV1Api.return_value = _mock_kubernetes_client({
-        'job-name=tensorflow': _create_pod_list(
-            ('tensorflow-abc123', 'Running', '10.1.2.3')),
-    })
-
+    k8s_module = self._mockKubernetesWithOnePod()
     cluster_resolver = KubernetesClusterResolver(
         executable_location=ExecutableLocation.OFF_CLUSTER)
-    k8s_module.config.reset_mock()
-
-    cluster_resolver.cluster_spec()
-    k8s_module.config.load_kube_config.assert_called_once_with()
-    k8s_module.config.load_incluster_config.assert_not_called()
+    self._assertClusterSpecLoadsConfig(
+        cluster_resolver, k8s_module,
+        loaded='load_kube_config', not_loaded='load_incluster_config')
 
   def testClusterSpecWithoutExecutableLocationAttribute(self):
     # Objects created before executable_location existed keep the old behavior.
-    _mock_kubernetes_module()
-    k8s_module = sys.modules['kubernetes']
-    k8s_module.client.CoreV1Api.return_value = _mock_kubernetes_client({
-        'job-name=tensorflow': _create_pod_list(
-            ('tensorflow-abc123', 'Running', '10.1.2.3')),
-    })
-
+    k8s_module = self._mockKubernetesWithOnePod()
     cluster_resolver = KubernetesClusterResolver()
     del cluster_resolver._executable_location
-    k8s_module.config.reset_mock()
-
-    cluster_resolver.cluster_spec()
-    k8s_module.config.load_kube_config.assert_called_once_with()
-    k8s_module.config.load_incluster_config.assert_not_called()
+    self._assertClusterSpecLoadsConfig(
+        cluster_resolver, k8s_module,
+        loaded='load_kube_config', not_loaded='load_incluster_config')
 
 
 if __name__ == '__main__':
