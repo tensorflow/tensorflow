@@ -67,6 +67,81 @@ func.func @cumsum_chained_pipeline() -> tensor<3xf32> {
   func.return %res_pipeline : tensor<3xf32>
 }
 
+// The DETR sine position embedding pattern: dim_t // 2 on a constant arange.
+// CHECK-LABEL: @floor_div_f32
+func.func @floor_div_f32() -> tensor<4xf32> {
+  %lhs = arith.constant dense<[0.0, 3.0, -3.0, 7.5]> : tensor<4xf32>
+  %rhs = arith.constant dense<2.0> : tensor<f32>
+
+  // CHECK: %[[CST:.*]] = arith.constant dense<[0.000000e+00, 1.000000e+00, -2.000000e+00, 3.000000e+00]> : tensor<4xf32>
+  // CHECK-NOT: tfl.floor_div
+  // CHECK: return %[[CST]]
+
+  %0 = "tfl.floor_div"(%lhs, %rhs) : (tensor<4xf32>, tensor<f32>) -> tensor<4xf32>
+  func.return %0 : tensor<4xf32>
+}
+
+// Rounds toward negative infinity, not toward zero.
+// CHECK-LABEL: @floor_div_i32
+func.func @floor_div_i32() -> tensor<4xi32> {
+  %lhs = arith.constant dense<[7, -7, 7, -7]> : tensor<4xi32>
+  %rhs = arith.constant dense<[2, 2, -2, -2]> : tensor<4xi32>
+
+  // CHECK: %[[CST:.*]] = arith.constant dense<[3, -4, -4, 3]> : tensor<4xi32>
+  // CHECK-NOT: tfl.floor_div
+  // CHECK: return %[[CST]]
+
+  %0 = "tfl.floor_div"(%lhs, %rhs) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+  func.return %0 : tensor<4xi32>
+}
+
+// CHECK-LABEL: @floor_div_i32_by_zero_not_folded
+func.func @floor_div_i32_by_zero_not_folded() -> tensor<2xi32> {
+  %lhs = arith.constant dense<[4, 5]> : tensor<2xi32>
+  %rhs = arith.constant dense<[2, 0]> : tensor<2xi32>
+
+  // CHECK: tfl.floor_div
+
+  %0 = "tfl.floor_div"(%lhs, %rhs) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
+  func.return %0 : tensor<2xi32>
+}
+
+// Like the kernel, divides in double: 1.0f / 0.1f rounds to exactly 10.0f in
+// f32, but is 9.99999985 in double, so the floor is 9.
+// CHECK-LABEL: @floor_div_f32_divides_in_double
+func.func @floor_div_f32_divides_in_double() -> tensor<f32> {
+  %lhs = arith.constant dense<1.0> : tensor<f32>
+  %rhs = arith.constant dense<0.1> : tensor<f32>
+
+  // CHECK: %[[CST:.*]] = arith.constant dense<9.000000e+00> : tensor<f32>
+  // CHECK-NOT: tfl.floor_div
+  // CHECK: return %[[CST]]
+
+  %0 = "tfl.floor_div"(%lhs, %rhs) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+  func.return %0 : tensor<f32>
+}
+
+// CHECK-LABEL: @floor_div_f32_by_zero_not_folded
+func.func @floor_div_f32_by_zero_not_folded() -> tensor<2xf32> {
+  %lhs = arith.constant dense<[4.0, 5.0]> : tensor<2xf32>
+  %rhs = arith.constant dense<[2.0, -0.0]> : tensor<2xf32>
+
+  // CHECK: tfl.floor_div
+
+  %0 = "tfl.floor_div"(%lhs, %rhs) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+}
+
+// CHECK-LABEL: @floor_div_runtime_not_folded
+func.func @floor_div_runtime_not_folded(%arg0: tensor<4xf32>) -> tensor<4xf32> {
+  %rhs = arith.constant dense<2.0> : tensor<f32>
+
+  // CHECK: tfl.floor_div
+
+  %0 = "tfl.floor_div"(%arg0, %rhs) : (tensor<4xf32>, tensor<f32>) -> tensor<4xf32>
+  func.return %0 : tensor<4xf32>
+}
+
 // CHECK-LABEL: @rank
 func.func @rank() -> tensor<1xi32> {
   %cst = arith.constant dense<[[1], [2]]> : tensor<2x1xi32>
@@ -483,6 +558,452 @@ func.func @ConstantFoldFullyConnectedBatched() -> tensor<13x1536xf32> {
   // 1.0 * 1.0 * 1536 = 1536.0
   // CHECK: %[[CST:.*]] = arith.constant dense<1.536000e+03> : tensor<13x1536xf32>
   // CHECK:  return %[[CST]]
+}
+
+// CHECK-LABEL: @ConstantFoldFullyConnectedDRQW8A32PerTensor
+func.func @ConstantFoldFullyConnectedDRQW8A32PerTensor() -> tensor<1x3xf32> {
+  %cst_input = arith.constant dense<[[2.0, 3.0]]> : tensor<1x2xf32>
+  %cst_weights = "tfl.pseudo_qconst"() <{qtype = tensor<3x2x!quant.uniform<i8:f32, 0.5:0>>, value = dense<[[2, 4], [-6, 8], [10, -12]]> : tensor<3x2xi8>}> : () -> tensor<3x2x!quant.uniform<i8:f32, 0.5:0>>
+  %cst_bias = arith.constant dense<[1.0, 2.0, 3.0]> : tensor<3xf32>
+
+  %0 = "tfl.fully_connected"(%cst_input, %cst_weights, %cst_bias) <{asymmetric_quantize_inputs = false, fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"}> : (tensor<1x2xf32>, tensor<3x2x!quant.uniform<i8:f32, 0.5:0>>, tensor<3xf32>) -> tensor<1x3xf32>
+  func.return %0 : tensor<1x3xf32>
+
+  // CHECK: %[[CST:.*]] = arith.constant dense<{{\[\[}}9.000000e+00, 8.000000e+00, -5.000000e+00{{\]\]}}> : tensor<1x3xf32>
+  // CHECK-NOT: fully_connected
+  // CHECK: return %[[CST]]
+}
+
+// CHECK-LABEL: @ConstantFoldFullyConnectedDRQW8A32PerAxis
+func.func @ConstantFoldFullyConnectedDRQW8A32PerAxis() -> tensor<1x3xf32> {
+  %cst_input = arith.constant dense<[[2.0, 3.0]]> : tensor<1x2xf32>
+  %cst_weights = "tfl.pseudo_qconst"() <{qtype = tensor<3x2x!quant.uniform<i8<-127:127>:f32:0, {0.5, 2.0, 0.25}>>, value = dense<[[2, 4], [-1, 3], [8, -4]]> : tensor<3x2xi8>}> : () -> tensor<3x2x!quant.uniform<i8<-127:127>:f32:0, {0.5, 2.0, 0.25}>>
+  %cst_bias = arith.constant dense<[1.0, 2.0, 3.0]> : tensor<3xf32>
+
+  %0 = "tfl.fully_connected"(%cst_input, %cst_weights, %cst_bias) <{asymmetric_quantize_inputs = false, fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"}> : (tensor<1x2xf32>, tensor<3x2x!quant.uniform<i8<-127:127>:f32:0, {0.5, 2.0, 0.25}>>, tensor<3xf32>) -> tensor<1x3xf32>
+  func.return %0 : tensor<1x3xf32>
+
+  // CHECK: %[[CST:.*]] = arith.constant dense<{{\[\[}}9.000000e+00, 1.600000e+01, 4.000000e+00{{\]\]}}> : tensor<1x3xf32>
+  // CHECK-NOT: fully_connected
+  // CHECK: return %[[CST]]
+}
+
+// CHECK-LABEL: @ConstantFoldFullyConnectedDRQW4A32PerTensor
+func.func @ConstantFoldFullyConnectedDRQW4A32PerTensor() -> tensor<1x2xf32> {
+  %cst_input = arith.constant dense<[[2.0, 3.0]]> : tensor<1x2xf32>
+  %cst_weights = "tfl.pseudo_qconst"() <{qtype = tensor<2x2x!quant.uniform<i4:f32, 0.5:0>>, value = dense<[[2, -4], [6, -2]]> : tensor<2x2xi4>}> : () -> tensor<2x2x!quant.uniform<i4:f32, 0.5:0>>
+  %cst_bias = "tfl.no_value"() {value = unit} : () -> none
+
+  %0 = "tfl.fully_connected"(%cst_input, %cst_weights, %cst_bias) <{asymmetric_quantize_inputs = false, fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"}> : (tensor<1x2xf32>, tensor<2x2x!quant.uniform<i4:f32, 0.5:0>>, none) -> tensor<1x2xf32>
+  func.return %0 : tensor<1x2xf32>
+
+  // CHECK: %[[CST:.*]] = arith.constant dense<{{\[\[}}-4.000000e+00, 3.000000e+00{{\]\]}}> : tensor<1x2xf32>
+  // CHECK-NOT: fully_connected
+  // CHECK: return %[[CST]]
+}
+
+// CHECK-LABEL: @ConstantFoldFullyConnectedDRQW4A32PerAxis
+func.func @ConstantFoldFullyConnectedDRQW4A32PerAxis() -> tensor<1x2xf32> {
+  %cst_input = arith.constant dense<[[2.0, 3.0]]> : tensor<1x2xf32>
+  %cst_weights = "tfl.pseudo_qconst"() <{qtype = tensor<2x2x!quant.uniform<i4<-7:7>:f32:0, {0.5, 2.0}>>, value = dense<[[2, 4], [-3, 1]]> : tensor<2x2xi4>}> : () -> tensor<2x2x!quant.uniform<i4<-7:7>:f32:0, {0.5, 2.0}>>
+  %cst_bias = arith.constant dense<[1.0, 2.0]> : tensor<2xf32>
+
+  %0 = "tfl.fully_connected"(%cst_input, %cst_weights, %cst_bias) <{asymmetric_quantize_inputs = false, fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"}> : (tensor<1x2xf32>, tensor<2x2x!quant.uniform<i4<-7:7>:f32:0, {0.5, 2.0}>>, tensor<2xf32>) -> tensor<1x2xf32>
+  func.return %0 : tensor<1x2xf32>
+
+  // CHECK: %[[CST:.*]] = arith.constant dense<{{\[\[}}9.000000e+00, -4.000000e+00{{\]\]}}> : tensor<1x2xf32>
+  // CHECK-NOT: fully_connected
+  // CHECK: return %[[CST]]
+}
+
+// CHECK-LABEL: @ConstantFoldFullyConnectedWeightOnlyW8A32PerAxis
+func.func @ConstantFoldFullyConnectedWeightOnlyW8A32PerAxis() -> tensor<1x3xf32> {
+  %cst_input = arith.constant dense<[[2.0, 3.0]]> : tensor<1x2xf32>
+  %cst_qweights = "tfl.pseudo_qconst"() <{qtype = tensor<3x2x!quant.uniform<i8<-127:127>:f32:0, {0.5, 2.0, 0.25}>>, value = dense<[[2, 4], [-1, 3], [8, -4]]> : tensor<3x2xi8>}> : () -> tensor<3x2x!quant.uniform<i8<-127:127>:f32:0, {0.5, 2.0, 0.25}>>
+  %cst_weights = "tfl.dequantize"(%cst_qweights) : (tensor<3x2x!quant.uniform<i8<-127:127>:f32:0, {0.5, 2.0, 0.25}>>) -> tensor<3x2xf32>
+  %cst_bias = arith.constant dense<[1.0, 2.0, 3.0]> : tensor<3xf32>
+
+  %0 = "tfl.fully_connected"(%cst_input, %cst_weights, %cst_bias) <{asymmetric_quantize_inputs = false, fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"}> : (tensor<1x2xf32>, tensor<3x2xf32>, tensor<3xf32>) -> tensor<1x3xf32>
+  func.return %0 : tensor<1x3xf32>
+
+  // CHECK: %[[CST:.*]] = arith.constant dense<{{\[\[}}9.000000e+00, 1.600000e+01, 4.000000e+00{{\]\]}}> : tensor<1x3xf32>
+  // CHECK-NOT: fully_connected
+  // CHECK: return %[[CST]]
+}
+
+// CHECK-LABEL: @ConstantFoldConv2DDRQW8A32PerAxis
+func.func @ConstantFoldConv2DDRQW8A32PerAxis() -> tensor<1x1x1x2xf32> {
+  %cst_input = arith.constant dense<[[[[1.0], [2.0]], [[3.0], [4.0]]]]> : tensor<1x2x2x1xf32>
+  %cst_weights = "tfl.pseudo_qconst"() <{qtype = tensor<2x2x2x1x!quant.uniform<i8<-127:127>:f32:0, {0.5, 2.0}>>, value = dense<[[[[2], [4]], [[6], [8]]], [[[1], [-1]], [[2], [-2]]]]> : tensor<2x2x2x1xi8>}> : () -> tensor<2x2x2x1x!quant.uniform<i8<-127:127>:f32:0, {0.5, 2.0}>>
+  %cst_bias = arith.constant dense<[1.0, 2.0]> : tensor<2xf32>
+
+  %0 = "tfl.conv_2d"(%cst_input, %cst_weights, %cst_bias) <{dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 1 : i32, stride_w = 1 : i32}> : (tensor<1x2x2x1xf32>, tensor<2x2x2x1x!quant.uniform<i8<-127:127>:f32:0, {0.5, 2.0}>>, tensor<2xf32>) -> tensor<1x1x1x2xf32>
+  func.return %0 : tensor<1x1x1x2xf32>
+
+  // CHECK: %[[CST:.*]] = arith.constant dense<{{\[\[\[\[}}3.100000e+01, -4.000000e+00{{\]\]\]\]}}> : tensor<1x1x1x2xf32>
+  // CHECK-NOT: conv_2d
+  // CHECK: return %[[CST]]
+}
+
+// CHECK-LABEL: @ConstantFoldConv2DDRQW4A32PerAxis
+func.func @ConstantFoldConv2DDRQW4A32PerAxis() -> tensor<1x1x1x2xf32> {
+  %cst_input = arith.constant dense<[[[[1.0], [2.0]], [[3.0], [4.0]]]]> : tensor<1x2x2x1xf32>
+  %cst_weights = "tfl.pseudo_qconst"() <{qtype = tensor<2x2x2x1x!quant.uniform<i4<-7:7>:f32:0, {0.5, 2.0}>>, value = dense<[[[[2], [4]], [[6], [-2]]], [[[1], [-1]], [[3], [-2]]]]> : tensor<2x2x2x1xi4>}> : () -> tensor<2x2x2x1x!quant.uniform<i4<-7:7>:f32:0, {0.5, 2.0}>>
+  %cst_bias = arith.constant dense<[5.0, -3.0]> : tensor<2xf32>
+
+  %0 = "tfl.conv_2d"(%cst_input, %cst_weights, %cst_bias) <{dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 1 : i32, stride_w = 1 : i32}> : (tensor<1x2x2x1xf32>, tensor<2x2x2x1x!quant.uniform<i4<-7:7>:f32:0, {0.5, 2.0}>>, tensor<2xf32>) -> tensor<1x1x1x2xf32>
+  func.return %0 : tensor<1x1x1x2xf32>
+
+  // CHECK: %[[CST:.*]] = arith.constant dense<{{\[\[\[\[}}1.500000e+01, -3.000000e+00{{\]\]\]\]}}> : tensor<1x1x1x2xf32>
+  // CHECK-NOT: conv_2d
+  // CHECK: return %[[CST]]
+}
+
+// CHECK-LABEL: @ConstantFoldConv2DWeightOnlyW8A32PerAxis
+func.func @ConstantFoldConv2DWeightOnlyW8A32PerAxis() -> tensor<1x1x1x2xf32> {
+  %cst_input = arith.constant dense<[[[[1.0], [2.0]], [[3.0], [4.0]]]]> : tensor<1x2x2x1xf32>
+  %cst_qweights = "tfl.pseudo_qconst"() <{qtype = tensor<2x2x2x1x!quant.uniform<i8<-127:127>:f32:0, {0.5, 2.0}>>, value = dense<[[[[2], [4]], [[6], [8]]], [[[1], [-1]], [[2], [-2]]]]> : tensor<2x2x2x1xi8>}> : () -> tensor<2x2x2x1x!quant.uniform<i8<-127:127>:f32:0, {0.5, 2.0}>>
+  %cst_weights = "tfl.dequantize"(%cst_qweights) : (tensor<2x2x2x1x!quant.uniform<i8<-127:127>:f32:0, {0.5, 2.0}>>) -> tensor<2x2x2x1xf32>
+  %cst_bias = arith.constant dense<[1.0, 2.0]> : tensor<2xf32>
+
+  %0 = "tfl.conv_2d"(%cst_input, %cst_weights, %cst_bias) <{dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 1 : i32, stride_w = 1 : i32}> : (tensor<1x2x2x1xf32>, tensor<2x2x2x1xf32>, tensor<2xf32>) -> tensor<1x1x1x2xf32>
+  func.return %0 : tensor<1x1x1x2xf32>
+
+  // CHECK: %[[CST:.*]] = arith.constant dense<{{\[\[\[\[}}3.100000e+01, -4.000000e+00{{\]\]\]\]}}> : tensor<1x1x1x2xf32>
+  // CHECK-NOT: conv_2d
+  // CHECK: return %[[CST]]
+}
+
+// CHECK-LABEL: @NoConstantFoldConv2DFusedRelu
+func.func @NoConstantFoldConv2DFusedRelu() -> tensor<1x1x1x2xf32> {
+  %cst_input = arith.constant dense<[[[[1.0], [2.0]], [[3.0], [4.0]]]]> : tensor<1x2x2x1xf32>
+  %cst_weights = "tfl.pseudo_qconst"() <{qtype = tensor<2x2x2x1x!quant.uniform<i8<-127:127>:f32:0, {0.5, 2.0}>>, value = dense<[[[[2], [4]], [[6], [8]]], [[[1], [-1]], [[2], [-2]]]]> : tensor<2x2x2x1xi8>}> : () -> tensor<2x2x2x1x!quant.uniform<i8<-127:127>:f32:0, {0.5, 2.0}>>
+  %cst_bias = arith.constant dense<[1.0, 2.0]> : tensor<2xf32>
+
+  %0 = "tfl.conv_2d"(%cst_input, %cst_weights, %cst_bias) <{dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "RELU", padding = "VALID", stride_h = 1 : i32, stride_w = 1 : i32}> : (tensor<1x2x2x1xf32>, tensor<2x2x2x1x!quant.uniform<i8<-127:127>:f32:0, {0.5, 2.0}>>, tensor<2xf32>) -> tensor<1x1x1x2xf32>
+  func.return %0 : tensor<1x1x1x2xf32>
+
+  // CHECK: tfl.conv_2d
+}
+
+// CHECK-LABEL: @ConstantFoldDepthwiseConv2DDRQW8A32PerAxis
+func.func @ConstantFoldDepthwiseConv2DDRQW8A32PerAxis() -> tensor<1x1x1x2xf32> {
+  %cst_input = arith.constant dense<[[[[1.0], [2.0]], [[3.0], [4.0]]]]> : tensor<1x2x2x1xf32>
+  %cst_weights = "tfl.pseudo_qconst"() <{qtype = tensor<1x2x2x2x!quant.uniform<i8<-127:127>:f32:3, {0.5, 2.0}>>, value = dense<[[[[2, 1], [4, -1]], [[6, 2], [8, -2]]]]> : tensor<1x2x2x2xi8>}> : () -> tensor<1x2x2x2x!quant.uniform<i8<-127:127>:f32:3, {0.5, 2.0}>>
+  %cst_bias = arith.constant dense<[1.0, 2.0]> : tensor<2xf32>
+
+  %0 = "tfl.depthwise_conv_2d"(%cst_input, %cst_weights, %cst_bias) <{depth_multiplier = 2 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 1 : i32, stride_w = 1 : i32}> : (tensor<1x2x2x1xf32>, tensor<1x2x2x2x!quant.uniform<i8<-127:127>:f32:3, {0.5, 2.0}>>, tensor<2xf32>) -> tensor<1x1x1x2xf32>
+  func.return %0 : tensor<1x1x1x2xf32>
+
+  // CHECK: %[[CST:.*]] = arith.constant dense<{{\[\[\[\[}}3.100000e+01, -4.000000e+00{{\]\]\]\]}}> : tensor<1x1x1x2xf32>
+  // CHECK-NOT: depthwise_conv_2d
+  // CHECK: return %[[CST]]
+}
+
+// CHECK-LABEL: @ConstantFoldDepthwiseConv2DDRQW4A32PerAxis
+func.func @ConstantFoldDepthwiseConv2DDRQW4A32PerAxis() -> tensor<1x1x1x2xf32> {
+  %cst_input = arith.constant dense<[[[[1.0], [2.0]], [[3.0], [4.0]]]]> : tensor<1x2x2x1xf32>
+  %cst_weights = "tfl.pseudo_qconst"() <{qtype = tensor<1x2x2x2x!quant.uniform<i4<-7:7>:f32:3, {0.5, 2.0}>>, value = dense<[[[[2, 1], [4, -1]], [[6, 3], [-2, -2]]]]> : tensor<1x2x2x2xi4>}> : () -> tensor<1x2x2x2x!quant.uniform<i4<-7:7>:f32:3, {0.5, 2.0}>>
+  %cst_bias = arith.constant dense<[5.0, -3.0]> : tensor<2xf32>
+
+  %0 = "tfl.depthwise_conv_2d"(%cst_input, %cst_weights, %cst_bias) <{depth_multiplier = 2 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 1 : i32, stride_w = 1 : i32}> : (tensor<1x2x2x1xf32>, tensor<1x2x2x2x!quant.uniform<i4<-7:7>:f32:3, {0.5, 2.0}>>, tensor<2xf32>) -> tensor<1x1x1x2xf32>
+  func.return %0 : tensor<1x1x1x2xf32>
+
+  // CHECK: %[[CST:.*]] = arith.constant dense<{{\[\[\[\[}}1.500000e+01, -3.000000e+00{{\]\]\]\]}}> : tensor<1x1x1x2xf32>
+  // CHECK-NOT: depthwise_conv_2d
+  // CHECK: return %[[CST]]
+}
+
+// CHECK-LABEL: @ConstantFoldDepthwiseConv2DWeightOnlyW8A32PerAxis
+func.func @ConstantFoldDepthwiseConv2DWeightOnlyW8A32PerAxis() -> tensor<1x1x1x2xf32> {
+  %cst_input = arith.constant dense<[[[[1.0], [2.0]], [[3.0], [4.0]]]]> : tensor<1x2x2x1xf32>
+  %cst_qweights = "tfl.pseudo_qconst"() <{qtype = tensor<1x2x2x2x!quant.uniform<i8<-127:127>:f32:3, {0.5, 2.0}>>, value = dense<[[[[2, 1], [4, -1]], [[6, 2], [8, -2]]]]> : tensor<1x2x2x2xi8>}> : () -> tensor<1x2x2x2x!quant.uniform<i8<-127:127>:f32:3, {0.5, 2.0}>>
+  %cst_weights = "tfl.dequantize"(%cst_qweights) : (tensor<1x2x2x2x!quant.uniform<i8<-127:127>:f32:3, {0.5, 2.0}>>) -> tensor<1x2x2x2xf32>
+  %cst_bias = arith.constant dense<[1.0, 2.0]> : tensor<2xf32>
+
+  %0 = "tfl.depthwise_conv_2d"(%cst_input, %cst_weights, %cst_bias) <{depth_multiplier = 2 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 1 : i32, stride_w = 1 : i32}> : (tensor<1x2x2x1xf32>, tensor<1x2x2x2xf32>, tensor<2xf32>) -> tensor<1x1x1x2xf32>
+  func.return %0 : tensor<1x1x1x2xf32>
+
+  // CHECK: %[[CST:.*]] = arith.constant dense<{{\[\[\[\[}}3.100000e+01, -4.000000e+00{{\]\]\]\]}}> : tensor<1x1x1x2xf32>
+  // CHECK-NOT: depthwise_conv_2d
+  // CHECK: return %[[CST]]
+}
+
+// CHECK-LABEL: @ConstantFoldTransposeConvDRQW8A32PerAxis
+func.func @ConstantFoldTransposeConvDRQW8A32PerAxis() -> tensor<1x2x2x2xf32> {
+  %cst_shape = arith.constant dense<[1, 2, 2, 2]> : tensor<4xi32>
+  %cst_weights = "tfl.pseudo_qconst"() <{qtype = tensor<2x2x2x1x!quant.uniform<i8<-127:127>:f32:0, {0.5, 2.0}>>, value = dense<[[[[2], [4]], [[6], [8]]], [[[1], [-1]], [[2], [-2]]]]> : tensor<2x2x2x1xi8>}> : () -> tensor<2x2x2x1x!quant.uniform<i8<-127:127>:f32:0, {0.5, 2.0}>>
+  %cst_input = arith.constant dense<[[[[2.0]]]]> : tensor<1x1x1x1xf32>
+  %cst_bias = arith.constant dense<[1.0, 2.0]> : tensor<2xf32>
+
+  %0 = "tfl.transpose_conv"(%cst_shape, %cst_weights, %cst_input, %cst_bias) <{fused_activation_function = "NONE", padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32}> : (tensor<4xi32>, tensor<2x2x2x1x!quant.uniform<i8<-127:127>:f32:0, {0.5, 2.0}>>, tensor<1x1x1x1xf32>, tensor<2xf32>) -> tensor<1x2x2x2xf32>
+  func.return %0 : tensor<1x2x2x2xf32>
+
+  // CHECK: %[[CST:.*]] = arith.constant dense<{{\[\[\[\[}}3.000000e+00, 6.000000e+00], [5.000000e+00, -2.000000e+00]], {{\[\[}}7.000000e+00, 1.000000e+01], [9.000000e+00, -6.000000e+00{{\]\]\]\]}}> : tensor<1x2x2x2xf32>
+  // CHECK-NOT: transpose_conv
+  // CHECK: return %[[CST]]
+}
+
+// CHECK-LABEL: @ConstantFoldTransposeConvDRQW4A32PerAxis
+func.func @ConstantFoldTransposeConvDRQW4A32PerAxis() -> tensor<1x2x2x2xf32> {
+  %cst_shape = arith.constant dense<[1, 2, 2, 2]> : tensor<4xi32>
+  %cst_weights = "tfl.pseudo_qconst"() <{qtype = tensor<2x2x2x1x!quant.uniform<i4<-7:7>:f32:0, {0.5, 2.0}>>, value = dense<[[[[2], [4]], [[6], [-2]]], [[[1], [-1]], [[3], [-2]]]]> : tensor<2x2x2x1xi4>}> : () -> tensor<2x2x2x1x!quant.uniform<i4<-7:7>:f32:0, {0.5, 2.0}>>
+  %cst_input = arith.constant dense<[[[[2.0]]]]> : tensor<1x1x1x1xf32>
+  %cst_bias = arith.constant dense<[5.0, -3.0]> : tensor<2xf32>
+
+  %0 = "tfl.transpose_conv"(%cst_shape, %cst_weights, %cst_input, %cst_bias) <{fused_activation_function = "NONE", padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32}> : (tensor<4xi32>, tensor<2x2x2x1x!quant.uniform<i4<-7:7>:f32:0, {0.5, 2.0}>>, tensor<1x1x1x1xf32>, tensor<2xf32>) -> tensor<1x2x2x2xf32>
+  func.return %0 : tensor<1x2x2x2xf32>
+
+  // CHECK: %[[CST:.*]] = arith.constant dense<{{\[\[\[\[}}7.000000e+00, 1.000000e+00], [9.000000e+00, -7.000000e+00]], {{\[\[}}1.100000e+01, 9.000000e+00], [3.000000e+00, -1.100000e+01{{\]\]\]\]}}> : tensor<1x2x2x2xf32>
+  // CHECK-NOT: transpose_conv
+  // CHECK: return %[[CST]]
+}
+
+// CHECK-LABEL: @ConstantFoldTransposeConvWeightOnlyW8A32PerAxis
+func.func @ConstantFoldTransposeConvWeightOnlyW8A32PerAxis() -> tensor<1x2x2x2xf32> {
+  %cst_shape = arith.constant dense<[1, 2, 2, 2]> : tensor<4xi32>
+  %cst_qweights = "tfl.pseudo_qconst"() <{qtype = tensor<2x2x2x1x!quant.uniform<i8<-127:127>:f32:0, {0.5, 2.0}>>, value = dense<[[[[2], [4]], [[6], [8]]], [[[1], [-1]], [[2], [-2]]]]> : tensor<2x2x2x1xi8>}> : () -> tensor<2x2x2x1x!quant.uniform<i8<-127:127>:f32:0, {0.5, 2.0}>>
+  %cst_weights = "tfl.dequantize"(%cst_qweights) : (tensor<2x2x2x1x!quant.uniform<i8<-127:127>:f32:0, {0.5, 2.0}>>) -> tensor<2x2x2x1xf32>
+  %cst_input = arith.constant dense<[[[[2.0]]]]> : tensor<1x1x1x1xf32>
+  %cst_bias = arith.constant dense<[1.0, 2.0]> : tensor<2xf32>
+
+  %0 = "tfl.transpose_conv"(%cst_shape, %cst_weights, %cst_input, %cst_bias) <{fused_activation_function = "NONE", padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32}> : (tensor<4xi32>, tensor<2x2x2x1xf32>, tensor<1x1x1x1xf32>, tensor<2xf32>) -> tensor<1x2x2x2xf32>
+  func.return %0 : tensor<1x2x2x2xf32>
+
+  // CHECK: %[[CST:.*]] = arith.constant dense<{{\[\[\[\[}}3.000000e+00, 6.000000e+00], [5.000000e+00, -2.000000e+00]], {{\[\[}}7.000000e+00, 1.000000e+01], [9.000000e+00, -6.000000e+00{{\]\]\]\]}}> : tensor<1x2x2x2xf32>
+  // CHECK-NOT: transpose_conv
+  // CHECK: return %[[CST]]
+}
+
+// CHECK-LABEL: @ConstantFoldFullyConnectedDRQU8A32NonZeroPoint
+func.func @ConstantFoldFullyConnectedDRQU8A32NonZeroPoint() -> tensor<1x2xf32> {
+  %cst_input = arith.constant dense<[[2.0, 3.0]]> : tensor<1x2xf32>
+  %cst_weights = "tfl.pseudo_qconst"() <{qtype = tensor<2x2x!quant.uniform<u8:f32:0, {0.5:128, 2.0:130}>>, value = dense<[[-126, -124], [-127, -125]]> : tensor<2x2xi8>}> : () -> tensor<2x2x!quant.uniform<u8:f32:0, {0.5:128, 2.0:130}>>
+  %cst_bias = arith.constant dense<[1.0, 2.0]> : tensor<2xf32>
+
+  %0 = "tfl.fully_connected"(%cst_input, %cst_weights, %cst_bias) <{asymmetric_quantize_inputs = false, fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"}> : (tensor<1x2xf32>, tensor<2x2x!quant.uniform<u8:f32:0, {0.5:128, 2.0:130}>>, tensor<2xf32>) -> tensor<1x2xf32>
+  func.return %0 : tensor<1x2xf32>
+
+  // CHECK: %[[CST:.*]] = arith.constant dense<{{\[\[}}9.000000e+00, 4.000000e+00{{\]\]}}> : tensor<1x2xf32>
+  // CHECK-NOT: fully_connected
+  // CHECK: return %[[CST]]
+}
+
+// CHECK-LABEL: @ConstantFoldFullyConnectedDRQW8A32DenseResource
+func.func @ConstantFoldFullyConnectedDRQW8A32DenseResource() -> tensor<1x2xf32> {
+  %cst_input = arith.constant dense<[[2.0, 3.0]]> : tensor<1x2xf32>
+  %cst_weights = "tfl.pseudo_qconst"() <{qtype = tensor<2x2x!quant.uniform<i8<-127:127>:f32:0, {0.5, 2.0}>>, value = dense_resource<fc_w8_2x2> : tensor<2x2xi8>}> : () -> tensor<2x2x!quant.uniform<i8<-127:127>:f32:0, {0.5, 2.0}>>
+  %cst_bias = arith.constant dense<[1.0, 2.0]> : tensor<2xf32>
+
+  %0 = "tfl.fully_connected"(%cst_input, %cst_weights, %cst_bias) <{asymmetric_quantize_inputs = false, fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"}> : (tensor<1x2xf32>, tensor<2x2x!quant.uniform<i8<-127:127>:f32:0, {0.5, 2.0}>>, tensor<2xf32>) -> tensor<1x2xf32>
+  func.return %0 : tensor<1x2xf32>
+
+  // CHECK: %[[CST:.*]] = arith.constant dense<{{\[\[}}9.000000e+00, 1.600000e+01{{\]\]}}> : tensor<1x2xf32>
+  // CHECK-NOT: fully_connected
+  // CHECK: return %[[CST]]
+}
+
+// CHECK-LABEL: @ConstantFoldFullyConnectedDRQW4A32DenseResource
+func.func @ConstantFoldFullyConnectedDRQW4A32DenseResource() -> tensor<1x2xf32> {
+  %cst_input = arith.constant dense<[[2.0, 3.0]]> : tensor<1x2xf32>
+  %cst_weights = "tfl.pseudo_qconst"() <{qtype = tensor<2x2x!quant.uniform<i4<-7:7>:f32:0, {0.5, 2.0}>>, value = dense_resource<fc_w4_2x2> : tensor<2x2xi4>}> : () -> tensor<2x2x!quant.uniform<i4<-7:7>:f32:0, {0.5, 2.0}>>
+  %cst_bias = arith.constant dense<[1.0, 2.0]> : tensor<2xf32>
+
+  %0 = "tfl.fully_connected"(%cst_input, %cst_weights, %cst_bias) <{asymmetric_quantize_inputs = false, fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"}> : (tensor<1x2xf32>, tensor<2x2x!quant.uniform<i4<-7:7>:f32:0, {0.5, 2.0}>>, tensor<2xf32>) -> tensor<1x2xf32>
+  func.return %0 : tensor<1x2xf32>
+
+  // CHECK: %[[CST:.*]] = arith.constant dense<{{\[\[}}9.000000e+00, -4.000000e+00{{\]\]}}> : tensor<1x2xf32>
+  // CHECK-NOT: fully_connected
+  // CHECK: return %[[CST]]
+}
+
+// CHECK-LABEL: @ConstantFoldConv2DGrouped
+func.func @ConstantFoldConv2DGrouped() -> tensor<1x1x1x2xf32> {
+  %cst_input = arith.constant dense<[[[[1.0, 2.0, 3.0, 4.0]]]]> : tensor<1x1x1x4xf32>
+  %cst_weights = "tfl.pseudo_qconst"() <{qtype = tensor<2x1x1x2x!quant.uniform<i8<-127:127>:f32:0, {0.5, 2.0}>>, value = dense<[[[[2, 4]]], [[[1, -1]]]]> : tensor<2x1x1x2xi8>}> : () -> tensor<2x1x1x2x!quant.uniform<i8<-127:127>:f32:0, {0.5, 2.0}>>
+  %cst_bias = arith.constant dense<[1.0, 2.0]> : tensor<2xf32>
+
+  %0 = "tfl.conv_2d"(%cst_input, %cst_weights, %cst_bias) <{dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 1 : i32, stride_w = 1 : i32}> : (tensor<1x1x1x4xf32>, tensor<2x1x1x2x!quant.uniform<i8<-127:127>:f32:0, {0.5, 2.0}>>, tensor<2xf32>) -> tensor<1x1x1x2xf32>
+  func.return %0 : tensor<1x1x1x2xf32>
+
+  // CHECK: %[[CST:.*]] = arith.constant dense<{{\[\[\[\[}}6.000000e+00, 0.000000e+00{{\]\]\]\]}}> : tensor<1x1x1x2xf32>
+  // CHECK-NOT: conv_2d
+  // CHECK: return %[[CST]]
+}
+
+// CHECK-LABEL: @ConstantFoldConv2DDilated
+func.func @ConstantFoldConv2DDilated() -> tensor<1x1x1x1xf32> {
+  %cst_input = arith.constant dense<[[[[1.0], [0.0], [2.0]], [[0.0], [0.0], [0.0]], [[3.0], [0.0], [4.0]]]]> : tensor<1x3x3x1xf32>
+  %cst_weights = "tfl.pseudo_qconst"() <{qtype = tensor<1x2x2x1x!quant.uniform<i8<-127:127>:f32:0, {0.5}>>, value = dense<[[[[2], [4]], [[6], [8]]]]> : tensor<1x2x2x1xi8>}> : () -> tensor<1x2x2x1x!quant.uniform<i8<-127:127>:f32:0, {0.5}>>
+  %cst_bias = arith.constant dense<[1.0]> : tensor<1xf32>
+
+  %0 = "tfl.conv_2d"(%cst_input, %cst_weights, %cst_bias) <{dilation_h_factor = 2 : i32, dilation_w_factor = 2 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 1 : i32, stride_w = 1 : i32}> : (tensor<1x3x3x1xf32>, tensor<1x2x2x1x!quant.uniform<i8<-127:127>:f32:0, {0.5}>>, tensor<1xf32>) -> tensor<1x1x1x1xf32>
+  func.return %0 : tensor<1x1x1x1xf32>
+
+  // CHECK: %[[CST:.*]] = arith.constant dense<3.100000e+01> : tensor<1x1x1x1xf32>
+  // CHECK-NOT: conv_2d
+  // CHECK: return %[[CST]]
+}
+
+// CHECK-LABEL: @ConstantFoldConv2DF32
+func.func @ConstantFoldConv2DF32() -> tensor<1x1x1x2xf32> {
+  %cst_input = arith.constant dense<[[[[1.0], [2.0]], [[3.0], [4.0]]]]> : tensor<1x2x2x1xf32>
+  %cst_weights = arith.constant dense<[[[[1.0], [2.0]], [[3.0], [4.0]]], [[[2.0], [-2.0]], [[4.0], [-4.0]]]]> : tensor<2x2x2x1xf32>
+  %cst_bias = arith.constant dense<[1.0, 2.0]> : tensor<2xf32>
+
+  %0 = "tfl.conv_2d"(%cst_input, %cst_weights, %cst_bias) <{dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 1 : i32, stride_w = 1 : i32}> : (tensor<1x2x2x1xf32>, tensor<2x2x2x1xf32>, tensor<2xf32>) -> tensor<1x1x1x2xf32>
+  func.return %0 : tensor<1x1x1x2xf32>
+
+  // CHECK: %[[CST:.*]] = arith.constant dense<{{\[\[\[\[}}3.100000e+01, -4.000000e+00{{\]\]\]\]}}> : tensor<1x1x1x2xf32>
+  // CHECK-NOT: conv_2d
+  // CHECK: return %[[CST]]
+}
+
+// CHECK-LABEL: @ConstantFoldDepthwiseConv2DF32
+func.func @ConstantFoldDepthwiseConv2DF32() -> tensor<1x1x1x2xf32> {
+  %cst_input = arith.constant dense<[[[[1.0], [2.0]], [[3.0], [4.0]]]]> : tensor<1x2x2x1xf32>
+  %cst_weights = arith.constant dense<[[[[1.0, 2.0], [2.0, -2.0]], [[3.0, 4.0], [4.0, -4.0]]]]> : tensor<1x2x2x2xf32>
+  %cst_bias = arith.constant dense<[1.0, 2.0]> : tensor<2xf32>
+
+  %0 = "tfl.depthwise_conv_2d"(%cst_input, %cst_weights, %cst_bias) <{depth_multiplier = 2 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 1 : i32, stride_w = 1 : i32}> : (tensor<1x2x2x1xf32>, tensor<1x2x2x2xf32>, tensor<2xf32>) -> tensor<1x1x1x2xf32>
+  func.return %0 : tensor<1x1x1x2xf32>
+
+  // CHECK: %[[CST:.*]] = arith.constant dense<{{\[\[\[\[}}3.100000e+01, -4.000000e+00{{\]\]\]\]}}> : tensor<1x1x1x2xf32>
+  // CHECK-NOT: depthwise_conv_2d
+  // CHECK: return %[[CST]]
+}
+
+// CHECK-LABEL: @ConstantFoldTransposeConvF32
+func.func @ConstantFoldTransposeConvF32() -> tensor<1x2x2x2xf32> {
+  %cst_shape = arith.constant dense<[1, 2, 2, 2]> : tensor<4xi32>
+  %cst_weights = arith.constant dense<[[[[1.0], [2.0]], [[3.0], [4.0]]], [[[2.0], [-2.0]], [[4.0], [-4.0]]]]> : tensor<2x2x2x1xf32>
+  %cst_input = arith.constant dense<[[[[2.0]]]]> : tensor<1x1x1x1xf32>
+  %cst_bias = arith.constant dense<[1.0, 2.0]> : tensor<2xf32>
+
+  %0 = "tfl.transpose_conv"(%cst_shape, %cst_weights, %cst_input, %cst_bias) <{fused_activation_function = "NONE", padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32}> : (tensor<4xi32>, tensor<2x2x2x1xf32>, tensor<1x1x1x1xf32>, tensor<2xf32>) -> tensor<1x2x2x2xf32>
+  func.return %0 : tensor<1x2x2x2xf32>
+
+  // CHECK: %[[CST:.*]] = arith.constant dense<{{\[\[\[\[}}3.000000e+00, 6.000000e+00], [5.000000e+00, -2.000000e+00]], {{\[\[}}7.000000e+00, 1.000000e+01], [9.000000e+00, -6.000000e+00{{\]\]\]\]}}> : tensor<1x2x2x2xf32>
+  // CHECK-NOT: transpose_conv
+  // CHECK: return %[[CST]]
+}
+
+// CHECK-LABEL: @ConstantFoldConv2DSameAsymmetricPadStride2
+func.func @ConstantFoldConv2DSameAsymmetricPadStride2() -> tensor<1x2x2x1xf32> {
+  %cst_input = arith.constant dense<1.0> : tensor<1x3x3x1xf32>
+  %cst_weights = "tfl.pseudo_qconst"() <{qtype = tensor<1x4x4x1x!quant.uniform<i8<-127:127>:f32:0, {0.5}>>, value = dense<[[[[1], [1], [1], [1]], [[2], [2], [2], [2]], [[3], [3], [3], [3]], [[4], [4], [4], [4]]]]> : tensor<1x4x4x1xi8>}> : () -> tensor<1x4x4x1x!quant.uniform<i8<-127:127>:f32:0, {0.5}>>
+  %cst_bias = arith.constant dense<[1.0]> : tensor<1xf32>
+
+  %0 = "tfl.conv_2d"(%cst_input, %cst_weights, %cst_bias) <{dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32}> : (tensor<1x3x3x1xf32>, tensor<1x4x4x1x!quant.uniform<i8<-127:127>:f32:0, {0.5}>>, tensor<1xf32>) -> tensor<1x2x2x1xf32>
+  func.return %0 : tensor<1x2x2x1xf32>
+
+  // CHECK: %[[CST:.*]] = arith.constant dense<{{\[\[\[\[}}1.450000e+01], [1.000000e+01]], {{\[\[}}5.500000e+00], [4.000000e+00{{\]\]\]\]}}> : tensor<1x2x2x1xf32>
+  // CHECK-NOT: conv_2d
+  // CHECK: return %[[CST]]
+}
+
+// CHECK-LABEL: @ConstantFoldDepthwiseConv2DSameAsymmetricPadStride2
+func.func @ConstantFoldDepthwiseConv2DSameAsymmetricPadStride2() -> tensor<1x2x2x1xf32> {
+  %cst_input = arith.constant dense<1.0> : tensor<1x3x3x1xf32>
+  %cst_weights = "tfl.pseudo_qconst"() <{qtype = tensor<1x4x4x1x!quant.uniform<i8<-127:127>:f32:3, {0.5}>>, value = dense<[[[[1], [1], [1], [1]], [[2], [2], [2], [2]], [[3], [3], [3], [3]], [[4], [4], [4], [4]]]]> : tensor<1x4x4x1xi8>}> : () -> tensor<1x4x4x1x!quant.uniform<i8<-127:127>:f32:3, {0.5}>>
+  %cst_bias = arith.constant dense<[1.0]> : tensor<1xf32>
+
+  %0 = "tfl.depthwise_conv_2d"(%cst_input, %cst_weights, %cst_bias) <{depth_multiplier = 1 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32}> : (tensor<1x3x3x1xf32>, tensor<1x4x4x1x!quant.uniform<i8<-127:127>:f32:3, {0.5}>>, tensor<1xf32>) -> tensor<1x2x2x1xf32>
+  func.return %0 : tensor<1x2x2x1xf32>
+
+  // CHECK: %[[CST:.*]] = arith.constant dense<{{\[\[\[\[}}1.450000e+01], [1.000000e+01]], {{\[\[}}5.500000e+00], [4.000000e+00{{\]\]\]\]}}> : tensor<1x2x2x1xf32>
+  // CHECK-NOT: depthwise_conv_2d
+  // CHECK: return %[[CST]]
+}
+
+// CHECK-LABEL: @ConstantFoldTransposeConvSameNonZeroPad
+func.func @ConstantFoldTransposeConvSameNonZeroPad() -> tensor<1x3x3x1xf32> {
+  %cst_shape = arith.constant dense<[1, 3, 3, 1]> : tensor<4xi32>
+  %cst_weights = "tfl.pseudo_qconst"() <{qtype = tensor<1x3x3x1x!quant.uniform<i8<-127:127>:f32:0, {0.5}>>, value = dense<2> : tensor<1x3x3x1xi8>}> : () -> tensor<1x3x3x1x!quant.uniform<i8<-127:127>:f32:0, {0.5}>>
+  %cst_input = arith.constant dense<[[[[1.0], [2.0]], [[3.0], [4.0]]]]> : tensor<1x2x2x1xf32>
+  %cst_bias = arith.constant dense<[0.0]> : tensor<1xf32>
+
+  %0 = "tfl.transpose_conv"(%cst_shape, %cst_weights, %cst_input, %cst_bias) <{fused_activation_function = "NONE", padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32}> : (tensor<4xi32>, tensor<1x3x3x1x!quant.uniform<i8<-127:127>:f32:0, {0.5}>>, tensor<1x2x2x1xf32>, tensor<1xf32>) -> tensor<1x3x3x1xf32>
+  func.return %0 : tensor<1x3x3x1xf32>
+
+  // CHECK: %[[CST:.*]] = arith.constant dense<{{\[\[\[\[}}1.000000e+00], [3.000000e+00], [2.000000e+00]], {{\[\[}}4.000000e+00], [1.000000e+01], [6.000000e+00]], {{\[\[}}3.000000e+00], [7.000000e+00], [4.000000e+00{{\]\]\]\]}}> : tensor<1x3x3x1xf32>
+  // CHECK-NOT: transpose_conv
+  // CHECK: return %[[CST]]
+}
+
+// CHECK-LABEL: @NoConstantFoldDepthwiseConv2DFusedRelu
+func.func @NoConstantFoldDepthwiseConv2DFusedRelu() -> tensor<1x1x1x2xf32> {
+  %cst_input = arith.constant dense<[[[[1.0], [2.0]], [[3.0], [4.0]]]]> : tensor<1x2x2x1xf32>
+  %cst_weights = "tfl.pseudo_qconst"() <{qtype = tensor<1x2x2x2x!quant.uniform<i8<-127:127>:f32:3, {0.5, 2.0}>>, value = dense<[[[[2, 1], [4, -1]], [[6, 2], [8, -2]]]]> : tensor<1x2x2x2xi8>}> : () -> tensor<1x2x2x2x!quant.uniform<i8<-127:127>:f32:3, {0.5, 2.0}>>
+  %cst_bias = arith.constant dense<[1.0, 2.0]> : tensor<2xf32>
+
+  %0 = "tfl.depthwise_conv_2d"(%cst_input, %cst_weights, %cst_bias) <{depth_multiplier = 2 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "RELU", padding = "VALID", stride_h = 1 : i32, stride_w = 1 : i32}> : (tensor<1x2x2x1xf32>, tensor<1x2x2x2x!quant.uniform<i8<-127:127>:f32:3, {0.5, 2.0}>>, tensor<2xf32>) -> tensor<1x1x1x2xf32>
+  func.return %0 : tensor<1x1x1x2xf32>
+
+  // CHECK: tfl.depthwise_conv_2d
+}
+
+// CHECK-LABEL: @NoConstantFoldDepthwiseConv2DDynamicShape
+func.func @NoConstantFoldDepthwiseConv2DDynamicShape() -> tensor<1x?x?x2xf32> {
+  %cst_input = arith.constant dense<[[[[1.0], [2.0]], [[3.0], [4.0]]]]> : tensor<1x2x2x1xf32>
+  %cst_weights = "tfl.pseudo_qconst"() <{qtype = tensor<1x2x2x2x!quant.uniform<i8<-127:127>:f32:3, {0.5, 2.0}>>, value = dense<[[[[2, 1], [4, -1]], [[6, 2], [8, -2]]]]> : tensor<1x2x2x2xi8>}> : () -> tensor<1x2x2x2x!quant.uniform<i8<-127:127>:f32:3, {0.5, 2.0}>>
+  %cst_bias = arith.constant dense<[1.0, 2.0]> : tensor<2xf32>
+
+  %0 = "tfl.depthwise_conv_2d"(%cst_input, %cst_weights, %cst_bias) <{depth_multiplier = 2 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 1 : i32, stride_w = 1 : i32}> : (tensor<1x2x2x1xf32>, tensor<1x2x2x2x!quant.uniform<i8<-127:127>:f32:3, {0.5, 2.0}>>, tensor<2xf32>) -> tensor<1x?x?x2xf32>
+  func.return %0 : tensor<1x?x?x2xf32>
+
+  // CHECK: tfl.depthwise_conv_2d
+}
+
+// CHECK-LABEL: @NoConstantFoldTransposeConvFusedRelu
+func.func @NoConstantFoldTransposeConvFusedRelu() -> tensor<1x2x2x2xf32> {
+  %cst_shape = arith.constant dense<[1, 2, 2, 2]> : tensor<4xi32>
+  %cst_weights = "tfl.pseudo_qconst"() <{qtype = tensor<2x2x2x1x!quant.uniform<i8<-127:127>:f32:0, {0.5, 2.0}>>, value = dense<[[[[2], [4]], [[6], [8]]], [[[1], [-1]], [[2], [-2]]]]> : tensor<2x2x2x1xi8>}> : () -> tensor<2x2x2x1x!quant.uniform<i8<-127:127>:f32:0, {0.5, 2.0}>>
+  %cst_input = arith.constant dense<[[[[2.0]]]]> : tensor<1x1x1x1xf32>
+  %cst_bias = arith.constant dense<[1.0, 2.0]> : tensor<2xf32>
+
+  %0 = "tfl.transpose_conv"(%cst_shape, %cst_weights, %cst_input, %cst_bias) <{fused_activation_function = "RELU", padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32}> : (tensor<4xi32>, tensor<2x2x2x1x!quant.uniform<i8<-127:127>:f32:0, {0.5, 2.0}>>, tensor<1x1x1x1xf32>, tensor<2xf32>) -> tensor<1x2x2x2xf32>
+  func.return %0 : tensor<1x2x2x2xf32>
+
+  // CHECK: tfl.transpose_conv
+}
+
+// CHECK-LABEL: @NoConstantFoldTransposeConvDynamicShape
+func.func @NoConstantFoldTransposeConvDynamicShape() -> tensor<1x?x?x2xf32> {
+  %cst_shape = arith.constant dense<[1, 2, 2, 2]> : tensor<4xi32>
+  %cst_weights = "tfl.pseudo_qconst"() <{qtype = tensor<2x2x2x1x!quant.uniform<i8<-127:127>:f32:0, {0.5, 2.0}>>, value = dense<[[[[2], [4]], [[6], [8]]], [[[1], [-1]], [[2], [-2]]]]> : tensor<2x2x2x1xi8>}> : () -> tensor<2x2x2x1x!quant.uniform<i8<-127:127>:f32:0, {0.5, 2.0}>>
+  %cst_input = arith.constant dense<[[[[2.0]]]]> : tensor<1x1x1x1xf32>
+  %cst_bias = arith.constant dense<[1.0, 2.0]> : tensor<2xf32>
+
+  %0 = "tfl.transpose_conv"(%cst_shape, %cst_weights, %cst_input, %cst_bias) <{fused_activation_function = "NONE", padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32}> : (tensor<4xi32>, tensor<2x2x2x1x!quant.uniform<i8<-127:127>:f32:0, {0.5, 2.0}>>, tensor<1x1x1x1xf32>, tensor<2xf32>) -> tensor<1x?x?x2xf32>
+  func.return %0 : tensor<1x?x?x2xf32>
+
+  // CHECK: tfl.transpose_conv
+}
+
+// CHECK-LABEL: @NoConstantFoldFullyConnectedExceedsSizeLimit
+func.func @NoConstantFoldFullyConnectedExceedsSizeLimit() -> tensor<1024x1024xf32> {
+  %cst_input = arith.constant dense<1.0> : tensor<1024x1xf32>
+  %cst_weights = "tfl.pseudo_qconst"() <{qtype = tensor<1024x1x!quant.uniform<i8:f32, 0.5:0>>, value = dense<2> : tensor<1024x1xi8>}> : () -> tensor<1024x1x!quant.uniform<i8:f32, 0.5:0>>
+  %cst_bias = arith.constant dense<0.0> : tensor<1024xf32>
+
+  %0 = "tfl.fully_connected"(%cst_input, %cst_weights, %cst_bias) <{asymmetric_quantize_inputs = false, fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"}> : (tensor<1024x1xf32>, tensor<1024x1x!quant.uniform<i8:f32, 0.5:0>>, tensor<1024xf32>) -> tensor<1024x1024xf32>
+  func.return %0 : tensor<1024x1024xf32>
+
+  // CHECK: tfl.fully_connected
+}
+
+// CHECK-LABEL: @ConstantFoldFullyConnectedUnrankedFilter
+func.func @ConstantFoldFullyConnectedUnrankedFilter() -> tensor<2xf32> {
+  %cst_input = arith.constant dense<[1.0, 2.0]> : tensor<2xf32>
+  %cst_weights = "tfl.pseudo_const"() <{value = dense<[[1.0, 2.0], [3.0, 4.0]]> : tensor<2x2xf32>}> : () -> tensor<*xf32>
+  %cst_bias = arith.constant dense<[0.5, 1.5]> : tensor<2xf32>
+
+  %0 = "tfl.fully_connected"(%cst_input, %cst_weights, %cst_bias) <{asymmetric_quantize_inputs = false, fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"}> : (tensor<2xf32>, tensor<*xf32>, tensor<2xf32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+
+  // CHECK: %[[CST:.*]] = arith.constant dense<[5.500000e+00, 1.250000e+01]> : tensor<2xf32>
+  // CHECK: return %[[CST]]
 }
 
 // CHECK-LABEL: @ShapeOpI32
@@ -1313,8 +1834,14 @@ func.func @slice_big_float() -> tensor<1x1x1792x256xf32> {
 // CHECK-LITERAL: %cst = arith.constant dense<9.000000e+00> : tensor<1x1x1792x256xf32>
 // CHECK-NOT:     slice
 
-
-
+{-#
+  dialect_resources: {
+    builtin: {
+      fc_w8_2x2: "0x040000000204FF03",
+      fc_w4_2x2: "0x04000000421D"
+    }
+  }
+#-}
 
 // CHECK-LABEL: @ConstFoldBatchMatMul
 func.func @ConstFoldBatchMatMul() -> tensor<2x2x2xf32> {

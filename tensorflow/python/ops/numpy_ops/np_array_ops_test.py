@@ -1577,6 +1577,22 @@ class ArrayMethodsTest(test.TestCase):
       np_array_ops.moveaxis(a, -8, 0)
     with self.assertRaisesRegex(ValueError, 'out of bounds'):
       np_array_ops.moveaxis(a, 0, 8)
+    with self.assertRaisesRegex(
+        ValueError, 'repeated axis in `source` argument'
+    ):
+      np_array_ops.moveaxis(a, (0, 0), (1, 2))
+    with self.assertRaisesRegex(
+        ValueError, 'repeated axis in `source` argument'
+    ):
+      np_array_ops.moveaxis(a, (0, -6), (1, 2))
+    with self.assertRaisesRegex(
+        ValueError, 'repeated axis in `destination` argument'
+    ):
+      np_array_ops.moveaxis(a, (0, 1), (2, 2))
+    with self.assertRaisesRegex(
+        ValueError, 'repeated axis in `destination` argument'
+    ):
+      np_array_ops.moveaxis(a, (0, 1), (2, -4))
 
   def testFlip(self):
     np.random.seed(0)

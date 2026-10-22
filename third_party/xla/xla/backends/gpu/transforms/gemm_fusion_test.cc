@@ -48,6 +48,7 @@ using ::testing::Contains;
 using ::testing::Each;
 using ::testing::ElementsAre;
 using ::testing::FieldsAre;
+using ::testing::Not;
 using ::testing::UnorderedElementsAre;
 
 namespace m = ::xla::match;
@@ -428,6 +429,29 @@ ENTRY e {
       module->entry_computation()->root_instruction(),
       GmockMatch(m::Bitcast(m::Fusion(m::Bitcast(m::Parameter()),
                                       m::Parameter(), m::Parameter()))));
+}
+
+// The epilogue of `d0` absorbs `b1`, the only user of `d1`. `d1` must still be
+// fused even though the instruction through which it was reachable is removed.
+TEST_F(GemmFusionTestV2, DotWhoseUserIsFusedIntoAnotherDotEpilogueIsFused) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY e {
+  p0 = f32[32,6] parameter(0)
+  p1 = f32[32,14] parameter(1)
+  d0 = f32[6,14] dot(p0, p1),
+    lhs_contracting_dims={0}, rhs_contracting_dims={0}
+  p2 = f32[32,42] parameter(2)
+  p3 = f32[32,2] parameter(3)
+  d1 = f32[42,2] dot(p2, p3),
+    lhs_contracting_dims={0}, rhs_contracting_dims={0}
+  b1 = f32[6,14] bitcast(d1)
+  ROOT m = f32[6,14] multiply(d0, b1)
+})"));
+  ASSERT_THAT(GemmFusion(device_info_).Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(module->entry_computation()->instructions(),
+              Each(Not(GmockMatch(m::Dot()))));
 }
 
 TEST_F(GemmFusionTestV2, BitcastIsHoistedAboveConstants) {

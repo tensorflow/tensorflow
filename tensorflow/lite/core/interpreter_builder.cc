@@ -1059,15 +1059,23 @@ TfLiteStatus InterpreterBuilder::operator()(
   }
 
   if (options_.GetUseSignatureTensorNames()) {
-    for (auto& signature_def : tmp_interpreter->signature_defs_) {
-      auto* subgraph = tmp_interpreter->subgraph(signature_def.subgraph_index);
-      for (auto& [name, tensor_index] : signature_def.inputs) {
-        auto tensor = subgraph->tensor(tensor_index);
-        tensor->name = name.c_str();
+    for (const auto& signature_def : tmp_interpreter->signature_defs_) {
+      Subgraph* subgraph =
+          tmp_interpreter->subgraph(signature_def.subgraph_index);
+      if (subgraph == nullptr) {
+        continue;
       }
-      for (auto& [name, tensor_index] : signature_def.outputs) {
-        auto tensor = subgraph->tensor(tensor_index);
-        tensor->name = name.c_str();
+      for (const auto& [name, tensor_index] : signature_def.inputs) {
+        TfLiteTensor* tensor = subgraph->tensor(tensor_index);
+        if (tensor != nullptr) {
+          tensor->name = name.c_str();
+        }
+      }
+      for (const auto& [name, tensor_index] : signature_def.outputs) {
+        TfLiteTensor* tensor = subgraph->tensor(tensor_index);
+        if (tensor != nullptr) {
+          tensor->name = name.c_str();
+        }
       }
     }
   }

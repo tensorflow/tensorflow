@@ -438,7 +438,8 @@ class Interpreter {
     const int tensor_index = GetTensorIndexFromSignature(
         signature_input_name, signature_key, /*is_input=*/true);
     if (tensor_index == -1) return nullptr;
-    return subgraph(subgraph_index)->tensor(tensor_index);
+    Subgraph* target_subgraph = subgraph(subgraph_index);
+    return target_subgraph ? target_subgraph->tensor(tensor_index) : nullptr;
   }
 
   // Returns the output tensor identified by 'signature_output_name' in the
@@ -456,7 +457,8 @@ class Interpreter {
     const int tensor_index = GetTensorIndexFromSignature(
         signature_output_name, signature_key, /*is_input=*/false);
     if (tensor_index == -1) return nullptr;
-    return subgraph(subgraph_index)->tensor(tensor_index);
+    const Subgraph* target_subgraph = subgraph(subgraph_index);
+    return target_subgraph ? target_subgraph->tensor(tensor_index) : nullptr;
   }
 
   // Returns a mutable pointer to the `index`th input tensor.
