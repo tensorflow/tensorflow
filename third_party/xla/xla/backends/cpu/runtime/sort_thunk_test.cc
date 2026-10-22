@@ -16,8 +16,10 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/sort_thunk.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -403,6 +405,467 @@ TEST_P(SortThunkTest, SortKeyValueBfloat16Descending) {
             LiteralUtil::CreateR1<bfloat16>({bfloat16(4.0f), bfloat16(3.0f),
                                              bfloat16(2.0f), bfloat16(1.0f)}));
   EXPECT_EQ(indices, LiteralUtil::CreateR1<int32_t>({1, 3, 0, 2}));
+}
+
+template <typename T>
+void TestSortFloatKeyValueSpecialValues(bool is_stable) {
+  auto to_std_float = [](T val) {
+    if constexpr (std::is_same_v<T, double>) {
+      return val;
+    } else {
+      return static_cast<float>(val);
+    }
+  };
+  using StdFloat = decltype(to_std_float(T{}));
+
+  const T pos_nan = static_cast<T>(
+      std::copysign(std::numeric_limits<StdFloat>::quiet_NaN(), StdFloat{1.0}));
+  const T neg_nan = static_cast<T>(std::copysign(
+      std::numeric_limits<StdFloat>::quiet_NaN(), StdFloat{-1.0}));
+  const T inf = std::numeric_limits<T>::infinity();
+  const T neg_inf = -inf;
+  const T pos_zero = static_cast<T>(0.0f);
+  const T neg_zero = static_cast<T>(-0.0f);
+  const T neg_two = static_cast<T>(-2.0f);
+  const T one = static_cast<T>(1.0f);
+
+  auto fake_less_than = [](const void**) { return false; };
+
+  for (auto direction : {SortThunk::SortDirection::kAscending,
+                         SortThunk::SortDirection::kDescending}) {
+    // 1. 2-input key-value sort with NaNs and both -0.0 and +0.0 (fallback).
+    {
+      Literal keys = LiteralUtil::CreateR1<T>(
+          {pos_nan, one, neg_zero, neg_inf, pos_zero, neg_two, inf, neg_nan});
+      Literal values = LiteralUtil::CreateR1<int32_t>({0, 1, 2, 3, 4, 5, 6, 7});
+
+      BufferAllocations allocations = CreateBufferAllocations(keys, values);
+      auto [alloc0, alloc1] = CreateBufferAllocation(keys, values);
+      auto [slice0, slice1] = CreateBufferAllocationSlice(alloc0, alloc1);
+
+      ASSERT_OK_AND_ASSIGN(
+          auto thunk,
+          SortThunk::Create(
+              {"sort"}, {{slice0, keys.shape()}, {slice1, values.shape()}},
+              /*dimension=*/0, is_stable, fake_less_than, direction));
+
+      Thunk::ExecuteParams params;
+      params.buffer_allocations = &allocations;
+      auto execute_event = thunk->Execute(params);
+      tsl::BlockUntilReady(execute_event);
+      ASSERT_FALSE(execute_event.IsError());
+
+      auto sorted_keys = keys.data<T>();
+      auto sorted_vals = values.data<int32_t>();
+      if (direction == SortThunk::SortDirection::kAscending) {
+        EXPECT_EQ(sorted_keys[0], neg_inf);
+        EXPECT_EQ(sorted_keys[1], neg_two);
+        EXPECT_EQ(sorted_keys[2], pos_zero);
+        EXPECT_EQ(sorted_keys[3], pos_zero);
+        EXPECT_EQ(sorted_keys[4], one);
+        EXPECT_EQ(sorted_keys[5], inf);
+        EXPECT_TRUE(std::isnan(to_std_float(sorted_keys[6])));
+        EXPECT_TRUE(std::isnan(to_std_float(sorted_keys[7])));
+        if (is_stable) {
+          EXPECT_EQ(sorted_vals[2], 2);
+          EXPECT_EQ(sorted_vals[3], 4);
+          EXPECT_EQ(sorted_vals[6], 0);
+          EXPECT_EQ(sorted_vals[7], 7);
+          EXPECT_TRUE(std::signbit(to_std_float(sorted_keys[2])));
+          EXPECT_FALSE(std::signbit(to_std_float(sorted_keys[3])));
+          EXPECT_FALSE(std::signbit(to_std_float(sorted_keys[6])));
+          EXPECT_TRUE(std::signbit(to_std_float(sorted_keys[7])));
+        }
+      } else {
+        EXPECT_TRUE(std::isnan(to_std_float(sorted_keys[0])));
+        EXPECT_TRUE(std::isnan(to_std_float(sorted_keys[1])));
+        EXPECT_EQ(sorted_keys[2], inf);
+        EXPECT_EQ(sorted_keys[3], one);
+        EXPECT_EQ(sorted_keys[4], pos_zero);
+        EXPECT_EQ(sorted_keys[5], pos_zero);
+        EXPECT_EQ(sorted_keys[6], neg_two);
+        EXPECT_EQ(sorted_keys[7], neg_inf);
+        if (is_stable) {
+          EXPECT_EQ(sorted_vals[0], 0);
+          EXPECT_EQ(sorted_vals[1], 7);
+          EXPECT_EQ(sorted_vals[4], 2);
+          EXPECT_EQ(sorted_vals[5], 4);
+          EXPECT_FALSE(std::signbit(to_std_float(sorted_keys[0])));
+          EXPECT_TRUE(std::signbit(to_std_float(sorted_keys[1])));
+          EXPECT_TRUE(std::signbit(to_std_float(sorted_keys[4])));
+          EXPECT_FALSE(std::signbit(to_std_float(sorted_keys[5])));
+        }
+      }
+    }
+
+    // 2. 2-input key-value sort with -0.0 only (no +0.0 or NaN -> fast path).
+    {
+      Literal keys = LiteralUtil::CreateR1<T>(
+          {one, neg_zero, neg_inf, neg_two, inf, neg_zero});
+      Literal values = LiteralUtil::CreateR1<int32_t>({0, 1, 2, 3, 4, 5});
+
+      BufferAllocations allocations = CreateBufferAllocations(keys, values);
+      auto [alloc0, alloc1] = CreateBufferAllocation(keys, values);
+      auto [slice0, slice1] = CreateBufferAllocationSlice(alloc0, alloc1);
+
+      ASSERT_OK_AND_ASSIGN(
+          auto thunk,
+          SortThunk::Create(
+              {"sort"}, {{slice0, keys.shape()}, {slice1, values.shape()}},
+              /*dimension=*/0, is_stable, fake_less_than, direction));
+
+      Thunk::ExecuteParams params;
+      params.buffer_allocations = &allocations;
+      auto execute_event = thunk->Execute(params);
+      tsl::BlockUntilReady(execute_event);
+      ASSERT_FALSE(execute_event.IsError());
+
+      auto sorted_keys = keys.data<T>();
+      auto sorted_vals = values.data<int32_t>();
+      if (direction == SortThunk::SortDirection::kAscending) {
+        EXPECT_EQ(sorted_keys[0], neg_inf);
+        EXPECT_EQ(sorted_keys[1], neg_two);
+        EXPECT_EQ(sorted_keys[2], pos_zero);
+        EXPECT_EQ(sorted_keys[3], pos_zero);
+        EXPECT_TRUE(std::signbit(to_std_float(sorted_keys[2])));
+        EXPECT_TRUE(std::signbit(to_std_float(sorted_keys[3])));
+        EXPECT_EQ(sorted_keys[4], one);
+        EXPECT_EQ(sorted_keys[5], inf);
+        if (is_stable) {
+          EXPECT_EQ(sorted_vals[2], 1);
+          EXPECT_EQ(sorted_vals[3], 5);
+        }
+      } else {
+        EXPECT_EQ(sorted_keys[0], inf);
+        EXPECT_EQ(sorted_keys[1], one);
+        EXPECT_EQ(sorted_keys[2], pos_zero);
+        EXPECT_EQ(sorted_keys[3], pos_zero);
+        EXPECT_TRUE(std::signbit(to_std_float(sorted_keys[2])));
+        EXPECT_TRUE(std::signbit(to_std_float(sorted_keys[3])));
+        EXPECT_EQ(sorted_keys[4], neg_two);
+        EXPECT_EQ(sorted_keys[5], neg_inf);
+        if (is_stable) {
+          EXPECT_EQ(sorted_vals[2], 1);
+          EXPECT_EQ(sorted_vals[3], 5);
+        }
+      }
+    }
+  }
+}
+
+template <typename T>
+void TestSortFloatInplaceSpecialValues(bool is_stable) {
+  auto to_std_float = [](T val) {
+    if constexpr (std::is_same_v<T, double>) {
+      return val;
+    } else {
+      return static_cast<float>(val);
+    }
+  };
+  using StdFloat = decltype(to_std_float(T{}));
+
+  const T pos_nan = static_cast<T>(
+      std::copysign(std::numeric_limits<StdFloat>::quiet_NaN(), StdFloat{1.0}));
+  const T neg_nan = static_cast<T>(std::copysign(
+      std::numeric_limits<StdFloat>::quiet_NaN(), StdFloat{-1.0}));
+  const T inf = std::numeric_limits<T>::infinity();
+  const T neg_inf = -inf;
+  const T pos_zero = static_cast<T>(0.0f);
+  const T neg_zero = static_cast<T>(-0.0f);
+  const T neg_two = static_cast<T>(-2.0f);
+  const T neg_half = static_cast<T>(-0.5f);
+  const T one = static_cast<T>(1.0f);
+  const T three = static_cast<T>(3.0f);
+
+  auto fake_less_than = [](const void**) { return false; };
+
+  for (auto direction : {SortThunk::SortDirection::kAscending,
+                         SortThunk::SortDirection::kDescending}) {
+    // 3. 1-input SortInplace contiguous (stride == 1) with NaN and +/-0.0.
+    {
+      Literal data = LiteralUtil::CreateR1<T>(
+          {pos_nan, one, neg_zero, neg_inf, pos_zero, neg_two, inf, neg_nan});
+
+      BufferAllocations allocations = CreateBufferAllocations(data);
+      BufferAllocation alloc = CreateBufferAllocation(0, data);
+      BufferAllocation::Slice slice = CreateBufferAllocationSlice(alloc);
+
+      ASSERT_OK_AND_ASSIGN(auto thunk,
+                           SortThunk::Create({"sort"}, {{slice, data.shape()}},
+                                             /*dimension=*/0, is_stable,
+                                             fake_less_than, direction));
+
+      Thunk::ExecuteParams params;
+      params.buffer_allocations = &allocations;
+      auto execute_event = thunk->Execute(params);
+      tsl::BlockUntilReady(execute_event);
+      ASSERT_FALSE(execute_event.IsError());
+
+      auto sorted = data.data<T>();
+      if (direction == SortThunk::SortDirection::kAscending) {
+        EXPECT_EQ(sorted[0], neg_inf);
+        EXPECT_EQ(sorted[1], neg_two);
+        EXPECT_EQ(sorted[2], pos_zero);
+        EXPECT_EQ(sorted[3], pos_zero);
+        EXPECT_EQ(sorted[4], one);
+        EXPECT_EQ(sorted[5], inf);
+        EXPECT_TRUE(std::isnan(to_std_float(sorted[6])));
+        EXPECT_TRUE(std::isnan(to_std_float(sorted[7])));
+        if (is_stable) {
+          EXPECT_TRUE(std::signbit(to_std_float(sorted[2])));
+          EXPECT_FALSE(std::signbit(to_std_float(sorted[3])));
+          EXPECT_FALSE(std::signbit(to_std_float(sorted[6])));
+          EXPECT_TRUE(std::signbit(to_std_float(sorted[7])));
+        }
+      } else {
+        EXPECT_TRUE(std::isnan(to_std_float(sorted[0])));
+        EXPECT_TRUE(std::isnan(to_std_float(sorted[1])));
+        EXPECT_EQ(sorted[2], inf);
+        EXPECT_EQ(sorted[3], one);
+        EXPECT_EQ(sorted[4], pos_zero);
+        EXPECT_EQ(sorted[5], pos_zero);
+        EXPECT_EQ(sorted[6], neg_two);
+        EXPECT_EQ(sorted[7], neg_inf);
+        if (is_stable) {
+          EXPECT_FALSE(std::signbit(to_std_float(sorted[0])));
+          EXPECT_TRUE(std::signbit(to_std_float(sorted[1])));
+          EXPECT_TRUE(std::signbit(to_std_float(sorted[4])));
+          EXPECT_FALSE(std::signbit(to_std_float(sorted[5])));
+        }
+      }
+    }
+
+    // 4. 1-input SortInplace strided (stride == 2, dimension == 0 on [8, 2]):
+    //    Column 0 has NaN and both -0.0 and +0.0 (strided fallback path).
+    //    Column 1 has -0.0 without +0.0 or NaN (strided fast path).
+    {
+      Literal data = LiteralUtil::CreateR2<T>({{pos_nan, one},
+                                               {one, neg_zero},
+                                               {neg_zero, neg_inf},
+                                               {neg_inf, neg_two},
+                                               {pos_zero, inf},
+                                               {neg_two, neg_zero},
+                                               {inf, three},
+                                               {neg_nan, neg_half}});
+
+      BufferAllocations allocations = CreateBufferAllocations(data);
+      BufferAllocation alloc = CreateBufferAllocation(0, data);
+      BufferAllocation::Slice slice = CreateBufferAllocationSlice(alloc);
+
+      ASSERT_OK_AND_ASSIGN(auto thunk,
+                           SortThunk::Create({"sort"}, {{slice, data.shape()}},
+                                             /*dimension=*/0, is_stable,
+                                             fake_less_than, direction));
+
+      Thunk::ExecuteParams params;
+      params.buffer_allocations = &allocations;
+      auto execute_event = thunk->Execute(params);
+      tsl::BlockUntilReady(execute_event);
+      ASSERT_FALSE(execute_event.IsError());
+
+      auto sorted = data.data<T>();
+      if (direction == SortThunk::SortDirection::kAscending) {
+        // Column 0 (indices 0, 2, 4, 6, 8, 10, 12, 14):
+        EXPECT_EQ(sorted[0], neg_inf);
+        EXPECT_EQ(sorted[2], neg_two);
+        EXPECT_EQ(sorted[4], pos_zero);
+        EXPECT_EQ(sorted[6], pos_zero);
+        EXPECT_EQ(sorted[8], one);
+        EXPECT_EQ(sorted[10], inf);
+        EXPECT_TRUE(std::isnan(to_std_float(sorted[12])));
+        EXPECT_TRUE(std::isnan(to_std_float(sorted[14])));
+        if (is_stable) {
+          EXPECT_TRUE(std::signbit(to_std_float(sorted[4])));
+          EXPECT_FALSE(std::signbit(to_std_float(sorted[6])));
+          EXPECT_FALSE(std::signbit(to_std_float(sorted[12])));
+          EXPECT_TRUE(std::signbit(to_std_float(sorted[14])));
+        }
+        // Column 1 (indices 1, 3, 5, 7, 9, 11, 13, 15):
+        EXPECT_EQ(sorted[1], neg_inf);
+        EXPECT_EQ(sorted[3], neg_two);
+        EXPECT_EQ(sorted[5], neg_half);
+        EXPECT_EQ(sorted[7], pos_zero);
+        EXPECT_EQ(sorted[9], pos_zero);
+        EXPECT_TRUE(std::signbit(to_std_float(sorted[7])));
+        EXPECT_TRUE(std::signbit(to_std_float(sorted[9])));
+        EXPECT_EQ(sorted[11], one);
+        EXPECT_EQ(sorted[13], three);
+        EXPECT_EQ(sorted[15], inf);
+      } else {
+        // Column 0 (indices 0, 2, 4, 6, 8, 10, 12, 14):
+        EXPECT_TRUE(std::isnan(to_std_float(sorted[0])));
+        EXPECT_TRUE(std::isnan(to_std_float(sorted[2])));
+        EXPECT_EQ(sorted[4], inf);
+        EXPECT_EQ(sorted[6], one);
+        EXPECT_EQ(sorted[8], pos_zero);
+        EXPECT_EQ(sorted[10], pos_zero);
+        EXPECT_EQ(sorted[12], neg_two);
+        EXPECT_EQ(sorted[14], neg_inf);
+        if (is_stable) {
+          EXPECT_FALSE(std::signbit(to_std_float(sorted[0])));
+          EXPECT_TRUE(std::signbit(to_std_float(sorted[2])));
+          EXPECT_TRUE(std::signbit(to_std_float(sorted[8])));
+          EXPECT_FALSE(std::signbit(to_std_float(sorted[10])));
+        }
+        // Column 1 (indices 1, 3, 5, 7, 9, 11, 13, 15):
+        EXPECT_EQ(sorted[1], inf);
+        EXPECT_EQ(sorted[3], three);
+        EXPECT_EQ(sorted[5], one);
+        EXPECT_EQ(sorted[7], pos_zero);
+        EXPECT_EQ(sorted[9], pos_zero);
+        EXPECT_TRUE(std::signbit(to_std_float(sorted[7])));
+        EXPECT_TRUE(std::signbit(to_std_float(sorted[9])));
+        EXPECT_EQ(sorted[11], neg_half);
+        EXPECT_EQ(sorted[13], neg_two);
+        EXPECT_EQ(sorted[15], neg_inf);
+      }
+    }
+  }
+}
+
+TEST_P(SortThunkTest, SortFloatSpecialValues) {
+  bool is_stable = GetParam();
+  TestSortFloatKeyValueSpecialValues<float>(is_stable);
+  TestSortFloatKeyValueSpecialValues<double>(is_stable);
+  TestSortFloatKeyValueSpecialValues<bfloat16>(is_stable);
+  TestSortFloatKeyValueSpecialValues<half>(is_stable);
+  TestSortFloatInplaceSpecialValues<float>(is_stable);
+  TestSortFloatInplaceSpecialValues<double>(is_stable);
+  TestSortFloatInplaceSpecialValues<bfloat16>(is_stable);
+  TestSortFloatInplaceSpecialValues<half>(is_stable);
+}
+
+template <typename T>
+void TestSortSignedIntBoundaries(bool is_stable) {
+  constexpr T kMin = std::numeric_limits<T>::lowest();
+  constexpr T kMax = std::numeric_limits<T>::max();
+  auto fake_less_than = [](const void**) { return false; };
+
+  for (auto direction : {SortThunk::SortDirection::kAscending,
+                         SortThunk::SortDirection::kDescending}) {
+    // 1-input SortInplace (strided along dimension 0 on [6, 2]).
+    {
+      auto data = LiteralUtil::CreateR2<T>(
+          {{0, kMax}, {kMax, kMin}, {kMin, -1}, {-1, 1}, {1, 0}, {0, -1}});
+      BufferAllocations allocations = CreateBufferAllocations(data);
+      BufferAllocation alloc = CreateBufferAllocation(0, data);
+      BufferAllocation::Slice slice = CreateBufferAllocationSlice(alloc);
+
+      ASSERT_OK_AND_ASSIGN(auto thunk,
+                           SortThunk::Create({"sort"}, {{slice, data.shape()}},
+                                             /*dimension=*/0, is_stable,
+                                             fake_less_than, direction));
+      Thunk::ExecuteParams params;
+      params.buffer_allocations = &allocations;
+      auto execute_event = thunk->Execute(params);
+      tsl::BlockUntilReady(execute_event);
+      ASSERT_FALSE(execute_event.IsError());
+
+      if (direction == SortThunk::SortDirection::kAscending) {
+        EXPECT_EQ(data, LiteralUtil::CreateR2<T>({{kMin, kMin},
+                                                  {-1, -1},
+                                                  {0, -1},
+                                                  {0, 0},
+                                                  {1, 1},
+                                                  {kMax, kMax}}));
+      } else {
+        EXPECT_EQ(data, LiteralUtil::CreateR2<T>({{kMax, kMax},
+                                                  {1, 1},
+                                                  {0, 0},
+                                                  {0, -1},
+                                                  {-1, -1},
+                                                  {kMin, kMin}}));
+      }
+    }
+
+    // 2-input Sort2DKeyValue with boundary values and stability check.
+    {
+      auto keys = LiteralUtil::CreateR1<T>({0, kMax, kMin, -1, 1, kMin, 0});
+      auto values = LiteralUtil::CreateR1<int32_t>({0, 1, 2, 3, 4, 5, 6});
+      BufferAllocations allocations = CreateBufferAllocations(keys, values);
+      auto [alloc0, alloc1] = CreateBufferAllocation(keys, values);
+      auto [slice0, slice1] = CreateBufferAllocationSlice(alloc0, alloc1);
+
+      ASSERT_OK_AND_ASSIGN(
+          auto thunk,
+          SortThunk::Create(
+              {"sort"}, {{slice0, keys.shape()}, {slice1, values.shape()}},
+              /*dimension=*/0, is_stable, fake_less_than, direction));
+      Thunk::ExecuteParams params;
+      params.buffer_allocations = &allocations;
+      auto execute_event = thunk->Execute(params);
+      tsl::BlockUntilReady(execute_event);
+      ASSERT_FALSE(execute_event.IsError());
+
+      if (direction == SortThunk::SortDirection::kAscending) {
+        EXPECT_EQ(keys,
+                  LiteralUtil::CreateR1<T>({kMin, kMin, -1, 0, 0, 1, kMax}));
+        if (is_stable) {
+          EXPECT_EQ(values,
+                    LiteralUtil::CreateR1<int32_t>({2, 5, 3, 0, 6, 4, 1}));
+        }
+      } else {
+        EXPECT_EQ(keys,
+                  LiteralUtil::CreateR1<T>({kMax, 1, 0, 0, -1, kMin, kMin}));
+        if (is_stable) {
+          EXPECT_EQ(values,
+                    LiteralUtil::CreateR1<int32_t>({1, 4, 0, 6, 3, 2, 5}));
+        }
+      }
+    }
+  }
+}
+
+template <typename T>
+void TestSortUnsignedIntBoundaries(bool is_stable) {
+  constexpr T kMax = std::numeric_limits<T>::max();
+  auto fake_less_than = [](const void**) { return false; };
+
+  for (auto direction : {SortThunk::SortDirection::kAscending,
+                         SortThunk::SortDirection::kDescending}) {
+    auto keys = LiteralUtil::CreateR1<T>({1, kMax, 0, kMax - 1, 0, kMax});
+    auto values = LiteralUtil::CreateR1<int32_t>({0, 1, 2, 3, 4, 5});
+    BufferAllocations allocations = CreateBufferAllocations(keys, values);
+    auto [alloc0, alloc1] = CreateBufferAllocation(keys, values);
+    auto [slice0, slice1] = CreateBufferAllocationSlice(alloc0, alloc1);
+
+    ASSERT_OK_AND_ASSIGN(
+        auto thunk,
+        SortThunk::Create(
+            {"sort"}, {{slice0, keys.shape()}, {slice1, values.shape()}},
+            /*dimension=*/0, is_stable, fake_less_than, direction));
+    Thunk::ExecuteParams params;
+    params.buffer_allocations = &allocations;
+    auto execute_event = thunk->Execute(params);
+    tsl::BlockUntilReady(execute_event);
+    ASSERT_FALSE(execute_event.IsError());
+
+    if (direction == SortThunk::SortDirection::kAscending) {
+      EXPECT_EQ(keys,
+                LiteralUtil::CreateR1<T>({0, 0, 1, kMax - 1, kMax, kMax}));
+      if (is_stable) {
+        EXPECT_EQ(values, LiteralUtil::CreateR1<int32_t>({2, 4, 0, 3, 1, 5}));
+      }
+    } else {
+      EXPECT_EQ(keys,
+                LiteralUtil::CreateR1<T>({kMax, kMax, kMax - 1, 1, 0, 0}));
+      if (is_stable) {
+        EXPECT_EQ(values, LiteralUtil::CreateR1<int32_t>({1, 5, 3, 0, 2, 4}));
+      }
+    }
+  }
+}
+
+TEST_P(SortThunkTest, SortIntegerBoundaries) {
+  bool is_stable = GetParam();
+  TestSortSignedIntBoundaries<int8_t>(is_stable);
+  TestSortSignedIntBoundaries<int16_t>(is_stable);
+  TestSortSignedIntBoundaries<int32_t>(is_stable);
+  TestSortSignedIntBoundaries<int64_t>(is_stable);
+  TestSortUnsignedIntBoundaries<uint8_t>(is_stable);
+  TestSortUnsignedIntBoundaries<uint16_t>(is_stable);
+  TestSortUnsignedIntBoundaries<uint32_t>(is_stable);
+  TestSortUnsignedIntBoundaries<uint64_t>(is_stable);
 }
 
 TEST_P(SortThunkTest, SortKeyValueStridedSlices) {
