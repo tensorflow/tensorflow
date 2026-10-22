@@ -289,6 +289,9 @@ TEST_F(DebugEventsWriterTest, InitAfterCloseAppendsToTheSameFiles) {
   ASSERT_EQ(actuals.size(), 2);
   EXPECT_EQ(actuals[0].graph_execution_trace().tfdbg_context_id(), "graph_0");
   EXPECT_EQ(actuals[1].graph_execution_trace().tfdbg_context_id(), "graph_1");
+
+  ReadDebugEventProtos(writer, DebugEventFileType::METADATA, &actuals);
+  EXPECT_EQ(actuals.size(), 2);
 }
 
 TEST_F(DebugEventsWriterTest, FlushAfterCloseDoesNotReopenFiles) {
@@ -299,7 +302,21 @@ TEST_F(DebugEventsWriterTest, FlushAfterCloseDoesNotReopenFiles) {
   TF_ASSERT_OK(writer->FlushNonExecutionFiles());
   TF_ASSERT_OK(writer->FlushExecutionFiles());
 
-  EXPECT_FALSE(writer->WriteSourceFile(new SourceFile()).ok());
+  SourceFile* source_file = new SourceFile();
+  source_file->set_file_path("/home/tf_programs/main.py");
+  TF_ASSERT_OK(writer->WriteSourceFile(source_file));
+  GraphExecutionTrace* trace = new GraphExecutionTrace();
+  trace->set_tfdbg_context_id("graph_0");
+  TF_ASSERT_OK(writer->WriteGraphExecutionTrace(trace));
+  TF_ASSERT_OK(writer->FlushNonExecutionFiles());
+  TF_ASSERT_OK(writer->FlushExecutionFiles());
+
+  std::vector<DebugEvent> actuals;
+  ReadDebugEventProtos(writer, DebugEventFileType::SOURCE_FILES, &actuals);
+  EXPECT_EQ(actuals.size(), 0);
+  ReadDebugEventProtos(writer, DebugEventFileType::GRAPH_EXECUTION_TRACES,
+                       &actuals);
+  EXPECT_EQ(actuals.size(), 0);
 }
 
 TEST_F(DebugEventsWriterTest, WriteSourceFile) {

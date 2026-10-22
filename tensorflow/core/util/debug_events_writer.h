@@ -218,7 +218,8 @@ class DebugEventsWriter {
   absl::Status FlushExecutionFiles();
 
   // Close() calls FlushNonExecutionFiles() and FlushExecutionFiles()
-  // and then closes the current debug events files.
+  // and then closes the current debug events files. Events written after
+  // Close() are dropped until Init() is called again.
   absl::Status Close();
 
  private:

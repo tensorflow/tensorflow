@@ -216,6 +216,9 @@ absl::Status DebugEventsWriter::InitLocked() {
     return absl::UnknownError(
         "Could not create debug event metadata file writer");
   }
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(metadata_writer->Init(),
+                                  "Initializing debug event writer at path ",
+                                  metadata_filename);
 
   {
     mutex_lock l(writers_mu_);
@@ -287,8 +290,7 @@ absl::Status DebugEventsWriter::WriteExecution(Execution* execution) {
 
     tf_shared_lock writers_lock(writers_mu_);
     if (execution_writer_ == nullptr) {
-      return absl::FailedPreconditionError(
-          "Debug events execution writer is not initialized");
+      return absl::OkStatus();
     }
     mutex_lock l(execution_buffer_mu_);
     execution_buffer_.emplace_back(std::move(serialized));
@@ -301,24 +303,24 @@ absl::Status DebugEventsWriter::WriteExecution(Execution* execution) {
 
 absl::Status DebugEventsWriter::WriteGraphExecutionTrace(
     GraphExecutionTrace* graph_execution_trace) {
+  std::unique_ptr<GraphExecutionTrace> trace(graph_execution_trace);
   TF_RETURN_IF_ERROR(InitUnlessClosed());
   if (circular_buffer_size_ <= 0) {
     // No cyclic-buffer behavior.
     DebugEvent debug_event;
-    debug_event.set_allocated_graph_execution_trace(graph_execution_trace);
+    debug_event.set_allocated_graph_execution_trace(trace.release());
     return SerializeAndWriteDebugEvent(&debug_event, GRAPH_EXECUTION_TRACES);
   } else {
     // Circular buffer behavior.
     DebugEvent debug_event;
     MaybeSetDebugEventTimestamp(&debug_event, env_);
-    debug_event.set_allocated_graph_execution_trace(graph_execution_trace);
+    debug_event.set_allocated_graph_execution_trace(trace.release());
     std::string serialized;
     debug_event.SerializeToString(&serialized);
 
     tf_shared_lock writers_lock(writers_mu_);
     if (graph_execution_traces_writer_ == nullptr) {
-      return absl::FailedPreconditionError(
-          "Debug events graph execution traces writer is not initialized");
+      return absl::OkStatus();
     }
     mutex_lock l(graph_execution_trace_buffer_mu_);
     graph_execution_trace_buffer_.emplace_back(std::move(serialized));
@@ -598,12 +600,8 @@ absl::Status DebugEventsWriter::SerializeAndWriteDebugEvent(
   SelectWriter(type, &writer);
   if (writer != nullptr && *writer != nullptr) {
     (*writer)->WriteSerializedDebugEvent(str);
-    return absl::OkStatus();
   }
-
-  return absl::InternalError(absl::StrCat(
-      "Unable to find debug events file writer for DebugEventsFileType ",
-      type));
+  return absl::OkStatus();
 }
 
 void DebugEventsWriter::SelectWriter(
