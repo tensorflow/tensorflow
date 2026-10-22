@@ -50,7 +50,7 @@ class RpcRemoteRendezvous : public BaseRemoteRendezvous {
                            DoneCallback done) override;
 
  private:
-  ~RpcRemoteRendezvous() override {}
+  ~RpcRemoteRendezvous() override = default;
 
   RpcRemoteRendezvous(const RpcRemoteRendezvous&) = delete;
   void operator=(const RpcRemoteRendezvous&) = delete;
@@ -190,7 +190,7 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
 
 class RpcRecvTensorFreeList {
  public:
-  RpcRecvTensorFreeList() {}
+  RpcRecvTensorFreeList() = default;
   ~RpcRecvTensorFreeList() {
     for (size_t i = 0; i < objects_.size(); i++) {
       delete objects_[i];
