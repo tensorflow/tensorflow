@@ -24,6 +24,7 @@ common:clang --copt=-Werror=mismatched-tags
 
 common:clang-tidy-common --aspects=@bazel_clang_tidy//clang_tidy:clang_tidy.bzl%clang_tidy_aspect
 common:clang-tidy-common --output_groups=report
+common:clang-tidy-common --remote_download_toplevel
 common:clang-tidy-common --@bazel_clang_tidy//:clang_tidy_executable=//build_tools/ci:clang_tidy_bin
 
 common:clang-tidy --config=clang-tidy-common

@@ -415,24 +415,22 @@ Build(
     *plus* an explicit `"gpu"` include, since `build.py` does not have the
     `rocm_tag_filters.sh` script in scope.
 
-`build.py` is just a config-as-data factory: it emits three Bazel commands per
-build — dry-run (`--nobuild`) retry, real build, and `bazel analyze-profile
-profile.json.gz`:
+`build.py` is just a config-as-data factory: it emits the Bazel build/test
+command per build (followed by `bazel analyze-profile profile.json.gz` in
+`execute_build_commands`):
 
 ```python
-def commands(self) -> List[List[str]]:
+def commands(self, target_pattern_file: Optional[str] = None) -> List[List[str]]:
     cmds = []
     cmds.extend(self.extra_setup_commands)
-    if not (macos_build or windows_build):
-      cmds.append(retry(self.bazel_command(subcommand="build",
-                                           extra_options=("--nobuild",))))
-    cmds.append(self.bazel_command(subcommand=self.subcommand))
-    cmds.append(["bazel", "analyze-profile", "profile.json.gz"])
+    cmds.append(
+        self.bazel_command(
+            subcommand=self.subcommand,
+            target_pattern_file=target_pattern_file,
+        )
+    )
     return cmds
 ```
-
-The dry-run-then-build pattern allows retrying transient package-fetch failures
-without rebuilding.
 
 This phase ensures compilation regressions are caught even if GPU runners are
 unavailable.
@@ -476,7 +474,7 @@ PR commit
    │       │
    │       └─► XLA Linux x86 GPU ROCm
    │             └─► build_tools/ci/build.py
-   │                   └─► bazel build (nobuild → real)
+   │                   └─► bazel build
    │                         configs: warnings + rbe_linux_cpu +
    │                                  rocm_clang_hermetic
    │                         tag filter: rocm_tag_filter (compile-only)

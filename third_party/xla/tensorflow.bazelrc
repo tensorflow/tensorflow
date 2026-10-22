@@ -84,6 +84,7 @@ common --incompatible_default_to_explicit_init_py
 # Use a downloader config to mirror GitHub, Python package, and BCR downloads.
 # We use the experimental_ name for better compatibility with different Bazel versions.
 common --experimental_downloader_config=bazel_downloader.cfg
+common --experimental_repository_downloader_retries=5
 
 # For local build, without dependency on rbe
 common:linux_cpu --config=avx_linux
@@ -523,7 +524,8 @@ common:rbe_base --remote_timeout=3600
 common:rbe_base --spawn_strategy=remote,worker,standalone,local
 # Attempt to minimize the amount of data transfer between bazel and the remote
 # workers:
-common:rbe_base --remote_download_toplevel
+common:rbe_base --remote_download_minimal
+common:rbe_base --nobuild_runfile_links
 build:rbe_base --test_env=USER=anon
 
 # TODO(kanglan): Check if we want to merge rbe_linux into rbe_linux_cpu.
@@ -584,11 +586,8 @@ common:rbe_win_base --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1
 common:rbe_win_base --shell_executable=C:\\tools\\msys64\\usr\\bin\\bash.exe
 common:rbe_win_base --remote_instance_name=projects/tensorflow-testing/instances/windows
 # Don't build the python zip archive in the RBE build.
-common:rbe_win_base --remote_download_minimal
 common:rbe_win_base --enable_runfiles
 common:rbe_win_base --nobuild_python_zip
-# Don't build the runfile links in the RBE build which is expensive on Windows.
-common:rbe_win_base --nobuild_runfile_links
 common:rbe_win_base --define=override_eigen_strong_inline=true
 
 common:rbe_windows_x86_cpu_2022 --config=rbe_win_base --config=windows_x86_cpu_2022
@@ -742,7 +741,7 @@ common:cross_compile_macos_x86 --crosstool_top=//tools/toolchains/cross_compile/
 common:cross_compile_macos_x86 --extra_toolchains=//tools/toolchains/cross_compile/config:macos-x86-cross-compile-cc-toolchain
 
 # RBE cross-compile configs for Darwin x86
-common:rbe_cross_compile_macos_x86 --config=cross_compile_macos_x86 --remote_download_minimal
+common:rbe_cross_compile_macos_x86 --config=cross_compile_macos_x86
 common:rbe_cross_compile_macos_x86 --bes_backend="" --bes_results_url="" --bes_timeout="0s"
 common:rbe_cross_compile_macos_x86 --experimental_remote_build_event_upload="minimal"
 common:rbe_cross_compile_macos_x86 --config=rbe_cross_compile_base
