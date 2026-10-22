@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/raw_buffer.h"
+#include "xla/shape.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -150,6 +151,13 @@ class CommonPjRtBuffer : public PjRtBuffer {
   friend class CommonPjRtClient;
 
  public:
+  // Information for potentially reconstructing a buffer that has been donated
+  // to an execution.
+  struct DonatedBufferInfo {
+    PjRtRawBufferRef raw_buffer;
+    std::shared_ptr<const Shape> shape;
+    PjRtMemorySpace* memory_space = nullptr;
+  };
   // Helper class to retain a "hold" on a CommonPjRtBuffer. A ScopedHold
   // may not outlive its parent CommonPjRtBuffer.
   //
@@ -243,6 +251,10 @@ class CommonPjRtBuffer : public PjRtBuffer {
     // Only valid for holds of type kDonation. Causes the buffer to become
     // invalid.
     void ConfirmDonation();
+
+    // Confirms donation and returns the raw buffer and metadata before
+    // invalidating the buffer.
+    DonatedBufferInfo ConfirmDonationReturningBufferInfo();
 
     // Converts the hold into a usage event. Only valid for holds of type
     // kUsage.

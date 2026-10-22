@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/pjrt/linearize_throttler.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_device_description.h"
+#include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/pjrt/raw_pjrt_client.h"
 #include "xla/pjrt/strided_gather.h"
@@ -733,12 +734,23 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
       std::optional<tsl::Future<void>>& returned_future,
       bool fill_future) const override;
 
+  absl::StatusOr<ResultWithDonationRecovery> ExecuteShardedWithDonationRecovery(
+      absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
+      const ExecuteOptions& options,
+      std::optional<tsl::Future<void>>& returned_future) const override;
+
   using PjRtLoadedExecutable::ExecutePortable;
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options,
       std::optional<tsl::Future<void>>& returned_future,
       bool fill_future) const override;
+
+  absl::StatusOr<ResultWithDonationRecovery>
+  ExecutePortableWithDonationRecovery(
+      absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
+      const ExecuteOptions& options,
+      std::optional<tsl::Future<void>>& returned_future) const override;
 
   DispatchInfo GetDispatchInfo() const {
     return {
@@ -898,7 +910,9 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
   absl::StatusOr<Result> ExecuteHelperOnSingleDevice(
       absl::Span<PjRtBuffer* const> argument_handles, xla::RunId run_id,
       int replica, int partition, const ExecuteOptions& options,
-      bool fill_future, PjRtDevice* device = nullptr) const;
+      bool fill_future, PjRtDevice* device = nullptr,
+      std::vector<CommonPjRtBuffer::DonatedBufferInfo>* donated_buffer_infos =
+          nullptr) const;
 
   absl::Status ExecutePrepareWithOomRetries(
       std::optional<ExecuteLaunchArgs>& launch_args,
@@ -906,8 +920,32 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
       int replica, int partition, const ExecuteOptions& options,
       size_t host_callback_idx, PjRtDevice* device = nullptr) const;
 
-  absl::StatusOr<Result> ExecuteLaunch(ExecuteLaunchArgs& launch_args,
-                                       bool fill_future) const;
+  absl::StatusOr<Result> ExecuteLaunch(
+      ExecuteLaunchArgs& launch_args, bool fill_future,
+      std::vector<CommonPjRtBuffer::DonatedBufferInfo>* donated_buffer_infos =
+          nullptr) const;
+
+  absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteShardedImpl(
+      absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
+      const ExecuteOptions& options,
+      std::optional<tsl::Future<void>>& returned_future, bool fill_future,
+      std::vector<CommonPjRtBuffer::DonatedBufferInfo>* donated_buffer_infos =
+          nullptr) const;
+
+  absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortableImpl(
+      absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
+      const ExecuteOptions& options,
+      std::optional<tsl::Future<void>>& returned_future, bool fill_future,
+      std::vector<CommonPjRtBuffer::DonatedBufferInfo>* donated_buffer_infos =
+          nullptr) const;
+
+  // Wraps `output_buffers` into a `ResultWithDonationRecovery` whose
+  // `recovery_future` is driven by `execution_future` (the completion future of
+  // the launched execution) and `donated_buffer_infos`.
+  ResultWithDonationRecovery MakeResultWithDonationRecovery(
+      std::vector<std::unique_ptr<PjRtBuffer>> output_buffers,
+      std::vector<CommonPjRtBuffer::DonatedBufferInfo> donated_buffer_infos,
+      const tsl::Future<void>& execution_future) const;
 
   CommonPjRtClient* client_;
   // Parameter shapes.
