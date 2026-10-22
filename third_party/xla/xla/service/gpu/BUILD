@@ -465,6 +465,7 @@ cc_library(
         ":ptx_custom_kernel_emitter",
         ":stream_executor_util",
         ":triton_call",
+        "//xla:comparison_util",
         "//xla:future",
         "//xla:literal",
         "//xla:shape_util",

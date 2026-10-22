@@ -115,6 +115,7 @@ limitations under the License.
 #include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/llvm_kernel_source.h"
 #include "xla/codegen/xtile/block_level_parameters.h"
+#include "xla/comparison_util.h"
 #include "xla/core/host_offloading/host_offloading_executable.pb.h"
 #include "xla/ffi/attribute_map.h"
 #include "xla/ffi/attributes.h"
@@ -1557,11 +1558,18 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTopKCustomCall(
       ir_emitter_context_->gpu_device_info().threads_per_warp();
 
   TF_RET_CHECK(k <= 16) << "CustomCall TopK requires k <= 16";
+  ComparisonOrder comparison_order = hlo_instruction_utils::GetTopKOrder(instr);
+  TF_RET_CHECK(comparison_order == ComparisonOrder::kTotal ||
+               comparison_order == ComparisonOrder::kPartial)
+      << "CustomCall TopK requires TOTAL or PARTIAL comparison order.";
+  kernel::topk::Order order = comparison_order == ComparisonOrder::kPartial
+                                  ? kernel::topk::Order::kPartial
+                                  : kernel::topk::Order::kTotal;
   // Load TopK custom kernel.
-  ABSL_ASSIGN_OR_RETURN(CustomKernel kernel,
-                   kernel::topk::GetTopKKernel("topk", dtype, n, k, batch_size,
-                                               platform_name(), wavefront_size,
-                                               kernel::topk::Order::kTotal));
+  ABSL_ASSIGN_OR_RETURN(
+      CustomKernel kernel,
+      kernel::topk::GetTopKKernel("topk", dtype, n, k, batch_size,
+                                  platform_name(), wavefront_size, order));
 
   Thunk::ThunkInfo info = Thunk::ThunkInfo::WithProfileAnnotation(
       instr, ir_emitter_context_->GetNextThunkId());

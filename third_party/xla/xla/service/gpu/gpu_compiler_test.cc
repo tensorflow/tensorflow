@@ -1815,26 +1815,117 @@ enum class TopKImpl {
 class GpuCompilerSelectKTest
     : public GpuCompilerTest,
       public ::testing::WithParamInterface<
-          std::tuple<absl::string_view, int, int, bool, TopKImpl>> {};
+          std::tuple<absl::string_view, int, int, bool, TopKImpl>> {
+ protected:
+  void VerifyTopKThunkSequence(absl::string_view hlo_text,
+                               TopKImpl expected_impl) {
+    bool is_rocm = device_description().gpu_compute_capability().IsRocm();
+    bool is_oneapi = device_description().gpu_compute_capability().IsOneAPI();
+
+    if (is_rocm && (expected_impl == TopKImpl::kSelectK ||
+                    expected_impl == TopKImpl::kSelectKWithU64Adapter)) {
+      GTEST_SKIP() << "raft::select_k is not supported in ROCm.";
+    }
+    // TODO(intel-tf): Remove this check once TopK specialization for
+    // SYCL/oneAPI backend is added.
+    if (is_oneapi && expected_impl != TopKImpl::kSort) {
+      GTEST_SKIP()
+          << "oneAPI does not support raft::select_k and custom TopK yet.";
+    }
+
+    // Configure module with debug options.
+    HloModuleConfig config;
+    DebugOptions debug_options = GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_experimental_enable_raft_for_stable_topk(true);
+    config.set_debug_options(debug_options);
+
+    ASSERT_OK_AND_ASSIGN(auto module,
+                         ParseAndReturnVerifiedModule(hlo_text, config));
+
+    Compiler::CompileOptions compile_options;
+    compile_options.gpu_topology = GetSingleDeviceGpuTopology(
+        /*platform_version=*/"", gpu_target_config());
+    compile_options.early_exit_with_layouts = false;
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<HloModule> compiled_module,
+        compiler()->RunHloPasses(module->Clone(), /*executor=*/nullptr,
+                                 compile_options));
+
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<Executable> executable,
+        compiler()->RunBackend(std::move(compiled_module), /*executor=*/nullptr,
+                               compile_options));
+
+    // Downcast to GPU executable
+    xla::gpu::GpuExecutable* gpu_executable =
+        absl::down_cast<GpuExecutable*>(executable.get());
+    ASSERT_NE(gpu_executable, nullptr);
+
+    // Get the thunk sequence and check its size and type
+    const ThunkExecutor& seq_thunk = gpu_executable->thunk_executor();
+    std::vector<Thunk::Kind> kinds;
+    kinds.reserve(seq_thunk.thunks().size());
+    for (const auto& thunk : seq_thunk.thunks()) {
+      kinds.push_back(thunk->kind());
+    }
+
+    using ::testing::ElementsAre;
+
+    switch (expected_impl) {
+      case TopKImpl::kCustomKernel:
+        EXPECT_THAT(kinds, ElementsAre(Thunk::Kind::kCustomKernel));
+        break;
+
+      case TopKImpl::kSelectK:
+        EXPECT_THAT(kinds, ElementsAre(Thunk::Kind::kCustomCall));
+        break;
+
+      case TopKImpl::kSort: {
+        if (kinds.size() == 1) {
+          // LLVM
+          EXPECT_THAT(kinds, ElementsAre(Thunk::Kind::kCommandBuffer));
+        } else if (kinds.size() == 4 && kinds[0] == Thunk::Kind::kCopy) {
+          // LLVM Bitonic sort (unbundled, with input copy)
+          EXPECT_THAT(
+              kinds, ElementsAre(Thunk::Kind::kCopy, Thunk::Kind::kCustomKernel,
+                                 Thunk::Kind::kCustomKernel,
+                                 Thunk::Kind::kCustomKernel));
+        } else if (kinds.size() == 4) {
+          // CUB sort via FFI custom call
+          EXPECT_THAT(kinds, ElementsAre(Thunk::Kind::kCustomKernel,
+                                         Thunk::Kind::kCustomCall,
+                                         Thunk::Kind::kCustomKernel,
+                                         Thunk::Kind::kCustomKernel));
+        } else {
+          FAIL() << "Unexpected thunk sequence size: " << kinds.size();
+        }
+        break;
+      }
+
+      case TopKImpl::kSelectKWithU64Adapter:
+        EXPECT_THAT(kinds, ElementsAre(Thunk::Kind::kCustomKernel,
+                                       Thunk::Kind::kCustomCall,
+                                       Thunk::Kind::kCustomKernel));
+        break;
+
+      case TopKImpl::kSortWithS32Adapter: {
+        EXPECT_THAT(kinds, ElementsAre(Thunk::Kind::kCustomKernel,
+                                       Thunk::Kind::kCustomKernel,
+                                       Thunk::Kind::kCustomKernel));
+        break;
+      }
+
+      default:
+        FAIL() << "Unexpected TopKImpl: " << static_cast<int>(expected_impl);
+    }
+  }
+};
 
 // Test lowering of TopK to different GPU implementations
 // (CustomKernel, raft::select_k, or Sort+Slice (LLVM/CUBSort)).
 TEST_P(GpuCompilerSelectKTest, SelectKOrCustomKernelThunk) {
   auto [dtype, n, k, is_stable, expected_impl] = GetParam();
 
-  bool is_rocm = device_description().gpu_compute_capability().IsRocm();
-  bool is_oneapi = device_description().gpu_compute_capability().IsOneAPI();
-
-  if (is_rocm && (expected_impl == TopKImpl::kSelectK ||
-                  expected_impl == TopKImpl::kSelectKWithU64Adapter)) {
-    GTEST_SKIP() << "raft::select_k is not supported in ROCm.";
-  }
-  // TODO(intel-tf): Remove this check once TopK specialization for SYCL/oneAPI
-  // backend is added.
-  if (is_oneapi && expected_impl != TopKImpl::kSort) {
-    GTEST_SKIP()
-        << "oneAPI does not support raft::select_k and custom TopK yet.";
-  }
   // Generate HLO text with parameters substituted.
   std::string hlo_text = absl::Substitute(R"(
 HloModule m
@@ -1845,92 +1936,39 @@ ENTRY main {
 }
 )",
                                           dtype, n, k, is_stable);
+  VerifyTopKThunkSequence(hlo_text, expected_impl);
+}
 
-  // Configure module with debug options.
-  HloModuleConfig config;
-  DebugOptions debug_options = GetDebugOptionsForTest();
-  debug_options.set_xla_gpu_experimental_enable_raft_for_stable_topk(true);
-  config.set_debug_options(debug_options);
+class GpuCompilerApproxTopKSelectKTest : public GpuCompilerSelectKTest {};
 
-  ASSERT_OK_AND_ASSIGN(auto module,
-                       ParseAndReturnVerifiedModule(hlo_text, config));
+// Test lowering of unoptimized approx_topk (sort + slice with PARTIAL order
+// comparator) to different GPU implementations.
+TEST_P(GpuCompilerApproxTopKSelectKTest, SelectKOrCustomKernelThunk) {
+  auto [dtype, n, k, is_stable, expected_impl] = GetParam();
 
-  Compiler::CompileOptions compile_options;
-  compile_options.gpu_topology =
-      GetSingleDeviceGpuTopology(/*platform_version=*/"", gpu_target_config());
-  compile_options.early_exit_with_layouts = false;
-  ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<HloModule> compiled_module,
-      compiler()->RunHloPasses(module->Clone(), /*executor=*/nullptr,
-                               compile_options));
+  std::string hlo_text = absl::Substitute(R"(
+HloModule m
 
-  ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<Executable> executable,
-      compiler()->RunBackend(std::move(compiled_module), /*executor=*/nullptr,
-                             compile_options));
+%top_k_gt_comparator (lhs_val: $0[], rhs_val: $0[], lhs_idx: s32[], rhs_idx: s32[]) -> pred[] {
+  %lhs_idx = s32[] parameter(2)
+  %rhs_idx = s32[] parameter(3)
+  %lhs_val = $0[] parameter(0)
+  %rhs_val = $0[] parameter(1)
+  ROOT %cmp = pred[] compare(%lhs_val, %rhs_val), direction=GT
+}
 
-  // Downcast to GPU executable
-  xla::gpu::GpuExecutable* gpu_executable =
-      absl::down_cast<GpuExecutable*>(executable.get());
-  ASSERT_NE(gpu_executable, nullptr);
-
-  // Get the thunk sequence and check its size and type
-  const ThunkExecutor& seq_thunk = gpu_executable->thunk_executor();
-  std::vector<Thunk::Kind> kinds;
-  kinds.reserve(seq_thunk.thunks().size());
-  for (const auto& thunk : seq_thunk.thunks()) {
-    kinds.push_back(thunk->kind());
-  }
-
-  using ::testing::ElementsAre;
-
-  switch (expected_impl) {
-    case TopKImpl::kCustomKernel:
-      EXPECT_THAT(kinds, ElementsAre(Thunk::Kind::kCustomKernel));
-      break;
-
-    case TopKImpl::kSelectK:
-      EXPECT_THAT(kinds, ElementsAre(Thunk::Kind::kCustomCall));
-      break;
-
-    case TopKImpl::kSort: {
-      if (kinds.size() == 1) {
-        // LLVM
-        EXPECT_THAT(kinds, ElementsAre(Thunk::Kind::kCommandBuffer));
-      } else if (kinds.size() == 4 && kinds[0] == Thunk::Kind::kCopy) {
-        // LLVM Bitonic sort (unbundled, with input copy)
-        EXPECT_THAT(kinds,
-                    ElementsAre(Thunk::Kind::kCopy, Thunk::Kind::kCustomKernel,
-                                Thunk::Kind::kCustomKernel,
-                                Thunk::Kind::kCustomKernel));
-      } else if (kinds.size() == 4) {
-        // CUB sort via FFI custom call
-        EXPECT_THAT(kinds, ElementsAre(Thunk::Kind::kCustomKernel,
-                                       Thunk::Kind::kCustomCall,
-                                       Thunk::Kind::kCustomKernel,
-                                       Thunk::Kind::kCustomKernel));
-      } else {
-        FAIL() << "Unexpected thunk sequence size: " << kinds.size();
-      }
-      break;
-    }
-
-    case TopKImpl::kSelectKWithU64Adapter:
-      EXPECT_THAT(kinds, ElementsAre(Thunk::Kind::kCustomKernel,
-                                     Thunk::Kind::kCustomCall,
-                                     Thunk::Kind::kCustomKernel));
-      break;
-
-    case TopKImpl::kSortWithS32Adapter: {
-      EXPECT_THAT(kinds, ElementsAre(Thunk::Kind::kCustomKernel,
-                                     Thunk::Kind::kCustomKernel,
-                                     Thunk::Kind::kCustomKernel));
-      break;
-    }
-
-    default:
-      FAIL() << "Unexpected TopKImpl: " << static_cast<int>(expected_impl);
-  }
+ENTRY main {
+  p = $0[8,$1]{1,0} parameter(0)
+  iota = s32[$1]{0} iota(), iota_dimension=0
+  bcast = s32[8,$1]{1,0} broadcast(iota), dimensions={1}
+  sorted = ($0[8,$1]{1,0}, s32[8,$1]{1,0}) sort(p, bcast), dimensions={1}, is_stable=$3, to_apply=%top_k_gt_comparator
+  vals = $0[8,$2]{1,0} slice(sorted#0), slice={[0:8], [0:$2]}
+  idxs = s32[8,$2]{1,0} slice(sorted#1), slice={[0:8], [0:$2]}
+  ROOT t = ($0[8,$2]{1,0}, s32[8,$2]{1,0}) tuple(vals, idxs)
+}
+)",
+                                          dtype, n, k, is_stable);
+  VerifyTopKThunkSequence(hlo_text, expected_impl);
 }
 
 XLA_FFI_DEFINE_HANDLER(
@@ -2701,6 +2739,56 @@ auto SelectKTestParams() {
 // Instantiate the test suite with (n, k, expected_kind) pairs.
 INSTANTIATE_TEST_SUITE_P(SelectKOrCustomKernel, GpuCompilerSelectKTest,
                          SelectKTestParams());
+
+auto ApproxTopKSelectKTestParams() {
+  // Unlike HloOpcode::kTopK (where TopkDecomposer intercepts bf16 with
+  // N <= 2**16 before TopkRewriter), approx_topk is lowered as sort + slice
+  // with a PARTIAL order comparator and rewritten directly into a TopK
+  // CustomCall by TopkRewriter for both f32 and bf16.
+  return ::testing::Values(
+      // dtype, n, k, is_stable, expected_impl
+      std::make_tuple("f32", 1023, 4, false, TopKImpl::kSelectK),
+      std::make_tuple("f32", 1023, 4, true, TopKImpl::kSort),
+      std::make_tuple("f32", 1024, 4, false, TopKImpl::kCustomKernel),
+      std::make_tuple("f32", 1024, 4, true, TopKImpl::kCustomKernel),
+      std::make_tuple("f32", 1024, 16, false, TopKImpl::kSelectK),
+      std::make_tuple("f32", 1024, 16, true, TopKImpl::kCustomKernel),
+      std::make_tuple("f32", 8192, 24, false, TopKImpl::kSelectK),
+      std::make_tuple("f32", 8192, 24, true, TopKImpl::kSelectKWithU64Adapter),
+      std::make_tuple("f32", 8192, 512, false, TopKImpl::kSort),
+      std::make_tuple("f32", 8192, 512, true, TopKImpl::kSort),
+      // f32: exact upper bound of max_k
+      std::make_tuple("f32", 8192, 128, false, TopKImpl::kSelectK),
+      std::make_tuple("f32", 8192, 128, true, TopKImpl::kSelectKWithU64Adapter),
+      // f32: just over the upper bound
+      std::make_tuple("f32", 8192, 129, false, TopKImpl::kSort),
+      std::make_tuple("f32", 8192, 129, true, TopKImpl::kSort),
+      // bf16 and size <= 2**16.
+      std::make_tuple("bf16", 1023, 4, false, TopKImpl::kSelectK),
+      std::make_tuple("bf16", 1023, 4, true, TopKImpl::kSort),
+      std::make_tuple("bf16", 1024, 4, false, TopKImpl::kCustomKernel),
+      std::make_tuple("bf16", 1024, 4, true, TopKImpl::kCustomKernel),
+      std::make_tuple("bf16", 1024, 16, false, TopKImpl::kSelectK),
+      std::make_tuple("bf16", 1024, 16, true, TopKImpl::kCustomKernel),
+      // bf16 and size > 2**16.
+      std::make_tuple("bf16", 65540, 16, false, TopKImpl::kSelectK),
+      std::make_tuple("bf16", 65540, 16, true, TopKImpl::kCustomKernel),
+      std::make_tuple("bf16", 65540, 24, false, TopKImpl::kSelectK),
+      std::make_tuple("bf16", 65540, 24, true,
+                      TopKImpl::kSelectKWithU64Adapter),
+      std::make_tuple("bf16", 65540, 512, false, TopKImpl::kSort),
+      std::make_tuple("bf16", 65540, 512, true, TopKImpl::kSort),
+      // bf16: exact upper bound of max_k for batch=8
+      std::make_tuple("bf16", 65540, 128, false, TopKImpl::kSelectK),
+      std::make_tuple("bf16", 65540, 128, true,
+                      TopKImpl::kSelectKWithU64Adapter),
+      // bf16: just over the upper bound
+      std::make_tuple("bf16", 65540, 129, false, TopKImpl::kSort),
+      std::make_tuple("bf16", 65540, 129, true, TopKImpl::kSort));
+}
+INSTANTIATE_TEST_SUITE_P(ApproxTopKSelectKOrCustomKernel,
+                         GpuCompilerApproxTopKSelectKTest,
+                         ApproxTopKSelectKTestParams());
 }  // namespace
 
 XLA_FFI_DEFINE_HANDLER(
