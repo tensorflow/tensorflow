@@ -1319,7 +1319,7 @@ static StatusOr<FuncOp> PostProcessFuncOp(FuncOp func) {
           llvm::isa<mlir::quant::UniformQuantizedPerAxisType>(qtype))) {
       return;
     }
-    for (auto& use : value.getUses()) {
+    for (auto& use : llvm::make_early_inc_range(value.getUses())) {
       Operation* user = use.getOwner();
       if (user->hasTrait<mlir::OpTrait::IsTerminator>()) continue;
 
