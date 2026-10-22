@@ -1137,6 +1137,10 @@ message DebugOptions {
   // regressions.
   optional int32 xla_gpu_experimental_max_unroll_factor = 459;
 
+  // Register NCCL windows with NCCL_WIN_COLL_SYMMETRIC instead of
+  // NCCL_WIN_DEFAULT.
+  optional bool xla_gpu_experimental_nccl_window_symmetric = 561;
+
   // For sub-byte dot operands, layout them along contracting dimensions.
   optional bool xla_gpu_experimental_pack_dot_operands_along_k_dimension = 362;
 
@@ -1974,7 +1978,7 @@ message DebugOptions {
   // when the cuDNN version changes).
   optional bool xla_autotune_cache_require_strict_codegen_match = 559;
 
-  // Next id: 561
+  // Next id: 562
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
