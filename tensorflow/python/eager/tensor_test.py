@@ -193,14 +193,20 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     self.assertEqual(dtypes.float64, t.dtype)
 
   def testBfloat16FromPythonFloats(self):
-    # 1e-38 and -1e-40 are subnormal in bfloat16.
-    values = [1e-38, -1e-40, 0.1, 3.0]
+    # 1e-38 and -1e-40 are subnormal in bfloat16; +/-1e39 overflow to +/-inf.
+    values = [1e-38, -1e-40, 0.1, 3.0, 1e39, -1e39]
     expected = np.array(values, dtype=dtypes.bfloat16.as_numpy_dtype)
     for value, want in zip(values, expected):
       got = _create_tensor(value, dtype=dtypes.bfloat16).numpy()
       self.assertAllEqual(got.view(np.uint16), want.view(np.uint16))
     got = _create_tensor(values, dtype=dtypes.bfloat16).numpy()
     self.assertAllEqual(got.view(np.uint16), expected.view(np.uint16))
+    self.assertAllEqual(
+        _create_tensor([True, 1e39], dtype=dtypes.bfloat16), [1.0, np.inf]
+    )
+    self.assertEqual(
+        float(_create_tensor(2**200, dtype=dtypes.bfloat16).numpy()), np.inf
+    )
 
   def testBool(self):
     self.assertFalse(bool(_create_tensor(False)))

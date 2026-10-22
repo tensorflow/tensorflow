@@ -465,10 +465,13 @@ inline bool CheckForOverflow<Eigen::half>(double as_double, Eigen::half* out) {
   return (Eigen::numext::isinf(*out) && std::isfinite(as_double));
 }
 
+// BFloat16Converter only runs when bfloat16 is requested, so a value that
+// overflows keeps the +/-inf from the cast instead of falling back to another
+// converter.
 template <>
-inline bool CheckForOverflow<Eigen::bfloat16>(double as_double,
-                                              Eigen::bfloat16* out) {
-  return (Eigen::numext::isinf(*out) && std::isfinite(as_double));
+inline bool CheckForOverflow<Eigen::bfloat16>(double /*as_double*/,
+                                              Eigen::bfloat16* /*out*/) {
+  return false;
 }
 
 template <class T>
