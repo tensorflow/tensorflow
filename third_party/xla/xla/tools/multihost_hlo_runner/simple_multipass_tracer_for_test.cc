@@ -163,5 +163,10 @@ void RegisterSimpleMultiPassTracerForTest() {
   tsl::profiler::RegisterMultiPassProfilerFactory(&CreateSimpleMultiPassTracer);
 }
 
+void ClearMultiPassTracerRegisterForTest() {
+  VLOG(1) << "Clearing registered MultiPassTracer factories.";
+  tsl::profiler::ClearRegisteredMultiPassProfilersForTest();
+}
+
 }  // namespace profiler
 }  // namespace xla
