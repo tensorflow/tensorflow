@@ -125,6 +125,34 @@ CHECK: bf16[16,128]{1,0} convert(
                   .value_or(false));
 }
 
+TEST_F(SplitkRewriterTest, SplitKDotKeepsPhysicalLayoutOfOriginalDot) {
+  // The dot result has the non-default layout {0,1} (dimension 0 is minor).
+  // The split-K dot must keep this physical layout with the split-K dimension
+  // as the most major one, so that the reduction does not transpose.
+  const char* hlo_string = R"(
+HloModule module
+
+ENTRY test {
+  lhs = bf16[1536,10240]{1,0} parameter(0)
+  rhs = bf16[256,10240]{1,0} parameter(1)
+  ROOT dot = bf16[1536,256]{0,1} dot(lhs, rhs),
+                                lhs_contracting_dims={1}, rhs_contracting_dims={1}
+})";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       rewriter_.HloModulePass::Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_TRUE(RunFileCheck(module->ToString(), R"(
+CHECK: %[[DOT:.*]] = f32[{{[0-9]+}},1536,256]{1,2,0} dot(
+CHECK: f32[1536,256]{0,1} reduce(%[[DOT]], {{.*}}), dimensions={0}
+CHECK: ROOT {{.*}} = bf16[1536,256]{0,1} convert(
+  )")
+                  .value_or(false));
+}
+
 TEST_F(SplitkRewriterTest, NoSplitKIfEnoughWork) {
   // Small K is not profitable to split.
   const char* hlo_string = R"(

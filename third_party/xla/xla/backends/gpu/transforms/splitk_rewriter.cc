@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/layout.h"
 #include "xla/literal_util.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/hlo_creation_utils.h"
@@ -368,6 +369,20 @@ absl::StatusOr<HloInstruction*> SplitKDimensionOfDot(HloDotInstruction* src_dot,
   ABSL_ASSIGN_OR_RETURN(
       int64_t splitk_dim_idx,
       dims[0].IndexWithinCategory(DotOperandDims::kBatch, k_incices[0]));
+
+  // Keep the physical layout of the original dot result, with the split-K
+  // dimension as the most major one. The reduction over the split-K dimension
+  // then only sums contiguous slices of its operand instead of also having to
+  // transpose it to the layout of the original dot.
+  {
+    Layout new_dot_layout = src_dot->shape().layout();
+    new_dot_layout.clear_minor_to_major();
+    for (int64_t dim : src_dot->shape().layout().minor_to_major()) {
+      new_dot_layout.add_minor_to_major(dim >= splitk_dim_idx ? dim + 1 : dim);
+    }
+    new_dot_layout.add_minor_to_major(splitk_dim_idx);
+    *new_dot->mutable_shape()->mutable_layout() = new_dot_layout;
+  }
 
   ABSL_ASSIGN_OR_RETURN(HloInstruction * splitk_root,
                    ReduceDimension(new_dot, splitk_dim_idx));

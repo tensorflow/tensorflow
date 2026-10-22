@@ -47,6 +47,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops_in_place_transpose.h"
 #include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_utils.h"
+#include "tensorflow/compiler/mlir/lite/transforms/resource_elementwise_fold.h"
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/utils.h"
 
@@ -630,6 +631,11 @@ void LargeConstantFoldPass::runOnOperation() {
   }
   if (GetOptions().fold_fp16_resource_casts) {
     if (failed(FoldResourceOpPattern<TFL::CastOp>(module))) {
+      signalPassFailure();
+    }
+  }
+  if (GetOptions().fold_elementwise_ops) {
+    if (failed(FoldResourceElementwiseOps(module))) {
       signalPassFailure();
     }
   }
