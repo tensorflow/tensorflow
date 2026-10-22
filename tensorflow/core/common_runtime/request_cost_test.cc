@@ -22,6 +22,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/time/time.h"
+#include "tensorflow/core/common_runtime/request_cost.pb.h"
 
 namespace tensorflow {
 namespace {

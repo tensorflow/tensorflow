@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "tensorflow/core/common_runtime/request_cost.pb.h"
 
 namespace tensorflow {
 
