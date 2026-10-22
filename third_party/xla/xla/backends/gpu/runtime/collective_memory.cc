@@ -234,8 +234,9 @@ AcquireSymmetricMemory(
         sym_memories[mem_key] = std::move(cached);
         continue;
       }
-      ABSL_ASSIGN_OR_RETURN(std::unique_ptr<SymmetricMemory> symm,
-                       comm->CreateSymmetricMemory(addr));
+      ABSL_ASSIGN_OR_RETURN(
+          std::unique_ptr<SymmetricMemory> symm,
+          comm->CreateSymmetricMemory(addr, params.nccl_window_symmetric));
       ABSL_ASSIGN_OR_RETURN(tsl::TiedRef<SymmetricMemory> tied_symm,
                        cliques.Tie(r.clique, std::move(symm)));
       sym_memories[mem_key] =

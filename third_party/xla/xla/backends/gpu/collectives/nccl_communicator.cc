@@ -263,9 +263,11 @@ NcclCommunicator::CreateRegisteredMemory(se::DeviceAddressBase addr) {
 }
 
 absl::StatusOr<std::unique_ptr<SymmetricMemory>>
-NcclCommunicator::CreateSymmetricMemory(se::DeviceAddressBase addr) {
+NcclCommunicator::CreateSymmetricMemory(se::DeviceAddressBase addr,
+                                        bool symmetric_window) {
   return ExecuteAwait<std::unique_ptr<SymmetricMemory>>(
-      [this, addr]() -> absl::StatusOr<std::unique_ptr<SymmetricMemory>> {
+      [this, addr,
+       symmetric_window]() -> absl::StatusOr<std::unique_ptr<SymmetricMemory>> {
         XLA_VLOG_DEVICE(5, stream_executor_->device_ordinal())
             << "Creating symmetric memory for device address: "
             << addr.opaque();
@@ -274,7 +276,7 @@ NcclCommunicator::CreateSymmetricMemory(se::DeviceAddressBase addr) {
         }
 
         return NcclSymmetricMemory::Create(comm_, addr, executor_,
-                                           stream_executor_);
+                                           stream_executor_, symmetric_window);
       });
 }
 

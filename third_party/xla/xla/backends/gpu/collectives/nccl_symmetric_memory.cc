@@ -78,7 +78,8 @@ absl::StatusOr<std::unique_ptr<NcclSymmetricMemory>>
 NcclSymmetricMemory::Create(std::shared_ptr<NcclCommState> comm_state,
                             stream_executor::DeviceAddressBase addr,
                             const std::shared_ptr<tsl::Executor> executor,
-                            stream_executor::StreamExecutor* stream_executor) {
+                            stream_executor::StreamExecutor* stream_executor,
+                            bool symmetric_window) {
   if (comm_state == nullptr) {
     return absl::InvalidArgumentError("NCCL comm_state is null.");
   }

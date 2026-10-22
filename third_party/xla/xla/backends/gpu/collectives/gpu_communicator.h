@@ -223,7 +223,8 @@ class GpuCommunicator : public Communicator {
   // a collective operation, and all ranks in a clique must call this operation
   // in order to make a progress.
   virtual absl::StatusOr<std::unique_ptr<SymmetricMemory>>
-  CreateSymmetricMemory(se::DeviceAddressBase addr) {
+  CreateSymmetricMemory(se::DeviceAddressBase addr,
+                        bool symmetric_window = false) {
     return Unimplemented("Symmetric memory is not implemented");
   }
 
