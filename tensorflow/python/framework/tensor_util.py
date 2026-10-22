@@ -1070,6 +1070,53 @@ def _ConstantValue(tensor, partial):
     return constant_value(tensor.op.inputs[0], partial)
   elif tensor.op.type in ("CheckNumericsV2", "DebugIdentityV2", "Identity"):
     return constant_value(tensor.op.inputs[0], partial)
+  elif tensor.op.type == "StridedSlice":
+    # Every Python-level index or slice on a tensor produces a `StridedSlice`.
+    # Without this branch, indexing a constant throws away its static value even
+    # though the result is trivially computable. This is visible for the very
+    # common `tf.shape(x)[0]`: `_ConstantValue` already folds `Shape`, so
+    # `tf.shape(x)` has a known value, and the following index drops it again.
+    prev = constant_value(tensor.op.inputs[0], partial)
+    if prev is None:
+      return None
+    begin = constant_value(tensor.op.inputs[1])
+    end = constant_value(tensor.op.inputs[2])
+    strides = constant_value(tensor.op.inputs[3])
+    if begin is None or end is None or strides is None:
+      return None
+    # `Ellipsis` and `new_axis` shift the meaning of every subsequent index and
+    # would need the op's full index parsing. Keep returning `None` for those
+    # rather than risk producing a wrong value.
+    if tensor.op.get_attr("ellipsis_mask") or tensor.op.get_attr(
+        "new_axis_mask"
+    ):
+      return None
+    begin = np.asarray(begin).reshape(-1)
+    end = np.asarray(end).reshape(-1)
+    strides = np.asarray(strides).reshape(-1)
+    if not len(begin) == len(end) == len(strides):
+      return None
+    begin_mask = tensor.op.get_attr("begin_mask")
+    end_mask = tensor.op.get_attr("end_mask")
+    shrink_axis_mask = tensor.op.get_attr("shrink_axis_mask")
+    index = []
+    for i, (b, e, s) in enumerate(zip(begin, end, strides)):
+      b = None if begin_mask & (1 << i) else int(b)
+      e = None if end_mask & (1 << i) else int(e)
+      s = int(s)
+      if shrink_axis_mask & (1 << i):
+        # `shrink_axis_mask` means "index this axis and drop it". The op
+        # requires a unit stride and `begin[i] == end[i] - 1`; using the integer
+        # reproduces the same result, including the axis drop.
+        if s != 1:
+          return None
+        index.append(0 if b is None else b)
+      else:
+        index.append(slice(b, e, None if s == 1 else s))
+    try:
+      return prev[tuple(index)]
+    except (IndexError, TypeError, ValueError):
+      return None
   else:
     return None
 
