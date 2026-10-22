@@ -720,6 +720,15 @@ bool AllowedInGemmFusion(const HloInstruction& instr) {
   if (hlo_query::IsCollectiveCommunicationOp(instr.opcode())) {
     return false;
   }
+  // Triton emitter requires concatenate operands to be aligned to the tile size
+  // to avoid tiles straddling operand boundaries. Since we don't know the
+  // concrete tile size yet, we enforce divisibility by a minimum reasonable
+  // tile size (64).
+  if (const auto* concat = DynCast<HloConcatenateInstruction>(&instr);
+      concat != nullptr &&
+      !IsConcatenateAligned(*concat, /*min_fragment_size=*/64)) {
+    return false;
+  }
   return HloPredicateIsNotOp<HloOpcode::kDot, HloOpcode::kScaledDot,
                              HloOpcode::kParameter, HloOpcode::kAllGatherDone>(
       &instr);
