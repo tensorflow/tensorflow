@@ -92,42 +92,42 @@ namespace m = match;
 
 using primitive_util::NativeTypeOf;
 
-// Unwraps broadcasts hunting for a constant.  If we find one, checks if the
-// constant contains only the given value.
-bool IsAll(const HloInstruction* op, int8_t value) {
-  switch (op->opcode()) {
-    case HloOpcode::kBroadcast:
-      return IsAll(op->operand(0), value);
-    case HloOpcode::kConstant:
-      return op->literal().IsAll(value);
-    default:
-      return false;
+// Unwraps ops whose output elements are all taken from operand(0), hunting for
+// a constant.
+const HloInstruction* UnwrapToConstant(const HloInstruction* op) {
+  while (true) {
+    switch (op->opcode()) {
+      case HloOpcode::kBroadcast:
+      case HloOpcode::kCopy:
+      case HloOpcode::kDynamicSlice:
+      case HloOpcode::kReshape:
+      case HloOpcode::kReverse:
+      case HloOpcode::kSlice:
+      case HloOpcode::kTranspose:
+        op = op->operand(0);
+        break;
+      case HloOpcode::kConstant:
+        return op;
+      default:
+        return nullptr;
+    }
   }
 }
 
-// Unwraps broadcasts hunting for a constant.  If we find one, checks if the
-// constant contains only the given value.
+bool IsAll(const HloInstruction* op, int8_t value) {
+  const HloInstruction* constant = UnwrapToConstant(op);
+  return constant != nullptr && constant->literal().IsAll(value);
+}
+
 bool IsAllFloat(const HloInstruction* op, float value) {
-  switch (op->opcode()) {
-    case HloOpcode::kBroadcast:
-      return IsAllFloat(op->operand(0), value);
-    case HloOpcode::kConstant:
-      return op->literal().IsAllFloat(value);
-    default:
-      return false;
-  }
+  const HloInstruction* constant = UnwrapToConstant(op);
+  return constant != nullptr && constant->literal().IsAllFloat(value);
 }
 
 bool IsAll(const HloInstruction* op, const Literal& scalar) {
   CHECK(ShapeUtil::IsScalar(scalar.shape()));
-  switch (op->opcode()) {
-    case HloOpcode::kBroadcast:
-      return IsAll(op->operand(0), scalar);
-    case HloOpcode::kConstant:
-      return op->literal().IsAll(scalar);
-    default:
-      return false;
-  }
+  const HloInstruction* constant = UnwrapToConstant(op);
+  return constant != nullptr && constant->literal().IsAll(scalar);
 }
 
 bool IsAnyOperandComplex(const HloInstruction* hlo) {
