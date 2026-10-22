@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/pjrt/distributed/coordination/coordination_service_agent.h"
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
