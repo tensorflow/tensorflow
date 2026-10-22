@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/codegen/triton/support.h"
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -27,6 +28,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/STLExtras.h"
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -808,25 +810,20 @@ CodegenDecision IsTritonSupportedScaledDot(
   return CodegenDecision::Allow();
 }
 
-CodegenDecision IsTritonSupportedConcatenate(const HloInstruction& hlo) {
-  CHECK(hlo.opcode() == HloOpcode::kConcatenate);
-  if (hlo.shape().element_type() == S4) {
+CodegenDecision IsTritonSupportedConcatenate(
+    const HloConcatenateInstruction& concat) {
+  if (concat.shape().element_type() == S4) {
     return CodegenDecision::Forbid("S4 is not supported.");
   }
   // Triton emitter requires concatenate operands to be aligned to the tile size
   // to avoid tiles straddling operand boundaries. Since we don't know the
   // concrete tile size yet, we enforce divisibility by a minimum reasonable
-  // tile size (64).
-  // The last operand does not need to satisfy this constraint.
-  int concatenate_dimension = hlo.concatenate_dimension();
-  constexpr int kMinConcatFragmentSize = 64;
-  for (int i = 0; i < hlo.operand_count() - 1; ++i) {
-    if (hlo.operand(i)->shape().dimensions(concatenate_dimension) %
-            kMinConcatFragmentSize !=
-        0) {
-      return CodegenDecision::Forbid(
-          "Concatenate operand is not aligned for tiling.");
-    }
+  // tile size (8 for block-level fusions; GemmFusion and PriorityFusion enforce
+  // 64).
+  constexpr int64_t kMinConcatFragmentSize = 8;
+  if (!IsConcatenateAligned(concat, kMinConcatFragmentSize)) {
+    return CodegenDecision::Forbid(
+        "Concatenate operand is not aligned for tiling.");
   }
   return CodegenDecision::Allow();
 }
@@ -896,8 +893,8 @@ CodegenDecision IsTritonSupportedInstructionImpl(
         "Unsupported input data type: ", input_types_are_supported.Explain()));
   }
 
-  if (instr.opcode() == HloOpcode::kConcatenate) {
-    return IsTritonSupportedConcatenate(instr);
+  if (const auto* concat = DynCast<HloConcatenateInstruction>(&instr)) {
+    return IsTritonSupportedConcatenate(*concat);
   }
 
   // Special handling for the kPad instruction. Right now we only support "high"
@@ -1134,6 +1131,18 @@ bool IsTritonGemm(const HloInstruction& instr) {
   }
   return absl::c_count_if(instr.fused_instructions(),
                           HloPredicateIsOp<HloOpcode::kDot>) == 1;
+}
+
+bool IsConcatenateAligned(const HloConcatenateInstruction& concat,
+                          int64_t min_fragment_size) {
+  int64_t concat_dim = concat.concatenate_dimension();
+  // The last operand does not need to satisfy the alignment constraint.
+  for (const HloInstruction* operand : llvm::drop_end(concat.operands())) {
+    if (operand->shape().dimensions(concat_dim) % min_fragment_size != 0) {
+      return false;
+    }
+  }
+  return true;
 }
 
 }  // namespace gpu

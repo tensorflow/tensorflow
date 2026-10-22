@@ -1980,5 +1980,29 @@ CHECK: ROOT %fusion = f32[8,128]{1,0} fusion(%data), kind=kCustom, calls=%fused_
       )");
 }
 
+TEST_F(PriorityFusionTest, DoesNotFuseUnalignedConcatenateIntoTriton) {
+  const std::string kHloText = R"(
+HloModule test_module
+
+triton_computation {
+  p0 = f32[16,64]{1,0} parameter(0)
+  ROOT negate = f32[16,64]{1,0} negate(p0)
+}
+
+ENTRY main {
+  p0 = f32[16,32]{1,0} parameter(0)
+  p1 = f32[16,32]{1,0} parameter(1)
+  concat = f32[16,64]{1,0} concatenate(p0, p1), dimensions={1}
+  ROOT triton_fusion = f32[16,64]{1,0} fusion(concat), kind=kCustom,
+    calls=triton_computation,
+    backend_config={"fusion_backend_config": {"kind":"__triton","block_level_fusion_config":{"output_tiles":[{"sizes":["1","64"]}],"num_warps":"1"}}}
+})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+
+  // The unaligned concatenate should NOT be fused into the generic Triton
+  // fusion.
+  EXPECT_THAT(priority_fusion_.Run(module.get()),
+              absl_testing::IsOkAndHolds(false));
+}
 }  // namespace gpu
 }  // namespace xla
