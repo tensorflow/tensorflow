@@ -735,6 +735,71 @@ TEST_F(IndexingMapTest,
 }
 
 TEST_F(IndexingMapTest,
+       ConstraintIntervalSimplification_Sum_NonZeroLowerBoundRemainder) {
+  auto indexing_map = Parse(R"(
+    (d0)[s0] -> (d0 * 4 + s0),
+    domain:
+    d0 in [0, 10],
+    s0 in [1, 2],
+    d0 * 4 + s0 in [0, 4]
+  )");
+  EXPECT_TRUE(indexing_map.Simplify());
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
+                          (d0)[s0] -> (s0),
+                          domain:
+                          d0 in [0, 0],
+                          s0 in [1, 2]
+                        )"));
+}
+
+TEST_F(IndexingMapTest,
+       ConstraintIntervalSimplification_Sum_NegativeMultiplierOrShiftedRange) {
+  auto neg_multiplier_map = Parse(R"(
+    (d0)[s0] -> (d0, s0),
+    domain:
+    d0 in [0, 10],
+    s0 in [0, 1],
+    d0 * -4 + s0 in [0, 0]
+  )");
+  EXPECT_TRUE(neg_multiplier_map.Simplify());
+  EXPECT_THAT(ToString(neg_multiplier_map), MatchIndexingString(R"(
+                          (d0)[s0] -> (0, 0),
+                          domain:
+                          d0 in [0, 0],
+                          s0 in [0, 0]
+                        )"));
+
+  auto shifted_remainder_map = Parse(R"(
+    (d0)[s0] -> (d0 * 4 + s0),
+    domain:
+    d0 in [0, 10],
+    s0 in [-4, -3],
+    d0 * 4 + s0 in [0, 3]
+  )");
+  EXPECT_TRUE(shifted_remainder_map.Simplify());
+  EXPECT_THAT(ToString(shifted_remainder_map), MatchIndexingString(R"(
+                          (d0)[s0] -> (s0 + 4),
+                          domain:
+                          d0 in [1, 1],
+                          s0 in [-4, -3]
+                        )"));
+
+  // Here `d0` could be partially narrowed to `[0, 1]`, which
+  // `SimplifyAddConstraint` currently leaves unsimplified when multiple
+  // multiples of `|gcd|` (`q in [-1, 0]`) are feasible.
+  auto multiple_candidates_map = Parse(R"(
+    (d0)[s0] -> (d0, s0),
+    domain:
+    d0 in [0, 10],
+    s0 in [0, 2],
+    d0 * -4 + s0 in [-4, 0]
+  )");
+  std::string multiple_before = ToString(multiple_candidates_map);
+  EXPECT_FALSE(multiple_candidates_map.Simplify());
+  EXPECT_EQ(ToString(multiple_candidates_map), multiple_before);
+}
+
+TEST_F(IndexingMapTest,
        ConstraintIntervalSimplification_FloorDivPositiveDivisorPositiveBounds) {
   auto indexing_map = Parse(R"(
     (d0) -> (d0),
