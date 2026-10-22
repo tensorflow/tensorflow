@@ -525,6 +525,34 @@ TEST_P(TileAnalysisTest, ConcatenateRegionsAreHoistingBarriers) {
   EXPECT_THAT(InstructionNames(branch), UnorderedElementsAre("c0", "red"));
 }
 
+TEST_P(TileAnalysisTest, DynamicSliceOffsetsAreHoistedOutOfConcatenateRegions) {
+  ASSERT_OK_AND_ASSIGN(const TiledHloComputation tiled_computation,
+                       ParseAndTile(R"hlo(
+    fusion {
+      p0 = f32[64]{0} parameter(0)
+      p1 = s32[] parameter(1)
+      ds = f32[16]{0} dynamic-slice(p0, p1), dynamic_slice_sizes={16}
+      ROOT concat = f32[32]{0} concatenate(ds, ds), dimensions={0}
+    }
+
+    ENTRY main {
+      x = f32[64]{0} parameter(0)
+      offset = s32[] parameter(1)
+      ROOT fusion = f32[32]{0} fusion(x, offset), kind=kLoop, calls=fusion
+    })hlo",
+                                    {16}));
+
+  // Unlike other instructions, the runtime variable is hoisted out of the
+  // concatenate branches.
+  const TiledHloRegion& top = tiled_computation.tiled_root_region();
+  EXPECT_THAT(InstructionNames(top), UnorderedElementsAre("offset", "concat"));
+  const TiledHloInstruction* offset = FindByName(top, "offset");
+  const auto& branches = FindByName(top, "concat")->hlo_regions();
+  ASSERT_EQ(branches.size(), 2);
+  EXPECT_EQ(FindByName(branches[0], "ds")->operand(1), offset);
+  EXPECT_EQ(FindByName(branches[1], "ds")->operand(1), offset);
+}
+
 TEST_P(TileAnalysisTest, ConcatenateIsSupported) {
   ASSERT_OK_AND_ASSIGN(const TiledHloComputation tiled_computation,
                        ParseAndTile(
