@@ -50,6 +50,7 @@ cc_library(
         "//xla/service/gpu/model:gpu_performance_model_base",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/gpu:tma_metadata",
+        "//xla/stream_executor/rocm:rocm_compute_capability",
         "//xla/tsl/lib/core:bits",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",

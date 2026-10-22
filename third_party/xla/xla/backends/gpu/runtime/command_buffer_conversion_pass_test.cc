@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/async_thunk.h"
 #include "xla/backends/gpu/runtime/collective_group_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
+#include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
 #include "xla/backends/gpu/runtime/convolution_thunk.h"
@@ -84,6 +85,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
+using ::absl_testing::IsOk;
 using ::absl_testing::IsOkAndHolds;
 using ::testing::ElementsAre;
 using ::testing::Pointee;
@@ -1686,6 +1688,20 @@ TEST(CommandBufferConversionPassTest,
                        device_info, allocator),
               IsOkAndHolds(true));
   EXPECT_THAT(thunks, ThunkKindsAre(Thunk::kCommandBuffer));
+
+  const auto* command_buffer_thunk =
+      dynamic_cast<const CommandBufferThunk*>(thunks[0].get());
+  ASSERT_NE(command_buffer_thunk, nullptr);
+  int num_commands = 0;
+  EXPECT_THAT(command_buffer_thunk->WalkCommands([&](const Command* command) {
+    ++num_commands;
+    EXPECT_FALSE(command->IsTracedCommand());
+    EXPECT_FALSE(command->requires_update_on_initialize());
+    EXPECT_FALSE(command->requires_warmup());
+    return absl::OkStatus();
+  }),
+              IsOk());
+  EXPECT_EQ(num_commands, 1);
 }
 
 TEST(CommandBufferConversionPassTest,
@@ -1734,6 +1750,20 @@ TEST(CommandBufferConversionPassTest,
                          device_info, allocator),
                 IsOkAndHolds(true));
     EXPECT_THAT(thunks, ThunkKindsAre(Thunk::kCommandBuffer));
+
+    const auto* command_buffer_thunk =
+        dynamic_cast<const CommandBufferThunk*>(thunks[0].get());
+    ASSERT_NE(command_buffer_thunk, nullptr);
+    int num_commands = 0;
+    EXPECT_THAT(command_buffer_thunk->WalkCommands([&](const Command* command) {
+      ++num_commands;
+      EXPECT_TRUE(command->IsTracedCommand());
+      EXPECT_TRUE(command->requires_update_on_initialize());
+      EXPECT_TRUE(command->requires_warmup());
+      return absl::OkStatus();
+    }),
+                IsOk());
+    EXPECT_EQ(num_commands, 1);
   }
 }
 

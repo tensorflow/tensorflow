@@ -104,7 +104,7 @@ void CreateTritonCudaPipeline(
 void CreateTritonRocmPipeline(
     mlir::OpPassManager* pm,
     const stream_executor::RocmComputeCapability& rocm_cc, int num_warps,
-    int num_ctas, int num_stages);
+    int num_ctas, int num_stages, int mfma_size);
 
 void CreateTritonOneAPIPipeline(
     mlir::OpPassManager* pm,
@@ -113,7 +113,8 @@ void CreateTritonOneAPIPipeline(
 
 void CreateTritonPipeline(mlir::OpPassManager* pm,
                           const stream_executor::GpuComputeCapability& gpu_cc,
-                          int num_warps, int num_ctas, int num_stages) {
+                          int num_warps, int num_ctas, int num_stages,
+                          int mfma_size) {
   if (auto* cuda_cc = gpu_cc.cuda_compute_capability()) {
     return CreateTritonCudaPipeline(pm, *cuda_cc, num_warps, num_ctas,
                                     num_stages);
@@ -124,7 +125,7 @@ void CreateTritonPipeline(mlir::OpPassManager* pm,
   }
 
   CreateTritonRocmPipeline(pm, *gpu_cc.rocm_compute_capability(), num_warps,
-                           num_ctas, num_stages);
+                           num_ctas, num_stages, mfma_size);
 }
 
 }  // namespace xla::gpu

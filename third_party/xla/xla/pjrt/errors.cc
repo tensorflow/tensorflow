@@ -15,8 +15,11 @@ limitations under the License.
 
 #include "xla/pjrt/errors.h"
 
+#include <optional>
+
 #include "absl/status/status.h"
 #include "absl/strings/cord.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 
 namespace xla {
@@ -43,8 +46,24 @@ bool HasOomErrorPayload(const absl::Status& status) {
   return status.GetPayload(kOomErrorPayload).has_value();
 }
 
-absl::Status SetOomErrorWithPayload(absl::Status status) {
-  status.SetPayload(kOomErrorPayload, absl::Cord(""));
+absl::Status SetOomErrorWithPayload(absl::Status status, OomReason reason) {
+  status.SetPayload(kOomErrorPayload, absl::Cord(absl::StrCat(reason)));
   return status;
+}
+
+std::optional<OomReason> GetOomErrorReason(const absl::Status& status) {
+  std::optional<absl::Cord> payload = status.GetPayload(kOomErrorPayload);
+  if (!payload.has_value()) {
+    return std::nullopt;
+  }
+
+  for (OomReason reason : {OomReason::kOutOfMemory, OomReason::kFragmentation,
+                           OomReason::kUnknown}) {
+    if (*payload == absl::StrCat(reason)) {
+      return reason;
+    }
+  }
+
+  return OomReason::kUnknown;
 }
 }  // namespace xla

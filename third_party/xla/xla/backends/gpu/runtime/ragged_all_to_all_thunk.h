@@ -159,6 +159,16 @@ class RaggedAllToAllThunk : public CollectiveThunk {
   CollectiveCliqueRequests::CliqueRequirements GetCliqueRequirements(
       const GpuCliqueKey& clique_key, const PrepareParams& params) override;
 
+  bool IsTracedCommand() const override {
+    return !IsSymmetricMemoryKernelSupported();
+  }
+  bool requires_update_on_initialize() const override {
+    return !IsSymmetricMemoryKernelSupported();
+  }
+  bool requires_warmup() const override {
+    return !IsSymmetricMemoryKernelSupported();
+  }
+
   absl::Status Initialize(const InitializeParams& params) override;
 
   absl::StatusOr<const se::CommandBuffer::Command*> Record(

@@ -347,6 +347,10 @@ class PjRtRawClient {
     return absl::UnimplementedError("PoisonExecution is not supported");
   }
 
+  virtual bool CanRecoverDonation(const absl::Status& status) const {
+    return false;
+  }
+
   virtual absl::Status TransferToInfeed(LocalDeviceId local_device_id,
                                         const LiteralSlice& literal) {
     return absl::UnimplementedError("TransferToInfeed is not supported");

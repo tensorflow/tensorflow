@@ -1426,6 +1426,24 @@ class PjRtBuffer {
 // when passed to the execution.
 class PjRtLoadedExecutable {
  public:
+  // Result of execution with buffer donation recovery enabled.
+  struct ResultWithDonationRecovery {
+    // The output buffers produced by the execution.
+    std::vector<std::unique_ptr<PjRtBuffer>> output_buffers;
+
+    // A future that resolves when the execution completion status is
+    // determined:
+    // - On normal successful execution: resolves to an empty vector (no
+    //   recovery needed).
+    // - On recoverable execution error: resolves to a vector of size
+    //   `argument_handles.size()`, where recovered buffers are present at the
+    //   positional indices corresponding to the arguments that were donated
+    //   (non-donated or unrecovered slots are nullptr).
+    // - On unrecoverable execution error: resolves with the non-OK execution
+    //   Status.
+    Future<std::vector<std::unique_ptr<PjRtBuffer>>> recovery_future;
+  };
+
   PjRtLoadedExecutable() {
     executable_forwarder_ = std::make_unique<PjRtExecutableForwarder>(this);
   }
@@ -1534,6 +1552,19 @@ class PjRtLoadedExecutable {
                           returned_future, /*fill_future=*/false);
   }
 
+  // Like ExecuteSharded, but always fills `returned_future` on non-error
+  // return and, if execution fails, attempts to recover any donated buffers
+  // from `argument_handles`.
+  virtual absl::StatusOr<ResultWithDonationRecovery>
+  ExecuteShardedWithDonationRecovery(
+      absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
+      const ExecuteOptions& options,
+      std::optional<Future<>>& returned_future) const {
+    return absl::UnimplementedError(
+        "ExecuteShardedWithDonationRecovery is not implemented for this "
+        "executable.");
+  }
+
   // Execute on a given `device`. Requires `device` to be addressable by client.
   // Requires executable has exactly 1 replica and 1 partition and no
   // device_assignment (thus portable).
@@ -1564,6 +1595,19 @@ class PjRtLoadedExecutable {
     std::optional<Future<>> returned_future;
     return ExecutePortable(std::move(argument_handles), device, options,
                            returned_future, /*fill_future=*/false);
+  }
+
+  // Like ExecutePortable, but always fills `returned_future` on non-error
+  // return and, if execution fails, attempts to recover any donated buffers
+  // from `argument_handles`.
+  virtual absl::StatusOr<ResultWithDonationRecovery>
+  ExecutePortableWithDonationRecovery(
+      absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
+      const ExecuteOptions& options,
+      std::optional<Future<>>& returned_future) const {
+    return absl::UnimplementedError(
+        "ExecutePortableWithDonationRecovery is not implemented for this "
+        "executable.");
   }
 
   // Asynchronously free resources after the last execution completes.

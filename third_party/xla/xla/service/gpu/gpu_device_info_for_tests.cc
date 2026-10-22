@@ -286,6 +286,7 @@ stream_executor::DeviceDescription TestGpuDeviceInfo::AMDRX7900DeviceInfo() {
   b.set_l2_cache_size(6 * 1024 * 1024);
   b.set_clock_rate_ghz(2.5);
   b.set_device_memory_size(24'000'000'000);
+  b.set_registers_per_block_limit(196608);
   b.set_runtime_version(stream_executor::SemanticVersion{7, 1, 0});
   b.set_driver_version(stream_executor::SemanticVersion{7, 1, 0});
 
