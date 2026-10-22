@@ -18,14 +18,13 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
+#include <type_traits>
 #include <variant>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/strings/string_view.h"
 #include "xla/pjrt/proto/pjrt_value_type.pb.h"
-#include "xla/runtime/chip_id.h"
-#include "xla/runtime/device_id.h"
-#include "xla/runtime/process_id.h"
 
 namespace xla {
 
@@ -38,6 +37,26 @@ using PjRtValueType =
 xla::PjRtValueTypeProto PjRtValueTypeToProto(const PjRtValueType& value);
 
 PjRtValueType PjRtValueTypeFromProto(const xla::PjRtValueTypeProto& value);
+
+absl::string_view PjRtValueTypeCaseName(
+    PjRtValueTypeProto::ValueCase value_case);
+
+template <typename T>
+constexpr absl::string_view PjRtTypeName() {
+  if constexpr (std::is_same_v<T, bool>) {
+    return "bool";
+  } else if constexpr (std::is_same_v<T, float>) {
+    return "float";
+  } else if constexpr (std::is_same_v<T, int64_t>) {
+    return "int64_t";
+  } else if constexpr (std::is_same_v<T, std::vector<int64_t>>) {
+    return "std::vector<int64_t>";
+  } else if constexpr (std::is_same_v<T, std::string>) {
+    return "string";
+  } else {
+    return "unknown";
+  }
+}
 
 template <typename Id>
 using PjRtIdContainer = absl::InlinedVector<Id, 4>;

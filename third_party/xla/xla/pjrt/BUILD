@@ -618,6 +618,59 @@ cc_library(
 )
 
 cc_library(
+    name = "pjrt_build_stamp",
+    srcs = ["pjrt_build_stamp.cc"],
+    hdrs = ["pjrt_build_stamp.h"],
+    visibility = internal_visibility([":friends"]),
+    deps = [
+        ":pjrt_common",
+        "//xla/pjrt/proto:pjrt_build_stamp_proto_cc",
+        "//xla/pjrt/proto:pjrt_value_type_proto_cc",
+        "//xla/tsl/builddata",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/time",
+        "@com_google_protobuf//:protobuf_lite",
+        "@com_google_protobuf//:timestamp_cc_proto",
+        "@tsl//tsl/platform:fingerprint",
+    ],
+)
+
+cc_library(
+    name = "pjrt_build_stamp_internal",
+    srcs = ["pjrt_build_stamp_internal.cc"],
+    hdrs = ["pjrt_build_stamp_internal.h"],
+    visibility = [":__pkg__"],
+    deps = [
+        ":pjrt_build_stamp",
+        "//xla/pjrt/proto:pjrt_build_stamp_proto_cc",
+    ],
+)
+
+xla_cc_test(
+    name = "pjrt_build_stamp_test",
+    srcs = ["pjrt_build_stamp_test.cc"],
+    deps = [
+        ":pjrt_build_stamp",
+        ":pjrt_build_stamp_internal",
+        ":pjrt_common",
+        "//xla/pjrt/proto:pjrt_build_stamp_proto_cc",
+        "//xla/pjrt/proto:pjrt_value_type_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
+        "@com_google_protobuf//:timestamp_cc_proto",
+    ],
+)
+
+cc_library(
     name = "pjrt_compiler",
     srcs = ["pjrt_compiler.cc"],
     hdrs = ["pjrt_compiler.h"],
@@ -690,10 +743,8 @@ cc_library(
     visibility = internal_visibility([":friends"]),
     deps = [
         "//xla/pjrt/proto:pjrt_value_type_proto_cc",
-        "//xla/runtime:chip_id",
-        "//xla/runtime:device_id",
-        "//xla/runtime:process_id",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
