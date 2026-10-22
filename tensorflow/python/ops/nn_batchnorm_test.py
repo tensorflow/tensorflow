@@ -343,6 +343,27 @@ class BatchNormalizationTest(test.TestCase):
     self._testBatchNormArbitraryShapes((3, 3), (1, 3), dtype=dtypes.float16,
                                        param_dtype=dtypes.float32, atol=0.001)
 
+  def testBatchNormKeepsOffsetForLargeConstantBatch(self):
+    """The offset must not be cancelled by `mean * inv`.
+
+    Normalizing a constant batch makes the centered term zero, so the result is
+    exactly `offset`. Computing it as `x * inv + (offset - mean * inv)` used to
+    cancel `offset` against `mean * inv` and return 0 instead whenever the batch
+    magnitude made `mean * inv` much larger than `offset`.
+    """
+    for dtype, magnitude in [(dtypes.bfloat16, 1e4),
+                             (dtypes.float32, 1e8),
+                             (dtypes.float64, 1e300)]:
+      with self.cached_session():
+        x = constant_op.constant(
+            np.full([2, 2], magnitude, dtype=dtype.as_numpy_dtype))
+        mean, variance = nn_impl.moments(x, [0, 1], keep_dims=True)
+        offset = constant_op.constant(5.0, dtype=dtype)
+        bn = nn_impl.batch_normalization(x, mean, variance, offset, None, 1e-3)
+        self.assertEqual(dtype, bn.dtype)
+        self.assertAllClose(
+            self.evaluate(bn), np.full([2, 2], 5.0), rtol=1e-3, atol=1e-3)
+
 
 class SufficientStatisticsTest(test.TestCase):
 
