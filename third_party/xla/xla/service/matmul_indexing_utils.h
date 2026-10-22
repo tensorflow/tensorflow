@@ -132,8 +132,11 @@ class DotOperandDims {
   // consecutive.
   bool IsConsecutive(Category category) const;
 
-  // Permutes the dimensions of the category to make them consecutive at the
-  // end, unless they are already consecutive anywhere in the shape.
+  // Permutes the dimensions of the category to make them consecutive (in their
+  // listed order), unless they are already consecutive anywhere in the shape.
+  // The category is gathered to end at its highest dimension index; other
+  // dimensions before it keep their relative order, and dimensions after it
+  // (in particular the most minor one) stay in place.
   // Returns the permutation applied, or std::nullopt if dimensions were already
   // in the desired order.
   std::optional<std::vector<int64_t>> PermuteToConsecutive(Category category);
