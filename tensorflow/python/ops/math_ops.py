@@ -4340,6 +4340,28 @@ def sigmoid(x, name=None):
   """
   with ops.name_scope(name, "Sigmoid", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
+    if x.dtype.base_dtype == dtypes.float64:
+      # pylint: disable=g-import-not-at-top
+      from tensorflow.python.ops import custom_gradient
+      # pylint: enable=g-import-not-at-top
+
+      @custom_gradient.custom_gradient
+      def _sigmoid_float64(x_val):
+        y = gen_math_ops.sigmoid(x_val, name=name)
+
+        def grad(dy):
+          with ops.control_dependencies([dy]):
+            # `1 - sigmoid(x)` is exactly `sigmoid(-x)`, but computing it as
+            # `1 - y` cancels catastrophically once `y` rounds to 1: at
+            # x = 37.43 in float64 the derivative is still 5.55e-17, and yet
+            # `1 - y` is 0, which silently zeroes the whole gradient. Using
+            # `sigmoid(-x)` avoids the subtraction, so the gradient stays
+            # accurate over the entire positive tail.
+            return dy * y * gen_math_ops.sigmoid(-x_val)
+
+        return y, grad
+
+      return _sigmoid_float64(x)
     return gen_math_ops.sigmoid(x, name=name)
 
 
