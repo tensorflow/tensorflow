@@ -392,15 +392,12 @@ void LocalDeviceState::ReturnStreamToPool(std::unique_ptr<se::Stream> stream) {
   usage_stream_pool_.push(std::move(stream));
 }
 
-
 absl::Status LocalDeviceState::AllocateAndRecordEvent(
-    AsyncWorkRunner* async_work_runner, BufferSequencingEventRef event,
-    se::Stream* stream, absl::string_view tag,
+    BufferSequencingEventRef event, se::Stream* stream, absl::string_view tag,
     absl::AnyInvocable<void() &&> cleanup) {
   auto status = [&]() {
-    ABSL_ASSIGN_OR_RETURN(
-        EventPool::Handle device_event,
-        event_pool().AllocateEvent(async_work_runner, stream->parent()));
+    ABSL_ASSIGN_OR_RETURN(EventPool::Handle device_event,
+                     event_pool().AllocateEvent(stream->parent()));
     event_pool().ThenRecordEvent(stream, device_event);
     event->SetSequencingEvent(std::move(device_event), stream);
     return ThenExecuteCallback(
@@ -444,9 +441,8 @@ LocalDeviceState::GetEventForComputeStreamSyncPoint(
   }
   next_compute_stream_sync_point_.store(cur_sync_point + 1);
   auto event = BufferSequencingEvent::Create(async_work_runner);
-  auto status =
-      AllocateAndRecordEvent(async_work_runner, event, compute_stream(),
-                             "GetEventForComputeStreamSyncPoint");
+  auto status = AllocateAndRecordEvent(event, compute_stream(),
+                                       "GetEventForComputeStreamSyncPoint");
   if (!status.ok()) {
     mu_.unlock();
     return status;

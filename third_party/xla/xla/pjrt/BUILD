@@ -1522,16 +1522,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "never_run_on_fiber",
-    hdrs = ["never_run_on_fiber.h"],
-    deps = [
-        ":async_work_runner",
-        "//xla/tsl/platform:env",
-        "@com_google_absl//absl/synchronization",
-    ],
-)
-
 xla_cc_test(
     name = "errors_test",
     srcs = ["errors_test.cc"],

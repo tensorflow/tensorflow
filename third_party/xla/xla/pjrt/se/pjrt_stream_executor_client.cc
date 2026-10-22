@@ -125,7 +125,6 @@ limitations under the License.
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/metrics.h"
 #include "xla/pjrt/mlir_to_hlo.h"
-#include "xla/pjrt/never_run_on_fiber.h"
 #include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
@@ -211,8 +210,8 @@ absl::Status PjRtStreamExecutorRawClient::AllocateAndRecordEvent(
     BufferSequencingEventRef event, LocalDeviceState* local_device,
     se::Stream* stream, absl::string_view tag,
     absl::AnyInvocable<void() &&> cleanup) {
-  return local_device->AllocateAndRecordEvent(async_work_runner(), event,
-                                              stream, tag, std::move(cleanup));
+  return local_device->AllocateAndRecordEvent(event, stream, tag,
+                                              std::move(cleanup));
 }
 
 void PjRtStreamExecutorRawClient::SetEventAsError(
@@ -573,9 +572,7 @@ absl::Status PjRtStreamExecutorRawClient::DmaMap(void* data,
     return absl::InternalError(
         "se::StreamExecutor is null in PjRtStreamExecutorRawClient.");
   }
-  bool success = NeverRunOnFiber(async_work_runner(), [&]() {
-    return executor_->HostMemoryRegister(data, buffer_size);
-  });
+  bool success = executor_->HostMemoryRegister(data, buffer_size);
   if (!success) {
     return absl::InternalError(absl::StrFormat(
         "Failed to register host memory at address: %ps", data));
@@ -592,9 +589,7 @@ absl::Status PjRtStreamExecutorRawClient::DmaUnmap(void* data) {
     return absl::InternalError(
         "se::StreamExecutor is null in PjRtStreamExecutorRawClient.");
   }
-  bool success = NeverRunOnFiber(async_work_runner(), [&]() {
-    return executor_->HostMemoryUnregister(data);
-  });
+  bool success = executor_->HostMemoryUnregister(data);
   if (!success) {
     return absl::InternalError(absl::StrFormat(
         "Failed to unregister host memory at address: %ps", data));
@@ -664,10 +659,8 @@ absl::Status PjRtStreamExecutorRawClient::TransferToInfeed(
     LocalDeviceId local_device_id, const LiteralSlice& literal) {
   ABSL_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
                    GetLocalDeviceState(local_device_id));
-  return NeverRunOnFiber(async_work_runner(), [&]() {
-    return local_device->client()->TransferToInfeedLocal(
-        literal, local_device->local_hardware_id().value());
-  });
+  return local_device->client()->TransferToInfeedLocal(
+      literal, local_device->local_hardware_id().value());
 }
 
 absl::Status PjRtStreamExecutorRawClient::TransferFromOutfeed(
@@ -675,10 +668,8 @@ absl::Status PjRtStreamExecutorRawClient::TransferFromOutfeed(
   VLOG(1) << "PjRtStreamExecutorRawClient::TransferFromOutfeed";
   ABSL_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
                    GetLocalDeviceState(local_device_id));
-  return NeverRunOnFiber(async_work_runner(), [&]() {
-    return local_device->client()->TransferFromOutfeedLocal(
-        local_device->local_hardware_id().value(), literal);
-  });
+  return local_device->client()->TransferFromOutfeedLocal(
+      local_device->local_hardware_id().value(), literal);
 }
 
 absl::StatusOr<std::intptr_t>

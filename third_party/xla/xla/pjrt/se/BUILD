@@ -18,8 +18,6 @@ cc_library(
     hdrs = ["event_pool.h"],
     deps = [
         "//xla:types",
-        "//xla/pjrt:async_work_runner",
-        "//xla/pjrt:never_run_on_fiber",
         "//xla/stream_executor:event",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
@@ -236,7 +234,6 @@ cc_library(
         "//xla/pjrt:maybe_owning_mlir_module",
         "//xla/pjrt:metrics",
         "//xla/pjrt:mlir_to_hlo",
-        "//xla/pjrt:never_run_on_fiber",
         "//xla/pjrt:pjrt_abi_version",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_common",

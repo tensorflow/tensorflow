@@ -516,9 +516,9 @@ void PjRtStreamExecutorRawBuffer::IntraClientCopyToWithDependencies(
         }
       }
 
-      ABSL_ASSIGN_OR_RETURN(EventPool::Handle event,
-                       local_device->event_pool().AllocateEvent(
-                           client->async_work_runner(), stream->parent()));
+      ABSL_ASSIGN_OR_RETURN(
+          EventPool::Handle event,
+          local_device->event_pool().AllocateEvent(stream->parent()));
 
       if (allocation_event) {
         allocation_set = true;
