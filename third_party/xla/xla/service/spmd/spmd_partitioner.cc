@@ -113,6 +113,33 @@ void MergeMemorySpace(const Shape& old_shape, Shape* new_shape) {
     }
   }
 }
+
+// Returns true if `hlo` is a custom call whose `to_apply` computation executes
+// sequentially with the caller's operands forwarded 1:1 to its parameters,
+// i.e. a call-like custom call. `CallGraph` classifies all custom calls as
+// `CallContext::kEmbedded`, so the partitioner has to recognize these itself in
+// order to partition their called computations like `kCall` callees.
+bool IsCallLikeCustomCall(const HloInstruction* hlo) {
+  return hlo->IsCustomCall("compute-on-start");
+}
+
+// Returns true if the computation of `node` is invoked in a context the
+// partitioner must treat like a control-flow callee (`kCall`, `kWhile`,
+// `kConditional`), either because `CallGraph` says so or because all of its
+// callers are call-like custom calls. Computations without callers (including
+// the entry computation) are excluded.
+bool IsControlFlowLikeCallee(const CallGraphNode& node) {
+  if (node.caller_callsites().empty()) {
+    return false;
+  }
+  if (node.context() == CallContext::kControlFlow) {
+    return true;
+  }
+  return node.context() == CallContext::kEmbedded &&
+         absl::c_all_of(node.caller_callsites(), [](const CallSite& call_site) {
+           return IsCallLikeCustomCall(call_site.instruction());
+         });
+}
 }  // namespace
 
 std::string SpmdLogger::MakeReport() {
@@ -7375,10 +7402,7 @@ absl::StatusOr<bool> SpmdPartitioner::RunImpl(
             !execution_threads.contains(computation->execution_thread())) {
           return absl::OkStatus();
         }
-        if (node.context() != CallContext::kControlFlow) {
-          return absl::OkStatus();
-        }
-        if (node.caller_callsites().empty()) {
+        if (!IsControlFlowLikeCallee(node)) {
           return absl::OkStatus();
         }
         // PreprocessCallSites made sure a computation is only used by a single
@@ -7417,7 +7441,8 @@ absl::StatusOr<bool> SpmdPartitioner::RunImpl(
             break;
           }
           case HloOpcode::kCall:
-          case HloOpcode::kConditional: {
+          case HloOpcode::kConditional:
+          case HloOpcode::kCustomCall: {
             ABSL_RETURN_IF_ERROR(
                 PartitionComputation(computation, caller->sharding(),
                                      &next_channel_id, &logger, *call_graph)
@@ -7951,7 +7976,8 @@ absl::StatusOr<std::vector<CallSiteInfo>> GetCallSiteInfos(
       call_site_infos.push_back(call_site_info);
       break;
     }
-    case HloOpcode::kCall: {
+    case HloOpcode::kCall:
+    case HloOpcode::kCustomCall: {
       CallSiteInfo call_site_info;
       call_site_info.opcode = caller->opcode();
       call_site_info.param_sharding.reserve(caller->operand_count());
@@ -8027,7 +8053,7 @@ absl::StatusOr<bool> SpmdPartitioner::PreprocessCallSites(
         !execution_threads.contains(computation->execution_thread())) {
       return absl::OkStatus();
     }
-    if (node.context() != CallContext::kControlFlow) {
+    if (!IsControlFlowLikeCallee(node)) {
       return absl::OkStatus();
     }
     for (const CallSite& call_site : node.caller_callsites()) {
@@ -8042,7 +8068,8 @@ absl::StatusOr<bool> SpmdPartitioner::PreprocessCallSites(
                        GetCallSiteInfos(caller, computation));
       switch (caller->opcode()) {
         case HloOpcode::kWhile:
-        case HloOpcode::kCall: {
+        case HloOpcode::kCall:
+        case HloOpcode::kCustomCall: {
           CHECK_EQ(call_site_infos.size(), 1)
               << "Unexpected number of call site infos for "
               << caller->ToString();
@@ -8115,6 +8142,12 @@ absl::StatusOr<bool> SpmdPartitioner::PreprocessCallSites(
                 hlo->operand(i + 1)->sharding());
           }
           break;
+        }
+        case HloOpcode::kCustomCall: {
+          if (!IsCallLikeCustomCall(hlo)) {
+            break;
+          }
+          [[fallthrough]];
         }
         case HloOpcode::kCall: {
           for (int64_t i = 0; i < hlo->operand_count(); ++i) {

@@ -229,6 +229,24 @@ bool handleFuncResultSharding(
   return anyChanged;
 }
 
+ManualAxesAttr extractManualAxesFromNamedSharding(
+    const xla::NamedSharding& namedSharding, mlir::MLIRContext* context) {
+  llvm::SmallVector<mlir::sdy::AxisRefAttr> manualAxes;
+  manualAxes.reserve(namedSharding.manual_axes().size());
+  const xla::Mesh& mesh = namedSharding.mesh();
+  for (const auto& axisRef : namedSharding.manual_axes()) {
+    // Silently dropping an axis here would yield a manual computation with
+    // fewer manual axes than it actually has, which miscompiles rather than
+    // fails, so treat an out-of-range index as a bug.
+    CHECK_LT(axisRef.mesh_axis_index(), mesh.axis_names().size());
+    manualAxes.push_back(toSdyAxisRefAttr(axisRef, mesh, context));
+  }
+  if (!manualAxes.empty()) {
+    return ManualAxesAttr::get(context, manualAxes);
+  }
+  return nullptr;
+}
+
 ManualAxesAttr extractManualAxes(const xla::HloSharding& hloSharding,
                                  mlir::MLIRContext* context) {
   if (hloSharding.IsTuple()) {
@@ -242,20 +260,8 @@ ManualAxesAttr extractManualAxes(const xla::HloSharding& hloSharding,
     return nullptr;
   }
   if (hloSharding.UseNamedShardingLeaf()) {
-    const xla::NamedSharding& namedSharding = hloSharding.named_sharding();
-    llvm::SmallVector<mlir::StringAttr> manualAxes;
-    const xla::Mesh& mesh = namedSharding.mesh();
-    for (const auto& axisRef : namedSharding.manual_axes()) {
-      // Silently dropping an axis here would yield a manual computation with
-      // fewer manual axes than it actually has, which miscompiles rather than
-      // fails, so treat an out-of-range index as a bug.
-      CHECK_LT(axisRef.mesh_axis_index(), mesh.axis_names().size());
-      manualAxes.push_back(mlir::StringAttr::get(
-          context, mesh.axis_names()[axisRef.mesh_axis_index()]));
-    }
-    if (!manualAxes.empty()) {
-      return ManualAxesAttr::get(context, manualAxes);
-    }
+    return extractManualAxesFromNamedSharding(hloSharding.named_sharding(),
+                                              context);
   }
   return nullptr;
 }

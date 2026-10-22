@@ -107,11 +107,16 @@ xla_cc_test(
         "//xla/stream_executor:memory_reservation",
         "//xla/stream_executor:mock_stream_executor",
         "//xla/tsl/framework:bfc_allocator",
+        "//xla/tsl/platform:env",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
-    ],
+    ] + if_google([
+        # In OSS this dependency is added automatically for xla_cc_test targets.
+        # See xla/xla.default.bzl.
+        "//xla/tsl/framework:allocator",
+    ]),
 )
 
 cc_library(
@@ -981,6 +986,8 @@ xla_cc_test(
     deps = [
         ":se_gpu_pjrt_compiler",  # buildcleaner: keep
         ":se_gpu_topology_description",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/pjrt:pjrt_common",
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_device_description",
@@ -990,6 +997,8 @@ xla_cc_test(
         "//xla/runtime:process_id",
         "//xla/service:gpu_topology",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
     ],
 )

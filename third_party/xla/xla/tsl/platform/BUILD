@@ -778,7 +778,10 @@ cc_library(
     name = "threadpool_interface",
     hdrs = ["threadpool_interface.h"],
     compatible_with = get_compatible_with_portable(),
-    deps = ["@eigen_archive//:eigen3"],
+    deps = [
+        "@com_google_absl//absl/base:core_headers",
+        "@eigen_archive//:eigen3",
+    ],
 )
 
 cc_library(

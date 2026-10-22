@@ -243,6 +243,7 @@ cc_library(
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/platform:thread_annotations",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -268,8 +269,12 @@ tf_cc_test(
         "//tensorflow/core/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
+        "@xla//xla/tsl/lib/monitoring:test_utils",
+        "@xla//xla/tsl/platform:env",
     ],
 )
 

@@ -26,10 +26,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/log/vlog_is_on.h"
 #include "absl/strings/str_cat.h"
+#include "absl/synchronization/mutex.h"
 #define EIGEN_USE_THREADS
 
 #include <optional>
@@ -156,7 +158,6 @@ ThreadWorkSource::ThreadWorkSource()
       non_blocking_work_queues_(non_blocking_work_sharding_factor_),
       blocking_inflight_(0),
       non_blocking_inflight_(0),
-      pending_tasks_(0),
       traceme_id_(0),
       version_(0),
       sub_thread_pool_waiter_(nullptr) {
@@ -195,12 +196,24 @@ Task ThreadWorkSource::EnqueueTask(Task t, bool is_blocking,
     mu = &blocking_queue_op_mu_;
   }
 
+  IncrementPendingTaskCount();
   {
     tensorflow::mutex_lock l(*mu);
     // For a given queue, only one thread can call PushFront.
     t = task_queue->PushFront(std::move(t));
   }
-  IncrementPendingTaskCount();
+  if (t.f) {
+    // Queue is full; leave pending_tasks_ incremented so the caller executes
+    // `t` inline via ExecuteTask() without a transient zero window.
+    return t;
+  }
+  {
+    absl::MutexLock lock(pending_mu_);
+    ++enqueue_count_;
+    if (draining_waiters_ > 0) {
+      pending_cv_.SignalAll();
+    }
+  }
 
   if (enable_wake_up) {
     // Try to wake up waiting thread if there is any for the given sub thread
@@ -332,16 +345,49 @@ void ThreadWorkSource::DecrementInflightTaskCount(bool is_blocking) {
 }
 
 int64_t ThreadWorkSource::GetPendingTaskCount() {
-  return pending_tasks_.load(std::memory_order_acquire);
+  absl::MutexLock lock(pending_mu_);
+  return pending_tasks_;
 }
 
 void ThreadWorkSource::IncrementPendingTaskCount() {
-  pending_tasks_.fetch_add(1, std::memory_order_relaxed);
+  absl::MutexLock lock(pending_mu_);
+  ++pending_tasks_;
 }
 
 void ThreadWorkSource::DecrementPendingTaskCount() {
-  // std::memory_order_release prevents reorder with op execution.
-  pending_tasks_.fetch_sub(1, std::memory_order_release);
+  absl::MutexLock lock(pending_mu_);
+  --pending_tasks_;
+  DCHECK_GE(pending_tasks_, 0);
+  if (pending_tasks_ == 0 && draining_waiters_ > 0) {
+    pending_cv_.SignalAll();
+  }
+}
+
+uint64_t ThreadWorkSource::GetEnqueueCount() {
+  absl::MutexLock lock(pending_mu_);
+  return enqueue_count_;
+}
+
+bool ThreadWorkSource::WaitForWorkOrCompletion(
+    uint64_t observed_enqueue_count) {
+  absl::MutexLock lock(pending_mu_);
+  if (pending_tasks_ == 0) {
+    return true;
+  }
+  if (enqueue_count_ != observed_enqueue_count) {
+    return false;
+  }
+  ++draining_waiters_;
+  while (pending_tasks_ > 0 && enqueue_count_ == observed_enqueue_count) {
+    pending_cv_.Wait(&pending_mu_);
+  }
+  --draining_waiters_;
+  return pending_tasks_ == 0;
+}
+
+int64_t ThreadWorkSource::GetDrainingWaiterCount() {
+  absl::MutexLock lock(pending_mu_);
+  return draining_waiters_;
 }
 
 unsigned ThreadWorkSource::NonBlockingWorkShardingFactor() {
@@ -433,6 +479,60 @@ void RunHandlerThreadPool::StartOneThreadForTesting() {
       env_.CreateThread([this]() { WorkerLoop(0, true); }));
 }
 
+namespace {
+
+// Tracks ThreadWorkSource instances currently executing a task on the calling
+// thread so QuiesceWorkSource() fails fast with a CHECK instead of
+// self-deadlocking if a task (or its capture destructor) destroys its own
+// RunHandler.
+class ScopedActiveWorkSource {
+ public:
+  explicit ScopedActiveWorkSource(const ThreadWorkSource* tws)
+      : tws_(tws), prev_(Top()) {
+    Top() = this;
+  }
+  ~ScopedActiveWorkSource() { Top() = prev_; }
+
+  ScopedActiveWorkSource(const ScopedActiveWorkSource&) = delete;
+  ScopedActiveWorkSource& operator=(const ScopedActiveWorkSource&) = delete;
+
+  static bool IsActiveOnCurrentThread(const ThreadWorkSource* tws) {
+    for (const ScopedActiveWorkSource* scope = Top(); scope != nullptr;
+         scope = scope->prev_) {
+      if (scope->tws_ == tws) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+ private:
+  static const ScopedActiveWorkSource*& Top() {
+    thread_local const ScopedActiveWorkSource* top = nullptr;
+    return top;
+  }
+
+  // Work source actively executing on this stack frame.
+  const ThreadWorkSource* const tws_;
+  // Enclosing active work source frame on the same thread, or nullptr.
+  const ScopedActiveWorkSource* const prev_;
+};
+
+}  // namespace
+
+void RunHandlerThreadPool::ExecuteTask(ThreadWorkSource* tws, bool is_blocking,
+                                       Task t) {
+  ScopedActiveWorkSource active_scope(tws);
+  tws->IncrementInflightTaskCount(is_blocking);
+  env_.ExecuteTask(t);
+  // Destroy task captures and tensorflow::Context before decrementing
+  // inflight/pending counters so QuiesceWorkSource() cannot return while a
+  // worker thread is still running closure capture destructors.
+  t.f.reset();
+  tws->DecrementInflightTaskCount(is_blocking);
+  tws->DecrementPendingTaskCount();
+}
+
 void RunHandlerThreadPool::AddWorkToQueue(ThreadWorkSource* tws,
                                           bool is_blocking, TaskFunction fn) {
   Task t = env_.CreateTask(std::move(fn));
@@ -440,7 +540,41 @@ void RunHandlerThreadPool::AddWorkToQueue(ThreadWorkSource* tws,
   if (t.f) {
     VLOG(3) << "Running " << (is_blocking ? "inter" : "intra") << " work for "
             << tws->GetTracemeId();
-    env_.ExecuteTask(t);
+    ExecuteTask(tws, is_blocking, std::move(t));
+  }
+}
+
+void RunHandlerThreadPool::QuiesceWorkSource(ThreadWorkSource* tws) {
+  CHECK(!ScopedActiveWorkSource::IsActiveOnCurrentThread(tws))  // Crash OK.
+      << "Cannot quiesce ThreadWorkSource (traceme_id=" << tws->GetTracemeId()
+      << ") from within a task executing on the same source.";
+  if (tws->GetPendingTaskCount() == 0) {
+    return;
+  }
+  tensorflow::port::ScopedFlushDenormal flush;
+  tensorflow::port::ScopedSetRound round(FE_TONEAREST);
+  while (true) {
+    uint64_t observed_enqueue_count = tws->GetEnqueueCount();
+    bool ran_task = false;
+    for (Task t = tws->PopBlockingTask(); t.f != nullptr;
+         t = tws->PopBlockingTask()) {
+      ran_task = true;
+      ExecuteTask(tws, /*is_blocking=*/true, std::move(t));
+    }
+    for (Task t = tws->PopNonBlockingTask(/*start_index=*/0,
+                                          /*search_from_all_queue=*/true);
+         t.f != nullptr;
+         t = tws->PopNonBlockingTask(/*start_index=*/0,
+                                     /*search_from_all_queue=*/true)) {
+      ran_task = true;
+      ExecuteTask(tws, /*is_blocking=*/false, std::move(t));
+    }
+    if (ran_task) {
+      continue;
+    }
+    if (tws->WaitForWorkOrCompletion(observed_enqueue_count)) {
+      break;
+    }
   }
 }
 
@@ -597,10 +731,7 @@ void RunHandlerThreadPool::WorkerLoop(int thread_id,
     if (t.f) {
       VLOG(2) << "Running " << (task_from_blocking_queue ? "inter" : "intra")
               << " work from " << tws->GetTracemeId();
-      tws->IncrementInflightTaskCount(task_from_blocking_queue);
-      env_.ExecuteTask(t);
-      tws->DecrementInflightTaskCount(task_from_blocking_queue);
-      tws->DecrementPendingTaskCount();
+      ExecuteTask(tws, task_from_blocking_queue, std::move(t));
     } else {
       tsl::profiler::TraceMe activity(
           [thread_id] {
@@ -853,11 +984,17 @@ class RunHandlerPool::Impl {
   }
 
   void ReleaseHandler(RunHandler::Impl* handler) TF_LOCKS_EXCLUDED(mu_) {
+    // Drain any unpopped closures (e.g. from work-stealing parallel loops that
+    // completed early on the caller thread) and wait for any in-flight closures
+    // before returning the handler to free_handlers_.
+    run_handler_thread_pool_->QuiesceWorkSource(handler->tws());
+
     tensorflow::mutex_lock l(mu_);
     DCHECK_GT(sorted_active_handlers_.size(), 0);
 
-    CHECK_EQ(handler->tws()->TaskQueueSize(true), 0);   // Crash OK.
-    CHECK_EQ(handler->tws()->TaskQueueSize(false), 0);  // Crash OK.
+    CHECK_EQ(handler->tws()->TaskQueueSize(true), 0);    // Crash OK.
+    CHECK_EQ(handler->tws()->TaskQueueSize(false), 0);   // Crash OK.
+    CHECK_EQ(handler->tws()->GetPendingTaskCount(), 0);  // Crash OK.
 
     uint64_t now = tensorflow::EnvTime::NowMicros();
     double elapsed = (now - handler->start_time_us()) / 1000.0;

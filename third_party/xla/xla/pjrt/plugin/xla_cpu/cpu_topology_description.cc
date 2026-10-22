@@ -258,10 +258,18 @@ absl::StatusOr<xla::Shape> MakeDefaultCpuBufferShape(
     shape.mutable_layout()->set_element_size_in_bits(
         primitive_util::BitWidth(element_type));
   }
-  if (layout != nullptr && *layout != shape.layout()) {
-    return absl::UnimplementedError(absl::StrCat(
-        "Unsupported layout used for PjRt CPU buffers: ", layout->ToString(),
-        " (original) vs. ", shape.ToString(), " (canonicalized)"));
+  if (layout != nullptr) {
+    xla::Layout canonical_input = *layout;
+    if (canonical_input.element_size_in_bits() == 0 &&
+        primitive_util::IsSubByteNonPredType(element_type)) {
+      canonical_input.set_element_size_in_bits(
+          primitive_util::BitWidth(element_type));
+    }
+    if (canonical_input != shape.layout()) {
+      return absl::UnimplementedError(absl::StrCat(
+          "Unsupported layout used for PjRt CPU buffers: ", layout->ToString(),
+          " (original) vs. ", shape.ToString(), " (canonicalized)"));
+    }
   }
   return shape;
 }

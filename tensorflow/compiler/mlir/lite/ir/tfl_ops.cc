@@ -3511,6 +3511,55 @@ int64_t DivOp::GetArithmeticCount(Operation* op) {
 }
 
 //===----------------------------------------------------------------------===//
+// FloorDivOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult FloorDivOp::fold(FoldAdaptor adaptor) {
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+
+  if (llvm::isa<quant::QuantizedType>(getType().getElementType())) {
+    return {};
+  }
+
+  auto lhs = llvm::dyn_cast_or_null<ElementsAttr>(adaptor.getLhs());
+  auto rhs = llvm::dyn_cast_or_null<ElementsAttr>(adaptor.getRhs());
+  if (!lhs || !rhs) return {};
+
+  // The TFLite kernel fails on a zero divisor for every element type; leave
+  // such ops to the runtime instead of folding them to a value (or inf/NaN).
+  const Type element_type = getType().getElementType();
+  if (element_type.isSignlessInteger()) {
+    auto int_rhs = llvm::dyn_cast<DenseIntElementsAttr>(rhs);
+    if (!int_rhs) return {};
+    for (const APInt& v : int_rhs.getValues<APInt>()) {
+      if (v.isZero()) return {};
+    }
+  } else if (element_type.isF32()) {
+    auto float_rhs = llvm::dyn_cast<DenseFPElementsAttr>(rhs);
+    if (!float_rhs) return {};
+    for (const APFloat& v : float_rhs.getValues<APFloat>()) {
+      if (v.isZero()) return {};
+    }
+  } else {
+    return {};
+  }
+
+  // Matches the TFLite kernel: floats are divided and floored in double (see
+  // reference_ops::FloorDiv), and integer division rounds toward negative
+  // infinity.
+  return ConstFoldBinaryOp(
+      getType(), getOperands(),
+      [](APFloat a, APFloat b) {
+        const double q = std::floor(static_cast<double>(a.convertToFloat()) /
+                                    static_cast<double>(b.convertToFloat()));
+        return APFloat(static_cast<float>(q));
+      },
+      [](APInt a, APInt b) {
+        return llvm::APIntOps::RoundingSDiv(a, b, APInt::Rounding::DOWN);
+      });
+}
+
+//===----------------------------------------------------------------------===//
 // PackOp
 //===----------------------------------------------------------------------===//
 
