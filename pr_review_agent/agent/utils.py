@@ -26,15 +26,16 @@ import sys
 import tempfile
 from typing import Any
 
+import requests
+from google.adk.agents.run_config import RunConfig
+from google.adk.runners import Runner
+from google.genai import types
+
 from agent.settings import GITHUB_BASE_URL
 from agent.settings import GITHUB_GRAPHQL_URL
 from agent.settings import GITHUB_TOKEN
 from agent.settings import OWNER
 from agent.settings import REPO
-from google.adk.agents.run_config import RunConfig
-from google.adk.runners import Runner
-from google.genai import types
-import requests
 
 headers = {
     "Authorization": f"token {GITHUB_TOKEN}",

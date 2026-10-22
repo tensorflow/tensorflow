@@ -16,6 +16,7 @@
 # pylint: disable=bad-indentation,line-too-long
 
 import os
+
 from dotenv import load_dotenv
 
 load_dotenv()

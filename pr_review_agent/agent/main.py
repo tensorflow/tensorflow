@@ -19,9 +19,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
-import requests
 from os import environ
+import re
+
+import requests
+from google.adk.cli.utils import logs
+from google.genai.errors import APIError, ClientError, ServerError
 
 from agent import agent
 from agent import settings as settings_mod
@@ -32,9 +35,6 @@ from agent.utils import (
     parse_number_string,
     run_pylint_on_changed_files,
 )
-
-from google.adk.cli.utils import logs
-from google.genai.errors import APIError, ClientError, ServerError
 
 logs.setup_adk_logger(level=logging.WARNING)
 
@@ -177,9 +177,6 @@ async def main():
         print(f"Error: Invalid pull request number received: {raw_pr}")
         return
 
-    # 1. Clean old states and put down the looking eyes emoji
-    clear_and_set_reaction(pr_number, add_content="eyes")
-
     # Fetch metadata once at startup
     pr_details_response = agent.get_pull_request_details()
     if pr_details_response.get("status") != "success":
@@ -225,6 +222,9 @@ async def main():
         )
         clear_and_set_reaction(pr_number, add_content="rocket")
         return
+
+    # 1. Clean old states and put down the looking eyes emoji
+    clear_and_set_reaction(pr_number, add_content="eyes")
 
     files = pr_data.get("files", {}).get("nodes", [])
     title = pr_data.get("title", "")

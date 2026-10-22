@@ -28,6 +28,7 @@ import subprocess
 import sys
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
+
 import requests
 
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
@@ -238,8 +239,8 @@ class TestCommitIdempotency(unittest.TestCase):
 
         # Verify LLM review was NOT invoked
         mock_run_pr_review.assert_not_called()
-        # Verify final rocket reaction was set
-        mock_react.assert_called_with(12345, add_content="rocket")
+        # Verify only final rocket reaction was set (no premature eyes reaction)
+        mock_react.assert_called_once_with(12345, add_content="rocket")
 
 
 class TestPylintIntegration(unittest.TestCase):
@@ -386,7 +387,7 @@ class TestPylintIntegration(unittest.TestCase):
 
         mock_run_pylint.assert_not_called()
         mock_run_pr_review.assert_not_called()
-        mock_react.assert_called_with(12345, add_content="rocket")
+        mock_react.assert_called_once_with(12345, add_content="rocket")
 
     @patch("agent.main.clear_and_set_reaction")
     @patch("agent.main.run_pylint_on_changed_files")
@@ -945,7 +946,7 @@ class TestSecurityHardening(unittest.TestCase):
         mock_has_reviewed.assert_not_called()
         mock_run_pylint.assert_not_called()
         mock_run_pr_review.assert_not_called()
-        mock_react.assert_called_once_with(12345, add_content="eyes")
+        mock_react.assert_not_called()
 
     @patch("agent.main.clear_and_set_reaction")
     @patch("agent.main.run_pylint_on_changed_files")
@@ -1695,53 +1696,78 @@ class TestSecurityHardening(unittest.TestCase):
         mock_post.assert_called_once()
 
     def test_engineer_review_agent_import_grouping_order(self):
-        """Finding 4: pr_review_agent/agent/agent.py groups stdlib, third-party, and local imports in standard order."""
-        agent_py_path = Path(__file__).resolve().parent / "agent" / "agent.py"
-        source = agent_py_path.read_text(encoding="utf-8")
-        tree = ast.parse(source, filename=str(agent_py_path))
-
-        stdlib_modules = {"__future__", "os", "pathlib", "re", "typing"}
-        third_party_roots = {"requests", "google"}
+        """Finding 4: pr_review_agent/agent modules group stdlib, third-party, and local imports in standard order."""
+        stdlib_modules = {
+            "__future__",
+            "asyncio",
+            "base64",
+            "os",
+            "pathlib",
+            "re",
+            "subprocess",
+            "sys",
+            "tempfile",
+            "typing",
+        }
+        third_party_roots = {"dotenv", "google", "requests"}
         local_roots = {"agent"}
 
-        group_sequence = []
-        seen_imports = set()
-        for node in tree.body:
-            if isinstance(node, ast.Import):
-                for alias in node.names:
-                    root_pkg = alias.name.split(".")[0]
-                    key = f"import:{alias.name}"
-                    self.assertNotIn(key, seen_imports, f"Duplicate import {key}")
-                    seen_imports.add(key)
-                    if root_pkg in stdlib_modules:
-                        group_sequence.append((1, alias.name, node.lineno))
-                    elif root_pkg in third_party_roots:
-                        group_sequence.append((2, alias.name, node.lineno))
-                    elif root_pkg in local_roots:
-                        group_sequence.append((3, alias.name, node.lineno))
-            elif isinstance(node, ast.ImportFrom) and node.module:
-                root_pkg = node.module.split(".")[0]
-                for alias in node.names:
-                    key = f"from:{node.module}:{alias.name}"
-                    self.assertNotIn(key, seen_imports, f"Duplicate import {key}")
-                    seen_imports.add(key)
-                if root_pkg in stdlib_modules:
-                    group_sequence.append((1, node.module, node.lineno))
-                elif root_pkg in third_party_roots:
-                    group_sequence.append((2, node.module, node.lineno))
-                elif root_pkg in local_roots:
-                    group_sequence.append((3, node.module, node.lineno))
+        agent_dir = Path(__file__).resolve().parent / "agent"
+        expected_groups_by_file = {
+            "agent.py": {1, 2, 3},
+            "main.py": {1, 2, 3},
+            "utils.py": {1, 2, 3},
+            "settings.py": {1, 2},
+        }
 
-        group_ids = [g[0] for g in group_sequence]
-        self.assertEqual(
-            group_ids,
-            sorted(group_ids),
-            f"Expected stdlib (1) -> third-party (2) -> local (3) import order, got {group_sequence}",
-        )
-        # Ensure all three groups are present and requests is grouped with third-party before local agent imports
-        self.assertIn(1, group_ids)
-        self.assertIn(2, group_ids)
-        self.assertIn(3, group_ids)
+        for filename, expected_groups in expected_groups_by_file.items():
+            module_path = agent_dir / filename
+            source = module_path.read_text(encoding="utf-8")
+            tree = ast.parse(source, filename=str(module_path))
+
+            group_sequence = []
+            seen_imports = set()
+            for node in tree.body:
+                if isinstance(node, ast.Import):
+                    for alias in node.names:
+                        root_pkg = alias.name.split(".")[0]
+                        key = f"import:{alias.name}"
+                        self.assertNotIn(
+                            key,
+                            seen_imports,
+                            f"Duplicate import {key} in {filename}",
+                        )
+                        seen_imports.add(key)
+                        if root_pkg in stdlib_modules:
+                            group_sequence.append((1, alias.name, node.lineno))
+                        elif root_pkg in third_party_roots:
+                            group_sequence.append((2, alias.name, node.lineno))
+                        elif root_pkg in local_roots:
+                            group_sequence.append((3, alias.name, node.lineno))
+                elif isinstance(node, ast.ImportFrom) and node.module:
+                    root_pkg = node.module.split(".")[0]
+                    for alias in node.names:
+                        key = f"from:{node.module}:{alias.name}"
+                        self.assertNotIn(
+                            key,
+                            seen_imports,
+                            f"Duplicate import {key} in {filename}",
+                        )
+                        seen_imports.add(key)
+                    if root_pkg in stdlib_modules:
+                        group_sequence.append((1, node.module, node.lineno))
+                    elif root_pkg in third_party_roots:
+                        group_sequence.append((2, node.module, node.lineno))
+                    elif root_pkg in local_roots:
+                        group_sequence.append((3, node.module, node.lineno))
+
+            group_ids = [g[0] for g in group_sequence]
+            self.assertEqual(
+                group_ids,
+                sorted(group_ids),
+                f"Expected stdlib (1) -> third-party (2) -> local (3) import order in {filename}, got {group_sequence}",
+            )
+            self.assertEqual(set(group_ids), expected_groups)
 
     @patch("agent.utils.requests.get")
     def test_engineer_review_centralized_get_request_pagination_and_idempotency(
@@ -2081,7 +2107,7 @@ class TestSecurityHardening(unittest.TestCase):
 
         mock_run_pylint.assert_not_called()
         mock_run_pr_review.assert_not_called()
-        mock_react.assert_called_once_with(12345, add_content="eyes")
+        mock_react.assert_not_called()
 
         # Case 2: Confirmed not reviewed (multi-page list with no matching review) ->
         # has_agent_reviewed_commit returns False at startup, main() runs Pylint and
@@ -2415,6 +2441,203 @@ class TestSecurityHardening(unittest.TestCase):
                 printed,
             )
         failed_post.raise_for_status.assert_called_once()
+
+    @patch("agent.main.clear_and_set_reaction")
+    @patch("agent.main.run_pylint_on_changed_files")
+    @patch("agent.main.has_agent_reviewed_commit")
+    @patch("agent.agent.get_pull_request_details")
+    @patch("agent.agent.run_pr_review", new_callable=AsyncMock)
+    def test_engineer_review_deferred_eyes_reaction_placement(
+        self,
+        mock_run_pr_review,
+        mock_get_details,
+        mock_has_reviewed,
+        mock_run_pylint,
+        mock_react,
+    ):
+        """Eyes reaction is deferred until after PR details fetch, head SHA validation, and idempotency checks."""
+        sha = "abcdef0123456789abcdef0123456789abcdef01"
+        valid_details = {
+            "status": "success",
+            "pull_request": {
+                "headRefOid": sha,
+                "title": "Fix bug",
+                "body": "Body",
+                "diff": "@@ -1,1 +1,1 @@\n+x = 1",
+                "files": {
+                    "nodes": [
+                        {"path": "tensorflow/python/foo.py", "changeType": "MODIFIED"}
+                    ]
+                },
+            },
+        }
+
+        # 1. Pre-fetching PR details fails -> no reaction set
+        mock_get_details.return_value = {"status": "error", "error_message": "Not found"}
+        with patch.dict(os.environ, {"PR_HEAD_SHA": sha}):
+            asyncio.run(main.main())
+        mock_react.assert_not_called()
+
+        # 2. Missing PR_HEAD_SHA -> no reaction set
+        mock_get_details.return_value = valid_details
+        with patch.dict(os.environ, {"PR_HEAD_SHA": ""}):
+            with patch.object(main, "PR_HEAD_SHA", ""):
+                asyncio.run(main.main())
+        mock_react.assert_not_called()
+
+        # 3. Head SHA mismatch -> no reaction set
+        with patch.dict(os.environ, {"PR_HEAD_SHA": "0" * 40}):
+            asyncio.run(main.main())
+        mock_react.assert_not_called()
+
+        # 4. Review history verification fails (None) -> no reaction set
+        mock_has_reviewed.return_value = None
+        with patch.dict(os.environ, {"PR_HEAD_SHA": sha}):
+            asyncio.run(main.main())
+        mock_react.assert_not_called()
+
+        # 5. Commit already reviewed (True) -> only rocket reaction set, never eyes
+        mock_has_reviewed.return_value = True
+        with patch.dict(os.environ, {"PR_HEAD_SHA": sha}):
+            asyncio.run(main.main())
+        mock_react.assert_called_once_with(12345, add_content="rocket")
+
+        # 6. Unreviewed commit (False -> True) -> eyes set after checks, then rocket after review
+        mock_react.reset_mock()
+        call_order = []
+        mock_get_details.side_effect = lambda: (
+            call_order.append("get_details") or valid_details
+        )
+        has_reviewed_results = [False, True]
+        mock_has_reviewed.side_effect = lambda url, commit: (
+            call_order.append("has_reviewed") or has_reviewed_results.pop(0)
+        )
+        mock_react.side_effect = lambda pr_num, add_content=None: call_order.append(
+            f"react:{add_content}"
+        )
+        mock_run_pylint.side_effect = lambda files, raw_diff="", head_sha="": (
+            call_order.append("pylint") or "No Pylint issues detected on modified lines."
+        )
+
+        async def _fake_run_pr_review(**_kwargs):
+            call_order.append("run_pr_review")
+            return "Done"
+
+        mock_run_pr_review.side_effect = _fake_run_pr_review
+
+        with patch.dict(os.environ, {"PR_HEAD_SHA": sha}):
+            asyncio.run(main.main())
+
+        self.assertEqual(
+            call_order,
+            [
+                "get_details",
+                "has_reviewed",
+                "react:eyes",
+                "pylint",
+                "run_pr_review",
+                "has_reviewed",
+                "react:rocket",
+            ],
+        )
+
+    @patch("agent.utils.post_pull_request_review")
+    def test_engineer_review_safe_inline_comment_line_parsing(self, mock_post_review):
+        """submit_pr_code_review and submit_pr_code_review_orchestrated safely parse LLM line numbers without raising ValueError."""
+        mock_post_review.return_value = {"id": 999, "state": "COMMENTED"}
+        agent._VERIFIED_HEAD_SHA = "abcdef0123456789abcdef0123456789abcdef01"
+
+        mixed_inline_comments = [
+            {"path": "tensorflow/python/a.py", "line": 42, "body": "Valid int"},
+            {"path": "tensorflow/python/b.py", "line": "108", "body": "Valid numeric str"},
+            {"path": "tensorflow/python/c.py", "line": "L42", "body": "Formatted L-prefix"},
+            {"path": "tensorflow/python/d.py", "line": "[L99]", "body": "Annotated prefix"},
+            {"path": "tensorflow/python/e.py", "line": "invalid", "body": "Non-numeric"},
+            {"path": "tensorflow/python/f.py", "line": None, "body": "None line"},
+            {"path": "tensorflow/python/g.py", "line": 0, "body": "Zero line"},
+            {"path": "tensorflow/python/h.py", "line": -5, "body": "Negative line"},
+        ]
+
+        # 1. Direct call to submit_pr_code_review does not raise ValueError and keeps only valid positive int lines
+        res = agent.submit_pr_code_review(
+            overall_assessment="Actionable comments posted.",
+            summary_comment="### Summary\nFound issues.",
+            inline_comments=mixed_inline_comments,
+        )
+        self.assertEqual(res["status"], "success")
+        mock_post_review.assert_called_once()
+        posted_payload = mock_post_review.call_args.args[1]
+        self.assertEqual(
+            posted_payload["comments"],
+            [
+                {
+                    "path": "tensorflow/python/a.py",
+                    "line": 42,
+                    "side": "RIGHT",
+                    "body": "Valid int",
+                },
+                {
+                    "path": "tensorflow/python/b.py",
+                    "line": 108,
+                    "side": "RIGHT",
+                    "body": "Valid numeric str",
+                },
+            ],
+        )
+
+        # 2. Orchestrated tool inside make_review_agent (both with callback and delegating to submit_pr_code_review)
+        mock_post_review.reset_mock()
+        callback_mock = MagicMock(return_value={"status": "callback_ok"})
+        with patch.object(agent, "LlmAgent") as mock_llm_agent:
+            agent.make_review_agent(
+                model_name="gemini-3-flash-preview",
+                post_comment_callback=callback_mock,
+                category="Bug fix",
+                reason="Test reason",
+                focus_areas="Focus",
+                skip_areas="Skip",
+                commit_sha=agent._VERIFIED_HEAD_SHA,
+            )
+            tools = mock_llm_agent.call_args.kwargs["tools"]
+            orchestrated_fn = tools[1]
+
+        cb_res = orchestrated_fn(
+            overall_assessment="Actionable comments posted.",
+            summary_comment="### Summary\nFound issues.",
+            inline_comments=mixed_inline_comments,
+        )
+        self.assertEqual(cb_res, {"status": "callback_ok"})
+        callback_mock.assert_called_once()
+        cb_text = callback_mock.call_args.args[1]
+        self.assertIn("[tensorflow/python/a.py L42 (RIGHT)]: Valid int", cb_text)
+        self.assertIn("[tensorflow/python/b.py L108 (RIGHT)]: Valid numeric str", cb_text)
+        self.assertNotIn("tensorflow/python/c.py", cb_text)
+        self.assertNotIn("tensorflow/python/d.py", cb_text)
+
+        with patch.object(agent, "LlmAgent") as mock_llm_agent:
+            agent.make_review_agent(
+                model_name="gemini-3-flash-preview",
+                post_comment_callback=None,
+                category="Bug fix",
+                reason="Test reason",
+                focus_areas="Focus",
+                skip_areas="Skip",
+                commit_sha=agent._VERIFIED_HEAD_SHA,
+            )
+            orchestrated_no_cb = mock_llm_agent.call_args.kwargs["tools"][1]
+
+        delegated_res = orchestrated_no_cb(
+            overall_assessment="Actionable comments posted.",
+            summary_comment="### Summary\nFound issues.",
+            inline_comments=mixed_inline_comments,
+        )
+        self.assertEqual(delegated_res["status"], "success")
+        mock_post_review.assert_called_once()
+        delegated_payload = mock_post_review.call_args.args[1]
+        self.assertEqual(
+            [c["line"] for c in delegated_payload["comments"]],
+            [42, 108],
+        )
 
 
 if __name__ == "__main__":

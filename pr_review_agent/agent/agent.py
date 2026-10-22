@@ -189,10 +189,11 @@ def submit_pr_code_review(
         suggestion = ic.get("suggestion_code", "")
         if suggestion and "```suggestion" not in body:
             body = f"{body.rstrip()}\n\n```suggestion\n{suggestion.rstrip()}\n```"
-        if path and line:
+        parsed_line = parse_number_string(str(line)) if line is not None else 0
+        if path and parsed_line > 0:
             formatted_comments.append({
                 "path": path,
-                "line": int(line),
+                "line": parsed_line,
                 "side": ic.get("side", "RIGHT"),
                 "body": body
             })
@@ -740,10 +741,11 @@ def make_review_agent(
             suggestion = ic.get("suggestion_code", "")
             if suggestion and "```suggestion" not in body:
                 body = f"{body.rstrip()}\n\n```suggestion\n{suggestion.rstrip()}\n```"
-            if path and line:
+            parsed_line = parse_number_string(str(line)) if line is not None else 0
+            if path and parsed_line > 0:
                 formatted_comments.append({
                     "path": path,
-                    "line": int(line),
+                    "line": parsed_line,
                     "side": ic.get("side", "RIGHT"),
                     "body": body
                 })
