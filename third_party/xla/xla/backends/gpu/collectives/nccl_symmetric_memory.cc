@@ -92,11 +92,23 @@ NcclSymmetricMemory::Create(std::shared_ptr<NcclCommState> comm_state,
     if (comm == nullptr) {
       return absl::InvalidArgumentError("NCCL comm is null.");
     }
+    // Difference between NCCL_WIN_COLL_SYMMETRIC and NCCL_WIN_DEFAULT is purely
+    // semantic.
+    // With NCCL_WIN_COLL_SYMMETRIC user should guarantee that logical memory
+    // under the window is symmetrical at all participants. This allows NCCL to
+    // run copy engine and RMA symmetrical kernels. We are using currently
+    // NCCL_WIN_DEFAULT by default to disable these kernels because XLA runtime
+    // might cache window handlers, which causes NCCL to incorrectly choose a
+    // symmetric kernel on a default non-symmetric memory, just because another
+    // executable cached a window handler.
+    int win_flags =
+        symmetric_window ? NCCL_WIN_COLL_SYMMETRIC : NCCL_WIN_DEFAULT;
     VLOG(3) << absl::StrFormat(
-        "Create NCCL symmetric memory on comm=%p from: ptr=%p; size=%ld", comm,
-        addr.opaque(), addr.size());
+        "Create NCCL symmetric memory on comm=%p from: ptr=%p; size=%ld; "
+        "win_flags=%d",
+        comm, addr.opaque(), addr.size(), win_flags);
     nccl_status = ncclCommWindowRegister(comm, addr.opaque(), addr.size(), &win,
-                                         NCCL_WIN_COLL_SYMMETRIC);
+                                         win_flags);
   }
 
   if (nccl_status != ncclSuccess) {
