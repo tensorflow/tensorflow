@@ -1271,6 +1271,18 @@ class SparseTransposeTest(test.TestCase):
           self.assertAllEqual(expected_trans.shape, sp_trans.get_shape())
           self.assertAllEqual(dn_trans, expected_trans)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testTransposeInvalidPerm(self):
+    sp_input = sparse_tensor.SparseTensor(
+        indices=[[0, 1], [2, 3]], values=[1.0, 2.0], dense_shape=[4, 5]
+    )
+    for invalid_perm in [[0, 0], [0, 2], [-1, 0], [0], [0, 1, 2], [[1, 0]]]:
+      with self.assertRaisesRegex(
+          ValueError,
+          "'perm' must be a 1-D permutation of the dimensions of 'sp_input'",
+      ):
+        sparse_ops.sparse_transpose(sp_input, perm=invalid_perm)
+
 
 class SparsePlaceholderTest(test.TestCase):
 
