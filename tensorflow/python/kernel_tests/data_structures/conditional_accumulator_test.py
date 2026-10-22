@@ -146,6 +146,7 @@ class ConditionalAccumulatorTest(test.TestCase):
               local_step=0,
               gradient=array_ops.ones([2, 3], dtype=dtypes_lib.float16)))
 
+  @test_util.run_v2_only
   def testResourceAccumulatorApplyGradWithNonScalarLocalStep(self):
     handle = gen_data_flow_ops.resource_conditional_accumulator(
         dtype=dtypes_lib.float32, shape=[2, 3], shared_name="local_step")
