@@ -605,6 +605,17 @@ RecordRaggedAllToAllWithSymmetricMemory(
   const int64_t num_updates_per_replica = config.num_total_updates / num_ranks;
   PrimitiveType element_type = device_buffers[0].element_type;
   se::DeviceAddressBase input_buffer = device_buffers[0].source_buffer;
+  se::DeviceAddressBase output_buffer = device_buffers[1].destination_buffer;
+  XLA_VLOG_DEVICE(4, state->device_ordinal)
+      << "Performing one-shot ragged-all-to-all "
+         "with NCCL barrier. input buffer: ("
+      << input_buffer.opaque() << ", size=" << input_buffer.size()
+      << ") output buffer: (" << output_buffer.opaque()
+      << ", size=" << output_buffer.size() << ")"
+      << " output sym memory (handle=" << output_sym_mem
+      << ", address=" << output_sym_mem->addr().opaque()
+      << ", size=" << output_sym_mem->addr().size()
+      << ", sym_offset=" << output_sym_offset << ")";
 
   RaggedAllToAllCommandState* cmd_state =
       record_params.state.GetOrCreate<RaggedAllToAllCommandState>(
