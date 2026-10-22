@@ -38,6 +38,8 @@ class YnnpackDelegateProvider : public DelegateProvider {
                              ToolParam::Create<bool>(false));
     default_params_.AddParam("ynnpack_no_excess_precision",
                              ToolParam::Create<bool>(false));
+    default_params_.AddParam("ynnpack_enable_blockwise_quantization",
+                             ToolParam::Create<bool>(false));
   }
 
   std::vector<Flag> CreateFlags(ToolParams* params) const final;
@@ -67,6 +69,8 @@ std::vector<Flag> YnnpackDelegateProvider::CreateFlags(
                        "enable YNN_FLAG_CONSISTENT_ARITHMETIC."),
       CreateFlag<bool>("ynnpack_no_excess_precision", params,
                        "enable YNN_FLAG_NO_EXCESS_PRECISION."),
+      CreateFlag<bool>("ynnpack_enable_blockwise_quantization", params,
+                       "enable blockwise quantization support."),
   };
   return flags;
 }
@@ -82,6 +86,8 @@ void YnnpackDelegateProvider::LogParams(const ToolParams& params,
                  "YNNPACK consistent arithmetic", verbose);
   LOG_TOOL_PARAM(params, bool, "ynnpack_no_excess_precision",
                  "YNNPACK no excess precision", verbose);
+  LOG_TOOL_PARAM(params, bool, "ynnpack_enable_blockwise_quantization",
+                 "YNNPACK enable blockwise quantization", verbose);
 }
 
 TfLiteDelegatePtr YnnpackDelegateProvider::CreateTfLiteDelegate(
@@ -97,6 +103,8 @@ TfLiteDelegatePtr YnnpackDelegateProvider::CreateTfLiteDelegate(
     opts.consistent_arithmetic =
         params.Get<bool>("ynnpack_consistent_arithmetic");
     opts.no_excess_precision = params.Get<bool>("ynnpack_no_excess_precision");
+    opts.enable_blockwise_quantization =
+        params.Get<bool>("ynnpack_enable_blockwise_quantization");
 
     return TfLiteDelegatePtr(reinterpret_cast<TfLiteOpaqueDelegate*>(
                                  TfLiteYNNPackDelegateCreate(&opts)),

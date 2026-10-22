@@ -47,3 +47,6 @@ configure the YNNPACK delegate:
 *   **`--ynnpack_no_excess_precision=true|false`** (default: `false`):
     Enable `YNN_FLAG_NO_EXCESS_PRECISION`. YNNPACK will not promote tensors to
     higher precision as a performance optimization.
+
+*   **`--ynnpack_enable_blockwise_quantization=true|false`** (default: `false`):
+    Enable support for blockwise quantization.
