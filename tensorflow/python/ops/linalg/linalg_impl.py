@@ -395,7 +395,7 @@ def matrix_exponential(input, name=None):  # pylint: disable=redefined-builtin
     else:
       result = array_ops.reshape(result,
                                  batch_shape.concatenate(result.shape[-2:]))
-    if original_dtype != matrix.dtype:
+    if original_dtype in (dtypes.float16, dtypes.bfloat16):
       result = math_ops.cast(result, original_dtype)
     return result
 
