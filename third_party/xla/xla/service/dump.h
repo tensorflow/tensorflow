@@ -73,6 +73,15 @@ void DumpToFileInDir(const HloModule& module, absl::string_view file_prefix,
 void DumpToFileInDir(const DebugOptions& debug_options,
                      absl::string_view filename, absl::string_view contents);
 
+// Like DumpToFileInDir, but performs the file write asynchronously via
+// AsyncDumpWriter after capturing `contents` by value.
+void DumpToFileInDirAsync(const HloModule& module,
+                          absl::string_view file_prefix,
+                          absl::string_view file_suffix, std::string contents);
+
+// Waits for any pending asynchronous dump writes to complete.
+void DrainAsyncDumpWriter();
+
 // Like DumpToFileInDir, except if module doesn't have an xla_dump_to directory
 // specified, or if that directory is equal to "-", writes to stdout instead.
 void DumpToFileInDirOrStdout(const HloModule& module,
