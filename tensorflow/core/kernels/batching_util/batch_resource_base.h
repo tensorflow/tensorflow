@@ -338,7 +338,8 @@ class BatchResourceBase : public ResourceBase {
       const std::string& model_name, const std::string& op_name,
       const std::vector<std::unique_ptr<CostMeasurement>>&
           batch_cost_measurements,
-      int64_t processed_size, BatchT& batch);
+      int64_t processed_size, BatchT& batch,
+      absl::Duration batch_latency = absl::ZeroDuration());
 
   // Records information about the delay between a task being registered and
   // that task being scheduled into a batch.

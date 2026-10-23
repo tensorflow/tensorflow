@@ -148,6 +148,29 @@ TEST(BatchStatsTest, NumBatchThreadsIsCorrect) {
   ASSERT_EQ(stats.num_batch_threads(), 16);
 }
 
+TEST(BatchStatsTest, BatchLatencyAndModelTpuCostAreTracked) {
+  ModelBatchStats stats;
+  const ModelBatchStats& const_stats = stats;
+
+  EXPECT_FALSE(const_stats.tpu_cost().mean().has_value());
+  EXPECT_FALSE(const_stats.batch_latency().mean().has_value());
+  EXPECT_FALSE(stats.batch_size(4).batch_latency().mean().has_value());
+
+  stats.tpu_cost().Register(absl::Milliseconds(10));
+  stats.tpu_cost().Register(absl::Milliseconds(20));
+  stats.batch_latency().Register(absl::Milliseconds(30));
+  stats.batch_latency().Register(absl::Milliseconds(50));
+  stats.batch_size(4).tpu_cost().Register(absl::Milliseconds(12));
+  stats.batch_size(4).batch_latency().Register(absl::Milliseconds(24));
+
+  const BatchSizeStats& const_batch_size_stats = stats.batch_size(4);
+  EXPECT_EQ(const_stats.tpu_cost().mean(), absl::Milliseconds(15));
+  EXPECT_EQ(const_stats.batch_latency().mean(), absl::Milliseconds(40));
+  EXPECT_EQ(const_batch_size_stats.tpu_cost().mean(), absl::Milliseconds(12));
+  EXPECT_EQ(const_batch_size_stats.batch_latency().mean(),
+            absl::Milliseconds(24));
+}
+
 }  // namespace
 
 }  // namespace tensorflow::serving
