@@ -129,6 +129,26 @@ TEST(Irfft2dOpTest, InputDimsGreaterThan2) {
   EXPECT_THAT(model.GetOutput(), ElementsAreArray(expected_result));
 }
 
+TEST(Irfft2dOpTest, InvalidFftLengthOverflow) {
+  Irfft2dOpModel model({TensorType_COMPLEX64, {4, 3}}, {TensorType_INT32, {2}});
+  model.PopulateTensor<std::complex<float>>(model.input(), {
+    {75, 0},  {-6, -1}, {9, 0},  {-10, 5},  {-3, 2}, {-6, 11},
+    {-15, 0}, {-2, 13}, {-5, 0}, {-10, -5}, {3, -6}, {-6, -11}
+  });
+  model.PopulateTensor<int32_t>(model.fft_lengths(), {8192, 262144});
+  EXPECT_NE(model.Invoke(), kTfLiteOk);
+}
+
+TEST(Irfft2dOpTest, InvalidFftLengthLargeDimension) {
+  Irfft2dOpModel model({TensorType_COMPLEX64, {4, 3}}, {TensorType_INT32, {2}});
+  model.PopulateTensor<std::complex<float>>(model.input(), {
+    {75, 0},  {-6, -1}, {9, 0},  {-10, 5},  {-3, 2}, {-6, 11},
+    {-15, 0}, {-2, 13}, {-5, 0}, {-10, -5}, {3, -6}, {-6, -11}
+  });
+  model.PopulateTensor<int32_t>(model.fft_lengths(), {536870912, 1});
+  EXPECT_NE(model.Invoke(), kTfLiteOk);
+}
+
 }  // namespace
 }  // namespace custom
 }  // namespace ops
