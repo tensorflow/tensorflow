@@ -600,5 +600,34 @@ TEST(GatherNdOpTest, ErrorOnNegativeInnermostIndicesDimension) {
   EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
 }
 
+TEST(GatherNdOpTest, EmptyTrailingDimension) {
+  // Verify that an empty trailing dimension (size 0) runs without error.
+  GatherNdOpModel m({TensorType_FLOAT32, {1, 0}}, {TensorType_INT32, {0, 1}});
+  EXPECT_EQ(m.Invoke(), kTfLiteOk);
+}
+
+TEST(GatherNdOpTest, SliceSizeIntegerOverflow_String) {
+  // Use dimensions that overflow INT32_MAX (65536 * 32769 > 2B) to trigger an
+  // error.
+  GatherNdOpModel m({TensorType_STRING, {1, 65536, 32769}},
+                    {TensorType_INT32, {1, 1}});
+
+  // Start the gather at index 0 and provide a dummy string to avoid null
+  // pointers.
+  m.SetPositions<int32_t>({0});
+  m.SetInput<std::string>({"A"});
+
+  EXPECT_EQ(m.Invoke(), kTfLiteError);
+}
+
+TEST(GatherNdOpTest, SliceSizeIntegerOverflow_Float) {
+  // Verify the same integer overflow protection for Float tensors.
+  GatherNdOpModel m({TensorType_FLOAT32, {1, 65536, 32769}},
+                    {TensorType_INT32, {1, 1}}, false);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteOk);
+  m.SetPositions<int32_t>({0});
+  EXPECT_EQ(m.Invoke(), kTfLiteError);
+}
+
 }  // namespace
 }  // namespace tflite
