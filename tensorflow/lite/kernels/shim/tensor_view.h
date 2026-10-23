@@ -232,7 +232,7 @@ class TensorView {
 //   MatchConstNess<TfLiteTensor, const TensorView>::Type == TensorView
 template <typename I, typename O>
 struct MatchConstNess {
-  using Type = std::conditional_t<std::is_const<I>::value, std::add_const_t<O>,
+  using Type = std::conditional_t<std::is_const_v<I>, std::add_const_t<O>,
                                   std::remove_const_t<O>>;
 };
 
