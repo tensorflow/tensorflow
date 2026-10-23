@@ -1441,7 +1441,9 @@ def linspace(  # pylint: disable=missing-docstring
     maybe_bd_stop = stop.shape.rank
     if maybe_bd is not None and maybe_bd_stop is not None:
       dimension = max(maybe_bd, maybe_bd_stop) + 1
-      normalized = int(axis) + dimension if axis < 0 else int(axis)
+      normalized = int(axis)
+      if normalized < 0:
+        normalized += dimension
       if normalized < 0 or normalized >= dimension:
         raise ValueError(
             f'destination: axis {axis} is out of bounds for array of '
@@ -1512,7 +1514,9 @@ def geomspace(start, stop, num=50, endpoint=True, dtype=None, axis=0):  # pylint
     maybe_bd_stop = stop.shape.rank
     if maybe_bd is not None and maybe_bd_stop is not None:
       dimension = max(maybe_bd, maybe_bd_stop) + 1
-      normalized = int(axis) + dimension if axis < 0 else int(axis)
+      normalized = int(axis)
+      if normalized < 0:
+        normalized += dimension
       if normalized < 0 or normalized >= dimension:
         raise ValueError(
             f'destination: axis {axis} is out of bounds for array of '
