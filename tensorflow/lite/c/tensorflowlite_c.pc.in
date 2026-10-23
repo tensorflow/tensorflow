@@ -1,0 +1,10 @@
+prefix=@CMAKE_INSTALL_PREFIX@
+libdir=@TFLITE_C_PC_LIBDIR@
+includedir=@TFLITE_C_PC_INCLUDEDIR@
+
+Name: tensorflowlite_c
+Description: TensorFlow Lite C API shared library
+Version: @TFLITE_C_PC_VERSION@
+Requires:
+Libs: -L${libdir} -ltensorflowlite_c
+Cflags: -I${includedir}
