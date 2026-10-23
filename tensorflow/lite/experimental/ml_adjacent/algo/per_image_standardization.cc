@@ -73,8 +73,8 @@ inline void PerImageStandardization(dim_t batches, dim_t height, dim_t width,
   }
 }
 
-// Linearly scales each image in input to have mean 0 and variance 1. Works for
-// float datatype.
+// Linearly scales each image in input to have mean 0 and variance 1.
+// Performs strict rank-4 and non-zero dimensions validation.
 void ComputePerImageStandardization(const InputPack& inputs,
                                     const OutputPack& outputs) {
   TFLITE_CHECK_EQ(inputs.size(), 1);
@@ -82,7 +82,7 @@ void ComputePerImageStandardization(const InputPack& inputs,
 
   // Extract input image data.
   const DataRef* img = inputs[0];
-  TFLITE_CHECK_EQ(img->Dims().size(), 4);
+  if (img == nullptr || img->Dims().size() != 4) return;
   MutableDataRef* output = outputs[0];
 
   TFLITE_CHECK_EQ(img->Type(), etype_t::f32);
@@ -94,7 +94,9 @@ void ComputePerImageStandardization(const InputPack& inputs,
   const dim_t img_width = img->Dims()[2];
   const dim_t img_num_channels = img->Dims()[3];
 
-  if (img_num_batches == 0 || img_height == 0 || img_width == 0) return;
+  if (img_num_batches == 0 || img_height == 0 || img_width == 0 ||
+      img_num_channels == 0)
+    return;
 
   // Resize output buffer for resized image.
   output->Resize({img_num_batches, img_height, img_width, img_num_channels});
