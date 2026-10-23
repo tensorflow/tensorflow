@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <random>
 #include <string>
+#include <utility>
 #include <vector>
 
 #if defined(_WIN32)
@@ -42,6 +43,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/protobuf/tensor_bundle.pb.h"
+#include "tensorflow/core/util/saved_tensor_slice_util.h"
 #include "tensorflow/core/util/tensor_bundle/byte_swap_tensor.h"
 #include "tensorflow/core/util/tensor_bundle/naming.h"
 
@@ -199,13 +201,10 @@ absl::Status FlipEndiannessBit(const std::string& prefix) {
   return metadata_file->Close();
 }
 
-// Rewrites the bundle's metadata file, replacing the recorded shape of the
-// entry stored under <key> with <new_shape>. Used to simulate a crafted
-// checkpoint whose full-tensor shape disagrees with the shapes of its stored
-// slices.
-absl::Status RewriteEntryShape(const std::string& prefix,
-                               const std::string& key,
-                               const TensorShape& new_shape) {
+// Rewrites one metadata entry while preserving the data file and other entries.
+template <typename Rewrite>
+absl::Status RewriteEntry(const std::string& prefix, const std::string& key,
+                          const Rewrite& rewrite) {
   Env* env = Env::Default();
   const std::string metadata_tmp_path = Prefix("rewrite_tmp_path");
   std::unique_ptr<WritableFile> metadata_file;
@@ -230,7 +229,7 @@ absl::Status RewriteEntryShape(const std::string& prefix,
       if (iter->key() == key) {
         BundleEntryProto entry;
         CHECK(entry.ParseFromArray(iter->value().data(), iter->value().size()));
-        new_shape.AsProto(entry.mutable_shape());
+        rewrite(&entry);
         builder->Add(iter->key(), entry.SerializeAsString());
       } else {
         builder->Add(iter->key(), iter->value());
@@ -241,6 +240,14 @@ absl::Status RewriteEntryShape(const std::string& prefix,
   builder.reset();
   TF_RETURN_IF_ERROR(metadata_file->Close());
   return env->RenameFile(metadata_tmp_path, MetaFilename(prefix));
+}
+
+absl::Status RewriteEntryShape(const std::string& prefix,
+                               const std::string& key,
+                               const TensorShape& new_shape) {
+  return RewriteEntry(prefix, key, [&new_shape](BundleEntryProto* entry) {
+    new_shape.AsProto(entry->mutable_shape());
+  });
 }
 
 template <typename T>
@@ -725,6 +732,142 @@ TEST(TensorBundleTest, PartitionedVariables) {
     TF_ASSERT_OK(reader.LookupSlice("foo", distinct_slice, &val));
     test::ExpectTensorEqual<float>(val,
                                    Constant<float>(1., TensorShape({5, 2})));
+  }
+}
+
+TEST(TensorBundleTest, ValidatedPartitionedTensorSlices) {
+  const std::string prefix = Prefix("validated_slices");
+  const TensorShape full_shape({4});
+  const TensorSlice first = TensorSlice::ParseOrDie("0,2");
+  const TensorSlice second = TensorSlice::ParseOrDie("2,2");
+  {
+    BundleWriter writer(Env::Default(), prefix);
+    TF_ASSERT_OK(writer.AddSlice("tensor", full_shape, first,
+                                 test::AsTensor<float>({1, 2})));
+    TF_ASSERT_OK(writer.AddSlice("tensor", full_shape, second,
+                                 test::AsTensor<float>({3, 4})));
+    TF_ASSERT_OK(writer.Finish());
+  }
+  BundleReader reader(Env::Default(), prefix);
+  TF_ASSERT_OK(reader.status());
+  std::vector<TensorSlice> slices;
+  TF_ASSERT_OK(reader.LookupTensorSlices("tensor", &slices));
+  ASSERT_EQ(slices.size(), 2);
+  EXPECT_EQ(slices[0].DebugString(), first.DebugString());
+  EXPECT_EQ(slices[1].DebugString(), second.DebugString());
+  Tensor full(DT_FLOAT, full_shape);
+  TF_ASSERT_OK(reader.Lookup("tensor", &full));
+  test::ExpectTensorEqual<float>(full, test::AsTensor<float>({1, 2, 3, 4}));
+  Tensor part(DT_FLOAT, TensorShape({2}));
+  TF_ASSERT_OK(
+      reader.LookupSlice("tensor", TensorSlice::ParseOrDie("1,2"), &part));
+  test::ExpectTensorEqual<float>(part, test::AsTensor<float>({2, 3}));
+}
+
+
+TEST(TensorBundleTest, ValidatedEmptyFullTensorSlice) {
+  const std::string prefix = Prefix("validated_empty_full_slice");
+  const TensorShape full_shape({0});
+  const TensorSlice full_extent(1);
+  {
+    BundleWriter writer(Env::Default(), prefix);
+    TF_ASSERT_OK(writer.AddSlice("tensor", full_shape, full_extent,
+                                 Tensor(DT_FLOAT, full_shape)));
+    TF_ASSERT_OK(writer.Finish());
+  }
+  BundleReader reader(Env::Default(), prefix);
+  TF_ASSERT_OK(reader.status());
+  Tensor full(DT_FLOAT, full_shape);
+  TF_ASSERT_OK(reader.Lookup("tensor", &full));
+  EXPECT_EQ(full.NumElements(), 0);
+  Tensor sliced(DT_FLOAT, full_shape);
+  TF_ASSERT_OK(reader.LookupSlice("tensor", full_extent, &sliced));
+  EXPECT_EQ(sliced.NumElements(), 0);
+}
+
+TEST(TensorBundleTest, InvalidStoredSliceExtents) {
+  const TensorShape full_shape({4});
+  const TensorSlice first = TensorSlice::ParseOrDie("0,2");
+  const TensorSlice second = TensorSlice::ParseOrDie("2,2");
+  for (const auto& extent :
+       std::vector<std::pair<int64_t, int64_t>>{{-1, 2}, {2, 0}, {2, -2}}) {
+    const std::string prefix = Prefix(
+        absl::StrCat("invalid_extent_", extent.first, "_", extent.second));
+    {
+      BundleWriter writer(Env::Default(), prefix);
+      TF_ASSERT_OK(writer.AddSlice("tensor", full_shape, first,
+                                   test::AsTensor<float>({1, 2})));
+      TF_ASSERT_OK(writer.AddSlice("tensor", full_shape, second,
+                                   test::AsTensor<float>({3, 4})));
+      TF_ASSERT_OK(writer.Finish());
+    }
+    TF_ASSERT_OK(
+        RewriteEntry(prefix, "tensor", [&extent](BundleEntryProto* entry) {
+          auto* stored_extent = entry->mutable_slices(1)->mutable_extent(0);
+          stored_extent->set_start(extent.first);
+          stored_extent->set_length(extent.second);
+        }));
+    BundleReader reader(Env::Default(), prefix);
+    TF_ASSERT_OK(reader.status());
+    std::vector<TensorSlice> slices;
+    EXPECT_TRUE(
+        absl::IsInvalidArgument(reader.LookupTensorSlices("tensor", &slices)));
+    EXPECT_TRUE(slices.empty());
+    // Retrying must still validate the malformed second slice, even when the
+    // requested data is entirely in the valid first slice.
+    for (int attempt = 0; attempt < 2; ++attempt) {
+      Tensor full(DT_FLOAT, full_shape);
+      const absl::Status full_status = reader.Lookup("tensor", &full);
+      EXPECT_TRUE(absl::IsInvalidArgument(full_status)) << full_status;
+      EXPECT_TRUE(absl::StrContains(full_status.message(),
+                                    "Expected non-negative start"))
+          << full_status;
+      Tensor part(DT_FLOAT, TensorShape({2}));
+      const absl::Status slice_status =
+          reader.LookupSlice("tensor", first, &part);
+      EXPECT_TRUE(absl::IsInvalidArgument(slice_status)) << slice_status;
+      EXPECT_TRUE(absl::StrContains(slice_status.message(),
+                                    "Expected non-negative start"))
+          << slice_status;
+    }
+  }
+}
+
+TEST(TensorBundleTest, StoredSliceDtypeMismatch) {
+  const std::string prefix = Prefix("slice_dtype_mismatch");
+  const TensorShape full_shape({4});
+  const TensorSlice first = TensorSlice::ParseOrDie("0,2");
+  const TensorSlice second = TensorSlice::ParseOrDie("2,2");
+  {
+    BundleWriter writer(Env::Default(), prefix);
+    TF_ASSERT_OK(writer.AddSlice("tensor", full_shape, first,
+                                 test::AsTensor<float>({1, 2})));
+    TF_ASSERT_OK(writer.AddSlice("tensor", full_shape, second,
+                                 test::AsTensor<float>({3, 4})));
+    TF_ASSERT_OK(writer.Finish());
+  }
+  TF_ASSERT_OK(RewriteEntry(
+      prefix, checkpoint::EncodeTensorNameSlice("tensor", second),
+      [](BundleEntryProto* entry) { entry->set_dtype(DT_INT32); }));
+  {
+    BundleReader reader(Env::Default(), prefix);
+    TF_ASSERT_OK(reader.status());
+    Tensor full(DT_FLOAT, full_shape);
+    const absl::Status status = reader.Lookup("tensor", &full);
+    EXPECT_TRUE(absl::IsDataLoss(status)) << status;
+    EXPECT_TRUE(absl::StrContains(status.message(), "Stored slice dtype int32"))
+        << status;
+  }
+  // Cover both the direct-copy path and a proper subset of the stored slice.
+  for (const auto& spec : {"2,2", "2,1"}) {
+    BundleReader reader(Env::Default(), prefix);
+    TF_ASSERT_OK(reader.status());
+    const TensorSlice slice = TensorSlice::ParseOrDie(spec);
+    Tensor part(DT_FLOAT, TensorShape({slice.length(0)}));
+    const absl::Status status = reader.LookupSlice("tensor", slice, &part);
+    EXPECT_TRUE(absl::IsDataLoss(status)) << status;
+    EXPECT_TRUE(absl::StrContains(status.message(), "Stored slice dtype int32"))
+        << status;
   }
 }
 
