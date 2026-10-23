@@ -13,9 +13,11 @@
 # limitations under the License.
 # ==============================================================================
 
+load("@build_bazel_rules_apple//apple:ios.bzl", "ios_unit_test")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:objc_library.bzl", "objc_library")
 load("//tensorflow/lite:build_def.bzl", "CXX17_BAZEL_ONLY_COPTS")
+load("//tensorflow/lite:special_rules.bzl", "tflite_ios_lab_runner")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
@@ -92,4 +94,27 @@ objc_library(
         "//tensorflow/lite/kernels/internal:types",
         "//tensorflow/lite/types:half",
     ],
+)
+
+objc_library(
+    name = "coreml_delegate_test_lib",
+    testonly = 1,
+    srcs = ["coreml_delegate_test.mm"],
+    copts = CXX17_BAZEL_ONLY_COPTS,
+    sdk_frameworks = ["XCTest"],
+    deps = [":coreml_delegate"],
+)
+
+ios_unit_test(
+    name = "coreml_delegate_test",
+    testonly = 1,
+    minimum_os_version = "15.0",
+    runner = tflite_ios_lab_runner("IOS_LATEST"),
+    tags = [
+        "noasan",
+        "nomsan",
+        "notsan",
+        "tflite_not_portable_android",
+    ],
+    deps = [":coreml_delegate_test_lib"],
 )
