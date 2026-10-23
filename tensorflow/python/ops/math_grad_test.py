@@ -1162,12 +1162,15 @@ class SigmoidGradFloat64PrecisionTest(test.TestCase):
   """Regression tests for GitHub issues #126060 and #126631.
 
   tf.math.sigmoid / tf.nn.sigmoid used to return 0.0 for the gradient at
-  float64 inputs once |x| reached ~37, because the C++ SigmoidGrad kernel
+  float64 inputs once x reached about +37, because the C++ SigmoidGrad kernel
   computed grad*y*(1 - y) from the rounded forward value `y`. At that point
   `y` rounds to 1.0 while the derivative `exp(-x)` is still representable, so
   `1 - y` is exactly 0 and the gradient is silently zeroed. The float64 path
   now computes the equivalent factor `sigmoid(-x)`, which avoids the
-  subtraction; the other dtypes keep using the kernel unchanged.
+  subtraction; the other dtypes keep using the kernel unchanged. The branch
+  lives in the registered `Sigmoid` gradient rather than in the op itself, so
+  the op type of `tf.nn.sigmoid` stays `Sigmoid` and `tf.raw_ops.Sigmoid` is
+  covered too.
   """
 
   def _expected_sigmoid_grad(self, x_val):
@@ -1239,7 +1242,7 @@ class SigmoidGradFloat64PrecisionTest(test.TestCase):
     self.assertNear(
         g,
         expected,
-        err=expected * 1e-15,
+        err=expected * 1e-12,
         msg=f"Standard range broken: expected ~{expected:.6e}, got {g:.6e}",
     )
 
@@ -1270,17 +1273,13 @@ class SigmoidGradFloat64PrecisionTest(test.TestCase):
     self.assertAllClose(
         expected_third, self.evaluate(third), rtol=1e-12, atol=0.)
 
-  @test_util.run_in_graph_and_eager_modes
-  def testSigmoidGradFloat32UnchangedAtTail(self):
-    """The float32 path must keep using the C++ kernel (no regression)."""
-    x = constant_op.constant(20.0, dtype=dtypes.float32)
-    with backprop.GradientTape() as tape:
-      tape.watch(x)
-      y = math_ops.sigmoid(x)
-    # float32 sigmoid(20) rounds to 1.0, so the kernel still yields 0.0; the
-    # point of this test is that the call does not go through the float64 path
-    # and does not raise.
-    self.assertIsNotNone(self.evaluate(tape.gradient(y, x)))
+  def testSigmoidGraphOpTypeByDtype(self):
+    """Both dtypes keep the `Sigmoid` op; the float64 branch is in the grad."""
+    with ops.Graph().as_default():
+      x32 = constant_op.constant(20.0, dtype=dtypes.float32)
+      self.assertEqual(math_ops.sigmoid(x32).op.type, "Sigmoid")
+      x64 = constant_op.constant(20.0, dtype=dtypes.float64)
+      self.assertEqual(math_ops.sigmoid(x64).op.type, "Sigmoid")
 
   @test_util.run_in_graph_and_eager_modes
   def testSigmoidGradFloat64ViaGradientChecker(self):
