@@ -383,7 +383,10 @@ inline int Offset(const RuntimeShape& shape, int i0, int i1, int i2, int i3) {
                 (i2 >= 0 && i2 < dims_data[2]));
   TFLITE_DCHECK((dims_data[3] == 0 && i3 == 0) ||
                 (i3 >= 0 && i3 < dims_data[3]));
-  return ((i0 * dims_data[1] + i1) * dims_data[2] + i2) * dims_data[3] + i3;
+  return static_cast<int>(
+      ((static_cast<int64_t>(i0) * dims_data[1] + i1) * dims_data[2] + i2) *
+          dims_data[3] +
+      i3);
 }
 
 inline int Offset(const RuntimeShape& shape, int i0, int i1, int i2, int i3,
@@ -400,9 +403,12 @@ inline int Offset(const RuntimeShape& shape, int i0, int i1, int i2, int i3,
                 (i3 >= 0 && i3 < dims_data[3]));
   TFLITE_DCHECK((dims_data[4] == 0 && i4 == 0) ||
                 (i4 >= 0 && i4 < dims_data[4]));
-  return (((i0 * dims_data[1] + i1) * dims_data[2] + i2) * dims_data[3] + i3) *
-             dims_data[4] +
-         i4;
+  return static_cast<int>(
+      (((static_cast<int64_t>(i0) * dims_data[1] + i1) * dims_data[2] + i2) *
+           dims_data[3] +
+       i3) *
+          dims_data[4] +
+      i4);
 }
 
 inline int Offset(const RuntimeShape& shape, int* index) {
