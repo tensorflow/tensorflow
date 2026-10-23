@@ -85,6 +85,21 @@ class ReconstructionOpsTest(test.TestCase, parameterized.TestCase):
     expected_output = np.array([[1, 1, 2, 2, 3, 2, 2, 1, 1]] * 4)
     self.assertAllClose(reconstruction, expected_output)
 
+  def test_zero_frames(self):
+    signal = array_ops.zeros([3, 0, 5])
+    reconstruction = reconstruction_ops.overlap_and_add(signal, 2)
+    self.assertEqual(reconstruction.shape.as_list(), [3, 0])
+    self.assertAllEqual(self.evaluate(array_ops.shape(reconstruction)), [3, 0])
+
+  def test_zero_frames_unknown_shape(self):
+    # This test uses placeholders and does not work in eager mode.
+    if context.executing_eagerly():
+      return
+    signal = array_ops.placeholder_with_default(
+        np.zeros((3, 0, 5), dtype=np.float32), shape=[None, None, None])
+    reconstruction = reconstruction_ops.overlap_and_add(signal, 2)
+    self.assertAllEqual(self.evaluate(array_ops.shape(reconstruction)), [3, 0])
+
   def test_fast_path(self):
     # This test uses tensor names and does not work in eager mode.
     if context.executing_eagerly():
