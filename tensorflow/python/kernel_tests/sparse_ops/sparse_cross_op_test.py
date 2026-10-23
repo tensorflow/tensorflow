@@ -432,7 +432,7 @@ class SparseCrossOpTest(test.TestCase):
         salt=[1, 2])
     with self.cached_session():
       values = self.evaluate(op.output_values)
-      self.assertAllEqual([2], op.output_values.shape)
+      self.assertAllEqual([2], values.shape)
       self.assertTrue(all(0 <= x < 1024 for x in values))
 
   def _assert_sparse_tensor_empty(self, sp):
