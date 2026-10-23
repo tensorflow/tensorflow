@@ -1279,7 +1279,7 @@ class HloInstruction {
 
   // Returns the result shape of this instruction.
   const Shape& shape() const {
-    DCHECK(shape_) << "Instruction shape must be set";
+    DCHECK(shape_ != nullptr) << "Instruction shape must be set";
     return *shape_;
   }
 
@@ -1288,8 +1288,8 @@ class HloInstruction {
 
   // Canonicalize instruction shape using the given shape pool.
   bool Canonicalize(ShapePool* shape_pool) {
-    DCHECK(shape_) << "Instruction shape must be set";
-    if (shape_pool) {
+    DCHECK(shape_ != nullptr) << "Instruction shape must be set";
+    if (shape_pool != nullptr) {
       std::shared_ptr<Shape> canonical = shape_pool->GetCanonicalShape(shape_);
       shape_is_canonicalized_ = true;
       if (canonical != shape_) {
@@ -1452,7 +1452,7 @@ class HloInstruction {
   }
 
   // Allow subclasses to contribute additional attributes to the hash.
-  virtual void HashAdditionalAttributes(absl::HashState h) const {};
+  virtual void HashAdditionalAttributes(absl::HashState h) const {}
 
   // Generates a hash value of an HLO instruction. Hash considers
   // information on opcode, shape, number of operands, and other relevant
@@ -1586,9 +1586,9 @@ class HloInstruction {
       const;
 
   std::pair<HloInstruction*, ShapeIndex> LatestNonGteAncestorAndIndex() {
-    auto rv =
+    std::pair<const HloInstruction*, ShapeIndex> rv =
         const_cast<const HloInstruction*>(this)->LatestNonGteAncestorAndIndex();
-    return {const_cast<HloInstruction*>(rv.first), rv.second};
+    return {const_cast<HloInstruction*>(rv.first), std::move(rv.second)};
   }
 
   // Same as LatestNonGteAncestorAndIndex, but just returns the HloInstruction.
@@ -1762,7 +1762,7 @@ class HloInstruction {
 
   // Returns the sharding applied to this operator, or default_ if none exists.
   const HloSharding& sharding_or_default(const HloSharding& default_) const {
-    return sharding_ ? *sharding_ : default_;
+    return sharding_ != nullptr ? *sharding_ : default_;
   }
   // Returns the sharding unique device, if any.
   std::optional<int64_t> sharding_unique_device() const {
@@ -1797,7 +1797,7 @@ class HloInstruction {
     if (!has_sharding()) {
       return !other->has_sharding();
     }
-    return other->has_sharding() ? sharding() == other->sharding() : false;
+    return other->has_sharding() && sharding() == other->sharding();
   }
 
   // When creating a new instruction which either replaces, or shifts up (kCopy
@@ -2035,17 +2035,7 @@ class HloInstruction {
                           result_accuracy().mode() != ResultAccuracy::DEFAULT);
   }
 
-  bool equal_result_accuracy(const HloInstruction* other) const {
-    return result_accuracy().has_tolerance() ==
-               other->result_accuracy().has_tolerance() &&
-           result_accuracy().tolerance().atol() ==
-               other->result_accuracy().tolerance().atol() &&
-           result_accuracy().tolerance().rtol() ==
-               other->result_accuracy().tolerance().rtol() &&
-           result_accuracy().tolerance().ulps() ==
-               other->result_accuracy().tolerance().ulps() &&
-           result_accuracy().mode() == other->result_accuracy().mode();
-  }
+  bool equal_result_accuracy(const HloInstruction* other) const;
 
   void add_single_statistic(Statistic statistic) {
     *mutable_rare()->statistics_viz.add_statistics() = std::move(statistic);
