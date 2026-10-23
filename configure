@@ -1,7 +1,15 @@
 #!/usr/bin/env bash
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+#
+# Usage:
+#   ./configure                   (Interactive configuration)
+#   ./configure -y                (Non-interactive unattended configuration)
+#   ./configure --non-interactive (Non-interactive unattended configuration)
+#   ./configure --help            (Display all supported build flags)
 
 set -e
 set -o pipefail
+
 
 if [ -z "$PYTHON_BIN_PATH" ]; then
   PYTHON_BIN_PATH=$(which python3 || which python || true)
