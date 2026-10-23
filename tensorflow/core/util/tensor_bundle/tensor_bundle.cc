@@ -1143,10 +1143,14 @@ absl::Status BundleReader::LookupTensorSlices(
   slices->clear();
   BundleEntryProto entry;
   TF_RETURN_IF_ERROR(GetBundleEntryProto(key, &entry));
-  slices->reserve(entry.slices_size());
+  std::vector<TensorSlice> parsed_slices;
+  parsed_slices.reserve(entry.slices_size());
   for (const auto& slice : entry.slices()) {
-    slices->emplace_back(slice);
+    TensorSlice parsed_slice;
+    TF_RETURN_IF_ERROR(TensorSlice::BuildTensorSlice(slice, &parsed_slice));
+    parsed_slices.push_back(std::move(parsed_slice));
   }
+  slices->swap(parsed_slices);
   return absl::OkStatus();
 }
 
@@ -1184,10 +1188,19 @@ absl::Status BundleReader::GetSliceValue(
           /* tag */ "",
           /* full slice */ TensorSlice(full_shape.dims()), &tensor_slices_));
     }
+    // Validate every proto before changing the cache, so a malformed later
+    // slice cannot leave an incomplete set for a subsequent lookup.
+    std::vector<TensorSlice> stored_slices;
+    stored_slices.reserve(full_tensor_entry.slices_size());
     for (const TensorSliceProto& slice : full_tensor_entry.slices()) {
+      TensorSlice stored_slice;
+      TF_RETURN_IF_ERROR(TensorSlice::BuildTensorSlice(slice, &stored_slice));
+      stored_slices.push_back(std::move(stored_slice));
+    }
+    for (const TensorSlice& stored_slice : stored_slices) {
       TF_RETURN_IF_ERROR(RegisterTensorSlice(
           full_tensor_key_string, full_shape, full_tensor_entry.dtype(),
-          /* tag */ "", TensorSlice(slice), &tensor_slices_));
+          /* tag */ "", stored_slice, &tensor_slices_));
     }
     tss = gtl::FindPtrOrNull(tensor_slices_, full_tensor_key_string);
     CHECK_NE(tss, nullptr);
@@ -1215,6 +1228,13 @@ absl::Status BundleReader::GetSliceValue(
       status_ =
           GetBundleEntryProto(encoded_stored_slice_name, &stored_slice_entry);
       if (!status_.ok()) return status_;
+    }
+
+    if (stored_slice_entry.dtype() != full_tensor_entry.dtype()) {
+      return errors::DataLoss("Stored slice dtype ",
+                              DataTypeString(stored_slice_entry.dtype()),
+                              " does not match full tensor dtype ",
+                              DataTypeString(full_tensor_entry.dtype()));
     }
 
     // TODO(zongheng): should we take an OpKernelContext, so that we can call
