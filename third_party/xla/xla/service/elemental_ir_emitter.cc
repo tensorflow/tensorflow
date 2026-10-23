@@ -1683,6 +1683,26 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexAbs(
   llvm::Value* result = FMul(max, sqrt);
   // When (min, max) are (0, 0), (inf, inf), or (NaN, ...), `result` is NaN.
   // In such cases, we return `min` instead of `result`.
+  // If either component is infinite, the magnitude is infinity even if the
+  // other component is NaN (per IEEE 754 / ISO C99 Annex G).
+  if (!(b_->getFastMathFlags().noNaNs() && b_->getFastMathFlags().noInfs())) {
+    llvm::Type* type = real->getType();
+    llvm::Value* zero = llvm::ConstantFP::get(type, 0);
+    llvm::Value* inf = llvm::ConstantFP::getInfinity(type);
+    llvm::Value* nan = llvm::ConstantFP::getNaN(type);
+    llvm::Value* abs_real =
+        llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs, {real}, {type}, b_);
+    llvm::Value* abs_imag =
+        llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs, {imag}, {type}, b_);
+
+    llvm::Value* is_inf = Or(FCmpOEQ(abs_real, inf), FCmpOEQ(abs_imag, inf));
+    llvm::Value* is_nan = FCmpUNO(abs_real, abs_imag);
+    llvm::Value* is_zero =
+        And(FCmpOEQ(abs_real, zero), FCmpOEQ(abs_imag, zero));
+
+    return Select(is_inf, inf,
+                  Select(is_nan, nan, Select(is_zero, zero, result)));
+  }
   return Select(FCmpUNO(result, result), min, result);
 }
 
@@ -1699,12 +1719,33 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitSqrtComplexAbs(
       std::tie(min, max, one_p_div_sq),
       EmitComplexAbsHelper(prim_type, real, imag, /*return_sqrt=*/false));
   ABSL_ASSIGN_OR_RETURN(llvm::Value * sqrt_max, EmitSqrt(prim_type, max));
-  ABSL_ASSIGN_OR_RETURN(llvm::Value * pow,
-                   EmitPow(prim_type, one_p_div_sq,
-                           llvm::ConstantFP::get(max->getType(), .25), ""));
+  ABSL_ASSIGN_OR_RETURN(
+      llvm::Value * pow,
+      EmitPow(prim_type, one_p_div_sq,
+              llvm::ConstantFP::get(max->getType(), .25), ""));
   llvm::Value* result = FMul(sqrt_max, pow);
   // When (min, max) are (0, 0), (inf, inf), or (NaN, ...), `result` is NaN.
   // In such cases, we return `min` instead of `result`.
+  // If either component is infinite, the magnitude is infinity even if the
+  // other component is NaN (per IEEE 754 / ISO C99 Annex G).
+  if (!(b_->getFastMathFlags().noNaNs() && b_->getFastMathFlags().noInfs())) {
+    llvm::Type* type = real->getType();
+    llvm::Value* zero = llvm::ConstantFP::get(type, 0);
+    llvm::Value* inf = llvm::ConstantFP::getInfinity(type);
+    llvm::Value* nan = llvm::ConstantFP::getNaN(type);
+    llvm::Value* abs_real =
+        llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs, {real}, {type}, b_);
+    llvm::Value* abs_imag =
+        llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs, {imag}, {type}, b_);
+
+    llvm::Value* is_inf = Or(FCmpOEQ(abs_real, inf), FCmpOEQ(abs_imag, inf));
+    llvm::Value* is_nan = FCmpUNO(abs_real, abs_imag);
+    llvm::Value* is_zero =
+        And(FCmpOEQ(abs_real, zero), FCmpOEQ(abs_imag, zero));
+
+    return Select(is_inf, inf,
+                  Select(is_nan, nan, Select(is_zero, zero, result)));
+  }
   return Select(FCmpUNO(result, result), min, result);
 }
 
@@ -1726,6 +1767,26 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitRsqrtComplexAbs(
   ABSL_ASSIGN_OR_RETURN(llvm::Value * rsqrt_min, EmitRsqrt(prim_type, min));
   // When (min, max) are (0, 0), (inf, inf), or (NaN, ...), `result` is NaN.
   // In such cases, we return rsqrt(min) instead of `result`.
+  // If either component is infinite, rsqrt(|z|) is 0 (per IEEE 754 / ISO C99).
+  if (!(b_->getFastMathFlags().noNaNs() && b_->getFastMathFlags().noInfs())) {
+    llvm::Type* type = real->getType();
+    llvm::Value* zero = llvm::ConstantFP::get(type, 0);
+    llvm::Value* inf = llvm::ConstantFP::getInfinity(type);
+    llvm::Value* nan = llvm::ConstantFP::getNaN(type);
+    llvm::Value* abs_real =
+        llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs, {real}, {type}, b_);
+    llvm::Value* abs_imag =
+        llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs, {imag}, {type}, b_);
+
+    llvm::Value* is_inf = Or(FCmpOEQ(abs_real, inf), FCmpOEQ(abs_imag, inf));
+    llvm::Value* is_nan = FCmpUNO(abs_real, abs_imag);
+    llvm::Value* is_zero =
+        And(FCmpOEQ(abs_real, zero), FCmpOEQ(abs_imag, zero));
+
+    return Select(is_inf, zero,
+                  Select(is_nan, nan,
+                         Select(is_zero, inf, result)));
+  }
   return Select(FCmpUNO(result, result), rsqrt_min, result);
 }
 

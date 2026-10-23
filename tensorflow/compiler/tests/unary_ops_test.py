@@ -1155,6 +1155,37 @@ class UnaryOpsTest(xla_test.XLATestCase):
         else:
           self.assertAllEqual(result, [0])
 
+  def testComplexLogAndAbsNanInf(self):
+    # Tests that complex log and abs correctly preserve infinite real
+    # component for NaN + Inf*i and Inf + NaN*i (see GitHub issue #128990).
+    for dtype in self.complex_types:
+      with self.session() as session:
+        with self.test_scope():
+          x = array_ops.placeholder(dtype, shape=[3])
+          log_out = math_ops.log(x)
+          abs_out = math_ops.abs(x)
+        nan = np.nan
+        inf = np.inf
+        inp = np.array(
+            [complex(nan, inf), complex(inf, nan), complex(5.0, nan)],
+            dtype=dtype,
+        )
+        log_res, abs_res = session.run([log_out, abs_out], {x: inp})
+        # NaN + Inf*i: real component is +inf, imaginary is nan
+        self.assertTrue(np.isinf(np.real(log_res[0])) and np.real(log_res[0]) > 0)
+        self.assertTrue(np.isnan(np.imag(log_res[0])))
+        self.assertTrue(np.isinf(abs_res[0]) and abs_res[0] > 0)
+
+        # Inf + NaN*i: real component is +inf, imaginary is nan
+        self.assertTrue(np.isinf(np.real(log_res[1])) and np.real(log_res[1]) > 0)
+        self.assertTrue(np.isnan(np.imag(log_res[1])))
+        self.assertTrue(np.isinf(abs_res[1]) and abs_res[1] > 0)
+
+        # 5.0 + NaN*i: real component is nan, imaginary is nan, abs is nan
+        self.assertTrue(np.isnan(np.real(log_res[2])))
+        self.assertTrue(np.isnan(np.imag(log_res[2])))
+        self.assertTrue(np.isnan(abs_res[2]))
+
 
 if __name__ == "__main__":
   googletest.main()
