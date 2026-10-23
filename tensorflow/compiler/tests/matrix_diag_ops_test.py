@@ -351,7 +351,7 @@ class MatrixDiagTest(xla_test.XLATestCase):
     with self.session() as session:
       for dtype in self.numeric_types - {np.int8, np.uint8}:
         expected = solution.astype(dtype)
-        with self.test_scope():
+        with self.device_scope():
           params["diagonal"] = array_ops.placeholder(
               dtype, diagonal.shape, name="diagonal")
           if high_level:
@@ -531,6 +531,131 @@ class MatrixDiagTest(xla_test.XLATestCase):
                   "align": align
               }, solution)
 
+  def _matrixDiagOfSelected(
+      self, x, mask=(True, False, True, False, False), **params
+  ):
+    # Takes the entries of x's last dimension where mask is true, which gives
+    # the diagonals a length only known at run time, and builds matrices from
+    # them.
+    @def_function.function(jit_compile=True)
+    def f(x, mask):
+      diagonal = array_ops.gather(
+          x, array_ops.reshape(array_ops.where(mask), [-1]), axis=-1
+      )
+      return array_ops.matrix_diag(diagonal, **params)
+
+    x = np.array(x, dtype=np.int32)
+    with self.session() as session:
+      with self.device_scope():
+        x_ph = array_ops.placeholder(dtypes.int32, x.shape)
+        mask_ph = array_ops.placeholder(dtypes.bool, [x.shape[-1]])
+        output = f(x_ph, mask_ph)
+      return session.run(output, {x_ph: x, mask_ph: mask})
+
+  def testDynamicDiagonalLength(self):
+    if "TPU" in self.device:
+      self.skipTest("Dynamic diagonal lengths are not supported on TPU.")
+    # Regression test for GitHub issue 128954: the output's matrix dimensions
+    # took the bound of the diagonals' length instead of its value. The mask
+    # selects 2 of 5 entries, so the diagonals have length 2 and bound 5. (XLA
+    # turns a gather from 4 or fewer entries into selects, which XLA:GPU
+    # doesn't support with dynamic shapes.)
+    x = [1, 5, 2, 7, 3]
+    self.assertAllEqual(self._matrixDiagOfSelected(x), [[1, 0], [0, 2]])
+    self.assertAllEqual(
+        self._matrixDiagOfSelected(x, k=1), [[0, 1, 0], [0, 0, 2], [0, 0, 0]]
+    )
+    # A dimension set by num_rows keeps that size.
+    self.assertAllEqual(
+        self._matrixDiagOfSelected(x, k=1, num_rows=5, align="LEFT_RIGHT"),
+        [[0, 1, 0], [0, 0, 2], [0, 0, 0], [0, 0, 0], [0, 0, 0]],
+    )
+    # A size set by num_rows or num_cols that the actual length fits but the
+    # bound doesn't.
+    self.assertAllEqual(
+        self._matrixDiagOfSelected(x, k=-1, num_rows=5, align="LEFT_RIGHT"),
+        [[0, 0], [1, 0], [0, 2], [0, 0], [0, 0]],
+    )
+    self.assertAllEqual(
+        self._matrixDiagOfSelected(x, k=1, num_cols=5),
+        [[0, 1, 0, 0, 0], [0, 0, 2, 0, 0]],
+    )
+    self.assertAllEqual(
+        self._matrixDiagOfSelected([[1, 5, 2, 7, 3], [4, 6, 8, 9, 0]]),
+        [[[1, 0], [0, 2]], [[4, 0], [0, 8]]],
+    )
+    self.assertAllEqual(
+        self._matrixDiagOfSelected(
+            [[10, 11, 12, 13, 14], [20, 21, 22, 23, 24], [30, 31, 32, 33, 34]],
+            k=(-1, 1),
+        ),
+        [[20, 12], [30, 22]],
+    )
+    # A right-aligned diagonal in a band with num_rows set: the subdiagonal is
+    # shorter than the bound but as long as the actual length.
+    self.assertAllEqual(
+        self._matrixDiagOfSelected(
+            [[1, 2, 3, 4, 5], [6, 7, 8, 9, 10]],
+            k=(-1, 0),
+            num_rows=5,
+            align="LEFT_RIGHT",
+        ),
+        [[1, 0], [6, 3], [0, 8], [0, 0], [0, 0]],
+    )
+    # The same with fewer rows than the bound needs: in the first, the
+    # subdiagonal is padded at the bound but not at the actual length, and in
+    # the second, it's padded at both.
+    self.assertAllEqual(
+        self._matrixDiagOfSelected(
+            [[1, 2, 3, 4, 5], [6, 7, 8, 9, 10]],
+            k=(-1, 0),
+            num_rows=3,
+            align="LEFT_RIGHT",
+        ),
+        [[1, 0], [6, 3], [0, 8]],
+    )
+    self.assertAllEqual(
+        self._matrixDiagOfSelected(
+            [[1, 2, 3, 4, 5], [6, 7, 8, 9, 10]],
+            k=(-1, 0),
+            num_rows=2,
+            align="LEFT_RIGHT",
+        ),
+        [[1, 0], [8, 3]],
+    )
+    # Diagonals of length 0. In the band, diagonals 1 and -1 then come out with
+    # a negative length at the actual sizes.
+    self.assertAllEqual(
+        self._matrixDiagOfSelected(x, mask=[False] * 5), np.zeros([0, 0])
+    )
+    self.assertAllEqual(
+        self._matrixDiagOfSelected(
+            [[10, 11, 12, 13, 14], [20, 21, 22, 23, 24], [30, 31, 32, 33, 34]],
+            mask=[False] * 5,
+            k=(-1, 1),
+            align="RIGHT_RIGHT",
+        ),
+        np.zeros([0, 0]),
+    )
+
+  def testBandFromVector(self):
+    # A band of diagonals needs them stacked in a dimension that a vector
+    # doesn't have, and looking for it aborted the process. array_ops'
+    # matrix_diag rejects a vector of a known rank itself, so call the op.
+    with self.session() as session:
+      with self.device_scope():
+        diagonal = array_ops.placeholder(dtypes.int32, [3])
+        output = gen_array_ops.matrix_diag_v3(
+            diagonal=diagonal,
+            k=[-1, 1],
+            num_rows=-1,
+            num_cols=-1,
+            padding_value=0,
+            align="RIGHT_LEFT",
+        )
+      with self.assertRaisesOpError("The number of diagonals provided"):
+        session.run(output, {diagonal: [1, 2, 3]})
+
 
 class MatrixSetDiagTest(xla_test.XLATestCase):
 
@@ -554,7 +679,7 @@ class MatrixSetDiagTest(xla_test.XLATestCase):
     with self.session() as session:
       for dtype in self.numeric_types - {np.int8, np.uint8}:
         expected = solution.astype(dtype)
-        with self.test_scope():
+        with self.device_scope():
           params["input"] = array_ops.placeholder(
               dtype, input.shape, name="input")
           params["diagonal"] = array_ops.placeholder(
@@ -856,7 +981,7 @@ class MatrixDiagPartTest(xla_test.XLATestCase):
     with self.session() as session:
       for dtype in self.numeric_types - {np.int8, np.uint8}:
         expected = solution.astype(dtype)
-        with self.test_scope():
+        with self.device_scope():
           params["input"] = array_ops.placeholder(
               dtype, input.shape, name="input")
           if high_level:
