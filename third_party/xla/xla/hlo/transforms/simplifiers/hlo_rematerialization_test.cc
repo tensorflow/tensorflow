@@ -2625,5 +2625,143 @@ ENTRY %entry {
       ::testing::UnitTest::GetInstance()->current_test_info()->name());
 }
 
+TEST_F(RecomputeAndCompressHloRematerializationTest,
+       BlockRematSharedDeadOperand) {
+  constexpr absl::string_view hlo_string = R"hlo(
+HloModule BlockRematSharedDeadOperand, is_scheduled=true
+
+ENTRY %entry {
+  %param = f32[] parameter(0)
+  %shared_dead = f32[1024]{0} custom-call(%param), custom_call_target="Producer"
+  %cand0 = f32[1024]{0} negate(%shared_dead)
+  %cand1 = f32[1024]{0} abs(%shared_dead)
+  %early_use = f32[1024]{0} custom-call(%cand0, %cand1), custom_call_target="EarlyUse"
+  %peak_op = f32[1024]{0} custom-call(%early_use), custom_call_target="Peak"
+  %final_op = f32[1024]{0} custom-call(%peak_op), custom_call_target="Final"
+  %late_use = f32[1024]{0} add(%cand0, %cand1)
+  ROOT %out = (f32[1024]{0}, f32[1024]{0}) tuple(%final_op, %late_use)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloRematerialization::RematerializationSizes sizes;
+  constexpr int64_t kMemoryLimitBytes = 20 * 1024 + 16;
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunHloRematerialization(
+                           kMemoryLimitBytes, module.get(),
+                           /*min_remat_size=*/0,
+                           HloRematerialization::RematAlgorithm::kAlwaysRemat,
+                           /*block_size_limit=*/2,
+                           /*on_rematerialized=*/nullptr, &sizes));
+  EXPECT_TRUE(changed);
+  EXPECT_EQ(sizes.before_bytes, 24 * 1024 + 16);
+  EXPECT_EQ(sizes.after_bytes, 20 * 1024 + 16);
+
+  const HloInstruction* late_use =
+      module->entry_computation()->GetInstructionWithName("late_use");
+  ASSERT_NE(late_use, nullptr);
+  EXPECT_EQ(late_use->operand(0)->name(), "cand0.remat");
+  EXPECT_EQ(late_use->operand(1)->name(), "cand1.remat");
+
+  CheckForRematInInstructionNames(
+      ::testing::UnitTest::GetInstance()->current_test_info()->name());
+}
+
+TEST_F(RecomputeAndCompressHloRematerializationTest,
+       UnusedTupleElementAcrossCallAndWhile) {
+  const std::string& hlo_string = R"hlo(
+HloModule UnusedTupleElementAcrossCallAndWhile, is_scheduled=true
+
+%peak_callee (p: f32[1024]) -> f32[1024] {
+  %p = f32[1024]{0} parameter(0)
+  %concat = f32[2048]{0} concatenate(%p, %p), dimensions={0}
+  ROOT %slice = f32[1024]{0} slice(%concat), slice={[0:1024]}
+}
+
+%while_cond (state: (f32[1024], f32[1024])) -> pred[] {
+  %state = (f32[1024]{0}, f32[1024]{0}) parameter(0)
+  %gte1 = f32[1024]{0} get-tuple-element(%state), index=1
+  ROOT %c = pred[] constant(false)
+}
+
+%while_body (state: (f32[1024], f32[1024])) -> (f32[1024], f32[1024]) {
+  %state = (f32[1024]{0}, f32[1024]{0}) parameter(0)
+  %gte0 = f32[1024]{0} get-tuple-element(%state), index=0
+  %gte1 = f32[1024]{0} get-tuple-element(%state), index=1
+  %neg1 = f32[1024]{0} negate(%gte1)
+  ROOT %next = (f32[1024]{0}, f32[1024]{0}) tuple(%gte0, %neg1)
+}
+
+%tuple_callee (state: (f32[1024], f32[1024])) -> f32[1024] {
+  %state = (f32[1024]{0}, f32[1024]{0}) parameter(0)
+  %gte1 = f32[1024]{0} get-tuple-element(%state), index=1
+  ROOT %neg = f32[1024]{0} negate(%gte1)
+}
+
+ENTRY %entry {
+  %param = f32[] parameter(0)
+  %bcast = f32[1024]{0} broadcast(%param), dimensions={}
+  %add1 = f32[1024]{0} add(%bcast, %bcast)
+  %peak_call = f32[1024]{0} call(%add1), to_apply=%peak_callee
+  %add2 = f32[1024]{0} add(%bcast, %peak_call)
+  %state = (f32[1024]{0}, f32[1024]{0}) tuple(%bcast, %add2)
+  %while_inst = (f32[1024]{0}, f32[1024]{0}) while(%state), condition=%while_cond, body=%while_body
+  ROOT %out = f32[1024]{0} call(%while_inst), to_apply=%tuple_callee
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunHloRematerialization(
+                           /*memory_limit_bytes=*/22 * 1024, module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_NE(module->entry_computation()->GetInstructionWithName("bcast.remat"),
+            nullptr);
+  CheckForRematInInstructionNames(
+      ::testing::UnitTest::GetInstance()->current_test_info()->name());
+}
+
+TEST_F(RecomputeAndCompressHloRematerializationTest,
+       PassthroughCallOutputReusesOperandBuffer) {
+  const std::string& hlo_string = R"hlo(
+HloModule PassthroughCallOutputReusesOperandBuffer, is_scheduled=true
+
+%passthrough_callee (p0: f32[16384], p1: f32[16384]) -> (f32[16384], f32[16384]) {
+  %p0 = f32[16384]{0} parameter(0)
+  %p1 = f32[16384]{0} parameter(1)
+  %neg = f32[16384]{0} negate(%p1)
+  ROOT %out = (f32[16384]{0}, f32[16384]{0}) tuple(%p0, %neg)
+}
+
+ENTRY %entry {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  %a = f32[16384]{0} broadcast(%p0), dimensions={}
+  %b = f32[16384]{0} broadcast(%p1), dimensions={}
+  %call = (f32[16384]{0}, f32[16384]{0}) call(%a, %b), to_apply=%passthrough_callee
+  %gte0 = f32[16384]{0} get-tuple-element(%call), index=0
+  %gte1 = f32[16384]{0} get-tuple-element(%call), index=1
+  ROOT %sum = f32[16384]{0} add(%gte0, %gte1)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloRematerialization::RematerializationSizes sizes;
+  // At %call, %a (64KB), %b (64KB), and the non passthrough output element 1 of
+  // %call (64KB) are live alongside the 64KB module output reservation,
+  // totaling 256KB (plus small scalar/tuple overhead). Without passthrough
+  // buffer reuse, element 0 of %call would be double counted for an extra 64KB
+  // (320KB total).
+  constexpr int64_t kMemoryLimitBytes = 260 * 1024;
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunHloRematerialization(
+                           kMemoryLimitBytes, module.get(),
+                           /*min_remat_size=*/0,
+                           HloRematerialization::RematAlgorithm::kAlwaysRemat,
+                           /*block_size_limit=*/1,
+                           /*on_rematerialized=*/nullptr, &sizes));
+  EXPECT_FALSE(changed);
+  EXPECT_LE(sizes.before_bytes, kMemoryLimitBytes);
+}
 }  // namespace
 }  // namespace xla

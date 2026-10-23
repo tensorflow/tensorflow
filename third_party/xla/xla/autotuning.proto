@@ -108,6 +108,9 @@ message AutotuneResult {
     // The `group_size` used for L2 tile reordering (grouping) in ragged-dot
     // fusions. A value <= 1 disables the reordering.
     int64 group_size = 11;
+    // AMD MFMA MN instruction size, 0 = auto or 16. Ignored on WMMA and on
+    // non-ROCm targets.
+    int64 mfma_size = 12;
     // LINT.ThenChange(//tensorflow/compiler/xla/service/gpu/matmul_utils.h)
   }
 

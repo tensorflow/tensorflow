@@ -906,7 +906,8 @@ PjRtCApiClient::CreateUninitializedBuffer(const Shape& shape,
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::CreateErrorBuffer(
-    absl::Status error, const Shape& shape, PjRtMemorySpace* memory) {
+    absl::Status error, const Shape& shape, PjRtMemorySpace* memory,
+    const Layout* layout) {
   if (c_api_->pjrt_api_version.major_version == 0 &&
       c_api_->pjrt_api_version.minor_version < 82) {
     return absl::UnimplementedError(
@@ -923,17 +924,34 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::CreateErrorBuffer(
   args.error_message = error.message().data();
   args.error_message_size = error.message().size();
 
-  args.shape_dims = shape.dimensions().data();
-  args.shape_num_dims = shape.dimensions().size();
+  if (shape.IsArray()) {
+    args.shape_dims = shape.dimensions().data();
+    args.shape_num_dims = shape.dimensions().size();
+  } else if (shape.IsToken()) {
+    args.shape_dims = nullptr;
+    args.shape_num_dims = 0;
+  } else {
+    return absl::InvalidArgumentError(
+        absl::StrCat("PjRtCApiClient::CreateErrorBuffer only supports array "
+                     "or token shapes, got ",
+                     shape.ToString()));
+  }
   args.shape_element_type = pjrt::ConvertToPjRtBufferType(shape.element_type());
+  args.shape_layout = nullptr;
 
   pjrt::BufferMemoryLayoutData c_layout_data;
-  if (shape.has_layout()) {
+  if (layout != nullptr) {
+    if (c_api_->pjrt_api_version.major_version == 0 &&
+        c_api_->pjrt_api_version.minor_version < 117) {
+      return absl::UnimplementedError(
+          "PJRT_Client_CreateErrorBuffer with a custom layout requires PJRT "
+          "C API version 0.117 or higher.");
+    }
     ABSL_ASSIGN_OR_RETURN(c_layout_data,
-                     pjrt::ConvertToBufferMemoryLayoutData(shape.layout()));
-    args.shape_layout = &c_layout_data.c_layout;
+                     pjrt::ConvertToBufferMemoryLayoutData(*layout));
+    args.device_layout = &c_layout_data.c_layout;
   } else {
-    args.shape_layout = nullptr;
+    args.device_layout = nullptr;
   }
 
   args.memory = absl::down_cast<PjRtCApiMemorySpace*>(memory)->c_memory();
@@ -1435,7 +1453,8 @@ PjRtCApiClient::MakeCrossHostReceiveBuffers(
 absl::StatusOr<std::vector<Future<>>> PjRtCApiClient::CrossHostSendBuffers(
     absl::Span<PjRtBuffer* const> buffers,
     absl::Span<const GlobalDeviceId> dst_global_device_ids,
-    std::vector<CrossHostTransferKey> transfer_keys) {
+    std::vector<CrossHostTransferKey> transfer_keys,
+    absl::flat_hash_map<TaskId, IncarnationId> incarnations) {
   // Get C API extension.
   const PJRT_Api* c_api = pjrt_c_api();
   PJRT_CrossHostTransfers_Extension* extension =
@@ -1468,6 +1487,18 @@ absl::StatusOr<std::vector<Future<>>> PjRtCApiClient::CrossHostSendBuffers(
   auto send_events = std::vector<PJRT_Event*>(args.num_buffers);
   args.send_events = send_events.data();
 
+  std::vector<int> task_ids;
+  std::vector<int64_t> incarnation_ids;
+  task_ids.reserve(incarnations.size());
+  incarnation_ids.reserve(incarnations.size());
+  for (const auto& [task_id, incarnation_id] : incarnations) {
+    task_ids.push_back(task_id.value());
+    incarnation_ids.push_back(incarnation_id.value());
+  }
+  args.num_tasks = task_ids.size();
+  args.task_ids = task_ids.data();
+  args.incarnation_ids = incarnation_ids.data();
+
   RETURN_STATUS_IF_PJRT_ERROR(
       extension->PJRT_Transfers_PJRT_Client_CrossHostSendBuffers(&args), c_api);
 
@@ -1485,7 +1516,8 @@ absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 PjRtCApiClient::CrossHostReceiveBuffers(
     xla::PjRtDevice* device, absl::Span<const xla::Shape> shapes,
     absl::Span<const GlobalDeviceId> src_global_device_ids,
-    std::vector<CrossHostTransferKey> transfer_keys) {
+    std::vector<CrossHostTransferKey> transfer_keys,
+    absl::flat_hash_map<TaskId, IncarnationId> incarnations) {
   // Get C API extension.
   const PJRT_Api* c_api = pjrt_c_api();
   PJRT_CrossHostTransfers_Extension* extension =
@@ -1525,6 +1557,18 @@ PjRtCApiClient::CrossHostReceiveBuffers(
 
   std::vector<PJRT_Buffer*> temp_buffers(shapes.size());
   args.buffers = temp_buffers.data();
+
+  std::vector<int> task_ids;
+  std::vector<int64_t> incarnation_ids;
+  task_ids.reserve(incarnations.size());
+  incarnation_ids.reserve(incarnations.size());
+  for (const auto& [task_id, incarnation_id] : incarnations) {
+    task_ids.push_back(task_id.value());
+    incarnation_ids.push_back(incarnation_id.value());
+  }
+  args.num_tasks = task_ids.size();
+  args.task_ids = task_ids.data();
+  args.incarnation_ids = incarnation_ids.data();
 
   RETURN_STATUS_IF_PJRT_ERROR(
       extension->PJRT_Transfers_PJRT_Client_CrossHostReceiveBuffers(&args),
@@ -2832,42 +2876,7 @@ PjRtCApiLoadedExecutable::PjRtCApiLoadedExecutable(
   executable_ =
       std::make_unique<PjRtCApiExecutable>(pjrt_c_api(), args.executable);
   InitDevices();
-  InitAddressableDeviceLogicalIds();
   InitDeviceAssignment();
-}
-
-void PjRtCApiLoadedExecutable::InitAddressableDeviceLogicalIds() {
-  if (pjrt_c_api()->pjrt_api_version.major_version == 0 &&
-      pjrt_c_api()->pjrt_api_version.minor_version < 96) {
-    return;
-  }
-  PJRT_LoadedExecutable_AddressableDeviceLogicalIds_Args args;
-  args.struct_size =
-      PJRT_LoadedExecutable_AddressableDeviceLogicalIds_Args_STRUCT_SIZE;
-  args.extension_start = nullptr;
-  args.executable = c_loaded_executable();
-  args.addressable_device_logical_ids = nullptr;
-  args.num_addressable_device_logical_ids = 0;
-
-  const PJRT_Api* api = pjrt_c_api();
-  if (api->PJRT_LoadedExecutable_AddressableDeviceLogicalIds == nullptr) {
-    return;
-  }
-  pjrt::LogFatalIfPjrtError(
-      api->PJRT_LoadedExecutable_AddressableDeviceLogicalIds(&args), api);
-
-  if (args.num_addressable_device_logical_ids == 0 ||
-      args.addressable_device_logical_ids == nullptr) {
-    return;
-  }
-  addressable_device_logical_ids_.reserve(
-      args.num_addressable_device_logical_ids);
-
-  for (size_t i = 0; i < args.num_addressable_device_logical_ids; ++i) {
-    PJRT_LogicalDeviceIds id = args.addressable_device_logical_ids[i];
-    addressable_device_logical_ids_.push_back(
-        LogicalDeviceIds{id.replica, id.partition});
-  }
 }
 
 void PjRtCApiLoadedExecutable::InitDevices() {
@@ -4465,8 +4474,18 @@ PjRtCApiTopologyDescription::MakeCanonicalShapeForMemorySpace(
   args.extension_start = nullptr;
   args.topology = c_topology_;
   args.memory_space_kind_id = memory_space_kind_id;
-  args.dims = shape.dimensions().data();
-  args.num_dims = shape.dimensions().size();
+  if (shape.IsArray()) {
+    args.dims = shape.dimensions().data();
+    args.num_dims = shape.dimensions().size();
+  } else if (shape.IsToken()) {
+    args.dims = nullptr;
+    args.num_dims = 0;
+  } else {
+    return absl::InvalidArgumentError(
+        absl::StrCat("MakeCanonicalShapeForMemorySpace only supports array or "
+                     "token shapes, got ",
+                     shape.ToString()));
+  }
   args.element_type = pjrt::ConvertToPjRtBufferType(shape.element_type());
 
   pjrt::BufferMemoryLayoutData layout_data;

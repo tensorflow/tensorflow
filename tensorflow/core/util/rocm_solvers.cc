@@ -38,6 +38,8 @@ rocblas_Xtrsm   //    ----           //     ----                   / / Ungqr //
 #include <unordered_map>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "xla/stream_executor/rocm/rocblas_wrapper.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
@@ -155,6 +157,7 @@ void GpuSolver::CheckLapackInfoAndDeleteSolverAsync(
   CHECK(info_checker_callback != nullptr);
   std::vector<HostLapackInfo> host_lapack_infos;
   if (dev_lapack_infos.empty()) {
+    std::move(solver).reset();
     info_checker_callback(OkStatus(), host_lapack_infos);
     return;
   }
@@ -163,11 +166,21 @@ void GpuSolver::CheckLapackInfoAndDeleteSolverAsync(
   for (const auto& dev_lapack_info : dev_lapack_infos) {
     bool success = true;
     auto host_copy = dev_lapack_info.CopyToHost(&success);
-    OP_REQUIRES(
-        solver->context(), success,
-        errors::Internal(
-            "Failed to launch copy of dev_lapack_info to host, debug_info = ",
-            dev_lapack_info.debug_info()));
+    if (!success) {
+      Status status = absl::InternalError(absl::StrCat(
+          "Failed to launch copy of dev_lapack_info to host, debug_info = ",
+          dev_lapack_info.debug_info()));
+      if (solver != nullptr) {
+        solver->context()
+            ->op_device_context()
+            ->stream()
+            ->BlockHostUntilDone()
+            .IgnoreError();
+        std::move(solver).reset();
+      }
+      info_checker_callback(status, host_lapack_infos);
+      return;
+    }
     host_lapack_infos.push_back(std::move(host_copy));
   }
 

@@ -6136,6 +6136,111 @@ ENTRY main {
   }
 }
 
+TEST_F(CopyInsertionTest,
+       ConditionalBranchMustCopyWhenOperandReadAfterConditional) {
+  absl::string_view hlo_string = R"(
+HloModule ConditionalOperandReadAfter
+
+branch_0 {
+  p0 = (f32[4]) parameter(0)
+  v0 = f32[4] get-tuple-element(p0), index=0
+  bar = f32[4] opt-barrier(v0)
+  ROOT r0 = (f32[4]) tuple(bar)
+}
+
+branch_1 {
+  p1 = (f32[4]) parameter(0)
+  v1 = f32[4] get-tuple-element(p1), index=0
+  neg = f32[4] negate(v1)
+  ROOT r1 = (f32[4]) tuple(neg)
+}
+
+ENTRY main {
+  cond_pred = pred[] parameter(0)
+  x = f32[4] parameter(1)
+  e = f32[4] negate(x)
+  t = (f32[4]) tuple(e)
+  cond = (f32[4]) conditional(cond_pred, t, t),
+    true_computation=branch_0, false_computation=branch_1
+  k = f32[4] get-tuple-element(cond), index=0
+  ROOT out = f32[4] add(e, k)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  CopyInsertion copy_insertion(&alias_info_,
+                               /*use_region_based_live_range_analysis=*/-1);
+  ASSERT_THAT(copy_insertion.Run(module.get()), ::absl_testing::IsOk());
+
+  HloComputation* branch_0 = module->GetComputationWithName("branch_0");
+  HloComputation* branch_1 = module->GetComputationWithName("branch_1");
+  ASSERT_NE(branch_0, nullptr);
+  ASSERT_NE(branch_1, nullptr);
+  EXPECT_EQ(CountCopies(*branch_0), 1);
+  EXPECT_EQ(CountCopies(*branch_1), 0);
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info_));
+  const HloInstruction* e = FindInstruction(module.get(), "e");
+  const HloInstruction* cond = FindInstruction(module.get(), "cond");
+  ASSERT_NE(e, nullptr);
+  ASSERT_NE(cond, nullptr);
+  EXPECT_NE(&alias_analysis->GetUniqueBufferAt(e),
+            &alias_analysis->GetUniqueBufferAt(cond, {0}));
+}
+
+TEST_F(CopyInsertionTest,
+       ConditionalAllPassthroughBranchesElideCopiesWhenOperandReadAfter) {
+  // Both branches pass `e` through unchanged via a tuple parameter and GTE, and
+  // `e` is also read after the conditional. Because the GTE operand (`p0`/`p1`)
+  // is a kParameter, it is not in `src_live_range`, whereas the inserted branch
+  // root copies themselves are recorded as users in `src_live_range`. Checking
+  // `region.contains(instr)` (without requiring `region.contains(operand)`)
+  // allows both branch copies to be elided.
+  absl::string_view hlo_string = R"(
+HloModule ConditionalAllPassthroughOperandReadAfter
+
+branch_0 {
+  p0 = (f32[4]) parameter(0)
+  v0 = f32[4] get-tuple-element(p0), index=0
+  ROOT r0 = (f32[4]) tuple(v0)
+}
+
+branch_1 {
+  p1 = (f32[4]) parameter(0)
+  v1 = f32[4] get-tuple-element(p1), index=0
+  ROOT r1 = (f32[4]) tuple(v1)
+}
+
+ENTRY main {
+  cond_pred = pred[] parameter(0)
+  x = f32[4] parameter(1)
+  e = f32[4] negate(x)
+  t = (f32[4]) tuple(e)
+  cond = (f32[4]) conditional(cond_pred, t, t),
+    true_computation=branch_0, false_computation=branch_1
+  k = f32[4] get-tuple-element(cond), index=0
+  ROOT out = f32[4] add(e, k)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  CopyInsertion copy_insertion(&alias_info_,
+                               /*use_region_based_live_range_analysis=*/-1);
+  ASSERT_THAT(copy_insertion.Run(module.get()), ::absl_testing::IsOk());
+
+  EXPECT_EQ(CountCopies(*module), 0);
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info_));
+  const HloInstruction* e = FindInstruction(module.get(), "e");
+  const HloInstruction* cond = FindInstruction(module.get(), "cond");
+  ASSERT_NE(e, nullptr);
+  ASSERT_NE(cond, nullptr);
+  EXPECT_EQ(&alias_analysis->GetUniqueBufferAt(e),
+            &alias_analysis->GetUniqueBufferAt(cond, {0}));
+}
+
 INSTANTIATE_TEST_SUITE_P(CondOrder, CopyInsertionCondOrderTest,
                          ::testing::Combine(::testing::Bool(),
                                             ::testing::Values(int64_t{0},

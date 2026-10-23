@@ -285,7 +285,9 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core/framework:bounds_check",
+        "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:tstring",
+        "@com_google_absl//absl/container:inlined_vector",
         "@eigen_archive//:eigen3",
     ],
     alwayslink = 0,
@@ -297,7 +299,11 @@ cc_library(
         "concat_lib.h",
         "concat_lib_cpu.h",
     ],
-    deps = ["@eigen_archive//:eigen3"],
+    deps = [
+        "//tensorflow/core/platform:logging",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@eigen_archive//:eigen3",
+    ],
 )
 
 tf_kernel_library(
@@ -1154,7 +1160,9 @@ tf_kernel_library(
 tf_kernel_library(
     name = "pack_op",
     prefix = "pack_op",
-    deps = ARRAY_DEPS,
+    deps = ARRAY_DEPS + [
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(
@@ -1193,7 +1201,10 @@ tf_kernel_library(
     name = "shape_ops",
     features = ["-layering_check"],
     prefix = "shape_ops",
-    deps = ARRAY_DEPS + ["//tensorflow/core/common_runtime:dma_helper"],
+    deps = ARRAY_DEPS + [
+        "//tensorflow/core/common_runtime:dma_helper",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(
@@ -1818,6 +1829,7 @@ tf_cc_test(
     size = "small",
     srcs = ["concat_op_test.cc"],
     deps = [
+        ":concat_lib",
         ":concat_op",
         ":ops_testutil",
         ":ops_util",
@@ -1834,6 +1846,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:tstring",
         "@com_google_absl//absl/base:prefetch",
         "@com_google_googletest//:gtest",
@@ -3679,6 +3692,23 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "initializable_lookup_table_test",
+    size = "small",
+    srcs = ["initializable_lookup_table_test.cc"],
+    deps = [
+        ":initializable_lookup_table",
+        ":lookup_table_op",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/platform:refcount",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+    ],
+)
+
 MATH_DEPS = [
     ":fill_functor",
     "//tensorflow/core:core_cpu",
@@ -4358,6 +4388,7 @@ tf_kernel_library(
         "//tensorflow/core/util/proto:proto_utils",
         "@com_google_absl//absl/base:dynamic_annotations",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
@@ -4999,7 +5030,22 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core/util:overflow",
+        "//tensorflow/core/platform:errors",
+        "@com_google_absl//absl/status",
+        "@eigen_archive//:eigen3",
+    ],
+)
+
+tf_cuda_only_cc_test(
+    name = "depth_space_ops_gpu_test",
+    size = "small",
+    srcs = ["depth_space_ops_gpu_test.cu.cc"],
+    deps = [
+        ":depth_space_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:status_matchers",
         "@com_google_absl//absl/status",
         "@eigen_archive//:eigen3",
     ],
@@ -8373,9 +8419,7 @@ cc_library(
     name = "loose_headers",
     tags = ["avoid_dep"],
     textual_hdrs = glob(["*.h"]),
-    visibility = [
-        "//tensorflow:__subpackages__",
-    ] + LOOSE_HEADER_VISIBILITY,
+    visibility = LOOSE_HEADER_VISIBILITY,
     deps = [
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log:check",
@@ -8642,5 +8686,21 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:test_benchmark",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "decode_proto_op_test",
+    size = "small",
+    srcs = ["decode_proto_op_test.cc"],
+    deps = [
+        ":decode_proto_op",
+        ":ops_testutil",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:ops",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )

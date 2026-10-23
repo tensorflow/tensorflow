@@ -1175,5 +1175,42 @@ TEST(QuantizedBatchMatMulOpTest, SimpleTestQuantizedInt16Int8WithScales) {
               ElementsAreArray(ArrayFloatNear({23, 23, 23, 57, 57, 57})));
 }
 
+class UnallocatedBatchMatMulOpModel : public SingleOpModel {
+ public:
+  UnallocatedBatchMatMulOpModel(const TensorData& lhs, const TensorData& rhs,
+                                const TensorData& output) {
+    const int lhs_id = AddInput(lhs);
+    const int rhs_id = AddInput(rhs);
+    AddOutput(output);
+    SetBuiltinOp(BuiltinOperator_BATCH_MATMUL,
+                 BuiltinOptions_BatchMatMulOptions,
+                 CreateBatchMatMulOptions(builder_, /*adj_x=*/false,
+                                          /*adj_y=*/false,
+                                          /*asymmetric_quantize_inputs=*/true)
+                     .Union());
+    BuildInterpreter({GetShape(lhs_id), GetShape(rhs_id)},
+                     /*num_threads=*/1, /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/false, /*allocate_and_delegate=*/false);
+  }
+
+  using SingleOpModel::AllocateTensors;
+};
+
+TEST(BatchMatMulOpTest, RejectsRank1InputInPrepare) {
+  UnallocatedBatchMatMulOpModel rank1_model(
+      /*lhs=*/{TensorType_FLOAT32, {3}},
+      /*rhs=*/{TensorType_INT8, {3, 4}, 0, 0, 1.0f, 0},
+      /*output=*/{TensorType_FLOAT32});
+  EXPECT_EQ(rank1_model.AllocateTensors(), kTfLiteError);
+}
+
+TEST(BatchMatMulOpTest, RejectsRank6InputInPrepare) {
+  UnallocatedBatchMatMulOpModel rank6_model(
+      /*lhs=*/{TensorType_FLOAT32, {1, 1, 1, 1, 2, 3}},
+      /*rhs=*/{TensorType_INT8, {1, 1, 1, 1, 3, 4}, 0, 0, 1.0f, 0},
+      /*output=*/{TensorType_FLOAT32});
+  EXPECT_EQ(rank6_model.AllocateTensors(), kTfLiteError);
+}
+
 }  // namespace
 }  // namespace tflite

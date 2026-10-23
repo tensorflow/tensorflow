@@ -592,8 +592,9 @@ bool EighExpander::InstructionMatchesPattern(HloInstruction* instruction) {
 absl::StatusOr<HloInstruction*> EighExpander::ExpandInstruction(
     HloInstruction* instruction) {
   const std::string name =
-      absl::StrFormat("xla.%s_%s", instruction->custom_call_target(),
-                      instruction->operand(0)->shape().ToString());
+      absl::StrFormat("xla.%s_%s_%s", instruction->custom_call_target(),
+                      instruction->operand(0)->shape().ToString(),
+                      instruction->raw_backend_config_string());
 
   HloModule* module = instruction->GetModule();
 

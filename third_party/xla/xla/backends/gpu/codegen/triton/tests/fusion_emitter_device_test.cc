@@ -218,8 +218,10 @@ ENTRY entry_computation {
       CreateTritonIrFromHloTextAndFileCheck(kHloText, "fused_computation", "");
   EXPECT_THAT(
       status,
-      StatusIs(tsl::error::UNIMPLEMENTED,
-               HasSubstr("Only single-result fusions are supported for now")));
+      StatusIs(
+          tsl::error::UNIMPLEMENTED,
+          HasSubstr(
+              "TilingSpace does not support fusions with multiple roots.")));
 }
 
 class TritonEmitterTestWithOffsetParam
@@ -252,6 +254,36 @@ ENTRY entry_computation {
       "output_tiles":[{"sizes":["32"]}],
         "num_warps":1,"num_ctas":1,"num_stages":1}}}
 })";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> parameters,
+                       MakeFakeArguments(module.get()));
+  parameters[1].Set<int32_t>({}, offset);
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      std::move(module), LiteralUtil::MakePointers(parameters), kExactMatch));
+}
+
+// The offset of `ds` must dominate both concatenate branches.
+TEST_P(EmitDynamicSliceTest, LowerDynamicSliceUsedByAllConcatenateOperands) {
+  int32_t offset = GetParam();
+  constexpr absl::string_view kHloText = R"hlo(
+f {
+  p0 = f32[64] parameter(0)
+  c0 = s32[] parameter(1)
+  ds = f32[16] dynamic-slice(p0, c0), dynamic_slice_sizes={16}
+  ROOT concat = f32[32] concatenate(ds, ds), dimensions={0}
+}
+
+ENTRY entry_computation {
+  p0 = f32[64] parameter(0)
+  p1 = s32[] parameter(1)
+  ROOT fusion = f32[32] fusion(p0, p1), kind=kCustom, calls=f,
+    backend_config={"fusion_backend_config":{"kind":"__triton",
+      "block_level_fusion_config":{
+      "output_tiles":[{"sizes":["16"]}],
+        "num_warps":1,"num_ctas":1,"num_stages":1}}}
+})hlo";
 
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                        ParseAndReturnVerifiedModule(kHloText));
@@ -2283,13 +2315,14 @@ class ScanTritonEmitterTest : public TritonEmitterTest {
     return arguments;
   }
 
-  void RunAndCompareScan(absl::string_view hlo_text) {
+  void RunAndCompareScan(absl::string_view hlo_text,
+                         const ErrorSpec& error_spec = kExactMatch) {
     ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                          ParseAndReturnVerifiedModule(hlo_text));
     ASSERT_OK_AND_ASSIGN(std::vector<Literal> arguments,
                          MakeSmallIntegerArguments(*module));
     EXPECT_TRUE(RunAndCompareNoHloPasses(
-        std::move(module), LiteralUtil::MakePointers(arguments), kExactMatch));
+        std::move(module), LiteralUtil::MakePointers(arguments), error_spec));
   }
 };
 
@@ -2523,6 +2556,57 @@ ENTRY entry_computation {
         "num_warps":4,"num_ctas":1,"num_stages":1}}}
 })";
   RunAndCompareScan(kHloText);
+}
+
+TEST_F(ScanTritonEmitterTest, SoftmaxScan128ForcedTile64) {
+  constexpr absl::string_view kHloText = R"(
+max_computation {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT max = f32[] maximum(p0, p1)
+}
+
+add_computation {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+
+scan_computation {
+  p0 = f32[8]{0} parameter(0)
+  p1 = f32[8]{0} parameter(1)
+  add = f32[8]{0} add(p0, p1)
+  ROOT tuple = (f32[8]{0}, f32[8]{0}) tuple(add, add)
+}
+
+scan_fusion {
+  logits = f32[8,128]{1,0} parameter(0)
+  c_neg_inf = f32[] constant(-inf)
+  reduce_max = f32[8]{0} reduce(logits, c_neg_inf), dimensions={1}, to_apply=max_computation
+  bcast_max = f32[8,128]{1,0} broadcast(reduce_max), dimensions={0}
+  sub = f32[8,128]{1,0} subtract(logits, bcast_max)
+  exp = f32[8,128]{1,0} exponential(sub)
+  c_zero = f32[] constant(0)
+  reduce_sum = f32[8]{0} reduce(exp, c_zero), dimensions={1}, to_apply=add_computation
+  bcast_sum = f32[8,128]{1,0} broadcast(reduce_sum), dimensions={0}
+  probs = f32[8,128]{1,0} divide(exp, bcast_sum)
+
+  init = f32[8]{0} parameter(1)
+  scan = (f32[8,128]{1,0}, f32[8]{0}) scan(probs, init), dimensions={1}, num_carries=1,
+    is_associative=true, to_apply=scan_computation
+  ROOT cumsum = f32[8,128]{1,0} get-tuple-element(scan), index=0
+}
+
+ENTRY entry_computation {
+  p0 = f32[8,128]{1,0} parameter(0)
+  p1 = f32[8]{0} parameter(1)
+  ROOT fusion = f32[8,128]{1,0} fusion(p0, p1), kind=kCustom, calls=scan_fusion,
+    backend_config={"fusion_backend_config":{"kind":"__triton",
+      "block_level_fusion_config":{"output_tiles":[{"sizes":["1"]}],
+        "sequential_tile_sizes":["64","64","64"],
+        "num_warps":4,"num_ctas":1,"num_stages":1}}}
+})";
+  RunAndCompareScan(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3});
 }
 
 }  // namespace

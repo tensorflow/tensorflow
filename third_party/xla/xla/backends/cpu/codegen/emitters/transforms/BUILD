@@ -59,6 +59,7 @@ cc_library(
         ":xla_cpu_rewrite_patterns",
         "//xla/backends/cpu/codegen/emitters/ir:xla_cpu",
         "//xla/codegen/emitters/ir:xla",
+        "//xla/codegen/intrinsic/cpp:_cpp_gen_intrinsics",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/analysis:symbolic_map",
         "@com_google_absl//absl/container:inlined_vector",

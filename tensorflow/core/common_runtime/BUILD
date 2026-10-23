@@ -37,6 +37,7 @@ load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "filegroup
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_core_deps",
+    "tf_proto_library",
     "tf_protos_all",
     "tf_protos_grappler",
 )
@@ -2462,17 +2463,26 @@ cc_library(
     alwayslink = 1,
 )
 
+tf_proto_library(
+    name = "request_cost_proto",
+    srcs = ["request_cost.proto"],
+    visibility = ["//visibility:public"],
+)
+
 cc_library(
     name = "request_cost",
     srcs = ["request_cost.cc"],
     hdrs = ["request_cost.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":request_cost_proto_cc",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/functional:overload",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -3632,6 +3642,9 @@ tf_cc_test(
     srcs = ["request_cost_test.cc"],
     deps = [
         ":request_cost",
+        ":request_cost_proto_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
     ],

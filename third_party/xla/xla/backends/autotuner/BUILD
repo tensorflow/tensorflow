@@ -192,6 +192,7 @@ cc_library(
         ":hlo_extractor",
         ":profiler",
         "//xla:autotune_results_proto_cc",
+        "//xla:autotuning_proto_cc",
         "//xla:status_macros",
         "//xla/hlo/ir:hlo",
         "//xla/tsl/concurrency:future",
@@ -418,6 +419,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
         "@tsl//tsl/platform:protobuf",
     ],
 )
@@ -538,9 +540,11 @@ xla_cc_test(
     name = "config_runner_test",
     srcs = ["config_runner_test.cc"],
     deps = [
+        ":autotuning_proto_cc",
         ":config_runner",
         ":mock_codegen_backend",
         ":profiler",
+        "//xla:autotuning_proto_cc",
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/service:executable",

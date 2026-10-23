@@ -453,8 +453,10 @@ class PjRtCApiClient : public PjRtClient {
       std::pair<std::unique_ptr<PjRtBuffer>, PjRtFulfillAliasBufferCallback>>
   CreateAliasBuffer(const Shape& shape, PjRtMemorySpace* memory_space) override;
 
+  using PjRtClient::CreateErrorBuffer;
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateErrorBuffer(
-      absl::Status error, const Shape& shape, PjRtMemorySpace* memory) override;
+      absl::Status error, const Shape& shape, PjRtMemorySpace* memory,
+      const Layout* layout) override;
 
   absl::StatusOr<const PjRtTopologyDescription*> GetTopologyDescription()
       const override;
@@ -494,13 +496,15 @@ class PjRtCApiClient : public PjRtClient {
   absl::StatusOr<std::vector<Future<>>> CrossHostSendBuffers(
       absl::Span<PjRtBuffer* const> buffers,
       absl::Span<const GlobalDeviceId> dst_global_device_ids,
-      std::vector<CrossHostTransferKey> transfer_keys) override;
+      std::vector<CrossHostTransferKey> transfer_keys,
+      absl::flat_hash_map<TaskId, IncarnationId> incarnations = {}) override;
 
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
   CrossHostReceiveBuffers(
       xla::PjRtDevice* device, absl::Span<const xla::Shape> shapes,
       absl::Span<const GlobalDeviceId> src_global_device_ids,
-      std::vector<CrossHostTransferKey> transfer_keys) override;
+      std::vector<CrossHostTransferKey> transfer_keys,
+      absl::flat_hash_map<TaskId, IncarnationId> incarnations = {}) override;
 
   absl::Status DmaMap(void* data, size_t size) override;
 
@@ -823,11 +827,6 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
     return *device_assignment_;
   }
 
-  absl::Span<const LogicalDeviceIds> addressable_device_logical_ids()
-      const override {
-    return addressable_device_logical_ids_;
-  }
-
   absl::Span<PjRtDevice* const> addressable_devices() const override {
     return addressable_devices_;
   }
@@ -934,7 +933,6 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
   }
 
  private:
-  std::vector<LogicalDeviceIds> addressable_device_logical_ids_;
   // Groups data needed to support send/recv execution callbacks.
   struct HloOutputCallbackState {
     // Key is {replica_id, partition_id}.
@@ -1013,7 +1011,6 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
   std::vector<PjRtDevice*> addressable_devices_;
   std::unique_ptr<const DeviceAssignment> device_assignment_;
 
-  void InitAddressableDeviceLogicalIds();
   void InitDevices();
   void InitDeviceAssignment();
 };

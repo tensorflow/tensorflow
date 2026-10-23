@@ -17,8 +17,6 @@ License.
 
 #include <memory>
 #include <string>
-#include <tuple>
-#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -26,12 +24,12 @@ License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
+#include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -411,6 +409,12 @@ ENTRY entry {
 
   const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_TRUE(HasTritonBlockLevelFusionConfig(root));
+  ASSERT_OK_AND_ASSIGN(GpuBackendConfig backend_config,
+                       root->backend_config<GpuBackendConfig>());
+  EXPECT_THAT(backend_config.fusion_backend_config()
+                  .block_level_fusion_config()
+                  .sequential_tile_sizes(),
+              testing::SizeIs(1));
 }
 
 TEST_P(FusionBlockLevelRewriterTest, DoesNotRewriteScanFusionWithCarryOutput) {
@@ -440,6 +444,71 @@ ENTRY entry {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(kHloText));
 
+  EXPECT_THAT(
+      FusionBlockLevelRewriter(device_info_, HloCostAnalysis::DefaultShapeSize,
+                               &mlir_context_)
+          .Run(module.get()),
+      absl_testing::IsOkAndHolds(false));
+}
+
+TEST_P(FusionBlockLevelRewriterTest,
+       RetilesScanFusionWithStaleSequentialTileSizes) {
+  constexpr absl::string_view kHloText = R"(
+scan_combiner {
+  in = f32[8]{0} parameter(0)
+  carry = f32[8]{0} parameter(1)
+  add = f32[8]{0} add(carry, in)
+  ROOT t = (f32[8]{0}, f32[8]{0}) tuple(add, add)
+}
+
+add_computation {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+
+fused_scan_reduce {
+  input = f32[8,16]{1,0} parameter(0)
+  init_reduce = f32[] constant(0)
+  reduce = f32[8]{0} reduce(input, init_reduce), dimensions={1}, to_apply=add_computation
+  bcast = f32[8,16]{1,0} broadcast(reduce), dimensions={0}
+  init_scan = f32[8]{0} parameter(1)
+  scan = (f32[8,16]{1,0}, f32[8]{0}) scan(bcast, init_scan), dimensions={1}, num_carries=1, to_apply=scan_combiner, is_associative=true
+  ROOT gte = f32[8,16]{1,0} get-tuple-element(scan), index=0
+}
+
+ENTRY entry {
+  input = f32[8,16]{1,0} parameter(0)
+  init_scan = f32[8]{0} parameter(1)
+  ROOT fusion = f32[8,16]{1,0} fusion(input, init_scan), kind=kCustom, calls=fused_scan_reduce,
+    backend_config={"fusion_backend_config":{"kind":"__triton",
+      "block_level_fusion_config":{"output_tiles":[{"sizes":["1"]}],
+        "sequential_tile_sizes":["1","2","2","2"],
+        "num_warps":4,"num_ctas":1,"num_stages":1}}}
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
+
+  // The config has 4 sequential tile sizes, but the fusion only has 2
+  // sequential dimensions (the reduce and the scan).
+  EXPECT_THAT(
+      FusionBlockLevelRewriter(device_info_, HloCostAnalysis::DefaultShapeSize,
+                               &mlir_context_)
+          .Run(module.get()),
+      absl_testing::IsOkAndHolds(true));
+
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_TRUE(HasTritonBlockLevelFusionConfig(root));
+  ASSERT_OK_AND_ASSIGN(GpuBackendConfig backend_config,
+                       root->backend_config<GpuBackendConfig>());
+  EXPECT_THAT(backend_config.fusion_backend_config()
+                  .block_level_fusion_config()
+                  .sequential_tile_sizes(),
+              testing::SizeIs(2));
+
+  // A fusion with a valid config is left untouched.
   EXPECT_THAT(
       FusionBlockLevelRewriter(device_info_, HloCostAnalysis::DefaultShapeSize,
                                &mlir_context_)

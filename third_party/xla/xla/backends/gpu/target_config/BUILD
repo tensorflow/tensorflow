@@ -134,13 +134,17 @@ xla_test(
     tags = ["cuda-only"],
     deps = [
         ":cudnn_device_props",
+        ":target_config",
         "//xla/service:platform_util",
         "//xla/stream_executor:device_description",
+        "//xla/stream_executor:device_description_proto_cc",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
@@ -192,6 +196,11 @@ xla_test(
         "b200": ["full"],
         "gb200": ["full"],
         "gb300": ["full"],
+        # TODO(b/568743647): Re-enable when fixed.
+        "vr_nvl72": [
+            "broken",
+            "full",
+        ],
     },
     backends = [
         "p100",

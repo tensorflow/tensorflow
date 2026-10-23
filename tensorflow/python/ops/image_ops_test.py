@@ -5404,6 +5404,19 @@ class TotalVariationTest(test_util.TensorFlowTestCase):
       # some small error-bound in case they are float-values.
       self.assertAllClose(y_tf, y_np)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testTotalVariationArrayLikeInput(self):
+    image = np.array(
+        [
+            [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]],
+            [[7.0, 8.0, 9.0], [10.0, 11.0, 12.0]],
+        ],
+        dtype=np.float32,
+    )
+    expected = self._total_variation_np(image)
+    for x in (image, image.tolist(), tuple(image.tolist())):
+      self.assertAllClose(self.evaluate(image_ops.total_variation(x)), expected)
+
   def _total_variation_np(self, x_np):
     """Calculate the total variation of x_np using numpy.
     This implements the same function as TensorFlow but
@@ -6596,6 +6609,26 @@ class ImageGradientsTest(test_util.TensorFlowTestCase):
       self.assertAllClose(expected_dy, actual_dy)
       self.assertAllClose(expected_dx, actual_dx)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testImageGradientsArrayLikeInput(self):
+    shape = [1, 2, 4, 1]
+    img = np.reshape(
+        np.array(
+            [[1.0, 3.0, 4.0, 2.0], [8.0, 7.0, 5.0, 6.0]], dtype=np.float32
+        ),
+        shape,
+    )
+    expected_dy = np.reshape(
+        [[7.0, 4.0, 1.0, 4.0], [0.0, 0.0, 0.0, 0.0]], shape
+    )
+    expected_dx = np.reshape(
+        [[2.0, 1.0, -2.0, 0.0], [-1.0, -2.0, 1.0, 0.0]], shape
+    )
+    for x in (img, img.tolist(), tuple(img.tolist())):
+      dy, dx = image_ops.image_gradients(x)
+      self.assertAllClose(expected_dy, self.evaluate(dy))
+      self.assertAllClose(expected_dx, self.evaluate(dx))
+
   def testImageGradientsMultiChannelBatch(self):
     batch = [[[[1, 2], [2, 5], [3, 3]],
               [[8, 4], [5, 1], [9, 8]]],
@@ -6639,6 +6672,27 @@ class SobelEdgesTest(test_util.TensorFlowTestCase):
     with self.cached_session():
       actual_sobel = self.evaluate(sobel)
       self.assertAllClose(expected, actual_sobel)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSobelEdgesArrayLikeInput(self):
+    plane = np.reshape(
+        np.array(
+            [[1.0, 3.0, 6.0, 2.0], [4.0, 1.0, 5.0, 7.0], [2.0, 5.0, 1.0, 4.0]],
+            dtype=np.float32,
+        ),
+        [1, 3, 4, 1],
+    )
+    expected = np.reshape(
+        [
+            [[0.0, 0.0], [0.0, 12.0], [0.0, 10.0], [0.0, 0.0]],
+            [[6.0, 0.0], [0.0, 6.0], [-6.0, 10.0], [-6.0, 0.0]],
+            [[0.0, 0.0], [0.0, 0.0], [0.0, 10.0], [0.0, 0.0]],
+        ],
+        [1, 3, 4, 1, 2],
+    )
+    for x in (plane, plane.tolist(), tuple(plane.tolist())):
+      sobel = image_ops.sobel_edges(x)
+      self.assertAllClose(expected, self.evaluate(sobel))
 
   def testSobelEdges5x3x4x2(self):
     batch_size = 5

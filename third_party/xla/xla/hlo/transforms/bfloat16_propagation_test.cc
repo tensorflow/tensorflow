@@ -4259,4 +4259,116 @@ ENTRY main {
   }
 }
 
+TEST_F(BFloat16PropagationTest,
+       CanConvertOperandToLowPrecisionRejectsDistinctNonTargetFloatConverts) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule distinct_float_converts
+
+ENTRY main {
+  p_f32 = f32[4] parameter(0)
+  p_bf16 = bf16[4] parameter(1)
+  p_f16 = f16[4] parameter(2)
+  p_f64 = f64[4] parameter(3)
+  p_s32 = s32[4] parameter(4)
+  p_pred = pred[4] parameter(5)
+
+  c_f32_to_bf16 = bf16[4] convert(p_f32)
+  c_bf16_to_f32 = f32[4] convert(p_bf16)
+  c_f32_to_f32 = f32[4] convert(p_f32)
+  c_s32_to_s32 = s32[4] convert(p_s32)
+  c_pred_to_pred = pred[4] convert(p_pred)
+
+  c_f32_to_f16 = f16[4] convert(p_f32)
+  c_f32_to_f8 = f8e5m2[4] convert(p_f32)
+  c_f32_to_f4 = f4e2m1fn[4] convert(p_f32)
+  c_f64_to_bf16 = bf16[4] convert(p_f64)
+  c_f16_to_f32 = f32[4] convert(p_f16)
+  c_f64_to_f32 = f32[4] convert(p_f64)
+  c_f32_to_f64 = f64[4] convert(p_f32)
+  c_f32_to_s32 = s32[4] convert(p_f32)
+
+  ROOT out = (bf16[4], f32[4], f32[4], s32[4], pred[4],
+              f16[4], f8e5m2[4], f4e2m1fn[4], bf16[4],
+              f32[4], f32[4], f64[4], s32[4])
+      tuple(c_f32_to_bf16, c_bf16_to_f32, c_f32_to_f32, c_s32_to_s32,
+            c_pred_to_pred, c_f32_to_f16, c_f32_to_f8, c_f32_to_f4,
+            c_f64_to_bf16, c_f16_to_f32, c_f64_to_f32, c_f32_to_f64,
+            c_f32_to_s32)
+}
+)hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHlo));
+  TestBFloat16Support bfloat16_support;
+
+  for (absl::string_view allowed :
+       {"c_f32_to_bf16", "c_bf16_to_f32", "c_f32_to_f32", "c_s32_to_s32",
+        "c_pred_to_pred"}) {
+    HloInstruction* inst = FindInstruction(module.get(), allowed);
+    ASSERT_NE(inst, nullptr) << allowed;
+    EXPECT_TRUE(
+        bfloat16_support.EffectiveOperandPrecisionIsOutputPrecision(*inst, 0))
+        << allowed;
+    EXPECT_TRUE(bfloat16_support.CanConvertOperandToLowPrecision(*inst, 0))
+        << allowed;
+  }
+
+  for (absl::string_view rejected :
+       {"c_f32_to_f16", "c_f32_to_f8", "c_f32_to_f4", "c_f64_to_bf16",
+        "c_f16_to_f32", "c_f64_to_f32", "c_f32_to_f64", "c_f32_to_s32"}) {
+    HloInstruction* inst = FindInstruction(module.get(), rejected);
+    ASSERT_NE(inst, nullptr) << rejected;
+    EXPECT_FALSE(
+        bfloat16_support.EffectiveOperandPrecisionIsOutputPrecision(*inst, 0))
+        << rejected;
+    EXPECT_FALSE(bfloat16_support.CanConvertOperandToLowPrecision(*inst, 0))
+        << rejected;
+  }
+}
+
+TEST_F(BFloat16PropagationTest,
+       ConvertFromOtherFloatIsNotCandidateWithoutMixedPrecision) {
+  constexpr absl::string_view kHloFromF16 = R"hlo(
+HloModule all_gather_of_f16_convert
+
+ENTRY main {
+  p0 = f16[4,4]{1,0} parameter(0)
+  c = f32[4,4]{1,0} convert(p0)
+  ag = f32[16,4]{1,0} all-gather(c), dimensions={0}, replica_groups={}
+  ROOT conv = bf16[16,4]{1,0} convert(ag)
+}
+)hlo";
+
+  constexpr absl::string_view kHloFromF64 = R"hlo(
+HloModule all_gather_of_f64_convert
+
+ENTRY main {
+  p0 = f64[4,4]{1,0} parameter(0)
+  c = f32[4,4]{1,0} convert(p0)
+  ag = f32[16,4]{1,0} all-gather(c), dimensions={0}, replica_groups={}
+  ROOT conv = bf16[16,4]{1,0} convert(ag)
+}
+)hlo";
+
+  for (absl::string_view hlo : {kHloFromF16, kHloFromF64}) {
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto module, ParseAndReturnVerifiedModule(hlo, /*replica_count=*/4));
+    SCOPED_TRACE(module->name());
+    TestBFloat16Support bfloat16_support;
+    bfloat16_support.SetSupportsMixedPrecisions(HloOpcode::kConvert, false);
+    bfloat16_support.SetSupportsMixedPrecisions(HloOpcode::kAllGather, false);
+
+    CandidateTrackingPropagation pass(&bfloat16_support, &alias_info_);
+    TF_ASSERT_OK_AND_ASSIGN(bool changed, pass.Run(module.get()));
+    EXPECT_FALSE(changed);
+    EXPECT_FALSE(pass.IsCandidate("c"));
+    EXPECT_FALSE(pass.IsCandidate("ag"));
+    for (absl::string_view name : {"c", "ag"}) {
+      HloInstruction* inst = FindInstruction(module.get(), name);
+      ASSERT_NE(inst, nullptr) << name;
+      EXPECT_EQ(inst->shape().element_type(), F32) << name;
+    }
+  }
+}
+
 }  // namespace xla

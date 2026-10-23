@@ -41,6 +41,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/TypeSize.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/TargetParser/Triple.h"
 #include "xla/codegen/intrinsic/cpp/eigen_unary_16_ll.h"
 #include "xla/codegen/intrinsic/simple_jit_runner.h"
 #include "xla/codegen/intrinsic/test_matchers.h"
@@ -175,23 +176,31 @@ void ExpectAtan16NearStd(const std::vector<T>& xs) {
   }
 }
 
-// x86-64 without AVX-512 and AArch64 pass 512-bit vectors indirectly, so these
-// go through CreateDirectAdapter.
+// x86-64 SysV without AVX-512 and AArch64 pass 512-bit vectors indirectly, so
+// these go through CreateDirectAdapter. The Windows x64 ABI that clang-cl emits
+// IR for passes them by value, so there is nothing to adapt there.
 TEST(CppGenIntrinsicsTest, WideAtanIsAdaptedFromLibraryIr) {
   {
     llvm::LLVMContext context;
     std::unique_ptr<llvm::Module> module =
         ParseEmbeddedBitcode(context, llvm_ir::kEigenUnary16LlIr);
-    for (const char* name : {"xla.atan.v16f32", "xla.atan.v8f64"}) {
-      EXPECT_TRUE(
-          module->getFunction(name)->getArg(0)->getType()->isPointerTy())
-          << name;
+    if (!module->getTargetTriple().isOSWindows()) {
+      for (const char* name : {"xla.atan.v16f32", "xla.atan.v8f64"}) {
+        EXPECT_TRUE(
+            module->getFunction(name)->getArg(0)->getType()->isPointerTy())
+            << name;
+      }
     }
   }
   ExpectAtan16NearStd<float, 16>({0.0f, 0.5f, -1.0f, 1.5f, -2.0f, 3.0f, 0.1f,
                                   -0.25f, 10.0f, -40.0f, 1e-4f, -0.9f, 7.0f,
                                   -1e3f, 0.75f, -5.5f});
   ExpectAtan16NearStd<double, 8>({0.0, 0.5, -1.0, 1.5, -2.0, 3.0, 1e-4, -1e3});
+}
+
+TEST(CppGenIntrinsicsTest, EigenIntrinsicsAreAvailable) {
+  EXPECT_TRUE(AreEigenIntrinsicsAvailable());
+  EXPECT_TRUE(AreCppGenIntrinsicsAvailable());
 }
 
 TEST(CppGenIntrinsicsTest, AtanV2F64FromLibraryIr) {

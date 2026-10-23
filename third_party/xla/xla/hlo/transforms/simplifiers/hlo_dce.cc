@@ -418,11 +418,18 @@ absl::StatusOr<bool> ProcessAgenda(
       changed |= computation_changed;
     }
 
-    for (auto* instruction : computation->instructions()) {
-      for (HloComputation* called_computation :
-           instruction->called_computations()) {
-        if (to_remove.erase(called_computation) > 0) {
-          agenda.push(called_computation);
+    if (computation->HasCalledComputations()) {
+      for (const HloInstructionInfo& instruction :
+           computation->instructions_with_info()) {
+        if (!HloInstruction::MightHaveCalledComputations(
+                instruction.opcode())) {
+          continue;
+        }
+        for (HloComputation* called_computation :
+             instruction->called_computations()) {
+          if (to_remove.erase(called_computation) > 0) {
+            agenda.push(called_computation);
+          }
         }
       }
     }

@@ -27,6 +27,13 @@ on:
           - 'yes'
           - 'no'
   pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      # Trigger on `closed` so the concurrency group cancels any in-progress
+      # `synchronize` run when a PR is closed or merged by Copybara.
+      - closed
   push:
     branches:
       - main
@@ -37,6 +44,9 @@ concurrency:
 
 jobs:
   Tests:
+    # Skip job execution on `closed` events; the run only exists to cancel
+    # in-progress runs in the same concurrency group.
+    if: github.event_name != 'pull_request' || github.event.action != 'closed'
     strategy:
       # Don't fail fast - want to see results for all builds even if one fails.
       fail-fast: false
@@ -114,7 +124,6 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: "openxla/xla"
-          fetch-depth: 0
           persist-credentials: false
       - name: Checking out ${{ matrix.job_info.repo }}
         if: ${{ matrix.job_info.repo != 'openxla/xla' }}

@@ -1460,6 +1460,45 @@ ENTRY %PreservePartiallySetResultLayout {
             Layout::kDefaultMemorySpace);
 }
 
+TEST_F(LayoutAssignmentTest, PartiallySetNestedResultLayoutInsertsCopy) {
+  const char* module_str = R"(
+HloModule test_module
+
+ENTRY main {
+  p0 = f32[2,3]{1,0} parameter(0)
+  p1 = f32[4,5]{0,1} parameter(1)
+  nested = (f32[2,3], f32[4,5]) tuple(p0, p1)
+  ROOT result = ((f32[2,3], f32[4,5]), f32[2,3]) tuple(nested, p0)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
+  ComputationLayout computation_layout = module->entry_computation_layout();
+  computation_layout.mutable_result_layout()->ResetLayout(
+      LayoutUtil::MakeLayout({0, 1}), {0, 0});
+  computation_layout.mutable_result_layout()->Clear({0, 1});
+  computation_layout.mutable_result_layout()->Clear({1});
+
+  LayoutAssignment layout_assignment(&computation_layout);
+  ASSERT_OK_AND_ASSIGN(bool changed, layout_assignment.Run(module.get()));
+  EXPECT_TRUE(changed);
+  const Shape& result =
+      module->entry_computation()->root_instruction()->shape();
+  EXPECT_THAT(ShapeUtil::GetSubshape(result, {0, 0}).layout().minor_to_major(),
+              ElementsAre(0, 1));
+  EXPECT_THAT(ShapeUtil::GetSubshape(result, {0, 1}).layout().minor_to_major(),
+              ElementsAre(0, 1));
+  EXPECT_THAT(ShapeUtil::GetSubshape(result, {1}).layout().minor_to_major(),
+              ElementsAre(1, 0));
+  EXPECT_THAT(module->entry_computation()
+                  ->parameter_instruction(0)
+                  ->shape()
+                  .layout()
+                  .minor_to_major(),
+              ElementsAre(1, 0));
+  EXPECT_TRUE(computation_layout.result_layout().MatchesLayoutInShape(result));
+}
+
 TEST_F(LayoutAssignmentTest, PreservePartiallySetParameterLayout) {
   // Note the two parameters are passed as a single tuple.
   const char* module_str = R"(
@@ -1576,14 +1615,14 @@ ENTRY %PreserveMemorySpaceOnConflict {
                   .layout()
                   .minor_to_major(),
               ElementsAre(1, 0));
-  // Result layouts are not mandatory. Thus the first parameter's layout is not
-  // the same as the original layout.
+  // The constrained result keeps its requested layout even though another
+  // result has AUTO layout. A copy reconciles the conflicting parameter layout.
   EXPECT_THAT(computation_layout.result_layout()
                   .shape()
                   .tuple_shapes(0)
                   .layout()
                   .minor_to_major(),
-              ElementsAre(0, 1));
+              ElementsAre(1, 0));
   EXPECT_THAT(computation_layout.result_layout()
                   .shape()
                   .tuple_shapes(1)
@@ -3012,6 +3051,170 @@ ENTRY %main (param: (f32[4,8], f32[8,16])) -> (f32[4,8], f32[8,16]) {
   EXPECT_TRUE(LayoutUtil::Equal(
       ShapeUtil::GetSubshape(async_done->shape(), {1}).layout(),
       LayoutUtil::MakeLayout({1, 0})));
+}
+
+TEST_F(LayoutAssignmentTest,
+       AsyncStartPreservesMandatoryCallerParameterLayout) {
+  const char* hlo = R"(
+HloModule AsyncStartPreservesMandatoryCallerParameterLayout,
+  entry_computation_layout={(f32[2,3]{1,0})->f32[2,3]{0,1}}
+
+body {
+  body_param = f32[2,3]{0,1} parameter(0)
+  ROOT op = f32[2,3]{0,1} custom-call(body_param),
+    custom_call_target="test",
+    operand_layout_constraints={f32[2,3]{0,1}}
+}
+
+ENTRY main {
+  main_param = f32[2,3]{1,0} parameter(0)
+  start = ((f32[2,3]{1,0}), f32[2,3]{1,0}, s32[])
+    async-start(main_param), calls=body
+  ROOT done = f32[2,3]{0,1} async-done(start)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  LayoutAssignment assignment(module->mutable_entry_computation_layout());
+  ASSERT_OK(assignment.Run(module.get()).status());
+
+  // Parameter of main has the layout specified in the preexisting
+  // entry_computation_layout.
+  HloInstruction* main_param = FindInstruction(module.get(), "main_param");
+  ASSERT_NE(main_param, nullptr);
+  ExpectLayoutIs(main_param->shape(), {1, 0});
+
+  // The first output aliases the operands and must have matching layouts.
+  const HloInstruction* start = FindInstruction(module.get(), "start");
+  ASSERT_NE(start, nullptr);
+  EXPECT_TRUE(LayoutUtil::LayoutsInShapesEqual(
+      ShapeUtil::GetSubshape(start->shape(), {0, 0}),
+      start->operand(0)->shape()));
+
+  // The custom call's inputs and outputs have the expected layouts.
+  HloComputation* body = module->GetComputationWithName("body");
+  ASSERT_NE(body, nullptr);
+  HloInstruction* op = body->root_instruction();
+  ASSERT_NE(op, nullptr);
+
+  ExpectLayoutIs(op->operand(0)->shape(), {0, 1});
+  ExpectLayoutIs(op->shape(), {0, 1});
+}
+
+TEST_F(LayoutAssignmentTest,
+       AsyncStartPreservesMandatoryCallerParameterLayoutMultipleOperands) {
+  const char* hlo = R"(
+HloModule AsyncStartPreservesMandatoryCallerParameterLayoutMultipleOperands,
+  entry_computation_layout={(f32[2,3]{1,0}, (f32[4,5]{1,0}, (f32[6,7]{1,0})))->f32[2,3]{1,0}}
+
+body {
+  body_param0 = f32[2,3]{1,0} parameter(0)
+  body_param1 = (f32[4,5]{1,0}, (f32[6,7]{0,1})) parameter(1)
+  ROOT op = f32[2,3]{1,0} custom-call(body_param0, body_param1),
+    custom_call_target="test",
+    operand_layout_constraints={f32[2,3]{1,0}, (f32[4,5]{1,0}, (f32[6,7]{0,1}))}
+}
+
+ENTRY main {
+  main_param0 = f32[2,3]{1,0} parameter(0)
+  main_param1 = (f32[4,5]{1,0}, (f32[6,7]{1,0})) parameter(1)
+  start = ((f32[2,3]{1,0}, (f32[4,5]{1,0}, (f32[6,7]{1,0}))), f32[2,3]{1,0}, s32[])
+    async-start(main_param0, main_param1), calls=body
+  ROOT done = f32[2,3]{1,0} async-done(start)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  LayoutAssignment assignment(module->mutable_entry_computation_layout());
+  ASSERT_OK(assignment.Run(module.get()).status());
+
+  // Caller parameters retain their mandatory layouts.
+  const HloInstruction* main_param0 =
+      FindInstruction(module.get(), "main_param0");
+  ASSERT_NE(main_param0, nullptr);
+  ExpectLayoutIs(main_param0->shape(), {1, 0});
+
+  const HloInstruction* main_param1 =
+      FindInstruction(module.get(), "main_param1");
+  ASSERT_NE(main_param1, nullptr);
+  ExpectLayoutIs(ShapeUtil::GetSubshape(main_param1->shape(), {0}), {1, 0});
+  ExpectLayoutIs(ShapeUtil::GetSubshape(main_param1->shape(), {1, 0}), {1, 0});
+
+  // The first output aliases the operands and must have matching layouts.
+  const HloInstruction* start = FindInstruction(module.get(), "start");
+  ASSERT_NE(start, nullptr);
+  ASSERT_EQ(start->operand_count(), 2);
+  for (int64_t i = 0; i < start->operand_count(); ++i) {
+    EXPECT_TRUE(LayoutUtil::LayoutsInShapesEqual(
+        ShapeUtil::GetSubshape(start->shape(), {0, i}),
+        start->operand(i)->shape()));
+  }
+
+  // The custom call's inputs and outputs have the expected layouts.
+  HloComputation* body = module->GetComputationWithName("body");
+  ASSERT_NE(body, nullptr);
+  HloInstruction* op = body->root_instruction();
+  ASSERT_NE(op, nullptr);
+
+  ExpectLayoutIs(op->operand(0)->shape(), {1, 0});
+  ExpectLayoutIs(ShapeUtil::GetSubshape(op->operand(1)->shape(), {0}), {1, 0});
+  ExpectLayoutIs(ShapeUtil::GetSubshape(op->operand(1)->shape(), {1, 0}),
+                 {0, 1});
+  ExpectLayoutIs(op->shape(), {1, 0});
+}
+
+TEST_F(LayoutAssignmentTest,
+       AsyncStartPreservesMandatoryCallerCustomCallLayout) {
+  const char* hlo = R"(
+HloModule AsyncStartPreservesMandatoryCallerCustomCallLayout,
+  entry_computation_layout={(f32[2,3]{0,1})->f32[2,3]{0,1}}
+
+body {
+  body_param = (f32[2,3]{1,0}, (f32[4,5]{0,1})) parameter(0)
+  ROOT op = f32[2,3]{0,1} custom-call(body_param),
+    custom_call_target="test",
+    operand_layout_constraints={(f32[2,3]{0,1}, (f32[4,5]{1,0}))}
+}
+
+ENTRY main {
+  main_param = f32[2,3]{0,1} parameter(0)
+  async_start_input = (f32[2,3]{1,0}, (f32[4,5]{0,1})) custom-call(main_param),
+    custom_call_target="make_input",
+    operand_layout_constraints={f32[2,3]{0,1}}
+  start = (((f32[2,3]{1,0}, (f32[4,5]{0,1}))), f32[2,3]{0,1}, s32[])
+    async-start(async_start_input), calls=body
+  ROOT done = f32[2,3]{0,1} async-done(start)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  LayoutAssignment assignment(module->mutable_entry_computation_layout());
+  ASSERT_OK(assignment.Run(module.get()).status());
+
+  // async_start_input's inputs and outputs have the expected layout.
+  HloInstruction* async_start_input =
+      FindInstruction(module.get(), "async_start_input");
+  ASSERT_NE(async_start_input, nullptr);
+  ExpectLayoutIs(ShapeUtil::GetSubshape(async_start_input->shape(), {0}),
+                 {1, 0});
+  ExpectLayoutIs(ShapeUtil::GetSubshape(async_start_input->shape(), {1, 0}),
+                 {0, 1});
+  ExpectLayoutIs(async_start_input->operand(0)->shape(), {0, 1});
+
+  // The first output aliases the operands and must have matching layouts.
+  const HloInstruction* start = FindInstruction(module.get(), "start");
+  ASSERT_NE(start, nullptr);
+  EXPECT_TRUE(LayoutUtil::LayoutsInShapesEqual(
+      ShapeUtil::GetSubshape(start->shape(), {0, 0}),
+      start->operand(0)->shape()));
+
+  // The custom call's inputs and outputs have the expected layouts.
+  HloComputation* body = module->GetComputationWithName("body");
+  ASSERT_NE(body, nullptr);
+  HloInstruction* op = body->root_instruction();
+  ASSERT_NE(op, nullptr);
+
+  ExpectLayoutIs(ShapeUtil::GetSubshape(op->operand(0)->shape(), {0}), {0, 1});
+  ExpectLayoutIs(ShapeUtil::GetSubshape(op->operand(0)->shape(), {1, 0}),
+                 {1, 0});
+  ExpectLayoutIs(op->shape(), {0, 1});
 }
 
 TEST_F(LayoutAssignmentTest, PropagateCallerConstraintIntoUnconstrainedCallee) {

@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -29,7 +28,6 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
-#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
@@ -42,6 +40,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_traversal.h"
@@ -51,6 +50,7 @@ limitations under the License.
 namespace xla::gpu::experimental {
 namespace {
 
+using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
 using ::mlir::MLIRContext;
 using ::testing::Contains;
@@ -243,41 +243,27 @@ class TileAnalysisTestBase : public HloHardwareIndependentTestBase {
 };
 
 // For tests that don't depend on the flags in TileAnalysisTestParams.
-class TileAnalysisTest
-    : public TileAnalysisTestBase,
-      public ::testing::WithParamInterface<std::tuple<bool, bool>> {
+class TileAnalysisTest : public TileAnalysisTestBase,
+                         public ::testing::WithParamInterface<bool> {
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = TileAnalysisTestBase::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_unsupported_enable_triton_multi_output_fusion(
-        EnableTritonMultiOutputFusion());
     debug_options
         .set_xla_gpu_experimental_enable_same_shape_multi_output_fusion(
             EnableSameShapeMultiOutputFusion());
     return debug_options;
   }
 
-  bool EnableTritonMultiOutputFusion() const { return std::get<0>(GetParam()); }
-  bool EnableSameShapeMultiOutputFusion() const {
-    return std::get<1>(GetParam());
-  }
+  bool EnableSameShapeMultiOutputFusion() const { return GetParam(); }
 };
 
-INSTANTIATE_TEST_SUITE_P(
-    TileAnalysisTestInstantiation, TileAnalysisTest,
-    testing::Combine(testing::Bool(), testing::Bool()),
-    [](const ::testing::TestParamInfo<std::tuple<bool, bool>>& info) {
-      std::vector<std::string> parts;
-      if (std::get<0>(info.param)) {
-        parts.push_back("WithTritonMOF");
-      }
-      if (std::get<1>(info.param)) {
-        parts.push_back("WithSameShapeMOF");
-      }
-      if (parts.empty()) {
-        return std::string("Default");
-      }
-      return absl::StrJoin(parts, "_");
-    });
+INSTANTIATE_TEST_SUITE_P(TileAnalysisTestInstantiation, TileAnalysisTest,
+                         testing::Bool(),
+                         [](const ::testing::TestParamInfo<bool>& info) {
+                           if (info.param) {
+                             return std::string("WithSameShapeMOF");
+                           }
+                           return std::string("Default");
+                         });
 
 // For tests that assume no multi-output fusion support.
 class SingleOutputFusionTileAnalysisTest : public TileAnalysisTestBase {};
@@ -300,10 +286,6 @@ class SameShapeMultiOutputFusionTileAnalysisTest : public TileAnalysisTestBase {
     DebugOptions debug_options = TileAnalysisTestBase::GetDebugOptionsForTest();
     debug_options
         .set_xla_gpu_experimental_enable_same_shape_multi_output_fusion(true);
-    // Triton multi-output fusion is preferred over same-shape MOF so we must
-    // disable it to test same-shape MOF.
-    debug_options.set_xla_gpu_unsupported_enable_triton_multi_output_fusion(
-        false);
     return debug_options;
   }
 };
@@ -541,6 +523,34 @@ TEST_P(TileAnalysisTest, ConcatenateRegionsAreHoistingBarriers) {
   // `c0` depends on nothing, but it must stay in the concatenate branch.
   EXPECT_THAT(InstructionNames(top), ElementsAre("concat"));
   EXPECT_THAT(InstructionNames(branch), UnorderedElementsAre("c0", "red"));
+}
+
+TEST_P(TileAnalysisTest, DynamicSliceOffsetsAreHoistedOutOfConcatenateRegions) {
+  ASSERT_OK_AND_ASSIGN(const TiledHloComputation tiled_computation,
+                       ParseAndTile(R"hlo(
+    fusion {
+      p0 = f32[64]{0} parameter(0)
+      p1 = s32[] parameter(1)
+      ds = f32[16]{0} dynamic-slice(p0, p1), dynamic_slice_sizes={16}
+      ROOT concat = f32[32]{0} concatenate(ds, ds), dimensions={0}
+    }
+
+    ENTRY main {
+      x = f32[64]{0} parameter(0)
+      offset = s32[] parameter(1)
+      ROOT fusion = f32[32]{0} fusion(x, offset), kind=kLoop, calls=fusion
+    })hlo",
+                                    {16}));
+
+  // Unlike other instructions, the runtime variable is hoisted out of the
+  // concatenate branches.
+  const TiledHloRegion& top = tiled_computation.tiled_root_region();
+  EXPECT_THAT(InstructionNames(top), UnorderedElementsAre("offset", "concat"));
+  const TiledHloInstruction* offset = FindByName(top, "offset");
+  const auto& branches = FindByName(top, "concat")->hlo_regions();
+  ASSERT_EQ(branches.size(), 2);
+  EXPECT_EQ(FindByName(branches[0], "ds")->operand(1), offset);
+  EXPECT_EQ(FindByName(branches[1], "ds")->operand(1), offset);
 }
 
 TEST_P(TileAnalysisTest, ConcatenateIsSupported) {
@@ -921,17 +931,18 @@ TEST_P(TileAnalysisTest, CollectiveDotReduceScatter) {
     Dimensions:
       0 type: parallel size: 64 tile size: 8 dim ID:0 hlo: %rs = f32[64,512]{1,0} reduce-scatter(%dot), replica_groups={{0,1}}, dimensions={0}, to_apply=%add
       1 type: parallel size: 512 tile size: 32 dim ID:1 hlo: %rs = f32[64,512]{1,0} reduce-scatter(%dot), replica_groups={{0,1}}, dimensions={0}, to_apply=%add
-      2 type: sequential size: 256 tile size: 32 dim ID:2 hlo: %dot = f32[128,512]{1,0} dot(%p0, %p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      2 type: replica size: 2 tile size: 1 dim ID:2 hlo: %rs = f32[64,512]{1,0} reduce-scatter(%dot), replica_groups={{0,1}}, dimensions={0}, to_apply=%add
+      3 type: sequential size: 256 tile size: 32 dim ID:2 hlo: %dot = f32[128,512]{1,0} dot(%p0, %p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
     Root tiles:
-      0 root tile:  offsets [tid_0 * 8, tid_1 * 32] sizes [8, 32] strides [1, 1] upper bounds [64, 512]
+      0 root tile:  offsets [tid_0 * 16 + tid_2 * 8, tid_1 * 32] sizes [8, 32] strides [1, 1] upper bounds [64, 512]
 
     Tiled HLO:
-      dot.tile_0 = dot(p0.1.tile_0, p1.1.tile_0)  offsets [tid_0 * 16, tid_1 * 32] sizes [16, 32] strides [1, 1] upper bounds [128, 512]
+      dot.tile_0 = dot(p0.1.tile_0, p1.1.tile_0)  offsets [tid_0 * 16 + tid_2 * 64, tid_1 * 32] sizes [16, 32] strides [1, 1] upper bounds [128, 512]
       region #0 {
-        p0.1.tile_0 = parameter(0)  offsets [tid_0 * 16, tid_2 * 32] sizes [16, 32] strides [1, 1] upper bounds [128, 256]
-        p1.1.tile_0 = parameter(1)  offsets [tid_2 * 32, tid_1 * 32] sizes [32, 32] strides [1, 1] upper bounds [256, 512]
+        p0.1.tile_0 = parameter(0)  offsets [tid_0 * 16 + tid_2 * 64, tid_3 * 32] sizes [16, 32] strides [1, 1] upper bounds [128, 256]
+        p1.1.tile_0 = parameter(1)  offsets [tid_3 * 32, tid_1 * 32] sizes [32, 32] strides [1, 1] upper bounds [256, 512]
       }
-      rs.tile_0 = reduce-scatter(dot.tile_0)  offsets [tid_0 * 8, tid_1 * 32] sizes [8, 32] strides [1, 1] upper bounds [64, 512]
+      rs.tile_0 = reduce-scatter(dot.tile_0)  offsets [tid_0 * 16 + tid_2 * 8, tid_1 * 32] sizes [8, 32] strides [1, 1] upper bounds [64, 512]
   )"));
 }
 
@@ -958,6 +969,8 @@ TEST_F(SingleOutputFusionTileAnalysisTest, SimpleFusion) {
 }
 
 TEST_F(TritonMultiOutputFusionTileAnalysisTest, DuplicateFusionRoots) {
+  GTEST_SKIP() << "Arbitrary multi-output fusions are currently not supported "
+                  "in TilingSpace (b/502910372).";
   ASSERT_OK_AND_ASSIGN(const TiledHloComputation tiled_computation,
                        ParseAndTile(R"hlo(
     fusion {
@@ -1434,6 +1447,174 @@ TEST_F(IndexWiseVariadicTileAnalysisTest,
                    {1, 4}),
       StatusIs(absl::StatusCode::kUnimplemented,
                HasSubstr("Output 1 of ag is not consumed in the fusion.")));
+}
+
+TEST_F(IndexWiseVariadicTileAnalysisTest,
+       VariadicReduceScatterIsTiledAsOneNodeWithPerOutputTiles) {
+  ASSERT_OK_AND_ASSIGN(const TiledHloComputation tiled_computation,
+                       ParseAndTile(R"hlo(
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+
+    f {
+      p0 = f32[4,64] parameter(0)
+      p1 = f32[4,1] parameter(1)
+      rs = (f32[2,64], f32[2,1]) reduce-scatter(p0, p1),
+        replica_groups={{0,1}}, dimensions={0}, to_apply=add
+      gte0 = f32[2,64] get-tuple-element(rs), index=0
+      gte1 = f32[2,1] get-tuple-element(rs), index=1
+      ROOT t = (f32[2,64], f32[2,1]) tuple(gte0, gte1)
+    }
+
+    ENTRY e {
+      arg0 = f32[4,64] parameter(0)
+      arg1 = f32[4,1] parameter(1)
+      ROOT fusion = (f32[2,64], f32[2,1]) fusion(arg0, arg1),
+        kind=kCustom, calls=f
+    })hlo",
+                                    {1, 64, 1, 1}));
+
+  EXPECT_THAT(RunFileCheck(tiled_computation.ToString(), R"(
+    CHECK: Dimensions:
+    CHECK:   4 type: replica size: 2 tile size: 1 dim ID:4
+    CHECK:   5 type: replica size: 2 tile size: 1 dim ID:5
+    CHECK: Root tiles:
+    CHECK:   0 root tile:  offsets [tid_4, 0] sizes [1, 64] strides [1, 1] upper bounds [2, 64]
+    CHECK:   1 root tile:  offsets [tid_5, 0] sizes [1, 1] strides [1, 1] upper bounds [2, 1]
+    CHECK: Tiled HLO:
+    CHECK:   arg0.tile_0 = parameter(0)  offsets [tid_4 * 2, 0] sizes [2, 64] strides [1, 1] upper bounds [4, 64]
+    CHECK:   arg1.tile_0 = parameter(1)  offsets [tid_5 * 2, 0] sizes [2, 1] strides [1, 1] upper bounds [4, 1]
+    CHECK:   rs.tile_0 = reduce-scatter(arg0.tile_0, arg1.tile_0)
+    CHECK:     #0  offsets [tid_4, 0] sizes [1, 64] strides [1, 1] upper bounds [2, 64]
+    CHECK:     #1  offsets [tid_5, 0] sizes [1, 1] strides [1, 1] upper bounds [2, 1]
+    CHECK:   gte0.tile_0 = get-tuple-element(rs.tile_0)  offsets [tid_4, 0] sizes [1, 64]
+    CHECK:   gte1.tile_0 = get-tuple-element(rs.tile_0)  offsets [tid_5, 0] sizes [1, 1]
+  )"),
+              IsOkAndHolds(true));
+
+  std::vector<const TiledHloInstruction*> reduce_scatters =
+      FindAll(tiled_computation, HloOpcode::kReduceScatter);
+  ASSERT_EQ(reduce_scatters.size(), 1);
+  const TiledHloInstruction* rs = reduce_scatters[0];
+  ASSERT_EQ(rs->operands().size(), 2);
+  ASSERT_EQ(rs->tiles().size(), 2);
+  EXPECT_EQ(rs->operand(0)->hlo()->name(), "arg0");
+  EXPECT_EQ(rs->operand(1)->hlo()->name(), "arg1");
+  EXPECT_EQ(rs->operand(0)->tile().num_replica_ids(), 0);
+  EXPECT_EQ(rs->operand(1)->tile().num_replica_ids(), 0);
+
+  // One GTE root per output, all backed by the same tiled reduce-scatter.
+  ASSERT_EQ(tiled_computation.roots().size(), 2);
+  EXPECT_EQ(tiled_computation.roots()[0]->operand(0), rs);
+  EXPECT_EQ(tiled_computation.roots()[1]->operand(0), rs);
+  EXPECT_EQ(rs->tile(0), tiled_computation.roots()[0]->tile());
+  EXPECT_EQ(rs->tile(1), tiled_computation.roots()[1]->tile());
+}
+
+TEST_F(IndexWiseVariadicTileAnalysisTest,
+       VariadicReduceScatterConsumedByGetTupleElementAndConvert) {
+  ASSERT_OK_AND_ASSIGN(const TiledHloComputation tiled_computation,
+                       ParseAndTile(R"hlo(
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+
+    f {
+      p0 = f32[16,16] parameter(0)
+      p1 = f32[16] parameter(1)
+      rs = (f32[4,16], f32[4]) reduce-scatter(p0, p1),
+        replica_groups={{0,1,2,3}}, dimensions={0}, to_apply=add
+      gte0 = f32[4,16] get-tuple-element(rs), index=0
+      gte1 = f32[4] get-tuple-element(rs), index=1
+      c0 = bf16[4,16] convert(gte0)
+      c1 = s32[4] convert(gte1)
+      ROOT t = (bf16[4,16], s32[4]) tuple(c0, c1)
+    }
+
+    ENTRY e {
+      arg0 = f32[16,16] parameter(0)
+      arg1 = f32[16] parameter(1)
+      ROOT fusion = (bf16[4,16], s32[4]) fusion(arg0, arg1),
+        kind=kCustom, calls=f
+    })hlo",
+                                    {1, 8, 1}));
+
+  std::vector<const TiledHloInstruction*> reduce_scatters =
+      FindAll(tiled_computation, HloOpcode::kReduceScatter);
+  ASSERT_EQ(reduce_scatters.size(), 1);
+  const TiledHloInstruction* rs = reduce_scatters[0];
+  ASSERT_EQ(rs->operands().size(), 2);
+  ASSERT_EQ(rs->tiles().size(), 2);
+
+  std::vector<const TiledHloInstruction*> gtes =
+      FindAll(tiled_computation, HloOpcode::kGetTupleElement);
+  ASSERT_EQ(gtes.size(), 2);
+  for (const TiledHloInstruction* gte : gtes) {
+    ASSERT_EQ(gte->operands().size(), 1);
+    EXPECT_EQ(gte->operand(0), rs);
+  }
+}
+
+TEST_F(IndexWiseVariadicTileAnalysisTest,
+       VariadicReduceScatterWithDotProducers) {
+  ASSERT_OK_AND_ASSIGN(const TiledHloComputation tiled_computation,
+                       ParseAndTile(R"hlo(
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+
+    f {
+      lhs0 = f32[16,8] parameter(0)
+      rhs0 = f32[8,16] parameter(1)
+      lhs1 = f32[32,8] parameter(2)
+      rhs1 = f32[8,32] parameter(3)
+      dot0 = f32[16,16] dot(lhs0, rhs0),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      dot1 = f32[32,32] dot(lhs1, rhs1),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      rs = (f32[4,16], f32[8,32]) reduce-scatter(dot0, dot1),
+        replica_groups={{0,1,2,3}}, dimensions={0}, to_apply=add
+      gte0 = f32[4,16] get-tuple-element(rs), index=0
+      gte1 = f32[8,32] get-tuple-element(rs), index=1
+      ROOT t = (f32[4,16], f32[8,32]) tuple(gte0, gte1)
+    }
+
+    ENTRY e {
+      lhs0 = f32[16,8] parameter(0)
+      rhs0 = f32[8,16] parameter(1)
+      lhs1 = f32[32,8] parameter(2)
+      rhs1 = f32[8,32] parameter(3)
+      ROOT fusion = (f32[4,16], f32[8,32]) fusion(lhs0, rhs0, lhs1, rhs1),
+        kind=kCustom, calls=f
+    })hlo",
+                                    {1, 8, 2, 16, 8, 8}));
+
+  EXPECT_THAT(RunFileCheck(tiled_computation.ToString(), R"(
+    CHECK: Tiled HLO:
+    CHECK:   dot0.tile_0 = dot(lhs0.1.tile_0, rhs0.1.tile_0)  offsets [tid_4 * 4, tid_1 * 8] sizes [4, 8]
+    CHECK:   region #0 {
+    CHECK:     lhs0.1.tile_0 = parameter(0)  offsets [tid_4 * 4, 0] sizes [4, 8]
+    CHECK:     rhs0.1.tile_0 = parameter(1)  offsets [0, tid_1 * 8] sizes [8, 8]
+    CHECK:   }
+    CHECK:   dot1.tile_0 = dot(lhs1.1.tile_0, rhs1.1.tile_0)  offsets [tid_5 * 8, tid_3 * 16] sizes [8, 16]
+    CHECK:   region #0 {
+    CHECK:     lhs1.1.tile_0 = parameter(2)  offsets [tid_5 * 8, 0] sizes [8, 8]
+    CHECK:     rhs1.1.tile_0 = parameter(3)  offsets [0, tid_3 * 16] sizes [8, 16]
+    CHECK:   }
+    CHECK:   rs.tile_0 = reduce-scatter(dot0.tile_0, dot1.tile_0)
+    CHECK:     #0  offsets [tid_4, tid_1 * 8] sizes [1, 8]
+    CHECK:     #1  offsets [tid_5 * 2, tid_3 * 16] sizes [2, 16]
+    CHECK:   gte0.tile_0 = get-tuple-element(rs.tile_0)  offsets [tid_4, tid_1 * 8] sizes [1, 8]
+    CHECK:   gte1.tile_0 = get-tuple-element(rs.tile_0)  offsets [tid_5 * 2, tid_3 * 16] sizes [2, 16]
+  )"),
+              IsOkAndHolds(true));
 }
 
 TEST_F(SameShapeMultiOutputFusionTileAnalysisTest,

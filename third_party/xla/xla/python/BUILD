@@ -677,6 +677,7 @@ cc_library(
     features = ["-use_header_modules"],
     visibility = internal_visibility([":friends"]),
     deps = [
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@nanobind",
@@ -831,7 +832,6 @@ py_test(
     deps = [
         ":_hlo",
         ":xla_client",
-        "//third_party/py/numpy",
         "@absl_py//absl/logging",
         "@absl_py//absl/testing:absltest",
         "@absl_py//absl/testing:parameterized",

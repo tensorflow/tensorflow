@@ -354,12 +354,14 @@ def LowerQuantAnnotationsPass : Pass<"tfl-lower-quant-annotations", "mlir::Modul
   ];
 }
 
-def FoldStablehloConstantTransformsPass : Pass<"tfl-fold-stablehlo-constant-transforms", "mlir::func::FuncOp"> {
+def FoldStablehloConstantTransformsPass : Pass<"tfl-fold-stablehlo-constant-transforms", "mlir::ModuleOp"> {
   let summary = "Folds stablehlo.transpose and stablehlo.reshape operations on constants.";
   let description = [{
       Unlike the upstream folders, this handles `DenseResourceElementsAttr`
       operands, which is what large weights are stored as by the time they
-      reach this point in the pipeline.
+      reach this point in the pipeline. Reshapes reuse the input blob, and a
+      blob shared by several constants is transposed once, in place when all
+      of its users are folded the same way.
   }];
   let constructor = "CreateFoldStablehloConstantTransformsPass()";
   let dependentDialects = [

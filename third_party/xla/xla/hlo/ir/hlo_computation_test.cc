@@ -17,13 +17,16 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -34,7 +37,6 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -653,6 +655,89 @@ ENTRY entry {
 
   EXPECT_DEATH(entry->set_root_instruction(p1, /*accept_different_shape=*/true),
                "Cannot overwrite non-empty input_output_alias_config");
+}
+
+std::unique_ptr<HloComputation> MakeComputationWithParameters(
+    int num_parameters, absl::string_view name = "comp") {
+  const Shape shape = ShapeUtil::MakeShape(F32, {});
+  auto builder = HloComputation::Builder(name);
+  HloInstruction* root = nullptr;
+  for (int i = 0; i < num_parameters; ++i) {
+    HloInstruction* param = builder.AddInstruction(
+        HloInstruction::CreateParameter(i, shape, absl::StrCat("p", i)));
+    if (i == 0) {
+      root = param;
+    }
+  }
+  return builder.Build(root);
+}
+
+TEST_F(HLOComputationTest,
+       RemoveInstructionRejectsUnparentedOrForeignInstruction) {
+  auto comp1 = MakeComputationWithParameters(1, "comp1");
+  auto comp2 = MakeComputationWithParameters(1, "comp2");
+  HloInstruction* foreign = comp2->root_instruction();
+
+  // Foreign instruction from another computation.
+  EXPECT_FALSE(comp1->RemoveInstruction(foreign).ok());
+
+  // Null instruction.
+  EXPECT_FALSE(comp1->RemoveInstruction(nullptr).ok());
+}
+
+TEST_F(HLOComputationTest, RemoveInstructionRejectsAlreadyDeadInstruction) {
+  auto comp = MakeComputationWithParameters(1);
+  HloInstruction* dead_neg = comp->AddInstruction(HloInstruction::CreateUnary(
+      comp->root_instruction()->shape(), HloOpcode::kNegate,
+      comp->root_instruction()));
+
+  ASSERT_OK(comp->RemoveInstruction(dead_neg));
+  EXPECT_TRUE(comp->IsMarkedAsDead(dead_neg));
+  EXPECT_EQ(dead_neg->parent(), nullptr);
+
+  // Removing it again should return an error, not crash with negative index.
+  EXPECT_FALSE(comp->RemoveInstruction(dead_neg).ok());
+}
+
+TEST_F(HLOComputationTest, RemoveInstructionClearsParameterSlot) {
+  auto comp = MakeComputationWithParameters(2, "fusion");
+  HloInstruction* p1 = comp->parameter_instruction(1);
+
+  ASSERT_NE(p1, nullptr);
+  ASSERT_OK(comp->ForceRemoveInstruction(p1));
+  EXPECT_EQ(comp->parameter_instruction(1), nullptr);
+}
+
+std::vector<std::unique_ptr<HloComputation>> MakeNestedComputationChain(
+    const Shape& leaf_shape, int depth) {
+  std::vector<std::unique_ptr<HloComputation>> chain;
+  chain.reserve(depth + 1);
+
+  auto leaf_builder = HloComputation::Builder("leaf");
+  HloInstruction* p = leaf_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, leaf_shape, "p"));
+  chain.push_back(leaf_builder.Build(p));
+
+  for (int i = 0; i < depth; ++i) {
+    auto builder = HloComputation::Builder(absl::StrCat("comp_", i));
+    HloInstruction* call = builder.AddInstruction(
+        HloInstruction::CreateCall(leaf_shape, {}, chain.back().get()));
+    chain.push_back(builder.Build(call));
+  }
+  return chain;
+}
+
+TEST_F(HLOComputationTest, DeeplyNestedComputationsEqualIterative) {
+  constexpr int kDepth = 2000;
+  const Shape f32_shape = ShapeUtil::MakeShape(F32, {});
+  const Shape s32_shape = ShapeUtil::MakeShape(S32, {});
+
+  auto chain1 = MakeNestedComputationChain(f32_shape, kDepth);
+  auto chain2 = MakeNestedComputationChain(f32_shape, kDepth);
+  auto chain3 = MakeNestedComputationChain(s32_shape, kDepth);
+
+  EXPECT_TRUE(chain1.back()->Equal(*chain2.back(), true));
+  EXPECT_FALSE(chain1.back()->Equal(*chain3.back(), true));
 }
 
 }  // namespace

@@ -210,6 +210,7 @@ tf_gen_op_strict_wrapper_private_py(
     visibility = [
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/python:__pkg__",
+        "//tensorflow/python/kernel_tests/random:__pkg__",
     ],
 )
 
@@ -794,6 +795,7 @@ py_library(
     deps = [
         ":array_ops_gen",
         ":array_ops_stack",
+        ":logging_ops_gen",
         ":math_ops_gen",
         ":shape_util",
         "//tensorflow/core/config:flags_py",
@@ -1265,6 +1267,7 @@ py_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:type_spec",
+        "//tensorflow/python/types:core",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_export",
@@ -1497,6 +1500,7 @@ py_library(
         ":array_ops",
         ":array_ops_gen",
         ":array_ops_stack",
+        ":control_flow_assert",
         ":ctc_ops_gen",
         ":custom_gradient",
         ":functional_ops",
@@ -3678,6 +3682,7 @@ cuda_py_strict_test(
     ],
     deps = [
         ":math_ops",
+        ":math_ops_gen",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:tensor",

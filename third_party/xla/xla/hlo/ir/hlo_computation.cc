@@ -695,7 +695,14 @@ absl::Status HloComputation::RemoveInstructionAndUnusedOperands(
       if (operand->opcode() == HloOpcode::kGetTupleElement) {
         source = operand->operand(0);
       }
-      if (source->HasSideEffect()) {
+      // Do not allow DCE to remove a sink `after-all` that is the sole consumer
+      // of a side-effecting instruction's token (or its token GTE, which would
+      // otherwise become dead and be deleted by the worklist below). However,
+      // if `operand` has other users (`user_count() > 1`)—for example, when CSE
+      // replaces a duplicate `after-all` with an equivalent representative that
+      // shares the same operands—`operand` remains live and anchored, so the
+      // redundant `after-all` is safe to remove.
+      if (source->HasSideEffect() && operand->user_count() == 1) {
         return absl::OkStatus();
       }
     }
@@ -814,6 +821,13 @@ absl::Status HloComputation::ForceRemoveInstruction(
 
 absl::Status HloComputation::RemoveInstructionImpl(HloInstruction* instruction,
                                                    bool ignore_safety_check) {
+  TF_RET_CHECK(instruction != nullptr);
+  TF_RET_CHECK(instruction->parent() == this)
+      << "instruction " << instruction->name()
+      << " does not belong to computation " << name();
+  TF_RET_CHECK(!instruction->IsMarkedAsDead())
+      << "instruction " << instruction->name() << " is already marked dead";
+
   VLOG(2) << "Removing instruction " << instruction << " "
           << instruction->name() << " from computation " << name();
   TF_RET_CHECK(ignore_safety_check || IsSafelyRemovable(instruction))
@@ -827,27 +841,43 @@ absl::Status HloComputation::RemoveInstructionImpl(HloInstruction* instruction,
       << "instruction " << instruction->name()
       << " has control successors and cannot be removed";
 
-  HloInstructionInfo* info = &instructions_[instruction->local_id_];
-  DCHECK_EQ(info->inst(), instruction);
-  to_be_deleted_.push_back(info->inst());  // Takes ownership
-  to_be_deleted_.back()->DetachFromOperandsAndUsers();
+  const int32_t local_id = instruction->local_id();
+  TF_RET_CHECK(local_id >= 0 && local_id < instructions_.size())
+      << "instruction " << instruction->name() << " has invalid local_id "
+      << local_id;
+
+  HloInstructionInfo* info = &instructions_[local_id];
+  TF_RET_CHECK(info->inst() == instruction)
+      << "instruction " << instruction->name()
+      << " does not match entry at local_id " << local_id;
+
+  if (instruction->opcode() == HloOpcode::kParameter) {
+    const int64_t param_no = instruction->parameter_number();
+    if (param_no >= 0 && param_no < param_instructions_.size() &&
+        param_instructions_[param_no] == instruction) {
+      param_instructions_[param_no] = nullptr;
+    }
+  }
+
+  instruction->DetachFromOperandsAndUsers();
   // Clear all operands to avoid Null operands.
-  to_be_deleted_.back()->RemoveAllOperands();
-  to_be_deleted_.back()->ClearCalledComputations();
-  to_be_deleted_.back()->MarkAsDead();
-  info->inst()->set_parent(nullptr);
+  instruction->RemoveAllOperands();
+  instruction->ClearCalledComputations();
+  instruction->MarkAsDead();
+  instruction->set_parent(nullptr);
 
   // If this instruction is a constant, clear the literal eagerly instead of
   // waiting for the instruction to be deleted in Cleanup(). This greatly
   // reduces the peak heap memory during constant folding.
-  if (auto constant = DynCast<HloConstantInstruction>(to_be_deleted_.back())) {
+  if (auto constant = DynCast<HloConstantInstruction>(instruction)) {
     *constant->mutable_literal() = Literal();
   }
-  // TODO(jeff): should we set info->opcode to something?
-  info->inst_ =
-      nullptr;  // Leave a hole: this is no longer part of "instructions()"
+  // Leave a hole: this is no longer part of "instructions()"
+  info->inst_ = nullptr;
   instruction->local_id_ = -1;
   instruction_count_--;
+
+  to_be_deleted_.push_back(instruction);  // Takes ownership
 
   return absl::OkStatus();
 }
@@ -1143,10 +1173,17 @@ std::vector<HloComputation*> HloComputation::MakeEmbeddedComputationsList()
       std::pair<HloComputation*, InstructionList::const_iterator>;
   std::stack<ComputationIter, absl::InlinedVector<ComputationIter, 8>> st;
 
+  if (!HasCalledComputations()) {
+    return {};
+  }
   // We cannot directly push (this, instructions_.cbegin()) to the stack, as the
   // stack should contain only mutable computations. Also, we don't want to
   // include the computation itself in the list of embedded computations.
   for (const HloInstructionInfo& instruction : instructions_with_info()) {
+    if (!HloInstruction::MightHaveCalledComputations(instruction.opcode())) {
+      DCHECK(instruction->called_computations().empty());
+      continue;
+    }
     using PtrVec = PtrVec<HloComputation*>;
     auto process_called_computations = [&](const PtrVec& called_computations) {
       if (called_computations.empty()) {
@@ -1162,8 +1199,13 @@ std::vector<HloComputation*> HloComputation::MakeEmbeddedComputationsList()
       for (; i != rend; ++i) {
         HloComputation* called_computation = *i;
         if (visited.insert(called_computation).second) {
+          // If `called_computation` calls no other computations, push it with
+          // its iterator already at `cend()` so the DFS loop below still emits
+          // it in post-order without scanning its instructions.
           st.emplace(called_computation,
-                     called_computation->instructions_.cbegin());
+                     called_computation->HasCalledComputations()
+                         ? called_computation->instructions_.cbegin()
+                         : called_computation->instructions_.cend());
         }
       }
     };
@@ -1884,60 +1926,83 @@ bool HloComputation::EqualInternal(
   if (this == &other) {
     return true;
   }
-  if (this->num_parameters() != other.num_parameters()) {
+  if (num_parameters() != other.num_parameters()) {
     // There are situations where the number of parameters matters, even if
     // some of them are unused, and the computations are otherwise equivalent.
     return false;
   }
-  absl::flat_hash_set<std::pair<const HloInstruction*, const HloInstruction*>>
-      visited;
-  std::vector<std::pair<const HloInstruction*, const HloInstruction*>> worklist;
+  if (!ignore_execution_thread &&
+      execution_thread() != other.execution_thread()) {
+    return false;
+  }
 
-  worklist.push_back({root_instruction(), other.root_instruction()});
+  // To avoid stack overflow with deeply nested subcomputations (b/123082518),
+  // we compare computations iteratively using a worklist rather than recursion.
+  std::vector<std::pair<const HloComputation*, const HloComputation*>>
+      computation_worklist;
+  absl::flat_hash_set<std::pair<const HloComputation*, const HloComputation*>>
+      visited_computations;
 
-  while (!worklist.empty()) {
-    auto pair = worklist.back();
-    worklist.pop_back();
+  computation_worklist.push_back({this, &other});
+  visited_computations.insert({this, &other});
 
-    if (visited.contains(pair)) {
-      continue;
-    }
-    visited.emplace(pair);
-    // TODO(b/123082518): Avoid recursively invoking Equal because it may
-    // cause a stack overflow with deeply nested subcomputations.
-    auto operands_eq = [](const HloInstruction*, const HloInstruction*) {
+  auto enqueue_subcomputations = [&](const HloComputation* a,
+                                     const HloComputation* b) {
+    if (a == b) {
       return true;
-    };
-
-    auto comp_eq = [&](const HloComputation* a, const HloComputation* b) {
-      return a->EqualInternal(*b, is_layout_sensitive, computations_comparator,
-                              ignore_channel_id_values,
-                              ignore_execution_thread);
-    };
-
-    bool identical_ignoring_operands =
-        ignore_channel_id_values
-            ? pair.first->IdenticalIgnoringChannelIdValues(
-                  *pair.second, operands_eq,
-                  (computations_comparator ? *computations_comparator
-                                           : comp_eq),
-                  is_layout_sensitive)
-            : pair.first->Identical(
-                  *pair.second, operands_eq,
-                  (computations_comparator ? *computations_comparator
-                                           : comp_eq),
-                  is_layout_sensitive);
-    if (!identical_ignoring_operands) {
+    }
+    if (a->num_parameters() != b->num_parameters()) {
       return false;
     }
-    for (size_t i = 0; i < pair.first->operands().size(); ++i) {
-      worklist.push_back({pair.first->operand(i), pair.second->operand(i)});
+    if (!ignore_execution_thread &&
+        a->execution_thread() != b->execution_thread()) {
+      return false;
+    }
+    if (visited_computations.insert({a, b}).second) {
+      computation_worklist.push_back({a, b});
+    }
+    return true;
+  };
+
+  auto comp_eq = computations_comparator.value_or(enqueue_subcomputations);
+  constexpr auto operands_eq = [](const HloInstruction*,
+                                  const HloInstruction*) { return true; };
+
+  while (!computation_worklist.empty()) {
+    const auto [comp1, comp2] = computation_worklist.back();
+    computation_worklist.pop_back();
+
+    absl::flat_hash_set<std::pair<const HloInstruction*, const HloInstruction*>>
+        visited_instructions;
+    std::vector<std::pair<const HloInstruction*, const HloInstruction*>>
+        instruction_worklist;
+
+    instruction_worklist.push_back(
+        {comp1->root_instruction(), comp2->root_instruction()});
+
+    while (!instruction_worklist.empty()) {
+      const auto [inst1, inst2] = instruction_worklist.back();
+      instruction_worklist.pop_back();
+
+      if (!visited_instructions.insert({inst1, inst2}).second) {
+        continue;
+      }
+
+      bool identical_ignoring_operands =
+          ignore_channel_id_values
+              ? inst1->IdenticalIgnoringChannelIdValues(
+                    *inst2, operands_eq, comp_eq, is_layout_sensitive)
+              : inst1->Identical(*inst2, operands_eq, comp_eq,
+                                 is_layout_sensitive);
+      if (!identical_ignoring_operands) {
+        return false;
+      }
+      for (int64_t i = 0; i < inst1->operand_count(); ++i) {
+        instruction_worklist.push_back({inst1->operand(i), inst2->operand(i)});
+      }
     }
   }
 
-  if (!ignore_execution_thread) {
-    return execution_thread() == other.execution_thread();
-  }
   return true;
 }
 

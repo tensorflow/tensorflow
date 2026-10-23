@@ -802,6 +802,40 @@ class DeviceAssignmentTest(test_util.DTensorBaseTest):
     with self.assertRaises(ValueError):
       tpu_util.create_tpu_mesh(['x'], [1], 'mesh_with_wrong_shape')
 
+  def testCreateMeshWithInvalidRingBounds(self):
+    topology_shape = list(tpu_util._tpu_topology.mesh_shape)
+    # A bound that exceeds the topology in a non-first dimension but is
+    # smaller in the first dimension would pass a lexicographical check
+    # but must fail element-wise.
+    invalid_ring_bounds = [
+        topology_shape[0] - 1,
+        topology_shape[1] + 1,
+        topology_shape[2],
+        topology_shape[3],
+    ]
+    with self.assertRaisesRegex(
+        ValueError, r'ring_bounds .* should be <= topology sizes'
+    ):
+      tpu_util.create_tpu_mesh(
+          ['x', 'y'],
+          [2, 1],
+          'mesh_invalid_ring_bounds',
+          ring_bounds=invalid_ring_bounds,
+      )
+
+  def testEnumerateCoreLocationsWithSmallRingBounds(self):
+    # A ring bound smaller than the host bound in a non-first dimension.
+    with self.assertRaisesRegex(
+        ValueError, r'ring_bounds .* should be >= host_bounds'
+    ):
+      tpu_util._enumerate_core_locations(
+          bounds=[4, 4, 1, 2],
+          ring_bounds=[4, 1, 1, 2],
+          axes=['core', 'x', 'y', 'z'],
+          can_split_host_across_rings=False,
+          ring_size=8,
+      )
+
   # Build rings for the batch dimension.
   def testCreateMeshWithPositiveRingDims(self):
     mesh = tpu_util.create_tpu_mesh(['x', 'y'], [2, 1],

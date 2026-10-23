@@ -61,6 +61,8 @@ namespace stream_executor {
 // Loads kernel from in process symbol pointer (e.g. pointer to C++ device
 // function).
 struct InProcessSymbol {
+  // For SYCL, this points to a getter function returning a
+  // `sycl::kernel_id`, interpreted by SyclExecutor::LoadKernel.
   void* symbol;
   // If not empty, this symbol can be looked up by this name in the kernel
   // symbol registry.

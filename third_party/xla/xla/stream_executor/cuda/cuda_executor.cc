@@ -2045,6 +2045,12 @@ CudaExecutor::CreateDeviceDescription(int device_ordinal) {
     }
   }
 
+  if (absl::StatusOr<int> locality_domain_count =
+          GetLocalityDomainCount(device);
+      locality_domain_count.ok() && *locality_domain_count > 1) {
+    desc.set_locality_domain_count(*locality_domain_count);
+  }
+
   return std::make_unique<DeviceDescription>(std::move(desc));
 }
 

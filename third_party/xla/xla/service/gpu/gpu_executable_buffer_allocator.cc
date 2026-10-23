@@ -96,7 +96,7 @@ GpuExecutableBufferAllocator::Create(
     absl::string_view module_name,
     absl::Span<const BufferAllocation* const> allocations,
     const Shape& result_shape, const DebugOptions* debug_options,
-    ThunkExecutor* thunk_executor) {
+    ThunkExecutor* thunk_executor, int num_devices) {
   const DebugOptions::CommandBufferUpdateMode update_mode =
       debug_options != nullptr
           ? debug_options->xla_gpu_command_buffer_update_mode()
@@ -109,8 +109,8 @@ GpuExecutableBufferAllocator::Create(
     case DebugOptions::SKIP_TEMP:
     case DebugOptions::SKIP_PROFILED:
       return std::make_unique<GpuExecutableVaRemapAllocator>(
-          module_name, allocations, result_shape, debug_options,
-          thunk_executor);
+          module_name, allocations, result_shape, debug_options, thunk_executor,
+          num_devices);
     default:
       LOG(FATAL) << "Unsupported command buffer update mode: " << update_mode;
   }

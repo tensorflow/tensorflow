@@ -62,6 +62,7 @@ load(
     "tf_additional_xla_deps_py",
     "tf_exec_properties",
     "tf_gpu_tests_tags",
+    "tf_override_test_tags_by_target_name",
     _tf_cuda_2gpu_tests_tags = "tf_cuda_2gpu_tests_tags",
     _tf_cuda_base_tests_tags = "tf_cuda_base_tests_tags",
     _tf_cuda_tests_tags = "tf_cuda_tests_tags",
@@ -84,7 +85,12 @@ load(
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm",
-    "rocm_copts",
+    "if_rocm_is_configured",
+    "is_rocm_configured",
+)
+load(
+    "@config_rocm_hipcc//rocm:build_defs.bzl",
+    "rocm_library",
 )
 load(
     "@xla//xla/tsl:tsl.bzl",
@@ -1611,6 +1617,11 @@ def tf_cc_test(
         linkopts = lrt_if_needed(),
         kernels = [],
         **kwargs):
+    if "tags" in kwargs:
+        kwargs["tags"] = tf_override_test_tags_by_target_name(
+            "%s%s" % (name, suffix),
+            kwargs["tags"],
+        )
     cc_test(
         name = "%s%s" % (name, suffix),
         srcs = srcs + tf_binary_additional_srcs(),
@@ -1797,7 +1808,7 @@ def tf_gpu_only_cc_test(
         linkopts = [],
         features = [],
         extra_copts = []):
-    tags = tags + tf_gpu_tests_tags()
+    tags = tf_override_test_tags_by_target_name("%s%s" % (name, "_gpu"), tags + tf_gpu_tests_tags())
 
     gpu_lib_name = "%s%s" % (name, "_gpu_lib")
     tf_gpu_kernel_library(
@@ -1997,10 +2008,11 @@ def tf_gpu_kernel_library(
         deps = [],
         hdrs = [],
         **kwargs):
-    copts = copts + tf_copts() + _cuda_copts(opts = cuda_copts) + rocm_copts(opts = cuda_copts)
+    copts = copts + tf_copts() + _cuda_copts(opts = cuda_copts) + if_rocm_is_configured(cuda_copts)
     kwargs["features"] = kwargs.get("features", []) + ["-use_header_modules"]
+    gpu_library = rocm_library if is_rocm_configured() else cuda_library
 
-    cuda_library(
+    gpu_library(
         srcs = srcs,
         hdrs = hdrs,
         copts = copts,
@@ -2378,10 +2390,11 @@ def tf_custom_op_library(
 
     if gpu_srcs:
         basename = name.split(".")[0]
-        cuda_library(
+        gpu_library = rocm_library if is_rocm_configured() else cuda_library
+        gpu_library(
             name = basename + "_gpu",
             srcs = gpu_srcs,
-            copts = copts + tf_copts() + _cuda_copts() + rocm_copts() +
+            copts = copts + tf_copts() + _cuda_copts() +
                     if_tensorrt(["-DGOOGLE_TENSORRT=1"]),
             deps = deps + gpu_deps,
             **kwargs
@@ -2660,6 +2673,8 @@ def py_test(
         env = {},
         extra_pywrap_deps = [clean_dep("//tensorflow/python:_pywrap_tensorflow")],
         **kwargs):
+    if "tags" in kwargs and "name" in kwargs:
+        kwargs["tags"] = tf_override_test_tags_by_target_name(kwargs["name"], kwargs["tags"])
     if not exec_properties:
         exec_properties = tf_exec_properties(kwargs)
 

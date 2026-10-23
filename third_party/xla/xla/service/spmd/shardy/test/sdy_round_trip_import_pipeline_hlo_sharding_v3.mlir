@@ -244,13 +244,13 @@ module @module_1 {
       channel_handle = #stablehlo.channel_handle<handle = 1, type = 2>,
       is_host_transfer = true,
       mhlo.frontend_attributes = {baz = 1 : i32},
-      mhlo.sharding = "{maximal_mesh[device_id=0]}"
+      mhlo.sharding = "{single_device[device_id=0]}"
     } : (tensor<16x8xf32>, !stablehlo.token) -> !stablehlo.token
     %1:2 = "stablehlo.recv"(%0) {
       channel_handle = #stablehlo.channel_handle<handle = 1, type = 3>,
       is_host_transfer = true,
       mhlo.frontend_attributes = {baz = 1 : i32},
-      mhlo.sharding = "{{maximal_mesh[device_id=0]}, {maximal_mesh[device_id=0]}}"
+      mhlo.sharding = "{{single_device[device_id=0]}, {single_device[device_id=0]}}"
     } : (!stablehlo.token) -> (tensor<16x8xf32>, !stablehlo.token)
     %2 = stablehlo.add %1#0, %arg1 : tensor<16x8xf32>
     return %2 : tensor<16x8xf32>
@@ -259,9 +259,9 @@ module @module_1 {
 
 // -----
 
-module @maximal_sharding_module {
-  // CHECK-LABEL: @maximal_sharding_empty_tuple
-  func.func @maximal_sharding_empty_tuple(%arg0: tensor<2xi64>) -> tensor<2xi64> {
+module @single_device_sharding_module {
+  // CHECK-LABEL: @single_device_sharding_empty_tuple
+  func.func @single_device_sharding_empty_tuple(%arg0: tensor<2xi64>) -> tensor<2xi64> {
     // CHECK-NEXT: stablehlo.custom_call @xla_ffi_python_cpu_callback(%arg0) {
     // CHECK-SAME:   api_version = 4 : i32, backend_config = {descriptor = 126001424235520 : ui64},
     // CHECK-SAME:   has_side_effect = true, operand_layouts = [dense<0> : tensor<1xindex>], result_layouts = [],
@@ -271,14 +271,14 @@ module @maximal_sharding_module {
     %2 = stablehlo.custom_call @xla_ffi_python_cpu_callback(%arg0) {
       api_version = 4 : i32, backend_config = {descriptor = 126001424235520 : ui64},
       has_side_effect = true,
-      mhlo.sharding = "{maximal_mesh[device_id=0]}",
+      mhlo.sharding = "{single_device[device_id=0]}",
       operand_layouts = [dense<0> : tensor<1xindex>], result_layouts = [], xla_shape = "()"
     } : (tensor<2xi64>) -> tuple<>
     return %arg0 : tensor<2xi64>
   }
 
-  // CHECK-LABEL: @maximal_tuple_sharding_empty_tuple
-  func.func @maximal_tuple_sharding_empty_tuple(%arg0: tensor<2xi64>) -> tensor<2xi64> {
+  // CHECK-LABEL: @single_device_tuple_sharding_empty_tuple
+  func.func @single_device_tuple_sharding_empty_tuple(%arg0: tensor<2xi64>) -> tensor<2xi64> {
     // CHECK-NEXT: stablehlo.custom_call @xla_ffi_python_cpu_callback(%arg0) {
     // CHECK-SAME:   api_version = 4 : i32, backend_config = {descriptor = 126001424235520 : ui64},
     // CHECK-SAME:   has_side_effect = true, operand_layouts = [dense<0> : tensor<1xindex>], result_layouts = [],
@@ -288,15 +288,15 @@ module @maximal_sharding_module {
     %2 = stablehlo.custom_call @xla_ffi_python_cpu_callback(%arg0) {
       api_version = 4 : i32, backend_config = {descriptor = 126001424235520 : ui64},
       has_side_effect = true,
-      mhlo.sharding = "{{maximal_mesh[device_id=0]}}",
+      mhlo.sharding = "{{single_device[device_id=0]}}",
       operand_layouts = [dense<0> : tensor<1xindex>], result_layouts = [], xla_shape = "()"
     } : (tensor<2xi64>) -> tuple<>
     return %arg0 : tensor<2xi64>
   }
 
-  // CHECK-LABEL: func @result_with_maximal_sharding
+  // CHECK-LABEL: func @result_with_single_device_sharding
   // CHECK-SAME:    (%arg0: tensor<32xi32>) -> tensor<32xi32> {
-  func.func @result_with_maximal_sharding(%arg0: tensor<32xi32>) -> (tensor<32xi32> {mhlo.sharding = "{maximal_mesh[device_id=0]}"}) {
+  func.func @result_with_single_device_sharding(%arg0: tensor<32xi32>) -> (tensor<32xi32> {mhlo.sharding = "{single_device[device_id=0]}"}) {
     // CHECK-NEXT: return %arg0 : tensor<32xi32>
     return %arg0 : tensor<32xi32>
   }

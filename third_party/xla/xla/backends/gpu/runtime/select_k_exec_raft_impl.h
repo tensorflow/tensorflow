@@ -18,17 +18,16 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <exception>
 #include <memory>
 #include <optional>
-#include <utility>
+#include <type_traits>
 
 #include "absl/cleanup/cleanup.h"
-#include "absl/container/flat_hash_map.h"
-#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
-#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "third_party/gpus/cuda/include/cuda_bf16.h"
 #include "raft/core/device_mdspan.hpp"
 #include "raft/core/mdspan_types.hpp"
@@ -136,6 +135,19 @@ struct RaftStreamResource : public se::Stream::Resource {
 template <typename T>
 SelectAlgo choose_select_k_algorithm(uint32_t rows, uint32_t cols, uint32_t k);
 
+template <typename T>
+constexpr absl::string_view SelectKTypeName() {
+  if constexpr (std::is_same_v<T, float>) {
+    return "float";
+  } else if constexpr (std::is_same_v<T, nv_bfloat16>) {
+    return "bfloat16";
+  } else if constexpr (std::is_same_v<T, std::uint64_t>) {
+    return "uint64_t";
+  } else {
+    return "unknown";
+  }
+}
+
 }  // namespace raft_internal
 
 // Host-side entry point for raft select_k
@@ -150,8 +162,8 @@ absl::Status select_k_exec(int device_ordinal,
                            se::DeviceAddressBase scratch_buffer) {
   // Pick the most suitable algorithm
   SelectAlgo algo = raft_internal::choose_select_k_algorithm<T>(batch, n, k);
-  VLOG(3) << "select_k_exec_raft: "
-          << "device_ordinal: " << device_ordinal << ", "
+  VLOG(3) << "select_k_exec_raft<" << raft_internal::SelectKTypeName<T>()
+          << ">: device_ordinal: " << device_ordinal << ", "
           << "allocator: " << allocator << ", "
           << "stream: " << stream << ", "
           << "data_in: " << data_in.opaque() << " (" << data_in.size() << "B)"

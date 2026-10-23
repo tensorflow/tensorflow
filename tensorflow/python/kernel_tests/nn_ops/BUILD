@@ -130,6 +130,7 @@ py_library(
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:nn_grad",
         "//tensorflow/python/ops:nn_ops",
+        "//tensorflow/python/ops:nn_ops_gen",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
     ],
@@ -160,6 +161,7 @@ cuda_py_strict_test(
     name = "bias_op_test",
     size = "medium",
     srcs = ["bias_op_test.py"],
+    shard_count = 4,
     deps = [
         ":bias_op_base",
         "//tensorflow/python/platform:client_testlib",

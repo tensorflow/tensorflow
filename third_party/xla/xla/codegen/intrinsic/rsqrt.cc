@@ -46,7 +46,8 @@ namespace xla::codegen::intrinsics {
 namespace {
 llvm::Value* PMAdd(llvm::IRBuilder<>& builder, llvm::Value* x, llvm::Value* y,
                    llvm::Value* z) {
-  return builder.CreateFAdd(builder.CreateFMul(x, y), z);
+  return builder.CreateIntrinsic(llvm::Intrinsic::fmuladd, {x->getType()},
+                                 {x, y, z});
 }
 }  // namespace
 
@@ -194,14 +195,8 @@ absl::StatusOr<llvm::Function*> Rsqrt::CreateDefinition(
   llvm::Value* y_approx = rsqrt_intrinsic.CreateCall(builder, x);
 
   // Eigen only does 1 step for F32, but that only gives within 2 ULPs and we
-  // are targeting 1. AMD's SSE/AVX rsqrt intrinsics are more accurate; their
-  // avx512f intrinsics have the same accuracy as Intel's avx512f intrinsics.
-  const bool using_avx512 =
-      options.Contains("+avx512f") &&
-      (type.element_type() == F64 ||
-       (type.element_type() == F32 && type.vector_width().value_or(1) > 8));
-  const bool is_amd = options.device_type == DeviceType::kAmdCpu;
-  const size_t num_steps = (is_amd && !using_avx512) ? 1 : 2;
+  // are targeting 1.
+  const size_t num_steps = 2;
   llvm::Value* refined_result =
       NewtonRaphsonRsqrtIteration(builder, x, y_approx, input_type, num_steps);
 

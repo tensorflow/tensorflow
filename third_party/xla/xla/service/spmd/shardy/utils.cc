@@ -586,8 +586,8 @@ mlir::sdy::TensorShardingPerValueAttr convertToSdySharding(
   // the whole value instead, and let the caller skip setting it.
 
   // An op can carry a sharding without having any values, e.g. a custom call
-  // whose only result is an empty tuple. Such a sharding is maximal, so its
-  // rank is irrelevant, but we still need to keep it.
+  // whose only result is an empty tuple. Such a sharding is single-device, so
+  // its rank is irrelevant, but we still need to keep it.
   if (types.empty()) {
     TensorShardingAttr sdySharding =
         convertToSdyShardingAttr(leafShardings.front(), /*rank=*/0, context);

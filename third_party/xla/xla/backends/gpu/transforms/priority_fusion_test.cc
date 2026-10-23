@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
 #include "xla/codegen/xtile/xtile_config.pb.h"
@@ -46,6 +47,8 @@ limitations under the License.
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -1723,7 +1726,7 @@ TEST_F(PriorityFusionRocmMemoryBandwidthTest, MemoryBandwidthTipsReduceFusion) {
   EXPECT_EQ(RunAndCountFusions(kHlo, kFixedBandwidth), 2);
 }
 
-TEST_F(HerolessPriorityFusionTest, DoNotFuseScanEpilogue) {
+TEST_F(HerolessPriorityFusionTest, FuseScanEpilogue) {
   constexpr absl::string_view kHlo = R"(
 HloModule module
 
@@ -1758,11 +1761,248 @@ ENTRY entry {
   PriorityFusion priority_fusion(nullptr, device_info_, &alias_info_, options,
                                  &mlir_context_);
   RunAndFilecheckHloRewrite(kHlo, std::move(priority_fusion), R"(
+CHECK: %fused_computation{{.*}} (
+CHECK: scan(
+CHECK: ROOT %[[ADD:.*]] = f32[100]{0} add(
 CHECK: ENTRY
-CHECK: %[[SCAN_FUSION:.*]] = f32[100]{0} fusion(%{{.*}}, %{{.*}}), kind=kCustom
-CHECK: ROOT %[[EPILOGUE_FUSION:.*]] = f32[100]{0} fusion(%[[SCAN_FUSION]]), kind=kCustom
+CHECK: ROOT %fusion = f32[100]{0} fusion(%{{.*}}, %{{.*}}), kind=kCustom, calls=%fused_computation
       )");
 }
 
+TEST_F(PriorityFusionTest, DoesNotRevisitCostAnalysisForUnmodifiedOperands) {
+  // Construct an HLO graph where `unfused_producer` is a kInput reduction
+  // fusion with a distinct internal broadcast shape `f32[17,33]`. It feeds a
+  // chain of downstream consumers (`consumer_red` -> `add1` -> `mul1` -> `add2`
+  // -> `exp1`) that get fused together over multiple PriorityFusion steps.
+  // Because both `unfused_producer` and the consumer chain contain reductions,
+  // `unfused_producer` cannot fuse into the consumer fusion and remains an
+  // unmodified operand across every consumer fusion step.
+  constexpr absl::string_view kHlo = R"(
+    HloModule test_module
+
+    add_scalar {
+      a = f32[] parameter(0)
+      b = f32[] parameter(1)
+      ROOT sum = f32[] add(a, b)
+    }
+
+    producer_R {
+      p = f32[17] parameter(0)
+      bcast = f32[17,33] broadcast(p), dimensions={0}
+      z = f32[] constant(0)
+      ROOT red = f32[17] reduce(bcast, z), dimensions={1}, to_apply=add_scalar
+    }
+
+    ENTRY main {
+      p0 = f32[17] parameter(0)
+      p1 = f32[17,32] parameter(1)
+      p2 = f32[17] parameter(2)
+      z = f32[] constant(0)
+      unfused_producer = f32[17] fusion(p0), kind=kInput, calls=producer_R
+      consumer_red = f32[17] reduce(p1, z), dimensions={1}, to_apply=add_scalar
+      add1 = f32[17] add(consumer_red, unfused_producer)
+      mul1 = f32[17] multiply(add1, p2)
+      add2 = f32[17] add(mul1, unfused_producer)
+      ROOT exp1 = f32[17] exponential(add2)
+    })";
+
+  // Count how many times `GpuHloCostAnalysis` queries the byte size of the
+  // internal shape `f32[17,33]` inside `producer_R`. This shape only exists
+  // inside `unfused_producer`'s fused computation, so any call to
+  // `cost_analysis_->RevisitInstruction(unfused_producer)` re-traverses
+  // `producer_R` and increments `internal_shape_size_calls`.
+  int internal_shape_size_calls = 0;
+  GpuHloCostAnalysis::Options options;
+  options.count_multiple_input_accesses = true;
+  options.shape_size = [&](const Shape& shape) {
+    if (shape.IsArray() && shape.dimensions().size() == 2 &&
+        shape.dimensions(0) == 17 && shape.dimensions(1) == 33) {
+      ++internal_shape_size_calls;
+    }
+    return ShapeUtil::ByteSizeOf(shape, /*pointer_size=*/8);
+  };
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+
+  // Measure how many times a single initial GpuHloCostAnalysis pass queries the
+  // internal shape `f32[17,33]` of `unfused_producer`.
+  GpuHloCostAnalysis baseline_analysis(options, device_info_);
+  ASSERT_THAT(module->entry_computation()->Accept(&baseline_analysis),
+              absl_testing::IsOk());
+  const int initial_calls = internal_shape_size_calls;
+  ASSERT_GT(initial_calls, 0);
+
+  internal_shape_size_calls = 0;
+  PriorityFusion priority_fusion(/*thread_pool=*/nullptr, device_info_,
+                                 &alias_info_, options, &mlir_context_);
+  EXPECT_THAT(priority_fusion.Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
+
+  // `unfused_producer` is an operand of the consumer fusion that gets updated
+  // across multiple fusion steps (`consumer_red`, `add1`, `mul1`, `add2`,
+  // `exp1`), so its priority is recomputed at each step
+  // (`to_update_priority_`). However, `unfused_producer` itself is never
+  // modified (`updated_fusions_`), so its HLO cost analysis should only be
+  // visited once during initial queue creation and never revisited during
+  // `UpdatePriorities()`.
+  EXPECT_EQ(internal_shape_size_calls, initial_calls);
+}
+
+constexpr absl::string_view kSoftmaxProducerIntoScanFusionHlo = R"(
+HloModule module
+
+max_computation {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT max = f32[] maximum(p0, p1)
+}
+
+add_computation {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+
+scan_computation {
+  p0 = f32[8]{0} parameter(0)
+  p1 = f32[8]{0} parameter(1)
+  add = f32[8]{0} add(p0, p1)
+  ROOT tuple = (f32[8]{0}, f32[8]{0}) tuple(add, add)
+}
+
+scan_fusion {
+  p0 = f32[8,$0]{1,0} parameter(0)
+  p1 = f32[8]{0} parameter(1)
+  scan = (f32[8,$0]{1,0}, f32[8]{0}) scan(p0, p1), to_apply=scan_computation, dimensions={1}, num_carries=1, is_associative=true
+  ROOT gte = f32[8,$0]{1,0} get-tuple-element(scan), index=0
+}
+
+ENTRY entry {
+  logits = f32[8,$0]{1,0} parameter(0)
+  c_neg_inf = f32[] constant(-inf)
+  reduce_max = f32[8]{0} reduce(logits, c_neg_inf), dimensions={1}, to_apply=max_computation
+  bcast_max = f32[8,$0]{1,0} broadcast(reduce_max), dimensions={0}
+  sub = f32[8,$0]{1,0} subtract(logits, bcast_max)
+  exp = f32[8,$0]{1,0} exponential(sub)
+  c_zero = f32[] constant(0)
+  reduce_sum = f32[8]{0} reduce(exp, c_zero), dimensions={1}, to_apply=add_computation
+  bcast_sum = f32[8,$0]{1,0} broadcast(reduce_sum), dimensions={0}
+  probs = f32[8,$0]{1,0} divide(exp, bcast_sum)
+
+  init = f32[8]{0} parameter(1)
+  ROOT scan_fusion = f32[8,$0]{1,0} fusion(probs, init), kind=kCustom, calls=scan_fusion,
+    backend_config={"fusion_backend_config":{"kind":"__triton","block_level_fusion_config":
+      {"output_tiles":[{"sizes":["1"]}],"num_warps":"1"}}}
+}
+)";
+
+TEST_F(HerolessPriorityFusionTest, FuseSoftmaxProducerIntoScanFusionDim128) {
+  GpuHloCostAnalysis::Options options;
+  options.count_multiple_input_accesses = true;
+  PriorityFusion priority_fusion(nullptr, device_info_, &alias_info_, options,
+                                 &mlir_context_);
+  RunAndFilecheckHloRewrite(
+      absl::Substitute(kSoftmaxProducerIntoScanFusionHlo, 128),
+      std::move(priority_fusion), R"(
+CHECK: %scan_fusion (
+CHECK: reduce(
+CHECK: scan(
+CHECK: ENTRY
+CHECK: ROOT %scan_fusion = f32[8,{{.*}}]{1,0} fusion(
+      )");
+}
+
+TEST_F(HerolessPriorityFusionTest,
+       DoNotFuseSoftmaxProducerIntoScanFusionDim4096) {
+  GpuHloCostAnalysis::Options options;
+  options.count_multiple_input_accesses = true;
+  PriorityFusion priority_fusion(nullptr, device_info_, &alias_info_, options,
+                                 &mlir_context_);
+  RunAndFilecheckHloRewrite(
+      absl::Substitute(kSoftmaxProducerIntoScanFusionHlo, 4096),
+      std::move(priority_fusion), R"(
+CHECK: %scan_fusion (
+CHECK-NOT: reduce(
+CHECK: scan(
+CHECK: ENTRY
+CHECK: ROOT %scan_fusion = f32[8,{{.*}}]{1,0} fusion(
+      )");
+}
+
+TEST_F(HerolessPriorityFusionTest, FuseInitCarryAndIotaLoopIntoScanFusion) {
+  constexpr absl::string_view kHlo = R"(
+HloModule module
+
+add_computation {
+  p0 = f32[8]{0} parameter(0)
+  p1 = f32[8]{0} parameter(1)
+  add = f32[8]{0} add(p0, p1)
+  ROOT tuple = (f32[8]{0}, f32[8]{0}) tuple(add, add)
+}
+
+scan_fusion {
+  p0 = f32[8,128]{1,0} parameter(0)
+  p1 = f32[8]{0} parameter(1)
+  scan = (f32[8,128]{1,0}, f32[8]{0}) scan(p0, p1), to_apply=add_computation, dimensions={1}, num_carries=1, is_associative=true
+  ROOT gte = f32[8,128]{1,0} get-tuple-element(scan), index=0
+}
+
+ENTRY entry {
+  data = f32[8,128]{1,0} parameter(0)
+  c_zero = f32[] constant(0)
+  init_bcast = f32[8]{0} broadcast(c_zero), dimensions={}
+  scan = f32[8,128]{1,0} fusion(data, init_bcast), kind=kCustom, calls=scan_fusion,
+    backend_config={"fusion_backend_config":{"kind":"__triton","block_level_fusion_config":
+      {"output_tiles":[{"sizes":["1"]}],"num_warps":"1"}}}
+  iota = s32[8,128]{1,0} iota(), iota_dimension=1
+  c_zero_s32 = s32[] constant(0)
+  bcast_zero = s32[8,128]{1,0} broadcast(c_zero_s32), dimensions={}
+  mask = pred[8,128]{1,0} compare(iota, bcast_zero), direction=EQ
+  c_one = f32[] constant(1)
+  bcast_one = f32[8,128]{1,0} broadcast(c_one), dimensions={}
+  ROOT select = f32[8,128]{1,0} select(mask, scan, bcast_one)
+}
+  )";
+
+  GpuHloCostAnalysis::Options options;
+  options.count_multiple_input_accesses = true;
+  PriorityFusion priority_fusion(nullptr, device_info_, &alias_info_, options,
+                                 &mlir_context_);
+  RunAndFilecheckHloRewrite(kHlo, std::move(priority_fusion), R"(
+CHECK: %fused_computation (
+CHECK: iota()
+CHECK: broadcast(
+CHECK: scan(
+CHECK: ROOT %select
+CHECK: ENTRY
+CHECK: ROOT %fusion = f32[8,128]{1,0} fusion(%data), kind=kCustom, calls=%fused_computation
+      )");
+}
+
+TEST_F(PriorityFusionTest, DoesNotFuseUnalignedConcatenateIntoTriton) {
+  const std::string kHloText = R"(
+HloModule test_module
+
+triton_computation {
+  p0 = f32[16,64]{1,0} parameter(0)
+  ROOT negate = f32[16,64]{1,0} negate(p0)
+}
+
+ENTRY main {
+  p0 = f32[16,32]{1,0} parameter(0)
+  p1 = f32[16,32]{1,0} parameter(1)
+  concat = f32[16,64]{1,0} concatenate(p0, p1), dimensions={1}
+  ROOT triton_fusion = f32[16,64]{1,0} fusion(concat), kind=kCustom,
+    calls=triton_computation,
+    backend_config={"fusion_backend_config": {"kind":"__triton","block_level_fusion_config":{"output_tiles":[{"sizes":["1","64"]}],"num_warps":"1"}}}
+})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+
+  // The unaligned concatenate should NOT be fused into the generic Triton
+  // fusion.
+  EXPECT_THAT(priority_fusion_.Run(module.get()),
+              absl_testing::IsOkAndHolds(false));
+}
 }  // namespace gpu
 }  // namespace xla

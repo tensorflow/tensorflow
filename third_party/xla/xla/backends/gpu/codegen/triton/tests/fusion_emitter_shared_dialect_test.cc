@@ -401,7 +401,7 @@ TEST_F(XTileDialectTest, HloAllReduceIsLoweredToStableHloAllReduce) {
 
       %wrapped_all-reduce {
         %param = f32[65536]{0} parameter(0)
-        ROOT %all-reduce = f32[65536]{0} all-reduce(%param), replica_groups={{0,1}}, to_apply=%apply_op
+        ROOT %all-reduce = f32[65536]{0} all-reduce(%param), replica_groups={{0,1}}, to_apply=%apply_op, backend_config={"collective_backend_config":{"kernel_strategy":"KERNEL_STRATEGY_TRITON_ONE_SHOT"}}
       }
 
       ENTRY %entry {
@@ -424,6 +424,7 @@ TEST_F(XTileDialectTest, HloAllReduceIsLoweredToStableHloAllReduce) {
       R"(
 CHECK: stablehlo.all_reduce
 CHECK: stablehlo.add
+CHECK: xtile.collective_strategy = #xtile.collective_strategy<one_shot>
 )"));
 }
 
@@ -460,8 +461,122 @@ TEST_F(XTileDialectTest, HloReduceScatterIsLoweredToStableHloReduceScatter) {
       block_level_parameters,
       R"(
 CHECK: %[[INPUT_TILE:.*]] = xtile.extract %arg0[%{{.*}}, %{{.*}}] [2, 1024] [1, 1] : memref<4x16384xf32> -> tensor<2x1024xf32>
-CHECK: stablehlo.reduce_scatter
+CHECK: xtile.reduce_scatter
 CHECK: stablehlo.add
+)"));
+}
+
+TEST_F(XTileDialectTest,
+       VariadicHloReduceScatterIsLoweredToXTileReduceScatter) {
+  constexpr absl::string_view kHloText =
+      R"(
+      HloModule wrapped_module_variadic_reduce-scatter
+
+      %apply_op {
+        %x = f32[] parameter(0)
+        %y = f32[] parameter(1)
+        ROOT %apply_op = f32[] add(%x, %y)
+      }
+
+      %wrapped_reduce-scatter {
+        %p0 = f32[4,16384]{1,0} parameter(0)
+        %p1 = f32[4,8]{1,0} parameter(1)
+        %rs = (f32[2,16384]{1,0}, f32[2,8]{1,0}) reduce-scatter(%p0, %p1),
+          replica_groups={{0,1}}, dimensions={0}, to_apply=%apply_op
+        %gte0 = f32[2,16384]{1,0} get-tuple-element(%rs), index=0
+        %gte1 = f32[2,8]{1,0} get-tuple-element(%rs), index=1
+        ROOT %tuple = (f32[2,16384]{1,0}, f32[2,8]{1,0}) tuple(%gte0, %gte1)
+      }
+
+      ENTRY %entry {
+        %p0 = f32[4,16384]{1,0} parameter(0)
+        %p1 = f32[4,8]{1,0} parameter(1)
+        ROOT %fusion = (f32[2,16384]{1,0}, f32[2,8]{1,0}) fusion(%p0, %p1),
+          kind=kLoop, calls=%wrapped_reduce-scatter,
+          backend_config={"fusion_backend_config":{"kind":"__triton_collective","block_level_fusion_config":{"num_warps":"16","output_tiles":[{"sizes":["1","1024"]},{"sizes":["1","8"]}],"num_ctas":1,"num_stages":1,"is_tma_allowed":false,"is_warp_specialization_allowed":false}}}
+      }
+    )";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnUnverifiedModule(kHloText));
+
+  BlockLevelParameters block_level_parameters;
+  block_level_parameters.output_tile_sizes = {{1, 1024}, {1, 8}};
+
+  EXPECT_OK(CreateXTileIrAndFileCheck(
+      *hlo_module->GetComputationWithName("wrapped_reduce-scatter"),
+      block_level_parameters,
+      R"(
+CHECK-DAG: xtile.extract %arg0[%{{.*}}, %{{.*}}] [2, 1024] [1, 1] : memref<4x16384xf32> -> tensor<2x1024xf32>
+CHECK-DAG: xtile.extract %arg1[%{{.*}}, %{{.*}}] [2, 8] [1, 1] : memref<4x8xf32> -> tensor<2x8xf32>
+CHECK: xtile.reduce_scatter(%{{.*}}, %{{.*}}) scatter_dimension = 0 {{.*}} : (tensor<2x1024xf32>, tensor<2x8xf32>) -> (tensor<1x1024xf32>, tensor<1x8xf32>)
+CHECK: stablehlo.add
+)"));
+}
+
+TEST_F(XTileDialectTest, HloAllToAllIsLoweredToStableHloAllToAll) {
+  constexpr absl::string_view kHloText =
+      R"(
+      HloModule wrapped_module_all-to-all
+
+      %wrapped_all-to-all {
+        %param = f32[4,16384]{1,0} parameter(0)
+        ROOT %all-to-all = f32[4,16384]{1,0} all-to-all(%param), replica_groups={{0,1}}, dimensions={0}, backend_config={"collective_backend_config":{"kernel_strategy":"KERNEL_STRATEGY_TRITON_ONE_SHOT"}}
+      }
+
+      ENTRY %entry {
+        %param = f32[4,16384]{1,0} parameter(0)
+        ROOT %fusion = f32[4,16384]{1,0} fusion(%param), kind=kLoop, calls=%wrapped_all-to-all, backend_config={"fusion_backend_config":{"kind":"__triton_collective","block_level_fusion_config":{"num_warps":"16","output_tiles":[{"sizes":["2","1024"]}],"num_ctas":1,"num_stages":1,"is_tma_allowed":false,"is_warp_specialization_allowed":false}}}
+      }
+    )";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnUnverifiedModule(kHloText));
+
+  BlockLevelParameters block_level_parameters;
+  block_level_parameters.output_tile_sizes = {{2, 1024}};
+
+  EXPECT_OK(CreateXTileIrAndFileCheck(
+      *hlo_module->GetComputationWithName("wrapped_all-to-all"),
+      block_level_parameters,
+      R"(
+CHECK: %[[INPUT_TILE:.*]] = xtile.extract %arg0[%{{.*}}, %{{.*}}] [2, 1024] [1, 1] : memref<4x16384xf32> -> tensor<2x1024xf32>
+CHECK: stablehlo.all_to_all{{.*}}xtile.collective_strategy = #xtile.collective_strategy<one_shot>
+)"));
+}
+
+TEST_F(XTileDialectTest,
+       HloAllToAllWithUnalignedSplitDimTileUsesUnrealizedConversionCast) {
+  constexpr absl::string_view kHloText =
+      R"(
+      HloModule wrapped_module_all-to-all
+
+      %wrapped_all-to-all {
+        %param = f32[4,16384]{1,0} parameter(0)
+        ROOT %all-to-all = f32[4,16384]{1,0} all-to-all(%param), replica_groups={{0,1}}, dimensions={0}, backend_config={"collective_backend_config":{"kernel_strategy":"KERNEL_STRATEGY_TRITON_TWO_SHOT"}}
+      }
+
+      ENTRY %entry {
+        %param = f32[4,16384]{1,0} parameter(0)
+        ROOT %fusion = f32[4,16384]{1,0} fusion(%param), kind=kLoop, calls=%wrapped_all-to-all, backend_config={"fusion_backend_config":{"kind":"__triton_collective","block_level_fusion_config":{"num_warps":"16","output_tiles":[{"sizes":["1","1024"]}],"num_ctas":1,"num_stages":1,"is_tma_allowed":false,"is_warp_specialization_allowed":false}}}
+      }
+    )";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnUnverifiedModule(kHloText));
+
+  BlockLevelParameters block_level_parameters;
+  block_level_parameters.output_tile_sizes = {{1, 1024}};
+
+  EXPECT_OK(CreateXTileIrAndFileCheck(
+      *hlo_module->GetComputationWithName("wrapped_all-to-all"),
+      block_level_parameters,
+      R"(
+CHECK: %[[INPUT_TILE:.*]] = xtile.extract %arg0[%{{.*}}, %{{.*}}] [1, 1024] [1, 1] : memref<4x16384xf32> -> tensor<1x1024xf32>
+CHECK: %[[CAST_IN:.*]] = builtin.unrealized_conversion_cast %[[INPUT_TILE]] : tensor<1x1024xf32> to tensor<2x1024xf32>
+CHECK: %[[A2A:.*]] = "stablehlo.all_to_all"(%[[CAST_IN]]) <{concat_dimension = 0 : i64, replica_groups = dense<{{\[\[}}0, 1{{\]\]}}> : tensor<1x2xi64>, split_count = 2 : i64, split_dimension = 0 : i64}> {xtile.collective_strategy = #xtile.collective_strategy<two_shot>} : (tensor<2x1024xf32>) -> tensor<2x1024xf32>
+CHECK: %[[CAST_OUT:.*]] = builtin.unrealized_conversion_cast %[[A2A]] : tensor<2x1024xf32> to tensor<1x1024xf32>
+CHECK: xtile.insert %[[CAST_OUT]] into %arg1[%{{.*}}, %{{.*}}] [1, 1024] [1, 1] : tensor<1x1024xf32> -> memref<4x16384xf32>
 )"));
 }
 
@@ -722,6 +837,92 @@ ENTRY e {
     CHECK: arith.select
     CHECK: %[[SCAN_OUT:.*]], %[[NEW_CARRY:.*]] = xtile.scan(%[[MASKED]]) inits(%[[CARRY]])
     CHECK: xtile.insert %[[SCAN_OUT]] into %arg2
+    CHECK: scf.yield %[[NEW_CARRY]]
+  )"));
+}
+
+TEST_F(XTileDialectTest, HloScanWithEpilogueIsLoweredToXTileScanWithLoop) {
+  constexpr absl::string_view kHloText = R"(
+HloModule t
+add_computation {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  add = f32[] add(p0, p1)
+  ROOT tuple = (f32[], f32[]) tuple(add, add)
+}
+scan_fusion {
+  p0 = f32[1024] parameter(0)
+  p1 = f32[] parameter(1)
+  scan = (f32[1024], f32[]) scan(p0, p1),
+    dimensions={0}, num_carries=1, is_associative=true, to_apply=add_computation,
+    backend_config={sizes:[128]}
+  gte = f32[1024] get-tuple-element(scan), index=0
+  c = f32[] constant(1.0)
+  bcast = f32[1024] broadcast(c), dimensions={}
+  ROOT epilogue = f32[1024] add(gte, bcast)
+}
+ENTRY e {
+  p0 = f32[1024] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT custom-call = f32[1024] fusion(p0, p1), kind=kCustom,
+    calls=scan_fusion,
+    backend_config={"fusion_backend_config": {kind: "__triton"}}
+})";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHloText));
+  BlockLevelParameters block_level_parameters;
+  block_level_parameters.output_tile_sizes = {{}};
+  EXPECT_OK(CreateXTileIrAndFileCheck(
+      *module->GetComputationWithName("scan_fusion"), block_level_parameters,
+      R"(
+    CHECK: scf.for %[[IV:.*]] = %{{.*}} to %{{.*}} step %{{.*}} iter_args(%[[CARRY:.*]] = %{{.*}})
+    CHECK: %[[INPUT_TILE:.*]] = xtile.extract %arg0
+    CHECK: %[[SCAN_OUT:.*]], %[[NEW_CARRY:.*]] = xtile.scan(%[[INPUT_TILE]]) inits(%[[CARRY]])
+    CHECK: %[[EPILOGUE:.*]] = stablehlo.add %[[SCAN_OUT]],
+    CHECK: xtile.insert %[[EPILOGUE]] into %arg2
+    CHECK: scf.yield %[[NEW_CARRY]]
+  )"));
+}
+
+TEST_F(XTileDialectTest,
+       HloScanWithIndependentEpilogueInstructionTiledAlongScanDim) {
+  constexpr absl::string_view kHloText = R"(
+HloModule t
+add_computation {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  add = f32[] add(p0, p1)
+  ROOT tuple = (f32[], f32[]) tuple(add, add)
+}
+scan_fusion {
+  p0 = f32[150] parameter(0)
+  c0 = f32[] constant(0.0)
+  scan = (f32[150], f32[]) scan(p0, c0),
+    dimensions={0}, num_carries=1, is_associative=true, to_apply=add_computation,
+    backend_config={sizes:[32]}
+  gte = f32[150] get-tuple-element(scan), index=0
+  iota = f32[150] iota(), iota_dimension=0
+  ROOT epilogue = f32[150] add(iota, gte)
+}
+ENTRY e {
+  p0 = f32[150] parameter(0)
+  ROOT custom-call = f32[150] fusion(p0), kind=kCustom,
+    calls=scan_fusion,
+    backend_config={"fusion_backend_config": {kind: "__triton"}}
+})";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHloText));
+  BlockLevelParameters block_level_parameters;
+  block_level_parameters.output_tile_sizes = {{}};
+  EXPECT_OK(CreateXTileIrAndFileCheck(
+      *module->GetComputationWithName("scan_fusion"), block_level_parameters,
+      R"(
+    CHECK: scf.for %[[IV:.*]] = %{{.*}} to %{{.*}} step %{{.*}} iter_args(%[[CARRY:.*]] = %{{.*}})
+    CHECK: xtile.extract %arg0
+    CHECK: %[[SCAN_OUT:.*]], %[[NEW_CARRY:.*]] = xtile.scan({{.*}}) inits(%[[CARRY]])
+    CHECK: stablehlo.iota
+    CHECK: %[[EPILOGUE:.*]] = stablehlo.add %{{.*}}, %[[SCAN_OUT]]
+    CHECK: xtile.insert %[[EPILOGUE]] into %arg1
     CHECK: scf.yield %[[NEW_CARRY]]
   )"));
 }

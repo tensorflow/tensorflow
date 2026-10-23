@@ -141,8 +141,9 @@ mlir::nv_tensor_ir::GraphOp MakeGraph(mlir::OpBuilder& b,
                                       llvm::ArrayRef<mlir::Type> result_types) {
   auto graph = mlir::nv_tensor_ir::GraphOp::create(
       b, mlir::UnknownLoc::get(b.getContext()), "test_graph",
-      /*sym_visibility=*/nullptr, b.getFunctionType(arg_types, result_types),
-      /*arg_attrs=*/nullptr, /*res_attrs=*/nullptr);
+      b.getFunctionType(arg_types, result_types),
+      /*arg_attrs=*/nullptr, /*res_attrs=*/nullptr,
+      /*sym_visibility=*/nullptr);
   graph.addEntryBlock();
   return graph;
 }
@@ -296,6 +297,65 @@ TEST_F(AttachLayoutStridesTest, ErrorPathTupleParameter) {
   graph.erase();
 }
 
+TEST_F(AttachLayoutStridesTest, MultipleResultsFromRootTuple) {
+  constexpr absl::string_view kHloText = R"(
+    HloModule test_module
+
+    ENTRY entry {
+      p0 = f32[4,16]{1,0} parameter(0)
+      c0 = f32[4,16]{0,1} copy(p0)
+      c1 = f32[4,16]{1,0} copy(p0)
+      ROOT t = (f32[4,16]{0,1}, f32[4,16]{1,0}) tuple(c0, c1)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseAndReturnVerifiedModule(kHloText));
+
+  mlir::MLIRContext context;
+  context.loadDialect<mlir::nv_tensor_ir::TensorIRDialect>();
+  mlir::OpBuilder b(&context);
+
+  auto t = mlir::RankedTensorType::get({4, 16}, b.getF32Type());
+  auto graph = MakeGraph(b, {t}, {t, t});
+
+  ASSERT_THAT(AttachLayoutStrides(graph, *hlo_module->entry_computation()),
+              IsOk());
+
+  auto stride_attr_name =
+      mlir::nv_tensor_ir::TensorIRDialect::getStrideAttrName();
+  auto res0 = graph.getResultAttrOfType<mlir::StringAttr>(0, stride_attr_name);
+  ASSERT_TRUE(res0 != nullptr);
+  EXPECT_EQ(res0.getValue().str(), "(1,4)");
+  EXPECT_TRUE(graph.getResultAttrOfType<mlir::StringAttr>(
+                  1, stride_attr_name) == nullptr);
+
+  graph.erase();
+}
+
+TEST_F(AttachLayoutStridesTest, ErrorPathResultCountMismatch) {
+  constexpr absl::string_view kHloText = R"(
+    HloModule test_module
+
+    ENTRY entry {
+      p0 = f32[4,16]{1,0} parameter(0)
+      ROOT id = f32[4,16]{1,0} copy(p0)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseAndReturnVerifiedModule(kHloText));
+
+  mlir::MLIRContext context;
+  context.loadDialect<mlir::nv_tensor_ir::TensorIRDialect>();
+  mlir::OpBuilder b(&context);
+
+  // Graph has 2 results, but the computation has 1.
+  auto t = mlir::RankedTensorType::get({4, 16}, b.getF32Type());
+  auto graph = MakeGraph(b, {t}, {t, t});
+
+  EXPECT_THAT(AttachLayoutStrides(graph, *hlo_module->entry_computation()),
+              StatusIs(absl::StatusCode::kInternal));
+
+  graph.erase();
+}
+
 class AttachBufferAlignmentsTest : public HloHardwareIndependentTestBase {};
 
 TEST_F(AttachBufferAlignmentsTest, AttachesAlignmentToArgsAndResult) {
@@ -328,6 +388,38 @@ TEST_F(AttachBufferAlignmentsTest, AttachesAlignmentToArgsAndResult) {
       graph.getResultAttrOfType<mlir::IntegerAttr>(0, alignment_attr_name);
   ASSERT_TRUE(res != nullptr);
   EXPECT_EQ(res.getInt(), 256);
+
+  graph.erase();
+}
+
+TEST_F(AttachBufferAlignmentsTest, AttachesAlignmentToMultipleResults) {
+  mlir::MLIRContext context;
+  context.loadDialect<mlir::nv_tensor_ir::TensorIRDialect>();
+  mlir::OpBuilder b(&context);
+
+  auto t = mlir::RankedTensorType::get({4, 16}, b.getF32Type());
+  auto graph = MakeGraph(b, {t}, {t, t});
+
+  Shape shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {4, 16}, {1, 0});
+  std::vector<emitters::KernelArgument> kernel_args;
+  kernel_args.reserve(3);
+  for (int64_t alignment : {128, 64, 256}) {
+    kernel_args.emplace_back(shape);
+    kernel_args.back().set_alignment(alignment);
+  }
+
+  ASSERT_THAT(AttachBufferAlignments(graph, kernel_args), IsOk());
+
+  auto alignment_attr_name =
+      mlir::nv_tensor_ir::TensorIRDialect::getAlignmentAttrName();
+  auto r0 =
+      graph.getResultAttrOfType<mlir::IntegerAttr>(0, alignment_attr_name);
+  ASSERT_TRUE(r0 != nullptr);
+  EXPECT_EQ(r0.getInt(), 64);
+  auto r1 =
+      graph.getResultAttrOfType<mlir::IntegerAttr>(1, alignment_attr_name);
+  ASSERT_TRUE(r1 != nullptr);
+  EXPECT_EQ(r1.getInt(), 256);
 
   graph.erase();
 }

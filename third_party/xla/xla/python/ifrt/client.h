@@ -283,6 +283,24 @@ class Client : public RTTIExtends<Client, RTTIRoot> {
       absl::Span<ArrayRef> arrays, std::optional<DeviceListRef> devices,
       std::optional<MemoryKind> memory_kind, ArrayCopySemantics semantics) = 0;
 
+  // Copies `arrays` to the devices and memory kinds of `donated_dst_arrays`,
+  // reusing the underlying buffers of `donated_dst_arrays` when supported by
+  // the runtime. `donated_dst_arrays` are donated.
+  // If `semantics == kDonateInput`, `arrays` are also donated (`kReuseInput` is
+  // not supported).
+  //
+  // The layouts of the resulting arrays are determined by the same rules as
+  // `CopyArrays()`, disregarding any layout information from
+  // `donated_dst_arrays`.
+  //
+  // All `arrays` must share the same source device list and memory kind, and
+  // all `donated_dst_arrays` must share the same destination device list and
+  // memory kind. For each `i`, `arrays[i]` and `donated_dst_arrays[i]` must
+  // have matching shard byte sizes on the destination devices.
+  virtual absl::StatusOr<std::vector<ArrayRef>> CopyArraysWithDonatedDst(
+      absl::Span<ArrayRef> arrays, absl::Span<ArrayRef> donated_dst_arrays,
+      ArrayCopySemantics semantics) = 0;
+
   // Remaps shards across input `Array`s to create new `Array`s based on `plan`.
   // This array remapping is a metadata-only operation that can shuffle or
   // extract shards without changing their per-shard interpretation and causing

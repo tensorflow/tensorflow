@@ -322,13 +322,11 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::CopyArrays(
       req->add_device_ids(device->Id().value());
     }
   }
-  if (memory_kind.has_value()) {
-    // Use an empty string to indicate the default memory kind.
+  if (memory_kind.has_value() &&
+      *memory_kind != arrays[0]->sharding().memory_kind()) {
     // OSS requires explicit string conversion
-    if (!memory_kind->is_default()) {
-      // NOLINTNEXTLINE(*-redundant-string-conversions)
-      req->set_memory_kind(std::string(memory_kind->value()));
-    }
+    // NOLINTNEXTLINE(*-redundant-string-conversions)
+    req->set_memory_kind(std::string(memory_kind->value()));
   }
   req->set_copy_semantics(ToArrayCopySemanticsProto(semantics));
 

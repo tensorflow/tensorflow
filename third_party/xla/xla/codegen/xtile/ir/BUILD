@@ -80,6 +80,8 @@ gentbl_cc_library(
     compatible_with = get_compatible_with_portable(),
     strip_include_prefix = ".",
     tbl_outs = {
+        "xtile_enums.h.inc": ["-gen-enum-decls"],
+        "xtile_enums.cc.inc": ["-gen-enum-defs"],
         "xtile_attrs.h.inc": ["-gen-attrdef-decls"],
         "xtile_attrs.cc.inc": ["-gen-attrdef-defs"],
     },

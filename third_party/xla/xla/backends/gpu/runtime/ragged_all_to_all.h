@@ -18,14 +18,18 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <variant>
 
+#include "absl/base/nullability.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/core/collectives/symmetric_memory.h"
+#include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/ragged_all_to_all_kernel.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/types.h"  // IWYU pragma: keep
 #include "xla/xla_data.pb.h"
 
@@ -39,6 +43,16 @@ bool IsRaggedAllToAllKernelSupported(int64_t num_outputs,
 // Returns true if the kernel is supported for the given element type.
 bool IsRaggedAllToAllWithSymmetricMemoryKernelSupported(
     PrimitiveType element_type);
+
+using RaggedAllToAllWithSymmetricMemoryKernelType =
+    se::gpu::RaggedAllToAllWithSymmetricMemoryKernel<1>::KernelType;
+
+// Loads the vectorized RaggedAllToAllWithSymmetricMemoryKernel matching
+// (element_type, num_row_elements) on `executor`.
+absl::StatusOr<RaggedAllToAllWithSymmetricMemoryKernelType>
+LoadRaggedAllToAllWithSymmetricMemoryKernel(se::StreamExecutor* executor,
+                                            PrimitiveType element_type,
+                                            int64_t num_row_elements);
 
 // Input:
 //  - input_buffer: dtype[num_input_rows, num_row_elements]
@@ -66,14 +80,28 @@ absl::Status RunRaggedAllToAllKernel(
     int64_t num_row_elements);
 
 absl::Status RunRaggedAllToAllWithSymmetricMemoryKernel(
-    se::Stream* stream, PrimitiveType element_type,
-    se::DeviceAddressBase input_buffer,
+    se::Stream* stream, RaggedAllToAllWithSymmetricMemoryKernelType& kernel,
+    PrimitiveType element_type, se::DeviceAddressBase input_buffer,
     xla::SymmetricMemory* output_ptrs_symmetric_memory,
     size_t output_sym_offset, se::DeviceAddressBase input_offsets_buffer,
     se::DeviceAddressBase send_sizes_buffer,
     se::DeviceAddressBase output_offsets_buffer, int64_t num_outputs,
     int64_t num_updates_per_output, int64_t num_input_rows,
     int64_t num_row_elements);
+
+absl::StatusOr<const se::CommandBuffer::Command*>
+RecordRaggedAllToAllWithSymmetricMemoryKernel(
+    se::CommandBuffer* command_buffer,
+    const RaggedAllToAllWithSymmetricMemoryKernelType& kernel,
+    PrimitiveType element_type, se::DeviceAddressBase input_buffer,
+    xla::SymmetricMemory* output_ptrs_symmetric_memory,
+    size_t output_sym_offset, se::DeviceAddressBase input_offsets_buffer,
+    se::DeviceAddressBase send_sizes_buffer,
+    se::DeviceAddressBase output_offsets_buffer, int64_t num_outputs,
+    int64_t num_updates_per_output, int64_t num_input_rows,
+    int64_t num_row_elements,
+    const se::CommandBuffer::Command* absl_nullable cmd,
+    absl::Span<const se::CommandBuffer::Command* const> dependencies);
 
 absl::Status RunDeviceRaggedAllToAllKernel(
     se::Stream* stream, PrimitiveType element_type,

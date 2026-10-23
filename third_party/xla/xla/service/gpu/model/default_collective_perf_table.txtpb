@@ -22,6 +22,7 @@
 entries {
   key: "sm_100_B200"
   value {
+    partition_size: 8
     entries {
       instruction {
         name: "_"
@@ -9179,6 +9180,7 @@ entries {
 entries {
   key: "sm_90"
   value {
+    partition_size: 8
     entries {
       instruction {
         opcode: "all-to-all"
@@ -16356,6 +16358,7 @@ entries {
 entries {
   key: "sm_100_GB200"
   value {
+    partition_size: 72
     entries {
       instruction {
         opcode: "all-reduce"
@@ -47054,6 +47057,7 @@ entries {
 entries {
   key: "sm_103"
   value {
+    partition_size: 72
     entries {
       instruction {
         opcode: "all-reduce"
@@ -77752,6 +77756,7 @@ entries {
 entries {
   key: "gfx942"
   value {
+    partition_size: 8
     entries {
       instruction {
         name: "_"
@@ -93885,6 +93890,7 @@ entries {
 entries {
   key: "gfx950"
   value {
+    partition_size: 8
     entries {
       instruction {
         name: "_"

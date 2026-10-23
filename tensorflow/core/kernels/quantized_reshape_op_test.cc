@@ -37,7 +37,7 @@ namespace tensorflow {
 
 class QuantizedReshapeTest : public OpsTestBase {
  protected:
-  QuantizedReshapeTest() {}
+  QuantizedReshapeTest() = default;
 };
 
 TEST_F(QuantizedReshapeTest, Reshape) {

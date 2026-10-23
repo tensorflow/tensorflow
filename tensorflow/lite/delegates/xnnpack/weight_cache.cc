@@ -610,7 +610,7 @@ bool MMapWeightCacheProvider::LoadLastBuildStep() {
   // - or add a new mapping handle.
   {
     MMapHandle& last_mmap_handle = mmap_handles_.back();
-    const int last_mmap_size = last_mmap_handle.size();
+    const size_t last_mmap_size = last_mmap_handle.size();
     if (!last_mmap_handle.Resize(last_mmap_size +
                                  builder_.LastBuildStepSize())) {
       mmap_handles_.emplace_back();

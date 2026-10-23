@@ -84,7 +84,10 @@ static absl::Status AddBufferToLlvmModule(
 
   absl::Span<const uint8_t> buffer_contents = constant_to_embed.data();
 
-  llvm::Constant* buffer_initializer = llvm::ConstantDataVector::get(
+  // Use ConstantDataArray ([N x i8]) rather than ConstantDataVector (<N x i8>),
+  // because LLVM's DataLayout::getTypeAllocSize rounds fixed SIMD vector types
+  // up to the next power of two and zero-pads them in .rodata.
+  llvm::Constant* buffer_initializer = llvm::ConstantDataArray::get(
       module->getContext(),
       llvm::ArrayRef<uint8_t>(buffer_contents.data(), buffer_contents.size()));
 

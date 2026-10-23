@@ -183,6 +183,8 @@ DiffResult FilterDiffResultByOpcode(
       diff_result.changed_instructions, ignored_opcodes);
   filtered_diff_result.unchanged_instructions = FilterInstructionsByOpcode(
       diff_result.unchanged_instructions, ignored_opcodes);
+  filtered_diff_result.moved_instructions = FilterInstructionsByOpcode(
+      diff_result.moved_instructions, ignored_opcodes);
   return filtered_diff_result;
 }
 

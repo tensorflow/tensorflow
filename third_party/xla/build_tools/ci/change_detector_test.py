@@ -140,6 +140,67 @@ class ChangeDetectorTest(parameterized.TestCase):
         change_detector.get_diff_base("base_sha", "head_sha"), "base_sha"
     )
 
+  @mock.patch.object(
+      change_detector, "run_git_best_effort", autospec=True, spec_set=True
+  )
+  @mock.patch.object(
+      change_detector, "get_merge_base", autospec=True, spec_set=True
+  )
+  def test_ensure_base_fetched_already_present(self, mock_mb, mock_git):
+    mock_mb.return_value = "merge_base_sha"
+    change_detector.ensure_base_fetched("base_sha", "head_sha", cwd="/repo")
+    mock_mb.assert_called_once_with("base_sha", "head_sha", cwd="/repo")
+    mock_git.assert_not_called()
+
+  @mock.patch.object(
+      change_detector, "run_git_best_effort", autospec=True, spec_set=True
+  )
+  @mock.patch.object(
+      change_detector, "get_merge_base", autospec=True, spec_set=True
+  )
+  def test_ensure_base_fetched_shallow_fetch_succeeds(self, mock_mb, mock_git):
+    mock_mb.side_effect = [None, "merge_base_sha"]
+    change_detector.ensure_base_fetched("base_sha", "head_sha", cwd="/repo")
+    mock_git.assert_called_once_with(
+        [
+            "fetch",
+            "--no-tags",
+            "--depth=50",
+            "--",
+            "origin",
+            "base_sha",
+            "head_sha",
+        ],
+        cwd="/repo",
+    )
+
+  @mock.patch.object(
+      change_detector, "run_git_best_effort", autospec=True, spec_set=True
+  )
+  @mock.patch.object(
+      change_detector, "get_merge_base", autospec=True, spec_set=True
+  )
+  def test_ensure_base_fetched_falls_back_to_unshallow(self, mock_mb, mock_git):
+    mock_mb.side_effect = [None, None]
+    change_detector.ensure_base_fetched("base_sha", "HEAD", cwd="/repo")
+    self.assertEqual(
+        mock_git.call_args_list,
+        [
+            mock.call(
+                [
+                    "fetch",
+                    "--no-tags",
+                    "--depth=50",
+                    "--",
+                    "origin",
+                    "base_sha",
+                ],
+                cwd="/repo",
+            ),
+            mock.call(["fetch", "--unshallow", "origin"], cwd="/repo"),
+        ],
+    )
+
   @parameterized.named_parameters(
       dict(
           testcase_name="docs_only_xla_build",
@@ -287,6 +348,37 @@ class ChangeDetectorTest(parameterized.TestCase):
     self.assertIn("JAX_LINUX_X86_CPU_BZLMOD_GITHUB_ACTIONS", content)
     self.assertIn("SKIP", content)
     self.assertIn("Modified files do not affect JAX builds", content)
+
+  @mock.patch.object(
+      change_detector, "evaluate_skip", autospec=True, spec_set=True
+  )
+  def test_main_writes_github_output(self, mock_eval):
+    output_file = self.create_tempfile("github_output.txt")
+    mock_eval.return_value = change_detector.SkipDecision(
+        should_skip=True,
+        reason="Modified files do not affect JAX builds",
+        changed_files_count=1,
+        elapsed_seconds=0.01,
+    )
+    rc = change_detector.main([
+        "--base_sha=base_sha",
+        "--head_sha=head_sha",
+        "--is_jax_build",
+        "--build_name=JAX ROCm",
+        f"--github_output={output_file.full_path}",
+    ])
+    self.assertEqual(rc, 0)
+    self.assertEqual(output_file.read_text(), "should_skip=true\n")
+
+  def test_main_disabled_via_env(self):
+    output_file = self.create_tempfile("github_output.txt")
+    with mock.patch.dict(os.environ, {"XLA_CI_DISABLE_BAZEL_DIFF": "true"}):
+      rc = change_detector.main([
+          "--base_sha=base_sha",
+          f"--github_output={output_file.full_path}",
+      ])
+    self.assertEqual(rc, 0)
+    self.assertEqual(output_file.read_text(), "should_skip=false\n")
 
 
 if __name__ == "__main__":

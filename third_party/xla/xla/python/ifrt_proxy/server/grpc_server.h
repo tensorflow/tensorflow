@@ -28,6 +28,7 @@
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.grpc.pb.h"
+#include "xla/python/ifrt_proxy/server/grpc_service_impl.h"
 
 namespace xla {
 namespace ifrt {
@@ -50,7 +51,8 @@ class GrpcServer {
       absl::string_view address,
       absl::AnyInvocable<absl::StatusOr<std::shared_ptr<xla::ifrt::Client>>(
           AttributeMap initialization_data)>
-          backend_ifrt_client_factory);
+          backend_ifrt_client_factory,
+      GrpcServiceImpl::Options options = {});
 
   // Starts shutting down the server and waits until it properly shuts down.
   ~GrpcServer();

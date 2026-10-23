@@ -150,8 +150,9 @@ void ForLoop::Emit(llvm::IRBuilderBase* b) {
     back_branch->setMetadata(llvm::LLVMContext::MD_loop, loop_id);
   }
 
-  // Re-point the IR builder to the loop exit block.
-  b->SetInsertPoint(exit_bb_);
+  // Re-point the IR builder to the loop exit block, inserting before any
+  // instructions the split moved there (e.g. the original terminator).
+  b->SetInsertPoint(exit_bb_, exit_bb_->getFirstInsertionPt());
 }
 
 std::vector<llvm::Metadata*> ForLoop::GetLoopMetadata(llvm::IRBuilderBase* b) {

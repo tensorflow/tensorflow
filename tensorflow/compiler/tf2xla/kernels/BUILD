@@ -312,6 +312,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@tsl//tsl/platform:tensor_float_32_hdr_lib",
         "@xla//xla:literal_util",
+        "@xla//xla:shape_util",
         "@xla//xla:util",
         "@xla//xla:xla_data_proto_cc",
         "@xla//xla/hlo/builder:xla_builder",
@@ -400,6 +401,7 @@ cc_library(
         "@xla//xla/python:refine_polymorphic_shapes",
         "@xla//xla/service:hlo_proto_cc",
         "@xla//xla/service/spmd/shardy/sdy_round_trip:pipelines",
+        "@xla//xla/service/spmd/shardy/stablehlo_round_trip:stablehlo_export",
         "@xla//xla/tsl/platform:errors",
         "@xla//xla/tsl/platform:statusor",
     ],
@@ -509,6 +511,7 @@ tf_kernel_library(
         "@com_google_absl//absl/types:span",
         "@xla//xla:literal",
         "@xla//xla:shape_util",
+        "@xla//xla:xla_data_proto_cc",
         "@xla//xla/hlo/builder:xla_builder",
         "@xla//xla/hlo/builder/lib:dynamic_shaped_ops",
         "@xla//xla/tsl/platform:errors",
@@ -1600,7 +1603,6 @@ tf_kernel_library(
         "@xla//xla/hlo/builder:value_inference",
         "@xla//xla/hlo/builder:xla_builder",
         "@xla//xla/hlo/builder/lib:constants",
-        "@xla//xla/hlo/builder/lib:dynamic_shaped_ops",
     ],
 )
 

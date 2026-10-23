@@ -23,6 +23,10 @@ load(
     "if_cuda_or_rocm",
 )
 load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_cuda_cc_test", "tf_kernel_library")
+load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "tf_cuda_tests_tags",
+)
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -168,7 +172,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "determinant_op",
     prefix = "determinant_op",
-    deps = LINALG_DEPS,
+    deps = LINALG_DEPS + [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(
@@ -404,6 +411,36 @@ tf_kernel_library(
         "@eigen_archive//:eigen3",
     ],
     alwayslink = 0,
+)
+
+tf_cuda_cc_test(
+    name = "determinant_op_gpu_test",
+    size = "small",
+    srcs = ["determinant_op_gpu_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":cholesky_op",
+        ":determinant_op",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/common_runtime:gpu_device_context",
+        "//tensorflow/core/kernels:ops_testutil",
+        "//tensorflow/core/platform:refcount",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@xla//xla/stream_executor:device_address",
+        "@xla//xla/stream_executor:mock_stream",
+        "@xla//xla/stream_executor:stream",
+        "@xla//xla/tsl/lib/core:status_test_util",
+    ] + if_cuda([
+        "//tensorflow/core/util:cuda_solvers",
+    ]) + if_rocm([
+        "//tensorflow/core/util:rocm_solvers",
+    ]),
 )
 
 tf_cuda_cc_test(

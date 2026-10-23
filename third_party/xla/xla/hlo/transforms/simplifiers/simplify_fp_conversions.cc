@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -39,14 +40,29 @@ absl::StatusOr<bool> RunOnComputation(HloComputation& computation) {
   for (HloInstruction* instruction : computation.MakeInstructionPostOrder()) {
     HloInstruction* input = instruction;
     size_t convert_chain_length = 0;
+    bool has_8_bit_intermediate = false;
 
     while (input->opcode() == HloOpcode::kConvert &&
            primitive_util::IsFloatingPointType(input->shape().element_type())) {
+      if (input != instruction) {
+        has_8_bit_intermediate |=
+            primitive_util::BitWidth(input->shape().element_type()) <= 8;
+      }
       input = input->mutable_operand(0);
       ++convert_chain_length;
     }
 
     if (convert_chain_length < 2) {
+      continue;
+    }
+    // F32 and BF16 chains through an 8 bit float are deliberate quantization
+    // (e.g. FP8xN dot emulation), not excess precision, so keep them.
+    auto is_f32_or_bf16 = [](PrimitiveType type) {
+      return type == F32 || type == BF16;
+    };
+    if (has_8_bit_intermediate &&
+        is_f32_or_bf16(instruction->shape().element_type()) &&
+        is_f32_or_bf16(input->shape().element_type())) {
       continue;
     }
 

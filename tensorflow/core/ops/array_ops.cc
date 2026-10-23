@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <cstdint>
 #include <limits>
 #include <ostream>
 #include <vector>
@@ -25,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -378,6 +380,13 @@ REGISTER_OP("Pack")
       int32_t axis;
       TF_RETURN_IF_ERROR(GetAxisForPackAndUnpack(c, rank + 1, &axis));
 
+      if (rank >= TensorShape::MaxDimensions()) {
+        return errors::InvalidArgument(
+            "Cannot pack tensors of rank ", rank,
+            ": packing would exceed the maximum supported rank of ",
+            TensorShape::MaxDimensions(), ".");
+      }
+
       // Copy all dimensions over, inserting a dimension of value #inputs
       // at <axis>.
       std::vector<DimensionHandle> dims;
@@ -709,6 +718,8 @@ REGISTER_OP("SplitV")
         if (size_splits->dtype() == DT_INT32) {
           data =
               AsInt64<int32_t>(size_splits, size_splits->shape().dim_size(0));
+        } else if (size_splits->dtype() == DT_INT8) {
+          data = AsInt64<int8_t>(size_splits, size_splits->shape().dim_size(0));
         } else {
           data =
               AsInt64<int64_t>(size_splits, size_splits->shape().dim_size(0));
@@ -719,7 +730,8 @@ REGISTER_OP("SplitV")
         }
         int64_t total_size = 0;
         bool has_neg_one = false;
-        for (const auto size : data) {
+        for (int i = 0; i < num_outputs; ++i) {
+          const auto size = data[i];
           if (size == -1) {
             if (has_neg_one) {
               return absl::InvalidArgumentError(
@@ -727,6 +739,15 @@ REGISTER_OP("SplitV")
             }
             has_neg_one = true;
           } else {
+            if (size < 0) {
+              return absl::InvalidArgumentError(absl::StrCat(
+                  "Split size at index ", i, " must be >= 0. Got: ", size));
+            }
+            if (total_size > std::numeric_limits<int64_t>::max() - size) {
+              return absl::InvalidArgumentError(absl::StrCat(
+                  "Sum of size_splits overflows the index type at index ", i,
+                  "."));
+            }
             total_size += size;
           }
         }
@@ -2172,6 +2193,13 @@ REGISTER_OP("ExpandDims")
 
       if (dim < 0) {
         dim += rank + 1;
+      }
+
+      if (rank >= TensorShape::MaxDimensions()) {
+        return errors::InvalidArgument(
+            "Cannot expand a tensor of rank ", rank,
+            ": expanding would exceed the maximum supported rank of ",
+            TensorShape::MaxDimensions(), ".");
       }
 
       ShapeHandle end;

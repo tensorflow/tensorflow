@@ -48,25 +48,23 @@ namespace {
 using ::xla::memory_annotations::kMoveToDeviceCustomCallTarget;
 using ::xla::memory_annotations::kMoveToHostCustomCallTarget;
 
-bool CustomCallReusesBuffer(const HloInstruction* custom_call,
-                            int64_t operand_index) {
+std::optional<ShapeIndex> GetAliasedOutputShapeIndex(
+    const HloInstruction* custom_call, int64_t operand_index,
+    const ShapeIndex& operand_shape_index = {}) {
   if (custom_call->custom_call_target() == kMoveToDeviceCustomCallTarget ||
       custom_call->custom_call_target() == kMoveToHostCustomCallTarget) {
     // Does not define a new buffer.
-    return true;
+    return ShapeIndex{};
   }
   // Check the custom call's output_to_operand_aliasing.
-  const std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>&
-      aliases = custom_call->output_operand_aliasing();
-  for (const auto& alias : aliases) {
-    int64_t alias_operand_index = alias.second.first;
-    if (alias_operand_index == operand_index) {
-      // This operand aliases with the output.
-      return true;
+  for (const auto& alias : custom_call->output_operand_aliasing()) {
+    if (alias.second.first == operand_index &&
+        alias.second.second == operand_shape_index) {
+      return alias.first;
     }
   }
   // By default, assume custom calls define new buffers.
-  return false;
+  return std::nullopt;
 }
 
 }  // namespace
@@ -158,19 +156,17 @@ absl::StatusOr<std::vector<InstructionAndShapeIndex>> GetSuccessors(
       }
     } else if (user->opcode() == HloOpcode::kCustomCall) {
       const auto operand_indices = user->OperandIndices(instruction);
-      // TODO(b/342650757): Rather than a boolean indicating whether the
-      // instruction reuses the buffer, return the shape index of the output
-      // that the operand aliases with.
-      bool found_one = false;
+      absl::flat_hash_set<ShapeIndex> seen_output_indices;
       for (const auto i : operand_indices) {
-        if (CustomCallReusesBuffer(user, i)) {
-          if (found_one) {
+        if (std::optional<ShapeIndex> output_shape_index =
+                GetAliasedOutputShapeIndex(
+                    user, i, instruction_and_shape_index.shape_index)) {
+          if (!seen_output_indices.insert(*output_shape_index).second) {
             return absl::InternalError(
                 "Found multiple operands of a custom call that reuse the same "
                 "output buffer.");
           }
-          result.push_back({user, instruction_and_shape_index.shape_index});
-          found_one = true;
+          result.push_back({user, *std::move(output_shape_index)});
         }
       }
     } else {
@@ -255,6 +251,15 @@ std::vector<InstructionAndShapeIndex> GetPredecessors(
     for (HloComputation* computation : instruction->called_computations()) {
       result.push_back({computation->root_instruction(),
                         instruction_and_shape_index.shape_index});
+    }
+  } else if (instruction->opcode() == HloOpcode::kCustomCall &&
+             !operand_index.has_value() &&
+             !instruction->output_operand_aliasing().empty()) {
+    for (const auto& alias : instruction->output_operand_aliasing()) {
+      if (alias.first == instruction_and_shape_index.shape_index) {
+        result.push_back({instruction->mutable_operand(alias.second.first),
+                          alias.second.second});
+      }
     }
   } else {
     if (!operand_index.has_value()) {

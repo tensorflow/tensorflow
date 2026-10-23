@@ -1279,6 +1279,8 @@ func.func @quantized_op_floor(%arg0: tensor<!quant.uniform<i8:f32, 0.00391329082
   func.return %0 : tensor<!quant.uniform<i8:f32, 0.0039132908278820561:-128>>
 }
 
+// FmaOp is not yet supported in MHLO.
+
 // FusionOp aka mhlo.fusion is unsupported at the moment (see negative test below).
 
 // CHECK-LABEL: "op_gather"
@@ -2616,4 +2618,22 @@ func.func @op_scan(%arg0: tensor<10xf32>, %arg1: tensor<f32>) -> (tensor<10xf32>
     mhlo.return %1, %1 : tensor<f32>, tensor<f32>
   } : (tensor<10xf32>, tensor<f32>) -> (tensor<10xf32>, tensor<f32>)
   func.return %0#0, %0#1 : tensor<10xf32>, tensor<f32>
+}
+
+// -----
+
+// CHECK-LABEL: "op_exp2"
+func.func @op_exp2(%arg0: tensor<f32>) -> tensor<f32> {
+  // CHECK: "stablehlo.exp2"([[ARG0:%arg[0-9]+]]) : (tensor<f32>) -> tensor<f32>
+  %0 = "mhlo.exp2"(%arg0) : (tensor<f32>) -> tensor<f32>
+  func.return %0 : tensor<f32>
+}
+
+// -----
+
+// CHECK-LABEL: "op_log2"
+func.func @op_log2(%arg0: tensor<f32>) -> tensor<f32> {
+  // CHECK: "stablehlo.log2"([[ARG0:%arg[0-9]+]]) : (tensor<f32>) -> tensor<f32>
+  %0 = "mhlo.log2"(%arg0) : (tensor<f32>) -> tensor<f32>
+  func.return %0 : tensor<f32>
 }

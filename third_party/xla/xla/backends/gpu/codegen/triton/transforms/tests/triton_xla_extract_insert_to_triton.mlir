@@ -607,3 +607,51 @@ module {
 // CHECK: %[[SPLAT_MASK:.*]] = tt.splat %[[MASK]] : i1 -> tensor<8xi1>
 // CHECK: tt.load {{.*}}, %[[SPLAT_MASK]], {{.*}}
 // CHECK: tt.store {{.*}}, %{{.*}} : tensor<8x!tt.ptr<bf16>>
+
+// -----
+
+func.func @extract_insert_with_unit_dim_only_layout_permutation(
+    %arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<bf16>) {
+  %extracted_tensor = triton_xla.extract from %arg0
+      as memref<16x8512x256xbf16, #xtile.layout<[2, 0, 1]>>
+      [0, 0, 0] [1, 64, 128] [1, 1, 1] : tensor<64x128xbf16>
+  triton_xla.insert %extracted_tensor into %arg1
+      as memref<16x8512x256xbf16, #xtile.layout<[2, 0, 1]>>
+      [0, 0, 0] [1, 64, 128] [1, 1, 1] : tensor<64x128xbf16>
+  func.return
+}
+
+// CHECK-TMA-LABEL: tt.func @extract_insert_with_unit_dim_only_layout_permutation
+// CHECK-TMA-SAME:      %arg0: !tt.tensordesc<64x1x128xbf16>
+// CHECK-TMA-SAME:      %arg1: !tt.tensordesc<64x1x128xbf16>
+// CHECK-TMA-NOT:     tt.trans
+// CHECK-TMA:         %[[LOAD:.*]] = tt.descriptor_load %arg0
+// CHECK-TMA-SAME:        -> tensor<64x1x128xbf16>
+// CHECK-TMA-NOT:     tt.trans
+// CHECK-TMA:         %[[RESHAPE0:.*]] = tt.reshape %[[LOAD]]
+// CHECK-TMA-SAME:        tensor<64x1x128xbf16> -> tensor<64x128xbf16>
+// CHECK-TMA-NOT:     tt.trans
+// CHECK-TMA:         %[[RESHAPE1:.*]] = tt.reshape %[[RESHAPE0]]
+// CHECK-TMA-SAME:        tensor<64x128xbf16> -> tensor<64x1x128xbf16>
+// CHECK-TMA-NOT:     tt.trans
+// CHECK-TMA:         tt.descriptor_store %arg1[{{.*}}], %[[RESHAPE1]]
+
+// -----
+
+func.func @extract_with_transposing_layout(
+    %arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<bf16>) {
+  %extracted_tensor = triton_xla.extract from %arg0
+      as memref<16x8512x256xbf16, #xtile.layout<[2, 0, 1]>>
+      [0, 0, 0] [2, 64, 128] [1, 1, 1] : tensor<2x64x128xbf16>
+  triton_xla.insert %extracted_tensor into %arg1
+      as memref<2x64x128xbf16, #xtile.layout<[2, 1, 0]>>
+      [0, 0, 0] [2, 64, 128] [1, 1, 1] : tensor<2x64x128xbf16>
+  func.return
+}
+
+// CHECK-TMA-LABEL: tt.func @extract_with_transposing_layout
+// CHECK-TMA-SAME:      %arg0: !tt.tensordesc<64x2x128xbf16>
+// CHECK-TMA:         %[[LOAD:.*]] = tt.descriptor_load %arg0
+// CHECK-TMA:         %[[TRANS:.*]] = tt.trans %[[LOAD]]
+// CHECK-TMA-SAME:        tensor<64x2x128xbf16> -> tensor<2x64x128xbf16>
+// CHECK-TMA:         tt.descriptor_store %arg1[{{.*}}], %[[TRANS]]

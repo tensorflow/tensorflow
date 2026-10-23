@@ -28,6 +28,22 @@ func.func @push_squeeze_dims_up_through_elementwise(%arg0: tensor<4x1x8xf32>) ->
 
 // -----
 
+// CHECK-LABEL: func @side_effecting_inline_asm
+// CHECK-COUNT-1: tt.elementwise_inline_asm
+// CHECK-NOT: tt.elementwise_inline_asm
+// CHECK: return
+// FINALIZE-LABEL: func @side_effecting_inline_asm
+// FINALIZE-COUNT-1: tt.elementwise_inline_asm
+// FINALIZE-NOT: tt.elementwise_inline_asm
+// FINALIZE: return
+func.func @side_effecting_inline_asm(%arg0: tensor<4x1x8x!tt.ptr<i32>>) -> tensor<4x8xi32> {
+  %0 = "tt.elementwise_inline_asm"(%arg0) <{asm_string = "ld.volatile.global.u32 $0, [$1];", constraints = "=r,l", packed_element = 1 : i32, pure = false}> : (tensor<4x1x8x!tt.ptr<i32>>) -> tensor<4x1x8xi32>
+  %1 = triton_xla.squeeze_dims %0 <axis = 1> : tensor<4x1x8xi32> -> tensor<4x8xi32>
+  return %1 : tensor<4x8xi32>
+}
+
+// -----
+
 // CHECK-LABEL: func @push_squeeze_dims_up_through_multiple_results
 func.func @push_squeeze_dims_up_through_multiple_results(%arg0: tensor<4x1x8xf32>) -> tensor<4x8xf32> {
   // CHECK: tt.elementwise_inline_asm {{.*}} : tensor<4x8xf32> -> tensor<4x8xf32>, tensor<4x8xf32>

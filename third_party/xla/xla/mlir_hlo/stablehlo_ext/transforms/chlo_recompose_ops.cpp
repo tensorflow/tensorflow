@@ -483,6 +483,7 @@ struct ChloRecomposeOpsPass
       ChloOpRecomposePattern<chlo::CoshOp>,
       ChloOpRecomposePattern<chlo::SinhOp>,
       ChloOpRecomposePattern<chlo::ErfOp>,
+      ChloOpRecomposePattern<chlo::ErfcOp>,
       ChloOpRecomposePattern<chlo::MulhiOp>,
       ChloOpRecomposePattern<chlo::RaggedDotOp>,
       ChloOpRecomposePattern<chlo::ScanOp>,

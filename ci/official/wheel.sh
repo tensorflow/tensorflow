@@ -41,12 +41,6 @@ if [[ "$TFCI_NIGHTLY_UPDATE_VERSION_ENABLE" == 1 ]]; then
   export TFCI_BUILD_PIP_PACKAGE_ADDITIONAL_WHEEL_NAMES="$(echo $TFCI_BUILD_PIP_PACKAGE_ADDITIONAL_WHEEL_NAMES | sed 's/tensorflow/tf_nightly/g')"
 fi
 
-# TODO(b/361369076) Remove the following block after TF NumPy 1 is dropped
-# Move hermetic requirement lock files for NumPy 1 to the root
-if [[ "$TFCI_WHL_NUMPY_VERSION" == 1 ]]; then
-  cp ./ci/official/requirements_updater/numpy1_requirements/*.txt .
-fi
-
 tfrun bazel $TFCI_BAZEL_BAZELRC_ARGS build $TFCI_BAZEL_COMMON_ARGS --config=cuda_wheel //tensorflow/tools/pip_package:wheel $TFCI_BUILD_PIP_PACKAGE_BASE_ARGS $TFCI_BUILD_PIP_PACKAGE_WHEEL_NAME_ARG $HERMETIC_CUDA_UMD_BUILD_FLAGS --verbose_failures
 
 tfrun "$TFCI_FIND_BIN" ./bazel-bin/tensorflow/tools/pip_package -iname "*.whl" -exec cp {} $TFCI_OUTPUT_DIR \;

@@ -243,15 +243,19 @@ struct MatchedFp8Param {
 // or there is a there is a path from an FP8 instruction 'fp8_input' to 'instr'
 // consisting of the following.
 // 1. A convert to a wider type.
-// 2. Optionally, a multiplication/division by a scalar, representing the scale.
-//    If present, the scalar scale is returned as 'scale' and 'mult_scale'
-//    is set to true or false depending on whether there is a multiplication or
-//    a division.
+// 2. Optionally, a multiplication/division by a broadcast scalar, possibly
+//    converted to the type of the dequantization, representing the scale. If
+//    present, the scalar scale is returned as 'scale' and 'mult_scale' is set
+//    to true or false depending on whether there is a multiplication or a
+//    division.
+// 2a. Optionally, a convert from F32 to BF16/F16 of the result of (1) or (2),
+//    as produced by FloatNormalization when the dequantization is computed in
+//    F32.
 // 3. A possibly-empty set of ops communative with steps (1) and (2), meaning
 //    they can be safely moved before step (1). Such ops are returned in
 //    'commutative_ops'.
-// Steps (1) and (2) together are a dequantization, and can be fused into a
-// cublas LT matmul. Step (3) can be moved before the cublas LT matmul.
+// Steps (1), (2) and (2a) together are a dequantization, and can be fused into
+// a cublas LT matmul. Step (3) can be moved before the cublas LT matmul.
 std::optional<MatchedFp8Param> MatchFp8Param(HloInstruction* instr) {
   absl::flat_hash_set<int> visited_instrs;
   std::optional<InstrPath> maybe_subgraph =
@@ -271,19 +275,34 @@ std::optional<MatchedFp8Param> MatchFp8Param(HloInstruction* instr) {
   }
 
   int num_dequant_ops;
+  // The broadcast scale may be converted to the dequantization type, e.g. when
+  // FloatNormalization computes a bf16 dequantization in f32.
+  auto is_float_scale = [](const HloInstruction* scale) {
+    PrimitiveType type = scale->shape().element_type();
+    return primitive_util::IsFloatingPointType(type) &&
+           !primitive_util::IsF8Type(type);
+  };
+  auto scale_pattern = [&param, &is_float_scale]() {
+    return m::AnyOf<HloInstruction>(
+        m::Broadcast(m::Op(&param.scale)),
+        m::Convert(
+            m::Broadcast(m::Op(&param.scale).WithPredicate(is_float_scale))));
+  };
   // When not operating directly on an FP8 operand, the second and
   // third instructions in the subgraph can describe a dequantization, i.e. a
   // convert instruction followed by a multiply/divide instruction.
   if (subgraph.size() > 2 &&
       Match(subgraph[2].first,
-            m::MultiplyAnyOrder(m::Convert(m::Op(&param.fp8_input)),
-                                m::Broadcast(m::Op(&param.scale))))) {
+            m::MultiplyAnyOrder(
+                m::Convert(m::Op(&param.fp8_input).Is(subgraph[0].first)),
+                scale_pattern()))) {
     param.mult_scale = true;
     num_dequant_ops = 2;
   } else if (subgraph.size() > 2 &&
              Match(subgraph[2].first,
-                   m::Divide(m::Convert(m::Op(&param.fp8_input)),
-                             m::Broadcast(m::Op(&param.scale))))) {
+                   m::Divide(m::Convert(
+                                 m::Op(&param.fp8_input).Is(subgraph[0].first)),
+                             scale_pattern()))) {
     param.mult_scale = false;
     num_dequant_ops = 2;
   } else if (subgraph.size() > 1 &&
@@ -295,6 +314,20 @@ std::optional<MatchedFp8Param> MatchFp8Param(HloInstruction* instr) {
     VLOG(1) << "Possible intended FP8 GEMM operating on "
             << instr->ToShortString() << " not rewritten into FP8 Custom Call.";
     return std::nullopt;
+  }
+
+  // FloatNormalization may compute a BF16/F16 dequantization in F32 and
+  // convert the result back, e.g. bf16 convert(f32 multiply(f32 convert(fp8),
+  // ...)). Treat that convert as part of the dequantization.
+  if (subgraph.size() > 1 + num_dequant_ops) {
+    const HloInstruction* next = subgraph[1 + num_dequant_ops].first;
+    PrimitiveType next_type = next->shape().element_type();
+    if (Match(next, m::Convert(m::Op()
+                                   .Is(subgraph[num_dequant_ops].first)
+                                   .WithElementType(F32))) &&
+        (next_type == BF16 || next_type == F16)) {
+      ++num_dequant_ops;
+    }
   }
 
   auto preserves_element_type = [](const HloInstruction* instr) -> bool {
@@ -566,51 +599,89 @@ const GemmBackendConfig* GetGemmBackendConfig(
   return nullptr;
 }
 
-absl::StatusOr<HloInstruction*> NormalizeBatchDimensions(HloInstruction* dot) {
-  HloDotInstruction* dot_instr = Cast<HloDotInstruction>(dot);
-  const DotDimensionNumbers& dnums = dot_instr->dot_dimension_numbers();
+// Returns true if cuBLAS can handle the operand and output layouts of the dot
+// as they are, i.e. the batch, non-contracting and contracting dimensions of
+// each shape are physically sequential.
+bool CublasSupportsLayouts(const HloInstruction& dot,
+                           absl::Span<const DotOperandDims> dims) {
+  auto supports = [](const DotOperandDims& d) {
+    return MatrixLayout::For(d.shape(), d.Indices(DotOperandDims::kBatch),
+                             d.Indices(DotOperandDims::kNonContracting),
+                             d.Indices(DotOperandDims::kContracting))
+        .ok();
+  };
+  return supports(dims[0]) && supports(dims[1]) &&
+         MatrixLayout::For(dot.shape(), dims[0].Rank(DotOperandDims::kBatch),
+                           dims[0].Rank(DotOperandDims::kNonContracting),
+                           dims[1].Rank(DotOperandDims::kBatch),
+                           dims[1].Rank(DotOperandDims::kNonContracting))
+             .ok();
+}
 
-  if (dnums.lhs_batch_dimensions_size() != 2) {
+// Moves the batch dimensions of a dot operand to the front and merges them into
+// one. The result is a bitcast if the batch dimensions are already physically
+// adjacent and in order; otherwise the operand is first transposed into the
+// default layout.
+absl::StatusOr<HloInstruction*> MergeBatchDimensions(HloInstruction* operand,
+                                                     DotOperandDims& dims) {
+  absl::Span<const int64_t> batch_dims = dims.Indices(DotOperandDims::kBatch);
+  std::vector<int64_t> permutation(batch_dims.begin(), batch_dims.end());
+  for (int64_t dim = 0; dim < dims.shape().dimensions().size(); ++dim) {
+    if (!absl::c_linear_search(batch_dims, dim)) {
+      permutation.push_back(dim);
+    }
+  }
+  // ApplyPermutation keeps the physical layout, so the whole chain is a bitcast
+  // iff collapsing the transposed shape is.
+  dims.ApplyPermutation(permutation);
+  const Shape transposed_shape = dims.shape();
+  ABSL_RETURN_IF_ERROR(dims.CollapseCategory(DotOperandDims::kBatch,
+                                        /*remove_if_empty=*/false));
+  Shape merged_shape = dims.shape();
+  if (!ShapeUtil::ReshapeIsBitcast(transposed_shape, merged_shape)) {
+    ABSL_ASSIGN_OR_RETURN(operand, MakeTransposeHlo(operand, permutation));
+    LayoutUtil::SetToDefaultLayout(operand->mutable_shape());
+    LayoutUtil::SetToDefaultLayout(&merged_shape);
+  }
+  return MakeBitcastHlo(operand, merged_shape);
+}
+
+// cuBLAS handles any number of batch dimensions as long as they are physically
+// sequential, which is what layout assignment arranges for. Dots created or
+// modified later (e.g. by SplitkRewriter) can violate this; for those, merge
+// the batch dimensions into one.
+absl::StatusOr<HloInstruction*> NormalizeBatchDimensions(HloInstruction* dot) {
+  const int64_t num_batch_dims =
+      dot->dot_dimension_numbers().lhs_batch_dimensions_size();
+  if (num_batch_dims < 2) {
+    return dot;
+  }
+  ABSL_ASSIGN_OR_RETURN(auto dims, DotOperandDims::FromDot(dot));
+  if (CublasSupportsLayouts(*dot, dims)) {
     return dot;
   }
 
-  ABSL_ASSIGN_OR_RETURN(auto dims, DotOperandDims::FromDot(dot));
-  std::array<HloInstruction*, 2> operands = {dot->mutable_operand(0),
-                                             dot->mutable_operand(1)};
-
+  std::array<HloInstruction*, 2> operands;
   for (size_t i : {0, 1}) {
-    absl::Span<const int64_t> batch_dims =
-        dims[i].Indices(DotOperandDims::kBatch);
-    int64_t b0 = batch_dims[0];
-    int64_t b1 = batch_dims[1];
-
-    if (b1 != b0 + 1) {
-      std::vector<int64_t> permutation(
-          operands[i]->shape().dimensions().size());
-      absl::c_iota(permutation, 0);
-      MoveSingleElement(absl::MakeSpan(permutation), b1, b1 < b0 ? b0 : b0 + 1);
-      ABSL_ASSIGN_OR_RETURN(operands[i], MakeTransposeHlo(operands[i], permutation));
-      LayoutUtil::SetToDefaultLayout(operands[i]->mutable_shape());
-      dims[i].ApplyPermutation(permutation);
-    }
-
-    ABSL_RETURN_IF_ERROR(dims[i].CollapseCategory(DotOperandDims::kBatch,
-                                             /*remove_if_empty=*/false));
-    ABSL_ASSIGN_OR_RETURN(operands[i], MakeReshapeHlo(dims[i].shape(), operands[i]));
+    ABSL_ASSIGN_OR_RETURN(operands[i],
+                     MergeBatchDimensions(dot->mutable_operand(i), dims[i]));
   }
 
   ABSL_ASSIGN_OR_RETURN(DotDimensionNumbers new_dnums,
                    DotOperandDims::CreateDotDimensionNumbers(dims));
-  ABSL_ASSIGN_OR_RETURN(
-      HloInstruction * new_dot,
-      MakeDotHlo(operands[0], operands[1], new_dnums,
-                 dot_instr->precision_config(),
-                 dot_instr->shape().element_type(), &dot_instr->metadata()));
-
-  ABSL_ASSIGN_OR_RETURN(HloInstruction * reshape,
-                   MakeReshapeHlo(dot->shape(), new_dot));
-
-  return reshape;
+  // The output batch dimensions are the leading ones; keep the assigned output
+  // layout.
+  Shape new_dot_shape = ShapeUtil::FilterDimensions(
+      [&](int64_t dim) { return dim == 0 || dim >= num_batch_dims; },
+      dot->shape());
+  new_dot_shape.set_dimensions(0, dims[0].TotalSize(DotOperandDims::kBatch));
+  HloInstruction* new_dot = dot->AddInstruction(
+      HloInstruction::CreateDot(new_dot_shape, operands[0], operands[1],
+                                new_dnums, dot->precision_config()));
+  if (ShapeUtil::ReshapeIsBitcast(new_dot_shape, dot->shape())) {
+    return MakeBitcastHlo(new_dot, dot->shape(), &dot->metadata());
+  }
+  return MakeReshapeHlo(dot->shape(), new_dot);
 }
 
 // The rewriting proceeds in a bottom-up way:
@@ -667,8 +738,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                      NormalizeBatchDimensions(instr));
     if (normalized_instr != instr) {
       ABSL_RETURN_IF_ERROR(ReplaceInstruction(instr, normalized_instr));
-      // After normalization, the dot instruction is followed by a reshape,
-      // taking the operand to get the actual dot instruction.
+      // After normalization, the dot instruction is followed by a bitcast or
+      // reshape, taking the operand to get the actual dot instruction.
       instr = normalized_instr->mutable_operand(0);
     }
 
@@ -1344,8 +1415,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // cuBLASLt FP8 GEMM kernels require the scaling factors to be in F32
     // format. Set the factors to one when no scaling factors were captured.
     std::array<bool, 2> mult_scale{a.mult_scale, b.mult_scale};
-    std::array<HloInstruction*, 2> scales{a.scale, b.scale}, inv_scales,
-        scales_f32;
+    std::array<HloInstruction*, 2> scales{a.scale, b.scale}, scales_f32;
     HloInstruction* one_constant = nullptr;
     auto one = [&one_constant, instr]() -> HloInstruction* {
       if (!one_constant) {
@@ -1363,14 +1433,15 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                      "scalars.";
           return false;
         }
-        if (!mult_scale[i]) {
-          inv_scales[i] = instr->AddInstruction(HloInstruction::CreateBinary(
-              scales[i]->shape(), HloOpcode::kDivide, one(), scales[i]));
-        }
-        scales_f32[i] = mult_scale[i] ? scales[i] : inv_scales[i];
+        scales_f32[i] = scales[i];
         if (scales_f32[i]->shape().element_type() != F32) {
           scales_f32[i] = instr->AddInstruction(HloInstruction::CreateConvert(
               ShapeUtil::MakeScalarShape(F32), scales_f32[i]));
+        }
+        if (!mult_scale[i]) {
+          scales_f32[i] = instr->AddInstruction(HloInstruction::CreateBinary(
+              ShapeUtil::MakeScalarShape(F32), HloOpcode::kDivide, one(),
+              scales_f32[i]));
         }
       } else {
         scales_f32[i] = one();
@@ -2334,6 +2405,12 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return absl::OkStatus();
     }
 
+    // TODO(intel-tf): will be removed when oneDNN supports aux output for GELU.
+    // SYCL (OneAPI) backend: Do not fuse activation if aux output is required.
+    if (has_aux && gpu_version_.IsOneAPI()) {
+      return absl::OkStatus();
+    }
+
     ABSL_ASSIGN_OR_RETURN(auto gpu_config, gemm->backend_config<GpuBackendConfig>());
     GemmBackendConfig& config = GetMutableGemmBackendConfig(gpu_config);
 
@@ -2412,6 +2489,13 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // For grouped GEMM (Hipblaslt), aux output is not supported yet.
     // Do not fuse activation if aux output is required.
     if (has_aux && IsCublasLtGroupedMatmul(*gemm) && gpu_version_.IsRocm()) {
+      return absl::OkStatus();
+    }
+
+    // TODO(intel-tf): will be removed when oneDNN supports aux output for
+    // Swish. SYCL (OneAPI) backend: Do not fuse activation if aux output is
+    // required.
+    if (has_aux && gpu_version_.IsOneAPI()) {
       return absl::OkStatus();
     }
 

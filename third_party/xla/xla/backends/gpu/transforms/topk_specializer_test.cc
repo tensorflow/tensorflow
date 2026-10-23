@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <memory>
 #include <optional>
+#include <string>
 #include <tuple>
 #include <utility>
 
@@ -531,7 +532,7 @@ TEST_F(TopkTest, RewriteStablePartialOrderTopKBF16ToUint64) {
   EXPECT_TRUE(filecheck_matched);
 }
 
-TEST_F(TopkTest, SkipsSmallPartialOrderTopK) {
+TEST_F(TopkTest, SmallPartialOrderTopKUsesCustomKernel) {
   const char* hlo = R"(
     HloModule m
 
@@ -559,7 +560,18 @@ TEST_F(TopkTest, SkipsSmallPartialOrderTopK) {
       bool changed,
       TopkSpecializer(device_description().gpu_compute_capability())
           .Run(module.get()));
-  EXPECT_FALSE(changed);
+  ASSERT_TRUE(changed);
+
+  const char* check_pattern = R"(
+// CHECK-LABEL: ENTRY %top_k
+// CHECK: %[[ARG:[^ ]+]] = f32[8,1024]{{.*}} parameter(0)
+// CHECK: %[[CUSTOM_CALL:[^ ]+]] = (f32[8,8]{{.*}}, s32[8,8]{{.*}}) custom-call(%[[ARG]]), custom_call_target="__gpu$TopK", api_version=API_VERSION_TYPED_FFI, backend_config={is_stable = true, order = "PARTIAL"}
+// CHECK: ROOT {{.*}} tuple(%[[CUSTOM_CALL]]#0, %[[CUSTOM_CALL]]#1)
+  )";
+
+  ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
+                       RunFileCheck(module->ToString(), check_pattern));
+  EXPECT_TRUE(filecheck_matched);
 }
 
 TEST_F(TopkTest, RewriteStablePartialOrderTopKProducesCorrectResult) {
@@ -567,56 +579,61 @@ TEST_F(TopkTest, RewriteStablePartialOrderTopKProducesCorrectResult) {
     GTEST_SKIP() << "RAFT is CUDA-only.";
   }
 
-  const char* hlo = R"(
-    HloModule m
+  for (int k : {8, 32}) {
+    const std::string hlo = absl::Substitute(
+        R"(
+      HloModule m
 
-    %compare-gt.1 {
-      p.1.lhs = s32[] parameter(2)
-      p.1.rhs = s32[] parameter(3)
-      p.0.lhs = f32[] parameter(0)
-      p.0.rhs = f32[] parameter(1)
-      ROOT compare = pred[] compare(p.0.lhs, p.0.rhs), direction=GT
-    }
+      %compare-gt.1 {
+        p.1.lhs = s32[] parameter(2)
+        p.1.rhs = s32[] parameter(3)
+        p.0.lhs = f32[] parameter(0)
+        p.0.rhs = f32[] parameter(1)
+        ROOT compare = pred[] compare(p.0.lhs, p.0.rhs), direction=GT
+      }
 
-    ENTRY top_k {
-      arg = f32[4,1024] parameter(0)
-      iota = s32[4,1024] iota(), iota_dimension=1
-      c2 = s32[] constant(2)
-      b2 = s32[4,1024] broadcast(c2), dimensions={}
-      rem = s32[4,1024] remainder(iota, b2)
-      c0 = s32[] constant(0)
-      b0 = s32[4,1024] broadcast(c0), dimensions={}
-      is_even = pred[4,1024] compare(rem, b0), direction=EQ
-      pos_zero_c = f32[] constant(0)
-      neg_zero_c = f32[] constant(-0)
-      pos_zero = f32[4,1024] broadcast(pos_zero_c), dimensions={}
-      neg_zero = f32[4,1024] broadcast(neg_zero_c), dimensions={}
-      signed_zeros = f32[4,1024] select(is_even, pos_zero, neg_zero)
-      ROOT result = (f32[4,32], s32[4,32]) custom-call(signed_zeros), custom_call_target="TopK", called_computations={%compare-gt.1}, backend_config={is_stable = true, order = "PARTIAL"}
-    }
-  )";
+      ENTRY top_k {
+        arg = f32[4,1024] parameter(0)
+        iota = s32[4,1024] iota(), iota_dimension=1
+        c2 = s32[] constant(2)
+        b2 = s32[4,1024] broadcast(c2), dimensions={}
+        rem = s32[4,1024] remainder(iota, b2)
+        c0 = s32[] constant(0)
+        b0 = s32[4,1024] broadcast(c0), dimensions={}
+        is_even = pred[4,1024] compare(rem, b0), direction=EQ
+        pos_zero_c = f32[] constant(0)
+        neg_zero_c = f32[] constant(-0)
+        pos_zero = f32[4,1024] broadcast(pos_zero_c), dimensions={}
+        neg_zero = f32[4,1024] broadcast(neg_zero_c), dimensions={}
+        signed_zeros = f32[4,1024] select(is_even, pos_zero, neg_zero)
+        ROOT result = (f32[4,$0], s32[4,$0]) custom-call(signed_zeros), custom_call_target="TopK", called_computations={%compare-gt.1}, backend_config={is_stable = true, order = "PARTIAL"}
+      }
+    )",
+        k);
 
-  HloModuleConfig config = GetModuleConfigForTest();
-  config.mutable_debug_options()
-      .set_xla_gpu_experimental_enable_raft_for_stable_topk(true);
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> topk_module,
-                       ParseAndReturnVerifiedModule(hlo, config));
-  std::unique_ptr<HloModule> reference_module = topk_module->Clone("reference");
+    HloModuleConfig config = GetModuleConfigForTest();
+    config.mutable_debug_options()
+        .set_xla_gpu_experimental_enable_raft_for_stable_topk(true);
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> topk_module,
+                         ParseAndReturnVerifiedModule(hlo, config));
+    std::unique_ptr<HloModule> reference_module =
+        topk_module->Clone("reference");
 
-  ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      TopkSpecializer(device_description().gpu_compute_capability())
-          .Run(topk_module.get()));
-  ASSERT_TRUE(changed);
+    ASSERT_OK_AND_ASSIGN(
+        bool changed,
+        TopkSpecializer(device_description().gpu_compute_capability())
+            .Run(topk_module.get()));
+    ASSERT_TRUE(changed);
 
-  ASSERT_OK_AND_ASSIGN(changed, TopkDecomposer().Run(reference_module.get()));
-  ASSERT_TRUE(changed);
-  reference_module->mutable_config()
-      .mutable_debug_options()
-      .add_xla_disable_hlo_passes("topk-rewriter");
+    ASSERT_OK_AND_ASSIGN(changed, TopkDecomposer().Run(reference_module.get()));
+    ASSERT_TRUE(changed);
+    reference_module->mutable_config()
+        .mutable_debug_options()
+        .add_xla_disable_hlo_passes("topk-rewriter");
 
-  EXPECT_TRUE(RunAndCompareTwoModules(
-      std::move(topk_module), std::move(reference_module), std::nullopt));
+    EXPECT_TRUE(RunAndCompareTwoModules(
+        std::move(topk_module), std::move(reference_module), std::nullopt));
+  }
 }
 
 }  // namespace

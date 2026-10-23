@@ -68,7 +68,8 @@ cc_binary(
         "//xla/util:embedded_constant_buffers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:AArch64CodeGen",
+        "@llvm-project//llvm:AArch64CodeGen",  # build_cleaner: keep
+        "@llvm-project//llvm:BitWriter",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:IRReader",
         "@llvm-project//llvm:Object",
@@ -104,6 +105,18 @@ cc_library(
     hdrs = ["vector_ops.h"],
     deps = [
         "@eigen_archive//:eigen3",
+    ],
+)
+
+xla_cc_test(
+    name = "vector_ops_test",
+    srcs = ["vector_ops_test.cc"],
+    copts = [
+        "-Wno-psabi",
+    ],
+    deps = [
+        ":vector_ops",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -208,6 +221,7 @@ xla_cc_test(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:TargetParser",
         "@llvm-project//llvm:ir_headers",
         "@tsl//tsl/platform:denormal",
     ],
@@ -313,15 +327,99 @@ cc_binary(
 )
 
 cc_library(
+    name = "custom_cpp_intrinsics_lib",
+    srcs = ["custom_cpp_intrinsics.cc"],
+    hdrs = ["custom_cpp_intrinsics.h"],
+    copts = [
+        "-Wno-psabi",
+    ],
+    deps = [
+        ":vector_ops",
+    ],
+)
+
+cc_ir_header(
+    name = "custom_cpp_intrinsics_ll",
+    src = "custom_cpp_intrinsics.cc",
+    deps = [
+        ":cpp_context_provider",
+        ":custom_cpp_intrinsics_lib",
+        ":vector_ops",
+    ],
+)
+
+xla_cc_test(
+    name = "custom_cpp_intrinsics_test",
+    srcs = ["custom_cpp_intrinsics_test.cc"],
+    copts = [
+        "-Wno-psabi",
+    ],
+    deps = [
+        ":_cpp_gen_intrinsics",
+        ":custom_cpp_intrinsics_lib",
+        ":custom_cpp_intrinsics_ll",
+        ":vector_ops",
+        "//xla/codegen/intrinsic:test_matchers",
+        "@com_google_absl//absl/base",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:ir_headers",
+    ],
+)
+
+cc_library(
+    name = "trig_lib",
+    srcs = ["trig.cc"],
+    hdrs = ["trig.h"],
+    copts = [
+        "-Wno-psabi",
+    ],
+    deps = [
+        ":vector_ops",
+    ],
+)
+
+cc_ir_header(
+    name = "trig_ll",
+    src = "trig.cc",
+    deps = [
+        ":cpp_context_provider",
+        ":trig_lib",
+        ":vector_ops",
+    ],
+)
+
+xla_cc_test(
+    name = "trig_test",
+    srcs = ["trig_test.cc"],
+    copts = [
+        "-Wno-psabi",
+    ],
+    deps = [
+        ":_cpp_gen_intrinsics",
+        ":trig_lib",
+        ":trig_ll",
+        ":vector_ops",
+        "//xla/codegen/intrinsic:test_matchers",
+        "@com_google_absl//absl/base",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
     name = "_cpp_gen_intrinsics",
     srcs = ["cpp_gen_intrinsics.cc"],
     hdrs = ["cpp_gen_intrinsics.h"],
     deps = [
+        ":custom_cpp_intrinsics_ll",
         ":eigen_unary_16_ll",
         ":eigen_unary_32_ll",
         ":eigen_unary_64_ll",
         ":expm1_32_ll",
         ":expm1_64_ll",
+        ":trig_ll",
         "//xla/codegen/intrinsic",
         "//xla/service/llvm_ir:llvm_util",
         "@com_google_absl//absl/log",

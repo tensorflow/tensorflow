@@ -56,6 +56,7 @@ _DEFAULT_BAZEL_OPTIONS = dict(
     flaky_test_attempts=3,
     jobs=150,
     bes_upload_mode="fully_async",
+    build_runfile_links=False,
 )
 
 _KW_ONLY_IF_PYTHON310 = {"kw_only": True} if sys.version_info >= (3, 10) else {}
@@ -73,21 +74,10 @@ _XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS = (
     "//xla/tools:compute_xspace_stats_main_gpu",
 )
 _GITHUB_WORKSPACE = os.environ.get("GITHUB_WORKSPACE", "$GITHUB_WORKSPACE")
-
-
-def retry(
-    args: List[str], delay_seconds: int = 15, retries: int = 3
-) -> List[str]:
-  # Possibly a slight abuse of `parallel` as nothing happens in parallel, just
-  # retries with delay if the command fails.
-  # pyformat:disable
-  return [
-      "parallel", "--ungroup",
-      "--retries", str(retries),
-      "--delay", str(delay_seconds),
-      "--nonall",
-      "--", *args,
-  ]
+_WINDOWS_BAZEL_DNS_SECURITY_PROPERTIES = (
+    f"-Djava.security.properties={_GITHUB_WORKSPACE}"
+    r"\openxla\xla\build_tools\ci\bazel_dns_windows.security"
+)
 
 
 def sh(args, check=True, **kwargs):
@@ -204,14 +194,12 @@ class Build:
   def bazel_command(
       self,
       subcommand: str = "test",
-      extra_options: Tuple[str, ...] = (),
       target_pattern_file: Optional[str] = None,
   ) -> List[str]:
     """Returns a bazel test command for this build.
 
     Args:
       subcommand: The subcommand to give to bazel. `test` by default.
-      extra_options: Extra options. For now just used to pass in `--nobuild`.
       target_pattern_file: Optional file containing explicit target patterns.
 
     Returns: List of command line arguments
@@ -244,7 +232,6 @@ class Build:
         + override_repository
         + override_module
         + options
-        + list(extra_options)
     )
     if target_pattern_file:
       extra = ["--skip_incompatible_explicit_targets"]
@@ -274,30 +261,6 @@ class Build:
     cmds = []
 
     cmds.extend(self.extra_setup_commands)
-
-    # We really want `bazel fetch` here, but it uses `bazel query` and not
-    # `cquery`, which means that it fails due to config issues that aren't
-    # problems in practice.
-    # TODO(ddunleavy): Remove the condition here. Need to get parallel on the
-    # MacOS VM.
-    macos_build = (
-        self.type_ == BuildType.XLA_MACOS_X86_CPU_KOKORO
-        or self.type_ == BuildType.XLA_MACOS_ARM64_CPU_KOKORO
-    )
-    windows_build = (
-        self.type_ == BuildType.JAX_WINDOWS_X86_CPU_GITHUB_ACTIONS
-        or self.type_ == BuildType.XLA_WINDOWS_X86_CPU_GITHUB_ACTIONS
-    )
-    if not (macos_build or windows_build):
-      cmds.append(
-          retry(
-              self.bazel_command(
-                  subcommand="build",
-                  extra_options=("--nobuild",),
-                  target_pattern_file=target_pattern_file,
-              )
-          )
-      )
     cmds.append(
         self.bazel_command(
             subcommand=self.subcommand,
@@ -474,8 +437,6 @@ Build(
         "-//xla/backends/gpu/...",
         "-//xla/codegen/emitters/tests/...",
         "-//xla/service/gpu/...",
-        # eigen is not windows compatible
-        "-//xla/codegen/intrinsic/cpp:eigen_unary_test",
     ),
     build_tag_filters=windows_x86_tag_filter,
     test_tag_filters=windows_x86_tag_filter,
@@ -486,6 +447,7 @@ Build(
     subcommand="build",
     startup_options={
         "output_user_root": "C:/x",
+        "host_jvm_args": _WINDOWS_BAZEL_DNS_SECURITY_PROPERTIES,
     },
     # Retry failed Bazel builds against the warm local cache to mitigate
     # transient Windows lld-link wcifs.sys file-open races (b/571438464) until
@@ -644,7 +606,12 @@ Build(
     target_patterns=_XLA_CPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
     build_tag_filters=cpu_x86_tag_filter,
     test_tag_filters=cpu_x86_tag_filter,
-    options={**_DEFAULT_BAZEL_OPTIONS, "//xla/tsl:ci_build": True},
+    options={
+        **_DEFAULT_BAZEL_OPTIONS,
+        "build_runfile_links": True,
+        "remote_download_toplevel": True,
+        "//xla/tsl:ci_build": True,
+    },
     subcommand="build",
 )
 
@@ -656,6 +623,8 @@ Build(
     options={
         **_DEFAULT_BAZEL_OPTIONS,
         "build_tests_only": False,
+        "build_runfile_links": True,
+        "remote_download_toplevel": True,
         "//xla/tsl:ci_build": True,
     },
     build_tag_filters=cpu_arm_tag_filter,
@@ -680,6 +649,8 @@ Build(
         "run_under": "//build_tools/ci:parallel_gpu_execute",
         "//xla/tsl:ci_build": True,
         **_DEFAULT_BAZEL_OPTIONS,
+        "build_runfile_links": True,
+        "remote_download_toplevel": True,
     },
     repo_env={
         "TF_CUDA_COMPUTE_CAPABILITIES": "8.9",
@@ -691,16 +662,22 @@ Build(
 Build(
     type_=BuildType.XLA_LINUX_X86_GPU_A4_224_VCPU_BENCHMARK_PRESUBMIT_GITHUB_ACTIONS,
     repo="openxla/xla",
-    configs=("cuda_libraries_from_stubs",),
+    configs=(
+        "warnings",
+        "rbe_linux_cuda_nvcc",
+        "hermetic_cuda_umd",
+        "cuda_libraries_from_stubs",
+    ),
     target_patterns=_XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
     test_tag_filters=nvidia_single_gpu_test_filters
     + _tag_filters_for_compute_capability(compute_capability=100),
     build_tag_filters=nvidia_single_gpu_build_filters,
     options={
         "run_under": "//build_tools/ci:parallel_gpu_execute",
-        # Use User Mode and Kernel Mode Drivers pre-installed on the system.
         "//xla/tsl:ci_build": True,
         **_DEFAULT_BAZEL_OPTIONS,
+        "build_runfile_links": True,
+        "remote_download_toplevel": True,
     },
     repo_env={
         "TF_CUDA_COMPUTE_CAPABILITIES": "10",
@@ -799,7 +776,7 @@ Build(
     override_module={
         "xla": f"{_GITHUB_WORKSPACE}/openxla/xla",
     },
-    options=_DEFAULT_BAZEL_OPTIONS,
+    options={**_DEFAULT_BAZEL_OPTIONS, "remote_download_minimal": True},
     repo_env={"HERMETIC_PYTHON_VERSION": "3.12"},
 )
 
@@ -827,11 +804,12 @@ Build(
     override_module=dict(
         xla=f"{_GITHUB_WORKSPACE}\\openxla\\xla",
     ),
-    options={**_DEFAULT_BAZEL_OPTIONS, "build_runfile_links": False},
+    options=_DEFAULT_BAZEL_OPTIONS,
     repo_env={"HERMETIC_PYTHON_VERSION": "3.12"},
     subcommand="build",
     startup_options={
         "output_base": f"{_GITHUB_WORKSPACE}\\bazel_output_base",
+        "host_jvm_args": _WINDOWS_BAZEL_DNS_SECURITY_PROPERTIES,
     },
     # Retry failed Bazel builds against the warm local cache to mitigate
     # transient Windows lld-link wcifs.sys file-open races (b/571438464) until
@@ -870,6 +848,7 @@ Build(
     ),
     options={
         **_DEFAULT_BAZEL_OPTIONS,
+        "remote_download_minimal": True,
         "@local_config_cuda//cuda:override_include_cuda_libs": True,
     },
     repo_env={"HERMETIC_PYTHON_VERSION": "3.12"},

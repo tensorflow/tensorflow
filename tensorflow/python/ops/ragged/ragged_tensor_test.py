@@ -29,6 +29,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.framework.type_utils import fulltypes_for_flat_tensors
@@ -322,6 +323,83 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     err_msg = 'row_splits tensor may not be empty'
     with self.assertRaisesRegex(ValueError, err_msg):
       RaggedTensor.from_row_splits([], [])
+
+  def testFromRowSplitsStaticShapeMismatch(self):
+    values = constant_op.constant(
+        [[4.0, 5.0], [6.0, 7.0]], dtype=dtypes.float32
+    )
+    with self.assertRaisesRegex(
+        ValueError, r'Shapes \(2,\) and \(4,\) are incompatible'
+    ):
+      RaggedTensor.from_row_splits(values, [0, 2, 4])
+
+  def testFromRowSplitsStaticShapeMismatchUnderJit(self):
+    @def_function.function(jit_compile=True)
+    def fn(x):
+      values = array_ops.reshape(x, [-1, 2])
+      return RaggedTensor.from_row_splits(values, [0, 2, 4])
+
+    with self.assertRaisesRegex(
+        ValueError, r'Shapes \(2,\) and \(4,\) are incompatible'
+    ):
+      fn(constant_op.constant([4.0, 5.0, 6.0, 7.0]))
+
+  def testFromRowLengthsStaticShapeMismatchUnderJit(self):
+    @def_function.function(jit_compile=True)
+    def fn(x):
+      values = array_ops.reshape(x, [-1, 2])
+      return RaggedTensor.from_row_lengths(values, [2, 2])
+
+    with self.assertRaisesRegex(
+        ValueError, r'Shapes \(2,\) and \(4,\) are incompatible'
+    ):
+      fn(constant_op.constant([4.0, 5.0, 6.0, 7.0]))
+
+  def testFromRowLimitsStaticShapeMismatchUnderJit(self):
+    @def_function.function(jit_compile=True)
+    def fn(x):
+      values = array_ops.reshape(x, [-1, 2])
+      return RaggedTensor.from_row_limits(values, [2, 4])
+
+    with self.assertRaisesRegex(
+        ValueError, r'Shapes \(2,\) and \(4,\) are incompatible'
+    ):
+      fn(constant_op.constant([4.0, 5.0, 6.0, 7.0]))
+
+  def testFromValueRowidsStaticShapeMismatchUnderJit(self):
+    @def_function.function(jit_compile=True)
+    def fn(x):
+      values = array_ops.reshape(x, [-1, 2])
+      return RaggedTensor.from_value_rowids(values, [0, 0, 1, 1], nrows=2)
+
+    with self.assertRaisesRegex(
+        ValueError, r'Shapes \(2,\) and \(4,\) are incompatible'
+    ):
+      fn(constant_op.constant([4.0, 5.0, 6.0, 7.0]))
+
+  def testFromRowSplitsDynamicFirstDimUnderJit(self):
+    @def_function.function(
+        jit_compile=True,
+        input_signature=[
+            tensor_spec.TensorSpec(shape=[None], dtype=dtypes.float32)
+        ],
+    )
+    def fn(x):
+      return RaggedTensor.from_row_splits(x, [0, 2, 3])
+
+    result = fn(constant_op.constant([1.0, 2.0, 3.0]))
+    self.assertAllEqual(result, [[1.0, 2.0], [3.0]])
+
+  def testFromRowStartsStaticValidationUnderJit(self):
+    @def_function.function(jit_compile=True)
+    def fn(x):
+      values = array_ops.reshape(x, [-1, 2])
+      return RaggedTensor.from_row_starts(values, [0, 3, 2])
+
+    with self.assertRaisesRegex(
+        ValueError, r'row_starts must be monotonic increasing'
+    ):
+      fn(constant_op.constant([4.0, 5.0, 6.0, 7.0]))
 
   def testFromRowStarts(self):
     values = constant_op.constant(['a', 'b', 'c', 'd', 'e', 'f', 'g'])

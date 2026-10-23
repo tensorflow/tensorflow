@@ -66,7 +66,6 @@ class BlockLevelEmitterBackend : public GpuCodegenBackend {
         indexing_performance_model_(
             &target_config->device_description, &fusion_analysis_cache_,
             shape_size_fn_, &mlir_context_,
-            debug_options->xla_gpu_experimental_enable_tiling_propagation(),
             debug_options
                 ->xla_gpu_experimental_enable_same_shape_multi_output_fusion(),
             mlir_context_pool),

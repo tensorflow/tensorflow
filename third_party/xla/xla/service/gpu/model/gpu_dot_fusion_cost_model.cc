@@ -25,7 +25,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
-#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -35,6 +34,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/codegen/xtile/block_level_parameters.h"
+#include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
@@ -303,12 +303,11 @@ absl::StatusOr<ComputeAndFlops> CalculateComputeTimeWithTileAndWaveQuantization(
   return result;
 }
 
-absl::StatusOr<absl::Duration> CalculateL2Time(
-    int64_t dot_k, int64_t tile_k, const se::DeviceDescription& device_info,
-    int64_t l2_bytes_read, bool is_tma_allowed) {
+absl::Duration CalculateL2Time(int64_t k_loop_iterations,
+                               const se::DeviceDescription& device_info,
+                               int64_t l2_bytes_read, bool is_tma_allowed) {
   double l2_cache_bandwidth_bytes_per_sec =
       GetMemoryBandwidthSpec(device_info).l2_cache_bandwidth_bytes_per_sec;
-  int64_t num_k_iters = CeilOfRatio<int64_t>(dot_k, tile_k);
 
   // Empirical overheads per K-dimension iteration.
   // The overhead is dictated by the memory instruction pathway rather than
@@ -323,7 +322,7 @@ absl::StatusOr<absl::Duration> CalculateL2Time(
 
   double base_time_seconds =
       1.0 * l2_bytes_read / l2_cache_bandwidth_bytes_per_sec;
-  return absl::Seconds(base_time_seconds + num_k_iters * k_loop_overhead);
+  return absl::Seconds(base_time_seconds + k_loop_iterations * k_loop_overhead);
 }
 
 // Returns the effective HBM bandwidth in bytes per second for a given dma_size.
@@ -766,12 +765,6 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(
   estimates.registers_per_thread = detail::CalculateRegistersPerThread(
       dot_info, dot_tile, block_params, device_info);
 
-  // Calculate L2 time.
-  ABSL_ASSIGN_OR_RETURN(absl::Duration l2_time,
-                   detail::CalculateL2Time(dot_info.k, dot_tile.k, device_info,
-                                           estimates.l2_bytes_read,
-                                           block_params.is_tma_allowed));
-
   TF_RET_CHECK(block_k_val > 0)
       << "block_k_val must be strictly positive, got " << block_k_val;
   TF_RET_CHECK(dot_info.k > 0)
@@ -792,6 +785,9 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(
       detail::CalculatePipelinedLoopTimeWithLaunchWaves(
           launch_config, compute_and_flops.compute_time, hbm_timing,
           device_info);
+  absl::Duration l2_time = detail::CalculateL2Time(
+      k_loop_iterations, device_info, estimates.l2_bytes_read,
+      block_params.is_tma_allowed);
 
   // Assuming perfect overlap between compute and memory for the rest,
   // but main loop is now modeled precisely.

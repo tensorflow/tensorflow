@@ -14,6 +14,7 @@
 # ============================================================================
 """Tests for bazel_diff module."""
 
+import dataclasses
 import hashlib
 import os
 import subprocess
@@ -25,6 +26,28 @@ from absl.testing import parameterized
 
 from build_tools.ci import bazel_diff
 from build_tools.ci import change_detector
+
+
+@dataclasses.dataclass(frozen=True)
+class _FakeBuildConfig:
+  target_patterns: tuple[str, ...] = ("//xla/...",)
+  configs: tuple[str, ...] = ()
+  repo_env: dict[str, str] = dataclasses.field(default_factory=dict)
+  options: dict[str, object] = dataclasses.field(default_factory=dict)
+  startup_options: dict[str, object] = dataclasses.field(default_factory=dict)
+  bazel_diff_use_cquery: bool = True
+
+
+def _write_impacted_targets(
+    jar_path: str,
+    workspace_dir: str,
+    base_hashes: str,
+    head_hashes: str,
+    output_path: str,
+) -> None:
+  del jar_path, workspace_dir, base_hashes, head_hashes
+  with open(output_path, "w", encoding="utf-8") as f:
+    f.write("//xla/service/cpu:cpu_compiler_test\n")
 
 
 class BazelDiffTest(parameterized.TestCase):
@@ -335,6 +358,182 @@ class BazelDiffTest(parameterized.TestCase):
     )
     self.assertEqual(decision.decision, bazel_diff.BazelDiffDecisionType.FULL)
     self.assertIn("Failed to get git changed files", decision.reason)
+
+  @mock.patch.object(
+      bazel_diff, "run_get_impacted_targets", autospec=True, spec_set=True
+  )
+  @mock.patch.object(
+      bazel_diff, "run_generate_hashes", autospec=True, spec_set=True
+  )
+  @mock.patch.object(
+      bazel_diff, "download_and_verify_jar", autospec=True, spec_set=True
+  )
+  @mock.patch.object(bazel_diff.subprocess, "run", autospec=True, spec_set=True)
+  @mock.patch.object(
+      change_detector, "get_diff_base", autospec=True, spec_set=True
+  )
+  @mock.patch.object(
+      change_detector, "get_changed_files", autospec=True, spec_set=True
+  )
+  @mock.patch.object(
+      change_detector, "ensure_base_fetched", autospec=True, spec_set=True
+  )
+  @mock.patch.object(
+      change_detector, "run_git_best_effort", autospec=True, spec_set=True
+  )
+  def test_compute_impacted_targets_checkout_and_restore(
+      self,
+      mock_git_best_effort,
+      mock_ensure_fetched,
+      mock_changed_files,
+      mock_diff_base,
+      mock_subprocess_run,
+      mock_download_jar,
+      mock_generate_hashes,
+      mock_get_impacted,
+  ):
+    del mock_ensure_fetched, mock_generate_hashes
+    mock_git_best_effort.side_effect = [
+        subprocess.CompletedProcess(
+            args=["git", "rev-parse", "HEAD"],
+            returncode=0,
+            stdout="orig_head_sha\n",
+        ),
+        subprocess.CompletedProcess(
+            args=["git", "checkout", "-f", "orig_head_sha"],
+            returncode=0,
+            stdout="",
+        ),
+    ]
+    mock_changed_files.return_value = ["xla/service/cpu/cpu_compiler.cc"]
+    mock_diff_base.return_value = "merge_base_sha"
+    mock_download_jar.return_value = "/tmp/bazel-diff.jar"
+    mock_get_impacted.side_effect = _write_impacted_targets
+
+    decision = bazel_diff.compute_impacted_targets(
+        _FakeBuildConfig(), "base_sha", "HEAD", workspace_dir="/workspace"
+    )
+
+    self.assertEqual(
+        decision.decision, bazel_diff.BazelDiffDecisionType.IMPACTED
+    )
+    self.assertEqual(
+        decision.impacted_targets, ("//xla/service/cpu:cpu_compiler_test",)
+    )
+    self.assertEqual(
+        mock_subprocess_run.call_args_list,
+        [
+            mock.call(
+                ["git", "checkout", "-f", "merge_base_sha"],
+                cwd="/workspace",
+                check=True,
+                capture_output=True,
+            ),
+            mock.call(
+                ["git", "checkout", "-f", "orig_head_sha"],
+                cwd="/workspace",
+                check=True,
+                capture_output=True,
+            ),
+        ],
+    )
+    self.assertEqual(
+        mock_git_best_effort.call_args_list,
+        [
+            mock.call(["rev-parse", "HEAD"], cwd="/workspace"),
+            mock.call(["checkout", "-f", "orig_head_sha"], cwd="/workspace"),
+        ],
+    )
+
+  @mock.patch.object(
+      bazel_diff, "compute_impacted_targets", autospec=True, spec_set=True
+  )
+  @mock.patch.object(
+      change_detector, "evaluate_skip", autospec=True, spec_set=True
+  )
+  def test_main_impacted_writes_github_output(
+      self, mock_eval_skip, mock_compute
+  ):
+    output_file = self.create_tempfile("github_output.txt")
+    targets_file = self.create_tempfile("impacted.txt", content="//xla:test\n")
+    dest_targets_file = self.create_tempfile("dest_impacted.txt")
+    mock_eval_skip.return_value = change_detector.SkipDecision(
+        should_skip=False, reason="Non-doc change", changed_files_count=1
+    )
+    mock_compute.return_value = bazel_diff.BazelDiffDecision(
+        decision=bazel_diff.BazelDiffDecisionType.IMPACTED,
+        impacted_targets=("//xla:test",),
+        impacted_targets_file=targets_file.full_path,
+        reason="Found 1 impacted target",
+        changed_files_count=1,
+    )
+    rc = bazel_diff.main([
+        "--base_sha=base_sha",
+        "--head_sha=head_sha",
+        "--build_name=XLA ROCm",
+        "--target_pattern=//xla/...",
+        f"--output_target_pattern_file={dest_targets_file.full_path}",
+        f"--github_output={output_file.full_path}",
+    ])
+    self.assertEqual(rc, 0)
+    self.assertEqual(
+        output_file.read_text(),
+        "decision=IMPACTED\n"
+        "should_skip=false\n"
+        f"target_pattern_file={os.path.abspath(dest_targets_file.full_path)}\n",
+    )
+    self.assertEqual(dest_targets_file.read_text(), "//xla:test\n")
+
+  @mock.patch.object(
+      change_detector, "evaluate_skip", autospec=True, spec_set=True
+  )
+  def test_main_docs_skip_writes_github_output(self, mock_eval_skip):
+    output_file = self.create_tempfile("github_output.txt")
+    mock_eval_skip.return_value = change_detector.SkipDecision(
+        should_skip=True, reason="Docs only", changed_files_count=1
+    )
+    rc = bazel_diff.main([
+        "--base_sha=base_sha",
+        "--head_sha=head_sha",
+        f"--github_output={output_file.full_path}",
+    ])
+    self.assertEqual(rc, 0)
+    self.assertEqual(
+        output_file.read_text(),
+        "decision=SKIP\nshould_skip=true\ntarget_pattern_file=\n",
+    )
+
+  @mock.patch.object(bazel_diff.subprocess, "run", autospec=True, spec_set=True)
+  @mock.patch.object(bazel_diff.shutil, "which", autospec=True, spec_set=True)
+  def test_resolve_java_bin_falls_back_to_bazel_java_home(
+      self, mock_which, mock_run
+  ):
+    mock_which.return_value = None
+    fake_jdk_dir = self.create_tempdir("embedded_jdk")
+    fake_bin_dir = os.path.join(fake_jdk_dir.full_path, "bin")
+    os.makedirs(fake_bin_dir, exist_ok=True)
+    fake_java = os.path.join(fake_bin_dir, "java")
+    with open(fake_java, "w", encoding="utf-8") as f:
+      f.write("#!/bin/sh\n")
+    os.chmod(fake_java, 0o755)
+    mock_run.return_value = subprocess.CompletedProcess(
+        args=["bazel", "--bazelrc=rocm.bazelrc", "info", "java-home"],
+        returncode=0,
+        stdout=f"{fake_jdk_dir.full_path}\n",
+    )
+    with mock.patch.dict(os.environ, {"JAVA_HOME": ""}, clear=False):
+      resolved = bazel_diff.resolve_java_bin(
+          workspace_dir="/workspace",
+          startup_options=["--bazelrc=rocm.bazelrc"],
+      )
+    self.assertEqual(resolved, fake_java)
+    mock_run.assert_called_once_with(
+        ["bazel", "--bazelrc=rocm.bazelrc", "info", "java-home"],
+        cwd="/workspace",
+        capture_output=True,
+        text=True,
+        check=True,
+    )
 
 
 if __name__ == "__main__":

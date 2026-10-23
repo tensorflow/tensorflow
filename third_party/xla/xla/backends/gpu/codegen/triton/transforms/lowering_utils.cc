@@ -65,7 +65,8 @@ CollapseUnitDims(llvm::ArrayRef<int64_t> shape,
 // Canonicalizes the given operand of a dot operation, i.e. make it a 2D tensor,
 // and make sure that the contracting dimension is where we expect it to be for
 // the given side (the second dimension for LHS, the first dimension for the
-// RHS).
+// RHS). If the operand has no non-contracting dimension, a unit dimension is
+// inserted.
 //
 // If it is a scaled-dot scale operand then we drop the extra dims only
 // when they equal to 1  and are matching with the corresponding operand.
@@ -83,15 +84,22 @@ absl::StatusOr<TensorValue> CanonicalizeDotOperand(
   auto [shape_without_unit_dims, non_unit_dims_indices] =
       CollapseUnitDims(shape, counterpart_shape);
 
+  int expected_contracting_dim_position = side == DotOperandSide::kLhs ? 1 : 0;
+  // A vector operand (without non-contracting dimension) gets a unit one.
+  if (non_unit_dims_indices == llvm::ArrayRef(contracting_dim_idx)) {
+    int position = 1 - expected_contracting_dim_position;
+    shape_without_unit_dims.insert(shape_without_unit_dims.begin() + position,
+                                   1);
+    non_unit_dims_indices.insert(non_unit_dims_indices.begin() + position, -1);
+  }
   if (shape_without_unit_dims.size() != 2) {
     return absl::FailedPreconditionError(
         "Expected dot operand tile to have exactly two non-unit tile sizes");
   }
-  if (shape.size() != shape_without_unit_dims.size()) {
+  if (shape != llvm::ArrayRef(shape_without_unit_dims)) {
     ABSL_ASSIGN_OR_RETURN(operand, ::xla::xtile::EmitTiledReshape(
                                   b, shape_without_unit_dims, operand));
   }
-  int expected_contracting_dim_position = side == DotOperandSide::kLhs ? 1 : 0;
   bool is_transposed =
       non_unit_dims_indices[expected_contracting_dim_position] !=
       contracting_dim_idx;

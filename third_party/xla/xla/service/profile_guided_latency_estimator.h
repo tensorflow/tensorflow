@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/latency_hiding_scheduler.h"
 #include "tsl/profiler/protobuf/profiled_instructions.pb.h"
@@ -101,6 +102,18 @@ class ProfileGuidedLatencyEstimator : public LatencyEstimator {
     absl::flat_hash_map<std::string, TimeCost> latencies;
   };
   absl::flat_hash_map<std::string, ProfileInfo> instr_map_;
+
+  // Returns the profiled cost of `instr`, or of the instructions inside it if
+  // it is a fusion without a profiled cost of its own.
+  std::optional<TimeCost> ProfiledCost(const HloInstruction* instr) const;
+
+  // Returns the cost of running `computation`, in the scheduler's time units
+  // like NodeCost(): the sum over its instructions of the profiled cost, of
+  // the called computation's cost for a call, or else of the fallback
+  // estimator's cost. Each instruction is reported to the aggregator as found
+  // or missing.
+  TimeCost CostOfComputation(const HloComputation* computation) const;
+
   // Aggregator gathering data about missed/found instructions.
   std::unique_ptr<ProfileStatisticsAggregator> aggregator_;
 };

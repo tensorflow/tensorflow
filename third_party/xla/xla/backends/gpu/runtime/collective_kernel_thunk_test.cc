@@ -376,7 +376,7 @@ absl::StatusOr<se::DeviceAddressBase> RunCollectiveKernelThunk(
                                       &buffer_allocations};
 
   ABSL_RETURN_IF_ERROR(metadata.thunk->Prepare(prepare_params));
-  CollectiveMemoryCache collective_memory_cache;
+  CollectiveMemoryCache collective_memory_cache(/*num_devices=*/2);
   CollectiveCliques collective_cliques;
   ABSL_ASSIGN_OR_RETURN(collective_cliques, AcquireCollectiveCliques(
                                            collective_params, clique_requests));
@@ -635,7 +635,7 @@ TEST(CollectiveKernelThunkTest, RecordCommandBufferCreateUpdate) {
                                       &allocations1};
   ASSERT_OK(collective_kernel_thunk->Prepare(prepare_params));
 
-  CollectiveMemoryCache collective_memory_cache;
+  CollectiveMemoryCache collective_memory_cache(/*num_devices=*/2);
   ASSERT_OK_AND_ASSIGN(
       CollectiveCliques collective_cliques,
       AcquireCollectiveCliques(collective_params, clique_requests));

@@ -23,6 +23,30 @@ load("@rules_cc//cc:cc_library.bzl", "cc_library")
 
 package(default_visibility = ["//visibility:public"])
 
+_IBV_SHIM_SRC = "transport/rdma/providers/ibverbs/ibv_shim.cpp"
+
+# Mirrors CMake's mori_ibv_shim OBJECT library. The shim defines the core ibv_*
+# symbols and dlopen()s libibverbs.so.1 at runtime; it must be compiled with
+# hidden visibility so those definitions never interpose a real libibverbs
+# loaded by another library in the same process (e.g. RCCL, UCX, MPI).
+cc_library(
+    name = "mori_ibv_shim",
+    srcs = [_IBV_SHIM_SRC],
+    copts = [
+        "-fvisibility=hidden",
+        "-fvisibility-inlines-hidden",
+    ],
+    linkopts = [
+        "-ldl",
+    ],
+    visibility = ["//visibility:private"],
+    deps = [
+        "@roc_mori//:ibverbs",
+        "@roc_mori//:mori_application_headers",
+        "@spdlog",
+    ],
+)
+
 cc_library(
     name = "mori_application",
     srcs = glob(
@@ -30,10 +54,15 @@ cc_library(
         exclude = [
             "bootstrap/mpi_bootstrap.cpp",
             "bootstrap/torch_bootstrap.cpp",
+            _IBV_SHIM_SRC,
         ],
     ),
+    # Hide the GCC 8 std::filesystem code (libstdc++fs.a and inline members):
+    # it is ABI-incompatible with the libstdc++.so that other libraries use.
+    copts = ["-fvisibility-inlines-hidden"],
     linkopts = [
         "-ldl",
+        "-Wl,--exclude-libs,libstdc++fs.a",
     ],
     deps = [
         "@roc_mori//:mori_application_headers",
@@ -43,7 +72,9 @@ cc_library(
         "@local_config_rocm//rocm:hip",
         "@local_config_rocm//rocm:hsa_runtime",
         "@local_config_rocm//rocm:hsakmt",
-        # CMake ibverbs: system libibverbs.so (rdma-core).
+        # Vendored <infiniband/verbs.h>; libibverbs itself is dlopen()ed by
+        # :mori_ibv_shim at runtime.
+        ":mori_ibv_shim",
         "@roc_mori//:ibverbs",
         # System libdrm + libdrm_amdgpu. Required transitively by libhsakmt.a
         # (amdgpu_get_marketing_name, amdgpu_query_gpu_info, amdgpu_*, drmClose).

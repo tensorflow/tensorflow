@@ -358,6 +358,48 @@ def ScanOp : XTile_Op<"scan", [Pure, AttrSizedOperandSegments, AttrSizedResultSe
   let hasVerifier = 1;
 }
 
+def ReduceScatterOp : XTile_Op<"reduce_scatter", [Pure]> {
+  let summary = "variadic reduce-scatter operation";
+  let description = [{
+    Mirrors HLO's kReduceScatter operation with one or more operands.
+
+    Output `k` on every replica is the element-wise reduction, over all
+    replicas of its replica group, of that replica's shard of input `k` along
+    `scatter_dimension`. The same binary reduction `computation` (a region
+    with two 0-d tensor arguments, terminated by `stablehlo.return`) is applied
+    to all operands.
+
+    This op exists because `stablehlo.reduce_scatter` takes exactly one operand
+    and produces one result, whereas HLO's reduce-scatter (like
+    `stablehlo.all_gather` and `stablehlo.all_reduce`) is variadic. Extending
+    StableHLO is out of scope for XTile, so reduce-scatters are emitted as this
+    op.
+
+    Example: for inputs of type `tensor<2x64xf32>`, `scatter_dimension = 0` and
+    a replica group of size 2, the outputs have type `tensor<1x64xf32>`.
+  }];
+
+  let arguments = (
+    ins
+    Variadic<AnyRankedTensor>:$inputs,
+    I64Attr:$scatter_dimension,
+    I64ElementsAttr:$replica_groups
+  );
+
+  let results = (outs Variadic<AnyRankedTensor>:$outputs);
+
+  let regions = (region SizedRegion<1>:$computation);
+
+  let assemblyFormat = [{
+    `(` $inputs `)` `scatter_dimension` `=` $scatter_dimension
+    prop-dict attr-dict
+    `:` `(` type($inputs) `)` `->` `(` type($outputs) `)`
+    $computation
+  }];
+
+  let hasVerifier = 1;
+}
+
 //
 // DotScaled Op
 //

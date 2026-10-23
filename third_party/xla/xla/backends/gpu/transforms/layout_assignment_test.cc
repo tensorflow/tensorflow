@@ -215,7 +215,7 @@ TEST_F(LayoutAssignmentTest, DotOperandLayoutSetToBatchRowsColsOtherwise) {
   EXPECT_THAT(layout_assignment.Run(module.get()),
               absl_testing::IsOkAndHolds(true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::Dot(m::Op().WithShape(F32, {2, 3, 5}, {0, 1, 2}),
+              GmockMatch(m::Dot(m::Op().WithShape(F32, {2, 3, 5}, {1, 0, 2}),
                                 m::Op().WithShape(F32, {3, 4, 5}, {1, 0, 2}))));
 }
 
@@ -1482,6 +1482,33 @@ main {
           LayoutAssignment::InstructionCanChangeLayout));
   EXPECT_THAT(verifier.Run(module.get()).status(), absl_testing::IsOk())
       << module->ToString();
+}
+
+TEST_F(LayoutAssignmentTest,
+       DotWithReversedBatchDimsPreservesDefaultRowColOrder) {
+  const char* hlo_text = R"(
+  HloModule DotReversedBatchDims
+  ENTRY main {
+    lhs = f32[2,4,12,65] parameter(0)
+    rhs = f32[4,2,65,32] parameter(1)
+    ROOT dot = f32[4,2,12,32] dot(lhs, rhs),
+      lhs_batch_dims={1,0}, lhs_contracting_dims={3},
+      rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+  })";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
+
+  ComputationLayout computation_layout(
+      module->entry_computation()->ComputeProgramShape(),
+      /*ignore_layouts=*/false);
+  GpuLayoutAssignment layout_assignment(&computation_layout, default_gpu_cc_,
+                                        default_device_description_);
+  EXPECT_THAT(layout_assignment.Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
+
+  const HloInstruction* dot = module->entry_computation()->root_instruction();
+  EXPECT_THAT(dot->operand(0)->shape().layout().minor_to_major(),
+              ::testing::ElementsAre(3, 2, 0, 1));
 }
 
 }  // namespace

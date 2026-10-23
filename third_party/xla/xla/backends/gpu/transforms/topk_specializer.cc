@@ -451,15 +451,10 @@ absl::StatusOr<HloInstruction*> RewriteStableTopKToUint64(
 
 absl::StatusOr<HloInstruction*> SmallBufferOptimization(
     HloCustomCallInstruction* topk, bool is_cuda) {
-  // __gpu$TopK currently only implements TOTAL ordering (+0.0 > -0.0).
-  // For non-TOTAL comparators (e.g., PARTIAL order in ApproxTopK), return an
-  // error to fall back to sort + slice.
-  // TODO(b/473829358): Enable PARTIAL order in SmallBufferOptimization once
-  // TopKPartialOrderKernel is rolled out to the runtime and wired up in
-  // ThunkEmitter.
-  if (hlo_instruction_utils::GetTopKOrder(topk) != ComparisonOrder::kTotal) {
+  ComparisonOrder order = hlo_instruction_utils::GetTopKOrder(topk);
+  if (order != ComparisonOrder::kTotal && order != ComparisonOrder::kPartial) {
     return InvalidArgument(
-        "Unsupported comparator order: only TOTAL order is currently "
+        "Unsupported comparator order: only TOTAL and PARTIAL orders are "
         "supported.");
   }
 

@@ -40,7 +40,8 @@ class NcclSymmetricMemory final : public SymmetricMemory {
       std::shared_ptr<NcclCommState> comm_state,
       stream_executor::DeviceAddressBase addr,
       std::shared_ptr<tsl::Executor> executor,
-      stream_executor::StreamExecutor* stream_executor);
+      stream_executor::StreamExecutor* stream_executor,
+      bool symmetric_window = false);
 
   stream_executor::DeviceAddressBase addr() const final;
   absl::StatusOr<stream_executor::DeviceAddressBase> multimem_addr()

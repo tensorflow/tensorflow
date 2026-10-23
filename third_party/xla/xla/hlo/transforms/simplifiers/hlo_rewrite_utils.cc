@@ -244,6 +244,17 @@ HloInstruction* TransformSlice(const Shape& shape, HloInstruction* slice,
   return new_slice;
 }
 
+HloInstruction* FindReshapeUserWithShape(HloInstruction* hlo,
+                                         const Shape& target_shape) {
+  for (HloInstruction* user : hlo->users()) {
+    if (user->opcode() == HloOpcode::kReshape &&
+        ShapeUtil::SameDimensions(user->shape(), target_shape)) {
+      return user;
+    }
+  }
+  return nullptr;
+}
+
 std::optional<Shape const*>
 FindElementwiseSubgraphSurroundedByReshapesAndBroadcastsWithLimit(
     HloInstruction* root, std::optional<Shape const*> target_shape,
@@ -315,6 +326,12 @@ FindElementwiseSubgraphSurroundedByReshapesAndBroadcastsWithLimit(
                 << operand->ToString();
       }
       to_recurse.push_back(operand);
+      continue;
+    }
+
+    if (opc == HloOpcode::kReshape && target_shape && *target_shape &&
+        FindReshapeUserWithShape(operand, **target_shape) != nullptr) {
+      VLOG(3) << indent() << " " << operand->ToString();
       continue;
     }
     VLOG(3) << indent() << "FAIL " << operand->ToString();
@@ -670,7 +687,14 @@ HloInstruction* ReplaceElementwiseGroupSurroundedByReshapesAndBroadcasts(
       new_operands.push_back(it->second);
       continue;
     }
-    CHECK(IsTrivialElementwise(*operand)) << operand->ToString();
+    if (!IsTrivialElementwise(*operand)) {
+      // If we reach this point for a non trivial elementwise, then we we must
+      // have found an existing reshape user that we can reuse.
+      HloInstruction* reshaped = FindReshapeUserWithShape(operand, shape);
+      CHECK_NE(reshaped, nullptr) << operand->ToString();
+      new_operands.push_back(reshaped);
+      continue;
+    }
     new_operands.push_back(
         ReplaceElementwiseGroupSurroundedByReshapesAndBroadcasts(
             shape, operand, computation, replacements));

@@ -71,6 +71,56 @@ class NormOpTest(test_lib.TestCase):
     self.evaluate(linalg_ops.norm(matrix, axis=-1))
     self.evaluate(linalg_ops.norm(matrix, axis=(-2, -1)))
 
+  @test_util.run_in_graph_and_eager_modes
+  def testEmptyInputIsZero(self):
+    # reduce_max over an empty axis is -inf. A norm of an empty input should be
+    # 0, like the Euclidean, Frobenius and p-norms of an empty input. (numpy
+    # raises a ValueError for the max-based norms here.) Each case gives the
+    # expected result shape too.
+    cases = [
+        (np.zeros([0]), np.inf, None, []),
+        (np.zeros([0, 3]), 2, (0, 1), []),
+        (np.zeros([3, 0]), 2, (0, 1), []),
+        (np.zeros([0, 0]), 2, (0, 1), []),
+        (np.zeros([0, 3]), 1, (0, 1), []),
+        (np.zeros([3, 0]), 1, (0, 1), []),
+        (np.zeros([0, 0]), 1, (0, 1), []),
+        (np.zeros([0, 3]), np.inf, (0, 1), []),
+        (np.zeros([3, 0]), np.inf, (0, 1), []),
+        (np.zeros([0, 0]), np.inf, (0, 1), []),
+        (np.zeros([2, 3, 0]), 1, (1, 2), [2]),
+        (np.zeros([2, 0, 3]), np.inf, (1, 2), [2]),
+    ]
+    # The norm of a complex input is real.
+    result_dtypes = {
+        np.float32: np.float32,
+        np.float64: np.float64,
+        np.complex64: np.float32,
+        np.complex128: np.float64,
+    }
+    for dtype_, result_dtype in result_dtypes.items():
+      for value, ord_, axis_, shape in cases:
+        with self.subTest(dtype=dtype_, shape=value.shape, ord=ord_):
+          result = self.evaluate(
+              linalg_ops.norm(
+                  constant_op.constant(value, dtype=dtype_),
+                  ord=ord_,
+                  axis=axis_,
+              )
+          )
+          self.assertEqual(result.dtype, result_dtype)
+          self.assertAllEqual(result, np.zeros(shape))
+
+      result = self.evaluate(
+          linalg_ops.norm(
+              constant_op.constant(np.zeros([0, 3]), dtype=dtype_),
+              ord=np.inf,
+              axis=(0, 1),
+              keepdims=True,
+          )
+      )
+      self.assertAllEqual(result, np.zeros([1, 1]))
+
 
 class MatrixNormXlaTest(test_lib.TestCase, parameterized.TestCase):
 

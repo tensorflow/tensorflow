@@ -1157,7 +1157,7 @@ cuda_py_strict_test(
         "//conditions:default": None,
     }),
     grpc_enabled = True,
-    shard_count = 2,
+    shard_count = 4,
     tags = [
         "no_oss",  # This test launches local server.
         "nofastbuild",  # times out

@@ -27,7 +27,10 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Bitcode/BitcodeWriter.h"
+#include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IRReader/IRReader.h"
@@ -296,7 +299,13 @@ int main(int argc, char* argv[]) {
   constant_to_embed.symbol_prefix = args->variable_name;
   std::vector<uint8_t> content_vec;
   if (has_defined_functions) {
-    content_vec.assign(content.begin(), content.end());
+    // Strip any DWARF debug info (e.g. injected by command-line --copt=-gmlt
+    // or -g flags after rule copts) and re-serialize compact bitcode.
+    llvm::StripDebugInfo(*module);
+    llvm::SmallVector<char, 0> stripped_bitcode;
+    llvm::raw_svector_ostream bitcode_stream(stripped_bitcode);
+    llvm::WriteBitcodeToFile(*module, bitcode_stream);
+    content_vec.assign(stripped_bitcode.begin(), stripped_bitcode.end());
   }
   constant_to_embed.SerializeIntoBuffer(content_vec);
 

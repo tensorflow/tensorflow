@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/hlo/analysis/symbolic_map_serialization.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_traversal.h"
@@ -44,6 +45,7 @@ limitations under the License.
 namespace xla::gpu::experimental {
 namespace {
 
+using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
 using ::mlir::MLIRContext;
 using ::testing::ElementsAre;
@@ -294,6 +296,8 @@ TEST_F(TilingSpaceTest, DynamicSlice) {
 }
 
 TEST_F(TilingSpaceTest, TwoOutputsParallelDims) {
+  GTEST_SKIP() << "Arbitrary multi-output fusions are currently not supported "
+                  "in TilingSpace (b/502910372).";
   HloInstruction* root = ParseAndGetRoot(R"(
     HloModule m
     f {
@@ -373,6 +377,11 @@ TEST_F(TilingSpaceTest, TwoOutputsEqualShapesParallelDims) {
 TEST_F(TilingSpaceTest, IsIndexWiseVariadic) {
   ParseAndGetRoot(R"(
     HloModule m
+    add {
+      x = f32[] parameter(0)
+      y = f32[] parameter(1)
+      ROOT add = f32[] add(x, y)
+    }
     add_pair {
       a = f32[] parameter(0)
       b = s32[] parameter(1)
@@ -387,16 +396,23 @@ TEST_F(TilingSpaceTest, IsIndexWiseVariadic) {
       p1 = s32[1] parameter(1)
       p2 = f32[4,8] parameter(2)
       p3 = s32[4,8] parameter(3)
+      p4 = f32[4,16] parameter(4)
       c0 = f32[] constant(0)
       c1 = s32[] constant(0)
       single_ag = f32[4,8] all-gather(p0), replica_groups={{0,1,2,3}},
         dimensions={0}
       variadic_ag = (f32[4,8], s32[4]) all-gather(p0, p1),
         replica_groups={{0,1,2,3}}, dimensions={0}
+      single_rs = f32[1,8] reduce-scatter(p2), replica_groups={{0,1,2,3}},
+        dimensions={0}, to_apply=add
+      variadic_rs = (f32[1,8], f32[1,16]) reduce-scatter(p2, p4),
+        replica_groups={{0,1,2,3}}, dimensions={0}, to_apply=add
       variadic_reduce = (f32[4], s32[4]) reduce(p2, p3, c0, c1),
         dimensions={1}, to_apply=add_pair
       gte = f32[4,8] get-tuple-element(variadic_ag), index=0
-      ROOT t = (f32[4,8], f32[4,8]) tuple(single_ag, gte)
+      gte_rs = f32[1,8] get-tuple-element(variadic_rs), index=0
+      ROOT t = (f32[4,8], f32[4,8], f32[1,8], f32[1,8])
+        tuple(single_ag, gte, single_rs, gte_rs)
     }
   )");
   HloComputation* entry = module_->entry_computation();
@@ -404,9 +420,14 @@ TEST_F(TilingSpaceTest, IsIndexWiseVariadic) {
       IsIndexWiseVariadic(*entry->GetInstructionWithName("variadic_ag")));
   EXPECT_FALSE(
       IsIndexWiseVariadic(*entry->GetInstructionWithName("single_ag")));
+  EXPECT_TRUE(
+      IsIndexWiseVariadic(*entry->GetInstructionWithName("variadic_rs")));
+  EXPECT_FALSE(
+      IsIndexWiseVariadic(*entry->GetInstructionWithName("single_rs")));
   EXPECT_FALSE(
       IsIndexWiseVariadic(*entry->GetInstructionWithName("variadic_reduce")));
   EXPECT_FALSE(IsIndexWiseVariadic(*entry->GetInstructionWithName("gte")));
+  EXPECT_FALSE(IsIndexWiseVariadic(*entry->GetInstructionWithName("gte_rs")));
   EXPECT_FALSE(IsIndexWiseVariadic(*entry->root_instruction()));
 }
 
@@ -567,6 +588,94 @@ TEST_F(TilingSpaceTest,
                        TilingSpace::Create(*fusion_adaptor, &mlir_context_));
   EXPECT_EQ(tiling_space->num_dimensions(), 6);
   EXPECT_EQ(tiling_space->num_parallel_dimensions(), 4);
+}
+
+TEST_F(TilingSpaceTest,
+       VariadicReduceScatterRootGetsReplicaDimensionsAndReplicaSplitRootTiles) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+    f {
+      p0 = f32[32,16] parameter(0)
+      p1 = f32[16,2] parameter(1)
+      rs = (f32[8,16], f32[4,2]) reduce-scatter(p0, p1),
+        replica_groups={{0,1,2,3}}, dimensions={0}, to_apply=add
+      gte0 = f32[8,16] get-tuple-element(rs), index=0
+      gte1 = f32[4,2] get-tuple-element(rs), index=1
+      ROOT t = (f32[8,16], f32[4,2]) tuple(gte0, gte1)
+    }
+
+    ENTRY e {
+      p0 = f32[32,16] parameter(0)
+      p1 = f32[16,2] parameter(1)
+      ROOT fusion = (f32[8,16], f32[4,2]) fusion(p0, p1), kind=kCustom,
+        calls=f
+    }
+  )");
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  ASSERT_OK_AND_ASSIGN(auto tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+  EXPECT_EQ(tiling_space->num_dimensions(), 6);
+  EXPECT_EQ(tiling_space->num_parallel_dimensions(), 4);
+  EXPECT_THAT(RunFileCheck(tiling_space->ToString(), R"(
+    CHECK: Dimensions:
+    CHECK:   0 type: parallel size: 8 dim ID:0
+    CHECK:   1 type: parallel size: 16 dim ID:1
+    CHECK:   2 type: parallel size: 4 dim ID:0
+    CHECK:   3 type: parallel size: 2 dim ID:1
+    CHECK:   4 type: replica size: 4 dim ID:4
+    CHECK:   5 type: replica size: 4 dim ID:5
+    CHECK: Root tiles:
+    CHECK:   0 root tile:  offsets [tid_0 * ts_0 * 4 + tid_4 * ts_0, tid_1 * ts_1] sizes [ts_0, ts_1] strides [1, 1] upper bounds [8, 16]
+    CHECK:   1 root tile:  offsets [tid_2 * ts_2 * 4 + tid_5 * ts_2, tid_3 * ts_3] sizes [ts_2, ts_3] strides [1, 1] upper bounds [4, 2]
+  )"),
+              IsOkAndHolds(true));
+}
+
+TEST_F(TilingSpaceTest,
+       ReduceScatterRootGetsReplicaDimensionAndReplicaSplitRootTile) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+    f {
+      p0 = f32[32,16] parameter(0)
+      ROOT rs = f32[8,16] reduce-scatter(p0),
+        replica_groups={{0,1,2,3}}, dimensions={0}, to_apply=add
+    }
+
+    ENTRY e {
+      p0 = f32[32,16] parameter(0)
+      ROOT fusion = f32[8,16] fusion(p0), kind=kCustom, calls=f
+    }
+  )");
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  ASSERT_OK_AND_ASSIGN(auto tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+  EXPECT_EQ(tiling_space->num_dimensions(), 3);
+  EXPECT_EQ(tiling_space->num_parallel_dimensions(), 2);
+  EXPECT_THAT(*tiling_space, MatchString(R"(
+    Dimensions:
+        0 type: parallel size: 8 dim ID:0
+          hlo: %rs = f32[8,16]{1,0} reduce-scatter(%p0), replica_groups={{0,1,2,3}}, dimensions={0}, to_apply=%add
+        1 type: parallel size: 16 dim ID:1
+          hlo: %rs = f32[8,16]{1,0} reduce-scatter(%p0), replica_groups={{0,1,2,3}}, dimensions={0}, to_apply=%add
+        2 type: replica size: 4 dim ID:2
+          hlo: %rs = f32[8,16]{1,0} reduce-scatter(%p0), replica_groups={{0,1,2,3}}, dimensions={0}, to_apply=%add
+    Root tiles:
+      0 root tile:
+           offsets [tid_0 * ts_0 * 4 + tid_2 * ts_0, tid_1 * ts_1]
+           sizes [ts_0, ts_1]
+           strides [1, 1]
+           upper bounds [8, 16]
+  )"));
 }
 
 class TilingSpaceSameShapeMultiOutputTest : public TilingSpaceTest {
@@ -1004,5 +1113,206 @@ TEST_F(TilingSpaceTest,
   }
 }
 
+TEST_F(TilingSpaceTest, GetValidTilingsTilesReductionDimOfSingleDimReduce) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+      HloModule m
+      add {
+        p0 = f32[] parameter(0)
+        p1 = f32[] parameter(1)
+        ROOT res = f32[] add(p0, p1)
+      }
+      ENTRY e {
+        p0 = f32[2,4] parameter(0)
+        c0 = f32[] constant(0)
+        ROOT r = f32[2] reduce(p0, c0), dimensions={1}, to_apply=add
+      }
+  )");
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  ASSERT_OK_AND_ASSIGN(auto tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+  ASSERT_OK_AND_ASSIGN(
+      auto valid_tilings,
+      tiling_space->GetValidTilings(/*tile_reduction_dimensions=*/true));
+  EXPECT_THAT(valid_tilings, ElementsAre(ElementsAre(1, 1), ElementsAre(1, 2),
+                                         ElementsAre(1, 4), ElementsAre(2, 1),
+                                         ElementsAre(2, 2), ElementsAre(2, 4)));
+
+  // By default, the reduction dimension is covered by a single tile.
+  ASSERT_OK_AND_ASSIGN(auto untiled_valid_tilings,
+                       tiling_space->GetValidTilings());
+  EXPECT_THAT(untiled_valid_tilings,
+              ElementsAre(ElementsAre(1, 4), ElementsAre(2, 4)));
+}
+
+// TODO(b/534676634): Remove this test once tiling reduction dimensions of
+// multi-reduction fusions is supported.
+TEST_F(TilingSpaceTest,
+       GetValidTilingsDoesNotTileReductionDimsOfMultipleReduces) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+      HloModule m
+      add {
+        p0 = f32[] parameter(0)
+        p1 = f32[] parameter(1)
+        ROOT res = f32[] add(p0, p1)
+      }
+      fused_computation {
+        p0 = f32[2,4,8] parameter(0)
+        c0 = f32[] constant(0)
+        r0 = f32[2,4] reduce(p0, c0), dimensions={2}, to_apply=add
+        ROOT r1 = f32[2] reduce(r0, c0), dimensions={1}, to_apply=add
+      }
+      ENTRY e {
+        p0 = f32[2,4,8] parameter(0)
+        ROOT fusion = f32[2] fusion(p0), kind=kLoop, calls=fused_computation
+      }
+  )");
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  ASSERT_OK_AND_ASSIGN(auto tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+  ASSERT_OK_AND_ASSIGN(
+      auto valid_tilings,
+      tiling_space->GetValidTilings(/*tile_reduction_dimensions=*/true));
+  // Dimensions are ordered use-before-def: r1's reduction dimension (4) comes
+  // before r0's (8). Both are kept at their full size.
+  EXPECT_THAT(valid_tilings,
+              ElementsAre(ElementsAre(1, 4, 8), ElementsAre(2, 4, 8)));
+}
+
+// TODO(b/534676634): Remove this test once tiling reduction dimensions of
+// multi-dimension reductions is supported.
+TEST_F(TilingSpaceTest,
+       GetValidTilingsDoesNotTileReductionDimsOfMultiDimReduce) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+      HloModule m
+      add {
+        p0 = f32[] parameter(0)
+        p1 = f32[] parameter(1)
+        ROOT res = f32[] add(p0, p1)
+      }
+      ENTRY e {
+        p0 = f32[2,4,8] parameter(0)
+        c0 = f32[] constant(0)
+        ROOT r = f32[2] reduce(p0, c0), dimensions={1,2}, to_apply=add
+      }
+  )");
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  ASSERT_OK_AND_ASSIGN(auto tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+  ASSERT_OK_AND_ASSIGN(
+      auto valid_tilings,
+      tiling_space->GetValidTilings(/*tile_reduction_dimensions=*/true));
+  // Multi-dimension reductions keep both reduction dimensions at their full
+  // size.
+  EXPECT_THAT(valid_tilings,
+              ElementsAre(ElementsAre(1, 4, 8), ElementsAre(2, 4, 8)));
+}
+
+TEST_F(TilingSpaceTest, ScanWithElementwiseEpiloguePropagatesDimensions) {
+  auto root = ParseAndGetRoot(R"(
+    HloModule m
+    add {
+      p0 = f32[8] parameter(0)
+      p1 = f32[8] parameter(1)
+      a = f32[8] add(p0, p1)
+      ROOT t = (f32[8], f32[8]) tuple(a, a)
+    }
+    fused_computation {
+      p0 = f32[8,128] parameter(0)
+      init = f32[8] parameter(1)
+      scan = (f32[8,128], f32[8]) scan(p0, init), dimensions={1},
+        num_carries=1, is_associative=true, to_apply=add
+      gte = f32[8,128] get-tuple-element(scan), index=0
+      ROOT exp = f32[8,128] exponential(gte)
+    }
+    ENTRY e {
+      p0 = f32[8,128] parameter(0)
+      init = f32[8] parameter(1)
+      ROOT fusion = f32[8,128] fusion(p0, init), kind=kCustom, calls=fused_computation
+    }
+  )");
+  const HloInstruction* exp = root->fused_expression_root();
+  const HloInstruction* scan = exp->operand(0)->operand(0);
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  ASSERT_OK_AND_ASSIGN(auto tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+  EXPECT_EQ(tiling_space->GetDimensionInfo(*scan, 0).type,
+            TilingSpace::DimensionSemantics::kParallel);
+  EXPECT_EQ(tiling_space->GetDimensionInfo(*scan, 1).type,
+            TilingSpace::DimensionSemantics::kSequential);
+}
+
+TEST_F(TilingSpaceTest, ScanWithProducerConsumerEpiloguePropagatesDimensions) {
+  auto root = ParseAndGetRoot(R"(
+    HloModule m
+    add {
+      p0 = f32[8] parameter(0)
+      p1 = f32[8] parameter(1)
+      a = f32[8] add(p0, p1)
+      ROOT t = (f32[8], f32[8]) tuple(a, a)
+    }
+    scan_computation {
+      p0 = f32[8,128] parameter(0)
+      init = f32[8] parameter(1)
+      scan = (f32[8,128], f32[8]) scan(p0, init), dimensions={1},
+        num_carries=1, is_associative=true, to_apply=add
+      ROOT gte = f32[8,128] get-tuple-element(scan), index=0
+    }
+    epilogue_computation {
+      p0 = f32[8,128] parameter(0)
+      ROOT exp = f32[8,128] exponential(p0)
+    }
+    ENTRY e {
+      p0 = f32[8,128] parameter(0)
+      init = f32[8] parameter(1)
+      scan_fusion = f32[8,128] fusion(p0, init), kind=kCustom,
+        calls=scan_computation
+      ROOT epilogue_fusion = f32[8,128] fusion(scan_fusion), kind=kCustom,
+        calls=epilogue_computation
+    }
+  )");
+  const HloInstruction* epilogue_fusion = root;
+  const HloInstruction* scan_fusion = epilogue_fusion->operand(0);
+  const HloInstruction* scan =
+      scan_fusion->fused_instructions_computation()->GetInstructionWithName(
+          "scan");
+  auto fusion_adaptor =
+      HloFusionAdaptor::ForProducerConsumer(scan_fusion, epilogue_fusion);
+  ASSERT_OK_AND_ASSIGN(auto tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+  EXPECT_EQ(tiling_space->GetDimensionInfo(*scan, 0).type,
+            TilingSpace::DimensionSemantics::kParallel);
+  EXPECT_EQ(tiling_space->GetDimensionInfo(*scan, 1).type,
+            TilingSpace::DimensionSemantics::kSequential);
+}
+
+TEST_F(TilingSpaceTest, ScanWithNonElementwiseEpilogueIsRejected) {
+  // The transpose stops the propagation of the scan dimension.
+  auto root = ParseAndGetRoot(R"(
+    HloModule m
+    add {
+      p0 = f32[8] parameter(0)
+      p1 = f32[8] parameter(1)
+      a = f32[8] add(p0, p1)
+      ROOT t = (f32[8], f32[8]) tuple(a, a)
+    }
+    fused_computation {
+      p0 = f32[8,128] parameter(0)
+      init = f32[8] parameter(1)
+      scan = (f32[8,128], f32[8]) scan(p0, init), dimensions={1},
+        num_carries=1, is_associative=true, to_apply=add
+      gte = f32[8,128] get-tuple-element(scan), index=0
+      ROOT transpose = f32[128,8] transpose(gte), dimensions={1,0}
+    }
+    ENTRY e {
+      p0 = f32[8,128] parameter(0)
+      init = f32[8] parameter(1)
+      ROOT fusion = f32[128,8] fusion(p0, init), kind=kCustom, calls=fused_computation
+    }
+  )");
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  EXPECT_THAT(TilingSpace::Create(*fusion_adaptor, &mlir_context_),
+              StatusIs(absl::StatusCode::kUnimplemented,
+                       HasSubstr("could not be located in the tiling space")));
+}
 }  // namespace
 }  // namespace xla::gpu::experimental
