@@ -371,15 +371,14 @@ class BiasAddTestBase(test.TestCase):
 
   @test_util.run_gpu_only
   def testLargeDimsOverflowOnGpu(self):
-    if not context.executing_eagerly():
-      self.skipTest("kernel guard is reachable only in eager mode")
     with test_util.force_gpu():
       bias = array_ops.zeros([0], dtype=dtypes.float32)
       large_batch = array_ops.zeros([2**31, 0], dtype=dtypes.float32)
       with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
                                   "supports at most"):
-        nn_ops.bias_add(large_batch, bias, data_format="NHWC")
+        self.evaluate(nn_ops.bias_add(large_batch, bias, data_format="NHWC"))
       large_channel = array_ops.zeros([0, 2**31], dtype=dtypes.float32)
       with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
                                   "supports at most"):
-        gen_nn_ops.bias_add_grad(large_channel, data_format="NHWC")
+        self.evaluate(gen_nn_ops.bias_add_grad(
+            large_channel, data_format="NHWC"))
