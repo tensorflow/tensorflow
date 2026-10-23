@@ -297,9 +297,14 @@ std::unique_ptr<CallGraph> CallGraph::Build(
     call_graph->nodes_.emplace_back(computation);
 
     // Add all callsites in this computation.
-    for (HloInstruction* instruction : computation->instructions()) {
-      call_graph->nodes_.back().AddCallSiteForInstruction(instruction,
-                                                          execution_threads);
+    if (computation->HasCalledComputations()) {
+      for (const HloInstructionInfo& instruction :
+           computation->instructions_with_info()) {
+        if (HloInstruction::MightHaveCalledComputations(instruction.opcode())) {
+          call_graph->nodes_.back().AddCallSiteForInstruction(
+              instruction.get(), execution_threads);
+        }
+      }
     }
   }
 
