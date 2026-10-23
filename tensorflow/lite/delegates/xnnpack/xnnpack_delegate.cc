@@ -3294,15 +3294,6 @@ class Subgraph {
                                    node_index, node, context->tensors,
                                    input_output_tensors);
       case kTfLiteBuiltinFullyConnected: {
-        // FullyConnected with sparse weight has version 8, which cannot be
-        // delegated to XNNPack.
-        if (registration->version == 8) {
-          TF_LITE_MAYBE_KERNEL_LOG(logging_context,
-                                   "Unsupported version %d of FullyConnected.",
-                                   registration->version);
-          return kTfLiteError;
-        }
-
         const TfLiteFullyConnectedParams* fc_params =
             static_cast<const TfLiteFullyConnectedParams*>(node->builtin_data);
 
@@ -4982,6 +4973,17 @@ class Subgraph {
     TF_LITE_ENSURE_STATUS(
         CheckTensorShape(logging_context, filter_tensor, 2, filter_tensor_id,
                          BuiltinOperator_FULLY_CONNECTED, node_index));
+    // XNNPACK has no fully connected operator for sparse weights. The node's
+    // version is no proxy for them: all nodes of an operator share one
+    // version, so a sparse node can carry a version above 8 and a dense node
+    // version 8.
+    if (filter_tensor.sparsity != nullptr) {
+      TF_LITE_MAYBE_KERNEL_LOG(
+          logging_context,
+          "unsupported sparse filter tensor %d in FULLY_CONNECTED node #%d",
+          filter_tensor_id, node_index);
+      return kTfLiteError;
+    }
     // Dynamic filter is supported, but only for FP32.
     if (!(delegate.support_dynamic_fully_connected_operator() &&
           filter_tensor.type == kTfLiteFloat32)) {
