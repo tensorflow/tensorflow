@@ -49,7 +49,7 @@ TfLiteStatus GetSize(TfLiteContext* context, T start, T limit, T delta,
   TF_LITE_ENSURE(
       context, (start >= limit && delta < 0) || (start <= limit && delta > 0));
   *size =
-      (std::is_integral<T>::value
+      (std::is_integral_v<T>
            ? ((std::abs(limit - start) + std::abs(delta) - 1) / std::abs(delta))
            : std::ceil(std::abs((limit - start) / delta)));
   return kTfLiteOk;
