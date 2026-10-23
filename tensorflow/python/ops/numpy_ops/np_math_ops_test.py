@@ -736,7 +736,8 @@ class MathTest(test.TestCase, parameterized.TestCase):
       np_math_ops.cross(x, x, axisb=-3)
     # The `axisc` bound is the output rank, i.e. the max of the input ranks.
     b = np_array_ops.array(np.ones([3]))
-    self.assertAllClose(np_math_ops.cross(x, b, axisc=0).shape, [2, 3])
+    self.assertAllEqual(np_math_ops.cross(x, b, axisc=0).shape, [3, 2])
+    self.assertAllEqual(np_math_ops.cross(x, b, axisc=1).shape, [2, 3])
     with self.assertRaisesRegex(
         ValueError, 'axisc: axis -4 is out of bounds for array of dimension 2'
     ):
