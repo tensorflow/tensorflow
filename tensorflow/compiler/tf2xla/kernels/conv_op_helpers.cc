@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/hlo/builder/lib/constants.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/literal_util.h"
+#include "xla/shape_util.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/bounds_check.h"
@@ -384,6 +385,15 @@ absl::StatusOr<xla::XlaOp> MakeXlaBackpropInputConvOp(
       out_backprop_shape, attrs.dilations, attrs.strides, attrs.padding,
       attrs.data_format, &dims, attrs.explicit_paddings));
 
+  if (xla::ShapeUtil::ElementsIn(out_backprop_shape) == 0 ||
+      xla::ShapeUtil::ElementsIn(input_shape) == 0 ||
+      xla::ShapeUtil::ElementsIn(filter_shape) == 0) {
+    return xla::Broadcast(
+        xla::ConstantLiteral(builder,
+                             xla::LiteralUtil::Zero(input_shape.element_type())),
+        input_shape.dimensions());
+  }
+
   // The input gradients are computed by a convolution of the output
   // gradients and the filter, with some appropriate padding. See the
   // comment at the top of conv_grad_shape_utils.h for details.
@@ -488,6 +498,15 @@ absl::StatusOr<xla::XlaOp> MakeXlaBackpropFilterConvOp(
       type_string, attrs.num_spatial_dims, activations_shape,
       grouped_filter_shape, out_backprop_shape, attrs.dilations, attrs.strides,
       attrs.padding, attrs.data_format, &dims, attrs.explicit_paddings));
+
+  if (xla::ShapeUtil::ElementsIn(out_backprop_shape) == 0 ||
+      xla::ShapeUtil::ElementsIn(activations_shape) == 0 ||
+      xla::ShapeUtil::ElementsIn(filter_shape) == 0) {
+    return xla::Broadcast(
+        xla::ConstantLiteral(builder,
+                             xla::LiteralUtil::Zero(filter_shape.element_type())),
+        filter_shape.dimensions());
+  }
 
   // Obtain some useful dimensions:
   // The last two dimensions of the filter are the input and output shapes.
