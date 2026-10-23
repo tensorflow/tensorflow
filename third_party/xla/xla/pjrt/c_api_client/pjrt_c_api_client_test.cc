@@ -240,6 +240,45 @@ TEST(PjRtCApiClientTest, ConcurrentGetReadyFuture) {
   }
 }
 
+TEST(PjRtCApiClientTest, ConcurrentAcquireExternalReference) {
+  SetUpCpuPjRtApi();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetCApiClient("cpu"));
+
+  std::vector<int32_t> data{1, 2, 3, 4};
+  Shape shape = ShapeUtil::MakeShape(S32, {4});
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> buffer,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
+  ASSERT_OK(buffer->GetReadyFuture().Await());
+
+  constexpr int kNumThreads = 8;
+  constexpr int kNumIterations = 1000;
+  tsl::thread::ThreadPool thread_pool(
+      tsl::Env::Default(), "ConcurrentAcquireExternalReference", kNumThreads);
+
+  absl::BlockingCounter blocking_counter(kNumThreads);
+  for (int i = 0; i < kNumThreads; ++i) {
+    thread_pool.Schedule([&]() {
+      for (int j = 0; j < kNumIterations; ++j) {
+        if (absl::StatusOr<std::unique_ptr<PjRtBuffer::ExternalReference>> ref =
+                buffer->AcquireExternalReference();
+            ref.ok()) {
+          EXPECT_NE((*ref)->OpaqueDeviceMemoryDataPointer(), nullptr);
+        } else {
+          EXPECT_OK(ref);
+        }
+      }
+      blocking_counter.DecrementCount();
+    });
+  }
+  blocking_counter.Wait();
+}
+
 TEST(PjRtCApiClientTest, GetReadyFutureDeletedBuffer) {
   SetUpCpuPjRtApi();
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
