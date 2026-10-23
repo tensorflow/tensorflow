@@ -534,6 +534,7 @@ tf_cc_test_mkl(
         "//tensorflow/core/kernels:pad_op",
         "//tensorflow/core/kernels:relu_op",
         "//tensorflow/core/kernels/image",
+        "@abseil-cpp//absl/strings",
     ] + MKL_TEST_DEPS,
 )
 
