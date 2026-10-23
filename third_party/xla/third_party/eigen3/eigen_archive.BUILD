@@ -30,9 +30,11 @@ exports_files(["COPYING.MPL2"])
 ALL_FILES_WITH_EXTENSIONS = glob(["**/*.*"])
 
 # Top-level headers, excluding anything in one of the  ../src/.. directories.
+# Eigen 5 moved the modules to contrib/; unsupported/ paths are forwarding headers.
 EIGEN_HEADERS = glob(
     [
         "Eigen/*",
+        "contrib/Eigen/*",
         "unsupported/Eigen/*",
         "unsupported/Eigen/CXX11/*",
     ],
@@ -46,6 +48,8 @@ EIGEN_SOURCES = glob(
     [
         "Eigen/**/src/**/*.h",
         "Eigen/**/src/**/*.inc",
+        "contrib/Eigen/**/src/**/*.h",
+        "contrib/Eigen/**/src/**/*.inc",
         "unsupported/Eigen/**/src/**/*.h",
         "unsupported/Eigen/**/src/**/*.inc",
     ],

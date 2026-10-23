@@ -16,7 +16,7 @@
 
 # Builds the minimal Tensorflow Lite example.
 
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.18)
 project(minimal C CXX)
 
 option(LINK_TFLITE_FLEX "Enable tensorflowlite_flex library linkage" OFF)

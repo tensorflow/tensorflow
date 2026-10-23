@@ -111,6 +111,28 @@ class CastOpTest(test.TestCase):
       b = math_ops.cast(math_ops.cast(a, dtypes.bfloat16), dtypes.float32)
       self.assertAllClose(a, self.evaluate(b), rtol=1 / 128.)
 
+  def testBfloat16FromFloat64RoundsOnce(self):
+    # 1 + 2**-8 + 2**-26 must round up to 1.0078125; converting through
+    # float32 drops the 2**-26 and the resulting tie rounds to 1.0. The exact
+    # midpoints pin ties-to-even.
+    x = np.array(
+        [
+            1.0 + 2.0**-8 + 2.0**-26,
+            1.0 + 2.0**-8,
+            1.0078125 + 2.0**-8,
+            1.0078125 + 2.0**-8 - 2.0**-26,
+            -(1.0 + 2.0**-8 + 2.0**-26),
+        ],
+        dtype=np.float64,
+    )
+    expected = np.array(
+        [1.0078125, 1.0, 1.015625, 1.0078125, -1.0078125], dtype=np.float32)
+    for use_gpu in (False, True):
+      with test_util.device(use_gpu):
+        y = math_ops.cast(constant_op.constant(x), dtypes.bfloat16)
+        y = math_ops.cast(y, dtypes.float32)
+        self.assertAllEqual(self.evaluate(y), expected)
+
   def testFloat8(self):
     a = np.random.uniform(-100, 100, 100).astype(np.float32)
     for float8 in (dtypes.float8_e4m3fn, dtypes.float8_e5m2):
