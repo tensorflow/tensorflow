@@ -577,6 +577,7 @@ class Conv2DTest(parameterized.TestCase, test.TestCase):
       gpu_only=False,
       test_grappler_layout_optimizer=False,
       tol=1e-5,
+      expected_shape=None,
   ):
     if (gpu_only and not use_gpu) or not test.is_gpu_available():
       self.skipTest("GPU not available")
@@ -617,6 +618,8 @@ class Conv2DTest(parameterized.TestCase, test.TestCase):
         )
       self.assertShapeEqual(value, conv)
       self.assertEqual(value.dtype, conv.dtype.as_numpy_dtype)
+      if expected_shape is not None:
+        self.assertEqual(list(value.shape), expected_shape)
 
   def _VerifyExplicitPaddings(
       self,
@@ -850,6 +853,27 @@ class Conv2DTest(parameterized.TestCase, test.TestCase):
         dtype=dtype,
         use_gpu=use_gpu,
         op_name=op_name,
+    )
+
+  @parameterized.named_parameters(*TEST_PARAMS)
+  @test_util.run_in_graph_and_eager_modes
+  def testConv2DEmptyDifferentChannels(
+      self, data_format, dtype, use_gpu, op_name
+  ):
+    expected_output = []
+    # _SetupValuesForDevice converts NCHW outputs back to NHWC, so we expect NHWC shape
+    expected_shape = [0, 3, 3, 2]
+    self._VerifyValuesParameters(
+        tensor_in_sizes=[0, 3, 3, 4],
+        filter_in_sizes=[1, 1, 4, 2],
+        strides=[1, 1],
+        padding="VALID",
+        expected=expected_output,
+        data_format=data_format,
+        dtype=dtype,
+        use_gpu=use_gpu,
+        op_name=op_name,
+        expected_shape=expected_shape,
     )
 
   @parameterized.named_parameters(*DILATED_PARAMS)
