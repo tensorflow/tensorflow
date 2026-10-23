@@ -154,6 +154,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@xla//xla:util",
+        "@xla//xla/tpu/protobuf:tpu_embedding_configuration_proto_cc",
     ],
 )
 
@@ -180,6 +181,8 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@xla//xla:status_macros",
+        "@xla//xla/tpu/protobuf:optimization_parameters_proto_cc",
+        "@xla//xla/tpu/protobuf:tpu_embedding_configuration_proto_cc",
         "@xla//xla/tsl/platform:errors",
         "@xla//xla/tsl/platform:logging",
     ],
@@ -213,6 +216,7 @@ cc_library(
         "//tensorflow/core/framework:types_proto_cc",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@xla//xla:util",
     ],

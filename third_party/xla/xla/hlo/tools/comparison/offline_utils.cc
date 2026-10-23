@@ -41,7 +41,7 @@ limitations under the License.
 #include "xla/hlo/tools/comparison/comparison_result.pb.h"
 #include "xla/hlo/tools/comparison/launch_info_compat.pb.h"
 #include "xla/hlo/tools/comparison/original_tensor_summary_utils.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/tsl/platform/env.h"

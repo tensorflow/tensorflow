@@ -1,0 +1,45 @@
+op {
+  graph_op_name: "EncodeJxl"
+  in_arg {
+    name: "image"
+    description: <<END
+Images to encode. Rank N >= 3 with shape `batch_dims + [height, width, channels]`.
+END
+  }
+  out_arg {
+    name: "contents"
+    description: <<END
+0-D or higher depending on input batch dimensions. JPEG XL-encoded image(s).
+END
+  }
+  attr {
+    name: "quality"
+    description: <<END
+JPEG-style quality factor in [0.0, 100.0]. Defaults to 95.0 to match
+`encode_jpeg`. 100.0 encodes losslessly, 90.0 is visually lossless, and lower
+values compress more.
+END
+  }
+  attr {
+    name: "effort"
+    description: <<END
+Effort level from 1 (fastest) to 9 (slowest/best compression).
+END
+  }
+  summary: "JPEG XL-encode an image."
+  description: <<END
+`image` is a rank-N uint8 or uint16 Tensor of shape `batch_dims + [height, width, channels]`
+where `channels` is:
+
+*   1: for grayscale.
+*   3: for RGB.
+*   4: for RGBA.
+
+`quality` is mapped internally to a Butteraugli distance, using the same
+mapping as `cjxl -q`: 100.0 maps to distance 0.0 (lossless modular encoding),
+95.0 maps to distance 0.5 (default lossy VarDCT encoding), 90.0 maps to
+distance 1.0, and 0.0 maps to distance 25.0. Note that quality factors are not
+comparable across codecs; a given `quality` will not produce the same file size
+or visual quality as the same value passed to `tf.io.encode_jpeg`.
+END
+}

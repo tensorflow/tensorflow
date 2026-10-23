@@ -218,14 +218,16 @@ IndexingMap ComputePadIndexingMap(absl::Span<const int64_t> output_dims,
   std::vector<std::pair<SymbolicExpr, Interval>> constraints;
   std::vector<IndexingMap::Variable> dim_vars;
   exprs.reserve(output_rank);
-  constraints.reserve(output_rank);
   int64_t output_dim_id = 0;
   for (const auto [output_dim, pad_low, pad_high, pad_interior] :
        llvm::zip(output_dims, padding_low, padding_high, padding_interior)) {
     SymbolicExpr dim_expr = CreateDimExpr(output_dim_id, mlir_context);
-    dim_vars.push_back({IndexingMap::Variable{
-        std::max(int64_t{0}, pad_low),
-        std::min(output_dim - 1, output_dim - 1 - pad_high)}});
+    int64_t valid_min = std::max(int64_t{0}, pad_low);
+    int64_t valid_max = std::min(output_dim - 1, output_dim - 1 - pad_high);
+    dim_vars.push_back({IndexingMap::Variable{valid_min, valid_max}});
+    if (valid_min > 0 || valid_max < output_dim - 1) {
+      constraints.push_back({dim_expr, Interval{valid_min, valid_max}});
+    }
     if (pad_interior == 0) {
       exprs.push_back(dim_expr - pad_low);
     } else {
@@ -302,7 +304,6 @@ IndexingMap ComposeWindowIndexingMap(absl::Span<const int64_t> input_dims,
   IndexingMap result =
       ComposeIndexingMaps(input_indexing_no_padding, padded_input_indexing);
   result.Simplify();
-  result.RemoveUnusedSymbols();
   return result;
 }
 

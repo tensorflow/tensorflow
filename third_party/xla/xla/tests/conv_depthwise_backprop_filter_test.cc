@@ -45,7 +45,7 @@ struct BatchGroupedConvolution2DSpec {
 };
 
 using ConvDepthwiseBackpropFilterTest =
-    HloPjRtInterpreterReferenceMixin<HloTestBase>;
+    HloInterpreterReferenceMixin<HloTestBase>;
 
 class BatchGroupedConvolution2DTest
     : public ConvDepthwiseBackpropFilterTest,

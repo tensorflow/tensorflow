@@ -22,8 +22,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/tests/test_utils.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
 
@@ -34,7 +32,7 @@ namespace {
 using RaggedAllToAllCanonicalizerTest = HloHardwareIndependentTestBase;
 
 TEST_F(RaggedAllToAllCanonicalizerTest, SimpleRaggedAllToAllIsCanonicalized) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule module
 
 ENTRY main {
@@ -50,7 +48,7 @@ ENTRY main {
 )"));
 
   RaggedAllToAllCanonicalizer canonicalizer;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, canonicalizer.Run(module.get(), {}));
+  ASSERT_OK_AND_ASSIGN(bool changed, canonicalizer.Run(module.get(), {}));
   EXPECT_TRUE(changed);
   EXPECT_OK(VerifyHloModule(module.get(), true, true));
 
@@ -66,7 +64,7 @@ ENTRY main {
 }
 
 TEST_F(RaggedAllToAllCanonicalizerTest, CanonicalRaggedAllToAllIsNotChanged) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule module
 
 ENTRY main {
@@ -82,7 +80,7 @@ ENTRY main {
 )"));
 
   RaggedAllToAllCanonicalizer canonicalizer;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, canonicalizer.Run(module.get(), {}));
+  ASSERT_OK_AND_ASSIGN(bool changed, canonicalizer.Run(module.get(), {}));
   EXPECT_FALSE(changed);
   EXPECT_OK(VerifyHloModule(module.get(), true, true));
 }

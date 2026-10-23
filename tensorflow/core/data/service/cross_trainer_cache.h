@@ -15,7 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_CROSS_TRAINER_CACHE_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_CROSS_TRAINER_CACHE_H_
 
+#include <chrono>  // NOLINT(build/c++11)
 #include <cstddef>
+#include <cstdint>
 #include <deque>
 #include <functional>
 #include <limits>
@@ -24,6 +26,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/data/service/byte_size.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/platform/errors.h"
@@ -101,7 +104,7 @@ class CrossTrainerCache {
   explicit CrossTrainerCache(
       size_t max_cache_size_bytes,
       std::unique_ptr<CachableSequence<ElementType>> cachable_sequence);
-  virtual ~CrossTrainerCache() = default;
+  virtual ~CrossTrainerCache();
   CrossTrainerCache(const CrossTrainerCache&) = delete;
   CrossTrainerCache& operator=(const CrossTrainerCache&) = delete;
 
@@ -123,7 +126,12 @@ class CrossTrainerCache {
  private:
   struct CacheQueryResult {
     std::shared_ptr<const ElementType> element;
-    bool cache_hit;
+    bool cache_hit = false;
+    bool waited = false;
+    uint64_t blocked_wait_usecs = 0;
+    size_t elements_skipped = 0;
+    size_t cursor_offset = 0;
+    size_t cache_size_bytes = 0;
   };
 
   // Returns the next element and metrics about this query.
@@ -147,10 +155,12 @@ class CrossTrainerCache {
 
   // Frees old elements to keep the cache size below `max_cache_size_bytes_`.
   // `new_element_size_bytes` is the size of the new element being inserted.
-  void FreeSpace(size_t new_element_size_bytes);
+  // Returns the total number of bytes freed from the cache.
+  size_t FreeSpace(size_t new_element_size_bytes);
 
   // Records the cache hit rate and cache size.
-  void RecordMetrics(const CacheQueryResult& result);
+  void RecordMetrics(const std::string& trainer_id,
+                     const CacheQueryResult& result);
 
   // Maximum cache size in bytes.
   const size_t max_cache_size_bytes_;
@@ -188,8 +198,19 @@ CrossTrainerCache<ElementType>::CrossTrainerCache(
       cachable_sequence_(std::move(cachable_sequence)) {
   DCHECK_GT(max_cache_size_bytes, 0)
       << "CrossTrainerCache size must be greater than 0.";
+  metrics::RecordTFDataServiceCrossTrainerCacheMaxSizeBytes(
+      max_cache_size_bytes);
   VLOG(2) << "Initialized tf.data service cross-trainer cache with "
           << ByteSize::Bytes(max_cache_size_bytes) << " of memory.";
+}
+
+template <class ElementType>
+CrossTrainerCache<ElementType>::~CrossTrainerCache() {
+  mutex_lock l(mu_);
+  if (cache_size_bytes_ > 0) {
+    metrics::UpdateTFDataServiceCrossTrainerCacheTotalSizeBytes(
+        -static_cast<int64_t>(cache_size_bytes_));
+  }
 }
 
 template <class ElementType>
@@ -202,7 +223,7 @@ CrossTrainerCache<ElementType>::Get(const std::string& trainer_id)
   }
 
   TF_ASSIGN_OR_RETURN(CacheQueryResult result, GetCacheQueryResult(trainer_id));
-  RecordMetrics(result);
+  RecordMetrics(trainer_id, result);
   return result.element;
 }
 
@@ -211,15 +232,28 @@ StatusOr<typename CrossTrainerCache<ElementType>::CacheQueryResult>
 CrossTrainerCache<ElementType>::GetCacheQueryResult(
     const std::string& trainer_id) {
   bool should_extend_cache = false;
+  bool waited = false;
+  uint64_t blocked_wait_usecs = 0;
   while (true) {
     {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(status_);
       if (IsElementReady(trainer_id)) {
+        size_t raw_index = trainer_to_element_index_map_[trainer_id];
+        size_t effective_index =
+            raw_index < cache_start_index_ ? cache_start_index_ : raw_index;
+        size_t elements_skipped =
+            raw_index < cache_start_index_ ? cache_start_index_ - raw_index : 0;
         TF_ASSIGN_OR_RETURN(std::shared_ptr<const ElementType> element,
                             GetElement(trainer_id));
+        size_t cursor_offset = (effective_index + 1) - cache_start_index_;
         return CacheQueryResult{element,
-                                /*is_cache_hit=*/!should_extend_cache};
+                                /*cache_hit=*/!should_extend_cache,
+                                /*waited=*/waited,
+                                /*blocked_wait_usecs=*/blocked_wait_usecs,
+                                /*elements_skipped=*/elements_skipped,
+                                /*cursor_offset=*/cursor_offset,
+                                /*cache_size_bytes=*/cache_size_bytes_};
       }
 
       // Extends the cache or waits for another thread to extend the cache. When
@@ -227,7 +261,13 @@ CrossTrainerCache<ElementType>::GetCacheQueryResult(
       // extend the cache.
       if (extending_cache_) {
         should_extend_cache = false;
+        waited = true;
+        auto wait_start = std::chrono::steady_clock::now();
         cv_.wait(l);
+        blocked_wait_usecs +=
+            std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now() - wait_start)
+                .count();
       } else {
         should_extend_cache = true;
         extending_cache_ = true;
@@ -290,24 +330,32 @@ absl::Status CrossTrainerCache<ElementType>::ExtendCache()
         " and cache size: ", max_cache_size_bytes_));
   }
 
-  mutex_lock l(mu_);
-  TF_RETURN_IF_ERROR(status_);
-  FreeSpace(new_element_size_bytes);
-  cache_.push_back(std::make_shared<ElementType>(std::move(element)));
-  cache_size_bytes_ += new_element_size_bytes;
+  size_t total_freed_bytes = 0;
+  {
+    mutex_lock l(mu_);
+    TF_RETURN_IF_ERROR(status_);
+    total_freed_bytes = FreeSpace(new_element_size_bytes);
+    cache_.push_back(std::make_shared<ElementType>(std::move(element)));
+    cache_size_bytes_ += new_element_size_bytes;
+  }
+  metrics::UpdateTFDataServiceCrossTrainerCacheTotalSizeBytes(
+      static_cast<int64_t>(new_element_size_bytes) -
+      static_cast<int64_t>(total_freed_bytes));
   return absl::OkStatus();
 }
 
 template <class ElementType>
-void CrossTrainerCache<ElementType>::FreeSpace(size_t new_element_size_bytes)
+size_t CrossTrainerCache<ElementType>::FreeSpace(size_t new_element_size_bytes)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   size_t num_elements_discarded = 0;
+  size_t total_freed_bytes = 0;
   while (!cache_.empty() &&
          cache_size_bytes_ + new_element_size_bytes > max_cache_size_bytes_) {
     size_t free_bytes =
         cachable_sequence_->GetElementSizeBytes(*cache_.front());
     cache_.pop_front();
     cache_size_bytes_ -= free_bytes;
+    total_freed_bytes += free_bytes;
     ++cache_start_index_;
     ++num_elements_discarded;
   }
@@ -315,6 +363,8 @@ void CrossTrainerCache<ElementType>::FreeSpace(size_t new_element_size_bytes)
   VLOG(3) << "Freed " << num_elements_discarded << " element(s) from "
           << "tf.data service cross-trainer cache. Memory usage: "
           << ByteSize::Bytes(cache_size_bytes_) << ".";
+
+  return total_freed_bytes;
 }
 
 template <class ElementType>
@@ -339,17 +389,30 @@ bool CrossTrainerCache<ElementType>::IsCancelled() const
 
 template <class ElementType>
 void CrossTrainerCache<ElementType>::RecordMetrics(
-    const CacheQueryResult& result) {
+    const std::string& trainer_id, const CacheQueryResult& result) {
   metrics::RecordTFDataServiceCrossTrainerCacheQuery(result.cache_hit);
-  size_t cache_size_bytes = 0;
-  {
-    mutex_lock l(mu_);
-    cache_size_bytes = cache_size_bytes_;
+  const absl::string_view source =
+      result.cache_hit ? (result.waited ? "cache_waited" : "cache")
+                       : "prefetch";
+  metrics::RecordTFDataServiceCrossTrainerCacheTrainerQuery(
+      trainer_id, result.cache_hit, source);
+
+  if (result.blocked_wait_usecs > 0) {
+    metrics::RecordTFDataServiceCrossTrainerCacheBlockedWaitUsecs(
+        trainer_id, result.blocked_wait_usecs);
   }
-  metrics::RecordTFDataServiceCrossTrainerCacheSizeBytes(cache_size_bytes);
+  if (result.elements_skipped > 0) {
+    metrics::RecordTFDataServiceCrossTrainerCacheElementsSkipped(
+        trainer_id, result.elements_skipped);
+  }
+  metrics::RecordTFDataServiceCrossTrainerCacheCursorOffset(
+      trainer_id, result.cursor_offset);
+
+  metrics::RecordTFDataServiceCrossTrainerCacheSizeBytes(
+      result.cache_size_bytes);
 }
 
 }  // namespace data
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_DATA_SERVICE_CROSS_CLIENT_CACHE_H_
+#endif  // TENSORFLOW_CORE_DATA_SERVICE_CROSS_TRAINER_CACHE_H_

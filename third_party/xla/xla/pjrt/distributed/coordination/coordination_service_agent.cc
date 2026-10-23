@@ -134,9 +134,8 @@ absl::Status CoordinationServiceAgent::Connect() {
   request.set_incarnation(incarnation_id_.value());
   RegisterTaskResponse response;
 
-  // Give 5 seconds for any service-related timeouts to propagate.
-  const absl::Time deadline =
-      absl::Now() + config_.cluster_register_timeout + absl::Seconds(5);
+  const absl::Time deadline = absl::Now() + config_.cluster_register_timeout +
+                              config_.extra_error_propagation_time;
   int attempt = 0;
   std::default_random_engine generator;
   std::uniform_real_distribution<double> distribution(0.0, 1.0);
@@ -294,6 +293,7 @@ void CoordinationServiceAgent::StartPollingForError() {
 
 void CoordinationServiceAgent::PollForErrorAsync(tsl::StatusCallback done) {
   auto call_opts = std::make_shared<tsl::CallOptions>();
+  call_opts->SetTimeout(absl::ToInt64Milliseconds(absl::InfiniteDuration()));
 
   absl::Status agent_running_status =
       ValidateRunningAgent(/*allow_disconnected=*/true);
@@ -342,6 +342,7 @@ std::shared_ptr<tsl::CallOptions> CoordinationServiceAgent::WatchTasksAsync(
   auto request = std::make_shared<WatchTasksRequest>();
   auto response = std::make_shared<WatchTasksResponse>();
   auto call_opts = std::make_shared<tsl::CallOptions>();
+  call_opts->SetTimeout(absl::ToInt64Milliseconds(absl::InfiniteDuration()));
   WatchTasksRequest* request_ptr = request.get();
   WatchTasksResponse* response_ptr = response.get();
   request->set_version_number(version_number.value_or(-1));
@@ -399,9 +400,9 @@ absl::Status CoordinationServiceAgent::Shutdown() {
     incarnations->set_service_incarnation(service_incarnation_.value());
     ShutdownTaskResponse response;
     tsl::CallOptions call_opts;
-    // Add 5s for service-related errors to propagate.
     const int64_t shutdown_timeout =
-        absl::ToInt64Milliseconds(config_.shutdown_barrier_timeout) + 5 * 1000;
+        absl::ToInt64Milliseconds(config_.shutdown_barrier_timeout +
+                                  config_.extra_error_propagation_time);
     call_opts.SetTimeout(shutdown_timeout);
 
     absl::Notification n;
@@ -498,6 +499,7 @@ std::shared_ptr<tsl::CallOptions> CoordinationServiceAgent::GetKeyValueAsync(
   VLOG(3) << "GetKeyValueRequest: " << request->DebugString();
   auto response = std::make_shared<GetKeyValueResponse>();
   auto call_opts = std::make_shared<tsl::CallOptions>();
+  call_opts->SetTimeout(absl::ToInt64Milliseconds(absl::InfiniteDuration()));
 
   const tsl::CancellationToken token =
       cancellation_manager_.get_cancellation_token();
@@ -807,6 +809,7 @@ void CoordinationServiceAgent::WaitAtBarrierAsync(
   }
 
   auto call_opts = std::make_shared<tsl::CallOptions>();
+  call_opts->SetTimeout(absl::ToInt64Milliseconds(absl::InfiniteDuration()));
 
   const tsl::CancellationToken token =
       cancellation_manager_.get_cancellation_token();

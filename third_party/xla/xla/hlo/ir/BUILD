@@ -23,9 +23,11 @@ cc_library(
     srcs = [
         "dfs_hlo_visitor.cc",
         "dynamic_parameter_binding.cc",
+        "hlo_clone_context.cc",
         "hlo_computation.cc",
         "hlo_input_output_alias_config.cc",
         "hlo_instruction.cc",
+        "hlo_instruction_utils.cc",
         "hlo_instructions.cc",
         "hlo_module.cc",
         "hlo_module_metadata.cc",
@@ -47,6 +49,7 @@ cc_library(
         "hlo_domain_metadata.h",
         "hlo_input_output_alias_config.h",
         "hlo_instruction.h",
+        "hlo_instruction_utils.h",
         "hlo_instructions.h",
         "hlo_module.h",
         "hlo_module_metadata.h",
@@ -61,6 +64,10 @@ cc_library(
         "replica_group.h",
         "stack_frames.h",
     ],
+    visibility = internal_visibility([
+        ":friends",
+        "//xla:native_custom_call_handler_allowlist",
+    ]),
     deps = [
         ":backend_config",
         ":hlo_payload_deduplicator",
@@ -95,7 +102,7 @@ cc_library(
         "//xla/hlo/utils:pointer_utils",
         "//xla/service:compilation_environments",
         "//xla/service:computation_layout",
-        "//xla/service:computation_placer_hdr",
+        "//xla/service:device_assignment",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",
         "//xla/service:mapped_ptr_container_sorter",
@@ -133,7 +140,7 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@com_google_protobuf//:protobuf_lite",
-        "@llvm-project//llvm:Support",
+        "@com_googlesource_code_re2//:re2",
         "@tsl//tsl/platform:fingerprint",
         "@tsl//tsl/platform:protobuf",
     ],
@@ -167,9 +174,10 @@ xla_cc_test(
         ":hlo",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
+        "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
@@ -182,6 +190,7 @@ xla_cc_test(
     srcs = ["hlo_instruction_test.cc"],
     deps = [
         ":hlo",
+        "//xla:comparison_util",
         "//xla:frontend_attributes",
         "//xla:literal_util",
         "//xla:printer",
@@ -196,6 +205,7 @@ xla_cc_test(
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
@@ -218,7 +228,6 @@ cc_library(
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -382,19 +391,15 @@ xla_cc_test(
 
 cc_library(
     name = "hlo_instruction_utils",
-    srcs = ["hlo_instruction_utils.cc"],
     hdrs = ["hlo_instruction_utils.h"],
     deps = [
         ":hlo",
+        "//xla:comparison_util",
         "//xla:shape_util",
-        "//xla:xla_data_proto_cc",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_googlesource_code_re2//:re2",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -404,6 +409,8 @@ xla_cc_test(
     deps = [
         ":hlo",
         ":hlo_instruction_utils",
+        "//xla:comparison_util",
+        "//xla:literal_util",
         "//xla:shape_util",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",

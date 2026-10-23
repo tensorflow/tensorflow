@@ -186,6 +186,12 @@ def xla_test(
         this_backend_kwargs = dict(kwargs)
         for k, v in backend_kwargs.get(backend, {}).items():
             this_backend_kwargs[k] = v
+
+        # Set flaky attribute if "flaky" tag is present (either globally or per-backend)
+        has_flaky_tag = "flaky" in kwargs.get("tags", []) or "flaky" in this_backend_tags
+        if has_flaky_tag and not this_backend_kwargs.get("flaky", False):
+            this_backend_kwargs["flaky"] = True
+
         this_backend_data = []
         backend_deps = []
         if backend == "cpu":
@@ -259,6 +265,11 @@ def xla_test(
         }.items():
             this_backend_env[k] = v
 
+        if not use_legacy_runtime:
+            if "XLA_ALLOW_GET_DEFAULT_PLATFORM" in env:
+                fail("XLA_ALLOW_GET_DEFAULT_PLATFORM should not be set multiple times.")
+            this_backend_env["XLA_ALLOW_GET_DEFAULT_PLATFORM"] = "false"
+
         xla_cc_test(
             name = test_name,
             srcs = srcs,
@@ -283,6 +294,10 @@ def xla_test(
                 "XLA_TEST_MODIFIERS": ",".join(modifiers),
             }.items():
                 fast_compile_env[k] = v
+            if not use_legacy_runtime:
+                if "XLA_ALLOW_GET_DEFAULT_PLATFORM" in env:
+                    fail("XLA_ALLOW_GET_DEFAULT_PLATFORM should not be set multiple times.")
+                fast_compile_env["XLA_ALLOW_GET_DEFAULT_PLATFORM"] = "false"
             if "XLA_FLAGS" in fast_compile_env:
                 fast_compile_env["XLA_FLAGS"] += " --xla_cpu_opt_preset=FAST_COMPILE"
             else:

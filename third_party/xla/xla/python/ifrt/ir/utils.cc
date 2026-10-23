@@ -41,7 +41,6 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -94,19 +93,19 @@ absl::StatusOr<std::unique_ptr<HloProgram>> XlaComputationToHloProgram(
         mlir::BoolAttr::get(program->mlir_module()->getContext(), true));
   }
   for (int64_t idx = 0; idx < arg_memory_kinds.size(); ++idx) {
-    if (arg_memory_kinds[idx].memory_kind().has_value()) {
+    if (!arg_memory_kinds[idx].is_default()) {
       main.setArgAttr(
           idx, kHloMemoryKindAttrName,
           mlir::StringAttr::get(program->mlir_module()->getContext(),
-                                *arg_memory_kinds[idx].memory_kind()));
+                                arg_memory_kinds[idx].value()));
     }
   }
   for (int64_t idx = 0; idx < result_memory_kinds.size(); ++idx) {
-    if (result_memory_kinds[idx].memory_kind().has_value()) {
+    if (!result_memory_kinds[idx].is_default()) {
       main.setResultAttr(
           idx, kHloMemoryKindAttrName,
           mlir::StringAttr::get(program->mlir_module()->getContext(),
-                                *result_memory_kinds[idx].memory_kind()));
+                                result_memory_kinds[idx].value()));
     }
   }
   return program;

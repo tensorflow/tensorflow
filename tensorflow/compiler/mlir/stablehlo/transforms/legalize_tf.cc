@@ -2470,7 +2470,7 @@ class ConvertFusedBatchNormBase : public OpRewritePattern<FusedBatchNormOpT> {
             /*broadcast_dimensions=*/DenseI64ArrayAttr());
       }
 
-      if (std::is_same<FusedBatchNormOpT, TF::FusedBatchNormV2Op>::value) {
+      if (std::is_same_v<FusedBatchNormOpT, TF::FusedBatchNormV2Op>) {
         // FusedBatchNormV2 expects 4 outputs.
         // Outputs 3 and 4 are currently marked as "reserved spaces 1 and 2".
         // They are used to pass the per-batch mean and variance to the
@@ -2519,7 +2519,7 @@ class ConvertFusedBatchNormBase : public OpRewritePattern<FusedBatchNormOpT> {
       // the last 5 results as long as they are of the same type. Forward
       // input mean and variance to output mean, variance, reserved_space_1 and
       // reserved_space_2.
-      if (std::is_same<FusedBatchNormOpT, TF::FusedBatchNormV2Op>::value) {
+      if (std::is_same_v<FusedBatchNormOpT, TF::FusedBatchNormV2Op>) {
         rewriter.replaceOp(op, {/*y=*/y_out,
                                 /*batch_mean=*/op.getMean(),
                                 /*batch_variance=*/op.getVariance(),
@@ -4103,11 +4103,22 @@ class GenericConvertReductionOp : public OpRewritePattern<OpTy> {
     // to mark the reduced dimensions.
     SmallVector<bool, 4> reduced_dimensions_bitmap(input_shape.size(), false);
     SmallVector<int64_t, 4> xla_dimensions;
+    int64_t rank = input_shape.size();
     for (const APInt &index_raw : dimensions.getValues<APInt>()) {
       int64_t index = index_raw.getSExtValue();
-      int64_t rank = input_shape.size();
       if ((index < -rank || index >= rank)) return failure();
       index = (index + rank) % rank;
+      // The eager kernel and the tf2xla bridge reject duplicate reduction
+      // axes with an InvalidArgumentError. Emit the same message here so
+      // auto-clustering does not silently accept what the other two
+      // execution paths reject.
+      // https://github.com/tensorflow/tensorflow/issues/119360
+      if (reduced_dimensions_bitmap[index]) {
+        return op.emitOpError()
+               << "Invalid reduction arguments: Axes contains duplicate "
+                  "dimension: "
+               << index;
+      }
       reduced_dimensions_bitmap[index] = true;
       xla_dimensions.push_back(index);
     }
@@ -4141,7 +4152,7 @@ class GenericConvertReductionOp : public OpRewritePattern<OpTy> {
     Value result = reduction.getResult(0);
 
     // The mean op needs to divide by the product of the reduced dimensions.
-    if (std::is_same<OpTy, TF::MeanOp>::value) {
+    if (std::is_same_v<OpTy, TF::MeanOp>) {
       Value in_shape = shape::ShapeOfOp::create(rewriter, loc, op.getInput());
       Value divisor_count = arith::ConstantIndexOp::create(rewriter, loc, 1);
       for (size_t i = 0; i < input_shape.size(); ++i) {
@@ -4441,6 +4452,22 @@ class ConvertTensorScatterOp : public OpRewritePattern<OpTy> {
         mlir::dyn_cast<RankedTensorType>(op.getUpdates().getType());
 
     if (!tensor_ty || !indices_ty || !updates_ty) return failure();
+
+    // The eager kernels (tensorflow/core/kernels/scatter_nd_op.cc) reject
+    // rank-0 operands with the errors below, so the same errors are emitted
+    // here to keep both paths consistent.
+    if (tensor_ty.getRank() == 0) {
+      return op.emitOpError() << "Output must be at least 1-D";
+    }
+    if (indices_ty.getRank() == 0) {
+      return op.emitOpError()
+             << "Indices shape must have rank at least one. Found:[]";
+    }
+    if (updates_ty.getRank() == 0) {
+      return op.emitOpError()
+             << "Updates shape must have rank at least one. Found:[]";
+    }
+
     // Last dimension of the indices needs to known at compile time for
     // computation of the 'update_window_dims' attribute in the dimensions
     // struct.
@@ -4449,56 +4476,14 @@ class ConvertTensorScatterOp : public OpRewritePattern<OpTy> {
 
     auto updates = op.getUpdates();
 
-    // Broadcast scalar `updates` in into expected shape as following shape:
-    // updates.shape == indices.shape[:-1] + tensor.shape[indices.shape[-1]:]
-    if (updates_ty.getRank() == 0 &&
-        (std::is_same<OpTy, TF::TensorScatterUpdateOp>::value ||
-         std::is_same<OpTy, TF::TensorScatterAddOp>::value)) {
-      if (!tensor_ty.hasStaticShape()) {
-        return failure();
-      }
-
-      if (!indices_ty.hasStaticShape()) {
-        return failure();
-      }
-
-      auto tensor_shape = tensor_ty.getShape();
-      auto indices_shape = indices_ty.getShape();
-      auto index_depth = indices_shape.back();
-      llvm::SmallVector<int64_t> expected_update_shape;
-
-      // create the expected update shape which scalar update is broadcasted to
-      expected_update_shape.append(indices_shape.begin(),
-                                   std::prev(indices_shape.end()));
-
-      expected_update_shape.append(std::next(tensor_shape.begin(), index_depth),
-                                   tensor_shape.end());
-
-      auto const_type = tensorflow::GetTypeFromTFTensorShape(
-          {static_cast<int>(expected_update_shape.size())},
-          rewriter.getIntegerType(64));
-
-      auto const_attr = GetI64ElementsAttr(expected_update_shape, &rewriter);
-
-      auto const_op =
-          TF::ConstOp::create(rewriter, op->getLoc(), const_type, const_attr);
-
-      auto broadcast_to_type = tensorflow::GetTypeFromTFTensorShape(
-          llvm::ArrayRef<int64_t>(expected_update_shape),
-          updates_ty.getElementType());
-
-      updates = TF::BroadcastToOp::create(
-          rewriter, op->getLoc(), broadcast_to_type, op.getUpdates(), const_op);
-
-      updates_ty = mlir::dyn_cast<RankedTensorType>(updates.getType());
-    }
-
     int64_t tensor_rank = tensor_ty.getRank();
     int64_t indices_rank = indices_ty.getRank();
     int64_t updates_rank =
         mlir::dyn_cast<RankedTensorType>(updates.getType()).getRank();
 
     int64_t window_dims = tensor_rank - num_index_dims;
+    if (window_dims < 0 || updates_rank < window_dims) return failure();
+
     auto dims_attr = ScatterDimensionNumbersAttr::get(
         rewriter.getContext(),
         llvm::to_vector<4>(
@@ -6441,7 +6426,7 @@ class ConvertCumOp : public OpRewritePattern<OpT> {
                                       {rank, 2}, rewriter.getIntegerType(64)),
                                   paddings);
 
-    int64_t init_value = (std::is_same<AggregationOp, AddOp>::value) ? 0 : 1;
+    int64_t init_value = (std::is_same_v<AggregationOp, AddOp>) ? 0 : 1;
     Value init = GetScalarConstOfType(sum_element_type, op.getLoc(), init_value,
                                       &rewriter);
 
@@ -6976,20 +6961,20 @@ class LowerControlFlowOp : public OpConversionPattern<SrcOpT> {
     // result types. This is only done for the While op for now.
     llvm::SmallVector<Type, 4> element_types;
     int64_t num_results = op.getNumResults();
-    if constexpr (std::is_same<DstOpT, mhlo::WhileOp>::value) {
+    if constexpr (std::is_same_v<DstOpT, mhlo::WhileOp>) {
       element_types.reserve(num_results);
       for (Value value : adaptor.getOperands()) {
         element_types.push_back(getElementTypeOrSelf(value.getType()));
       }
     }
 
-    if constexpr (std::is_same<DstOpT, mhlo::CaseOp>::value) {
+    if constexpr (std::is_same_v<DstOpT, mhlo::CaseOp>) {
       // Explicitly handle the Case op because it has variadic regions and takes
       // the number of regions as an input along with the operands.
       mhlo_op =
           DstOpT::create(rewriter, loc, op.getResultTypes(),
                          adaptor.getBranchIndex(), op.getBranches().size());
-    } else if constexpr (std::is_same<DstOpT, mhlo::WhileOp>::value) {
+    } else if constexpr (std::is_same_v<DstOpT, mhlo::WhileOp>) {
       llvm::SmallVector<Type, 4> while_result_types;
       while_result_types.reserve(num_results);
       for (int64_t idx = 0; idx < num_results; ++idx) {
@@ -7011,7 +6996,7 @@ class LowerControlFlowOp : public OpConversionPattern<SrcOpT> {
 
       // Update region's entry blocks argument types to handle quantized element
       // types.
-      if constexpr (std::is_same<DstOpT, mhlo::WhileOp>::value) {
+      if constexpr (std::is_same_v<DstOpT, mhlo::WhileOp>) {
         TypeConverter::SignatureConversion signature(num_results);
         Block &block = region.front();
         for (const auto &[block_idx, original_ty] :

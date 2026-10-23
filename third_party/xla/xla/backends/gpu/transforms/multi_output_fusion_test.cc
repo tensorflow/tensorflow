@@ -16,14 +16,16 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/multi_output_fusion.h"
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "mlir/IR/MLIRContext.h"
+#include "absl/strings/substitute.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -45,6 +47,7 @@ namespace xla {
 namespace gpu {
 
 namespace m = ::xla::match;
+using ::absl_testing::IsOkAndHolds;
 
 class MultiOutputFusionTest : public HloHardwareIndependentTestBase {
  public:
@@ -116,6 +119,98 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionSiblingReduceAndReduceFusion) {
   ASSERT_TRUE(fusion->IsMultiOutputFusion());
   EXPECT_THAT(fusion->fused_expression_root(),
               GmockMatch(m::Tuple(m::Reduce(), m::Reduce())));
+}
+
+TEST_F(MultiOutputFusionTest, NoSiblingFusionOfColumnReductionAndElementwise) {
+  // The column reduction gets a grid sized for its 768 outputs, and
+  // merging would run the sqrt on those few blocks, about 2x slower.
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    fused_reduce {
+      p0.1 = f32[4096,768]{1,0} parameter(0)
+      const.1 = f32[] constant(0)
+      ROOT reduce = f32[768]{0} reduce(p0.1, const.1), dimensions={0}, to_apply=scalar_add_computation
+    }
+
+    fused_elementwise {
+      p0.2 = f32[4096,768]{1,0} parameter(0)
+      ROOT sqrt = f32[4096,768]{1,0} sqrt(p0.2)
+    }
+
+    ENTRY entry {
+      p0 = f32[4096,768]{1,0} parameter(0)
+      reduce_fusion = f32[768]{0} fusion(p0), kind=kInput, calls=fused_reduce
+      elementwise_fusion = f32[4096,768]{1,0} fusion(p0), kind=kLoop, calls=fused_elementwise
+      ROOT root = (f32[768]{0}, f32[4096,768]{1,0}) tuple(reduce_fusion, elementwise_fusion)
+    })")));
+  EXPECT_THAT(mof_.Run(module.get()), IsOkAndHolds(false));
+}
+
+TEST_F(MultiOutputFusionTest,
+       SiblingFusionOfBatchedColumnReductionAndElementwise) {
+  // The column reduction gets 128 x 12 blocks, enough to fill every core, so
+  // the sqrt is still merged into it.
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    fused_reduce {
+      p0.1 = f32[128,256,768]{2,1,0} parameter(0)
+      const.1 = f32[] constant(0)
+      ROOT reduce = f32[128,768]{1,0} reduce(p0.1, const.1), dimensions={1}, to_apply=scalar_add_computation
+    }
+
+    fused_elementwise {
+      p0.2 = f32[128,256,768]{2,1,0} parameter(0)
+      ROOT sqrt = f32[128,256,768]{2,1,0} sqrt(p0.2)
+    }
+
+    ENTRY entry {
+      p0 = f32[128,256,768]{2,1,0} parameter(0)
+      reduce_fusion = f32[128,768]{1,0} fusion(p0), kind=kInput, calls=fused_reduce
+      elementwise_fusion = f32[128,256,768]{2,1,0} fusion(p0), kind=kLoop, calls=fused_elementwise
+      ROOT root = (f32[128,768]{1,0}, f32[128,256,768]{2,1,0}) tuple(reduce_fusion, elementwise_fusion)
+    })")));
+  ASSERT_THAT(mof_.Run(module.get()), IsOkAndHolds(true));
+  SCOPED_TRACE(module->ToString());
+  const HloInstruction* fusion =
+      module->entry_computation()->root_instruction()->operand(0)->operand(0);
+  ASSERT_TRUE(fusion->IsMultiOutputFusion());
+  EXPECT_THAT(fusion->fused_expression_root(),
+              GmockMatch(m::Tuple(m::Reduce(), m::Sqrt())));
+}
+
+TEST_F(MultiOutputFusionTest,
+       SiblingFusionOfSmallColumnReductionAndElementwise) {
+  // The column reduction runs on a few blocks, but the sqrt alone would not
+  // fill the GPU either, so merging only saves a kernel launch and a read.
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    fused_reduce {
+      p0.1 = f32[64,64]{1,0} parameter(0)
+      const.1 = f32[] constant(0)
+      ROOT reduce = f32[64]{0} reduce(p0.1, const.1), dimensions={0}, to_apply=scalar_add_computation
+    }
+
+    fused_elementwise {
+      p0.2 = f32[64,64]{1,0} parameter(0)
+      ROOT sqrt = f32[64,64]{1,0} sqrt(p0.2)
+    }
+
+    ENTRY entry {
+      p0 = f32[64,64]{1,0} parameter(0)
+      reduce_fusion = f32[64]{0} fusion(p0), kind=kInput, calls=fused_reduce
+      elementwise_fusion = f32[64,64]{1,0} fusion(p0), kind=kLoop, calls=fused_elementwise
+      ROOT root = (f32[64]{0}, f32[64,64]{1,0}) tuple(reduce_fusion, elementwise_fusion)
+    })")));
+  ASSERT_THAT(mof_.Run(module.get()), IsOkAndHolds(true));
+  SCOPED_TRACE(module->ToString());
+  const HloInstruction* fusion =
+      module->entry_computation()->root_instruction()->operand(0)->operand(0);
+  ASSERT_TRUE(fusion->IsMultiOutputFusion());
+  EXPECT_THAT(fusion->fused_expression_root(),
+              GmockMatch(m::Tuple(m::Reduce(), m::Sqrt())));
 }
 
 TEST_F(MultiOutputFusionTest, MultiOutputFusionDifferentReduceInputShapes) {
@@ -2152,6 +2247,106 @@ ENTRY computation {
   )");
 }
 
+// A custom fusion producing a GEMM, read by an elementwise and a reduction
+// fusion. $0 is the custom fusion backend config.
+constexpr absl::string_view kCustomFusionConsumersHlo = R"(
+HloModule module
+
+add {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT c = f32[] add(a, b)
+}
+
+custom_gemm {
+  p0 = f32[64,32] parameter(0)
+  p1 = f32[32,128] parameter(1)
+  ROOT d = f32[64,128] dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+fused_elementwise {
+  p = f32[64,128] parameter(0)
+  ROOT r = f32[64,128] sqrt(p)
+}
+
+fused_reduction {
+  p = f32[64,128] parameter(0)
+  z = f32[] constant(0)
+  ROOT r = f32[64] reduce(p, z), dimensions={1}, to_apply=add
+}
+
+ENTRY computation {
+  p0 = f32[64,32] parameter(0)
+  p1 = f32[32,128] parameter(1)
+  gemm = f32[64,128] fusion(p0, p1), kind=kCustom, calls=custom_gemm,
+    backend_config=$0
+  o1 = f32[64,128] fusion(gemm), kind=kLoop, calls=fused_elementwise
+  o2 = f32[64] fusion(gemm), kind=kInput, calls=fused_reduction
+  ROOT out = (f32[64,128], f32[64]) tuple(o1, o2)
+}
+)";
+
+// The consumers of a custom fusion are sibling-fused, so that its output is
+// read once. The custom fusion itself keeps its single output and its body.
+constexpr absl::string_view kCustomFusionConsumersCheck = R"(
+// CHECK: %custom_gemm
+// CHECK: ROOT {{.*}} = f32[64,128]{1,0} dot(
+// CHECK: ENTRY
+// CHECK: [[gemm:%[^ ]+]] = f32[64,128]{1,0} fusion({{.*}}), kind=kCustom, calls=%custom_gemm
+// CHECK: [[mof:%[^ ]+]] = (f32[64,128]{1,0}, f32[64]{0}) fusion([[gemm]]), kind=kInput
+// CHECK-NOT: fusion([[gemm]])
+)";
+
+TEST_F(ReduceMultiOutputFusionTest, SiblingFusionOfTritonGemmConsumers) {
+  CheckMultiOutputFusion(
+      absl::Substitute(kCustomFusionConsumersHlo,
+                       R"({"fusion_backend_config":{"kind":"__triton_gemm"}})"),
+      kCustomFusionConsumersCheck);
+}
+
+TEST_F(ReduceMultiOutputFusionTest, SiblingFusionOfCustomKernelConsumers) {
+  CheckMultiOutputFusion(
+      absl::Substitute(
+          kCustomFusionConsumersHlo,
+          R"({"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"cutlass_gemm"}}})"),
+      kCustomFusionConsumersCheck);
+}
+
+// A custom fusion is never fused into its consumer by producer-consumer
+// multi-output fusion. Its body is elementwise, so the reduction would
+// otherwise absorb it.
+TEST_F(ReduceMultiOutputFusionTest, NoProducerConsumerFusionOfCustomFusion) {
+  CheckMultiOutputFusion(R"(
+HloModule module
+
+add {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT c = f32[] add(a, b)
+}
+
+triton_fusion {
+  p = f32[64,128] parameter(0)
+  ROOT n = f32[64,128] negate(p)
+}
+
+fused_reduction {
+  p = f32[64,128] parameter(0)
+  z = f32[] constant(0)
+  ROOT r = f32[64] reduce(p, z), dimensions={1}, to_apply=add
+}
+
+ENTRY computation {
+  p0 = f32[64,128] parameter(0)
+  t = f32[64,128] fusion(p0), kind=kCustom, calls=triton_fusion,
+    backend_config={"fusion_backend_config":{"kind":"__triton"}}
+  r = f32[64] fusion(t), kind=kInput, calls=fused_reduction
+  ROOT out = (f32[64,128], f32[64]) tuple(t, r)
+}
+)",
+                         std::nullopt);
+}
+
 TEST_F(ReduceMultiOutputFusionTest, SkipsDynamicSliceFusionV2Producer) {
   auto module = ParseAndReturnVerifiedModule(R"(
     HloModule test_module
@@ -2239,6 +2434,111 @@ ENTRY computation {
 })")
                     .value();
   ASSERT_FALSE(mof_.Run(module.get()).value()) << module->ToString();
+}
+
+TEST_F(MultiOutputFusionTest, DoNotMultiOutputFuseSiblingScan) {
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    combiner {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      add = f32[] add(p0, p1)
+      ROOT t = (f32[], f32[]) tuple(add, add)
+    }
+
+    fused_scan {
+      p0.1 = f32[100]{0} parameter(0)
+      init = f32[] constant(0)
+      scan = (f32[100]{0}, f32[]) scan(p0.1, init), dimensions={0},
+        num_carries=1, to_apply=combiner, is_associative=true
+      ROOT gte = f32[100]{0} get-tuple-element(scan), index=0
+    }
+
+    fused_loop {
+      p0.2 = f32[100]{0} parameter(0)
+      ROOT mul = f32[100]{0} multiply(p0.2, p0.2)
+    }
+
+    ENTRY entry {
+      p0 = f32[100]{0} parameter(0)
+      fusion.1 = f32[100]{0} fusion(p0), kind=kLoop, calls=fused_scan
+      fusion.2 = f32[100]{0} fusion(p0), kind=kLoop, calls=fused_loop
+      ROOT root = (f32[100]{0}, f32[100]{0}) tuple(fusion.1, fusion.2)
+    })")));
+  ASSERT_OK_AND_ASSIGN(bool changed, mof_.Run(module.get()));
+  EXPECT_FALSE(changed);
+}
+
+TEST_F(MultiOutputFusionTest, DoNotMultiOutputFuseProducerConsumerScan) {
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    combiner {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      add = f32[] add(p0, p1)
+      ROOT t = (f32[], f32[]) tuple(add, add)
+    }
+
+    fused_scan {
+      p0.1 = f32[100]{0} parameter(0)
+      init = f32[] constant(0)
+      scan = (f32[100]{0}, f32[]) scan(p0.1, init), dimensions={0},
+        num_carries=1, to_apply=combiner, is_associative=true
+      ROOT gte = f32[100]{0} get-tuple-element(scan), index=0
+    }
+
+    ENTRY entry {
+      p0 = f32[100]{0} parameter(0)
+      c1 = f32[] constant(1)
+      b = f32[100]{0} broadcast(c1), dimensions={}
+      prod = f32[100]{0} multiply(p0, b)
+      fusion.1 = f32[100]{0} fusion(prod), kind=kLoop, calls=fused_scan
+      ROOT root = (f32[100]{0}, f32[100]{0}) tuple(prod, fusion.1)
+    })")));
+  ASSERT_OK_AND_ASSIGN(bool changed, mof_.Run(module.get()));
+  EXPECT_FALSE(changed);
+}
+
+TEST_F(MultiOutputFusionTest, DoNotMultiOutputFuseNestedScan) {
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    combiner {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      add = f32[] add(p0, p1)
+      ROOT t = (f32[], f32[]) tuple(add, add)
+    }
+
+    inner_scan {
+      p0.1 = f32[100]{0} parameter(0)
+      init = f32[] constant(0)
+      scan = (f32[100]{0}, f32[]) scan(p0.1, init), dimensions={0},
+        num_carries=1, to_apply=combiner, is_associative=true
+      ROOT gte = f32[100]{0} get-tuple-element(scan), index=0
+    }
+
+    outer_fusion {
+      p0.2 = f32[100]{0} parameter(0)
+      inner = f32[100]{0} fusion(p0.2), kind=kLoop, calls=inner_scan
+      ROOT add = f32[100]{0} add(inner, p0.2)
+    }
+
+    fused_loop {
+      p0.3 = f32[100]{0} parameter(0)
+      ROOT mul = f32[100]{0} multiply(p0.3, p0.3)
+    }
+
+    ENTRY entry {
+      p0 = f32[100]{0} parameter(0)
+      fusion.1 = f32[100]{0} fusion(p0), kind=kLoop, calls=outer_fusion
+      fusion.2 = f32[100]{0} fusion(p0), kind=kLoop, calls=fused_loop
+      ROOT root = (f32[100]{0}, f32[100]{0}) tuple(fusion.1, fusion.2)
+    })")));
+  ASSERT_OK_AND_ASSIGN(bool changed, mof_.Run(module.get()));
+  EXPECT_FALSE(changed);
 }
 
 }  // namespace gpu

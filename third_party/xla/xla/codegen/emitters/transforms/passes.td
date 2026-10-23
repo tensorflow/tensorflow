@@ -29,6 +29,13 @@ def LowerXlaIntrinsicLibPass : Pass<"xla-lower-xla-intrinsic-lib", "mlir::Module
     "mlir::func::FuncDialect",
     "mlir::vector::VectorDialect",
   ];
+
+  let options = [
+    Option<"cpu_features_", "cpu_features", "std::string", /*default=*/"",
+           "LLVM target feature string (e.g. '+avx,+avx2') used to select "
+           "feature-gated intrinsic variants. Must match the features of the "
+           "target machine that compiles the module.">,
+  ];
 }
 
 def ConvertPureCallOpsPass
@@ -68,7 +75,6 @@ def FlattenTensorsPass : Pass<"xla-flatten-tensors", "mlir::ModuleOp"> {
   let dependentDialects = [
     "mlir::func::FuncDialect",
     "mlir::tensor::TensorDialect",
-    "xla::gpu::XlaGpuDialect",
     "xla::XlaDialect",
   ];
 }
@@ -105,13 +111,10 @@ def LowerTensorsPass : Pass<"xla-lower-tensors", "mlir::ModuleOp"> {
   let dependentDialects = [
     "mlir::LLVM::LLVMDialect",
     "mlir::func::FuncDialect",
-    "mlir::gpu::GPUDialect",
     "mlir::scf::SCFDialect",
     "mlir::tensor::TensorDialect",
-    "xla::gpu::XlaGpuDialect",
     "xla::XlaDialect",
     "mlir::vector::VectorDialect",
-    "mlir::ROCDL::ROCDLDialect",
   ];
   let options = [
     Option<"gpu_device_info_", "gpu_device_info", "std::string", /*default=*/"",
@@ -126,8 +129,8 @@ def LowerXlaToScfPass :
   let summary = "Lowers xla to SCF.";
 
   let dependentDialects = [
-    "mlir::gpu::GPUDialect", "mlir::LLVM::LLVMDialect", "mlir::scf::SCFDialect",
-    "mlir::tensor::TensorDialect", "xla::gpu::XlaGpuDialect",
+    "mlir::LLVM::LLVMDialect", "mlir::scf::SCFDialect",
+    "mlir::tensor::TensorDialect",
     "xla::XlaDialect", "mlir::vector::VectorDialect",
   ];
 
@@ -149,7 +152,6 @@ def LowerXlaLoopsToScfPass : Pass<
   let dependentDialects = [
     "mlir::scf::SCFDialect",
     "mlir::tensor::TensorDialect",
-    "xla::gpu::XlaGpuDialect",
     "xla::XlaDialect",
   ];
 }

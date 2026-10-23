@@ -17,7 +17,7 @@ limitations under the License.
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "tensorflow/core/util/port.h"
 
-PYBIND11_MODULE(_pywrap_util_port, m) {
+PYBIND11_MODULE(_pywrap_util_port, m, pybind11::mod_gil_not_used()) {
   m.def("IsGoogleCudaEnabled", tensorflow::IsGoogleCudaEnabled);
   m.def("IsBuiltWithROCm", tensorflow::IsBuiltWithROCm);
   m.def("IsBuiltWithXLA", tensorflow::IsBuiltWithXLA);

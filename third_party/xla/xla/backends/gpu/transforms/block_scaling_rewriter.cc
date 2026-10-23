@@ -257,6 +257,8 @@ enum class CudnnMxType {
   MXFP8_E4M3FN,
   // Input: E5M2, scale: E8M0FNU, block size: 32.
   MXFP8_E5M2,
+  // Input: E2M1FN, scale: E8M0FNU, block size: 32.
+  MXFP4,
   // Input: E2M1FN, scale: E4M3FN, block size: 16.
   NVFP4,
 };
@@ -266,6 +268,8 @@ CudnnMxType GetCudnnMxType(const Shape& input_shape, const Shape& scale_shape,
   // Non-default layout is not supported.
   if (!LayoutUtil::IsMonotonicWithDim0Major(input_shape.layout()) ||
       !LayoutUtil::IsMonotonicWithDim0Major(scale_shape.layout())) {
+    VLOG(3) << "Non-default layout: input=" << input_shape.layout().ToString()
+            << ", scale=" << scale_shape.layout().ToString();
     return CudnnMxType::UNSUPPORTED_TYPE;
   }
 
@@ -290,6 +294,14 @@ CudnnMxType GetCudnnMxType(const Shape& input_shape, const Shape& scale_shape,
     return CudnnMxType::MXFP8_E5M2;
   }
 
+  // MXFP4: the input is E2M1FN and the scale is E8M0FNU.
+  if (input_shape.element_type() == PrimitiveType::F4E2M1FN &&
+      scale_shape.element_type() == PrimitiveType::F8E8M0FNU &&
+      actual_block_size == BlockScalingRewriter::kBlockSizeMXFP4 &&
+      contracting_size % actual_block_size == 0) {
+    return CudnnMxType::MXFP4;
+  }
+
   // NVFP4: the input is E2M1FN and the scale is E4M3FN.
   if (input_shape.element_type() == PrimitiveType::F4E2M1FN &&
       scale_shape.element_type() == PrimitiveType::F8E4M3FN &&
@@ -298,16 +310,22 @@ CudnnMxType GetCudnnMxType(const Shape& input_shape, const Shape& scale_shape,
     return CudnnMxType::NVFP4;
   }
 
+  VLOG(3) << "Unsupported types in GetCudnnMxType: input="
+          << PrimitiveType_Name(input_shape.element_type())
+          << ", scale=" << PrimitiveType_Name(scale_shape.element_type())
+          << ", block_size=" << actual_block_size
+          << ", contracting_size=" << contracting_size;
+
   return CudnnMxType::UNSUPPORTED_TYPE;
 }
 
 bool IsSupportedByCudnn(CudnnMxType lhs, CudnnMxType rhs) {
-  // cuDNN supports mixing input types for MXFP8, but the E5M2/E5M2 combination
-  // is not supported.
   return (lhs == CudnnMxType::MXFP8_E4M3FN &&
           rhs == CudnnMxType::MXFP8_E4M3FN) ||
          (lhs == CudnnMxType::MXFP8_E4M3FN && rhs == CudnnMxType::MXFP8_E5M2) ||
          (lhs == CudnnMxType::MXFP8_E5M2 && rhs == CudnnMxType::MXFP8_E4M3FN) ||
+         (lhs == CudnnMxType::MXFP8_E5M2 && rhs == CudnnMxType::MXFP8_E5M2) ||
+         (lhs == CudnnMxType::MXFP4 && rhs == CudnnMxType::MXFP4) ||
          (lhs == CudnnMxType::NVFP4 && rhs == CudnnMxType::NVFP4);
 }
 
@@ -727,11 +745,23 @@ bool CudnnScaledDotHelper::IsSupported(
 
   // Input fusion is not supported, as the underlying kernel reads from HBM.
   auto is_parameter = [](const HloInstruction* instr, int index) {
-    return instr->opcode() == HloOpcode::kParameter &&
-           instr->parameter_number() == index && instr->user_count() == 1;
+    bool is_param = instr->opcode() == HloOpcode::kParameter &&
+                    instr->parameter_number() == index &&
+                    instr->user_count() == 1;
+    if (!is_param) {
+      VLOG(3) << "Operand " << index
+              << " is not a parameter or has multiple users. Opcode: "
+              << instr->opcode() << ", param_num: "
+              << (instr->opcode() == HloOpcode::kParameter
+                      ? instr->parameter_number()
+                      : -1)
+              << ", users: " << instr->user_count();
+    }
+    return is_param;
   };
   if (!is_parameter(lhs_input, 0) || !is_parameter(rhs_input, 1) ||
       !is_parameter(lhs_scale, 2) || !is_parameter(rhs_scale, 3)) {
+    VLOG(3) << "Operands are not parameters meeting criteria";
     return false;
   }
 
@@ -743,13 +773,20 @@ bool CudnnScaledDotHelper::IsSupported(
       dnums.rhs_contracting_dimensions()[0] != rank - 1 ||
       (rank == 3 && (dnums.lhs_batch_dimensions()[0] != 0 ||
                      dnums.rhs_batch_dimensions()[0] != 0))) {
+    VLOG(3) << "Unsupported dimension numbers: " << dnums.DebugString()
+            << ", rank: " << rank;
     return false;
   }
 
   // cuDNN kernel supports a subset of block scaled types.
-  return IsSupportedByCudnn(
+  bool supported = IsSupportedByCudnn(
       GetCudnnMxType(lhs_input->shape(), lhs_scale->shape(), std::nullopt),
       GetCudnnMxType(rhs_input->shape(), rhs_scale->shape(), std::nullopt));
+
+  if (!supported) {
+    VLOG(3) << "Type combination not supported by cuDNN";
+  }
+  return supported;
 }
 
 absl::StatusOr<HloInstruction*> CudnnScaledDotHelper::AddScaleSwizzle(

@@ -49,14 +49,29 @@ using ::mlir::PassPipelineOptions;
 using ::mlir::PassPipelineRegistration;
 using ::mlir::func::FuncOp;
 
+namespace {
+
+mlir::GreedyRewriteConfig getCanonicalizerConfig() {
+  return mlir::GreedyRewriteConfig()
+      .setUseTopDownTraversal(true)
+      .setRegionSimplificationLevel(mlir::GreedySimplifyRegionLevel::Normal)
+      .enableFolding(false)
+      .enableConstantCSE(false);
+}
+
+}  // namespace
+
 void addSdyRoundTripExportPipeline(mlir::OpPassManager& pm,
                                    bool keepMeshesInlined,
                                    bool enableHloShardingV3) {
-  pm.addPass(mlir::createCanonicalizerPass());
+  // Constants are still sdy.constant here, so disable folding and constant CSE.
+  pm.addPass(mlir::createCanonicalizerPass(getCanonicalizerConfig()));
   // Lift meshes before deduping, since the dedup meshes pass ignores inlined
   // meshes.
   if (!keepMeshesInlined) {
-    pm.addPass(mlir::sdy::createLiftInlinedMeshesPass());
+    pm.addPass(mlir::sdy::createLiftInlinedMeshesPass(
+        mlir::sdy::LiftInlinedMeshesPassOptions{
+            /*useSingleDeviceMeshNames=*/true}));
   }
   pm.addPass(createSdyRoundTripDedupMeshesPass());
   pm.addPass(createSdyRoundTripExportOpsPass());
@@ -110,15 +125,12 @@ void addSdyRoundTripImportPipeline(mlir::OpPassManager& pm,
     //
     // liftAndDedupMeshes is required here because of sdy shardings added
     // directly to hlo in tf2xla.
-    pm.addPass(mlir::sdy::createLiftInlinedMeshesPass());
+    pm.addPass(mlir::sdy::createLiftInlinedMeshesPass(
+        mlir::sdy::LiftInlinedMeshesPassOptions{
+            /*useSingleDeviceMeshNames=*/true}));
     pm.addPass(createSdyRoundTripDedupMeshesPass());
   }
-  pm.addPass(createCanonicalizerPass(
-      mlir::GreedyRewriteConfig()
-          .setUseTopDownTraversal(true)
-          .setRegionSimplificationLevel(mlir::GreedySimplifyRegionLevel::Normal)
-          .enableFolding(false)
-          .enableConstantCSE(false)));
+  pm.addPass(mlir::createCanonicalizerPass(getCanonicalizerConfig()));
 }
 
 namespace {

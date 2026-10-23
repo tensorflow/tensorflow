@@ -170,6 +170,7 @@ def TFGraphDialect : Dialect {
   let cppNamespace = "::mlir::tfg";
 
   let useDefaultAttributePrinterParser = 1;
+  let useStrictPropertiesInAssemblyFormat = 0;
   let hasNonDefaultDestructor = 1;
   let hasOperationInterfaceFallback = 1;
 }

@@ -26,20 +26,19 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/compilation_stats.h"
-#include "xla/types.h"
 #include "xla/xla.pb.h"
+#include "tsl/platform/platform.h"
 
 namespace xla {
 
 // Pipeline of HLO passes.
 class HloPassPipeline : public HloPassInterface {
  public:
-  explicit HloPassPipeline(const std::string& name,
+  explicit HloPassPipeline(absl::string_view name,
                            CompilationStats* compilation_stats = nullptr)
       : name_(name), compilation_stats_(compilation_stats) {
     if (compilation_stats == nullptr) {
@@ -83,9 +82,9 @@ class HloPassPipeline : public HloPassInterface {
   // Add an invariant-checking pass to the pipeline on debug builds only.
   template <typename T, typename... Args>
   void AddInvariantCheckerDebug(Args&&... args) {
-#ifndef NDEBUG
-    AddInvariantChecker<T>(std::forward<Args>(args)...);
-#endif  // NDEBUG
+    if constexpr (tsl::kIsDebugBuild) {
+      AddInvariantChecker<T>(std::forward<Args>(args)...);
+    }
   }
 
   bool IsPassPipeline() const override { return true; }
@@ -99,16 +98,8 @@ class HloPassPipeline : public HloPassInterface {
   absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-  absl::StatusOr<bool> RunImpl(
-      std::unique_ptr<HloModule>& module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  // Returns the set of passes which are enabled. DebugOptions can selectively
-  // disable passes via --xla_disable_hlo_passes flag.
-  std::vector<HloPassInterface*> GetEnabledPasses(
-      const DebugOptions& debug_options);
-
   // Maybe dumps the given module depending on flag values contained in
   // DebugOptions of module config. If it is dumped, saves the filenames of the
   // dumps into module metadata.
@@ -119,31 +110,24 @@ class HloPassPipeline : public HloPassInterface {
   // Runs the invariant checker on the given HLO for specified
   // `execution_threads`. Empty `execution_threads` means all execution threads
   // are included.
-
-  template <typename HloT>
-  absl::Status RunInvariantCheckers(HloT hlo,
+  absl::Status RunInvariantCheckers(HloModule* hlo,
                                     absl::string_view after_pass_name) {
     return RunInvariantCheckers(hlo, after_pass_name, /*execution_threads=*/{});
   }
-  template <typename HloT>
   absl::Status RunInvariantCheckers(
-      HloT hlo, absl::string_view after_pass_name,
+      HloModule* hlo, absl::string_view after_pass_name,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
 
   // Helper which runs the given pass on the given HLO.
-  template <typename HloT>
   absl::StatusOr<bool> RunPassesInternal(
-      HloT hlo, const DebugOptions& debug_options,
+      HloModule* hlo, const DebugOptions& debug_options,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
 
-  // Helpers which run the given passes on the given HLO construct. Only
-  // computations with specified `execution_threads` are considered by the pass,
-  // empty thread list means all `execution_threads` are considered. These
-  // helpers enable templating of the core of the pipeline logic by providing
-  // HloModule specific methods with the same name.
-  template <typename HloT>
+  // Helper which runs the given pass on the given HLO module. Only
+  // computations with specified `execution_threads` are considered by the pass;
+  // an empty thread list means all `execution_threads` are considered.
   static absl::StatusOr<bool> RunHelper(
-      HloPassInterface* pass, HloT module,
+      HloPassInterface* pass, HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) {
     ABSL_ASSIGN_OR_RETURN(bool changed, pass->Run(module, execution_threads));
     module->Cleanup();

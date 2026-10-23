@@ -26,6 +26,7 @@ limitations under the License.
 
 #define GET_ATTRDEF_CLASSES
 #include "xla/codegen/xtile/ir/xtile_attrs.cc.inc"
+#include "xla/codegen/xtile/ir/xtile_enums.cc.inc"
 
 namespace xla::xtile {
 

@@ -19,11 +19,16 @@ import itertools
 import numpy as np
 
 from tensorflow.python.client import session
+from tensorflow.python.eager import backprop
+from tensorflow.python.eager import forwardprop
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.linalg import linalg_impl
@@ -43,27 +48,40 @@ def np_expm(x):  # pylint: disable=invalid-name
   return y
 
 
+# Half precision dtypes are accumulated in float32 by `matrix_exponential`.
+_HALF_TYPES = (np.float16, dtypes.bfloat16.as_numpy_dtype)
+
+
 @test_util.run_all_without_tensor_float_32("Avoid TF32-based matmuls.")
 class ExponentialOpTest(test.TestCase):
 
   def _verifyExponential(self, x, np_type):
     inp = x.astype(np_type)
+    # Accumulating the Taylor series in 16-bit would itself be inaccurate, so
+    # half precision inputs are compared against a float64 reference.
+    ref_type = np.float64 if np_type in _HALF_TYPES else np_type
     with test_util.use_gpu():
       tf_ans = linalg_impl.matrix_exponential(inp)
       if x.size == 0:
-        np_ans = np.empty(x.shape, dtype=np_type)
+        np_ans = np.empty(x.shape, dtype=ref_type)
       else:
         if x.ndim > 2:
-          np_ans = np.zeros(inp.shape, dtype=np_type)
+          np_ans = np.zeros(inp.shape, dtype=ref_type)
           for i in itertools.product(*[range(x) for x in inp.shape[:-2]]):
-            np_ans[i] = np_expm(inp[i])
+            np_ans[i] = np_expm(inp[i].astype(ref_type))
         else:
-          np_ans = np_expm(inp)
+          np_ans = np_expm(inp.astype(ref_type))
       out = self.evaluate(tf_ans)
-      self.assertAllClose(np_ans, out, rtol=1e-3, atol=1e-3)
+      tol = 1e-2 if np_type in _HALF_TYPES else 1e-3
+      self.assertAllClose(np_ans, out, rtol=tol, atol=tol)
 
   def _verifyExponentialReal(self, x):
-    for np_type in [np.float32, np.float64]:
+    for np_type in [
+        np.float16,
+        dtypes.bfloat16.as_numpy_dtype,
+        np.float32,
+        np.float64,
+    ]:
       self._verifyExponential(x, np_type)
 
   def _verifyExponentialComplex(self, x):
@@ -161,6 +179,75 @@ class ExponentialOpTest(test.TestCase):
       expm2 = linalg_impl.matrix_exponential(matrix2)
       expm = self.evaluate([expm1, expm2])
       self.assertAllEqual(expm[0], expm[1])
+
+  @test_util.run_v2_only
+  def testSecondDerivativeNestedForwardAccumulator(self):
+    # Regression test for Issue #127224.
+    def target(t):
+      one = constant_op.constant(1.0, dtype=t.dtype)
+      a = array_ops_stack.stack([
+          array_ops_stack.stack([t, one]),
+          array_ops_stack.stack([-one, t]),
+      ])
+      return math_ops.reduce_sum(linalg_impl.matrix_exponential(a))
+
+    def forward_ad(fn):
+      def jvp(x):
+        with forwardprop.ForwardAccumulator(x, array_ops.ones_like(x)) as acc:
+          y = fn(x)
+        return acc.jvp(y)
+
+      return jvp
+
+    for dtype in [ops.dtypes.float32, ops.dtypes.float64]:
+      x = constant_op.constant(0.7, dtype=dtype)
+      expected = 2.0 * np.exp(0.7) * np.cos(1.0)
+
+      if dtype == ops.dtypes.float64:
+        atol_1st = 1e-12
+        rtol_1st = 1e-12
+        # Nested ForwardAccumulator (forward-over-forward) diverges from the
+        # analytical value by ~9% here, independent of dtype: matrix_exponential
+        # chains matmuls three levels deep (matrix_4 = matrix_2 * matrix_2,
+        # matrix_6 = matrix_4 * matrix_2, ...), and TF's forward-over-forward
+        # differentiation is inaccurate past two chained matmul levels
+        # regardless of precision, so this isn't something this PR's
+        # coefficient normalization can improve further.
+        atol_2nd = 0.25
+        rtol_2nd = 1e-1
+        atol_hess = 1e-12
+        rtol_hess = 1e-12
+      else:
+        atol_1st = 1e-3
+        rtol_1st = 1e-3
+        atol_2nd = 0.25
+        rtol_2nd = 1e-1
+        atol_hess = 1e-4
+        rtol_hess = 1e-4
+
+      # 1st order forward-mode JVP
+      actual_1st = forward_ad(target)(x)
+      self.assertAllClose(
+          expected, self.evaluate(actual_1st), rtol=rtol_1st, atol=atol_1st
+      )
+
+      # 2nd order nested forward-mode JVP
+      actual_2nd = forward_ad(forward_ad(target))(x)
+      self.assertAllClose(
+          expected, self.evaluate(actual_2nd), rtol=rtol_2nd, atol=atol_2nd
+      )
+
+      # 2nd order reverse-mode Hessian
+      with backprop.GradientTape() as t2:
+        t2.watch(x)
+        with backprop.GradientTape() as t1:
+          t1.watch(x)
+          y = target(x)
+        g1 = t1.gradient(y, x)
+      g2 = t2.gradient(g1, x)
+      self.assertAllClose(
+          expected, self.evaluate(g2), rtol=rtol_hess, atol=atol_hess
+      )
 
 
 class MatrixExponentialBenchmark(test.Benchmark):

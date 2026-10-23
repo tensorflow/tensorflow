@@ -54,7 +54,7 @@ def _EuclideanNormGrad(op: ops.Operation, grad):
     output = array_ops.reshape(output, output_shape_kept_dims)
     grad = array_ops.reshape(grad, output_shape_kept_dims)
 
-  return math_ops.truediv(op.inputs[0], output / grad), None
+  return math_ops.div_no_nan(op.inputs[0], output) * grad, None
 
 
 def SmartBroadcastGradientArgs(x, y, grad=None):
@@ -347,7 +347,10 @@ def _SegmentMeanGrad(op: ops.Operation, grad):
   )
   ones_shape = array_ops.concat([segment_ids_shape, remaining_shape], 0)
   ones = array_ops.ones(ones_shape, dtype=grad.dtype)
-  scaled_grad = math_ops.divide(grad, math_ops.segment_sum(ones, op.inputs[1]))
+  # Empty segments must stay zero when differentiating this gradient for JVPs.
+  scaled_grad = math_ops.div_no_nan(
+      grad, math_ops.segment_sum(ones, op.inputs[1])
+  )
   return array_ops.gather(scaled_grad, op.inputs[1]), None
 
 
@@ -821,9 +824,10 @@ def _XDivyGrad(op: ops.Operation, grad):
   sy = array_ops.shape(y)
   rx, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
   with ops.control_dependencies([grad]):
-    not_zero_x = math_ops.cast(
-        math_ops.not_equal(x, math_ops.cast(0., dtype=x.dtype)), dtype=x.dtype)
-    partial_x = gen_math_ops.xdivy(not_zero_x, y)
+    # The gradient of xdivy w.r.t. x is 1 / y for all x (including x=0),
+    # because d/dx (x / y) = 1 / y. The zero-mask should only apply to
+    # the forward value, not the derivative w.r.t. x.
+    partial_x = math_ops.reciprocal(y)
     partial_y = gen_math_ops.xdivy(math_ops.negative(x), y**2)
     return (array_ops.reshape(math_ops.reduce_sum(partial_x * grad, rx), sx),
             array_ops.reshape(math_ops.reduce_sum(partial_y * grad, ry), sy))
@@ -1534,16 +1538,26 @@ def _PowGrad(op: ops.Operation, grad):
   cy = math_ops.conj(y)
   try:
     skip_input_indices = op.skip_input_indices or ()
-    if 1 in skip_input_indices and _IsScalar(y):
-      return grad * cy * math_ops.pow(cx, cy - 1), None
   except AttributeError:
     # No gradient skipping, so do the full gradient computation
     skip_input_indices = ()
 
+  def _GradCxPow(w: tensor.Tensor) -> tensor.Tensor:
+    if x.dtype.is_floating:
+      w = array_ops.where_v2(
+          math_ops.logical_and(math_ops.is_inf(w), math_ops.equal(grad, 0)),
+          math_ops.cast(0, w.dtype),
+          w,
+      )
+    return grad * cy * w
+
+  if 1 in skip_input_indices and _IsScalar(y):
+    return _GradCxPow(math_ops.pow(cx, cy - 1)), None
+
   if 0 in skip_input_indices:
     gx = None
   else:
-    gx = grad * cy * math_ops.pow(cx, cy - 1)
+    gx = _GradCxPow(math_ops.pow(cx, cy - 1))
 
   if 1 in skip_input_indices:
     gy = None
@@ -1555,9 +1569,57 @@ def _PowGrad(op: ops.Operation, grad):
     else:
       # There's no sensible real value to return if x < 0, so return 0
       mask = cx > 0
-    safe_x = array_ops.where(mask, cx, array_ops.ones_like(x))
-    log_x = array_ops.where(mask, math_ops.log(safe_x), array_ops.zeros_like(x))
-    gy = grad * math_ops.conj(op.outputs[0]) * log_x
+    safe_x = array_ops.where_v2(mask, cx, math_ops.cast(1, cx.dtype))
+    log_x = array_ops.where_v2(
+        mask, math_ops.log(safe_x), math_ops.cast(0, x.dtype)
+    )
+    z = op.outputs[0]
+    if x.dtype.is_floating:
+      # Split exponent into h = x**(y / 2) if z = x**y or z * ln(x) overflows
+      # while grad * x**y * ln(x) may still be finite. Note that single halving
+      # only extends the non-overflowing exponent range by a factor of 2
+      # (i.e., if y * ln(x) > 2 * max_exponent, h itself overflows to inf).
+      z_is_inf = math_ops.is_inf(z)
+      safe_z = array_ops.where_v2(
+          z_is_inf, math_ops.cast(0, z.dtype), z
+      )
+      z_log_x = safe_z * log_x
+      raw_overflow = math_ops.logical_and(
+          mask,
+          math_ops.logical_or(z_is_inf, math_ops.is_inf(z_log_x)),
+      )
+      safe_z_log_x = array_ops.where_v2(
+          raw_overflow, math_ops.cast(0, z_log_x.dtype), z_log_x
+      )
+      use_split = math_ops.logical_and(
+          raw_overflow, math_ops.not_equal(grad, 0)
+      )
+      # Compute h = safe_x**(cy / 2) unconditionally with where_v2 rather than
+      # branching on use_split to avoid host-device synchronization in eager
+      # mode and control-flow ops in graph and XLA lowering.
+      safe_half_y = array_ops.where_v2(
+          use_split,
+          cy * math_ops.cast(0.5, cy.dtype),
+          math_ops.cast(0, cy.dtype),
+      )
+      h = math_ops.pow(safe_x, safe_half_y)
+      grad_h = grad * h
+      grad_h_inf = math_ops.is_inf(grad_h)
+      safe_grad_h = array_ops.where_v2(
+          grad_h_inf, math_ops.cast(0, grad_h.dtype), grad_h
+      )
+      # If grad * h overflows (e.g., in float16 when x is near 1), re-associate
+      # as (grad * (h * log_x)) * h; otherwise scale h by grad first via
+      # (safe_grad_h * log_x) * h to avoid h * log_x overflow or premature
+      # underflow when grad is small.
+      gy_split = array_ops.where_v2(
+          grad_h_inf,
+          (grad * (h * log_x)) * h,
+          (safe_grad_h * log_x) * h,
+      )
+      gy = array_ops.where_v2(use_split, gy_split, grad * safe_z_log_x)
+    else:
+      gy = grad * (math_ops.conj(z) * log_x)
 
   return _ReduceGradientArgs(x, y, gx, gy)
 

@@ -85,13 +85,13 @@ ENTRY e {
 
   RunAndFilecheckHloRewrite(kHloText, DotDimensionNormalizer(), R"(
 ; CHECK: %[[R0:.*]] = bf16[4,5,518,200]{{.*}} reshape(%p0)
-; CHECK: %[[T1:.*]] = bf16[4,5,6,7,20,10]{{.*}} transpose(%p1), dimensions={0,1,4,5,3,2}
-; CHECK: %[[R1:.*]] = bf16[4,5,6,7,200]{{.*}} reshape(%[[T1]])
+; CHECK: %[[T1:.*]] = bf16[4,5,20,10,6,7]{{.*}} transpose(%p1), dimensions={0,1,3,2,4,5}
+; CHECK: %[[R1:.*]] = bf16[4,5,200,6,7]{{.*}} reshape(%[[T1]])
 ; CHECK: ROOT {{[^ ]+}} = bf16[4,5,518,6,7]{{.*}} dot(%[[R0]], %[[R1]])
 ; CHECK-SAME: lhs_batch_dims={0,1}
 ; CHECK-SAME: lhs_contracting_dims={3}
 ; CHECK-SAME: rhs_batch_dims={0,1}
-; CHECK-SAME: rhs_contracting_dims={4}
+; CHECK-SAME: rhs_contracting_dims={2}
   )");
 }
 
@@ -319,6 +319,34 @@ ENTRY e {
 ; CHECK-SAME: rhs_batch_dims={0}
 ; CHECK-SAME: rhs_contracting_dims={1}
 ; CHECK: ROOT {{[^ ]+}} = bf16[2,3,5,7]{3,2,1,0} reshape(%[[D]])
+  )");
+}
+
+TEST_F(
+    DotDimensionNormalizerTest,
+    NormalizeNonConsecutiveNonContractingDimsPreservesTrailingContractingDim) {
+  const std::string kHloText = R"(
+HloModule m
+
+ENTRY e {
+ p0 = f32[512,64,4,64,64] parameter(0)
+ p1 = f32[512,4,64,16] parameter(1)
+ ROOT d = f32[512,4,64,64,16] dot(p0, p1),
+  lhs_batch_dims={0,2}, lhs_contracting_dims={4},
+  rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+})";
+
+  RunAndFilecheckHloRewrite(
+      kHloText,
+      DotDimensionNormalizer(/*normalize_noncontracting_dimensions=*/true), R"(
+; CHECK: %[[T0:.*]] = f32[512,4,64,64,64]{4,3,1,2,0} transpose(%p0), dimensions={0,2,1,3,4}
+; CHECK: %[[R0:.*]] = f32[512,4,4096,64]{3,2,1,0} reshape(%[[T0]])
+; CHECK: %[[D:.*]] = f32[512,4,4096,16]{3,2,1,0} dot(%[[R0]], %p1)
+; CHECK-SAME: lhs_batch_dims={0,1}
+; CHECK-SAME: lhs_contracting_dims={3}
+; CHECK-SAME: rhs_batch_dims={0,1}
+; CHECK-SAME: rhs_contracting_dims={2}
+; CHECK: ROOT {{[^ ]+}} = f32[512,4,64,64,16]{4,3,2,1,0} reshape(%[[D]])
   )");
 }
 

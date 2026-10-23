@@ -56,7 +56,6 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:CommonFolders",
-        "@llvm-project//mlir:DialectUtils",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MathDialect",
@@ -276,6 +275,7 @@ xla_cc_test(
     srcs = ["dialect/tpu/tpu_ops_verification_test.cc"],
     deps = [
         ":tpu_dialect",
+        "//xla:shape_util",
         "//xla/mlir/utils:error_util",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",

@@ -20,11 +20,12 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla::gpu {
@@ -60,9 +61,18 @@ class ConvertTritonGemmConfig : public HloModulePass {
 // analysis that satisfy the requirements of the `dot`. That is, the tile sizes
 // need to satisfy the constraints of the analysis and map to the given `config`
 // of the dot.
-absl::StatusOr<BlockLevelParameters> FindBlockLevelParameters(
+absl::StatusOr<xla::xtile::BlockLevelParameters> FindBlockLevelParameters(
     const HloInstruction* dot, const TritonGemmConfig& config,
     mlir::MLIRContext* mlir_context,
+    const se::DeviceDescription& device_description);
+
+// Same as above, but always uses the experimental TilingSpace propagation
+// framework and operates on an arbitrary `fusion_adaptor` (with a single root)
+// that contains `dot`. This allows checking fusions that are not materialized
+// yet, e.g. a producer-consumer fusion adaptor.
+absl::StatusOr<xla::xtile::BlockLevelParameters> FindBlockLevelParameters(
+    const HloFusionAdaptor& fusion_adaptor, const HloInstruction* dot,
+    const TritonGemmConfig& config, mlir::MLIRContext* mlir_context,
     const se::DeviceDescription& device_description);
 
 }  // namespace xla::gpu

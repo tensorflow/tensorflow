@@ -28,8 +28,8 @@ limitations under the License.
 #include "gloo/context.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/core/collectives/reduction_kind.h"
 #include "xla/future.h"
-#include "xla/service/collective_ops_utils.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -42,6 +42,10 @@ class GlooCommunicator : public Communicator {
   GlooCommunicator(std::shared_ptr<gloo::Context> context, size_t rank,
                    size_t num_ranks);
   ~GlooCommunicator() override;
+
+  Future<> AllReduceMany(absl::Span<const AllReduceBuffer> buffers,
+                         PrimitiveType dtype, ReductionKind reduction_kind,
+                         const Executor& executor) override;
 
   Future<> AllReduce(se::DeviceAddressBase send_buffer,
                      se::DeviceAddressBase recv_buffer, PrimitiveType dtype,

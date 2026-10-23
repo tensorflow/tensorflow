@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/mosaic/dialect/tpu/transforms/serde.h"
 
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 #include "llvm/ADT/StringMap.h"
@@ -97,6 +98,141 @@ LogicalResult dynamic_gather_downgrade(Operation* op, int version, bool&) {
     op->setAttr("dimension",
                 mlir::IntegerAttr::get(
                     mlir::IntegerType::get(op->getContext(), 32), dimension));
+  }
+  return success();
+}
+
+LogicalResult upgrade_reduction_kind(Operation* op, ReductionKind int_max_kind,
+                                     ReductionKind int_min_kind) {
+  if (op->getNumOperands() == 0) {
+    return op->emitError("Missing input operand");
+  }
+  const auto input_type = dyn_cast<VectorType>(op->getOperand(0).getType());
+  if (!input_type) {
+    return op->emitError("Invalid input type");
+  }
+  const Type elem_type = input_type.getElementType();
+  auto kind_attr = op->getAttrOfType<ReductionKindAttr>("kind");
+  if (!kind_attr) {
+    return op->emitError("Missing or invalid kind attribute");
+  }
+  std::optional<ReductionKind> new_kind;
+  switch (kind_attr.getValue()) {
+    case ReductionKind::kMax_DEPRECATED:
+      if (isa<FloatType>(elem_type)) {
+        new_kind = ReductionKind::kMaxF;
+      } else if (isa<IntegerType>(elem_type)) {
+        new_kind = int_max_kind;
+      } else {
+        return op->emitError("Unsupported element type for max reduction");
+      }
+      break;
+    case ReductionKind::kMin_DEPRECATED:
+      if (isa<FloatType>(elem_type)) {
+        new_kind = ReductionKind::kMinF;
+      } else if (isa<IntegerType>(elem_type)) {
+        new_kind = int_min_kind;
+      } else {
+        return op->emitError("Unsupported element type for min reduction");
+      }
+      break;
+    default:
+      break;
+  }
+  if (new_kind.has_value()) {
+    op->setAttr("kind", ReductionKindAttr::get(op->getContext(), *new_kind));
+  }
+  return success();
+}
+
+LogicalResult downgrade_reduction_kind(Operation* op,
+                                       ReductionKind int_max_kind,
+                                       ReductionKind int_min_kind) {
+  auto kind_attr = op->getAttrOfType<ReductionKindAttr>("kind");
+  if (!kind_attr) {
+    return op->emitError("Missing or invalid kind attribute");
+  }
+  const ReductionKind kind = kind_attr.getValue();
+  std::optional<ReductionKind> new_kind;
+  if (kind == ReductionKind::kMaxF || kind == int_max_kind) {
+    new_kind = ReductionKind::kMax_DEPRECATED;
+  } else if (kind == ReductionKind::kMinF || kind == int_min_kind) {
+    new_kind = ReductionKind::kMin_DEPRECATED;
+  } else if (kind == ReductionKind::kMaxSI || kind == ReductionKind::kMinSI ||
+             kind == ReductionKind::kMaxUI || kind == ReductionKind::kMinUI) {
+    return op->emitOpError("Cannot downgrade reduction kind ")
+           << stringifyReductionKind(kind) << " below version 18";
+  }
+  if (new_kind.has_value()) {
+    op->setAttr("kind", ReductionKindAttr::get(op->getContext(), *new_kind));
+  }
+  return success();
+}
+
+LogicalResult scan_upgrade(Operation* op, int version, bool&) {
+  if (version < 17) {
+    if (op->getNumOperands() == 0) {
+      return op->emitError("Missing input operand for scan operation");
+    }
+    const auto input_type = dyn_cast<VectorType>(op->getOperand(0).getType());
+    if (!input_type) {
+      return op->emitError("Invalid input type for scan operation");
+    }
+    const Attribute dimension_attr = IntegerAttr::get(
+        IntegerType::get(op->getContext(), 64), input_type.getRank() - 1);
+    op->setAttr("dimension", dimension_attr);
+  }
+  if (version < 18) {
+    if (failed(upgrade_reduction_kind(op, ReductionKind::kMaxUI,
+                                      ReductionKind::kMinUI))) {
+      return failure();
+    }
+  }
+  return success();
+}
+
+LogicalResult scan_downgrade(Operation* op, int version, bool&) {
+  if (version < 18) {
+    if (failed(downgrade_reduction_kind(op, ReductionKind::kMaxUI,
+                                        ReductionKind::kMinUI))) {
+      return failure();
+    }
+  }
+  if (version < 17) {
+    if (op->getNumOperands() == 0) {
+      return op->emitError("Missing input operand for scan operation");
+    }
+    const auto input_type = dyn_cast<VectorType>(op->getOperand(0).getType());
+    if (!input_type) {
+      return op->emitError("Invalid input type for scan operation");
+    }
+    auto dimension_attr = op->getAttrOfType<IntegerAttr>("dimension");
+    if (!dimension_attr) {
+      return op->emitError("Missing or invalid dimensions attribute");
+    }
+    const int64_t dimension = dimension_attr.getInt();
+    if (dimension != input_type.getRank() - 1) {
+      return op->emitError(
+          "Can only downgrade below version 16 when dimension is the last "
+          "dimension");
+    }
+    op->removeAttr("dimension");
+  }
+  return success();
+}
+
+LogicalResult reduce_upgrade(Operation* op, int version, bool&) {
+  if (version < 18) {
+    return upgrade_reduction_kind(op, ReductionKind::kMaxSI,
+                                  ReductionKind::kMinSI);
+  }
+  return success();
+}
+
+LogicalResult reduce_downgrade(Operation* op, int version, bool&) {
+  if (version < 18) {
+    return downgrade_reduction_kind(op, ReductionKind::kMaxSI,
+                                    ReductionKind::kMinSI);
   }
   return success();
 }
@@ -594,7 +730,6 @@ LogicalResult arith_constant_downgrade(Operation* op, int version, bool&) {
   }
   return success();
 }
-
 LogicalResult reinterpret_cast_upgrade(Operation* op, int version, bool&) {
   if (version < 15) {
     bool dynamic_offset = op->getNumOperands() > 1;
@@ -602,19 +737,46 @@ LogicalResult reinterpret_cast_upgrade(Operation* op, int version, bool&) {
                 mlir::DenseI32ArrayAttr::get(op->getContext(),
                                              {1, dynamic_offset ? 1 : 0, 0}));
   }
+  if (version < 16) {
+    auto operand_segment_sizes =
+        op->getAttrOfType<DenseI32ArrayAttr>("operandSegmentSizes");
+    llvm::SmallVector<int32_t> new_sizes(operand_segment_sizes.asArrayRef());
+    new_sizes.push_back(0);
+    op->setAttr("operandSegmentSizes",
+                mlir::DenseI32ArrayAttr::get(op->getContext(), new_sizes));
+  }
   return success();
 }
 
 LogicalResult reinterpret_cast_downgrade(Operation* op, int version, bool&) {
+  if (version < 16) {
+    auto operand_segment_sizes =
+        op->getAttrOfType<DenseI32ArrayAttr>("operandSegmentSizes");
+    if (operand_segment_sizes[3] > 0) {
+      return op->emitOpError(
+          "Can only downgrade below version 16 when dynamic_strides is "
+          "empty");
+    }
+
+    op->setAttr(
+        "operandSegmentSizes",
+        mlir::DenseI32ArrayAttr::get(
+            op->getContext(), operand_segment_sizes.asArrayRef().drop_back()));
+  }
+
   if (version < 15) {
     auto operand_segment_sizes =
         op->getAttrOfType<DenseI32ArrayAttr>("operandSegmentSizes");
-    if (operand_segment_sizes && operand_segment_sizes.asArrayRef()[2] > 0) {
-      return op->emitOpError(
-          "Can only downgrade below version 15 when dynamic_sizes is empty");
+    if (operand_segment_sizes) {
+      auto array_ref = operand_segment_sizes.asArrayRef();
+      if (array_ref.size() >= 3 && array_ref[2] > 0) {
+        return op->emitOpError(
+            "Can only downgrade below version 15 when dynamic_sizes is empty");
+      }
     }
     op->removeAttr("operandSegmentSizes");
   }
+
   if (version < 12) {
     if (op->getNumOperands() == 2) {
       return op->emitOpError(
@@ -649,12 +811,40 @@ LogicalResult matmul_downgrade(Operation* op, int version, bool&) {
   return success();
 }
 
+LogicalResult repeat_upgrade(Operation* op, int version, bool& erased) {
+  if (op->getNumOperands() != 1 || op->getNumResults() != 1) {
+    return op->emitError("Unexpected operand/result count in tpu.repeat");
+  }
+  auto dimension_attr = op->getAttrOfType<IntegerAttr>("dimension");
+  auto times_attr = op->getAttrOfType<IntegerAttr>("times");
+  if (!dimension_attr || !times_attr) {
+    return op->emitError("Missing dimension or times attribute in tpu.repeat");
+  }
+  Value source = op->getOperand(0);
+  int32_t times = times_attr.getInt();
+  if (times == 1) {
+    op->replaceAllUsesWith(ValueRange{source});
+  } else {
+    OpBuilder builder(op);
+    SmallVector<Value> operands(times, source);
+    Value concat =
+        ConcatenateOp::create(builder, op->getLoc(), op->getResult(0).getType(),
+                              operands, dimension_attr.getInt());
+    op->replaceAllUsesWith(ValueRange{concat});
+  }
+  op->erase();
+  erased = true;
+  return success();
+}
+
 const llvm::StringMap<SerdeRuleType>& upgrade_rules() {
   static auto rules = new llvm::StringMap<SerdeRuleType>{
       {EnqueueDMAOp::getOperationName(), enqueue_dma_upgrade},
       {WaitDMA2Op::getOperationName(), wait_dma2_upgrade},
       {WaitDMAOp::getOperationName(), wait_dma_upgrade},
       {DynamicGatherOp::getOperationName(), dynamic_gather_upgrade},
+      {ScanOp::getOperationName(), scan_upgrade},
+      {ReduceOp::getOperationName(), reduce_upgrade},
       {IotaOp::getOperationName(), iota_upgrade},
       {SemaphoreSignalOp::getOperationName(), semaphore_signal_upgrade},
       {vector::MultiDimReductionOp::getOperationName(),
@@ -663,6 +853,7 @@ const llvm::StringMap<SerdeRuleType>& upgrade_rules() {
       {arith::ConstantOp::getOperationName(), arith_constant_upgrade},
       {ReinterpretCastOp::getOperationName(), reinterpret_cast_upgrade},
       {MatmulOp::getOperationName(), matmul_upgrade},
+      {"tpu.repeat", repeat_upgrade},
   };
   return *rules;
 }
@@ -673,6 +864,8 @@ const llvm::StringMap<SerdeRuleType>& downgrade_rules() {
       {WaitDMA2Op::getOperationName(), wait_dma2_downgrade},
       {WaitDMAOp::getOperationName(), wait_dma_downgrade},
       {DynamicGatherOp::getOperationName(), dynamic_gather_downgrade},
+      {ScanOp::getOperationName(), scan_downgrade},
+      {ReduceOp::getOperationName(), reduce_downgrade},
       {IotaOp::getOperationName(), iota_downgrade},
       {SemaphoreSignalOp::getOperationName(), semaphore_signal_downgrade},
       {StoreOp::getOperationName(), store_downgrade},

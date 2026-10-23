@@ -58,12 +58,18 @@ using InstructionBimap =
 
 InstructionBimap ConstructInstructionBimap(const DiffResult& diff_result) {
   InstructionBimap mapping;
+  // Each pair is inserted independently, so the order doesn't matter.
+  // NOLINTBEGIN(*-custom-deterministic-iteration-order)
   for (const auto& [left, right] : diff_result.unchanged_instructions) {
     mapping.Insert(left, right);
   }
   for (const auto& [left, right] : diff_result.changed_instructions) {
     mapping.Insert(left, right);
   }
+  for (const auto& [left, right] : diff_result.moved_instructions) {
+    mapping.Insert(left, right);
+  }
+  // NOLINTEND(*-custom-deterministic-iteration-order)
   return mapping;
 }
 
@@ -233,6 +239,8 @@ DiffMetrics GetDiffMetrics(const ComputationGroup& computation_group,
       } else if (diff_result.left_module_unmatched_instructions.contains(
                      instruction)) {
         ++result.left_unmatched_instruction_count;
+      } else if (diff_result.moved_instructions.contains(instruction)) {
+        ++result.moved_instruction_count;
       }
     }
   }
@@ -450,7 +458,8 @@ void PrintTo(const ComputationDiffPattern& diff_pattern, std::ostream* os) {
       << diff_pattern.diff_metrics.left_unmatched_instruction_count
       << " left unmatched, "
       << diff_pattern.diff_metrics.right_unmatched_instruction_count
-      << " right unmatched }";
+      << " right unmatched, "
+      << diff_pattern.diff_metrics.moved_instruction_count << " moved }";
   *os << " }";
 }
 
@@ -466,6 +475,8 @@ DiffSummaryProto DiffSummary::ToProto() const {
         diff_pattern.diff_metrics.left_unmatched_instruction_count);
     diff_pattern_proto->set_right_unmatched_instruction_count(
         diff_pattern.diff_metrics.right_unmatched_instruction_count);
+    diff_pattern_proto->set_moved_instruction_count(
+        diff_pattern.diff_metrics.moved_instruction_count);
     for (const auto& computation_group : diff_pattern.computation_groups) {
       ComputationGroupProto* group_proto =
           diff_pattern_proto->add_computation_group();
@@ -514,6 +525,8 @@ DiffSummary DiffSummary::FromProto(const DiffSummaryProto& proto,
         diff_pattern_proto.left_unmatched_instruction_count();
     diff_pattern.diff_metrics.right_unmatched_instruction_count =
         diff_pattern_proto.right_unmatched_instruction_count();
+    diff_pattern.diff_metrics.moved_instruction_count =
+        diff_pattern_proto.moved_instruction_count();
     for (const auto& group_proto : diff_pattern_proto.computation_group()) {
       ComputationGroup group;
       for (const auto& computation_details : group_proto.left_computations()) {

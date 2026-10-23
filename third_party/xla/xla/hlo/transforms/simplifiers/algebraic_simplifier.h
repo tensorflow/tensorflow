@@ -399,6 +399,14 @@ class AlgebraicSimplifierOptions {
     enable_folding_pad_into_convolution_ = value;
   }
 
+  bool enable_dynamic_update_slice_to_pad_replacement() const {
+    return enable_dynamic_update_slice_to_pad_replacement_;
+  }
+
+  void set_enable_dynamic_update_slice_to_pad_replacement(bool value) {
+    enable_dynamic_update_slice_to_pad_replacement_ = value;
+  }
+
  private:
   // Metadata struct can be used to store any metadata information encapsulated
   // with the AlgebraicSimplifierOptions that can be later used in an
@@ -427,6 +435,7 @@ class AlgebraicSimplifierOptions {
   bool enable_window_reduce_to_reduce_replacement_{true};
   bool enable_reduce_of_reshape_{true};
   bool enable_negative_padding_replacement_{true};
+  bool enable_dynamic_update_slice_to_pad_replacement_{true};
   bool enable_sink_broadcast_{true};
   bool unconditionally_simplify_reduce_of_transpose_or_reshape_{false};
   int64_t very_small_gather_size_{4};
@@ -583,6 +592,8 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
 
   absl::Status HandleRsqrt(HloInstruction* rsqrt) override;
 
+  absl::Status HandleShuffle(HloInstruction* hlo) override;
+
   absl::Status HandleSlice(HloInstruction* slice) override;
 
   absl::Status HandleSqrt(HloInstruction* sqrt) override;
@@ -657,6 +668,20 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   // The backend-specific options selected for the algebraic simplifier.
   const AlgebraicSimplifierOptions& options_;
 
+  // Rewrite dot as mul(broadcast(transpose(x)),broadcast(transpose(y)))
+  absl::Status RewriteAsMultiplyDotWithZeroLhsContractingDim(
+      HloInstruction* dot, HloInstruction* lhs, HloInstruction* rhs,
+      const DotDimensionNumbers& dnums);
+
+  // Rewrites a dot as
+  // reduce(mul(broadcast(transpose(x)),broadcast(transpose(y)))), where the
+  // reduction is over the contracting dimensions. Supports arbitrary dots: the
+  // lhs and rhs may each have any number of batch, contracting and
+  // non-contracting dimensions.
+  absl::Status RewriteBatchPlusContractingAsReduce(
+      HloDotInstruction* dot, HloInstruction* lhs, HloInstruction* rhs,
+      const DotDimensionNumbers& dnums);
+
  private:
   // Returns whether the dot precision config is supported by simplifier.
   virtual bool SupportedDotPrecisionConfig(const PrecisionConfig& config,
@@ -671,11 +696,6 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
 
   absl::Status HandleAllReduceOrReduceScatter(HloInstruction* collective);
 
-  // Rewrite dot as mul(broadcast(transpose(x)),broadcast(transpose(y)))
-  absl::Status RewriteAsMultiplyDotWithZeroLhsContractingDim(
-      HloInstruction* dot, HloInstruction* lhs, HloInstruction* rhs,
-      const DotDimensionNumbers& dnums);
-
   enum class RewriteResult {
     kNoRewrite,
     kRewritten,
@@ -686,12 +706,6 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   // Could return kStopRewrites if the rewrite is too expensive.
   absl::StatusOr<RewriteResult> AssociativeReorderNestedDot(
       HloDotInstruction* dot, HloInstruction* lhs, HloInstruction* rhs);
-
-  // If the lhs or rhs have only batch and contracting dimensions, a dot can be
-  // rewritten as reduce(mul(broadcast(transpose(x)),broadcast(transpose(y))))
-  absl::Status RewriteBatchPlusContractingAsReduce(
-      HloDotInstruction* dot, HloInstruction* lhs, HloInstruction* rhs,
-      const DotDimensionNumbers& dnums);
 
   // Removes degenerate dimension from dot.
   absl::StatusOr<bool> RemoveDegenerateDimensionFromDot(HloDotInstruction* dot);

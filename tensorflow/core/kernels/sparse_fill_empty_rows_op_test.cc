@@ -97,10 +97,11 @@ TEST_F(SparseFillEmptyRowsTest, IndicesValuesUnmatch) {
   // default_value
   AddInputFromArray<float>(TensorShape({}), {4});
 
-  EXPECT_THAT(RunOpKernel(), absl_testing::StatusIs(
-                                 error::INVALID_ARGUMENT,
-                                 "The length of `values` (3) must match the "
-                                 "first dimension of `indices` (4)."));
+  const auto status = RunOpKernel();
+  EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
+  EXPECT_EQ(status.message(),
+            "The length of `values` (3) must match the first dimension of "
+            "`indices` (4).");
 }
 
 TEST_F(SparseFillEmptyRowsTest, IndicesDenseShapeUnmatch) {
@@ -115,10 +116,106 @@ TEST_F(SparseFillEmptyRowsTest, IndicesDenseShapeUnmatch) {
   // default_value
   AddInputFromArray<float>(TensorShape({}), {4});
 
-  EXPECT_THAT(RunOpKernel(), absl_testing::StatusIs(
-                                 error::INVALID_ARGUMENT,
-                                 "The length of `dense_shape` (2) must match "
-                                 "the second dimension of `indices` (0)."));
+  const auto status = RunOpKernel();
+  EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
+  EXPECT_EQ(status.message(),
+            "The length of `dense_shape` (2) must match the second dimension "
+            "of `indices` (0).");
+}
+
+class SparseFillEmptyRowsGradTest : public OpsTestBase {
+ protected:
+  void MakeOp(DataType index_type, DataType value_type) {
+    TF_ASSERT_OK(
+        NodeDefBuilder("sparsefillemptyrowsgrad", "SparseFillEmptyRowsGrad")
+            .Input(FakeInput(index_type))
+            .Input(FakeInput(value_type))
+            .Finalize(node_def()));
+    TF_ASSERT_OK(InitOp());
+  }
+};
+
+TEST_F(SparseFillEmptyRowsGradTest, SparseFillEmptyRowsGrad) {
+  MakeOp(DT_INT64, DT_FLOAT);
+
+  // reverse_index_map
+  AddInputFromArray<int64_t>(TensorShape({2}), {2, 1});
+  // grad_values
+  AddInputFromArray<float>(TensorShape({4}), {0, 1, 2, 3});
+
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor expected_d_values(allocator(), DT_FLOAT, {2});
+  test::FillValues<float>(&expected_d_values, {2, 1});
+  test::ExpectTensorEqual<float>(expected_d_values, *GetOutput(0));
+
+  Tensor expected_d_default_value(allocator(), DT_FLOAT, {});
+  test::FillValues<float>(&expected_d_default_value, {3});
+  test::ExpectTensorEqual<float>(expected_d_default_value, *GetOutput(1));
+}
+
+TEST_F(SparseFillEmptyRowsGradTest, InvalidReverseIndexMap) {
+  MakeOp(DT_INT64, DT_FLOAT);
+
+  // reverse_index_map
+  AddInputFromArray<int64_t>(TensorShape({2}), {2, 10});
+  // grad_values
+  AddInputFromArray<float>(TensorShape({4}), {0, 1, 2, 3});
+
+  const auto status = RunOpKernel();
+  EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
+  EXPECT_EQ(status.message(),
+            "Elements in reverse index must be in [0, 4) but got 10");
+}
+
+TEST_F(SparseFillEmptyRowsGradTest, NegativeReverseIndexMap) {
+  MakeOp(DT_INT64, DT_FLOAT);
+
+  // reverse_index_map
+  AddInputFromArray<int64_t>(TensorShape({2}), {-1, 1});
+  // grad_values
+  AddInputFromArray<float>(TensorShape({4}), {0, 1, 2, 3});
+
+  const auto status = RunOpKernel();
+  EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
+  EXPECT_EQ(status.message(),
+            "Elements in reverse index must be in [0, 4) but got -1");
+}
+
+TEST_F(SparseFillEmptyRowsGradTest, EmptyInputs) {
+  MakeOp(DT_INT64, DT_FLOAT);
+
+  // reverse_index_map
+  AddInputFromArray<int64_t>(TensorShape({0}), {});
+  // grad_values
+  AddInputFromArray<float>(TensorShape({0}), {});
+
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor expected_d_values(allocator(), DT_FLOAT, {0});
+  test::ExpectTensorEqual<float>(expected_d_values, *GetOutput(0));
+
+  Tensor expected_d_default_value(allocator(), DT_FLOAT, {});
+  test::FillValues<float>(&expected_d_default_value, {0});
+  test::ExpectTensorEqual<float>(expected_d_default_value, *GetOutput(1));
+}
+
+TEST_F(SparseFillEmptyRowsGradTest, EmptyReverseIndexMap) {
+  MakeOp(DT_INT64, DT_FLOAT);
+
+  // reverse_index_map
+  AddInputFromArray<int64_t>(TensorShape({0}), {});
+  // grad_values
+  AddInputFromArray<float>(TensorShape({3}), {1, 2, 3});
+
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor expected_d_values(allocator(), DT_FLOAT, {0});
+  test::ExpectTensorEqual<float>(expected_d_values, *GetOutput(0));
+
+  Tensor expected_d_default_value(allocator(), DT_FLOAT, {});
+  test::FillValues<float>(&expected_d_default_value, {6});
+  test::ExpectTensorEqual<float>(expected_d_default_value, *GetOutput(1));
 }
 
 }  // namespace

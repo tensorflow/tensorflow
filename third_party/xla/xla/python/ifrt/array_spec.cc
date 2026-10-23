@@ -79,10 +79,8 @@ absl::Status ArraySpec::ToProto(ArraySpecProto& proto,
 }
 
 absl::StatusOr<AbstractArraySpec> ArraySpec::ToAbstractArraySpec() const {
-  MemoryKind memory_kind = CanonicalizeMemoryKind(
-      sharding->memory_kind(), sharding->devices()->devices().front());
   return AbstractArraySpec::Create(dtype, shape, sharding->sharding_spec(),
-                                   std::move(memory_kind), layout);
+                                   sharding->memory_kind(), layout);
 }
 
 }  // namespace ifrt

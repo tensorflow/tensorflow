@@ -392,6 +392,7 @@ class XLAConfigOptions:
             f"build:cuda --repo_env HERMETIC_CUDA_VERSION={dpav.cuda_version}"
         )
       rc.append(
+          # pyrefly: ignore[no-matching-overload]
           "build:cuda --repo_env HERMETIC_CUDA_COMPUTE_CAPABILITIES="
           f"{','.join(dpav.cuda_compute_capabilities)}"
       )

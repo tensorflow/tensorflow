@@ -45,9 +45,8 @@ const char* GetPythonString(PyObject* o) {
 
 namespace tensorflow {
 
-ABSL_MUST_USE_RESULT
-ABSL_ATTRIBUTE_HOT
-std::shared_ptr<StackTrace> StackTrace::Capture(int limit) {
+[[nodiscard]]
+ABSL_ATTRIBUTE_HOT std::shared_ptr<StackTrace> StackTrace::Capture(int limit) {
   DCHECK(PyGILState_Check());
   if (limit == -1) limit = std::numeric_limits<int>::max();
 

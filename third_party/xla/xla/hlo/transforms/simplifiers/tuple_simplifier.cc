@@ -36,6 +36,10 @@ TupleSimplifier::TupleSimplifier(bool exclude_entry_computation)
 
 absl::StatusOr<HloInstruction*> TupleSimplifier::RemoveWholeTuple(
     HloInstruction* tuple) {
+  if (tuple->get_frontend_attribute(kDisableTupleSimplifierAttribute) ==
+      "true") {
+    return nullptr;
+  }
   HloInstruction* top_tuple = nullptr;
   for (int64_t operand_number = 0; operand_number < tuple->operand_count();
        ++operand_number) {

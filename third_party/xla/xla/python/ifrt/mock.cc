@@ -146,6 +146,11 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
                             absl::Span<const ArraySpec> array_specs) {
         return delegated_->MakeErrorArrays(error, array_specs);
       });
+  ON_CALL(*this, CopyArraysToHostBufferShards)
+      .WillByDefault([this](absl::Span<CopyArraysToHostBufferShardsSpec> specs,
+                            ArrayCopySemantics semantics) {
+        return delegated_->CopyArraysToHostBufferShards(specs, semantics);
+      });
   ON_CALL(*this, AssembleArrayFromSingleDeviceArrays(_, _, _, _, _, _))
       .WillByDefault(
           [this](DType dtype, Shape shape, ShardingRef sharding,
@@ -163,6 +168,13 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
                             ArrayCopySemantics semantics) {
         return delegated_->CopyArrays(arrays, std::move(devices), memory_kind,
                                       semantics);
+      });
+  ON_CALL(*this, CopyArraysWithDonatedDst)
+      .WillByDefault([this](absl::Span<ArrayRef> arrays,
+                            absl::Span<ArrayRef> donated_dst_arrays,
+                            ArrayCopySemantics semantics) {
+        return delegated_->CopyArraysWithDonatedDst(arrays, donated_dst_arrays,
+                                                    semantics);
       });
   ON_CALL(*this, RemapArrays)
       .WillByDefault([this](const RemapPlan& plan, absl::Span<ArrayRef> arrays,
@@ -266,6 +278,11 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
   ON_CALL(*this, GetDefaultCompiler).WillByDefault([this]() {
     return delegated_->GetDefaultCompiler();
   });
+  ON_CALL(*this, Load)
+      .WillByDefault([this](absl::Span<const ExecutableRef> executables,
+                            absl::Span<std::unique_ptr<LoadOptions>> options) {
+        return delegated_->Load(executables, options);
+      });
   ON_CALL(*this, GetTopologyForDevices)
       .WillByDefault([this](const DeviceListRef& devices) {
         return delegated_->GetTopologyForDevices(devices);

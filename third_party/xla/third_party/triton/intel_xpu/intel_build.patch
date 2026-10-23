@@ -1,21 +1,38 @@
+# Copyright 2026 The OpenXLA Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
 diff --git b/BUILD b/BUILD
 --- a/BUILD
 +++ b/BUILD
-@@ -5,3 +5,4 @@
+@@ -4,6 +4,7 @@
+ load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
  load("@rules_cc//cc:cc_library.bzl", "cc_library")
  load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 +load("@local_config_sycl//sycl:build_defs.bzl", "if_sycl_is_configured")
  # copybara:uncomment load("//tools/build_defs/license:license.bzl", "license")
-@@ -545,7 +546,7 @@
-         "lib/Dialect/TritonGPU/Transforms/Utility.cpp",  # Avoid circular dependency.
+ 
+ # See go/triton-sla.
+@@ -566,7 +567,7 @@ cc_library(
          "lib/Dialect/TritonNvidiaGPU/Transforms/ClusterBarrierMbarAllocator.cpp",  # Avoid circular dependency.
+         "lib/Dialect/TritonNvidiaGPU/Transforms/MBarrierUtilities.cpp",  # Avoid circular dependency.
          "lib/Dialect/TritonNvidiaGPU/Transforms/TMAUtilities.cpp",  # Avoid circular dependency.
 -    ],
 +    ] + if_sycl_is_configured(["//third_party/intel:TritonIntelGPU_srcs"]),
      hdrs = glob([
          "include/triton/Dialect/Gluon/IR/*.h",
          "include/triton/Dialect/Triton/IR/*.h",
-@@ -565,7 +566,7 @@
+@@ -587,7 +588,7 @@ cc_library(
          # it would be better if upstream moved it there.
          "include/triton/Conversion/MLIRTypes.h",
          "include/triton/Dialect/TritonInstrument/Transforms/ConSanTargetHooks.h",
@@ -24,7 +41,7 @@ diff --git b/BUILD b/BUILD
      copts = select({
          ":compiler_is_msvc": [],
          "//conditions:default": [
-@@ -576,7 +577,10 @@
+@@ -598,7 +599,10 @@ cc_library(
              "-Wno-implicit-fallthrough",
          ],
      }),
@@ -36,7 +53,7 @@ diff --git b/BUILD b/BUILD
      deps = [
          ":Dump",
          ":GetEnv",  # for Utility
-@@ -633,7 +638,16 @@
+@@ -659,7 +663,16 @@ cc_library(
          "@llvm-project//mlir:UBDialect",
          "@triton//third_party/f2reduce",  # for Utility
          "@triton//third_party/nvidia:NVGPUDialect",
@@ -58,7 +75,7 @@ diff --git b/third_party/intel/BUILD b/third_party/intel/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/third_party/intel/BUILD
-@@ -0,0 +1,554 @@
+@@ -0,0 +1,555 @@
 +load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 +
 +package(
@@ -325,6 +342,7 @@ new file mode 100644
 +        "include/Dialect/TritonGEN/IR/*.h",
 +        "include/Dialect/TritonIntelGPU/IR/*.h",
 +        "include/Dialect/TritonIntelGPU/Transforms/*.h",
++        "include/Utils/*.h",
 +    ])
 +)
 +

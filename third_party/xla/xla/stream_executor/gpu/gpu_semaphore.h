@@ -19,10 +19,8 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "absl/status/statusor.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/memory_allocation.h"
-#include "xla/stream_executor/stream_executor.h"
 
 namespace stream_executor {
 enum struct GpuSemaphoreState { kHold, kRelease, kTimedOut };
@@ -34,9 +32,11 @@ class GpuSemaphore {
   // Creates an invalid semaphore instance
   GpuSemaphore() = default;
 
-  // Creates a valid semaphore. Allocates some pinned host memory using
-  // `executor`.
-  static absl::StatusOr<GpuSemaphore> Create(StreamExecutor* executor);
+  // Creates a valid semaphore backed by `allocation`, which must be at least
+  // `sizeof(GpuSemaphoreState)` bytes of host memory that is directly
+  // accessible by the device at the same virtual address, and that the device
+  // can both read and write while a kernel is running.
+  static GpuSemaphore Create(std::unique_ptr<MemoryAllocation> allocation);
 
   // Returns true if this semaphore is valid, otherwise false.
   explicit operator bool() const { return bool{ptr_}; }

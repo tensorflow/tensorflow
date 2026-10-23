@@ -29,9 +29,11 @@ distribute_py_strict_test(
     exec_properties = select({
         # copybara:uncomment_begin(google-only)
         # "@bazel_tools//tools/cpp:asan_build": {"mem": "16g"},
+        # "//tools/cpp:msan_build": {"mem": "20g"},
         # copybara:uncomment_end
         "//conditions:default": None,
     }),
+    shard_count = 8,
     tags = [
         "no_windows",  # TODO(b/171350360)
         "nomultivm",  # multi_worker_test_base incompatible with multivm base

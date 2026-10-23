@@ -63,7 +63,7 @@ class TilingSpace {
   TilingSpace(const TilingSpace&) = delete;
   TilingSpace& operator=(const TilingSpace&) = delete;
 
-  enum class DimensionSemantics { kParallel, kSequential };
+  enum class DimensionSemantics { kParallel, kSequential, kReplica };
   struct DimensionInfo {
     // Unique ID for the dimension within the tiling space.
     TiledDimId id;
@@ -91,6 +91,13 @@ class TilingSpace {
     // Tile size for the dimension.
     std::optional<int64_t> tile_size;
 
+    // If this dimension is partitioned across peers (e.g. the scatter
+    // dimension of a reduce-scatter), the ID of the associated `kReplica`
+    // dimension. When set, the root tile offset along this dimension is split
+    // into an intra-shard tile index (`id`, with `dimension_size / (tile_size
+    // * R)` tiles) and a peer index (`*replica_dim`, with `R` values).
+    std::optional<TiledDimId> replica_dim;
+
     std::string ToString() const;
   };
 
@@ -109,6 +116,9 @@ class TilingSpace {
   //
   // RTVarInfo are accessed by (user_hlo, operand_id), in this case it is
   // (dynamic-slice, 1).
+  //
+  // For ragged_dot group sizes, `hlo` points to the group_sizes operand
+  // (a rank-1 array).
   struct RTVarInfo {
     // Unique ID for the runtime variable within the tiling space.
     int64_t id;
@@ -130,6 +140,18 @@ class TilingSpace {
   static absl::StatusOr<std::unique_ptr<TilingSpace>> Create(
       const HloFusionAdaptor& fusion, mlir::MLIRContext* ctx);
 
+  // Creates an independent deep copy of the TilingSpace, with all internal
+  // pointer maps and root tiles re-bound to the new instance.
+  //
+  // If `target_context` is null or is this space's MLIRContext, the copy
+  // shares this space's context and symbolic expressions. Otherwise, the root
+  // tiles are rebuilt in `target_context`, so that the copy is fully
+  // independent of this space's context and can be tiled concurrently with it.
+  //
+  // REQUIRES: IsSymbolic() if `target_context` is a different context.
+  std::unique_ptr<TilingSpace> Clone(
+      mlir::MLIRContext* target_context = nullptr) const;
+
   std::string ToString() const;
 
   // This allows GUnit to print the tile.
@@ -144,6 +166,11 @@ class TilingSpace {
   // exist.
   const DimensionInfo& GetDimensionInfo(const HloInstruction& hlo,
                                         int64_t dim_position) const;
+
+  // Returns the number of tiles along `dim` after tile sizes have been
+  // assigned. For a dimension associated with a `replica_dim`, this is the
+  // number of intra-peer tiles (`CeilOfRatio(dimension_size, tile_size * R)`).
+  int64_t GetNumTiles(const DimensionInfo& dim) const;
 
   // Assigns tile sizes to the dimensions and checks if the constraints derived
   // from the operations are satisfied. That does NOT include backend-specific
@@ -174,21 +201,55 @@ class TilingSpace {
 
   int64_t num_dimensions() const { return dimensions_.size(); }
   int64_t num_parallel_dimensions() const;
+  int64_t num_sequential_dimensions() const;
   int64_t num_rt_vars() const { return rt_vars_.size(); }
 
   void AppendDimension(const HloInstruction* hlo, int64_t dim_position,
                        int64_t dim_size, DimensionSemantics dim_type);
+
+  // Registers a runtime variable associated with (`hlo`, `operand_id`).
+  // `rt_var` is the HLO instruction whose value is the runtime variable.
+  // `upper_bound` is a compile-time upper bound on the variable's value.
   void AppendRTVar(const HloInstruction* hlo, int64_t operand_id,
                    const HloInstruction* rt_var, int64_t upper_bound);
 
   bool IsSymbolic() const { return is_symbolic_; }
 
-  // Simplifies an expression using actual dimension and symbol bounds
-  // based on the assigned tile sizes and runtime variable bounds.
-  SymbolicExpr SimplifyExpression(const SymbolicExpr& expr) const;
+  // Returns true if `hlo` is a tuple-producing instruction tiled with one
+  // distinct tile per output (consumed through `get-tuple-element`), rather
+  // than a single shared tile for all outputs (such as variadic `reduce`).
+  bool HasPerOutputTiles(const HloInstructionAdaptor& hlo) const;
 
-  // Returns the list of valid tilings for the tiling space.
-  absl::StatusOr<std::vector<llvm::SmallVector<int64_t, 4>>> GetValidTilings();
+  // Returns true if the tiling space contains a tuple-producing instruction
+  // tiled with one distinct tile per output.
+  bool HasPerOutputTiles() const;
+
+  // Result of `SimplifyExpressions`.
+  // TODO(b/565301234): follow up: we can also return simplified constraint
+  // intervals but that requires extracting them from IndexingMap properly,
+  // as it sometimes converts them to dimension constraints.
+  struct SimplificationResult {
+    // Simplified expressions. If `is_known_empty` is true, the expressions are
+    // returned as is.
+    llvm::SmallVector<SymbolicExpr> expressions;
+    // True if the constraints are infeasible for the current tiling space
+    // bounds, i.e. there is no assignment of the variables under which the
+    // expressions are evaluated.
+    bool is_known_empty = false;
+  };
+
+  // Simplifies expressions using actual dimension and symbol bounds
+  // based on the assigned tile sizes and runtime variable bounds.
+  SimplificationResult SimplifyExpressions(
+      const llvm::SmallVector<SymbolicExpr>& expressions,
+      llvm::ArrayRef<std::pair<SymbolicExpr, Interval>> constraints = {}) const;
+
+  // Returns the list of valid tilings for the tiling space. If
+  // `tile_reduction_dimensions` is set, tile sizes for the sequential
+  // dimensions of reduces are enumerated too; otherwise each of them is covered
+  // by a single tile of the dimension size.
+  absl::StatusOr<std::vector<llvm::SmallVector<int64_t, 4>>> GetValidTilings(
+      bool tile_reduction_dimensions = false);
 
  private:
   absl::Status InitializeDimensions(
@@ -198,14 +259,29 @@ class TilingSpace {
 
   void ProcessDotLike(const HloInstruction& hlo);
   void ProcessReduce(const HloInstruction& hlo);
-  void ProcessScan(const HloInstruction& hlo);
+  void ProcessReduceScatter(const HloInstruction& hlo);
+  // Marks the scan dimension as sequential; fails if it cannot be located.
+  absl::Status ProcessScan(const HloInstruction& hlo);
   void ProcessDynamicSlice(const HloInstruction& hlo);
   void ProcessGetTupleElement(const HloInstruction& hlo);
-  void ProcessInstruction(const HloInstruction& hlo);
+  // Propagates dimensions to the operands of an elementwise instruction, also
+  // across the producer-consumer fusion boundary, so that a scan in the
+  // producer finds its dimension below an elementwise epilogue in the consumer.
+  void ProcessElementwise(const HloInstructionAdaptor& adaptor);
+  // Registers the sequential dimensions and RTVars for a kRaggedDot
+  // instruction.  Handles kRaggedNonContracting (G is a kSequential outer
+  // loop) and kRaggedContracting (G is kParallel, M is kSequential).
+  void ProcessRaggedDot(const HloInstruction& hlo);
+  absl::Status ProcessInstruction(const HloInstruction& hlo);
 
   // Initializes cached indexing map variables. This is necessary to allow
   // building indexing maps during simplification.
   void InitSimplificationIndexing();
+
+  // Returns the default symbolic tile, in this space's context, for the root
+  // dimension `dim_info` of size `dim_size`.
+  DimTile GetDefaultRootDimTile(const DimensionInfo& dim_info,
+                                int64_t dim_size) const;
 
   // Maps from (hlo, dim_position) to the dimension info.
   absl::flat_hash_map<std::pair<const HloInstruction*, int64_t>,
@@ -248,9 +324,22 @@ class TilingSpace {
 // Otherwise, return the shape itself.
 const Shape& GetFirstShape(const HloInstruction* instr, int64_t index = 0);
 
+// Returns true if `hlo` is a tuple-producing instruction whose output `k`
+// depends only on operand `k`, with the same tile mapping for every `k`.
+//
+// Currently multi-operand all-gather and reduce-scatter qualify.
+bool IsIndexWiseVariadic(const HloInstruction& hlo);
+
+// Returns the position of the first dimension of result `result_index` in the
+// ordered list of dimensions of `hlo`. For an index-wise variadic instruction
+// the dimensions of all results are laid out back to back: result k starts at
+// the sum of the ranks of results 0..k-1.
+int64_t GetResultDimensionOffset(const HloInstruction& hlo,
+                                 int64_t result_index);
+
 // Returns a symbol replacement map to set concrete tile sizes.
 llvm::DenseMap<SymbolicExpr, SymbolicExpr> GetTileSizeReplacementMap(
-    const TilingSpace& tiling_space, absl::Span<const int64_t> tile_sizes);
+    const TilingSpace& tiling_space);
 
 }  // namespace xla::gpu::experimental
 

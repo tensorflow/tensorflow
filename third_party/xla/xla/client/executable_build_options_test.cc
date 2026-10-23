@@ -27,7 +27,7 @@ limitations under the License.
 #include "google/protobuf/message_lite.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/service/compilation_environments.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/service/test_compilation_environment.pb.h"
 #include "xla/shape.h"
@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"
 
@@ -77,8 +78,8 @@ TEST(ExecutableBuildOptionsTest, ProtoRoundTripWorks) {
   p.set_num_partitions(5);
   p.set_use_spmd_partitioning(true);
   p.set_use_auto_spmd_partitioning(true);
-  p.set_exec_time_optimization_effort(6.0);
-  p.set_memory_fitting_effort(7.0);
+  p.set_optimization_level(ExecutionOptions::EFFORT_O1);
+  p.set_memory_fitting_level(ExecutionOptions::EFFORT_O1);
   p.set_deduplicate_hlo(true);
   DeviceAssignment{1, 1}.Serialize(p.mutable_device_assignment());
   p.mutable_device_assignment()->set_replica_count(1);

@@ -185,6 +185,7 @@ cuda_py_strict_test(
     xla_enable_strict_auto_jit = False,
     deps = [
         "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",
@@ -226,6 +227,7 @@ cuda_py_strict_test(
     srcs = ["extract_volume_patches_op_test.py"],
     deps = [
         "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/platform:client_testlib",

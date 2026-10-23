@@ -66,8 +66,8 @@ class MiniBenchmark {
   // if the overall mini-benchmark-related setup isn't properly initialized.
   virtual int NumRemainingAccelerationTests() = 0;
 
-  MiniBenchmark() {}
-  virtual ~MiniBenchmark() {}
+  MiniBenchmark() = default;
+  virtual ~MiniBenchmark() = default;
 
   MiniBenchmark(MiniBenchmark&) = delete;
   MiniBenchmark& operator=(const MiniBenchmark&) = delete;

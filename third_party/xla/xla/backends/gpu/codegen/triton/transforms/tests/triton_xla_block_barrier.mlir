@@ -15,28 +15,27 @@
 // RUN: xla-opt %s --triton-xla-block-barrier | FileCheck %s
 
 // CHECK-LABEL: block_barrier_kernel
-// CHECK-SAME: %[[PTR:.+]]: !tt.ptr<!tt.ptr<i32>>,
+// CHECK-SAME: %[[PTR:.+]]: !tt.ptr<i64>,
 // CHECK-SAME: %[[SIGNAL_VALUE:.+]]: i32,
 // CHECK-SAME: %[[RANK:.+]]: i32
 tt.func @block_barrier_kernel(
-  %ptr : !tt.ptr<!tt.ptr<i32>>, %signal_value : i32, %rank: i32) {
+  %ptr : !tt.ptr<i64>, %signal_value : i32, %rank: i32) {
   // CHECK-NEXT: %[[WORLD_SIZE:.+]] = arith.constant 8 : i32
   // CHECK-NEXT: %[[TID:.+]] = triton_xla.get_tid
   // CHECK-NEXT: %[[PROGRAM_ID:.+]] = tt.get_program_id x
   // CHECK-NEXT: %[[COND:.+]] = arith.cmpi ult, %[[TID]], %[[WORLD_SIZE]]
   // CHECK-NEXT: scf.if %[[COND]] {
-  // CHECK-NEXT:   %[[BITCAST:.+]] = tt.bitcast %[[PTR]]
-  // CHECK-NEXT:   %[[SPLAT_PTR:.+]] = tt.splat %[[BITCAST]]
+  // CHECK-NEXT:   %[[MULI:.+]] = arith.muli %[[PROGRAM_ID]], %[[WORLD_SIZE]]
+  // CHECK-NEXT:   %[[ADDI:.+]] = arith.addi %[[MULI]], %[[RANK]]
   // CHECK-NEXT:   %[[RANGE:.+]] = tt.make_range {end = 8 : i32, start = 0 : i32}
+  // CHECK-NEXT:   %[[SPLAT_PTR:.+]] = tt.splat %[[PTR]]
+  // CHECK-NEXT:   %[[SPLAT_ADDI:.+]] = tt.splat %[[ADDI]]
   // CHECK-NEXT:   %[[ADD_PTR:.+]] = tt.addptr %[[SPLAT_PTR]], %[[RANGE]]
   // CHECK-NEXT:   %[[LOAD:.+]] = tt.load %[[ADD_PTR]]
   // CHECK-NEXT:   %[[INT_TO_PTR:.+]] = tt.int_to_ptr %[[LOAD]]
-  // CHECK-NEXT:   %[[MULI:.+]] = arith.muli %[[PROGRAM_ID]], %[[WORLD_SIZE]]
-  // CHECK-NEXT:   %[[ADDI:.+]] = arith.addi %[[MULI]], %[[RANK]]
-  // CHECK-NEXT:   %[[SPLAT_ADDI:.+]] = tt.splat %[[ADDI]]
   // CHECK-NEXT:   %[[ADD_PTR_2:.+]] = tt.addptr %[[INT_TO_PTR]], %[[SPLAT_ADDI]]
   // CHECK-NEXT:   triton_xla.atomic_write sys, release, %[[ADD_PTR_2]], %[[SIGNAL_VALUE]]
-  // CHECK-NEXT:   %[[ADD_PTR_3:.+]] = tt.addptr %[[BITCAST]], %[[RANK]]
+  // CHECK-NEXT:   %[[ADD_PTR_3:.+]] = tt.addptr %[[PTR]], %[[RANK]]
   // CHECK-NEXT:   %[[LOAD_2:.+]] = tt.load %[[ADD_PTR_3]]
   // CHECK-NEXT:   %[[INT_TO_PTR_2:.+]] = tt.int_to_ptr %[[LOAD_2]]
   // CHECK-NEXT:   %[[ADD_PTR_4:.+]] = tt.addptr %[[INT_TO_PTR_2]], %[[MULI]]
@@ -46,7 +45,142 @@ tt.func @block_barrier_kernel(
   // CHECK-NEXT: }
   // CHECK-NEXT: ttg.barrier local
   // CHECK-NEXT: tt.return
-  triton_xla.block_barrier %ptr, %rank, %signal_value, { world_size = 8 : i32 } :
-    (!tt.ptr<!tt.ptr<i32>>, i32, i32) -> ()
+  triton_xla.block_barrier %ptr, %rank, %signal_value <world_size = 8> :
+    (!tt.ptr<i64>, i32, i32) -> ()
+  tt.return
+}
+
+// CHECK-LABEL: block_barrier_consumer_symmetric_kernel
+// CHECK-SAME: %[[PTR:[^:]+]]: !tt.ptr<i64>,
+// CHECK-SAME: %[[SIGNAL_VALUE:[^:]+]]: i32,
+// CHECK-SAME: %[[RANK:[^:]+]]: i32,
+// CHECK-SAME: %[[SIGNAL_SLOT:[^:]+]]: i32
+tt.func @block_barrier_consumer_symmetric_kernel(
+  %ptr : !tt.ptr<i64>, %signal_value : i32, %rank: i32, %signal_slot: i32) {
+  // CHECK-NEXT: %[[STRIDE:.+]] = arith.constant 4 : i32
+  // CHECK-NEXT: %[[WORLD_SIZE:.+]] = arith.constant 2 : i32
+  // CHECK-NEXT: %[[TID:.+]] = triton_xla.get_tid
+  // CHECK-NEXT: %[[PROGRAM_ID:.+]] = tt.get_program_id x
+  // CHECK-NEXT: %[[COND:.+]] = arith.cmpi ult, %[[TID]], %[[WORLD_SIZE]]
+  // CHECK-NEXT: scf.if %[[COND]] {
+  // CHECK-NEXT:   %[[MULI:.+]] = arith.muli %[[PROGRAM_ID]], %[[WORLD_SIZE]]
+  // CHECK-NEXT:   %[[S_OFFSET:.+]] = arith.muli %[[SIGNAL_SLOT]], %[[STRIDE]]
+  // CHECK-NEXT:   %[[BASE_T:.+]] = arith.subi %[[PROGRAM_ID]], %[[S_OFFSET]]
+  // CHECK-NEXT:   %[[RANK_OFFSET:.+]] = arith.muli %[[RANK]], %[[STRIDE]]
+  // CHECK-NEXT:   %[[WRITE_BLOCK:.+]] = arith.addi %[[BASE_T]], %[[RANK_OFFSET]]
+  // CHECK-NEXT:   %[[WRITE_BLOCK_OFFSET:.+]] = arith.muli %[[WRITE_BLOCK]], %[[WORLD_SIZE]]
+  // CHECK-NEXT:   %[[WRITE_OFFSET:.+]] = arith.addi %[[WRITE_BLOCK_OFFSET]], %[[SIGNAL_SLOT]]
+  // CHECK-NEXT:   %[[RANGE:.+]] = tt.make_range {end = 2 : i32, start = 0 : i32}
+  // CHECK-NEXT:   %[[SPLAT_PTR:.+]] = tt.splat %[[PTR]]
+  // CHECK-NEXT:   %[[SPLAT_WRITE_OFFSET:.+]] = tt.splat %[[WRITE_OFFSET]]
+  // CHECK-NEXT:   %[[ADD_PTR:.+]] = tt.addptr %[[SPLAT_PTR]], %[[RANGE]]
+  // CHECK-NEXT:   %[[LOAD:.+]] = tt.load %[[ADD_PTR]]
+  // CHECK-NEXT:   %[[INT_TO_PTR:.+]] = tt.int_to_ptr %[[LOAD]]
+  // CHECK-NEXT:   %[[ADD_PTR_2:.+]] = tt.addptr %[[INT_TO_PTR]], %[[SPLAT_WRITE_OFFSET]]
+  // CHECK-NEXT:   triton_xla.atomic_write sys, release, %[[ADD_PTR_2]], %[[SIGNAL_VALUE]]
+  // CHECK-NEXT:   %[[ADD_PTR_3:.+]] = tt.addptr %[[PTR]], %[[RANK]]
+  // CHECK-NEXT:   %[[LOAD_2:.+]] = tt.load %[[ADD_PTR_3]]
+  // CHECK-NEXT:   %[[INT_TO_PTR_2:.+]] = tt.int_to_ptr %[[LOAD_2]]
+  // CHECK-NEXT:   %[[ADD_PTR_4:.+]] = tt.addptr %[[INT_TO_PTR_2]], %[[MULI]]
+  // CHECK-NEXT:   %[[SPLAT_ADD_PTR_4:.+]] = tt.splat %[[ADD_PTR_4]]
+  // CHECK-NEXT:   %[[ADD_PTR_5:.+]] = tt.addptr %[[SPLAT_ADD_PTR_4]], %[[RANGE]]
+  // CHECK-NEXT:   triton_xla.atomic_spin_wait sys, acquire, %[[ADD_PTR_5]], greater_than_or_equal_to, %[[SIGNAL_VALUE]]
+  // CHECK-NEXT: }
+  // CHECK-NEXT: ttg.barrier local
+  // CHECK-NEXT: tt.return
+  triton_xla.block_barrier %ptr, %rank, %signal_value, %signal_slot
+    <world_size = 2, signal_stride = 4, barrier_mode = consumer_symmetric> :
+    (!tt.ptr<i64>, i32, i32, i32) -> ()
+  tt.return
+}
+
+// CHECK-LABEL: block_barrier_producer_symmetric_kernel
+// CHECK-SAME: %[[PTR:[^:]+]]: !tt.ptr<i64>,
+// CHECK-SAME: %[[SIGNAL_VALUE:[^:]+]]: i32,
+// CHECK-SAME: %[[RANK:[^:]+]]: i32,
+// CHECK-SAME: %[[SIGNAL_SLOT:[^:]+]]: i32
+tt.func @block_barrier_producer_symmetric_kernel(
+  %ptr : !tt.ptr<i64>, %signal_value : i32, %rank: i32, %signal_slot: i32) {
+  // CHECK-NEXT: %[[STRIDE:.+]] = arith.constant 4 : i32
+  // CHECK-NEXT: %[[WORLD_SIZE:.+]] = arith.constant 2 : i32
+  // CHECK-NEXT: %[[TID:.+]] = triton_xla.get_tid
+  // CHECK-NEXT: %[[PROGRAM_ID:.+]] = tt.get_program_id x
+  // CHECK-NEXT: %[[COND:.+]] = arith.cmpi ult, %[[TID]], %[[WORLD_SIZE]]
+  // CHECK-NEXT: scf.if %[[COND]] {
+  // CHECK-NEXT:   %[[MULI:.+]] = arith.muli %[[PROGRAM_ID]], %[[WORLD_SIZE]]
+  // CHECK-NEXT:   %[[S_OFFSET:.+]] = arith.muli %[[SIGNAL_SLOT]], %[[STRIDE]]
+  // CHECK-NEXT:   %[[BASE_T:.+]] = arith.subi %[[PROGRAM_ID]], %[[S_OFFSET]]
+  // CHECK-NEXT:   %[[RANK_OFFSET:.+]] = arith.muli %[[RANK]], %[[STRIDE]]
+  // CHECK-NEXT:   %[[WAIT_BLOCK:.+]] = arith.addi %[[BASE_T]], %[[RANK_OFFSET]]
+  // CHECK-NEXT:   %[[WAIT_BLOCK_OFFSET:.+]] = arith.muli %[[WAIT_BLOCK]], %[[WORLD_SIZE]]
+  // CHECK-NEXT:   %[[WRITE_OFFSET:.+]] = arith.addi %[[MULI]], %[[RANK]]
+  // CHECK-NEXT:   %[[RANGE:.+]] = tt.make_range {end = 2 : i32, start = 0 : i32}
+  // CHECK-NEXT:   %[[SPLAT_PTR:.+]] = tt.splat %[[PTR]]
+  // CHECK-NEXT:   %[[SPLAT_WRITE_OFFSET:.+]] = tt.splat %[[WRITE_OFFSET]]
+  // CHECK-NEXT:   %[[ADD_PTR:.+]] = tt.addptr %[[SPLAT_PTR]], %[[RANGE]]
+  // CHECK-NEXT:   %[[LOAD:.+]] = tt.load %[[ADD_PTR]]
+  // CHECK-NEXT:   %[[INT_TO_PTR:.+]] = tt.int_to_ptr %[[LOAD]]
+  // CHECK-NEXT:   %[[ADD_PTR_2:.+]] = tt.addptr %[[INT_TO_PTR]], %[[SPLAT_WRITE_OFFSET]]
+  // CHECK-NEXT:   triton_xla.atomic_write sys, release, %[[ADD_PTR_2]], %[[SIGNAL_VALUE]]
+  // CHECK-NEXT:   %[[ADD_PTR_3:.+]] = tt.addptr %[[PTR]], %[[RANK]]
+  // CHECK-NEXT:   %[[LOAD_2:.+]] = tt.load %[[ADD_PTR_3]]
+  // CHECK-NEXT:   %[[INT_TO_PTR_2:.+]] = tt.int_to_ptr %[[LOAD_2]]
+  // CHECK-NEXT:   %[[ADD_PTR_4:.+]] = tt.addptr %[[INT_TO_PTR_2]], %[[WAIT_BLOCK_OFFSET]]
+  // CHECK-NEXT:   %[[SPLAT_ADD_PTR_4:.+]] = tt.splat %[[ADD_PTR_4]]
+  // CHECK-NEXT:   %[[ADD_PTR_5:.+]] = tt.addptr %[[SPLAT_ADD_PTR_4]], %[[RANGE]]
+  // CHECK-NEXT:   triton_xla.atomic_spin_wait sys, acquire, %[[ADD_PTR_5]], greater_than_or_equal_to, %[[SIGNAL_VALUE]]
+  // CHECK-NEXT: }
+  // CHECK-NEXT: ttg.barrier local
+  // CHECK-NEXT: tt.return
+  triton_xla.block_barrier %ptr, %rank, %signal_value, %signal_slot
+    <world_size = 2, signal_stride = 4, barrier_mode = producer_symmetric> :
+    (!tt.ptr<i64>, i32, i32, i32) -> ()
+  tt.return
+}
+
+// CHECK-LABEL: block_barrier_pairwise_symmetric_kernel
+// CHECK-SAME: %[[PTR:[^:]+]]: !tt.ptr<i64>,
+// CHECK-SAME: %[[SIGNAL_VALUE:[^:]+]]: i32,
+// CHECK-SAME: %[[RANK:[^:]+]]: i32,
+// CHECK-SAME: %[[SIGNAL_SLOT:[^:]+]]: i32
+tt.func @block_barrier_pairwise_symmetric_kernel(
+  %ptr : !tt.ptr<i64>, %signal_value : i32, %rank: i32, %signal_slot: i32) {
+  // CHECK-DAG: %[[ZERO:.+]] = arith.constant 0 : i32
+  // CHECK-DAG: %[[STRIDE:.+]] = arith.constant 4 : i32
+  // CHECK-DAG: %[[WORLD_SIZE:.+]] = arith.constant 2 : i32
+  // CHECK: %[[TID:.+]] = triton_xla.get_tid
+  // CHECK-NEXT: %[[PROGRAM_ID:.+]] = tt.get_program_id x
+  // CHECK-NEXT: %[[COND:.+]] = arith.cmpi eq, %[[TID]], %[[ZERO]]
+  // CHECK-NEXT: scf.if %[[COND]] {
+  // CHECK-NEXT:   %[[BLOCK_OFFSET:.+]] = arith.muli %[[PROGRAM_ID]], %[[WORLD_SIZE]]
+  // CHECK-NEXT:   %[[LOCAL_CNT_OFFSET:.+]] = arith.addi %[[BLOCK_OFFSET]], %[[RANK]]
+  // CHECK-NEXT:   %[[LOCAL_BUF_PTR:.+]] = tt.addptr %[[PTR]], %[[RANK]]
+  // CHECK-NEXT:   %[[LOCAL_BUF_I64:.+]] = tt.load %[[LOCAL_BUF_PTR]]
+  // CHECK-NEXT:   %[[LOCAL_BUF:.+]] = tt.int_to_ptr %[[LOCAL_BUF_I64]]
+  // CHECK-NEXT:   %[[LOCAL_CNT_ADDR:.+]] = tt.addptr %[[LOCAL_BUF]], %[[LOCAL_CNT_OFFSET]]
+  // CHECK-NEXT:   triton_xla.atomic_write gpu, relaxed, %[[LOCAL_CNT_ADDR]], %[[SIGNAL_VALUE]]
+  // CHECK-NEXT:   %[[S_OFFSET:.+]] = arith.muli %[[SIGNAL_SLOT]], %[[STRIDE]]
+  // CHECK-NEXT:   %[[BASE_T:.+]] = arith.subi %[[PROGRAM_ID]], %[[S_OFFSET]]
+  // CHECK-NEXT:   %[[RANK_OFFSET:.+]] = arith.muli %[[RANK]], %[[STRIDE]]
+  // CHECK-NEXT:   %[[TARGET_BLOCK:.+]] = arith.addi %[[BASE_T]], %[[RANK_OFFSET]]
+  // CHECK-NEXT:   %[[TARGET_BLOCK_OFFSET:.+]] = arith.muli %[[TARGET_BLOCK]], %[[WORLD_SIZE]]
+  // CHECK-NEXT:   %[[PEER_WRITE_OFFSET:.+]] = arith.addi %[[TARGET_BLOCK_OFFSET]], %[[RANK]]
+  // CHECK-NEXT:   %[[PEER_BUF_PTR:.+]] = tt.addptr %[[PTR]], %[[SIGNAL_SLOT]]
+  // CHECK-NEXT:   %[[PEER_BUF_I64:.+]] = tt.load %[[PEER_BUF_PTR]]
+  // CHECK-NEXT:   %[[PEER_BUF:.+]] = tt.int_to_ptr %[[PEER_BUF_I64]]
+  // CHECK-NEXT:   %[[PEER_SIG_ADDR:.+]] = tt.addptr %[[PEER_BUF]], %[[PEER_WRITE_OFFSET]]
+  // CHECK-NEXT:   triton_xla.atomic_write sys, release, %[[PEER_SIG_ADDR]], %[[SIGNAL_VALUE]]
+  // CHECK-NEXT:   %[[WAIT_OFFSET:.+]] = arith.addi %[[BLOCK_OFFSET]], %[[SIGNAL_SLOT]]
+  // CHECK-NEXT:   %[[WAIT_BUF_PTR:.+]] = tt.addptr %[[PTR]], %[[RANK]]
+  // CHECK-NEXT:   %[[WAIT_BUF_I64:.+]] = tt.load %[[WAIT_BUF_PTR]]
+  // CHECK-NEXT:   %[[WAIT_BUF:.+]] = tt.int_to_ptr %[[WAIT_BUF_I64]]
+  // CHECK-NEXT:   %[[WAIT_ADDR:.+]] = tt.addptr %[[WAIT_BUF]], %[[WAIT_OFFSET]]
+  // CHECK-NEXT:   triton_xla.atomic_spin_wait sys, acquire, %[[WAIT_ADDR]], greater_than_or_equal_to, %[[SIGNAL_VALUE]]
+  // CHECK-NEXT: }
+  // CHECK-NEXT: ttg.barrier local
+  // CHECK-NEXT: tt.return
+  triton_xla.block_barrier %ptr, %rank, %signal_value, %signal_slot
+    <world_size = 2, signal_stride = 4, barrier_mode = pairwise_symmetric> :
+    (!tt.ptr<i64>, i32, i32, i32) -> ()
   tt.return
 }

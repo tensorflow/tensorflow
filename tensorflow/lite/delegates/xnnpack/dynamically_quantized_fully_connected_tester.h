@@ -133,6 +133,13 @@ class DynamicallyQuantizedFullyConnectedTester
     return *this;
   }
 
+  DynamicallyQuantizedFullyConnectedTester& Float16(bool float16) {
+    float16_ = float16;
+    return *this;
+  }
+
+  bool Float16() const { return float16_; }
+
   inline DynamicallyQuantizedFullyConnectedTester& WeightsCache(
       TfLiteXNNPackDelegateWeightsCache* weights_cache) {
     weights_cache_ = weights_cache;
@@ -167,6 +174,7 @@ class DynamicallyQuantizedFullyConnectedTester
   float filter_scale_ = 0.75f;
   bool keep_dims_ = false;
   bool has_bias_ = true;
+  bool float16_ = false;
   ::tflite::ActivationFunctionType activation_ =
       ::tflite::ActivationFunctionType_NONE;
   TfLiteXNNPackDelegateWeightsCache* weights_cache_ = nullptr;

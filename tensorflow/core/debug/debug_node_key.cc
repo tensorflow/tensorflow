@@ -54,7 +54,7 @@ bool DebugNodeKey::operator!=(const DebugNodeKey& other) const {
   return !((*this) == other);
 }
 
-const std::string DebugNodeKey::DeviceNameToDevicePath(
+std::string DebugNodeKey::DeviceNameToDevicePath(
     const std::string& device_name) {
   return absl::StrCat(kMetadataFilePrefix, kDeviceTag,
                       str_util::StringReplace(

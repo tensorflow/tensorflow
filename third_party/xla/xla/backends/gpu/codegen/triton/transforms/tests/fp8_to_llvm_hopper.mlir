@@ -38,7 +38,7 @@ tt.func @e4m3_mapping(
     %arg1: tensor<256x16xf8E4M3FN, #ttg.dot_op<{opIdx = 1, parent = #mma, kWidth = 4}>>
   ) {
   %cst = arith.constant dense<0.000000e+00> : tensor<16x16xf32, #mma>
-  // CHECK: mma.{{.*}}.e4m3.e4m3.f32
+  // CHECK: nvvm.mma.sync {{.*}}shape = <m = 16, n = 8, k = 32>, layout_a = row, layout_b = col, multiplicand_a_ptx_type = e4m3, multiplicand_b_ptx_type = e4m3 : (i32, i32, f32)
   %res = tt.dot %arg0, %arg1, %cst {allowTF32 = true, maxNumImpreciseAcc = 0 : i32}
       : tensor<16x256xf8E4M3FN, #ttg.dot_op<{opIdx = 0, parent = #mma, kWidth = 4}>> *
         tensor<256x16xf8E4M3FN, #ttg.dot_op<{opIdx = 1, parent = #mma, kWidth = 4}>>

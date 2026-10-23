@@ -1,3 +1,17 @@
+# Copyright 2026 The OpenXLA Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
 From 5c2d2d62a71fe19c92c6f807d533c0ea90c15f03 Mon Sep 17 00:00:00 2001
 From: Marcin Radomski <dextero@google.com>
 Date: Thu, 4 Dec 2025 15:37:45 +0000
@@ -8,8 +22,8 @@ mismatches with googletest.patch.
 ---
  BUILD.bazel                                   |   5 +-
  googlemock/include/gmock/gmock.h              |   1 +
- .../include/gmock/internal/xla-gmock-macros.h | 118 ++++++++++++++++++
- 3 files changed, 123 insertions(+), 1 deletion(-)
+ .../include/gmock/internal/xla-gmock-macros.h | 158 ++++++++++++++++++
+ 3 files changed, 163 insertions(+), 1 deletion(-)
  create mode 100644 googlemock/include/gmock/internal/xla-gmock-macros.h
 
 diff --git a/BUILD.bazel b/BUILD.bazel
@@ -37,10 +51,10 @@ index c78fb8ee..69b33572 100644
  #endif  // GOOGLEMOCK_INCLUDE_GMOCK_GMOCK_H_
 diff --git a/googlemock/include/gmock/internal/xla-gmock-macros.h b/googlemock/include/gmock/internal/xla-gmock-macros.h
 new file mode 100644
-index 00000000..b851bcca
+index 00000000..5ac9721c
 --- /dev/null
 +++ b/googlemock/include/gmock/internal/xla-gmock-macros.h
-@@ -0,0 +1,118 @@
+@@ -0,0 +1,158 @@
 +/* Copyright 2025 The Abseil Authors & TensorFlow Authors. All Rights Reserved.
 +
 +Licensed under the Apache License, Version 2.0 (the "License");
@@ -98,13 +112,53 @@ index 00000000..b851bcca
 +      XLA_STATUS_MACROS_CONCAT_NAME(_status_or_value, __COUNTER__), \
 +      lhs, rexpr);
 +
-+#define ASSERT_OK_AND_ASSIGN_IMPL(statusor, lhs, rexpr) \
-+  auto statusor = (rexpr);                              \
-+  ASSERT_OK(statusor.status());                         \
-+  lhs = std::move(statusor).value()
++#define ASSERT_OK_AND_ASSIGN_IMPL(statusor, lhs, rexpr)    \
++  auto statusor = (rexpr);                                 \
++  ASSERT_OK(statusor.status());                            \
++  XLA_STATUS_MACROS_UNPARENTHESIZE_IF_PARENTHESIZED(lhs) = \
++      std::move(statusor).value()
 +
 +#define XLA_STATUS_MACROS_CONCAT_NAME(x, y) XLA_STATUS_MACROS_CONCAT_IMPL(x, y)
 +#define XLA_STATUS_MACROS_CONCAT_IMPL(x, y) x##y
++
++// Internal helpers for unparenthesizing `lhs` in ASSERT_OK_AND_ASSIGN (for
++// example, structured bindings like `(auto [a, b])`).
++#define XLA_STATUS_MACROS_EAT(...)
++#define XLA_STATUS_MACROS_REM(...) __VA_ARGS__
++#define XLA_STATUS_MACROS_COMMA(...) ,
++#define XLA_STATUS_MACROS_ARG_3(a, b, c, ...) c
++
++#define XLA_STATUS_MACROS_HAS_COMMA(...) \
++  XLA_STATUS_MACROS_REM(XLA_STATUS_MACROS_ARG_3(__VA_ARGS__, 1, 10, 0))
++
++#define XLA_STATUS_MACROS_CONCAT_5(a, b, c, d, e) a##b##c##d##e
++
++#define XLA_STATUS_MACROS_IS_EMPTY_CASE_1010101 ,
++
++#define XLA_STATUS_MACROS_1_IF_1010101_ELSE_10(a, b, c, d) \
++  XLA_STATUS_MACROS_HAS_COMMA(                             \
++      XLA_STATUS_MACROS_CONCAT_5(XLA_STATUS_MACROS_IS_EMPTY_CASE_, a, b, c, d))
++
++#define XLA_STATUS_MACROS_1_IF_EMPTY_ELSE_10(...)                     \
++  XLA_STATUS_MACROS_1_IF_1010101_ELSE_10(                             \
++      XLA_STATUS_MACROS_HAS_COMMA(__VA_ARGS__),                       \
++      XLA_STATUS_MACROS_HAS_COMMA(XLA_STATUS_MACROS_COMMA __VA_ARGS__), \
++      XLA_STATUS_MACROS_HAS_COMMA(__VA_ARGS__()),                     \
++      XLA_STATUS_MACROS_HAS_COMMA(XLA_STATUS_MACROS_COMMA __VA_ARGS__()))
++
++#define XLA_STATUS_MACROS_UNPARENTHESIZE_IF_PARENTHESIZED_1(x) \
++  XLA_STATUS_MACROS_REM x
++
++#define XLA_STATUS_MACROS_UNPARENTHESIZE_IF_PARENTHESIZED_10(x) \
++  XLA_STATUS_MACROS_REM(x)
++
++#define XLA_STATUS_MACROS_UNPARENTHESIZE_IF_PARENTHESIZED(...) \
++  XLA_STATUS_MACROS_REM(                                       \
++      XLA_STATUS_MACROS_CONCAT_NAME(                           \
++          XLA_STATUS_MACROS_UNPARENTHESIZE_IF_PARENTHESIZED_,  \
++          XLA_STATUS_MACROS_1_IF_EMPTY_ELSE_10(                \
++              XLA_STATUS_MACROS_EAT __VA_ARGS__))(             \
++          XLA_STATUS_MACROS_REM(__VA_ARGS__)))
 +
 +namespace xla_testing {
 +namespace internal {

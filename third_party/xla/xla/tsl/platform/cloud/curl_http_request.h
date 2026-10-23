@@ -243,29 +243,32 @@ class LibCurl {
   virtual ~LibCurl() {}
 
   virtual CURL* curl_easy_init() = 0;
-  virtual CURLcode curl_easy_setopt(CURL* curl, CURLoption option,
-                                    uint64_t param) TF_MUST_USE_RESULT = 0;
-  virtual CURLcode curl_easy_setopt(CURL* curl, CURLoption option,
-                                    const char* param) TF_MUST_USE_RESULT = 0;
-  virtual CURLcode curl_easy_setopt(CURL* curl, CURLoption option,
-                                    void* param) TF_MUST_USE_RESULT = 0;
-  virtual CURLcode curl_easy_setopt(
+  TF_MUST_USE_RESULT virtual CURLcode curl_easy_setopt(CURL* curl,
+                                                       CURLoption option,
+                                                       uint64_t param) = 0;
+  TF_MUST_USE_RESULT virtual CURLcode curl_easy_setopt(CURL* curl,
+                                                       CURLoption option,
+                                                       const char* param) = 0;
+  TF_MUST_USE_RESULT virtual CURLcode curl_easy_setopt(CURL* curl,
+                                                       CURLoption option,
+                                                       void* param) = 0;
+  TF_MUST_USE_RESULT virtual CURLcode curl_easy_setopt(
       CURL* curl, CURLoption option,
-      size_t (*param)(void*, size_t, size_t, FILE*)) TF_MUST_USE_RESULT = 0;
-  virtual CURLcode curl_easy_setopt(CURL* curl, CURLoption option,
-                                    size_t (*param)(const void*, size_t, size_t,
-                                                    void*))
-      TF_MUST_USE_RESULT = 0;
-  virtual CURLcode curl_easy_setopt(
+      size_t (*param)(void*, size_t, size_t, FILE*)) = 0;
+  TF_MUST_USE_RESULT virtual CURLcode curl_easy_setopt(
+      CURL* curl, CURLoption option,
+      size_t (*param)(const void*, size_t, size_t, void*)) = 0;
+  TF_MUST_USE_RESULT virtual CURLcode curl_easy_setopt(
       CURL* curl, CURLoption option,
       int (*param)(void* clientp, curl_off_t dltotal, curl_off_t dlnow,
-                   curl_off_t ultotal,
-                   curl_off_t ulnow)) TF_MUST_USE_RESULT = 0;
-  virtual CURLcode curl_easy_perform(CURL* curl) TF_MUST_USE_RESULT = 0;
-  virtual CURLcode curl_easy_getinfo(CURL* curl, CURLINFO info,
-                                     uint64_t* value) TF_MUST_USE_RESULT = 0;
-  virtual CURLcode curl_easy_getinfo(CURL* curl, CURLINFO info,
-                                     double* value) TF_MUST_USE_RESULT = 0;
+                   curl_off_t ultotal, curl_off_t ulnow)) = 0;
+  TF_MUST_USE_RESULT virtual CURLcode curl_easy_perform(CURL* curl) = 0;
+  TF_MUST_USE_RESULT virtual CURLcode curl_easy_getinfo(CURL* curl,
+                                                        CURLINFO info,
+                                                        uint64_t* value) = 0;
+  TF_MUST_USE_RESULT virtual CURLcode curl_easy_getinfo(CURL* curl,
+                                                        CURLINFO info,
+                                                        double* value) = 0;
   virtual void curl_easy_cleanup(CURL* curl) = 0;
   virtual curl_slist* curl_slist_append(curl_slist* list, const char* str) = 0;
   virtual void curl_slist_free_all(curl_slist* list) = 0;

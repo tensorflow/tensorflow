@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "xla/backends/gpu/transforms/dynamic_slice_fusion_rewriter_v2.h"
 
+#include <algorithm>
 #include <cstdint>
-#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -35,7 +35,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/transforms/dynamic_slice_fusion.h"
-#include "xla/hlo/analysis/hlo_dfs_reachability.h"
+#include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -58,8 +58,11 @@ namespace {
 // DynamicSlice instruction feeding the hero through zero or more no-op
 // instructions (bitcasts, GTEs).
 struct SlicedParameter {
+  // Index of the operand in the hero instruction.
+  int64_t operand_number = 0;
+
   // The Slice or DynamicSlice instruction at the start of the chain.
-  HloInstruction* slice;
+  HloInstruction* slice = nullptr;
 
   // Bitcasts/GTEs between the slice and the hero (topological order).
   std::vector<HloInstruction*> noops;
@@ -127,6 +130,13 @@ bool IsAlignedSlice(const HloInstruction* instr) {
   return slice_bytes % kXlaAllocatedBufferAlignBytes == 0;
 }
 
+const HloInstruction* StripBitcasts(const HloInstruction* instr) {
+  while (instr->opcode() == HloOpcode::kBitcast) {
+    instr = instr->operand(0);
+  }
+  return instr;
+}
+
 bool HasSupportedShapes(const HloInstruction* hero) {
   for (const HloInstruction* operand : hero->operands()) {
     if (operand->shape().IsTuple()) {
@@ -144,6 +154,38 @@ bool HasSupportedShapes(const HloInstruction* hero) {
         return false;
       }
     }
+    absl::flat_hash_set<int64_t> seen_tuple_indices;
+    for (const HloInstruction* user : hero->users()) {
+      const auto* gte = DynCast<HloGetTupleElementInstruction>(user);
+      if (gte == nullptr) {
+        LOG(WARNING) << "DynamicSliceFusionRewriterV2: skipping "
+                     << hero->name()
+                     << " because tuple result has non-GTE user "
+                     << user->name();
+        return false;
+      }
+      if (!seen_tuple_indices.insert(gte->tuple_index()).second) {
+        LOG(WARNING) << "DynamicSliceFusionRewriterV2: skipping "
+                     << hero->name() << " because tuple result has duplicate "
+                     << "GTE user for index " << gte->tuple_index();
+        return false;
+      }
+    }
+  }
+  if (const auto* callable = DynCast<HloCallableInstruction>(hero)) {
+    for (const auto& [output_index, operand_pair] :
+         callable->output_to_operand_aliasing()) {
+      int64_t op_idx = operand_pair.first;
+      for (int64_t i = 0; i < hero->operand_count(); ++i) {
+        if (i != op_idx && StripBitcasts(hero->operand(i)) ==
+                               StripBitcasts(hero->operand(op_idx))) {
+          LOG(WARNING) << "DynamicSliceFusionRewriterV2: skipping "
+                       << hero->name() << " because aliased operand " << op_idx
+                       << " shares instruction with operand " << i;
+          return false;
+        }
+      }
+    }
   }
   return true;
 }
@@ -156,7 +198,8 @@ using OptLevel = DynamicSliceFusionRewriterV2::OptLevel;
 using CaptureSlice = DynamicSliceFusionRewriterV2::CaptureSlice;
 using CaptureUpdateSlice = DynamicSliceFusionRewriterV2::CaptureUpdateSlice;
 
-std::optional<SlicedParameter> ResolveSlicedParameter(HloInstruction* operand,
+std::optional<SlicedParameter> ResolveSlicedParameter(int64_t operand_number,
+                                                      HloInstruction* operand,
                                                       OptLevel opt_level) {
   HloInstruction* current = operand;
 
@@ -205,7 +248,7 @@ std::optional<SlicedParameter> ResolveSlicedParameter(HloInstruction* operand,
       return std::nullopt;
     }
     absl::c_reverse(noops);
-    return SlicedParameter{slice, std::move(noops)};
+    return SlicedParameter{operand_number, slice, std::move(noops)};
   }
 
   if (auto* ds = DynCast<HloDynamicSliceInstruction>(current)) {
@@ -216,7 +259,7 @@ std::optional<SlicedParameter> ResolveSlicedParameter(HloInstruction* operand,
       return std::nullopt;
     }
     absl::c_reverse(noops);
-    return SlicedParameter{ds, std::move(noops)};
+    return SlicedParameter{operand_number, ds, std::move(noops)};
   }
 
   return std::nullopt;
@@ -228,21 +271,12 @@ std::vector<SlicedParameter> ResolveSlicedParameters(
   std::vector<SlicedParameter> result;
   for (int64_t i = 0; i < hero->operand_count(); ++i) {
     HloInstruction* operand = hero->mutable_operand(i);
-    auto param = ResolveSlicedParameter(operand, opt_level);
+    auto param = ResolveSlicedParameter(i, operand, opt_level);
     if (!param.has_value()) {
       continue;
     }
     if (!capture_slice(hero, i, param->slice)) {
       continue;
-    }
-    // In O2 mode, the chain output may differ from the hero's operand when
-    // we looked through a tuple/GTE barrier. Replace the hero's operand so
-    // BuildFusionPlan sees a connected graph. Safe because the hero will be
-    // replaced by the fusion.
-    HloInstruction* chain_output =
-        param->noops.empty() ? param->slice : param->noops.back();
-    if (chain_output != operand) {
-      CHECK_OK(hero->ReplaceOperandWith(i, chain_output));
     }
     result.push_back(std::move(*param));
   }
@@ -311,6 +345,9 @@ HloInstruction* FindGte(HloInstruction* hero, int64_t tuple_index) {
 // Walks forward from `gte` to find a DUS chain. If found, returns a
 // SlicedResult with the GTE prepended into noops.
 std::optional<SlicedResult> ResolveLeafDus(HloInstruction* gte) {
+  if (gte->user_count() != 1) {
+    return std::nullopt;
+  }
   for (HloInstruction* user : gte->users()) {
     if (auto sliced = ResolveSlicedResult(user)) {
       sliced->noops.insert(sliced->noops.begin(), gte);
@@ -323,6 +360,9 @@ std::optional<SlicedResult> ResolveLeafDus(HloInstruction* gte) {
 // Resolves the sliced result for a non-tuple hero.
 std::vector<SlicedResult> ResolveNonTupleSlicedResult(
     HloInstruction* hero, const CaptureUpdateSlice& capture_update_slice) {
+  if (hero->user_count() != 1) {
+    return {};
+  }
   for (HloInstruction* user : hero->users()) {
     if (auto sliced = ResolveSlicedResult(user)) {
       if (!capture_update_slice(hero, std::nullopt, sliced->update_slice)) {
@@ -384,6 +424,100 @@ std::vector<SlicedResult> ResolveSlicedResults(
     return ResolveTupleSlicedResults(hero, capture_update_slice);
   }
   return ResolveNonTupleSlicedResult(hero, capture_update_slice);
+}
+
+absl::Status FilterAliasedParametersAndResults(
+    HloInstruction* hero, std::vector<SlicedParameter>& sliced_params,
+    std::vector<SlicedResult>& sliced_results) {
+  const auto* callable = DynCast<HloCallableInstruction>(hero);
+  if (callable == nullptr) {
+    return absl::OkStatus();
+  }
+
+  auto find_sliced_param = [&](int64_t op_idx) -> const SlicedParameter* {
+    for (const SlicedParameter& param : sliced_params) {
+      if (param.operand_number == op_idx) {
+        return &param;
+      }
+    }
+    return nullptr;
+  };
+
+  auto op_source = [&](int64_t op_idx) -> const HloInstruction* {
+    if (const SlicedParameter* param = find_sliced_param(op_idx)) {
+      return StripBitcasts(param->slice->operand(0));
+    }
+    return StripBitcasts(hero->operand(op_idx));
+  };
+
+  auto find_sliced_result = [&](int64_t leaf_idx) -> SlicedResult* {
+    for (SlicedResult& res : sliced_results) {
+      if (res.result_number == leaf_idx) {
+        return &res;
+      }
+    }
+    return nullptr;
+  };
+
+  for (const auto& [output_index, operand_pair] :
+       callable->output_to_operand_aliasing()) {
+    int64_t op_idx = operand_pair.first;
+    int64_t leaf_idx = output_index.empty() ? 0 : output_index[0];
+    const SlicedParameter* aliased_param = find_sliced_param(op_idx);
+    SlicedResult* res = find_sliced_result(leaf_idx);
+
+    if (res != nullptr && res->update_slice != nullptr) {
+      const HloInstruction* dus = res->update_slice;
+      const HloInstruction* dus_target = dus->operand(0);
+      const HloInstruction* dus_buf = StripBitcasts(dus_target);
+
+      bool can_capture_dus = true;
+      for (int64_t i = 0; i < hero->operand_count(); ++i) {
+        if (i != op_idx && op_source(i) == dus_buf) {
+          can_capture_dus = false;
+          break;
+        }
+      }
+      if (can_capture_dus && op_source(op_idx) == dus_buf) {
+        if (aliased_param != nullptr &&
+            aliased_param->slice->opcode() == HloOpcode::kDynamicSlice &&
+            aliased_param->slice->operand(0) == dus_target) {
+          ABSL_ASSIGN_OR_RETURN(
+              auto slice_cfg,
+              aliased_param->slice->backend_config<GpuBackendConfig>());
+          ABSL_ASSIGN_OR_RETURN(auto dus_cfg,
+                           dus->backend_config<GpuBackendConfig>());
+          can_capture_dus = slice_cfg.dynamic_slice_config() ==
+                            dus_cfg.dynamic_slice_config();
+        } else {
+          can_capture_dus = false;
+        }
+      }
+      if (!can_capture_dus) {
+        if (hero->shape().IsTuple()) {
+          res->update_slice = nullptr;
+          res->noops.resize(1);
+        } else {
+          sliced_results.clear();
+          res = nullptr;
+        }
+      }
+    }
+
+    if ((res == nullptr || res->update_slice == nullptr) &&
+        aliased_param == nullptr) {
+      const HloInstruction* target_buf = StripBitcasts(hero->operand(op_idx));
+      sliced_params.erase(
+          std::remove_if(sliced_params.begin(), sliced_params.end(),
+                         [&](const SlicedParameter& param) {
+                           return param.operand_number != op_idx &&
+                                  StripBitcasts(param.slice->operand(0)) ==
+                                      target_buf;
+                         }),
+          sliced_params.end());
+    }
+  }
+  return absl::OkStatus();
 }
 
 //===----------------------------------------------------------------------===//
@@ -456,6 +590,18 @@ std::optional<DynamicSliceFusionPlan> BuildFusionPlan(
                        });
   if (!has_any_slice) {
     return std::nullopt;
+  }
+
+  // In O2 mode, the chain output may differ from the hero's operand when we
+  // looked through a tuple/GTE barrier. Replace the hero's operand so
+  // BuildFusionPlan and CreateFusionBody see a connected graph. Safe because
+  // the hero will be replaced by the fusion.
+  for (const SlicedParameter& param : sliced_params) {
+    HloInstruction* chain_output =
+        param.noops.empty() ? param.slice : param.noops.back();
+    if (chain_output != hero->operand(param.operand_number)) {
+      CHECK_OK(hero->ReplaceOperandWith(param.operand_number, chain_output));
+    }
   }
 
   // Instructions to clone into the fusion body, in dependency order.
@@ -661,126 +807,10 @@ absl::Status SetDynamicSliceFusionBackendConfig(HloInstruction* fusion) {
   FusionBackendConfig& backend_config =
       *gpu_config.mutable_fusion_backend_config();
   backend_config.set_kind("__custom_fusion");
-  CustomFusionConfig config;
+  xtile::CustomFusionConfig config;
   config.set_name(std::string(kDynamicSliceFusionConfigName));
   *backend_config.mutable_custom_fusion_config() = config;
   return fusion->set_backend_config(std::move(gpu_config));
-}
-
-// Returns an existing GetTupleElement of `fusion` at `index`, or creates one.
-HloInstruction* GetOrCreateGte(HloInstruction* fusion, int64_t index) {
-  for (HloInstruction* user : fusion->users()) {
-    auto* gte = DynCast<HloGetTupleElementInstruction>(user);
-    if (gte != nullptr && gte->tuple_index() == index) {
-      return gte;
-    }
-  }
-  return fusion->parent()->AddInstruction(
-      HloInstruction::CreateGetTupleElement(fusion, index));
-}
-
-// Returns true if some consumer of the hero's values cannot be rerouted to
-// the fusion output: raw-tuple consumers, and consumers feeding a fusion
-// operand (rerouting those would form a cycle).
-bool HasUnroutableUsers(HloInstruction* hero,
-                        absl::Span<HloInstruction* const> fusion_operands) {
-  std::vector<HloInstruction*> heads;
-  if (hero->shape().IsTuple()) {
-    for (HloInstruction* user : hero->users()) {
-      if (user->opcode() != HloOpcode::kGetTupleElement) {
-        return true;
-      }
-      heads.push_back(user);
-    }
-  } else {
-    heads.push_back(hero);
-  }
-  std::unique_ptr<HloDfsReachability> reachability =
-      HloDfsReachability::Build(hero->parent());
-  for (HloInstruction* head : heads) {
-    for (HloInstruction* user : head->users()) {
-      for (const HloInstruction* operand : fusion_operands) {
-        if (reachability->IsReachable(user, operand)) {
-          return true;
-        }
-      }
-    }
-  }
-  return false;
-}
-
-// Reroutes hero users outside the DUS chains, leaving the original hero dead.
-absl::Status RerouteExternalUsers(
-    HloInstruction* hero, HloInstruction* fusion,
-    absl::Span<const SlicedResult> sliced_results) {
-  HloComputation* parent = fusion->parent();
-  bool tuple_hero = hero->shape().IsTuple();
-
-  if (tuple_hero) {
-    // Fold duplicate GTEs into the resolved one so each result has one head.
-    absl::flat_hash_map<int64_t, HloInstruction*> canonical;
-    for (const SlicedResult& sliced_result : sliced_results) {
-      if (!sliced_result.noops.empty()) {
-        canonical[sliced_result.result_number] = sliced_result.noops.front();
-      }
-    }
-    std::vector<HloInstruction*> users(hero->users().begin(),
-                                       hero->users().end());
-    for (HloInstruction* user : users) {
-      auto* gte = Cast<HloGetTupleElementInstruction>(user);
-      auto [it, inserted] = canonical.try_emplace(gte->tuple_index(), gte);
-      if (inserted || it->second == gte) {
-        continue;
-      }
-      ABSL_RETURN_IF_ERROR(gte->ReplaceAllUsesWith(it->second));
-      ABSL_RETURN_IF_ERROR(parent->RemoveInstruction(gte));
-    }
-  }
-
-  for (const SlicedResult& sliced_result : sliced_results) {
-    if (sliced_result.update_slice == nullptr) {
-      continue;  // RewriteHero's GTE replacement covers these.
-    }
-    // Noops are single-user, so exactly one user of head continues the chain.
-    // Tuple heroes carry their GTE as noops[0]; heads are never tuple-shaped.
-    HloInstruction* head = hero;
-    absl::Span<HloInstruction* const> tail = sliced_result.noops;
-    if (tuple_hero) {
-      head = tail.front();
-      tail.remove_prefix(1);
-    }
-    HloInstruction* chain_user =
-        tail.empty() ? sliced_result.update_slice : tail.front();
-    std::vector<HloInstruction*> external_users;
-    for (HloInstruction* user : head->users()) {
-      if (user != chain_user) {
-        external_users.push_back(user);
-      }
-    }
-    if (external_users.empty()) {
-      continue;
-    }
-
-    HloInstruction* slot =
-        fusion->shape().IsTuple()
-            ? GetOrCreateGte(fusion, sliced_result.result_number)
-            : fusion;
-    const Shape& update_shape = sliced_result.update_slice->operand(1)->shape();
-    HloInstruction* value =
-        parent->AddInstruction(HloInstruction::CreateDynamicSlice(
-            update_shape, slot,
-            Cast<HloDynamicUpdateSliceInstruction>(sliced_result.update_slice)
-                ->index_operands(),
-            update_shape.dimensions()));
-    if (!ShapeUtil::Equal(head->shape(), update_shape)) {
-      value = parent->AddInstruction(
-          HloInstruction::CreateBitcast(head->shape(), value));
-    }
-    VLOG(2) << "Rerouted " << external_users.size() << " external user(s) of "
-            << head->name() << " to " << value->name();
-    ABSL_RETURN_IF_ERROR(head->ReplaceUsesWith(external_users, value));
-  }
-  return absl::OkStatus();
 }
 
 //===----------------------------------------------------------------------===//
@@ -796,12 +826,6 @@ absl::StatusOr<bool> RewriteHero(
     return false;
   }
 
-  // Skip the rewrite entirely rather than leave a duplicated hero.
-  if (HasUnroutableUsers(hero, plan->external_operands)) {
-    VLOG(2) << "Skipping " << hero->name() << ": unroutable users";
-    return false;
-  }
-
   ABSL_ASSIGN_OR_RETURN(HloComputation * fusion_body,
                    CreateFusionBody(module, *plan, sliced_results, hero));
 
@@ -812,14 +836,16 @@ absl::StatusOr<bool> RewriteHero(
                                    plan->external_operands, fusion_body));
   module->SetAndUniquifyInstrName(fusion, "dynamic_slice_fusion");
   ABSL_RETURN_IF_ERROR(SetDynamicSliceFusionBackendConfig(fusion));
+  ABSL_RETURN_IF_ERROR(fusion->CopyAllControlDepsFrom(hero));
+  ABSL_RETURN_IF_ERROR(hero->DropAllControlDeps());
 
-  // Must run before the DUS chains are replaced below (it reads DUS operands).
-  ABSL_RETURN_IF_ERROR(RerouteExternalUsers(hero, fusion, sliced_results));
+  const bool hero_has_side_effect = hero->HasSideEffect();
 
   if (sliced_results.size() > 1) {
     bool any_result_replaced = false;
     for (int64_t i = 0; i < sliced_results.size(); ++i) {
-      HloInstruction* gte = GetOrCreateGte(fusion, i);
+      auto* gte = parent->AddInstruction(
+          HloInstruction::CreateGetTupleElement(fusion, i));
       if (sliced_results[i].update_slice != nullptr) {
         ABSL_RETURN_IF_ERROR(
             parent->ReplaceInstruction(sliced_results[i].update_slice, gte));
@@ -832,11 +858,22 @@ absl::StatusOr<bool> RewriteHero(
     }
     if (!any_result_replaced) {
       ABSL_RETURN_IF_ERROR(parent->ReplaceInstruction(hero, fusion));
+    } else if (hero_has_side_effect) {
+      ABSL_RETURN_IF_ERROR(parent->RemoveInstructionAndUnusedOperands(hero));
     }
   } else if (sliced_results.size() == 1) {
     if (sliced_results[0].update_slice != nullptr) {
       ABSL_RETURN_IF_ERROR(
           parent->ReplaceInstruction(sliced_results[0].update_slice, fusion));
+      if (hero_has_side_effect) {
+        ABSL_RETURN_IF_ERROR(parent->RemoveInstructionAndUnusedOperands(hero));
+      }
+    } else if (hero->shape().IsTuple() && !sliced_results[0].noops.empty()) {
+      ABSL_RETURN_IF_ERROR(
+          parent->ReplaceInstruction(sliced_results[0].noops.back(), fusion));
+      if (hero_has_side_effect) {
+        ABSL_RETURN_IF_ERROR(parent->RemoveInstructionAndUnusedOperands(hero));
+      }
     } else {
       ABSL_RETURN_IF_ERROR(parent->ReplaceInstruction(hero, fusion));
     }
@@ -882,6 +919,8 @@ absl::StatusOr<bool> DynamicSliceFusionRewriterV2::RunImpl(
                                                    options_.capture_slice);
       auto sliced_results =
           ResolveSlicedResults(hero, options_.capture_update_slice);
+      ABSL_RETURN_IF_ERROR(FilterAliasedParametersAndResults(hero, sliced_params,
+                                                        sliced_results));
       ABSL_ASSIGN_OR_RETURN(
           bool hero_changed,
           RewriteHero(module, hero, sliced_params, sliced_results));

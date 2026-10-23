@@ -18,54 +18,46 @@ limitations under the License.
 
 #include <memory>
 
-#include "llvm/Support/CommandLine.h"
+#include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassOptions.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/transforms/large_constant_fold_pass_options.h"
 #include "tensorflow/compiler/mlir/lite/transforms/pass.h"
 
 namespace mlir::TFL {
 
-struct LargeConstantFoldPassOptions : public mlir::detail::PassOptions {
-  mlir::detail::PassOptions::Option<bool> fold_fp16_resource_casts{
-      *this, "fold-fp16-resource-casts",
-      llvm::cl::desc("Fold fp16/bf16 resource casts"), llvm::cl::init(true)};
-  mlir::detail::PassOptions::Option<bool> fold_elementwise_ops{
-      *this, "fold-elementwise-ops",
-      llvm::cl::desc(
-          "Fold elementwise binary operations on resource constants"),
-      llvm::cl::init(false)};
-};
-
 class LargeConstantFoldPass
-    : public TFL::Pass<LargeConstantFoldPass, LargeConstantFoldPassOptions,
-                       ModuleOp> {
+    : public TFL::Pass<LargeConstantFoldPass, LargeConstantFoldPassOptions> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LargeConstantFoldPass)
 
   LargeConstantFoldPass() = default;
+  explicit LargeConstantFoldPass(const LargeConstantFoldPassOptions& options)
+      : TFL::Pass<LargeConstantFoldPass, LargeConstantFoldPassOptions>(
+            options) {}
   explicit LargeConstantFoldPass(const mlir::detail::PassOptions& options)
-      : TFL::Pass<LargeConstantFoldPass, LargeConstantFoldPassOptions,
-                  ModuleOp>(options) {}
+      : TFL::Pass<LargeConstantFoldPass, LargeConstantFoldPassOptions>(
+            options) {}
   explicit LargeConstantFoldPass(bool fold_fp16_resource_casts,
                                  bool fold_elementwise_ops = false) {
     GetOptions().fold_fp16_resource_casts = fold_fp16_resource_casts;
     GetOptions().fold_elementwise_ops = fold_elementwise_ops;
   }
-  LargeConstantFoldPass(const LargeConstantFoldPass& other) = default;
+  LargeConstantFoldPass(const LargeConstantFoldPass& other)
+      : TFL::Pass<LargeConstantFoldPass, LargeConstantFoldPassOptions>(other) {}
 
   void runOnOperation() override;
   static llvm::StringRef GetName() { return "LargeConstantFoldPass"; }
   static llvm::StringRef GetArgument() { return "tfl-large-constant-fold"; }
   static llvm::StringRef GetDescription() {
     return "Fold operations on large constant resource attributes across "
-           "functions.";
+           "functions in a module.";
   }
 
  private:

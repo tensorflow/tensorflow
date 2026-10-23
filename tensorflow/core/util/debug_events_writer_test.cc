@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/synchronization/notification.h"
 #include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
@@ -260,6 +261,77 @@ TEST_F(DebugEventsWriterTest, InitTwiceDoesNotCreateNewMetadataFile) {
   EXPECT_GT(actuals[0].debug_metadata().tensorflow_version().length(), 0);
   EXPECT_EQ(actuals[0].debug_metadata().tfdbg_run_id(), "test_tfdbg_run_id");
   EXPECT_GE(actuals[0].debug_metadata().file_version().size(), 0);
+}
+
+TEST_F(DebugEventsWriterTest, InitAfterCloseAppendsToTheSameFiles) {
+  DebugEventsWriter* writer = DebugEventsWriter::GetDebugEventsWriter(
+      dump_root_, tfdbg_run_id_, DebugEventsWriter::kDefaultCyclicBufferSize);
+  TF_ASSERT_OK(writer->Init());
+  GraphExecutionTrace* trace = new GraphExecutionTrace();
+  trace->set_tfdbg_context_id("graph_0");
+  TF_ASSERT_OK(writer->WriteGraphExecutionTrace(trace));
+  TF_ASSERT_OK(writer->Close());
+  const std::string traces_path =
+      GetDebugEventFileName(writer, DebugEventFileType::GRAPH_EXECUTION_TRACES);
+
+  TF_ASSERT_OK(writer->Init());
+  EXPECT_EQ(
+      GetDebugEventFileName(writer, DebugEventFileType::GRAPH_EXECUTION_TRACES),
+      traces_path);
+  trace = new GraphExecutionTrace();
+  trace->set_tfdbg_context_id("graph_1");
+  TF_ASSERT_OK(writer->WriteGraphExecutionTrace(trace));
+  TF_ASSERT_OK(writer->Close());
+
+  std::vector<DebugEvent> actuals;
+  ReadDebugEventProtos(writer, DebugEventFileType::GRAPH_EXECUTION_TRACES,
+                       &actuals);
+  ASSERT_EQ(actuals.size(), 2);
+  EXPECT_EQ(actuals[0].graph_execution_trace().tfdbg_context_id(), "graph_0");
+  EXPECT_EQ(actuals[1].graph_execution_trace().tfdbg_context_id(), "graph_1");
+
+  ReadDebugEventProtos(writer, DebugEventFileType::METADATA, &actuals);
+  EXPECT_EQ(actuals.size(), 2);
+}
+
+TEST_F(DebugEventsWriterTest, FlushAfterCloseDoesNotReopenFiles) {
+  DebugEventsWriter* writer = DebugEventsWriter::GetDebugEventsWriter(
+      dump_root_, tfdbg_run_id_, DebugEventsWriter::kDefaultCyclicBufferSize);
+  TF_ASSERT_OK(writer->Init());
+  TF_ASSERT_OK(writer->Close());
+  TF_ASSERT_OK(writer->FlushNonExecutionFiles());
+  TF_ASSERT_OK(writer->FlushExecutionFiles());
+
+  SourceFile* source_file = new SourceFile();
+  source_file->set_file_path("/home/tf_programs/main.py");
+  TF_ASSERT_OK(writer->WriteSourceFile(source_file));
+  GraphExecutionTrace* trace = new GraphExecutionTrace();
+  trace->set_tfdbg_context_id("graph_0");
+  TF_ASSERT_OK(writer->WriteGraphExecutionTrace(trace));
+  TF_ASSERT_OK(writer->FlushNonExecutionFiles());
+  TF_ASSERT_OK(writer->FlushExecutionFiles());
+
+  std::vector<DebugEvent> actuals;
+  ReadDebugEventProtos(writer, DebugEventFileType::SOURCE_FILES, &actuals);
+  EXPECT_EQ(actuals.size(), 0);
+  ReadDebugEventProtos(writer, DebugEventFileType::GRAPH_EXECUTION_TRACES,
+                       &actuals);
+  EXPECT_EQ(actuals.size(), 0);
+}
+
+TEST_F(DebugEventsWriterTest, WriteSourceFileWithoutPreviousInitCall) {
+  DebugEventsWriter* writer = DebugEventsWriter::GetDebugEventsWriter(
+      dump_root_, tfdbg_run_id_, DebugEventsWriter::kDefaultCyclicBufferSize);
+
+  SourceFile* source_file = new SourceFile();
+  source_file->set_file_path("/home/tf_programs/main.py");
+  TF_ASSERT_OK(writer->WriteSourceFile(source_file));
+  TF_ASSERT_OK(writer->Close());
+
+  std::vector<DebugEvent> actuals;
+  ReadDebugEventProtos(writer, DebugEventFileType::SOURCE_FILES, &actuals);
+  ASSERT_EQ(actuals.size(), 1);
+  EXPECT_EQ(actuals[0].source_file().file_path(), "/home/tf_programs/main.py");
 }
 
 TEST_F(DebugEventsWriterTest, WriteSourceFile) {
@@ -505,6 +577,45 @@ TEST_F(DebugEventsWriterTest, ConcurrentWriteAndFlushCallsToTheSameFile) {
               absl::StrFormat("/home/tf_programs/program_%.3ld.py", i));
     EXPECT_EQ(host_names[i], "localhost.localdomain");
   }
+}
+
+TEST_F(DebugEventsWriterTest, ConcurrentWriteAndCloseCallsAreSafe) {
+  DebugEventsWriter* writer = DebugEventsWriter::GetDebugEventsWriter(
+      dump_root_, tfdbg_run_id_, DebugEventsWriter::kDefaultCyclicBufferSize);
+  TF_ASSERT_OK(writer->Init());
+
+  constexpr int kWriterThreads = 8;
+  constexpr int kWritesPerThread = 100;
+  thread::ThreadPool* thread_pool =
+      new thread::ThreadPool(Env::Default(), "test_pool", kWriterThreads + 1);
+
+  absl::Notification start;
+  std::atomic_int_fast32_t writes_attempted(0);
+
+  for (int thread_id = 0; thread_id < kWriterThreads; ++thread_id) {
+    thread_pool->Schedule([writer, &start, &writes_attempted, thread_id]() {
+      start.WaitForNotification();
+      for (int i = 0; i < kWritesPerThread; ++i) {
+        SourceFile* source_file = new SourceFile();
+        source_file->set_file_path(absl::StrFormat(
+            "/home/tf_programs/program_%d_%d.py", thread_id, i));
+        source_file->set_host_name("localhost.localdomain");
+        writer->WriteSourceFile(source_file).IgnoreError();
+        writes_attempted.fetch_add(1);
+      }
+    });
+  }
+
+  thread_pool->Schedule([writer, &start]() {
+    start.WaitForNotification();
+    writer->Close().IgnoreError();
+  });
+
+  start.Notify();
+  delete thread_pool;
+
+  EXPECT_EQ(writes_attempted.load(), kWriterThreads * kWritesPerThread);
+  TF_ASSERT_OK(writer->Close());
 }
 
 TEST_F(DebugEventsWriterTest, ConcurrentWriteCallsToTheDifferentFiles) {

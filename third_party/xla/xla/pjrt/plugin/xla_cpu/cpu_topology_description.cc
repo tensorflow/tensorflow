@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -34,11 +35,13 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_device_dimensions.h"
+#include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_topology_description_registry.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_device_description.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology.h"
 #include "xla/primitive_util.h"
 #include "xla/runtime/device_id.h"
+#include "xla/service/computation_placer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
@@ -74,7 +77,15 @@ absl::StatusOr<Layout> CpuTopologyDescription::GetDefaultLayout(
                            PrimitiveType_Name(element_type));
   }
   Shape shape = ShapeUtil::MakeShape(element_type, dims);
-  return LayoutUtil::GetWithDefaultLayout(shape).layout();
+  Layout layout = LayoutUtil::GetWithDefaultLayout(shape).layout();
+  // `GetWithDefaultLayout` returns a padded layout for sub-byte types since the
+  // notion of "default" is context dependent and in this case means the default
+  // for literals for historical reasons. Because of this, we need to manually
+  // populate the `element_size_in_bits` for sub-byte types here.
+  if (primitive_util::IsSubByteNonPredType(element_type)) {
+    layout.set_element_size_in_bits(primitive_util::BitWidth(element_type));
+  }
+  return layout;
 }
 
 absl::StatusOr<int> CpuTopologyDescription::GetMemorySpaceKindForShape(
@@ -127,6 +138,19 @@ absl::StatusOr<uint64_t> CpuTopologyDescription::Fingerprint() const {
   return tsl::Fingerprint64(result);
 }
 
+absl::StatusOr<std::pair<ProcessId, int>>
+CpuTopologyDescription::ProcessIdAndIndexOnProcessForLogicalDeviceOfDefaultType(
+    GlobalDeviceId device_id) const {
+  if (device_id.value() < 0 ||
+      device_id.value() >= cpu_topology_.devices().size()) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Invalid device id: ", device_id.value(), ", valid range: [0, ",
+        cpu_topology_.devices().size(), ")"));
+  }
+  const auto& device = cpu_topology_.devices()[device_id.value()];
+  return std::make_pair(ProcessId(device.process_id), device.local_device_id);
+}
+
 absl::StatusOr<std::pair<PjRtDeviceDimensions, int32_t>>
 CpuTopologyDescription::ChipCoordAndCoreIndexForLogicalDeviceOfDefaultType(
     GlobalDeviceId device_id) const {
@@ -155,6 +179,29 @@ CpuTopologyDescription::ToProto() const {
   CpuTopologyProto cpu_topology_proto = cpu_topology_.ToProto();
   proto.mutable_platform_specific_topology()->PackFrom(cpu_topology_proto);
   return proto;
+}
+
+absl::StatusOr<DeviceAssignment>
+CpuTopologyDescription::GetDefaultDeviceAssignment(
+    int process_index, int num_replicas,
+    std::optional<int> num_replicas_per_slice, int num_partitions,
+    const MultiSliceConfig* multi_slice_config) const {
+  if (num_replicas_per_slice.has_value() || multi_slice_config) {
+    return absl::UnimplementedError(
+        "Multi-slice GetDefaultDeviceAssignment is not supported.");
+  }
+  auto device_descriptions = DeviceDescriptions();
+  if (num_partitions * num_replicas <= device_descriptions.size()) {
+    xla::DeviceAssignment assignment(num_replicas, num_partitions);
+    for (int i = 0; i < num_replicas; ++i) {
+      for (int j = 0; j < num_partitions; ++j) {
+        assignment(i, j) = device_descriptions.at(i * num_partitions + j)->id();
+      }
+    }
+    return assignment;
+  }
+  ComputationPlacer computation_placer;
+  return computation_placer.AssignDevices(num_replicas, num_partitions);
 }
 
 absl::StatusOr<std::unique_ptr<CpuTopologyDescription>>
@@ -186,21 +233,43 @@ CpuTopologyDescription::FromProto(
 
 absl::StatusOr<xla::Shape> MakeDefaultCpuBufferShape(
     xla::Shape shape, const xla::Layout* layout) {
-  if (layout) {
+  if (shape.IsToken()) {
+    if (layout != nullptr) {
+      return absl::InvalidArgumentError(
+          "Layout is not supported for token shapes.");
+    }
+    return shape;
+  }
+  if (!shape.IsArray()) {
+    return InvalidArgument(
+        "MakeDefaultCpuBufferShape only supports array or token shapes, got %s",
+        shape.ToString());
+  }
+  shape.clear_layout();
+  xla::LayoutUtil::SetToDefaultLayout(&shape);
+  ABSL_RETURN_IF_ERROR(xla::ShapeUtil::ValidateShape(shape));
+  if (layout != nullptr) {
+    ABSL_RETURN_IF_ERROR(xla::LayoutUtil::ValidateLayoutForShape(*layout, shape));
     shape.mutable_layout()->mutable_minor_to_major()->assign(
         layout->minor_to_major().begin(), layout->minor_to_major().end());
-  } else {
-    xla::LayoutUtil::SetToDefaultLayout(&shape);
   }
   auto element_type = shape.element_type();
   if (primitive_util::IsSubByteNonPredType(element_type)) {
     shape.mutable_layout()->set_element_size_in_bits(
         primitive_util::BitWidth(element_type));
   }
-  if (layout && *layout != shape.layout()) {
-    return absl::UnimplementedError(
-        absl::StrCat("PjRt CPU buffers only support default layout. ",
-                     shape.ToString(), " vs ", layout->ToString()));
+  if (layout != nullptr) {
+    xla::Layout canonical_input = *layout;
+    if (canonical_input.element_size_in_bits() == 0 &&
+        primitive_util::IsSubByteNonPredType(element_type)) {
+      canonical_input.set_element_size_in_bits(
+          primitive_util::BitWidth(element_type));
+    }
+    if (canonical_input != shape.layout()) {
+      return absl::UnimplementedError(absl::StrCat(
+          "Unsupported layout used for PjRt CPU buffers: ", layout->ToString(),
+          " (original) vs. ", shape.ToString(), " (canonicalized)"));
+    }
   }
   return shape;
 }

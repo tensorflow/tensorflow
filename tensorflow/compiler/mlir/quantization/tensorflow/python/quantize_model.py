@@ -155,7 +155,7 @@ def _save_representative_dataset(
 def _run_static_range_qat(
     src_saved_model_path: str,
     dst_saved_model_path: str,
-    quant_opts: _QuantizationOptions,
+    quant_opts: _QuantizationOptions,  # pyrefly: ignore[invalid-annotation]
     signature_def_map: _SignatureDefMap,
 ) -> None:
   """Runs static-range quantization for a Quantization-Aware Trained model.
@@ -185,7 +185,7 @@ def _run_static_range_qat(
 def _run_static_range_ptq(
     src_saved_model_path: str,
     dst_saved_model_path: str,
-    quant_opts: _QuantizationOptions,
+    quant_opts: _QuantizationOptions,  # pyrefly: ignore[invalid-annotation]
     representative_dataset: Mapping[str, _RepresentativeDatasetFile],
     signature_def_map: _SignatureDefMap,
 ) -> None:
@@ -231,7 +231,7 @@ def _run_static_range_ptq(
 def _static_range_quantize(
     src_saved_model_path: str,
     dst_saved_model_path: str,
-    quantization_options: _QuantizationOptions,
+    quantization_options: _QuantizationOptions,  # pyrefly: ignore[invalid-annotation]
     representative_dataset: Optional[
         repr_dataset.RepresentativeDatasetOrMapping
     ] = None,
@@ -333,7 +333,7 @@ def _static_range_quantize(
 def _dynamic_range_quantize(
     src_saved_model_path: str,
     dst_saved_model_path: str,
-    quantization_options: _QuantizationOptions,
+    quantization_options: _QuantizationOptions,  # pyrefly: ignore[invalid-annotation]
 ) -> autotrackable.AutoTrackable:
   """Quantizes the given SavedModel via post-training dynamic range quantization.
 
@@ -466,7 +466,7 @@ def _verify_output_dir(output_dir: Optional[str], overwrite: bool) -> None:
 
 
 def _populate_quantization_component_spec(
-    quant_method: _QuantizationMethod,
+    quant_method: _QuantizationMethod,  # pyrefly: ignore[invalid-annotation]
 ) -> None:
   """Populates default values for QuantizationComponentSpec.
 
@@ -549,7 +549,7 @@ def _populate_quantization_component_spec(
 
 
 def _populate_unitwise_quantization_specs(
-    quantization_options: _QuantizationOptions,
+    quantization_options: _QuantizationOptions,  # pyrefly: ignore[invalid-annotation]
 ) -> None:
   """Verifies and pupulates unitwise quantization specs."""
   if not quantization_options.unit_wise_quantization_specs:
@@ -643,7 +643,7 @@ def _populate_calibration_options(
 
 
 def _populate_quantization_options_default_values(
-    quantization_options: _QuantizationOptions,
+    quantization_options: _QuantizationOptions,  # pyrefly: ignore[invalid-annotation]
 ) -> None:
   """Populates default values for QuantizationOptions.
 
@@ -799,7 +799,7 @@ def _populate_quantization_options_default_values(
 def quantize(
     saved_model_path: str,
     output_directory: Optional[str] = None,
-    quantization_options: Optional[_QuantizationOptions] = None,
+    quantization_options: Optional[_QuantizationOptions] = None,  # pyrefly: ignore[invalid-annotation]
     representative_dataset: Optional[
         repr_dataset.RepresentativeDatasetOrMapping
     ] = None,
@@ -895,7 +895,7 @@ def quantize(
 
   _populate_quantization_options_default_values(quantization_options)
 
-  method: _QuantizationMethod = quantization_options.quantization_method
+  method: _QuantizationMethod = quantization_options.quantization_method  # pyrefly: ignore[invalid-annotation]
   if (
       method.preset_method == _PresetMethod.METHOD_STATIC_RANGE_INT8
       or method.preset_method == _PresetMethod.METHOD_NO_QUANTIZE

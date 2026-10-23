@@ -31,7 +31,7 @@ func.func @non_donated_return(%arg0: !array) -> !array attributes {ifrt.function
 
 // CHECK-LABEL: func.func @donated_return(
 // CHECK-SAME:   %[[ARG0:.*]]: !ifrt.array<
-// CHECK:        %[[COPY:.*]], %{{.*}} = ifrt.CopyArrays(%[[ARG0]]) {donated = true}
+// CHECK:        %[[COPY:.*]], %{{.*}} = ifrt.CopyArrays(%[[ARG0]]) <donated = true>
 // CHECK:        return %[[COPY]] : !ifrt.array<
 func.func @donated_return(%arg0: !array {ifrt.donated}) -> !array attributes {ifrt.function} {
   return %arg0: !array
@@ -58,7 +58,7 @@ func.func @duplicate_non_donated_return(%arg0: !array) -> (!array, !array) attri
 // CHECK-SAME:   %[[ARG0:.*]]: !ifrt.array<
 // CHECK-DAG:    %[[COPY0:.*]], %{{.*}} = ifrt.CopyArrays(%[[ARG0]]) :
 // CHECK-DAG:    %[[COPY1:.*]], %{{.*}} = ifrt.CopyArrays(%[[ARG0]]) :
-// CHECK-DAG:    %[[COPY2:.*]], %{{.*}} = ifrt.CopyArrays(%[[ARG0]]) {donated = true}
+// CHECK-DAG:    %[[COPY2:.*]], %{{.*}} = ifrt.CopyArrays(%[[ARG0]]) <donated = true>
 // CHECK:        return %[[COPY0]], %[[COPY1]], %[[COPY2]] : !ifrt.array<
 func.func @donated_triplicate_return(%arg0: !array {ifrt.donated}) -> (!array, !array, !array) attributes {ifrt.function} {
   return %arg0, %arg0, %arg0: !array, !array, !array
@@ -115,7 +115,7 @@ func.func @returned_op_output_multiple_times(%arg0: !array) -> (!array, !array) 
 // CHECK-LABEL: func.func @donated_duplicate_return(
 // CHECK-SAME:   %[[ARG0:.*]]: !ifrt.array<
 // CHECK-DAG:    %[[COPY0:.*]], %{{.*}} = ifrt.CopyArrays(%[[ARG0]]) :
-// CHECK-DAG:    %[[COPY1:.*]], %{{.*}} = ifrt.CopyArrays(%[[ARG0]]) {donated = true}
+// CHECK-DAG:    %[[COPY1:.*]], %{{.*}} = ifrt.CopyArrays(%[[ARG0]]) <donated = true>
 // CHECK:        return %[[COPY0]], %[[COPY1]] : !ifrt.array<
 func.func @donated_duplicate_return(%arg0: !array {ifrt.donated}) -> (!array, !array) attributes {ifrt.function} {
   return %arg0, %arg0: !array, !array

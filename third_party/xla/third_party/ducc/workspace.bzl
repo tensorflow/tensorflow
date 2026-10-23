@@ -26,6 +26,7 @@ def repo():
         sha256 = DUCC_SHA256,
         urls = tf_mirror_urls("https://gitlab.mpcdf.mpg.de/mtr/ducc/-/archive/{commit}/ducc-{commit}.tar.gz".format(commit = DUCC_COMMIT)),
         build_file = "//third_party/ducc:ducc.BUILD",
+        patch_file = ["//third_party/ducc:thread_map_work_stealing.patch"],
         link_files = {
             "//third_party/ducc:ducc0_custom_lowlevel_threading.h": "google/ducc0_custom_lowlevel_threading.h",
             "//third_party/ducc:fft.h": "google/fft.h",

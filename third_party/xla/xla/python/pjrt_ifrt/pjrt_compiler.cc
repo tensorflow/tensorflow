@@ -42,7 +42,7 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_executable.h"
 #include "xla/python/pjrt_ifrt/pjrt_topology.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/logging.h"
 
@@ -124,6 +124,11 @@ tsl::Future<ExecutableRef> PjRtCompiler::Compile(
       cast<HloProgram>(std::move(program));
   ABSL_ASSIGN_OR_RETURN(auto xla_compile_options,
                    GetXlaCompileOptions(std::move(options)));
+  if (!xla_compile_options->loaded_host_callbacks.empty()) {
+    return absl::InvalidArgumentError(
+        "loaded_host_callbacks cannot be passed to Compiler::Compile; pass "
+        "them via XlaLoadOptions to Client::Load instead.");
+  }
   const auto* pjrt_topology = dyn_cast<PjRtTopology>(&topology);
   if (pjrt_topology == nullptr) {
     return absl::InvalidArgumentError("PjRtCompiler requires a PjRtTopology");
@@ -144,7 +149,8 @@ tsl::Future<ExecutableRef> PjRtCompiler::Compile(
   return PjRtExecutable::Create(
       std::move(*xla_program).ToMaybeOwningMlirModule(),
       std::move(xla_compile_options->compile_options),
-      *pjrt_topology->description(), compile_client);
+      *pjrt_topology->description(), compile_client,
+      std::move(xla_compile_options->outputs_bundle_slice_sizes));
 }
 
 tsl::Future<LoadedExecutableRef> PjRtCompiler::DeserializeLoadedExecutable(
@@ -178,12 +184,15 @@ tsl::Future<LoadedExecutableRef> PjRtCompiler::DeserializeLoadedExecutable(
   // through from Australis and are always present in the
   // DeserializeExecutableOptions.
   DeviceListRef device_list;
-  if (xla_deserialize_options->devices.has_value()) {
-    device_list = std::move(xla_deserialize_options->devices.value());
-  } else {
-    ABSL_ASSIGN_OR_RETURN(device_list,
-                     GetDeviceListFromDeviceAssignment(
-                         client_, pjrt_loaded_executable->device_assignment()));
+  if (!common_metadata_and_serialized_pjrt_executable.first.is_portable) {
+    if (xla_deserialize_options->devices.has_value()) {
+      device_list = *std::move(xla_deserialize_options->devices);
+    } else {
+      ABSL_ASSIGN_OR_RETURN(
+          device_list,
+          GetDeviceListFromDeviceAssignment(
+              client_, pjrt_loaded_executable->device_assignment()));
+    }
   }
   return PjRtLoadedExecutable::Create(
       client_,

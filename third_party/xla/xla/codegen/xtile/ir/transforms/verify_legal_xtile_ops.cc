@@ -84,7 +84,8 @@ std::optional<absl::string_view> IsLegalStablehloOp(mlir::Operation* op) {
   if (mlir::isa<
           // go/keep-sorted start
           mlir::stablehlo::AbsOp, mlir::stablehlo::AddOp,
-          mlir::stablehlo::AllReduceOp, mlir::stablehlo::AndOp,
+          mlir::stablehlo::AllGatherOp, mlir::stablehlo::AllReduceOp,
+          mlir::stablehlo::AllToAllOp, mlir::stablehlo::AndOp,
           mlir::stablehlo::BroadcastInDimOp, mlir::stablehlo::CompareOp,
           mlir::stablehlo::ComplexOp, mlir::stablehlo::ConstantOp,
           mlir::stablehlo::ConvertOp, mlir::stablehlo::DivOp,

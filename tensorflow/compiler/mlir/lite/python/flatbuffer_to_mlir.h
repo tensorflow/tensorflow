@@ -17,14 +17,24 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_LITE_PYTHON_FLATBUFFER_TO_MLIR_H_
 
 #include <string>
+#include <vector>
 
 namespace tensorflow {
 
 // Translates the given FlatBuffer filename or buffer into MLIR and returns
-// translated MLIR as string.
-std::string FlatBufferFileToMlir(const std::string& model_file_or_buffer,
-                                 bool input_is_filepath);
+// translated MLIR as string or bytecode.
+std::string FlatBufferFileToMlir(
+    const std::string& model_file_or_buffer, bool input_is_filepath,
+    bool bytecode = false, const std::vector<std::string>& cl_options = {});
 
+// Translates the given MLIR filename or buffer into a TFLite FlatBuffer
+// binary string.
+std::string MlirToFlatBufferFile(const std::string& mlir_file_or_buffer,
+                                 bool input_is_filepath,
+                                 bool emit_builtin_tflite_ops = true,
+                                 bool emit_select_tf_ops = false,
+                                 bool emit_custom_ops = true,
+                                 bool emit_stablehlo_ops = false);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_PYTHON_FLATBUFFER_TO_MLIR_H_

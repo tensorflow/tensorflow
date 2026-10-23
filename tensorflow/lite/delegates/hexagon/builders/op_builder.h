@@ -74,7 +74,7 @@ class OpBuilder {
   // node output list.
   using TensorID = std::pair<int, int>;
 
-  virtual ~OpBuilder() {}
+  virtual ~OpBuilder() = default;
 
   // Sets the op type in the hexagon graph.
   void SetOpType(int op_type) { op_node_.op_type = op_type; }

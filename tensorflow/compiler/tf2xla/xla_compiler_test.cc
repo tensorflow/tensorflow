@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/array_ops.h"
@@ -41,6 +42,8 @@ limitations under the License.
 #include "tensorflow/cc/ops/math_ops.h"
 #include "tensorflow/cc/ops/resource_variable_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/compiler/jit/defs.h"
+#include "tensorflow/compiler/tf2xla/kernels/xla_call_module_loader.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
@@ -56,7 +59,10 @@ limitations under the License.
 #include "xla/client/local_client.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/layout_util.h"
@@ -2355,6 +2361,161 @@ TEST_F(XlaCompilerTest, DeadNodePruning) {
   XlaCompiler::CompilationResult result;
   TF_ASSERT_OK(compiler.CompileFunction(XlaCompiler::CompileOptions(),
                                         name_attr, args, &result));
+}
+
+TEST_F(XlaCompilerTest, CompileFunctionXlaDeterministicFrontendAttribute) {
+  XlaCompiler compiler(DefaultOptions());
+
+  std::vector<XlaCompiler::Argument> args(1);
+  args[0].kind = XlaCompiler::Argument::kParameter;
+  args[0].type = DT_FLOAT;
+  args[0].shape = TensorShape({2});
+
+  // 1. Default FunctionDef without _XlaDeterministic does not set the frontend
+  // attribute.
+  {
+    FunctionDef default_fn = FunctionDefHelper::Define(
+        "DefaultAddFn", /*arg_def=*/{"x: float"}, /*ret_def=*/{"y: float"},
+        /*attr_def=*/{},
+        /*node_def=*/{{{"y"}, "Add", {"x", "x"}, {{"T", DT_FLOAT}}}});
+    TF_ASSERT_OK(flib_def_->AddFunctionDef(default_fn));
+
+    NameAttrList name_attr;
+    name_attr.set_name("DefaultAddFn");
+
+    XlaCompiler::CompilationResult result;
+    TF_ASSERT_OK(compiler.CompileFunction(XlaCompiler::CompileOptions(),
+                                          name_attr, args, &result));
+    ASSERT_NE(result.computation, nullptr);
+    const auto& frontend_attrs =
+        result.computation->proto().frontend_attributes().map();
+    EXPECT_EQ(frontend_attrs.find(kXlaDeterministicAttr), frontend_attrs.end());
+  }
+
+  // 2. FunctionDef with _XlaDeterministic=true sets the frontend attribute.
+  {
+    FunctionDef det_fn = FunctionDefHelper::Define(
+        "DeterministicAddFn", /*arg_def=*/{"x: float"},
+        /*ret_def=*/{"y: float"},
+        /*attr_def=*/{},
+        /*node_def=*/{{{"y"}, "Add", {"x", "x"}, {{"T", DT_FLOAT}}}});
+    (*det_fn.mutable_attr())[kXlaDeterministicAttr].set_b(true);
+    TF_ASSERT_OK(flib_def_->AddFunctionDef(det_fn));
+
+    NameAttrList name_attr;
+    name_attr.set_name("DeterministicAddFn");
+
+    XlaCompiler::CompilationResult result;
+    TF_ASSERT_OK(compiler.CompileFunction(XlaCompiler::CompileOptions(),
+                                          name_attr, args, &result));
+    ASSERT_NE(result.computation, nullptr);
+    const auto& frontend_attrs =
+        result.computation->proto().frontend_attributes().map();
+    auto it = frontend_attrs.find(kXlaDeterministicAttr);
+    ASSERT_NE(it, frontend_attrs.end());
+    EXPECT_EQ(it->second, "true");
+  }
+
+  // 3. NameAttrList with _XlaDeterministic=true also sets the frontend
+  // attribute even when FunctionDef does not have the attribute.
+  {
+    NameAttrList name_attr;
+    name_attr.set_name("DefaultAddFn");
+    (*name_attr.mutable_attr())[kXlaDeterministicAttr].set_b(true);
+
+    XlaCompiler::CompilationResult result;
+    TF_ASSERT_OK(compiler.CompileFunction(XlaCompiler::CompileOptions(),
+                                          name_attr, args, &result));
+    ASSERT_NE(result.computation, nullptr);
+    const auto& frontend_attrs =
+        result.computation->proto().frontend_attributes().map();
+    auto it = frontend_attrs.find(kXlaDeterministicAttr);
+    ASSERT_NE(it, frontend_attrs.end());
+    EXPECT_EQ(it->second, "true");
+  }
+}
+
+TEST_F(XlaCompilerTest, CheckNumerics) {
+  Scope scope = Scope::NewRootScope().ExitOnError();
+  auto a = ops::_Arg(scope.WithOpName("A"), DT_FLOAT, 0);
+  auto check = ops::CheckNumerics(scope.WithOpName("Check"), a, "check");
+  auto ret = ops::_Retval(scope.WithOpName("Ret"), check, 0);
+  auto graph = std::make_unique<Graph>(OpRegistry::Global());
+  TF_ASSERT_OK(scope.ToGraph(graph.get()));
+
+  std::vector<XlaCompiler::Argument> args(1);
+  args[0].kind = XlaCompiler::Argument::kParameter;
+  args[0].type = DT_FLOAT;
+  args[0].shape = TensorShape({2});
+
+  XlaCompiler compiler(DefaultOptions());
+  XlaCompiler::CompilationResult result;
+  TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "test",
+                                     std::move(graph), args, &result));
+  ASSERT_EQ(result.outputs.size(), 1);
+  EXPECT_EQ(result.outputs[0].type, DT_FLOAT);
+  EXPECT_EQ(result.outputs[0].shape, TensorShape({2}));
+}
+
+TEST_F(XlaCompilerTest,
+       XlaCallModuleLoaderPrepareStablehloForLoweringWithoutCompilerShardy) {
+  constexpr absl::string_view kMlirModuleStr = R"mlir(
+    module @jit_shard_map {
+      sdy.mesh @mesh = <["x"=2]>
+      func.func public @main(
+          %platform_index: tensor<i32>,
+          %arg0: tensor<4xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}]>}
+      ) -> (tensor<4xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}]>}) {
+        %0 = sdy.manual_computation(%platform_index, %arg0)
+            in_shardings=[<@mesh, []>, <@mesh, [{"x"}]>]
+            out_shardings=[<@mesh, [{"x"}]>]
+            manual_axes={"x"} (%inner_platform: tensor<i32>, %arg1: tensor<2xf32>) {
+          %1 = "stablehlo.case"(%inner_platform) ({
+            %cpu = stablehlo.subtract %arg1, %arg1 : tensor<2xf32>
+            stablehlo.return %cpu : tensor<2xf32>
+          }, {
+            %tpu = stablehlo.add %arg1, %arg1 : tensor<2xf32>
+            stablehlo.return %tpu : tensor<2xf32>
+          }) : (tensor<i32>) -> tensor<2xf32>
+          sdy.return %1 : tensor<2xf32>
+        } : (tensor<i32>, tensor<4xf32>) -> tensor<4xf32>
+        %2 = stablehlo.tanh %0 : tensor<4xf32>
+        return %2 : tensor<4xf32>
+      }
+    }
+  )mlir";
+
+  mlir::MLIRContext context;
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<XlaCallModuleLoader> loader,
+      XlaCallModuleLoader::Create(&context, /*version=*/10, kMlirModuleStr,
+                                  /*disabled_checks=*/{},
+                                  /*platforms=*/{"CPU", "TPU"},
+                                  /*num_invocation_args=*/1,
+                                  /*main_has_token_input_output=*/false,
+                                  /*use_shardy_partitioner=*/true));
+  TF_ASSERT_OK(loader->SetPlatformIndex("TPU"));
+  TF_ASSERT_OK(loader->PrepareStablehloForLowering(
+      /*compiler_use_shardy_partitioner=*/false));
+  TF_ASSERT_OK_AND_ASSIGN(xla::XlaComputation computation,
+                          loader->ToXlaComputation());
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                          LoadModuleFromHloProto(computation.proto()));
+  const std::string hlo_text = hlo_module->ToString(xla::HloPrintOptions{});
+  EXPECT_FALSE(absl::StrContains(hlo_text, "conditional"));
+  EXPECT_FALSE(absl::StrContains(hlo_text, "subtract"));
+  EXPECT_FALSE(absl::StrContains(hlo_text, "xla.sdy.GlobalToLocalShape"));
+  EXPECT_FALSE(absl::StrContains(hlo_text, "xla.sdy.LocalToGlobalShape"));
+  EXPECT_TRUE(absl::StrContains(hlo_text, "SPMDFullToShardShape"));
+  EXPECT_TRUE(absl::StrContains(hlo_text, "SPMDShardToFullShape"));
+
+  const xla::HloInstruction* root =
+      hlo_module->entry_computation()->root_instruction();
+  ASSERT_EQ(root->opcode(), xla::HloOpcode::kGetTupleElement);
+  const xla::HloInstruction* tanh = root->operand(0)->operand(0);
+  EXPECT_EQ(tanh->opcode(), xla::HloOpcode::kTanh);
+  // Propagation is left to the outer GSPMD compilation.
+  EXPECT_FALSE(tanh->has_sharding());
 }
 
 }  // namespace

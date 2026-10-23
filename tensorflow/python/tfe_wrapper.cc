@@ -52,6 +52,7 @@ limitations under the License.
 #include "tensorflow/python/eager/pywrap_tensor_conversion.h"
 #include "tensorflow/python/eager/pywrap_tfe.h"
 #include "tensorflow/python/lib/core/py_exception_registry.h"
+#include "tensorflow/python/lib/core/py_seq_tensor.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 #include "tensorflow/python/lib/core/pybind11_status.h"
 #include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
@@ -667,6 +668,24 @@ class EagerContextThreadLocalDataWrapper {
 PYBIND11_MODULE(_pywrap_tfe, m) {
   // Numpy initialization code for array functions.
   tsl::ImportNumpy();
+
+  // Single C++ entry point for the floating point -> integer conversion used
+  // by tensor_util.make_tensor_proto. NumPy's own cast maps NaN and Inf onto
+  // the smallest representable integer instead of failing, so the array is
+  // validated and cast here, in C++, rather than by a Python predicate
+  // followed by a Python `ndarray.astype`. This mirrors the eager conversion
+  // inside PySeqToTFE_TensorHandle.
+  m.def(
+      "ArrayToIntegerArray",
+      [](py::object array, py::object dtype) {
+        PyObject* result =
+            tensorflow::PyArrayToIntegerArray(array.ptr(), dtype.ptr());
+        if (result == nullptr) {
+          throw py::error_already_set();
+        }
+        return py::reinterpret_steal<py::object>(result);
+      },
+      py::arg("array"), py::arg("dtype"));
 
   py::class_<TFE_Executor> TFE_Executor_class(m, "TFE_Executor");
   py::class_<TFE_ContextOptions> TFE_ContextOptions_class(m,
@@ -1292,10 +1311,16 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
     return tensorflow::PyoOrThrow(
         TFE_Py_TapeSetNew(persistent.ptr(), watch_accessed_variables.ptr()));
   });
-  m.def("TFE_Py_TapeSetAdd",
-        [](const py::handle& tape) { TFE_Py_TapeSetAdd(tape.ptr()); });
-  m.def("TFE_Py_TapeSetRemove",
-        [](const py::handle& tape) { TFE_Py_TapeSetRemove(tape.ptr()); });
+  m.def("TFE_Py_TapeSetAdd", [](const py::handle& tape) {
+    bool had_err = (PyErr_Occurred() != nullptr);
+    TFE_Py_TapeSetAdd(tape.ptr());
+    if (!had_err && PyErr_Occurred()) throw py::error_already_set();
+  });
+  m.def("TFE_Py_TapeSetRemove", [](const py::handle& tape) {
+    bool had_err = (PyErr_Occurred() != nullptr);
+    TFE_Py_TapeSetRemove(tape.ptr());
+    if (!had_err && PyErr_Occurred()) throw py::error_already_set();
+  });
   m.def("TFE_Py_TapeSetStopOnThread", &TFE_Py_TapeSetStopOnThread);
   m.def("TFE_Py_TapeSetRestartOnThread", &TFE_Py_TapeSetRestartOnThread);
   m.def("TFE_Py_TapeSetIsStopped",
@@ -1355,11 +1380,15 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   });
   m.def("TFE_Py_TapeWatch",
         [](const py::handle& tape, const py::handle& tensor) {
+          bool had_err = (PyErr_Occurred() != nullptr);
           TFE_Py_TapeWatch(tape.ptr(), tensor.ptr());
+          if (!had_err && PyErr_Occurred()) throw py::error_already_set();
         });
   m.def("TFE_Py_TapeWatchVariable",
         [](const py::handle& tape, const py::handle& variable) {
+          bool had_err = (PyErr_Occurred() != nullptr);
           TFE_Py_TapeWatchVariable(tape.ptr(), variable.ptr());
+          if (!had_err && PyErr_Occurred()) throw py::error_already_set();
         });
   m.def("TFE_Py_TapeWatchedVariables", [](const py::handle& tape) {
     return tensorflow::PyoOrThrow(TFE_Py_TapeWatchedVariables(tape.ptr()));
@@ -1369,7 +1398,9 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   m.def("TFE_Py_VariableWatcherNew",
         []() { return tensorflow::PyoOrThrow(TFE_Py_VariableWatcherNew()); });
   m.def("TFE_Py_VariableWatcherRemove", [](const py::handle& variable_watcher) {
+    bool had_err = (PyErr_Occurred() != nullptr);
     TFE_Py_VariableWatcherRemove(variable_watcher.ptr());
+    if (!had_err && PyErr_Occurred()) throw py::error_already_set();
   });
   m.def("TFE_Py_VariableWatcherVariableAccessed",
         [](const py::handle& variable) {
@@ -1392,14 +1423,18 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   });
   m.def("TFE_Py_ForwardAccumulatorSetRemove",
         [](const py::handle& accumulator) {
+          bool had_err = (PyErr_Occurred() != nullptr);
           TFE_Py_ForwardAccumulatorSetRemove(accumulator.ptr());
+          if (!had_err && PyErr_Occurred()) throw py::error_already_set();
         });
 
   m.def("TFE_Py_ForwardAccumulatorWatch",
         [](const py::handle& accumulator, const py::handle& tensor,
            const py::handle& tangent) {
+          bool had_err = (PyErr_Occurred() != nullptr);
           TFE_Py_ForwardAccumulatorWatch(accumulator.ptr(), tensor.ptr(),
                                          tangent.ptr());
+          if (!had_err && PyErr_Occurred()) throw py::error_already_set();
         });
   m.def("TFE_Py_ForwardAccumulatorJVP",
         [](const py::handle& accumulator, const py::handle& tensor) {

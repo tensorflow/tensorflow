@@ -17,6 +17,7 @@ limitations under the License.
 #include <cstdlib>
 #include <cstring>
 #include <initializer_list>
+#include <limits>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -135,6 +136,47 @@ class GatherOpModel : public SingleOpModel {
   int positions_;
   int output_;
 };
+
+class PrepareOnlyGatherOpModel : public SingleOpModel {
+ public:
+  PrepareOnlyGatherOpModel(int axis, int batch_dims) {
+    input_ = AddInput({TensorType_FLOAT32, {1}});
+    positions_ = AddInput({TensorType_INT32, {1}});
+    output_ = AddOutput(TensorType_FLOAT32);
+    SetBuiltinOp(BuiltinOperator_GATHER, BuiltinOptions_GatherOptions,
+                 CreateGatherOptions(builder_, axis, batch_dims).Union());
+    BuildInterpreter({GetShape(input_), GetShape(positions_)},
+                     /*num_threads=*/1,
+                     /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/false,
+                     /*allocate_and_delegate=*/false);
+  }
+
+ private:
+  int input_;
+  int positions_;
+  int output_;
+};
+
+TEST(GatherPrepareTest, RejectsAxisOutsideInt16Range) {
+  PrepareOnlyGatherOpModel too_large(std::numeric_limits<int16_t>::max() + 1,
+                                     /*batch_dims=*/0);
+  EXPECT_EQ(too_large.AllocateTensors(), kTfLiteError);
+
+  PrepareOnlyGatherOpModel too_small(std::numeric_limits<int16_t>::min() - 1,
+                                     /*batch_dims=*/0);
+  EXPECT_EQ(too_small.AllocateTensors(), kTfLiteError);
+}
+
+TEST(GatherPrepareTest, RejectsBatchDimsOutsideInt16Range) {
+  PrepareOnlyGatherOpModel too_large(
+      /*axis=*/0, std::numeric_limits<int16_t>::max() + 1);
+  EXPECT_EQ(too_large.AllocateTensors(), kTfLiteError);
+
+  PrepareOnlyGatherOpModel too_small(
+      /*axis=*/0, std::numeric_limits<int16_t>::min() - 1);
+  EXPECT_EQ(too_small.AllocateTensors(), kTfLiteError);
+}
 
 struct GatherOpTest : public testing::TestWithParam<bool> {};
 

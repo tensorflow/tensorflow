@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/model/gpu_dot_fusion_cost_model.h"
 #include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 #include "xla/service/gpu/model/gpu_performance_model.h"
@@ -44,6 +44,8 @@ namespace xla {
 namespace gpu {
 
 namespace {
+
+using ::xla::xtile::BlockLevelParameters;
 
 absl::StatusOr<EstimateRunTimeData> MaybeGetGemmCostModelForGemmTritonFusion(
     const se::DeviceDescription& device_info,

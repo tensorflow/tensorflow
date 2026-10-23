@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/ynnpack/copy.h"
 #include "tensorflow/lite/delegates/ynnpack/dot.h"
 #include "tensorflow/lite/delegates/ynnpack/elementwise.h"
+#include "tensorflow/lite/delegates/ynnpack/moe.h"
 #include "tensorflow/lite/delegates/ynnpack/pooling.h"
 #include "tensorflow/lite/delegates/ynnpack/reduction.h"
 #include "tensorflow/lite/delegates/ynnpack/softmax.h"
@@ -70,16 +71,16 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
     }
     tensor_to_value_id_.clear();
     inputs_.clear();
-
     outputs_.clear();
     dummy_inputs_.clear();
     input_shapes_.clear();
 
     int num_dummy_inputs = 0;
     for (const auto& node : nodes_info_) {
-      if (IsRuntimeBmm(context, node.node_index) && node.inputs.size() >= 3) {
+      if (node.composite_op_type == CompositeOpType::kRuntimeBmm &&
+          node.inputs.size() >= 3) {
         num_dummy_inputs += 2;
-      } else if (IsSdpa(context, node.node_index)) {
+      } else if (node.composite_op_type == CompositeOpType::kSdpa) {
         num_dummy_inputs += 4;
       }
     }
@@ -167,7 +168,8 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
     }
 
     // Now define internal nodes.
-    for (const auto& node : nodes_info_) {
+    for (size_t i = 0; i < nodes_info_.size(); ++i) {
+      const auto& node = nodes_info_[i];
       if (IsUnaryOp(node.builtin_code)) {
         TF_LITE_ENSURE_STATUS(
             DefineUnaryNode(context, subgraph_, tensor_to_value_id_, node));
@@ -221,11 +223,11 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
       } else if (node.builtin_code == kTfLiteBuiltinDepthToSpace) {
         TF_LITE_ENSURE_STATUS(DefineDepthToSpaceNode(
             context, subgraph_, tensor_to_value_id_, node));
-      } else if (IsRuntimeBmm(context, node.node_index)) {
+      } else if (node.composite_op_type == CompositeOpType::kRuntimeBmm) {
         TF_LITE_ENSURE_STATUS(DefineRuntimeBatchedMatMulNode(
             context, subgraph_, tensor_to_value_id_, next_external_id,
             dummy_inputs_, node));
-      } else if (IsSdpa(context, node.node_index)) {
+      } else if (node.composite_op_type == CompositeOpType::kSdpa) {
         TF_LITE_ENSURE_STATUS(
             DefineSdpaNode(context, subgraph_, tensor_to_value_id_,
                            next_external_id, dummy_inputs_, node));
@@ -256,6 +258,9 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
       } else if (node.builtin_code == kTfLiteBuiltinDequantize) {
         TF_LITE_ENSURE_STATUS(DefineDequantizeNode(context, subgraph_,
                                                    tensor_to_value_id_, node));
+      } else if (node.composite_op_type == CompositeOpType::kMoe) {
+        TF_LITE_ENSURE_STATUS(
+            DefineMoeNode(context, subgraph_, tensor_to_value_id_, node));
       } else {
         TF_LITE_ENSURE_MSG(context, false, "Unsupported op: %d",
                            node.builtin_code);
@@ -296,6 +301,31 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
       node_info.outputs.assign(node->outputs->data,
                                node->outputs->data + node->outputs->size);
       node_info.activation = GetFusedActivation(reg, node);
+      node_info.builtin_data = node->builtin_data;
+      node_info.custom_name = reg->custom_name;
+      node_info.custom_initial_data = node->custom_initial_data;
+      node_info.custom_initial_data_size = node->custom_initial_data_size;
+      if (IsRuntimeBmm(reg, node)) {
+        node_info.composite_op_type = CompositeOpType::kRuntimeBmm;
+      } else if (IsSdpa(reg, node)) {
+        node_info.composite_op_type = CompositeOpType::kSdpa;
+      } else if (IsMoe(reg, node)) {
+        node_info.composite_op_type = CompositeOpType::kMoe;
+      }
+      if (node_info.composite_op_type != CompositeOpType::kNone) {
+        auto* subgraph = reinterpret_cast<tflite::Subgraph*>(context->impl_);
+        const auto* composite_params =
+            static_cast<const TfLiteStablehloCompositeParams*>(
+                node->builtin_data);
+        if (subgraph != nullptr && subgraph->GetSubgraphs() != nullptr &&
+            composite_params != nullptr &&
+            composite_params->subgraph_index > 0 &&
+            static_cast<size_t>(composite_params->subgraph_index) <
+                subgraph->GetSubgraphs()->size()) {
+          TF_LITE_ENSURE_STATUS(subgraph->MarkSubgraphAsDelegationSkippable(
+              composite_params->subgraph_index));
+        }
+      }
       nodes_info_.push_back(node_info);
     }
 
@@ -397,7 +427,6 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
         TF_LITE_ENSURE_YNN_STATUS(ynn_set_external_value_shape(
             runtime_, dummy.dummy_val_id, dummy.rank, dims));
       }
-
       TF_LITE_ENSURE_YNN_STATUS(ynn_reshape_runtime(runtime_));
     }
 
@@ -490,9 +519,10 @@ class YNNPackDelegate : public SimpleDelegateInterface {
     } else if (builtin_code == kTfLiteBuiltinDepthToSpace) {
       return IsDepthToSpaceSupported(registration, node, context) == kTfLiteOk;
     } else if (builtin_code == kTfLiteBuiltinBatchMatmul) {
-      return IsBatchMatMulSupported(registration, node, context) == kTfLiteOk;
+      return IsBatchMatMulSupported(registration, node, context, options_) ==
+             kTfLiteOk;
     } else if (builtin_code == kTfLiteBuiltinFullyConnected) {
-      return IsFullyConnectedSupported(registration, node, context) ==
+      return IsFullyConnectedSupported(registration, node, context, options_) ==
              kTfLiteOk;
     } else if (builtin_code == kTfLiteBuiltinConv2d) {
       return IsConvSupported(registration, node, context) == kTfLiteOk;
@@ -518,10 +548,12 @@ class YNNPackDelegate : public SimpleDelegateInterface {
     } else if (builtin_code == kTfLiteBuiltinDequantize) {
       return IsDequantizeSupported(registration, node, context) == kTfLiteOk;
     } else if (IsRuntimeBmm(registration, node)) {
-      return IsRuntimeBatchedMatMulSupported(registration, node, context) ==
-             kTfLiteOk;
+      return IsRuntimeBatchedMatMulSupported(registration, node, context,
+                                             options_) == kTfLiteOk;
     } else if (IsSdpa(registration, node)) {
       return IsSdpaSupported(registration, node, context) == kTfLiteOk;
+    } else if (IsMoe(registration, node)) {
+      return IsMoeSupported(registration, node, context) == kTfLiteOk;
     }
     return false;
   }
@@ -536,15 +568,20 @@ class YNNPackDelegate : public SimpleDelegateInterface {
   TfLiteStatus Initialize(TfLiteContext* context) override {
     auto* subgraph = reinterpret_cast<tflite::Subgraph*>(context->impl_);
     if (subgraph != nullptr) {
-      auto filter = [context](const TfLiteNode* node,
-                              const TfLiteRegistration* reg) -> bool {
+      auto filter = [context, this](const TfLiteNode* node,
+                                    const TfLiteRegistration* reg) -> bool {
         if (IsRuntimeBmm(reg, node) &&
-            IsRuntimeBatchedMatMulSupported(reg, node, context) == kTfLiteOk) {
+            IsRuntimeBatchedMatMulSupported(reg, node, context, options_) ==
+                kTfLiteOk) {
           // Don't inline this supported runtime_bmm.
           return false;
         } else if (IsSdpa(reg, node) &&
                    IsSdpaSupported(reg, node, context) == kTfLiteOk) {
           // Don't inline this supported sdpa.
+          return false;
+        } else if (IsMoe(reg, node) &&
+                   IsMoeSupported(reg, node, context) == kTfLiteOk) {
+          // Don't inline this supported MoE.
           return false;
         }
         return true;
@@ -584,6 +621,7 @@ TfLiteYNNPackDelegateOptions TfLiteYNNPackDelegateOptionsDefault() {
   options.fast_math = false;
   options.consistent_arithmetic = false;
   options.no_excess_precision = false;
+  options.enable_blockwise_quantization = false;
   return options;
 }
 

@@ -13,12 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cmath>
+#include <cstddef>
 #include <limits>
 #include <vector>
 
 #include <gtest/gtest.h>
 #include "xla/error_spec.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/tests/client_library_test_runner_mixin.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
@@ -27,7 +31,7 @@ namespace xla {
 namespace {
 
 using Atan2Test =
-    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
+    ClientLibraryTestRunnerMixin<HloInterpreterReferenceMixin<HloTestBase>>;
 
 TEST_F(Atan2Test, atan2) {
   XlaBuilder builder("atan2 with special and non-special float values");
@@ -42,6 +46,31 @@ TEST_F(Atan2Test, atan2) {
   float pi_over_2 = 1.5708;
   std::vector<float> expected = {pi_over_2, pi_over_2, qNaN, qNaN, qNaN, qNaN};
   ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.0001));
+}
+
+// atan2 only depends on the ratio of its operands, so it should be accurate
+// even when the operands are very large, as long as y/x is representable.
+TEST_F(Atan2Test, LargeMagnitudeOperands) {
+  XlaBuilder builder("atan2 with large-magnitude operands");
+  float max = std::numeric_limits<float>::max();
+  std::vector<float> ys = {0x1p127f, -0x1p127f, 0x1p127f, 0x1.8p125f,
+                           max,      0x1p110f,  0x1p110f, -0x1.8p120f};
+  std::vector<float> xs = {0x1p127f, 0x1p127f,   -0x1p127f, 0x1p127f,
+                           max / 2,  0x1.8p110f, 0x1p100f,  -0x1p121f};
+  std::vector<float> expected;
+  for (size_t i = 0; i < ys.size(); ++i) {
+    expected.push_back(static_cast<float>(
+        std::atan2(static_cast<double>(ys[i]), static_cast<double>(xs[i]))));
+  }
+  Literal y_literal = LiteralUtil::CreateR1<float>(ys);
+  Literal x_literal = LiteralUtil::CreateR1<float>(xs);
+  // Use parameters rather than constants so the computation isn't
+  // constant-folded on the host.
+  auto y = Parameter(&builder, 0, y_literal.shape(), "y");
+  auto x = Parameter(&builder, 1, x_literal.shape(), "x");
+  Atan2(y, x);
+  ComputeAndCompareR1<float>(&builder, expected, {&y_literal, &x_literal},
+                             ErrorSpec(1e-6, 1e-6));
 }
 
 }  // namespace

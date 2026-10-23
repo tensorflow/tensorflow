@@ -60,6 +60,21 @@ class SparseTensorTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(sp_value.values, value.values)
       self.assertAllEqual(sp_value.dense_shape, value.dense_shape)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testRejectsNonInt64TensorIndices(self):
+    indices = ops.convert_to_tensor([[0, 1]], dtype=dtypes.int32)
+    with self.assertRaisesRegex(TypeError, "indices.*dtype int64"):
+      sparse_tensor.SparseTensor(indices, [1], [2, 2])
+
+  def testRejectsNonInt64TensorIndicesInFunction(self):
+    @def_function.function
+    def create_sparse_tensor(indices):
+      return sparse_tensor.SparseTensor(indices, [1], [2, 2])
+
+    indices = ops.convert_to_tensor([[0, 1]], dtype=dtypes.int32)
+    with self.assertRaisesRegex(TypeError, "indices.*dtype int64"):
+      create_sparse_tensor(indices)
+
   def testShape(self):
 
     @def_function.function

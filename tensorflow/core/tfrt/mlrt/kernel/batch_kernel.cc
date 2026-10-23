@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tsl/profiler/lib/connected_traceme.h"
 #include "tsl/profiler/lib/context_types.h"
+#include "tsl/profiler/lib/traceme.h"
 #include "tfrt/concurrency/chain.h"  // from @tf_runtime
 #include "tfrt/host_context/resource_context.h"  // from @tf_runtime
 
@@ -240,7 +241,8 @@ class MlrtBatchResource : public tensorflow::serving::BatchResourceBase {
             options.mixed_priority_batching_policy,
             options.enable_priority_aware_batch_scheduler,
             options.enable_priority_aware_batch_scheduler_resplit,
-            options.enable_batching_task_lazy_cancellation),
+            options.enable_batching_task_lazy_cancellation,
+            options.per_criticality_batch_timeout_micros),
         options.allowed_batch_sizes));
     return absl::OkStatus();
   }
@@ -344,13 +346,14 @@ void MlrtBatchResource::ProcessFuncBatchImpl(
   fallback_request_state.set_runtime_config(
       caller_fallback_request_state.runtime_config());
 
+  const uint64_t batch_activity_id = tsl::profiler::TraceMe::NewActivityId();
   tsl::profiler::TraceMeProducer activity(
       // To TraceMeConsumers in WorkQueue.
       [step_id] {
         return tsl::profiler::TraceMeEncode("RunMlrtFunction",
                                             {{"id", step_id}, {"_r", 1}});
       },
-      tsl::profiler::ContextType::kTfrtExecutor, step_id,
+      tsl::profiler::ContextType::kTfrtExecutor, batch_activity_id,
       tsl::profiler::TraceMeLevel::kInfo);
   auto trace_me_context_id = activity.GetContextId();
 
@@ -545,6 +548,7 @@ REGISTER_OP(kMlrtBatchFunctionName)
     .Attr("enable_priority_aware_batch_scheduler_resplit: bool = false")
     .Attr("enable_batching_task_lazy_cancellation: bool = false")
     .Attr("num_warmup_batch_threads: int = 0")
+    .Attr("per_criticality_batch_timeout_micros: list(int) = []")
     // An opaque function handle, which is an int64_t, for passing the batch
     // function.
     .Attr("opaque_function_handle: int")

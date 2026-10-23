@@ -63,17 +63,6 @@ class PjRtMemory final : public RTTIExtends<PjRtMemory, PjRtCompatibleMemory> {
   std::vector<Device*> devices_;
 };
 
-// Canonicalizes `MemoryKind`. If `MemoryKind` has no memory kind chosen,
-// returns a default `MemoryKind` chosen for the PjRt device. If there is no
-// default indicated by the device, simply returns `MemoryKind` with no memory
-// kind chosen.
-//
-// TODO(hyeontaek,yashkatariya): Harden `MemoryKind` creation paths so that
-// every `MemoryKind` is canonicalized and does not require on-demand
-// canonicalization.
-MemoryKind CanonicalizeMemoryKindWithPjRtDevice(MemoryKind memory_kind,
-                                                xla::PjRtDevice* device);
-
 }  // namespace ifrt
 }  // namespace xla
 

@@ -19,7 +19,10 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gradient_checker_v2
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
@@ -180,6 +183,66 @@ class ArrayGradTest(test.TestCase):
       return array_ops.reshape(x_without_shape, [0])
 
     x = constant_op.constant([], shape=[3, 0], dtype=dtypes.float64)
+    self._testGrad(f, x)
+
+  def test_matrix_diag_v2_grad_ignores_diagonal_padding(self):
+    x = constant_op.constant(0.7, dtype=dtypes.float64)
+
+    def f(x):
+      diagonal = array_ops_stack.stack([
+          array_ops_stack.stack([x * x, 7.0 * x]),
+          array_ops_stack.stack([x, 2.0 * x]),
+      ])
+      matrix = gen_array_ops.matrix_diag_v2(
+          diagonal=diagonal,
+          k=constant_op.constant([0, 1], dtype=dtypes.int32),
+          num_rows=constant_op.constant(2, dtype=dtypes.int32),
+          num_cols=constant_op.constant(2, dtype=dtypes.int32),
+          padding_value=constant_op.constant(-1.0, dtype=dtypes.float64),
+      )
+      return math_ops.reduce_sum(matrix)
+
+    self._testGrad(f, x)
+
+  def test_matrix_set_diag_v2_grad_ignores_diagonal_padding(self):
+    x = constant_op.constant(0.7, dtype=dtypes.float64)
+
+    def f(x):
+      diagonal = (
+          constant_op.constant([[1.0, 2.0], [3.0, 4.0]], dtype=dtypes.float64)
+          * x
+      )
+      matrix = gen_array_ops.matrix_set_diag_v2(
+          input=constant_op.constant(
+              [[10.0, 20.0], [30.0, 40.0]], dtype=dtypes.float64
+          ),
+          diagonal=diagonal,
+          k=constant_op.constant([0, 1], dtype=dtypes.int32),
+      )
+      return matrix * constant_op.constant(
+          [[5.0, 7.0], [11.0, 13.0]], dtype=dtypes.float64
+      )
+
+    self._testGrad(f, x)
+
+  def test_matrix_diag_part_v2_grad_uses_left_alignment(self):
+    x = constant_op.constant(0.7, dtype=dtypes.float64)
+    coeff = constant_op.constant(
+        [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]],
+        dtype=dtypes.float64,
+    )
+    weights = constant_op.constant(
+        [[100.0, 10.0, 1.0], [7.0, 5.0, 3.0]], dtype=dtypes.float64
+    )
+
+    def f(x):
+      diagonal = gen_array_ops.matrix_diag_part_v2(
+          input=coeff * x,
+          k=constant_op.constant([0, 1], dtype=dtypes.int32),
+          padding_value=constant_op.constant(0.0, dtype=dtypes.float64),
+      )
+      return diagonal * weights
+
     self._testGrad(f, x)
 
 

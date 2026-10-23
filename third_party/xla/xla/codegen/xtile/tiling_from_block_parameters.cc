@@ -1,0 +1,193 @@
+/* Copyright 2026 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#include "xla/codegen/xtile/tiling_from_block_parameters.h"
+
+#include <cstddef>
+#include <cstdint>
+#include <utility>
+#include <vector>
+
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/status_macros.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "absl/types/span.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/SmallVector.h"
+#include "xla/codegen/tiling/experimental/tiling_space.h"
+#include "xla/codegen/tiling/experimental/tiling_space_utils.h"
+#include "xla/codegen/xtile/block_level_parameters.h"
+#include "xla/codegen/xtile/xtile_config.pb.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/status_macros.h"
+#include "xla/util.h"
+
+namespace xla::xtile {
+
+namespace {
+
+using ::xla::xtile::BlockLevelParameters;
+using DimensionSemantics =
+    ::xla::gpu::experimental::TilingSpace::DimensionSemantics;
+
+absl::StatusOr<llvm::SmallVector<int64_t>> GetParallelTileSizes(
+    const ::xla::gpu::experimental::TilingSpace& tiling_space,
+    const BlockLevelParameters& block_level_parameters,
+    bool enable_same_shape_multi_output_fusion) {
+  TF_RET_CHECK(!block_level_parameters.output_tile_sizes.empty())
+      << "output_tile_sizes cannot be empty.";
+
+  if (block_level_parameters.output_tile_sizes.size() == 1) {
+    return llvm::to_vector(
+        llvm::ArrayRef(block_level_parameters.output_tile_sizes[0]));
+  }
+
+  // If the tiling space has one set of parallel dimensions per root (e.g.
+  // index-wise variadic fusions such as a variadic all-gather, see
+  // TilingSpace::Create), the per-root tile sizes are concatenated in root
+  // order.
+  if (tiling_space.HasPerOutputTiles()) {
+    llvm::SmallVector<int64_t> parallel_tile_sizes;
+    parallel_tile_sizes.reserve(tiling_space.num_parallel_dimensions());
+    for (const auto& output_tile_sizes :
+         block_level_parameters.output_tile_sizes) {
+      parallel_tile_sizes.append(output_tile_sizes.begin(),
+                                 output_tile_sizes.end());
+    }
+    return parallel_tile_sizes;
+  }
+
+  if (!enable_same_shape_multi_output_fusion) {
+    return Unimplemented(
+        "Only single-result fusions are supported for now. Received %d "
+        "roots.",
+        block_level_parameters.output_tile_sizes.size());
+  }
+
+  // For multi-output fusions with identical shapes, we enforce that all
+  // outputs share the same tiling. Therefore, the block-level parameters must
+  // specify identical tile sizes for all outputs.
+  // TODO(b/502910372): Support arbitrary multi-output fusions.
+  llvm::SmallVector<int64_t> parallel_tile_sizes = llvm::to_vector(
+      llvm::ArrayRef(block_level_parameters.output_tile_sizes[0]));
+  for (size_t i = 1; i < block_level_parameters.output_tile_sizes.size(); ++i) {
+    if (!absl::c_equal(parallel_tile_sizes,
+                       block_level_parameters.output_tile_sizes[i])) {
+      return Unimplemented(
+          "Same-shape multi-output fusions must have identical tile sizes "
+          "for all outputs. Received different tile sizes for root 0 [%s] "
+          "and root %d [%s].",
+          absl::StrJoin(parallel_tile_sizes, ", "), i,
+          absl::StrJoin(block_level_parameters.output_tile_sizes[i], ", "));
+    }
+  }
+  return parallel_tile_sizes;
+}
+
+}  // namespace
+
+absl::StatusOr<llvm::SmallVector<int64_t>> GetTilingSpaceConcreteSizes(
+    const ::xla::gpu::experimental::TilingSpace& tiling_space,
+    const BlockLevelParameters& block_level_parameters,
+    bool enable_same_shape_multi_output_fusion) {
+  ABSL_ASSIGN_OR_RETURN(llvm::SmallVector<int64_t> parallel_tile_sizes,
+                   GetParallelTileSizes(tiling_space, block_level_parameters,
+                                        enable_same_shape_multi_output_fusion));
+  const int64_t num_parallel_dims = tiling_space.num_parallel_dimensions();
+  if (num_parallel_dims != parallel_tile_sizes.size()) {
+    return Internal(
+        "Number of parallel dimensions in the tiling space (%d) does not match "
+        "the number of output tile sizes in the block level fusion config "
+        "(%d).",
+        num_parallel_dims, parallel_tile_sizes.size());
+  }
+  const int64_t num_sequential_dims = tiling_space.num_sequential_dimensions();
+  const auto& sequential_tile_sizes =
+      block_level_parameters.sequential_tile_sizes;
+  if (!sequential_tile_sizes.empty() &&
+      sequential_tile_sizes.size() != num_sequential_dims) {
+    return Internal(
+        "Number of sequential dimensions in the tiling space (%d) does not "
+        "match the number of sequential tile sizes in the block level fusion "
+        "config (%d).",
+        num_sequential_dims, sequential_tile_sizes.size());
+  }
+  llvm::SmallVector<int64_t> tile_sizes;
+  tile_sizes.reserve(tiling_space.dimensions().size());
+  int parallel_dim_count = 0;
+  int sequential_dim_count = 0;
+  for (const xla::gpu::experimental::TilingSpace::DimensionInfo& dim :
+       tiling_space.dimensions()) {
+    switch (dim.type) {
+      case DimensionSemantics::kParallel:
+        tile_sizes.push_back(parallel_tile_sizes[parallel_dim_count]);
+        parallel_dim_count++;
+        break;
+      case DimensionSemantics::kReplica:
+        break;
+      case DimensionSemantics::kSequential: {
+        if (!sequential_tile_sizes.empty()) {
+          if (dim.hlo->has_backend_config()) {
+            return Internal(
+                "Instruction %s has a backend config while "
+                "sequential_tile_sizes is set in the block level fusion "
+                "config.",
+                dim.hlo->name());
+          }
+          tile_sizes.push_back(sequential_tile_sizes[sequential_dim_count]);
+          sequential_dim_count++;
+          break;
+        }
+        if (dim.hlo->has_backend_config()) {
+          ABSL_ASSIGN_OR_RETURN(xla::xtile::Tile config,
+                           dim.hlo->backend_config<xla::xtile::Tile>());
+          // For reductions/dots, sequential (reduction/contracting) dimensions
+          // are indexed after output dimensions in TilingSpace, so their index
+          // in config.sizes is offset by output_rank. For scans, the sequential
+          // dimension is in the output and config.sizes contains only the scan
+          // dimension at index 0.
+          int64_t config_dim_idx = 0;
+          if (dim.hlo->opcode() != HloOpcode::kScan) {
+            int64_t output_rank = dim.hlo->shape().dimensions().size();
+            config_dim_idx = dim.dim_position - output_rank;
+          }
+          if (config_dim_idx < 0 || config_dim_idx >= config.sizes_size()) {
+            return Internal(
+                "Sequential dimension index %d is out of bounds for backend "
+                "config sizes of size %d.",
+                config_dim_idx, config.sizes_size());
+          }
+          tile_sizes.push_back(config.sizes(config_dim_idx));
+          break;
+        }
+        VLOG(1) << "No backend_config set for HLO instruction of dimension "
+                << dim.ToString() << ". Using dimension size as tile size.";
+        tile_sizes.push_back(dim.dimension_size);
+        break;
+      }
+      default:
+        return Internal("Unsupported dimension type: %d", dim.type);
+    }
+  }
+  return std::move(tile_sizes);
+}
+
+}  // namespace xla::xtile

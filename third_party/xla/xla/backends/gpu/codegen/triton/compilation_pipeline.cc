@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/rocm/rocm_compute_capability.h"
+#include "xla/stream_executor/sycl/oneapi_compute_capability.h"
 
 namespace xla::gpu {
 
@@ -67,6 +68,8 @@ void CreateTritonXlaPipeline(
   if (enable_pdl) {
     pm->addPass(createInsertPDLPass());
   }
+  pm->addPass(
+      mlir::triton::xla::createTritonXLACollapseContiguousMinorDimsPass());
   mlir::triton::xla::TritonXLAExtractInsertToTritonPassOptions
       extract_insert_options;
   extract_insert_options.allow_tma_ = allow_tma && is_at_least_hopper;
@@ -101,18 +104,28 @@ void CreateTritonCudaPipeline(
 void CreateTritonRocmPipeline(
     mlir::OpPassManager* pm,
     const stream_executor::RocmComputeCapability& rocm_cc, int num_warps,
+    int num_ctas, int num_stages, int mfma_size);
+
+void CreateTritonOneAPIPipeline(
+    mlir::OpPassManager* pm,
+    const stream_executor::OneAPIComputeCapability& oneapi_cc, int num_warps,
     int num_ctas, int num_stages);
 
 void CreateTritonPipeline(mlir::OpPassManager* pm,
                           const stream_executor::GpuComputeCapability& gpu_cc,
-                          int num_warps, int num_ctas, int num_stages) {
+                          int num_warps, int num_ctas, int num_stages,
+                          int mfma_size) {
   if (auto* cuda_cc = gpu_cc.cuda_compute_capability()) {
     return CreateTritonCudaPipeline(pm, *cuda_cc, num_warps, num_ctas,
                                     num_stages);
   }
+  if (auto* oneapi_cc = gpu_cc.oneapi_compute_capability()) {
+    return CreateTritonOneAPIPipeline(pm, *oneapi_cc, num_warps, num_ctas,
+                                      num_stages);
+  }
 
   CreateTritonRocmPipeline(pm, *gpu_cc.rocm_compute_capability(), num_warps,
-                           num_ctas, num_stages);
+                           num_ctas, num_stages, mfma_size);
 }
 
 }  // namespace xla::gpu

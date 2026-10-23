@@ -15,6 +15,7 @@
 #include "xla/python/ifrt_proxy/client/client.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -49,7 +50,7 @@
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/types.h"
 #include "xla/python/ifrt_proxy/common/versions.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/statusor.h"
@@ -111,6 +112,7 @@ class ClientTest : public ::testing::TestWithParam</*protocol_version=*/int> {
             device_kind: "mock"
             default_memory_id: 0
             memory_ids: [ 0 ]
+            platform_name: "tpu"
             attributes {
               attributes {
                 key: "name"
@@ -124,6 +126,7 @@ class ClientTest : public ::testing::TestWithParam</*protocol_version=*/int> {
             device_kind: "mock"
             default_memory_id: 1
             memory_ids: [ 1 ]
+            platform_name: "cpu"
             attributes {
               attributes {
                 key: "name"
@@ -156,6 +159,7 @@ class ClientTest : public ::testing::TestWithParam</*protocol_version=*/int> {
 
     TF_ASSERT_OK_AND_ASSIGN(client_, Client::Create(rpc_helper_, response));
     TF_ASSERT_OK_AND_ASSIGN(device_, client_->LookupDevice(DeviceId(0)));
+    TF_ASSERT_OK_AND_ASSIGN(cpu_device_, client_->LookupDevice(DeviceId(1)));
   }
 
   std::shared_ptr<MockClientSession> session_;
@@ -165,6 +169,7 @@ class ClientTest : public ::testing::TestWithParam</*protocol_version=*/int> {
   std::shared_ptr<xla::PjRtLayout> layout_1_;
   std::shared_ptr<xla::PjRtLayout> layout_2_;
   xla::ifrt::Device* device_;
+  xla::ifrt::Device* cpu_device_;
 };
 
 TEST_P(ClientTest, Init) {
@@ -189,7 +194,7 @@ TEST_P(ClientTest, Init) {
   ASSERT_THAT(device0->Memories(), SizeIs(1));
   auto* const memory0 = device0->Memories()[0];
   EXPECT_EQ(memory0->Id(), 0);
-  EXPECT_EQ(memory0->Kind().memory_kind(), "mock");
+  EXPECT_EQ(memory0->Kind().value(), "mock");
   EXPECT_THAT(memory0->Devices(), UnorderedElementsAre(device0));
   EXPECT_THAT(device0->DefaultMemory(), absl_testing::IsOkAndHolds(memory0));
 
@@ -203,7 +208,7 @@ TEST_P(ClientTest, Init) {
   ASSERT_THAT(device1->Memories(), SizeIs(1));
   auto* const memory1 = device1->Memories()[0];
   EXPECT_EQ(memory1->Id(), 1);
-  EXPECT_EQ(memory1->Kind().memory_kind(), "mock");
+  EXPECT_EQ(memory1->Kind().value(), "mock");
   EXPECT_THAT(memory1->Devices(), UnorderedElementsAre(device1));
   EXPECT_THAT(device1->DefaultMemory(), absl_testing::IsOkAndHolds(memory1));
 
@@ -295,6 +300,49 @@ TEST_P(ClientTest, CopyArraysDefaultLayoutSuccess) {
   EXPECT_EQ(layout_2, nullptr);
 }
 
+TEST_P(ClientTest, CopyArraysMemoryKindCombinations) {
+  IfrtResponse response;
+  response.mutable_copy_arrays_response()->add_array_handles(1);
+  EXPECT_CALL(*session_,
+              Enqueue(IfrtRequestOfType(IfrtRequest::kCopyArraysRequest)))
+      .WillRepeatedly(MockClientSessionReturnResponse(response));
+  EXPECT_CALL(*session_,
+              Enqueue(IfrtRequestOfType(IfrtRequest::kDestructArrayRequest)))
+      .WillRepeatedly(MockClientSessionReturnResponse(IfrtResponse()));
+
+  struct Case {
+    std::optional<MemoryKind> kind;
+    absl::string_view expected;
+  };
+  const std::vector<Case> kCases = {
+      {std::nullopt, "device"},
+      {MemoryKind(), "device"},
+      {MemoryKind("device"), "device"},
+      {MemoryKind("pinned_host"), "pinned_host"},
+  };
+
+  for (const Case& src : kCases) {
+    for (const Case& dst : kCases) {
+      auto sharding = SingleDeviceSharding::Create(
+          device_, src.kind.value_or(MemoryKind()));
+      std::vector<ArrayRef> arrays = {tsl::MakeRef<Array>(
+          client_.get(), rpc_helper_, DType(DType::kF64), Shape({1, 2, 3}),
+          std::move(sharding), ArrayHandle{1234}, /*layout=*/nullptr)};
+      ASSERT_OK_AND_ASSIGN(DeviceListRef devices,
+                           client_->MakeDeviceList({device_}));
+
+      ASSERT_OK_AND_ASSIGN(
+          std::vector<ArrayRef> copied,
+          client_->CopyArrays(absl::MakeSpan(arrays), std::move(devices),
+                              dst.kind, ArrayCopySemantics::kAlwaysCopy));
+      ASSERT_THAT(copied, SizeIs(1));
+
+      EXPECT_EQ(copied[0]->sharding().memory_kind().value(),
+                dst.kind.has_value() ? dst.expected : src.expected);
+    }
+  }
+}
+
 TEST_P(ClientTest, CopyArraysCustomLayoutSuccess) {
   std::shared_ptr<xla::ifrt::SingleDeviceSharding> sharding =
       xla::ifrt::SingleDeviceSharding::Create(device_, xla::ifrt::MemoryKind());
@@ -331,6 +379,67 @@ TEST_P(ClientTest, CopyArraysCustomLayoutSuccess) {
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<const xla::PjRtLayout> layout_2,
                           copied_arrays[1].get()->pjrt_layout());
   EXPECT_EQ(layout_2->ToString(), layout_2_->ToString());
+}
+
+TEST_P(ClientTest, CopyArraysCustomLayoutResetForCpuDestination) {
+  std::shared_ptr<xla::ifrt::SingleDeviceSharding> sharding =
+      xla::ifrt::SingleDeviceSharding::Create(device_, xla::ifrt::MemoryKind());
+  auto array = tsl::MakeRef<Array>(client_.get(), rpc_helper_,
+                                   DType(DType::kF64), Shape({1, 2, 3}),
+                                   sharding, ArrayHandle{1234}, layout_1_);
+
+  IfrtResponse response;
+  response.mutable_copy_arrays_response()->add_array_handles(1);
+
+  EXPECT_CALL(*session_,
+              Enqueue(IfrtRequestOfType(IfrtRequest::kCopyArraysRequest)))
+      .WillOnce(MockClientSessionReturnResponse(response));
+  EXPECT_CALL(*session_,
+              Enqueue(IfrtRequestOfType(IfrtRequest::kDestructArrayRequest)))
+      .WillRepeatedly(MockClientSessionReturnResponse(IfrtResponse()));
+
+  std::vector<tsl::RCReference<xla::ifrt::Array>> arrays = {array};
+  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
+                          client_->MakeDeviceList({cpu_device_}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto copied_arrays,
+      client_->CopyArrays(absl::MakeSpan(arrays), std::move(device_list),
+                          MemoryKind("mock"), ArrayCopySemantics::kAlwaysCopy));
+  ASSERT_THAT(copied_arrays, SizeIs(1));
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<const xla::PjRtLayout> layout,
+                          copied_arrays[0].get()->pjrt_layout());
+  EXPECT_EQ(layout, nullptr);
+}
+
+TEST_P(ClientTest, CopyArraysCustomLayoutResetForCpuSource) {
+  std::shared_ptr<xla::ifrt::SingleDeviceSharding> sharding =
+      xla::ifrt::SingleDeviceSharding::Create(cpu_device_,
+                                              xla::ifrt::MemoryKind());
+  auto array = tsl::MakeRef<Array>(client_.get(), rpc_helper_,
+                                   DType(DType::kF64), Shape({1, 2, 3}),
+                                   sharding, ArrayHandle{1234}, layout_1_);
+
+  IfrtResponse response;
+  response.mutable_copy_arrays_response()->add_array_handles(1);
+
+  EXPECT_CALL(*session_,
+              Enqueue(IfrtRequestOfType(IfrtRequest::kCopyArraysRequest)))
+      .WillOnce(MockClientSessionReturnResponse(response));
+  EXPECT_CALL(*session_,
+              Enqueue(IfrtRequestOfType(IfrtRequest::kDestructArrayRequest)))
+      .WillRepeatedly(MockClientSessionReturnResponse(IfrtResponse()));
+
+  std::vector<tsl::RCReference<xla::ifrt::Array>> arrays = {array};
+  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
+                          client_->MakeDeviceList({device_}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto copied_arrays,
+      client_->CopyArrays(absl::MakeSpan(arrays), std::move(device_list),
+                          MemoryKind("mock"), ArrayCopySemantics::kAlwaysCopy));
+  ASSERT_THAT(copied_arrays, SizeIs(1));
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<const xla::PjRtLayout> layout,
+                          copied_arrays[0].get()->pjrt_layout());
+  EXPECT_EQ(layout, nullptr);
 }
 
 TEST_P(ClientTest, CopyArraysFailsWithNonProxyArray) {

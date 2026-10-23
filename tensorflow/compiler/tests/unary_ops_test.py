@@ -20,7 +20,9 @@ import numpy as np
 import six
 
 from tensorflow.compiler.tests import xla_test
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack  # pylint: disable=g-direct-tensorflow-import
 from tensorflow.python.ops import bitwise_ops
@@ -28,6 +30,7 @@ from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import special_math_ops
 from tensorflow.python.platform import googletest
 
 
@@ -214,6 +217,31 @@ class UnaryOpsTest(xla_test.XLATestCase):
             math_ops.cos, x, expected=np.cos(x), rtol=tol, atol=1e-5
         )
 
+  def testBesselI0(self):
+    for dtype in self.float_types - {dtypes.bfloat16.as_numpy_dtype}:
+      # float64 XLA bessel vs truncated fixtures differs by ~1e-9; use 1e-7 per review.
+      tol = 1e-5 if dtype == np.float32 else 1e-7
+      x = np.array([-5.0, -1.0, 0.0, 1.0, 5.0], dtype=dtype)
+      expected = np.array(
+          [27.23987182, 1.26606588, 1.0, 1.26606588, 27.23987182],
+          dtype=dtype,
+      )
+      self._assertOpOutputMatchesExpected(
+          special_math_ops.bessel_i0, x, expected=expected, atol=tol, rtol=tol
+      )
+
+  def testBesselI1(self):
+    for dtype in self.float_types - {dtypes.bfloat16.as_numpy_dtype}:
+      tol = 1e-5 if dtype == np.float32 else 1e-7
+      x = np.array([-5.0, -1.0, 0.0, 1.0, 5.0], dtype=dtype)
+      expected = np.array(
+          [-24.33564214, -0.56515910, 0.0, 0.56515910, 24.33564214],
+          dtype=dtype,
+      )
+      self._assertOpOutputMatchesExpected(
+          special_math_ops.bessel_i1, x, expected=expected, atol=tol, rtol=tol
+      )
+
   def testSigmoidNumericalStability(self):
     for dtype in self.float_types:
       if dtype != np.float16:
@@ -308,6 +336,52 @@ class UnaryOpsTest(xla_test.XLATestCase):
               dtype=dtype,
           ),
       )
+
+  def testQuantizeAndDequantizeV3NumBitsBoundaries(self):
+    for signed_input, invalid_num_bits in (
+        (True, (0, -1, 62, 63)),
+        (False, (0, -1, 63, 64)),
+    ):
+      for num_bits in invalid_num_bits:
+
+        @def_function.function(jit_compile=True)
+        def quantize_and_dequantize_v3(
+            x, num_bits=num_bits, signed_input=signed_input
+        ):
+          return array_ops.quantize_and_dequantize_v3(
+              x, -1.0, 1.0, num_bits=num_bits, signed_input=signed_input
+          )
+
+        with self.session() as sess:
+          with self.device_scope():
+            x = array_ops.placeholder(dtypes.float32)
+            output = quantize_and_dequantize_v3(x)
+          with self.assertRaisesRegex(
+              errors.InvalidArgumentError, "num_bits is out of range"
+          ):
+            sess.run(
+                output, {x: np.array([-1, -0.5, 0, 0.3], dtype=np.float32)}
+            )
+
+    for signed_input, valid_num_bits in (
+        (True, (1, 61)),
+        (False, (1, 62)),
+    ):
+      for num_bits in valid_num_bits:
+
+        @def_function.function(jit_compile=True)
+        def quantize_and_dequantize_v3_valid(
+            x, num_bits=num_bits, signed_input=signed_input
+        ):
+          return array_ops.quantize_and_dequantize_v3(
+              x, -1.0, 1.0, num_bits=num_bits, signed_input=signed_input
+          )
+
+        with self.session() as sess:
+          with self.device_scope():
+            x = array_ops.placeholder(dtypes.float32)
+            output = quantize_and_dequantize_v3_valid(x)
+          sess.run(output, {x: np.array([-1, -0.5, 0, 0.3], dtype=np.float32)})
 
   def testComplexOps(self):
     for dtype in self.complex_types:

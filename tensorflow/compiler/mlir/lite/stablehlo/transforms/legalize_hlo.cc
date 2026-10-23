@@ -728,7 +728,7 @@ class ConvertToResizeBilinearOpOrDepthwiseTransposedConvOp
           "ConvBackpropInputOp");
     }
 
-    // tf.ResizeBilinearOp is perferred than tf.Conv2DBackpropInputOp since
+    // tf.ResizeBilinearOp is preferred than tf.Conv2DBackpropInputOp since
     // the former has better portability, especially in inference use cases.
     bool align_corners;
     llvm::SmallVector<int, 2> output_sizes;
@@ -1061,7 +1061,7 @@ class ConvertNonTrivialConvOp
 
     // Mirror the filter in the spatial dimensions.
     mlir::Value reverse_filter_in = conv_op.getRhs();
-    // If the kernel is with format anythoing other than HWOI, we
+    // If the kernel has a format other than HWOI, we
     // transpose it to [0,1,o,i] as the TF->TFL pass anticipates this and the
     // kernel format information will be lost once we legalize to TF
     if (!isKernelFormatHWOI(dnums)) {
@@ -2504,7 +2504,7 @@ class ConvertAvgPoolOp : public OpConversionPattern<mhlo::DivOp> {
     return failure();
   }
 
-  // Walks up the op and ignore all precedding ops of type Tys.
+  // Walks up the op and ignore all preceding ops of type Tys.
   // Returns the first producer op whose type is not in Tys.
   template <typename... Tys>
   Value recursivelyWalkUp(Value op) const {

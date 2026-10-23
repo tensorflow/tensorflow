@@ -152,7 +152,7 @@ UniformQuantizedConvolutionParams::ValidateOrFillParamsAndValidateShape(
     TF_RETURN_IF_ERROR(
         ValidDim(dims, dimension_numbers_.output_batch_dimension()));
     TF_RETURN_IF_ERROR(
-        ValidDim(dims, dimension_numbers_.output_batch_dimension()));
+        ValidDim(dims, dimension_numbers_.output_feature_dimension()));
     TF_RETURN_IF_ERROR(ValidSpatialDimensions(
         dims, dimension_numbers_.output_spatial_dimensions()));
   }

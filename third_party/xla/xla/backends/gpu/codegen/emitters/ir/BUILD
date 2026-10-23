@@ -133,6 +133,7 @@ cc_library(
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:BytecodeOpInterface",
         "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:GPUDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:InliningUtils",

@@ -18,8 +18,10 @@ set -u  # Check for undefined variables
 
 # Track temporary files so they are removed on exit, including on interrupt.
 LOADED_LIBS_FILE=""
+ACCEL_FLAGS_FILE=""
 cleanup() {
   [ -n "${LOADED_LIBS_FILE:-}" ] && rm -f "$LOADED_LIBS_FILE"
+  [ -n "${ACCEL_FLAGS_FILE:-}" ] && rm -f "$ACCEL_FLAGS_FILE"
 }
 trap cleanup EXIT INT TERM
 
@@ -79,6 +81,14 @@ case "${OUTPUT_FILE##*/}" in
   *)   JSON_FILE="${OUTPUT_FILE}.json" ;;
 esac
 
+# Only pay for a temp file when the JSON summary is actually requested; it's
+# used to smuggle a couple of accelerator-detection booleans out of the
+# report-generation subshell below so we don't have to re-probe nvidia-smi /
+# rocm-smi / tensorflow-metal a second time just for the JSON section.
+if [ "$EMIT_JSON" -eq 1 ]; then
+  ACCEL_FLAGS_FILE="$(mktemp 2>/dev/null || mktemp -t tfenv)"
+fi
+
 echo "Collecting system information..."
 
 PYTHON_BIN_PATH="$(command -v python || command -v python3 || die "Cannot find Python binary")"
@@ -93,11 +103,15 @@ have_cmd() {
 
 run_cmd() {
   # Run a command if it exists, otherwise note that it is missing instead of
-  # erroring out. Captures stderr so the report stays readable.
+  # erroring out. Captures stderr so the report stays readable. Propagates
+  # the real exit status of the command (or 127 if it wasn't found) so
+  # callers can check success without re-invoking the command.
   if have_cmd "$1"; then
     "$@" 2>&1
+    return $?
   else
     echo "$1 not found"
+    return 127
   fi
 }
 
@@ -125,8 +139,10 @@ pip_run() {
 TF_PKG_PATTERN='^(tensorflow|tf-nightly|tensorflow-cpu|tensorflow-gpu|tensorflow-rocm|tensorflow-macos|tensorflow-metal|intel-tensorflow)\b'
 
 HEADER_WIDTH=68
-# Create a string of HEADER_WIDTH "=" characters
-HEADER=$(printf "%*s" "$HEADER_WIDTH" "" | sed 's/ /=/g')
+# Build a string of HEADER_WIDTH "=" characters using shell builtins only
+# (printf -v + parameter expansion), avoiding a fork+pipe through sed.
+printf -v HEADER '%*s' "$HEADER_WIDTH" ''
+HEADER=${HEADER// /=}
 
 print_header () {
   # This function simply prints the header with even spacing,
@@ -212,8 +228,12 @@ EOF
     echo "Not found"
   fi
 
+  # Fetch "pip list" once and reuse it below for the TensorFlow package
+  # conflict check, instead of shelling out to pip a second time.
+  PIP_LIST_OUTPUT="$(pip_run list 2>&1)"
+
   print_header 'check pips'
-  pip_run list 2>&1 | grep -E 'proto|numpy|keras|tensorflow|tf_nightly|tf-nightly'
+  grep -E 'proto|numpy|keras|tensorflow|tf_nightly|tf-nightly' <<<"$PIP_LIST_OUTPUT"
 
 
   print_header 'check for virtualenv'
@@ -232,12 +252,12 @@ EOF
   print_header 'tensorflow package conflicts'
   # Multiple TensorFlow distributions in the same environment frequently cause
   # confusing import errors; surface them so triage can spot the conflict.
-  TF_PKGS="$(pip_run list 2>/dev/null | grep -iE "$TF_PKG_PATTERN" || true)"
+  TF_PKGS="$(grep -iE "$TF_PKG_PATTERN" <<<"$PIP_LIST_OUTPUT" || true)"
   if [ -z "$TF_PKGS" ]; then
     echo "No TensorFlow packages found via pip."
   else
     echo "$TF_PKGS"
-    TF_COUNT="$(echo "$TF_PKGS" | grep -icE "$TF_PKG_PATTERN")"
+    TF_COUNT="$(grep -icE "$TF_PKG_PATTERN" <<<"$TF_PKGS")"
     if [ "$TF_COUNT" -gt 1 ]; then
       echo "WARNING: multiple TensorFlow distributions detected; this can cause import conflicts."
     fi
@@ -315,16 +335,17 @@ EOF
 
   print_header 'build / hermetic accelerator config'
   # Surface the environment variables that control modern (hermetic) CUDA and
-  # ROCm builds. See .bazelrc for how these are consumed.
+  # ROCm builds. See .bazelrc for how these are consumed. Uses indirect
+  # parameter expansion instead of eval - one less string re-parse per
+  # variable, and no eval footgun.
   for var in CC CXX \
              TF_NEED_CUDA TF_NEED_ROCM TF_CUDA_VERSION TF_CUDNN_VERSION \
              HERMETIC_CUDA_VERSION HERMETIC_CUDNN_VERSION \
              CUDA_HOME CUDA_PATH CUDA_TOOLKIT_PATH \
              ROCM_PATH HIP_PATH \
              XLA_FLAGS TF_XLA_FLAGS TPU_NAME; do
-    eval "marker=\${$var+set} val=\"\$$var\""
-    if [ "${marker:-}" = "set" ]; then
-      echo "$var=$val"
+    if [ -n "${!var+set}" ]; then
+      echo "$var=${!var}"
     else
       echo "$var is unset"
     fi
@@ -332,6 +353,10 @@ EOF
 
   print_header 'accelerator: nvidia gpu'
   run_cmd nvidia-smi
+  NVIDIA_STATUS=$?
+  if [ -n "$ACCEL_FLAGS_FILE" ] && [ "$NVIDIA_STATUS" -eq 0 ]; then
+    echo "HAS_NVIDIA=1" >> "$ACCEL_FLAGS_FILE"
+  fi
 
   print_header 'cuda libs'
   # Find cudart/cudnn files
@@ -343,6 +368,10 @@ EOF
 
   print_header 'accelerator: amd / rocm gpu'
   run_cmd rocm-smi
+  ROCM_STATUS=$?
+  if [ -n "$ACCEL_FLAGS_FILE" ] && [ "$ROCM_STATUS" -eq 0 ]; then
+    echo "HAS_ROCM=1" >> "$ACCEL_FLAGS_FILE"
+  fi
   if [ "$VERBOSE" -eq 1 ]; then
     print_header 'rocminfo'
     run_cmd rocminfo
@@ -355,9 +384,16 @@ EOF
   # tensorflow-metal is the PluggableDevice that enables GPU acceleration on
   # Apple Silicon; report whether it is installed and the GPU chipset.
   if [ "$(uname -s)" = "Darwin" ]; then
-    if pip_run show tensorflow-metal >/dev/null 2>&1; then
+    # Single "pip show" call, reused both for the existence check and for
+    # the Name/Version detail line below (previously called twice).
+    TF_METAL_INFO="$(pip_run show tensorflow-metal 2>&1)"
+    TF_METAL_STATUS=$?
+    if [ "$TF_METAL_STATUS" -eq 0 ]; then
       echo "tensorflow-metal installed:"
-      pip_run show tensorflow-metal 2>&1 | grep -iE '^(Name|Version):'
+      grep -iE '^(Name|Version):' <<<"$TF_METAL_INFO"
+      if [ -n "$ACCEL_FLAGS_FILE" ]; then
+        echo "HAS_METAL=1" >> "$ACCEL_FLAGS_FILE"
+      fi
     else
       echo "tensorflow-metal not installed"
     fi
@@ -396,14 +432,23 @@ EOF
 # Optional machine-readable JSON summary
 # ----------------------------------------------------------------------------
 if [ "$EMIT_JSON" -eq 1 ]; then
-  # Detect accelerators in the shell and hand the booleans to Python, which
-  # assembles a structured, easy-to-parse summary of the key facts.
+  # nvidia-smi / rocm-smi / tensorflow-metal detection already happened once
+  # above (inside the report-generation block); read the results back in
+  # from ACCEL_FLAGS_FILE instead of re-invoking those (potentially slow)
+  # tools a second time.
   HAS_NVIDIA=0
-  if have_cmd nvidia-smi && nvidia-smi >/dev/null 2>&1; then HAS_NVIDIA=1; fi
   HAS_ROCM=0
-  if have_cmd rocm-smi && rocm-smi >/dev/null 2>&1; then HAS_ROCM=1; fi
   HAS_METAL=0
-  if pip_run show tensorflow-metal >/dev/null 2>&1; then HAS_METAL=1; fi
+  if [ -n "$ACCEL_FLAGS_FILE" ] && [ -s "$ACCEL_FLAGS_FILE" ]; then
+    # shellcheck disable=SC1090
+    . "$ACCEL_FLAGS_FILE"
+  fi
+  # The block above only probes tensorflow-metal on Darwin hosts (matching
+  # the text report). On any other platform, fall back to a direct check so
+  # the JSON summary's accelerator info stays complete.
+  if [ "$HAS_METAL" -ne 1 ] && [ "$(uname -s)" != "Darwin" ]; then
+    if pip_run show tensorflow-metal >/dev/null 2>&1; then HAS_METAL=1; fi
+  fi
 
   TFENV_HAS_NVIDIA="$HAS_NVIDIA" \
   TFENV_HAS_ROCM="$HAS_ROCM" \

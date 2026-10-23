@@ -36,6 +36,8 @@ RUN /setup.python.sh python3.13 /builder.requirements.txt
 RUN /setup.python.sh python3.13-nogil /builder.requirements.txt
 RUN /setup.python.sh python3.14 /builder.requirements.txt
 RUN /setup.python.sh python3.14-nogil /builder.requirements.txt
+RUN /setup.python.sh python3.15 /builder.requirements.txt
+RUN /setup.python.sh python3.15-nogil /builder.requirements.txt
 
 # Since we are using python3.12 as the default python version, we need to
 # install python3.12 last for now.
@@ -43,7 +45,7 @@ RUN /setup.python.sh python3.14-nogil /builder.requirements.txt
 RUN /setup.python.sh python3.12 /builder.requirements.txt
 
 ARG INSTALL_NVIDIA_PACKAGES=false
-ARG NVIDIA_PACKAGES_FILE=cuda12.1_cudnn9.1.packages.txt
+ARG NVIDIA_PACKAGES_FILE=cuda12.1_cudnn9.8.packages.txt
 COPY ${NVIDIA_PACKAGES_FILE} /nvidia.packages.txt
 COPY setup.sources.cudnn.sh /setup.sources.cudnn.sh
 
@@ -69,7 +71,6 @@ RUN if [ "${INSTALL_CMAKE_TOOLCHAIN}" = "true" ]; then \
 # Setup links for TensorFlow to compile.
 # Referenced in devel.usertools/*.bazelrc.
 # Set python3.12 as the default python version.
-# TF does not support python3.13.
 RUN ln -sf /usr/bin/python3.12 /usr/bin/python3
 RUN ln -sf /usr/bin/python3.12 /usr/bin/python
 RUN ln -sf /usr/lib/python3.12 /usr/lib/tf_python

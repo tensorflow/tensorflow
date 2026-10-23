@@ -20,15 +20,13 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
+#include "xla/backends/gpu/runtime/per_device_state.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
@@ -52,11 +50,12 @@ struct AllToAllConfig {
 class AllToAllThunk : public CollectiveThunk {
  public:
   AllToAllThunk(ThunkInfo thunk_info, const HloAllToAllInstruction* instr,
-                std::vector<Buffer> buffers, bool p2p_memcpy_enabled);
+                std::vector<Buffer> buffers, bool p2p_memcpy_enabled,
+                int devices_per_host);
 
   AllToAllThunk(ThunkInfo thunk_info, const AllToAllConfig& config,
                 std::vector<CollectiveThunk::Buffer> buffers,
-                bool p2p_memcpy_enabled);
+                bool p2p_memcpy_enabled, int devices_per_host);
 
   // Returns whether the given instruction can be lowered to an all-to-all
   // call.
@@ -73,7 +72,8 @@ class AllToAllThunk : public CollectiveThunk {
 
   static absl::StatusOr<std::unique_ptr<AllToAllThunk>> FromProto(
       ThunkInfo thunk_info, const AllToAllThunkProto& thunk_proto,
-      absl::Span<const BufferAllocation> buffer_allocations);
+      absl::Span<const BufferAllocation> buffer_allocations,
+      int devices_per_host);
 
   absl::StatusOr<ThunkProto> ToProto() const override;
 
@@ -91,23 +91,24 @@ class AllToAllThunk : public CollectiveThunk {
   bool CanUseSymmetricBuffer() const override { return true; }
 
  private:
+  struct DeviceState {
+    // A uint64_t array of size num_devices. The array is used in each call to
+    // RunCollective(), but is preallocated as CUDA host memory and written to
+    // in the first call to Initialize(), since addresses won't change across
+    // calls to RunCollective().
+    std::unique_ptr<se::MemoryAllocation> receive_pointer_map;
+    // Event to synchronize streams on different devices at the start/end of the
+    // kernel.
+    std::unique_ptr<se::Event> event;
+    // Events for all ranks in the clique, populated once during Initialize().
+    // Not internally synchronized; relies on host-side thunk initialization and
+    // execution being serialized per device.
+    std::vector<se::Event*> events;
+  };
+
   const AllToAllConfig config_;
   bool p2p_memcpy_enabled_ = false;
-
-  absl::Mutex pointer_maps_mutex_;
-  // Maps from a device to a uint64_t array of size num_devices. The array is
-  // used in each call to RunCollective(), but is preallocated as CUDA host
-  // memory and written to in the first call to Initialize(), since addresses
-  // won't change across calls to RunCollective().
-  absl::flat_hash_map<se::StreamExecutor*,
-                      std::unique_ptr<se::MemoryAllocation>>
-      receive_pointer_maps_ ABSL_GUARDED_BY(pointer_maps_mutex_);
-
-  absl::Mutex events_mutex_;
-  // Events to synchronize steams on different devices at the start/end of the
-  // kernel.
-  absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<se::Event>> events_
-      ABSL_GUARDED_BY(events_mutex_);
+  PerDeviceState<DeviceState> per_device_states_;
 };
 
 absl::Status RunAllToAll(bool has_split_dimension,
@@ -121,7 +122,7 @@ absl::Status RunMemCpyAllToAll(bool has_split_dimension,
                                uint64_t receive_pointer_map[],
                                const GpuCliqueKey& clique_key, RankId rank,
                                se::Event* event,
-                               std::vector<se::Event*>& events);
+                               absl::Span<se::Event* const> events);
 
 }  // namespace gpu
 }  // namespace xla

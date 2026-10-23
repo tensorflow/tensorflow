@@ -65,7 +65,7 @@ cc_library(
 )
 
 xla_cc_binary(
-    name = "fusion_to_mlir",
+    name = "gpu_fusion_to_mlir",
     testonly = 1,
     srcs = ["fusion_to_mlir.cc"],
     # We want to use this tool for lit tests. Due to hermetic cuda, we need to
@@ -82,6 +82,37 @@ xla_cc_binary(
         "@com_google_absl//absl/status:status_macros",
         "@llvm-project//llvm:Support",
         "@tsl//tsl/platform:platform_port",
+    ],
+)
+
+xla_cc_binary(
+    name = "fusion_to_tensorir",
+    testonly = 1,
+    srcs = ["fusion_to_tensorir.cc"],
+    linkopts = ["-Wl,-rpath,$$ORIGIN/../lit_lib"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    visibility = [":codegen_tests"],
+    deps = [
+        "//xla/backends/gpu/codegen/tensor_ir:hlo_to_tensor_ir",
+        "//xla/backends/gpu/codegen/tensor_ir:support",
+        "//xla/hlo/ir:hlo",
+        "//xla/service/llvm_ir:llvm_util",
+        "//xla/tools:hlo_module_loader",
+        "@com_google_absl//absl/status:statusor",
+        "@cuda_tile//:CudaTileDialect",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MlirTranslateMain",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TranslateLib",
+        "@tensor_ir//:NVTensorIRCompilerOptions",
+        "@tensor_ir//:NVTensorIRCudaTilePipelines",
+        "@tensor_ir//:NVTensorIRDialect",
     ],
 )
 
@@ -108,7 +139,6 @@ xla_cc_binary(
         "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
         "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:pjrt_gpu_client_registry",
-        "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -118,7 +148,6 @@ xla_cc_binary(
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
         "@llvm-project//llvm:Support",
-        "@tsl//tsl/platform:statusor",
     ] + if_cuda_is_configured([
         "//xla/stream_executor/cuda:all_runtime",
     ]) + if_rocm_is_configured([

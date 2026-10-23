@@ -23,11 +23,14 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/backends/cpu/target_machine_options.h"
+#include "xla/layout.h"
+#include "xla/layout_util.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_dimensions.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology.h"
+#include "xla/shape_util.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -168,6 +171,64 @@ TEST(CpuTopologyDescriptionTest, MemorySpaceKindIds) {
                   UnpinnedHostMemorySpace::kKindId));
   EXPECT_EQ(topology.GetDefaultMemorySpaceKindId(),
             CpuDeviceMemorySpace::kKindId);
+}
+
+TEST(CpuTopologyDescriptionTest, ProcessIdAndIndexOnProcess) {
+  std::vector<CpuTopology::CpuDevice> cpu_devices = {
+      {0, 0}, {0, 1}, {1, 0}, {1, 1}};
+  xla::cpu::TargetMachineOptions target_machine_options(
+      /*triple=*/"triple", /*cpu=*/"cpu", /*features=*/"");
+  CpuTopologyDescription topology(
+      xla::CpuId(), "cpu", "1.0",
+      CpuTopology(cpu_devices, target_machine_options));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto process_and_index,
+      topology.ProcessIdAndIndexOnProcessForLogicalDeviceOfDefaultType(
+          GlobalDeviceId(2)));
+  EXPECT_EQ(process_and_index.first, ProcessId(1));
+  EXPECT_EQ(process_and_index.second, 0);
+
+  EXPECT_FALSE(topology
+                   .ProcessIdAndIndexOnProcessForLogicalDeviceOfDefaultType(
+                       GlobalDeviceId(10))
+                   .ok());
+}
+
+TEST(CpuTopologyDescriptionTest, GetDefaultLayout) {
+  std::vector<CpuTopology::CpuDevice> cpu_devices = {{0, 0}};
+  xla::cpu::TargetMachineOptions target_machine_options(
+      /*triple=*/"triple", /*cpu=*/"cpu", /*features=*/"");
+  CpuTopologyDescription topology(
+      xla::CpuId(), "cpu", "1.0",
+      CpuTopology(cpu_devices, target_machine_options));
+
+  for (PrimitiveType element_type : {S4, S32}) {
+    const Shape shape = ShapeUtil::MakeShape(element_type, {2, 3});
+    ASSERT_OK_AND_ASSIGN(
+        Layout default_layout,
+        topology.GetDefaultLayout(shape.element_type(), shape.dimensions()));
+    ASSERT_OK_AND_ASSIGN(
+        Shape canonical_shape,
+        topology.MakeCanonicalShapeForMemorySpace(CpuDeviceMemorySpace::kKindId,
+                                                  shape, /*layout=*/nullptr));
+    EXPECT_EQ(default_layout, canonical_shape.layout());
+
+    Layout untiled_layout = LayoutUtil::MakeDescendingLayout(2);
+    ASSERT_OK_AND_ASSIGN(
+        Shape canonical_from_untiled,
+        topology.MakeCanonicalShapeForMemorySpace(CpuDeviceMemorySpace::kKindId,
+                                                  shape, &untiled_layout));
+    EXPECT_EQ(default_layout, canonical_from_untiled.layout());
+  }
+
+  const Shape s4_shape = ShapeUtil::MakeShape(S4, {2, 3});
+  Layout bad_s4_layout = LayoutUtil::MakeDescendingLayout(2);
+  bad_s4_layout.set_element_size_in_bits(8);
+  EXPECT_FALSE(topology
+                   .MakeCanonicalShapeForMemorySpace(
+                       CpuDeviceMemorySpace::kKindId, s4_shape, &bad_s4_layout)
+                   .ok());
 }
 
 }  // namespace

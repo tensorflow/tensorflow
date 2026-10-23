@@ -47,12 +47,15 @@ cc_library(
 xla_cc_test(
     name = "error_util_test",
     srcs = ["error_util_test.cc"],
+    # -supports_dynamic_linker: Forces static linking even with --dynamic_mode=fully
+    features = ["-supports_dynamic_linker"],
     linkstatic = 1,
     deps = [
         ":error_util",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "@llvm-project//mlir:IR",

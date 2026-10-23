@@ -53,6 +53,7 @@ cuDeviceGetAttribute
 cuDeviceGetByPCIBusId
 cuDeviceGetCount
 cuDeviceGetDefaultMemPool
+cuDeviceGetDevResource
 cuDeviceGetExecAffinitySupport
 cuDeviceGetGraphMemAttribute
 cuDeviceGetLuid
@@ -78,6 +79,9 @@ cuDeviceSetGraphMemAttribute
 cuDeviceSetMemPool
 cuDeviceTotalMem
 cuDeviceTotalMem_v2
+cuDevResourceGenerateDesc
+cuDevSmResourceSplit
+cuDevSmResourceSplitByCount
 cuDriverGetVersion
 cuEGLApiInit
 cuEGLStreamConsumerAcquireFrame
@@ -241,6 +245,9 @@ cuGraphicsUnmapResources_ptsz
 cuGraphicsUnregisterResource
 cuGraphicsVDPAURegisterOutputSurface
 cuGraphicsVDPAURegisterVideoSurface
+cuGreenCtxCreate
+cuGreenCtxDestroy
+cuGreenCtxStreamCreate
 cuImportExternalMemory
 cuImportExternalSemaphore
 cuInit

@@ -888,9 +888,11 @@ TEST_F(ConstantFoldingTest, NeutralElement) {
         EXPECT_EQ("x", node.input(0));
         EXPECT_EQ(ctrl_ones_name, node.input(1));
       } else if (name == "div2") {
-        EXPECT_EQ("Reciprocal", node.op());
-        EXPECT_EQ("y", node.input(0));
-        EXPECT_EQ(ctrl_ones_name, node.input(1));
+        // ones / y is not rewritten to Reciprocal(y): the CPU Reciprocal
+        // kernel is not exactly IEEE division for float (see issue #102771).
+        EXPECT_EQ("Div", node.op());
+        EXPECT_EQ(ones_name, node.input(0));
+        EXPECT_EQ("y", node.input(1));
       } else if (name == "floordiv") {
         EXPECT_EQ("FloorDiv", node.op());
         EXPECT_EQ("x", node.input(0));

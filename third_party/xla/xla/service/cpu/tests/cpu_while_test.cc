@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
@@ -25,8 +26,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace cpu {
@@ -69,8 +69,8 @@ ENTRY entry {
 )";
 
   // Compile and execute the computation.
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
-  TF_ASSERT_OK_AND_ASSIGN(const Literal result, Execute(std::move(module), {}));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(const Literal result, Execute(std::move(module), {}));
 
   // Check the output correctness.
   LiteralTestUtil::ExpectR0Equal(3, result);
@@ -121,12 +121,12 @@ TEST_F(CpuWhileTest, WhileSort) {
   )";
 
   // Compile and execute the computation.
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
 
   Literal input = LiteralUtil::CreateR1<float>({3, 1, 4, 2});
 
-  TF_ASSERT_OK_AND_ASSIGN(const Literal result,
-                          Execute(std::move(module), {&input}));
+  ASSERT_OK_AND_ASSIGN(const Literal result,
+                       Execute(std::move(module), {&input}));
 
   // Check the output correctness.
   LiteralTestUtil::ExpectR1Equal(absl::MakeConstSpan({4.0f, 3.0f, 2.0f, 1.0f}),
@@ -277,8 +277,108 @@ TEST_F(CpuWhileTest, WhileDotDoesNotError) {
   Literal input_real = LiteralUtil::CreateR3<float>({{{1, 2}, {3, 4}}});
   Literal input_imag = LiteralUtil::CreateR3<float>({{{9, 10}, {11, 12}}});
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
-  TF_EXPECT_OK(Execute(std::move(module), {&input_real, &input_imag}));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  EXPECT_OK(Execute(std::move(module), {&input_real, &input_imag}));
+}
+
+TEST_F(CpuWhileTest, FusedDynamicUpdateSliceInSmallWhileLoop) {
+  const std::string hlo_text = R"(
+    HloModule FusedDynamicUpdateSliceInSmallWhileLoop
+
+    fused_dus {
+      param_data = f32[8] parameter(0)
+      param_update = f32[2] parameter(1)
+      param_idx = s32[] parameter(2)
+      ROOT dus = f32[8] dynamic-update-slice(param_data, param_update, param_idx)
+    }
+
+    body {
+      loop_state = (s32[], f32[8]) parameter(0)
+      idx = s32[] get-tuple-element(loop_state), index=0
+      data = f32[8] get-tuple-element(loop_state), index=1
+      one = s32[] constant(1)
+      next_idx = s32[] add(idx, one)
+      update = f32[2] constant({10.0, 20.0})
+      fused = f32[8] fusion(data, update, idx), kind=kLoop, calls=fused_dus
+      ROOT new_state = (s32[], f32[8]) tuple(next_idx, fused)
+    }
+
+    cond {
+      loop_state = (s32[], f32[8]) parameter(0)
+      idx = s32[] get-tuple-element(loop_state), index=0
+      limit = s32[] constant(3)
+      ROOT cmp = pred[] compare(idx, limit), direction=LT
+    }
+
+    ENTRY main {
+      init_idx = s32[] constant(0)
+      zero = f32[] constant(0.0)
+      init_data = f32[8] broadcast(zero), dimensions={}
+      init_state = (s32[], f32[8]) tuple(init_idx, init_data)
+      while_loop = (s32[], f32[8]) while(init_state), condition=cond, body=body
+      ROOT result = f32[8] get-tuple-element(while_loop), index=1
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(const Literal result, Execute(std::move(module), {}));
+
+  LiteralTestUtil::ExpectR1Equal(
+      absl::MakeConstSpan({10.0f, 10.0f, 10.0f, 20.0f, 0.0f, 0.0f, 0.0f, 0.0f}),
+      result);
+}
+
+// The two loops share one kernel, which must use each call's own buffers.
+TEST_F(CpuWhileTest, IdenticalSmallWhileLoopsSharedKernelCorrect) {
+  constexpr absl::string_view hlo_text = R"(
+    HloModule IdenticalSmallWhileLoops
+
+    body {
+      state = (s32[], f32[4]) parameter(0)
+      i = s32[] get-tuple-element(state), index=0
+      x = f32[4] get-tuple-element(state), index=1
+      one = s32[] constant(1)
+      next_i = s32[] add(i, one)
+      c = f32[] constant(2)
+      cb = f32[4] broadcast(c), dimensions={}
+      sum = f32[4] add(x, cb)
+      next_x = f32[4] multiply(sum, cb)
+      ROOT next_state = (s32[], f32[4]) tuple(next_i, next_x)
+    }
+
+    cond {
+      state = (s32[], f32[4]) parameter(0)
+      i = s32[] get-tuple-element(state), index=0
+      limit = s32[] constant(5)
+      ROOT lt = pred[] compare(i, limit), direction=LT
+    }
+
+    ENTRY main {
+      p0 = f32[4] parameter(0)
+      p1 = f32[4] parameter(1)
+      zero = s32[] constant(0)
+      init0 = (s32[], f32[4]) tuple(zero, p0)
+      init1 = (s32[], f32[4]) tuple(zero, p1)
+      while0 = (s32[], f32[4]) while(init0), condition=cond, body=body
+      while1 = (s32[], f32[4]) while(init1), condition=cond, body=body
+      r0 = f32[4] get-tuple-element(while0), index=1
+      r1 = f32[4] get-tuple-element(while1), index=1
+      ROOT r = (f32[4], f32[4]) tuple(r0, r1)
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  Literal p0 = LiteralUtil::CreateR1<float>({0, 1, 2, 3});
+  Literal p1 = LiteralUtil::CreateR1<float>({10, 20, 30, 40});
+  ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&p0, &p1}));
+
+  // Five iterations of x = (x + 2) * 2 give 32 * x + 124.
+  std::vector<Literal> results = result.DecomposeTuple();
+  ASSERT_EQ(results.size(), 2);
+  LiteralTestUtil::ExpectR1Equal(
+      absl::MakeConstSpan({124.0f, 156.0f, 188.0f, 220.0f}), results[0]);
+  LiteralTestUtil::ExpectR1Equal(
+      absl::MakeConstSpan({444.0f, 764.0f, 1084.0f, 1404.0f}), results[1]);
 }
 
 }  // namespace

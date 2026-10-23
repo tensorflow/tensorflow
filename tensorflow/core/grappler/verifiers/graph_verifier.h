@@ -37,8 +37,8 @@ namespace grappler {
 //     specification of the backend.
 class GraphVerifier {
  public:
-  GraphVerifier() {}
-  virtual ~GraphVerifier() {}
+  GraphVerifier() = default;
+  virtual ~GraphVerifier() = default;
 
   // A name for the verifier.
   virtual std::string name() const = 0;

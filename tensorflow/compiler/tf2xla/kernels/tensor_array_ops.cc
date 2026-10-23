@@ -372,6 +372,11 @@ class TensorArrayScatterOp : public XlaOpKernel {
     xla::XlaBuilder* b = ctx->builder();
 
     const TensorShape value_shape = ctx->InputShape(2);
+    OP_REQUIRES(
+        ctx, value_shape.dims() >= 1,
+        errors::InvalidArgument("TensorArray scatter/unstack requires value to "
+                                "have rank >= 1, got scalar with shape ",
+                                value_shape.DebugString()));
 
     XlaResource* resource;
     OP_REQUIRES_OK(ctx, ctx->GetResourceInput(0, &resource));

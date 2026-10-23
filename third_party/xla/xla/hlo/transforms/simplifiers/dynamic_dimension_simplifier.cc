@@ -83,7 +83,13 @@ absl::StatusOr<bool> SliceConcatForwarding(HloInstruction* slice) {
   if (slice->slice_strides(0) != 1) {
     return false;
   }
+  if (slice->shape().is_dynamic_dimension(concat_dim)) {
+    return false;
+  }
   for (HloInstruction* operand : concat->operands()) {
+    if (operand->shape().is_dynamic_dimension(concat_dim)) {
+      return false;
+    }
     if (size_so_far == slice->slice_starts(0) &&
         operand->shape().dimensions(0) == slice_size) {
       // Found an operand that can be forwarded.

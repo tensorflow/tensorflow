@@ -28,6 +28,8 @@ tsl::Fprint128 GetHloFingerprint(const HloInstruction& instr);
 
 std::string GetCodegenOptionsFingerprint(const DebugOptions& options);
 
+std::string AutotuneFingerprintToString(tsl::Fprint128 fingerprint);
+
 }  // namespace xla
 
 #endif  // XLA_BACKENDS_AUTOTUNER_AUTOTUNE_FINGERPRINT_H_

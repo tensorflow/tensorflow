@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/tsl/lib/io/format.h"
 
+#include <cstddef>
 #include <limits>
 
 #include "absl/status/status.h"
@@ -23,6 +24,7 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "tsl/platform/coding.h"
+#include "tsl/platform/platform.h"
 #include "tsl/platform/raw_coding.h"
 #include "tsl/platform/snappy.h"
 
@@ -46,15 +48,15 @@ absl::Status BlockHandle::DecodeFrom(absl::string_view* input) {
 }
 
 void Footer::EncodeTo(std::string* dst) const {
-#ifndef NDEBUG
-  const size_t original_size = dst->size();
-#endif
+  [[maybe_unused]] const size_t original_size = dst->size();
   metaindex_handle_.EncodeTo(dst);
   index_handle_.EncodeTo(dst);
   dst->resize(2 * BlockHandle::kMaxEncodedLength);  // Padding
   core::PutFixed32(dst, static_cast<uint32_t>(kTableMagicNumber & 0xffffffffu));
   core::PutFixed32(dst, static_cast<uint32_t>(kTableMagicNumber >> 32));
-  assert(dst->size() == original_size + kEncodedLength);
+  if constexpr (tsl::kIsDebugBuild) {
+    assert(dst->size() == original_size + kEncodedLength);
+  }
 }
 
 absl::Status Footer::DecodeFrom(absl::string_view* input) {

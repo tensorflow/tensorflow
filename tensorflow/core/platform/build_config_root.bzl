@@ -33,9 +33,12 @@ load(
     _tf_additional_profiler_deps = "tf_additional_profiler_deps",
     _tf_additional_tpu_ops_deps = "tf_additional_tpu_ops_deps",
     _tf_additional_xla_deps_py = "tf_additional_xla_deps_py",
+    _tf_cuda_2gpu_tests_tags = "tf_cuda_2gpu_tests_tags",
+    _tf_cuda_base_tests_tags = "tf_cuda_base_tests_tags",
     _tf_cuda_tests_tags = "tf_cuda_tests_tags",
     _tf_exec_properties = "tf_exec_properties",
     _tf_gpu_tests_tags = "tf_gpu_tests_tags",
+    _tf_override_test_tags_by_target_name = "tf_override_test_tags_by_target_name",
 )
 load(
     "//tensorflow/core/platform:build_config_root.default.bzl",
@@ -61,6 +64,9 @@ tf_additional_plugin_deps = _tf_additional_plugin_deps
 tf_additional_profiler_deps = _tf_additional_profiler_deps
 tf_additional_tpu_ops_deps = _tf_additional_tpu_ops_deps
 tf_additional_xla_deps_py = _tf_additional_xla_deps_py
+tf_cuda_2gpu_tests_tags = _tf_cuda_2gpu_tests_tags
+tf_cuda_base_tests_tags = _tf_cuda_base_tests_tags
 tf_cuda_tests_tags = _tf_cuda_tests_tags
 tf_exec_properties = _tf_exec_properties
+tf_override_test_tags_by_target_name = _tf_override_test_tags_by_target_name
 tf_gpu_tests_tags = _tf_gpu_tests_tags

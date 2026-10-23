@@ -212,7 +212,7 @@ bool RaiseTargetSubgraphsPass::RaiseTargetSubgraphsForBlock(
   };
 
   // Given a list of `Operation`s to partition, raise them to a new
-  // function. If the partitons is of type "CPU" then it may contain
+  // function. If the partitions are of type "CPU" then they may contain
   // other device subgraphs that need to be raised. We recur on
   // any nested blocks of "CPU" ops and skip raising "CPU" ops for the
   // remainder of that recursive call.
@@ -236,7 +236,7 @@ bool RaiseTargetSubgraphsPass::RaiseTargetSubgraphsForBlock(
           auto op_device = GetInferenceDeviceTypeForOp(&op);
           if (op_device_is(op, kCpuDeviceName)) {
             // The recently raised func is device type cpu & `op` is a "CPU".
-            // Recursivley call again to raise any non-"CPU" subgraphs contained
+            // Recursively call again to raise any non-"CPU" subgraphs contained
             // within nested region of `op`.
             for (auto& region : op.getRegions())
               for (auto& block : region.getBlocks())

@@ -54,6 +54,20 @@ py_library(
     srcs = ["windows_lib_diagnostics.py"],
 )
 
+tf_py_strict_test(
+    name = "windows_lib_diagnostics_test",
+    size = "small",
+    srcs = ["windows_lib_diagnostics_test.py"],
+    main = "windows_lib_diagnostics_test.py",
+    tags = [
+        "no_pip",
+    ],
+    deps = [
+        ":client_testlib",
+        ":windows_lib_diagnostics",
+    ],
+)
+
 py_library(
     name = "self_check",
     srcs = ["self_check.py"],
@@ -382,6 +396,21 @@ tf_py_strict_test(
         ":build_info",
         ":client_testlib",
         "//tensorflow/compiler/tf2tensorrt:_pywrap_py_utils",
+    ],
+)
+
+tf_py_strict_test(
+    name = "self_check_test",
+    size = "small",
+    srcs = ["self_check_test.py"],
+    main = "self_check_test.py",
+    tags = [
+        "no_pip",
+        "notap",
+    ],
+    deps = [
+        ":client_testlib",
+        ":self_check",
     ],
 )
 

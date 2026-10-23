@@ -121,6 +121,63 @@ class SplitOpTest(test.TestCase):
     self.assertAllEqual(r[2], value[4:])
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.disable_xla(
+      "XLA shape inference rejects the reshape to an INT64_MAX dimension, so "
+      "the test cannot reach the SplitV kernel under XLA"
+  )
+  def testSizeSplitsOverflowRaises(self):
+    # Regression test for GitHub issue 126126. The cumulative sum of
+    # size_splits was computed with unchecked signed addition, so a wrapped
+    # total could equal the input dimension, pass validation, and reach a
+    # fatal `Tensor::Slice` invariant in the aligned slicing path. It must
+    # raise instead.
+    i64_max = (1 << 63) - 1
+    i32_max = (1 << 31) - 1
+    for input_size, size_splits, dtype, message in (
+        (i64_max, [i64_max, i64_max, i64_max, 2], dtypes.int64, "overflow"),
+        # A -1 does not keep the other sizes from overflowing.
+        (i64_max, [-1, i64_max, i64_max, 2], dtypes.int64, "overflow"),
+        # int32 sizes overflow at their own width in the kernel. In graph
+        # mode the shape function, which sums in int64, rejects the mismatch
+        # before the kernel runs.
+        (5, [i32_max, i32_max, 5], dtypes.int32, "overflow|can't split axis"),
+    ):
+      with self.subTest(size_splits=size_splits, dtype=dtype.name):
+        value = array_ops.reshape(
+            constant_op.constant([], dtype=dtypes.float32),
+            constant_op.constant([input_size, 0], dtype=dtypes.int64),
+        )
+        with self.assertRaisesRegex(
+            (ValueError, errors_impl.InvalidArgumentError), message
+        ):
+          self.evaluate(
+              array_ops.split(
+                  value, constant_op.constant(size_splits, dtype=dtype), axis=0
+              )
+          )
+
+  @test_util.run_in_graph_and_eager_modes
+  @test_util.disable_xla("Checks the SplitV kernel, which XLA replaces")
+  def testInputSizeAboveSizeSplitsTypeRaises(self):
+    # With int32 size_splits, an input size above INT32_MAX was truncated to
+    # int32, so [1, 2] matched an input of size 2**32 + 3 and the split
+    # silently dropped the rest of the input. In graph mode the shape
+    # function, which compares in int64, rejects the mismatch first.
+    value = array_ops.reshape(
+        constant_op.constant([], dtype=dtypes.float32),
+        constant_op.constant([(1 << 32) + 3, 0], dtype=dtypes.int64),
+    )
+    with self.assertRaisesRegex(
+        (ValueError, errors_impl.InvalidArgumentError),
+        r"must be <= max\(Tlen\)|can't split axis",
+    ):
+      self.evaluate(
+          array_ops.split(
+              value, constant_op.constant([1, 2], dtype=dtypes.int32), axis=0
+          )
+      )
+
+  @test_util.run_in_graph_and_eager_modes
   def testListOfScalarTensors(self):
     a = math_ops.cast(5, dtypes.int32)
     b = math_ops.cast(6, dtypes.int32)
@@ -455,6 +512,35 @@ class SplitOpTest(test.TestCase):
       expected = x[:, start:start+split_size, :]
       start += split_size
       self.assertAllEqual(result, expected)
+
+  @test_util.run_in_graph_and_eager_modes
+  @test_util.disable_xla("Checks the SplitV GPU kernel, which XLA replaces")
+  def testSplitVGPUInt8LargeDimsAndUnevenSplits(self):
+    cases = [
+        # Uneven splits (fixed_size=False), total_cols = 18 * 18 = 324 > 127.
+        ([2, 18, 18], [2] + [1] * 16, 1),
+        # Uneven splits (fixed_size=False), total_cols = 70 in [65, 127].
+        ([2, 70, 1], [54] + [1] * 16, 1),
+        # Uneven splits (fixed_size=False), prefix_dim_size = 130 > 127.
+        ([130, 18, 1], [2] + [1] * 16, 1),
+        # Uneven splits (fixed_size=False), total_cols = 2, total_rows = 2.
+        ([2, 2, 1], [1, 1] + [0] * 15, 1),
+        # Equal splits (fixed_size=True), total_cols = 17 * 18 = 306 > 127.
+        ([1, 17, 18], [1] * 17, 1),
+    ]
+    with test_util.device(use_gpu=True):
+      for shape, splits, axis in cases:
+        with self.subTest(shape=shape, splits=splits, axis=axis):
+          x = np.arange(np.prod(shape), dtype=np.float32).reshape(shape)
+          size_splits = array_ops.placeholder_with_default(
+              constant_op.constant(splits, dtype=dtypes.int8),
+              shape=[len(splits)],
+          )
+          outputs = self.evaluate(array_ops.split(x, size_splits, axis=axis))
+          expected = np.split(x, np.cumsum(splits[:-1]), axis=axis)
+          self.assertLen(outputs, len(expected))
+          for actual_part, expected_part in zip(outputs, expected):
+            self.assertAllEqual(actual_part, expected_part)
 
 
 if __name__ == "__main__":

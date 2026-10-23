@@ -1,0 +1,65 @@
+// RUN: fusion_to_triton %s | FileCheck %s
+// RUN: triton_test_correctness --abs_error_bound=1e-4 --rel_error_bound=1e-4 %s
+
+max_region {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT max = f32[] maximum(p0, p1)
+}
+
+add_region {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+
+fusion {
+  p = f32[16,32] parameter(0)
+  c_neg_inf = f32[] constant(-inf)
+  c_zero = f32[] constant(0)
+  max = f32[16] reduce(p, c_neg_inf), dimensions={1}, to_apply=max_region, backend_config={sizes:[8]}
+  max_bcast = f32[16,32] broadcast(max), dimensions={0}
+  sub = f32[16,32] subtract(p, max_bcast)
+  exp = f32[16,32] exponential(sub)
+  sum = f32[16] reduce(exp, c_zero), dimensions={1}, to_apply=add_region, backend_config={sizes:[8]}
+  sum_bcast = f32[16,32] broadcast(sum), dimensions={0}
+  ROOT div = f32[16,32] divide(exp, sum_bcast)
+}
+
+ENTRY main {
+  p = f32[16,32] parameter(0)
+  ROOT r = f32[16,32] fusion(p), kind=kCustom, calls=fusion,
+    backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["4", "8"]}],
+          "num_warps":"1",
+          "num_ctas":"1",
+          "num_stages":"1"}}}
+}
+
+// `max` feeds both the root (via `exp`) and the tiled `sum`, and its tile is
+// invariant to `sum`'s reduction dimension, so it is hoisted out of `sum`'s
+// region and emitted only once.
+
+// Loop 1: hoisted `max`, shared by the numerator `exp(p - max)` and `sum`.
+// CHECK-LABEL: xtile.entry_func @triton_fn
+// CHECK:         %[[MAX_ACC:.*]] = scf.for
+// CHECK:           arith.maximumf
+// CHECK:         %[[MAX:.*]] = "tt.reduce"(%[[MAX_ACC]])
+// CHECK:         %[[MAX_EXPAND:.*]] = tt.expand_dims %[[MAX]]
+// CHECK:         tt.broadcast %[[MAX_EXPAND]]
+// CHECK:         %[[EXP:.*]] = tt.extern_elementwise {{.*}} symbol = "__nv_expf"
+
+// Loop 2: `sum`, with neither a nested `max` loop nor an inline `max`
+// recomputation in its body.
+// CHECK:         %[[SUM:.*]] = scf.for {{.*}} iter_args(%[[ACC:[^ ]+]] =
+// CHECK-NOT:       scf.for
+// CHECK-NOT:       arith.maximumf
+// CHECK:           arith.subf
+// CHECK:           %[[INNER_EXP:.*]] = tt.extern_elementwise {{.*}} symbol = "__nv_expf"
+// CHECK:           arith.addf %[[ACC]], %[[INNER_EXP]]
+// CHECK:         "tt.reduce"(%[[SUM]])
+// CHECK:         arith.divf %[[EXP]],
+

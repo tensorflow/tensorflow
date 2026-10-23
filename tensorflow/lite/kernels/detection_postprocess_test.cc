@@ -380,7 +380,8 @@ class DetectionPostprocessOpModelwithRegularNMS : public SingleOpModel {
       const TensorData& input3, const TensorData& output1,
       const TensorData& output2, const TensorData& output3,
       const TensorData& output4, bool use_regular_nms, int num_threads = 1,
-      int max_detections = 3, int detection_per_class = 1) {
+      int max_detections = 3, int detection_per_class = 1,
+      int num_classes = 2) {
     input1_ = AddInput(input1);
     input2_ = AddInput(input2);
     input3_ = AddInput(input3);
@@ -397,7 +398,7 @@ class DetectionPostprocessOpModelwithRegularNMS : public SingleOpModel {
       fbb.Bool("use_regular_nms", use_regular_nms);
       fbb.Float("nms_score_threshold", 0.0);
       fbb.Float("nms_iou_threshold", 0.5);
-      fbb.Int("num_classes", 2);
+      fbb.Int("num_classes", num_classes);
       fbb.Float("y_scale", 10.0);
       fbb.Float("x_scale", 10.0);
       fbb.Float("h_scale", 5.0);
@@ -422,12 +423,27 @@ class DetectionPostprocessOpModelwithRegularNMS : public SingleOpModel {
   }
 
   template <class T>
+  void SetInput1(const std::vector<T>& data) {
+    PopulateTensor<T>(input1_, data);
+  }
+
+  template <class T>
   void SetInput2(std::initializer_list<T> data) {
     PopulateTensor<T>(input2_, data);
   }
 
   template <class T>
+  void SetInput2(const std::vector<T>& data) {
+    PopulateTensor<T>(input2_, data);
+  }
+
+  template <class T>
   void SetInput3(std::initializer_list<T> data) {
+    PopulateTensor<T>(input3_, data);
+  }
+
+  template <class T>
+  void SetInput3(const std::vector<T>& data) {
     PopulateTensor<T>(input3_, data);
   }
 
@@ -1218,6 +1234,61 @@ TEST(DetectionPostprocessOpTest,
   EXPECT_THAT(m.GetOutput4<float>(),
               ElementsAreArray(ArrayFloatNear({3.0}, 1e-1)));
 }
+
+TEST(DetectionPostprocessOpTest,
+     MultiThreadedRegularNMSHeapCorruptionRegressionTest) {
+  constexpr int kNumBoxes = 8;
+  constexpr int kNumClasses = 8;
+  constexpr int kNumClassesWithBackground = 9;
+  constexpr int kMaxDetections = 4;
+  constexpr int kDetectionsPerClass = 1;
+  constexpr int kNumThreads = 4;
+
+  DetectionPostprocessOpModelwithRegularNMS m(
+      /*input1=*/{TensorType_FLOAT32, {1, kNumBoxes, 4}},
+      /*input2=*/
+      {TensorType_FLOAT32, {1, kNumBoxes, kNumClassesWithBackground}},
+      /*input3=*/{TensorType_FLOAT32, {kNumBoxes, 4}},
+      /*output1=*/{TensorType_FLOAT32, {}},
+      /*output2=*/{TensorType_FLOAT32, {}},
+      /*output3=*/{TensorType_FLOAT32, {}},
+      /*output4=*/{TensorType_FLOAT32, {}},
+      /*use_regular_nms=*/true,
+      /*num_threads=*/kNumThreads,
+      /*max_detections=*/kMaxDetections,
+      /*detection_per_class=*/kDetectionsPerClass,
+      /*num_classes=*/kNumClasses);
+
+  std::vector<float> box_encodings(kNumBoxes * 4, 0.0f);
+  m.SetInput1<float>(box_encodings);
+
+  std::vector<float> class_scores(kNumBoxes * kNumClassesWithBackground, 0.0f);
+  for (int b = 0; b < kNumBoxes; ++b) {
+    // Class 0 is background; classes 1..8 correspond to valid classes.
+    class_scores[b * kNumClassesWithBackground + (b + 1)] = 0.9f;
+  }
+  m.SetInput2<float>(class_scores);
+
+  std::vector<float> anchors(kNumBoxes * 4, 0.0f);
+  for (int b = 0; b < kNumBoxes; ++b) {
+    anchors[b * 4 + 0] = 0.5f;
+    anchors[b * 4 + 1] = b * 10.0f + 0.5f;
+    anchors[b * 4 + 2] = 1.0f;
+    anchors[b * 4 + 3] = 1.0f;
+  }
+  m.SetInput3<float>(anchors);
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetOutputShape1(), ElementsAre(1, kMaxDetections, 4));
+  EXPECT_THAT(m.GetOutputShape2(), ElementsAre(1, kMaxDetections));
+  EXPECT_THAT(m.GetOutputShape3(), ElementsAre(1, kMaxDetections));
+  EXPECT_THAT(m.GetOutputShape4(), ElementsAre(1));
+  EXPECT_THAT(m.GetOutput4<float>(),
+              ElementsAreArray(
+                  ArrayFloatNear({static_cast<float>(kMaxDetections)}, 1e-4)));
+}
+
 }  // namespace
 }  // namespace custom
 }  // namespace ops

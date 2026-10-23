@@ -18,7 +18,7 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/log/check.h"
-#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/layout_util.h"
 #include "xla/service/cpu/cpu_runtime.h"
 #include "xla/shape_util.h"
@@ -113,6 +113,23 @@ bool PotentiallyImplementedAsEigenConvolution(
              kernel_shape.dimensions().size() - 2 &&
          dnums.kernel_output_feature_dimension() ==
              kernel_shape.dimensions().size() - 1;
+}
+
+bool CanUseEigenConvolution(
+    const HloInstruction& convolution,
+    const TargetMachineFeatures& target_machine_features) {
+  if (!PotentiallyImplementedAsEigenConvolution(convolution,
+                                                target_machine_features)) {
+    return false;
+  }
+
+  const Shape& input_shape = convolution.operand(0)->shape();
+  const Shape& kernel_shape = convolution.operand(1)->shape();
+  const Shape& output_shape = convolution.shape();
+
+  return LayoutUtil::IsMonotonicWithDim0Major(input_shape.layout()) &&
+         LayoutUtil::IsMonotonicWithDim0Major(kernel_shape.layout()) &&
+         LayoutUtil::IsMonotonicWithDim0Major(output_shape.layout());
 }
 
 }  // namespace cpu

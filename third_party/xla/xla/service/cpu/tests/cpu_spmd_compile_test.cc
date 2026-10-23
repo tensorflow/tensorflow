@@ -23,7 +23,6 @@ limitations under the License.
 #include "xla/service/cpu/test_target_triple_helper.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla {
@@ -47,13 +46,13 @@ ENTRY entry {
   HloModuleConfig config;
   config.set_use_spmd_partitioning(true);
   auto hlo_module = ParseAndReturnVerifiedModule(hlo_string, config);
-  TF_ASSERT_OK(hlo_module.status());
+  ASSERT_OK(hlo_module.status());
 
   // Verify that compilation succeeded.
   absl::StatusOr<std::unique_ptr<OpaqueExecutable>> executable =
       CreateExecutable(std::move(hlo_module.value()),
                        /*run_hlo_passes=*/true);
-  TF_EXPECT_OK(executable.status());
+  EXPECT_OK(executable.status());
 }
 
 }  // namespace

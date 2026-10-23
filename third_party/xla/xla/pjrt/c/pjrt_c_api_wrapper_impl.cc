@@ -27,6 +27,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -46,10 +47,12 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "xla/custom_options.h"
 #include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
+#include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
@@ -74,7 +77,7 @@ limitations under the License.
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/pjrt/scoped_async_tracking_event.h"
 #include "xla/runtime/device_id.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -512,6 +515,11 @@ class CApiKeyValueStore : public xla::KeyValueStoreInterface {
       return PjrtErrorToStatus(error);
     }
     return absl::OkStatus();
+  }
+
+  absl::Status Delete(absl::string_view key) override {
+    return absl::UnimplementedError(
+        "Delete is not supported in CApiKeyValueStore.");
   }
 
  private:
@@ -1323,7 +1331,8 @@ PJRT_Error* PJRT_Client_CreateErrorBuffer(
     PJRT_Client_CreateErrorBuffer_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Client_CreateErrorBuffer_Args",
-      PJRT_Client_CreateErrorBuffer_Args_STRUCT_SIZE, args->struct_size));
+      PJRT_STRUCT_SIZE(PJRT_Client_CreateErrorBuffer_Args, num_payload),
+      args->struct_size));
 
   absl::Status error = absl::Status(
       pjrt::PjrtErrorCodeToStatusCode(args->error_code),
@@ -1346,12 +1355,41 @@ PJRT_Error* PJRT_Client_CreateErrorBuffer(
   PJRT_ASSIGN_OR_RETURN(
       xla::Shape shape,
       pjrt::BuildXlaShapeFromC(args->shape_element_type, args->shape_dims,
-                               args->shape_num_dims, args->shape_layout));
+                               args->shape_num_dims, /*layout=*/nullptr));
+  xla::LayoutUtil::SetToDefaultLayout(&shape);
+
+  std::optional<xla::Layout> cpp_layout;
+  const xla::Layout* device_layout = nullptr;
+  if (args->struct_size >=
+          PJRT_STRUCT_SIZE(PJRT_Client_CreateErrorBuffer_Args, device_layout) &&
+      args->device_layout != nullptr) {
+    switch (args->device_layout->type) {
+      case PJRT_Buffer_MemoryLayout_Type::PJRT_Buffer_MemoryLayout_Type_Tiled: {
+        PJRT_ASSIGN_OR_RETURN(cpp_layout,
+                              ConvertToLayout(args->device_layout->tiled));
+        break;
+      }
+      case PJRT_Buffer_MemoryLayout_Type::
+          PJRT_Buffer_MemoryLayout_Type_Strides: {
+        PJRT_RETURN_IF_ERROR(absl::InvalidArgumentError(
+            "PJRT_Buffer_MemoryLayout_Type_Strides is not supported to be "
+            "converted to a xla::Layout."));
+        break;
+      }
+      default: {
+        PJRT_RETURN_IF_ERROR(absl::InvalidArgumentError(
+            absl::StrCat("Unexpected PJRT_Buffer_MemoryLayout_Type type: ",
+                         args->device_layout->type)));
+      }
+    }
+    device_layout = &*cpp_layout;
+  }
 
   PJRT_ASSIGN_OR_RETURN(
       auto error_buffer,
       args->client->client->CreateErrorBuffer(
-          error, shape, xla::PjRtMemorySpace::FromC(args->memory)));
+          error, shape, xla::PjRtMemorySpace::FromC(args->memory),
+          device_layout));
 
   args->buffer = new PJRT_Buffer{std::move(error_buffer), args->client};
   return nullptr;
@@ -1912,10 +1950,12 @@ PJRT_Error* PJRT_LoadedExecutable_AddressableDeviceLogicalIds(
       PJRT_LoadedExecutable_AddressableDeviceLogicalIds_Args_STRUCT_SIZE,
       args->struct_size));
 
+  PJRT_RETURN_IF_ERROR(
+      args->executable->addressable_device_logical_ids.status());
   args->num_addressable_device_logical_ids =
-      args->executable->addressable_device_logical_ids.size();
+      args->executable->addressable_device_logical_ids->size();
   args->addressable_device_logical_ids =
-      args->executable->addressable_device_logical_ids.data();
+      args->executable->addressable_device_logical_ids->data();
   return nullptr;
 }
 
@@ -2331,9 +2371,21 @@ PJRT_Error* PJRT_LoadedExecutable_Execute(
     execute_context = args->options->context->execute_context;
   }
   options.context = execute_context.get();
+
+  // Custom options are owned by the caller only for the duration of the C API
+  // call, so we copy them.
+  if (args->options->struct_size >=
+          PJRT_STRUCT_SIZE(PJRT_ExecuteOptions, num_custom_options) &&
+      args->options->num_custom_options > 0) {
+    options.custom_options = std::make_shared<const xla::CustomOptions>(
+        ConvertFromPjRtNamedValueList(args->options->custom_options,
+                                      args->options->num_custom_options));
+  }
+
   options.multi_slice_config = nullptr;
   // TODO(b/485591964): Remove this check after 12week compatibility window.
-  if (args->options->struct_size >= PJRT_ExecuteOptions_STRUCT_SIZE &&
+  if (args->options->struct_size >=
+          PJRT_STRUCT_SIZE(PJRT_ExecuteOptions, multi_slice_config) &&
       args->options->multi_slice_config != nullptr) {
     options.multi_slice_config =
         args->options->multi_slice_config->config.get();
@@ -2574,6 +2626,17 @@ PJRT_Error* PJRT_Executable_GetCompiledMemoryStats(
   return nullptr;
 }
 
+ABSL_ATTRIBUTE_NOINLINE
+absl::StatusOr<std::unique_ptr<std::optional<xla::CompileOptions>>>
+ParseOptionalCompileOptions(absl::string_view options_str) {
+  if (options_str.empty() || !options_str.data()) {
+    return std::make_unique<std::optional<xla::CompileOptions>>(std::nullopt);
+  }
+  ABSL_ASSIGN_OR_RETURN(auto options, ParseCompileOptions(options_str));
+  return std::make_unique<std::optional<xla::CompileOptions>>(
+      std::move(options));
+}
+
 PJRT_Error* PJRT_Executable_DeserializeAndLoad(
     PJRT_Executable_DeserializeAndLoad_Args* args) {
   // TODO: b/516902012 - Make this check stricter after 12week compatibility
@@ -2586,16 +2649,11 @@ PJRT_Error* PJRT_Executable_DeserializeAndLoad(
   absl::string_view serialized(args->serialized_executable,
                                args->serialized_executable_size);
 
-  std::optional<xla::CompileOptions> overridden_options;
-
-  if (args->overridden_serialized_compile_options &&
-      args->overridden_serialized_compile_options_size > 0) {
-    PJRT_ASSIGN_OR_RETURN(
-        overridden_options,
-        ParseCompileOptions(absl::string_view(
-            args->overridden_serialized_compile_options,
-            args->overridden_serialized_compile_options_size)));
-  }
+  PJRT_ASSIGN_OR_RETURN(
+      std::unique_ptr<std::optional<xla::CompileOptions>> overridden_options,
+      ParseOptionalCompileOptions(
+          absl::string_view(args->overridden_serialized_compile_options,
+                            args->overridden_serialized_compile_options_size)));
 
   xla::LoadOptions load_options;
   if (args->struct_size >=
@@ -2618,9 +2676,10 @@ PJRT_Error* PJRT_Executable_DeserializeAndLoad(
     }
   }
 
-  PJRT_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtLoadedExecutable> executable,
-                        args->client->client->LoadSerializedExecutable(
-                            serialized, overridden_options, load_options));
+  PJRT_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::PjRtLoadedExecutable> executable,
+      args->client->client->LoadSerializedExecutable(
+          serialized, std::move(*overridden_options), load_options));
 
   args->loaded_executable =
       new PJRT_LoadedExecutable(std::move(executable), args->client);
@@ -3261,10 +3320,10 @@ PJRT_Error* PJRT_TopologyDescription_MakeCanonicalShapeForMemorySpace(
       PJRT_TopologyDescription_MakeCanonicalShapeForMemorySpace_Args_STRUCT_SIZE,  // NOLINT (whitespace/line_length)
       args->struct_size));
 
-  xla::PrimitiveType element_type =
-      pjrt::ConvertFromPjRtBufferType(args->element_type);
-  xla::Shape input_shape =
-      xla::ShapeUtil::MakeShape(element_type, {args->dims, args->num_dims});
+  PJRT_ASSIGN_OR_RETURN(
+      xla::Shape input_shape,
+      pjrt::BuildXlaShapeFromC(args->element_type, args->dims, args->num_dims,
+                               /*layout=*/nullptr));
 
   const xla::Layout* layout_ptr = nullptr;
   xla::Layout layout;
@@ -3727,15 +3786,19 @@ PJRT_Executable::PJRT_Executable(xla::PjRtExecutable* unowned_executable)
 static void PopulatePjrtExecutableAddressableDeviceLogicalIds(
     PJRT_LoadedExecutable* executable) {
   CHECK(executable->client != nullptr) << ": client was null";
-  absl::Span<const xla::PjRtLoadedExecutable::LogicalDeviceIds> cpp_ids =
-      executable->get()->addressable_device_logical_ids();
+  absl::StatusOr<absl::Span<const xla::PjRtLoadedExecutable::LogicalDeviceIds>>
+      cpp_ids = executable->get()->addressable_device_logical_ids();
+  if (!cpp_ids.ok()) {
+    executable->addressable_device_logical_ids = cpp_ids.status();
+    return;
+  }
 
-  std::vector<PJRT_LogicalDeviceIds>& exec_ids =
-      executable->addressable_device_logical_ids;
-  exec_ids.reserve(cpp_ids.size());
-  for (const auto& id : cpp_ids) {
+  std::vector<PJRT_LogicalDeviceIds> exec_ids;
+  exec_ids.reserve(cpp_ids->size());
+  for (const auto& id : *cpp_ids) {
     exec_ids.push_back(PJRT_LogicalDeviceIds{id.replica, id.partition});
   }
+  executable->addressable_device_logical_ids = std::move(exec_ids);
 }
 
 PJRT_LoadedExecutable::PJRT_LoadedExecutable(

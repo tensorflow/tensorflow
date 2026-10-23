@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/debugging/leak_check.h"
 #include "absl/log/check.h"
@@ -31,8 +32,8 @@ void EnsureCudaIsInitialized() {
   // See the comment in platform_manager.h.
   absl::LeakCheckDisabler disabler;
 
-  TF_ASSERT_OK_AND_ASSIGN(stream_executor::Platform * platform,
-                          PlatformManager::PlatformWithName("CUDA"));
+  ASSERT_OK_AND_ASSIGN(stream_executor::Platform * platform,
+                       PlatformManager::PlatformWithName("CUDA"));
   CHECK_GT(platform->VisibleDeviceCount(), 0);
 }
 

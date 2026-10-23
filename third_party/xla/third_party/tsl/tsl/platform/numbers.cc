@@ -18,7 +18,6 @@ limitations under the License.
 #include <charconv>
 #include <cstddef>
 #include <cstdint>
-#include <limits>
 #include <optional>
 #include <string>
 #include <system_error>  // NOLINT
@@ -96,84 +95,6 @@ size_t FastInt64ToBufferLeft(int64_t i, char* buffer) {
 
 size_t FastUInt64ToBufferLeft(uint64_t i, char* buffer) {
   return FastUIntToBufferLeft(i, buffer);
-}
-
-namespace {
-
-constexpr int NumDecimalDigits(int n) {
-  int count = 0;
-  do {
-    ++count;
-    n /= 10;
-  } while (n != 0);
-  return count;
-}
-
-template <typename T>
-size_t FpToBuffer(T value, char* buffer) {
-  using strings_internal::kFastToBufferSize;
-  // Out of an abundance of caution, we ensure that the buffer is large enough
-  // to hold the worst-case formatting of any floating-point number.
-  constexpr size_t kMaxExponentDigits10 =
-      std::max(NumDecimalDigits(std::numeric_limits<T>::max_exponent10),
-               NumDecimalDigits(std::numeric_limits<T>::min_exponent10));
-  constexpr size_t kMaxCharsWritten =
-      1 +                                     // sign bit
-      std::numeric_limits<T>::max_digits10 +  // decimal digits
-      1 +                                     // decimal point
-      1 +                                     // exponent character
-      1 +                                     // exponent sign
-      kMaxExponentDigits10;                   // exponent digits
-  static_assert(kMaxCharsWritten < kFastToBufferSize);
-  if (std::isnan(value)) {
-    int snprintf_result = absl::SNPrintF(buffer, kFastToBufferSize, "%snan",
-                                         std::signbit(value) ? "-" : "");
-    // Paranoid check to ensure we don't overflow the buffer.
-    DCHECK(snprintf_result > 0 && snprintf_result < kFastToBufferSize);
-    return snprintf_result;
-  }
-
-  int snprintf_result = absl::SNPrintF(buffer, kFastToBufferSize, "%.*g",
-                                       std::numeric_limits<T>::digits10, value);
-
-  // The snprintf should never overflow because the buffer is significantly
-  // larger than the precision we asked for.
-  DCHECK(snprintf_result > 0 && snprintf_result <= kMaxCharsWritten);
-
-  if (auto parsed_value = AsciiToFp<T>(buffer); parsed_value != value) {
-    // Round-trip conversion failed, so we need to use full precision
-    // formatting.
-    snprintf_result =
-        absl::SNPrintF(buffer, kFastToBufferSize, "%.*g",
-                       std::numeric_limits<T>::max_digits10, value);
-
-    // Should never overflow; see above.
-    DCHECK(snprintf_result > 0 && snprintf_result <= kMaxCharsWritten);
-  }
-
-  return snprintf_result;
-}
-
-}  // namespace
-
-size_t DoubleToBuffer(double value, char* buffer) {
-  return FpToBuffer(value, buffer);
-}
-
-size_t FloatToBuffer(float value, char* buffer) {
-  return FpToBuffer(value, buffer);
-}
-
-strings_internal::AlphaNumBuffer LegacyPrecision(double d) {
-  strings_internal::AlphaNumBuffer result;
-  result.size = DoubleToBuffer(d, result.data.data());
-  return result;
-}
-
-strings_internal::AlphaNumBuffer LegacyPrecision(float f) {
-  strings_internal::AlphaNumBuffer result;
-  result.size = FloatToBuffer(f, result.data.data());
-  return result;
 }
 
 std::string FpToString(uint64_t fp) {

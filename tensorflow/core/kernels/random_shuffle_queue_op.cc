@@ -67,7 +67,7 @@ class RandomShuffleQueue : public TypedQueue<std::vector<Tensor> > {
   }
 
  private:
-  ~RandomShuffleQueue() override {}
+  ~RandomShuffleQueue() override = default;
 
   // Helper for dequeuing a single random element from queues_.
   void DequeueLocked(OpKernelContext* ctx, Tuple* tuple)

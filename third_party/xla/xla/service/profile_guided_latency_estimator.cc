@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
@@ -24,9 +25,9 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/latency_hiding_scheduler.h"
 #include "tsl/profiler/protobuf/profiled_instructions.pb.h"
 
@@ -94,6 +95,33 @@ LatencyEstimator::TimeCost ProfileGuidedLatencyEstimator::GetLatencyBetween(
     it = instr_map_.find(wrapped_inst_name);
   }
 
+  if (it == instr_map_.end() && IsAsyncPair(from, target) &&
+      from.GetInstr().opcode() == HloOpcode::kAsyncStart) {
+    // The wrapped instruction has no profile entry of its own: its device work
+    // is attributed to the instructions it runs.
+    const HloInstruction* wrapped = from.GetInstr().async_wrapped_instruction();
+    if (wrapped->opcode() == HloOpcode::kCall) {
+      // An async call runs the instructions in the computation that it calls,
+      // so the call's latency is the sum of their costs. Neither the scheduler
+      // nor the accuracy checker visits the called computation, so its
+      // instructions are reported as found or missing there, individually;
+      // the pair itself is not reported, as the aggregator decides which of
+      // them may legitimately lack a profile entry (e.g. parameters).
+      VLOG(2) << "PGLE costs async call " << from.GetInstr().name()
+              << " from the instructions it calls";
+      return CostOfComputation(wrapped->to_apply());
+    }
+    // E.g. a dynamic slice fusion, profiled under the name of the custom call
+    // or collective inside it.
+    if (std::optional<TimeCost> cost = ProfiledCost(wrapped);
+        cost.has_value()) {
+      VLOG(2) << "PGLE costs async " << from.GetInstr().name()
+              << " from the instructions inside " << wrapped->name();
+      HandleFoundInstructionLatency(aggregator_.get(), from, target);
+      return *cost;
+    }
+  }
+
   if (it == instr_map_.end()) {
     VLOG(1)
         << "PGLE did NOT find wrapped instruction name or async start. From: "
@@ -136,20 +164,70 @@ LatencyEstimator::TimeCost ProfileGuidedLatencyEstimator::GetLatencyBetween(
 
 LatencyEstimator::TimeCost ProfileGuidedLatencyEstimator::NodeCost(
     const HloInstruction* instr) const {
-  if (hlo_query::IsAsyncCollectiveStartOp(instr, /*include_send_recv=*/true) ||
-      hlo_query::IsAsyncCollectiveDoneOp(instr, /*include_send_recv=*/true)) {
+  // Async starts and dones only launch and wait for work: its cost is the
+  // latency between them (see GetLatencyBetween), whether the work is a
+  // collective, a computation, or a fusion of both.
+  const HloOpcode async_kind =
+      latency_estimator_->GetCanonicalAsyncOp(*instr).outer;
+  if (async_kind == HloOpcode::kAsyncStart ||
+      async_kind == HloOpcode::kAsyncDone ||
+      HloPredicateIsOp<HloOpcode::kSend, HloOpcode::kSendDone, HloOpcode::kRecv,
+                       HloOpcode::kRecvDone>(instr)) {
     static constexpr TimeCost kLowCost = 1.0;
     return kLowCost;
   }
-  if (auto it = instr_map_.find(instr->name());
-      it != instr_map_.end() && it->second.cost.has_value()) {
+  if (std::optional<TimeCost> cost = ProfiledCost(instr); cost.has_value()) {
     VLOG(2) << "PGLE found cost for: " << instr->name();
     HandleFoundInstructionCost(aggregator_.get(), instr);
-    return *it->second.cost;
+    return *cost;
   }
   VLOG(1) << "PGLE missed cost for: " << instr->name();
   HandleMissingInstructionCost(aggregator_.get(), instr);
   return latency_estimator_->NodeCost(instr);
+}
+
+std::optional<LatencyEstimator::TimeCost>
+ProfileGuidedLatencyEstimator::ProfiledCost(const HloInstruction* instr) const {
+  if (auto it = instr_map_.find(instr->name());
+      it != instr_map_.end() && it->second.cost.has_value()) {
+    return *it->second.cost;
+  }
+  if (instr->opcode() != HloOpcode::kFusion) {
+    return std::nullopt;
+  }
+  // The device work of some fusions is attributed to the instructions inside
+  // them, e.g. a dynamic slice fusion runs the custom call or collective that
+  // it wraps, whose kernels carry the wrapped instruction's name.
+  std::optional<TimeCost> total;
+  for (const HloInstruction* fused : instr->fused_instructions()) {
+    if (std::optional<TimeCost> cost = ProfiledCost(fused); cost.has_value()) {
+      total = total.value_or(0) + *cost;
+    }
+  }
+  if (total.has_value()) {
+    VLOG(2) << "PGLE found cost for fusion " << instr->name()
+            << " from the instructions inside it";
+  }
+  return total;
+}
+
+LatencyEstimator::TimeCost ProfileGuidedLatencyEstimator::CostOfComputation(
+    const HloComputation* computation) const {
+  TimeCost total = 0;
+  for (const HloInstruction* instr : computation->instructions()) {
+    if (std::optional<TimeCost> cost = ProfiledCost(instr); cost.has_value()) {
+      HandleFoundInstructionCost(aggregator_.get(), instr);
+      total += *cost;  // Stored in cycles by the constructor.
+    } else if (instr->opcode() == HloOpcode::kCall) {
+      total += CostOfComputation(instr->to_apply());
+    } else {
+      // The aggregator decides which instructions can be missing from a
+      // profile at all (e.g. not parameters or get-tuple-elements).
+      HandleMissingInstructionCost(aggregator_.get(), instr);
+      total += latency_estimator_->NodeCost(instr);
+    }
+  }
+  return total;
 }
 
 ProfileStatisticsAggregator::Statistics

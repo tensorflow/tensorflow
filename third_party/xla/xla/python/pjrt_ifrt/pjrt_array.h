@@ -190,7 +190,7 @@ class PjRtArray final : public RTTIExtends<PjRtArray, PjRtCompatibleArray> {
       ArrayCopySemantics array_copy_semantics,
       SingleDeviceShardSemantics single_device_shard_semantics) override;
 
-  ABSL_MUST_USE_RESULT
+  [[nodiscard]]
   tsl::Future<> CopyToHostBuffer(
       void* data, std::optional<absl::Span<const int64_t>> byte_strides,
       ArrayCopySemantics semantics) override;
@@ -199,6 +199,9 @@ class PjRtArray final : public RTTIExtends<PjRtArray, PjRtCompatibleArray> {
       std::optional<xla::ifrt::DeviceListRef> devices,
       std::optional<xla::ifrt::MemoryKind> memory_kind,
       ArrayCopySemantics semantics);
+
+  absl::StatusOr<ArrayRef> CopyWithDonatedDst(PjRtArray* donated_dst,
+                                              ArrayCopySemantics semantics);
 
   // Copies the `PjRtArray`'s buffer at `index` and returns the copied buffer.
   // The returned buffer has the given destination device and memory kind.
@@ -231,6 +234,11 @@ class PjRtArray final : public RTTIExtends<PjRtArray, PjRtCompatibleArray> {
             DynamicShape dynamic_shape, ShardingRef sharding,
             PjRtBuffers pjrt_buffers,
             std::shared_ptr<const xla::PjRtLayout> layout);
+
+  absl::StatusOr<ArrayRef> CopyImpl(
+      std::optional<xla::ifrt::DeviceListRef> devices,
+      std::optional<xla::ifrt::MemoryKind> memory_kind, PjRtArray* donated_dst,
+      ArrayCopySemantics semantics);
 
   template <typename T, typename... Args>
   friend tsl::RCReference<T> tsl::MakeRef(Args&&... args);

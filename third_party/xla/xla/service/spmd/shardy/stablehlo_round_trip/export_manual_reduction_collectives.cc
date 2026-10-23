@@ -24,11 +24,15 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/CommandLine.h"
+#include "mlir/IR/Block.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -45,8 +49,8 @@ limitations under the License.
 #include "mlir/Support/TypeID.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/utils.h"
+#include "shardy/dialect/sdy/transforms/export/utils.h"
 #include "stablehlo/dialect/StablehloOps.h"
-#include "xla/array.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"  // for CopyOp
 #include "xla/service/spmd/shardy/utils.h"
 
@@ -104,46 +108,84 @@ bool inputHasUnreducedAxes(CollectiveTy collective) {
 
 // Creates a manual computation, with all axes in `mesh` as manual, and
 // populates its body via the `bodyPopulator` function.
-ManualComputationOp createFullyManualComputation(
+// If the input shape is non-divisible along any sharded axis, pads the input
+// to divisible shape prior to the manual computation and slices the result
+// back.
+Value createFullyManualComputation(
     mlir::Location loc, Value input, TensorShardingAttr outSharding,
     MeshAttr mesh, OpBuilder& builder, ArrayRef<AxisRefAttr> unreducedAxes,
-    std::function<Value(mlir::BlockArgument arg, OpBuilder& blockBuilder)>
+    sdy::ReductionOp reductionOp,
+    std::function<Value(mlir::BlockArgument arg, OpBuilder& blockBuilder,
+                        RankedTensorType paddedGlobalType)>
         bodyPopulator) {
-  SmallVector<mlir::StringAttr> manualAxes;
-  manualAxes.reserve(mesh.getAxes().size());
+  SmallVector<AxisRefAttr> allMeshAxes;
+  allMeshAxes.reserve(mesh.getAxes().size());
   for (sdy::MeshAxisAttr axis : mesh.getAxes()) {
-    manualAxes.push_back(builder.getStringAttr(axis.getName()));
+    allMeshAxes.push_back(
+        AxisRefAttr::get(builder.getContext(), axis.getName()));
   }
+  SmallVector<AxisRefAttr> boundManualAxes;
+  if (mlir::Block* block = builder.getInsertionBlock()) {
+    for (mlir::Operation* parentOp = block->getParentOp(); parentOp != nullptr;
+         parentOp = parentOp->getParentOp()) {
+      if (auto parentManual = mlir::dyn_cast<ManualComputationOp>(parentOp)) {
+        llvm::append_range(boundManualAxes, parentManual.getManualAxes());
+      }
+    }
+  }
+  SmallVector<AxisRefAttr> manualAxes =
+      sdy::getAxisSetDiff(allMeshAxes, boundManualAxes, mesh);
   TensorShardingAttr inSharding = sdy::getOrCreateSharding(input, mesh);
   if (!unreducedAxes.empty()) {
-    inSharding = inSharding.replaceUnreducedAxes(unreducedAxes);
+    inSharding = inSharding.replaceUnreducedAxes(unreducedAxes, reductionOp);
   }
-  auto op = ManualComputationOp::create(builder, loc, input.getType(), input,
-                                        inSharding, outSharding, manualAxes);
 
-  mlir::Block& block = op.getBody().emplaceBlock();
   auto globalType = mlir::dyn_cast<RankedTensorType>(input.getType());
   CHECK(globalType);
-  auto localType = inSharding.getLocalTensorType(globalType, mesh,
+
+  RankedTensorType paddedGlobalType =
+      sdy::getDivisiblePaddedType(globalType, inSharding, outSharding, mesh);
+
+  Value manualInput = input;
+  if (paddedGlobalType != globalType) {
+    mlir::Attribute identityAttr = sdy::getReductionIdentityAttr(
+        globalType.getElementType(), reductionOp, builder);
+    CHECK(identityAttr) << "Unsupported element type for reduction padding";
+    auto scalarType = RankedTensorType::get({}, globalType.getElementType());
+    Value paddingVal = stablehlo::ConstantOp::create(
+        builder, loc, mlir::DenseElementsAttr::get(scalarType, identityAttr));
+    manualInput = sdy::padHighSideToType(loc, input, paddedGlobalType,
+                                         inSharding, builder, paddingVal);
+  }
+
+  auto op =
+      ManualComputationOp::create(builder, loc, paddedGlobalType, manualInput,
+                                  inSharding, outSharding, manualAxes);
+
+  mlir::Block& block = op.getBody().emplaceBlock();
+  auto localType = inSharding.getLocalTensorType(paddedGlobalType, mesh,
                                                  /*allowNonDivisible=*/false);
   CHECK(localType) << kNonDivisibleShardingError;
 
   OpBuilder blockBuilder = OpBuilder::atBlockBegin(&block);
   sdy::ReturnOp::create(
       blockBuilder, loc,
-      bodyPopulator(block.addArgument(localType, input.getLoc()),
-                    blockBuilder));
-  return op;
+      bodyPopulator(block.addArgument(localType, input.getLoc()), blockBuilder,
+                    paddedGlobalType));
+
+  return sdy::sliceHighSideToType(loc, op.getResult(0), globalType, outSharding,
+                                  builder);
 }
 
 void convertAllReduce(sdy::AllReduceOp op, int64_t channelId,
                       mlir::IRRewriter& rewriter) {
   MeshAttr mesh = op.getOutSharding().getMesh(op);
   rewriter.setInsertionPoint(op);
-  ManualComputationOp manualComputation = createFullyManualComputation(
+  Value manualComputation = createFullyManualComputation(
       op.getLoc(), op.getTensor(), op.getOutSharding(), mesh, rewriter,
-      /*unreducedAxes=*/{},
-      [&](mlir::BlockArgument arg, OpBuilder& blockBuilder) {
+      /*unreducedAxes=*/{}, op.getReductionOp(),
+      [&](mlir::BlockArgument arg, OpBuilder& blockBuilder,
+          RankedTensorType /*paddedGlobalType*/) {
         // Channel type is DEVICE_TO_DEVICE.
         auto channelHandle = stablehlo::ChannelHandleAttr::get(
             op->getContext(), /*handle=*/channelId, /*type=*/1);
@@ -189,9 +231,11 @@ int64_t convertReduceScatter(sdy::ReduceScatterOp op, int64_t nextChannelId,
     }
   }
   sortAndMergeAxes(unreducedAxes, mesh);
-  ManualComputationOp manualComputation = createFullyManualComputation(
+  Value manualComputation = createFullyManualComputation(
       op.getLoc(), op.getTensor(), op.getOutSharding(), mesh, rewriter,
-      unreducedAxes, [&](mlir::BlockArgument arg, OpBuilder& blockBuilder) {
+      unreducedAxes, op.getReductionOp(),
+      [&](mlir::BlockArgument arg, OpBuilder& blockBuilder,
+          RankedTensorType /*paddedGlobalType*/) {
         Value curInput = arg;
         auto inputType = mlir::cast<RankedTensorType>(curInput.getType());
         SmallVector<int64_t> curShape = llvm::to_vector(inputType.getShape());
@@ -264,6 +308,9 @@ getAxesCoordinateAndSize(OpBuilder& builder, mlir::Location loc,
 void convertShardedToUnreduced(sdy::ShardedToUnreducedOp op,
                                mlir::IRRewriter& rewriter) {
   TensorShardingAttr outSharding = op.getOutSharding();
+  // We intentionally do not support non-sum reductions (e.g. `MAX`, `MIN`)
+  // because the operation semantics are specific to `SUM` and are not intended
+  // to be used with other reduction ops without an explicit use case.
   CHECK_EQ(outSharding.getReductionOp(), sdy::ReductionOp::SUM);
   MeshAttr mesh = outSharding.getMesh(op);
   // If the mesh does not have iota device ids, we need an extra step to convert
@@ -273,19 +320,15 @@ void convertShardedToUnreduced(sdy::ShardedToUnreducedOp op,
   mlir::Location loc = op.getLoc();
   rewriter.setInsertionPoint(op);
 
-  ManualComputationOp manualComputation = createFullyManualComputation(
+  Value manualComputation = createFullyManualComputation(
       loc, op.getTensor(), outSharding, mesh, rewriter,
-      /*unreducedAxes=*/{},
-      [&](mlir::BlockArgument arg, OpBuilder& blockBuilder) {
-        RankedTensorType fullType =
-            mlir::cast<RankedTensorType>(op.getResult().getType());
+      /*unreducedAxes=*/{}, sdy::ReductionOp::SUM,
+      [&](mlir::BlockArgument arg, OpBuilder& blockBuilder,
+          RankedTensorType paddedGlobalType) {
         RankedTensorType inputType =
-            sdy::getSharding(op.getTensor())
-                .getLocalTensorType(fullType, mesh,
-                                    /*allowNonDivisible=*/false);
-        CHECK(inputType) << kNonDivisibleShardingError;
+            mlir::cast<RankedTensorType>(arg.getType());
         RankedTensorType outputType =
-            outSharding.getLocalTensorType(fullType, mesh);
+            outSharding.getLocalTensorType(paddedGlobalType, mesh);
 
         Value zero = stablehlo::ConstantOp::create(
             blockBuilder, loc,
@@ -340,16 +383,20 @@ void convertShardedToUnreduced(sdy::ShardedToUnreducedOp op,
 void convertReplicatedToUnreduced(sdy::ReplicatedToUnreducedOp op,
                                   mlir::IRRewriter& rewriter) {
   TensorShardingAttr outSharding = op.getOutSharding();
+  // We intentionally do not support non-sum reductions (e.g. `MAX`, `MIN`)
+  // because the operation semantics are specific to `SUM` and are not intended
+  // to be used with other reduction ops without an explicit use case.
   CHECK_EQ(outSharding.getReductionOp(), sdy::ReductionOp::SUM);
   MeshAttr mesh = outSharding.getMesh(op);
 
   mlir::Location loc = op.getLoc();
   rewriter.setInsertionPoint(op);
 
-  ManualComputationOp manualComputation = createFullyManualComputation(
+  Value manualComputation = createFullyManualComputation(
       loc, op.getTensor(), outSharding, mesh, rewriter,
-      /*unreducedAxes=*/{},
-      [&](mlir::BlockArgument arg, OpBuilder& blockBuilder) {
+      /*unreducedAxes=*/{}, sdy::ReductionOp::SUM,
+      [&](mlir::BlockArgument arg, OpBuilder& blockBuilder,
+          RankedTensorType /*paddedGlobalType*/) {
         auto [axisCoordinates, axisSizes] =
             getAxesCoordinateAndSize(blockBuilder, loc, mesh);
         (void)axisSizes;
@@ -409,7 +456,8 @@ void syncInOutUnreducedAxes(mlir::Operation* op) {
   }
 
   sdy::setSharding(
-      input, inSharding.replaceUnreducedAxes(outSharding.getUnreducedAxes()));
+      input, inSharding.replaceUnreducedAxes(outSharding.getUnreducedAxes(),
+                                             outSharding.getReductionOp()));
 }
 
 class StablehloExportManualReductionCollectivesPass

@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/cpu/ffi.h"
 #include "xla/backends/gpu/ffi.h"
+#include "xla/custom_options.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/api/api.h"
 #include "xla/ffi/api/c_api.h"
@@ -544,6 +545,21 @@ TEST(FfiTest, AttrsAsDictionary) {
   auto status = Invoke(Api(), *handler, call_frame);
 
   TF_ASSERT_OK(status);
+}
+
+TEST(FfiTest, CustomOptionsAsDictionary) {
+  xla::CustomOptions options(
+      {{"i64", int64_t{42}}, {"str", std::string("value")}});
+  auto call_frame = CallFrameBuilder(0, 0).Build();
+  auto handler = Ffi::Bind().Ctx<CustomOptions>().To([](Dictionary options) {
+    EXPECT_THAT(options.get<int64_t>("i64"), absl_testing::IsOkAndHolds(42));
+    EXPECT_THAT(options.get<absl::string_view>("str"),
+                absl_testing::IsOkAndHolds("value"));
+    return absl::OkStatus();
+  });
+  InvokeContext context;
+  context.custom_options = &options;
+  EXPECT_OK(Invoke(Api(), *handler, call_frame, context));
 }
 
 TEST(FfiTest, DictionaryAttr) {
@@ -1425,7 +1441,7 @@ TEST(FfiTest, DuplicateHandlerTraits) {
   XLA_FFI_DEFINE_HANDLER(NoOp2, noop, Ffi::Bind(),
                          {Traits::kCmdBufferCompatible});
   XLA_FFI_REGISTER_HANDLER(GetXlaFfiApi(), "duplicate-traits", "Host", NoOp1);
-  auto status = TakeStatus(Ffi::RegisterStaticHandler(
+  auto status = TakeError(Ffi::RegisterStaticHandler(
       GetXlaFfiApi(), "duplicate-traits", "Host", NoOp2));
   EXPECT_TRUE(
       absl::StrContains(status.message(), "Duplicate FFI handler registration"))
@@ -1439,7 +1455,7 @@ TEST(FfiTest, DuplicateHandlerAddress) {
   XLA_FFI_DEFINE_HANDLER(NoOp1, noop1, Ffi::Bind());
   XLA_FFI_DEFINE_HANDLER(NoOp2, noop2, Ffi::Bind());
   XLA_FFI_REGISTER_HANDLER(GetXlaFfiApi(), "duplicate-address", "Host", NoOp1);
-  auto status = TakeStatus(Ffi::RegisterStaticHandler(
+  auto status = TakeError(Ffi::RegisterStaticHandler(
       GetXlaFfiApi(), "duplicate-address", "Host", NoOp2));
   EXPECT_TRUE(
       absl::StrContains(status.message(), "Duplicate FFI handler registration"))
@@ -1452,7 +1468,7 @@ TEST(FfiTest, AllowRegisterDuplicateWhenEqual) {
   XLA_FFI_DEFINE_HANDLER(NoOp, noop, Ffi::Bind());
   XLA_FFI_REGISTER_HANDLER(GetXlaFfiApi(), "duplicate-when-equal", "Host",
                            NoOp);
-  auto status = TakeStatus(Ffi::RegisterStaticHandler(
+  auto status = TakeError(Ffi::RegisterStaticHandler(
       GetXlaFfiApi(), "duplicate-when-equal", "Host", NoOp));
   TF_ASSERT_OK(status);
 }

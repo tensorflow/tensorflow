@@ -129,7 +129,7 @@ ENTRY %main (p: f32[2,2]) -> f32[2,2] {
   OriginalTensorSummaryPropagator propagator(
       module.get(), std::move(on_propagated_tensor_summary_),
       std::move(is_original_tensor_already_recovered_));
-  ASSERT_THAT(propagator.Initialize(), IsOk());
+  ASSERT_THAT(propagator.Initialize(), absl_testing::IsOk());
 
   ASSERT_THAT(propagated_summaries_,
               ElementsAre(TensorKeyInstructionName("c")));
@@ -161,7 +161,7 @@ ENTRY %main (p: f32[2,3]) -> f32[2,3] {
   OriginalTensorSummaryPropagator propagator(
       module.get(), std::move(on_propagated_tensor_summary_),
       std::move(is_original_tensor_already_recovered_));
-  ASSERT_THAT(propagator.Initialize(), IsOk());
+  ASSERT_THAT(propagator.Initialize(), absl_testing::IsOk());
 
   ASSERT_THAT(propagated_summaries_,
               ElementsAre(TensorKeyInstructionName("iota")));
@@ -199,7 +199,7 @@ ENTRY %main (p_main: f32[2,2]) -> f32[2,2] {
   OriginalTensorSummaryPropagator propagator(
       module.get(), std::move(on_propagated_tensor_summary_),
       std::move(is_original_tensor_already_recovered_));
-  ASSERT_THAT(propagator.Initialize(), IsOk());
+  ASSERT_THAT(propagator.Initialize(), absl_testing::IsOk());
   propagated_summaries_.clear();
 
   AbsoluteScopedTensorKey key_in_called_computation =
@@ -208,7 +208,7 @@ ENTRY %main (p_main: f32[2,2]) -> f32[2,2] {
 
   ASSERT_THAT(propagator.Process(key_in_called_computation, nullptr,
                                  CreateSimpleSummary()),
-              IsOk());
+              absl_testing::IsOk());
 
   auto it = std::find_if(
       propagated_summaries_.begin(), propagated_summaries_.end(),
@@ -245,7 +245,7 @@ ENTRY %main (p_main: f32[2,2]) -> f32[2,2] {
   OriginalTensorSummaryPropagator propagator(
       module.get(), std::move(on_propagated_tensor_summary_),
       std::move(is_original_tensor_already_recovered_));
-  ASSERT_THAT(propagator.Initialize(), IsOk());
+  ASSERT_THAT(propagator.Initialize(), absl_testing::IsOk());
   propagated_summaries_.clear();
 
   AbsoluteScopedTensorKey key_in_map_computation =
@@ -254,7 +254,7 @@ ENTRY %main (p_main: f32[2,2]) -> f32[2,2] {
 
   ASSERT_THAT(propagator.Process(key_in_map_computation, nullptr,
                                  CreateSummaryForShape({})),
-              IsOk());
+              absl_testing::IsOk());
 
   auto it = std::find_if(
       propagated_summaries_.begin(), propagated_summaries_.end(),
@@ -284,12 +284,12 @@ ENTRY %main (p: f32[2,2]) -> f32[2,4] {
   OriginalTensorSummaryPropagator propagator(
       module.get(), std::move(on_propagated_tensor_summary_),
       std::move(is_original_tensor_already_recovered_));
-  ASSERT_THAT(propagator.Initialize(), IsOk());
+  ASSERT_THAT(propagator.Initialize(), absl_testing::IsOk());
 
   AbsoluteScopedTensorKey p_key =
       AbsoluteScopedTensorKey::Create(TensorKey::Create("p"));
   ASSERT_THAT(propagator.Process(p_key, nullptr, CreateSimpleSummary()),
-              IsOk());
+              absl_testing::IsOk());
 
   // There are 9 propagated summaries in total: p, copy, reshape, bcast,
   // transpose, tuple member 0 (from p), tuple member 1 (from transpose), gte
@@ -358,13 +358,13 @@ ENTRY %main (p: f32[4]) -> f32[2,4] {
   OriginalTensorSummaryPropagator propagator(
       module.get(), std::move(on_propagated_tensor_summary_),
       std::move(is_original_tensor_already_recovered_));
-  ASSERT_THAT(propagator.Initialize(), IsOk());
+  ASSERT_THAT(propagator.Initialize(), absl_testing::IsOk());
 
   AbsoluteScopedTensorKey copy_key =
       AbsoluteScopedTensorKey::Create(TensorKey::Create("copy"));
   ASSERT_THAT(
       propagator.Process(copy_key, nullptr, CreateSummaryForShape({2, 4})),
-      IsOk());
+      absl_testing::IsOk());
   // Process calls on_propagated_tensor_summary_ for the root, then propagates.
   // Propagates backward: copy -> bitcast -> reshape -> transpose -> bcast -> p
   EXPECT_THAT(propagated_summaries_, SizeIs(6));
@@ -416,12 +416,12 @@ ENTRY %main (p: f32[2,2]) -> (f32[2,2], f32[2,2]) {
   OriginalTensorSummaryPropagator propagator(
       module.get(), std::move(on_propagated_tensor_summary_),
       std::move(is_original_tensor_already_recovered_));
-  ASSERT_THAT(propagator.Initialize(), IsOk());
+  ASSERT_THAT(propagator.Initialize(), absl_testing::IsOk());
 
   AbsoluteScopedTensorKey tuple0_key = AbsoluteScopedTensorKey::Create(
       TensorKey::Create("tuple", ShapeIndex{0}));
   ASSERT_THAT(propagator.Process(tuple0_key, nullptr, CreateSimpleSummary()),
-              IsOk());
+              absl_testing::IsOk());
   // tuple{0} -> copy -> p
   EXPECT_THAT(propagated_summaries_,
               SizeIs(3));  // tuple{0}, copy, p
@@ -430,7 +430,7 @@ ENTRY %main (p: f32[2,2]) -> (f32[2,2], f32[2,2]) {
   AbsoluteScopedTensorKey tuple1_key = AbsoluteScopedTensorKey::Create(
       TensorKey::Create("tuple", ShapeIndex{1}));
   ASSERT_THAT(propagator.Process(tuple1_key, nullptr, CreateSimpleSummary()),
-              IsOk());
+              absl_testing::IsOk());
   // only tuple{1} is new. copy and p are already propagated.
   EXPECT_THAT(propagated_summaries_, SizeIs(1));
   EXPECT_EQ(
@@ -458,12 +458,12 @@ ENTRY %main (p: f32[2,2]) -> f32[2,2] {
   OriginalTensorSummaryPropagator propagator(
       module.get(), std::move(on_propagated_tensor_summary_),
       std::move(is_original_tensor_already_recovered_));
-  ASSERT_THAT(propagator.Initialize(), IsOk());
+  ASSERT_THAT(propagator.Initialize(), absl_testing::IsOk());
 
   AbsoluteScopedTensorKey copy_key =
       AbsoluteScopedTensorKey::Create(TensorKey::Create("copy"));
   ASSERT_THAT(propagator.Process(copy_key, nullptr, CreateSimpleSummary()),
-              IsOk());
+              absl_testing::IsOk());
   // Propagates from copy, but stops at p.
   EXPECT_THAT(propagated_summaries_, SizeIs(1));
   EXPECT_EQ(
@@ -496,13 +496,14 @@ ENTRY %main (p.main: f32[2,2]) -> f32[2,2] {
   OriginalTensorSummaryPropagator propagator(
       module.get(), std::move(on_propagated_tensor_summary_),
       std::move(is_original_tensor_already_recovered_));
-  ASSERT_THAT(propagator.Initialize(), IsOk());
+  ASSERT_THAT(propagator.Initialize(), absl_testing::IsOk());
 
   AbsoluteScopedTensorKey key = AbsoluteScopedTensorKey::Create(
       TensorKey::Create("add.inner"), {ScopeInstruction::Create("call.outer"),
                                        ScopeInstruction::Create("call.inner")});
 
-  ASSERT_THAT(propagator.Process(key, nullptr, CreateSimpleSummary()), IsOk());
+  ASSERT_THAT(propagator.Process(key, nullptr, CreateSimpleSummary()),
+              absl_testing::IsOk());
 
   // Expected propagated summaries:
   // 1. In `outer` computation: `c.outer`
@@ -575,7 +576,7 @@ ENTRY %main (p_main: f32[2,2]) -> (f32[2,2], f32[2,2]) {
   OriginalTensorSummaryPropagator propagator(
       module.get(), std::move(on_propagated_tensor_summary_),
       std::move(is_original_tensor_already_recovered_));
-  ASSERT_THAT(propagator.Initialize(), IsOk());
+  ASSERT_THAT(propagator.Initialize(), absl_testing::IsOk());
 
   // Initialization should propagate constants from the main computation.
   // There are forward propagations as well.
@@ -584,7 +585,8 @@ ENTRY %main (p_main: f32[2,2]) -> (f32[2,2], f32[2,2]) {
   // Process a tensor in the first called computation.
   AbsoluteScopedTensorKey key1 = AbsoluteScopedTensorKey::Create(
       TensorKey::Create("add1"), {ScopeInstruction::Create("call1")});
-  ASSERT_THAT(propagator.Process(key1, nullptr, CreateSimpleSummary()), IsOk());
+  ASSERT_THAT(propagator.Process(key1, nullptr, CreateSimpleSummary()),
+              absl_testing::IsOk());
 
   auto find_summary_with_scope =
       [&](absl::string_view name, const std::vector<ScopeInstruction>& scope) {
@@ -614,7 +616,8 @@ ENTRY %main (p_main: f32[2,2]) -> (f32[2,2], f32[2,2]) {
   // Process a tensor in the second called computation.
   AbsoluteScopedTensorKey key2 = AbsoluteScopedTensorKey::Create(
       TensorKey::Create("add2"), {ScopeInstruction::Create("call2")});
-  ASSERT_THAT(propagator.Process(key2, nullptr, CreateSimpleSummary()), IsOk());
+  ASSERT_THAT(propagator.Process(key2, nullptr, CreateSimpleSummary()),
+              absl_testing::IsOk());
 
   // Check that parameters and constants in computation2 are propagated.
   auto p2_it =
@@ -649,14 +652,14 @@ ENTRY %main (p: f32[2,2]) -> f32[2,2] {
   OriginalTensorSummaryPropagator propagator(
       module.get(), std::move(on_propagated_tensor_summary_),
       std::move(is_original_tensor_already_recovered_));
-  ASSERT_THAT(propagator.Initialize(), IsOk());
+  ASSERT_THAT(propagator.Initialize(), absl_testing::IsOk());
   propagated_summaries_.clear();
 
   AbsoluteScopedTensorKey guessed_key = AbsoluteScopedTensorKey::Create(
       TensorKey::Create("copy"), {ScopeInstruction::Create("call?")});
 
   ASSERT_THAT(propagator.Process(guessed_key, nullptr, CreateSimpleSummary()),
-              IsOk());
+              absl_testing::IsOk());
   EXPECT_TRUE(propagated_summaries_.empty());
 }
 
@@ -684,14 +687,14 @@ ENTRY %main (p: f32[2,2]) -> f32[2,2] {
   OriginalTensorSummaryPropagator propagator(
       module.get(), std::move(on_propagated_tensor_summary_),
       std::move(is_original_tensor_already_recovered_));
-  ASSERT_THAT(propagator.Initialize(), IsOk());
+  ASSERT_THAT(propagator.Initialize(), absl_testing::IsOk());
   propagated_summaries_.clear();
 
   // Provide summary for a key inside loop body but with a wildcard iteration.
   AbsoluteScopedTensorKey wildcard_key = AbsoluteScopedTensorKey::Create(
       TensorKey::Create("copy"), {ScopeInstruction::FromString("loop#*")});
   ASSERT_THAT(propagator.Process(wildcard_key, nullptr, CreateSimpleSummary()),
-              IsOk());
+              absl_testing::IsOk());
   // It should be delayed, so no propagations yet.
   EXPECT_TRUE(propagated_summaries_.empty());
 
@@ -699,7 +702,7 @@ ENTRY %main (p: f32[2,2]) -> f32[2,2] {
   AbsoluteScopedTensorKey concrete_key = AbsoluteScopedTensorKey::Create(
       TensorKey::Create("p"), {ScopeInstruction::FromString("loop#1")});
   ASSERT_THAT(propagator.Process(concrete_key, nullptr, CreateSimpleSummary()),
-              IsOk());
+              absl_testing::IsOk());
 
   // Both the concrete key summary and the instantiated wildcard summary should
   // now be propagated.

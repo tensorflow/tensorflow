@@ -33,9 +33,66 @@ package(
     licenses = ["notice"],
 )
 
+pytype_strict_library(
+    name = "change_detector",
+    srcs = ["change_detector.py"],
+)
+
+py_test(
+    name = "change_detector_test",
+    srcs = ["change_detector_test.py"],
+    deps = [
+        ":change_detector",
+        "@absl_py//absl/testing:absltest",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+pytype_strict_library(
+    name = "bazel_diff",
+    srcs = ["bazel_diff.py"],
+    deps = [
+        ":change_detector",
+    ],
+)
+
+py_test(
+    name = "bazel_diff_test",
+    srcs = ["bazel_diff_test.py"],
+    deps = [
+        ":bazel_diff",
+        ":change_detector",
+        "@absl_py//absl/testing:absltest",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+pytype_strict_library(
+    name = "build_lib",
+    srcs = ["build.py"],
+    deps = [
+        ":bazel_diff",
+        ":change_detector",
+    ],
+)
+
 pytype_strict_binary(
     name = "build",
     srcs = ["build.py"],
+    deps = [
+        ":bazel_diff",
+        ":change_detector",
+    ],
+)
+
+py_test(
+    name = "build_test",
+    srcs = ["build_test.py"],
+    deps = [
+        ":build_lib",
+        "@absl_py//absl/testing:absltest",
+        "@absl_py//absl/testing:parameterized",
+    ],
 )
 
 pytype_strict_library(
@@ -53,6 +110,7 @@ pytype_strict_binary(
         ":clang_apply_replacements_bin",
     ]),
     main = "clang_tidy_diff.py",
+    tags = ["manual"],
     deps = [
         ":clang_tidy_diff_lib",
     ],
@@ -71,7 +129,7 @@ py_test(
 genrule(
     name = "generated_build_commands",
     outs = ["generated_commands.txt"],
-    cmd = "$(location //build_tools/ci:build) --dump_commands > $(OUTS)",
+    cmd = "$(execpath //build_tools/ci:build) --dump_commands > $(OUTS)",
     tags = ["not_run:arm"],
     tools = [":build"],
 )
@@ -139,4 +197,24 @@ sh_binary(
 sh_binary(
     name = "run_clang_tidy",
     srcs = ["run_clang_tidy.sh"],
+)
+
+sh_binary(
+    name = "asan_wrapper",
+    srcs = ["asan_wrapper.sh"],
+    data = if_oss([
+        "@{}//:bin/llvm-symbolizer".format(_LLVM_REPO_NAME),  # buildifier: disable=platform-specific-binaries
+        "@{}//:distro_libs".format(_LLVM_REPO_NAME),  # buildifier: disable=platform-specific-binaries
+        "@{}//:rt_asan".format(_LLVM_REPO_NAME),  # buildifier: disable=platform-specific-binaries
+    ]),
+    tags = [
+        "manual",
+        "notap",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
+    name = "run_asan",
+    srcs = ["run_asan.sh"],
 )

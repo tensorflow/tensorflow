@@ -75,14 +75,14 @@ void RecvOutputsFromRendezvousAsync(
         keys.size(), "; alloc_attrs.size() = ", alloc_attrs.size())));
   }
 
-  received_tensors->reserve(keys.size());
+  received_tensors->resize(keys.size());
   std::vector<std::tuple<std::string, Tensor*, Rendezvous::ParsedKey,
                          AllocatorAttributes>>
       arguments;
+  arguments.reserve(keys.size());
   for (int i = 0; i < keys.size(); ++i) {
     Rendezvous::ParsedKey parsed;
     absl::Status s = Rendezvous::ParseKey(keys[i], &parsed);
-    received_tensors->push_back(Tensor());
     if (!s.ok()) {
       done(s);
       return;

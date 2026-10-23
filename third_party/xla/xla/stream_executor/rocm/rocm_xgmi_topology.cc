@@ -13,72 +13,63 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocm_xgmi_topology.h"
 
 #include <cstdint>
-#include <optional>
+#include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/status_macros.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "rocm/include/rocm_smi/rocm_smi.h"
-#include "xla/stream_executor/rocm/rocm_smi_util.h"
+#include "xla/stream_executor/rocm/smi_util.h"
 #include "xla/tsl/platform/logging.h"
 
 namespace stream_executor::gpu {
 
-XgmiTopologyInfo GetRocmXgmiTopology(absl::string_view pci_bus_id) {
+absl::StatusOr<XgmiTopologyInfo> GetRocmXgmiTopology(
+    absl::string_view pci_bus_id) {
+  absl::MutexLock lock(smi_mutex);
+
+  ABSL_RETURN_IF_ERROR(InitSmi());
+
+  ABSL_ASSIGN_OR_RETURN(BdfComponents bdf, ParseBdf(pci_bus_id));
+  ABSL_ASSIGN_OR_RETURN(SmiDeviceHandle device, FindDevice(bdf));
+
   XgmiTopologyInfo info;
 
-  absl::MutexLock lock(rocm_smi_mutex);
-
-  if (!InitRocmSmi()) return info;
-
-  std::optional<BdfComponents> bdf = ParseBdf(pci_bus_id);
-  if (!bdf.has_value()) {
-    LOG(WARNING) << "Failed to parse PCI bus ID for xGMI query: " << pci_bus_id;
-    return info;
-  }
-
-  std::optional<uint32_t> dev_idx = FindDeviceIndex(*bdf);
-  if (!dev_idx.has_value()) {
-    LOG(WARNING) << "rocm_smi: could not find device for PCI bus ID "
-                 << pci_bus_id << " (xGMI query)";
-    return info;
-  }
-
-  // Query xGMI hive ID.
-  uint64_t hive_id = 0;
-  rsmi_status_t status = rsmi_dev_xgmi_hive_id_get(*dev_idx, &hive_id);
-  if (status == RSMI_STATUS_SUCCESS) {
-    info.hive_id = hive_id;
+  // A device outside an xGMI hive is a normal configuration, and SMI reports
+  // it the same way it reports a failed query, so this is not fatal.
+  absl::StatusOr<uint64_t> hive_id = QueryHiveId(device);
+  if (hive_id.ok()) {
+    info.hive_id = *hive_id;
   } else {
-    VLOG(1) << "rsmi_dev_xgmi_hive_id_get failed for " << pci_bus_id
+    VLOG(2) << "xGMI hive ID query failed for " << pci_bus_id << ": "
+            << hive_id.status().message()
             << "; device may not be in an xGMI hive.";
   }
 
-  // Count xGMI links by querying link type to every other device.
-  uint32_t num_devices = 0;
-  status = rsmi_num_monitor_devices(&num_devices);
-  if (status != RSMI_STATUS_SUCCESS || num_devices <= 1) {
-    return info;
-  }
+  // Count peers reachable over xGMI by querying the link type to every other
+  // device. This counts peer GPUs, not physical links.
+  ABSL_ASSIGN_OR_RETURN(std::vector<SmiDeviceHandle> devices, EnumerateDevices());
+  if (devices.size() <= 1) return info;
 
   int xgmi_links = 0;
-  for (uint32_t i = 0; i < num_devices; ++i) {
-    if (i == *dev_idx) continue;
-
-    uint64_t hops = 0;
-    RSMI_IO_LINK_TYPE link_type = RSMI_IOLINK_TYPE_UNDEFINED;
-    status = rsmi_topo_get_link_type(*dev_idx, i, &hops, &link_type);
-    if (status != RSMI_STATUS_SUCCESS) continue;
-
-    if (link_type == RSMI_IOLINK_TYPE_XGMI) {
-      ++xgmi_links;
+  for (SmiDeviceHandle peer : devices) {
+    if (peer == device) continue;
+    absl::StatusOr<bool> is_peer = IsXgmiPeer(device, peer);
+    if (!is_peer.ok()) {
+      VLOG(2) << "xGMI link type query failed for " << pci_bus_id << ": "
+              << is_peer.status().message();
+      continue;
     }
+    if (*is_peer) ++xgmi_links;
   }
 
   info.active_links = xgmi_links;
 
   VLOG(1) << "xGMI topology for " << pci_bus_id << ": " << xgmi_links
           << " active xGMI links"
-          << " (hive_id=" << hive_id << ", num_devices=" << num_devices << ")";
+          << " (hive_id=" << info.hive_id << ", num_devices=" << devices.size()
+          << ")";
 
   return info;
 }

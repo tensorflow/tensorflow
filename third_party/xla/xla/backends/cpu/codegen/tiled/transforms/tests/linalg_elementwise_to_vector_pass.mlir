@@ -36,7 +36,7 @@ func.func @elementwise_add_to_vector(
   // CHECK-SAME:  {in_bounds = [true]} : vector<8xf32>, memref<8x1024xf32>
   // CHECK:   }
   // CHECK: }
-  linalg.elementwise kind=#linalg.elementwise_kind<add>
+  linalg.elementwise <add>
     ins(%arg0, %arg1 : memref<8x1024xf32>, memref<8x1024xf32>)
     outs(%arg2 : memref<8x1024xf32>)
   return
@@ -71,7 +71,7 @@ func.func @elementwise_add_to_vector_non_multiple_of_8(
   // CHECK: vector.transfer_write %[[UNROLL_OUT]], %arg2[%[[IV0]], %[[C96]]]
   // CHECK-SAME: {in_bounds = [true]} : vector<4xf32>, memref<8x100xf32>
   // CHECK: }
-  linalg.elementwise kind=#linalg.elementwise_kind<add>
+  linalg.elementwise <add>
     ins(%arg0, %arg1 : memref<8x100xf32>, memref<8x100xf32>)
     outs(%arg2 : memref<8x100xf32>)
   return
@@ -108,7 +108,7 @@ func.func @elementwise_add_to_vector_small_minor(
     %arg0 : memref<8x3xf32>,
     %arg1 : memref<8x3xf32>,
     %arg2 : memref<8x3xf32>) {
-  linalg.elementwise kind=#linalg.elementwise_kind<add>
+  linalg.elementwise <add>
     ins(%arg0, %arg1 : memref<8x3xf32>, memref<8x3xf32>)
     outs(%arg2 : memref<8x3xf32>)
   return

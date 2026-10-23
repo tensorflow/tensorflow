@@ -74,7 +74,7 @@ int32_t DefaultNumInterOpThreads() {
 static thread::ThreadPool* InitComputePool(const SessionOptions& options) {
   int32_t inter_op_parallelism_threads =
       options.config.inter_op_parallelism_threads();
-  if (inter_op_parallelism_threads == 0) {
+  if (inter_op_parallelism_threads <= 0) {
     inter_op_parallelism_threads = DefaultNumInterOpThreads();
   }
   return new thread::ThreadPool(

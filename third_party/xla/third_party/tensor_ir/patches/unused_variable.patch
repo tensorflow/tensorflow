@@ -1,0 +1,43 @@
+diff --git a/include/tensor_ir/Analysis/Tiling/Evaluate.h b/include/tensor_ir/Analysis/Tiling/Evaluate.h
+--- a/include/tensor_ir/Analysis/Tiling/Evaluate.h
++++ b/include/tensor_ir/Analysis/Tiling/Evaluate.h
+@@ -173,6 +173,8 @@
+  */
+ class LayoutIterator {
+ public:
++  virtual ~LayoutIterator() = default;
++
+   LogicalResult dispatch(LayoutSourceAttrInterface layout);
+ 
+   virtual LogicalResult processTensor(TensorSourceAttr tensor);
+diff --git a/lib/Dialect/Canonicalization.cpp b/lib/Dialect/Canonicalization.cpp
+--- a/lib/Dialect/Canonicalization.cpp
++++ b/lib/Dialect/Canonicalization.cpp
+@@ -177,7 +177,7 @@
+        llvm::zip_equal(innerStarts.asArrayRef(), innerStrides.asArrayRef(),
+                        outerStarts.asArrayRef())) {
+     int64_t start;
+-    bool overflow =
++    [[maybe_unused]] bool overflow =
+         !checkedMultiplyAdd(outerStart, innerStride, innerStart, start);
+     assert(!overflow && "slice composition was not checked");
+     starts.push_back(start);
+@@ -202,7 +202,7 @@
+     int64_t start;
+     int64_t limit;
+     int64_t stride;
+-    bool composed = computeComposedSliceDimension(
++    [[maybe_unused]] bool composed = computeComposedSliceDimension(
+         innerStart, innerLimit, innerStride, outerStart, outerLimit,
+         outerStride, start, limit, stride);
+     assert(composed && "slice composition was not checked");
+@@ -219,7 +219,8 @@
+   for (auto [innerStride, outerStride] :
+        llvm::zip_equal(innerStrides.asArrayRef(), outerStrides.asArrayRef())) {
+     int64_t stride;
+-    bool overflow = llvm::MulOverflow(innerStride, outerStride, stride);
++    [[maybe_unused]] bool overflow =
++        llvm::MulOverflow(innerStride, outerStride, stride);
+     assert(!overflow && "slice composition was not checked");
+     strides.push_back(stride);
+   }

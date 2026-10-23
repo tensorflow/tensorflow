@@ -35,15 +35,16 @@ limitations under the License.
 #include "xla/codegen/tiling/experimental/test_utils.h"
 #include "xla/codegen/tiling/experimental/tile.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
+#include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/analysis/symbolic_map.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/shape.h"
 #include "xla/util.h"
-#include "xla/xla_data.pb.h"
 
 namespace xla::gpu::experimental {
 namespace {
@@ -51,6 +52,8 @@ namespace {
 using ::absl_testing::StatusIs;
 using ::llvm::SmallVector;
 using ::mlir::MLIRContext;
+using ::testing::ElementsAre;
+using ::testing::Pair;
 
 class TilePropagationTest : public HloHardwareIndependentTestBase {
  public:
@@ -134,6 +137,86 @@ TEST_F(TilePropagationTest, CanPropagateToOutputsOfElementwiseOp) {
   EXPECT_THAT(from_operand_1, MatchToString(kExpected));
 }
 
+TEST_F(TilePropagationTest, CanPropagateToInputsOfClampWithScalarBounds) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[] parameter(0)
+      p1 = f32[10,20] parameter(1)
+      p2 = f32[] parameter(2)
+      ROOT clamp0 = f32[10,20] clamp(p0, p1, p2)
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+  ASSERT_OK_AND_ASSIGN(
+      Tiles tiled_operands,
+      PropagateTileToInput(
+          *tiling_space, *root,
+          GetTestTile(*tiling_space, root->shape().dimensions()), 0));
+  EXPECT_THAT(tiled_operands, MatchToString(R"(
+    0) (tid_0, tid_1)
+      -> offsets []
+         sizes []
+         strides []
+         upper bounds []
+    1) (tid_0, tid_1)
+      -> offsets [tid_0 * ts_0, tid_1 * ts_1]
+         sizes [ts_0, ts_1]
+         strides [1, 2]
+         upper bounds [10, 20]
+    2) (tid_0, tid_1)
+      -> offsets []
+         sizes []
+         strides []
+         upper bounds []
+  )"));
+}
+
+TEST_F(TilePropagationTest, CanPropagateToOutputsOfClampWithScalarBounds) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[] parameter(0)
+      p1 = f32[10,20] parameter(1)
+      p2 = f32[10,20] parameter(2)
+      ROOT clamp0 = f32[10,20] clamp(p0, p1, p2)
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+  ASSERT_OK_AND_ASSIGN(
+      Tiles from_operand_0,
+      PropagateTileToOutput(
+          *tiling_space, *root,
+          GetTestTile(*tiling_space, root->operand(0)->shape().dimensions()),
+          0));
+  EXPECT_THAT(from_operand_0, MatchToString(R"(
+    0) (tid_0, tid_1)
+      -> offsets [0, 0]
+         sizes [16, 32]
+         strides [1, 1]
+         upper bounds [10, 20]
+  )"));
+  ASSERT_OK_AND_ASSIGN(
+      Tiles from_operand_1,
+      PropagateTileToOutput(
+          *tiling_space, *root,
+          GetTestTile(*tiling_space, root->operand(1)->shape().dimensions()),
+          1));
+  EXPECT_THAT(from_operand_1, MatchToString(R"(
+    0) (tid_0, tid_1)
+      -> offsets [tid_0 * ts_0, tid_1 * ts_1]
+         sizes [ts_0, ts_1]
+         strides [1, 2]
+         upper bounds [10, 20]
+  )"));
+}
+
 TEST_F(TilePropagationTest, CanPropagateToInputsOfAllReduceOp) {
   HloInstruction* root = ParseAndGetRoot(R"(
     HloModule m
@@ -185,7 +268,7 @@ TEST_F(TilePropagationTest, CanPropagateToInputsOfAllGatherOp) {
           GetTestTile(*tiling_space, root->shape().dimensions()), 0));
   EXPECT_THAT(tiled_operands, MatchToString(R"(
     0) (tid_0, tid_1)
-      -> offsets [(tid_0 * ts_0) mod 64, tid_1 * ts_1]
+      -> offsets [(tid_0 * ts_0) mod 64 + ((tid_0 * ts_0) / 128) * 64, tid_1 * ts_1]
          sizes [ts_0, ts_1]
          strides [1, 2]
          upper bounds [64, 256]
@@ -196,6 +279,658 @@ TEST_F(TilePropagationTest, CanPropagateToInputsOfAllGatherOp) {
            upper bounds [2]
          }
   )"));
+}
+
+TEST_F(TilePropagationTest, CanPropagateToInputsOfVariadicAllGatherOp) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    f {
+      p0 = f32[1,2,8,16] parameter(0)
+      p1 = s32[1,2] parameter(1)
+      ag = (f32[4,2,8,16], s32[4,2]) all-gather(p0, p1),
+        replica_groups={{0,1,2,3}}, dimensions={0}
+      gte0 = f32[4,2,8,16] get-tuple-element(ag), index=0
+      gte1 = s32[4,2] get-tuple-element(ag), index=1
+      ROOT t = (f32[4,2,8,16], s32[4,2]) tuple(gte0, gte1)
+    }
+
+    ENTRY e {
+      p0 = f32[1,2,8,16] parameter(0)
+      p1 = s32[1,2] parameter(1)
+      ROOT fusion = (f32[4,2,8,16], s32[4,2]) fusion(p0, p1), kind=kCustom,
+        calls=f
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+  const HloInstruction* ag =
+      root->fused_instructions_computation()->GetInstructionWithName("ag");
+  ASSERT_EQ(tiling_space->tiled_roots().size(), 2);
+
+  // Output `k` comes from operand `k` (`p0` has gather size 1 -> output 4).
+  // For valid tiles (`tid_0 * ts_0 < 4`), the input offset `(tid_0 * ts_0) / 4`
+  // is 0; if the schedule pads a tile past 4, it evaluates to >= 1 so the read
+  // is masked out. Output 0 uses `tid_0` and output 1 uses `tid_4`, which the
+  // scheduler later maps to the same peer.
+  ASSERT_OK_AND_ASSIGN(
+      Tiles operand_0_tiles,
+      PropagateTileToInput(*tiling_space, *ag, tiling_space->tiled_roots()[0],
+                           /*output_index=*/0));
+  EXPECT_THAT(operand_0_tiles, MatchToString(R"(
+    0) (tid_0, tid_1, tid_2, tid_3, tid_4, tid_5)
+      -> offsets [(tid_0 * ts_0) / 4, tid_1 * ts_1, tid_2 * ts_2, tid_3 * ts_3]
+         sizes [ts_0, ts_1, ts_2, ts_3]
+         strides [1, 1, 1, 1]
+         upper bounds [1, 2, 8, 16]
+         replica ids {
+           offsets [tid_0 * ts_0]
+           sizes [1]
+           strides [1]
+           upper bounds [4]
+         }
+  )"));
+
+  ASSERT_OK_AND_ASSIGN(
+      Tiles operand_1_tiles,
+      PropagateTileToInput(*tiling_space, *ag, tiling_space->tiled_roots()[1],
+                           /*output_index=*/1));
+  EXPECT_THAT(operand_1_tiles, MatchToString(R"(
+    0) (tid_0, tid_1, tid_2, tid_3, tid_4, tid_5)
+      -> offsets [(tid_4 * ts_4) / 4, tid_5 * ts_5]
+         sizes [ts_4, ts_5]
+         strides [1, 1]
+         upper bounds [1, 2]
+         replica ids {
+           offsets [tid_4 * ts_4]
+           sizes [1]
+           strides [1]
+           upper bounds [4]
+         }
+  )"));
+
+  ASSERT_OK_AND_ASSIGN(
+      Tiles all_operand_tiles,
+      PropagateTilesToInputs(*tiling_space, *ag, tiling_space->tiled_roots()));
+  EXPECT_THAT(all_operand_tiles,
+              ElementsAre(operand_0_tiles[0], operand_1_tiles[0]));
+}
+
+TEST_F(TilePropagationTest, CanPropagateFromVariadicAllGatherToDotProducers) {
+  HloInstruction* fusion = ParseAndGetRoot(R"(
+    HloModule m
+    f {
+      lhs0 = f32[2,8] parameter(0)
+      rhs0 = f32[8,16] parameter(1)
+      lhs1 = f32[4,8] parameter(2)
+      rhs1 = f32[8,32] parameter(3)
+      dot0 = f32[2,16] dot(lhs0, rhs0),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      dot1 = f32[4,32] dot(lhs1, rhs1),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      ag = (f32[8,16], f32[16,32]) all-gather(dot0, dot1),
+        replica_groups={{0,1,2,3}}, dimensions={0}
+      gte0 = f32[8,16] get-tuple-element(ag), index=0
+      gte1 = f32[16,32] get-tuple-element(ag), index=1
+      ROOT t = (f32[8,16], f32[16,32]) tuple(gte0, gte1)
+    }
+
+    ENTRY e {
+      lhs0 = f32[2,8] parameter(0)
+      rhs0 = f32[8,16] parameter(1)
+      lhs1 = f32[4,8] parameter(2)
+      rhs1 = f32[8,32] parameter(3)
+      ROOT fusion = (f32[8,16], f32[16,32]) fusion(lhs0, rhs0, lhs1, rhs1),
+        kind=kCustom, calls=f
+    }
+  )");
+  const HloInstruction* ag =
+      fusion->fused_instructions_computation()->GetInstructionWithName("ag");
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(fusion),
+                          &mlir_context_));
+  ASSERT_OK_AND_ASSIGN(
+      Tiles ag_op0,
+      PropagateTileToInput(*tiling_space, *ag, tiling_space->tiled_roots()[0],
+                           /*output_index=*/0));
+  ASSERT_OK_AND_ASSIGN(
+      Tiles dot0_operands,
+      PropagateTileToInput(*tiling_space, *ag->operand(0), ag_op0[0], 0));
+  EXPECT_THAT(dot0_operands, MatchToString(R"(
+    0) (tid_0, tid_1, tid_2, tid_3, tid_4, tid_5)
+      -> offsets [(tid_0 * ts_0) mod 2 + ((tid_0 * ts_0) / 8) * 2, tid_5 * ts_5]
+         sizes [ts_0, ts_5]
+         strides [1, 1]
+         upper bounds [2, 8]
+         replica ids {
+           offsets [(tid_0 * ts_0) / 2]
+           sizes [1]
+           strides [1]
+           upper bounds [4]
+         }
+    1) (tid_0, tid_1, tid_2, tid_3, tid_4, tid_5)
+      -> offsets [tid_5 * ts_5, tid_1 * ts_1]
+         sizes [ts_5, ts_1]
+         strides [1, 1]
+         upper bounds [8, 16]
+         replica ids {
+           offsets [(tid_0 * ts_0) / 2]
+           sizes [1]
+           strides [1]
+           upper bounds [4]
+         }
+  )"));
+
+  ASSERT_OK_AND_ASSIGN(
+      Tiles ag_op1,
+      PropagateTileToInput(*tiling_space, *ag, tiling_space->tiled_roots()[1],
+                           /*output_index=*/1));
+  ASSERT_OK_AND_ASSIGN(
+      Tiles dot1_operands,
+      PropagateTileToInput(*tiling_space, *ag->operand(1), ag_op1[0], 0));
+  EXPECT_THAT(dot1_operands, MatchToString(R"(
+    0) (tid_0, tid_1, tid_2, tid_3, tid_4, tid_5)
+      -> offsets [(tid_2 * ts_2) mod 4 + ((tid_2 * ts_2) / 16) * 4, tid_4 * ts_4]
+         sizes [ts_2, ts_4]
+         strides [1, 1]
+         upper bounds [4, 8]
+         replica ids {
+           offsets [(tid_2 * ts_2) / 4]
+           sizes [1]
+           strides [1]
+           upper bounds [4]
+         }
+    1) (tid_0, tid_1, tid_2, tid_3, tid_4, tid_5)
+      -> offsets [tid_4 * ts_4, tid_3 * ts_3]
+         sizes [ts_4, ts_3]
+         strides [1, 1]
+         upper bounds [8, 32]
+         replica ids {
+           offsets [(tid_2 * ts_2) / 4]
+           sizes [1]
+           strides [1]
+           upper bounds [4]
+         }
+  )"));
+}
+
+TEST_F(TilePropagationTest,
+       AllGatherInputOffsetPreservesSchedulePaddingOutOfBounds) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    f {
+      p0 = f32[2,16] parameter(0)
+      p1 = pred[2] parameter(1)
+      ag = (f32[4,16], pred[4]) all-gather(p0, p1),
+        replica_groups={{0,1}}, dimensions={0}
+      gte0 = f32[4,16] get-tuple-element(ag), index=0
+      gte1 = pred[4] get-tuple-element(ag), index=1
+      ROOT t = (f32[4,16], pred[4]) tuple(gte0, gte1)
+    }
+
+    ENTRY e {
+      p0 = f32[2,16] parameter(0)
+      p1 = pred[2] parameter(1)
+      ROOT fusion = (f32[4,16], pred[4]) fusion(p0, p1), kind=kCustom, calls=f
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+  ASSERT_OK(tiling_space->AssignTileSizes({1, 4, 1}));
+  const HloInstruction* ag =
+      root->fused_instructions_computation()->GetInstructionWithName("ag");
+
+  // Simulate a padded block for output 1 (`pred[4]` from `pred[2]`) by adding
+  // `output_dim_size = 4` to its gather-dim offset (`tid_2 + 4`).
+  Tile padded_output_tile = tiling_space->tiled_roots()[1];
+  SmallVector<DimTile> dim_tiles(padded_output_tile.dim_tiles());
+  dim_tiles[0].offset = dim_tiles[0].offset + 4;
+  ASSERT_OK_AND_ASSIGN(
+      Tiles operand_1_tiles,
+      PropagateTileToInput(*tiling_space, *ag,
+                           padded_output_tile.CloneWithNewDims(dim_tiles),
+                           /*output_index=*/1));
+  ASSERT_EQ(operand_1_tiles.size(), 1);
+  // At `tid_2 = 1` (padded offset = 5), `5 % 2 = 1` alone would wrap back
+  // inside `pred[2]`. With the overflow term, the input offset is
+  // `(5 % 2) + (5 / 4) * 2 = 3 >= 2`, keeping it out of bounds.
+  EXPECT_EQ(operand_1_tiles[0].offsets()[0].Evaluate({0, 0, 1}), 3);
+  EXPECT_GE(operand_1_tiles[0].offsets()[0].Evaluate({0, 0, 1}),
+            operand_1_tiles[0].upper_bounds()[0].Evaluate({0, 0, 1}));
+}
+
+TEST_F(TilePropagationTest, VariadicAllGatherRejectsOutOfRangeOutputIndex) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    f {
+      p0 = f32[1,8] parameter(0)
+      p1 = s32[1,8] parameter(1)
+      ag = (f32[4,8], s32[4,8]) all-gather(p0, p1),
+        replica_groups={{0,1,2,3}}, dimensions={0}
+      gte0 = f32[4,8] get-tuple-element(ag), index=0
+      gte1 = s32[4,8] get-tuple-element(ag), index=1
+      ROOT t = (f32[4,8], s32[4,8]) tuple(gte0, gte1)
+    }
+
+    ENTRY e {
+      p0 = f32[1,8] parameter(0)
+      p1 = s32[1,8] parameter(1)
+      ROOT fusion = (f32[4,8], s32[4,8]) fusion(p0, p1), kind=kCustom, calls=f
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+  const HloInstruction* ag =
+      root->fused_instructions_computation()->GetInstructionWithName("ag");
+  EXPECT_THAT(
+      PropagateTileToInput(*tiling_space, *ag, tiling_space->tiled_roots()[0],
+                           /*output_index=*/2),
+      StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+// Constraints on the tiling space variables hold for every tile derived from
+// the output tile and must survive the propagation (like `CloneWithNewDims`).
+TEST_F(TilePropagationTest, AllGatherKeepsTileConstraints) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    f {
+      p0 = f32[1,8] parameter(0)
+      ROOT ag = f32[4,8] all-gather(p0), replica_groups={{0,1,2,3}},
+        dimensions={0}
+    }
+
+    ENTRY e {
+      p0 = f32[1,8] parameter(0)
+      ROOT fusion = f32[4,8] fusion(p0), kind=kCustom, calls=f
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+  Tile output_tile = tiling_space->tiled_roots()[0];
+  const SymbolicExpr tid_1 = CreateSymbolicVariable(1, &mlir_context_);
+  output_tile.AddConstraint(tid_1, Interval{0, 1});
+  ASSERT_OK_AND_ASSIGN(
+      Tiles operand_tiles,
+      PropagateTileToInput(*tiling_space, *root->fused_expression_root(),
+                           output_tile, /*output_index=*/0));
+  ASSERT_EQ(operand_tiles.size(), 1);
+  EXPECT_THAT(operand_tiles[0].constraints(),
+              ElementsAre(Pair(tid_1, Interval{0, 1})));
+}
+
+TEST_F(TilePropagationTest, CanPropagateToInputsOfReduceScatterOp) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+    ENTRY e {
+      p0 = f32[128,256] parameter(0)
+      ROOT reduce_scatter = f32[64,256] reduce-scatter(p0), replica_groups={{0,1}}, dimensions={0}, to_apply=add
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+  ASSERT_OK_AND_ASSIGN(auto tiled_operands,
+                       PropagateTileToInput(*tiling_space, *root,
+                                            tiling_space->tiled_roots()[0], 0));
+  EXPECT_THAT(tiled_operands, MatchToString(R"(
+    0) (tid_0, tid_1, tid_2)
+      -> offsets [tid_0 * ts_0 * 2 + tid_2 * 64, tid_1 * ts_1]
+         sizes [ts_0 * 2, ts_1]
+         strides [1, 1]
+         upper bounds [128, 256]
+  )"));
+}
+
+TEST_F(TilePropagationTest, CanPropagateFromReduceScatterToDotOp) {
+  HloInstruction* fusion = ParseAndGetRoot(R"(
+    HloModule m
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+    fusion {
+      p0 = f32[128,256] parameter(0)
+      p1 = f32[256,512] parameter(1)
+      dot = f32[128,512] dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      ROOT reduce_scatter = f32[64,512] reduce-scatter(dot), replica_groups={{0,1}}, dimensions={0}, to_apply=add
+    }
+    ENTRY e {
+      p0 = f32[128,256] parameter(0)
+      p1 = f32[256,512] parameter(1)
+      ROOT fusion = f32[64,512] fusion(p0, p1), kind=kCustom, calls=fusion
+    }
+  )");
+  const HloInstruction* root = fusion->fused_expression_root();
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(fusion),
+                          &mlir_context_));
+  ASSERT_OK_AND_ASSIGN(auto rs_operands,
+                       PropagateTileToInput(*tiling_space, *root,
+                                            tiling_space->tiled_roots()[0], 0));
+  ASSERT_OK_AND_ASSIGN(auto dot_operands,
+                       PropagateTileToInput(*tiling_space, *root->operand(0),
+                                            rs_operands[0], 0));
+  EXPECT_THAT(dot_operands, MatchToString(R"(
+    0) (tid_0, tid_1, tid_2, tid_3)
+      -> offsets [tid_0 * ts_0 * 2 + tid_2 * 64, tid_3 * ts_3]
+         sizes [ts_0 * 2, ts_3]
+         strides [1, 1]
+         upper bounds [128, 256]
+    1) (tid_0, tid_1, tid_2, tid_3)
+      -> offsets [tid_3 * ts_3, tid_1 * ts_1]
+         sizes [ts_3, ts_1]
+         strides [1, 1]
+         upper bounds [256, 512]
+  )"));
+}
+
+TEST_F(TilePropagationTest, CanPropagateToInputsOfReduceScatterOpScatterDim1) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+    ENTRY e {
+      p0 = f32[128,256] parameter(0)
+      ROOT reduce_scatter = f32[128,128] reduce-scatter(p0), replica_groups={{0,1}}, dimensions={1}, to_apply=add
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+  ASSERT_OK_AND_ASSIGN(auto tiled_operands,
+                       PropagateTileToInput(*tiling_space, *root,
+                                            tiling_space->tiled_roots()[0], 0));
+  EXPECT_THAT(tiled_operands, MatchToString(R"(
+    0) (tid_0, tid_1, tid_2)
+      -> offsets [tid_0 * ts_0, tid_1 * ts_1 * 2 + tid_2 * 128]
+         sizes [ts_0, ts_1 * 2]
+         strides [1, 1]
+         upper bounds [128, 256]
+  )"));
+}
+
+TEST_F(TilePropagationTest, ReduceScatterRejectsNonUnitScatterStride) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+    ENTRY e {
+      p0 = f32[128,256] parameter(0)
+      ROOT reduce_scatter = f32[128,128] reduce-scatter(p0), replica_groups={{0,1}}, dimensions={1}, to_apply=add
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+  // GetTestTile assigns stride = index + 1 = 2 on dimension 1.
+  EXPECT_THAT(PropagateTileToInput(
+                  *tiling_space, *root,
+                  GetTestTile(*tiling_space, root->shape().dimensions()), 0),
+              StatusIs(absl::StatusCode::kUnimplemented));
+}
+
+TEST_F(TilePropagationTest, ReduceScatterRejectsTileCrossingShards) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+    ENTRY e {
+      p0 = f32[192,256] parameter(0)
+      ROOT reduce_scatter = f32[96,256] reduce-scatter(p0), replica_groups={{0,1}}, dimensions={0}, to_apply=add
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+  // Operand tile 32 * 2 = 64: block 1 reads rows [64, 128), crossing 96.
+  ASSERT_OK(tiling_space->AssignTileSizes({32, 256}));
+  EXPECT_THAT(PropagateTileToInput(*tiling_space, *root,
+                                   tiling_space->tiled_roots()[0], 0),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
+}
+
+TEST_F(TilePropagationTest, CanPropagateToInputsOfVariadicReduceScatterOp) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+    f {
+      p0 = f32[4,64] parameter(0)
+      p1 = f32[4,1] parameter(1)
+      rs = (f32[2,64], f32[2,1]) reduce-scatter(p0, p1),
+        replica_groups={{0,1}}, dimensions={0}, to_apply=add
+      gte0 = f32[2,64] get-tuple-element(rs), index=0
+      gte1 = f32[2,1] get-tuple-element(rs), index=1
+      ROOT t = (f32[2,64], f32[2,1]) tuple(gte0, gte1)
+    }
+
+    ENTRY e {
+      p0 = f32[4,64] parameter(0)
+      p1 = f32[4,1] parameter(1)
+      ROOT fusion = (f32[2,64], f32[2,1]) fusion(p0, p1), kind=kCustom,
+        calls=f
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+  const HloInstruction* rs =
+      root->fused_instructions_computation()->GetInstructionWithName("rs");
+  ASSERT_EQ(tiling_space->tiled_roots().size(), 2);
+  ASSERT_OK_AND_ASSIGN(
+      Tiles operand_0_tiles,
+      PropagateTileToInput(*tiling_space, *rs, tiling_space->tiled_roots()[0],
+                           /*output_index=*/0));
+  EXPECT_THAT(operand_0_tiles, MatchToString(R"(
+    0) (tid_0, tid_1, tid_2, tid_3, tid_4, tid_5)
+      -> offsets [tid_0 * ts_0 * 2 + tid_4 * 2, tid_1 * ts_1]
+         sizes [ts_0 * 2, ts_1]
+         strides [1, 1]
+         upper bounds [4, 64]
+  )"));
+
+  ASSERT_OK_AND_ASSIGN(
+      Tiles operand_1_tiles,
+      PropagateTileToInput(*tiling_space, *rs, tiling_space->tiled_roots()[1],
+                           /*output_index=*/1));
+  EXPECT_THAT(operand_1_tiles, MatchToString(R"(
+    0) (tid_0, tid_1, tid_2, tid_3, tid_4, tid_5)
+      -> offsets [tid_2 * ts_2 * 2 + tid_5 * 2, tid_3 * ts_3]
+         sizes [ts_2 * 2, ts_3]
+         strides [1, 1]
+         upper bounds [4, 1]
+  )"));
+}
+
+TEST_F(TilePropagationTest, CanPropagateFromVariadicReduceScatterToDotOps) {
+  HloInstruction* fusion = ParseAndGetRoot(R"(
+    HloModule m
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+    fusion {
+      lhs0 = f32[128,256] parameter(0)
+      rhs0 = f32[256,512] parameter(1)
+      lhs1 = f32[64,128] parameter(2)
+      rhs1 = f32[128,256] parameter(3)
+      dot0 = f32[128,512] dot(lhs0, rhs0),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      dot1 = f32[64,256] dot(lhs1, rhs1),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      rs = (f32[64,512], f32[32,256]) reduce-scatter(dot0, dot1),
+        replica_groups={{0,1}}, dimensions={0}, to_apply=add
+      gte0 = f32[64,512] get-tuple-element(rs), index=0
+      gte1 = f32[32,256] get-tuple-element(rs), index=1
+      ROOT t = (f32[64,512], f32[32,256]) tuple(gte0, gte1)
+    }
+    ENTRY e {
+      lhs0 = f32[128,256] parameter(0)
+      rhs0 = f32[256,512] parameter(1)
+      lhs1 = f32[64,128] parameter(2)
+      rhs1 = f32[128,256] parameter(3)
+      ROOT fusion = (f32[64,512], f32[32,256])
+        fusion(lhs0, rhs0, lhs1, rhs1), kind=kCustom, calls=fusion
+    }
+  )");
+  const HloInstruction* rs =
+      fusion->fused_instructions_computation()->GetInstructionWithName("rs");
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(fusion),
+                          &mlir_context_));
+  ASSERT_OK_AND_ASSIGN(
+      Tiles rs_operand_0,
+      PropagateTileToInput(*tiling_space, *rs, tiling_space->tiled_roots()[0],
+                           /*output_index=*/0));
+  ASSERT_OK_AND_ASSIGN(
+      Tiles dot0_operands,
+      PropagateTileToInput(*tiling_space, *rs->operand(0), rs_operand_0[0], 0));
+  EXPECT_THAT(dot0_operands, MatchToString(R"(
+    0) (tid_0, tid_1, tid_2, tid_3, tid_4, tid_5, tid_6, tid_7)
+      -> offsets [tid_0 * ts_0 * 2 + tid_4 * 64, tid_7 * ts_7]
+         sizes [ts_0 * 2, ts_7]
+         strides [1, 1]
+         upper bounds [128, 256]
+    1) (tid_0, tid_1, tid_2, tid_3, tid_4, tid_5, tid_6, tid_7)
+      -> offsets [tid_7 * ts_7, tid_1 * ts_1]
+         sizes [ts_7, ts_1]
+         strides [1, 1]
+         upper bounds [256, 512]
+  )"));
+
+  ASSERT_OK_AND_ASSIGN(
+      Tiles rs_operand_1,
+      PropagateTileToInput(*tiling_space, *rs, tiling_space->tiled_roots()[1],
+                           /*output_index=*/1));
+  ASSERT_OK_AND_ASSIGN(
+      Tiles dot1_operands,
+      PropagateTileToInput(*tiling_space, *rs->operand(1), rs_operand_1[0], 0));
+  EXPECT_THAT(dot1_operands, MatchToString(R"(
+    0) (tid_0, tid_1, tid_2, tid_3, tid_4, tid_5, tid_6, tid_7)
+      -> offsets [tid_2 * ts_2 * 2 + tid_5 * 32, tid_6 * ts_6]
+         sizes [ts_2 * 2, ts_6]
+         strides [1, 1]
+         upper bounds [64, 128]
+    1) (tid_0, tid_1, tid_2, tid_3, tid_4, tid_5, tid_6, tid_7)
+      -> offsets [tid_6 * ts_6, tid_3 * ts_3]
+         sizes [ts_6, ts_3]
+         strides [1, 1]
+         upper bounds [128, 256]
+  )"));
+}
+
+TEST_F(TilePropagationTest, VariadicReduceScatterRejectsOutOfRangeOutputIndex) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+    f {
+      p0 = f32[4,8] parameter(0)
+      p1 = f32[4,8] parameter(1)
+      rs = (f32[2,8], f32[2,8]) reduce-scatter(p0, p1),
+        replica_groups={{0,1}}, dimensions={0}, to_apply=add
+      gte0 = f32[2,8] get-tuple-element(rs), index=0
+      gte1 = f32[2,8] get-tuple-element(rs), index=1
+      ROOT t = (f32[2,8], f32[2,8]) tuple(gte0, gte1)
+    }
+
+    ENTRY e {
+      p0 = f32[4,8] parameter(0)
+      p1 = f32[4,8] parameter(1)
+      ROOT fusion = (f32[2,8], f32[2,8]) fusion(p0, p1), kind=kCustom, calls=f
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+  const HloInstruction* rs =
+      root->fused_instructions_computation()->GetInstructionWithName("rs");
+  EXPECT_THAT(
+      PropagateTileToInput(*tiling_space, *rs, tiling_space->tiled_roots()[0],
+                           /*output_index=*/2),
+      StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST_F(TilePropagationTest, VariadicReduceScatterChecksShardBoundaryPerOutput) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+    f {
+      p0 = f32[192,256] parameter(0)
+      p1 = f32[192,8] parameter(1)
+      rs = (f32[96,256], f32[96,8]) reduce-scatter(p0, p1),
+        replica_groups={{0,1}}, dimensions={0}, to_apply=add
+      gte0 = f32[96,256] get-tuple-element(rs), index=0
+      gte1 = f32[96,8] get-tuple-element(rs), index=1
+      ROOT t = (f32[96,256], f32[96,8]) tuple(gte0, gte1)
+    }
+
+    ENTRY e {
+      p0 = f32[192,256] parameter(0)
+      p1 = f32[192,8] parameter(1)
+      ROOT fusion = (f32[96,256], f32[96,8]) fusion(p0, p1), kind=kCustom,
+        calls=f
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+  const HloInstruction* rs =
+      root->fused_instructions_computation()->GetInstructionWithName("rs");
+  // Output 0: operand tile 32 * 2 = 64 rows; block 1 reads rows [64, 128),
+  // crossing the shard boundary at 96. Output 1: operand tile 48 * 2 = 96
+  // rows is exactly one shard and is fine.
+  ASSERT_OK(tiling_space->AssignTileSizes({32, 256, 48, 8}));
+  EXPECT_THAT(
+      PropagateTileToInput(*tiling_space, *rs, tiling_space->tiled_roots()[0],
+                           /*output_index=*/0),
+      StatusIs(absl::StatusCode::kFailedPrecondition));
+  EXPECT_OK(PropagateTileToInput(*tiling_space, *rs,
+                                 tiling_space->tiled_roots()[1],
+                                 /*output_index=*/1));
 }
 
 TEST_F(TilePropagationTest, CanPropagateToInputOfBroadcastOp) {
@@ -380,16 +1115,46 @@ TEST_F(TilePropagationTest, CanPropagateToInputsOfConcatenateOp) {
          sizes [ts_0]
          strides [1]
          upper bounds [10]
+         constraints {tid_0 * ts_0 in [0, 9]}
     1) (tid_0)
       -> offsets [tid_0 * ts_0 - 10]
          sizes [ts_0]
          strides [1]
          upper bounds [20]
+         constraints {tid_0 * ts_0 - 10 in [0, 19]}
     2) (tid_0)
       -> offsets [tid_0 * ts_0 - 30]
          sizes [ts_0]
          strides [1]
          upper bounds [30]
+         constraints {tid_0 * ts_0 - 30 in [0, 29]}
+  )"));
+  EXPECT_OK(tiling_space->AssignTileSizes({10}));
+  ASSERT_OK_AND_ASSIGN(Tiles concrete_tiled_operands,
+                       PropagateTileToInput(*tiling_space, *root,
+                                            tiling_space->tiled_roots()[0], 0));
+  for (auto& tile : concrete_tiled_operands) {
+    tile.Simplify();
+  }
+  EXPECT_THAT(concrete_tiled_operands, MatchToString(R"(
+    0) (tid_0)
+      -> offsets [0]
+         sizes [10]
+         strides [1]
+         upper bounds [10]
+         constraints {tid_0 * 10 in [0, 9]}
+    1) (tid_0)
+      -> offsets [tid_0 * 10 - 10]
+         sizes [10]
+         strides [1]
+         upper bounds [20]
+         constraints {tid_0 * 10 - 10 in [0, 19]}
+    2) (tid_0)
+      -> offsets [tid_0 * 10 - 30]
+         sizes [10]
+         strides [1]
+         upper bounds [30]
+         constraints {tid_0 * 10 - 30 in [0, 29]}
   )"));
 }
 
@@ -482,16 +1247,19 @@ TEST_F(TilePropagationTest,
          sizes [ts_0]
          strides [1]
          upper bounds [10]
+         constraints {tid_0 * ts_0 in [0, 9]}
     1) (tid_0)
       -> offsets [tid_0 * ts_0 - 10]
          sizes [ts_0]
          strides [1]
          upper bounds [15]
+         constraints {tid_0 * ts_0 - 10 in [0, 19]}
     2) (tid_0)
       -> offsets [tid_0 * ts_0 - 30]
          sizes [ts_0]
          strides [1]
          upper bounds [0]
+         constraints {tid_0 * ts_0 - 30 in [0, 29]}
   )"));
 }
 
@@ -523,16 +1291,19 @@ TEST_F(TilePropagationTest,
          sizes [ts_0]
          strides [1]
          upper bounds [max(min(tid_0 * 30, 10), 0)]
+         constraints {tid_0 * ts_0 in [0, 9]}
     1) (tid_0)
       -> offsets [tid_0 * ts_0 - 10]
          sizes [ts_0]
          strides [1]
          upper bounds [max(min(tid_0 * 30 - 10, 20), 0)]
+         constraints {tid_0 * ts_0 - 10 in [0, 19]}
     2) (tid_0)
       -> offsets [tid_0 * ts_0 - 30]
          sizes [ts_0]
          strides [1]
          upper bounds [max(min(tid_0 * 30 - 30, 30), 0)]
+         constraints {tid_0 * ts_0 - 30 in [0, 29]}
   )"));
 }
 
@@ -822,7 +1593,7 @@ TEST_F(TilePropagationTest, CanPropagateReplicaIdThroughBroadcast) {
 
   EXPECT_THAT(tiled_ag_operands, MatchToString(R"(
     0) (tid_0, tid_1, tid_2)
-      -> offsets [tid_0 * ts_0, (tid_1 * ts_1) mod 32, tid_2 * ts_2]
+      -> offsets [tid_0 * ts_0, (tid_1 * ts_1) mod 32 + ((tid_1 * ts_1) / 64) * 32, tid_2 * ts_2]
          sizes [ts_0, ts_1, ts_2]
          strides [1, 2, 3]
          upper bounds [10, 32, 5]
@@ -840,7 +1611,7 @@ TEST_F(TilePropagationTest, CanPropagateReplicaIdThroughBroadcast) {
                                             tiled_ag_operands[0], 0));
   EXPECT_THAT(tiled_broadcast_operands, MatchToString(R"(
     0) (tid_0, tid_1, tid_2)
-      -> offsets [tid_0 * ts_0, (tid_1 * ts_1) mod 32]
+      -> offsets [tid_0 * ts_0, (tid_1 * ts_1) mod 32 + ((tid_1 * ts_1) / 64) * 32]
          sizes [ts_0, ts_1]
          strides [1, 2]
          upper bounds [10, 32]
@@ -851,6 +1622,112 @@ TEST_F(TilePropagationTest, CanPropagateReplicaIdThroughBroadcast) {
            upper bounds [2]
          }
   )"));
+}
+
+TEST_F(TilePropagationTest, CanPropagateToInputOfAllToAllOp) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[10, 64, 5] parameter(0)
+      ROOT all_to_all = f32[10, 64, 5] all-to-all(p0), replica_groups={{0,1}}, dimensions={1}
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+
+  ASSERT_OK_AND_ASSIGN(auto tiled_a2a_operands,
+                       PropagateTileToInput(*tiling_space, *root,
+                                            tiling_space->tiled_roots()[0], 0));
+
+  EXPECT_THAT(tiled_a2a_operands, MatchToString(R"(
+    0) (tid_0, tid_1, tid_2)
+      -> offsets [tid_0 * ts_0, (tid_1 * ts_1) mod 32, tid_2 * ts_2]
+         sizes [ts_0, ts_1, ts_2]
+         strides [1, 1, 1]
+         upper bounds [10, 32, 5]
+         replica ids {
+           offsets [(tid_1 * ts_1) / 32]
+           sizes [1]
+           strides [1]
+           upper bounds [2]
+         }
+  )"));
+
+  ASSERT_OK(tiling_space->AssignTileSizes({10, 16, 5}));
+  ASSERT_OK_AND_ASSIGN(auto concrete_tiled_a2a_operands,
+                       PropagateTileToInput(*tiling_space, *root,
+                                            tiling_space->tiled_roots()[0], 0));
+
+  EXPECT_THAT(concrete_tiled_a2a_operands, MatchToString(R"(
+    0) (tid_0, tid_1, tid_2)
+      -> offsets [0, (tid_1 mod 2) * 16, 0]
+         sizes [10, 16, 5]
+         strides [1, 1, 1]
+         upper bounds [10, 32, 5]
+         replica ids {
+           offsets [tid_1 / 2]
+           sizes [1]
+           strides [1]
+           upper bounds [2]
+         }
+  )"));
+}
+
+TEST_F(TilePropagationTest, AllToAllRejectsNonUnitSplitStride) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[10, 64, 5] parameter(0)
+      ROOT all_to_all = f32[10, 64, 5] all-to-all(p0), replica_groups={{0,1}}, dimensions={1}
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+  // GetTestTile assigns stride = index + 1 = 2 on dimension 1.
+  EXPECT_THAT(PropagateTileToInput(
+                  *tiling_space, *root,
+                  GetTestTile(*tiling_space, root->shape().dimensions()), 0),
+              StatusIs(absl::StatusCode::kUnimplemented));
+}
+
+TEST_F(TilePropagationTest, AllToAllRejectsTileCrossingShards) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[10, 64, 5] parameter(0)
+      ROOT all_to_all = f32[10, 64, 5] all-to-all(p0), replica_groups={{0,1}}, dimensions={1}
+    }
+  )");
+  {
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<TilingSpace> tiling_space,
+        TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                            &mlir_context_));
+    // Shard size on dimension 1 is 32, which is not divisible by tile size 24.
+    ASSERT_OK(tiling_space->AssignTileSizes({10, 24, 5}));
+    EXPECT_THAT(PropagateTileToInput(*tiling_space, *root,
+                                     tiling_space->tiled_roots()[0], 0),
+                StatusIs(absl::StatusCode::kUnimplemented));
+  }
+  {
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<TilingSpace> tiling_space,
+        TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                            &mlir_context_));
+    ASSERT_OK(tiling_space->AssignTileSizes({10, 16, 5}));
+    Tile unaligned_tile = tiling_space->tiled_roots()[0];
+    SmallVector<DimTile> dim_tiles(unaligned_tile.dim_tiles());
+    // Offset tid_1 * 16 + 8 is not a multiple of tile size 16.
+    dim_tiles[1].offset = dim_tiles[1].offset + 8;
+    EXPECT_THAT(PropagateTileToInput(
+                    *tiling_space, *root,
+                    unaligned_tile.CloneWithNewDims(std::move(dim_tiles)), 0),
+                StatusIs(absl::StatusCode::kUnimplemented));
+  }
 }
 
 TEST_F(TilePropagationTest, CanPropagateToInputsOfReduceOp) {
@@ -1045,8 +1922,182 @@ TEST_F(TilePropagationTest,
       PropagateTileToInput(*tiling_space, *concat, concat_tile, 0).status(),
       StatusIs(absl::StatusCode::kFailedPrecondition,
                ::testing::HasSubstr(
-                   "The remaining dimension size 17 in the concatenate operand "
-                   "1 must be a clean multiple of its tile size 5")));
+                   "The remaining operand size 2 (in concatenate operand 1) is "
+                   "not divisible by the selected tile size 5")));
+}
+
+// Regression test for b/491092362. A concatenate nested below an op whose tile
+// propagation substracts a constant from the offset (e.g. a pad's
+// `edge_padding_low`, or an outer concat) produces a concat-dim offset
+// expression of the form `tid_0 * ts_0 - C`. Evaluated at tid_0 = 0 this gives
+// the constant part `-C`, which is a legitimate (negative) base_offset: it only
+// means the first tile(s) reach before the concatenated tensor begins, which is
+// masked when the tile is materialized.
+//
+// Here the offset is `tid_0 * 16 - 16`. The constant part is -16 (a multiple of
+// the tile size 16), and the non-last operand sizes (16, 32) are multiples of
+// 16, so no tile straddles an operand boundary. This tiling is valid and must
+// be accepted.
+TEST_F(TilePropagationTest, ConcatenateAcceptsNegativeAlignedOperandZero) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[16] parameter(0)
+      p1 = f32[32] parameter(1)
+      p2 = f32[48] parameter(2)
+      ROOT concatenate = f32[96] concatenate(p0, p1, p2), dimensions={0}
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+  EXPECT_OK(tiling_space->AssignTileSizes({16}));
+
+  const Tile& root_tile = tiling_space->tiled_roots()[0];
+  SymbolicExpr shifted_offset = CreateDimExpr(0, &mlir_context_) * 16 - 16;
+  llvm::SmallVector<SymbolicExpr, 1> offsets{shifted_offset};
+  Tile shifted_tile{*tiling_space, offsets, root_tile.sizes(),
+                    root_tile.strides(), root_tile.upper_bounds()};
+
+  ASSERT_OK(
+      PropagateTileToInput(*tiling_space, *root, shifted_tile, 0).status());
+}
+
+// A negative base_offset spanning several whole tiles below zero is still
+// accepted, as long as operand 0's start lands on a tile boundary: the entire
+// out-of-range prefix (here two full tiles) is masked tile-by-tile. Operand
+// sizes [16, 32, 48], tile_size = 16, offset `tid_0 * 16 - 32` (base_offset =
+// -32, a multiple of 16).
+TEST_F(TilePropagationTest, ConcatenateAcceptsNegativeMultiTileAlignedOffset) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[16] parameter(0)
+      p1 = f32[32] parameter(1)
+      p2 = f32[48] parameter(2)
+      ROOT concatenate = f32[96] concatenate(p0, p1, p2), dimensions={0}
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+  EXPECT_OK(tiling_space->AssignTileSizes({16}));
+
+  const Tile& root_tile = tiling_space->tiled_roots()[0];
+  SymbolicExpr shifted_offset = CreateDimExpr(0, &mlir_context_) * 16 - 32;
+  llvm::SmallVector<SymbolicExpr, 1> offsets{shifted_offset};
+  Tile shifted_tile{*tiling_space, offsets, root_tile.sizes(),
+                    root_tile.strides(), root_tile.upper_bounds()};
+
+  ASSERT_OK(
+      PropagateTileToInput(*tiling_space, *root, shifted_tile, 0).status());
+}
+
+// A negative base_offset that does not align operand 0's start with a tile
+// boundary is REJECTED: it would need an unsupported low-side (left) mask on
+// operand 0. Here tile_size = 16 and the offset is `tid_0 * 16 - 4`, so
+// base_offset = -4 and base_offset mod tile_size = 12 != 0.
+TEST_F(TilePropagationTest, ConcatenateRejectsNegativeMisalignedOffset) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[16] parameter(0)
+      p1 = f32[32] parameter(1)
+      p2 = f32[48] parameter(2)
+      ROOT concatenate = f32[96] concatenate(p0, p1, p2), dimensions={0}
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+  EXPECT_OK(tiling_space->AssignTileSizes({16}));
+
+  const Tile& root_tile = tiling_space->tiled_roots()[0];
+  SymbolicExpr shifted_offset = CreateDimExpr(0, &mlir_context_) * 16 - 4;
+  llvm::SmallVector<SymbolicExpr, 1> offsets{shifted_offset};
+  Tile shifted_tile{*tiling_space, offsets, root_tile.sizes(),
+                    root_tile.strides(), root_tile.upper_bounds()};
+
+  EXPECT_THAT(
+      PropagateTileToInput(*tiling_space, *root, shifted_tile, 0).status(),
+      StatusIs(absl::StatusCode::kFailedPrecondition,
+               ::testing::HasSubstr(
+                   "The negative base offset -4 is not aligned to the tile "
+                   "size 16 ; operand 0 would require an unsupported low-side "
+                   "(left) mask.")));
+}
+
+// The verdict for a negative base_offset is invariant under shifting it by a
+// multiple of the tile size: `tid_0 * 16 - 20` has the same verdict as
+// `tid_0 * 16 - 4` (both -4 and -20 give base_offset mod tile_size = 12, so
+// both are rejected as unaligned to operand 0's start), even though the -20
+// anchor's first tile is fully masked. This documents that the anchor choice is
+// immaterial.
+TEST_F(TilePropagationTest, ConcatenateNegativeOffsetVerdictIsPeriodic) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[16] parameter(0)
+      p1 = f32[32] parameter(1)
+      p2 = f32[48] parameter(2)
+      ROOT concatenate = f32[96] concatenate(p0, p1, p2), dimensions={0}
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+  EXPECT_OK(tiling_space->AssignTileSizes({16}));
+
+  const Tile& root_tile = tiling_space->tiled_roots()[0];
+  SymbolicExpr shifted_offset = CreateDimExpr(0, &mlir_context_) * 16 - 20;
+  llvm::SmallVector<SymbolicExpr, 1> offsets{shifted_offset};
+  Tile shifted_tile{*tiling_space, offsets, root_tile.sizes(),
+                    root_tile.strides(), root_tile.upper_bounds()};
+
+  EXPECT_THAT(
+      PropagateTileToInput(*tiling_space, *root, shifted_tile, 0).status(),
+      StatusIs(absl::StatusCode::kFailedPrecondition,
+               ::testing::HasSubstr(
+                   "The negative base offset -20 is not aligned to the tile "
+                   "size 16 ; operand 0 would require an unsupported low-side "
+                   "(left) mask.")));
+}
+
+// A negative, tile-aligned base_offset is still rejected if an interior
+// (non-last) operand size is not a multiple of the tile size, since a tile
+// would then straddle that operand's boundary. Here operand sizes are
+// [16, 20, 48], tile_size = 16, offset `tid_0 * 16 - 16` (aligned). Operand 1
+// size 20 is not a multiple of 16 -> reject.
+TEST_F(TilePropagationTest, ConcatenateRejectsNegativeAlignedBadInteriorSize) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[16] parameter(0)
+      p1 = f32[20] parameter(1)
+      p2 = f32[48] parameter(2)
+      ROOT concatenate = f32[84] concatenate(p0, p1, p2), dimensions={0}
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+  EXPECT_OK(tiling_space->AssignTileSizes({16}));
+
+  const Tile& root_tile = tiling_space->tiled_roots()[0];
+  SymbolicExpr shifted_offset = CreateDimExpr(0, &mlir_context_) * 16 - 16;
+  llvm::SmallVector<SymbolicExpr, 1> offsets{shifted_offset};
+  Tile shifted_tile{*tiling_space, offsets, root_tile.sizes(),
+                    root_tile.strides(), root_tile.upper_bounds()};
+
+  EXPECT_THAT(
+      PropagateTileToInput(*tiling_space, *root, shifted_tile, 0).status(),
+      StatusIs(absl::StatusCode::kFailedPrecondition,
+               ::testing::HasSubstr("must be a multiple of the tile size 16")));
 }
 
 TEST_F(TilePropagationTest, CanPropagateToInputOfScanOp) {
@@ -1093,21 +2144,52 @@ TEST_F(TilePropagationTest, CanPropagateToInputOfScanOp) {
 
   // Create a tile for a scalar carry output (output_index = 1)
   Tile tile_carry = GetTestTile(*tiling_space, {});
-  ASSERT_OK_AND_ASSIGN(
-      auto tiled_operands_carry,
-      PropagateTileToInput(*tiling_space, *scan, tile_carry, 1));
+  EXPECT_THAT(PropagateTileToInput(*tiling_space, *scan, tile_carry, 1),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
 
-  EXPECT_THAT(tiled_operands_carry, MatchToString(R"(
-    0) (tid_0)
-         -> offsets []
-            sizes []
-            strides []
-            upper bounds []
-    1) (tid_0)
-         -> offsets []
-            sizes []
-            strides []
-            upper bounds []
+TEST_F(TilePropagationTest, CanPropagateToInputOfScanOp2D) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+
+    scan_add {
+      p0 = f32[4] parameter(0)
+      p1 = f32[4] parameter(1)
+      add1 = f32[4] add(p0, p1)
+      ROOT tuple = (f32[4], f32[4]) tuple(add1, add1)
+    }
+
+    ENTRY e {
+      p0 = f32[4, 8] parameter(0)
+      p1 = f32[4] parameter(1)
+      scan = (f32[4, 8], f32[4]) scan(p0, p1), dimensions={1}, num_carries=1, to_apply=scan_add
+      ROOT gte = f32[4, 8] get-tuple-element(scan), index=0
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+  const HloInstruction* scan = root->operand(0);
+
+  // Create a tile for a 2D array output (output_index = 0)
+  Tile tile_arr = GetTestTile(*tiling_space, {4, 8});
+  ASSERT_OK_AND_ASSIGN(auto tiled_operands_arr,
+                       PropagateTileToInput(*tiling_space, *scan, tile_arr, 0));
+
+  // operand 0 gets the full 2D tile, operand 1 (carry) gets a 1D tile with
+  // the scan dimension (dim 1) sliced away.
+  EXPECT_THAT(tiled_operands_arr, MatchToString(R"(
+    0) (tid_0, tid_1)
+         -> offsets [tid_0 * ts_0, tid_1 * ts_1]
+            sizes [ts_0, ts_1]
+            strides [1, 2]
+            upper bounds [4, 8]
+    1) (tid_0, tid_1)
+         -> offsets [tid_0 * ts_0]
+            sizes [ts_0]
+            strides [1]
+            upper bounds [4]
   )"));
 }
 
@@ -1158,6 +2240,52 @@ TEST_F(TilePropagationTest, CanPropagateToOutputOfScanOp) {
   Tile tile_carry = GetTestTile(*tiling_space, {});
   EXPECT_THAT(PropagateTileToOutput(*tiling_space, *scan, tile_carry, 1),
               StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST_F(TilePropagationTest, CanPropagateToOutputOfScanOp2D) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+
+    scan_add {
+      p0 = f32[4] parameter(0)
+      p1 = f32[4] parameter(1)
+      add1 = f32[4] add(p0, p1)
+      ROOT tuple = (f32[4], f32[4]) tuple(add1, add1)
+    }
+
+    ENTRY e {
+      p0 = f32[4, 8] parameter(0)
+      p1 = f32[4] parameter(1)
+      scan = (f32[4, 8], f32[4]) scan(p0, p1), dimensions={1}, num_carries=1, to_apply=scan_add
+      ROOT gte = f32[4, 8] get-tuple-element(scan), index=0
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+  const HloInstruction* scan = root->operand(0);
+
+  // Create a tile for a 2D array input (input_index = 0)
+  Tile tile_arr = GetTestTile(*tiling_space, {4, 8});
+  ASSERT_OK_AND_ASSIGN(
+      auto output_tiles,
+      PropagateTileToOutput(*tiling_space, *scan, tile_arr, 0));
+
+  // output 0 gets the full 2D tile, output 1 (carry) gets a 1D tile with
+  // the scan dimension (dim 1) sliced away.
+  EXPECT_THAT(output_tiles, MatchToString(R"(
+    0) (tid_0, tid_1)
+         -> offsets [tid_0 * ts_0, tid_1 * ts_1]
+            sizes [ts_0, ts_1]
+            strides [1, 2]
+            upper bounds [4, 8]
+    1) (tid_0, tid_1)
+         -> offsets [tid_0 * ts_0]
+            sizes [ts_0]
+            strides [1]
+            upper bounds [4]
+  )"));
 }
 
 TEST_F(TilePropagationTest, CanPropagateToGetTupleElementOp) {
@@ -1226,12 +2354,193 @@ TEST_F(TilePropagationTest, FailsToPropagateToConcatenateThroughBitcast) {
   ASSERT_OK_AND_ASSIGN(auto output_tiles,
                        PropagateTileToInput(*tiling_space, *(root->operand(1)),
                                             tiled_operands[1], 0));
+  // The concatenate constraint on the tile ids is kept through the bitcast.
   EXPECT_THAT(output_tiles, MatchToString(R"(
     0) (tid_0, tid_1)
          -> offsets [tid_0, tid_1 / 256 - 1, (tid_1 mod 256) * 2]
             sizes [1, 1, 2]
             strides [1, 1, 1]
             upper bounds [10, tid_1 / 256, (tid_1 mod 256) * 2 + 2]
+            constraints {tid_1 * 2 - 512 in [0, 1023]}
+  )"));
+}
+
+// ============================================================
+// kRaggedDot tile propagation tests
+// ============================================================
+
+// kRaggedNonContracting: LHS (M=256,K=128) × RHS (G=8,K=128,N=64)
+//   × group_sizes (G=8) → output (M=256, N=64).
+// lhs_ragged_dims={0}, rhs_group_dims={0},
+// lhs_contracting_dims={1}, rhs_contracting_dims={1}.
+//
+// TilingSpace dimensions (ids 0..3):
+//   dim 0: M=256 kParallel   (output dim 0)
+//   dim 1: N=64  kParallel   (output dim 1)
+//   dim 2: G=8   kSequential (ProcessRaggedDot, outer group loop)
+//   dim 3: K=128 kSequential (ProcessRaggedDot, inner K contraction)
+// RTVars:
+//   rt_0: group_size[g], bounds=[0,256]
+TEST_F(TilePropagationTest, CanPropagateToInputsOfRaggedDotOpNonContracting) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      lhs = f32[256,128] parameter(0)
+      rhs = f32[8,128,64] parameter(1)
+      gs  = s32[8] parameter(2)
+      ROOT rd = f32[256,64] ragged-dot(lhs, rhs, gs),
+          lhs_contracting_dims={1}, rhs_contracting_dims={1},
+          lhs_ragged_dims={0}, rhs_group_dims={0}
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      auto tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+
+  // Verify TilingSpace structure.
+  EXPECT_EQ(tiling_space->num_dimensions(), 4);
+  EXPECT_EQ(tiling_space->num_parallel_dimensions(), 2);
+  EXPECT_EQ(tiling_space->num_rt_vars(), 1);
+
+  // Symbolic propagation using the root tile.
+  const Tile& root_tile = tiling_space->tiled_roots()[0];
+  ASSERT_OK_AND_ASSIGN(
+      auto tiled_operands,
+      PropagateTileToInput(*tiling_space, *root, root_tile, 0));
+  ASSERT_EQ(tiled_operands.size(), 3);  // lhs, rhs, group_sizes
+
+  // Symbolic case: tile sizes are still symbols (ts_i), RTVar is rt_0.
+  EXPECT_THAT(tiled_operands, MatchToString(R"(
+    0) (tid_0, tid_1, tid_2, tid_3){rt_0}
+         -> offsets [tid_0 * ts_0, tid_3 * ts_3]
+            sizes [ts_0, ts_3]
+            strides [1, 1]
+            upper bounds [rt_0, 128]
+    1) (tid_0, tid_1, tid_2, tid_3){rt_0}
+         -> offsets [tid_2 * ts_2, tid_3 * ts_3, tid_1 * ts_1]
+            sizes [ts_2, ts_3, ts_1]
+            strides [1, 1, 1]
+            upper bounds [8, 128, 64]
+    2) (tid_0, tid_1, tid_2, tid_3){rt_0}
+         -> offsets [tid_2 * ts_2]
+            sizes [ts_2]
+            strides [1]
+            upper bounds [8]
+  )"));
+
+  // Concrete case: tile_M=32, tile_N=32, tile_G=1 (one group/iter), tile_K=32.
+  ASSERT_OK(tiling_space->AssignTileSizes({32, 32, 1, 32}));
+  ASSERT_OK_AND_ASSIGN(auto concrete_tiled_operands,
+                       PropagateTileToInput(*tiling_space, *root,
+                                            tiling_space->tiled_roots()[0], 0));
+
+  EXPECT_THAT(concrete_tiled_operands, MatchToString(R"(
+    0) (tid_0, tid_1, tid_2, tid_3){rt_0}
+         -> offsets [tid_0 * 32, tid_3 * 32]
+            sizes [32, 32]
+            strides [1, 1]
+            upper bounds [rt_0, 128]
+    1) (tid_0, tid_1, tid_2, tid_3){rt_0}
+         -> offsets [tid_2, tid_3 * 32, tid_1 * 32]
+            sizes [1, 32, 32]
+            strides [1, 1, 1]
+            upper bounds [8, 128, 64]
+    2) (tid_0, tid_1, tid_2, tid_3){rt_0}
+         -> offsets [tid_2]
+            sizes [1]
+            strides [1]
+            upper bounds [8]
+  )"));
+}
+
+// kRaggedContracting: LHS (K=128,M=256) × RHS (M=256,N=64)
+//   × group_sizes (G=8) → output (G=8, K=128, N=64).
+// lhs_ragged_dims={1} (M, contracting), lhs_contracting_dims={1},
+// rhs_contracting_dims={0}.
+//
+// TilingSpace dimensions (ids 0..3):
+//   dim 0: G=8   kParallel   (output dim 0)
+//   dim 1: K=128 kParallel   (output dim 1)
+//   dim 2: N=64  kParallel   (output dim 2)
+//   dim 3: M=256 kSequential (ProcessRaggedDot, inner M accumulation)
+// RTVars:
+//   rt_0: group_size[g], bounds=[0,256]  (operand_id=2)
+//   rt_1: start_m[g],    bounds=[0,256]  (sentinel operand_id=-1)
+TEST_F(TilePropagationTest, CanPropagateToInputsOfRaggedDotOpContracting) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      lhs = f32[128,256] parameter(0)
+      rhs = f32[256,64] parameter(1)
+      gs  = s32[8] parameter(2)
+      ROOT rd = f32[8,128,64] ragged-dot(lhs, rhs, gs),
+          lhs_contracting_dims={1}, rhs_contracting_dims={0},
+          lhs_ragged_dims={1}
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      auto tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+
+  // Verify TilingSpace structure.
+  EXPECT_EQ(tiling_space->num_dimensions(), 4);
+  EXPECT_EQ(tiling_space->num_parallel_dimensions(), 3);  // G, K, N
+  EXPECT_EQ(tiling_space->num_rt_vars(), 2);  // group_size + start_m
+
+  // Symbolic propagation using the root tile.
+  const Tile& root_tile = tiling_space->tiled_roots()[0];
+  ASSERT_OK_AND_ASSIGN(
+      auto tiled_operands,
+      PropagateTileToInput(*tiling_space, *root, root_tile, 0));
+  ASSERT_EQ(tiled_operands.size(), 3);  // lhs, rhs, group_sizes
+
+  // Symbolic case: M offset is relative (d[m]*BLOCK_M, no start_m).
+  // The tile header shows {rt_0, rt_1} because Tile::ToString lists all RTVars
+  // in the tiling space regardless of whether they appear in the expressions.
+  // rt_1 (start_m) is a synthetic prefix-sum RTVar added manually by the
+  // emitter via ExtractTileOp. The upper_bound = rt_0 (group_size only).
+  EXPECT_THAT(tiled_operands, MatchToString(R"(
+    0) (tid_0, tid_1, tid_2, tid_3){rt_0, rt_1}
+         -> offsets [tid_1 * ts_1, tid_3 * ts_3]
+            sizes [ts_1, ts_3]
+            strides [1, 1]
+            upper bounds [128, rt_0]
+    1) (tid_0, tid_1, tid_2, tid_3){rt_0, rt_1}
+         -> offsets [tid_3 * ts_3, tid_2 * ts_2]
+            sizes [ts_3, ts_2]
+            strides [1, 1]
+            upper bounds [rt_0, 64]
+    2) (tid_0, tid_1, tid_2, tid_3){rt_0, rt_1}
+         -> offsets [tid_0 * ts_0]
+            sizes [ts_0]
+            strides [1]
+            upper bounds [8]
+  )"));
+
+  // Concrete case: tile_G=1, tile_K=32, tile_N=32, tile_M=32.
+  ASSERT_OK(tiling_space->AssignTileSizes({1, 32, 32, 32}));
+  ASSERT_OK_AND_ASSIGN(auto concrete_tiled_operands,
+                       PropagateTileToInput(*tiling_space, *root,
+                                            tiling_space->tiled_roots()[0], 0));
+
+  EXPECT_THAT(concrete_tiled_operands, MatchToString(R"(
+    0) (tid_0, tid_1, tid_2, tid_3){rt_0, rt_1}
+         -> offsets [tid_1 * 32, tid_3 * 32]
+            sizes [32, 32]
+            strides [1, 1]
+            upper bounds [128, rt_0]
+    1) (tid_0, tid_1, tid_2, tid_3){rt_0, rt_1}
+         -> offsets [tid_3 * 32, tid_2 * 32]
+            sizes [32, 32]
+            strides [1, 1]
+            upper bounds [rt_0, 64]
+    2) (tid_0, tid_1, tid_2, tid_3){rt_0, rt_1}
+         -> offsets [tid_0]
+            sizes [1]
+            strides [1]
+            upper bounds [8]
   )"));
 }
 

@@ -32,18 +32,16 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/latency_hiding_scheduler.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/protobuf.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/profiler/protobuf/profiled_instructions.pb.h"
 
 namespace xla {
 
 namespace {
-
 
 int GetIndex(absl::Span<HloInstruction* const> instruction_sequence,
              absl::string_view hlo_name) {
@@ -119,7 +117,7 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
 
@@ -192,8 +190,8 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   EXPECT_TRUE(hlo_module->has_entry_computation());
 
   std::string profiled_instructions_text_proto = R"pb(
@@ -235,8 +233,8 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   EXPECT_TRUE(hlo_module->has_entry_computation());
 
   std::string profiled_instructions_text_proto = R"pb(
@@ -276,6 +274,181 @@ ENTRY entry {
   EXPECT_EQ(recv_latency, 100.0);
 }
 
+// An aggregator that, like the GPU one, does not expect parameters and
+// get-tuple-elements in a profile.
+class RecordingAggregator : public ProfileStatisticsAggregator {
+ public:
+  void HandleMissingInstructionCost(const HloInstruction& instr) override {
+    if (instr.opcode() != HloOpcode::kParameter &&
+        instr.opcode() != HloOpcode::kGetTupleElement) {
+      missing_instructions_.insert(&instr);
+    }
+  }
+  void HandleFoundInstructionCost(const HloInstruction& instr) override {
+    found_instructions_count_++;
+  }
+  void HandleMissingInstructionLatency(const HloInstruction& from,
+                                       const HloInstruction& to) override {
+    missing_instructions_.insert(&from);
+  }
+  void HandleFoundInstructionLatency(const HloInstruction& from,
+                                     const HloInstruction& to) override {
+    found_instructions_count_++;
+  }
+};
+
+// A fallback estimator that, like the GPU one, costs no-ops at zero.
+class NopAwareApproximateLatencyEstimator : public ApproximateLatencyEstimator {
+ public:
+  TimeCost NodeCost(const HloInstruction* instr) const override {
+    return instr->opcode() == HloOpcode::kParameter ||
+                   instr->opcode() == HloOpcode::kGetTupleElement
+               ? 0.0
+               : kFallbackCost;
+  }
+  static constexpr TimeCost kFallbackCost = 7.0;
+};
+
+// Costs come from the instructions that carry the profiled work: a fusion
+// without a profile entry is costed by the instructions inside it (like a
+// dynamic slice fusion, profiled under the name of the custom call it wraps);
+// an async start/done pair has a nominal cost of its own and the wrapped
+// fusion's cost, profiled directly or from inside, as its latency; an async
+// call's latency is the sum of the costs of the instructions it calls,
+// profiled or not.
+TEST_F(ProfileGuidedLatencyEstimatorTest,
+       CostsFromProfiledWrappedInstructions) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+slicing_fusion {
+  p0 = f32[4,32] parameter(0)
+  i = s32[] parameter(1)
+  zero = s32[] constant(0)
+  slice = f32[1,32] dynamic-slice(p0, i, zero), dynamic_slice_sizes={1,32}
+  ROOT cc = f32[1,32] custom-call(slice), custom_call_target="work"
+}
+
+plain_fusion {
+  p0 = f32[32] parameter(0)
+  ROOT neg = f32[32] negate(p0)
+}
+
+wrapped_fusion {
+  p0 = f32[32] parameter(0)
+  ROOT neg.1 = f32[32] negate(p0)
+}
+
+async_fusion {
+  p0 = f32[32] parameter(0)
+  ROOT h = f32[32] fusion(p0), kind=kLoop, calls=wrapped_fusion
+}
+
+slicing_fusion.1 {
+  p0 = f32[4,32] parameter(0)
+  i = s32[] parameter(1)
+  zero = s32[] constant(0)
+  slice = f32[1,32] dynamic-slice(p0, i, zero), dynamic_slice_sizes={1,32}
+  ROOT cc.1 = f32[1,32] custom-call(slice), custom_call_target="work"
+}
+
+async_slicing {
+  p0 = f32[4,32] parameter(0)
+  i = s32[] parameter(1)
+  ROOT f.1 = f32[1,32] fusion(p0, i), kind=kCustom, calls=slicing_fusion.1
+}
+
+called {
+  p0 = f32[32] parameter(0)
+  work = f32[32] custom-call(p0), custom_call_target="work"
+  ROOT other = f32[32] custom-call(work), custom_call_target="other"
+}
+
+async_call {
+  p0 = f32[32] parameter(0)
+  ROOT call = f32[32] call(p0), to_apply=called
+}
+
+called_profiled {
+  p0 = f32[32] parameter(0)
+  ROOT work.1 = f32[32] custom-call(p0), custom_call_target="work"
+}
+
+async_call_profiled {
+  p0 = f32[32] parameter(0)
+  ROOT call.1 = f32[32] call(p0), to_apply=called_profiled
+}
+
+ENTRY entry {
+  p0 = f32[4,32] parameter(0)
+  i = s32[] parameter(1)
+  p2 = f32[32] parameter(2)
+  f = f32[1,32] fusion(p0, i), kind=kCustom, calls=slicing_fusion
+  g = f32[32] fusion(p2), kind=kLoop, calls=plain_fusion
+  fusion-start = ((f32[32]), f32[32]) async-start(p2), calls=async_fusion
+  fusion-done = f32[32] async-done(fusion-start)
+  slice-start = ((f32[4,32], s32[]), f32[1,32]) async-start(p0, i), calls=async_slicing
+  slice-done = f32[1,32] async-done(slice-start)
+  call-start = ((f32[32]), f32[32]) async-start(p2), calls=async_call
+  call-done = f32[32] async-done(call-start)
+  call-start.1 = ((f32[32]), f32[32]) async-start(p2), calls=async_call_profiled
+  call-done.1 = f32[32] async-done(call-start.1)
+  ROOT t = (f32[1,32], f32[32], f32[32], f32[1,32], f32[32], f32[32]) tuple(f, g, fusion-done, slice-done, call-done, call-done.1)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  tensorflow::profiler::ProfiledInstructionsProto profiled_instructions_proto;
+  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        costs { name: "cc" cost_us: 250.0 }
+        costs { name: "h" cost_us: 120.0 }
+        costs { name: "cc.1" cost_us: 60.0 }
+        costs { name: "work" cost_us: 100.0 }
+        costs { name: "work.1" cost_us: 30.0 }
+      )pb",
+      &profiled_instructions_proto));
+  auto aggregator = std::make_unique<RecordingAggregator>();
+  const ProfileStatisticsAggregator::Statistics stats = aggregator->GetStats();
+  auto latency_estimator = std::make_unique<ProfileGuidedLatencyEstimator>(
+      GetDefaultSchedConfig(),
+      std::make_unique<NopAwareApproximateLatencyEstimator>(),
+      profiled_instructions_proto, std::move(aggregator));
+  auto cost = [&](absl::string_view name) {
+    return latency_estimator->NodeCost(FindInstruction(hlo_module.get(), name));
+  };
+  auto latency = [&](absl::string_view start, absl::string_view done) {
+    return latency_estimator->GetLatencyBetween(
+        HloGraphNode(FindInstruction(hlo_module.get(), start), 0),
+        HloGraphNode(FindInstruction(hlo_module.get(), done), 1));
+  };
+
+  // The fusion is costed by the custom call inside it; a fusion with nothing
+  // profiled inside falls back.
+  EXPECT_EQ(cost("f"), 250.0);
+  EXPECT_EQ(cost("g"), NopAwareApproximateLatencyEstimator::kFallbackCost);
+  // The async pair's work is costed once, as its latency.
+  EXPECT_EQ(cost("fusion-start"), 1.0);
+  EXPECT_EQ(cost("fusion-done"), 1.0);
+  EXPECT_EQ(latency("fusion-start", "fusion-done"), 120.0);
+  // ... also when the wrapped fusion is itself costed by the instructions
+  // inside it.
+  EXPECT_EQ(latency("slice-start", "slice-done"), 60.0);
+  // The async calls: profiled `work`, the fallback for `other`, nothing for
+  // the parameters. Neither the scheduler nor the accuracy checker visits the
+  // called computations, so the estimator reports `other` as missing from the
+  // profile (`g` was reported missing above); the parameters are not missing,
+  // so the fully profiled call has no missing entry.
+  EXPECT_EQ(latency("call-start", "call-done"),
+            100.0 + NopAwareApproximateLatencyEstimator::kFallbackCost);
+  EXPECT_EQ(latency("call-start.1", "call-done.1"), 30.0);
+  EXPECT_THAT(stats.missing_instructions,
+              ::testing::UnorderedElementsAre(
+                  ::testing::Property(&HloInstruction::name, "g"),
+                  ::testing::Property(&HloInstruction::name, "other")));
+}
+
 TEST_F(ProfileGuidedLatencyEstimatorTest,
        ProfileGuidedLatencyEstimatorCheckAccuracyFailsIfMissingAggregator) {
   std::string kFdoProfile = "";
@@ -288,8 +461,8 @@ TEST_F(ProfileGuidedLatencyEstimatorTest,
     }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
-                          ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnVerifiedModule(kHloModule));
   tensorflow::profiler::ProfiledInstructionsProto fdo_profile;
   ASSERT_TRUE(
       tsl::protobuf::TextFormat::ParseFromString(kFdoProfile, &fdo_profile));

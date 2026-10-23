@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <atomic>
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <tuple>
@@ -21,18 +23,23 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/base/casts.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/notification.h"
+#include "absl/time/time.h"
 #include "xla/future.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client_test_helper.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
+#include "xla/pjrt/se/local_device_state.h"
+#include "xla/pjrt/se/pjrt_stream_executor_client.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/literal_test_util.h"
@@ -339,6 +346,341 @@ TEST(StreamExecutorGpuClientTest, CrossHostTransferSendRecvZeroSizedBuffer) {
 
   ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> recv_literal,
                        buffers[0]->ToLiteral().Await());
+  EXPECT_TRUE(LiteralTestUtil::Equal(input_literal, *recv_literal));
+}
+
+TEST(StreamExecutorGpuClientTest,
+     CrossHostTransferChainedRemoteRecvToLocalD2D) {
+  GpuClientOptions options = GetTestGpuClientOptions(2);
+  ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
+  ASSERT_GE(client->devices().size(), 2);
+
+  auto* const src_device = client->addressable_devices()[0];
+  auto* const dst_device = client->addressable_devices()[1];
+
+  Literal input_literal =
+      LiteralUtil::CreateR1<float>({1.0f, 2.0f, 3.0f, 4.0f});
+  ASSERT_OK_AND_ASSIGN(auto* const src_memory_space,
+                       src_device->default_memory_space());
+  ASSERT_OK_AND_ASSIGN(auto src_buffer, client->BufferFromHostLiteral(
+                                            input_literal, src_memory_space));
+
+  auto [desc_promise, desc_future] = MakePromise<std::string>();
+
+  // 1. Prepare cross-host receive on dst_device.
+  ASSERT_OK_AND_ASSIGN(
+      auto recv_buffers,
+      client->MakeCrossHostReceiveBuffers(
+          {input_literal.shape()}, dst_device,
+          [&](absl::StatusOr<PjRtCrossHostRecvState> descriptors) {
+            CHECK_OK(descriptors);
+            CHECK_EQ(descriptors->descriptors.size(), 1);
+            desc_promise.Set(
+                descriptors->descriptors[0].serialized_descriptors[0]);
+          }));
+  ASSERT_EQ(recv_buffers.size(), 1);
+
+  // 2. Dispatch cross-host send from src_device to dst_device.
+  src_buffer->CopyToRemoteDevice(desc_future,
+                                 [&](absl::Status s, bool dispatched) {
+                                   ASSERT_TRUE(dispatched);
+                                   ASSERT_OK(s);
+                                 });
+
+  // 3. Immediately chain a local D2D transfer from dst_device back to
+  // src_device.
+  ASSERT_OK_AND_ASSIGN(auto chained_buffer,
+                       recv_buffers[0]->CopyToMemorySpace(src_memory_space));
+
+  // 4. Verify that chained buffer contains the correct transferred data.
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> chained_literal,
+                       chained_buffer->ToLiteral().Await());
+  EXPECT_TRUE(LiteralTestUtil::Equal(input_literal, *chained_literal));
+}
+
+TEST(StreamExecutorGpuClientTest,
+     CrossHostTransferChainedLocalD2DToRemoteSend) {
+  GpuClientOptions options = GetTestGpuClientOptions(2);
+  ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
+  ASSERT_GE(client->devices().size(), 2);
+
+  auto* const src_device = client->addressable_devices()[0];
+  auto* const dst_device = client->addressable_devices()[1];
+
+  Literal input_literal =
+      LiteralUtil::CreateR1<float>({10.0f, 20.0f, 30.0f, 40.0f});
+  ASSERT_OK_AND_ASSIGN(auto* const src_memory_space,
+                       src_device->default_memory_space());
+  ASSERT_OK_AND_ASSIGN(auto* const dst_memory_space,
+                       dst_device->default_memory_space());
+  ASSERT_OK_AND_ASSIGN(
+      auto initial_buffer,
+      client->BufferFromHostLiteral(input_literal, src_memory_space));
+
+  // 1. Local D2D copy from initial_buffer (src_memory_space) to a local staged
+  // buffer on dst_memory_space.
+  ASSERT_OK_AND_ASSIGN(auto staged_buffer,
+                       initial_buffer->CopyToMemorySpace(dst_memory_space));
+
+  auto [desc_promise, desc_future] = MakePromise<std::string>();
+
+  // 2. Prepare cross-host receive buffer on src_device.
+  ASSERT_OK_AND_ASSIGN(
+      auto buffers,
+      client->MakeCrossHostReceiveBuffers(
+          {input_literal.shape()}, src_device,
+          [&](absl::StatusOr<PjRtCrossHostRecvState> descriptors) {
+            CHECK_OK(descriptors);
+            CHECK_EQ(descriptors->descriptors.size(), 1);
+            desc_promise.Set(
+                descriptors->descriptors[0].serialized_descriptors[0]);
+          }));
+  ASSERT_EQ(buffers.size(), 1);
+
+  // 3. Send staged_buffer (which depends on local D2D) to remote src_device.
+  staged_buffer->CopyToRemoteDevice(desc_future,
+                                    [&](absl::Status s, bool dispatched) {
+                                      ASSERT_TRUE(dispatched);
+                                      ASSERT_OK(s);
+                                    });
+
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> recv_literal,
+                       buffers[0]->ToLiteral().Await());
+  EXPECT_TRUE(LiteralTestUtil::Equal(input_literal, *recv_literal));
+}
+
+TEST(StreamExecutorGpuClientTest, CrossHostTransferRelayEcho) {
+  constexpr int kNumPairs = 16;
+  GpuClientOptions options = GetTestGpuClientOptions(2);
+  ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
+  ASSERT_GE(client->devices().size(), 2);
+
+  auto* const d0 = client->addressable_devices()[0];
+  auto* const d1 = client->addressable_devices()[1];
+
+  ASSERT_OK_AND_ASSIGN(auto* const d0_memory_space, d0->default_memory_space());
+
+  Literal input_literal =
+      LiteralUtil::CreateR1<float>({42.0f, 43.0f, 44.0f, 45.0f});
+  ASSERT_OK_AND_ASSIGN(auto d0_src_buffer, client->BufferFromHostLiteral(
+                                               input_literal, d0_memory_space));
+
+  std::vector<Promise<std::string>> d0_recv_desc_promises;
+  d0_recv_desc_promises.reserve(kNumPairs);
+  std::vector<Future<std::string>> d0_recv_desc_futures;
+  d0_recv_desc_futures.reserve(kNumPairs);
+
+  std::vector<Promise<std::string>> d1_recv_desc_promises;
+  d1_recv_desc_promises.reserve(kNumPairs);
+  std::vector<Future<std::string>> d1_recv_desc_futures;
+  d1_recv_desc_futures.reserve(kNumPairs);
+
+  for (int i = 0; i < kNumPairs; ++i) {
+    auto [d0_p, d0_f] = MakePromise<std::string>();
+    d0_recv_desc_promises.push_back(std::move(d0_p));
+    d0_recv_desc_futures.push_back(std::move(d0_f));
+
+    auto [d1_p, d1_f] = MakePromise<std::string>();
+    d1_recv_desc_promises.push_back(std::move(d1_p));
+    d1_recv_desc_futures.push_back(std::move(d1_f));
+  }
+
+  std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> d0_recv_buffers(
+      kNumPairs);
+  std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> d1_recv_buffers(
+      kNumPairs);
+
+  // 1. Prepare and chain the entire ping-pong relay (16 pairs of send/recv):
+  //    send on d0 -> recv on d1 -> send on d1 -> recv on d0 -> ...
+  for (int i = 0; i < kNumPairs; ++i) {
+    // Device 1 receives from Device 0.
+    ASSERT_OK_AND_ASSIGN(
+        d1_recv_buffers[i],
+        client->MakeCrossHostReceiveBuffers(
+            {input_literal.shape()}, d1,
+            [p = std::make_shared<Promise<std::string>>(
+                 std::move(d1_recv_desc_promises[i]))](
+                absl::StatusOr<PjRtCrossHostRecvState> descriptors) {
+              CHECK_OK(descriptors);
+              CHECK_EQ(descriptors->descriptors.size(), 1);
+              p->Set(descriptors->descriptors[0].serialized_descriptors[0]);
+            }));
+    ASSERT_EQ(d1_recv_buffers[i].size(), 1);
+
+    // Device 1 echoes the received buffer back to Device 0.
+    d1_recv_buffers[i][0]->CopyToRemoteDevice(
+        d0_recv_desc_futures[i], [](absl::Status s, bool dispatched) {
+          ASSERT_TRUE(dispatched);
+          ASSERT_OK(s);
+        });
+
+    // Device 0 receives the echoed buffer from Device 1.
+    ASSERT_OK_AND_ASSIGN(
+        d0_recv_buffers[i],
+        client->MakeCrossHostReceiveBuffers(
+            {input_literal.shape()}, d0,
+            [p = std::make_shared<Promise<std::string>>(
+                 std::move(d0_recv_desc_promises[i]))](
+                absl::StatusOr<PjRtCrossHostRecvState> descriptors) {
+              CHECK_OK(descriptors);
+              CHECK_EQ(descriptors->descriptors.size(), 1);
+              p->Set(descriptors->descriptors[0].serialized_descriptors[0]);
+            }));
+    ASSERT_EQ(d0_recv_buffers[i].size(), 1);
+
+    // If there is a next pair in the chain, Device 0 forwards the echoed buffer
+    // back to Device 1.
+    if (i + 1 < kNumPairs) {
+      d0_recv_buffers[i][0]->CopyToRemoteDevice(
+          d1_recv_desc_futures[i + 1], [](absl::Status s, bool dispatched) {
+            ASSERT_TRUE(dispatched);
+            ASSERT_OK(s);
+          });
+    }
+  }
+
+  // 2. Dispatch the very first send in the chain (d0_src_buffer -> d1_recv[0])
+  // after all pairs in the chain have already been prepared and chained.
+  d0_src_buffer->CopyToRemoteDevice(d1_recv_desc_futures[0],
+                                    [](absl::Status s, bool dispatched) {
+                                      ASSERT_TRUE(dispatched);
+                                      ASSERT_OK(s);
+                                    });
+
+  // 3. Await completion of the full 16-pair round-trip chain on Device 0.
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> result_literal,
+                       d0_recv_buffers[kNumPairs - 1][0]->ToLiteral().Await());
+  EXPECT_TRUE(LiteralTestUtil::Equal(input_literal, *result_literal));
+}
+
+TEST(StreamExecutorGpuClientTest,
+     CrossHostReceiveWaitsForComputeStreamAllocationSyncPoint) {
+  GpuClientOptions options = GetTestGpuClientOptions(2);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> pjrt_client,
+                       GetStreamExecutorGpuClient(options));
+  ASSERT_GE(pjrt_client->devices().size(), 2);
+
+  PjRtDevice* const src_device = pjrt_client->addressable_devices()[0];
+  PjRtDevice* const dst_device = pjrt_client->addressable_devices()[1];
+
+  auto* common_client = absl::down_cast<CommonPjRtClient*>(pjrt_client.get());
+  auto* raw_client = absl::down_cast<PjRtStreamExecutorRawClient*>(
+      common_client->raw_client());
+  ASSERT_OK_AND_ASSIGN(
+      LocalDeviceState* const dst_local_device_state,
+      raw_client->GetLocalDeviceState(dst_device->local_device_id()));
+  ASSERT_EQ(dst_local_device_state->allocation_model(),
+            LocalDeviceState::kComputeSynchronized);
+
+  Literal input_literal =
+      LiteralUtil::CreateR1<float>({1.0f, 2.0f, 3.0f, 4.0f});
+  ASSERT_OK_AND_ASSIGN(PjRtMemorySpace* const src_memory_space,
+                       src_device->default_memory_space());
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> src_buffer,
+      pjrt_client->BufferFromHostLiteral(input_literal, src_memory_space));
+
+  // Block dst_device's compute stream to simulate an in-flight kernel whose
+  // freed buffer is reused by MakeCrossHostReceiveBuffers.
+  absl::Notification compute_callback_started;
+  absl::Notification unblock_compute_stream;
+  std::atomic<bool> compute_stream_finished = false;
+  ASSERT_OK(dst_local_device_state->compute_stream()->DoHostCallback([&]() {
+    compute_callback_started.Notify();
+    unblock_compute_stream.WaitForNotification();
+    compute_stream_finished.store(true);
+  }));
+  compute_callback_started.WaitForNotification();
+
+  const size_t sync_point =
+      dst_local_device_state->GetNextComputeStreamSyncPoint();
+  auto [desc_promise, desc_future] = MakePromise<std::string>();
+  auto desc_promise_ptr =
+      std::make_shared<Promise<std::string>>(std::move(desc_promise));
+  absl::Notification notifier_called;
+  std::atomic<bool> compute_finished_before_notifier = false;
+
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<std::unique_ptr<PjRtBuffer>> recv_buffers,
+      pjrt_client->MakeCrossHostReceiveBuffers(
+          {input_literal.shape()}, dst_device,
+          [&, desc_promise_ptr](
+              absl::StatusOr<PjRtCrossHostRecvState> descriptors) {
+            CHECK_OK(descriptors);
+            CHECK_EQ(descriptors->descriptors.size(), 1);
+            compute_finished_before_notifier.store(
+                compute_stream_finished.load());
+            desc_promise_ptr->Set(
+                descriptors->descriptors[0].serialized_descriptors[0]);
+            notifier_called.Notify();
+          }));
+  ASSERT_EQ(recv_buffers.size(), 1);
+
+  // The allocation sync point event is recorded synchronously when
+  // MakeCrossHostReceiveBuffers is scheduled, and the notifier must not fire
+  // while prior work on dst_device's compute stream is still in flight.
+  EXPECT_EQ(dst_local_device_state->GetNextComputeStreamSyncPoint(),
+            sync_point + 1);
+  EXPECT_FALSE(
+      notifier_called.WaitForNotificationWithTimeout(absl::Milliseconds(50)));
+
+  src_buffer->CopyToRemoteDevice(desc_future,
+                                 [](absl::Status s, bool dispatched) {
+                                   ASSERT_TRUE(dispatched);
+                                   ASSERT_OK(s);
+                                 });
+
+  unblock_compute_stream.Notify();
+  notifier_called.WaitForNotification();
+  EXPECT_TRUE(compute_finished_before_notifier.load());
+
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> recv_literal,
+                       recv_buffers[0]->ToLiteral().Await());
+  EXPECT_TRUE(LiteralTestUtil::Equal(input_literal, *recv_literal));
+}
+
+TEST(StreamExecutorGpuClientTest, CrossHostTransferWithoutPreallocate) {
+  GpuClientOptions options = GetTestGpuClientOptions(2);
+  options.allocator_config.preallocate = false;
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetStreamExecutorGpuClient(options));
+  ASSERT_GE(client->devices().size(), 2);
+
+  PjRtDevice* const src_device = client->addressable_devices()[0];
+  PjRtDevice* const dst_device = client->addressable_devices()[1];
+
+  Literal input_literal =
+      LiteralUtil::CreateR1<float>({1.0f, 2.0f, 3.0f, 4.0f});
+  ASSERT_OK_AND_ASSIGN(PjRtMemorySpace* const src_memory_space,
+                       src_device->default_memory_space());
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> src_buffer,
+      client->BufferFromHostLiteral(input_literal, src_memory_space));
+
+  auto [desc_promise, desc_future] = MakePromise<std::string>();
+  auto desc_promise_ptr =
+      std::make_shared<Promise<std::string>>(std::move(desc_promise));
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<std::unique_ptr<PjRtBuffer>> recv_buffers,
+      client->MakeCrossHostReceiveBuffers(
+          {input_literal.shape()}, dst_device,
+          [desc_promise_ptr](
+              absl::StatusOr<PjRtCrossHostRecvState> descriptors) {
+            CHECK_OK(descriptors);
+            CHECK_EQ(descriptors->descriptors.size(), 1);
+            desc_promise_ptr->Set(
+                descriptors->descriptors[0].serialized_descriptors[0]);
+          }));
+  ASSERT_EQ(recv_buffers.size(), 1);
+
+  src_buffer->CopyToRemoteDevice(desc_future,
+                                 [](absl::Status s, bool dispatched) {
+                                   ASSERT_TRUE(dispatched);
+                                   ASSERT_OK(s);
+                                 });
+
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> recv_literal,
+                       recv_buffers[0]->ToLiteral().Await());
   EXPECT_TRUE(LiteralTestUtil::Equal(input_literal, *recv_literal));
 }
 

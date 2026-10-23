@@ -25,7 +25,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/functional/function_ref.h"
-#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
@@ -157,7 +156,8 @@ class Command : public Thunk {
   virtual bool requires_update_on_initialize() const { return false; }
 
   // Returns true if command requires a one-time fallback execution before it is
-  // recorded into a command buffer.
+  // recorded into a command buffer. This property must remain constant for the
+  // lifetime of the command.
   virtual bool requires_warmup() const { return false; }
 
   // Returns true if command buffer command parameters can change even when
@@ -240,36 +240,6 @@ Command::WalkResult<const Command*, F> Command::Walk(F&& callback) const {
     return callback(static_cast<const Command*>(command));
   });
 }
-
-//===----------------------------------------------------------------------===//
-// Asynchronous commands
-//===----------------------------------------------------------------------===//
-
-// A base class for a command that starts an asynchronous execution.
-class AsyncStartCommand : public Command {
- public:
-  using Command::Command;
-
-  // At run time async command might behave like a synchronous one, i.e.
-  // some collective operations if they can't be overlapped with compute
-  // operations executed like they have synchronous execution semantics.
-  virtual bool IsAsync() const = 0;
-};
-
-// A command that completes an `async_start` command.
-class AsyncDoneCommand : public Command {
- public:
-  explicit AsyncDoneCommand(const AsyncStartCommand* async_start)
-      : Command(Thunk::Kind::kAsyncDone), async_start_(async_start) {
-    DCHECK(async_start_) << "AsyncStart command must be not null";
-  }
-
-  const AsyncStartCommand* async_start() const { return async_start_; }
-  bool IsAsync() const { return async_start_->IsAsync(); }
-
- private:
-  const AsyncStartCommand* async_start_;
-};
 
 //===----------------------------------------------------------------------===//
 // CommandSequence

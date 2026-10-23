@@ -48,7 +48,9 @@ xla_test_friend_package_group(name = "friends")
 # Generate test_suites for all backends, named "${backend}_tests".
 generate_backend_suites()
 
-# Target to add main for tests. Do not link this target and
+# Target to add main for tests that pass XLA flags via args. Prefer to use
+# @com_google_googletest//:gtest_main and pass XLA flags via the env attribute
+# (XLA_FLAGS) over this target. Do not link this target and
 # @com_google_googletest//:gtest_main into the same target.
 cc_library(
     name = "xla_internal_test_main",
@@ -56,13 +58,13 @@ cc_library(
     srcs = ["xla_internal_test_main.cc"],
     deps = [
         "//xla:debug_options_flags",
-        "@com_google_absl//absl/flags:flag",
+        "//xla/tsl/platform:test_benchmark",
+        "//xla/tsl/util:command_line_flags",
+        "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:globals",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_for_library",
-        "@tsl//tsl/platform:logging",
-        "@tsl//tsl/platform:test",
-        "@tsl//tsl/platform:test_benchmark",
     ],
     alwayslink = True,
 )
@@ -115,13 +117,17 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/analysis:hlo_dataflow_analysis",
         "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_module_config",
+        "//xla/service:hlo_value",
         "//xla/service:hlo_verifier",
-        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@tsl//tsl/platform:protobuf",
     ],
@@ -241,7 +247,7 @@ cc_library(
         "//xla/hlo/testlib:verified_hlo_module",
         "//xla/hlo/transforms:despecializer",
         "//xla/hlo/transforms/simplifiers:float_normalization",
-        "//xla/service:computation_placer_hdr",
+        "//xla/service:device_assignment",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_module_util",
         "//xla/service:hlo_proto_cc",
@@ -413,7 +419,7 @@ cc_library(
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/ir:hlo",
-        "//xla/service:computation_placer_hdr",
+        "//xla/service:device_assignment",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_module_util",
         "//xla/service:hlo_runner_interface",
@@ -485,7 +491,6 @@ cc_library(
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:test_helpers",
         "//xla/hlo/testlib:verified_hlo_module",
-        "//xla/service:computation_placer",
         "//xla/service:hlo_module_config",
         "//xla/service:platform_util",
         "//xla/service:shaped_buffer",
@@ -803,6 +808,7 @@ xla_test(
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@tsl//tsl/platform",
     ],
 )
 
@@ -901,9 +907,12 @@ xla_test(
         ":hlo_pjrt_interpreter_reference_mixin",
         ":hlo_pjrt_test_base",
         ":xla_internal_test_main",  # fixdeps: keep
+        ":xla_test_backend_predicates",
         "//xla:error_spec",
+        "//xla:fp_util",
         "//xla:literal",
         "//xla:literal_util",
+        "//xla:types",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/builder/lib:math",
@@ -1358,11 +1367,6 @@ xla_test(
 xla_test(
     name = "get_default_platform_test",
     srcs = ["get_default_platform_test.cc"],
-    disabled_backends = [
-        "cpu",
-        "gpu",
-        "interpreter",
-    ],
     deps = [
         ":hlo_pjrt_test_base",
         "//xla/service:platform_util",
@@ -1519,10 +1523,7 @@ xla_test(
     # Turn on logging so that VLOG statements don't appear uncovered to zapfhahn.
     args = if_google(["--vmodule=convolution_emitter=7"]),
     shard_count = 40,
-    tags = [
-        "cuda-only",
-        "optonly",
-    ],
+    tags = ["optonly"],
     deps = [
         ":client_library_test_runner_mixin",
         ":hlo_pjrt_interpreter_reference_mixin",
@@ -1551,7 +1552,10 @@ xla_test(
     args = ["--xla_gpu_autotune_level=0"],
     backends = ["gpu"],
     shard_count = 40,
-    tags = ["optonly"],
+    tags = [
+        "nozapfhahn",
+        "optonly",
+    ],
     deps = [
         ":client_library_test_runner_mixin",
         ":hlo_pjrt_interpreter_reference_mixin",
@@ -1610,6 +1614,7 @@ xla_test(
     backend_args = {"gpu": ["--xla_backend_extra_options=xla_gpu_experimental_conv_disable_layout_heuristic"]},
     backends = ["gpu"],
     shard_count = 25,
+    tags = ["nozapfhahn"],
     deps = [
         ":client_library_test_runner_mixin",
         ":hlo_pjrt_interpreter_reference_mixin",
@@ -1642,7 +1647,6 @@ xla_test(
     backend_args = {"gpu": ["--xla_backend_extra_options=xla_gpu_experimental_conv_disable_layout_heuristic"]},
     backends = ["gpu"],
     shard_count = 25,
-    tags = ["cuda-only"],
     deps = [
         ":client_library_test_runner_mixin",
         ":hlo_pjrt_interpreter_reference_mixin",
@@ -1721,6 +1725,7 @@ xla_test(
         "b200",
     ],
     data = ["data/cudnn_reproducer.hlo"],
+    shard_count = 5,
     deps = [
         ":hlo_pjrt_interpreter_reference_mixin",
         "//xla:error_spec",
@@ -1920,7 +1925,6 @@ xla_test(
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/testlib:test_helpers",
         "//xla/service",
-        "//xla/service:computation_placer",
         "//xla/service:platform_util",
         "//xla/service:shaped_buffer",
         "//xla/service:transfer_manager",
@@ -2027,7 +2031,10 @@ xla_test(
         ":hlo_pjrt_test_base",
         ":xla_internal_test_main",
         "//xla:error_spec",
+        "//xla:literal",
+        "//xla:literal_util",
         "//xla:xla_data_proto_cc",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
     ],
@@ -2172,6 +2179,69 @@ xla_test(
         "//xla:error_spec",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+xla_test(
+    name = "approx_topk_special_floats_test",
+    srcs = ["approx_topk_special_floats_test.cc"],
+    backend_tags = {
+        "gpu": [
+            # Skip P100/V100 GPUs due to 0.0 and -0.0 interleaving bug in sort.
+            "requires-gpu-sm80",
+        ],
+    },
+    backends = [
+        # Skip CPU because it still uses TOTAL order for approx_topk.
+        "gpu",
+    ],
+    disabled_backends = ["amdgpu_any"],
+    deps = [
+        ":hlo_interpreter_reference_mixin",
+        ":hlo_test_base",
+        ":literal_test_util",
+        ":xla_internal_test_main",
+        "//xla:array2d",
+        "//xla:error_spec",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:types",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+xla_test(
+    name = "topk_special_floats_test",
+    srcs = ["topk_special_floats_test.cc"],
+    backend_tags = {
+        "gpu": [
+            # Skip P100/V100 GPUs due to 0.0 and -0.0 interleaving bug in sort.
+            "requires-gpu-sm80",
+        ],
+    },
+    backends = [
+        "cpu",
+        "gpu",
+    ],
+    disabled_backends = ["amdgpu_any"],
+    deps = [
+        ":hlo_interpreter_reference_mixin",
+        ":hlo_test_base",
+        ":literal_test_util",
+        ":xla_internal_test_main",
+        ":xla_test_backend_predicates",
+        "//xla:array2d",
+        "//xla:error_spec",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:types",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -2697,14 +2767,12 @@ xla_test(
         ":hlo_pjrt_test_base",
         ":literal_test_util",
         ":pjrt_client_registry",
-        ":test_utils",
         ":xla_internal_test_main",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla:types",
-        "//xla/hlo/testlib:verified_hlo_module",
-        "//xla/service:computation_placer",
+        "//xla/service:device_assignment",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_runner_interface",
         "//xla/tests:xla_test_backend_predicates",
@@ -2751,15 +2819,12 @@ xla_test(
         ":client_library_test_runner_mixin",
         ":hlo_pjrt_interpreter_reference_mixin",
         ":hlo_pjrt_test_base",
-        ":hlo_runner_agnostic_reference_mixin",
         ":xla_internal_test_main",
         "//xla:error_spec",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/builder:xla_builder",
-        "//xla/hlo/evaluator:hlo_evaluator",
         "//xla/pjrt/interpreter:interpreter_client",
-        "//xla/service:hlo_runner_pjrt",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/strings:string_view",
         "@tsl//tsl/platform:ml_dtypes",
@@ -3008,11 +3073,8 @@ xla_test(
         "gpu",
         "interpreter",
     ],
-    shard_count = 30,
-    tags = [
-        "cuda-only",
-        "optonly",
-    ],
+    shard_count = 15,
+    tags = ["optonly"],
     use_legacy_runtime = True,
     deps = [
         ":literal_test_util",
@@ -3165,7 +3227,7 @@ xla_test(
         "gpu",
         "interpreter",
     ],
-    shard_count = 15,
+    shard_count = 8,
     use_legacy_runtime = True,
     deps = [
         ":literal_test_util",
@@ -3243,11 +3305,13 @@ xla_test(
     # There is nothing backend specific in this test, so just pick an arbitrary backend.
     backends = ["cpu"],
     deps = [
-        ":hlo_pjrt_test_base",
+        ":hlo_test_base",
         ":test_utils",
         ":xla_internal_test_main",
         "//xla:literal",
+        "//xla:literal_util",
         "//xla:shape_util",
+        "//xla:types",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/hlo/builder:xla_builder",
@@ -3258,6 +3322,7 @@ xla_test(
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -3532,6 +3597,8 @@ xla_test(
         ":hlo_pjrt_interpreter_reference_mixin",
         ":hlo_pjrt_test_base",
         "//xla:error_spec",
+        "//xla:literal",
+        "//xla:literal_util",
         "//xla/hlo/builder:xla_builder",
         "@com_google_googletest//:gtest_main",
     ],
@@ -3565,7 +3632,6 @@ xla_test(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/builder:xla_builder",
         "//xla/tsl/lib/core:status_test_util",
-        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
@@ -3647,18 +3713,41 @@ cc_library(
     srcs = ["aot_interception_pjrt_client.cc"],
     hdrs = ["aot_interception_pjrt_client.h"],
     deps = [
+        "//xla:debug_options_runtime_fields",
         "//xla:literal",
         "//xla:shape_util",
+        "//xla:status_macros",
         "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
+        "//xla/backends/gpu/runtime:collective_kernel_thunk_proto_cc",
         "//xla/hlo/builder:xla_computation",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_common",
         "//xla/pjrt:pjrt_executable",
+        "//xla/pjrt/proto:compile_options_proto_cc",
         "//xla/runtime:device_id",
-        "//xla/service:computation_placer_hdr",
+        "//xla/service:device_assignment",
+        "//xla/service/cpu:executable_proto_cc",
+        "//xla/service/gpu:gpu_executable_proto_cc",
+        "//xla/stream_executor:kernel_spec_proto_cc",
+        "//xla/stream_executor/abi:executable_abi_version_proto_cc",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:logging",
+        "//xla/util/split_proto:human_readable_aot_executable_proto_cc",
+        "//xla/util/split_proto:split_executable_and_options_writer",
+        "//xla/util/split_proto:split_gpu_executable_writer",
+        "//xla/util/split_proto:split_proto_reader",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@riegeli//riegeli/base:initializer",
+        "@riegeli//riegeli/bytes:string_reader",
+        "@riegeli//riegeli/bytes:string_writer",
+        "@tsl//tsl/platform:path",
+        "@tsl//tsl/platform:protobuf",
     ],
 )

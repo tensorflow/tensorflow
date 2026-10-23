@@ -56,7 +56,7 @@ get_counters_map() {
 
 class StatsAggregatorImpl : public StatsAggregator {
  public:
-  StatsAggregatorImpl() {}
+  StatsAggregatorImpl() = default;
 
   void AddToHistogram(const std::string& name, absl::Span<const double> values,
                       const int64_t steps) override {
@@ -139,7 +139,7 @@ class StatsAggregatorHandleOp
 
 class StatsAggregatorImplV2 : public StatsAggregator {
  public:
-  StatsAggregatorImplV2() {}
+  StatsAggregatorImplV2() = default;
 
   ~StatsAggregatorImplV2() override {
     if (summary_writer_interface_) {

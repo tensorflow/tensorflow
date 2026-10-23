@@ -91,7 +91,7 @@ absl::Status TfLiteExporter::Export(mlir::ModuleOp module) {
     AttachCostPerDevice(module, options_.target_hardware_backends);
 
     // We will export the runtime metadata with the same name under the same
-    // directory except with a different extention ".rtmeta".
+    // directory except with a different extension ".rtmeta".
     llvm::SmallString<128> metadata_filename(options_.output_file_name);
     const char kRuntimeMetadataName[] = "rtmeta";
     llvm::sys::path::replace_extension(metadata_filename, kRuntimeMetadataName);

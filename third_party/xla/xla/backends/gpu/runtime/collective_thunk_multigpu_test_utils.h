@@ -34,7 +34,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/future.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/service_executable_run_options.h"
@@ -47,6 +47,9 @@ limitations under the License.
 #include "xla/tsl/platform/threadpool.h"
 
 namespace xla::gpu {
+
+inline constexpr int64_t kNumElements = 4;
+inline constexpr int64_t kFloatByteLength = sizeof(float) * kNumElements;
 
 struct CollectiveThunkMultiGpuTestState {
   int device_ordinal = 0;

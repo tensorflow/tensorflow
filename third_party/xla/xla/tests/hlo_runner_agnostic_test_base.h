@@ -47,7 +47,7 @@ limitations under the License.
 #include "xla/hlo/transforms/despecializer.h"
 #include "xla/hlo/transforms/simplifiers/float_normalization.h"
 #include "xla/literal.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner_interface.h"

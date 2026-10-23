@@ -17,42 +17,27 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <memory>
 #include <utility>
-#include <vector>
 
-#include "absl/algorithm/container.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "absl/memory/memory.h"
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/MathExtras.h"
-#include "xla/codegen/tiling/constraint_expression.h"
 #include "xla/codegen/tiling/experimental/tiled_hlo.h"
-#include "xla/codegen/tiling/symbolic_tile.h"
-#include "xla/codegen/tiling/symbolic_tile_analysis.h"
-#include "xla/codegen/tiling/symbolic_tiled_hlo_instruction.h"
-#include "xla/codegen/xtile/codegen/tiled_emitter_constraints.h"
-#include "xla/hlo/analysis/interval.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
-#include "xla/hlo/analysis/symbolic_map.h"
+#include "xla/codegen/tiling/experimental/tiling_space.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/decision.h"
-#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 
 namespace xla {
-namespace gpu {
+namespace gpu::experimental {
 
 namespace {
 
@@ -65,216 +50,25 @@ constexpr int64_t kMaxTensorNumElements = 1048576;
 // Also for MMA instruction we don't want tiles greater than 256.
 constexpr int64_t kMaxMMADimSize = 256;
 
-llvm::SmallVector<int64_t> GetPaddedTileSizes(
-    llvm::SmallVector<int64_t> tile_sizes) {
-  llvm::SmallVector<int64_t> result;
-  result.reserve(tile_sizes.size());
-  for (int64_t value : tile_sizes) {
-    result.push_back(llvm::PowerOf2Ceil(value));
+// Returns a conservative estimate (in bytes) of the memory required to stage a
+// tile whose sizes are `tile_sizes` for an instruction whose element type
+// occupies `element_byte_size` bytes.
+int64_t GetPaddedTileSizeInBytes(absl::Span<const int64_t> tile_sizes,
+                                 int64_t element_byte_size) {
+  int64_t padded_tile_elements = 1;
+  for (int64_t size : tile_sizes) {
+    padded_tile_elements *= llvm::PowerOf2Ceil(size);
   }
-  return result;
+  return padded_tile_elements * element_byte_size;
 }
-
-}  // namespace
-
-/*static*/ std::vector<TritonEmitterConstraints::CustomConstraints>
-TritonEmitterConstraints::DeriveCustomConstraints(
-    const std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>&
-        instructions,
-    const HloFusionAdaptor& fusion_adaptor) {
-  std::vector<CustomConstraints> result;
-
-  for (const auto& instruction : instructions) {
-    const HloInstruction* hlo = instruction->hlo();
-    // Don't consider operands to the fusion computation for constraints.
-    if (!fusion_adaptor.ContainsInstruction(hlo)) {
-      continue;
-    }
-
-    if (hlo->opcode() == HloOpcode::kDot) {
-      auto ctx = instruction->symbolic_tile().size_map().GetContext();
-      SymbolicMap identity_map = SymbolicMap::GetMultiDimIdentityMap(
-          instruction->symbolic_tile().size_map().GetNumDims(), ctx);
-      for (const auto& operand : instruction->operands()) {
-        for (SymbolicExpr tile_size :
-             operand->symbolic_tile().size_map().GetResults()) {
-          // TODO(393299275): There is also a lower bound limit for Triton
-          // on what is accepted for dimension size (both contracting and free).
-          ConstraintExpression dim_constraint(ConstraintExpression::Constraint{
-              tile_size, Interval{1, kMaxMMADimSize}});
-          result.push_back(CustomConstraints{identity_map, dim_constraint});
-        }
-      }
-      continue;
-    }
-  }
-
-  return result;
-}
-
-/*static*/ EmitterSpecificConstraintsBuilder
-TritonEmitterConstraints::GetBuilder(
-    const se::DeviceDescription& device_description) {
-  return [=](const std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>&
-                 instructions,
-             const HloFusionAdaptor& fusion_adaptor) {
-    absl::flat_hash_set<SymbolicMap> unique_tile_size_maps;
-    llvm::SmallVector<RootTileInfo, 2> root_infos;
-    auto roots = fusion_adaptor.GetRoots();
-    for (const auto& tiled_hlo_instruction : instructions) {
-      unique_tile_size_maps.insert(
-          tiled_hlo_instruction->symbolic_tile().size_map());
-      if (absl::c_any_of(roots, [&tiled_hlo_instruction](
-                                    const HloInstructionAdaptor& instr) {
-            return &instr.instruction() == tiled_hlo_instruction->hlo();
-          })) {
-        const auto& shape = tiled_hlo_instruction->hlo()->shape();
-        root_infos.push_back(
-            RootTileInfo{tiled_hlo_instruction->symbolic_tile().size_map(),
-                         shape.IsArray() ? SpanToVector(shape.dimensions())
-                                         : std::vector<int64_t>()});
-      }
-    }
-
-    std::vector<CustomConstraints> custom_constraints =
-        DeriveCustomConstraints(instructions, fusion_adaptor);
-
-    llvm::SmallVector<SymbolicMap, 4> tile_size_maps(
-        unique_tile_size_maps.begin(), unique_tile_size_maps.end());
-
-    std::unique_ptr<TiledEmitterConstraints> tiled_emitter_constraints =
-        TiledEmitterConstraints::Create(instructions, fusion_adaptor);
-
-    return std::unique_ptr<TritonEmitterConstraints>(
-        absl::WrapUnique(new TritonEmitterConstraints(
-            std::move(tile_size_maps), std::move(root_infos),
-            std::move(custom_constraints),
-            /*root_shape=*/instructions.back()->hlo()->shape(),
-            device_description, std::move(tiled_emitter_constraints))));
-  };
-}
-
-namespace {
-
-// Returns the number of elements in the (padded) tile described by
-// tile_size_map` and `tiling_parameters`.
-int64_t NumberOfElementsInPaddedTile(
-    const SymbolicMap& tile_size_map,
-    absl::Span<const int64_t> tiling_parameters) {
-  int64_t num_elements = 1;
-  for (auto expr : tile_size_map.GetResults()) {
-    num_elements *= llvm::PowerOf2Ceil(
-        expr.Evaluate(/*variable_values=*/tiling_parameters));
-  }
-
-  return num_elements;
-}
-
-// Checks whether the number of programs to launch on the grid is under the
-// limit enforced by the device.
-//
-// This currently returns `true` unconditionally if the output shape is not an
-// array.
-//
-// TODO(b/418965008): persistent kernels will make this check obsolete.
-bool NumberOfBlocksFitsOnDeviceGrid(const Shape& output_shape,
-                                    absl::Span<const int64_t> tiling_parameters,
-                                    const se::DeviceDescription& device_info) {
-  int64_t num_blocks = 1;
-  if (output_shape.IsArray()) {
-    for (auto [dim_size, tile_size] :
-         llvm::zip(output_shape.dimensions(), tiling_parameters)) {
-      // Currently, each output tile is mapped to one block.
-      num_blocks *= (dim_size + tile_size - 1) / tile_size;
-    }
-  }
-
-  return num_blocks < device_info.block_dim_limit().x;
-}
-
-}  // namespace
-
-absl::StatusOr<bool> TritonEmitterConstraints::ParametersSatisfyConstraints(
-    absl::Span<const int64_t> tile_parameters) const {
-  // Verify that the tile sizes are not too big.
-  if (absl::c_any_of(tile_size_maps_, [&](const auto& tile_size_map) {
-        return NumberOfElementsInPaddedTile(tile_size_map, tile_parameters) >
-               kMaxTensorNumElements;
-      })) {
-    VLOG(2) << "Found a tile with more than " << kMaxTensorNumElements
-            << " elements. Bailing out.";
-    return false;
-  }
-
-  // Verify that the number of blocks to launch on the device grid is not too
-  // big.
-  if (!NumberOfBlocksFitsOnDeviceGrid(root_shape_, tile_parameters,
-                                      device_info_)) {
-    VLOG(2) << "Number of blocks exceeds the device grid limit. Bailing out.";
-    return false;
-  }
-
-  // Ensure that we satisfy the custom constraints we derived when padding tile
-  // sizes to a power of 2. This is a workaround while nested fusions are not
-  // landed.
-  //
-  // TODO(b/365727080): get rid of this once tiling is using power of twos
-  // everywhere, including when propagating into the prologue of reductions.
-  VLOG(5) << "Checking custom constraints for tile parameters: "
-          << absl::StrJoin(tile_parameters, ", ");
-  for (const auto& custom_constraint : custom_constraints_) {
-    VLOG(5) << "Checking custom constraint: transform  "
-            << custom_constraint.tile_parameters_transform << " constraints "
-            << custom_constraint.constraints.ToString(
-                   custom_constraint.tile_parameters_transform.GetNumDims());
-    llvm::SmallVector<int64_t> transformed_tile_parameters =
-        custom_constraint.tile_parameters_transform.Evaluate(tile_parameters);
-    if (!custom_constraint.constraints.IsSatisfiedBy(
-            GetPaddedTileSizes(transformed_tile_parameters))) {
-      return false;
-    }
-  }
-  for (const auto& root : roots_) {
-    llvm::SmallVector<int64_t> transformed_tile_parameters =
-        root.size_map.Evaluate(tile_parameters);
-    // We require that the propagated tile sizes for potential root tiles are
-    // either powers of 2 or are equal to the dimension size.
-    // TODO(b/365727080): Technically the tile size should always be a power of
-    // 2, but currently if we capture a dimension fully, we use the dimension
-    // size as tile size.
-    for (auto [tile_size, dim_size] :
-         llvm::zip(transformed_tile_parameters, root.dim_sizes)) {
-      CHECK_GT(tile_size, 0);
-      // If the tile size is neither a power of 2, nor equal to dim size, it is
-      // invalid. Otherwise we would for example compute the launch config
-      // incorrectly.
-      if ((tile_size & (tile_size - 1)) && tile_size != dim_size) {
-        VLOG(5)
-            << "Found a tile size that is not a power of 2 and is not equal "
-               "to the dimension size. Bailing out."
-            << tile_size << " " << dim_size;
-        return false;
-      }
-    }
-  }
-
-  return tiled_emitter_constraints_->ParametersSatisfyConstraints(
-      tile_parameters);
-}
-
-}  // namespace gpu
-
-namespace gpu::experimental {
-
-namespace {
 
 void CollectAllInstructions(
     const TiledHloInstruction* inst,
     llvm::SmallVector<const TiledHloInstruction*>& out) {
   out.push_back(inst);
   for (const auto& region : inst->hlo_regions()) {
-    for (const auto& sub_inst : region.instructions()) {
-      CollectAllInstructions(sub_inst.get(), out);
+    for (const TiledHloInstruction* sub_inst : region.instructions()) {
+      CollectAllInstructions(sub_inst, out);
     }
   }
 }
@@ -327,6 +121,8 @@ Decision VerifyTritonConstraints(const TiledHloComputation& tiled_computation,
   // Triton's GPU codegen constrains dot operands to avoid excessive register
   // pressure and comply with hardware MMA layout constraints. Contracting and
   // free dimension tile sizes are limited to kMaxMMADimSize.
+  // TODO(b/393299275): There is also a lower bound limit for Triton on what
+  // is accepted for dimension size (both contracting and free).
   for (const TiledHloInstruction* inst : all_instructions) {
     if (inst->hlo()->opcode() == HloOpcode::kDot) {
       for (const TiledHloInstruction* operand : inst->operands()) {
@@ -346,6 +142,45 @@ Decision VerifyTritonConstraints(const TiledHloComputation& tiled_computation,
           }
         }
       }
+    }
+  }
+
+  // 3. Transpose Shared Memory Limit.
+  // A transpose op stages its (padded) operand tile in shared memory to perform
+  // the layout conversion (the classic shared-memory transpose that avoids
+  // uncoalesced global memory accesses). Estimate that shared-memory usage as
+  // the product of the power-of-2-padded operand tile sizes multiplied by the
+  // element byte size, and reject tiles that would exceed the device shared
+  // memory limit. This lets the tile search fall back to a smaller tile instead
+  // of failing later with a RESOURCE_EXHAUSTED error during Triton compilation.
+  const int64_t shared_memory_limit =
+      device_info.shared_memory_per_block_optin();
+  for (const TiledHloInstruction* inst : all_instructions) {
+    if (inst->hlo()->opcode() != HloOpcode::kTranspose ||
+        inst->operands().empty()) {
+      continue;
+    }
+    // The transposed operand (operand 0) is the tile that is staged in shared
+    // memory.
+    CHECK_EQ(inst->operands().size(), 1)
+        << "Transpose " << inst->hlo()->name() << " should have exactly one "
+        << "operand, but has " << inst->operands().size() << ".";
+    const TiledHloInstruction* operand = inst->operands().front();
+    auto operand_tile_sizes_or = operand->tile().GetStaticTileSizes();
+    if (!operand_tile_sizes_or.ok()) {
+      return Decision(operand_tile_sizes_or.status());
+    }
+
+    const int64_t shared_memory_bytes = GetPaddedTileSizeInBytes(
+        *operand_tile_sizes_or, ShapeUtil::ByteSizeOfPrimitiveType(
+                                    operand->hlo()->shape().element_type()));
+    if (shared_memory_bytes > shared_memory_limit) {
+      return Decision::Forbid(absl::StrCat(
+          "Transpose instruction ", inst->hlo()->name(),
+          " has an operand tile that requires an estimated ",
+          shared_memory_bytes,
+          " bytes of shared memory, which exceeds the device limit of ",
+          shared_memory_limit, " bytes."));
     }
   }
 
@@ -376,6 +211,9 @@ Decision VerifyTritonConstraints(const TiledHloComputation& tiled_computation,
 
     // Verify that the tile sizes are either powers of 2 or equal to the
     // dimension size.
+    // TODO(b/365727080): Technically the tile size should always be a power of
+    // 2, but currently if we capture a dimension fully, we use the dimension
+    // size as tile size.
     for (size_t i = 0; i < root_tile_sizes.size(); ++i) {
       int64_t t = root_tile_sizes[i];
       CHECK_GT(t, 0) << root->hlo()->name() << " has non-positive tile size "
@@ -391,6 +229,7 @@ Decision VerifyTritonConstraints(const TiledHloComputation& tiled_computation,
     }
 
     // Check that the number of blocks fits on the device grid X.
+    // TODO(b/418965008): persistent kernels will make this check obsolete.
     uint64_t num_blocks = 1;
     uint64_t limit = device_info.block_dim_limit().x;
     for (size_t i = 0; i < root_tile_sizes.size(); ++i) {
@@ -401,6 +240,77 @@ Decision VerifyTritonConstraints(const TiledHloComputation& tiled_computation,
         return Decision::Forbid(
             absl::StrCat("Number of blocks ", num_blocks, "*", blocks_in_dim,
                          " exceeds the device grid X limit of ", limit, "."));
+      }
+      num_blocks *= blocks_in_dim;
+    }
+  }
+
+  return Decision::Allow();
+}
+
+Decision VerifySubsetOfTritonConstraints(
+    absl::Span<const int64_t> padded_tile_sizes,
+    const TilingSpace& tiling_space, const se::DeviceDescription& device_info) {
+  auto dimensions = tiling_space.dimensions();
+
+  // Hardware MMA limits for Dot / ScaledDot instructions.
+  // TODO(b/393299275): There is also a lower bound limit for Triton on what
+  // is accepted for dimension size (both contracting and free).
+  for (const auto& [idx, dim] : llvm::enumerate(dimensions)) {
+    if (dim.hlo != nullptr && (dim.hlo->opcode() == HloOpcode::kDot ||
+                               dim.hlo->opcode() == HloOpcode::kScaledDot)) {
+      if (padded_tile_sizes[idx] > kMaxMMADimSize) {
+        return Decision::Forbid(absl::StrCat(
+            "Tile size ", padded_tile_sizes[idx], " for dimension ", idx,
+            " of ", dim.hlo->name(), " exceeds the maximum MMA dimension size ",
+            kMaxMMADimSize, "."));
+      }
+    }
+  }
+
+  // Group parallel dimensions by root instruction to evaluate constraints per
+  // tiled root (supporting multi-output fusion).
+  llvm::SmallVector<llvm::SmallVector<size_t, 4>, 2> root_dim_groups;
+  const HloInstruction* current_root = nullptr;
+  for (const auto& [idx, dim] : llvm::enumerate(dimensions)) {
+    if (dim.type == TilingSpace::DimensionSemantics::kParallel) {
+      if (root_dim_groups.empty() || dim.hlo != current_root) {
+        root_dim_groups.push_back({});
+        current_root = dim.hlo;
+      }
+      root_dim_groups.back().push_back(idx);
+    }
+  }
+
+  const uint64_t grid_limit = device_info.block_dim_limit().x;
+
+  for (const auto& dim_indices : root_dim_groups) {
+    int64_t root_product = 1;
+    uint64_t num_blocks = 1;
+
+    for (size_t idx : dim_indices) {
+      const auto& dim = dimensions[idx];
+      int64_t tile_size = padded_tile_sizes[idx];
+
+      // Overflow check on cumulative root product.
+      if (tile_size > kMaxTensorNumElements / root_product) {
+        return Decision::Forbid(absl::StrCat(
+            "Padded tile size product exceeds the maximum number of elements "
+            "of a Triton tensor (",
+            kMaxTensorNumElements, ")."));
+      }
+      root_product *= tile_size;
+
+      // Launch grid block limits.
+      // TODO(b/418965008): persistent kernels will make this check obsolete.
+      uint64_t blocks_in_dim =
+          CeilOfRatio<uint64_t>(static_cast<uint64_t>(dim.dimension_size),
+                                static_cast<uint64_t>(tile_size));
+      if (blocks_in_dim == 0 || blocks_in_dim > grid_limit ||
+          (num_blocks > grid_limit / blocks_in_dim)) {
+        return Decision::Forbid(absl::StrCat(
+            "Number of blocks ", num_blocks, "*", blocks_in_dim,
+            " exceeds the device grid X limit of ", grid_limit, "."));
       }
       num_blocks *= blocks_in_dim;
     }

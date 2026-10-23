@@ -132,6 +132,10 @@ class NanoIfrtClient
       const absl::Status& error,
       absl::Span<const ifrt::ArraySpec> array_specs) override;
 
+  absl::StatusOr<std::vector<tsl::Future<>>> CopyArraysToHostBufferShards(
+      absl::Span<CopyArraysToHostBufferShardsSpec> specs,
+      ifrt::ArrayCopySemantics semantics) override;
+
   // Assembles a sharded array from a list of single device arrays. If the
   // provided sharding is specific enough to assemble a dense array, this method
   // will actually return an assembled array that pretends it is sharded.
@@ -148,6 +152,11 @@ class NanoIfrtClient
       absl::Span<ifrt::ArrayRef> arrays,
       std::optional<ifrt::DeviceListRef> devices,
       std::optional<ifrt::MemoryKind> memory_kind,
+      ifrt::ArrayCopySemantics semantics) override;
+
+  absl::StatusOr<std::vector<ifrt::ArrayRef>> CopyArraysWithDonatedDst(
+      absl::Span<ifrt::ArrayRef> arrays,
+      absl::Span<ifrt::ArrayRef> donated_dst_arrays,
       ifrt::ArrayCopySemantics semantics) override;
 
   absl::StatusOr<std::vector<ifrt::ArrayRef>> RemapArrays(
@@ -215,6 +224,10 @@ class NanoIfrtClient
       absl::Span<ifrt::Device* const> devices) const override;
 
   ifrt::Compiler* GetDefaultCompiler() override;
+
+  absl::StatusOr<std::vector<tsl::Future<ifrt::LoadedExecutableRef>>> Load(
+      absl::Span<const ifrt::ExecutableRef> executables,
+      absl::Span<std::unique_ptr<ifrt::LoadOptions>> options) override;
 
   absl::StatusOr<std::shared_ptr<ifrt::Topology>> GetTopologyForDevices(
       const ifrt::DeviceListRef& devices) const override;

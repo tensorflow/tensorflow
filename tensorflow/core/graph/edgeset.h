@@ -98,7 +98,7 @@ class EdgeSet::const_iterator {
   typedef typename EdgeSet::difference_type difference_type;
   typedef std::forward_iterator_tag iterator_category;
 
-  const_iterator() {}
+  const_iterator() = default;
 
   const_iterator& operator++();
   const_iterator operator++(int /*unused*/);

@@ -43,19 +43,23 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LLVM.h"
 #include "shardy/common/file_utils.h"
+#include "shardy/dialect/sdy/transforms/common/partitioner_stage.h"
 #include "shardy/dialect/sdy/transforms/common/propagation_options.h"
+#include "shardy/dialect/sdy/transforms/export/utils.h"
 #include "shardy/dialect/sdy/transforms/propagation/passes.h"
 #include "re2/re2.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/stack_frames.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/hlo/translate/stablehlo.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/layout.h"
+#include "xla/layout_util.h"
 #include "xla/map_util.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/hlo.pb.h"
@@ -70,12 +74,11 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/tsl/framework/mlir/status_scoped_diagnostic_handler.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/path.h"
+#include "tsl/platform/platform.h"
 
 namespace xla {
 namespace sdy {
@@ -141,6 +144,7 @@ absl::Status createFromProtoAndReplaceComputations(
   ABSL_ASSIGN_OR_RETURN(StackFrames stack_frames,
                    StackFrames::FromProto(proto.stack_frame_index()));
   module->set_stack_frames(std::move(stack_frames));
+
   return absl::OkStatus();
 }
 
@@ -218,6 +222,53 @@ ComputationLayout getFlattenedComputationLayout(
   return flattenedComputationLayout;
 }
 
+// Updates the entry computation layout of `hloModule` after Shardy device-local
+// code generation by copying layouts from `oldLayout` to the new local program
+// shape and canonicalizing layouts for any parameter or output whose shape
+// changed during partitioning.
+absl::Status updateEntryComputationLayout(HloModule* hloModule,
+                                          const ComputationLayout& oldLayout) {
+  ProgramShape newProgramShape =
+      hloModule->entry_computation()->ComputeProgramShape();
+
+  // Record which parameters changed shape and copy the original parameter
+  // layouts onto the new local parameter shapes.
+  mlir::SmallVector<bool> updateParametersLayout(
+      newProgramShape.parameters_size());
+  for (int64_t i = 0; i < newProgramShape.parameters_size(); ++i) {
+    const Shape& oldParamShape = oldLayout.parameter_shape(i);
+    Shape* newParamShape = newProgramShape.mutable_parameters(i);
+    updateParametersLayout[i] =
+        !Shape::Equal().IgnoreLayout()(oldParamShape, *newParamShape);
+    ABSL_RETURN_IF_ERROR(
+        LayoutUtil::CopyLayoutBetweenShapes(oldParamShape, newParamShape));
+  }
+
+  // Record which outputs changed shape and copy the original result layout onto
+  // the new local result shape.
+  const Shape& oldResultShape = oldLayout.result_shape();
+  Shape* newResultShape = newProgramShape.mutable_result();
+  mlir::SmallVector<bool> updateOutputLayout;
+  if (newResultShape->IsTuple()) {
+    updateOutputLayout.reserve(newResultShape->tuple_shapes().size());
+    for (int64_t i = 0; i < newResultShape->tuple_shapes().size(); ++i) {
+      updateOutputLayout.push_back(!Shape::Equal().IgnoreLayout()(
+          oldResultShape.tuple_shapes(i), newResultShape->tuple_shapes(i)));
+    }
+  } else {
+    updateOutputLayout.push_back(
+        !Shape::Equal().IgnoreLayout()(oldResultShape, *newResultShape));
+  }
+  ABSL_RETURN_IF_ERROR(
+      LayoutUtil::CopyLayoutBetweenShapes(oldResultShape, newResultShape));
+  *hloModule->mutable_entry_computation_layout() =
+      ComputationLayout(newProgramShape, /*ignore_layouts=*/false);
+
+  // Give the changed parameter and output shapes canonical layouts.
+  return hlo_sharding_util::CanonicalizeLayoutAfterShardingPropagation(
+      hloModule, updateOutputLayout, updateParametersLayout);
+}
+
 // Returns the corresponding parameter number and index dependent on whether the
 // returned HLO module will have a single tuple level tuple.
 // - If `useTupleArgs` is true, then the param number will be 0 since there is
@@ -245,10 +296,11 @@ std::pair<int64_t, ShapeIndex> getFlattenedParamNumberAndIndex(
 // parameter.
 HloInputOutputAliasConfig getFlattenedInputOutputAliasConfig(
     const HloInputOutputAliasConfig& inputOutputAliasConfig,
+    const Shape& flattenedOutputShape,
     const OriginalParamIndexToFlattenedNum& originalParamIndexToFlattenedNum,
     bool useTupleArgs) {
   HloInputOutputAliasConfig flattenedInputOutputAliasConfig(
-      getFlattenedShape(inputOutputAliasConfig.shape()));
+      flattenedOutputShape);
   int64_t resultIndex = 0;
   ShapeUtil::ForEachLeafShape(
       inputOutputAliasConfig.shape(),
@@ -354,9 +406,9 @@ absl::Status runShardingPropagation(HloModule* hloModule,
   // MLIR pipeline: (1) import, (2) Shardy, and (3) export.
 
   bool enableVerifier = false;
-#ifndef NDEBUG
-  enableVerifier = true;
-#endif
+  if constexpr (tsl::kIsDebugBuild) {
+    enableVerifier = true;
+  }
 
   mlir::PassManager pm(mlirModule->getContext());
   pm.enableVerifier(enableVerifier);
@@ -420,7 +472,14 @@ absl::Status runShardingPropagation(HloModule* hloModule,
   options.enableNativeNonFlatSupport = enableNativeNonFlatSupport;
   mlir::sdy::addPropagationPipeline(pm, dumpIndex, options);
 
+  bool shardyGeneratesDeviceCode =
+      !options.avoidExportForPartitioning &&
+      !options.enablePerInstructionPartitioning &&
+      options.partitionerStage ==
+          mlir::sdy::PartitionerStage::kConvertGlobalToLocal;
   xla::sdy::StablehloExportPipelineOptions stablehloExportPipelineOptions;
+  stablehloExportPipelineOptions.addMissingShardingToControlFlow =
+      !shardyGeneratesDeviceCode;
   stablehloExportPipelineOptions.enableHloShardingV3 = enableHloShardingV3;
   stablehloExportPipelineOptions.exportAllReduceScatter =
       debugOptions.xla_sdy_export_all_reduce_scatter();
@@ -506,16 +565,16 @@ absl::StatusOr<bool> ShardyXLA::RunImpl(
                                     useTupleArgs);
   OriginalParamIndexToFlattenedNum originalParamIndexToFlattenedNum =
       getOriginalParamIndexToFlattenedNum(hloModule);
-  HloInputOutputAliasConfig flattenedInputOutputAliasConfig =
-      getFlattenedInputOutputAliasConfig(hloModule->input_output_alias_config(),
-                                         originalParamIndexToFlattenedNum,
-                                         useTupleArgs);
+  HloInputOutputAliasConfig oldInputOutputAliasConfig =
+      hloModule->input_output_alias_config();
   HloBufferDonorConfig flattenedBufferDonorsConfig =
       getFlattenedBufferDonorsConfig(hloModule->buffer_donor_config(),
                                      originalParamIndexToFlattenedNum,
                                      useTupleArgs);
 
   if (runSdyShardingPropagation) {
+    propagationOptions.replicaCount = hloModule->config().replica_count();
+    propagationOptions.partitionCount = hloModule->config().num_partitions();
     ABSL_RETURN_IF_ERROR(runShardingPropagation(
         hloModule, mlirModule.get(), importMhloShardings, propagationOptions,
         enableNativeNonFlatSupport, name()));
@@ -540,17 +599,46 @@ absl::StatusOr<bool> ShardyXLA::RunImpl(
   // root instructions. We use the TupleSimplifier as a temporary solution.
   CHECK_OK(TupleSimplifier().Run(hloModule));
 
-  // Restore entry computation layout.
-  *hloModule->mutable_entry_computation_layout() =
-      std::move(flattenedEntryComputationLayout);
-  hloModule->set_input_output_alias_config(
-      std::move(flattenedInputOutputAliasConfig));
+  hloModule->set_input_output_alias_config(getFlattenedInputOutputAliasConfig(
+      oldInputOutputAliasConfig,
+      hloModule->entry_computation()->root_instruction()->shape(),
+      originalParamIndexToFlattenedNum, useTupleArgs));
   hloModule->set_buffer_donor_config(std::move(flattenedBufferDonorsConfig));
 
-  ABSL_RETURN_IF_ERROR(hlo_sharding_util::CanonicalizeLayoutAfterShardingPropagation(
-      hloModule,
-      hloModule->config().allow_spmd_sharding_propagation_to_output(),
-      hloModule->config().allow_spmd_sharding_propagation_to_parameters()));
+  if (runSdyShardingPropagation &&
+      mlir::sdy::shardyGeneratesDeviceCode(propagationOptions)) {
+    const HloModuleProto& proto = hloProto.hlo_module();
+    if (proto.has_spmd_output_sharding()) {
+      ABSL_ASSIGN_OR_RETURN(HloSharding hlo_sharding,
+                       HloSharding::FromProto(proto.spmd_output_sharding()));
+      hloModule->set_spmd_output_sharding(std::move(hlo_sharding));
+    }
+    if (!proto.spmd_parameters_shardings().empty() ||
+        proto.has_spmd_output_sharding()) {
+      std::vector<HloSharding> param_shardings;
+      param_shardings.reserve(proto.spmd_parameters_shardings_size());
+      for (const auto& sharding_proto : proto.spmd_parameters_shardings()) {
+        ABSL_ASSIGN_OR_RETURN(HloSharding sharding,
+                         HloSharding::FromProto(sharding_proto));
+        param_shardings.push_back(std::move(sharding));
+      }
+      hloModule->set_spmd_parameters_shardings(std::move(param_shardings));
+    }
+
+    ABSL_RETURN_IF_ERROR(updateEntryComputationLayout(
+        hloModule, flattenedEntryComputationLayout));
+  } else {
+    // Restore entry computation layout.
+    *hloModule->mutable_entry_computation_layout() =
+        std::move(flattenedEntryComputationLayout);
+
+    ABSL_RETURN_IF_ERROR(
+        hlo_sharding_util::CanonicalizeLayoutAfterShardingPropagation(
+            hloModule,
+            hloModule->config().allow_spmd_sharding_propagation_to_output(),
+            hloModule->config()
+                .allow_spmd_sharding_propagation_to_parameters()));
+  }
 
   // We don't fully replace the HLO module, so it will continue to have the
   // temporary frontend attributes. So clean them up as XLA won't need them.

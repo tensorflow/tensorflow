@@ -30,6 +30,7 @@ limitations under the License.
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
+#include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/hlo_module_config.h"
@@ -140,8 +141,9 @@ class KernelApiIrBuilder {
 
   // Create a module with the given name, the name is given a prefix that is
   // specific to XLA and relied on further down the pipeline.
-  static std::unique_ptr<llvm::Module> CreateModule(absl::string_view name,
-                                                    llvm::LLVMContext& context);
+  static std::unique_ptr<llvm::Module> CreateModule(
+      absl::string_view name, llvm::LLVMContext& context,
+      const TargetMachineFeatures* target_machine_features);
 
   static absl::StatusOr<std::vector<KernelParameter>>
   GetKernelArgumentsParameters(const HloInstruction* instruction,

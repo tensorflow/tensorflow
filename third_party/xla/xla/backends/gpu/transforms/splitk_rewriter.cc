@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/layout.h"
 #include "xla/literal_util.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/hlo_creation_utils.h"
@@ -98,7 +99,15 @@ DotDimensions GetDotDimensions(const HloInstruction* instr) {
   };
 
   auto get_side_size = [](const HloInstruction* instr) {
-    while (instr->IsElementwise() && instr->operand_count() == 1) {
+    // Follow unary elementwise ops and same-type transposes/reshapes/bitcasts
+    // to find the element size at the fusion edge.
+    while (instr->operand_count() == 1 &&
+           (instr->IsElementwise() ||
+            ((instr->opcode() == HloOpcode::kBitcast ||
+              instr->opcode() == HloOpcode::kReshape ||
+              instr->opcode() == HloOpcode::kTranspose) &&
+             ShapeUtil::SameElementType(instr->shape(),
+                                        instr->operand(0)->shape())))) {
       instr = instr->operand(0);
     }
     return ShapeUtil::ElementSizeInBits(instr->shape());
@@ -246,13 +255,15 @@ HloInstruction* PadInstruction(HloInstruction* instr, int64_t dimension_idx,
       HloInstruction::CreatePad(new_shape, instr, zero, padding_config));
 }
 
-// Returns the padded K dimension so that it is a multiple of split_k and 16B.
+// Returns the padded K dimension so that it is a multiple of split_k and 16B,
+// using the dot's own operand element sizes rather than the pre-convert sizes
+// at the fusion edge.
 int64_t GetPaddedK(HloInstruction& dot, int64_t split_k) {
-  DotDimensions dims = GetDotDimensions(&dot);
   const int64_t alignment_in_bits = 16 * 8;
-  int64_t min_element_size_in_bits = std::min(
-      {alignment_in_bits, dims.lhs_element_bits, dims.rhs_element_bits});
-  return RoundUpTo(dims.k,
+  const int64_t min_element_size_in_bits = std::min(
+      {alignment_in_bits, ShapeUtil::ElementSizeInBits(dot.operand(0)->shape()),
+       ShapeUtil::ElementSizeInBits(dot.operand(1)->shape())});
+  return RoundUpTo(GetDotDimensions(&dot).k,
                    split_k * alignment_in_bits / min_element_size_in_bits);
 }
 
@@ -358,6 +369,20 @@ absl::StatusOr<HloInstruction*> SplitKDimensionOfDot(HloDotInstruction* src_dot,
   ABSL_ASSIGN_OR_RETURN(
       int64_t splitk_dim_idx,
       dims[0].IndexWithinCategory(DotOperandDims::kBatch, k_incices[0]));
+
+  // Keep the physical layout of the original dot result, with the split-K
+  // dimension as the most major one. The reduction over the split-K dimension
+  // then only sums contiguous slices of its operand instead of also having to
+  // transpose it to the layout of the original dot.
+  {
+    Layout new_dot_layout = src_dot->shape().layout();
+    new_dot_layout.clear_minor_to_major();
+    for (int64_t dim : src_dot->shape().layout().minor_to_major()) {
+      new_dot_layout.add_minor_to_major(dim >= splitk_dim_idx ? dim + 1 : dim);
+    }
+    new_dot_layout.add_minor_to_major(splitk_dim_idx);
+    *new_dot->mutable_shape()->mutable_layout() = new_dot_layout;
+  }
 
   ABSL_ASSIGN_OR_RETURN(HloInstruction * splitk_root,
                    ReduceDimension(new_dot, splitk_dim_idx));

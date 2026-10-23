@@ -19,6 +19,8 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -93,13 +95,18 @@ bool ClearHloXlaTransform(HloXlaTransform::PipelineStage stage,
 absl::StatusOr<bool> ApplyXlaTransformsToModule(
     HloXlaTransform::PipelineStage stage, xla::HloModule* module);
 
+class TargetVerifierMetadata;
+class HloVerifier;
+
 // HloPass that applies all registered HloXlaTransforms for the specified stage.
 // HloXlaTransforms which are registered at the same stage, are applied in the
 // order in which they were registered.
 class ApplyXlaTransforms : public HloModulePass {
  public:
-  explicit ApplyXlaTransforms(HloXlaTransform::PipelineStage stage);
-  ~ApplyXlaTransforms() override = default;
+  explicit ApplyXlaTransforms(
+      HloXlaTransform::PipelineStage stage,
+      std::unique_ptr<TargetVerifierMetadata> target_metadata = nullptr);
+  ~ApplyXlaTransforms() override;
 
   absl::string_view name() const override { return name_; }
 
@@ -110,6 +117,7 @@ class ApplyXlaTransforms : public HloModulePass {
  private:
   HloXlaTransform::PipelineStage stage_;
   std::string name_;
+  std::unique_ptr<HloVerifier> verifier_;
 };
 
 // Replaces the contents of `module` with the HloModule described by

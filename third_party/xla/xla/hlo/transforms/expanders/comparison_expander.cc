@@ -78,12 +78,64 @@ HloInstruction* BitcastConvertFloatingPointToIntegral(
                                     is_negative, flipped_value, signed_value));
 }
 
+HloInstruction* ExpandWeakOrderFloatComparison(HloComputation* computation,
+                                               const Shape& pred_shape,
+                                               HloInstruction* lhs,
+                                               HloInstruction* rhs,
+                                               ComparisonDirection direction,
+                                               PrimitiveType compare_type) {
+  auto partial_cmp = [&](HloInstruction* a, HloInstruction* b,
+                         ComparisonDirection dir) {
+    return computation->AddInstruction(HloInstruction::CreateCompare(
+        pred_shape, a, b, dir, Comparison::Order::kPartial));
+  };
+  if (!primitive_util::HasNaN(compare_type)) {
+    return partial_cmp(lhs, rhs, direction);
+  }
+  auto is_nan = [&](HloInstruction* a) {
+    return partial_cmp(a, a, ComparisonDirection::kNe);
+  };
+  auto pred_or = [&](HloInstruction* a, HloInstruction* b) {
+    return computation->AddInstruction(
+        HloInstruction::CreateBinary(pred_shape, HloOpcode::kOr, a, b));
+  };
+  auto pred_and = [&](HloInstruction* a, HloInstruction* b) {
+    return computation->AddInstruction(
+        HloInstruction::CreateBinary(pred_shape, HloOpcode::kAnd, a, b));
+  };
+  auto pred_not = [&](HloInstruction* a) {
+    return computation->AddInstruction(
+        HloInstruction::CreateUnary(pred_shape, HloOpcode::kNot, a));
+  };
+
+  switch (direction) {
+    case ComparisonDirection::kEq:
+      return pred_or(partial_cmp(lhs, rhs, ComparisonDirection::kEq),
+                     pred_and(is_nan(lhs), is_nan(rhs)));
+    case ComparisonDirection::kNe:
+      return pred_and(partial_cmp(lhs, rhs, ComparisonDirection::kNe),
+                      pred_not(pred_and(is_nan(lhs), is_nan(rhs))));
+    case ComparisonDirection::kLe:
+      return pred_or(partial_cmp(lhs, rhs, ComparisonDirection::kLe),
+                     is_nan(rhs));
+    case ComparisonDirection::kGe:
+      return pred_or(partial_cmp(lhs, rhs, ComparisonDirection::kGe),
+                     is_nan(lhs));
+    case ComparisonDirection::kLt:
+      return pred_not(pred_or(partial_cmp(lhs, rhs, ComparisonDirection::kGe),
+                              is_nan(lhs)));
+    case ComparisonDirection::kGt:
+      return pred_not(pred_or(partial_cmp(lhs, rhs, ComparisonDirection::kLe),
+                              is_nan(rhs)));
+  }
+}
+
 bool ComparisonExpander::InstructionMatchesPattern(
     HloInstruction* instruction) {
   if (HloCompareInstruction* compare =
           DynCast<HloCompareInstruction>(instruction)) {
     HloInstruction* lhs = instruction->operands()[0];
-    if (compare->order() == Comparison::Order::kTotal &&
+    if (compare->order() != Comparison::Order::kPartial &&
         primitive_util::IsFloatingPointType(lhs->shape().element_type())) {
       return true;
     }
@@ -96,8 +148,11 @@ absl::StatusOr<HloInstruction*> ComparisonExpander::ExpandInstruction(
   CHECK_EQ(instruction->opcode(), HloOpcode::kCompare);
   HloCompareInstruction* compare =
       static_cast<HloCompareInstruction*>(instruction);
-  CHECK(compare->order() == Comparison::Order::kTotal)
-      << ComparisonOrderToString(compare->order());
+  if (compare->order() != Comparison::Order::kTotal &&
+      compare->order() != Comparison::Order::kWeak) {
+    return InvalidArgument("Unsupported comparison order: %s",
+                           ComparisonOrderToString(compare->order()));
+  }
   HloComputation* computation = instruction->parent();
   HloInstruction* lhs = instruction->operands()[0];
   HloInstruction* rhs = instruction->operands()[1];
@@ -116,6 +171,15 @@ absl::StatusOr<HloInstruction*> ComparisonExpander::ExpandInstruction(
         ShapeUtil::ChangeElementType(lhs->shape(), compare_type), lhs));
     rhs = computation->AddInstruction(HloInstruction::CreateConvert(
         ShapeUtil::ChangeElementType(rhs->shape(), compare_type), rhs));
+  }
+
+  if (compare->order() == Comparison::Order::kWeak) {
+    HloInstruction* new_compare =
+        ExpandWeakOrderFloatComparison(computation, instruction->shape(), lhs,
+                                       rhs, compare->direction(), compare_type);
+    VLOG(2) << "New comparison instruction for weak order:"
+            << new_compare->ToString();
+    return new_compare;
   }
 
   if (compare_type != F8E8M0FNU) {

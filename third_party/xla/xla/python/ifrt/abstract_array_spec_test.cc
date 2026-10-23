@@ -198,7 +198,7 @@ TEST_P(AbstractArraySpecTest, ToCanonicalizedAbstractArraySpec) {
   EXPECT_EQ(abstract_array_spec.shape(), shape);
   EXPECT_TRUE(abstract_array_spec.sharding_spec()->HasSamePartitioning(
       *sharding->sharding_spec()));
-  EXPECT_EQ(abstract_array_spec.memory_kind(), MemoryKind("host"));
+  EXPECT_EQ(abstract_array_spec.memory_kind(), MemoryKind("device"));
 }
 
 TEST_P(AbstractArraySpecTest, ToFromProto) {

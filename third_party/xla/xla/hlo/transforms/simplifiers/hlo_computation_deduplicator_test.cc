@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -38,11 +39,13 @@ namespace {
 
 class HloComputationDeduplicatorTest : public HloHardwareIndependentTestBase {
  protected:
-  std::vector<std::string> RunDeduplicatePass(const absl::string_view text,
-                                              bool expect_true) {
+  std::vector<std::string> RunDeduplicatePass(
+      const absl::string_view text, bool expect_true,
+      bool deduplicate_large_computations = false) {
     std::unique_ptr<HloModule> module =
         ParseAndReturnVerifiedModule(text).value();
-    HloComputationDeduplicator dedup;
+    HloComputationDeduplicator dedup(/*mark_fusion_duplications=*/false,
+                                     deduplicate_large_computations);
     bool changed = dedup.Run(module.get()).value();
     EXPECT_EQ(changed, expect_true);
     std::vector<std::string> computation_names;
@@ -478,6 +481,10 @@ TEST_F(HloComputationDeduplicatorTest, DontRemoveRegionLargeConstant) {
   }
   EXPECT_EQ(region_b_count, 1);
   EXPECT_EQ(computation_names.size(), 3);
+
+  computation_names = RunDeduplicatePass(
+      text, /*expect_true=*/true, /*deduplicate_large_computations=*/true);
+  EXPECT_EQ(computation_names.size(), 2);
 }
 
 TEST_F(HloComputationDeduplicatorTest, DontRemoveRegionBDifferentcomp) {
@@ -629,10 +636,17 @@ TEST_F(HloComputationDeduplicatorTest, LargeSubComputationTest) {
   }
   module->AddEntryComputation(main.Build());
   HloComputationDeduplicator dedup;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, dedup.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, dedup.Run(module.get()));
   EXPECT_FALSE(changed);
   std::vector<HloComputation *> computations = module->MakeComputationSorted();
   EXPECT_EQ(computations.size(), (total_regions + 1));
+
+  HloComputationDeduplicator dedup_large(
+      /*mark_fusion_duplications=*/false,
+      /*deduplicate_large_computations=*/true);
+  ASSERT_OK_AND_ASSIGN(changed, dedup_large.Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_EQ(module->MakeComputationSorted().size(), 2);
 }
 
 TEST_F(HloComputationDeduplicatorTest, DontDeduplicateReduceAllReduce) {
@@ -665,8 +679,8 @@ TEST_F(HloComputationDeduplicatorTest, DontDeduplicateReduceAllReduce) {
 }
 
 TEST_F(HloComputationDeduplicatorTest, DeduplicateChain) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule module
 
 fusion0 {
@@ -696,8 +710,13 @@ ENTRY entry {
   ROOT add = f32[] add(fusion.0, p1)
 }
 )"));
+  HloComputationDeduplicator dedup_do_not_mark(
+      /*mark_fusion_duplications=*/false);
+  ASSERT_OK_AND_ASSIGN(bool changed, dedup_do_not_mark.Run(module.get()));
+  EXPECT_FALSE(changed);
+
   HloComputationDeduplicator dedup(/*mark_fusion_duplications=*/true);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, dedup.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(changed, dedup.Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_EQ(module->computation_count(), 4);
   HloInstruction* fusion0 =

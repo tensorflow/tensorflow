@@ -786,6 +786,7 @@ py_test(
         ":ragged_tensor",
         ":ragged_tensor_value",
         ":row_partition",
+        "//tensorflow/compiler/jit:xla_cpu_jit",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:backprop",
@@ -905,6 +906,20 @@ py_test(
 )
 
 py_test(
+    name = "ragged_embedding_ops_test",
+    srcs = ["ragged_embedding_ops_test.py"],
+    strict_deps = True,
+    deps = [
+        ":ragged_embedding_ops",
+        ":ragged_factory_ops",
+        "//tensorflow/python/framework:sparse_tensor",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:variables",
+        "//tensorflow/python/platform:test",
+    ],
+)
+
+py_test(
     name = "ragged_range_op_test",
     srcs = ["ragged_range_op_test.py"],
     strict_deps = True,
@@ -965,6 +980,7 @@ py_test(
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:gradients_impl",
+        "//tensorflow/python/ops:ragged_array_ops_gen",
         "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
@@ -1069,6 +1085,7 @@ py_test(
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:gradients_impl",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:ragged_conversion_ops_gen",
         "//tensorflow/python/platform:test",
     ],
 )

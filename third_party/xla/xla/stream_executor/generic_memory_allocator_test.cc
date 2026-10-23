@@ -44,7 +44,7 @@ TEST(GenericMemoryAllocatorTest, AllocateReturnsCorrectMemoryAllocation) {
               ++deleter_called;
             });
       });
-  TF_ASSERT_OK_AND_ASSIGN(auto allocation, allocator.Allocate(64));
+  ASSERT_OK_AND_ASSIGN(auto allocation, allocator.Allocate(64));
   EXPECT_EQ(deleter_called, 0);
   allocation.reset();
   EXPECT_EQ(deleter_called, 1);

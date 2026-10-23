@@ -78,11 +78,13 @@ limitations under the License.
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/program.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
 #include "xla/python/pjrt_ifrt/pjrt_layout.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/dump.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -728,6 +730,21 @@ IfrtServingExecutable::CreateExecutableSynchronously(
                                      "before_ifrt_serialization");
   }
 
+  if (xla::ifrt::dyn_cast_or_null<xla::ifrt::PjRtCompatibleClient>(
+          ifrt_client_.get()) == nullptr) {
+    if (tf2hlo_result.hlo_module_proto.has_host_program_shape() &&
+        tf2hlo_result.hlo_module_proto.host_program_shape().has_result()) {
+      TF_ASSIGN_OR_RETURN(
+          xla::Shape result_shape,
+          xla::Shape::FromProto(
+              tf2hlo_result.hlo_module_proto.host_program_shape().result()));
+      if (result_shape.is_dynamic()) {
+        return absl::UnimplementedError(
+            "Dynamic output shape is not supported for non-PJRT IFRT client");
+      }
+    }
+  }
+
   TF_ASSIGN_OR_RETURN(
       mlir::OwningOpRef<mlir::ModuleOp> mlir_hlo_module,
       ::xla::ConvertHloToStablehloWithOptions(
@@ -920,7 +937,6 @@ IfrtServingExecutable::LookUpOrCreateExecutable(
     absl::Span<const DtypeAndShape> dtypes_and_shapes,
     absl::Span<const int> variable_arg_indices,
     const xla::ifrt::DeviceListRef& device_list) {
-
   tsl::Promise<SharedCachedExecutableBundle> promise;
   tsl::Future<SharedCachedExecutableBundle> future;
   mlir::OwningOpRef<mlir::ModuleOp> module_copy;
@@ -933,7 +949,9 @@ IfrtServingExecutable::LookUpOrCreateExecutable(
       return it->second;
     }
 
-    if (is_frozen_ || tf_to_hlo_compiler_->IsXlaCompilationDisabled()) {
+    const bool xla_compilation_disabled =
+        tf_to_hlo_compiler_->IsXlaCompilationDisabled();
+    if (is_frozen_ || xla_compilation_disabled) {
       // Build a description of the requested (offending) input shapes.
       std::string requested_shapes_str;
       for (size_t i = 0; i < dtypes_and_shapes.size(); ++i) {
@@ -958,14 +976,23 @@ IfrtServingExecutable::LookUpOrCreateExecutable(
         }
         absl::StrAppend(&cached_shapes_str, "}\n");
       }
+      // When compilation is disabled, prepend the marker
+      // `kXlaCompilationDisabledErrorMarker` so that callers (e.g. model
+      // servers) can identify this as a compilation cache miss while
+      // compilation is disabled. Note that the failure is intentionally not
+      // cached in `executable_bundles_`, so a retry with compilation enabled
+      // can still compile the executable if it is not frozen.
       tsl::Future<SharedCachedExecutableBundle> frozen_future(
           absl::FailedPreconditionError(absl::StrCat(
+              xla_compilation_disabled
+                  ? absl::StrCat(kXlaCompilationDisabledErrorMarker, ": ")
+                  : "",
               "Cannot compile for new input shapes. Either the executable is "
               "already frozen: ",
               is_frozen_,
               " or XLA compilation disabled by ScopedTpuCompileDisabler: ",
-              tf_to_hlo_compiler_->IsXlaCompilationDisabled(),
-              ". Requested input shapes: {", requested_shapes_str,
+              xla_compilation_disabled, ". Requested input shapes: {",
+              requested_shapes_str,
               "}. Number of already compiled shape sets: ",
               executable_bundles_.size(),
               cached_shapes_str.empty()
@@ -1328,8 +1355,15 @@ IfrtServingExecutable::ExecuteAsync(
       tsl::JoinFutures(absl::MakeSpan(output_futures));
 
   // Fast path: if both are ready, offload cleanup to thread pool immediately.
+  // The execution status must still be checked, like the slow path below and
+  // `Execute()` do: a failed execution must not be reported as successful just
+  // because the output futures are already available.
   if (final_future.IsReady() && status_future.IsReady()) {
+    absl::Status status = status_future.Await();
     thread_pool_.Schedule([exec_info = std::move(exec_info)]() mutable {});
+    if (!status.ok()) {
+      return tsl::Future<std::vector<tensorflow::Tensor>>(std::move(status));
+    }
     return final_future;
   }
 

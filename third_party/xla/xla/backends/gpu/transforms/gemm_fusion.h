@@ -33,8 +33,8 @@ namespace gpu {
 // that target Triton-based matmul emitter.
 class GemmFusion : public HloModulePass {
  public:
-  explicit GemmFusion(const se::GpuComputeCapability& compute_capability)
-      : compute_capability_(compute_capability) {}
+  explicit GemmFusion(const se::DeviceDescription& device_description)
+      : device_description_(device_description) {}
   absl::string_view name() const override { return "triton-gemm-rewriter"; }
 
  protected:
@@ -43,7 +43,7 @@ class GemmFusion : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  se::GpuComputeCapability compute_capability_;
+  se::DeviceDescription device_description_;
 };
 
 }  // namespace gpu

@@ -35,8 +35,10 @@ class ComparisonExpander : public OpExpanderPass {
  public:
   explicit ComparisonExpander(
       absl::Span<const std::pair<PrimitiveType, PrimitiveType>>
-          expand_via_upcast = {})
-      : expand_via_upcast_(expand_via_upcast.begin(), expand_via_upcast.end()) {
+          expand_via_upcast = {},
+      HloPredicate extra_filter = nullptr)
+      : OpExpanderPass(std::move(extra_filter)),
+        expand_via_upcast_(expand_via_upcast.begin(), expand_via_upcast.end()) {
   }
   ~ComparisonExpander() override = default;
   absl::string_view name() const override { return "comparison-expander"; }

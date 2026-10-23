@@ -41,6 +41,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
+#include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/client.h"
@@ -50,6 +51,7 @@ limitations under the License.
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/ir/atom_program_compiler.h"
 #include "xla/python/ifrt/ir/constants.h"
+#include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/ifrt/ir/program_interpreter.h"
@@ -89,7 +91,7 @@ class FutureExecutor : public tsl::Executor {
 
 absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> BuildDefaultLayout(
     const ArraySpec& arg_spec, Client* client) {
-  ABSL_ASSIGN_OR_RETURN(auto shard_shape,
+  ABSL_ASSIGN_OR_RETURN(xla::ifrt::Shape shard_shape,
                    arg_spec.sharding->GetShardShape(arg_spec.shape));
   return client->GetDefaultPjRtLayout(
       arg_spec.dtype, shard_shape.dims(),
@@ -109,17 +111,89 @@ GetParameterLayoutFromLoadedExecutable(
   auto atom_program_name = loaded_exec_op.getSymName().str();
   auto exec_it = atom_program_executables.find(atom_program_name);
   if (exec_it != atom_program_executables.end()) {
-    ABSL_ASSIGN_OR_RETURN(auto exec_layouts, exec_it->second->GetParameterLayouts());
+    ABSL_ASSIGN_OR_RETURN(
+        std::vector<std::shared_ptr<const xla::PjRtLayout>> exec_layouts,
+        exec_it->second->GetParameterLayouts());
     return std::move(exec_layouts[param_operand_number]);
   }
   return absl::FailedPreconditionError(
       absl::StrFormat("Could not find SPMD executable %s", atom_program_name));
 }
 
+bool CanPropagateLayoutAcrossCopyArrays(IfrtArrayType input_type,
+                                        IfrtArrayType output_type,
+                                        const DeviceListRef& device_list) {
+  llvm::ArrayRef<int> src_device_ids = input_type.getDevices();
+  llvm::ArrayRef<int> dst_device_ids = output_type.getDevices();
+  CHECK(!src_device_ids.empty());
+  CHECK(!dst_device_ids.empty());
+  CHECK_LT(src_device_ids.front(), device_list->devices().size());
+  CHECK_LT(dst_device_ids.front(), device_list->devices().size());
+  Device* src_device = device_list->devices()[src_device_ids.front()];
+  Device* dst_device = device_list->devices()[dst_device_ids.front()];
+  if (src_device->PlatformName() != dst_device->PlatformName()) {
+    return false;
+  }
+  if (input_type.MemoryKind().value() == xla::UnpinnedHostMemorySpace::kKind ||
+      output_type.MemoryKind().value() == xla::UnpinnedHostMemorySpace::kKind) {
+    return false;
+  }
+  return true;
+}
+
+absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> GetLayoutForValue(
+    mlir::Value value, Client* client,
+    const AtomExecutableMap& atom_program_executables,
+    absl::Span<const ArraySpec> in_specs,
+    mlir::SymbolTableCollection& symbol_table,
+    const DeviceListRef& device_list) {
+  if (auto block_arg = llvm::dyn_cast<mlir::BlockArgument>(value)) {
+    if (in_specs[block_arg.getArgNumber()].layout != nullptr) {
+      return in_specs[block_arg.getArgNumber()].layout;
+    }
+    return BuildDefaultLayout(in_specs[block_arg.getArgNumber()], client);
+  }
+
+  auto op_result = llvm::cast<mlir::OpResult>(value);
+  if (auto owner_call_op =
+          llvm::dyn_cast<CallLoadedExecutableOp>(op_result.getOwner())) {
+    LoadedExecutableOp loaded_exec_op = owner_call_op.getCalleeOp(symbol_table);
+    auto atom_program_name = loaded_exec_op.getSymName().str();
+    auto exec_it = atom_program_executables.find(atom_program_name);
+    if (exec_it == atom_program_executables.end()) {
+      return absl::FailedPreconditionError(absl::StrFormat(
+          "Could not find SPMD executable %s", atom_program_name));
+    }
+    ABSL_ASSIGN_OR_RETURN(
+        std::vector<std::shared_ptr<const xla::PjRtLayout>> exec_layouts,
+        exec_it->second->GetOutputLayouts());
+    return exec_layouts[op_result.getResultNumber()];
+  }
+
+  if (auto copy_arrays =
+          llvm::dyn_cast<ifrt::CopyArraysOp>(op_result.getOwner())) {
+    mlir::Value input = copy_arrays.getInputs()[op_result.getResultNumber()];
+    IfrtArrayType input_type = GetArrayType(input);
+    IfrtArrayType output_type = GetArrayType(op_result);
+    if (!CanPropagateLayoutAcrossCopyArrays(input_type, output_type,
+                                            device_list)) {
+      return nullptr;
+    }
+    return GetLayoutForValue(input, client, atom_program_executables, in_specs,
+                             symbol_table, device_list);
+  }
+
+  return absl::FailedPreconditionError(absl::StrFormat(
+      "Layouts are supported only for programs that have outputs produced "
+      "by CallLoadedExecutableOp or CopyArraysOp ops. Produced by %s",
+      OperationToString(op_result.getOwner(), mlir::OpPrintingFlags())));
+}
+
 absl::Status PopulateLayouts(mlir::ModuleOp mlir_module, Client* client,
                              const AtomExecutableMap& atom_program_executables,
                              absl::Span<ArraySpec> in_specs,
-                             absl::Span<ArraySpec> out_specs) {
+                             absl::Span<ArraySpec> out_specs,
+                             const DeviceListRef& device_list) {
   tsl::profiler::TraceMe traceme("PopulateLayouts");
 
   auto main_func = GetMainFunction(mlir_module);
@@ -133,16 +207,12 @@ absl::Status PopulateLayouts(mlir::ModuleOp mlir_module, Client* client,
           parameter_layout,
           BuildDefaultLayout(in_specs[arg.getArgNumber()], client));
     } else {
-      bool found_copy_arrays_user = false;
       // Find the layout from the first LoadedExecutableOp consumer or just
       // return any of the users otherwise. Possible users: CopyArraysOp,
       // ReturnOp, and other LoadedExecutableOp.
       for (mlir::OpOperand& use : arg.getUses()) {
-        if (llvm::isa<mlir::func::ReturnOp>(use.getOwner())) {
-          continue;
-        }
-        if (llvm::isa<ifrt::CopyArraysOp>(use.getOwner())) {
-          found_copy_arrays_user = true;
+        if (llvm::isa<mlir::func::ReturnOp>(use.getOwner()) ||
+            llvm::isa<ifrt::CopyArraysOp>(use.getOwner())) {
           continue;
         }
 
@@ -174,23 +244,9 @@ absl::Status PopulateLayouts(mlir::ModuleOp mlir_module, Client* client,
               consumer_layout->ToString()));
         }
       }
-      if (parameter_layout && found_copy_arrays_user) {
-        // Need to check if the layout is compatible with the CopyArraysOp.
-        ABSL_ASSIGN_OR_RETURN(
-            std::shared_ptr<const xla::PjRtLayout> default_layout,
-            BuildDefaultLayout(in_specs[arg.getArgNumber()], client));
-        if (*parameter_layout != *default_layout) {
-          return absl::InternalError(absl::StrFormat(
-              "Parameter %d is used by atom program with layout: %s and in "
-              "transfer op with layout: %s. This happens because support for "
-              "layout progation within MPMD programs is limited. Contact "
-              "ml-pathways-team@ for help",
-              arg.getArgNumber(), parameter_layout->ToString(),
-              default_layout->ToString()));
-        }
-      }
       if (!parameter_layout) {
-        // The argument was skipped above, meaning only used by ReturnOp.
+        // The argument was skipped above, meaning only used by ReturnOp or
+        // CopyArraysOp.
         ABSL_ASSIGN_OR_RETURN(
             parameter_layout,
             BuildDefaultLayout(in_specs[arg.getArgNumber()], client));
@@ -202,41 +258,12 @@ absl::Status PopulateLayouts(mlir::ModuleOp mlir_module, Client* client,
   for (mlir::OpOperand& return_operand :
        main_func.front().getTerminator()->getOpOperands()) {
     auto& out_spec = out_specs[return_operand.getOperandNumber()];
-    if (mlir::BlockArgument block_arg =
-            llvm::dyn_cast<mlir::BlockArgument>(return_operand.get())) {
-      // If result is a main func BlockArg, then it has already propagated the
-      // layout above.
-      out_spec.layout = in_specs[block_arg.getArgNumber()].layout;
-      continue;
-    }
-    auto op_result = llvm::cast<mlir::OpResult>(return_operand.get());
-    if (CallLoadedExecutableOp owner_call_op =
-            llvm::dyn_cast<CallLoadedExecutableOp>(op_result.getOwner())) {
-      LoadedExecutableOp loaded_exec_op =
-          owner_call_op.getCalleeOp(symbol_table);
-      auto atom_program_name = loaded_exec_op.getSymName().str();
-      auto exec_it = atom_program_executables.find(atom_program_name);
-      if (exec_it != atom_program_executables.end()) {
-        ABSL_ASSIGN_OR_RETURN(auto exec_layouts,
-                         exec_it->second->GetOutputLayouts());
-        // Since this method is a temporary solution, we are ok with calling
-        // GetOutputLayouts for an executable multiple times. In this way, we
-        // avoid std::moving the same unique_ptr if an atom program result is
-        // returned multiple times.
-        out_spec.layout = std::move(exec_layouts[op_result.getResultNumber()]);
-      } else {
-        return absl::FailedPreconditionError(absl::StrFormat(
-            "Could not find SPMD executable %s", atom_program_name));
-      }
-    } else if (llvm::isa<ifrt::CopyArraysOp>(op_result.getOwner())) {
-      // The output is produced by a CopyArraysOp. Must be device
-      // default layout.
+    ABSL_ASSIGN_OR_RETURN(out_spec.layout,
+                     GetLayoutForValue(return_operand.get(), client,
+                                       atom_program_executables, in_specs,
+                                       symbol_table, device_list));
+    if (!out_spec.layout) {
       ABSL_ASSIGN_OR_RETURN(out_spec.layout, BuildDefaultLayout(out_spec, client));
-    } else {
-      return absl::FailedPreconditionError(absl::StrFormat(
-          "Layouts are supported only for programs that have outputs produced "
-          "by a CallLoadedExecutableOp. Produced by %s",
-          OperationToString(op_result.getOwner(), mlir::OpPrintingFlags())));
     }
   }
 
@@ -370,7 +397,7 @@ CompiledIfrtIrProgram::Create(
 
     absl::Status layout_status = PopulateLayouts(
         ifrt_ir_program->mlir_module, client, *atom_executable_map,
-        absl::MakeSpan(in_specs), absl::MakeSpan(out_specs));
+        absl::MakeSpan(in_specs), absl::MakeSpan(out_specs), device_list);
     if (!layout_status.ok()) {
       for (auto& spec : in_specs) {
         spec.layout = nullptr;

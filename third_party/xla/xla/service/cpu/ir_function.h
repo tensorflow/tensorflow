@@ -139,14 +139,6 @@ std::vector<llvm::Value*> GetArrayFunctionCallArguments(
     llvm::Value* exec_run_options_arg, llvm::Value* buffer_table_arg,
     llvm::Value* status_arg, llvm::Value* profile_counters_arg);
 
-// Emits a call to a runtime fork/join function which dispatches parallel
-// calls to 'parallel_function' (and joins threads before returning).
-absl::Status EmitCallToParallelForkJoin(
-    const std::vector<llvm::Value*>& arguments, const Shape& shape,
-    absl::Span<const int64_t> dimension_partition_counts,
-    llvm::IRBuilderBase* b, llvm::Function* parallel_function,
-    absl::string_view name);
-
 }  // namespace cpu
 }  // namespace xla
 

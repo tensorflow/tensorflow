@@ -27,7 +27,7 @@ struct XLA_FFI_RecordContext {
   stream_executor::CommandBuffer* command_buffer;
   stream_executor::StreamExecutor* executor;
   std::vector<const stream_executor::CommandBuffer::Command*> dependencies;
-  bool use_pdl = false;
+  bool pdl_enabled = false;
   bool stream_capture_requested = false;
 };
 

@@ -119,6 +119,11 @@ struct EstimateRunTimeData {
         absl::FormatDuration(exec_time), registers_per_thread,
         compute_utilization, memory_utilization);
   }
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const EstimateRunTimeData& data) {
+    sink.Append(data.ToString());
+  }
 };
 
 // This class is thread-safe.

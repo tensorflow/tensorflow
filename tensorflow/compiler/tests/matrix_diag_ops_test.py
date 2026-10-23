@@ -17,6 +17,8 @@
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
+from tensorflow.python.eager import def_function
+from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.platform import googletest
@@ -675,6 +677,163 @@ class MatrixSetDiagTest(xla_test.XLATestCase):
                   "align": align
               }, solution)
 
+  def _setDiagOfSelected(self, x, diagonal, masks, diag_mask, **params):
+    if "TPU" in self.device:
+      self.skipTest(
+          "Dynamic shape execution on matrix_set_diag is not supported on TPU."
+      )
+    # masks maps axes of x to masks of the entries to keep along them, which
+    # gives those dimensions a size only known at run time, and diag_mask does
+    # the same for the diagonal's last dimension.
+    axes = sorted(masks)
+
+    @def_function.function(jit_compile=True)
+    def f(x, diagonal, diag_mask, *x_masks):
+      for axis, mask in zip(axes, x_masks):
+        x = array_ops.gather(
+            x, array_ops.reshape(array_ops.where(mask), [-1]), axis=axis
+        )
+      diagonal = array_ops.gather(
+          diagonal, array_ops.reshape(array_ops.where(diag_mask), [-1]), axis=-1
+      )
+      return array_ops.matrix_set_diag(x, diagonal, **params)
+
+    x = np.array(x, dtype=np.int32)
+    diagonal = np.array(diagonal, dtype=np.int32)
+    with self.session() as session:
+      with self.device_scope():
+        x_ph = array_ops.placeholder(dtypes.int32, x.shape)
+        # MatrixSetDiagV3's shape function rejects a band of diagonals with
+        # an unknown length while tracing (GitHub issue 129061), unless their
+        # rank is unknown too.
+        diagonal_ph = array_ops.placeholder(dtypes.int32)
+        diag_mask_ph = array_ops.placeholder(dtypes.bool, [len(diag_mask)])
+        mask_phs = [
+            array_ops.placeholder(dtypes.bool, [x.shape[axis]]) for axis in axes
+        ]
+        output = f(x_ph, diagonal_ph, diag_mask_ph, *mask_phs)
+      feed_dict = {x_ph: x, diagonal_ph: diagonal, diag_mask_ph: diag_mask}
+      feed_dict.update({ph: masks[axis] for ph, axis in zip(mask_phs, axes)})
+      return session.run(output, feed_dict)
+
+  def testDynamicDimensions(self):
+    # Regression test for GitHub issue 129054: a matrix with a dynamic
+    # dimension was rejected unless the bounds of its size and its diagonal's
+    # length agreed, and then its columns took the diagonal's length. The mask
+    # keeps 2 of 5 entries, so the dimensions it selects have size 2 and bound
+    # 5. (XLA turns a gather from 4 or fewer entries into selects, which
+    # XLA:GPU doesn't support with dynamic shapes.)
+    keep = [True, False, True, False, False]
+    diagonal = [90, 91, 92, 93, 94]
+    self.assertAllEqual(
+        self._setDiagOfSelected(
+            np.arange(1, 16).reshape(5, 3), diagonal, {-2: keep}, keep
+        ),
+        [[90, 2, 3], [7, 92, 9]],
+    )
+    self.assertAllEqual(
+        self._setDiagOfSelected(
+            np.arange(1, 26).reshape(5, 5), diagonal, {-2: keep}, keep
+        ),
+        [[90, 2, 3, 4, 5], [11, 92, 13, 14, 15]],
+    )
+    self.assertAllEqual(
+        self._setDiagOfSelected(
+            np.arange(1, 16).reshape(3, 5), diagonal, {-1: keep}, keep
+        ),
+        [[90, 3], [6, 92], [11, 13]],
+    )
+    self.assertAllEqual(
+        self._setDiagOfSelected(
+            np.arange(1, 26).reshape(5, 5), diagonal, {-2: keep, -1: keep}, keep
+        ),
+        [[90, 3], [11, 92]],
+    )
+    self.assertAllEqual(
+        self._setDiagOfSelected(
+            np.arange(1, 16).reshape(5, 3), diagonal, {-2: keep}, keep, k=1
+        ),
+        [[1, 90, 3], [7, 8, 92]],
+    )
+    # A diagonal whose bound is shorter than the one the matrix's bound gives.
+    self.assertAllEqual(
+        self._setDiagOfSelected(
+            np.arange(1, 37).reshape(6, 6), diagonal, {-2: keep + [False]}, keep
+        ),
+        [[90, 2, 3, 4, 5, 6], [13, 92, 15, 16, 17, 18]],
+    )
+
+  def testDynamicDimensionsBatch(self):
+    if "GPU" in self.device:
+      self.skipTest(
+          "XLA:GPU returns the batched dynamic output of this transposed."
+      )
+    keep = [True, False, True, False, False]
+    self.assertAllEqual(
+        self._setDiagOfSelected(
+            np.arange(1, 31).reshape(2, 5, 3),
+            [[90, 91, 92, 93, 94], [80, 81, 82, 83, 84]],
+            {-2: keep},
+            keep,
+        ),
+        [[[90, 2, 3], [7, 92, 9]], [[80, 17, 18], [22, 82, 24]]],
+    )
+
+  def testDynamicDimensionsBand(self):
+    # In each case, diagonals 1 and -1 are padded differently at the actual
+    # sizes than at the bound sizes, which matters when they're right-aligned.
+    keep = [True, False, True, False, False]
+    diagonals = [
+        [70, 71, 72, 73, 74],
+        [80, 81, 82, 83, 84],
+        [90, 91, 92, 93, 94],
+    ]
+    for align, sub, sup in (
+        ("RIGHT_LEFT", 90, 72),
+        ("LEFT_RIGHT", 92, 70),
+        ("LEFT_LEFT", 90, 70),
+        ("RIGHT_RIGHT", 92, 72),
+    ):
+      self.assertAllEqual(
+          self._setDiagOfSelected(
+              np.arange(1, 16).reshape(5, 3),
+              diagonals,
+              {-2: keep},
+              keep,
+              k=(-1, 1),
+              align=align,
+          ),
+          [[80, 70, 3], [sub, 82, 72]],
+      )
+      self.assertAllEqual(
+          self._setDiagOfSelected(
+              np.arange(1, 16).reshape(3, 5),
+              diagonals,
+              {-1: keep},
+              keep,
+              k=(-1, 1),
+              align=align,
+          ),
+          [[80, sup], [90, 82], [11, 92]],
+      )
+
+  def testBandFromVector(self):
+    # A band of diagonals needs them stacked in a dimension that a vector
+    # doesn't have, and looking for it aborted the process. The ranks are left
+    # unknown so that shape inference doesn't reject the vector first.
+    with self.session() as session:
+      with self.device_scope():
+        x = array_ops.placeholder(dtypes.int32)
+        diagonal = array_ops.placeholder(dtypes.int32)
+        output = gen_array_ops.matrix_set_diag_v3(
+            input=x, diagonal=diagonal, k=[-1, 1], align="RIGHT_LEFT"
+        )
+      with self.assertRaisesOpError("The number of diagonals provided"):
+        session.run(
+            output,
+            {x: np.zeros([2, 3, 3], dtype=np.int32), diagonal: [1, 2, 3]},
+        )
+
 
 class MatrixDiagPartTest(xla_test.XLATestCase):
 
@@ -766,6 +925,118 @@ class MatrixDiagPartTest(xla_test.XLATestCase):
                   "padding_value": padding_value,
                   "align": align
               }, solution)
+
+  def _diagPartOfSelected(self, op, x, masks, dtype=np.int32, **params):
+    # masks maps axes of x to masks of the entries to keep along them, which
+    # gives those dimensions a size only known at run time.
+    axes = sorted(masks)
+
+    @def_function.function(jit_compile=True)
+    def f(x, *x_masks):
+      for axis, mask in zip(axes, x_masks):
+        x = array_ops.gather(
+            x, array_ops.reshape(array_ops.where(mask), [-1]), axis=axis
+        )
+      return op(x, **params)
+
+    x = np.array(x, dtype=dtype)
+    with self.session() as session:
+      x_ph = array_ops.placeholder(dtypes.as_dtype(dtype), x.shape)
+      mask_phs = [
+          array_ops.placeholder(dtypes.bool, [x.shape[axis]]) for axis in axes
+      ]
+      output = f(x_ph, *mask_phs)
+      feed_dict = {x_ph: x}
+      feed_dict.update({ph: masks[axis] for ph, axis in zip(mask_phs, axes)})
+      return session.run(output, feed_dict)
+
+  def testDynamicDimensions(self):
+    # Regression test for GitHub issue 129053: with a dynamic dimension, the
+    # diagonals had the length they have at its bound. The mask keeps 2 of 5
+    # entries, so the dimensions it selects have size 2 and bound 5.
+    keep = [True, False, True, False, False]
+    x = np.arange(1, 16).reshape(5, 3)  # Keeps [[1, 2, 3], [7, 8, 9]].
+    for dtype in (np.int32, np.float32, np.float64):
+      for op in (array_ops.matrix_diag_part, gen_array_ops.matrix_diag_part):
+        self.assertAllEqual(
+            self._diagPartOfSelected(op, x, {-2: keep}, dtype), [1, 8]
+        )
+      self.assertAllEqual(
+          self._diagPartOfSelected(
+              array_ops.matrix_diag_part,
+              x,
+              {-2: keep},
+              dtype,
+              k=(-1, 1),
+              padding_value=9,
+          ),
+          [[2, 9], [1, 8], [7, 9]],
+      )
+      self.assertAllEqual(
+          self._diagPartOfSelected(
+              array_ops.matrix_diag_part,
+              x,
+              {-2: keep},
+              dtype,
+              k=(-1, 1),
+              padding_value=9,
+              align="LEFT_RIGHT",
+          ),
+          [[2, 9], [1, 8], [9, 7]],
+      )
+      self.assertAllEqual(
+          self._diagPartOfSelected(
+              gen_array_ops.matrix_diag_part_v2,
+              x,
+              {-2: keep},
+              dtype,
+              k=[-1, 1],
+              padding_value=9,
+          ),
+          [[2, 9], [1, 8], [7, 9]],
+      )
+      self.assertAllEqual(
+          self._diagPartOfSelected(
+              array_ops.matrix_diag_part,
+              np.arange(1, 16).reshape(3, 5),
+              {-1: keep},
+              dtype,
+          ),
+          [1, 8],
+      )
+      # With no rows kept, the diagonal is empty.
+      self.assertAllEqual(
+          self._diagPartOfSelected(
+              array_ops.matrix_diag_part, x, {-2: [False] * 5}, dtype
+          ),
+          np.zeros([0]),
+      )
+
+  def testDynamicDimensionsBatch(self):
+    keep = [True, False, True, False, False]
+    x = np.arange(1, 31).reshape(2, 5, 3)
+    self.assertAllEqual(
+        self._diagPartOfSelected(array_ops.matrix_diag_part, x, {-2: keep}),
+        [[1, 8], [16, 23]],
+    )
+    self.assertAllEqual(
+        self._diagPartOfSelected(
+            array_ops.matrix_diag_part,
+            x,
+            {-2: keep},
+            k=(-1, 1),
+            padding_value=9,
+        ),
+        [[[2, 9], [1, 8], [7, 9]], [[17, 24], [16, 23], [22, 9]]],
+    )
+    self.assertAllEqual(
+        self._diagPartOfSelected(
+            array_ops.matrix_diag_part,
+            np.arange(1, 51).reshape(2, 5, 5),
+            {-2: keep, -1: keep},
+        ),
+        [[1, 13], [26, 38]],
+    )
 
 
 if __name__ == "__main__":

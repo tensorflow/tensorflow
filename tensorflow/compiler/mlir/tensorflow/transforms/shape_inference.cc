@@ -3130,7 +3130,7 @@ LogicalResult ShapeInference::TryToFold(Operation* op) {
     if ((attr = fold_result.dyn_cast<Attribute>())) {
       RecordValue(ValuePort(std::get<0>(result)), attr);
     } else {
-      auto value = fold_result.get<Value>();
+      auto value = cast<Value>(fold_result);
       assert(value.getType() == std::get<0>(result).getType() &&
              "folder produced value of incorrect type");
       if ((attr = ComputeOutputComponent(ValuePort(value)))) {

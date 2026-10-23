@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "xla/service/gpu/matmul_utils.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla::gpu {
 
@@ -31,10 +32,16 @@ enum class TritonConfigsPlatform {
   kHopper,
   kMI300,
   kMI350,
+  kRubin,
 };
 
 const std::vector<TritonGemmConfig>& GetTritonConfigsForPlatform(
     TritonConfigsPlatform);
+
+// Returns the default set of Triton GEMM configurations for the given GPU
+// compute capability.
+const std::vector<TritonGemmConfig>& GetDefaultTritonConfigs(
+    const stream_executor::GpuComputeCapability& compute_capability);
 
 }  // namespace xla::gpu
 

@@ -101,6 +101,18 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "llvm_util_test",
+    srcs = ["llvm_util_test.cc"],
+    deps = [
+        ":llvm_util",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:AsmParser",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:ir_headers",
+    ],
+)
+
 cc_library(
     name = "llvm_type_conversion_util",
     hdrs = ["llvm_type_conversion_util.h"],
@@ -126,6 +138,8 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
+        "@llvm-project//llvm:CodeGen",
+        "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -136,6 +150,7 @@ xla_cc_test(
     deps = [
         ":llvm_command_line_options",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Core",
     ],
 )
 
@@ -177,6 +192,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Core",
+        "@tsl//tsl/platform",
     ],
 )
 
@@ -355,7 +371,6 @@ xla_cc_test(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/testlib:filecheck",
         "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/platform:statusor",
         "@com_google_googletest//:gtest",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:ir_headers",

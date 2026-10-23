@@ -156,7 +156,7 @@ class MockDeviceCompilationProfiler : public DeviceCompilationProfiler {
               (override));
   MOCK_METHOD(absl::Status, RegisterCompilation,
               (const NameAttrList& function, int64_t compile_time_us,
-               bool used_persistent_cache),
+               bool used_persistent_cache, int64_t compile_end_us),
               (override));
 };
 
@@ -313,7 +313,7 @@ TEST_F(DeviceCompilerTest, CompileAsyncSuccess) {
   EXPECT_CALL(*mock_profiler_,
               ShouldCompileCluster(_, DeviceCompileMode::kAsync, 1))
       .WillOnce(Return(true));
-  EXPECT_CALL(*mock_profiler_, RegisterCompilation(_, _, false))
+  EXPECT_CALL(*mock_profiler_, RegisterCompilation(_, _, false, _))
       .WillOnce([&done] {
         done.Notify();
         return absl::OkStatus();

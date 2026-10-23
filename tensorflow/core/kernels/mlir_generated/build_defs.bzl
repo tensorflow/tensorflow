@@ -181,9 +181,9 @@ def _gen_kernel_bin_impl(ctx):
             "--arch=%s" % ",".join(ctx.attr.gpu_archs),
             "--input=%s" % ctx.file.mlir_op.path,
             "--output=%s" % gpu_bin.path,
-            "--enable_ftz=%s" % (ctx.attr.data_type == "f32"),
-            "--jit_i64_indexed_for_large_tensors=%s" % ctx.attr.jit_i64_indexed_for_large_tensors,
-            "--jit=%s" % ctx.attr.jit,
+            "--enable_ftz=%s" % ("true" if ctx.attr.data_type == "f32" else "false"),
+            "--jit_i64_indexed_for_large_tensors=%s" % ("true" if ctx.attr.jit_i64_indexed_for_large_tensors else "false"),
+            "--jit=%s" % ("true" if ctx.attr.jit else "false"),
         ],
         use_default_shell_env = True,
         mnemonic = "compile",
@@ -406,8 +406,8 @@ def _gen_kernel_library(
                 ),
                 "--arch={}".format(gpu_arch_option),
                 "--tile_sizes=%s" % typed_tile_size,
-                "--jit_i64_indexed_for_large_tensors=%s" % jit_i64_indexed_for_large_tensors,
-                "--enable_ftz=%s" % (type == "f32"),
+                "--jit_i64_indexed_for_large_tensors=%s" % ("true" if jit_i64_indexed_for_large_tensors else "false"),
+                "--enable_ftz=%s" % ("true" if type == "f32" else "false"),
             ]
             if typed_unroll_factors:
                 test_args.append("--unroll_factors=%s" % typed_unroll_factors)

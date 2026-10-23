@@ -20,6 +20,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
@@ -42,6 +44,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/TypeRange.h"
 #include "mlir/IR/Types.h"
+#include "xla/custom_options.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/type_registry.h"
 #include "xla/future.h"
@@ -73,6 +76,7 @@ limitations under the License.
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/user_context.h"
 #include "xla/python/pjrt_ifrt/executable_metadata.pb.h"
+#include "xla/python/pjrt_ifrt/gpu_xla_executable_abi_version.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/python/pjrt_ifrt/pjrt_device.h"
@@ -80,7 +84,9 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
 #include "xla/python/pjrt_ifrt/pjrt_layout.h"
 #include "xla/python/pjrt_ifrt/pjrt_memory.h"
+#include "xla/python/pjrt_ifrt/tpu_xla_executable_abi_version.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
+#include "xla/python/pjrt_ifrt/xla_executable_abi_version.h"
 #include "xla/python/pjrt_ifrt/xla_executable_version.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
 #include "xla/runtime/device_id.h"
@@ -99,6 +105,40 @@ namespace ifrt {
 namespace {
 
 static const MemoryKind kDefaultMemoryKind("device");
+
+absl::StatusOr<std::unique_ptr<XlaExecutableVersion>> GetXlaExecutableVersion(
+    xla::PjRtExecutable* pjrt_executable) {
+  if (pjrt_executable == nullptr) {
+    return absl::InvalidArgumentError("pjrt_executable must not be null.");
+  }
+  auto abi_version = pjrt_executable->GetAbiVersion();
+  if (absl::IsUnimplemented(abi_version.status())) {
+    // If the underlying PjRtExecutable does not implement GetAbiVersion (e.g.
+    // CPU), return an XlaExecutableVersion without an ABI version so that
+    // serialization and execution version queries still succeed.
+    return std::make_unique<XlaExecutableVersion>();
+  }
+  ABSL_RETURN_IF_ERROR(abi_version.status());
+  if (*abi_version == nullptr) {
+    return absl::InvalidArgumentError(
+        "PjRtExecutable returned null ABI version.");
+  }
+  uint64_t platform_id = (*abi_version)->platform_id();
+  std::unique_ptr<XlaExecutableAbiVersion> xla_abi_version;
+  if (platform_id == xla::TpuId()) {
+    xla_abi_version = std::make_unique<xla::TpuXlaExecutableAbiVersion>(
+        *std::move(abi_version));
+  } else if (platform_id == xla::CudaId() || platform_id == xla::RocmId() ||
+             platform_id == xla::OneapiId()) {
+    xla_abi_version = std::make_unique<xla::GpuXlaExecutableAbiVersion>(
+        *std::move(abi_version));
+  } else {
+    return absl::UnimplementedError(absl::StrCat(
+        "Unsupported platform ID for XlaExecutableAbiVersion: ", platform_id));
+  }
+  return std::make_unique<XlaExecutableVersion>(platform_id,
+                                                std::move(xla_abi_version));
+}
 
 // Returns a pair of flat lists of IFRT dtypes and shapes from XLA shapes
 // extracted from an MLIR module's signature.
@@ -159,6 +199,9 @@ absl::StatusOr<std::optional<std::vector<xla::HloSharding>>> GetHloShardings(
       ABSL_ASSIGN_OR_RETURN(
           auto hlo_sharding,
           xla::HloSharding::FromProto((*pjrt_executable_op_shardings)[i]));
+      if (hlo_sharding.UseNamedShardingLeaf()) {
+        hlo_sharding = xla::HloSharding::V3ToV2Sharding(hlo_sharding);
+      }
       hlo_shardings.push_back(hlo_sharding);
     }
   }
@@ -317,6 +360,28 @@ absl::StatusOr<std::vector<int>> GetDonatableInputIndicesFromMlirModule(
   return donatable_input_indices;
 }
 
+// Returns a flat list of parameter shapes from the given MLIR module.
+absl::StatusOr<std::vector<xla::Shape>> ParameterShapesOfModule(
+    mlir::ModuleOp module) {
+  mlir::func::FuncOp main = module.lookupSymbol<mlir::func::FuncOp>("main");
+  if (!main) {
+    return InvalidArgument("MLIR module has no main function");
+  }
+  mlir::FunctionType type = main.getFunctionType();
+  mlir::TypeRange arg_types = type.getInputs();
+  if (type.getNumInputs() == 1) {
+    if (auto tuple_type = llvm::dyn_cast<mlir::TupleType>(type.getInput(0))) {
+      arg_types = tuple_type.getTypes();
+    }
+  }
+  std::vector<xla::Shape> parameter_shapes;
+  parameter_shapes.reserve(arg_types.size());
+  for (mlir::Type arg_type : arg_types) {
+    parameter_shapes.push_back(xla::TypeToShape(arg_type));
+  }
+  return parameter_shapes;
+}
+
 // Returns a list of result shapes from the given MLIR module.
 absl::StatusOr<std::vector<xla::Shape>> ResultShapesOfModule(
     mlir::ModuleOp module) {
@@ -375,6 +440,21 @@ std::vector<PjRtHloOutputLoadedHostCallback*> GatherHloOutputCallbacks(
   return hlo_output_callbacks;
 }
 
+// Converts IFRT custom options to XLA custom options forwarded to the runtime.
+// Options consumed by the PjRt-IFRT layer itself are not forwarded.
+xla::CustomOptions::Map ToCustomOptionsMap(const AttributeMap& attribute_map) {
+  xla::CustomOptions::Map custom_options;
+  custom_options.reserve(attribute_map.size());
+  attribute_map.ForEach([&](const std::string& name,
+                            const AttributeMap::Value& value) {
+    std::visit([&](const auto& v) { custom_options.insert({name, v.value}); },
+               value);
+  });
+  custom_options.erase("use_output_arena");
+  custom_options.erase(PjRtCompatibleLoadedExecutable::kCallLocation);
+  return custom_options;
+}
+
 }  // namespace
 
 char PjRtCompatibleExecutable::ID = 0;
@@ -385,7 +465,8 @@ char PjRtLoadedExecutable::ID = 0;
 absl::StatusOr<ExecutableRef> PjRtExecutable::Create(
     xla::MaybeOwningMlirModule module, xla::CompileOptions compile_options,
     const xla::PjRtTopologyDescription& topology,
-    xla::PjRtClient* compile_client) {
+    xla::PjRtClient* compile_client,
+    std::optional<std::vector<int>> outputs_bundle_slice_sizes) {
   const bool is_portable = compile_options.compile_portable_executable;
 
   // We have to do process the MLIR before the compile call, since the latter
@@ -393,6 +474,9 @@ absl::StatusOr<ExecutableRef> PjRtExecutable::Create(
   ABSL_ASSIGN_OR_RETURN(
       std::vector<int> donatable_input_indices,
       GetDonatableInputIndicesFromMlirModule(module.mlir_module()));
+  ABSL_ASSIGN_OR_RETURN(
+      const std::vector<xla::Shape> mlir_module_parameter_xla_shapes,
+      ParameterShapesOfModule(module.mlir_module()));
   ABSL_ASSIGN_OR_RETURN(const std::vector<xla::Shape> mlir_module_output_xla_shapes,
                    ResultShapesOfModule(module.mlir_module()));
   ABSL_ASSIGN_OR_RETURN(const std::vector<xla::LayoutMode> output_layout_modes,
@@ -402,6 +486,12 @@ absl::StatusOr<ExecutableRef> PjRtExecutable::Create(
                    PjRtCompile(std::move(compile_options), std::move(module),
                                topology, compile_client));
 
+  ABSL_ASSIGN_OR_RETURN(auto parameter_dtypes_and_shapes,
+                   GetDTypesAndShapes(mlir_module_parameter_xla_shapes));
+  std::vector<DType> parameter_dtypes =
+      std::move(parameter_dtypes_and_shapes.first);
+  std::vector<Shape> parameter_shapes =
+      std::move(parameter_dtypes_and_shapes.second);
   ABSL_ASSIGN_OR_RETURN(auto output_dtypes_and_shapes,
                    GetDTypesAndShapes(mlir_module_output_xla_shapes));
   std::vector<DType> output_dtypes = std::move(output_dtypes_and_shapes.first);
@@ -423,11 +513,15 @@ absl::StatusOr<ExecutableRef> PjRtExecutable::Create(
   CommonMetadata common_metadata;
   common_metadata.is_portable = is_portable;
   common_metadata.donatable_input_indices = std::move(donatable_input_indices);
+  common_metadata.parameter_dtypes = std::move(parameter_dtypes);
+  common_metadata.parameter_shapes = std::move(parameter_shapes);
   common_metadata.output_dtypes = std::move(output_dtypes);
   common_metadata.output_shapes = std::move(output_shapes);
   common_metadata.output_hlo_shardings = std::move(output_hlo_shardings);
   common_metadata.output_memory_kinds = std::move(output_memory_kinds);
   common_metadata.output_layouts = std::move(output_layouts);
+  common_metadata.outputs_bundle_slice_sizes =
+      std::move(outputs_bundle_slice_sizes);
 
   return ExecutableRef(new PjRtExecutable(std::move(pjrt_executable),
                                           std::move(common_metadata)));
@@ -440,8 +534,7 @@ PjRtExecutable::PjRtExecutable(
       common_metadata_(std::move(common_metadata)) {
   pjrt_output_memory_kinds_.emplace_back();
   for (const MemoryKind& memory_kind : common_metadata_.output_memory_kinds) {
-    pjrt_output_memory_kinds_.back().push_back(
-        memory_kind.memory_kind().value_or(""));
+    pjrt_output_memory_kinds_.back().push_back(memory_kind.value());
   }
 }
 
@@ -458,13 +551,16 @@ absl::StatusOr<std::string> PjRtExecutable::CommonMetadata::Serialize(
   metadata.set_ifrt_version_number(serdes_version.version_number().value());
   metadata.set_runtime_name(PjRtClient::kRuntimeType);
 
-  // PjRt-IFRT currently does not track XLA executable versions.
-  auto xla_executable_version = std::make_unique<XlaExecutableVersion>();
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<XlaExecutableVersion> xla_executable_version,
+                   GetXlaExecutableVersion(pjrt_executable));
   ABSL_ASSIGN_OR_RETURN(SerializedXlaExecutableVersion serialized_executable_version,
                    xla_executable_version->ToProto(serdes_version));
   *metadata.mutable_executable_version() = serialized_executable_version;
 
   metadata.set_computation_name(pjrt_executable->name());
+
+  absl::StatusOr<std::vector<std::vector<xla::DimensionVector>>>
+      output_dimensions = pjrt_executable->GetOutputDimensions();
 
   // Encode output specs.
   for (int i = 0; i < output_dtypes.size(); ++i) {
@@ -483,19 +579,22 @@ absl::StatusOr<std::string> PjRtExecutable::CommonMetadata::Serialize(
     }
 
     // Memory kind
-    output_spec.set_memory_kind(
-        std::string(output_memory_kinds[i].memory_kind().value_or("")));
+    output_spec.set_memory_kind(std::string(output_memory_kinds[i].value()));
 
     // Shape
     std::optional<Shape> shard_shape;
     {
-      // If the output sharding information is missing (e.g., serializing a
-      // previously deserialized executable) or the output dtype is token, the
-      // output shard shape is the same as the output shape. The former case
-      // will be removed once serialization/deserialization roundtrip preserves
-      // the output sharding information.
-      if (!output_hlo_shardings.has_value() ||
-          output_dtypes[i].kind() == DType::kToken) {
+      // Prefer the per-device output dimensions reported by the compiled
+      // executable. This handles manual SPMD shardings (`{manual}` from
+      // `shard_map`) and unevenly tiled shardings, where
+      // `hlo_sharding_util::TileShape` would otherwise return the unsharded
+      // global shape or fail its divisibility check.
+      if (output_dtypes[i].kind() == DType::kToken) {
+        shard_shape = output_shapes[i];
+      } else if (output_dimensions.ok() && !output_dimensions->empty() &&
+                 (*output_dimensions)[0].size() == output_dtypes.size()) {
+        shard_shape = Shape((*output_dimensions)[0][i]);
+      } else if (!output_hlo_shardings.has_value()) {
         shard_shape = output_shapes[i];
       } else {
         ABSL_ASSIGN_OR_RETURN(xla::PrimitiveType element_type,
@@ -503,7 +602,7 @@ absl::StatusOr<std::string> PjRtExecutable::CommonMetadata::Serialize(
         xla::Shape xla_shape(element_type, output_shapes[i].dims());
         xla::Shape xla_shard_shape = xla::hlo_sharding_util::TileShape(
             (*output_hlo_shardings)[i], xla_shape);
-        shard_shape = Shape(xla_shape.dimensions());
+        shard_shape = Shape(xla_shard_shape.dimensions());
       }
     }
     *output_spec.mutable_shard_shape() = shard_shape->ToProto(serdes_version);
@@ -536,8 +635,13 @@ absl::StatusOr<std::string> PjRtExecutable::CommonMetadata::Serialize(
     // layout style (default layouts are not using concrete PjRt layouts),
     // extract parameters directly from StableHLO and avoid calling
     // `GetParameterLayouts()`.
-    num_parameters =
-        parameter_shardings.has_value() ? parameter_shardings->size() : 0;
+    if (parameter_dtypes.has_value()) {
+      num_parameters = parameter_dtypes->size();
+    } else if (parameter_shardings.has_value()) {
+      num_parameters = parameter_shardings->size();
+    } else {
+      num_parameters = 0;
+    }
     parameter_layouts = std::vector<std::shared_ptr<const xla::PjRtLayout>>(
         /*size=*/num_parameters,
         /*value=*/nullptr);
@@ -550,6 +654,22 @@ absl::StatusOr<std::string> PjRtExecutable::CommonMetadata::Serialize(
           "Parameter shardings have a different size from parameter layouts: "
           "%d vs. %d",
           parameter_shardings->size(), num_parameters);
+    }
+  }
+  if (parameter_dtypes.has_value() != parameter_shapes.has_value()) {
+    return FailedPrecondition(
+        "Parameter dtypes and shapes must both be present or both be absent.");
+  }
+  if (parameter_dtypes.has_value()) {
+    if (parameter_dtypes->size() != num_parameters) {
+      return FailedPrecondition(
+          "Parameter dtypes have a different size from parameters: %d vs. %d",
+          parameter_dtypes->size(), num_parameters);
+    }
+    if (parameter_shapes->size() != num_parameters) {
+      return FailedPrecondition(
+          "Parameter shapes have a different size from parameters: %d vs. %d",
+          parameter_shapes->size(), num_parameters);
     }
   }
   absl::flat_hash_set<int> donated_inputs_set(donatable_input_indices.begin(),
@@ -568,12 +688,25 @@ absl::StatusOr<std::string> PjRtExecutable::CommonMetadata::Serialize(
 
     // Sharding
     if (parameter_shardings.has_value()) {
-      *parameter_spec.mutable_op_sharding() = parameter_shardings->at(i);
+      ABSL_ASSIGN_OR_RETURN(auto hlo_sharding,
+                       xla::HloSharding::FromProto(parameter_shardings->at(i)));
+      if (hlo_sharding.UseNamedShardingLeaf()) {
+        hlo_sharding = xla::HloSharding::V3ToV2Sharding(hlo_sharding);
+      }
+      *parameter_spec.mutable_op_sharding() = hlo_sharding.ToProto();
     }
 
     // Donated input
     bool is_donated = donated_inputs_set.contains(i);
     parameter_spec.set_donated_input(is_donated);
+
+    // Shape and DType
+    if (parameter_dtypes.has_value()) {
+      *parameter_spec.mutable_dtype() =
+          (*parameter_dtypes)[i].ToProto(serdes_version);
+      *parameter_spec.mutable_shape() =
+          (*parameter_shapes)[i].ToProto(serdes_version);
+    }
   }
 
   metadata.set_portable(is_portable);
@@ -641,6 +774,18 @@ PjRtExecutable::CommonMetadata::Deserialize(
   }
 
   std::vector<int> donated_input_indices;
+  std::optional<std::vector<DType>> parameter_dtypes;
+  std::optional<std::vector<Shape>> parameter_shapes;
+  if (metadata.parameter_specs().empty()) {
+    parameter_dtypes.emplace();
+    parameter_shapes.emplace();
+  } else if (metadata.parameter_specs(0).has_dtype() &&
+             metadata.parameter_specs(0).has_shape()) {
+    parameter_dtypes.emplace();
+    parameter_dtypes->reserve(metadata.parameter_specs_size());
+    parameter_shapes.emplace();
+    parameter_shapes->reserve(metadata.parameter_specs_size());
+  }
   std::vector<DType> output_dtypes;
   std::vector<Shape> output_shapes;
   std::optional<std::vector<xla::HloSharding>> output_hlo_shardings;
@@ -655,8 +800,20 @@ PjRtExecutable::CommonMetadata::Deserialize(
   output_layouts->reserve(metadata.output_specs_size());
 
   for (int i = 0; i < metadata.parameter_specs_size(); ++i) {
-    if (metadata.parameter_specs(i).donated_input()) {
+    const auto& parameter_spec = metadata.parameter_specs(i);
+    if (parameter_spec.donated_input()) {
       donated_input_indices.push_back(i);
+    }
+    if (parameter_spec.has_dtype() != parameter_dtypes.has_value() ||
+        parameter_spec.has_shape() != parameter_shapes.has_value()) {
+      return absl::InvalidArgumentError(
+          "All parameters must either have both dtype and shape, or neither.");
+    }
+    if (parameter_dtypes.has_value()) {
+      ABSL_ASSIGN_OR_RETURN(DType dtype, DType::FromProto(parameter_spec.dtype()));
+      parameter_dtypes->push_back(dtype);
+      ABSL_ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(parameter_spec.shape()));
+      parameter_shapes->push_back(std::move(shape));
     }
   }
 
@@ -705,6 +862,8 @@ PjRtExecutable::CommonMetadata::Deserialize(
   CommonMetadata common_metadata;
   common_metadata.is_portable = metadata.portable();
   common_metadata.donatable_input_indices = std::move(donated_input_indices);
+  common_metadata.parameter_dtypes = std::move(parameter_dtypes);
+  common_metadata.parameter_shapes = std::move(parameter_shapes);
   common_metadata.output_dtypes = std::move(output_dtypes);
   common_metadata.output_shapes = std::move(output_shapes);
   common_metadata.output_hlo_shardings = std::move(output_hlo_shardings);
@@ -753,6 +912,9 @@ absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::Create(
   ABSL_ASSIGN_OR_RETURN(
       std::vector<int> donatable_input_indices,
       GetDonatableInputIndicesFromMlirModule(module.mlir_module()));
+  ABSL_ASSIGN_OR_RETURN(
+      const std::vector<xla::Shape> mlir_module_parameter_xla_shapes,
+      ParameterShapesOfModule(module.mlir_module()));
   ABSL_ASSIGN_OR_RETURN(const std::vector<xla::Shape> mlir_module_output_xla_shapes,
                    ResultShapesOfModule(module.mlir_module()));
   ABSL_ASSIGN_OR_RETURN(const std::vector<xla::LayoutMode> output_layout_modes,
@@ -763,6 +925,12 @@ absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::Create(
       client->pjrt_client()->CompileAndLoad(std::move(module),
                                             std::move(compile_options)));
 
+  ABSL_ASSIGN_OR_RETURN(auto parameter_dtypes_and_shapes,
+                   GetDTypesAndShapes(mlir_module_parameter_xla_shapes));
+  std::vector<DType> parameter_dtypes =
+      std::move(parameter_dtypes_and_shapes.first);
+  std::vector<Shape> parameter_shapes =
+      std::move(parameter_dtypes_and_shapes.second);
   ABSL_ASSIGN_OR_RETURN(auto output_dtypes_and_shapes,
                    GetDTypesAndShapes(mlir_module_output_xla_shapes));
   std::vector<DType> output_dtypes = std::move(output_dtypes_and_shapes.first);
@@ -775,9 +943,6 @@ absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::Create(
       std::vector<MemoryKind> output_memory_kinds,
       GetMemoryKinds(pjrt_loaded_executable->GetOutputMemoryKinds(),
                      output_dtypes));
-  std::vector<ShardingRef> output_shardings =
-      MakeShardings(output_shapes, output_hlo_shardings, output_memory_kinds,
-                    executable_devices);
   ABSL_ASSIGN_OR_RETURN(
       std::optional<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
           output_layouts,
@@ -787,6 +952,8 @@ absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::Create(
   PjRtExecutable::CommonMetadata common_metadata;
   common_metadata.is_portable = is_portable;
   common_metadata.donatable_input_indices = std::move(donatable_input_indices);
+  common_metadata.parameter_dtypes = std::move(parameter_dtypes);
+  common_metadata.parameter_shapes = std::move(parameter_shapes);
   common_metadata.output_dtypes = std::move(output_dtypes);
   common_metadata.output_shapes = std::move(output_shapes);
   common_metadata.output_hlo_shardings = std::move(output_hlo_shardings);
@@ -796,7 +963,8 @@ absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::Create(
       std::move(outputs_bundle_slice_sizes);
 
   return LoadedExecutableRef(new PjRtLoadedExecutable(
-      client, std::move(pjrt_loaded_executable), std::move(executable_devices),
+      client, std::move(pjrt_loaded_executable),
+      is_portable ? DeviceListRef() : std::move(executable_devices),
       std::move(loaded_host_callbacks), std::move(common_metadata)));
 }
 
@@ -809,7 +977,9 @@ PjRtLoadedExecutable::PjRtLoadedExecutable(
     : client_(client),
       pjrt_loaded_executable_(std::move(pjrt_loaded_executable)),
       devices_(std::move(devices)),
-      addressable_devices_(devices_->AddressableDeviceList()->devices()),
+      addressable_devices_(devices_ != nullptr
+                               ? devices_->AddressableDeviceList()->devices()
+                               : absl::Span<Device* const>()),
       all_loaded_host_callbacks_(
           std::make_shared<std::vector<tsl::RCReference<LoadedHostCallback>>>(
               std::move(all_loaded_host_callbacks))),
@@ -819,13 +989,16 @@ PjRtLoadedExecutable::PjRtLoadedExecutable(
           GatherHloOutputCallbacks(*all_loaded_host_callbacks_)),
       common_metadata_(std::move(common_metadata)),
       user_context_(UserContextScope::current()) {
-  output_shardings_ = MakeShardings(
-      common_metadata_.output_shapes, common_metadata_.output_hlo_shardings,
-      common_metadata_.output_memory_kinds, devices_);
+  if (devices_ != nullptr) {
+    output_shardings_ = MakeShardings(
+        common_metadata_.output_shapes,
+        common_metadata_.is_portable ? std::nullopt
+                                     : common_metadata_.output_hlo_shardings,
+        common_metadata_.output_memory_kinds, devices_);
+  }
   pjrt_output_memory_kinds_.emplace_back();
   for (const MemoryKind& memory_kind : common_metadata_.output_memory_kinds) {
-    pjrt_output_memory_kinds_.back().push_back(
-        memory_kind.memory_kind().value_or(""));
+    pjrt_output_memory_kinds_.back().push_back(memory_kind.value());
   }
 }
 
@@ -844,19 +1017,29 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
   std::vector<std::unique_ptr<PjRtBuffer>> owned_buffers;
 
   int num_computations;
-  const bool portable_execution = devices.has_value();
+  const bool portable_execution = common_metadata_.is_portable;
   PjRtCompatibleDevice* portable_execution_device = nullptr;
+  if (devices_ != nullptr && devices.has_value() &&
+      (*devices == nullptr || **devices != *devices_)) {
+    return InvalidArgument(
+        "Cannot execute with devices that differ from the bound devices");
+  }
   if (portable_execution) {
-    if ((*devices)->size() != 1) {
+    const DeviceListRef& execution_devices =
+        devices.has_value() ? *devices : devices_;
+    if (execution_devices == nullptr || execution_devices->empty()) {
+      return InvalidArgument("No devices provided for portable executable");
+    }
+    if (execution_devices->size() != 1) {
       return InvalidArgument(
           "Only single-shard portable execution is supported");
     }
-    num_computations = 1;
     portable_execution_device =
-        static_cast<PjRtDevice*>((*devices)->devices().front());
+        static_cast<PjRtDevice*>(execution_devices->devices().front());
+    num_computations = 1;
   } else {
-    if (devices_->devices().empty()) {
-      return InvalidArgument("No devices provided for portable executable");
+    if (devices_ == nullptr || devices_->empty()) {
+      return InvalidArgument("No devices provided for executable");
     }
     num_computations = addressable_devices_.size();
   }
@@ -943,6 +1126,15 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
     ffi::TypeRegistry::TypeId type_id(FfiLoadedHostCallbacks::id.type_id);
     CHECK_OK(context->ffi_context().Insert(type_id, ffi_callbacks.get()));
     opts.context = context.get();
+  }
+
+  if (options.custom_options.has_value()) {
+    xla::CustomOptions::Map custom_options =
+        ToCustomOptionsMap(*options.custom_options);
+    if (!custom_options.empty()) {
+      opts.custom_options =
+          std::make_shared<const xla::CustomOptions>(std::move(custom_options));
+    }
   }
 
   // When using host callbacks on CPU, we need to use synchronous dispatch to
@@ -1068,17 +1260,13 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
   for (int i = 0; i < num_outputs; ++i) {
     PjRtArray::PjRtBuffers buffers;
     buffers.reserve(num_computations);
-    const MemoryKind dst_memory_kind = output_shardings_[i]->memory_kind();
-    const MemoryKind canonical_dst_memory_kind = CanonicalizeMemoryKind(
-        dst_memory_kind, output_shardings_[i]->devices()->devices().front());
+    const MemoryKind dst_memory_kind = common_metadata_.output_memory_kinds[i];
 
     for (int j = 0; j < num_computations; ++j) {
       if (j > 0) {
         if (auto memory_kind =
                 MakeMemoryKindFromPjRtBuffer(pjrt_outputs[j][i].get());
-            canonical_dst_memory_kind !=
-            CanonicalizeMemoryKindWithPjRtDevice(
-                memory_kind, pjrt_outputs[j][i]->device())) {
+            dst_memory_kind.value() != memory_kind.value()) {
           return FailedPrecondition(
               "Memory kind mismatch. Got sharding with memory kind '%v' and "
               "buffer with memory_kind '%v'",
@@ -1089,7 +1277,7 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
           std::shared_ptr<PjRtBuffer>(pjrt_outputs[j][i].release()));
     }
     std::optional<ShardingRef> sharding;
-    if (portable_execution) {
+    if (output_shardings_.empty()) {
       if (auto it = single_device_shardings.find(dst_memory_kind);
           it == single_device_shardings.end()) {
         sharding = single_device_shardings
@@ -1142,8 +1330,11 @@ absl::StatusOr<std::optional<std::string>> PjRtLoadedExecutable::Fingerprint()
 absl::StatusOr<std::shared_ptr<const ExecutableVersion>>
 PjRtLoadedExecutable::executable_version() const {
   DCHECK(this);
-  // PjRt-IFRT currently does not track XLA executable versions.
-  return std::make_shared<XlaExecutableVersion>();
+  ABSL_ASSIGN_OR_RETURN(
+      std::unique_ptr<XlaExecutableVersion> xla_executable_version,
+      GetXlaExecutableVersion(pjrt_loaded_executable_->GetExecutable()));
+  return std::shared_ptr<const ExecutableVersion>(
+      std::move(xla_executable_version));
 }
 
 absl::StatusOr<std::string> PjRtLoadedExecutable::Serialize() const {

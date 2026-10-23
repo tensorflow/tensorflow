@@ -26,7 +26,7 @@ using ::testing::Test;
 
 class RemoveSuccessiveTransposeTest : public Test {
  protected:
-  RemoveSuccessiveTransposeTest() {}
+  RemoveSuccessiveTransposeTest() = default;
 
   void SetUp() override { model_ = std::make_unique<toco::Model>(); }
 

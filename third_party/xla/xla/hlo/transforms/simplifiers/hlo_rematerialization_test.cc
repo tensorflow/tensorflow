@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
@@ -26,6 +27,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/any_invocable.h"
@@ -71,6 +73,7 @@ using ::testing::Key;
 using ::testing::Not;
 using ::testing::Pair;
 using ::testing::Property;
+using ::testing::StartsWith;
 using ::testing::StrEq;
 using ::testing::UnorderedElementsAre;
 
@@ -167,7 +170,8 @@ class RecomputeAndCompressHloRematerializationTest
           HloRematerialization::RematAlgorithm::kAlwaysRemat,
       int block_size_limit = 1,
       absl::AnyInvocable<absl::Status(HloInstruction*, HloInstruction*)>
-          on_rematerialized = nullptr) {
+          on_rematerialized = nullptr,
+      HloRematerialization::RematerializationSizes* sizes = nullptr) {
     TF_EXPECT_OK(verifier().Run(module).status());
     if (!module->has_schedule()) {
       HloMemoryScheduler scheduler(&alias_info_, [](const BufferValue& buffer) {
@@ -196,8 +200,11 @@ class RecomputeAndCompressHloRematerializationTest
         /*host_memory_offload_config=*/std::nullopt,
         /*async_computation_parallelism=*/{},
         /*remat_algorithm=*/remat_algorithm);
-    HloRematerialization::RematerializationSizes sizes;
-    HloRematerialization remat(options, sizes, std::move(on_rematerialized));
+    HloRematerialization::RematerializationSizes sizes_local;
+    HloRematerialization::RematerializationSizes& sizes_ref =
+        sizes != nullptr ? *sizes : sizes_local;
+    HloRematerialization remat(options, sizes_ref,
+                               std::move(on_rematerialized));
     absl::StatusOr<bool> result = remat.Run(module);
 
     // Finally, get a set of instruction names after running remat.
@@ -2010,6 +2017,157 @@ ENTRY %entry (param.0: f32[], param.1: f32[]) -> f32[1024] {
 }
 
 TEST_F(RecomputeAndCompressHloRematerializationTest,
+       PeakPriorityRematRemovesMultiBranchDeadIndirectUserTree) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"hlo(
+  HloModule fusion, is_scheduled=true
+
+%fusion_computation (p0: f32[16384], p1: f32[16384]) -> (f32[16384], f32[16384]) {
+  %p0 = f32[16384]{0} parameter(0)
+  %p1 = f32[16384]{0} parameter(1)
+  %add0 = f32[16384]{0} add(%p0, %p1)
+  %add1 = f32[16384]{0} add(%p0, %p1)
+  ROOT %t = (f32[16384]{0}, f32[16384]{0}) tuple(%add0, %add1)
+}
+
+ENTRY %entry {
+  %c = f32[] constant(1.0)
+  %c0 = f32[16384]{0} broadcast(%c), dimensions={}
+  %c1 = f32[16384]{0} broadcast(%c), dimensions={}
+  %f4651 = (f32[16384]{0}, f32[16384]{0}) fusion(%c0, %c1), kind=kLoop, calls=%fusion_computation
+  %gte_0 = f32[16384]{0} get-tuple-element(%f4651), index=0
+  %gte_1 = f32[16384]{0} get-tuple-element(%f4651), index=1
+  %bitcast_0a = f16[32768]{0} bitcast(%gte_0)
+  %bitcast_0b = f16[32768]{0} bitcast(%gte_0)
+  %bitcast_1 = f16[32768]{0} bitcast(%gte_1)
+  %b0 = f32[16384]{0} broadcast(%c), dimensions={}
+  %b1 = f32[16384]{0} broadcast(%c), dimensions={}
+  %peak = f32[16384]{0} add(%b0, %b1)
+  %peak_small = f32[1024]{0} slice(%peak), slice={[0:1024]}
+  %f16_sum_0 = f16[32768]{0} add(%bitcast_0a, %bitcast_0b)
+  %f16_sum_1 = f16[32768]{0} add(%bitcast_1, %bitcast_1)
+  %slice_0 = f16[1024]{0} slice(%f16_sum_0), slice={[0:1024]}
+  %slice_1 = f16[1024]{0} slice(%f16_sum_1), slice={[0:1024]}
+  %f32_0 = f32[1024]{0} convert(%slice_0)
+  %f32_1 = f32[1024]{0} convert(%slice_1)
+  %consumer = f32[1024]{0} add(%f32_0, %f32_1)
+  ROOT %res = f32[1024]{0} add(%consumer, %peak_small)
+}
+)hlo"));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunHloRematerialization(
+                           /*memory_limit_bytes=*/250 * 1024, module.get(),
+                           /*min_remat_size=*/0,
+                           HloRematerialization::RematAlgorithm::kPeakPriority,
+                           /*block_size_limit=*/32));
+
+  EXPECT_TRUE(changed);
+  EXPECT_OK(verifier().Run(module.get()).status());
+
+  // Check that the original instruction and its multi-branch indirect user tree
+  // (fusion -> {gte_0 -> {bitcast_0a, bitcast_0b}, gte_1 -> bitcast_1}) were
+  // all cleanly deleted when killed by rematerialization.
+  auto instruction_is_deleted = [&](absl::string_view name) {
+    return module->entry_computation()->GetInstructionWithName(name) == nullptr;
+  };
+  EXPECT_TRUE(instruction_is_deleted("f4651"));
+  EXPECT_TRUE(instruction_is_deleted("gte_0"));
+  EXPECT_TRUE(instruction_is_deleted("gte_1"));
+  EXPECT_TRUE(instruction_is_deleted("bitcast_0a"));
+  EXPECT_TRUE(instruction_is_deleted("bitcast_0b"));
+  EXPECT_TRUE(instruction_is_deleted("bitcast_1"));
+
+  // Check that the rematerialized instruction exists.
+  EXPECT_NE(module->entry_computation()->GetInstructionWithName("f4651.remat"),
+            nullptr);
+
+  // Check that the consumers were rewired to rematerialized bitcasts.
+  const HloInstruction* f16_sum_0 =
+      module->entry_computation()->GetInstructionWithName("f16_sum_0");
+  ASSERT_NE(f16_sum_0, nullptr);
+  EXPECT_THAT(f16_sum_0->operand(0)->name(), StartsWith("bitcast.remat"));
+  EXPECT_THAT(f16_sum_0->operand(1)->name(), StartsWith("bitcast.remat"));
+
+  const HloInstruction* f16_sum_1 =
+      module->entry_computation()->GetInstructionWithName("f16_sum_1");
+  ASSERT_NE(f16_sum_1, nullptr);
+  EXPECT_THAT(f16_sum_1->operand(0)->name(), StartsWith("bitcast.remat"));
+  EXPECT_THAT(f16_sum_1->operand(1)->name(), StartsWith("bitcast.remat"));
+}
+
+TEST_F(RecomputeAndCompressHloRematerializationTest,
+       PeakPriorityRematPreservesInstructionWithLiveEarlyUse) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"hlo(
+  HloModule fusion, is_scheduled=true
+
+%fusion_computation (p0: f32[16384], p1: f32[16384]) -> (f32[16384], f32[16384]) {
+  %p0 = f32[16384]{0} parameter(0)
+  %p1 = f32[16384]{0} parameter(1)
+  %add0 = f32[16384]{0} add(%p0, %p1)
+  %add1 = f32[16384]{0} add(%p0, %p1)
+  ROOT %t = (f32[16384]{0}, f32[16384]{0}) tuple(%add0, %add1)
+}
+
+ENTRY %entry {
+  %c = f32[] constant(1.0)
+  %c0 = f32[16384]{0} broadcast(%c), dimensions={}
+  %c1 = f32[16384]{0} broadcast(%c), dimensions={}
+  %f4651 = (f32[16384]{0}, f32[16384]{0}) fusion(%c0, %c1), kind=kLoop, calls=%fusion_computation
+  %gte_0 = f32[16384]{0} get-tuple-element(%f4651), index=0
+  %bitcast_0 = f16[32768]{0} bitcast(%gte_0)
+  %early_sum = f16[32768]{0} add(%bitcast_0, %bitcast_0)
+  %early_slice = f16[1024]{0} slice(%early_sum), slice={[0:1024]}
+  %early_use = f16[1024]{0} custom-call(%early_slice), custom_call_target="LiveUser"
+  %b0 = f32[16384]{0} broadcast(%c), dimensions={}
+  %b1 = f32[16384]{0} broadcast(%c), dimensions={}
+  %peak = f32[16384]{0} add(%b0, %b1)
+  %peak_small = f32[1024]{0} slice(%peak), slice={[0:1024]}
+  %late_sum = f16[32768]{0} add(%bitcast_0, %bitcast_0)
+  %late_slice = f16[1024]{0} slice(%late_sum), slice={[0:1024]}
+  %early_f32 = f32[1024]{0} convert(%early_use)
+  %late_f32 = f32[1024]{0} convert(%late_slice)
+  %sum = f32[1024]{0} add(%early_f32, %late_f32)
+  ROOT %res = f32[1024]{0} add(%sum, %peak_small)
+}
+)hlo"));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunHloRematerialization(
+                           /*memory_limit_bytes=*/250 * 1024, module.get(),
+                           /*min_remat_size=*/0,
+                           HloRematerialization::RematAlgorithm::kPeakPriority,
+                           /*block_size_limit=*/32));
+
+  EXPECT_TRUE(changed);
+  EXPECT_OK(verifier().Run(module.get()).status());
+
+  // Check that the original fusion and bitcast are NOT deleted because
+  // early_sum still consumes bitcast_0 before the peak.
+  EXPECT_NE(module->entry_computation()->GetInstructionWithName("f4651"),
+            nullptr);
+  EXPECT_NE(module->entry_computation()->GetInstructionWithName("bitcast_0"),
+            nullptr);
+
+  // Check that the rematerialized instruction exists.
+  EXPECT_NE(module->entry_computation()->GetInstructionWithName("f4651.remat"),
+            nullptr);
+
+  // Check that early_sum uses the original instruction, while late_sum
+  // has been rewired to the rematerialized instruction.
+  const HloInstruction* early_sum =
+      module->entry_computation()->GetInstructionWithName("early_sum");
+  ASSERT_NE(early_sum, nullptr);
+  EXPECT_EQ(early_sum->operand(0)->name(), "bitcast_0");
+  EXPECT_EQ(early_sum->operand(1)->name(), "bitcast_0");
+
+  const HloInstruction* late_sum =
+      module->entry_computation()->GetInstructionWithName("late_sum");
+  ASSERT_NE(late_sum, nullptr);
+  EXPECT_EQ(late_sum->operand(0)->name(), "bitcast.remat");
+  EXPECT_THAT(late_sum->operand(1)->name(), StartsWith("bitcast.remat"));
+}
+
+TEST_F(RecomputeAndCompressHloRematerializationTest,
        PeakFirstRematerializesAtSamePeak) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
@@ -2271,5 +2429,339 @@ ENTRY %main {
   EXPECT_OK(remat.Run(module.get(), /*execution_threads=*/{"device"}).status());
 }
 
+TEST_F(RecomputeAndCompressHloRematerializationTest,
+       DuplicateOperandLoopFusion) {
+  const std::string& hlo_string = R"hlo(
+HloModule DuplicateOperandLoopFusion, is_scheduled=true
+
+%fused_producer {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  %p2 = f32[] parameter(2)
+  %bcast0 = f32[16384]{0} broadcast(%p0), dimensions={}
+  %bcast1 = f32[16384]{0} broadcast(%p1), dimensions={}
+  %bcast2 = f32[16384]{0} broadcast(%p2), dimensions={}
+  ROOT %producer_tuple = (f32[16384]{0}, f32[16384]{0}, f32[16384]{0}) tuple(%bcast0, %bcast1, %bcast2)
+}
+
+%add_comp {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  ROOT %add = f32[] add(%p0, %p1)
+}
+
+%fused_computation (param_0: (f32[16384], f32[16384], f32[16384]), param_1: (f32[16384], f32[16384], f32[16384])) -> f32[16384] {
+  %param_0 = (f32[16384]{0}, f32[16384]{0}, f32[16384]{0}) parameter(0)
+  %param_1 = (f32[16384]{0}, f32[16384]{0}, f32[16384]{0}) parameter(1)
+  %gte0 = f32[16384]{0} get-tuple-element(%param_0), index=0
+  %gte1 = f32[16384]{0} get-tuple-element(%param_1), index=1
+  ROOT %add = f32[16384]{0} add(%gte0, %gte1)
+}
+
+ENTRY %entry {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  %p2 = f32[] parameter(2)
+  %tuple = (f32[16384]{0}, f32[16384]{0}, f32[16384]{0}) fusion(%p0, %p1, %p2), kind=kLoop, calls=%fused_producer
+  %early_gte0 = f32[16384]{0} get-tuple-element(%tuple), index=0
+  %early_gte1 = f32[16384]{0} get-tuple-element(%tuple), index=1
+  %early_add = f32[16384]{0} add(%early_gte0, %early_gte1)
+  %broadcast_peak = f32[16384]{0} broadcast(%p0), dimensions={}
+  %mid_add = f32[16384]{0} add(%early_add, %broadcast_peak)
+  %c0 = f32[] constant(0)
+  %reduce = f32[] reduce(%mid_add, %c0), dimensions={0}, to_apply=%add_comp
+  %fusion = f32[16384]{0} fusion(%tuple, %tuple), kind=kLoop, calls=%fused_computation
+  ROOT %out = (f32[], f32[16384]{0}) tuple(%reduce, %fusion)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloRematerialization::RematerializationSizes sizes;
+  constexpr int64_t kMemoryLimitBytes = 270 * 1024;
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunHloRematerialization(
+                           kMemoryLimitBytes, module.get(),
+                           /*min_remat_size=*/0,
+                           HloRematerialization::RematAlgorithm::kAlwaysRemat,
+                           /*block_size_limit=*/1,
+                           /*on_rematerialized=*/nullptr, &sizes));
+  EXPECT_TRUE(changed);
+
+  // Initial memory pressure exceeded the limit, requiring rematerialization.
+  EXPECT_GT(sizes.before_bytes, kMemoryLimitBytes);
+
+  // Rematerialization reduced the memory footprint below the limit.
+  EXPECT_GT(sizes.before_bytes, sizes.after_bytes);
+  EXPECT_LE(sizes.after_bytes, kMemoryLimitBytes);
+
+  const std::vector<HloInstruction*>& instructions =
+      module->schedule().sequence(module->entry_computation()).instructions();
+
+  // The tuple fusion should have been rematerialized, while retaining the
+  // original tuple instruction for pre-peak consumers.
+  EXPECT_THAT(
+      instructions,
+      AllOf(Contains(Property(&HloInstruction::name, StrEq("tuple"))),
+            Contains(Property(&HloInstruction::name, StrEq("tuple.remat"))),
+            Contains(Property(&HloInstruction::name, StrEq("fusion")))));
+
+  // Pre-peak consumers still use the original tuple instruction.
+  const HloInstruction* early_gte0 =
+      module->entry_computation()->GetInstructionWithName("early_gte0");
+  ASSERT_NE(early_gte0, nullptr);
+  EXPECT_EQ(early_gte0->operand(0)->name(), "tuple");
+
+  const HloInstruction* early_gte1 =
+      module->entry_computation()->GetInstructionWithName("early_gte1");
+  ASSERT_NE(early_gte1, nullptr);
+  EXPECT_EQ(early_gte1->operand(0)->name(), "tuple");
+
+  // The consumer loop fusion with duplicate operands now uses the
+  // rematerialized tuple instruction for both operands.
+  const HloInstruction* fusion =
+      module->entry_computation()->GetInstructionWithName("fusion");
+  ASSERT_NE(fusion, nullptr);
+  EXPECT_EQ(fusion->operand(0)->name(), "tuple.remat");
+  EXPECT_EQ(fusion->operand(1)->name(), "tuple.remat");
+
+  // The rematerialized instruction should be placed immediately before the
+  // consumer fusion in the schedule.
+  auto remat_it = absl::c_find_if(instructions, [](const HloInstruction* inst) {
+    return inst->name() == "tuple.remat";
+  });
+  ASSERT_NE(remat_it, instructions.end());
+  ASSERT_NE(std::next(remat_it), instructions.end());
+  EXPECT_EQ(*std::next(remat_it), fusion);
+
+  CheckForRematInInstructionNames(
+      ::testing::UnitTest::GetInstance()->current_test_info()->name());
+}
+
+TEST_F(RecomputeAndCompressHloRematerializationTest,
+       LoopFusionRootParameterOutput) {
+  const std::string& hlo_string = R"hlo(
+HloModule LoopFusionRootParameterOutput, is_scheduled=true
+
+%fused_producer {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  %p2 = f32[] parameter(2)
+  %bcast0 = f32[16384]{0} broadcast(%p0), dimensions={}
+  %bcast1 = f32[16384]{0} broadcast(%p1), dimensions={}
+  %bcast2 = f32[16384]{0} broadcast(%p2), dimensions={}
+  ROOT %producer_tuple = (f32[16384]{0}, f32[16384]{0}, f32[16384]{0}) tuple(%bcast0, %bcast1, %bcast2)
+}
+
+%add_comp {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  ROOT %add = f32[] add(%p0, %p1)
+}
+
+%fused_root_consumer (param: (f32[16384], f32[16384], f32[16384])) -> f32[16384] {
+  %param = (f32[16384]{0}, f32[16384]{0}, f32[16384]{0}) parameter(0)
+  ROOT %gte0 = f32[16384]{0} get-tuple-element(%param), index=0
+}
+
+ENTRY %entry {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  %p2 = f32[] parameter(2)
+  %tuple = (f32[16384]{0}, f32[16384]{0}, f32[16384]{0}) fusion(%p0, %p1, %p2), kind=kLoop, calls=%fused_producer
+  %early_gte0 = f32[16384]{0} get-tuple-element(%tuple), index=0
+  %early_gte1 = f32[16384]{0} get-tuple-element(%tuple), index=1
+  %early_add = f32[16384]{0} add(%early_gte0, %early_gte1)
+  %broadcast_peak = f32[16384]{0} broadcast(%p0), dimensions={}
+  %mid_add = f32[16384]{0} add(%early_add, %broadcast_peak)
+  %c0 = f32[] constant(0)
+  %reduce = f32[] reduce(%mid_add, %c0), dimensions={0}, to_apply=%add_comp
+  %consumer_fusion = f32[16384]{0} fusion(%tuple), kind=kLoop, calls=%fused_root_consumer
+  ROOT %out = (f32[], f32[16384]{0}) tuple(%reduce, %consumer_fusion)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloRematerialization::RematerializationSizes sizes;
+  constexpr int64_t kMemoryLimitBytes = 270 * 1024;
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunHloRematerialization(
+                           kMemoryLimitBytes, module.get(),
+                           /*min_remat_size=*/0,
+                           HloRematerialization::RematAlgorithm::kAlwaysRemat,
+                           /*block_size_limit=*/1,
+                           /*on_rematerialized=*/nullptr, &sizes));
+  EXPECT_TRUE(changed);
+
+  EXPECT_GT(sizes.before_bytes, kMemoryLimitBytes);
+  EXPECT_GT(sizes.before_bytes, sizes.after_bytes);
+  EXPECT_LE(sizes.after_bytes, kMemoryLimitBytes);
+
+  const std::vector<HloInstruction*>& instructions =
+      module->schedule().sequence(module->entry_computation()).instructions();
+
+  EXPECT_THAT(
+      instructions,
+      AllOf(
+          Contains(Property(&HloInstruction::name, StrEq("tuple"))),
+          Contains(Property(&HloInstruction::name, StrEq("tuple.remat"))),
+          Contains(Property(&HloInstruction::name, StrEq("consumer_fusion")))));
+
+  const HloInstruction* early_gte0 =
+      module->entry_computation()->GetInstructionWithName("early_gte0");
+  ASSERT_NE(early_gte0, nullptr);
+  EXPECT_EQ(early_gte0->operand(0)->name(), "tuple");
+
+  const HloInstruction* early_gte1 =
+      module->entry_computation()->GetInstructionWithName("early_gte1");
+  ASSERT_NE(early_gte1, nullptr);
+  EXPECT_EQ(early_gte1->operand(0)->name(), "tuple");
+
+  const HloInstruction* consumer_fusion =
+      module->entry_computation()->GetInstructionWithName("consumer_fusion");
+  ASSERT_NE(consumer_fusion, nullptr);
+  EXPECT_EQ(consumer_fusion->operand(0)->name(), "tuple.remat");
+
+  CheckForRematInInstructionNames(
+      ::testing::UnitTest::GetInstance()->current_test_info()->name());
+}
+
+TEST_F(RecomputeAndCompressHloRematerializationTest,
+       BlockRematSharedDeadOperand) {
+  constexpr absl::string_view hlo_string = R"hlo(
+HloModule BlockRematSharedDeadOperand, is_scheduled=true
+
+ENTRY %entry {
+  %param = f32[] parameter(0)
+  %shared_dead = f32[1024]{0} custom-call(%param), custom_call_target="Producer"
+  %cand0 = f32[1024]{0} negate(%shared_dead)
+  %cand1 = f32[1024]{0} abs(%shared_dead)
+  %early_use = f32[1024]{0} custom-call(%cand0, %cand1), custom_call_target="EarlyUse"
+  %peak_op = f32[1024]{0} custom-call(%early_use), custom_call_target="Peak"
+  %final_op = f32[1024]{0} custom-call(%peak_op), custom_call_target="Final"
+  %late_use = f32[1024]{0} add(%cand0, %cand1)
+  ROOT %out = (f32[1024]{0}, f32[1024]{0}) tuple(%final_op, %late_use)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloRematerialization::RematerializationSizes sizes;
+  constexpr int64_t kMemoryLimitBytes = 20 * 1024 + 16;
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunHloRematerialization(
+                           kMemoryLimitBytes, module.get(),
+                           /*min_remat_size=*/0,
+                           HloRematerialization::RematAlgorithm::kAlwaysRemat,
+                           /*block_size_limit=*/2,
+                           /*on_rematerialized=*/nullptr, &sizes));
+  EXPECT_TRUE(changed);
+  EXPECT_EQ(sizes.before_bytes, 24 * 1024 + 16);
+  EXPECT_EQ(sizes.after_bytes, 20 * 1024 + 16);
+
+  const HloInstruction* late_use =
+      module->entry_computation()->GetInstructionWithName("late_use");
+  ASSERT_NE(late_use, nullptr);
+  EXPECT_EQ(late_use->operand(0)->name(), "cand0.remat");
+  EXPECT_EQ(late_use->operand(1)->name(), "cand1.remat");
+
+  CheckForRematInInstructionNames(
+      ::testing::UnitTest::GetInstance()->current_test_info()->name());
+}
+
+TEST_F(RecomputeAndCompressHloRematerializationTest,
+       UnusedTupleElementAcrossCallAndWhile) {
+  const std::string& hlo_string = R"hlo(
+HloModule UnusedTupleElementAcrossCallAndWhile, is_scheduled=true
+
+%peak_callee (p: f32[1024]) -> f32[1024] {
+  %p = f32[1024]{0} parameter(0)
+  %concat = f32[2048]{0} concatenate(%p, %p), dimensions={0}
+  ROOT %slice = f32[1024]{0} slice(%concat), slice={[0:1024]}
+}
+
+%while_cond (state: (f32[1024], f32[1024])) -> pred[] {
+  %state = (f32[1024]{0}, f32[1024]{0}) parameter(0)
+  %gte1 = f32[1024]{0} get-tuple-element(%state), index=1
+  ROOT %c = pred[] constant(false)
+}
+
+%while_body (state: (f32[1024], f32[1024])) -> (f32[1024], f32[1024]) {
+  %state = (f32[1024]{0}, f32[1024]{0}) parameter(0)
+  %gte0 = f32[1024]{0} get-tuple-element(%state), index=0
+  %gte1 = f32[1024]{0} get-tuple-element(%state), index=1
+  %neg1 = f32[1024]{0} negate(%gte1)
+  ROOT %next = (f32[1024]{0}, f32[1024]{0}) tuple(%gte0, %neg1)
+}
+
+%tuple_callee (state: (f32[1024], f32[1024])) -> f32[1024] {
+  %state = (f32[1024]{0}, f32[1024]{0}) parameter(0)
+  %gte1 = f32[1024]{0} get-tuple-element(%state), index=1
+  ROOT %neg = f32[1024]{0} negate(%gte1)
+}
+
+ENTRY %entry {
+  %param = f32[] parameter(0)
+  %bcast = f32[1024]{0} broadcast(%param), dimensions={}
+  %add1 = f32[1024]{0} add(%bcast, %bcast)
+  %peak_call = f32[1024]{0} call(%add1), to_apply=%peak_callee
+  %add2 = f32[1024]{0} add(%bcast, %peak_call)
+  %state = (f32[1024]{0}, f32[1024]{0}) tuple(%bcast, %add2)
+  %while_inst = (f32[1024]{0}, f32[1024]{0}) while(%state), condition=%while_cond, body=%while_body
+  ROOT %out = f32[1024]{0} call(%while_inst), to_apply=%tuple_callee
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunHloRematerialization(
+                           /*memory_limit_bytes=*/22 * 1024, module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_NE(module->entry_computation()->GetInstructionWithName("bcast.remat"),
+            nullptr);
+  CheckForRematInInstructionNames(
+      ::testing::UnitTest::GetInstance()->current_test_info()->name());
+}
+
+TEST_F(RecomputeAndCompressHloRematerializationTest,
+       PassthroughCallOutputReusesOperandBuffer) {
+  const std::string& hlo_string = R"hlo(
+HloModule PassthroughCallOutputReusesOperandBuffer, is_scheduled=true
+
+%passthrough_callee (p0: f32[16384], p1: f32[16384]) -> (f32[16384], f32[16384]) {
+  %p0 = f32[16384]{0} parameter(0)
+  %p1 = f32[16384]{0} parameter(1)
+  %neg = f32[16384]{0} negate(%p1)
+  ROOT %out = (f32[16384]{0}, f32[16384]{0}) tuple(%p0, %neg)
+}
+
+ENTRY %entry {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  %a = f32[16384]{0} broadcast(%p0), dimensions={}
+  %b = f32[16384]{0} broadcast(%p1), dimensions={}
+  %call = (f32[16384]{0}, f32[16384]{0}) call(%a, %b), to_apply=%passthrough_callee
+  %gte0 = f32[16384]{0} get-tuple-element(%call), index=0
+  %gte1 = f32[16384]{0} get-tuple-element(%call), index=1
+  ROOT %sum = f32[16384]{0} add(%gte0, %gte1)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloRematerialization::RematerializationSizes sizes;
+  // At %call, %a (64KB), %b (64KB), and the non passthrough output element 1 of
+  // %call (64KB) are live alongside the 64KB module output reservation,
+  // totaling 256KB (plus small scalar/tuple overhead). Without passthrough
+  // buffer reuse, element 0 of %call would be double counted for an extra 64KB
+  // (320KB total).
+  constexpr int64_t kMemoryLimitBytes = 260 * 1024;
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunHloRematerialization(
+                           kMemoryLimitBytes, module.get(),
+                           /*min_remat_size=*/0,
+                           HloRematerialization::RematAlgorithm::kAlwaysRemat,
+                           /*block_size_limit=*/1,
+                           /*on_rematerialized=*/nullptr, &sizes));
+  EXPECT_FALSE(changed);
+  EXPECT_LE(sizes.before_bytes, kMemoryLimitBytes);
+}
 }  // namespace
 }  // namespace xla

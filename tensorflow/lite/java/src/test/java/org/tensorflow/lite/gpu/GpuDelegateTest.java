@@ -214,7 +214,7 @@ public final class GpuDelegateTest {
               @Override
               public int compare(Map.Entry<Integer, Float> o1, Map.Entry<Integer, Float> o2) {
                 // Intentionally reversed to put high confidence at the head of the queue.
-                return o1.getValue().compareTo(o2.getValue()) * -1;
+                return o2.getValue().compareTo(o1.getValue());
               }
             });
 

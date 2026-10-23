@@ -214,14 +214,22 @@ absl::Status TapeVSpace::CallBackwardFunction(
     const std::vector<int64_t>& unneeded_gradients,
     absl::Span<AbstractTensorHandle* const> output_gradients,
     absl::Span<AbstractTensorHandle*> result) const {
+  absl::Status s;
   if (gradient_function == nullptr) {
-    return absl::InvalidArgumentError(absl::StrCat(
+    s = absl::InvalidArgumentError(absl::StrCat(
         "Provided null gradient_function for '", op_type, "'.\n",
         "If the intent is to treat this op as non-differentiable consider ",
         "using RegisterNotDifferentiable or ",
         "NotDifferentiableGradientFunction."));
+  } else {
+    s = gradient_function->Compute(ctx_, output_gradients, result);
   }
-  return gradient_function->Compute(ctx_, output_gradients, result);
+  for (AbstractTensorHandle* grad : output_gradients) {
+    if (grad != nullptr) {
+      grad->Unref();
+    }
+  }
+  return s;
 }
 
 absl::Status TapeVSpace::BuildOnesLike(const TapeTensor& t,
@@ -251,7 +259,9 @@ TapeTensor TapeVSpace::TapeTensorFromGradient(AbstractTensorHandle* g) const {
   return TapeTensor(g);
 }
 
-void TapeVSpace::MarkAsResult(AbstractTensorHandle* gradient) const {}
+void TapeVSpace::MarkAsResult(AbstractTensorHandle* gradient) const {
+  if (gradient) gradient->Ref();
+}
 
 void TapeVSpace::DeleteGradient(AbstractTensorHandle* gradient) const {
   gradient->Unref();

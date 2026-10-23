@@ -49,7 +49,8 @@ struct CollectiveParams {
       absl::Span<se::Stream* const> async_streams,
       LocalDeviceId local_device_id, int64_t collective_max_nchannels = 0,
       int64_t p2p_max_nchannels = 0,
-      bool collective_use_minimal_resource = false);
+      bool collective_use_minimal_resource = false,
+      bool nccl_window_symmetric = false);
 
   GpuCollectives* collectives;
   se::StreamExecutor* executor;
@@ -75,6 +76,7 @@ struct CollectiveParams {
   int local_device_count = 0;
   bool need_barrier = false;
   bool collective_use_minimal_resource;
+  bool nccl_window_symmetric = false;
 
  private:
   CollectiveParams(
@@ -86,7 +88,8 @@ struct CollectiveParams {
       const CliqueIdCallback* clique_id_callback,
       const absl::flat_hash_map<GlobalDeviceId, IncarnationId>* incarnations,
       int64_t collective_max_nchannels, int64_t p2p_max_nchannels,
-      int local_device_count, bool collective_use_minimal_resource);
+      int local_device_count, bool collective_use_minimal_resource,
+      bool nccl_window_symmetric = false);
 };
 
 // The type of a kernel argument used by a collective kernel.
@@ -158,21 +161,42 @@ struct KernelArgDescriptor {
   std::optional<int32_t> index = std::nullopt;
 };
 
-// This structure contains the information required to configure and launch a
-// custom collective kernel.
-struct CollectiveKernelSpec {
+// Lightweight codegen-time configuration for collective kernels.
+// Built from HLO instruction properties alone, without launch dimensions.
+struct CollectiveCodegenConfig {
+  // If true, the runtime copies the input buffer to the local rank's scratch
+  // buffer before kernel launch. The kernel receives the scratch buffer as
+  // its input argument.
+  bool copy_input_to_scratch = false;
   // Specs for input operand buffers.
   std::vector<IoBufferSpec> input_buffer_specs;
   // Specs for output result buffers.
   std::vector<IoBufferSpec> output_buffer_specs;
-  // Specs for scratch buffers these are allocated by the thunk.
-  std::vector<ScratchBufferSpec> scratch_buffers;
   // Argument descriptors that determine how the kernel is invoked.
   std::vector<KernelArgDescriptor> argument_descriptors;
   // Each time ExecuteOnStream is called, the invocation count is incremented by
   // this amount. For one-shot collectives, this is 1. For two-shot collectives,
   // this is 2 and so on.
   uint32_t sync_count_increment = 1;
+  // If true, the kernel derives its barrier signal value from device memory and
+  // ignores the host-provided invocation count argument, so the runtime does
+  // not advance the host-side count. Each block reads the last signal value it
+  // posted from its own barrier slot (`SignalBuffers[rank][block_id *
+  // world_size + rank]`) in the local rank's signal buffer (scratch buffer 0),
+  // which `BlockBarrierOp` updates on every barrier synchronization. The signal
+  // buffer is zeroed only once, when the thunk is initialized, so the counter
+  // persists across executions and kernels can be replayed from CUDA graphs
+  // (including device-side loops) without updating their arguments. False only
+  // for legacy kernels that read the invocation count argument.
+  bool device_sync_count = true;
+};
+
+// This structure contains the information required to configure and launch a
+// custom collective kernel.
+struct CollectiveKernelSpec {
+  CollectiveCodegenConfig codegen_config;
+  // Specs for scratch buffers these are allocated by the thunk.
+  std::vector<ScratchBufferSpec> scratch_buffers;
 };
 
 }  // namespace xla::gpu

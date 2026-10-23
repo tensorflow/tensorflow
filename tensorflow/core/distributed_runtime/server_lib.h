@@ -44,8 +44,8 @@ class MasterEnv;
 // services.
 class ServerInterface {
  public:
-  ServerInterface() {}
-  virtual ~ServerInterface() {}
+  ServerInterface() = default;
+  virtual ~ServerInterface() = default;
 
   // Starts the server running asynchronously. Returns OK on success, otherwise
   // returns an error.
@@ -77,7 +77,7 @@ class ServerInterface {
   // Add master eager context to local eager service in order to handle enqueue
   // requests from remote workers.
   virtual absl::Status AddMasterEagerContextToEagerService(
-      const uint64_t context_id, EagerContext* context) = 0;
+      uint64_t context_id, EagerContext* context) = 0;
   // Set coordination service agent instance to coordination service RPC handler
   virtual absl::Status SetCoordinationServiceAgentInstance(
       tsl::CoordinationServiceAgent* agent) = 0;
@@ -107,7 +107,7 @@ class ServerFactory {
   // based on the given `server_def`.
   virtual bool AcceptsOptions(const ServerDef& server_def) = 0;
 
-  virtual ~ServerFactory() {}
+  virtual ~ServerFactory() = default;
 
   // For each `ServerFactory` subclass, an instance of that class must
   // be registered by calling this method.

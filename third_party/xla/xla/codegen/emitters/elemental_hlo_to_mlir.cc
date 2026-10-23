@@ -58,6 +58,7 @@ limitations under the License.
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/TypeRange.h"
+#include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
@@ -67,9 +68,11 @@ limitations under the License.
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/transforms/lowering_utils.h"
 #include "xla/codegen/emitters/type_util.h"
+#include "xla/codegen/emitters/utils.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/analysis/symbolic_map.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -485,31 +488,17 @@ absl::StatusOr<SmallVector<Value, 1>> EmitPad(
   return {{if_op.getResult(0)}};
 }
 
-absl::StatusOr<Value> EmitFloatCast(Value value, mlir::Type target_type,
-                                    ImplicitLocOpBuilder& b) {
-  if (value.getType().getIntOrFloatBitWidth() <
-      target_type.getIntOrFloatBitWidth()) {
-    return arith::ExtFOp::create(b, target_type, value);
-  }
-  if (value.getType().getIntOrFloatBitWidth() >
-      target_type.getIntOrFloatBitWidth()) {
-    return arith::TruncFOp::create(b, target_type, value);
-  }
-  return value;
-}
-
 absl::StatusOr<Value> EmitMulAdd(Value lhs, Value rhs, Value accumulator,
                                  PrimitiveType result_element_type,
                                  mlir::Type accumulator_type,
                                  ImplicitLocOpBuilder& b) {
   if (primitive_util::IsFloatingPointType(result_element_type)) {
     if (result_element_type == PrimitiveType::BF16) {
-      lhs = arith::ExtFOp::create(b, b.getF32Type(), lhs);
-      rhs = arith::ExtFOp::create(b, b.getF32Type(), rhs);
+      lhs = EmitFloatCast(lhs, b.getF32Type(), b);
+      rhs = EmitFloatCast(rhs, b.getF32Type(), b);
     }
-    ABSL_ASSIGN_OR_RETURN(
-        Value casted,
-        EmitFloatCast(arith::MulFOp::create(b, lhs, rhs), accumulator_type, b));
+    Value casted =
+        EmitFloatCast(arith::MulFOp::create(b, lhs, rhs), accumulator_type, b);
     return arith::AddFOp::create(b, accumulator, casted);
   }
   if (result_element_type == PrimitiveType::PRED) {
@@ -558,8 +547,6 @@ absl::StatusOr<SmallVector<Value, 1>> EmitDotLoop(
         arith::ConstantOp::create(b, b.getZeroAttr(accumulator_type));
   }
 
-  // For convolutions with `batch_group_count` > 1, there is an additional
-  // symbol for LHS (group id) - ignore it for RHS.
   size_t rhs_symbol_count = rhs_indexing_map.GetSymbolCount();
 
   auto body =
@@ -674,11 +661,11 @@ SmallVector<Value, 1> MapElementwiseOp(
 SmallVector<Value, 3> ApplyIndexing(IndexingMap map, ValueRange dims,
                                     ValueRange symbols,
                                     ImplicitLocOpBuilder& b) {
-  map.ClearConstraints();
   SmallVector<Value, 3> results;
   for (unsigned int i = 0; i < map.GetNumResults(); ++i) {
     SmallVector<Value, 1> result;
-    b.createOrFold<ApplyIndexingOp>(result, dims, symbols, map.GetSubMap(i));
+    IndexingMap sub_map = map.GetSubMap(i);
+    b.createOrFold<ApplyIndexingOp>(result, dims, symbols, std::move(sub_map));
     results.append(result);
   }
   return results;
@@ -878,6 +865,8 @@ absl::StatusOr<SmallVector<Value, 1>> EmitConvert(
   return {{out}};
 }
 
+}  // namespace
+
 absl::StatusOr<SmallVector<Value, 1>> EmitIota(const HloInstruction* instr,
                                                ValueRange indices,
                                                ImplicitLocOpBuilder& builder) {
@@ -895,6 +884,8 @@ absl::StatusOr<SmallVector<Value, 1>> EmitIota(const HloInstruction* instr,
       builder.getLoc(), result_type_with_sign, result_element_type,
       {index_type}, {index}, /*attributes=*/{}, &builder)}};
 }
+
+namespace {
 
 absl::StatusOr<SmallVector<Value, 1>> EmitCompare(
     const HloInstruction* instr, llvm::ArrayRef<mlir::Type> arg_types,
@@ -1055,6 +1046,8 @@ absl::StatusOr<SmallVector<Value, 1>> HloToMlir(
       }
       return MapElementwiseOp<mhlo::ExpOp>(arg_types, operands, builder,
                                            attributes);
+    case HloOpcode::kExp2:
+      return MapElementwiseOp<mhlo::Exp2Op>(arg_types, operands, builder);
     case HloOpcode::kExpm1:
       return MapElementwiseOp<mhlo::Expm1Op>(arg_types, operands, builder);
     case HloOpcode::kFloor:
@@ -1075,6 +1068,8 @@ absl::StatusOr<SmallVector<Value, 1>> HloToMlir(
                                            attributes);
     case HloOpcode::kLog1p:
       return MapElementwiseOp<mhlo::Log1pOp>(arg_types, operands, builder);
+    case HloOpcode::kLog2:
+      return MapElementwiseOp<mhlo::Log2Op>(arg_types, operands, builder);
     case HloOpcode::kLogistic:
       return MapElementwiseOp<mhlo::LogisticOp>(arg_types, operands, builder);
     case HloOpcode::kMap: {

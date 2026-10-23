@@ -31,7 +31,7 @@ namespace grappler {
 // (referred to as 'f16' for short) and which ops stay as fp32.
 class AutoMixedPrecisionLists {
  public:
-  virtual ~AutoMixedPrecisionLists() {}
+  virtual ~AutoMixedPrecisionLists() = default;
 
   // Returns the set of ops that are considered numerically-safe (for execution
   // in f16), performance-critical, and can run in f16. These ops are always
@@ -390,7 +390,7 @@ using AutoMixedPrecisionListsCuda = AutoMixedPrecisionListsFp16;
 
 class AutoMixedPrecisionListsMkl : public AutoMixedPrecisionLists {
  public:
-  AutoMixedPrecisionListsMkl() {}
+  AutoMixedPrecisionListsMkl() = default;
 
   // Only ops which are supported by MKL in bfloat16 should be added to the
   // allow list, infer list, or clear list.

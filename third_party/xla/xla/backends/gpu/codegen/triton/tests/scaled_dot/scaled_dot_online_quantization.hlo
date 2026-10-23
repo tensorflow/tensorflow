@@ -1,7 +1,6 @@
-// RUN: hlo-opt --xla_gpu_experimental_enable_tiling_propagation=false %s --platform=gpu --xla_gpu_target_config_filename=%S/../../../../target_config/specs/h100_sxm.txtpb > %t.optimized.hlo
+// RUN: hlo-opt %s --platform=gpu --xla_gpu_target_config_filename=%S/../../../../target_config/specs/h100_sxm.txtpb > %t.optimized.hlo
 // RUN: FileCheck %s < %t.optimized.hlo
-// RUN: triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation=false %t.optimized.hlo --abs_error_bound=1e-3 --rel_error_bound=1e-3
-// RUN: triton_test_correctness %t.optimized.hlo --xla_gpu_experimental_enable_tiling_propagation --abs_error_bound=1e-3 --rel_error_bound=1e-3
+// RUN: triton_test_correctness %t.optimized.hlo --abs_error_bound=1e-3 --rel_error_bound=1e-3
 
 HloModule jit_scaled_dot_fp8
 
@@ -47,12 +46,12 @@ ENTRY %main.4 (a.1: f8e4m3fn[2,256], b.1: f8e4m3fn[256,256], a_scale.1: f8e8m0fn
   ROOT %tuple.3 = (f8e3m4[2,256]{1,0}, f8e8m0fnu[2,8]{1,0}) tuple(%jit_online_quantize_.4, %jit_online_quantize_.5)
 }
 
-// CHECK: %fusion_scaled-dot (parameter
+// CHECK: %[[FUSION_DOT:[^ ]*scaled-dot[^ ]*]] (param
 // CHECK: %fused_reduce (param
 // CHECK: %fused_convert (param
 // CHECK: %fused_convert.1 (param
 // CHECK: ENTRY
-// CHECK: %[[fusion_dot:.*]] = f32[2,256]{1,0} fusion({{.*}}), kind=kCustom, calls=%fusion_scaled-dot
+// CHECK: %[[fusion_dot:.*]] = f32[2,256]{1,0} fusion({{.*}}), kind=kCustom, calls=%[[FUSION_DOT]]
 // CHECK: %[[fusion_reduce:.*]] = f32[2,8]{1,0} fusion(%[[fusion_dot]]), kind=kInput, calls=%fused_reduce
 // CHECK: %[[fusion_convert1:.*]] = f8e3m4[2,256]{1,0} fusion(%[[fusion_dot]], %[[fusion_reduce]]), kind=kLoop, calls=%fused_convert
 // CHECK: %[[fusion_convert2:.*]] = f8e8m0fnu[2,8]{1,0} fusion(%[[fusion_reduce]]), kind=kLoop, calls=%fused_convert.1

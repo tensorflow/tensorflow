@@ -127,6 +127,21 @@ func.func @subi(%arg0: index, %arg1: index) -> index {
 
 // -----
 
+func.func @xori(%arg0: index, %arg1: index) -> index {
+  %i0 = arith.xori %arg0, %arg1 : index
+  return %i0 : index
+}
+
+// CHECK-LABEL: @xori
+// CHECK-SAME: (%[[ARG0:.*]]: index, %[[ARG1:.*]]: index) -> index {
+// CHECK: %[[V1:.*]] = arith.index_cast %[[ARG0]] : index to i64
+// CHECK: %[[V2:.*]] = arith.index_cast %[[ARG1]] : index to i64
+// CHECK: %[[RI:.*]] = arith.xori %[[V1]], %[[V2]] : i64
+// CHECK: %[[R:.*]] = arith.index_cast %[[RI]] : i64 to index
+// CHECK: return %[[R]] : index
+
+// -----
+
 func.func @complex(%arg0: index, %arg1: index, %arg2: index) -> index {
   %i0 = arith.subi %arg0, %arg1 : index
   %i1 = arith.addi %arg0, %arg1 : index

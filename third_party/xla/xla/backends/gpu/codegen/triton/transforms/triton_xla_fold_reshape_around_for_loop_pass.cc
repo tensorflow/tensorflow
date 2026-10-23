@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <utility>
 
-#include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Location.h"
@@ -23,11 +22,10 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
-#include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
-#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "xla/backends/gpu/codegen/triton/transforms/passes.h"
+#include "mlir/Transforms/WalkPatternRewriteDriver.h"
+#include "xla/backends/gpu/codegen/triton/transforms/passes.h"  // IWYU pragma: keep
 #include "triton/Dialect/Triton/IR/Dialect.h"
 
 namespace mlir::triton::xla {
@@ -48,17 +46,20 @@ class FoldReshapeAroundForLoop : public mlir::OpRewritePattern<scf::ForOp> {
     auto yield_op = mlir::cast<scf::YieldOp>(for_op.getBody()->getTerminator());
     ValueRange yield_operands = yield_op.getOperands();
 
-    for (auto it :
-         llvm::zip(for_op.getInitArgsMutable(), for_op.getResults())) {
-      OpOperand& iter_op_operand = std::get<0>(it);
-      unsigned i =
-          iter_op_operand.getOperandNumber() - for_op.getNumControlOperands();
+    for (OpOperand& init_arg : for_op.getInitArgsMutable()) {
+      unsigned i = init_arg.getOperandNumber() - for_op.getNumControlOperands();
 
       ttir::ReshapeOp reshape_op =
           yield_operands[i].getDefiningOp<ttir::ReshapeOp>();
-      if (!reshape_op ||
-          (reshape_op.getOperand().getType() == yield_operands[i].getType())) {
-        continue;
+      if (!reshape_op) {
+        continue;  // Not yielding a reshape result.
+      }
+      if (reshape_op.getSrc().getType() == yield_operands[i].getType()) {
+        continue;  // The reshape is a no-op.
+      }
+      if (reshape_op.getSrc().getType().getRank() >=
+          reshape_op.getType().getRank()) {
+        continue;  // The reshape is not rank increasing.
       }
 
       Value inner_yield_val = reshape_op.getOperand();
@@ -66,19 +67,21 @@ class FoldReshapeAroundForLoop : public mlir::OpRewritePattern<scf::ForOp> {
 
       // Sink rank reduction for initialization.
       Value new_init = ttir::ReshapeOp::create(
-          rewriter, op_loc, inner_yield_val.getType(), iter_op_operand.get());
+          rewriter, op_loc, inner_yield_val.getType(), init_arg.get());
 
-      // Update the yield of the original loop to provide the un-reshaped value.
-      // This prevents 'replaceAndCastForOpIterArg' from cloning the original
-      // reshape into the new loop body, which would otherwise cause the
-      // rewriter to recursively trigger on the same pattern in the new loop.
+      // Update the yield of the original loop to provide the un-reshaped
+      // value. This prevents 'replaceAndCastForOpIterArg' from cloning the
+      // original reshape into the new loop body.
       rewriter.modifyOpInPlace(
           yield_op, [&]() { yield_op->setOperand(i, inner_yield_val); });
 
       // Use the SCF utility to handle structural rewrite and cast injection.
       SmallVector<Value> new_results = mlir::scf::replaceAndCastForOpIterArg(
-          rewriter, for_op, iter_op_operand, new_init,
+          rewriter, for_op, init_arg, new_init,
           [](OpBuilder& b, Location loc, Type type, Value val) -> Value {
+            if (val.getType() == type) {
+              return val;
+            }
             return ttir::ReshapeOp::create(b, loc, type, val);
           });
 
@@ -100,10 +103,7 @@ class TritonXLAFoldReshapeAroundForLoopPass
     mlir::MLIRContext* mlir_context = &getContext();
     mlir::RewritePatternSet patterns(mlir_context);
     patterns.add<FoldReshapeAroundForLoop>(mlir_context);
-    if (mlir::failed(
-            mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {
-      return signalPassFailure();
-    }
+    walkAndApplyPatterns(getOperation(), std::move(patterns));
   }
 };
 

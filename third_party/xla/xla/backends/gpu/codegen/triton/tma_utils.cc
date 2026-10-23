@@ -24,6 +24,7 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
+#include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
@@ -152,7 +153,7 @@ bool IsTmaRecommended(const TritonGemmConfig& config) {
 }
 
 // Equivalent to the recommendation constructed for TritonGemmConfig.
-bool IsTmaRecommended(const BlockLevelFusionConfig& config) {
+bool IsTmaRecommended(const xtile::BlockLevelFusionConfig& config) {
   if (!(config.num_warps() <= 8 &&
         (config.num_stages() == 1 || config.num_stages() == 3 ||
          config.num_stages() == 4))) {

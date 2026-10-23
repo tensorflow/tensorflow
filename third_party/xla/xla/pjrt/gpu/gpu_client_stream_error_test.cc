@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -128,8 +129,11 @@ TEST_P(PjRtGpuClientStreamErrorTest, AbortsOnStreamError) {
                           api_version=API_VERSION_TYPED_FFI
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtLoadedExecutable> executable,
-                          CompileExecutable(kIllegalProgram, *client_));
+  CompileOptions compile_options;
+  compile_options.individually_defined_output_indices = {0};
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<xla::PjRtLoadedExecutable> executable,
+      CompileExecutable(kIllegalProgram, *client_, std::move(compile_options)));
   ExecuteContext context;
   TF_ASSERT_OK(context.ffi_context().Emplace<KernelHolder>());
   ExecuteOptions opts;

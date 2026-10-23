@@ -87,7 +87,7 @@ struct ReduceEigenImpl<Device, OUT_T, IN_T, ReductionAxes,
   void operator()(const Device& d, OUT_T out, IN_T in,
                   const ReductionAxes& reduction_axes,
                   const functor::MeanReducer<Scalar>& reducer) {
-    static_assert(std::is_same<Scalar, typename OUT_T::Scalar>::value, "");
+    static_assert(std::is_same_v<Scalar, typename OUT_T::Scalar>, "");
     Eigen::internal::SumReducer<Scalar> sum_reducer;
     out.device(d) = in.reduce(reduction_axes, sum_reducer) /
                     static_cast<Scalar>(in.size() / out.size());
@@ -132,7 +132,7 @@ struct ReduceEigenImpl<Device, OUT_T, IN_T, ReductionAxes,
   void operator()(const Device& d, OUT_T out, IN_T in,
                   const ReductionAxes& reduction_axes,
                   const functor::EuclideanNormReducer<Scalar>& reducer) {
-    static_assert(std::is_same<Scalar, typename OUT_T::Scalar>::value, "");
+    static_assert(std::is_same_v<Scalar, typename OUT_T::Scalar>, "");
     Eigen::internal::SumReducer<Scalar> sum_reducer;
     out.device(d) =
         (in * in.conjugate()).reduce(reduction_axes, sum_reducer).sqrt();
@@ -146,7 +146,7 @@ struct ReduceEigenImpl<Device, OUT_T, IN_T, ReductionAxes,
   void operator()(const Device& d, OUT_T out, IN_T in,
                   const ReductionAxes& reduction_axes,
                   const functor::EuclideanNormReducer<bfloat16>& reducer) {
-    static_assert(std::is_same<bfloat16, typename OUT_T::Scalar>::value, "");
+    static_assert(std::is_same_v<bfloat16, typename OUT_T::Scalar>, "");
     Eigen::internal::SumReducer<float> sum_reducer;
     auto in_as_float = in.template cast<float>();
     out.device(d) = (in_as_float * in_as_float.conjugate())

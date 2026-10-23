@@ -9,6 +9,9 @@
 // RUN: fusion_to_xtile %s | fusion_compiler_opt \
 // RUN:   --xtile-cpu-new-xtile-to-vector --xla-simplify-arith \
 // RUN:   | FileCheck %s --check-prefix=NEW-VECTOR
+// RUN: fusion_to_xtile %s | fusion_compiler_opt \
+// RUN:   --xtile-cpu-new-xtile-to-vector --xtile-cpu-new-vector-to-llvm \
+// RUN:   | FileCheck %s --check-prefix=NEW-VECTOR-LLVM
 // RUN: test_correctness %s --xla_cpu_use_new_xtile_lowering=true
 
 fusion {
@@ -23,7 +26,7 @@ fusion {
 // CHECK-SAME:     %[[LHS:[^:]+]]: memref<128x256xf32>,
 // CHECK-SAME:     %[[RHS:[^:]+]]: memref<128x256xf32>,
 // CHECK-SAME:     %[[OUT:[^:]+]]: memref<128x256xf32>,
-// CHECK-SAME:     %[[PID:[^:]+]]: index)
+// CHECK-SAME:     %[[PID:[^:]+]]: index {xla.range = [0 : index, 3 : index]})
 // CHECK-SAME:     attributes {num_opaque_args = 0 : i32}
 
 // CHECK:  %[[C0:.*]] = arith.constant 0 : index
@@ -56,6 +59,9 @@ fusion {
 // NEW-VECTOR:         vector.transfer_write %[[MIN]], %[[ARG2]][%{{.*}}, %{{.*}}] {in_bounds = [true, true]} : vector<1x4xf32>, memref<128x256xf32>
 
 // CHECK-LLVM: llvm.intr.memcpy
+
+// NEW-VECTOR-LLVM-LABEL: llvm.func internal @wrapped_fusion_impl
+// NEW-VECTOR-LLVM-NOT: llvm.alloc
 
 ENTRY main {
   p0 = f32[128,256] parameter(0)

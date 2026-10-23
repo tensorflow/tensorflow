@@ -14,11 +14,11 @@
 // ==============================================================================
 // RUN: emitters_opt %s --allow-unregistered-dialect -split-input-file \
 // RUN: -xla-lower-tensors="gpu_device_info='cuda_compute_capability {major: 6}'" \
-// RUN: | FileCheck %s
+// RUN: | FileCheck %s --check-prefixes=CHECK,CHECK-GPU
 
 // RUN: emitters_opt %s --allow-unregistered-dialect -split-input-file \
 // RUN: -xla-lower-tensors="target_type=cpu" \
-// RUN: | FileCheck %s
+// RUN: | FileCheck %s --check-prefixes=CHECK,CHECK-CPU
 
 // RUN: emitters_opt %s --allow-unregistered-dialect -split-input-file \
 // RUN: -xla-lower-tensors="gpu_device_info='cuda_compute_capability {major: 6}'" \
@@ -287,21 +287,26 @@ func.func @atomic_rmw_f16(%in: tensor<8xf16>, %i: index)
 }
 // CHECK-LABEL: @atomic_rmw_f16
 // CHECK: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-NEXT: %[[ADDR_INT:.*]] = llvm.ptrtoint %[[ADDR]]
-// CHECK-NEXT: %[[OFFSET:.*]] = llvm.and %[[ADDR_INT]], %{{.*}}
-// CHECK-NEXT: %[[INDEX:.*]] = llvm.mul %[[OFFSET]], %{{.*}}
-// CHECK-NEXT: %[[BASE:.*]] = llvm.getelementptr inbounds %[[ADDR]]
-// CHECK: %[[INIT:.*]] = llvm.load %[[BASE]]
-// CHECK-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]])
-// CHECK-NEXT: %[[VAR_SHIFT:.*]] = llvm.lshr %[[VAR]], %{{.*}}
-// CHECK-NEXT: %[[VAR_TRUNC:.*]] = llvm.trunc %[[VAR_SHIFT]]
-// CHECK-NEXT: arith.bitcast %[[VAR_TRUNC]] : i16 to f16
-// CHECK: %[[RES:.*]] = arith.bitcast %{{.*}} : f16 to i16
-// CHECK-NEXT: %[[RES_WIDE:.*]] = llvm.zext %[[RES]]
-// CHECK-NEXT: %[[NEW_MASKED:.*]] = llvm.and %[[VAR]], %{{.*}}
-// CHECK-NEXT: %[[RES_SHIFT:.*]] = llvm.shl %[[RES_WIDE]], %{{.*}}
-// CHECK-NEXT: %[[NEW:.*]] = llvm.or %[[NEW_MASKED]], %[[RES_SHIFT]]
-// CHECK-NEXT: llvm.cmpxchg %[[BASE]], %[[VAR]], %[[NEW]]
+// CHECK-GPU-NEXT: %[[ADDR_INT:.*]] = llvm.ptrtoint %[[ADDR]]
+// CHECK-GPU-NEXT: %[[OFFSET:.*]] = llvm.and %[[ADDR_INT]], %{{.*}}
+// CHECK-GPU-NEXT: %[[BASE:.*]] = llvm.intr.ptrmask %[[ADDR]], %{{.*}}
+// CHECK-GPU: %[[INIT:.*]] = llvm.load %[[BASE]]
+// CHECK-GPU-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]])
+// CHECK-GPU-NEXT: %[[VAR_SHIFT:.*]] = llvm.lshr %[[VAR]], %{{.*}}
+// CHECK-GPU-NEXT: %[[VAR_TRUNC:.*]] = llvm.trunc %[[VAR_SHIFT]]
+// CHECK-GPU-NEXT: arith.bitcast %[[VAR_TRUNC]] : i16 to f16
+// CHECK-GPU: %[[RES:.*]] = arith.bitcast %{{.*}} : f16 to i16
+// CHECK-GPU-NEXT: %[[RES_WIDE:.*]] = llvm.zext %[[RES]]
+// CHECK-GPU-NEXT: %[[NEW_MASKED:.*]] = llvm.and %[[VAR]], %{{.*}}
+// CHECK-GPU-NEXT: %[[RES_SHIFT:.*]] = llvm.shl %[[RES_WIDE]], %{{.*}}
+// CHECK-GPU-NEXT: %[[NEW:.*]] = llvm.or %[[NEW_MASKED]], %[[RES_SHIFT]]
+// CHECK-GPU-NEXT: llvm.cmpxchg %[[BASE]], %[[VAR]], %[[NEW]]
+// CHECK-CPU-NEXT: %[[INIT:.*]] = llvm.load %[[ADDR]] : !llvm.ptr -> i16
+// CHECK-CPU-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]]) : (i16) -> i16
+// CHECK-CPU-NEXT: %[[CUR:.*]] = arith.bitcast %[[VAR]] : i16 to f16
+// CHECK-CPU-NEXT: %[[ADD:.*]] = arith.addf %[[CUR]], %{{.*}} : f16
+// CHECK-CPU-NEXT: %[[RES:.*]] = arith.bitcast %[[ADD]] : f16 to i16
+// CHECK-CPU-NEXT: llvm.cmpxchg %[[ADDR]], %[[VAR]], %[[RES]] monotonic monotonic : !llvm.ptr, i16
 
 // -----
 
@@ -317,21 +322,26 @@ func.func @atomic_rmw_f8E4M3(%in: tensor<8xf8E4M3>, %i: index)
 }
 // CHECK-LABEL: @atomic_rmw_f8E4M3
 // CHECK: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-NEXT: %[[ADDR_INT:.*]] = llvm.ptrtoint %[[ADDR]]
-// CHECK-NEXT: %[[OFFSET:.*]] = llvm.and %[[ADDR_INT]], %{{.*}}
-// CHECK-NEXT: %[[INDEX:.*]] = llvm.mul %[[OFFSET]], %{{.*}}
-// CHECK-NEXT: %[[BASE:.*]] = llvm.getelementptr inbounds %[[ADDR]]
-// CHECK: %[[INIT:.*]] = llvm.load %[[BASE]]
-// CHECK-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]])
-// CHECK-NEXT: %[[VAR_SHIFT:.*]] = llvm.lshr %[[VAR]], %{{.*}}
-// CHECK-NEXT: %[[VAR_TRUNC:.*]] = llvm.trunc %[[VAR_SHIFT]]
-// CHECK-NEXT: arith.bitcast %[[VAR_TRUNC]] : i8 to f8E4M3
-// CHECK: %[[RES:.*]] = arith.bitcast %{{.*}} : f8E4M3 to i8
-// CHECK-NEXT: %[[RES_WIDE:.*]] = llvm.zext %[[RES]]
-// CHECK-DAG: %[[RES_SHIFT:.*]] = llvm.shl %[[RES_WIDE]], %{{.*}}
-// CHECK-DAG: %[[NEW_MASKED:.*]] = llvm.and %[[VAR]], %{{.*}}
-// CHECK-NEXT: %[[NEW:.*]] = llvm.or %[[NEW_MASKED]], %[[RES_SHIFT]]
-// CHECK-NEXT: llvm.cmpxchg %[[BASE]], %[[VAR]], %[[NEW]]
+// CHECK-GPU-NEXT: %[[ADDR_INT:.*]] = llvm.ptrtoint %[[ADDR]]
+// CHECK-GPU-NEXT: %[[OFFSET:.*]] = llvm.and %[[ADDR_INT]], %{{.*}}
+// CHECK-GPU-NEXT: %[[BASE:.*]] = llvm.intr.ptrmask %[[ADDR]], %{{.*}}
+// CHECK-GPU: %[[INIT:.*]] = llvm.load %[[BASE]]
+// CHECK-GPU-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]])
+// CHECK-GPU-NEXT: %[[VAR_SHIFT:.*]] = llvm.lshr %[[VAR]], %{{.*}}
+// CHECK-GPU-NEXT: %[[VAR_TRUNC:.*]] = llvm.trunc %[[VAR_SHIFT]]
+// CHECK-GPU-NEXT: arith.bitcast %[[VAR_TRUNC]] : i8 to f8E4M3
+// CHECK-GPU: %[[RES:.*]] = arith.bitcast %{{.*}} : f8E4M3 to i8
+// CHECK-GPU-NEXT: %[[RES_WIDE:.*]] = llvm.zext %[[RES]]
+// CHECK-GPU-DAG: %[[RES_SHIFT:.*]] = llvm.shl %[[RES_WIDE]], %{{.*}}
+// CHECK-GPU-DAG: %[[NEW_MASKED:.*]] = llvm.and %[[VAR]], %{{.*}}
+// CHECK-GPU-NEXT: %[[NEW:.*]] = llvm.or %[[NEW_MASKED]], %[[RES_SHIFT]]
+// CHECK-GPU-NEXT: llvm.cmpxchg %[[BASE]], %[[VAR]], %[[NEW]]
+// CHECK-CPU-NEXT: %[[INIT:.*]] = llvm.load %[[ADDR]] : !llvm.ptr -> i8
+// CHECK-CPU-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]]) : (i8) -> i8
+// CHECK-CPU-NEXT: %[[CUR:.*]] = arith.bitcast %[[VAR]] : i8 to f8E4M3
+// CHECK-CPU-NEXT: %[[ADD:.*]] = arith.addf %[[CUR]], %{{.*}} : f8E4M3
+// CHECK-CPU-NEXT: %[[RES:.*]] = arith.bitcast %[[ADD]] : f8E4M3 to i8
+// CHECK-CPU-NEXT: llvm.cmpxchg %[[ADDR]], %[[VAR]], %[[RES]] monotonic monotonic : !llvm.ptr, i8
 
 // -----
 
@@ -347,45 +357,96 @@ func.func @atomic_rmw_i4(%in: tensor<8xi4>, %i: index) -> (tensor<8xi4>) {
 
 // CHECK-LABEL: @atomic_rmw_i4(
 // CHECK-SAME:    %[[ARG0:.*]]: !llvm.ptr, %[[ARG1:.*]]: index) {
-// CHECK:       %[[C1_I4:.*]] = arith.constant 1 : i4
-// CHECK:       %[[C1_I64:.*]] = arith.constant 1 : i64
-// CHECK:       %[[C4_I8:.*]] = arith.constant 4 : i8
-// CHECK:       %[[C3_I64:.*]] = llvm.mlir.constant(3 : i64) : i64
-// CHECK:       %[[C_NEG1_I64:.*]] = llvm.mlir.constant(-1 : i64) : i64
-// CHECK:       %[[C8_I32:.*]] = llvm.mlir.constant(8 : i32) : i32
-// CHECK:       %[[C_NEG1_I32:.*]] = llvm.mlir.constant(-1 : i32) : i32
-// CHECK:       %[[C15_I32:.*]] = llvm.mlir.constant(15 : i32) : i32
-// CHECK:       %[[C_TRUE:.*]] = llvm.mlir.constant(true) : i1
-// CHECK:       %[[ARG1_I64:.*]] = arith.index_castui %[[ARG1]] : index to i64
-// CHECK:       %[[AND_1:.*]] = arith.andi %[[ARG1_I64]], %[[C1_I64]] : i64
-// CHECK:       %[[TRUNC_I8:.*]] = arith.trunci %[[AND_1]] : i64 to i8
-// CHECK:       %[[MUL_4:.*]] = arith.muli %[[TRUNC_I8]], %[[C4_I8]] : i8
-// CHECK:       %[[SHR_1:.*]] = arith.shrui %[[ARG1_I64]], %[[C1_I64]] : i64
-// CHECK:       %[[GEP_BASE:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, %[[SHR_1]]] : (!llvm.ptr, i64) -> !llvm.ptr, !llvm.array<4 x i8>
-// CHECK:       %[[PTR_INT:.*]] = llvm.ptrtoint %[[GEP_BASE]] : !llvm.ptr to i64
-// CHECK:       %[[AND_3:.*]] = llvm.and %[[PTR_INT]], %[[C3_I64]] : i64
-// CHECK:       %[[MUL_NEG1:.*]] = llvm.mul %[[AND_3]], %[[C_NEG1_I64]] : i64
-// CHECK:       %[[GEP_OFFSET:.*]] = llvm.getelementptr inbounds %[[GEP_BASE]][%[[MUL_NEG1]]] : (!llvm.ptr, i64) -> !llvm.ptr, i8
-// CHECK:       %[[TRUNC_I32:.*]] = llvm.trunc %[[AND_3]] : i64 to i32
-// CHECK:       %[[MUL_8:.*]] = llvm.mul %[[TRUNC_I32]], %[[C8_I32]] : i32
-// CHECK:       %[[ZEXT_I32:.*]] = llvm.zext %[[MUL_4]] : i8 to i32
-// CHECK:       %[[ADD_19:.*]] = llvm.add %[[MUL_8]], %[[ZEXT_I32]] : i32
-// CHECK:       %[[SHL_20:.*]] = llvm.shl %[[C15_I32]], %[[ADD_19]] : i32
-// CHECK:       %[[XOR_21:.*]] = llvm.xor %[[C_NEG1_I32]], %[[SHL_20]] : i32
-// CHECK:       %[[LOADED_I32:.*]] = llvm.load %[[GEP_OFFSET]] : !llvm.ptr -> i32
-// CHECK:       %[[WHILE_RES:.*]] = scf.while (%[[ARG2:.*]] = %[[LOADED_I32]]) : (i32) -> i32 {
-// CHECK:         %[[LSHR:.*]] = llvm.lshr %[[ARG2]], %[[ADD_19]] : i32
-// CHECK:         %[[TRUNC_I4:.*]] = llvm.trunc %[[LSHR]] : i32 to i4
-// CHECK:         %[[ADDI:.*]] = arith.addi %[[TRUNC_I4]], %[[C1_I4]] : i4
-// CHECK:         %[[ZEXT_I32_2:.*]] = llvm.zext %[[ADDI]] : i4 to i32
-// CHECK:         %[[AND_MASK_I32:.*]] = llvm.and %[[ARG2]], %[[XOR_21]] : i32
-// CHECK:         %[[SHL_NEW:.*]] = llvm.shl %[[ZEXT_I32_2]], %[[ADD_19]] : i32
-// CHECK:         %[[OR_NEW:.*]] = llvm.or %[[AND_MASK_I32]], %[[SHL_NEW]] : i32
-// CHECK:         %[[CMPXCHG:.*]] = llvm.cmpxchg %[[GEP_OFFSET]], %[[ARG2]], %[[OR_NEW]] monotonic monotonic : !llvm.ptr, i32
-// CHECK:         %[[EXTRACT0:.*]] = llvm.extractvalue %[[CMPXCHG]][0] : !llvm.struct<(i32, i1)>
-// CHECK:         %[[EXTRACT1:.*]] = llvm.extractvalue %[[CMPXCHG]][1] : !llvm.struct<(i32, i1)>
-// CHECK:         %[[XOR_34:.*]] = llvm.xor %[[EXTRACT1]], %[[C_TRUE]] : i1
-// CHECK:         scf.condition
+// CHECK-GPU:       %[[C1_I4:.*]] = arith.constant 1 : i4
+// CHECK-GPU:       %[[C1_I64:.*]] = arith.constant 1 : i64
+// CHECK-GPU:       %[[C4_I8:.*]] = arith.constant 4 : i8
+// CHECK-GPU:       %[[C3_I64:.*]] = llvm.mlir.constant(3 : i64) : i64
+// CHECK-GPU:       %[[C_NEG4_I64:.*]] = llvm.mlir.constant(-4 : i64) : i64
+// CHECK-GPU:       %[[C8_I32:.*]] = llvm.mlir.constant(8 : i32) : i32
+// CHECK-GPU:       %[[C_NEG1_I32:.*]] = llvm.mlir.constant(-1 : i32) : i32
+// CHECK-GPU:       %[[C15_I32:.*]] = llvm.mlir.constant(15 : i32) : i32
+// CHECK-GPU:       %[[C_TRUE:.*]] = llvm.mlir.constant(true) : i1
+// CHECK-GPU:       %[[ARG1_I64:.*]] = arith.index_castui %[[ARG1]] : index to i64
+// CHECK-GPU:       %[[AND_1:.*]] = arith.andi %[[ARG1_I64]], %[[C1_I64]] : i64
+// CHECK-GPU:       %[[TRUNC_I8:.*]] = arith.trunci %[[AND_1]] : i64 to i8
+// CHECK-GPU:       %[[MUL_4:.*]] = arith.muli %[[TRUNC_I8]], %[[C4_I8]] : i8
+// CHECK-GPU:       %[[SHR_1:.*]] = arith.shrui %[[ARG1_I64]], %[[C1_I64]] : i64
+// CHECK-GPU:       %[[GEP_BASE:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, %[[SHR_1]]] : (!llvm.ptr, i64) -> !llvm.ptr, !llvm.array<4 x i8>
+// CHECK-GPU:       %[[PTR_INT:.*]] = llvm.ptrtoint %[[GEP_BASE]] : !llvm.ptr to i64
+// CHECK-GPU:       %[[AND_3:.*]] = llvm.and %[[PTR_INT]], %[[C3_I64]] : i64
+// CHECK-GPU:       %[[GEP_OFFSET:.*]] = llvm.intr.ptrmask %[[GEP_BASE]], %[[C_NEG4_I64]] : (!llvm.ptr, i64) -> !llvm.ptr
+// CHECK-GPU:       %[[TRUNC_I32:.*]] = llvm.trunc %[[AND_3]] : i64 to i32
+// CHECK-GPU:       %[[MUL_8:.*]] = llvm.mul %[[TRUNC_I32]], %[[C8_I32]] : i32
+// CHECK-GPU:       %[[ZEXT_I32:.*]] = llvm.zext %[[MUL_4]] : i8 to i32
+// CHECK-GPU:       %[[ADD_19:.*]] = llvm.add %[[MUL_8]], %[[ZEXT_I32]] : i32
+// CHECK-GPU:       %[[SHL_20:.*]] = llvm.shl %[[C15_I32]], %[[ADD_19]] : i32
+// CHECK-GPU:       %[[XOR_21:.*]] = llvm.xor %[[C_NEG1_I32]], %[[SHL_20]] : i32
+// CHECK-GPU:       %[[LOADED_I32:.*]] = llvm.load %[[GEP_OFFSET]] : !llvm.ptr -> i32
+// CHECK-GPU:       %[[WHILE_RES:.*]] = scf.while (%[[ARG2:.*]] = %[[LOADED_I32]]) : (i32) -> i32 {
+// CHECK-GPU:         %[[LSHR:.*]] = llvm.lshr %[[ARG2]], %[[ADD_19]] : i32
+// CHECK-GPU:         %[[TRUNC_I4:.*]] = llvm.trunc %[[LSHR]] : i32 to i4
+// CHECK-GPU:         %[[ADDI:.*]] = arith.addi %[[TRUNC_I4]], %[[C1_I4]] : i4
+// CHECK-GPU:         %[[ZEXT_I32_2:.*]] = llvm.zext %[[ADDI]] : i4 to i32
+// CHECK-GPU:         %[[AND_MASK_I32:.*]] = llvm.and %[[ARG2]], %[[XOR_21]] : i32
+// CHECK-GPU:         %[[SHL_NEW:.*]] = llvm.shl %[[ZEXT_I32_2]], %[[ADD_19]] : i32
+// CHECK-GPU:         %[[OR_NEW:.*]] = llvm.or %[[AND_MASK_I32]], %[[SHL_NEW]] : i32
+// CHECK-GPU:         %[[CMPXCHG:.*]] = llvm.cmpxchg %[[GEP_OFFSET]], %[[ARG2]], %[[OR_NEW]] monotonic monotonic : !llvm.ptr, i32
+// CHECK-GPU:         %[[EXTRACT0:.*]] = llvm.extractvalue %[[CMPXCHG]][0] : !llvm.struct<(i32, i1)>
+// CHECK-GPU:         %[[EXTRACT1:.*]] = llvm.extractvalue %[[CMPXCHG]][1] : !llvm.struct<(i32, i1)>
+// CHECK-GPU:         %[[XOR_34:.*]] = llvm.xor %[[EXTRACT1]], %[[C_TRUE]] : i1
+// CHECK-GPU:         scf.condition
+// CHECK-CPU:       %[[C1_I4:.*]] = arith.constant 1 : i4
+// CHECK-CPU:       %[[C1_I64:.*]] = arith.constant 1 : i64
+// CHECK-CPU:       %[[C4_I8:.*]] = arith.constant 4 : i8
+// CHECK-CPU:       %[[C_NEG1_I8:.*]] = llvm.mlir.constant(-1 : i8) : i8
+// CHECK-CPU:       %[[C15_I8:.*]] = llvm.mlir.constant(15 : i8) : i8
+// CHECK-CPU:       %[[C_TRUE:.*]] = llvm.mlir.constant(true) : i1
+// CHECK-CPU:       %[[ARG1_I64:.*]] = arith.index_castui %[[ARG1]] : index to i64
+// CHECK-CPU:       %[[AND_1:.*]] = arith.andi %[[ARG1_I64]], %[[C1_I64]] : i64
+// CHECK-CPU:       %[[TRUNC_I8:.*]] = arith.trunci %[[AND_1]] : i64 to i8
+// CHECK-CPU:       %[[MUL_4:.*]] = arith.muli %[[TRUNC_I8]], %[[C4_I8]] : i8
+// CHECK-CPU:       %[[SHR_1:.*]] = arith.shrui %[[ARG1_I64]], %[[C1_I64]] : i64
+// CHECK-CPU:       %[[GEP_BASE:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, %[[SHR_1]]] : (!llvm.ptr, i64) -> !llvm.ptr, !llvm.array<4 x i8>
+// CHECK-CPU-NEXT:  %[[SHL_MASK:.*]] = llvm.shl %[[C15_I8]], %[[MUL_4]] : i8
+// CHECK-CPU-NEXT:  %[[INV_MASK:.*]] = llvm.xor %[[C_NEG1_I8]], %[[SHL_MASK]] : i8
+// CHECK-CPU-NEXT:  %[[LOADED_I8:.*]] = llvm.load %[[GEP_BASE]] : !llvm.ptr -> i8
+// CHECK-CPU-NEXT:  %[[WHILE_RES:.*]] = scf.while (%[[ARG2:.*]] = %[[LOADED_I8]]) : (i8) -> i8 {
+// CHECK-CPU-NEXT:    %[[LSHR:.*]] = llvm.lshr %[[ARG2]], %[[MUL_4]] : i8
+// CHECK-CPU-NEXT:    %[[TRUNC_I4:.*]] = llvm.trunc %[[LSHR]] : i8 to i4
+// CHECK-CPU-NEXT:    %[[ADDI:.*]] = arith.addi %[[TRUNC_I4]], %[[C1_I4]] : i4
+// CHECK-CPU-NEXT:    %[[ZEXT_I8:.*]] = llvm.zext %[[ADDI]] : i4 to i8
+// CHECK-CPU-NEXT:    %[[AND_MASK_I8:.*]] = llvm.and %[[ARG2]], %[[INV_MASK]] : i8
+// CHECK-CPU-NEXT:    %[[SHL_NEW:.*]] = llvm.shl %[[ZEXT_I8]], %[[MUL_4]] : i8
+// CHECK-CPU-NEXT:    %[[OR_NEW:.*]] = llvm.or %[[AND_MASK_I8]], %[[SHL_NEW]] : i8
+// CHECK-CPU-NEXT:    %[[CMPXCHG:.*]] = llvm.cmpxchg %[[GEP_BASE]], %[[ARG2]], %[[OR_NEW]] monotonic monotonic : !llvm.ptr, i8
+// CHECK-CPU-NEXT:    %[[EXTRACT0:.*]] = llvm.extractvalue %[[CMPXCHG]][0] : !llvm.struct<(i8, i1)>
+// CHECK-CPU-NEXT:    %[[EXTRACT1:.*]] = llvm.extractvalue %[[CMPXCHG]][1] : !llvm.struct<(i8, i1)>
+// CHECK-CPU-NEXT:    %[[XOR_OK:.*]] = llvm.xor %[[EXTRACT1]], %[[C_TRUE]] : i1
+// CHECK-CPU-NEXT:    scf.condition
+
+// -----
+
+func.func @atomic_rmw_i1(%in: tensor<8xi1>, %i: index) -> (tensor<8xi1>) {
+  %ret = xla.atomic_rmw %in[%i] : tensor<8xi1> {
+    ^bb0(%current : i1):
+      %c1 = arith.constant true
+      %xor = arith.xori %current, %c1 : i1
+      xla.yield %xor : i1
+  }
+  return %ret : tensor<8xi1>
+}
+// CHECK-LABEL: @atomic_rmw_i1
+// CHECK: %[[ADDR:.*]] = llvm.getelementptr inbounds %{{.*}}[0, %{{.*}}] : (!llvm.ptr, i64) -> !llvm.ptr, !llvm.array<8 x i1>
+// CHECK-GPU-NEXT: %[[ADDR_INT:.*]] = llvm.ptrtoint %[[ADDR]]
+// CHECK-GPU-NEXT: %[[OFFSET:.*]] = llvm.and %[[ADDR_INT]], %{{.*}}
+// CHECK-GPU-NEXT: %[[BASE:.*]] = llvm.intr.ptrmask %[[ADDR]], %{{.*}}
+// CHECK-GPU: %[[INIT:.*]] = llvm.load %[[BASE]] : !llvm.ptr -> i32
+// CHECK-GPU-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]]) : (i32) -> i32
+// CHECK-GPU: llvm.cmpxchg %[[BASE]], %[[VAR]], %{{.*}} monotonic monotonic : !llvm.ptr, i32
+// CHECK-CPU-NOT: llvm.ptrtoint
+// CHECK-CPU: %[[INIT:.*]] = llvm.load %[[ADDR]] : !llvm.ptr -> i8
+// CHECK-CPU-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]]) : (i8) -> i8
+// CHECK-CPU: llvm.cmpxchg %[[ADDR]], %[[VAR]], %{{.*}} monotonic monotonic : !llvm.ptr, i8
 
 // -----
 
@@ -400,16 +461,18 @@ func.func @atomic_rmw_overwrite(%in: tensor<8xf16>, %i: index)
 }
 // CHECK-LABEL: @atomic_rmw_overwrite
 // CHECK: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-NEXT: %[[ADDR_INT:.*]] = llvm.ptrtoint %[[ADDR]]
-// CHECK-NEXT: %[[OFFSET:.*]] = llvm.and %[[ADDR_INT]], %{{.*}}
-// CHECK-NEXT: %[[INDEX:.*]] = llvm.mul %[[OFFSET]], %{{.*}}
-// CHECK-NEXT: %[[BASE:.*]] = llvm.getelementptr inbounds %[[ADDR]][%[[INDEX]]]
-// CHECK: %[[INIT:.*]] = llvm.load %[[BASE]]
-// CHECK-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]])
-// CHECK-DAG: %[[RES_SHIFT:.*]] = llvm.shl %{{.*}}, %{{.*}}
-// CHECK-DAG: %[[NEW_MASKED:.*]] = llvm.and %[[VAR]], %{{.*}}
-// CHECK-NEXT: %[[NEW:.*]] = llvm.or %[[NEW_MASKED]], %[[RES_SHIFT]]
-// CHECK-NEXT: llvm.cmpxchg %[[BASE]], %[[VAR]], %[[NEW]]
+// CHECK-GPU-NEXT: %[[ADDR_INT:.*]] = llvm.ptrtoint %[[ADDR]]
+// CHECK-GPU-NEXT: %[[OFFSET:.*]] = llvm.and %[[ADDR_INT]], %{{.*}}
+// CHECK-GPU-NEXT: %[[BASE:.*]] = llvm.intr.ptrmask %[[ADDR]], %{{.*}}
+// CHECK-GPU: %[[INIT:.*]] = llvm.load %[[BASE]]
+// CHECK-GPU-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]])
+// CHECK-GPU-DAG: %[[RES_SHIFT:.*]] = llvm.shl %{{.*}}, %{{.*}}
+// CHECK-GPU-DAG: %[[NEW_MASKED:.*]] = llvm.and %[[VAR]], %{{.*}}
+// CHECK-GPU-NEXT: %[[NEW:.*]] = llvm.or %[[NEW_MASKED]], %[[RES_SHIFT]]
+// CHECK-GPU-NEXT: llvm.cmpxchg %[[BASE]], %[[VAR]], %[[NEW]]
+// CHECK-CPU-NEXT: %[[INIT:.*]] = llvm.load %[[ADDR]] : !llvm.ptr -> i16
+// CHECK-CPU-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]]) : (i16) -> i16
+// CHECK-CPU-NEXT: llvm.cmpxchg %[[ADDR]], %[[VAR]], %{{.*}} monotonic monotonic : !llvm.ptr, i16
 
 // -----
 
@@ -424,16 +487,18 @@ func.func @atomic_rmw_overwrite_f8E4M3(%in: tensor<8xf8E4M3>, %i: index)
 }
 // CHECK-LABEL: @atomic_rmw_overwrite_f8E4M3
 // CHECK: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-NEXT: %[[ADDR_INT:.*]] = llvm.ptrtoint %[[ADDR]]
-// CHECK-NEXT: %[[OFFSET:.*]] = llvm.and %[[ADDR_INT]], %{{.*}}
-// CHECK-NEXT: %[[INDEX:.*]] = llvm.mul %[[OFFSET]], %{{.*}}
-// CHECK-NEXT: %[[BASE:.*]] = llvm.getelementptr inbounds %[[ADDR]][%[[INDEX]]]
-// CHECK: %[[INIT:.*]] = llvm.load %[[BASE]]
-// CHECK-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]])
-// CHECK-DAG: %[[RES_SHIFT:.*]] = llvm.shl %{{.*}}, %{{.*}}
-// CHECK-DAG: %[[NEW_MASKED:.*]] = llvm.and %[[VAR]], %{{.*}}
-// CHECK-NEXT: %[[NEW:.*]] = llvm.or %[[NEW_MASKED]], %[[RES_SHIFT]]
-// CHECK-NEXT: llvm.cmpxchg %[[BASE]], %[[VAR]], %[[NEW]]
+// CHECK-GPU-NEXT: %[[ADDR_INT:.*]] = llvm.ptrtoint %[[ADDR]]
+// CHECK-GPU-NEXT: %[[OFFSET:.*]] = llvm.and %[[ADDR_INT]], %{{.*}}
+// CHECK-GPU-NEXT: %[[BASE:.*]] = llvm.intr.ptrmask %[[ADDR]], %{{.*}}
+// CHECK-GPU: %[[INIT:.*]] = llvm.load %[[BASE]]
+// CHECK-GPU-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]])
+// CHECK-GPU-DAG: %[[RES_SHIFT:.*]] = llvm.shl %{{.*}}, %{{.*}}
+// CHECK-GPU-DAG: %[[NEW_MASKED:.*]] = llvm.and %[[VAR]], %{{.*}}
+// CHECK-GPU-NEXT: %[[NEW:.*]] = llvm.or %[[NEW_MASKED]], %[[RES_SHIFT]]
+// CHECK-GPU-NEXT: llvm.cmpxchg %[[BASE]], %[[VAR]], %[[NEW]]
+// CHECK-CPU-NEXT: %[[INIT:.*]] = llvm.load %[[ADDR]] : !llvm.ptr -> i8
+// CHECK-CPU-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]]) : (i8) -> i8
+// CHECK-CPU-NEXT: llvm.cmpxchg %[[ADDR]], %[[VAR]], %{{.*}} monotonic monotonic : !llvm.ptr, i8
 
 // -----
 
@@ -450,8 +515,42 @@ func.func @shared_i4() -> tensor<10xi4> {
   %shared = xla_gpu.allocate_shared : tensor<10xi4>
   return %shared : tensor<10xi4>
 }
-// CHECK: llvm.mlir.global private @{{.*}}() {addr_space = 3 : i32} : !llvm.array<5 x i8>
+// Five packed bytes are padded to two whole words.
+// CHECK: llvm.mlir.global private @{{.*}}() {addr_space = 3 : i32, alignment = 4 : i64} : !llvm.array<8 x i8>
 // CHECK-LABEL: @shared_i4
+
+// -----
+
+func.func @shared_i4_store(%v: i4, %i: index) -> tensor<10xi4> {
+  %shared = xla_gpu.allocate_shared : tensor<10xi4>
+  %r = tensor.insert %v into %shared[%i] : tensor<10xi4>
+  return %r : tensor<10xi4>
+}
+// A 4 bit store is a 32 bit CAS on the containing word, so the shared
+// allocation must be word aligned and a whole number of words.
+// CHECK: llvm.mlir.global private @{{.*}}() {addr_space = 3 : i32, alignment = 4 : i64} : !llvm.array<8 x i8>
+// CHECK-LABEL: @shared_i4_store
+// CHECK-GPU: llvm.cmpxchg {{.*}} : !llvm.ptr, i32
+
+// -----
+
+func.func @shared_f64() -> tensor<16xf64> {
+  %shared = xla_gpu.allocate_shared : tensor<16xf64>
+  return %shared : tensor<16xf64>
+}
+// Wide element types keep their natural alignment.
+// CHECK: llvm.mlir.global private @{{.*}}() {addr_space = 3 : i32} : !llvm.array<16 x f64>
+// CHECK-LABEL: @shared_f64
+
+// -----
+
+func.func @shared_f16() -> tensor<3xf16> {
+  %shared = xla_gpu.allocate_shared : tensor<3xf16>
+  return %shared : tensor<3xf16>
+}
+// Six bytes of f16 are padded to eight.
+// CHECK: llvm.mlir.global private @{{.*}}() {addr_space = 3 : i32, alignment = 4 : i64} : !llvm.array<4 x f16>
+// CHECK-LABEL: @shared_f16
 
 // -----
 
@@ -490,45 +589,51 @@ func.func @i4_store(%arg: tensor<10xi4>, %v: i4, %i: index)
 // CHECK-DAG:     %[[C4_I8:.*]] = arith.constant 4 : i8
 // CHECK-DAG:     %[[C15_I8:.*]] = arith.constant 15 : i8
 // CHECK-DAG:     %[[C_NEG1_I8:.*]] = arith.constant -1 : i8
-// CHECK-DAG:     %[[C3_I64:.*]] = llvm.mlir.constant(3 : i64) : i64
-// CHECK-DAG:     %[[C_NEG1_I64:.*]] = llvm.mlir.constant(-1 : i64) : i64
-// CHECK-DAG:     %[[C8_I32:.*]] = llvm.mlir.constant(8 : i32) : i32
-// CHECK-DAG:     %[[C_NEG1_I32:.*]] = llvm.mlir.constant(-1 : i32) : i32
-// CHECK-DAG:     %[[C255_I32:.*]] = llvm.mlir.constant(255 : i32) : i32
-// CHECK-DAG:     %[[C_TRUE:.*]] = llvm.mlir.constant(true) : i1
-// CHECK:         %[[CAST_ARG0:.*]] = builtin.unrealized_conversion_cast %[[ARG0]] : !llvm.ptr to tensor<10xi4>
+// CHECK-GPU-DAG: %[[C3_I64:.*]] = llvm.mlir.constant(3 : i64) : i64
+// CHECK-GPU-DAG: %[[C_NEG4_I64:.*]] = llvm.mlir.constant(-4 : i64) : i64
+// CHECK-GPU-DAG: %[[C8_I32:.*]] = llvm.mlir.constant(8 : i32) : i32
+// CHECK-GPU-DAG: %[[C_NEG1_I32:.*]] = llvm.mlir.constant(-1 : i32) : i32
+// CHECK-GPU-DAG: %[[C255_I32:.*]] = llvm.mlir.constant(255 : i32) : i32
+// CHECK-GPU-DAG: %[[C_TRUE:.*]] = llvm.mlir.constant(true) : i1
+// CHECK-GPU:     %[[CAST_ARG0:.*]] = builtin.unrealized_conversion_cast %[[ARG0]] : !llvm.ptr to tensor<10xi4>
 // CHECK:         %[[ARG2_I64:.*]] = arith.index_castui %[[ARG2]] : index to i64
 // CHECK:         %[[AND_1:.*]] = arith.andi %[[ARG2_I64]], %[[C1_I64]] : i64
 // CHECK:         %[[TRUNC_I8:.*]] = arith.trunci %[[AND_1]] : i64 to i8
 // CHECK:         %[[MUL_4:.*]] = arith.muli %[[TRUNC_I8]], %[[C4_I8]] : i8
 // CHECK:         %[[SHR_1:.*]] = arith.shrui %[[ARG2_I64]], %[[C1_I64]] : i64
-// CHECK:         %[[CAST_TENSOR:.*]] = builtin.unrealized_conversion_cast %[[CAST_ARG0]] : tensor<10xi4> to tensor<10xi8>
 // CHECK:         %[[EXT_ARG1:.*]] = arith.extui %[[ARG1]] : i4 to i8
 // CHECK:         %[[SHL_15:.*]] = arith.shli %[[C15_I8]], %[[MUL_4]] : i8
 // CHECK:         %[[XOR_NEG1_I8:.*]] = arith.xori %[[SHL_15]], %[[C_NEG1_I8]] : i8
 // CHECK:         %[[SHL_EXT:.*]] = arith.shli %[[EXT_ARG1]], %[[MUL_4]] : i8
-// CHECK:         %[[CAST_TENSOR_PTR:.*]] = builtin.unrealized_conversion_cast %[[CAST_TENSOR]] : tensor<10xi8> to !llvm.ptr
-// CHECK:         %[[GEP_BASE:.*]] = llvm.getelementptr inbounds %[[CAST_TENSOR_PTR]][0, %[[SHR_1]]] : (!llvm.ptr, i64) -> !llvm.ptr, !llvm.array<10 x i8>
-// CHECK:         %[[PTR_INT:.*]] = llvm.ptrtoint %[[GEP_BASE]] : !llvm.ptr to i64
-// CHECK:         %[[AND_3:.*]] = llvm.and %[[PTR_INT]], %[[C3_I64]] : i64
-// CHECK:         %[[MUL_NEG1:.*]] = llvm.mul %[[AND_3]], %[[C_NEG1_I64]] : i64
-// CHECK:         %[[GEP_OFFSET:.*]] = llvm.getelementptr inbounds %[[GEP_BASE]][%[[MUL_NEG1]]] : (!llvm.ptr, i64) -> !llvm.ptr, i8
-// CHECK:         %[[TRUNC_I32:.*]] = llvm.trunc %[[AND_3]] : i64 to i32
-// CHECK:         %[[MUL_8:.*]] = llvm.mul %[[TRUNC_I32]], %[[C8_I32]] : i32
-// CHECK:         %[[SHL_255:.*]] = llvm.shl %[[C255_I32]], %[[MUL_8]] : i32
-// CHECK:         %[[XOR_NEG1_I32:.*]] = llvm.xor %[[C_NEG1_I32]], %[[SHL_255]] : i32
-// CHECK:         %[[LOADED_I32:.*]] = llvm.load %[[GEP_OFFSET]] : !llvm.ptr -> i32
-// CHECK:         %[[WHILE_RES:.*]] = scf.while (%[[INIT:.*]] = %[[LOADED_I32]]) : (i32) -> i32 {
-// CHECK:           %[[LSHR:.*]] = llvm.lshr %[[INIT]], %[[MUL_8]] : i32
-// CHECK:           %[[TRUNC_I8_2:.*]] = llvm.trunc %[[LSHR]] : i32 to i8
-// CHECK:           %[[AND_MASK_I8:.*]] = arith.andi %[[TRUNC_I8_2]], %[[XOR_NEG1_I8]] : i8
-// CHECK:           %[[ORI_NEW_I8:.*]] = arith.ori %[[AND_MASK_I8]], %[[SHL_EXT]] : i8
-// CHECK:           %[[ZEXT_I32:.*]] = llvm.zext %[[ORI_NEW_I8]] : i8 to i32
-// CHECK:           %[[AND_MASK_I32:.*]] = llvm.and %[[INIT]], %[[XOR_NEG1_I32]] : i32
-// CHECK:           %[[SHL_NEW:.*]] = llvm.shl %[[ZEXT_I32]], %[[MUL_8]] : i32
-// CHECK:           %[[OR_NEW:.*]] = llvm.or %[[AND_MASK_I32]], %[[SHL_NEW]] : i32
-// CHECK:           llvm.cmpxchg %[[GEP_OFFSET]], %[[INIT]], %[[OR_NEW]] monotonic monotonic : !llvm.ptr, i32
-// CHECK:           scf.condition
+// CHECK-GPU:     %[[CAST_TENSOR:.*]] = builtin.unrealized_conversion_cast %[[CAST_ARG0]] : tensor<10xi4> to tensor<10xi8>
+// CHECK-GPU:     %[[CAST_TENSOR_PTR:.*]] = builtin.unrealized_conversion_cast %[[CAST_TENSOR]] : tensor<10xi8> to !llvm.ptr
+// CHECK-GPU:     %[[GEP_BASE:.*]] = llvm.getelementptr inbounds %[[CAST_TENSOR_PTR]][0, %[[SHR_1]]] : (!llvm.ptr, i64) -> !llvm.ptr, !llvm.array<10 x i8>
+// CHECK-GPU:     %[[PTR_INT:.*]] = llvm.ptrtoint %[[GEP_BASE]] : !llvm.ptr to i64
+// CHECK-GPU:     %[[AND_3:.*]] = llvm.and %[[PTR_INT]], %[[C3_I64]] : i64
+// CHECK-GPU:     %[[GEP_OFFSET:.*]] = llvm.intr.ptrmask %[[GEP_BASE]], %[[C_NEG4_I64]] : (!llvm.ptr, i64) -> !llvm.ptr
+// CHECK-GPU:     %[[TRUNC_I32:.*]] = llvm.trunc %[[AND_3]] : i64 to i32
+// CHECK-GPU:     %[[MUL_8:.*]] = llvm.mul %[[TRUNC_I32]], %[[C8_I32]] : i32
+// CHECK-GPU:     %[[SHL_255:.*]] = llvm.shl %[[C255_I32]], %[[MUL_8]] : i32
+// CHECK-GPU:     %[[XOR_NEG1_I32:.*]] = llvm.xor %[[C_NEG1_I32]], %[[SHL_255]] : i32
+// CHECK-GPU:     %[[LOADED_I32:.*]] = llvm.load %[[GEP_OFFSET]] : !llvm.ptr -> i32
+// CHECK-GPU:     %[[WHILE_RES:.*]] = scf.while (%[[INIT:.*]] = %[[LOADED_I32]]) : (i32) -> i32 {
+// CHECK-GPU:       %[[LSHR:.*]] = llvm.lshr %[[INIT]], %[[MUL_8]] : i32
+// CHECK-GPU:       %[[TRUNC_I8_2:.*]] = llvm.trunc %[[LSHR]] : i32 to i8
+// CHECK-GPU:       %[[AND_MASK_I8:.*]] = arith.andi %[[TRUNC_I8_2]], %[[XOR_NEG1_I8]] : i8
+// CHECK-GPU:       %[[ORI_NEW_I8:.*]] = arith.ori %[[AND_MASK_I8]], %[[SHL_EXT]] : i8
+// CHECK-GPU:       %[[ZEXT_I32:.*]] = llvm.zext %[[ORI_NEW_I8]] : i8 to i32
+// CHECK-GPU:       %[[AND_MASK_I32:.*]] = llvm.and %[[INIT]], %[[XOR_NEG1_I32]] : i32
+// CHECK-GPU:       %[[SHL_NEW:.*]] = llvm.shl %[[ZEXT_I32]], %[[MUL_8]] : i32
+// CHECK-GPU:       %[[OR_NEW:.*]] = llvm.or %[[AND_MASK_I32]], %[[SHL_NEW]] : i32
+// CHECK-GPU:       llvm.cmpxchg %[[GEP_OFFSET]], %[[INIT]], %[[OR_NEW]] monotonic monotonic : !llvm.ptr, i32
+// CHECK-GPU:       scf.condition
+// CHECK-CPU-NOT: llvm.cmpxchg
+// CHECK-CPU:     %[[GEP_BASE:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, %[[SHR_1]]] : (!llvm.ptr, i64) -> !llvm.ptr, !llvm.array<5 x i8>
+// CHECK-CPU-NEXT: %[[LOADED_I8:.*]] = llvm.load %[[GEP_BASE]] : !llvm.ptr -> i8
+// CHECK-CPU-NEXT: %[[AND_MASK_I8:.*]] = arith.andi %[[LOADED_I8]], %[[XOR_NEG1_I8]] : i8
+// CHECK-CPU-NEXT: %[[ORI_NEW_I8:.*]] = arith.ori %[[AND_MASK_I8]], %[[SHL_EXT]] : i8
+// CHECK-CPU-NEXT: llvm.store %[[ORI_NEW_I8]], %[[GEP_BASE]] : i8, !llvm.ptr
+// CHECK-CPU-NEXT: return
 
 
 // -----
@@ -545,7 +650,7 @@ func.func @direct_atomic_rmw_overwrite(%in: tensor<8xi32>,
 // CHECK-PASCAL-LABEL: @direct_atomic_rmw_overwrite
 // CHECK-PASCAL: %[[C2:.*]] = arith.constant 2
 // CHECK-PASCAL: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-PASCAL: llvm.store %[[C2]], %[[ADDR]] atomic unordered {alignment = 4 : i64}
+// CHECK-PASCAL: llvm.store %[[C2]], %[[ADDR]] atomic unordered <alignment = 4>
 
 // -----
 
@@ -647,27 +752,27 @@ func.func @direct_atomic_rmw_fadd_f32(%in: tensor<8xf32>,
 // CHECK-PASCAL-LABEL: @direct_atomic_rmw_fadd_f32
 // CHECK-PASCAL: %[[C2:.*]] = arith.constant 2
 // CHECK-PASCAL: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-PASCAL: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] monotonic
+// CHECK-PASCAL: llvm.atomicrmw ignore_denormal_mode fadd %[[ADDR]], %[[C2]] monotonic
 
 // CHECK-VOLTA-LABEL: @direct_atomic_rmw_fadd_f32
 // CHECK-VOLTA: %[[C2:.*]] = arith.constant 2
 // CHECK-VOLTA: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-VOLTA: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] monotonic
+// CHECK-VOLTA: llvm.atomicrmw ignore_denormal_mode fadd %[[ADDR]], %[[C2]] monotonic
 
 // CHECK-AMPERE-LABEL: @direct_atomic_rmw_fadd_f32
 // CHECK-AMPERE: %[[C2:.*]] = arith.constant 2
 // CHECK-AMPERE: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-AMPERE: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] monotonic
+// CHECK-AMPERE: llvm.atomicrmw ignore_denormal_mode fadd %[[ADDR]], %[[C2]] monotonic
 
 // CHECK-GFX908-MI100-LABEL: @direct_atomic_rmw_fadd_f32
 // CHECK-GFX908-MI100: %[[C2:.*]] = arith.constant 2
 // CHECK-GFX908-MI100: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-GFX908-MI100: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] syncscope("agent-one-as") monotonic
+// CHECK-GFX908-MI100: llvm.atomicrmw ignore_denormal_mode fadd %[[ADDR]], %[[C2]] syncscope("agent-one-as") monotonic {rocdl.no_fine_grained_memory, rocdl.no_remote_memory}
 
 // CHECK-GFX90A-MI200-LABEL: @direct_atomic_rmw_fadd_f32
 // CHECK-GFX90A-MI200: %[[C2:.*]] = arith.constant 2
 // CHECK-GFX90A-MI200: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-GFX90A-MI200: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] syncscope("agent-one-as") monotonic
+// CHECK-GFX90A-MI200: llvm.atomicrmw ignore_denormal_mode fadd %[[ADDR]], %[[C2]] syncscope("agent-one-as") monotonic {rocdl.no_fine_grained_memory, rocdl.no_remote_memory}
 
 // -----
 
@@ -687,12 +792,12 @@ func.func @direct_atomic_rmw_fadd_f16(%in: tensor<8xf16>,
 // CHECK-VOLTA-LABEL: @direct_atomic_rmw_fadd_f16
 // CHECK-VOLTA: %[[C2:.*]] = arith.constant 2
 // CHECK-VOLTA: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-VOLTA: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] monotonic
+// CHECK-VOLTA: llvm.atomicrmw ignore_denormal_mode fadd %[[ADDR]], %[[C2]] monotonic
 
 // CHECK-AMPERE-LABEL: @direct_atomic_rmw_fadd_f16
 // CHECK-AMPERE: %[[C2:.*]] = arith.constant 2
 // CHECK-AMPERE: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-AMPERE: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] monotonic
+// CHECK-AMPERE: llvm.atomicrmw ignore_denormal_mode fadd %[[ADDR]], %[[C2]] monotonic
 
 // CHECK-GFX908-MI100-LABEL: @direct_atomic_rmw_fadd_f16
 // CHECK-GFX908-MI100: %[[CST:.*]] = arith.constant 2
@@ -710,7 +815,7 @@ func.func @direct_atomic_rmw_fadd_f16(%in: tensor<8xf16>,
 // CHECK-GFX908-MI100: %[[VAL_SHIFT:.*]] = llvm.shl %[[VAL_WIDE]], %[[SHIFT]]
 // CHECK-GFX908-MI100: %[[ADDR:.*]] = llvm.inttoptr %[[ADDR_MASKED]]
 // CHECK-GFX908-MI100: %[[VAL:.*]] = llvm.bitcast %[[VAL_SHIFT]] : i32 to vector<2xf16>
-// CHECK-GFX908-MI100: llvm.atomicrmw fadd %[[ADDR]], %[[VAL]] syncscope("agent-one-as") monotonic
+// CHECK-GFX908-MI100: llvm.atomicrmw ignore_denormal_mode fadd %[[ADDR]], %[[VAL]] syncscope("agent-one-as") monotonic {rocdl.no_fine_grained_memory, rocdl.no_remote_memory}
 
 
 // CHECK-GFX90A-MI200-LABEL: @direct_atomic_rmw_fadd_f16
@@ -729,7 +834,7 @@ func.func @direct_atomic_rmw_fadd_f16(%in: tensor<8xf16>,
 // CHECK-GFX90A-MI200: %[[VAL_SHIFT:.*]] = llvm.shl %[[VAL_WIDE]], %[[SHIFT]]
 // CHECK-GFX90A-MI200: %[[ADDR:.*]] = llvm.inttoptr %[[ADDR_MASKED]]
 // CHECK-GFX90A-MI200: %[[VAL:.*]] = llvm.bitcast %[[VAL_SHIFT]] : i32 to vector<2xf16>
-// CHECK-GFX90A-MI200: llvm.atomicrmw fadd %[[ADDR]], %[[VAL]] syncscope("agent-one-as") monotonic
+// CHECK-GFX90A-MI200: llvm.atomicrmw ignore_denormal_mode fadd %[[ADDR]], %[[VAL]] syncscope("agent-one-as") monotonic {rocdl.no_fine_grained_memory, rocdl.no_remote_memory}
 
 // -----
 
@@ -778,7 +883,7 @@ func.func @direct_atomic_rmw_fadd_bf16(%in: tensor<8xbf16>,
 // CHECK-HOPPER-LABEL: @direct_atomic_rmw_fadd_bf16
 // CHECK-HOPPER: %[[C2:.*]] = arith.constant 2
 // CHECK-HOPPER: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-HOPPER: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] monotonic
+// CHECK-HOPPER: llvm.atomicrmw ignore_denormal_mode fadd %[[ADDR]], %[[C2]] monotonic
 
 // -----
 
@@ -814,7 +919,7 @@ func.func @direct_atomic_rmw_fadd_bf16_widened(%in: tensor<8xbf16>,
 // CHECK-GFX942-MI300: %[[VAL_SHIFT:.*]] = llvm.shl %[[VAL_WIDE]], %[[SHIFT]]
 // CHECK-GFX942-MI300: %[[ADDR_PTR:.*]] = llvm.inttoptr %[[ADDR_MASKED]]
 // CHECK-GFX942-MI300: %[[VAL:.*]] = llvm.bitcast %[[VAL_SHIFT]] : i32 to vector<2xbf16>
-// CHECK-GFX942-MI300: llvm.atomicrmw fadd %[[ADDR_PTR]], %[[VAL]] syncscope("agent-one-as") monotonic
+// CHECK-GFX942-MI300: llvm.atomicrmw ignore_denormal_mode fadd %[[ADDR_PTR]], %[[VAL]] syncscope("agent-one-as") monotonic {rocdl.no_fine_grained_memory, rocdl.no_remote_memory}
 
 // -----
 
@@ -831,28 +936,28 @@ func.func @direct_atomic_rmw_fadd_f64(%in: tensor<8xf64>,
 // CHECK-PASCAL-LABEL: @direct_atomic_rmw_fadd_f64
 // CHECK-PASCAL: %[[C2:.*]] = arith.constant 2
 // CHECK-PASCAL: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-PASCAL: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] monotonic
+// CHECK-PASCAL: llvm.atomicrmw ignore_denormal_mode fadd %[[ADDR]], %[[C2]] monotonic
 
 // CHECK-VOLTA-LABEL: @direct_atomic_rmw_fadd_f64
 // CHECK-VOLTA: %[[C2:.*]] = arith.constant 2
 // CHECK-VOLTA: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-VOLTA: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] monotonic
+// CHECK-VOLTA: llvm.atomicrmw ignore_denormal_mode fadd %[[ADDR]], %[[C2]] monotonic
 
 // CHECK-AMPERE-LABEL: @direct_atomic_rmw_fadd_f64
 // CHECK-AMPERE: %[[C2:.*]] = arith.constant 2
 // CHECK-AMPERE: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-AMPERE: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] monotonic
+// CHECK-AMPERE: llvm.atomicrmw ignore_denormal_mode fadd %[[ADDR]], %[[C2]] monotonic
 
 // CHECK-GFX908-MI100-LABEL: @direct_atomic_rmw_fadd_f64
 // CHECK-GFX908-MI100: %[[C2:.*]] = arith.constant 2
 // CHECK-GFX908-MI100: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-GFX908-MI100: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] syncscope("agent-one-as") monotonic
+// CHECK-GFX908-MI100: llvm.atomicrmw ignore_denormal_mode fadd %[[ADDR]], %[[C2]] syncscope("agent-one-as") monotonic {rocdl.no_fine_grained_memory, rocdl.no_remote_memory}
 
 
 // CHECK-GFX90A-MI200-LABEL: @direct_atomic_rmw_fadd_f64
 // CHECK-GFX90A-MI200: %[[C2:.*]] = arith.constant 2
 // CHECK-GFX90A-MI200: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-GFX90A-MI200: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] syncscope("agent-one-as") monotonic
+// CHECK-GFX90A-MI200: llvm.atomicrmw ignore_denormal_mode fadd %[[ADDR]], %[[C2]] syncscope("agent-one-as") monotonic {rocdl.no_fine_grained_memory, rocdl.no_remote_memory}
 
 
 // -----
@@ -963,7 +1068,7 @@ func.func @transfer_read(%arg0: tensor<43xf32> {xla.slice_index = 1}) -> vector<
 }
 // CHECK-LABEL: @transfer_read
 // CHECK:           %[[PTR:.*]] = llvm.getelementptr inbounds %{{.*}}[0, 16]
-// CHECK-NEXT:      llvm.load %[[PTR]] {alignment = 4 : i64} : !llvm.ptr -> vector<2xf32>
+// CHECK-NEXT:      llvm.load %[[PTR]] <alignment = 4> : !llvm.ptr -> vector<2xf32>
 
 // -----
 
@@ -980,10 +1085,10 @@ func.func @transfer_write_i1(%arg0: tensor<43xi1> {xla.slice_index = 1},
 // CHECK-SAME:       %[[V1:.*]]: vector<2xi1>, %[[V2:.*]]: vector<2xi1>)
 // CHECK-DAG:       %[[PTR1:.*]] = llvm.getelementptr inbounds %[[BUF:.*]][0, 16]
 // CHECK-DAG:       %[[V1_EXT:.*]] = arith.extui %[[V1]]
-// CHECK:           llvm.store %[[V1_EXT]], %[[PTR1]] {alignment = 1 : i64}
+// CHECK:           llvm.store %[[V1_EXT]], %[[PTR1]] <alignment = 1>
 // CHECK-DAG:       %[[PTR2:.*]] = llvm.getelementptr inbounds %[[BUF]][0, 22]
 // CHECK-DAG:       %[[V2_EXT:.*]] = arith.extui %[[V2]]
-// CHECK:           llvm.store %[[V2_EXT]], %[[PTR2]] {alignment = 1 : i64}
+// CHECK:           llvm.store %[[V2_EXT]], %[[PTR2]] <alignment = 1>
 
 // -----
 
@@ -996,7 +1101,7 @@ func.func @transfer_read_i1(%arg0: tensor<43xi1> {xla.slice_index = 1}) -> vecto
 // CHECK-LABEL: @transfer_read_i1
 // CHECK-DAG:       %[[C0:.*]] = arith.constant dense<0> : vector<2xi8>
 // CHECK-DAG:       %[[PTR:.*]] = llvm.getelementptr inbounds %{{.*}}[0, 16]
-// CHECK:           %[[LOADED:.*]] = llvm.load %[[PTR]] {alignment = 1 : i64} : !llvm.ptr
+// CHECK:           %[[LOADED:.*]] = llvm.load %[[PTR]] <alignment = 1> : !llvm.ptr
 // CHECK:           %[[CAST:.*]] = arith.cmpi ne, %[[LOADED]], %[[C0]]
 // CHECK:           return %[[CAST]] : vector<2xi1>
 
@@ -1012,7 +1117,7 @@ func.func @transfer_read_alignment(%arg0: tensor<8xi64> {llvm.align = 32 : index
 // CHECK-SAME:  %[[ARG0:.*]]: !llvm.ptr
 // CHECK:           %[[GEP:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, 0] :
 // CHECK-SAME:        !llvm.array<8 x i64>
-// CHECK:           %[[LOADED:.*]] = llvm.load %[[GEP]] {alignment = 32 : i64} : !llvm.ptr
+// CHECK:           %[[LOADED:.*]] = llvm.load %[[GEP]] <alignment = 32> : !llvm.ptr
 // CHECK:           return %[[LOADED]] : vector<8xi64>
 
 // -----
@@ -1026,7 +1131,7 @@ func.func @transfer_read_alignment_non_zero_index(%arg0: tensor<16xi64> {llvm.al
 // CHECK-LABEL: @transfer_read_alignment_non_zero_index(
 // CHECK-SAME:  %[[ARG0:.*]]: !llvm.ptr
 // CHECK:           %[[PTR:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, 8]
-// CHECK-NEXT:      llvm.load %[[PTR]] {alignment = 8 : i64} : !llvm.ptr -> vector<8xi64>
+// CHECK-NEXT:      llvm.load %[[PTR]] <alignment = 8> : !llvm.ptr -> vector<8xi64>
 
 // -----
 
@@ -1041,7 +1146,7 @@ func.func @transfer_write_alignment(%arg0: tensor<8xi64> {llvm.align = 32 : inde
 // CHECK-DAG:       %[[C0_I64:.*]] = arith.constant dense<0> : vector<8xi64>
 // CHECK:           %[[GEP:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, 0] :
 // CHECK-SAME:        !llvm.array<8 x i64>
-// CHECK:           llvm.store %[[C0_I64]], %[[GEP]] {alignment = 32 : i64} : vector<8xi64>, !llvm.ptr
+// CHECK:           llvm.store %[[C0_I64]], %[[GEP]] <alignment = 32> : vector<8xi64>, !llvm.ptr
 
 // -----
 
@@ -1056,7 +1161,7 @@ func.func @transfer_write_alignment_non_zero_index(%arg0: tensor<8xi64> {llvm.al
 // CHECK-DAG:       %[[C0_I64:.*]] = arith.constant dense<0> : vector<8xi64>
 // CHECK:           %[[GEP:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, 8] :
 // CHECK-SAME:        !llvm.array<8 x i64>
-// CHECK:           llvm.store %[[C0_I64]], %[[GEP]] {alignment = 8 : i64} : vector<8xi64>, !llvm.ptr
+// CHECK:           llvm.store %[[C0_I64]], %[[GEP]] <alignment = 8> : vector<8xi64>, !llvm.ptr
 
 // -----
 
@@ -1145,7 +1250,7 @@ func.func @transfer_read_f4(%arg0: tensor<43xf4E2M1FN> {xla.slice_index = 1}) ->
 // CHECK-LABEL: @transfer_read_f4
 // CHECK: %[[PTR:.*]] = llvm.getelementptr inbounds %{{.*}}[0, 8] :
 // CHECK-SAME: (!llvm.ptr) -> !llvm.ptr, !llvm.array<22 x i8>
-// CHECK: llvm.load %[[PTR]] {alignment = 1 : i64} : !llvm.ptr -> vector<2xi4>
+// CHECK: llvm.load %[[PTR]] <alignment = 1> : !llvm.ptr -> vector<2xi4>
 // CHECK: %[[OUT:.*]] = builtin.unrealized_conversion_cast %{{.*}} : vector<2xi4> to vector<2xf4E2M1FN>
 // CHECK: return %[[OUT]] : vector<2xf4E2M1FN>
 

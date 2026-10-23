@@ -140,7 +140,14 @@ bool GpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
     // Elementwise ops.
     case HloOpcode::kExp:
       if (LowPrecisionType() == BF16) {
-        return compute_capability_.IsCuda();
+        if (compute_capability_.IsCuda()) {
+          return true;
+        }
+        // Every AMD GPU lowers bf16 exp as exp2(x * log2(e)) in f32 and rounds
+        // to bf16 once, so it never needs upcasting here.
+        if (compute_capability_.rocm_compute_capability() != nullptr) {
+          return true;
+        }
       }
       return false;
     case HloOpcode::kLog:
@@ -148,10 +155,10 @@ bool GpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
         if (compute_capability_.IsCuda()) {
           return true;
         }
-        // gfx1250 has a native bf16 logarithm instruction, so there is no
-        // need to upcast bf16 log to f32.
-        if (auto* rocm_cc = compute_capability_.rocm_compute_capability()) {
-          return rocm_cc->has_bf16_transcendental_support();
+        // Every AMD GPU lowers bf16 log as log2(x) * ln(2) in f32 and rounds
+        // to bf16 once, so it never needs upcasting here.
+        if (compute_capability_.rocm_compute_capability() != nullptr) {
+          return true;
         }
       }
       return false;

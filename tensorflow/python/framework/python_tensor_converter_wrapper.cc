@@ -93,7 +93,7 @@ PythonTensorConverter MakePythonTensorConverter(py::handle py_eager_context) {
   return PythonTensorConverter(py_eager_context.ptr(), ctx, device_name);
 }
 
-py::handle Convert(tensorflow::PythonTensorConverter* self, py::handle obj,
+py::object Convert(tensorflow::PythonTensorConverter* self, py::handle obj,
                    py::handle dtype) {
   DataType dtype_enum = static_cast<DataType>(PY_INT_AS_LONG(dtype.ptr()));
   bool used_fallback = false;
@@ -101,20 +101,30 @@ py::handle Convert(tensorflow::PythonTensorConverter* self, py::handle obj,
       self->Convert(obj.ptr(), dtype_enum, &used_fallback);
   if (!converted) throw py::error_already_set();
 
-  PyObject* result = PyTuple_New(3);
-  PyTuple_SET_ITEM(result, 0, converted.release());
-  PyTuple_SET_ITEM(result, 1, PY_INT_FROM_LONG(dtype_enum));
-  PyTuple_SET_ITEM(result, 2, used_fallback ? Py_True : Py_False);
-  Py_INCREF(PyTuple_GET_ITEM(result, 1));
-  Py_INCREF(PyTuple_GET_ITEM(result, 2));
-  return result;
+  Safe_PyObjectPtr result(PyTuple_New(3));
+  if (!result) throw py::error_already_set();
+
+  Safe_PyObjectPtr dtype_object(PY_INT_FROM_LONG(dtype_enum));
+  if (!dtype_object) throw py::error_already_set();
+
+  PyObject* used_fallback_object = used_fallback ? Py_True : Py_False;
+  Py_INCREF(used_fallback_object);
+
+  // The tuple is new and not yet published, so SET_ITEM is safe here.
+  // Each call transfers exactly one owned reference into the tuple.
+  PyTuple_SET_ITEM(result.get(), 0, converted.release());
+  PyTuple_SET_ITEM(result.get(), 1, dtype_object.release());
+  PyTuple_SET_ITEM(result.get(), 2, used_fallback_object);
+
+  return py::reinterpret_steal<py::object>(result.release());
 }
 
 }  // namespace
 }  // namespace tensorflow
 
-PYBIND11_MODULE(_pywrap_python_tensor_converter, m) {
+PYBIND11_MODULE(_pywrap_python_tensor_converter, m, py::mod_gil_not_used()) {
   py::class_<tensorflow::PythonTensorConverter>(m, "PythonTensorConverter")
-      .def(py::init(&tensorflow::MakePythonTensorConverter))
+      .def(py::init(&tensorflow::MakePythonTensorConverter),
+           py::keep_alive<1, 2>())
       .def("Convert", tensorflow::Convert);
 }

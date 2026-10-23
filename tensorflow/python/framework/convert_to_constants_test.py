@@ -195,7 +195,7 @@ class VariablesToConstantsTest(test.TestCase):
     actual_value = nest.flatten(converted_concrete_func(**input_data))
 
     for expected, actual in zip(expected_value, actual_value):
-      np.testing.assert_almost_equal(expected.numpy(), actual.numpy())
+      self.assertAllClose(expected.numpy(), actual.numpy())
 
     # Ensure the shape is retained.
     for tensor in converted_concrete_func.inputs:
@@ -212,7 +212,7 @@ class VariablesToConstantsTest(test.TestCase):
     loaded_obj = load(save_dir)
     actual_value = nest.flatten(loaded_obj.signatures["mykey"](**input_data))
     for expected, actual in zip(expected_value, actual_value):
-      np.testing.assert_almost_equal(expected.numpy(), actual.numpy())
+      self.assertAllClose(expected.numpy(), actual.numpy())
 
   @test_util.run_v2_only
   def testConstSavedModel(self):
@@ -564,7 +564,7 @@ class ConvertVariablesToConstantsV2SessionTest(test.TestCase):
     actual_value = nest.flatten(converted_concrete_func(**input_data))
 
     for expected, actual in zip(expected_value, actual_value):
-      np.testing.assert_almost_equal(sess.run(expected), sess.run(actual))
+      self.assertAllClose(sess.run(expected), sess.run(actual))
 
     # Ensure the shape is retained.
     for tensor in converted_concrete_func.inputs:
@@ -581,7 +581,7 @@ class ConvertVariablesToConstantsV2SessionTest(test.TestCase):
     loaded_obj = load(save_dir)
     actual_value = nest.flatten(loaded_obj.signatures["mykey"](**input_data))
     for expected, actual in zip(expected_value, actual_value):
-      np.testing.assert_almost_equal(sess.run(expected), sess.run(actual))
+      self.assertAllClose(sess.run(expected), sess.run(actual))
 
   def testRaiseErrorInEagerMode(self):
     """Test the raised exception in Eager mode."""

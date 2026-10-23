@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/gpu/runtime/execution_stream_id.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -36,8 +37,9 @@ namespace gpu {
 // Converts compatible sequences of Thunks into CommandBufferThunks.
 class CommandBufferConversionPass : public ThunkPassInterface {
  public:
-  explicit CommandBufferConversionPass(absl::string_view module_name = "")
-      : module_name_(module_name) {}
+  CommandBufferConversionPass(absl::string_view module_name,
+                              int devices_in_process)
+      : module_name_(module_name), devices_in_process_(devices_in_process) {}
 
   absl::string_view name() const override {
     return "command-buffer-conversion";
@@ -66,7 +68,19 @@ class CommandBufferConversionPass : public ThunkPassInterface {
   };
 
  private:
+  // Implementation of `Run`. `open_async_streams` are the async streams with
+  // an outstanding operation for the whole of `thunk_sequence`: it is the body
+  // of a loop or branch nested in an async region that is not captured as a
+  // whole; see the comment in `RunImpl`.
+  absl::StatusOr<bool> RunImpl(
+      ThunkSequence* thunk_sequence, const DebugOptions& debug_options,
+      const HloModule* absl_nullable hlo_module,
+      const se::DeviceDescription& device_info,
+      ThunkPassBufferAllocator& allocator,
+      const absl::flat_hash_set<ExecutionStreamId>& open_async_streams);
+
   std::string module_name_;
+  int devices_in_process_;
 };
 
 }  // namespace gpu

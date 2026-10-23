@@ -19,12 +19,11 @@ limitations under the License.
 #include <memory>
 #include <optional>
 
-#include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_map.h"
+#include "absl/base/nullability.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/per_device_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/service/buffer_assignment.h"
@@ -47,7 +46,7 @@ class NormThunk : public Thunk {
       std::optional<BufferAllocation::Slice> dy,
       std::optional<BufferAllocation::Slice> dscale,
       std::optional<BufferAllocation::Slice> dbias,
-      BufferAllocation::Slice scratch);
+      BufferAllocation::Slice scratch, int devices_per_host);
 
   NormThunk(const NormThunk&) = delete;
   NormThunk& operator=(const NormThunk&) = delete;
@@ -59,7 +58,8 @@ class NormThunk : public Thunk {
 
   static absl::StatusOr<std::unique_ptr<NormThunk>> FromProto(
       ThunkInfo thunk_info, const NormThunkProto& proto,
-      absl::Span<const BufferAllocation> buffer_allocations);
+      absl::Span<const BufferAllocation> buffer_allocations,
+      int devices_per_host);
 
   absl::StatusOr<ThunkProto> ToProto() const override;
 
@@ -73,7 +73,7 @@ class NormThunk : public Thunk {
             std::optional<BufferAllocation::Slice> dy,
             std::optional<BufferAllocation::Slice> dscale,
             std::optional<BufferAllocation::Slice> dbias,
-            BufferAllocation::Slice scratch);
+            BufferAllocation::Slice scratch, int devices_per_host);
 
   BufferAllocation::Slice x_buffer_;
   BufferAllocation::Slice scale_buffer_;
@@ -85,17 +85,15 @@ class NormThunk : public Thunk {
   std::optional<BufferAllocation::Slice> dscale_buffer_;
   std::optional<BufferAllocation::Slice> dbias_buffer_;
   BufferAllocation::Slice scratch_buffer_;
-  NormRunner& GetOrCreateRunner(const stream_executor::Stream*);
+  absl::StatusOr<NormRunner*> GetOrCreateRunner(
+      const stream_executor::Stream* absl_nonnull stream);
 
   // Technically this is only needed during initialization to create the
   // GpuNormConfig, but the actual GpuNormConfig is hard to serialize. So we
   // keep the descriptor around for serialization purposes.
   GpuNormDescriptor descriptor_;
   GpuNormConfig config_;
-  absl::Mutex mu_;
-  absl::flat_hash_map<const stream_executor::Stream*,
-                      std::unique_ptr<NormRunner>>
-      runner_cache_ ABSL_GUARDED_BY(mu_);
+  PerDeviceState<std::optional<NormRunner>> runner_states_;
 };
 
 }  // namespace gpu

@@ -17,7 +17,7 @@
 import collections
 import math
 import numbers
-from typing import Any, Dict as PythonDict, Hashable, List as PythonList, Optional, Sequence, Tuple as PythonTuple, Type
+from typing import Any, Dict as PythonDict, Hashable, List as PythonList, Optional, Sequence, Tuple as PythonTuple, Type, Union
 import weakref
 
 from tensorflow.core.function.trace_type import default_types_pb2
@@ -38,28 +38,73 @@ def register_tensor_type(tensor_type):
 
 NanMarker = object()
 
+NoneType = type(None)
 
-def is_nan(x):
+
+def is_nan(x: Any) -> bool:
   """Checks if given value is a Python NaN."""
+  # Like _signs below, check the common exact types first.
+  t = type(x)
+  if t is float:
+    return math.isnan(x)
+  if t is int or t is bool or t is str or t is NoneType:
+    return False
+  if t is complex:
+    return math.isnan(x.real) or math.isnan(x.imag)
+
   if not isinstance(x, numbers.Number):
     return False
 
-  if isinstance(x, complex):
+  # numbers.Complex also covers complex types that do not subclass complex,
+  # such as np.complex64, whose imaginary part math.isnan would discard.
+  if isinstance(x, numbers.Complex) and not isinstance(x, numbers.Real):
     return math.isnan(x.real) or math.isnan(x.imag)
   else:
-    return math.isnan(x)
+    return math.isnan(x)  # pyrefly: ignore[bad-argument-type]
+
+
+def _signs(x: Any) -> Optional[Union[float, PythonTuple[float, float]]]:
+  """Returns the signs of a float's or complex's parts, else None."""
+  # This runs for every Python scalar argument of every tf.function call, so
+  # check the common exact types before the slower abstract base classes.
+  t = type(x)
+  if t is int or t is bool or t is str or t is NoneType:
+    return None
+  if t is float:
+    return math.copysign(1.0, x)
+  if t is complex:
+    return (math.copysign(1.0, x.real), math.copysign(1.0, x.imag))
+
+  if isinstance(x, numbers.Integral) or not isinstance(x, numbers.Complex):
+    return None
+
+  if isinstance(x, numbers.Real):
+    return math.copysign(1.0, x)
+  else:
+    return (math.copysign(1.0, x.real), math.copysign(1.0, x.imag))
 
 
 class Literal(trace.TraceType, serialization.Serializable):
   """Represents a Literal type like bool, int or string."""
 
   def __init__(self, value: Any):
+    # Values that compare equal can still trace differently: 1, 1.0 and True
+    # give tensors of different dtypes, and math.copysign or a division tells
+    # 0.0 and -0.0 apart. So a Literal only matches values of the same type
+    # and sign. The type is taken before a NaN is replaced below, so that NaNs
+    # of different types do not match either.
+    self._value_type = type(value)
+
     # We match nan values against each other even though Python doesn't.
     if is_nan(value):
+      # Keep the NaN itself for placeholder_value, so that the traced function
+      # sees a NaN of the type it was called with.
+      self._nan_value = value
       value = NanMarker
 
     self.value = value
     self._value_hash = hash(value)
+    self._value_signs = None if value is NanMarker else _signs(value)
 
   def is_subtype_of(self, other: trace.TraceType) -> bool:
     return self == other
@@ -119,24 +164,42 @@ class Literal(trace.TraceType, serialization.Serializable):
       return list(self.value)
 
     if self.value is NanMarker:
-      return float("nan")
+      return self._nan_value
 
     return self.value
 
   def cast(self, value: Any, casting_context: Any) -> Any:
-    if self.value is NanMarker and is_nan(value):
+    if (
+        self.value is NanMarker
+        and type(value) is self._value_type
+        and is_nan(value)
+    ):
       return value
 
-    if value == self.value:
+    if self._matches(value):
       return value
     else:
       raise ValueError(f"Can not cast {value!r} to {self!r}")
+
+  def _matches(self, value: Any) -> bool:
+    return (
+        type(value) is self._value_type
+        and value == self.value
+        and (self._value_signs is None or _signs(value) == self._value_signs)
+    )
 
   def __eq__(self, other) -> bool:
     if not isinstance(other, trace.TraceType):
       return NotImplemented
 
-    return isinstance(other, Literal) and self.value == other.value
+    # Compare the cached type and signs rather than recomputing them: this
+    # runs on every trace cache lookup.
+    return (
+        isinstance(other, Literal)
+        and self._value_type is other._value_type
+        and self.value == other.value
+        and self._value_signs == other._value_signs
+    )
 
   def __hash__(self) -> int:
     return self._value_hash
@@ -439,7 +502,7 @@ class NamedTuple(trace.TraceType, serialization.Serializable):
   def experimental_from_proto(
       cls, proto: default_types_pb2.SerializedNamedTuple) -> "NamedTuple":
     return NamedTuple(
-        proto.type_name, tuple(proto.attribute_names),
+        proto.type_name, tuple(proto.attribute_names),  # pyrefly: ignore[bad-argument-type]
         Tuple.experimental_from_proto(proto.attributes).components)
 
   def experimental_as_proto(self) -> default_types_pb2.SerializedNamedTuple:
@@ -502,7 +565,7 @@ class NamedTuple(trace.TraceType, serialization.Serializable):
         casting_context,
     )
     if was_casted:
-      return self._placeholder_type(*casted_values)
+      return self._placeholder_type(*casted_values)  # pyrefly: ignore[not-callable]
     else:
       return value
 
@@ -582,7 +645,7 @@ class Attrs(trace.TraceType):
       cls, proto: default_types_pb2.SerializedAttrs) -> "Attrs":
     return Attrs(
         proto.named_attributes.type_name,
-        tuple(proto.named_attributes.attribute_names),
+        tuple(proto.named_attributes.attribute_names),  # pyrefly: ignore[bad-argument-type]
         Tuple.experimental_from_proto(
             proto.named_attributes.attributes).components)
 
@@ -643,7 +706,7 @@ class Attrs(trace.TraceType):
     )
 
     if was_casted:
-      return self._placeholder_type(*casted_values)
+      return self._placeholder_type(*casted_values)  # pyrefly: ignore[not-callable]
     else:
       return value
 
@@ -750,7 +813,7 @@ class Dict(trace.TraceType, serialization.Serializable):
   def to_tensors(self, value: Any):
     assert isinstance(value, collections.abc.Mapping)
     flattened_values = []
-    for key in sorted(self.mapping.keys()):
+    for key in sorted(self.mapping.keys()):  # pyrefly: ignore[bad-specialization]
       comp_value, comp_type = value[key], self.mapping[key]
       flattened_values.extend(comp_type.to_tensors(comp_value))
     return flattened_values
@@ -761,7 +824,7 @@ class Dict(trace.TraceType, serialization.Serializable):
 
     sorted_traversal = {
         key: self.mapping[key].from_tensors(tensors)
-        for key in sorted(self.mapping)
+        for key in sorted(self.mapping)  # pyrefly: ignore[bad-specialization]
     }
 
     if self._placeholder_type is collections.defaultdict:
@@ -774,7 +837,7 @@ class Dict(trace.TraceType, serialization.Serializable):
   def flatten(self) -> PythonList[trace.TraceType]:
     flattened_types = []
 
-    for key in sorted(self.mapping.keys()):
+    for key in sorted(self.mapping.keys()):  # pyrefly: ignore[bad-specialization]
       flattened_types.extend(self.mapping[key].flatten())
 
     return flattened_types
@@ -795,7 +858,7 @@ class Dict(trace.TraceType, serialization.Serializable):
     )
 
     if was_casted:
-      return self._placeholder_type(
+      return self._placeholder_type(  # pyrefly: ignore[not-callable]
           **{k: v for k, v in zip(self.mapping.keys(), casted_values)}
       )
     else:

@@ -26,5 +26,5 @@ package(
 filegroup(
     name = "webp_testdata",
     srcs = glob(["*.webp"]),
-    visibility = ["//tensorflow/core/lib/webp:__pkg__"],
+    visibility = ["//tensorflow/core/lib/webp:__subpackages__"],
 )

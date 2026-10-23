@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# proto-file: third_party/tensorflow/compiler/xla/stream_executor/device_description.proto
+# proto-message: stream_executor.GpuTargetConfigProto
+
 gpu_device_info {
   threads_per_block_limit: 1024
   threads_per_warp: 32
@@ -26,7 +29,7 @@ gpu_device_info {
   memory_bandwidth: 1555200000000
   l2_cache_size: 41943040
   clock_rate_ghz: 1.41
-  device_memory_size: 42331013120
+  device_memory_size: 42298834944
   shared_memory_per_block_optin: 166912
   cuda_compute_capability {
     major: 8
@@ -34,6 +37,106 @@ gpu_device_info {
   }
   registers_per_core_limit: 65536
   registers_per_block_limit: 65536
+  scalar_unit_description {
+    rate_infos {
+      key: 4
+      value {
+        clock_rate_ghz: 1.41
+        units_per_core: 64
+        ops_per_clock: 1
+      }
+    }
+    rate_infos {
+      key: 8
+      value {
+        clock_rate_ghz: 1.41
+        units_per_core: 64
+        ops_per_clock: 1
+      }
+    }
+    rate_infos {
+      key: 10
+      value {
+        clock_rate_ghz: 1.41
+        units_per_core: 64
+        ops_per_clock: 2
+      }
+    }
+    rate_infos {
+      key: 11
+      value {
+        clock_rate_ghz: 1.41
+        units_per_core: 64
+        ops_per_clock: 1
+      }
+    }
+    rate_infos {
+      key: 12
+      value {
+        clock_rate_ghz: 1.41
+        units_per_core: 32
+        ops_per_clock: 1
+      }
+    }
+    rate_infos {
+      key: 16
+      value {
+        clock_rate_ghz: 1.41
+        units_per_core: 64
+        ops_per_clock: 2
+      }
+    }
+  }
+  matrix_unit_description {
+    rate_infos {
+      key: 2
+      value {
+        clock_rate_ghz: 1.41
+        units_per_core: 4
+        ops_per_clock: 512
+      }
+    }
+    rate_infos {
+      key: 6
+      value {
+        clock_rate_ghz: 1.41
+        units_per_core: 4
+        ops_per_clock: 512
+      }
+    }
+    rate_infos {
+      key: 10
+      value {
+        clock_rate_ghz: 1.41
+        units_per_core: 4
+        ops_per_clock: 256
+      }
+    }
+    rate_infos {
+      key: 11
+      value {
+        clock_rate_ghz: 1.41
+        units_per_core: 4
+        ops_per_clock: 128
+      }
+    }
+    rate_infos {
+      key: 12
+      value {
+        clock_rate_ghz: 1.41
+        units_per_core: 4
+        ops_per_clock: 16
+      }
+    }
+    rate_infos {
+      key: 16
+      value {
+        clock_rate_ghz: 1.41
+        units_per_core: 4
+        ops_per_clock: 256
+      }
+    }
+  }
   thread_dim_limit_x: 1024
   thread_dim_limit_y: 1024
   thread_dim_limit_z: 64
@@ -44,6 +147,9 @@ gpu_device_info {
   pcie_bandwidth: 34359738368
   ecc_enabled: true
   name: "NVIDIA A100-SXM4-40GB"
+  mem_clock_ghz: 1.215
+  reserved_shared_memory_per_block: 1024
+  max_blocks_per_multiprocessor: 32
   driver_version: "13.0.0"
   runtime_version: "12.8.0"
   compile_time_toolkit_version: "12.8.0"
@@ -51,9 +157,4 @@ gpu_device_info {
   cub_version: "3.1.2"
 }
 platform_name: "CUDA"
-dnn_version_info {
-  major: 9
-  minor: 10
-  patch: 0
-}
 device_description_str: "NVIDIA A100-SXM4-40GB"

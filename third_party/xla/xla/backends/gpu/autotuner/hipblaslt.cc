@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
@@ -182,9 +183,13 @@ bool IsValidMxScaledDot(const HloInstruction* scaled_dot) {
 // Returns the scaled-dot instruction inside a Triton GEMM fusion, or nullptr
 // if `instr` is not such a fusion.
 const HloInstruction* GetScaledDotFromFusion(const HloInstruction& instr) {
-  if (instr.opcode() != HloOpcode::kFusion) return nullptr;
+  if (instr.opcode() != HloOpcode::kFusion) {
+    return nullptr;
+  }
   auto gpu_config = instr.backend_config<GpuBackendConfig>();
-  if (!gpu_config.ok()) return nullptr;
+  if (!gpu_config.ok()) {
+    return nullptr;
+  }
   if (gpu_config->fusion_backend_config().kind() != kTritonGemmFusionKind) {
     return nullptr;
   }
@@ -325,7 +330,8 @@ HipblasLtBackend::GetSupportedConfigs(const HloInstruction& instr) {
       configs.push_back(std::move(config));
     }
     return configs;
-  } else if (IsCublasLtGroupedMatmul(instr)) {
+  }
+  if (IsCublasLtGroupedMatmul(instr)) {
     ABSL_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                      instr.backend_config<GpuBackendConfig>());
 
@@ -388,7 +394,21 @@ HipblasLtBackend::GetDefaultConfig(const HloInstruction& instr) {
   }
 
   auto config = std::make_unique<BackendConfig>();
-  config->mutable_gemm()->set_algorithm(0);
+  auto* gemm_key = config->mutable_gemm();
+  gemm_key->set_algorithm(0);
+  // Standard GEMMs were already lowered into custom calls with a workspace
+  // buffer tuple by GemmRewriter, so we can preserve that allocated workspace
+  // size. In contrast, scaled-dot GEMMs enter this pass as a fusion and are
+  // only lowered to a custom call in ApplyConfig(), so they do not yet have a
+  // workspace buffer in their shape. MX scaled dots on ROCm are currently
+  // supported on gfx950, so we use kGFX950Workspace (matching
+  // GetSupportedConfigs).
+  if (GetScaledDotFromFusion(instr) != nullptr) {
+    gemm_key->set_autotune_workspace_size(GemmConfig::kGFX950Workspace);
+  } else if (instr.shape().IsTuple() && !instr.shape().tuple_shapes().empty()) {
+    gemm_key->set_autotune_workspace_size(
+        ShapeUtil::ByteSizeOf(instr.shape().tuple_shapes().back()));
+  }
   return config;
 }
 
@@ -502,7 +522,8 @@ absl::Status HipblasLtBackend::ApplyConfig(HloInstruction& instr,
     HloInstruction* gte = parent->AddInstruction(
         HloInstruction::CreateGetTupleElement(result_shape, custom_call, 0));
     return parent->ReplaceInstruction(&instr, gte);
-  } else if (IsCublasLtGroupedMatmul(instr)) {
+  }
+  if (IsCublasLtGroupedMatmul(instr)) {
     ABSL_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                      instr.backend_config<GpuBackendConfig>());
     GemmBackendConfig* backend_config =

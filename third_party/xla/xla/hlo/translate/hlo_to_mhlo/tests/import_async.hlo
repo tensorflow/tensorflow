@@ -295,6 +295,33 @@ ENTRY %test_all_gather_start_mesh {
   ROOT ag-done = f32[128,128] all-gather-done(ag-start)
 }
 
+// -----
+
+HloModule main
+
+// CHECK-LABEL: func.func private @copy_(%arg0: tensor<128x32xf32>)
+// CHECK-NEXT:    mhlo.copy
+
+// CHECK-LABEL: func.func @main
+// CHECK-SAME:  (%[[ARG0:.*]]: tensor<1024x1024xf32>, %[[ARG1:.*]]: tensor<128x32xf32>)
+// CHECK:       %[[BARRIER:.*]] = stablehlo.optimization_barrier %[[ARG0]]
+// CHECK:       %[[START:.*]] = "mhlo.async_start"(%[[ARG1]]) <{called_computation = @copy_, execution_thread = "main"}>
+// CHECK:       %[[DONE:.*]] = "mhlo.async_done"(%[[START]])
+// CHECK-SAME:  called_computation = @copy_
+// CHECK-SAME:  execution_thread = "main"
+// CHECK:       return %[[BARRIER]], %[[DONE]]
+ENTRY %test_async_copy_opt_barrier (dot_general.1: f32[1024,1024], shard_map.5: f32[128,32]) -> (f32[1024,1024], f32[128,32]) {
+  %dot_general.1 = f32[1024,1024]{1,0} parameter(0)
+  %shard_map.5 = f32[128,32]{1,0} parameter(1)
+  %opt_bar = f32[1024,1024]{1,0} opt-barrier(%dot_general.1)
+  %copy-start = (f32[128,32]{1,0}, f32[128,32]{1,0}, u32[]) copy-start(%shard_map.5)
+  %tuple.4 = (f32[1024,1024]{1,0}, (f32[128,32]{1,0}, f32[128,32]{1,0}, u32[])) tuple(%opt_bar, %copy-start)
+  %get-tuple-element.0 = f32[1024,1024]{1,0} get-tuple-element(%tuple.4), index=0
+  %get-tuple-element.1 = (f32[128,32]{1,0}, f32[128,32]{1,0}, u32[]) get-tuple-element(%tuple.4), index=1
+  %copy-done = f32[128,32]{1,0} copy-done(%get-tuple-element.1)
+  ROOT %root = (f32[1024,1024]{1,0}, f32[128,32]{1,0}) tuple(%get-tuple-element.0, %copy-done)
+}
+
 // BROKEN: b/TODO: support roundtrip of async custom calls?
 
 // HloModule main, entry_computation_layout={(f32[10]{0})->(f32[20]{0})}

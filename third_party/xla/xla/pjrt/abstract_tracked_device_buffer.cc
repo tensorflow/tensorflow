@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/pjrt/device_event_utils.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/raw_buffer.h"
+#include "xla/shape.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -130,6 +131,26 @@ Future<> AbstractTrackedDeviceBuffer::GetReadyFuture(
   return definition_future;
 }
 
+absl::StatusOr<PjRtDeviceEventRef>
+AbstractTrackedDeviceBuffer::GetDefinitionEvent(PjRtMemorySpace* memory_space) {
+  if (definition_events().empty()) {
+    auto* client = absl::down_cast<CommonPjRtClient*>(memory_space->client());
+    PjRtDeviceEventPromiseRef usage_event_promise;
+    PjRtDeviceEventRef usage_event;
+    ABSL_ASSIGN_OR_RETURN(std::tie(usage_event_promise, usage_event),
+                     client->CreateLinkedEventPromise(
+                         memory_space, "GetDefinitionEvent 0-sized"));
+    usage_event_promise.SetReady();
+    return usage_event;
+  }
+  if (definition_events().size() != 1) {
+    return absl::InternalError(
+        "GetMergedDefinitionEvent only supported on TPU for buffers with "
+        "exactly 1 definition event.");
+  }
+  return definition_events_[0];
+}
+
 absl::Status AbstractTrackedDeviceBuffer::BlockForOperationsToComplete(
     PjRtMemorySpace* memory_space) {
   for (const auto& ev : usage_events_) {
@@ -152,7 +173,8 @@ absl::Status AbstractTrackedDeviceBuffer::WaitUntilBufferReadyOnStream(
     PjRtMemorySpace* memory_space, std::intptr_t stream) {
   auto* client = absl::down_cast<CommonPjRtClient*>(memory_space->client());
   for (const auto& event : definition_events()) {
-    ABSL_RETURN_IF_ERROR(client->WaitOnStream(memory_space, event, stream));
+    ABSL_RETURN_IF_ERROR(client->raw_client()->WaitOnStream(
+        memory_space->devices()[0]->local_device_id(), event, stream));
   }
   return absl::OkStatus();
 }
@@ -381,6 +403,20 @@ void CommonPjRtBuffer::ScopedHold::ConfirmDonation() {
   CHECK_EQ(type(), kDonation);
   parent()->ConfirmDonation(buffer());
   SetState(kDonated);
+}
+
+CommonPjRtBuffer::DonatedBufferInfo
+CommonPjRtBuffer::ScopedHold::ConfirmDonationReturningBufferInfo() {
+  CHECK(ok());
+  CHECK_EQ(type(), kDonation);
+  DonatedBufferInfo info{
+      /*raw_buffer=*/buffer()->raw_buffer(),
+      /*shape=*/std::make_shared<const Shape>(parent()->on_device_shape()),
+      /*memory_space=*/parent()->memory_space(),
+  };
+  parent()->ConfirmDonation(buffer());
+  SetState(kDonated);
+  return info;
 }
 
 void CommonPjRtBuffer::ConfirmDonation(

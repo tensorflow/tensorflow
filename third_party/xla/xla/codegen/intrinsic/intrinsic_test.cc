@@ -13,12 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "xla/codegen/intrinsic/intrinsic.h"
 
 #include <optional>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
+#include "absl/strings/string_view.h"
 #include "xla/codegen/intrinsic/type.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
@@ -48,8 +51,8 @@ TEST(IntrinsicTest, TypeVectorWidth) {
 }
 
 TEST(IntrinsicTest, VerifySameWidth) {
-  TF_EXPECT_OK(Type::VerifySameWidth(Type::S(F32), Type::S(F32)));
-  TF_EXPECT_OK(Type::VerifySameWidth(Type::V(F32, 4), Type::V(F32, 4)));
+  EXPECT_OK(Type::VerifySameWidth(Type::S(F32), Type::S(F32)));
+  EXPECT_OK(Type::VerifySameWidth(Type::V(F32, 4), Type::V(F32, 4)));
   EXPECT_THAT(
       Type::VerifySameWidth(Type::S(F32), Type::V(F32, 4)),
       absl_testing::StatusIs(_, HasSubstr("Expected types of the same kind")));
@@ -58,8 +61,8 @@ TEST(IntrinsicTest, VerifySameWidth) {
 }
 
 TEST(IntrinsicTest, VerifySameWidthAndElementType) {
-  TF_EXPECT_OK(Type::VerifySameWidthAndElementType(Type::S(F32), Type::S(F32)));
-  TF_EXPECT_OK(
+  EXPECT_OK(Type::VerifySameWidthAndElementType(Type::S(F32), Type::S(F32)));
+  EXPECT_OK(
       Type::VerifySameWidthAndElementType(Type::V(F32, 4), Type::V(F32, 4)));
   EXPECT_THAT(
       Type::VerifySameWidthAndElementType(Type::S(F32), Type::V(F32, 4)),
@@ -78,6 +81,37 @@ TEST(IntrinsicTypeTest, FromName) {
   EXPECT_TRUE(v4s8.is_vector());
   EXPECT_EQ(v4s8.element_type(), S8);
   EXPECT_EQ(v4s8.vector_width(), 4);
+}
+
+struct DummyIntrinsic : public intrinsics::Intrinsic<DummyIntrinsic> {
+  static std::vector<std::vector<Type>> SupportedVectorTypes(
+      absl::string_view features = "") {
+    return {{Type::S(F32)}, {Type::V(F32, 4)}, {Type::S(F32), Type::S(BF16)}};
+  }
+};
+
+struct DummyFeatureIntrinsic
+    : public intrinsics::Intrinsic<DummyFeatureIntrinsic> {
+  static std::vector<std::vector<Type>> SupportedVectorTypes(
+      absl::string_view features) {
+    if (features == "+avx") {
+      return {{Type::V(F32, 8)}};
+    }
+    return {{Type::S(F32)}};
+  }
+};
+
+TEST(IntrinsicTest, IsSupported) {
+  EXPECT_TRUE(DummyIntrinsic::IsSupported("", {Type::S(F32)}));
+  EXPECT_TRUE(DummyIntrinsic::IsSupported("", {Type::V(F32, 4)}));
+  EXPECT_TRUE(DummyIntrinsic::IsSupported("", {Type::S(F32), Type::S(BF16)}));
+  EXPECT_FALSE(DummyIntrinsic::IsSupported("", {Type::S(F64)}));
+  EXPECT_FALSE(DummyIntrinsic::IsSupported("", {Type::V(F32, 8)}));
+  EXPECT_FALSE(DummyIntrinsic::IsSupported("", {Type::S(F32), Type::S(F32)}));
+
+  EXPECT_TRUE(DummyFeatureIntrinsic::IsSupported("+avx", {Type::V(F32, 8)}));
+  EXPECT_FALSE(DummyFeatureIntrinsic::IsSupported("", {Type::V(F32, 8)}));
+  EXPECT_TRUE(DummyFeatureIntrinsic::IsSupported("", {Type::S(F32)}));
 }
 
 }  // namespace

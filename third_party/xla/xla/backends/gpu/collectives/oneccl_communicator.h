@@ -16,9 +16,11 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_COLLECTIVES_ONECCL_COMMUNICATOR_H_
 #define XLA_BACKENDS_GPU_COLLECTIVES_ONECCL_COMMUNICATOR_H_
 
+#include <cstddef>
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 
 #include "oneapi/ccl.h"
 #include "absl/container/inlined_vector.h"
@@ -41,131 +43,115 @@ class OnecclCommunicator : public GpuCommunicator {
   static absl::StatusOr<std::unique_ptr<OnecclCommunicator>> Create(
       absl::AnyInvocable<absl::StatusOr<onecclComm_t>()> make_comm,
       bool is_async, tsl::Env& env = *tsl::Env::Default());
+
   ~OnecclCommunicator() override;
 
-  absl::StatusOr<size_t> NumRanks() const final { return absl::OkStatus(); };
-  Future<> GroupExecute(absl::AnyInvocable<absl::Status() &&> group) {
-    return absl::OkStatus();
-  }
+  absl::StatusOr<size_t> NumRanks() const final;
+
+  Future<> GroupExecute(absl::AnyInvocable<absl::Status() &&> group);
 
   Future<> AllReduce(se::DeviceAddressBase send_buffer,
                      se::DeviceAddressBase recv_buffer, PrimitiveType dtype,
                      size_t count, ReductionKind reduction_kind,
-                     const Executor& executor) final {
-    return absl::OkStatus();
-  }
+                     const Executor& executor) final;
+
   Future<> Broadcast(se::DeviceAddressBase send_buffer,
                      se::DeviceAddressBase recv_buffer, PrimitiveType dtype,
-                     size_t count, RankId root,
-                     const Executor& executor) final {
-    return absl::OkStatus();
-  }
+                     size_t count, RankId root, const Executor& executor) final;
 
   Future<> ReduceScatter(se::DeviceAddressBase send_buffer,
                          se::DeviceAddressBase recv_buffer, PrimitiveType dtype,
                          size_t count, ReductionKind reduction_kind,
-                         const Executor& executor) final {
-    return absl::OkStatus();
-  }
+                         const Executor& executor) final;
 
   Future<> AllGather(se::DeviceAddressBase send_buffer,
                      se::DeviceAddressBase recv_buffer, PrimitiveType dtype,
-                     size_t count, const Executor& executor) final {
-    return absl::OkStatus();
-  }
+                     size_t count, const Executor& executor) final;
 
   Future<> Send(se::DeviceAddressBase send_buffer, PrimitiveType dtype,
-                size_t count, RankId peer, const Executor& executor) final {
-    return absl::OkStatus();
-  }
+                size_t count, RankId peer, const Executor& executor) final;
 
   Future<> Recv(se::DeviceAddressBase recv_buffer, PrimitiveType dtype,
-                size_t count, RankId peer, const Executor& executor) final {
-    return absl::OkStatus();
-  }
+                size_t count, RankId peer, const Executor& executor) final;
 
   std::string ToString() const final;
+
+  onecclComm_t comm() const { return comm_; }
 
   Future<> AllToAll(absl::InlinedVector<se::DeviceAddressBase, 4> send_buffers,
                     absl::InlinedVector<se::DeviceAddressBase, 4> recv_buffers,
                     PrimitiveType dtype, size_t count,
-                    const Executor& executor) final {
-    return absl::OkStatus();
-  }
+                    const Executor& executor) final;
 
   Future<> CollectivePermute(se::DeviceAddressBase send_buffer,
                              se::DeviceAddressBase recv_buffer,
                              PrimitiveType dtype, size_t count,
                              std::optional<RankId> source_rank,
                              absl::Span<const RankId> target_ranks,
-                             const Executor& executor) final {
-    return absl::OkStatus();
-  }
+                             const Executor& executor) final;
 
  private:
-  absl::Status GroupStart() { return absl::OkStatus(); }
-  absl::Status GroupEnd() { return absl::OkStatus(); }
+  absl::Status GroupStart();
+  absl::Status GroupEnd();
 
   absl::Status LaunchAllReduce(se::DeviceAddressBase send_buffer,
                                se::DeviceAddressBase recv_buffer,
                                PrimitiveType dtype, size_t count,
                                ReductionKind reduction_kind,
-                               const Executor& executor) final {
-    return absl::OkStatus();
-  }
+                               const Executor& executor) final;
 
   absl::Status LaunchBroadcast(se::DeviceAddressBase send_buffer,
                                se::DeviceAddressBase recv_buffer,
                                PrimitiveType dtype, size_t count, RankId root,
-                               const Executor& executor) final {
-    return absl::OkStatus();
-  }
+                               const Executor& executor) final;
 
   absl::Status LaunchReduceScatter(se::DeviceAddressBase send_buffer,
                                    se::DeviceAddressBase recv_buffer,
                                    PrimitiveType dtype, size_t count,
                                    ReductionKind reduction_kind,
-                                   const Executor& executor) final {
-    return absl::OkStatus();
-  }
+                                   const Executor& executor) final;
 
   absl::Status LaunchAllGather(se::DeviceAddressBase send_buffer,
                                se::DeviceAddressBase recv_buffer,
                                PrimitiveType dtype, size_t count,
-                               const Executor& executor) final {
-    return absl::OkStatus();
-  }
+                               const Executor& executor) final;
 
   absl::Status LaunchAllToAll(
       absl::InlinedVector<se::DeviceAddressBase, 4> send_buffers,
       absl::InlinedVector<se::DeviceAddressBase, 4> recv_buffers,
-      PrimitiveType dtype, size_t count, const Executor& executor) final {
-    return absl::OkStatus();
-  }
+      PrimitiveType dtype, size_t count, const Executor& executor) final;
 
   absl::Status LaunchCollectivePermute(se::DeviceAddressBase send_buffer,
                                        se::DeviceAddressBase recv_buffer,
                                        PrimitiveType dtype, size_t count,
                                        std::optional<RankId> source_rank,
                                        absl::Span<const RankId> target_ranks,
-                                       const Executor& executor) final {
-    return absl::OkStatus();
-  }
+                                       const Executor& executor) final;
 
   absl::Status LaunchSend(se::DeviceAddressBase send_buffer,
                           PrimitiveType dtype, size_t count, RankId peer,
-                          const Executor& executor) final {
-    return absl::OkStatus();
-  }
+                          const Executor& executor) final;
 
   absl::Status LaunchRecv(se::DeviceAddressBase recv_buffer,
                           PrimitiveType dtype, size_t count, RankId peer,
-                          const Executor& executor) final {
-    return absl::OkStatus();
-  }
+                          const Executor& executor) final;
 
   // Executes f on executor_, or calls f directly if executor_ is null.
   Future<> Execute(absl::AnyInvocable<absl::Status() &&> f) const;
+
+  template <typename T>
+  Future<T> Execute(absl::AnyInvocable<absl::StatusOr<T>() &&> f) const;
+
+  Future<> ExecuteAwait(absl::AnyInvocable<absl::Status() &&> f) const {
+    return Execute(std::move(f)).Await();
+  }
+
+  template <typename T>
+  absl::StatusOr<T> ExecuteAwait(
+      absl::AnyInvocable<absl::StatusOr<T>() &&> f) const {
+    return Execute<T>(std::move(f)).Await();
+  }
+
   explicit OnecclCommunicator(onecclComm_t comm,
                               std::unique_ptr<tsl::Executor> executor)
       : comm_(comm), executor_(std::move(executor)) {
@@ -173,6 +159,7 @@ class OnecclCommunicator : public GpuCommunicator {
   }
   onecclComm_t comm_;
   std::unique_ptr<tsl::Executor> executor_;
+  int32_t group_nesting_level_ = 0;
 };
 
 }  // namespace xla::gpu

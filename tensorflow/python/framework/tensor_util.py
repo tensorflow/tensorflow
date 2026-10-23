@@ -21,6 +21,7 @@ import numpy as np
 
 from tensorflow.core.framework import tensor_pb2
 from tensorflow.core.framework import tensor_shape_pb2
+from tensorflow.python import pywrap_tfe
 from tensorflow.python.client import pywrap_tf_session as c_api
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -167,6 +168,25 @@ def FastAppendFloat8e5m2fnuzArrayToTensorProto(tensor_proto, proto_values):
   )
 
 
+def SlowAppendFloat8e8m0fnuArrayToTensorProto(tensor_proto, proto_values):
+  tensor_proto.float8_val += (
+      numpy_compat.np_asarray(
+          proto_values, dtype=dtypes.float8_e8m0fnu.as_numpy_dtype
+      )
+      .view(np.uint8)
+      .tobytes()
+  )
+
+
+def FastAppendFloat8e8m0fnuArrayToTensorProto(tensor_proto, proto_values):
+  fast_tensor_util.AppendFloat8ArrayToTensorProto(
+      tensor_proto,
+      numpy_compat.np_asarray(
+          proto_values, dtype=dtypes.float8_e8m0fnu.as_numpy_dtype
+      ).view(np.uint8),
+  )
+
+
 def SlowAppendFloat4e2m1fnArrayToTensorProto(tensor_proto, proto_values):
   tensor_proto.float8_val += (
       numpy_compat.np_asarray(
@@ -269,6 +289,9 @@ if _FAST_TENSOR_UTIL_AVAILABLE:
       dtypes.float8_e5m2fnuz.as_numpy_dtype: (
           FastAppendFloat8e5m2fnuzArrayToTensorProto
       ),
+      dtypes.float8_e8m0fnu.as_numpy_dtype: (
+          FastAppendFloat8e8m0fnuArrayToTensorProto
+      ),
       dtypes.float4_e2m1fn.as_numpy_dtype: (
           FastAppendFloat4e2m1fnArrayToTensorProto
       ),
@@ -328,6 +351,9 @@ else:
       ),
       dtypes.float8_e5m2fnuz.as_numpy_dtype: (
           SlowAppendFloat8e5m2fnuzArrayToTensorProto
+      ),
+      dtypes.float8_e8m0fnu.as_numpy_dtype: (
+          SlowAppendFloat8e8m0fnuArrayToTensorProto
       ),
       dtypes.float4_e2m1fn.as_numpy_dtype: (
           SlowAppendFloat4e2m1fnArrayToTensorProto
@@ -432,6 +458,7 @@ _TENSOR_CONTENT_TYPES = frozenset([
     dtypes.float8_e4m3fnuz,
     dtypes.float8_e4m3b11fnuz,
     dtypes.float8_e5m2fnuz,
+    dtypes.float8_e8m0fnu,
     dtypes.float4_e2m1fn,
     dtypes.bfloat16,
     # int4 / uint4 / int2 / uint2 intentionally not listed, since their binary
@@ -633,7 +660,15 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False,
   # We first convert value to a numpy array or scalar.
   if isinstance(values, (np.ndarray, np.generic)):
     if dtype and dtype.is_numpy_compatible:
-      nparray = values.astype(dtype.as_numpy_dtype)
+      if dtype.is_integer:
+        # `ndarray.astype` silently maps NaN and Inf onto the smallest
+        # representable integer, whereas the equivalent Python list raises a
+        # `TypeError`. Both checks and the cast live in one C++ entry point,
+        # exactly as in the eager conversion (`PySeqToTFE_TensorHandle`); the
+        # array is neither traversed nor cast from Python.
+        nparray = pywrap_tfe.ArrayToIntegerArray(values, dtype.as_numpy_dtype)
+      else:
+        nparray = values.astype(dtype.as_numpy_dtype)
     else:
       nparray = values
   else:
@@ -823,6 +858,7 @@ def MakeNdarray(tensor):
       dtypes.float8_e4m3fnuz,
       dtypes.float8_e4m3b11fnuz,
       dtypes.float8_e5m2fnuz,
+      dtypes.float8_e8m0fnu,
       dtypes.float4_e2m1fn,
   ]:
     values = np.fromiter(tensor.float8_val, dtype=np.uint8)
@@ -1095,7 +1131,7 @@ def constant_value(tensor, partial=False):  # pylint: disable=invalid-name
     or None if it cannot be calculated.
 
   Raises:
-    TypeError: if tensor is not an tensor.Tensor.
+    TypeError: if tensor is not a tensor.Tensor.
   """
   if isinstance(tensor, core.Value):
     try:

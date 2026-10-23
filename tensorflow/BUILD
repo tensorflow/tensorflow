@@ -1044,6 +1044,7 @@ package_group(
         "//tensorflow_models/google/recml/...",
         "//third_party/cloud_tpu/convergence_tools/sdc_monitoring/...",
         "//third_party/cloud_tpu/inference_converter/...",
+        "//third_party/odml/model_explorer/...",
         "//third_party/pathways/...",
         "//third_party/py/cloud_ml_autoflow/...",
         "//third_party/py/envlogger/...",
@@ -1116,6 +1117,7 @@ bzl_library(
         "@bazel_skylib//rules:common_settings",
         "@local_config_cuda//cuda:build_defs_bzl",
         "@local_config_rocm//rocm:build_defs_bzl",
+        # copybara:uncomment "@local_config_rocm//rocm:hipcc_build_defs_bzl",
         "@local_config_tensorrt//:build_defs_bzl",
     ],
 )
@@ -1588,6 +1590,8 @@ exports_files(
         "tf_version_script.lds",
         "tf_exported_symbols.lds",
         "tf_private_symbols.lds",
+        "tf_framework_version_script.lds",
+        "tf_framework_exported_symbols_macos.lds",
     ],
 )
 

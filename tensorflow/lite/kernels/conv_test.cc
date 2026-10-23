@@ -350,6 +350,26 @@ TEST(ConvolutionPrepareSecurityTest, RejectsInvalidGroupedOutputChannels) {
   EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
 }
 
+TEST(ConvolutionPrepareSecurityTest, RejectsGroupedHybridUint8Filter) {
+  PrepareOnlyConvolutionOpModel<uint8_t> m(
+      ops::builtin::Register_CONVOLUTION_GENERIC_OPT(),
+      {TensorType_FLOAT32, {1, 2, 2, 4}},
+      {TensorType_UINT8, {2, 1, 1, 2}, 0, 0, 1.0f, 0}, {TensorType_FLOAT32, {}},
+      /*stride_width=*/1, /*stride_height=*/1);
+
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST(ConvolutionPrepareSecurityTest, RejectsGroupedHybridPerTensorFilter) {
+  PrepareOnlyConvolutionOpModel<int8_t> m(
+      ops::builtin::Register_CONVOLUTION_GENERIC_OPT(),
+      {TensorType_FLOAT32, {1, 2, 2, 4}},
+      {TensorType_INT8, {2, 1, 1, 2}, 0, 0, 1.0f, 0}, {TensorType_FLOAT32, {}},
+      /*stride_width=*/1, /*stride_height=*/1);
+
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
 TEST(ConvolutionPrepareSecurityTest, RejectsPaddingOverflow) {
   PrepareOnlyConvolutionOpModel<float> m(
       ops::builtin::Register_CONVOLUTION_GENERIC_OPT(),
@@ -358,6 +378,36 @@ TEST(ConvolutionPrepareSecurityTest, RejectsPaddingOverflow) {
       /*stride_width=*/1, /*stride_height=*/1, Padding_SAME,
       ActivationFunctionType_NONE, /*dilation_width_factor=*/1,
       /*dilation_height_factor=*/std::numeric_limits<int>::max());
+
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST(ConvolutionPrepareSecurityTest, RejectsParametersOutsideInt16Range) {
+  constexpr int kTooLarge = std::numeric_limits<int16_t>::max() + 1;
+  PrepareOnlyConvolutionOpModel<float> stride_model(
+      ops::builtin::Register_CONVOLUTION_GENERIC_OPT(),
+      {TensorType_FLOAT32, {1, 1, 1, 1}}, {TensorType_FLOAT32, {1, 1, 1, 1}},
+      {TensorType_FLOAT32, {}},
+      /*stride_width=*/kTooLarge, /*stride_height=*/1);
+  EXPECT_EQ(stride_model.AllocateTensors(), kTfLiteError);
+
+  PrepareOnlyConvolutionOpModel<float> dilation_model(
+      ops::builtin::Register_CONVOLUTION_GENERIC_OPT(),
+      {TensorType_FLOAT32, {1, 1, 1, 1}}, {TensorType_FLOAT32, {1, 1, 1, 1}},
+      {TensorType_FLOAT32, {}},
+      /*stride_width=*/1, /*stride_height=*/1, Padding_VALID,
+      ActivationFunctionType_NONE, /*dilation_width_factor=*/kTooLarge);
+  EXPECT_EQ(dilation_model.AllocateTensors(), kTfLiteError);
+}
+
+TEST(ConvolutionPrepareSecurityTest, RejectsPaddingOutsideInt16Range) {
+  constexpr int kFilterWidth =
+      2 * (std::numeric_limits<int16_t>::max() + 1) + 1;
+  PrepareOnlyConvolutionOpModel<float> m(
+      ops::builtin::Register_CONVOLUTION_GENERIC_OPT(),
+      {TensorType_FLOAT32, {1, 1, 1, 1}},
+      {TensorType_FLOAT32, {1, 1, kFilterWidth, 1}}, {TensorType_FLOAT32, {}},
+      /*stride_width=*/1, /*stride_height=*/1, Padding_SAME);
 
   EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
 }
@@ -2458,6 +2508,65 @@ TEST_P(ConvolutionOpTest, SimpleTestHybridPerChannelGrouped) {
                                  0.16)));
 }
 
+TEST_P(ConvolutionOpTest, HybridGroupedWithEqualChannelScales) {
+  float scale = 4.0 / 127.0;
+  HybridPerChannelConvolutionOpModel m(
+      GetRegistration(), {TensorType_FLOAT32, {1, 2, 2, 4}},
+      {TensorType_INT8,
+       {2, 1, 1, 2},
+       0,
+       0,
+       0,
+       0,
+       /*per_channel_quantization=*/true,
+       /*per_channel_quantization_scales=*/{scale, scale},
+       /*per_channel_quantization_offsets=*/{0, 0},
+       /*channel_index=*/0},
+      {TensorType_FLOAT32, {}},
+      /*stride_width=*/1, /*stride_height=*/1);
+
+  m.SetInput({
+      1,
+      2,
+      3,
+      4,  // y=0, x=0
+      2,
+      3,
+      4,
+      5,  // y=0, x=1
+      3,
+      4,
+      5,
+      6,  // y=1, x=0
+      4,
+      5,
+      6,
+      7,  // y=1, x=1
+  });
+  m.SetSignedFilter({
+      1,
+      2,  // out_channel 0
+      3,
+      4,  // out_channel 1
+  });
+  m.SetBias({0, 0});
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
+                                 {
+                                     5,
+                                     25,  //
+                                     8,
+                                     32,  //
+                                     11,
+                                     39,  //
+                                     14,
+                                     46,  //
+                                 },
+                                 0.2)));
+}
+
 TEST_P(ConvolutionOpTest, SimpleTestHybridWithPaddingPerChannel) {
   // Test uses the right zero points for padding if needed.
   const int stride_width = 1;
@@ -2629,6 +2738,117 @@ TEST(ConvPrepareSecurityTest, RejectsShapeOverflow) {
   params.padding = kTfLitePaddingSame;
   params.stride_width = 1;
   params.stride_height = 1;
+  params.dilation_width_factor = 1;
+  params.dilation_height_factor = 1;
+  params.activation = kTfLiteActNone;
+  params.quantized_bias_type = kTfLiteNoType;
+
+  DirectPrepareTestContextState state;
+  TfLiteContext context = {};
+  context.tensors_size = 4;
+  context.tensors = tensors;
+  context.impl_ = &state;
+  context.ResizeTensor = ResizeTensorShouldNotBeCalled;
+  context.ReportError = SilentReportError;
+  context.AddTensors = AddTensorsShouldNotBeCalled;
+  context.GetExternalContext = GetExternalContext;
+  context.SetExternalContext = SetExternalContext;
+
+  TfLiteNode node = {};
+  node.inputs = inputs.get();
+  node.outputs = outputs.get();
+  node.builtin_data = &params;
+
+  TfLiteRegistration* registration =
+      ops::builtin::Register_CONVOLUTION_GENERIC_OPT();
+  node.user_data = registration->init(&context, nullptr, 0);
+  EXPECT_EQ(registration->prepare(&context, &node), kTfLiteError);
+  EXPECT_FALSE(state.resize_tensor_called);
+  EXPECT_FALSE(state.add_tensors_called);
+  registration->free(&context, node.user_data);
+}
+
+TEST(ConvPrepareSecurityTest, RejectsOutputColsOverflowWithoutIm2Col) {
+  // 1x1 stride-1 convolution does not require im2col, and out_height *
+  // out_width (32768 * 1) fits in 32-bit int, but batches * out_height *
+  // out_width (65536 * 32768 = 2^31) overflows 32-bit signed int.
+  IntArrayUniquePtr input_dims = BuildTfLiteArray<int>({65536, 32768, 1, 1});
+  IntArrayUniquePtr filter_dims = BuildTfLiteArray<int>({1, 1, 1, 1});
+  IntArrayUniquePtr bias_dims = BuildTfLiteArray<int>({1});
+  IntArrayUniquePtr output_dims = BuildTfLiteArray<int>(0);
+
+  TfLiteTensor tensors[4] = {};
+  tensors[0].type = kTfLiteFloat32;
+  tensors[0].dims = input_dims.get();
+  tensors[1].type = kTfLiteFloat32;
+  tensors[1].dims = filter_dims.get();
+  tensors[2].type = kTfLiteFloat32;
+  tensors[2].dims = bias_dims.get();
+  tensors[3].type = kTfLiteFloat32;
+  tensors[3].dims = output_dims.get();
+
+  IntArrayUniquePtr inputs = BuildTfLiteArray<int>({0, 1, 2});
+  IntArrayUniquePtr outputs = BuildTfLiteArray<int>({3});
+  TfLiteConvParams params = {};
+  params.padding = kTfLitePaddingSame;
+  params.stride_width = 1;
+  params.stride_height = 1;
+  params.dilation_width_factor = 1;
+  params.dilation_height_factor = 1;
+  params.activation = kTfLiteActNone;
+  params.quantized_bias_type = kTfLiteNoType;
+
+  DirectPrepareTestContextState state;
+  TfLiteContext context = {};
+  context.tensors_size = 4;
+  context.tensors = tensors;
+  context.impl_ = &state;
+  context.ResizeTensor = ResizeTensorShouldNotBeCalled;
+  context.ReportError = SilentReportError;
+  context.AddTensors = AddTensorsShouldNotBeCalled;
+  context.GetExternalContext = GetExternalContext;
+  context.SetExternalContext = SetExternalContext;
+
+  TfLiteNode node = {};
+  node.inputs = inputs.get();
+  node.outputs = outputs.get();
+  node.builtin_data = &params;
+
+  TfLiteRegistration* registration =
+      ops::builtin::Register_CONVOLUTION_GENERIC_OPT();
+  node.user_data = registration->init(&context, nullptr, 0);
+  EXPECT_EQ(registration->prepare(&context, &node), kTfLiteError);
+  EXPECT_FALSE(state.resize_tensor_called);
+  EXPECT_FALSE(state.add_tensors_called);
+  registration->free(&context, node.user_data);
+}
+
+TEST(ConvPrepareSecurityTest, RejectsInputElementOverflowWithStridedIm2Col) {
+  // With stride 4, output spatial dimensions (16384 * 8192) and im2col
+  // elements (16384 * 8192 * 2 * 2 = 536,870,912) fit in 32-bit int, but the
+  // input tensor (65536 * 32768 = 2^31) overflows 32-bit signed int offsets in
+  // im2col.
+  IntArrayUniquePtr input_dims = BuildTfLiteArray<int>({1, 65536, 32768, 1});
+  IntArrayUniquePtr filter_dims = BuildTfLiteArray<int>({1, 2, 2, 1});
+  IntArrayUniquePtr bias_dims = BuildTfLiteArray<int>({1});
+  IntArrayUniquePtr output_dims = BuildTfLiteArray<int>(0);
+
+  TfLiteTensor tensors[4] = {};
+  tensors[0].type = kTfLiteFloat32;
+  tensors[0].dims = input_dims.get();
+  tensors[1].type = kTfLiteFloat32;
+  tensors[1].dims = filter_dims.get();
+  tensors[2].type = kTfLiteFloat32;
+  tensors[2].dims = bias_dims.get();
+  tensors[3].type = kTfLiteFloat32;
+  tensors[3].dims = output_dims.get();
+
+  IntArrayUniquePtr inputs = BuildTfLiteArray<int>({0, 1, 2});
+  IntArrayUniquePtr outputs = BuildTfLiteArray<int>({3});
+  TfLiteConvParams params = {};
+  params.padding = kTfLitePaddingSame;
+  params.stride_width = 4;
+  params.stride_height = 4;
   params.dilation_width_factor = 1;
   params.dilation_height_factor = 1;
   params.activation = kTfLiteActNone;

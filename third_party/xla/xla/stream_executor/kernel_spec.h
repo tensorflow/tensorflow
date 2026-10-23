@@ -61,6 +61,8 @@ namespace stream_executor {
 // Loads kernel from in process symbol pointer (e.g. pointer to C++ device
 // function).
 struct InProcessSymbol {
+  // For SYCL, this points to a getter function returning a
+  // `sycl::kernel_id`, interpreted by SyclExecutor::LoadKernel.
   void* symbol;
   // If not empty, this symbol can be looked up by this name in the kernel
   // symbol registry.
@@ -77,6 +79,15 @@ struct OwningCudaPtxInMemory {
   std::string ptx;
 };
 
+// Like OwningCudaPtxInMemory, but the PTX is held in a reference counted buffer
+// that can be shared between multiple loader specs. Prefer this over
+// OwningCudaPtxInMemory when the same kernel is referenced from several places
+// (e.g. an HLO module that invokes the same kernel multiple times), so that the
+// PTX is stored only once.
+struct SharedCudaPtxInMemory {
+  std::shared_ptr<const std::string> ptx;
+};
+
 // Kernel loader specification for a CUBIN blob that resides in memory.
 struct CudaCubinInMemory {
   absl::Span<const uint8_t> cubin_bytes;
@@ -85,6 +96,15 @@ struct CudaCubinInMemory {
 // Like CudaCubinInMemory but the CUBIN data is owned by the loader spec.
 struct OwningCudaCubinInMemory {
   std::vector<uint8_t> cubin_bytes;
+};
+
+// Like OwningCudaCubinInMemory, but the CUBIN data is held in a reference
+// counted buffer that can be shared between multiple loader specs. Prefer this
+// over OwningCudaCubinInMemory when the same kernel is referenced from several
+// places (e.g. an HLO module that invokes the same kernel multiple times), so
+// that the CUBIN is stored only once.
+struct SharedCudaCubinInMemory {
+  std::shared_ptr<const std::vector<uint8_t>> cubin_bytes;
 };
 
 // Describes how to load a kernel on any subset of a number of target platforms.
@@ -114,11 +134,13 @@ class KernelLoaderSpec {
   }
   bool has_cuda_cubin_in_memory() const {
     return std::holds_alternative<CudaCubinInMemory>(payload_) ||
-           std::holds_alternative<OwningCudaCubinInMemory>(payload_);
+           std::holds_alternative<OwningCudaCubinInMemory>(payload_) ||
+           std::holds_alternative<SharedCudaCubinInMemory>(payload_);
   }
   bool has_cuda_ptx_in_memory() const {
     return std::holds_alternative<CudaPtxInMemory>(payload_) ||
-           std::holds_alternative<OwningCudaPtxInMemory>(payload_);
+           std::holds_alternative<OwningCudaPtxInMemory>(payload_) ||
+           std::holds_alternative<SharedCudaPtxInMemory>(payload_);
   }
 
   // Accessors for platform variant kernel load specifications.
@@ -137,6 +159,10 @@ class KernelLoaderSpec {
       return CudaCubinInMemory{
           std::get<OwningCudaCubinInMemory>(payload_).cubin_bytes};
     }
+    if (std::holds_alternative<SharedCudaCubinInMemory>(payload_)) {
+      return CudaCubinInMemory{
+          *std::get<SharedCudaCubinInMemory>(payload_).cubin_bytes};
+    }
     return std::nullopt;
   }
 
@@ -146,6 +172,9 @@ class KernelLoaderSpec {
     }
     if (std::holds_alternative<OwningCudaPtxInMemory>(payload_)) {
       return CudaPtxInMemory{std::get<OwningCudaPtxInMemory>(payload_).ptx};
+    }
+    if (std::holds_alternative<SharedCudaPtxInMemory>(payload_)) {
+      return CudaPtxInMemory{*std::get<SharedCudaPtxInMemory>(payload_).ptx};
     }
     return std::nullopt;
   }
@@ -168,11 +197,23 @@ class KernelLoaderSpec {
   static KernelLoaderSpec CreateOwningCudaCubinInMemorySpec(
       std::vector<uint8_t> cubin_bytes, std::string kernel_name, size_t arity,
       KernelArgsPacking kernel_args_packing = KernelArgsPackingFunc{});
+  // Like CreateOwningCudaCubinInMemorySpec, but the CUBIN buffer can be shared
+  // with other specs. `cubin_bytes` must not be null.
+  static KernelLoaderSpec CreateSharedCudaCubinInMemorySpec(
+      std::shared_ptr<const std::vector<uint8_t>> cubin_bytes,
+      std::string kernel_name, size_t arity,
+      KernelArgsPacking kernel_args_packing = KernelArgsPackingFunc{});
   static KernelLoaderSpec CreateCudaPtxInMemorySpec(
       absl::string_view ptx, std::string kernel_name, size_t arity,
       KernelArgsPacking kernel_args_packing = KernelArgsPackingFunc{});
   static KernelLoaderSpec CreateOwningCudaPtxInMemorySpec(
       std::string ptx, std::string kernel_name, size_t arity,
+      KernelArgsPacking kernel_args_packing = KernelArgsPackingFunc{});
+  // Like CreateOwningCudaPtxInMemorySpec, but the PTX buffer can be shared with
+  // other specs. `ptx` must not be null.
+  static KernelLoaderSpec CreateSharedCudaPtxInMemorySpec(
+      std::shared_ptr<const std::string> ptx, std::string kernel_name,
+      size_t arity,
       KernelArgsPacking kernel_args_packing = KernelArgsPackingFunc{});
 
   void set_kernel_args_packing(KernelArgsPacking kernel_args_packing) {
@@ -185,6 +226,9 @@ class KernelLoaderSpec {
 
   const std::string& kernel_name() const { return kernel_name_; }
 
+  // Returns true if this spec can be serialized to `KernelLoaderSpecProto`.
+  bool IsSerializable() const;
+
   absl::StatusOr<KernelLoaderSpecProto> ToProto() const;
 
   using SymbolResolver =
@@ -194,10 +238,15 @@ class KernelLoaderSpec {
       const KernelLoaderSpecProto& proto,
       std::optional<SymbolResolver> symbol_resolver = std::nullopt);
 
+  // Converts any owning in-memory CUBIN/PTX payload to a reference-counted
+  // shared payload so copies of this spec share the underlying binary.
+  KernelLoaderSpec ToShared() &&;
+
  private:
   using Payload =
       std::variant<InProcessSymbol, CudaCubinInMemory, CudaPtxInMemory,
-                   OwningCudaCubinInMemory, OwningCudaPtxInMemory>;
+                   OwningCudaCubinInMemory, OwningCudaPtxInMemory,
+                   SharedCudaCubinInMemory, SharedCudaPtxInMemory>;
 
   explicit KernelLoaderSpec(
       Payload payload, std::string kernel_name, size_t arity,

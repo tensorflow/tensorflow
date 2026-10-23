@@ -135,7 +135,7 @@ XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Extension, next);
 // Minor changes include:
 // * Adding a new field to the XLA_FFI_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define XLA_FFI_API_MINOR 4
+#define XLA_FFI_API_MINOR 5
 
 struct XLA_FFI_Api_Version {
   size_t struct_size;
@@ -588,7 +588,7 @@ typedef XLA_FFI_Error* XLA_FFI_InvokeContext_FindExtension(
     XLA_FFI_InvokeContext_FindExtension_Args* args);
 
 //===----------------------------------------------------------------------===//
-// ExecutionContext
+// InvokeContext
 //===----------------------------------------------------------------------===//
 
 struct XLA_FFI_InvokeContext_Get_Args {
@@ -605,6 +605,26 @@ XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_InvokeContext_Get_Args, data);
 // Returns an opaque data from the execution context for a given type id.
 typedef XLA_FFI_Error* XLA_FFI_InvokeContext_Get(
     XLA_FFI_InvokeContext_Get_Args* args);
+
+//===----------------------------------------------------------------------===//
+// Custom options
+//===----------------------------------------------------------------------===//
+
+struct XLA_FFI_CustomOptions_Get_Args {
+  size_t struct_size;
+  XLA_FFI_InternalExtension* extension_start;
+
+  XLA_FFI_InvokeContext* ctx;
+  const XLA_FFI_Attrs* attrs;  // out
+};
+
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_CustomOptions_Get_Args, attrs);
+
+// Returns per-execution custom options as a read-only dictionary, separate from
+// the static attributes in the call frame. Returns an empty dictionary if no
+// options were supplied.
+typedef XLA_FFI_Error* XLA_FFI_CustomOptions_Get(
+    XLA_FFI_CustomOptions_Get_Args* args);
 
 //===----------------------------------------------------------------------===//
 // State
@@ -844,11 +864,12 @@ struct XLA_FFI_Api {
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_RunId_Get);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_DeviceOrdinal_Get);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_InvokeContext_FindExtension);
+  _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_CustomOptions_Get);
 };
 
 #undef _XLA_FFI_API_STRUCT_FIELD
 
-XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Api, XLA_FFI_InvokeContext_FindExtension);
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Api, XLA_FFI_CustomOptions_Get);
 
 const XLA_FFI_Api* XLA_FFI_GetApi();
 

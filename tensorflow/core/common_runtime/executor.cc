@@ -22,9 +22,13 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
+#include "absl/strings/ascii.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_join.h"
 #include "absl/time/time.h"
 #include "absl/types/optional.h"
+#include "xla/tsl/platform/macros.h"
 #include "tensorflow/core/activity_watcher/activity.h"
 #include "tensorflow/core/common_runtime/costmodel_manager.h"
 #include "tensorflow/core/common_runtime/entry.h"
@@ -86,6 +90,36 @@ limitations under the License.
 namespace tensorflow {
 
 namespace {
+
+#if defined(__aarch64__) && defined(__linux__)
+// Returns a fixed-point scale factor to convert CNTVCT_EL0 virtual timer
+// cycles to x86-TSC-equivalent cycles.  The factor has 16 fractional bits,
+// so the hot-path update uses (elapsed * factor) >> 16.
+// Computed once per process and cached in a static local.
+inline uint64_t GetAarch64CycleScaleFixed() {
+  static const uint64_t scale_fixed = []() -> uint64_t {
+    uint64_t cntfrq;
+    asm volatile("mrs %0, cntfrq_el0" : "=r"(cntfrq));
+    if (cntfrq == 0) return 1 << 16;
+    std::string freq_str;
+    if (!tensorflow::ReadFileToString(
+             Env::Default(),
+             "/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq", &freq_str)
+             .ok()) {
+      return 1 << 16;
+    }
+    int64_t cpu_freq_khz;
+    if (!absl::SimpleAtoi(absl::StripTrailingAsciiWhitespace(freq_str),
+                          &cpu_freq_khz) ||
+        cpu_freq_khz <= 0) {
+      return 1 << 16;
+    }
+    uint64_t sf = (static_cast<uint64_t>(cpu_freq_khz) * 1000 << 16) / cntfrq;
+    return sf > 0 ? sf : (1 << 16);
+  }();
+  return scale_fixed;
+}
+#endif  // defined(__aarch64__) && defined(__linux__)
 
 // 1-D, 0 element tensor.
 static const Tensor* const kEmptyTensor = new Tensor;
@@ -203,9 +237,15 @@ class ExecutorImpl : public Executor {
       // affect correctness but may slow down the update frequency.
       std::atomic_uint_fast64_t& cost_estimate = cost_estimates_[node.node_id];
       auto prev_estimate = cost_estimate.load(std::memory_order_relaxed);
-
+#if defined(__aarch64__) && defined(__linux__)
+      uint64_t new_estimate =
+          ((kCostDecay - 1) * prev_estimate +
+           ((elapsed_cycles * GetAarch64CycleScaleFixed()) >> 16)) /
+          kCostDecay;
+#else
       uint64_t new_estimate =
           ((kCostDecay - 1) * prev_estimate + elapsed_cycles) / kCostDecay;
+#endif
 
       cost_estimate.store(new_estimate, std::memory_order_relaxed);
     }
@@ -217,7 +257,6 @@ class ExecutorImpl : public Executor {
     static constexpr uint64_t kInitialCostEstimateCycles = 100 * 1000 * 1000;
     static constexpr uint64_t kOpIsExpensiveThresholdCycles = 8000;
     static constexpr uint64_t kCostDecay = 10;
-
     std::vector<bool> is_expensive_;
     // std::unique_ptr<std::atomic<bool>[]> is_expensive_;
     std::unique_ptr<std::atomic_uint_fast64_t[]> cost_estimates_;
@@ -382,7 +421,6 @@ class ExecutorState {
   // Step-local container.
   ScopedStepContainer* step_container_;
   StepStatsCollectorInterface* const stats_collector_;
-  const tsl::tracing::EventCollector* const event_collector_;
   Context context_;
 
   // QUESTION: Make it a checkpoint::TensorSliceReaderCacheWrapper
@@ -436,8 +474,6 @@ ExecutorState<PropagatorStateType>::ExecutorState(
       tensor_store_(args.tensor_store),
       step_container_(args.step_container),
       stats_collector_(args.stats_collector),
-      event_collector_(tsl::tracing::GetEventCollector(
-          tsl::tracing::EventCategory::kCompute)),
       context_(ContextKind::kThread),
       slice_reader_cache_(new checkpoint::TensorSliceReaderCacheWrapper),
       call_frame_(args.call_frame),
@@ -564,16 +600,16 @@ struct ExecutorState<PropagatorStateType>::AsyncState {
 
 // Returns true if `item` might be traced by the given trace and event
 // collectors. Returns false only if `item` definitely will not be traced.
-bool MightTrace(const tsl::tracing::EventCollector* event_collector,
-                bool is_expensive) {
-  // Tracing will only be enabled if either `event_collector` is non null,
-  // or `trace_collector` is non-null and enabled for this particular kernel.
-  // Although `profiler::TraceMe`, `profiler::ScopedAnnotation`, and
+bool MightTrace(bool is_expensive) {
+  // Tracing will only be enabled if either
+  // `tsl::tracing::EventCollector::IsEnabled()` is true, or `trace_collector`
+  // is non-null and enabled for this particular kernel. Although
+  // `profiler::TraceMe`, `profiler::ScopedAnnotation`, and
   // `tsl::tracing::ScopedRegion` check subsets of these properties internally
   // in their constructors, the cost of passing the necessary arguments to them
   // can be significant, so we avoid constructing them in the common case (when
   // we know they will not be used).
-  if (event_collector != nullptr) {
+  if (tsl::tracing::EventCollector::IsEnabled()) {
     return true;
   }
 
@@ -595,7 +631,7 @@ absl::Status ExecutorState<PropagatorStateType>::ProcessSync(
   Device* device = immutable_state_.params().device;
   const bool is_expensive = kernel_stats_->IsExpensive(item);
 
-  if (TF_PREDICT_FALSE(MightTrace(event_collector_, is_expensive))) {
+  if (TF_PREDICT_FALSE(MightTrace(is_expensive))) {
     tsl::tracing::ScopedRegion region(tsl::tracing::EventCategory::kCompute,
                                       op_kernel->name_view());
     profiler::AnnotatedTraceMe activity(
@@ -1218,6 +1254,11 @@ bool ExecutorState<PropagatorStateType>::NodeDone(
     // Some error happened. This thread of computation is done.
     {
       mutex_lock l(mu_);
+      const bool is_derived = StatusGroup::IsDerived(s) ||
+                              ((absl::IsCancelled(s) || absl::IsAborted(s)) &&
+                               cancellation_manager_ &&
+                               (cancellation_manager_->IsCancelled() ||
+                                cancellation_manager_->IsCancelling()));
       if (status_.ok()) {
         // If this is the first node to fail in this run, we are responsible for
         // aborting all other execution in the step.
@@ -1227,13 +1268,18 @@ bool ExecutorState<PropagatorStateType>::NodeDone(
         // being derived. Note that the original node that fails might also
         // trigger cancellation, and here we make sure the original error is
         // exposed to users and not buried as a derived error.
-        if (cancellation_manager_ && cancellation_manager_->IsCancelled() &&
-            (absl::IsCancelled(s) || absl::IsAborted(s))) {
+        if (is_derived && !StatusGroup::IsDerived(s)) {
           status_ = StatusGroup::MakeDerived(s);
           maybe_derived_s = status_;
         } else {
           status_ = s;
         }
+      } else if (StatusGroup::IsDerived(status_) && !is_derived) {
+        // If a previous node in this executor reported a derived cancellation
+        // error (for example, a sibling _Recv cancelled via a shared
+        // CancellationManager before a nested function finished reporting its
+        // original error), prefer the non-derived root-cause error.
+        status_ = s;
       }
     }
 

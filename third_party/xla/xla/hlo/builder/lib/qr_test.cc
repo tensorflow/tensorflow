@@ -41,7 +41,7 @@ namespace xla {
 namespace {
 
 using QrTest =
-    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
+    ClientLibraryTestRunnerMixin<HloInterpreterReferenceMixin<HloTestBase>>;
 
 TEST_F(QrTest, Simple) {
   Array2D<float> data({

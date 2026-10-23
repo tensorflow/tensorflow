@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/log/check.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -84,6 +85,7 @@ using ::mlir::stablehlo::CustomCallOp;
 
 namespace sdy = ::mlir::sdy;
 
+using sdy::AxisRefAttr;
 using sdy::kShardingAttr;
 using sdy::ManualAxesAttr;
 using sdy::ManualComputationOp;
@@ -94,20 +96,21 @@ using sdy::TensorShardingPerValueAttr;
 
 // Mapping from ManualComputationOp to all manual axes it's nested in.
 using ManualComputationToParentManualAxes =
-    llvm::SmallDenseMap<ManualComputationOp, SmallVector<StringAttr>>;
+    llvm::SmallDenseMap<ManualComputationOp, SmallVector<AxisRefAttr>>;
 
 // Given an ManualComputationOp `op`, `op.getManualAxes()` is the local manual
 // axes. `parent` is the manual axes of its parent ManualComputationOp,
 // recursively. `region` is the concatenation of `parent` and
 // `op.getManualAxes()`.
 struct ManualAxesHierarchy {
-  ArrayRef<StringAttr> parent;
-  SmallVector<StringAttr> region;
+  ArrayRef<AxisRefAttr> parent;
+  SmallVector<AxisRefAttr> region;
 };
 
 ManualAxesHierarchy getManualAxesHierarchy(
     ManualComputationOp op,
-    const ManualComputationToParentManualAxes& parentManualCompAxes) {
+    const ManualComputationToParentManualAxes& parentManualCompAxes,
+    MeshAttr mesh) {
   ManualAxesHierarchy hierarchy;
 
   if (auto parentManualAxes = parentManualCompAxes.find(op);
@@ -115,9 +118,10 @@ ManualAxesHierarchy getManualAxesHierarchy(
     hierarchy.parent = parentManualAxes->getSecond();
   }
 
-  hierarchy.region =
-      SmallVector<StringAttr>(hierarchy.parent.begin(), hierarchy.parent.end());
+  hierarchy.region = SmallVector<AxisRefAttr>(hierarchy.parent.begin(),
+                                              hierarchy.parent.end());
   hierarchy.region.append(op.getManualAxes().begin(), op.getManualAxes().end());
+  sdy::sortAndMergeAxes(hierarchy.region, mesh);
   return hierarchy;
 }
 
@@ -173,7 +177,7 @@ void setOpManualAxes(Operation* op, ManualAxesAttr manualAxes,
     if (opSharding.getMeshOrRef() != meshOrRef) {
       hasOtherMesh = true;
       MeshAttr otherMesh = opSharding.getMesh(op);
-      CHECK(otherMesh.getAxes().empty() || otherMesh.isMaximal());
+      CHECK(otherMesh.getAxes().empty() || otherMesh.isSingleDevice());
     }
   }
   if (hasOtherMesh) {
@@ -184,16 +188,24 @@ void setOpManualAxes(Operation* op, ManualAxesAttr manualAxes,
   op->setAttr(kManualAxes, manualAxes);
 }
 
-void setFuncManualAxesRecursively(FuncOp funcOp, ManualAxesAttr manualAxes,
-                                  Attribute meshOrRef,
-                                  const mlir::SymbolTable& symbolTable);
+void setManualAxesForOpsInBody(
+    ManualComputationOp op, const mlir::SymbolTable& symbolTable,
+    ManualComputationToParentManualAxes& parentManualCompAxes);
 
-mlir::WalkResult setManualAxes(Operation* op, ManualAxesAttr manualAxes,
-                               Attribute meshOrRef,
-                               const mlir::SymbolTable& symbolTable) {
-  if (mlir::isa<ManualComputationOp>(op)) {
-    // Skip `ManualComputationOp`s and their nested operations, they will
-    // be handled separately.
+void setFuncManualAxesRecursively(
+    FuncOp funcOp, ManualAxesAttr manualAxes, Attribute meshOrRef,
+    const mlir::SymbolTable& symbolTable,
+    ManualComputationToParentManualAxes& parentManualCompAxes);
+
+mlir::WalkResult setManualAxes(
+    Operation* op, ManualAxesAttr manualAxes, Attribute meshOrRef,
+    const mlir::SymbolTable& symbolTable,
+    ManualComputationToParentManualAxes& parentManualCompAxes) {
+  if (auto manualCompOp = mlir::dyn_cast<ManualComputationOp>(op)) {
+    // Record parent manual axes for this manualCompOp and process its body.
+    parentManualCompAxes[manualCompOp].assign(manualAxes.getValue().begin(),
+                                              manualAxes.getValue().end());
+    setManualAxesForOpsInBody(manualCompOp, symbolTable, parentManualCompAxes);
     return mlir::WalkResult::skip();
   }
   if (!mlir::isa<FuncOp, mlir::func::ReturnOp>(op)) {
@@ -202,63 +214,50 @@ mlir::WalkResult setManualAxes(Operation* op, ManualAxesAttr manualAxes,
   if (CallOp callOp = mlir::dyn_cast<CallOp>(op)) {
     FuncOp funcOp = symbolTable.lookup<FuncOp>(callOp.getCallee());
     CHECK(funcOp) << "Failed to lookup function: " << callOp.getCallee().str();
-    setFuncManualAxesRecursively(funcOp, manualAxes, meshOrRef, symbolTable);
+    setFuncManualAxesRecursively(funcOp, manualAxes, meshOrRef, symbolTable,
+                                 parentManualCompAxes);
   }
   return mlir::WalkResult::advance();
 }
 
-void setFuncManualAxesRecursively(FuncOp funcOp, ManualAxesAttr manualAxes,
-                                  Attribute meshOrRef,
-                                  const mlir::SymbolTable& symbolTable) {
-  llvm::SmallVector<mlir::DictionaryAttr> funcArgAttrs;
-  funcArgAttrs.reserve(funcOp.getNumArguments());
-  for (int argNum = 0; argNum < funcOp.getNumArguments(); argNum++) {
-    mlir::NamedAttrList attrs(funcOp.getArgAttrDict(argNum));
-    if (!attrs.get(kShardingAttr)) {
-      attrs.set(
-          kShardingAttr,
-          TensorShardingAttr::getFullyReplicated(
-              funcOp->getContext(),
-              mlir::sdy::getTensorRank(funcOp.getArgument(argNum)), meshOrRef,
-              /*isClosed=*/true));
-    }
-    attrs.set(kManualAxes, manualAxes);
-    funcArgAttrs.push_back(attrs.getDictionary(funcOp.getContext()));
-  }
-  funcOp.setAllArgAttrs(funcArgAttrs);
-
-  // TODO(b/510714593): Create a shardy utility to modify func arg/result
-  // attributes as below but in a more general way and re-use it.
-  llvm::SmallVector<mlir::DictionaryAttr> newResultAttrs;
-  newResultAttrs.reserve(funcOp.getNumResults());
-  for (int resNum = 0; resNum < funcOp.getNumResults(); resNum++) {
-    mlir::NamedAttrList attrs(funcOp.getResultAttrDict(resNum));
-    if (!attrs.get(kShardingAttr)) {
-      attrs.set(kShardingAttr,
-                TensorShardingAttr::getFullyReplicated(
-                    funcOp->getContext(),
-                    mlir::sdy::getTensorRank(funcOp.getResultTypes()[resNum]),
-                    meshOrRef,
-                    /*isClosed=*/true));
-    }
-    if (attrs.get(kManualAxes) != manualAxes) {
-      attrs.set(kManualAxes, manualAxes);
-    }
-    newResultAttrs.push_back(attrs.getDictionary(funcOp.getContext()));
-  }
-  funcOp.setAllResultAttrs(newResultAttrs);
+void setFuncManualAxesRecursively(
+    FuncOp funcOp, ManualAxesAttr manualAxes, Attribute meshOrRef,
+    const mlir::SymbolTable& symbolTable,
+    ManualComputationToParentManualAxes& parentManualCompAxes) {
+  auto setDefaultShardingAndManualAxes = [&](ArrayRef<mlir::Type> types) {
+    return [&, types](mlir::NamedAttrList& attrs, int64_t index) {
+      bool changed = false;
+      if (!attrs.get(kShardingAttr)) {
+        attrs.set(kShardingAttr,
+                  TensorShardingAttr::getFullyReplicated(
+                      funcOp->getContext(),
+                      mlir::sdy::getTensorRank(types[index]), meshOrRef,
+                      /*isClosed=*/true));
+        changed = true;
+      }
+      if (attrs.get(kManualAxes) != manualAxes) {
+        attrs.set(kManualAxes, manualAxes);
+        changed = true;
+      }
+      return changed;
+    };
+  };
+  sdy::modifyAllArgAttrs(
+      funcOp, setDefaultShardingAndManualAxes(funcOp.getArgumentTypes()));
+  sdy::modifyAllResultAttrs(
+      funcOp, setDefaultShardingAndManualAxes(funcOp.getResultTypes()));
 
   // Walk in preorder of blocks in order to stop walks on manual computations.
-  funcOp->walk([&](Operation* op) {
-    return setManualAxes(op, manualAxes, meshOrRef, symbolTable);
+  funcOp->walk<mlir::WalkOrder::PreOrder>([&](Operation* op) {
+    return setManualAxes(op, manualAxes, meshOrRef, symbolTable,
+                         parentManualCompAxes);
   });
 }
 
 // Sets the manual axes of all operations in `op`'s body.
 void setManualAxesForOpsInBody(
-    ManualComputationOp op,
-    const ManualComputationToParentManualAxes& parentManualCompAxes,
-    const mlir::SymbolTable& symbolTable) {
+    ManualComputationOp op, const mlir::SymbolTable& symbolTable,
+    ManualComputationToParentManualAxes& parentManualCompAxes) {
   TensorShardingAttr sharding = getFirstSharding(op);
   if (!sharding) {
     // If there are no in/out shardings, op.getManualAxes() must be empty. We do
@@ -266,8 +265,11 @@ void setManualAxesForOpsInBody(
     return;
   }
 
+  MeshAttr mesh = sharding.getMesh(symbolTable);
+  CHECK(mesh);
+
   ManualAxesHierarchy manualAxes =
-      getManualAxesHierarchy(op, parentManualCompAxes);
+      getManualAxesHierarchy(op, parentManualCompAxes, mesh);
   if (manualAxes.region.empty()) {
     return;
   }
@@ -280,7 +282,8 @@ void setManualAxesForOpsInBody(
   // Set the manual axes of all operations in the body.
   op.getBody().front().walk<mlir::WalkOrder::PreOrder>(
       [&](Operation* opInBody) {
-        return setManualAxes(opInBody, manualAxesAttr, meshOrRef, symbolTable);
+        return setManualAxes(opInBody, manualAxesAttr, meshOrRef, symbolTable,
+                             parentManualCompAxes);
       });
 }
 
@@ -342,7 +345,7 @@ void convertManualComputationOp(
 
   // The axes that are manual inside `op`'s region.
   ManualAxesHierarchy manualAxes =
-      getManualAxesHierarchy(op, parentManualCompAxes);
+      getManualAxesHierarchy(op, parentManualCompAxes, mesh);
   ManualAxesAttr parentManualAxesAttr =
       ManualAxesAttr::get(context, manualAxes.parent);
   ManualAxesAttr regionManualAxesAttr =
@@ -368,7 +371,7 @@ void convertManualComputationOp(
                                             shardingConstraint->getResult(0));
     fullToShard.setCallTargetName(kSPMDFullToShardShapeCallTargetName);
     sdy::setShardings(fullToShard,
-                      eraseManualAxes(inSharding, manualAxes.region));
+                      eraseManualAxes(inSharding, manualAxes.region, mesh));
     setNonEmptyManualAxes(fullToShard, regionManualAxesAttr);
 
     fullToShardResults.push_back(fullToShard.getResult(0));
@@ -390,42 +393,23 @@ void convertManualComputationOp(
   setNonEmptyManualAxes(callOp, regionManualAxesAttr);
   sdy::inlineRegionAndConvertTerminatorOp<mlir::func::ReturnOp>(
       op.getBody(), funcOp.getBody());
-  // TODO(b/5107145930): Use a shardy utility to batch set argument attributes.
-  llvm::SmallVector<mlir::DictionaryAttr> funcArgAttrs;
-  funcArgAttrs.reserve(funcOp.getNumArguments());
-  bool anyChanged = false;
-  for (auto [blockArg, sharding] : llvm::zip_equal(
-           funcOp.getArguments(), op.getInShardings().getShardings())) {
-    mlir::NamedAttrList attrs(funcOp.getArgAttrDict(blockArg.getArgNumber()));
-    if (sharding) {
-      attrs.set(kShardingAttr, eraseManualAxes(sharding, manualAxes.region));
-      if (!regionManualAxesAttr.empty()) {
-        attrs.set(kManualAxes, regionManualAxesAttr);
+  auto setShardingAndManualAxes = [&](ArrayRef<TensorShardingAttr> shardings) {
+    return [&, shardings](mlir::NamedAttrList& attrs, int64_t index) {
+      if (TensorShardingAttr sharding = shardings[index]) {
+        attrs.set(kShardingAttr,
+                  eraseManualAxes(sharding, manualAxes.region, mesh));
+        if (!regionManualAxesAttr.empty()) {
+          attrs.set(kManualAxes, regionManualAxesAttr);
+        }
+        return true;
       }
-      anyChanged = true;
-    }
-    funcArgAttrs.push_back(attrs.getDictionary(funcOp.getContext()));
-  }
-  if (anyChanged) {
-    funcOp.setAllArgAttrs(funcArgAttrs);
-  }
-
-  // TODO(b/510714593): Create a shardy utility to modify func arg/result
-  // attributes as below but in a more general way and re-use it.
-  llvm::SmallVector<mlir::DictionaryAttr> newResultAttrs;
-  newResultAttrs.reserve(op.getNumResults());
-  for (auto [i, sharding] :
-       llvm::enumerate(op.getOutShardings().getShardings())) {
-    mlir::NamedAttrList attrs;
-    if (sharding) {
-      attrs.set(kShardingAttr, eraseManualAxes(sharding, manualAxes.region));
-      if (!regionManualAxesAttr.empty()) {
-        attrs.set(kManualAxes, regionManualAxesAttr);
-      }
-    }
-    newResultAttrs.push_back(attrs.getDictionary(funcOp.getContext()));
-  }
-  funcOp.setAllResultAttrs(newResultAttrs);
+      return false;
+    };
+  };
+  sdy::modifyAllArgAttrs(
+      funcOp, setShardingAndManualAxes(op.getInShardings().getShardings()));
+  sdy::modifyAllResultAttrs(
+      funcOp, setShardingAndManualAxes(op.getOutShardings().getShardings()));
 
   SmallVector<TensorShardingAttr> erasedManualAxisOutShardings;
   erasedManualAxisOutShardings.reserve(op.getNumResults());
@@ -435,7 +419,7 @@ void convertManualComputationOp(
        llvm::zip_equal(callOp->getResults(), op.getResults(),
                        op.getOutShardings().getShardings())) {
     erasedManualAxisOutShardings.push_back(
-        eraseManualAxes(outSharding, manualAxes.region));
+        eraseManualAxes(outSharding, manualAxes.region, mesh));
     if (!mlir::isa<mlir::ShapedType>(oldResult.getType())) {
       oldResult.replaceAllUsesWith(localResult);
       continue;
@@ -483,12 +467,21 @@ class ShardMapExportPass
     // walk.
     module->walk<mlir::WalkOrder::PreOrder>([&](ManualComputationOp op) {
       if (auto parentOp = op->getParentOfType<ManualComputationOp>()) {
-        SmallVector<StringAttr>& parentAxes = parentManualCompAxes[op];
-        parentAxes = parentManualCompAxes[parentOp];
-        parentAxes.insert(parentAxes.end(), parentOp.getManualAxes().begin(),
+        SmallVector<AxisRefAttr> parentAxes;
+        if (auto it = parentManualCompAxes.find(parentOp);
+            it != parentManualCompAxes.end()) {
+          parentAxes = it->second;
+        }
+        parentAxes.append(parentOp.getManualAxes().begin(),
                           parentOp.getManualAxes().end());
+        if (TensorShardingAttr sharding = getFirstSharding(op)) {
+          if (MeshAttr mesh = sharding.getMesh(symbolTable)) {
+            sdy::sortAndMergeAxes(parentAxes, mesh);
+          }
+        }
+        parentManualCompAxes[op] = std::move(parentAxes);
       }
-      setManualAxesForOpsInBody(op, parentManualCompAxes, symbolTable);
+      setManualAxesForOpsInBody(op, symbolTable, parentManualCompAxes);
     });
 
     // Need to do a separate post order walk to inline the

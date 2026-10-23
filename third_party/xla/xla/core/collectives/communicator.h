@@ -102,6 +102,29 @@ class Communicator {
                              ReductionKind reduction_kind,
                              const Executor& executor) = 0;
 
+  struct AllReduceBuffer {
+    se::DeviceAddressBase send_buffer;
+    se::DeviceAddressBase recv_buffer;
+    size_t count;
+  };
+
+  // Elementwise reductions of independent buffers sharing dtype, with identical
+  // counts and ordering on every rank. Implementations may coalesce buffers.
+  // Descriptors are consumed before returning; the underlying storage has the
+  // same lifetime requirements as AllReduce.
+  virtual Future<> AllReduceMany(absl::Span<const AllReduceBuffer> buffers,
+                                 PrimitiveType dtype,
+                                 ReductionKind reduction_kind,
+                                 const Executor& executor) {
+    absl::InlinedVector<Future<>, 4> futures;
+    futures.reserve(buffers.size());
+    for (const AllReduceBuffer& buffer : buffers) {
+      futures.push_back(AllReduce(buffer.send_buffer, buffer.recv_buffer, dtype,
+                                  buffer.count, reduction_kind, executor));
+    }
+    return JoinFutures(futures);
+  }
+
   // Copy data in `send_buff` from the root device to the `recv_buff` on
   // all other devices.
   virtual Future<> Broadcast(se::DeviceAddressBase send_buffer,
@@ -109,9 +132,11 @@ class Communicator {
                              PrimitiveType dtype, size_t count, RankId root,
                              const Executor& executor) = 0;
 
-  // Reduce data in `send_buff` from all devices using the `reduction_kind`
+  // Reduce data in `send_buffer` from all devices using the `reduction_kind`
   // operation and leave the reduced result scattered over the devices so that
-  // the `recv_buff` on rank `i` will contain the i-th block of the result.
+  // the `recv_buffer` on rank `i` will contain the i-th block of `count`
+  // elements. `send_buffer` contains `count * num_ranks` elements and
+  // `recv_buffer` contains `count` elements.
   virtual Future<> ReduceScatter(se::DeviceAddressBase send_buffer,
                                  se::DeviceAddressBase recv_buffer,
                                  PrimitiveType dtype, size_t count,

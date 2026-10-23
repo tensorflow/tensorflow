@@ -1,4 +1,3 @@
-
 --- a/third_party/proton/csrc/include/Utility/Map.h
 +++ b/third_party/proton/csrc/include/Utility/Map.h
 @@ -1,6 +1,7 @@

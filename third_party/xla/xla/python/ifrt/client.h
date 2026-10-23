@@ -47,12 +47,13 @@ limitations under the License.
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/rtti.h"
+#include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/topology.h"
 #include "xla/python/ifrt/tuple.h"
 #include "xla/python/ifrt/value.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
@@ -64,6 +65,27 @@ using PlatformId = ::xla::PjRtPlatformId;
 // TODO(hyeontaek): Generalize DeviceAssignment or hide it from the top-level
 // API.
 using DeviceAssignment = ::xla::DeviceAssignment;
+
+// Abstract options for loading an `Executable` as `LoadedExecutable`.
+struct LoadOptions : RTTIExtends<LoadOptions, Serializable> {
+  LoadOptions() = default;
+
+  LoadOptions(DeviceListRef devices,
+              std::optional<std::vector<int>> outputs_bundle_slice_sizes)
+      : devices(std::move(devices)),
+        outputs_bundle_slice_sizes(std::move(outputs_bundle_slice_sizes)) {}
+
+  // The devices to load the executable onto.
+  DeviceListRef devices;
+
+  // When executing the program with `LoadedExecutable::ExecuteBundle()`, apply
+  // `Bundle::Slice()` to the execution output. If `std::nullopt`, the output is
+  // a single `Bundle` containing all output values. The sum of the slice sizes
+  // must match the number of output values.
+  std::optional<std::vector<int>> outputs_bundle_slice_sizes;
+
+  static char ID;  // NOLINT
+};
 
 // Represents an IFRT client. It wraps a runtime that interacts with computation
 // devices and memory attached to it.
@@ -198,6 +220,42 @@ class Client : public RTTIExtends<Client, RTTIRoot> {
   virtual absl::StatusOr<std::vector<ArrayRef>> MakeErrorArrays(
       const absl::Status& error, absl::Span<const ArraySpec> array_specs) = 0;
 
+  // Represents a mutable destination host buffer shard.
+  struct MutableHostBuffer {
+    // `data` points to the backing array of the host buffer. Caution:
+    // `byte_strides` are allowed to be negative, in which case `data` may need
+    // to point to the interior of the buffer, not necessarily its start.
+    void* data;
+
+    DType dtype;
+    Shape shape;
+
+    using ByteStrides = std::vector<int64_t>;
+    std::optional<ByteStrides> byte_strides;
+  };
+
+  // Represents the specification of copying an array to host buffer shards.
+  //
+  // `buffers` is a list of destination host buffers that have one-to-one
+  // correspondence to the unique index domains in
+  // `Sharding::UniqueIndexDomains()`.
+  struct CopyArraysToHostBufferShardsSpec {
+    using Buffers = absl::InlinedVector<MutableHostBuffer, 1>;
+    ArrayRef array;
+    Buffers buffers;
+  };
+
+  // Copies arrays' shards into the provided destination host buffers.
+  //
+  // All source arrays should use the same device list.
+  //
+  // Returns a vector of futures, one for each spec, that will be fulfilled
+  // when all host buffer shards for that spec have been filled.
+  virtual absl::StatusOr<std::vector<tsl::Future<>>>
+  CopyArraysToHostBufferShards(
+      absl::Span<CopyArraysToHostBufferShardsSpec> specs,
+      ArrayCopySemantics semantics) = 0;
+
   // Builds a larger array out of individual per-device shards.
   // TODO(hyeontaek): Replace this API with the version that takes
   // `SingleDeviceShardSemantics` and `dtype`.
@@ -224,6 +282,24 @@ class Client : public RTTIExtends<Client, RTTIRoot> {
   virtual absl::StatusOr<std::vector<ArrayRef>> CopyArrays(
       absl::Span<ArrayRef> arrays, std::optional<DeviceListRef> devices,
       std::optional<MemoryKind> memory_kind, ArrayCopySemantics semantics) = 0;
+
+  // Copies `arrays` to the devices and memory kinds of `donated_dst_arrays`,
+  // reusing the underlying buffers of `donated_dst_arrays` when supported by
+  // the runtime. `donated_dst_arrays` are donated.
+  // If `semantics == kDonateInput`, `arrays` are also donated (`kReuseInput` is
+  // not supported).
+  //
+  // The layouts of the resulting arrays are determined by the same rules as
+  // `CopyArrays()`, disregarding any layout information from
+  // `donated_dst_arrays`.
+  //
+  // All `arrays` must share the same source device list and memory kind, and
+  // all `donated_dst_arrays` must share the same destination device list and
+  // memory kind. For each `i`, `arrays[i]` and `donated_dst_arrays[i]` must
+  // have matching shard byte sizes on the destination devices.
+  virtual absl::StatusOr<std::vector<ArrayRef>> CopyArraysWithDonatedDst(
+      absl::Span<ArrayRef> arrays, absl::Span<ArrayRef> donated_dst_arrays,
+      ArrayCopySemantics semantics) = 0;
 
   // Remaps shards across input `Array`s to create new `Array`s based on `plan`.
   // This array remapping is a metadata-only operation that can shuffle or
@@ -402,6 +478,15 @@ class Client : public RTTIExtends<Client, RTTIRoot> {
   // TODO(hyeontaek): Potentially remove this method to encourage supporting
   // only ahead-of-time compilation.
   virtual Compiler* GetDefaultCompiler() = 0;
+
+  // Loads executables onto devices as specified by `options`.
+  //
+  // `executables` and `options` must have the same size. `executables` may
+  // contain duplicates, e.g., when loading the same executable onto different
+  // sets of devices.
+  virtual absl::StatusOr<std::vector<tsl::Future<LoadedExecutableRef>>> Load(
+      absl::Span<const ExecutableRef> executables,
+      absl::Span<std::unique_ptr<LoadOptions>> options) = 0;
 
   // Returns a topology that covers the provided devices.
   virtual absl::StatusOr<std::shared_ptr<Topology>> GetTopologyForDevices(

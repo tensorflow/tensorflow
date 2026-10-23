@@ -109,7 +109,7 @@ class AllSampler : public RangeSampler {
  public:
   explicit AllSampler(int64_t range);
 
-  ~AllSampler() override {}
+  ~AllSampler() override = default;
 
   int64_t Sample(random::SimplePhilox* rnd) const override {
     LOG(FATAL) << "Should not be called";
@@ -132,7 +132,7 @@ class UniformSampler : public RangeSampler {
  public:
   explicit UniformSampler(int64_t range);
 
-  ~UniformSampler() override {}
+  ~UniformSampler() override = default;
 
   int64_t Sample(random::SimplePhilox* rnd) const override;
 
@@ -146,7 +146,7 @@ class LogUniformSampler : public RangeSampler {
  public:
   explicit LogUniformSampler(int64_t range);
 
-  ~LogUniformSampler() override {}
+  ~LogUniformSampler() override = default;
 
   int64_t Sample(random::SimplePhilox* rnd) const override;
 
@@ -160,7 +160,7 @@ class LogUniformSampler : public RangeSampler {
 class ThreadUnsafeUnigramSampler : public RangeSampler {
  public:
   explicit ThreadUnsafeUnigramSampler(int64_t range);
-  ~ThreadUnsafeUnigramSampler() override {}
+  ~ThreadUnsafeUnigramSampler() override = default;
 
   int64_t Sample(random::SimplePhilox* rnd) const override;
 
@@ -177,7 +177,7 @@ class ThreadUnsafeUnigramSampler : public RangeSampler {
 class UnigramSampler : public RangeSampler {
  public:
   explicit UnigramSampler(int64_t range);
-  ~UnigramSampler() override {}
+  ~UnigramSampler() override = default;
 
   int64_t Sample(random::SimplePhilox* rnd) const override;
 

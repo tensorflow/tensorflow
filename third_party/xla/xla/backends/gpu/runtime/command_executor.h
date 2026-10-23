@@ -65,8 +65,9 @@ class CommandExecutor {
     // that have buffer of resource conflicts, and building a DAG of commands.
     kConcurrent,
 
-    // Uses the same latency hidden scheduling results used in the thunk
-    // scheduling.
+    // Preserves the thunk schedule produced by the latency hiding scheduler.
+    // The emitter expresses command order as token resources in
+    // `extra_resources`; the execution graph is built like kConcurrent.
     kLHS,
 
     // Hybrid of kSerialize and kConcurrent. Builds a DAG for concurrent
@@ -158,13 +159,7 @@ class CommandExecutor {
     return requires_update_on_initialize_;
   }
 
-  bool requires_warmup() const {
-    bool requires_warmup = false;
-    commands_.Walk([&](const Command* command) {
-      requires_warmup |= command->requires_warmup();
-    });
-    return requires_warmup;
-  }
+  bool requires_warmup() const { return requires_warmup_; }
 
   bool requires_update_on_execute() const {
     return requires_update_on_execute_;
@@ -256,6 +251,9 @@ class CommandExecutor {
   // Whether any command in this sequence requires an update during
   // initialization.
   bool requires_update_on_initialize_ = false;
+
+  // Whether any command, including nested commands, requires warmup.
+  bool requires_warmup_ = false;
 
   // Whether any command in this sequence requires an update on every
   // execution.

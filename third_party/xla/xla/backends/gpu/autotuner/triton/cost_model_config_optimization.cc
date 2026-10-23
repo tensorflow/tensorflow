@@ -38,6 +38,8 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/transforms/convert_triton_gemm_config.h"
+#include "xla/codegen/xtile/block_level_parameters.h"
+#include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -46,11 +48,9 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
-#include "xla/service/gpu/model/triton_emitter_constraints.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tools/hlo_decomposer.h"
@@ -59,6 +59,9 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
+
+using ::xla::xtile::BlockLevelParameters;
+
 namespace cost_model_config_optimization_detail {
 
 // Helper struct for fields always used together.
@@ -74,11 +77,11 @@ absl::StatusOr<absl::Duration> EstimateRunTimeWithConfig(
     GpuPerformanceModelWithIndexingAnalysis& cost_model,
     mlir::MLIRContext* mlir_context) {
   // Save the old backend config to restore later.
-  ABSL_ASSIGN_OR_RETURN(Tile old_backend_config,
-                   context.dot->backend_config<Tile>());
+  ABSL_ASSIGN_OR_RETURN(xla::xtile::Tile old_backend_config,
+                   context.dot->backend_config<xla::xtile::Tile>());
 
   // Set the contracting dimension tile size.
-  Tile tile_config;
+  xla::xtile::Tile tile_config;
   tile_config.add_sizes(config.block_k);
   ABSL_RETURN_IF_ERROR(context.dot->set_backend_config(tile_config));
 
@@ -101,12 +104,12 @@ absl::StatusOr<absl::Duration> EstimateRunTimeWithConfig(
 absl::StatusOr<OrderedEstimatesAndConfigs> EstimateConfigs(
     const EstimationContext& context,
     absl::Span<const TritonGemmConfig> configs, mlir::MLIRContext* mlir_context,
-    bool use_experimental_tiling, bool enable_same_shape_multi_output_fusion) {
+    bool enable_same_shape_multi_output_fusion) {
   HloFusionAnalysisCache fusion_analysis_cache{context.device_description};
   GpuPerformanceModelWithIndexingAnalysis cost_model{
-      &context.device_description,       &fusion_analysis_cache,
+      &context.device_description, &fusion_analysis_cache,
       HloCostAnalysis::DefaultShapeSize, mlir_context,
-      use_experimental_tiling,           enable_same_shape_multi_output_fusion};
+      enable_same_shape_multi_output_fusion};
 
   OrderedEstimatesAndConfigs estimates_and_confs;
   for (const TritonGemmConfig& config : configs) {
@@ -343,8 +346,6 @@ absl::StatusOr<std::vector<TritonGemmConfig>> OptimizeConfigsWithCostModel(
     const DebugOptions& debug_options, mlir::MLIRContext* mlir_context) {
   namespace detail = cost_model_config_optimization_detail;
 
-  const bool use_experimental_tiling =
-      debug_options.xla_gpu_experimental_enable_tiling_propagation();
   const bool enable_same_shape_multi_output_fusion =
       debug_options
           .xla_gpu_experimental_enable_same_shape_multi_output_fusion();
@@ -367,9 +368,9 @@ absl::StatusOr<std::vector<TritonGemmConfig>> OptimizeConfigsWithCostModel(
   auto get_estimated_all_configs =
       [&]() -> const absl::StatusOr<detail::OrderedEstimatesAndConfigs>& {
     if (!estimated_all_configs.has_value()) {
-      estimated_all_configs = detail::EstimateConfigs(
-          context, all_configs, mlir_context, use_experimental_tiling,
-          enable_same_shape_multi_output_fusion);
+      estimated_all_configs =
+          detail::EstimateConfigs(context, all_configs, mlir_context,
+                                  enable_same_shape_multi_output_fusion);
     }
     return *estimated_all_configs;
   };
@@ -388,7 +389,6 @@ absl::StatusOr<std::vector<TritonGemmConfig>> OptimizeConfigsWithCostModel(
         detail::OrderedEstimatesAndConfigs base_config_set,
         options.top_from_default
             ? EstimateConfigs(context, optimized_configs, mlir_context,
-                              use_experimental_tiling,
                               enable_same_shape_multi_output_fusion)
             : get_estimated_all_configs());
 
@@ -404,7 +404,6 @@ absl::StatusOr<std::vector<TritonGemmConfig>> OptimizeConfigsWithCostModel(
     VLOG(1) << "Cost Model: Using default set";
     ABSL_ASSIGN_OR_RETURN(detail::OrderedEstimatesAndConfigs base_config_set,
                      EstimateConfigs(context, optimized_configs, mlir_context,
-                                     use_experimental_tiling,
                                      enable_same_shape_multi_output_fusion));
     current_set = std::move(base_config_set);
   }
@@ -449,10 +448,12 @@ absl::StatusOr<std::vector<TritonGemmConfig>> OptimizeConfigsWithCostModel(
                        : absl::Span<const TritonGemmConfig>());
 }
 
-absl::StatusOr<std::vector<TritonGemmConfig>> SortConfigsWithCostModel(
-    const HloDotInstruction* dot, absl::Span<const TritonGemmConfig> configs,
-    const se::DeviceDescription& device_description,
-    const DebugOptions& debug_options, mlir::MLIRContext* mlir_context) {
+absl::StatusOr<absl::flat_hash_map<TritonGemmConfig, absl::Duration>>
+EstimateConfigsWithCostModel(const HloDotInstruction* dot,
+                             absl::Span<const TritonGemmConfig> configs,
+                             const se::DeviceDescription& device_description,
+                             const DebugOptions& debug_options,
+                             mlir::MLIRContext* mlir_context) {
   namespace detail = cost_model_config_optimization_detail;
 
   detail::ExtractedModuleAndContext extracted =
@@ -462,11 +463,15 @@ absl::StatusOr<std::vector<TritonGemmConfig>> SortConfigsWithCostModel(
       detail::OrderedEstimatesAndConfigs estimated_configs,
       detail::EstimateConfigs(
           extracted.context, configs, mlir_context,
-          debug_options.xla_gpu_experimental_enable_tiling_propagation(),
           debug_options
               .xla_gpu_experimental_enable_same_shape_multi_output_fusion()));
 
-  return detail::FillConfigListFromEstimates(estimated_configs, configs);
+  absl::flat_hash_map<TritonGemmConfig, absl::Duration> estimates_map;
+  estimates_map.reserve(estimated_configs.size());
+  for (const auto& [duration, config] : estimated_configs) {
+    estimates_map.try_emplace(config, duration);
+  }
+  return estimates_map;
 }
 
 }  // namespace xla::gpu

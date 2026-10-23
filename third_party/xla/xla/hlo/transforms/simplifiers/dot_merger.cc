@@ -45,6 +45,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "xla/hlo/analysis/shape_tracker.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/permutation_util.h"
@@ -56,6 +57,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -227,17 +229,13 @@ BuildEquivalenceClasses(
     ABSL_RETURN_IF_ERROR(populate_class(rhs, lhs, 1));
   }
 
-  // Both Triton emitter and gemm fusion builder are happier when there's less
-  // misaligned access. To make them enjoy life as much as possible, let's sort
-  // the operands so that the ones that are multiples of higher powers of 2 are
-  // first.
+  // Sort dots ascending by non-contracting concat dimension size to be able to
+  // iterate using a sliding window while keeping max/min ratio bounded.
   for (auto& [key, usages] : equivalence_classes) {
     absl::c_sort(
         usages, [](const DotOperandUsage& a, const DotOperandUsage& b) {
-          // We want tz and size descending, but unique_id ascending, so swap a
-          // and b for two first fields.
-          return std::make_tuple(b.tz, b.concat_nc_size, a.dot->unique_id()) <
-                 std::make_tuple(a.tz, a.concat_nc_size, b.dot->unique_id());
+          return std::make_tuple(a.concat_nc_size, a.dot->unique_id()) <
+                 std::make_tuple(b.concat_nc_size, b.dot->unique_id());
         });
   }
 
@@ -255,43 +253,6 @@ std::vector<DotOperandUsage> GetUnmergedDots(
                                replacements.end();
                   });
   return unmerged_dots;
-}
-
-std::vector<DotOperandUsage> FindMutuallyUnreachableSubset(
-    std::vector<DotOperandUsage> compatible_dots, GraphCycles& graph,
-    const std::function<int32_t(const HloInstruction*)>& graph_id,
-    absl::FunctionRef<bool(const DotOperandUsage&)> is_merge_candidate) {
-  // Partition such that candidates come first.
-  auto it = absl::c_stable_partition(compatible_dots, is_merge_candidate);
-
-  std::vector<DotOperandUsage> dots_to_merge;
-
-  auto try_add = [&](const DotOperandUsage& dot_usage) {
-    int32_t id = graph_id(dot_usage.dot);
-    if (absl::c_none_of(dots_to_merge, [&](const auto& merged_usage) {
-          int32_t merged_id = graph_id(merged_usage.dot);
-          return graph.IsReachableNonConst(id, merged_id) ||
-                 graph.IsReachableNonConst(merged_id, id);
-        })) {
-      dots_to_merge.push_back(dot_usage);
-      return true;
-    }
-    return false;
-  };
-
-  // Process candidates first.
-  for (auto cbeg = compatible_dots.begin(); cbeg != it; ++cbeg) {
-    try_add(*cbeg);
-  }
-
-  // Process non-candidates, allow at most one.
-  for (auto nbeg = it; nbeg != compatible_dots.end(); ++nbeg) {
-    if (try_add(*nbeg)) {
-      break;
-    }
-  }
-
-  return dots_to_merge;
 }
 
 absl::StatusOr<HloInstruction*> CreateSharedOperand(
@@ -751,14 +712,133 @@ void UpdateGraphForMergedDot(
   }
 }
 
+absl::StatusOr<std::vector<DotOperandUsage>> FindDotsToMerge(
+    absl::Span<const DotOperandUsage> compatible_dots, GraphCycles& graph,
+    const std::function<int32_t(const HloInstruction*)>& graph_id,
+    int64_t max_size_to_merge) {
+  // Number of flops that take the same time as a write of a single byte to HBM.
+  // This depends on the GPU a lot, but 290 is what we on a typical modern
+  // GPU (as of 2026).
+  constexpr double kFlopsPerByte = 290.0;
+  // Merging dots which are too dissimilar tend to result in a net slowdown,
+  // e.g. due to different optimal tiling. Therefore we only merge dots where
+  // number of elements differ by at most this factor.
+  constexpr int64_t kMaxNonContractingRatio = 20;
+  // If the savings ratio (initial runtime / new runtime)-1 is less than this,
+  // don't merge. The win is so small that it's likely to be outweighed by other
+  // arbitrary factors.
+  constexpr double kMinSavingsRatio = 1e-5;
+
+  if (compatible_dots.size() < 2) {
+    return std::vector<DotOperandUsage>{};
+  }
+
+  const DotOperandUsage& first = compatible_dots.front();
+  ABSL_ASSIGN_OR_RETURN(
+      DotOperandDims shared_dims,
+      DotOperandDims::FromDotOperand(first.dot, first.shared_operand_idx));
+  const int64_t batch = shared_dims.TotalSize(DotOperandDims::Category::kBatch);
+  const int64_t shared_nc =
+      shared_dims.TotalSize(DotOperandDims::Category::kNonContracting);
+  const int64_t contracting =
+      shared_dims.TotalSize(DotOperandDims::Category::kContracting);
+
+  const HloInstruction* shared_op =
+      first.dot->operand(first.shared_operand_idx);
+  const HloInstruction* concat_op =
+      first.dot->operand(1 - first.shared_operand_idx);
+
+  const int64_t shared_op_bytes =
+      ShapeUtil::ByteSizeOfElements(shared_op->shape());
+  const int64_t concat_and_out_bytes_per_nc =
+      batch * (contracting * ShapeUtil::ByteSizeOfPrimitiveType(
+                                 concat_op->shape().element_type()) +
+               shared_nc * ShapeUtil::ByteSizeOfPrimitiveType(
+                               first.dot->shape().element_type()));
+
+  // The cost of a dot (before or after the merge) per non-contracting
+  // element, in "HBM transfer bytes" (but also includes flops by dividing by
+  // kFlopsPerByte).
+  const double cost_per_nc =
+      (2.0 * batch * shared_nc * contracting / kFlopsPerByte) +
+      concat_and_out_bytes_per_nc;
+
+  auto is_connected = [&](const HloInstruction* a, const HloInstruction* b) {
+    int32_t id1 = graph_id(a), id2 = graph_id(b);
+    return graph.IsReachableNonConst(id1, id2) ||
+           graph.IsReachableNonConst(id2, id1);
+  };
+
+  // Try all dots as seeds, and append dots of increasing size (as they come
+  // sorted by non-contracting dimension size), skipping those that are
+  // connected to already chosen dots. Stop when the next dot would exceed the
+  // max size. Return as soon as we find a group of 2 or more.
+  for (size_t i = 0; i < compatible_dots.size(); ++i) {
+    const DotOperandUsage& first_dot = compatible_dots[i];
+    std::vector<DotOperandUsage> group = {first_dot};
+    int64_t sum_nc = first_dot.concat_nc_size;
+    const int64_t max_allowed_nc = sum_nc * kMaxNonContractingRatio;
+
+    for (size_t j = i + 1; j < compatible_dots.size(); ++j) {
+      if (concat_and_out_bytes_per_nc * sum_nc > max_size_to_merge) {
+        break;
+      }
+
+      const DotOperandUsage& cand_dot = compatible_dots[j];
+      if (cand_dot.concat_nc_size > max_allowed_nc) {
+        break;  // Subsequent elements violate the kMaxNonContractingRatio.
+      }
+
+      if (absl::c_any_of(group, [&](const DotOperandUsage& member) {
+            return is_connected(member.dot, cand_dot.dot);
+          })) {
+        continue;
+      }
+
+      const int64_t next_sum = sum_nc + cand_dot.concat_nc_size;
+      const double sum_runtime =
+          cost_per_nc * next_sum + (group.size() + 1) * shared_op_bytes;
+      if (shared_op_bytes * group.size() / sum_runtime <= kMinSavingsRatio) {
+        continue;
+      }
+
+      group.push_back(cand_dot);
+      sum_nc = next_sum;
+    }
+
+    if (group.size() >= 2) {
+      // Both Triton emitter and gemm fusion builder are happier when there's
+      // less misaligned access. To make them enjoy life as much as possible,
+      // let's sort the operands so that the ones that are multiples of higher
+      // powers of 2 are first.
+      absl::c_sort(
+          group, [](const DotOperandUsage& a, const DotOperandUsage& b) {
+            // We want tz and size descending, but unique_id ascending, so swap
+            // a and b for two first fields.
+            return std::make_tuple(b.tz, b.concat_nc_size, a.dot->unique_id()) <
+                   std::make_tuple(a.tz, a.concat_nc_size, b.dot->unique_id());
+          });
+      return group;
+    }
+  }
+
+  return std::vector<DotOperandUsage>{};
+}
+
 absl::StatusOr<HloInstruction*> MergeCluster(
     const EquivalenceKey& key, absl::Span<const DotOperandUsage> dots,
     GraphCycles& graph,
     const std::function<int32_t(const HloInstruction*)>& graph_id,
-    ReplacementMap& replacements,
-    absl::FunctionRef<bool(const DotOperandUsage&)> is_merge_candidate) {
-  std::vector<DotOperandUsage> dots_to_merge = FindMutuallyUnreachableSubset(
-      GetUnmergedDots(dots, replacements), graph, graph_id, is_merge_candidate);
+    ReplacementMap& replacements, int64_t max_size_to_merge) {
+  std::vector<DotOperandUsage> compatible_dots =
+      GetUnmergedDots(dots, replacements);
+  if (compatible_dots.size() < 2) {
+    return nullptr;
+  }
+
+  ABSL_ASSIGN_OR_RETURN(
+      std::vector<DotOperandUsage> dots_to_merge,
+      FindDotsToMerge(compatible_dots, graph, graph_id, max_size_to_merge));
 
   if (dots_to_merge.size() < 2) {
     return nullptr;
@@ -912,15 +992,6 @@ absl::Status SimplifyConsumerChain(HloInstruction* chain_start) {
 absl::StatusOr<bool> MergeDots(
     HloComputation* comp, int64_t max_size_to_merge,
     std::function<int64_t(const HloInstruction* dot)> queue_id) {
-  auto is_merge_candidate = [&](const DotOperandUsage& info) {
-    HloInstruction* instr = info.dot;
-    int64_t bytes = ShapeUtil::ByteSizeOfElements(instr->shape());
-    for (const HloInstruction* operand : instr->operands()) {
-      bytes += ShapeUtil::ByteSizeOfElements(operand->shape());
-    }
-    return bytes <= max_size_to_merge;
-  };
-
   // Collect equivalence classes.  Specifically, create the map
   //
   //   instruction, dimension_categories_at_source, queue_id ->
@@ -936,16 +1007,12 @@ absl::StatusOr<bool> MergeDots(
   ABSL_ASSIGN_OR_RETURN(auto equivalence_classes,
                    BuildEquivalenceClasses(comp, queue_id));
 
-  // Remove "uninteresting" equivalence classes where either
-  //
-  //  - there's just one instruction (nothing to merge!), or
-  //  - there are zero instructions marked as mergeable.  (Our contract is that
-  //    at least one instruction of the pair needs to be mergeable in order for
-  //    us to merge.)
-  absl::erase_if(equivalence_classes, [&](const auto& kv) {
-    const auto& v = kv.second;
-    return v.size() < 2 || absl::c_none_of(v, is_merge_candidate);
-  });
+  // Remove "uninteresting" equivalence classes where there's just one
+  // instruction (nothing to merge!).
+  absl::erase_if(
+      equivalence_classes,
+      [&](const std::pair<const EquivalenceKey, std::vector<DotOperandUsage>>&
+              kv) { return kv.second.size() < 2; });
 
   // Are there any possible optimization opportunities?
   if (equivalence_classes.empty()) {
@@ -1008,7 +1075,7 @@ absl::StatusOr<bool> MergeDots(
     while (true) {
       ABSL_ASSIGN_OR_RETURN(HloInstruction * new_dot,
                        MergeCluster(key, values, graph, graph_id, replacements,
-                                    is_merge_candidate));
+                                    max_size_to_merge));
       if (!new_dot) {
         if (VLOG_IS_ON(3)) {
           std::vector<DotOperandUsage> unmerged =

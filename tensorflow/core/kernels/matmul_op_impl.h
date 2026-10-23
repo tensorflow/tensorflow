@@ -1002,10 +1002,10 @@ class BaseBatchMatMulOp : public OpKernel {
     } else {
       // Cast tensor to desired type to reuse Eigen.
       // TODO(b/178749687): remove this cast if Eigen supports this natively.
-      if constexpr (!std::is_same<Ta, Tout>::value) {
+      if constexpr (!std::is_same_v<Ta, Tout>) {
         in0_reshaped = CastTensor<Ta, Tout>(in0_reshaped);
       }
-      if constexpr (!std::is_same<Tb, Tout>::value) {
+      if constexpr (!std::is_same_v<Tb, Tout>) {
         in1_reshaped = CastTensor<Tb, Tout>(in1_reshaped);
       }
       LaunchBatchMatMul<Device, Tout>::Launch(

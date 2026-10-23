@@ -17,10 +17,12 @@ limitations under the License.
 #include <cstdlib>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/base/casts.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
@@ -38,6 +40,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_phase_compile_sample_plugin.h"
+#include "xla/pjrt/pjrt_relocatable.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology_description.h"
 #include "xla/pjrt/proto/pjrt_partial_program.pb.h"
@@ -49,6 +52,7 @@ namespace {
 
 using ::testing::ElementsAre;
 using ::testing::HasSubstr;
+using ::testing::SizeIs;
 using ::tsl::proto_testing::EqualsProto;
 
 constexpr absl::string_view kStablehloModuleStr = R"(
@@ -104,6 +108,17 @@ class SamplePhaseCompilerTest : public ::testing::Test {
             std::vector<xla::CpuTopology::CpuDevice>(),
             xla::cpu::TargetMachineOptions(xla::GetDebugOptionsFromFlags())));
   }
+
+  xla::MaybeOwningMlirModule ParseStablehloModule(
+      absl::string_view module_str = kStablehloModuleStr) {
+    auto context = std::make_shared<mlir::MLIRContext>();
+    mlir::FailureOr<mlir::OwningOpRef<mlir::ModuleOp>> stablehlo_module =
+        mlir::stablehlo::parseStablehloModule(std::string(module_str),
+                                              *context);
+    CHECK(mlir::succeeded(stablehlo_module));
+    return xla::MaybeOwningMlirModule(std::move(context),
+                                      std::move(*stablehlo_module));
+  }
 };
 
 // Test that the sample phase compiler's RegisterAllPhases method fails when
@@ -147,9 +162,9 @@ TEST_F(SamplePhaseCompilerTest, TestSamplePhaseCompilerRunPhases) {
   // Run the partial compile phase.
   std::vector<std::string> phases_to_run = {
       std::string(phase_compile_sample_plugin::kPhaseName)};
-  auto partial_programs_out =
-      phase_compiler_->RunPhases(xla::CompileOptions(), partial_programs_in,
-                                 *topology_description_, phases_to_run);
+  auto partial_programs_out = phase_compiler_->RunPhases(
+      xla::CompileOptions(), std::move(partial_programs_in),
+      *topology_description_, phases_to_run);
 
   TF_ASSERT_OK(partial_programs_out);
 
@@ -175,15 +190,16 @@ TEST_F(SamplePhaseCompilerTest,
 
   // Run the partial compile phase.
   std::vector<std::string> phases_to_run = {};
-  auto partial_programs_out =
-      phase_compiler_->RunPhases(xla::CompileOptions(), partial_programs_in,
-                                 *topology_description_, phases_to_run);
+  auto expected_programs = partial_programs_in;
+  auto partial_programs_out = phase_compiler_->RunPhases(
+      xla::CompileOptions(), std::move(partial_programs_in),
+      *topology_description_, phases_to_run);
 
   TF_ASSERT_OK(partial_programs_out);
 
-  for (size_t i = 0; i < partial_programs_in.size(); ++i) {
+  for (size_t i = 0; i < expected_programs.size(); ++i) {
     EXPECT_THAT(partial_programs_out->at(i),
-                EqualsProto(partial_programs_in.at(i)));
+                EqualsProto(expected_programs.at(i)));
   }
 }
 
@@ -199,9 +215,9 @@ TEST_F(SamplePhaseCompilerTest,
 
   // Run the partial compile phase.
   std::vector<std::string> phases_to_run = {"unregistered_phase_name"};
-  auto partial_programs_out =
-      phase_compiler_->RunPhases(xla::CompileOptions(), partial_programs_in,
-                                 *topology_description_, phases_to_run);
+  auto partial_programs_out = phase_compiler_->RunPhases(
+      xla::CompileOptions(), std::move(partial_programs_in),
+      *topology_description_, phases_to_run);
   EXPECT_THAT(partial_programs_out,
               absl_testing::StatusIs(absl::StatusCode::kNotFound));
 }
@@ -216,9 +232,9 @@ TEST_F(SamplePhaseCompilerTest,
   // Run the partial compile phase.
   std::vector<std::string> phases_to_run = {
       std::string(phase_compile_sample_plugin::kPhaseName)};
-  auto partial_programs_out =
-      phase_compiler_->RunPhases(xla::CompileOptions(), partial_programs_in,
-                                 *topology_description_, phases_to_run);
+  auto partial_programs_out = phase_compiler_->RunPhases(
+      xla::CompileOptions(), std::move(partial_programs_in),
+      *topology_description_, phases_to_run);
   EXPECT_THAT(partial_programs_out,
               absl_testing::StatusIs(
                   absl::StatusCode::kInvalidArgument,
@@ -237,9 +253,9 @@ TEST_F(SamplePhaseCompilerTest, PluginSpecificValidationWithUnexpectedFormat) {
   // Run the partial compile phase.
   std::vector<std::string> phases_to_run = {
       std::string(phase_compile_sample_plugin::kPhaseName)};
-  auto partial_programs_out =
-      phase_compiler_->RunPhases(xla::CompileOptions(), partial_programs_in,
-                                 *topology_description_, phases_to_run);
+  auto partial_programs_out = phase_compiler_->RunPhases(
+      xla::CompileOptions(), std::move(partial_programs_in),
+      *topology_description_, phases_to_run);
   EXPECT_THAT(partial_programs_out,
               absl_testing::StatusIs(
                   absl::StatusCode::kInvalidArgument,
@@ -253,6 +269,93 @@ TEST_F(SamplePhaseCompilerTest, TestSamplePhaseCompilerGetPhaseNames) {
   EXPECT_THAT(phase_names_status,
               absl_testing::IsOkAndHolds(
                   ElementsAre(phase_compile_sample_plugin::kPhaseName)));
+}
+
+TEST_F(SamplePhaseCompilerTest, TestSamplePhaseCompilerCompileToRelocatable) {
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<xla::PjRtRelocatable> relocatable,
+      phase_compiler_->CompileToRelocatable(
+          xla::CompileOptions(), ParseStablehloModule(), *topology_description_,
+          /*name=*/"my_relocatable",
+          /*is_entrypoint=*/false, /*client=*/nullptr));
+
+  EXPECT_EQ(relocatable->name(), "my_relocatable");
+  const auto* sample_relocatable =
+      absl::down_cast<const phase_compile_sample_plugin::SampleRelocatable*>(
+          relocatable.get());
+  ASSERT_THAT(sample_relocatable->partial_programs(), SizeIs(1));
+  EXPECT_EQ(sample_relocatable->partial_programs()[0].program_name(),
+            "my_relocatable");
+  EXPECT_EQ(sample_relocatable->partial_programs()[0].producer_phase(),
+            phase_compile_sample_plugin::kPhaseName);
+
+  mlir::MLIRContext context;
+  EXPECT_THAT(
+      phase_compile_sample_plugin::StablehloTypeSerialization::Deserialize(
+          sample_relocatable->partial_programs()[0].program(), context),
+      absl_testing::IsOk());
+}
+
+TEST_F(SamplePhaseCompilerTest,
+       TestSamplePhaseCompilerCompileToRelocatableWithNullModule) {
+  mlir::ModuleOp null_module;
+  EXPECT_THAT(
+      phase_compiler_->CompileToRelocatable(
+          xla::CompileOptions(), xla::MaybeOwningMlirModule(null_module),
+          *topology_description_, /*name=*/"bad",
+          /*is_entrypoint=*/false, /*client=*/nullptr),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST_F(SamplePhaseCompilerTest,
+       TestSamplePhaseCompilerSerializeAndDeserializeRelocatable) {
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<xla::PjRtRelocatable> relocatable,
+      phase_compiler_->CompileToRelocatable(
+          xla::CompileOptions(), ParseStablehloModule(), *topology_description_,
+          /*name=*/"base",
+          /*is_entrypoint=*/false, /*client=*/nullptr));
+
+  ASSERT_OK_AND_ASSIGN(std::string serialized, relocatable->Serialize());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtRelocatable> deserialized,
+                       phase_compiler_->DeserializeRelocatable(serialized));
+
+  EXPECT_EQ(deserialized->name(), relocatable->name());
+  EXPECT_EQ(deserialized->build_id(), relocatable->build_id());
+  EXPECT_EQ(deserialized->call_backend_config(),
+            relocatable->call_backend_config());
+
+  const auto* sample_relocatable =
+      absl::down_cast<const phase_compile_sample_plugin::SampleRelocatable*>(
+          relocatable.get());
+  const auto* sample_deserialized =
+      absl::down_cast<const phase_compile_sample_plugin::SampleRelocatable*>(
+          deserialized.get());
+  ASSERT_EQ(sample_deserialized->partial_programs().size(),
+            sample_relocatable->partial_programs().size());
+  for (size_t i = 0; i < sample_relocatable->partial_programs().size(); ++i) {
+    EXPECT_THAT(sample_deserialized->partial_programs()[i],
+                EqualsProto(sample_relocatable->partial_programs()[i]));
+  }
+}
+
+TEST_F(SamplePhaseCompilerTest,
+       TestSamplePhaseCompilerDeserializeRelocatableWithInvalidInput) {
+  EXPECT_THAT(phase_compiler_->DeserializeRelocatable(""),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(phase_compiler_->DeserializeRelocatable("not_a_valid_proto"),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST_F(SamplePhaseCompilerTest,
+       TestSamplePhaseCompilerLinkRelocatablesUnimplemented) {
+  // We don't have a sample for LinkRelocatables since we don't have an easy
+  // way to create a sample PjRtExecutable that actually works.
+  EXPECT_THAT(phase_compiler_->LinkRelocatables(xla::CompileOptions(),
+                                                *topology_description_,
+                                                /*entrypoint=*/nullptr,
+                                                /*dependencies=*/{}),
+              absl_testing::StatusIs(absl::StatusCode::kUnimplemented));
 }
 
 }  // namespace

@@ -3309,7 +3309,9 @@ class ConvertPowStage : public ArithmeticOptimizerStage {
       node->set_input(1, AsControlDependency(y->name()));
       AddToOptimizationQueue(node);
       AddToOptimizationQueue(y);
-    } else if (curr == complex128(-1, 0)) {
+    } else if (curr == complex128(-1, 0) && !DataTypeIsInteger(pow.dtype())) {
+      // Integer Pow rejects negative exponents, while integer Reciprocal
+      // computes 1 / x, so the rewrite is only valid for non-integer types.
       node->set_op("Reciprocal");
       node->set_input(1, AsControlDependency(y->name()));
       AddToOptimizationQueue(node);

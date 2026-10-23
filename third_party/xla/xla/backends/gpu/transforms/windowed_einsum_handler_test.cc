@@ -30,7 +30,6 @@ limitations under the License.
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
@@ -102,12 +101,12 @@ ENTRY test_main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
 
   WindowedEinsumHandler gpu_handler;
   bool changed;
-  TF_ASSERT_OK_AND_ASSIGN(changed, gpu_handler.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(changed, gpu_handler.Run(module.get()));
   EXPECT_TRUE(changed);
 
   HloInstruction* ag_loop =
@@ -127,6 +126,110 @@ ENTRY test_main {
       ag_loop_body, "collective-permute.send_first_lhs_shard.3");
   EXPECT_TRUE(
       cp1->backend_config<GpuBackendConfig>()->force_earliest_schedule());
+}
+
+TEST_F(WindowedEinsumHandlerTest,
+       UnrolledLoopsSharingConditionHaveUniqueNames) {
+  // Two windowed einsum loops share one condition computation. Each unrolled
+  // loop gets its own condition, and both are named after the original.
+  constexpr absl::string_view kHloString = R"(
+HloModule two_ag_loops, num_partitions=4
+
+windowed_dot_general_body_ag.1 {
+  param = (bf16[512,24576]{1,0}, bf16[24576,24576]{1,0}, bf16[2048,24576]{1,0}, bf16[2048,24576]{1,0}, u32[]) parameter(0)
+  gte = bf16[512,24576]{1,0} get-tuple-element(param), index=0
+  cp = bf16[512,24576]{1,0} collective-permute(gte), channel_id=2, source_target_pairs={{0,3},{1,0},{2,1},{3,2}}
+  lhs = bf16[24576,24576]{1,0} get-tuple-element(param), index=1
+  out = bf16[2048,24576]{1,0} get-tuple-element(param), index=2
+  dot.0 = bf16[512,24576]{1,0} dot(gte, lhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  offsets = s32[4]{0} constant({0, 512, 1024, 1536})
+  i = u32[] get-tuple-element(param), index=4
+  pid = u32[] partition-id()
+  add.0 = u32[] add(i, pid)
+  c4 = u32[] constant(4)
+  rem.0 = u32[] remainder(add.0, c4)
+  ds.0 = s32[1]{0} dynamic-slice(offsets, rem.0), dynamic_slice_sizes={1}
+  off.0 = s32[] reshape(ds.0)
+  c0 = s32[] constant(0)
+  dus.0 = bf16[2048,24576]{1,0} dynamic-update-slice(out, dot.0, off.0, c0)
+  dot.1 = bf16[512,24576]{1,0} dot(cp, lhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  c1 = u32[] constant(1)
+  i1 = u32[] add(i, c1)
+  add.1 = u32[] add(i1, pid)
+  rem.1 = u32[] remainder(add.1, c4)
+  ds.1 = s32[1]{0} dynamic-slice(offsets, rem.1), dynamic_slice_sizes={1}
+  off.1 = s32[] reshape(ds.1)
+  dus.1 = bf16[2048,24576]{1,0} dynamic-update-slice(dus.0, dot.1, off.1, c0)
+  pass = bf16[2048,24576]{1,0} get-tuple-element(param), index=3
+  i2 = u32[] add(i1, c1)
+  ROOT tuple = (bf16[512,24576]{1,0}, bf16[24576,24576]{1,0}, bf16[2048,24576]{1,0}, bf16[2048,24576]{1,0}, u32[]) tuple(cp, lhs, dus.1, pass, i2)
+}
+
+windowed_dot_general_body_ag.2 {
+  param = (bf16[512,24576]{1,0}, bf16[24576,24576]{1,0}, bf16[2048,24576]{1,0}, bf16[2048,24576]{1,0}, u32[]) parameter(0)
+  gte = bf16[512,24576]{1,0} get-tuple-element(param), index=0
+  cp = bf16[512,24576]{1,0} collective-permute(gte), channel_id=3, source_target_pairs={{0,3},{1,0},{2,1},{3,2}}
+  lhs = bf16[24576,24576]{1,0} get-tuple-element(param), index=1
+  out = bf16[2048,24576]{1,0} get-tuple-element(param), index=2
+  dot.0 = bf16[512,24576]{1,0} dot(gte, lhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  offsets = s32[4]{0} constant({0, 512, 1024, 1536})
+  i = u32[] get-tuple-element(param), index=4
+  pid = u32[] partition-id()
+  add.0 = u32[] add(i, pid)
+  c4 = u32[] constant(4)
+  rem.0 = u32[] remainder(add.0, c4)
+  ds.0 = s32[1]{0} dynamic-slice(offsets, rem.0), dynamic_slice_sizes={1}
+  off.0 = s32[] reshape(ds.0)
+  c0 = s32[] constant(0)
+  dus.0 = bf16[2048,24576]{1,0} dynamic-update-slice(out, dot.0, off.0, c0)
+  dot.1 = bf16[512,24576]{1,0} dot(cp, lhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  c1 = u32[] constant(1)
+  i1 = u32[] add(i, c1)
+  add.1 = u32[] add(i1, pid)
+  rem.1 = u32[] remainder(add.1, c4)
+  ds.1 = s32[1]{0} dynamic-slice(offsets, rem.1), dynamic_slice_sizes={1}
+  off.1 = s32[] reshape(ds.1)
+  dus.1 = bf16[2048,24576]{1,0} dynamic-update-slice(dus.0, dot.1, off.1, c0)
+  pass = bf16[2048,24576]{1,0} get-tuple-element(param), index=3
+  i2 = u32[] add(i1, c1)
+  ROOT tuple = (bf16[512,24576]{1,0}, bf16[24576,24576]{1,0}, bf16[2048,24576]{1,0}, bf16[2048,24576]{1,0}, u32[]) tuple(cp, lhs, dus.1, pass, i2)
+}
+
+windowed_dot_general_cond_ag {
+  param = (bf16[512,24576]{1,0}, bf16[24576,24576]{1,0}, bf16[2048,24576]{1,0}, bf16[2048,24576]{1,0}, u32[]) parameter(0)
+  i = u32[] get-tuple-element(param), index=4
+  limit = u32[] constant(4)
+  ROOT lt = pred[] compare(i, limit), direction=LT
+}
+
+ENTRY main {
+  lhs0 = bf16[512,24576]{1,0} parameter(0)
+  rhs0 = bf16[24576,24576]{1,0} parameter(1)
+  lhs1 = bf16[512,24576]{1,0} parameter(2)
+  rhs1 = bf16[24576,24576]{1,0} parameter(3)
+  zero = bf16[] constant(0)
+  zeros = bf16[2048,24576]{1,0} broadcast(zero), dimensions={}
+  c0 = u32[] constant(0)
+  init0 = (bf16[512,24576]{1,0}, bf16[24576,24576]{1,0}, bf16[2048,24576]{1,0}, bf16[2048,24576]{1,0}, u32[]) tuple(lhs0, rhs0, zeros, zeros, c0)
+  loop0 = (bf16[512,24576]{1,0}, bf16[24576,24576]{1,0}, bf16[2048,24576]{1,0}, bf16[2048,24576]{1,0}, u32[]) while(init0), condition=windowed_dot_general_cond_ag, body=windowed_dot_general_body_ag.1
+  init1 = (bf16[512,24576]{1,0}, bf16[24576,24576]{1,0}, bf16[2048,24576]{1,0}, bf16[2048,24576]{1,0}, u32[]) tuple(lhs1, rhs1, zeros, zeros, c0)
+  loop1 = (bf16[512,24576]{1,0}, bf16[24576,24576]{1,0}, bf16[2048,24576]{1,0}, bf16[2048,24576]{1,0}, u32[]) while(init1), condition=windowed_dot_general_cond_ag, body=windowed_dot_general_body_ag.2
+  out0 = bf16[2048,24576]{1,0} get-tuple-element(loop0), index=2
+  out1 = bf16[2048,24576]{1,0} get-tuple-element(loop1), index=2
+  ROOT result = (bf16[2048,24576]{1,0}, bf16[2048,24576]{1,0}) tuple(out0, out1)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
+
+  WindowedEinsumHandler gpu_handler;
+  ASSERT_OK_AND_ASSIGN(bool changed, gpu_handler.Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_OK(module->CheckUniqueNamesAndIdsForComputationsAndInstructions());
+  EXPECT_NE(
+      module->GetComputationWithName("unrolled_windowed_dot_general_cond_ag"),
+      nullptr);
 }
 
 TEST_F(WindowedEinsumHandlerTest, RsLoopsHaveStreamIds) {
@@ -185,12 +288,12 @@ ENTRY main.9_spmd {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
 
   WindowedEinsumHandler gpu_handler;
   bool changed;
-  TF_ASSERT_OK_AND_ASSIGN(changed, gpu_handler.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(changed, gpu_handler.Run(module.get()));
   EXPECT_TRUE(changed);
 
   HloInstruction* rs_loop =
@@ -265,12 +368,12 @@ ENTRY main.12_spmd {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
 
   WindowedEinsumHandler gpu_handler;
   bool changed;
-  TF_ASSERT_OK_AND_ASSIGN(changed, gpu_handler.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(changed, gpu_handler.Run(module.get()));
   EXPECT_TRUE(changed);
   HloInstruction* inst =
       FindInstructionByName(module->entry_computation(), "dot.7");
@@ -345,7 +448,7 @@ CHECK: }
 CHECK: dimensions={1}
 CHECK-DAG: %[[P0:.*]] = bf16[1,8192,32768]{2,1,0} parameter(0)
 CHECK-DAG: %[[SLICE4:.*]] = bf16[1,2048,32768]{2,1,0} slice(%[[P0:.*]]), slice={[0:1], [6144:8192], [0:32768]}
-CHECK-DAG: %[[DOT0:.*]] = bf16[1,4,2048,32768]{3,2,1,0} dot(%[[A2A0:.*]], %[[SLICE4:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}, backend_config={"operation_queue_id":"8","force_earliest_schedule":false
+CHECK-DAG: %[[DOT0:.*]] = bf16[1,4,2048,32768]{3,2,1,0} dot(%[[A2A0:.*]], %[[SLICE4:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}, backend_config={"device_type":"DEVICE_TYPE_INVALID","force_earliest_schedule":false,"operation_queue_id":"8"
 
 CHECK-DAG: %[[SLICE1:.*]] = bf16[1,4,2048,2048]{3,2,1,0} slice(%[[P1]]), slice={[0:1], [0:4], [0:2048], [4096:6144]}
 CHECK: %[[A2A1:.*]] = bf16[1,4,2048,2048]{3,2,1,0} all-to-all(%[[SLICE1]]),
@@ -354,7 +457,7 @@ CHECK:     {0,1,2,3},{4,5,6,7}
 CHECK: }
 CHECK: dimensions={1}
 CHECK-DAG: %[[SLICE5:.*]] = bf16[1,2048,32768]{2,1,0} slice(%[[P0:.*]]), slice={[0:1], [4096:6144], [0:32768]}
-CHECK-DAG: %[[DOT1:.*]] = bf16[1,4,2048,32768]{3,2,1,0} dot(%[[A2A1:.*]], %[[SLICE5:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}, backend_config={"operation_queue_id":"7","force_earliest_schedule":false
+CHECK-DAG: %[[DOT1:.*]] = bf16[1,4,2048,32768]{3,2,1,0} dot(%[[A2A1:.*]], %[[SLICE5:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}, backend_config={"device_type":"DEVICE_TYPE_INVALID","force_earliest_schedule":false,"operation_queue_id":"7"
 
 CHECK-DAG: %[[SLICE2:.*]] = bf16[1,4,2048,2048]{3,2,1,0} slice(%[[P1]]), slice={[0:1], [0:4], [0:2048], [2048:4096]}
 CHECK: %[[A2A2:.*]] = bf16[1,4,2048,2048]{3,2,1,0} all-to-all(%[[SLICE2]]),
@@ -363,7 +466,7 @@ CHECK:     {0,1,2,3},{4,5,6,7}
 CHECK: }
 CHECK: dimensions={1}
 CHECK-DAG: %[[SLICE6:.*]] = bf16[1,2048,32768]{2,1,0} slice(%[[P0:.*]]), slice={[0:1], [2048:4096], [0:32768]}
-CHECK-DAG: %[[DOT2:.*]] = bf16[1,4,2048,32768]{3,2,1,0} dot(%[[A2A2:.*]], %[[SLICE6:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}, backend_config={"operation_queue_id":"6","force_earliest_schedule":false
+CHECK-DAG: %[[DOT2:.*]] = bf16[1,4,2048,32768]{3,2,1,0} dot(%[[A2A2:.*]], %[[SLICE6:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}, backend_config={"device_type":"DEVICE_TYPE_INVALID","force_earliest_schedule":false,"operation_queue_id":"6"
 
 CHECK-DAG: %[[SLICE3:.*]] = bf16[1,4,2048,2048]{3,2,1,0} slice(%[[P1]]), slice={[0:1], [0:4], [0:2048], [0:2048]}
 CHECK: %[[A2A3:.*]] = bf16[1,4,2048,2048]{3,2,1,0} all-to-all(%[[SLICE3]]),
@@ -372,7 +475,7 @@ CHECK:     {0,1,2,3},{4,5,6,7}
 CHECK: }
 CHECK: dimensions={1}
 CHECK-DAG: %[[SLICE7:.*]] = bf16[1,2048,32768]{2,1,0} slice(%[[P0:.*]]), slice={[0:1], [0:2048], [0:32768]}
-CHECK-DAG: %[[DOT3:.*]] = bf16[1,4,2048,32768]{3,2,1,0} dot(%[[A2A3:.*]], %[[SLICE7:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}, backend_config={"operation_queue_id":"5","force_earliest_schedule":false
+CHECK-DAG: %[[DOT3:.*]] = bf16[1,4,2048,32768]{3,2,1,0} dot(%[[A2A3:.*]], %[[SLICE7:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}, backend_config={"device_type":"DEVICE_TYPE_INVALID","force_earliest_schedule":false,"operation_queue_id":"5"
 CHECK-DAG: %[[CONSTANT:.*]] = bf16[] constant(0)
 CHECK-DAG: %[[BROADCAST:.*]] = bf16[1,4,2048,32768]{3,2,1,0} broadcast(%[[CONSTANT:.*]]), dimensions={}
 CHECK-DAG: %[[ADD0:.*]] = bf16[1,4,2048,32768]{3,2,1,0} add(%[[DOT0:.*]], %[[BROADCAST:.*]])
@@ -382,17 +485,17 @@ CHECK-DAG: %[[ADD2:.*]] = bf16[1,4,2048,32768]{3,2,1,0} add(%[[DOT2:.*]], %[[ADD
 CHECK: ROOT {{.*}} = bf16[1,4,2048,32768]{3,2,1,0} add(%[[DOT3:.*]], %[[ADD2:.*]])
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
 
   WindowedEinsumHandler gpu_handler;
   bool changed;
   module->mutable_config()
       .mutable_debug_options()
       .set_xla_gpu_experimental_enable_alltoall_windowed_einsum(true);
-  TF_ASSERT_OK_AND_ASSIGN(changed, gpu_handler.Run(module.get()));
-  TF_ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
-                          RunFileCheck(module->ToString(), kExpected));
+  ASSERT_OK_AND_ASSIGN(changed, gpu_handler.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
+                       RunFileCheck(module->ToString(), kExpected));
   EXPECT_TRUE(filecheck_matched);
 }
 
@@ -415,7 +518,7 @@ CHECK-DAG: %[[P1:.*]] = bf16[1,4,2048,32768]{3,2,1,0} parameter(1)
 CHECK-DAG: %[[SLICE0:.*]] = bf16[1,4,2048,8192]{3,2,1,0} slice(%[[P1]]), slice={[0:1], [0:4], [0:2048], [24576:32768]}
 CHECK-DAG: %[[P0:.*]] = bf16[1,8192,32768]{2,1,0} parameter(0)
 CHECK-DAG: %[[SLICE4:.*]] = bf16[1,8192,8192]{2,1,0} slice(%[[P0:.*]]), slice={[0:1], [0:8192], [24576:32768]}
-CHECK-DAG: %[[DOT0:.*]] = bf16[1,4,2048,8192]{3,2,1,0} dot(%[[SLICE0:.*]], %[[SLICE4:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={2}, backend_config={"operation_queue_id":"8","force_earliest_schedule":false
+CHECK-DAG: %[[DOT0:.*]] = bf16[1,4,2048,8192]{3,2,1,0} dot(%[[SLICE0:.*]], %[[SLICE4:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={2}, backend_config={"device_type":"DEVICE_TYPE_INVALID","force_earliest_schedule":false,"operation_queue_id":"8"
 CHECK: %[[A2A0:.*]] = bf16[1,4,2048,8192]{3,2,1,0} all-to-all(%[[DOT0:.*]]),
 CHECK: replica_groups={
 CHECK:     {0,1,2,3}
@@ -424,7 +527,7 @@ CHECK: dimensions={1}
 
 CHECK-DAG: %[[SLICE1:.*]] = bf16[1,4,2048,8192]{3,2,1,0} slice(%[[P1]]), slice={[0:1], [0:4], [0:2048], [16384:24576]}
 CHECK-DAG: %[[SLICE5:.*]] = bf16[1,8192,8192]{2,1,0} slice(%[[P0:.*]]), slice={[0:1], [0:8192], [16384:24576]}
-CHECK-DAG: %[[DOT1:.*]] = bf16[1,4,2048,8192]{3,2,1,0} dot(%[[SLICE1:.*]], %[[SLICE5:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={2}, backend_config={"operation_queue_id":"7","force_earliest_schedule":false
+CHECK-DAG: %[[DOT1:.*]] = bf16[1,4,2048,8192]{3,2,1,0} dot(%[[SLICE1:.*]], %[[SLICE5:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={2}, backend_config={"device_type":"DEVICE_TYPE_INVALID","force_earliest_schedule":false,"operation_queue_id":"7"
 CHECK: %[[A2A1:.*]] = bf16[1,4,2048,8192]{3,2,1,0} all-to-all(%[[DOT1:.*]]),
 CHECK: replica_groups={
 CHECK:     {0,1,2,3}
@@ -433,7 +536,7 @@ CHECK: dimensions={1}
 
 CHECK-DAG: %[[SLICE2:.*]] = bf16[1,4,2048,8192]{3,2,1,0} slice(%[[P1]]), slice={[0:1], [0:4], [0:2048], [8192:16384]}
 CHECK-DAG: %[[SLICE6:.*]] = bf16[1,8192,8192]{2,1,0} slice(%[[P0:.*]]), slice={[0:1], [0:8192], [8192:16384]}
-CHECK-DAG: %[[DOT2:.*]] = bf16[1,4,2048,8192]{3,2,1,0} dot(%[[SLICE2:.*]], %[[SLICE6:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={2}, backend_config={"operation_queue_id":"6","force_earliest_schedule":false
+CHECK-DAG: %[[DOT2:.*]] = bf16[1,4,2048,8192]{3,2,1,0} dot(%[[SLICE2:.*]], %[[SLICE6:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={2}, backend_config={"device_type":"DEVICE_TYPE_INVALID","force_earliest_schedule":false,"operation_queue_id":"6"
 CHECK: %[[A2A2:.*]] = bf16[1,4,2048,8192]{3,2,1,0} all-to-all(%[[DOT2:.*]]),
 CHECK: replica_groups={
 CHECK:     {0,1,2,3}
@@ -442,7 +545,7 @@ CHECK: dimensions={1}
 
 CHECK-DAG: %[[SLICE3:.*]] = bf16[1,4,2048,8192]{3,2,1,0} slice(%[[P1]]), slice={[0:1], [0:4], [0:2048], [0:8192]}
 CHECK-DAG: %[[SLICE7:.*]] = bf16[1,8192,8192]{2,1,0} slice(%[[P0:.*]]), slice={[0:1], [0:8192], [0:8192]}
-CHECK-DAG: %[[DOT3:.*]] = bf16[1,4,2048,8192]{3,2,1,0} dot(%[[SLICE3:.*]], %[[SLICE7:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={2}, backend_config={"operation_queue_id":"5","force_earliest_schedule":false
+CHECK-DAG: %[[DOT3:.*]] = bf16[1,4,2048,8192]{3,2,1,0} dot(%[[SLICE3:.*]], %[[SLICE7:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={2}, backend_config={"device_type":"DEVICE_TYPE_INVALID","force_earliest_schedule":false,"operation_queue_id":"5"
 CHECK: %[[A2A3:.*]] = bf16[1,4,2048,8192]{3,2,1,0} all-to-all(%[[DOT3:.*]]),
 CHECK: replica_groups={
 CHECK:     {0,1,2,3}
@@ -457,17 +560,17 @@ CHECK-DAG: %[[ADD2:.*]] = bf16[1,4,2048,8192]{3,2,1,0} add(%[[A2A2:.*]], %[[ADD1
 CHECK: ROOT {{.*}} = bf16[1,4,2048,8192]{3,2,1,0} add(%[[A2A3:.*]], %[[ADD2:.*]])
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
 
   WindowedEinsumHandler gpu_handler;
   bool changed;
   module->mutable_config()
       .mutable_debug_options()
       .set_xla_gpu_experimental_enable_alltoall_windowed_einsum(true);
-  TF_ASSERT_OK_AND_ASSIGN(changed, gpu_handler.Run(module.get()));
-  TF_ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
-                          RunFileCheck(module->ToString(), kExpected));
+  ASSERT_OK_AND_ASSIGN(changed, gpu_handler.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
+                       RunFileCheck(module->ToString(), kExpected));
   EXPECT_TRUE(filecheck_matched);
 }
 
@@ -505,7 +608,7 @@ CHECK: }
 CHECK: dimensions={1}
 CHECK-DAG: %[[P0:.*]] = bf16[1,8192,32768]{2,1,0} parameter(0)
 CHECK-DAG: %[[SLICE4:.*]] = bf16[1,2048,32768]{2,1,0} slice(%[[P0:.*]]), slice={[0:1], [6144:8192], [0:32768]}
-CHECK-DAG: %[[DOT0:.*]] = bf16[1,4,2048,32768]{3,2,1,0} dot(%[[A2A0:.*]], %[[SLICE4:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}, backend_config={"operation_queue_id":"9","force_earliest_schedule":false
+CHECK-DAG: %[[DOT0:.*]] = bf16[1,4,2048,32768]{3,2,1,0} dot(%[[A2A0:.*]], %[[SLICE4:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}, backend_config={"device_type":"DEVICE_TYPE_INVALID","force_earliest_schedule":false,"operation_queue_id":"9"
 
 CHECK-DAG: %[[SLICE1:.*]] = bf16[1,4,2048,2048]{3,2,1,0} slice(%[[COPY:.*]]), slice={[0:1], [0:4], [0:2048], [4096:6144]}
 CHECK: %[[A2A1:.*]] = bf16[1,4,2048,2048]{3,2,1,0} all-to-all(%[[SLICE1]]),
@@ -514,7 +617,7 @@ CHECK:     {0,1,2,3}
 CHECK: }
 CHECK: dimensions={1}
 CHECK-DAG: %[[SLICE5:.*]] = bf16[1,2048,32768]{2,1,0} slice(%[[P0:.*]]), slice={[0:1], [4096:6144], [0:32768]}
-CHECK-DAG: %[[DOT1:.*]] = bf16[1,4,2048,32768]{3,2,1,0} dot(%[[A2A1:.*]], %[[SLICE5:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}, backend_config={"operation_queue_id":"8","force_earliest_schedule":false
+CHECK-DAG: %[[DOT1:.*]] = bf16[1,4,2048,32768]{3,2,1,0} dot(%[[A2A1:.*]], %[[SLICE5:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}, backend_config={"device_type":"DEVICE_TYPE_INVALID","force_earliest_schedule":false,"operation_queue_id":"8"
 
 CHECK-DAG: %[[SLICE2:.*]] = bf16[1,4,2048,2048]{3,2,1,0} slice(%[[COPY:.*]]), slice={[0:1], [0:4], [0:2048], [2048:4096]}
 CHECK: %[[A2A2:.*]] = bf16[1,4,2048,2048]{3,2,1,0} all-to-all(%[[SLICE2]]),
@@ -523,7 +626,7 @@ CHECK:     {0,1,2,3}
 CHECK: }
 CHECK: dimensions={1}
 CHECK-DAG: %[[SLICE6:.*]] = bf16[1,2048,32768]{2,1,0} slice(%[[P0:.*]]), slice={[0:1], [2048:4096], [0:32768]}
-CHECK-DAG: %[[DOT2:.*]] = bf16[1,4,2048,32768]{3,2,1,0} dot(%[[A2A2:.*]], %[[SLICE6:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}, backend_config={"operation_queue_id":"7","force_earliest_schedule":false
+CHECK-DAG: %[[DOT2:.*]] = bf16[1,4,2048,32768]{3,2,1,0} dot(%[[A2A2:.*]], %[[SLICE6:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}, backend_config={"device_type":"DEVICE_TYPE_INVALID","force_earliest_schedule":false,"operation_queue_id":"7"
 
 CHECK-DAG: %[[SLICE3:.*]] = bf16[1,4,2048,2048]{3,2,1,0} slice(%[[COPY:.*]]), slice={[0:1], [0:4], [0:2048], [0:2048]}
 CHECK: %[[A2A3:.*]] = bf16[1,4,2048,2048]{3,2,1,0} all-to-all(%[[SLICE3]]),
@@ -532,7 +635,7 @@ CHECK:     {0,1,2,3}
 CHECK: }
 CHECK: dimensions={1}
 CHECK-DAG: %[[SLICE7:.*]] = bf16[1,2048,32768]{2,1,0} slice(%[[P0:.*]]), slice={[0:1], [0:2048], [0:32768]}
-CHECK-DAG: %[[DOT3:.*]] = bf16[1,4,2048,32768]{3,2,1,0} dot(%[[A2A3:.*]], %[[SLICE7:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}, backend_config={"operation_queue_id":"6","force_earliest_schedule":false
+CHECK-DAG: %[[DOT3:.*]] = bf16[1,4,2048,32768]{3,2,1,0} dot(%[[A2A3:.*]], %[[SLICE7:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}, backend_config={"device_type":"DEVICE_TYPE_INVALID","force_earliest_schedule":false,"operation_queue_id":"6"
 CHECK-DAG: %[[CONSTANT:.*]] = bf16[] constant(0)
 CHECK-DAG: %[[BROADCAST:.*]] = bf16[1,4,2048,32768]{3,2,1,0} broadcast(%[[CONSTANT:.*]]), dimensions={}
 CHECK-DAG: %[[ADD0:.*]] = bf16[1,4,2048,32768]{3,2,1,0} add(%[[DOT0:.*]], %[[BROADCAST:.*]])
@@ -542,18 +645,18 @@ CHECK-DAG: %[[ADD2:.*]] = bf16[1,4,2048,32768]{3,2,1,0} add(%[[DOT2:.*]], %[[ADD
 CHECK: ROOT {{.*}} = bf16[1,4,2048,32768]{3,2,1,0} add(%[[DOT3:.*]], %[[ADD2:.*]])
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
 
   WindowedEinsumHandler gpu_handler;
   bool changed;
   module->mutable_config()
       .mutable_debug_options()
       .set_xla_gpu_experimental_enable_alltoall_windowed_einsum(true);
-  TF_ASSERT_OK_AND_ASSIGN(changed, gpu_handler.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(changed, gpu_handler.Run(module.get()));
   EXPECT_TRUE(changed);
-  TF_ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
-                          RunFileCheck(module->ToString(), kExpected));
+  ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
+                       RunFileCheck(module->ToString(), kExpected));
   EXPECT_TRUE(filecheck_matched);
 }
 
@@ -581,7 +684,7 @@ CHECK-DAG: %[[P1:.*]] = bf16[1,4,2048,32768]{3,2,1,0} parameter(0)
 CHECK-DAG: %[[SLICE0:.*]] = bf16[1,4,2048,8192]{3,2,1,0} slice(%[[P1]]), slice={[0:1], [0:4], [0:2048], [24576:32768]}
 CHECK-DAG: %[[P0:.*]] = bf16[1,32768,8192]{2,1,0} parameter(1)
 CHECK-DAG: %[[SLICE4:.*]] = bf16[1,8192,8192]{2,1,0} slice(%[[P0:.*]]), slice={[0:1], [24576:32768], [0:8192]}
-CHECK-DAG: %[[DOT0:.*]] = bf16[1,4,2048,8192]{3,2,1,0} dot(%[[SLICE0:.*]], %[[SLICE4:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}, backend_config={"operation_queue_id":"12","force_earliest_schedule":false
+CHECK-DAG: %[[DOT0:.*]] = bf16[1,4,2048,8192]{3,2,1,0} dot(%[[SLICE0:.*]], %[[SLICE4:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}, backend_config={"device_type":"DEVICE_TYPE_INVALID","force_earliest_schedule":false,"operation_queue_id":"12"
 CHECK: %[[A2A0:.*]] = bf16[1,4,2048,8192]{3,2,1,0} all-to-all(%[[DOT0:.*]]),
 CHECK: replica_groups={
 CHECK:     {0,1,2,3}
@@ -590,7 +693,7 @@ CHECK: dimensions={1}
 
 CHECK-DAG: %[[SLICE1:.*]] = bf16[1,4,2048,8192]{3,2,1,0} slice(%[[P1]]), slice={[0:1], [0:4], [0:2048], [16384:24576]}
 CHECK-DAG: %[[SLICE5:.*]] = bf16[1,8192,8192]{2,1,0} slice(%[[P0:.*]]), slice={[0:1], [16384:24576], [0:8192]}
-CHECK-DAG: %[[DOT1:.*]] = bf16[1,4,2048,8192]{3,2,1,0} dot(%[[SLICE1:.*]], %[[SLICE5:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}, backend_config={"operation_queue_id":"11","force_earliest_schedule":false
+CHECK-DAG: %[[DOT1:.*]] = bf16[1,4,2048,8192]{3,2,1,0} dot(%[[SLICE1:.*]], %[[SLICE5:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}, backend_config={"device_type":"DEVICE_TYPE_INVALID","force_earliest_schedule":false,"operation_queue_id":"11"
 CHECK: %[[A2A1:.*]] = bf16[1,4,2048,8192]{3,2,1,0} all-to-all(%[[DOT1:.*]]),
 CHECK: replica_groups={
 CHECK:     {0,1,2,3}
@@ -599,7 +702,7 @@ CHECK: dimensions={1}
 
 CHECK-DAG: %[[SLICE2:.*]] = bf16[1,4,2048,8192]{3,2,1,0} slice(%[[P1]]), slice={[0:1], [0:4], [0:2048], [8192:16384]}
 CHECK-DAG: %[[SLICE6:.*]] = bf16[1,8192,8192]{2,1,0} slice(%[[P0:.*]]), slice={[0:1], [8192:16384], [0:8192]}
-CHECK-DAG: %[[DOT2:.*]] = bf16[1,4,2048,8192]{3,2,1,0} dot(%[[SLICE2:.*]], %[[SLICE6:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}, backend_config={"operation_queue_id":"10","force_earliest_schedule":false
+CHECK-DAG: %[[DOT2:.*]] = bf16[1,4,2048,8192]{3,2,1,0} dot(%[[SLICE2:.*]], %[[SLICE6:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}, backend_config={"device_type":"DEVICE_TYPE_INVALID","force_earliest_schedule":false,"operation_queue_id":"10"
 CHECK: %[[A2A2:.*]] = bf16[1,4,2048,8192]{3,2,1,0} all-to-all(%[[DOT2:.*]]),
 CHECK: replica_groups={
 CHECK:     {0,1,2,3}
@@ -608,7 +711,7 @@ CHECK: dimensions={1}
 
 CHECK-DAG: %[[SLICE3:.*]] = bf16[1,4,2048,8192]{3,2,1,0} slice(%[[P1]]), slice={[0:1], [0:4], [0:2048], [0:8192]}
 CHECK-DAG: %[[SLICE7:.*]] = bf16[1,8192,8192]{2,1,0} slice(%[[P0:.*]]), slice={[0:1], [0:8192], [0:8192]}
-CHECK-DAG: %[[DOT3:.*]] = bf16[1,4,2048,8192]{3,2,1,0} dot(%[[SLICE3:.*]], %[[SLICE7:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}, backend_config={"operation_queue_id":"9","force_earliest_schedule":false
+CHECK-DAG: %[[DOT3:.*]] = bf16[1,4,2048,8192]{3,2,1,0} dot(%[[SLICE3:.*]], %[[SLICE7:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}, backend_config={"device_type":"DEVICE_TYPE_INVALID","force_earliest_schedule":false,"operation_queue_id":"9"
 CHECK: %[[A2A3:.*]] = bf16[1,4,2048,8192]{3,2,1,0} all-to-all(%[[DOT3:.*]]),
 CHECK: replica_groups={
 CHECK:     {0,1,2,3}
@@ -629,18 +732,18 @@ CHECK-DAG: %[[RESHAPE0:.*]] = bf16[1,4,1,2048,8192]{4,3,2,1,0} reshape(%[[COPY1:
 CHECK: ROOT {{.*}} = bf16[1,4,1,1,2048,8192]{5,4,3,2,1,0} reshape(%[[RESHAPE0:.*]])
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
 
   WindowedEinsumHandler gpu_handler;
   bool changed;
   module->mutable_config()
       .mutable_debug_options()
       .set_xla_gpu_experimental_enable_alltoall_windowed_einsum(true);
-  TF_ASSERT_OK_AND_ASSIGN(changed, gpu_handler.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(changed, gpu_handler.Run(module.get()));
   EXPECT_TRUE(changed);
-  TF_ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
-                          RunFileCheck(module->ToString(), kExpected));
+  ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
+                       RunFileCheck(module->ToString(), kExpected));
   EXPECT_TRUE(filecheck_matched);
 }
 
@@ -932,7 +1035,7 @@ ENTRY main.9_spmd {
 ; CHECK-DAG:         "force_earliest_schedule":false
 ; CHECK-NEXT:    [[ADD3:%[^ ]+]] = f32[2,512,24576]{2,1,0} add([[CP0]], [[DOT0]])
 ; CHECK-NEXT:    [[GTE6:[^ ]+]] = f32[2,512,24576]{2,1,0} get-tuple-element([[TUPLE0]]), index=3
-; CHECK-NEXT:    [[C11:%[^ ]+]] = u32[] constant(1)
+; CHECK-NEXT:    [[C11:%[^ ]+]] = u32[] constant(2)
 ; CHECK-NEXT:    [[ADD6:%[^ ]+]] = u32[] add([[C11]], [[PID]])
 ; CHECK-NEXT:    [[AND1:%[^ ]+]] = u32[] and([[ADD6]], [[C2]])
 ; CHECK-NEXT:    [[CLAMP1:%[^ ]+]] = u32[] clamp([[C1]], [[AND1]], [[C2]])
@@ -1029,8 +1132,8 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
 
   RunAndFilecheckHloRewrite(kHloString, WindowedEinsumHandler(),
                             R"(
@@ -1126,12 +1229,12 @@ ENTRY main.12_spmd {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
 
   WindowedEinsumHandler gpu_handler;
   bool changed;
-  TF_ASSERT_OK_AND_ASSIGN(changed, gpu_handler.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(changed, gpu_handler.Run(module.get()));
   EXPECT_TRUE(changed);
 
   HloInstruction* ag_loop =

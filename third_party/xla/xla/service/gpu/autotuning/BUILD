@@ -39,22 +39,28 @@ package_group(
 )
 
 xla_test(
-    name = "autotuner_pass_test",
-    srcs = ["autotuner_pass_test.cc"],
-    backends = ["gpu"],
+    name = "config_assigner_pass_test",
+    srcs = ["config_assigner_pass_test.cc"],
+    backends = [
+        "a100",
+        "h100",
+        "b200",
+    ],
     tags = ["cuda-only"],
     deps = [
         ":autotuner_cache",
-        ":autotuner_pass",
+        ":config_assigner_pass",
         "//xla:shape_util",
         "//xla:xla_proto_cc",
         "//xla/backends/autotuner:backends_proto_cc",
         "//xla/backends/autotuner:codegen_backend",
         "//xla/backends/autotuner:config_assigner",
+        "//xla/backends/autotuner:in_memory_store",
         "//xla/backends/autotuner:profiler",
         "//xla/backends/gpu/autotuner:cublaslt",
         "//xla/backends/gpu/autotuner:cudnn",
         "//xla/backends/gpu/autotuner:triton",
+        "//xla/backends/gpu/codegen/emitters:mlir_kernel_emitter",
         "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -62,6 +68,7 @@ xla_test(
         "//xla/service/gpu:alias_info",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:gpu_compiler",
+        "//xla/service/gpu:mlir_context_pool",
         "//xla/service/gpu:nvptx_compiler_impl",
         "//xla/stream_executor:device_address_allocator",
         "//xla/stream_executor:device_description",
@@ -70,14 +77,16 @@ xla_test(
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/log:globals",
         "@com_google_absl//absl/log:scoped_mock_log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
@@ -151,6 +160,7 @@ cc_library(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:sha256",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -164,7 +174,6 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_protobuf//:protobuf",
-        "@llvm-project//llvm:Support",
         "@tsl//tsl/platform:base64",
         "@tsl//tsl/platform:path",
         "@tsl//tsl/platform:protobuf",
@@ -271,11 +280,11 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "autotuner_pass",
+    name = "config_assigner_pass",
     srcs = [
-        "autotuner_pass.cc",
+        "config_assigner_pass.cc",
     ],
-    hdrs = ["autotuner_pass.h"],
+    hdrs = ["config_assigner_pass.h"],
     tags = ["gpu"],
     deps = [
         "//xla:util",
@@ -304,6 +313,8 @@ cc_library(
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:cublas_cudnn",
         "//xla/service/gpu:ir_emission_utils",
+        "//xla/service/gpu:mlir_context_pool",
+        "//xla/service/gpu/model:gpu_indexing_performance_model",
         "//xla/stream_executor:device_address_allocator",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:platform_id",
@@ -312,6 +323,7 @@ cc_library(
         "//xla/stream_executor/sycl:sycl_platform_id",
         "//xla/tsl/platform:env",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -323,4 +335,9 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//mlir:IR",
     ],
+)
+
+test_suite(
+    name = "autotuner_pass_test",
+    tests = [":config_assigner_pass_test"],
 )

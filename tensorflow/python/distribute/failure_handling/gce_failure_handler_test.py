@@ -105,6 +105,9 @@ def raise_if_not_all_exit(grace_period, mpr):
     raise RuntimeError('Waited long but at least one worker still exist. '
                        'Considering size of our model, this should not'
                        ' happen.')
+  # Allow OS sockets from terminated worker processes to fully clear TIME_WAIT
+  # before restarting workers on the same ports.
+  time.sleep(2)
 
 
 class GceFailureHandlingTest(test.TestCase, parameterized.TestCase):
@@ -475,7 +478,7 @@ class GceFailureHandlingTest(test.TestCase, parameterized.TestCase):
     termination_config = failure_handling.TerminationConfig(
         grace_period=grace_period)
 
-    if strategy_option == 'multi_worker':
+    if strategy_option == 'MWMS_multi_worker':
       has_chief = False
       cluster_spec = multi_worker_test_base.create_cluster_spec(
           has_chief=has_chief,

@@ -103,7 +103,7 @@ class GPUCompatibleCPUDevice : public ThreadPoolDevice {
           options.config.gpu_options().force_gpu_compatible();
     }
   }
-  ~GPUCompatibleCPUDevice() override {}
+  ~GPUCompatibleCPUDevice() override = default;
 
   Allocator* GetAllocator(AllocatorAttributes attr) override {
     GPUProcessState* ps = GPUProcessState::singleton();

@@ -23,6 +23,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/AsmParser/AsmParser.h"
@@ -141,7 +142,7 @@ class ElementalHloToMlirTest : public HloHardwareIndependentTestBase {
 };
 
 TEST_F(ElementalHloToMlirTest, Reduce) {
-  TF_EXPECT_OK(Run(R"(
+  EXPECT_OK(Run(R"(
     add {
       p0 = f32[] parameter(0)
       p1 = f32[] parameter(1)
@@ -154,7 +155,7 @@ TEST_F(ElementalHloToMlirTest, Reduce) {
       ROOT r = f32[10,30] reduce(p0, p1), dimensions={1,3},
                                           to_apply=add
     })",
-                   R"(
+                R"(
     // CHECK:      @main_r(
     // CHECK-SAME:   %[[ARG0:.*]]: tensor<10x20x30x40xf32>
     // CHECK-SAME:   %[[ARG1:.*]]: tensor<f32>
@@ -181,7 +182,7 @@ TEST_F(ElementalHloToMlirTest, Reduce) {
 }
 
 TEST_F(ElementalHloToMlirTest, ReduceUnsigned) {
-  TF_EXPECT_OK(Run(R"(
+  EXPECT_OK(Run(R"(
     add {
       p0 = u32[] parameter(0)
       p1 = u32[] parameter(1)
@@ -194,7 +195,7 @@ TEST_F(ElementalHloToMlirTest, ReduceUnsigned) {
       ROOT r = u32[10,30] reduce(p0, p1), dimensions={1,3},
                                           to_apply=add
     })",
-                   R"(
+                R"(
     // CHECK:      @main_r(
     // CHECK-SAME:   %[[ARG0:.*]]: tensor<10x20x30x40xi32>
     // CHECK-SAME:   %[[ARG1:.*]]: tensor<i32>
@@ -221,7 +222,7 @@ TEST_F(ElementalHloToMlirTest, ReduceUnsigned) {
 }
 
 TEST_F(ElementalHloToMlirTest, ReduceWindow) {
-  TF_EXPECT_OK(Run(R"(
+  EXPECT_OK(Run(R"(
     add {
       p0 = f32[] parameter(0)
       p1 = f32[] parameter(1)
@@ -238,7 +239,7 @@ TEST_F(ElementalHloToMlirTest, ReduceWindow) {
                                                },
                                                to_apply=add
     })",
-                   R"(
+                R"(
     // CHECK:      @main_r(
     // CHECK-SAME:   %[[ARG0:.*]]: tensor<42x12x8xf32>
     // CHECK-SAME:   %[[ARG1:.*]]: tensor<f32>
@@ -255,7 +256,8 @@ TEST_F(ElementalHloToMlirTest, ReduceWindow) {
     // CHECK:      %[[J0:.*]] = xla.apply_indexing #xla.indexing_map<"(d0) -> (d0 * 4), domain: d0 in [0, 2]">(%[[Y]])
     // CHECK:      %[[J1:.*]] = xla.apply_indexing
     // CHECK-SAME:     #xla.indexing_map<"(d0, d1) -> (d0 + d1 - 3),
-    // CHECK-SAME:              d0 in [0, 7], d1 in [0, 6]">(%[[Z]], %[[I]])
+    // CHECK-SAME:              d0 in [0, 7], d1 in [0, 6],
+    // CHECK-SAME:              d0 + d1 in [3, 10]">(%[[Z]], %[[I]])
     // CHECK:          %[[VAL:.*]] = tensor.extract %[[ARG0]]
     // CHECK-SAME:        [%[[X]], %[[J0]], %[[J1]]]
     // CHECK:          %[[UPD:.*]] = func.call @add_sum(%[[ACC]],
@@ -268,7 +270,7 @@ TEST_F(ElementalHloToMlirTest, ReduceWindow) {
 }
 
 TEST_F(ElementalHloToMlirTest, ReduceWindowWithRescaling) {
-  TF_EXPECT_OK(Run(R"(
+  EXPECT_OK(Run(R"(
     add {
       p0 = f32[] parameter(0)
       p1 = f32[] parameter(1)
@@ -286,7 +288,7 @@ TEST_F(ElementalHloToMlirTest, ReduceWindowWithRescaling) {
                                                },
                                                to_apply=add
     })",
-                   R"(
+                R"(
     // CHECK:      @main_r(
     // CHECK-SAME:   %[[ARG0:.*]]: tensor<42x12x8xf32>
     // CHECK-SAME:   %[[ARG1:.*]]: tensor<f32>
@@ -310,14 +312,14 @@ TEST_F(ElementalHloToMlirTest, ReduceWindowWithRescaling) {
 }
 
 TEST_F(ElementalHloToMlirTest, Concatenate) {
-  TF_EXPECT_OK(Run(R"(
+  EXPECT_OK(Run(R"(
     ENTRY main {
       p0 = f32[10,20,30] parameter(0)
       p1 = f32[10,15,30] parameter(1)
       p2 = f32[10,3,30] parameter(2)
       ROOT r = f32[10,38,30] concatenate(p0, p1, p2), dimensions={1}
     })",
-                   R"(
+                R"(
     // CHECK:      @main_r(
     // CHECK-SAME:     %[[ARG0:.*]]: tensor<10x20x30xf32>,
     // CHECK-SAME:     %[[ARG1:.*]]: tensor<10x15x30xf32>,
@@ -351,7 +353,7 @@ TEST_F(ElementalHloToMlirTest, Concatenate) {
 }
 
 TEST_F(ElementalHloToMlirTest, ConcatenateMany) {
-  TF_EXPECT_OK(Run(R"(
+  EXPECT_OK(Run(R"(
     ENTRY main {
       p0 = f32[10,1,30] parameter(0)
       p1 = f32[10,2,30] parameter(1)
@@ -363,7 +365,7 @@ TEST_F(ElementalHloToMlirTest, ConcatenateMany) {
       ROOT r = f32[10,28,30] concatenate(p0, p1, p2, p3, p4, p5, p6),
           dimensions={1}
     })",
-                   R"(
+                R"(
       // CHECK-DAG:  %[[C1:.*]] = arith.constant 1 : index
       // CHECK-DAG:  %[[C3:.*]] = arith.constant 3 : index
       // CHECK-DAG:  %[[C6:.*]] = arith.constant 6 : index
@@ -424,13 +426,13 @@ TEST_F(ElementalHloToMlirTest, ConcatenateMany) {
 }
 
 TEST_F(ElementalHloToMlirTest, ConcatenateUnsigned) {
-  TF_EXPECT_OK(Run(R"(
+  EXPECT_OK(Run(R"(
     ENTRY main {
       p0 = u32[10,20,30] parameter(0)
       p1 = u32[10,15,30] parameter(1)
       ROOT r = u32[10,35,30] concatenate(p0, p1), dimensions={1}
     })",
-                   R"(
+                R"(
     // CHECK:      @main_r(
     // CHECK-SAME:     %[[ARG0:.*]]: tensor<10x20x30xi32>,
     // CHECK-SAME:     %[[ARG1:.*]]: tensor<10x15x30xi32>
@@ -453,7 +455,7 @@ TEST_F(ElementalHloToMlirTest, ConcatenateUnsigned) {
 }
 
 TEST_F(ElementalHloToMlirTest, Gather) {
-  TF_EXPECT_OK(Run(R"(
+  EXPECT_OK(Run(R"(
     ENTRY main {
       operand = f32[33,34] parameter(0)
       indices = s32[1806,1] parameter(1)
@@ -461,7 +463,7 @@ TEST_F(ElementalHloToMlirTest, Gather) {
                                  collapsed_slice_dims={}, start_index_map={0},
                                  index_vector_dim=1, slice_sizes={7,8}
     })",
-                   R"(
+                R"(
     // CHECK:      @main_r(
     // CHECK-SAME:     %[[ARG0:.*]]: tensor<33x34xf32>,
     // CHECK-SAME:     %[[ARG1:.*]]: tensor<1806x1xi32>,
@@ -480,13 +482,13 @@ TEST_F(ElementalHloToMlirTest, Gather) {
 }
 
 TEST_F(ElementalHloToMlirTest, Pad) {
-  TF_EXPECT_OK(Run(R"(
+  EXPECT_OK(Run(R"(
     ENTRY main {
       p0 = f32[4, 4] parameter(0)
       p1 = f32[] parameter(1)
       ROOT pad = f32[12, 16] pad(p0, p1), padding=1_4_1x4_8_0
     })",
-                   R"(
+                R"(
     // CHECK:      @main_pad(
     // CHECK-SAME:     %[[ARG0:.*]]: tensor<4x4xf32>,
     // CHECK-SAME:     %[[ARG1:.*]]: tensor<f32>,
@@ -508,7 +510,7 @@ TEST_F(ElementalHloToMlirTest, Pad) {
     // CHECK:        %[[FROM_INPUT:.*]] = arith.andi %[[X_AND_CONSTRAINT]], %[[Y_BOUNDS]]
     // CHECK:        %[[RET:.*]] = scf.if %[[FROM_INPUT]]
     // CHECK:          %[[IN0:.*]] = xla.apply_indexing
-    // CHECK-SAME:         <"(d0) -> ((d0 + 1) / 2 - 1), domain: d0 in [1, 7]">(%[[X]])
+    // CHECK-SAME:         <"(d0) -> ((d0 + 1) / 2 - 1), domain: d0 in [1, 7], (d0 + 1) mod 2 in [0, 0]">(%[[X]])
     // CHECK:          %[[IN1:.*]] = xla.apply_indexing
     // CHECK-SAME:         <"(d0) -> (d0 - 4), domain: d0 in [4, 7]">(%[[Y]])
     // CHECK:          %[[VAL:.*]] = tensor.extract %[[ARG0]][%[[IN0]], %[[IN1]]]
@@ -522,13 +524,13 @@ TEST_F(ElementalHloToMlirTest, Pad) {
 }
 
 TEST_F(ElementalHloToMlirTest, PadUnsigned) {
-  TF_EXPECT_OK(Run(R"(
+  EXPECT_OK(Run(R"(
     ENTRY main {
       p0 = u32[4, 4] parameter(0)
       p1 = u32[] parameter(1)
       ROOT pad = u32[12, 16] pad(p0, p1), padding=1_4_1x4_8_0
     })",
-                   R"(
+                R"(
     // CHECK:      @main_pad(
     // CHECK-SAME:     %[[ARG0:.*]]: tensor<4x4xi32>,
     // CHECK-SAME:     %[[ARG1:.*]]: tensor<i32>,
@@ -550,7 +552,7 @@ TEST_F(ElementalHloToMlirTest, PadUnsigned) {
     // CHECK:        %[[FROM_INPUT:.*]] = arith.andi %[[X_AND_CONSTRAINT]], %[[Y_BOUNDS]]
     // CHECK:        %[[RET:.*]] = scf.if %[[FROM_INPUT]]
     // CHECK:          %[[IN0:.*]] = xla.apply_indexing
-    // CHECK-SAME:         <"(d0) -> ((d0 + 1) / 2 - 1), domain: d0 in [1, 7]">(%[[X]])
+    // CHECK-SAME:         <"(d0) -> ((d0 + 1) / 2 - 1), domain: d0 in [1, 7], (d0 + 1) mod 2 in [0, 0]">(%[[X]])
     // CHECK:          %[[IN1:.*]] = xla.apply_indexing
     // CHECK-SAME:         <"(d0) -> (d0 - 4), domain: d0 in [4, 7]">(%[[Y]])
     // CHECK:          %[[VAL:.*]] = tensor.extract %[[ARG0]][%[[IN0]], %[[IN1]]]
@@ -564,13 +566,13 @@ TEST_F(ElementalHloToMlirTest, PadUnsigned) {
 }
 
 TEST_F(ElementalHloToMlirTest, DotWithF32Type) {
-  TF_EXPECT_OK(Run(R"(
+  EXPECT_OK(Run(R"(
     ENTRY main {
       p0 = f32[3, 4] parameter(0)
       p1 = f32[4, 5] parameter(1)
       ROOT dot = f32[3, 5] dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
     })",
-                   R"(
+                R"(
     // CHECK:      @main_dot(
     // CHECK-SAME: %[[A:.*]]: tensor<3x4xf32>, %[[B:.*]]: tensor<4x5xf32>,
     // CHECK-SAME: %[[I:.*]]: index {xla.range = [0 : index, 2 : index]},
@@ -608,13 +610,13 @@ TEST_F(ElementalHloToMlirTest, DotWithF32Type) {
 }
 
 TEST_F(ElementalHloToMlirTest, DotWithF32TypeAndBf16Algorithm) {
-  TF_EXPECT_OK(Run(R"(
+  EXPECT_OK(Run(R"(
     ENTRY main {
       p0 = f32[3, 4] parameter(0)
       p1 = f32[4, 5] parameter(1)
       ROOT dot = f32[3, 5] dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}, algorithm=dot_bf16_bf16_f32
     })",
-                   R"(
+                R"(
     // CHECK:      @main_dot(
     // CHECK-SAME: %[[A:.*]]: tensor<3x4xf32>, %[[B:.*]]: tensor<4x5xf32>,
     // CHECK-SAME: %[[I:.*]]: index {xla.range = [0 : index, 2 : index]},
@@ -656,13 +658,13 @@ TEST_F(ElementalHloToMlirTest, DotWithF32TypeAndBf16Algorithm) {
 }
 
 TEST_F(ElementalHloToMlirTest, DotWithBF16Type) {
-  TF_EXPECT_OK(Run(R"(
+  EXPECT_OK(Run(R"(
     ENTRY main {
       p0 = bf16[3, 4] parameter(0)
       p1 = bf16[4, 5] parameter(1)
       ROOT dot = bf16[3, 5] dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
     })",
-                   R"(
+                R"(
     // CHECK:      @main_dot(
     // CHECK-SAME: %[[A:.*]]: tensor<3x4xbf16>, %[[B:.*]]: tensor<4x5xbf16>,
     // CHECK-SAME: %[[I:.*]]: index {xla.range = [0 : index, 2 : index]},
@@ -703,13 +705,13 @@ TEST_F(ElementalHloToMlirTest, DotWithBF16Type) {
 }
 
 TEST_F(ElementalHloToMlirTest, DotWithS32Type) {
-  TF_EXPECT_OK(Run(R"(
+  EXPECT_OK(Run(R"(
     ENTRY main {
       p0 = s32[3, 4] parameter(0)
       p1 = s32[4, 5] parameter(1)
       ROOT dot = s32[3, 5] dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
     })",
-                   R"(
+                R"(
     // CHECK:      @main_dot(
     // CHECK-SAME: %[[A:.*]]: tensor<3x4xi32>, %[[B:.*]]: tensor<4x5xi32>,
     // CHECK-SAME: %[[I:.*]]: index {xla.range = [0 : index, 2 : index]},
@@ -747,13 +749,13 @@ TEST_F(ElementalHloToMlirTest, DotWithS32Type) {
 }
 
 TEST_F(ElementalHloToMlirTest, DotWithU32Type) {
-  TF_EXPECT_OK(Run(R"(
+  EXPECT_OK(Run(R"(
     ENTRY main {
       p0 = u32[3, 4] parameter(0)
       p1 = u32[4, 5] parameter(1)
       ROOT dot = u32[3, 5] dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
     })",
-                   R"(
+                R"(
     // CHECK:      @main_dot(
     // CHECK-SAME: %[[A:.*]]: tensor<3x4xi32>, %[[B:.*]]: tensor<4x5xi32>,
     // CHECK-SAME: %[[I:.*]]: index {xla.range = [0 : index, 2 : index]},
@@ -791,13 +793,13 @@ TEST_F(ElementalHloToMlirTest, DotWithU32Type) {
 }
 
 TEST_F(ElementalHloToMlirTest, DotWithPredType) {
-  TF_EXPECT_OK(Run(R"(
+  EXPECT_OK(Run(R"(
     ENTRY main {
       p0 = pred[3, 4] parameter(0)
       p1 = pred[4, 5] parameter(1)
       ROOT dot = pred[3, 5] dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
     })",
-                   R"(
+                R"(
     // CHECK:      @main_dot(
     // CHECK-SAME: %[[A:.*]]: tensor<3x4xi8>, %[[B:.*]]: tensor<4x5xi8>,
     // CHECK-SAME: %[[I:.*]]: index {xla.range = [0 : index, 2 : index]},
@@ -835,7 +837,7 @@ TEST_F(ElementalHloToMlirTest, DotWithPredType) {
 }
 
 TEST_F(ElementalHloToMlirTest, DotWithBatchAnd2ContractingDims) {
-  TF_EXPECT_OK(Run(R"(
+  EXPECT_OK(Run(R"(
     ENTRY main {
       p0 = f32[7, 3, 4, 5] parameter(0)
       p1 = f32[5, 6, 4, 7] parameter(1)
@@ -843,7 +845,7 @@ TEST_F(ElementalHloToMlirTest, DotWithBatchAnd2ContractingDims) {
                  lhs_contracting_dims={2, 3}, rhs_contracting_dims={2, 0},
                  lhs_batch_dims={0}, rhs_batch_dims={3}
     })",
-                   R"(
+                R"(
     // CHECK:      @main_dot(
     // CHECK-SAME: %[[A:.*]]: tensor<7x3x4x5xf32>, %[[B:.*]]: tensor<5x6x4x7xf32>,
     // CHECK-SAME: %[[N:.*]]: index {xla.range = [0 : index, 6 : index]},
@@ -892,13 +894,13 @@ TEST_F(ElementalHloToMlirTest, DotWithBatchAnd2ContractingDims) {
 }
 
 TEST_F(ElementalHloToMlirTest, ConvolutionSimple) {
-  TF_EXPECT_OK(Run(R"(
+  EXPECT_OK(Run(R"(
     ENTRY main {
       p0 = f32[2,8,12,4] parameter(0)
       p1 = f32[4,3,5,16] parameter(1)
       ROOT conv = f32[2,6,8,16] convolution(p0, p1), window={size=3x5 pad=0_0x0_0}, dim_labels=b01f_i01o->b01f
     })",
-                   R"(
+                R"(
     // CHECK:      @main_conv(
     // CHECK-SAME: %[[LHS:.+]]: tensor<2x8x12x4xf32>, %[[RHS:.*]]: tensor<4x3x5x16xf32>,
     // CHECK-SAME: %[[B:.+]]: index {xla.range = [0 : index, 1 : index]},
@@ -938,13 +940,13 @@ TEST_F(ElementalHloToMlirTest, ConvolutionSimple) {
 }
 
 TEST_F(ElementalHloToMlirTest, ConvolutionWithWindowStrides) {
-  TF_EXPECT_OK(Run(R"(
+  EXPECT_OK(Run(R"(
     ENTRY main {
       p0 = f32[2,8,12,4] parameter(0)
       p1 = f32[4,3,5,16] parameter(1)
       ROOT conv = f32[2,3,4,16] convolution(p0, p1), window={size=3x5 stride=2x2 pad=0_0x0_0}, dim_labels=b01f_i01o->b01f
     })",
-                   R"(
+                R"(
     // CHECK:      @main_conv(
     // CHECK-SAME: %[[LHS:.+]]: tensor<2x8x12x4xf32>, %[[RHS:.*]]: tensor<4x3x5x16xf32>,
     // CHECK-SAME: %[[B:.+]]: index {xla.range = [0 : index, 1 : index]},
@@ -984,13 +986,13 @@ TEST_F(ElementalHloToMlirTest, ConvolutionWithWindowStrides) {
 }
 
 TEST_F(ElementalHloToMlirTest, ConvolutionWithPadding) {
-  TF_EXPECT_OK(Run(R"(
+  EXPECT_OK(Run(R"(
     ENTRY main {
       p0 = f32[2,8,12,4] parameter(0)
       p1 = f32[4,3,5,16] parameter(1)
       ROOT conv = f32[2,8,12,16] convolution(p0, p1), window={size=3x5 pad=1_1x2_2}, dim_labels=b01f_i01o->b01f
     })",
-                   R"(
+                R"(
     // CHECK:      @main_conv(
     // CHECK-SAME: %[[LHS:.+]]: tensor<2x8x12x4xf32>, %[[RHS:.*]]: tensor<4x3x5x16xf32>,
     // CHECK-SAME: %[[B:.+]]: index {xla.range = [0 : index, 1 : index]},
@@ -1021,10 +1023,12 @@ TEST_F(ElementalHloToMlirTest, ConvolutionWithPadding) {
     // CHECK:      %[[R3:.+]] = scf.if {{.+}} -> (f32) {
     // CHECK:        %[[XX0:.+]] = xla.apply_indexing
     // CHECK-SAME:     #xla.indexing_map<"(d0, d1) -> (d0 + d1 - 1),
-    // CHECK-SAME:     d0 in [0, 7], d1 in [0, 2]">(%[[W]], %[[X]])
+    // CHECK-SAME:     d0 in [0, 7], d1 in [0, 2],
+    // CHECK-SAME:     d0 + d1 in [1, 8]">(%[[W]], %[[X]])
     // CHECK:        %[[XX1:.+]] = xla.apply_indexing
     // CHECK-SAME:     #xla.indexing_map<"(d0, d1) -> (d0 + d1 - 2),
-    // CHECK-SAME:     d0 in [0, 11], d1 in [0, 4]">(%[[H]], %[[Y]])
+    // CHECK-SAME:     d0 in [0, 11], d1 in [0, 4],
+    // CHECK-SAME:     d0 + d1 in [2, 13]">(%[[H]], %[[Y]])
     // CHECK-DAG:    %[[VL:.+]] = tensor.extract %[[LHS]][%[[B]], %[[XX0]], %[[XX1]], %[[I]]] : tensor<2x8x12x4xf32>
     // CHECK-DAG:    %[[VR:.+]] = tensor.extract %[[RHS]][%[[I]], %[[X]], %[[Y]], %[[O]]] : tensor<4x3x5x16xf32>
     // CHECK:        %[[MUL:.+]] = arith.mulf %[[VL]], %[[VR]] : f32
@@ -1041,13 +1045,13 @@ TEST_F(ElementalHloToMlirTest, ConvolutionWithPadding) {
 }
 
 TEST_F(ElementalHloToMlirTest, ConvolutionWithLhsDilation) {
-  TF_EXPECT_OK(Run(R"(
+  EXPECT_OK(Run(R"(
     ENTRY main {
       p0 = f32[2,8,12,4] parameter(0)
       p1 = f32[4,3,5,16] parameter(1)
       ROOT conv = f32[2,13,19,16] convolution(p0, p1), window={size=3x5 pad=0_0x0_0 lhs_dilate=2x2}, dim_labels=b01f_i01o->b01f
     })",
-                   R"(
+                R"(
     // CHECK:      @main_conv(
     // CHECK-SAME: %[[LHS:.+]]: tensor<2x8x12x4xf32>, %[[RHS:.*]]: tensor<4x3x5x16xf32>,
     // CHECK-SAME: %[[B:.+]]: index {xla.range = [0 : index, 1 : index]},
@@ -1071,10 +1075,12 @@ TEST_F(ElementalHloToMlirTest, ConvolutionWithLhsDilation) {
     // CHECK:      %[[R3:.+]] = scf.if {{.+}} -> (f32) {
     // CHECK:        %[[XX0:.+]] = xla.apply_indexing
     // CHECK-SAME:     #xla.indexing_map<"(d0, d1) -> ((d0 + d1) / 2),
-    // CHECK-SAME:     d0 in [0, 12], d1 in [0, 2]">(%[[W]], %[[X]])
+    // CHECK-SAME:     d0 in [0, 12], d1 in [0, 2],
+    // CHECK-SAME:     (d0 + d1) mod 2 in [0, 0]">(%[[W]], %[[X]])
     // CHECK:        %[[XX1:.+]] = xla.apply_indexing
     // CHECK-SAME:     #xla.indexing_map<"(d0, d1) -> ((d0 + d1) / 2),
-    // CHECK-SAME:     d0 in [0, 18], d1 in [0, 4]">(%[[H]], %[[Y]])
+    // CHECK-SAME:     d0 in [0, 18], d1 in [0, 4],
+    // CHECK-SAME:     (d0 + d1) mod 2 in [0, 0]">(%[[H]], %[[Y]])
     // CHECK-DAG:    %[[VL:.+]] = tensor.extract %[[LHS]][%[[B]], %[[XX0]], %[[XX1]], %[[I]]] : tensor<2x8x12x4xf32>
     // CHECK-DAG:    %[[VR:.+]] = tensor.extract %[[RHS]][%[[I]], %[[X]], %[[Y]], %[[O]]] : tensor<4x3x5x16xf32>
     // CHECK:        %[[MUL:.+]] = arith.mulf %[[VL]], %[[VR]] : f32
@@ -1091,13 +1097,13 @@ TEST_F(ElementalHloToMlirTest, ConvolutionWithLhsDilation) {
 }
 
 TEST_F(ElementalHloToMlirTest, ConvolutionWithRhsDilation) {
-  TF_EXPECT_OK(Run(R"(
+  EXPECT_OK(Run(R"(
     ENTRY main {
       p0 = f32[2,8,12,4] parameter(0)
       p1 = f32[4,3,5,16] parameter(1)
       ROOT conv = f32[2,4,4,16] convolution(p0, p1), window={size=3x5 pad=0_0x0_0 rhs_dilate=2x2}, dim_labels=b01f_i01o->b01f
     })",
-                   R"(
+                R"(
     // CHECK:      @main_conv(
     // CHECK-SAME: %[[LHS:.+]]: tensor<2x8x12x4xf32>, %[[RHS:.*]]: tensor<4x3x5x16xf32>,
     // CHECK-SAME: %[[B:.+]]: index {xla.range = [0 : index, 1 : index]},
@@ -1137,13 +1143,13 @@ TEST_F(ElementalHloToMlirTest, ConvolutionWithRhsDilation) {
 }
 
 TEST_F(ElementalHloToMlirTest, ConvolutionWithFeatureGroupCount) {
-  TF_EXPECT_OK(Run(R"(
+  EXPECT_OK(Run(R"(
     ENTRY main {
       p0 = f32[2,8,12,4] parameter(0)
       p1 = f32[2,3,5,16] parameter(1)
       ROOT conv = f32[2,6,8,16] convolution(p0, p1), window={size=3x5 pad=0_0x0_0}, dim_labels=b01f_i01o->b01f, feature_group_count=2
     })",
-                   R"(
+                R"(
     // CHECK:      @main_conv(
     // CHECK-SAME: %[[LHS:.+]]: tensor<2x8x12x4xf32>, %[[RHS:.*]]: tensor<2x3x5x16xf32>,
     // CHECK-SAME: %[[B:.+]]: index {xla.range = [0 : index, 1 : index]},
@@ -1186,13 +1192,13 @@ TEST_F(ElementalHloToMlirTest, ConvolutionWithFeatureGroupCount) {
 }
 
 TEST_F(ElementalHloToMlirTest, ConvolutionWithBatchGroupCount) {
-  TF_EXPECT_OK(Run(R"(
+  EXPECT_OK(Run(R"(
     ENTRY main {
       p0 = f32[2,8,12,4] parameter(0)
       p1 = f32[4,3,5,16] parameter(1)
       ROOT conv = f32[1,6,8,16] convolution(p0, p1), window={size=3x5 pad=0_0x0_0}, dim_labels=b01f_i01o->b01f, batch_group_count=2
     })",
-                   R"(
+                R"(
     // CHECK:      @main_conv(
     // CHECK-SAME: %[[LHS:.+]]: tensor<2x8x12x4xf32>, %[[RHS:.*]]: tensor<4x3x5x16xf32>,
     // CHECK-SAME: %[[B:.+]]: index {xla.range = [0 : index, 0 : index]},
@@ -1235,12 +1241,12 @@ TEST_F(ElementalHloToMlirTest, ConvolutionWithBatchGroupCount) {
 }
 
 TEST_F(ElementalHloToMlirTest, Transpose) {
-  TF_EXPECT_OK(Run(R"(
+  EXPECT_OK(Run(R"(
     ENTRY main {
       p0 = f32[4,5,6] parameter(0)
       ROOT transpose = f32[6,5,4] transpose(p0), dimensions={2,1,0}
     })",
-                   R"(
+                R"(
     // CHECK:      @main_transpose(
     // CHECK-SAME:     %[[ARG0:.*]]: tensor<4x5x6xf32>,
     // CHECK-SAME:     %[[X:.*]]: index {{{.*}}}, %[[Y:.*]]: index {{{.*}}},
@@ -1252,12 +1258,12 @@ TEST_F(ElementalHloToMlirTest, Transpose) {
 }
 
 TEST_F(ElementalHloToMlirTest, Broadcast) {
-  TF_EXPECT_OK(Run(R"(
+  EXPECT_OK(Run(R"(
     ENTRY main {
       p0 = f32[4,5] parameter(0)
       ROOT broadcast = f32[6,4,5] broadcast(p0), dimensions={1,2}
     })",
-                   R"(
+                R"(
     // CHECK:      @main_broadcast(
     // CHECK-SAME:     %[[ARG0:.*]]: tensor<4x5xf32>,
     // CHECK-SAME:     %[[X:.*]]: index {{{.*}}}, %[[Y:.*]]: index {{{.*}}},
@@ -1269,13 +1275,13 @@ TEST_F(ElementalHloToMlirTest, Broadcast) {
 }
 
 TEST_F(ElementalHloToMlirTest, Add) {
-  TF_EXPECT_OK(Run(R"(
+  EXPECT_OK(Run(R"(
     ENTRY main {
       p0 = f32[4] parameter(0)
       p1 = f32[4] parameter(1)
       ROOT add = f32[4] add(p0, p1)
     })",
-                   R"(
+                R"(
     // CHECK:      @main_add(
     // CHECK-SAME:     %[[ARG0:.*]]: tensor<4xf32>, %[[ARG1:.*]]: tensor<4xf32>,
     // CHECK-SAME:     %[[X:.*]]: index {{.*}}
@@ -1287,13 +1293,13 @@ TEST_F(ElementalHloToMlirTest, Add) {
 }
 
 TEST_F(ElementalHloToMlirTest, Complex) {
-  TF_EXPECT_OK(Run(R"(
+  EXPECT_OK(Run(R"(
     ENTRY main {
       p0 = f32[4] parameter(0)
       p1 = f32[4] parameter(1)
       ROOT add = c64[4] complex(p0, p1)
     })",
-                   R"(
+                R"(
     // CHECK:      @main_add(
     // CHECK-SAME:     %[[ARG0:.*]]: tensor<4xf32>, %[[ARG1:.*]]: tensor<4xf32>,
     // CHECK-SAME:     %[[X:.*]]: index {{.*}}
@@ -1305,12 +1311,12 @@ TEST_F(ElementalHloToMlirTest, Complex) {
 }
 
 TEST_F(ElementalHloToMlirTest, ComplexAbs) {
-  TF_EXPECT_OK(Run(R"(
+  EXPECT_OK(Run(R"(
     ENTRY main {
       p0 = c64[4] parameter(0)
       ROOT abs = f32[4] abs(p0)
     })",
-                   R"(
+                R"(
     // CHECK:      @main_abs(
     // CHECK-SAME:     %[[ARG0:.*]]: tensor<4xcomplex<f32>>
     // CHECK-SAME:     %[[X:.*]]: index {{.*}}
@@ -1321,13 +1327,13 @@ TEST_F(ElementalHloToMlirTest, ComplexAbs) {
 }
 
 TEST_F(ElementalHloToMlirTest, UnsignedDiv) {
-  TF_EXPECT_OK(Run(R"(
+  EXPECT_OK(Run(R"(
     ENTRY main {
       p0 = u32[4] parameter(0)
       p1 = u32[4] parameter(1)
       ROOT div = u32[4] divide(p0, p1)
     })",
-                   R"(
+                R"(
     // CHECK:      @main_div(
     // CHECK-SAME:     %[[ARG0:.*]]: tensor<4xi32>, %[[ARG1:.*]]: tensor<4xi32>,
     // CHECK-SAME:     %[[X:.*]]: index {{.*}}
@@ -1336,12 +1342,12 @@ TEST_F(ElementalHloToMlirTest, UnsignedDiv) {
 }
 
 TEST_F(ElementalHloToMlirTest, ConvertToUnsigned) {
-  TF_EXPECT_OK(Run(R"(
+  EXPECT_OK(Run(R"(
     ENTRY main {
       p0 = f32[4] parameter(0)
       ROOT convert = u32[4] convert(p0)
     })",
-                   R"(
+                R"(
     // CHECK:      @main_convert(
     // CHECK:        arith.fptoui %{{.*}} : f32 to i32
   )"));
@@ -1349,12 +1355,12 @@ TEST_F(ElementalHloToMlirTest, ConvertToUnsigned) {
 
 TEST_F(ElementalHloToMlirTest, ConvertS8ToPred) {
   // Both s8 and pred are represented as i8, but a conversion is still needed.
-  TF_EXPECT_OK(Run(R"(
+  EXPECT_OK(Run(R"(
     ENTRY main {
       p0 = s8[4] parameter(0)
       ROOT convert = pred[4] convert(p0)
     })",
-                   R"(
+                R"(
     // CHECK:      @main_convert(
     // CHECK:       %[[C0:.*]] = arith.constant 0 : i8
     // CHECK:       %[[CMP:.*]] = arith.cmpi ne, %{{.*}}, %[[C0]] : i8
@@ -1364,12 +1370,12 @@ TEST_F(ElementalHloToMlirTest, ConvertS8ToPred) {
 }
 
 TEST_F(ElementalHloToMlirTest, ConvertToUnsigned64Saturation) {
-  TF_EXPECT_OK(Run(R"(
+  EXPECT_OK(Run(R"(
     ENTRY main {
       p0 = f32[4] parameter(0)
       ROOT convert = u64[4] convert(p0)
     })",
-                   R"(
+                R"(
     // CHECK:      @main_convert(
     // CHECK:        %[[UB:.*]] = arith.constant 1.84467441E+19 : f32
     // CHECK:        arith.cmpf oge, {{.*}}, %[[UB]] : f32
@@ -1377,36 +1383,36 @@ TEST_F(ElementalHloToMlirTest, ConvertToUnsigned64Saturation) {
 }
 
 TEST_F(ElementalHloToMlirTest, ExpF16_UsesFastmathFlag) {
-  TF_EXPECT_OK(Run(R"(
+  EXPECT_OK(Run(R"(
     ENTRY main {
       p0 = f16[4] parameter(0)
       ROOT exp = f16[4] exponential(p0)
     })",
-                   R"(
+                R"(
     // CHECK:      @main_exp(
     // CHECK:        math.exp %{{.*}} fastmath<afn> : f16
   )"));
 }
 
 TEST_F(ElementalHloToMlirTest, ExpBF16_UsesFastmathFlag) {
-  TF_EXPECT_OK(Run(R"(
+  EXPECT_OK(Run(R"(
     ENTRY main {
       p0 = bf16[4] parameter(0)
       ROOT exp = bf16[4] exponential(p0)
     })",
-                   R"(
+                R"(
     // CHECK:      @main_exp(
     // CHECK:        math.exp %{{.*}} fastmath<afn> : bf16
   )"));
 }
 
 TEST_F(ElementalHloToMlirTest, ExpF32_DoesntUseFastmathFlag) {
-  TF_EXPECT_OK(Run(R"(
+  EXPECT_OK(Run(R"(
     ENTRY main {
       p0 = f32[4] parameter(0)
       ROOT exp = f32[4] exponential(p0)
     })",
-                   R"(
+                R"(
     // CHECK:      @main_exp(
     // CHECK:        math.exp
     // CHECK-NOT: fastmath
@@ -1414,12 +1420,12 @@ TEST_F(ElementalHloToMlirTest, ExpF32_DoesntUseFastmathFlag) {
 }
 
 TEST_F(ElementalHloToMlirTest, PopulationCountUnsigned) {
-  TF_EXPECT_OK(Run(R"(
+  EXPECT_OK(Run(R"(
      ENTRY main{
        p0 = u32[10,1,4]{2,1,0} parameter(0)
        ROOT popcnt = u32[10,1,4]{2,1,0} popcnt(p0)
      })",
-                   R"(
+                R"(
     // CHECK:      @main_popcnt(
     // CHECK:        math.ctpop %{{.*}} : i32
   )"));
@@ -1475,26 +1481,26 @@ class ElementalHloToMlirEpilogueTest : public ElementalHloToMlirTest {
 };
 
 TEST_F(ElementalHloToMlirEpilogueTest, Epilogue) {
-  TF_EXPECT_OK(Run(kHlo, kCheck, EpilogueSpec()));
+  EXPECT_OK(Run(kHlo, kCheck, EpilogueSpec()));
 }
 
 TEST_F(ElementalHloToMlirEpilogueTest, XlaEntry) {
-  TF_EXPECT_OK(Run(kHlo, kCheck, EpilogueSpec(), /*set_xla_entry=*/true));
+  EXPECT_OK(Run(kHlo, kCheck, EpilogueSpec(), /*set_xla_entry=*/true));
 }
 
 TEST_F(ElementalHloToMlirEpilogueTest, XlaGpuEntry) {
-  TF_EXPECT_OK(Run(kHlo, kCheck, EpilogueSpec(), /*set_xla_entry=*/true,
-                   /*xla_backend=*/xla::BackendKind::kGpu));
+  EXPECT_OK(Run(kHlo, kCheck, EpilogueSpec(), /*set_xla_entry=*/true,
+                /*xla_backend=*/xla::BackendKind::kGpu));
 }
 
 TEST_F(ElementalHloToMlirTest, ScalarConstant) {
-  TF_EXPECT_OK(Run(R"(
+  EXPECT_OK(Run(R"(
     ENTRY main {
       p0 = f32[1,1] parameter(0)
       c1 = f32[1,1] constant({{1.0}})
       ROOT add = f32[1,1] add(p0, c1)
     })",
-                   R"(
+                R"(
     // CHECK:      @main_add(
     // CHECK-SAME:     %[[ARG0:.*]]: tensor<1x1xf32>
     // CHECK-SAME:     %[[X:.*]]: index {{.*}}, %[[Y:.*]]: index {{.*}}
@@ -1506,13 +1512,13 @@ TEST_F(ElementalHloToMlirTest, ScalarConstant) {
 }
 
 TEST_F(ElementalHloToMlirTest, ScalarUnsignedConstant) {
-  TF_EXPECT_OK(Run(R"(
+  EXPECT_OK(Run(R"(
     ENTRY main {
       p0 = u32[1,1] parameter(0)
       c1 = u32[1,1] constant({{1}})
       ROOT add = u32[1,1] add(p0, c1)
     })",
-                   R"(
+                R"(
     // CHECK:      @main_add(
     // CHECK-SAME:     %[[ARG0:.*]]: tensor<1x1xi32>
     // CHECK-SAME:     %[[X:.*]]: index {{.*}}, %[[Y:.*]]: index {{.*}}
@@ -1524,13 +1530,13 @@ TEST_F(ElementalHloToMlirTest, ScalarUnsignedConstant) {
 }
 
 TEST_F(ElementalHloToMlirTest, ScalarComplexConstant) {
-  TF_EXPECT_OK(Run(R"(
+  EXPECT_OK(Run(R"(
     ENTRY main {
       p0 = c64[] parameter(0)
       c1 = c64[] constant((1.0, 0.0))
       ROOT add = c64[] add(p0, c1)
     })",
-                   R"(
+                R"(
     // CHECK:      @main_add(
     // CHECK-SAME:     %[[ARG0:.*]]: tensor<complex<f32>>
     // CHECK:        %[[C_1:.*]] = complex.constant [1.000000e+00 : f32, 0.000000e+00 : f32]
@@ -1541,13 +1547,13 @@ TEST_F(ElementalHloToMlirTest, ScalarComplexConstant) {
 }
 
 TEST_F(ElementalHloToMlirTest, TensorConstant) {
-  TF_EXPECT_OK(Run(R"(
+  EXPECT_OK(Run(R"(
     ENTRY main {
       p0 = f32[2,1] parameter(0)
       c1 = f32[2,1] constant({{1.0}, {2.0}})
       ROOT add = f32[2,1] add(p0, c1)
     })",
-                   R"(
+                R"(
     // CHECK:      @main_add(
     // CHECK-SAME:     %[[ARG0:.*]]: tensor<2x1xf32>
     // CHECK-SAME:     %[[X:.*]]: index {{.*}}, %[[Y:.*]]: index {{.*}}
@@ -1561,7 +1567,7 @@ TEST_F(ElementalHloToMlirTest, TensorConstant) {
 }
 
 TEST_F(ElementalHloToMlirTest, TensorConstantPred) {
-  TF_EXPECT_OK(Run(
+  EXPECT_OK(Run(
       R"(
     ENTRY main {
       ROOT c1 = pred[2] constant({1, 0})
@@ -1570,14 +1576,14 @@ TEST_F(ElementalHloToMlirTest, TensorConstantPred) {
 }
 
 TEST_F(ElementalHloToMlirTest, DynamicSlice) {
-  TF_EXPECT_OK(Run(R"(
+  EXPECT_OK(Run(R"(
     ENTRY main {
       in = f32[20,30] parameter(0)
       i0 = s32[] parameter(1)
       i1 = s32[] parameter(2)
       ROOT slice = f32[4,5] dynamic-slice(in, i0, i1), dynamic_slice_sizes={4,5}
     })",
-                   R"(
+                R"(
     // CHECK:      @main_slice(
     // CHECK-SAME:     %[[ARG0:.*]]: tensor<20x30xf32>,
     // CHECK-SAME:     %[[I0_T:.*]]: tensor<i32>, %[[I1_T:.*]]: tensor<i32>,
@@ -1601,14 +1607,14 @@ TEST_F(ElementalHloToMlirTest, DynamicSlice) {
 }
 
 TEST_F(ElementalHloToMlirTest, DynamicSliceUnsignedIndices) {
-  TF_EXPECT_OK(Run(R"(
+  EXPECT_OK(Run(R"(
     ENTRY main {
       in = f32[20,30] parameter(0)
       i0 = u32[] parameter(1)
       i1 = u32[] parameter(2)
       ROOT slice = f32[4,5] dynamic-slice(in, i0, i1), dynamic_slice_sizes={4,5}
     })",
-                   R"(
+                R"(
     // CHECK:      @main_slice(
     // CHECK-SAME:     %[[ARG0:.*]]: tensor<20x30xf32>,
     // CHECK-SAME:     %[[I0_T:.*]]: tensor<i32>, %[[I1_T:.*]]: tensor<i32>,
@@ -1629,7 +1635,7 @@ TEST_F(ElementalHloToMlirTest, DynamicSliceUnsignedIndices) {
 }
 
 TEST_F(ElementalHloToMlirTest, DynamicUpdateSlice) {
-  TF_EXPECT_OK(Run(R"(
+  EXPECT_OK(Run(R"(
     ENTRY main {
       in = f32[20,30] parameter(0)
       updates = f32[5,6] parameter(1)
@@ -1637,7 +1643,7 @@ TEST_F(ElementalHloToMlirTest, DynamicUpdateSlice) {
       i1 = s32[] parameter(3)
       ROOT updated = f32[20,30] dynamic-update-slice(in, updates, i0, i1)
     })",
-                   R"(
+                R"(
     // CHECK:      @main_updated(
     // CHECK-SAME:     %[[ARG0:.*]]: tensor<20x30xf32>, %[[ARG1:.*]]: tensor<5x6xf32>
     // CHECK-SAME:     %[[I0_T:.*]]: tensor<i32>, %[[I1_T:.*]]: tensor<i32>,
@@ -1666,7 +1672,7 @@ TEST_F(ElementalHloToMlirTest, DynamicUpdateSlice) {
 }
 
 TEST_F(ElementalHloToMlirTest, DynamicUpdateSliceUnsigned) {
-  TF_EXPECT_OK(Run(R"(
+  EXPECT_OK(Run(R"(
     ENTRY main {
       in = u32[20,30] parameter(0)
       updates = u32[5,6] parameter(1)
@@ -1674,7 +1680,7 @@ TEST_F(ElementalHloToMlirTest, DynamicUpdateSliceUnsigned) {
       i1 = s32[] parameter(3)
       ROOT updated = u32[20,30] dynamic-update-slice(in, updates, i0, i1)
     })",
-                   R"(
+                R"(
     // CHECK:      @main_updated(
     // CHECK-SAME:     %[[ARG0:.*]]: tensor<20x30xi32>, %[[ARG1:.*]]: tensor<5x6xi32>
     // CHECK-SAME:     %[[I0_T:.*]]: tensor<i32>, %[[I1_T:.*]]: tensor<i32>,
@@ -1703,11 +1709,11 @@ TEST_F(ElementalHloToMlirTest, DynamicUpdateSliceUnsigned) {
 }
 
 TEST_F(ElementalHloToMlirTest, IotaUnsigned) {
-  TF_EXPECT_OK(Run(R"(
+  EXPECT_OK(Run(R"(
     ENTRY main {
       ROOT iota = u32[10,20] iota(), iota_dimension=0
     })",
-                   R"(
+                R"(
     // CHECK:      @main_iota(
     // CHECK-SAME:     %[[I0:.*]]: index {{.*}}, %[[I1:.*]]: index {{.*}} {
     // CHECK:        %[[VAL:.*]] = arith.index_castui %[[I0]] : index to i32
@@ -1715,11 +1721,11 @@ TEST_F(ElementalHloToMlirTest, IotaUnsigned) {
 }
 
 TEST_F(ElementalHloToMlirTest, IotaComplex) {
-  TF_EXPECT_OK(Run(R"(
+  EXPECT_OK(Run(R"(
     ENTRY main {
       ROOT iota = c64[6,4,5] iota(), iota_dimension=1
     })",
-                   R"(
+                R"(
     // CHECK:      @main_iota(
     // CHECK-SAME:     %[[X:.*]]: index {{{.*}}}, %[[Y:.*]]: index {{{.*}}},
     // CHECK-SAME:     %[[Z:.*]]: index {{{.*}}}
@@ -1732,13 +1738,13 @@ TEST_F(ElementalHloToMlirTest, IotaComplex) {
 }
 
 TEST_F(ElementalHloToMlirTest, MixedIndexingTuple) {
-  TF_EXPECT_OK(Run(R"(
+  EXPECT_OK(Run(R"(
     ENTRY main {
       %p0 = f32[10,10] parameter(0)
       %p1 = f32[100] parameter(1)
       ROOT tuple = (f32[10,10], f32[100]) tuple(%p0, %p1)
     })",
-                   R"(
+                R"(
     // CHECK:      @main_tuple(
     // CHECK-SAME:     %[[P0:.*]]: tensor<10x10xf32>,
     // CHECK-SAME:     %[[P1:.*]]: tensor<100xf32>,
@@ -1753,18 +1759,18 @@ TEST_F(ElementalHloToMlirTest, MixedIndexingTuple) {
 }
 
 TEST_F(ElementalHloToMlirTest, ReducePrecision) {
-  TF_EXPECT_OK(Run(R"(
+  EXPECT_OK(Run(R"(
                      ENTRY main {
                        %p0 = f32[5,7] parameter(0)
                        ROOT r = f32[5,7] reduce-precision(%p0),
                         exponent_bits=8, mantissa_bits=23
                      }
                    )",
-                   "// CHECK: @main"));
+                "// CHECK: @main"));
 }
 
 TEST_F(ElementalHloToMlirTest, Map) {
-  TF_EXPECT_OK(Run(R"(
+  EXPECT_OK(Run(R"(
     mapper {
       a = f32[] parameter(0)
       b = f32[] parameter(1)
@@ -1775,7 +1781,7 @@ TEST_F(ElementalHloToMlirTest, Map) {
       %p1 = f32[5,7] parameter(1)
       ROOT r = f32[5,7] map(%p0, %p1), dimensions={}, to_apply=mapper
     })",
-                   R"(
+                R"(
     // CHECK: @main
     // CHECK-NEXT: tensor.extract
     // CHECK-NEXT: tensor.extract
@@ -1785,14 +1791,14 @@ TEST_F(ElementalHloToMlirTest, Map) {
 }
 
 TEST_F(ElementalHloToMlirTest, BroadcastSelect) {
-  TF_EXPECT_OK(Run(R"(
+  EXPECT_OK(Run(R"(
     ENTRY main {
       p0 = pred[] parameter(0)
       p1 = f32[5,7] parameter(1)
       p2 = f32[5,7] parameter(2)
       ROOT r = f32[5,7] select(p0, p1, p2)
     })",
-                   R"(
+                R"(
     // CHECK: @main
     // CHECK-SAME: %[[P0:.*]]: tensor<i8>
     // CHECK-SAME: %[[P1:.*]]: tensor<5x7xf32>, %[[P2:.*]]: tensor<5x7xf32>
@@ -1804,7 +1810,7 @@ TEST_F(ElementalHloToMlirTest, BroadcastSelect) {
 }
 
 TEST_F(ElementalHloToMlirTest, DotC64) {
-  TF_EXPECT_OK(Run(
+  EXPECT_OK(Run(
       R"(
 HloModule c64_dot_test
 
@@ -1833,7 +1839,7 @@ ENTRY main {
 }
 
 TEST_F(ElementalHloToMlirTest, DotC128) {
-  TF_EXPECT_OK(Run(
+  EXPECT_OK(Run(
       R"(
 HloModule c128_dot_test
 
@@ -1858,6 +1864,23 @@ ENTRY main {
       // CHECK:     scf.yield %[[NEXTACC]]
       // CHECK:   %[[OUT:.*]] = complex.add %[[DOTRESULT]], %[[DOTRESULT]]
       // CHECK:   return %[[OUT]]
+      )"));
+}
+
+TEST_F(ElementalHloToMlirTest, PowU32) {
+  EXPECT_OK(Run(
+      R"(
+HloModule pow_u32_test
+
+ENTRY main {
+  p0 = u32[1] parameter(0)
+  p1 = u32[1] parameter(1)
+  out = u32[1] power(p0, p1)
+}
+      )",
+      R"(
+      // CHECK-NOT: power
+      // CHECK-NOT: arith.remsi
       )"));
 }
 

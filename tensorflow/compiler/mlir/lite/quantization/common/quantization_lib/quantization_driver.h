@@ -156,7 +156,7 @@ class QuantizationDriver {
  private:
   // Duplicates the constant op if it has multiple uses, and replaces
   // target_op->operand[operand_index] with the newly created op. This also
-  // replaces corresponsing quantization states.
+  // replaces corresponding quantization states.
   arith::ConstantOp DuplicateConstantOpIfNeeded(arith::ConstantOp op,
                                                 Operation* target_op,
                                                 int operand_index);

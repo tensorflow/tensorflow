@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/costs/analytical_cost_estimator.h"
 #include "tensorflow/core/grappler/costs/op_level_cost_estimator.h"
 #include "tensorflow/core/grappler/costs/virtual_scheduler.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/device_properties.pb.h"
 
@@ -60,6 +61,7 @@ class VirtualCluster : public Cluster {
   const DeviceSet* GetDeviceSet() const override { return device_set_; }
 
  private:
+  mutable mutex run_mu_;
   std::unique_ptr<AnalyticalCostEstimator> estimator_;
   const DeviceSet* device_set_ = nullptr;
 };

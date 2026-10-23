@@ -24,32 +24,37 @@ constexpr stream_executor::SemanticVersion kMaxPtxVersion{9, 4, 0};
 
 stream_executor::SemanticVersion
 DetermineHighestSupportedPtxVersionFromCudaVersion(
-    stream_executor::SemanticVersion cuda_version) {
+    stream_executor::SemanticVersion cuda_version,
+    int compute_capability_major) {
+  stream_executor::SemanticVersion ptx_version = kMaxPtxVersion;
+
   if (cuda_version < stream_executor::SemanticVersion{11, 0, 0}) {
     // For everything below CUDA 11 we just fall back to PTX 6.5.
     // We don't support CUDA below 11 anymore.
-    return kFallbackPtxVersion;
-  }
-
-  // Mapping determined from
-  // https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#release-notes
-  if (cuda_version >= stream_executor::SemanticVersion{12, 6, 0} &&
-      cuda_version < stream_executor::SemanticVersion{12, 10, 0}) {
+    ptx_version = kFallbackPtxVersion;
+  } else if (cuda_version >= stream_executor::SemanticVersion{12, 6, 0} &&
+             cuda_version < stream_executor::SemanticVersion{12, 10, 0}) {
     // Examples:
     // CUDA 12.6 -> PTX 8.5
     // CUDA 12.9 -> PTX 8.8
-    return {cuda_version.major_version() - 4, cuda_version.minor_version() - 1,
-            0};
-  }
-  if (cuda_version < stream_executor::SemanticVersion{13, 4, 0}) {
+    ptx_version = {cuda_version.major_version() - 4,
+                   cuda_version.minor_version() - 1, 0};
+  } else if (cuda_version < stream_executor::SemanticVersion{13, 4, 0}) {
     // Examples:
     // CUDA 11.0 -> PTX 7.0
     // CUDA 12.4 -> PTX 8.4
     // CUDA 13.0 -> PTX 9.0
-    return {cuda_version.major_version() - 4, cuda_version.minor_version(), 0};
+    ptx_version = {cuda_version.major_version() - 4,
+                   cuda_version.minor_version(), 0};
   }
 
-  // Return maximum known PTX version.
-  return kMaxPtxVersion;
+  // sm_120 (Blackwell) requires at least PTX 8.7
+  if (compute_capability_major >= 12) {
+    if (ptx_version < stream_executor::SemanticVersion{8, 7, 0}) {
+      ptx_version = {8, 7, 0};
+    }
+  }
+
+  return ptx_version;
 }
 }  // namespace xla::gpu::nvptx

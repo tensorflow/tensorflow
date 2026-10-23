@@ -73,7 +73,7 @@ struct ExampleStatistics {
 
 class Regularizations {
  public:
-  Regularizations() {}
+  Regularizations() = default;
 
   // Initialize() must be called immediately after construction.
   absl::Status Initialize(OpKernelConstruction* const context) {
@@ -278,7 +278,7 @@ class FeatureWeightsSparseStorage {
 // for both sparse and dense features.
 class ModelWeights {
  public:
-  ModelWeights() {}
+  ModelWeights() = default;
 
   bool SparseIndexValid(const int col, const int64_t index) const {
     return sparse_weights_[col].IndexValid(index);
@@ -315,7 +315,7 @@ class ModelWeights {
 // Examples contains all the training examples that SDCA uses for a mini-batch.
 class Examples {
  public:
-  Examples() {}
+  Examples() = default;
 
   // Returns the Example at |example_index|.
   const Example& example(const int example_index) const {

@@ -33,7 +33,7 @@ TF_CAPI_EXPORT extern const char* TF_SignatureDefParamName(
     const TF_SignatureDefParam* param);
 
 // Returns the TensorSpec associated with the given parameter. The caller is
-// not reponsible for freeing the returned TF_TensorSpec*.
+// not responsible for freeing the returned TF_TensorSpec*.
 TF_CAPI_EXPORT extern const TF_TensorSpec* TF_SignatureDefParamTensorSpec(
     const TF_SignatureDefParam* param);
 

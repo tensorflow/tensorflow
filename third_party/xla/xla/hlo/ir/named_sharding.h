@@ -172,7 +172,7 @@ class NamedSharding {
            unreduced_axes_.empty() && manual_axes_.empty();
   }
 
-  bool IsSingleDevice() const { return mesh_.IsMaximal(); }
+  bool IsSingleDevice() const { return mesh_.IsSingleDevice(); }
 
   // This checks for replicated or single-device sharding.
   bool IsReplicatedOrSingleDevice() const {

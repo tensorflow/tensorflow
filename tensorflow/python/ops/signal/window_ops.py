@@ -79,16 +79,36 @@ def kaiser_window(window_length, beta=12., dtype=dtypes.float32, name=None):
                          dtype=dtypes.float32)
     # Convert everything into given dtype which can be float16.
     arg = math_ops.cast(arg, dtype=dtype)
-    # I0 (modified Bessel function of the first kind) is an even function,
-    # i.e., I0(-x) = I0(x). Take abs(beta) so that negative beta values
-    # produce the same (correct) result as positive ones.
-    beta = math_ops.abs(math_ops.cast(beta, dtype=dtype))
     one = math_ops.cast(1.0, dtype=dtype)
     halflen_float = math_ops.cast(halflen_float, dtype=dtype)
-    num = beta * math_ops.sqrt(nn_ops.relu(
-        one - math_ops.square(arg / halflen_float)))
-    window = math_ops.exp(num - beta) * (
-        special_math_ops.bessel_i0e(num) / special_math_ops.bessel_i0e(beta))
+    # A window of length 1 has `halflen_float == 0`, which would make
+    # `arg / halflen_float` 0/0. Its single sample sits at the center, where
+    # `shape` is 1, so dividing by 1 instead gives the expected window of
+    # ones. A static length of 1 already returned above; this covers lengths
+    # that are only known at run time, e.g. inside a `tf.function`.
+    safe_halflen = array_ops.where_v2(
+        math_ops.equal(window_length, 1), one, halflen_float
+    )
+    shape = math_ops.sqrt(
+        nn_ops.relu(one - math_ops.square(arg / safe_halflen))
+    )
+    # `bessel_i0e` is an even function, i.e. i0e(-x) = i0e(x), so `beta` is
+    # passed to it with its original sign.  Applying `abs` to `beta` before
+    # calling `bessel_i0e` would introduce a cusp at beta == 0 (the second
+    # derivative of `abs` vanishes at the origin), which makes the second
+    # derivative of the window with respect to `beta` evaluate to zero.  The
+    # exponential factor still uses `abs(beta)`, so that negative `beta`
+    # values produce the same result as positive ones.
+    beta = math_ops.cast(beta, dtype=dtype)
+    beta_abs = math_ops.abs(beta)
+    num = beta * shape
+    # `beta_abs` is factored out so that the subtraction is performed first.
+    # Evaluating `beta_abs * shape - beta_abs` instead loses precision to
+    # catastrophic cancellation when `beta_abs` is large and `shape` is close
+    # to one, which happens near the center of the window.
+    window = math_ops.exp(beta_abs * (shape - one)) * (
+        special_math_ops.bessel_i0e(num) / special_math_ops.bessel_i0e(beta)
+    )
   return window
 
 
@@ -98,8 +118,12 @@ def kaiser_bessel_derived_window(window_length, beta=12.,
                                  dtype=dtypes.float32, name=None):
   """Generate a [Kaiser Bessel derived window][kbd].
 
+  The window is made of two mirrored halves, so it is only defined for an even
+  `window_length`.
+
   Args:
     window_length: A scalar `Tensor` indicating the window length to generate.
+      Must be even.
     beta: Beta parameter for Kaiser window.
     dtype: The data type to produce. Must be a floating point type.
     name: An optional name for the operation.
@@ -107,11 +131,23 @@ def kaiser_bessel_derived_window(window_length, beta=12.,
   Returns:
     A `Tensor` of shape `[window_length]` of type `dtype`.
 
+  Raises:
+    ValueError: If `dtype` is not a floating point type, or if `window_length`
+      is statically known to be odd.
+
   [kbd]:
     https://en.wikipedia.org/wiki/Kaiser_window#Kaiser%E2%80%93Bessel-derived_(KBD)_window
   """
   with ops.name_scope(name, 'kaiser_bessel_derived_window'):
     window_length = _check_params(window_length, dtype)
+    # Each half has `window_length // 2` samples, so an odd length would
+    # silently come out one sample short.
+    window_length_const = tensor_util.constant_value(window_length)
+    if window_length_const is not None and window_length_const % 2:
+      raise ValueError(
+          '`window_length` must be even for a Kaiser-Bessel derived window. '
+          f'Received: window_length={window_length_const}'
+      )
     halflen = window_length // 2
     kaiserw = kaiser_window(halflen + 1, beta, dtype=dtype)
     kaiserw_csum = math_ops.cumsum(kaiserw)

@@ -32,7 +32,7 @@ class Device;
 class RingGatherer : public RingAlg {
  public:
   RingGatherer() : RingAlg(GATHER_COLLECTIVE, "Gather") {}
-  ~RingGatherer() override {}
+  ~RingGatherer() override = default;
 
   absl::Status InitializeCollectiveParams(
       CollectiveParams* col_params) override;

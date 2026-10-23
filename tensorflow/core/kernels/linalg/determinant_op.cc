@@ -19,24 +19,27 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #define EIGEN_USE_GPU
+#include <cstdint>
+#include <memory>
+#include <utility>
+#include <vector>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/kernels/linalg/determinant_op.h"
+#include "tensorflow/core/util/gpu_solvers.h"
 #endif
 
+#include "Eigen/Core"  // from @eigen_archive
 #include "Eigen/LU"  // from @eigen_archive
-#include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/linalg/linalg_ops_common.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/types.h"
-
-#if GOOGLE_CUDA
-#include "tensorflow/core/kernels/fill_functor.h"
-#include "tensorflow/core/util/gpu_solvers.h"
-#endif
 
 namespace tensorflow {
 
@@ -128,15 +131,15 @@ class DeterminantOpGpu : public AsyncOpKernel {
   void ComputeAsync(OpKernelContext* context, DoneCallback done) final {
     const Tensor& input = context->input(0);
     const int ndims = input.dims();
-    const int64_t n = input.dim_size(ndims - 1);
     // Validate inputs.
     OP_REQUIRES_ASYNC(context, ndims >= 2,
                       absl::InvalidArgumentError(absl::StrCat(
                           "Input must have rank >= 2, got ", ndims)),
                       done);
+    const int64_t n = input.dim_size(ndims - 1);
     OP_REQUIRES_ASYNC(context, input.dim_size(ndims - 2) == n,
                       absl::InvalidArgumentError(
-                          absl::StrCat("Input matrices must be square, got",
+                          absl::StrCat("Input matrices must be square, got ",
                                        input.dim_size(ndims - 2), " != ", n)),
                       done);
 
@@ -237,18 +240,21 @@ class DeterminantOpGpu : public AsyncOpKernel {
     auto info_checker = [context, done](
                             const absl::Status& status,
                             const std::vector<HostLapackInfo>& host_infos) {
-      if (!status.ok() && absl::IsInvalidArgument(status) &&
-          !host_infos.empty()) {
-        for (int i = 0; i < host_infos[0].size(); ++i) {
-          // It is OK for a matrix to be singular (signaled by info > 0),
-          // corresponding to determinant of zero, but we do want to catch
-          // invalid arguments to Getrf{Batched}.
-          OP_REQUIRES_ASYNC(
-              context, host_infos[0](i) >= 0,
-              absl::InvalidArgumentError(absl::StrCat(
-                  "Invalid input argument no. ", host_infos[0].data()[i],
-                  " for batch index ", i, ".")),
-              done);
+      if (!status.ok()) {
+        if (absl::IsInvalidArgument(status) && !host_infos.empty()) {
+          for (int i = 0; i < host_infos[0].size(); ++i) {
+            // It is OK for a matrix to be singular (signaled by info > 0),
+            // corresponding to determinant of zero, but we do want to catch
+            // invalid arguments to Getrf{Batched}.
+            OP_REQUIRES_ASYNC(
+                context, host_infos[0](i) >= 0,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Invalid input argument no. ", host_infos[0].data()[i],
+                    " for batch index ", i, ".")),
+                done);
+          }
+        } else {
+          OP_REQUIRES_OK_ASYNC(context, status, done);
         }
       }
       done();
@@ -267,15 +273,15 @@ class LogDeterminantOpGpu : public AsyncOpKernel {
   void ComputeAsync(OpKernelContext* context, DoneCallback done) final {
     const Tensor& input = context->input(0);
     const int ndims = input.dims();
-    const int64_t n = input.dim_size(ndims - 1);
     // Validate inputs.
     OP_REQUIRES_ASYNC(context, ndims >= 2,
                       absl::InvalidArgumentError(absl::StrCat(
                           "Input must have rank >= 2, got ", ndims)),
                       done);
+    const int64_t n = input.dim_size(ndims - 1);
     OP_REQUIRES_ASYNC(context, input.dim_size(ndims - 2) == n,
                       absl::InvalidArgumentError(
-                          absl::StrCat("Input matrices must be square, got",
+                          absl::StrCat("Input matrices must be square, got ",
                                        input.dim_size(ndims - 2), " != ", n)),
                       done);
 
@@ -377,28 +383,32 @@ class LogDeterminantOpGpu : public AsyncOpKernel {
     // input_copy by the Getrf{Batched} kernel.
     functor::LogDeterminantFromPivotedLUFunctor<GPUDevice, Scalar> functor;
     functor(d, input_copy_reshaped_const, pivots_mat.data(), sign_reshaped,
-            log_abs_det_reshaped);
+            log_abs_det_reshaped, dev_info.back().mutable_data());
 
     // Register callback to check info after kernels finish.
     auto info_checker = [context, done](
                             const absl::Status& status,
                             const std::vector<HostLapackInfo>& host_infos) {
-      if (!status.ok() && absl::IsInvalidArgument(status) &&
-          !host_infos.empty()) {
-        for (int i = 0; i < host_infos[0].size(); ++i) {
-          // It is OK for a matrix to be singular (signaled by info > 0),
-          // corresponding to determinant of zero, but we do want to catch
-          // invalid arguments to Getrf{Batched}.
-          OP_REQUIRES_ASYNC(
-              context, host_infos[0](i) >= 0,
-              absl::InvalidArgumentError(absl::StrCat(
-                  "Invalid input argument no. ", host_infos[0].data()[i],
-                  " for batch index ", i, ".")),
-              done);
+      if (!status.ok()) {
+        if (absl::IsInvalidArgument(status) && !host_infos.empty()) {
+          for (int i = 0; i < host_infos[0].size(); ++i) {
+            // It is OK for a matrix to be singular (signaled by info > 0),
+            // corresponding to determinant of zero, but we do want to catch
+            // invalid arguments to Getrf{Batched}.
+            OP_REQUIRES_ASYNC(
+                context, host_infos[0](i) >= 0,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Invalid input argument no. ", host_infos[0].data()[i],
+                    " for batch index ", i, ".")),
+                done);
+          }
+        } else {
+          OP_REQUIRES_OK_ASYNC(context, status, done);
         }
       }
       done();
     };
+
     GpuSolver::CheckLapackInfoAndDeleteSolverAsync(std::move(solver), dev_info,
                                                    std::move(info_checker));
   }

@@ -64,8 +64,22 @@ PyObject* RegisterCustomOpdefs(PyObject* list);
 std::vector<std::string> RetrieveCollectedErrors();
 
 // Returns MLIR string dump of the given Flatbuffer model.
-std::string FlatBufferFileToMlir(const std::string& model,
-                                 bool input_is_filepath);
+std::string FlatBufferFileToMlir(
+    const std::string& model, bool input_is_filepath, bool bytecode = false,
+    const std::vector<std::string>& cl_options = {});
+
+// Converts MLIR (text or bytecode) to a TFLite Flatbuffer.
+std::string MlirToFlatBufferFile(const std::string& mlir,
+                                 bool input_is_filepath,
+                                 bool emit_builtin_tflite_ops = true,
+                                 bool emit_select_tf_ops = false,
+                                 bool emit_custom_ops = true,
+                                 bool emit_stablehlo_ops = false);
+
+// Convert slim model to TfLite flatbuffer streamed directly to a file.
+PyObject* ConvertMlirBytecode(PyObject* converter_flags_proto_txt_raw,
+                              PyObject* model_dir_txt_raw,
+                              PyObject* output_file_path_raw);
 
 // All the exported functions should be listed in
 // tensorflow/tools/def_file_filter/symbols_pybind.txt for the Windows build.

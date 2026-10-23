@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
@@ -221,6 +222,195 @@ REGISTER_OP("XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInput")
           kPreservedVectorsIndex,
           c->MakeShape({input_size_dim, max_valency_dim, feature_width_dim}));
 
+      return absl::OkStatus();
+    });
+
+REGISTER_OP("XlaSparseDenseMatmulPositionalWeightedWithCsrInput")
+    .Input("row_pointers: int32")
+    .Input("sorted_sample_ids: int32")
+    .Input("sorted_token_ids: int32")
+    .Input("sorted_pos_ids: int32")
+    .Input("embedding_table: float32")
+    .Input("weights: float32")
+    .Output("activations: float32")
+    .Output("preserved_received_unique_vectors: float32")
+    .Attr("input_size: int >= 0")
+    .Attr("num_weights: int >= 0")
+    .Attr("num_logical_devices: int >= 0")
+    .Attr("quantization_config_low: float")
+    .Attr("quantization_config_high: float")
+    .Attr("quantization_config_num_buckets: int >= 0")
+    .Attr("table_name: string")
+    .Attr("num_sparsecores_per_device: int = -1")
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
+      constexpr int kRowPointersIndex = 0;
+      constexpr int kSortedSampleIdsIndex = 1;
+      constexpr int kEmbeddingTableIndex = 4;
+      constexpr int kWeightsIndex = 5;
+      constexpr int kSortedCsrComponentRank = 1;
+      constexpr int kEmbeddingTableRank = 2;
+      constexpr int kWeightsRank = 1;
+      constexpr int kOutputActivationsIndex = 0;
+      constexpr int kPreservedReceivedUniqueVectorsIndex = 1;
+
+      // This input_size is per-logical device batch size.
+      int input_size;
+      TF_RETURN_IF_ERROR(c->GetAttr("input_size", &input_size));
+      int num_weights;
+      TF_RETURN_IF_ERROR(c->GetAttr("num_weights", &num_weights));
+      // Positional weights must always be present.
+      if (num_weights <= 0) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "num_weights must be positive, but got ", num_weights));
+      }
+
+      // Check that all CSR inputs have the same rank.
+      shape_inference::ShapeHandle rank;
+      for (int i = kRowPointersIndex; i < kEmbeddingTableIndex; ++i) {
+        TF_RETURN_IF_ERROR(
+            c->WithRank(c->input(i), kSortedCsrComponentRank, &rank));
+      }
+      for (int i = kSortedSampleIdsIndex + 1; i < kEmbeddingTableIndex; ++i) {
+        shape_inference::ShapeHandle merged;
+        TF_RETURN_IF_ERROR(
+            c->Merge(c->input(i), c->input(kSortedSampleIdsIndex), &merged));
+      }
+
+      // Check that the embedding table has rank 2.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(kEmbeddingTableIndex),
+                                     kEmbeddingTableRank, &rank));
+
+      // Check that the positional weights have rank 1 and the correct size.
+      TF_RETURN_IF_ERROR(
+          c->WithRank(c->input(kWeightsIndex), kWeightsRank, &rank));
+      shape_inference::DimensionHandle weights_dim;
+      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(c->input(kWeightsIndex), 0),
+                                      num_weights, &weights_dim));
+
+      // Derive the output activations shape, which is [input_size,
+      // feature_width].
+      shape_inference::ShapeHandle output_activations_shape;
+      TF_RETURN_IF_ERROR(c->ReplaceDim(c->input(kEmbeddingTableIndex), 0,
+                                       c->MakeDim(input_size),
+                                       &output_activations_shape));
+      c->set_output(kOutputActivationsIndex, output_activations_shape);
+      shape_inference::DimensionHandle feature_width_dim =
+          c->Dim(c->input(kEmbeddingTableIndex), 1);
+      c->set_output(kPreservedReceivedUniqueVectorsIndex,
+                    c->MakeShape({c->UnknownDim(), feature_width_dim}));
+
+      return absl::OkStatus();
+    });
+
+REGISTER_OP("XlaSparseDenseMatmulPositionalWeightedGradWithAdagradAndCsrInput")
+    .Input("row_pointers: int32")
+    .Input("sorted_sample_ids: int32")
+    .Input("sorted_token_ids: int32")
+    .Input("sorted_pos_ids: int32")
+    .Input("activation_gradients: float32")
+    .Input("preserved_received_unique_vectors: float32")
+    .Input("preserved_weights: float32")
+    .Input("embedding_table: float32")
+    .Input("embedding_table_accumulator: float32")
+    .Input("embedding_table_learning_rate: float32")
+    .Input("weights: N * float32")
+    .Input("hyperparameters: M * float32")
+    .Output("updated_embedding_table: float32")
+    .Output("updated_embedding_table_accumulator: float32")
+    .Output("updated_weights: N * float32")
+    .Attr("clip_weight_min: float = -inf")
+    .Attr("clip_weight_max: float = inf")
+    .Attr("num_weights: int >= 0")
+    .Attr("N: int >= 1")
+    .Attr("M: int >= 0")
+    .Attr("custom_computation: func")
+    .Attr("quantization_config_low: float")
+    .Attr("quantization_config_high: float")
+    .Attr("quantization_config_num_buckets: int >= 0")
+    .Attr("table_name: string")
+    .Attr("num_sparsecores_per_device: int = -1")
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
+      constexpr int kCsrComponentRank = 1;
+      constexpr int kActivationGradientsRank = 2;
+      constexpr int kEmbeddingTableRank = 2;
+      constexpr int kPositionalWeightsRank = 1;
+      constexpr int kEmbeddingTableOutputIndex = 0;
+      constexpr int kEmbeddingTableAccumulatorOutputIndex = 1;
+      constexpr int kPositionalWeightOutputIndex = 2;
+      int num_weights;
+      int num_sparsecores_per_device;
+      int num_weights_variables;
+      TF_RETURN_IF_ERROR(c->GetAttr("num_weights", &num_weights));
+      TF_RETURN_IF_ERROR(c->GetAttr("num_sparsecores_per_device",
+                                    &num_sparsecores_per_device));
+      TF_RETURN_IF_ERROR(c->GetAttr("N", &num_weights_variables));
+
+      if (num_sparsecores_per_device > 0) {
+        if (num_weights % num_sparsecores_per_device != 0) {
+          return absl::InvalidArgumentError(absl::StrCat(
+              "num_weights ", num_weights,
+              " not divisible by the number of sparsecores per chip ",
+              num_sparsecores_per_device));
+        }
+      }
+
+      shape_inference::ShapeHandle rank_check;
+      // Check CSR inputs are rank 1.
+      for (int i = 0; i < 4; ++i) {
+        TF_RETURN_IF_ERROR(
+            c->WithRank(c->input(i), kCsrComponentRank, &rank_check));
+      }
+      // Check activation_gradients (index 4) is rank 2.
+      shape_inference::ShapeHandle activations_shape;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), kActivationGradientsRank,
+                                     &activations_shape));
+      if (c->ValueKnown(c->Dim(activations_shape, 0)) &&
+          num_sparsecores_per_device > 0) {
+        int num_samples = c->Value(c->Dim(activations_shape, 0));
+        if (num_samples % num_sparsecores_per_device != 0) {
+          return absl::InvalidArgumentError(absl::StrCat(
+              "num_samples_per_chip ", num_samples,
+              " not divisible by the number of sparsecores per chip ",
+              num_sparsecores_per_device));
+        }
+      }
+
+      // Check preserved_received_unique_vectors (index 5) is rank 2.
+      shape_inference::ShapeHandle lookup_shape;
+      TF_RETURN_IF_ERROR(
+          c->WithRank(c->input(5), kEmbeddingTableRank, &lookup_shape));
+
+      // Check preserved_weights (index 6) is rank 1.
+      shape_inference::ShapeHandle weights_shape;
+      TF_RETURN_IF_ERROR(
+          c->WithRank(c->input(6), kPositionalWeightsRank, &weights_shape));
+
+      // Check embedding_table (index 7) and embedding_table_accumulator (index
+      // 8) are rank 2 and compatible.
+      shape_inference::ShapeHandle table_shape;
+      TF_RETURN_IF_ERROR(
+          c->WithRank(c->input(7), kEmbeddingTableRank, &table_shape));
+      shape_inference::ShapeHandle accum_shape;
+      TF_RETURN_IF_ERROR(
+          c->WithRank(c->input(8), kEmbeddingTableRank, &accum_shape));
+      shape_inference::ShapeHandle merged_table;
+      TF_RETURN_IF_ERROR(c->Merge(table_shape, accum_shape, &merged_table));
+
+      // Check variadic weights (starting at index 10 for N elements).
+      shape_inference::ShapeHandle expected_weights_shape =
+          c->MakeShape({c->MakeDim(num_weights)});
+      for (int i = 0; i < num_weights_variables; ++i) {
+        shape_inference::ShapeHandle w_shape;
+        TF_RETURN_IF_ERROR(
+            c->WithRank(c->input(10 + i), kPositionalWeightsRank, &w_shape));
+        shape_inference::ShapeHandle merged_weights;
+        TF_RETURN_IF_ERROR(
+            c->Merge(w_shape, expected_weights_shape, &merged_weights));
+        c->set_output(kPositionalWeightOutputIndex + i, w_shape);
+      }
+
+      c->set_output(kEmbeddingTableOutputIndex, table_shape);
+      c->set_output(kEmbeddingTableAccumulatorOutputIndex, accum_shape);
       return absl::OkStatus();
     });
 

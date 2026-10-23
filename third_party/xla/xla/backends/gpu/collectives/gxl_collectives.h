@@ -32,7 +32,7 @@ class GxlCollectives {
   virtual ~GxlCollectives() = default;
 
   virtual absl::Status MaybeAttachGxlCommunicators(
-      absl::Span<std::unique_ptr<Communicator>> comms,
+      absl::Span<Communicator* const> comms,
       absl::Span<const Collectives::DeviceRank> ranks,
       const CliqueKey& clique_key) = 0;
 

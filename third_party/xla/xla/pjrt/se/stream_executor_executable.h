@@ -30,12 +30,16 @@ limitations under the License.
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "riegeli/base/any.h"
 #include "riegeli/bytes/reader.h"
 #include "xla/client/local_client.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/service/compiled_module.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/stream_executor/abi/executable_abi_version.h"
@@ -75,12 +79,8 @@ class StreamExecutorExecutable : public PjRtExecutable {
   absl::StatusOr<CompileOptions> GetCompileOptions() const override {
     return compile_options_;
   }
-  absl::StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
-      const override {
-    if (hlo_module_ == nullptr) {
-      return std::vector<std::shared_ptr<HloModule>>{};
-    }
-    return std::vector<std::shared_ptr<HloModule>>{hlo_module_};
+  absl::StatusOr<std::shared_ptr<HloModule>> GetHloModule() const override {
+    return hlo_module_;
   }
 
   const std::shared_ptr<HloModule>& hlo_module() const { return hlo_module_; }
@@ -111,8 +111,20 @@ class StreamExecutorExecutable : public PjRtExecutable {
     return unoptimized_hlo_module_proto_;
   }
 
+  std::optional<HloModuleProto> GetUnoptimizedHloModule() const override {
+    return unoptimized_hlo_module_proto_;
+  }
+
   absl::StatusOr<std::unique_ptr<PjRtExecutableAbiVersion>> GetAbiVersion()
       const override;
+
+  static absl::StatusOr<std::unique_ptr<StreamExecutorExecutable>> Deserialize(
+      riegeli::Any<riegeli::Reader*> reader,
+      const PjRtTopologyDescription& topology,
+      std::optional<CompileOptions> options = std::nullopt);
+
+  static absl::StatusOr<absl::string_view> GetDefaultMemoryKind(
+      const PjRtTopologyDescription& topology);
 
  private:
   int64_t SizeOfGeneratedCodeInBytesLocked() const
@@ -144,7 +156,7 @@ class StreamExecutorExecutable : public PjRtExecutable {
 // are serialized as a custom format that supports executables larger than 2GB
 // (unlike regular protos).
 absl::StatusOr<ExecutableAndOptionsProto> SerializedGpuExecutableFromReader(
-    std::unique_ptr<riegeli::Reader> reader);
+    riegeli::Any<riegeli::Reader*> reader);
 absl::StatusOr<ExecutableAndOptionsProto> SerializedGpuExecutableFromString(
     absl::string_view serialized);
 absl::StatusOr<ExecutableAndOptionsProto> SerializedGpuExecutableFromString(

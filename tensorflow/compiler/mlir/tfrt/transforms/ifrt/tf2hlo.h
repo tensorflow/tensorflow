@@ -40,6 +40,11 @@ limitations under the License.
 namespace tensorflow {
 namespace ifrt_serving {
 
+// Fingerprints the textual form of `module` (without debug locations). This is
+// the identity of a TPU program: it is part of the persistent Tf2Hlo cache key
+// and is used to reuse executables of identical submodules.
+uint64_t MlirModuleFingerprint(mlir::ModuleOp module);
+
 struct Tf2HloArg {
   mlir::ModuleOp module;
   // `input_dtypes_and_shapes` can be mutable during Tf2HLO compilation.

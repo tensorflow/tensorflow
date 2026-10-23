@@ -18,6 +18,7 @@ limitations under the License.
 #include <atomic>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -37,12 +38,14 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/compiler.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/tsl/platform/logging.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 
@@ -120,20 +123,27 @@ absl::StatusOr<bool> ApplyXlaTransformsToModule(
   }
   bool changed = false;
   for (auto& transform : transforms) {
-    auto status_or_bool = transform->Transform(module);
-    if (!status_or_bool.status().ok()) {
-      return status_or_bool.status();
-    }
-    changed |= status_or_bool.value();
+    ABSL_ASSIGN_OR_RETURN(bool transform_changed, transform->Transform(module));
+    changed |= transform_changed;
   }
   return changed;
 }
 
-ApplyXlaTransforms::ApplyXlaTransforms(HloXlaTransform::PipelineStage stage)
+ApplyXlaTransforms::ApplyXlaTransforms(
+    HloXlaTransform::PipelineStage stage,
+    std::unique_ptr<TargetVerifierMetadata> target_metadata)
     : stage_(stage) {
   static std::atomic<int64_t> next_id{0};
   name_ = absl::StrCat("apply-xla-transforms-", next_id.fetch_add(1));
+  if (target_metadata == nullptr) {
+    target_metadata = std::make_unique<DefaultVerifierMetadata>(
+        HloVerifierOpts{}.WithLayoutSensitive(false).WithAllowMixedPrecision(
+            true));
+  }
+  verifier_ = std::make_unique<HloVerifier>(std::move(target_metadata), name_);
 }
+
+ApplyXlaTransforms::~ApplyXlaTransforms() = default;
 
 absl::StatusOr<bool> ApplyXlaTransforms::RunImpl(
     HloModule* module,
@@ -142,12 +152,7 @@ absl::StatusOr<bool> ApplyXlaTransforms::RunImpl(
   XLA_VLOG_LINES(1, module->ToString());
   ABSL_ASSIGN_OR_RETURN(bool changed, ApplyXlaTransformsToModule(stage_, module));
   if (changed) {
-    HloVerifier verifier(/*layout_sensitive=*/false,
-                         /*allow_mixed_precision=*/true);
-    auto verifier_status = verifier.Run(module);
-    if (!verifier_status.status().ok()) {
-      return verifier_status.status();
-    }
+    ABSL_RETURN_IF_ERROR(verifier_->Run(module, execution_threads).status());
   }
   VLOG(1) << "ApplyXlaTransforms EXIT";
   XLA_VLOG_LINES(1, module->ToString());

@@ -24,6 +24,7 @@ limitations under the License.
 #include <numeric>
 #include <string>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -104,9 +105,8 @@ void AddNegativeValuesMaybeRemoveZero(std::vector<T>& values) {
   }
 }
 
-class ArrayElementwiseOpTest
-    : public ClientLibraryTestRunnerMixin<
-          HloPjRtInterpreterReferenceMixin<HloTestBase>> {
+class ArrayElementwiseOpTest : public ClientLibraryTestRunnerMixin<
+                                   HloInterpreterReferenceMixin<HloTestBase>> {
  public:
   static constexpr float kEpsF32 = std::numeric_limits<float>::epsilon();
   static constexpr double kEpsF64 = std::numeric_limits<double>::epsilon();
@@ -215,18 +215,66 @@ TEST_F(ArrayElementwiseOpTest, IsFiniteZeroElementF32s) {
   ComputeAndCompareR1<bool>(&builder, {}, {});
 }
 
-TEST_F(ArrayElementwiseOpTest, IntPow) {
+TEST_F(ArrayElementwiseOpTest, IntPowConst) {
   XlaBuilder builder(TestName());
-  XlaOp lhs =
-      ConstantR1<int32_t>(&builder, {0, 1, 2, 3, 4, 5, -1, -2, 3, 5, 3, 1});
-  XlaOp rhs =
-      ConstantR1<int32_t>(&builder, {0, 3, 3, 3, 3, 3, 2, 3, 2, 10, -100, -2});
+  XlaOp lhs = ConstantR1<int32_t>(
+      &builder, {0, 1, 2, 3, 4, 5, -1, -2, 3, 5, 3, 1, -1, -1});
+  XlaOp rhs = ConstantR1<int32_t>(
+      &builder, {0, 3, 3, 3, 3, 3, 2, 3, 2, 10, -100, -2, -1, -2});
   Pow(lhs, rhs);
 
-  std::vector<int32_t> expected = {1, 1,  8, 27,      64, 125,
-                                   1, -8, 9, 9765625, 0,  1};
+  std::vector<int32_t> expected = {1,  1, 8,       27, 64, 125, 1,
+                                   -8, 9, 9765625, 0,  1,  -1,  1};
 
   ComputeAndCompareR1<int32_t>(&builder, expected, {});
+}
+
+TEST_F(ArrayElementwiseOpTest, Int64PowConst) {
+  XlaBuilder builder(TestName());
+  XlaOp lhs = ConstantR1<int64_t>(
+      &builder, {0, 1, 2, 3, 4, 5, -1, -2, 3, 5, 3, 1, -1, -1});
+  XlaOp rhs = ConstantR1<int64_t>(
+      &builder, {0, 3, 3, 3, 3, 3, 2, 3, 2, 10, -100, -2, -1, -2});
+  Pow(lhs, rhs);
+
+  std::vector<int64_t> expected = {1,  1, 8,       27, 64, 125, 1,
+                                   -8, 9, 9765625, 0,  1,  -1,  1};
+
+  ComputeAndCompareR1<int64_t>(&builder, expected, {});
+}
+
+TEST_F(ArrayElementwiseOpTest, IntPow) {
+  XlaBuilder b(this->TestName());
+
+  const Literal lhs_literal = LiteralUtil::CreateR1<int32_t>(
+      {0, 1, 2, 3, 4, 5, -1, -2, 3, 5, 3, 1, -1, -1});
+  auto lhs = Parameter(&b, 0, lhs_literal.shape(), "lhs");
+  Literal rhs_literal = LiteralUtil::CreateR1<int32_t>(
+      {0, 3, 3, 3, 3, 3, 2, 3, 2, 10, -100, -2, -1, -2});
+  auto rhs = Parameter(&b, 1, rhs_literal.shape(), "rhs");
+  Pow(lhs, rhs);
+
+  std::vector<int32_t> expected = {1,  1, 8,       27, 64, 125, 1,
+                                   -8, 9, 9765625, 0,  1,  -1,  1};
+
+  ComputeAndCompareR1<int32_t>(&b, expected, {&lhs_literal, &rhs_literal});
+}
+
+TEST_F(ArrayElementwiseOpTest, Int64Pow) {
+  XlaBuilder b(this->TestName());
+
+  const Literal lhs_literal = LiteralUtil::CreateR1<int64_t>(
+      {0, 1, 2, 3, 4, 5, -1, -2, 3, 5, 3, 1, -1, -1});
+  auto lhs = Parameter(&b, 0, lhs_literal.shape(), "lhs");
+  Literal rhs_literal = LiteralUtil::CreateR1<int64_t>(
+      {0, 3, 3, 3, 3, 3, 2, 3, 2, 10, -100, -2, -1, -2});
+  auto rhs = Parameter(&b, 1, rhs_literal.shape(), "rhs");
+  Pow(lhs, rhs);
+
+  std::vector<int64_t> expected = {1,  1, 8,       27, 64, 125, 1,
+                                   -8, 9, 9765625, 0,  1,  -1,  1};
+
+  ComputeAndCompareR1<int64_t>(&b, expected, {&lhs_literal, &rhs_literal});
 }
 
 TEST_F(ArrayElementwiseOpTest, IntPowLarge) {
@@ -1342,7 +1390,7 @@ TEST_F(ArrayElementwiseOpTest, CompareEqF32s) {
 
 template <typename T>
 class TotalOrderTest : public ClientLibraryTestRunnerMixin<
-                           HloPjRtInterpreterReferenceMixin<HloTestBase>> {
+                           HloInterpreterReferenceMixin<HloTestBase>> {
  public:
   void DoIt(ComparisonDirection direction) {
     this->SetFastMathDisabled(true);
@@ -2970,6 +3018,65 @@ TEST_F(ArrayElementwiseOpTest, LogF32sVector) {
   ErrorSpec error_spec(1000 * kEpsF32, 1000 * kEpsF32);
   ComputeAndCompareR1<float>(&builder, expected_result, {&input_literal},
                              error_spec);
+}
+
+TEST_F(ArrayElementwiseOpTest, LogF64s) {
+  // Inputs are sums of two normal floats so that they are exactly
+  // representable on backends that emulate f64 with a pair of f32s and flush
+  // subnormals.
+  std::vector<double> inputs;
+  for (int e = -126; e <= 127; e += 3) {
+    for (float m : {1.0f, 1.1f, 1.3f, 1.4142135f, 1.5f, 1.9f}) {
+      float hi = std::ldexp(m, e);
+      float lo = hi * 0x1.234567p-26f;
+      inputs.push_back(static_cast<double>(hi) +
+                       (std::isnormal(lo) ? static_cast<double>(lo) : 0.0));
+    }
+  }
+  for (int n = 1; n <= 48; ++n) {
+    inputs.push_back(1.0 + std::ldexp(1.0, -n));
+    inputs.push_back(1.0 - std::ldexp(1.0, -n));
+  }
+  for (float x : {0.70710677f, 0.75f, 0.9f, 1.25f, 1.41421354f, 1.41421366f}) {
+    inputs.push_back(static_cast<double>(x) +
+                     static_cast<double>(x * -0x1.9abcdep-27f));
+  }
+  inputs.push_back(static_cast<double>(std::numeric_limits<float>::min()));
+  inputs.push_back(static_cast<double>(std::numeric_limits<float>::max()));
+
+  std::vector<double> expected;
+  expected.reserve(inputs.size());
+  for (double x : inputs) {
+    expected.push_back(std::log(x));
+  }
+  constexpr double kInf = std::numeric_limits<double>::infinity();
+  constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
+  for (auto [x, y] : std::vector<std::pair<double, double>>{{1.0, 0.0},
+                                                            {0.0, -kInf},
+                                                            {-0.0, -kInf},
+                                                            {-1.0, kNaN},
+                                                            {-kInf, kNaN},
+                                                            {kInf, kInf},
+                                                            {kNaN, kNaN}}) {
+    inputs.push_back(x);
+    expected.push_back(y);
+  }
+
+  XlaBuilder builder(TestName());
+  Log(ConstantR1<double>(&builder, inputs));
+  ComputeAndCompareR1<double>(&builder, expected, {}, ErrorSpec(0, 0x1p-45));
+}
+
+// Effective scalar shapes take a different simplification path than vectors.
+// The input is a parameter so that the computation is not constant folded.
+TEST_F(ArrayElementwiseOpTest, LogF64Scalar) {
+  for (double x : {3.0, 0.75, 1e10}) {
+    XlaBuilder builder(TestName());
+    Literal arg = LiteralUtil::CreateR0<double>(x);
+    Log(Parameter(&builder, 0, arg.shape(), "x"));
+    ComputeAndCompareR0<double>(&builder, std::log(x), {&arg},
+                                ErrorSpec(0, 0x1p-45));
+  }
 }
 
 TEST_F(ArrayElementwiseOpTest, ClzU32s) {

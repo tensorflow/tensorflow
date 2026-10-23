@@ -733,43 +733,12 @@ void CoordinationService::PropagateError(const absl::Status& error,
   SendErrorPollingResponseOrFailAllTasks(error);
 }
 
-// Utility for normalizing structured config key string.
-// The normalized key will not have leading or trailing slashes, and all parts
-// in the key path are separated by exactly one slack ('/').
-// E.g., ///a//b/c// --> a/b/c
-std::string NormalizeKey(absl::string_view orig_key) {
-  std::string norm_key = std::string(orig_key);
-  const char* src = norm_key.c_str();
-  std::string::iterator dst = norm_key.begin();
-
-  // Parse all characters
-  while (*src) {
-    // Skip leading slashes
-    while (*src == '/') {
-      src++;
-    }
-    // Copy over all non-slash characters
-    while (*src && *src != '/') {
-      *dst++ = *src++;
-    }
-    // Allow one slash at the end of current directory
-    if (*src) {
-      *dst++ = *src++;
-    }
-  }
-  // If ending with slash, remove the trailing slash
-  if (dst > norm_key.begin() && *(dst - 1) == '/') {
-    dst--;
-  }
-  norm_key.resize(dst - norm_key.begin());
-  return norm_key;
-}
-
 absl::Status CoordinationService::InsertKeyValue(absl::string_view key,
                                                  absl::string_view value) {
   VLOG(3) << LogPrefix() << "CoordinationService::InsertKeyValue(key=" << key
           << ", value=" << value << ")";
-  return store_.Put(NormalizeKey(key), value, /*allow_overwrite=*/false);
+  return store_.Put(KeyValueStore::NormalizeKey(key), value,
+                    /*allow_overwrite=*/false);
 }
 
 absl::Status CoordinationService::InsertKeyValue(absl::string_view key,
@@ -778,21 +747,21 @@ absl::Status CoordinationService::InsertKeyValue(absl::string_view key,
   VLOG(3) << LogPrefix() << "CoordinationService::InsertKeyValue(key=" << key
           << ", value=" << value << ", allow_overwrite=" << allow_overwrite
           << ")";
-  return store_.Put(NormalizeKey(key), value, allow_overwrite);
+  return store_.Put(KeyValueStore::NormalizeKey(key), value, allow_overwrite);
 }
 
 void CoordinationService::GetKeyValueAsync(absl::string_view key,
                                            StatusOrValueCallback done) {
   VLOG(3) << LogPrefix() << "CoordinationService::GetKeyValueAsync(key=" << key
           << ")";
-  store_.AddCallbackForKey(NormalizeKey(key), done);
+  store_.AddCallbackForKey(KeyValueStore::NormalizeKey(key), done);
 }
 
 absl::StatusOr<std::string> CoordinationService::TryGetKeyValue(
     absl::string_view key) {
   VLOG(3) << LogPrefix() << "CoordinationService::TryGetKeyValue(key=" << key
           << ")";
-  std::optional<std::string> s = store_.Get(NormalizeKey(key));
+  std::optional<std::string> s = store_.Get(KeyValueStore::NormalizeKey(key));
   if (!s.has_value()) {
     return absl::NotFoundError(absl::StrCat("Config key ", key, " not found."));
   }
@@ -803,20 +772,20 @@ absl::StatusOr<std::string> CoordinationService::IncrementKeyValue(
     absl::string_view key, int64_t increment) {
   VLOG(3) << LogPrefix() << "CoordinationService::IncrementKeyValue(key=" << key
           << ", increment=" << increment << ")";
-  return store_.IncrementBy(NormalizeKey(key), increment);
+  return store_.IncrementBy(KeyValueStore::NormalizeKey(key), increment);
 }
 
 std::vector<KeyValueEntry> CoordinationService::GetKeyValueDir(
     absl::string_view directory_key) {
   VLOG(3) << LogPrefix() << "CoordinationService::GetKeyValueDir(directory_key="
           << directory_key << ")";
-  return store_.GetPrefix(NormalizeKey(directory_key) + "/");
+  return store_.GetPrefix(KeyValueStore::NormalizeKey(directory_key) + "/");
 }
 
 absl::Status CoordinationService::DeleteKeyValue(absl::string_view key) {
   VLOG(3) << LogPrefix() << "CoordinationService::DeleteKeyValue(key=" << key
           << ")";
-  const std::string normalized = NormalizeKey(key);
+  const std::string normalized = KeyValueStore::NormalizeKey(key);
   store_.Delete(normalized);
   store_.DeletePrefix(normalized + "/");
   return absl::OkStatus();

@@ -47,9 +47,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_module_metadata.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/ir/stack_frames.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/test.h"
@@ -59,6 +61,7 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/shuffle.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tuple_tree.h"
 #include "xla/util.h"
@@ -2209,14 +2212,15 @@ TEST(XlaBuilderTest, SetAndGetSharding) {
             hlo_sharding_2);
 }
 
-TEST(XlaBuilderTest, ComparisonType) {
+TEST(XlaBuilderTest, ComparisonOrder) {
   XlaBuilder b(TestName());
   (void)Le(ConstantR0<int32_t>(&b, 1), ConstantR0<int32_t>(&b, 2));
   TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
   const HloInstruction* root = GetRoot(*module);
   ASSERT_THAT(root, GmockMatch(m::Compare(m::Constant(), m::Constant())));
-  EXPECT_EQ(Comparison::Type::kSigned,
-            DynCast<HloCompareInstruction>(root)->type());
+  const auto* compare = DynCast<HloCompareInstruction>(root);
+  EXPECT_EQ(S32, compare->comparison().GetPrimitiveType());
+  EXPECT_EQ(ComparisonOrder::kTotal, compare->order());
 }
 
 TEST(XlaBuilderTest, StableLookUpInstructionByHandle) {
@@ -3585,6 +3589,20 @@ TEST(XlaBuilderTest, UnboundedReverse) {
               GmockMatch(m::Op().WithShapeEqualTo(&expected)));
 }
 
+TEST(XlaBuilderTest, UnboundedShuffle) {
+  XlaBuilder b(TestName());
+  ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[?, 10]"));
+  ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("f32[?, 10]"));
+
+  Shuffle(Parameter(&b, 0, operand, "operand"), /*dimensions=*/{0, 1},
+          shuffle::Rotate(/*shifts=*/{1, 3}));
+  ASSERT_OK_AND_ASSIGN(const std::unique_ptr<HloModule> module,
+                       BuildHloModule(b));
+
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::Op().WithShapeEqualTo(&expected)));
+}
+
 TEST(XlaBuilderTest, UnboundedRngBitGenerator) {
   XlaBuilder b(TestName());
   TF_ASSERT_OK_AND_ASSIGN(const Shape initial_state, ParseShape("u32[?, 10]"));
@@ -4209,6 +4227,310 @@ TEST(XlaBuilderTest, OriginalValue) {
       {original_array0, original_array1});
   EXPECT_NE(tuple_original_value, nullptr);
   EXPECT_THAT(*tuple_original_value, expected_tuple_original_value);
+}
+
+TEST(XlaBuilderTest, AsyncStartWithOutputOperandAliasing) {
+  XlaBuilder b("async_start_aliasing");
+  Shape shape = ShapeUtil::MakeShape(F32, {4});
+  XlaOp p0 = Parameter(&b, 0, shape, "p0");
+
+  std::unique_ptr<XlaBuilder> sub_b = b.CreateSubBuilder("subcomp");
+  XlaOp sub_p0 = Parameter(sub_b.get(), 0, shape, "sub_p0");
+  XlaOp sub_neg = Neg(sub_p0);
+  TF_ASSERT_OK_AND_ASSIGN(XlaComputationId sub_comp_id,
+                          sub_b->BuildSubComputation(sub_neg));
+
+  Shape start_shape =
+      ShapeUtil::MakeTupleShape({ShapeUtil::MakeTupleShape({shape}), shape,
+                                 ShapeUtil::MakeShape(S32, {})});
+
+  std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>> aliasing =
+      {{{1}, {0, {}}}};
+
+  internal::XlaBuilderFriend::BuildAsyncStart(
+      &b, {p0}, HloInstruction::kMainExecutionThread, sub_comp_id, start_shape,
+      aliasing);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module, BuildHloModule(b));
+  HloInstruction* root = GetRoot(*module);
+  EXPECT_EQ(root->opcode(), HloOpcode::kAsyncStart);
+  EXPECT_EQ(root->output_operand_aliasing(), aliasing);
+}
+
+// Builds a computation `neg(p0)` whose instructions reference a single stack
+// frame at `file_name:line` in `function_name`, mimicking what
+// ConvertMlirHloToHlo produces for an XlaCallModule body.
+XlaComputation BuildNegWithStackFrame(const std::string& name,
+                                      const std::string& file_name,
+                                      const std::string& function_name,
+                                      int32_t line) {
+  XlaBuilder b(name);
+  OpMetadata metadata;
+  metadata.set_stack_frame_id(1);
+  b.SetOpMetadata(metadata);
+  Neg(Parameter(&b, 0, ShapeUtil::MakeShape(F32, {4}), "p0"));
+  XlaComputation computation = std::move(b.Build().value());
+
+  StackFrameIndexProto* index =
+      computation.mutable_proto()->mutable_stack_frame_index();
+  index->add_file_names(file_name);
+  index->add_function_names(function_name);
+  StackFrameIndexProto::FileLocation* location = index->add_file_locations();
+  location->set_file_name_id(1);
+  location->set_function_name_id(1);
+  location->set_line(line);
+  index->add_stack_frames()->set_file_location_id(1);
+  return computation;
+}
+
+// Returns the stack frame of the root instruction of the computation called by
+// `call`, as resolved through `module`.
+HloStackFrame CalledRootStackFrame(const HloModule& module,
+                                   const HloInstruction* call) {
+  const HloInstruction* root = call->to_apply()->root_instruction();
+  return module.get_stack_frame(
+      StackFrameId{root->metadata().stack_frame_id()});
+}
+
+TEST(XlaBuilderTest, AddSubComputationPreservesStackFrameIndex) {
+  XlaComputation sub_a = BuildNegWithStackFrame("sub_a", "a.py", "fn_a", 10);
+  XlaComputation sub_b = BuildNegWithStackFrame("sub_b", "b.py", "fn_b", 20);
+
+  XlaBuilder b(TestName());
+  XlaOp p = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {4}), "p");
+  Call(&b, sub_b, {Call(&b, sub_a, {p})});
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module, BuildHloModule(b));
+
+  // Both tables are merged into the module and each call site resolves to the
+  // frame of its own computation.
+  const HloInstruction* call_b = GetRoot(*module);
+  ASSERT_EQ(call_b->opcode(), HloOpcode::kCall);
+  const HloInstruction* call_a = call_b->operand(0);
+  ASSERT_EQ(call_a->opcode(), HloOpcode::kCall);
+
+  HloStackFrame frame_a = CalledRootStackFrame(*module, call_a);
+  EXPECT_EQ(frame_a.file_name, "a.py");
+  EXPECT_EQ(frame_a.function_name, "fn_a");
+  EXPECT_EQ(frame_a.line, 10);
+
+  HloStackFrame frame_b = CalledRootStackFrame(*module, call_b);
+  EXPECT_EQ(frame_b.file_name, "b.py");
+  EXPECT_EQ(frame_b.function_name, "fn_b");
+  EXPECT_EQ(frame_b.line, 20);
+}
+
+TEST(XlaBuilderTest, AddSubComputationDeduplicatesStackFrames) {
+  XlaComputation sub_a = BuildNegWithStackFrame("sub_a", "a.py", "fn_a", 10);
+
+  XlaBuilder b(TestName());
+  XlaOp p = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {4}), "p");
+  Call(&b, sub_a, {Call(&b, sub_a, {p})});
+  TF_ASSERT_OK_AND_ASSIGN(XlaComputation computation, b.Build());
+
+  // Importing the same computation twice must not duplicate its frame.
+  const StackFrameIndexProto& index = computation.proto().stack_frame_index();
+  EXPECT_EQ(index.stack_frames_size(), 1);
+  EXPECT_EQ(index.file_locations_size(), 1);
+  EXPECT_EQ(index.file_names_size(), 1);
+  EXPECT_EQ(index.function_names_size(), 1);
+  EXPECT_THAT(StackFrames::FromProto(index), absl_testing::IsOk());
+}
+
+TEST(XlaBuilderTest, AddSubComputationPreservesParentStackFrames) {
+  // `nested` references a frame whose parent is another frame.
+  XlaBuilder nested_builder("nested");
+  StackFrames nested_frames;
+  const StackFrameId outer = nested_frames.AddStackFrame(
+      {"outer.py", "outer_fn", /*line=*/5, /*column=*/0, /*end_line=*/0,
+       /*end_column=*/0, /*parent_frame_id=*/StackFrameId{}});
+  const StackFrameId inner = nested_frames.AddStackFrame(
+      {"inner.py", "inner_fn", /*line=*/7, /*column=*/0, /*end_line=*/0,
+       /*end_column=*/0, /*parent_frame_id=*/outer});
+  OpMetadata metadata;
+  metadata.set_stack_frame_id(inner.value);
+  nested_builder.SetOpMetadata(metadata);
+  Neg(Parameter(&nested_builder, 0, ShapeUtil::MakeShape(F32, {4}), "p0"));
+  TF_ASSERT_OK_AND_ASSIGN(XlaComputation nested, nested_builder.Build());
+  *nested.mutable_proto()->mutable_stack_frame_index() = nested_frames.proto();
+
+  // Import another computation first, so that the frames of `nested` get
+  // different ids in the built module than in `nested` itself.
+  XlaComputation sub_a = BuildNegWithStackFrame("sub_a", "a.py", "fn_a", 10);
+  XlaBuilder b(TestName());
+  XlaOp p = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {4}), "p");
+  Call(&b, nested, {Call(&b, sub_a, {p})});
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module, BuildHloModule(b));
+
+  const HloInstruction* call_nested = GetRoot(*module);
+  ASSERT_EQ(call_nested->opcode(), HloOpcode::kCall);
+  HloStackFrame inner_frame = CalledRootStackFrame(*module, call_nested);
+  EXPECT_EQ(inner_frame.file_name, "inner.py");
+  EXPECT_EQ(inner_frame.function_name, "inner_fn");
+  EXPECT_EQ(inner_frame.line, 7);
+
+  ASSERT_TRUE(inner_frame.parent_frame_id.valid());
+  HloStackFrame outer_frame =
+      module->get_stack_frame(inner_frame.parent_frame_id);
+  EXPECT_EQ(outer_frame.file_name, "outer.py");
+  EXPECT_EQ(outer_frame.function_name, "outer_fn");
+  EXPECT_EQ(outer_frame.line, 5);
+  EXPECT_FALSE(outer_frame.parent_frame_id.valid());
+}
+
+TEST(XlaBuilderTest, BuildSubComputationInternsImportedStackFrames) {
+  XlaComputation sub_a = BuildNegWithStackFrame("sub_a", "a.py", "fn_a", 10);
+  XlaComputation sub_b = BuildNegWithStackFrame("sub_b", "b.py", "fn_b", 20);
+  const Shape shape = ShapeUtil::MakeShape(F32, {4});
+
+  // The parent builder already has frames when the child's are added.
+  XlaBuilder b(TestName());
+  XlaOp call_a = Call(&b, sub_a, {Parameter(&b, 0, shape, "p")});
+  std::unique_ptr<XlaBuilder> child = b.CreateSubBuilder("child");
+  Call(child.get(), sub_b, {Parameter(child.get(), 0, shape, "q")});
+  TF_ASSERT_OK_AND_ASSIGN(XlaComputationId child_id,
+                          child->BuildSubComputation());
+  Call(&b, child_id, {call_a});
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module, BuildHloModule(b));
+
+  const HloInstruction* call_child = GetRoot(*module);
+  ASSERT_EQ(call_child->opcode(), HloOpcode::kCall);
+  const HloInstruction* call_b = call_child->to_apply()->root_instruction();
+  ASSERT_EQ(call_b->opcode(), HloOpcode::kCall);
+  HloStackFrame frame_b = CalledRootStackFrame(*module, call_b);
+  EXPECT_EQ(frame_b.file_name, "b.py");
+  EXPECT_EQ(frame_b.function_name, "fn_b");
+  EXPECT_EQ(frame_b.line, 20);
+
+  const HloInstruction* call_a_instr = call_child->operand(0);
+  ASSERT_EQ(call_a_instr->opcode(), HloOpcode::kCall);
+  HloStackFrame frame_a = CalledRootStackFrame(*module, call_a_instr);
+  EXPECT_EQ(frame_a.file_name, "a.py");
+  EXPECT_EQ(frame_a.function_name, "fn_a");
+  EXPECT_EQ(frame_a.line, 10);
+}
+
+// Returns the root instruction of the computation with id `computation_id` in
+// `module`.
+const HloInstructionProto* FindRootInstruction(const HloModuleProto& module,
+                                               int64_t computation_id) {
+  for (const HloComputationProto& computation : module.computations()) {
+    if (computation.id() != computation_id) {
+      continue;
+    }
+    for (const HloInstructionProto& instruction : computation.instructions()) {
+      if (instruction.id() == computation.root_id()) {
+        return &instruction;
+      }
+    }
+  }
+  return nullptr;
+}
+
+TEST(XlaBuilderTest, BuildSubComputationKeepsCallerTaggedStackFrameIds) {
+  XlaComputation sub_a = BuildNegWithStackFrame("sub_a", "a.py", "fn_a", 10);
+  const Shape shape = ShapeUtil::MakeShape(F32, {4});
+
+  // The child both imports a computation with frames and tags one of its own
+  // instructions with a caller-owned stack_frame_id.
+  XlaBuilder b(TestName());
+  std::unique_ptr<XlaBuilder> child = b.CreateSubBuilder("child");
+  XlaOp call_a =
+      Call(child.get(), sub_a, {Parameter(child.get(), 0, shape, "q")});
+  OpMetadata metadata;
+  metadata.set_stack_frame_id(7);
+  child->SetOpMetadata(metadata);
+  Neg(call_a);
+  child->ClearOpMetadata();
+  TF_ASSERT_OK_AND_ASSIGN(XlaComputationId child_id,
+                          child->BuildSubComputation());
+  Call(&b, child_id, {Parameter(&b, 0, shape, "p")});
+  TF_ASSERT_OK_AND_ASSIGN(XlaComputation computation, b.Build());
+  const HloModuleProto& proto = computation.proto();
+
+  // Inspect the proto directly: HloModule would canonicalize the caller-owned
+  // id away since it does not exist in the module's table.
+  const HloInstructionProto* call_child =
+      FindRootInstruction(proto, proto.entry_computation_id());
+  ASSERT_NE(call_child, nullptr);
+  ASSERT_EQ(call_child->called_computation_ids_size(), 1);
+  const HloInstructionProto* neg =
+      FindRootInstruction(proto, call_child->called_computation_ids(0));
+  ASSERT_NE(neg, nullptr);
+  EXPECT_EQ(neg->opcode(), HloOpcodeString(HloOpcode::kNegate));
+  EXPECT_EQ(neg->metadata().stack_frame_id(), 7);
+}
+
+TEST(XlaBuilderTest, AddSubComputationWithoutStackFrameIndexKeepsIds) {
+  // A computation whose ids were set via SetOpMetadata but which carries no
+  // stack frame table of its own.
+  XlaBuilder sub_builder("sub");
+  OpMetadata metadata;
+  metadata.set_stack_frame_id(3);
+  sub_builder.SetOpMetadata(metadata);
+  Neg(Parameter(&sub_builder, 0, ShapeUtil::MakeShape(F32, {4}), "p0"));
+  TF_ASSERT_OK_AND_ASSIGN(XlaComputation sub, sub_builder.Build());
+  ASSERT_EQ(sub.proto().stack_frame_index().stack_frames_size(), 0);
+
+  XlaBuilder b(TestName());
+  Call(&b, sub, {Parameter(&b, 0, ShapeUtil::MakeShape(F32, {4}), "p")});
+  TF_ASSERT_OK_AND_ASSIGN(XlaComputation computation, b.Build());
+  const HloModuleProto& proto = computation.proto();
+
+  const HloInstructionProto* call =
+      FindRootInstruction(proto, proto.entry_computation_id());
+  ASSERT_NE(call, nullptr);
+  ASSERT_EQ(call->called_computation_ids_size(), 1);
+  const HloInstructionProto* neg =
+      FindRootInstruction(proto, call->called_computation_ids(0));
+  ASSERT_NE(neg, nullptr);
+  EXPECT_EQ(neg->metadata().stack_frame_id(), 3);
+  EXPECT_EQ(proto.stack_frame_index().stack_frames_size(), 0);
+}
+
+TEST(XlaBuilderTest,
+     BuildSubComputationKeepsIdsOfImportsWithoutStackFrameIndex) {
+  const Shape shape = ShapeUtil::MakeShape(F32, {4});
+
+  // `untabled` has a caller-owned stack_frame_id 1 and no stack frame index.
+  XlaBuilder untabled_builder("untabled");
+  OpMetadata metadata;
+  metadata.set_stack_frame_id(1);
+  untabled_builder.SetOpMetadata(metadata);
+  Neg(Parameter(&untabled_builder, 0, shape, "p0"));
+  TF_ASSERT_OK_AND_ASSIGN(XlaComputation untabled, untabled_builder.Build());
+  ASSERT_EQ(untabled.proto().stack_frame_index().stack_frames_size(), 0);
+
+  XlaComputation sub_a = BuildNegWithStackFrame("sub_a", "a.py", "fn_a", 10);
+  XlaComputation sub_b = BuildNegWithStackFrame("sub_b", "b.py", "fn_b", 20);
+
+  // The root already has a frame, so the child's frame 1 is renumbered to 2.
+  XlaBuilder b(TestName());
+  XlaOp call_b = Call(&b, sub_b, {Parameter(&b, 0, shape, "p")});
+
+  // The child imports a computation with frames and one without.
+  std::unique_ptr<XlaBuilder> child = b.CreateSubBuilder("child");
+  XlaOp q = Parameter(child.get(), 0, shape, "q");
+  Call(child.get(), untabled, {Call(child.get(), sub_a, {q})});
+  TF_ASSERT_OK_AND_ASSIGN(XlaComputationId child_id,
+                          child->BuildSubComputation());
+  Call(&b, child_id, {call_b});
+  TF_ASSERT_OK_AND_ASSIGN(XlaComputation computation, b.Build());
+  const HloModuleProto& proto = computation.proto();
+
+  const HloInstructionProto* call_child =
+      FindRootInstruction(proto, proto.entry_computation_id());
+  ASSERT_NE(call_child, nullptr);
+  ASSERT_EQ(call_child->called_computation_ids_size(), 1);
+  const HloInstructionProto* call_untabled =
+      FindRootInstruction(proto, call_child->called_computation_ids(0));
+  ASSERT_NE(call_untabled, nullptr);
+  ASSERT_EQ(call_untabled->called_computation_ids_size(), 1);
+  const HloInstructionProto* neg =
+      FindRootInstruction(proto, call_untabled->called_computation_ids(0));
+  ASSERT_NE(neg, nullptr);
+  EXPECT_EQ(neg->opcode(), HloOpcodeString(HloOpcode::kNegate));
+  // Without the fix this is 2: rewritten to point at sub_a's frame.
+  EXPECT_EQ(neg->metadata().stack_frame_id(), 1);
 }
 
 }  // namespace

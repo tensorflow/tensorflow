@@ -17,9 +17,12 @@ limitations under the License.
 
 #include <stdalign.h>
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
+#include <new>
 #include <optional>
 #include <string>
 #include <utility>
@@ -52,6 +55,8 @@ limitations under the License.
 #include "xla/runtime/device_id.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/cpu/cpu_aot_compilation_result.h"
+#include "xla/service/cpu/cpu_executable.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -59,6 +64,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/test_benchmark.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 
@@ -102,6 +108,44 @@ TEST(NanoRtClientStandaloneTest, ManagedTempAlignment) {
   EXPECT_EQ(reinterpret_cast<uintptr_t>(&temp1.data()[0]) % Align(), 0);
   EXPECT_EQ(reinterpret_cast<uintptr_t>(&temp2.data()[0]) % Align(), 0);
   EXPECT_EQ(reinterpret_cast<uintptr_t>(&temp3.data()[0]) % Align(), 0);
+}
+
+template <size_t n>
+void ExpectManagedTempSizeAndContents() {
+  constexpr size_t sizes[] = {0, 1, 3, 7, 8, 63, 64, 65, 127, 128, 129};
+  for (size_t size : sizes) {
+    SCOPED_TRACE(size);
+    NanoRtExecutable::ManagedTemp<n> temp(size);
+    absl::Span<std::byte> bytes = temp.data();
+    EXPECT_EQ(bytes.size(), size);
+    EXPECT_EQ(reinterpret_cast<uintptr_t>(bytes.data()) % Align(), 0);
+    for (std::byte& byte : bytes) {
+      byte = std::byte{0x42};
+    }
+    for (std::byte byte : bytes) {
+      EXPECT_EQ(byte, std::byte{0x42});
+    }
+  }
+}
+
+TEST(NanoRtClientStandaloneTest, ManagedTempSizeAndContents) {
+  ExpectManagedTempSizeAndContents<0>();
+  ExpectManagedTempSizeAndContents<3>();
+  ExpectManagedTempSizeAndContents<2 * Align()>();
+}
+
+TEST(NanoRtClientStandaloneTest, ManagedTempUnpoisonsStorageOnDestruction) {
+  using Temp = NanoRtExecutable::ManagedTemp<3>;
+  alignas(Temp) std::byte storage[sizeof(Temp)];
+  Temp* temp = new (storage) Temp(3);
+  temp->~Temp();
+  // Writes to the former inline buffer must not encounter stale ASAN poison.
+  volatile std::byte* bytes = storage;
+  for (size_t i = 0; i < sizeof(storage); ++i) {
+    bytes[i] = std::byte{0x42};
+    std::byte byte = bytes[i];
+    EXPECT_EQ(byte, std::byte{0x42});
+  }
 }
 
 TEST_P(NanoRtClientTest, CompileAndRunScalarComputation) {
@@ -305,6 +349,105 @@ ENTRY test_module {
 
   EXPECT_TRUE(event.IsConcrete());
   EXPECT_EQ(result_span[0], expected_result);
+}
+
+// Eigen thread pool that counts the number of scheduled tasks.
+class CountingThreadPool : public Eigen::ThreadPoolInterface {
+ public:
+  explicit CountingThreadPool(int num_threads) : pool_(num_threads) {}
+
+  void Schedule(std::function<void()> fn) override {
+    num_scheduled_.fetch_add(1, std::memory_order_relaxed);
+    pool_.Schedule(std::move(fn));
+  }
+
+  void ScheduleWithHint(std::function<void()> fn, int start,
+                        int limit) override {
+    num_scheduled_.fetch_add(1, std::memory_order_relaxed);
+    pool_.ScheduleWithHint(std::move(fn), start, limit);
+  }
+
+  int NumThreads() const override { return pool_.NumThreads(); }
+  int CurrentThreadId() const override { return pool_.CurrentThreadId(); }
+
+  int64_t num_scheduled() const {
+    return num_scheduled_.load(std::memory_order_relaxed);
+  }
+
+ private:
+  Eigen::ThreadPool pool_;
+  std::atomic<int64_t> num_scheduled_{0};
+};
+
+// Regression test: YNN fusions executed via NanoRtExecutable must use the
+// intra-op thread pool instead of running single-threaded in the caller thread.
+TEST_P(NanoRtClientTest, YnnFusionUsesIntraOpThreadPool) {
+  constexpr absl::string_view hlo = R"(
+    HloModule ynn_dot
+
+    ENTRY e {
+      p0 = f32[256,512] parameter(0)
+      p1 = f32[512,512] parameter(1)
+      ROOT dot = f32[256,512] dot(p0, p1),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  XlaComputation computation(module->ToProto());
+
+  NanoRtClient client([](HloModuleConfig& config) {
+    DebugOptions debug_options = config.debug_options();
+    debug_options.clear_xla_cpu_experimental_ynn_fusion_type();
+    debug_options.add_xla_cpu_experimental_ynn_fusion_type(
+        DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_DOT);
+    config.set_debug_options(debug_options);
+  });
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<NanoRtExecutable> executable,
+                          client.Compile(computation));
+
+  if (GetParam()) {
+    TF_ASSERT_OK_AND_ASSIGN(auto exported, client.Export(executable.get()));
+    auto* aot_compilation_result =
+        absl::down_cast<CpuAotCompilationResult*>(exported.get());
+    TF_ASSERT_OK_AND_ASSIGN(
+        executable, NanoRtExecutable::Create(aot_compilation_result->proto(),
+                                             executable->program_shape()));
+  }
+
+  // Make sure the dot was actually offloaded to YNNPACK, otherwise this test
+  // doesn't test anything.
+  auto* cpu_executable =
+      absl::down_cast<CpuExecutable*>(executable->executable());
+  ASSERT_TRUE(cpu_executable->has_ynn_fusions());
+
+  Array2D<float> lhs(256, 512, 1.0f);
+  Array2D<float> rhs(512, 512, 1.0f);
+  Array2D<float> result(256, 512, 0.0f);
+
+  Arguments arguments = {
+      {lhs.data(), static_cast<int64_t>(lhs.num_elements())},
+      {rhs.data(), static_cast<int64_t>(rhs.num_elements())}};
+  Results results = {
+      {result.data(), static_cast<int64_t>(result.num_elements())}};
+  NanoRtExecutable::ManagedTemp<32> temp(executable->temp_buffer_size());
+
+  CountingThreadPool tp(4);
+  Eigen::ThreadPoolDevice device(&tp, tp.NumThreads());
+
+  NanoRtExecutable::ExecuteOptions execute_options;
+  execute_options.set_intra_op_thread_pool(&device);
+  auto event = executable->Execute(arguments, results, temp, execute_options);
+  tsl::BlockUntilReady(event);
+
+  ASSERT_TRUE(event.IsConcrete());
+  EXPECT_EQ(result(0, 0), 512.0f);
+  EXPECT_EQ(result(255, 511), 512.0f);
+
+  // A single YNN fusion thunk is executed inline in the caller thread by the
+  // thunk executor, so all tasks scheduled on the intra-op thread pool come
+  // from the YNNPACK runtime parallelizing the dot.
+  EXPECT_GT(tp.num_scheduled(), 0);
 }
 
 TEST_P(NanoRtClientTest, CompileAndRunPartitionAndReplicaIdInstructions) {

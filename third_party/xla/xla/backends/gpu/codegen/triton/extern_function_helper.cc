@@ -347,11 +347,12 @@ mlir::Value CreateAtomicSpinWaitOps(
 
   // Loop: atomic load + compare + conditional branch
   builder.setInsertionPointToStart(loop_block);
-  LLVM::LoadOp loaded = LLVM::LoadOp::create(
-      builder, params.loc, i32_type, addr, /*alignment=*/4,
-      /*isVolatile=*/false,
-      /*isNonTemporal=*/false, /*isInvariant=*/false,
-      /*isInvariantGroup=*/false, ordering, builder.getStringAttr(syncscope));
+  LLVM::LoadOp loaded =
+      LLVM::LoadOp::create(builder, params.loc, i32_type, addr, /*alignment=*/4,
+                           /*isVolatile=*/false,
+                           /*isNonTemporal=*/false, /*isInvariant=*/false,
+                           /*isInvariantGroup=*/false, /*isNoundef=*/false,
+                           ordering, builder.getStringAttr(syncscope));
   LLVM::ICmpPredicate predicate =
       ComparatorToICmpPredicate(instruction.comparator);
   LLVM::ICmpOp condition =

@@ -415,9 +415,9 @@ def _enumerate_core_locations(
     raise ValueError("Unsupported TPU slice size: %s" % bounds)
 
   # Translate `axes` from string to integer format.
-  axes = [{"x": 0, "y": 1, "z": 2, "core": 3}[axis] for axis in axes]
+  axes = [{"x": 0, "y": 1, "z": 2, "core": 3}[axis] for axis in axes]  # pyrefly: ignore[bad-assignment]
   # Reorder bounds from fastest to slowest varying axes.
-  bounds = [bounds[i] for i in axes]
+  bounds = [bounds[i] for i in axes]  # pyrefly: ignore[bad-index]
 
   # Set and validate host_bounds.
   if can_split_host_across_rings:
@@ -425,10 +425,10 @@ def _enumerate_core_locations(
     host_bounds = [1, 1, 1, 1]
   elif np.prod(bounds) <= 2:
     # We must be running on 1x1 or 1x1x1 Forge.
-    host_bounds = [[1, 1, 1, num_cores_per_chip][i] for i in axes]
+    host_bounds = [[1, 1, 1, num_cores_per_chip][i] for i in axes]  # pyrefly: ignore[bad-index]
   else:
     # Other cases including 2x2 Forge and Borg must use a full donut.
-    host_bounds = [[2, 2, 1, num_cores_per_chip][i] for i in axes]
+    host_bounds = [[2, 2, 1, num_cores_per_chip][i] for i in axes]  # pyrefly: ignore[bad-index]
   # host_sizes is the cumulative products of host_bounts.
   host_sizes = [1]
   for host_bound in host_bounds:
@@ -444,8 +444,10 @@ def _enumerate_core_locations(
     )
 
   # Reorder ring_bounds and validate it's element-wise >= host_bounds.
-  ring_bounds = [ring_bounds[i] for i in axes]
-  if ring_bounds < host_bounds:
+  ring_bounds = [ring_bounds[i] for i in axes]  # pyrefly: ignore[bad-index]
+  if len(ring_bounds) != len(host_bounds) or any(
+      r < h for r, h in zip(ring_bounds, host_bounds)
+  ):
     raise ValueError(
         "ring_bounds %s should be >= host_bounds %s"
         % (ring_bounds, host_bounds)
@@ -464,7 +466,7 @@ def _enumerate_core_locations(
   # Reorder offsets of each core back to the x, y, z, core order.
   core_locations = []
   for core in cores:
-    core = [core[axes.index(i)] for i in range(4)]
+    core = [core[axes.index(i)] for i in range(4)]  # pyrefly: ignore[bad-argument-type]
     core_locations.append(_CoreLocation(core[0], core[1], core[2], core[3]))
   return core_locations
 
@@ -713,7 +715,9 @@ def create_tpu_mesh(
     ring_bounds = topology_shape
   elif len(ring_bounds) != 4:
     raise ValueError("Expected 4 elements in ring_bounds, got %s" % ring_bounds)
-  elif ring_bounds > topology_shape:
+  elif len(ring_bounds) != len(topology_shape) or any(
+      r > t for r, t in zip(ring_bounds, topology_shape)
+  ):
     raise ValueError(
         "ring_bounds %s should be <= topology sizes %s"
         % (ring_bounds, topology_shape)
@@ -735,7 +739,7 @@ def create_tpu_mesh(
       ring_bounds,
       ring_axes,
       can_split_host_across_rings,
-      ring_size,
+      ring_size,  # pyrefly: ignore[bad-argument-type]
   )
   logging.vlog(1, "Enumerated core locations: %s", global_core_locations)
   num_cores = len(global_core_locations)
@@ -752,7 +756,7 @@ def create_tpu_mesh(
   # for the orthogonal dimension.
   if build_ring_across_rings:
     global_core_locations = _build_orthogonal_rings(
-        global_core_locations, ring_size, rotate_ring_across_rings
+        global_core_locations, ring_size, rotate_ring_across_rings  # pyrefly: ignore[bad-argument-type]
     )
   else:
     permutation = _build_all_reduce_ring(global_core_locations[:ring_size])

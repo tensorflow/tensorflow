@@ -31,13 +31,23 @@ package_group(
     ],
 )
 
-cc_library(
+alias(
     name = "api",
-    hdrs = ["//xla/ffi/api:api_headers"],
+    actual = "//xla/ffi/api:api",
     visibility = [":ffi_internal"],
+)
+
+cc_library(
+    name = "attributes_storage",
+    srcs = ["attributes_storage.cc"],
+    hdrs = ["attributes_storage.h"],
     deps = [
+        ":api",
+        ":attribute_map",
+        "//xla:custom_options",
         "//xla/ffi/api:c_api",
-        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log:check",
     ],
 )
 
@@ -46,8 +56,8 @@ cc_library(
     srcs = ["call_frame.cc"],
     hdrs = ["call_frame.h"],
     deps = [
-        ":api",
         ":attribute_map",
+        ":attributes_storage",
         "//xla:types",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -55,7 +65,6 @@ cc_library(
         "//xla/ffi/api:c_api_internal",
         "//xla/stream_executor:device_address",
         "//xla/tsl/platform:errors",
-        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log:check",
@@ -81,6 +90,34 @@ xla_cc_test(
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
+    name = "attributes",
+    hdrs = ["attributes.h"],
+    deps = [
+        ":attribute_map",
+        ":attributes_storage",
+        ":ffi",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "attributes_test",
+    srcs = ["attributes_test.cc"],
+    deps = [
+        ":api",
+        ":attribute_map",
+        ":attributes",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -220,6 +257,7 @@ cc_library(
     copts = ["-fexceptions"],
     features = ["-use_header_modules"],
     deps = [
+        ":attributes_storage",
         ":execution_context",
         ":execution_state",
         ":ffi_internal_api",
@@ -228,6 +266,7 @@ cc_library(
         ":ffi_structs",
         ":invoke",
         ":type_registry",
+        "//xla:custom_options",
         "//xla:util",
         "//xla/ffi/api:c_api",
         "//xla/ffi/api:c_api_internal",
@@ -235,6 +274,7 @@ cc_library(
         "//xla/stream_executor:device_address_allocator",
         "//xla/stream_executor:stream",
         "//xla/tsl/concurrency:async_value",
+        "@com_google_absl//absl/base:config",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -255,6 +295,15 @@ cc_library(
         ":api",
         ":ffi",
         "//xla/ffi/api:c_api",
+    ],
+)
+
+cc_library(
+    name = "collectives_ffi",
+    hdrs = ["collectives_ffi.h"],
+    deps = [
+        ":ffi",
+        "//xla/ffi/api:collectives_api",
     ],
 )
 
@@ -324,8 +373,10 @@ cc_library(
     hdrs = ["ffi_structs.h"],
     visibility = ["//visibility:private"],
     deps = [
+        ":attributes_storage",
         ":execution_context",
         ":execution_state",
+        "//xla:custom_options",
         "//xla:executable_run_options",
         "//xla/hlo/ir:hlo",
         "//xla/stream_executor:device_description",
@@ -398,6 +449,7 @@ xla_cc_test(
         ":ffi_registry",
         ":invoke",
         ":type_registry",
+        "//xla:custom_options",
         "//xla:executable_run_options",
         "//xla:xla_data_proto_cc",
         "//xla/backends/cpu:ffi",
@@ -477,6 +529,24 @@ xla_cc_test(
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+xla_cc_test(
+    name = "collectives_ffi_test",
+    srcs = ["collectives_ffi_test.cc"],
+    deps = [
+        ":call_frame",
+        ":collectives_ffi",
+        ":ffi",
+        ":ffi_api",  # buildcleaner: keep
+        ":invoke",
+        "//xla/ffi/api:c_api",
+        "//xla/ffi/api:collectives_api",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest",
     ],
 )

@@ -48,7 +48,7 @@ class TestListener : public XlaActivityListener {
     return absl::OkStatus();
   }
 
-  ~TestListener() override {}
+  ~TestListener() override = default;
 
   const XlaAutoClusteringActivity& auto_clustering_activity() const {
     return auto_clustering_activity_;

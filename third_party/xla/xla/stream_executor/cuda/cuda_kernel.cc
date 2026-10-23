@@ -28,16 +28,13 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "absl/synchronization/mutex.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
-#include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_args.h"
 #include "xla/stream_executor/kernel_metadata.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "tsl/profiler/lib/traceme_encode.h"
 
@@ -55,13 +52,6 @@ absl::Status GetCudaAttribute(CUfunction_attribute attribute, CUfunction func,
   return cuda::ToStatus(
       cuFuncGetAttribute(attribute_value, attribute, func),
       absl::StrCat("Failed to query kernel attribute: ", attribute));
-}
-
-absl::Status SetCudaAttribute(CUfunction_attribute attribute, CUfunction func,
-                              int value) {
-  return cuda::ToStatus(
-      cuFuncSetAttribute(func, attribute, value),
-      absl::StrCat("Failed to set kernel attribute: ", attribute));
 }
 
 }  // namespace
@@ -104,19 +94,8 @@ absl::Status CudaKernel::UpdateMaxDynamicSharedMemoryBytes(
     return absl::OkStatus();
   }
 
-  absl::MutexLock lock(mu_);
-  if (shared_memory_bytes <=
-      max_dynamic_shared_memory_bytes_.load(std::memory_order_relaxed)) {
-    return absl::OkStatus();
-  }
-
-  std::unique_ptr<ActivateContext> activation = executor_->Activate();
   ABSL_RETURN_IF_ERROR(
-      SetCudaAttribute(CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
-                       gpu_function_, shared_memory_bytes));
-  ABSL_RETURN_IF_ERROR(cuda::ToStatus(
-      cuFuncSetCacheConfig(gpu_function_, CU_FUNC_CACHE_PREFER_SHARED)));
-
+      executor_->UpdateMaxDynamicSharedMemoryBytes(this, shared_memory_bytes));
   max_dynamic_shared_memory_bytes_.store(shared_memory_bytes,
                                          std::memory_order_relaxed);
   return absl::OkStatus();

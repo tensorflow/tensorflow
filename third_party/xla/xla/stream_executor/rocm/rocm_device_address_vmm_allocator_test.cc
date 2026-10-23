@@ -23,7 +23,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
-#include "absl/status/status_matchers.h"
+#include "absl/status/status_matchers.h"  // IWYU pragma: keep
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_vmm_allocator.h"
 #include "xla/stream_executor/platform.h"
@@ -72,11 +72,11 @@ class DeviceAddressVmmAllocatorTest : public ::testing::Test {
 };
 
 TEST_F(DeviceAddressVmmAllocatorTest, AllocateAndDeallocate) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto allocator,
       gpu::RocmDeviceAddressVmmAllocator::Create(executor_, stream_.get()));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto scoped_address,
       allocator->Allocate(executor_->device_ordinal(), 1024,
                           /*retry_on_failure=*/true,
@@ -93,11 +93,11 @@ TEST_F(DeviceAddressVmmAllocatorTest, AllocateAndDeallocate) {
 }
 
 TEST_F(DeviceAddressVmmAllocatorTest, AllocateZeroSize) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto allocator,
       gpu::RocmDeviceAddressVmmAllocator::Create(executor_, stream_.get()));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto scoped_address,
       allocator->Allocate(executor_->device_ordinal(), 0,
                           /*retry_on_failure=*/true,
@@ -107,17 +107,17 @@ TEST_F(DeviceAddressVmmAllocatorTest, AllocateZeroSize) {
 }
 
 TEST_F(DeviceAddressVmmAllocatorTest, AllocateMultiple) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto allocator,
       gpu::RocmDeviceAddressVmmAllocator::Create(executor_, stream_.get()));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto addr1,
       allocator->Allocate(executor_->device_ordinal(), 1024,
                           /*retry_on_failure=*/true,
                           static_cast<int64_t>(MemorySpace::kCollective)));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto addr2,
       allocator->Allocate(executor_->device_ordinal(), 2048,
                           /*retry_on_failure=*/true,
@@ -131,11 +131,11 @@ TEST_F(DeviceAddressVmmAllocatorTest, AllocateMultiple) {
 }
 
 TEST_F(DeviceAddressVmmAllocatorTest, MemoryReadWrite) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto allocator,
       gpu::RocmDeviceAddressVmmAllocator::Create(executor_, stream_.get()));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto scoped_address,
       allocator->Allocate(executor_->device_ordinal(), 1024,
                           /*retry_on_failure=*/true,
@@ -143,7 +143,7 @@ TEST_F(DeviceAddressVmmAllocatorTest, MemoryReadWrite) {
 
   ASSERT_NE(scoped_address->opaque(), nullptr);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor_->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto stream, executor_->CreateStream());
 
   constexpr uint64_t kTestValue = 0xDEADBEEFCAFEBABE;
   DeviceAddressBase addr = scoped_address.cref();
@@ -160,32 +160,31 @@ TEST_F(DeviceAddressVmmAllocatorTest, MemoryReadWrite) {
 }
 
 TEST_F(DeviceAddressVmmAllocatorTest, GetStream) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto allocator,
       gpu::RocmDeviceAddressVmmAllocator::Create(executor_, stream_.get()));
 
-  TF_ASSERT_OK_AND_ASSIGN(Stream * stream,
-                          allocator->GetStream(executor_->device_ordinal()));
+  ASSERT_OK_AND_ASSIGN(Stream * stream,
+                       allocator->GetStream(executor_->device_ordinal()));
   EXPECT_EQ(stream, stream_.get());
 
-  TF_ASSERT_OK_AND_ASSIGN(Stream * stream2,
-                          allocator->GetStream(executor_->device_ordinal()));
+  ASSERT_OK_AND_ASSIGN(Stream * stream2,
+                       allocator->GetStream(executor_->device_ordinal()));
   EXPECT_EQ(stream, stream2);
 }
 
 TEST_F(DeviceAddressVmmAllocatorTest, GetStreamExecutor) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto allocator,
       gpu::RocmDeviceAddressVmmAllocator::Create(executor_, stream_.get()));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      StreamExecutor * se,
-      allocator->GetStreamExecutor(executor_->device_ordinal()));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * se, allocator->GetStreamExecutor(
+                                                executor_->device_ordinal()));
   EXPECT_EQ(se, executor_);
 }
 
 TEST_F(DeviceAddressVmmAllocatorTest, AllowsAsynchronousDeallocation) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto allocator,
       gpu::RocmDeviceAddressVmmAllocator::Create(executor_, stream_.get()));
 
@@ -193,11 +192,11 @@ TEST_F(DeviceAddressVmmAllocatorTest, AllowsAsynchronousDeallocation) {
 }
 
 TEST_F(DeviceAddressVmmAllocatorTest, ExplicitDeallocate) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto allocator,
       gpu::RocmDeviceAddressVmmAllocator::Create(executor_, stream_.get()));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto scoped_address,
       allocator->Allocate(executor_->device_ordinal(), 1024,
                           /*retry_on_failure=*/true,
@@ -213,7 +212,7 @@ TEST_F(DeviceAddressVmmAllocatorTest, ExplicitDeallocate) {
 }
 
 TEST_F(DeviceAddressVmmAllocatorTest, DeallocateNull) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto allocator,
       gpu::RocmDeviceAddressVmmAllocator::Create(executor_, stream_.get()));
 
@@ -224,14 +223,14 @@ TEST_F(DeviceAddressVmmAllocatorTest, DeallocateNull) {
 
 TEST_F(DeviceAddressVmmAllocatorTest,
        PendingDeallocationReusesSameVirtualAddress) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto allocator,
       gpu::RocmDeviceAddressVmmAllocator::Create(executor_, stream_.get()));
 
   const int ordinal = executor_->device_ordinal();
   constexpr uint64_t kSize = 1024;
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto addr1,
       allocator->Allocate(ordinal, kSize, /*retry_on_failure=*/true,
                           static_cast<int64_t>(MemorySpace::kCollective)));
@@ -241,7 +240,7 @@ TEST_F(DeviceAddressVmmAllocatorTest,
   addr1.Release();
   ASSERT_THAT(allocator->Deallocate(ordinal, raw), IsOk());
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto addr2,
       allocator->Allocate(ordinal, kSize, /*retry_on_failure=*/true,
                           static_cast<int64_t>(MemorySpace::kCollective)));
@@ -252,13 +251,13 @@ TEST_F(DeviceAddressVmmAllocatorTest,
 
 TEST_F(DeviceAddressVmmAllocatorTest,
        DeferredDeallocationSafeWhileGpuWritesData) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto allocator,
       gpu::RocmDeviceAddressVmmAllocator::Create(executor_, stream_.get()));
 
   const int ordinal = executor_->device_ordinal();
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto addr,
       allocator->Allocate(ordinal, sizeof(uint64_t), /*retry_on_failure=*/true,
                           static_cast<int64_t>(MemorySpace::kCollective)));
@@ -274,7 +273,7 @@ TEST_F(DeviceAddressVmmAllocatorTest,
 
 TEST_F(DeviceAddressVmmAllocatorTest,
        MultipleSeqnosAllCompleteAfterStreamSync) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto allocator,
       gpu::RocmDeviceAddressVmmAllocator::Create(executor_, stream_.get()));
 
@@ -283,7 +282,7 @@ TEST_F(DeviceAddressVmmAllocatorTest,
   constexpr uint64_t kSize = 1024;
 
   for (int i = 0; i < kCount; ++i) {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto addr,
         allocator->Allocate(ordinal, kSize, /*retry_on_failure=*/true,
                             static_cast<int64_t>(MemorySpace::kCollective)));
@@ -293,7 +292,7 @@ TEST_F(DeviceAddressVmmAllocatorTest,
   ASSERT_THAT(stream_->BlockHostUntilDone(), IsOk());
 
   for (int i = 0; i < kCount; ++i) {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto addr,
         allocator->Allocate(ordinal, kSize, /*retry_on_failure=*/true,
                             static_cast<int64_t>(MemorySpace::kCollective)));
@@ -326,7 +325,7 @@ TEST_F(DeviceAddressVmmAllocatorTest,
 }
 
 TEST_F(DeviceAddressVmmAllocatorTest, UnknownDeviceOrdinalReturnsError) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto allocator,
       gpu::RocmDeviceAddressVmmAllocator::Create(executor_, stream_.get()));
 
@@ -388,12 +387,12 @@ TEST_F(MultiDeviceVmmAllocatorTest, AllocateOnBothDevices) {
   for (int i = 0; i < 2; ++i) {
     configs.push_back({executors_[i], streams_[i].get()});
   }
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto allocator,
       gpu::RocmDeviceAddressVmmAllocator::Create(platform_, configs));
 
   for (int i = 0; i < 2; ++i) {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto addr,
         allocator->Allocate(executors_[i]->device_ordinal(), 1024,
                             /*retry_on_failure=*/true,
@@ -405,12 +404,12 @@ TEST_F(MultiDeviceVmmAllocatorTest, AllocateOnBothDevices) {
         nullptr);
     EXPECT_NE(allocator->GetReservation(executors_[i]->device_ordinal(), *addr),
               nullptr);
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         StreamExecutor * se,
         allocator->GetStreamExecutor(executors_[i]->device_ordinal()));
     EXPECT_EQ(se, executors_[i]);
-    TF_ASSERT_OK_AND_ASSIGN(
-        Stream * stream, allocator->GetStream(executors_[i]->device_ordinal()));
+    ASSERT_OK_AND_ASSIGN(Stream * stream,
+                         allocator->GetStream(executors_[i]->device_ordinal()));
     EXPECT_EQ(stream, streams_[i].get());
   }
 }
@@ -420,11 +419,11 @@ TEST_F(MultiDeviceVmmAllocatorTest, AllocationOnOneDeviceDoesNotAffectOther) {
   for (int i = 0; i < 2; ++i) {
     configs.push_back({executors_[i], streams_[i].get()});
   }
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto allocator,
       gpu::RocmDeviceAddressVmmAllocator::Create(platform_, configs));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto addr0,
       allocator->Allocate(executors_[0]->device_ordinal(), 4096,
                           /*retry_on_failure=*/true,

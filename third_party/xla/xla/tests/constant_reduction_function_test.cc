@@ -28,8 +28,7 @@ namespace {
 
 using std::nullopt;
 
-using ConstantReductionFunctionTest =
-    HloPjRtInterpreterReferenceMixin<HloTestBase>;
+using ConstantReductionFunctionTest = HloInterpreterReferenceMixin<HloTestBase>;
 
 TEST_F(ConstantReductionFunctionTest, Bool) {
   const std::string& hlo_string = R"(

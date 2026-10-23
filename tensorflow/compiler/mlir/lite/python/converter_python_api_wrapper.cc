@@ -17,13 +17,14 @@ limitations under the License.
 #include <vector>
 
 #include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/stl.h"  // from @pybind11
 #include "tensorflow/compiler/mlir/lite/python/converter_python_api.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 
 namespace py = pybind11;
 
-PYBIND11_MODULE(_pywrap_converter_api, m) {
+PYBIND11_MODULE(_pywrap_converter_api, m, py::mod_gil_not_used()) {
   m.def(
       "Convert",
       [](py::object model_flags_proto_txt_raw,
@@ -119,10 +120,50 @@ PYBIND11_MODULE(_pywrap_converter_api, m) {
     )pbdoc");
   m.def(
       "FlatBufferToMlir",
-      [](const std::string& model, bool input_is_filepath) {
-        return tflite::FlatBufferFileToMlir(model, input_is_filepath);
+      [](const std::string& model, bool input_is_filepath, bool bytecode,
+         const std::vector<std::string>& cl_options) {
+        std::string res = tflite::FlatBufferFileToMlir(model, input_is_filepath,
+                                                       bytecode, cl_options);
+        if (bytecode) {
+          return py::object(py::bytes(res));
+        } else {
+          return py::object(py::str(res));
+        }
       },
+      py::arg("model"), py::arg("input_is_filepath") = false,
+      py::arg("bytecode") = false,
+      py::arg("cl_options") = std::vector<std::string>(),
       R"pbdoc(
       Returns MLIR dump of the given TFLite model.
+    )pbdoc");
+  m.def(
+      "MlirToFlatBuffer",
+      [](const std::string& mlir, bool input_is_filepath,
+         bool emit_builtin_tflite_ops, bool emit_select_tf_ops,
+         bool emit_custom_ops, bool emit_stablehlo_ops) {
+        std::string res = tflite::MlirToFlatBufferFile(
+            mlir, input_is_filepath, emit_builtin_tflite_ops,
+            emit_select_tf_ops, emit_custom_ops, emit_stablehlo_ops);
+        return py::bytes(res);
+      },
+      py::arg("mlir"), py::arg("input_is_filepath") = false,
+      py::arg("emit_builtin_tflite_ops") = true,
+      py::arg("emit_select_tf_ops") = false, py::arg("emit_custom_ops") = true,
+      py::arg("emit_stablehlo_ops") = false,
+      R"pbdoc(
+      Converts MLIR (text or bytecode) into a TFLite FlatBuffer binary tensor.
+    )pbdoc");
+  m.def(
+      "ConvertMlirBytecode",
+      [](py::object converter_flags_proto_txt_raw, py::object model_dir_txt_raw,
+         py::object output_file_path_raw) {
+        return tensorflow::PyoOrThrow(tflite::ConvertMlirBytecode(
+            converter_flags_proto_txt_raw.ptr(), model_dir_txt_raw.ptr(),
+            output_file_path_raw.ptr()));
+      },
+      py::arg("converter_flags_proto_txt_raw"), py::arg("model_dir_txt_raw"),
+      py::arg("output_file_path_raw"),
+      R"pbdoc(
+      Convert a model represented in JAX slim export directory directly to a file.
     )pbdoc");
 }

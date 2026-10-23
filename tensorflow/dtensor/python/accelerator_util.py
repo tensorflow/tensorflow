@@ -14,6 +14,7 @@
 # ==============================================================================
 """Utility for working with accelerator systems."""
 
+import os
 from typing import List, Optional
 
 from absl import logging
@@ -82,8 +83,28 @@ def initialize_multi_client_cluster(job_name: str,
       use_nccl_communication=gpu_use_nccl_communication,
       collective_leader=collective_leader)
   if enable_coordination_service:
+    heartbeat_timeout_ms = 0
+    if "TF_COORDINATION_SERVICE_HEARTBEAT_TIMEOUT_MS" in os.environ:
+      heartbeat_timeout_ms = int(
+          os.environ["TF_COORDINATION_SERVICE_HEARTBEAT_TIMEOUT_MS"]
+      )
+    elif "TF_COORDINATION_SERVICE_HEARTBEAT_TIMEOUT_SECS" in os.environ:
+      heartbeat_timeout_ms = (
+          int(os.environ["TF_COORDINATION_SERVICE_HEARTBEAT_TIMEOUT_SECS"])
+          * 1000
+      )
+    elif "DTENSOR_HEARTBEAT_TIMEOUT_MS" in os.environ:
+      heartbeat_timeout_ms = int(os.environ["DTENSOR_HEARTBEAT_TIMEOUT_MS"])
+    elif "DTENSOR_HEARTBEAT_TIMEOUT_SECS" in os.environ:
+      heartbeat_timeout_ms = (
+          int(os.environ["DTENSOR_HEARTBEAT_TIMEOUT_SECS"]) * 1000
+      )
     context.context().configure_coordination_service(
-        service_type="standalone", service_leader=collective_leader)
+        service_type="standalone",
+        service_leader=collective_leader,
+        enable_health_check=config.heartbeat_enabled(),
+        heartbeat_timeout_in_ms=heartbeat_timeout_ms,
+    )
 
   config_proto = context.get_config()
 
@@ -249,7 +270,7 @@ def initialize_accelerator_system(
         client_id=config.client_id(),
         collective_leader=config.full_job_name(task_id=0),
         gpu_use_nccl_communication=config.gpu_use_nccl_communication(),
-        enable_coordination_service=enable_coordination_service)
+        enable_coordination_service=enable_coordination_service)  # pyrefly: ignore[bad-argument-type]
   else:
     if device_type == "GPU":
       # Enables Nccl on local mode.
@@ -272,23 +293,28 @@ def initialize_accelerator_system(
 def shutdown_accelerator_system() -> None:
   """Shuts down the accelerator system."""
   global _INITIALIZED_ACCELERATOR_SYSTEM_TYPE
+
+  # Validate first, so a validation error can never mask a real failure
+  # from `async_wait()` below.
+  if not is_initialized():
+    raise ValueError(
+        "Accelerator system is not initialized. Call "
+        "tf.experimental.dtensor.initialize_accelerator_system first."
+    )
+
+  device_type = _INITIALIZED_ACCELERATOR_SYSTEM_TYPE
+
+  if not config.is_local_mode():
+    raise ValueError(
+        "Shutting down accelerator system under multi-client mode is "
+        "not supported."
+    )
+
   try:
     context.async_wait()
   finally:
-    if not is_initialized():
-      raise ValueError(
-          "Accelerator system is not initialized. Call "
-          "tf.experimental.dtensor.initialize_accelerator_system first."
-      )
-
-    device_type = _INITIALIZED_ACCELERATOR_SYSTEM_TYPE
-
-    if not config.is_local_mode():
-      raise ValueError(
-          "Shutting down accelerator system under multi-client mode is "
-          "not supported."
-      )
-
+    # Cleanup always runs, even if `async_wait()` raised, so the system
+    # is never left stuck in an "initialized" state.
     if device_type == "TPU":
       tpu_util.shutdown_tpu_system()
 

@@ -21,6 +21,7 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
@@ -31,12 +32,9 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/transforms/expanders/rng_expander.h"
-#include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/sharding_propagation.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -126,7 +124,7 @@ ENTRY entry {
 
   DebugOptions debug_options = GetDebugOptionsForTest();
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module, PartitionComputation(hlo_string, /*num_partitions=*/2,
                                         GetDefaultDebugOptions(), add_passes));
   XLA_VLOG_LINES(1, module->ToString());
@@ -150,7 +148,7 @@ ENTRY entry {
     pipeline.AddPass<RngExpander>();
   };
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module, PartitionComputation(hlo_string, /*num_partitions=*/2,
                                         GetDefaultDebugOptions(), add_passes));
   XLA_VLOG_LINES(1, module->ToString());
@@ -179,7 +177,7 @@ ENTRY main {
   DebugOptions debug_options = GetDefaultDebugOptions();
   debug_options.set_xla_gpu_threshold_for_windowed_einsum_mib(0);
   debug_options.set_xla_gpu_multi_streamed_windowed_einsum(true);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module,
       PartitionComputation(hlo_string, /*num_partitions=*/4, debug_options,
                            /*add_passes=*/nullptr,
@@ -265,8 +263,8 @@ ENTRY main {
     HloModuleConfig config = GetModuleConfigForTest(1, 4);
     config.set_use_spmd_partitioning(true);
     config.set_debug_options(debug_options);
-    TF_ASSERT_OK_AND_ASSIGN(auto module,
-                            ParseAndReturnVerifiedModule(hlo_string, config));
+    ASSERT_OK_AND_ASSIGN(auto module,
+                         ParseAndReturnVerifiedModule(hlo_string, config));
 
     HloPassPipeline pass("partitioning");
     pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
@@ -310,8 +308,8 @@ ENTRY main {
     HloModuleConfig config = GetModuleConfigForTest(1, 4);
     config.set_use_spmd_partitioning(true);
     config.set_debug_options(debug_options);
-    TF_ASSERT_OK_AND_ASSIGN(auto module,
-                            ParseAndReturnVerifiedModule(hlo_string, config));
+    ASSERT_OK_AND_ASSIGN(auto module,
+                         ParseAndReturnVerifiedModule(hlo_string, config));
 
     HloPassPipeline pass("partitioning");
     pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
@@ -350,7 +348,7 @@ ENTRY main {
     debug_options.set_xla_gpu_threshold_for_windowed_einsum_mib(0);
     debug_options.set_xla_gpu_multi_streamed_windowed_einsum(true);
 
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto module, PartitionComputation(
                          hlo_string_16, /*num_partitions=*/16, debug_options,
                          /*add_passes=*/nullptr,
@@ -396,8 +394,8 @@ ENTRY main {
     HloModuleConfig config = GetModuleConfigForTest(1, 64);
     config.set_use_spmd_partitioning(true);
     config.set_debug_options(debug_options);
-    TF_ASSERT_OK_AND_ASSIGN(
-        auto module, ParseAndReturnVerifiedModule(hlo_string_64, config));
+    ASSERT_OK_AND_ASSIGN(auto module,
+                         ParseAndReturnVerifiedModule(hlo_string_64, config));
 
     HloPassPipeline pass("partitioning");
     pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
@@ -451,8 +449,8 @@ ENTRY main {
     HloModuleConfig config = GetModuleConfigForTest(1, 8);
     config.set_use_spmd_partitioning(true);
     config.set_debug_options(debug_options);
-    TF_ASSERT_OK_AND_ASSIGN(auto module,
-                            ParseAndReturnVerifiedModule(hlo_string, config));
+    ASSERT_OK_AND_ASSIGN(auto module,
+                         ParseAndReturnVerifiedModule(hlo_string, config));
 
     HloPassPipeline pass("partitioning");
     pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
@@ -488,8 +486,8 @@ ENTRY main {
     HloModuleConfig config = GetModuleConfigForTest(1, 8);
     config.set_use_spmd_partitioning(true);
     config.set_debug_options(debug_options);
-    TF_ASSERT_OK_AND_ASSIGN(auto module,
-                            ParseAndReturnVerifiedModule(hlo_string, config));
+    ASSERT_OK_AND_ASSIGN(auto module,
+                         ParseAndReturnVerifiedModule(hlo_string, config));
 
     HloPassPipeline pass("partitioning");
     pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
@@ -525,7 +523,7 @@ ENTRY main {
   int64_t oper_bytes_threshold = 1 << 20;
   debug_options.set_xla_gpu_operand_bytes_threshold_for_windowed_einsum(
       oper_bytes_threshold);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module,
       PartitionComputation(hlo_string, /*num_partitions=*/4, debug_options,
                            /*add_passes=*/nullptr,
@@ -559,7 +557,7 @@ ENTRY main {
   int64_t oper_bytes_threshold = 1 << 8;
   debug_options.set_xla_gpu_operand_bytes_threshold_for_windowed_einsum(
       oper_bytes_threshold);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module,
       PartitionComputation(hlo_string, /*num_partitions=*/4, debug_options,
                            /*add_passes=*/nullptr,

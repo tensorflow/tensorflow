@@ -37,6 +37,7 @@ load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "filegroup
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_core_deps",
+    "tf_proto_library",
     "tf_protos_all",
     "tf_protos_grappler",
 )
@@ -717,14 +718,15 @@ cc_library(
         "//tensorflow/core/platform:error_logging",
         "//tensorflow/core/profiler/lib:annotated_traceme",
         "//tensorflow/core/profiler/lib:connected_traceme",
+        "//tensorflow/core/profiler/lib:context_types_hdrs",
         "//tensorflow/core/profiler/lib:scoped_annotation",
+        "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
-        "@xla//xla/tsl/platform:env",
     ],
     alwayslink = 1,
 )
@@ -1567,6 +1569,7 @@ cc_library(
     deps = [
         ":optimization_registry",
         "//tensorflow/core:graph",
+        "//tensorflow/core/framework:tensor_shape",
         "//tensorflow/core/framework:tensor_shape_proto_cc",
         "//tensorflow/core/framework:types_proto_cc",
         "@com_google_absl//absl/container:inlined_vector",
@@ -2460,17 +2463,26 @@ cc_library(
     alwayslink = 1,
 )
 
+tf_proto_library(
+    name = "request_cost_proto",
+    srcs = ["request_cost.proto"],
+    visibility = ["//visibility:public"],
+)
+
 cc_library(
     name = "request_cost",
     srcs = ["request_cost.cc"],
     hdrs = ["request_cost.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":request_cost_proto_cc",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/functional:overload",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -3022,6 +3034,7 @@ tf_cc_test(
     srcs = ["process_util_test.cc"],
     deps = [
         ":process_util",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
@@ -3113,10 +3126,11 @@ tf_cc_test(
 
 tf_cuda_cc_test(
     name = "direct_session_test",
-    size = "medium",
+    size = "large",
     srcs = ["direct_session_test.cc"],
     args = [] + if_cuda(["--heap_check="]),  # The GPU tracer leaks memory
     features = ["-layering_check"],
+    shard_count = 8,
     deps = [
         ":core_cpu",
         ":core_cpu_internal",
@@ -3628,6 +3642,9 @@ tf_cc_test(
     srcs = ["request_cost_test.cc"],
     deps = [
         ":request_cost",
+        ":request_cost_proto_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
     ],

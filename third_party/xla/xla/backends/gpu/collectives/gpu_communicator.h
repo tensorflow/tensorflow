@@ -23,6 +23,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/base/nullability.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
@@ -34,7 +35,9 @@ limitations under the License.
 #include "xla/core/collectives/reduction_kind.h"
 #include "xla/core/collectives/registered_memory.h"
 #include "xla/core/collectives/symmetric_memory.h"
+#include "xla/ffi/api/record_c_api.h"
 #include "xla/future.h"
+#include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/kernel_args.h"
 #include "xla/stream_executor/memory_allocation.h"
@@ -45,6 +48,10 @@ limitations under the License.
 namespace stream_executor {
 class StreamExecutor;
 }  // namespace stream_executor
+
+namespace xla::ffi {
+struct RecordContext;
+}  // namespace xla::ffi
 
 namespace xla::gpu {
 
@@ -161,6 +168,9 @@ class GpuDeviceCommunicator {
 // `GpuCommunicator::LaunchAllReduce` method which returns an `absl::Status`.
 class GpuCommunicator : public Communicator {
  public:
+  static constexpr int64_t kMaxCliqueSemaphores = 1024;
+  static constexpr int64_t kMaxCollectiveIds = 32;
+
   ~GpuCommunicator() override = default;
 
   // Returns a platform-specific handle to the underlying communicator object.
@@ -213,7 +223,8 @@ class GpuCommunicator : public Communicator {
   // a collective operation, and all ranks in a clique must call this operation
   // in order to make a progress.
   virtual absl::StatusOr<std::unique_ptr<SymmetricMemory>>
-  CreateSymmetricMemory(se::DeviceAddressBase addr) {
+  CreateSymmetricMemory(se::DeviceAddressBase addr,
+                        bool symmetric_window = false) {
     return Unimplemented("Symmetric memory is not implemented");
   }
 
@@ -239,6 +250,18 @@ class GpuCommunicator : public Communicator {
                                        PrimitiveType dtype, size_t count,
                                        RankId root,
                                        const Executor& executor) = 0;
+
+  // Reduces buffers of length `count` in `send_buffer` using `reduction_kind`
+  // and writes the result only to `recv_buffer` on the `root` rank (NCCL
+  // `ncclReduce` semantics). On non-root ranks `recv_buffer` is left untouched.
+  // Defaults to unimplemented so backends can opt in; NCCL overrides it.
+  virtual absl::Status LaunchReduce(se::DeviceAddressBase send_buffer,
+                                    se::DeviceAddressBase recv_buffer,
+                                    PrimitiveType dtype, size_t count,
+                                    ReductionKind reduction_kind, RankId root,
+                                    const Executor& executor) {
+    return Unimplemented("LaunchReduce is not implemented");
+  }
 
   virtual absl::Status LaunchReduceScatter(se::DeviceAddressBase send_buffer,
                                            se::DeviceAddressBase recv_buffer,
@@ -297,12 +320,41 @@ class GpuCommunicator : public Communicator {
     return Unimplemented("LaunchMultiGpuBarrier is not implemented");
   }
 
-  virtual void InitializeCrossDeviceBarrier(
+  virtual absl::StatusOr<const XLA_FFI_Command*> RecordMultiGpuBarrier(
+      xla::ffi::RecordContext& record_ctx,
+      const XLA_FFI_Command* absl_nullable cmd) {
+    return Unimplemented("RecordMultiGpuBarrier is not implemented");
+  }
+
+  virtual absl::StatusOr<const se::CommandBuffer::Command*>
+  RecordMultiGpuBarrier(
+      se::CommandBuffer* command_buffer,
+      const se::CommandBuffer::Command* absl_nullable cmd,
+      absl::Span<const se::CommandBuffer::Command* const> dependencies) {
+    return Unimplemented("RecordMultiGpuBarrier is not implemented");
+  }
+
+  virtual absl::Status InitializeCrossDeviceBarrier(
       tsl::TiedRef<se::MemoryAllocation> tied_signal_value,
       tsl::TiedRef<se::MemoryAllocation> tied_signal,
-      tsl::TiedRef<SymmetricMemory> tied_symmetric_memory) {}
+      tsl::TiedRef<SymmetricMemory> tied_symmetric_memory) {
+    return Unimplemented("InitializeCrossDeviceBarrier is not implemented");
+  }
 
   virtual bool IsCrossDeviceBarrierInitiated() const { return false; }
+
+  // Returns the device address of the semaphore for the given rank in the
+  // clique (including the local rank) and collective id.
+  virtual absl::StatusOr<stream_executor::DeviceAddressBase> GetCliqueSemaphore(
+      RankId peer_rank, int64_t collective_id) const {
+    return Unimplemented("GetCliqueSemaphore is not implemented");
+  }
+
+  virtual void InitializeCliqueSemaphore(
+      tsl::TiedRef<se::MemoryAllocation> tied_semaphore,
+      tsl::TiedRef<SymmetricMemory> tied_symmetric_memory) {}
+
+  virtual bool IsCliqueSemaphoreInitialized() const { return false; }
 
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const GpuCommunicator& comm) {

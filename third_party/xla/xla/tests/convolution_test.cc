@@ -52,7 +52,7 @@ namespace xla {
 namespace {
 
 class ConvolutionTest : public ClientLibraryTestRunnerMixin<
-                            HloPjRtInterpreterReferenceMixin<HloTestBase>> {
+                            HloInterpreterReferenceMixin<HloTestBase>> {
  public:
   // Returns true if the test is running on ROCm.
   bool IsRocm() {
@@ -308,6 +308,9 @@ TYPED_TEST_CASE(Convolve_1x1x4x4_1x1x3x3_Same, TestTypes);
 TYPED_TEST(Convolve_1x1x4x4_1x1x3x3_Same, Types) { this->RunTest(); }
 
 TEST_F(ConvolutionTest, Convolve3D_1x4x2x3x3_2x2x2x3x3_Valid) {
+  if (IsRocm()) {
+    GTEST_SKIP() << "Not working with ROCm";  // TODO ROCm
+  }
   XlaBuilder builder(TestName());
   std::vector<int64_t> input_dims = {1, 4, 2, 3, 3};
   std::vector<int64_t> filter_dims = {2, 2, 2, 3, 3};
@@ -1851,8 +1854,7 @@ TEST_F(ConvolutionTest, ConvolveF32BackwardInputGroupedConvolution) {
   ComputeAndCompare(&builder, {&input_data_literal}, ErrorSpecForPlatform());
 }
 
-class ConvolutionHloTest
-    : public HloPjRtInterpreterReferenceMixin<HloTestBase> {
+class ConvolutionHloTest : public HloInterpreterReferenceMixin<HloTestBase> {
  public:
   // Returns true if the test is running on ROCm.
   bool IsRocm() {

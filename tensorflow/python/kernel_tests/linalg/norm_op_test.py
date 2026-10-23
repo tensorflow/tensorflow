@@ -14,8 +14,10 @@
 # ==============================================================================
 """Tests for tensorflow.ops.tf.norm."""
 
+from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -58,6 +60,99 @@ class NormOpTest(test_lib.TestCase):
                       "integers")
       with self.assertRaisesRegex(ValueError, error_prefix):
         linalg_ops.norm(matrix, axis=axis_)
+
+  @test_util.run_v1_only("b/120545219")
+  def testAxisOutOfBounds(self):
+    matrix = constant_op.constant([[0.0, 1.0], [2.0, 3.0]])
+    for axis_ in 2, -3, (0, 2), (-3, -1):
+      with self.assertRaisesRegex(ValueError, "out of bounds"):
+        linalg_ops.norm(matrix, axis=axis_)
+    # In-bounds negative axes still work.
+    self.evaluate(linalg_ops.norm(matrix, axis=-1))
+    self.evaluate(linalg_ops.norm(matrix, axis=(-2, -1)))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testEmptyInputIsZero(self):
+    # reduce_max over an empty axis is -inf. A norm of an empty input should be
+    # 0, like the Euclidean, Frobenius and p-norms of an empty input. (numpy
+    # raises a ValueError for the max-based norms here.) Each case gives the
+    # expected result shape too.
+    cases = [
+        (np.zeros([0]), np.inf, None, []),
+        (np.zeros([0, 3]), 2, (0, 1), []),
+        (np.zeros([3, 0]), 2, (0, 1), []),
+        (np.zeros([0, 0]), 2, (0, 1), []),
+        (np.zeros([0, 3]), 1, (0, 1), []),
+        (np.zeros([3, 0]), 1, (0, 1), []),
+        (np.zeros([0, 0]), 1, (0, 1), []),
+        (np.zeros([0, 3]), np.inf, (0, 1), []),
+        (np.zeros([3, 0]), np.inf, (0, 1), []),
+        (np.zeros([0, 0]), np.inf, (0, 1), []),
+        (np.zeros([2, 3, 0]), 1, (1, 2), [2]),
+        (np.zeros([2, 0, 3]), np.inf, (1, 2), [2]),
+    ]
+    # The norm of a complex input is real.
+    result_dtypes = {
+        np.float32: np.float32,
+        np.float64: np.float64,
+        np.complex64: np.float32,
+        np.complex128: np.float64,
+    }
+    for dtype_, result_dtype in result_dtypes.items():
+      for value, ord_, axis_, shape in cases:
+        with self.subTest(dtype=dtype_, shape=value.shape, ord=ord_):
+          result = self.evaluate(
+              linalg_ops.norm(
+                  constant_op.constant(value, dtype=dtype_),
+                  ord=ord_,
+                  axis=axis_,
+              )
+          )
+          self.assertEqual(result.dtype, result_dtype)
+          self.assertAllEqual(result, np.zeros(shape))
+
+      result = self.evaluate(
+          linalg_ops.norm(
+              constant_op.constant(np.zeros([0, 3]), dtype=dtype_),
+              ord=np.inf,
+              axis=(0, 1),
+              keepdims=True,
+          )
+      )
+      self.assertAllEqual(result, np.zeros([1, 1]))
+
+
+class MatrixNormXlaTest(test_lib.TestCase, parameterized.TestCase):
+
+  @parameterized.named_parameters(
+      (f"{name}_keepdims_{keepdims}", shape, axis, keepdims)
+      for name, shape, axis in (
+          ("rank2", (3, 4), (0, 1)),
+          ("rank3_nonadjacent", (2, 3, 4), (0, 2)),
+          ("rank3_reversed", (2, 3, 4), (2, 0)),
+          ("rank4", (2, 3, 4, 5), (1, 2)),
+          ("rank4_negative", (2, 3, 4, 5), (-3, -2)),
+      )
+      for keepdims in (False, True)
+  )
+  @test_util.run_v2_only
+  def testMatrixNormOrd2XlaCompile(self, shape, axis, keepdims):
+    """Matrix 2-norm with static rank must compile without dynamic ListDiff."""
+    if not test_lib.is_built_with_xla():
+      self.skipTest("Test only applicable when running with XLA support")
+
+    matrix = np.random.RandomState(0).randn(*shape).astype(np.float32)
+    tensor = constant_op.constant(matrix)
+    expected = np.linalg.norm(matrix, ord=2, axis=axis, keepdims=keepdims)
+
+    def norm_fn(t):
+      return linalg_ops.norm(t, ord=2, axis=axis, keepdims=keepdims)
+
+    eager_result = norm_fn(tensor)
+    xla_result = def_function.function(norm_fn, jit_compile=True)(tensor)
+    self.assertAllEqual(expected.shape, xla_result.shape.as_list())
+    self.assertAllClose(expected, eager_result, rtol=1e-5, atol=1e-5)
+    self.assertAllClose(expected, xla_result, rtol=1e-5, atol=1e-5)
 
 
 def _GetNormOpTest(dtype_, shape_, ord_, axis_, keep_dims_, use_static_shape_):

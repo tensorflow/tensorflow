@@ -163,15 +163,15 @@ class DVariable(resource_variable_ops.ResourceVariable):
 
     if callable(initial_value):
       unwrapped = initial_value
-      if issubclass(type(initial_value), functools.partial):
-        unwrapped = initial_value.func
+      if isinstance(initial_value, functools.partial):
+        unwrapped = initial_value.func  # pyrefly: ignore[missing-attribute]
 
       # If wrapped is a CheckpointInitialValueCallable, this means that
       # we are creating a Variable during a checkpoint restore.
       # Thus the restore will happen now through this callable
       # and we will create the DVariable with the restored dtensor.
-      if issubclass(type(unwrapped), trackable.CheckpointInitialValueCallable):
-        if not shape or not layout:
+      if isinstance(unwrapped, trackable.CheckpointInitialValueCallable):
+        if shape is None or layout is None:
           raise ValueError('Expected shape and layout to be not None.')
 
         # CheckpointInitialValueCallable will call an eager tf.RestoreV2,
@@ -181,13 +181,22 @@ class DVariable(resource_variable_ops.ResourceVariable):
         # The default layout scope allows us to correctly specify the output
         # layout of the tf.RestoreV2 that will be called
         #
-        # Passing shard_info with the correct shape allows the tf.RestoreV2
-        # ShapeInference to extract the shape.
+        # Passing shard_info with the correct shape lets tf.RestoreV2 extract
+        # the shape. Scalars can't be sharded, so they use shard_info=None
+        # instead of an empty-shape ShardInfo (which RestoreV2 rejects).
+        # Use `len(shape) > 0`, not truthiness: a scalar tf.TensorShape([])
+        # is truthy despite having length 0.
+        shard_info = (
+            trackable.ShardInfo(shape=shape, offset=[0] * len(shape))
+            if len(shape) > 0
+            else None
+        )
         initial_value = api.call_with_layout(
             initial_value,
             layout,
-            shard_info=trackable.ShardInfo(
-                shape=shape, offset=[0] * len(shape)))
+            shape=shape,
+            shard_info=shard_info,
+        )
       else:
         initial_value = initial_value()
 

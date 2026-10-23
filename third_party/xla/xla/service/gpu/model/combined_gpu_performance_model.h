@@ -17,9 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_GPU_MODEL_COMBINED_GPU_PERFORMANCE_MODEL_H_
 
 #include "absl/base/attributes.h"
-#include "absl/base/thread_annotations.h"
 #include "absl/status/statusor.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"
@@ -32,6 +30,8 @@ limitations under the License.
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/concurrency/executor.h"
+#include "xla/tsl/concurrency/future.h"
 
 namespace xla {
 namespace gpu {
@@ -51,14 +51,14 @@ class CombinedGpuPerformanceModel : public GpuPerformanceModelBase {
           ABSL_ATTRIBUTE_LIFETIME_BOUND,
       mlir::MLIRContext& mlir_context ABSL_ATTRIBUTE_LIFETIME_BOUND,
       HloCostAnalysis::ShapeSizeFunction shape_size,
-      bool use_experimental_tiling, bool enable_same_shape_multi_output_fusion);
+      bool enable_same_shape_multi_output_fusion,
+      MlirContextPool* mlir_context_pool = nullptr);
 
   // Returns runtime data analysis results of a single instruction.
   //
   // Uses one of the wrapped models for analysis and caches the results.
   absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForInstruction(
-      const HloInstruction* instr, const GpuHloCostAnalysis* cost_analysis)
-      ABSL_LOCKS_EXCLUDED(cache_mutex_);
+      const HloInstruction* instr, const GpuHloCostAnalysis* cost_analysis);
 
   // Returns estimated runtime (fused and unfused) of producer and set of
   // consumers.
@@ -66,8 +66,7 @@ class CombinedGpuPerformanceModel : public GpuPerformanceModelBase {
   // Caches the results using the set of HloInstruction pointers as the key.
   absl::StatusOr<RunTimes> EstimateRunTimes(
       const HloInstruction* producer, const GpuHloCostAnalysis* cost_analysis,
-      absl::Span<const HloInstruction* const> fused_consumers = {})
-      ABSL_LOCKS_EXCLUDED(cache_mutex_);
+      absl::Span<const HloInstruction* const> fused_consumers = {});
 
   // Returns estimated runtime (fused and unfused) of producer and consumer,
   // assuming the produced fusion is a multi-output fusion.
@@ -75,24 +74,38 @@ class CombinedGpuPerformanceModel : public GpuPerformanceModelBase {
   // Caches the results using the set of HloInstruction pointers as the key.
   absl::StatusOr<RunTimes> EstimateRunTimesForMultiOutput(
       const HloInstruction* producer, const HloInstruction* consumer,
-      const GpuHloCostAnalysis* cost_analysis)
-      ABSL_LOCKS_EXCLUDED(cache_mutex_);
+      const GpuHloCostAnalysis* cost_analysis);
 
   // Returns the best tiling for a fusion.
   //
   // DOES NOT cache the result.
-  absl::StatusOr<TiledRunTimeDataOrError> TryFindBestTilingForFusion(
-      const HloFusionAdaptor& fusion_adaptor);
+  // NOTE: `fusion_adaptor` and `this` are captured; callers must ensure both
+  // `fusion_adaptor` and this model instance outlive the returned
+  // `tsl::Future`. If executor is nullptr, defaults to
+  // tsl::InlineExecutor::Instance().
+  [[nodiscard]] tsl::Future<TiledRunTimeDataOrError>
+  TryFindBestTilingForFusionAsync(const HloFusionAdaptor& fusion_adaptor,
+                                  tsl::Executor* executor = nullptr);
+
+  // Returns top_k best tilings for a fusion.
+  //
+  // DOES NOT cache the result.
+  // NOTE: `fusion_adaptor` and `this` are captured; callers must ensure both
+  // `fusion_adaptor` and this model instance outlive the returned
+  // `tsl::Future`. If executor is nullptr, defaults to
+  // tsl::InlineExecutor::Instance().
+  [[nodiscard]] tsl::Future<TopKTiledRunTimeDataOrError>
+  TryFindTopKBestTilingsForFusionAsync(const HloFusionAdaptor& fusion_adaptor,
+                                       int top_k,
+                                       tsl::Executor* executor = nullptr);
 
   // Invalidates all cache entries related to given instruction.
   //
   // Note: does NOT invalidate the HloFusionAnalysisCache, which is not owned by
   // this class.
-  void Invalidate(const HloInstruction& instruction)
-      ABSL_LOCKS_EXCLUDED(cache_mutex_);
+  void Invalidate(const HloInstruction& instruction);
 
   // TODO: b/493907020 Remove this when no longer needed in PriorityFusionQueue.
-  // UNSAFE: bypasses cache mutex
   GpuPerformanceModelCache& GetCache() { return cache_; }
 
  private:
@@ -116,8 +129,10 @@ class CombinedGpuPerformanceModel : public GpuPerformanceModelBase {
   GpuPerformanceModelWithIndexingAnalysis indexing_model_;
   GpuPerformanceModel model_;
 
-  absl::Mutex cache_mutex_;
-  GpuPerformanceModelCache cache_ ABSL_GUARDED_BY(cache_mutex_);
+  // Internally synchronized by its own mutex, allowing lock-free cache
+  // reads/writes at the CombinedGpuPerformanceModel level when only the runtime
+  // cache is accessed.
+  GpuPerformanceModelCache cache_;
 };
 
 }  // namespace gpu

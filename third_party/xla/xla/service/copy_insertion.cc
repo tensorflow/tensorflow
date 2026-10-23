@@ -443,20 +443,279 @@ bool IndicesToCopyForConditional(const HloDataflowAnalysis& dataflow,
 // If the loop state is a tuple then the above kCopy instructions are a deep
 // copy constructed of kCopy, kGetTupleElement, and kTuple instruction as
 // constructed by HloInstruction::DeepCopyInstruction.
-absl::Status AddCopiesForWhile(const HloAliasAnalysis& alias_analysis,
+bool IsAsyncOperationStateDefinition(const HloInstruction* instruction) {
+  return HloDataflowAnalysis::IsAsynchronousOperationStart(
+             instruction->opcode()) ||
+         instruction->opcode() == HloOpcode::kAsyncUpdate;
+}
+
+bool IsAsyncPipelinedWhileTupleIndex(const HloInstruction* while_instr,
+                                     const ShapeIndex& index) {
+  if (!HasDisableWhileLoopCopiesAttr(while_instr) || index.empty()) {
+    return false;
+  }
+  int64_t tuple_idx = index[0];
+
+  // 1. Check while init operand
+  const HloInstruction* while_init = while_instr->operand(0);
+  if (while_init->opcode() == HloOpcode::kTuple &&
+      tuple_idx < while_init->operand_count()) {
+    const HloInstruction* init_elem = while_init->operand(tuple_idx);
+    while (init_elem->opcode() == HloOpcode::kBitcast) {
+      init_elem = init_elem->operand(0);
+    }
+    if (IsAsyncOperationStateDefinition(init_elem)) {
+      return true;
+    }
+  }
+
+  // 2. Check while body
+  HloComputation* while_body = while_instr->while_body();
+  if (while_body != nullptr) {
+    // Check root instruction of while body
+    const HloInstruction* root = while_body->root_instruction();
+    if (root != nullptr && root->opcode() == HloOpcode::kTuple &&
+        tuple_idx < root->operand_count()) {
+      const HloInstruction* root_elem = root->operand(tuple_idx);
+      while (root_elem->opcode() == HloOpcode::kBitcast) {
+        root_elem = root_elem->operand(0);
+      }
+      if (IsAsyncOperationStateDefinition(root_elem)) {
+        return true;
+      }
+    }
+
+    // Check while body parameter users
+    if (while_body->num_parameters() > 0) {
+      const HloInstruction* while_param = while_body->parameter_instruction(0);
+      for (const HloInstruction* user : while_param->users()) {
+        if (user->opcode() == HloOpcode::kGetTupleElement &&
+            user->tuple_index() == tuple_idx) {
+          for (const HloInstruction* gte_user : user->users()) {
+            if (HloDataflowAnalysis::IsAsynchronousOperationDone(
+                    gte_user->opcode()) ||
+                gte_user->opcode() == HloOpcode::kAsyncUpdate) {
+              return true;
+            }
+            if (gte_user->opcode() == HloOpcode::kGetTupleElement) {
+              for (const HloInstruction* sub_user : gte_user->users()) {
+                if (HloDataflowAnalysis::IsAsynchronousOperationDone(
+                        sub_user->opcode()) ||
+                    sub_user->opcode() == HloOpcode::kAsyncUpdate) {
+                  return true;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // 3. Check while instruction users
+  for (const HloInstruction* user : while_instr->users()) {
+    if (user->opcode() == HloOpcode::kGetTupleElement &&
+        user->tuple_index() == tuple_idx) {
+      for (const HloInstruction* gte_user : user->users()) {
+        if (HloDataflowAnalysis::IsAsynchronousOperationDone(
+                gte_user->opcode()) ||
+            gte_user->opcode() == HloOpcode::kAsyncUpdate) {
+          return true;
+        }
+        if (gte_user->opcode() == HloOpcode::kGetTupleElement) {
+          for (const HloInstruction* sub_user : gte_user->users()) {
+            if (HloDataflowAnalysis::IsAsynchronousOperationDone(
+                    sub_user->opcode()) ||
+                sub_user->opcode() == HloOpcode::kAsyncUpdate) {
+              return true;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return false;
+}
+
+bool IsDisjointInPlaceWhileTupleIndex(const HloInstruction* while_instr,
+                                      const ShapeIndex& index) {
+  if (!HasDisableWhileLoopCopiesAttr(while_instr) || index.empty()) {
+    return false;
+  }
+  int64_t tuple_idx = index[0];
+  const HloComputation* while_body = while_instr->while_body();
+  if (while_body == nullptr || while_body->num_parameters() == 0) {
+    return false;
+  }
+  const HloInstruction* while_param = while_body->parameter_instruction(0);
+
+  const HloInstruction* param_gte = nullptr;
+  for (const HloInstruction* user : while_param->users()) {
+    if (user->opcode() == HloOpcode::kGetTupleElement &&
+        user->tuple_index() == tuple_idx) {
+      param_gte = user;
+      break;
+    }
+  }
+  if (param_gte == nullptr) {
+    return false;
+  }
+
+  auto is_transparent_wrapper = [](const HloInstruction* instr) {
+    return instr->opcode() == HloOpcode::kBitcast ||
+           instr->opcode() == HloOpcode::kBitcastConvert ||
+           instr->opcode() == HloOpcode::kReshape ||
+           instr->opcode() == HloOpcode::kCopy ||
+           (instr->opcode() == HloOpcode::kCustomCall &&
+            instr->operand_count() == 1);
+  };
+
+  // Ensure param_gte has no competing readers inside the loop body unless the
+  // loop is explicitly annotated as disjoint.
+  const HloInstruction* single_reader = param_gte;
+  while (single_reader->user_count() == 1 &&
+         is_transparent_wrapper(single_reader->users()[0])) {
+    single_reader = single_reader->users()[0];
+  }
+  if (single_reader->user_count() != 1 &&
+      !HasDisjointReadWriteRegionsAttr(while_instr)) {
+    return false;
+  }
+
+  const HloInstruction* root = while_body->root_instruction();
+  if (root == nullptr || root->opcode() != HloOpcode::kTuple ||
+      tuple_idx >= root->operand_count()) {
+    return false;
+  }
+  const HloInstruction* root_elem = root->operand(tuple_idx);
+  while (is_transparent_wrapper(root_elem)) {
+    root_elem = root_elem->operand(0);
+  }
+
+  const HloInstruction* curr = root_elem;
+  while (curr != nullptr && curr != single_reader && curr != param_gte) {
+    const HloInstruction* next = nullptr;
+    if (curr->opcode() == HloOpcode::kDynamicUpdateSlice) {
+      if (!HasDisjointReadWriteRegionsAttr(curr) &&
+          !HasDisjointReadWriteRegionsAttr(while_instr)) {
+        return false;
+      }
+      next = curr->operand(0);
+    } else if (curr->IsAsynchronous() &&
+               curr->async_wrapped_opcode() == HloOpcode::kDynamicUpdateSlice) {
+      const HloInstruction* async_start = nullptr;
+      if (curr->opcode() == HloOpcode::kAsyncDone) {
+        async_start = curr->operand(0);
+      } else if (curr->opcode() == HloOpcode::kAsyncStart) {
+        async_start = curr;
+      }
+      if (async_start == nullptr || async_start->operand_count() == 0) {
+        return false;
+      }
+      if (!HasDisjointReadWriteRegionsAttr(curr) &&
+          !HasDisjointReadWriteRegionsAttr(async_start) &&
+          !HasDisjointReadWriteRegionsAttr(while_instr)) {
+        return false;
+      }
+      next = async_start->operand(0);
+    } else if (is_transparent_wrapper(curr)) {
+      next = curr->operand(0);
+    } else {
+      return false;
+    }
+    while (next != nullptr && is_transparent_wrapper(next)) {
+      next = next->operand(0);
+    }
+    curr = next;
+  }
+  return curr == single_reader || curr == param_gte;
+}
+
+// Only such a while makes AddCopiesForWhile read HloBuffers.
+// LINT.IfChange(disabled_copies_prescan)
+bool HasWhileWithDisabledCopies(const HloModule& module) {
+  for (const HloComputation* computation : module.computations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      if (instruction->opcode() == HloOpcode::kWhile &&
+          HasDisableWhileLoopCopiesAttr(instruction)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+// LINT.ThenChange(:disabled_copies_buffer_reads)
+
+// `alias_analysis` is only consulted for a while annotated with
+// xla_disable_while_loop_copies and may be null otherwise.
+absl::Status AddCopiesForWhile(const HloDataflowAnalysis& dataflow,
+                               const HloAliasAnalysis* alias_analysis,
                                HloInstruction* xla_while) {
   VLOG(2) << "Adding copies for kWhile instruction " << xla_while->name();
   TF_RET_CHECK(xla_while->opcode() == HloOpcode::kWhile);
 
+  ShapeTree<bool> indices_to_copy(xla_while->shape());
+  IndicesToCopyForWhile(dataflow, xla_while, &indices_to_copy);
+
+  // LINT.IfChange(disabled_copies_buffer_reads)
   if (HasDisableWhileLoopCopiesAttr(xla_while)) {
-    VLOG(2) << "While loop copy insertion disabled via frontend attribute for "
+    VLOG(2) << "While loop copy insertion partially disabled via frontend "
+               "attribute for "
             << xla_while->name();
-    return absl::OkStatus();
+    TF_RET_CHECK(alias_analysis != nullptr);
+    // LINT.ThenChange(:disabled_copies_prescan)
+    // Clear copy requirement for scalars, async pipelined, and disjoint
+    // in-place tuple indices.
+    for (auto& pair : indices_to_copy) {
+      const Shape& subshape =
+          ShapeUtil::GetSubshape(xla_while->shape(), pair.first);
+      if (ShapeUtil::IsScalar(subshape) ||
+          IsAsyncPipelinedWhileTupleIndex(xla_while, pair.first) ||
+          IsDisjointInPlaceWhileTupleIndex(xla_while, pair.first)) {
+        pair.second = false;
+      }
+    }
+    // Deep copy any duplicate buffers in while_init outside the loop.
+    HloInstruction* while_init = xla_while->mutable_operand(0);
+    if (while_init->shape().IsTuple()) {
+      ShapeTree<bool> init_indices_to_copy(while_init->shape(), false);
+      absl::flat_hash_set<const HloBuffer*> seen_buffers;
+      bool need_copy = false;
+      ShapeUtil::ForEachSubshape(
+          while_init->shape(),
+          [&](const Shape& subshape, const ShapeIndex& index) {
+            if (!subshape.IsArray() || index.empty() ||
+                IsAsyncPipelinedWhileTupleIndex(xla_while, {index[0]})) {
+              return;
+            }
+            std::vector<const HloBuffer*> buffers =
+                alias_analysis->ComputeBuffersAt(while_init, index);
+            for (const HloBuffer* buffer : buffers) {
+              if (!seen_buffers.insert(buffer).second) {
+                *init_indices_to_copy.mutable_element(index) = true;
+                need_copy = true;
+                break;
+              }
+            }
+          });
+      if (need_copy) {
+        ABSL_ASSIGN_OR_RETURN(HloInstruction * while_init_copy,
+                         xla_while->parent()->DeepCopyInstruction(
+                             while_init, &init_indices_to_copy));
+        ABSL_RETURN_IF_ERROR(while_init->ReplaceUseWith(xla_while, while_init_copy));
+      }
+    }
   }
 
-  ShapeTree<bool> indices_to_copy(xla_while->shape());
-  if (!IndicesToCopyForWhile(alias_analysis.dataflow_analysis(), xla_while,
-                             &indices_to_copy)) {
+  bool any_copies = false;
+  for (const auto& pair : indices_to_copy) {
+    if (pair.second) {
+      any_copies = true;
+      break;
+    }
+  }
+  if (!any_copies) {
     VLOG(2) << "No copies necessary for kWhile instruction "
             << xla_while->name();
     return absl::OkStatus();
@@ -507,9 +766,8 @@ absl::Status AddCopiesForWhile(const HloAliasAnalysis& alias_analysis,
 
 // Add copies for the operands of in-place operations. RemoveUnnecessaryCopies
 // will remove the unnecessary copies.
-absl::Status AddCopiesForInPlaceOperation(
-    const HloAliasAnalysis& alias_analysis, HloInstruction* in_place_op,
-    int64_t operand_number) {
+absl::Status AddCopiesForInPlaceOperation(HloInstruction* in_place_op,
+                                          int64_t operand_number) {
   VLOG(2) << "Adding copies for in-place operation " << in_place_op->name();
   HloInstruction* operand = in_place_op->mutable_operand(operand_number);
   ABSL_ASSIGN_OR_RETURN(HloInstruction * deep_copy,
@@ -635,13 +893,12 @@ absl::Status StripControlDependenciesFrom(HloInstruction* instruction) {
 // roots, in order to resolve interference. We later rely on
 // RemoveUnnecessaryCopies to drop the unnecessary ones.
 absl::Status CopyInsertion::AddCopiesForConditional(
-    const HloAliasAnalysis& alias_analysis, HloInstruction* conditional) {
+    const HloDataflowAnalysis& dataflow, HloInstruction* conditional) {
   VLOG(2) << "Adding copies for kConditional instruction "
           << conditional->name();
   ShapeTree<bool> indices_to_copy(conditional->shape());
   TF_RET_CHECK(conditional->opcode() == HloOpcode::kConditional);
-  if (!IndicesToCopyForConditional(alias_analysis.dataflow_analysis(),
-                                   conditional, &indices_to_copy)) {
+  if (!IndicesToCopyForConditional(dataflow, conditional, &indices_to_copy)) {
     VLOG(2) << "No copies necessary for kConditional instruction "
             << conditional->name();
     return absl::OkStatus();
@@ -997,7 +1254,7 @@ absl::Status AddCopiesForNonCopyableTransitionsRotatedCase(
 // `chain_start` is the beginning of a non-copyable chain, we add copies to
 // transition in and out of the chain.
 absl::Status CopyInsertion::AddCopiesForExplicitNonCopyableTransitions(
-    const HloAliasAnalysis& alias_analysis, HloInstruction* chain_start) {
+    HloInstruction* chain_start) {
   VLOG(2) << "AddCopiesForExplicitNonCopyableTransitions: "
           << chain_start->ToString();
   HloComputation* parent = chain_start->parent();
@@ -1067,9 +1324,17 @@ HloInstruction* FindEndOpForRotatedNonCopyableChain(
 absl::Status AddCopiesForNonCopyableTransitionsRotatedCase(
     HloInstruction* chain_start, HloInstruction* chain_end) {
   HloComputation* while_body = chain_start->parent();
+  bool disable_loop_copies = false;
+  for (const HloInstruction* caller :
+       while_body->caller_instructions(HloOpcode::kWhile)) {
+    if (HasDisableWhileLoopCopiesAttr(caller)) {
+      disable_loop_copies = true;
+      break;
+    }
+  }
   // Handle aliasing input for the op, where we transition from copyable to
   // non-copyable.
-  if (!chain_start->operands().empty()) {
+  if (!chain_start->operands().empty() && !disable_loop_copies) {
     // A chain_start may have multiple operands, but we assume only the first
     // operand is a buffer aliasing with the output, which is true currently.
     HloInstruction* operand = chain_start->mutable_operand(0);
@@ -1152,12 +1417,11 @@ absl::Status AddCopiesForNonCopyableTransitionsRotatedCase(
 //     (body root)               (body root)
 //
 absl::Status CopyInsertion::AddCopiesForNonCopyableTransitions(
-    const HloAliasAnalysis& alias_analysis, HloInstruction* chain_start) {
+    HloInstruction* chain_start) {
   if (!IsImplicitNonCopyable(chain_start)) {
     if (chain_start->IsCustomCall(kPinCustomCallTarget) ||
         chain_start->IsCustomCall(kCreateBufferCustomCallTarget)) {
-      ABSL_RETURN_IF_ERROR(AddCopiesForExplicitNonCopyableTransitions(alias_analysis,
-                                                                 chain_start));
+      ABSL_RETURN_IF_ERROR(AddCopiesForExplicitNonCopyableTransitions(chain_start));
     }
     return absl::OkStatus();
   }
@@ -1187,6 +1451,9 @@ absl::Status CopyInsertion::AddCopiesForNonCopyableTransitions(
       unique_user->opcode() == HloOpcode::kTuple &&
       unique_user->users().size() == 1 &&
       unique_user->users().front()->opcode() == HloOpcode::kWhile) {
+    if (HasDisableWhileLoopCopiesAttr(unique_user->users().front())) {
+      return absl::OkStatus();
+    }
     HloInstruction* operand = chain_start->mutable_operand(0);
     HloInstruction* copied_operand =
         parent->AddInstruction(HloInstruction::CreateUnary(
@@ -1217,8 +1484,27 @@ absl::Status CopyInsertion::AddCopiesForNonCopyableTransitions(
 absl::Status CopyInsertion::AddCopiesToResolveInterference(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                   HloAliasAnalysis::Run(module, alias_info_));
+  // Only the xla_disable_while_loop_copies branch of AddCopiesForWhile reads
+  // HloBuffers; everything else reads the dataflow analysis.
+  // HloAliasAnalysis::Run calls HloDataflowAnalysis::Run(*module,
+  // /*ssa_form=*/true, /*bitcast_defines_value=*/false) and passes alias_info_
+  // only to CreateBuffers, so the same two booleans below yield the identical
+  // dataflow analysis. The analysis is built before the walk on purpose: copies
+  // inserted by earlier iterations would change the buffers a later build
+  // would see.
+  std::unique_ptr<HloAliasAnalysis> alias_analysis;
+  std::unique_ptr<HloDataflowAnalysis> owned_dataflow;
+  const HloDataflowAnalysis* dataflow = nullptr;
+  if (HasWhileWithDisabledCopies(*module)) {
+    ABSL_ASSIGN_OR_RETURN(alias_analysis,
+                     HloAliasAnalysis::Run(module, alias_info_));
+    dataflow = &alias_analysis->dataflow_analysis();
+  } else {
+    ABSL_ASSIGN_OR_RETURN(owned_dataflow,
+                     HloDataflowAnalysis::Run(*module, /*ssa_form=*/true,
+                                              /*bitcast_defines_value=*/false));
+    dataflow = owned_dataflow.get();
+  }
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
     if (computation->IsAsyncComputation()) {
@@ -1227,14 +1513,14 @@ absl::Status CopyInsertion::AddCopiesToResolveInterference(
     for (HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
       if (instruction->opcode() == HloOpcode::kWhile) {
-        ABSL_RETURN_IF_ERROR(AddCopiesForWhile(*alias_analysis, instruction));
+        ABSL_RETURN_IF_ERROR(
+            AddCopiesForWhile(*dataflow, alias_analysis.get(), instruction));
       } else if (instruction->opcode() == HloOpcode::kConditional) {
-        ABSL_RETURN_IF_ERROR(AddCopiesForConditional(*alias_analysis, instruction));
+        ABSL_RETURN_IF_ERROR(AddCopiesForConditional(*dataflow, instruction));
       } else if (IsNonCopyable(instruction)) {
         // We currently assume that we don't have a custom-call with
         // output-to-operand aliases for both buffers and non-buffers.
-        ABSL_RETURN_IF_ERROR(
-            AddCopiesForNonCopyableTransitions(*alias_analysis, instruction));
+        ABSL_RETURN_IF_ERROR(AddCopiesForNonCopyableTransitions(instruction));
       } else {
         // When an operand is a tuple, we avoid copying the operand multiple
         // times by recording and checking the operand number of operands that
@@ -1300,19 +1586,30 @@ absl::Status CopyInsertion::AddCopiesToResolveInterference(
             continue;
           }
 
-          // Skip copies for aliasing input/output pairs iff:
-          // *) Instruction has frontend attribute which indicates that the
-          //    write region of the input/output aliased buffer updated by
-          //    'instruction' is disjoint from the read region of the shared
-          //    buffer.
-          // *) All uses of the operand are 'instruction'.
-          if (HasDisjointReadWriteRegionsAttr(instruction) &&
-              absl::c_all_of(
-                  instruction->operand(operand_index_in_this_intr)->users(),
-                  [&instruction](const HloInstruction* user) {
-                    return user == instruction ||
-                           HasDisjointReadWriteRegionsAttr(user);
-                  })) {
+          // Skip copies for aliasing input/output pairs when the instruction or
+          // its enclosing while loop is annotated with
+          // xla_disjoint_read_write_regions, as fusion may wrap companion
+          // dynamic-slice readers into fusions without preserving the
+          // attribute on every user.
+          bool has_disjoint_loop = false;
+          if (instruction->parent() != nullptr) {
+            for (const HloInstruction* caller :
+                 instruction->parent()->caller_instructions(
+                     HloOpcode::kWhile)) {
+              if (HasDisjointReadWriteRegionsAttr(caller)) {
+                has_disjoint_loop = true;
+                break;
+              }
+            }
+          }
+          if (has_disjoint_loop ||
+              (HasDisjointReadWriteRegionsAttr(instruction) &&
+               absl::c_all_of(
+                   instruction->operand(operand_index_in_this_intr)->users(),
+                   [&instruction](const HloInstruction* user) {
+                     return user == instruction ||
+                            HasDisjointReadWriteRegionsAttr(user);
+                   }))) {
             continue;
           }
           if ((instruction->opcode() == HloOpcode::kAsyncDone ||
@@ -1322,7 +1619,7 @@ absl::Status CopyInsertion::AddCopiesToResolveInterference(
           }
           copied_operands.insert(operand_index_in_this_intr);
           ABSL_RETURN_IF_ERROR(AddCopiesForInPlaceOperation(
-              *alias_analysis, instruction, operand_index_in_this_intr));
+              instruction, operand_index_in_this_intr));
         }
       }
     }
@@ -1347,7 +1644,19 @@ absl::Status CopyInsertion::AddSpecialCaseCopies(
     HloModule* module, CustomBufferAnalysisFn custom_buffer_analysis) {
   ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
                    HloAliasAnalysis::Run(module, alias_info_));
+  ABSL_ASSIGN_OR_RETURN(
+      HloInstructionMap<ShapeTree<bool>> instructions_to_copy,
+      ComputeSpecialCaseCopies(call_graph, execution_threads, module,
+                               *alias_analysis, custom_buffer_analysis));
+  return InsertSpecialCaseCopies(instructions_to_copy);
+}
 
+absl::StatusOr<HloInstructionMap<ShapeTree<bool>>>
+CopyInsertion::ComputeSpecialCaseCopies(
+    const CallGraph& call_graph,
+    const absl::flat_hash_set<absl::string_view>& execution_threads,
+    HloModule* module, const HloAliasAnalysis& alias_analysis,
+    CustomBufferAnalysisFn custom_buffer_analysis) {
   // Identify which shape indices of which instructions need to be copied. Store
   // these results in 'instructions_to_copy'.
   HloInstructionMap<ShapeTree<bool>> instructions_to_copy;
@@ -1387,8 +1696,8 @@ absl::Status CopyInsertion::AddSpecialCaseCopies(
   // Also, locate all input-output aliasing violations for operations that
   // cannot be done in place. Such aliasing can be created when some copies are
   // removed too aggressively by CopyRemoval.
-  for (const HloValue* value : alias_analysis->dataflow_analysis().values()) {
-    const HloBuffer& buffer = alias_analysis->GetBufferContainingValue(*value);
+  for (const HloValue* value : alias_analysis.dataflow_analysis().values()) {
+    const HloBuffer& buffer = alias_analysis.GetBufferContainingValue(*value);
     if (buffer.values().size() > 1 && ValueIsReadOnly(*value)) {
       VLOG(2) << "Value " << value->ToShortString()
               << " is read only, but its buffer contains more than one value. "
@@ -1415,13 +1724,12 @@ absl::Status CopyInsertion::AddSpecialCaseCopies(
               use.operand_number == 0) {
             continue;
           }
-          if (!alias_analysis->dataflow_analysis()
-                   .CanShareOperandBufferWithUser(
-                       /*operand=*/use.instruction->mutable_operand(
-                           use.operand_number),
-                       /*operand_index=*/use.operand_index,
-                       /*user=*/position.instruction,
-                       /*user_index=*/position.index, alias_info_)) {
+          if (!alias_analysis.dataflow_analysis().CanShareOperandBufferWithUser(
+                  /*operand=*/use.instruction->mutable_operand(
+                      use.operand_number),
+                  /*operand_index=*/use.operand_index,
+                  /*user=*/position.instruction,
+                  /*user_index=*/position.index, alias_info_)) {
             VLOG(2) << "Adding back copy: "
                     << use.instruction->operand(use.operand_number)->ToString()
                     << "@" << use.operand_index.ToString()
@@ -1438,7 +1746,7 @@ absl::Status CopyInsertion::AddSpecialCaseCopies(
 
   if (custom_buffer_analysis) {
     VLOG(2) << "Running custom buffer analysis";
-    custom_buffer_analysis(module, *alias_analysis, add_index_to_copy);
+    custom_buffer_analysis(module, alias_analysis, add_index_to_copy);
   }
 
   // Identify copies which must be added at root instructions
@@ -1458,9 +1766,9 @@ absl::Status CopyInsertion::AddSpecialCaseCopies(
         root->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
           bool copy_replicated =
               policy.copy_root_replicated_buffers ||
-              ShouldCopyConditionalRootAt(node, *alias_analysis, index);
+              ShouldCopyConditionalRootAt(node, alias_analysis, index);
           std::vector<const HloBuffer*> buffers_at_index =
-              alias_analysis->ComputeBuffersAt(root, index);
+              alias_analysis.ComputeBuffersAt(root, index);
           bool buffer_seen_before = false;
           for (const HloBuffer* buffer : buffers_at_index) {
             buffer_seen_before |= !seen.emplace(buffer, index).second;
@@ -1491,7 +1799,7 @@ absl::Status CopyInsertion::AddSpecialCaseCopies(
         });
 
     for (const auto& pair :
-         alias_analysis->dataflow_analysis().GetInstructionValueSet(root)) {
+         alias_analysis.dataflow_analysis().GetInstructionValueSet(root)) {
       const ShapeIndex& index = pair.first;
       const HloValueSet& value_set = pair.second;
       for (const HloValue* value : value_set.values()) {
@@ -1505,8 +1813,11 @@ absl::Status CopyInsertion::AddSpecialCaseCopies(
       }
     }
   }
+  return instructions_to_copy;
+}
 
-  // Add copy instructions indicated in 'instructions_to_copy' to the module.
+absl::Status CopyInsertion::InsertSpecialCaseCopies(
+    const HloInstructionMap<ShapeTree<bool>>& instructions_to_copy) {
   for (const auto& pair : instructions_to_copy) {
     HloInstruction* instruction = pair.first;
     const ShapeTree<bool>& indices_to_copy = pair.second;
@@ -1560,7 +1871,7 @@ absl::Status CopyInsertion::RemoveUnnecessaryCopies(
   ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
                    HloAliasAnalysis::Run(module, alias_info_));
   CopyRemover copy_remover(*module, *alias_analysis, alias_info_,
-                           ordering.get(), execution_threads);
+                           ordering.get(), execution_threads, view_color_);
   if (VLOG_IS_ON(3)) {
     LOG(INFO) << "Removing unnecessary copies in " << module->name();
     LOG(INFO) << "Buffer values, in dependency order: ";

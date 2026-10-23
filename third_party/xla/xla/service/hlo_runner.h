@@ -34,7 +34,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/shape_layout.h"
 #include "xla/xla_data.pb.h"
@@ -54,10 +54,6 @@ class HloRunner : public HloRunnerInterface {
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
   TransferLiteralsToDefaultDevice(absl::Span<const ShapeLayout> layouts,
                                   absl::Span<const Literal* const> literals);
-  // Transfers data between the host and device, using the layout of each
-  // literal itself.
-  absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
-  TransferLiteralsToDefaultDevice(absl::Span<const Literal* const> literals);
   absl::StatusOr<Literal> TransferLiteralsFromDevice(
       absl::Span<const std::unique_ptr<PjRtBuffer>> output_buffers,
       bool untuple_result);

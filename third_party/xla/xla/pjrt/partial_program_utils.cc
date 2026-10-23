@@ -25,7 +25,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/pjrt/proto/pjrt_partial_program.pb.h"
 
 namespace xla {
@@ -52,14 +51,14 @@ ConvertCharBuffersToPjRtPartialProgramProtos(
       return absl::InvalidArgumentError(
           "Failed to deserialize PjRtPartialProgramProto");
     }
-    partial_programs.push_back(partial_program);
+    partial_programs.push_back(std::move(partial_program));
   }
 
   return partial_programs;
 }
 
 absl::StatusOr<const char**> ConvertPjRtPartialProgramProtosToCharBuffers(
-    const std::vector<xla::PjRtPartialProgramProto>& partial_programs,
+    absl::Span<xla::PjRtPartialProgramProto> partial_programs,
     const size_t*& char_buffer_sizes) {
   const size_t num_programs = partial_programs.size();
   const char** char_buffers = new const char*[num_programs]();
@@ -73,7 +72,7 @@ absl::StatusOr<const char**> ConvertPjRtPartialProgramProtosToCharBuffers(
   };
 
   for (size_t i = 0; i < num_programs; ++i) {
-    const xla::PjRtPartialProgramProto& partial_program = partial_programs[i];
+    xla::PjRtPartialProgramProto& partial_program = partial_programs[i];
     size_t buffer_size = partial_program.ByteSizeLong();
     char* buffer = new char[buffer_size];
     char_buffers[i] = buffer;
@@ -83,6 +82,9 @@ absl::StatusOr<const char**> ConvertPjRtPartialProgramProtosToCharBuffers(
       return absl::InvalidArgumentError(
           "Failed to serialize PjRtPartialProgramProto");
     }
+    // Reclaim the proto's memory immediately after serializing it into the C
+    // buffer to avoid holding both representations simultaneously.
+    partial_program = xla::PjRtPartialProgramProto();
   }
   char_buffer_sizes = buffer_sizes;
 

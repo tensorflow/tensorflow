@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/log/check.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/MLIRContext.h"
@@ -29,10 +30,10 @@ limitations under the License.
 #include "nanobind/stl/tuple.h"  // IWYU pragma: keep
 #include "nanobind/stl/unique_ptr.h"  // IWYU pragma: keep
 #include "nanobind/stl/vector.h"  // IWYU pragma: keep
+#include "xla/backends/cpu/codegen/computation_kernel_arguments.h"
 #include "xla/backends/cpu/codegen/computation_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/dot/dot_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/elemental/concatenate_kernel_emitter.h"
-#include "xla/backends/cpu/codegen/elemental/elemental_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/emitters/cpu_scatter_emitter.h"
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
 #include "xla/backends/cpu/codegen/fusion_emitter.h"
@@ -156,13 +157,6 @@ NB_MODULE(_extension, kernel_runner_module) {
                                     "TargetMachineFeatures")
       .def("__str__", &TargetMachineFeatures::get_target_feature_string);
 
-  nb::class_<ElementalKernelEmitter, KernelEmitter<LlvmKernelSource>>(
-      kernel_runner_module, "ElementalKernelEmitter")
-      .def(nb::init<const HloInstruction*, const BufferAssignment*,
-                    const TargetMachineFeatures*>(),
-           nb::keep_alive<1, 2>(), nb::keep_alive<1, 3>(),
-           nb::keep_alive<1, 4>());
-
   nb::class_<DotKernelEmitter, KernelEmitter<LlvmKernelSource>>(
       kernel_runner_module, "DotKernelEmitter")
       .def(nb::init<const HloInstruction*, const BufferAssignment*,
@@ -179,10 +173,23 @@ NB_MODULE(_extension, kernel_runner_module) {
 
   nb::class_<ComputationKernelEmitter, KernelEmitter<LlvmKernelSource>>(
       kernel_runner_module, "ComputationKernelEmitter")
-      .def(nb::init<const HloInstruction*, const BufferAssignment*,
-                    const TargetMachineFeatures*>(),
-           nb::keep_alive<1, 2>(), nb::keep_alive<1, 3>(),
-           nb::keep_alive<1, 4>());
+      .def(
+          "__init__",
+          [](ComputationKernelEmitter* self, const HloInstruction* instruction,
+             const BufferAssignment* buffer_assignment,
+             const TargetMachineFeatures* target_machine) {
+            absl::StatusOr<ComputationKernelArguments> arguments =
+                ComputationKernelArguments::Create(*instruction->to_apply(),
+                                                   *buffer_assignment);
+            if (!arguments.ok()) {
+              throw std::runtime_error(arguments.status().ToString());
+            }
+            new (self)
+                ComputationKernelEmitter(instruction, buffer_assignment,
+                                         target_machine, *std::move(arguments));
+          },
+          nb::keep_alive<1, 2>(), nb::keep_alive<1, 3>(),
+          nb::keep_alive<1, 4>());
 
   nb::class_<CpuScatterFusion, KernelEmitter<MlirKernelSource>>(
       kernel_runner_module, "ScatterKernelEmitter")
@@ -270,16 +277,17 @@ NB_MODULE(_extension, kernel_runner_module) {
 
   kernel_runner_module.def(
       "run_fusion_wrapper_pass",
-      [](std::unique_ptr<HloModule, nb::deleter<HloModule>> hlo_module) {
-        FusionWrapper fusion_wrapper(/*using_new_fusion_emitter=*/true,
-                                     /*use_tiled_emitter=*/true);
+      [](std::unique_ptr<HloModule, nb::deleter<HloModule>> hlo_module,
+         const TargetMachineFeatures* target_machine_features) {
+        FusionWrapper fusion_wrapper(target_machine_features);
         absl::StatusOr<bool> result = fusion_wrapper.Run(hlo_module.get());
         if (!result.ok()) {
           throw std::runtime_error(std::string(result.status().message()));
         }
 
         return hlo_module->Clone();
-      });
+      },
+      nb::arg("hlo_module"), nb::arg("target_machine_features") = nullptr);
 }
 
 }  // namespace xla::cpu

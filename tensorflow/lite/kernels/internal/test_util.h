@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_TEST_UTIL_H_
 
 #include <algorithm>
+#include <cmath>
 #include <functional>
 #include <iterator>
 #include <limits>

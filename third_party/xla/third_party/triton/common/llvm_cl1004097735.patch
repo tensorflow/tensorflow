@@ -1,0 +1,26 @@
+--- a/lib/Conversion/TritonGPUToLLVM/WarpSpecializeUtility.cpp
++++ b/lib/Conversion/TritonGPUToLLVM/WarpSpecializeUtility.cpp
+@@ -369,8 +369,8 @@
+   MLIRContext *ctx = b.getContext();
+   auto licmMD = LLVM::LoopLICMAttr::get(ctx, b.getBoolAttr(true), {});
+   auto loopMD =
+-      LLVM::LoopAnnotationAttr::get(b.getContext(), {}, {}, {}, {}, {}, licmMD,
+-                                    {}, {}, {}, {}, {}, {}, {}, {}, {});
++      LLVM::LoopAnnotationAttr::get(b.getContext(), {}, {}, {}, {}, {}, {},
++                                    licmMD, {}, {}, {}, {}, {}, {}, {}, {}, {});
+   latchBr.setLoopAnnotationAttr(loopMD);
+ }
+ 
+
+--- a/python/src/ir.cc
++++ b/python/src/ir.cc
+@@ -959,7 +959,7 @@
+                                          self.getBuilder().getBoolAttr(true));
+              mlir::LLVM::LoopAnnotationAttr la =
+                  mlir::LLVM::LoopAnnotationAttr::get(
+-                     self.getBuilder().getContext(), {}, {}, {}, {}, {},
++                     self.getBuilder().getContext(), {}, {}, {}, {}, {}, {},
+                      licmAttr, {}, {}, {}, {}, {}, {}, {}, {}, {});
+              return la;
+            })
+

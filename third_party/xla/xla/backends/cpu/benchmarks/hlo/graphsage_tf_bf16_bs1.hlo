@@ -1,0 +1,154 @@
+HloModule cluster_0__XlaCompiledKernel_true__XlaHasReferenceVars_false__XlaNumConstantArgs_2__XlaNumResourceArgs_0_.5, alias_passthrough_params=true, entry_computation_layout={(s32[10]{0}, s32[128,10]{1,0}, s32[1]{0})->f32[1,121]{1,0}}
+
+%meanaggregator_1_Mean-reduction.1 (x.1: f32[], y.1: f32[]) -> f32[] {
+  %x.1 = f32[] parameter(0)
+  %y.1 = f32[] parameter(1)
+  ROOT %add.1 = f32[] add(%x.1, %y.1)
+}
+
+%meanaggregator_1_1_Mean-reduction.2 (x.0: f32[], y.0: f32[]) -> f32[] {
+  %x.0 = f32[] parameter(0)
+  %y.0 = f32[] parameter(1)
+  ROOT %add.0 = f32[] add(%x.0, %y.0)
+}
+
+%meanaggregator_2_Mean-reduction.3 (x.2: f32[], y.2: f32[]) -> f32[] {
+  %x.2 = f32[] parameter(0)
+  %y.2 = f32[] parameter(1)
+  ROOT %add.2 = f32[] add(%x.2, %y.2)
+}
+
+%l2_normalize_Sum-reduction.4 (x.3: f32[], y.3: f32[]) -> f32[] {
+  %x.3 = f32[] parameter(0)
+  %y.3 = f32[] parameter(1)
+  ROOT %add.3 = f32[] add(%x.3, %y.3)
+}
+
+ENTRY %cluster_0__XlaCompiledKernel_true__XlaHasReferenceVars_false__XlaNumConstantArgs_2__XlaNumResourceArgs_0_.5 (arg0.1: s32[10], arg1.1: s32[128,10], arg2.1: s32[1]) -> f32[1,121] {
+  %mul_2.1 = s32[] constant(1), metadata={op_type="BroadcastTo" op_name="mul_2" source_file="dummy_file_name" source_line=10}
+  %shape.22 = s32[1]{0} reshape(%mul_2.1), metadata={op_type="Pack" op_name="Reshape_2/shape" source_file="dummy_file_name" source_line=10}
+  %shape.20 = s32[] constant(10), metadata={op_type="Pack" op_name="Reshape_2/shape" source_file="dummy_file_name" source_line=10}
+  %shape.23 = s32[1]{0} reshape(%shape.20), metadata={op_type="Pack" op_name="Reshape_2/shape" source_file="dummy_file_name" source_line=10}
+  %shape.21 = s32[] constant(50), metadata={op_type="Pack" op_name="Reshape_2/shape" source_file="dummy_file_name" source_line=10}
+  %shape.24 = s32[1]{0} reshape(%shape.21), metadata={op_type="Pack" op_name="Reshape_2/shape" source_file="dummy_file_name" source_line=10}
+  %shape.25 = s32[3]{0} concatenate(%shape.22, %shape.23, %shape.24), dimensions={0}, metadata={op_type="Pack" op_name="Reshape_2/shape" source_file="dummy_file_name" source_line=10}
+  %shape.28 = s32[1]{0} reshape(%mul_2.1), metadata={op_type="Pack" op_name="Reshape_4/shape" source_file="dummy_file_name" source_line=10}
+  %shape.26 = s32[] constant(10), metadata={op_type="Pack" op_name="Reshape_4/shape" source_file="dummy_file_name" source_line=10}
+  %shape.29 = s32[1]{0} reshape(%shape.26), metadata={op_type="Pack" op_name="Reshape_4/shape" source_file="dummy_file_name" source_line=10}
+  %shape.27 = s32[] constant(256), metadata={op_type="Pack" op_name="Reshape_4/shape" source_file="dummy_file_name" source_line=10}
+  %shape.30 = s32[1]{0} reshape(%shape.27), metadata={op_type="Pack" op_name="Reshape_4/shape" source_file="dummy_file_name" source_line=10}
+  %shape.31 = s32[3]{0} concatenate(%shape.28, %shape.29, %shape.30), dimensions={0}, metadata={op_type="Pack" op_name="Reshape_4/shape" source_file="dummy_file_name" source_line=10}
+  %shape.32 = s32[] constant(10), metadata={op_type="Pack" op_name="Reshape_3/shape" source_file="dummy_file_name" source_line=10}
+  %shape.35 = s32[1]{0} reshape(%shape.32), metadata={op_type="Pack" op_name="Reshape_3/shape" source_file="dummy_file_name" source_line=10}
+  %shape.33 = s32[] constant(25), metadata={op_type="Pack" op_name="Reshape_3/shape" source_file="dummy_file_name" source_line=10}
+  %shape.36 = s32[1]{0} reshape(%shape.33), metadata={op_type="Pack" op_name="Reshape_3/shape" source_file="dummy_file_name" source_line=10}
+  %shape.34 = s32[] constant(50), metadata={op_type="Pack" op_name="Reshape_3/shape" source_file="dummy_file_name" source_line=10}
+  %shape.37 = s32[1]{0} reshape(%shape.34), metadata={op_type="Pack" op_name="Reshape_3/shape" source_file="dummy_file_name" source_line=10}
+  %shape.38 = s32[3]{0} concatenate(%shape.35, %shape.36, %shape.37), dimensions={0}, metadata={op_type="Pack" op_name="Reshape_3/shape" source_file="dummy_file_name" source_line=10}
+  %mul_1.3 = s32[] constant(1), metadata={op_type="Mul" op_name="mul_1" source_file="dummy_file_name" source_line=10}
+  %mul_1.4 = s32[] constant(250), metadata={op_type="Mul" op_name="mul_1" source_file="dummy_file_name" source_line=10}
+  %mul_1.5 = s32[] multiply(%mul_1.3, %mul_1.4), metadata={op_type="Mul" op_name="mul_1" source_file="dummy_file_name" source_line=10}
+  %shape.39 = s32[1]{0} reshape(%mul_1.5), metadata={op_type="ExpandDims" op_name="Reshape_1/shape" source_file="dummy_file_name" source_line=10}
+  %begin.2 = s32[] constant(0), metadata={op_type="Const" op_name="uniformneighborsampler_1/Slice/begin" source_file="dummy_file_name" source_line=10}
+  %begin.3 = s32[2]{0} broadcast(%begin.2), dimensions={}, metadata={op_type="Const" op_name="uniformneighborsampler_1/Slice/begin" source_file="dummy_file_name" source_line=10}
+  %embedding_lookup.2 = bf16[56945,50]{1,0} constant({...}), metadata={op_type="GatherV2" op_name="embedding_lookup" source_file="dummy_file_name" source_line=10}
+  %arg2.1 = s32[1]{0} parameter(2), parameter_replication={false}, metadata={op_name="XLA_Args"}
+  %reshape.5 = s32[1]{0} reshape(%arg2.1)
+  %embedding_lookup.3 = bf16[1,50]{1,0} gather(%embedding_lookup.2, %reshape.5), offset_dims={1}, collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=1, slice_sizes={1,50}, metadata={op_type="GatherV2" op_name="embedding_lookup" source_file="dummy_file_name" source_line=10}
+  %MatMul_1.9 = bf16[50,128]{1,0} constant({...}), metadata={op_type="BatchMatMulV2" op_name="meanaggregator_1/MatMul_1" source_file="dummy_file_name" source_line=10}
+  %MatMul_1.10 = bf16[1,128]{1,0} dot(%embedding_lookup.3, %MatMul_1.9), lhs_contracting_dims={1}, rhs_contracting_dims={0}, frontend_attributes={grad_x="false",grad_y="false"}, metadata={op_type="BatchMatMulV2" op_name="meanaggregator_1/MatMul_1" source_file="dummy_file_name" source_line=10}
+  %MatMul_1.11 = bf16[1,128]{1,0} transpose(%MatMul_1.10), dimensions={0,1}, metadata={op_type="BatchMatMulV2" op_name="meanaggregator_1/MatMul_1" source_file="dummy_file_name" source_line=10}
+  %embedding_lookup_1.2 = bf16[56945,50]{1,0} constant({...}), metadata={op_type="GatherV2" op_name="embedding_lookup_1" source_file="dummy_file_name" source_line=10}
+  %arg0.1 = s32[10]{0} parameter(0), parameter_replication={false}, metadata={op_name="XLA_Args"}
+  %reshape.3 = s32[10]{0} reshape(%arg0.1)
+  %embedding_lookup_1.3 = bf16[10,50]{1,0} gather(%embedding_lookup_1.2, %reshape.3), offset_dims={1}, collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=1, slice_sizes={1,50}, metadata={op_type="GatherV2" op_name="embedding_lookup_1" source_file="dummy_file_name" source_line=10}
+  %Reshape_2.1 = bf16[1,10,50]{2,1,0} reshape(%embedding_lookup_1.3), metadata={op_type="Reshape" op_name="Reshape_2" source_file="dummy_file_name" source_line=10}
+  %Reshape_2-0-CastToFp32-0-AutoMixedPrecision.1 = f32[1,10,50]{2,1,0} convert(%Reshape_2.1), metadata={op_type="Cast" op_name="Reshape_2-0-CastToFp32-0-AutoMixedPrecision" source_file="dummy_file_name" source_line=10}
+  %Mean.27 = f32[1,10,50]{2,1,0} convert(%Reshape_2-0-CastToFp32-0-AutoMixedPrecision.1), metadata={op_type="Mean" op_name="meanaggregator_1/Mean" source_file="dummy_file_name" source_line=10}
+  %Mean.28 = f32[] constant(0), metadata={op_type="Mean" op_name="meanaggregator_1/Mean" source_file="dummy_file_name" source_line=10}
+  %Mean.29 = f32[] convert(%Mean.28), metadata={op_type="Mean" op_name="meanaggregator_1/Mean" source_file="dummy_file_name" source_line=10}
+  %Mean.30 = f32[1,50]{1,0} reduce(%Mean.27, %Mean.29), dimensions={1}, to_apply=%meanaggregator_1_Mean-reduction.1, metadata={op_type="Mean" op_name="meanaggregator_1/Mean" source_file="dummy_file_name" source_line=10}
+  %Mean.31 = s32[] constant(10), metadata={op_type="Mean" op_name="meanaggregator_1/Mean" source_file="dummy_file_name" source_line=10}
+  %Mean.32 = f32[] convert(%Mean.31), metadata={op_type="Mean" op_name="meanaggregator_1/Mean" source_file="dummy_file_name" source_line=10}
+  %Mean.33 = f32[1,50]{1,0} broadcast(%Mean.32), dimensions={}, metadata={op_type="Mean" op_name="meanaggregator_1/Mean" source_file="dummy_file_name" source_line=10}
+  %Mean.34 = f32[1,50]{1,0} divide(%Mean.30, %Mean.33), metadata={op_type="Mean" op_name="meanaggregator_1/Mean" source_file="dummy_file_name" source_line=10}
+  %Mean.35 = f32[1,50]{1,0} convert(%Mean.34), metadata={op_type="Mean" op_name="meanaggregator_1/Mean" source_file="dummy_file_name" source_line=10}
+  %Mean-0-CastToBf16-0-AutoMixedPrecision.2 = bf16[1,50]{1,0} convert(%Mean.35), metadata={op_type="Cast" op_name="meanaggregator_1/Mean-0-CastToBf16-0-AutoMixedPrecision" source_file="dummy_file_name" source_line=10}
+  %MatMul.12 = bf16[50,128]{1,0} constant({...}), metadata={op_type="MatMul" op_name="meanaggregator_1/MatMul" source_file="dummy_file_name" source_line=10}
+  %MatMul.13 = bf16[1,128]{1,0} dot(%Mean-0-CastToBf16-0-AutoMixedPrecision.2, %MatMul.12), lhs_contracting_dims={1}, rhs_contracting_dims={0}, frontend_attributes={grad_x="false",grad_y="false"}, metadata={op_type="MatMul" op_name="meanaggregator_1/MatMul" source_file="dummy_file_name" source_line=10}
+  %MatMul.14 = bf16[1,128]{1,0} transpose(%MatMul.13), dimensions={0,1}, metadata={op_type="MatMul" op_name="meanaggregator_1/MatMul" source_file="dummy_file_name" source_line=10}
+  %concat.3 = bf16[1,256]{1,0} concatenate(%MatMul_1.11, %MatMul.14), dimensions={1}, metadata={op_type="ConcatV2" op_name="meanaggregator_1/concat" source_file="dummy_file_name" source_line=10}
+  %Relu.6 = bf16[] constant(0), metadata={op_type="Relu" op_name="meanaggregator_1/Relu" source_file="dummy_file_name" source_line=10}
+  %Relu.7 = bf16[1,256]{1,0} broadcast(%Relu.6), dimensions={}, metadata={op_type="Relu" op_name="meanaggregator_1/Relu"}
+  %Relu.8 = bf16[1,256]{1,0} maximum(%concat.3, %Relu.7), metadata={op_type="Relu" op_name="meanaggregator_1/Relu"}
+  %MatMul_1.12 = bf16[256,128]{1,0} constant({...}), metadata={op_type="MatMul" op_name="meanaggregator_2/MatMul_1" source_file="dummy_file_name" source_line=10}
+  %MatMul_1.13 = bf16[1,128]{1,0} dot(%Relu.8, %MatMul_1.12), lhs_contracting_dims={1}, rhs_contracting_dims={0}, frontend_attributes={grad_x="false",grad_y="false"}, metadata={op_type="MatMul" op_name="meanaggregator_2/MatMul_1" source_file="dummy_file_name" source_line=10}
+  %MatMul_1.14 = bf16[1,128]{1,0} transpose(%MatMul_1.13), dimensions={0,1}, metadata={op_type="MatMul" op_name="meanaggregator_2/MatMul_1" source_file="dummy_file_name" source_line=10}
+  %MatMul_1.15 = bf16[50,128]{1,0} constant({...}), metadata={op_type="MatMul" op_name="meanaggregator_1_1/MatMul_1" source_file="dummy_file_name" source_line=10}
+  %MatMul_1.16 = bf16[10,128]{1,0} dot(%embedding_lookup_1.3, %MatMul_1.15), lhs_contracting_dims={1}, rhs_contracting_dims={0}, frontend_attributes={grad_x="false",grad_y="false"}, metadata={op_type="MatMul" op_name="meanaggregator_1_1/MatMul_1" source_file="dummy_file_name" source_line=10}
+  %MatMul_1.17 = bf16[10,128]{1,0} transpose(%MatMul_1.16), dimensions={0,1}, metadata={op_type="MatMul" op_name="meanaggregator_1_1/MatMul_1" source_file="dummy_file_name" source_line=10}
+  %embedding_lookup_2.2 = f32[56945,50]{1,0} constant({...}), metadata={op_type="GatherV2" op_name="embedding_lookup_2" source_file="dummy_file_name" source_line=10}
+  %arg1.1 = s32[128,10]{1,0} parameter(1), parameter_replication={false}, metadata={op_name="XLA_Args"}
+  %reshape.4 = s32[128,10]{1,0} reshape(%arg1.1)
+  %transpose_1.1 = s32[10,128]{0,1} transpose(%reshape.4), dimensions={1,0}, metadata={op_type="Transpose" op_name="uniformneighborsampler_1_1/transpose_1" source_file="dummy_file_name" source_line=10}
+  %Slice.1 = s32[10,25]{1,0} slice(%transpose_1.1), slice={[0:10], [0:25]}, metadata={op_type="Slice" op_name="uniformneighborsampler_1_1/Slice" source_file="dummy_file_name" source_line=10}
+  %Reshape_1.1 = s32[250]{0} reshape(%Slice.1), metadata={op_type="Reshape" op_name="Reshape_1" source_file="dummy_file_name" source_line=10}
+  %embedding_lookup_2.3 = f32[250,50]{1,0} gather(%embedding_lookup_2.2, %Reshape_1.1), offset_dims={1}, collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=1, slice_sizes={1,50}, metadata={op_type="GatherV2" op_name="embedding_lookup_2" source_file="dummy_file_name" source_line=10}
+  %Reshape_3.1 = f32[10,25,50]{2,1,0} reshape(%embedding_lookup_2.3), metadata={op_type="Reshape" op_name="Reshape_3" source_file="dummy_file_name" source_line=10}
+  %Mean.36 = f32[10,25,50]{2,1,0} convert(%Reshape_3.1), metadata={op_type="Mean" op_name="meanaggregator_1_1/Mean" source_file="dummy_file_name" source_line=10}
+  %Mean.37 = f32[] constant(0), metadata={op_type="Mean" op_name="meanaggregator_1_1/Mean" source_file="dummy_file_name" source_line=10}
+  %Mean.38 = f32[] convert(%Mean.37), metadata={op_type="Mean" op_name="meanaggregator_1_1/Mean" source_file="dummy_file_name" source_line=10}
+  %Mean.39 = f32[10,50]{1,0} reduce(%Mean.36, %Mean.38), dimensions={1}, to_apply=%meanaggregator_1_1_Mean-reduction.2, metadata={op_type="Mean" op_name="meanaggregator_1_1/Mean" source_file="dummy_file_name" source_line=10}
+  %Mean.40 = s32[] constant(25), metadata={op_type="Mean" op_name="meanaggregator_1_1/Mean" source_file="dummy_file_name" source_line=10}
+  %Mean.41 = f32[] convert(%Mean.40), metadata={op_type="Mean" op_name="meanaggregator_1_1/Mean" source_file="dummy_file_name" source_line=10}
+  %Mean.42 = f32[10,50]{1,0} broadcast(%Mean.41), dimensions={}, metadata={op_type="Mean" op_name="meanaggregator_1_1/Mean" source_file="dummy_file_name" source_line=10}
+  %Mean.43 = f32[10,50]{1,0} divide(%Mean.39, %Mean.42), metadata={op_type="Mean" op_name="meanaggregator_1_1/Mean" source_file="dummy_file_name" source_line=10}
+  %Mean.44 = f32[10,50]{1,0} convert(%Mean.43), metadata={op_type="Mean" op_name="meanaggregator_1_1/Mean" source_file="dummy_file_name" source_line=10}
+  %Mean-0-CastToBf16-0-AutoMixedPrecision.3 = bf16[10,50]{1,0} convert(%Mean.44), metadata={op_type="Cast" op_name="meanaggregator_1_1/Mean-0-CastToBf16-0-AutoMixedPrecision" source_file="dummy_file_name" source_line=10}
+  %MatMul.15 = bf16[50,128]{1,0} constant({...}), metadata={op_type="MatMul" op_name="meanaggregator_1_1/MatMul" source_file="dummy_file_name" source_line=10}
+  %MatMul.16 = bf16[10,128]{1,0} dot(%Mean-0-CastToBf16-0-AutoMixedPrecision.3, %MatMul.15), lhs_contracting_dims={1}, rhs_contracting_dims={0}, frontend_attributes={grad_x="false",grad_y="false"}, metadata={op_type="MatMul" op_name="meanaggregator_1_1/MatMul" source_file="dummy_file_name" source_line=10}
+  %MatMul.17 = bf16[10,128]{1,0} transpose(%MatMul.16), dimensions={0,1}, metadata={op_type="MatMul" op_name="meanaggregator_1_1/MatMul" source_file="dummy_file_name" source_line=10}
+  %concat.4 = bf16[10,256]{1,0} concatenate(%MatMul_1.17, %MatMul.17), dimensions={1}, metadata={op_type="ConcatV2" op_name="meanaggregator_1_1/concat" source_file="dummy_file_name" source_line=10}
+  %Relu.9 = bf16[] constant(0), metadata={op_type="Relu" op_name="meanaggregator_1_1/Relu" source_file="dummy_file_name" source_line=10}
+  %Relu.10 = bf16[10,256]{1,0} broadcast(%Relu.9), dimensions={}, metadata={op_type="Relu" op_name="meanaggregator_1_1/Relu"}
+  %Relu.11 = bf16[10,256]{1,0} maximum(%concat.4, %Relu.10), metadata={op_type="Relu" op_name="meanaggregator_1_1/Relu"}
+  %Reshape_4.1 = bf16[1,10,256]{2,1,0} reshape(%Relu.11), metadata={op_type="Reshape" op_name="Reshape_4" source_file="dummy_file_name" source_line=10}
+  %Mean.45 = f32[1,10,256]{2,1,0} convert(%Reshape_4.1), metadata={op_type="Mean" op_name="meanaggregator_2/Mean" source_file="dummy_file_name" source_line=10}
+  %Mean.46 = f32[] constant(0), metadata={op_type="Mean" op_name="meanaggregator_2/Mean" source_file="dummy_file_name" source_line=10}
+  %Mean.47 = f32[] convert(%Mean.46), metadata={op_type="Mean" op_name="meanaggregator_2/Mean" source_file="dummy_file_name" source_line=10}
+  %Mean.48 = f32[1,256]{1,0} reduce(%Mean.45, %Mean.47), dimensions={1}, to_apply=%meanaggregator_2_Mean-reduction.3, metadata={op_type="Mean" op_name="meanaggregator_2/Mean" source_file="dummy_file_name" source_line=10}
+  %Mean.49 = s32[] constant(10), metadata={op_type="Mean" op_name="meanaggregator_2/Mean" source_file="dummy_file_name" source_line=10}
+  %Mean.50 = f32[] convert(%Mean.49), metadata={op_type="Mean" op_name="meanaggregator_2/Mean" source_file="dummy_file_name" source_line=10}
+  %Mean.51 = f32[1,256]{1,0} broadcast(%Mean.50), dimensions={}, metadata={op_type="Mean" op_name="meanaggregator_2/Mean" source_file="dummy_file_name" source_line=10}
+  %Mean.52 = f32[1,256]{1,0} divide(%Mean.48, %Mean.51), metadata={op_type="Mean" op_name="meanaggregator_2/Mean" source_file="dummy_file_name" source_line=10}
+  %Mean.53 = bf16[1,256]{1,0} convert(%Mean.52), metadata={op_type="Mean" op_name="meanaggregator_2/Mean" source_file="dummy_file_name" source_line=10}
+  %MatMul.18 = bf16[256,128]{1,0} constant({...}), metadata={op_type="MatMul" op_name="meanaggregator_2/MatMul" source_file="dummy_file_name" source_line=10}
+  %MatMul.19 = bf16[1,128]{1,0} dot(%Mean.53, %MatMul.18), lhs_contracting_dims={1}, rhs_contracting_dims={0}, frontend_attributes={grad_x="false",grad_y="false"}, metadata={op_type="MatMul" op_name="meanaggregator_2/MatMul" source_file="dummy_file_name" source_line=10}
+  %MatMul.20 = bf16[1,128]{1,0} transpose(%MatMul.19), dimensions={0,1}, metadata={op_type="MatMul" op_name="meanaggregator_2/MatMul" source_file="dummy_file_name" source_line=10}
+  %concat.5 = bf16[1,256]{1,0} concatenate(%MatMul_1.14, %MatMul.20), dimensions={1}, metadata={op_type="ConcatV2" op_name="meanaggregator_2/concat" source_file="dummy_file_name" source_line=10}
+  %Square.1 = bf16[1,256]{1,0} multiply(%concat.5, %concat.5), metadata={op_type="Square" op_name="l2_normalize/Square" source_file="dummy_file_name" source_line=10}
+  %Sum.6 = f32[1,256]{1,0} convert(%Square.1), metadata={op_type="Sum" op_name="l2_normalize/Sum" source_file="dummy_file_name" source_line=10}
+  %Sum.7 = f32[] constant(0), metadata={op_type="Sum" op_name="l2_normalize/Sum" source_file="dummy_file_name" source_line=10}
+  %Sum.8 = f32[] convert(%Sum.7), metadata={op_type="Sum" op_name="l2_normalize/Sum" source_file="dummy_file_name" source_line=10}
+  %Sum.9 = f32[1]{0} reduce(%Sum.6, %Sum.8), dimensions={1}, to_apply=%l2_normalize_Sum-reduction.4, metadata={op_type="Sum" op_name="l2_normalize/Sum" source_file="dummy_file_name" source_line=10}
+  %Sum.10 = bf16[1]{0} convert(%Sum.9), metadata={op_type="Sum" op_name="l2_normalize/Sum" source_file="dummy_file_name" source_line=10}
+  %Sum.11 = bf16[1,1]{1,0} reshape(%Sum.10), metadata={op_type="Sum" op_name="l2_normalize/Sum" source_file="dummy_file_name" source_line=10}
+  %Maximum.3 = bf16[] constant(1.002e-12), metadata={op_type="Maximum" op_name="l2_normalize/Maximum" source_file="dummy_file_name" source_line=10}
+  %Maximum.4 = bf16[1,1]{1,0} broadcast(%Maximum.3), dimensions={}, metadata={op_type="Maximum" op_name="l2_normalize/Maximum" source_file="dummy_file_name" source_line=10}
+  %Maximum.5 = bf16[1,1]{1,0} maximum(%Sum.11, %Maximum.4), metadata={op_type="Maximum" op_name="l2_normalize/Maximum" source_file="dummy_file_name" source_line=10}
+  %Rsqrt.1 = bf16[1,1]{1,0} rsqrt(%Maximum.5), metadata={op_type="Rsqrt" op_name="l2_normalize/Rsqrt"}
+  %l2_normalize.3 = bf16[1]{0} reshape(%Rsqrt.1), metadata={op_type="Mul" op_name="l2_normalize" source_file="dummy_file_name" source_line=10}
+  %l2_normalize.4 = bf16[1,256]{1,0} broadcast(%l2_normalize.3), dimensions={0}, metadata={op_type="Mul" op_name="l2_normalize" source_file="dummy_file_name" source_line=10}
+  %l2_normalize.5 = bf16[1,256]{1,0} multiply(%l2_normalize.4, %concat.5), metadata={op_type="Mul" op_name="l2_normalize" source_file="dummy_file_name" source_line=10}
+  %MatMul.21 = bf16[256,121]{1,0} constant({...}), metadata={op_type="MatMul" op_name="dense_1/MatMul" source_file="dummy_file_name" source_line=10}
+  %MatMul.22 = bf16[1,121]{1,0} dot(%l2_normalize.5, %MatMul.21), lhs_contracting_dims={1}, rhs_contracting_dims={0}, frontend_attributes={grad_x="false",grad_y="false"}, metadata={op_type="MatMul" op_name="dense_1/MatMul" source_file="dummy_file_name" source_line=10}
+  %MatMul.23 = bf16[1,121]{1,0} transpose(%MatMul.22), dimensions={0,1}, metadata={op_type="MatMul" op_name="dense_1/MatMul" source_file="dummy_file_name" source_line=10}
+  %add.7 = bf16[121]{0} constant({...}), metadata={op_type="AddV2" op_name="dense_1/add" source_file="dummy_file_name" source_line=10}
+  %add.8 = bf16[1,121]{1,0} broadcast(%add.7), dimensions={1}, metadata={op_type="AddV2" op_name="dense_1/add" source_file="dummy_file_name" source_line=10}
+  %add.9 = bf16[1,121]{1,0} add(%MatMul.23, %add.8), metadata={op_type="AddV2" op_name="dense_1/add" source_file="dummy_file_name" source_line=10}
+  %add-0-CastToFp32-0-AutoMixedPrecision.1 = f32[1,121]{1,0} convert(%add.9), metadata={op_type="Cast" op_name="dense_1/add-0-CastToFp32-0-AutoMixedPrecision" source_file="dummy_file_name" source_line=10}
+  %Sigmoid.1 = f32[1,121]{1,0} logistic(%add-0-CastToFp32-0-AutoMixedPrecision.1), metadata={op_type="Sigmoid" op_name="Sigmoid"}
+  %XLA_Retvals.3 = f32[1,121]{1,0} reshape(%Sigmoid.1), metadata={op_name="XLA_Retvals"}
+  %XLA_Retvals.4 = (f32[1,121]{1,0}) tuple(%XLA_Retvals.3), metadata={op_name="XLA_Retvals"}
+  ROOT %XLA_Retvals.5 = f32[1,121]{1,0} get-tuple-element(%XLA_Retvals.4), index=0, metadata={op_name="XLA_Retvals"}
+}

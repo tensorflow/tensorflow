@@ -47,9 +47,13 @@ class PjRtCApiPhaseCompiler : public PjRtPhaseCompiler {
   // This function first performs plugin-agnostic validation on the inputs and
   // phase names. Next, it triggers plugin-specific phase validators for input
   // compatibility before invoking the appropriate phase compilers.
+  //
+  // In order to save memory, this function clears 'partial_programs_in' after
+  // it is no longer needed. Users should pass a copy if they need to preserve
+  // the original.
   absl::StatusOr<std::vector<xla::PjRtPartialProgramProto>> RunPhases(
       xla::CompileOptions options,
-      const std::vector<xla::PjRtPartialProgramProto>& partial_programs_in,
+      std::vector<xla::PjRtPartialProgramProto>&& partial_programs_in,
       const xla::PjRtTopologyDescription& topology,
       const std::vector<std::string>& phases_to_run) override;
 

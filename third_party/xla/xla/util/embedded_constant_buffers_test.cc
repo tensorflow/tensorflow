@@ -67,5 +67,35 @@ TEST_F(EmbeddedConstantBuffersTest, CreateEmbeddedConstantBuffers) {
   EXPECT_FALSE(embedded_constant_buffers.object_file_data.empty());
 }
 
+TEST_F(EmbeddedConstantBuffersTest, SerializeEmptyBuffer) {
+  ConstantToEmbed constant;
+  constant.symbol_prefix = "empty";
+  constant.SerializeIntoBuffer({});
+  EXPECT_GT(constant.data().size(), 0);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      EmbeddedConstantBuffers embedded_constant_buffers,
+      CreateEmbeddedConstantBuffers(kTargetTripleForHost,
+                                    absl::MakeSpan(&constant, 1)));
+  EXPECT_FALSE(embedded_constant_buffers.object_file_data.empty());
+}
+
+TEST_F(EmbeddedConstantBuffersTest, DoesNotPadBufferToPowerOfTwo) {
+  ConstantToEmbed constant;
+  constant.symbol_prefix = "non_power_of_two";
+  constant.SerializeIntoBuffer(std::vector<uint8_t>(2000, 0xab));
+  // With the 64-byte size header, the serialized buffer is 2064 bytes. Verify
+  // that the constant is emitted as an exact-sized array rather than an LLVM
+  // fixed vector rounded up to the next power of two (4096 bytes).
+  ASSERT_EQ(constant.data().size(), 2064);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      EmbeddedConstantBuffers embedded_constant_buffers,
+      CreateEmbeddedConstantBuffers(kTargetTripleForHost,
+                                    absl::MakeSpan(&constant, 1)));
+  EXPECT_GT(embedded_constant_buffers.object_file_data.size(), 2064);
+  EXPECT_LT(embedded_constant_buffers.object_file_data.size(), 4096);
+}
+
 }  // namespace
 }  // namespace xla

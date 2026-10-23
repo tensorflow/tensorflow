@@ -113,6 +113,43 @@ TEST_P(YnnFusionTest, Pad) {
   RunTest(kModuleStr);
 }
 
+TEST_P(YnnFusionTest, Copy) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule copy
+
+    ynn_fusion {
+      %input = $dtype[8, 10] parameter(0)
+      ROOT %copy = $dtype[8, 10] copy(%input)
+    }
+
+    ENTRY entry {
+      %p0 = $dtype[8, 10] parameter(0)
+      ROOT %fusion = $dtype[8, 10] fusion(%p0), kind=kCustom, calls=ynn_fusion,
+        backend_config={"fusion_config": {kind: "__ynn_fusion"}}
+    })";
+
+  RunTest(kModuleStr);
+}
+
+TEST_P(YnnFusionTest, CopyDegenerateLayout) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule copy_degenerate_layout
+
+    ynn_fusion {
+      %input = $dtype[8, 10, 1]{1,0,2} parameter(0)
+      ROOT %copy = $dtype[8, 10, 1]{2,1,0} copy(%input)
+    }
+
+    ENTRY entry {
+      %p0 = $dtype[8, 10, 1]{1,0,2} parameter(0)
+      ROOT %fusion = $dtype[8, 10, 1]{2,1,0} fusion(%p0), kind=kCustom,
+        calls=ynn_fusion,
+        backend_config={"fusion_config": {kind: "__ynn_fusion"}}
+    })";
+
+  RunTest(kModuleStr);
+}
+
 TEST_P(YnnFusionTest, Transpose) {
   constexpr absl::string_view kModuleStr = R"(
     HloModule transpose
@@ -331,16 +368,42 @@ TEST_P(YnnFusionTest, DotWithConstant) {
     HloModule dot_with_constant
 
     ynn_fusion {
-      %lhs = f32[10, 10] parameter(0)
-      %rhs = f32[10, 10] parameter(1), frontend_attributes={is_constant="true"}
-      ROOT %dot = f32[10, 10] dot(%lhs, %rhs), lhs_contracting_dims={1},
+      %lhs = $dtype[10, 10] parameter(0)
+      %rhs = $dtype[10, 10] parameter(1),
+             frontend_attributes={is_constant="true"}
+      ROOT %dot = $dtype[10, 10] dot(%lhs, %rhs), lhs_contracting_dims={1},
         rhs_contracting_dims={0}
     }
 
     ENTRY entry {
-      %p0 = f32[10, 10] parameter(0)
-      %p1 = f32[10, 10] parameter(1)
-      ROOT %fusion = f32[10, 10] fusion(%p0, %p1), kind=kCustom,
+      %p0 = $dtype[10, 10] parameter(0)
+      %p1 = $dtype[10, 10] parameter(1)
+      ROOT %fusion = $dtype[10, 10] fusion(%p0, %p1), kind=kCustom,
+        calls=ynn_fusion,
+        backend_config={"fusion_config": {kind: "__ynn_fusion"}}
+    })";
+
+  RunTest(kModuleStr);
+}
+
+TEST_P(YnnFusionTest, DotWithTransposedLhs) {
+  // The LHS contracting dimension is the major one (lhs_contracting_dims={0}),
+  // i.e. the LHS is stored transposed. Use distinct M, K, N so that a wrong
+  // transpose can't produce the right result.
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule dot_with_transposed_lhs
+
+    ynn_fusion {
+      %lhs = $dtype[16, 8] parameter(0)
+      %rhs = $dtype[16, 12] parameter(1)
+      ROOT %dot = $dtype[8, 12] dot(%lhs, %rhs), lhs_contracting_dims={0},
+        rhs_contracting_dims={0}
+    }
+
+    ENTRY entry {
+      %p0 = $dtype[16, 8] parameter(0)
+      %p1 = $dtype[16, 12] parameter(1)
+      ROOT %fusion = $dtype[8, 12] fusion(%p0, %p1), kind=kCustom,
         calls=ynn_fusion,
         backend_config={"fusion_config": {kind: "__ynn_fusion"}}
     })";
@@ -712,6 +775,7 @@ static YnnUnaryOpTestParams unary_op_test_params[] = {
 
     {HloOpcode::kAbs, F32, F32},
     {HloOpcode::kCeil, F32, F32},
+    {HloOpcode::kCos, F32, F32, ErrorSpec{/*aabs=*/0, /*arel=*/3e-7}},
     {HloOpcode::kErf, F32, F32, ErrorSpec{/*aabs=*/2e-7, /*arel=*/3e-7}},
     {HloOpcode::kExp, F32, F32, ErrorSpec{/*aabs=*/2e-38, /*arel=*/4e-6}},
     {HloOpcode::kExpm1, F32, F32, ErrorSpec{/*aabs=*/2e-38, /*arel=*/4e-6}},
@@ -730,11 +794,14 @@ static YnnUnaryOpTestParams unary_op_test_params[] = {
     {HloOpcode::kRoundNearestEven, F32, F32},
     {HloOpcode::kRsqrt, F32, F32, F32_ErrorSpec},
     {HloOpcode::kSign, F32, F32},
+    {HloOpcode::kSin, F32, F32, ErrorSpec{/*aabs=*/0, /*arel=*/3e-7}},
     {HloOpcode::kSqrt, F32, F32, F32_ErrorSpec},
+    {HloOpcode::kTan, F32, F32, ErrorSpec{/*aabs=*/0, /*arel=*/3e-7}},
     {HloOpcode::kTanh, F32, F32, ErrorSpec{/*aabs=*/2e-7, /*arel=*/4e-7}},
 
     {HloOpcode::kAbs, F64, F64},
     {HloOpcode::kCeil, F64, F64},
+    {HloOpcode::kCos, F64, F64, F64_ErrorSpec},
     {HloOpcode::kErf, F64, F64, F64_ErrorSpec},
     {HloOpcode::kExp, F64, F64, ErrorSpec(/*aabs=*/2e-308, /*arel=*/4e-14)},
     {HloOpcode::kExpm1, F64, F64, F64_ErrorSpec},
@@ -746,7 +813,9 @@ static YnnUnaryOpTestParams unary_op_test_params[] = {
     {HloOpcode::kRoundNearestEven, F64, F64},
     {HloOpcode::kRsqrt, F64, F64, F64_ErrorSpec},
     {HloOpcode::kSign, F64, F64},
+    {HloOpcode::kSin, F64, F64, F64_ErrorSpec},
     {HloOpcode::kSqrt, F64, F64, F64_ErrorSpec},
+    {HloOpcode::kTan, F64, F64, F64_ErrorSpec},
     {HloOpcode::kTanh, F64, F64, F64_ErrorSpec},
 };
 

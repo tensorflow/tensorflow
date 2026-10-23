@@ -42,7 +42,7 @@ class TopkAccuracyEvalStage : public EvaluationStage {
 
   EvaluationStageMetrics LatestMetrics() override;
 
-  ~TopkAccuracyEvalStage() override {}
+  ~TopkAccuracyEvalStage() override = default;
 
   // Call before Init().
   // model_output_shape is not owned, so this class does not free the

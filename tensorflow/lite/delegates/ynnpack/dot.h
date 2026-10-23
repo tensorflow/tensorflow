@@ -19,26 +19,27 @@ limitations under the License.
 #include "ynnpack/include/ynnpack.h"  // from @XNNPACK
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/ynnpack/utils.h"
+#include "tensorflow/lite/delegates/ynnpack/ynnpack_delegate.h"
 
 namespace tflite {
 namespace ynnpack {
 
 bool IsRuntimeBmm(const TfLiteRegistration* registration,
                   const TfLiteNode* node);
-bool IsRuntimeBmm(TfLiteContext* context, int node_index);
 
 TfLiteStatus IsBatchMatMulSupported(const TfLiteRegistration* registration,
                                     const TfLiteNode* node,
                                     TfLiteContext* context,
+                                    const TfLiteYNNPackDelegateOptions& options,
                                     bool is_runtime_bmm = false);
 
 TfLiteStatus IsRuntimeBatchedMatMulSupported(
     const TfLiteRegistration* registration, const TfLiteNode* node,
-    TfLiteContext* context);
+    TfLiteContext* context, const TfLiteYNNPackDelegateOptions& options);
 
-TfLiteStatus IsFullyConnectedSupported(const TfLiteRegistration* registration,
-                                       const TfLiteNode* node,
-                                       TfLiteContext* context);
+TfLiteStatus IsFullyConnectedSupported(
+    const TfLiteRegistration* registration, const TfLiteNode* node,
+    TfLiteContext* context, const TfLiteYNNPackDelegateOptions& options);
 
 TfLiteStatus DefineBatchMatMulNode(TfLiteContext* context,
                                    ynn_subgraph_t subgraph,

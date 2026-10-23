@@ -65,13 +65,25 @@ class FloatSupport {
   // high-precision type will not change the output. This typically includes
   // HLOs that pass elements from the operand to the output without arithmetic
   // operations.
-  static bool EffectiveOperandPrecisionIsOutputPrecision(
-      const HloInstruction& hlo, int64_t operand_index);
+  bool EffectiveOperandPrecisionIsOutputPrecision(const HloInstruction& hlo,
+                                                  int64_t operand_index) const;
 
   // Returns if the backend only uses low precision for the operand at the
   // specified index, even if the operand is in the high-precision type.
   virtual bool EffectiveOperandPrecisionIsLowPrecision(
       const HloInstruction& hlo, int64_t operand_index) const;
+
+  // Returns whether the operand at the given index can be converted to the
+  // low-precision type without changing the result of an HLO whose output is
+  // low-precision: the operand is already low-precision, or the HLO
+  // effectively uses low precision for it anyway
+  // (EffectiveOperandPrecisionIsLowPrecision or
+  // EffectiveOperandPrecisionIsOutputPrecision) and supports a low-precision
+  // operand at that index. FloatNormalization only changes an HLO without
+  // mixed precision support entirely to low precision if this holds for every
+  // operand; BFloat16Propagation relies on the same check.
+  bool CanConvertOperandToLowPrecision(const HloInstruction& hlo,
+                                       int64_t operand_index) const;
 
   // Returns whether FloatNormalization should skip analyzing the instruction.
   virtual bool ShouldSkipInstruction(const HloInstruction& hlo) const {

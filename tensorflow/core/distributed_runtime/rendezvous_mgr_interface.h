@@ -59,7 +59,7 @@ class RemoteRendezvous : public Rendezvous {
 //
 // E.g.,
 //   Rendezvous* rendez = worker_env->rendezvous_mgr->Find(0x8935);
-//   fork execution of an graph executor using "rendez"  on thread 1;
+//   fork execution of a graph executor using "rendez"  on thread 1;
 //   fork execution of another graph executor using "rendez" on thread 2;
 //   ...
 //   join threads 1 and 2;
@@ -72,7 +72,7 @@ class RemoteRendezvous : public Rendezvous {
 class RendezvousMgrInterface {
  public:
   RendezvousMgrInterface() = default;
-  virtual ~RendezvousMgrInterface() {}
+  virtual ~RendezvousMgrInterface() = default;
 
   // Returns Rendezvous supporting send and recv among workers in the
   // "step_id".  The caller takes ownership of one reference on the

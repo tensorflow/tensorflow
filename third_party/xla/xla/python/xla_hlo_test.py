@@ -188,6 +188,24 @@ ENTRY %main {
           self.assertIsInstance(inst, _hlo.HloInstruction)
 
     @unittest.skipIf(cloud_tpu or pathways, "not implemented")
+    def testHloComputationRootInstruction(self):
+      module = _hlo.hlo_module_from_text(R"""
+HloModule root_instruction
+
+ENTRY %main {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  %neg = f32[] negate(%p0)
+  ROOT %sum = f32[] add(%neg, %p1)
+}
+""")
+      comp = module.computations()[0]
+      root = comp.root_instruction()
+      self.assertIsInstance(root, _hlo.HloInstruction)
+      self.assertEqual(root.name, "sum")
+      self.assertEqual(root.opcode, _hlo.HloOpcode.kAdd)
+
+    @unittest.skipIf(cloud_tpu or pathways, "not implemented")
     def testHloComputationReplaceInstruction(self):
       hlo_string = R"""
 HloModule copy_module
@@ -279,6 +297,25 @@ ENTRY %main {
           for operand in operands:
             self.assertIsInstance(operand, _hlo.HloInstruction)
             logging.info("Operand of %s: %s", inst.name, operand.name)
+
+    @unittest.skipIf(cloud_tpu or pathways, "not implemented")
+    def testHloInstructionControlPredecessors(self):
+      module = _hlo.hlo_module_from_text(R"""
+HloModule control_predecessors
+
+ENTRY %main {
+  %p0 = f32[] parameter(0)
+  %first = f32[] negate(%p0)
+  ROOT %second = f32[] abs(%p0), control-predecessors={%first}
+}
+""")
+      instructions = {
+          inst.name: inst for inst in module.computations()[0].instructions()
+      }
+      self.assertEmpty(instructions["first"].control_predecessors())
+      predecessors = instructions["second"].control_predecessors()
+      self.assertLen(predecessors, 1)
+      self.assertEqual(predecessors[0].name, "first")
 
     @unittest.skipIf(cloud_tpu or pathways, "not implemented")
     def testHloInstructionName(self):

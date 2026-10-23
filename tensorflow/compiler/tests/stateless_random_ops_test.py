@@ -24,6 +24,7 @@ from tensorflow.python.client import device_lib
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.kernel_tests.random import util as \
@@ -216,6 +217,25 @@ class StatelessRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
         y = sess.run(x, {seed_t: [0x12345678, 0xabcdef1]})
         self.assertTrue(np.all(y >= 0))
         self.assertTrue(np.all(y < maxval))
+
+  def testUniformIntEmptyRangeRaises(self):
+    # minval == maxval is an empty range. The CPU/eager kernel
+    # (StatelessRandomUniformIntOp in
+    # tensorflow/core/kernels/stateless_random_ops_v2.cc) rejects this; the
+    # XLA op used to silently compile it and return garbage instead.
+    with self.session():
+      with self.test_scope():
+
+        @def_function.function(jit_compile=True)
+        def f():
+          return stateless.stateless_random_uniform(
+              shape=[2], seed=[1, 2], minval=0, maxval=0, dtype=dtypes.int32
+          )
+
+        with self.assertRaisesRegex(
+            errors.InvalidArgumentError, 'Need minval < maxval'
+        ):
+          self.evaluate(f())
 
   @parameterized.named_parameters(
       (f'_{alg.name}_{dtype.name}_{seed}', alg, dtype, seed)  # pylint: disable=g-complex-comprehension

@@ -18,19 +18,26 @@ syntax = "proto3";
 package xla;
 
 import "xla/pjrt/proto/compile_options.proto";
+import "xla/service/cpu/executable.proto";
 import "xla/service/gpu/gpu_executable.proto";
 
 option java_outer_classname = "HumanReadableAotExecutableProto";
 option java_multiple_files = true;
 
-// An AOT binary consists of an ExecutableAndOptionsProto with a serialized
-// GpuExecutableProto stored in the `serialized_executable` field of the
-// options.
+// An AOT binary consists of an ExecutableAndOptionsProto whose
+// `serialized_executable` field holds a serialized backend executable. Its
+// concrete type depends on the backend: a GpuExecutableProto on GPU or a
+// CompilationResultProto on CPU.
 //
-// This proto combines both into a single proto, allowing the whole binary to
-// be inspected, edited, or stored in a single human-readable format.
+// This proto combines the options and the backend executable into a single
+// proto, allowing the whole binary to be inspected, edited, or stored in a
+// single human-readable format. The backend executable is extracted into the
+// `backend_executable` oneof below.
 message HumanReadableAotExecutable {
   // The serialized_executable field of this proto is not populated.
   ExecutableAndOptionsProto executable_and_options = 1;
-  gpu.GpuExecutableProto gpu_executable = 2;
+  oneof backend_executable {
+    gpu.GpuExecutableProto gpu_executable = 2;
+    cpu.CompilationResultProto cpu_executable = 3;
+  }
 }

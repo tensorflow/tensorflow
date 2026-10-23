@@ -32,7 +32,7 @@ limitations under the License.
 namespace {
 
 using LogDetTest = xla::ClientLibraryTestRunnerMixin<
-    xla::HloPjRtInterpreterReferenceMixin<xla::HloTestBase>>;
+    xla::HloInterpreterReferenceMixin<xla::HloTestBase>>;
 
 TEST_F(LogDetTest, Simple) {
   xla::XlaBuilder builder(TestName());

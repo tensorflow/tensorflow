@@ -29,7 +29,7 @@ namespace xla {
 namespace {
 
 using BinopScalingTest =
-    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
+    ClientLibraryTestRunnerMixin<HloInterpreterReferenceMixin<HloTestBase>>;
 
 TEST_F(BinopScalingTest, MatrixPlusPseudoMatrixRowVector_32x4) {
   auto alhs = MakeLinspaceArray2D(0.0, 1.0, 32, 4);

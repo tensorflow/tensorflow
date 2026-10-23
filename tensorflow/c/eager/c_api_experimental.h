@@ -466,7 +466,7 @@ TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_NewTensorHandleFromDeviceMemory(
     void (*deallocator)(void* data, size_t len, void* arg),
     void* deallocator_arg, TF_Status* status);
 
-// Retrieves the address space (i.e. job, replia, task) of the local host and
+// Retrieves the address space (i.e. job, replica, task) of the local host and
 // saves it in the buffer.
 TF_CAPI_EXPORT extern void TFE_HostAddressSpace(TFE_Context* ctx,
                                                 TF_Buffer* buf);
@@ -679,7 +679,7 @@ TF_CAPI_EXPORT TFE_TensorHandle* TFE_NewTensorHandleFromTensor(
 
 // Create a packed TensorHandle with the given list of TensorHandles.
 // If `handles` are on the same device, assign the same device to the packed
-// handle; if `handles` are on different deivces, assign a CompositeDevice to
+// handle; if `handles` are on different devices, assign a CompositeDevice to
 // it.
 TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_CreatePackedTensorHandle(
     TFE_Context* ctx, TFE_TensorHandle** handles, int* num_handles,

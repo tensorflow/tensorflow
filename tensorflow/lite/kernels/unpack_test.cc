@@ -15,12 +15,12 @@ limitations under the License.
 #include <stdint.h>
 
 #include <initializer_list>
-#include <iostream>
-#include <type_traits>
+#include <limits>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/types/half.h"
@@ -76,6 +76,38 @@ class UnpackOpModel : public SingleOpModel {
   int input_;
   std::vector<int> outputs_;
 };
+
+class PrepareOnlyUnpackOpModel : public SingleOpModel {
+ public:
+  explicit PrepareOnlyUnpackOpModel(const TensorData& input, int num_outputs,
+                                    int axis) {
+    input_ = AddInput(input);
+    for (int i = 0; i < num_outputs; ++i) {
+      AddOutput(input.type);
+    }
+    SetBuiltinOp(BuiltinOperator_UNPACK, BuiltinOptions_UnpackOptions,
+                 CreateUnpackOptions(builder_, num_outputs, axis).Union());
+    BuildInterpreter({GetShape(input_)}, /*num_threads=*/1,
+                     /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/false,
+                     /*allocate_and_delegate=*/false);
+  }
+
+ private:
+  int input_;
+};
+
+TEST(UnpackPrepareTest, RejectsAxisOutsideInt16Range) {
+  PrepareOnlyUnpackOpModel too_large(
+      /*input=*/{TensorType_FLOAT32, {1}}, /*num_outputs=*/1,
+      std::numeric_limits<int16_t>::max() + 1);
+  EXPECT_EQ(too_large.AllocateTensors(), kTfLiteError);
+
+  PrepareOnlyUnpackOpModel too_small(
+      /*input=*/{TensorType_FLOAT32, {1}}, /*num_outputs=*/1,
+      std::numeric_limits<int16_t>::min() - 1);
+  EXPECT_EQ(too_small.AllocateTensors(), kTfLiteError);
+}
 
 template <typename T>
 void Check(int axis, const std::initializer_list<int>& input_shape,

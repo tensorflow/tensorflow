@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/rocm/rocm_diagnostics.h"
 #include "xla/stream_executor/rocm/rocm_executor.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/rocm/rocm_runtime_abi_version.h"
@@ -50,6 +51,7 @@ static absl::Status InternalInitialize() {
   }
 
   LOG(ERROR) << "failed call to hipInit: " << ToString(res);
+  rocm::LogDiagnosticInformation();
   return absl::AbortedError(
       absl::StrCat("failed call to hipInit: ", ToString(res)));
 }

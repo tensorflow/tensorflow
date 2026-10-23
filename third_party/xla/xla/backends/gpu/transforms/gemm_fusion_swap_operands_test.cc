@@ -15,9 +15,14 @@ limitations under the License.
 
 #include "xla/backends/gpu/transforms/gemm_fusion_swap_operands.h"
 
+#include <string>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 
@@ -26,6 +31,8 @@ namespace gpu {
 namespace {
 
 using ::absl_testing::IsOkAndHolds;
+using ::absl_testing::StatusIs;
+using ::testing::HasSubstr;
 
 class SwapOperandsTest : public HloHardwareIndependentTestBase {};
 
@@ -199,6 +206,147 @@ CHECK-NEXT: bf16[64,32,448]{2,1,0} bitcast)"),
               IsOkAndHolds(true));
 }
 
+TEST_F(SwapOperandsTest, BothCodeGeneratingSwapLargerRhs) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule DotLayout
+
+fcomp {
+    p0 = f32[256,10240]{1,0} parameter(0)
+    p1 = bf16[10240]{0} parameter(1)
+    p2 = s8[16384,10240]{1,0} parameter(2)
+    c1 = f32[10240]{0} convert(p1)
+    b1 = f32[256,10240]{1,0} broadcast(c1), dimensions={1}
+    lhs = f32[256,10240]{1,0} multiply(p0, b1)
+    rhs = f32[16384,10240]{1,0} convert(p2)
+
+    ROOT dot = f32[256,16384]{1,0} dot(lhs, rhs),
+      lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY main {
+  p0 = f32[256,10240]{1,0} parameter(0)
+  p1 = bf16[10240]{0} parameter(1)
+  p2 = s8[16384,10240]{1,0} parameter(2)
+  ROOT fusion = f32[256,16384]{1,0} fusion(p0, p1, p2),
+    kind=kCustom, calls=fcomp,
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
+})"));
+  ASSERT_THAT(GemmFusionSwapOperands().Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), R"(
+CHECK: f32[16384,256]{0,1} dot(%rhs, %lhs)
+CHECK-NEXT: f32[256,16384]{1,0} bitcast)"),
+              IsOkAndHolds(true));
+  // Running again is a no-op because the larger operand is now on the LHS.
+  EXPECT_THAT(GemmFusionSwapOperands().Run(module.get()), IsOkAndHolds(false));
+}
+
+TEST_F(SwapOperandsTest,
+       BothCodeGeneratingMultipleNonContractingSwapLargerRhs) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule DotLayout
+
+fcomp {
+    p0 = f32[32,8,10240]{2,1,0} parameter(0)
+    p1 = bf16[10240]{0} parameter(1)
+    p2 = s8[16,1024,10240]{2,1,0} parameter(2)
+    c1 = f32[10240]{0} convert(p1)
+    b1 = f32[32,8,10240]{2,1,0} broadcast(c1), dimensions={2}
+    lhs = f32[32,8,10240]{2,1,0} multiply(p0, b1)
+    rhs = f32[16,1024,10240]{2,1,0} convert(p2)
+
+    ROOT dot = f32[32,8,16,1024]{3,2,1,0} dot(lhs, rhs),
+      lhs_contracting_dims={2}, rhs_contracting_dims={2}
+}
+
+ENTRY main {
+  p0 = f32[32,8,10240]{2,1,0} parameter(0)
+  p1 = bf16[10240]{0} parameter(1)
+  p2 = s8[16,1024,10240]{2,1,0} parameter(2)
+  ROOT fusion = f32[32,8,16,1024]{3,2,1,0} fusion(p0, p1, p2),
+    kind=kCustom, calls=fcomp,
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
+})"));
+  ASSERT_THAT(GemmFusionSwapOperands().Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), R"(
+CHECK: f32[16,1024,32,8]{1,0,3,2} dot(%rhs, %lhs)
+CHECK-NEXT: f32[32,8,16,1024]{3,2,1,0} bitcast)"),
+              IsOkAndHolds(true));
+}
+
+TEST_F(SwapOperandsTest, BothCodeGeneratingDoNotSwapEqualOrLargerLhs) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule DotLayout
+
+fcomp {
+    p0 = f32[256,10240]{1,0} parameter(0)
+    p1 = bf16[10240]{0} parameter(1)
+    p2 = s8[256,10240]{1,0} parameter(2)
+    c1 = f32[10240]{0} convert(p1)
+    b1 = f32[256,10240]{1,0} broadcast(c1), dimensions={1}
+    lhs = f32[256,10240]{1,0} multiply(p0, b1)
+    rhs = f32[256,10240]{1,0} convert(p2)
+
+    ROOT dot = f32[256,256]{1,0} dot(lhs, rhs),
+      lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY main {
+  p0 = f32[256,10240]{1,0} parameter(0)
+  p1 = bf16[10240]{0} parameter(1)
+  p2 = s8[256,10240]{1,0} parameter(2)
+  ROOT fusion = f32[256,256]{1,0} fusion(p0, p1, p2),
+    kind=kCustom, calls=fcomp,
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
+})"));
+  ASSERT_THAT(GemmFusionSwapOperands().Run(module.get()), IsOkAndHolds(false));
+}
+
+TEST_F(SwapOperandsTest, LhsCodeGeneratingOnlyDoNotSwapLargerRhs) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule DotLayout
+
+fcomp {
+    p0 = s8[256,10240]{1,0} parameter(0)
+    lhs = f32[256,10240]{1,0} convert(p0)
+    rhs = f32[16384,10240]{1,0} parameter(1)
+
+    ROOT dot = f32[256,16384]{1,0} dot(lhs, rhs),
+      lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY main {
+  p0 = s8[256,10240]{1,0} parameter(0)
+  rhs = f32[16384,10240]{1,0} parameter(1)
+  ROOT fusion = f32[256,16384]{1,0} fusion(p0, rhs),
+    kind=kCustom, calls=fcomp,
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
+})"));
+  ASSERT_THAT(GemmFusionSwapOperands().Run(module.get()), IsOkAndHolds(false));
+}
+
+TEST_F(SwapOperandsTest, BothNonCodeGeneratingDoNotSwapIfBothLarge) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule DotLayout
+
+fcomp {
+    p0 = bf16[64,256,320]{2,1,0} parameter(0)
+    p1 = bf16[64,448,320]{2,1,0} parameter(1)
+
+    ROOT dot = bf16[64,256,448]{2,1,0} dot(p0, p1),
+      lhs_batch_dims={0}, lhs_contracting_dims={2},
+      rhs_batch_dims={0}, rhs_contracting_dims={2}
+}
+
+ENTRY main {
+  p0 = bf16[64,256,320]{2,1,0} parameter(0)
+  p1 = bf16[64,448,320]{2,1,0} parameter(1)
+  ROOT fusion = bf16[64,256,448]{2,1,0} fusion(p0, p1),
+    kind=kCustom, calls=fcomp,
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
+})"));
+  ASSERT_THAT(GemmFusionSwapOperands().Run(module.get()), IsOkAndHolds(false));
+}
+
 TEST_F(SwapOperandsTest, BothNonCodeGeneratingDoNotSwapIfBothSmall) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule DotLayout
@@ -267,6 +415,72 @@ ENTRY main {
     backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
 })"));
   ASSERT_THAT(GemmFusionSwapOperands().Run(module.get()), IsOkAndHolds(true));
+}
+
+std::string HloWithOperandPrecision(absl::string_view operand_precision) {
+  return absl::StrFormat(R"(
+HloModule SwapOperandPrecision
+
+fcomp {
+  lhs = f32[32,64]{1,0} parameter(0)
+  rhs = f32[128,64]{1,0} parameter(1)
+  ROOT dot = f32[32,128]{1,0} dot(lhs, rhs),
+      lhs_contracting_dims={1}, rhs_contracting_dims={1},
+      operand_precision={%s}
+}
+
+ENTRY main {
+  lhs = f32[32,64]{1,0} parameter(0)
+  rhs = f32[128,64]{1,0} parameter(1)
+  ROOT fusion = f32[32,128]{1,0} fusion(lhs, rhs), kind=kCustom,
+      calls=fcomp,
+      backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
+}
+)",
+                         operand_precision);
+}
+
+TEST_F(SwapOperandsTest, SwapsPerOperandPrecision) {
+  ASSERT_OK_AND_ASSIGN(
+      auto module,
+      ParseAndReturnVerifiedModule(HloWithOperandPrecision("high,highest")));
+  ASSERT_THAT(GemmFusionSwapOperands().Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), R"(
+CHECK: dot(%rhs, %lhs), lhs_contracting_dims={1}, rhs_contracting_dims={1}, operand_precision={highest,high}
+)"),
+              IsOkAndHolds(true));
+}
+
+TEST_F(SwapOperandsTest, SwapsSinglePerOperandPrecision) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                        HloWithOperandPrecision("high")));
+  ASSERT_THAT(GemmFusionSwapOperands().Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), R"(
+CHECK: dot(%rhs, %lhs), lhs_contracting_dims={1}, rhs_contracting_dims={1}, operand_precision={default,high}
+)"),
+              IsOkAndHolds(true));
+}
+
+TEST_F(SwapOperandsTest, SwapsOperandsWithEmptyPrecisionConfig) {
+  ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(HloWithOperandPrecision("")));
+  ASSERT_THAT(GemmFusionSwapOperands().Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), R"(
+CHECK: dot(%rhs, %lhs), lhs_contracting_dims={1}, rhs_contracting_dims={1}{{$}}
+)"),
+              IsOkAndHolds(true));
+}
+
+TEST_F(SwapOperandsTest, RejectsTooManyOperandPrecisionEntries) {
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(
+                           HloWithOperandPrecision("high,default,high")));
+  EXPECT_THAT(
+      GemmFusionSwapOperands().Run(module.get()),
+      StatusIs(
+          absl::StatusCode::kInternal,
+          HasSubstr(
+              "Dot has 3 operand precision entries; expected at most 2.")));
 }
 
 }  // namespace

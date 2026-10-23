@@ -49,11 +49,8 @@ INCLUDEPRE_RE = re.compile(r"absl::lts_[0-9]+::base_internal::ThrowStdOutOfRange
                            r"absl::lts_[0-9]+::StrAppend|" # for _pywrap_tfe
                            r"absl::lts_[0-9]+::hash_internal|" # for _pywrap_tfcompile
                            r"absl::lts_[0-9]+::container_internal|" # for _pywrap_tfcompile
-                           r"absl::lts_[0-9]+::Status::raw_code|" # for absl::Status
-                           r"absl::lts_[0-9]+::Status::code|" # for absl::Status
-                           r"absl::lts_[0-9]+::Status::UnrefNonInlined|"  # for absl::Status
-                           r"absl::lts_[0-9]+::Status::Status|" # for absl::Status
-                           r"absl::lts_[0-9]+::Status::ForEachPayload|" # for absl::Status
+                           r"absl::lts_[0-9]+::Status::|" # for absl::Status
+                           r"absl::lts_[0-9]+::status_internal::|" # for absl::Status internals
                            r"absl::lts_[0-9]+::internal_statusor::Helper::Crash|"  # for absl::StatusOr
                            r"absl::lts_[0-9]+::internal_statusor::Helper::HandleInvalidStatusCtorArg|"
                            r"absl::lts_[0-9]+::internal_statusor::ThrowBadStatusOrAccess|"

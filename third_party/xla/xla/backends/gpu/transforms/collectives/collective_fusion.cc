@@ -18,8 +18,11 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
@@ -35,11 +38,14 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/primitive_util.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu_topology.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
 
 namespace xla::gpu {
@@ -65,8 +71,20 @@ HloFusionInstruction* CreateCollectiveFusionInstruction(
     parameters.push_back(builder.AddInstruction(HloInstruction::CreateParameter(
         i, operand->shape(), absl::StrCat("param_", i))));
   }
-  HloInstruction* fused_root = builder.AddInstruction(
+  HloInstruction* collective = builder.AddInstruction(
       instr->CloneWithNewOperands(instr->shape(), parameters));
+  HloInstruction* fused_root = collective;
+  if (collective->shape().IsTuple()) {
+    std::vector<HloInstruction*> gtes;
+    gtes.reserve(collective->shape().tuple_shapes().size());
+    for (int64_t i = 0; i < collective->shape().tuple_shapes().size(); ++i) {
+      gtes.push_back(builder.AddInstruction(
+          HloInstruction::CreateGetTupleElement(collective, i)));
+    }
+    fused_root = builder.AddInstruction(HloInstruction::CreateTuple(gtes));
+    fused_root->add_frontend_attribute(kDisableTupleSimplifierAttribute,
+                                       "true");
+  }
   HloComputation* fused_computation =
       module->AddEmbeddedComputation(builder.Build(fused_root));
   HloInstruction* fusion_instr =
@@ -76,9 +94,8 @@ HloFusionInstruction* CreateCollectiveFusionInstruction(
           fused_computation, absl::StrCat(instr->name(), "-")));
   // Propagate metadata.
   fusion_instr->set_metadata(instr->metadata());
-  fusion_instr->set_frontend_attributes(fused_root->frontend_attributes());
-  fusion_instr->set_raw_backend_config_string(
-      instr->raw_backend_config_string());
+  fusion_instr->set_frontend_attributes(collective->frontend_attributes());
+  fusion_instr->CopyBackendConfigFrom(instr);
   return Cast<HloFusionInstruction>(fusion_instr);
 }
 
@@ -110,27 +127,143 @@ std::vector<HloInstruction*> GetFusionCandidates(
 }
 
 bool ShouldFlatten(const HloInstruction* instr) {
+  if (HloPredicateIsNotOp<HloOpcode::kAllReduce, HloOpcode::kAllReduceStart>(
+          instr)) {
+    return false;
+  }
+  const int64_t num_devices = instr->device_list()->num_devices_per_group();
   const int64_t size_bytes =
       ShapeUtil::ElementsIn(instr->shape()) *
       primitive_util::ByteWidth(instr->shape().element_type());
   const bool has_rank_higher_than_1 =
       instr->shape().IsArray() && instr->shape().dimensions().size() > 1;
   return has_rank_higher_than_1 &&
-         GetAllReduceStrategy(size_bytes, kMultimemDisabled) ==
+         GetAllReduceStrategy(size_bytes, num_devices, kMultimemDisabled) ==
              se::gpu::AllReduceStrategy::kTwoShot;
+}
+
+// Flattens instructions inside a > 1D collective fusion to 1D instructions
+// inplace. For example, a 2D computation with shape [2, 3] will be flattened to
+// a 1D computation with shape [6] with surrounding bitcasts inserted in the
+// parent computation.
+// NB: This should only be used if the fused computation  only contains
+// elementwise operations (and the collective itself).
+absl::Status FlattenCollectiveFusion(
+    HloFusionInstruction* absl_nonnull fusion_instr) {
+  HloComputation* entry_computation = fusion_instr->parent();
+  HloComputation* fused_computation =
+      fusion_instr->fused_instructions_computation();
+  Shape original_shape = fusion_instr->shape();
+  const int64_t total_elements = ShapeUtil::ElementsIn(original_shape);
+  if (fused_computation->parameter_instructions().size() != 1) {
+    return absl::InternalError(
+        "Flattening to 1D is not supported for variadic fused computations "
+        "with more than one parameter instruction");
+  }
+  DCHECK_EQ(fusion_instr->operand_count(), 1);
+  // Flatten all instructions in the fused computation to 1D.
+  for (HloInstruction* instr : fused_computation->instructions()) {
+    if (ShapeUtil::SameDimensions(instr->shape(), original_shape)) {
+      *instr->mutable_shape() = ShapeUtil::MakeShapeWithDenseLayout(
+          instr->shape().element_type(), {total_elements}, {0});
+    }
+  }
+  *fusion_instr->mutable_shape() = ShapeUtil::MakeShapeWithDenseLayout(
+      original_shape.element_type(), {total_elements}, {0});
+  HloInstruction* fusion_operand = fusion_instr->mutable_operand(0);
+  Shape flat_input_shape = ShapeUtil::MakeShapeWithDenseLayout(
+      fusion_operand->shape().element_type(), {total_elements}, {0});
+  HloInstruction* bitcast_to_1d = entry_computation->AddInstruction(
+      HloInstruction::CreateBitcast(flat_input_shape, fusion_operand));
+  ABSL_RETURN_IF_ERROR(
+      fusion_instr->ReplaceOperandWithDifferentShape(0, bitcast_to_1d));
+  HloInstruction* bitcast_to_original_shape = entry_computation->AddInstruction(
+      HloInstruction::CreateBitcast(original_shape, fusion_instr));
+  if (VLOG_IS_ON(3)) {
+    VLOG(3) << "Flattening original shape : " << original_shape.ToString()
+            << " to 1D shape: " << flat_input_shape.ToString();
+  }
+  return fusion_instr->ReplaceAllUsesWithDifferentShape(
+      bitcast_to_original_shape);
+}
+
+// Normalizes legacy all-reduce-start/done into modern generic async boundaries.
+// Normally this does not exist but it can be created by explicitly calling
+// psum_start/end in jax.
+absl::StatusOr<HloInstruction*> NormalizeAsyncCandidate(
+    HloAllReduceInstruction* start_instr) {
+  HloComputation* computation = start_instr->parent();
+
+  HloInstruction* done_instr = nullptr;
+  for (HloInstruction* user : start_instr->users()) {
+    if (user->opcode() == HloOpcode::kAllReduceDone) {
+      done_instr = user;
+      break;
+    }
+  }
+  TF_RET_CHECK(done_instr != nullptr)
+      << "Missing all-reduce-done for " << start_instr->ToString();
+
+  // Create a temporary synchronous instruction for working with create async.
+  HloInstruction* sync_ar =
+      computation->AddInstruction(HloInstruction::CreateAllReduce(
+          done_instr->shape(), start_instr->operands(), start_instr->to_apply(),
+          start_instr->device_list(), start_instr->constrain_layout(),
+          start_instr->channel_id(), start_instr->use_global_device_ids()));
+  sync_ar->CopyBackendConfigFrom(start_instr);
+  sync_ar->set_metadata(start_instr->metadata());
+  sync_ar->set_frontend_attributes(start_instr->frontend_attributes());
+  ABSL_ASSIGN_OR_RETURN(
+      HloInstruction * new_done,
+      computation->CreateAsyncInstructions(sync_ar, /*context_shapes=*/{},
+                                           HloInstruction::kMainExecutionThread,
+                                           /*replace=*/false));
+
+  HloInstruction* new_start = new_done->mutable_operand(0);
+
+  // new_start has a tuple.
+  ABSL_RETURN_IF_ERROR(start_instr->ReplaceAllUsesWithDifferentShape(new_start));
+  ABSL_RETURN_IF_ERROR(done_instr->ReplaceAllUsesWith(new_done));
+  ABSL_RETURN_IF_ERROR(start_instr->CopyAllControlDepsTo(new_start, new_start));
+  ABSL_RETURN_IF_ERROR(done_instr->CopyAllControlDepsTo(new_done, new_done));
+  new_start->set_frontend_attributes(start_instr->frontend_attributes());
+  new_done->set_frontend_attributes(start_instr->frontend_attributes());
+  // Clean up.
+  ABSL_RETURN_IF_ERROR(start_instr->DropAllControlDeps());
+  ABSL_RETURN_IF_ERROR(done_instr->DropAllControlDeps());
+  ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(done_instr));
+  ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(start_instr));
+  ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(sync_ar));
+
+  return new_start->called_computations().front()->root_instruction();
 }
 
 absl::Status FuseCandidate(HloInstruction* candidate,
                            const GpuTopology& gpu_topology,
                            const DeviceAssignment* device_assignment) {
+  if (candidate->opcode() == HloOpcode::kAllReduceStart) {
+    ABSL_ASSIGN_OR_RETURN(candidate, NormalizeAsyncCandidate(
+                                    Cast<HloAllReduceInstruction>(candidate)));
+  }
   const bool should_flatten = ShouldFlatten(candidate);
   HloComputation* computation = candidate->parent();
   HloFusionInstruction* fusion_instr = CreateCollectiveFusionInstruction(
       computation, candidate, HloInstruction::FusionKind::kCustom);
   ABSL_RETURN_IF_ERROR(candidate->ReplaceAllUsesWith(fusion_instr));
+  if (computation->root_instruction() == candidate) {
+    computation->set_root_instruction(fusion_instr);
+  }
   ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(candidate));
   if (should_flatten) {
     ABSL_RETURN_IF_ERROR(FlattenCollectiveFusion(fusion_instr));
+  }
+  // NB: FlattenReduceScatterFusion replaces the fused root; do not hold on to
+  // the pointer.
+  if (const HloInstruction* hero =
+          GetCollectiveHero(fusion_instr->fused_instructions_computation());
+      hero != nullptr && hero->opcode() == HloOpcode::kReduceScatter &&
+      ShouldFlattenReduceScatter(Cast<HloReduceScatterInstruction>(hero))) {
+    ABSL_RETURN_IF_ERROR(FlattenReduceScatterFusion(fusion_instr));
   }
   // NB: Must be done after flattening.
   ABSL_RETURN_IF_ERROR(TrySetGpuBackendConfigForCollective(

@@ -67,6 +67,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/mlir_hlo",
+        "//xla/pjrt:host_callback",
         "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_executable",
@@ -82,9 +83,11 @@ cc_library(
         "//xla/python/ifrt/ir:version",
         "//xla/python/ifrt/ir:vifrt",
         "//xla/python/ifrt/ir/support:sharding_conversions",
+        "//xla/python/ifrt/mlir:fingerprint_utils",
+        "//xla/python/pjrt_ifrt",
+        "//xla/python/pjrt_ifrt:xla_ifrt",
         "//xla/service:hlo_proto_cc",
-        "//xla/service/spmd/shardy:constants",
-        "//xla/service/spmd/shardy:utils",
+        "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
@@ -145,9 +148,8 @@ cc_library(
         "//xla/python/ifrt/ir/support:sharding_conversions",
         "//xla/python/pjrt_ifrt:pjrt_dtype",
         "//xla/python/pjrt_ifrt:xla_ifrt",
-        "//xla/service:computation_placer_hdr",
+        "//xla/service:device_assignment",
         "//xla/service/spmd/shardy:utils",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -161,7 +163,6 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-        "@tsl//tsl/platform:fingerprint",
     ],
 )
 
@@ -207,5 +208,17 @@ xla_cc_test(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@tsl//tsl/platform:path",
+    ],
+)
+
+xla_cc_test(
+    name = "utils_test",
+    srcs = ["utils_test.cc"],
+    deps = [
+        ":utils",
+        "//xla/python/ifrt/ir/support:module_parsing",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
     ],
 )

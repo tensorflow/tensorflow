@@ -201,9 +201,17 @@ Safe_PyObjectPtr ConvertListAttr(PyObject* value, T convert_functor) {
   // invalidating the raw items pointer.
   for (Py_ssize_t i = 0; i < PyList_Size(result.get()); ++i) {
     if (!PyFloat_Check(value)) {
+#ifdef Py_GIL_DISABLED
+      // Keep a strong reference across conversion because convert_functor may
+      // execute arbitrary Python code.
+      Safe_PyObjectPtr elem(PyList_GetItemRef(result.get(), i));
+      if (!elem) return nullptr;
+      Safe_PyObjectPtr item = convert_functor(elem.get());
+#else
       PyObject* elem = PyList_GetItem(result.get(), i);
       if (!elem) return nullptr;
       Safe_PyObjectPtr item = convert_functor(elem);
+#endif
       if (!item) return nullptr;
       if (PyList_SetItem(result.get(), i, item.release()) < 0) return nullptr;
     }

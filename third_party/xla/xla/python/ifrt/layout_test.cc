@@ -197,7 +197,7 @@ TEST(LayoutTest, EquivalentLayouts) {
   auto memory0 = std::make_unique<MockMemory>();
   auto memory1 = std::make_unique<MockMemory>();
   auto memory2 = std::make_unique<MockMemory>();
-  MemoryKind memory_kind0("memory kind 0");
+  MemoryKind memory_kind0;
   ON_CALL(*memory0, Kind()).WillByDefault(ReturnRef(memory_kind0));
   ON_CALL(*memory1, Kind()).WillByDefault(ReturnRef(memory_kind0));
   ON_CALL(*memory2, Kind()).WillByDefault(ReturnRef(memory_kind0));

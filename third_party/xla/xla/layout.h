@@ -52,7 +52,8 @@ class Tile {
     Tile tile;
     tile.dimensions_.reserve(tile_proto.dimensions_size());
     for (int64_t dimension : tile_proto.dimensions()) {
-      TF_RET_CHECK(dimension >= 0);
+      TF_RET_CHECK(dimension >= 0 || dimension == kCombineDimension ||
+                   dimension == kMatchDimension);
       tile.add_dimensions(dimension);
     }
     return tile;
@@ -74,7 +75,8 @@ class Tile {
   // For example, (*,*,2,*,8) means that the tile has 2 dimensions, and the
   // dimension sizes are 2 and 8. '*' means the corresponding dimension in
   // the shape should be combined with the next more minor dimension before
-  // tiling.
+  // tiling. 'd' means the tile dimension size matches the corresponding
+  // dimension in the shape.
   void Print(Printer* printer) const;
   std::string ToString() const;
 
@@ -98,6 +100,11 @@ class Tile {
   // combined with the next minor dimension before tiling is applied.
   static constexpr int64_t kCombineDimension =
       std::numeric_limits<int64_t>::min();
+
+  // This dimension size means the tile dimension size matches the corresponding
+  // dimension in the shape.
+  static constexpr int64_t kMatchDimension =
+      std::numeric_limits<int64_t>::min() + 1;
 
   template <typename H>
   friend H AbslHashValue(H h, const Tile& t) {
@@ -404,6 +411,7 @@ class Layout {
 
   static constexpr int64_t kDefaultMemorySpace = 0;
   static constexpr int64_t kGenericFastMemorySpace = 1;
+  static constexpr int64_t kCollectiveMemorySpace = 7;
   static constexpr int64_t kHostMemorySpace = 5;
   static constexpr int64_t kUnpinnedHostMemorySpace = 6;
   int64_t memory_space() const { return memory_space_; }

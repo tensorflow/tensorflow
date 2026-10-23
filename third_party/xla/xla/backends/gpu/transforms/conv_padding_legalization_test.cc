@@ -22,10 +22,12 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/test.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -183,6 +185,27 @@ TEST_F(ConvPaddingLegalizationTest,
     const WindowDimension& dim = root->window().dimensions(i);
     EXPECT_EQ(1, dim.window_dilation());
   }
+}
+
+TEST_F(ConvPaddingLegalizationTest,
+       BackwardFilterHloConvolveWithNegativePadding) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+  HloModule convolution_module
+  ENTRY %convolution (input f16[2,2,3,4]{3,2,1,0}, gradients f16[2,3,2,4]{3,2,1,0}) -> f16[3,2,1,2]{3,2,1,0} {
+    %input = f16[2,2,3,4]{3,2,1,0} parameter(0)
+    %gradients = f16[2,3,2,4]{3,2,1,0} parameter(1)
+    ROOT %conv = f16[3,2,1,2]{3,2,1,0} convolution(%input, %gradients), window={size=2x4 pad=1_-1x0_1 rhs_dilate=2x1}, dim_labels=fb01_io01->fb01, convolution_kind=wgrad
+  }
+                                                 )"));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       ConvPaddingLegalization().Run(module.get()));
+  ASSERT_TRUE(changed);
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root,
+              GmockMatch(m::Convolution(m::Slice(m::Pad()), m::Parameter(1))));
+  EXPECT_TRUE(window_util::HasSymmetricPadding(root->window()));
+  EXPECT_FALSE(window_util::HasNegativePadding(root->window()));
 }
 
 }  // anonymous namespace

@@ -108,8 +108,6 @@ inline constexpr absl::string_view
 inline constexpr absl::string_view
     kReleaseOutfeedBufferAfterPopulationSymbolName =
         "__xla_cpu_runtime_ReleaseOutfeedBufferAfterPopulation";
-inline constexpr absl::string_view kParallelForkJoinSymbolName =
-    "__xla_cpu_runtime_ParallelForkJoin";
 inline constexpr absl::string_view kPrintfToStderrSymbolName =
     "__xla_cpu_runtime_PrintfToStderr";
 inline constexpr absl::string_view kStatusIsSuccessSymbolName =

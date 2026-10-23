@@ -16,6 +16,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <numeric>
 #include <string>
 #include <vector>
 
@@ -59,6 +60,12 @@ class RocmKernelTracer : public HloOpProfiler::KernelTracer,
     return (kernel_times_ns_[i - 1] + kernel_times_ns_[i] + 1) / 2;
   }
 
+  uint64_t getSumKernelTimeNs() && override {
+    rocm_tracer_->Disable();  // Also flushes buffer.
+    return std::accumulate(kernel_times_ns_.begin(), kernel_times_ns_.end(),
+                           uint64_t{0});
+  }
+
  private:
   static profiler::RocmTraceCollectorOptions MakeCollectorOptions(
       uint32_t num_gpus) {
@@ -92,7 +99,7 @@ class RocmKernelTracer : public HloOpProfiler::KernelTracer,
   }
 
   void OnEventsDropped(const std::string& reason,
-                       uint32_t num_events) override {
+                       uint64_t num_events) override {
     LOG(WARNING) << "Dropped " << num_events << " events: " << reason;
   }
   void Flush() override {}

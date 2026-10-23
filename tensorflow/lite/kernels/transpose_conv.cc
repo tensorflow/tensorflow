@@ -29,9 +29,7 @@ limitations under the License.
 // NOLINTNEXTLINE - This header file shouldn't go to the top.
 #include "tensorflow/lite/kernels/internal/portable_tensor_utils.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/transpose_conv.h"
-#include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/transpose_conv.h"
-#include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -126,8 +124,18 @@ TfLiteStatus ResizeTensor(TfLiteContext* context,
 
   std::unique_ptr<TfLiteIntArray, void (*)(TfLiteIntArray*)> shape(
       TfLiteIntArrayCreate(NumElements(shape_tensor)), TfLiteIntArrayFree);
+  int positive_elements = 1;
   for (int i = 0; i < shape->size; ++i) {
-    shape->data[i] = GetTensorData<int32_t>(shape_tensor)[i];
+    const int32_t dim = GetTensorData<int32_t>(shape_tensor)[i];
+    TF_LITE_ENSURE(context, dim >= 0);
+    if (dim > 1) {
+      TF_LITE_ENSURE_MSG(context,
+                         CheckedNumElements({positive_elements, dim},
+                                            positive_elements) == kTfLiteOk,
+                         "%s",
+                         "TransposeConv output tensor has too many elements.");
+    }
+    shape->data[i] = dim;
   }
 
   return context->ResizeTensor(context, tensor_to_resize, shape.release());
@@ -229,6 +237,13 @@ TfLiteStatus ResizeCol2ImTensor(TfLiteContext* context,
       context, weights_shape.CheckedSizeToDimension(/*end=*/3, col2im_columns),
       "%s", "TransposeConv col2im tensor has too many columns.");
 
+  int col2im_elements = 0;
+  TF_LITE_ENSURE_MSG(context,
+                     CheckedNumElements({col2im_rows, col2im_columns},
+                                        col2im_elements) == kTfLiteOk,
+                     "%s",
+                     "TransposeConv col2im tensor has too many elements.");
+
   std::unique_ptr<TfLiteIntArray, void (*)(TfLiteIntArray*)> col2im_shape_array(
       TfLiteIntArrayCreate(2), TfLiteIntArrayFree);
   col2im_shape_array->data[0] = col2im_rows;
@@ -291,6 +306,34 @@ TfLiteStatus ResizeAndTransposeWeights(TfLiteContext* context,
   return kTfLiteOk;
 }
 
+TfLiteStatus ComputeAndValidatePadding(TfLiteContext* context,
+                                       const TfLiteTransposeConvParams* params,
+                                       const TfLiteTensor* weights,
+                                       const TfLiteTensor* input,
+                                       const TfLiteTensor* output,
+                                       TfLitePaddingValues* padding) {
+  TF_LITE_ENSURE_EQ(context, NumDimensions(output), 4);
+  TF_LITE_ENSURE_EQ(context, NumDimensions(weights), 4);
+  TF_LITE_ENSURE_EQ(context, NumDimensions(input), 4);
+  TF_LITE_ENSURE(context, SizeOfDimension(output, 1) > 0);
+  TF_LITE_ENSURE(context, SizeOfDimension(output, 2) > 0);
+  const int width = SizeOfDimension(output, 2);
+  const int height = SizeOfDimension(output, 1);
+  const int filter_width = SizeOfDimension(weights, 2);
+  const int filter_height = SizeOfDimension(weights, 1);
+
+  int computed_input_height, computed_input_width;
+  TF_LITE_ENSURE_OK(
+      context, ComputePaddingHeightWidthChecked(
+                   params->stride_height, params->stride_width, 1, 1, height,
+                   width, filter_height, filter_width, params->padding,
+                   &computed_input_height, &computed_input_width, padding));
+  TF_LITE_ENSURE_STATUS(ValidatePaddingValuesForInt16(*padding));
+  TF_LITE_ENSURE_EQ(context, computed_input_height, SizeOfDimension(input, 1));
+  TF_LITE_ENSURE_EQ(context, computed_input_width, SizeOfDimension(input, 2));
+  return kTfLiteOk;
+}
+
 template <KernelType kernel_type>
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
@@ -321,6 +364,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // Tensor sanity checks
   TF_LITE_ENSURE_EQ(context, NumDimensions(output_shape), 1);
+  TF_LITE_ENSURE_EQ(context, NumElements(output_shape), 4);
   TF_LITE_ENSURE_EQ(context, NumDimensions(input), 4);
   TF_LITE_ENSURE_EQ(context, NumDimensions(weights), 4);
   TF_LITE_ENSURE(context, params->stride_height > 0);
@@ -385,6 +429,22 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, SizeOfDimension(input, 3),
                     SizeOfDimension(weights, 3));
 
+  int weights_elements = 0;
+  TF_LITE_ENSURE_MSG(
+      context, CheckedNumElements(weights, weights_elements) == kTfLiteOk, "%s",
+      "TransposeConv weights tensor has too many elements.");
+  int input_spatial_elements = 0;
+  TF_LITE_ENSURE_MSG(
+      context,
+      CheckedNumElements({SizeOfDimension(input, 1), SizeOfDimension(input, 2),
+                          SizeOfDimension(input, 3)},
+                         input_spatial_elements) == kTfLiteOk,
+      "%s", "TransposeConv input spatial dimensions overflow.");
+  int input_elements = 0;
+  TF_LITE_ENSURE_MSG(context,
+                     CheckedNumElements(input, input_elements) == kTfLiteOk,
+                     "%s", "TransposeConv input tensor has too many elements.");
+
   // Allocate col2Im, transposed_weights & scratch Tensor.
   TF_LITE_ENSURE_STATUS(AllocateTemporaryTensorsIfRequired<kernel_type>(
       context, input->type, weights->type, node));
@@ -406,6 +466,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     }
   } else {
     TF_LITE_ENSURE_STATUS(ResizeTensor(context, output_shape, output));
+    TF_LITE_ENSURE_STATUS(ComputeAndValidatePadding(
+        context, params, weights, input, output, &data->padding));
     if (data->has_col2im) {
       TF_LITE_ENSURE_STATUS(
           ResizeCol2ImTensor(context, output_shape, weights, input, col2im));
@@ -880,20 +942,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                                                   weights, input, col2im));
   }
 
-  // Get height and width of the output image.
-  const int width = SizeOfDimension(output, 2);
-  const int height = SizeOfDimension(output, 1);
-  const int filter_width = SizeOfDimension(weights, 2);
-  const int filter_height = SizeOfDimension(weights, 1);
-
-  int computed_input_height, computed_input_width;
-  TF_LITE_ENSURE_OK(context, ComputePaddingHeightWidthChecked(
-                                 params->stride_height, params->stride_width, 1,
-                                 1, height, width, filter_height, filter_width,
-                                 params->padding, &computed_input_height,
-                                 &computed_input_width, &data->padding));
-  TF_LITE_ENSURE_EQ(context, computed_input_height, SizeOfDimension(input, 1));
-  TF_LITE_ENSURE_EQ(context, computed_input_width, SizeOfDimension(input, 2));
+  TF_LITE_ENSURE_STATUS(ComputeAndValidatePadding(
+      context, params, weights, input, output, &data->padding));
 
   // Currently support float32, uint8, int8, int16.
   switch (input->type) {

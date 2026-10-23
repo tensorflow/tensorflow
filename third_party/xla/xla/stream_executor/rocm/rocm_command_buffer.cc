@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/gpu_command_buffer.h"
 #include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_args.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/rocm/rocm_kernel.h"
@@ -217,6 +218,71 @@ absl::Status RocmCommandBuffer::UpdateMemcpyD2DNode(
       "Failed to set memcpy d2d node params");
 }
 
+absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateMemcpyD2HNode(
+    absl::Span<const GraphNodeHandle> dependencies, void* destination,
+    DeviceAddressBase source, uint64_t size) {
+  VLOG(2) << "Add memcpy d2h node to a graph " << graph_
+          << "; dst: " << destination << "; src: " << source.opaque()
+          << "; size: " << size << "; deps: " << dependencies.size();
+
+  std::vector<hipGraphNode_t> deps = ToHipGraphHandles(dependencies);
+
+  hipGraphNode_t node_handle = nullptr;
+  ABSL_RETURN_IF_ERROR(ToStatus(
+      hipGraphAddMemcpyNode1D(&node_handle, graph_, deps.data(), deps.size(),
+                              destination, AsDevicePtr(source), size,
+                              hipMemcpyDeviceToHost),
+      "Failed to add memcpy d2h node to a HIP graph"));
+  return FromHipGraphHandle(node_handle);
+}
+
+absl::Status RocmCommandBuffer::UpdateMemcpyD2HNode(GraphNodeHandle node_handle,
+                                                    void* destination,
+                                                    DeviceAddressBase source,
+                                                    uint64_t size) {
+  VLOG(2) << "Set memcpy d2h node params " << node_handle
+          << " in graph executable " << exec_ << "; dst: " << destination
+          << "; src: " << source.opaque() << "; size: " << size;
+
+  return ToStatus(hipGraphExecMemcpyNodeSetParams1D(
+                      exec_, ToHipGraphHandle(node_handle), destination,
+                      AsDevicePtr(source), size, hipMemcpyDeviceToHost),
+                  "Failed to set memcpy d2h node params");
+}
+
+absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateMemcpyH2DNode(
+    absl::Span<const GraphNodeHandle> dependencies,
+    DeviceAddressBase destination, const void* source, uint64_t size) {
+  VLOG(2) << "Add memcpy h2d node to a graph " << graph_
+          << "; dst: " << destination.opaque() << "; src: " << source
+          << "; size: " << size << "; deps: " << dependencies.size();
+
+  std::vector<hipGraphNode_t> deps = ToHipGraphHandles(dependencies);
+
+  hipGraphNode_t node_handle = nullptr;
+  ABSL_RETURN_IF_ERROR(
+      ToStatus(hipGraphAddMemcpyNode1D(&node_handle, graph_, deps.data(),
+                                       deps.size(), AsDevicePtr(destination),
+                                       source, size, hipMemcpyHostToDevice),
+               "Failed to add memcpy h2d node to a HIP graph"));
+  return FromHipGraphHandle(node_handle);
+}
+
+absl::Status RocmCommandBuffer::UpdateMemcpyH2DNode(
+    GraphNodeHandle node_handle, DeviceAddressBase destination,
+    const void* source, uint64_t size) {
+  VLOG(2) << "Set memcpy h2d node params " << node_handle
+          << " in graph executable " << exec_
+          << "; dst: " << destination.opaque() << "; src: " << source
+          << "; size: " << size;
+
+  return ToStatus(
+      hipGraphExecMemcpyNodeSetParams1D(exec_, ToHipGraphHandle(node_handle),
+                                        AsDevicePtr(destination), source, size,
+                                        hipMemcpyHostToDevice),
+      "Failed to set memcpy h2d node params");
+}
+
 absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateClonedChildNode(
     absl::Span<const GraphNodeHandle> dependencies,
     const CommandBuffer& nested) {
@@ -262,6 +328,25 @@ absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateKernelNode(
     const ThreadDim& threads, const BlockDim& blocks,
     const std::optional<ClusterDim>& cluster_dims, const Kernel& kernel,
     const KernelArgsPackedArrayBase& args) {
+  std::unique_ptr<KernelArgsPackedArrayBase> repacked;
+  const KernelArgsPackedArrayBase* packed_args = &args;
+  if (kernel.args_packing()) {
+    ABSL_ASSIGN_OR_RETURN(repacked, kernel.args_packing()(kernel, args));
+    packed_args = repacked.get();
+  }
+
+  return CreateKernelNode(
+      dependencies, priority, threads, blocks, cluster_dims,
+      NativeKernel{static_cast<const RocmKernel&>(kernel).gpu_function(),
+                   std::string(kernel.name()), kernel.use_pdl()},
+      *packed_args);
+}
+
+absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateKernelNode(
+    absl::Span<const GraphNodeHandle> dependencies, StreamPriority priority,
+    const ThreadDim& threads, const BlockDim& blocks,
+    const std::optional<ClusterDim>& cluster_dims, const NativeKernel& kernel,
+    const KernelArgsPackedArrayBase& args) {
   const uint64_t shared_mem_bytes = args.number_of_shared_bytes();
 
   VLOG(2) << "Add kernel node to a graph " << graph_
@@ -271,18 +356,8 @@ absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateKernelNode(
           << " bdz: " << threads.z << "; shmem: " << shared_mem_bytes
           << "; deps: " << dependencies.size();
 
-  std::unique_ptr<KernelArgsPackedArrayBase> repacked;
-  const KernelArgsPackedArrayBase* packed_args;
-  if (kernel.args_packing()) {
-    ABSL_ASSIGN_OR_RETURN(repacked, kernel.args_packing()(kernel, args));
-    packed_args = repacked.get();
-  } else {
-    packed_args = &args;
-  }
-
   hipKernelNodeParams params{};
-  hipFunction_t function =
-      static_cast<const RocmKernel&>(kernel).gpu_function();
+  hipFunction_t function = static_cast<hipFunction_t>(kernel.device_fn);
   params.func = function;
   params.gridDim.x = blocks.x;
   params.gridDim.y = blocks.y;
@@ -291,17 +366,11 @@ absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateKernelNode(
   params.blockDim.y = threads.y;
   params.blockDim.z = threads.z;
   params.sharedMemBytes = shared_mem_bytes;
-  params.kernelParams =
-      const_cast<void**>(packed_args->argument_addresses().data());
+  // HIP driver API requires void** for kernelParams even though it does not
+  // mutate the argument pointers.
+  // NOLINTNEXTLINE
+  params.kernelParams = const_cast<void**>(args.argument_addresses().data());
   params.extra = nullptr;
-
-  if (shared_mem_bytes != 0) {
-    ABSL_RETURN_IF_ERROR(
-        ToStatus(hipFuncSetAttribute(function,
-                                     hipFuncAttributeMaxDynamicSharedMemorySize,
-                                     shared_mem_bytes),
-                 "Failed to set shared memory size"));
-  }
 
   std::vector<hipGraphNode_t> deps = ToHipGraphHandles(dependencies);
 
@@ -318,6 +387,24 @@ absl::Status RocmCommandBuffer::UpdateKernelNode(
     GraphNodeHandle node_handle, const ThreadDim& threads,
     const BlockDim& blocks, const std::optional<ClusterDim>& cluster_dims,
     const Kernel& kernel, const KernelArgsPackedArrayBase& args) {
+  std::unique_ptr<KernelArgsPackedArrayBase> repacked;
+  const KernelArgsPackedArrayBase* packed_args = &args;
+  if (kernel.args_packing()) {
+    ABSL_ASSIGN_OR_RETURN(repacked, kernel.args_packing()(kernel, args));
+    packed_args = repacked.get();
+  }
+
+  return UpdateKernelNode(
+      node_handle, threads, blocks, cluster_dims,
+      NativeKernel{static_cast<const RocmKernel&>(kernel).gpu_function(),
+                   std::string(kernel.name()), kernel.use_pdl()},
+      *packed_args);
+}
+
+absl::Status RocmCommandBuffer::UpdateKernelNode(
+    GraphNodeHandle node_handle, const ThreadDim& threads,
+    const BlockDim& blocks, const std::optional<ClusterDim>& cluster_dims,
+    const NativeKernel& kernel, const KernelArgsPackedArrayBase& args) {
   const uint64_t shared_mem_bytes = args.number_of_shared_bytes();
 
   VLOG(2) << "Set kernel node params " << node_handle << " in graph executable "
@@ -326,18 +413,8 @@ absl::Status RocmCommandBuffer::UpdateKernelNode(
           << " bdx: " << threads.x << " bdy: " << threads.y
           << " bdz: " << threads.z << "; shmem: " << shared_mem_bytes;
 
-  std::unique_ptr<KernelArgsPackedArrayBase> repacked;
-  const KernelArgsPackedArrayBase* packed_args;
-  if (kernel.args_packing()) {
-    ABSL_ASSIGN_OR_RETURN(repacked, kernel.args_packing()(kernel, args));
-    packed_args = repacked.get();
-  } else {
-    packed_args = &args;
-  }
-
   hipKernelNodeParams params{};
-  hipFunction_t function =
-      static_cast<const RocmKernel&>(kernel).gpu_function();
+  hipFunction_t function = static_cast<hipFunction_t>(kernel.device_fn);
   params.func = function;
   params.gridDim.x = blocks.x;
   params.gridDim.y = blocks.y;
@@ -346,17 +423,11 @@ absl::Status RocmCommandBuffer::UpdateKernelNode(
   params.blockDim.y = threads.y;
   params.blockDim.z = threads.z;
   params.sharedMemBytes = shared_mem_bytes;
-  params.kernelParams =
-      const_cast<void**>(packed_args->argument_addresses().data());
+  // HIP driver API requires void** for kernelParams even though it does not
+  // mutate the argument pointers.
+  // NOLINTNEXTLINE
+  params.kernelParams = const_cast<void**>(args.argument_addresses().data());
   params.extra = nullptr;
-
-  if (shared_mem_bytes != 0) {
-    ABSL_RETURN_IF_ERROR(
-        ToStatus(hipFuncSetAttribute(function,
-                                     hipFuncAttributeMaxDynamicSharedMemorySize,
-                                     shared_mem_bytes),
-                 "Failed to set shared memory size"));
-  }
 
   return ToStatus(hipGraphExecKernelNodeSetParams(
                       exec_, ToHipGraphHandle(node_handle), &params),
@@ -448,6 +519,11 @@ absl::StatusOr<size_t> RocmCommandBuffer::GetNodeCount() const {
 }
 
 absl::Status RocmCommandBuffer::PrepareFinalization() {
+  // Only Create* methods add nodes, and they all require State::kCreate, so
+  // the create-time finalization already made this graph non-empty.
+  if (state() == State::kUpdate) {
+    return absl::OkStatus();
+  }
   ABSL_ASSIGN_OR_RETURN(auto node_count, GetNodeCount());
   if (node_count > 0) {
     return absl::OkStatus();

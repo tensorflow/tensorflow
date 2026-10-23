@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 // Enable definition of Eigen::ThreadPoolDevice instead of just declaration.
 #include "absl/container/inlined_vector.h"
+#include "xla/pjrt/pjrt_client.h"
 #define EIGEN_USE_THREADS
 
 #include <algorithm>
@@ -45,6 +46,7 @@ limitations under the License.
 #include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -263,6 +265,24 @@ absl::StatusOr<tensorflow::Tensor> MakeTensorFromDisassembledTensors(
   }
 
   return output_tensor;
+}
+
+absl::StatusOr<std::optional<tensorflow::TensorShape>> GetLogicalShapeIfDynamic(
+    xla::ifrt::Array* array) {
+  auto* pjrt_arr =
+      xla::ifrt::dyn_cast_or_null<xla::ifrt::PjRtCompatibleArray>(array);
+  if (pjrt_arr != nullptr) {
+    xla::PjRtBuffer* pjrt_buffer = pjrt_arr->pjrt_buffers().front().get();
+    if (pjrt_buffer->has_dynamic_dimensions()) {
+      TF_ASSIGN_OR_RETURN(std::vector<int64_t> logical_dims,
+                          pjrt_buffer->logical_dimensions());
+      tensorflow::TensorShape tensor_shape;
+      TF_RETURN_IF_ERROR(tensorflow::TensorShape::BuildTensorShape(
+          logical_dims, &tensor_shape));
+      return tensor_shape;
+    }
+  }
+  return std::nullopt;
 }
 
 absl::StatusOr<int> VerifyIndexDomainsAndGetReplicas(
@@ -487,10 +507,16 @@ absl::StatusOr<tsl::Future<tensorflow::Tensor>> MakeTensorFromArrayHelper(
                         input_array.FullyReplicatedShard(
                             xla::ifrt::ArrayCopySemantics::kDonateInput));
 
-    if (fully_replicated_array->shape() != ToIfrtShape(tensor_shape)) {
+    if (fully_replicated_array->shape() != input_array.shape()) {
       return absl::InternalError(absl::StrCat(
-          "Not fully replicated output. Expected ", tensor_shape.DebugString(),
+          "Not fully replicated output. Expected ", input_array.shape(),
           " but got ", fully_replicated_array->shape()));
+    }
+
+    TF_ASSIGN_OR_RETURN(auto dynamic_shape,
+                        GetLogicalShapeIfDynamic(fully_replicated_array.get()));
+    if (dynamic_shape.has_value()) {
+      tensor_shape = *dynamic_shape;
     }
 
     tensorflow::Tensor output_tensor(data_type, tensor_shape);
@@ -517,6 +543,13 @@ absl::StatusOr<tsl::Future<tensorflow::Tensor>> MakeTensorFromArrayHelper(
             xla::ifrt::SingleDeviceShardSemantics::kAddressableShards));
 
     int64_t device_id = hlo_sharding.GetUniqueDevice();
+
+    TF_ASSIGN_OR_RETURN(
+        auto dynamic_shape,
+        GetLogicalShapeIfDynamic(disassembled_array[device_id].get()));
+    if (dynamic_shape.has_value()) {
+      tensor_shape = *dynamic_shape;
+    }
 
     tensorflow::Tensor output_tensor(data_type, tensor_shape);
     disassembled_array[device_id]
@@ -605,13 +638,21 @@ absl::StatusOr<tsl::Future<tensorflow::Tensor>> MakeTensorFromArrayHelper(
   input_tensors.reserve(index_domain_device_arrays.size());
   arrays_copy_status.reserve(index_domain_device_arrays.size());
   for (const auto& [index_domain, array] : index_domain_device_arrays) {
-    tensorflow::TensorShape tensor_shape = ToTensorShape(index_domain.shape());
+    tensorflow::TensorShape sub_tensor_shape;
+    TF_ASSIGN_OR_RETURN(auto dynamic_shape,
+                        GetLogicalShapeIfDynamic(array.get()));
+    if (dynamic_shape.has_value()) {
+      sub_tensor_shape = *dynamic_shape;
+    } else {
+      sub_tensor_shape = ToTensorShape(index_domain.shape());
+    }
+
     TF_ASSIGN_OR_RETURN(tensorflow::DataType dtype,
                         ToTensorDataType(array->dtype()));
-    tensorflow::Tensor tensor(dtype, tensor_shape);
+    tensorflow::Tensor tensor(dtype, sub_tensor_shape);
     input_tensors.push_back(tensor);
     tsl::Future<> copy_status = array->CopyToHostBuffer(
-        tensor.data(), GetByteStrides(dtype, tensor_shape),
+        tensor.data(), GetByteStrides(dtype, sub_tensor_shape),
         xla::ifrt::ArrayCopySemantics::kAlwaysCopy);
     copy_status.OnReady([tensor](absl::Status status) {
       VLOG(1) << "Copy of tensor " << tensor.data() << " done with status "

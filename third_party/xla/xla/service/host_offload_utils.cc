@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <array>
 #include <cstdint>
-#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -49,44 +48,43 @@ namespace {
 using ::xla::memory_annotations::kMoveToDeviceCustomCallTarget;
 using ::xla::memory_annotations::kMoveToHostCustomCallTarget;
 
-bool CustomCallReusesBuffer(const HloInstruction* custom_call,
-                            int64_t operand_index) {
+std::optional<ShapeIndex> GetAliasedOutputShapeIndex(
+    const HloInstruction* custom_call, int64_t operand_index,
+    const ShapeIndex& operand_shape_index = {}) {
   if (custom_call->custom_call_target() == kMoveToDeviceCustomCallTarget ||
       custom_call->custom_call_target() == kMoveToHostCustomCallTarget) {
     // Does not define a new buffer.
-    return true;
+    return ShapeIndex{};
   }
   // Check the custom call's output_to_operand_aliasing.
-  const std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>&
-      aliases = custom_call->output_operand_aliasing();
-  for (const auto& alias : aliases) {
-    int64_t alias_operand_index = alias.second.first;
-    if (alias_operand_index == operand_index) {
-      // This operand aliases with the output.
-      return true;
+  for (const auto& alias : custom_call->output_operand_aliasing()) {
+    if (alias.second.first == operand_index &&
+        alias.second.second == operand_shape_index) {
+      return alias.first;
     }
   }
   // By default, assume custom calls define new buffers.
-  return false;
+  return std::nullopt;
 }
 
 }  // namespace
 
 absl::StatusOr<std::vector<InstructionAndShapeIndex>> GetSuccessors(
-    const InstructionAndShapeIndex& instruction_and_shape_index) {
+    const InstructionAndShapeIndex& instruction_and_shape_index,
+    const CallGraph& call_graph) {
   std::vector<InstructionAndShapeIndex> result;
   HloInstruction* instruction = instruction_and_shape_index.instruction;
   if (instruction->IsRoot()) {
     // Successor of the root is the call instruction(s).
-    std::unique_ptr<CallGraph> call_graph =
-        CallGraph::Build(instruction->GetModule());
-    auto callers = call_graph->GetComputationCallers(instruction->parent());
+    const std::vector<HloInstruction*> callers =
+        call_graph.GetComputationCallers(instruction->parent());
     for (HloInstruction* caller : callers) {
       result.push_back({caller, instruction_and_shape_index.shape_index});
     }
   }
   for (HloInstruction* user : instruction->users()) {
-    if (user->opcode() == HloOpcode::kTuple) {
+    if (user->opcode() == HloOpcode::kTuple ||
+        (user->opcode() == HloOpcode::kSort && user->shape().IsTuple())) {
       auto operand_indices = user->OperandIndices(instruction);
       for (const auto i : operand_indices) {
         auto tmp_shape_index = instruction_and_shape_index.shape_index;
@@ -95,10 +93,12 @@ absl::StatusOr<std::vector<InstructionAndShapeIndex>> GetSuccessors(
       }
     } else if (user->opcode() == HloOpcode::kGetTupleElement) {
       ShapeIndex tmp_shape_index = instruction_and_shape_index.shape_index;
-      CHECK(!tmp_shape_index.empty())
-          << "Expected shape index to be non-empty.";
-      const auto index = tmp_shape_index.front();
-      if (index == user->tuple_index()) {
+      if (tmp_shape_index.empty()) {
+        // The instruction itself produces the tuple (e.g. a variadic reduce),
+        // so the whole tuple is on host and every element read from it is a
+        // successor.
+        result.push_back({user, std::move(tmp_shape_index)});
+      } else if (tmp_shape_index.front() == user->tuple_index()) {
         // This GTE is for the buffer we're tracking.
         tmp_shape_index.pop_front();
         result.push_back({user, std::move(tmp_shape_index)});
@@ -156,19 +156,17 @@ absl::StatusOr<std::vector<InstructionAndShapeIndex>> GetSuccessors(
       }
     } else if (user->opcode() == HloOpcode::kCustomCall) {
       const auto operand_indices = user->OperandIndices(instruction);
-      // TODO(b/342650757): Rather than a boolean indicating whether the
-      // instruction reuses the buffer, return the shape index of the output
-      // that the operand aliases with.
-      bool found_one = false;
+      absl::flat_hash_set<ShapeIndex> seen_output_indices;
       for (const auto i : operand_indices) {
-        if (CustomCallReusesBuffer(user, i)) {
-          if (found_one) {
+        if (std::optional<ShapeIndex> output_shape_index =
+                GetAliasedOutputShapeIndex(
+                    user, i, instruction_and_shape_index.shape_index)) {
+          if (!seen_output_indices.insert(*output_shape_index).second) {
             return absl::InternalError(
                 "Found multiple operands of a custom call that reuse the same "
                 "output buffer.");
           }
-          result.push_back({user, instruction_and_shape_index.shape_index});
-          found_one = true;
+          result.push_back({user, *std::move(output_shape_index)});
         }
       }
     } else {
@@ -180,7 +178,7 @@ absl::StatusOr<std::vector<InstructionAndShapeIndex>> GetSuccessors(
 
 std::vector<InstructionAndShapeIndex> GetPredecessors(
     const InstructionAndShapeIndex& instruction_and_shape_index,
-    std::optional<int64_t> operand_index) {
+    const CallGraph& call_graph, std::optional<int64_t> operand_index) {
   std::vector<InstructionAndShapeIndex> result;
   HloInstruction* instruction = instruction_and_shape_index.instruction;
   if (instruction->opcode() == HloOpcode::kGetTupleElement) {
@@ -188,7 +186,9 @@ std::vector<InstructionAndShapeIndex> GetPredecessors(
     auto tmp_shape_index = instruction_and_shape_index.shape_index;
     tmp_shape_index.push_front(index);
     result.push_back({instruction->mutable_operand(0), tmp_shape_index});
-  } else if (instruction->opcode() == HloOpcode::kTuple) {
+  } else if (instruction->opcode() == HloOpcode::kTuple ||
+             (instruction->opcode() == HloOpcode::kSort &&
+              instruction->shape().IsTuple())) {
     CHECK(!instruction_and_shape_index.shape_index.empty())
         << "Did not store an index before encountering a tuple.";
     auto tmp_shape_index = instruction_and_shape_index.shape_index;
@@ -204,10 +204,8 @@ std::vector<InstructionAndShapeIndex> GetPredecessors(
     result.push_back({called_computation->root_instruction(),
                       instruction_and_shape_index.shape_index});
   } else if (instruction->opcode() == HloOpcode::kParameter) {
-    std::unique_ptr<CallGraph> call_graph =
-        CallGraph::Build(instruction->GetModule());
     const std::vector<HloInstruction*> callers =
-        call_graph->GetComputationCallers(instruction->parent());
+        call_graph.GetComputationCallers(instruction->parent());
     absl::flat_hash_set<HloInstruction*> unique_callers(callers.begin(),
                                                         callers.end());
     for (HloInstruction* caller : unique_callers) {
@@ -253,6 +251,15 @@ std::vector<InstructionAndShapeIndex> GetPredecessors(
     for (HloComputation* computation : instruction->called_computations()) {
       result.push_back({computation->root_instruction(),
                         instruction_and_shape_index.shape_index});
+    }
+  } else if (instruction->opcode() == HloOpcode::kCustomCall &&
+             !operand_index.has_value() &&
+             !instruction->output_operand_aliasing().empty()) {
+    for (const auto& alias : instruction->output_operand_aliasing()) {
+      if (alias.first == instruction_and_shape_index.shape_index) {
+        result.push_back({instruction->mutable_operand(alias.second.first),
+                          alias.second.second});
+      }
     }
   } else {
     if (!operand_index.has_value()) {

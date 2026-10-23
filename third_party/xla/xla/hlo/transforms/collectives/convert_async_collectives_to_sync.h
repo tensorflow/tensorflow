@@ -32,7 +32,6 @@ namespace xla {
 
 // Convert asynchronous collectives to synchronous (after HLO scheduling) if
 // there are no compute operations overlapping with them.
-
 class ConvertAsyncCollectivesToSync : public HloModulePass {
  public:
   explicit ConvertAsyncCollectivesToSync(HloPredicate is_nop = {})
@@ -41,31 +40,12 @@ class ConvertAsyncCollectivesToSync : public HloModulePass {
     return "convert-async-collectives-to-sync";
   }
 
-  // Replaces an asynchronous collective with its synchronous variant, and
-  // returns the synchronous instruction.
-  //
-  // For example, calling ReplaceWithSyncVariant with an all-gather-start
-  // instruction and an all-gather-done instruction will replace the
-  // instructions with an all-gather instruction.
-  static absl::StatusOr<HloInstruction*> ReplaceWithSyncVariant(
-      HloInstruction* async_start, HloInstruction* async_done);
-
   virtual absl::Status ConvertAsyncInstructionsToSync(
       HloComputation* computation,
       absl::Span<const std::pair<HloInstruction*, HloInstruction*>> async_pairs)
       const {
-    return ReplaceAsyncInstructionsWithSync(computation, async_pairs);
+    return computation->ReplaceAsyncInstructionsWithSync(async_pairs);
   }
-
-  // Helper utility to replace a list of pairs of async-start/done ops in a
-  // computation with their synchronous variants and update the schedule.
-  static absl::Status ReplaceAsyncInstructionsWithSync(
-      HloComputation* computation,
-      absl::Span<const std::pair<HloInstruction*, HloInstruction*>>
-          async_pairs);
-
-  static constexpr char kAsyncCollectiveNameAttributeName[] =
-      "async_collective_name";
 
  protected:
   absl::StatusOr<bool> RunImpl(

@@ -1869,6 +1869,7 @@ TfLiteStatus EvalFloat(
   if (time_major) {
     // Loop through the sequence.
     const int input_step = n_batch * n_input;
+    const int aux_input_step = n_batch * aux_input_size;
     const int output_step = n_batch * output_batch_leading_dim;
     for (int t = 0; t < max_time; t++) {
       // If this is the forward_sequence, step forward, otherwise step
@@ -1877,7 +1878,8 @@ TfLiteStatus EvalFloat(
       const float* input_ptr = GetTensorData<float>(input) + t_rel * input_step;
       const float* aux_input_ptr = nullptr;
       if (aux_input) {
-        aux_input_ptr = GetTensorData<float>(aux_input) + t_rel * input_step;
+        aux_input_ptr =
+            GetTensorData<float>(aux_input) + t_rel * aux_input_step;
       }
       float* output_ptr =
           GetTensorData<float>(output) + t_rel * output_step + output_offset;
@@ -1918,6 +1920,7 @@ TfLiteStatus EvalFloat(
   } else {
     for (int b = 0; b < n_batch; b++) {
       const int input_step = n_input;
+      const int aux_input_step = aux_input_size;
       const int output_step = output_batch_leading_dim;
       for (int t = 0; t < max_time; t++) {
         // If this is the forward_sequence, step forward, otherwise step
@@ -1929,7 +1932,7 @@ TfLiteStatus EvalFloat(
         const float* aux_input_ptr = nullptr;
         if (aux_input) {
           aux_input_ptr =
-              GetTensorData<float>(aux_input) + time_offset * input_step;
+              GetTensorData<float>(aux_input) + time_offset * aux_input_step;
         }
         float* output_ptr = GetTensorData<float>(output) +
                             time_offset * output_step + output_offset;
@@ -2086,6 +2089,7 @@ TfLiteStatus EvalHybrid(
   if (time_major) {
     // Feed the sequence into the LSTM step-by-step.
     const int input_step = n_batch * n_input;
+    const int aux_input_step = n_batch * aux_input_size;
     const int output_step = n_batch * output_batch_leading_dim;
     for (int t = 0; t < max_time; t++) {
       // If this is the forward_sequence, step forward, otherwise step
@@ -2094,7 +2098,8 @@ TfLiteStatus EvalHybrid(
       const float* input_ptr = GetTensorData<float>(input) + t_rel * input_step;
       const float* aux_input_ptr = nullptr;
       if (aux_input) {
-        aux_input_ptr = GetTensorData<float>(aux_input) + t_rel * input_step;
+        aux_input_ptr =
+            GetTensorData<float>(aux_input) + t_rel * aux_input_step;
       }
       float* output_ptr =
           GetTensorData<float>(output) + t_rel * output_step + output_offset;
@@ -2174,6 +2179,7 @@ TfLiteStatus EvalHybrid(
   } else {
     for (int b = 0; b < n_batch; b++) {
       const int input_step = n_input;
+      const int aux_input_step = aux_input_size;
       const int output_step = output_batch_leading_dim;
       for (int t = 0; t < max_time; t++) {
         // If this is the forward_sequence, step forward, otherwise step
@@ -2185,7 +2191,7 @@ TfLiteStatus EvalHybrid(
         const float* aux_input_ptr = nullptr;
         if (aux_input) {
           aux_input_ptr =
-              GetTensorData<float>(aux_input) + time_offset * input_step;
+              GetTensorData<float>(aux_input) + time_offset * aux_input_step;
         }
         float* output_ptr = GetTensorData<float>(output) +
                             time_offset * output_step + output_offset;

@@ -30,6 +30,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/optimization.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -39,12 +40,14 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
@@ -69,6 +72,18 @@ struct CanonicalAsyncOp {
 };
 
 CanonicalAsyncOp DefaultGetCanonicalAsyncOp(const HloInstruction& hlo);
+
+// Returns the matching start instruction for an async-done instruction.
+// Supports both canonical async ops (e.g. kAsyncDone, kAllGatherDone) and
+// legacy async ops (kCopyDone, kSendDone, kRecvDone).
+const HloInstruction* FindStart(const HloInstruction* done);
+HloInstruction* FindStart(HloInstruction* done);
+
+// Returns the matching done instruction for an async-start instruction.
+// Supports both canonical async ops (e.g. kAsyncStart, kAllGatherStart) and
+// legacy async ops (kCopyStart, kSend, kRecv).
+const HloInstruction* FindDone(const HloInstruction* start);
+HloInstruction* FindDone(HloInstruction* start);
 
 inline bool IsNopInstruction(HloOpcode op, const HloInstruction& hlo) {
   return op == HloOpcode::kGetTupleElement || op == HloOpcode::kBitcast ||
@@ -120,6 +135,11 @@ enum class ResourceHazardType {
   // ops that are valuable for selective overlap.
   kSelective = 3,
   kUnshareable = 4,
+  // An in-order resource (e.g. hardware FIFO command queue) where operations
+  // are processed sequentially. Instructions calling a synchronous nested
+  // computation using this resource cannot be scheduled while any outer
+  // asynchronous operation on this resource is in flight.
+  kInOrder = 5,
 };
 
 template <typename T, typename = typename std::enable_if_t<std::is_enum_v<T>>>
@@ -153,6 +173,7 @@ struct SchedulerConfig {
   int64_t max_hops_to_closest_selective_overlap = 0;
   int64_t rerun = 0;
   int64_t parallel_collective_overlap_limit = 1;
+  int64_t parallel_scale_up_collective_overlap_limit = 1;
   int64_t parallel_async_compute_limit = 2;
   bool schedule_send_recvs = false;
   bool deannotate_group_if_blocked = false;
@@ -187,6 +208,10 @@ struct SchedulerConfig {
   bool top_down_scheduling = false;
   // If true, enable schedule by structure.
   bool enable_schedule_by_structure = false;
+  // If true (and enable_schedule_by_structure is true), synchronous
+  // collectives are used as schedule anchors by the target-specific
+  // schedule-by-structure (critical path depth) heuristic.
+  bool enable_cpd_for_sync_collective = true;
   // If set, only log computations that match the given regular expression.
   std::string log_computation_re;
 };
@@ -296,6 +321,8 @@ class SchedulerCore {
       std::shared_ptr<SchedulingState> sched_state) {
     return absl::UnimplementedError("Not implemented.");
   }
+  // Note: This function is not thread-safe. It must not be invoked during
+  // concurrent BRKGA or simulated evaluation.
   virtual std::shared_ptr<SchedulingState> GetSchedulingState() {
     return nullptr;
   }
@@ -312,6 +339,15 @@ class SchedulerCore {
   virtual absl::Status SetGraphProcessingHook(const GraphProcessingHook& hook) {
     return absl::OkStatus();
   }
+  virtual void SetEvaluatingConcurrently(bool val) {
+    is_evaluating_concurrently_ = val;
+  }
+  virtual bool IsEvaluatingConcurrently() const {
+    return is_evaluating_concurrently_;
+  }
+
+ protected:
+  bool is_evaluating_concurrently_ = false;
 };
 
 // Helper class to keep track of which instructions are to be supported and
@@ -413,6 +449,13 @@ class AsyncTracker {
   // Returns whether the provided node occupies a selective resource.
   bool OccupiesSelectiveResource(const HloGraphNode* node) const;
 
+  // Returns whether the resource is an in-order resource (e.g. hardware FIFO
+  // command queue) where operations are processed sequentially and cannot be
+  // interleaved across nested computation boundaries.
+  bool IsInorderResource(int64_t resource_type) const {
+    return GetResourceHazardType(resource_type) == ResourceHazardType::kInOrder;
+  }
+
   inline CanonicalAsyncOp GetCanonicalAsyncOp(const HloInstruction& hlo) const {
     return get_canonical_async_op_(hlo);
   }
@@ -435,14 +478,24 @@ class AsyncTracker {
 
   const SchedulerConfig& GetConfig() const { return config_; }
 
+  // Overrides SchedulerConfig::enable_cpd_for_sync_collective. Used by the
+  // scheduler to reschedule with a different schedule-by-structure setting.
+  void SetEnableCpdForSyncCollective(bool enable) {
+    config_.enable_cpd_for_sync_collective = enable;
+  }
+
   // Clears the cache of per-computation resource maps. This is needed when,
   // e.g., we modify the schedule of a computation, which could change the
   // resource usage of the computation.
-  void InvalidateCache() { async_in_computation_cache_.clear(); }
+  void InvalidateCache() {
+    absl::MutexLock lock(&async_in_computation_cache_mu_);
+    async_in_computation_cache_.clear();
+  }
 
   // Similar to InvalidateCache(), but only invalidates the cache for the given
   // computation.
   void InvalidateCache(const HloComputation* computation) {
+    absl::MutexLock lock(&async_in_computation_cache_mu_);
     async_in_computation_cache_.erase(computation);
   }
 
@@ -469,16 +522,20 @@ class AsyncTracker {
   RecursivelyComputeResourceMapForScheduledComputation(
       const HloComputation* computation) const;
 
+  mutable absl::Mutex async_in_computation_cache_mu_;
   mutable absl::flat_hash_map<
       const HloComputation*,
       std::unique_ptr<absl::flat_hash_map<int64_t, int64_t>>>
-      async_in_computation_cache_;
+      async_in_computation_cache_
+          ABSL_GUARDED_BY(async_in_computation_cache_mu_);
   GetCanonicalAsyncOpFunc get_canonical_async_op_;
 
  protected:
-  const SchedulerConfig config_;
-  mutable absl::flat_hash_map<const HloInstruction*, ResourcesVector>
-      resources_cache_;
+  SchedulerConfig config_;
+  mutable absl::Mutex resources_cache_mu_;
+  mutable absl::flat_hash_map<const HloInstruction*,
+                              std::unique_ptr<ResourcesVector>>
+      resources_cache_ ABSL_GUARDED_BY(resources_cache_mu_);
 };
 
 class SchedulingContext {
@@ -666,6 +723,10 @@ class HloGraphNode {
   explicit HloGraphNode(const HloInstruction* i, int64_t original_position)
       : instr_(i), opcode_(i->opcode()), original_position_(original_position) {
     InitBitFields();
+    is_host_transfer_ =
+        (opcode_ == HloOpcode::kSend || opcode_ == HloOpcode::kSendDone ||
+         opcode_ == HloOpcode::kRecv || opcode_ == HloOpcode::kRecvDone) &&
+        static_cast<const HloSendRecvInstruction*>(i)->is_host_transfer();
   }
 
   static void UpdateOrAddDependency(HloGraphNode* from, HloGraphNode* to,
@@ -739,6 +800,7 @@ class HloGraphNode {
   }
   const HloInstruction& GetInstr() const { return *instr_; }
   HloOpcode GetOpcode() const { return opcode_; }
+  bool IsHostTransfer() const { return is_host_transfer_; }
   bool IsScheduled() const { return scheduled_; }
   int32_t GetIndegree() const { return indegree_; }
   int32_t GetOutdegree() const { return outdegree_; }
@@ -1031,14 +1093,16 @@ class HloGraphNode {
   // Opcode of instr_, copied here for better cache behavior (so we can look at
   // the opcode without having to touch another cache line).
   HloOpcode opcode_;
+  // If multiple nodes are there with force_delay_ = true, the one with the
+  // lowest delay priority will be scheduled first.
+  int force_delay_priority_ = 0;
 
   // Some of the booleans are looked at very often, so we avoid making them
   // bitfields
   // Force the scheduling of the nodes with attribute set as late as possible.
   bool force_delay_ = false;
-  // If multiple nodes are there with force_delay_ = true, the one with the
-  // lowest delay priority will be scheduled first.
-  int force_delay_priority_ = 0;
+  // Whether the instruction is a host transfer (send/recv).
+  bool is_host_transfer_ = false;
   // Force the scheduling of the nodes with attribute set as early as possible.
   bool force_early_ = false;
   // If has_rare_ is false, then all the fields in rare can assumed to be
@@ -1205,8 +1269,10 @@ class HloScheduleGraph {
   // altered/deleted during the existence of the HloScheduleGraph.
   // Nullptr is not a valid value for 'post_order_instructions' and
   // 'alias_analysis'.
-  HloScheduleGraph(const std::vector<HloInstruction*>* post_order_instructions,
-                   std::shared_ptr<const SchedulingContext> scheduling_context);
+  HloScheduleGraph(
+      const std::vector<HloInstruction*>* post_order_instructions,
+      std::shared_ptr<const SchedulingContext> scheduling_context,
+      std::shared_ptr<const HloReachabilityMap> reachability_map = nullptr);
   virtual ~HloScheduleGraph() = default;
   HloScheduleGraph(HloScheduleGraph&&) = default;
   HloScheduleGraph& operator=(HloScheduleGraph&&) = default;
@@ -1312,7 +1378,7 @@ class HloScheduleGraph {
                                  const HloGraphNode* possible_predecessor);
   // Scheduling context for the graph.
   std::shared_ptr<const SchedulingContext> scheduling_context_;
-  std::unique_ptr<HloReachabilityMap> reachability_;
+  std::shared_ptr<const HloReachabilityMap> reachability_;
 };
 
 // These HloEdge routines need to be defined after HloScheduleGraph, since
@@ -1411,7 +1477,7 @@ class MemoryPressureMetadata {
         pressure_state_cache_(pressure_state_cache),
         top_down_scheduling_(top_down_scheduling) {}
   // Initialize object to be ready to start tracking of computation, this
-  // should be called once per computation and after callees.
+  // should be called once per computation.
   void Initialize(const HloComputation* computation);
 
   int32_t GetInstructionId(const HloInstruction* i) const {
@@ -1669,12 +1735,18 @@ class ModulePressureState {
   const BufferInfoTracker& buffer_tracker() const { return buffer_tracker_; }
   int64_t GetMemoryPeak() { return memory_peak_; }
   void SetMemoryPeak(int64_t peak) { memory_peak_ = peak; }
+  const MemoryPressureMetadata* GetOrCreatePressureMetadata(
+      const HloComputation* comp) const;
 
  private:
   const HloModule* module_;
   const HloAliasAnalysis* hlo_alias_analysis_;
   absl::flat_hash_map<const HloComputation*, MemoryPressureState>
       memory_pressure_states_;
+  mutable absl::Mutex pressure_metadata_cache_mu_;
+  mutable absl::flat_hash_map<const HloComputation*,
+                              std::unique_ptr<MemoryPressureMetadata>>
+      pressure_metadata_cache_ ABSL_GUARDED_BY(pressure_metadata_cache_mu_);
   BufferInfoTracker buffer_tracker_;
   int64_t memory_peak_ = 0;
   bool top_down_scheduling_ = false;
@@ -1882,6 +1954,7 @@ class DefaultSchedulerCore : public SchedulerCore {
   absl::Status InitializeScheduler(const HloModule* module) override;
 
   absl::Status CaptureScheduleProto() override {
+    absl::MutexLock lock(&schedule_proto_mu_);
     schedule_proto_ = ScheduleProto();
     *schedule_proto_->mutable_hlo_module() = module_->ToProto();
 
@@ -1889,6 +1962,7 @@ class DefaultSchedulerCore : public SchedulerCore {
   }
 
   absl::StatusOr<ScheduleProto> GetCapturedScheduleProto() override {
+    absl::MutexLock lock(&schedule_proto_mu_);
     if (!schedule_proto_.has_value()) {
       return absl::FailedPreconditionError("Schedule proto not captured.");
     }
@@ -1914,6 +1988,8 @@ class DefaultSchedulerCore : public SchedulerCore {
   static bool DeleteOccupierFromResource(
       HloGraphNode::TimeCost current_time, HloEdge& edge,
       std::vector<std::pair<HloEdge*, HloGraphNode::TimeCost>>& occupiers);
+  static bool DefaultSchedulingInstructionCrossesOverlapLimit(
+      const SchedulingState& sched_state, const HloGraphNode* node);
   int64_t GetMemoryPeak() override {
     return module_pressure_state_->GetMemoryPeak();
   }
@@ -1972,7 +2048,8 @@ class DefaultSchedulerCore : public SchedulerCore {
  protected:
   virtual std::unique_ptr<HloScheduleGraph> CreateScheduleGraph(
       const std::vector<HloInstruction*>* instructions,
-      std::shared_ptr<const SchedulingContext> context) const;
+      std::shared_ptr<const SchedulingContext> context,
+      std::shared_ptr<const HloReachabilityMap> reachability = nullptr) const;
   virtual void LogInstruction(const HloInstruction* instr) const;
 
   // Schedules the given annotated node.
@@ -2005,11 +2082,22 @@ class DefaultSchedulerCore : public SchedulerCore {
   OverlapLimitRule scheduling_instruction_crosses_overlap_limit_ = nullptr;
   bool is_default_scheduling_instruction_crosses_overlap_limit_ = false;
   std::unique_ptr<AnnotationTracker> annotation_tracker_;
-  std::optional<ScheduleProto> schedule_proto_;
+  mutable absl::Mutex schedule_proto_mu_;
+  std::optional<ScheduleProto> schedule_proto_
+      ABSL_GUARDED_BY(schedule_proto_mu_);
   const HloModule* module_ = nullptr;
   SchedulerCore::GraphProcessingHook default_graph_processing_hook_;
   std::shared_ptr<const SchedulingContext> scheduling_context_;
-  std::shared_ptr<SchedulerCore::SchedulingState> latest_sched_state_;
+  mutable absl::Mutex latest_sched_state_mu_;
+  std::shared_ptr<SchedulerCore::SchedulingState> latest_sched_state_
+      ABSL_GUARDED_BY(latest_sched_state_mu_);
+  std::shared_ptr<const HloReachabilityMap> GetReachabilityMap(
+      const HloComputation* computation);
+
+  mutable absl::Mutex reachability_cache_mu_;
+  absl::flat_hash_map<const HloComputation*,
+                      std::shared_ptr<const HloReachabilityMap>>
+      reachability_cache_ ABSL_GUARDED_BY(reachability_cache_mu_);
   bool top_down_scheduling_ = false;
 };
 

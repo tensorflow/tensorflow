@@ -74,6 +74,8 @@ TF_CONST_INIT const absl::string_view kXlaOpLineName = "XLA Ops";
 TF_CONST_INIT const absl::string_view kXlaAsyncOpLineName = "Async XLA Ops";
 TF_CONST_INIT const absl::string_view kKernelLaunchLineName = "Launch Stats";
 TF_CONST_INIT const absl::string_view kSourceLineName = "Source code";
+TF_CONST_INIT const absl::string_view kCommandBufferLineName =
+    "Command Buffers";
 TF_CONST_INIT const absl::string_view kHostOffloadOpLineName =
     "Host Offload Ops";
 TF_CONST_INIT const absl::string_view kCounterEventsLineName = "_counters_";
@@ -353,6 +355,12 @@ const StatTypeMap& GetStatTypeMap() {
         kDevCapPeakSramRdBwGigabytesPerSecond},
        {"peak_sram_wr_bw_gigabytes_per_second",
         kDevCapPeakSramWrBwGigabytesPerSecond},
+       {"peak_spmem_rd_bw_gigabytes_per_second",
+        kDevCapPeakSpmemRdBwGigabytesPerSecond},
+       {"peak_spmem_wr_bw_gigabytes_per_second",
+        kDevCapPeakSpmemWrBwGigabytesPerSecond},
+       {"peak_sc_teraflops_per_second", kDevCapPeakScTeraflopsPerSecond},
+       {"num_sparse_core_tiles", kDevCapNumSparseCoreTiles},
        {"device_vendor", kDevVendor},
        {"has_megacore", kDevHasMegacore},
        {"has_merged_vmem", kDevHasMergedVmem},
@@ -426,7 +434,9 @@ const StatTypeMap& GetStatTypeMap() {
        {"hbm_power_events", kHbmPowerEvents},
        {"transaction_with_chip_core_id", kTransactionWithChipCoreId},
        {"program_counter", kProgramCounter},
-       {"uses_ici", kUsesIci}});
+       {"uses_ici", kUsesIci},
+       {"dims", kDimensions},
+       {"type", kType}});
   DCHECK_EQ(stat_type_map->size(), kNumStatTypes);
   return *stat_type_map;
 }

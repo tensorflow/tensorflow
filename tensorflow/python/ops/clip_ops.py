@@ -120,9 +120,6 @@ def clip_by_value(t, clip_value_min, clip_value_max,
       t_max = indexed_slices.IndexedSlices(t_max, t.indices, t.dense_shape)
 
   return t_max
-  # TODO(scottzhu): switch to use new implementation in 2 weeks.
-  # return gen_math_ops.clip_by_value(
-  #     t, clip_value_min, clip_value_max, name=name)
 
 
 @ops.RegisterGradient("ClipByValue")
@@ -368,6 +365,8 @@ def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
   t_list = list(t_list)
   if use_norm is None:
     use_norm = global_norm(t_list, name)
+  else:
+    use_norm = ops.convert_to_tensor(use_norm, name="use_norm")
 
   with ops.name_scope(name, "clip_by_global_norm",
                       t_list + [clip_norm]) as name:

@@ -49,7 +49,7 @@ namespace xla {
 namespace {
 
 class PrngTest : public ClientLibraryTestRunnerMixin<
-                     HloPjRtInterpreterReferenceMixin<HloTestBase>> {
+                     HloInterpreterReferenceMixin<HloTestBase>> {
  protected:
   template <typename T>
   Literal UniformTest(T a, T b, absl::Span<const int64_t> dims,

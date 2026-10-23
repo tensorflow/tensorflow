@@ -143,7 +143,7 @@ Value CreateStridedSliceIndexToInt32(Value val, Location loc,
 // Utility function to-
 // 1. Create a tfl.const op with an int32_t values, from an MLIR Value, if the
 // `Value` can be matched to a Constant DenseIntElementsAttr.
-// This will make sure the dynamic dimensions are asigned to be `-1`
+// This will make sure the dynamic dimensions are assigned to be `-1`
 // 2. In the default case, cast the `Value` to an int32_t.
 Value CreateInt32ConstOrCast(Value val, Location loc,
                              PatternRewriter& rewriter) {
@@ -413,7 +413,7 @@ LogicalResult ConvertTFMatMulOp::matchAndRewrite(
     return {success(), output};
   };
 
-  // TODO(jpienaar): Remove once handled via dailect conversion.
+  // TODO(jpienaar): Remove once handled via dialect conversion.
   if (tf_matmul_op.getTransposeA()) {
     LogicalResult result = success();
     std::tie(result, lhs) = transpose(lhs);
@@ -730,7 +730,7 @@ struct LegalizeUnidirectionalSequenceLstm : public RewritePattern {
   }
 };
 
-// Legalize unidirectional seqeucen rnn.
+// Legalize unidirectional sequence rnn.
 struct LegalizeUnidirectionalSequenceRnn : public RewritePattern {
   explicit LegalizeUnidirectionalSequenceRnn(MLIRContext* context)
       : RewritePattern(kUnidirectionalSequenceRnn, 1, context) {}

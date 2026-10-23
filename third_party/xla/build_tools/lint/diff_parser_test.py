@@ -124,6 +124,31 @@ class ParseDiffTest(absltest.TestCase):
     self.assertEqual(line_numbers(big_hunk), list(range(303, 342)))
     self.assertEqual(line_numbers(literal_cc_hunk), [50])
 
+  def test_parse_diff_with_more_than_eight_hunks(self):
+    diff_lines = [
+        "diff --git a/test.cc b/test.cc",
+        "index 1111111..2222222 100644",
+        "--- a/test.cc",
+        "+++ b/test.cc",
+    ]
+    for i in range(1, 13):
+      start_line = i * 20
+      diff_lines.extend([
+          f"@@ -{start_line},3 +{start_line},4 @@ void func_{i}() {{",
+          "   int a = 1;",
+          f"+  int b_{i} = {i};",
+          "   int c = 2;",
+          " }",
+      ])
+    multi_hunk_diff = "\n".join(diff_lines) + "\n"
+
+    hunks = diff_parser.parse_hunks(multi_hunk_diff)
+    self.assertLen(hunks, 12)
+    for i, hunk in enumerate(hunks, start=1):
+      self.assertEqual(hunk.start, i * 20)
+      added = [line_no for line_no, _ in hunk.added_lines()]
+      self.assertEqual(added, [i * 20 + 1])
+
 
 if __name__ == "__main__":
   absltest.main()

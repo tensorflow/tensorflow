@@ -15,11 +15,13 @@ limitations under the License.
 
 #include "xla/stream_executor/cuda/cuda_raw_memory_allocation.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
 
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "third_party/gpus/cuda/include/cuda.h"
@@ -42,28 +44,45 @@ CudaRawMemoryAllocation::Create(StreamExecutor* executor, uint64_t size) {
 
   ABSL_ASSIGN_OR_RETURN(CudaDeviceAllocator::Options options,
                    QueryDeviceAllocatorOptions(device));
-  CUmemAllocationProp props = BuildVmmAllocationProp(device, options);
+  return CreateWithDevice(executor, device, size, options);
+}
 
-  size_t granularity = 0;
-  ABSL_RETURN_IF_ERROR(cuda::ToStatus(cuMemGetAllocationGranularity(
-      &granularity, &props, CU_MEM_ALLOC_GRANULARITY_RECOMMENDED)));
+absl::StatusOr<std::unique_ptr<CudaRawMemoryAllocation>>
+CudaRawMemoryAllocation::Create(StreamExecutor* executor, uint64_t size,
+                                const CudaDeviceAllocator::Options& options) {
+  std::unique_ptr<ActivateContext> activation = executor->Activate();
 
-  uint64_t padded_size = xla::RoundUpTo<uint64_t>(size, granularity);
+  CUdevice device;
+  ABSL_RETURN_IF_ERROR(
+      cuda::ToStatus(cuDeviceGet(&device, executor->device_ordinal())));
+  return CreateWithDevice(executor, device, size, options);
+}
 
-  CUmemGenericAllocationHandle handle;
-  CUresult err = cuMemCreate(&handle, padded_size, &props, 0);
-#if CUDA_VERSION >= 12030
-  // Strip FABRIC and retry on NOT_PERMITTED/NOT_SUPPORTED.
-  if ((err == CUDA_ERROR_NOT_PERMITTED || err == CUDA_ERROR_NOT_SUPPORTED) &&
-      (static_cast<int>(props.requestedHandleTypes) &
-       CU_MEM_HANDLE_TYPE_FABRIC)) {
-    props.requestedHandleTypes = static_cast<CUmemAllocationHandleType>(
-        static_cast<int>(props.requestedHandleTypes) &
-        ~CU_MEM_HANDLE_TYPE_FABRIC);
-    err = cuMemCreate(&handle, padded_size, &props, 0);
+absl::StatusOr<std::unique_ptr<CudaRawMemoryAllocation>>
+CudaRawMemoryAllocation::CreateWithDevice(
+    StreamExecutor* executor, CUdevice device, uint64_t size,
+    const CudaDeviceAllocator::Options& options) {
+  if (!options.use_vmm) {
+    return absl::InvalidArgumentError(
+        "CudaRawMemoryAllocation requires CUDA VMM, but options.use_vmm is "
+        "false");
   }
-#endif
-  ABSL_RETURN_IF_ERROR(cuda::ToStatus(err, "cuMemCreate"));
+
+  // The granularity query itself can be rejected for unsupported handle
+  // types; probe with the same fallback CudaDeviceAllocator uses and create
+  // the allocation with the handle types the driver accepted.
+  ABSL_ASSIGN_OR_RETURN(VmmGranularityProbe probe,
+                   ProbeVmmGranularity(device, options));
+  CUmemAllocationProp props = BuildVmmAllocationProp(device, probe.options);
+
+  // Same effective alignment as CudaDeviceAllocator.
+  size_t alignment = std::max(options.alignment, probe.granularity);
+  uint64_t padded_size = xla::RoundUpTo<uint64_t>(size, alignment);
+
+  // Shared fallback: FABRIC+POSIX_FD -> POSIX_FD -> NONE, including on
+  // CUDA_ERROR_INVALID_VALUE from older drivers.
+  ABSL_ASSIGN_OR_RETURN(CUmemGenericAllocationHandle handle,
+                   CreateVmmPhysicalAllocation(props, padded_size));
 
   return std::unique_ptr<CudaRawMemoryAllocation>(
       new CudaRawMemoryAllocation(executor, handle, padded_size));

@@ -309,7 +309,9 @@ cuda_py_strict_test(
     # b/140155706: nans in result
     xla_enable_strict_auto_jit = False,
     deps = [
+        "//tensorflow/compiler/jit",
         "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:sparse_tensor",
@@ -360,7 +362,11 @@ cuda_py_strict_test(
     size = "small",
     srcs = ["in_topk_op_test.py"],
     deps = [
+        "//tensorflow/compiler/jit:xla_cpu_jit",
+        "//tensorflow/compiler/jit:xla_gpu_jit",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/ops:nn_ops",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",

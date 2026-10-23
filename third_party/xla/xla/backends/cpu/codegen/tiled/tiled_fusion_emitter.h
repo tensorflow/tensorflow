@@ -24,9 +24,9 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/mlir_kernel_source.h"
+#include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
@@ -43,7 +43,7 @@ TiledEmissionResult EmitTiledFusionKernel(
     mlir::MLIRContext& context, const HloFusionInstruction& fusion,
     const BufferAssignment* buffer_assignment, absl::string_view name,
     int64_t num_work_groups,
-    std::optional<gpu::BlockLevelParameters> block_level_parameters =
+    std::optional<xla::xtile::BlockLevelParameters> block_level_parameters =
         std::nullopt);
 
 }  // namespace xla::cpu

@@ -323,6 +323,27 @@ TEST(ProtoHelper, EmptyProto) {
   stream_executor::tpu::SerializedProto_Free(serialized_proto);
 }
 
+TEST(StackHelper, DefaultConstruct) {
+  {
+    StackHelper<XLA_Shape> stack_shape;
+    EXPECT_EQ(stack_shape.value.dimensions.size, 0);
+  }
+  {
+    StackHelper<XLA_Layout> stack_layout;
+    EXPECT_EQ(stack_layout.value.minor_to_major.size, 0);
+  }
+  {
+    StackHelper<XLA_Tile> stack_tile;
+    EXPECT_EQ(stack_tile.value.dimensions.size, 0);
+  }
+}
+
+TEST(StackHelper, Conversion) {
+  xla::Shape cpp_shape = xla::ShapeUtil::MakeShapeWithType<float>({4, 3});
+  StackHelper<XLA_Shape> stack_shape(cpp_shape);
+  EXPECT_EQ(stack_shape.AsCpp<xla::Shape>(), cpp_shape);
+}
+
 // TODO(b/290654348): SE_DeviceAddressBase, SE_DeviceAddressAllocator,
 // SE_MaybeOwningDeviceAddress
 

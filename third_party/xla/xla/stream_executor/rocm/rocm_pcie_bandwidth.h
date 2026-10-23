@@ -14,15 +14,16 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_ROCM_ROCM_PCIE_BANDWIDTH_H_
 
 #include <cstdint>
-#include <optional>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 
 namespace stream_executor::gpu {
 
 // pci_bus_id is the PCI bus ID string from HIP (e.g. "0000:41:00.0").
-// Returns bandwidth in bytes/second, or std::nullopt if the query fails.
-std::optional<int64_t> GetRocmPcieBandwidth(absl::string_view pci_bus_id);
+// Returns bandwidth in bytes/second. Does not log; the caller decides what a
+// failure means.
+absl::StatusOr<int64_t> GetRocmPcieBandwidth(absl::string_view pci_bus_id);
 
 }  // namespace stream_executor::gpu
 

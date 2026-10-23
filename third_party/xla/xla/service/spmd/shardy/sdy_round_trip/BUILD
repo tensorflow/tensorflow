@@ -74,6 +74,8 @@ cc_library(
     deps = [
         "//xla:side_effect_util",
         "//xla/hlo/ir:hlo_sharding",
+        "//xla/hlo/ir:mesh_and_axis",
+        "//xla/hlo/ir:named_sharding",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/translate/hlo_to_mhlo:hlo_utils",
         "//xla/service/spmd/shardy:constants",
@@ -143,6 +145,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@shardy//shardy/dialect/sdy/ir:dialect",
         "@shardy//shardy/dialect/sdy/transforms/common:sharding_walker",
+        "@shardy//shardy/dialect/sdy/transforms/export:utils",
         "@stablehlo//:stablehlo_ops",
     ],
 )

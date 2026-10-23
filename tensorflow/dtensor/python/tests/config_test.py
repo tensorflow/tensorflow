@@ -44,6 +44,11 @@ class ConfigTest(tf_test.TestCase):
     self.assertEqual(config.full_job_name(), 'localhost/replica:0/task:0')
     self.assertEqual(config.jobs(), [])
 
+  def test_jobs_empty_and_whitespace(self):
+    for empty_val in ('', '   '):
+      os.environ[config._DT_JOBS] = empty_val
+      self.assertEqual(config.jobs(), [])
+
   def test_list_devices(self):
     device_type = config.preferred_device_type()
 
@@ -86,6 +91,18 @@ class ConfigTest(tf_test.TestCase):
     dtensor_jobs = ['localhost:{port}'.format(port=16 - i) for i in range(16)]
     os.environ[config._DT_JOBS] = ','.join(dtensor_jobs)
     self.assertListEqual(dtensor_jobs, config.jobs())
+
+  def test_heartbeat_enabled(self):
+    os.environ[config._DT_HEARTBEAT_ENABLED] = 'false'
+    self.assertFalse(config.heartbeat_enabled())
+    os.environ[config._DT_HEARTBEAT_ENABLED] = '0'
+    self.assertFalse(config.heartbeat_enabled())
+    os.environ[config._DT_HEARTBEAT_ENABLED] = 'true'
+    self.assertTrue(config.heartbeat_enabled())
+    os.environ[config._DT_HEARTBEAT_ENABLED] = '1'
+    self.assertTrue(config.heartbeat_enabled())
+    os.environ.pop(config._DT_HEARTBEAT_ENABLED, None)
+    self.assertTrue(config.heartbeat_enabled())
 
 
 if __name__ == '__main__':

@@ -51,6 +51,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
+#include "mlir/Interfaces/FunctionInterfaces.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "xla/codegen/emitters/ir/xla_dialect.cc.inc"
@@ -104,9 +105,14 @@ std::optional<Interval> GetRange(mlir::Value value) {
   };
 
   if (auto apply = value.getDefiningOp<ApplyIndexingOp>()) {
-    return apply.getIndexingMap().GetRangeEvaluator().ComputeExpressionRange(
-        apply.getIndexingMap().GetSymbolicMap().GetResult(
-            mlir::cast<mlir::OpResult>(value).getResultNumber()));
+    Interval range =
+        apply.getIndexingMap().GetRangeEvaluator().ComputeExpressionRange(
+            apply.getIndexingMap().GetSymbolicMap().GetResult(
+                mlir::cast<mlir::OpResult>(value).getResultNumber()));
+    if (auto attr_range = attr_to_range(apply->getAttr("xla.range"))) {
+      range = range.Intersect(*attr_range);
+    }
+    return range;
   } else if (auto cst = value.getDefiningOp<mlir::arith::ConstantIndexOp>()) {
     return {{cst.value(), cst.value()}};
   } else if (value.getDefiningOp()) {
@@ -119,7 +125,7 @@ std::optional<Interval> GetRange(mlir::Value value) {
   }
 
   auto parent = bbarg.getParentBlock()->getParentOp();
-  if (auto func_op = mlir::dyn_cast<mlir::func::FuncOp>(parent)) {
+  if (auto func_op = mlir::dyn_cast<mlir::FunctionOpInterface>(parent)) {
     return attr_to_range(func_op.getArgAttr(bbarg.getArgNumber(), "xla.range"));
   }
   return GetIVRange(value);
@@ -270,6 +276,9 @@ void ApplyIndexingOp::print(OpAsmPrinter& p) {
 
 LogicalResult ApplyIndexingOp::verify() {
   auto symbolic_map = getIndexingMapAttr().getIndexingMap().GetSymbolicMap();
+  if (symbolic_map.IsEmpty()) {
+    return emitOpError("IndexingMap is empty");
+  }
   unsigned num_variables =
       symbolic_map.GetNumDims() + symbolic_map.GetNumSymbols();
   if (getOperands().size() != num_variables) {
@@ -277,9 +286,6 @@ LogicalResult ApplyIndexingOp::verify() {
         "operand count ", getOperands().size(),
         " does not match the sum of dimensions ", symbolic_map.GetNumDims(),
         " and symbols ", symbolic_map.GetNumSymbols(), " in the symbolic map"));
-  }
-  if (!getIndexingMap().GetSymbolicConstraints().empty()) {
-    return emitOpError("apply indexing op cannot have any constraints");
   }
   return success();
 }
@@ -306,6 +312,7 @@ absl::StatusOr<IndexingMapWithAdditions> GetNewIndexingMapAfterFoldingSequence(
   auto new_dim_vars = indexing_map.GetDimVars();
 
   mlir::DenseMap<SymbolicExpr, SymbolicExpr> replacements;
+  SmallVector<std::pair<SymbolicExpr, Interval>> added_constraints;
   for (auto& [operand_id, producer] : apply_indexing_ops) {
     auto producer_map = producer.getIndexingMap();
     mlir::OpResult producer_result = producer->getOpResult(0);
@@ -337,19 +344,45 @@ absl::StatusOr<IndexingMapWithAdditions> GetNewIndexingMapAfterFoldingSequence(
             .GetResult(producer_result_id)
             .ReplaceDims(producer_dim_replacements, num_producer_dims,
                          num_producer_dims, producer_map.GetSymbolCount());
+    for (const auto& [expr, range] : producer_map.GetSymbolicConstraints()) {
+      added_constraints.push_back(
+          {expr.ReplaceDims(producer_dim_replacements, num_producer_dims,
+                            num_producer_dims, producer_map.GetSymbolCount()),
+           range});
+    }
   }
 
-  auto new_symbolic_map =
-      indexing_map.GetSymbolicMap()
-          .SetNumDimensions(num_dims + added_dim_args.size())
-          .Replace(replacements);
+  int new_num_dims = num_dims + added_dim_args.size();
+  int num_symbols = indexing_map.GetSymbolCount();
+  auto new_symbolic_map = indexing_map.GetSymbolicMap()
+                              .SetNumDimensions(new_num_dims)
+                              .Replace(replacements);
+  SmallVector<std::pair<SymbolicExpr, Interval>> new_constraints;
+  for (const auto& [expr, range] : indexing_map.GetSymbolicConstraints()) {
+    new_constraints.push_back(
+        {expr.ReplaceDims({}, num_dims, new_num_dims, num_symbols)
+             .Replace(replacements),
+         range});
+  }
+  new_constraints.append(added_constraints.begin(), added_constraints.end());
   IndexingMap new_indexing_map(new_symbolic_map, new_dim_vars,
                                indexing_map.GetRangeVars(),
-                               indexing_map.GetRTVars());
+                               indexing_map.GetRTVars(), new_constraints);
 
   return IndexingMapWithAdditions{new_indexing_map, added_dim_args};
 }
 }  // namespace
+
+void ReplaceApplyIndexingOp(PatternRewriter& rewriter,
+                            ApplyIndexingOp indexing_op, ValueRange operands,
+                            const IndexingMap& indexing_map) {
+  auto new_op = ApplyIndexingOp::create(rewriter, indexing_op.getLoc(),
+                                        operands, indexing_map);
+  if (auto range_attr = indexing_op->getAttr("xla.range")) {
+    new_op->setAttr("xla.range", range_attr);
+  }
+  rewriter.replaceOp(indexing_op, new_op.getResults());
+}
 
 namespace {
 
@@ -364,8 +397,8 @@ struct SimplifyIndexingMap : public mlir::OpRewritePattern<ApplyIndexingOp> {
       return rewriter.notifyMatchFailure(indexing_op,
                                          "IndexingMap is already simplified");
     }
-    rewriter.replaceOpWithNewOp<ApplyIndexingOp>(
-        indexing_op, indexing_op.getOperands(), indexing_map);
+    ReplaceApplyIndexingOp(rewriter, indexing_op, indexing_op.getOperands(),
+                           indexing_map);
     return success();
   }
 };
@@ -389,8 +422,7 @@ struct RemoveUnusedVariables : public mlir::OpRewritePattern<ApplyIndexingOp> {
         operands.push_back(indexing_op.getOperand(i));
       }
     }
-    rewriter.replaceOpWithNewOp<ApplyIndexingOp>(indexing_op, operands,
-                                                 indexing_map);
+    ReplaceApplyIndexingOp(rewriter, indexing_op, operands, indexing_map);
     return success();
   }
 };
@@ -404,9 +436,8 @@ struct MoveSymbolsToDims : public mlir::OpRewritePattern<ApplyIndexingOp> {
     if (indexing_map.GetSymbolCount() == 0) {
       return rewriter.notifyMatchFailure(indexing_op, "No symbols found");
     }
-    rewriter.replaceOpWithNewOp<ApplyIndexingOp>(
-        indexing_op, indexing_op->getOperands(),
-        indexing_map.ConvertSymbolsToDimensions());
+    ReplaceApplyIndexingOp(rewriter, indexing_op, indexing_op->getOperands(),
+                           indexing_map.ConvertSymbolsToDimensions());
     return success();
   }
 };
@@ -418,9 +449,11 @@ struct FoldApplyIndexingSequence
   LogicalResult matchAndRewrite(ApplyIndexingOp indexing_op,
                                 PatternRewriter& rewriter) const override {
     auto indexing_map = indexing_op.getIndexingMap();
+    int num_dims = indexing_op.getSymbolicMap().GetNumDims();
+    int num_syms = indexing_op.getSymbolicMap().GetNumSymbols();
     SmallVector<std::pair<int, ApplyIndexingOp>, 2> apply_indexing_ops;
     bool all_apply_indexing_operands_have_one_use = true;
-    for (auto& operand : indexing_op->getOpOperands()) {
+    for (auto& operand : indexing_op->getOpOperands().take_front(num_dims)) {
       if (auto producer = operand.get().getDefiningOp<ApplyIndexingOp>()) {
         apply_indexing_ops.push_back({operand.getOperandNumber(), producer});
         all_apply_indexing_operands_have_one_use &= producer->hasOneUse();
@@ -435,18 +468,14 @@ struct FoldApplyIndexingSequence
     // in canonicalizer.
     auto indexing_map_with_no_unused_vars = indexing_map;
     if (indexing_map_with_no_unused_vars.RemoveUnusedVars().count() > 0) {
-      indexing_map_with_no_unused_vars.RemoveUnusedVars();
       return rewriter.notifyMatchFailure(indexing_op,
                                          "IndexingMap has unused variables");
     }
     MLIRContext* ctx = indexing_op.getContext();
-    int num_dims = indexing_op.getSymbolicMap().GetNumDims();
-    int num_syms = indexing_op.getSymbolicMap().GetNumSymbols();
     mlir::DenseMap<Value, SymbolicExpr> operand_exprs;
-    for (auto& operand : indexing_op->getOpOperands()) {
+    for (auto& operand : indexing_op->getOpOperands().take_front(num_dims)) {
       int operand_number = operand.getOperandNumber();
-      operand_exprs[operand.get()] =
-          CreateSymbolicVariable(operand_number, ctx);
+      operand_exprs[operand.get()] = CreateDimExpr(operand_number, ctx);
     }
 
     // TODO(b/446856303): Get MLIRContext from IndexingMap.
@@ -474,8 +503,8 @@ struct FoldApplyIndexingSequence
     new_operands.append(replacement->added_dim_args);
     new_operands.append(begin + num_dims, begin + num_dims + num_syms);
 
-    rewriter.replaceOpWithNewOp<ApplyIndexingOp>(indexing_op, new_operands,
-                                                 replacement->indexing_map);
+    ReplaceApplyIndexingOp(rewriter, indexing_op, new_operands,
+                           replacement->indexing_map);
 
     return success();
   }
@@ -517,7 +546,7 @@ struct FoldApplyIndexingOperands
     unsigned new_num_operands = indexing_op->getNumOperands() - num_constants;
     SmallVector<Value, 4> new_operands;
     new_operands.reserve(new_num_operands);
-    SmallVector<IndexingMap::Variable, 2> new_dim_vars;
+    std::vector<IndexingMap::Variable> new_dim_vars;
     new_dim_vars.reserve(num_dims);
 
     unsigned new_num_dims = 0;
@@ -539,11 +568,19 @@ struct FoldApplyIndexingOperands
         new_dim_vars.push_back(indexing_map.GetDimVar(operand_id));
       }
     }
-    rewriter.replaceOpWithNewOp<ApplyIndexingOp>(
-        indexing_op, new_operands,
-        symbolic_map.ReplaceDimsAndSymbols(dim_replacements, {}, new_num_dims,
-                                           0),
-        new_dim_vars, SmallVector<IndexingMap::Variable>());
+    SmallVector<std::pair<SymbolicExpr, Interval>> new_constraints;
+    new_constraints.reserve(indexing_map.GetSymbolicConstraints().size());
+    for (const auto& [expr, interval] : indexing_map.GetSymbolicConstraints()) {
+      new_constraints.push_back(
+          {expr.ReplaceDims(dim_replacements, num_dims, new_num_dims, 0),
+           interval});
+    }
+    IndexingMap new_indexing_map(symbolic_map.ReplaceDimsAndSymbols(
+                                     dim_replacements, {}, new_num_dims, 0),
+                                 std::move(new_dim_vars), /*range_vars=*/{},
+                                 /*rt_vars=*/{}, new_constraints);
+    ReplaceApplyIndexingOp(rewriter, indexing_op, new_operands,
+                           new_indexing_map);
     return success();
   }
 };

@@ -167,7 +167,7 @@ std::string shapeToString(const T& shape) {
 
 // Computes the dimensions that were squeezed from the source shape to match the
 // target shape. Returns the dimensions in increasing order.
-FailureOr<SmallVector<int>> computeSqueezedDimsChecked(
+FailureOr<SmallVector<int64_t>> computeSqueezedDimsChecked(
     Operation* op, ArrayRef<int64_t> source_shape,
     ArrayRef<int64_t> target_shape);
 
@@ -195,6 +195,21 @@ auto positiveMod(U a, V b) {
 // positions, and fills the rest with `missing`.
 SmallVector<Value> fillPositions(ValueRange values, ArrayRef<int32_t> positions,
                                  int size, Value missing = nullptr);
+
+// Returns the tiled layout of `memref_type`. Memrefs with an identity layout
+// are described by an equivalent untiled layout. Returns an error if the layout
+// is neither identity nor tiled.
+FailureOr<tpu::TiledLayoutAttr> getTiledLayout(Location loc,
+                                               MemRefType memref_type);
+
+// Returns true if the minormost dimension of a memref with the given shape and
+// tiled layout is both sequential (successive elements along that dimension
+// have a physical stride of 1) and contiguous (no intervening padding or
+// non-adjacent runs).
+//
+// This is best-effort and might return false negatives.
+bool keepsMinorDimSequentialAndContiguous(ArrayRef<int64_t> shape,
+                                          tpu::TiledLayoutAttr layout);
 
 }  // namespace mlir::tpu
 

@@ -47,10 +47,10 @@ template <typename T>
 bool DecodeVariant(std::string* buf, T* value);
 
 template <typename T>
-void EncodeVariant(const T& value, VariantTensorData* data);
+bool EncodeVariant(const T& value, VariantTensorData* data);
 
 template <typename T>
-void EncodeVariant(const T& value, std::string* buf);
+bool EncodeVariant(const T& value, std::string* buf);
 
 // This is an implementation of a type-erased container that can store an
 // object of any type. The implementation is very similar to std::any, but has
@@ -68,8 +68,11 @@ void EncodeVariant(const T& value, std::string* buf);
 // following functions:
 //
 //   string TypeName() const;
-//   void Encode(VariantTensorData* data) const;
+//   bool Encode(VariantTensorData* data) const; // or: void Encode(...)
 //   bool Decode(VariantTensorData data);
+//
+// Note: `Encode` can return `bool` to indicate success/failure, or `void`
+// (which is treated as always succeeding).
 //
 // Simple POD types can elide the Encode/Decode functions, they are provided by
 // helper methods.
@@ -163,28 +166,28 @@ class Variant {
   // Make sure that the type is CopyConstructible and not a
   // tensorflow::Variant object itself. We want the copy constructor to be
   // chosen for the tensorflow::Variant case.
-  template <typename T, typename VT = typename std::decay<T>::type,
-            typename std::enable_if<!std::is_same<Variant, VT>::value &&
-                                        std::is_move_constructible<VT>::value,
-                                    void>::type* = nullptr>
+  template <typename T, typename VT = std::decay_t<T>,
+            std::enable_if_t<!std::is_same_v<Variant, VT> &&
+                                 std::is_move_constructible_v<VT>,
+                             void>* = nullptr>
   Variant(T&& value);
 
-  template <typename T, typename VT = typename std::decay<T>::type,
-            typename std::enable_if<!std::is_same<Variant, VT>::value &&
-                                        std::is_copy_constructible<VT>::value,
-                                    void>::type* = nullptr>
+  template <typename T, typename VT = std::decay_t<T>,
+            std::enable_if_t<!std::is_same_v<Variant, VT> &&
+                                 std::is_copy_constructible_v<VT>,
+                             void>* = nullptr>
   Variant(const T& value);
 
-  template <typename T, typename VT = typename std::decay<T>::type,
-            typename std::enable_if<!std::is_same<Variant, VT>::value &&
-                                        std::is_copy_constructible<VT>::value,
-                                    void>::type* = nullptr>
+  template <typename T, typename VT = std::decay_t<T>,
+            std::enable_if_t<!std::is_same_v<Variant, VT> &&
+                                 std::is_copy_constructible_v<VT>,
+                             void>* = nullptr>
   Variant& operator=(const T& value);
 
-  template <typename T, typename VT = typename std::decay<T>::type,
-            typename std::enable_if<!std::is_same<Variant, VT>::value &&
-                                        std::is_move_constructible<VT>::value,
-                                    void>::type* = nullptr>
+  template <typename T, typename VT = std::decay_t<T>,
+            std::enable_if_t<!std::is_same_v<Variant, VT> &&
+                                 std::is_move_constructible_v<VT>,
+                             void>* = nullptr>
   Variant& operator=(T&& value);
 
   Variant& operator=(const Variant& rhs) {
@@ -276,20 +279,24 @@ class Variant {
   }
 
   // Serialize the contents of the stored object into `data`.
-  void Encode(VariantTensorData* data) const {
+  // Returns `true` on success, or `false` if serialization fails.
+  bool Encode(VariantTensorData* data) const {
     if (!is_empty()) {
-      GetValue()->Encode(data);
+      return GetValue()->Encode(data);
     }
+    return true;
   }
 
   // Deserialize `data` and update the stored object.
   bool Decode(VariantTensorData data);
 
   // Helper methods to directly serialize/deserialize from strings.
-  void Encode(std::string* buf) const {
+  // Returns `true` on success, or `false` if serialization fails.
+  bool Encode(std::string* buf) const {
     if (!is_empty()) {
-      GetValue()->Encode(buf);
+      return GetValue()->Encode(buf);
     }
+    return true;
   }
   bool Decode(std::string buf) {
     if (!is_empty()) {
@@ -319,9 +326,9 @@ class Variant {
     virtual void MoveInto(ValueInterface* memory) = 0;
     virtual std::string TypeName() const = 0;
     virtual std::string DebugString() const = 0;
-    virtual void Encode(VariantTensorData* data) const = 0;
+    virtual bool Encode(VariantTensorData* data) const = 0;
     virtual bool Decode(VariantTensorData data) = 0;
-    virtual void Encode(std::string* buf) const = 0;
+    virtual bool Encode(std::string* buf) const = 0;
     virtual bool Decode(std::string data) = 0;
   };
 
@@ -336,8 +343,7 @@ class Variant {
     ~Value() final = default;
 
     TypeIndex TypeId() const final {
-      const TypeIndex value_type_index =
-          TypeIndex::Make<typename std::decay<T>::type>();
+      const TypeIndex value_type_index = TypeIndex::Make<std::decay_t<T>>();
       return value_type_index;
     }
 
@@ -367,15 +373,17 @@ class Variant {
 
     std::string DebugString() const final { return DebugStringVariant(value); }
 
-    void Encode(VariantTensorData* data) const final {
-      EncodeVariant(value, data);
+    bool Encode(VariantTensorData* data) const final {
+      return EncodeVariant(value, data);
     }
 
     bool Decode(VariantTensorData data) final {
       return DecodeVariant(&data, &value);
     }
 
-    void Encode(std::string* buf) const final { EncodeVariant(value, buf); }
+    bool Encode(std::string* buf) const final {
+      return EncodeVariant(value, buf);
+    }
 
     bool Decode(std::string buf) final { return DecodeVariant(&buf, &value); }
 
@@ -542,25 +550,25 @@ inline Variant::Variant(Variant&& other) noexcept
 }
 
 template <typename T, typename VT,
-          typename std::enable_if<!std::is_same<Variant, VT>::value &&
-                                      std::is_move_constructible<VT>::value,
-                                  void>::type*>
+          std::enable_if_t<!std::is_same_v<Variant, VT> &&
+                               std::is_move_constructible_v<VT>,
+                           void>*>
 inline Variant::Variant(T&& value) : is_inline_(CanInlineType<VT>()) {
   InsertValue<VT>(std::forward<T>(value));
 }
 
 template <typename T, typename VT,
-          typename std::enable_if<!std::is_same<Variant, VT>::value &&
-                                      std::is_copy_constructible<VT>::value,
-                                  void>::type*>
+          std::enable_if_t<!std::is_same_v<Variant, VT> &&
+                               std::is_copy_constructible_v<VT>,
+                           void>*>
 inline Variant::Variant(const T& value) : is_inline_(CanInlineType<VT>()) {
   InsertValue<VT>(value);
 }
 
 template <typename T, typename VT,
-          typename std::enable_if<!std::is_same<Variant, VT>::value &&
-                                      std::is_move_constructible<VT>::value,
-                                  void>::type*>
+          std::enable_if_t<!std::is_same_v<Variant, VT> &&
+                               std::is_move_constructible_v<VT>,
+                           void>*>
 inline Variant& Variant::operator=(T&& value) {
   ResetMemory();
   is_inline_ = CanInlineType<VT>();
@@ -569,9 +577,9 @@ inline Variant& Variant::operator=(T&& value) {
 }
 
 template <typename T, typename VT,
-          typename std::enable_if<!std::is_same<Variant, VT>::value &&
-                                      std::is_copy_constructible<VT>::value,
-                                  void>::type*>
+          std::enable_if_t<!std::is_same_v<Variant, VT> &&
+                               std::is_copy_constructible_v<VT>,
+                           void>*>
 inline Variant& Variant::operator=(const T& value) {
   ResetMemory();
   is_inline_ = CanInlineType<VT>();

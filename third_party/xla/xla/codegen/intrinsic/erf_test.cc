@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "xla/codegen/intrinsic/erf.h"
 
+#include <array>
 #include <cmath>
+#include <cstddef>
 #include <limits>
 #include <memory>
 #include <utility>
@@ -82,6 +84,44 @@ TEST(ErfTest, F32) {
       EXPECT_TRUE(std::isnan(result));
     } else {
       EXPECT_THAT(result, NearUlps<float>(expected, 1));
+    }
+  }
+}
+
+TEST(ErfTest, F32Vector16) {
+  constexpr size_t kN = 16;
+  Type type = Type::V(F32, kN);
+  JitRunner runner = CreateJitRunner(type);
+  auto fn = runner.GetVectorizedFn<kN, float, float>(Erf::Name(type));
+
+  std::vector<float> test_values = GetTestValues<float>();
+  std::array<float, kN> vals;
+  for (size_t i = 0; i < kN; ++i) {
+    vals[i] = test_values[i % test_values.size()];
+  }
+  std::array<float, kN> results = fn(vals);
+  for (size_t i = 0; i < kN; ++i) {
+    float expected = std::erf(vals[i]);
+    if (std::isnan(expected)) {
+      EXPECT_TRUE(std::isnan(results[i]));
+    } else {
+      EXPECT_THAT(results[i], NearUlps<float>(expected, 1));
+    }
+  }
+}
+
+TEST(ErfTest, F64) {
+  Type type = Type::S(F64);
+  JitRunner runner = CreateJitRunner(type);
+  auto fn = runner.GetScalarFn<double(double)>(Erf::Name(type));
+
+  for (double x_val : GetTestValues<double>()) {
+    double expected = std::erf(x_val);
+    double result = fn(x_val);
+    if (std::isnan(expected)) {
+      EXPECT_TRUE(std::isnan(result));
+    } else {
+      EXPECT_THAT(result, NearUlps<double>(expected, 1));
     }
   }
 }

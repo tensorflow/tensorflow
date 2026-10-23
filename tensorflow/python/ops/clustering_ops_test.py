@@ -16,6 +16,7 @@
 
 import numpy as np
 
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import clustering_ops
 from tensorflow.python.platform import test
@@ -50,6 +51,47 @@ class KmeansPlusPlusInitializationTest(test.TestCase):
   def testBasic(self):
     for seed in range(100):
       self.runTestWithSeed(seed)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testIdenticalPoints(self):
+    points = np.array([[1.0, 2.0], [1.0, 2.0]], dtype=np.float32)
+    with self.cached_session():
+      for retries in (0, 3):
+        sampled = clustering_ops.kmeans_plus_plus_initialization(
+            points, num_to_sample=2, seed=12345, num_retries_per_sample=retries
+        )
+        result = self.evaluate(sampled)
+        self.assertEqual(result.shape, (2, 2))
+        self.assertAllClose(result, points)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testNaNPoints(self):
+    points = np.full((2, 2), float("nan"), dtype=np.float32)
+    with self.cached_session():
+      for retries in (0, 3):
+        sampled = clustering_ops.kmeans_plus_plus_initialization(
+            points, num_to_sample=2, seed=12345, num_retries_per_sample=retries
+        )
+        result = self.evaluate(sampled)
+        self.assertEqual(result.shape, (2, 2))
+        self.assertEqual(result.dtype, np.float32)
+        self.assertTrue(np.isnan(result).all())
+
+  @test_util.run_in_graph_and_eager_modes
+  def testOverflowPoints(self):
+    # Values large enough that squared distance overflows float32 to +inf
+    # without individual norms overflowing to +inf (which would yield NaN),
+    # exercising the std::isinf(total) fallback in draw_one_sample.
+    points = np.array([[1e19, 1e19], [-1e19, -1e19]], dtype=np.float32)
+    with self.cached_session():
+      for retries in (0, 3):
+        sampled = clustering_ops.kmeans_plus_plus_initialization(
+            points, num_to_sample=2, seed=12345, num_retries_per_sample=retries
+        )
+        result = self.evaluate(sampled)
+        self.assertEqual(result.shape, (2, 2))
+        self.assertEqual(result.dtype, np.float32)
+        self.assertCountEqual(result.tolist(), points.tolist())
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -88,9 +130,9 @@ class KMC2InitializationLargeTest(test.TestCase):
         sample = self.evaluate(
             clustering_ops.kmc2_chain_initialization(self._distances, seed + i))
         counts[sample] = counts.get(sample, 0) + 1
-      self.assertEqual(len(counts), 2)
-      self.assertTrue(500 in counts)
-      self.assertTrue(1000 in counts)
+      self.assertLen(counts, 2)
+      self.assertIn(500, counts)
+      self.assertIn(1000, counts)
       self.assertGreaterEqual(counts[500], 5)
       self.assertGreaterEqual(counts[1000], 5)
 
@@ -141,6 +183,31 @@ class NearestCentersTest(test.TestCase):
                                                               self._centers, 2)
       self.assertAllClose(indices, [[0, 1], [0, 1], [1, 0], [4, 3]])
       self.assertAllClose(distances, [[0., 2.], [5., 5.], [1., 5.], [0., 2.]])
+
+  def testNearestNegativeK(self):
+    with self.cached_session():
+      with self.assertRaisesRegex(
+          errors_impl.InvalidArgumentError, "Expected k >= 0."
+      ):
+        self.evaluate(
+            clustering_ops.nearest_neighbors(self._points, self._centers, -1)
+        )
+
+  def testNearestZeroK(self):
+    with self.cached_session():
+      [indices, distances] = clustering_ops.nearest_neighbors(
+          self._points, self._centers, 0
+      )
+      self.assertEqual(self.evaluate(indices).shape, (4, 0))
+      self.assertEqual(self.evaluate(distances).shape, (4, 0))
+
+  def testNearestLargerThanNumCenters(self):
+    with self.cached_session():
+      [indices, distances] = clustering_ops.nearest_neighbors(
+          self._points, self._centers, 10
+      )
+      self.assertEqual(self.evaluate(indices).shape, (4, 5))
+      self.assertEqual(self.evaluate(distances).shape, (4, 5))
 
 
 @test_util.run_all_in_graph_and_eager_modes

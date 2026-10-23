@@ -1598,7 +1598,10 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     TF_CHECK_OK(GetNodeAttr(n->def(), "strides", &strides));
     TF_CHECK_OK(GetNodeAttr(n->def(), "data_format", &data_format_str));
     bool result = FormatFromString(data_format_str, &data_format);
-    DCHECK(result);
+    // The oneDNN MaxPool ops accept only NHWC and NCHW (NDHWC and NCDHW in 3D).
+    if (!result || (data_format != FORMAT_NHWC && data_format != FORMAT_NCHW)) {
+      return false;
+    }
 
     // Condition that specifies non-batch-wise and non-depth-wise pooling.
     if (GetTensorDim(ksize, data_format, 'N') == 1 &&
@@ -2077,8 +2080,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   static void CopyAttrsQuantizedConv2D(const Node* orig_node, NodeBuilder* nb,
                                        bool change_format = false);
   static void CopyFormatAttrsConv(const Node* orig_node, NodeBuilder* nb,
-                                  const std::vector<int32>& strides,
-                                  const std::vector<int32>& dilations,
+                                  const std::vector<int64_t>& strides,
+                                  const std::vector<int64_t>& dilations,
                                   bool change_format = false);
 
   static void CopyAttrsQuantizedMatMulWithBias(const Node* orig_node,
@@ -2694,9 +2697,9 @@ void MklLayoutRewritePass::CopyAttrsConv(const Node* orig_node, NodeBuilder* nb,
                                          bool change_format) {
   DataType T;
   string padding;
-  std::vector<int32> strides;
-  std::vector<int32> dilations;
-  std::vector<int32> explicit_paddings;
+  std::vector<int64_t> strides;
+  std::vector<int64_t> dilations;
+  std::vector<int64_t> explicit_paddings;
 
   // Get all attributes from old node.
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
@@ -2877,8 +2880,8 @@ void MklLayoutRewritePass::CopyAttrsQuantizedMatMulWithBias(
 }
 
 void MklLayoutRewritePass::CopyFormatAttrsConv(
-    const Node* orig_node, NodeBuilder* nb, const std::vector<int32>& strides,
-    const std::vector<int32>& dilations, bool change_format) {
+    const Node* orig_node, NodeBuilder* nb, const std::vector<int64_t>& strides,
+    const std::vector<int64_t>& dilations, bool change_format) {
   string data_format;
 
   if (!change_format) {
@@ -2888,8 +2891,8 @@ void MklLayoutRewritePass::CopyFormatAttrsConv(
     TF_CHECK_OK(GetNodeAttr(orig_node->def(), "data_format", &data_format));
     nb->Attr("data_format", data_format);
   } else {
-    std::vector<int32> new_strides;
-    std::vector<int32> new_dilations;
+    std::vector<int64_t> new_strides;
+    std::vector<int64_t> new_dilations;
     if (strides.size() == 5) {
       // `strides` and `dilations` also need to be changed according to
       // `data_format`. In this case, from `NDHWC` to `NCDHW`.

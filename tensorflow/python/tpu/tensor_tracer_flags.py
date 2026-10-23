@@ -196,7 +196,7 @@ class TTParameters(object):
                          'report_file_path cannot be an absolute path (%s)'
                          %report_file_path)
       outputs_dir = self._env.get(_TEST_UNDECLARED_OUTPUTS_DIR_ENV_VAR)
-      report_file_path = os.path.join(outputs_dir, report_file_path)
+      report_file_path = os.path.join(outputs_dir, report_file_path)  # pyrefly: ignore[no-matching-overload]
     return report_file_path
 
   def _get_op_range(self):

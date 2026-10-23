@@ -27,9 +27,11 @@ limitations under the License.
 #include <iterator>
 #include <limits>
 #include <memory>
+#include <numeric>
 #include <optional>
 #include <random>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -54,7 +56,7 @@ limitations under the License.
 #include "Eigen/Core"
 #include "xla/array2d.h"
 #include "xla/comparison_util.h"
-#include "xla/hlo/analysis/tuple_points_to_analysis.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/evaluator/hlo_evaluator_typed_visitor.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -72,7 +74,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/gather_scatter_utils.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/logical_buffer.h"
+#include "xla/service/hlo_value.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/shape_inference.h"
 #include "xla/shape.h"
@@ -84,6 +86,7 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/cpu_info.h"
+#include "tsl/platform/platform.h"
 
 #define EIGEN_USE_THREADS
 #include "unsupported/Eigen/CXX11/Tensor"
@@ -102,70 +105,35 @@ template <typename OperandT>
 absl::StatusOr<Literal> Compare(const Shape& shape, Comparison comparison,
                                 LiteralSlice lhs_literal,
                                 LiteralSlice rhs_literal) {
-  auto populate = [&](auto compare_op) -> absl::StatusOr<Literal> {
-    Literal result(shape);
-
-    // If layout is the same, we can use linear indexing into the literals.
-    const Layout& lhs_layout = lhs_literal.shape().layout();
-    const Layout& rhs_layout = rhs_literal.shape().layout();
-    bool same_layout = LayoutUtil::Equal(lhs_layout, rhs_layout) &&
-                       LayoutUtil::Equal(lhs_layout, shape.layout());
-
-    if (same_layout) {
-      ABSL_RETURN_IF_ERROR(result.PopulateLinearParallel<bool>(
-          [&](int64_t linear_index, int /*thread_id*/) {
-            auto lhs = lhs_literal.GetLinear<OperandT>(linear_index);
-            auto rhs = rhs_literal.GetLinear<OperandT>(linear_index);
-            if constexpr (is_specialized_floating_point_v<OperandT>) {
-              if (comparison.IsTotalOrder()) {
-                return compare_op(ToSignMagnitude(lhs), ToSignMagnitude(rhs));
-              }
-            }
-            return compare_op(lhs, rhs);
-          }));
-    } else {
-      ABSL_RETURN_IF_ERROR(result.PopulateParallel<bool>(
-          [&](absl::Span<const int64_t> multi_index, int /*thread_id*/) {
-            auto lhs = lhs_literal.Get<OperandT>(multi_index);
-            auto rhs = rhs_literal.Get<OperandT>(multi_index);
-            if constexpr (is_specialized_floating_point_v<OperandT>) {
-              if (comparison.IsTotalOrder()) {
-                return compare_op(ToSignMagnitude(lhs), ToSignMagnitude(rhs));
-              }
-            }
-            return compare_op(lhs, rhs);
-          }));
+  if constexpr (is_complex_v<OperandT>) {
+    if (comparison.GetDirection() != ComparisonDirection::kEq &&
+        comparison.GetDirection() != ComparisonDirection::kNe) {
+      return Unimplemented("Unsupported comparison: %s", comparison.ToString());
     }
-    return result;
-  };
-  switch (comparison.GetDirection()) {
-    case ComparisonDirection::kEq:
-      return populate([](auto lhs, auto rhs) { return lhs == rhs; });
-    case ComparisonDirection::kNe:
-      return populate([](auto lhs, auto rhs) { return lhs != rhs; });
-    case ComparisonDirection::kGe:
-      if constexpr (!is_complex_v<OperandT>) {
-        return populate([](auto lhs, auto rhs) { return lhs >= rhs; });
-      }
-      break;
-    case ComparisonDirection::kGt:
-      if constexpr (!is_complex_v<OperandT>) {
-        return populate([](auto lhs, auto rhs) { return lhs > rhs; });
-      }
-      break;
-    case ComparisonDirection::kLe:
-      if constexpr (!is_complex_v<OperandT>) {
-        return populate([](auto lhs, auto rhs) { return lhs <= rhs; });
-      }
-      break;
-    case ComparisonDirection::kLt:
-      if constexpr (!is_complex_v<OperandT>) {
-        return populate([](auto lhs, auto rhs) { return lhs < rhs; });
-      }
-      break;
   }
+  Literal result(shape);
 
-  return Unimplemented("Unsupported comparison: %s", comparison.ToString());
+  // If layout is the same, we can use linear indexing into the literals.
+  const Layout& lhs_layout = lhs_literal.shape().layout();
+  const Layout& rhs_layout = rhs_literal.shape().layout();
+  bool same_layout = LayoutUtil::Equal(lhs_layout, rhs_layout) &&
+                     LayoutUtil::Equal(lhs_layout, shape.layout());
+
+  if (same_layout) {
+    ABSL_RETURN_IF_ERROR(result.PopulateLinearParallel<bool>(
+        [&](int64_t linear_index, int /*thread_id*/) {
+          return comparison.Compare(
+              lhs_literal.GetLinear<OperandT>(linear_index),
+              rhs_literal.GetLinear<OperandT>(linear_index));
+        }));
+  } else {
+    ABSL_RETURN_IF_ERROR(result.PopulateParallel<bool>(
+        [&](absl::Span<const int64_t> multi_index, int /*thread_id*/) {
+          return comparison.Compare(lhs_literal.Get<OperandT>(multi_index),
+                                    rhs_literal.Get<OperandT>(multi_index));
+        }));
+  }
+  return result;
 }
 
 std::optional<bool> GetInstructionStaticValueAsBool(
@@ -247,7 +215,7 @@ absl::Status MakeEvalErrorDueToParamOrInfeed(
     DCHECK(absl::endian::native == absl::endian::big);
     error_detail = absl::byteswap(error_detail);
   }
-  (*error_payload.data()) = error_detail;
+  (error_payload[0]) = error_detail;
   error.SetPayload(internal::kEvalErrorDetailUrl, absl::Cord(error_payload));
   return error;
 }
@@ -893,8 +861,19 @@ std::optional<ParsedWhileLoop> PatternMatchParseWhileLoop(
 // in the type-agnostic handler. For e.g., HandleGetTupleElement in the parent
 // type-agnostic evaluator will be able to accept Tuple primitive type, whereas
 // HloEvaluatorTypedVisitor cannot.
-HloEvaluator::HloEvaluator(int64_t max_loop_iterations)
-    : max_loop_iterations_(max_loop_iterations) {
+HloEvaluator::HloEvaluator(
+    int64_t max_loop_iterations, bool cache_call_computation_evals,
+    std::shared_ptr<SpecializationCache> specialization_cache)
+    : max_loop_iterations_(max_loop_iterations),
+      cache_call_computation_evals_(cache_call_computation_evals),
+      specialization_cache_(std::move(specialization_cache)) {
+  // Each HandleCall creates its own child evaluator, and in order to have one
+  // shared cache for all call hierarchy, child evaluators borrow the cache
+  // passed from their parents via CreateEmbedded. If no cache is passed and
+  // caching is enabled, create a new one.
+  if (cache_call_computation_evals_ && specialization_cache_ == nullptr) {
+    specialization_cache_ = std::make_shared<SpecializationCache>();
+  }
   for (int i = PrimitiveType_MIN; i < PrimitiveType_ARRAYSIZE; ++i) {
     if (!primitive_util::IsArrayType(PrimitiveType{i})) {
       continue;
@@ -981,8 +960,6 @@ absl::StatusOr<Literal> HloEvaluator::Evaluate(
   // Reset evaluation state with the argument literals.
   ScopedEvaluateState evaluate_state(&state_, args);
 
-  tuple_points_to_analysis_cache_.reset();
-
   // Re-seed RNG, either from the configuration's seed or a monotonic
   // per-evaluator seed (which prevents two evaluators from returning the same
   // random sequence).
@@ -1022,7 +999,6 @@ absl::StatusOr<Literal> HloEvaluator::Evaluate(
     SetEvaluatedLiteralFor(substituted_instr, literal_value->Clone());
   }
 
-  tuple_points_to_analysis_cache_.reset();
   auto enable_partial_evaluation_cleanup =
       absl::MakeCleanup([this] { enable_partial_evaluation_ = false; });
   enable_partial_evaluation_ = recursively_evaluate_nonconstant_operands;
@@ -1159,6 +1135,87 @@ absl::StatusOr<Literal> HloEvaluator::EvaluateScaledDotOp(
   return Evaluate(cloned_instruction.get());
 }
 
+namespace {
+
+// Traces backward from while_body root at shape_index through forwarding
+// operations (tuple, get-tuple-element, bitcast, barrier, domain, dependency,
+// copy). Returns true if the buffer at (root, shape_index) is forwarded
+// directly and unmodified from (while_param, shape_index).
+bool IsBufferUnchangedInWhileBodySyntactic(const HloComputation* while_body,
+                                           const HloInstruction* while_param,
+                                           const ShapeIndex& shape_index) {
+  const HloInstruction* current = while_body->root_instruction();
+  ShapeIndex curr_index = shape_index;
+  int64_t depth = 0;
+  constexpr int64_t kMaxDepth = 1000;
+
+  while (current != nullptr && depth++ < kMaxDepth) {
+    if (current == while_param) {
+      return curr_index == shape_index;
+    }
+
+    if (current->opcode() == HloOpcode::kTuple) {
+      if (curr_index.empty()) {
+        return false;
+      }
+      int64_t tuple_index = curr_index.front();
+      curr_index.pop_front();
+      if (tuple_index < 0 || tuple_index >= current->operand_count()) {
+        return false;
+      }
+      current = current->operand(tuple_index);
+    } else if (current->opcode() == HloOpcode::kGetTupleElement) {
+      curr_index.push_front(current->tuple_index());
+      current = current->operand(0);
+    } else if (current->opcode() == HloOpcode::kBitcast ||
+               current->opcode() == HloOpcode::kOptimizationBarrier ||
+               current->opcode() == HloOpcode::kDomain ||
+               current->opcode() == HloOpcode::kAddDependency ||
+               current->opcode() == HloOpcode::kCopy) {
+      if (current->operand_count() == 0) {
+        return false;
+      }
+      current = current->operand(0);
+    } else if (current->opcode() == HloOpcode::kCopyDone &&
+               current->operand_count() > 0 &&
+               current->operand(0)->opcode() == HloOpcode::kCopyStart &&
+               current->operand(0)->operand_count() > 0) {
+      current = current->operand(0)->operand(0);
+    } else {
+      return false;
+    }
+  }
+  return false;
+}
+
+bool IsBufferUnchangedInWhileBody(
+    const HloComputation* while_body, const HloInstruction* while_param,
+    const ShapeIndex& shape_index,
+    const HloDataflowAnalysis* dataflow_analysis) {
+  if (IsBufferUnchangedInWhileBodySyntactic(while_body, while_param,
+                                            shape_index)) {
+    return true;
+  }
+  if (dataflow_analysis != nullptr) {
+    const HloInstruction* while_root = while_body->root_instruction();
+    const HloValueSet& root_value_set =
+        dataflow_analysis->GetValueSet(while_root, shape_index);
+    const HloValueSet& param_value_set =
+        dataflow_analysis->GetValueSet(while_param, shape_index);
+    if (!root_value_set.values().empty() && root_value_set == param_value_set) {
+      for (const HloValue* val : root_value_set.values()) {
+        if (val->is_phi()) {
+          return false;
+        }
+      }
+      return true;
+    }
+  }
+  return false;
+}
+
+}  // namespace
+
 absl::Status HloEvaluator::EvaluateParameterFromCallerArgument(
     const HloInstruction* parameter, const ShapeIndex& shape_index,
     PrecomputedAnalyses analyses) {
@@ -1184,36 +1241,11 @@ absl::Status HloEvaluator::EvaluateParameterFromCallerArgument(
         ", which is not yet supported."));
   }
   if (computation_caller->opcode() == HloOpcode::kWhile) {
-    if (!analyses.tuple_points_to && !tuple_points_to_analysis_cache_) {
-      absl::StatusOr<std::unique_ptr<TuplePointsToAnalysis>> tuple_points_to =
-          TuplePointsToAnalysis::Run(parameter->GetModule());
-      if (!tuple_points_to.ok()) {
-        return absl::FailedPreconditionError(
-            "Failed to run TuplePointsToAnalysis.");
-      }
-      tuple_points_to_analysis_cache_ = *std::move(tuple_points_to);
-    }
-    TuplePointsToAnalysis* tuple_points_to_analysis =
-        analyses.tuple_points_to != nullptr
-            ? analyses.tuple_points_to
-            : tuple_points_to_analysis_cache_.get();
-
     HloComputation* while_body = computation_caller->while_body();
-    ABSL_ASSIGN_OR_RETURN(
-        const LogicalBuffer* logical_buffer,
-        tuple_points_to_analysis->GetBufferDefinedAt(
-            while_body->parameter_instruction(parameter->parameter_number()),
-            shape_index));
-    const TuplePointsToAnalysis::BufferAliasVector& buffer_aliases =
-        tuple_points_to_analysis->GetBufferAliases(*logical_buffer);
-    bool unchanged_in_return = false;
-    for (const BufferAlias& buffer_alias : buffer_aliases) {
-      if (buffer_alias.instruction() == while_body->root_instruction() &&
-          buffer_alias.index() == shape_index) {
-        unchanged_in_return = true;
-      }
-    }
-    if (!unchanged_in_return) {
+    const HloInstruction* while_param =
+        while_body->parameter_instruction(parameter->parameter_number());
+    if (!IsBufferUnchangedInWhileBody(while_body, while_param, shape_index,
+                                      analyses.dataflow_analysis)) {
       return MakeEvalErrorDueToParamOrInfeed(*parameter);
     }
   }
@@ -1442,19 +1474,19 @@ absl::Status HloEvaluator::HandleParameter(const HloInstruction* parameter) {
     // Nothing to do other than sanity checks. Parameters' values are stored in
     // the state_.args() array.
     CHECK_LT(parameter->parameter_number(), state_.args().size());
-#ifndef NDEBUG
-    const Literal* input_literal = state_.arg(parameter->parameter_number());
-    VLOG(2) << "Parameter evaluated to: " << input_literal->ToString();
-    bool check_layout = parameter->shape().has_layout();
-    DCHECK(Shape::Equal()
-               .IgnoreLayout(!check_layout)
-               .MinorToMajorOnlyInLayout()(parameter->shape(),
-                                           input_literal->shape()))
-        << "parameter shape is: "
-        << ShapeUtil::HumanStringWithLayout(parameter->shape())
-        << ", but input literal shape is: "
-        << ShapeUtil::HumanStringWithLayout(input_literal->shape());
-#endif
+    if constexpr (tsl::kIsDebugBuild) {
+      const Literal* input_literal = state_.arg(parameter->parameter_number());
+      VLOG(2) << "Parameter evaluated to: " << input_literal->ToString();
+      bool check_layout = parameter->shape().has_layout();
+      DCHECK(Shape::Equal()
+                 .IgnoreLayout(!check_layout)
+                 .MinorToMajorOnlyInLayout()(parameter->shape(),
+                                             input_literal->shape()))
+          << "parameter shape is: "
+          << ShapeUtil::HumanStringWithLayout(parameter->shape())
+          << ", but input literal shape is: "
+          << ShapeUtil::HumanStringWithLayout(input_literal->shape());
+    }
   }
 
   return absl::OkStatus();
@@ -3416,9 +3448,8 @@ absl::Status HloEvaluator::HandleAsyncStart(const HloInstruction* async_start) {
         Literal result,
         embedded_evaluator->Evaluate(*async_start->async_wrapped_computation(),
                                      arg_literals));
-    // Move the output value to the index {1} of the output.
-    ABSL_RETURN_IF_ERROR(
-        literal.MoveFrom(std::move(result), /*dest_shape_index=*/{1}));
+    // Copy the output value to the index {1} of the output.
+    ABSL_RETURN_IF_ERROR(literal.CopyFrom(result, /*dest_shape_index=*/{1}));
   }
 
   SetEvaluatedLiteralFor(async_start, std::move(literal));
@@ -3478,9 +3509,8 @@ absl::Status HloEvaluator::HandleAsyncUpdate(
         Literal result,
         embedded_evaluator->Evaluate(*async_update->async_wrapped_computation(),
                                      sub_literals));
-    // Move the output value to the index {1} of the output.
-    ABSL_RETURN_IF_ERROR(
-        literal.MoveFrom(std::move(result), /*dest_shape_index=*/{1}));
+    // Copy the output value to the index {1} of the output.
+    ABSL_RETURN_IF_ERROR(literal.CopyFrom(result, /*dest_shape_index=*/{1}));
 
     // propagate the output subshapes back to previous async ops
     ABSL_RETURN_IF_ERROR(
@@ -3581,9 +3611,38 @@ absl::Status HloEvaluator::HandleCall(const HloInstruction* call) {
 
   std::vector<const Literal*> arg_literals;
   arg_literals.reserve(operands.size());
-  for (auto operand : operands) {
+  for (const HloInstruction* operand : operands) {
     const Literal& arg_literal = GetEvaluatedLiteralFor(operand);
     arg_literals.push_back(&arg_literal);
+  }
+
+  // If call computation caching is disabled, evaluate the computation directly
+  // using an embedded evaluator without caching.
+  //
+  // Otherwise, follow a memoized evaluation workflow:
+  // 1. Check if the computation and arguments were already evaluated in the
+  //    specialization cache. If so, reuse the cached literal (cache hit).
+  // 2. On a cache miss, evaluate the computation with an embedded evaluator,
+  //    sharing the cache so nested calls can also be memoized.
+  // 3. Record the result in the cache for subsequent calls.
+  if (!cache_call_computation_evals_) {
+    std::unique_ptr<HloEvaluator> embedded_evaluator =
+        CreateEmbedded(max_loop_iterations_);
+    embedded_evaluator->set_dynamic_dimension_inference(
+        dynamic_dimension_inference_);
+    ABSL_ASSIGN_OR_RETURN(Literal result,
+                     embedded_evaluator->Evaluate(*computation, arg_literals));
+    SetEvaluatedLiteralFor(call, std::move(result));
+    return absl::OkStatus();
+  }
+
+  TF_RET_CHECK(specialization_cache_ != nullptr);
+
+  if (std::optional<Literal> cached_result =
+          specialization_cache_->Find(computation, arg_literals);
+      cached_result.has_value()) {
+    SetEvaluatedLiteralFor(call, std::move(*cached_result));
+    return absl::OkStatus();
   }
 
   std::unique_ptr<HloEvaluator> embedded_evaluator =
@@ -3592,6 +3651,8 @@ absl::Status HloEvaluator::HandleCall(const HloInstruction* call) {
       dynamic_dimension_inference_);
   ABSL_ASSIGN_OR_RETURN(Literal result,
                    embedded_evaluator->Evaluate(*computation, arg_literals));
+
+  specialization_cache_->Insert(computation, arg_literals, result.Clone());
 
   SetEvaluatedLiteralFor(call, std::move(result));
   return absl::OkStatus();
@@ -3780,7 +3841,59 @@ absl::Status HloEvaluator::HandleSelect(const HloInstruction* select) {
     return absl::OkStatus();
   }
 
-  return DefaultAction(select);
+  CHECK(select->shape().IsArray());
+  Shape shape = GetShapeWithLayout(select->shape());
+  const bool is_on_false_scalar = ShapeUtil::IsScalar(on_false.shape());
+  TF_RET_CHECK(ShapeUtil::SameDimensions(shape, pred.shape()));
+  TF_RET_CHECK(ShapeUtil::SameDimensions(shape, on_true.shape()));
+  TF_RET_CHECK(is_on_false_scalar ||
+               ShapeUtil::SameDimensions(shape, on_false.shape()));
+
+  Literal result(shape);
+  const Layout& pred_layout = pred.shape().layout();
+  const Layout& on_true_layout = on_true.shape().layout();
+  const Layout& on_false_layout = on_false.shape().layout();
+  const bool same_layout = LayoutUtil::Equal(on_true_layout, shape.layout()) &&
+                           LayoutUtil::Equal(pred_layout, shape.layout()) &&
+                           (is_on_false_scalar ||
+                            LayoutUtil::Equal(on_false_layout, shape.layout()));
+
+  ABSL_RETURN_IF_ERROR(primitive_util::ByteWidthTypeSwitch(
+      [&](auto primitive_type_constant) -> absl::Status {
+        using NativeT = NativeTypeOf<primitive_type_constant>;
+        const bool* pred_data = pred.data<bool>().data();
+        const auto* on_true_data =
+            static_cast<const NativeT*>(on_true.untyped_data());
+        const auto* on_false_data =
+            static_cast<const NativeT*>(on_false.untyped_data());
+        if (same_layout) {
+          return result.PopulateLinearInplaceParallel(
+              [&](void* dest, int64_t linear_index, int) {
+                *static_cast<NativeT*>(dest) =
+                    pred_data[linear_index]
+                        ? on_true_data[linear_index]
+                        : on_false_data[is_on_false_scalar ? 0 : linear_index];
+              });
+        }
+        return result.PopulateInplaceParallel(
+            [&](void* dest, absl::Span<const int64_t> multi_index, int) {
+              if (pred.Get<bool>(multi_index)) {
+                *static_cast<NativeT*>(dest) =
+                    on_true_data[IndexUtil::MultidimensionalIndexToLinearIndex(
+                        on_true.shape(), multi_index)];
+              } else {
+                *static_cast<NativeT*>(dest) = on_false_data
+                    [is_on_false_scalar
+                         ? 0
+                         : IndexUtil::MultidimensionalIndexToLinearIndex(
+                               on_false.shape(), multi_index)];
+              }
+            });
+      },
+      shape.element_type()));
+
+  SetEvaluatedLiteralFor(select, std::move(result));
+  return absl::OkStatus();
 }
 
 namespace {
@@ -3857,10 +3970,16 @@ absl::Status HloEvaluator::HandleWhile(const HloInstruction* while_hlo) {
     }
     Shape induction_var_shape =
         ShapeUtil::GetSubshape(while_hlo->shape(), visitor_shape_index_);
-    int64_t trip_count = parsed_while_loop->static_while_loop->trip_count;
-    ABSL_ASSIGN_OR_RETURN(
-        Literal induction_var_val,
-        CreateScalarLiteral(trip_count, induction_var_shape.element_type()));
+    int64_t induction_var_value = static_cast<int64_t>(
+        static_cast<uint64_t>(
+            parsed_while_loop->static_while_loop->induction_var_init_value) +
+        static_cast<uint64_t>(
+            parsed_while_loop->static_while_loop->trip_count) *
+            static_cast<uint64_t>(
+                parsed_while_loop->static_while_loop->step_size));
+    ABSL_ASSIGN_OR_RETURN(Literal induction_var_val,
+                     CreateScalarLiteral(induction_var_value,
+                                         induction_var_shape.element_type()));
     ABSL_RETURN_IF_ERROR(literal.CopyFrom(induction_var_val,
                                      /*dest_shape_index=*/visitor_shape_index_,
                                      /*src_shape_index=*/{}));
@@ -3938,54 +4057,81 @@ absl::StatusOr<Literal> ExtractFromIndexPositions(
 void IterateThroughWindow(
     const Shape& window_shape, const Window& window, const Shape& base_shape,
     const absl::Span<const int64_t> window_count_index,
-    const std::function<void(absl::Span<const int64_t>)>& f) {
+    absl::FunctionRef<void(absl::Span<const int64_t>)> f) {
   const size_t rank = base_shape.dimensions().size();
-  DimensionVector window_index(rank);
-  absl::Span<int64_t> window_index_span = absl::MakeSpan(window_index);
-  std::fill(window_index_span.begin(), window_index_span.end(), 0);
+  if (rank == 0) {
+    if (!ShapeUtil::IsZeroElementArray(window_shape) &&
+        !ShapeUtil::IsZeroElementArray(base_shape)) {
+      f({});
+    }
+    return;
+  }
+  DimensionVector first_base(rank);
+  DimensionVector base_step(rank);
+  DimensionVector count(rank);
+  for (size_t i = 0; i < rank; ++i) {
+    const int64_t win_size = window_shape.dimensions(i);
+    const int64_t base_limit = base_shape.dimensions(i);
+    if (win_size <= 0 || base_limit <= 0) {
+      return;
+    }
+    const WindowDimension& dim = window.dimensions(i);
+    const int64_t win_dilation = dim.window_dilation();
+    const int64_t base_dilation = dim.base_dilation();
+    const int64_t start_unscaled =
+        window_count_index[i] * dim.stride() - dim.padding_low();
 
-  do {
-    DimensionVector base_index(rank);
-    absl::Span<int64_t> base_index_span = absl::MakeSpan(base_index);
-    bool out_of_bound = false;
-    for (size_t i = 0; i < rank; ++i) {
-      // Padding is applied to the dilated base. Say that padding is 3 and
-      // dilation is 2 for some dimension. After applying base dilation and
-      // padding, the dimension looks like:
-      // P P P E D D E D D ... E D D E P P P
-      // where E are the elements and D are the holes. So, the elements are
-      // located in indices: padding + k*base_dilation for k = {0, 1, 2, ...}.
-      // We are accessing elements in the transformed base at indices:
-      // window_count_index * stride + window_index * window_dilation.
-      // Solving for k gives us
-      // (win_count_i * stride + win_i * win_dilation - pad) / base_dilation
-      // When this is a natural number, we index an original element.
-      // Otherwise, we index a 0 (pad or hole), and we don't need to apply
-      // the callback f.
-      const xla::WindowDimension& window_dimension = window.dimensions(i);
-      int64_t base_index_i =
-          window_count_index[i] * window_dimension.stride() +
-          window_index_span[i] * window_dimension.window_dilation() -
-          window_dimension.padding_low();
-      const int64_t base_dilation = window_dimension.base_dilation();
-      if (base_dilation != 1) {
-        if (base_index_i % base_dilation != 0) {
-          out_of_bound = true;
-          base_index_span[i] = base_index_i;
-          break;
-        }
-        base_index_i /= base_dilation;
+    int64_t w_min = 0;
+    if (start_unscaled < 0) {
+      w_min = (-start_unscaled + win_dilation - 1) / win_dilation;
+    }
+    if (base_dilation != 1) {
+      const int64_t w_search_limit = std::min(win_size, w_min + base_dilation);
+      while (w_min < w_search_limit &&
+             (start_unscaled + w_min * win_dilation) % base_dilation != 0) {
+        ++w_min;
       }
-      base_index_span[i] = base_index_i;
-      if (base_index_i < 0 || base_index_i >= base_shape.dimensions(i)) {
-        out_of_bound = true;
+      if (w_min >= w_search_limit) {
+        return;
+      }
+    }
+    if (w_min >= win_size) {
+      return;
+    }
+    const int64_t first_base_i =
+        (start_unscaled + w_min * win_dilation) / base_dilation;
+    if (first_base_i >= base_limit) {
+      return;
+    }
+    const int64_t g = std::gcd(win_dilation, base_dilation);
+    const int64_t w_step = base_dilation / g;
+    const int64_t base_step_i = win_dilation / g;
+    const int64_t count_by_win = (win_size - 1 - w_min) / w_step + 1;
+    const int64_t count_by_base =
+        (base_limit - 1 - first_base_i) / base_step_i + 1;
+    first_base[i] = first_base_i;
+    base_step[i] = base_step_i;
+    count[i] = std::min(count_by_win, count_by_base);
+  }
+  DimensionVector base_index = first_base;
+  absl::Span<const int64_t> base_index_span(base_index);
+  DimensionVector idx(rank, 0);
+  while (true) {
+    f(base_index_span);
+    int64_t d = static_cast<int64_t>(rank) - 1;
+    while (d >= 0) {
+      if (++idx[d] < count[d]) {
+        base_index[d] += base_step[d];
         break;
       }
+      idx[d] = 0;
+      base_index[d] = first_base[d];
+      --d;
     }
-    if (!out_of_bound) {
-      f(base_index_span);
+    if (d < 0) {
+      break;
     }
-  } while (IndexUtil::BumpIndices(window_shape, window_index_span));
+  }
 }
 
 template <typename Fp, typename Uint, typename ResultT>
@@ -4335,19 +4481,19 @@ absl::Status HloEvaluator::HandleSort(const HloInstruction* sort) {
                     HloEvaluator* embedded_evaluator) -> absl::StatusOr<bool> {
     ABSL_ASSIGN_OR_RETURN(bool a_is_smaller,
                      comparator(literals_to_sort, a, b, embedded_evaluator));
-#ifndef NDEBUG
-    // Let's see if the comparator violates strict weak ordering.
-    // N.B. This does not test transitivity.
-    ABSL_ASSIGN_OR_RETURN(bool b_is_smaller,
-                     comparator(literals_to_sort, b, a, embedded_evaluator));
-    TF_RET_CHECK(!(b_is_smaller && a_is_smaller));
-    ABSL_ASSIGN_OR_RETURN(bool b_is_reflexive,
-                     comparator(literals_to_sort, b, b, embedded_evaluator));
-    TF_RET_CHECK(!b_is_reflexive);
-    ABSL_ASSIGN_OR_RETURN(bool a_is_reflexive,
-                     comparator(literals_to_sort, a, a, embedded_evaluator));
-    TF_RET_CHECK(!a_is_reflexive);
-#endif
+    if constexpr (tsl::kIsDebugBuild) {
+      // Let's see if the comparator violates strict weak ordering.
+      // N.B. This does not test transitivity.
+      ABSL_ASSIGN_OR_RETURN(bool b_is_smaller,
+                       comparator(literals_to_sort, b, a, embedded_evaluator));
+      TF_RET_CHECK(!(b_is_smaller && a_is_smaller));
+      ABSL_ASSIGN_OR_RETURN(bool b_is_reflexive,
+                       comparator(literals_to_sort, b, b, embedded_evaluator));
+      TF_RET_CHECK(!b_is_reflexive);
+      ABSL_ASSIGN_OR_RETURN(bool a_is_reflexive,
+                       comparator(literals_to_sort, a, a, embedded_evaluator));
+      TF_RET_CHECK(!a_is_reflexive);
+    }
     return a_is_smaller;
   };
   std::function<absl::Status(absl::Span<const Literal>, absl::Span<int64_t>,
@@ -4795,6 +4941,126 @@ absl::Status HloEvaluator::HandleReduce(const HloInstruction* hlo) {
   return absl::OkStatus();
 }
 
+namespace {
+
+std::optional<HloOpcode> MatchSimpleBinaryReducer(
+    const HloComputation* computation, PrimitiveType elem_type) {
+  if (computation->num_parameters() != 2) {
+    return std::nullopt;
+  }
+  const HloInstruction* op = computation->root_instruction();
+  if (op->operand_count() != 2 ||
+      op->operand(0) != computation->parameter_instruction(0) ||
+      op->operand(1) != computation->parameter_instruction(1) ||
+      !ShapeUtil::IsScalarWithElementType(op->shape(), elem_type)) {
+    return std::nullopt;
+  }
+  const auto op_code = std::make_optional(op->opcode());
+  switch (op->opcode()) {
+    case HloOpcode::kAdd:
+    case HloOpcode::kMultiply:
+      return elem_type != PRED ? op_code : std::nullopt;
+    case HloOpcode::kMaximum:
+    case HloOpcode::kMinimum:
+      return !primitive_util::IsComplexType(elem_type) ? op_code : std::nullopt;
+    case HloOpcode::kAnd:
+    case HloOpcode::kOr:
+    case HloOpcode::kXor:
+      return (primitive_util::IsIntegralType(elem_type) || elem_type == PRED)
+                 ? op_code
+                 : std::nullopt;
+    default:
+      return std::nullopt;
+  }
+}
+
+template <typename ReturnT, typename ElementwiseT>
+ReturnT ApplyBinaryOp(HloOpcode opcode, ReturnT a, ReturnT b) {
+  ElementwiseT lhs = static_cast<ElementwiseT>(a);
+  ElementwiseT rhs = static_cast<ElementwiseT>(b);
+  switch (opcode) {
+    case HloOpcode::kAdd:
+      return static_cast<ReturnT>(
+          ElementwiseT(ToArithmeticSafeType(lhs) + ToArithmeticSafeType(rhs)));
+    case HloOpcode::kMultiply:
+      return static_cast<ReturnT>(
+          ElementwiseT(ToArithmeticSafeType(lhs) * ToArithmeticSafeType(rhs)));
+    case HloOpcode::kMaximum:
+      if constexpr (!is_complex_v<ElementwiseT>) {
+        if constexpr (std::numeric_limits<ElementwiseT>::has_quiet_NaN) {
+          if (std::isnan(lhs)) {
+            return static_cast<ReturnT>(lhs);
+          }
+          if (std::isnan(rhs)) {
+            return static_cast<ReturnT>(rhs);
+          }
+        }
+        return static_cast<ReturnT>(std::max(lhs, rhs));
+      }
+      break;
+    case HloOpcode::kMinimum:
+      if constexpr (!is_complex_v<ElementwiseT>) {
+        if constexpr (std::numeric_limits<ElementwiseT>::has_quiet_NaN) {
+          if (std::isnan(lhs)) {
+            return static_cast<ReturnT>(lhs);
+          }
+          if (std::isnan(rhs)) {
+            return static_cast<ReturnT>(rhs);
+          }
+        }
+        return static_cast<ReturnT>(std::min(lhs, rhs));
+      }
+      break;
+    case HloOpcode::kAnd:
+      if constexpr (std::is_integral_v<ElementwiseT>) {
+        return static_cast<ReturnT>(lhs & rhs);
+      }
+      break;
+    case HloOpcode::kOr:
+      if constexpr (std::is_integral_v<ElementwiseT>) {
+        return static_cast<ReturnT>(lhs | rhs);
+      }
+      break;
+    case HloOpcode::kXor:
+      if constexpr (std::is_integral_v<ElementwiseT>) {
+        return static_cast<ReturnT>(lhs ^ rhs);
+      }
+      break;
+    default:
+      break;
+  }
+  LOG(FATAL) << "Unsupported opcode in ApplyBinaryOp: "
+             << HloOpcodeString(opcode);
+}
+
+template <PrimitiveType kType>
+absl::Status EvaluateSimpleReduceWindowTyped(
+    HloOpcode opcode, const Literal& input, const Literal& init,
+    const Shape& window_shape, const Window& window, Literal& result) {
+  using ReturnT = NativeTypeOf<kType>;
+  using ElementwiseT = std::conditional_t<
+      primitive_util::IsSignedIntegralType(kType), int64_t,
+      std::conditional_t<
+          primitive_util::IsUnsignedIntegralType(kType), uint64_t,
+          std::conditional_t<primitive_util::IsFloatingPointType(kType) &&
+                                 sizeof(ReturnT) < sizeof(float),
+                             float, ReturnT>>>;
+  const ReturnT init_val = init.Get<ReturnT>({});
+  return result.PopulateParallel<ReturnT>(
+      [&](absl::Span<const int64_t> output_index, int) -> ReturnT {
+        ReturnT acc = init_val;
+        IterateThroughWindow(window_shape, window, input.shape(), output_index,
+                             [&](absl::Span<const int64_t> input_index) {
+                               acc = ApplyBinaryOp<ReturnT, ElementwiseT>(
+                                   opcode, acc,
+                                   input.Get<ReturnT>(input_index));
+                             });
+        return acc;
+      });
+}
+
+}  // namespace
+
 absl::Status HloEvaluator::HandleReduceWindow(const HloInstruction* hlo) {
   auto* reduce_window = Cast<HloReduceWindowInstruction>(hlo);
   const Window& window = reduce_window->window();
@@ -4831,6 +5097,23 @@ absl::Status HloEvaluator::HandleReduceWindow(const HloInstruction* hlo) {
   }
   const Shape window_shape = ShapeUtil::MakeShape(
       input_arrays[0]->shape().element_type(), window_dimension_sizes);
+
+  if (!inferred_return_shape.IsTuple() && num_args == 1) {
+    if (std::optional<HloOpcode> fast_op = MatchSimpleBinaryReducer(
+            function, inferred_return_shape.element_type())) {
+      Literal result(inferred_return_shape);
+      ABSL_RETURN_IF_ERROR(primitive_util::ArrayTypeSwitch(
+          [&](auto type) {
+            return EvaluateSimpleReduceWindowTyped<type>(
+                *fast_op, *input_literal_vec[0], *init_literal_vec[0],
+                window_shape, window, result);
+          },
+          inferred_return_shape.element_type()));
+      VLOG(2) << "Final result is:" << result.ToString() << "\n";
+      SetEvaluatedLiteralFor(reduce_window, std::move(result));
+      return absl::OkStatus();
+    }
+  }
 
   const int num_threads = ShapeUtil::GetForEachIndexParallelThreadCount() + 1;
   std::vector<std::unique_ptr<HloEvaluator>> embedded_evaluators;
@@ -5317,6 +5600,1370 @@ absl::Status HloEvaluator::HandleScan(const HloInstruction* hlo) {
     SetEvaluatedLiteralFor(hlo, num_outputs == 1 ? std::move(stacked_outputs[0])
                                                  : std::move(carries[0]));
   }
+  return absl::OkStatus();
+}
+
+absl::Status HloEvaluator::UnsupportedTypeError(
+    const HloInstruction* instruction) {
+  return InvalidArgument(
+      "Unsupported type for %s: %s", HloOpcodeString(instruction->opcode()),
+      PrimitiveType_Name(instruction->shape().element_type()));
+}
+
+Shape HloEvaluator::GetShapeWithLayout(const Shape& shape) {
+  CHECK(shape.IsArray());
+  Shape shape_copy = shape;
+  if (!shape.has_layout()) {
+    LayoutUtil::SetToDefaultLayout(&shape_copy);
+  }
+  return shape_copy;
+}
+
+bool HloEvaluator::TryEvaluateDotFastPathF32(const HloInstruction* dot) {
+  const HloInstruction* lhs = dot->operand(0);
+  const HloInstruction* rhs = dot->operand(1);
+  CHECK(dot->shape().IsArray());
+  CHECK(lhs->shape().IsArray());
+  CHECK(rhs->shape().IsArray());
+
+  const auto& dnums = dot->dot_dimension_numbers();
+
+  const int64_t lhs_rank = lhs->shape().dimensions().size();
+  const int64_t rhs_rank = rhs->shape().dimensions().size();
+
+  // There must be 1 and only 1 Contracting dimension for lhs and rhs.
+  const int64_t lhs_contracting_dimension = dnums.lhs_contracting_dimensions(0);
+  const int64_t rhs_contracting_dimension = dnums.rhs_contracting_dimensions(0);
+  // Contracted dimension sizes must be the same.
+  CHECK_EQ(lhs->shape().dimensions(lhs_contracting_dimension),
+           rhs->shape().dimensions(rhs_contracting_dimension))
+      << "lhs contracted dimension: "
+      << lhs->shape().dimensions(lhs_contracting_dimension)
+      << " rhs contracted dimension: "
+      << rhs->shape().dimensions(rhs_contracting_dimension);
+
+  auto is_default_layout = [](const HloInstruction* op) {
+    return !op->shape().has_layout() ||
+           LayoutUtil::Equal(op->shape().layout(),
+                             LayoutUtil::GetDefaultLayoutForR2());
+  };
+
+  // The fast path is for a simple rank 2 dot with default layout operands.
+  if (lhs_rank != 2 || rhs_rank != 2 || lhs_contracting_dimension != 1 ||
+      rhs_contracting_dimension != 0 || !is_default_layout(lhs) ||
+      !is_default_layout(rhs) || !is_default_layout(dot)) {
+    return false;
+  }
+
+  Literal lhs_literal = GetEvaluatedLiteralFor(lhs).Convert(F32).value();
+  Literal rhs_literal = GetEvaluatedLiteralFor(rhs).Convert(F32).value();
+  const int64_t contracted_dimension_size =
+      lhs->shape().dimensions(lhs_contracting_dimension);
+  Array2D<float> lhs_array(lhs->shape().dimensions(0),
+                           contracted_dimension_size);
+  lhs_array.SetValues(lhs_literal.data<float>());
+  Array2D<float> rhs_array(contracted_dimension_size,
+                           rhs->shape().dimensions(1));
+  rhs_array.SetValues(rhs_literal.data<float>());
+  std::unique_ptr<Array2D<float>> result_array =
+      HloEvaluator::MatmulArray2D(lhs_array, rhs_array);
+  Literal result(ShapeUtil::MakeShape(F32, dot->shape().dimensions()));
+  result.PopulateR2FromArray2D(*result_array);
+  SetEvaluatedLiteralFor(
+      dot, std::move(result).Convert(dot->shape().element_type()).value());
+  return true;
+}
+
+namespace {
+
+PrimitiveType GetElementwisePrimitiveType(PrimitiveType type) {
+  if (primitive_util::IsSignedIntegralType(type)) {
+    return S64;
+  }
+  if (primitive_util::IsUnsignedIntegralType(type)) {
+    return U64;
+  }
+  if (primitive_util::IsFloatingPointType(type) &&
+      primitive_util::BitWidth(type) < 32) {
+    return F32;
+  }
+  return type;
+}
+
+template <typename F>
+decltype(auto) ElementwiseTypeSwitch(F&& f, PrimitiveType elementwise_type) {
+  switch (elementwise_type) {
+    case PRED:
+      return std::forward<F>(f)(primitive_util::PrimitiveTypeConstant<PRED>());
+    case S64:
+      return std::forward<F>(f)(primitive_util::PrimitiveTypeConstant<S64>());
+    case U64:
+      return std::forward<F>(f)(primitive_util::PrimitiveTypeConstant<U64>());
+    case F32:
+      return std::forward<F>(f)(primitive_util::PrimitiveTypeConstant<F32>());
+    case F64:
+      return std::forward<F>(f)(primitive_util::PrimitiveTypeConstant<F64>());
+    case C64:
+      return std::forward<F>(f)(primitive_util::PrimitiveTypeConstant<C64>());
+    case C128:
+      return std::forward<F>(f)(primitive_util::PrimitiveTypeConstant<C128>());
+    default:
+      LOG(FATAL) << "Unexpected elementwise type " << elementwise_type;
+  }
+}
+
+struct ShapeInfo {
+  static std::pair<DimensionVector, DimensionVector> dims(
+      const DimensionVector& dim_indexes, const Shape& literal_shape,
+      const Shape& scale_shape) {
+    DimensionVector dim_sizes;
+    DimensionVector dim_scale_divisors;
+    for (int64_t i = 0; i < dim_indexes.size(); ++i) {
+      dim_sizes.push_back(literal_shape.dimensions(dim_indexes[i]));
+      dim_scale_divisors.push_back(literal_shape.dimensions(dim_indexes[i]) /
+                                   scale_shape.dimensions(dim_indexes[i]));
+    }
+    return {dim_sizes, dim_scale_divisors};
+  }
+
+  ShapeInfo(const Literal& literal, const Literal& scale_literal,
+            absl::Span<const int64_t> contracting_dims_field,
+            absl::Span<const int64_t> batch_dims_field)
+      : rank(literal.shape().dimensions().size()) {
+    batch_dim_indexes =
+        DimensionVector(batch_dims_field.begin(), batch_dims_field.end());
+    std::tie(batch_dim_sizes, batch_dim_scale_divisors) =
+        dims(batch_dim_indexes, literal.shape(), scale_literal.shape());
+
+    non_contracting_dim_indexes =
+        GetNonContractingDims(rank, contracting_dims_field, batch_dims_field);
+    std::tie(non_contracting_dim_sizes, non_contracting_dim_scale_divisors) =
+        dims(non_contracting_dim_indexes, literal.shape(),
+             scale_literal.shape());
+
+    contracting_dim_indexes = DimensionVector(contracting_dims_field.begin(),
+                                              contracting_dims_field.end());
+    std::tie(contracting_dim_sizes, contracting_dim_scale_divisors) =
+        dims(contracting_dim_indexes, literal.shape(), scale_literal.shape());
+  }
+
+  const int64_t rank;
+  DimensionVector batch_dim_indexes;
+  DimensionVector batch_dim_sizes;
+  DimensionVector batch_dim_scale_divisors;
+
+  DimensionVector non_contracting_dim_indexes;
+  DimensionVector non_contracting_dim_sizes;
+  DimensionVector non_contracting_dim_scale_divisors;
+
+  DimensionVector contracting_dim_indexes;
+  DimensionVector contracting_dim_sizes;
+  DimensionVector contracting_dim_scale_divisors;
+};
+
+struct DotDimensionInfo {
+  DotDimensionInfo(
+      const Shape& lhs_shape, const Shape& rhs_shape,
+      const DotDimensionNumbers& dnums,
+      std::optional<int64_t> extra_rhs_contracting_dim = std::nullopt)
+      : lhs_rank(lhs_shape.dimensions().size()),
+        rhs_rank(rhs_shape.dimensions().size()) {
+    lhs_contracting_dims.assign(dnums.lhs_contracting_dimensions().begin(),
+                                dnums.lhs_contracting_dimensions().end());
+    rhs_contracting_dims.assign(dnums.rhs_contracting_dimensions().begin(),
+                                dnums.rhs_contracting_dimensions().end());
+    if (extra_rhs_contracting_dim.has_value()) {
+      // Group Dimension is also a contracting dimension.
+      rhs_contracting_dims.push_back(*extra_rhs_contracting_dim);
+    }
+    lhs_non_contracting_dims = GetNonContractingDims(
+        lhs_rank, lhs_contracting_dims, dnums.lhs_batch_dimensions());
+    rhs_non_contracting_dims = GetNonContractingDims(
+        rhs_rank, rhs_contracting_dims, dnums.rhs_batch_dimensions());
+    contracting_dim_sizes.reserve(lhs_contracting_dims.size());
+    for (int64_t lhs_dnum : lhs_contracting_dims) {
+      contracting_dim_sizes.push_back(lhs_shape.dimensions(lhs_dnum));
+    }
+    total_contraction_size = Product(contracting_dim_sizes);
+  }
+
+  int64_t lhs_rank;
+  int64_t rhs_rank;
+  DimensionVector lhs_non_contracting_dims;
+  DimensionVector rhs_non_contracting_dims;
+  DimensionVector lhs_contracting_dims;
+  DimensionVector rhs_contracting_dims;
+  DimensionVector contracting_dim_sizes;
+  int64_t total_contraction_size;
+};
+
+void IncrementContractingIndexes(
+    DimensionVector& contracting_indexes,
+    absl::Span<const int64_t> contracting_dims,
+    const DimensionVector& contracting_dim_sizes,
+    std::optional<int64_t> contracting_dim_to_skip = std::nullopt) {
+  for (int i = contracting_dim_sizes.size() - 1; i >= 0; --i) {
+    if (contracting_dim_to_skip.has_value() &&
+        contracting_dim_to_skip.value() == i) {
+      continue;
+    }
+    ++contracting_indexes[contracting_dims[i]];
+    if (contracting_indexes[contracting_dims[i]] != contracting_dim_sizes[i]) {
+      break;
+    }
+    contracting_indexes[contracting_dims[i]] = 0;
+  }
+}
+
+template <typename ElementwiseT>
+absl::Status EvaluateConvolutionWithLiterals(
+    const HloInstruction* conv, const Literal& lhs_literal,
+    const Literal& rhs_literal, const Shape& window_shape,
+    const DimensionVector& lhs_dim_multipliers,
+    const DimensionVector& rhs_dim_multipliers,
+    PrimitiveType result_element_type,
+    const HloEvaluator::TraceMACHandler& trace_mac_handler, Literal* result) {
+  const auto& window = conv->window();
+  const Shape& result_shape = result->shape();
+  const Shape& lhs_shape = lhs_literal.shape();
+  const Shape& rhs_shape = rhs_literal.shape();
+
+  const auto& dnums = conv->convolution_dimension_numbers();
+  auto lhs_literal_data = lhs_literal.data<ElementwiseT>();
+  auto rhs_literal_data = rhs_literal.data<ElementwiseT>();
+
+  const int64_t feature_group_count = conv->feature_group_count();
+  const int64_t batch_group_count = conv->batch_group_count();
+
+  ElementwiseT clamp_min = std::numeric_limits<ElementwiseT>::min();
+  ElementwiseT clamp_max = std::numeric_limits<ElementwiseT>::max();
+  const bool clamp_output = [&] {
+    if constexpr (std::is_integral_v<ElementwiseT>) {
+      return primitive_util::ArrayTypeSwitch(
+          [&](auto primitive_type_constant) -> bool {
+            using ReturnT = NativeTypeOf<primitive_type_constant>;
+            if constexpr (std::is_integral_v<ReturnT>) {
+              clamp_min = static_cast<ElementwiseT>(
+                  std::numeric_limits<ReturnT>::min());
+              clamp_max = static_cast<ElementwiseT>(
+                  std::numeric_limits<ReturnT>::max());
+              return true;
+            }
+            return false;
+          },
+          result_element_type);
+    }
+    return false;
+  }();
+
+  auto func = [&](const absl::Span<const int64_t> out_index,
+                  int /*thread_id*/) {
+    // Dimension number applicable for input (lhs).
+    const int64_t input_batch_dim = dnums.input_batch_dimension();
+    const int64_t input_z_dim = dnums.input_feature_dimension();
+    // Dimension number applicable for kernel (rhs).
+    const int64_t kernel_input_z_dim = dnums.kernel_input_feature_dimension();
+    const int64_t kernel_output_z_dim = dnums.kernel_output_feature_dimension();
+    // Dimension number applicable for output.
+    const int64_t output_batch_dim = dnums.output_batch_dimension();
+    const int64_t output_z_dim = dnums.output_feature_dimension();
+
+    const int64_t input_z_size =
+        ShapeUtil::GetDimension(lhs_shape, input_z_dim);
+
+    const int64_t input_batch_size =
+        ShapeUtil::GetDimension(lhs_shape, input_batch_dim);
+
+    const int64_t batch_group_size = input_batch_size / batch_group_count;
+
+    // The size of an input feature group.
+    const int64_t input_feature_group_size = input_z_size / feature_group_count;
+
+    const int64_t output_z_size =
+        ShapeUtil::GetDimension(rhs_shape, kernel_output_z_dim);
+    // The output feature dimension is a concatenation of convolution results
+    // from the different groups.
+    const int64_t output_feature_group_size =
+        output_z_size / feature_group_count;
+
+    // Calculate the group index to which the current output index
+    // belongs.
+    const int64_t feature_group_index =
+        out_index[output_z_dim] / output_feature_group_size;
+
+    const int64_t depthwise_multiplier = output_z_size / batch_group_count;
+    const int64_t batch_group_index =
+        out_index[output_z_dim] / depthwise_multiplier;
+
+    ElementwiseT result_val = static_cast<ElementwiseT>(0);
+    DimensionVector rhs_spatial_index(dnums.kernel_spatial_dimensions_size(),
+                                      0);
+
+    // Convolve input feature with kernel.
+    // The mechanism indexes into the correct LHS (input) and RHS (kernel)
+    // locations and accumulates multiplications for a given output index.
+    do {
+      // Find corresponding spatial dimension index for input (lhs).
+      int64_t lhs_linear_spatial_index = 0;
+      int64_t rhs_linear_spatial_index = 0;
+      for (int64_t ki = 0; ki < rhs_spatial_index.size(); ++ki) {
+        // Spatial dimension number for input (lhs) and output.
+        const int64_t input_spatial_dim = dnums.input_spatial_dimensions(ki);
+        const int64_t output_spatial_dim = dnums.output_spatial_dimensions(ki);
+
+        // Calculate lhs (input) index without taking base dilation into
+        // account.
+        const auto& window_dim = window.dimensions(ki);
+        const int64_t undilated_index =
+            out_index[output_spatial_dim] * window_dim.stride() -
+            window_dim.padding_low() +
+            rhs_spatial_index[ki] * window_dim.window_dilation();
+        // Skip if the lhs (input) index is to be dilated.  As an
+        // optimization, skip this mod if there's no dilation.
+        if (window_dim.base_dilation() > 1 &&
+            undilated_index % window_dim.base_dilation() != 0) {
+          goto cnt;
+        }
+
+        // Calculate the actual lhs (input) index after dilation.  As an
+        // optimization, skip this integer divide if there's no dilation.
+        int64_t lhs_spatial_index;
+        if (window_dim.base_dilation() > 1) {
+          lhs_spatial_index = undilated_index / window_dim.base_dilation();
+        } else {
+          lhs_spatial_index = undilated_index;
+        }
+
+        // Skip if input index is not in bounds.
+        if (!(lhs_spatial_index >= 0 &&
+              lhs_spatial_index < lhs_shape.dimensions(input_spatial_dim))) {
+          goto cnt;
+        }
+
+        lhs_linear_spatial_index +=
+            lhs_spatial_index * lhs_dim_multipliers[input_spatial_dim];
+        rhs_linear_spatial_index +=
+            (window_dim.window_reversal()
+                 ? ((window_dim.size() - 1) - rhs_spatial_index[ki])
+                 : rhs_spatial_index[ki]) *
+            rhs_dim_multipliers[dnums.kernel_spatial_dimensions(ki)];
+      }
+
+      for (int64_t rhs_iz = 0; rhs_iz < input_feature_group_size; ++rhs_iz) {
+        const int64_t iz =
+            feature_group_index * input_feature_group_size + rhs_iz;
+
+        int64_t lhs_linear_index = lhs_linear_spatial_index;
+        lhs_linear_index +=
+            out_index[output_batch_dim] * lhs_dim_multipliers[input_batch_dim];
+
+        // We are scraping only the diagonal elements in the resultant
+        // convolution output when batch_group_count is greater than 1,
+        // where 1 is the default. No scraping is done in that case.
+        // This approach works out automatically for 'groups' in batches
+        // with group_size > 1, because we already descend down the batch
+        // dimension for the 'output_batch_dim' above.
+        lhs_linear_index += (batch_group_index * batch_group_size) *
+                            lhs_dim_multipliers[input_batch_dim];
+
+        lhs_linear_index += iz * lhs_dim_multipliers[input_z_dim];
+        int64_t rhs_linear_index = rhs_linear_spatial_index;
+
+        rhs_linear_index +=
+            out_index[output_z_dim] * rhs_dim_multipliers[kernel_output_z_dim];
+        rhs_linear_index += rhs_iz * rhs_dim_multipliers[kernel_input_z_dim];
+        ElementwiseT lhs = lhs_literal_data[lhs_linear_index];
+        ElementwiseT rhs = rhs_literal_data[rhs_linear_index];
+        result_val += ToArithmeticSafeType(lhs) * ToArithmeticSafeType(rhs);
+
+        if (trace_mac_handler != nullptr) {
+          const int64_t result_linear_index =
+              IndexUtil::MultidimensionalIndexToLinearIndex(result_shape,
+                                                            out_index);
+
+          trace_mac_handler(result_linear_index, lhs_linear_index,
+                            rhs_linear_index);
+        }
+      }
+    cnt:;  // NOLINT(whitespace/semicolon)
+    } while (IndexUtil::BumpIndices(window_shape,
+                                    absl::MakeSpan(rhs_spatial_index)));
+
+    if constexpr (std::is_integral_v<ElementwiseT>) {
+      if (clamp_output) {
+        result_val = std::max(clamp_min, std::min(clamp_max, result_val));
+      }
+    }
+    return result_val;
+  };
+
+  return result->PopulateParallel<ElementwiseT>(func);
+}
+
+template <typename ReturnT, typename ElementwiseT = ReturnT>
+absl::Status EvaluateDotSlowPathWithLiterals(
+    const HloInstruction* dot, const Literal& lhs_literal,
+    const Literal& rhs_literal, const DotDimensionInfo& dot_info,
+    const HloEvaluator::TraceMACHandler& trace_mac_handler, Literal* result) {
+  const auto& dnums = dot->dot_dimension_numbers();
+  const Shape& dot_shape = result->shape();
+  return result->PopulateParallel<ReturnT>(
+      [&](absl::Span<const int64_t> result_index, int /*thread_id*/) {
+        // Locations in LHS and RHS that we read from.
+        DimensionVector lhs_index(dot_info.lhs_rank);
+        DimensionVector rhs_index(dot_info.rhs_rank);
+
+        // First come the batch dimensions.
+        int64_t idx = 0;
+        for (int64_t i = 0; i < dnums.lhs_batch_dimensions_size(); i++) {
+          lhs_index[dnums.lhs_batch_dimensions(i)] = result_index[idx];
+          rhs_index[dnums.rhs_batch_dimensions(i)] = result_index[idx];
+          idx++;
+        }
+
+        // Next we have non-contracting dimensions, if any.
+        for (int64_t i = 0; i < dot_info.lhs_non_contracting_dims.size(); i++) {
+          lhs_index[dot_info.lhs_non_contracting_dims[i]] = result_index[idx++];
+        }
+        for (int64_t i = 0; i < dot_info.rhs_non_contracting_dims.size(); i++) {
+          rhs_index[dot_info.rhs_non_contracting_dims[i]] = result_index[idx++];
+        }
+
+        // Accumulate resulting product along the contracting dimensions.
+        ElementwiseT result_val = static_cast<ElementwiseT>(0);
+        for (int64_t k = 0; k < dot_info.total_contraction_size; k++) {
+          const auto lhs =
+              static_cast<ElementwiseT>(lhs_literal.Get<ReturnT>(lhs_index));
+          const auto rhs =
+              static_cast<ElementwiseT>(rhs_literal.Get<ReturnT>(rhs_index));
+          result_val += ToArithmeticSafeType(lhs) * ToArithmeticSafeType(rhs);
+
+          if (trace_mac_handler != nullptr) {
+            const int64_t result_linear_index =
+                IndexUtil::MultidimensionalIndexToLinearIndex(dot_shape,
+                                                              result_index);
+            const int64_t lhs_linear_index =
+                IndexUtil::MultidimensionalIndexToLinearIndex(
+                    lhs_literal.shape(), lhs_index);
+            const int64_t rhs_linear_index =
+                IndexUtil::MultidimensionalIndexToLinearIndex(
+                    rhs_literal.shape(), rhs_index);
+
+            trace_mac_handler(result_linear_index, lhs_linear_index,
+                              rhs_linear_index);
+          }
+
+          IncrementContractingIndexes(lhs_index, dot_info.lhs_contracting_dims,
+                                      dot_info.contracting_dim_sizes);
+          IncrementContractingIndexes(rhs_index, dot_info.rhs_contracting_dims,
+                                      dot_info.contracting_dim_sizes);
+        }
+
+        return static_cast<ReturnT>(result_val);
+      });
+}
+
+template <typename ElementwiseT>
+absl::Status EvaluateRaggedDotNonContractingWithLiterals(
+    const HloInstruction* dot, const Literal& lhs_literal,
+    const Literal& rhs_literal, const Literal& gs_literal,
+    const DotDimensionInfo& dot_info, Literal* result) {
+  const auto& ragged_dims = dot->ragged_dot_dimension_numbers();
+  const auto& dot_dims = ragged_dims.dot_dimension_numbers();
+  // Shape inference should have checked that there is exactly one ragged dim.
+  int64_t lhs_ragged_dim = ragged_dims.lhs_ragged_dimensions(0);
+  // Shape inference should have checked that this mode has a group dim.
+  int64_t rhs_group_dim = ragged_dims.rhs_group_dimensions(0);
+
+  int64_t gs_rank = gs_literal.shape().dimensions().size();
+  int64_t num_groups = gs_literal.shape().dimensions(gs_rank - 1);
+
+  return result->PopulateParallel<ElementwiseT>(
+      [&](absl::Span<const int64_t> result_index, int /*thread_id*/) {
+        // Locations in each operand that we read from to calculate the result
+        // at result_index.
+        DimensionVector lhs_index(dot_info.lhs_rank);
+        DimensionVector rhs_index(dot_info.rhs_rank);
+        DimensionVector group_index(gs_rank);
+
+        // Batch dimensions will always be first in the final product.
+        const int64_t group_dim_index = gs_rank - 1;
+        int64_t idx = 0;
+        int64_t gs_idx = 0;
+        for (int64_t i = 0; i < dot_dims.lhs_batch_dimensions_size(); ++i) {
+          lhs_index[dot_dims.lhs_batch_dimensions(i)] = result_index[idx];
+          rhs_index[dot_dims.rhs_batch_dimensions(i)] = result_index[idx];
+          if (gs_idx < group_dim_index) {
+            group_index[gs_idx++] = result_index[idx];
+          }
+          idx++;
+        }
+
+        // Non-contracting dimensions - lhs, then rhs.
+        for (int64_t i = 0; i < dot_info.lhs_non_contracting_dims.size(); ++i) {
+          // If there is a non-contracting lhs dimension that is not ragged,
+          // then there will also be a dimension for this in group_sizes.
+          if (lhs_ragged_dim != dot_info.lhs_non_contracting_dims[i]) {
+            if (gs_idx < group_dim_index) {
+              group_index[gs_idx++] = result_index[idx];
+            }
+          }
+          lhs_index[dot_info.lhs_non_contracting_dims[i]] = result_index[idx++];
+        }
+        for (int64_t i = 0; i < dot_info.rhs_non_contracting_dims.size(); ++i) {
+          rhs_index[dot_info.rhs_non_contracting_dims[i]] = result_index[idx++];
+        }
+
+        // Calculate which group the current lhs-row belongs to.
+        int64_t lhs_ragged_index = lhs_index[lhs_ragged_dim];
+        int64_t group_row_end = 0;
+        for (int64_t i = 0; i < num_groups; ++i) {
+          group_index[group_dim_index] = i;
+          group_row_end += gs_literal.Get<int64_t>(group_index);
+          if (lhs_ragged_index < group_row_end) {
+            break;
+          }
+        }
+        // If lhs_ragged_index > the sum(groups), then there is no
+        // corresponding rhs value, and there is no result.
+        if (lhs_ragged_index >= group_row_end) {
+          return static_cast<ElementwiseT>(0);
+        }
+        rhs_index[rhs_group_dim] = group_index[gs_idx];
+
+        // Accumulate resulting product along the contracting dimensions.
+        ElementwiseT result_val = static_cast<ElementwiseT>(0);
+        for (int64_t i = 0; i < dot_info.total_contraction_size; ++i) {
+          const ElementwiseT lhs = lhs_literal.Get<ElementwiseT>(lhs_index);
+          const ElementwiseT rhs = rhs_literal.Get<ElementwiseT>(rhs_index);
+          result_val += ToArithmeticSafeType(lhs) * ToArithmeticSafeType(rhs);
+
+          IncrementContractingIndexes(lhs_index, dot_info.lhs_contracting_dims,
+                                      dot_info.contracting_dim_sizes);
+          IncrementContractingIndexes(rhs_index, dot_info.rhs_contracting_dims,
+                                      dot_info.contracting_dim_sizes);
+        }
+        return result_val;
+      });
+}
+
+template <typename ElementwiseT>
+absl::Status EvaluateRaggedDotBatchModeWithLiterals(
+    const HloInstruction* dot, const Literal& lhs_literal,
+    const Literal& rhs_literal, const Literal& gs_literal,
+    const DotDimensionInfo& dot_info, Literal* result) {
+  const auto& dot_dims =
+      dot->ragged_dot_dimension_numbers().dot_dimension_numbers();
+  int64_t gs_rank = gs_literal.shape().dimensions().size();
+  const int64_t group_dim_index = gs_rank - 1;
+  const int64_t num_groups = gs_literal.shape().dimensions(group_dim_index);
+
+  return result->PopulateParallel<ElementwiseT>(
+      [&](absl::Span<const int64_t> result_index, int /*thread_id*/) {
+        // Locations in each operand that we read from to calculate the
+        // result at result_index.
+        DimensionVector lhs_index(dot_info.lhs_rank);
+        DimensionVector rhs_index(dot_info.rhs_rank);
+        DimensionVector group_index(gs_rank);
+
+        // The batch dimensions will always be first in the final product.
+        int64_t gs_idx = 0;
+        int64_t idx = 0;
+        for (int64_t i = 0; i < dot_dims.lhs_batch_dimensions_size(); ++i) {
+          lhs_index[dot_dims.lhs_batch_dimensions(i)] = result_index[idx];
+          rhs_index[dot_dims.rhs_batch_dimensions(i)] = result_index[idx];
+          // gs only contains the batch dimensions outer to the ragged dim.
+          if (gs_idx < group_dim_index) {
+            group_index[gs_idx++] = result_index[idx];
+          }
+          ++idx;
+        }
+
+        // Check whether this batch is handled by some group.
+        int64_t batches_handled = 0;
+        for (int i = 0; i < num_groups; ++i) {
+          group_index[group_dim_index] = i;
+          batches_handled += gs_literal.Get<int64_t>(group_index);
+        }
+        if (lhs_index[dot_dims.lhs_batch_dimensions(group_dim_index)] >=
+            batches_handled) {
+          return static_cast<ElementwiseT>(0);
+        }
+
+        // Non-contracting dimensions - lhs, then rhs.
+        for (int64_t i = 0; i < dot_info.lhs_non_contracting_dims.size(); ++i) {
+          lhs_index[dot_info.lhs_non_contracting_dims[i]] = result_index[idx++];
+        }
+        for (int64_t i = 0; i < dot_info.rhs_non_contracting_dims.size(); ++i) {
+          rhs_index[dot_info.rhs_non_contracting_dims[i]] = result_index[idx++];
+        }
+
+        // Accumulate resulting product along the contracting dimensions.
+        ElementwiseT result_val = static_cast<ElementwiseT>(0);
+        for (int64_t i = 0; i < dot_info.total_contraction_size; ++i) {
+          const ElementwiseT lhs = lhs_literal.Get<ElementwiseT>(lhs_index);
+          const ElementwiseT rhs = rhs_literal.Get<ElementwiseT>(rhs_index);
+          result_val += ToArithmeticSafeType(lhs) * ToArithmeticSafeType(rhs);
+
+          IncrementContractingIndexes(lhs_index, dot_info.lhs_contracting_dims,
+                                      dot_info.contracting_dim_sizes);
+          IncrementContractingIndexes(rhs_index, dot_info.rhs_contracting_dims,
+                                      dot_info.contracting_dim_sizes);
+        }
+        return result_val;
+      });
+}
+
+template <typename ElementwiseT>
+absl::Status EvaluateRaggedDotContractingWithLiterals(
+    const HloInstruction* dot, const Literal& lhs_literal,
+    const Literal& rhs_literal, const Literal& gs_literal,
+    const DotDimensionInfo& dot_info, int64_t ragged_dim_as_contracting_dim,
+    Literal* result) {
+  const auto& dot_dims =
+      dot->ragged_dot_dimension_numbers().dot_dimension_numbers();
+  int64_t gs_rank = gs_literal.shape().dimensions().size();
+  const int64_t ragged_dim_size =
+      dot_info.contracting_dim_sizes[ragged_dim_as_contracting_dim];
+  const int64_t total_contracting_size_excluding_ragged_dim =
+      dot_info.total_contraction_size / ragged_dim_size;
+
+  return result->PopulateParallel<ElementwiseT>([&](absl::Span<const int64_t>
+                                                        result_index,
+                                                    int /*thread_id*/) {
+    // Locations in each operand that we read from to calculate the
+    // result at result_index.
+    DimensionVector lhs_index(dot_info.lhs_rank);
+    DimensionVector rhs_index(dot_info.rhs_rank);
+    DimensionVector group_index(gs_rank);
+
+    // The group dimension will always be first in the final product. We
+    // handle it later since we need to fill in the batch dimensions first
+    // to look up the relevant group sizes.
+    const int64_t group_dim_index = gs_rank - 1;
+    int64_t gs_idx = 0;
+    int64_t idx = 1;
+    // Batch dimensions are next.
+    for (int64_t i = 0; i < dot_dims.lhs_batch_dimensions_size(); ++i) {
+      lhs_index[dot_dims.lhs_batch_dimensions(i)] = result_index[idx];
+      rhs_index[dot_dims.rhs_batch_dimensions(i)] = result_index[idx];
+      if (gs_idx < group_dim_index) {
+        group_index[gs_idx++] = result_index[idx];
+      }
+      ++idx;
+    }
+
+    // We now go back handle the group dimension now that the batch has
+    // been filled in.
+    int64_t group_row_start = 0;  // inclusive
+    int64_t group_row_end = 0;    // exclusive
+    for (int i = 0; i <= result_index[0]; ++i) {
+      group_index[group_dim_index] = i;
+      group_row_start = group_row_end;
+      group_row_end += gs_literal.Get<int64_t>(group_index);
+    }
+    // Clamp group row start and end to the range of the contracting dim.
+    group_row_start = std::max(group_row_start, INT64_C(0));
+    group_row_start = std::min(group_row_start, ragged_dim_size);
+    group_row_end = std::max(group_row_end, INT64_C(0));
+    group_row_end = std::min(group_row_end, ragged_dim_size);
+
+    // Non-contracting dimensions - lhs, then rhs.
+    for (int64_t i = 0; i < dot_info.lhs_non_contracting_dims.size(); ++i) {
+      lhs_index[dot_info.lhs_non_contracting_dims[i]] = result_index[idx++];
+    }
+    for (int64_t i = 0; i < dot_info.rhs_non_contracting_dims.size(); ++i) {
+      rhs_index[dot_info.rhs_non_contracting_dims[i]] = result_index[idx++];
+    }
+
+    // Accumulate resulting product along the contracting dimensions.
+    ElementwiseT result_val = static_cast<ElementwiseT>(0);
+    for (int64_t i = 0; i < total_contracting_size_excluding_ragged_dim; ++i) {
+      for (int64_t j = group_row_start; j < group_row_end; ++j) {
+        lhs_index[dot_info
+                      .lhs_contracting_dims[ragged_dim_as_contracting_dim]] = j;
+        rhs_index[dot_info
+                      .rhs_contracting_dims[ragged_dim_as_contracting_dim]] = j;
+        const ElementwiseT lhs = lhs_literal.Get<ElementwiseT>(lhs_index);
+        const ElementwiseT rhs = rhs_literal.Get<ElementwiseT>(rhs_index);
+        result_val += ToArithmeticSafeType(lhs) * ToArithmeticSafeType(rhs);
+      }
+
+      IncrementContractingIndexes(lhs_index, dot_info.lhs_contracting_dims,
+                                  dot_info.contracting_dim_sizes,
+                                  ragged_dim_as_contracting_dim);
+      IncrementContractingIndexes(rhs_index, dot_info.rhs_contracting_dims,
+                                  dot_info.contracting_dim_sizes,
+                                  ragged_dim_as_contracting_dim);
+    }
+    return result_val;
+  });
+}
+
+template <typename ElementwiseT>
+absl::Status EvaluateScaledDotSlowPathWithLiterals(
+    const HloInstruction* dot, const Literal& lhs_literal,
+    const Literal& rhs_literal, const Literal& lhs_scale_literal,
+    const Literal& rhs_scale_literal, const ShapeInfo& lhs_info,
+    const ShapeInfo& rhs_info, int64_t total_contraction_size,
+    const HloEvaluator::TraceMACHandler& trace_mac_handler, Literal* result) {
+  const auto& dnums = dot->dot_dimension_numbers();
+  const Shape& dot_shape = result->shape();
+  return result->PopulateParallel<ElementwiseT>([&](absl::Span<const int64_t>
+                                                        result_index,
+                                                    int /*thread_id*/) {
+    // Locations in LHS and RHS that we read from.
+    DimensionVector lhs_index(lhs_info.rank);
+    DimensionVector lhs_scale_index(lhs_info.rank);
+    DimensionVector rhs_index(rhs_info.rank);
+    DimensionVector rhs_scale_index(rhs_info.rank);
+
+    // First come the batch dimensions.
+    int64_t idx = 0;
+    for (int64_t i = 0; i < dnums.lhs_batch_dimensions_size(); i++) {
+      lhs_index[dnums.lhs_batch_dimensions(i)] = result_index[idx];
+      rhs_index[dnums.rhs_batch_dimensions(i)] = result_index[idx];
+      lhs_scale_index[dnums.lhs_batch_dimensions(i)] =
+          result_index[idx] / lhs_info.batch_dim_scale_divisors[i];
+      rhs_scale_index[dnums.rhs_batch_dimensions(i)] =
+          result_index[idx] / rhs_info.batch_dim_scale_divisors[i];
+      idx++;
+    }
+
+    // Next we have non-contracting dimensions, if any.
+    for (int64_t i = 0; i < lhs_info.non_contracting_dim_indexes.size(); i++) {
+      lhs_index[lhs_info.non_contracting_dim_indexes[i]] = result_index[idx];
+      lhs_scale_index[lhs_info.non_contracting_dim_indexes[i]] =
+          result_index[idx] / lhs_info.non_contracting_dim_scale_divisors[i];
+      idx++;
+    }
+    for (int64_t i = 0; i < rhs_info.non_contracting_dim_indexes.size(); i++) {
+      rhs_index[rhs_info.non_contracting_dim_indexes[i]] = result_index[idx];
+      rhs_scale_index[rhs_info.non_contracting_dim_indexes[i]] =
+          result_index[idx] / rhs_info.non_contracting_dim_scale_divisors[i];
+      idx++;
+    }
+
+    auto get_val = [](const Literal& literal, const DimensionVector& index) {
+      return ToArithmeticSafeType(literal.Get<ElementwiseT>(index));
+    };
+    // Accumulate resulting product along the contracting dimensions.
+    ElementwiseT result_val = static_cast<ElementwiseT>(0);
+    for (int64_t k = 0; k < total_contraction_size; k++) {
+      const auto lhs = get_val(lhs_literal, lhs_index);
+      const auto lhs_scale = get_val(lhs_scale_literal, lhs_scale_index);
+      const auto rhs = get_val(rhs_literal, rhs_index);
+      const auto rhs_scale = get_val(rhs_scale_literal, rhs_scale_index);
+      result_val += lhs * lhs_scale * rhs * rhs_scale;
+
+      if (trace_mac_handler != nullptr) {
+        const int64_t result_linear_index =
+            IndexUtil::MultidimensionalIndexToLinearIndex(dot_shape,
+                                                          result_index);
+        const int64_t lhs_linear_index =
+            IndexUtil::MultidimensionalIndexToLinearIndex(lhs_literal.shape(),
+                                                          lhs_index);
+        const int64_t rhs_linear_index =
+            IndexUtil::MultidimensionalIndexToLinearIndex(rhs_literal.shape(),
+                                                          rhs_index);
+
+        trace_mac_handler(result_linear_index, lhs_linear_index,
+                          rhs_linear_index);
+      }
+
+      // If there are no contracting dimensions, do not try to count down
+      // from -1 to 0; that's an infinite loop.
+      if (!lhs_info.contracting_dim_sizes.empty()) {
+        for (int64_t i = lhs_info.contracting_dim_sizes.size() - 1; i >= 0;
+             --i) {
+          const int64_t lhs_dim = lhs_info.contracting_dim_indexes[i];
+          const int64_t rhs_dim = rhs_info.contracting_dim_indexes[i];
+          int64_t& lhs_idx = lhs_index[lhs_dim];
+          int64_t& rhs_idx = rhs_index[rhs_dim];
+          ++lhs_idx;
+          lhs_scale_index[lhs_dim] =
+              lhs_idx / lhs_info.contracting_dim_scale_divisors[i];
+          ++rhs_idx;
+          rhs_scale_index[rhs_dim] =
+              rhs_idx / rhs_info.contracting_dim_scale_divisors[i];
+          if (lhs_idx != lhs_info.contracting_dim_sizes[i]) {
+            break;
+          }
+          lhs_idx = 0;
+          rhs_idx = 0;
+        }
+      }
+    }
+
+    return result_val;
+  });
+}
+
+}  // namespace
+
+absl::Status HloEvaluator::HandleConvolution(const HloInstruction* conv) {
+  auto lhs = conv->operand(0);
+  auto rhs = conv->operand(1);
+  const auto& window = conv->window();
+  Shape result_shape = GetShapeWithLayout(conv->shape());
+  Shape lhs_shape;
+  Shape rhs_shape;
+
+  std::optional<Literal> decompressed_lhs;
+  const Literal* lhs_literal_ptr = &GetEvaluatedLiteralFor(lhs);
+  std::optional<Literal> decompressed_rhs;
+  const Literal* rhs_literal_ptr = &GetEvaluatedLiteralFor(rhs);
+
+  if (conv->sparsity_config().has_lhs()) {
+    auto lhs_indices_op = conv->operand(conv->sparsity_config().lhs().idx());
+    const Literal* lhs_indices = &GetEvaluatedLiteralFor(lhs_indices_op);
+    ABSL_ASSIGN_OR_RETURN(decompressed_lhs, xla::MaterializeSparseOperand(
+                                           *lhs_literal_ptr, *lhs_indices,
+                                           conv->sparsity_config().lhs()));
+    lhs_literal_ptr = &decompressed_lhs.value();
+    lhs_shape = lhs_literal_ptr->shape();
+  } else {
+    lhs_shape = GetShapeWithLayout(lhs->shape());
+  }
+
+  if (conv->sparsity_config().has_rhs()) {
+    auto rhs_indices_op = conv->operand(conv->sparsity_config().rhs().idx());
+    const Literal* rhs_indices = &GetEvaluatedLiteralFor(rhs_indices_op);
+    ABSL_ASSIGN_OR_RETURN(decompressed_rhs, xla::MaterializeSparseOperand(
+                                           *rhs_literal_ptr, *rhs_indices,
+                                           conv->sparsity_config().rhs()));
+    rhs_literal_ptr = &decompressed_rhs.value();
+    rhs_shape = rhs_literal_ptr->shape();
+  } else {
+    rhs_shape = GetShapeWithLayout(rhs->shape());
+  }
+
+  CHECK_OK(ShapeUtil::ValidateShape(lhs_shape));
+  CHECK_OK(ShapeUtil::ValidateShape(rhs_shape));
+  CHECK(lhs_shape.IsArray());
+  CHECK(rhs_shape.IsArray());
+
+  const auto& dnums = conv->convolution_dimension_numbers();
+  const int64_t num_spatial_dims = dnums.output_spatial_dimensions_size();
+  CHECK_EQ(num_spatial_dims, dnums.input_spatial_dimensions_size());
+  CHECK_EQ(num_spatial_dims, dnums.kernel_spatial_dimensions_size());
+  CHECK_GE(num_spatial_dims, 0);
+  CHECK_EQ(window.dimensions_size(), num_spatial_dims);
+
+  const auto lhs_rank = lhs_shape.dimensions().size();
+  const auto rhs_rank = rhs_shape.dimensions().size();
+
+  CHECK_EQ(num_spatial_dims + 2, lhs_rank);
+  CHECK_EQ(num_spatial_dims + 2, rhs_rank);
+
+  ABSL_ASSIGN_OR_RETURN(
+      auto inferred_return_shape,
+      ShapeInference::InferConvolveShape(
+          lhs_shape, rhs_shape, conv->feature_group_count(),
+          conv->batch_group_count(), window, dnums, SparsityConfig(),
+          /*preferred_element_type=*/conv->shape().element_type()));
+  CHECK(ShapeUtil::Compatible(result_shape, inferred_return_shape))
+      << "return shape set to: " << ShapeUtil::HumanString(result_shape)
+      << " but is inferred to be: "
+      << ShapeUtil::HumanString(inferred_return_shape);
+
+  std::optional<Literal> converted_lhs;
+  if (!ShapeUtil::SameElementType(lhs_shape, result_shape)) {
+    converted_lhs =
+        lhs_literal_ptr->Convert(result_shape.element_type()).value();
+    lhs_literal_ptr = &converted_lhs.value();
+  }
+  std::optional<Literal> converted_rhs;
+  if (!ShapeUtil::SameElementType(rhs_shape, result_shape)) {
+    converted_rhs =
+        rhs_literal_ptr->Convert(result_shape.element_type()).value();
+    rhs_literal_ptr = &converted_rhs.value();
+  }
+
+  const Shape& eval_lhs_shape = lhs_literal_ptr->shape();
+  const Shape& eval_rhs_shape = rhs_literal_ptr->shape();
+
+  CHECK_OK(ShapeUtil::ValidateShape(eval_lhs_shape));
+  CHECK_OK(ShapeUtil::ValidateShape(eval_rhs_shape));
+  CHECK(eval_lhs_shape.IsArray());
+  CHECK(eval_rhs_shape.IsArray());
+  CHECK(ShapeUtil::SameElementType(eval_lhs_shape, eval_rhs_shape));
+  CHECK(ShapeUtil::SameElementType(eval_lhs_shape, result_shape));
+
+  const PrimitiveType result_type = result_shape.element_type();
+  const PrimitiveType elementwise_type =
+      GetElementwisePrimitiveType(result_type);
+  const int64_t feature_group_count = conv->feature_group_count();
+  const int64_t batch_group_count = conv->batch_group_count();
+
+  if (elementwise_type == F32) {
+    auto is_row_major_r2 = [](const Shape& s) {
+      return s.dimensions().size() == 2 &&
+             (!s.has_layout() ||
+              LayoutUtil::IsMonotonicWithDim0Major(s.layout()));
+    };
+
+    if (trace_mac_handler_ == nullptr && feature_group_count == 1 &&
+        batch_group_count == 1 && num_spatial_dims == 0 &&
+        dnums.input_batch_dimension() == 0 &&
+        dnums.input_feature_dimension() == 1 &&
+        dnums.kernel_input_feature_dimension() == 0 &&
+        dnums.kernel_output_feature_dimension() == 1 &&
+        dnums.output_batch_dimension() == 0 &&
+        dnums.output_feature_dimension() == 1 &&
+        is_row_major_r2(eval_lhs_shape) && is_row_major_r2(eval_rhs_shape) &&
+        is_row_major_r2(result_shape)) {
+      const int64_t m = eval_lhs_shape.dimensions(0);
+      const int64_t k = eval_lhs_shape.dimensions(1);
+      const int64_t n = eval_rhs_shape.dimensions(1);
+
+      if (m > 0 && k > 0 && n > 0) {
+        Literal lhs_f32 = lhs_literal_ptr->Convert(F32).value();
+        Literal rhs_f32 = rhs_literal_ptr->Convert(F32).value();
+
+        Array2D<float> lhs_array(m, k);
+        lhs_array.SetValues(lhs_f32.data<float>());
+        Array2D<float> rhs_array(k, n);
+        rhs_array.SetValues(rhs_f32.data<float>());
+
+        std::unique_ptr<Array2D<float>> result_array =
+            HloEvaluator::MatmulArray2D(lhs_array, rhs_array);
+
+        Literal result_f32(ShapeUtil::MakeShape(F32, {m, n}));
+        result_f32.PopulateR2FromArray2D(*result_array);
+
+        SetEvaluatedLiteralFor(
+            conv, std::move(result_f32).Convert(result_type).value());
+        return absl::OkStatus();
+      }
+    }
+  }
+
+  std::optional<Literal> elementwise_lhs;
+  if (result_type != elementwise_type) {
+    ABSL_ASSIGN_OR_RETURN(elementwise_lhs,
+                     lhs_literal_ptr->Convert(elementwise_type));
+    lhs_literal_ptr = &elementwise_lhs.value();
+  }
+  std::optional<Literal> elementwise_rhs;
+  if (result_type != elementwise_type) {
+    ABSL_ASSIGN_OR_RETURN(elementwise_rhs,
+                     rhs_literal_ptr->Convert(elementwise_type));
+    rhs_literal_ptr = &elementwise_rhs.value();
+  }
+
+  std::vector<int64_t> window_dimension_sizes;
+  window_dimension_sizes.reserve(num_spatial_dims);
+  for (auto i : dnums.kernel_spatial_dimensions()) {
+    window_dimension_sizes.push_back(
+        ShapeUtil::GetDimension(eval_rhs_shape, i));
+  }
+
+  const Shape window_shape =
+      ShapeUtil::MakeShape(elementwise_type, window_dimension_sizes);
+
+  DimensionVector lhs_dim_multipliers = MakeDimMultipliers(eval_lhs_shape);
+  DimensionVector rhs_dim_multipliers = MakeDimMultipliers(eval_rhs_shape);
+
+  Literal eval_result(
+      ShapeUtil::ChangeElementType(result_shape, elementwise_type));
+  ABSL_RETURN_IF_ERROR(ElementwiseTypeSwitch(
+      [&](auto primitive_type_constant) -> absl::Status {
+        using ElementwiseT = NativeTypeOf<primitive_type_constant>;
+        return EvaluateConvolutionWithLiterals<ElementwiseT>(
+            conv, *lhs_literal_ptr, *rhs_literal_ptr, window_shape,
+            lhs_dim_multipliers, rhs_dim_multipliers, result_type,
+            trace_mac_handler_, &eval_result);
+      },
+      elementwise_type));
+  if (result_type != elementwise_type) {
+    ABSL_ASSIGN_OR_RETURN(eval_result, eval_result.Convert(result_type));
+  }
+  SetEvaluatedLiteralFor(conv, std::move(eval_result));
+  return absl::OkStatus();
+}
+
+absl::Status HloEvaluator::HandleDot(const HloInstruction* dot) {
+  const PrimitiveType result_type = dot->shape().element_type();
+  const PrimitiveType elementwise_type =
+      GetElementwisePrimitiveType(result_type);
+  if (elementwise_type == F32 &&
+      dot->dot_dimension_numbers().rhs_contracting_dimensions_size() == 1 &&
+      use_fast_path_ &&
+      ((ShapeUtil::SameElementType(dot->operand(0)->shape(), dot->shape()) &&
+        ShapeUtil::SameElementType(dot->operand(1)->shape(), dot->shape())) ||
+       result_type == F32) &&
+      TryEvaluateDotFastPathF32(dot)) {
+    return absl::OkStatus();
+  }
+
+  auto lhs = dot->operand(0);
+  auto rhs = dot->operand(1);
+  CHECK(dot->shape().IsArray());
+  CHECK(lhs->shape().IsArray());
+  CHECK(rhs->shape().IsArray());
+
+  const Literal* lhs_literal_ptr = &GetEvaluatedLiteralFor(lhs);
+  const Literal* rhs_literal_ptr = &GetEvaluatedLiteralFor(rhs);
+  std::optional<Literal> converted_lhs;
+  if (!ShapeUtil::SameElementType(lhs->shape(), dot->shape())) {
+    converted_lhs = lhs_literal_ptr->Convert(result_type).value();
+    lhs_literal_ptr = &converted_lhs.value();
+  }
+  std::optional<Literal> converted_rhs;
+  if (!ShapeUtil::SameElementType(rhs->shape(), dot->shape())) {
+    converted_rhs = rhs_literal_ptr->Convert(result_type).value();
+    rhs_literal_ptr = &converted_rhs.value();
+  }
+
+  const auto& dnums = dot->dot_dimension_numbers();
+  CHECK(ShapeUtil::SameElementType(lhs_literal_ptr->shape(),
+                                   rhs_literal_ptr->shape()));
+  CHECK(ShapeUtil::SameElementType(lhs_literal_ptr->shape(), dot->shape()));
+  CHECK_EQ(dnums.lhs_batch_dimensions_size(),
+           dnums.rhs_batch_dimensions_size());
+
+  DotDimensionInfo dot_info(lhs_literal_ptr->shape(), rhs_literal_ptr->shape(),
+                            dnums);
+  Shape dot_shape = GetShapeWithLayout(dot->shape());
+  if (result_type == S32) {
+    Literal result(dot_shape);
+    ABSL_RETURN_IF_ERROR((EvaluateDotSlowPathWithLiterals<int32_t, int64_t>(
+        dot, *lhs_literal_ptr, *rhs_literal_ptr, dot_info, trace_mac_handler_,
+        &result)));
+    SetEvaluatedLiteralFor(dot, std::move(result));
+    return absl::OkStatus();
+  }
+
+  std::optional<Literal> elementwise_lhs;
+  if (result_type != elementwise_type) {
+    ABSL_ASSIGN_OR_RETURN(elementwise_lhs,
+                     lhs_literal_ptr->Convert(elementwise_type));
+    lhs_literal_ptr = &elementwise_lhs.value();
+  }
+  std::optional<Literal> elementwise_rhs;
+  if (result_type != elementwise_type) {
+    ABSL_ASSIGN_OR_RETURN(elementwise_rhs,
+                     rhs_literal_ptr->Convert(elementwise_type));
+    rhs_literal_ptr = &elementwise_rhs.value();
+  }
+
+  Literal eval_result(
+      ShapeUtil::ChangeElementType(dot_shape, elementwise_type));
+  ABSL_RETURN_IF_ERROR(ElementwiseTypeSwitch(
+      [&](auto primitive_type_constant) -> absl::Status {
+        using ElementwiseT = NativeTypeOf<primitive_type_constant>;
+        return EvaluateDotSlowPathWithLiterals<ElementwiseT>(
+            dot, *lhs_literal_ptr, *rhs_literal_ptr, dot_info,
+            trace_mac_handler_, &eval_result);
+      },
+      elementwise_type));
+  if (result_type != elementwise_type) {
+    ABSL_ASSIGN_OR_RETURN(eval_result, eval_result.Convert(result_type));
+  }
+  SetEvaluatedLiteralFor(dot, std::move(eval_result));
+  return absl::OkStatus();
+}
+
+absl::Status HloEvaluator::HandleRaggedDot(const HloInstruction* dot) {
+  auto lhs = dot->operand(0);
+  auto rhs = dot->operand(1);
+  auto group_sizes = dot->operand(2);
+
+  CHECK(dot->shape().IsArray());
+  CHECK(lhs->shape().IsArray());
+  CHECK(rhs->shape().IsArray());
+  CHECK(group_sizes->shape().IsArray());
+
+  const Literal* lhs_literal_ptr = &GetEvaluatedLiteralFor(lhs);
+  const Literal* rhs_literal_ptr = &GetEvaluatedLiteralFor(rhs);
+  const Literal* gs_literal_ptr = &GetEvaluatedLiteralFor(group_sizes);
+
+  const PrimitiveType result_type = dot->shape().element_type();
+  const PrimitiveType elementwise_type =
+      GetElementwisePrimitiveType(result_type);
+
+  // LHS and RHS may have a different initial precision than our output.
+  std::optional<Literal> converted_lhs;
+  if (!ShapeUtil::SameElementType(lhs->shape(), dot->shape())) {
+    converted_lhs = lhs_literal_ptr->Convert(result_type).value();
+    lhs_literal_ptr = &converted_lhs.value();
+  }
+  std::optional<Literal> converted_rhs;
+  if (!ShapeUtil::SameElementType(rhs->shape(), dot->shape())) {
+    converted_rhs = rhs_literal_ptr->Convert(result_type).value();
+    rhs_literal_ptr = &converted_rhs.value();
+  }
+  std::optional<Literal> elementwise_lhs;
+  if (result_type != elementwise_type) {
+    ABSL_ASSIGN_OR_RETURN(elementwise_lhs,
+                     lhs_literal_ptr->Convert(elementwise_type));
+    lhs_literal_ptr = &elementwise_lhs.value();
+  }
+  std::optional<Literal> elementwise_rhs;
+  if (result_type != elementwise_type) {
+    ABSL_ASSIGN_OR_RETURN(elementwise_rhs,
+                     rhs_literal_ptr->Convert(elementwise_type));
+    rhs_literal_ptr = &elementwise_rhs.value();
+  }
+
+  // Upcast group sizes to S64, since they could be e.g. S32.
+  std::optional<Literal> converted_gs;
+  if (group_sizes->shape().element_type() != PrimitiveType::S64) {
+    converted_gs = gs_literal_ptr->Convert(PrimitiveType::S64).value();
+    gs_literal_ptr = &converted_gs.value();
+  }
+
+  const Literal& lhs_literal = *lhs_literal_ptr;
+  const Literal& rhs_literal = *rhs_literal_ptr;
+  const Literal& gs_literal = *gs_literal_ptr;
+
+  const auto& ragged_dims = dot->ragged_dot_dimension_numbers();
+  const auto& dot_dims = ragged_dims.dot_dimension_numbers();
+  // Shape inference should have checked that there is exactly one ragged dim.
+  const int64_t lhs_ragged_dim = ragged_dims.lhs_ragged_dimensions(0);
+
+  Shape dot_shape = GetShapeWithLayout(dot->shape());
+  Literal eval_result(
+      ShapeUtil::ChangeElementType(dot_shape, elementwise_type));
+
+  auto finish = [&]() -> absl::Status {
+    if (result_type != elementwise_type) {
+      ABSL_ASSIGN_OR_RETURN(eval_result, eval_result.Convert(result_type));
+    }
+    SetEvaluatedLiteralFor(dot, std::move(eval_result));
+    return absl::OkStatus();
+  };
+
+  auto contracting_it =
+      std::find(dot_dims.lhs_contracting_dimensions().begin(),
+                dot_dims.lhs_contracting_dimensions().end(), lhs_ragged_dim);
+  if (contracting_it != dot_dims.lhs_contracting_dimensions().end()) {
+    const int64_t ragged_dim_as_contracting_dim =
+        contracting_it - dot_dims.lhs_contracting_dimensions().begin();
+    DotDimensionInfo dot_info(lhs_literal.shape(), rhs_literal.shape(),
+                              dot_dims);
+    ABSL_RETURN_IF_ERROR(ElementwiseTypeSwitch(
+        [&](auto primitive_type_constant) -> absl::Status {
+          using ElementwiseT = NativeTypeOf<primitive_type_constant>;
+          return EvaluateRaggedDotContractingWithLiterals<ElementwiseT>(
+              dot, lhs_literal, rhs_literal, gs_literal, dot_info,
+              ragged_dim_as_contracting_dim, &eval_result);
+        },
+        elementwise_type));
+    return finish();
+  }
+
+  if (std::find(dot_dims.lhs_batch_dimensions().begin(),
+                dot_dims.lhs_batch_dimensions().end(),
+                lhs_ragged_dim) != dot_dims.lhs_batch_dimensions().end()) {
+    DotDimensionInfo dot_info(lhs_literal.shape(), rhs_literal.shape(),
+                              dot_dims);
+    ABSL_RETURN_IF_ERROR(ElementwiseTypeSwitch(
+        [&](auto primitive_type_constant) -> absl::Status {
+          using ElementwiseT = NativeTypeOf<primitive_type_constant>;
+          return EvaluateRaggedDotBatchModeWithLiterals<ElementwiseT>(
+              dot, lhs_literal, rhs_literal, gs_literal, dot_info,
+              &eval_result);
+        },
+        elementwise_type));
+    return finish();
+  }
+
+  // Shape inference should have checked that this mode has a group dim.
+  const int64_t rhs_group_dim = ragged_dims.rhs_group_dimensions(0);
+  DotDimensionInfo dot_info(lhs_literal.shape(), rhs_literal.shape(), dot_dims,
+                            rhs_group_dim);
+  ABSL_RETURN_IF_ERROR(ElementwiseTypeSwitch(
+      [&](auto primitive_type_constant) -> absl::Status {
+        using ElementwiseT = NativeTypeOf<primitive_type_constant>;
+        return EvaluateRaggedDotNonContractingWithLiterals<ElementwiseT>(
+            dot, lhs_literal, rhs_literal, gs_literal, dot_info, &eval_result);
+      },
+      elementwise_type));
+  return finish();
+}
+
+absl::Status HloEvaluator::HandleScaledDot(const HloInstruction* dot) {
+  auto lhs = dot->operand(0);
+  auto rhs = dot->operand(1);
+  auto lhs_scale = dot->operand(2);
+  auto rhs_scale = dot->operand(3);
+  CHECK(dot->shape().IsArray());
+  CHECK(lhs->shape().IsArray());
+  CHECK(rhs->shape().IsArray());
+  CHECK(lhs_scale->shape().IsArray());
+  CHECK(rhs_scale->shape().IsArray());
+  CHECK(lhs_scale->shape().dimensions().size() == 0 ||
+        lhs_scale->shape().dimensions().size() ==
+            lhs->shape().dimensions().size());
+  CHECK(rhs_scale->shape().dimensions().size() == 0 ||
+        rhs_scale->shape().dimensions().size() ==
+            rhs->shape().dimensions().size());
+
+  const PrimitiveType result_type = dot->shape().element_type();
+  const PrimitiveType elementwise_type =
+      GetElementwisePrimitiveType(result_type);
+
+  ABSL_ASSIGN_OR_RETURN(Literal lhs_literal,
+                   GetEvaluatedLiteralFor(lhs).Convert(result_type));
+  ABSL_ASSIGN_OR_RETURN(Literal rhs_literal,
+                   GetEvaluatedLiteralFor(rhs).Convert(result_type));
+
+  // If the scale is a scalar, we can just use 1.0. Otherwise, we need to
+  // evaluate the scale.
+  auto evaluate_scale =
+      [&](const HloInstruction* operand,
+          const HloInstruction* scale) -> absl::StatusOr<Literal> {
+    if (scale->shape().IsArray() && scale->shape().dimensions().size() > 0) {
+      return GetEvaluatedLiteralFor(scale).Convert(result_type);
+    }
+    std::vector<int64_t> ones(operand->shape().dimensions().size(), 1);
+    Literal scale_f32(ShapeUtil::MakeShape(F32, ones));
+    scale_f32.PopulateWithValue(1.0f);
+    return scale_f32.Convert(result_type);
+  };
+  ABSL_ASSIGN_OR_RETURN(Literal lhs_scale_literal, evaluate_scale(lhs, lhs_scale));
+  ABSL_ASSIGN_OR_RETURN(Literal rhs_scale_literal, evaluate_scale(rhs, rhs_scale));
+
+  const auto& dnums = dot->dot_dimension_numbers();
+  CHECK(ShapeUtil::SameElementType(lhs_literal.shape(), rhs_literal.shape()));
+  CHECK(ShapeUtil::SameElementType(lhs_literal.shape(), dot->shape()));
+  CHECK_EQ(dnums.lhs_batch_dimensions_size(),
+           dnums.rhs_batch_dimensions_size());
+
+  if (result_type != elementwise_type) {
+    ABSL_ASSIGN_OR_RETURN(lhs_literal, lhs_literal.Convert(elementwise_type));
+    ABSL_ASSIGN_OR_RETURN(rhs_literal, rhs_literal.Convert(elementwise_type));
+    ABSL_ASSIGN_OR_RETURN(lhs_scale_literal,
+                     lhs_scale_literal.Convert(elementwise_type));
+    ABSL_ASSIGN_OR_RETURN(rhs_scale_literal,
+                     rhs_scale_literal.Convert(elementwise_type));
+  }
+
+  ShapeInfo lhs_info(lhs_literal, lhs_scale_literal,
+                     dnums.lhs_contracting_dimensions(),
+                     dnums.lhs_batch_dimensions());
+  ShapeInfo rhs_info(rhs_literal, rhs_scale_literal,
+                     dnums.rhs_contracting_dimensions(),
+                     dnums.rhs_batch_dimensions());
+  const int64_t total_contraction_size =
+      Product(lhs_info.contracting_dim_sizes);
+  Shape dot_shape = GetShapeWithLayout(dot->shape());
+
+  ABSL_ASSIGN_OR_RETURN(
+      Literal eval_result,
+      Literal::Make(ShapeUtil::ChangeElementType(dot_shape, elementwise_type)));
+  ABSL_RETURN_IF_ERROR(ElementwiseTypeSwitch(
+      [&](auto primitive_type_constant) -> absl::Status {
+        using ElementwiseT = NativeTypeOf<primitive_type_constant>;
+        return EvaluateScaledDotSlowPathWithLiterals<ElementwiseT>(
+            dot, lhs_literal, rhs_literal, lhs_scale_literal, rhs_scale_literal,
+            lhs_info, rhs_info, total_contraction_size, trace_mac_handler_,
+            &eval_result);
+      },
+      elementwise_type));
+  if (result_type != elementwise_type) {
+    ABSL_ASSIGN_OR_RETURN(eval_result, eval_result.Convert(result_type));
+  }
+  SetEvaluatedLiteralFor(dot, std::move(eval_result));
+  return absl::OkStatus();
+}
+
+absl::Status HloEvaluator::HandlePad(const HloInstruction* pad) {
+  CHECK(pad->operand(0)->shape().IsArray());
+  // Padding value must be scalar.
+  CHECK(ShapeUtil::IsScalar(pad->operand(1)->shape()));
+  CHECK_EQ(pad->operand(0)->shape().dimensions().size(),
+           pad->padding_config().dimensions_size());
+
+  ABSL_ASSIGN_OR_RETURN(auto inferred_return_shape,
+                   ShapeInference::InferPadShape(
+                       /*operand_shape=*/pad->operand(0)->shape(),
+                       /*padding_value_shape=*/pad->operand(1)->shape(),
+                       /*padding_config=*/pad->padding_config()));
+  CHECK(ShapeUtil::CompatibleIgnoringElementType(pad->shape(),
+                                                 inferred_return_shape))
+      << "return shape is set to: " << ShapeUtil::HumanString(pad->shape())
+      << " but is inferred to be: "
+      << ShapeUtil::HumanString(inferred_return_shape);
+
+  PrimitiveType result_type = pad->shape().element_type();
+  PrimitiveType padding_type = pad->operand(1)->shape().element_type();
+  std::optional<Literal> converted_padding;
+  const Literal* evaluated_padding_ptr =
+      &GetEvaluatedLiteralFor(pad->operand(1));
+  if (padding_type != result_type) {
+    ABSL_ASSIGN_OR_RETURN(converted_padding,
+                     evaluated_padding_ptr->Convert(result_type));
+    evaluated_padding_ptr = &converted_padding.value();
+  }
+
+  // Create new HLO of padded shape with padding value.
+  Literal result(GetShapeWithLayout(pad->shape()));
+
+  PrimitiveType operand_type = pad->operand(0)->shape().element_type();
+  std::optional<Literal> converted_operand;
+  const Literal* evaluated_operand_ptr =
+      &GetEvaluatedLiteralFor(pad->operand(0));
+  if (operand_type != result_type) {
+    ABSL_ASSIGN_OR_RETURN(converted_operand,
+                     evaluated_operand_ptr->Convert(result_type));
+    evaluated_operand_ptr = &converted_operand.value();
+  }
+  const Literal& evaluated_operand = *evaluated_operand_ptr;
+
+  std::vector<int64_t> target_index(result.shape().dimensions().size(), 0);
+  std::vector<int64_t> zero_base(evaluated_operand.shape().dimensions().size(),
+                                 0);
+  std::vector<int64_t> step(evaluated_operand.shape().dimensions().size(), 1);
+  const PaddingConfig& pad_config = pad->padding_config();
+
+  ABSL_RETURN_IF_ERROR(primitive_util::ByteWidthTypeSwitch(
+      [&](auto primitive_type_constant) -> absl::Status {
+        using NativeT = NativeTypeOf<primitive_type_constant>;
+        const NativeT scalar =
+            *static_cast<const NativeT*>(evaluated_padding_ptr->untyped_data());
+        ABSL_RETURN_IF_ERROR(result.PopulateLinearInplaceParallel(
+            [&scalar](void* dest, int64_t /*linear_index*/, int /*thread_id*/) {
+              *static_cast<NativeT*>(dest) = scalar;
+            }));
+
+        const auto* operand_data =
+            static_cast<const NativeT*>(evaluated_operand.untyped_data());
+        auto* result_data = static_cast<NativeT*>(result.untyped_data());
+        auto func = [&](absl::Span<const int64_t> input_index) {
+          for (auto i = 0; i < input_index.size(); ++i) {
+            // Interior padding occurs logically before edge padding, so in
+            // the case of negative edge padding elements are removed from the
+            // interior-padded operand.
+            target_index[i] =
+                pad_config.dimensions(i).edge_padding_low() +
+                input_index[i] *
+                    (pad_config.dimensions(i).interior_padding() + 1);
+
+            // Account for negative low and high padding: skip assignment if
+            // the any target index is out of range.
+            if (!(target_index[i] >= 0 &&
+                  target_index[i] < pad->shape().dimensions(i))) {
+              return true;
+            }
+          }
+          result_data[IndexUtil::MultidimensionalIndexToLinearIndex(
+              result.shape(), target_index)] =
+              operand_data[IndexUtil::MultidimensionalIndexToLinearIndex(
+                  evaluated_operand.shape(), input_index)];
+          return true;
+        };
+
+        ShapeUtil::ForEachIndexNoStatus(evaluated_operand.shape(), zero_base,
+                                        evaluated_operand.shape().dimensions(),
+                                        step, func);
+        return absl::OkStatus();
+      },
+      result_type));
+
+  SetEvaluatedLiteralFor(pad, std::move(result));
   return absl::OkStatus();
 }
 

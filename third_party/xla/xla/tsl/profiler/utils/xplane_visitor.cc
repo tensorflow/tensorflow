@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/tsl/profiler/utils/xplane_visitor.h"
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <utility>
@@ -22,7 +23,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/types.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tsl {
@@ -79,6 +79,18 @@ XEventVisitor::XEventVisitor(const XPlaneVisitor* plane, const XLine* line,
       event_(event),
       metadata_(plane->GetEventMetadata(event_->metadata_id())),
       type_(plane->GetEventType(event_->metadata_id())) {}
+
+std::optional<XStatVisitor> XEventVisitor::GetEventOrMetadataStat(
+    int64_t stat_type) const {
+  const XStatMetadata* stat_metadata = plane_->GetStatMetadataByType(stat_type);
+  if (stat_metadata == nullptr) {
+    return std::nullopt;
+  }
+  if (std::optional<XStatVisitor> stat = GetStat(stat_type, *stat_metadata)) {
+    return stat;
+  }
+  return Metadata().GetStat(stat_type, *stat_metadata);
+}
 
 XPlaneVisitor::XPlaneVisitor(const XPlane* plane,
                              const TypeGetterList& event_type_getter_list,

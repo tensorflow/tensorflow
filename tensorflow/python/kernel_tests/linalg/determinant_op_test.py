@@ -18,8 +18,10 @@ import numpy as np
 
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import linalg_ops
@@ -83,6 +85,27 @@ class DeterminantOpTest(test.TestCase):
         ], [1., 6., 7., 4., 7.], [2., 3., 4., 5., 6.]]).astype(np.float32))
     # A multidimensional batch of 2x2 matrices
     self._compareDeterminant(np.random.rand(3, 4, 5, 2, 2).astype(np.float32))
+
+  def testSingularMatrix(self):
+    for dtype in (np.float32, np.float64, np.complex64, np.complex128):
+      for matrix_values in (
+          [[1.0, 2.0], [2.0, 4.0]],
+          [[0.0, 1.0, 2.0], [0.0, 3.0, 4.0], [0.0, 5.0, 6.0]],
+          [[1.0, 0.0, -1.0], [-1.0, 1.0, 0.0], [0.0, -1.0, 1.0]],
+          [
+              [[1.0, 2.0], [2.0, 4.0]],
+              [[0.0, 0.0], [0.0, 0.0]],
+          ],
+      ):
+        matrix = np.array(matrix_values, dtype=dtype)
+        with test_util.use_gpu():
+          det = self.evaluate(linalg_ops.matrix_determinant(matrix))
+          sign, log_det = self.evaluate(
+              gen_linalg_ops.log_matrix_determinant(matrix)
+          )
+          self.assertAllClose(det, np.zeros_like(det))
+          self.assertAllClose(sign, np.zeros_like(sign))
+          self.assertTrue(np.all(np.isneginf(log_det.real)))
 
   def testBasicDouble(self):
     # 2x2 matrices
@@ -150,6 +173,28 @@ class DeterminantOpTest(test.TestCase):
     tensor1 = constant_op.constant([1., 2.])
     with self.assertRaises(ValueError):
       linalg_ops.matrix_determinant(tensor1)
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
+  def testInvalidRank(self):
+    for fn in (
+        linalg_ops.matrix_determinant,
+        gen_linalg_ops.matrix_determinant,
+        gen_linalg_ops.log_matrix_determinant,
+    ):
+      for bad_shape in ([], [2]):
+        for dtype in (np.float32, np.float64, np.complex64, np.complex128):
+          val = constant_op.constant(np.zeros(bad_shape, dtype=dtype))
+          with self.assertRaises(
+              (ValueError, errors_impl.InvalidArgumentError)
+          ):
+            with test_util.use_gpu():
+              self.evaluate(fn(val))
+          val_dyn = array_ops.placeholder_with_default(val, shape=None)
+          with self.assertRaises(
+              (ValueError, errors_impl.InvalidArgumentError)
+          ):
+            with test_util.use_gpu():
+              self.evaluate(fn(val_dyn))
 
   def testEmpty(self):
     self._compareDeterminant(np.empty([0, 2, 2]))

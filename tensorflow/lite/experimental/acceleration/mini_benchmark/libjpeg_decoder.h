@@ -168,10 +168,9 @@ class LibjpegDecoder {
     // Extension of the Run method for non-void JPEG calls when we need to
     // collect the returned value.
     // See Run comments above for details.
-    template <
-        typename Fn, typename... Args,
-        typename ResultType = typename std::result_of_t<Fn>,
-        typename = typename std::enable_if<!std::is_void<ResultType>::value> >
+    template <typename Fn, typename... Args,
+              typename ResultType = typename std::result_of_t<Fn>,
+              typename = typename std::enable_if<!std::is_void_v<ResultType>>>
     TfLiteStatus RunAndSetResult(Fn f, ResultType* result, Args... args) {
       if (setjmp(env_)) return kTfLiteError;
       *result = (handle_->*f)(cinfo_.get(), args...);

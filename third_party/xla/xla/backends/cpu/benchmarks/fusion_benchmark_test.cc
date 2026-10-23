@@ -16,6 +16,7 @@ limitations under the License.
 #include <cstdint>
 #include <random>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
@@ -201,6 +202,78 @@ static void BM_DynamicUpdateSliceFusionF32(benchmark::State& state,
       RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}, options));
 }
 
+static void BM_OutOfPlaceDynamicUpdateSliceFusionF32(
+    benchmark::State& state, HloBenchmarkOptions options) {
+  int64_t d0 = state.range(0);
+
+  absl::string_view hlo = R"(
+    HloModule out_of_place_dynamic_update_slice_fusion_f32_$d0
+
+    ENTRY e {
+      p0 = f32[$d0,256] parameter(0)
+      p1 = s32[] parameter(1)
+      p2 = s32[] parameter(2)
+      slice = f32[1,1] dynamic-slice(p0, p1, p2), dynamic_slice_sizes={1,1}
+      add = f32[1,1] add(slice, slice)
+      update = f32[$d0,256] dynamic-update-slice(p0, add, p1, p2)
+      ROOT tuple = (f32[$d0,256], f32[$d0,256]) tuple(update, p0)
+    }
+  )";
+
+  std::minstd_rand0 engine;
+
+  auto shape = ShapeUtil::MakeShape(F32, {d0, 256});
+  auto p0 = LiteralUtil::CreateRandomLiteral<F32>(shape, &engine, 1.0f, 0.1f);
+  CHECK_OK(p0.status());
+  auto p1 = LiteralUtil::CreateR0<int32_t>(0);
+  auto p2 = LiteralUtil::CreateR0<int32_t>(0);
+
+  std::vector<const Literal*> args = {&*p0, &p1, &p2};
+  CHECK_OK(
+      RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}, options));
+}
+
+static void BM_LoopFusionDynamicUpdateSliceF32(benchmark::State& state,
+                                               HloBenchmarkOptions options) {
+  int64_t d0 = state.range(0);
+
+  absl::string_view hlo = R"(
+    HloModule loop_fusion_dynamic_update_slice_f32_$d0
+
+    dus_loop_fusion {
+      p0 = f32[$d0,256] parameter(0)
+      p1 = s32[] parameter(1)
+      p2 = s32[] parameter(2)
+      slice = f32[1,1] dynamic-slice(p0, p1, p2), dynamic_slice_sizes={1,1}
+      add = f32[1,1] add(slice, slice)
+      dus = f32[$d0,256] dynamic-update-slice(p0, add, p1, p2)
+      zero = f32[] constant(0.0)
+      bcast_zero = f32[$d0,256] broadcast(zero), dimensions={}
+      ROOT out = f32[$d0,256] add(dus, bcast_zero)
+    }
+
+    ENTRY e {
+      p0 = f32[$d0,256] parameter(0)
+      p1 = s32[] parameter(1)
+      p2 = s32[] parameter(2)
+      fusion = f32[$d0,256] fusion(p0, p1, p2), kind=kLoop, calls=dus_loop_fusion
+      ROOT tuple = (f32[$d0,256], f32[$d0,256]) tuple(fusion, p0)
+    }
+  )";
+
+  std::minstd_rand0 engine;
+
+  auto shape = ShapeUtil::MakeShape(F32, {d0, 256});
+  auto p0 = LiteralUtil::CreateRandomLiteral<F32>(shape, &engine, 1.0f, 0.1f);
+  CHECK_OK(p0.status());
+  auto p1 = LiteralUtil::CreateR0<int32_t>(0);
+  auto p2 = LiteralUtil::CreateR0<int32_t>(0);
+
+  std::vector<const Literal*> args = {&*p0, &p1, &p2};
+  CHECK_OK(
+      RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}, options));
+}
+
 static void BM_ChainOfAddF32(benchmark::State& state,
                              HloBenchmarkOptions options) {
   int64_t size = state.range(0);
@@ -357,6 +430,26 @@ XLA_CPU_BENCHMARK(BM_DynamicUpdateSliceFusionF32)
     ->Arg(1024)
     ->Arg(8192)
     ->Arg(16384);
+
+XLA_CPU_BENCHMARK(BM_OutOfPlaceDynamicUpdateSliceFusionF32)
+    ->MeasureProcessCPUTime()
+    ->Arg(128)
+    ->Arg(256)
+    ->Arg(512)
+    ->Arg(1024)
+    ->Arg(8192)
+    ->Arg(16384)
+    ->Arg(65536);
+
+XLA_CPU_BENCHMARK(BM_LoopFusionDynamicUpdateSliceF32)
+    ->MeasureProcessCPUTime()
+    ->Arg(128)
+    ->Arg(256)
+    ->Arg(512)
+    ->Arg(1024)
+    ->Arg(8192)
+    ->Arg(16384)
+    ->Arg(65536);
 
 XLA_CPU_BENCHMARK(BM_ChainOfAddF32)
     ->MeasureProcessCPUTime()

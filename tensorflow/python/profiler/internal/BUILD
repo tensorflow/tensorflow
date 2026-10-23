@@ -165,14 +165,12 @@ cc_library(
     name = "python_hooks",
     hdrs = ["python_hooks.h"],
     compatible_with = get_compatible_with_portable(),
-    copts = tf_profiler_copts() + ["-fexceptions"],
-    features = ["-use_header_modules"],  # Incompatible with -fexceptions.
+    copts = tf_profiler_copts(),
     visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/core:lib",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
-        "@pybind11",
         "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
         "@xla//xla/python/profiler/internal:python_hooks",
     ],

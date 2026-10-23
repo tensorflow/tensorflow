@@ -54,12 +54,17 @@ def _make_device_specs(
       device_type = 'CPU'
     devices = config.local_devices(device_type)
   else:
+    if not devices:
+      raise ValueError(
+          'Received an empty `devices` list; at least one device is '
+          'required to build a mesh.'
+      )
     if isinstance(devices[0], str):
       devices = [tf_device.DeviceSpec.from_string(d) for d in devices]
     if device_type is None:
-      device_type = devices[0].device_type
+      device_type = devices[0].device_type  # pyrefly: ignore[missing-attribute]
 
-    if device_type.upper() != devices[0].device_type.upper():
+    if device_type.upper() != devices[0].device_type.upper():  # pyrefly: ignore[missing-attribute]
       raise ValueError(
           f'Conflicting devices {str(devices)} and device_type {device_type}'
       )
@@ -151,7 +156,7 @@ def create_distributed_mesh(
   For CPU and GPU meshes, users can choose to use fewer local devices than what
   is available `local_devices`.
 
-  For TPU, only meshes that uses all TPU cores is supported by the DTensor
+  For TPU, only meshes that use all TPU cores are supported by the DTensor
   runtime.
 
   Args:
@@ -162,7 +167,7 @@ def create_distributed_mesh(
       part of tf.DeviceSpec, e.g. 'CPU:0'. Defaults to all available local
       logical devices.
     device_type: Type of device to build the mesh for. Defaults to 'CPU'.
-      Supported values are 'CPU', 'GPU', 'TPU'.6
+      Supported values are 'CPU', 'GPU', 'TPU'.
     use_xla_spmd: Boolean when True, will use XLA SPMD instead of DTensor SPMD.
 
   Returns:
@@ -176,17 +181,21 @@ def create_distributed_mesh(
     raise ValueError('Accelerators are uninitialized, please run '
                      'dtensor.initialize_accelerator_system() first.')
 
+  device_specs, device_type = _make_device_specs(local_devices, device_type)
+
   if device_type and device_type.upper() == 'TPU':
     # TODO(b/185940495): Allow multi-mesh and partial on TPU.
     # TPU meshes can only be configured through environment variables that
     # reflect the actual TPU topology. Do not let users specify custom args.
+    # Checked here (after type inference) rather than against the original
+    # `device_type` argument, so a caller who passes `local_devices` full of
+    # TPU specs without also passing `device_type='TPU'` still gets this
+    # error instead of silently having `local_devices` ignored below.
     if local_devices is not None:
       raise ValueError(
           f'Do not specify devices for {device_type.upper()} meshes. '
           f'Using a partial list of devices for {device_type.upper()} '
           f'is not supported.')
-
-  device_specs, device_type = _make_device_specs(local_devices, device_type)
 
   if device_type.upper() in ['CPU', 'GPU']:
     # For CPU and GPU meshes, user-specified args take precedence over env vars.

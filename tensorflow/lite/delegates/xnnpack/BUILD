@@ -629,6 +629,7 @@ cc_library(
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_fbs",
+        "@FP16",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
     ],
@@ -1275,11 +1276,11 @@ cc_library(
     hdrs = ["variable_ops_tester.h"],
     deps = [
         ":xnnpack_delegate_test_mode",
+        "//tensorflow/compiler/mlir/lite/schema:schema_conversion_utils",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",
-        "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -1297,11 +1298,11 @@ cc_library(
     hdrs = ["variable_ops_tester.h"],
     deps = [
         ":xnnpack_delegate",
+        "//tensorflow/compiler/mlir/lite/schema:schema_conversion_utils",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",
-        "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -1323,12 +1324,45 @@ cc_library(
 )
 
 cc_library(
+    name = "moe_block_scale",
+    hdrs = ["moe_block_scale.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
+)
+
+# moe_block_scale.h asks clang to vectorize its dot-product loops. Clang reports
+# a hint it could not honor (e.g. under instrumentation it does not expect) as
+# -Wpass-failed, attributed to a post-inlining location that source pragmas
+# cannot reliably cover, so the warning is disabled for the translation units
+# that compile those loops.
+MOE_VECTORIZE_HINT_COPTS = select({
+    "//tensorflow:windows": [],
+    "//conditions:default": ["-Wno-pass-failed"],
+})
+
+cc_test(
+    name = "moe_block_scale_test",
+    srcs = ["moe_block_scale_test.cc"],
+    copts = MOE_VECTORIZE_HINT_COPTS,
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":moe_block_scale",
+        ":test_main",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
     name = "moe_delegate_kernel",
     srcs = ["moe_delegate_kernel.cc"],
     hdrs = ["moe_delegate_kernel.h"],
     compatible_with = get_compatible_with_portable(),
-    copts = tflite_copts() + ["-DFLATBUFFERS_LOCALE_INDEPENDENT=0"],
+    copts = tflite_copts() + ["-DFLATBUFFERS_LOCALE_INDEPENDENT=0"] + MOE_VECTORIZE_HINT_COPTS,
     deps = [
+        ":moe_block_scale",
         "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
@@ -1343,13 +1377,18 @@ cc_library(
 cc_test(
     name = "moe_delegate_kernel_test",
     srcs = ["moe_delegate_kernel_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
     deps = [
         ":moe_delegate_kernel",
+        ":test_main",
         "//tensorflow/lite:builtin_ops",
-        "//tensorflow/lite/c:c_api_types",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:common",
         "@com_google_googletest//:gtest",
-        "@com_google_googletest//:gtest_main",
         "@flatbuffers//:runtime_cc",
     ],
 )
@@ -1492,8 +1531,14 @@ cc_test(
     deps = [
         ":test_main",
         ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
+        "@flatbuffers//:runtime_cc",
         "@pthreadpool",
     ],
 )

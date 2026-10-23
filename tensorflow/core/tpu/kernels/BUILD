@@ -644,13 +644,14 @@ cc_library(
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:statusor",
-        "//tensorflow/core/platform:types",
         "//tensorflow/core/tpu:tpu_defs",
+        "//tensorflow/core/util:image_resizer_state",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@xla//xla:shape_util",
         "@xla//xla/hlo/builder:xla_builder",
         "@xla//xla/hlo/builder/lib:constants",
+        "@xla//xla/hlo/builder/lib:slicing",
         "@xla//xla/tsl/platform:statusor",
     ],
     alwayslink = True,
@@ -761,6 +762,30 @@ cc_library(
         "@xla//xla/tsl/platform:statusor",
     ] + if_static(["//tensorflow/core/common_runtime:rendezvous_mgr"]),
     alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "tpu_functional_ops_test",
+    srcs = ["tpu_functional_ops_test.cc"],
+    deps = [
+        ":tpu_functional_ops",
+        ":tpu_ordinal_selector",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:ops",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:array",
+        "//tensorflow/core/kernels:function_ops",
+        "//tensorflow/core/kernels:ops_testutil",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_googletest//:gtest_main",
+        "@xla//xla/tpu:tpu_api",
+        "@xla//xla/tpu:tpu_ops_c_api_hdrs",
+        "@xla//xla/tsl/lib/core:status_test_util",
+    ],
 )
 
 cc_library(
@@ -879,6 +904,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/jit:flags",
+        "//tensorflow/core:framework",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",

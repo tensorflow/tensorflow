@@ -25,17 +25,17 @@ limitations under the License.
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 
-#include "absl/base/thread_annotations.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/synchronization/mutex.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_args.h"
 #include "xla/stream_executor/kernel_metadata.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "tsl/platform/logging.h"
 
 namespace stream_executor::gpu {
 
@@ -60,6 +60,9 @@ class CudaKernel : public Kernel {
   void set_gpu_function(CUfunction gpu_function) {
     gpu_function_ = gpu_function;
   }
+  PlatformSpecificHandle platform_specific_handle() const override {
+    return PlatformSpecificHandle{gpu_function_};
+  }
 
   // Collects metadata for the specified kernel.
   absl::StatusOr<KernelMetadata> GetKernelMetadata();
@@ -78,7 +81,6 @@ class CudaKernel : public Kernel {
   CUfunction gpu_function_ = nullptr;  // wrapped CUDA kernel handle
   unsigned arity_ = 0;  // number of formal parameters the kernel takes
 
-  mutable absl::Mutex mu_;
   mutable std::atomic<int32_t> max_dynamic_shared_memory_bytes_{0};
 };
 

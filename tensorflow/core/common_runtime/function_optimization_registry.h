@@ -51,7 +51,7 @@ class FunctionOptimizationPass {
     bool allow_soft_placement = false;
   };
 
-  virtual ~FunctionOptimizationPass() {}
+  virtual ~FunctionOptimizationPass() = default;
   virtual absl::Status Run(const std::string& function_name,
                            const DeviceSet& device_set,
                            const ConfigProto& config_proto,

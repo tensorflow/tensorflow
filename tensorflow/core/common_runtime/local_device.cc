@@ -73,11 +73,11 @@ struct LocalDevice::EigenThreadPoolInfo {
     int32_t intra_op_parallelism_threads =
         options.config.intra_op_parallelism_threads();
     // If no session setting, use environment setting.
-    if (intra_op_parallelism_threads == 0) {
+    if (intra_op_parallelism_threads <= 0) {
       static int env_num_threads = NumIntraOpThreadsFromEnvironment();
       intra_op_parallelism_threads = env_num_threads;
       // If no session setting or environment, compute a reasonable default.
-      if (intra_op_parallelism_threads == 0) {
+      if (intra_op_parallelism_threads <= 0) {
         intra_op_parallelism_threads = port::MaxParallelism(numa_node);
       }
     }

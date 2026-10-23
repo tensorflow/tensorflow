@@ -53,7 +53,7 @@ class ConstantFolding : public GraphOptimizer {
                   bool disable_compressed_tensor_optimization = false,
                   bool fold_quantization_emulation = true);
 
-  ~ConstantFolding() override {}
+  ~ConstantFolding() override = default;
 
   std::string name() const override { return "constant_folding"; };
 
@@ -131,7 +131,6 @@ class ConstantFolding : public GraphOptimizer {
                                                   NodeDef* node,
                                                   GraphDef* graph);
 
-  void ReplaceDivisionOfOnesByReciprocal(NodeDef* node, GraphDef* graph);
   absl::Status FoldGraph(
       const GraphProperties& properties, GraphDef* output,
       absl::flat_hash_set<std::string>* nodes_to_not_simplify);

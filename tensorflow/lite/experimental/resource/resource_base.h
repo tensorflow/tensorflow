@@ -23,6 +23,8 @@ limitations under the License.
 #include <unordered_map>
 #include <utility>
 
+#include "tensorflow/lite/core/c/c_api_types.h"
+
 namespace tflite {
 namespace resource {
 
@@ -55,6 +57,45 @@ using ResourceMap =
     std::unordered_map<std::int32_t, std::unique_ptr<ResourceBase>>;
 
 using ResourceIDMap = std::map<std::pair<std::string, std::string>, int>;
+
+// Generic lookup helper with type safety.
+template <typename T>
+T* GetTypedResource(ResourceMap* resources, int resource_id,
+                    ResourceBase::ResourceType expected_type) {
+  if (resources == nullptr) {
+    return nullptr;
+  }
+  auto it = resources->find(resource_id);
+  if (it != resources->end() && it->second != nullptr &&
+      it->second->GetResourceType() == expected_type) {
+    return static_cast<T*>(it->second.get());
+  }
+  return nullptr;
+}
+
+// Generic creation helper with type check and factory fallback.
+template <typename Factory>
+TfLiteStatus CreateTypedResourceIfNotAvailable(
+    ResourceMap* resources, int resource_id,
+    ResourceBase::ResourceType expected_type, Factory&& factory) {
+  if (resources == nullptr) {
+    return kTfLiteError;
+  }
+  auto it = resources->find(resource_id);
+  if (it != resources->end()) {
+    if (it->second == nullptr ||
+        it->second->GetResourceType() != expected_type) {
+      return kTfLiteError;
+    }
+    return kTfLiteOk;
+  }
+  auto resource = factory();
+  if (resource == nullptr) {
+    return kTfLiteError;
+  }
+  resources->emplace(resource_id, std::move(resource));
+  return kTfLiteOk;
+}
 
 }  // namespace resource
 }  // namespace tflite

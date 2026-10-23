@@ -16,8 +16,12 @@
 """ROCm-platform specific StreamExecutor support code."""
 
 load(
-    "@local_config_rocm//rocm:build_defs.bzl",
+    "@config_rocm_hipcc//rocm:build_defs.bzl",
     "rocm_library",
+)
+load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "rocm_version_number",
 )
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/service/gpu:build_defs.bzl", "get_cub_sort_kernel_types")
@@ -50,6 +54,31 @@ cc_library(
     deps = [
         "//xla/stream_executor:device_description_proto_cc",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "rocm_core_info_table",
+    srcs = ["rocm_core_info_table.cc"],
+    hdrs = ["rocm_core_info_table.h"],
+    deps = [
+        ":rocm_compute_capability",
+        "//xla/stream_executor/gpu:dtype_core_info",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "rocm_core_info_table_test",
+    srcs = ["rocm_core_info_table_test.cc"],
+    deps = [
+        ":rocm_compute_capability",
+        "//xla:xla_data_proto_cc",
+        "//xla/service/gpu:gpu_device_info_for_tests",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/gpu:core_info",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -140,6 +169,7 @@ cc_library(
     ],
     deps = [
         ":rocm_command_buffer",
+        ":rocm_compute_capability",
         ":rocm_context",
         ":rocm_event",
         ":rocm_kernel",
@@ -179,6 +209,7 @@ cc_library(
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/gpu:context",
+        "//xla/stream_executor/gpu:core_info",
         "//xla/stream_executor/gpu:gpu_executor_header",
         "//xla/stream_executor/gpu:read_numa_node",
         "//xla/stream_executor/gpu:scoped_activate_context",
@@ -235,7 +266,7 @@ xla_test(
         "//xla/stream_executor/gpu:gpu_test_kernels",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:status_matchers",  # build_cleaner: keep
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -290,7 +321,7 @@ xla_test(
         "//xla/stream_executor/gpu:gpu_test_kernels",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
-        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:status_matchers",  # build_cleaner: keep
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -305,6 +336,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":rocm_diagnostics",
         ":rocm_executor",
         ":rocm_platform_id",
         ":rocm_runtime_abi_version",
@@ -329,6 +361,26 @@ cc_library(
         "@local_config_rocm//rocm:rocm_headers",
     ],
     alwayslink = True,  # Registers itself with the PlatformManager.
+)
+
+xla_test(
+    name = "rocm_platform_test",
+    srcs = ["rocm_platform_test.cc"],
+    backends = ["gpu"],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
+    deps = [
+        ":rocm_platform",  # buildcleaner: keep
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",  # buildcleaner: keep
+    ],
 )
 
 cc_library(
@@ -372,21 +424,53 @@ cc_library(
     deps = ["//xla/stream_executor:platform_id"],
 )
 
+# The SMI library XLA queries devices with. RCCL links librocm_smi64 below
+# ROCm 7.13 and libamd_smi from 7.13 on, and XLA follows the same boundary so
+# that only one SMI library is ever present in the process: libamd_smi embeds a
+# copy of rocm_smi and the two export hundreds of identical amd::smi:: and
+# rsmi_ symbols, so loading both lets the dynamic loader interpose ABI
+# incompatible definitions.
+# See RCCL change: https://github.com/ROCm/rocm-systems/commit/244047310e
+_USE_AMD_SMI = rocm_version_number() >= 71300
+
+alias(
+    name = "smi",
+    actual = "@local_config_rocm//rocm:amdsmi" if _USE_AMD_SMI else "@local_config_rocm//rocm:rocm_smi",
+)
+
+# Backend implementing the SMI queries declared in smi_util.h. Exactly one
+# is compiled in, matching the library :smi resolves to.
+_SMI_BACKEND_SRCS = ["smi_util_amd_smi.cc"] if _USE_AMD_SMI else ["smi_util_rocm_smi.cc"]
+
+# Keeps the label of the backend not compiled in resolvable, for tools that
+# query changed files, such as build_tools/ci/run_clang_tidy.sh.
+exports_files(
+    [
+        "smi_util_amd_smi.cc",
+        "smi_util_rocm_smi.cc",
+    ],
+    visibility = ["//visibility:private"],
+)
+
 cc_library(
-    name = "rocm_smi_util",
-    srcs = ["rocm_smi_util.cc"],
-    hdrs = ["rocm_smi_util.h"],
+    name = "smi_util",
+    srcs = ["smi_util.cc"] + _SMI_BACKEND_SRCS,
+    hdrs = ["smi_util.h"],
     tags = [
         "gpu",
         "rocm-only",
     ],
     deps = [
+        ":smi",
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@local_config_rocm//rocm:rocm_headers",
-        "@local_config_rocm//rocm:rocm_smi",
     ],
 )
 
@@ -399,12 +483,13 @@ cc_library(
         "rocm-only",
     ],
     deps = [
-        ":rocm_smi_util",
+        ":smi_util",
         "//xla/tsl/platform:logging",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
-        "@local_config_rocm//rocm:rocm_headers",
-        "@local_config_rocm//rocm:rocm_smi",
     ],
 )
 
@@ -418,6 +503,13 @@ cc_library(
     ],
     deps = [
         ":rocm_compute_capability",
+        ":smi_util",
+        "//xla/tsl/platform:logging",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -430,12 +522,13 @@ cc_library(
         "rocm-only",
     ],
     deps = [
-        ":rocm_smi_util",
+        ":smi_util",
         "//xla/tsl/platform:logging",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
-        "@local_config_rocm//rocm:rocm_headers",
-        "@local_config_rocm//rocm:rocm_smi",
     ],
 )
 
@@ -709,7 +802,6 @@ cc_library(
         "hip_blas_lt.h",
         "hip_blas_utils.h",
     ],
-    defines = {"__HIP_DISABLE_CPP_FUNCTIONS__": "1"},
     tags = [
         "gpu",
         "rocm-only",
@@ -748,6 +840,30 @@ cc_library(
         "@local_config_rocm//rocm:rocm_headers",
     ],
     alwayslink = True,
+)
+
+xla_test(
+    name = "rocm_blas_lt_test",
+    srcs = ["rocm_blas_lt_test.cc"],
+    backends = ["gpu"],
+    tags = ["rocm-only"],
+    deps = [
+        ":amdhipblaslt_plugin",  # buildcleaner: keep
+        ":rocblas_plugin",  # buildcleaner: keep
+        ":rocm_platform",  # buildcleaner: keep
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/stream_executor:blas",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:device_address_handle",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/gpu:gpu_blas_lt",
+        "@com_google_absl//absl/log",
+        "@com_google_googletest//:gtest_main",  # buildcleaner: keep
+    ],
 )
 
 cc_library(
@@ -916,6 +1032,41 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "rocm_diagnostics",
+    srcs = ["rocm_diagnostics.cc"],
+    hdrs = ["rocm_diagnostics.h"],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
+    deps = [
+        ":rocm_status",
+        ":rocm_version_parser",
+        "//xla/stream_executor:semantic_version",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status:statusor",
+        "@local_config_rocm//rocm:hip",  # buildcleaner: keep
+        "@local_config_rocm//rocm:rocm_headers",
+        "@tsl//tsl/platform:platform_port",
+    ],
+)
+
+xla_test(
+    name = "rocm_diagnostics_test",
+    srcs = ["rocm_diagnostics_test.cc"],
+    backends = ["gpu"],
+    tags = ["rocm-only"],
+    deps = [
+        ":rocm_diagnostics",
+        ":rocm_platform",  # buildcleaner: keep
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "@com_google_absl//absl/debugging:leak_check",
+        "@com_google_googletest//:gtest_main",  # buildcleaner: keep
+    ],
+)
+
+cc_library(
     name = "rocm_stream",
     srcs = ["rocm_stream.cc"],
     hdrs = ["rocm_stream.h"],
@@ -975,9 +1126,61 @@ xla_test(
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:status_matchers",  # build_cleaner: keep
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+rocm_library(
+    name = "delay_kernel_rocm",
+    srcs = ["delay_kernel_rocm.cu.cc"],
+    hdrs = ["delay_kernel.h"],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
+    visibility = internal_visibility([
+        "//xla/stream_executor:__subpackages__",
+    ]),
+    deps = [
+        ":rocm_status",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:generic_memory_allocation",
+        "//xla/stream_executor:launch_dim",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor:typed_kernel_factory",
+        "//xla/stream_executor/gpu:gpu_semaphore",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@local_config_rocm//rocm:hip",  # buildcleaner: keep
+        "@local_config_rocm//rocm:rocm_headers",
+    ],
+)
+
+xla_test(
+    name = "delay_kernel_test",
+    srcs = ["delay_kernel_test.cc"],
+    backends = ["gpu"],
+    tags = ["rocm-only"],
+    deps = [
+        ":delay_kernel_rocm",  # buildcleaner: keep
+        ":rocm_event",
+        ":rocm_executor",
+        ":rocm_platform_id",
+        "//xla/stream_executor:event",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/gpu:gpu_semaphore",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -991,12 +1194,14 @@ cc_library(
         "rocm-only",
     ],
     deps = [
+        ":delay_kernel_rocm",
         ":rocm_event",
         ":rocm_status",
         "//xla/stream_executor:activate_context",
         "//xla/stream_executor:event_based_timer",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/gpu:gpu_semaphore",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
@@ -1028,7 +1233,7 @@ xla_test(
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:status_matchers",  # build_cleaner: keep
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
     ],
@@ -1086,6 +1291,7 @@ cc_library(
         "//xla/stream_executor:command_buffer",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:kernel",
+        "//xla/stream_executor:kernel_args",
         "//xla/stream_executor:launch_dim",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:stream_executor_h",
@@ -1123,6 +1329,7 @@ rocm_library(
         ":rocm_platform_id",
         "//xla:shape_util",
         "//xla:types",
+        "//xla:xla_data_proto_cc",
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor:platform",
         "//xla/stream_executor/gpu:buffer_comparator_kernel",
@@ -1131,6 +1338,7 @@ rocm_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@local_config_rocm//rocm:rocm_headers",
     ],
     alwayslink = 1,
 )
@@ -1149,6 +1357,7 @@ rocm_library(
         "//xla/stream_executor/gpu:gpu_kernel_registry",
         "//xla/stream_executor/gpu:make_batch_pointers_kernel",
         "@com_google_absl//absl/base",
+        "@local_config_rocm//rocm:rocm_headers",
     ],
     alwayslink = 1,
 )
@@ -1170,6 +1379,7 @@ rocm_library(
         "//xla/stream_executor/gpu:gpu_kernel_registry",
         "//xla/stream_executor/gpu:ragged_all_to_all_kernel",
         "@com_google_absl//absl/base",
+        "@local_config_rocm//rocm:rocm_headers",
     ],
     alwayslink = 1,
 )
@@ -1306,6 +1516,7 @@ xla_test(
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:status_matchers",  # build_cleaner: keep
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
@@ -1332,6 +1543,8 @@ rocm_library(
         "//xla/stream_executor/gpu:gpu_kernel_registry",
         "//xla/stream_executor/gpu:topk_kernel",
         "//xla/tsl/lib/math:math_util",
+        "@com_google_absl//absl/base",
+        "@local_config_rocm//rocm:rocm_headers",
     ],
     alwayslink = 1,
 )
@@ -1352,6 +1565,7 @@ rocm_library(
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor/gpu:gpu_kernel_registry",
         "//xla/stream_executor/gpu:repeat_buffer_kernel",
+        "@local_config_rocm//rocm:rocm_headers",
     ],
     alwayslink = 1,
 )
@@ -1372,6 +1586,7 @@ rocm_library(
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor/gpu:gpu_kernel_registry",
         "//xla/stream_executor/gpu:redzone_allocator_kernel",
+        "@local_config_rocm//rocm:rocm_headers",
     ],
     alwayslink = 1,
 )
@@ -1395,6 +1610,7 @@ rocm_library(
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor/gpu:gpu_kernel_registry",
         "//xla/stream_executor/gpu:gpu_test_kernel_traits",
+        "@local_config_rocm//rocm:rocm_headers",
     ],
     alwayslink = 1,
 )
@@ -1404,14 +1620,12 @@ rocm_library(
     hdrs = [
         "collective_signal_rocm.cu.h",
         "//xla/stream_executor/gpu:collective_signal.cu.h",
+        "@local_config_rocm//rocm:rocm_headers",
     ],
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
     tags = [
         "gpu",
         "rocm-only",
-    ],
-    deps = [
-        "@local_config_rocm//rocm:rocm_headers",
     ],
     alwayslink = 1,
 )
@@ -1435,6 +1649,7 @@ rocm_library(
         "//xla/stream_executor/gpu:gpu_kernel_registry",
         "//xla/stream_executor/gpu:multi_gpu_barrier_kernel",
         "@com_google_absl//absl/base",
+        "@local_config_rocm//rocm:rocm_headers",
     ],
     alwayslink = 1,
 )
@@ -1503,7 +1718,7 @@ xla_cc_test(
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
-        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:status_matchers",  # build_cleaner: keep
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
     ],
@@ -1559,7 +1774,7 @@ xla_cc_test(
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:status_matchers",  # build_cleaner: keep
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
@@ -1666,7 +1881,7 @@ xla_cc_test(
         "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:status_matchers",  # build_cleaner: keep
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
     ],

@@ -200,8 +200,8 @@ def transform_function(
         transformed_atomic = transform_atomic_function(
             rt,
             nested_functions[atomic_name],
-            atomic_transform_fn,
-            atomic_mlir_pipeline,
+            atomic_transform_fn,  # pyrefly: ignore[bad-argument-type]
+            atomic_mlir_pipeline,  # pyrefly: ignore[bad-argument-type]
         )
         graph._add_function_recursive(transformed_atomic, overwrite=True)  # pylint: disable=protected-access
         transformed_atomic_name = compat.as_str(transformed_atomic.name)
@@ -265,7 +265,7 @@ def transform_function(
 
   # Register the ConcreteFunction with the python Graph.
   if nested_fn_transforms or nested_mlir_transforms:
-    for transformed_atomic in transformed_nested_functions.values():
+    for transformed_atomic in transformed_nested_functions.values():  # pyrefly: ignore[unbound-name]
       updated_cf.graph._add_function_recursive(  # pylint: disable=protected-access
           transformed_atomic, overwrite=True
       )

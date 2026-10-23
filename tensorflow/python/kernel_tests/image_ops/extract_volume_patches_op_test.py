@@ -18,8 +18,11 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
+
 
 class ExtractVolumePatches(test.TestCase):
   """Functional tests for ExtractVolumePatches op."""
@@ -128,6 +131,98 @@ class ExtractVolumePatches(test.TestCase):
         strides=[1, 1, 1],
         padding="SAME",
         patches=patches)
+
+  def testLargeKsize(self):
+    """Test for integer overflow with large ksizes."""
+    for dtype in [
+        np.float16,
+        np.float32,
+        np.float64,
+        dtypes.bfloat16.as_numpy_dtype,
+    ]:
+      image = np.ones([1, 1, 1, 1, 2], dtype=dtype)
+      with self.assertRaisesRegex(
+          (errors_impl.InvalidArgumentError, ValueError),
+          r"Output size would overflow|Negative dimension size caused by"
+          r" overflow",
+      ):
+        out_tensor = array_ops.extract_volume_patches(
+            constant_op.constant(image),
+            ksizes=[1, 2000000, 2000000, 2000000, 1],
+            strides=[1, 1, 1, 1, 1],
+            padding="SAME",
+        )
+        self.evaluate(out_tensor)
+
+  def testLargeKsizeDynamic(self):
+    """Tests OpKernel integer overflow using dynamic shapes."""
+    with ops.Graph().as_default():
+      image_ph = array_ops.placeholder(dtypes.float32, shape=[1, 1, 1, 1, None])
+      out_tensor = array_ops.extract_volume_patches(
+          image_ph,
+          ksizes=[1, 2000000, 2000000, 2000000, 1],
+          strides=[1, 1, 1, 1, 1],
+          padding="SAME",
+      )
+
+      with self.session() as sess:
+        with self.assertRaisesRegex(
+            errors_impl.InvalidArgumentError, r"Output size would overflow"
+        ):
+          sess.run(
+              out_tensor,
+              feed_dict={image_ph: np.ones([1, 1, 1, 1, 2], dtype=np.float32)},
+          )
+
+  def testNegativeOrZeroAttributes(self):
+    """Test for negative or zero spatial attributes."""
+    image = constant_op.constant(np.ones([1, 2, 2, 2, 1], dtype=np.float32))
+    valid = [1, 1, 1, 1, 1]
+    for attr, value in [
+        ("ksizes", [1, -1, 1, 1, 1]),
+        ("ksizes", [1, 1, 0, 1, 1]),
+        ("ksizes", [1, 1, 1, -1, 1]),
+        ("ksizes", [1, -1, -1, -1, 1]),
+        ("strides", [1, -1, 1, 1, 1]),
+        ("strides", [1, 1, 0, 1, 1]),
+        ("strides", [1, 1, 1, -1, 1]),
+    ]:
+      kwargs = {"ksizes": valid, "strides": valid}
+      kwargs[attr] = value
+      # Graph construction runs the shape function (ValueError); eager
+      # execution runs the kernel constructor (OutOfRangeError).
+      with self.assertRaisesRegex(
+          (errors_impl.OutOfRangeError, ValueError),
+          rf"ExtractVolumePatches requires spatial {attr} to be positive"
+          rf"|{attr} is out of range",
+      ):
+        self.evaluate(
+            array_ops.extract_volume_patches(image, padding="VALID", **kwargs)
+        )
+      # Shape inference must reject the same attributes.
+      with ops.Graph().as_default():
+        image_ph = array_ops.placeholder(dtypes.float32, shape=[1, 2, 2, 2, 1])
+        with self.assertRaisesRegex(
+            ValueError,
+            rf"ExtractVolumePatches requires spatial {attr} to be positive",
+        ):
+          array_ops.extract_volume_patches(image_ph, padding="VALID", **kwargs)
+
+  def testUnknownSpatialDimsRank(self):
+    """Test that unknown spatial dims returns rank-5 shape."""
+    with ops.Graph().as_default():
+      image_ph = array_ops.placeholder(
+          dtypes.float32, shape=[1, None, None, None, 2]
+      )
+      out = array_ops.extract_volume_patches(
+          image_ph,
+          ksizes=[1, 2, 2, 2, 1],
+          strides=[1, 1, 1, 1, 1],
+          padding="VALID",
+      )
+      self.assertEqual(out.shape.rank, 5)
+      self.assertEqual(out.shape.as_list(), [1, None, None, None, 16])
+
 
 if __name__ == "__main__":
   test.main()

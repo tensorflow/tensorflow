@@ -235,6 +235,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/experimental/acceleration/compatibility:android_info",
+        "@com_google_absl//absl/debugging:leak_check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
     ],
@@ -421,7 +422,6 @@ cc_library(
 # cc_test(
 #     name = "gl_interop_no_gl_test",
 #     srcs = ["gl_interop_no_gl_test.cc"],
-#     tags = ["requires-gpu-nvidia"],
 #     deps = [
 #         ":gl_interop_no_gl",
 #         "@com_google_googletest//:gtest_main",

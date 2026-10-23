@@ -60,7 +60,7 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_dtype.h"
 #include "xla/python/pjrt_ifrt/pjrt_layout.h"
 #include "xla/python/pjrt_ifrt/pjrt_topology.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/statusor.h"
@@ -219,6 +219,14 @@ class CompileOnlyIfRtClient final
         "MakeErrorArrays not available with compile-only client.");
   }
 
+  absl::StatusOr<std::vector<tsl::Future<>>> CopyArraysToHostBufferShards(
+      absl::Span<CopyArraysToHostBufferShardsSpec> specs,
+      ifrt::ArrayCopySemantics semantics) override {
+    return absl::UnimplementedError(
+        "CopyArraysToHostBufferShards not available with compile-only "
+        "client");
+  }
+
   absl::StatusOr<ifrt::ArrayRef> AssembleArrayFromSingleDeviceArrays(
       ifrt::DType dtype, ifrt::Shape shape, ifrt::ShardingRef sharding,
       absl::Span<ifrt::ArrayRef> arrays,
@@ -235,6 +243,14 @@ class CompileOnlyIfRtClient final
       std::optional<ifrt::MemoryKind> memory_kind,
       ifrt::ArrayCopySemantics semantics) override {
     return Unimplemented("CopyArrays not available with compile-only client.");
+  }
+
+  absl::StatusOr<std::vector<ifrt::ArrayRef>> CopyArraysWithDonatedDst(
+      absl::Span<ifrt::ArrayRef> arrays,
+      absl::Span<ifrt::ArrayRef> donated_dst_arrays,
+      ifrt::ArrayCopySemantics semantics) override {
+    return Unimplemented(
+        "CopyArraysWithDonatedDst not available with compile-only client.");
   }
 
   absl::StatusOr<std::vector<ifrt::ArrayRef>> RemapArrays(
@@ -346,6 +362,12 @@ class CompileOnlyIfRtClient final
   }
 
   ifrt::Compiler* GetDefaultCompiler() override { return &default_compiler_; }
+
+  absl::StatusOr<std::vector<tsl::Future<ifrt::LoadedExecutableRef>>> Load(
+      absl::Span<const ifrt::ExecutableRef> executables,
+      absl::Span<std::unique_ptr<ifrt::LoadOptions>> options) override {
+    return Unimplemented("Load not available with compile-only client.");
+  }
 
   static char ID;  // NOLINT
 
