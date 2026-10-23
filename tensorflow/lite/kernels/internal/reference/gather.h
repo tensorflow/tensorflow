@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 
-#include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/runtime_shape.h"
