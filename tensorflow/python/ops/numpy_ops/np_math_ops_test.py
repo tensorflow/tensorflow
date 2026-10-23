@@ -739,9 +739,20 @@ class MathTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(np_math_ops.cross(x, b, axisc=0).shape, [3, 2])
     self.assertAllEqual(np_math_ops.cross(x, b, axisc=1).shape, [2, 3])
     with self.assertRaisesRegex(
+        ValueError, 'axisc: axis 2 is out of bounds for array of dimension 2'
+    ):
+      np_math_ops.cross(x, b, axisc=2)
+    with self.assertRaisesRegex(
         ValueError, 'axisc: axis -4 is out of bounds for array of dimension 2'
     ):
       np_math_ops.cross(x, b, axisc=-4)
+
+    # 0-d scalar bounds.
+    scalar = np_array_ops.array(5.0)
+    with self.assertRaisesRegex(
+        ValueError, 'axisa: axis 0 is out of bounds for array of dimension 0'
+    ):
+      np_math_ops.cross(scalar, scalar, axisa=0)
 
   def testAverageWrongShape(self):
     with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError, r''):
