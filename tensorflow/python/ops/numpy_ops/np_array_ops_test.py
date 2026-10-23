@@ -716,6 +716,8 @@ class ArrayMethodsTest(test.TestCase):
     expected = x.astype(bool)
     for a in [x, x.tolist(), ops.convert_to_tensor(x), np_array_ops.array(x)]:
       self.assertAllEqual(expected, np_array_ops.asarray(a, dtype=bool))
+      if hasattr(a, 'astype'):
+        self.assertAllEqual(expected, a.astype(bool))
       self.assertAllEqual(np.nonzero(x), np_array_ops.nonzero(a))
       self.assertAllEqual(np.where(x), np_array_ops.where(a))
       self.assertAllEqual(
