@@ -1816,7 +1816,7 @@ inline void Add(const ArithmeticParams& params,
 }
 
 template <typename T>
-inline typename std::enable_if<is_int32_or_int64<T>::value, void>::type Add(
+inline std::enable_if_t<is_int32_or_int64<T>::value, void> Add(
     const ArithmeticParams& params, const RuntimeShape& input1_shape,
     const T* input1_data, const RuntimeShape& input2_shape,
     const T* input2_data, const RuntimeShape& output_shape, T* output_data) {
@@ -1833,7 +1833,7 @@ inline typename std::enable_if<is_int32_or_int64<T>::value, void>::type Add(
   // signed-integer-overflow UB inside Eigen's expression evaluators. The
   // wrapped result is bit-identical to the previous two's-complement behavior
   // and is then clamped back in the signed domain by the activation min/max.
-  using UnsignedT = typename std::make_unsigned<T>::type;
+  using UnsignedT = std::make_unsigned_t<T>;
   if (input1_shape == input2_shape) {
     output_map.array() = (input1_map.array().template cast<UnsignedT>() +
                           input2_map.array().template cast<UnsignedT>())
@@ -2377,7 +2377,7 @@ void BroadcastDivSlow(const ArithmeticParams& params,
     T div_result;
     // Guard against signed integer overflow: INT_MIN / -1 is undefined
     // behavior in C++. Saturate to T::max() instead.
-    if (std::is_integral<T>::value && std::is_signed<T>::value &&
+    if (std::is_integral_v<T> && std::is_signed_v<T> &&
         b == static_cast<T>(-1) && a == std::numeric_limits<T>::min()) {
       div_result = std::numeric_limits<T>::max();
     } else {
@@ -2400,21 +2400,21 @@ inline void BroadcastDivSlowQuantized(
     const T* input1_data, const RuntimeShape& unextended_input2_shape,
     const T* input2_data, const RuntimeShape& unextended_output_shape,
     T* output_data) {
-  if (std::is_same<T, uint8_t>::value) {
+  if (std::is_same_v<T, uint8_t>) {
     TFLITE_DCHECK_GT(params.input1_offset, -256);
     TFLITE_DCHECK_LT(params.input1_offset, 256);
     TFLITE_DCHECK_GT(params.input2_offset, -256);
     TFLITE_DCHECK_LT(params.input2_offset, 256);
     TFLITE_DCHECK_GT(params.output_offset, -256);
     TFLITE_DCHECK_LT(params.output_offset, 256);
-  } else if (std::is_same<T, int8_t>::value) {
+  } else if (std::is_same_v<T, int8_t>) {
     TFLITE_DCHECK_GT(params.input1_offset, -128);
     TFLITE_DCHECK_LE(params.input1_offset, 128);
     TFLITE_DCHECK_GT(params.input2_offset, -128);
     TFLITE_DCHECK_LE(params.input2_offset, 128);
     TFLITE_DCHECK_GE(params.output_offset, -128);
     TFLITE_DCHECK_LT(params.output_offset, 128);
-  } else if (std::is_same<T, int16_t>::value) {
+  } else if (std::is_same_v<T, int16_t>) {
     TFLITE_DCHECK_GT(params.input1_offset, -32768);
     TFLITE_DCHECK_LE(params.input1_offset, 32768);
     TFLITE_DCHECK_GT(params.input2_offset, -32768);
@@ -3709,7 +3709,7 @@ inline void SoftmaxInt8LUT(const SoftmaxParams& params,
   // e.g.,
   // int8_t 127 will be applied "offset" to become 255 in uint8_t.
   uint8_t offset = 0;
-  if (std::is_same<In, int8_t>::value) {
+  if (std::is_same_v<In, int8_t>) {
     offset = 0x80;
   }
 
@@ -4387,7 +4387,7 @@ inline void BatchToSpaceND(const RuntimeShape& unextended_input1_shape,
 template <typename T>
 TFLITE_NOINLINE void TypedMemset(void* ptr, T value, size_t num) {
   // Optimization for common cases where memset() will suffice.
-  if (value == 0 || std::is_same<T, uint8_t>::value) {
+  if (value == 0 || std::is_same_v<T, uint8_t>) {
     memset(ptr, value, num * sizeof(T));
   } else {
     // Default implementation for cases where memset() will not preserve the
@@ -6331,10 +6331,10 @@ inline void BroadcastPow4D(const RuntimeShape& unextended_input1_shape,
     if ((std::abs(input2_data[0] - int_exponent) < epsilon) &&
         (int_exponent >= 1)) {
       ArithmeticParams params;
-      if (std::is_same<T, float>::value) {
+      if (std::is_same_v<T, float>) {
         params.float_activation_max = std::numeric_limits<float>::max();
         params.float_activation_min = std::numeric_limits<float>::lowest();
-      } else if (std::is_same<T, int>::value) {
+      } else if (std::is_same_v<T, int>) {
         params.quantized_activation_max = std::numeric_limits<int>::max();
         params.quantized_activation_min = std::numeric_limits<int>::lowest();
       }
@@ -7833,8 +7833,8 @@ inline void ArgMinMax(const RuntimeShape& input1_shape, const T1* input1_data,
   // Call specialized function when axis=dims-1. So far, only float32 is
   // optimized so reroute to specialized function only when T1 is float32.
   if (inner_size == 1 &&
-      (std::is_same<T1, float>::value || std::is_same<T1, int8_t>::value ||
-       std::is_same<T1, uint8_t>::value)) {
+      (std::is_same_v<T1, float> || std::is_same_v<T1, int8_t> ||
+       std::is_same_v<T1, uint8_t>)) {
     if (is_arg_max) {
       ArgMinMaxLastAxis<T1, T2, /*is_arg_max=*/true>(
           {outer_size, axis_size}, input1_data, {outer_size}, output_data);
