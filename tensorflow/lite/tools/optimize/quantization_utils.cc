@@ -726,9 +726,8 @@ TfLiteStatus SymmetricPerLayerBiasQuantize(ModelT* model, TensorT* tensor,
   std::vector<float> scales(1, scaling_factor);
   std::vector<int64_t> zero_points(1, 0);
 
-  auto output_type = std::is_same<BiasType, std::int32_t>::value
-                         ? TensorType_INT32
-                         : TensorType_INT64;
+  auto output_type = std::is_same_v<BiasType, std::int32_t> ? TensorType_INT32
+                                                            : TensorType_INT64;
   return AddQuantizationParams(scales, zero_points, 0, uint8_buffer,
                                buffer_size, output_type, model, tensor,
                                error_reporter);
@@ -767,9 +766,8 @@ TfLiteStatus SymmetricPerChannelBiasQuantize(ModelT* model, TensorT* tensor,
   size_t buffer_size = num_elements * sizeof(BiasType);
   std::vector<int64_t> zero_point(scales.size(), 0);
 
-  auto output_type = std::is_same<BiasType, std::int32_t>::value
-                         ? TensorType_INT32
-                         : TensorType_INT64;
+  auto output_type = std::is_same_v<BiasType, std::int32_t> ? TensorType_INT32
+                                                            : TensorType_INT64;
   return AddQuantizationParams(scales, zero_point, 0, uint8_buffer, buffer_size,
                                output_type, model, tensor, error_reporter);
 }
