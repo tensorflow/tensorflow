@@ -2368,6 +2368,27 @@ bool FindMklLayerNorm(RemapperContext* ctx, int node_index,
       int expected_axis_count = 1;
       if (mean_axis_tensor.NumElements() != expected_axis_count) return false;
 
+      // Use the epsilon of the pattern (the constant added to the variance)
+      // rather than the default set above, and do not fuse if it cannot be
+      // read: the fused op would silently normalize with a different epsilon.
+      NodeDef* epsilon_node =
+          ctx->graph_view.GetNode(matched_nodes_map->at("epsilon"))->node();
+      Tensor epsilon_tensor;
+      if (epsilon_node == nullptr || epsilon_node->op() != "Const" ||
+          !epsilon_tensor.FromProto(epsilon_node->attr().at("value").tensor()) ||
+          epsilon_tensor.NumElements() != 1) {
+        return false;
+      }
+      if (epsilon_tensor.dtype() == DT_FLOAT) {
+        *epsilon = epsilon_tensor.flat<float>()(0);
+      } else if (epsilon_tensor.dtype() == DT_BFLOAT16) {
+        *epsilon = static_cast<float>(epsilon_tensor.flat<bfloat16>()(0));
+      } else if (epsilon_tensor.dtype() == DT_HALF) {
+        *epsilon = static_cast<float>(epsilon_tensor.flat<Eigen::half>()(0));
+      } else {
+        return false;
+      }
+
       NodeDef* input_node =
           ctx->graph_view.GetNode(matched_nodes_map->at("input"))->node();
       auto input_node_props =
