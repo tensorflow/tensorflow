@@ -14,13 +14,47 @@
 # limitations under the License.
 
 cmake_minimum_required(VERSION 3.16)
-project(tensorflow-lite-c C CXX)
+
+project(tensorflow-lite-c LANGUAGES C CXX)
 
 option(TFLITE_C_BUILD_SHARED_LIBS "Build shared libraries" ON)
 
 get_filename_component(TFLITE_SOURCE_DIR
   "${CMAKE_CURRENT_LIST_DIR}/.."
   ABSOLUTE
+)
+
+# Read TensorFlow Lite version directly from version.h.
+file(STRINGS
+  "${TFLITE_SOURCE_DIR}/version.h"
+  TFLITE_VERSION_LINES
+  REGEX "#define TF_(MAJOR|MINOR|PATCH)_VERSION"
+)
+
+foreach(line ${TFLITE_VERSION_LINES})
+  if(line MATCHES "TF_MAJOR_VERSION[ \t]+([0-9]+)")
+    set(TFLITE_VERSION_MAJOR "${CMAKE_MATCH_1}")
+  elseif(line MATCHES "TF_MINOR_VERSION[ \t]+([0-9]+)")
+    set(TFLITE_VERSION_MINOR "${CMAKE_MATCH_1}")
+  elseif(line MATCHES "TF_PATCH_VERSION[ \t]+([0-9]+)")
+    set(TFLITE_VERSION_PATCH "${CMAKE_MATCH_1}")
+  endif()
+endforeach()
+
+file(STRINGS
+  "${TFLITE_SOURCE_DIR}/version.h"
+  TFLITE_VERSION_SUFFIX_LINE
+  REGEX "#define TF_VERSION_SUFFIX"
+)
+
+if(TFLITE_VERSION_SUFFIX_LINE MATCHES "\"([^\"]*)\"")
+  set(TFLITE_VERSION_SUFFIX "${CMAKE_MATCH_1}")
+else()
+  set(TFLITE_VERSION_SUFFIX "")
+endif()
+
+set(TFLITE_VERSION
+  "${TFLITE_VERSION_MAJOR}.${TFLITE_VERSION_MINOR}.${TFLITE_VERSION_PATCH}"
 )
 
 add_subdirectory(
@@ -75,11 +109,30 @@ if (TFLITE_C_BUILD_SHARED_LIBS)
     target_compile_definitions(tensorflowlite_c PRIVATE TFL_COMPILE_LIBRARY)
     target_compile_definitions(tensorflow-lite PRIVATE TFL_COMPILE_LIBRARY)
   elseif (APPLE)
-    target_link_options(tensorflowlite_c PRIVATE "-Wl,-exported_symbols_list,${TFLITE_SOURCE_DIR}/c/exported_symbols.lds")
+    target_link_options(
+      tensorflowlite_c PRIVATE
+      "-Wl,-exported_symbols_list,${TFLITE_SOURCE_DIR}/c/exported_symbols.lds"
+    )
   else ()
-    target_link_options(tensorflowlite_c PRIVATE "-Wl,--version-script,${TFLITE_SOURCE_DIR}/c/version_script.lds")
+    target_link_options(
+      tensorflowlite_c PRIVATE
+      "-Wl,--version-script,${TFLITE_SOURCE_DIR}/c/version_script.lds"
+    )
   endif()
+
+  set_target_properties(tensorflowlite_c PROPERTIES
+    VERSION ${TFLITE_VERSION}
+    SOVERSION ${TFLITE_VERSION_MAJOR}
+  )
 endif()
+
+target_compile_definitions(tensorflowlite_c
+  PRIVATE
+    TF_MAJOR_VERSION=${TFLITE_VERSION_MAJOR}
+    TF_MINOR_VERSION=${TFLITE_VERSION_MINOR}
+    TF_PATCH_VERSION=${TFLITE_VERSION_PATCH}
+    TF_VERSION_SUFFIX=\"${TFLITE_VERSION_SUFFIX}\"
+)
 
 target_link_libraries(tensorflowlite_c
   tensorflow-lite
