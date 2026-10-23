@@ -41,6 +41,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@shardy//shardy/dialect/sdy/ir:dialect",
+        "@shardy//shardy/dialect/sdy/transforms/export:utils",
         "@shardy//shardy/dialect/sdy/transforms/propagation:op_sharding_rule_builder",
         "@stablehlo//:stablehlo_ops",
     ],
