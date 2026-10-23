@@ -50,7 +50,7 @@ class CalibrationReader {
   // being overwritten.
   virtual TfLiteStatus AddCalibrationToModel(ModelT* model, bool update) const;
 
-  virtual ~CalibrationReader() {}
+  virtual ~CalibrationReader() = default;
 
  private:
   const Logger* logger_;
