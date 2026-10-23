@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
@@ -73,6 +74,18 @@ class LoadAndRemapMatrixOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* context) override {
+    // Allocates the output matrix first to validate shapes and gracefully
+    // handle potential OOM or overflow errors before opening checkpoints.
+    TensorShape output_shape;
+    OP_REQUIRES_OK(context,
+                   TensorShape::BuildTensorShape({num_rows_, num_cols_},
+                                                 &output_shape));
+    Tensor* output_matrix_t = nullptr;
+    OP_REQUIRES_OK(context,
+                   context->allocate_output("output_matrix", output_shape,
+                                            &output_matrix_t));
+    auto output_matrix = output_matrix_t->matrix<float>();
+
     // Checks what we're remapping and inverts the relevant remapping Tensors.
     const Tensor* row_remapping_t;
     OP_REQUIRES_OK(context, context->input("row_remapping", &row_remapping_t));
@@ -89,6 +102,11 @@ class LoadAndRemapMatrixOp : public OpKernel {
 
     const Tensor* col_remapping_t;
     OP_REQUIRES_OK(context, context->input("col_remapping", &col_remapping_t));
+    OP_REQUIRES(context, col_remapping_t->dims() == 1,
+                absl::InvalidArgumentError(
+                    absl::StrCat("The `col_remapping` tensor must be 1-D, got "
+                                 "a tensor of shape ",
+                                 col_remapping_t->shape().DebugString())));
     const auto col_remapping = col_remapping_t->vec<int64_t>();
     const bool remap_cols = col_remapping.size() > 0;
     if (remap_cols) {
@@ -102,20 +120,23 @@ class LoadAndRemapMatrixOp : public OpKernel {
     // Processes the checkpoint source and the provided Tensor name.
     const Tensor* ckpt_path_t;
     OP_REQUIRES_OK(context, context->input("ckpt_path", &ckpt_path_t));
-    OP_REQUIRES(context, ckpt_path_t->NumElements() == 1,
-                absl::InvalidArgumentError(
-                    absl::StrCat("The `ckpt_path` tensor must have exactly one "
-                                 "element, got tensor of shape ",
-                                 ckpt_path_t->shape().DebugString())));
-    const std::string& ckpt_path = ckpt_path_t->scalar<tstring>()();
+    OP_REQUIRES(
+        context,
+        ckpt_path_t->dims() == 0 ||
+            (ckpt_path_t->dims() == 1 && ckpt_path_t->NumElements() == 1),
+        absl::InvalidArgumentError(absl::StrCat(
+            "The `ckpt_path` tensor must be a scalar or a 1-D tensor with 1 "
+            "element, got a tensor of shape ",
+            ckpt_path_t->shape().DebugString())));
+    const std::string& ckpt_path = ckpt_path_t->flat<tstring>()(0);
 
     const Tensor* old_tensor_name_t;
     OP_REQUIRES_OK(context,
                    context->input("old_tensor_name", &old_tensor_name_t));
-    OP_REQUIRES(context, old_tensor_name_t->NumElements() == 1,
+    OP_REQUIRES(context, old_tensor_name_t->dims() == 0,
                 absl::InvalidArgumentError(absl::StrCat(
-                    "The `old_tensor_name` tensor must have exactly one "
-                    "element, got tensor of shape ",
+                    "The `old_tensor_name` tensor must be a scalar, got "
+                    "a tensor of shape ",
                     old_tensor_name_t->shape().DebugString())));
     const std::string& old_tensor_name = old_tensor_name_t->scalar<tstring>()();
 
@@ -187,16 +208,11 @@ class LoadAndRemapMatrixOp : public OpKernel {
       OP_REQUIRES_OK(context, RemapVectorToMap(col_remapping, &col_id_present,
                                                &old_col_to_new_col_map));
     } else {
-      col_id_present.clear();
-      col_id_present.resize(num_cols_, true);
-    }
-
-    if (!remap_cols) {
       // TODO(weiho): Consider relaxing this restriction to allow partial column
       // loading (even when no column remapping is specified) if there turns out
       // to be a use case for it.
       OP_REQUIRES(context, num_cols_ == tensor_shape.dim_size(1),
-                  absl::InvalidArgumentError(strings::StrCat(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "Tensor ", old_tensor_name, " has shape ",
                       tensor_shape.DebugString(),
                       ", where the size of its 2nd dimension is ",
@@ -226,14 +242,6 @@ class LoadAndRemapMatrixOp : public OpKernel {
         row_start += slice_length;
       }
     }
-
-    // Allocates the output matrix.
-    Tensor* output_matrix_t = nullptr;
-    OP_REQUIRES_OK(context,
-                   context->allocate_output("output_matrix",
-                                            TensorShape({num_rows_, num_cols_}),
-                                            &output_matrix_t));
-    auto output_matrix = output_matrix_t->matrix<float>();
 
     // Iterates through tensor slices and copies over values from the old tensor
     // to the output matrix.
@@ -315,7 +323,7 @@ class LoadAndRemapMatrixOp : public OpKernel {
     int64_t initializing_values_index = 0;
     for (int i = 0; i < num_rows_; ++i) {
       for (int j = 0; j < num_cols_; ++j) {
-        if (row_id_present[i] && col_id_present[j]) continue;
+        if (row_id_present[i] && (!remap_cols || col_id_present[j])) continue;
         OP_REQUIRES(
             context, initializing_values_index < initializing_values.size(),
             absl::InvalidArgumentError(absl::StrCat(
