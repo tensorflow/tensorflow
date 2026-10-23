@@ -4838,6 +4838,17 @@ class ControlFlowContextCheckTest(test.TestCase):
       tf_cond.cond(
           math_ops.less(1, 2), true_fn, lambda: constant_op.constant(0))
 
+  @test_util.run_deprecated_v1
+  def testLoopCondOutsideWhileLoop(self):
+    # LoopCond outside a while loop frame must fail with InvalidArgumentError
+    # rather than aborting during graph partitioning (issue #62982).
+    with self.cached_session() as sess:
+      cond = gen_control_flow_ops.loop_cond(input=True)
+      with self.assertRaisesRegex(
+          errors_impl.InvalidArgumentError, "must be inside a while loop frame"
+      ):
+        sess.run(cond)
+
 
 class TupleTest(test.TestCase):
 

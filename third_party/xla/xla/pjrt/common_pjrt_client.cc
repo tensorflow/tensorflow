@@ -303,10 +303,6 @@ bool CommonPjRtClient::BufferFromHostBufferSupportsZeroCopy(
   if ((absl::bit_cast<std::uintptr_t>(data) & (cpu::MinAlign() - 1)) != 0) {
     return false;
   }
-  // TODO(parkers): remove this special case.
-  if (IsGpuId(platform_id())) {
-    return false;
-  }
   return true;
 }
 
