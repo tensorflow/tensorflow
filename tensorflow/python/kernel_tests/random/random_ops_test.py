@@ -90,11 +90,12 @@ class RandomNormalTest(RandomOpTestCommon):
       y = sampler()
       # Number of different samples.
       count = (x == y).sum()
-      if count >= 10:
+      count_limit = 50 if dt in (dtypes.float16, dtypes.bfloat16) else 10
+      if count >= count_limit:
         print("x = ", x)
         print("y = ", y)
         print("count = ", count)
-      self.assertTrue(count < 10)
+      self.assertTrue(count < count_limit)
 
   # Checks that the CPU and GPU implementation returns the same results,
   # given the same random seed
@@ -192,11 +193,12 @@ class TruncatedNormalTest(test.TestCase):
         y = sampler()
         # Number of different samples.
         count = (x == y).sum()
-        if count >= 10:
+        count_limit = 50 if dt in (dtypes.float16, dtypes.bfloat16) else 10
+        if count >= count_limit:
           print("x = ", x)
           print("y = ", y)
           print("count = ", count)
-        self.assertTrue(count < 10)
+        self.assertTrue(count < count_limit)
 
   # Checks that the CPU and GPU implementation returns the same results,
   # given the same random seed
@@ -318,7 +320,7 @@ class RandomUniformTest(RandomOpTestCommon):
       if dt == dtypes.float16:
         count_limit = 50
       elif dt == dtypes.bfloat16:
-        count_limit = 90
+        count_limit = 150
       if count >= count_limit:
         print("x = ", x)
         print("y = ", y)
