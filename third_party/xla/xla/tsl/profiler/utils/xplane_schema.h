@@ -305,6 +305,7 @@ enum StatType {
   kTimeScaleMultiplier,
   // XLA metadata map related.
   kHloProto,
+  kOriginalHloProto,
   // Device capability related.
   kDevCapClockRateKHz,
   // For GPU, this is the number of SMs.
