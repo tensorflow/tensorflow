@@ -980,6 +980,149 @@ TEST(TensorBundleTest, VariantTensors) {
   }
 }
 
+// Rewrites one metadata entry while preserving the data file and other entries.
+template <typename Rewrite>
+absl::Status RewriteBundleEntry(const std::string& prefix,
+                                const std::string& key,
+                                const Rewrite& rewrite) {
+  Env* env = Env::Default();
+  const std::string metadata_tmp_path = Prefix("rewrite_bundle_entry_tmp_path");
+  std::unique_ptr<WritableFile> metadata_file;
+  TF_RETURN_IF_ERROR(env->NewWritableFile(metadata_tmp_path, &metadata_file));
+  std::unique_ptr<table::TableBuilder> builder;
+  {
+    const std::string filename = MetaFilename(prefix);
+    uint64_t file_size;
+    TF_RETURN_IF_ERROR(env->GetFileSize(filename, &file_size));
+    std::unique_ptr<RandomAccessFile> file;
+    TF_RETURN_IF_ERROR(env->NewRandomAccessFile(filename, &file));
+
+    table::Table* table = nullptr;
+    TF_RETURN_IF_ERROR(
+        table::Table::Open(table::Options(), file.get(), file_size, &table));
+    std::unique_ptr<table::Table> table_deleter(table);
+    std::unique_ptr<table::Iterator> iter(table->NewIterator());
+
+    builder = std::make_unique<table::TableBuilder>(table::Options(),
+                                                    metadata_file.get());
+    for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+      if (iter->key() == key) {
+        BundleEntryProto entry;
+        CHECK(entry.ParseFromArray(iter->value().data(), iter->value().size()));
+        rewrite(&entry);
+        builder->Add(iter->key(), entry.SerializeAsString());
+      } else {
+        builder->Add(iter->key(), iter->value());
+      }
+    }
+  }
+  TF_RETURN_IF_ERROR(builder->Finish());
+  builder.reset();
+  TF_RETURN_IF_ERROR(metadata_file->Close());
+  return env->RenameFile(metadata_tmp_path, MetaFilename(prefix));
+}
+
+TEST(TensorBundleTest, StringEntryRemainingBytes) {
+  // Two one-byte varints, a four-byte checksum, and four payload bytes.
+  // Entry sizes below 2 are rejected earlier by BundleReader::GetValue's
+  // lower-bound check; sizes 2, 5, 6, and 9 reach ReadStringTensor.
+  for (const int64_t entry_size : {2, 5, 6, 9, 10}) {
+    const std::string prefix =
+        Prefix(absl::StrCat("string_entry_size_", entry_size));
+    {
+      BundleWriter writer(Env::Default(), prefix);
+      TF_ASSERT_OK(
+          writer.Add("strings", test::AsTensor<tstring>({"ab", "cd"})));
+      TF_ASSERT_OK(writer.Finish());
+    }
+    TF_ASSERT_OK(RewriteBundleEntry(
+        prefix, "strings",
+        [entry_size](BundleEntryProto* entry) { entry->set_size(entry_size); }));
+    BundleReader reader(Env::Default(), prefix);
+    TF_ASSERT_OK(reader.status());
+    Tensor strings(DT_STRING, TensorShape({2}));
+    const absl::Status status = reader.Lookup("strings", &strings);
+    if (entry_size == 10) {
+      TF_EXPECT_OK(status);
+      test::ExpectTensorEqual<tstring>(strings,
+                                       test::AsTensor<tstring>({"ab", "cd"}));
+    } else {
+      EXPECT_TRUE(absl::IsDataLoss(status)) << status;
+      EXPECT_TRUE(absl::StrContains(status.message(), "bundle entry"))
+          << status;
+      // Validate the entire payload budget before resizing either string.
+      EXPECT_TRUE(strings.flat<tstring>()(0).empty());
+      EXPECT_TRUE(strings.flat<tstring>()(1).empty());
+    }
+  }
+}
+
+TEST(TensorBundleTest, NegativeEntrySize) {
+  for (const DataType dtype : {DT_STRING, DT_VARIANT}) {
+    const std::string prefix =
+        Prefix(absl::StrCat("negative_entry_size_", DataTypeString(dtype)));
+    {
+      BundleWriter writer(Env::Default(), prefix);
+      if (dtype == DT_STRING) {
+        TF_ASSERT_OK(writer.Add("tensor", test::AsTensor<tstring>({"value"})));
+      } else {
+        TF_ASSERT_OK(writer.Add(
+            "tensor", test::AsTensor<Variant>({VariantObject("value", 1)})));
+      }
+      TF_ASSERT_OK(writer.Finish());
+    }
+    TF_ASSERT_OK(
+        RewriteBundleEntry(prefix, "tensor", [](BundleEntryProto* entry) {
+          entry->set_size(-1);
+        }));
+    BundleReader reader(Env::Default(), prefix);
+    TF_ASSERT_OK(reader.status());
+    Tensor value(dtype, TensorShape({1}));
+    const absl::Status status = reader.Lookup("tensor", &value);
+    EXPECT_TRUE(absl::IsDataLoss(status)) << status;
+    EXPECT_EQ(status.message(), "Invalid size in bundle entry: -1");
+  }
+}
+
+TEST(TensorBundleTest, EmptyVariantEntry) {
+  const std::string prefix = Prefix("empty_variant_entry");
+  {
+    BundleWriter writer(Env::Default(), prefix);
+    TF_ASSERT_OK(writer.Add("variants", Tensor(DT_VARIANT, TensorShape({0}))));
+    TF_ASSERT_OK(writer.Finish());
+  }
+  BundleReader reader(Env::Default(), prefix);
+  TF_ASSERT_OK(reader.status());
+  Tensor variants(DT_VARIANT, TensorShape({0}));
+  TF_ASSERT_OK(reader.Lookup("variants", &variants));
+  EXPECT_EQ(variants.NumElements(), 0);
+}
+
+TEST(TensorBundleTest, VariantEntryRemainingBytes) {
+  for (const int64_t entry_size : {-1, 0, 1}) {
+    const std::string prefix =
+        Prefix(absl::StrCat("variant_entry_budget_", entry_size));
+    {
+      BundleWriter writer(Env::Default(), prefix);
+      TF_ASSERT_OK(writer.Add(
+          "variants", test::AsTensor<Variant>({VariantObject("first", 1),
+                                               VariantObject("second", 2)})));
+      TF_ASSERT_OK(writer.Finish());
+    }
+    // Keep the complete data file so only the recorded entry budget changes.
+    TF_ASSERT_OK(RewriteBundleEntry(
+        prefix, "variants", [entry_size](BundleEntryProto* entry) {
+          entry->set_size(entry_size < 0 ? entry->size() - 1 : entry_size);
+        }));
+    BundleReader reader(Env::Default(), prefix);
+    TF_ASSERT_OK(reader.status());
+    Tensor variants(DT_VARIANT, TensorShape({2}));
+    const absl::Status status = reader.Lookup("variants", &variants);
+    EXPECT_TRUE(absl::IsDataLoss(status)) << status;
+    EXPECT_TRUE(absl::StrContains(status.message(), "bundle entry")) << status;
+  }
+}
+
 TEST(TensorBundleTest, DirectoryStructure) {
   Env* env = Env::Default();
   // Writes two bundles.
