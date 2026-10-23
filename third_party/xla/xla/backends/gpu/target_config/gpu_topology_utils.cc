@@ -30,6 +30,15 @@ namespace xla::gpu {
 
 absl::StatusOr<bool> IsCompatibleWithTargetTopology(
     const GpuTopology& compiler_topology, const GpuTopology& target_topology) {
+  // A compiler topology with no locality-domain capability does not constrain
+  // the target. Once it records multiple domains, the target must match so
+  // encoded per-domain memory-space colors retain their meaning.
+  if (compiler_topology.locality_domain_count() > 1 &&
+      compiler_topology.locality_domain_count() !=
+          target_topology.locality_domain_count()) {
+    return false;
+  }
+
   // If the platform version is the same, the topologies are compatible.
   if (compiler_topology.platform_version() ==
       target_topology.platform_version()) {

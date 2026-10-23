@@ -930,19 +930,6 @@ absl::Status RunOptimizationPasses(
   pipeline.AddPass<ConditionalCanonicalizer>();
   pipeline.AddPass<DynamicDimensionSimplifier>();
 
-  int64_t rw_length = debug_options.xla_reduce_window_rewrite_base_length();
-  pipeline.AddPass<HloPassFix<AssociativeScanRewriter>>(rw_length);
-  if (rw_length != 0) {
-    pipeline.AddPass<HloPassFix<ReduceWindowRewriter>>(rw_length);
-    pipeline.AddPass<ReduceWindowResizer>();
-  }
-  pipeline.AddPass<ScanExpander>();
-
-  // AssociativeScanRewriter generates call instructions for scan bodies and the
-  // emitter cannot compute indexing maps for the Call opcode. Inline the calls
-  // so the emitter can compute indexing maps.
-  pipeline.AddPass<CallInliner>();
-
   DynamicPadderOptions dynamic_padder_options;
 
   switch (debug_options.xla_gpu_shape_checks()) {
@@ -2222,6 +2209,19 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
           alias_info, mlir_context,
           /*only_fuse_if_profitable=*/true, thread_pool, &mlir_context_pool_);
     }
+
+    int64_t rw_length = debug_options.xla_reduce_window_rewrite_base_length();
+    pipeline.AddPass<HloPassFix<AssociativeScanRewriter>>(rw_length);
+    if (rw_length != 0) {
+      pipeline.AddPass<HloPassFix<ReduceWindowRewriter>>(rw_length);
+      pipeline.AddPass<ReduceWindowResizer>();
+    }
+    pipeline.AddPass<ScanExpander>();
+
+    // AssociativeScanRewriter generates call instructions for scan bodies and
+    // the emitter cannot compute indexing maps for the Call opcode. Inline the
+    // calls so the emitter can compute indexing maps.
+    pipeline.AddPass<CallInliner>();
 
     pipeline.AddPass<ReductionDimensionGrouper>();
     pipeline.AddPass<HloPassFix<ReductionSplitter>>(

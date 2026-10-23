@@ -18,6 +18,7 @@
 load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
 load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
 load("@bazel_skylib//rules:write_file.bzl", "write_file")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 
 options_substitions = {
     "#cmakedefine NVSHMEM_COMPLEX_SUPPORT": "/* #undef NVSHMEM_COMPLEX_SUPPORT */",

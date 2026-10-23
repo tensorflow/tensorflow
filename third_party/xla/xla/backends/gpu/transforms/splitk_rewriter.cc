@@ -68,7 +68,23 @@ struct DotDimensions {
   int64_t acc_element_bits;
   int64_t out_element_bits;
   int64_t flops_per_element;
+  // Each split-K chunk of K must be a multiple of this to stay 16B-aligned.
+  int64_t k_alignment;
 };
+
+// Uses the dot's own operand element sizes rather than the pre-convert sizes at
+// the fusion edge, because padding is applied directly to the dot operands.
+int64_t GetKAlignment(const HloDotInstruction* dot) {
+  constexpr int64_t kAlignmentInBits = 16 * 8;
+  const int64_t min_element_size_in_bits = std::min(
+      {kAlignmentInBits, ShapeUtil::ElementSizeInBits(dot->operand(0)->shape()),
+       ShapeUtil::ElementSizeInBits(dot->operand(1)->shape())});
+  return kAlignmentInBits / min_element_size_in_bits;
+}
+
+int64_t GetPaddedK(const DotDimensions& dims, int64_t split_k) {
+  return RoundUpTo(dims.k, split_k * dims.k_alignment);
+}
 
 int64_t GetAlgoritmFlopsPerElement(const HloDotInstruction* dot) {
   switch (dot->precision_config().algorithm()) {
@@ -135,6 +151,7 @@ DotDimensions GetDotDimensions(const HloInstruction* instr) {
       /* .result_el_size_in_bits = */
       ShapeUtil::ElementSizeInBits(dot->shape()),
       /* .flops_per_element = */ GetAlgoritmFlopsPerElement(dot),
+      /* .k_alignment = */ GetKAlignment(dot),
   };
 }
 
@@ -217,7 +234,15 @@ double EstimateGemmCostAfterSplitK(const DotDimensions& gemm, int64_t splitk,
   double reduction_cost = (reduction_read_bytes + reduction_write_bytes) *
                           weights.reduction_memory_cost_weight;
 
-  return total_dot_cost + weights.reduction_launch_overhead + reduction_cost;
+  // Padding K launches one pad kernel per operand, each rewriting its operand.
+  double pad_cost =
+      GetPaddedK(gemm, splitk) != gemm.k
+          ? 2 * weights.reduction_launch_overhead +
+                actual_read_bytes * weights.reduction_memory_cost_weight
+          : 0.0;
+
+  return total_dot_cost + pad_cost + weights.reduction_launch_overhead +
+         reduction_cost;
 }
 
 size_t ChooseSplitK(const DotDimensions& dims,
@@ -253,18 +278,6 @@ HloInstruction* PadInstruction(HloInstruction* instr, int64_t dimension_idx,
   new_shape.set_dimensions(dimension_idx, new_dimension_size);
   return computation->AddInstruction(
       HloInstruction::CreatePad(new_shape, instr, zero, padding_config));
-}
-
-// Returns the padded K dimension so that it is a multiple of split_k and 16B,
-// using the dot's own operand element sizes rather than the pre-convert sizes
-// at the fusion edge.
-int64_t GetPaddedK(HloInstruction& dot, int64_t split_k) {
-  const int64_t alignment_in_bits = 16 * 8;
-  const int64_t min_element_size_in_bits = std::min(
-      {alignment_in_bits, ShapeUtil::ElementSizeInBits(dot.operand(0)->shape()),
-       ShapeUtil::ElementSizeInBits(dot.operand(1)->shape())});
-  return RoundUpTo(GetDotDimensions(&dot).k,
-                   split_k * alignment_in_bits / min_element_size_in_bits);
 }
 
 // The contracting dimension index becomes new batch (split) dimension, and all
@@ -333,7 +346,7 @@ absl::StatusOr<HloInstruction*> SplitKDimensionOfDot(HloDotInstruction* src_dot,
   std::array<int64_t, 2> k_incices = {
       src_dot->dot_dimension_numbers().lhs_contracting_dimensions(0),
       src_dot->dot_dimension_numbers().rhs_contracting_dimensions(0)};
-  const int64_t padded_k = GetPaddedK(*src_dot, split_k);
+  const int64_t padded_k = GetPaddedK(GetDotDimensions(src_dot), split_k);
   // The operands' K dimension are split into [split_k, K/split_k] (shifting
   // right all the dimensions after it).
   std::array<HloInstruction*, 2> operands = {
