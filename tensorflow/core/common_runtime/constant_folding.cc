@@ -457,9 +457,9 @@ void AddShapeNodeToConstantGraph(
             .Attr("dtype", t.dtype())
             .Attr("value", t);
     NodeDef def;
-    CHECK(builder.Finalize(&def).ok());
+    CHECK_OK(builder.Finalize(&def));
     Node* constant_node;
-    CHECK(NodeBuilder(builder).Finalize(constant_graph, &constant_node).ok());
+    CHECK_OK(NodeBuilder(builder).Finalize(constant_graph, &constant_node));
     added.push_back(constant_node);
   }
   // Don't copy incoming edges to shape nodes that are being replaced.
