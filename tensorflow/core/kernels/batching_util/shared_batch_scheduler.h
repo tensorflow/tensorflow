@@ -269,6 +269,12 @@ class SharedBatchScheduler
     // See the documentation for kPadUpPolicy for details.
     std::string batch_padding_policy = std::string(kPadUpPolicy);
 
+    // If positive, the queue declines to schedule a batch while this many of
+    // its batches are being processed by batch threads. Batches processed by
+    // warmup threads do not count towards the limit. If zero, the number of
+    // batches being processed is limited only by the number of batch threads.
+    int max_in_flight_batches = 0;
+
     // A pointer to a ModelBatchStats instance for this model. To be used for
     // cost-based padding policy selection.
     //
@@ -896,6 +902,9 @@ class Queue {
   void ProcessBatch(std::unique_ptr<Batch<TaskType>> batch,
                     std::vector<std::unique_ptr<TaskType>> padding_task);
 
+  // Processes a batch that has been returned earlier by ScheduleWarmupBatch().
+  void ProcessWarmupBatch(std::unique_ptr<Batch<TaskType>> batch);
+
   // Determines whether the queue is empty, i.e. has no tasks waiting or being
   // processed.
   bool IsEmpty() const;
@@ -926,6 +935,18 @@ class Queue {
 
   // Same as IsEmpty(), but assumes the caller already holds a lock on 'mu_'.
   bool IsEmptyInternal() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  // Returns true iff `max_in_flight_batches` is set and this queue already has
+  // that many batches being processed by batch threads.
+  bool IsAtInFlightBatchLimit() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    return options_.max_in_flight_batches > 0 &&
+           num_batches_being_processed_ >= options_.max_in_flight_batches;
+  }
+
+  // Invokes `process_batch_callback_` on `batch`.
+  void InvokeProcessBatchCallback(
+      std::unique_ptr<Batch<TaskType>> batch,
+      std::vector<std::unique_ptr<TaskType>> padding_task);
 
   // Returns true iff the task is a low priority task based on the queue option.
   bool IsLowPriorityTask(std::unique_ptr<TaskType>* task);
@@ -1075,6 +1096,11 @@ class Queue {
   // The number of batches currently being processed by batch threads.
   // Incremented in ScheduleBatch() and decremented in ProcessBatch().
   int num_batches_being_processed_ TF_GUARDED_BY(mu_) = 0;
+
+  // The number of batches currently being processed by warmup threads.
+  // Incremented in ScheduleWarmupBatch() and decremented in
+  // ProcessWarmupBatch().
+  int num_warmup_batches_being_processed_ TF_GUARDED_BY(mu_) = 0;
 
   // Used by CloseAndWaitUntilEmpty() to wait until the queue is empty, for
   // the case in which the queue is not empty when CloseAndWaitUntilEmpty()
@@ -1439,8 +1465,7 @@ void SharedBatchScheduler<TaskType>::WarmupThreadLogic() {
     }
   }
 
-  queue_for_batch->ProcessBatch(std::move(batch_to_process),
-                                /*padding_task=*/{});
+  queue_for_batch->ProcessWarmupBatch(std::move(batch_to_process));
 }
 
 namespace internal {
@@ -1684,7 +1709,7 @@ absl::Status Queue<TaskType>::Schedule(std::unique_ptr<TaskType>* task) {
 
       // Check if the batch queue has a schedulable batch and mark it
       // schedulable if it not already marked.
-      if (!schedulable_batch_) {
+      if (!schedulable_batch_ && !IsAtInFlightBatchLimit()) {
         if (GetBatches().size() > 1 || IsOpenBatchSchedulable()) {
           schedulable_batch_ = true;
           notify_of_schedulable_batch = true;
@@ -1848,6 +1873,10 @@ Queue<TaskType>::ScheduleBatch() {
 
   {
     mutex_lock l(mu_);
+    if (IsAtInFlightBatchLimit()) {
+      schedulable_batch_ = false;
+      return nullptr;
+    }
 
     if (options_.enable_priority_aware_batch_scheduler) {
       batch_to_schedule = tasks_priority_queue_.ScheduleBatch();
@@ -1971,7 +2000,7 @@ Queue<TaskType>::GetLowPriorityTasksForPadding(size_t batch_size) {
 }
 
 template <typename TaskType>
-void Queue<TaskType>::ProcessBatch(
+void Queue<TaskType>::InvokeProcessBatchCallback(
     std::unique_ptr<Batch<TaskType>> batch,
     std::vector<std::unique_ptr<TaskType>> padding_task) {
   tsl::profiler::TraceMeConsumer trace_me(
@@ -1991,13 +2020,50 @@ void Queue<TaskType>::ProcessBatch(
     std::get<ProcessBatchCallbackWithPaddingTasks>(process_batch_callback_)(
         std::move(batch), std::move(padding_task));
   }
+}
 
+template <typename TaskType>
+void Queue<TaskType>::ProcessBatch(
+    std::unique_ptr<Batch<TaskType>> batch,
+    std::vector<std::unique_ptr<TaskType>> padding_task) {
+  InvokeProcessBatchCallback(std::move(batch), std::move(padding_task));
+
+  // Copied under the lock so that this queue, which may be deleted once the
+  // lock is released, is not accessed afterwards.
+  SchedulableBatchCallback schedulable_batch_callback;
   {
     mutex_lock l(mu_);
+    const bool was_at_in_flight_batch_limit = IsAtInFlightBatchLimit();
     --num_batches_being_processed_;
+    // While at its in-flight batch limit, the queue reports no schedulable
+    // batch, so newly enqueued tasks did not notify the scheduler. Notify it
+    // now that the queue can schedule a batch again.
+    if ((was_at_in_flight_batch_limit || !schedulable_batch_) &&
+        !IsAtInFlightBatchLimit() &&
+        (options_.enable_priority_aware_batch_scheduler
+             ? IsOpenBatchSchedulable()
+             : (GetBatches().size() > 1 || IsOpenBatchSchedulable()))) {
+      schedulable_batch_ = true;
+      schedulable_batch_callback = schedulable_batch_callback_;
+    }
     if (empty_notification_ != nullptr && IsEmptyInternal()) {
       empty_notification_->Notify();
     }
+  }
+  if (schedulable_batch_callback) {
+    schedulable_batch_callback();
+  }
+}
+
+template <typename TaskType>
+void Queue<TaskType>::ProcessWarmupBatch(
+    std::unique_ptr<Batch<TaskType>> batch) {
+  InvokeProcessBatchCallback(std::move(batch), /*padding_task=*/{});
+
+  mutex_lock l(mu_);
+  --num_warmup_batches_being_processed_;
+  if (empty_notification_ != nullptr && IsEmptyInternal()) {
+    empty_notification_->Notify();
   }
 }
 
@@ -2026,11 +2092,13 @@ void Queue<TaskType>::CloseAndWaitUntilEmpty() {
 template <typename TaskType>
 bool Queue<TaskType>::IsEmptyInternal() const {
   if (options_.enable_priority_aware_batch_scheduler) {
-    return num_batches_being_processed_ == 0 && tasks_priority_queue_.empty() &&
-           warmup_tasks_.empty();
+    return num_batches_being_processed_ == 0 &&
+           num_warmup_batches_being_processed_ == 0 &&
+           tasks_priority_queue_.empty() && warmup_tasks_.empty();
   }
   const std::deque<std::unique_ptr<Batch<TaskType>>>& batches = GetBatches();
-  return num_batches_being_processed_ == 0 && batches.size() == 1 &&
+  return num_batches_being_processed_ == 0 &&
+         num_warmup_batches_being_processed_ == 0 && batches.size() == 1 &&
          batches.back()->empty() && low_priority_tasks_.empty() &&
          warmup_tasks_.empty();
 }
@@ -2070,6 +2138,9 @@ Queue<TaskType>::PeekBatchPriority() const {
 template <typename TaskType>
 std::optional<typename Queue<TaskType>::BatchPriorityKey>
 Queue<TaskType>::PeekBatchPriorityImpl() const {
+  if (IsAtInFlightBatchLimit()) {
+    return std::nullopt;
+  }
   if (options_.enable_priority_aware_batch_scheduler) {
     if (!tasks_priority_queue_.IsSchedulable()) {
       return std::nullopt;
@@ -2185,7 +2256,7 @@ std::unique_ptr<Batch<TaskType>> Queue<TaskType>::ScheduleWarmupBatch() {
     batch_to_schedule = std::make_unique<Batch<TaskType>>();
     batch_to_schedule->AddTask(std::move(task), env_->NowMicros());
     batch_to_schedule->Close();
-    ++num_batches_being_processed_;
+    ++num_warmup_batches_being_processed_;
   }
   return batch_to_schedule;
 }
