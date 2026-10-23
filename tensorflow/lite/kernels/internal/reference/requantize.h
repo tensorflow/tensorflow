@@ -33,12 +33,10 @@ inline void Requantize(const input_type* input_data, int32_t size,
   const bool same_scale =
       (effective_scale_multiplier == 1 << 30 && effective_scale_shift == 1);
   if (same_scale) {
-    const bool mixed_type_int8_uint8 =
-        std::is_same<input_type, int8_t>::value &&
-        std::is_same<output_type, uint8_t>::value;
-    const bool mixed_type_uint8_int8 =
-        std::is_same<input_type, uint8_t>::value &&
-        std::is_same<output_type, int8_t>::value;
+    const bool mixed_type_int8_uint8 = std::is_same_v<input_type, int8_t> &&
+                                       std::is_same_v<output_type, uint8_t>;
+    const bool mixed_type_uint8_int8 = std::is_same_v<input_type, uint8_t> &&
+                                       std::is_same_v<output_type, int8_t>;
     const int32_t zero_point_diff = input_zeropoint - output_zeropoint;
     // Fast path to do requantization for the case when just a shift of 128 is
     // needed.
