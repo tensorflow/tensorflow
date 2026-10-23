@@ -70,7 +70,7 @@ constexpr char kUnicodeEllipsis[] = " \u2026 ";
 
 class Color {
  public:
-  Color() {}
+  Color() = default;
   Color(uint8 r, uint8 g, uint8 b) : r_(r), g_(g), b_(b) {}
   explicit Color(uint32 word)
       : r_((word & 0x00FF0000) >> 16),
