@@ -768,6 +768,28 @@ tf_kernel_library(
     ],
 )
 
+tf_cc_test(
+    name = "rebatch_dataset_op_test",
+    size = "small",
+    srcs = ["rebatch_dataset_op_test.cc"],
+    deps = [
+        ":rebatch_dataset_op",
+        "//tensorflow/core:experimental_dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/data:dataset_test_base",
+        "//tensorflow/core/data:name_utils",
+        "//tensorflow/core/data:serialization_utils",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/kernels/data:tensor_slice_dataset_op",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@xla//xla/tsl/lib/core:status_test_util",
+        "@xla//xla/tsl/platform:status_matchers",
+    ],
+)
+
 tf_kernel_library(
     name = "sampling_dataset_op",
     srcs = ["sampling_dataset_op.cc"],
@@ -1029,6 +1051,28 @@ tf_kernel_library(
         "@tsl//tsl/platform:status",
         "@tsl//tsl/platform:strcat",
         "@tsl//tsl/platform:thread_annotations",
+    ],
+)
+
+tf_cc_test(
+    name = "unbatch_dataset_op_test",
+    size = "small",
+    srcs = ["unbatch_dataset_op_test.cc"],
+    deps = [
+        ":unbatch_dataset_op",
+        "//tensorflow/core:experimental_dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/data:dataset_test_base",
+        "//tensorflow/core/data:name_utils",
+        "//tensorflow/core/data:serialization_utils",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/kernels/data:tensor_slice_dataset_op",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@xla//xla/tsl/lib/core:status_test_util",
+        "@xla//xla/tsl/platform:status_matchers",
     ],
 )
 
