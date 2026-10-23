@@ -23,6 +23,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "xnnpack.h"  // from @XNNPACK
@@ -326,7 +327,11 @@ class MMapWeightCacheProvider {
   // If the cache is still being built, this signals that all of the building
   // operations are done and that `CanStartBuildStep()` should now return
   // `false`.
-  void StopBuild() { builder_.Reset(); }
+  void StopBuild() {
+    builder_.Reset();
+    in_memory_cache_enabled_ = false;
+    ResetInMemoryBuildStep();
+  }
 
   // Sets the weight file path and loads it.
   [[nodiscard /*Loading a cache file may fail.*/]]
@@ -350,7 +355,7 @@ class MMapWeightCacheProvider {
   // file.
   [[nodiscard]]
   bool CanStartBuildStep() const {
-    return builder_.IsStarted();
+    return builder_.IsStarted() || in_memory_cache_enabled_;
   };
 
   // Prepares to add new data to the cache.
@@ -413,13 +418,14 @@ class MMapWeightCacheProvider {
   // cache.
   [[nodiscard]]
   bool IsBuilding() const {
-    return builder_.IsBuilding();
+    return builder_.IsBuilding() || is_in_memory_build_step_;
   };
 
   // Returns true if a file is mapped or a file path is set.
   [[nodiscard]]
   bool IsActive() const {
-    return !mmap_handles_.empty() || builder_.IsStarted();
+    return !mmap_handles_.empty() || builder_.IsStarted() ||
+           in_memory_cache_enabled_;
   };
 
   // Returns the cache provider expected by XNNPack.
@@ -462,6 +468,16 @@ class MMapWeightCacheProvider {
     size_t size;
   };
 
+  void ResetInMemoryBuildStep() {
+    is_in_memory_build_step_ = false;
+    in_memory_build_used_ = 0;
+    in_memory_build_offsets_.clear();
+    in_memory_build_handle_.UnMap();
+  }
+
+  std::pair<const void*, const OriginalBufferMetadata*> FindBufferMetadata(
+      const void* buffer) const;
+
   // Hashes a cache key to lookup in `cache_key_to_identifier_`.
   PackIdentifier BuildPackIdentifier(const xnn_weights_cache_look_up_key& key);
 
@@ -498,7 +514,7 @@ class MMapWeightCacheProvider {
   std::vector<MMapHandle> mmap_handles_;
 
   // The offset to the first buffer data in the MMap allocation.
-  size_t mmap_buffer_base_offset_;
+  size_t mmap_buffer_base_offset_ = 0;
 
   // Holds a file descriptor to the cache file.
   FileDescriptor file_descriptor_;
@@ -512,6 +528,27 @@ class MMapWeightCacheProvider {
   // Stores the loaded buffer addresses corresponding to the given offset in the
   // cache file.
   std::map<size_t, void*> offset_to_addr_;
+
+  // True when building an in-memory cache (`:memory`) backed by anonymous
+  // private mappings (`MAP_PRIVATE | MAP_ANONYMOUS`) rather than a file or
+  // `memfd`.
+  bool in_memory_cache_enabled_ = false;
+
+  // True between `StartBuildStep()` and `StopBuildStep()` when
+  // `in_memory_cache_enabled_` is active.
+  bool is_in_memory_build_step_ = false;
+
+  // Growable anonymous mapping for the active in-memory build step.
+  MMapHandle in_memory_build_handle_;
+
+  // Number of bytes used in `in_memory_build_handle_` during the current build
+  // step.
+  size_t in_memory_build_used_ = 0;
+
+  // Records `(global_offset, relative_offset)` pairs inserted during the
+  // current in-memory build step so `offset_to_addr_` can be populated once
+  // `in_memory_build_handle_` is finalized.
+  std::vector<std::pair<size_t, size_t>> in_memory_build_offsets_;
 };
 
 }  // namespace xnnpack
