@@ -290,9 +290,10 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
             reader->ReadScalar(full_name("current_index"), &current_index_));
         TF_RETURN_IF_ERROR(
             reader->ReadScalar(full_name("n"), &current_batch_size_));
-        if (current_index_ < 0) {
+        if (current_index_ < 0 || current_index_ > current_batch_size_) {
           return absl::InvalidArgumentError(absl::StrCat(
-              "Invalid current_index in checkpoint: ", current_index_));
+              "Invalid current_index in checkpoint: ", current_index_,
+              ", expected a value in [0, ", current_batch_size_, "]."));
         }
         tensors_.clear();
         tensors_.resize(dataset()->output_dtypes().size());

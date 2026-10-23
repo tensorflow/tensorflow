@@ -145,14 +145,25 @@ TEST_F(UnbatchDatasetOpTest, RestoreConsistentPartialBatch) {
       {CreateTensor<int64_t>(TensorShape{2}, {10, 20})}, &iterator));
 }
 
-// The checkpoint records a batch of 2, but `current_index` would slice the
-// restored tensor past its first dimension.
+// The checkpoint records a batch of 2, and `current_index` is past `n`.
 TEST_F(UnbatchDatasetOpTest, RestoreRejectsIndexPastBatch) {
   auto dataset_params = UnbatchDatasetParams1();
   TF_ASSERT_OK(Initialize(dataset_params));
   std::unique_ptr<IteratorBase> iterator;
+  EXPECT_THAT(
+      RestoreFromCheckpoint(
+          dataset_params, /*current_index=*/5, /*batch_size=*/2,
+          {CreateTensor<int64_t>(TensorShape{2}, {10, 20})}, &iterator),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                             ::testing::HasSubstr("Invalid current_index")));
+}
+
+TEST_F(UnbatchDatasetOpTest, RestoreRejectsBatchSizeMismatch) {
+  auto dataset_params = UnbatchDatasetParams1();
+  TF_ASSERT_OK(Initialize(dataset_params));
+  std::unique_ptr<IteratorBase> iterator;
   EXPECT_THAT(RestoreFromCheckpoint(
-                  dataset_params, /*current_index=*/5, /*batch_size=*/100,
+                  dataset_params, /*current_index=*/1, /*batch_size=*/100,
                   {CreateTensor<int64_t>(TensorShape{2}, {10, 20})}, &iterator),
               absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
                                      ::testing::HasSubstr("batch size")));
