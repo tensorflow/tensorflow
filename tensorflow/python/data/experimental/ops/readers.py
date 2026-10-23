@@ -466,7 +466,8 @@ def make_csv_dataset_v2(
       CSV record. Otherwise, the dataset raises an error and stops processing
       when encountering any invalid records. Defaults to `False`.
     encoding: Encoding to use when reading. Defaults to `UTF-8`. A byte order
-      mark at the start of a UTF-8 file is skipped.
+      mark at the start of a UTF-8 file is skipped when the column names and
+      types are inferred.
 
   Returns:
     A dataset, where each element is a (features, labels) tuple that corresponds
