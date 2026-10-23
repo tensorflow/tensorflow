@@ -84,12 +84,6 @@ class SparseTensorToCSRSparseMatrixCPUOp : public OpKernel {
     const int64_t num_cols = dense_shape_vec((rank == 2) ? 1 : 2);
     const int64_t total_nnz = values.NumElements();
 
-    OP_REQUIRES(
-        ctx, total_nnz == 0 || (batch_size > 0 && num_rows > 0 && num_cols > 0),
-        absl::InvalidArgumentError(
-            "SparseTensor has nnz > 0 but dense_shape has 0 "
-            "batch_size, rows, or cols"));
-
     static constexpr int64_t kInt32Max = std::numeric_limits<int32_t>::max();
     OP_REQUIRES(ctx, batch_size < kInt32Max,
                 absl::InvalidArgumentError(
