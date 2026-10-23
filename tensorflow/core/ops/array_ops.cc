@@ -381,10 +381,10 @@ REGISTER_OP("Pack")
       TF_RETURN_IF_ERROR(GetAxisForPackAndUnpack(c, rank + 1, &axis));
 
       if (rank >= TensorShape::MaxDimensions()) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Cannot pack tensors of rank ", rank,
             ": packing would exceed the maximum supported rank of ",
-            TensorShape::MaxDimensions(), ".");
+            TensorShape::MaxDimensions(), "."));
       }
 
       // Copy all dimensions over, inserting a dimension of value #inputs
@@ -2196,10 +2196,10 @@ REGISTER_OP("ExpandDims")
       }
 
       if (rank >= TensorShape::MaxDimensions()) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Cannot expand a tensor of rank ", rank,
             ": expanding would exceed the maximum supported rank of ",
-            TensorShape::MaxDimensions(), ".");
+            TensorShape::MaxDimensions(), "."));
       }
 
       ShapeHandle end;
