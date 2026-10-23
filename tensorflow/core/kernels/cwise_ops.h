@@ -19,6 +19,7 @@ limitations under the License.
 #define _USE_MATH_DEFINES
 #include <cmath>
 #include <functional>
+#include <limits>
 #include <type_traits>
 
 #include "Eigen/Core"  // from @eigen_archive
@@ -971,6 +972,170 @@ struct functor_traits<igamma_op<Scalar>> {
   };
 };
 
+// Unsigned magnitude bits. Clearing the sign is bitwise, so a subnormal payload
+// survives denormals-are-zero. A floating-point compare would treat that
+// payload as zero and miss a value such as 1+subnormal*j.
+template <typename RealType>
+EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE
+    typename std::conditional<sizeof(RealType) == sizeof(uint32_t), uint32_t,
+                              uint64_t>::type
+MagnitudeBits(RealType x) {
+  using Bits =
+      typename std::conditional<sizeof(RealType) == sizeof(uint32_t), uint32_t,
+                                uint64_t>::type;
+  const Bits sign_bit = numext::bit_cast<Bits>(-RealType(0));
+  return numext::bit_cast<Bits>(x) & ~sign_bit;
+}
+
+// True for a NaN or a subnormal. Infinities are neither: their exponent is all
+// ones and their payload is zero.
+template <typename RealType>
+EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE bool ComponentIsNaNOrSubnormal(
+    RealType x) {
+  using Bits =
+      typename std::conditional<sizeof(RealType) == sizeof(uint32_t), uint32_t,
+                                uint64_t>::type;
+  const Bits mag = MagnitudeBits(x);
+  const Bits min_normal =
+      numext::bit_cast<Bits>((std::numeric_limits<RealType>::min)());
+  const Bits inf_bits = numext::bit_cast<Bits>(NumTraits<RealType>::infinity());
+  const bool subnormal = mag != Bits(0) && mag < min_normal;
+  const bool nan = (mag & inf_bits) == inf_bits && mag != inf_bits;
+  return subnormal || nan;
+}
+
+// True when this value must use scalar division: a NaN component, a subnormal
+// component (including one normal and one subnormal component), or a zero
+// value. Infinities stay false, including inf+0j, because packet and scalar
+// division already agree. A zero component next to a normal or infinite
+// component also stays false.
+template <typename RealType>
+EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE bool ComplexDivisionNeedsScalar(
+    const std::complex<RealType>& z) {
+  using Bits =
+      typename std::conditional<sizeof(RealType) == sizeof(uint32_t), uint32_t,
+                                uint64_t>::type;
+  if (ComponentIsNaNOrSubnormal(z.real()) ||
+      ComponentIsNaNOrSubnormal(z.imag())) {
+    return true;
+  }
+  return MagnitudeBits(z.real()) == Bits(0) &&
+         MagnitudeBits(z.imag()) == Bits(0);
+}
+
+// All-ones where ComplexDivisionNeedsScalar is true, else zero. pselect uses
+// the bits, so the all-ones lane does not have to be a finite number.
+template <typename RealType, typename Packet>
+EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet ComplexScalarSelectMask(
+    const std::complex<RealType>* values) {
+  constexpr int kSize = unpacket_traits<Packet>::size;
+  using Bits =
+      typename std::conditional<sizeof(RealType) == sizeof(uint32_t), uint32_t,
+                                uint64_t>::type;
+  const RealType on = numext::bit_cast<RealType>(static_cast<Bits>(~Bits(0)));
+  EIGEN_ALIGN_MAX std::complex<RealType> mask_buf[kSize];
+  for (int i = 0; i < kSize; ++i) {
+    const RealType lane =
+        ComplexDivisionNeedsScalar(values[i]) ? on : RealType(0);
+    mask_buf[i] = std::complex<RealType>(lane, lane);
+  }
+  return pload<Packet>(mask_buf);
+}
+
+// Complex reciprocal. scalar_inverse_op vectorizes with pdiv_complex and
+// evaluates only the tail with std::complex division. Those algorithms
+// disagree for exact zeros and for subnormals flushed under FTZ/DAZ,
+// including one normal and one subnormal component. Infinite values already
+// agree, so those lanes stay on preciprocal. Both results are computed and
+// blended with pselect; there is no horizontal reduction or packet-wide
+// branch. This functor is TensorFlow-owned and is not a specialization of
+// scalar_inverse_op.
+template <typename RealType>
+struct scalar_inverse_complex_op {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE std::complex<RealType> operator()(
+      const std::complex<RealType>& z) const {
+    return std::complex<RealType>(RealType(1)) / z;
+  }
+
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& z) const {
+    constexpr int kSize = unpacket_traits<Packet>::size;
+    const Packet packet_result = preciprocal(z);
+    EIGEN_ALIGN_MAX std::complex<RealType> buf[kSize];
+    pstore(buf, z);
+    const Packet scalar_mask = ComplexScalarSelectMask<RealType, Packet>(buf);
+    for (int i = 0; i < kSize; ++i) {
+      buf[i] = (*this)(buf[i]);
+    }
+    return pselect(scalar_mask, pload<Packet>(buf), packet_result);
+  }
+};
+
+template <typename RealType>
+struct functor_traits<scalar_inverse_complex_op<RealType>> {
+  enum {
+    // Packet reciprocal, plus a scalar division and the lane mask, on every
+    // packet. The scalar result is blended in only for lanes that need it.
+    Cost = functor_traits<scalar_inverse_op<std::complex<RealType>>>::Cost +
+           scalar_div_cost<std::complex<RealType>, false>::value +
+           8 * NumTraits<RealType>::AddCost,
+    PacketAccess =
+        packet_traits<std::complex<RealType>>::Vectorizable &&
+        functor_traits<scalar_inverse_op<std::complex<RealType>>>::PacketAccess,
+  };
+};
+
+// Complex division. scalar_quotient_op vectorizes with pdiv_complex and
+// evaluates only the tail with std::complex division. Those algorithms
+// disagree for exact-zero denominators and for subnormal denominator
+// components flushed under FTZ/DAZ. Infinite denominators already agree, so
+// those lanes stay on pdiv. A subnormal or NaN numerator stays on pdiv: a NaN
+// numerator is NaN on both paths, and a subnormal numerator is scaled by the
+// denominator rather than flushed as a zero denominator. Both results are
+// blended with pselect. This functor is TensorFlow-owned and is not a
+// specialization of scalar_quotient_op.
+template <typename RealType>
+struct scalar_quotient_complex_op {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE std::complex<RealType> operator()(
+      const std::complex<RealType>& a, const std::complex<RealType>& b) const {
+    return a / b;
+  }
+
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& a,
+                                                        const Packet& b) const {
+    constexpr int kSize = unpacket_traits<Packet>::size;
+    const Packet packet_result = pdiv(a, b);
+    EIGEN_ALIGN_MAX std::complex<RealType> buf_a[kSize];
+    EIGEN_ALIGN_MAX std::complex<RealType> buf_b[kSize];
+    pstore(buf_a, a);
+    pstore(buf_b, b);
+    // Only the denominator selects the scalar lane. A subnormal or NaN
+    // numerator stays on pdiv.
+    const Packet scalar_mask = ComplexScalarSelectMask<RealType, Packet>(buf_b);
+    for (int i = 0; i < kSize; ++i) {
+      buf_a[i] = (*this)(buf_a[i], buf_b[i]);
+    }
+    return pselect(scalar_mask, pload<Packet>(buf_a), packet_result);
+  }
+};
+
+template <typename RealType>
+struct functor_traits<scalar_quotient_complex_op<RealType>> {
+  enum {
+    // Packet division, plus a scalar division and the denominator mask, on
+    // every packet. The scalar result is blended in only for lanes that need
+    // it.
+    Cost = functor_traits<scalar_quotient_op<std::complex<RealType>>>::Cost +
+           scalar_div_cost<std::complex<RealType>, false>::value +
+           8 * NumTraits<RealType>::AddCost,
+    PacketAccess =
+        packet_traits<std::complex<RealType>>::Vectorizable &&
+        functor_traits<scalar_quotient_op<std::complex<RealType>>>::
+            PacketAccess,
+  };
+};
+
 }  // end namespace internal
 }  // end namespace Eigen
 
@@ -1061,6 +1226,17 @@ struct neg : base<T, Eigen::internal::scalar_opposite_op<T>> {};
 
 template <typename T>
 struct inverse : base<T, Eigen::internal::scalar_inverse_op<T>> {};
+
+// See scalar_inverse_complex_op. Zero, NaN, and subnormal lanes, including one
+// normal and one subnormal component, come from scalar division. Infinities
+// stay on the packet reciprocal.
+template <>
+struct inverse<complex64>
+    : base<complex64, Eigen::internal::scalar_inverse_complex_op<float>> {};
+
+template <>
+struct inverse<complex128>
+    : base<complex128, Eigen::internal::scalar_inverse_complex_op<double>> {};
 
 template <typename T>
 struct square : base<T, Eigen::internal::scalar_square_op<T>> {};
@@ -1248,6 +1424,17 @@ struct mul_no_nan : base<T, Eigen::internal::mul_no_nan_op<T>> {};
 
 template <typename T>
 struct div : base<T, Eigen::internal::scalar_quotient_op<T>> {};
+
+// See scalar_quotient_complex_op. Zero, NaN, and subnormal denominator lanes
+// come from scalar division. Infinities stay on pdiv. Subnormal and NaN
+// numerators stay on pdiv.
+template <>
+struct div<complex64>
+    : base<complex64, Eigen::internal::scalar_quotient_complex_op<float>> {};
+
+template <>
+struct div<complex128>
+    : base<complex128, Eigen::internal::scalar_quotient_complex_op<double>> {};
 
 template <typename T>
 struct safe_div : base<T, Eigen::internal::safe_div_or_mod_op<
