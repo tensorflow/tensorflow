@@ -1400,8 +1400,6 @@ def logical_not(x):
   return math_ops.logical_not(x)
 
 
-@tf_export.tf_export('experimental.numpy.linspace', v1=[])
-@np_utils.np_doc('linspace')
 def _validate_destination_axis(axis, start, stop):
   """Validates the destination axis for linspace and geomspace."""
   # NumPy raises AxisError for an out-of-bounds destination axis instead of
@@ -1428,6 +1426,8 @@ def _validate_destination_axis(axis, start, stop):
         )
 
 
+@tf_export.tf_export('experimental.numpy.linspace', v1=[])
+@np_utils.np_doc('linspace')
 def linspace(  # pylint: disable=missing-docstring
     start, stop, num=50, endpoint=True, retstep=False, dtype=float, axis=0
 ):
