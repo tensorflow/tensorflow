@@ -148,6 +148,14 @@ cc_header_only_library = _cc_header_only_library
 custom_op_cc_header_only_library = _custom_op_cc_header_only_library
 transitive_hdrs = _transitive_hdrs
 
+def rocm_tools_rpath():
+    """Returns the rpath for build-time tools that need ROCm libraries.
+
+    This constructs the path dynamically using Label().workspace_root to get
+    the correct path to the external ROCm repository.
+    """
+    return Label("@local_config_rocm//rocm:BUILD").workspace_root + "/rocm/rocm_dist/lib"
+
 def if_oss(oss_value, google_value = []):
     """Returns one of the arguments based on the non-configurable build env.
 
@@ -1207,7 +1215,7 @@ def tf_gen_op_wrapper_cc(
     tf_cc_binary(
         name = tool,
         copts = tf_copts(),
-        linkopts = if_not_windows(["-lm", "-Wl,-ldl"]) + lrt_if_needed(),
+        linkopts = if_not_windows(["-lm", "-Wl,-ldl"]) + lrt_if_needed() + if_rocm_is_configured(["-Wl,-rpath," + rocm_tools_rpath()]),
         linkstatic = 1,  # Faster to link this one-time-use binary dynamically
         deps = [op_gen] + deps,
     )
@@ -1508,7 +1516,7 @@ def tf_gen_op_wrapper_py(
     tf_cc_binary(
         name = tool_name,
         copts = copts + tf_copts_exec(),
-        linkopts = if_not_windows(["-lm", "-Wl,-ldl"]) + cc_linkopts,
+        linkopts = if_not_windows(["-lm", "-Wl,-ldl"]) + cc_linkopts + if_rocm_is_configured(["-Wl,-rpath," + rocm_tools_rpath()]),
         linkstatic = 1,  # Faster to link this one-time-use binary dynamically
         visibility = [clean_dep("//tensorflow:internal")],
         deps = ([
