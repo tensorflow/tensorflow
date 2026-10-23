@@ -22,6 +22,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.linalg.sparse import sparse_csr_matrix_ops
 from tensorflow.python.platform import test
@@ -197,23 +198,58 @@ class CSRSparseMatrixTest(test.TestCase):
           self.evaluate(a_sm.to_dense())
 
   @test_util.run_in_graph_and_eager_modes
+  def testConstructorFromSparseTensorTooManyRowsOrCols(self):
+    for shape, dim in (([2**31, 0], "rows"), ([0, 2**31], "cols"),
+                       ([1, 2**31, 0], "rows"), ([1, 0, 2**31], "cols")):
+      with self.subTest(shape=shape), test_util.use_gpu():
+        with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                    f"dense_shape {dim} must be <= Int32Max"):
+          st = sparse_tensor.SparseTensor(
+              indices=np.zeros([0, len(shape)], dtype=np.int64),
+              values=np.zeros([0], dtype=np.float32),
+              dense_shape=shape)
+          a_sm = sparse_csr_matrix_ops.CSRSparseMatrix(st)
+          self.evaluate(a_sm.to_dense())
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConstructorFromSparseTensorNegativeDenseShape(self):
+    for shape in ([-5, 3], [3, -5], [-1, 3, 3]):
+      with self.subTest(shape=shape), test_util.use_gpu():
+        with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                    "dense_shape must be non-negative"):
+          # SparseTensor rejects negative dimensions in Python, and graph
+          # shape inference rejects them in a constant, so call the op
+          # directly and hide the values from shape inference.
+          dense_shape = array_ops.placeholder_with_default(
+              np.array(shape, dtype=np.int64), shape=[len(shape)])
+          self.evaluate(
+              sparse_csr_matrix_ops.sparse_tensor_to_csr_sparse_matrix(
+                  indices=np.zeros([0, len(shape)], dtype=np.int64),
+                  values=np.zeros([0], dtype=np.float32),
+                  dense_shape=dense_shape))
+
+  @test_util.run_in_graph_and_eager_modes
   def testConstructorFromEmptyDenseTensorWithIndices(self):
-    with test_util.use_gpu(), self.assertRaisesOpError("params is empty"):
+    with test_util.use_gpu(), self.assertRaisesRegex(
+        errors.InvalidArgumentError, "0 batch_size, rows, or cols"):
       a_sm = sparse_csr_matrix_ops.CSRSparseMatrix(
           np.ones([0, 3], dtype=np.float32),
           indices=np.array([[0, 0]], dtype=np.int64))
       self.evaluate(a_sm.to_dense())
-    for shape in ([0, 3], [3, 0]):
-      with self.subTest(shape=shape), test_util.use_gpu(), (
-          self.assertRaisesRegex(
-              errors.InvalidArgumentError,
-              "is out of bounds|0 rows or cols")):
-        st = sparse_tensor.SparseTensor(
-            indices=np.array([[0, 0]], dtype=np.int64),
-            values=np.ones([1], dtype=np.float32),
-            dense_shape=shape)
-        a_sm = sparse_csr_matrix_ops.CSRSparseMatrix(st)
-        self.evaluate(a_sm.to_dense())
+    for shape in ([0, 3], [3, 0], [0, 3, 3]):
+      with self.subTest(shape=shape), test_util.use_gpu():
+        # CPU validates the indices first, so it reports an out-of-bounds
+        # index before it reaches the zero-dimension check.
+        expected_err = ("0 batch_size, rows, or cols" if self._gpu_available
+                        else "is out of bounds")
+        with self.assertRaisesRegex(errors.InvalidArgumentError, expected_err):
+          st = sparse_tensor.SparseTensor(
+              indices=np.array([[0, 0]] if len(shape) == 2 else [[0, 0, 0]],
+                               dtype=np.int64),
+              values=np.ones([1], dtype=np.float32),
+              dense_shape=shape)
+          a_sm = sparse_csr_matrix_ops.CSRSparseMatrix(st)
+          self.evaluate(a_sm.to_dense())
 
   @test_util.run_in_graph_and_eager_modes
   def testConstructorFromDenseTensorEmptyIndices(self):

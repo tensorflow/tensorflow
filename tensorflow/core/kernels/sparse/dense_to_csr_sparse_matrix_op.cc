@@ -94,6 +94,12 @@ class DenseToCSRSparseMatrixCPUOp : public OpKernel {
     const int64_t num_cols = dense_tensor_shape.dim_size((rank == 2) ? 1 : 2);
     const int64_t total_nnz = indices.NumElements() / rank;
 
+    OP_REQUIRES(
+        ctx, total_nnz == 0 || (batch_size > 0 && num_rows > 0 && num_cols > 0),
+        absl::InvalidArgumentError(
+            "dense_shape has 0 batch_size, rows, or cols, but "
+            "indices has nnz > 0"));
+
     static constexpr int64_t kInt32Max = std::numeric_limits<int32_t>::max();
     OP_REQUIRES(ctx, batch_size < kInt32Max,
                 absl::InvalidArgumentError(absl::StrCat(
@@ -206,6 +212,14 @@ class DenseToCSRSparseMatrixGPUOp : public AsyncOpKernel {
     const int64_t batch_size = (rank == 2) ? 1 : dense_tensor_shape.dim_size(0);
     const int64_t rows = dense_tensor_shape.dim_size((rank == 2) ? 0 : 1);
     const int64_t cols = dense_tensor_shape.dim_size((rank == 2) ? 1 : 2);
+
+    OP_REQUIRES_ASYNC(
+        c,
+        indices_t.dim_size(0) == 0 || (batch_size > 0 && rows > 0 && cols > 0),
+        absl::InvalidArgumentError(
+            "dense_shape has 0 batch_size, rows, or cols, but "
+            "indices has nnz > 0"),
+        done);
 
     static constexpr int64_t kInt32Max = std::numeric_limits<int32_t>::max();
     OP_REQUIRES_ASYNC(c, batch_size < kInt32Max,
