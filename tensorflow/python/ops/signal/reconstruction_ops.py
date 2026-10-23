@@ -82,6 +82,13 @@ def overlap_and_add(signal, frame_step, name=None):
 
     # Compute output length.
     output_length = frame_length + frame_step * (frames - 1)
+    # A signal with no frames reconstructs to an empty signal.
+    if tensor_util.is_tensor(frames):
+      output_length = array_ops.where_v2(
+          math_ops.greater(frames, 0), output_length,
+          array_ops.zeros_like(output_length))
+    elif frames == 0:
+      output_length = 0
 
     # If frame_length is equal to frame_step, there's no overlap so just
     # reshape the tensor.
