@@ -1,0 +1,5 @@
+# proto-file: learning/gemini/_agents/cl_review_agent/agentic_review.proto
+# proto-message: AgenticReview
+
+# User Guide: go/cl-review-agent-user-guide
+review_capability_skills: "third_party/tensorflow/lite/google/skills/litert_kernel_security_review/SKILL.md"
