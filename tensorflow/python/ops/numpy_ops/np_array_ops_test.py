@@ -851,6 +851,18 @@ class ArrayMethodsTest(test.TestCase):
     run_test([[1, 2], [3, 4]], axis=-1)
     run_test([[1, 2], [3, 4]], axis=-2)
 
+  def testCumProdAndSumPromoteBool(self):
+    # NumPy accumulates booleans as integers.
+    for arr, kwargs in (
+        ([True, False, True], {}),
+        ([[True, True], [False, True]], {'axis': 0}),
+        ([[True, True], [False, True]], {'axis': 1}),
+        ([True, True], {'dtype': np.int32}),
+    ):
+      arg = np.array(arr)
+      self.match(np_array_ops.cumsum(arg, **kwargs), np.cumsum(arg, **kwargs))
+      self.match(np_array_ops.cumprod(arg, **kwargs), np.cumprod(arg, **kwargs))
+
   def testCumProdAndSumOutOfBoundsAxis(self):
     a = np_array_ops.array([[1, 2, 3], [4, 5, 6]])
     with self.assertRaisesRegex(ValueError, 'out of bounds'):
@@ -1270,6 +1282,44 @@ class ArrayMethodsTest(test.TestCase):
     run_test([])
     run_test([1.27, 2.49, 2.75], decimals=1)
     run_test([23.6, 45.1], decimals=-1)
+    run_test([5, 15, 25, 35, -25, 1234], decimals=-1)
+    run_test([5, 15, 25, 35, -25, 1234], decimals=-2)
+    run_test([123.456, -987.65], decimals=-2)
+
+  def testAroundNegativeDecimalsIsExact(self):
+    # 10**-1 is not representable in binary floating point, so the scaling
+    # has to divide by 10 rather than multiply by 0.1 to match NumPy exactly.
+    for dtype in (np.int32, np.int64, np.float32, np.float64):
+      arg = np.array([5, 15, 25, 35, -25, 1234], dtype=dtype)
+      for decimals in (-1, -2, -3):
+        self.assertAllEqual(
+            np_array_ops.around(arg, decimals), np.around(arg, decimals)
+        )
+    self.assertEqual(float(np_array_ops.around(123.456, -1)), 120.0)
+    self.assertEqual(
+        float(np_array_ops.around(0.123456789012, 11)),
+        np.around(0.123456789012, 11),
+    )
+
+  def testAroundHugeDecimals(self):
+    # `decimals` beyond the float exponent range must not overflow the
+    # scale factor or intermediate product.
+    for val in (1.5, 2.0):
+      self.assertEqual(float(np_array_ops.around(val, 400)), val)
+      self.assertEqual(float(np_array_ops.around(val, -400)), 0.0)
+    self.assertEqual(float(np_array_ops.around(1.2e308, -400)), 0.0)
+    self.assertEqual(int(np_array_ops.around(np.int64(12345), -400)), 0)
+    for dtype, exp in ((np.float32, 40), (np.float16, 5)):
+      x = dtype(2.5)
+      self.assertEqual(float(np_array_ops.around(x, exp)), 2.5)
+      self.assertEqual(float(np_array_ops.around(x, -exp)), 0.0)
+
+  def testAroundKeepsLargeIntegers(self):
+    # Integers are not converted to float when there is nothing to round, so
+    # values above 2**53 survive unchanged.
+    arg = np.array([2**53 + 1, -(2**62) - 1], dtype=np.int64)
+    for decimals in (0, 2):
+      self.assertAllEqual(np_array_ops.around(arg, decimals), arg)
 
   def testReshape(self):
 
