@@ -55,11 +55,7 @@ struct DeviceInfo {
         intermediate_read_gb_per_sec(INFINITY),
         intermediate_write_gb_per_sec(INFINITY) {}
 
-  DeviceInfo(const DeviceInfo& input)
-      : gigaops(input.gigaops),
-        gb_per_sec(input.gb_per_sec),
-        intermediate_read_gb_per_sec(input.intermediate_read_gb_per_sec),
-        intermediate_write_gb_per_sec(input.intermediate_write_gb_per_sec) {}
+  DeviceInfo(const DeviceInfo& input) :, , , = default;
 
   DeviceInfo(double gigaops, double gb_per_sec,
              double intermediate_read_gb_per_sec = INFINITY,
@@ -246,7 +242,7 @@ Costs MultiplyCosts(const Costs& costs, int multiplier);
 // running the graph.
 class CostEstimator {
  public:
-  virtual ~CostEstimator() {}
+  virtual ~CostEstimator() = default;
 
   // Initializes the estimator for the specified grappler item.
   // The estimator shouldn't be used if this function returns any status other
