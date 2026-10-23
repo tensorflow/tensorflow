@@ -911,6 +911,7 @@ cc_library(
         "//xla/service:device_assignment",
         "//xla/service:hlo_proto_cc",
         "//xla/tests:literal_test_util",
+        "//xla/tsl/platform:env",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
