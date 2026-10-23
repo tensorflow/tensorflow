@@ -330,6 +330,7 @@ def matrix_exponential(input, name=None):  # pylint: disable=redefined-builtin
 
     if matrix.dtype in [dtypes.float16, dtypes.float32, dtypes.complex64]:
       maxnorm = const(3.925724783138660)
+      max_iters = 14 if matrix.dtype == dtypes.float16 else 126
       squarings = math_ops.maximum(
           math_ops.floor(
               math_ops.log(l1_norm / maxnorm) / math_ops.log(const(2.0))), 0)
@@ -343,6 +344,7 @@ def matrix_exponential(input, name=None):  # pylint: disable=redefined-builtin
       v = _nest_where(conds, (v3, v5, v7))
     elif matrix.dtype in [dtypes.float64, dtypes.complex128]:
       maxnorm = const(5.371920351148152)
+      max_iters = 1021
       squarings = math_ops.maximum(
           math_ops.floor(
               math_ops.log(l1_norm / maxnorm) / math_ops.log(const(2.0))), 0)
@@ -378,13 +380,12 @@ def matrix_exponential(input, name=None):  # pylint: disable=redefined-builtin
       return i + 1, array_ops.where_v2(
           math_ops.less(i, squarings), math_ops.matmul(r, r), r)
 
-    max_iters = tf_cond.cond(
-        is_finite,
-        lambda: math_ops.maximum(1, math_ops.cast(max_squarings, dtypes.int32)),
-        lambda: constant_op.constant(1, dtypes.int32))
-
     _, result = while_loop.while_loop(
-        c, b, [i, result], maximum_iterations=max_iters)
+        c,
+        b,
+        [i, result],
+        maximum_iterations=max_iters if ops.inside_function() else None,
+    )
     if not matrix.shape.is_fully_defined():
       return array_ops.reshape(
           result,
