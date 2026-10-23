@@ -55,17 +55,39 @@ if (TFLITE_C_BUILD_SHARED_LIBS)
   set(TFLITE_C_LIBTYPE SHARED)
 endif()
 
+include(GNUInstallDirs)
+
+# TensorFlow repository root.
+# Required for compiler/mlir header installation paths.
+get_filename_component(
+  TF_SOURCE_DIR
+  "${TFLITE_SOURCE_DIR}/../.."
+  ABSOLUTE)
+
+# Compiler C headers live in different locations between
+# tensorflow/tensorflow and LiteRT.
+if(EXISTS "${TFLITE_SOURCE_DIR}/converter/core/c/tflite_types.h")
+  set(TFLITE_COMPILER_C_DIR "${TFLITE_SOURCE_DIR}/converter/core/c")
+  get_filename_component(TFLITE_INCLUDE_ROOT
+    "${TFLITE_SOURCE_DIR}/.." ABSOLUTE)
+else()
+  set(TFLITE_COMPILER_C_DIR "${TF_SOURCE_DIR}/tensorflow/compiler/mlir/lite/core/c")
+  set(TFLITE_INCLUDE_ROOT "${TF_SOURCE_DIR}")
+endif()
+
 add_library(tensorflowlite_c ${TFLITE_C_LIBTYPE}
   ${TFLITE_SOURCE_DIR}/core/c/c_api.cc
   ${TFLITE_SOURCE_DIR}/core/c/c_api_create.cc
   ${TFLITE_SOURCE_DIR}/core/c/c_api_experimental.cc
+  ${TFLITE_SOURCE_DIR}/core/c/c_api_opaque.cc
   ${TFLITE_SOURCE_DIR}/core/c/common.cc
   ${TFLITE_SOURCE_DIR}/core/c/operator.cc
-  ${TFLITE_SOURCE_DIR}/converter/core/c/tflite_types.h
+  ${TFLITE_COMPILER_C_DIR}/tflite_types.h
   builtin_op_data.h
   c_api.h
   c_api_experimental.h
   c_api_internal.h
+  c_api_opaque.h
   c_api_types.h
   common.h
 )
@@ -84,3 +106,97 @@ endif()
 target_link_libraries(tensorflowlite_c
   tensorflow-lite
 )
+
+if(TFLITE_ENABLE_INSTALL)
+  install(
+    TARGETS tensorflowlite_c
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  )
+  set(TFLITE_C_PUBLIC_HDRS
+    builtin_op_data.h
+    c_api.h
+    c_api_experimental.h
+    c_api_opaque.h
+    c_api_types.h
+    common.h
+    ${TFLITE_SOURCE_DIR}/core/c/builtin_op_data.h
+    ${TFLITE_SOURCE_DIR}/core/c/c_api.h
+    ${TFLITE_SOURCE_DIR}/core/c/c_api_experimental.h
+    ${TFLITE_SOURCE_DIR}/core/c/c_api_opaque.h
+    ${TFLITE_SOURCE_DIR}/core/c/c_api_types.h
+    ${TFLITE_SOURCE_DIR}/core/c/common.h
+    ${TFLITE_SOURCE_DIR}/core/c/operator.h
+    ${TFLITE_SOURCE_DIR}/core/async/c/types.h
+    ${TFLITE_SOURCE_DIR}/builtin_ops.h
+    ${TFLITE_COMPILER_C_DIR}/tflite_types.h
+    ${TFLITE_COMPILER_C_DIR}/builtin_op_data.h
+  )
+  foreach(hdr ${TFLITE_C_PUBLIC_HDRS})
+    get_filename_component(hdr_abs "${hdr}" ABSOLUTE)
+    get_filename_component(hdr_dir "${hdr_abs}" DIRECTORY)
+
+    # Compute install layout relative to source tree so the same
+    # CMake file works when exported to LiteRT (tflite/* layout).
+    file(
+      RELATIVE_PATH rel_dir
+      "${TFLITE_INCLUDE_ROOT}"
+      "${hdr_dir}")
+
+    install(
+      FILES ${hdr_abs}
+      DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/${rel_dir}"
+    )
+  endforeach()
+
+  if(TFLITE_C_BUILD_SHARED_LIBS)
+    file(
+      STRINGS
+      "${TFLITE_SOURCE_DIR}/version.h"
+      _tf_ver_lines
+      REGEX "#define TF_(MAJOR|MINOR|PATCH)_VERSION"
+    )
+
+    set(_ver_major "0")
+    set(_ver_minor "0")
+    set(_ver_patch "0")
+
+    foreach(_line ${_tf_ver_lines})
+      if(_line MATCHES "#define TF_MAJOR_VERSION +([0-9]+)")
+        set(_ver_major "${CMAKE_MATCH_1}")
+      elseif(_line MATCHES "#define TF_MINOR_VERSION +([0-9]+)")
+        set(_ver_minor "${CMAKE_MATCH_1}")
+      elseif(_line MATCHES "#define TF_PATCH_VERSION +([0-9]+)")
+        set(_ver_patch "${CMAKE_MATCH_1}")
+      endif()
+    endforeach()
+
+    set(TFLITE_C_PC_VERSION
+        "${_ver_major}.${_ver_minor}.${_ver_patch}")
+
+    if(IS_ABSOLUTE "${CMAKE_INSTALL_LIBDIR}")
+      set(TFLITE_C_PC_LIBDIR "${CMAKE_INSTALL_LIBDIR}")
+    else()
+      set(TFLITE_C_PC_LIBDIR "\${prefix}/${CMAKE_INSTALL_LIBDIR}")
+    endif()
+
+    if(IS_ABSOLUTE "${CMAKE_INSTALL_INCLUDEDIR}")
+      set(TFLITE_C_PC_INCLUDEDIR "${CMAKE_INSTALL_INCLUDEDIR}")
+    else()
+      set(TFLITE_C_PC_INCLUDEDIR
+          "\${prefix}/${CMAKE_INSTALL_INCLUDEDIR}")
+    endif()
+
+    configure_file(
+      tensorflowlite_c.pc.in
+      ${CMAKE_CURRENT_BINARY_DIR}/tensorflowlite_c.pc
+      @ONLY
+    )
+
+    install(
+      FILES ${CMAKE_CURRENT_BINARY_DIR}/tensorflowlite_c.pc
+      DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig
+    )
+  endif()
+endif()
