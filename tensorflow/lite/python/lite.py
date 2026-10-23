@@ -647,6 +647,7 @@ class TFLiteConverterBase:
     self._experimental_default_to_single_batch_in_tensor_list_ops = False
     self._experimental_unfold_large_splat_constant = False
     self._experimental_fold_fp16_resource_casts = True
+    self._experimental_fold_fp16_casts_into_fully_connected = False
     self._experimental_tf_quantization_mode = None
     # If unset, bias:int32 is by default except 16x8 quant.
     # For 16x8 quant, bias:int64 is used to prevent any overflow by default.
@@ -827,6 +828,9 @@ class TFLiteConverterBase:
             self._experimental_unfold_large_splat_constant
         ),
         "fold_fp16_resource_casts": self._experimental_fold_fp16_resource_casts,
+        "fold_fp16_casts_into_fully_connected": (
+            self._experimental_fold_fp16_casts_into_fully_connected
+        ),
         "default_to_single_batch_in_tensor_list_ops": (
             self._experimental_default_to_single_batch_in_tensor_list_ops
         ),

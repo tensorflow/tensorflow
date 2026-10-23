@@ -37,6 +37,8 @@ typedef struct {
   bool consistent_arithmetic;
   // If true, enable YNN_FLAG_NO_EXCESS_PRECISION.
   bool no_excess_precision;
+  // If true, enable support for blockwise quantization.
+  bool enable_blockwise_quantization;
 } TfLiteYNNPackDelegateOptions;
 
 // Returns a structure with the default delegate options.

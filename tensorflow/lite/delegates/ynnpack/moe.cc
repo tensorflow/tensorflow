@@ -171,7 +171,9 @@ TfLiteStatus IsMoeSupported(const TfLiteRegistration* registration,
 
   const TfLiteTensor* weights[] = {&gate_weights, &up_weights, &down_weights};
   for (const TfLiteTensor* w : weights) {
-    TF_LITE_ENSURE(context, IsTensorSupported(*w, /*allow_per_channel=*/true));
+    TF_LITE_ENSURE(context,
+                   IsTensorSupported(*w, /*allow_per_channel=*/true,
+                                     /*allow_blockwise=*/has_weight_scales));
     TF_LITE_ENSURE(context, tflite::IsConstantTensor(w));
     TF_LITE_ENSURE(context,
                    IsFloatType(w->type) || IsQuantizedWeightType(w->type));
@@ -264,6 +266,19 @@ TfLiteStatus DefineMoeNode(TfLiteContext* context, ynn_subgraph_t subgraph,
        has_weight_scales ? node.inputs[idx.down_scale] : -1},
   };
 
+  if (!has_weight_scales) {
+    for (WeightValues& w : weights) {
+      const TfLiteTensor& t = context->tensors[w.tensor_index];
+      if (t.quantization.type == kTfLiteMultiAxisQuantization) {
+        const auto* mq_params = static_cast<const TfLiteMultiAxisQuantization*>(
+            t.quantization.params);
+        if (mq_params && mq_params->scales >= 0) {
+          w.scale_tensor_index = mq_params->scales;
+        }
+      }
+    }
+  }
+
   uint32_t scale_val = GetOrCreateValueId(context, subgraph, tensor_to_value_id,
                                           node.inputs[idx.scale]);
 
@@ -280,15 +295,41 @@ TfLiteStatus DefineMoeNode(TfLiteContext* context, ynn_subgraph_t subgraph,
 
   if (is_quantized) {
     for (WeightValues& w : weights) {
-      if (has_weight_scales) {
+      if (w.scale_tensor_index != -1) {
         const uint32_t weight_scale_val = GetOrCreateValueId(
             context, subgraph, tensor_to_value_id, w.scale_tensor_index);
-        TF_LITE_ENSURE_YNN_STATUS(ynn_define_static_transpose(
-            subgraph, 3, perm_weights, weight_scale_val, &w.scale_id, 0));
+        const TfLiteTensor& scale_tensor =
+            context->tensors[w.scale_tensor_index];
+        if (scale_tensor.dims && scale_tensor.dims->size == 4) {
+          TF_LITE_ENSURE_YNN_STATUS(ynn_define_static_transpose(
+              subgraph, 3, perm_weights, weight_scale_val, &w.scale_id, 0));
+        } else {
+          w.scale_id = weight_scale_val;
+        }
       } else {
         TF_LITE_ENSURE_STATUS(DefineQuantizationParams(
             context, subgraph, context->tensors[w.tensor_index], &w.scale_id,
             &w.zero_point_id));
+      }
+
+      const TfLiteTensor& weight_tensor = context->tensors[w.tensor_index];
+      if (weight_tensor.quantization.type == kTfLiteMultiAxisQuantization) {
+        const auto* mq_params = static_cast<const TfLiteMultiAxisQuantization*>(
+            weight_tensor.quantization.params);
+        if (mq_params && mq_params->zero_points >= 0) {
+          const uint32_t zp_val = GetOrCreateValueId(
+              context, subgraph, tensor_to_value_id, mq_params->zero_points);
+          const TfLiteTensor& zp_tensor =
+              context->tensors[mq_params->zero_points];
+          if (zp_tensor.dims && zp_tensor.dims->size == 4) {
+            uint32_t transposed_zp_id = YNN_INVALID_VALUE_ID;
+            TF_LITE_ENSURE_YNN_STATUS(ynn_define_static_transpose(
+                subgraph, 3, perm_weights, zp_val, &transposed_zp_id, 0));
+            w.zero_point_id = transposed_zp_id;
+          } else {
+            w.zero_point_id = zp_val;
+          }
+        }
       }
     }
   }

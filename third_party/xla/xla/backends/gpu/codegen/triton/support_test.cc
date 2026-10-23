@@ -1371,12 +1371,10 @@ ENTRY triton_computation {
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 64, 1}, cc);
 }
 
-TEST_P(ConcatenateDeviceTest, TritonSupportsUnalignedConcatenate) {
+TEST_P(ConcatenateDeviceTest, TritonDoesNotSupportUnalignedConcatenate) {
   auto cc = GetParam();
   // Operand 0 has size 63 along concat dim (1), which is not divisible by 64.
   // Operand 1 has size 128 (aligned).
-  // With a compatible tile size (1 along concat dim), tiling propagation
-  // succeeds.
   const std::string kHloTestTemplate = R"(
 ENTRY triton_computation {
   p0 = $0[18,63,20] parameter(0)
@@ -1386,7 +1384,7 @@ ENTRY triton_computation {
   ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
                        ParseTemplateAndGetInstruction(kHloTestTemplate, F32,
                                                       HloOpcode::kConcatenate));
-  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 1, 1}, cc);
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 64, 1}, cc);
 }
 
 INSTANTIATE_TEST_SUITE_P(ConcatenateTestSuite, ConcatenateDeviceTest,

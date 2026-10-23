@@ -1670,6 +1670,22 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     self.assertIn(b'debug_metadata', metadata_names)
 
 
+class MlirBytecodeConverterFlagsTest(test_util.TensorFlowTestCase):
+
+  def testFoldFp16CastsIntoFullyConnected(self):
+    converter = lite.TFLiteMlirBytecodeConverterV2(self.get_temp_dir())
+    flags = convert.build_conversion_flags(
+        **converter._get_base_converter_args()
+    )
+    self.assertFalse(flags.fold_fp16_casts_into_fully_connected)
+
+    converter._experimental_fold_fp16_casts_into_fully_connected = True
+    flags = convert.build_conversion_flags(
+        **converter._get_base_converter_args()
+    )
+    self.assertTrue(flags.fold_fp16_casts_into_fully_connected)
+
+
 class FromSavedModelTest(lite_v2_test_util.ModelTest):
 
   def _createV1SavedModel(self, shape):

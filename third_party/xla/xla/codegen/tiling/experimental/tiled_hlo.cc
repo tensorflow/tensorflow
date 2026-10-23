@@ -543,6 +543,14 @@ RegionContext* FindTargetRegion(RegionContext* current, const Tile& tile) {
   return current;
 }
 
+// Returns the root region of `current`.
+RegionContext* GetRootRegion(RegionContext* current) {
+  while (current->parent != nullptr) {
+    current = current->parent;
+  }
+  return current;
+}
+
 // Recursively constructs a tiled HLO region starting from a set of root
 // instructions.
 //
@@ -621,9 +629,15 @@ absl::StatusOr<TiledHloRegion> CreateHloRegion(
     }
 
     for (int64_t id : spec.operand_ids) {
-      // Hoists and deduplicates loop-invariant instructions.
+      std::optional<const TilingSpace::RTVarInfo*> rt_var_info =
+          tiling_space.GetRTVarInfo(*hlo, id);
+      // Hoists and deduplicates loop-invariant instructions. Runtime variables
+      // are tile-independent scalars that map to a single tiled instruction,
+      // so they are placed in the root region to dominate all their uses.
       RegionContext* target_region =
-          FindTargetRegion(&current_context, operands_tiles[id]);
+          rt_var_info.has_value()
+              ? GetRootRegion(&current_context)
+              : FindTargetRegion(&current_context, operands_tiles[id]);
       ABSL_ASSIGN_OR_RETURN((auto [operand_tiled_hlo, inserted]),
                        target_region->instructions_set->InsertOperand(
                            *hlo, operands[id], std::move(operands_tiles[id])));
@@ -632,8 +646,6 @@ absl::StatusOr<TiledHloRegion> CreateHloRegion(
         target_region->worklist->push_back(operand_tiled_hlo);
       }
 
-      std::optional<const TilingSpace::RTVarInfo*> rt_var_info =
-          tiling_space.GetRTVarInfo(*hlo, id);
       if (rt_var_info.has_value()) {
         rt_symbol_to_tiled_hlo.insert(std::make_pair(
             rt_var_info.value()->id + tiling_space.num_dimensions(),
