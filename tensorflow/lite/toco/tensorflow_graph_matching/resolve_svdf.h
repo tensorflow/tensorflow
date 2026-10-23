@@ -41,7 +41,7 @@ class SvdfCluster : public Cluster {
     const_node_patterns_.push_back(const_pattern);
   }
 
-  ~SvdfCluster() override {}
+  ~SvdfCluster() override = default;
 
  private:
   // The main function which is used to create Const nodes for this cluster.
