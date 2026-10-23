@@ -347,6 +347,21 @@ class CTCLossOpGPU : public OpKernel {
 
     absl::Span<const int32_t> labels_data(labels_values->flat<int32_t>().data(),
                                           num_indices);
+
+    // Validate label values before handing off to cuDNN, which does not
+    // produce a clear error for out-of-range class ids.
+    for (int i = 0; i < num_indices; ++i) {
+      const int32_t label_val = labels_data[i];
+      OP_REQUIRES(
+          ctx, label_val >= 0,
+          absl::InvalidArgumentError(absl::StrCat(
+              "All labels must be nonnegative integers, saw: ", label_val)));
+      OP_REQUIRES(ctx, label_val < num_classes,
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "No label may be greater than num_classes. num_classes: ",
+                      num_classes, ", saw: ", label_val)));
+    }
+
     absl::Span<const int32_t> labels_lengths_data(labels_lengths.data(),
                                                   batch_size);
     absl::Span<const int32_t> input_lengths_data(

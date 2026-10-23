@@ -249,6 +249,8 @@ cc_library(
         "//xla/pjrt:transpose",
         "//xla/pjrt:utils",
         "//xla/pjrt/c:pjrt_c_api_hdrs",
+        "//xla/pjrt/cpu:abstract_cpu_buffer",
+        "//xla/pjrt/cpu:cpu_event",
         "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/pjrt/distributed:protocol_proto_cc",
         "//xla/pjrt/dump",

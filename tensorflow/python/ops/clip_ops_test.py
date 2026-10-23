@@ -200,6 +200,23 @@ class ClipOpsTest(test.TestCase):
     # Axes == [0, 1]
     self._testClipIndexedSlicesByNorm(values, indices, shape, 4.0, [0, 1, 2])
 
+  @test_util.run_in_graph_and_eager_modes
+  def testClipTensorByGlobalNormScalarUseNorm(self):
+    t_list = [
+        constant_op.constant([-3.0, 0.0, 0.0], dtype=dtypes.float32),
+        constant_op.constant([4.0, 0.0, 0.0], dtype=dtypes.bfloat16),
+    ]
+    (a, b), norm = clip_ops.clip_by_global_norm(
+        t_list, clip_norm=4.0, use_norm=5.0
+    )
+    self.assertEqual(a.dtype, dtypes.float32)
+    self.assertEqual(b.dtype, dtypes.bfloat16)
+    self.assertEqual(norm.dtype, dtypes.float32)
+    a_val, b_val, norm_val = self.evaluate([a, b, norm])
+    self.assertAllClose(a_val, [-2.4, 0.0, 0.0])
+    self.assertAllClose(b_val, [3.203125, 0.0, 0.0])
+    self.assertAllClose(norm_val, 5.0)
+
 
 if __name__ == "__main__":
   test.main()

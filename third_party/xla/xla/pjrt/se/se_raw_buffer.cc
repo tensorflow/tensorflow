@@ -341,7 +341,8 @@ void PjRtStreamExecutorRawBuffer::CopyTo(
     PjRtDeviceEventPromiseRef src_usage_event_promise,
     absl::AnyInvocable<void(absl::Status) &&> allocation_event) {
   bool is_intra_client =
-      dst_raw_buffer->memory_space()->client() == memory_space()->client();
+      dst_raw_buffer->memory_space()->client() == memory_space()->client() &&
+      dst_raw_buffer->down_cast<const PjRtStreamExecutorRawBuffer>() != nullptr;
   if (!is_intra_client && allocation_event) {
     std::move(allocation_event)(absl::OkStatus());
   }
@@ -445,7 +446,9 @@ void PjRtStreamExecutorRawBuffer::ScheduleCopyTo(
     PjRtDeviceEventPromiseRef definition_event_promise,
     PjRtDeviceEventPromiseRef src_usage_event_promise,
     absl::AnyInvocable<void(absl::Status) &&> allocation_event) {
-  if (dst_raw_buffer->memory_space()->client() == memory_space()->client()) {
+  if (dst_raw_buffer->memory_space()->client() == memory_space()->client() &&
+      dst_raw_buffer->down_cast<const PjRtStreamExecutorRawBuffer>() !=
+          nullptr) {
     // The copy is deferred to `async_work_runner()`, so record the allocation
     // events now.
     client_->MaterializeAllocationEvent(*this);
