@@ -2386,6 +2386,7 @@ tf_cc_test(
         ":ops_testutil",
         ":ops_util",
         ":reverse_op",
+        ":reverse_sequence_op",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -2394,6 +2395,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "@eigen_archive//:eigen3",
     ],
 )
 
