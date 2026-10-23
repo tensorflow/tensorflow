@@ -4005,11 +4005,11 @@ def one_hot(indices,
   `on_value` and `off_value` must have matching data types. If `dtype` is also
   provided, they must be the same data type as specified by `dtype`.
 
-  If `on_value` is not provided, it will default to the value `1` with type
-  `dtype`
+  If `on_value` is not provided, it will default to the value `1` (`True` for
+  boolean) with type `dtype`
 
-  If `off_value` is not provided, it will default to the value `0` with type
-  `dtype`
+  If `off_value` is not provided, it will default to the value `0` (`False` for
+  boolean) with type `dtype`
 
   If the input `indices` is rank `N`, the output will have rank `N+1`. The
   new axis is created at dimension `axis` (default: the new axis is appended
