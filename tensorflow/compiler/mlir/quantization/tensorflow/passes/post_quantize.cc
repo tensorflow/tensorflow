@@ -16,7 +16,6 @@ limitations under the License.
 // This transformation pass applies some clean up steps after quantization.
 
 #include <memory>
-#include <string>
 #include <utility>
 
 #include "llvm/Support/Casting.h"
