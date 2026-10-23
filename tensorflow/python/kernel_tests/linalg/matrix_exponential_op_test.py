@@ -22,6 +22,7 @@ from tensorflow.python.client import session
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import forwardprop
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -47,27 +48,40 @@ def np_expm(x):  # pylint: disable=invalid-name
   return y
 
 
+# Half precision dtypes are accumulated in float32 by `matrix_exponential`.
+_HALF_TYPES = (np.float16, dtypes.bfloat16.as_numpy_dtype)
+
+
 @test_util.run_all_without_tensor_float_32("Avoid TF32-based matmuls.")
 class ExponentialOpTest(test.TestCase):
 
   def _verifyExponential(self, x, np_type):
     inp = x.astype(np_type)
+    # Accumulating the Taylor series in 16-bit would itself be inaccurate, so
+    # half precision inputs are compared against a float64 reference.
+    ref_type = np.float64 if np_type in _HALF_TYPES else np_type
     with test_util.use_gpu():
       tf_ans = linalg_impl.matrix_exponential(inp)
       if x.size == 0:
-        np_ans = np.empty(x.shape, dtype=np_type)
+        np_ans = np.empty(x.shape, dtype=ref_type)
       else:
         if x.ndim > 2:
-          np_ans = np.zeros(inp.shape, dtype=np_type)
+          np_ans = np.zeros(inp.shape, dtype=ref_type)
           for i in itertools.product(*[range(x) for x in inp.shape[:-2]]):
-            np_ans[i] = np_expm(inp[i])
+            np_ans[i] = np_expm(inp[i].astype(ref_type))
         else:
-          np_ans = np_expm(inp)
+          np_ans = np_expm(inp.astype(ref_type))
       out = self.evaluate(tf_ans)
-      self.assertAllClose(np_ans, out, rtol=1e-3, atol=1e-3)
+      tol = 1e-2 if np_type in _HALF_TYPES else 1e-3
+      self.assertAllClose(np_ans, out, rtol=tol, atol=tol)
 
   def _verifyExponentialReal(self, x):
-    for np_type in [np.float32, np.float64]:
+    for np_type in [
+        np.float16,
+        dtypes.bfloat16.as_numpy_dtype,
+        np.float32,
+        np.float64,
+    ]:
       self._verifyExponential(x, np_type)
 
   def _verifyExponentialComplex(self, x):
