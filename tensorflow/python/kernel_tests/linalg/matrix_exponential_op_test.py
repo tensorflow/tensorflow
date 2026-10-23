@@ -24,7 +24,6 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.eager import forwardprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -262,6 +261,18 @@ class ExponentialOpTest(test.TestCase):
 
     jit_grad_fn = def_function.function(compute_grad, jit_compile=True)
 
+    @def_function.function(jit_compile=True)
+    def jit_dynamic_grad_fn():
+      x = random_ops.random_normal([2, 2], seed=42, dtype=dtypes.float32)
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y = linalg_impl.matrix_exponential(x)
+      return y, tape.gradient(y, x)
+
+    dyn_y, dyn_g = jit_dynamic_grad_fn()
+    self.assertEqual(dyn_y.shape, (2, 2))
+    self.assertEqual(dyn_g.shape, (2, 2))
+
     for dtype in [dtypes.float32, dtypes.float64]:
       # Inputs triggering squarings == 0 and squarings > 0
       test_matrices = [
@@ -281,32 +292,26 @@ class ExponentialOpTest(test.TestCase):
         jit_y, jit_g = jit_grad_fn(x_empty)
         self.assertAllEqual(jit_y.shape, empty_shape)
         self.assertAllEqual(jit_g.shape, empty_shape)
+        self.assertAllEqual(jit_y, array_ops.zeros(empty_shape, dtype=dtype))
+        self.assertAllEqual(jit_g, array_ops.zeros(empty_shape, dtype=dtype))
 
       # Non-finite inputs: NaN, +inf, -inf
       for non_finite_val in [float("nan"), float("inf"), float("-inf")]:
         x_nf = constant_op.constant(
             [[non_finite_val, 0.0], [0.0, 1.0]], dtype=dtype
         )
-        eager_y, _ = compute_grad(x_nf)
-        jit_y, _ = jit_grad_fn(x_nf)
+        eager_y, eager_g = compute_grad(x_nf)
+        jit_y, jit_g = jit_grad_fn(x_nf)
         self.assertAllEqual(math_ops.is_nan(jit_y), math_ops.is_nan(eager_y))
+        self.assertIsNone(eager_g)
+        self.assertAllEqual(
+            jit_g, constant_op.constant([[0.0, 0.0], [0.0, 0.0]], dtype=dtype)
+        )
 
     # Unsupported dtypes
-    with self.assertRaises(ValueError):
+    with self.assertRaisesRegex(ValueError, "does not support matrices"):
       linalg_impl.matrix_exponential(
-          constant_op.constant(
-              [[1.0, 0.0], [0.0, 1.0]], dtype=dtypes.bfloat16
-          )
-      )
-
-    with self.assertRaises((errors_impl.InvalidArgumentError,
-                            errors_impl.NotFoundError)):
-      self.evaluate(
-          linalg_impl.matrix_exponential(
-              constant_op.constant(
-                  [[1.0, 0.0], [0.0, 1.0]], dtype=dtypes.float16
-              )
-          )
+          constant_op.constant([[1, 0], [0, 1]], dtype=dtypes.int32)
       )
 
 

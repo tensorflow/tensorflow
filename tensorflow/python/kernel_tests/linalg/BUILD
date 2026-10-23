@@ -632,7 +632,9 @@ tf_py_strict_test(
     tags = ["no_windows_gpu"],
     deps = [
         "//tensorflow/python/client:session",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
