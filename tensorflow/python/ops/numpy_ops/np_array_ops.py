@@ -162,7 +162,7 @@ def full_like(a, fill_value, dtype=None, order='K', subok=True, shape=None):  # 
   return array_ops.broadcast_to(fill_value, array_ops.shape(a))
 
 
-def _cast(x, dtype):
+def _cast(x, dtype, name=None):
   """Casts `x` to `dtype`, testing complex values against zero for bool.
 
   `math_ops.cast` keeps only the real part of a complex tensor, so `-3j` would
@@ -170,8 +170,8 @@ def _cast(x, dtype):
   nonzero.
   """
   if x.dtype.is_complex and dtypes.as_dtype(dtype) == dtypes.bool:
-    return math_ops.not_equal(x, 0)
-  return math_ops.cast(x, dtype)
+    return math_ops.not_equal(x, 0, name=name)
+  return math_ops.cast(x, dtype, name=name)
 
 
 def _array_internal(val, dtype=None, copy=True, ndmin=0):  # pylint: disable=redefined-outer-name
