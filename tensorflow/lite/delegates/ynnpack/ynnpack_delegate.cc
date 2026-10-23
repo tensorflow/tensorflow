@@ -188,6 +188,9 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
       } else if (IsBinaryOp(node.builtin_code)) {
         TF_LITE_ENSURE_STATUS(
             DefineBinaryNode(context, subgraph_, tensor_to_value_id_, node));
+      } else if (node.builtin_code == kTfLiteBuiltinNotEqual) {
+        TF_LITE_ENSURE_STATUS(
+            DefineNotEqualNode(context, subgraph_, tensor_to_value_id_, node));
       } else if (node.builtin_code == kTfLiteBuiltinTranspose) {
         TF_LITE_ENSURE_STATUS(
             DefineTransposeNode(context, subgraph_, tensor_to_value_id_, node));
@@ -252,6 +255,9 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
       } else if (node.builtin_code == kTfLiteBuiltinStablehloClamp) {
         TF_LITE_ENSURE_STATUS(DefineStablehloClampNode(
             context, subgraph_, tensor_to_value_id_, node));
+      } else if (node.builtin_code == kTfLiteBuiltinSelectV2) {
+        TF_LITE_ENSURE_STATUS(
+            DefineSelectV2Node(context, subgraph_, tensor_to_value_id_, node));
       } else if (node.builtin_code == kTfLiteBuiltinQuantize) {
         TF_LITE_ENSURE_STATUS(
             DefineQuantizeNode(context, subgraph_, tensor_to_value_id_, node));
@@ -488,6 +494,8 @@ class YNNPackDelegate : public SimpleDelegateInterface {
              kTfLiteOk;
     } else if (IsBinaryOp(builtin_code)) {
       return IsBinaryOpSupported(registration, node, context) == kTfLiteOk;
+    } else if (builtin_code == kTfLiteBuiltinNotEqual) {
+      return IsNotEqualSupported(registration, node, context) == kTfLiteOk;
     } else if (builtin_code == kTfLiteBuiltinTranspose) {
       return IsTransposeSupported(registration, node, context, options_) ==
              kTfLiteOk;
@@ -543,6 +551,8 @@ class YNNPackDelegate : public SimpleDelegateInterface {
     } else if (builtin_code == kTfLiteBuiltinStablehloClamp) {
       return IsStablehloClampSupported(registration, node, context) ==
              kTfLiteOk;
+    } else if (builtin_code == kTfLiteBuiltinSelectV2) {
+      return IsSelectV2Supported(registration, node, context) == kTfLiteOk;
     } else if (builtin_code == kTfLiteBuiltinQuantize) {
       return IsQuantizeSupported(registration, node, context) == kTfLiteOk;
     } else if (builtin_code == kTfLiteBuiltinDequantize) {
