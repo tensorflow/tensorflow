@@ -3161,9 +3161,21 @@ bool FindInstanceNorm(RemapperContext* ctx, int node_index,
   dtype = mean_axes_tensor.dtype();
   if (dtype != DT_INT32 && dtype != DT_INT64) return false;
 
-  return (dtype == DT_INT32)
-             ? IsInstanceNormReduction<int32_t>(input_shape, mean_axes_tensor)
-             : IsInstanceNormReduction<int64_t>(input_shape, mean_axes_tensor);
+  const bool is_instance_norm_reduction =
+      (dtype == DT_INT32)
+          ? IsInstanceNormReduction<int32_t>(input_shape, mean_axes_tensor)
+          : IsInstanceNormReduction<int64_t>(input_shape, mean_axes_tensor);
+  if (!is_instance_norm_reduction) return false;
+
+  // gamma and beta must have one element per channel: the fused op reads that
+  // many parameters. The reduction axes tell the layout, [1, ...] is
+  // channels-last and [2, ...] channels-first.
+  const int64_t first_axis = (dtype == DT_INT32)
+                                 ? mean_axes_tensor.flat<int32_t>()(0)
+                                 : mean_axes_tensor.flat<int64_t>()(0);
+  const int channel_dim = (first_axis == 1) ? input_shape.dim_size() - 1 : 1;
+  const int64_t channels = input_shape.dim(channel_dim).size();
+  return channels >= 0 && gamma_tensor.NumElements() == channels;
 }
 
 // Find the pattern with activation following instance normalization

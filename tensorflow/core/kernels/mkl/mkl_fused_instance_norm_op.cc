@@ -70,6 +70,14 @@ class MklFusedInstanceNormOp : public OpKernel {
       TensorFormat tensor_format;
       OP_REQUIRES(ctx, FormatFromString(data_format_, &tensor_format),
                   absl::InvalidArgumentError("Invalid data format"));
+      // scale and shift are read per channel by the oneDNN primitive.
+      const int64_t num_channels = src_tensor.dim_size(
+          GetTensorFeatureDimIndex(src_tensor.dims(), tensor_format));
+      OP_REQUIRES(
+          ctx, static_cast<int64_t>(num_elements_scale) == num_channels,
+          absl::InvalidArgumentError(absl::StrCat(
+              "scale and shift must have one element per channel (",
+              num_channels, "), got ", num_elements_scale)));
 
       // Create the oneDNN wrapper over Eigen threadpool and set max threads
       // in oneDNN.
