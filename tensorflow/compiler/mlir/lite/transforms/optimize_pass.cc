@@ -839,18 +839,102 @@ Value Get1DShapeValue(OpBuilder& builder, Value value) {
                          DenseIntElementsAttr::get(output_type, num_elements));
 }
 
-Type GetEmbeddingLookupShape(Value lookup, Value value) {
-  auto lookup_type = mlir::cast<ShapedType>(lookup.getType());
-  if (!lookup_type.hasStaticShape()) {
-    return nullptr;
+// Builds the replacement for
+//   FullyConnected(OneHot(indices, depth, on=1, off=0, axis=-1), filter)
+// as an EmbeddingLookup into the transposed `filter`.
+//
+// OneHot yields an all-zero row for indices outside `[0, depth)`, so the FC
+// result for such an index is zero, whereas EmbeddingLookup rejects
+// out-of-range indices at runtime. To preserve the OneHot semantics, the
+// indices are clamped into range for the lookup, and the rows whose original
+// index was out of range are replaced with zeros:
+//   clamped = min(max(indices, 0), depth - 1)
+//   result = select(clamped == indices, lookup(clamped, filter^T), 0)
+// The filter itself is not modified, so no copy of the table is created.
+Value BuildOneHotLookup(OpBuilder& builder, Value fc_output, Value indices,
+                        Value filter) {
+  const Location loc = fc_output.getLoc();
+  auto filter_type = mlir::cast<RankedTensorType>(filter.getType());
+  const int64_t units = filter_type.getDimSize(0);
+  const int64_t depth = filter_type.getDimSize(1);
+  const Type element_type = filter_type.getElementType();
+  const Type i32 = builder.getI32Type();
+  const auto scalar_i32_type = RankedTensorType::get({}, i32);
+
+  // Flatten the indices to 1D.
+  auto indices_type = mlir::cast<ShapedType>(indices.getType());
+  Value flat_indices = indices;
+  if (indices_type.getRank() != 1) {
+    flat_indices = ReshapeOp::create(
+        builder, loc,
+        RankedTensorType::get({indices_type.getNumElements()}, i32), indices,
+        Get1DShapeValue(builder, indices));
   }
-  auto value_type = mlir::cast<ShapedType>(value.getType());
-  if (!value_type.hasStaticShape() || value_type.getRank() != 2) {
-    return nullptr;
+  auto flat_type = mlir::cast<RankedTensorType>(flat_indices.getType());
+  const int64_t num_indices = flat_type.getDimSize(0);
+
+  // Clamp the indices into `[0, depth)` and record which ones were in range.
+  Value zero_index = arith::ConstantOp::create(
+      builder, loc, DenseIntElementsAttr::get(scalar_i32_type, 0));
+  Value max_index = arith::ConstantOp::create(
+      builder, loc,
+      DenseIntElementsAttr::get(scalar_i32_type,
+                                static_cast<int32_t>(depth - 1)));
+  Value clamped = MinimumOp::create(
+      builder, loc, flat_type,
+      MaximumOp::create(builder, loc, flat_type, flat_indices, zero_index),
+      max_index);
+  Value in_range =
+      EqualOp::create(builder, loc, flat_type.clone(builder.getI1Type()),
+                      clamped, flat_indices);
+
+  // Look up the clamped indices in the transposed filter.
+  Value perm = arith::ConstantOp::create(
+      builder, loc,
+      DenseIntElementsAttr::get(RankedTensorType::get({2}, i32),
+                                llvm::ArrayRef<int32_t>{1, 0}));
+  Value table = TransposeOp::create(
+      builder, loc, RankedTensorType::get({depth, units}, element_type), filter,
+      perm);
+  auto lookup_type = RankedTensorType::get({num_indices, units}, element_type);
+  Value lookup =
+      EmbeddingLookupOp::create(builder, loc, lookup_type, clamped, table);
+
+  // Zero the rows of out-of-range indices.
+  auto mask_shape_type = RankedTensorType::get({2}, i32);
+  Value mask_shape = arith::ConstantOp::create(
+      builder, loc,
+      DenseIntElementsAttr::get(
+          mask_shape_type,
+          llvm::ArrayRef<int32_t>{ShapedType::isDynamic(num_indices)
+                                      ? -1
+                                      : static_cast<int32_t>(num_indices),
+                                  1}));
+  Value mask = ReshapeOp::create(
+      builder, loc,
+      RankedTensorType::get({num_indices, 1}, builder.getI1Type()), in_range,
+      mask_shape);
+  Value zero_value = arith::ConstantOp::create(
+      builder, loc,
+      builder.getZeroAttr(RankedTensorType::get({}, element_type)));
+  Value result =
+      SelectV2Op::create(builder, loc, lookup_type, mask, lookup, zero_value);
+
+  if (result.getType() == fc_output.getType()) return result;
+  auto output_type = mlir::cast<ShapedType>(fc_output.getType());
+  SmallVector<int32_t> output_shape;
+  for (int64_t dim : output_type.getShape()) {
+    output_shape.push_back(
+        ShapedType::isDynamic(dim) ? -1 : static_cast<int32_t>(dim));
   }
-  SmallVector<int64_t> new_shape = {lookup_type.getNumElements(),
-                                    value_type.getDimSize(0)};
-  return value_type.clone(new_shape);
+  Value output_shape_value = arith::ConstantOp::create(
+      builder, loc,
+      DenseIntElementsAttr::get(
+          RankedTensorType::get({static_cast<int64_t>(output_shape.size())},
+                                i32),
+          llvm::ArrayRef<int32_t>(output_shape)));
+  return ReshapeOp::create(builder, loc, output_type, result,
+                           output_shape_value);
 }
 
 // Creates FullyConnected op from params and returns the output.

@@ -2063,6 +2063,7 @@ std::unique_ptr<PjRtClient> MakeStreamExecutorGpuClient(
   devices_copy.reserve(devices.size());
   std::vector<std::unique_ptr<PjRtMemorySpace>> memory_spaces;
   const int basePinnedId = devices.size();
+  const int baseUnpinnedId = 2 * devices.size();
   for (auto& device : devices) {
     device->SetClient(result.get());
     if (device->IsAddressable()) {
@@ -2077,6 +2078,10 @@ std::unique_ptr<PjRtClient> MakeStreamExecutorGpuClient(
                                                             device.get());
       device->AttachMemorySpace(pinned.get());
       memory_spaces.push_back(std::move(pinned));
+      auto unpinned = std::make_unique<UnpinnedHostMemorySpace>(
+          baseUnpinnedId + id, device.get());
+      device->AttachMemorySpace(unpinned.get());
+      memory_spaces.push_back(std::move(unpinned));
     }
     devices_copy.push_back(std::move(device));
   }
