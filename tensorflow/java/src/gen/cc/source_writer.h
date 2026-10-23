@@ -180,7 +180,7 @@ class SourceWriter {
       return declared_types_;
     }
    protected:
-    virtual void DoVisit(const Type& type);
+    void DoVisit(const Type& type) override;
 
    private:
     std::list<const Type*> declared_types_;
@@ -192,11 +192,11 @@ class SourceWriter {
    public:
     explicit TypeImporter(const std::string& current_package)
         : current_package_(current_package) {}
-    virtual ~TypeImporter() = default;
+    ~TypeImporter() override = default;
     const std::set<std::string> imports() { return imports_; }
 
    protected:
-    virtual void DoVisit(const Type& type);
+    void DoVisit(const Type& type) override;
 
    private:
     std::string current_package_;
@@ -223,7 +223,7 @@ class SourceWriter {
 class SourceFileWriter : public SourceWriter {
  public:
   explicit SourceFileWriter(WritableFile* file) : file_(file) {}
-  virtual ~SourceFileWriter() = default;
+  ~SourceFileWriter() override = default;
 
  protected:
   void DoAppend(const absl::string_view& str) override {
@@ -240,7 +240,7 @@ class SourceBufferWriter : public SourceWriter {
   SourceBufferWriter() : owns_buffer_(true), buffer_(new std::string()) {}
   explicit SourceBufferWriter(std::string* buffer)
       : owns_buffer_(false), buffer_(buffer) {}
-  virtual ~SourceBufferWriter() {
+  ~SourceBufferWriter() override {
     if (owns_buffer_) delete buffer_;
   }
   const std::string& str() { return *buffer_; }
