@@ -600,6 +600,24 @@ cc_library(
     deps = [":system_libs"],
 )
 
+sh_binary(
+    name = "hipcc",
+    srcs = ["%{rocm_root}/bin/hipcc"],
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
+    name = "llvm-link",
+    srcs = ["%{rocm_root}/lib/llvm/bin/llvm-link"],
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
+    name = "opt",
+    srcs = ["%{rocm_root}/lib/llvm/bin/opt"],
+    visibility = ["//visibility:public"],
+)
+
 filegroup(
     name = "toolchain_data",
     srcs = glob(
