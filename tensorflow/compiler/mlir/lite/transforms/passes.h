@@ -123,7 +123,7 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizePass(
 
 std::unique_ptr<OperationPass<func::FuncOp>> CreateDefaultQuantizePass();
 
-std::unique_ptr<OperationPass<func::FuncOp>>
+std::unique_ptr<OperationPass<ModuleOp>>
 CreateFoldStablehloConstantTransformsPass();
 
 std::unique_ptr<OperationPass<func::FuncOp>>
