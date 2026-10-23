@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // ==============================================================================
-// RUN: sdy_opt %s -allow-unregistered-dialect  -sdy-insert-explicit-reshards='enable-full-version=false' | FileCheck %s
+// RUN: sdy_opt %s -allow-unregistered-dialect  -sdy-insert-explicit-reshards | FileCheck %s
 
 sdy.mesh @mesh = <["x"=2, "y"=2, "z"=4]>
 sdy.mesh @other_mesh = <["x"=2, "y"=2]>
