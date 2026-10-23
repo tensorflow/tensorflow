@@ -1730,9 +1730,8 @@ def batch_normalization(x,
     # `offset - mean * inv` rounds to `-mean * inv` and the whole expression
     # collapses to 0 instead of returning `offset`. Centering first keeps
     # every intermediate proportional to the data, so the offset survives.
-    # Half precision inputs are accumulated in `float32` and cast back at the
-    # end, so this does not lose the extra precision that the previous
-    # expression got from evaluating the parameter terms in `float32`.
+    # The computation stays in the input dtype, so it does not copy the batch
+    # tensor to compute in a wider type.
     #
     # Note: the previous expression was documented as being depended on by
     # `tensorflow/contrib/quantize/python/fold_batch_norms.py`, which was
@@ -1743,18 +1742,13 @@ def batch_normalization(x,
     # node while `+` emits `AddV2` here. The centered form therefore gives up
     # the conv-scale folding for graphs built with this function, which is an
     # inference-time optimization rather than a correctness property.
-    x_dtype = x.dtype
-    compute_dtype = (
-        dtypes.float32
-        if x_dtype in (dtypes.float16, dtypes.bfloat16)
-        else x_dtype
-    )
-    x = math_ops.cast(x, compute_dtype)
-    centered = x - math_ops.cast(mean, compute_dtype)
-    normalized = centered * math_ops.cast(inv, compute_dtype)
+    x_dtype = dtypes.as_dtype(x.dtype).base_dtype
+    inv = math_ops.cast(inv, x_dtype)
+    centered = x - math_ops.cast(mean, x_dtype)
+    normalized = centered * inv
     if offset is not None:
-      normalized += math_ops.cast(offset, compute_dtype)
-    return math_ops.cast(normalized, x_dtype)
+      normalized += math_ops.cast(offset, x_dtype)
+    return normalized
 
 
 @tf_export(v1=["nn.fused_batch_norm"])
