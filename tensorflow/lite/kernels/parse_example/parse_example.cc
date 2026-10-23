@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
+#include "third_party/protobuf/io/coded_stream.h"
 #include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/example/feature.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -38,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/tstring.h"
