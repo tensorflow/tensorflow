@@ -1283,6 +1283,16 @@ class SparseTransposeTest(test.TestCase):
       ):
         sparse_ops.sparse_transpose(sp_input, perm=invalid_perm)
 
+  @test_util.run_deprecated_v1
+  def testTransposeInvalidPermDynamicRank(self):
+    sp_input = array_ops.sparse_placeholder(dtypes.float32, shape=None)
+    for invalid_perm in [[0, 0], [0, 2], [-1, 0], [[1, 0]]]:
+      with self.assertRaisesRegex(
+          ValueError,
+          "'perm' must be a 1-D permutation of the dimensions of 'sp_input'",
+      ):
+        sparse_ops.sparse_transpose(sp_input, perm=invalid_perm)
+
 
 class SparsePlaceholderTest(test.TestCase):
 
