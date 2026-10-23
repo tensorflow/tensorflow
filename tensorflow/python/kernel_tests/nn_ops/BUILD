@@ -374,6 +374,7 @@ cuda_py_strict_test(
     name = "ctc_loss_op_test",
     size = "medium",
     srcs = ["ctc_loss_op_test.py"],
+    shard_count = 3,
     xla_enable_strict_auto_jit = False,  # b/148153828
     deps = [
         "//tensorflow/python/eager:backprop",
