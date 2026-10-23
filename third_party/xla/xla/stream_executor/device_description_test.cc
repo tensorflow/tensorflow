@@ -225,6 +225,22 @@ TEST(DeviceDescription, ProtoConversion) {
   EXPECT_THAT(from_proto, Eq(device_description));
 }
 
+TEST(DeviceDescription, LocalityDomainCountProtoAndEquality) {
+  DeviceDescription device_description;
+  device_description.set_locality_domain_count(2);
+  ASSERT_OK_AND_ASSIGN(
+      DeviceDescription from_proto,
+      DeviceDescription::FromProto(device_description.ToProto()));
+  EXPECT_EQ(from_proto.locality_domain_count(), 2);
+  EXPECT_EQ(from_proto, device_description);
+
+  DeviceDescription other = device_description;
+  other.set_locality_domain_count(3);
+  EXPECT_NE(other, device_description);
+  EXPECT_FALSE(other.EqualsTo(device_description,
+                              {DeviceDescription::CompareOptions::kPortable}));
+}
+
 TEST(DeviceDescription, EqualsToIgnoringVersionNumbers) {
   ASSERT_OK_AND_ASSIGN(
       stream_executor::GpuTargetConfigProto gpu_target_config_proto,

@@ -106,6 +106,11 @@ class GpuTopology {
   const gpu::GpuTargetConfig& gpu_target_config() const {
     return *gpu_target_config_;
   }
+  int32_t locality_domain_count() const {
+    return gpu_target_config_.has_value()
+               ? gpu_target_config_->device_description.locality_domain_count()
+               : 0;
+  }
 
   const std::optional<cpu::TargetMachineOptions>& host_target_machine_options()
       const {
