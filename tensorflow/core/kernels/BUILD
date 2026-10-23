@@ -1924,7 +1924,7 @@ tf_cuda_cc_test(
     tags = [
         "no_cuda_asan",  # TODO(b/171342275): re-enable.
         "no_mac_arm64",
-        "requires-gpu-sm70",
+        "requires-gpu-sm90",
     ],
     deps = [
         ":conv_ops",
@@ -5028,7 +5028,22 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core/util:overflow",
+        "//tensorflow/core/platform:errors",
+        "@com_google_absl//absl/status",
+        "@eigen_archive//:eigen3",
+    ],
+)
+
+tf_cuda_only_cc_test(
+    name = "depth_space_ops_gpu_test",
+    size = "small",
+    srcs = ["depth_space_ops_gpu_test.cu.cc"],
+    deps = [
+        ":depth_space_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:status_matchers",
         "@com_google_absl//absl/status",
         "@eigen_archive//:eigen3",
     ],
