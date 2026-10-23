@@ -39,9 +39,10 @@ void MaybeSetDebugEventTimestamp(DebugEvent* debug_event, Env* env) {
 }  // namespace
 
 SingleDebugEventFileWriter::SingleDebugEventFileWriter(
-    const std::string& file_path)
+    const std::string& file_path, bool append)
     : env_(Env::Default()),
       file_path_(file_path),
+      append_(append),
       num_outstanding_events_(0),
       writer_mu_() {}
 
@@ -56,9 +57,15 @@ absl::Status SingleDebugEventFileWriter::InitLocked() {
   // Flush() and Close() call have access to writable_file_.
   record_writer_.reset();
 
-  TF_RETURN_WITH_CONTEXT_IF_ERROR(
-      env_->NewWritableFile(file_path_, &writable_file_),
-      "Creating writable file ", file_path_);
+  if (append_) {
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(
+        env_->NewAppendableFile(file_path_, &writable_file_),
+        "Opening appendable file ", file_path_);
+  } else {
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(
+        env_->NewWritableFile(file_path_, &writable_file_),
+        "Creating writable file ", file_path_);
+  }
   record_writer_ = std::make_unique<io::RecordWriter>(writable_file_.get());
   if (record_writer_ == nullptr) {
     return absl::UnknownError(
@@ -165,7 +172,18 @@ absl::Status DebugEventsWriter::LookUpDebugEventsWriter(
 
 absl::Status DebugEventsWriter::Init() {
   mutex_lock l(initialization_mu_);
+  return InitLocked();
+}
 
+absl::Status DebugEventsWriter::InitUnlessClosed() {
+  mutex_lock l(initialization_mu_);
+  if (is_closed_) {
+    return absl::OkStatus();
+  }
+  return InitLocked();
+}
+
+absl::Status DebugEventsWriter::InitLocked() {
   // TODO(cais): We currently don't check for file deletion. When the need
   // arises, check and fix file deletion.
   if (is_initialized_) {
@@ -177,23 +195,30 @@ absl::Status DebugEventsWriter::Init() {
                                     "Failed to create directory ", dump_root_);
   }
 
-  int64_t time_in_seconds = env_->NowMicros() / 1e6;
-  file_prefix_ = io::JoinPath(
-      dump_root_, absl::StrFormat("%s.%010lld.%s", kFileNamePrefix,
-                                  static_cast<long long>(time_in_seconds),
-                                  port::Hostname().c_str()));
+  // After Close(), the files are reopened for appending, so that everything
+  // written under the dump root stays in a single file set.
+  if (!is_closed_) {
+    int64_t time_in_seconds = env_->NowMicros() / 1e6;
+    file_prefix_ = io::JoinPath(
+        dump_root_, absl::StrFormat("%s.%010lld.%s", kFileNamePrefix,
+                                    static_cast<long long>(time_in_seconds),
+                                    port::Hostname().c_str()));
+  }
   TF_RETURN_IF_ERROR(InitNonMetadataFile(SOURCE_FILES));
   TF_RETURN_IF_ERROR(InitNonMetadataFile(STACK_FRAMES));
   TF_RETURN_IF_ERROR(InitNonMetadataFile(GRAPHS));
 
   // The metadata file should be created.
   std::string metadata_filename = GetFileNameInternal(METADATA);
-  auto metadata_writer =
-      std::make_unique<SingleDebugEventFileWriter>(metadata_filename);
+  auto metadata_writer = std::make_unique<SingleDebugEventFileWriter>(
+      metadata_filename, is_closed_);
   if (metadata_writer == nullptr) {
     return absl::UnknownError(
         "Could not create debug event metadata file writer");
   }
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(metadata_writer->Init(),
+                                  "Initializing debug event writer at path ",
+                                  metadata_filename);
 
   {
     mutex_lock l(writers_mu_);
@@ -218,54 +243,64 @@ absl::Status DebugEventsWriter::Init() {
   TF_RETURN_IF_ERROR(InitNonMetadataFile(EXECUTION));
   TF_RETURN_IF_ERROR(InitNonMetadataFile(GRAPH_EXECUTION_TRACES));
   is_initialized_ = true;
+  is_closed_ = false;
   return absl::OkStatus();
 }
 
 absl::Status DebugEventsWriter::WriteSourceFile(SourceFile* source_file) {
+  std::unique_ptr<SourceFile> file(source_file);
+  TF_RETURN_IF_ERROR(InitUnlessClosed());
   DebugEvent debug_event;
-  debug_event.set_allocated_source_file(source_file);
+  debug_event.set_allocated_source_file(file.release());
   return SerializeAndWriteDebugEvent(&debug_event, SOURCE_FILES);
 }
 
 absl::Status DebugEventsWriter::WriteStackFrameWithId(
     StackFrameWithId* stack_frame_with_id) {
+  std::unique_ptr<StackFrameWithId> frame(stack_frame_with_id);
+  TF_RETURN_IF_ERROR(InitUnlessClosed());
   DebugEvent debug_event;
-  debug_event.set_allocated_stack_frame_with_id(stack_frame_with_id);
+  debug_event.set_allocated_stack_frame_with_id(frame.release());
   return SerializeAndWriteDebugEvent(&debug_event, STACK_FRAMES);
 }
 
 absl::Status DebugEventsWriter::WriteGraphOpCreation(
     GraphOpCreation* graph_op_creation) {
+  std::unique_ptr<GraphOpCreation> op_creation(graph_op_creation);
+  TF_RETURN_IF_ERROR(InitUnlessClosed());
   DebugEvent debug_event;
-  debug_event.set_allocated_graph_op_creation(graph_op_creation);
+  debug_event.set_allocated_graph_op_creation(op_creation.release());
   return SerializeAndWriteDebugEvent(&debug_event, GRAPHS);
 }
 
 absl::Status DebugEventsWriter::WriteDebuggedGraph(
     DebuggedGraph* debugged_graph) {
+  std::unique_ptr<DebuggedGraph> graph(debugged_graph);
+  TF_RETURN_IF_ERROR(InitUnlessClosed());
   DebugEvent debug_event;
-  debug_event.set_allocated_debugged_graph(debugged_graph);
+  debug_event.set_allocated_debugged_graph(graph.release());
   return SerializeAndWriteDebugEvent(&debug_event, GRAPHS);
 }
 
 absl::Status DebugEventsWriter::WriteExecution(Execution* execution) {
+  std::unique_ptr<Execution> exec(execution);
+  TF_RETURN_IF_ERROR(InitUnlessClosed());
   if (circular_buffer_size_ <= 0) {
     // No cyclic-buffer behavior.
     DebugEvent debug_event;
-    debug_event.set_allocated_execution(execution);
+    debug_event.set_allocated_execution(exec.release());
     return SerializeAndWriteDebugEvent(&debug_event, EXECUTION);
   } else {
     // Circular buffer behavior.
     DebugEvent debug_event;
     MaybeSetDebugEventTimestamp(&debug_event, env_);
-    debug_event.set_allocated_execution(execution);
+    debug_event.set_allocated_execution(exec.release());
     std::string serialized;
     debug_event.SerializeToString(&serialized);
 
     tf_shared_lock writers_lock(writers_mu_);
     if (execution_writer_ == nullptr) {
-      return absl::FailedPreconditionError(
-          "Debug events execution writer is not initialized");
+      return absl::OkStatus();
     }
     mutex_lock l(execution_buffer_mu_);
     execution_buffer_.emplace_back(std::move(serialized));
@@ -278,24 +313,24 @@ absl::Status DebugEventsWriter::WriteExecution(Execution* execution) {
 
 absl::Status DebugEventsWriter::WriteGraphExecutionTrace(
     GraphExecutionTrace* graph_execution_trace) {
-  TF_RETURN_IF_ERROR(Init());
+  std::unique_ptr<GraphExecutionTrace> trace(graph_execution_trace);
+  TF_RETURN_IF_ERROR(InitUnlessClosed());
   if (circular_buffer_size_ <= 0) {
     // No cyclic-buffer behavior.
     DebugEvent debug_event;
-    debug_event.set_allocated_graph_execution_trace(graph_execution_trace);
+    debug_event.set_allocated_graph_execution_trace(trace.release());
     return SerializeAndWriteDebugEvent(&debug_event, GRAPH_EXECUTION_TRACES);
   } else {
     // Circular buffer behavior.
     DebugEvent debug_event;
     MaybeSetDebugEventTimestamp(&debug_event, env_);
-    debug_event.set_allocated_graph_execution_trace(graph_execution_trace);
+    debug_event.set_allocated_graph_execution_trace(trace.release());
     std::string serialized;
     debug_event.SerializeToString(&serialized);
 
     tf_shared_lock writers_lock(writers_mu_);
     if (graph_execution_traces_writer_ == nullptr) {
-      return absl::FailedPreconditionError(
-          "Debug events graph execution traces writer is not initialized");
+      return absl::OkStatus();
     }
     mutex_lock l(graph_execution_trace_buffer_mu_);
     graph_execution_trace_buffer_.emplace_back(std::move(serialized));
@@ -328,6 +363,7 @@ absl::Status DebugEventsWriter::WriteGraphExecutionTrace(
 
 void DebugEventsWriter::WriteSerializedNonExecutionDebugEvent(
     const std::string& debug_event_str, DebugEventFileType type) {
+  InitUnlessClosed().IgnoreError();
   tf_shared_lock l(writers_mu_);
   std::unique_ptr<SingleDebugEventFileWriter>* writer = nullptr;
   SelectWriter(type, &writer);
@@ -338,6 +374,7 @@ void DebugEventsWriter::WriteSerializedNonExecutionDebugEvent(
 
 void DebugEventsWriter::WriteSerializedExecutionDebugEvent(
     const std::string& debug_event_str, DebugEventFileType type) {
+  InitUnlessClosed().IgnoreError();
   tf_shared_lock writers_lock(writers_mu_);
   const std::unique_ptr<SingleDebugEventFileWriter>* writer = nullptr;
   std::deque<std::string>* buffer = nullptr;
@@ -408,7 +445,7 @@ absl::Status DebugEventsWriter::FlushNonExecutionFilesLocked() {
 }
 
 absl::Status DebugEventsWriter::FlushNonExecutionFiles() {
-  TF_RETURN_IF_ERROR(Init());
+  TF_RETURN_IF_ERROR(InitUnlessClosed());
   tf_shared_lock l(writers_mu_);
   return FlushNonExecutionFilesLocked();
 }
@@ -443,13 +480,13 @@ absl::Status DebugEventsWriter::FlushExecutionFilesLocked() {
 }
 
 absl::Status DebugEventsWriter::FlushExecutionFiles() {
-  TF_RETURN_IF_ERROR(Init());
+  TF_RETURN_IF_ERROR(InitUnlessClosed());
   tf_shared_lock l(writers_mu_);
   return FlushExecutionFilesLocked();
 }
 
 std::string DebugEventsWriter::FileName(DebugEventFileType type) {
-  Init().IgnoreError();
+  InitUnlessClosed().IgnoreError();
   mutex_lock l(initialization_mu_);
   return GetFileNameInternal(type);
 }
@@ -503,11 +540,13 @@ absl::Status DebugEventsWriter::Close() {
     }
     graph_execution_traces_writer_.reset();
   }
+  is_initialized_ = false;
+  is_closed_ = true;
 
   if (failed_to_close_files.empty()) {
     return absl::OkStatus();
   }
-  return absl::FailedPreconditionError(absl::StrCat(
+  return absl::FailedPreconditionError(absl::StrFormat(
       "Failed to close %d debug-events files associated with tfdbg",
       failed_to_close_files.size()));
 }
@@ -528,6 +567,7 @@ DebugEventsWriter::DebugEventsWriter(const std::string& dump_root,
       dump_root_(dump_root),
       tfdbg_run_id_(tfdbg_run_id),
       is_initialized_(false),
+      is_closed_(false),
       initialization_mu_(),
       circular_buffer_size_(circular_buffer_size),
       execution_buffer_(),
@@ -539,7 +579,8 @@ DebugEventsWriter::DebugEventsWriter(const std::string& dump_root,
 
 absl::Status DebugEventsWriter::InitNonMetadataFile(DebugEventFileType type) {
   const std::string filename = GetFileNameInternal(type);
-  auto new_writer = std::make_unique<SingleDebugEventFileWriter>(filename);
+  auto new_writer =
+      std::make_unique<SingleDebugEventFileWriter>(filename, is_closed_);
   if (new_writer == nullptr) {
     return absl::UnknownError(absl::StrCat(
         "Could not create debug event file writer for ", filename));
@@ -571,12 +612,8 @@ absl::Status DebugEventsWriter::SerializeAndWriteDebugEvent(
   SelectWriter(type, &writer);
   if (writer != nullptr && *writer != nullptr) {
     (*writer)->WriteSerializedDebugEvent(str);
-    return absl::OkStatus();
   }
-
-  return absl::InternalError(absl::StrCat(
-      "Unable to find debug events file writer for DebugEventsFileType ",
-      type));
+  return absl::OkStatus();
 }
 
 void DebugEventsWriter::SelectWriter(
