@@ -152,7 +152,7 @@ StreamExecutorGpuTopologyDescription::CreateDeviceDescription(
           : (process_index / num_processes_per_partition);
   auto description = std::make_unique<PjRtStreamExecutorDeviceDescription>(
       device_id, local_device_id, process_index, process_index_in_partition,
-      partition_index, std::string(platform_version()));
+      partition_index, std::string(gpu_topology_->platform_version()));
   if (target_config_.has_value()) {
     std::string compute_capability = "<unknown compute-capability>";
     std::string gpu_vendor = "<unknown gpu vendor>";
@@ -309,9 +309,12 @@ StreamExecutorGpuTopologyDescription::MakeCanonicalShapeForMemorySpace(
       static_cast<int>(tsl::Fingerprint32("pinned_host"));
   static const int kDeviceMemorySpaceKindId =
       static_cast<int>(tsl::Fingerprint32("device"));
+  static const int kUnpinnedHostMemorySpaceKindId =
+      UnpinnedHostMemorySpace::kKindId;
 
-  // Only allow pinned host memory or device memory.
-  if (memory_space_kind_id == kPinnedHostMemorySpaceKindId) {
+  // Only allow pinned host memory, unpinned host memory, or device memory.
+  if (memory_space_kind_id == kPinnedHostMemorySpaceKindId ||
+      memory_space_kind_id == kUnpinnedHostMemorySpaceKindId) {
     shape.mutable_layout()->set_memory_space(Layout::kHostMemorySpace);
   } else if (memory_space_kind_id == kDeviceMemorySpaceKindId) {
     if (shape.has_layout()) {
@@ -330,13 +333,14 @@ absl::Span<const int>
 StreamExecutorGpuTopologyDescription::GetMemorySpaceKindIds() const {
   static const int kGpuMemorySpaceKindIds[] = {
       static_cast<int>(tsl::Fingerprint32("device")),
-      PinnedHostMemorySpace::kKindId};
+      PinnedHostMemorySpace::kKindId, UnpinnedHostMemorySpace::kKindId};
   return absl::MakeConstSpan(kGpuMemorySpaceKindIds);
 }
 
 bool StreamExecutorGpuTopologyDescription::IsMemorySpaceOnCpu(
     int memory_space_kind_id) const {
-  return memory_space_kind_id == PinnedHostMemorySpace::kKindId;
+  return memory_space_kind_id == PinnedHostMemorySpace::kKindId ||
+         memory_space_kind_id == UnpinnedHostMemorySpace::kKindId;
 }
 
 absl::StatusOr<PjRtDeviceDimensions>
@@ -428,8 +432,8 @@ StreamExecutorGpuTopologyDescription::FromProto(
                        target_config->gpu_device_info().device_memory_size()});
   }
   return std::make_unique<StreamExecutorGpuTopologyDescription>(
-      proto.platform_id(), proto.platform_name(), std::move(gpu_topology),
-      attributes, std::move(target_config));
+      proto.platform_id(), proto.platform_name(), proto.platform_version(),
+      std::move(gpu_topology), attributes, std::move(target_config));
 }
 
 absl::StatusOr<int>
@@ -440,6 +444,9 @@ StreamExecutorGpuTopologyDescription::GetMemorySpaceKindForShape(
     switch (shape.layout().memory_space()) {
       case Layout::kHostMemorySpace:
         return GetMemorySpaceKindIds()[1];
+        break;
+      case Layout::kUnpinnedHostMemorySpace:
+        return GetMemorySpaceKindIds()[2];
         break;
       case Layout::kGenericFastMemorySpace:
       case Layout::kCollectiveMemorySpace:

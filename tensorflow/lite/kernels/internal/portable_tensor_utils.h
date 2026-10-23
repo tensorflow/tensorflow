@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 
 #include "tensorflow/lite/core/c/builtin_op_data.h"
@@ -117,7 +118,7 @@ template <typename T>
 void VectorBatchVectorAssign(const T* vector, int v_size, int n_batch,
                              T* batch_vector) {
   for (int b = 0; b < n_batch; b++) {
-    std::copy_n(vector, v_size, batch_vector + b * v_size);
+    std::copy_n(vector, v_size, batch_vector + static_cast<size_t>(b) * v_size);
   }
 }
 
@@ -160,7 +161,7 @@ inline void BatchQuantizeFloats(const float* float_data_ptr, int n_batch,
                                 float* scaling_factors, int32_t* zero_points,
                                 bool do_asymmetric) {
   for (int b = 0; b < n_batch; ++b) {
-    const int offset = b * n_data;
+    const size_t offset = static_cast<size_t>(b) * n_data;
     if (do_asymmetric) {
       tensor_utils::AsymmetricQuantizeFloats(
           float_data_ptr + offset, n_data, quantized_data_ptr + offset,
