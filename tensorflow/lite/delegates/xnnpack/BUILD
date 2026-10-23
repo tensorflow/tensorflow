@@ -2911,3 +2911,19 @@ cc_test(
 )
 
 tflite_portable_test_suite_combined(combine_conditions = {"deps": [":test_main"]})
+
+cc_test(
+    name = "sparse_fully_connected_test",
+    srcs = ["sparse_fully_connected_test.cc"],
+    deps = [
+        ":xnnpack_delegate",
+        "//tensorflow/compiler/mlir/lite/schema:schema_conversion_utils",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:version",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest_main",
+        "@flatbuffers",
+    ],
+)
