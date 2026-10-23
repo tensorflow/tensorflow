@@ -93,8 +93,10 @@ absl::Status ReadStringTensor(io::InputBuffer* buffered_file,
                               size_t num_elements, size_t offset, size_t size,
                               tstring* destination, uint32_t* actual_crc32c,
                               bool need_to_swap_bytes) {
-  if (size == 0) return absl::OkStatus();
-  CHECK_GT(size, 0);
+  if (size == 0) {
+    if (num_elements == 0) return absl::OkStatus();
+    return errors::DataLoss("Nonempty string tensor has an empty bundle entry");
+  }
 
   // Reads "num_elements" varint64's from "buffered_file".
   TF_RETURN_IF_ERROR(buffered_file->Seek(offset));
@@ -123,9 +125,10 @@ absl::Status ReadStringTensor(io::InputBuffer* buffered_file,
                          sizeof(uint64_t));
     }
   }
-  if (offset + size < buffered_file->Tell()) {
-    return absl::DataLossError(absl::StrCat(
-        "String lengths longer than expected offset ", offset + size));
+  const size_t length_bytes = buffered_file->Tell() - offset;
+  if (length_bytes > size || size - length_bytes < sizeof(uint32_t)) {
+    return errors::DataLoss(
+        "String lengths and checksum exceed bundle entry size ", size);
   }
 
   // Reads the length-checksum.
@@ -146,6 +149,18 @@ absl::Status ReadStringTensor(io::InputBuffer* buffered_file,
   *actual_crc32c = crc32c::Extend(*actual_crc32c,
                                   reinterpret_cast<char*>(&raw_length_checksum),
                                   sizeof(uint32_t));
+
+  // Validate the combined payload against the bytes left after the length
+  // table and its checksum, without overflowing a sum of string lengths.
+  size_t remaining_bytes = size - length_bytes - sizeof(uint32_t);
+  for (const uint64_t string_length : string_lengths) {
+    if (string_length > remaining_bytes) {
+      return errors::DataLoss(
+          "String data exceeds remaining bundle entry bytes: ", string_length,
+          " > ", remaining_bytes);
+    }
+    remaining_bytes -= string_length;
+  }
 
   // Reads the actual string bytes.
   for (size_t i = 0; i < num_elements; ++i) {
@@ -170,8 +185,12 @@ absl::Status ReadVariantTensor(io::InputBuffer* buffered_file, Tensor* ret,
   //   [varint64 lenN][bytes variantN][4 byte checksum]
   // Var "crc32c" checksums all the lens, variant bytes, individual variant
   // checksums (as uint32, not varint32 bytes).
-  if (size == 0) return absl::OkStatus();
   size_t num_elements = ret->NumElements();
+  if (size == 0) {
+    if (num_elements == 0) return absl::OkStatus();
+    return errors::DataLoss(
+        "Nonempty variant tensor has an empty bundle entry");
+  }
 
   // Reads the actual string bytes.
   TF_RETURN_IF_ERROR(buffered_file->Seek(offset));
@@ -180,6 +199,14 @@ absl::Status ReadVariantTensor(io::InputBuffer* buffered_file, Tensor* ret,
     // Read the serialized variant length.
     uint64_t string_length = 0;
     TF_RETURN_IF_ERROR(buffered_file->ReadVarint64(&string_length));
+    // Tell() includes all preceding elements and the current length varint.
+    // Reserve the checksum bytes before allocating or reading the payload.
+    const size_t consumed_bytes = buffered_file->Tell() - offset;
+    if (consumed_bytes > size || size - consumed_bytes < sizeof(uint32_t) ||
+        string_length > size - consumed_bytes - sizeof(uint32_t)) {
+      return errors::DataLoss(
+          "Variant data and checksum exceed remaining bundle entry bytes");
+    }
     *actual_crc32c = crc32c::Extend(
         *actual_crc32c, reinterpret_cast<const char*>(&string_length),
         sizeof(uint64_t));
@@ -894,6 +921,10 @@ absl::Status BundleReader::GetBundleEntryProto(absl::string_view key,
 
 absl::Status BundleReader::GetValue(const BundleEntryProto& entry,
                                     Tensor* val) {
+  if (entry.size() < 0) {
+    return errors::DataLoss("Invalid size in bundle entry: ", entry.size());
+  }
+
   Tensor* ret = val;
   const TensorShape stored_shape(TensorShape(entry.shape()));
   if (val->NumElements() == 0) {
