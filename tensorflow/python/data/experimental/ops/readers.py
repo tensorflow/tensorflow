@@ -493,7 +493,7 @@ def make_csv_dataset_v2(
   # Clean arguments; figure out column names and defaults
   if column_names is None or column_defaults is None:
     # A UTF-8 byte order mark is not part of the first column name.
-    if codecs.lookup(encoding).name == "utf-8":
+    if encoding and codecs.lookup(encoding).name == "utf-8":
       encoding = "utf-8-sig"
     # Find out which io function to open the file
     file_io_fn = lambda filename: file_io.FileIO(  # pylint: disable=g-long-lambda
