@@ -48,6 +48,8 @@ import unittest
 
 import pasta
 
+import sys
+import unittest
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test as test_lib
 from tensorflow.tools.compatibility import ast_edits
@@ -174,6 +176,7 @@ class RenameImports(ast_edits.NoUpdateSpec):
     }
 
 
+@unittest.skipIf(sys.version_info >= (3, 14), "pasta is broken on Python 3.14+")
 class TestAstEdits(test_util.TensorFlowTestCase):
 
   def _upgrade(self, spec, old_file_text):
