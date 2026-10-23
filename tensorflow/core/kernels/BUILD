@@ -3638,6 +3638,7 @@ tf_kernel_library(
         "//tensorflow/core/framework:bounds_check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
     ],
 )
