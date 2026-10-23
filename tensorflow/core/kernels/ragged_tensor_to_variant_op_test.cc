@@ -18,7 +18,6 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "absl/strings/match.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -539,6 +538,131 @@ TEST_F(RaggedTensorToVariantGradientKernelTest, RowSplitsIncreasingError) {
                                  "monotonically increasing, but "
                                  "ragged_splits[2]=2 is smaller than "
                                  "row_splits[1]=3"));
+}
+
+TEST_F(RaggedTensorToVariantGradientKernelTest,
+       DenseValuesShapeTooSmallError) {
+  // The encoded variants carry 3 + 2 = 5 values, but dense_values_shape
+  // implies only 2, so concatenating the values would write past the output.
+  auto encoded_variant_grad_1 =
+      CreateVariantFromRagged<int, int64_t>({}, {3}, {1, 2, 3});
+  auto encoded_variant_grad_2 =
+      CreateVariantFromRagged<int, int64_t>({}, {2}, {4, 5});
+
+  BuildEncodeRaggedTensorGradientGraph<int, int64_t>(
+      {encoded_variant_grad_1, encoded_variant_grad_2}, {0, 3, 5}, {2});
+
+  EXPECT_THAT(RunOpKernel(),
+              absl_testing::StatusIs(
+                  error::INVALID_ARGUMENT,
+                  "Expected the number of encoded ragged values (5) to match "
+                  "the number of values implied by dense_values_shape (2)"));
+}
+
+TEST_F(RaggedTensorToVariantGradientKernelTest,
+       DenseValuesShapeMismatchSingleVariantError) {
+  // A single variant carries 3 values, but dense_values_shape implies only 2.
+  // The single-value path must still enforce the output shape contract.
+  auto encoded_variant_grad =
+      CreateVariantFromRagged<int, int64_t>({}, {3}, {1, 2, 3});
+
+  BuildEncodeRaggedTensorGradientGraph<int, int64_t>({encoded_variant_grad},
+                                                     {0, 3}, {2});
+
+  EXPECT_THAT(RunOpKernel(),
+              absl_testing::StatusIs(
+                  error::INVALID_ARGUMENT,
+                  "Expected the number of encoded ragged values (3) to match "
+                  "the number of values implied by dense_values_shape (2)"));
+}
+
+TEST_F(RaggedTensorToVariantGradientKernelTest,
+       DenseValuesShapeEmptyWithValuesError) {
+  // dense_values_shape implies 0 values, but the encoded variants carry
+  // 3 + 2 = 5. The mismatch must fail rather than silently dropping values.
+  auto encoded_variant_grad_1 =
+      CreateVariantFromRagged<int, int64_t>({}, {3}, {1, 2, 3});
+  auto encoded_variant_grad_2 =
+      CreateVariantFromRagged<int, int64_t>({}, {2}, {4, 5});
+
+  BuildEncodeRaggedTensorGradientGraph<int, int64_t>(
+      {encoded_variant_grad_1, encoded_variant_grad_2}, {0, 3, 5}, {0});
+
+  EXPECT_THAT(RunOpKernel(),
+              absl_testing::StatusIs(
+                  error::INVALID_ARGUMENT,
+                  "Expected the number of encoded ragged values (5) to match "
+                  "the number of values implied by dense_values_shape (0)"));
+}
+
+TEST_F(RaggedTensorToVariantGradientKernelTest,
+       DenseValuesShapeZeroRankError) {
+  // An empty dense_values_shape input yields a rank-0 shape. The zero-piece
+  // reconstruction sets dimension 0, so a scalar shape must be rejected up
+  // front rather than crashing in TensorShape::set_dim.
+  auto encoded_variant_grad =
+      CreateVariantFromRagged<int, int64_t>({}, {3}, {1, 2, 3});
+
+  BuildEncodeRaggedTensorGradientGraph<int, int64_t>({encoded_variant_grad},
+                                                     {0, 3}, {});
+
+  EXPECT_THAT(RunOpKernel(),
+              absl_testing::StatusIs(
+                  error::INVALID_ARGUMENT,
+                  "dense_values_shape must have rank >= 1, but got rank 0"));
+}
+
+TEST_F(RaggedTensorToVariantGradientKernelTest,
+       SingleVariantReshapedToDenseValuesShape) {
+  // One variant whose values are laid out as [4] while dense_values_shape is
+  // [2, 2]. The element counts match, so the op must return the values with
+  // the declared [2, 2] shape, not the variant's own [4] layout.
+  auto encoded_variant_grad =
+      CreateVariantFromRagged<int, int64_t>({}, {4}, {1, 2, 3, 4});
+
+  BuildEncodeRaggedTensorGradientGraph<int, int64_t>({encoded_variant_grad},
+                                                     {0, 4}, {2, 2});
+
+  TF_ASSERT_OK(RunOpKernel());
+  test::ExpectTensorEqual<int>(
+      test::AsTensor<int>({1, 2, 3, 4}, TensorShape({2, 2})), *GetOutput(0));
+}
+
+TEST_F(RaggedTensorToVariantGradientKernelTest,
+       MissingVariantLargeRowSplitsError) {
+  // A default-constructed variant takes the missing-value path, where a zero
+  // piece is reconstructed with dimension 0 set from `row_splits`. A large
+  // interval (1e9) must be rejected with InvalidArgument before the oversized
+  // zero tensor is allocated, rather than overflowing the accumulator or
+  // aborting on allocation.
+  Variant missing;
+
+  BuildEncodeRaggedTensorGradientGraph<int, int64_t>({missing}, {0, 1000000000},
+                                                     {2});
+
+  EXPECT_THAT(RunOpKernel(),
+              absl_testing::StatusIs(
+                  error::INVALID_ARGUMENT,
+                  "Number of encoded ragged values exceeds the number of "
+                  "values implied by dense_values_shape (2)"));
+}
+
+TEST_F(RaggedTensorToVariantGradientKernelTest,
+       MissingVariantMultiDimShapeOverflowError) {
+  // With a multi-dimensional dense_values_shape, setting dimension 0 of the
+  // zero piece from `row_splits` can overflow the int64 element count
+  // (16 * 2^30 * 2^30 = 2^64). That must be rejected with InvalidArgument
+  // rather than aborting in TensorShape::set_dim.
+  Variant missing;
+
+  BuildEncodeRaggedTensorGradientGraph<int, int64_t>({missing}, {0, 16},
+                                                     {1, 1 << 30, 1 << 30});
+
+  EXPECT_THAT(RunOpKernel(),
+              absl_testing::StatusIs(
+                  error::INVALID_ARGUMENT,
+                  "Shape [16,1073741824,1073741824] results in overflow when "
+                  "computing number of elements"));
 }
 
 }  // namespace
