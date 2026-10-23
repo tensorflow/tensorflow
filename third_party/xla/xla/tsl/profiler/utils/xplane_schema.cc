@@ -310,6 +310,8 @@ const StatTypeMap& GetStatTypeMap() {
        {"raw_bytes_accessed", kRawBytesAccessed},
        {"memory_access_breakdown", kMemoryAccessBreakdown},
        {"shape_with_layout", kShapeWithLayout},
+       {"estimated_flops", kEstimatedFlops},
+       {"estimated_bytes_accessed", kEstimatedBytesAccessed},
        {"source", kSourceInfo},
        {"model_name", kModelName},
        {"model_version", kModelVersion},
