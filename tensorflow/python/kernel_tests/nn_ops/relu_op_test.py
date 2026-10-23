@@ -417,7 +417,7 @@ class LeakyReluTest(test.TestCase):
 class EluTest(test.TestCase):
 
   def _npElu(self, np_features):
-    return np.where(np_features < 0, np.exp(np_features) - 1, np_features)
+    return np.where(np_features < 0, np.expm1(np_features), np_features)
 
   def testNpElu(self):
     self.assertAllClose(
@@ -456,6 +456,16 @@ class EluTest(test.TestCase):
   def testNaNPropagation(self):
     for t in [np.float16, np.float32, np.float64]:
       self._testElu(np.array([-1, np.nan, 1, np.nan]).astype(t))
+
+  def testSmallNegativeInputs(self):
+    # exp(x) - 1 cancels to 0 for |x| below the dtype's epsilon; expm1 keeps
+    # full relative precision. Use a purely relative tolerance, since the
+    # expected values are far below the default absolute tolerance.
+    for t, value in [(np.float32, -1e-8), (np.float64, -1e-16)]:
+      x = np.array([value, 10 * value]).astype(t)
+      y = self.evaluate(nn_ops.elu(x))
+      self.assertTrue(np.all(y < 0), msg="dtype=%s: %s" % (t, y))
+      self.assertAllClose(y, self._npElu(x), rtol=1e-5, atol=0)
 
   def testGradientFloat32(self):
     with self.cached_session():
@@ -539,8 +549,11 @@ class SeluTest(test.TestCase):
   def _npSelu(self, np_features):
     scale = 1.0507009873554804934193349852946
     scale_alpha = 1.7580993408473768599402175208123
-    return np.where(np_features < 0, scale_alpha * (np.exp(np_features) - 1),
-                    scale * np_features)
+    return np.where(
+        np_features < 0,
+        scale_alpha * np.expm1(np_features),
+        scale * np_features,
+    )
 
   def testNpSelu(self):
     self.assertAllClose(
@@ -578,6 +591,16 @@ class SeluTest(test.TestCase):
       # Force executed on CPU in case GPU kernels are available.
       with ops.device("/device:CPU:0"):
         self._testSelu(np.array([-1, np.nan, 1, np.nan]).astype(t))
+
+  def testSmallNegativeInputs(self):
+    # exp(x) - 1 cancels to 0 for |x| below the dtype's epsilon; expm1 keeps
+    # full relative precision. Use a purely relative tolerance, since the
+    # expected values are far below the default absolute tolerance.
+    for t, value in [(np.float32, -1e-8), (np.float64, -1e-16)]:
+      x = np.array([value, 10 * value]).astype(t)
+      y = self.evaluate(nn_ops.selu(x))
+      self.assertTrue(np.all(y < 0), msg="dtype=%s: %s" % (t, y))
+      self.assertAllClose(y, self._npSelu(x), rtol=1e-5, atol=0)
 
   def testGradientFloat32(self):
     with self.cached_session():
