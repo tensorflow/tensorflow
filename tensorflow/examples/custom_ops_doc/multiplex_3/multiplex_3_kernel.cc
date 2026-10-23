@@ -185,7 +185,7 @@ class MultiplexSparseOp : public OpKernel {
   Status ValidateSparseTensor(const ::tensorflow::Tensor& indices_tensor,
                               const ::tensorflow::Tensor& values_tensor,
                               const ::tensorflow::Tensor& shape_tensor,
-                              const string label) {
+                              const std::string label) {
     if (!TensorShapeUtils::IsMatrix(indices_tensor.shape())) {
       return InvalidArgument(
           "Sparse indices for ", label,
