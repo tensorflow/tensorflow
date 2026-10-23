@@ -24,6 +24,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/memory_types.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -36,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_debug_info_builder.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
+#include "tensorflow/core/graph/graph_node_util.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -646,7 +649,10 @@ absl::Status AddControlFlow(const PartitionOptions& opts, Graph* g,
 
     if (IsLoopCond(node)) {
       const std::string& frame_name = cf_info[node->id()].frame_name;
-      DCHECK(!frame_name.empty());
+      if (frame_name.empty()) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            FormatNodeForError(*node), " must be inside a while loop frame."));
+      }
       frame_cond_map[frame_name] = node;
     }
   }

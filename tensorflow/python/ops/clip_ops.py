@@ -365,6 +365,8 @@ def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
   t_list = list(t_list)
   if use_norm is None:
     use_norm = global_norm(t_list, name)
+  else:
+    use_norm = ops.convert_to_tensor(use_norm, name="use_norm")
 
   with ops.name_scope(name, "clip_by_global_norm",
                       t_list + [clip_norm]) as name:

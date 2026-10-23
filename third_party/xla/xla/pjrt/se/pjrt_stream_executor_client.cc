@@ -113,6 +113,8 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/pjrt/common_pjrt_client.h"
+#include "xla/pjrt/cpu/cpu_event.h"
+#include "xla/pjrt/cpu/raw_buffer.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/device_event_utils.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
@@ -372,6 +374,9 @@ absl::StatusOr<PjRtRawBufferRef> PjRtStreamExecutorRawClient::AllocateRawBuffer(
     bool retry_on_oom, tsl::AsyncValueRef<bool> allocate_after) {
   CHECK(allocate_after == nullptr)
       << "allocate_after is not supported for PjRtStreamExecutorClient.";
+  if (memory_space->kind_id() == UnpinnedHostMemorySpace::kKindId) {
+    return xla::CpuRawBuffer::Allocate(memory_space, on_device_bytes_count);
+  }
   PjRtDevice* device = memory_space->devices()[0];
   ABSL_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
                    GetLocalDeviceState(device->local_device_id()));
@@ -512,13 +517,25 @@ void PjRtStreamExecutorRawClient::MaterializeAllocationEvent(
 }
 
 bool PjRtStreamExecutorRawClient::IsOnCpu(PjRtMemorySpace* memory_space) {
-  return memory_space->kind() == PinnedHostMemorySpace::kKind;
+  return memory_space->kind() == PinnedHostMemorySpace::kKind ||
+         memory_space->kind() == UnpinnedHostMemorySpace::kKind;
 }
 
 absl::StatusOr<std::pair<PjRtDeviceEventPromiseRef, PjRtDeviceEventRef>>
 PjRtStreamExecutorRawClient::CreateLinkedEventPromise(
     LocalDeviceId local_device_id, int memory_kind_id,
     absl::string_view debug_info) {
+  if (memory_kind_id == UnpinnedHostMemorySpace::kKindId) {
+    tsl::RCReference<tsl::IndirectAsyncValue> definition_event_promise =
+        tsl::MakeIndirectAsyncValue();
+    PjRtDeviceEventRef definition_event = PjRtDeviceEventRef(
+        tsl::AsyncValueRef<CpuEvent>(definition_event_promise));
+    tsl::RCReference<CpuTrackedDeviceEventPromise> promise =
+        tsl::MakeRef<CpuTrackedDeviceEventPromise>(
+            std::move(definition_event_promise));
+    return std::make_pair(PjRtDeviceEventPromiseRef(std::move(promise)),
+                          std::move(definition_event));
+  }
   ABSL_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
                    GetLocalDeviceState(local_device_id));
   auto result = tsl::MakeRef<PjRtStreamExecutorDeviceEventPromise>(
@@ -540,6 +557,9 @@ absl::StatusOr<PjRtDeviceEventRef>
 PjRtStreamExecutorRawClient::CreateDeviceEvent(LocalDeviceId local_device_id,
                                                int memory_kind_id,
                                                Future<> dependency) {
+  if (memory_kind_id == UnpinnedHostMemorySpace::kKindId) {
+    return ToCpuEvent(std::move(dependency));
+  }
   auto definition_event = BufferSequencingEvent::Create(async_work_runner());
   ABSL_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
                    GetLocalDeviceState(local_device_id));
@@ -601,6 +621,11 @@ absl::StatusOr<PjRtRawBufferRef>
 PjRtStreamExecutorRawClient::ImportForeignMemory(
     PjRtMemorySpace* memory_space, void* device_ptr, size_t size,
     absl::AnyInvocable<void() &&> on_delete_callback, bool is_mutable) {
+  if (memory_space->kind_id() == UnpinnedHostMemorySpace::kKindId) {
+    return CpuRawBuffer::ImportForeignMemory(device_ptr,
+                                             std::move(on_delete_callback),
+                                             size, memory_space, is_mutable);
+  }
   CHECK_EQ(memory_space->devices().size(), 1);
   auto* device = memory_space->devices().front();
   ABSL_ASSIGN_OR_RETURN(LocalDeviceState * local_device,

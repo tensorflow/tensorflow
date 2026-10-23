@@ -405,6 +405,20 @@ class Conv2DBackpropInputTest(xla_test.XLATestCase, parameterized.TestCase):
         expected=expected_output)
 
   @parameterized.named_parameters(*DATA_FORMATS)
+  def testConv2DEmptyInputStride2(self, data_format):
+    # With SAME padding, an input with no rows gives an empty out_backprop.
+    self._VerifyValues(
+        input_sizes=[1, 0, 4, 1],
+        filter_sizes=[3, 3, 1, 1],
+        out_backprop_sizes=[1, 0, 2, 1],
+        strides=[2, 2],
+        padding="SAME",
+        data_format_src="NHWC",
+        data_format_dst=data_format,
+        expected=np.zeros([1, 0, 4, 1]),
+    )
+
+  @parameterized.named_parameters(*DATA_FORMATS)
   def testConv2D1x2FilterStride3Width5(self, data_format):
     expected_output = [1, 2, 0, 2, 4]
     self._VerifyValues(
@@ -713,6 +727,20 @@ class Conv2DBackpropFilterTest(xla_test.XLATestCase, parameterized.TestCase):
         data_format_src="NHWC",
         data_format_dst=data_format,
         expected=expected_output)
+
+  @parameterized.named_parameters(*DATA_FORMATS)
+  def testConv2DEmptyInput(self, data_format):
+    # With SAME padding, an input with no rows gives an empty out_backprop.
+    self._VerifyValues(
+        input_sizes=[1, 0, 4, 1],
+        filter_sizes=[3, 3, 1, 1],
+        out_backprop_sizes=[1, 0, 4, 1],
+        strides=[1, 1],
+        padding="SAME",
+        data_format_src="NHWC",
+        data_format_dst=data_format,
+        expected=np.zeros([3, 3, 1, 1]),
+    )
 
   @parameterized.named_parameters(*DATA_FORMATS)
   def testConv2D1x2Filter(self, data_format):

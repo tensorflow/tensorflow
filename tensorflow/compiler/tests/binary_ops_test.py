@@ -1950,6 +1950,34 @@ class BinaryOpsTest(xla_test.XLATestCase):
       )
     self.assertAllClose(result, [[1.0, 2.0]] * 3)
 
+  def testDynamicDimensionLongerThanStaticOne(self):
+    # TensorFlow rejects these shapes, but XLA can't check them at run time,
+    # so the dynamic dimension is cut to the static size of the other operand.
+    @def_function.function(jit_compile=True)
+    def f(x, y):
+      y = array_ops.boolean_mask(y, y > 0)
+      return math_ops.subtract(x, y), math_ops.subtract(y, x)
+
+    with self.session() as session:
+      with self.device_scope():
+        x = array_ops.placeholder(dtypes.float32, shape=[4])
+        y = array_ops.placeholder(dtypes.float32, shape=[4096])
+        output = f(x, y)
+      # Run it several times, since writing past an output's buffer may only
+      # corrupt later allocations.
+      for _ in range(10):
+        result = session.run(
+            output,
+            {
+                x: [10.0, 20.0, 30.0, 40.0],
+                y: np.arange(1, 4097, dtype=np.float32),
+            },
+        )
+        self.assertAllClose(
+            result,
+            ([9.0, 18.0, 27.0, 36.0], [-9.0, -18.0, -27.0, -36.0]),
+        )
+
   def testMulGradientOnBoundedDynamicDimension(self):
     # tf.slice(x, [0], [n]), where n is itself only known at runtime, has an
     # output size that's bounded by x's static shape but not statically
