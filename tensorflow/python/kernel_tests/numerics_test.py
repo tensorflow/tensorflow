@@ -99,6 +99,28 @@ class CheckNumericsGpuTest(test.TestCase):
             r"v2 : Tensor had -Inf, \+Inf, and NaN values"):
           self.evaluate(array_ops.check_numerics_v2(x, "v2"))
 
+  @test_util.run_gpu_only
+  @test_util.run_in_graph_and_eager_modes
+  def testBoundaryCases(self):
+    for dtype in [np.float16, np.float32, np.float64]:
+      for size in (0, 1):
+        x = np.ones(size, dtype=dtype)
+        with self.subTest(dtype=dtype, size=size), test_util.use_gpu():
+          self.assertAllEqual(x,
+                              self.evaluate(array_ops.check_numerics(x, "v1")))
+          self.assertAllEqual(
+              x, self.evaluate(array_ops.check_numerics_v2(x, "v2")))
+
+      for value, v2_name in ((-np.inf, "-Inf"), (np.inf, r"\+Inf")):
+        x = np.array([value], dtype=dtype)
+        with self.subTest(dtype=dtype, value=value), test_util.use_gpu():
+          with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                      "v1 : Tensor had Inf values"):
+            self.evaluate(array_ops.check_numerics(x, "v1"))
+          with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                      f"v2 : Tensor had {v2_name} values"):
+            self.evaluate(array_ops.check_numerics_v2(x, "v2"))
+
 
 @test_util.run_v1_only("add_check_numerics_op() is meant to be a v1-only API")
 class NumericsTest(test.TestCase):
