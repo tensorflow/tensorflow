@@ -249,6 +249,7 @@ cc_library(
         ":tflite_with_xnnpack_qu8",  # buildcleaner: keep
         ":tflite_with_xnnpack_transient_indirection_buffer",  # buildcleaner: keep
         ":weight_cache",
+        "//tensorflow/compiler/mlir/lite:allocation",
         "//tensorflow/compiler/mlir/lite/kernels/internal:compatibility_macros",
         "//tensorflow/compiler/mlir/lite/tools/optimize:reduced_precision_metadata",
         "//tensorflow/lite:array",
@@ -296,6 +297,7 @@ cc_library(
         ":moe_delegate_kernel",
         ":quantization_util",
         ":weight_cache",
+        "//tensorflow/compiler/mlir/lite:allocation",
         "//tensorflow/compiler/mlir/lite/kernels/internal:compatibility_macros",
         "//tensorflow/compiler/mlir/lite/tools/optimize:reduced_precision_metadata",
         "//tensorflow/lite:array",
