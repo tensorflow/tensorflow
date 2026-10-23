@@ -21,6 +21,7 @@ limitations under the License.
 #include <string.h>
 
 #include <cstdint>
+#include <limits>
 #include <memory>
 
 #include "absl/base/casts.h"
@@ -323,6 +324,11 @@ TEST(JpegMemTest, CropAndDecodeJpegWithInvalidCropWindow) {
   CheckInvalidCropWindowFailed(temp, fsize, /*x=*/w - 10, 11, 11, 11);
   // Invalid crop window height: y + crop_height= h + 1 > h
   CheckInvalidCropWindowFailed(temp, fsize, 11, /*y=*/h - 10, 11, 11);
+
+  // Crop window offset + size must not overflow int.
+  constexpr int kIntMax = std::numeric_limits<int>::max();
+  CheckInvalidCropWindowFailed(temp, fsize, /*x=*/kIntMax, 11, /*w=*/1, 11);
+  CheckInvalidCropWindowFailed(temp, fsize, 11, /*y=*/kIntMax, 11, /*h=*/1);
 }
 
 TEST(JpegMemTest, Jpeg2) {
