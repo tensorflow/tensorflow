@@ -575,14 +575,21 @@ TEST_F(MathTest, IgammaSpecialValues) {
   SetFastMathDisabled(true);
   XlaBuilder builder(TestName());
   const float nan = std::numeric_limits<float>::quiet_NaN();
-  auto a =
-      ConstantR1<float>(&builder, {nan, nan, 0.53327996, -6.00773744602e+37,
-                                   -1.3937809742e+31, -23.351348877});
+  const float inf = std::numeric_limits<float>::infinity();
+  auto a = ConstantR1<float>(
+      &builder,
+      {nan, nan, 0.53327996, -6.00773744602e+37, -1.3937809742e+31,
+       -23.351348877, 0.53327996, 0.53327996, 0.53327996, inf, inf, inf, inf,
+       inf, inf, inf, -inf, -inf, 3.0e+38});
   auto x = ConstantR1<float>(
-      &builder, {nan, 8.97671773, nan, nan, 0.0, 6.02455484352e-39});
+      &builder,
+      {nan, 8.97671773, nan, nan, 0.0, 6.02455484352e-39, 0.0, -0.0, inf, 0.0,
+       0.5, 1.0, 2.0, inf, -1.0, nan, 1.0, 2.0, 4.0});
 
   Igamma(a, x);
-  std::vector<float> expected = {nan, nan, nan, nan, nan, nan};
+  std::vector<float> expected = {nan, nan, nan, nan, nan, nan, 0.0, 0.0, 1.0,
+                                 0.0, 0.0, 0.0, 0.0, 1.0, nan, nan, nan, nan,
+                                 0.0};
   ComputeAndCompareR1<float>(&builder, expected, {}, kErrorSpec);
 }
 
@@ -639,16 +646,20 @@ TEST_F(MathTest, IgammacSpecialValues) {
   auto a = ConstantR1<float>(
       &builder,
       {nan, nan, 0.53327996, nan, 0.6374078, -1.6019852, -0.24963307,
-       0.53327996, 0.0, -2.0, -2.0, 0.53327996, 0.53327996, 0.53327996});
+       0.53327996, 0.0, -2.0, -2.0, 0.53327996, 0.53327996, 0.53327996, inf,
+       inf, inf, inf, inf, inf, inf, -inf, -inf, 3.0e+38});
   auto x = ConstantR1<float>(
-      &builder, {nan, 8.97671773, nan, 0.0, 0.6374078, -1.6019852, -0.24963307,
-                 -1.0, 2.0, 0.0, inf, 0.0, -0.0, inf});
+      &builder,
+      {nan, 8.97671773, nan, 0.0, 0.6374078, -1.6019852, -0.24963307, -1.0,
+       2.0, 0.0, inf, 0.0, -0.0, inf, 0.0, 0.5, 1.0, 2.0, inf, -1.0, nan, 1.0,
+       2.0, 4.0});
 
   Igammac(a, x);
   // Domain errors (x < 0, a <= 0) and NaN inputs give NaN as in Eigen and
   // Igamma; igammac(a, 0) = 1 and igammac(a, inf) = 0 for a > 0.
-  std::vector<float> expected = {nan, nan, nan, nan, 0.33642888, nan, nan,
-                                 nan, nan, nan, nan, 1.0,        1.0, 0.0};
+  std::vector<float> expected = {
+      nan, nan, nan, nan, 0.33642888, nan, nan, nan, nan, nan, nan, 1.0,
+      1.0, 0.0, 1.0, 1.0, 1.0,        1.0, 0.0, nan, nan, nan, nan, 1.0};
   ComputeAndCompareR1<float>(&builder, expected, {}, kErrorSpec);
 }
 
