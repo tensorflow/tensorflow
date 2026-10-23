@@ -297,8 +297,10 @@ xla_test(
     srcs = ["cpu_while_test.cc"],
     backends = ["cpu"],
     deps = [
+        "//xla:error_spec",
         "//xla:literal",
         "//xla:literal_util",
+        "//xla:types",
         "//xla/hlo/testlib:verified_hlo_module",
         "//xla/service/cpu:cpu_compiler",
         "//xla/tests:hlo_pjrt_test_base",

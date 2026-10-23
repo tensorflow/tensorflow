@@ -1672,6 +1672,7 @@ cc_library(
         "//xla:util",
         "//xla/codegen/intrinsic",
         "//xla/codegen/intrinsic:exp",
+        "//xla/codegen/intrinsic:log1p",
         "//xla/codegen/intrinsic:rsqrt",
         "//xla/codegen/intrinsic:tanh",
         "//xla/codegen/intrinsic/cpp:_intrinsic_declarations",

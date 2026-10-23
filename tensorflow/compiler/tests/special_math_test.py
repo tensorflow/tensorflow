@@ -85,7 +85,7 @@ class Log1pTest(xla_test.XLATestCase, parameterized.TestCase):
       if dtype == np.float32:
         return 4e-4, 0.0
       return 1e-10, 0.0
-    if self.device in ['XLA_GPU', 'GPU']:
+    if self.device in ['XLA_GPU', 'GPU', 'XLA_CPU', 'CPU']:
       if dtype == np.float32:
         return max(rtol, 2.5e-07), atol
     return rtol, atol
