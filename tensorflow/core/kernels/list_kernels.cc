@@ -513,6 +513,16 @@ class TensorListSetItem : public OpKernel {
                       "Trying to modify element ", index, " in a list with ",
                       l->tensors().size(), " elements.")));
     } else if (index >= l->tensors().size()) {
+      // Cap implicit growth to the same limit as TensorListReserve/Resize
+      // (CWE-770). Without this, a large index with max_num_elements=-1 could
+      // trigger a multi-gigabyte allocation.
+      const int64_t new_size = static_cast<int64_t>(index) + 1;
+      OP_REQUIRES(
+          c, new_size <= kMaxTensorListElements,
+          absl::InvalidArgumentError(absl::StrCat(
+              "TensorListSetItem: requested implicit resize to ", new_size,
+              " exceeds maximum allowed elements (",
+              kMaxTensorListElements, ").")));
       // size_t cast avoids signed overflow when index == INT32_MAX.
       output_list->tensors().resize(static_cast<size_t>(index) + 1,
                                     Tensor(DT_INVALID));
