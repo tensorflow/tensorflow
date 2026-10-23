@@ -328,9 +328,13 @@ def diag(v, k=0):  # pylint: disable=missing-docstring
       [v_rank],
   )
 
-  if isinstance(k, core_tf_types.Tensor) and k.shape.ndims is None:
-    control_flow_assert.Assert(math_ops.equal(array_ops.rank(k), 0), [k])
-  elif not isscalar(k):
+  # Ensure k is an integer scalar
+  if isinstance(k, core_tf_types.Tensor):
+    if k.shape.rank is not None and k.shape.rank != 0:
+      raise ValueError(f'k must be an integer scalar, got tensor of shape {k.shape}')
+    if not k.dtype.is_integer:
+      raise ValueError(f'k must be an integer scalar, got dtype {k.dtype.name}')
+  elif not (isinstance(k, (int, np.integer)) and not isinstance(k, bool)):
     raise ValueError(f'k must be an integer scalar, got {k}')
 
   def _diag(v, k):
