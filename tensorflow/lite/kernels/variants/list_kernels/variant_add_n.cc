@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <algorithm>
 #include <cstring>
+#include <limits>
 #include <utility>
 #include <vector>
 
@@ -191,6 +192,35 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_ENSURE(context, output_arr->Set(i, std::move(row_output)));
       continue;
     }
+    const int num_inputs_for_row = static_cast<int>(row_tensors.size());
+    const int thread_count =
+        std::min(std::max(1, static_cast<int>(num_inputs_for_row) / 2),
+                 cpu_backend_context->max_num_threads());
+    // scratch_shape narrows to int32_t and NumElements() has no release-mode
+    // overflow check, while the dimensions are attacker-controlled. Compute the
+    // element count with CheckedShapeProductToInt() and verify the scratch size
+    // fits in int32_t before anything is allocated for this row, so an
+    // overflowing shape is rejected without doing the work first. Only rows
+    // that are actually summed need a scratch buffer, so rows with a single
+    // set item keep their previous behaviour.
+    int row_num_elements = 0;
+    if (num_inputs_for_row >= 2) {
+      TF_LITE_ENSURE_OK(context, CheckedShapeProductToInt(
+                                     context, row_shape->data, row_shape->size,
+                                     "variant add_n element count overflowed.",
+                                     row_num_elements));
+      // CpuBackendContext::SetMaxNumThreads(0) is accepted and stored as-is,
+      // which would make thread_count zero. That makes the division below
+      // undefined, and optimized_ops::AddN() recomputes the same thread_count
+      // and would then copy the row out of a zero-sized scratch buffer.
+      TF_LITE_ENSURE_MSG(
+          context, thread_count > 0,
+          "variant add_n requires a positive thread count; a CpuBackendContext "
+          "with max_num_threads() == 0 is not supported.");
+      TF_LITE_ENSURE(context,
+                     row_num_elements <=
+                         std::numeric_limits<int32_t>::max() / thread_count);
+    }
     // Allocate tensor for the sum of this row.
     IntArrayUniquePtr cur_shape = BuildTfLiteArray(*row_shape);
     TF_LITE_ENSURE(context, cur_shape != nullptr);
@@ -200,7 +230,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     if (row_output->bytes > 0) {
       TF_LITE_ENSURE(context, row_output->data.data != nullptr);
     }
-    if (row_tensors.size() < 2) {
+    if (num_inputs_for_row < 2) {
       // There is only one set item in all `input_j[i]`, so just use that.
       TF_LITE_ENSURE_OK(context,
                         TfLiteTensorCopy(row_tensors[0], row_output.get()));
@@ -208,12 +238,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       continue;
     }
     // Resize scratch tensor so it can be used for each row.
-    const int num_inputs_for_row = static_cast<int>(row_tensors.size());
-    const int thread_count =
-        std::min(std::max(1, static_cast<int>(num_inputs_for_row) / 2),
-                 cpu_backend_context->max_num_threads());
-    IntArrayUniquePtr scratch_shape = BuildTfLiteArray(
-        {thread_count * static_cast<int>(NumElements(row_tensors[0]))});
+    IntArrayUniquePtr scratch_shape =
+        BuildTfLiteArray({thread_count * row_num_elements});
     TF_LITE_ENSURE(context, scratch_shape != nullptr);
     scratch_tensor->type = t;
     TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, scratch_tensor,
