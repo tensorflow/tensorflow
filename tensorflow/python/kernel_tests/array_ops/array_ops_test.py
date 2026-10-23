@@ -428,58 +428,54 @@ class BooleanMaskTest(test_util.TensorFlowTestCase):
     def f(axis):
       return array_ops.boolean_mask(arr, mask, axis=axis)
 
-    self.assertAllEqual(
-        self.evaluate(f(constant_op.constant(-1, dtype=dtypes.int32))),
-        arr[..., mask])
-    self.assertAllEqual(
-        self.evaluate(f(constant_op.constant(2, dtype=dtypes.int32))),
-        arr[..., mask])
+    def dynamic_i32(val):
+      return array_ops.placeholder_with_default(
+          constant_op.constant(val, dtype=dtypes.int32), shape=None)
+
+    self.assertAllEqual(self.evaluate(f(dynamic_i32(-1))), arr[..., mask])
+    self.assertAllEqual(self.evaluate(f(dynamic_i32(2))), arr[..., mask])
     # Without the range check, axis=-5 returns the wrong elements instead of
     # raising, and -4 and 3 fail later with an unrelated shape error.
     for axis in [-5, -4, 3]:
       with self.subTest(axis=axis):
         with self.assertRaisesRegex(errors.InvalidArgumentError,
                                     "axis is out of range"):
-          self.evaluate(f(constant_op.constant(axis, dtype=dtypes.int32)))
-
-  def testMaskWithNonNegativeAxisNonConstTensor(self):
-    arr = np.arange(24).reshape(2, 3, 4)
+          self.evaluate(f(dynamic_i32(axis)))
 
     @def_function.function(
         autograph=False,
         input_signature=[
             tensor_lib.TensorSpec(shape=None, dtype=dtypes.int32)
         ])
-    def f(axis):
+    def f_axis1(axis):
       return array_ops.boolean_mask(arr, [True, False, True], axis=axis)
 
     self.assertAllEqual(
-        self.evaluate(f(constant_op.constant(1, dtype=dtypes.int32))),
-        arr[:, [True, False, True]])
+        self.evaluate(f_axis1(dynamic_i32(1))), arr[:, [True, False, True]])
 
-  def testMaskWithNegativeAxisRank1(self):
-    arr = np.array([1, 2, 3])
-    mask = [True, False, True]
+    arr_1d = np.array([1, 2, 3])
+    mask_1d = [True, False, True]
 
     @def_function.function(
         autograph=False,
         input_signature=[
             tensor_lib.TensorSpec(shape=None, dtype=dtypes.int32)
         ])
-    def f(axis):
-      return array_ops.boolean_mask(arr, mask, axis=axis)
+    def f_rank1(axis):
+      return array_ops.boolean_mask(arr_1d, mask_1d, axis=axis)
 
-    self.assertAllEqual(array_ops.boolean_mask(arr, mask, axis=-1), [1, 3])
     self.assertAllEqual(
-        self.evaluate(f(constant_op.constant(-1, dtype=dtypes.int32))), [1, 3])
+        self.evaluate(array_ops.boolean_mask(arr_1d, mask_1d, axis=-1)), [1, 3])
+    self.assertAllEqual(self.evaluate(f_rank1(dynamic_i32(-1))), [1, 3])
     # Without the range check, axis=-2 returns a result instead of raising.
     with self.assertRaisesRegex(errors.InvalidArgumentError,
                                 "axis is out of range"):
-      self.evaluate(f(constant_op.constant(-2, dtype=dtypes.int32)))
+      self.evaluate(f_rank1(dynamic_i32(-2)))
 
   def testMaskWithNegativeAxisUnknownRank(self):
     arr = np.arange(24).reshape(2, 3, 4)
     mask = [True, False, True, False]
+    dyn_arr = array_ops.placeholder_with_default(arr, shape=None)
 
     @def_function.function(
         autograph=False,
@@ -489,7 +485,22 @@ class BooleanMaskTest(test_util.TensorFlowTestCase):
     def f(tensor):
       return array_ops.boolean_mask(tensor, mask, axis=-1)
 
-    self.assertAllEqual(self.evaluate(f(arr)), arr[..., mask])
+    self.assertAllEqual(self.evaluate(f(dyn_arr)), arr[..., mask])
+
+    for bad_axis in [-4, -5]:
+      with self.subTest(bad_axis=bad_axis):
+
+        @def_function.function(
+            autograph=False,
+            input_signature=[
+                tensor_lib.TensorSpec(shape=None, dtype=dtypes.int64)
+            ])
+        def f_bad(tensor, bad_axis=bad_axis):
+          return array_ops.boolean_mask(tensor, [True, False], axis=bad_axis)
+
+        with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                    "axis is out of range"):
+          self.evaluate(f_bad(dyn_arr))
 
 
 @test_util.run_all_in_graph_and_eager_modes
