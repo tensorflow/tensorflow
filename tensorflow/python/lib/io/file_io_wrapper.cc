@@ -237,6 +237,7 @@ PYBIND11_MODULE(_pywrap_file_io, m) {
            py::arg("filename"), py::arg("mode"))
       .def("append",
            [](WritableFile* self, absl::string_view data) {
+             py::gil_scoped_release release;
              const auto status = self->Append(data);
              tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(status);
            })

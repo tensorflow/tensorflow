@@ -74,6 +74,26 @@ class FunctionalOpsTest(test.TestCase):
     self.assertAllEqual(880, self.evaluate(r))
 
   @test_util.run_in_graph_and_eager_modes
+  def testScalarElemsRejected(self):
+    # These take the number of iterations from elems.shape[0], which gives
+    # IndexError out of tensor_shape for a scalar. map_fn already reports it,
+    # so they should say the same thing.
+    elems = constant_op.constant(5, name="data")
+    vec = constant_op.constant([1, 2], name="vec")
+    for op in (functional_ops.foldl, functional_ops.foldr, functional_ops.scan):
+      with self.assertRaisesRegex(ValueError, "must be 1\\+ dimensional"):
+        op(lambda a, x: a + x, elems)
+      # a scalar anywhere in elems is a problem, not just the first one
+      with self.assertRaisesRegex(ValueError, "must be 1\\+ dimensional"):
+        op(lambda a, x: a + x[0] + x[1], (vec, elems), initializer=0)
+      with self.assertRaisesRegex(
+          ValueError, "elems must contain at least one Tensor"
+      ):
+        op(lambda a, x: a + x, [])
+    with self.assertRaisesRegex(ValueError, "must be 1\\+ dimensional"):
+      functional_ops.foldl(lambda a, x: a + x, elems, initializer=0)
+
+  @test_util.run_in_graph_and_eager_modes
   def testFoldl_SingleInputMultiOutput(self):
     elems = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
     initializer = np.array([1, -1.0])

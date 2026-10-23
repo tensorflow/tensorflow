@@ -704,6 +704,38 @@ class ScalarMulTest(test_util.TensorFlowTestCase):
     with test_util.device(use_gpu=True):
       self.assertAllEqual(self.evaluate(expected), self.evaluate(result))
 
+  def testAcceptsPythonSequences(self):
+    # Inputs without a `dtype` attribute are converted to tensors first.
+    with test_util.device(use_gpu=True):
+      for scalar_mul_fn in (math_ops.scalar_mul, math_ops.scalar_mul_v2):
+        result = scalar_mul_fn(3, [1, 2, 3])
+        self.assertEqual(dtypes.int32, result.dtype)
+        self.assertAllEqual([3, 6, 9], self.evaluate(result))
+
+        result = scalar_mul_fn(2.0, ((1.0, 2.0), (3.0, 4.0)))
+        self.assertEqual(dtypes.float32, result.dtype)
+        self.assertAllClose([[2.0, 4.0], [6.0, 8.0]], self.evaluate(result))
+
+        result = scalar_mul_fn(3, 5)
+        self.assertAllEqual(15, self.evaluate(result))
+
+        result = scalar_mul_fn(3.0, [])
+        self.assertEqual(dtypes.float32, result.dtype)
+        self.assertAllEqual([], self.evaluate(result))
+
+        result = scalar_mul_fn(2, np.array([1, 2], dtype=np.int64))
+        self.assertEqual(dtypes.int64, result.dtype)
+        self.assertAllEqual([2, 4], self.evaluate(result))
+
+  def testPythonSequenceInheritsTypedScalarDtype(self):
+    with test_util.device(use_gpu=True):
+      for scalar_mul_fn in (math_ops.scalar_mul, math_ops.scalar_mul_v2):
+        for dtype in (dtypes.float16, dtypes.float64):
+          scalar = constant_op.constant(2.0, dtype=dtype)
+          result = scalar_mul_fn(scalar, [1.0, 2.0])
+          self.assertEqual(dtype, result.dtype)
+          self.assertAllClose([2.0, 4.0], self.evaluate(result))
+
   def testAcceptsIndexedSlices(self):
     values = constant_op.constant([2, 3, 5, 7, 0, -1], shape=[3, 2])
     indices = constant_op.constant([0, 2, 5])

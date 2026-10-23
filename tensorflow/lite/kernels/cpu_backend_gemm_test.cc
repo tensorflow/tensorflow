@@ -618,12 +618,25 @@ TEST(CpuBackendGemmSimpleTestAgainstGolden, Int8) {
 TEST(CpuBackendGemmInvalidGemmTest, Float) {
   // A standard Gemm operation.
   TestMaybeValidGemm<float, float, float, float>(2, 3, 3, 4, 2, 4);
+  MatrixParams<float> lhs_params;
+  lhs_params.rows = 2;
+  lhs_params.cols = 3;
+  MatrixParams<float> rhs_params;
+  rhs_params.rows = 3;
+  rhs_params.cols = 4;
+  MatrixParams<float> dst_params;
+  dst_params.rows = 5;
+  dst_params.cols = 4;
+  EXPECT_FALSE(
+      cpu_backend_gemm::IsValidGemm(lhs_params, rhs_params, dst_params));
   // An invalid Gemm that will abort in debug mode.
 #if !defined(TARGET_IPHONE_SIMULATOR) && !defined(TARGET_OS_IPHONE)
   ASSERT_DEBUG_DEATH(
       (TestMaybeValidGemm<float, float, float, float>(2, 3, 3, 0, 2, 4)), "");
   ASSERT_DEBUG_DEATH(
       (TestMaybeValidGemm<float, float, float, float>(2, 3, 9, 4, 2, 4)), "");
+  ASSERT_DEBUG_DEATH(
+      (TestMaybeValidGemm<float, float, float, float>(2, 3, 3, 4, 5, 4)), "");
 #endif
 }
 

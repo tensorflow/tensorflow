@@ -831,7 +831,7 @@ def var(a, axis=None, dtype=None, out=None, ddof=0, keepdims=None):  # pylint: d
       )
 
       if axis is None:
-        n = array_ops.size(input_tensor)
+        n = array_ops.size(input_tensor, out_type=dtypes.int64)
       else:
         # axis can be an int or a sequence of ints.
         if isinstance(axis, (int, np.integer)):
@@ -854,9 +854,25 @@ def var(a, axis=None, dtype=None, out=None, ddof=0, keepdims=None):  # pylint: d
               axis < 0, axis + array_ops.rank(input_tensor), axis
           )
         n = math_ops.reduce_prod(
-            array_ops.gather(array_ops.shape(input_tensor), axis)
+            array_ops.gather(
+                array_ops.shape(input_tensor, out_type=dtypes.int64), axis
+            )
         )
-      n = math_ops.cast(n - ddof, squared_deviations.dtype)
+      # NumPy clamps the degrees-of-freedom denominator at 0 (and emits a
+      # "Degrees of freedom <= 0" RuntimeWarning) when ddof >= n, rather than
+      # letting it go negative, and it also allows a non-integer `ddof`
+      # (e.g. 1.5). Casting both `n` and `ddof` to `squared_deviations.dtype`
+      # before subtracting avoids a TypeError from mixing an integer `n`
+      # with a float `ddof`, and the `maximum(..., 0)` clamp turns a
+      # would-be negative denominator into 0 (giving NumPy's `inf` on
+      # divide) instead of a finite, wrong, negative "variance". `n` is
+      # computed as int64 above so it doesn't silently overflow on tensors
+      # with more than 2**31 - 1 elements.
+      n = math_ops.cast(n, squared_deviations.dtype)
+      ddof_cast = math_ops.cast(ddof, squared_deviations.dtype)
+      n = math_ops.maximum(
+          n - ddof_cast, math_ops.cast(0, squared_deviations.dtype)
+      )
 
       return math_ops.divide(squared_deviations, n)
 
