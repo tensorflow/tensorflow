@@ -21,7 +21,7 @@ limitations under the License.
 
 namespace py = pybind11;
 
-PYBIND11_MODULE(_pywrap_python_op_gen, m) {
+PYBIND11_MODULE(_pywrap_python_op_gen, m, pybind11::mod_gil_not_used()) {
   m.def("GetPythonWrappers", [](py::bytes input) {
     char* c_string;
     Py_ssize_t py_size;
