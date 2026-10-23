@@ -935,6 +935,38 @@ struct functor_traits<scalar_erfinv_op<float>> {
   };
 };
 
+// TF-owned wrapper avoids specializing Eigen's scalar_erf_op across translation
+// units. TODO(#124773): Remove this wrapper once the Eigen pin includes
+// 3e5a2f92 (MR !2306), which fixes erf returning NaN for large double inputs.
+template <typename Scalar>
+struct erf_op : scalar_erf_op<Scalar> {};
+
+template <>
+struct erf_op<double> {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE double operator()(
+      const double& a) const {
+    // Saturate outside the safe domain.  Comparisons with NaN are false, so
+    // NaN falls through to numext::erf and stays NaN.  +/-inf saturate to +/-1.
+    constexpr double kClamp = 28.0;
+    if (a >= kClamp) return 1.0;
+    if (a <= -kClamp) return -1.0;
+    return numext::erf(a);
+  }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& a) const {
+    // Match Eigen erfc / upstream erf clamp for the vectorized path.
+    constexpr double kClamp = 28.0;
+    const Packet x =
+        pmin(pmax(a, pset1<Packet>(-kClamp)), pset1<Packet>(kClamp));
+    // Restore NaN lanes regardless of the packet min/max implementation.
+    return pselect(pcmp_eq(a, a), perf(x), a);
+  }
+};
+
+template <typename Scalar>
+struct functor_traits<erf_op<Scalar>> : functor_traits<scalar_erf_op<Scalar>> {
+};
+
 // igamma(a, x) = P(a, x) is defined only for a > 0, x >= 0.  Eigen's
 // scalar_igamma_op short-circuits to 0 when x == 0 before the domain check
 // fires, so a <= 0 with x == 0 silently returns 0 instead of NaN.  The
@@ -1140,7 +1172,7 @@ template <typename T>
 struct digamma : base<T, Eigen::internal::digamma_op<T>> {};
 
 template <typename T>
-struct erf : base<T, Eigen::internal::scalar_erf_op<T>> {};
+struct erf : base<T, Eigen::internal::erf_op<T>> {};
 
 template <typename T>
 struct erfc : base<T, Eigen::internal::scalar_erfc_op<T>> {};
