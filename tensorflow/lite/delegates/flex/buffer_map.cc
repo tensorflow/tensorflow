@@ -25,9 +25,9 @@ limitations under the License.
 namespace tflite {
 namespace flex {
 
-BufferMap::BufferMap() {}
+BufferMap::BufferMap() = default;
 
-BufferMap::~BufferMap() {}
+BufferMap::~BufferMap() = default;
 
 bool BufferMap::HasTensor(int tensor_index) const {
   return id_to_tensor_.count(tensor_index) != 0;
