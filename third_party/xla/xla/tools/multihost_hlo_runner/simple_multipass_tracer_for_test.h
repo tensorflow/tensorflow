@@ -24,6 +24,10 @@ namespace profiler {
 // accelerators.
 void RegisterSimpleMultiPassTracerForTest();
 
+// Clears registered multi-pass profiler factories from the TSL profiler
+// registry.
+void ClearMultiPassTracerRegisterForTest();
+
 }  // namespace profiler
 }  // namespace xla
 

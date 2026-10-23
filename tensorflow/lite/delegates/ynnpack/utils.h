@@ -83,9 +83,11 @@ bool IsQuantized(const TfLiteTensor& tensor);
 // is constant between `Prepare` calls.
 bool IsConstant(const TfLiteTensor& tensor, bool allow_prepare = false);
 bool IsSupportedQuantization(const TfLiteTensor& tensor,
-                             bool allow_per_channel = false);
+                             bool allow_per_channel = false,
+                             bool allow_blockwise = false);
 bool IsTensorSupported(const TfLiteTensor& tensor,
-                       bool allow_per_channel = false);
+                       bool allow_per_channel = false,
+                       bool allow_blockwise = false);
 bool QuantizationParamsEqual(const TfLiteTensor& tensor1,
                              const TfLiteTensor& tensor2);
 bool IsActivationSupported(TfLiteFusedActivation activation,
@@ -127,8 +129,7 @@ TfLiteStatus DefineScalarConstant(TfLiteContext* context,
 TfLiteStatus DefineQuantizationParams(TfLiteContext* context,
                                       ynn_subgraph_t subgraph,
                                       const TfLiteTensor& tensor,
-                                      uint32_t* scale_id, uint32_t* zp_id,
-                                      int32_t zp_offset = 0);
+                                      uint32_t* scale_id, uint32_t* zp_id);
 
 TfLiteStatus ApplyActivation(TfLiteContext* context, ynn_subgraph_t subgraph,
                              TfLiteFusedActivation activation,

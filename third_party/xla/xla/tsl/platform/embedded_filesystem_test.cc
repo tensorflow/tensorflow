@@ -176,5 +176,19 @@ TEST_F(EmbedFileSystemTest, GetMatchingPaths) {
   EXPECT_THAT(paths, ElementsAre("embed://paths"));
 }
 
+TEST_F(EmbedFileSystemTest, GetMatchingPathsReturnsSortedPaths) {
+  for (absl::string_view filename :
+       {"embed://sorted/c", "embed://sorted/a", "embed://sorted/e",
+        "embed://sorted/b", "embed://sorted/d"}) {
+    ASSERT_OK(fs_->EmbedFile(filename, "contents"));
+  }
+
+  std::vector<std::string> paths;
+  ASSERT_OK(fs_->GetMatchingPaths("embed://sorted/*", &paths));
+  EXPECT_THAT(paths, ElementsAre("embed://sorted/a", "embed://sorted/b",
+                                 "embed://sorted/c", "embed://sorted/d",
+                                 "embed://sorted/e"));
+}
+
 }  // namespace
 }  // namespace tsl

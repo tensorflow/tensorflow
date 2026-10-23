@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "google/protobuf/arena.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/types.h"
 #include "xla/tsl/profiler/utils/math_utils.h"
@@ -1515,6 +1516,201 @@ TEST(XplaneUtilsTest, MergeXSpaceDoesNotAssignEventMetadataIdZero) {
   EXPECT_EQ(metadata_id, 1);
   ASSERT_TRUE(merged.event_metadata().contains(metadata_id));
   EXPECT_EQ(merged.event_metadata().at(metadata_id).name(), "event");
+}
+
+TEST(XplaneUtilsTest, MergeXSpaceRawPointerTest) {
+  XSpace to;
+  XSpace from;
+
+  to.add_hostnames("host1");
+  from.add_hostnames("host2");
+
+  {
+    XPlaneBuilder p1(to.add_planes());
+    p1.SetName("p1");
+    XLineBuilder l1 = p1.GetOrCreateLine(1);
+    XEventBuilder e1 = l1.AddEvent(*p1.GetOrCreateEventMetadata("e1"));
+    e1.SetOffsetNs(10);
+    e1.SetDurationNs(10);
+  }
+  {
+    XPlaneBuilder p2(from.add_planes());
+    p2.SetName("p1");
+    XLineBuilder l2 = p2.GetOrCreateLine(2);
+    XEventBuilder e2 = l2.AddEvent(*p2.GetOrCreateEventMetadata("e2"));
+    e2.SetOffsetNs(20);
+    e2.SetDurationNs(20);
+  }
+
+  MergeXSpace(&from, &to);
+
+  EXPECT_THAT(to.hostnames(), UnorderedElementsAre("host1", "host2"));
+  ASSERT_EQ(to.planes_size(), 1);
+  EXPECT_EQ(to.planes(0).name(), "p1");
+  EXPECT_EQ(to.planes(0).lines_size(), 2);
+}
+
+TEST(XplaneUtilsTest, MergeXSpaceSameArenaTest) {
+  google::protobuf::Arena arena;
+  auto* to = google::protobuf::Arena::Create<XSpace>(&arena);
+  auto* from = google::protobuf::Arena::Create<XSpace>(&arena);
+
+  {
+    XPlaneBuilder p1(to->add_planes());
+    p1.SetName("p1");
+    XLineBuilder l1 = p1.GetOrCreateLine(1);
+    XEventBuilder e1 = l1.AddEvent(*p1.GetOrCreateEventMetadata("e1"));
+    e1.SetOffsetNs(10);
+  }
+  {
+    XPlaneBuilder p2(from->add_planes());
+    p2.SetName("p1");
+    XLineBuilder l1 = p2.GetOrCreateLine(1);
+    XEventBuilder e1 = l1.AddEvent(*p2.GetOrCreateEventMetadata("e2"));
+    e1.SetOffsetNs(15);
+    XLineBuilder l2 = p2.GetOrCreateLine(2);
+    XEventBuilder e2 = l2.AddEvent(*p2.GetOrCreateEventMetadata("e3"));
+    e2.SetOffsetNs(20);
+  }
+
+  const XEvent* from_e1_ptr = &from->planes(0).lines(0).events(0);
+  const XLine* from_l2_ptr = &from->planes(0).lines(1);
+
+  MergeXSpace(from, to);
+
+  ASSERT_EQ(to->planes_size(), 1);
+  ASSERT_EQ(to->planes(0).lines_size(), 2);
+  ASSERT_EQ(to->planes(0).lines(0).events_size(), 2);
+  EXPECT_EQ(&to->planes(0).lines(0).events(1), from_e1_ptr);
+  EXPECT_EQ(&to->planes(0).lines(1), from_l2_ptr);
+  EXPECT_EQ(to->planes(0).lines(1).events_size(), 1);
+  EXPECT_EQ(from->planes_size(), 0);
+}
+
+TEST(XplaneUtilsTest, MergeXSpaceMixedHeapAndArenaTest) {
+  google::protobuf::Arena arena;
+  auto* to = google::protobuf::Arena::Create<XSpace>(&arena);
+  XSpace heap_from;
+  auto* arena_from = google::protobuf::Arena::Create<XSpace>(&arena);
+
+  {
+    XPlaneBuilder p1(heap_from.add_planes());
+    p1.SetName("p1");
+    XLineBuilder l1 = p1.GetOrCreateLine(1);
+    XEventBuilder e1 = l1.AddEvent(*p1.GetOrCreateEventMetadata("e1"));
+    e1.SetOffsetNs(10);
+  }
+  {
+    XPlaneBuilder p2(arena_from->add_planes());
+    p2.SetName("p1");
+    XLineBuilder l1 = p2.GetOrCreateLine(1);
+    XEventBuilder e1 = l1.AddEvent(*p2.GetOrCreateEventMetadata("e2"));
+    e1.SetOffsetNs(20);
+    XLineBuilder l2 = p2.GetOrCreateLine(2);
+    XEventBuilder e2 = l2.AddEvent(*p2.GetOrCreateEventMetadata("e3"));
+    e2.SetOffsetNs(30);
+  }
+
+  // Merging heap_from into arena-allocated `to` adds a heap-allocated XPlane
+  // owned by `arena` (where `to_plane->GetArena() == nullptr`). A subsequent
+  // merge from `arena_from` on the same arena must safely copy submessages
+  // into the heap-allocated plane/line without corrupting arena ownership.
+  MergeXSpace(&heap_from, to);
+  MergeXSpace(arena_from, to);
+
+  ASSERT_EQ(to->planes_size(), 1);
+  ASSERT_EQ(to->planes(0).lines_size(), 2);
+  EXPECT_EQ(to->planes(0).lines(0).events_size(), 2);
+  EXPECT_EQ(to->planes(0).lines(1).events_size(), 1);
+}
+
+TEST(XplaneUtilsTest, MergeXSpaceDifferentArenasTest) {
+  google::protobuf::Arena arena1;
+  google::protobuf::Arena arena2;
+  auto* to = google::protobuf::Arena::Create<XSpace>(&arena1);
+  auto* from = google::protobuf::Arena::Create<XSpace>(&arena2);
+
+  {
+    XPlaneBuilder p1(to->add_planes());
+    p1.SetName("p1");
+    XLineBuilder l1 = p1.GetOrCreateLine(1);
+    XEventBuilder e1 = l1.AddEvent(*p1.GetOrCreateEventMetadata("e1"));
+    e1.SetOffsetNs(10);
+  }
+  {
+    XPlaneBuilder p2(from->add_planes());
+    p2.SetName("p1");
+    XLineBuilder l1 = p2.GetOrCreateLine(1);
+    XEventBuilder e1 = l1.AddEvent(*p2.GetOrCreateEventMetadata("e2"));
+    e1.SetOffsetNs(20);
+  }
+
+  MergeXSpace(from, to);
+
+  ASSERT_EQ(to->planes_size(), 1);
+  ASSERT_EQ(to->planes(0).lines_size(), 1);
+  EXPECT_EQ(to->planes(0).lines(0).events_size(), 2);
+}
+
+TEST(XplaneUtilsTest, MergeXSpaceSelfMergeIsNoOp) {
+  XSpace space;
+  {
+    XPlaneBuilder p1(space.add_planes());
+    p1.SetName("p1");
+    XLineBuilder l1 = p1.GetOrCreateLine(1);
+    XEventBuilder e1 = l1.AddEvent(*p1.GetOrCreateEventMetadata("e1"));
+    e1.SetOffsetNs(10);
+  }
+
+  MergeXSpace(&space, &space);
+
+  ASSERT_EQ(space.planes_size(), 1);
+  ASSERT_EQ(space.planes(0).lines_size(), 1);
+  EXPECT_EQ(space.planes(0).lines(0).events_size(), 1);
+}
+
+TEST(XplaneUtilsTest, MergeXSpacePreservesOrderAndLineNames) {
+  XSpace to;
+  XSpace from;
+
+  {
+    XPlane* p1 = to.add_planes();
+    p1->set_name("p1");
+    XLine* l1 = p1->add_lines();
+    l1->set_id(1);
+  }
+  {
+    XPlane* p1 = from.add_planes();
+    p1->set_name("p1");
+    XLine* l1 = p1->add_lines();
+    l1->set_id(1);
+    l1->set_name("thread_1");
+    l1->set_display_name("Thread 1");
+    XLine* l2 = p1->add_lines();
+    l2->set_id(2);
+    XLine* l3 = p1->add_lines();
+    l3->set_id(3);
+
+    XPlane* p2 = from.add_planes();
+    p2->set_name("p2");
+    XPlane* p3 = from.add_planes();
+    p3->set_name("p3");
+  }
+
+  MergeXSpace(&from, &to);
+
+  ASSERT_EQ(to.planes_size(), 3);
+  EXPECT_EQ(to.planes(0).name(), "p1");
+  EXPECT_EQ(to.planes(1).name(), "p2");
+  EXPECT_EQ(to.planes(2).name(), "p3");
+
+  const XPlane& merged_p1 = to.planes(0);
+  ASSERT_EQ(merged_p1.lines_size(), 3);
+  EXPECT_EQ(merged_p1.lines(0).id(), 1);
+  EXPECT_EQ(merged_p1.lines(0).name(), "thread_1");
+  EXPECT_EQ(merged_p1.lines(0).display_name(), "Thread 1");
+  EXPECT_EQ(merged_p1.lines(1).id(), 2);
+  EXPECT_EQ(merged_p1.lines(2).id(), 3);
 }
 
 TEST(XplaneUtilsTest, RemoveNonExistentLine) {
