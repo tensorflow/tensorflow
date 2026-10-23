@@ -472,6 +472,7 @@ class DeviceDescription {
   uint64_t collective_memory_granularity() const {
     return collective_memory_granularity_;
   }
+  int locality_domain_count() const { return locality_domain_count_; }
 
   bool confidential_computing_enabled() const {
     return confidential_computing_enabled_;
@@ -600,6 +601,7 @@ class DeviceDescription {
   void set_confidential_computing_enabled(bool value) {
     confidential_computing_enabled_ = value;
   }
+  void set_locality_domain_count(int value) { locality_domain_count_ = value; }
 
   void set_device_interconnect_info(DeviceInterconnectInfo info) {
     interconnect_info_ = std::move(info);
@@ -691,6 +693,7 @@ class DeviceDescription {
   DeviceInterconnectInfo interconnect_info_;
   uint64_t collective_memory_granularity_ = 0;
   bool confidential_computing_enabled_ = false;
+  int locality_domain_count_ = 0;
 
   // Please keep the fields in sync with the proto.
   // LINT.ThenChange(//tensorflow/compiler/xla/stream_executor/device_description.proto)
