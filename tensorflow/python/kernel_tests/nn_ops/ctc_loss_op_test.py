@@ -79,7 +79,7 @@ def _ctc_loss_v2(labels, inputs, sequence_length,
       logits_time_major=time_major)
 
 
-class CTCLossValidationTest(test.TestCase):
+class CTCLossValidationTest(test.TestCase, parameterized.TestCase):
 
   def _callCtcLoss(self, ctc_loss_fn, logits, blank_index=0):
     labels = constant_op.constant([[0]], dtype=dtypes.int32)
@@ -117,6 +117,222 @@ class CTCLossValidationTest(test.TestCase):
       with self.subTest(ctc_loss_fn=ctc_loss_fn.__name__):
         with self.assertRaisesRegex(ValueError, r"must be in range \[-3, 3\)"):
           self._callCtcLoss(ctc_loss_fn, logits, blank_index=-4)
+
+  def _out_of_range_error(self, sparse, label):
+    """Returns the error regex expected for an out-of-range label id."""
+    if not sparse:
+      return r"All labels must be in the range \[0, num_classes\)"
+    if label < 0:
+      return r"All labels must be nonnegative integers"
+    return r"No label may be greater than num_classes"
+
+  def _make_labels(self, sparse, values):
+    """Creates a labels tensor for CTC loss testing."""
+    if sparse:
+      return sparse_tensor.SparseTensor(
+          indices=constant_op.constant(
+              [[0, i] for i in range(len(values))], dtype=dtypes.int64
+          ),
+          values=constant_op.constant(values, dtype=dtypes.int32),
+          dense_shape=constant_op.constant(
+              [1, len(values)], dtype=dtypes.int64
+          ),
+      )
+    return constant_op.constant([values], dtype=dtypes.int32)
+
+  def _call_ctc_loss_with_labels(
+      self, ctc_loss_fn, sparse, values, blank_index=-1
+  ):
+    """Invokes ctc_loss_fn with the provided label values and zero logits."""
+    logits = array_ops.zeros([3, 1, 10], dtype=dtypes.float32)
+    return ctc_loss_fn(
+        labels=self._make_labels(sparse, values),
+        logits=logits,
+        label_length=constant_op.constant([len(values)], dtype=dtypes.int32),
+        logit_length=constant_op.constant([3], dtype=dtypes.int32),
+        blank_index=blank_index,
+    )
+
+  @parameterized.product(
+      ctc_loss_fn=[ctc_ops.ctc_loss_v2, ctc_ops.ctc_loss_v3],
+      sparse=[True, False],
+      label=[-1, 10, 2147483647],
+  )
+  def testOutOfRangeLabelRejected(self, ctc_loss_fn, sparse, label):
+    """Tests that out-of-range label ids are rejected in eager mode."""
+    with self.assertRaisesRegex(
+        errors_impl.InvalidArgumentError,
+        self._out_of_range_error(sparse, label),
+    ):
+      self.evaluate(
+          self._call_ctc_loss_with_labels(ctc_loss_fn, sparse, [label])
+      )
+
+  @parameterized.product(
+      ctc_loss_fn=[ctc_ops.ctc_loss_v2, ctc_ops.ctc_loss_v3],
+      sparse=[True, False],
+      label=[-1, 10, 2147483647],
+  )
+  def testOutOfRangeLabelRejectedInFunction(self, ctc_loss_fn, sparse, label):
+    """Tests that out-of-range label ids are rejected inside tf.function."""
+
+    @def_function.function
+    def test_fn():
+      return self._call_ctc_loss_with_labels(ctc_loss_fn, sparse, [label])
+
+    with self.assertRaisesRegex(
+        errors_impl.InvalidArgumentError,
+        self._out_of_range_error(sparse, label),
+    ):
+      self.evaluate(test_fn())
+
+  @parameterized.product(
+      ctc_loss_fn=[ctc_ops.ctc_loss_v2, ctc_ops.ctc_loss_v3],
+      sparse=[True, False],
+  )
+  def testInRangeLabelsStillAccepted(self, ctc_loss_fn, sparse):
+    """Tests that valid labels are still accepted."""
+    loss = self.evaluate(
+        self._call_ctc_loss_with_labels(ctc_loss_fn, sparse, [0, 9])
+    )
+    self.assertAllEqual(loss.shape, [1])
+    self.assertTrue(np.all(np.isfinite(loss)))
+
+  def testDensePaddingNegativeValueIgnored(self):
+    """Padding with -1 past label_length must be ignored (negative OOB)."""
+    logits = array_ops.zeros([3, 1, 10], dtype=dtypes.float32)
+    # Reference: label [3], no padding.
+    loss_ref = self.evaluate(
+        ctc_ops.ctc_loss_v3(
+            labels=constant_op.constant([[3, 0]], dtype=dtypes.int32),
+            logits=logits,
+            label_length=constant_op.constant([1], dtype=dtypes.int32),
+            logit_length=constant_op.constant([3], dtype=dtypes.int32),
+            blank_index=-1,
+        )
+    )
+    # Same label with invalid padding value -1 past label_length.
+    loss_padded = self.evaluate(
+        ctc_ops.ctc_loss_v3(
+            labels=constant_op.constant([[3, -1]], dtype=dtypes.int32),
+            logits=logits,
+            label_length=constant_op.constant([1], dtype=dtypes.int32),
+            logit_length=constant_op.constant([3], dtype=dtypes.int32),
+            blank_index=-1,
+        )
+    )
+    self.assertAllClose(loss_ref, loss_padded)
+
+  def testDensePaddingPositiveOobValueIgnored(self):
+    """Padding with positive OOB ids (e.g. 10, 99) past label_length is ok."""
+    logits = array_ops.zeros([3, 1, 10], dtype=dtypes.float32)
+    loss_ref = self.evaluate(
+        ctc_ops.ctc_loss_v3(
+            labels=constant_op.constant([[3, 0]], dtype=dtypes.int32),
+            logits=logits,
+            label_length=constant_op.constant([1], dtype=dtypes.int32),
+            logit_length=constant_op.constant([3], dtype=dtypes.int32),
+            blank_index=-1,
+        )
+    )
+    for pad_val in [10, 99]:
+      loss_padded = self.evaluate(
+          ctc_ops.ctc_loss_v3(
+              labels=constant_op.constant([[3, pad_val]], dtype=dtypes.int32),
+              logits=logits,
+              label_length=constant_op.constant([1], dtype=dtypes.int32),
+              logit_length=constant_op.constant([3], dtype=dtypes.int32),
+              blank_index=-1,
+          )
+      )
+      self.assertAllClose(
+          loss_ref,
+          loss_padded,
+          msg=f"Padding value {pad_val} should be ignored",
+      )
+
+  @parameterized.product(
+      ctc_loss_fn=[ctc_ops.ctc_loss_v2, ctc_ops.ctc_loss_v3],
+  )
+  def testUnknownRankLogitsRejected(self, ctc_loss_fn):
+    """Tests that unknown-rank logits do not crash _get_dim and reject OOB.
+
+    Dense labels route through ctc_loss_dense, which calls _get_dim on both
+    logits and labels.  Tracing with TensorSpec(shape=None) gives logits an
+    unknown rank (labels keep a static shape), exercising the fallback in
+    _get_dim.
+    """
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)]
+    )
+    def test_fn(logits):
+      return ctc_loss_fn(
+          labels=self._make_labels(False, [10]),
+          logits=logits,
+          label_length=constant_op.constant([1], dtype=dtypes.int32),
+          logit_length=constant_op.constant([3], dtype=dtypes.int32),
+          blank_index=-1,
+      )
+
+    with self.assertRaisesRegex(
+        errors_impl.InvalidArgumentError,
+        self._out_of_range_error(False, 10),
+    ):
+      self.evaluate(test_fn(array_ops.zeros([3, 1, 10], dtype=dtypes.float32)))
+
+  @parameterized.product(
+      ctc_loss_fn=[ctc_ops.ctc_loss_v2, ctc_ops.ctc_loss_v3],
+  )
+  def testUnknownRankLogitsAccepted(self, ctc_loss_fn):
+    """Tests that valid labels with unknown-rank logits are accepted.
+
+    Uses blank_index=-1 so blank_index + _get_dim(logits, 2) is computed at
+    trace time, exercising blank_index_val under unknown rank.
+    """
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)]
+    )
+    def test_fn(logits):
+      return ctc_loss_fn(
+          labels=self._make_labels(False, [1, 2]),
+          logits=logits,
+          label_length=constant_op.constant([2], dtype=dtypes.int32),
+          logit_length=constant_op.constant([3], dtype=dtypes.int32),
+          blank_index=-1,
+      )
+
+    loss = self.evaluate(
+        test_fn(array_ops.zeros([3, 1, 10], dtype=dtypes.float32))
+    )
+    self.assertAllEqual(loss.shape, [1])
+    self.assertTrue(np.all(np.isfinite(loss)))
+
+  def testDensePaddingMixedLengths(self):
+    """Padding past each row's label_length is ignored per row."""
+    logits = array_ops.zeros([4, 2, 10], dtype=dtypes.float32)
+    label_length = constant_op.constant([1, 2], dtype=dtypes.int32)
+    logit_length = constant_op.constant([4, 4], dtype=dtypes.int32)
+
+    def loss(values):
+      return ctc_ops.ctc_loss_v3(
+          labels=constant_op.constant(values, dtype=dtypes.int32),
+          logits=logits,
+          label_length=label_length,
+          logit_length=logit_length,
+          blank_index=-1,
+      )
+
+    self.assertAllClose(
+        self.evaluate(loss([[3, 0], [4, 5]])),
+        self.evaluate(loss([[3, 99], [4, 5]])),
+    )
+    with self.assertRaisesRegex(
+        errors_impl.InvalidArgumentError,
+        r"All labels must be in the range \[0, num_classes\)",
+    ):
+      self.evaluate(loss([[3, 0], [4, 10]]))
 
 
 class CTCLossTest(test.TestCase):

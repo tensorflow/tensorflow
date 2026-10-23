@@ -403,6 +403,108 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/
  INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(LogOp)
  INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(Log1pOp)
  INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(Log2Op)
+@@ -646,6 +647,88 @@
+     return success();
+   }
+ 
++  // Verify FanOut custom call:
++  // - Exactly 1 memref input.
++  // - At least 2 memref outputs (element 0 = anchor, elements 1..N = stream
++  //   views).
++  // - Compatible shapes and element types between input and all outputs.
++  if (getCallTargetName() == kFanOutCustomCallTarget) {
++    if (getInputs().size() != 1) {
++      return emitOpError()
++             << "FanOut custom_call should have one input, but got "
++             << getInputs().size();
++    }
++    Type inputType = getInputs()[0].getType();
++    if (!isa<MemRefType>(inputType)) {
++      return emitOpError()
++             << "FanOut custom_call should have a memref input, but got "
++             << inputType;
++    }
++    TypeRange resultTypes = getResultTypes();
++    if (getNumResults() == 1 && isa<TupleType>(getResult(0).getType())) {
++      resultTypes = cast<TupleType>(getResult(0).getType()).getTypes();
++    }
++    if (resultTypes.size() < 2) {
++      return emitOpError()
++             << "FanOut custom_call should have at least two outputs, but got "
++             << resultTypes.size();
++    }
++    for (Type outputType : resultTypes) {
++      if (!isa<MemRefType>(outputType)) {
++        return emitOpError()
++               << "FanOut custom_call should have memref outputs, but got "
++               << outputType;
++      }
++      if (failed(verifyCompatibleShape(inputType, outputType)) ||
++          getElementTypeOrSelf(inputType) != getElementTypeOrSelf(outputType)) {
++        return emitOpError()
++               << "FanOut custom_call should have compatible input and output "
++                  "types, but got input "
++               << inputType << " and output " << outputType;
++      }
++    }
++    return success();
++  }
++
++  // Verify FanIn custom call:
++  // - At least 2 memref inputs (operand 0 = anchor, operands 1..N = streams).
++  // - Exactly 1 memref output.
++  // - Compatible shapes and element types between all inputs and the output.
++  if (getCallTargetName() == kFanInCustomCallTarget) {
++    if (getInputs().size() < 2) {
++      return emitOpError()
++             << "FanIn custom_call should have at least two inputs, but got "
++             << getInputs().size();
++    }
++    if (getNumResults() != 1) {
++      return emitOpError()
++             << "FanIn custom_call should have one output, but got "
++             << getNumResults();
++    }
++    Type outputType = getResult(0).getType();
++    if (!isa<MemRefType>(outputType)) {
++      return emitOpError()
++             << "FanIn custom_call should have a memref output, but got "
++             << outputType;
++    }
++    for (Value input : getInputs()) {
++      Type inputType = input.getType();
++      if (!isa<MemRefType>(inputType)) {
++        return emitOpError()
++               << "FanIn custom_call should have memref inputs, but got "
++               << inputType;
++      }
++      if (failed(verifyCompatibleShape(inputType, outputType)) ||
++          getElementTypeOrSelf(inputType) != getElementTypeOrSelf(outputType)) {
++        return emitOpError()
++               << "FanIn custom_call should have compatible input and output "
++                  "types, but got input "
++               << inputType << " and output " << outputType;
++      }
++    }
++    return success();
++  }
++
+   auto getOperandPartType = [&](int64_t operandIndex,
+                                 ::llvm::ArrayRef<int64_t> operandTupleIndices) {
+     Type operandPart = getOperand(operandIndex).getType();
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.h b/stablehlo/stablehlo/dialect/StablehloOps.h
+--- stablehlo/stablehlo/dialect/StablehloOps.h
++++ stablehlo/stablehlo/dialect/StablehloOps.h
+@@ -224,6 +224,9 @@
+ constexpr StringRef kCreateBufferCustomCallTarget = "CreateBuffer";
+ constexpr StringRef kPinCustomCallTarget = "Pin";
+ constexpr StringRef kUnpinCustomCallTarget = "Unpin";
++// Target names for concurrent buffer streaming custom calls.
++constexpr StringRef kFanOutCustomCallTarget = "FanOut";
++constexpr StringRef kFanInCustomCallTarget = "FanIn";
+ }  // end namespace stablehlo
+ }  // end namespace mlir
+ 
 diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/dialect/StablehloOps.td
 --- stablehlo/stablehlo/dialect/StablehloOps.td
 +++ stablehlo/stablehlo/dialect/StablehloOps.td
@@ -919,6 +1021,33 @@ diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo.mlir b/stablehlo/stablehlo/
  // Verifiers HLO constant op custom printing and parsing.
  // CHECK-LABEL: func @constants
  func.func @constants() -> () {
+@@ -6925,6 +6949,26 @@
+   func.return %0 : tensor<2xf32>
+ }
+ 
++// -----
++
++func.func @custom_call_fan_out_single_output(%arg0: memref<2xf32>) -> memref<2xf32> {
++  // expected-error@+1 {{FanOut custom_call should have at least two outputs, but got 1}}
++  %0 = "stablehlo.custom_call"(%arg0) {
++    call_target_name = "FanOut"
++  } : (memref<2xf32>) -> memref<2xf32>
++  func.return %0 : memref<2xf32>
++}
++
++// -----
++
++func.func @custom_call_fan_in_incompatible_stream_shape(%arg0: memref<2xf32>, %arg1: memref<4xf32>) -> memref<2xf32> {
++  // expected-error@+1 {{FanIn custom_call should have compatible input and output types, but got input 'memref<4xf32>' and output 'memref<2xf32>'}}
++  %0 = "stablehlo.custom_call"(%arg0, %arg1) {
++    call_target_name = "FanIn"
++  } : (memref<2xf32>, memref<4xf32>) -> memref<2xf32>
++  func.return %0 : memref<2xf32>
++}
++
+ func.func @custom_call_buffer_operand_in_multiple_output_operand_aliases(%arg0: tensor<2xf32>, %arg1: memref<2xf32>) -> (memref<2xf32>, memref<2xf32>) {
+   // expected-error@+1 {{buffer operand 1[] is used in output_operand_alias more than once}}
+   %0:2 = "stablehlo.custom_call"(%arg0, %arg1) {
 diff --ruN a/stablehlo/stablehlo/tests/print_stablehlo.mlir b/stablehlo/stablehlo/tests/print_stablehlo.mlir
 --- stablehlo/stablehlo/tests/print_stablehlo.mlir
 +++ stablehlo/stablehlo/tests/print_stablehlo.mlir
