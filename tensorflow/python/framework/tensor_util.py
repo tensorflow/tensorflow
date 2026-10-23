@@ -1074,28 +1074,32 @@ def _ConstantValue(tensor, partial):
     # Every Python-level index or slice on a tensor produces a `StridedSlice`.
     # Without this branch, indexing a constant throws away its static value even
     # though the result is trivially computable. This is visible for the very
-    # common `tf.shape(x)[0]`: `_ConstantValue` already folds `Shape`, so
-    # `tf.shape(x)` has a known value, and the following index drops it again.
-    prev = constant_value(tensor.op.inputs[0], partial)
-    if prev is None:
-      return None
+    # common `tf.shape(x)[0]`: `tf.shape(x)` is a `Const` when `x` has a fully
+    # defined shape, and this branch also folds a `Shape` op, so its value is
+    # known and the following index would otherwise drop it again.
     begin = constant_value(tensor.op.inputs[1])
     end = constant_value(tensor.op.inputs[2])
     strides = constant_value(tensor.op.inputs[3])
     if begin is None or end is None or strides is None:
       return None
-    # Everything below reads op attributes and reshapes the operands, any of
-    # which can fail on a malformed op or an unexpected input type.
-    # `constant_value` is specified to return `None` rather than raise, so the
-    # whole body is guarded.
+    # `Ellipsis` and `new_axis` shift the meaning of every subsequent index and
+    # would need the op's full index parsing. Keep returning `None` for those
+    # rather than risk producing a wrong value.
     try:
-      # `Ellipsis` and `new_axis` shift the meaning of every subsequent index
-      # and would need the op's full index parsing. Keep returning `None` for
-      # those rather than risk producing a wrong value.
       if tensor.op.get_attr("ellipsis_mask") or tensor.op.get_attr(
           "new_axis_mask"
       ):
         return None
+    except ValueError:
+      return None
+    prev = constant_value(tensor.op.inputs[0], partial)
+    if prev is None:
+      return None
+    # Everything below reads the remaining attributes and reshapes the
+    # operands, any of which can fail on a malformed op or an unexpected input
+    # type. `constant_value` is specified to return `None` rather than raise,
+    # so the whole body is guarded.
+    try:
       begin = np.asarray(begin).reshape(-1)
       end = np.asarray(end).reshape(-1)
       strides = np.asarray(strides).reshape(-1)
@@ -1106,18 +1110,18 @@ def _ConstantValue(tensor, partial):
       shrink_axis_mask = tensor.op.get_attr("shrink_axis_mask")
       index = []
       for i, (b, e, s) in enumerate(zip(begin, end, strides)):
-        b = None if begin_mask & (1 << i) else int(b)
-        e = None if end_mask & (1 << i) else int(e)
         s = int(s)
         if shrink_axis_mask & (1 << i):
-          # `shrink_axis_mask` means "index this axis and drop it". The op
-          # requires a unit stride and `begin[i] == end[i] - 1`; using the
-          # integer reproduces the same result, including the axis drop.
+          # The op reads begin[i] even when begin_mask is set, ignores
+          # end[i] and end_mask, and drops the axis. It allows any
+          # positive stride; only stride 1 is folded here.
           if s != 1:
             return None
-          index.append(0 if b is None else b)
-        else:
-          index.append(slice(b, e, None if s == 1 else s))
+          index.append(int(b))
+          continue
+        b = None if begin_mask & (1 << i) else int(b)
+        e = None if end_mask & (1 << i) else int(e)
+        index.append(slice(b, e, None if s == 1 else s))
       return prev[tuple(index)]
     except (IndexError, TypeError, ValueError):
       return None

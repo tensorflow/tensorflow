@@ -1518,10 +1518,9 @@ class ConstantValueTest(test.TestCase):
 
   def testStridedSliceScalarIndex(self):
     with ops.Graph().as_default():
-      self.assertEqual(8,
-                       tensor_util.constant_value(constant_op.constant([8, 9, 10])[0]))
-      self.assertEqual(10,
-                       tensor_util.constant_value(constant_op.constant([8, 9, 10])[-1]))
+      c = constant_op.constant([8, 9, 10])
+      self.assertEqual(8, tensor_util.constant_value(c[0]))
+      self.assertEqual(10, tensor_util.constant_value(c[-1]))
 
   def testStridedSliceBasicSlices(self):
     with ops.Graph().as_default():
@@ -1546,13 +1545,35 @@ class ConstantValueTest(test.TestCase):
 
   def testStridedSliceOfShape(self):
     # `tf.shape(x)[i]` is the idiomatic way to read a single dimension and the
-    # case that motivated the branch: `Shape` is already folded above, so the
-    # index should not silently drop the value again.
+    # case that motivated the branch: for a fully defined shape `tf.shape(x)`
+    # is already a `Const` op, and the branch folds a real `Shape` op as well,
+    # so the index should not silently drop the value again.
     with ops.Graph().as_default():
       x = array_ops.placeholder(dtypes.float32, shape=[2, 3])
       s = array_ops.shape(x)
       self.assertEqual(2, tensor_util.constant_value(s[0]))
       self.assertEqual(3, tensor_util.constant_value(s[1]))
+      s_op = array_ops.shape_internal(x, optimize=False)
+      self.assertEqual("Shape", s_op.op.type)
+      self.assertEqual(2, tensor_util.constant_value(s_op[0]))
+
+  def testStridedSliceShrinkIgnoresBeginMask(self):
+    # On a shrunk axis the op reads `begin[i]` even when `begin_mask` is set.
+    # Python indexing never sets both bits at once, so this needs a direct op.
+    with ops.Graph().as_default():
+      c = constant_op.constant([8, 9, 10])
+      y = array_ops.strided_slice(
+          c, [2], [3], begin_mask=1, shrink_axis_mask=1)
+      self.assertEqual(10, tensor_util.constant_value(y))
+
+  def testStridedSlicePartial(self):
+    with ops.Graph().as_default():
+      p = array_ops.placeholder(dtypes.int32, shape=[])
+      packed = array_ops_stack.stack([constant_op.constant(7), p])
+      self.assertEqual(
+          7, tensor_util.constant_value(packed[0], partial=True))
+      self.assertIsNone(
+          tensor_util.constant_value(packed[1], partial=True))
 
   def testStridedSliceNotStaticallyKnownIsNone(self):
     with ops.Graph().as_default():
@@ -1560,6 +1581,8 @@ class ConstantValueTest(test.TestCase):
       # branch stays conservative there rather than risk a wrong value.
       m = constant_op.constant([[1, 2], [3, 4]])
       self.assertIsNone(tensor_util.constant_value(m[..., 0]))
+      self.assertIsNone(
+          tensor_util.constant_value(m[array_ops.newaxis, 0]))
       # The sliced source is not constant.
       x = array_ops.placeholder(dtypes.float32, shape=[4])
       self.assertIsNone(tensor_util.constant_value(x[0:2]))
