@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/conv_utils.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
@@ -304,68 +305,10 @@ ConvolutionMatch MatchBackwardFilter(HloInstruction* conv) {
   // Step 3: fuse the matched HLOs into a backward convolution instruction.
   //
   // Compute the window of the backward convolution.
-  Window backward_conv_window;
-  for (int i = 0; i < input_spatial_dims.size(); ++i) {
-    WindowDimension* dim = backward_conv_window.add_dimensions();
-    // The window size of the backward convolution equals the output size of the
-    // forward convolution.
-    int64_t filter_size = conv->shape().dimensions(output_spatial_dims[i]);
-    dim->set_size(filter_size);
-    // The window stride equals the window dilation of the forward convolution.
-    dim->set_stride(conv->window().dimensions(i).window_dilation());
-    // The window's low padding is the same as the low padding of the
-    // activations.
-    dim->set_padding_low(conv->window().dimensions(i).padding_low());
-    dim->set_base_dilation(1);
-    dim->set_window_dilation(1);
-
-    int64_t input_size =
-        conv->operand(0)->shape().dimensions(input_spatial_dims[i]);
-    int64_t output_size = conv->window().dimensions(i).size();
-    // Compute the range of the amount of valid high padding. We first compute
-    // min_padding_high, the amount of padding on the right/bottom to ensure the
-    // last patch ends at the border, i.e.,
-    //
-    //   input_size + dim->padding_low() + min_padding_high
-    //     = (output_size - 1) * stride + filter_size
-    //
-    // Because convolution ignores trailing incomplete windows, any amount of
-    // padding high from min_padding_high to min_padding_high+stride-1
-    // (max_padding_high) has the same effect.
-    int64_t padded_input_size = filter_size + (output_size - 1) * dim->stride();
-    int64_t min_padding_high =
-        padded_input_size - input_size - dim->padding_low();
-    int64_t max_padding_high = min_padding_high + dim->stride() - 1;
-    CHECK_GE(dim->padding_low(), 0);
-    // In practice, since cuDNN convolution only supports even padding, we make
-    // the amount of high padding the same as the amount of low padding as long
-    // as it is between min_padding_high and max_padding_high. If it is not in
-    // that range, we pick the one that's closest to dim->padding_low() and let
-    // GpuConvPaddingLegalization canonicalize the resultant backward
-    // convolution later. Picking the closest one minimizes the cost of the kPad
-    // instruction to be inserted by GpuConvPaddingLegalization.
-    if (dim->padding_low() >= min_padding_high &&
-        dim->padding_low() <= max_padding_high) {
-      dim->set_padding_high(dim->padding_low());
-    } else {
-      if (dim->padding_low() < min_padding_high) {
-        dim->set_padding_high(min_padding_high);
-      } else {
-        dim->set_padding_high(max_padding_high);
-      }
-    }
-    if (dim->padding_high() < 0) {
-      LOG(WARNING)
-          << "Fusing this pattern to backward filter convolution would cause "
-             "negative padding ("
-          << dim->padding_high()
-          << ") on right/bottom of the weight gradients, which is not "
-             "supported by GpuConvPaddingLegalization (b/32744257). "
-             "Falling back to "
-             "unfused convolution for instruction: "
-          << conv->ToString();
-      return std::nullopt;
-    }
+  std::optional<Window> backward_conv_window =
+      RestoreWindowFromBackwardFilter(Cast<HloConvolutionInstruction>(conv));
+  if (!backward_conv_window.has_value()) {
+    return std::nullopt;
   }
 
   // Restore the dimension numbers of the backward convolution from the forward
@@ -394,7 +337,7 @@ ConvolutionMatch MatchBackwardFilter(HloInstruction* conv) {
   }
 
   HloInstruction* lhs = conv->mutable_operand(0);
-  return std::make_tuple(backward_conv_window, backward_conv_dnums, lhs);
+  return std::make_tuple(*backward_conv_window, backward_conv_dnums, lhs);
 }
 
 // Try to match a backward input pattern that contains "conv".
@@ -495,106 +438,10 @@ ConvolutionMatch MatchBackwardInput(HloInstruction* conv) {
   }
 
   const auto& input_spatial_dims = dnums.input_spatial_dimensions();
-  const auto& output_spatial_dims = dnums.output_spatial_dimensions();
-  CHECK_EQ(conv->window().dimensions().size(), input_spatial_dims.size());
-  CHECK_EQ(output_spatial_dims.size(), input_spatial_dims.size());
-
-  const Window& old_window = conv->window();
-  Window new_window = old_window;
-  for (size_t i = 0; i < input_spatial_dims.size(); ++i) {
-    // Restore backward convolution's padding config from the matched pattern.
-    // See the comment in tensorflow/core/kernels/conv_grad_ops.h for how we
-    // convert backward input convolution to a variant of forward convolution.
-    //
-    // The stride of the backward convolution
-    // = the base dilation factor of the forward convolution
-    auto dim = new_window.mutable_dimensions(i);
-    dim->set_stride(old_window.dimensions(i).base_dilation());
-    dim->set_base_dilation(1);
-
-    // The low padding = kernel_size - 1 - low padding on the gradients
-    // Make sure the low padding is not negative.
-    auto kernel_size = old_window.dimensions(i).size();
-    auto backward_padding_low =
-        kernel_size - 1 - old_window.dimensions(i).padding_low();
-    if (backward_padding_low < 0) {
-      LOG(WARNING)
-          << "The low padding of the backward convolution would be negative ("
-          << backward_padding_low
-          << "), which isn't supported by GpuConvPaddingLegalization "
-             "for now (b/32744257).";
-      return std::nullopt;
-    }
-    dim->set_padding_low(backward_padding_low);
-
-    // Compute the range of the amount of padding on the right/bottom of the
-    // activations. XLA's convolution requires all patches to be within the
-    // padded base. This gives us flexiblity to choose the amount of high
-    // padding from a set of values without changing the result of the backward
-    // convolution. The minimum amount (min_padding_high) makes the last patch
-    // end at the border. The maximum amount (max_padding_high) equals
-    // min_padding_high+stride-1 -- max_padding_high+1 would cause the output
-    // size to change.
-    auto unpadded_input_size = conv->shape().dimensions(output_spatial_dims[i]);
-    auto output_size =
-        conv->operand(0)->shape().dimensions(input_spatial_dims[i]);
-    auto padded_input_size = kernel_size + dim->stride() * (output_size - 1);
-    auto total_pad_size = padded_input_size - unpadded_input_size;
-    auto min_padding_high = total_pad_size - backward_padding_low;
-    auto max_padding_high = min_padding_high + dim->stride() - 1;
-
-    if (backward_padding_low >= min_padding_high &&
-        backward_padding_low <= max_padding_high) {
-      // In the best case (most likely), if backward_padding_low is in the range
-      // of the amounts of valid high padding, we choose backward_padding_low
-      // because cuDNN supports even padding only.
-      dim->set_padding_high(backward_padding_low);
-    } else {
-      // Otherwise, we choose the amount that's closest to backward_padding_low,
-      // and GpuConvPaddingLegalization will later insert kSlice
-      // instructions to enforce even padding.
-      //
-      // For example, consider the backward convolution pattern
-      //
-      //   ab     xy
-      //   | pad  | reverse
-      //  .a.b    yx
-      //     \   /
-      //      ABC
-      //
-      // The amount of low padding on activations (in backward convolution) is
-      //   backward_padding_low = kernel_size - 1 - forward_padding_low
-      //                        = 2 - 1 - 1 = 0
-      //
-      // The amount of padding high must be between 1 and 2, in order to make
-      // Conv(ABC, xy, stride=2) produce exactly 2 elements (ab). 0 is not in
-      // the range of [1,2], so we pick the closest valid amount of padding
-      // high, which is 1 in this case. Therefore, we fuse the above pattern to
-      //
-      //   ABC = BackwardInputConv(ab, xy, stride=2, padding_high=1)
-      if (backward_padding_low < min_padding_high) {
-        dim->set_padding_high(min_padding_high);
-      } else {
-        dim->set_padding_high(max_padding_high);
-      }
-    }
-    // GpuConvPaddingLegalization doesn't handle backward input
-    // convolution with negative padding for now. So fall back to unfused
-    // convolution in case of negative padding. For example,
-    //   ABCD = Conv(abc, reverse(xy), padding_high=2)
-    // could be fused to
-    //   ABCD = BackwardInputConv(abc, xy, padding_low=1, padding_high=-1)
-    // with positive padding low but negative padding high.
-    if (dim->padding_high() < 0) {
-      LOG(WARNING) << "Fusing this pattern to backward convolution would cause "
-                      "negative padding ("
-                   << dim->padding_high()
-                   << ") on right/bottom of the activations, which is not "
-                      "supported by GpuConvPaddingLegalization (b/32744257). "
-                      "Falling back to unfused convolution for instruction: "
-                   << conv->ToString();
-      return std::nullopt;
-    }
+  std::optional<Window> new_window =
+      RestoreWindowFromBackwardInput(Cast<HloConvolutionInstruction>(conv));
+  if (!new_window.has_value()) {
+    return std::nullopt;
   }
 
   // OK, it's a match! Switch the input feature dimension with the output
@@ -643,7 +490,7 @@ ConvolutionMatch MatchBackwardInput(HloInstruction* conv) {
         HloInstruction::CreateReshape(rhs->shape(), src));
   }
   if (conv->feature_group_count() == 1) {
-    return std::make_tuple(new_window, dnums, rhs);
+    return std::make_tuple(*new_window, dnums, rhs);
   }
 
   // Handle grouped convolutions. Because we swapped the input feature dimension
@@ -705,7 +552,7 @@ ConvolutionMatch MatchBackwardInput(HloInstruction* conv) {
   new_shape.set_dimensions(output_feature_dimension,
                            output_features * num_groups);
   rhs = c->AddInstruction(HloInstruction::CreateReshape(new_shape, rhs));
-  return std::make_tuple(new_window, dnums, rhs);
+  return std::make_tuple(*new_window, dnums, rhs);
 }
 
 HloInstruction* CreateGpuConv(absl::string_view call_target, const Shape& shape,

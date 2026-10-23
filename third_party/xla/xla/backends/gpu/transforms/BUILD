@@ -587,6 +587,7 @@ cc_library(
         "//xla/hlo/pass:hlo_pass",
         "//xla/service:hlo_proto_cc",
         "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu:conv_utils",
         "//xla/service/gpu:cublas_cudnn",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:dnn",
