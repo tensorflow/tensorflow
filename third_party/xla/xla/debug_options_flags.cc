@@ -613,6 +613,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_persistent_symmetric_memory(false);
   opts.set_xla_gpu_experimental_enable_raft_for_stable_topk(false);
   opts.set_xla_gpu_experimental_enable_tensor_ir(false);
+  opts.set_xla_gpu_experimental_enable_triton_scan(false);
   opts.set_xla_gpu_async_copy_min_bytes(-1);
 
   // Disable float checks.
@@ -3774,6 +3775,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "If true, the GPU autotuner may assign fusions to the experimental "
       "TensorIR (CUDA Tile) emitter. Requires sm_90+ and CUDA 13.3+ "
       "(tileiras)."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_enable_triton_scan",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_experimental_enable_triton_scan),
+      debug_options->xla_gpu_experimental_enable_triton_scan(),
+      "If true, lowers eligible associative kScan instructions to Triton "
+      "fusions (ScanRewriterTriton)."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_ragged_all_to_all_use_device_kernel",
       bool_setter_for(

@@ -65,12 +65,14 @@ limitations under the License.
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
+#include "xla/hlo/utils/hlo_query.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
@@ -80,6 +82,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/target_constants.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/rocm/rocm_compute_capability.h"
@@ -2292,6 +2295,12 @@ TEST_F(TritonEmitterTest, RocmWavesPerEuZeroOmitsAttribute) {
 
 class ScanTritonEmitterTest : public TritonEmitterTest {
  protected:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options = TritonEmitterTest::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_experimental_enable_triton_scan(true);
+    return debug_options;
+  }
+
   // Returns arguments for the entry computation of `module` filled with small
   // integers. All intermediate scan results are then exactly representable in
   // f32, so that the results match the interpreter reference bit-exactly,
@@ -2558,6 +2567,99 @@ ENTRY entry_computation {
   RunAndCompareScan(kHloText);
 }
 
+TEST_F(ScanTritonEmitterTest, TopPMaskEndToEnd8x128) {
+  constexpr absl::string_view kHloText = R"(
+HloModule top_p_mask_8x128
+
+max_computation {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT max = f32[] maximum(p0, p1)
+}
+
+add_computation {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+
+scan_computation {
+  p0 = f32[8]{0} parameter(0)
+  p1 = f32[8]{0} parameter(1)
+  add = f32[8]{0} add(p0, p1)
+  ROOT tuple = (f32[8]{0}, f32[8]{0}) tuple(add, add)
+}
+
+ENTRY main {
+  logits = f32[8,128]{1,0} parameter(0)
+  p = f32[] parameter(1)
+
+  c_neg_inf = f32[] constant(-inf)
+  reduce_max = f32[8]{0} reduce(logits, c_neg_inf), dimensions={1}, to_apply=max_computation
+  bcast_max = f32[8,128]{1,0} broadcast(reduce_max), dimensions={0}
+  sub = f32[8,128]{1,0} subtract(logits, bcast_max)
+  exp = f32[8,128]{1,0} exponential(sub)
+  c_zero = f32[] constant(0)
+  reduce_sum = f32[8]{0} reduce(exp, c_zero), dimensions={1}, to_apply=add_computation
+  bcast_sum = f32[8,128]{1,0} broadcast(reduce_sum), dimensions={0}
+  probs = f32[8,128]{1,0} divide(exp, bcast_sum)
+
+  init = f32[8]{0} broadcast(c_zero), dimensions={}
+  scan = (f32[8,128]{1,0}, f32[8]{0}) scan(probs, init), dimensions={1}, num_carries=1,
+    to_apply=scan_computation, is_associative=true
+  cumsum = f32[8,128]{1,0} get-tuple-element(scan), index=0
+
+  prev = f32[8,128]{1,0} subtract(cumsum, probs)
+  bcast_p = f32[8,128]{1,0} broadcast(p), dimensions={}
+  prev_le_p = pred[8,128]{1,0} compare(prev, bcast_p), direction=LE
+
+  iota = s32[8,128]{1,0} iota(), iota_dimension=1
+  c_zero_s32 = s32[] constant(0)
+  bcast_zero_s32 = s32[8,128]{1,0} broadcast(c_zero_s32), dimensions={}
+  iota_eq_0 = pred[8,128]{1,0} compare(iota, bcast_zero_s32), direction=EQ
+
+  p_gt_0 = pred[] compare(p, c_zero), direction=GT
+  bcast_p_gt_0 = pred[8,128]{1,0} broadcast(p_gt_0), dimensions={}
+
+  keep = pred[8,128]{1,0} select(iota_eq_0, bcast_p_gt_0, prev_le_p)
+
+  c_replace = f32[] constant(-1e12)
+  bcast_replace = f32[8,128]{1,0} broadcast(c_replace), dimensions={}
+  ROOT out = f32[8,128]{1,0} select(keep, logits, bcast_replace)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto optimized_module, GetOptimizedModule(kHloText));
+  std::vector<const HloInstruction*> fusions;
+  for (const HloInstruction* instr :
+       optimized_module->entry_computation()->instructions()) {
+    if (instr->opcode() == HloOpcode::kFusion) {
+      fusions.push_back(instr);
+    }
+  }
+  ASSERT_THAT(fusions, ::testing::SizeIs(1));
+  const HloComputation* fused_comp =
+      fusions[0]->fused_instructions_computation();
+  EXPECT_TRUE(
+      hlo_query::ContainsInstrWithOpcode(fused_comp, {HloOpcode::kReduce}));
+  EXPECT_TRUE(
+      hlo_query::ContainsInstrWithOpcode(fused_comp, {HloOpcode::kScan}));
+  EXPECT_TRUE(
+      hlo_query::ContainsInstrWithOpcode(fused_comp, {HloOpcode::kSelect}));
+
+  ASSERT_OK_AND_ASSIGN(Literal logits_literal,
+                       Literal::Make(ShapeUtil::MakeShape(F32, {8, 128})));
+  ASSERT_OK(
+      logits_literal.Populate<float>([](absl::Span<const int64_t> indices) {
+        return static_cast<float>(indices[1] % 7 - 3) * 0.1f;
+      }));
+  Literal p_literal = LiteralUtil::CreateR0<float>(0.8f);
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  EXPECT_TRUE(RunAndCompare(std::move(module), {&logits_literal, &p_literal},
+                            ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
 TEST_F(ScanTritonEmitterTest, SoftmaxScan128ForcedTile64) {
   constexpr absl::string_view kHloText = R"(
 max_computation {
@@ -2607,6 +2709,85 @@ ENTRY entry_computation {
         "num_warps":4,"num_ctas":1,"num_stages":1}}}
 })";
   RunAndCompareScan(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3});
+}
+
+TEST_F(ScanTritonEmitterTest, ScanOverLastDimensionOfRank3Input) {
+  constexpr absl::string_view kHloText = R"(
+add_computation {
+  p0 = f32[4,8] parameter(0)
+  p1 = f32[4,8] parameter(1)
+  add = f32[4,8] add(p0, p1)
+  ROOT tuple = (f32[4,8], f32[4,8]) tuple(add, add)
+}
+
+ENTRY entry_computation {
+  p0 = f32[4,8,1024] parameter(0)
+  p1 = f32[4,8] parameter(1)
+  scan = (f32[4,8,1024], f32[4,8]) scan(p0, p1), dimensions={2},
+    num_carries=1, is_associative=true, to_apply=add_computation
+  ROOT get-tuple-element = f32[4,8,1024] get-tuple-element(scan), index=0
+})";
+
+  ASSERT_OK_AND_ASSIGN(auto optimized_module, GetOptimizedModule(kHloText));
+  bool has_triton_scan = false;
+  for (const HloInstruction* instr :
+       optimized_module->entry_computation()->instructions()) {
+    if (instr->opcode() == HloOpcode::kFusion &&
+        instr->fusion_kind() == HloInstruction::FusionKind::kCustom &&
+        hlo_query::ContainsInstrWithOpcode(
+            instr->fused_instructions_computation(), {HloOpcode::kScan})) {
+      ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                           instr->backend_config<GpuBackendConfig>());
+      if (gpu_config.fusion_backend_config().kind() == "__triton") {
+        has_triton_scan = true;
+        break;
+      }
+    }
+  }
+  EXPECT_TRUE(has_triton_scan);
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> arguments,
+                       MakeSmallIntegerArguments(*module));
+  EXPECT_TRUE(RunAndCompare(std::move(module),
+                            LiteralUtil::MakePointers(arguments),
+                            ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+TEST_F(ScanTritonEmitterTest, ScanOverMajorDimensionIsNotTritonFused) {
+  constexpr absl::string_view kHloText = R"(
+add_computation {
+  p0 = f32[16] parameter(0)
+  p1 = f32[16] parameter(1)
+  add = f32[16] add(p0, p1)
+  ROOT tuple = (f32[16], f32[16]) tuple(add, add)
+}
+
+ENTRY entry_computation {
+  p0 = f32[1024,16] parameter(0)
+  p1 = f32[16] parameter(1)
+  scan = (f32[1024,16], f32[16]) scan(p0, p1), dimensions={0},
+    num_carries=1, is_associative=true, to_apply=add_computation
+  ROOT get-tuple-element = f32[1024,16] get-tuple-element(scan), index=0
+})";
+
+  ASSERT_OK_AND_ASSIGN(auto optimized_module, GetOptimizedModule(kHloText));
+  for (const HloInstruction* instr :
+       optimized_module->entry_computation()->instructions()) {
+    if (instr->opcode() == HloOpcode::kFusion) {
+      EXPECT_FALSE(hlo_query::ContainsInstrWithOpcode(
+          instr->fused_instructions_computation(), {HloOpcode::kScan}));
+    }
+  }
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> arguments,
+                       MakeSmallIntegerArguments(*module));
+  EXPECT_TRUE(RunAndCompare(std::move(module),
+                            LiteralUtil::MakePointers(arguments),
+                            ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 }  // namespace

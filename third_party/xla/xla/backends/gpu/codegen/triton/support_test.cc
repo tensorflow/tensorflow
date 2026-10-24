@@ -1273,6 +1273,23 @@ TEST_F(ScanSupportTest, NonAssociativeScanNotSupported) {
   })");
 }
 
+TEST_F(ScanSupportTest, ScanOverNonLastDimensionNotSupported) {
+  ExpectScanNotSupported(R"(
+  ENTRY main {
+    param = f32[16,8] parameter(0)
+    init = f32[8] parameter(1)
+    scan = (f32[16,8], f32[8]) scan(param, init), dimensions={0}, to_apply=add,
+      num_carries=1, is_associative=true
+    ROOT gte = f32[16,8] get-tuple-element(scan), index=0
+  })",
+                         R"(
+  add {
+    Arg_0 = f32[8] parameter(0)
+    Arg_1 = f32[8] parameter(1)
+    ROOT add = f32[8] add(Arg_0, Arg_1)
+  })");
+}
+
 using TransposeTest = SupportTestWithTypeAndOpcodeAndDeviceParam;
 
 TEST_P(TransposeTest, LoadTranspose3D) {

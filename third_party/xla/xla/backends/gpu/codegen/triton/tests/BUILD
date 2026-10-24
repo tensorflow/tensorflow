@@ -192,6 +192,7 @@ xla_test(
         "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/hlo/utils:hlo_query",
         "//xla/service:algorithm_util",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:gpu_compiler",

@@ -1978,7 +1978,11 @@ message DebugOptions {
   // when the cuDNN version changes).
   optional bool xla_autotune_cache_require_strict_codegen_match = 559;
 
-  // Next id: 562
+  // Lowers eligible associative kScan instructions to Triton fusions
+  // (ScanRewriterTriton).
+  optional bool xla_gpu_experimental_enable_triton_scan = 562;
+
+  // Next id: 563
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

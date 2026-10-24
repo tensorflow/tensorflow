@@ -142,6 +142,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/sanitize_constant_names.h"
 #include "xla/backends/gpu/transforms/scalar_constant_sinker.h"
 #include "xla/backends/gpu/transforms/scaled_dot_rewriter.h"
+#include "xla/backends/gpu/transforms/scan_rewriter_triton.h"
 #include "xla/backends/gpu/transforms/scatter_determinism_expander.h"
 #include "xla/backends/gpu/transforms/scatter_expander.h"
 #include "xla/backends/gpu/transforms/scatter_slice_simplifier.h"
@@ -2208,6 +2209,10 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
           gpu_target_config.device_description, ShapeSizeBytesFunction(),
           alias_info, mlir_context,
           /*only_fuse_if_profitable=*/true, thread_pool, &mlir_context_pool_);
+      if (debug_options.xla_gpu_experimental_enable_triton_scan()) {
+        pipeline.AddPass<ScanRewriterTriton>(
+            gpu_target_config.device_description);
+      }
     }
 
     int64_t rw_length = debug_options.xla_reduce_window_rewrite_base_length();

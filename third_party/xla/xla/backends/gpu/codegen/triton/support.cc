@@ -377,6 +377,14 @@ CodegenDecision CanTritonHandleScan(
         "Only single-input, single-carry scans are supported in Triton.");
   }
 
+  int64_t rank = scan.inputs().front()->shape().dimensions().size();
+  if (scan.scan_dimension() != rank - 1) {
+    // TODO(b/469020791): Support scans over other dimensions. The tiled Triton
+    // scan computes wrong results for them.
+    return CodegenDecision::Forbid(
+        "Only scans over the last dimension are supported in Triton.");
+  }
+
   if (!IsTritonSupportedComputation(*scan.to_apply(), gpu_version)) {
     return CodegenDecision::Forbid("Unsupported scan computation by Triton.");
   }
