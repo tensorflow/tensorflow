@@ -27,9 +27,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#if defined(__linux__)
+#include <unistd.h>
+#endif
+
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
@@ -319,7 +324,15 @@ absl::StatusOr<OwningOpRef<ModuleOp>> LoadSlimModel(
     uint64_t file_size = static_cast<uint64_t>(end_pos);
     auto status =
         InjectWeights(*combined_module, weights_file, file_size, *metadata_obj);
+    weights_file.close();
     if (!status.ok()) return status;
+#if defined(__linux__)
+    if (absl::EndsWith(model_dir, "model_intermediates") ||
+        absl::EndsWith(model_dir, "text_intermediates") ||
+        absl::EndsWith(model_dir, "embedder_intermediates")) {
+      (void)unlink(weights_path.c_str());
+    }
+#endif
   }
 
   const auto* sig_inputs = metadata_obj->getObject("signature_inputs");
