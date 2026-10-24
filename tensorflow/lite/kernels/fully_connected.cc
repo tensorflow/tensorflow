@@ -129,21 +129,29 @@ TfLiteStatus GetCheckedFullyConnectedIndexing(
   return kTfLiteOk;
 }
 
+constexpr int kDimMetadataSizeRandomSparse = 2;
+constexpr int kDimMetadataSizeBlockSparse = 3;
+
 bool SupportedSparsityFormat(const TfLiteSparsity& sparsity) {
+  if (sparsity.dim_metadata == nullptr || sparsity.traversal_order == nullptr ||
+      sparsity.dim_metadata_size < kDimMetadataSizeRandomSparse ||
+      sparsity.dim_metadata_size != sparsity.traversal_order->size) {
+    return false;
+  }
   if (sparsity.dim_metadata[0].format == kTfLiteDimDense &&
       sparsity.dim_metadata[1].format == kTfLiteDimSparseCSR) {
-    return true;
+    return sparsity.dim_metadata[1].array_segments != nullptr &&
+           sparsity.dim_metadata[1].array_segments->size >= 1 &&
+           sparsity.dim_metadata[1].array_indices != nullptr;
   }
 
   return false;
 }
 
-static const int kDimMetadataSizeRandomSparse = 2;
-static const int kDimMetadataSizeBlockSparse = 3;
-
 TfLiteStatus CreateLedgerTensor(const TfLiteSparsity* sparsity,
                                 TfLiteContext* context, TfLiteTensor* ledger) {
   TF_LITE_ENSURE(context, sparsity != nullptr);
+  TF_LITE_ENSURE(context, SupportedSparsityFormat(*sparsity));
   ledger->name = "FC_ledger";
   ledger->type = kTfLiteUInt8;
   ledger->allocation_type = kTfLiteArenaRwPersistent;
@@ -346,6 +354,7 @@ TfLiteStatus UpdateOutputSize(TfLiteContext* context,
                               int batch_size, int num_units, int cols) {
   TfLiteIntArray* output_size_array = nullptr;
   if (params->keep_num_dims) {
+    TF_LITE_ENSURE(context, NumDimensions(input) >= 1);
     TF_LITE_ENSURE_EQ(context, input->dims->data[input->dims->size - 1], cols);
     output_size_array = TfLiteIntArrayCopy(input->dims);
     output_size_array->data[output_size_array->size - 1] = num_units;
@@ -362,12 +371,25 @@ TfLiteStatus PrepareImpl4Bit(TfLiteContext* context, TfLiteNode* node,
                              int lhs_width, int rhs_width, int depth,
                              int batch_size, int cols, int output_depth) {
   const int units = output_depth;
-  const int lhs_layout_cols =
-      (cols + (optimized_4bit::FilterDepth - 1)) & ~(depth - 1);
-  const int rhs_layout_rows = (batch_size + (rhs_width - 1)) & ~(rhs_width - 1);
+  const CheckedInt<int> rounded_cols =
+      CheckedInt<int>(cols) + (optimized_4bit::FilterDepth - 1);
+  const CheckedInt<int> rounded_batch =
+      CheckedInt<int>(batch_size) + (rhs_width - 1);
+  const CheckedInt<int> rounded_units =
+      CheckedInt<int>(units) + (lhs_width - 1);
+  TF_LITE_ENSURE(context, !rounded_cols.Overflow() &&
+                              !rounded_batch.Overflow() &&
+                              !rounded_units.Overflow());
+  const int lhs_layout_cols = rounded_cols.Value() & ~(depth - 1);
+  const int rhs_layout_rows = rounded_batch.Value() & ~(rhs_width - 1);
   const int rhs_layout_cols = lhs_layout_cols;
   const int dst_layout_rows = rhs_layout_rows;
-  const int dst_layout_cols = (units + (lhs_width - 1)) & ~(lhs_width - 1);
+  const int dst_layout_cols = rounded_units.Value() & ~(lhs_width - 1);
+  const CheckedInt<int> checked_weight_size =
+      (CheckedInt<int>(dst_layout_cols) * lhs_layout_cols) / 2;
+  const CheckedInt<int> checked_required_size =
+      checked_weight_size + optimized_4bit::kDefaultAlignmentPadding;
+  TF_LITE_ENSURE(context, !checked_required_size.Overflow());
 
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
   TfLiteIntArrayFree(node->temporaries);
@@ -483,6 +505,9 @@ TfLiteStatus PrepareImpl(TfLiteContext* context, TfLiteNode* node,
   }
 
   TF_LITE_ENSURE_EQ(context, NumDimensions(filter), 2);
+  if (params->keep_num_dims) {
+    TF_LITE_ENSURE(context, NumDimensions(input) >= 1);
+  }
 
   // When the second dimension size of the filter tensor is 0, we need to
   // generate the output shape early to avoid dividing by 0.
@@ -613,6 +638,16 @@ TfLiteStatus PrepareImpl(TfLiteContext* context, TfLiteNode* node,
         filter->type == kTfLiteInt4 || filter->type == kTfLiteInt2));
   const bool is_sparse = filter->sparsity != nullptr;
   if (is_hybrid) {
+    if (filter->quantization.type == kTfLiteAffineQuantization) {
+      const auto* affine_quantization =
+          reinterpret_cast<TfLiteAffineQuantization*>(
+              filter->quantization.params);
+      if (affine_quantization && affine_quantization->scale &&
+          affine_quantization->scale->size > 1) {
+        TF_LITE_ENSURE_EQ(context, affine_quantization->quantized_dimension, 0);
+        TF_LITE_ENSURE_EQ(context, affine_quantization->scale->size, num_units);
+      }
+    }
     // Use optimized implementation for 4bit
     if (filter->type == kTfLiteInt4 && kernel_type == kGenericOptimized &&
         IsConstantTensor(filter) && batch_size &&
@@ -622,9 +657,6 @@ TfLiteStatus PrepareImpl(TfLiteContext* context, TfLiteNode* node,
       const int cols = input_size / batch_size;
       if (!data->op_data_4bit) {
         data->op_data_4bit = std::make_unique<optimized_4bit::OpData4Bit>();
-      }
-      if (data->op_data_4bit->batch_size == batch_size) {
-        return kTfLiteOk;
       }
       data->op_data_4bit->batch_size = batch_size;
       for (int packed_rows = optimized_4bit::GetMaxSupportedRows();
@@ -639,6 +671,7 @@ TfLiteStatus PrepareImpl(TfLiteContext* context, TfLiteNode* node,
                              optimized_4bit::FilterDepth, batch_size, cols,
                              num_units);
     }
+    data->op_data_4bit.reset();
     TfLiteIntArrayFree(node->temporaries);
     data->compute_row_sums = true;
     if (is_sparse) {
@@ -1075,6 +1108,7 @@ TfLiteStatus EvalHybridDense(
     const auto* affine_quantization =
         reinterpret_cast<TfLiteAffineQuantization*>(
             filter->quantization.params);
+    TF_LITE_ENSURE_EQ(context, affine_quantization->quantized_dimension, 0);
     TF_LITE_ENSURE_EQ(
         context, affine_quantization->scale->size,
         filter->dims->data[affine_quantization->quantized_dimension]);
@@ -1346,17 +1380,27 @@ TfLiteStatus EvalHybridDense4Bit(
   const int rhs_width = data->op_data_4bit->rows_right;
   const int depth = optimized_4bit::FilterDepth;
   const int lhs_width = optimized_4bit::FilterWidth;
-  const int lhs_layout_rows =
-      (output_depth + (lhs_width - 1)) & ~(lhs_width - 1);
-  const int lhs_layout_cols = (cols + (depth - 1)) & ~(depth - 1);
-  const int rhs_layout_rows = (batch_size + (rhs_width - 1)) & ~(rhs_width - 1);
+  const CheckedInt<int> rounded_rows =
+      CheckedInt<int>(output_depth) + (lhs_width - 1);
+  const CheckedInt<int> rounded_cols = CheckedInt<int>(cols) + (depth - 1);
+  const CheckedInt<int> rounded_batch =
+      CheckedInt<int>(batch_size) + (rhs_width - 1);
+  TF_LITE_ENSURE(context, !rounded_rows.Overflow() &&
+                              !rounded_cols.Overflow() &&
+                              !rounded_batch.Overflow());
+  const int lhs_layout_rows = rounded_rows.Value() & ~(lhs_width - 1);
+  const int lhs_layout_cols = rounded_cols.Value() & ~(depth - 1);
+  const int rhs_layout_rows = rounded_batch.Value() & ~(rhs_width - 1);
   const int rhs_layout_cols = lhs_layout_cols;
   const int dst_layout_rows = rhs_layout_rows;
   const int dst_layout_cols = lhs_layout_rows;
   if (data->op_data_4bit->needs_prepack) {
-    const int weight_size = lhs_layout_rows * lhs_layout_cols / 2;
-    const int required_size =
-        optimized_4bit::kDefaultAlignmentPadding + weight_size;
+    const CheckedInt<int> checked_weight_size =
+        (CheckedInt<int>(lhs_layout_rows) * lhs_layout_cols) / 2;
+    const CheckedInt<int> checked_required_size =
+        checked_weight_size + optimized_4bit::kDefaultAlignmentPadding;
+    TF_LITE_ENSURE(context, !checked_required_size.Overflow());
+    const int required_size = checked_required_size.Value();
     data->op_data_4bit->AllocatePackedRegion(required_size);
     const int8_t* weight_ptr = GetTensorData<int8_t>(filter);
     optimized_4bit::api::Prepack(data->op_data_4bit->prepacked_cache,
@@ -1379,6 +1423,7 @@ TfLiteStatus EvalHybridDense4Bit(
     // range down, so the last partial page is also unaffected. Because of this
     // behavior, on average one memory page (usually 4 kiB) per buffer holding 4
     // bit data will not be paged out.
+    const int weight_size = checked_weight_size.Value();
     static const uintptr_t pagesize = sysconf(_SC_PAGESIZE);
     int8_t* up_aligned_ptr = reinterpret_cast<int8_t*>(
         ((reinterpret_cast<uintptr_t>(weight_ptr) + pagesize - 1) / pagesize) *
@@ -1396,6 +1441,8 @@ TfLiteStatus EvalHybridDense4Bit(
       std::fill(filter_scales.begin(), filter_scales.end(),
                 filter_params->scale->data[0]);
     } else {
+      TF_LITE_ENSURE_EQ(context, filter_params->quantized_dimension, 0);
+      TF_LITE_ENSURE_EQ(context, filter_params->scale->size, output_depth);
       for (int i = 0; i < filter_params->scale->size; i++) {
         filter_scales[i] = filter_params->scale->data[i];
       }
@@ -1768,6 +1815,9 @@ bool VerifySparsity(const RuntimeShape& weights_shape,
                     const RuntimeShape& input_shape,
                     const RuntimeShape& output_shape,
                     const TfLiteSparsity* sparsity) {
+  if (sparsity == nullptr || !SupportedSparsityFormat(*sparsity)) {
+    return false;
+  }
   const int weights_dims_count = weights_shape.DimensionsCount();
   const int output_dims_count = output_shape.DimensionsCount();
   const int w0_size = sparsity->dim_metadata[0].dense_size;
@@ -2117,12 +2167,13 @@ TfLiteStatus EvalFloat(TfLiteContext* context, TfLiteNode* node,
     op_params.float_activation_max = output_activation_max;
     if (filter->sparsity != nullptr) {
       const auto& sparsity = *filter->sparsity;
-      reference_ops::FullyConnectedSparseWeight(
-          sparsity, op_params, GetTensorShape(input),
-          GetTensorData<float>(input), GetTensorShape(filter),
-          GetTensorData<float>(filter), GetTensorShape(bias),
-          GetTensorData<float>(bias), GetTensorShape(output),
-          GetTensorData<float>(output));
+      TF_LITE_ENSURE_OK(context,
+                        reference_ops::FullyConnectedSparseWeight(
+                            sparsity, op_params, GetTensorShape(input),
+                            GetTensorData<float>(input), GetTensorShape(filter),
+                            GetTensorData<float>(filter), GetTensorShape(bias),
+                            GetTensorData<float>(bias), GetTensorShape(output),
+                            GetTensorData<float>(output)));
     } else {
       reference_ops::FullyConnected(
           op_params, GetTensorShape(input), GetTensorData<float>(input),
