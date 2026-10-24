@@ -168,6 +168,7 @@ class ConditionalAccumulatorBaseApplyGradientOp
                ConditionalAccumulatorBase* accumulator) override {
     // Check input signature
     CheckSignature(ctx, accumulator);
+    if (!ctx->status().ok()) return;
 
     // Get input local_step
     const Tensor* local_step_tensor;
@@ -176,6 +177,7 @@ class ConditionalAccumulatorBaseApplyGradientOp
       ctx->CtxFailureWithWarning(absl::InvalidArgumentError(
           absl::StrCat("Argument local_step must be scalar, but had bad shape ",
                        local_step_tensor->shape().DebugString())));
+      return;
     }
 
     // Actually try to apply gradient now
