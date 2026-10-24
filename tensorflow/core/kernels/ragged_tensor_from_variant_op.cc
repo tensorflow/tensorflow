@@ -12,6 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstdint>
+#include <limits>
 #include <utility>
 #include <vector>
 
@@ -108,13 +110,14 @@ absl::Status StackNonRaggedTensors(
 
   TensorShape component_values_shape = ragged_components[0].values().shape();
   TensorShape result_shape = component_values_shape;
-  result_shape.InsertDim(0, ragged_components.size());
+  TF_RETURN_IF_ERROR(
+      result_shape.InsertDimWithStatus(0, ragged_components.size()));
 
   output_ragged->set_values(
       Tensor(DataTypeToEnum<VALUE_TYPE>::value, result_shape));
   auto output_values_flat = output_ragged->mutable_values()->flat<VALUE_TYPE>();
-  int values_index = 0;
-  for (int i = 0; i < ragged_components.size(); i++) {
+  int64_t values_index = 0;
+  for (size_t i = 0; i < ragged_components.size(); i++) {
     auto& component_values = ragged_components[i].values();
     if (component_values.shape() != component_values_shape) {
       return errors::InvalidArgument(
@@ -123,7 +126,7 @@ absl::Status StackNonRaggedTensors(
           component_values.shape());
     }
     auto component_values_flat = component_values.flat<VALUE_TYPE>();
-    for (int j = 0; j < component_values_flat.size(); j++) {
+    for (int64_t j = 0; j < component_values_flat.size(); j++) {
       output_values_flat(values_index++) = component_values_flat(j);
     }
   }
@@ -150,56 +153,99 @@ absl::Status NestedStackRaggedTensors(
 
   // Populate first `dims - 1` splits.
   for (int i = 0; i < dims - 1; i++) {
+    if (nested_dim_sizes[i] < 0 ||
+        nested_dim_sizes[i] >= std::numeric_limits<int>::max()) {
+      return errors::InvalidArgument(
+          "Ragged batch dimension size exceeds supported range.");
+    }
     int dims_splits_size = nested_dim_sizes[i] + 1;
     output_ragged->append_splits(Tensor(DataTypeToEnum<SPLIT_TYPE>::value,
                                         TensorShape({dims_splits_size})));
     auto splits_vec = output_ragged->mutable_splits(i)->vec<SPLIT_TYPE>();
-    int split_diff = nested_dim_sizes[i + 1];
+    int64_t split_diff = nested_dim_sizes[i + 1];
     for (int j = 0; j < dims_splits_size; j++) {
-      splits_vec(j) = j * split_diff;
+      const int64_t split_val = static_cast<int64_t>(j) * split_diff;
+      if (split_val < 0 ||
+          split_val > std::numeric_limits<SPLIT_TYPE>::max()) {
+        return errors::InvalidArgument(
+            "Ragged split value exceeds supported range.");
+      }
+      splits_vec(j) = static_cast<SPLIT_TYPE>(split_val);
     }
   }
 
   // Populate `dims`-th split.
-  int splits_size = ragged_components.size() + 1;
+  if (ragged_components.size() >=
+      static_cast<size_t>(std::numeric_limits<int>::max())) {
+    return errors::InvalidArgument(
+        "Number of ragged components exceeds supported range.");
+  }
+  int splits_size = static_cast<int>(ragged_components.size()) + 1;
   output_ragged->append_splits(
       Tensor(DataTypeToEnum<SPLIT_TYPE>::value, TensorShape({splits_size})));
   auto dims_splits_vec =
       output_ragged->mutable_splits(dims - 1)->vec<SPLIT_TYPE>();
   dims_splits_vec(0) = 0;
-  for (int i = 0; i < ragged_components.size(); i++) {
-    int split_val = ragged_components[i].values().shape().dim_size(0);
+  for (size_t i = 0; i < ragged_components.size(); i++) {
+    int64_t split_val = ragged_components[i].values().shape().dim_size(0);
     if (input_ragged_rank != 0 && ragged_components[i].ragged_rank() > 0) {
       split_val = ragged_components[i].splits(0).NumElements() - 1;
     }
-    dims_splits_vec(i + 1) = dims_splits_vec(i) + split_val;
+    if (split_val < 0 ||
+        split_val > std::numeric_limits<SPLIT_TYPE>::max() -
+                        static_cast<int64_t>(dims_splits_vec(i))) {
+      return errors::InvalidArgument(
+          "Ragged split value exceeds supported range.");
+    }
+    dims_splits_vec(i + 1) =
+        dims_splits_vec(i) + static_cast<SPLIT_TYPE>(split_val);
   }
 
   // Populate last `input_ragged_rank` splits.
   for (int i = 0; i < input_ragged_rank; i++) {
     int split_index = dims + i;
-    int split_size = 1;
-    for (int j = 0; j < ragged_components.size(); j++) {
+    int64_t split_size64 = 1;
+    for (size_t j = 0; j < ragged_components.size(); j++) {
       if (!ragged_components[j].nested_splits().empty()) {
-        split_size += ragged_components[j].splits(i).NumElements() - 1;
+        const int64_t component_splits =
+            ragged_components[j].splits(i).NumElements() - 1;
+        if (component_splits < 0 ||
+            component_splits >
+                std::numeric_limits<int>::max() - split_size64) {
+          return errors::InvalidArgument(
+              "Stacked ragged split size exceeds supported range.");
+        }
+        split_size64 += component_splits;
       }
     }
+    const int split_size = static_cast<int>(split_size64);
     output_ragged->append_splits(
         Tensor(DataTypeToEnum<SPLIT_TYPE>::value, TensorShape({split_size})));
     auto splits_vec =
         output_ragged->mutable_splits(split_index)->vec<SPLIT_TYPE>();
     splits_vec(0) = 0;
     SPLIT_TYPE last_split_value = 0;
-    int index = 1;
-    for (int j = 0; j < ragged_components.size(); j++) {
+    int64_t index = 1;
+    for (size_t j = 0; j < ragged_components.size(); j++) {
       if (ragged_components[j].nested_splits().empty()) {
         // Corner case: empty row. e.g [ [[x], [x]], [] ]
         continue;
       }
       auto component_splits_vec =
           ragged_components[j].splits(i).vec<SPLIT_TYPE>();
-      for (int k = 1; k < component_splits_vec.size(); k++, index++) {
-        splits_vec(index) = component_splits_vec(k) + last_split_value;
+      for (int64_t k = 1; k < component_splits_vec.size(); k++, index++) {
+        const SPLIT_TYPE component_split = component_splits_vec(k);
+        if ((last_split_value > 0 &&
+             component_split >
+                 std::numeric_limits<SPLIT_TYPE>::max() - last_split_value) ||
+            (last_split_value < 0 &&
+             component_split <
+                 std::numeric_limits<SPLIT_TYPE>::lowest() -
+                     last_split_value)) {
+          return errors::InvalidArgument(
+              "Ragged split value exceeds supported range.");
+        }
+        splits_vec(index) = component_split + last_split_value;
       }
       last_split_value = splits_vec(index - 1);
     }
@@ -221,8 +267,12 @@ absl::Status NestedStackRaggedTensors(
   }
 
   // Populate values.
-  int values_size = component_values_shape.dim_size(0);
-  for (int i = 1; i < ragged_components.size(); i++) {
+  int64_t values_size64 = component_values_shape.dim_size(0);
+  if (values_size64 < 0 || values_size64 > std::numeric_limits<int>::max()) {
+    return errors::InvalidArgument(
+        "Stacked ragged values size exceeds supported range.");
+  }
+  for (size_t i = 1; i < ragged_components.size(); i++) {
     if (ragged_components[i].values().dims() != component_values_shape.dims()) {
       return absl::InvalidArgumentError(absl::StrCat(
           "Rank of values must match for all "
@@ -230,19 +280,27 @@ absl::Status NestedStackRaggedTensors(
           component_values_shape.DebugString(), ", values shape at index ", i,
           ": ", ragged_components[i].values().shape().DebugString()));
     }
-    values_size += ragged_components[i].values().shape().dim_size(0);
+    const int64_t component_rows =
+        ragged_components[i].values().shape().dim_size(0);
+    if (component_rows < 0 ||
+        component_rows > std::numeric_limits<int>::max() - values_size64) {
+      return errors::InvalidArgument(
+          "Stacked ragged values size exceeds supported range.");
+    }
+    values_size64 += component_rows;
   }
-  component_values_shape.set_dim(0, values_size);
+  const int values_size = static_cast<int>(values_size64);
+  TF_RETURN_IF_ERROR(component_values_shape.SetDimWithStatus(0, values_size));
   output_ragged->set_values(
       Tensor(DataTypeToEnum<VALUE_TYPE>::value, component_values_shape));
   auto output_values_flat =
       output_ragged->mutable_values()->flat_outer_dims<VALUE_TYPE, 2>();
-  int values_index = 0;
+  int64_t values_index = 0;
 
   TensorShape expected_value_shape = component_values_shape;
   expected_value_shape.RemoveDim(0);
 
-  for (int i = 0; i < ragged_components.size(); i++) {
+  for (size_t i = 0; i < ragged_components.size(); i++) {
     // Check that the flat_values tensor shape is compatible.
     TensorShape value_shape = ragged_components[i].values().shape();
     value_shape.RemoveDim(0);
@@ -257,13 +315,13 @@ absl::Status NestedStackRaggedTensors(
 
     auto component_values_flat =
         ragged_components[i].values().flat_outer_dims<VALUE_TYPE, 2>();
-    int num_inner_elements = ragged_components[i].values().NumElements();
+    int64_t num_inner_elements = ragged_components[i].values().NumElements();
     if (ragged_components[i].values().dim_size(0) > 0) {
       num_inner_elements /= ragged_components[i].values().dim_size(0);
     }
-    for (int j = 0; j < ragged_components[i].values().dim_size(0);
+    for (int64_t j = 0; j < ragged_components[i].values().dim_size(0);
          j++, values_index++) {
-      for (int k = 0; k < num_inner_elements; k++) {
+      for (int64_t k = 0; k < num_inner_elements; k++) {
         output_values_flat(values_index, k) = component_values_flat(j, k);
       }
     }
@@ -331,7 +389,13 @@ class RaggedTensorFromVariantOp : public OpKernel {
     // Nested-Stack Ragged components into a batched RaggedTensor.
     std::vector<int> encoded_dim_sizes(encoded_variant.dims(), 0);
     for (int i = 0; i < encoded_variant.dims(); i++) {
-      encoded_dim_sizes[i] = encoded_variant.dim_size(i);
+      const int64_t dim_size = encoded_variant.dim_size(i);
+      OP_REQUIRES(
+          context,
+          dim_size >= 0 && dim_size < std::numeric_limits<int>::max(),
+          errors::InvalidArgument("encoded_variant dimension ", i, " has size ",
+                                  dim_size, ", which exceeds supported range."));
+      encoded_dim_sizes[i] = static_cast<int>(dim_size);
     }
     RaggedTensorVariant output_ragged;
     OP_REQUIRES_OK(
