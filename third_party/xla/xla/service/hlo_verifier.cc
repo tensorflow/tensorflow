@@ -155,6 +155,10 @@ absl::Status ShapeVerifier::HandleClamp(HloInstruction* clamp) {
   return CheckTernaryShape(clamp);
 }
 
+absl::Status ShapeVerifier::HandleFma(HloInstruction* fma) {
+  return CheckTernaryShape(fma);
+}
+
 absl::Status ShapeVerifier::HandleSelect(HloInstruction* select) {
   return CheckTernaryShape(select);
 }

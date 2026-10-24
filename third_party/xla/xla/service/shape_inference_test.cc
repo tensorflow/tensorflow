@@ -377,6 +377,32 @@ TEST_F(ShapeInferenceTest, ClampBadShapes) {
                    .ok());
 }
 
+TEST_F(ShapeInferenceTest, FmaShapes) {
+  ASSERT_OK_AND_ASSIGN(
+      Shape inferred_matrix,
+      ShapeInference::InferTernaryOpShape(HloOpcode::kFma, matrix_64_48_,
+                                          matrix_64_48_, matrix_64_48_));
+  EXPECT_TRUE(ShapeUtil::Equal(matrix_64_48_, inferred_matrix));
+
+  ASSERT_OK_AND_ASSIGN(
+      Shape inferred_scalar,
+      ShapeInference::InferTernaryOpShape(HloOpcode::kFma, f32_, f32_, f32_));
+  EXPECT_TRUE(ShapeUtil::Equal(f32_, inferred_scalar));
+
+  // Integer inputs are rejected.
+  EXPECT_FALSE(
+      ShapeInference::InferTernaryOpShape(HloOpcode::kFma, s32_, s32_, s32_)
+          .ok());
+  // Mismatched shapes are rejected.
+  EXPECT_FALSE(ShapeInference::InferTernaryOpShape(HloOpcode::kFma, vector_64_,
+                                                   vector_32_, vector_64_)
+                   .ok());
+  // Scalar broadcasting is not allowed for HLO fma.
+  EXPECT_FALSE(ShapeInference::InferTernaryOpShape(HloOpcode::kFma, f32_,
+                                                   matrix_64_48_, matrix_64_48_)
+                   .ok());
+}
+
 TEST_F(ShapeInferenceTest, Atan2FailsWithIntegerInput) {
   const Shape input = ShapeUtil::MakeScalarShape(S8);
   const absl::StatusOr<Shape> inferred_shape =

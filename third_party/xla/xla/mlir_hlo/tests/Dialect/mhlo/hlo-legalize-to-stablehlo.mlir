@@ -1279,8 +1279,12 @@ func.func @quantized_op_floor(%arg0: tensor<!quant.uniform<i8:f32, 0.00391329082
   func.return %0 : tensor<!quant.uniform<i8:f32, 0.0039132908278820561:-128>>
 }
 
-// FmaOp is not yet supported in MHLO.
-
+// CHECK-LABEL: "op_fma"
+func.func @op_fma(%arg0: tensor<3xf32>, %arg1: tensor<3xf32>, %arg2: tensor<3xf32>) -> tensor<3xf32> {
+  // CHECK: "stablehlo.fma"([[ARG0:%arg[0-9]+]], [[ARG1:%arg[0-9]+]], [[ARG2:%arg[0-9]+]]) : (tensor<3xf32>, tensor<3xf32>, tensor<3xf32>) -> tensor<3xf32>
+  %0 = "mhlo.fma"(%arg0, %arg1, %arg2) : (tensor<3xf32>, tensor<3xf32>, tensor<3xf32>) -> tensor<3xf32>
+  func.return %0 : tensor<3xf32>
+}
 // FusionOp aka mhlo.fusion is unsupported at the moment (see negative test below).
 
 // CHECK-LABEL: "op_gather"

@@ -1330,6 +1330,11 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
                  *func_builder, loc, result_type, operands, attributes)
           .getOperation();
     }
+    case HloOpcode::kFma: {
+      return mlir::stablehlo::FmaOp::create(*func_builder, loc, result_type,
+                                            operands, attributes)
+          .getOperation();
+    }
     case HloOpcode::kGather: {
       auto gather_instruction = Cast<HloGatherInstruction>(instruction);
       attributes.push_back(builder_->getNamedAttr(

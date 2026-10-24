@@ -183,6 +183,7 @@ bool CpuInstructionFusion::IsExpensive(const HloInstruction& instruction) {
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kFloor:
+    case HloOpcode::kFma:
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kImag:
     case HloOpcode::kInfeed:

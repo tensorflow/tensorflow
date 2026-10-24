@@ -7474,5 +7474,36 @@ ENTRY Entry (p0: f32[100], update: f32[10], idx: s32[]) -> f32[100] {
   EXPECT_OK(verifier().Run(module.get()).status());
 }
 
+TEST_F(HloVerifierTest, FmaValidAndInvalid) {
+  const char* const kValidHlo = R"(
+  HloModule FmaValid
+  ENTRY Entry {
+    a = f32[4] parameter(0)
+    b = f32[4] parameter(1)
+    c = f32[4] parameter(2)
+    ROOT f = f32[4] fma(a, b, c)
+  })";
+  ASSERT_OK_AND_ASSIGN(auto valid_module,
+                       ParseAndReturnUnverifiedModule(kValidHlo));
+  EXPECT_OK(verifier().Run(valid_module.get()).status());
+
+  auto invalid_module = CreateUnverifiedModule();
+  HloComputation::Builder builder("FmaInvalidInt");
+  Shape s32_shape = ShapeUtil::MakeShape(S32, {4});
+  auto p0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, s32_shape, "p0"));
+  auto p1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, s32_shape, "p1"));
+  auto p2 = builder.AddInstruction(
+      HloInstruction::CreateParameter(2, s32_shape, "p2"));
+  builder.AddInstruction(
+      HloInstruction::CreateTernary(s32_shape, HloOpcode::kFma, p0, p1, p2));
+  invalid_module->AddEntryComputation(builder.Build());
+  EXPECT_THAT(verifier().Run(invalid_module.get()),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Expected element type in shape to be "
+                                 "floating for fma operation; got S32.")));
+}
+
 }  // namespace
 }  // namespace xla

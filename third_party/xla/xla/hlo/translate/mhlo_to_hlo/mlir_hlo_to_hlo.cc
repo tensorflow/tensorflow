@@ -1509,10 +1509,6 @@ LogicalResult ExportXlaOp(DynamicBroadcastInDimOp op, OpLoweringContext ctx) {
   return failure();
 }
 
-// TODO(phawkins): Remove this temporary stub once HloOpcode::kFma is added to
-// XLA.
-LogicalResult ExportXlaOp(FmaOp op, OpLoweringContext ctx) { return failure(); }
-
 LogicalResult ExportXlaOp(mlir::stablehlo::ConvolutionOp op,
                           OpLoweringContext ctx) {
   auto& value_map = *ctx.values;

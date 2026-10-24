@@ -74,6 +74,9 @@ class DfsHloVisitorWithDefaultBase
   absl::Status HandleClamp(HloInstructionPtr clamp) override {
     return DefaultAction(clamp);
   }
+  absl::Status HandleFma(HloInstructionPtr fma) override {
+    return DefaultAction(fma);
+  }
   absl::Status HandleConcatenate(HloInstructionPtr concatenate) override {
     return DefaultAction(concatenate);
   }

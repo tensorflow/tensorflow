@@ -371,6 +371,16 @@ add {
   ROOT %out = f32[1,291,291] cholesky(f32[1,291,291] %a), lower=true
 }
 
+// CHECK-LABEL:  func private @test_fma
+// CHECK-SAME:  ([[ARG0:%.*]]: tensor<4xf32>, [[ARG1:%.*]]: tensor<4xf32>, [[ARG2:%.*]]: tensor<4xf32>) -> tensor<4xf32>
+%test_fma (a: f32[4], b: f32[4], c: f32[4]) -> f32[4] {
+  %a = f32[4] parameter(0)
+  %b = f32[4] parameter(1)
+  %c = f32[4] parameter(2)
+  // CHECK-NEXT:  mhlo.fma [[ARG0]], [[ARG1]], [[ARG2]] : tensor<4xf32>
+  ROOT %fma0 = f32[4] fma(f32[4] %a, f32[4] %b, f32[4] %c)
+}
+
 
 // CHECK-LABEL:  func private @test_clamp(
 %test_clamp (Arg_0.1: f32[], Arg_1.2: f32[4], Arg_1.3: f32[]) -> f32[4] {
