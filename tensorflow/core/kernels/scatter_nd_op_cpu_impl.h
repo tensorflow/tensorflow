@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/fill_functor.h"
+#include "tensorflow/core/kernels/scatter_nd_index.h"
 #include "tensorflow/core/kernels/scatter_nd_op.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
@@ -119,25 +120,32 @@ struct ScatterNdFunctor<CPUDevice, T, Index, OP, IXDIM> {
 
     const Eigen::DenseIndex batch_size = Tindices.dimension(0);
 
-    Index batch_strides[IXDIM];
-    if (IXDIM > 0) {
-      batch_strides[IXDIM - 1] = 1;
-    }
-    for (int dim = IXDIM - 2; dim >= 0; --dim) {
-      batch_strides[dim] =
-          batch_strides[dim + 1] * output_shape_prefix[dim + 1];
+    Eigen::array<int64_t, IXDIM> batch_strides;
+    if (!scatter_nd_op::ComputeScatterNdBatchStrides<IXDIM>(output_shape_prefix,
+                                                            &batch_strides)) {
+      // Valid TensorShapes cannot overflow int64 element counts; this is a
+      // defensive fallback so we never chip with a wrapped stride.
+      return batch_size > 0 ? Index{0} : Index{-1};
     }
 
+    // Stride products are checked above. In-range coordinates then produce a
+    // flat index that fits in int64, so the inner loop does not repeat those
+    // overflow checks. An out-of-range coordinate is not multiplied: it can be
+    // large enough that ix_d * stride overflows signed int64.
     if (slice_size == 1) {
       T* out_data = Toutput.data();
       const T* update_data = Tupdates.data();
       for (Eigen::DenseIndex loc = 0; loc < batch_size; ++loc) {
-        Index i = 0;
+        int64_t i = 0;
         bool out_of_bounds = false;
         for (int dim = 0; dim < IXDIM; ++dim) {
           const Index ix_d = internal::SubtleMustCopy(Tindices(loc, dim));
-          out_of_bounds |= !FastBoundsCheck(ix_d, output_shape_prefix[dim]);
-          i += ix_d * batch_strides[dim];
+          if (TF_PREDICT_FALSE(
+                  !FastBoundsCheck(ix_d, output_shape_prefix[dim]))) {
+            out_of_bounds = true;
+          } else {
+            i += static_cast<int64_t>(ix_d) * batch_strides[dim];
+          }
         }
         if (TF_PREDICT_FALSE(out_of_bounds)) {
           error_loc = loc;
@@ -171,12 +179,16 @@ struct ScatterNdFunctor<CPUDevice, T, Index, OP, IXDIM> {
       }
     } else {
       for (Eigen::DenseIndex loc = 0; loc < batch_size; ++loc) {
-        Index i = 0;
+        int64_t i = 0;
         bool out_of_bounds = false;
         for (int dim = 0; dim < IXDIM; ++dim) {
           const Index ix_d = internal::SubtleMustCopy(Tindices(loc, dim));
-          out_of_bounds |= !FastBoundsCheck(ix_d, output_shape_prefix[dim]);
-          i += ix_d * batch_strides[dim];
+          if (TF_PREDICT_FALSE(
+                  !FastBoundsCheck(ix_d, output_shape_prefix[dim]))) {
+            out_of_bounds = true;
+          } else {
+            i += static_cast<int64_t>(ix_d) * batch_strides[dim];
+          }
         }
         if (TF_PREDICT_FALSE(out_of_bounds)) {
           error_loc = loc;
@@ -184,7 +196,8 @@ struct ScatterNdFunctor<CPUDevice, T, Index, OP, IXDIM> {
           // the caller might ignore bad indices.
           continue;
         }
-        auto input_chip = Toutput.template chip<0>(i);
+        auto input_chip =
+            Toutput.template chip<0>(static_cast<Eigen::DenseIndex>(i));
         auto output_chip = input_chip;
         auto update_chip = Tupdates.template chip<0>(loc);
         update_executor::UpdateExecutor<

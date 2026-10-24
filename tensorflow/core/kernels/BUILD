@@ -5869,6 +5869,7 @@ tf_kernel_library(
         "scatter_nd_op_cpu_impl_7.cc",
     ],
     hdrs = [
+        "scatter_nd_index.h",
         "scatter_nd_op.h",
     ],
     features = ["-layering_check"],
@@ -5876,6 +5877,7 @@ tf_kernel_library(
         "-Wno-pass-failed",  # clang misses #pragma loop optimizations
     ]),
     gpu_srcs = [
+        "scatter_nd_index.h",
         "scatter_nd_op.h",
         "scatter_nd_op_gpu.cu.cc",
     ],
@@ -5939,6 +5941,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:testlib",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -6995,6 +6998,7 @@ filegroup(
         "save_restore_tensor.h",
         "scan_ops.h",
         "scatter_functor.h",
+        "scatter_nd_index.h",
         "scatter_nd_op.h",
         "scatter_nd_util.h",
         "searchsorted_op.h",
