@@ -345,10 +345,6 @@ nanobind_pywrap_extension(
         ":nb_absl_span",
         ":nb_helpers",
         ":types",
-        # placeholder for index annotation deps
-        "@com_google_absl//absl/hash",
-        "@com_google_absl//absl/types:span",
-        "@nanobind",
         "//xla:literal",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
@@ -365,6 +361,9 @@ nanobind_pywrap_extension(
         "//xla/hlo/builder/lib:svd",
         "//xla/pjrt:status_casters",
         "//xla/service:hlo_proto_cc",
+        "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/types:span",
+        "@nanobind",
     ],
 )
 
@@ -379,7 +378,6 @@ nanobind_pywrap_extension(
         ":dlpack_types",
         ":nb_absl_span",
         ":nb_numpy",
-        ":strides",
         ":types",
         "//xla:array",
         "//xla:debug_options_flags",
@@ -398,8 +396,6 @@ nanobind_pywrap_extension(
         "//xla/service/spmd/shardy/stablehlo_round_trip:stablehlo_import",
         "//xla/tsl/lib/strings:proto_serialization",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/python/lib/core:numpy",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/hash",
@@ -508,11 +504,6 @@ nanobind_pywrap_extension(
         ":aggregate_profile",
         ":profiler_utils",
         ":xplane_to_profile_instructions",
-        # placeholder for index annotation deps
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-        "@nanobind",
         "//xla/backends/profiler:profiler_backends",
         "//xla/backends/profiler/cpu:python_tracer",
         "//xla/backends/profiler/plugin:plugin_tracer",
@@ -527,7 +518,10 @@ nanobind_pywrap_extension(
         "//xla/tsl/profiler/rpc:profiler_server_impl",
         "//xla/tsl/profiler/rpc/client:capture_profile",
         "//xla/tsl/profiler/rpc/client:profiler_client_impl",
-        "//xla/tsl/profiler/utils:xplane_schema",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@nanobind",
         "@tsl//tsl/platform:protobuf",
         "@tsl//tsl/profiler/lib:profiler_session",
         "@tsl//tsl/profiler/lib:traceme",
@@ -594,7 +588,6 @@ nanobind_pywrap_extension(
     deps = [
         "//xla/backends/gpu/target_config",
         "//xla/pjrt:exceptions",
-        "@com_google_absl//absl/base:core_headers",
         "@nanobind",
     ],
 )
@@ -818,7 +811,7 @@ py_test(
     deps = [
         ":xla_extension",
         ":xla_transform",
-        "//third_party/py/numpy",
+        "//third_party/py/numpy",  # buildcleaner: keep (needed at runtime by the extension module)
         "@absl_py//absl/testing:absltest",
     ] + xla_py_test_deps(),
 )
