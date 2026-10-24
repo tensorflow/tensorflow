@@ -16,6 +16,7 @@
 # Tests of TensorFlow NN kernels written using the Python API.
 
 load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
+load("//tensorflow:tensorflow.bzl", "if_oss")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test")
 
 package(
@@ -545,6 +546,7 @@ cuda_py_strict_test(
     name = "flash_attention_op_test",
     size = "medium",
     srcs = ["flash_attention_op_test.py"],
+    env = if_oss({"TF_FLASH_ATTENTION_FA2_BUILT": "1"}, {}),
     shard_count = 4,
     deps = [
         "//tensorflow/python/eager:backprop",
