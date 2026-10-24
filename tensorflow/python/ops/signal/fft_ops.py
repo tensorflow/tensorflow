@@ -109,10 +109,14 @@ def _maybe_pad_for_rfft(input_tensor, fft_rank, fft_length, is_reverse=False):
   """Pads `input_tensor` to `fft_length` on its inner-most `fft_rank` dims."""
   fft_shape = _tensor_util.constant_value_as_shape(fft_length)
 
-  # Edge case: skip padding empty tensors.
-  if (input_tensor.shape.ndims is not None and
-      any(dim.value == 0 for dim in input_tensor.shape.dims)):
-    return input_tensor
+  # Edge case: skip padding when a batch dimension is empty, since the result
+  # is empty as well. An empty transformed dimension must still be zero-padded
+  # to `fft_length`, otherwise the kernel reads uninitialized memory.
+  if input_tensor.shape.ndims is not None:
+    outer_dims = input_tensor.shape.dims[
+        :max(input_tensor.shape.ndims - fft_rank, 0)]
+    if any(dim.value == 0 for dim in outer_dims):
+      return input_tensor
 
   # An N-D transform over a rank 0 input has no dimensions to pad, and the
   # reverse branch below would index off the end of an empty fft_shape.
@@ -182,9 +186,11 @@ def _rfft_wrapper(fft_fn, fft_rank, default_name):
         fft_length = _infer_fft_length_for_rfft(input_tensor, fft_rank)
       else:
         fft_length = _ops.convert_to_tensor(fft_length, _dtypes.int32)
+      fft_length_static = _tensor_util.constant_value(fft_length)
+      if input_tensor.shape.num_elements() != 0:
+        _validate_static_irfft_fft_length(fft_length_static, fft_rank)
       input_tensor = _maybe_pad_for_rfft(input_tensor, fft_rank, fft_length)
 
-      fft_length_static = _tensor_util.constant_value(fft_length)
       if fft_length_static is not None:
         fft_length = fft_length_static
       return fft_fn(input_tensor, fft_length, Tcomplex=complex_dtype, name=name)
