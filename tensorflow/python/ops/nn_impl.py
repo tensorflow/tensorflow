@@ -482,9 +482,10 @@ def swish(features, beta=1.0):
       with ops.control_dependencies([dy]):
         logits = beta * features
         if features.dtype == dtypes.float64:
-          is_extreme_neg = logits <= -500.0
-          safe_logits = array_ops.where_v2(is_extreme_neg, logits, -500.0)
-          use_complement = logits >= 0.0
+          # Evaluate the smaller sigmoid tail directly. For large positive
+          # logits, `1 - sigmoid(logits)` rounds to zero and erases finite
+          # higher-order derivatives.
+          use_complement = logits >= 0
           sigmoid_tail = math_ops.sigmoid(
               array_ops.where_v2(use_complement, -logits, logits)
           )
@@ -492,32 +493,12 @@ def swish(features, beta=1.0):
               use_complement, 1.0 - sigmoid_tail, sigmoid_tail
           )
           sigmoid_grad = sigmoid_tail * (1.0 - sigmoid_tail)
-          scaled_logits = safe_logits * 0.0625
-          half_exp = math_ops.exp(scaled_logits * 8.0)
-
-          standard_act_grad = sigmoid_features + logits * sigmoid_grad
-          extreme_neg_act_grad = (
-              ((0.0625 + scaled_logits) * half_exp) * half_exp
-          ) * 16.0
-          activation_grad = array_ops.where_v2(
-              is_extreme_neg, extreme_neg_act_grad, standard_act_grad
-          )
-
-          beta_common = dy * math_ops.square(features)
-          extreme_neg_beta_grad_terms = (beta_common * half_exp) * half_exp
-          standard_beta_grad_terms = beta_common * sigmoid_grad
-          beta_grad = array_ops.where_v2(
-              is_extreme_neg,
-              extreme_neg_beta_grad_terms,
-              standard_beta_grad_terms,
-          )
         else:
           sigmoid_features = math_ops.sigmoid(logits)
           sigmoid_grad = sigmoid_features * (1.0 - sigmoid_features)
-          activation_grad = sigmoid_features + logits * sigmoid_grad
-          beta_grad = dy * math_ops.square(features) * sigmoid_grad
 
-      features_grad = dy * activation_grad
+      features_grad = dy * (sigmoid_features + logits * sigmoid_grad)
+      beta_grad = dy * math_ops.square(features) * sigmoid_grad
 
       # Reduce each gradient back to its input shape after broadcasting.
       features_shape = array_ops.shape(features)
@@ -647,6 +628,15 @@ def l2_normalize(x, axis=None, epsilon=1e-12, name=None, dim=None):
       norm_real = math_ops.multiply(math_ops.real(x), x_inv_norm)
       norm_imag = math_ops.multiply(math_ops.imag(x), x_inv_norm)
       return math_ops.complex(norm_real, norm_imag, name=name)
+    if x.dtype in (dtypes.float16, dtypes.bfloat16):
+      # The sum of squares overflows half precision for moderately large
+      # values (and `epsilon` underflows), so normalize in `float32`.
+      x32 = math_ops.cast(x, dtypes.float32)
+      square_sum = math_ops.reduce_sum(
+          math_ops.square(x32), axis, keepdims=True)
+      x_inv_norm = math_ops.rsqrt(math_ops.maximum(square_sum, epsilon))
+      return math_ops.cast(math_ops.multiply(x32, x_inv_norm), x.dtype,
+                           name=name)
     square_sum = math_ops.reduce_sum(math_ops.square(x), axis, keepdims=True)
     x_inv_norm = math_ops.rsqrt(math_ops.maximum(square_sum, epsilon))
     return math_ops.multiply(x, x_inv_norm, name=name)
