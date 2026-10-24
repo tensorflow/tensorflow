@@ -634,7 +634,9 @@ def l2_normalize(x, axis=None, epsilon=1e-12, name=None, dim=None):
       x32 = math_ops.cast(x, dtypes.float32)
       square_sum = math_ops.reduce_sum(
           math_ops.square(x32), axis, keepdims=True)
-      x_inv_norm = math_ops.rsqrt(math_ops.maximum(square_sum, epsilon))
+      x_inv_norm = math_ops.rsqrt(
+          math_ops.maximum(square_sum, math_ops.cast(epsilon, dtypes.float32))
+      )
       return math_ops.cast(math_ops.multiply(x32, x_inv_norm), x.dtype,
                            name=name)
     square_sum = math_ops.reduce_sum(math_ops.square(x), axis, keepdims=True)
