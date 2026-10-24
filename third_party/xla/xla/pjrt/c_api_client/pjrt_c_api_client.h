@@ -291,6 +291,9 @@ class PjRtCApiTopologyDescription : public PjRtTopologyDescription {
       const PjRtDeviceDimensions& chips_per_host_bounds,
       const PjRtDeviceDimensions& host_bounds) const override;
 
+  absl::StatusOr<std::unique_ptr<PjRtTopologyDescription>> Subslice(
+      const PjRtDeviceDimensions& chip_bounds) const override;
+
   bool is_subslice_topology() const override;
 
   absl::StatusOr<PjRtTopologyDescriptionProto> ToProto() const override;
