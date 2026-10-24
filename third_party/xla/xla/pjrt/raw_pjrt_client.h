@@ -295,6 +295,8 @@ class PjRtRawClient {
 
   virtual void RecordMemoryStats() {}
 
+  virtual void RecordLinearizeBytes(bool is_h2d, size_t bytes) {}
+
   // Imports foreign memory as a raw buffer.
   virtual absl::StatusOr<PjRtRawBufferRef> ImportForeignMemory(
       PjRtMemorySpace* memory_space, void* device_ptr, size_t size,

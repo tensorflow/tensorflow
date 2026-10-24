@@ -90,6 +90,15 @@ class CommonPjRtClient : public PjRtClient {
 
   virtual LinearizeThrottler* linearize_throttler() const { return nullptr; }
 
+  // Returns a multi-chunk TransposePlan with contiguous ~2 MiB device chunks,
+  // or nullptr to use the unchunked path.
+  virtual std::shared_ptr<TransposePlan> CreateChunkedTransposePlan(
+      bool is_h2d, const Shape& host_shape,
+      std::optional<absl::Span<int64_t const>> host_byte_strides,
+      const Shape& device_shape) {
+    return nullptr;
+  }
+
   // Some clients do not support recursion eg: calling to_literal in host
   // callbacks. Those clients should return false here.
   virtual bool allows_recursion() const { return true; }
@@ -231,6 +240,9 @@ class CommonPjRtClient : public PjRtClient {
       absl::AnyInvocable<void() &&> on_done_with_host_buffer);
 
   // Allocates a destination buffer for linearizing into.
+  absl::StatusOr<tsl::AsyncValueRef<PjRtStagingBuffer>> AllocateLinearizeDest(
+      bool sync, size_t size, PjRtRawBufferRef dest_buffer);
+
   absl::StatusOr<tsl::AsyncValueRef<PjRtStagingBuffer>> AllocateLinearizeDest(
       bool sync, const xla::Shape& device_shape,
       absl::Span<const int64_t> byte_strides, PjRtRawBufferRef dest_buffer);
