@@ -19,12 +19,18 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/bias_op.h"
 
+#include <cstdint>
+#include <limits>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/redux_functor.h"
 #include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/util/determinism.h"
@@ -54,8 +60,12 @@ void GetBiasValueDims(const Tensor& value_tensor, TensorFormat data_format,
   if (data_format == FORMAT_NHWC) {
     int32_t channel_dim = value_tensor.dims() - 1;
     *channel = static_cast<int32_t>(value_tensor.dim_size(channel_dim));
-    for (int32_t i = 0; i < channel_dim; i++) {
-      *batch *= static_cast<int32_t>(value_tensor.dim_size(i));
+    if (value_tensor.NumElements() == 0) {
+      *batch = 0;
+    } else {
+      for (int32_t i = 0; i < channel_dim; i++) {
+        *batch *= static_cast<int32_t>(value_tensor.dim_size(i));
+      }
     }
   } else if (data_format == FORMAT_NCHW) {
     *batch = static_cast<int32_t>(value_tensor.dim_size(0));
@@ -68,6 +78,21 @@ void GetBiasValueDims(const Tensor& value_tensor, TensorFormat data_format,
       *depth = static_cast<int32_t>(value_tensor.dim_size(4));
     }
   }
+}
+
+absl::Status ValidateGpuElementCount(const TensorShape& shape) {
+  constexpr int64_t kMaxInt32 = std::numeric_limits<int32_t>::max();
+  bool fits = shape.num_elements() <= kMaxInt32;
+  for (int i = 0; i < shape.dims(); ++i) {
+    fits = fits && shape.dim_size(i) <= kMaxInt32;
+  }
+  if (!fits) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "The GPU kernel supports at most ", kMaxInt32,
+        " elements in total and in each dimension, but the input has shape ",
+        shape.DebugString()));
+  }
+  return absl::OkStatus();
 }
 
 template <class T>
@@ -274,6 +299,7 @@ class BiasOp<GPUDevice, T> : public BinaryOp<T> {
     OP_REQUIRES(context, TensorShapeUtils::IsVector(bias.shape()),
                 absl::InvalidArgumentError(absl::StrCat(
                     "Biases must be 1D: ", bias.shape().DebugString())));
+    OP_REQUIRES_OK(context, ValidateGpuElementCount(input.shape()));
     int32_t batch, height, width, depth, channel;
     GetBiasValueDims(input, data_format_, &batch, &height, &width, &depth,
                      &channel);
@@ -431,6 +457,12 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
     if (data_format_ == FORMAT_NCHW) {
       int32_t row_count = batch * channel;
       int32_t col_count = height * width * depth;
+      if (col_count == 1) {
+        BiasGradGPU<T>::DoColReduction(
+            context, output->flat<T>().data(),
+            output_backprop.template flat<T>().data(), batch, channel);
+        return;
+      }
       Tensor temp_grad_outputs;
       // For 'NCHW' format, we perform reduction twice: first HW, then N.
       TensorShape temp_grad_output_shape{row_count, col_count};
@@ -471,6 +503,7 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
         absl::InvalidArgumentError(absl::StrCat(
             "NCHW format requires input tensor to be at least 3D: ",
             output_backprop.shape().DebugString())));
+    OP_REQUIRES_OK(context, ValidateGpuElementCount(output_backprop.shape()));
     int32_t batch, height, width, depth, channel;
     GetBiasValueDims(output_backprop, data_format_, &batch, &height, &width,
                      &depth, &channel);
