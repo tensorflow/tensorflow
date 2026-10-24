@@ -1,0 +1,55 @@
+# Copyright 2026 The OpenXLA Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+diff --git a/src/cpu/aarch64/injectors/jit_uni_eltwise_injector.hpp b/src/cpu/aarch64/injectors/jit_uni_eltwise_injector.hpp
+--- a/src/cpu/aarch64/injectors/jit_uni_eltwise_injector.hpp
++++ b/src/cpu/aarch64/injectors/jit_uni_eltwise_injector.hpp
+@@ -320,7 +320,7 @@ private:
+         // assumption: all table entries sharing the same key also
+         // share their broadcast property
+         // TODO: enforce through data structure
+-        const auto it = entry_map_.find(key); // search an entry for a key
++        const auto it = entry_map_.lower_bound(key); // search an entry for a key
+         assert(it != entry_map_.end());
+         const auto &te = (*it).second;
+         const auto scale = te.bcast ? vlen : sizeof(table_entry_val_t);
+diff --git a/src/cpu/x64/injectors/jit_uni_eltwise_injector.cpp b/src/cpu/x64/injectors/jit_uni_eltwise_injector.cpp
+--- a/src/cpu/x64/injectors/jit_uni_eltwise_injector.cpp
++++ b/src/cpu/x64/injectors/jit_uni_eltwise_injector.cpp
+@@ -1036,8 +1036,8 @@ void jit_uni_eltwise_injector<isa, Wmm>::log_compute_vector_fwd(
+             vlen_ / sizeof(float)); // equal to 2/3/4 for xmm/ymm/zmm
+     vec_shift(vmm_aux(1), vmm_aux(1), true, simd_w);
+ 
+-    const auto it = entry_map_.find(log_predefined_vals);
+-    if (it == entry_map_.end()) {
++    const auto it = entry_map_.lower_bound(log_predefined_vals);
++    if (it == entry_map_.end() || it->first != log_predefined_vals) {
+         assert(it != entry_map_.end());
+         return;
+     }
+diff --git a/src/cpu/x64/injectors/jit_uni_eltwise_injector.hpp b/src/cpu/x64/injectors/jit_uni_eltwise_injector.hpp
+--- a/src/cpu/x64/injectors/jit_uni_eltwise_injector.hpp
++++ b/src/cpu/x64/injectors/jit_uni_eltwise_injector.hpp
+@@ -331,8 +331,9 @@ private:
+         // assumption: all table entries sharing the same key also
+         // share their broadcast property
+         // TODO: enforce through data structure
+-        const auto it = entry_map_.find(key); // search an entry for a key
+-        if (it == entry_map_.end()) {
++        // search for the first entry for the given key.
++        const auto it = entry_map_.lower_bound(key);
++        if (it == entry_map_.end() || it->first != key) {
+             assert(!"Non-existent key");
+             return 0;
+         }
