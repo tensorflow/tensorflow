@@ -3837,12 +3837,6 @@ bool ConvolutionVisitor::DoesConvolutionFeedUnpropagatableOp(
       unpropagatability_cache_[key] = true;
       return true;
     }
-    // GENERIC: semantic SpaceToBatch propagation always terminates with
-    // BatchToSpace at kReshape, so ops downstream of kReshape never receive
-    // space to batched operands from this convolution.
-    if (user->opcode() == HloOpcode::kReshape) {
-      continue;
-    }
 
     int64_t depth_to_use = depth;
     // When we see a convolution/dot, we reduce the depth to look further for.
@@ -3935,10 +3929,9 @@ ConvolutionVisitor::ConvDetails ConvolutionVisitor::GetConvolutionDetails(
                                (is_base_dilated ? 0 : inherent_low_padding) +
                                inherent_high_padding;
 
-  const int64_t last_overlap =
-      base_dilation_factor == inherent_low_padding
-          ? kernel_spatial_dim_size + base_dilation_factor - 2
-          : kernel_spatial_dim_size - 1;
+  const int64_t last_overlap = base_dilation_factor == inherent_low_padding
+                                   ? kernel_spatial_dim_size
+                                   : kernel_spatial_dim_size - 1;
   const int64_t halo_size = is_base_dilated
                                 ? last_overlap / base_dilation_factor
                                 : kernel_spatial_dim_size - 1;
