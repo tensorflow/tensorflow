@@ -991,6 +991,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + NEON_FLAGS_IF_APPLICABLE,
     deps = [
+        ":compatibility",
         ":cpu_check",
         "//tensorflow/lite/core/c:common",
     ] + selects.with_or({
@@ -1025,6 +1026,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + NEON_FLAGS_IF_APPLICABLE,
     deps = [
+        ":compatibility",
         ":cpu_check",
         ":tensor_utils_no_eigen",
         "//tensorflow/lite/core/c:common",
