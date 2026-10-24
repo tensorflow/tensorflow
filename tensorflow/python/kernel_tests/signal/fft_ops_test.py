@@ -553,13 +553,14 @@ class FFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
     self.assertEqual(y.shape, (1, 2))
     self.assertTrue(np.all(y == 0))
 
-  def testNDEmptyFFTLengthEmptyOutput(self):
+  @test_util.disable_xla("XLA may handle zero fft_length differently")
+  def testNDZeroFFTLengthRaises(self):
     if not test_util.is_gpu_available():
       return
     x = array_ops.zeros([1, 1], dtype=dtypes.complex64)
-    # A zero fft_length sizes the output dim to 0.
-    y = gen_spectral_ops.fftnd(x, [0], [-1])
-    self.assertEqual(self.evaluate(y).shape, (1, 0))
+    # A zero fft_length is rejected for a non-empty input.
+    with self.assertRaisesRegex(errors.InvalidArgumentError, "must be > 0"):
+      self.evaluate(gen_spectral_ops.fftnd(x, [0], [-1]))
 
   def testNDMissingBoundsCheckC2C(self):
     if not test_util.is_gpu_available():
@@ -702,14 +703,16 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
       y = self.evaluate(y)
       self.assertEqual(y.shape, (0, 2))
 
-  def testEmptyFFTLengthEmptyOutput(self):
+  @test_util.disable_xla("XLA may handle zero fft_length differently")
+  def testZeroFFTLengthRaises(self):
     if not test_util.is_gpu_available():
       return
     x = array_ops.zeros([1, 1], dtype=dtypes.float32)
-    y1 = gen_spectral_ops.rfft(x, [0])
-    self.assertEqual(self.evaluate(y1).shape, (1, 0))
-    y2 = gen_spectral_ops.rfftnd(x, [0], [-1])
-    self.assertEqual(self.evaluate(y2).shape, (1, 0))
+    # A zero fft_length is rejected for a non-empty input.
+    with self.assertRaisesRegex(errors.InvalidArgumentError, "must be > 0"):
+      self.evaluate(gen_spectral_ops.rfft(x, [0]))
+    with self.assertRaisesRegex(errors.InvalidArgumentError, "must be > 0"):
+      self.evaluate(gen_spectral_ops.rfftnd(x, [0], [-1]))
 
   def testNDOpsRejectScalarFFTLength(self):
     if not test_util.is_gpu_available():
