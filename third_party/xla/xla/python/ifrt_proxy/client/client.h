@@ -143,10 +143,9 @@ class Client final : public RTTIExtends<Client, xla::ifrt::Client> {
         "ConcatBundles is not supported for the IFRT proxy client.");
   }
 
-  // TODO(b/474143687) add cancellation to proxy.
   void CancelExecution(
       xla::ifrt::LoadedExecutable::CancellationHandle cancellation_handle,
-      absl::Status error) override {}
+      absl::Status error) override;
 
   absl::string_view runtime_type() const override { return runtime_type_; }
   absl::string_view platform_name() const override { return platform_name_; }

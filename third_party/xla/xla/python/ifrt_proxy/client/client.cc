@@ -49,6 +49,7 @@
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
@@ -58,6 +59,7 @@
 #include "xla/python/ifrt/value.h"
 #include "xla/python/ifrt_proxy/client/array.h"
 #include "xla/python/ifrt_proxy/client/device.h"
+#include "xla/python/ifrt_proxy/client/executable.h"
 #include "xla/python/ifrt_proxy/client/memory.h"
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
@@ -68,6 +70,7 @@
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status_to_from_proto.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
@@ -464,6 +467,32 @@ tsl::Future<> Client::DeleteValues(absl::Span<xla::ifrt::ValueRef> values) {
     futures.push_back(value->Delete());
   }
   return tsl::JoinFutures(futures);
+}
+
+void Client::CancelExecution(
+    xla::ifrt::LoadedExecutable::CancellationHandle cancellation_handle,
+    absl::Status error) {
+  tsl::profiler::TraceMe traceme_ifrt_entrypoint(
+      "IfrtProxyEntrypointCancelExecution");
+  CHECK(!error.ok());
+  if (rpc_helper_->protocol_version() < protocol_version::kCancelExecution) {
+    return;
+  }
+  auto* proxy_handle =
+      dynamic_cast<proxy::CancellationHandle*>(cancellation_handle.get());
+  if (proxy_handle == nullptr) {
+    return;
+  }
+  auto req = std::make_unique<CancelExecutionRequest>();
+  req->set_cancellation_handle(proxy_handle->handle());
+  *req->mutable_error() = tsl::StatusToProto(error);
+  rpc_helper_->CancelExecution(std::move(req))
+      .OnReady([](absl::StatusOr<std::shared_ptr<CancelExecutionResponse>>
+                      response) {
+        if (!response.ok()) {
+          LOG(ERROR) << "Failed to cancel execution: " << response.status();
+        }
+      });
 }
 
 absl::Span<xla::ifrt::Device* const> Client::GetAllDevices() const {

@@ -498,6 +498,7 @@ RPC(LoadedExecutableDestruct, loaded_executable_destruct);
 RPC(LoadedHostCallbackPoll, loaded_host_callback_poll);
 RPC(LoadedHostCallbackReturn, loaded_host_callback_return);
 RPC(GetDefaultLayout, get_default_layout);
+RPC(CancelExecution, cancel_execution);
 
 tsl::Future<> RpcHelper::CheckFuture(uint64_t handle) {
   auto req = std::make_unique<CheckFutureRequest>();

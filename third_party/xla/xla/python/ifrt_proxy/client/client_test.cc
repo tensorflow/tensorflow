@@ -43,6 +43,7 @@
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt_proxy/client/array.h"
 #include "xla/python/ifrt_proxy/client/client_session.h"
+#include "xla/python/ifrt_proxy/client/executable.h"
 #include "xla/python/ifrt_proxy/client/host_buffer.h"
 #include "xla/python/ifrt_proxy/client/mock_client_session.h"
 #include "xla/python/ifrt_proxy/client/mock_host_buffer.h"
@@ -550,6 +551,33 @@ TEST_P(ClientTest, ReshardArraysSuccess) {
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<const xla::PjRtLayout> layout,
                           reshared_arrays[0]->pjrt_layout());
   EXPECT_EQ(layout->ToString(), layout_2_->ToString());
+}
+
+TEST_P(ClientTest, CancelExecutionSuccess) {
+  auto cancellation_handle = std::make_shared<CancellationHandle>(1234);
+  if (GetParam() >= protocol_version::kCancelExecution) {
+    IfrtResponse response;
+    response.mutable_cancel_execution_response();
+    EXPECT_CALL(*session_, Enqueue(Pointee(Partially(EquivToProto(
+                               R"pb(
+                                 cancel_execution_request {
+                                   cancellation_handle: 1234
+                                   error {
+                                     code: 1  # CANCELLED
+                                     message: "cancelled"
+                                   }
+                                 }
+                               )pb")))))
+        .WillOnce(MockClientSessionReturnResponse(response));
+  } else {
+    EXPECT_CALL(
+        *session_,
+        Enqueue(IfrtRequestOfType(IfrtRequest::kCancelExecutionRequest)))
+        .Times(0);
+  }
+
+  client_->CancelExecution(std::move(cancellation_handle),
+                           absl::CancelledError("cancelled"));
 }
 
 INSTANTIATE_TEST_SUITE_P(
