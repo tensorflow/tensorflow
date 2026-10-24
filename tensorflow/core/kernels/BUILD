@@ -3874,7 +3874,11 @@ tf_kernel_library(
     name = "check_numerics_op",
     features = ["-layering_check"],
     prefix = "check_numerics_op",
-    deps = MATH_DEPS + ["//tensorflow/core:framework_internal"],
+    deps = MATH_DEPS + [
+        "//tensorflow/core:framework_internal",
+        "@com_google_absl//absl/status",
+        "@xla//xla/tsl/platform:statusor",
+    ],
 )
 
 tf_kernel_library(
