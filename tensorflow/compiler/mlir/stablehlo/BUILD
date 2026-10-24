@@ -38,6 +38,7 @@ package_group(
         "//tensorflow/compiler/mlir/quantization/...",
         "//tensorflow/compiler/mlir/quantization/tensorflow/...",
         "//tensorflow/compiler/tests/...",
+        "//waymo/accelerator/alpine/compiler/conversion/...",
     ],
 )
 
