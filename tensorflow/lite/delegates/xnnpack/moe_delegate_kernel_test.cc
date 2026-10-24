@@ -205,10 +205,22 @@ TEST(MoeDelegateKernelIsSupportedTest, AcceptsBothGeluSpellings) {
   EXPECT_EQ(legacy_builder.IsSupported(), kTfLiteOk);
 }
 
+TEST(MoeDelegateKernelIsSupportedTest, AcceptsBothSiluSpellings) {
+  MoeNodeBuilder silu_builder;
+  BuildInt8Moe(silu_builder, kGateFf1Rows, kGateFf1Rows, kLinearRows,
+               /*activation=*/"silu");
+  EXPECT_EQ(silu_builder.IsSupported(), kTfLiteOk);
+
+  MoeNodeBuilder swish_builder;
+  BuildInt8Moe(swish_builder, kGateFf1Rows, kGateFf1Rows, kLinearRows,
+               /*activation=*/"swish");
+  EXPECT_EQ(swish_builder.IsSupported(), kTfLiteOk);
+}
+
 TEST(MoeDelegateKernelIsSupportedTest, RejectsUnknownActivation) {
   MoeNodeBuilder builder;
   BuildInt8Moe(builder, kGateFf1Rows, kGateFf1Rows, kLinearRows,
-               /*activation=*/"silu");
+               /*activation=*/"relu");
   EXPECT_EQ(builder.IsSupported(), kTfLiteError);
 }
 
