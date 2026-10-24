@@ -4506,6 +4506,7 @@ cc_library(
         ":softsign_op",
         ":topk_op",
         ":xent_op",
+        "//tensorflow/core/kernels/flash_attention:flash_attention_op",
     ],
 )
 

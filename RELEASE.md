@@ -18,6 +18,10 @@
     * Adds blockwise quantization support in the converter and `quant_spec` metadata in `FullyConnectedOptions`.
     * `tfl.cast` now supports casting packed INT2/INT4/UINT4 inputs to any non-packed output type (CAST op version 10).
 
+* `tf.nn`
+    * Adds `tf.nn.flash_attention`, a fused, differentiable multi-head scaled dot-product attention op that never materializes the `[seq_q, seq_kv]` attention matrix, so its memory use is linear in the sequence length. On NVIDIA GPUs with compute capability 8.0 or newer, `float16` and `bfloat16` inputs whose query and value head dims are equal, a multiple of 8 and at most 256 run the FlashAttention-2 kernels; other inputs, including `float32` and CPU execution, use memory-efficient fallback kernels that support head dims up to 128.
+    * `tf.nn.flash_attention` supports causal masking (`is_causal`), attention dropout (`dropout_rate`, `seed`), XLA compilation on GPU (`jit_compile=True`) and op determinism (`tf.config.experimental.enable_op_determinism()`).
+
 ### Bug Fixes and Other Changes
 
 *   `tf.linalg.band_part`: `num_lower` and `num_upper` values that exceed the
