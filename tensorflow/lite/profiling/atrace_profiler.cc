@@ -30,9 +30,9 @@ namespace profiling {
 // Profiler reporting to ATrace.
 class ATraceProfiler : public tflite::Profiler {
  public:
-  using FpIsEnabled = std::add_pointer<bool()>::type;
-  using FpBeginSection = std::add_pointer<void(const char*)>::type;
-  using FpEndSection = std::add_pointer<void()>::type;
+  using FpIsEnabled = std::add_pointer_t<bool()>;
+  using FpBeginSection = std::add_pointer_t<void(const char*)>;
+  using FpEndSection = std::add_pointer_t<void()>;
 
   ATraceProfiler() {
     handle_ = dlopen("libandroid.so", RTLD_NOW | RTLD_LOCAL);
