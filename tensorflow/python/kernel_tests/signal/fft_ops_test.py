@@ -1257,26 +1257,31 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
     # Regression test for tf.raw_ops.RFFT in GitHub issue 123399.
     x = np.ones([3, 3, 31], dtype=np.float32)
     y = gen_spectral_ops.rfft(input=x, fft_length=[0])
-    self.assertEqual(y.shape, (3, 3, 0))
+    self.assertEqual(self.evaluate(y).shape, (3, 3, 0))
 
   def test_zero_fft_length_multidimensional(self):
     x = np.ones([2, 16, 32], dtype=np.float32)
     self.assertEqual(
-        fft_ops.rfft2d(x, fft_length=[0, 16]).shape, (2, 0, 9)
+        self.evaluate(fft_ops.rfft2d(x, fft_length=[0, 16])).shape,
+        (2, 0, 9),
     )
     self.assertEqual(
-        fft_ops.rfft2d(x, fft_length=[16, 0]).shape, (2, 16, 0)
+        self.evaluate(fft_ops.rfft2d(x, fft_length=[16, 0])).shape,
+        (2, 16, 0),
     )
 
     x = np.ones([8, 16, 32], dtype=np.float32)
     self.assertEqual(
-        fft_ops.rfft3d(x, fft_length=[0, 16, 32]).shape, (0, 16, 17)
+        self.evaluate(fft_ops.rfft3d(x, fft_length=[0, 16, 32])).shape,
+        (0, 16, 17),
     )
     self.assertEqual(
-        fft_ops.rfft3d(x, fft_length=[8, 0, 32]).shape, (8, 0, 17)
+        self.evaluate(fft_ops.rfft3d(x, fft_length=[8, 0, 32])).shape,
+        (8, 0, 17),
     )
     self.assertEqual(
-        fft_ops.rfft3d(x, fft_length=[8, 16, 0]).shape, (8, 16, 0)
+        self.evaluate(fft_ops.rfft3d(x, fft_length=[8, 16, 0])).shape,
+        (8, 16, 0),
     )
 
   def test_zero_fft_length_empty_input_passthrough(self):
