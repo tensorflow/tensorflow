@@ -556,10 +556,17 @@ class FFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
   def testNDEmptyFFTLengthEmptyOutput(self):
     if not test_util.is_gpu_available():
       return
-    x = array_ops.zeros([1, 1], dtype=dtypes.complex64)
-    # A zero fft_length sizes the output dim to 0.
-    y = gen_spectral_ops.fftnd(x, [0], [-1])
-    self.assertEqual(self.evaluate(y).shape, (1, 0))
+    x = array_ops.zeros([1, 0], dtype=dtypes.complex64)
+    # A zero fft_length on an empty input sizes the output dim to 0.
+    for fn in (gen_spectral_ops.fftnd, gen_spectral_ops.ifftnd):
+      y = fn(x, [0], [-1])
+      self.assertEqual(self.evaluate(y).shape, (1, 0))
+    non_empty = array_ops.zeros([1, 1], dtype=dtypes.complex64)
+    for fn in (gen_spectral_ops.fftnd, gen_spectral_ops.ifftnd):
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError, r"fft_length\[0\] must be > 0"
+      ):
+        self.evaluate(fn(non_empty, [0], [-1]))
 
   def testNDMissingBoundsCheckC2C(self):
     if not test_util.is_gpu_available():
@@ -705,11 +712,26 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
   def testEmptyFFTLengthEmptyOutput(self):
     if not test_util.is_gpu_available():
       return
-    x = array_ops.zeros([1, 1], dtype=dtypes.float32)
+    x = array_ops.zeros([1, 0], dtype=dtypes.float32)
     y1 = gen_spectral_ops.rfft(x, [0])
     self.assertEqual(self.evaluate(y1).shape, (1, 0))
     y2 = gen_spectral_ops.rfftnd(x, [0], [-1])
     self.assertEqual(self.evaluate(y2).shape, (1, 0))
+    x_c = array_ops.zeros([1, 0], dtype=dtypes.complex64)
+    y3 = gen_spectral_ops.irfft(x_c, [0])
+    self.assertEqual(self.evaluate(y3).shape, (1, 0))
+    y4 = gen_spectral_ops.irfftnd(x_c, [0], [-1])
+    self.assertEqual(self.evaluate(y4).shape, (1, 0))
+    non_empty = array_ops.zeros([1, 1], dtype=dtypes.float32)
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, r"fft_length\[0\] must be > 0"
+    ):
+      self.evaluate(gen_spectral_ops.rfftnd(non_empty, [0], [-1]))
+    non_empty_c = array_ops.zeros([1, 1], dtype=dtypes.complex64)
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, r"fft_length\[0\] must be > 0"
+    ):
+      self.evaluate(gen_spectral_ops.irfftnd(non_empty_c, [0], [-1]))
 
   def testNDOpsRejectScalarFFTLength(self):
     if not test_util.is_gpu_available():
