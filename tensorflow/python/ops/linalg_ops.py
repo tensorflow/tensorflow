@@ -797,6 +797,11 @@ def norm(tensor,
 
   with ops.name_scope(name, 'norm', [tensor]):
     tensor = ops.convert_to_tensor(tensor)
+    output_dtype = tensor.dtype
+    if tensor.dtype == dtypes.float16:
+      # Intermediate sums of squares / powers overflow `float16` long before
+      # the norm itself does, so compute in `float32`.
+      tensor = math_ops.cast(tensor, dtypes.float32)
 
     # Match np.linalg.norm: out-of-bounds axes raise a clear AxisError
     # (a ValueError) instead of an opaque backend kernel failure.
@@ -844,17 +849,12 @@ def norm(tensor,
               axes,
           )
         permed = array_ops.transpose(tensor, perm=perm_before)
-        # reduce_max over an empty axis is -inf. Norms are non-negative, so
-        # clamp the result at zero.
-        svd_max = math_ops.reduce_max(
-            math_ops.abs(gen_linalg_ops.svd(permed, compute_uv=False)[0]),
-            axis=-1,
-            keepdims=True,
-        )
         matrix_2_norm = array_ops.expand_dims(
-            math_ops.maximum(svd_max, math_ops.cast(0, dtype=svd_max.dtype)),
-            axis=-1,
-        )
+            math_ops.reduce_max(
+                math_ops.abs(gen_linalg_ops.svd(permed, compute_uv=False)[0]),
+                axis=-1,
+                keepdims=True),
+            axis=-1)
         result = array_ops.transpose(matrix_2_norm, perm=perm_after)
       else:
         # NOTE: we unfortunately cannot use tf.math.reduce_euclidean_norm, since
@@ -892,15 +892,11 @@ def norm(tensor,
         result = math_ops.reduce_sum(result, sum_axis, keepdims=True)
         if is_matrix_norm:
           result = math_ops.reduce_max(result, axis[-1], keepdims=True)
-          result = math_ops.maximum(
-              result, math_ops.cast(0, dtype=result.dtype)
-          )
       elif ord == np.inf:
         if is_matrix_norm:
           result = math_ops.reduce_sum(result, axis[1], keepdims=True)
         max_axis = None if axis is None else axis[0]
         result = math_ops.reduce_max(result, max_axis, keepdims=True)
-        result = math_ops.maximum(result, math_ops.cast(0, dtype=result.dtype))
       else:
         # General p-norms (positive p only)
         result = math_ops.pow(
@@ -908,6 +904,8 @@ def norm(tensor,
             1.0 / ord)
     if not keepdims:
       result = array_ops.squeeze(result, axis)
+    if result.dtype != output_dtype:
+      result = math_ops.cast(result, output_dtype)
     return result
 
 
