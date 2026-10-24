@@ -299,6 +299,7 @@ def inner(a, b):  # pylint: disable=missing-function-docstring
 @tf_export.tf_export('experimental.numpy.cross', v1=[])
 @np_utils.np_doc('cross')
 def cross(a, b, axisa=-1, axisb=-1, axisc=-1, axis=None):  # pylint: disable=missing-docstring
+
   def f(a, b):  # pylint: disable=missing-docstring
     # We can't assign to captured variable `axisa`, so make a new variable
     if axis is None:
@@ -309,6 +310,38 @@ def cross(a, b, axisa=-1, axisb=-1, axisc=-1, axis=None):  # pylint: disable=mis
       axis_a = axis
       axis_b = axis
       axis_c = axis
+    # NumPy raises AxisError for out-of-bounds axes instead of letting the
+    # backend kernel fail with a confusing error. All checks engage only for
+    # statically-known ranks and Python-int axes, so tensor axes or unknown
+    # ranks (e.g. `@tf.function` with an unspecified input signature) behave
+    # exactly as before. The output rank that bounds `axisc` is the
+    # broadcast of the input ranks, i.e. the max of the statically-known
+    # ones.
+    maybe_rank_a = a.shape.rank
+    maybe_rank_b = b.shape.rank
+    if maybe_rank_a is not None and isinstance(axis_a, (int, np.integer)):
+      if not (-maybe_rank_a <= int(axis_a) < maybe_rank_a):
+        raise ValueError(
+            f'axisa: axis {axis_a} is out of bounds for array of '
+            f'dimension {maybe_rank_a}'
+        )
+    if maybe_rank_b is not None and isinstance(axis_b, (int, np.integer)):
+      if not (-maybe_rank_b <= int(axis_b) < maybe_rank_b):
+        raise ValueError(
+            f'axisb: axis {axis_b} is out of bounds for array of '
+            f'dimension {maybe_rank_b}'
+        )
+    if (
+        maybe_rank_a is not None
+        and maybe_rank_b is not None
+        and isinstance(axis_c, (int, np.integer))
+    ):
+      rank_c = max(maybe_rank_a, maybe_rank_b)
+      if not (-rank_c <= int(axis_c) < rank_c):
+        raise ValueError(
+            f'axisc: axis {axis_c} is out of bounds for array of '
+            f'dimension {rank_c}'
+        )
     if axis_a < 0:
       axis_a = np_utils.add(axis_a, array_ops.rank(a))
     if axis_b < 0:
