@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/blocking_counter.h"
@@ -62,6 +63,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/batching_util/batch_stats.h"
 #include "tensorflow/core/kernels/batching_util/shared_batch_scheduler.h"
 #include "tensorflow/core/kernels/batching_util/threadsafe_status.h"
+#include "tensorflow/core/kernels/batching_util/warmup.h"
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
 #include "tensorflow/core/platform/context.h"
 #include "tensorflow/core/platform/logging.h"
@@ -2390,6 +2392,301 @@ BENCHMARK(BM_BatchResourceManyTensorsBs2EndToEnd)
     ->UseRealTime()
     ->MeasureProcessCPUTime();
 // NOLINTEND(misc-include-cleaner)
+
+// Test BatchResourceBase subclass that invokes a hook inside
+// `ProcessFuncBatchImpl` before echoing inputs to outputs.
+class DelayedBatchResource : public BatchResourceBase {
+ public:
+  DelayedBatchResource(bool has_process_batch_function,
+                       std::shared_ptr<BatcherT> batcher,
+                       const BatcherT::QueueOptions& batcher_queue_options,
+                       std::vector<int32_t> allowed_batch_sizes,
+                       std::function<void()> on_process_func_batch)
+      : BatchResourceBase(has_process_batch_function, std::move(batcher),
+                          batcher_queue_options,
+                          std::move(allowed_batch_sizes)),
+        on_process_func_batch_(std::move(on_process_func_batch)) {}
+
+  std::string DebugString() const override { return "DelayedBatchResource"; }
+
+ protected:
+  void ProcessFuncBatchImpl(
+      const BatchResourceBase::BatchTask& last_task,
+      absl::Span<const Tensor> inputs, std::vector<Tensor>* combined_outputs,
+      std::function<void(const absl::Status&)> done) const override {
+    if (on_process_func_batch_) {
+      on_process_func_batch_();
+    }
+    for (const auto& input : inputs) {
+      combined_outputs->push_back(input);
+    }
+    done(absl::OkStatus());
+  }
+
+ private:
+  std::function<void()> on_process_func_batch_;
+};
+
+TEST_F(BatchResourceBaseWithPriorityTest,
+       ProcessBatchFinishesAllTasksOnConcatAndValidationError) {
+  Tensor tensor0(DataType::DT_INT64, TensorShape({4, 2}));
+  tensor0.flat<int64_t>().setZero();
+  std::vector<TensorValue> inputs0 = {TensorValue(&tensor0)};
+  OpKernelContext::Params params0 = params_;
+  params0.inputs = inputs0;
+  OpKernelContext context0(&params0);
+
+  Tensor tensor1(DataType::DT_INT64, TensorShape({4, 3}));
+  tensor1.flat<int64_t>().setZero();
+  std::vector<TensorValue> inputs1 = {TensorValue(&tensor1)};
+  OpKernelContext::Params params1 = params_;
+  params1.inputs = inputs1;
+  OpKernelContext context1(&params1);
+
+  auto req_cost0 = std::make_unique<RequestCost>();
+  auto req_cost1 = std::make_unique<RequestCost>();
+  RequestCost* raw_cost0 = req_cost0.get();
+  RequestCost* raw_cost1 = req_cost1.get();
+  absl::Notification done0;
+  absl::Notification done1;
+  OpKernelContext context2(&params0);
+  OpKernelContext context3(&params0);
+  absl::Notification done2;
+  absl::Notification done3;
+
+  SharedBatchScheduler<BatchResourceBase::BatchTask>::Options scheduler_options;
+  scheduler_options.num_batch_threads = 1;
+  std::shared_ptr<SharedBatchScheduler<BatchResourceBase::BatchTask>> batcher;
+  TF_ASSERT_OK(SharedBatchScheduler<BatchResourceBase::BatchTask>::Create(
+      scheduler_options, &batcher));
+  BatchResourceBase::BatcherT::QueueOptions queue_options =
+      TestBatchResourceBase::GetBatcherQueueOptions(
+          /*num_batch_threads=*/1, /*max_batch_size=*/8,
+          /*batch_timeout_micros=*/absl::ToInt64Microseconds(absl::Seconds(10)),
+          /*max_enqueued_batches=*/4, /*allowed_batch_sizes=*/{8},
+          /*enable_large_batch_splitting=*/false, /*disable_padding=*/false);
+  tsl::core::RefCountPtr<BatchResourceBase> batch_resource(
+      new TestBatchResourceBase(/*has_process_batch_function=*/false, batcher,
+                                queue_options, /*allowed_batch_sizes=*/{8}));
+
+  TF_ASSERT_OK(batch_resource->RegisterInput(
+      /*guid=*/0, &context0, "batcher_queue",
+      [raw_cost0]() {
+        auto task = std::make_unique<BatchResourceBase::BatchTask>();
+        task->request_cost = raw_cost0;
+        return task;
+      },
+      [&req_cost0, &done0]() {
+        EXPECT_EQ(req_cost0->GetBatchMetrics().size(), 1u);
+        std::move(req_cost0).reset();
+        done0.Notify();
+      }));
+  TF_ASSERT_OK(batch_resource->RegisterInput(
+      /*guid=*/1, &context1, "batcher_queue",
+      [raw_cost1]() {
+        auto task = std::make_unique<BatchResourceBase::BatchTask>();
+        task->request_cost = raw_cost1;
+        return task;
+      },
+      [&req_cost1, &done1]() {
+        EXPECT_EQ(req_cost1->GetBatchMetrics().size(), 1u);
+        std::move(req_cost1).reset();
+        done1.Notify();
+      }));
+
+  ASSERT_TRUE(done1.WaitForNotificationWithTimeout(absl::Seconds(5)));
+  ASSERT_TRUE(done0.WaitForNotificationWithTimeout(absl::Seconds(1)));
+  EXPECT_THAT(context0.status(),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(context1.status(),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+
+  // Also exercise the ValidateBatch error path (mismatched input-edge count).
+  TF_ASSERT_OK(batch_resource->RegisterInput(
+      /*guid=*/2, &context2, "batcher_queue_validate",
+      []() { return std::make_unique<BatchResourceBase::BatchTask>(); },
+      [&done2]() { done2.Notify(); }));
+  TF_ASSERT_OK(batch_resource->RegisterInput(
+      /*guid=*/3, &context3, "batcher_queue_validate",
+      [&tensor0]() {
+        auto task = std::make_unique<BatchResourceBase::BatchTask>();
+        task->inputs.push_back(tensor0);
+        return task;
+      },
+      [&done3]() { done3.Notify(); }));
+  ASSERT_TRUE(done3.WaitForNotificationWithTimeout(absl::Seconds(5)));
+  ASSERT_TRUE(done2.WaitForNotificationWithTimeout(absl::Seconds(1)));
+  EXPECT_THAT(context2.status(),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(context3.status(),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST_F(BatchResourceBaseWithPriorityTest,
+       SplitInputTaskPreservesInputTaskOnSplitError) {
+  auto task = std::make_unique<BatchResourceBase::BatchTask>();
+  task->status = std::make_shared<ThreadSafeStatus>();
+  task->context = context_.get();
+  task->output = std::make_shared<BatchResourceBase::TensorMatrix>();
+  task->inputs.push_back(Tensor(DataType::DT_INT64, TensorShape({6, 2})));
+  task->inputs.push_back(Tensor(DataType::DT_INT64, TensorShape({1, 2})));
+
+  int done_calls = 0;
+  task->set_done_callback([&done_calls]() { ++done_calls; });
+
+  std::vector<std::unique_ptr<BatchResourceBase::BatchTask>> output_tasks;
+  absl::Status status =
+      BatchResourceBase::SplitInputTask(&task, /*open_batch_remaining_slot=*/2,
+                                        /*max_batch_size=*/4, &output_tasks);
+  EXPECT_THAT(status, absl_testing::StatusIs(absl::StatusCode::kInternal));
+  ASSERT_NE(task, nullptr);
+  EXPECT_EQ(task->inputs.size(), 2u);
+  EXPECT_EQ(task->size(), 6u);
+  EXPECT_TRUE(output_tasks.empty());
+  EXPECT_EQ(done_calls, 0);
+}
+
+// BatchTask subclass that notifies `finished` inside `FinishTaskImpl` right
+// before invoking `BatchTask::FinishTaskImpl` (and `done_callback`).
+struct NotifyOnFinishBatchTask : public BatchResourceBase::BatchTask {
+  explicit NotifyOnFinishBatchTask(absl::Notification* finished)
+      : finished(finished) {}
+
+ protected:
+  void FinishTaskImpl(const absl::Status& task_status) override {
+    if (finished != nullptr && !finished->HasBeenNotified()) {
+      finished->Notify();
+    }
+    BatchResourceBase::BatchTask::FinishTaskImpl(task_status);
+  }
+
+  std::unique_ptr<BatchResourceBase::BatchTask> CreateDerivedTask() override {
+#if defined(PLATFORM_GOOGLE)
+    tsl::criticality::ScopedCriticality scoped_criticality(this->criticality());
+#endif
+    return std::make_unique<NotifyOnFinishBatchTask>(finished);
+  }
+
+  absl::Notification* finished;
+};
+
+TEST_F(BatchResourceBaseWithPriorityTest,
+       RegisterWarmupInputsWaitsForEnqueuedWarmupTasksOnFailure) {
+  absl::Notification second_call_failed;
+  absl::Notification warmup_completed;
+  absl::Notification real_batch_call_failed;
+  absl::Notification warmup_completed2;
+  absl::Notification followup_done;
+  int done_calls = 0;
+
+  SessionMetadata warmup_session_metadata;
+  warmup_session_metadata.set_name("warmup_test_model");
+  warmup_session_metadata.set_version(1);
+  auto per_model_data = std::make_unique<WarmupStateRegistry::PerModelData>();
+  per_model_data->warmup_all_batch_sizes = true;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto warmup_handle,
+      GetGlobalWarmupStateRegistry().Register(
+          WarmupStateRegistry::Key(warmup_session_metadata.name(),
+                                   warmup_session_metadata.version()),
+          std::move(per_model_data)));
+
+  Tensor oversize_tensor(DataType::DT_INT64, TensorShape({16, 4}));
+  oversize_tensor.flat<int64_t>().setZero();
+  std::vector<TensorValue> oversize_inputs = {TensorValue(&oversize_tensor)};
+  OpKernelContext::Params oversize_params = params_;
+  oversize_params.inputs = oversize_inputs;
+  OpKernelContext oversize_context(&oversize_params);
+
+  SharedBatchScheduler<BatchResourceBase::BatchTask>::Options scheduler_options;
+  scheduler_options.num_batch_threads = 2;
+  std::shared_ptr<SharedBatchScheduler<BatchResourceBase::BatchTask>> batcher;
+  TF_ASSERT_OK(SharedBatchScheduler<BatchResourceBase::BatchTask>::Create(
+      scheduler_options, &batcher));
+  BatchResourceBase::BatcherT::QueueOptions queue_options =
+      TestBatchResourceBase::GetBatcherQueueOptions(
+          /*num_batch_threads=*/2, /*max_batch_size=*/8,
+          /*batch_timeout_micros=*/0,
+          /*max_enqueued_batches=*/4, /*allowed_batch_sizes=*/{4, 8},
+          /*enable_large_batch_splitting=*/false, /*disable_padding=*/false);
+
+  tsl::core::RefCountPtr<BatchResourceBase> batch_resource(
+      new DelayedBatchResource(
+          /*has_process_batch_function=*/true, batcher, queue_options,
+          /*allowed_batch_sizes=*/{4, 8}, [&second_call_failed]() {
+            EXPECT_TRUE(second_call_failed.WaitForNotificationWithTimeout(
+                absl::Seconds(5)));
+            absl::SleepFor(absl::Milliseconds(20));
+          }));
+  batch_resource->set_session_metadata(warmup_session_metadata);
+
+  int create_calls = 0;
+  auto create_batch_task_fn = [&create_calls, &second_call_failed,
+                               &warmup_completed]()
+      -> absl::StatusOr<std::unique_ptr<BatchResourceBase::BatchTask>> {
+    if (++create_calls == 2) {
+      second_call_failed.Notify();
+      return absl::ResourceExhaustedError("Simulated failure on second warmup");
+    }
+    return std::make_unique<NotifyOnFinishBatchTask>(&warmup_completed);
+  };
+
+  absl::Status status = batch_resource->RegisterWarmupInputs(
+      /*guid=*/1, context_.get(), "warmup_queue", create_batch_task_fn,
+      [&done_calls]() { ++done_calls; });
+  EXPECT_THAT(status,
+              absl_testing::StatusIs(absl::StatusCode::kResourceExhausted));
+  EXPECT_TRUE(warmup_completed.HasBeenNotified());
+  EXPECT_EQ(done_calls, 0);
+
+  // Also verify failure when enqueuing the real batch after all warmup batches
+  // succeed, with session_metadata and WarmupStateRegistry enabled.
+  tsl::core::RefCountPtr<BatchResourceBase> batch_resource2(
+      new DelayedBatchResource(
+          /*has_process_batch_function=*/true, batcher, queue_options,
+          /*allowed_batch_sizes=*/{8}, [&real_batch_call_failed]() {
+            if (!real_batch_call_failed.HasBeenNotified()) {
+              EXPECT_TRUE(real_batch_call_failed.WaitForNotificationWithTimeout(
+                  absl::Seconds(5)));
+              absl::SleepFor(absl::Milliseconds(20));
+            }
+          }));
+  batch_resource2->set_session_metadata(warmup_session_metadata);
+  int create_calls2 = 0;
+  auto create_batch_task_fn2 = [&create_calls2, &real_batch_call_failed,
+                                &warmup_completed2]()
+      -> absl::StatusOr<std::unique_ptr<BatchResourceBase::BatchTask>> {
+    if (++create_calls2 == 2) {
+      real_batch_call_failed.Notify();
+      return absl::ResourceExhaustedError("Simulated failure on real batch");
+    }
+    return std::make_unique<NotifyOnFinishBatchTask>(&warmup_completed2);
+  };
+  status = batch_resource2->RegisterWarmupInputs(
+      /*guid=*/2, context_.get(), "warmup_queue_2", create_batch_task_fn2,
+      [&done_calls]() { ++done_calls; });
+  EXPECT_THAT(status,
+              absl_testing::StatusIs(absl::StatusCode::kResourceExhausted));
+  EXPECT_TRUE(warmup_completed2.HasBeenNotified());
+  EXPECT_EQ(done_calls, 0);
+
+  // Verify that if Schedule() fails on a task when WarmupStateRegistry is
+  // active (e.g., input batch larger than max_batch_size with splitting
+  // disabled), num_outstanding_batched_items_ is rolled back so a subsequent
+  // warmup RegisterInput does not deadlock.
+  EXPECT_THAT(
+      batch_resource2->RegisterInput(
+          /*guid=*/3, &oversize_context, "warmup_queue_2",
+          []() { return std::make_unique<BatchResourceBase::BatchTask>(); },
+          []() {}),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+
+  TF_ASSERT_OK(batch_resource2->RegisterInput(
+      /*guid=*/4, context_.get(), "warmup_queue_2",
+      []() { return std::make_unique<BatchResourceBase::BatchTask>(); },
+      [&followup_done]() { followup_done.Notify(); }));
+  ASSERT_TRUE(followup_done.WaitForNotificationWithTimeout(absl::Seconds(5)));
+}
 
 }  // namespace
 }  // namespace serving
