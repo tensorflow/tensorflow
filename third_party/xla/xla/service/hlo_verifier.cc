@@ -4077,7 +4077,7 @@ int64_t CountWritersInUser(const HloInstruction* inst,
   return 0;
 }
 
-// Returns the number of writers for the HloValue produced by the instruction in
+// Returns the number of writers for the value produced by the instruction in
 // the given shape_index. This is to support the verification that a buffer can
 // have at most one writer and we may return early when we find more than one
 // writers, but we choose not to return early.
@@ -4091,8 +4091,8 @@ int64_t CountWriters(const HloInstruction* inst,
   return num_writers;
 }
 
-// Verifies a buffer result (i.e. HloValue) produced by the given instruction
-// can have at most one writer.
+// Verifies a buffer result produced by the given instruction can have at most
+// one writer.
 absl::Status CheckBufferHasUniqueWriter(const HloInstruction* inst,
                                         const ShapeIndex& result_index) {
   if (CountWriters(inst, result_index) > 1) {
@@ -4104,8 +4104,8 @@ absl::Status CheckBufferHasUniqueWriter(const HloInstruction* inst,
   return absl::OkStatus();
 }
 
-// Verifies all buffer results (i.e. HloValues) produced by the given
-// instruction can have at most one writer.
+// Verifies all buffer results produced by the given instruction can have at
+// most one writer.
 absl::Status CheckBufferHasUniqueWriters(const HloInstruction* inst) {
   return ShapeUtil::ForEachSubshapeWithStatus(
       inst->shape(),
@@ -4179,122 +4179,6 @@ absl::Status VerifyUnpin(const HloCustomCallInstruction* inst,
   }
 
   return absl::OkStatus();
-}
-
-std::string FormatOutputToOperandAliasing(
-    const HloCustomCallInstruction* inst) {
-  return absl::StrCat("{",
-                      absl::StrJoin(inst->output_to_operand_aliasing(), ", ",
-                                    [](std::string* out, const auto& pair) {
-                                      absl::StrAppend(
-                                          out, pair.first.ToString(), ": (",
-                                          pair.second.first, ", ",
-                                          pair.second.second.ToString(), ")");
-                                    }),
-                      "}");
-}
-
-// Verifies the structural invariants of a FanOut custom call:
-// 1. Exactly 1 operand of buffer type.
-// 2. Result is a tuple with >= 2 buffer elements (element 0 is the anchor
-//    buffer, elements 1..N are concurrent stream view buffers).
-// 3. All tuple elements match the operand buffer shape.
-// 4. Output to operand aliasing strictly aliases element 0 to operand 0:
-//    {{0}: (0, {})}.
-// 5. Each tuple element buffer has at most one writer.
-absl::Status VerifyFanOut(const HloCustomCallInstruction* inst,
-                          bool layout_sensitive) {
-  if (inst->operand_count() != 1 || !inst->operand(0)->shape().IsBuffer()) {
-    return InvalidArgument(
-        "custom-call to FanOut must have one buffer operand");
-  }
-
-  if (!inst->shape().IsTuple() || inst->shape().tuple_shapes_size() < 2) {
-    return InvalidArgument(
-        "custom-call to FanOut must have a tuple result with >= 2 elements");
-  }
-
-  for (const auto& subshape : inst->shape().tuple_shapes()) {
-    if (!subshape.IsBuffer()) {
-      return InvalidArgument(
-          "custom-call to FanOut must only have buffer results in its tuple");
-    }
-    if (!xla::Shape::Equal()
-             .IgnoreLayout(!layout_sensitive)
-             .IgnoreMemorySpaceInLayout()(
-                 inst->operand(0)->shape().buffer_shape(),
-                 subshape.buffer_shape())) {
-      return InvalidArgument(
-          "custom-call to FanOut must have the same shape as the operand");
-    }
-  }
-
-  if (inst->output_to_operand_aliasing().size() != 1 ||
-      inst->output_to_operand_aliasing()[0].first != ShapeIndex({0}) ||
-      inst->output_to_operand_aliasing()[0].second !=
-          std::make_pair(int64_t{0}, ShapeIndex({}))) {
-    return InvalidArgument(
-        "custom-call to FanOut must only have output-to-operand aliasing for "
-        "output 0: {{0}: (0, {})}; got %s",
-        FormatOutputToOperandAliasing(inst));
-  }
-
-  for (int64_t i = 0; i < inst->shape().tuple_shapes_size(); ++i) {
-    ABSL_RETURN_IF_ERROR(CheckBufferHasUniqueWriter(inst, {i}));
-  }
-
-  return absl::OkStatus();
-}
-
-// Verifies the structural invariants of a FanIn custom call:
-// 1. At least 2 distinct operands, all of buffer type (operand 0 is the anchor
-//    buffer, operands 1..N are stream buffers to merge).
-// 2. Result is a single buffer matching the shape of all operands.
-// 3. Output to operand aliasing strictly aliases the result to operand 0:
-//    {{}: (0, {})}.
-// 4. Result buffer has at most one writer.
-absl::Status VerifyFanIn(const HloCustomCallInstruction* inst,
-                         bool layout_sensitive) {
-  if (inst->operand_count() < 2) {
-    return InvalidArgument(
-        "custom-call to FanIn must have at least 2 buffer operands");
-  }
-
-  if (!inst->shape().IsBuffer()) {
-    return InvalidArgument("custom-call to FanIn must have one buffer result");
-  }
-
-  absl::flat_hash_set<const HloInstruction*> seen_operands;
-  for (const auto* operand : inst->operands()) {
-    if (!operand->shape().IsBuffer()) {
-      return InvalidArgument(
-          "custom-call to FanIn must only have buffer operands");
-    }
-    if (!seen_operands.insert(operand).second) {
-      return InvalidArgument(
-          "custom-call to FanIn must have distinct operands");
-    }
-    if (!xla::Shape::Equal()
-             .IgnoreLayout(!layout_sensitive)
-             .IgnoreMemorySpaceInLayout()(operand->shape().buffer_shape(),
-                                          inst->shape().buffer_shape())) {
-      return InvalidArgument(
-          "custom-call to FanIn result must have the same shape as all "
-          "operands");
-    }
-  }
-
-  if (inst->output_to_operand_aliasing().size() != 1 ||
-      inst->output_to_operand_aliasing()[0].first != ShapeIndex({}) ||
-      inst->output_to_operand_aliasing()[0].second !=
-          std::make_pair(int64_t{0}, ShapeIndex({}))) {
-    return InvalidArgument(
-        "custom-call to FanIn must only have output-to-operand aliasing for "
-        "result: {{}: (0, {})}; got %s",
-        FormatOutputToOperandAliasing(inst));
-  }
-
-  return CheckBufferHasUniqueWriter(inst, {});
 }
 
 absl::Status VerifyNoBuffers(const Shape& shape, const HloInstruction* inst) {
@@ -4417,12 +4301,6 @@ absl::Status VerifyCustomCall(const HloCustomCallInstruction* inst,
   }
   if (inst->IsCustomCall(kUnpinCustomCallTarget)) {
     return VerifyUnpin(Cast<HloCustomCallInstruction>(inst), layout_sensitive);
-  }
-  if (inst->IsCustomCall(kFanOutCustomCallTarget)) {
-    return VerifyFanOut(inst, layout_sensitive);
-  }
-  if (inst->IsCustomCall(kFanInCustomCallTarget)) {
-    return VerifyFanIn(inst, layout_sensitive);
   }
 
   ABSL_RETURN_IF_ERROR(VerifyBuffersInOperands(inst));
