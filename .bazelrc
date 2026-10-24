@@ -378,26 +378,33 @@ common:tpu --define=framework_shared_object=true
 common:tpu --copt=-DLIBTPU_ON_GCE
 common:tpu --define=enable_mlir_bridge=true
 
-common:rocm --copt=-Wno-gnu-offsetof-extensions
-common:rocm --config=clang_local
-common:rocm --crosstool_top=@local_config_rocm//crosstool:toolchain
-common:rocm --define=using_rocm_hipcc=true
-common:rocm --define=tensorflow_mkldnn_contraction_kernel=0
-common:rocm --define=xnn_enable_avxvnniint8=false
-common:rocm --define=xnn_enable_avx512fp16=false
-common:rocm --repo_env TF_NEED_ROCM=1
+common:rocm_base --copt=-Wno-gnu-offsetof-extensions
+common:rocm_base --repo_env TF_NEED_ROCM=1
+common:rocm_base --define=using_rocm_hipcc=true
+common:rocm_base --define=tensorflow_mkldnn_contraction_kernel=0
+common:rocm_base --action_env=HIPCC_COMPILE_FLAGS_APPEND="--offload-compress"
+common:rocm_base --repo_env=TF_ROCM_AMDGPU_TARGETS="gfx908,gfx90a,gfx942,gfx950,gfx1030,gfx1100,gfx1101,gfx1200,gfx1201"
 
-common:rocm_clang_official --config=rocm
-common:rocm_clang_official --action_env=CLANG_COMPILER_PATH="/usr/lib/llvm-18/bin/clang"
-common:rocm_clang_official --action_env=TF_ROCM_CLANG="1"
-common:rocm_clang_official --linkopt="-fuse-ld=lld"
-common:rocm_clang_official --host_linkopt="-fuse-ld=lld"
+common:rocm_clang_local --config=rocm_base
+common:rocm_clang_local --config=clang_local
+common:rocm_clang_local --extra_toolchains=@local_config_rocm//crosstool:toolchain-linux-x86_64
+common:rocm_clang_local --action_env=CLANG_COMPILER_PATH="/usr/lib/llvm-18/bin/clang"
 
-common:rocm_ci --config=rocm_clang_official
-common:rocm_ci_hermetic --config=rocm_clang_official
-common:rocm_ci_hermetic --repo_env="OS=ubuntu_22.04"
-common:rocm_ci_hermetic --repo_env="ROCM_VERSION=6.2.0"
-common:rocm_ci_hermetic --@local_config_rocm//rocm:use_rocm_hermetic_rpath=True
+# ROCm with hermetic toolchain from rules_ml_toolchain
+common:rocm_clang_hermetic --config=rocm_base
+common:rocm_clang_hermetic --@rules_ml_toolchain//common:enable_rocm=True
+common:rocm_clang_hermetic --@rules_ml_toolchain//common:enable_cuda=False
+common:rocm_clang_hermetic --@rules_ml_toolchain//common:enable_sycl=False
+common:rocm_clang_hermetic --@rules_ml_toolchain//common:enable_hermetic_cc=True
+common:rocm_clang_hermetic --@local_config_rocm//rocm:rocm_path_type=hermetic
+common:rocm_clang_hermetic --strategy=CppLink=local
+common:rocm_clang_hermetic --@rules_ml_toolchain//common:static_libcxx=True
+
+common:rocm_ci_hermetic --@rules_ml_toolchain//common:enable_xla_test_global_symbol_version=True
+common:rocm_ci_hermetic --config=rocm_clang_hermetic
+common:rocm_ci_hermetic --repo_env=SYSROOT_DIST=linux_glibc_2_31
+common:rocm_ci_hermetic --@local_config_rocm//rocm:rocm_path_type=hermetic
+common:rocm_ci_hermetic --copt="-Wno-error=unused-command-line-argument"
 
 common:sycl --config=clang_local
 common:sycl --crosstool_top=@local_config_sycl//crosstool:toolchain
