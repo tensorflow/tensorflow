@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for tf.nn.flash_attention and the FlashAttention ops."""
+import os
 
 from absl.testing import parameterized
 import numpy as np
@@ -74,6 +75,10 @@ def _tolerance(dtype):
 
 def _sm80_gpu_available():
   return test_util.is_gpu_available(min_cuda_compute_capability=(8, 0))
+
+
+def _fa2_built():
+  return os.environ.get("TF_FLASH_ATTENTION_FA2_BUILT") == "1"
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -183,6 +188,8 @@ class FlashAttentionTest(test.TestCase, parameterized.TestCase):
   def testFlashAttention2(self, dtype, head_dim, is_causal):
     if not _sm80_gpu_available():
       self.skipTest("FlashAttention-2 needs a GPU with compute capability 8.0+")
+    if head_dim > 128 and not _fa2_built():
+      self.skipTest("Fallback kernels only support head dims up to 128")
     self._check(dtype, batch=2, seq_q=257, seq_kv=257, heads=2,
                 head_dim=head_dim, is_causal=is_causal)
 
@@ -219,9 +226,11 @@ class FlashAttentionTest(test.TestCase, parameterized.TestCase):
   def testDropoutHeadDim256(self, dtype):
     # FA2's head dim 256 backward with dropout needs >= 144 KB of shared memory
     # per block: sm80 and sm90 have it, other sm80+ GPUs (e.g. sm86, sm89)
-    # reject it, since the fallback kernels stop at 128.
-    if not _sm80_gpu_available():
-      self.skipTest("Needs a GPU with compute capability 8.0+")
+    # reject it, since the fallback kernels stop at 128. Needs @flash_attention
+    # to be built: without it, head dim 256 isn't supported at all.
+    if not _sm80_gpu_available() or not _fa2_built():
+      self.skipTest(
+          "Needs @flash_attention and a GPU with compute capability 8.0+")
     gpu = config.list_physical_devices("GPU")[0]
     capability = config.get_device_details(gpu).get("compute_capability")
     if capability in ((8, 0), (9, 0)):
@@ -287,8 +296,8 @@ class FlashAttentionTest(test.TestCase, parameterized.TestCase):
       self.skipTest("Only the GPU kernels use atomics")
     if dtype != dtypes.float32 and not _sm80_gpu_available():
       self.skipTest("Needs a GPU with compute capability 8.0+")
-    if dtype == dtypes.float32 and head_dim > 128:
-      self.skipTest("float32 uses the fallback kernels, which stop at 128")
+    if head_dim > 128 and (dtype == dtypes.float32 or not _fa2_built()):
+      self.skipTest("Fallback kernels only support head dims up to 128")
     gpu = config.list_physical_devices("GPU")[0]
     capability = config.get_device_details(gpu).get("compute_capability")
     if head_dim > 192 and dropout_rate > 0 and capability not in (
