@@ -1,3 +1,5 @@
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+
 licenses(["notice"])  # BSD 2-clause
 
 filegroup(

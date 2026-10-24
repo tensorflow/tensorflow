@@ -21,6 +21,8 @@
 # The maximum number of symbols that can be exported per DLL is 64K,
 # so we have to filter some useless symbols through this python script.
 
+load("@rules_python//python:defs.bzl", "py_binary")
+
 package(default_visibility = ["//visibility:public"])
 
 py_binary(

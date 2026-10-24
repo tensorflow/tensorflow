@@ -17,6 +17,9 @@
 # execution service
 # DO NOT EDIT: automatically generated BUILD file
 
+load("@rules_cc//cc:cc_import.bzl", "cc_import")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
 licenses(["restricted"])
 
 package(default_visibility = ["//visibility:public"])
