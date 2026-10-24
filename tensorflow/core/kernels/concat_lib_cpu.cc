@@ -29,7 +29,7 @@ namespace tensorflow {
 namespace {
 template <typename T>
 struct MemCpyCopier {
-  inline void Copy(T* dst, const T* src, int input_index, size_t n) {
+  void Copy(T* dst, const T* src, int input_index, size_t n) {
     if constexpr (DataTypeCanUseMemcpy(DataTypeToEnum<T>::v())) {
       memcpy(dst, src, n * sizeof(T));
     } else {
@@ -51,8 +51,7 @@ struct MemCpyCopier {
 // to always copy data from upstream.
 template <>
 struct MemCpyCopier<tstring> {
-  inline void Copy(tstring* dst, const tstring* src, int input_index,
-                   size_t n) {
+  void Copy(tstring* dst, const tstring* src, int input_index, size_t n) {
     for (size_t k = 0; k < n; ++k) {
       // Copies `src` to `cpy` to decouple the lifetime from the original
       // `src` string which can be potentially a `view`.
@@ -64,8 +63,8 @@ struct MemCpyCopier<tstring> {
 
 template <>
 struct MemCpyCopier<ResourceHandle> {
-  inline void Copy(ResourceHandle* dst, const ResourceHandle* src,
-                   int input_index, size_t n) {
+  void Copy(ResourceHandle* dst, const ResourceHandle* src, int input_index,
+            size_t n) {
     for (size_t k = 0; k < n; ++k) {
       *dst++ = *src++;
     }
