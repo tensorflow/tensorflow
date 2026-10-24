@@ -1832,6 +1832,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
         "@xla//xla:literal",
+        "@xla//xla:shape_util",
         "@xla//xla:xla_data_proto_cc",
         "@xla//xla/hlo/builder:xla_builder",
         "@xla//xla/hlo/builder/lib:constants",
