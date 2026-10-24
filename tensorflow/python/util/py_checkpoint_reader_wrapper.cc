@@ -105,7 +105,10 @@ static py::object CheckpointReader_GetTensor(
   Safe_TF_StatusPtr status = make_safe(TF_NewStatus());
   PyObject* py_obj = Py_None;
   std::unique_ptr<tensorflow::Tensor> tensor;
-  reader->GetTensor(name, &tensor, status.get());
+  {
+    py::gil_scoped_release release;
+    reader->GetTensor(name, &tensor, status.get());
+  }
 
   // Error handling if unable to get Tensor.
   tensorflow::MaybeRaiseFromTFStatus(status.get());
@@ -131,21 +134,28 @@ PYBIND11_MODULE(_pywrap_checkpoint_reader, m, py::mod_gil_not_used()) {
         // pybind11 support smart pointers and will own freeing the memory when
         // complete.
         // https://pybind11.readthedocs.io/en/master/advanced/smart_ptrs.html#std-unique-ptr
-        auto checkpoint =
-            std::make_unique<tensorflow::checkpoint::CheckpointReader>(
-                filename, status.get());
+        auto checkpoint = [&]() {
+          py::gil_scoped_release release;
+          return std::make_unique<tensorflow::checkpoint::CheckpointReader>(
+              filename, status.get());
+        }();
         tensorflow::MaybeRaiseFromTFStatus(status.get());
         return checkpoint;
       }))
       .def("debug_string",
            [](tensorflow::checkpoint::CheckpointReader& self) {
-             return py::bytes(self.DebugString());
+             const std::string debug_str = [&]() {
+               py::gil_scoped_release release;
+               return self.DebugString();
+             }();
+             return py::bytes(debug_str);
            })
       .def("get_variable_to_shape_map",
            &tensorflow::checkpoint::CheckpointReader::GetVariableToShapeMap)
       .def("_GetVariableToDataTypeMap",
            &tensorflow::checkpoint::CheckpointReader::GetVariableToDataTypeMap)
-      .def("_HasTensor", &tensorflow::checkpoint::CheckpointReader::HasTensor)
+      .def("_HasTensor", &tensorflow::checkpoint::CheckpointReader::HasTensor,
+           py::call_guard<py::gil_scoped_release>())
       .def_static("CheckpointReader_GetTensor",
                   &tensorflow::CheckpointReader_GetTensor);
 };
