@@ -1924,7 +1924,7 @@ tf_cuda_cc_test(
     tags = [
         "no_cuda_asan",  # TODO(b/171342275): re-enable.
         "no_mac_arm64",
-        "requires-gpu-sm70",
+        "requires-gpu-sm90",
     ],
     deps = [
         ":conv_ops",
