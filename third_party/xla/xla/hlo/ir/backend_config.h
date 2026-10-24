@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
@@ -58,6 +59,31 @@ absl::StatusOr<std::string> BackendConfigToRawString(
 std::unique_ptr<tsl::protobuf::Message> CloneBackendConfigProto(
     const tsl::protobuf::Message* proto);
 
+// Memoizes the raw string of backend config protos by their descriptor and
+// serialized bytes, so that instructions holding copies of the same large
+// config (a kernel body cloned per layer) encode it once instead of once per
+// instruction. One instance serves one HloModule::ToProto call and holds
+// O(distinct config bytes). Not thread safe.
+class BackendConfigRawStringCache {
+ public:
+  // Returns the raw string of proto, computed once per distinct proto.
+  // Protos whose type reaches a map field, google.protobuf.Any or an extension
+  // range are encoded without the cache: their JSON depends on more than the
+  // serialized bytes. Fails only when the JSON printer does.
+  absl::StatusOr<std::string> RawStringFor(const tsl::protobuf::Message& proto);
+
+  // Number of distinct protos encoded through the cache.
+  int64_t size() const { return raw_strings_.size(); }
+
+ private:
+  bool IsCacheable(const tsl::protobuf::Descriptor* descriptor);
+
+  absl::flat_hash_map<std::pair<const tsl::protobuf::Descriptor*, std::string>,
+                      std::string>
+      raw_strings_;
+  absl::flat_hash_map<const tsl::protobuf::Descriptor*, bool> cacheable_types_;
+};
+
 // A wrapper around the BackendConfig proto. It can be initialized either with
 // a proto object or a string representing the JSON encoding of a proto. Once
 // the wrapper is initialized (either during construction or via an assignment)
@@ -89,7 +115,9 @@ class BackendConfigWrapper {
   }
 
   // Returns a reference to the raw string that corresponds to this backend
-  // config.
+  // config. When only the proto is set, the string is computed and cached
+  // first, through cache when one is given, so equal protos of different
+  // wrappers are encoded once per cache.
   //
   // WARNING: This function returns a reference which is valid at the time the
   //          call terminates. If the BackendConfig is reassigned the reference
@@ -98,10 +126,8 @@ class BackendConfigWrapper {
   //          for ensuring the lifetime of the referenced string.
   //
   //          Prefer to use the safer (but potentially slower) GetProto().
-  const std::string& GetRawString() const {
-    absl::WriterMutexLock lock{mutex_};
-    return GetRawStringWithoutMutex();
-  }
+  const std::string& GetRawString(
+      BackendConfigRawStringCache* cache = nullptr) const;
   absl::Status GetProto(tsl::protobuf::Message* output_proto) const;
 
   // Type trait to check if a type has the mutable_custom_call_metadata method.
