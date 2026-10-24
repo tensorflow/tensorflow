@@ -2587,6 +2587,11 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
       else:
         # Converting from float: first scale, then cast
         scale = dtype.max + 0.5  # avoid rounding problems in the cast
+        if image.dtype in (dtypes.float16, dtypes.bfloat16):
+          # `scale` is not exactly representable in half precision (and may
+          # overflow), which makes `1.0` wrap around when cast; scale in
+          # `float32` instead.
+          image = math_ops.cast(image, dtypes.float32)
         scaled = math_ops.multiply(image, scale)
         if saturate:
           return math_ops.saturate_cast(scaled, dtype, name=name)
@@ -3476,7 +3481,6 @@ def total_variation(images, name=None):
   """
 
   with ops.name_scope(name, 'total_variation'):
-    images = ops.convert_to_tensor(images, name='images')
     ndims = images.get_shape().ndims
 
     if ndims == 3:
@@ -4785,7 +4789,6 @@ def image_gradients(image):
   Raises:
     ValueError: If `image` is not a 4D tensor.
   """
-  image = ops.convert_to_tensor(image, name='image')
   if image.get_shape().ndims != 4:
     raise ValueError('image_gradients expects a 4D tensor '
                      '[batch_size, h, w, d], not {}.'.format(image.get_shape()))
@@ -4849,7 +4852,6 @@ def sobel_edges(image):
     [dy[1], dx[1]], ..., [dy[d-1], dx[d-1]]] calculated using the Sobel filter.
   """
   # Define vertical and horizontal Sobel filters.
-  image = ops.convert_to_tensor(image, name='image')
   static_image_shape = image.get_shape()
   image_shape = array_ops.shape(image)
   kernels = [[[-1, -2, -1], [0, 0, 0], [1, 2, 1]],
