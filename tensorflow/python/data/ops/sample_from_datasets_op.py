@@ -20,6 +20,7 @@ from tensorflow.python.data.ops import map_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_stateless_random_ops
 from tensorflow.python.ops import math_ops
@@ -70,6 +71,16 @@ def _sample_from_datasets(datasets,  # pylint: disable=unused-private-name
         raise TypeError(f"Invalid `weights`. `weights` type must be either "
                         f"`tf.float32` or `tf.float64` but is "
                         f"{weights.dtype}.")
+      # A dataset with zero weight is never selected, so it's never found to
+      # be empty, and unless `stop_on_empty_dataset` is set, sampling never
+      # ends once the other datasets are exhausted. Skip such datasets for a
+      # tensor too when its value is known, such as an eager tensor or a
+      # constant.
+      weights_value = tensor_util.constant_value(weights)
+      if weights_value is not None and not (weights_value > 0).all():
+        datasets, weights = _skip_datasets_with_zero_weight(
+            datasets, weights_value)
+        weights = ops.convert_to_tensor(weights, name="weights")
 
       # The `stateless_multinomial()` op expects log-probabilities, as opposed
       # to weights.

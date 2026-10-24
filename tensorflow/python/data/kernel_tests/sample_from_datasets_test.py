@@ -23,6 +23,8 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import combinations
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
@@ -150,10 +152,12 @@ class SampleFromDatasetsTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertDatasetProduces(sample_dataset, [],
                                requires_initialization=True)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testSampleFromDatasetsSkippingDatasetsWithZeroWeight(self):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(weights_type=["list", "tensor"])))
+  def testSampleFromDatasetsSkippingDatasetsWithZeroWeight(self, weights_type):
     # Sampling skips the first dataset.
-    weights = np.asarray([0., 1.])
+    weights = _get_weights_of_type(np.asarray([0., 1.]), weights_type)
     datasets = [
         dataset_ops.Dataset.from_tensors(-1).repeat(),
         dataset_ops.Dataset.from_tensors(1)
@@ -162,10 +166,30 @@ class SampleFromDatasetsTest(test_base.DatasetTestBase, parameterized.TestCase):
         datasets, weights=weights, stop_on_empty_dataset=False)
     self.assertDatasetProduces(sample_dataset, [1])
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testSampleFromDatasetsAllWeightsAreZero(self):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(weights_type=["list", "tensor"])))
+  def testSampleFromDatasetsSkippingOneOfThreeDatasets(self, weights_type):
+    # Once the dataset with zero weight is skipped, the other two are still
+    # sampled in proportion to their weights.
+    random_seed.set_random_seed(1619)
+    num_samples = 5000
+    weights = _get_weights_of_type([0., .5, .5], weights_type)
+    sample_dataset = dataset_ops.Dataset.sample_from_datasets(
+        [dataset_ops.Dataset.from_tensors(i).repeat() for i in range(3)],
+        weights=weights).take(num_samples)
+    freqs = np.bincount(
+        self.getDatasetOutput(sample_dataset, requires_initialization=True),
+        minlength=3) / num_samples
+    self.assertEqual(freqs[0], 0)
+    self.assertLess(self._chi2([.5, .5], freqs[1:]), 1e-2)
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(weights_type=["list", "tensor"])))
+  def testSampleFromDatasetsAllWeightsAreZero(self, weights_type):
     # Sampling skips both datasets.
-    weights = np.asarray([0., 0.])
+    weights = _get_weights_of_type(np.asarray([0., 0.]), weights_type)
     datasets = [
         dataset_ops.Dataset.from_tensors(-1).repeat(),
         dataset_ops.Dataset.from_tensors(1).repeat()
@@ -173,6 +197,52 @@ class SampleFromDatasetsTest(test_base.DatasetTestBase, parameterized.TestCase):
     sample_dataset = dataset_ops.Dataset.sample_from_datasets(
         datasets, weights=weights, stop_on_empty_dataset=False)
     self.assertDatasetProduces(sample_dataset, [])
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              weights_type=["list", "tensor"],
+              dtype=[dtypes.float32, dtypes.float64])))
+  def testSampleFromDatasetsWeightDtypes(self, weights_type, dtype):
+    weights = _get_weights_of_type(
+        np.asarray([0., 1., 1.], dtype.as_numpy_dtype), weights_type)
+    datasets = [
+        dataset_ops.Dataset.from_tensors(-1).repeat(),
+        dataset_ops.Dataset.from_tensors(1),
+        dataset_ops.Dataset.from_tensors(2)
+    ]
+    sample_dataset = dataset_ops.Dataset.sample_from_datasets(
+        datasets, weights=weights, stop_on_empty_dataset=False)
+    self.assertDatasetProduces(sample_dataset, [1, 2], assert_items_equal=True)
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(weights_type=["list", "tensor"])))
+  def testSampleFromDatasetsSingleDatasetWithZeroWeight(self, weights_type):
+    weights = _get_weights_of_type(np.asarray([0.]), weights_type)
+    sample_dataset = dataset_ops.Dataset.sample_from_datasets(
+        [dataset_ops.Dataset.range(3)], weights=weights)
+    self.assertDatasetProduces(sample_dataset, [])
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testSampleFromDatasetsZeroWeightsInFunction(self):
+
+    def count_and_sum(weights):
+      datasets = [
+          dataset_ops.Dataset.from_tensors(np.int64(-1)).repeat(),
+          dataset_ops.Dataset.from_tensors(np.int64(1)),
+          dataset_ops.Dataset.from_tensors(np.int64(2))
+      ]
+      sample_dataset = dataset_ops.Dataset.sample_from_datasets(
+          datasets, weights=weights, stop_on_empty_dataset=False)
+      return sample_dataset.reduce(
+          (np.int64(0), np.int64(0)), lambda s, x: (s[0] + 1, s[1] + x))
+
+    # A constant's value is known inside the function too.
+    constant_weights = def_function.function(
+        lambda: count_and_sum(constant_op.constant([0., 1., 1.])))
+    self.assertEqual(self.evaluate(constant_weights()), (2, 3))
 
   @combinations.generate(test_base.default_test_combinations())
   def testSampleFromDatasetsCardinality(self):
