@@ -339,7 +339,7 @@ def matrix_exponential(input, name=None):  # pylint: disable=redefined-builtin
 
     if matrix.dtype in [dtypes.float16, dtypes.float32, dtypes.complex64]:
       maxnorm = const(3.925724783138660)
-      max_iters = 14 if matrix.dtype == dtypes.float16 else 126
+      max_iters = 126  # floor(log2(FLT_MAX / maxnorm))
       squarings = math_ops.maximum(
           math_ops.floor(
               math_ops.log(l1_norm / maxnorm) / math_ops.log(const(2.0))), 0)
@@ -353,7 +353,7 @@ def matrix_exponential(input, name=None):  # pylint: disable=redefined-builtin
       v = _nest_where(conds, (v3, v5, v7))
     elif matrix.dtype in [dtypes.float64, dtypes.complex128]:
       maxnorm = const(5.371920351148152)
-      max_iters = 1021
+      max_iters = 1021  # floor(log2(DBL_MAX / maxnorm))
       squarings = math_ops.maximum(
           math_ops.floor(
               math_ops.log(l1_norm / maxnorm) / math_ops.log(const(2.0))), 0)
