@@ -29,9 +29,11 @@ limitations under the License.
 // inlining (the enclosing function when built with -g0), so it cannot be
 // reliably silenced with `#pragma clang diagnostic`. The hint is therefore
 // omitted entirely in instrumented builds, where the loops stay correct when
-// left scalar.
+// left scalar. Also omit the hint on RISC-V targets without the vector
+// extension, where these loops cannot be vectorized.
 #if defined(__clang__)
-#if __has_feature(address_sanitizer) || __has_feature(hwaddress_sanitizer) || \
+#if (defined(__riscv) && !defined(__riscv_vector)) ||                       \
+    __has_feature(address_sanitizer) || __has_feature(hwaddress_sanitizer) || \
     __has_feature(thread_sanitizer) || __has_feature(memory_sanitizer) ||     \
     __has_feature(undefined_behavior_sanitizer) ||                            \
     __has_feature(dataflow_sanitizer) || __has_feature(coverage_sanitizer)
