@@ -21,6 +21,7 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <functional>
+#include <limits>
 #include <string>
 
 #include "absl/cleanup/cleanup.h"
@@ -32,6 +33,17 @@ limitations under the License.
 
 namespace tensorflow {
 namespace webp {
+
+size_t GetWebPImageSize(int64_t width, int64_t height, int channels) {
+  if (width <= 0 || height <= 0 || (channels != 3 && channels != 4)) {
+    return 0;
+  }
+  const size_t max_size = std::numeric_limits<size_t>::max();
+  if (static_cast<uint64_t>(width) > max_size / channels) return 0;
+  const size_t row_stride = static_cast<size_t>(width) * channels;
+  if (static_cast<uint64_t>(height) > max_size / row_stride) return 0;
+  return static_cast<size_t>(height) * row_stride;
+}
 
 bool DecodeWebPHeader(absl::string_view webp_string, int* width, int* height,
                       int* channels, bool* has_animation) {
@@ -59,11 +71,12 @@ bool DecodeWebPImage(absl::string_view webp_string, uint8_t* output, int width,
   const uint8_t* input_data =
       reinterpret_cast<const uint8_t*>(webp_string.data());
   const size_t input_size = webp_string.size();
-  const size_t row_stride = width * channels * sizeof(uint8_t);
-  const size_t output_size = height * row_stride;
+  const size_t output_size = GetWebPImageSize(width, height, channels);
+  if (output_size == 0) return false;
+  const size_t row_stride = static_cast<size_t>(width) * channels;
 
   // row_stride is actually an *int*, so check that it won't overflow.
-  if (static_cast<int>(row_stride) != static_cast<int64_t>(row_stride)) {
+  if (row_stride > std::numeric_limits<int>::max()) {
     return false;
   }
 
@@ -114,7 +127,12 @@ uint8_t* DecodeWebPAnimation(
   // If we only want the first frame, expand_animations will be false.
   const uint32_t num_frames = (expand_animations) ? info.frame_count : 1;
   const uint32_t num_channels = 4; /* libwebp only supports RGBA animations */
-  const size_t bytes_per_frame = width * height * num_channels;
+  const size_t bytes_per_frame = GetWebPImageSize(width, height, num_channels);
+  if (bytes_per_frame == 0 ||
+      num_frames > std::numeric_limits<size_t>::max() / bytes_per_frame) {
+    *error_string = "WebP Animation output byte size is out of range";
+    return nullptr;
+  }
 
   uint8_t* output = allocate_output(num_frames, width, height, num_channels);
   if (output == nullptr) {

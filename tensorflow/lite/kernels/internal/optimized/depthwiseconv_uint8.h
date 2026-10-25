@@ -2015,8 +2015,9 @@ inline void DepthwiseConvGeneral(
         // Handle leftover values, one by one. This is very slow.
         for (; i < num_output_values; i++) {
           int32_t acc = acc_buffer[i];
-          acc = MultiplyByQuantizedMultiplier(acc, output_multiplier,
-                                              output_shift);
+          acc = reference_ops::depthwise_conv::DepthwiseConvRound<
+              DepthwiseConvOutputRounding::kAwayFromZero>(
+              acc, output_multiplier, output_shift);
           acc += output_offset;
           acc = std::max(acc, output_activation_min);
           acc = std::min(acc, output_activation_max);

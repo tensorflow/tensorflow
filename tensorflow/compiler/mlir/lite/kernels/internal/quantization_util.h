@@ -22,6 +22,9 @@ limitations under the License.
 namespace tflite_migration {
 
 // LINT.IfChange
+#ifndef TFLITE_SINGLE_ROUNDING
+#define TFLITE_SINGLE_ROUNDING 1
+#endif  // TFLITE_SINGLE_ROUNDING
 
 // Decompose a double multiplier into a Q0.31 int32 representation of its
 // significand, and shift representation of its exponent.

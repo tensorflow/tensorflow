@@ -732,6 +732,10 @@ class CommonPjRtClient : public PjRtClient {
       std::shared_ptr<DeviceAssignment>& device_assignment,
       const LoadOptions& load_options);
 
+  void RegisterStatsReporter(std::shared_ptr<void> stats_reporter) {
+    stats_reporters_.push_back(std::move(stats_reporter));
+  }
+
  protected:
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> LoadInternal(
       std::shared_ptr<PjRtExecutable> executable,
@@ -808,6 +812,8 @@ class CommonPjRtClient : public PjRtClient {
       CompilerMetadataOnLoad::kKeep;
   bool enable_async_compilation_ = false;
   bool include_raw_buffer_in_ready_event_ = false;
+
+  std::vector<std::shared_ptr<void>> stats_reporters_;
 };
 
 class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {

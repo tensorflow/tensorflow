@@ -32,6 +32,10 @@ inline void QuantizeLeakyRelu(const LeakyReluParams& params,
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
   const int32_t quantized_min = std::numeric_limits<int16>::min();
   const int32_t quantized_max = std::numeric_limits<int16>::max();
+  const bool is_alpha_negative = params.output_multiplier_alpha < 0;
+  const int32_t safe_alpha_multiplier = is_alpha_negative
+                                            ? -params.output_multiplier_alpha
+                                            : params.output_multiplier_alpha;
   int i = 0;
 
 #ifdef __AVX2__
@@ -42,7 +46,7 @@ inline void QuantizeLeakyRelu(const LeakyReluParams& params,
   const __m256i output_shift_identity =
       _mm256_set1_epi32(params.output_shift_identity);
   const __m256i output_multiplier_alpha =
-      _mm256_set1_epi32(params.output_multiplier_alpha);
+      _mm256_set1_epi32(safe_alpha_multiplier);
   const __m256i output_shift_alpha =
       _mm256_set1_epi32(params.output_shift_alpha);
   const __m256i clamp_max_v = _mm256_set1_epi32(quantized_max);
@@ -73,6 +77,12 @@ inline void QuantizeLeakyRelu(const LeakyReluParams& params,
         input_low, input_low_output_multiplier, input_low_output_shift);
     input_high = avx2_utils::MultiplyByQuantizedMultiplier(
         input_high, input_high_output_multiplier, input_high_output_shift);
+    if (is_alpha_negative) {
+      input_low = avx2_utils::mm256_blendv_epi32(
+          _mm256_sub_epi32(zeros, input_low), input_low, input_low_mask);
+      input_high = avx2_utils::mm256_blendv_epi32(
+          _mm256_sub_epi32(zeros, input_high), input_high, input_high_mask);
+    }
 
     input_low = _mm256_add_epi32(input_low, output_offset);
     input_high = _mm256_add_epi32(input_high, output_offset);
@@ -96,10 +106,11 @@ inline void QuantizeLeakyRelu(const LeakyReluParams& params,
                              input_value, params.output_multiplier_identity,
                              params.output_shift_identity);
     } else {
-      unclamped_output = params.output_offset +
-                         MultiplyByQuantizedMultiplier(
-                             input_value, params.output_multiplier_alpha,
-                             params.output_shift_alpha);
+      const int32_t scaled_alpha_value = MultiplyByQuantizedMultiplier(
+          input_value, safe_alpha_multiplier, params.output_shift_alpha);
+      unclamped_output =
+          params.output_offset +
+          (is_alpha_negative ? -scaled_alpha_value : scaled_alpha_value);
     }
     const int16 clamped_output =
         std::min(quantized_max, std::max(quantized_min, unclamped_output));
