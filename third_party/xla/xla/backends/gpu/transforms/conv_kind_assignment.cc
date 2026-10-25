@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -224,11 +225,11 @@ absl::StatusOr<HloInstruction*> AssignConvKind(
     return nullptr;
   }
 
-  if (ConvolutionMatch m = MatchBackwardInput(conv)) {
+  if (std::optional<ConvolutionMatch> m = MatchBackwardInput(conv)) {
     conv = CreateGpuConv(CONVOLUTION_KIND_DGRAD, conv, conv->mutable_operand(0),
-                         std::get<2>(*m));
-  } else if (ConvolutionMatch m = MatchBackwardFilter(conv)) {
-    conv = CreateGpuConv(CONVOLUTION_KIND_WGRAD, conv, std::get<2>(*m),
+                         m->instr);
+  } else if (std::optional<ConvolutionMatch> m = MatchBackwardFilter(conv)) {
+    conv = CreateGpuConv(CONVOLUTION_KIND_WGRAD, conv, m->instr,
                          conv->mutable_operand(1));
   } else if (HloInstruction* reversed_wgrad =
                  MatchTransposedConvBackwardFilter(conv)) {

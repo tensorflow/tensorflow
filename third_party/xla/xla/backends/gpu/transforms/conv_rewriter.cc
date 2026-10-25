@@ -173,20 +173,18 @@ static absl::StatusOr<HloInstruction*> CreateCustomCallHelper(
   if (!types_supported) {
     return nullptr;
   }
-  if (ConvolutionMatch m = MatchBackwardInput(conv)) {
-    auto& [window, dnums, rhs] = *m;
+  if (std::optional<ConvolutionMatch> m = MatchBackwardInput(conv)) {
     return CreateGpuConv(kCudnnConvBackwardInputCallTarget, conv->shape(),
-                         conv->mutable_operand(0), rhs, window, dnums,
-                         conv->feature_group_count(), conv->precision_config(),
-                         conv->metadata());
+                         conv->mutable_operand(0), m->instr, m->window,
+                         m->dnums, conv->feature_group_count(),
+                         conv->precision_config(), conv->metadata());
   }
 
-  if (ConvolutionMatch m = MatchBackwardFilter(conv)) {
-    auto& [window, dnums, lhs] = *m;
-    return CreateGpuConv(kCudnnConvBackwardFilterCallTarget, conv->shape(), lhs,
-                         conv->mutable_operand(1), window, dnums,
-                         conv->batch_group_count(), conv->precision_config(),
-                         conv->metadata());
+  if (std::optional<ConvolutionMatch> m = MatchBackwardFilter(conv)) {
+    return CreateGpuConv(kCudnnConvBackwardFilterCallTarget, conv->shape(),
+                         m->instr, conv->mutable_operand(1), m->window,
+                         m->dnums, conv->batch_group_count(),
+                         conv->precision_config(), conv->metadata());
   }
 
   // If all else fails, try a forward convolution.

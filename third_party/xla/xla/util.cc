@@ -59,7 +59,7 @@ namespace xla {
 
 absl::Status WithLogBacktrace(const absl::Status& status) {
   CHECK(!status.ok());
-  VLOG(1) << status.ToString();
+  VLOG(1) << status;
   VLOG(2) << tsl::CurrentStackTrace();
   return status;
 }

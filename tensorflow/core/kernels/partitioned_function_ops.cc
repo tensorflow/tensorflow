@@ -76,7 +76,7 @@ PartitionedCallOp::~PartitionedCallOp() {
     absl::Status status = it.first->ReleaseHandle(it.second);
     if (!status.ok()) {
       LOG(INFO) << "Ignoring error while destructing PartitionedCallOp: "
-                << status.ToString();
+                << status;
     }
   }
 }

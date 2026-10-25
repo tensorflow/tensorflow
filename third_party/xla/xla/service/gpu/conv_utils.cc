@@ -20,7 +20,6 @@ limitations under the License.
 #include <cstdlib>
 #include <memory>
 #include <optional>
-#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -143,7 +142,7 @@ bool CanImplementAsGpuForwardConv(HloInstruction* conv,
 
 // Try to match a backward filter pattern that contains "conv".
 // Precondition: "conv" is a kConvolution.
-ConvolutionMatch MatchBackwardFilter(HloInstruction* conv) {
+std::optional<ConvolutionMatch> MatchBackwardFilter(HloInstruction* conv) {
   VLOG(2) << "Trying to match convolution backward filter.";
 
   if (conv->feature_group_count() > 1) {
@@ -280,12 +279,12 @@ ConvolutionMatch MatchBackwardFilter(HloInstruction* conv) {
   }
 
   HloInstruction* lhs = conv->mutable_operand(0);
-  return std::make_tuple(*backward_conv_window, backward_conv_dnums, lhs);
+  return ConvolutionMatch{*backward_conv_window, backward_conv_dnums, lhs};
 }
 
 // Try to match a backward input pattern that contains "conv".
 // Precondition: "conv" is a kConvolution.
-ConvolutionMatch MatchBackwardInput(HloInstruction* conv) {
+std::optional<ConvolutionMatch> MatchBackwardInput(HloInstruction* conv) {
   VLOG(2) << "Trying to match convolution backward input.";
 
   // TODO(timshen) Theoretically cuDNN supports grouped convolutions also
@@ -433,7 +432,7 @@ ConvolutionMatch MatchBackwardInput(HloInstruction* conv) {
         HloInstruction::CreateReshape(rhs->shape(), src));
   }
   if (conv->feature_group_count() == 1) {
-    return std::make_tuple(*new_window, dnums, rhs);
+    return ConvolutionMatch{*new_window, dnums, rhs};
   }
 
   // Handle grouped convolutions. Because we swapped the input feature dimension
@@ -495,7 +494,7 @@ ConvolutionMatch MatchBackwardInput(HloInstruction* conv) {
   new_shape.set_dimensions(output_feature_dimension,
                            output_features * num_groups);
   rhs = c->AddInstruction(HloInstruction::CreateReshape(new_shape, rhs));
-  return std::make_tuple(*new_window, dnums, rhs);
+  return ConvolutionMatch{*new_window, dnums, rhs};
 }
 
 HloInstruction* ConvertBatchGroupedToFeatureGroupedConvolution(
