@@ -20,6 +20,8 @@ licenses(["notice"])
 
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_default_copts")
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_python//python:defs.bzl", "py_library")
 
 package(default_visibility = ["//visibility:public"])
 

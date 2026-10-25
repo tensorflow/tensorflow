@@ -16,7 +16,7 @@ diff --git a/BUILD.bazel b/BUILD.bazel
 index cc254457..49120384 100644
 --- a/BUILD.bazel
 +++ b/BUILD.bazel
-@@ -181,6 +181,24 @@ alias(
+@@ -181,6 +183,24 @@ alias(
  cc_library(
      name = "gtest_main",
      srcs = ["googlemock/src/gmock_main.cc"],
