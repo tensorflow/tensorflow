@@ -649,7 +649,7 @@ WindowDatasetParams WindowDatasetParamsWithOverflowingSizeAndStride() {
 TEST_F(WindowDatasetOpTest, OverflowingTargetBufferSize) {
   auto dataset_params = WindowDatasetParamsWithOverflowingSizeAndStride();
   EXPECT_THAT(Initialize(dataset_params),
-              tsl::testing::StatusIs(absl::StatusCode::kInvalidArgument,
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
                                      ::testing::HasSubstr("overflow")));
 }
 
@@ -670,7 +670,7 @@ WindowDatasetParams WindowDatasetParamsWithAddOverflowingSizeAndStride() {
 TEST_F(WindowDatasetOpTest, AddOverflowingTargetBufferSize) {
   auto dataset_params = WindowDatasetParamsWithAddOverflowingSizeAndStride();
   EXPECT_THAT(Initialize(dataset_params),
-              tsl::testing::StatusIs(absl::StatusCode::kInvalidArgument,
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
                                      ::testing::HasSubstr("overflow")));
 }
 
@@ -701,7 +701,7 @@ WindowDatasetParams WindowDatasetParamsWithSignedInt64Overflow() {
 TEST_F(WindowDatasetOpTest, SignedInt64OverflowingTargetBufferSize) {
   auto dataset_params = WindowDatasetParamsWithSignedInt64Overflow();
   EXPECT_THAT(Initialize(dataset_params),
-              tsl::testing::StatusIs(absl::StatusCode::kInvalidArgument,
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
                                      ::testing::HasSubstr("overflow")));
 }
 
