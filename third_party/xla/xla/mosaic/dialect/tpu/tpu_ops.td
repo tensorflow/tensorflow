@@ -24,6 +24,7 @@ include "mlir/Pass/PassBase.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
+include "mlir/Interfaces/ViewLikeInterface.td"
 include "xla/mosaic/dialect/tpu/tpu.td"
 include "xla/mosaic/dialect/tpu/tpu_enums.td"
 include "xla/mosaic/dialect/tpu/tpu_types.td"
@@ -1339,7 +1340,7 @@ def TPU_AssumeMultipleOp : TPU_Op<"assume_multiple", [Pure, SameOperandsAndResul
   let hasVerifier = 1;
 }
 
-def TPU_MemRefSliceOp : TPU_Op<"memref_slice", [Pure, AttrSizedOperandSegments]> {
+def TPU_MemRefSliceOp : TPU_Op<"memref_slice", [Pure, AttrSizedOperandSegments, ViewLikeOpInterface]> {
   let arguments = (ins
     AnyMemRef:$mem_ref,
     Variadic<I32>:$base_idx,
@@ -1351,6 +1352,9 @@ def TPU_MemRefSliceOp : TPU_Op<"memref_slice", [Pure, AttrSizedOperandSegments]>
     attr-dict `:` type($mem_ref) `->` type($result)
   }];
   let extraClassDeclaration = [{
+    // ViewLikeOpInterface.
+    ::mlir::Value getViewSource() { return getMemRef(); }
+
     // Returns a message string on error, and nullopt on success.
     std::optional<std::string> verifyOffsetAndSizeTileAlignment(
         std::array<int64_t, 2> tc_target_shape,
@@ -1374,7 +1378,7 @@ def TPU_MemRefSliceOp : TPU_Op<"memref_slice", [Pure, AttrSizedOperandSegments]>
   let hasFolder = 1;
 }
 
-def TPU_SharedMemRefSliceOp : TPU_Op<"shared_memref_slice", [Pure]> {
+def TPU_SharedMemRefSliceOp : TPU_Op<"shared_memref_slice", [Pure, ViewLikeOpInterface]> {
   let summary = "Slices a shared VMEM memref to a subcore-local VMEM memref.";
   let description = [{
     Extracts a subcore-local VMEM slice from a shared VMEM memref by dividing
@@ -1406,6 +1410,9 @@ def TPU_SharedMemRefSliceOp : TPU_Op<"shared_memref_slice", [Pure]> {
     $mem_ref attr-dict `:` type($mem_ref) `->` type($result)
   }];
   let extraClassDeclaration = [{
+    // ViewLikeOpInterface.
+    ::mlir::Value getViewSource() { return getMemRef(); }
+
     static ::mlir::FailureOr<::mlir::tpu::TiledLayoutAttr> inferResultLayout(
         ::mlir::MemRefType source_type, ::mlir::ArrayRef<int64_t> target_shape,
         int64_t num_sc_tiles, int64_t spmem_stripe_granularity_bytes,
@@ -1415,13 +1422,16 @@ def TPU_SharedMemRefSliceOp : TPU_Op<"shared_memref_slice", [Pure]> {
   let hasVerifier = 1;
 }
 
-def TPU_MemRefSqueezeOp : TPU_Op<"memref_squeeze", [Pure]> {
+def TPU_MemRefSqueezeOp : TPU_Op<"memref_squeeze", [Pure, ViewLikeOpInterface]> {
   let arguments = (ins AnyMemRef:$input);
   let results = (outs AnyMemRef:$result);
   let assemblyFormat = [{
     $input attr-dict `:` type($input) `->` type($result)
   }];
   let extraClassDeclaration = [{
+    // ViewLikeOpInterface.
+    ::mlir::Value getViewSource() { return getInput(); }
+
     static ::mlir::FailureOr<::mlir::MemRefLayoutAttrInterface> inferResultLayout(
         ::mlir::MemRefLayoutAttrInterface input_layout,
         ::mlir::ArrayRef<int64_t> squeezed,
@@ -1431,13 +1441,16 @@ def TPU_MemRefSqueezeOp : TPU_Op<"memref_squeeze", [Pure]> {
   let hasCanonicalizer = 1;
 }
 
-def TPU_MemRefReshapeOp : TPU_Op<"memref_reshape", [Pure]> {
+def TPU_MemRefReshapeOp : TPU_Op<"memref_reshape", [Pure, ViewLikeOpInterface]> {
   let arguments = (ins AnyMemRef:$input);
   let results = (outs AnyMemRef:$result);
   let assemblyFormat = [{
     $input attr-dict `:` type($input) `->` type($result)
   }];
   let extraClassDeclaration = [{
+    // ViewLikeOpInterface.
+    ::mlir::Value getViewSource() { return getInput(); }
+
     static ::mlir::FailureOr<::mlir::MemRefLayoutAttrInterface> inferResultLayout(
         ::mlir::MemRefType input_type, ::mlir::ArrayRef<int64_t> result_shape,
         ::mlir::function_ref<::mlir::InFlightDiagnostic()> emit_error);
@@ -1445,7 +1458,7 @@ def TPU_MemRefReshapeOp : TPU_Op<"memref_reshape", [Pure]> {
   let hasVerifier = 1;
 }
 
-def TPU_MemRefPadOp : TPU_Op<"memref_pad", [Pure]> {
+def TPU_MemRefPadOp : TPU_Op<"memref_pad", [Pure, ViewLikeOpInterface]> {
   let summary = "Pads a memref's logical shape within its physical tile bounds.";
   let description = [{
     Pads the logical dimensions of a memref up to (at most) the tile-aligned
@@ -1469,16 +1482,23 @@ def TPU_MemRefPadOp : TPU_Op<"memref_pad", [Pure]> {
   let assemblyFormat = [{
     $input attr-dict `:` type($input) `->` type($result)
   }];
+  let extraClassDeclaration = [{
+    // ViewLikeOpInterface.
+    ::mlir::Value getViewSource() { return getInput(); }
+  }];
   let hasVerifier = 1;
 }
 
-def TPU_MemRefBitcastOp : TPU_Op<"memref_bitcast", [Pure]> {
+def TPU_MemRefBitcastOp : TPU_Op<"memref_bitcast", [Pure, ViewLikeOpInterface]> {
   let arguments = (ins AnyMemRef:$input);
   let results = (outs AnyMemRef:$result);
   let assemblyFormat = [{
     $input attr-dict `:` type($input) `->` type($result)
   }];
   let extraClassDeclaration = [{
+    // ViewLikeOpInterface.
+    ::mlir::Value getViewSource() { return getInput(); }
+
     static ::mlir::FailureOr<::mlir::MemRefType> inferResultType(
         ::mlir::MemRefType input_type, ::mlir::Type result_elem_type,
         ::mlir::function_ref<::mlir::InFlightDiagnostic()> emit_error);
@@ -1487,7 +1507,7 @@ def TPU_MemRefBitcastOp : TPU_Op<"memref_bitcast", [Pure]> {
   let hasCanonicalizeMethod = 1;
 }
 
-def TPU_ReinterpretCastOp : TPU_Op<"reinterpret_cast", [Pure, AttrSizedOperandSegments]> {
+def TPU_ReinterpretCastOp : TPU_Op<"reinterpret_cast", [Pure, AttrSizedOperandSegments, ViewLikeOpInterface]> {
   let arguments = (ins
     AnyMemRef:$input,
     // Dynamic offset shifts the memref pointer by the specified number of
@@ -1506,6 +1526,10 @@ def TPU_ReinterpretCastOp : TPU_Op<"reinterpret_cast", [Pure, AttrSizedOperandSe
   let builders = [
     OpBuilder<(ins "::mlir::Type":$result_type, "::mlir::Value":$input, CArg<"::mlir::Value", "nullptr">:$dynamic_offset, CArg<"::mlir::ValueRange", "{}">:$dynamic_sizes, CArg<"::mlir::ValueRange", "{}">:$dynamic_strides)>
   ];
+  let extraClassDeclaration = [{
+    // ViewLikeOpInterface.
+    ::mlir::Value getViewSource() { return getInput(); }
+  }];
   let hasVerifier = 1;
 }
 
@@ -1517,7 +1541,7 @@ def TPU_AssumeLayoutOp : TPU_Op<"assume_layout", [Pure]> {
   }];
 }
 
-def TPU_EraseLayoutOp : TPU_Op<"erase_memref_layout", [Pure, SameOperandsAndResultShape, SameOperandsAndResultElementType]> {
+def TPU_EraseLayoutOp : TPU_Op<"erase_memref_layout", [Pure, SameOperandsAndResultShape, SameOperandsAndResultElementType, ViewLikeOpInterface]> {
   let description = [{
     Erases the layout attribute and, optionally, the memory space from a memref.
     The resulting memref is otherwise identical to the input.
@@ -1534,11 +1558,15 @@ def TPU_EraseLayoutOp : TPU_Op<"erase_memref_layout", [Pure, SameOperandsAndResu
   let assemblyFormat = [{
     $operand attr-dict `:` type($operand) `->` type($result)
   }];
+  let extraClassDeclaration = [{
+    // ViewLikeOpInterface.
+    ::mlir::Value getViewSource() { return getOperand(); }
+  }];
   let hasFolder = 1;
   let hasVerifier = 1;
 }
 
-def TPU_AnnotateOp : TPU_Op<"annotate", [Pure, SameOperandsAndResultType]> {
+def TPU_AnnotateOp : TPU_Op<"annotate", [Pure, SameOperandsAndResultType, ViewLikeOpInterface]> {
   let summary = "Annotates a memref with memory annotations.";
   let arguments = (ins
     AnyMemRef:$operand,
@@ -1550,6 +1578,10 @@ def TPU_AnnotateOp : TPU_Op<"annotate", [Pure, SameOperandsAndResultType]> {
   let results = (outs AnyMemRef:$result);
   let assemblyFormat = [{
     $operand attr-dict `:` type($operand)
+  }];
+  let extraClassDeclaration = [{
+    // ViewLikeOpInterface.
+    ::mlir::Value getViewSource() { return getOperand(); }
   }];
   let hasVerifier = 1;
 }

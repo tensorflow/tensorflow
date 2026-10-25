@@ -64,6 +64,7 @@ cc_library(
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:VectorDialect",
+        "@llvm-project//mlir:ViewLikeInterface",
     ],
 )
 
@@ -181,6 +182,7 @@ td_library(
         "@llvm-project//mlir:OpBaseTdFiles",
         "@llvm-project//mlir:PassBaseTdFiles",
         "@llvm-project//mlir:SideEffectInterfacesTdFiles",
+        "@llvm-project//mlir:ViewLikeInterfaceTdFiles",
     ],
 )
 
