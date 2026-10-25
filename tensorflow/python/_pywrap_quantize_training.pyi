@@ -13,4 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 
-def DoQuantizeTrainingOnGraphDefHelper(arg0: object, arg1: int) -> object: ...
+import typing
+
+def DoQuantizeTrainingOnGraphDefHelper(arg0: object, arg1: typing.SupportsInt | typing.SupportsIndex) -> object: ...

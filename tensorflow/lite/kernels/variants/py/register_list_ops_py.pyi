@@ -13,4 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 
-def TFLRegisterListOps(arg0: int) -> None: ...
+import typing
+
+def TFLRegisterListOps(arg0: typing.SupportsInt | typing.SupportsIndex) -> None: ...

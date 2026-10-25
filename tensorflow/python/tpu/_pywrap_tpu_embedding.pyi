@@ -13,4 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-def stack_tables(arg0: list[int], arg1: list[int], arg2: list[int], arg3: list[int], arg4: list[str], arg5: int) -> list[list[str]]: ...
+import collections.abc
+import typing
+
+def stack_tables(arg0: collections.abc.Sequence[typing.SupportsInt | typing.SupportsIndex], arg1: collections.abc.Sequence[typing.SupportsInt | typing.SupportsIndex], arg2: collections.abc.Sequence[typing.SupportsInt | typing.SupportsIndex], arg3: collections.abc.Sequence[typing.SupportsInt | typing.SupportsIndex], arg4: collections.abc.Sequence[str], arg5: typing.SupportsInt | typing.SupportsIndex) -> list[list[str]]: ...

@@ -13,4 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 
-def modify_model_interface(arg0: str, arg1: str, arg2: int, arg3: int) -> int: ...
+import typing
+
+def modify_model_interface(arg0: str, arg1: str, arg2: typing.SupportsInt | typing.SupportsIndex, arg3: typing.SupportsInt | typing.SupportsIndex) -> int: ...

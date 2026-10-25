@@ -13,4 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 
-def GraphAnalyzer(arg0: str, arg1: int) -> None: ...
+import typing
+
+def GraphAnalyzer(arg0: str, arg1: typing.SupportsInt | typing.SupportsIndex) -> None: ...

@@ -13,4 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 
-def process_inputs(arg0: str, arg1: int, arg2: dict) -> tuple: ...
+import typing
+
+def process_inputs(arg0: str, arg1: typing.SupportsInt | typing.SupportsIndex, arg2: dict) -> tuple[dict, list, list, list]: ...
