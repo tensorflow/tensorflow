@@ -55,6 +55,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/optimized/neon_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops_utils.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/kernels/internal/reference/div.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/strided_slice_logic.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
@@ -1461,8 +1462,10 @@ inline void L2Normalization(const tflite::L2NormalizationParams& op_params,
 
     for (int c = 0; c < depth; c++) {
       int32_t diff = *input_data - input_zero_point;
-      int32_t rescaled_diff = MultiplyByQuantizedMultiplierSmallerThanOneExp(
-          128 * diff, inv_l2norm_multiplier, inv_l2norm_shift);
+      int32_t rescaled_diff = gemmlowp::RoundingDivideByPOT(
+          gemmlowp::SaturatingRoundingDoublingHighMul(128 * diff,
+                                                      inv_l2norm_multiplier),
+          -inv_l2norm_shift);
       int32_t unclamped_output_val = 128 + rescaled_diff;
       int32_t output_val = std::min(255, std::max(0, unclamped_output_val));
       *output_data = static_cast<uint8_t>(output_val);
@@ -2424,31 +2427,7 @@ inline void BroadcastDivSlowQuantized(
   }
 
   auto op = [&params](T a, T b) {
-    int32_t input1_val = params.input1_offset + a;
-    int32_t input2_val = params.input2_offset + b;
-    TFLITE_DCHECK_NE(input2_val, 0);
-    if (input2_val < 0) {
-      // Invert signs to avoid a negative input2_val as input2_inv needs to
-      // be positive to be used as multiplier of
-      // MultiplyByQuantizedMultiplier.
-      input1_val = -input1_val;
-      input2_val = -input2_val;
-    }
-    int recip_shift;
-    const int32_t input2_inv = GetReciprocal(input2_val, 31, &recip_shift);
-    const int headroom = CountLeadingSignBits(input1_val);
-    const int32_t unscaled_quotient =
-        MultiplyByQuantizedMultiplierGreaterThanOne(input1_val, input2_inv,
-                                                    headroom);
-    const int total_shift = params.output_shift - recip_shift - headroom;
-    const int32_t unclamped_result =
-        params.output_offset +
-        MultiplyByQuantizedMultiplierSmallerThanOneExp(
-            unscaled_quotient, params.output_multiplier, total_shift);
-    const int32_t clamped_output =
-        std::min(params.quantized_activation_max,
-                 std::max(params.quantized_activation_min, unclamped_result));
-    return static_cast<T>(clamped_output);
+    return reference_ops::QuantizedDivElement<T>(params, a, b);
   };
 
   reference_ops::BroadcastBinaryOpSimple(

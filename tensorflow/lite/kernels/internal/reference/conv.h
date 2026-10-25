@@ -189,8 +189,12 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
           if (bias_data) {
             acc += bias_data[out_channel];
           }
-          acc = MultiplyByQuantizedMultiplier(acc, output_multiplier,
-                                              output_shift);
+          int left_shift = output_shift > 0 ? output_shift : 0;
+          int right_shift = output_shift > 0 ? 0 : -output_shift;
+          acc = gemmlowp::RoundingDivideByPOT(
+              gemmlowp::SaturatingRoundingDoublingHighMul(
+                  acc * (1 << left_shift), output_multiplier),
+              right_shift);
           acc += output_offset;
           acc = std::max(acc, output_activation_min);
           acc = std::min(acc, output_activation_max);

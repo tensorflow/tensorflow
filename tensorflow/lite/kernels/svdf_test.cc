@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -581,7 +582,11 @@ TEST_F(SVDFOpTest, BlackBoxTestInteger) {
       {-9, 24, 31, 1, -10, 10, -3, 0},
       {2, 4, -44, -7, -10, 32, 52, 1},
       {12, -17, 9, -8, 7, 16, -11, -8},
+#if TFLITE_SINGLE_ROUNDING
+      {-26, 29, 28, 15, -23, 26, 30, -6},
+#else
       {-26, 29, 28, 16, -23, 26, 30, -6},
+#endif
       {-8, -25, -86, -5, -44, 59, 81, 15},
       {62, -16, -37, 3, 27, 14, 34, -10},
       {1, 24, -25, 23, 31, 61, 67, 11},

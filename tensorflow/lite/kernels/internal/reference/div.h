@@ -42,6 +42,38 @@ inline void DivCheckArithmeticParams(const ArithmeticParams& params) {
   TFLITE_DCHECK_LE(params.output_offset, max_value);
 }
 
+template <typename T>
+inline T QuantizedDivElement(const ArithmeticParams& params, T a, T b) {
+  int32_t input1_val = params.input1_offset + a;
+  int32_t input2_val = params.input2_offset + b;
+  TFLITE_DCHECK_NE(input2_val, 0);
+  int32_t unclamped_result = params.output_offset;
+  if (input1_val != 0 && params.output_multiplier != 0) {
+    if (input2_val < 0) {
+      input1_val = -input1_val;
+      input2_val = -input2_val;
+    }
+    int recip_shift;
+    const int32_t input2_inv = GetReciprocal(input2_val, 31, &recip_shift);
+    const int headroom = std::min(CountLeadingSignBits(input1_val), 30);
+    const int32_t unscaled_quotient =
+        MultiplyByQuantizedMultiplierGreaterThanOne(input1_val, input2_inv,
+                                                    headroom);
+    const int total_shift = params.output_shift - recip_shift - headroom;
+    if (total_shift >= 0) {
+      return static_cast<T>(input1_val > 0 ? params.quantized_activation_max
+                                           : params.quantized_activation_min);
+    }
+    if (total_shift >= -31) {
+      unclamped_result += MultiplyByQuantizedMultiplierSmallerThanOneExp(
+          unscaled_quotient, params.output_multiplier, total_shift);
+    }
+  }
+  return static_cast<T>(
+      std::min(params.quantized_activation_max,
+               std::max(params.quantized_activation_min, unclamped_result)));
+}
+
 // Element-wise div that can often be used for inner loop of broadcast Div as
 // well as the non-broadcast Div.
 template <typename T>
@@ -51,30 +83,8 @@ inline void DivElementwise(int size, const ArithmeticParams& params,
   DivCheckArithmeticParams<T>(params);
 
   for (int i = 0; i < size; ++i) {
-    int32_t input1_val = params.input1_offset + input1_data[i];
-    int32_t input2_val = params.input2_offset + input2_data[i];
-    TFLITE_DCHECK_NE(input2_val, 0);
-    if (input2_val < 0) {
-      // Invert signs to avoid a negative input2_val as input2_inv needs to be
-      // positive to be used as multiplier of MultiplyByQuantizedMultiplier.
-      input1_val = -input1_val;
-      input2_val = -input2_val;
-    }
-    int recip_shift;
-    const int32_t input2_inv = GetReciprocal(input2_val, 31, &recip_shift);
-    const int headroom = CountLeadingSignBits(input1_val);
-    const int32_t unscaled_quotient =
-        MultiplyByQuantizedMultiplierGreaterThanOne(input1_val, input2_inv,
-                                                    headroom);
-    const int total_shift = params.output_shift - recip_shift - headroom;
-    const int32_t unclamped_result =
-        params.output_offset +
-        MultiplyByQuantizedMultiplierSmallerThanOneExp(
-            unscaled_quotient, params.output_multiplier, total_shift);
-    const int32_t clamped_output =
-        std::min(params.quantized_activation_max,
-                 std::max(params.quantized_activation_min, unclamped_result));
-    output_data[i] = static_cast<T>(clamped_output);
+    output_data[i] =
+        QuantizedDivElement<T>(params, input1_data[i], input2_data[i]);
   }
 }
 
@@ -123,28 +133,7 @@ inline void BroadcastDivSlowQuantized(
   DivCheckArithmeticParams<T>(params);
 
   auto op = [&params](T a, T b) {
-    int32_t input1_val = params.input1_offset + a;
-    int32_t input2_val = params.input2_offset + b;
-    TFLITE_DCHECK_NE(input2_val, 0);
-    if (input2_val < 0) {
-      input1_val = -input1_val;
-      input2_val = -input2_val;
-    }
-    int recip_shift;
-    const int32_t input2_inv = GetReciprocal(input2_val, 31, &recip_shift);
-    const int headroom = CountLeadingSignBits(input1_val);
-    const int32_t unscaled_quotient =
-        MultiplyByQuantizedMultiplierGreaterThanOne(input1_val, input2_inv,
-                                                    headroom);
-    const int total_shift = params.output_shift - recip_shift - headroom;
-    const int32_t unclamped_result =
-        params.output_offset +
-        MultiplyByQuantizedMultiplierSmallerThanOneExp(
-            unscaled_quotient, params.output_multiplier, total_shift);
-    const int32_t clamped_output =
-        std::min(params.quantized_activation_max,
-                 std::max(params.quantized_activation_min, unclamped_result));
-    return static_cast<T>(clamped_output);
+    return QuantizedDivElement<T>(params, a, b);
   };
 
   BroadcastBinaryOpSimple(unextended_input1_shape, input1_data,

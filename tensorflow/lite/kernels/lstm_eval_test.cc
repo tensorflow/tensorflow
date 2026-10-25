@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
+#include "tensorflow/lite/kernels/internal/common.h"
 
 namespace tflite {
 namespace {
@@ -624,9 +625,15 @@ void TestOneFullyQuantizedLSTM() {
       one_parameter.GetScratch4(), one_parameter.GetScratch5(), &context);
 
   // Verify results.
+#if TFLITE_SINGLE_ROUNDING
+  const std::vector<int16_t> expected_cell = {
+      7, 1, 3, 2, 0, 1, 0, 2, -2, 4, 1, 6, 4, 3, 0, 1, 2, 2, -2, 4,
+  };
+#else
   const std::vector<int16_t> expected_cell = {
       7, 1, 3, 2, 0, 1, 0, 2, -2, 4, 1, 6, 4, 3, 0, 1, 0, 2, -2, 4,
   };
+#endif
   const std::vector<int8_t> expected_activation = {
       50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50,
   };
