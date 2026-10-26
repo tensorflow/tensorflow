@@ -379,6 +379,10 @@ class CommandBuffer {
 
   virtual std::string ToString() const = 0;
 
+  // Returns true if this backend records `ScopedCommandBufferAnnotation`s per
+  // graph node for profiling.
+  virtual bool SupportsNodeAnnotations() const { return false; }
+
   //--------------------------------------------------------------------------//
   // Command buffer user-attached resources API
   //--------------------------------------------------------------------------//

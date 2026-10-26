@@ -43,13 +43,18 @@ limitations under the License.
 #include "xla/stream_executor/bit_pattern.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/cuda/command_buffer_kernels.h"
+#include "xla/stream_executor/cuda/cuda_command_buffer_telemetry.h"
+#include "xla/stream_executor/cuda/cuda_command_buffer_telemetry_pre_13_4.h"
 #include "xla/stream_executor/cuda/cuda_context.h"
+#include "xla/stream_executor/cuda/cuda_graph_annotation_registry.h"
 #include "xla/stream_executor/cuda/cuda_kernel.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
 #include "xla/stream_executor/cuda/cuda_stream.h"
+#include "xla/stream_executor/cuda/cuda_user_object.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/gpu/gpu_command_buffer.h"
+#include "xla/stream_executor/gpu/scoped_command_buffer_annotation.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_args.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -65,60 +70,14 @@ namespace stream_executor::gpu {
 namespace {
 constexpr bool kHasCuda12090 = CUDA_VERSION >= 12090;
 
-// Wraps a C++ object of type `T` and binds its lifetime to a CUDA graph using
-// `CUuserObject` mechanisms. This ensures that the underlying C++ resource
-// is retained as long as the CUDA graph exists,
-// and gets correctly deleted when the graph is destroyed.
-template <typename T>
-class CudaUserObject {
- public:
-  CudaUserObject(const CudaUserObject&) = delete;
-  CudaUserObject& operator=(const CudaUserObject&) = delete;
-
-  // Creates and initializes a `CudaUserObject`.
-  // The object `instance` is wrapped, registered as a `CUuserObject` with CUDA,
-  // and attached to the supplied `graph` to retain its reference.
-  static absl::StatusOr<CudaUserObject*> Create(T&& instance, CUgraph graph) {
-    auto obj_ptr = absl::WrapUnique(new CudaUserObject(std::move(instance)));
-
-    ABSL_RETURN_IF_ERROR(cuda::ToStatus(cuUserObjectCreate(
-        &obj_ptr->handle_, obj_ptr.get(),
-        [](void* user_data) {
-          auto* cb = static_cast<CudaUserObject<T>*>(user_data);
-          delete cb;
-        },
-        1, CU_USER_OBJECT_NO_DESTRUCTOR_SYNC)));
-
-    CudaUserObject* res = std::move(obj_ptr).release();
-    ABSL_RETURN_IF_ERROR(res->AttachTo(graph));
-
-    return res;
-  }
-
-  T* get() { return &instance_; }
-  CUuserObject handle() { return handle_; }
-
- private:
-  explicit CudaUserObject(T instance) : instance_(std::move(instance)) {}
-
-  absl::Status AttachTo(CUgraph graph) {
-    absl::Status res = cuda::ToStatus(
-        cuGraphRetainUserObject(graph, handle_, 1, CU_GRAPH_USER_OBJECT_MOVE));
-    if (!res.ok()) {
-      cuUserObjectRelease(handle_, 1);
-    }
-    return res;
-  }
-
-  T instance_;
-  CUuserObject handle_;
-};
-
 void HostCallbackTrampoline(void* user_data) {
   auto* user_object =
       static_cast<CudaUserObject<absl::AnyInvocable<void()>>*>(user_data);
   (*user_object->get())();
 }
+
+using command_buffer_telemetry::TrackedGraph;
+using TrackMode = CudaGraphAnnotationRegistry::TrackMode;
 
 template <typename... Args>
 void LogAppend(std::string& out, const absl::FormatSpec<Args...>& format,
@@ -297,6 +256,143 @@ std::string FormatGraphConditionalHandles(
 }
 
 }  // namespace
+
+bool CudaCommandBuffer::ShouldRecordAnnotations() const {
+  return ScopedCommandBufferAnnotation::IsActive() && SupportsNodeAnnotations();
+}
+
+void CudaCommandBuffer::MaybeRegisterNodeAnnotation(CUgraphNode node) {
+  if (!ShouldRecordAnnotations()) {
+    return;
+  }
+  const absl::string_view annotation =
+      ScopedCommandBufferAnnotation::GetCurrentAnnotation();
+  if (annotation.empty()) {
+    return;
+  }
+  if (std::optional<TrackedGraph> tracked = TrackOwnGraphForTelemetry()) {
+    command_buffer_telemetry::RegisterNode(*tracked, node, annotation);
+  }
+}
+
+void CudaCommandBuffer::MaybeRegisterGraphAnnotations() {
+  if (!ShouldRecordAnnotations()) {
+    return;
+  }
+  const absl::string_view annotation =
+      ScopedCommandBufferAnnotation::GetCurrentAnnotation();
+  if (annotation.empty()) {
+    return;
+  }
+  if (std::optional<TrackedGraph> tracked = TrackOwnGraphForTelemetry()) {
+    // Child graphs of a graph that was just captured or populated are new too.
+    command_buffer_telemetry::RegisterGraphNodes(
+        graph_, *tracked, /*original=*/nullptr, annotation,
+        TrackMode::kNewGraph);
+  }
+}
+
+void CudaCommandBuffer::MaybeRegisterClonedChildAnnotations(
+    CUgraphNode child_node, CUgraph original) {
+  if (!ShouldRecordAnnotations()) {
+    return;
+  }
+  const absl::string_view annotation =
+      ScopedCommandBufferAnnotation::GetCurrentAnnotation();
+  const std::optional<uint32_t> original_id =
+      command_buffer_telemetry::GetGraphId(original);
+  // Without a fallback, only annotations of the original could be copied.
+  if (annotation.empty() &&
+      !(original_id.has_value() &&
+        CudaGraphAnnotationRegistry::Default().IsGraphTracked(*original_id))) {
+    return;
+  }
+  CUgraph embedded = nullptr;
+  if (cuGraphChildGraphNodeGetGraph(child_node, &embedded) != CUDA_SUCCESS) {
+    return;
+  }
+  const std::optional<uint32_t> embedded_id =
+      command_buffer_telemetry::GetGraphId(embedded);
+  if (!embedded_id.has_value()) {
+    return;
+  }
+  // `cuGraphAddChildGraphNode` just created the embedded clone. Nodes are only
+  // added before the first `Finalize`, so every executable graph containing the
+  // clone is instantiated later and clones the cleanup's reference too.
+  std::optional<TrackedGraph> tracked =
+      command_buffer_telemetry::TrackAndAttach(*embedded_id, embedded,
+                                               TrackMode::kNewGraph);
+  if (!tracked.has_value()) {
+    return;
+  }
+  // The only registration that copies from an original: each node in the
+  // embedded clone is paired with its counterpart in `original` and copies the
+  // precise annotation that the counterpart got when it was created.
+  command_buffer_telemetry::RegisterGraphNodes(
+      embedded, *tracked, original, annotation, TrackMode::kNewGraph);
+}
+
+void CudaCommandBuffer::MaybeRegisterUpdatedChildAnnotations(
+    CUgraph child_graph) {
+  if (!ShouldRecordAnnotations()) {
+    return;
+  }
+  const absl::string_view annotation =
+      ScopedCommandBufferAnnotation::GetCurrentAnnotation();
+  if (annotation.empty()) {
+    return;
+  }
+  const std::optional<uint32_t> graph_id =
+      command_buffer_telemetry::GetGraphId(child_graph);
+  if (!graph_id.has_value() ||
+      CudaGraphAnnotationRegistry::Default().IsGraphTracked(*graph_id)) {
+    return;
+  }
+  // The graph may belong to someone else, so reuse its entry if it has one.
+  // Registration is insert-if-absent: the current annotation only fills gaps.
+  std::optional<TrackedGraph> tracked =
+      command_buffer_telemetry::TrackAndAttach(*graph_id, child_graph,
+                                               TrackMode::kGetOrCreate);
+  if (!tracked.has_value()) {
+    return;
+  }
+  command_buffer_telemetry::RegisterGraphNodes(child_graph, *tracked,
+                                               /*original=*/nullptr, annotation,
+                                               TrackMode::kGetOrCreate);
+}
+
+void CudaCommandBuffer::MaybeFinalizeGraphTelemetry() {
+  if (!ShouldRecordAnnotations()) {
+    return;
+  }
+  if (telemetry_strategy_ ==
+      CudaGraphAnnotationRegistry::TelemetryStrategy::kPre134ExecGraph) {
+    command_buffer_telemetry::RegisterPre134ExecGraphNodes(graph_, graph_exec_);
+  }
+}
+
+std::optional<TrackedGraph> CudaCommandBuffer::TrackOwnGraphForTelemetry() {
+  if (telemetry_graph_.has_value()) {
+    return telemetry_graph_;
+  }
+  // The body graph of a conditional node (`parent_` is set) lives exactly as
+  // long as its node, so as long as the root graph. Anchor its cleanup to the
+  // root graph, whose references every executable graph clones when it is
+  // instantiated. Attaching to the body graph would work as well: executable
+  // graphs also clone the references of body and child graphs, which
+  // `CreateHostNode` and `RegisterGraphNodes` (for cloned children) rely on.
+  // Anchoring here just ties the entry to the root, which bounds every body.
+  const CudaCommandBuffer* root = this;
+  while (root->parent_ != nullptr) {
+    root = root->parent_;
+  }
+  if (std::optional<uint32_t> graph_id =
+          command_buffer_telemetry::GetGraphId(graph_)) {
+    telemetry_graph_ = command_buffer_telemetry::TrackAndAttach(
+        *graph_id, root->graph_, TrackMode::kNewGraph);
+  }
+  return telemetry_graph_;
+}
 
 // Converts a list of platform independent GraphNodeHandles into a list of
 // CUDA specific CUgraphNodes.
@@ -527,6 +623,7 @@ absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateMemsetNode(
                         /*dependencyData=*/nullptr, deps.size(), &node_params),
       "Failed to add memset node to a CUDA graph"));
 
+  MaybeRegisterNodeAnnotation(node_handle);
   return FromCudaGraphHandle(node_handle);
 }
 
@@ -566,6 +663,7 @@ absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateMemcpyD2DNode(
       cuGraphAddNode_v2(&node_handle, graph_, deps.data(),
                         /*dependencyData=*/nullptr, deps.size(), &node_params),
       "Failed to add memcpy D2D node to a CUDA graph"));
+  MaybeRegisterNodeAnnotation(node_handle);
   return FromCudaGraphHandle(node_handle);
 }
 
@@ -603,6 +701,7 @@ absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateMemcpyD2HNode(
       cuGraphAddNode_v2(&node_handle, graph_, deps.data(),
                         /*dependencyData=*/nullptr, deps.size(), &node_params),
       "Failed to add memcpy D2H node to a CUDA graph"));
+  MaybeRegisterNodeAnnotation(node_handle);
   return FromCudaGraphHandle(node_handle);
 }
 
@@ -641,6 +740,7 @@ absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateMemcpyH2DNode(
       cuGraphAddNode_v2(&node_handle, graph_, deps.data(),
                         /*dependencyData=*/nullptr, deps.size(), &node_params),
       "Failed to add memcpy H2D node to a CUDA graph"));
+  MaybeRegisterNodeAnnotation(node_handle);
   return FromCudaGraphHandle(node_handle);
 }
 
@@ -663,8 +763,10 @@ absl::Status CudaCommandBuffer::UpdateMemcpyH2DNode(
 absl::Status CudaCommandBuffer::PopulateDnnGraphNode(
     dnn::DnnGraph& dnn_graph, Stream& stream,
     absl::Span<DeviceAddressBase> operands) {
-  return dnn_graph.PopulateOrUpdateRawCommandBuffer(stream, operands, graph_,
-                                                    false);
+  ABSL_RETURN_IF_ERROR(dnn_graph.PopulateOrUpdateRawCommandBuffer(stream, operands,
+                                                             graph_, false));
+  MaybeRegisterGraphAnnotations();
+  return absl::OkStatus();
 }
 
 absl::Status CudaCommandBuffer::UpdateDnnGraphNode(
@@ -675,6 +777,10 @@ absl::Status CudaCommandBuffer::UpdateDnnGraphNode(
       ToCudaGraphHandle(node_handle), &child_graph)));
   ABSL_RETURN_IF_ERROR(dnn_graph.PopulateOrUpdateRawCommandBuffer(
       stream, operands, child_graph, true));
+  // The embedded graph is updated in place, so it normally still has the entry
+  // it got when the node was created. Otherwise, register it before
+  // `cuGraphExecNodeSetParams` clones its user-object references.
+  MaybeRegisterUpdatedChildAnnotations(child_graph);
   CUgraphNodeParams node_params = ChildGraphNodeParams(child_graph);
   return cuda::ToStatus(
       cuGraphExecNodeSetParams(graph_exec(), ToCudaGraphHandle(node_handle),
@@ -707,6 +813,7 @@ absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateClonedChildNode(
                         /*dependencyData=*/nullptr, deps.size(), &node_params),
       "Failed to create a child graph node and add it to a CUDA graph"));
 
+  MaybeRegisterClonedChildAnnotations(node_handle, child_graph);
   return FromCudaGraphHandle(node_handle);
 }
 
@@ -733,6 +840,16 @@ absl::Status CudaCommandBuffer::UpdateClonedChildNode(
 
   CUgraphExec exec_update = graph_exec();
   CHECK(exec_update != nullptr) << "graph executor for update is nullptr";
+  // `cuGraphExecNodeSetParams` replaces the user-object references of
+  // the executable child node with clones of `child_graph`'s references, so the
+  // cleanup must be attached to `child_graph` before the call. That keeps the
+  // entry alive even if `nested` is destroyed right after this update. After
+  // the call, CUPTI reports the node's work with `child_graph`'s graph and node
+  // IDs (on CUDA 13.4+), so the embedded graph needs no registration. On CUDA
+  // 13.2-13.3 (kPre134ExecGraph), the executable graph's flattened keys were
+  // projected at instantiation time and retain those instantiation-time
+  // annotations.
+  MaybeRegisterUpdatedChildAnnotations(child_graph);
   CUgraphNodeParams node_params = ChildGraphNodeParams(child_graph);
   return cuda::ToStatus(
       cuGraphExecNodeSetParams(exec_update, ToCudaGraphHandle(node_handle),
@@ -782,6 +899,7 @@ absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateHostNode(
 
   LogAppend(log_msg, "CudaCommandBuffer::CreateHostNode: created node: %p",
             node_handle);
+  MaybeRegisterNodeAnnotation(node_handle);
   return FromCudaGraphHandle(node_handle);
 }
 
@@ -883,6 +1001,7 @@ absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateKernelNode(
   LogAppend(log_msg,
             "CudaCommandBuffer::CreateLaunchWithPackedArgs: created node: %p",
             node_handle);
+  MaybeRegisterNodeAnnotation(node_handle);
   return FromCudaGraphHandle(node_handle);
 }
 
@@ -991,6 +1110,8 @@ absl::Status CudaCommandBuffer::Trace(
   uint64_t end_nanos = tsl::Env::Default()->NowNanos();
   VLOG(5) << "Traced into the GPU command buffer graph " << graph_ << " (took "
           << (end_nanos - start_nanos) / 1000 << " μs)";
+
+  MaybeRegisterGraphAnnotations();
 
   // Check that traced graph is not empty. Trying to instantiate a CUDA graph
   // with an empty child node leads to a crash. If the traced operation did not
@@ -1130,6 +1251,7 @@ absl::Status CudaCommandBuffer::InstantiateGraph() {
   VLOG(5) << "Instantiated CUDA executable graph " << graph_exec_
           << " from graph " << graph_;
 
+  MaybeFinalizeGraphTelemetry();
   return absl::OkStatus();
 }
 
@@ -1143,7 +1265,29 @@ CUgraphExec CudaCommandBuffer::graph_exec() const {
   return current->graph_exec_;
 }
 
+CudaCommandBuffer::CudaCommandBuffer(Mode mode, StreamExecutor* executor,
+                                     CudaContext* cuda_context, CUgraph graph,
+                                     bool is_owned_graph)
+    : GpuCommandBuffer(mode, executor),
+      stream_exec_(executor),
+      cuda_context_(cuda_context),
+      graph_(graph),
+      is_owned_graph_(is_owned_graph) {
+  VLOG(5) << "Created command buffer for graph " << graph_
+          << "; mode=" << absl::StrCat(mode)
+          << "; is_owned_graph=" << is_owned_graph_;
+
+  const stream_executor::DeviceDescription& desc =
+      executor->GetDeviceDescription();
+  telemetry_strategy_ = CudaGraphAnnotationRegistry::SelectTelemetryStrategy(
+      desc.compile_time_toolkit_version(), desc.driver_version(),
+      desc.runtime_version());
+}
+
 CudaCommandBuffer::~CudaCommandBuffer() {
+  // Destroy `graph_exec_` before `graph_`: on CUDA 13.2-13.3 the exec graph's
+  // telemetry entry is attached to `graph_` (see RegisterPre134ExecGraphNodes),
+  // so it must not outlive `graph_`.
   if (graph_exec_ != nullptr) {
     auto exec_num = NotifyExecDestroyed();
     VLOG(5) << "Destroying GPU command buffer executable graph " << graph_exec_
