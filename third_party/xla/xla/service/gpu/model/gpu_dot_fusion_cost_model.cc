@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/time/time.h"
@@ -101,23 +102,60 @@ constexpr std::array<BandwidthEntry, kHbmBandwidthTableEntries>
          {8589934592, 0.94800000f}}};
 
 constexpr std::array<BandwidthEntry, kHbmBandwidthTableEntries>
-    kBlackwellScaledHbmBandwidthTable = {
-        {{8192, 0.00041057f},       {16384, 0.00080983f},
-         {32768, 0.00159736f},      {65536, 0.00315074f},
-         {131072, 0.00621472f},     {262144, 0.01009557f},
-         {524288, 0.01892165f},     {1048576, 0.03517364f},
-         {2097152, 0.06441370f},    {4194304, 0.11489171f},
-         {8388608, 0.19611710f},    {16777216, 0.31310696f},
-         {33554432, 0.45727190f},   {67108864, 0.60433204f},
-         {134217728, 0.72808478f},  {268435456, 0.81644540f},
-         {536870912, 0.87240125f},  {1073741824, 0.90518887f},
-         {2147483648, 0.92353306f}, {4294967296, 0.93353170f},
-         {8589934592, 0.93890402f}}};
+    kB200ScaledHbmBandwidthTable = {
+        {{8192, 0.00015707f},       {16384, 0.00031313f},
+         {32768, 0.00062408f},      {65536, 0.00123415f},
+         {131072, 0.00253799f},     {262144, 0.00492929f},
+         {524288, 0.00984314f},     {1048576, 0.01975365f},
+         {2097152, 0.03803150f},    {4194304, 0.07615115f},
+         {8388608, 0.15251306f},    {16777216, 0.23690414f},
+         {33554432, 0.38812372f},   {67108864, 0.57024240f},
+         {134217728, 0.71374673f},  {268435456, 0.82334429f},
+         {536870912, 0.88752520f},  {1073741824, 0.92816323f},
+         {2147483648, 0.94564140f}, {4294967296, 0.95859796f},
+         {8589934592, 0.96471578f}}};
+
+constexpr std::array<BandwidthEntry, kHbmBandwidthTableEntries>
+    kGb200ScaledHbmBandwidthTable = {
+        {{8192, 0.00018752f},       {16384, 0.00036540f},
+         {32768, 0.00075679f},      {65536, 0.00147867f},
+         {131072, 0.00309832f},     {262144, 0.00608570f},
+         {524288, 0.01186464f},     {1048576, 0.02262393f},
+         {2097152, 0.04154144f},    {4194304, 0.08191786f},
+         {8388608, 0.16386819f},    {16777216, 0.26083952f},
+         {33554432, 0.40298992f},   {67108864, 0.58110011f},
+         {134217728, 0.74089736f},  {268435456, 0.84584975f},
+         {536870912, 0.89594644f},  {1073741824, 0.94028658f},
+         {2147483648, 0.95610934f}, {4294967296, 0.97018659f},
+         {8589934592, 0.97762901f}}};
+
+constexpr std::array<BandwidthEntry, kHbmBandwidthTableEntries>
+    kGb300ScaledHbmBandwidthTable = {
+        {{8192, 0.00018000f},       {16384, 0.00036654f},
+         {32768, 0.00071526f},      {65536, 0.00145460f},
+         {131072, 0.00289470f},     {262144, 0.00580990f},
+         {524288, 0.01155096f},     {1048576, 0.02320830f},
+         {2097152, 0.04583494f},    {4194304, 0.08938990f},
+         {8388608, 0.17734151f},    {16777216, 0.27286121f},
+         {33554432, 0.42548269f},   {67108864, 0.60142004f},
+         {134217728, 0.75747776f},  {268435456, 0.85380822f},
+         {536870912, 0.90927792f},  {1073741824, 0.94400918f},
+         {2147483648, 0.95952332f}, {4294967296, 0.97245198f},
+         {8589934592, 0.98208070f}}};
 
 absl::Span<const BandwidthEntry> GetScaledHbmBandwidthTable(
-    se::CudaComputeCapability cuda_compute_capability) {
+    const se::DeviceDescription& device_info) {
+  const se::CudaComputeCapability cuda_compute_capability =
+      device_info.cuda_compute_capability();
   if (cuda_compute_capability.IsAtLeastBlackwell()) {
-    return kBlackwellScaledHbmBandwidthTable;
+    if (cuda_compute_capability.minor >= 3 ||
+        absl::StrContains(device_info.name(), "GB300")) {
+      return kGb300ScaledHbmBandwidthTable;
+    }
+    if (absl::StrContains(device_info.name(), "GB200")) {
+      return kGb200ScaledHbmBandwidthTable;
+    }
+    return kB200ScaledHbmBandwidthTable;
   }
   if (cuda_compute_capability.IsHopper()) {
     return kHopperScaledHbmBandwidthTable;
@@ -150,8 +188,7 @@ MemoryBandwidthSpec GetMemoryBandwidthSpec(
   return MemoryBandwidthSpec{
       /*l2_cache_bandwidth_bytes_per_sec=*/kH100L2CacheBandwidthBytesPerSec *
           bandwidth_scale,
-      /*hbm_bandwidth_table=*/
-      GetScaledHbmBandwidthTable(device_info.cuda_compute_capability()),
+      /*hbm_bandwidth_table=*/GetScaledHbmBandwidthTable(device_info),
   };
 }
 
