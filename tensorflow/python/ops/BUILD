@@ -3715,6 +3715,7 @@ cuda_py_strict_test(
         ":nn_ops_gen",
         ":variables",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
