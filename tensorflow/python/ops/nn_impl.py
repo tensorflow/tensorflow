@@ -1721,27 +1721,17 @@ def batch_normalization(x,
     inv = math_ops.rsqrt(variance + variance_epsilon)
     if scale is not None:
       inv *= scale
-    # Subtract `mean` from `x` before scaling, i.e. use the centered form
-    # `(x - mean) * inv + offset` rather than the algebraically equivalent
-    # `x * inv + (offset - mean * inv)`. The latter has to cancel `offset`
-    # against `mean * inv`; when `mean * inv` is large compared to `offset`
-    # that cancellation is total and the offset disappears. For a constant
-    # batch of magnitude 1e8 in float32, `mean * inv` is about 3.16e9, so
-    # `offset - mean * inv` rounds to `-mean * inv` and the whole expression
-    # collapses to 0 instead of returning `offset`. Centering first keeps
-    # every intermediate proportional to the data, so the offset survives.
-    # The computation stays in the input dtype, so it does not copy the batch
-    # tensor to compute in a wider type.
-    #
-    # Note: the previous expression was documented as being depended on by
-    # `tensorflow/contrib/quantize/python/fold_batch_norms.py`, which was
-    # removed together with `tensorflow/contrib`. What remains in-tree does not
-    # match this subgraph: `tools/graph_transforms/fold_batch_norms.cc` folds a
-    # `Mul` applied directly to a conv/matmul output, and
-    # `optimize_for_inference_lib.fuse_decomposed_batch_norm` requires an `Add`
-    # node while `+` emits `AddV2` here. The centered form therefore gives up
-    # the conv-scale folding for graphs built with this function, which is an
-    # inference-time optimization rather than a correctness property.
+    if not ops.executing_eagerly_outside_functions():
+      # Graphs built outside eager/tf.function keep this exact expression,
+      # including its cancellation of `offset`, because graph rewrites and
+      # tests match its ops and names (for example
+      # tools/graph_transforms/fold_batch_norms.cc and
+      # python/grappler/layout_optimizer_test.py).
+      return x * math_ops.cast(inv, x.dtype) + math_ops.cast(
+          offset - mean * inv if offset is not None else -mean * inv, x.dtype)
+    # Center first: `x * inv + (offset - mean * inv)` cancels `offset`
+    # against `mean * inv` once |mean * inv| >> |offset|. Stay in the input
+    # dtype so the batch tensor is not copied into a wider type.
     x_dtype = dtypes.as_dtype(x.dtype).base_dtype
     inv = math_ops.cast(inv, x_dtype)
     centered = x - math_ops.cast(mean, x_dtype)
