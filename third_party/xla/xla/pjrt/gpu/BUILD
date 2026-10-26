@@ -419,7 +419,7 @@ xla_test(
         "--threadmanager_use_executor_impl=false",
     ],
     backends = ["gpu"],
-    shard_count = 3,
+    shard_count = 4,
     tags = ["nofixdeps"],
     use_legacy_runtime = True,
     deps = [
