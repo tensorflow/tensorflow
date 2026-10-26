@@ -5612,6 +5612,70 @@ absl::Status HloEvaluator::RunElementwiseUnaryOp(
   return absl::OkStatus();
 }
 
+absl::Status HloEvaluator::RunElementwiseBinaryOp(
+    const HloInstruction* instruction,
+    absl::FunctionRef<absl::Status(Literal& result, const Literal& lhs_literal,
+                                   const Literal& rhs_literal,
+                                   bool same_layout)>
+        populate) {
+  Shape shape = GetShapeWithLayout(instruction->shape());
+  const auto* lhs = instruction->operand(0);
+  const auto* rhs = instruction->operand(1);
+  TF_RET_CHECK(ShapeUtil::SameDimensions(shape, rhs->shape()));
+  TF_RET_CHECK(ShapeUtil::SameDimensions(lhs->shape(), rhs->shape()));
+
+  const Literal& lhs_literal = GetEvaluatedLiteralFor(lhs);
+  const Literal& rhs_literal = GetEvaluatedLiteralFor(rhs);
+
+  Literal result(shape);
+
+  // If layout is the same, we can use linear indexing into the literals.
+  const Layout& lhs_layout = lhs_literal.shape().layout();
+  const Layout& rhs_layout = rhs_literal.shape().layout();
+  bool same_layout = LayoutUtil::Equal(lhs_layout, rhs_layout) &&
+                     LayoutUtil::Equal(lhs_layout, shape.layout());
+  ABSL_RETURN_IF_ERROR(populate(result, lhs_literal, rhs_literal, same_layout));
+  SetEvaluatedLiteralFor(instruction, std::move(result));
+  return absl::OkStatus();
+}
+
+absl::Status HloEvaluator::RunElementwiseTernaryOp(
+    const HloInstruction* instruction,
+    absl::FunctionRef<
+        absl::Status(Literal& result, const Literal& lhs_literal,
+                     const Literal& rhs_literal, const Literal& ehs_literal,
+                     bool is_lhs_scalar, bool is_ehs_scalar, bool same_layout)>
+        populate) {
+  Shape shape = GetShapeWithLayout(instruction->shape());
+  const auto* lhs = instruction->operand(0);
+  const auto* rhs = instruction->operand(1);
+  const auto* ehs = instruction->operand(2);
+  const bool is_lhs_scalar = ShapeUtil::IsScalar(lhs->shape());
+  const bool is_ehs_scalar = ShapeUtil::IsScalar(ehs->shape());
+  TF_RET_CHECK(is_lhs_scalar || ShapeUtil::SameDimensions(shape, lhs->shape()));
+  TF_RET_CHECK(ShapeUtil::SameDimensions(shape, rhs->shape()));
+  TF_RET_CHECK(is_ehs_scalar || ShapeUtil::SameDimensions(shape, ehs->shape()));
+
+  const Literal& lhs_literal = GetEvaluatedLiteralFor(lhs);
+  const Literal& rhs_literal = GetEvaluatedLiteralFor(rhs);
+  const Literal& ehs_literal = GetEvaluatedLiteralFor(ehs);
+
+  Literal result(shape);
+
+  // If layout is the same, we can use linear indexing into the literals.
+  const Layout& lhs_layout = lhs_literal.shape().layout();
+  const Layout& rhs_layout = rhs_literal.shape().layout();
+  const Layout& ehs_layout = ehs_literal.shape().layout();
+  const bool same_layout =
+      LayoutUtil::Equal(rhs_layout, shape.layout()) &&
+      (is_lhs_scalar || LayoutUtil::Equal(lhs_layout, shape.layout())) &&
+      (is_ehs_scalar || LayoutUtil::Equal(ehs_layout, shape.layout()));
+  ABSL_RETURN_IF_ERROR(populate(result, lhs_literal, rhs_literal, ehs_literal,
+                           is_lhs_scalar, is_ehs_scalar, same_layout));
+  SetEvaluatedLiteralFor(instruction, std::move(result));
+  return absl::OkStatus();
+}
+
 bool HloEvaluator::TryEvaluateDotFastPathF32(const HloInstruction* dot) {
   const HloInstruction* lhs = dot->operand(0);
   const HloInstruction* rhs = dot->operand(1);

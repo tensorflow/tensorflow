@@ -781,6 +781,21 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
           Literal& result, const Literal& operand_literal, bool same_layout)>
           populate);
 
+  absl::Status RunElementwiseBinaryOp(
+      const HloInstruction* instruction,
+      absl::FunctionRef<
+          absl::Status(Literal& result, const Literal& lhs_literal,
+                       const Literal& rhs_literal, bool same_layout)>
+          populate);
+
+  absl::Status RunElementwiseTernaryOp(
+      const HloInstruction* instruction,
+      absl::FunctionRef<absl::Status(
+          Literal& result, const Literal& lhs_literal,
+          const Literal& rhs_literal, const Literal& ehs_literal,
+          bool is_lhs_scalar, bool is_ehs_scalar, bool same_layout)>
+          populate);
+
   template <typename ReturnT, typename NativeT, typename UnaryOp>
   absl::Status ElementWiseUnaryOpImpl(const HloInstruction* instruction,
                                       UnaryOp unary_op) {
