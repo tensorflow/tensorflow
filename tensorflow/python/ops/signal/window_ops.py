@@ -75,8 +75,12 @@ def kaiser_window(window_length, beta=12., dtype=dtypes.float32, name=None):
     # tf.range does not support float16 so we work with float32 initially.
     halflen_float = (
         math_ops.cast(window_length, dtype=dtypes.float32) - 1.0) / 2.0
-    arg = math_ops.range(-halflen_float, halflen_float + 0.1,
-                         dtype=dtypes.float32)
+    # Build the sample positions from `range(window_length)` so that there are
+    # always exactly `window_length` of them. A float range from
+    # `-halflen_float` to `halflen_float` fails for `window_length == 0`,
+    # where its start exceeds its limit.
+    arg = math_ops.cast(
+        math_ops.range(window_length), dtype=dtypes.float32) - halflen_float
     # Convert everything into given dtype which can be float16.
     arg = math_ops.cast(arg, dtype=dtype)
     one = math_ops.cast(1.0, dtype=dtype)
