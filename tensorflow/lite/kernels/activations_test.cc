@@ -1351,6 +1351,26 @@ TEST_P(LogisticOpTest, SigmoidFloat16) {
                                  0.002f)));
 }
 
+TEST_P(LogisticOpTest, SigmoidFloat16MatchesFloat32) {
+  // A sweep over the saturating and linear ranges, including the inputs whose
+  // `exp(-x)` overflows float16.
+  constexpr int kNumValues = 97;
+  std::vector<half> input;
+  std::vector<float> expected;
+  for (int i = 0; i < kNumValues; ++i) {
+    const half x{-12.0f + 0.25f * i};
+    input.push_back(x);
+    expected.push_back(1.0f / (1.0f + std::exp(-static_cast<float>(x))));
+  }
+  FloatActivationsOpModel<half> m(GetRegistration(), BuiltinOperator_LOGISTIC,
+                                  /*input=*/{TensorType_FLOAT16, {kNumValues}});
+  m.SetInput(input);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  // Two float16 ulps at 1.0.
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray(ArrayFloatNear(expected, /*max_abs_err=*/1e-3)));
+}
+
 TEST_P(LogisticOpTest, SigmoidBFloat16) {
   FloatActivationsOpModel<Eigen::bfloat16> m(
       GetRegistration(), BuiltinOperator_LOGISTIC,

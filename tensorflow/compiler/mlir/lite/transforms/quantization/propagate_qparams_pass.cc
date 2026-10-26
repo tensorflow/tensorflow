@@ -49,8 +49,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_interface.h.inc"
 #include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_traits.h"
-#include "tensorflow/compiler/mlir/lite/transforms/passes.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/transforms/quantization/quant_utils.h"
+#include "tensorflow/compiler/mlir/lite/transforms/tfl_passes.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/utils/shape_and_size_utils.h"
 
 namespace mlir {

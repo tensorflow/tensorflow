@@ -58,7 +58,11 @@ cc_test(
     deps = [
         ":tfl_calibration_utils",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:stateful_error_reporter",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/profiling:memory_info",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
     ],

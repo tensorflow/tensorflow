@@ -33,7 +33,7 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_traits.h"
-#include "tensorflow/compiler/mlir/lite/transforms/passes.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/lite/transforms/tfl_passes.h"  // IWYU pragma: keep
 
 namespace mlir::TFL {
 

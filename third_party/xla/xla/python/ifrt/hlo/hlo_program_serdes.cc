@@ -23,7 +23,10 @@ limitations under the License.
 #include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/MemoryBufferRef.h"
+#include "mlir/Bytecode/BytecodeReader.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/OwningOpRef.h"
@@ -143,13 +146,22 @@ class HloProgramSerDes : public RTTIExtends<HloProgramSerDes, SerDes> {
     mlir::sdy::registerAllDialects(registry);
     context->appendDialectRegistry(registry);
 
-    // The MLIR Lexer (used by the text/assembly parser) assumes the input
-    // buffer is null-terminated. To avoid ASan stack-buffer-overflows when
-    // parsing text-based StableHLO, we copy the serialized data to a
-    // `std::string` to guarantee null-termination before deserialization.
-    std::string flat_str(serialized);
+    // `HloProgram` modules can be large, so we avoid copying them whenever
+    // possible. Copying an `absl::Cord` shares its data, and `Flatten()` copies
+    // the data only if the `absl::Cord` is fragmented.
+    absl::Cord serialized_cord = serialized;
+    llvm::StringRef flat_serialized = serialized_cord.Flatten();
+    // `HloProgram` is always serialized as MLIR bytecode. Reject non-bytecode
+    // inputs upfront rather than letting `deserializePortableArtifact` fall
+    // back to the MLIR text parser.
+    if (!mlir::isBytecode(
+            llvm::MemoryBufferRef(flat_serialized, /*Identifier=*/""))) {
+      return absl::InvalidArgumentError(
+          "Failed to deserialize StableHLO module: input is not MLIR bytecode");
+    }
     mlir::OwningOpRef<mlir::ModuleOp> module =
-        mlir::stablehlo::deserializePortableArtifact(flat_str, context.get());
+        mlir::stablehlo::deserializePortableArtifact(flat_serialized,
+                                                     context.get());
     if (!module) {
       const absl::Status status = diagnostic_handler.ConsumeStatus();
       return absl::InvalidArgumentError(

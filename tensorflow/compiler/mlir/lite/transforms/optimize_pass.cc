@@ -69,7 +69,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/shape_and_size_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir::TFL {
 
@@ -1015,6 +1014,127 @@ bool IsPermutationNCHW(Value perm) {
 }
 
 #include "tensorflow/compiler/mlir/lite/transforms/generated_optimize.inc"
+
+// The patterns below handle TF ops left in the IR by the TensorFlow lowering.
+// They match the TF ops by name so that this pass does not depend on the TF
+// dialect, which the StableHLO conversion path does not use.
+
+// sqrt(1/2). Compared against f32 constants after rounding to f32.
+constexpr double kSqrtHalf = 0.707106769;
+
+// Returns true if `value` is defined by an `arith.constant` of f32 elements
+// that are all equal to `expected`.
+bool IsF32ConstantEqualTo(Value value, double expected) {
+  auto cst = value.getDefiningOp<arith::ConstantOp>();
+  if (!cst) return false;
+  auto attr = mlir::dyn_cast<ElementsAttr>(cst.getValue());
+  if (!attr || !attr.getShapedType().getElementType().isF32()) return false;
+  return FloatValueEquals(attr, expected);
+}
+
+// Returns the single operand of `value`'s defining op if the op is named
+// `op_name` and has one operand and one result, and nullptr otherwise.
+Value GetUnaryOperandIfOpNamed(Value value, llvm::StringRef op_name) {
+  Operation* op = value.getDefiningOp();
+  if (!op || op->getName().getStringRef() != op_name ||
+      op->getNumOperands() != 1 || op->getNumResults() != 1) {
+    return nullptr;
+  }
+  return op->getOperand(0);
+}
+
+template <typename BinaryOp>
+BinaryOp GetDefiningOpWithoutActivation(Value value) {
+  auto op = value.getDefiningOp<BinaryOp>();
+  if (!op || op.getFusedActivationFunction() != "NONE") return nullptr;
+  return op;
+}
+
+// The constant folding in this pass might produce constants in the TF dialect.
+// Legalizes `tf.Const` to `tfl.pseudo_const`.
+struct LegalizeTFConstOp : public RewritePattern {
+  explicit LegalizeTFConstOp(MLIRContext* context)
+      : RewritePattern("tf.Const", /*benefit=*/1, context) {}
+
+  LogicalResult matchAndRewrite(Operation* op,
+                                PatternRewriter& rewriter) const override {
+    auto value = op->getAttrOfType<ElementsAttr>("value");
+    if (!value || op->getNumResults() != 1) return failure();
+    rewriter.replaceOp(op, TFL::ConstOp::create(rewriter, op->getLoc(), value));
+    return success();
+  }
+};
+
+// Replaces
+//   0.5 * x * (1 + tf.Erf(x * sqrt_1_2))
+// with tfl.gelu(x, approximate = false).
+struct MatchGeluWithTFErf : public OpRewritePattern<TFL::MulOp> {
+  explicit MatchGeluWithTFErf(MLIRContext* context)
+      : OpRewritePattern<TFL::MulOp>(context, /*benefit=*/8) {}
+
+  LogicalResult matchAndRewrite(TFL::MulOp mul,
+                                PatternRewriter& rewriter) const override {
+    if (mul.getFusedActivationFunction() != "NONE") return failure();
+    auto mul_half = GetDefiningOpWithoutActivation<TFL::MulOp>(mul.getLhs());
+    auto add_one = GetDefiningOpWithoutActivation<TFL::AddOp>(mul.getRhs());
+    if (!mul_half || !add_one) return failure();
+    Value input = mul_half.getLhs();
+    Value erf_input = GetUnaryOperandIfOpNamed(add_one.getLhs(), "tf.Erf");
+    if (!erf_input) return failure();
+    auto mul_sqrt = GetDefiningOpWithoutActivation<TFL::MulOp>(erf_input);
+    if (!mul_sqrt || mul_sqrt.getLhs() != input) return failure();
+    if (!IsF32ConstantEqualTo(mul_half.getRhs(), 0.5) ||
+        !IsF32ConstantEqualTo(add_one.getRhs(), 1) ||
+        !IsF32ConstantEqualTo(mul_sqrt.getRhs(), kSqrtHalf)) {
+      return failure();
+    }
+    if (!mul_half->hasOneUse() || !add_one->hasOneUse() ||
+        !add_one.getLhs().hasOneUse() || !mul_sqrt->hasOneUse()) {
+      return failure();
+    }
+    rewriter.replaceOpWithNewOp<TFL::GeluOp>(mul, mul.getType(), input,
+                                             rewriter.getBoolAttr(false));
+    return success();
+  }
+};
+
+// Replaces
+//   0.5 * x * tf.Erfc(-x * sqrt_1_2)
+// with tfl.gelu(x, approximate = false).
+struct MatchGeluWithTFErfc : public OpRewritePattern<TFL::MulOp> {
+  explicit MatchGeluWithTFErfc(MLIRContext* context)
+      : OpRewritePattern<TFL::MulOp>(context, /*benefit=*/7) {}
+
+  LogicalResult matchAndRewrite(TFL::MulOp mul,
+                                PatternRewriter& rewriter) const override {
+    if (mul.getFusedActivationFunction() != "NONE") return failure();
+    auto mul_half = GetDefiningOpWithoutActivation<TFL::MulOp>(mul.getLhs());
+    if (!mul_half) return failure();
+    Value input = mul_half.getLhs();
+    Value erfc_input = GetUnaryOperandIfOpNamed(mul.getRhs(), "tf.Erfc");
+    if (!erfc_input) return failure();
+    auto mul_sqrt = GetDefiningOpWithoutActivation<TFL::MulOp>(erfc_input);
+    if (!mul_sqrt) return failure();
+    auto neg = mul_sqrt.getLhs().getDefiningOp<TFL::NegOp>();
+    if (!neg || neg.getX() != input) return failure();
+    if (!IsF32ConstantEqualTo(mul_half.getRhs(), 0.5) ||
+        !IsF32ConstantEqualTo(mul_sqrt.getRhs(), kSqrtHalf)) {
+      return failure();
+    }
+    if (!mul_half->hasOneUse() || !mul.getRhs().hasOneUse() ||
+        !mul_sqrt->hasOneUse()) {
+      return failure();
+    }
+    rewriter.replaceOpWithNewOp<TFL::GeluOp>(mul, mul.getType(), input,
+                                             rewriter.getBoolAttr(false));
+    return success();
+  }
+};
+
+void AddTFOpPatterns(MLIRContext* context, RewritePatternSet& patterns) {
+  patterns.add<LegalizeTFConstOp, MatchGeluWithTFErf, MatchGeluWithTFErfc>(
+      context);
+}
 
 // Get the number of leading 1s in the shape of the given input.
 // Ex. input_shape = [1 x 1 x 1 x 1 x 2 x 1] => 4
@@ -3682,6 +3802,7 @@ void OptimizePass::runOnOperation() {
   // we explore these potentially first and then fuse the binary ops with the
   // following ops in a second pattern match.
   TFL::populateWithGenerated(patterns);
+  AddTFOpPatterns(ctx, patterns);
   patterns
       .add<OptimizeGatherNdToSlice, OptimizeGatherNdSlidingWindow,
            Convert2DUpscalingToResizeNearestNeighor, FuseFullyConnectedAndAdd,
@@ -3700,6 +3821,7 @@ void OptimizePass::runOnOperation() {
   // Fuse the binary ops with the following ops.
   RewritePatternSet phase_2_patterns(&getContext());
   TFL::populateWithGenerated(phase_2_patterns);
+  AddTFOpPatterns(ctx, phase_2_patterns);
   phase_2_patterns.add<
       FuseLogSoftmax, FuseFullyConnectedAndAdd, FuseAddAndFullyConnected,
       FuseFullyConnectedAndMul, FuseFullyConnectedAndReluX<TFL::ReluOp, kRelu>,

@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
+#include "xla/backends/gpu/runtime/raft_select_k_utils.h"
 #include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/topk_rewriter.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
 
@@ -95,8 +97,7 @@ TEST_P(TopkTest, ProducesCorrectResult) {
   std::unique_ptr<HloModule> reference_module = topk_module->Clone("reference");
   ASSERT_OK_AND_ASSIGN(
       bool changed,
-      TopkSpecializer(device_description().gpu_compute_capability())
-          .Run(topk_module.get()));
+      TopkSpecializer(device_description()).Run(topk_module.get()));
   ASSERT_TRUE(changed);
 
   ASSERT_OK_AND_ASSIGN(changed, TopkDecomposer().Run(reference_module.get()));
@@ -144,10 +145,8 @@ TEST_F(TopkTest, PreservesBackendConfig) {
 
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(hlo));
-  ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      TopkSpecializer(device_description().gpu_compute_capability())
-          .Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       TopkSpecializer(device_description()).Run(module.get()));
   if (!device_description().gpu_compute_capability().IsCuda()) {
     // RAFT is CUDA-only. Without RAFT, k=64 exceeds the default max_k=16
     // for SmallBufferOptimization, so the pass should gracefully do nothing.
@@ -194,10 +193,8 @@ TEST_F(TopkTest, RewriteStableTopKF32ToUint64) {
     GTEST_SKIP() << "RAFT is CUDA-only.";
   }
 
-  ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      TopkSpecializer(device_description().gpu_compute_capability())
-          .Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       TopkSpecializer(device_description()).Run(module.get()));
   ASSERT_TRUE(changed);
 
   const char* check_pattern = R"(
@@ -272,10 +269,8 @@ TEST_F(TopkTest, RewriteStableTopKBF16ToUint64) {
     GTEST_SKIP() << "RAFT is CUDA-only.";
   }
 
-  ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      TopkSpecializer(device_description().gpu_compute_capability())
-          .Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       TopkSpecializer(device_description()).Run(module.get()));
   ASSERT_TRUE(changed);
 
   const char* check_pattern = R"(
@@ -347,10 +342,8 @@ TEST_F(TopkTest, RewriteStableTopKDefaultAndDisableFlag) {
   // Enabled by default.
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(hlo));
-  ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      TopkSpecializer(device_description().gpu_compute_capability())
-          .Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       TopkSpecializer(device_description()).Run(module.get()));
   EXPECT_TRUE(changed);
   // Can still be disabled via flag.
   HloModuleConfig disabled_config = GetModuleConfigForTest();
@@ -359,8 +352,8 @@ TEST_F(TopkTest, RewriteStableTopKDefaultAndDisableFlag) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> disabled_module,
                        ParseAndReturnVerifiedModule(hlo, disabled_config));
   ASSERT_OK_AND_ASSIGN(
-      changed, TopkSpecializer(device_description().gpu_compute_capability())
-                   .Run(disabled_module.get()));
+      changed,
+      TopkSpecializer(device_description()).Run(disabled_module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -392,10 +385,8 @@ TEST_F(TopkTest, RewriteStablePartialOrderTopKF32ToUint64) {
     GTEST_SKIP() << "RAFT is CUDA-only.";
   }
 
-  ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      TopkSpecializer(device_description().gpu_compute_capability())
-          .Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       TopkSpecializer(device_description()).Run(module.get()));
   ASSERT_TRUE(changed);
 
   const char* check_pattern = R"(
@@ -479,10 +470,8 @@ TEST_F(TopkTest, RewriteStablePartialOrderTopKBF16ToUint64) {
     GTEST_SKIP() << "RAFT is CUDA-only.";
   }
 
-  ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      TopkSpecializer(device_description().gpu_compute_capability())
-          .Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       TopkSpecializer(device_description()).Run(module.get()));
   ASSERT_TRUE(changed);
 
   const char* check_pattern = R"(
@@ -564,10 +553,8 @@ TEST_F(TopkTest, SmallPartialOrderTopKUsesCustomKernel) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(hlo, config));
 
-  ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      TopkSpecializer(device_description().gpu_compute_capability())
-          .Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       TopkSpecializer(device_description()).Run(module.get()));
   ASSERT_TRUE(changed);
 
   const char* check_pattern = R"(
@@ -629,8 +616,7 @@ TEST_F(TopkTest, RewriteStablePartialOrderTopKProducesCorrectResult) {
 
     ASSERT_OK_AND_ASSIGN(
         bool changed,
-        TopkSpecializer(device_description().gpu_compute_capability())
-            .Run(topk_module.get()));
+        TopkSpecializer(device_description()).Run(topk_module.get()));
     ASSERT_TRUE(changed);
 
     ASSERT_OK_AND_ASSIGN(changed, TopkDecomposer().Run(reference_module.get()));
@@ -641,6 +627,192 @@ TEST_F(TopkTest, RewriteStablePartialOrderTopKProducesCorrectResult) {
 
     EXPECT_TRUE(RunAndCompareTwoModules(
         std::move(topk_module), std::move(reference_module), std::nullopt));
+  }
+}
+
+TEST_F(TopkTest, UnstableFloatTopKUsesEstimatedScratchSize) {
+  if (!device_description().gpu_compute_capability().IsCuda()) {
+    GTEST_SKIP() << "RAFT is CUDA-only.";
+  }
+
+  // Test both a WarpSort shape (f32[8,1024], k=64) and a Radix11bits shape
+  // (f32[64,131072], k=256) to verify HLO scratch sizing and GPU execution.
+  struct TestCase {
+    int batch;
+    int n;
+    int k;
+  };
+  for (const TestCase& tc :
+       {TestCase{8, 1024, 64}, TestCase{64, 131072, 256}}) {
+    const std::string hlo = absl::Substitute(
+        R"hlo(
+      HloModule m
+
+      %compare-gt.1 {
+        p.1.lhs = s32[] parameter(2)
+        p.1.rhs = s32[] parameter(3)
+        p.0.lhs = f32[] parameter(0)
+        p.0.rhs = f32[] parameter(1)
+        ROOT compare = pred[] compare(p.0.lhs, p.0.rhs), direction=GT, order=TOTAL
+      }
+
+      ENTRY top_k {
+        arg = f32[$0,$1] parameter(0)
+        topk = (f32[$0,$2], s32[$0,$2]) custom-call(arg), custom_call_target="TopK", called_computations={%compare-gt.1}, backend_config={is_stable = false, order = "TOTAL"}
+        ROOT values = f32[$0,$2] get-tuple-element(topk), index=0
+      }
+    )hlo",
+        tc.batch, tc.n, tc.k);
+
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> topk_module,
+                         ParseAndReturnVerifiedModule(hlo));
+    std::unique_ptr<HloModule> reference_module =
+        topk_module->Clone("reference");
+
+    ASSERT_OK_AND_ASSIGN(
+        bool changed,
+        TopkSpecializer(device_description()).Run(topk_module.get()));
+    ASSERT_TRUE(changed);
+
+    const se::CudaComputeCapability* cuda_cc =
+        device_description().gpu_compute_capability().cuda_compute_capability();
+    ASSERT_NE(cuda_cc, nullptr);
+    const int expected_sm_count =
+        GetRaftSelectKMaxSmCount(*cuda_cc, device_description().core_count());
+    ASSERT_OK_AND_ASSIGN(int64_t expected_scratch_bytes,
+                         EstimateRaftSelectKScratchBytesFloat(
+                             tc.batch, tc.n, tc.k, expected_sm_count,
+                             RaftScratchPhaseMode::kSumAcrossPhases));
+
+    const HloInstruction* root =
+        topk_module->entry_computation()->root_instruction();
+    const HloInstruction* custom_call =
+        root->operand(0)->operand(0)->operand(0);
+    EXPECT_EQ(custom_call->custom_call_target(), "__gpu$TopK");
+    ASSERT_EQ(custom_call->shape().tuple_shapes().size(), 3);
+    EXPECT_EQ(custom_call->shape().tuple_shapes(2).dimensions(0),
+              expected_scratch_bytes);
+
+    ASSERT_OK_AND_ASSIGN(changed, TopkDecomposer().Run(reference_module.get()));
+    ASSERT_TRUE(changed);
+    reference_module->mutable_config()
+        .mutable_debug_options()
+        .add_xla_disable_hlo_passes("topk-rewriter");
+
+    EXPECT_TRUE(RunAndCompareTwoModules(
+        std::move(topk_module), std::move(reference_module), std::nullopt));
+  }
+}
+
+TEST_F(TopkTest, CrossSkuAndMigCompileExecutesSafelyOnFullGpu) {
+  const se::CudaComputeCapability* cuda_cc =
+      device_description().gpu_compute_capability().cuda_compute_capability();
+  if (cuda_cc == nullptr) {
+    GTEST_SKIP() << "RAFT is CUDA-only.";
+  }
+
+  // Simulate compiling on a reduced-capacity MIG partition (e.g. b200_mig = 18
+  // SMs or h100_sxm_mig = 16 SMs) and executing the compiled module on a full
+  // GPU. Without full-die SM upper-bounding, f32[1, 1048576] k=64 allocates
+  // only ~280 KB for 18 SMs, whereas a full Hopper/Blackwell GPU launches ~4x
+  // more WarpSort blocks and requires >= 1 MB of scratch.
+  se::DeviceDescription mig_device_description = device_description();
+  mig_device_description.set_core_count(18);
+
+  const char* hlo = R"hlo(
+    HloModule m
+
+    %compare-gt.1 {
+      p.1.lhs = s32[] parameter(2)
+      p.1.rhs = s32[] parameter(3)
+      p.0.lhs = f32[] parameter(0)
+      p.0.rhs = f32[] parameter(1)
+      ROOT compare = pred[] compare(p.0.lhs, p.0.rhs), direction=GT, order=TOTAL
+    }
+
+    ENTRY top_k {
+      arg = f32[1,1048576] parameter(0)
+      topk = (f32[1,64], s32[1,64]) custom-call(arg), custom_call_target="TopK", called_computations={%compare-gt.1}, backend_config={is_stable = false, order = "TOTAL"}
+      ROOT values = f32[1,64] get-tuple-element(topk), index=0
+    }
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> topk_module,
+                       ParseAndReturnVerifiedModule(hlo));
+  std::unique_ptr<HloModule> reference_module = topk_module->Clone("reference");
+
+  ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      TopkSpecializer(mig_device_description).Run(topk_module.get()));
+  ASSERT_TRUE(changed);
+
+  ASSERT_OK_AND_ASSIGN(int64_t unsafe_mig_scratch_bytes,
+                       EstimateRaftSelectKScratchBytesFloat(
+                           1, 1048576, 64, /*sm_count=*/18,
+                           RaftScratchPhaseMode::kSumAcrossPhases));
+  ASSERT_OK_AND_ASSIGN(
+      int64_t expected_full_die_scratch_bytes,
+      EstimateRaftSelectKScratchBytesFloat(
+          1, 1048576, 64,
+          GetRaftSelectKMaxSmCount(*cuda_cc, /*reported_sm_count=*/18),
+          RaftScratchPhaseMode::kSumAcrossPhases));
+  if (device_description().core_count() > 18) {
+    EXPECT_GT(expected_full_die_scratch_bytes, unsafe_mig_scratch_bytes);
+  }
+
+  const HloInstruction* root =
+      topk_module->entry_computation()->root_instruction();
+  const HloInstruction* custom_call = root->operand(0)->operand(0)->operand(0);
+  EXPECT_EQ(custom_call->custom_call_target(), "__gpu$TopK");
+  ASSERT_EQ(custom_call->shape().tuple_shapes().size(), 3);
+  EXPECT_EQ(custom_call->shape().tuple_shapes(2).dimensions(0),
+            expected_full_die_scratch_bytes);
+
+  ASSERT_OK_AND_ASSIGN(changed, TopkDecomposer().Run(reference_module.get()));
+  ASSERT_TRUE(changed);
+  reference_module->mutable_config()
+      .mutable_debug_options()
+      .add_xla_disable_hlo_passes("topk-rewriter");
+
+  EXPECT_TRUE(RunAndCompareTwoModules(
+      std::move(topk_module), std::move(reference_module), std::nullopt));
+}
+
+TEST_F(TopkTest, RejectsTopKExceedingInt32DimensionLimit) {
+  // n = 2^31 (INT32_MAX + 1) exceeds signed S32 index range and RAFT's 32-bit
+  // signed int launch calculations, so TopkSpecializer must leave both unstable
+  // and stable TopK unspecialized (for fallback decomposition).
+  for (int k : {8, 32}) {
+    for (absl::string_view is_stable : {"false", "true"}) {
+      const std::string hlo = absl::Substitute(
+          R"hlo(
+        HloModule m
+
+        %compare-gt.1 {
+          p.1.lhs = s32[] parameter(2)
+          p.1.rhs = s32[] parameter(3)
+          p.0.lhs = f32[] parameter(0)
+          p.0.rhs = f32[] parameter(1)
+          ROOT compare = pred[] compare(p.0.lhs, p.0.rhs), direction=GT, order=TOTAL
+        }
+
+        ENTRY top_k {
+          arg = f32[1,2147483648] parameter(0)
+          ROOT result = (f32[1,$0], s32[1,$0]) custom-call(arg), custom_call_target="TopK", called_computations={%compare-gt.1}, backend_config={is_stable = $1, order = "TOTAL"}
+        }
+      )hlo",
+          k, is_stable);
+
+      HloModuleConfig config = GetModuleConfigForTest();
+      config.mutable_debug_options()
+          .set_xla_gpu_experimental_enable_raft_for_stable_topk(true);
+      ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                           ParseAndReturnVerifiedModule(hlo, config));
+      ASSERT_OK_AND_ASSIGN(
+          bool changed,
+          TopkSpecializer(device_description()).Run(module.get()));
+      EXPECT_FALSE(changed) << "k=" << k << ", is_stable=" << is_stable;
+    }
   }
 }
 

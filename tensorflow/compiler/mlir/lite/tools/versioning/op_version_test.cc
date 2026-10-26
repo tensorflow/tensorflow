@@ -425,7 +425,29 @@ TEST(OpVersionTest, VersioningSliceTest) {
 }
 
 TEST(OpVersionTest, VersioningLogisticTest) {
-  SimpleVersioningTest(BuiltinOperator_SPACE_TO_DEPTH);
+  OpSignature fake_op_sig = {
+      .op = BuiltinOperator_LOGISTIC,
+      .inputs = CreateOpSignatureTensorSpecs(kTfLiteInt16),
+      .outputs = CreateOpSignatureTensorSpecs(kTfLiteInt16),
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
+
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteInt8);
+  fake_op_sig.outputs = CreateOpSignatureTensorSpecs(kTfLiteInt8);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteUInt8);
+  fake_op_sig.outputs = CreateOpSignatureTensorSpecs(kTfLiteUInt8);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
+
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteFloat32);
+  fake_op_sig.outputs = CreateOpSignatureTensorSpecs(kTfLiteFloat32);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
+
+  // The float16 kernel (like TANH's) shipped at version 1.
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteFloat16);
+  fake_op_sig.outputs = CreateOpSignatureTensorSpecs(kTfLiteFloat16);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
 }
 
 TEST(OpVersionTest, VersioningL2NormTest) {
@@ -897,6 +919,19 @@ TEST(OpVersionTest, VersioningQuantizeTest) {
 
   fake_op_sig.outputs = CreateOpSignatureTensorSpecs(kTfLiteUInt4);
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 5);
+
+  // Float16 inputs keep the version of their output type.
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteFloat16);
+  fake_op_sig.outputs = CreateOpSignatureTensorSpecs(kTfLiteInt4);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
+  fake_op_sig.outputs = CreateOpSignatureTensorSpecs(kTfLiteUInt4);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 5);
+  fake_op_sig.outputs = CreateOpSignatureTensorSpecs(kTfLiteInt8);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
+  fake_op_sig.outputs = CreateOpSignatureTensorSpecs(kTfLiteInt16);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+  fake_op_sig.ext_options.quantize.is_per_channel_quantized = true;
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
 }
 
 TEST(OpVersionTest, VersioningConv2DTest) {

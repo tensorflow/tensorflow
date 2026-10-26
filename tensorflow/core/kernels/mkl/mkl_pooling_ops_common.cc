@@ -363,14 +363,19 @@ void MklPoolParameters::Init(OpKernelContext* context,
     col_dilation = 0;
 #endif  // ENABLE_ONEDNN_V3
 
-    // We only support 3D pooling across depth/width/height and depthwise
-    // pooling, not a combination.
+    // 3D pooling only supports pooling across spatial dimensions
+    // (planes/depth, rows/height, cols/width). Pooling across batch or
+    // channels is not supported.
     OP_REQUIRES(context,
-                (depth_window == 1 ||
-                 (window_rows == 1 && window_cols == 1 && window_planes == 1)),
+                (GetTensorDim(ksize, data_format, 'N') == 1 &&
+                 GetTensorDim(stride, data_format, 'N') == 1),
                 absl::UnimplementedError(
-                    "AvgPooling3D supports exactly one of pooling across depth "
-                    "or pooling across depth/width/height."));
+                    "Pooling is not supported on the batch dimension."));
+    OP_REQUIRES(context, (depth_window == 1 && depth_stride == 1),
+                absl::UnimplementedError(
+                    "Pooling3D only supports pooling across spatial dimensions "
+                    "(depth, height, width). Pooling across the channel "
+                    "dimension is not supported."));
   }
 
   if (depth_window == 1) {  // We are pooling in the D (Pool3D only), H and W.
@@ -410,6 +415,8 @@ void MklPoolParameters::Init(OpKernelContext* context,
 
     out_depth = depth;  // Output will have the same depth as the input.
   } else {              // We are pooling in the depth dimension.
+    // Note: Only MaxPool2D reaches this branch because 3D pooling ops require
+    // depth_window == 1 and depth_stride == 1.
     // Our current version of depthwise max pooling does not support
     // any padding, and expects the depth_window to equal the depth
     // stride (no overlapping).

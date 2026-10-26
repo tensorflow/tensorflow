@@ -23,6 +23,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_nn_ops
@@ -811,6 +812,179 @@ class PoolingTest(test.TestCase):
             padding="VALID",
         )
         self.evaluate(t)
+
+  @test_util.disable_xla("XLA supports batch and channel pooling")
+  def testPool3DInvalidKsizeAndStridesOnBatchAndChannel(self):
+    for pool_fn in [nn_ops.avg_pool3d, nn_ops.max_pool3d]:
+      # Channel pooling rejection in NCDHW format (channel is index 1).
+      x_ncdhw = constant_op.constant(
+          1.0, shape=[1, 4, 8, 8, 8], dtype=dtypes.float32
+      )
+      with self.assertRaisesRegex(errors.UnimplementedError, "channel"):
+        self.evaluate(
+            pool_fn(
+                x_ncdhw,
+                ksize=[1, 2, 3, 3, 3],
+                strides=[1, 1, 1, 1, 1],
+                padding="VALID",
+                data_format="NCDHW",
+            )
+        )
+      with self.assertRaisesRegex(errors.UnimplementedError, "channel"):
+        self.evaluate(
+            pool_fn(
+                x_ncdhw,
+                ksize=[1, 1, 3, 3, 3],
+                strides=[1, 2, 1, 1, 1],
+                padding="VALID",
+                data_format="NCDHW",
+            )
+        )
+
+      # Channel pooling rejection in NDHWC format (channel is index 4).
+      x_ndhwc = constant_op.constant(
+          1.0, shape=[1, 8, 8, 8, 4], dtype=dtypes.float32
+      )
+      with self.assertRaisesRegex(errors.UnimplementedError, "channel"):
+        self.evaluate(
+            pool_fn(
+                x_ndhwc,
+                ksize=[1, 3, 3, 3, 2],
+                strides=[1, 1, 1, 1, 1],
+                padding="VALID",
+                data_format="NDHWC",
+            )
+        )
+      with self.assertRaisesRegex(errors.UnimplementedError, "channel"):
+        self.evaluate(
+            pool_fn(
+                x_ndhwc,
+                ksize=[1, 1, 1, 1, 1],
+                strides=[1, 1, 1, 1, 2],
+                padding="VALID",
+                data_format="NDHWC",
+            )
+        )
+
+      # Batch pooling rejection across both formats (batch is index 0).
+      with self.assertRaisesRegex(errors.UnimplementedError, "batch"):
+        self.evaluate(
+            pool_fn(
+                x_ncdhw,
+                ksize=[2, 1, 3, 3, 3],
+                strides=[1, 1, 1, 1, 1],
+                padding="VALID",
+                data_format="NCDHW",
+            )
+        )
+      with self.assertRaisesRegex(errors.UnimplementedError, "batch"):
+        self.evaluate(
+            pool_fn(
+                x_ndhwc,
+                ksize=[1, 1, 1, 1, 1],
+                strides=[2, 1, 1, 1, 1],
+                padding="VALID",
+                data_format="NDHWC",
+            )
+        )
+
+  def testPool3DValidSpatialKsizeAndStrides(self):
+    for pool_fn in [nn_ops.avg_pool3d, nn_ops.max_pool3d]:
+      # Valid spatial NDHWC execution works on all devices.
+      x_ndhwc = constant_op.constant(
+          1.0, shape=[1, 8, 8, 8, 4], dtype=dtypes.float32
+      )
+      y1 = pool_fn(
+          x_ndhwc,
+          ksize=[2, 2, 2],
+          strides=[2, 2, 2],
+          padding="VALID",
+          data_format="NDHWC",
+      )
+      self.assertEqual(self.evaluate(y1).shape, (1, 4, 4, 4, 4))
+
+      y2 = pool_fn(
+          x_ndhwc,
+          ksize=[1, 2, 2, 2, 1],
+          strides=[1, 2, 2, 2, 1],
+          padding="VALID",
+          data_format="NDHWC",
+      )
+      self.assertEqual(self.evaluate(y2).shape, (1, 4, 4, 4, 4))
+
+      # Valid NCDHW shape inference and graph construction across all devices.
+      with ops.Graph().as_default():
+        x_ncdhw = constant_op.constant(
+            1.0, shape=[1, 4, 8, 8, 8], dtype=dtypes.float32
+        )
+        y3 = pool_fn(
+            x_ncdhw,
+            ksize=[2, 2, 2],
+            strides=[2, 2, 2],
+            padding="VALID",
+            data_format="NCDHW",
+        )
+        self.assertEqual(y3.shape.as_list(), [1, 4, 4, 4, 4])
+
+        y4 = pool_fn(
+            x_ncdhw,
+            ksize=[1, 1, 2, 2, 2],
+            strides=[1, 1, 2, 2, 2],
+            padding="VALID",
+            data_format="NCDHW",
+        )
+        self.assertEqual(y4.shape.as_list(), [1, 4, 4, 4, 4])
+
+      # Valid NCDHW execution is supported on GPU.
+      if test.is_gpu_available(cuda_only=True):
+        x_gpu = constant_op.constant(
+            1.0, shape=[1, 4, 8, 8, 8], dtype=dtypes.float32
+        )
+        y5 = pool_fn(
+            x_gpu,
+            ksize=[1, 1, 2, 2, 2],
+            strides=[1, 1, 2, 2, 2],
+            padding="VALID",
+            data_format="NCDHW",
+        )
+        self.assertEqual(self.evaluate(y5).shape, (1, 4, 4, 4, 4))
+
+  @test_util.disable_xla("XLA supports batch and channel pooling")
+  def testIssue113181Reproduction(self):
+    x = constant_op.constant(1.0, shape=[1, 4, 8, 8, 8], dtype=dtypes.float32)
+    # ksize has channel=2 -> must raise UnimplementedError for channel pooling.
+    with self.assertRaisesRegex(errors.UnimplementedError, "channel"):
+      self.evaluate(
+          nn_ops.avg_pool3d(
+              input=x,
+              ksize=[1, 2, 3, 3, 3],
+              strides=[1, 2, 3, 3, 3],
+              padding="VALID",
+              data_format="NCDHW",
+          )
+      )
+    # Valid ksize with channel=1 produces expected output shape in graph mode.
+    with ops.Graph().as_default():
+      x_graph = constant_op.constant(
+          1.0, shape=[1, 4, 8, 8, 8], dtype=dtypes.float32
+      )
+      y = nn_ops.avg_pool3d(
+          input=x_graph,
+          ksize=[1, 1, 3, 3, 3],
+          strides=[1, 1, 3, 3, 3],
+          padding="VALID",
+          data_format="NCDHW",
+      )
+      self.assertEqual(y.shape.as_list(), [1, 4, 2, 2, 2])
+    if test.is_gpu_available(cuda_only=True):
+      y_gpu = nn_ops.avg_pool3d(
+          input=x,
+          ksize=[1, 1, 3, 3, 3],
+          strides=[1, 1, 3, 3, 3],
+          padding="VALID",
+          data_format="NCDHW",
+      )
+      self.assertEqual(self.evaluate(y_gpu).shape, (1, 4, 2, 2, 2))
 
 
 if __name__ == "__main__":

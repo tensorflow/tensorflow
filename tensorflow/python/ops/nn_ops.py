@@ -4944,7 +4944,7 @@ def avg_pool3d(input, ksize, strides, padding, data_format="NDHWC", name=None): 
   with ops.name_scope(name, "AvgPool3D", [input]) as name:
     if data_format is None:
       data_format = "NDHWC"
-    channel_index = 1 if data_format.startswith("NC") else 3
+    channel_index = 1 if data_format.startswith("NC") else 4
 
     ksize = _get_sequence(ksize, 3, channel_index, "ksize")
     strides = _get_sequence(strides, 3, channel_index, "strides")

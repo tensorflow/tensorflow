@@ -16,7 +16,7 @@
 load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
-load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
+load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "gentbl_filegroup", "td_library")
 load("@rules_python//python:proto.bzl", "py_proto_library")
 load("//tensorflow:tensorflow.bzl", "if_google", "if_oss", "tf_cc_binary", "tf_cc_test", "tf_native_cc_binary")
 load("//tensorflow:tensorflow.default.bzl", "filegroup", "get_compatible_with_portable")
@@ -142,6 +142,35 @@ gentbl_cc_library(
     },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ir/tfl_ops.td",
+    deps = [
+        ":tensorflow_lite_ops_td_files",
+    ],
+)
+
+# The TFL op definitions as TableGen's JSON dump: every record of tfl_ops.td
+# with its classes, template arguments and overrides resolved. Read by the
+# operator documentation generator in
+# //third_party/odml/litert/litert/tools/op_spec, which takes the
+# operand and result types, attributes and quantization traits from it.
+# tfl_ops_json_gen replaces `llvm-tblgen --dump-json`: mlir-tblgen has no JSON
+# backend and llvm-tblgen is not visible outside LLVM.
+tf_native_cc_binary(
+    name = "tfl_ops_json_gen",
+    srcs = ["tfl_ops_json_gen.cc"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:TableGen",
+    ],
+)
+
+gentbl_filegroup(
+    name = "tensorflow_lite_ops_json",
+    compatible_with = get_compatible_with_portable(),
+    tbl_outs = {"ir/tfl_ops.json": []},
+    tblgen = ":tfl_ops_json_gen",
+    td_file = "ir/tfl_ops.td",
+    visibility = ["//visibility:public"],
     deps = [
         ":tensorflow_lite_ops_td_files",
     ],
@@ -620,6 +649,29 @@ cc_library(
 )
 
 cc_library(
+    name = "tfl_passes",
+    hdrs = ["transforms/tfl_passes.h"],
+    deps = [
+        ":cast_bf16_ops_to_f32",
+        ":cleanup_optimization_barrier",
+        ":downcast_x64",
+        ":large_constant_fold",
+        ":optimize_broadcast_like_pass",
+        ":optimize_broadcast_like_pass_options",
+        ":pass_registry_utils",
+        ":tensorflow_lite_optimize",
+        ":tensorflow_lite_optimize_batch_matmul",
+        ":tensorflow_lite_passes_inc_gen",
+        ":tensorflow_lite_push_transpose_through_ewise_pass",
+        ":tensorflow_lite_split_merged_operands",
+        ":tensorflow_lite_unfold_large_splat_constants",
+        "//tensorflow/compiler/mlir/lite/quantization/common/quantization_lib:quantization_config",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@llvm-project//mlir:Pass",
+    ],
+)
+
+cc_library(
     name = "tensorflow_lite",
     srcs = [
         "ir/tfl_canonicalize.inc",
@@ -678,6 +730,7 @@ cc_library(
         ":tensorflow_lite_split_merged_operands",
         ":tensorflow_lite_tf_unfreeze_global_tensors",
         ":tensorflow_lite_unfold_large_splat_constants",
+        ":tfl_passes",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
         "//tensorflow/compiler/mlir/lite/quantization/common/quantization_lib",
         "//tensorflow/compiler/mlir/lite/quantization/common/quantization_lib:quantization_config",
@@ -1282,8 +1335,9 @@ cc_library(
     name = "legalize_jax_random",
     srcs = ["transforms/legalize_jax_random.cc"],
     deps = [
-        ":tensorflow_lite",
+        ":tensorflow_lite_ops",
         ":tensorflow_lite_passes_inc_gen",
+        ":tfl_passes",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
@@ -1353,6 +1407,7 @@ cc_library(
         ":tensorflow_lite_passes_inc_gen",
         ":tensorflow_lite_prepare_tf_inc_gen",
         ":tensorflow_lite_tf_unfreeze_global_tensors",
+        ":tfl_passes",
         ":tftext_utils",
         ":validators",
         ":variables_utils",
@@ -1435,7 +1490,6 @@ cc_library(
         ":validators",
         "//tensorflow/compiler/mlir/lite/quantization/common/quantization_lib",
         "//tensorflow/compiler/mlir/lite/quantization/common/quantization_lib:quantization_config",
-        "//tensorflow/compiler/mlir/tensorflow",
         "@com_google_absl//absl/container:flat_hash_set",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
@@ -1607,11 +1661,12 @@ cc_library(
     deps = [
         ":resource_constant_fold_utils",
         ":shape_and_size_utils",
-        ":tensorflow_lite",
         ":tensorflow_lite_ops",
         ":tensorflow_lite_passes_inc_gen",
         ":tensorflow_lite_post_quantize_inc_gen",
         ":tensorflow_lite_strict_quantize_inc_gen",
+        ":tfl_passes",
+        ":utils",
         "//tensorflow/compiler/mlir/lite/quantization/common/quantization_lib",
         "//tensorflow/compiler/mlir/lite/quantization/common/quantization_lib:quantization_config",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
@@ -1669,6 +1724,7 @@ cc_library(
         ":tensorflow_lite_passes_inc_gen",
         ":tensorflow_lite_quantize_by_converter_inc_gen",
         ":tensorflow_lite_quantize_inc_gen",
+        ":tfl_passes",
         ":validators",
         "//tensorflow/compiler/mlir/lite/quantization/common/quantization_lib",
         "//tensorflow/compiler/mlir/lite/quantization/common/quantization_lib:quantization_config",
@@ -1827,7 +1883,7 @@ cc_library(
         ":convert_type",
         ":converter_inc",
         ":shape_and_size_utils",
-        ":tensorflow_lite",
+        ":tensorflow_lite_ops",
         "//tensorflow/compiler/mlir/lite/core/c:tflite_common",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs_with_mutable",

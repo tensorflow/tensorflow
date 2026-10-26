@@ -910,10 +910,19 @@ func.func @testLogistic(tensor<1x2x3x4x5xf32>) -> tensor<1x2x3x4x5xf32> {
 
 // -----
 
+// CHECK-LABEL: testLogisticF16
+func.func @testLogisticF16(%arg0: tensor<1x2x3xf16>) -> tensor<1x2x3xf16> {
+  // CHECK: "tfl.logistic"(%arg0)
+  %0 = "tfl.logistic"(%arg0): (tensor<1x2x3xf16>) -> tensor<1x2x3xf16>
+  func.return %0 : tensor<1x2x3xf16>
+}
+
+// -----
+
 // test invalid Logistic input
 func.func @testLogisticWithWrongInputType(tensor<?xi32>) -> tensor<?xi32> {
 ^bb0(%arg0: tensor<?xi32>):
-  // expected-error @+1 {{'tfl.logistic' op operand #0 must be tensor of 32-bit float or QI8 type or QUI8 type or QI16 type or TFLite quint8 type values, but got 'tensor<?xi32>'}}
+  // expected-error @+1 {{'tfl.logistic' op operand #0 must be tensor of 32-bit float or 16-bit float or QI8 type or QUI8 type or QI16 type or TFLite quint8 type values, but got 'tensor<?xi32>'}}
   %0 = "tfl.logistic"(%arg0): (tensor<?xi32>) -> tensor<?xi32>
   func.return %0#0 : tensor<?xi32>
 }

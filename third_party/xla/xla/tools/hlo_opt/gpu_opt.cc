@@ -194,7 +194,7 @@ class GpuOptProvider : public CompiledOptProvider {
     RegisterPass<gpu::ReductionLayoutNormalizer>();
     RegisterPass<gpu::SanitizeConstantNames>();
     RegisterPass<gpu::TopKSplitter>();
-    RegisterPass<gpu::TopkSpecializer>(gpu_compute_capability);
+    RegisterPass<gpu::TopkSpecializer>(device_description_or_default);
     RegisterPass<gpu::WindowedEinsumHandler>();
     // go/keep-sorted end
     if (debug_config.xla_gpu_experimental_collective_cse_distance_threshold() >

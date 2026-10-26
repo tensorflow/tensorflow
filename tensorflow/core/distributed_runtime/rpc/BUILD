@@ -507,6 +507,7 @@ tf_cuda_cc_tests(
         "//tensorflow/core/distributed_runtime:test_utils",
         "//tensorflow/core/platform:blocking_counter",
         "//tensorflow/core/protobuf:master_proto_cc",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
     ],
 )
