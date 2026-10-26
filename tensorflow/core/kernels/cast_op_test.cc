@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
@@ -172,7 +173,7 @@ TEST_F(CastOpTest, CastDoubleToBfloat16RoundsOnce) {
   test::FillValues<bfloat16>(
       &expected, {bfloat16(1.0078125f), bfloat16(1.0f), bfloat16(1.015625f),
                   bfloat16(1.0078125f), bfloat16(-1.0078125f)});
-  test::ExpectTensorEqual<bfloat16>(expected, *GetOutput(0));
+  test::ExpectEqual(expected, *GetOutput(0), test::Tolerance::kNone);
 }
 
 // TODO(wicke): check conversions from/to bool, and bfloat16
