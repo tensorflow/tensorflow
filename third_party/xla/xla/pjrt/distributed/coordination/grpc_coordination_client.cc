@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/pjrt/distributed/coordination/grpc_coordination_client.h"
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <utility>

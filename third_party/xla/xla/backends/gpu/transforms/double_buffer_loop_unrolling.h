@@ -55,7 +55,8 @@ namespace gpu {
 // each copy created by full unrolling, corresponds to one concrete original
 // iteration and therefore becomes loop-independent. The two halves left inside
 // a double-buffered loop still depend on the loop iteration, but their offset
-// stride is multiplied by the unroll factor.
+// stride is multiplied by the unroll factor, or their offset table is reduced
+// to the corresponding subsequence.
 class DoubleBufferLoopUnrolling : public HloModulePass {
  public:
   enum class UnrollStrategy {

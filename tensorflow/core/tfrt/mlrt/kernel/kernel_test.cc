@@ -2716,6 +2716,368 @@ TEST(KernelTest, AsyncWhileOpError) {
       absl_testing::StatusIs(absl::StatusCode::kInternal, "Test error"));
 }
 
+REGISTER_OP("TestAsyncMissingDoneError")
+    .Input("x: T")
+    .Output("y: T")
+    .Attr("T: {int32}")
+    .SetShapeFn(::tensorflow::shape_inference::UnchangedShape);
+
+class TestAsyncMissingDoneErrorKernel : public AsyncOpKernel {
+ public:
+  explicit TestAsyncMissingDoneErrorKernel(OpKernelConstruction* context)
+      : AsyncOpKernel(context) {}
+
+  void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
+    // Intentionally return early without invoking `done` to verify
+    // LaunchAsyncOpKernel still pairs inc/dec_num_deferred_ops_function and
+    // fulfills result promises when DoneCallback is destroyed uninvoked.
+    if (ctx->input(0).scalar<int32_t>()() >= 0) {
+      ctx->SetStatus(absl::InvalidArgumentError("missing done error"));
+    }
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("TestAsyncMissingDoneError").Device(DEVICE_CPU),
+                        TestAsyncMissingDoneErrorKernel);
+
+TEST(KernelTest, AsyncExecuteOpMissingDoneCallbackStillDecrementsDeferredOps) {
+  mlrt::bc::Buffer buffer;
+  mlrt::bc::Allocator allocator(&buffer);
+
+  auto executable_ctor = mlrt::bc::New<mlrt::bc::Executable>(&allocator);
+  mlrt::testing::SymbolTable kernels;
+  std::vector<std::string> kernel_names = {
+      "tf_mlrt.createop", "tf_mlrt.async_executeop", "tf_mlrt.await", "return"};
+  executable_ctor.construct_kernel_names(kernel_names.size())
+      .Assign(kernel_names);
+  kernels.Def(kernel_names);
+
+  mlrt::testing::AttributeTable attributes(
+      executable_ctor.construct_attributes(2));
+  attributes.Add("node_def_str",
+                 R"pb(name: "TestAsyncMissingDoneError"
+                      op: "TestAsyncMissingDoneError"
+                      input: "dummy_arg"
+                      device: "/job:localhost/replica:0/task:0/device:CPU:0"
+                      attr {
+                        key: "T"
+                        value { type: DT_INT32 }
+                      })pb");
+  attributes.Add("op_key", 0);
+
+  auto functions_ctor = executable_ctor.construct_functions(1);
+  auto function_ctor = functions_ctor.ConstructAt(0);
+  function_ctor.construct_name("main");
+
+  mlrt::testing::SymbolTable regs;
+  function_ctor.construct_input_regs(1).Assign({regs.Def("input")});
+
+  auto kernels_ctor = function_ctor.construct_kernels(4);
+  {
+    auto kernel_ctor = kernels_ctor.ConstructAt(0);
+    kernel_ctor.set_code(kernels.Use("tf_mlrt.createop"));
+    kernel_ctor.construct_attributes(2).Assign(
+        {attributes.GetHandle("node_def_str"), attributes.GetHandle("op_key")});
+  }
+  {
+    auto kernel_ctor = kernels_ctor.ConstructAt(1);
+    kernel_ctor.set_code(kernels.Use("tf_mlrt.async_executeop"));
+    kernel_ctor.construct_arguments(1).Assign({regs.Use("input")});
+    kernel_ctor.construct_results(1).Assign({regs.Def("result_future")});
+    kernel_ctor.construct_attributes(2).Assign(
+        {attributes.GetHandle("node_def_str"), attributes.GetHandle("op_key")});
+    kernel_ctor.construct_last_uses(1).Assign({true});
+  }
+  {
+    auto kernel_ctor = kernels_ctor.ConstructAt(2);
+    kernel_ctor.set_code(kernels.Use("tf_mlrt.await"));
+    kernel_ctor.construct_arguments(1).Assign({regs.Use("result_future")});
+    kernel_ctor.construct_last_uses(1).Assign({true});
+    kernel_ctor.construct_results(1).Assign({regs.Def("result")});
+  }
+  {
+    auto kernel_ctor = kernels_ctor.ConstructAt(3);
+    kernel_ctor.set_code(kernels.Use("return"));
+    kernel_ctor.construct_arguments(1).Assign({regs.Use("result")});
+  }
+  function_ctor.set_num_regs(regs.size());
+  function_ctor.construct_output_regs(1).Assign({regs.Use("result")});
+
+  mlrt::bc::Executable executable(buffer.data());
+  mlrt::KernelRegistry registry;
+  RegisterTfMlrtKernels(registry);
+  mlrt::LoadedExecutable loaded_executable(executable, registry);
+
+  auto work_queue = tfrt::CreateMultiThreadedWorkQueue(
+      /*num_threads=*/4, /*num_blocking_threads=*/4);
+  mlrt::ExecutionContext execution_context(&loaded_executable);
+  execution_context.set_work_queue(work_queue.get());
+
+  tensorflow::SessionOptions session_options;
+  tensorflow::FunctionDefLibrary fdef_lib;
+  TF_ASSERT_OK_AND_ASSIGN(auto fallback_state, tfrt_stub::FallbackState::Create(
+                                                   session_options, fdef_lib));
+
+  std::function<void(std::function<void()>)> runner =
+      [](const std::function<void()>& f) { f(); };
+  tfrt_stub::OpKernelRunnerTable runner_table;
+  tfd::FallbackResourceArray resource_array;
+  tfd::KernelFallbackCompatRequestState fallback_request_state(
+      &runner, &fallback_state->device_manager(), /*step_id=*/0, &runner_table,
+      &resource_array, /*user_intra_op_threadpool=*/nullptr,
+      /*model_metadata=*/std::nullopt,
+      &fallback_state->process_function_library_runtime());
+
+  tfrt::ResourceContext resource_context;
+  auto tf_context =
+      std::make_unique<Context>(&fallback_request_state, &resource_context);
+  int num_deferred_ops = 0;
+  int inc_calls = 0;
+  int dec_calls = 0;
+  tf_context->params().inc_num_deferred_ops_function = [&]() {
+    ++inc_calls;
+    ++num_deferred_ops;
+  };
+  tf_context->params().dec_num_deferred_ops_function = [&]() {
+    ++dec_calls;
+    --num_deferred_ops;
+  };
+  execution_context.AddUserContext(std::move(tf_context));
+
+  tensorflow::Tensor input_tensor(100);
+  mlrt::Value arg(tfrt_stub::FallbackTensor(std::move(input_tensor)));
+  mlrt::Value result;
+
+  absl::Notification notification;
+  execution_context.set_exit_handler(
+      [&notification]() { notification.Notify(); });
+  std::vector<uint8_t> last_uses = {true};
+  execution_context.Call(executable.functions()[0], last_uses,
+                         absl::MakeSpan(&arg, 1), absl::MakeSpan(&result, 1));
+  mlrt::Execute(execution_context);
+
+  notification.WaitForNotification();
+  EXPECT_EQ(inc_calls, 1);
+  EXPECT_EQ(dec_calls, 1);
+  EXPECT_EQ(num_deferred_ops, 0);
+  EXPECT_THAT(
+      execution_context.status(),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                             ::testing::HasSubstr("missing done error")));
+
+  // Also verify the fallback status when the kernel returns without calling
+  // `done` and without setting an error on `context`.
+  tfrt_stub::OpKernelRunnerTable runner_table_no_status;
+  tfd::FallbackResourceArray resource_array_no_status;
+  tfd::KernelFallbackCompatRequestState fallback_request_state_no_status(
+      &runner, &fallback_state->device_manager(), /*step_id=*/1,
+      &runner_table_no_status, &resource_array_no_status,
+      /*user_intra_op_threadpool=*/nullptr,
+      /*model_metadata=*/std::nullopt,
+      &fallback_state->process_function_library_runtime());
+  mlrt::ExecutionContext execution_context_no_status(&loaded_executable);
+  execution_context_no_status.set_work_queue(work_queue.get());
+  auto tf_context_no_status = std::make_unique<Context>(
+      &fallback_request_state_no_status, &resource_context);
+  tf_context_no_status->params().inc_num_deferred_ops_function = [&]() {
+    ++inc_calls;
+    ++num_deferred_ops;
+  };
+  tf_context_no_status->params().dec_num_deferred_ops_function = [&]() {
+    ++dec_calls;
+    --num_deferred_ops;
+  };
+  execution_context_no_status.AddUserContext(std::move(tf_context_no_status));
+
+  tensorflow::Tensor neg_input_tensor(-1);
+  mlrt::Value neg_arg(tfrt_stub::FallbackTensor(std::move(neg_input_tensor)));
+  mlrt::Value neg_result;
+  absl::Notification notification_no_status;
+  execution_context_no_status.set_exit_handler(
+      [&notification_no_status]() { notification_no_status.Notify(); });
+  execution_context_no_status.Call(executable.functions()[0], last_uses,
+                                   absl::MakeSpan(&neg_arg, 1),
+                                   absl::MakeSpan(&neg_result, 1));
+  mlrt::Execute(execution_context_no_status);
+
+  notification_no_status.WaitForNotification();
+  EXPECT_EQ(inc_calls, 2);
+  EXPECT_EQ(dec_calls, 2);
+  EXPECT_EQ(num_deferred_ops, 0);
+  EXPECT_THAT(execution_context_no_status.status(),
+              absl_testing::StatusIs(
+                  absl::StatusCode::kFailedPrecondition,
+                  ::testing::HasSubstr("did not invoke DoneCallback")));
+}
+
+REGISTER_OP("TestAsyncCopyDone")
+    .Input("x: T")
+    .Output("y: T")
+    .Attr("T: {int32}")
+    .SetShapeFn(::tensorflow::shape_inference::UnchangedShape);
+
+class TestAsyncCopyDoneKernel : public AsyncOpKernel {
+ public:
+  explicit TestAsyncCopyDoneKernel(OpKernelConstruction* context)
+      : AsyncOpKernel(context) {}
+
+  static DoneCallback* retained_done_copy_;
+
+  void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
+    if (retained_done_copy_ != nullptr) {
+      *retained_done_copy_ = done;
+    }
+    ctx->set_output(0, ctx->input(0));
+    done();
+  }
+};
+
+AsyncOpKernel::DoneCallback* TestAsyncCopyDoneKernel::retained_done_copy_ =
+    nullptr;
+
+REGISTER_KERNEL_BUILDER(Name("TestAsyncCopyDone").Device(DEVICE_CPU),
+                        TestAsyncCopyDoneKernel);
+
+TEST(KernelTest,
+     AsyncExecuteOpCopiedDoneCallbackDecrementsDeferredOpsBeforeReturn) {
+  mlrt::bc::Buffer buffer;
+  mlrt::bc::Allocator allocator(&buffer);
+
+  auto executable_ctor = mlrt::bc::New<mlrt::bc::Executable>(&allocator);
+  mlrt::testing::SymbolTable kernels;
+  std::vector<std::string> kernel_names = {
+      "tf_mlrt.createop", "tf_mlrt.async_executeop", "tf_mlrt.await", "return"};
+  executable_ctor.construct_kernel_names(kernel_names.size())
+      .Assign(kernel_names);
+  kernels.Def(kernel_names);
+
+  mlrt::testing::AttributeTable attributes(
+      executable_ctor.construct_attributes(2));
+  attributes.Add("node_def_str",
+                 R"pb(name: "TestAsyncCopyDone"
+                      op: "TestAsyncCopyDone"
+                      input: "dummy_arg"
+                      device: "/job:localhost/replica:0/task:0/device:CPU:0"
+                      attr {
+                        key: "T"
+                        value { type: DT_INT32 }
+                      })pb");
+  attributes.Add("op_key", 0);
+
+  auto functions_ctor = executable_ctor.construct_functions(1);
+  auto function_ctor = functions_ctor.ConstructAt(0);
+  function_ctor.construct_name("main");
+
+  mlrt::testing::SymbolTable regs;
+  function_ctor.construct_input_regs(1).Assign({regs.Def("input")});
+
+  auto kernels_ctor = function_ctor.construct_kernels(4);
+  {
+    auto kernel_ctor = kernels_ctor.ConstructAt(0);
+    kernel_ctor.set_code(kernels.Use("tf_mlrt.createop"));
+    kernel_ctor.construct_attributes(2).Assign(
+        {attributes.GetHandle("node_def_str"), attributes.GetHandle("op_key")});
+  }
+  {
+    auto kernel_ctor = kernels_ctor.ConstructAt(1);
+    kernel_ctor.set_code(kernels.Use("tf_mlrt.async_executeop"));
+    kernel_ctor.construct_arguments(1).Assign({regs.Use("input")});
+    kernel_ctor.construct_results(1).Assign({regs.Def("result_future")});
+    kernel_ctor.construct_attributes(2).Assign(
+        {attributes.GetHandle("node_def_str"), attributes.GetHandle("op_key")});
+    kernel_ctor.construct_last_uses(1).Assign({true});
+  }
+  {
+    auto kernel_ctor = kernels_ctor.ConstructAt(2);
+    kernel_ctor.set_code(kernels.Use("tf_mlrt.await"));
+    kernel_ctor.construct_arguments(1).Assign({regs.Use("result_future")});
+    kernel_ctor.construct_last_uses(1).Assign({true});
+    kernel_ctor.construct_results(1).Assign({regs.Def("result")});
+  }
+  {
+    auto kernel_ctor = kernels_ctor.ConstructAt(3);
+    kernel_ctor.set_code(kernels.Use("return"));
+    kernel_ctor.construct_arguments(1).Assign({regs.Use("result")});
+  }
+  function_ctor.set_num_regs(regs.size());
+  function_ctor.construct_output_regs(1).Assign({regs.Use("result")});
+
+  mlrt::bc::Executable executable(buffer.data());
+  mlrt::KernelRegistry registry;
+  RegisterTfMlrtKernels(registry);
+  mlrt::LoadedExecutable loaded_executable(executable, registry);
+
+  auto work_queue = tfrt::CreateMultiThreadedWorkQueue(
+      /*num_threads=*/4, /*num_blocking_threads=*/4);
+  mlrt::ExecutionContext execution_context(&loaded_executable);
+  execution_context.set_work_queue(work_queue.get());
+
+  tensorflow::SessionOptions session_options;
+  tensorflow::FunctionDefLibrary fdef_lib;
+  TF_ASSERT_OK_AND_ASSIGN(auto fallback_state, tfrt_stub::FallbackState::Create(
+                                                   session_options, fdef_lib));
+
+  std::function<void(std::function<void()>)> runner =
+      [](const std::function<void()>& f) { f(); };
+  tfrt_stub::OpKernelRunnerTable runner_table;
+  tfd::FallbackResourceArray resource_array;
+  tfd::KernelFallbackCompatRequestState fallback_request_state(
+      &runner, &fallback_state->device_manager(), /*step_id=*/0, &runner_table,
+      &resource_array, /*user_intra_op_threadpool=*/nullptr,
+      /*model_metadata=*/std::nullopt,
+      &fallback_state->process_function_library_runtime());
+
+  tfrt::ResourceContext resource_context;
+  auto tf_context =
+      std::make_unique<Context>(&fallback_request_state, &resource_context);
+  int num_deferred_ops = 0;
+  int inc_calls = 0;
+  int dec_calls = 0;
+  tf_context->params().inc_num_deferred_ops_function = [&]() {
+    ++inc_calls;
+    ++num_deferred_ops;
+  };
+  tf_context->params().dec_num_deferred_ops_function = [&]() {
+    ++dec_calls;
+    --num_deferred_ops;
+  };
+  execution_context.AddUserContext(std::move(tf_context));
+
+  AsyncOpKernel::DoneCallback retained_done;
+  TestAsyncCopyDoneKernel::retained_done_copy_ = &retained_done;
+
+  tensorflow::Tensor input_tensor(42);
+  mlrt::Value arg(tfrt_stub::FallbackTensor(std::move(input_tensor)));
+  mlrt::Value result;
+
+  absl::Notification notification;
+  execution_context.set_exit_handler(
+      [&notification]() { notification.Notify(); });
+  std::vector<uint8_t> last_uses = {true};
+  execution_context.Call(executable.functions()[0], last_uses,
+                         absl::MakeSpan(&arg, 1), absl::MakeSpan(&result, 1));
+  mlrt::Execute(execution_context);
+
+  notification.WaitForNotification();
+  TestAsyncCopyDoneKernel::retained_done_copy_ = nullptr;
+  TF_ASSERT_OK(execution_context.status());
+
+  // Even while `retained_done` is still alive, invoking `done()` must have
+  // already destroyed the op state and decremented deferred ops before
+  // returning.
+  ASSERT_NE(retained_done, nullptr);
+  EXPECT_EQ(inc_calls, 1);
+  EXPECT_EQ(dec_calls, 1);
+  EXPECT_EQ(num_deferred_ops, 0);
+
+  // Calling the retained copy a second time and destroying it must be a safe
+  // no-op.
+  retained_done();
+  retained_done = nullptr;
+  EXPECT_EQ(dec_calls, 1);
+  EXPECT_EQ(num_deferred_ops, 0);
+}
+
 }  // namespace
 }  // namespace tf_mlrt
 }  // namespace tensorflow

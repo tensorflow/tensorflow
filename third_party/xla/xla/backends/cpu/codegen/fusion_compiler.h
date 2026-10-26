@@ -47,6 +47,10 @@ class FusionCompiler {
     llvm::FastMathFlags fast_math_flags;
     bool use_new_xtile_lowering = false;
     bool msan_enabled = false;
+    // LLVM target feature string of the target machine that will compile the
+    // resulting LLVM module. Selects feature-gated xla.* intrinsic variants, so
+    // it must not claim features the target machine lacks.
+    std::string cpu_features;
   };
 
   FusionCompiler(mlir::MLIRContext* context, Options options,
@@ -81,11 +85,14 @@ class FusionCompiler {
 // Xtile CPU pipeline contains two stages, the first is the conversion from
 // Xtile to the vector dialect, the second is the conversion from the vector
 // dialect to LLVM.
-void AddXtileToVectorPasses(mlir::OpPassManager& pm, bool msan_enabled);
-void AddNewXtileToVectorPasses(mlir::OpPassManager& pm);
-void AddVectorToLLVMPasses(mlir::OpPassManager& pm, bool fast_min_max);
+void AddXtileToVectorPasses(mlir::OpPassManager& pm, bool msan_enabled,
+                            int32_t vector_width);
+void AddNewXtileToVectorPasses(mlir::OpPassManager& pm, int32_t vector_width);
+void AddVectorToLLVMPasses(mlir::OpPassManager& pm, bool fast_min_max,
+                           absl::string_view cpu_features);
 void AddNewVectorToLLVMPasses(mlir::OpPassManager& pm, bool fast_min_max,
-                              int32_t vector_width);
+                              int32_t vector_width,
+                              absl::string_view cpu_features);
 
 }  // namespace xla::cpu
 

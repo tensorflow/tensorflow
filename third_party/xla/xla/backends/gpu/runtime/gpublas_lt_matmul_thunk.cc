@@ -147,11 +147,10 @@ CublasLtMatmulThunk::GetCachedMatmulPlan(const ExecuteParams& params) {
                                     gemm_config_));
     return std::move(plan);
   };
-  // If autotuning is disabled, there is no point on retrieving all
-  // algorithms, it's enough to get the default one only.
-  size_t num_algorithms = algorithm_idx_ == 0 ? 1 : GemmConfig::kNumAlgorithms;
+  // Always request the full algorithm list: plans are shared across thunks by
+  // canonical_hlo_, and a varying count would invalidate the cached list.
   return blas_lt->GetOrCreateMatmulPlanWithAlgorithm(
-      canonical_hlo_, create, algorithm_idx_, num_algorithms,
+      canonical_hlo_, create, algorithm_idx_, GemmConfig::kNumAlgorithms,
       autotune_workspace_size_);
 }
 

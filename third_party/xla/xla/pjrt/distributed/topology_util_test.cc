@@ -232,6 +232,37 @@ TEST(TopologyTest, BuildGlobalTopologyWithNetworkNodes) {
   EXPECT_EQ(host_d_id, 3);
 }
 
+TEST(TopologyTest, ExchangeTopologySingleNodeDeviceIds) {
+  LocalTopologyProto local;
+  local.set_process_id(0);
+  DeviceProto* device = local.add_devices();
+  device->set_local_device_ordinal(1);
+  device->set_global_device_id(7);
+
+  GlobalTopologyProto unchanged_global;
+  ASSERT_OK(ExchangeTopologies(
+      /*platform=*/"cuda", /*node_id=*/0, /*num_nodes=*/1,
+      /*get_local_topology_timeout=*/absl::Seconds(10),
+      /*get_global_topology_timeout=*/absl::Seconds(10),
+      /*kv_store=*/nullptr, local, &unchanged_global,
+      /*assign_global_device_ids=*/false));
+  ASSERT_EQ(unchanged_global.processes_size(), 1);
+  ASSERT_EQ(unchanged_global.processes(0).devices_size(), 1);
+  EXPECT_EQ(unchanged_global.processes(0).devices(0).global_device_id(), 7);
+
+  GlobalTopologyProto assigned_global;
+  ASSERT_OK(ExchangeTopologies(
+      /*platform=*/"cuda", /*node_id=*/0, /*num_nodes=*/1,
+      /*get_local_topology_timeout=*/absl::Seconds(10),
+      /*get_global_topology_timeout=*/absl::Seconds(10),
+      /*kv_store=*/nullptr, local, &assigned_global,
+      /*assign_global_device_ids=*/true));
+  ASSERT_EQ(assigned_global.processes_size(), 1);
+  ASSERT_EQ(assigned_global.processes(0).devices_size(), 1);
+  EXPECT_EQ(assigned_global.processes(0).devices(0).global_device_id(), 0);
+  EXPECT_EQ(assigned_global.processes(0).devices(0).local_device_ordinal(), 1);
+}
+
 TEST(TopologyTest, ExchangeTopology) {
   int num_processes = 2;
   std::vector<LocalTopologyProto> locals(num_processes);

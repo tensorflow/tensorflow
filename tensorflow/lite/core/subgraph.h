@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <atomic>
 #include <cstdint>
+#include <cstdlib>
 #include <functional>
 #include <map>
 #include <memory>
@@ -1281,6 +1282,14 @@ class Subgraph {
   // Maps tensor external buffer ids used in the subgraph to a model-wide
   // identifiers.
   std::unordered_map<size_t, size_t> tensor_external_buffer_ids_;
+
+  struct FreeDeleter {
+    void operator()(char* p) const { free(p); }
+  };
+
+  // Holds aligned copies of read-only tensor buffers whose original backing
+  // memory was not naturally aligned for the tensor's element type.
+  std::vector<std::unique_ptr<char, FreeDeleter>> aligned_ro_buffers_;
 };
 
 }  // namespace tflite

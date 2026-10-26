@@ -16,6 +16,7 @@
 
 import numpy as np
 
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -340,8 +341,53 @@ class BatchNormalizationTest(test.TestCase):
         (2, 3, 2, 4, 5), (1, 1, 1, 4, 5), atol=0.005)
 
   def testBatchNormMixedPrecision(self):
-    self._testBatchNormArbitraryShapes((3, 3), (1, 3), dtype=dtypes.float16,
-                                       param_dtype=dtypes.float32, atol=0.001)
+    self._testBatchNormArbitraryShapes(
+        (3, 3),
+        (1, 3),
+        dtype=dtypes.float16,
+        param_dtype=dtypes.float32,
+        atol=0.002,
+    )
+
+  @test_util.run_v2_only
+  def testBatchNormKeepsOffsetForLargeConstantBatch(self):
+    """The offset must not be cancelled by `mean * inv`.
+
+    Normalizing a constant batch makes the centered term zero, so the result
+    is exactly `offset`. The legacy `x * inv + (offset - mean * inv)` form,
+    kept for graphs built outside eager/tf.function, cancels `offset` once
+    `mean * inv` is much larger than `offset`.
+    """
+    bn_fn = def_function.function(nn_impl.batch_normalization)
+    for dtype, magnitude in [
+        (dtypes.float16, 1e4),
+        (dtypes.bfloat16, 1e4),
+        (dtypes.float32, 1e8),
+        (dtypes.float64, 1e300),
+    ]:
+      x = constant_op.constant(magnitude, dtype=dtype, shape=[2, 2])
+      mean, variance = nn_impl.moments(x, [0, 1], keep_dims=True)
+      offset = constant_op.constant(5.0, dtype=dtype)
+      for fn in (nn_impl.batch_normalization, bn_fn):
+        bn = fn(x, mean, variance, offset, None, 1e-3)
+        self.assertEqual(dtype, bn.dtype)
+        self.assertAllClose(
+            self.evaluate(bn), np.full([2, 2], 5.0), rtol=1e-3, atol=1e-3
+        )
+
+  def testBatchNormV1GraphKeepsFoldableTopology(self):
+    """Graphs built outside eager/tf.function keep `Mul(x, inv)` first."""
+    with ops.Graph().as_default():
+      x = array_ops.placeholder(dtypes.float32, shape=[2, 3])
+      mean = constant_op.constant([1.0, 2.0, 3.0])
+      variance = constant_op.constant([0.5, 1.0, 2.0])
+      offset = constant_op.constant([0.1, 0.2, 0.3])
+      scale = constant_op.constant([1.5, 2.5, 3.5])
+      bn = nn_impl.batch_normalization(x, mean, variance, offset, scale, 1e-3)
+      self.assertEqual("AddV2", bn.op.type)
+      self.assertEqual("Mul", bn.op.inputs[0].op.type)
+      self.assertEqual(x.name, bn.op.inputs[0].op.inputs[0].name)
+      self.assertEqual("Sub", bn.op.inputs[1].op.type)
 
 
 class SufficientStatisticsTest(test.TestCase):

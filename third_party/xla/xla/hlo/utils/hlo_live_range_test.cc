@@ -1414,5 +1414,70 @@ TEST_F(HloLiveRangeTest, AsyncComputationSharedByMultipleCallersUsesMinStart) {
   EXPECT_LT(t_range.start, init_time);
 }
 
+TEST_F(HloLiveRangeTest, NestedAsyncViaCall) {
+  const std::string hlo_string = R"hlo(
+  HloModule NestedAsyncViaCall, is_scheduled=true
+
+  %inner_async_wrapped (p_inner: f32[4]) -> f32[4] {
+    %p_inner = f32[4] parameter(0)
+    ROOT %y = f32[4] negate(%p_inner)
+  }
+
+  %outer_callee (q: f32[4]) -> f32[4] {
+    %q = f32[4] parameter(0)
+    %x = f32[4] negate(%q)
+    %inner_start = ((f32[4]), f32[4], u32[]) async-start(%x),
+      calls=%inner_async_wrapped
+    %inner_done = f32[4] async-done(%inner_start)
+    ROOT %z = f32[4] add(%x, %inner_done)
+  }
+
+  %outer_async_wrapped (p_outer: f32[4]) -> f32[4] {
+    %p_outer = f32[4] parameter(0)
+    ROOT %outer_call = f32[4] call(%p_outer), to_apply=%outer_callee
+  }
+
+  ENTRY %main (a: f32[4]) -> f32[4] {
+    %a = f32[4] parameter(0)
+    %outer_start = ((f32[4]), f32[4], u32[]) async-start(%a),
+      calls=%outer_async_wrapped
+    ROOT %outer_done = f32[4] async-done(%outer_start)
+  }
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(alias_analysis_,
+                       HloAliasAnalysis::Run(module_.get(), &alias_info_));
+  ASSERT_OK_AND_ASSIGN(hlo_live_range_,
+                       HloLiveRange::Run(module_->schedule(), *alias_analysis_,
+                                         module_->entry_computation()));
+  CheckSchedule();
+
+  HloComputation* outer_callee =
+      module_->GetComputationWithName("outer_callee");
+  ASSERT_NE(outer_callee, nullptr);
+  const HloInstruction* x = outer_callee->GetInstructionWithName("x");
+  const HloInstruction* z = outer_callee->GetInstructionWithName("z");
+  ASSERT_NE(x, nullptr);
+  ASSERT_NE(z, nullptr);
+
+  const HloInstruction* inner_start =
+      outer_callee->GetInstructionWithName("inner_start");
+  ASSERT_NE(inner_start, nullptr);
+
+  auto x_range = LiveRangeAt(x);
+  auto z_range = LiveRangeAt(z);
+  auto inner_start_time =
+      hlo_live_range_->instruction_schedule().at(inner_start);
+  auto z_time = hlo_live_range_->instruction_schedule().at(z);
+
+  // x is used within its own (nested, called-via-kCall) computation by
+  // inner_start and z; its start must not be pushed later than those uses.
+  EXPECT_LE(x_range.start, inner_start_time);
+  EXPECT_LE(x_range.start, z_time);
+  EXPECT_LE(x_range.start, x_range.end);
+  EXPECT_LE(z_range.start, z_range.end);
+}
+
 }  // namespace
 }  // namespace xla

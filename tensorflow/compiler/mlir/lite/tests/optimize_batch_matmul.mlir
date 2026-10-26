@@ -343,3 +343,67 @@ func.func @Batchmatmul2FullyconnectedReshapeTransposeChainConstY(%arg0: tensor<1
   %2 = "tfl.batch_matmul"(%arg0, %1) {adj_x = false, adj_y = false, asymmetric_quantize_inputs = false} : (tensor<16x1024xf32>, tensor<1024x128xf32>) -> tensor<16x128xf32>
   func.return %2 : tensor<16x128xf32>
 }
+
+// A bf16 constant widened to f32 is still foldable, since flatbuffer export
+// materializes the cast. The transpose goes below the cast so it lands
+// directly on the constant, where it can be folded.
+// CHECK-LABEL: Batchmatmul2FullyconnectedBf16CastConstY
+func.func @Batchmatmul2FullyconnectedBf16CastConstY(%arg0: tensor<16x1024xf32>) -> tensor<16x128xf32> {
+  %weight = arith.constant dense_resource<__elided__> : tensor<1024x128xbf16>
+  %0 = "tfl.cast"(%weight) : (tensor<1024x128xbf16>) -> tensor<1024x128xf32>
+  // CHECK: %[[W:.*]] = arith.constant dense_resource<__elided__> : tensor<1024x128xbf16>
+  // CHECK: %[[T:.*]] = "tfl.transpose"(%[[W]], %{{.*}}) : (tensor<1024x128xbf16>, tensor<2xi32>) -> tensor<128x1024xbf16>
+  // CHECK: %[[C:.*]] = "tfl.cast"(%[[T]]) : (tensor<128x1024xbf16>) -> tensor<128x1024xf32>
+  // CHECK: "tfl.fully_connected"(%arg0, %[[C]], %{{.*}})
+  // CHECK-NOT: "tfl.batch_matmul"
+  %1 = "tfl.batch_matmul"(%arg0, %0) {adj_x = false, adj_y = false, asymmetric_quantize_inputs = false} : (tensor<16x1024xf32>, tensor<1024x128xf32>) -> tensor<16x128xf32>
+  func.return %1 : tensor<16x128xf32>
+}
+
+// With adj_y the rhs is already in filter layout, so the cast is kept as is.
+// CHECK-LABEL: Batchmatmul2FullyconnectedBf16CastConstYAdjY
+func.func @Batchmatmul2FullyconnectedBf16CastConstYAdjY(%arg0: tensor<16x1024xf32>) -> tensor<16x128xf32> {
+  %weight = arith.constant dense_resource<__elided__> : tensor<128x1024xbf16>
+  %0 = "tfl.cast"(%weight) : (tensor<128x1024xbf16>) -> tensor<128x1024xf32>
+  // CHECK: %[[W:.*]] = arith.constant dense_resource<__elided__> : tensor<128x1024xbf16>
+  // CHECK: %[[C:.*]] = "tfl.cast"(%[[W]]) : (tensor<128x1024xbf16>) -> tensor<128x1024xf32>
+  // CHECK-NOT: "tfl.transpose"
+  // CHECK: "tfl.fully_connected"(%arg0, %[[C]], %{{.*}})
+  // CHECK-NOT: "tfl.batch_matmul"
+  %1 = "tfl.batch_matmul"(%arg0, %0) {adj_x = false, adj_y = true, asymmetric_quantize_inputs = false} : (tensor<16x1024xf32>, tensor<128x1024xf32>) -> tensor<16x128xf32>
+  func.return %1 : tensor<16x128xf32>
+}
+
+// CHECK-LABEL: NotFuseTransposeFCRhsToBatchMatmulBf16CastConstant
+func.func @NotFuseTransposeFCRhsToBatchMatmulBf16CastConstant(%arg0: tensor<16x1024xf32>, %arg1: none) -> tensor<16x128xf32> {
+  %cst = arith.constant dense<[1, 0]> : tensor<2xi32>
+  %weight = arith.constant dense_resource<__elided__> : tensor<1024x128xbf16>
+  %0 = "tfl.cast"(%weight) : (tensor<1024x128xbf16>) -> tensor<1024x128xf32>
+  %1 = "tfl.transpose"(%0, %cst) : (tensor<1024x128xf32>, tensor<2xi32>) -> tensor<128x1024xf32>
+  // CHECK: "tfl.fully_connected"
+  // CHECK-NOT: "tfl.batch_matmul"
+  %2 = "tfl.fully_connected"(%arg0, %1, %arg1) {asymmetric_quantize_inputs = false, fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<16x1024xf32>, tensor<128x1024xf32>, none) -> tensor<16x128xf32>
+  func.return %2 : tensor<16x128xf32>
+}
+
+// A widening cast of a non-constant is not foldable.
+// CHECK-LABEL: NotBatchmatmul2FullyconnectedBf16CastNonConstY
+func.func @NotBatchmatmul2FullyconnectedBf16CastNonConstY(%arg0: tensor<16x1024xf32>, %arg1: tensor<1024x128xbf16>) -> tensor<16x128xf32> {
+  %0 = "tfl.cast"(%arg1) : (tensor<1024x128xbf16>) -> tensor<1024x128xf32>
+  // CHECK: "tfl.batch_matmul"
+  // CHECK-NOT: "tfl.fully_connected"
+  %1 = "tfl.batch_matmul"(%arg0, %0) {adj_x = false, adj_y = false, asymmetric_quantize_inputs = false} : (tensor<16x1024xf32>, tensor<1024x128xf32>) -> tensor<16x128xf32>
+  func.return %1 : tensor<16x128xf32>
+}
+
+// Only float widening is looked through; flatbuffer export does not
+// materialize other casts.
+// CHECK-LABEL: NotBatchmatmul2FullyconnectedI8CastConstY
+func.func @NotBatchmatmul2FullyconnectedI8CastConstY(%arg0: tensor<16x1024xf32>) -> tensor<16x128xf32> {
+  %weight = arith.constant dense_resource<__elided__> : tensor<1024x128xi8>
+  %0 = "tfl.cast"(%weight) : (tensor<1024x128xi8>) -> tensor<1024x128xf32>
+  // CHECK: "tfl.batch_matmul"
+  // CHECK-NOT: "tfl.fully_connected"
+  %1 = "tfl.batch_matmul"(%arg0, %0) {adj_x = false, adj_y = false, asymmetric_quantize_inputs = false} : (tensor<16x1024xf32>, tensor<1024x128xf32>) -> tensor<16x128xf32>
+  func.return %1 : tensor<16x128xf32>
+}

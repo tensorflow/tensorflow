@@ -15,20 +15,30 @@ limitations under the License.
 
 #include "xla/tools/cost_model/gpu_bandwidth_benchmark.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <memory>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "absl/status/statusor.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/gpu/gpu_init.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
 
 namespace xla::gpu {
 namespace {
 
 using ::absl_testing::IsOk;
 using ::absl_testing::IsOkAndHolds;
+using ::absl_testing::StatusIs;
 using ::testing::Gt;
 using ::testing::Not;
+using ::testing::SizeIs;
 
 TEST(GpuBandwidthBenchmarkTest, FormatBandwidthTableEmpty) {
   EXPECT_EQ(FormatBandwidthTable({}),
@@ -54,7 +64,7 @@ TEST(GpuBandwidthBenchmarkTest, FormatBandwidthTableMultipleEntries) {
 
 TEST(GpuBandwidthBenchmarkTest, GetPeakBandwidthValidDevice) {
   const absl::StatusOr<double> peak_bw =
-      GetPeakBandwidthBytesPerSec(/*device_id=*/0);
+      GetPeakBandwidthBytesPerSec(/*ordinal=*/0);
   if (!peak_bw.ok()) {
     GTEST_SKIP() << "No GPU device available: " << peak_bw.status();
   }
@@ -62,8 +72,64 @@ TEST(GpuBandwidthBenchmarkTest, GetPeakBandwidthValidDevice) {
 }
 
 TEST(GpuBandwidthBenchmarkTest, GetPeakBandwidthInvalidDevice) {
-  EXPECT_THAT(GetPeakBandwidthBytesPerSec(/*device_id=*/-1), Not(IsOk()));
-  EXPECT_THAT(GetPeakBandwidthBytesPerSec(/*device_id=*/9999), Not(IsOk()));
+  EXPECT_THAT(GetPeakBandwidthBytesPerSec(/*ordinal=*/-1), Not(IsOk()));
+  EXPECT_THAT(GetPeakBandwidthBytesPerSec(/*ordinal=*/9999), Not(IsOk()));
+}
+
+TEST(GpuBandwidthBenchmarkTest, MeasureBandwidthTableInvalidArguments) {
+  EXPECT_THAT(MeasureBandwidthTable(/*ordinal=*/-1),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(MeasureBandwidthTable(/*ordinal=*/0, /*min_exp=*/0),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(
+      MeasureBandwidthTable(/*ordinal=*/0, /*min_exp=*/20, /*max_exp=*/13),
+      StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(
+      MeasureBandwidthTable(/*ordinal=*/0, /*min_exp=*/13, /*max_exp=*/62),
+      StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(MeasureBandwidthTable(/*ordinal=*/0, /*min_exp=*/13,
+                                    /*max_exp=*/15, /*warmup_runs=*/-1),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(MeasureBandwidthTable(/*ordinal=*/0, /*min_exp=*/13,
+                                    /*max_exp=*/15, /*warmup_runs=*/2,
+                                    /*measurement_runs=*/0),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(GpuBandwidthBenchmarkTest, MeasureBandwidthTableScalesWithTransferSize) {
+  constexpr int kMinExp = 13;
+  constexpr int kMaxExp = 27;
+  const absl::StatusOr<std::vector<BandwidthEntry>> entries =
+      MeasureBandwidthTable(/*ordinal=*/0, kMinExp, kMaxExp,
+                            /*warmup_runs=*/2, /*measurement_runs=*/5);
+  if (!entries.ok() &&
+      (entries.status().code() == absl::StatusCode::kNotFound ||
+       entries.status().code() == absl::StatusCode::kUnavailable)) {
+    GTEST_SKIP() << "No GPU platform or device available: " << entries.status();
+  }
+  ASSERT_THAT(entries, IsOkAndHolds(SizeIs(kMaxExp - kMinExp + 1)));
+  EXPECT_EQ(entries->front().dma_size_bytes, int64_t{1} << kMinExp);
+  EXPECT_EQ(entries->back().dma_size_bytes, int64_t{1} << kMaxExp);
+  for (const BandwidthEntry& entry : *entries) {
+    EXPECT_GT(entry.bandwidth_fraction, 0.0f);
+    EXPECT_LE(entry.bandwidth_fraction, 1.0f);
+  }
+  ASSERT_OK_AND_ASSIGN(stream_executor::Platform * platform,
+                       stream_executor::PlatformManager::PlatformWithName(
+                           stream_executor::GpuPlatformName()));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<stream_executor::DeviceDescription> device,
+      platform->DescriptionForDevice(/*ordinal=*/0));
+  for (size_t i = 1; i < entries->size(); ++i) {
+    EXPECT_EQ((*entries)[i].dma_size_bytes,
+              2 * (*entries)[i - 1].dma_size_bytes);
+    // The benchmark is not calibrated on non-NVIDIA platforms, so measured
+    // bandwidth fractions may not increase monotonically with transfer size.
+    if (device->gpu_compute_capability().IsCuda()) {
+      EXPECT_GT((*entries)[i].bandwidth_fraction,
+                (*entries)[i - 1].bandwidth_fraction);
+    }
+  }
 }
 
 }  // namespace

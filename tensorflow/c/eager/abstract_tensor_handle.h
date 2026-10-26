@@ -31,7 +31,7 @@ class AbstractTensorHandle : public core::RefCounted {
  protected:
   enum AbstractTensorHandleKind { kGraph, kMlir, kEager, kTfrt, kCustomDevice };
   explicit AbstractTensorHandle(AbstractTensorHandleKind kind) : kind_(kind) {}
-  ~AbstractTensorHandle() override {}
+  ~AbstractTensorHandle() override = default;
 
  public:
   // Returns tensor dtype.

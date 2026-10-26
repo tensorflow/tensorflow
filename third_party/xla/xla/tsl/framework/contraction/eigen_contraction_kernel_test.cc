@@ -53,7 +53,39 @@ void RunEigenMatMul(int m, int k, int n) {
   Eigen::Tensor<OutType, 2> expected =
       lhs.template cast<OutType>().contract(rhs.template cast<OutType>(), dims);
 
-  ExpectClose(out, expected);
+  ExpectClose<OutType>(out, expected);
+}
+
+template <typename LhsType, typename RhsType, typename OutType, int Alignment>
+void RunEigenTensorMapMatMul(int m, int k, int n) {
+  Eigen::Tensor<LhsType, 2> lhs_storage(m, k);
+  Eigen::Tensor<RhsType, 2> rhs_storage(k, n);
+  Eigen::Tensor<OutType, 2> out_storage(m, n);
+
+  lhs_storage.setRandom();
+  rhs_storage.setRandom();
+  out_storage.setZero();
+
+  const Eigen::TensorMap<Eigen::Tensor<const LhsType, 2>, Alignment> lhs(
+      lhs_storage.data(), m, k);
+  const Eigen::TensorMap<Eigen::Tensor<const RhsType, 2>, Alignment> rhs(
+      rhs_storage.data(), k, n);
+  Eigen::TensorMap<Eigen::Tensor<OutType, 2>, Alignment> out(out_storage.data(),
+                                                             m, n);
+
+  using DimPair = typename Eigen::Tensor<LhsType, 2>::DimensionPair;
+  std::array<DimPair, 1> dims({DimPair(1, 0)});
+  out = lhs.contract(rhs, dims);
+
+  const Eigen::TensorMap<Eigen::Tensor<const LhsType, 2>, Eigen::Aligned>
+      lhs_aligned(lhs_storage.data(), m, k);
+  const Eigen::TensorMap<Eigen::Tensor<const RhsType, 2>, Eigen::Aligned>
+      rhs_aligned(rhs_storage.data(), k, n);
+  Eigen::Tensor<OutType, 2> expected =
+      lhs_aligned.template cast<OutType>().contract(
+          rhs_aligned.template cast<OutType>(), dims);
+
+  ExpectClose<OutType>(out_storage, expected);
 }
 
 struct EigenContractionKernelTestParams {
@@ -76,6 +108,48 @@ TEST_P(EigenContractionKernelTest, S8S8S32) {
   RunEigenMatMul<int8_t, int8_t, int32_t>(param.m, param.k, param.n);
 }
 
+TEST_P(EigenContractionKernelTest, Float) {
+  EigenContractionKernelTestParams param = GetParam();
+  RunEigenMatMul<float, float, float>(param.m, param.k, param.n);
+}
+
+TEST_P(EigenContractionKernelTest, FloatTensorMapUnaligned) {
+  EigenContractionKernelTestParams param = GetParam();
+  RunEigenTensorMapMatMul<float, float, float, Eigen::Unaligned>(
+      param.m, param.k, param.n);
+}
+
+#if defined(TENSORFLOW_USE_MKLDNN_CONTRACTION_KERNEL)
+TEST(DirectColMajorAccessTest, SupportsAlignedAndUnalignedTensorMap) {
+  using Scalar = float;
+  using StorageIndex = Eigen::Index;
+  using Device = Eigen::DefaultDevice;
+  using ContractT = Eigen::array<StorageIndex, 1>;
+  constexpr int kPacketSize = Eigen::internal::packet_traits<Scalar>::size;
+
+  using AlignedTensorMap = const Eigen::TensorMap<
+      Eigen::Tensor<const Scalar, 2, Eigen::ColMajor, StorageIndex>,
+      Eigen::Aligned>;
+  using UnalignedTensorMap = const Eigen::TensorMap<
+      Eigen::Tensor<const Scalar, 2, Eigen::ColMajor, StorageIndex>,
+      Eigen::Unaligned>;
+
+  using AlignedMapper = Eigen::internal::TensorContractionInputMapper<
+      Scalar, StorageIndex, Eigen::internal::Lhs,
+      Eigen::TensorEvaluator<AlignedTensorMap, Device>, ContractT, ContractT,
+      kPacketSize, /*inner_dim_contiguous=*/true,
+      /*inner_dim_reordered=*/false, Eigen::Unaligned>;
+  using UnalignedMapper = Eigen::internal::TensorContractionInputMapper<
+      Scalar, StorageIndex, Eigen::internal::Lhs,
+      Eigen::TensorEvaluator<UnalignedTensorMap, Device>, ContractT, ContractT,
+      kPacketSize, /*inner_dim_contiguous=*/true,
+      /*inner_dim_reordered=*/false, Eigen::Unaligned>;
+
+  EXPECT_TRUE(Eigen::internal::DirectColMajorAccess<AlignedMapper>::value);
+  EXPECT_TRUE(Eigen::internal::DirectColMajorAccess<UnalignedMapper>::value);
+}
+#endif
+
 INSTANTIATE_TEST_SUITE_P(
     EigenContractionKernelTestSuite, EigenContractionKernelTest,
     testing::ValuesIn<EigenContractionKernelTestParams>({{10, 10, 10},
@@ -83,7 +157,13 @@ INSTANTIATE_TEST_SUITE_P(
                                                          {64, 1024, 64},
                                                          {1, 64, 64},
                                                          {256, 1, 128},
-                                                         {512, 128, 1}}),
+                                                         {512, 128, 1},
+                                                         {1, 1, 1},
+                                                         {0, 0, 0},
+                                                         {0, 10, 10},
+                                                         {10, 0, 10},
+                                                         {10, 10, 0},
+                                                         {512, 512, 512}}),
     EigenContractionKernelTest::Name);
 
 }  // namespace

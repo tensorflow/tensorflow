@@ -38,7 +38,12 @@ namespace stream_executor::gpu {
 // and registers the memory with CUDA. Otherwise uses cuMemHostAlloc.
 static absl::StatusOr<void*> HostAllocate(StreamExecutor* executor,
                                           int32_t numa_node, uint64_t size) {
-  if (numa_node != tsl::port::kNUMANoAffinity) {
+  // In Confidential Computing VMs, memory registration (cuMemHostRegister)
+  // is not supported because userspace host memory is private by default
+  // and inaccessible by the GPU. Memory must instead be allocated via
+  // cuMemHostAlloc.
+  if (numa_node != tsl::port::kNUMANoAffinity &&
+      !executor->GetDeviceDescription().confidential_computing_enabled()) {
     // CUDA programming guide: "Any address of a variable ... returned by one
     // of the memory allocation routines from the driver ... API is always
     // aligned to at least 256 bytes."
@@ -90,7 +95,10 @@ static absl::StatusOr<void*> HostAllocate(StreamExecutor* executor,
 // Frees pinned host memory previously allocated by HostAllocate.
 static void HostDeallocate(StreamExecutor* executor, int32_t numa_node,
                            void* ptr, uint64_t size) {
-  if (numa_node != tsl::port::kNUMANoAffinity) {
+  // Memory allocated via cuMemHostAlloc in Confidential Computing mode must
+  // be freed using cuMemFreeHost rather than cuMemHostUnregister + NUMAFree.
+  if (numa_node != tsl::port::kNUMANoAffinity &&
+      !executor->GetDeviceDescription().confidential_computing_enabled()) {
     if (size > 0) {
       std::unique_ptr<ActivateContext> activate = executor->Activate();
       absl::Status status = cuda::ToStatus(cuMemHostUnregister(ptr));

@@ -64,6 +64,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h"
 #include "xla/codegen/xtile/codegen/dot_algorithms.h"
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
+#include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/hlo/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "xla/service/algorithm_util.h"
 #include "xla/tsl/platform/errors.h"
@@ -1030,6 +1031,30 @@ class LowerDotGeneral : public mlir::OpRewritePattern<stablehlo::DotGeneralOp> {
   bool warp_specialization_allowed_;
 };
 
+class LowerAllGather : public mlir::OpRewritePattern<stablehlo::AllGatherOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+ private:
+  mlir::LogicalResult matchAndRewrite(
+      stablehlo::AllGatherOp op,
+      mlir::PatternRewriter& rewriter) const override {
+    return ::xla::gpu::RewriteAllGather(op, rewriter);
+  }
+};
+
+class LowerAllToAll : public mlir::OpRewritePattern<stablehlo::AllToAllOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+ private:
+  mlir::LogicalResult matchAndRewrite(
+      stablehlo::AllToAllOp op,
+      mlir::PatternRewriter& rewriter) const override {
+    return ::xla::gpu::RewriteAllToAll(op, rewriter);
+  }
+};
+
 class LowerAllReduce : public mlir::OpRewritePattern<stablehlo::AllReduceOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
@@ -1039,6 +1064,19 @@ class LowerAllReduce : public mlir::OpRewritePattern<stablehlo::AllReduceOp> {
       stablehlo::AllReduceOp op,
       mlir::PatternRewriter& rewriter) const override {
     return ::xla::gpu::RewriteAllReduce(op, rewriter);
+  }
+};
+
+class LowerReduceScatter
+    : public mlir::OpRewritePattern<::xla::xtile::ReduceScatterOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+ private:
+  mlir::LogicalResult matchAndRewrite(
+      ::xla::xtile::ReduceScatterOp op,
+      mlir::PatternRewriter& rewriter) const override {
+    return ::xla::gpu::RewriteReduceScatter(op, rewriter);
   }
 };
 
@@ -1054,7 +1092,8 @@ class StableHLOLowerToTritonPass
     {
       mlir::RewritePatternSet patterns(mlir_context);
       patterns.add<LowerTranspose, LowerIotaToMakeRange, LowerBroadcastInDim,
-                   LowerReduce, LowerReshape, LowerAllReduce>(mlir_context);
+                   LowerReduce, LowerReshape, LowerAllGather, LowerAllToAll,
+                   LowerAllReduce, LowerReduceScatter>(mlir_context);
       patterns.add<CanonicalizeDotGeneral>(mlir_context);
       patterns.add<LowerDotGeneral>(mlir_context, warp_specialization_allowed_);
       if (mlir::failed(mlir::applyPatternsGreedily(getOperation(),

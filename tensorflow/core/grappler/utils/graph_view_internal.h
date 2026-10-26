@@ -123,8 +123,7 @@ template <typename FaninViewT, typename FanoutViewT, typename GraphViewT,
           bool IsConst>
 class NodeViewInternal {
  private:
-  using NodeDefT =
-      typename std::conditional<IsConst, const NodeDef, NodeDef>::type;
+  using NodeDefT = std::conditional_t<IsConst, const NodeDef, NodeDef>;
 
  public:
   explicit NodeViewInternal(GraphViewT* graph_view, int node_index)
@@ -275,8 +274,7 @@ template <typename NodeViewT, typename FaninViewT, typename FanoutViewT,
           bool IsConst>
 class GraphViewInternal {
  private:
-  using GraphDefT =
-      typename std::conditional<IsConst, const GraphDef, GraphDef>::type;
+  using GraphDefT = std::conditional_t<IsConst, const GraphDef, GraphDef>;
 
  public:
   explicit GraphViewInternal(GraphDefT* graph) : graph_(graph) {}

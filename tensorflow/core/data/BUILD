@@ -630,6 +630,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/data/service:test_util",
         "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest",
     ],
 )
 

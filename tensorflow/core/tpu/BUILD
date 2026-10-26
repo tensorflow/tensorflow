@@ -40,16 +40,10 @@ package(
 
 cc_library(
     name = "tpu_embedding_configuration_utils",
-    srcs = ["tpu_embedding_configuration_utils.cc"],
     hdrs = ["tpu_embedding_configuration_utils.h"],
     visibility = ["//visibility:public"],
     deps = [
-        ":tpu_embedding_optimization_parameters_utils",
-        "//tensorflow/core/protobuf/tpu:optimization_parameters_proto_cc",
-        "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:str_format",
+        "@xla//xla/tpu/protobuf:tpu_embedding_configuration_utils",
     ],
 )
 
@@ -90,16 +84,9 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_proto_parsing",
-        "//tensorflow/core/protobuf/tpu:optimization_parameters_proto_cc",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@xla//xla:xla_data_proto_cc",
-        "@xla//xla/service:hlo_proto_cc",
+        "@xla//xla/tpu/protobuf:tpu_embedding_optimization_parameters_utils",
+        "@xla//xla/tsl/platform:errors",
     ],
 )
 
@@ -185,12 +172,9 @@ cc_library(
 
 cc_library(
     name = "tpu_compile_interface",
-    srcs = ["tpu_compile_interface.cc"],
     hdrs = ["tpu_compile_interface.h"],
     deps = [
-        "//tensorflow/core:lib",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/strings",
+        "@xla//xla/tpu:tpu_compile_interface",
     ],
 )
 
@@ -295,8 +279,8 @@ cc_library(
         "@xla//xla:status_macros",
         "@xla//xla:xla_data_proto_cc",
         "@xla//xla:xla_proto_cc",
+        "@xla//xla/client:compile_only_client",
         "@xla//xla/hlo/ir:hlo",
-        "@xla//xla/pjrt:pjrt_compiler",
         "@xla//xla/service:hlo_module_config",
         "@xla//xla/tsl/platform:errors",
         "@xla//xla/tsl/platform:statusor",

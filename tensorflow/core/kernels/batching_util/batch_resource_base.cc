@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/container/fixed_array.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/bind_front.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
@@ -42,20 +43,20 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/optional.h"
 #include "xla/tsl/platform/criticality.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/cost_constants.h"
 #include "tensorflow/core/common_runtime/cost_measurement.h"
-#include "tensorflow/core/common_runtime/cost_measurement_registry.h"
 #include "tensorflow/core/common_runtime/cost_util.h"
 #include "tensorflow/core/common_runtime/request_cost.h"
 #include "tensorflow/core/common_runtime/request_cost_accessor.h"
-#include "tensorflow/core/common_runtime/request_cost_accessor_registry.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/op_requires.h"
-#include "tensorflow/core/framework/ops_util.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_util.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/batching_util/batch_scheduler.h"
 #include "tensorflow/core/kernels/batching_util/batch_scheduler_utils.h"
 #include "tensorflow/core/kernels/batching_util/batch_stats.h"
@@ -71,24 +72,14 @@ limitations under the License.
 #include "tensorflow/core/lib/monitoring/types.h"
 #include "tensorflow/core/platform/context.h"
 #include "tensorflow/core/platform/env_time.h"
-#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/util/incremental_barrier.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
+#include "tsl/profiler/lib/traceme.h"
+#include "tsl/profiler/lib/traceme_encode.h"
 
 namespace tensorflow {
 namespace serving {
 namespace {
-
-constexpr int64_t kCriticalPlusCapacityFractionDenom = 2;
-constexpr int64_t kCriticalCapacityFractionDenom = 4;
-constexpr int64_t kSheddablePlusCapacityFractionDenom = 8;
-constexpr int64_t kSheddableCapacityFractionDenom = 16;
 
 using ::tensorflow::concat_split_util::Concat;
 using ::tensorflow::concat_split_util::Split;
@@ -474,6 +465,50 @@ absl::Status ConcatSplitTaskOutput(TensorMatrix& split_task_output,
   }
 
   return Concat(context, to_concatenate, output_tensor);
+}
+
+// Splits `batched_output` along dimension 0 into one piece per task with the
+// given `task_sizes` and stores the pieces in `split_tensors`. The last
+// `padding_size` rows of `batched_output` are padding, which no task receives.
+//
+// If the padding is no larger than the task rows and every piece starts at an
+// aligned address, the pieces are zero-copy `Tensor::Slice` views of
+// `batched_output`. Each view holds a reference to the whole batched buffer,
+// which is freed only when the last view is released. So a task that keeps its
+// output also keeps the other tasks' rows and the padding allocated, whereas a
+// copy would keep only its own rows. Likewise, `Tensor::AllocatedBytes()` on a
+// view reports the size of the whole buffer. The padding limit keeps the buffer
+// at most twice the size of the task rows.
+//
+// Otherwise, falls back to `tensor::Split`, which copies each piece into a
+// newly allocated tensor and leaves the padding to be freed with
+// `batched_output`. Dtypes that `tensor::Split` rejects, such as DT_VARIANT
+// and DT_RESOURCE, always take this path, so they fail as before instead of
+// succeeding only for some shapes and padding sizes.
+absl::Status SplitBatchedOutputTensor(const Tensor& batched_output,
+                                      const std::vector<int64_t>& task_sizes,
+                                      int64_t padding_size,
+                                      std::vector<Tensor>* split_tensors) {
+  split_tensors->clear();
+  const Tensor task_rows =
+      batched_output.Slice(0, batched_output.dim_size(0) - padding_size);
+  const DataType dtype = batched_output.dtype();
+  if (!(DataTypeCanUseMemcpy(dtype) || dtype == DT_STRING) ||
+      padding_size > task_rows.dim_size(0)) {
+    return tensor::Split(task_rows, task_sizes, split_tensors);
+  }
+  split_tensors->reserve(task_sizes.size());
+  int64_t start = 0;
+  for (const int64_t size : task_sizes) {
+    Tensor slice = task_rows.Slice(start, start + size);
+    if (!slice.IsAligned()) {
+      split_tensors->clear();
+      return tensor::Split(task_rows, task_sizes, split_tensors);
+    }
+    split_tensors->push_back(std::move(slice));
+    start += size;
+  }
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -1081,8 +1116,9 @@ absl::Status BatchResourceBase::ConcatInputTensors(
         // the priority queue). If so, skip the output concatenation — the
         // output TensorMatrix may contain uninitialized entries that would
         // cause a crash in Concat/memcpy.
-        if (!input_task->status->status().ok()) {
-          input_task->FinishTask(input_task->status->status());
+        absl::Status task_status = input_task->status->status();
+        if (!task_status.ok()) {
+          input_task->FinishTask(task_status);
           return;
         }
         OpKernelContext* context = input_task->context;
@@ -1170,14 +1206,13 @@ absl::Status BatchResourceBase::SplitOutputTensors(
         "Batch size expected to be positive; was ", batch->num_tasks()));
   }
 
-  std::vector<int64_t> task_sizes_plus_optional_padding;
-  task_sizes_plus_optional_padding.reserve(batch->num_tasks() +
-                                           unbatched_tasks.size());
+  std::vector<int64_t> task_sizes;
+  task_sizes.reserve(batch->num_tasks() + unbatched_tasks.size());
   for (int i = 0; i < batch->num_tasks(); ++i) {
-    task_sizes_plus_optional_padding.push_back(batch->task(i).size());
+    task_sizes.push_back(batch->task(i).size());
   }
   for (int i = 0; i < unbatched_tasks.size(); ++i) {
-    task_sizes_plus_optional_padding.push_back(unbatched_tasks[i]->size());
+    task_sizes.push_back(unbatched_tasks[i]->size());
   }
   int unbatched_tasks_size = GetTotalTaskSize(unbatched_tasks);
   const int padding_size =
@@ -1186,9 +1221,6 @@ absl::Status BatchResourceBase::SplitOutputTensors(
           : RoundToLowestAllowedBatchSize(batch->size() + unbatched_tasks_size,
                                           IsLowPriorityBatch(*batch)) -
                 batch->size() - unbatched_tasks_size;
-  if (padding_size > 0) {
-    task_sizes_plus_optional_padding.push_back(padding_size);
-  }
 
   DCHECK_EQ(batch->task(0).context->num_outputs(), combined_outputs.size());
   int combined_outputs_size = combined_outputs.size();
@@ -1218,22 +1250,20 @@ absl::Status BatchResourceBase::SplitOutputTensors(
     }
 
     std::vector<Tensor> split_tensor;
-    const absl::Status split_status = tensor::Split(
-        output_tensor, task_sizes_plus_optional_padding, &split_tensor);
+    const absl::Status split_status = SplitBatchedOutputTensor(
+        output_tensor, task_sizes, padding_size, &split_tensor);
     DCHECK(split_status.ok()) << split_status;
     if (!split_status.ok()) {
       return absl::InternalError(absl::StrCat("Tensor split operation failed: ",
                                               split_status.message()));
     }
-    DCHECK_EQ(split_tensor.size(), task_sizes_plus_optional_padding.size());
-    if (split_tensor.size() != task_sizes_plus_optional_padding.size()) {
-      return absl::InternalError(
-          absl::StrCat("Tensor split operation did not work as expected; got ",
-                       split_tensor.size(), " splits; expected ",
-                       task_sizes_plus_optional_padding.size()));
+    DCHECK_EQ(split_tensor.size(), task_sizes.size());
+    if (split_tensor.size() != task_sizes.size()) {
+      return absl::InternalError(absl::StrCat(
+          "Tensor split operation did not work as expected; got ",
+          split_tensor.size(), " splits; expected ", task_sizes.size()));
     }
 
-    // Ignore a possible final split_tensors entry containing the padding.
     for (int j = 0; j < batch->num_tasks(); ++j) {
       BatchTask& task = *(batch->mutable_task(j));
       if (task.is_partial) {

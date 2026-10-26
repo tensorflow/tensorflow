@@ -257,7 +257,7 @@ class TensorListStack : public OpKernel {
     auto output_flat = output->shaped<T, 2>({1, output->NumElements()});
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-    if (std::is_same<Device, Eigen::GpuDevice>::value) {
+    if (std::is_same_v<Device, Eigen::GpuDevice>) {
       ConcatGPU<T>(c, inputs_flat, output, &output_flat);
       return;
     }
@@ -573,7 +573,7 @@ class TensorListConcat : public OpKernel {
     auto output_flat = output->shaped<T, 2>({1, output->NumElements()});
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-    if (std::is_same<Device, Eigen::GpuDevice>::value) {
+    if (std::is_same_v<Device, Eigen::GpuDevice>) {
       ConcatGPU<T>(c, inputs_flat, output, &output_flat);
       return;
     }
@@ -764,7 +764,7 @@ class TensorListGather : public OpKernel {
     auto output_flat = output->shaped<T, 2>({1, output->NumElements()});
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-    if (std::is_same<Device, Eigen::GpuDevice>::value) {
+    if (std::is_same_v<Device, Eigen::GpuDevice>) {
       ConcatGPU<T>(c, inputs_flat, output, &output_flat);
       return;
     }
@@ -935,7 +935,7 @@ class TensorListScatterIntoExistingList : public OpKernel {
     // (undefined behavior) before the comparison/resize below.
     const size_t needed = static_cast<size_t>(max_index) + 1;
     if (needed > output_list->tensors().size()) {
-      output_list->tensors().resize(needed);
+      output_list->tensors().resize(needed, Tensor(DT_INVALID));
     }
 
     // Scatter the values.

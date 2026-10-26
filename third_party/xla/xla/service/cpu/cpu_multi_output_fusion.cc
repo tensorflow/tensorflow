@@ -76,8 +76,11 @@ bool CpuMultiOutputFusion::IsFusible(HloInstruction* instr) {
     return false;
   }
 
+  // Dot and scatter fusions are emitted by dedicated emitters that do not
+  // support multi-output fusion roots.
   if (instr->IsLoopFusion() &&
-      instr->fused_expression_root()->opcode() != HloOpcode::kDot) {
+      instr->fused_expression_root()->opcode() != HloOpcode::kDot &&
+      instr->fused_expression_root()->opcode() != HloOpcode::kScatter) {
     return true;
   }
 

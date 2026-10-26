@@ -21,7 +21,9 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
@@ -36,17 +38,22 @@ limitations under the License.
 #include "xla/comparison_util.h"
 #include "xla/debug_options_flags.h"
 #include "xla/error_spec.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/primitive_util.h"
 #include "xla/service/dump.h"
+#include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/cudnn_support_utils.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/cuda/cuda_dnn.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/semantic_version.h"
@@ -208,7 +215,7 @@ CHECK:    },
 CHECK:    "tag": "MATMUL"
 CHECK:   }
 CHECK:  ],
-CHECK:  "tensors": [
+CHECK:  "tensors"
 CHECK:   "data_type": "FLOAT",
 CHECK:   "dim": [{{[[:space:]]*1,[[:space:]]*64,[[:space:]]*64[[:space:]]*}}],
 CHECK:   "name": "p0",
@@ -414,6 +421,57 @@ ENTRY e {
                             ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
+class CuDnnFusionStreamAnnotationTest : public CuDnnFusionExecutionTest {
+ public:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options =
+        CuDnnFusionExecutionTest::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_experimental_stream_annotation(true);
+    return debug_options;
+  }
+};
+
+TEST_F(CuDnnFusionStreamAnnotationTest,
+       FusionInStreamAnnotatedCallExecutesCorrectly) {
+  constexpr absl::string_view kHloText = R"(
+fusion1 {
+  p0 = f32[32,96] parameter(0)
+  p1 = f32[96,64] parameter(1)
+  ROOT r = f32[32,64] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+annotated {
+  p0 = f32[32,96] parameter(0)
+  p1 = f32[96,64] parameter(1)
+  ROOT f = f32[32,64] fusion(p0, p1), kind=kCustom, calls=fusion1,
+    backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
+}
+
+ENTRY e {
+  p0 = f32[32,96] parameter(0)
+  p1 = f32[96,64] parameter(1)
+  ROOT c = f32[32,64] call(p0, p1), to_apply=annotated,
+    frontend_attributes={_xla_stream_annotation="1",inlineable="false"}
+})";
+
+  // The stream-annotated call is wrapped into an async computation on the
+  // parallel execution thread, so the cuDNN fusion must be compiled there.
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized,
+                       GetOptimizedModule(kHloText));
+  ASSERT_TRUE(absl::c_any_of(
+      optimized->computations(), [](const HloComputation* computation) {
+        return computation->execution_thread() ==
+                   HloInstruction::kParallelExecutionThread &&
+               absl::c_any_of(computation->instructions(),
+                              [](const HloInstruction* instruction) {
+                                return IsCudnnFusion(*instruction);
+                              });
+      }));
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
 TEST_F(CuDnnFusionFileCheckTest, VectorTensorMultiplicationWorksCorrectly) {
   const std::string kHloText = R"(
 f {
@@ -513,8 +571,9 @@ CHECK: "stride": [{{[[:space:]]*}}4096,{{[[:space:]]*}}128,{{[[:space:]]*}}1{{[[
 }
 
 TEST_F(CuDnnFusionExecutionTest, DotF32DevicelessCompilationSucceeds) {
-  if (!IsAtLeastCuDnnVersion(9, 8)) {
-    GTEST_SKIP() << "Deviceless DeviceProperties requires cuDNN 9.8+.";
+  if (!se::gpu::SupportsDevicelessCudnnCompilation()) {
+    GTEST_SKIP() << "Deviceless cuDNN compilation requires cuDNN >= "
+                 << se::gpu::kMinDevicelessCudnnVersion;
   }
   constexpr absl::string_view kHlo = R"(
 fusion1 {
@@ -564,9 +623,64 @@ ENTRY e {
                             ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
+// Repro for b/568668570: below cudnn 9.23, the devicelessly built plan for
+// this convolution would fail at runtime.
+constexpr absl::string_view kConvWorkspaceReproHlo = R"hlo(
+  ENTRY e {
+    input = bf16[1,8192,1536] parameter(0)
+    filter = bf16[1536,5,1536] parameter(1)
+    ROOT conv = bf16[1,8192,1536] convolution(input, filter),
+      window={size=5 pad=2_2}, dim_labels=b0f_o0i->b0f,
+      convolution_kind=fprop
+  })hlo";
+
+HloModuleConfig WithConvFusionAndDevicelessMode(
+    HloModuleConfig config, DebugOptions::CudnnDevicelessCompilationMode mode) {
+  DebugOptions& options = config.mutable_debug_options();
+  options.set_xla_gpu_experimental_enable_conv_fusion(true);
+  options.set_xla_gpu_cudnn_deviceless_compilation_mode(mode);
+  return config;
+}
+
+TEST_F(CuDnnFusionExecutionTest, ConvDevicelessCompilationMatchesLive) {
+  if (!se::gpu::SupportsDevicelessCudnnCompilation()) {
+    GTEST_SKIP() << "Deviceless cuDNN compilation requires cuDNN >= "
+                 << se::gpu::kMinDevicelessCudnnVersion;
+  }
+  EXPECT_TRUE(RunAndCompareTwoModules(
+      kConvWorkspaceReproHlo, kConvWorkspaceReproHlo,
+      WithConvFusionAndDevicelessMode(
+          GetModuleConfigForTest(),
+          DebugOptions::CUDNN_DEVICELESS_COMPILATION_ALWAYS),
+      WithConvFusionAndDevicelessMode(
+          GetModuleConfigForTest(),
+          DebugOptions::CUDNN_DEVICELESS_COMPILATION_DISABLED),
+      ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
+}
+
+TEST_F(CuDnnFusionExecutionTest,
+       ConvDevicelessCompilationFailsBelowMinCudnnVersion) {
+  if (se::gpu::SupportsDevicelessCudnnCompilation()) {
+    GTEST_SKIP() << "Loaded cuDNN supports deviceless compilation (>= "
+                 << se::gpu::kMinDevicelessCudnnVersion << ").";
+  }
+  // The autotuner rewraps the FailedPrecondition from CudnnGraph::Prepare, so
+  // only the message survives.
+  EXPECT_THAT(
+      GetOptimizedModule(
+          kConvWorkspaceReproHlo,
+          WithConvFusionAndDevicelessMode(
+              GetModuleConfigForTest(),
+              DebugOptions::CUDNN_DEVICELESS_COMPILATION_ALWAYS)),
+      absl_testing::StatusIs(
+          ::testing::_, ::testing::HasSubstr(
+                            "Deviceless cuDNN compilation requires cuDNN >=")));
+}
+
 TEST_F(CuDnnFusionExecutionTest, DotF32DevicelessBinaryMatchesLive) {
-  if (!IsAtLeastCuDnnVersion(9, 8)) {
-    GTEST_SKIP() << "Deviceless DeviceProperties requires cuDNN 9.8+.";
+  if (!se::gpu::SupportsDevicelessCudnnCompilation()) {
+    GTEST_SKIP() << "Deviceless cuDNN compilation requires cuDNN >= "
+                 << se::gpu::kMinDevicelessCudnnVersion;
   }
   constexpr absl::string_view kHlo = R"(
 fusion1 {
@@ -1508,7 +1622,7 @@ CHECK: "X": 1
 CHECK: "scale": 3
 CHECK: }
 CHECK: "outputs": {
-CHECK: "Y": 6
+CHECK: "Y": {{(6|"result_lhs_dq")}}
 CHECK: }
 CHECK: "tag": "BLOCK_SCALE_DEQUANTIZE"
 CHECK: {
@@ -1519,14 +1633,14 @@ CHECK: "X": 2
 CHECK: "scale": 4
 CHECK: }
 CHECK: "outputs": {
-CHECK: "Y": 7
+CHECK: "Y": {{(7|"result_rhs_dq")}}
 CHECK: }
 CHECK: "tag": "BLOCK_SCALE_DEQUANTIZE"
 CHECK: {
 CHECK: "compute_data_type": "FLOAT"
 CHECK: "inputs": {
-CHECK: "A": 6
-CHECK: "B": 7
+CHECK: "A": {{(6|"result_lhs_dq")}}
+CHECK: "B": {{(7|"result_rhs_dq")}}
 CHECK: }
 CHECK: "outputs": {
 CHECK: "C": 5
@@ -1552,10 +1666,10 @@ CHECK: "name": "result"
 CHECK: "stride": [{{[[:space:]]*98304,[[:space:]]*384,[[:space:]]*1[[:space:]]*}}]
 CHECK: "is_virtual": true
 CHECK: "name": "result_lhs_dq"
-CHECK: "uid": 6
+CHECK: "uid": {{[0-9]+}}
 CHECK: "is_virtual": true
 CHECK: "name": "result_rhs_dq"
-CHECK: "uid": 7
+CHECK: "uid": {{[0-9]+}}
 )"));
 }
 
@@ -1600,7 +1714,7 @@ CHECK:   "stride": [{{[[:space:]]*1,[[:space:]]*1[[:space:]]*}}],
 CHECK:   "tag": "CONV_FPROP"
 CHECK:  }
 CHECK: ],
-CHECK: "tensors": [
+CHECK: "tensors"
 CHECK:   "data_type": "FLOAT",
 CHECK:   "dim": [{{[[:space:]]*2,[[:space:]]*17,[[:space:]]*9,[[:space:]]*9[[:space:]]*}}],
 CHECK:   "name": "input",

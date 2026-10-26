@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
@@ -325,6 +326,59 @@ TEST_F(CpuWhileTest, FusedDynamicUpdateSliceInSmallWhileLoop) {
   LiteralTestUtil::ExpectR1Equal(
       absl::MakeConstSpan({10.0f, 10.0f, 10.0f, 20.0f, 0.0f, 0.0f, 0.0f, 0.0f}),
       result);
+}
+
+// The two loops share one kernel, which must use each call's own buffers.
+TEST_F(CpuWhileTest, IdenticalSmallWhileLoopsSharedKernelCorrect) {
+  constexpr absl::string_view hlo_text = R"(
+    HloModule IdenticalSmallWhileLoops
+
+    body {
+      state = (s32[], f32[4]) parameter(0)
+      i = s32[] get-tuple-element(state), index=0
+      x = f32[4] get-tuple-element(state), index=1
+      one = s32[] constant(1)
+      next_i = s32[] add(i, one)
+      c = f32[] constant(2)
+      cb = f32[4] broadcast(c), dimensions={}
+      sum = f32[4] add(x, cb)
+      next_x = f32[4] multiply(sum, cb)
+      ROOT next_state = (s32[], f32[4]) tuple(next_i, next_x)
+    }
+
+    cond {
+      state = (s32[], f32[4]) parameter(0)
+      i = s32[] get-tuple-element(state), index=0
+      limit = s32[] constant(5)
+      ROOT lt = pred[] compare(i, limit), direction=LT
+    }
+
+    ENTRY main {
+      p0 = f32[4] parameter(0)
+      p1 = f32[4] parameter(1)
+      zero = s32[] constant(0)
+      init0 = (s32[], f32[4]) tuple(zero, p0)
+      init1 = (s32[], f32[4]) tuple(zero, p1)
+      while0 = (s32[], f32[4]) while(init0), condition=cond, body=body
+      while1 = (s32[], f32[4]) while(init1), condition=cond, body=body
+      r0 = f32[4] get-tuple-element(while0), index=1
+      r1 = f32[4] get-tuple-element(while1), index=1
+      ROOT r = (f32[4], f32[4]) tuple(r0, r1)
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  Literal p0 = LiteralUtil::CreateR1<float>({0, 1, 2, 3});
+  Literal p1 = LiteralUtil::CreateR1<float>({10, 20, 30, 40});
+  ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&p0, &p1}));
+
+  // Five iterations of x = (x + 2) * 2 give 32 * x + 124.
+  std::vector<Literal> results = result.DecomposeTuple();
+  ASSERT_EQ(results.size(), 2);
+  LiteralTestUtil::ExpectR1Equal(
+      absl::MakeConstSpan({124.0f, 156.0f, 188.0f, 220.0f}), results[0]);
+  LiteralTestUtil::ExpectR1Equal(
+      absl::MakeConstSpan({444.0f, 764.0f, 1084.0f, 1404.0f}), results[1]);
 }
 
 }  // namespace

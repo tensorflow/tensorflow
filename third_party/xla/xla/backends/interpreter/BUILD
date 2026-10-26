@@ -53,6 +53,7 @@ cc_library(
         "//xla/hlo/transforms/expanders:dynamic_index_splitter",
         "//xla/hlo/transforms/expanders:eigh_expander",
         "//xla/hlo/transforms/expanders:qr_expander",
+        "//xla/hlo/transforms/simplifiers:conditional_canonicalizer",
         "//xla/service:batchnorm_expander",
         "//xla/service:compiler",
         "//xla/service:computation_placer",

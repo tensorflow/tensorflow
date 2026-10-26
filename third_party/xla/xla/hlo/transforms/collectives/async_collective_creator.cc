@@ -186,12 +186,11 @@ std::vector<HloInstruction*> AsyncCollectiveCreator::MatchCollectives(
     const HloOpcode op = instruction->opcode();
 
     // We only care about collective ops and collective fusions here.
-    if (HloPredicateIsNotOp<HloOpcode::kAllReduce, HloOpcode::kAllGather,
-                            HloOpcode::kCollectiveBroadcast,
-                            HloOpcode::kCollectivePermute, HloOpcode::kAllToAll,
-                            HloOpcode::kReduceScatter,
-                            HloOpcode::kRaggedAllToAll, HloOpcode::kFusion>(
-            instruction)) {
+    if (HloPredicateIsNotOp<
+            HloOpcode::kAllReduce, HloOpcode::kAllGather, HloOpcode::kAllToAll,
+            HloOpcode::kCollectiveBroadcast, HloOpcode::kCollectivePermute,
+            HloOpcode::kCollectiveReduce, HloOpcode::kReduceScatter,
+            HloOpcode::kRaggedAllToAll, HloOpcode::kFusion>(instruction)) {
       continue;
     }
 
@@ -218,6 +217,10 @@ std::vector<HloInstruction*> AsyncCollectiveCreator::MatchCollectives(
     } else if (op == HloOpcode::kCollectiveBroadcast) {
       bool convert = config_.convert_collective_broadcast(instruction);
       VLOG(2) << "kCollectiveBroadcast: convert=" << convert;
+      matched = convert;
+    } else if (op == HloOpcode::kCollectiveReduce) {
+      bool convert = config_.convert_collective_reduce(instruction);
+      VLOG(2) << "kCollectiveReduce: convert=" << convert;
       matched = convert;
     } else if (op == HloOpcode::kCollectivePermute) {
       bool convert = config_.convert_collective_permute(instruction);
@@ -346,9 +349,14 @@ absl::StatusOr<bool> AsyncCollectiveCreator::RunImpl(
   int64_t collectives_replaced = 0;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    if (computation->IsAsyncComputation()) {
-      // If a computation is called by async-start, all collectives in it will
-      // already be performed asynchronously.
+    if (computation->IsAsyncComputation() ||
+        absl::c_any_of(computation->caller_instructions(HloOpcode::kCall),
+                       [](const HloInstruction* caller) {
+                         return caller->parent()->IsAsyncComputation();
+                       })) {
+      // If a computation is called by async-start (directly or via an
+      // async-wrapped kCall), all collectives in it will already be performed
+      // asynchronously.
       continue;
     }
     std::vector<HloInstruction*> supported_collectives =

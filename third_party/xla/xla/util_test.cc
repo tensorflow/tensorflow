@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -659,6 +660,25 @@ TEST(UtilTest, ScopedLoggingTimerLazyEvaluation) {
     XLA_SCOPED_LOGGING_TIMER_LEVEL(get_label(), 100);
   }
   EXPECT_EQ(counter, 0);
+}
+
+TEST(UtilTest, ErrorWithStrCatAndBacktrace) {
+  absl::Status invalid_arg = InvalidArgumentStrCat("bad arg: ", 42);
+  EXPECT_EQ(invalid_arg.code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_THAT(invalid_arg.message(), ::testing::HasSubstr("bad arg: 42"));
+
+  absl::Status internal = InternalStrCat("internal failure: ", "oom");
+  EXPECT_EQ(internal.code(), absl::StatusCode::kInternal);
+  EXPECT_THAT(internal.message(),
+              ::testing::HasSubstr("internal failure: oom"));
+
+  absl::Status precondition = FailedPreconditionStrCat("state=", 1);
+  EXPECT_EQ(precondition.code(), absl::StatusCode::kFailedPrecondition);
+  EXPECT_THAT(precondition.message(), ::testing::HasSubstr("state=1"));
+
+  absl::Status not_found = NotFoundStrCat("missing key: ", "foo");
+  EXPECT_EQ(not_found.code(), absl::StatusCode::kNotFound);
+  EXPECT_THAT(not_found.message(), ::testing::HasSubstr("missing key: foo"));
 }
 
 void BM_PackIntN(::testing::benchmark::State& state) {

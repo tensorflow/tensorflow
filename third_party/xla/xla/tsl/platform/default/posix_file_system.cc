@@ -326,7 +326,14 @@ absl::Status PosixFileSystem::GetChildren(const std::string& dir,
 
 absl::Status PosixFileSystem::GetMatchingPaths(
     const std::string& pattern, std::vector<std::string>* results) {
-  return internal::GetMatchingPaths(this, Env::Default(), pattern, results);
+  return GetMatchingPaths(pattern, results, /*multithreaded=*/true);
+}
+
+absl::Status PosixFileSystem::GetMatchingPaths(
+    const std::string& pattern, std::vector<std::string>* results,
+    bool multithreaded) {
+  return internal::GetMatchingPaths(this, Env::Default(), pattern, results,
+                                    multithreaded);
 }
 
 absl::Status PosixFileSystem::DeleteFile(const std::string& fname) {

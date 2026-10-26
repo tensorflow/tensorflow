@@ -52,7 +52,7 @@ class ArrayWithoutNumpyMethodsOnTensorTest(test.TestCase):
         np.array([11, 25, 37], dtype=np.int32),
         np.array([11, 25, 37], dtype=np.int64),
     ):
-      for decimals in (0, 1):
+      for decimals in (-1, 0, 1):
         actual = np_array_ops.around(arg, decimals)
         np.testing.assert_array_equal(
             np.asarray(actual),

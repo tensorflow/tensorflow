@@ -63,6 +63,26 @@ namespace xla {
 // HLO that has mixed precision produced by this pass. To address this issue,
 // run FloatNormalization with the same FloatSupport after this pass.
 //
+// FloatNormalization cannot always do that for an op whose
+// FloatSupport::SupportsMixedPrecisions is false. It skips kFusion (and a few
+// other opcodes, such as bitcast and bitcast-convert) entirely. For any other
+// bare op it only converts the *operands* down to BF16 when the op has no
+// called computations and FloatSupport::CanConvertOperandToLowPrecision holds
+// for every operand; otherwise it restores the F32 output.
+// This pass therefore keeps two kinds of non-mixed ops homogeneous itself (see
+// KeepsNonMixedPrecisionOpHomogeneous): fusions, and array-shaped bare ops
+// without called computations that have an F32/BF16 operand and an operand
+// FloatNormalization could not convert (such as a gather's integer indices).
+// If this pass left such a bare op mixed, FloatNormalization would only flip
+// it back to F32, or leave it mixed if it skips the opcode. Either kind only
+// becomes BF16 together with all of its F32 operands, and if any F32 output
+// leaf of a non-mixed fusion must stay F32, so must all of its F32 output
+// leaves, operands and fused parameters (see
+// ConstrainNonMixedPrecisionOpToF32). So this pass never introduces mixed
+// precision in a non-mixed fusion. Every other non-mixed op is deliberately
+// left to FloatNormalization, which converts the operands of an op like an
+// all-gather, so that the op itself still runs in BF16.
+//
 // 2) In general, mixed precision may break the assumptions of some other HLO
 // passes even if the specific backend supports the individual HLOs. Such
 // assumptions include that there are no HLOs using mixed precision, or that the
@@ -183,12 +203,17 @@ class BFloat16Propagation : public HloModulePass {
   // Functions called by the final inconsistency resolving pass.
   //
   // The resolving pass runs a single BFS over the F32 constraint graph. Its
-  // nodes are the HLO values and positions of the module; an edge u -> v
-  // means "if u must be F32, then v must be F32":
-  //  * A value constrains its positions and the in-place output positions
-  //    aliased with it.
+  // nodes are the HLO values and positions of the module, plus one op node per
+  // instruction KeepsNonMixedPrecisionOpHomogeneous holds for, since such an op
+  // is homogeneous as a whole. An edge u -> v means "if u must be F32, then v
+  // must be F32":
+  //  * A value constrains its positions, the in-place output positions
+  //    aliased with it, and the op nodes of its users.
   //  * A position constrains the values whose AllUsersConsumeBF16 check
-  //    reads it, and the F32 values it aliases.
+  //    reads it, and the F32 values it aliases. An F32 output leaf of a fusion
+  //    also constrains the fusion's op node, if it has one.
+  //  * An op node constrains the op's F32 output leaves and, for a fusion, its
+  //    F32 operand values and fused parameters.
   //  * A call site position constrains the same position of the roots it
   //    calls; an operand position constrains the same position of the
   //    parameters called with it. These edges are called pushes.
@@ -249,6 +274,12 @@ class BFloat16Propagation : public HloModulePass {
   void ConstrainValueToF32(const HloValue* value);
   void ConstrainPositionToF32(const HloPosition& position);
 
+  // Records that `hlo`'s op node must be F32 and, the first time, follows its
+  // edges right away: constrains every F32 output leaf of `hlo` and, for a
+  // fusion, every F32 operand value and fused parameter. Requires
+  // KeepsNonMixedPrecisionOpHomogeneous(hlo).
+  void ConstrainNonMixedPrecisionOpToF32(HloInstruction* hlo);
+
   // Constrains the targets of the dequeued node's outgoing edges.
   void PropagateFromValue(const HloValue* value);
   void PropagateFromPosition(const HloPosition& position);
@@ -302,6 +333,20 @@ class BFloat16Propagation : public HloModulePass {
   const std::vector<std::pair<HloOperandIndex, ShapeIndex>>&
   GetInPlaceInputOutputPairsCached(const HloInstruction* hlo);
 
+  // Returns whether this pass, rather than a subsequent FloatNormalization, is
+  // responsible for keeping `hlo`'s F32/BF16 operands and outputs at one
+  // precision; see the class comment.
+  bool KeepsNonMixedPrecisionOpHomogeneous(const HloInstruction* hlo);
+
+  // Memoized FloatSupport::SupportsMixedPrecisions. Valid while the module is
+  // unmutated. A backend's SupportsMixedPrecisions can walk a whole fused
+  // computation, so caching avoids repeated traversals across passes.
+  bool SupportsMixedPrecisionsCached(const HloInstruction* hlo);
+
+  // Memoized KeepsNonMixedPrecisionOpHomogeneous. Valid while shapes are
+  // unmutated.
+  bool KeepsNonMixedPrecisionOpHomogeneousCached(const HloInstruction* hlo);
+
   // The output element type of the HLO at the given shape index after changes
   // in changes_to_bf16_ are applied.
   PrimitiveType OutputTypeAfterChange(HloInstruction* hlo,
@@ -323,11 +368,13 @@ class BFloat16Propagation : public HloModulePass {
   absl::flat_hash_set<const HloComputation*> included_computations_;
 
   // BFS state: the nodes that must be F32, and the queues of nodes whose
-  // edges have not been followed yet.
+  // edges have not been followed yet. Op nodes are not queued:
+  // ConstrainNonMixedPrecisionOpToF32 follows their edges right away.
   std::deque<const HloValue*> value_queue_;
   std::deque<HloPosition> position_queue_;
   absl::flat_hash_set<const HloValue*> f32_values_;
   absl::flat_hash_set<HloPosition> f32_positions_;
+  absl::flat_hash_set<const HloInstruction*> f32_non_mixed_precision_ops_;
 
   // Position -> values whose AllUsersConsumeBF16 check reads it (see
   // AddEdgesForUse).
@@ -336,6 +383,11 @@ class BFloat16Propagation : public HloModulePass {
   // Value -> in-place output positions aliased with it.
   absl::flat_hash_map<const HloValue*, std::vector<HloPosition>>
       value_to_inplace_outputs_;
+
+  // Value -> its users for which KeepsNonMixedPrecisionOpHomogeneous is true,
+  // whose op nodes it constrains.
+  absl::flat_hash_map<const HloValue*, std::vector<HloInstruction*>>
+      value_to_non_mixed_precision_users_;
 
   // The BFS seeds. A value: defining position unmarked and not pushable, a
   // statically failing use, or pinned by the backward pass. A position:
@@ -369,6 +421,16 @@ class BFloat16Propagation : public HloModulePass {
   absl::flat_hash_map<const HloInstruction*,
                       std::vector<std::pair<HloOperandIndex, ShapeIndex>>>
       inplace_input_output_pairs_cache_;
+
+  // Cache for KeepsNonMixedPrecisionOpHomogeneousCached. Valid while the
+  // module is unmutated.
+  absl::flat_hash_map<const HloInstruction*, bool>
+      non_mixed_precision_homogeneous_cache_;
+
+  // Cache for SupportsMixedPrecisionsCached. Valid while the module is
+  // unmutated.
+  absl::flat_hash_map<const HloInstruction*, bool>
+      supports_mixed_precisions_cache_;
 
   // Mapping from each HloComputation to the number of callers to it in the
   // module. Populated at the beginning of this pass.

@@ -34,7 +34,6 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/stream_executor/device_address.h"
-#include "xla/stream_executor/gpu/multicast_memory.h"
 
 namespace xla::gpu {
 
@@ -46,13 +45,6 @@ class CollectiveMemory {
   // supported collective memory types.
   using Key = std::pair<GpuCliqueKey, BufferAllocation::Index>;
 
-  // A multicast memory (shared ownership by all clique members) and a multimem
-  // pointer for the current rank.
-  struct MulticastMemory {
-    std::shared_ptr<se::gpu::MulticastMemory> multicast_memory;
-    void* multimem_ptr;
-  };
-
   // Peer memory addresses for all participating ranks.
   struct PeerMemory {
     absl::btree_map<RankId, se::DeviceAddressBase> addrs;
@@ -61,7 +53,6 @@ class CollectiveMemory {
   CollectiveMemory(
       const BufferAllocations& buffers,
       absl::flat_hash_map<Key, std::shared_ptr<SymmetricMemory>> sym_memories,
-      absl::flat_hash_map<Key, MulticastMemory> mcast_memories,
       absl::flat_hash_map<Key, PeerMemory> peer_memories);
 
   // Returns a symmetric memory and offset in that symmetric memory that
@@ -77,21 +68,6 @@ class CollectiveMemory {
   // Returns a symmetric memory and offset in that symmetric memory that
   // corresponds to the given device address.
   std::pair<SymmetricMemory*, size_t> FindSymmetricMemory(
-      const GpuCliqueKey& clique, se::DeviceAddressBase addr) const;
-
-  // Returns a multimem address and offset from that multimem address that
-  // corresponds to the given buffer allocation index.
-  std::pair<void*, size_t> FindMultimemAddress(
-      const GpuCliqueKey& clique, BufferAllocation::Index allocation) const;
-
-  // Returns a multimem address and offset from that multimem address that
-  // corresponds to the given buffer allocation slice.
-  std::pair<void*, size_t> FindMultimemAddress(
-      const GpuCliqueKey& clique, BufferAllocation::Slice slice) const;
-
-  // Returns a multimem address and offset from that multimem address that
-  // corresponds to the given device address.
-  std::pair<void*, size_t> FindMultimemAddress(
       const GpuCliqueKey& clique, se::DeviceAddressBase addr) const;
 
   // Returns a peer address that corresponds to the given buffer allocation.
@@ -118,7 +94,6 @@ class CollectiveMemory {
  private:
   const BufferAllocations& buffers_;
   absl::flat_hash_map<Key, std::shared_ptr<SymmetricMemory>> sym_memories_;
-  absl::flat_hash_map<Key, MulticastMemory> mcast_memories_;
   absl::flat_hash_map<Key, PeerMemory> peer_memories_;
 };
 

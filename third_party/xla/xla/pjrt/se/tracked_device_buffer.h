@@ -91,6 +91,12 @@ class RawSEDeviceMemory {
     return BufferSequencingEventRef();
   }
 
+  // Records the definition event now if it has not been recorded yet.
+  virtual absl::Status MaterializeDefinitionEvent(
+      AsyncWorkRunner* async_work_runner) const {
+    return absl::OkStatus();
+  }
+
  private:
   se::DeviceAddressBase value_;
 };

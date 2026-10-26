@@ -18,15 +18,18 @@ limitations under the License.
 #include <algorithm>
 #include <atomic>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_join.h"
 #include "absl/time/time.h"
 #include "absl/types/optional.h"
+#include "xla/tsl/platform/macros.h"
 #include "tensorflow/core/activity_watcher/activity.h"
 #include "tensorflow/core/common_runtime/costmodel_manager.h"
 #include "tensorflow/core/common_runtime/entry.h"
@@ -419,7 +422,6 @@ class ExecutorState {
   // Step-local container.
   ScopedStepContainer* step_container_;
   StepStatsCollectorInterface* const stats_collector_;
-  const tsl::tracing::EventCollector* const event_collector_;
   Context context_;
 
   // QUESTION: Make it a checkpoint::TensorSliceReaderCacheWrapper
@@ -473,8 +475,6 @@ ExecutorState<PropagatorStateType>::ExecutorState(
       tensor_store_(args.tensor_store),
       step_container_(args.step_container),
       stats_collector_(args.stats_collector),
-      event_collector_(tsl::tracing::GetEventCollector(
-          tsl::tracing::EventCategory::kCompute)),
       context_(ContextKind::kThread),
       slice_reader_cache_(new checkpoint::TensorSliceReaderCacheWrapper),
       call_frame_(args.call_frame),
@@ -601,16 +601,16 @@ struct ExecutorState<PropagatorStateType>::AsyncState {
 
 // Returns true if `item` might be traced by the given trace and event
 // collectors. Returns false only if `item` definitely will not be traced.
-bool MightTrace(const tsl::tracing::EventCollector* event_collector,
-                bool is_expensive) {
-  // Tracing will only be enabled if either `event_collector` is non null,
-  // or `trace_collector` is non-null and enabled for this particular kernel.
-  // Although `profiler::TraceMe`, `profiler::ScopedAnnotation`, and
+bool MightTrace(bool is_expensive) {
+  // Tracing will only be enabled if either
+  // `tsl::tracing::EventCollector::IsEnabled()` is true, or `trace_collector`
+  // is non-null and enabled for this particular kernel. Although
+  // `profiler::TraceMe`, `profiler::ScopedAnnotation`, and
   // `tsl::tracing::ScopedRegion` check subsets of these properties internally
   // in their constructors, the cost of passing the necessary arguments to them
   // can be significant, so we avoid constructing them in the common case (when
   // we know they will not be used).
-  if (event_collector != nullptr) {
+  if (tsl::tracing::EventCollector::IsEnabled()) {
     return true;
   }
 
@@ -632,7 +632,7 @@ absl::Status ExecutorState<PropagatorStateType>::ProcessSync(
   Device* device = immutable_state_.params().device;
   const bool is_expensive = kernel_stats_->IsExpensive(item);
 
-  if (TF_PREDICT_FALSE(MightTrace(event_collector_, is_expensive))) {
+  if (TF_PREDICT_FALSE(MightTrace(is_expensive))) {
     tsl::tracing::ScopedRegion region(tsl::tracing::EventCategory::kCompute,
                                       op_kernel->name_view());
     profiler::AnnotatedTraceMe activity(
@@ -845,13 +845,13 @@ void ExecutorState<PropagatorStateType>::ProcessInline(
 
   bool completed = false;
   int64_t last_iter_num = -1;
-  std::unique_ptr<tsl::profiler::TraceMeConsumer> iteration_scope;
+  std::optional<tsl::profiler::TraceMeConsumer> iteration_scope;
   while (!inline_ready->empty()) {
     TaggedNode tagged_node = inline_ready->front();
 
     int64_t current_iter_num = tagged_node.get_iter_num();
     if (current_iter_num != last_iter_num) {
-      iteration_scope = std::make_unique<tsl::profiler::TraceMeConsumer>(
+      iteration_scope.emplace(
           // From TraceMeProducer in DirectSession::RunInternal,
           // GraphMgr::ExecuteAsync, or FunctionLibraryRuntime::Run.
           [&] {
@@ -1255,6 +1255,11 @@ bool ExecutorState<PropagatorStateType>::NodeDone(
     // Some error happened. This thread of computation is done.
     {
       mutex_lock l(mu_);
+      const bool is_derived = StatusGroup::IsDerived(s) ||
+                              ((absl::IsCancelled(s) || absl::IsAborted(s)) &&
+                               cancellation_manager_ &&
+                               (cancellation_manager_->IsCancelled() ||
+                                cancellation_manager_->IsCancelling()));
       if (status_.ok()) {
         // If this is the first node to fail in this run, we are responsible for
         // aborting all other execution in the step.
@@ -1264,13 +1269,18 @@ bool ExecutorState<PropagatorStateType>::NodeDone(
         // being derived. Note that the original node that fails might also
         // trigger cancellation, and here we make sure the original error is
         // exposed to users and not buried as a derived error.
-        if (cancellation_manager_ && cancellation_manager_->IsCancelled() &&
-            (absl::IsCancelled(s) || absl::IsAborted(s))) {
+        if (is_derived && !StatusGroup::IsDerived(s)) {
           status_ = StatusGroup::MakeDerived(s);
           maybe_derived_s = status_;
         } else {
           status_ = s;
         }
+      } else if (StatusGroup::IsDerived(status_) && !is_derived) {
+        // If a previous node in this executor reported a derived cancellation
+        // error (for example, a sibling _Recv cancelled via a shared
+        // CancellationManager before a nested function finished reporting its
+        // original error), prefer the non-derived root-cause error.
+        status_ = s;
       }
     }
 

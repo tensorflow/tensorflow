@@ -17,11 +17,9 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
-#include <limits>
 #include <memory>
 #include <optional>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -51,17 +49,12 @@ limitations under the License.
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/mlir_kernel_source.h"
-#include "xla/codegen/tiling/experimental/tile.h"
-#include "xla/codegen/tiling/experimental/tiled_hlo.h"
-#include "xla/codegen/tiling/experimental/tiling_space.h"
-#include "xla/codegen/tiling/symbolic_tile_analysis.h"
-#include "xla/codegen/tiling/tiled_hlo_computation.h"
-#include "xla/codegen/tiling/tiling_specification.h"
+#include "xla/codegen/tiling/tile.h"
+#include "xla/codegen/tiling/tiled_hlo.h"
+#include "xla/codegen/tiling/tiling_space.h"
 #include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
-#include "xla/codegen/xtile/codegen/experimental_fusion_emitter.h"
 #include "xla/codegen/xtile/codegen/fusion_emitter.h"
-#include "xla/codegen/xtile/codegen/tiled_emitter_constraints.h"
 #include "xla/codegen/xtile/ir/xtile_attrs.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/codegen/xtile/tiling_from_block_parameters.h"
@@ -80,6 +73,8 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
 namespace {
@@ -87,34 +82,9 @@ namespace {
 using llvm::SmallVector;
 using ::xla::xtile::BlockLevelParameters;
 
-namespace ge = ::xla::gpu::experimental;
+namespace ge = ::xla::gpu;
 
 constexpr int64_t kCacheLineSize = 64;
-
-template <typename TiledInstructionT>
-int64_t PerTileCacheLines(const TiledInstructionT& inst) {
-  const Shape& shape = inst.hlo()->shape();
-  if (ShapeUtil::IsEffectiveScalar(shape)) {
-    return 1;
-  }
-
-  int64_t minor_dim_idx = LayoutUtil::Minor(shape.layout(), 0);
-  // The tiled emitter pads all tile dimensions to the next power of 2, we
-  // therefore must take that into account.
-  int64_t tile_minor_size = llvm::PowerOf2Ceil(inst.tile_size(minor_dim_idx));
-  int64_t element_bytes =
-      ShapeUtil::ByteSizeOfPrimitiveType(shape.element_type());
-  int64_t tile_minor_bytes = tile_minor_size * element_bytes;
-
-  int64_t non_minor_size = 1;
-  for (auto [dim_idx, size] : llvm::enumerate(inst.tile_sizes())) {
-    if (dim_idx != minor_dim_idx) {
-      // See above comment
-      non_minor_size *= llvm::PowerOf2Ceil(size);
-    }
-  }
-  return non_minor_size * CeilOfRatio(tile_minor_bytes, kCacheLineSize);
-}
 
 // Super simple cost model that calculates the total number of cache line hits
 // for the tiled computation. This doesn't take into account cache re-use
@@ -122,27 +92,6 @@ int64_t PerTileCacheLines(const TiledInstructionT& inst) {
 // that seems to give ok results.
 // TODO(willfroom): Implement a cost model similar to
 // GpuPerformanceModelWithIndexingAnalysis.
-template <typename TiledComputationT>
-int64_t TotalCacheLineHits(
-    const TiledComputationT& tiling,
-    const absl::flat_hash_set<const HloInstruction*>& operands) {
-  int64_t per_tile_cost = 0;
-  for (const auto* root : tiling.roots()) {
-    per_tile_cost += PerTileCacheLines(*root);
-  }
-
-  for (const auto* inst : tiling.instructions()) {
-    // The tiling computation doesn't explicitly contain the parameter
-    // instructions so we instead just check which instructions are operands to
-    // the fusion.
-    if (operands.contains(inst->hlo())) {
-      per_tile_cost += PerTileCacheLines(*inst);
-    }
-  }
-
-  return tiling.num_output_tiles() * per_tile_cost;
-}
-
 int64_t EvaluateSymbolicCost(
     const ge::TiledHloComputation& symbolic_computation,
     llvm::ArrayRef<int64_t> candidate_tile_sizes,
@@ -216,6 +165,9 @@ int64_t EvaluateSymbolicCost(
     cost_inst(*root);
   }
   for (const auto* inst : symbolic_computation.instructions()) {
+    // The tiling computation doesn't explicitly contain the parameter
+    // instructions so we instead just check which instructions are operands to
+    // the fusion.
     if (operands.contains(inst->hlo())) {
       cost_inst(*inst);
     }
@@ -446,28 +398,21 @@ absl::StatusOr<ge::TiledHloComputation> GetTiledHloComputation(
 
   // 2. Evaluate all candidates by substituting concrete tile sizes into the
   // symbolic tiles of roots and operands.
-  bool use_new_xtile_lowering = fusion.GetModule()
-                                    ->config()
-                                    .debug_options()
-                                    .xla_cpu_use_new_xtile_lowering();
-  TargetMachineOptions target_machine_options(
-      fusion.GetModule()->config().debug_options());
+  const DebugOptions& debug_options =
+      fusion.GetModule()->config().debug_options();
+  bool use_new_xtile_lowering = debug_options.xla_cpu_use_new_xtile_lowering();
+  TargetMachineOptions target_machine_options(debug_options);
   bool has_avx512 = absl::c_any_of(
       target_machine_options.enabled_features(), [](absl::string_view feature) {
         return absl::StrContains(feature, "avx512");
       });
-  int64_t max_bit_width = 8;
-  for (const HloInstruction* instr :
-       fusion.fused_instructions_computation()->instructions()) {
-    ShapeUtil::ForEachSubshape(instr->shape(), [&](const Shape& subshape,
-                                                   const ShapeIndex& index) {
-      if (subshape.IsArray()) {
-        max_bit_width = std::max<int64_t>(
-            max_bit_width, primitive_util::BitWidth(subshape.element_type()));
-      }
-    });
+  int64_t prefer_vector_width = debug_options.xla_cpu_prefer_vector_width();
+  if (prefer_vector_width <= 0) {
+    prefer_vector_width = 256;
   }
-  int64_t max_vector_tile_size = (has_avx512 ? 512 : 256) / max_bit_width;
+  int64_t vector_width =
+      std::min<int64_t>(prefer_vector_width, has_avx512 ? 512 : 256);
+  int64_t max_vector_tile_size = vector_width / 32;
 
   struct Candidate {
     SmallVector<int64_t, 4> padded_tile_sizes;

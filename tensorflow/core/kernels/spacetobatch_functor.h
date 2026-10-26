@@ -84,8 +84,8 @@ namespace functor {
 // true, then this performs the inverse batch-to-space conversion.
 template <typename Device, typename T, int NUM_BLOCK_DIMS, bool B2S = false>
 struct SpaceToBatchFunctor {
-  using InputT = typename std::conditional<B2S, T, const T>::type;
-  using OutputT = typename std::conditional<B2S, const T, T>::type;
+  using InputT = std::conditional_t<B2S, T, const T>;
+  using OutputT = std::conditional_t<B2S, const T, T>;
   // Implements the space to batch conversion.
   //
   // space_tensor: input tensor of space-to-batch operation.  If B2S = false,

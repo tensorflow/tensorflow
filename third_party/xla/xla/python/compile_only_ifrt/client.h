@@ -245,6 +245,14 @@ class CompileOnlyIfRtClient final
     return Unimplemented("CopyArrays not available with compile-only client.");
   }
 
+  absl::StatusOr<std::vector<ifrt::ArrayRef>> CopyArraysWithDonatedDst(
+      absl::Span<ifrt::ArrayRef> arrays,
+      absl::Span<ifrt::ArrayRef> donated_dst_arrays,
+      ifrt::ArrayCopySemantics semantics) override {
+    return Unimplemented(
+        "CopyArraysWithDonatedDst not available with compile-only client.");
+  }
+
   absl::StatusOr<std::vector<ifrt::ArrayRef>> RemapArrays(
       const ifrt::RemapPlan& plan, absl::Span<ifrt::ArrayRef> arrays,
       ifrt::ArrayCopySemantics semantics) override {
@@ -354,6 +362,12 @@ class CompileOnlyIfRtClient final
   }
 
   ifrt::Compiler* GetDefaultCompiler() override { return &default_compiler_; }
+
+  absl::StatusOr<std::vector<tsl::Future<ifrt::LoadedExecutableRef>>> Load(
+      absl::Span<const ifrt::ExecutableRef> executables,
+      absl::Span<std::unique_ptr<ifrt::LoadOptions>> options) override {
+    return Unimplemented("Load not available with compile-only client.");
+  }
 
   static char ID;  // NOLINT
 

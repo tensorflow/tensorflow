@@ -18,6 +18,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
     "if_cuda_or_rocm",
+    "if_not_windows",
     "tf_cc_test",
     "tf_cc_tests",
     "tf_copts",
@@ -174,7 +175,12 @@ IMAGE_TEST_DEPS = [
 tf_kernel_library(
     name = "adjust_contrast_op",
     prefix = "adjust_contrast_op",
-    deps = IMAGE_DEPS + ["//tensorflow/core/util:determinism_for_kernels"],
+    deps = IMAGE_DEPS + [
+        "//tensorflow/core/util:determinism_for_kernels",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 cc_library(
@@ -302,9 +308,10 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core/kernels:eigen_helpers",
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/util:overflow",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
     ],
 )
@@ -312,8 +319,12 @@ tf_kernel_library(
 tf_kernel_library(
     name = "generate_box_proposals_op",
     features = ["-layering_check"],
+    gpu_copts = if_not_windows(["-Wno-pass-failed"]),
     gpu_srcs = ["generate_box_proposals_op.cu.cc"],
-    deps = ["//tensorflow/core/kernels:gpu_prim_hdrs"] + if_cuda_or_rocm([
+    deps = [
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/kernels:gpu_prim_hdrs",
+    ] + if_cuda_or_rocm([
         ":non_max_suppression_op_gpu",
     ]),
 )
@@ -321,6 +332,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "non_max_suppression_op",
     features = ["-layering_check"],
+    gpu_copts = if_not_windows(["-Wno-pass-failed"]),
     prefix = "non_max_suppression_op",
     deps = IMAGE_DEPS + [
         "//tensorflow/core/framework:types_proto_cc",
@@ -377,7 +389,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "resize_nearest_neighbor_op",
     prefix = "resize_nearest_neighbor_op",
-    deps = IMAGE_DEPS + ["//tensorflow/core/util:determinism_for_kernels"],
+    deps = IMAGE_DEPS + [
+        "//tensorflow/core/kernels:fill_functor",
+        "//tensorflow/core/util:determinism_for_kernels",
+    ],
 )
 
 tf_kernel_library(

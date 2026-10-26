@@ -83,6 +83,7 @@ TF_CONST_INIT extern const absl::string_view kSparseCoreModuleLineName;
 TF_CONST_INIT extern const absl::string_view kXlaAsyncOpLineName;
 TF_CONST_INIT extern const absl::string_view kKernelLaunchLineName;
 TF_CONST_INIT extern const absl::string_view kSourceLineName;
+TF_CONST_INIT extern const absl::string_view kCommandBufferLineName;
 TF_CONST_INIT extern const absl::string_view kCounterEventsLineName;
 TF_CONST_INIT extern const absl::string_view kHostOffloadOpLineName;
 TF_CONST_INIT extern const absl::string_view kTensorCoreSyncFlagLineName;
@@ -414,11 +415,15 @@ enum StatType {
   kDevCapPeakSpmemWrBwGigabytesPerSecond,
   kDevCapPeakScTeraflopsPerSecond,
   kDevCapNumSparseCoreTiles,
+  // Estimated cost of a custom call (e.g. a Pallas kernel), derived from
+  // low-level (LLO) instruction tracing
+  kEstimatedFlops,
+  kEstimatedBytesAccessed,
   // LINT.ThenChange(:last_stat_type)
 
   // LINT.IfChange(last_stat_type)
   // Change this to point to the last stat type when adding a new one.
-  kLastStatType = kDevCapNumSparseCoreTiles,
+  kLastStatType = kEstimatedBytesAccessed,
   // LINT.ThenChange(:stat_type_enum)
 };
 

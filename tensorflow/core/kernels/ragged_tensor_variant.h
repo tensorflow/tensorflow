@@ -36,7 +36,7 @@ namespace tensorflow {
 // Class used to store a RaggedTensor as a Variant scalar.
 class RaggedTensorVariant {
  public:
-  RaggedTensorVariant() {}
+  RaggedTensorVariant() = default;
   RaggedTensorVariant(Tensor values, const std::vector<Tensor>& nested_splits)
       : values_(std::move(values)), nested_splits_(nested_splits) {}
 

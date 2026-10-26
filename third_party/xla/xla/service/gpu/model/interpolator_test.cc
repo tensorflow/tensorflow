@@ -184,6 +184,26 @@ INSTANTIATE_TEST_SUITE_P(
                           std::get<0>(info.param));
     });
 
+TEST(EuclideanComplementInterpolatorTest, SnapsToStoredPointsOffAnyGrid) {
+  // 16-device groups were measured at 2^k bytes, 18-device groups at 18 * 2^k.
+  EuclideanComplementInterpolator<int64_t, 2> interpolator(
+      /*next_context=*/{-1, -1}, /*next_power_context=*/{1, 1},
+      /*max_context=*/{1 << 30, 72}, /*min_context=*/{1 << 10, 2});
+  std::array<int64_t, 2> p1 = {1 << 20, 16};
+  std::array<int64_t, 2> p2 = {18 << 16, 18};
+  std::array<int64_t, 2> p3 = {18 << 17, 36};
+  interpolator.Add(p1, 1);
+  interpolator.Add(p2, 2);
+  interpolator.Add(p3, 3);
+
+  std::array<int64_t, 2> exact = {18 << 16, 18};
+  EXPECT_EQ(interpolator.Eval(exact), 2);
+  std::array<int64_t, 2> off_grid_bytes = {(18 << 16) + 1, 36};
+  EXPECT_EQ(interpolator.Eval(off_grid_bytes), 2);
+  std::array<int64_t, 2> beyond_range = {1 << 29, 72};
+  EXPECT_EQ(interpolator.Eval(beyond_range), 3);
+}
+
 TEST(EuclideanWeightedAverage2DInterpolatorTest, ReturnsWeightedAverage) {
   auto interpolator = std::make_unique<EuclideanWeightedAverageInterpolator<2>>(
       /*next_context=*/std::array<int64_t, 2>{-1, -1},

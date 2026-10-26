@@ -43,7 +43,7 @@ TEST(StablehloImportTest, FullyReplicatedEmptyMesh) {
   TensorShardingAttr sharding = xla::sdy::convertToSdySharding(
       /*hloSharding=*/xla::HloSharding::Replicate(),
       /*globalMesh=*/mesh,
-      /*deviceIdToMaximalMeshName=*/
+      /*deviceIdToSingleDeviceMeshName=*/
       llvm::SmallDenseMap<int64_t, mlir::StringRef>(), /*rank=*/2,
       /*openDims=*/true);
   EXPECT_EQ(attributeToString(sharding), "#sdy.sharding<@mesh, [{?}, {?}]>");
@@ -60,7 +60,7 @@ TEST(StablehloImportTest, FullyReplicatedNonEmptyMesh) {
   TensorShardingAttr sharding = xla::sdy::convertToSdySharding(
       /*hloSharding=*/xla::HloSharding::Replicate(),
       /*globalMesh=*/mesh,
-      /*deviceIdToMaximalMeshName=*/
+      /*deviceIdToSingleDeviceMeshName=*/
       llvm::SmallDenseMap<int64_t, mlir::StringRef>(), /*rank=*/2,
       /*openDims=*/true);
   EXPECT_EQ(attributeToString(sharding), "#sdy.sharding<@mesh, [{?}, {?}]>");
@@ -78,7 +78,7 @@ TEST(StablehloImportTest, SkipFirstAxisOfSize1) {
   TensorShardingAttr sharding = xla::sdy::convertToSdySharding(
       /*hloSharding=*/xla::HloSharding::IotaTile({4, 2}),
       /*globalMesh=*/mesh,
-      /*deviceIdToMaximalMeshName=*/
+      /*deviceIdToSingleDeviceMeshName=*/
       llvm::SmallDenseMap<int64_t, mlir::StringRef>(), /*rank=*/2,
       /*openDims=*/true);
   EXPECT_EQ(attributeToString(sharding),
@@ -98,7 +98,7 @@ TEST(StablehloImportTest, SkipSecondAxisOfSize1) {
   TensorShardingAttr sharding = xla::sdy::convertToSdySharding(
       /*hloSharding=*/xla::HloSharding::IotaTile({4, 2}),
       /*globalMesh=*/mesh,
-      /*deviceIdToMaximalMeshName=*/
+      /*deviceIdToSingleDeviceMeshName=*/
       llvm::SmallDenseMap<int64_t, mlir::StringRef>(), /*rank=*/2,
       /*openDims=*/true);
   EXPECT_EQ(attributeToString(sharding),
@@ -118,7 +118,7 @@ TEST(StablehloImportTest, TransposedWithReplicatedAxis) {
       /*hloSharding=*/xla::HloSharding::PartialTile(
           xla::TileAssignment({2, 2, 4}, {2, 4, 2}, {2, 0, 1})),
       /*globalMesh=*/mesh,
-      /*deviceIdToMaximalMeshName=*/
+      /*deviceIdToSingleDeviceMeshName=*/
       llvm::SmallDenseMap<int64_t, mlir::StringRef>(), /*rank=*/2,
       /*openDims=*/false);
   EXPECT_EQ(attributeToString(sharding),
@@ -136,7 +136,7 @@ TEST(StablehloImportTest, IotaTileRequiresSubAxes) {
   TensorShardingAttr sharding = xla::sdy::convertToSdySharding(
       /*hloSharding=*/xla::HloSharding::IotaTile({2, 4}),
       /*globalMesh=*/mesh,
-      /*deviceIdToMaximalMeshName=*/
+      /*deviceIdToSingleDeviceMeshName=*/
       llvm::SmallDenseMap<int64_t, mlir::StringRef>(), /*rank=*/2,
       /*openDims=*/false);
   EXPECT_EQ(attributeToString(sharding),
@@ -153,7 +153,7 @@ TEST(StablehloImportTest, IotaTileRequiresSubAxes2) {
   TensorShardingAttr sharding = xla::sdy::convertToSdySharding(
       /*hloSharding=*/xla::HloSharding::IotaTile({4, 4}),
       /*globalMesh=*/mesh,
-      /*deviceIdToMaximalMeshName=*/
+      /*deviceIdToSingleDeviceMeshName=*/
       llvm::SmallDenseMap<int64_t, mlir::StringRef>(), /*rank=*/2,
       /*openDims=*/false);
   EXPECT_EQ(attributeToString(sharding),
@@ -172,7 +172,7 @@ TEST(StablehloImportTest, TransposedWithReplicatedRequiresSubAxes) {
       /*hloSharding=*/xla::HloSharding::PartialTile(
           xla::TileAssignment({2, 2, 2}, {2, 2, 2}, {2, 0, 1})),
       /*globalMesh=*/mesh,
-      /*deviceIdToMaximalMeshName=*/
+      /*deviceIdToSingleDeviceMeshName=*/
       llvm::SmallDenseMap<int64_t, mlir::StringRef>(), /*rank=*/2,
       /*openDims=*/false);
   EXPECT_EQ(attributeToString(sharding),
@@ -290,6 +290,41 @@ TEST(StablehloImportTest, UnreducedMinSharding) {
       /*openDims=*/true);
   EXPECT_EQ(attributeToString(sharding),
             "#sdy.sharding<@mesh, [{}, {}], unreduced=min{\"x\"}>");
+}
+
+TEST(StablehloImportTest, NamedShardingEmptyDimShardings) {
+  MLIRContext context;
+  loadAllRequiredDialects(&context);
+  SmallVector<sdy::MeshAxisAttr> axes;
+  axes.emplace_back(mlir::sdy::MeshAxisAttr::get(&context, "x", 2));
+  axes.emplace_back(mlir::sdy::MeshAxisAttr::get(&context, "y", 2));
+  auto mesh = sdy::MeshAttr::get(&context, axes);
+  llvm::SmallDenseMap<int64_t, mlir::StringRef> emptySingleDeviceMap;
+
+  xla::HloSharding replicated =
+      xla::ParseSharding("{mesh[], replicated}").value();
+  EXPECT_EQ(attributeToString(xla::sdy::convertToSdySharding(
+                replicated, mesh, emptySingleDeviceMap, /*rank=*/2,
+                /*openDims=*/false)),
+            "#sdy.sharding<@mesh, [{}, {}]>");
+  EXPECT_EQ(attributeToString(xla::sdy::convertToSdySharding(
+                replicated, mesh, emptySingleDeviceMap, /*rank=*/2,
+                /*openDims=*/true)),
+            "#sdy.sharding<@mesh, [{?}, {?}]>");
+
+  xla::HloSharding manual =
+      xla::ParseSharding("{mesh['x'=2, 'y'=2], manual}").value();
+  EXPECT_EQ(attributeToString(xla::sdy::convertToSdySharding(
+                manual, mesh, emptySingleDeviceMap, /*rank=*/2,
+                /*openDims=*/false)),
+            "#sdy.sharding<@mesh, [{}, {}]>");
+
+  xla::HloSharding unreduced =
+      xla::ParseSharding("{mesh['x'=2, 'y'=2], unreduced}").value();
+  EXPECT_EQ(attributeToString(xla::sdy::convertToSdySharding(
+                unreduced, mesh, emptySingleDeviceMap, /*rank=*/2,
+                /*openDims=*/false)),
+            "#sdy.sharding<@mesh, [{}, {}], unreduced={\"x\", \"y\"}>");
 }
 
 }  // namespace

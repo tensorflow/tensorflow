@@ -113,6 +113,43 @@ TEST_P(YnnFusionTest, Pad) {
   RunTest(kModuleStr);
 }
 
+TEST_P(YnnFusionTest, Copy) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule copy
+
+    ynn_fusion {
+      %input = $dtype[8, 10] parameter(0)
+      ROOT %copy = $dtype[8, 10] copy(%input)
+    }
+
+    ENTRY entry {
+      %p0 = $dtype[8, 10] parameter(0)
+      ROOT %fusion = $dtype[8, 10] fusion(%p0), kind=kCustom, calls=ynn_fusion,
+        backend_config={"fusion_config": {kind: "__ynn_fusion"}}
+    })";
+
+  RunTest(kModuleStr);
+}
+
+TEST_P(YnnFusionTest, CopyDegenerateLayout) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule copy_degenerate_layout
+
+    ynn_fusion {
+      %input = $dtype[8, 10, 1]{1,0,2} parameter(0)
+      ROOT %copy = $dtype[8, 10, 1]{2,1,0} copy(%input)
+    }
+
+    ENTRY entry {
+      %p0 = $dtype[8, 10, 1]{1,0,2} parameter(0)
+      ROOT %fusion = $dtype[8, 10, 1]{2,1,0} fusion(%p0), kind=kCustom,
+        calls=ynn_fusion,
+        backend_config={"fusion_config": {kind: "__ynn_fusion"}}
+    })";
+
+  RunTest(kModuleStr);
+}
+
 TEST_P(YnnFusionTest, Transpose) {
   constexpr absl::string_view kModuleStr = R"(
     HloModule transpose
@@ -342,6 +379,31 @@ TEST_P(YnnFusionTest, DotWithConstant) {
       %p0 = $dtype[10, 10] parameter(0)
       %p1 = $dtype[10, 10] parameter(1)
       ROOT %fusion = $dtype[10, 10] fusion(%p0, %p1), kind=kCustom,
+        calls=ynn_fusion,
+        backend_config={"fusion_config": {kind: "__ynn_fusion"}}
+    })";
+
+  RunTest(kModuleStr);
+}
+
+TEST_P(YnnFusionTest, DotWithTransposedLhs) {
+  // The LHS contracting dimension is the major one (lhs_contracting_dims={0}),
+  // i.e. the LHS is stored transposed. Use distinct M, K, N so that a wrong
+  // transpose can't produce the right result.
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule dot_with_transposed_lhs
+
+    ynn_fusion {
+      %lhs = $dtype[16, 8] parameter(0)
+      %rhs = $dtype[16, 12] parameter(1)
+      ROOT %dot = $dtype[8, 12] dot(%lhs, %rhs), lhs_contracting_dims={0},
+        rhs_contracting_dims={0}
+    }
+
+    ENTRY entry {
+      %p0 = $dtype[16, 8] parameter(0)
+      %p1 = $dtype[16, 12] parameter(1)
+      ROOT %fusion = $dtype[8, 12] fusion(%p0, %p1), kind=kCustom,
         calls=ynn_fusion,
         backend_config={"fusion_config": {kind: "__ynn_fusion"}}
     })";

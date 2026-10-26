@@ -79,7 +79,7 @@ TfLiteStatus ArgMinMaxOpBuilder::RegisterOutputs(const TfLiteIntArray* outputs,
   return kTfLiteOk;
 }
 
-ArgMinMaxOpBuilder::~ArgMinMaxOpBuilder() {}
+ArgMinMaxOpBuilder::~ArgMinMaxOpBuilder() = default;
 
 OpBuilder* CreateArgMinMaxOpBuilder(GraphBuilder* graph_builder, int op_type) {
   return new ArgMinMaxOpBuilder(graph_builder, op_type);

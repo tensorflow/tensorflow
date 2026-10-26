@@ -57,19 +57,19 @@ absl::StatusOr<bool> IsRdmaSupported(CUdevice device) {
 }
 
 absl::StatusOr<bool> IsFabricSupported(CUdevice device) {
+  int driver_version = 0;
+  if (cuDriverGetVersion(&driver_version) != CUDA_SUCCESS ||
+      driver_version < 12030) {
+    return false;
+  }
+
   int fabric_supported = 0;
   CUresult result = cuDeviceGetAttribute(
       &fabric_supported, CU_DEVICE_ATTRIBUTE_HANDLE_TYPE_FABRIC_SUPPORTED,
       device);
-
-  // Older drivers return INVALID_VALUE when they don't recognize the attribute.
   if (result == CUDA_ERROR_INVALID_VALUE) {
-    XLA_VLOG_DEVICE(1, device)
-        << "CU_DEVICE_ATTRIBUTE_HANDLE_TYPE_FABRIC_SUPPORTED not supported "
-           "by driver.";
     return false;
   }
-
   ABSL_RETURN_IF_ERROR(cuda::ToStatus(result));
   return fabric_supported > 0;
 }
@@ -96,40 +96,31 @@ CUmemAllocationProp BuildVmmAllocationProp(
   return properties;
 }
 
-absl::StatusOr<CudaDeviceAllocator::Options> QueryDeviceAllocatorOptions(
-    CUdevice device) {
-  ABSL_ASSIGN_OR_RETURN(bool rdma, IsRdmaSupported(device));
-  ABSL_ASSIGN_OR_RETURN(bool fabric, IsFabricSupported(device));
-
-  bool posix_fd = true;
-  size_t granularity = 0;
-
+absl::StatusOr<VmmGranularityProbe> ProbeVmmGranularity(
+    CUdevice device, CudaDeviceAllocator::Options options) {
+  VmmGranularityProbe probe;
   auto try_query = [&]() -> absl::Status {
-    CudaDeviceAllocator::Options opts;
-    opts.enable_rdma = rdma;
-    opts.enable_posix_fd_handle = posix_fd;
-    opts.enable_fabric_handle = fabric;
-    CUmemAllocationProp props = BuildVmmAllocationProp(device, opts);
+    CUmemAllocationProp props = BuildVmmAllocationProp(device, options);
     return cuda::ToStatus(cuMemGetAllocationGranularity(
-        &granularity, &props, CU_MEM_ALLOC_GRANULARITY_RECOMMENDED));
+        &probe.granularity, &props, CU_MEM_ALLOC_GRANULARITY_RECOMMENDED));
   };
 
   absl::Status status = try_query();
-  if (!status.ok() && fabric && posix_fd) {
+  if (!status.ok() && options.enable_fabric_handle) {
     XLA_LOG_DEVICE(WARNING, device)
-        << "Device allocator granularity query with FABRIC+POSIX_FD handle "
-           "types failed: "
-        << status << "; retrying without FABRIC.";
-    fabric = false;
+        << "Device allocator granularity query with "
+        << (options.enable_posix_fd_handle ? "FABRIC+POSIX_FD" : "FABRIC")
+        << " handle types failed: " << status << "; retrying without FABRIC.";
+    options.enable_fabric_handle = false;
     status = try_query();
   }
 
-  if (!status.ok() && posix_fd) {
+  if (!status.ok() && options.enable_posix_fd_handle) {
     XLA_LOG_DEVICE(WARNING, device)
         << "Device allocator granularity query with POSIX_FD handle type "
            "failed: "
         << status << "; retrying with HANDLE_TYPE_NONE.";
-    posix_fd = false;
+    options.enable_posix_fd_handle = false;
     status = try_query();
   }
 
@@ -140,18 +131,28 @@ absl::StatusOr<CudaDeviceAllocator::Options> QueryDeviceAllocatorOptions(
     return status;
   }
 
-  CudaDeviceAllocator::Options options;
-  options.alignment = granularity;
-  options.enable_rdma = rdma;
-  options.enable_posix_fd_handle = posix_fd;
-  options.enable_fabric_handle = fabric;
+  probe.options = options;
+  return probe;
+}
+
+absl::StatusOr<CudaDeviceAllocator::Options> QueryDeviceAllocatorOptions(
+    CUdevice device) {
+  CudaDeviceAllocator::Options requested;
+  ABSL_ASSIGN_OR_RETURN(requested.enable_rdma, IsRdmaSupported(device));
+  ABSL_ASSIGN_OR_RETURN(requested.enable_fabric_handle, IsFabricSupported(device));
+  requested.enable_posix_fd_handle = true;
+
+  ABSL_ASSIGN_OR_RETURN(VmmGranularityProbe probe,
+                   ProbeVmmGranularity(device, requested));
+  CudaDeviceAllocator::Options options = probe.options;
+  options.alignment = probe.granularity;
   return options;
 }
 
 // Creates a physical VMM allocation. Tries cuMemCreate with the given
 // properties and falls back through progressively simpler handle types:
 //   FABRIC+POSIX_FD -> POSIX_FD -> NONE
-static absl::StatusOr<CUmemGenericAllocationHandle> CreatePhysicalAllocation(
+absl::StatusOr<CUmemGenericAllocationHandle> CreateVmmPhysicalAllocation(
     CUmemAllocationProp properties, uint64_t padded_size) {
   CUmemGenericAllocationHandle handle;
 
@@ -206,13 +207,22 @@ static CUmemAccessDesc GetAccessDesc(int device) {
   return descriptor;
 }
 
-// Allocates device memory using CUDA Virtual Memory Management (VMM) APIs.
+// Allocates device memory using CUDA Virtual Memory Management (VMM) APIs,
+// or falls back to cuMemAlloc when VMM is disabled.
 // Returns (virtual_address, padded_size, allocation_handle).
 static absl::StatusOr<std::tuple<void*, uint64_t, CUmemGenericAllocationHandle>>
 AllocateDeviceMemory(StreamExecutor* executor,
                      const CudaDeviceAllocator::Options& options,
                      uint64_t size) {
   std::unique_ptr<ActivateContext> activation = executor->Activate();
+  if (!options.use_vmm) {
+    CUdeviceptr result = 0;
+    ABSL_RETURN_IF_ERROR(cuda::ToStatus(cuMemAlloc(&result, size)));
+    void* ptr = absl::bit_cast<void*>(result);
+    XLA_VLOG_DEVICE(3, executor->device_ordinal())
+        << "Allocated legacy ptr=" << ptr << " size: " << size;
+    return std::make_tuple(ptr, size, /*handle=*/0);
+  }
 
   CUdevice device;
   ABSL_RETURN_IF_ERROR(
@@ -228,7 +238,7 @@ AllocateDeviceMemory(StreamExecutor* executor,
   uint64_t padded_size = xla::RoundUpTo<uint64_t>(size, effective_alignment);
 
   ABSL_ASSIGN_OR_RETURN(CUmemGenericAllocationHandle handle,
-                   CreatePhysicalAllocation(properties, padded_size));
+                   CreateVmmPhysicalAllocation(properties, padded_size));
 
   absl::Cleanup release_handle = [&] {
     absl::Status status = cuda::ToStatus(cuMemRelease(handle));
@@ -390,6 +400,16 @@ void DeallocateDeviceMemory(StreamExecutor* executor, void* ptr,
                             CUmemGenericAllocationHandle handle) {
   XLA_VLOG_DEVICE(3, executor->device_ordinal())
       << "Deallocating " << ptr << " padded size: " << padded_size;
+  if (handle == 0) {
+    std::unique_ptr<ActivateContext> activation = executor->Activate();
+    CUdeviceptr pointer = absl::bit_cast<CUdeviceptr>(ptr);
+    absl::Status status = cuda::ToStatus(cuMemFree(pointer));
+    if (!status.ok()) {
+      XLA_LOG_DEVICE(ERROR, executor->device_ordinal())
+          << "Failed to free device memory at " << ptr << ": " << status;
+    }
+    return;
+  }
 
   ExecutorVmmState* state = GetExecutorVmmState(executor);
   {

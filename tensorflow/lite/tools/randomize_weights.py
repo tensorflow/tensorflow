@@ -14,6 +14,7 @@
 # ==============================================================================
 r"""Randomize all weights in a tflite file."""
 
+import re
 from absl import app
 from absl import flags
 
@@ -64,15 +65,21 @@ def main(_):
   # Add in buffers for ops in ops_to_skip or ops_operands_to_skip to the list of
   # skipped buffers.
   for graph in model.subgraphs:
-    for op in graph.operators:
+    for op in graph.operators or []:
       op_name = flatbuffer_utils.opcode_to_name(model, op.opcodeIndex)
+      if not op_name:
+        continue
       op_name_upper = op_name.upper()
-      if op_name_upper in ops_to_skip:
+      op_name_snake = re.sub(r'(?<!^)(?=[A-Z])', '_', op_name).upper()
+      if op_name_upper in ops_to_skip or op_name_snake in ops_to_skip:
         for input_idx in op.inputs:
           buffers_to_skip.append(graph.tensors[input_idx].buffer)
-      if op_name_upper in ops_operands_to_skip:
-        for operand_idx in ops_operands_to_skip[op_name_upper]:
-          buffers_to_skip.append(graph.tensors[op.inputs[operand_idx]].buffer)
+      for key in (op_name_upper, op_name_snake):
+        if key in ops_operands_to_skip:
+          for operand_idx in ops_operands_to_skip[key]:
+            buffers_to_skip.append(
+                graph.tensors[op.inputs[operand_idx]].buffer
+            )
 
   flatbuffer_utils.randomize_weights(model, FLAGS.random_seed,
                                      FLAGS.buffers_to_skip)

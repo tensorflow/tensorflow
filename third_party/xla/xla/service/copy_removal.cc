@@ -464,14 +464,11 @@ bool ComputeRelativeLocation::InstructionCanIntercept(
     // it does not overwrite the combined buffer with new values.
     case HloOpcode::kCopy: {
       // Checking the copy simply copies from the other live range with no
-      // layout conflicts.
-      HloInstruction* operand = instr->mutable_operand(0);
-      if (operand->opcode() == HloOpcode::kGetTupleElement) {
-        // kGetTupleElement only creates an alias among HloValues and is not
-        // included in the live range region. We check its operand instead.
-        operand = operand->mutable_operand(0);
-      }
-      if (region.contains(operand) &&
+      // layout conflicts. If `instr` copies a value from `region`, `instr`
+      // itself is recorded as a use (with non-null `value_definition`) in
+      // `region`.
+      if (region.contains(instr) &&
+          region[instr->parent()].at(instr).value_definition != nullptr &&
           ShapeUtil::Equal(instr->shape(), instr->operand(0)->shape())) {
         return false;  // Cannot intercept.
       }

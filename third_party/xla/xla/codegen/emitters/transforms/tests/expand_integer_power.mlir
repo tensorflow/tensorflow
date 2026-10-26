@@ -40,3 +40,29 @@ func.func @expand_integer_power_tensor(
   %0 = math.ipowi %arg0, %arg1 : tensor<6x4xi32>
   func.return %0 : tensor<6x4xi32>
 }
+
+// -----
+
+// CHECK-LABEL: @expand_integer_power_unsigned
+func.func @expand_integer_power_unsigned(
+    %arg0: vector<4xi32>,
+    %arg1: vector<4xi32>) -> vector<4xi32> {
+  // CHECK-NOT: math.ipowi
+  // CHECK: scf.for
+  // CHECK-NOT: arith.cmpi slt
+  %0 = math.ipowi %arg0, %arg1 {xla.is_unsigned} : vector<4xi32>
+  func.return %0 : vector<4xi32>
+}
+
+// -----
+
+// CHECK-LABEL: @expand_integer_power_unsigned_scalar
+func.func @expand_integer_power_unsigned_scalar(
+    %arg0: i32,
+    %arg1: i32) -> i32 {
+  // CHECK-NOT: math.ipowi
+  // CHECK: scf.for
+  // CHECK-NOT: arith.cmpi slt
+  %0 = math.ipowi %arg0, %arg1 {xla.is_unsigned} : i32
+  func.return %0 : i32
+}

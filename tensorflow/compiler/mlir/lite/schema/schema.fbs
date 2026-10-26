@@ -1023,6 +1023,18 @@ table FullyConnectedOptions {
   // Parameters for FullyConnected version 11 or above.
   // When set, quantized_bias_type defines the dtype for both bias and accumulator.
   quantized_bias_type: TensorType;
+
+  // Parameters for FullyConnected version 15 or above.
+  //
+  // An opaque, self-describing description of a non-standard quantization
+  // contract that the op's tensor-level quantization parameters cannot express
+  // on their own (for example a dynamically quantized, blockwise activation, or
+  // a weight grid that is centered between integer values).
+  //
+  // The payload is an encoded FlexBuffers map. A runtime that does not
+  // understand the contract named in the map must reject the op rather than
+  // fall back to standard quantization semantics.
+  quant_spec: [ubyte];
 }
 
 table SoftmaxOptions {

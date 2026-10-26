@@ -461,6 +461,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   absl::Status HandleSelect(const HloInstruction* hlo) final;
   absl::Status HandleCompare(const HloInstruction* compare) final;
   absl::Status HandleClamp(const HloInstruction* clamp) final;
+  absl::Status HandleFma(const HloInstruction* fma) final;
   absl::Status HandleConvert(const HloInstruction* convert) final;
 
   // Utility function to handle all element-wise operations.
@@ -515,6 +516,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   absl::Status HandleRngGetAndUpdateState(
       const HloInstruction* random) override;
   absl::Status HandleReverse(const HloInstruction* reverse) override;
+  absl::Status HandleShuffle(const HloInstruction* shuffle) override;
   absl::Status HandleSort(const HloInstruction* sort) override;
   absl::Status HandleParameter(const HloInstruction* parameter) override;
   absl::Status HandleReduce(const HloInstruction* reduce) override;

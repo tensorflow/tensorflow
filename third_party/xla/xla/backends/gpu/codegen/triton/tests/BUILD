@@ -43,16 +43,12 @@ xla_cc_binary(
     deps = [
         "//xla:debug_options_flags",
         "//xla:error_spec",
-        "//xla/backends/gpu/codegen/tools:test_lib",
-        "//xla/codegen/tools:test_lib",
         "//xla/hlo/ir:hlo",
         "//xla/service:gpu_plugin",
         "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
         "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:pjrt_gpu_client_registry",
         "//xla/tools:hlo_module_loader",
-        "//xla/tsl/lib/core:status_test_util",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/util:command_line_flags",
         "@com_google_absl//absl/log",
         "@com_google_googletest//:gtest",
@@ -66,12 +62,18 @@ xla_cc_binary(
 )
 
 deviceless_tests = [
+    "bitcast/bitcast_reduce_stride1.hlo",
     "collectives/all_reduce.hlo",
     "collectives/all_gather.hlo",
     "concat/concat_active_scalar_constant.hlo",
     "concat/concat_offset_not_a_multiple_of_tile_size.hlo",
+    "concat/concat_prune_inactive.hlo",
     "constraints/max_tensor_elements_violation.hlo",
     "dot/duplicate_dot_operand.hlo",
+    "reduce/reduce_minor_extra_out.hlo",
+    "reduce/reduce_to_scalar_extra_out.hlo",
+    "slice/slice_extra_out_padding.hlo",
+    "slice/slice_padding.hlo",
 ]
 
 lit_test_suite(
@@ -190,6 +192,7 @@ xla_test(
         "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/hlo/utils:hlo_query",
         "//xla/service:algorithm_util",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:gpu_compiler",
@@ -201,10 +204,8 @@ xla_test(
         "//xla/tests:hlo_interpreter_reference_mixin",
         "//xla/tests:test_utils",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
-        "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
@@ -213,6 +214,7 @@ xla_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
@@ -223,6 +225,59 @@ xla_test(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@tsl//tsl/platform:path",
+    ],
+)
+
+xla_test(
+    name = "scaled_dot_device_test",
+    srcs = ["scaled_dot_device_test.cc"],
+    backends = [
+        "a100",
+        "h100",
+        "b200",
+        "amdgpu_any",
+    ],
+    shard_count = 20,
+    tags = ["no_mac"],
+    deps = [
+        "//xla:comparison_util",
+        "//xla:error_spec",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:types",
+        "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
+        "//xla/backends/gpu/codegen/triton:test_utils",
+        "//xla/backends/gpu/codegen/triton:xtile_compiler",
+        "//xla/backends/gpu/codegen/triton:xtile_test_base",
+        "//xla/backends/gpu/tests:gpu_pjrt_codegen_test",
+        "//xla/backends/gpu/transforms:composite_rewriter",
+        "//xla/codegen/xtile:block_level_parameters",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/testlib:filecheck",
+        "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu:gpu_compiler",
+        "//xla/service/gpu:gpu_device_info_for_tests",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
+        "//xla/tests:hlo_interpreter_reference_mixin",
+        "//xla/tests:test_utils",
+        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/random:distributions",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -313,6 +368,11 @@ xla_cc_test(
 xla_test(
     name = "fusion_emitter_int4_device_test",
     srcs = ["fusion_emitter_int4_device_test.cc"],
+    backend_tags = {
+        # Intermittently aborts with HSA_STATUS_ERROR_ILLEGAL_INSTRUCTION on the
+        # MI350X CI runners; excluded from ROCm CI via --config=no_flaky.
+        "amdgpu_any": ["flaky"],
+    },
     backends = [
         "a100",
         "h100",

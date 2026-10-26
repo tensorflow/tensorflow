@@ -24,6 +24,36 @@ func.func @copy(%arg0: tensor<16x8xf32>) -> tensor<16x8xf32> {
   return %0 : tensor<16x8xf32>
 }
 
+// CHECK-LABEL: func @pointwise_unary_ops
+func.func @pointwise_unary_ops(%arg0: tensor<16x8xf32>) -> tensor<16x8xf32> {
+  // CHECK-NEXT: mhlo.acos %arg0 {sdy.sharding_rule = #sdy.op_sharding_rule<([i, j])->([i, j]) {i=16, j=8}>}
+  %0 = mhlo.acos %arg0 : tensor<16x8xf32>
+  // CHECK-NEXT: mhlo.acosh %0 {sdy.sharding_rule = #sdy.op_sharding_rule<([i, j])->([i, j]) {i=16, j=8}>}
+  %1 = mhlo.acosh %0 : tensor<16x8xf32>
+  // CHECK-NEXT: mhlo.asin %1 {sdy.sharding_rule = #sdy.op_sharding_rule<([i, j])->([i, j]) {i=16, j=8}>}
+  %2 = mhlo.asin %1 : tensor<16x8xf32>
+  // CHECK-NEXT: mhlo.asinh %2 {sdy.sharding_rule = #sdy.op_sharding_rule<([i, j])->([i, j]) {i=16, j=8}>}
+  %3 = mhlo.asinh %2 : tensor<16x8xf32>
+  // CHECK-NEXT: mhlo.atanh %3 {sdy.sharding_rule = #sdy.op_sharding_rule<([i, j])->([i, j]) {i=16, j=8}>}
+  %4 = mhlo.atanh %3 : tensor<16x8xf32>
+  // CHECK-NEXT: mhlo.cosh %4 {sdy.sharding_rule = #sdy.op_sharding_rule<([i, j])->([i, j]) {i=16, j=8}>}
+  %5 = mhlo.cosh %4 : tensor<16x8xf32>
+  // CHECK-NEXT: mhlo.erf %5 {sdy.sharding_rule = #sdy.op_sharding_rule<([i, j])->([i, j]) {i=16, j=8}>}
+  %6 = mhlo.erf %5 : tensor<16x8xf32>
+  // CHECK-NEXT: mhlo.sinh %6 {sdy.sharding_rule = #sdy.op_sharding_rule<([i, j])->([i, j]) {i=16, j=8}>}
+  %7 = mhlo.sinh %6 : tensor<16x8xf32>
+  return %7 : tensor<16x8xf32>
+}
+
+// CHECK-LABEL: func @pointwise_binary_ops
+func.func @pointwise_binary_ops(%arg0: tensor<16x8xi32>, %arg1: tensor<16x8xf32>, %arg2: tensor<16x8xui32>) -> (tensor<16x8xi32>, tensor<16x8xf16>) {
+  // CHECK-NEXT: mhlo.mulhi %arg0, %arg0 {sdy.sharding_rule = #sdy.op_sharding_rule<([i, j], [i, j])->([i, j]) {i=16, j=8}>}
+  %0 = mhlo.mulhi %arg0, %arg0 : tensor<16x8xi32>
+  // CHECK-NEXT: "mhlo.stochastic_convert"(%arg1, %arg2) {sdy.sharding_rule = #sdy.op_sharding_rule<([i, j], [i, j])->([i, j]) {i=16, j=8}>}
+  %1 = "mhlo.stochastic_convert"(%arg1, %arg2) : (tensor<16x8xf32>, tensor<16x8xui32>) -> tensor<16x8xf16>
+  return %0, %1 : tensor<16x8xi32>, tensor<16x8xf16>
+}
+
 // CHECK-LABEL: func @ragged_dot_mode_non_contracting
 func.func @ragged_dot_mode_non_contracting(
     %arg0: tensor<16x32x64xf32> {sdy.sharding=#sdy.sharding<@mesh_abcd, [{"a"}, {"b"}, {"c"}]>},

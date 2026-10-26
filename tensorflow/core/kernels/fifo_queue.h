@@ -55,7 +55,7 @@ class FIFOQueue : public TypedQueue<std::deque<Tensor> > {
   }
 
  protected:
-  ~FIFOQueue() override {}
+  ~FIFOQueue() override = default;
 
   // Helper for dequeuing a single element from queues_.
   void DequeueLocked(OpKernelContext* ctx, Tuple* tuple)

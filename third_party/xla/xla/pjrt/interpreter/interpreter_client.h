@@ -159,6 +159,20 @@ class InterpreterLiteralWrapperBuffer final : public PjRtBuffer {
 
   const Shape& on_device_shape() const override { return literal_.shape(); }
 
+  std::shared_ptr<const PjRtLayout> layout() const override {
+    CHECK(on_device_shape().IsArray());
+    Layout layout = on_device_shape().layout();
+    for (const Tile& tile : layout.tiles()) {
+      for (int64_t d : tile.dimensions()) {
+        if (d == Tile::kCombineDimension || d == Tile::kMatchDimension) {
+          layout.clear_tiles();
+          return std::make_shared<PjRtLayout>(std::move(layout));
+        }
+      }
+    }
+    return std::make_shared<PjRtLayout>(std::move(layout));
+  }
+
   PjRtMemorySpace* memory_space() const override { return memory_space_; }
 
   PjRtDevice* device() const override {
@@ -283,7 +297,6 @@ class InterpreterLoadedExecutable final : public PjRtLoadedExecutable {
       std::shared_ptr<InterpreterExecutable> executable,
       std::unique_ptr<HloEvaluatorInterface> hlo_evaluator,
       std::shared_ptr<DeviceAssignment> device_assignment,
-      std::vector<LogicalDeviceIds> addressable_device_logical_ids,
       std::vector<PjRtDevice*> addressable_devices);
 
   InterpreterExecutable* GetExecutable() const override;
@@ -305,11 +318,6 @@ class InterpreterLoadedExecutable final : public PjRtLoadedExecutable {
 
   const DeviceAssignment& device_assignment() const override {
     return *device_assignment_;
-  }
-
-  absl::Span<const LogicalDeviceIds> addressable_device_logical_ids()
-      const override {
-    return addressable_device_logical_ids_;
   }
 
   absl::Span<PjRtDevice* const> addressable_devices() const override {
@@ -347,7 +355,6 @@ class InterpreterLoadedExecutable final : public PjRtLoadedExecutable {
   std::shared_ptr<InterpreterExecutable> executable_ ABSL_GUARDED_BY(mutex_);
   std::unique_ptr<HloEvaluatorInterface> hlo_evaluator_ ABSL_GUARDED_BY(mutex_);
   std::shared_ptr<DeviceAssignment> device_assignment_;
-  std::vector<LogicalDeviceIds> addressable_device_logical_ids_;
   std::vector<PjRtDevice*> addressable_devices_;
 };
 

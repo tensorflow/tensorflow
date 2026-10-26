@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/batching_util/batch_resource_base.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -41,6 +42,7 @@ limitations under the License.
 #include "xla/tsl/lib/monitoring/cell_reader.h"
 #include "xla/tsl/lib/monitoring/test_utils.h"
 #include "xla/tsl/platform/criticality.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/cost_constants.h"
 #include "tensorflow/core/common_runtime/cost_measurement.h"
@@ -49,6 +51,7 @@ limitations under the License.
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/device_factory.h"
 #include "tensorflow/core/framework/node_def_builder.h"
+#include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -62,11 +65,10 @@ limitations under the License.
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
 #include "tensorflow/core/platform/context.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/notification.h"
+#include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
 #include "tsl/platform/refcount.h"
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace serving {
@@ -1822,7 +1824,7 @@ TEST_P(BatchResourceBaseMaxExecutionBatchSizeTest,
 INSTANTIATE_TEST_SUITE_P(
     BatchResourceBaseMaxExecutionBatchSizeTests,
     BatchResourceBaseMaxExecutionBatchSizeTest,
-    testing::ValuesIn<MaxExecutionBatchSizeTestParams>({
+    ::testing::ValuesIn<MaxExecutionBatchSizeTestParams>({
         // There are 10 requests and each request has task size 1. When batch
         // splitting is enabled and allowed_batch_sizes is empty, the
         // max_execution_batch_size is assigned by the max_batch_size 16. Since
@@ -1946,6 +1948,448 @@ TEST(BatchTaskTest, FinishTaskRestoresContext) {
   EXPECT_TRUE(Context(ContextKind::kThread) == initial_context);
 }
 #endif  // defined(PLATFORM_GOOGLE)
+
+class PreallocatedOutputBatchResource : public BatchResourceBase {
+ public:
+  PreallocatedOutputBatchResource(
+      std::shared_ptr<BatcherT> batcher,
+      const BatcherT::QueueOptions& batcher_queue_options,
+      std::vector<int32_t> allowed_batch_sizes,
+      std::vector<Tensor> combined_outputs)
+      : BatchResourceBase(/*has_process_batch_function=*/true,
+                          std::move(batcher), batcher_queue_options,
+                          std::move(allowed_batch_sizes)),
+        combined_outputs_(std::move(combined_outputs)) {}
+
+  std::string DebugString() const override {
+    return "PreallocatedOutputBatchResource";
+  }
+
+ protected:
+  void ProcessFuncBatchImpl(
+      const BatchResourceBase::BatchTask& last_task,
+      absl::Span<const Tensor> inputs, std::vector<Tensor>* combined_outputs,
+      std::function<void(const absl::Status&)> done) const override {
+    *combined_outputs = combined_outputs_;
+    done(absl::OkStatus());
+  }
+
+ private:
+  std::vector<Tensor> combined_outputs_;
+};
+
+// Runs single-row tasks through a `BatchFunction` kernel whose batched function
+// returns `combined_outputs`. The zeroth-dimension size of `combined_outputs`
+// is the only allowed batch size. Every task feeds the same `inputs`, which
+// must have a zeroth-dimension size of 1. A batch runs as soon as it is full,
+// or after `batch_timeout_micros` with padding up to the batch size.
+class BatchRunner {
+ public:
+  BatchRunner(std::vector<Tensor> inputs, std::vector<Tensor> combined_outputs,
+              int intra_op_parallelism_threads = 0,
+              int32_t batch_timeout_micros = 1000000)
+      : inputs_(std::move(inputs)) {
+    CHECK(!combined_outputs.empty());
+    const int32_t batch_size =
+        static_cast<int32_t>(combined_outputs.front().dim_size(0));
+    SessionOptions session_options;
+    session_options.config.set_intra_op_parallelism_threads(
+        intra_op_parallelism_threads);
+    device_ = DeviceFactory::NewDevice("CPU", session_options,
+                                       "/job:a/replica:0/task:0");
+
+    std::vector<DataType> input_types;
+    std::vector<NodeDefBuilder::NodeOut> node_inputs;
+    for (size_t i = 0; i < inputs_.size(); ++i) {
+      input_types.push_back(inputs_[i].dtype());
+      node_inputs.push_back(NodeDefBuilder::NodeOut(
+          {absl::StrCat("in", i), 0, inputs_[i].dtype()}));
+      input_values_.push_back(TensorValue(&inputs_[i]));
+    }
+    std::vector<DataType> output_types;
+    for (const Tensor& output : combined_outputs) {
+      output_types.push_back(output.dtype());
+    }
+
+    NodeDefBuilder builder("batch_node", "BatchFunction");
+    builder.Attr("max_batch_size", batch_size);
+    builder.Attr("num_batch_threads", 1);
+    builder.Attr("allowed_batch_sizes", {batch_size});
+    builder.Attr("batch_timeout_micros", batch_timeout_micros);
+    builder.Attr("max_enqueued_batches", 10);
+    builder.Attr("enable_large_batch_splitting", false);
+    builder.Attr("Tin", input_types);
+    builder.Input(node_inputs);
+    builder.Attr("Tcaptured", std::vector<DataType>{});
+    builder.Input(std::vector<NodeDefBuilder::NodeOut>{});
+    builder.Attr("Tout", output_types);
+    NameAttrList f;
+    f.set_name("func_to_batch");
+    builder.Attr("f", f);
+    NodeDef node_def;
+    CHECK_OK(builder.Finalize(&node_def));
+
+    absl::Status status;
+    kernel_ =
+        CreateOpKernel(DEVICE_CPU, device_.get(), device_->GetAllocator({}),
+                       node_def, TF_GRAPH_DEF_VERSION, &status);
+    CHECK_OK(status);
+
+    SharedBatchScheduler<BatchResourceBase::BatchTask>::Options batcher_options;
+    batcher_options.num_batch_threads = 1;
+    std::shared_ptr<SharedBatchScheduler<BatchResourceBase::BatchTask>> batcher;
+    CHECK_OK(SharedBatchScheduler<BatchResourceBase::BatchTask>::Create(
+        batcher_options, &batcher));
+    resource_.reset(new PreallocatedOutputBatchResource(
+        std::move(batcher),
+        TestBatchResourceBase::GetBatcherQueueOptions(
+            /*num_batch_threads=*/1, batch_size, batch_timeout_micros,
+            /*max_enqueued_batches=*/10, /*allowed_batch_sizes=*/{batch_size},
+            /*enable_large_batch_splitting=*/false, /*disable_padding=*/false),
+        /*allowed_batch_sizes=*/{batch_size}, std::move(combined_outputs)));
+
+    params_.device = device_.get();
+    params_.op_kernel = kernel_.get();
+    params_.inputs = input_values_;
+  }
+
+  BatchRunner(const BatchRunner&) = delete;
+  BatchRunner& operator=(const BatchRunner&) = delete;
+
+  // Parameters for constructing the task contexts passed to `RunBatch`.
+  OpKernelContext::Params* params() { return &params_; }
+
+  // Runs one batch with a task for each of `contexts`, which must not outnumber
+  // the batch size, and waits until every task finishes.
+  void RunBatch(absl::Span<OpKernelContext* const> contexts) {
+    absl::BlockingCounter counter(static_cast<int>(contexts.size()));
+    auto create_task = []() {
+      return std::make_unique<BatchResourceBase::BatchTask>();
+    };
+    auto done_cb = [&counter]() { counter.DecrementCount(); };
+    for (size_t i = 0; i < contexts.size(); ++i) {
+      CHECK_OK(resource_->RegisterInput(/*guid=*/i, contexts[i], "queue",
+                                        create_task, done_cb,
+                                        /*forced_warmup_batch_size=*/0));
+    }
+    counter.Wait();
+  }
+
+  // Runs one batch of two tasks and discards its outputs, for benchmark loops
+  // with a batch size of 2.
+  void RunBatchAndDiscardOutputs() {
+    OpKernelContext ctx0(&params_);
+    OpKernelContext ctx1(&params_);
+    RunBatch({&ctx0, &ctx1});
+    testing::DoNotOptimize(ctx0.mutable_output(0));
+    testing::DoNotOptimize(ctx1.mutable_output(0));
+  }
+
+ private:
+  std::vector<Tensor> inputs_;
+  std::vector<TensorValue> input_values_;
+  std::unique_ptr<Device> device_;
+  std::unique_ptr<OpKernel> kernel_;
+  tsl::core::RefCountPtr<BatchResourceBase> resource_;
+  OpKernelContext::Params params_;
+};
+
+TEST(SplitOutputTensorsTest,
+     UsesZeroCopySliceWhenAlignedAndCopiesWhenUnaligned) {
+  Tensor input_tensor(DataType::DT_FLOAT, TensorShape({1, 4}));
+  input_tensor.flat<float>().setZero();
+
+  // Output 0: each row is 16 floats (64 bytes), a multiple of
+  // `EIGEN_MAX_ALIGN_BYTES`, so both task slices are aligned.
+  Tensor combined_aligned(DataType::DT_FLOAT, TensorShape({2, 16}));
+  auto aligned_mat = combined_aligned.matrix<float>();
+  for (int i = 0; i < 16; ++i) {
+    aligned_mat(0, i) = 100.0f + i;
+    aligned_mat(1, i) = 200.0f + i;
+  }
+
+  // Output 1: each row is 3 floats (12 bytes), so the second task slice is not
+  // aligned to `EIGEN_MAX_ALIGN_BYTES`.
+  Tensor combined_unaligned(DataType::DT_FLOAT, TensorShape({2, 3}));
+  auto unaligned_mat = combined_unaligned.matrix<float>();
+  for (int i = 0; i < 3; ++i) {
+    unaligned_mat(0, i) = 10.0f + i;
+    unaligned_mat(1, i) = 20.0f + i;
+  }
+
+  BatchRunner runner({input_tensor}, {combined_aligned, combined_unaligned});
+  OpKernelContext ctx0(runner.params());
+  OpKernelContext ctx1(runner.params());
+  runner.RunBatch({&ctx0, &ctx1});
+  TF_ASSERT_OK(ctx0.status());
+  TF_ASSERT_OK(ctx1.status());
+
+  // Verify aligned output 0 shares the underlying buffer (zero-copy Slice).
+  const Tensor* out0_task0 = ctx0.mutable_output(0);
+  const Tensor* out0_task1 = ctx1.mutable_output(0);
+  ASSERT_NE(out0_task0, nullptr);
+  ASSERT_NE(out0_task1, nullptr);
+  EXPECT_EQ(out0_task0->shape(), TensorShape({1, 16}));
+  EXPECT_EQ(out0_task1->shape(), TensorShape({1, 16}));
+  EXPECT_EQ(out0_task0->tensor_data().data(),
+            combined_aligned.tensor_data().data());
+  EXPECT_EQ(out0_task1->tensor_data().data(),
+            combined_aligned.tensor_data().data() + 16 * sizeof(float));
+  for (int i = 0; i < 16; ++i) {
+    EXPECT_FLOAT_EQ(out0_task0->flat<float>()(i), 100.0f + i) << "at i=" << i;
+    EXPECT_FLOAT_EQ(out0_task1->flat<float>()(i), 200.0f + i) << "at i=" << i;
+  }
+
+  // Verify unaligned output 1 is accurately copied.
+  const Tensor* out1_task0 = ctx0.mutable_output(1);
+  const Tensor* out1_task1 = ctx1.mutable_output(1);
+  ASSERT_NE(out1_task0, nullptr);
+  ASSERT_NE(out1_task1, nullptr);
+  EXPECT_EQ(out1_task0->shape(), TensorShape({1, 3}));
+  EXPECT_EQ(out1_task1->shape(), TensorShape({1, 3}));
+  EXPECT_FALSE(out1_task0->SharesBufferWith(combined_unaligned));
+  EXPECT_FALSE(out1_task1->SharesBufferWith(combined_unaligned));
+  for (int i = 0; i < 3; ++i) {
+    EXPECT_FLOAT_EQ(out1_task0->flat<float>()(i), 10.0f + i) << "at i=" << i;
+    EXPECT_FLOAT_EQ(out1_task1->flat<float>()(i), 20.0f + i) << "at i=" << i;
+  }
+}
+
+TEST(SplitOutputTensorsTest, SplitsQuantizedOutputs) {
+  // `concat_split_util::Split` rejects quantized dtypes, whereas
+  // `tensor::Split` supports every memcpy-able dtype. Quantized outputs must
+  // still be zero-copy sliced when aligned and copied otherwise.
+  Tensor input_tensor(DataType::DT_FLOAT, TensorShape({1, 4}));
+  input_tensor.flat<float>().setZero();
+
+  // Output 0: each row is 64 bytes, a multiple of `EIGEN_MAX_ALIGN_BYTES`, so
+  // both task slices are aligned.
+  Tensor combined_aligned(DataType::DT_QINT8, TensorShape({2, 64}));
+  auto aligned_mat = combined_aligned.matrix<qint8>();
+  for (int i = 0; i < 64; ++i) {
+    aligned_mat(0, i) = qint8(i);
+    aligned_mat(1, i) = qint8(-1 - i);
+  }
+
+  // Output 1: each row is 3 bytes, so the second task slice is unaligned.
+  Tensor combined_unaligned(DataType::DT_QINT8, TensorShape({2, 3}));
+  auto unaligned_mat = combined_unaligned.matrix<qint8>();
+  for (int i = 0; i < 3; ++i) {
+    unaligned_mat(0, i) = qint8(10 + i);
+    unaligned_mat(1, i) = qint8(20 + i);
+  }
+
+  BatchRunner runner({input_tensor}, {combined_aligned, combined_unaligned});
+  OpKernelContext ctx0(runner.params());
+  OpKernelContext ctx1(runner.params());
+  runner.RunBatch({&ctx0, &ctx1});
+  TF_ASSERT_OK(ctx0.status());
+  TF_ASSERT_OK(ctx1.status());
+
+  const Tensor* out0_task0 = ctx0.mutable_output(0);
+  const Tensor* out0_task1 = ctx1.mutable_output(0);
+  ASSERT_NE(out0_task0, nullptr);
+  ASSERT_NE(out0_task1, nullptr);
+  EXPECT_EQ(out0_task0->shape(), TensorShape({1, 64}));
+  EXPECT_EQ(out0_task1->shape(), TensorShape({1, 64}));
+  EXPECT_TRUE(out0_task0->SharesBufferWith(combined_aligned));
+  EXPECT_TRUE(out0_task1->SharesBufferWith(combined_aligned));
+  for (int i = 0; i < 64; ++i) {
+    EXPECT_EQ(out0_task0->flat<qint8>()(i).value, i) << "at i=" << i;
+    EXPECT_EQ(out0_task1->flat<qint8>()(i).value, -1 - i) << "at i=" << i;
+  }
+
+  const Tensor* out1_task0 = ctx0.mutable_output(1);
+  const Tensor* out1_task1 = ctx1.mutable_output(1);
+  ASSERT_NE(out1_task0, nullptr);
+  ASSERT_NE(out1_task1, nullptr);
+  EXPECT_EQ(out1_task0->shape(), TensorShape({1, 3}));
+  EXPECT_EQ(out1_task1->shape(), TensorShape({1, 3}));
+  EXPECT_FALSE(out1_task0->SharesBufferWith(combined_unaligned));
+  EXPECT_FALSE(out1_task1->SharesBufferWith(combined_unaligned));
+  for (int i = 0; i < 3; ++i) {
+    EXPECT_EQ(out1_task0->flat<qint8>()(i).value, 10 + i) << "at i=" << i;
+    EXPECT_EQ(out1_task1->flat<qint8>()(i).value, 20 + i) << "at i=" << i;
+  }
+}
+
+TEST(SplitOutputTensorsTest, SlicesWhenPaddingIsAtMostTaskRows) {
+  // A lone task runs after the batch timeout, in a batch padded from one row to
+  // two. The padding is no larger than the task rows, so the task gets
+  // zero-copy slices of its own row, which also keep the padding row alive.
+  Tensor input_tensor(DataType::DT_FLOAT, TensorShape({1, 4}));
+  input_tensor.flat<float>().setZero();
+
+  // Output 0: each row is 16 floats (64 bytes), a multiple of
+  // `EIGEN_MAX_ALIGN_BYTES`, so both rows start at aligned addresses.
+  Tensor combined_aligned(DataType::DT_FLOAT, TensorShape({2, 16}));
+  auto aligned_mat = combined_aligned.matrix<float>();
+  for (int i = 0; i < 16; ++i) {
+    aligned_mat(0, i) = 100.0f + i;
+    aligned_mat(1, i) = 200.0f + i;
+  }
+
+  // Output 1: the padding row starts 12 bytes into the buffer, which is not
+  // aligned to `EIGEN_MAX_ALIGN_BYTES`. No task receives the padding row, so it
+  // does not force a copy.
+  Tensor combined_unaligned_padding(DataType::DT_FLOAT, TensorShape({2, 3}));
+  auto unaligned_mat = combined_unaligned_padding.matrix<float>();
+  for (int i = 0; i < 3; ++i) {
+    unaligned_mat(0, i) = 10.0f + i;
+    unaligned_mat(1, i) = 20.0f + i;
+  }
+
+  BatchRunner runner({input_tensor},
+                     {combined_aligned, combined_unaligned_padding},
+                     /*intra_op_parallelism_threads=*/0,
+                     /*batch_timeout_micros=*/1000);
+  OpKernelContext ctx(runner.params());
+  runner.RunBatch({&ctx});
+  TF_ASSERT_OK(ctx.status());
+
+  const Tensor* out0 = ctx.mutable_output(0);
+  ASSERT_NE(out0, nullptr);
+  EXPECT_EQ(out0->shape(), TensorShape({1, 16}));
+  EXPECT_EQ(out0->tensor_data().data(), combined_aligned.tensor_data().data());
+  for (int i = 0; i < 16; ++i) {
+    EXPECT_FLOAT_EQ(out0->flat<float>()(i), 100.0f + i) << "at i=" << i;
+  }
+
+  const Tensor* out1 = ctx.mutable_output(1);
+  ASSERT_NE(out1, nullptr);
+  EXPECT_EQ(out1->shape(), TensorShape({1, 3}));
+  EXPECT_EQ(out1->tensor_data().data(),
+            combined_unaligned_padding.tensor_data().data());
+  for (int i = 0; i < 3; ++i) {
+    EXPECT_FLOAT_EQ(out1->flat<float>()(i), 10.0f + i) << "at i=" << i;
+  }
+}
+
+TEST(SplitOutputTensorsTest, CopiesWhenPaddingExceedsTaskRows) {
+  // A lone task runs after the batch timeout, in a batch padded from one row to
+  // four. The padding is larger than the task rows, so the task gets a copy of
+  // its own row that does not share the batched buffer.
+  Tensor input_tensor(DataType::DT_FLOAT, TensorShape({1, 4}));
+  input_tensor.flat<float>().setZero();
+
+  // Each row is 16 floats (64 bytes), a multiple of `EIGEN_MAX_ALIGN_BYTES`, so
+  // every row starts at an aligned address.
+  Tensor combined(DataType::DT_FLOAT, TensorShape({4, 16}));
+  auto mat = combined.matrix<float>();
+  for (int row = 0; row < 4; ++row) {
+    for (int i = 0; i < 16; ++i) {
+      mat(row, i) = 100.0f * (row + 1) + i;
+    }
+  }
+
+  BatchRunner runner({input_tensor}, {combined},
+                     /*intra_op_parallelism_threads=*/0,
+                     /*batch_timeout_micros=*/1000);
+  OpKernelContext ctx(runner.params());
+  runner.RunBatch({&ctx});
+  TF_ASSERT_OK(ctx.status());
+
+  const Tensor* out = ctx.mutable_output(0);
+  ASSERT_NE(out, nullptr);
+  EXPECT_EQ(out->shape(), TensorShape({1, 16}));
+  EXPECT_FALSE(out->SharesBufferWith(combined));
+  for (int i = 0; i < 16; ++i) {
+    EXPECT_FLOAT_EQ(out->flat<float>()(i), 100.0f + i) << "at i=" << i;
+  }
+}
+
+// Returns `num_tensors` float tensors of shape [`dim0`, `dim1`] filled with
+// `value`.
+std::vector<Tensor> MakeFloatTensors(int num_tensors, int64_t dim0,
+                                     int64_t dim1, float value) {
+  std::vector<Tensor> tensors;
+  tensors.reserve(num_tensors);
+  for (int i = 0; i < num_tensors; ++i) {
+    tensors.emplace_back(DataType::DT_FLOAT, TensorShape({dim0, dim1}));
+    tensors.back().flat<float>().setConstant(value);
+  }
+  return tensors;
+}
+
+// `test_benchmark.h` provides `BENCHMARK` and `::testing::benchmark::State`
+// without re-exporting the headers that define them. `misc-include-cleaner`
+// asks for those headers instead, but the one it suggests for `BENCHMARK` does
+// not exist in the benchmark library that open-source TensorFlow builds with.
+// NOLINTBEGIN(misc-include-cleaner)
+void BM_SplitOutputTensorsBs2(::testing::benchmark::State& state) {
+  const int64_t bytes_per_req = state.range(0);
+  BatchRunner runner(
+      /*inputs=*/MakeFloatTensors(1, /*dim0=*/1, /*dim1=*/16, 0.0f),
+      /*combined_outputs=*/
+      MakeFloatTensors(1, /*dim0=*/2, bytes_per_req / sizeof(float), 1.0f),
+      /*intra_op_parallelism_threads=*/16);
+  for (auto s : state) {
+    runner.RunBatchAndDiscardOutputs();
+  }
+  state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * 2 *
+                          bytes_per_req);
+}
+
+BENCHMARK(BM_SplitOutputTensorsBs2)
+    ->UseRealTime()
+    ->MeasureProcessCPUTime()
+    ->Arg(65536)
+    ->Arg(1048576)
+    ->Arg(12824576);
+
+void BM_ConcatInputTensorsBs2(::testing::benchmark::State& state) {
+  const int64_t bytes_per_req = state.range(0);
+  constexpr int kNumInputs = 20;
+  BatchRunner runner(
+      /*inputs=*/MakeFloatTensors(kNumInputs, /*dim0=*/1,
+                                  bytes_per_req / sizeof(float), 1.0f),
+      /*combined_outputs=*/MakeFloatTensors(1, /*dim0=*/2, /*dim1=*/16, 0.0f),
+      /*intra_op_parallelism_threads=*/16);
+  for (auto s : state) {
+    runner.RunBatchAndDiscardOutputs();
+  }
+  state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * 2 *
+                          kNumInputs * bytes_per_req);
+}
+
+BENCHMARK(BM_ConcatInputTensorsBs2)
+    ->UseRealTime()
+    ->MeasureProcessCPUTime()
+    ->Arg(8192)
+    ->Arg(12288)
+    ->Arg(16384)
+    ->Arg(32768);
+
+// Batches and unbatches a function with many inputs and outputs: 20 inputs of
+// 24 KB and 62 outputs of about 202 KB per request.
+void BM_BatchResourceManyTensorsBs2EndToEnd(
+    ::testing::benchmark::State& state) {
+  constexpr int kNumInputs = 20;
+  constexpr int64_t kInputFloatsPerTensor = 6144;  // 24 KB/req, 48 KB/batch
+  constexpr int kNumOutputs = 62;
+  // ~202 KB/req (~12.23 MB total)
+  constexpr int64_t kOutputFloatsPerTensor = 51712;
+  BatchRunner runner(
+      /*inputs=*/MakeFloatTensors(kNumInputs, /*dim0=*/1, kInputFloatsPerTensor,
+                                  1.0f),
+      /*combined_outputs=*/
+      MakeFloatTensors(kNumOutputs, /*dim0=*/2, kOutputFloatsPerTensor, 2.0f),
+      /*intra_op_parallelism_threads=*/16);
+  for (auto s : state) {
+    runner.RunBatchAndDiscardOutputs();
+  }
+  const int64_t total_bytes_per_batch = 2 *
+                                        (kNumInputs * kInputFloatsPerTensor +
+                                         kNumOutputs * kOutputFloatsPerTensor) *
+                                        sizeof(float);
+  state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) *
+                          total_bytes_per_batch);
+}
+
+BENCHMARK(BM_BatchResourceManyTensorsBs2EndToEnd)
+    ->UseRealTime()
+    ->MeasureProcessCPUTime();
+// NOLINTEND(misc-include-cleaner)
 
 }  // namespace
 }  // namespace serving

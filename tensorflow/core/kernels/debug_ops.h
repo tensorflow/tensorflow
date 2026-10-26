@@ -34,11 +34,13 @@ limitations under the License.
 #include "tensorflow/core/platform/rocm.h"
 #endif
 
+#include "absl/status/status.h"
 #include "absl/synchronization/notification.h"
 #include "tensorflow/core/debug/debug_io_utils.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_util.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/util/debug_events_writer.h"
 
@@ -499,51 +501,71 @@ typedef Eigen::GpuDevice GPUDevice;
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 template <typename Tin, typename Tout>
 struct CurtHealthLaunch {
-  void Run(const GPUDevice& d, const Tin* data, int size, Tout output[1]);
+  absl::Status Run(const GPUDevice& d, const Tin* data, int64_t size,
+                   Tout output[1]);
 };
 
 extern template struct CurtHealthLaunch<Eigen::half, float>;
 extern template struct CurtHealthLaunch<float, float>;
 extern template struct CurtHealthLaunch<double, float>;
+extern template struct CurtHealthLaunch<int16_t, float>;
+extern template struct CurtHealthLaunch<int32_t, float>;
 extern template struct CurtHealthLaunch<Eigen::half, double>;
 extern template struct CurtHealthLaunch<float, double>;
 extern template struct CurtHealthLaunch<double, double>;
+extern template struct CurtHealthLaunch<int16_t, double>;
+extern template struct CurtHealthLaunch<int32_t, double>;
 
 template <typename Tin, typename Tout>
 struct ConciseHealthLaunch {
-  void Run(const GPUDevice& d, const Tin* data, int size, Tout output[3]);
+  absl::Status Run(const GPUDevice& d, const Tin* data, int64_t size,
+                   Tout output[3]);
 };
 
 extern template struct ConciseHealthLaunch<Eigen::half, float>;
 extern template struct ConciseHealthLaunch<float, float>;
 extern template struct ConciseHealthLaunch<double, float>;
+extern template struct ConciseHealthLaunch<int16_t, float>;
+extern template struct ConciseHealthLaunch<int32_t, float>;
 extern template struct ConciseHealthLaunch<Eigen::half, double>;
 extern template struct ConciseHealthLaunch<float, double>;
 extern template struct ConciseHealthLaunch<double, double>;
+extern template struct ConciseHealthLaunch<int16_t, double>;
+extern template struct ConciseHealthLaunch<int32_t, double>;
 
 template <typename Tin, typename Tout>
 struct FullHealthLaunch {
-  void Run(const GPUDevice& d, const Tin* data, int size, Tout output[6]);
+  absl::Status Run(const GPUDevice& d, const Tin* data, int64_t size,
+                   Tout output[6]);
 };
 
 extern template struct FullHealthLaunch<Eigen::half, float>;
 extern template struct FullHealthLaunch<float, float>;
 extern template struct FullHealthLaunch<double, float>;
+extern template struct FullHealthLaunch<int16_t, float>;
+extern template struct FullHealthLaunch<int32_t, float>;
 extern template struct FullHealthLaunch<Eigen::half, double>;
 extern template struct FullHealthLaunch<float, double>;
 extern template struct FullHealthLaunch<double, double>;
+extern template struct FullHealthLaunch<int16_t, double>;
+extern template struct FullHealthLaunch<int32_t, double>;
 
 template <typename Tin, typename Tout>
 struct ReduceInfNanThreeSlotsLaunch {
-  void Run(const GPUDevice& d, const Tin* data, int size, Tout output[3]);
+  absl::Status Run(const GPUDevice& d, const Tin* data, int64_t size,
+                   Tout output[3]);
 };
 
 extern template struct ReduceInfNanThreeSlotsLaunch<Eigen::half, float>;
 extern template struct ReduceInfNanThreeSlotsLaunch<float, float>;
 extern template struct ReduceInfNanThreeSlotsLaunch<double, float>;
+extern template struct ReduceInfNanThreeSlotsLaunch<int16_t, float>;
+extern template struct ReduceInfNanThreeSlotsLaunch<int32_t, float>;
 extern template struct ReduceInfNanThreeSlotsLaunch<Eigen::half, double>;
 extern template struct ReduceInfNanThreeSlotsLaunch<float, double>;
 extern template struct ReduceInfNanThreeSlotsLaunch<double, double>;
+extern template struct ReduceInfNanThreeSlotsLaunch<int16_t, double>;
+extern template struct ReduceInfNanThreeSlotsLaunch<int32_t, double>;
 
 #endif
 
@@ -747,6 +769,7 @@ class DebugNumericSummaryV2Op<GPUDevice, Tin, Tout> : public AsyncOpKernel {
   }
 
   void ComputeAsync(OpKernelContext* context, DoneCallback done) override {
+    auto cleanup = gtl::MakeCleanup([&done]() { done(); });
     Tensor* output_tensor;
     Tout tensor_id = static_cast<Tout>(tensor_id_);
     const Tensor& tensor = context->input(0);
@@ -764,124 +787,147 @@ class DebugNumericSummaryV2Op<GPUDevice, Tin, Tout> : public AsyncOpKernel {
                                   "(2^",
                                   std::numeric_limits<Tout>::digits,
                                   "). Given tensor_id:", tensor_id_),
-          done);
+          []() {});
     }
 
     if (tensor_debug_mode_ == 2) {  // CURT_HEALTH.
       TensorShape shape({2});
-      OP_REQUIRES_OK(context,
-                     context->allocate_output(0, shape, &output_tensor));
+      OP_REQUIRES_OK_ASYNC(
+          context, context->allocate_output(0, shape, &output_tensor), []() {});
 
       auto* stream = context->op_device_context()->stream();
       OP_REQUIRES_ASYNC(context, stream != nullptr,
-                        absl::InternalError("No GPU stream available."), done);
+                        absl::InternalError("No GPU stream available."),
+                        []() {});
 
       stream_executor::DeviceAddressBase output_tensor_ptr(
           output_tensor->flat<Tout>().data(),
           output_tensor->flat<Tout>().size());
-      OP_REQUIRES_OK(context,
-                     stream->MemZero(&output_tensor_ptr, 2 * sizeof(Tout)));
+      OP_REQUIRES_OK_ASYNC(
+          context, stream->MemZero(&output_tensor_ptr, 2 * sizeof(Tout)),
+          []() {});
       // Copy tensor_id to slot zero
-      OP_REQUIRES_OK(context, stream->Memcpy(&output_tensor_ptr, &tensor_id,
-                                             sizeof(Tout)));
+      OP_REQUIRES_OK_ASYNC(
+          context, stream->Memcpy(&output_tensor_ptr, &tensor_id, sizeof(Tout)),
+          []() {});
       if (num_elem == 0) {
-        done();
         return;
       }
 
       // Call the GPU kernels for the numerical (inf/nan) checks.
       auto input = context->input(0).flat<Tin>();
-      CurtHealthLaunch<Tin, Tout>().Run(d, input.data(), input.size(),
-                                        output_tensor->flat<Tout>().data() + 1);
+      absl::Status status = CurtHealthLaunch<Tin, Tout>().Run(
+          d, input.data(), input.size(),
+          output_tensor->flat<Tout>().data() + 1);
+      if (!status.ok()) {
+        context->SetStatus(status);
+      }
 
+      cleanup.release();
       context->device()
           ->tensorflow_accelerator_device_info()
           ->event_mgr->ThenExecute(stream, std::move(check_cb));
     } else if (tensor_debug_mode_ == 3) {  // CONCISE_HEALTH.
       TensorShape shape({5});
-      OP_REQUIRES_OK(context,
-                     context->allocate_output(0, shape, &output_tensor));
+      OP_REQUIRES_OK_ASYNC(
+          context, context->allocate_output(0, shape, &output_tensor), []() {});
       OP_REQUIRES_ASYNC(context, !tensorflow::OpDeterminismRequired(),
                         absl::UnimplementedError(
                             "Determinism is not yet supported for "
                             "DebugNumericSummaryV2 when tensor_debug_mode is "
                             "CONCISE_HEALTH."),
-                        done);
+                        []() {});
 
       auto* stream = context->op_device_context()->stream();
       OP_REQUIRES_ASYNC(context, stream != nullptr,
-                        absl::InternalError("No GPU stream available."), done);
+                        absl::InternalError("No GPU stream available."),
+                        []() {});
 
       stream_executor::DeviceAddressBase output_tensor_ptr(
           output_tensor->flat<Tout>().data(),
           output_tensor->flat<Tout>().size());
-      OP_REQUIRES_OK(context,
-                     stream->Memset32(&output_tensor_ptr, 0, 5 * sizeof(Tout)));
+      OP_REQUIRES_OK_ASYNC(
+          context, stream->Memset32(&output_tensor_ptr, 0, 5 * sizeof(Tout)),
+          []() {});
       const Tout static_output[] = {tensor_id, num_elem};
-      OP_REQUIRES_OK(context, stream->Memcpy(&output_tensor_ptr, &static_output,
-                                             2 * sizeof(Tout)));
+      OP_REQUIRES_OK_ASYNC(
+          context,
+          stream->Memcpy(&output_tensor_ptr, &static_output, 2 * sizeof(Tout)),
+          []() {});
       if (num_elem == 0) {
-        done();
         return;
       }
 
       // Call the GPU kernels for the numerical (inf/nan) checks.
-      ConciseHealthLaunch<Tin, Tout>().Run(
+      absl::Status status = ConciseHealthLaunch<Tin, Tout>().Run(
           d, input.data(), input.size(),
           output_tensor->flat<Tout>().data() + 2);
+      if (!status.ok()) {
+        context->SetStatus(status);
+      }
 
+      cleanup.release();
       context->device()
           ->tensorflow_accelerator_device_info()
           ->event_mgr->ThenExecute(stream, std::move(check_cb));
     } else if (tensor_debug_mode_ == 4) {  // FULL HEALTH
       TensorShape shape({11});
-      OP_REQUIRES_OK(context,
-                     context->allocate_output(0, shape, &output_tensor));
+      OP_REQUIRES_OK_ASYNC(
+          context, context->allocate_output(0, shape, &output_tensor), []() {});
 
       auto* stream = context->op_device_context()->stream();
       OP_REQUIRES_ASYNC(context, stream != nullptr,
-                        absl::InternalError("No GPU stream available."), done);
+                        absl::InternalError("No GPU stream available."),
+                        []() {});
       OP_REQUIRES_ASYNC(context, !tensorflow::OpDeterminismRequired(),
                         absl::UnimplementedError(
                             "Determinism is not yet supported for "
                             "DebugNumericSummaryV2 when tensor_debug_mode is "
                             "FULL_HEALTH."),
-                        done);
+                        []() {});
 
       stream_executor::DeviceAddressBase output_tensor_ptr(
           output_tensor->flat<Tout>().data(),
           output_tensor->flat<Tout>().size());
-      OP_REQUIRES_OK(
-          context, stream->Memset32(&output_tensor_ptr, 0, 11 * sizeof(Tout)));
+      OP_REQUIRES_OK_ASYNC(
+          context, stream->Memset32(&output_tensor_ptr, 0, 11 * sizeof(Tout)),
+          []() {});
 
       int num_dims = tensor.dims();
       const Tout static_output[] = {tensor_id,
                                     -1.0,  // TODO(144919262): Device ID
                                     static_cast<Tout>(tensor.dtype()),
                                     static_cast<Tout>(num_dims), num_elem};
-      OP_REQUIRES_OK(context, stream->Memcpy(&output_tensor_ptr, &static_output,
-                                             5 * sizeof(Tout)));
+      OP_REQUIRES_OK_ASYNC(
+          context,
+          stream->Memcpy(&output_tensor_ptr, &static_output, 5 * sizeof(Tout)),
+          []() {});
       if (num_elem == 0) {
-        done();
         return;
       }
 
       // Call the GPU kernels for the numerical (inf/nan) checks and
       // pos/neg/zero counts.
-      FullHealthLaunch<Tin, Tout>().Run(d, input.data(), input.size(),
-                                        output_tensor->flat<Tout>().data() + 5);
+      absl::Status status = FullHealthLaunch<Tin, Tout>().Run(
+          d, input.data(), input.size(),
+          output_tensor->flat<Tout>().data() + 5);
+      if (!status.ok()) {
+        context->SetStatus(status);
+      }
 
+      cleanup.release();
       context->device()
           ->tensorflow_accelerator_device_info()
           ->event_mgr->ThenExecute(stream, std::move(check_cb));
     } else if (tensor_debug_mode_ == 5) {  // SHAPE
       TensorShape shape({10});
-      OP_REQUIRES_OK(context,
-                     context->allocate_output(0, shape, &output_tensor));
+      OP_REQUIRES_OK_ASYNC(
+          context, context->allocate_output(0, shape, &output_tensor), []() {});
 
       auto* stream = context->op_device_context()->stream();
       OP_REQUIRES_ASYNC(context, stream != nullptr,
-                        absl::InternalError("No GPU stream available."), done);
+                        absl::InternalError("No GPU stream available."),
+                        []() {});
 
       stream_executor::DeviceAddressBase output_tensor_ptr(
           output_tensor->flat<Tout>().data(),
@@ -904,37 +950,45 @@ class DebugNumericSummaryV2Op<GPUDevice, Tin, Tout> : public AsyncOpKernel {
         static_output[dim_idx++] = static_cast<Tout>(tensor.dim_size(i));
       }
       // Write to device stream
-      OP_REQUIRES_OK(context, stream->Memcpy(&output_tensor_ptr, &static_output,
-                                             sizeof(Tout) * 10));
+      OP_REQUIRES_OK_ASYNC(
+          context,
+          stream->Memcpy(&output_tensor_ptr, &static_output, sizeof(Tout) * 10),
+          []() {});
+      cleanup.release();
       context->device()
           ->tensorflow_accelerator_device_info()
           ->event_mgr->ThenExecute(stream, std::move(check_cb));
     } else if (tensor_debug_mode_ == 8) {  // REDUCE_INF_NAN_THREE_SLOTS.
       TensorShape shape({3});
-      OP_REQUIRES_OK(context,
-                     context->allocate_output(0, shape, &output_tensor));
+      OP_REQUIRES_OK_ASYNC(
+          context, context->allocate_output(0, shape, &output_tensor), []() {});
 
       auto* stream = context->op_device_context()->stream();
       OP_REQUIRES_ASYNC(context, stream != nullptr,
-                        absl::InternalError("No GPU stream available."), done);
+                        absl::InternalError("No GPU stream available."),
+                        []() {});
 
       stream_executor::DeviceAddressBase output_tensor_ptr(
           output_tensor->flat<Tout>().data(),
           output_tensor->flat<Tout>().size());
-      OP_REQUIRES_OK(
+      OP_REQUIRES_OK_ASYNC(
           context,
           stream->Memset32(&output_tensor_ptr, 0,
-                           output_tensor->flat<Tout>().size() * sizeof(Tout)));
+                           output_tensor->flat<Tout>().size() * sizeof(Tout)),
+          []() {});
       if (num_elem == 0) {
-        done();
         return;
       }
 
       // Call the GPU kernels for the numerical (inf/nan) checks.
       auto input = context->input(0).flat<Tin>();
-      ReduceInfNanThreeSlotsLaunch<Tin, Tout>().Run(
+      absl::Status status = ReduceInfNanThreeSlotsLaunch<Tin, Tout>().Run(
           d, input.data(), input.size(), output_tensor->flat<Tout>().data());
+      if (!status.ok()) {
+        context->SetStatus(status);
+      }
 
+      cleanup.release();
       context->device()
           ->tensorflow_accelerator_device_info()
           ->event_mgr->ThenExecute(stream, std::move(check_cb));
@@ -942,7 +996,6 @@ class DebugNumericSummaryV2Op<GPUDevice, Tin, Tout> : public AsyncOpKernel {
       // TODO(cais): Implement other tensor debug modes in debug_event.proto.
       context->SetStatus(absl::UnimplementedError(absl::StrCat(
           "Unimplemented tensor debug mode: ", tensor_debug_mode_)));
-      done();
     }
   }
 

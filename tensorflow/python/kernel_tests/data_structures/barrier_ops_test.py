@@ -23,7 +23,9 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.platform import test
 
 
@@ -65,6 +67,48 @@ class BarrierTest(test.TestCase):
       """, b.barrier_ref.op.node_def)
 
   @test_util.run_deprecated_v1
+  def testInsertManyShapeMismatch(self):
+    with self.cached_session() as sess:
+      b = data_flow_ops.Barrier(
+          (dtypes.float32,), shapes=((),), shared_name="B"
+      )
+      sess.run(b.barrier_ref)
+      keys = array_ops.placeholder_with_default(["k1", "k2"], shape=None)
+      values = array_ops.placeholder_with_default([1.0], shape=None)
+      with self.assertRaisesRegex(
+          errors_impl.InvalidArgumentError,
+          "keys and values must have the same batch size",
+      ):
+        sess.run(b.insert_many(0, keys, values))
+
+  @test_util.run_deprecated_v1
+  def testInsertManyNegativeComponentIndex(self):
+    with self.cached_session() as sess:
+      b = data_flow_ops.Barrier(
+          (dtypes.float32,), shapes=((),), shared_name="B"
+      )
+      sess.run(b.barrier_ref)
+      with self.assertRaisesRegex(
+          (ValueError, errors_impl.InvalidArgumentError),
+          "component_index must be >= 0",
+      ):
+        sess.run(b.insert_many(-1, ["k1"], [1.0]))
+
+  @test_util.run_deprecated_v1
+  def testInsertManyNonVectorKeys(self):
+    with self.cached_session() as sess:
+      b = data_flow_ops.Barrier(
+          (dtypes.float32,), shapes=((),), shared_name="B"
+      )
+      sess.run(b.barrier_ref)
+      keys = array_ops.placeholder_with_default([["k1"]], shape=None)
+      values = array_ops.placeholder_with_default([[1.0]], shape=None)
+      with self.assertRaisesRegex(
+          errors_impl.InvalidArgumentError, "keys must be 1-D"
+      ):
+        sess.run(b.insert_many(0, keys, values))
+
+  @test_util.run_deprecated_v1
   def testInsertMany(self):
     with self.cached_session():
       b = data_flow_ops.Barrier(
@@ -101,6 +145,29 @@ class BarrierTest(test.TestCase):
       with self.assertRaisesOpError(
           ".*Tensors with no elements are not supported.*"):
         insert_0_op.run()
+
+  @test_util.run_deprecated_v1
+  def testTakeManyNegativeNumElements(self):
+    # Test case for GitHub issue 112742. A negative num_elements reached the
+    # underlying queue, which built an output shape with a negative dimension
+    # and aborted the process. The raw op is used here because Barrier.take_many
+    # rejects a negative count while building the graph, before the kernel runs.
+    with self.cached_session() as sess:
+      b = data_flow_ops.Barrier(
+          (dtypes.float32, dtypes.float32), shapes=((), ()), name="B"
+      )
+      keys = [b"a", b"b"]
+      insert_0_op = b.insert_many(0, keys, [10.0, 20.0])
+      insert_1_op = b.insert_many(1, keys, [100.0, 200.0])
+      sess.run([insert_0_op, insert_1_op])
+      take_t = gen_data_flow_ops.barrier_take_many(
+          b.barrier_ref,
+          -1,
+          (dtypes.float32, dtypes.float32),
+          allow_small_batch=False,
+      )
+      with self.assertRaisesOpError("requested -1 < 0 elements"):
+        sess.run(take_t)
 
   @test_util.run_deprecated_v1
   def testTakeMany(self):

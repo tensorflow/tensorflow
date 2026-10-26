@@ -49,7 +49,8 @@ struct CollectiveParams {
       absl::Span<se::Stream* const> async_streams,
       LocalDeviceId local_device_id, int64_t collective_max_nchannels = 0,
       int64_t p2p_max_nchannels = 0,
-      bool collective_use_minimal_resource = false);
+      bool collective_use_minimal_resource = false,
+      bool nccl_window_symmetric = false);
 
   GpuCollectives* collectives;
   se::StreamExecutor* executor;
@@ -75,6 +76,7 @@ struct CollectiveParams {
   int local_device_count = 0;
   bool need_barrier = false;
   bool collective_use_minimal_resource;
+  bool nccl_window_symmetric = false;
 
  private:
   CollectiveParams(
@@ -86,7 +88,8 @@ struct CollectiveParams {
       const CliqueIdCallback* clique_id_callback,
       const absl::flat_hash_map<GlobalDeviceId, IncarnationId>* incarnations,
       int64_t collective_max_nchannels, int64_t p2p_max_nchannels,
-      int local_device_count, bool collective_use_minimal_resource);
+      int local_device_count, bool collective_use_minimal_resource,
+      bool nccl_window_symmetric = false);
 };
 
 // The type of a kernel argument used by a collective kernel.
@@ -165,9 +168,6 @@ struct CollectiveCodegenConfig {
   // buffer before kernel launch. The kernel receives the scratch buffer as
   // its input argument.
   bool copy_input_to_scratch = false;
-  // If true, a cross-rank barrier is emitted before the tile loop. The barrier
-  // waits until all ranks have populated the symmetric scratch buffers.
-  bool emit_entry_barrier = false;
   // Specs for input operand buffers.
   std::vector<IoBufferSpec> input_buffer_specs;
   // Specs for output result buffers.
@@ -178,6 +178,17 @@ struct CollectiveCodegenConfig {
   // this amount. For one-shot collectives, this is 1. For two-shot collectives,
   // this is 2 and so on.
   uint32_t sync_count_increment = 1;
+  // If true, the kernel derives its barrier signal value from device memory and
+  // ignores the host-provided invocation count argument, so the runtime does
+  // not advance the host-side count. Each block reads the last signal value it
+  // posted from its own barrier slot (`SignalBuffers[rank][block_id *
+  // world_size + rank]`) in the local rank's signal buffer (scratch buffer 0),
+  // which `BlockBarrierOp` updates on every barrier synchronization. The signal
+  // buffer is zeroed only once, when the thunk is initialized, so the counter
+  // persists across executions and kernels can be replayed from CUDA graphs
+  // (including device-side loops) without updating their arguments. False only
+  // for legacy kernels that read the invocation count argument.
+  bool device_sync_count = true;
 };
 
 // This structure contains the information required to configure and launch a

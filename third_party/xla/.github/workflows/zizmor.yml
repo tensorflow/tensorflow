@@ -33,9 +33,10 @@ jobs:
           persist-credentials: false
 
       - name: Install uv dependencies
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
 
       - name: Run zizmor
-        run:  uvx zizmor --format=github .github xla
+        # Pinned version; bumped on a regular schedule by the XLA zizmor release monitor.
+        run:  uvx zizmor@1.31.1 --format=github .github xla
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

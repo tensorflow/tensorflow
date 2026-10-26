@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"
+#include "tsl/platform/platform.h"
 
 namespace xla::gpu {
 namespace {
@@ -79,8 +80,8 @@ class CommandBufferAsyncConversionTest : public testing::Test {
       // Memset thunks are not eligible for conversion in this pass.
       body.Emplace<Memset32BitValueThunk>(Info(), 0, slice_);
     }
-    auto start =
-        std::make_unique<AsyncStartThunk>(Info(), stream, std::move(body));
+    auto start = std::make_unique<AsyncStartThunk>(
+        Info(), stream, std::move(body), /*devices_per_host=*/1);
     auto* result = start.get();
     thunks.push_back(std::move(start));
     return result;
@@ -93,7 +94,7 @@ class CommandBufferAsyncConversionTest : public testing::Test {
   WhileThunk* Loop(ThunkSequence& thunks, ThunkSequence body) {
     auto loop = std::make_unique<WhileThunk>(
         Info(), BufferAllocation::Slice(&allocation_, 0, 1), ThunkSequence{},
-        std::move(body), /*trip_count=*/1);
+        std::move(body), /*trip_count=*/1, /*devices_per_host=*/1);
     auto* result = loop.get();
     thunks.push_back(std::move(loop));
     return result;
@@ -114,8 +115,8 @@ class CommandBufferAsyncConversionTest : public testing::Test {
     options.set_xla_gpu_command_buffer_scheduling_mode(DebugOptions::LHS);
     se::DeviceDescription device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
     RejectingAllocator allocator;
-    return CommandBufferConversionPass("test").Run(
-        &thunks, options, /*hlo_module=*/nullptr, device, allocator);
+    return CommandBufferConversionPass("test", /*devices_in_process=*/1)
+        .Run(&thunks, options, /*hlo_module=*/nullptr, device, allocator);
   }
 
   BufferAllocation allocation_{0, sizeof(int32_t), 0};
@@ -419,15 +420,15 @@ TEST_F(CommandBufferAsyncConversionTest, DuplicateOutstandingStart) {
   // The runtime permits only one outstanding start per AsyncExecution, so this
   // sequence can never execute. Debug builds catch it in the pass; optimized
   // builds leave the region as thunks and still capture the trailing command.
-#ifndef NDEBUG
-  EXPECT_DEATH(Convert(thunks).IgnoreError(), "started twice");
-#else
-  ASSERT_OK_AND_ASSIGN(bool changed, Convert(thunks));
-  EXPECT_TRUE(changed);
-  EXPECT_THAT(thunks, ThunkKindsAre(Thunk::kAsyncStart, Thunk::kAsyncStart,
-                                    Thunk::kAsyncDone, Thunk::kAsyncDone,
-                                    Thunk::kCommandBuffer));
-#endif
+  if constexpr (tsl::kIsDebugBuild) {
+    EXPECT_DEATH(Convert(thunks).IgnoreError(), "started twice");
+  } else {
+    ASSERT_OK_AND_ASSIGN(bool changed, Convert(thunks));
+    EXPECT_TRUE(changed);
+    EXPECT_THAT(thunks, ThunkKindsAre(Thunk::kAsyncStart, Thunk::kAsyncStart,
+                                      Thunk::kAsyncDone, Thunk::kAsyncDone,
+                                      Thunk::kCommandBuffer));
+  }
 }
 
 }  // namespace

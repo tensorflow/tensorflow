@@ -2768,6 +2768,117 @@ TEST(ConvPrepareSecurityTest, RejectsShapeOverflow) {
   registration->free(&context, node.user_data);
 }
 
+TEST(ConvPrepareSecurityTest, RejectsOutputColsOverflowWithoutIm2Col) {
+  // 1x1 stride-1 convolution does not require im2col, and out_height *
+  // out_width (32768 * 1) fits in 32-bit int, but batches * out_height *
+  // out_width (65536 * 32768 = 2^31) overflows 32-bit signed int.
+  IntArrayUniquePtr input_dims = BuildTfLiteArray<int>({65536, 32768, 1, 1});
+  IntArrayUniquePtr filter_dims = BuildTfLiteArray<int>({1, 1, 1, 1});
+  IntArrayUniquePtr bias_dims = BuildTfLiteArray<int>({1});
+  IntArrayUniquePtr output_dims = BuildTfLiteArray<int>(0);
+
+  TfLiteTensor tensors[4] = {};
+  tensors[0].type = kTfLiteFloat32;
+  tensors[0].dims = input_dims.get();
+  tensors[1].type = kTfLiteFloat32;
+  tensors[1].dims = filter_dims.get();
+  tensors[2].type = kTfLiteFloat32;
+  tensors[2].dims = bias_dims.get();
+  tensors[3].type = kTfLiteFloat32;
+  tensors[3].dims = output_dims.get();
+
+  IntArrayUniquePtr inputs = BuildTfLiteArray<int>({0, 1, 2});
+  IntArrayUniquePtr outputs = BuildTfLiteArray<int>({3});
+  TfLiteConvParams params = {};
+  params.padding = kTfLitePaddingSame;
+  params.stride_width = 1;
+  params.stride_height = 1;
+  params.dilation_width_factor = 1;
+  params.dilation_height_factor = 1;
+  params.activation = kTfLiteActNone;
+  params.quantized_bias_type = kTfLiteNoType;
+
+  DirectPrepareTestContextState state;
+  TfLiteContext context = {};
+  context.tensors_size = 4;
+  context.tensors = tensors;
+  context.impl_ = &state;
+  context.ResizeTensor = ResizeTensorShouldNotBeCalled;
+  context.ReportError = SilentReportError;
+  context.AddTensors = AddTensorsShouldNotBeCalled;
+  context.GetExternalContext = GetExternalContext;
+  context.SetExternalContext = SetExternalContext;
+
+  TfLiteNode node = {};
+  node.inputs = inputs.get();
+  node.outputs = outputs.get();
+  node.builtin_data = &params;
+
+  TfLiteRegistration* registration =
+      ops::builtin::Register_CONVOLUTION_GENERIC_OPT();
+  node.user_data = registration->init(&context, nullptr, 0);
+  EXPECT_EQ(registration->prepare(&context, &node), kTfLiteError);
+  EXPECT_FALSE(state.resize_tensor_called);
+  EXPECT_FALSE(state.add_tensors_called);
+  registration->free(&context, node.user_data);
+}
+
+TEST(ConvPrepareSecurityTest, RejectsInputElementOverflowWithStridedIm2Col) {
+  // With stride 4, output spatial dimensions (16384 * 8192) and im2col
+  // elements (16384 * 8192 * 2 * 2 = 536,870,912) fit in 32-bit int, but the
+  // input tensor (65536 * 32768 = 2^31) overflows 32-bit signed int offsets in
+  // im2col.
+  IntArrayUniquePtr input_dims = BuildTfLiteArray<int>({1, 65536, 32768, 1});
+  IntArrayUniquePtr filter_dims = BuildTfLiteArray<int>({1, 2, 2, 1});
+  IntArrayUniquePtr bias_dims = BuildTfLiteArray<int>({1});
+  IntArrayUniquePtr output_dims = BuildTfLiteArray<int>(0);
+
+  TfLiteTensor tensors[4] = {};
+  tensors[0].type = kTfLiteFloat32;
+  tensors[0].dims = input_dims.get();
+  tensors[1].type = kTfLiteFloat32;
+  tensors[1].dims = filter_dims.get();
+  tensors[2].type = kTfLiteFloat32;
+  tensors[2].dims = bias_dims.get();
+  tensors[3].type = kTfLiteFloat32;
+  tensors[3].dims = output_dims.get();
+
+  IntArrayUniquePtr inputs = BuildTfLiteArray<int>({0, 1, 2});
+  IntArrayUniquePtr outputs = BuildTfLiteArray<int>({3});
+  TfLiteConvParams params = {};
+  params.padding = kTfLitePaddingSame;
+  params.stride_width = 4;
+  params.stride_height = 4;
+  params.dilation_width_factor = 1;
+  params.dilation_height_factor = 1;
+  params.activation = kTfLiteActNone;
+  params.quantized_bias_type = kTfLiteNoType;
+
+  DirectPrepareTestContextState state;
+  TfLiteContext context = {};
+  context.tensors_size = 4;
+  context.tensors = tensors;
+  context.impl_ = &state;
+  context.ResizeTensor = ResizeTensorShouldNotBeCalled;
+  context.ReportError = SilentReportError;
+  context.AddTensors = AddTensorsShouldNotBeCalled;
+  context.GetExternalContext = GetExternalContext;
+  context.SetExternalContext = SetExternalContext;
+
+  TfLiteNode node = {};
+  node.inputs = inputs.get();
+  node.outputs = outputs.get();
+  node.builtin_data = &params;
+
+  TfLiteRegistration* registration =
+      ops::builtin::Register_CONVOLUTION_GENERIC_OPT();
+  node.user_data = registration->init(&context, nullptr, 0);
+  EXPECT_EQ(registration->prepare(&context, &node), kTfLiteError);
+  EXPECT_FALSE(state.resize_tensor_called);
+  EXPECT_FALSE(state.add_tensors_called);
+  registration->free(&context, node.user_data);
+}
+
 INSTANTIATE_TEST_SUITE_P(
     ConvolutionOpTest, ConvolutionOpTest,
     ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kKernelMap)));

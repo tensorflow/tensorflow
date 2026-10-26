@@ -21,6 +21,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -55,8 +56,10 @@ limitations under the License.
 #include "xla/core/collectives/reduction_kind.h"
 #include "xla/core/collectives/registered_memory.h"
 #include "xla/core/collectives/symmetric_memory.h"
+#include "xla/ffi/api/record_c_api.h"
 #include "xla/future.h"
 #include "xla/primitive_util.h"
+#include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/kernel_args.h"
 #include "xla/stream_executor/memory_allocation.h"
@@ -260,9 +263,11 @@ NcclCommunicator::CreateRegisteredMemory(se::DeviceAddressBase addr) {
 }
 
 absl::StatusOr<std::unique_ptr<SymmetricMemory>>
-NcclCommunicator::CreateSymmetricMemory(se::DeviceAddressBase addr) {
+NcclCommunicator::CreateSymmetricMemory(se::DeviceAddressBase addr,
+                                        bool symmetric_window) {
   return ExecuteAwait<std::unique_ptr<SymmetricMemory>>(
-      [this, addr]() -> absl::StatusOr<std::unique_ptr<SymmetricMemory>> {
+      [this, addr,
+       symmetric_window]() -> absl::StatusOr<std::unique_ptr<SymmetricMemory>> {
         XLA_VLOG_DEVICE(5, stream_executor_->device_ordinal())
             << "Creating symmetric memory for device address: "
             << addr.opaque();
@@ -271,7 +276,7 @@ NcclCommunicator::CreateSymmetricMemory(se::DeviceAddressBase addr) {
         }
 
         return NcclSymmetricMemory::Create(comm_, addr, executor_,
-                                           stream_executor_);
+                                           stream_executor_, symmetric_window);
       });
 }
 
@@ -327,17 +332,22 @@ NcclCommunicator::~NcclCommunicator() {
       return absl::OkStatus();
     }
 
+    // NcclCommunicator::ToString() acquires comm_->mutex, which is not
+    // reentrant, so we must not stream `*this` while holding that mutex.
+    // Get the string before locking.
+    const std::string description = ToString();
+
     // Note that we intentionally don't call PollUntilDone. Once comm_ has
     // been destroyed, we can no longer safely touch it.
     absl::MutexLock lock(comm_->mutex);
     if (comm_->comm == nullptr) {
       XLA_VLOG_DEVICE(1, stream_executor_->device_ordinal())
-          << "Skipping destruction; null comm " << *this;
+          << "Skipping destruction; null comm " << description;
       return absl::OkStatus();
     }
 
     XLA_VLOG_DEVICE(1, stream_executor_->device_ordinal())
-        << "Destroy " << *this;
+        << "Destroy " << description;
     return XLA_NCCL_STATUS(ncclCommDestroy(comm_->comm));
   };
 
@@ -619,6 +629,45 @@ absl::Status NcclCommunicator::LaunchBroadcast(
     ABSL_RETURN_IF_ERROR(XLA_NCCL_STATUS(ncclBroadcast(
         send_buffer.opaque(), recv_buffer.opaque(), ToNcclCount(dtype, count),
         nccl_dtype, root.value(), comm_->comm, AsCudaStream(stream))));
+  }
+  if (!IsInsideNcclGroupLaunch()) {
+    ABSL_RETURN_IF_ERROR(PollUntilDone());
+  }
+  return absl::OkStatus();
+}
+
+absl::Status NcclCommunicator::LaunchReduce(se::DeviceAddressBase send_buffer,
+                                            se::DeviceAddressBase recv_buffer,
+                                            PrimitiveType dtype, size_t count,
+                                            ReductionKind reduction_kind,
+                                            RankId root,
+                                            const Executor& executor) {
+  if (cancel_->IsCancelled()) {
+    return FailedPrecondition("NcclCommunicator aborted");
+  }
+  se::Stream* stream = ToStream(executor);
+
+  {
+    absl::MutexLock lock(comm_->mutex);
+    XLA_VLOG_DEVICE(3, stream->parent()->device_ordinal())
+        << absl::StreamFormat(
+               "Launch NCCL Reduce operation; send_buffer=%p; "
+               "recv_buffer=%p; dtype=%s; count=%d; reduction_kind=%v; "
+               "root=%d; comm=%p; stream=%p",
+               send_buffer.opaque(), recv_buffer.opaque(),
+               primitive_util::LowercasePrimitiveTypeName(dtype), count,
+               reduction_kind, root.value(), comm_->comm, stream);
+
+    ABSL_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype,
+                     ToNcclDataType(dtype, /*is_reduction_op=*/true,
+                                    stream->parent()
+                                        ->GetDeviceDescription()
+                                        .cuda_compute_capability()));
+
+    ABSL_RETURN_IF_ERROR(XLA_NCCL_STATUS(ncclReduce(
+        send_buffer.opaque(), recv_buffer.opaque(), ToNcclCount(dtype, count),
+        nccl_dtype, ToNcclReduction(reduction_kind), root.value(), comm_->comm,
+        AsCudaStream(stream))));
   }
   if (!IsInsideNcclGroupLaunch()) {
     ABSL_RETURN_IF_ERROR(PollUntilDone());
@@ -1088,36 +1137,129 @@ absl::Status NcclCommunicator::LaunchWaitSignals(
   return absl::OkStatus();
 }
 
-absl::Status NcclCommunicator::LaunchMultiGpuBarrier(const Executor& executor) {
-  if (!IsCrossDeviceBarrierInitiated()) {
+template <typename Fn>
+std::invoke_result_t<Fn, const NcclCommunicator::CrossDeviceBarrierParams&>
+NcclCommunicator::WithCrossDeviceBarrier(Fn&& fn) {
+  absl::MutexLock lock(barrier_mu_);
+  if (!is_cross_device_barrier_initiated_) {
     return FailedPrecondition(
         "Cross device barrier buffers are not set on this communicator. Did "
         "you set use_cross_device_barrier=true in BarrierRequirements?");
   }
-  absl::MutexLock lock(barrier_mu_);
   if (cancel_->IsCancelled()) {
     return FailedPrecondition("NcclCommunicator aborted");
   }
-  se::Stream* stream = ToStream(executor);
   ABSL_ASSIGN_OR_RETURN(size_t num_ranks, NumRanks());
   ABSL_ASSIGN_OR_RETURN(size_t current_rank, CurrentRank());
-
-  return xla::gpu::LaunchMultiGpuBarrierWithNccl(
-      stream, num_ranks, RankId(current_rank),
-      tied_cross_device_barrier_symmetric_memory_.Lock().get(),
-      tied_cross_device_barrier_signal_value_.Lock()->address());
+  auto sym_mem = tied_cross_device_barrier_symmetric_memory_.Lock();
+  auto signal_value = tied_cross_device_barrier_signal_value_.Lock();
+  if (sym_mem == nullptr || signal_value == nullptr) {
+    return FailedPrecondition(
+        "Cross device barrier buffers have been released on this communicator");
+  }
+  return fn(CrossDeviceBarrierParams{cross_device_barrier_kernel_, num_ranks,
+                                     RankId(current_rank), sym_mem.get(),
+                                     signal_value->address()});
 }
 
-void NcclCommunicator::InitializeCrossDeviceBarrier(
+absl::Status NcclCommunicator::LaunchMultiGpuBarrier(const Executor& executor) {
+  se::Stream* stream = ToStream(executor);
+  return WithCrossDeviceBarrier([&](const CrossDeviceBarrierParams& p) {
+    return xla::gpu::LaunchMultiGpuBarrierWithNccl(
+        stream, p.kernel, p.num_ranks, p.rank, p.sym_mem, p.signal_value);
+  });
+}
+
+absl::StatusOr<const XLA_FFI_Command*> NcclCommunicator::RecordMultiGpuBarrier(
+    xla::ffi::RecordContext& record_ctx,
+    const XLA_FFI_Command* absl_nullable cmd) {
+  return WithCrossDeviceBarrier([&](const CrossDeviceBarrierParams& p) {
+    return xla::gpu::RecordMultiGpuBarrierWithNccl(
+        p.kernel, record_ctx, p.num_ranks, p.rank, p.sym_mem, p.signal_value,
+        cmd);
+  });
+}
+
+absl::StatusOr<const se::CommandBuffer::Command*>
+NcclCommunicator::RecordMultiGpuBarrier(
+    se::CommandBuffer* command_buffer,
+    const se::CommandBuffer::Command* absl_nullable cmd,
+    absl::Span<const se::CommandBuffer::Command* const> dependencies) {
+  return WithCrossDeviceBarrier([&](const CrossDeviceBarrierParams& p) {
+    return xla::gpu::RecordMultiGpuBarrierWithNccl(
+        command_buffer, p.kernel, p.num_ranks, p.rank, p.sym_mem,
+        p.signal_value, cmd, dependencies);
+  });
+}
+
+absl::Status NcclCommunicator::InitializeCrossDeviceBarrier(
     tsl::TiedRef<se::MemoryAllocation> tied_signal_value,
     tsl::TiedRef<se::MemoryAllocation> tied_signal,
     tsl::TiedRef<SymmetricMemory> tied_symmetric_memory) {
   absl::MutexLock lock(barrier_mu_);
+  if (!cross_device_barrier_kernel_) {
+    ABSL_ASSIGN_OR_RETURN(
+        cross_device_barrier_kernel_,
+        xla::gpu::LoadMultiGpuBarrierWithNcclKernel(stream_executor_));
+  }
   is_cross_device_barrier_initiated_ = true;
   tied_cross_device_barrier_signal_value_ = std::move(tied_signal_value);
   tied_cross_device_barrier_signal_ = std::move(tied_signal);
   tied_cross_device_barrier_symmetric_memory_ =
       std::move(tied_symmetric_memory);
+  return absl::OkStatus();
+}
+
+absl::StatusOr<se::DeviceAddressBase> NcclCommunicator::GetCliqueSemaphore(
+    RankId peer_rank, int64_t collective_id) const {
+  absl::MutexLock lock(semaphore_mu_);
+  int device = stream_executor_->device_ordinal();
+
+  auto locked_sym = tied_clique_symmetric_memory_.Lock();
+  if (locked_sym == nullptr) {
+    return absl::NotFoundError(
+        absl::StrFormat("%sSymmetric memory is not initialized for clique of "
+                        "rank %d",
+                        xla::XlaFormatDevice(device), peer_rank.value()));
+  }
+
+  ABSL_ASSIGN_OR_RETURN(se::DeviceAddressBase peer_addr,
+                   locked_sym->peer_addr(peer_rank));
+
+  if (collective_id < 0 || collective_id >= kMaxCollectiveIds) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "%sCollective ID %d is out of range [0, %d) for rank %d",
+        xla::XlaFormatDevice(device), collective_id, kMaxCollectiveIds,
+        peer_rank.value()));
+  }
+
+  constexpr uint64_t kSemaphoreSliceBytes =
+      kMaxCliqueSemaphores * sizeof(uint32_t);
+  uint64_t offset_bytes = collective_id * kSemaphoreSliceBytes;
+  if (offset_bytes + kSemaphoreSliceBytes > peer_addr.size()) {
+    return absl::InternalError(absl::StrFormat(
+        "%sSemaphore slice [%d, %d) bytes exceeds peer address size %d bytes",
+        xla::XlaFormatDevice(device), offset_bytes,
+        offset_bytes + kSemaphoreSliceBytes, peer_addr.size()));
+  }
+
+  return se::DeviceAddressBase(
+      static_cast<char*>(peer_addr.opaque()) + offset_bytes,
+      kSemaphoreSliceBytes);
+}
+
+void NcclCommunicator::InitializeCliqueSemaphore(
+    tsl::TiedRef<se::MemoryAllocation> tied_semaphore,
+    tsl::TiedRef<SymmetricMemory> tied_symmetric_memory) {
+  absl::MutexLock lock(semaphore_mu_);
+  tied_clique_semaphores_ = std::move(tied_semaphore);
+  tied_clique_symmetric_memory_ = std::move(tied_symmetric_memory);
+}
+
+bool NcclCommunicator::IsCliqueSemaphoreInitialized() const {
+  absl::MutexLock lock(semaphore_mu_);
+  return tied_clique_semaphores_.Lock() != nullptr &&
+         tied_clique_symmetric_memory_.Lock() != nullptr;
 }
 
 std::string NcclCommunicator::ToString() const {

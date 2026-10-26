@@ -54,13 +54,27 @@ namespace xla {
 namespace ifrt {
 namespace proxy {
 
+// Client-side cancellation handle returned by `LoadedExecutable::Execute()`.
+// It carries the client-generated handle that identifies the in-flight
+// execution on the proxy server; `Client::CancelExecution()` sends it to the
+// server to cancel the corresponding backend execution.
+class CancellationHandle
+    : public xla::ifrt::LoadedExecutable::CancellationHandleObject {
+ public:
+  explicit CancellationHandle(uint64_t handle) : handle_(handle) {}
+
+  uint64_t handle() const { return handle_; }
+
+ private:
+  const uint64_t handle_;
+};
+
 class LoadedExecutable final
     : public RTTIExtends<LoadedExecutable, xla::ifrt::LoadedExecutable> {
  public:
   LoadedExecutable(xla::ifrt::Client* client,
                    std::shared_ptr<RpcHelper> rpc_helper, uint64_t handle,
-                   std::string name, int num_devices,
-                   std::optional<DeviceListRef> devices,
+                   std::string name, std::optional<DeviceListRef> devices,
                    std::vector<xla::ifrt::Device*> addressable_devices,
                    absl::StatusOr<std::optional<std::string>> fingerprint,
                    std::vector<tsl::RCReference<xla::ifrt::LoadedHostCallback>>
@@ -82,7 +96,6 @@ class LoadedExecutable final
     return user_context_;
   }
 
-  int num_devices() const override;
   int64_t SizeOfGeneratedCodeInBytes() const override;
   absl::StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const override;
 
@@ -113,7 +126,6 @@ class LoadedExecutable final
       absl::Span<BundleRef> args, const ExecuteOptions& options) override;
 
   std::optional<DeviceListRef> devices() const override;
-  absl::Span<xla::ifrt::Device* const> addressable_devices() const override;
 
   void SetDeleteOptions(const DeleteOptions& options) override;
 
@@ -153,9 +165,7 @@ class LoadedExecutable final
 
   const uint64_t handle_;
   const std::string name_;
-  const int num_devices_;
   const std::optional<DeviceListRef> devices_;
-  const std::vector<xla::ifrt::Device*> addressable_devices_;
   const absl::StatusOr<std::optional<std::string>> fingerprint_;
   const xla::ifrt::UserContextRef user_context_;
 

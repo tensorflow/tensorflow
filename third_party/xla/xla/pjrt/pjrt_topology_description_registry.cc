@@ -100,7 +100,8 @@ absl::StatusOr<PjRtTopologyDescriptionProto> PjRtTopologyDescriptionToProto(
 
 absl::StatusOr<std::unique_ptr<PjRtTopologyDescription>>
 PjRtTopologyDescriptionFromProto(const PjRtTopologyDescriptionProto& proto) {
-  // Static C++ Registry (In-tree backends: CPU, CUDA, ROCm, linked TPU).
+  // Static C++ Registry (In-tree backends: CPU, CUDA, ROCm, oneAPI, linked
+  // TPU).
   auto static_result =
       PjRtTopologyDescriptionRegistry::Global().Deserialize(proto);
   if (static_result.ok() || !absl::IsNotFound(static_result.status())) {
@@ -116,6 +117,8 @@ PjRtTopologyDescriptionFromProto(const PjRtTopologyDescriptionProto& proto) {
       platform_name = CudaName();
     } else if (proto.platform_id() == RocmId()) {
       platform_name = RocmName();
+    } else if (proto.platform_id() == OneapiId()) {
+      platform_name = OneapiName();
     } else if (proto.platform_id() == TpuId()) {
       platform_name = TpuName();
     }

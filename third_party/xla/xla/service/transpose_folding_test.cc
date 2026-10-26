@@ -22,7 +22,6 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/status_matchers.h"
-#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -762,16 +761,18 @@ ENTRY entry_computation {
                               op::Transpose(op::Parameter(2))));
 }
 
-TEST_F(TransposeFoldingTest, DoNotFoldConvWithNonSparsityAdditionalOperand) {
+TEST_F(TransposeFoldingTest, DoNotFoldTransposeIntoBlockScalingConvOperand) {
   constexpr absl::string_view kHloString = R"(
-HloModule DoNotFoldConvWithNonSparsityAdditionalOperand
+HloModule DoNotFoldTransposeIntoBlockScalingConvOperand
 
 ENTRY entry_computation {
   input = f32[8,1] parameter(0)
   input_t = f32[1,8] transpose(input), dimensions={1,0}
   filter = f32[8,3] parameter(1)
-  extra = f32[] parameter(2)
-  ROOT conv = f32[1,3] convolution(input_t, filter, extra), dim_labels=bf_io->bf
+  extra = f32[1,1] parameter(2)
+  ROOT conv = f32[1,3] convolution(input_t, filter, extra),
+      dim_labels=bf_io->bf,
+      block_scaling_config={rhs={scale_idx=2 strides=1x4 steps=1x1}}
 }
 )";
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,

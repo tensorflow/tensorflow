@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -28,13 +27,13 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -74,8 +73,6 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/service/spmd/shardy/constants.h"
-#include "xla/service/spmd/shardy/utils.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "tsl/platform/random.h"
 
@@ -130,7 +127,10 @@ class IfrtCompileAtomProgramPass
   // Depending on the type of module, a MLIR pipeline might be executed before
   // the compilation is dispatched.
   absl::StatusOr<AtomProgramCompileResult> CompileModule(
-      CallOp call_op, mlir::ModuleOp module_op);
+      CallOp call_op, mlir::ModuleOp module_op,
+      llvm::DenseMap<mlir::ModuleOp, mlir::OwningOpRef<mlir::ModuleOp>>&
+          cloned_modules,
+      const mlir::SymbolUserMap& symbol_users);
 
   // Gets the XLA compile options for the given atom program module.
   absl::StatusOr<XlaCompileOptions*> GetXlaCompileOptions(
@@ -145,8 +145,11 @@ class IfrtCompileAtomProgramPass
   //
   // Note that the method runs `ifrt-compile-xla-preprocessing-pipeline`
   // before dispatching compilation.
-  absl::StatusOr<AtomProgramCompileResult> CompileXla(CallOp call_op,
-                                                      mlir::ModuleOp module_op);
+  absl::StatusOr<AtomProgramCompileResult> CompileXla(
+      CallOp call_op, mlir::ModuleOp module_op,
+      llvm::DenseMap<mlir::ModuleOp, mlir::OwningOpRef<mlir::ModuleOp>>&
+          cloned_modules,
+      const mlir::SymbolUserMap& symbol_users);
 
   // Returns a future of a AtomProgramCompileResult for the MPMD reshard module.
   absl::StatusOr<AtomProgramCompileResult> CompileMpmdReshard(
@@ -244,7 +247,10 @@ std::vector<tsl::RCReference<LoadedHostCallback>> GetAtomProgramCallbacks(
 }
 
 absl::StatusOr<AtomProgramCompileResult> IfrtCompileAtomProgramPass::CompileXla(
-    CallOp call_op, mlir::ModuleOp module_op) {
+    CallOp call_op, mlir::ModuleOp module_op,
+    llvm::DenseMap<mlir::ModuleOp, mlir::OwningOpRef<mlir::ModuleOp>>&
+        cloned_modules,
+    const mlir::SymbolUserMap& symbol_users) {
   ABSL_ASSIGN_OR_RETURN(XlaCompileOptions * xla_compile_options,
                    GetXlaCompileOptions(call_op, module_op));
 
@@ -262,8 +268,28 @@ absl::StatusOr<AtomProgramCompileResult> IfrtCompileAtomProgramPass::CompileXla(
   //    because MLIR printing takes different paths depending on if a ModuleOp
   //    has a parent or not. Thus, by cloning the module we ensure that the
   //    module's string representation is maintained.
-  ABSL_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> cloned_module,
-                   CloneModuleIntoContext(module_op, *hlo_program_context_));
+  // For modules with a single reference, clone directly into the context to
+  // avoid any extra clone overhead. For modules with multiple references,
+  // cache the cloned module in the new context and use ModuleOp::clone() to
+  // avoid repetitive bytecode roundtrips.
+  bool is_single_reference = symbol_users.getUsers(module_op).size() <= 1;
+
+  mlir::OwningOpRef<mlir::ModuleOp> cloned_module;
+  if (is_single_reference) {
+    ABSL_ASSIGN_OR_RETURN(cloned_module,
+                     CloneModuleIntoContext(module_op, *hlo_program_context_));
+  } else {
+    auto it = cloned_modules.find(module_op);
+    if (it == cloned_modules.end()) {
+      ABSL_ASSIGN_OR_RETURN(
+          mlir::OwningOpRef<mlir::ModuleOp> initial_cloned_module,
+          CloneModuleIntoContext(module_op, *hlo_program_context_));
+      it = cloned_modules
+               .try_emplace(module_op, std::move(initial_cloned_module))
+               .first;
+    }
+    cloned_module = it->second.get().clone();
+  }
   auto hlo_program = std::make_unique<HloProgram>(hlo_program_context_,
                                                   std::move(cloned_module));
   AtomProgramCompileResult result;
@@ -310,8 +336,11 @@ IfrtCompileAtomProgramPass::CompileMpmdReshard(mlir::ModuleOp module_op) {
 }
 
 absl::StatusOr<AtomProgramCompileResult>
-IfrtCompileAtomProgramPass::CompileModule(CallOp call_op,
-                                          mlir::ModuleOp module_op) {
+IfrtCompileAtomProgramPass::CompileModule(
+    CallOp call_op, mlir::ModuleOp module_op,
+    llvm::DenseMap<mlir::ModuleOp, mlir::OwningOpRef<mlir::ModuleOp>>&
+        cloned_modules,
+    const mlir::SymbolUserMap& symbol_users) {
   auto module_type =
       call_op->getAttrOfType<mlir::StringAttr>(kIfrtModuleTypeAttrName);
   if (module_type == nullptr) {
@@ -319,7 +348,7 @@ IfrtCompileAtomProgramPass::CompileModule(CallOp call_op,
         "CallOp requires `", kIfrtModuleTypeAttrName.str(), "` to be set"));
   }
   if (module_type == kIfrtModuleTypeXla) {
-    return CompileXla(call_op, module_op);
+    return CompileXla(call_op, module_op, cloned_modules, symbol_users);
   }
   if (module_type == kIfrtModuleTypeMpmdReshard) {
     return CompileMpmdReshard(module_op);
@@ -335,9 +364,7 @@ void IfrtCompileAtomProgramPass::runOnOperation() {
   llvm::DenseMap<CallOp, AtomProgramCompileResult, IfrtCallOpInfo>
       call_to_compile_results;
   mlir::ModuleOp module_op = getOperation();
-
-  mlir::Attribute sdy_meshes_round_trip_attr =
-      module_op->getAttr(kIfrtSdyMeshesRoundTripAttr);
+  mlir::SymbolUserMap symbol_users(symbol_table, module_op);
 
   // Stash the errors in a MapVector, which maintains the order in which they
   // are encountered. We do not emit an error within the walk because atom
@@ -345,6 +372,10 @@ void IfrtCompileAtomProgramPass::runOnOperation() {
   // Any error emitted here could leak into a scoped diagnostic handler used
   // while dispatching a compilation.
   llvm::MapVector<CallOp, std::string> call_op_to_error;
+
+  // Map from target module to cloned module in the compilation context.
+  llvm::DenseMap<mlir::ModuleOp, mlir::OwningOpRef<mlir::ModuleOp>>
+      cloned_modules;
 
   // Walk and dispatch the compilations in parallel.
   module_op.walk([&](CallOp call_op) -> mlir::WalkResult {
@@ -369,17 +400,8 @@ void IfrtCompileAtomProgramPass::runOnOperation() {
         return mlir::WalkResult::advance();
       }
 
-      // TODO(b/433244129) - remove after 6 months bwd compatibility window.
-      if (sdy_meshes_round_trip_attr) {
-        // Add the meshes roundtrip attribute to the callee module if the
-        // atom program was partitioned with sdy.
-        xla::sdy::setFrontendAttribute(callee_module,
-                                       xla::sdy::kMeshesRoundTripAttr,
-                                       sdy_meshes_round_trip_attr);
-      }
-
       absl::StatusOr<AtomProgramCompileResult> compile_result =
-          CompileModule(call_op, callee_module);
+          CompileModule(call_op, callee_module, cloned_modules, symbol_users);
       if (!compile_result.ok()) {
         call_op_to_error.try_emplace(
             call_op,

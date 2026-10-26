@@ -14,6 +14,7 @@
 # ==============================================================================
 """Tests for monitoring."""
 
+import threading
 import time
 
 from tensorflow.python.eager import monitoring
@@ -38,6 +39,24 @@ class MonitoringTest(test_util.TensorFlowTestCase):
                                   'label2')
     counter2.get_cell('foo', 'bar').increase_by(5)
     self.assertEqual(counter2.get_cell('foo', 'bar').value(), 5)
+
+  def test_concurrent_get_cell(self):
+    counter = monitoring.Counter('test/concurrent_counter', 'test counter')
+    num_threads = 8
+    iterations = 1000
+    barrier = threading.Barrier(num_threads)
+
+    def worker():
+      barrier.wait()
+      for _ in range(iterations):
+        counter.get_cell().increase_by(1)
+
+    threads = [threading.Thread(target=worker) for _ in range(num_threads)]
+    for t in threads:
+      t.start()
+    for t in threads:
+      t.join()
+    self.assertEqual(counter.get_cell().value(), num_threads * iterations)
 
   def test_same_counter(self):
     counter1 = monitoring.Counter('test/same_counter', 'test counter')  # pylint: disable=unused-variable

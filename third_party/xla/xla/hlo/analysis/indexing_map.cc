@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
+#include <cstdlib>
 #include <numeric>
 #include <optional>
 #include <ostream>
@@ -162,6 +163,8 @@ class SymbolicExprSimplifier {
   RangeEvaluator* range_evaluator_;
   SymbolicExpr zero_;
   IndexingMap::SimplifyPointDimensions simplify_point_dimensions_;
+  // Auxiliary constraints generated while simplifying a constraint in place.
+  SmallVector<std::pair<SymbolicExpr, Interval>, 2> pending_constraints_;
 };
 
 SymbolicExpr SymbolicExprSimplifier::RewriteMod(SymbolicExpr mod) {
@@ -616,31 +619,57 @@ bool SymbolicExprSimplifier::SimplifyAddConstraint(SymbolicExpr* add,
     return true;
   }
 
-  if (range->lower != 0) {
-    return false;
-  }
-
   // Split the sum into `multiplied * multiplier_gcd + not_multiplied`.
-  //   0 <= a * gcd + b <= ub
-  //   0 <= a * gcd <= ub - b
-  //   0 <= a <= (ub - b) floordiv gcd
-  // If `(ub - b) floordiv gcd` is a constant, that means the value of b is
-  // irrelevant to this constraint.
   auto [multiplied, multiplier_gcd, not_multiplied] = SplitSumByGcd(*add);
-  if (multiplier_gcd == 1) {
+  int64_t abs_gcd = std::abs(multiplier_gcd);
+  if (abs_gcd <= 1) {
     // If we didn't split anything, there's nothing to do.
     return false;
   }
 
-  Interval difference_range =
-      Interval{range->upper, range->upper} -
+  Interval not_multiplied_range =
       range_evaluator_->ComputeExpressionRange(not_multiplied);
-  if (!difference_range.FloorDiv(multiplier_gcd).IsPoint()) {
-    return false;
+  Interval lower_diff =
+      Interval{range->lower, range->lower} - not_multiplied_range;
+  Interval upper_diff =
+      Interval{range->upper, range->upper} - not_multiplied_range;
+  // Case 1: `not_multiplied` does not cross a multiple of `|gcd|` at either
+  // bound, so `multiplied * gcd` can be constrained directly to
+  // `[lower_diff.upper, upper_diff.lower]`.
+  if (llvm::divideCeilSigned(lower_diff.lower, abs_gcd) ==
+          llvm::divideCeilSigned(lower_diff.upper, abs_gcd) &&
+      upper_diff.FloorDiv(abs_gcd).IsPoint()) {
+    *add = multiplied * multiplier_gcd;
+    *range = Interval{lower_diff.upper, upper_diff.lower};
+    return true;
   }
 
-  *add = multiplied * multiplier_gcd;
-  return true;
+  Interval feasible_multiplied =
+      Interval{lower_diff.lower, upper_diff.upper}.Intersect(
+          range_evaluator_->ComputeExpressionRange(multiplied *
+                                                   multiplier_gcd));
+  // Case 2: `q_min` and `q_max` are the smallest and largest integer multiples
+  // `q` of `|gcd|` in `feasible_multiplied`. When `q_min == q_max`, only
+  // `mul_val = q_min * |gcd|` is feasible, so decompose into
+  // `multiplied * gcd == mul_val` and a remainder constraint on
+  // `not_multiplied`.
+  int64_t q_min = llvm::divideCeilSigned(feasible_multiplied.lower, abs_gcd);
+  int64_t q_max = llvm::divideFloorSigned(feasible_multiplied.upper, abs_gcd);
+  if (!feasible_multiplied.IsFeasible() || q_min > q_max) {
+    *range = Interval{0, -1};
+    return true;
+  }
+  if (q_min == q_max) {
+    int64_t mul_val = q_min * abs_gcd;
+    SymbolicExpr rem_expr = not_multiplied;
+    Interval rem_range{range->lower - mul_val, range->upper - mul_val};
+    SimplifyConstraintRange(&rem_expr, &rem_range);
+    pending_constraints_.push_back({rem_expr, rem_range});
+    *add = multiplied * multiplier_gcd;
+    *range = Interval{mul_val, mul_val};
+    return true;
+  }
+  return false;
 }
 
 // Simplifies a constraint range, e.g. a constraint d0 + x in [lb, ub] will
@@ -899,16 +928,8 @@ IndexingMap::IndexingMap(
     std::vector<IndexingMap::Variable> range_vars,
     std::vector<IndexingMap::Variable> rt_vars,
     const llvm::MapVector<SymbolicExpr, Interval>& constraints)
-    : symbolic_map_(symbolic_map),
-      dim_vars_(std::move(dimensions)),
-      range_vars_(std::move(range_vars)),
-      rt_vars_(std::move(rt_vars)),
-      constraints_(constraints) {
-  if (!VerifyVariableIntervals() || !VerifyConstraintIntervals()) {
-    ResetToKnownEmpty();
-    return;
-  }
-}
+    : IndexingMap(symbolic_map, std::move(dimensions), std::move(range_vars),
+                  std::move(rt_vars), constraints.getArrayRef()) {}
 
 IndexingMap IndexingMap::FromTensorSizes(
     SymbolicMap symbolic_map, absl::Span<const int64_t> dim_upper_bounds,
@@ -920,6 +941,16 @@ IndexingMap IndexingMap::FromTensorSizes(
 
 RangeEvaluator IndexingMap::GetRangeEvaluator() const {
   return RangeEvaluator(*this, GetMLIRContext());
+}
+
+llvm::SmallVector<Interval> IndexingMap::ComputeResultRanges() const {
+  RangeEvaluator range_evaluator = GetRangeEvaluator();
+  llvm::SmallVector<Interval> ranges;
+  ranges.reserve(GetNumResults());
+  for (SymbolicExpr expr : symbolic_map_.GetResults()) {
+    ranges.push_back(range_evaluator.ComputeExpressionRange(expr));
+  }
+  return ranges;
 }
 
 const Interval& IndexingMap::GetDimensionBound(int64_t dim_id) const {
@@ -1266,6 +1297,10 @@ bool SymbolicExprSimplifier::SimplifyConstraintExprs(IndexingMap& map) {
     // Skip constraints that are always satisfied.
     Interval evaluated_range =
         range_evaluator_->ComputeExpressionRange(simplified);
+    if (!evaluated_range.Intersect(range).IsFeasible()) {
+      map.ResetToKnownEmpty();
+      return true;
+    }
     if (evaluated_range.upper <= range.upper &&
         evaluated_range.lower >= range.lower) {
       to_remove.push_back(expr);
@@ -1297,6 +1332,10 @@ bool SymbolicExprSimplifier::SimplifyConstraintRanges(IndexingMap& map) {
       to_remove.push_back(expr);
     }
   }
+  for (const auto& [expr, range] : pending_constraints_) {
+    to_add.push_back({expr, range});
+  }
+  pending_constraints_.clear();
   for (const auto& expr : to_remove) {
     map.EraseConstraint(expr);
   }
@@ -1522,10 +1561,8 @@ bool IndexingMap::CompressVars(const llvm::SmallBitVector& unused_dims,
   std::vector<SymbolicExpr> to_remove;
   std::vector<std::pair<SymbolicExpr, Interval>> to_add;
   for (const auto& [expr, range] : constraints_) {
-    auto updated_expr =
-        (num_dims_changed
-             ? expr.ReplaceDimsAndSymbols(dim_replacements, symbol_replacements)
-             : expr.ReplaceSymbols(symbol_replacements, num_dims_before));
+    SymbolicExpr updated_expr = expr.ReplaceDimsAndSymbols(
+        dim_replacements, symbol_replacements, num_dims_before, num_dims_after);
     if (updated_expr == expr) {
       continue;
     }
@@ -1585,12 +1622,6 @@ bool IndexingMap::VerifyVariableIntervals() {
          llvm::all_of(rt_vars_, [](const IndexingMap::Variable& rt_var) {
            return rt_var.bounds.IsFeasible();
          });
-}
-
-bool IndexingMap::VerifyConstraintIntervals() {
-  return llvm::all_of(constraints_, [](const auto& constraint) {
-    return constraint.second.IsFeasible();
-  });
 }
 
 SmallBitVector IndexingMap::RemoveUnusedVars() {
@@ -1758,8 +1789,8 @@ IndexingMap ComposeIndexingMaps(const IndexingMap& first,
       MapSymbolsToComposedSymbolsList(first, composed_indexing_map);
   for (const auto& [expr, range] : first.GetSymbolicConstraints()) {
     composed_indexing_map.AddConstraint(
-        expr.ReplaceSymbols(first_map_symbols_to_composed_symbols,
-                            composed_dims),
+        expr.ReplaceDimsAndSymbols({}, first_map_symbols_to_composed_symbols,
+                                   composed_dims),
         range);
   }
   // Add constraints for consumer's codomain w.r.t. producer's domain.
@@ -1770,8 +1801,8 @@ IndexingMap ComposeIndexingMaps(const IndexingMap& first,
     Interval producer_dim_range =
         second.GetDimensionBound(static_cast<int64_t>(index));
     composed_indexing_map.AddConstraint(
-        expr.ReplaceSymbols(first_map_symbols_to_composed_symbols,
-                            composed_dims),
+        expr.ReplaceDimsAndSymbols({}, first_map_symbols_to_composed_symbols,
+                                   composed_dims),
         producer_dim_range);
   }
   return composed_indexing_map;
@@ -1881,7 +1912,7 @@ IndexingMap IndexingMap::ConvertSymbolsToDimensions() const {
   SmallVector<std::pair<SymbolicExpr, Interval>, 4> new_constraints;
   for (const auto& [expr, range] : constraints_) {
     new_constraints.push_back(std::make_pair(
-        expr.ReplaceSymbols(syms_replacements, num_dims), range));
+        expr.ReplaceDimsAndSymbols({}, syms_replacements, num_dims), range));
   }
 
   SymbolicMap canonical_map =
@@ -1940,9 +1971,9 @@ IndexingMap ConvertRangeVariablesToDimensions(
   std::vector<std::pair<SymbolicExpr, Interval>> constraints;
   constraints.reserve(map.GetConstraintsCount());
   for (auto constraint : map.GetSymbolicConstraints()) {
-    constraints.push_back(
-        {constraint.first.ReplaceSymbols(symbol_replacements, num_dims),
-         constraint.second});
+    constraints.push_back({constraint.first.ReplaceDimsAndSymbols(
+                               {}, symbol_replacements, num_dims),
+                           constraint.second});
   }
   return IndexingMap{converted_symbolic_map, std::move(dims),
                      std::move(range_vars), map.GetRTVars(), constraints};

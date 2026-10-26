@@ -183,6 +183,15 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
           reinterpret_cast<TfLiteFullyConnectedParams*>(op_sig.builtin_data);
       TFLITE_DCHECK(fully_connected_params != nullptr);
 
+      // A non-empty `quant_spec` describes numerics that a runtime without
+      // explicit support for that spec cannot reproduce. It must be checked
+      // before the cases below, because an op carrying a `quant_spec` also
+      // matches them (an a4w2 op has int2 weights) and would otherwise be
+      // reported as a version that older runtimes accept.
+      if (fully_connected_params->quant_spec_size > 0) {
+        return 15;
+      }
+
       if (op_sig.inputs.at(1).type == kTfLiteInt2) {
         return 14;
       }
@@ -1198,6 +1207,16 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       if (IsFloat8Type(op_sig.inputs.at(0).type) ||
           IsFloat8Type(op_sig.outputs.at(0).type)) {
         return 9;
+      } else if ((op_sig.inputs.at(0).type == kTfLiteInt2 ||
+                  op_sig.inputs.at(0).type == kTfLiteInt4 ||
+                  op_sig.inputs.at(0).type == kTfLiteUInt4) &&
+                 op_sig.outputs.at(0).type != kTfLiteFloat32 &&
+                 op_sig.outputs.at(0).type != kTfLiteInt2 &&
+                 op_sig.outputs.at(0).type != kTfLiteInt4 &&
+                 op_sig.outputs.at(0).type != kTfLiteUInt4) {
+        // Packed sub-byte int input to any non-packed output other than
+        // FLOAT32 (packed->FLOAT32 is v6/v8, packed->Float8 is v9 above).
+        return 10;
       } else if (op_sig.inputs.at(0).type == kTfLiteInt2 ||
                  op_sig.outputs.at(0).type == kTfLiteInt2 ||
                  op_sig.inputs.at(0).type == kTfLiteUInt4 ||

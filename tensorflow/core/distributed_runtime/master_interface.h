@@ -32,7 +32,7 @@ namespace tensorflow {
 // roundtrip.
 class MasterInterface {
  public:
-  virtual ~MasterInterface() {}
+  virtual ~MasterInterface() = default;
   virtual absl::Status CreateSession(CallOptions* call_options,
                                      const CreateSessionRequest* request,
                                      CreateSessionResponse* response) = 0;

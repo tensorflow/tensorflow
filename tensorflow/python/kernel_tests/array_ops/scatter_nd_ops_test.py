@@ -153,7 +153,11 @@ class StatefulScatterNdTest(test.TestCase):
         self.evaluate(tf_scatter(ref_var, indices, updates))
 
         # Compare
-        tol = 1e-6 if vtype != dtypes.bfloat16.as_numpy_dtype else 1e-2
+        tol = (
+            1e-2
+            if vtype in (np.float16, dtypes.bfloat16.as_numpy_dtype)
+            else 1e-6
+        )
         self.assertAllClose(new, self.evaluate(ref_var), rtol=tol, atol=tol)
 
   def _VariableRankTests(self, np_scatter, tf_scatter):

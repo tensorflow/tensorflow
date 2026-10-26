@@ -34,6 +34,12 @@ BuildDeviceProperties(const stream_executor::DeviceDescription& desc) {
   int device_ver = cc ? (cc->major * 100 + cc->minor * 10) : 0;
   int driver_ver = desc.driver_version().major_version() * 1000 +
                    desc.driver_version().minor_version() * 10;
+  // cuDNN only queries the oversized shared memory attribute on SM 10.7 and
+  // rejects serialized plans whose non-zero value differs from its own live
+  // value (0 elsewhere), so report 0 on all other devices.
+  const bool is_sm107 = cc && cc->major == 10 && cc->minor == 7;
+  const int64_t oversized_shared_memory =
+      is_sm107 ? desc.oversized_shared_memory_per_block() : 0;
   std::string json = absl::StrFormat(
       R"json({
   "deviceVer":%d,
@@ -63,11 +69,10 @@ BuildDeviceProperties(const stream_executor::DeviceDescription& desc) {
 })json",
       device_ver, desc.core_count(), desc.threads_per_warp(),
       desc.shared_memory_per_block(), desc.shared_memory_per_block_optin(),
-      desc.oversized_shared_memory_per_block(),
-      desc.reserved_shared_memory_per_block(), desc.registers_per_core_limit(),
-      desc.max_blocks_per_multiprocessor(), desc.threads_per_block_limit(),
-      desc.threads_per_core_limit(), desc.registers_per_block_limit(),
-      desc.device_memory_size(),
+      oversized_shared_memory, desc.reserved_shared_memory_per_block(),
+      desc.registers_per_core_limit(), desc.max_blocks_per_multiprocessor(),
+      desc.threads_per_block_limit(), desc.threads_per_core_limit(),
+      desc.registers_per_block_limit(), desc.device_memory_size(),
       static_cast<int64_t>(desc.clock_rate_ghz() * 1e6), desc.l2_cache_size(),
       desc.thread_dim_limit().x, desc.thread_dim_limit().y,
       desc.thread_dim_limit().z,

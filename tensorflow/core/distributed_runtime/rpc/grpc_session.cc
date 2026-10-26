@@ -40,7 +40,7 @@ const size_t kSchemePrefixLength = strlen(kSchemePrefix);
 GrpcSession::GrpcSession(const SessionOptions& options)
     : options_(options), current_graph_version_(-1) {}
 
-GrpcSession::~GrpcSession() {}
+GrpcSession::~GrpcSession() = default;
 
 /* static */
 absl::Status GrpcSession::Create(const SessionOptions& options,

@@ -46,8 +46,11 @@ absl::Status IsValidDeviceOrdinal(int device_ordinal,
 // Returns true if the oneAPI version is 2024.2 or newer.
 // oneAPI 2024.2 corresponds to __LIBSYCL_MAJOR_VERSION == 7 and
 // __LIBSYCL_MINOR_VERSION == 2.
+// oneAPI 2025.x corresponds to __LIBSYCL_MAJOR_VERSION == 8, and
+// oneAPI 2026.x corresponds to __LIBSYCL_MAJOR_VERSION == 9.
 bool IsOneAPIVersionAtLeast2024_2() {
-  return (__LIBSYCL_MAJOR_VERSION >= 7) && (__LIBSYCL_MINOR_VERSION >= 2);
+  return ((__LIBSYCL_MAJOR_VERSION == 7) && (__LIBSYCL_MINOR_VERSION >= 2)) ||
+         (__LIBSYCL_MAJOR_VERSION >= 8);
 }
 
 absl::Status MemcpyDeviceToHost(::sycl::queue* stream_handle, void* dst_host,

@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_status_utils.h"
 #include "xla/pjrt/c/pjrt_c_api_xla_transform_extension.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/xla_transform.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
 #include "xla/tsl/platform/errors.h"
@@ -74,6 +75,14 @@ class CApiXlaTransformAdapter : public HloXlaTransform {
     args.header.has_error = false;
     args.hlo_module.data = serialized_proto.data();
     args.hlo_module.size = serialized_proto.size();
+    std::string serialized_config;
+    if (!tsl::SerializeToStringDeterministic(module->config().ToProto(),
+                                             &serialized_config)) {
+      return absl::InternalError(
+          "CApiXlaTransformAdapter: failed to serialize HLO module config");
+    }
+    args.hlo_module_config.data = serialized_config.data();
+    args.hlo_module_config.size = serialized_config.size();
 
     if (callbacks_->transform_hlo_module == nullptr) {
       return absl::InternalError("transform_hlo_module callback is null");

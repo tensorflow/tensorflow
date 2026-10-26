@@ -135,6 +135,18 @@ func.func @qu8() -> tensor<3x!quant.uniform<u8<1:255>:f32, 1.0>> {
   func.return %0 : tensor<3x!quant.uniform<u8<1:255>:f32, 1.0>>
 }
 
+func.func @qi8_multi_use(%arg0: tensor<2x!quant.uniform<i8:f32, 1.0>>) -> (tensor<4x!quant.uniform<i8:f32, 1.0>>, tensor<4x!quant.uniform<i8:f32, 1.0>>) {
+  // CHECK-LABEL: @qi8_multi_use
+  // CHECK: %[[CST:.*]] = "tfl.pseudo_qconst"() <{qtype = tensor<2x!quant.uniform<i8:f32, 1.000000e+00>>, value = dense<1> : tensor<2xi8>}> : () -> tensor<2x!quant.uniform<i8:f32, 1.000000e+00>>
+  // CHECK-NOT: "tfl.pseudo_qconst"
+  // CHECK: "tfl.concatenation"(%arg0, %[[CST]])
+  // CHECK: "tfl.concatenation"(%[[CST]], %arg0)
+  %0 = "tfl.pseudo_qconst"() { qtype = tensor<2x!quant.uniform<i8:f32, 1.0>>, value = dense<1> : tensor<2xi8>} : () -> tensor<2x!quant.uniform<i8:f32, 1.0>>
+  %1 = "tfl.concatenation"(%arg0, %0) {axis = 0 : i32, fused_activation_function = "NONE"} : (tensor<2x!quant.uniform<i8:f32, 1.0>>, tensor<2x!quant.uniform<i8:f32, 1.0>>) -> tensor<4x!quant.uniform<i8:f32, 1.0>>
+  %2 = "tfl.concatenation"(%0, %arg0) {axis = 0 : i32, fused_activation_function = "NONE"} : (tensor<2x!quant.uniform<i8:f32, 1.0>>, tensor<2x!quant.uniform<i8:f32, 1.0>>) -> tensor<4x!quant.uniform<i8:f32, 1.0>>
+  func.return %1, %2 : tensor<4x!quant.uniform<i8:f32, 1.0>>, tensor<4x!quant.uniform<i8:f32, 1.0>>
+}
+
 func.func @sparse_f32() -> tensor<3x2xf32> {
   // CHECK-LABEL: @sparse_f32
   // CHECK: <{compressed_data = dense<[1.000000e+00, 2.000000e+00, 5.000000e-01, 2.500000e-01, -1.000000e+00, -2.000000e+00, -5.000000e-01, -2.500000e-01]> : tensor<8xf32>, s_param = #tfl.sparsity_parameter<traversal_order = [0, 1, 2, 3], block_map = [3, 1], dim_metadata = <format = DENSE, dense_size = 16, segments = [], indices = []>, <format = DENSE, dense_size = 1, segments = [], indices = []>, <format = DENSE, dense_size = 1, segments = [], indices = []>, <format = SPARSE_CSR, dense_size = 0, segments = [0, 5, 11], indices = [1, 4, 9]>>, value = dense<0.000000e+00> : tensor<3x2xf32>}>

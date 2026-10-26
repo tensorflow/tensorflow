@@ -20,7 +20,6 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/model_builder.h"
 #include "tensorflow/lite/tools/command_line_flags.h"

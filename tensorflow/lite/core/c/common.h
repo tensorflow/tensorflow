@@ -269,11 +269,14 @@ void TfLiteFloatArrayFree(TfLiteFloatArray* a);
 
 #define TF_LITE_ENSURE_NEAR(context, a, b, epsilon)                          \
   do {                                                                       \
-    auto delta = ((a) > (b)) ? ((a) - (b)) : ((b) - (a));                    \
-    if (delta > epsilon) {                                                   \
-      TF_LITE_KERNEL_LOG((context), "%s:%d %s not near %s (%f != %f)",       \
-                         __FILE__, __LINE__, #a, #b, static_cast<double>(a), \
-                         static_cast<double>(b));                            \
+    const auto _val_a = (a);                                                 \
+    const auto _val_b = (b);                                                 \
+    const auto _eps = (epsilon);                                             \
+    const auto _delta = _val_a - _val_b;                                     \
+    if (_delta > _eps || _delta < -_eps) {                                   \
+      TF_LITE_KERNEL_LOG(                                                    \
+          (context), "%s:%d %s not near %s (%f != %f)", __FILE__, __LINE__,  \
+          #a, #b, static_cast<double>(_val_a), static_cast<double>(_val_b)); \
       return kTfLiteError;                                                   \
     }                                                                        \
   } while (0)
@@ -358,6 +361,9 @@ typedef enum TfLiteQuantizationType {
   kTfLiteBlockwiseQuantization = 2,
   /// Multi-axis quantization.
   kTfLiteMultiAxisQuantization = 3,
+  /// N-D blockwise quantization.
+  /// Corresponds to TfLiteBlockwiseQuantizationV2.
+  kTfLiteBlockwiseQuantizationV2 = 4,
 } TfLiteQuantizationType;
 
 /// Structure specifying the quantization used by the tensor, if-any.
@@ -396,6 +402,24 @@ typedef struct TfLiteBlockwiseQuantization {
   int32_t blocksize;
   int32_t quantized_dimension;
 } TfLiteBlockwiseQuantization;
+
+/// Parameters for N-D blockwise quantization.
+/// `block_shape->data[d]` is the extent of a single block along dimension `d`,
+/// so the scale and zero point tensors have shape
+/// `ceil(tensor_shape / block_shape)`. `block_shape` is owned by this struct.
+typedef struct TfLiteBlockwiseQuantizationV2 {
+  // Index of the tensor containing the scales.
+  int32_t scale;
+  // Index of the tensor containing the zero points.
+  int32_t zero_point;
+  // Quantization blocksize. Only expresses blocking along the last dimension.
+  // Ignored when `block_shape` is non-null.
+  int32_t blocksize;
+  int32_t quantized_dimension;
+  // N-D block shape, with one entry per dimension of the quantized tensor.
+  // Owned by this struct.
+  TfLiteIntArray* block_shape;
+} TfLiteBlockwiseQuantizationV2;
 
 /// Parameters for multi-axis quantization. The scales and zero_points fields
 /// refer to tensor indices in the same subgraph. If zero_points is -1, zero

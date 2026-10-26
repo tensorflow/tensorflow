@@ -24,12 +24,17 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "xla/ffi/ffi_registry.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/analysis/hlo_reachability.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/shape_util.h"
 
 namespace xla {
@@ -79,10 +84,21 @@ bool CanRunConcurrently(const HloInstruction* hlo) {
       }
     }
   }
-  // Custom calls (cuBLAS, cuDNN, etc.) are not considered for concurrent
-  // execution.
+  // Legacy custom calls (cuBLAS, cuDNN, etc.) are not considered for
+  // concurrent execution, whereas typed FFI custom calls registered with
+  // kCmdBufferCompatible can run concurrently.
   if (hlo->opcode() == HloOpcode::kCustomCall) {
-    return false;
+    const auto* custom_call = Cast<HloCustomCallInstruction>(hlo);
+    if (custom_call->api_version() !=
+        CustomCallApiVersion::API_VERSION_TYPED_FFI) {
+      return false;
+    }
+    absl::StatusOr<ffi::HandlerRegistration> registration =
+        ffi::FindHandler(custom_call->custom_call_target(), "gpu");
+    if (!registration.ok() ||
+        !ffi::IsCommandBufferCompatible(registration->metadata)) {
+      return false;
+    }
   }
   // Very large HLO fusions compile into many device instructions. Concurrent
   // execution can lead to instruction cache thrashing and is not beneficial.

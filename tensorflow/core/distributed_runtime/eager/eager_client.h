@@ -86,7 +86,7 @@ class EagerClient : public core::RefCounted {
 // Simple wrapper class that can be used to retrieve EagerClients.
 class EagerClientCache {
  public:
-  virtual ~EagerClientCache() {}
+  virtual ~EagerClientCache() = default;
 
   // If the `target` exists, assign the EagerClient pointer to `client` and
   // increment the refcount of the client. The reference ownership is

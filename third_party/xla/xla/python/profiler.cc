@@ -256,13 +256,24 @@ NB_MODULE(_profiler, m) {
           "stop_and_get_profile_data",
           [](ProfilerSessionWrapper* sess)
               -> tensorflow::profiler::python::ProfileData {
+            // Serialize chunked XSpaces when continuous profiling is enabled to
+            // avoid hitting the 2GB single-protobuf limit, and pass session_id.
+            if (sess->session->IsContinuousProfilingEnabled()) {
+              xla::ThrowIfError(sess->session->Stop());
+              auto xspaces =
+                  std::make_shared<std::vector<tensorflow::profiler::XSpace>>(
+                      sess->session->SerializeChunks());
+              return tensorflow::profiler::python::ProfileData(
+                  std::move(xspaces), sess->session_id);
+            }
             auto xspace = std::make_shared<tensorflow::profiler::XSpace>();
             // Disables the ProfilerSession
             xla::ThrowIfError(sess->session->CollectData(xspace.get()));
-            return tensorflow::profiler::python::ProfileData(xspace);
+            return tensorflow::profiler::python::ProfileData(std::move(xspace),
+                                                             sess->session_id);
           },
           nb::call_guard<nb::gil_scoped_release>(),
-          nb::sig("def stop_and_get_profile_data() -> ProfileData"))
+          nb::sig("def stop_and_get_profile_data(self) -> ProfileData"))
       .def("export", [](ProfilerSessionWrapper* sess, nb::bytes xspace,
                         const std::string& tensorboard_dir) {
         tensorflow::profiler::XSpace xspace_proto;
@@ -365,6 +376,41 @@ NB_MODULE(_profiler, m) {
           nb::sig("def __exit__(self, *exc_info) -> None"))
       .def("set_metadata", &TraceMeWrapper::SetMetadata)
       .def_static("is_enabled", &TraceMeWrapper::IsEnabled);
+
+  m.def(
+      "export_to_xprof",
+      [](const tensorflow::profiler::python::ProfileData& profile_data,
+         const std::string& xprof_dir, const std::string& session_id = "") {
+        // Fall back to profile_data.session_id() when session_id is empty,
+        // and export chunked XSpaces if continuous profiling was used.
+        const std::string& effective_session_id =
+            session_id.empty() ? profile_data.session_id() : session_id;
+        nb::gil_scoped_release release;
+        if (profile_data.raw_xspaces() != nullptr) {
+          if (effective_session_id.empty()) {
+            xla::ThrowIfError(tsl::profiler::ExportToTensorBoard(
+                xprof_dir, *profile_data.raw_xspaces()));
+          } else {
+            xla::ThrowIfError(tsl::profiler::ExportToTensorBoard(
+                xprof_dir, effective_session_id, *profile_data.raw_xspaces()));
+          }
+          return;
+        }
+        if (profile_data.raw_xspace() == nullptr) {
+          throw xla::XlaRuntimeError("ProfileData does not contain XSpace");
+        }
+        if (effective_session_id.empty()) {
+          xla::ThrowIfError(tsl::profiler::ExportToTensorBoard(
+              *profile_data.raw_xspace(), xprof_dir,
+              /* also_export_trace_json= */ true));
+        } else {
+          xla::ThrowIfError(tsl::profiler::ExportToTensorBoard(
+              *profile_data.raw_xspace(), xprof_dir, effective_session_id,
+              /* also_export_trace_json= */ true));
+        }
+      },
+      nb::arg("profile_data"), nb::arg("xprof_dir"),
+      nb::arg("session_id") = "");
 
   m.def(
       "get_profiled_instructions_proto",

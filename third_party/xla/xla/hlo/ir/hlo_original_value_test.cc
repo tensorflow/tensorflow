@@ -390,6 +390,56 @@ ENTRY main {
   EXPECT_EQ(tuple->original_value()->ToString(), "({\"p0\"}, {})");
 }
 
+TEST_F(OriginalValueHloTest, CreateFromInstructionToken) {
+  const char* hlo_string = R"(
+HloModule test
+
+ENTRY main {
+  p_tokens = (token[], token[]) parameter(0)
+  after_all = token[] after-all()
+  infeed = (f32[], token[]) infeed(after_all)
+  gte_data = f32[] get-tuple-element(infeed), index=0
+  gte_token = token[] get-tuple-element(infeed), index=1
+  token_only_tuple = (token[], token[]) tuple(after_all, gte_token)
+  ROOT tuple_with_token = (f32[], token[]) tuple(gte_data, gte_token)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* p_tokens = FindInstruction(module.get(), "p_tokens");
+  HloInstruction* after_all = FindInstruction(module.get(), "after_all");
+  HloInstruction* infeed = FindInstruction(module.get(), "infeed");
+  HloInstruction* gte_data = FindInstruction(module.get(), "gte_data");
+  HloInstruction* gte_token = FindInstruction(module.get(), "gte_token");
+  HloInstruction* token_only_tuple =
+      FindInstruction(module.get(), "token_only_tuple");
+  HloInstruction* tuple_with_token =
+      FindInstruction(module.get(), "tuple_with_token");
+
+  p_tokens->set_original_value(OriginalValue::CreateFromInstruction(p_tokens));
+  after_all->set_original_value(
+      OriginalValue::CreateFromInstruction(after_all));
+  infeed->set_original_value(OriginalValue::CreateFromInstruction(infeed));
+  gte_data->set_original_value(OriginalValue::CreateFromInstruction(gte_data));
+  gte_token->set_original_value(
+      OriginalValue::CreateFromInstruction(gte_token));
+  token_only_tuple->set_original_value(
+      OriginalValue::CreateFromInstruction(token_only_tuple));
+  tuple_with_token->set_original_value(
+      OriginalValue::CreateFromInstruction(tuple_with_token));
+
+  EXPECT_EQ(p_tokens->original_value(), nullptr);
+  EXPECT_EQ(after_all->original_value(), nullptr);
+  ASSERT_NE(infeed->original_value(), nullptr);
+  EXPECT_EQ(infeed->original_value()->ToString(), "({\"infeed\" {0}}, {})");
+  ASSERT_NE(gte_data->original_value(), nullptr);
+  EXPECT_EQ(gte_data->original_value()->ToString(), "{\"infeed\" {0}}");
+  EXPECT_EQ(gte_token->original_value(), nullptr);
+  EXPECT_EQ(token_only_tuple->original_value(), nullptr);
+  ASSERT_NE(tuple_with_token->original_value(), nullptr);
+  EXPECT_EQ(tuple_with_token->original_value()->ToString(),
+            "({\"infeed\" {0}}, {})");
+}
+
 TEST_F(OriginalValueHloTest, CopyOriginalValue) {
   const char* hlo_string = R"(
 HloModule test

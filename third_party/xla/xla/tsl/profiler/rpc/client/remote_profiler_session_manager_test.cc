@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/tsl/profiler/rpc/client/remote_profiler_session_manager.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -25,15 +26,19 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "grpcpp/security/server_credentials.h"
+#include "grpcpp/server_builder.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/status_matchers.h"  // IWYU pragma: keep
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/profiler/rpc/client/profiler_client_test_util.h"
 #include "xla/tsl/profiler/rpc/profiler_server.h"
+#include "xla/tsl/profiler/rpc/profiler_service_impl.h"
 #include "xla/tsl/profiler/utils/file_system_utils.h"
 #include "tsl/platform/host_info.h"
 #include "tsl/profiler/lib/profiler_session.h"
 #include "tsl/profiler/protobuf/profiler_options.pb.h"
+#include "tsl/profiler/protobuf/profiler_service.grpc.pb.h"
 #include "tsl/profiler/protobuf/profiler_service.pb.h"
 
 namespace tsl {
@@ -269,6 +274,70 @@ TEST(RemoteProfilerSessionManagerTest, OverrideHostnamesMismatch) {
   std::unique_ptr<RemoteProfilerSessionManager> sessions =
       RemoteProfilerSessionManager::Create(options, request, status);
   EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
+}
+
+// Returns true if the test environment supports binding an IPv6 loopback
+// socket ([::1]).
+bool IsIpv6LoopbackAvailable() {
+  std::unique_ptr<tensorflow::grpc::ProfilerService::Service> service =
+      CreateProfilerService();
+  ::grpc::ServerBuilder builder;
+  int selected_port = 0;
+  builder.AddListeningPort("[::1]:0", ::grpc::InsecureServerCredentials(),
+                           &selected_port);
+  builder.RegisterService(service.get());
+  std::unique_ptr<::grpc::Server> server = builder.BuildAndStart();
+  if (server != nullptr) {
+    server->Shutdown();
+  }
+  return selected_port != 0;
+}
+
+TEST(RemoteProfilerSessionManagerTest, Ipv6Address) {
+  if (!IsIpv6LoopbackAvailable()) {
+    GTEST_SKIP() << "IPv6 loopback [::1] is unavailable in this test "
+                    "environment.";
+  }
+  absl::Duration duration = absl::Milliseconds(30);
+  RemoteProfilerSessionManagerOptions options;
+  *options.mutable_profiler_options() = tsl::ProfilerSession::DefaultOptions();
+  options.mutable_profiler_options()->set_duration_ms(
+      absl::ToInt64Milliseconds(duration));
+
+  std::string service_address;
+  std::unique_ptr<ProfilerServer> server =
+      StartServer(duration, &service_address);
+  const size_t colon_pos = service_address.rfind(':');
+  ASSERT_NE(colon_pos, std::string::npos);
+  std::string ipv6_service_address =
+      absl::StrCat("[::1]", service_address.substr(colon_pos));
+  options.add_service_addresses(ipv6_service_address);
+
+  absl::Time approx_start = absl::Now();
+  absl::Duration grace = absl::Seconds(kGracePeriodSeconds);
+  absl::Duration max_duration = duration + grace;
+  options.set_max_session_duration_ms(absl::ToInt64Milliseconds(max_duration));
+  options.set_session_creation_timestamp_ns(absl::ToUnixNanos(approx_start));
+
+  ProfileRequest request = PopulateProfileRequest(
+      TmpDir(), "session_id", ipv6_service_address, options);
+  absl::Status status;
+  std::unique_ptr<RemoteProfilerSessionManager> sessions =
+      RemoteProfilerSessionManager::Create(options, request, status);
+  ASSERT_OK(status);
+  std::vector<Response> responses = sessions->WaitForCompletion();
+  absl::Duration elapsed = absl::Now() - approx_start;
+  ASSERT_EQ(responses.size(), 1);
+  EXPECT_EQ(responses.back().service_address, ipv6_service_address);
+  EXPECT_OK(responses.back().status);
+  EXPECT_TRUE(responses.back().profile_response->empty_trace());
+  EXPECT_EQ(responses.back().profile_response->tool_data_size(), 0);
+  EXPECT_THAT(elapsed, DurationApproxLess(max_duration));
+
+  std::string expected_filename = absl::StrCat(
+      "[__1]_", service_address.substr(colon_pos + 1), ".xplane.pb");
+  EXPECT_OK(Env::Default()->FileExists(ProfilerJoinPath(
+      request.repository_root(), request.session_id(), expected_filename)));
 }
 
 }  // namespace

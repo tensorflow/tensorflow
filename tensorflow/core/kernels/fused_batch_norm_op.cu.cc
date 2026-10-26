@@ -147,7 +147,7 @@ struct FusedBatchNormInferenceKernel {
       U var_v = var[channel];
 
       U scaling_factor_v = rsqrt(var_v + epsilon) * scale_v;
-      static_assert(std::is_same<U, float>::value, "U data type must be float");
+      static_assert(std::is_same_v<U, float>, "U data type must be float");
       U shifted_v = fmaf(in_v - mean_v, scaling_factor_v, offset_v);
 
       if (add_side_input) {

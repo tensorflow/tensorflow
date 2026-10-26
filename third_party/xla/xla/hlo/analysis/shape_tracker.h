@@ -171,7 +171,7 @@ class ShapeTracker {
   };
 
   // Returns the sequence of simplified steps represented by this tracker.
-  std::vector<Step> GetSteps() const;
+  std::vector<Step> GetSteps(bool avoid_combining_reshapes = true) const;
 
   // Returns a debug string representation of the tracked operations.
   std::string DebugString(bool avoid_combining_reshapes = true) const;

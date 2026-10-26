@@ -165,6 +165,22 @@ TEST_F(CpuCompilerTest, PermutationSortConvertedToScatter) {
   EXPECT_TRUE(Run(hlo, /*run_hlo_passes=*/true));
 }
 
+TEST_F(CpuCompilerTest, CompilesElementalOpsWithFusionWrapperPassDisabled) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+    HloModule test
+    ENTRY main {
+      p0 = f32[8]{0} parameter(0)
+      p1 = f32[8]{0} parameter(1)
+      ROOT add = f32[8]{0} add(p0, p1)
+    }
+  )"));
+  module->mutable_config().mutable_debug_options().add_xla_disable_hlo_passes(
+      "fusion-wrapper");
+
+  EXPECT_TRUE(Run(std::move(module), /*run_hlo_passes=*/true));
+}
+
 }  // namespace
 }  // namespace cpu
 }  // namespace xla

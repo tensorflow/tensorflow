@@ -252,6 +252,8 @@ class IfrtBackend final : public BackendInterface {
       std::unique_ptr<IfrtRequest> request);
   absl::StatusOr<Response> HandleGetDefaultLayoutRequest(
       std::unique_ptr<IfrtRequest> request);
+  absl::StatusOr<Response> HandleCancelExecutionRequest(
+      std::unique_ptr<IfrtRequest> request);
 
   //////////////////////////////////////////////////////////////////////
   // Auxiliary/Helper methods for the handler methods above
@@ -327,6 +329,14 @@ class IfrtBackend final : public BackendInterface {
 
   class InOrderRequestsProcessor;
   std::unique_ptr<InOrderRequestsProcessor> in_order_requests_processor_;
+
+  struct CancellationHandles {
+    absl::Mutex mu;
+    absl::flat_hash_map<uint64_t,
+                        xla::ifrt::LoadedExecutable::CancellationHandle>
+        handles ABSL_GUARDED_BY(mu);
+  };
+  std::shared_ptr<CancellationHandles> cancellation_handles_;
 
   // Tracks destroyed user context IDs. `ids` contains the ID of `UserContext`s
   // destroyed since the last response identified by `next_seq_num` - 1.

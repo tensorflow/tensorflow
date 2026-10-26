@@ -63,14 +63,6 @@ class WarpSpecializationTritonEmitterTest : public TritonEmitterDevicelessTest {
 };
 
 class ExperimentalTilingTritonEmitterTest : public TritonEmitterDevicelessTest {
- public:
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options =
-        TritonEmitterDevicelessTest::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_experimental_enable_tiling_propagation(true);
-    return debug_options;
-  }
-
  protected:
   // Emits and compiles the Triton fusion that is the root of `hlo_text` and
   // returns the Triton IR before the conversion to the TritonGPU dialect.
@@ -724,8 +716,7 @@ ENTRY entry {
                           triple, data_layout, mlir_context));
 }
 
-TEST_F(TritonEmitterDevicelessTest,
-       AllGatherFusionUsesTiledHloComputationWhenTilingPropagationDisabled) {
+TEST_F(TritonEmitterDevicelessTest, AllGatherFusionUsesTiledHloComputation) {
   constexpr absl::string_view kHloText = R"(
 f {
   param0 = f32[128,128]{1,0} parameter(0)
@@ -754,10 +745,6 @@ ENTRY entry {
 )";
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
                        ParseAndReturnVerifiedModule(kHloText));
-  // Explicitly ensure xla_gpu_experimental_enable_tiling_propagation is false.
-  hlo_module->mutable_config()
-      .mutable_debug_options()
-      .set_xla_gpu_experimental_enable_tiling_propagation(false);
 
   const auto* fusion = Cast<HloFusionInstruction>(
       hlo_module->entry_computation()->root_instruction());

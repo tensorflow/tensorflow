@@ -1283,6 +1283,67 @@ TEST_F(WhileTest, WhileInfeedCondition) {
   LiteralTestUtil::ExpectR0Equal(2, results[0]);
 }
 
+TEST_F(WhileTest, WhileWithWrappingS32InductionVarCompareAndTripCount) {
+  static constexpr absl::string_view kHloString = R"hlo(
+  HloModule WhileWithWrappingS32InductionVar
+
+  body1 {
+    state = (s32[], f32[]) parameter(0)
+    i = s32[] get-tuple-element(state), index=0
+    acc = f32[] get-tuple-element(state), index=1
+    zero = s32[] constant(0)
+    is_neg = pred[] compare(i, zero), direction=LT
+    one = f32[] constant(1)
+    next_acc = f32[] select(is_neg, one, acc)
+    step = s32[] constant(805306368)
+    next_i = s32[] add(i, step)
+    ROOT tuple = (s32[], f32[]) tuple(next_i, next_acc)
+  }
+
+  cond1 {
+    state = (s32[], f32[]) parameter(0)
+    i = s32[] get-tuple-element(state), index=0
+    bound = s32[] constant(1610612741)
+    ROOT lt = pred[] compare(i, bound), direction=LT
+  }
+
+  body2 {
+    state = (s32[], f32[]) parameter(0)
+    i = s32[] get-tuple-element(state), index=0
+    acc = f32[] get-tuple-element(state), index=1
+    one = f32[] constant(1)
+    next_acc = f32[] add(acc, one)
+    step = s32[] constant(1342177280)
+    next_i = s32[] add(i, step)
+    ROOT tuple = (s32[], f32[]) tuple(next_i, next_acc)
+  }
+
+  cond2 {
+    state = (s32[], f32[]) parameter(0)
+    i = s32[] get-tuple-element(state), index=0
+    bound = s32[] constant(1879048192)
+    ROOT lt = pred[] compare(i, bound), direction=LT
+  }
+
+  ENTRY main {
+    init_i1 = s32[] constant(805306368)
+    zero_f = f32[] constant(0)
+    init1 = (s32[], f32[]) tuple(init_i1, zero_f)
+    w1 = (s32[], f32[]) while(init1), condition=cond1, body=body1
+    r1 = f32[] get-tuple-element(w1), index=1
+
+    init_i2 = s32[] constant(1073741824)
+    init2 = (s32[], f32[]) tuple(init_i2, zero_f)
+    w2 = (s32[], f32[]) while(init2), condition=cond2, body=body2
+    r2 = f32[] get-tuple-element(w2), index=1
+
+    ROOT out = f32[] add(r1, r2)
+  }
+  )hlo";
+
+  EXPECT_TRUE(RunAndCompare(kHloString, ErrorSpec{0.0, 0.0}));
+}
+
 std::unique_ptr<PjRtClient> GetPjRtClientForTest() {
   CHECK(ShouldUsePjRt()) << "PjRt is required for while_test.";
   absl::StatusOr<std::unique_ptr<PjRtClient>> client =

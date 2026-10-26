@@ -31,6 +31,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/absl_check.h"
+#include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -252,6 +253,7 @@ class BaseFullyConnectedOpModel : public SingleOpModel {
   int input_size() { return input_size_; }
   int num_units() { return units_; }
   int num_batches() { return batches_; }
+  TfLiteTensor* weight_tensor() { return interpreter_->tensor(weights_); }
 
  protected:
   int input_;
@@ -487,6 +489,7 @@ class HybridFullyConnectedOpModel : public SingleOpModel {
   int input_size() { return input_size_; }
   int num_units() { return units_; }
   int num_batches() { return batches_; }
+  TfLiteTensor* weight_tensor() { return interpreter_->tensor(weights_); }
 
  protected:
   int input_;
@@ -572,6 +575,23 @@ TEST_P(FloatFullyConnectedOpTest, SimpleTest2) {
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(2, 1));
   EXPECT_THAT(m.GetOutput(), ElementsAre(11, 9));
+}
+
+TEST_P(FloatFullyConnectedOpTest, ScalarInputWithKeepNumDimsFalse) {
+  FloatFullyConnectedOpModel m(GetRegistration(), /*units=*/2, /*batches=*/1,
+                               /*input=*/{TensorType_FLOAT32, {}},
+                               /*output=*/{TensorType_FLOAT32},
+                               /*bias_type=*/TensorType_FLOAT32,
+                               /*keep_num_dims=*/false,
+                               /*bias_tensor_optional=*/true,
+                               /*activation_func=*/ActivationFunctionType_NONE);
+  m.SetWeights({2, 5});
+  m.SetInput({3});
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 2));
+  EXPECT_THAT(m.GetOutput(), ElementsAre(6, 15));
 }
 
 TEST_P(FloatFullyConnectedOpTest, FilterWithZeroSecondDimension1) {
@@ -2287,6 +2307,7 @@ class SparseFullyConnectedOpModel : public SingleOpModel {
   int input_size() { return input_size_; }
   int num_units() { return units_; }
   int num_batches() { return batches_; }
+  TfLiteTensor* weight_tensor() { return interpreter_->tensor(weights_); }
 
  protected:
   int input_;
@@ -2549,6 +2570,71 @@ TEST_P(SparseFullyConnectedOpTest, Simple1x4TestMultiThreadedMoreBatches) {
                                            81, 82, 83      // b = 5
                                            ));
   }
+}
+
+TEST(SparseFullyConnectedReferenceTest, Supports2x2BlockSparseWeights) {
+  std::initializer_list<float> weight_data = {
+      1, 0, 2, 3,  // u = 0
+      0, 4, 0, 0,  // u = 1
+      0, 0, 5, 0,  // u = 2
+      0, 0, 0, 6,  // u = 3
+  };
+  TensorData weight = {};
+  weight.type = TensorType_FLOAT32;
+  weight.shape = {4, 4};
+  weight.traversal_order = {0, 1, 2, 3};
+  weight.format = {kTfLiteDimDense, kTfLiteDimSparseCSR};
+  weight.block_map = {0, 1};
+  weight.block_size = {2, 2};
+  SparseFullyConnectedOpModel<float> m(
+      ops::builtin::Register_FULLY_CONNECTED_REF(),
+      /*units=*/4, /*batches=*/2,
+      /*input=*/{TensorType_FLOAT32, {2, 4}}, weight, weight_data);
+  m.SetBias({1, 2, 3, 4});
+  m.SetInput({
+      1,
+      2,
+      3,
+      4,  // b = 0
+      4,
+      3,
+      2,
+      1,  // b = 1
+  });
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(2, 4));
+  EXPECT_THAT(m.GetOutput(), ElementsAre(20, 10, 18, 28, 12, 14, 13, 10));
+}
+
+TEST_P(SparseFullyConnectedOpTest,
+       RejectsMismatchedDimMetadataAndTraversalOrderSize) {
+  std::initializer_list<float> weight_data = {
+      1, 2, 3, 4,  // u = 0
+      5, 6, 7, 8,  // u = 1
+  };
+  TensorData weight = {};
+  weight.type = TensorType_FLOAT32;
+  weight.shape = {2, 4};
+  weight.traversal_order = {0, 1};
+  weight.format = {kTfLiteDimDense, kTfLiteDimSparseCSR};
+  SparseFullyConnectedOpModel<float> m(
+      GetRegistration(), /*units=*/2, /*batches=*/1,
+      /*input=*/{TensorType_FLOAT32, {1, 4}}, weight, weight_data);
+  m.SetBias({1, 2});
+  m.SetInput({1, 2, 3, 4});
+
+  // Truncate dim_metadata_size so it does not match traversal_order->size.
+  TfLiteTensor* filter_tensor = m.weight_tensor();
+  ASSERT_NE(filter_tensor, nullptr);
+  ASSERT_NE(filter_tensor->sparsity, nullptr);
+  const int original_dim_metadata_size =
+      filter_tensor->sparsity->dim_metadata_size;
+  filter_tensor->sparsity->dim_metadata_size = 1;
+
+  EXPECT_EQ(m.Invoke(), kTfLiteError);
+  filter_tensor->sparsity->dim_metadata_size = original_dim_metadata_size;
 }
 
 TEST_P(SparseHybridFullyConnectedOpTest, SparseHybrid1x16Test) {
@@ -2946,9 +3032,389 @@ TEST(FullyConnectedInt16FilterInt16IndexingTest, RejectsShapeProductOverflow) {
             kTfLiteError);
 }
 
+// Builds a FullyConnected carrying an opaque `quant_spec`.
+//
+// The `cint2_fp32_int4_e8m0_drq` contract is selected by that string alone:
+// nothing in the tensor types distinguishes it from a standard hybrid
+// FullyConnected, so these tests drive the op through the flatbuffer rather
+// than through the higher level helpers above.
+class QuantSpecFullyConnectedOpModel : public SingleOpModel {
+ public:
+  QuantSpecFullyConnectedOpModel(int units, int batches,
+                                 const TensorData& input,
+                                 const TensorData& weights,
+                                 const std::string& spec_name,
+                                 float act_dilation,
+                                 bool corrupt_quant_spec = false)
+      : batches_(batches), units_(units) {
+    input_ = AddInput(input);
+    weights_ = AddInput(weights);
+    bias_ = AddInput({TensorType_FLOAT32, {units_}});
+    output_ = AddOutput({TensorType_FLOAT32});
+
+    flexbuffers::Builder fbb;
+    const size_t map_start = fbb.StartMap();
+    fbb.String("spec", spec_name);
+    fbb.Double("act_dilation", act_dilation);
+    fbb.EndMap(map_start);
+    fbb.Finish();
+    std::vector<uint8_t> payload = fbb.GetBuffer();
+    if (corrupt_quant_spec) {
+      // Truncating the payload leaves the trailing byte-width/type bytes that
+      // the flexbuffer root is located from pointing outside the buffer.
+      payload.resize(payload.size() / 2);
+    }
+
+    const auto quant_spec = builder_.CreateVector(payload);
+    const auto options =
+        CreateFullyConnectedOptions(builder_, ActivationFunctionType_NONE,
+                                    FullyConnectedOptionsWeightsFormat_DEFAULT,
+                                    /*keep_num_dims=*/false,
+                                    /*asymmetric_quantize_inputs=*/false,
+                                    TensorType_FLOAT32, quant_spec)
+            .Union();
+    SetBuiltinOp(BuiltinOperator_FULLY_CONNECTED,
+                 BuiltinOptions_FullyConnectedOptions, options);
+    resolver_ = std::make_unique<SingleOpResolver>(
+        BuiltinOperator_FULLY_CONNECTED,
+        ops::builtin::Register_FULLY_CONNECTED_REF());
+    // The reference kernel is the point of these tests, so no delegate.
+    BuildInterpreter({GetShape(input_), GetShape(weights_), GetShape(bias_)},
+                     /*num_threads=*/1, /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/false, /*allocate_and_delegate=*/false);
+  }
+
+  using SingleOpModel::AllocateTensors;
+
+  void SetBias(const std::vector<float>& f) { PopulateTensor(bias_, f); }
+  void SetInput(const std::vector<float>& f) { PopulateTensor(input_, f); }
+
+  // Writes raw 2 bit codes. The centered grid this kernel implements is not
+  // reachable through the symmetric quantize-and-populate helpers.
+  void SetRawWeights(const std::vector<int8_t>& codes) {
+    PopulateTensor2bit(weights_, /*offset=*/0, codes.data(),
+                       codes.data() + codes.size());
+  }
+  void SetRawInt8Weights(const std::vector<int8_t>& codes) {
+    PopulateTensor(weights_, codes);
+  }
+
+  std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
+
+ protected:
+  int input_;
+  int weights_;
+  int bias_;
+  int output_;
+  int batches_;
+  int units_;
+};
+
+constexpr int kA4W2TestBlockSize = 32;
+
+TEST(A4W2DrqFullyConnectedTest, MatchesHandComputedResult) {
+  // One block of 32, two output channels.
+  const std::vector<float> per_channel_scales = {0.5f, 0.25f};
+  QuantSpecFullyConnectedOpModel m(
+      /*units=*/2, /*batches=*/1,
+      /*input=*/{TensorType_FLOAT32, {1, kA4W2TestBlockSize}},
+      /*weights=*/
+      {TensorType_INT2,
+       {2, kA4W2TestBlockSize},
+       /*min=*/0.0f,
+       /*max=*/0.0f,
+       /*scale=*/0.0f,
+       /*zero_point=*/0,
+       /*per_channel_quantization=*/true,
+       per_channel_scales,
+       /*per_channel_quantization_offsets=*/{0, 0},
+       /*channel_index=*/0},
+      /*spec_name=*/"cint2_fp32_int4_e8m0_drq", /*act_dilation=*/1.5f);
+  ASSERT_EQ(m.AllocateTensors(), kTfLiteOk);
+
+  // max_abs is 8, so raw_scale = 8 / (7 + 1.5) = 0.941..., which rounds up to
+  // the power of two 2^0 = 1. Every input is then an exact 4 bit code.
+  std::vector<float> input(kA4W2TestBlockSize, 1.0f);
+  input[0] = -8.0f;
+  m.SetInput(input);
+
+  // Channel 0 is all code 1, channel 1 is all code -2. The kernel reconstructs
+  // them as (code + 0.5) * per_channel_scale.
+  std::vector<int8_t> weights(kA4W2TestBlockSize, 1);
+  weights.insert(weights.end(), kA4W2TestBlockSize, -2);
+  m.SetRawWeights(weights);
+
+  m.SetBias({1.0f, 2.0f});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  // Channel 0: sum(q_a * 1.5) = (-8 * 1.5) + (31 * 1.5) = 34.5
+  //            out = 1.0 * 0.5 * 34.5 + 1.0 = 18.25
+  // Channel 1: sum(q_a * -1.5) = (-8 * -1.5) + (31 * -1.5) = -34.5
+  //            out = 1.0 * 0.25 * -34.5 + 2.0 = -6.625
+  EXPECT_THAT(m.GetOutput(), ElementsAre(18.25f, -6.625f));
+}
+
+TEST(A4W2DrqFullyConnectedTest, RejectsUnimplementedSpec) {
+  // schema.fbs requires a runtime that does not implement the named contract
+  // to reject the op rather than silently fall back to standard hybrid
+  // quantization, which would produce plausible but wrong numbers.
+  QuantSpecFullyConnectedOpModel m(
+      /*units=*/2, /*batches=*/1,
+      /*input=*/{TensorType_FLOAT32, {1, kA4W2TestBlockSize}},
+      /*weights=*/
+      {TensorType_INT2,
+       {2, kA4W2TestBlockSize},
+       0.0f,
+       0.0f,
+       0.0f,
+       0,
+       /*per_channel_quantization=*/true,
+       {0.5f, 0.25f},
+       {0, 0},
+       0},
+      /*spec_name=*/"a4w2_drq_v99", /*act_dilation=*/1.5f);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST(A4W2DrqFullyConnectedTest, RejectsMalformedQuantSpec) {
+  QuantSpecFullyConnectedOpModel m(
+      /*units=*/2, /*batches=*/1,
+      /*input=*/{TensorType_FLOAT32, {1, kA4W2TestBlockSize}},
+      /*weights=*/
+      {TensorType_INT2,
+       {2, kA4W2TestBlockSize},
+       0.0f,
+       0.0f,
+       0.0f,
+       0,
+       /*per_channel_quantization=*/true,
+       {0.5f, 0.25f},
+       {0, 0},
+       0},
+      /*spec_name=*/"cint2_fp32_int4_e8m0_drq", /*act_dilation=*/1.5f,
+      /*corrupt_quant_spec=*/true);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST(A4W2DrqFullyConnectedTest, RejectsInt8Filter) {
+  // The kernel unpacks the filter as 2 bit values, so an int8 filter would
+  // make it read four times past the end of the buffer. `is_hybrid` alone does
+  // not exclude it, so `Prepare` has to.
+  QuantSpecFullyConnectedOpModel m(
+      /*units=*/2, /*batches=*/1,
+      /*input=*/{TensorType_FLOAT32, {1, kA4W2TestBlockSize}},
+      /*weights=*/
+      {TensorType_INT8,
+       {2, kA4W2TestBlockSize},
+       0.0f,
+       0.0f,
+       0.0f,
+       0,
+       /*per_channel_quantization=*/true,
+       {0.5f, 0.25f},
+       {0, 0},
+       0},
+      /*spec_name=*/"cint2_fp32_int4_e8m0_drq", /*act_dilation=*/1.5f);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST(A4W2DrqFullyConnectedTest, RejectsInputSizeThatIsNotAWholeNumberOfBlocks) {
+  // 48 is not a multiple of the 32 element block size; without this check the
+  // kernel would silently drop the trailing 16 elements of every row.
+  constexpr int kInputSize = 48;
+  QuantSpecFullyConnectedOpModel m(
+      /*units=*/2, /*batches=*/1,
+      /*input=*/{TensorType_FLOAT32, {1, kInputSize}},
+      /*weights=*/
+      {TensorType_INT2,
+       {2, kInputSize},
+       0.0f,
+       0.0f,
+       0.0f,
+       0,
+       /*per_channel_quantization=*/true,
+       {0.5f, 0.25f},
+       {0, 0},
+       0},
+      /*spec_name=*/"cint2_fp32_int4_e8m0_drq", /*act_dilation=*/1.5f);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+// `act_dilation` comes out of the model buffer and lands in the denominator of
+// the activation scale, so values that make that denominator non-positive, or
+// that are not finite, have to be rejected rather than producing inf/NaN
+// scales and silently poisoning every output.
+TEST(A4W2DrqFullyConnectedTest, RejectsActDilationThatCollapsesTheScale) {
+  QuantSpecFullyConnectedOpModel m(
+      /*units=*/2, /*batches=*/1,
+      /*input=*/{TensorType_FLOAT32, {1, kA4W2TestBlockSize}},
+      /*weights=*/
+      {TensorType_INT2,
+       {2, kA4W2TestBlockSize},
+       0.0f,
+       0.0f,
+       0.0f,
+       0,
+       /*per_channel_quantization=*/true,
+       {0.5f, 0.25f},
+       {0, 0},
+       0},
+      /*spec_name=*/"cint2_fp32_int4_e8m0_drq", /*act_dilation=*/-7.0f);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST(A4W2DrqFullyConnectedTest, RejectsNonFiniteActDilation) {
+  QuantSpecFullyConnectedOpModel m(
+      /*units=*/2, /*batches=*/1,
+      /*input=*/{TensorType_FLOAT32, {1, kA4W2TestBlockSize}},
+      /*weights=*/
+      {TensorType_INT2,
+       {2, kA4W2TestBlockSize},
+       0.0f,
+       0.0f,
+       0.0f,
+       0,
+       /*per_channel_quantization=*/true,
+       {0.5f, 0.25f},
+       {0, 0},
+       0},
+      /*spec_name=*/"cint2_fp32_int4_e8m0_drq",
+      /*act_dilation=*/std::numeric_limits<float>::quiet_NaN());
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
 INSTANTIATE_TEST_SUITE_P(
     SparseQuantizedFullyConnectedOpTest, SparseQuantizedFullyConnectedOpTest,
     ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kKernelMap)));
+
+class UnallocatedFullyConnectedOpModel : public SingleOpModel {
+ public:
+  UnallocatedFullyConnectedOpModel(
+      TfLiteRegistration* registration, const TensorData& input,
+      const TensorData& weights, const TensorData& output,
+      bool keep_num_dims = false, const std::vector<int8_t>& raw_weights = {}) {
+    input_ = AddInput(input);
+    const int weights_id = raw_weights.empty()
+                               ? AddInput(weights)
+                               : AddConstInput(weights, raw_weights);
+    AddNullInput();
+    output_ = AddOutput(output);
+    SetBuiltinOp(
+        BuiltinOperator_FULLY_CONNECTED, BuiltinOptions_FullyConnectedOptions,
+        CreateFullyConnectedOptions(builder_, ActivationFunctionType_NONE,
+                                    FullyConnectedOptionsWeightsFormat_DEFAULT,
+                                    keep_num_dims)
+            .Union());
+    resolver_ = std::make_unique<SingleOpResolver>(
+        BuiltinOperator_FULLY_CONNECTED, registration);
+    BuildInterpreter({GetShape(input_), GetShape(weights_id)},
+                     /*num_threads=*/1, /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/false, /*allocate_and_delegate=*/false);
+  }
+
+  using SingleOpModel::AllocateTensors;
+  void ResizeInput(const std::vector<int>& dims) {
+    interpreter_->ResizeInputTensor(input_, dims);
+  }
+  std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
+
+ private:
+  int input_;
+  int output_;
+};
+
+TEST(FullyConnectedSecurityTest, RejectsRank0InputWithKeepNumDimsInPrepare) {
+  UnallocatedFullyConnectedOpModel keep_dims_model(
+      ops::builtin::Register_FULLY_CONNECTED_REF(),
+      /*input=*/{TensorType_FLOAT32, {}},
+      /*weights=*/{TensorType_FLOAT32, {2, 1}},
+      /*output=*/{TensorType_FLOAT32},
+      /*keep_num_dims=*/true);
+  EXPECT_EQ(keep_dims_model.AllocateTensors(), kTfLiteError);
+}
+
+TEST(FullyConnectedSecurityTest,
+     RejectsRank0InputWithZeroColumnFilterInPrepare) {
+  UnallocatedFullyConnectedOpModel zero_col_filter_model(
+      ops::builtin::Register_FULLY_CONNECTED_REF(),
+      /*input=*/{TensorType_FLOAT32, {}},
+      /*weights=*/{TensorType_FLOAT32, {2, 0}},
+      /*output=*/{TensorType_FLOAT32},
+      /*keep_num_dims=*/true);
+  EXPECT_EQ(zero_col_filter_model.AllocateTensors(), kTfLiteError);
+}
+
+TEST(FullyConnectedSecurityTest,
+     RejectsHybridPerChannelInvalidQuantizedDimensionInPrepare) {
+  // 4 output units and 32 input columns, with per-channel quantization along
+  // dimension 1 (32 scales) instead of dimension 0 (4 scales).
+  std::vector<float> scales(32, 0.5f);
+  std::vector<int64_t> offsets(32, 0);
+  TensorData weights = {TensorType_INT4,
+                        /*shape=*/{4, 32},
+                        /*min=*/0.0f,
+                        /*max=*/0.0f,
+                        /*scale=*/0.0f,
+                        /*zero_point=*/0,
+                        /*per_channel_quantization=*/true,
+                        /*per_channel_quantization_scales=*/scales,
+                        /*per_channel_quantization_offsets=*/offsets,
+                        /*channel_index=*/1};
+  std::vector<int8_t> packed_weights(4 * 32 / 2, 0);
+  UnallocatedFullyConnectedOpModel m(
+      ops::builtin::Register_FULLY_CONNECTED_GENERIC_OPT(),
+      /*input=*/{TensorType_FLOAT32, {1, 32}}, weights,
+      /*output=*/{TensorType_FLOAT32},
+      /*keep_num_dims=*/false, packed_weights);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST(FullyConnectedSecurityTest,
+     Int4HybridResizesOutputWhenBatchShapeChangesWithSameTotalBatchSize) {
+  TensorData weights = {TensorType_INT4,
+                        /*shape=*/{4, 32},
+                        /*min=*/-7.0f,
+                        /*max=*/7.0f,
+                        /*scale=*/1.0f,
+                        /*zero_point=*/0};
+  std::vector<int8_t> packed_weights(4 * 32 / 2, 0);
+  UnallocatedFullyConnectedOpModel m(
+      ops::builtin::Register_FULLY_CONNECTED_GENERIC_OPT(),
+      /*input=*/{TensorType_FLOAT32, {2, 3, 32}}, weights,
+      /*output=*/{TensorType_FLOAT32},
+      /*keep_num_dims=*/true, packed_weights);
+  ASSERT_EQ(m.AllocateTensors(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(2, 3, 4));
+
+  // Resize input to [3, 2, 32] (same total batch_size = 6, different shape).
+  m.ResizeInput({3, 2, 32});
+  ASSERT_EQ(m.AllocateTensors(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(3, 2, 4));
+}
+
+TEST(FullyConnectedSecurityTest,
+     Int4HybridResizesOutputWhenBatchSizeBecomesZero) {
+  TensorData weights = {TensorType_INT4,
+                        /*shape=*/{4, 32},
+                        /*min=*/-7.0f,
+                        /*max=*/7.0f,
+                        /*scale=*/1.0f,
+                        /*zero_point=*/0};
+  std::vector<int8_t> packed_weights(4 * 32 / 2, 0);
+  UnallocatedFullyConnectedOpModel m(
+      ops::builtin::Register_FULLY_CONNECTED_GENERIC_OPT(),
+      /*input=*/{TensorType_FLOAT32, {2, 32}}, weights,
+      /*output=*/{TensorType_FLOAT32},
+      /*keep_num_dims=*/true, packed_weights);
+  ASSERT_EQ(m.AllocateTensors(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(2, 4));
+
+  // Resize input to [0, 32] (batch_size = 0) and invoke.
+  m.ResizeInput({0, 32});
+  ASSERT_EQ(m.AllocateTensors(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(0, 4));
+  EXPECT_EQ(m.Invoke(), kTfLiteOk);
+}
 
 }  // namespace
 }  // namespace tflite

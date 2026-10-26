@@ -39,7 +39,7 @@ std::vector<testing::Matcher<float>> ArrayFloatNear(
 
 class FuseBinaryIntoFollowingAffineTest : public ::testing::Test {
  protected:
-  FuseBinaryIntoFollowingAffineTest() {}
+  FuseBinaryIntoFollowingAffineTest() = default;
 
   void SetUp() override { model_ = std::make_unique<Model>(); }
 

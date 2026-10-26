@@ -243,15 +243,19 @@ struct MatchedFp8Param {
 // or there is a there is a path from an FP8 instruction 'fp8_input' to 'instr'
 // consisting of the following.
 // 1. A convert to a wider type.
-// 2. Optionally, a multiplication/division by a scalar, representing the scale.
-//    If present, the scalar scale is returned as 'scale' and 'mult_scale'
-//    is set to true or false depending on whether there is a multiplication or
-//    a division.
+// 2. Optionally, a multiplication/division by a broadcast scalar, possibly
+//    converted to the type of the dequantization, representing the scale. If
+//    present, the scalar scale is returned as 'scale' and 'mult_scale' is set
+//    to true or false depending on whether there is a multiplication or a
+//    division.
+// 2a. Optionally, a convert from F32 to BF16/F16 of the result of (1) or (2),
+//    as produced by FloatNormalization when the dequantization is computed in
+//    F32.
 // 3. A possibly-empty set of ops communative with steps (1) and (2), meaning
 //    they can be safely moved before step (1). Such ops are returned in
 //    'commutative_ops'.
-// Steps (1) and (2) together are a dequantization, and can be fused into a
-// cublas LT matmul. Step (3) can be moved before the cublas LT matmul.
+// Steps (1), (2) and (2a) together are a dequantization, and can be fused into
+// a cublas LT matmul. Step (3) can be moved before the cublas LT matmul.
 std::optional<MatchedFp8Param> MatchFp8Param(HloInstruction* instr) {
   absl::flat_hash_set<int> visited_instrs;
   std::optional<InstrPath> maybe_subgraph =
@@ -271,19 +275,34 @@ std::optional<MatchedFp8Param> MatchFp8Param(HloInstruction* instr) {
   }
 
   int num_dequant_ops;
+  // The broadcast scale may be converted to the dequantization type, e.g. when
+  // FloatNormalization computes a bf16 dequantization in f32.
+  auto is_float_scale = [](const HloInstruction* scale) {
+    PrimitiveType type = scale->shape().element_type();
+    return primitive_util::IsFloatingPointType(type) &&
+           !primitive_util::IsF8Type(type);
+  };
+  auto scale_pattern = [&param, &is_float_scale]() {
+    return m::AnyOf<HloInstruction>(
+        m::Broadcast(m::Op(&param.scale)),
+        m::Convert(
+            m::Broadcast(m::Op(&param.scale).WithPredicate(is_float_scale))));
+  };
   // When not operating directly on an FP8 operand, the second and
   // third instructions in the subgraph can describe a dequantization, i.e. a
   // convert instruction followed by a multiply/divide instruction.
   if (subgraph.size() > 2 &&
       Match(subgraph[2].first,
-            m::MultiplyAnyOrder(m::Convert(m::Op(&param.fp8_input)),
-                                m::Broadcast(m::Op(&param.scale))))) {
+            m::MultiplyAnyOrder(
+                m::Convert(m::Op(&param.fp8_input).Is(subgraph[0].first)),
+                scale_pattern()))) {
     param.mult_scale = true;
     num_dequant_ops = 2;
   } else if (subgraph.size() > 2 &&
              Match(subgraph[2].first,
-                   m::Divide(m::Convert(m::Op(&param.fp8_input)),
-                             m::Broadcast(m::Op(&param.scale))))) {
+                   m::Divide(m::Convert(
+                                 m::Op(&param.fp8_input).Is(subgraph[0].first)),
+                             scale_pattern()))) {
     param.mult_scale = false;
     num_dequant_ops = 2;
   } else if (subgraph.size() > 1 &&
@@ -295,6 +314,20 @@ std::optional<MatchedFp8Param> MatchFp8Param(HloInstruction* instr) {
     VLOG(1) << "Possible intended FP8 GEMM operating on "
             << instr->ToShortString() << " not rewritten into FP8 Custom Call.";
     return std::nullopt;
+  }
+
+  // FloatNormalization may compute a BF16/F16 dequantization in F32 and
+  // convert the result back, e.g. bf16 convert(f32 multiply(f32 convert(fp8),
+  // ...)). Treat that convert as part of the dequantization.
+  if (subgraph.size() > 1 + num_dequant_ops) {
+    const HloInstruction* next = subgraph[1 + num_dequant_ops].first;
+    PrimitiveType next_type = next->shape().element_type();
+    if (Match(next, m::Convert(m::Op()
+                                   .Is(subgraph[num_dequant_ops].first)
+                                   .WithElementType(F32))) &&
+        (next_type == BF16 || next_type == F16)) {
+      ++num_dequant_ops;
+    }
   }
 
   auto preserves_element_type = [](const HloInstruction* instr) -> bool {
@@ -566,51 +599,89 @@ const GemmBackendConfig* GetGemmBackendConfig(
   return nullptr;
 }
 
-absl::StatusOr<HloInstruction*> NormalizeBatchDimensions(HloInstruction* dot) {
-  HloDotInstruction* dot_instr = Cast<HloDotInstruction>(dot);
-  const DotDimensionNumbers& dnums = dot_instr->dot_dimension_numbers();
+// Returns true if cuBLAS can handle the operand and output layouts of the dot
+// as they are, i.e. the batch, non-contracting and contracting dimensions of
+// each shape are physically sequential.
+bool CublasSupportsLayouts(const HloInstruction& dot,
+                           absl::Span<const DotOperandDims> dims) {
+  auto supports = [](const DotOperandDims& d) {
+    return MatrixLayout::For(d.shape(), d.Indices(DotOperandDims::kBatch),
+                             d.Indices(DotOperandDims::kNonContracting),
+                             d.Indices(DotOperandDims::kContracting))
+        .ok();
+  };
+  return supports(dims[0]) && supports(dims[1]) &&
+         MatrixLayout::For(dot.shape(), dims[0].Rank(DotOperandDims::kBatch),
+                           dims[0].Rank(DotOperandDims::kNonContracting),
+                           dims[1].Rank(DotOperandDims::kBatch),
+                           dims[1].Rank(DotOperandDims::kNonContracting))
+             .ok();
+}
 
-  if (dnums.lhs_batch_dimensions_size() != 2) {
+// Moves the batch dimensions of a dot operand to the front and merges them into
+// one. The result is a bitcast if the batch dimensions are already physically
+// adjacent and in order; otherwise the operand is first transposed into the
+// default layout.
+absl::StatusOr<HloInstruction*> MergeBatchDimensions(HloInstruction* operand,
+                                                     DotOperandDims& dims) {
+  absl::Span<const int64_t> batch_dims = dims.Indices(DotOperandDims::kBatch);
+  std::vector<int64_t> permutation(batch_dims.begin(), batch_dims.end());
+  for (int64_t dim = 0; dim < dims.shape().dimensions().size(); ++dim) {
+    if (!absl::c_linear_search(batch_dims, dim)) {
+      permutation.push_back(dim);
+    }
+  }
+  // ApplyPermutation keeps the physical layout, so the whole chain is a bitcast
+  // iff collapsing the transposed shape is.
+  dims.ApplyPermutation(permutation);
+  const Shape transposed_shape = dims.shape();
+  ABSL_RETURN_IF_ERROR(dims.CollapseCategory(DotOperandDims::kBatch,
+                                        /*remove_if_empty=*/false));
+  Shape merged_shape = dims.shape();
+  if (!ShapeUtil::ReshapeIsBitcast(transposed_shape, merged_shape)) {
+    ABSL_ASSIGN_OR_RETURN(operand, MakeTransposeHlo(operand, permutation));
+    LayoutUtil::SetToDefaultLayout(operand->mutable_shape());
+    LayoutUtil::SetToDefaultLayout(&merged_shape);
+  }
+  return MakeBitcastHlo(operand, merged_shape);
+}
+
+// cuBLAS handles any number of batch dimensions as long as they are physically
+// sequential, which is what layout assignment arranges for. Dots created or
+// modified later (e.g. by SplitkRewriter) can violate this; for those, merge
+// the batch dimensions into one.
+absl::StatusOr<HloInstruction*> NormalizeBatchDimensions(HloInstruction* dot) {
+  const int64_t num_batch_dims =
+      dot->dot_dimension_numbers().lhs_batch_dimensions_size();
+  if (num_batch_dims < 2) {
+    return dot;
+  }
+  ABSL_ASSIGN_OR_RETURN(auto dims, DotOperandDims::FromDot(dot));
+  if (CublasSupportsLayouts(*dot, dims)) {
     return dot;
   }
 
-  ABSL_ASSIGN_OR_RETURN(auto dims, DotOperandDims::FromDot(dot));
-  std::array<HloInstruction*, 2> operands = {dot->mutable_operand(0),
-                                             dot->mutable_operand(1)};
-
+  std::array<HloInstruction*, 2> operands;
   for (size_t i : {0, 1}) {
-    absl::Span<const int64_t> batch_dims =
-        dims[i].Indices(DotOperandDims::kBatch);
-    int64_t b0 = batch_dims[0];
-    int64_t b1 = batch_dims[1];
-
-    if (b1 != b0 + 1) {
-      std::vector<int64_t> permutation(
-          operands[i]->shape().dimensions().size());
-      absl::c_iota(permutation, 0);
-      MoveSingleElement(absl::MakeSpan(permutation), b1, b1 < b0 ? b0 : b0 + 1);
-      ABSL_ASSIGN_OR_RETURN(operands[i], MakeTransposeHlo(operands[i], permutation));
-      LayoutUtil::SetToDefaultLayout(operands[i]->mutable_shape());
-      dims[i].ApplyPermutation(permutation);
-    }
-
-    ABSL_RETURN_IF_ERROR(dims[i].CollapseCategory(DotOperandDims::kBatch,
-                                             /*remove_if_empty=*/false));
-    ABSL_ASSIGN_OR_RETURN(operands[i], MakeReshapeHlo(dims[i].shape(), operands[i]));
+    ABSL_ASSIGN_OR_RETURN(operands[i],
+                     MergeBatchDimensions(dot->mutable_operand(i), dims[i]));
   }
 
   ABSL_ASSIGN_OR_RETURN(DotDimensionNumbers new_dnums,
                    DotOperandDims::CreateDotDimensionNumbers(dims));
-  ABSL_ASSIGN_OR_RETURN(
-      HloInstruction * new_dot,
-      MakeDotHlo(operands[0], operands[1], new_dnums,
-                 dot_instr->precision_config(),
-                 dot_instr->shape().element_type(), &dot_instr->metadata()));
-
-  ABSL_ASSIGN_OR_RETURN(HloInstruction * reshape,
-                   MakeReshapeHlo(dot->shape(), new_dot));
-
-  return reshape;
+  // The output batch dimensions are the leading ones; keep the assigned output
+  // layout.
+  Shape new_dot_shape = ShapeUtil::FilterDimensions(
+      [&](int64_t dim) { return dim == 0 || dim >= num_batch_dims; },
+      dot->shape());
+  new_dot_shape.set_dimensions(0, dims[0].TotalSize(DotOperandDims::kBatch));
+  HloInstruction* new_dot = dot->AddInstruction(
+      HloInstruction::CreateDot(new_dot_shape, operands[0], operands[1],
+                                new_dnums, dot->precision_config()));
+  if (ShapeUtil::ReshapeIsBitcast(new_dot_shape, dot->shape())) {
+    return MakeBitcastHlo(new_dot, dot->shape(), &dot->metadata());
+  }
+  return MakeReshapeHlo(dot->shape(), new_dot);
 }
 
 // The rewriting proceeds in a bottom-up way:
@@ -667,8 +738,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                      NormalizeBatchDimensions(instr));
     if (normalized_instr != instr) {
       ABSL_RETURN_IF_ERROR(ReplaceInstruction(instr, normalized_instr));
-      // After normalization, the dot instruction is followed by a reshape,
-      // taking the operand to get the actual dot instruction.
+      // After normalization, the dot instruction is followed by a bitcast or
+      // reshape, taking the operand to get the actual dot instruction.
       instr = normalized_instr->mutable_operand(0);
     }
 
@@ -732,13 +803,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                  const_cast<HloInstruction*>(instr->operand(0)))) &&
             (b = MatchFp8Param(
                  const_cast<HloInstruction*>(instr->operand(1))))) {
-          if (gpu_version_.IsRocm() &&
-              toolkit_version_ < stream_executor::SemanticVersion{6, 2, 0} &&
-              instr->shape().element_type() != F16 &&
-              instr->shape().element_type() != F32) {
-            ABSL_ASSIGN_OR_RETURN(instr,
-                             TurnF8DotWithUnsupportedOutputTypeIntoF32(instr));
-          }
           ABSL_ASSIGN_OR_RETURN(bool created_call,
                            CreateF8CustomCall(instr, gpu_backend_config,
                                               a.value(), b.value()));
@@ -973,8 +1037,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     }
 
     const auto is_rocm = gpu_version_.IsRocm();
-    if (is_rocm &&
-        toolkit_version_ >= stream_executor::SemanticVersion{7, 0, 0}) {
+    if (is_rocm) {
       // Attempt to match approximate Swish activation (including grouped
       // matmul)
       // (https://flax.readthedocs.io/en/v0.5.3/_autosummary/flax.linen.swish.html),
@@ -1265,11 +1328,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         VLOG(1) << "FP8 Custom Calls require MI300, or later architectures.";
         return false;
       }
-      if (toolkit_version_ < stream_executor::SemanticVersion{6, 0, 0}) {
-        // FP8 GEMM kernels are only available with ROCm 6.0 and above
-        VLOG(1) << "FP8 Custom Calls require ROCm 6.0 or newer.";
-        return false;
-      }
     }
 
     PrimitiveType a_type = a.fp8_input->shape().element_type();
@@ -1357,8 +1415,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // cuBLASLt FP8 GEMM kernels require the scaling factors to be in F32
     // format. Set the factors to one when no scaling factors were captured.
     std::array<bool, 2> mult_scale{a.mult_scale, b.mult_scale};
-    std::array<HloInstruction*, 2> scales{a.scale, b.scale}, inv_scales,
-        scales_f32;
+    std::array<HloInstruction*, 2> scales{a.scale, b.scale}, scales_f32;
     HloInstruction* one_constant = nullptr;
     auto one = [&one_constant, instr]() -> HloInstruction* {
       if (!one_constant) {
@@ -1376,14 +1433,15 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                      "scalars.";
           return false;
         }
-        if (!mult_scale[i]) {
-          inv_scales[i] = instr->AddInstruction(HloInstruction::CreateBinary(
-              scales[i]->shape(), HloOpcode::kDivide, one(), scales[i]));
-        }
-        scales_f32[i] = mult_scale[i] ? scales[i] : inv_scales[i];
+        scales_f32[i] = scales[i];
         if (scales_f32[i]->shape().element_type() != F32) {
           scales_f32[i] = instr->AddInstruction(HloInstruction::CreateConvert(
               ShapeUtil::MakeScalarShape(F32), scales_f32[i]));
+        }
+        if (!mult_scale[i]) {
+          scales_f32[i] = instr->AddInstruction(HloInstruction::CreateBinary(
+              ShapeUtil::MakeScalarShape(F32), HloOpcode::kDivide, one(),
+              scales_f32[i]));
         }
       } else {
         scales_f32[i] = one();
@@ -1404,15 +1462,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       }
     }
     if (gpu_version_.IsRocm()) {
-      if (toolkit_version_ < stream_executor::SemanticVersion{6, 2, 0}) {
-        if (supported_d_types.find(d_type) == supported_d_types.end()) {
-          VLOG(1) << "Failed to rewrite " << instr->ToShortString()
-                  << " into FP8 Custom Call. For ROCm version < 6.2, output "
-                     "type must be BF16, F16 or F32, but got "
-                  << PrimitiveType_Name(d_type);
-          return false;
-        }
-      }
       ABSL_ASSIGN_OR_RETURN(auto rocm_compute_capability,
                        GetRocmComputeCapability(gpu_version_));
       if (rocm_compute_capability.has_ocp_fp8_support()) {
@@ -1632,14 +1681,57 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     return absl::OkStatus();
   }
 
+  // Returns whether the BLAS library supports an FP8 output of type `d_type`
+  // for the input types of `gemm`. On ROCm, C has the type of D (see
+  // matmul_utils.cc), and hipBLASLt supports E4M3 x E4M3 -> E4M3 and mixed
+  // E4M3/E5M2 inputs -> E5M2, plus mixed inputs -> E4M3 for OCP types.
+  absl::StatusOr<bool> IsSupportedF8OutputType(const HloInstruction& gemm,
+                                               PrimitiveType d_type) {
+    if (gpu_version_.IsCuda()) {
+      return d_type == F8E4M3FN || d_type == F8E5M2;
+    }
+    if (!gpu_version_.IsRocm()) {
+      return false;
+    }
+    ABSL_ASSIGN_OR_RETURN(auto rocm_compute_capability,
+                     GetRocmComputeCapability(gpu_version_));
+    PrimitiveType a_type = gemm.operand(0)->shape().element_type();
+    PrimitiveType b_type = gemm.operand(1)->shape().element_type();
+    bool has_e5m2_input = a_type == F8E5M2 || b_type == F8E5M2 ||
+                          a_type == F8E5M2FNUZ || b_type == F8E5M2FNUZ;
+    switch (d_type) {
+      case F8E4M3FN:
+        return rocm_compute_capability.has_ocp_fp8_support();
+      case F8E5M2:
+        return rocm_compute_capability.has_ocp_fp8_support() && has_e5m2_input;
+      case F8E4M3FNUZ:
+        return rocm_compute_capability.has_nanoo_fp8_support() &&
+               !has_e5m2_input;
+      case F8E5M2FNUZ:
+        return rocm_compute_capability.has_nanoo_fp8_support() &&
+               has_e5m2_input;
+      default:
+        return false;
+    }
+  }
+
+  // Returns whether hipBLASLt can apply a D scale to an FP8 output of type
+  // `d_type` for the input types of `gemm`: only E4M3 x E4M3 -> E4M3 for OCP
+  // types, and every IsSupportedF8OutputType combination for FNUZ types.
+  bool SupportsF8OutputDScale(const HloInstruction& gemm,
+                              PrimitiveType d_type) const {
+    if (d_type != F8E4M3FN && d_type != F8E5M2) {
+      return true;
+    }
+    return gemm.operand(0)->shape().element_type() == F8E4M3FN &&
+           gemm.operand(1)->shape().element_type() == F8E4M3FN &&
+           d_type == F8E4M3FN;
+  }
+
   absl::Status F8ConvertD(HloInstruction* instr, HloInstruction* existing_gemm,
                           HloInstruction* d_scale, HloInstruction* clamp_lower,
                           HloInstruction* clamp_upper,
                           bool mult_scale = false) {
-    // TODO: add ROCm support to this fusion pattern
-    if (gpu_version_.IsRocm()) {
-      return absl::OkStatus();
-    }
     // Verify the data types and the operands of clamp.
     if (instr->shape().element_type() == F8E4M3FN) {
       if (!clamp_lower->literal().IsAllFloat(static_cast<float>(
@@ -1655,7 +1747,33 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
               std::numeric_limits<tsl::float8_e5m2>::max()))) {
         return absl::OkStatus();
       }
+    } else if (instr->shape().element_type() == F8E4M3FNUZ) {
+      if (!clamp_lower->literal().IsAllFloat(static_cast<float>(
+              std::numeric_limits<tsl::float8_e4m3fnuz>::lowest())) ||
+          !clamp_upper->literal().IsAllFloat(static_cast<float>(
+              std::numeric_limits<tsl::float8_e4m3fnuz>::max()))) {
+        return absl::OkStatus();
+      }
+    } else if (instr->shape().element_type() == F8E5M2FNUZ) {
+      if (!clamp_lower->literal().IsAllFloat(static_cast<float>(
+              std::numeric_limits<tsl::float8_e5m2fnuz>::lowest())) ||
+          !clamp_upper->literal().IsAllFloat(static_cast<float>(
+              std::numeric_limits<tsl::float8_e5m2fnuz>::max()))) {
+        return absl::OkStatus();
+      }
     } else {
+      return absl::OkStatus();
+    }
+
+    ABSL_ASSIGN_OR_RETURN(
+        bool is_supported_output_type,
+        IsSupportedF8OutputType(*existing_gemm, instr->shape().element_type()));
+    if (!is_supported_output_type) {
+      VLOG(1) << "The conversion of the result of "
+              << existing_gemm->ToShortString() << " to "
+              << PrimitiveType_Name(instr->shape().element_type())
+              << " is not fused into the FP8 Custom Call because the output "
+                 "type is not supported for its input types.";
       return absl::OkStatus();
     }
 
@@ -1710,6 +1828,16 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       if (!reduce_damax) {
         return absl::OkStatus();
       }
+      // hipBLASLt ships no tuned AMAX_D kernels on current ROCm releases (none
+      // for gfx950; slow ones for gfx942), so keep the amax reduction and the
+      // FP8 conversion unfused.
+      if (gpu_version_.IsRocm()) {
+        VLOG(1) << "The scaling and conversion of the result of "
+                << existing_gemm->ToShortString()
+                << " is not fused into the FP8 Custom Call because hipBLASLt "
+                   "does not support the amax epilogue on this platform.";
+        return absl::OkStatus();
+      }
     } else if (gemm_users.size() > 2) {
       return absl::OkStatus();
     }
@@ -1729,10 +1857,80 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                    "matrix bias with element type other than BF16 or F16.";
         return absl::OkStatus();
       }
+      if (gpu_version_.IsRocm()) {
+        VLOG(1) << "The scaling and conversion of the result of "
+                << existing_gemm->ToShortString()
+                << " is not fused into the FP8 Custom Call because "
+                   "hipBLASLt does not support matrix bias with FP8 output.";
+        return absl::OkStatus();
+      }
       // Turn off the output to operand aliasing, since the fp8 output and
       // bf16/fp16 bias have different sizes.
       xla::Cast<HloCustomCallInstruction>(existing_gemm)
           ->set_output_to_operand_aliasing({});
+    }
+
+    // hipBLASLt reads the vector bias of a GEMM with FP8 output as F16.
+    if (gpu_version_.IsRocm()) {
+      ABSL_ASSIGN_OR_RETURN(
+          bool has_vector_bias,
+          gpublas_lt::EpilogueAddsVectorBias(gemm_backend_config.epilogue()));
+      if (has_vector_bias &&
+          existing_gemm->operands().back()->shape().element_type() != F16) {
+        VLOG(1) << "The scaling and conversion of the result of "
+                << existing_gemm->ToShortString()
+                << " is not fused into the FP8 Custom Call because hipBLASLt "
+                   "only supports an F16 vector bias with FP8 output.";
+        return absl::OkStatus();
+      }
+    }
+
+    // On ROCm, hipBLASLt applies the A and B scales with alpha before the
+    // epilogue and the D scale after it, so for the DEFAULT epilogue (beta is 0
+    // here) the D scale is folded into the A scale. Other epilogues need
+    // kernels that apply a D scale; without them, the output stays unfused.
+    if (gpu_version_.IsRocm()) {
+      if (d_scale && d_scale->IsConstant() &&
+          d_scale->literal().IsAllFloat(1.0f)) {
+        d_scale = nullptr;
+      }
+      std::vector<HloInstruction*> new_operands(
+          existing_gemm->operands().begin(), existing_gemm->operands().end());
+      GpuBackendConfig new_gpu_backend_config = gpu_backend_config;
+      if (d_scale) {
+        bool fold_d_scale =
+            gemm_backend_config.epilogue() == GemmBackendConfig::DEFAULT;
+        if (!fold_d_scale &&
+            !SupportsF8OutputDScale(*existing_gemm,
+                                    instr->shape().element_type())) {
+          VLOG(1) << "The scaling and conversion of the result of "
+                  << existing_gemm->ToShortString()
+                  << " is not fused into the FP8 Custom Call because hipBLASLt "
+                     "does not support a D scale for its types.";
+          return absl::OkStatus();
+        }
+        ABSL_ASSIGN_OR_RETURN(HloInstruction * d_scale_f32,
+                         InvertAndConvertScalar(d_scale, !mult_scale));
+        if (!fold_d_scale) {
+          new_operands.push_back(d_scale_f32);
+          new_gpu_backend_config.mutable_gemm_backend_config()->set_has_d_scale(
+              true);
+        } else if (new_operands[2]->IsConstant() &&
+                   new_operands[2]->literal().IsAllFloat(1.0f)) {
+          new_operands[2] = d_scale_f32;
+        } else {
+          ABSL_ASSIGN_OR_RETURN(new_operands[2],
+                           MakeBinaryHlo(HloOpcode::kMultiply, new_operands[2],
+                                         d_scale_f32, &d_scale->metadata()));
+        }
+      }
+      std::unique_ptr<HloInstruction> new_gemm =
+          existing_gemm->CloneWithNewOperands(instr->shape(), new_operands);
+      ABSL_RETURN_IF_ERROR(new_gemm->set_backend_config(new_gpu_backend_config));
+      ABSL_RETURN_IF_ERROR(ReplaceWithNewInstruction(instr, std::move(new_gemm)));
+      VLOG(1) << "Conversion" << (d_scale ? " and scaling" : "")
+              << " fused into FP8 GEMM.";
+      return absl::OkStatus();
     }
 
     // If necessary, invert the scaling factor of D and convert to F32. When no
@@ -1998,6 +2196,12 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     if (!SupportsEpilogueFusion(gemm->shape().element_type())) {
       return false;
     }
+    // On ROCm, hipBLASLt reads the vector bias of a GEMM with FP8 output as
+    // F16, and a D scale operand must stay last.
+    if (gpu_version_.IsRocm() &&
+        primitive_util::IsF8Type(gemm->shape().element_type())) {
+      return false;
+    }
 
     HloInstruction* bias = broadcast->mutable_operand(0);
 
@@ -2141,6 +2345,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     ABSL_ASSIGN_OR_RETURN(auto gpu_config, gemm->backend_config<GpuBackendConfig>());
     GemmBackendConfig& config = GetMutableGemmBackendConfig(gpu_config);
+    // The activation follows the D scale, but hipBLASLt applies it before.
+    if (config.has_d_scale()) {
+      return absl::OkStatus();
+    }
     if (config.epilogue() == GemmBackendConfig::DEFAULT) {
       config.set_epilogue(GemmBackendConfig::RELU);
     } else if (config.epilogue() == GemmBackendConfig::BIAS) {
@@ -2194,6 +2402,12 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // For grouped GEMM (Hipblaslt), aux output is not supported yet.
     // Do not fuse activation if aux output is required.
     if (has_aux && IsCublasLtGroupedMatmul(*gemm) && gpu_version_.IsRocm()) {
+      return absl::OkStatus();
+    }
+
+    // TODO(intel-tf): will be removed when oneDNN supports aux output for GELU.
+    // SYCL (OneAPI) backend: Do not fuse activation if aux output is required.
+    if (has_aux && gpu_version_.IsOneAPI()) {
       return absl::OkStatus();
     }
 
@@ -2278,8 +2492,19 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return absl::OkStatus();
     }
 
+    // TODO(intel-tf): will be removed when oneDNN supports aux output for
+    // Swish. SYCL (OneAPI) backend: Do not fuse activation if aux output is
+    // required.
+    if (has_aux && gpu_version_.IsOneAPI()) {
+      return absl::OkStatus();
+    }
+
     ABSL_ASSIGN_OR_RETURN(auto gpu_config, gemm->backend_config<GpuBackendConfig>());
     GemmBackendConfig& config = GetMutableGemmBackendConfig(gpu_config);
+    // The activation follows the D scale, but hipBLASLt applies it before.
+    if (config.has_d_scale()) {
+      return absl::OkStatus();
+    }
 
     if (config.epilogue() == GemmBackendConfig::DEFAULT) {
       config.set_epilogue(GemmBackendConfig::SILU);
@@ -2717,20 +2942,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     // Check that the size of the non-contracting dimension is not too large.
     return gemm_config.rhs_layout.num_cols <= kMaxDimensionSize;
-  }
-
-  // Turns an F8 dot with unsupported output type into an F8 dot with F32
-  // output, and converting the F32 output to unsupported output types.
-  absl::StatusOr<HloInstruction*> TurnF8DotWithUnsupportedOutputTypeIntoF32(
-      HloInstruction* instr) {
-    Shape output_f32_shape = instr->shape();
-    output_f32_shape.set_element_type(F32);
-    HloInstruction* f32_dot =
-        instr->AddInstruction(instr->CloneWithNewShape(output_f32_shape));
-    HloInstruction* convert = instr->AddInstruction(
-        HloInstruction::CreateConvert(instr->shape(), f32_dot));
-    ABSL_RETURN_IF_ERROR(ReplaceInstruction(instr, convert));
-    return f32_dot;
   }
 
   // Turns an F8 dot into an F16 dot, converting operands to F16 (or BF16) and

@@ -26,6 +26,8 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/SmallVector.h"
@@ -40,10 +42,12 @@ limitations under the License.
 #include "mlir/IR/Verifier.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/host_runtime/tfrt_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/visitor.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/cluster_tf.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/tf2hlo.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/tf_ifrt_passes.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/tpu_passes.h"
 #include "xla/tsl/platform/errors.h"
@@ -57,6 +61,56 @@ limitations under the License.
 namespace tensorflow {
 namespace ifrt_serving {
 namespace {
+
+// Points every IFRT call op (tf.IfrtCall or tf.AsyncIfrtCall) with
+// `old_program_id` at the already registered `new_program_id`. A program is
+// called by only one of the two op kinds, but a module may contain both kinds
+// for different programs.
+void ReplaceIfrtCallProgramId(mlir::ModuleOp module, int64_t old_program_id,
+                              int64_t new_program_id) {
+  mlir::Builder builder(module.getContext());
+  auto update_program_id = [&](mlir::Operation* op) {
+    if (auto attr = op->getAttrOfType<mlir::IntegerAttr>("program_id")) {
+      if (attr.getInt() == old_program_id) {
+        op->setAttr("program_id", builder.getI64IntegerAttr(new_program_id));
+      }
+    }
+  };
+  module.walk([&](mlir::TF::IfrtCallOp call) {
+    update_program_id(call.getOperation());
+  });
+  module.walk([&](mlir::TF::AsyncIfrtCallOp call) {
+    update_program_id(call.getOperation());
+  });
+}
+
+// Returns the `variable_arg_indices` shared by all call sites of `program_id`
+// (which are either all tf.IfrtCall or all tf.AsyncIfrtCall), or std::nullopt
+// if the call sites disagree.
+std::optional<std::vector<int>> GetVariableArgIndices(mlir::ModuleOp module,
+                                                      int64_t program_id) {
+  std::optional<std::vector<int>> result;
+  bool consistent = true;
+  auto collect = [&](auto call) {
+    if (call.getProgramId() != program_id) return;
+    std::vector<int> indices;
+    for (mlir::Attribute attr : call.getVariableArgIndices()) {
+      indices.push_back(mlir::cast<mlir::IntegerAttr>(attr).getInt());
+    }
+    if (!result.has_value()) {
+      result = std::move(indices);
+    } else if (*result != indices) {
+      consistent = false;
+    }
+  };
+  module.walk([&](mlir::TF::IfrtCallOp call) { collect(call); });
+  module.walk([&](mlir::TF::AsyncIfrtCallOp call) { collect(call); });
+  if (!consistent) {
+    return std::nullopt;
+  }
+  return result.value_or(std::vector<int>());
+}
+
 absl::StatusOr<std::vector<ServingExecutableRegistry::Handle>>
 CompileAndRegisterIfrtPrograms(absl::string_view model_name,
                                mlir::ModuleOp module,
@@ -84,6 +138,13 @@ CompileAndRegisterIfrtPrograms(absl::string_view model_name,
     // Remove the attribute inherited from saved model loading. They impose
     // additional constraint on public functions that are not necessary.
     submodule->get()->removeAttr("tf_saved_model.semantics");
+    // `tf_ifrt.modified_variable_names` is set on the outer module by
+    // SinkVariableAsNamedArrayPass and lists variables written by host-side
+    // AssignVariableOps anywhere in the client graph. CreatePrunedModule clones
+    // it onto the submodule, but it says nothing about the TPU program. Drop it
+    // so that identical TPU clusters extracted from different client graphs
+    // (with different host-side writes) still get the same fingerprint below.
+    submodule->get()->removeAttr("tf_ifrt.modified_variable_names");
     submodule->get().walk([&](mlir::func::FuncOp func) {
       if (func.getSymName() == entry_function_name) {
         func.setName("main");
@@ -98,6 +159,40 @@ CompileAndRegisterIfrtPrograms(absl::string_view model_name,
     submodule->get()->walk([](mlir::func::FuncOp func) {
       func->removeAttr("tfrt_ifrt_serving.program_id");
     });
+
+    const uint64_t submodule_fingerprint =
+        MlirModuleFingerprint(submodule->get());
+    // The executable binds loaded variables by the call site's
+    // `variable_arg_indices`, which are not part of the submodule, so a program
+    // is only reused by call sites with the same indices. If call sites of
+    // this program disagree, skip the cache.
+    const std::optional<std::vector<int>> variable_arg_indices =
+        GetVariableArgIndices(module, program_id);
+    if (variable_arg_indices.has_value()) {
+      if (std::optional<int64_t> existing_program_id =
+              ifrt_model_context.LookupProgramId(submodule_fingerprint,
+                                                 *variable_arg_indices);
+          existing_program_id.has_value()) {
+        ReplaceIfrtCallProgramId(module, program_id, *existing_program_id);
+        continue;
+      }
+    }
+
+    if (ifrt_model_context.IsFrozen()) {
+      if (ifrt_model_context.HasProgramWithFingerprint(submodule_fingerprint)) {
+        return absl::FailedPreconditionError(absl::StrCat(
+            "Cannot compile IFRT programs after the model is frozen. The TPU "
+            "program was compiled during warmup, but with different "
+            "variable_arg_indices than this call site [",
+            variable_arg_indices.has_value()
+                ? absl::StrJoin(*variable_arg_indices, ", ")
+                : "inconsistent",
+            "]."));
+      }
+      return absl::FailedPreconditionError(
+          "Cannot compile IFRT programs after the model is frozen. Please make "
+          "sure warmup covers all signatures by following go/tf-model-warmup.");
+    }
 
     TF_ASSIGN_OR_RETURN(
         auto executable,
@@ -123,6 +218,10 @@ CompileAndRegisterIfrtPrograms(absl::string_view model_name,
     TF_ASSIGN_OR_RETURN(auto handle, ServingExecutableRegistry::Register(
                                          program_id, std::move(executable)));
 
+    if (variable_arg_indices.has_value()) {
+      ifrt_model_context.RegisterProgramId(submodule_fingerprint,
+                                           *variable_arg_indices, program_id);
+    }
     handles.push_back(std::move(handle));
   }
 
@@ -145,16 +244,18 @@ absl::Status CompileTensorflowForIfrtServing(
   // compiled modules identifies host-needed variables for
   // IfrtModelContext::Freeze() (freeze-time host variable mode). This is
   // only complete if every signature is compiled before Freeze() is called.
-  if (auto modified = module->getAttrOfType<mlir::ArrayAttr>(
-          "tf_ifrt.modified_variable_names")) {
-    for (mlir::Attribute attr : modified) {
-      if (auto name = mlir::dyn_cast<mlir::StringAttr>(attr)) {
-        // Ignore NOT_FOUND errors: some modified variables may be host-only
-        // variables managed directly in ResourceManager and not present in the
-        // checkpoint restore registry.
-        ifrt_model_context.GetRestoreTensorRegistry()
-            .SetUsedByHost(name.str())
-            .IgnoreError();
+  if (!ifrt_model_context.IsFrozen()) {
+    if (auto modified = module->getAttrOfType<mlir::ArrayAttr>(
+            "tf_ifrt.modified_variable_names")) {
+      for (mlir::Attribute attr : modified) {
+        if (auto name = mlir::dyn_cast<mlir::StringAttr>(attr)) {
+          // Ignore NOT_FOUND errors: some modified variables may be host-only
+          // variables managed directly in ResourceManager and not present in
+          // the checkpoint restore registry.
+          ifrt_model_context.GetRestoreTensorRegistry()
+              .SetUsedByHost(name.str())
+              .IgnoreError();
+        }
       }
     }
   }
@@ -183,12 +284,6 @@ absl::Status IfrtBackendCompiler::CompileTensorflow(
   if (!ifrt_model_context.has_value()) {
     return absl::InternalError(
         "Failed to find model context for ifrt serving.");
-  }
-
-  if ((*ifrt_model_context)->IsFrozen()) {
-    return absl::FailedPreconditionError(
-        "Cannot compile IFRT programs after the model is frozen. Please make "
-        "sure warmup covers all signatures by following go/tf-model-warmup.");
   }
 
   mlir::StatusScopedDiagnosticHandler diag_handler(module->getContext());

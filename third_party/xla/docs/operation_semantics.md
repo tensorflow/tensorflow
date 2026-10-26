@@ -3472,6 +3472,58 @@ in detail on the [broadcasting page](broadcasting.md).
 For StableHLO information see
 [StableHLO - multiply](https://openxla.org/stablehlo/spec#multiply).
 
+## Mulhi
+
+See also
+[`XlaBuilder::Mulhi`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Performs element-wise multiplication of two N-bit integer arrays `lhs` and
+`rhs`, returning an N-bit integer array containing the most significant N bits
+of the upcasted (N+N-bit) product:
+
+$$
+\text{mulhi}(x, y) = \text{downcast}((\text{upcast}(x) * \text{upcast}(y)) >> N)
+$$
+
+**`Mulhi(lhs, rhs)`**
+
+Arguments | Type  | Semantics
+--------- | ----- | -------------------------------------------------
+lhs       | XlaOp | Left-hand-side operand: array of integer type T
+rhs       | XlaOp | Right-hand-side operand: array of integer type T
+
+The arguments' shapes have to be either similar or compatible. See the
+[broadcasting](broadcasting.md) documentation about what it means for shapes to
+be compatible. The result of an operation has a shape which is the result of
+broadcasting the two input arrays. In this variant, operations between arrays of
+different ranks are *not* supported, unless one of the operands is a scalar.
+
+An alternative variant with different-dimensional broadcasting support exists
+for Mulhi:
+
+**`Mulhi(lhs,rhs, broadcast_dimensions)`**
+
+| Arguments           | Type              | Semantics                         |
+| ------------------- | ----------------- | --------------------------------- |
+| lhs                 | XlaOp             | Left-hand-side operand: array of  |
+:                     :                   : integer type T                    :
+| rhs                 | XlaOp             | Right-hand-side operand: array of |
+:                     :                   : integer type T                    :
+| broadcast_dimension | ArraySlice<int64> | Which dimension in the target     |
+:                     :                   : shape each dimension of the       :
+:                     :                   : operand shape corresponds to      :
+
+This variant of the operation should be used for arithmetic operations between
+arrays of different ranks (such as adding a matrix to a vector).
+
+The additional broadcast_dimensions operand is a slice of integers specifying
+the dimensions to use for broadcasting the operands. The semantics are described
+in detail on the [broadcasting page](broadcasting.md).
+
+> **Note:** `Mulhi` is only found in HLO and not found in StableHLO. CHLO
+> `Mulhi` in Frameworks will lower to HLO `Mulhi` see
+> [StableHLO - chlo.mulhi](https://openxla.org/stablehlo/generated/chlo?hl=en#chlomulhi_chlomulhiop)
+
 ## Neg
 
 See also
@@ -4089,10 +4141,11 @@ window_strides, padding)`**
 :                     :                     : types `T_0,..., T_{N-1}`, each   :
 :                     :                     : representing the base area on    :
 :                     :                     : which the window is placed.      :
-| `init_values`       | `N XlaOps`          | The N starting values for the    |
+| `init_values`       | `N XlaOps`          | A sequence of N scalars of types |
+:                     :                     : `T_0,..., T_{N-1}`, representing :
+:                     :                     : the starting values for the      :
 :                     :                     : reduction, one for each of the N :
-:                     :                     : operands. See [Reduce](#reduce)  :
-:                     :                     : for details.                     :
+:                     :                     : operands.                        :
 | `computation`       | `XlaComputation`    | Reduction function of type `T_0, |
 :                     :                     : ..., T_{N-1}, T_0, ..., T_{N-1}  :
 :                     :                     : -> Collate(T_0, ..., T_{N-1})`,  :
@@ -4119,6 +4172,7 @@ Where:
 
 *   N is required to be greater or equal to 1.
 *   All input arrays must have the same dimensions.
+*   All initial values have to form an identity under `computation`.
 *   If `N = 1`, `Collate(T)` is `T`.
 *   If `N > 1`, `Collate(T_0, ..., T_{N-1})` is a tuple of `N` elements of type
     `(T0,...T{N-1})`.
@@ -5169,6 +5223,49 @@ in detail on the [broadcasting page](broadcasting.md).
 
 For StableHLO information see
 [StableHLO - shift_right_logical](https://openxla.org/stablehlo/spec#shift_right_logical).
+
+## Shuffle
+
+See also
+[`XlaBuilder::Shuffle`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+**`Shuffle(operand, dimensions, mode)`**
+
+Arguments     | Type                | Semantics
+------------- | ------------------- | -------------------------------------
+`operand`     | `XlaOp`             | array of type T
+`dimensions`  | `ArraySlice<int64>` | dimensions to shuffle
+`mode`        | `ShuffleMode`       | the shuffle pattern to apply, together with the attributes of that pattern
+
+Shuffles the elements of the `operand` array along the specified `dimensions`,
+generating an output array of the same shape. Because a shuffle only moves
+elements around, it never changes the shape of the operand.
+
+The `mode` selects which pattern is applied, and carries the attributes of that
+pattern:
+
+Mode     | Attributes | Semantics
+-------- | ---------- | ---------------------------------------------------
+`rotate` | `shifts`   | Rotates the elements to the left by `shifts`
+
+### `rotate`
+
+Rotates the elements of the `operand` array along the specified `dimensions` to
+the left by the corresponding `shifts`, generating an output array of the same
+shape. Shifts outside of `[0, size(dimension))` are supported, and wrap around
+cyclically. Each element of the output array at a multidimensional index is
+retrieved from the operand array at a transformed index. The multidimensional
+index is transformed by rotating the index along each specified dimension (i.e.,
+for a dimension of size N with a corresponding shift S, the element at output
+index i is taken from operand index (i + S) % N).
+
+1-dimensional example:
+
+```cpp
+let a = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
+Shuffle(a, {0}, shuffle::Rotate({4}))
+// Result: {4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0, 1, 2, 3}
+```
 
 ## Sign
 

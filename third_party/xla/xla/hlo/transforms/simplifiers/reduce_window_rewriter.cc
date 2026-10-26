@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -154,9 +155,8 @@ static absl::StatusOr<HloComputation*> ScalarizeComputation(
         break;
       default: {
         if (!inst->IsElementwise()) {
-          return absl::InvalidArgumentError(
-              absl::StrCat("Instruction is not elementwise: ",
-                           HloOpcodeString(inst->opcode())));
+          return InvalidArgumentStrCat("Instruction is not elementwise: ",
+                                       HloOpcodeString(inst->opcode()));
         }
         ABSL_ASSIGN_OR_RETURN(Shape shape, get_scalar_shape(inst->shape()));
         new_inst = builder.AddInstruction(
@@ -273,8 +273,14 @@ static int64_t ExpandToNewMajorDimension(
     Shape tiled_shape = input->shape();
     tiled_shape.set_dimensions(last_dim, num_columns);
 
-    pass->UpdateLayout(&tiled_shape);
     ShapeUtil::AppendMajorDimension(base_length, &tiled_shape);
+    if (input->shape().has_layout()) {
+      if (std::optional<Shape> aligned_shape =
+              ShapeUtil::AlignLayouts(input->shape(), tiled_shape)) {
+        tiled_shape = *aligned_shape;
+      }
+    }
+    pass->UpdateLayout(&tiled_shape);
     tiled_shapes.push_back(tiled_shape);
     tiled_inputs.push_back(hlo_computation->AddInstruction(
         HloInstruction::CreateReshape(tiled_shape, input)));

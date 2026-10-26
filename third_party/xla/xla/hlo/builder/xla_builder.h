@@ -47,8 +47,10 @@ limitations under the License.
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/dynamic_parameter_binding.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
+#include "xla/hlo/ir/hlo_module_metadata.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/replica_group.h"
+#include "xla/hlo/ir/stack_frames.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -79,6 +81,13 @@ struct XlaBuilderFriend {
                                std::string execution_thread,
                                XlaComputationId called_computation,
                                const Shape& shape);
+  static XlaOp BuildAsyncStart(
+      XlaBuilder* builder, absl::Span<const XlaOp> operands,
+      std::string execution_thread, XlaComputationId called_computation,
+      const Shape& shape,
+      absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
+          output_operand_aliasing);
+
   static XlaOp BuildAsyncUpdate(XlaBuilder* builder, XlaOp operands,
                                 const Shape& shape);
   static XlaOp BuildAsyncDone(XlaBuilder* builder, XlaOp operands,
@@ -709,7 +718,10 @@ class XlaBuilder {
   XlaOp DotGeneral(
       XlaOp lhs, XlaOp rhs, const DotDimensionNumbers& dimension_numbers,
       const PrecisionConfig* precision_config = nullptr,
-      std::optional<PrimitiveType> preferred_element_type = std::nullopt);
+      std::optional<PrimitiveType> preferred_element_type = std::nullopt,
+      absl::Span<const XlaOp> ext_operands = {},
+      const SparsityConfig* sparsity_config = nullptr,
+      const BlockScalingConfig* block_scaling_config = nullptr);
 
   XlaOp RaggedAllToAll(
       XlaOp input, XlaOp input_offsets, XlaOp send_sizes, XlaOp output,
@@ -837,6 +849,10 @@ class XlaBuilder {
 
   virtual absl::StatusOr<XlaOp> CholeskyInternal(const Shape& shape, XlaOp a,
                                                  bool lower);
+
+  // Enqueues a fused multiply-add instruction onto the computation that
+  // computes a * b + c with a single IEEE-754 rounding.
+  XlaOp Fma(XlaOp a, XlaOp b, XlaOp c);
 
   XlaOp Infeed(const Shape& shape, const std::string& config = "");
   XlaOp InfeedWithToken(XlaOp token, const Shape& shape,
@@ -1110,6 +1126,12 @@ class XlaBuilder {
   XlaOp Rev(XlaOp operand, absl::Span<const int64_t> dimensions);
   virtual absl::StatusOr<XlaOp> RevInternal(
       const Shape& shape, XlaOp operand, absl::Span<const int64_t> dimensions);
+
+  XlaOp Shuffle(XlaOp operand, absl::Span<const int64_t> dimensions,
+                const ShuffleMode& mode);
+  virtual absl::StatusOr<XlaOp> ShuffleInternal(
+      const Shape& shape, XlaOp operand, absl::Span<const int64_t> dimensions,
+      const ShuffleMode& mode);
 
   XlaOp Sort(absl::Span<const XlaOp> operands, XlaComputationId comparator,
              int64_t dimension = -1, bool is_stable = false);
@@ -1415,8 +1437,37 @@ class XlaBuilder {
 
     // Holds the buffer donor information populated by the AddBufferDonor() API.
     absl::flat_hash_set<HloBufferDonorConfig::BufferDonor> buffer_donors;
+
+    // True if the stack_frame_ids of `computation` refer to the builder's
+    // `stack_frames_`, i.e. it was imported with a stack frame index via
+    // AddSubComputation (or inherited such an entry from a child builder).
+    // False for computations built by sub-builders and for imports without a
+    // stack frame index: their ids are caller-owned and must not be rewritten.
+    bool uses_builder_stack_frames = false;
   };
   std::map<int64_t, Subcomputation> embedded_;
+
+  // Source location table referenced by the stack_frame_ids of computations
+  // in `embedded_` that were imported via AddSubComputation. Identical frames
+  // are stored once. Emitted into the HloModuleProto by Build().
+  //
+  // This table only covers imported computations. Ids set directly via
+  // SetOpMetadata refer to a different, caller-owned table and can't be
+  // mixed with it.
+  StackFrames stack_frames_;
+
+  // Adds frame `id` of `source` (and its parent chain) to `stack_frames_`,
+  // reusing identical existing frames, and returns its id there. Returns an
+  // invalid id if `id` is unset or does not exist in `source`.
+  StackFrameId InternStackFrame(
+      const StackFrames& source, StackFrameId id,
+      absl::flat_hash_map<StackFrameId, StackFrameId>& interned);
+
+  // Rewrites every stack_frame_id in `computation` from an id of `source` to
+  // the corresponding id in `stack_frames_`.
+  void InternStackFrameIds(
+      const StackFrames& source, HloComputationProto& computation,
+      absl::flat_hash_map<StackFrameId, StackFrameId>& interned);
 
   // True if the instructions in this builder refer to computations from a
   // parent builder. Used only for error checking.
@@ -1522,17 +1573,16 @@ class XlaBuilder {
   friend XlaOp Compare(XlaOp lhs, XlaOp rhs,
                        absl::Span<const int64_t> broadcast_dimensions,
                        ComparisonDirection direction, ComparisonOrder order);
-  friend XlaOp Compare(XlaOp lhs, XlaOp rhs,
-                       absl::Span<const int64_t> broadcast_dimensions,
-                       ComparisonDirection direction,
-                       Comparison::Type compare_type);
   friend XlaOp Dot(XlaOp lhs, XlaOp rhs,
                    const PrecisionConfig* precision_config,
                    std::optional<PrimitiveType> preferred_element_type);
   friend XlaOp DotGeneral(XlaOp lhs, XlaOp rhs,
                           const DotDimensionNumbers& dimension_number,
                           const PrecisionConfig* precision_config,
-                          std::optional<PrimitiveType> preferred_element_type);
+                          std::optional<PrimitiveType> preferred_element_type,
+                          absl::Span<const XlaOp> ext_operands,
+                          const SparsityConfig* sparsity_config,
+                          const BlockScalingConfig* block_scaling_config);
   friend XlaOp RaggedDot(XlaOp lhs, XlaOp rhs, XlaOp group_sizes,
                          const RaggedDotDimensionNumbers& dimension_numbers,
                          const PrecisionConfig* precision_config,
@@ -1544,7 +1594,10 @@ class XlaBuilder {
   virtual absl::StatusOr<XlaOp> DotGeneralInternal(
       const Shape& shape, XlaOp lhs, XlaOp rhs,
       const DotDimensionNumbers& dimension_number,
-      const PrecisionConfig* precision_config);
+      const PrecisionConfig* precision_config,
+      absl::Span<const XlaOp> ext_operands,
+      const SparsityConfig* sparsity_config,
+      const BlockScalingConfig* block_scaling_config);
   friend XlaOp RaggedAllToAll(XlaOp input, XlaOp input_offsets,
                               XlaOp send_sizes, XlaOp output,
                               XlaOp output_offsets, XlaOp recv_sizes,
@@ -1640,6 +1693,7 @@ class XlaBuilder {
                                bool unit_diagonal,
                                TriangularSolveOptions::Transpose transpose_a);
   friend XlaOp Cholesky(XlaOp a, bool lower);
+  friend XlaOp Fma(XlaOp a, XlaOp b, XlaOp c);
   friend XlaOp Infeed(XlaBuilder* builder, const Shape& shape,
                       const std::string& config);
   friend void Outfeed(XlaOp operand, const Shape& shape_with_layout,
@@ -1920,14 +1974,12 @@ class XlaBuilder {
       XlaOp init_value, XlaComputationId scatter);
   friend XlaOp Abs(XlaOp operand);
   friend XlaOp Acos(XlaOp x,
-                    const std::optional<ResultAccuracy>& result_accuracy,
-                    bool expand);
+                    const std::optional<ResultAccuracy>& result_accuracy);
   friend XlaOp Acosh(XlaOp x,
                      const std::optional<ResultAccuracy>& result_accuracy,
                      bool expand);
   friend XlaOp Asin(XlaOp x,
-                    const std::optional<ResultAccuracy>& result_accuracy,
-                    bool expand);
+                    const std::optional<ResultAccuracy>& result_accuracy);
   friend XlaOp Asinh(XlaOp x,
                      const std::optional<ResultAccuracy>& result_accuracy,
                      bool expand);
@@ -1940,6 +1992,8 @@ class XlaBuilder {
                    const std::optional<ResultAccuracy>& result_accuracy);
   friend XlaOp Exp(XlaOp operand,
                    const std::optional<ResultAccuracy>& result_accuracy);
+  friend XlaOp Exp2(XlaOp operand,
+                    const std::optional<ResultAccuracy>& result_accuracy);
   friend XlaOp Expm1(XlaOp operand,
                      const std::optional<ResultAccuracy>& result_accuracy);
   friend XlaOp Floor(XlaOp operand);
@@ -1950,6 +2004,8 @@ class XlaBuilder {
                    const std::optional<ResultAccuracy>& result_accuracy);
   friend XlaOp Log1p(XlaOp operand,
                      const std::optional<ResultAccuracy>& result_accuracy);
+  friend XlaOp Log2(XlaOp operand,
+                    const std::optional<ResultAccuracy>& result_accuracy);
   friend XlaOp Logistic(XlaOp operand,
                         const std::optional<ResultAccuracy>& result_accuracy);
   friend XlaOp Sign(XlaOp operand);
@@ -1957,13 +2013,11 @@ class XlaBuilder {
   friend XlaOp Cos(XlaOp operand,
                    const std::optional<ResultAccuracy>& result_accuracy);
   friend XlaOp Cosh(XlaOp x,
-                    const std::optional<ResultAccuracy>& result_accuracy,
-                    bool expand);
+                    const std::optional<ResultAccuracy>& result_accuracy);
   friend XlaOp Sin(XlaOp operand,
                    const std::optional<ResultAccuracy>& result_accuracy);
   friend XlaOp Sinh(XlaOp x,
-                    const std::optional<ResultAccuracy>& result_accuracy,
-                    bool expand);
+                    const std::optional<ResultAccuracy>& result_accuracy);
   friend XlaOp Tan(XlaOp operand,
                    const std::optional<ResultAccuracy>& result_accuracy);
   friend XlaOp Tanh(XlaOp operand,
@@ -1991,6 +2045,8 @@ class XlaBuilder {
   friend XlaOp Neg(XlaOp operand);
   friend XlaOp Transpose(XlaOp operand, absl::Span<const int64_t> permutation);
   friend XlaOp Rev(XlaOp operand, absl::Span<const int64_t> dimensions);
+  friend XlaOp Shuffle(XlaOp operand, absl::Span<const int64_t> dimensions,
+                       const ShuffleMode& mode);
   friend XlaOp Sort(absl::Span<const XlaOp> operands,
                     const XlaComputation& comparator, int64_t dimension,
                     bool is_stable);
@@ -2582,9 +2638,6 @@ XlaOp Compare(XlaOp lhs, XlaOp rhs,
               ComparisonDirection direction, ComparisonOrder order);
 XlaOp Compare(XlaOp lhs, XlaOp rhs,
               absl::Span<const int64_t> broadcast_dimensions,
-              ComparisonDirection direction, Comparison::Type compare_type);
-XlaOp Compare(XlaOp lhs, XlaOp rhs,
-              absl::Span<const int64_t> broadcast_dimensions,
               ComparisonDirection direction);
 XlaOp Compare(XlaOp lhs, XlaOp rhs, ComparisonDirection direction);
 
@@ -2597,7 +2650,10 @@ XlaOp Dot(XlaOp lhs, XlaOp rhs,
 XlaOp DotGeneral(
     XlaOp lhs, XlaOp rhs, const DotDimensionNumbers& dimension_numbers,
     const PrecisionConfig* precision_config = nullptr,
-    std::optional<PrimitiveType> preferred_element_type = std::nullopt);
+    std::optional<PrimitiveType> preferred_element_type = std::nullopt,
+    absl::Span<const XlaOp> ext_operands = {},
+    const SparsityConfig* sparsity_config = nullptr,
+    const BlockScalingConfig* block_scaling_config = nullptr);
 
 // Enqueues a ragged all to all instruction onto the computation.
 XlaOp RaggedAllToAll(
@@ -3293,6 +3349,10 @@ XlaOp Erf(XlaOp operand,
 XlaOp Exp(XlaOp operand,
           const std::optional<ResultAccuracy>& result_accuracy = std::nullopt);
 
+// Enqueues an exp2 instruction onto the computation.
+XlaOp Exp2(XlaOp operand,
+           const std::optional<ResultAccuracy>& result_accuracy = std::nullopt);
+
 // Enqueues an expm1 instruction onto the computation.
 XlaOp Expm1(
     XlaOp operand,
@@ -3319,6 +3379,10 @@ XlaOp Log(XlaOp operand,
 XlaOp Log1p(
     XlaOp operand,
     const std::optional<ResultAccuracy>& result_accuracy = std::nullopt);
+
+// Enqueues a log2 instruction onto the computation.
+XlaOp Log2(XlaOp operand,
+           const std::optional<ResultAccuracy>& result_accuracy = std::nullopt);
 
 // Enqueues a logistic instruction onto the computation.
 XlaOp Logistic(
@@ -3413,6 +3477,15 @@ XlaOp Transpose(XlaOp operand, absl::Span<const int64_t> permutation);
 // is moved to index dimension_size - 1 - i).
 XlaOp Rev(XlaOp operand, absl::Span<const int64_t> dimensions);
 
+// Enqueues a shuffle instruction onto the computation. The elements are
+// shuffled along the given dimensions following the pattern selected by `mode`,
+// which also carries the attributes of that mode:
+// - rotate: the elements are (left) rotated by `shifts` along the given
+//   dimensions (i.e. the element at index i in the output is taken from index
+//   (i + shifts[j]) % dimension_size[j] of the operand).
+XlaOp Shuffle(XlaOp operand, absl::Span<const int64_t> dimensions,
+              const ShuffleMode& mode);
+
 // Enqueues a sort instruction onto the computation, using 'comparator' for
 // comparisons. 'comparator' needs to define a strict weak order. 'is_stable'
 // determines whether the stable sorting should be used.
@@ -3469,6 +3542,10 @@ XlaOp TopK(XlaOp operand, int64_t k, bool largest, bool is_stable = true);
 
 // Enqueues a clamp instruction onto the computation.
 XlaOp Clamp(XlaOp min, XlaOp operand, XlaOp max);
+
+// Enqueues a fused multiply-add instruction onto the computation that computes
+// a * b + c with a single IEEE-754 rounding.
+XlaOp Fma(XlaOp a, XlaOp b, XlaOp c);
 
 // Enqueues a map instruction onto the computation.
 XlaOp Map(XlaBuilder* builder, absl::Span<const XlaOp> operands,

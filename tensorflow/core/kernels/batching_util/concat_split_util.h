@@ -79,7 +79,7 @@ absl::Status Concat(OpKernelContext* context,
     auto output_flat = output->shaped<T, 2>({1, output->NumElements()});
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
-    if (std::is_same<Device, GPUDevice>::value) {
+    if (std::is_same_v<Device, GPUDevice>) {
       ConcatGPU<T>(context, inputs_flat, output, &output_flat);
       return absl::OkStatus();
     }

@@ -34,6 +34,7 @@ namespace op = xla::testing::opcode_matchers;
 using ::testing::_;
 using ::testing::Eq;
 using ::testing::HasSubstr;
+using ::xla::testing::HloInstructionHasName;
 
 namespace xla {
 namespace {
@@ -431,6 +432,12 @@ TEST_F(HloMatchersTest, MetadataMatcher) {
                         ", want 1)"));
   EXPECT_THAT(DescribeHloMatcher(op::Metadata(p0->metadata())),
               R"( (metadata: op_type1 op_name1  0 0 0 0))");
+}
+
+TEST_F(HloMatchersTest, HloInstructionHasName) {
+  std::unique_ptr<HloInstruction> p0 =
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {1}), "p0");
+  EXPECT_THAT(p0, HloInstructionHasName("p0"));
 }
 }  // namespace
 }  // namespace xla

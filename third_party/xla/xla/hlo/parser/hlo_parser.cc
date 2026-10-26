@@ -87,6 +87,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
+#include "xla/shuffle.h"
 #include "xla/tsl/lib/gtl/map_util.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tuple_tree.h"
@@ -158,9 +159,11 @@ bool CanInferShape(HloOpcode code) {
     case HloOpcode::kDot:
     case HloOpcode::kErf:
     case HloOpcode::kExp:
+    case HloOpcode::kExp2:
     case HloOpcode::kExpm1:
     case HloOpcode::kFft:
     case HloOpcode::kFloor:
+    case HloOpcode::kFma:
     case HloOpcode::kGather:
     case HloOpcode::kGetDimensionSize:
     case HloOpcode::kSetDimensionSize:
@@ -169,6 +172,7 @@ bool CanInferShape(HloOpcode code) {
     case HloOpcode::kIsFinite:
     case HloOpcode::kLog:
     case HloOpcode::kLog1p:
+    case HloOpcode::kLog2:
     case HloOpcode::kLogistic:
     case HloOpcode::kAnd:
     case HloOpcode::kNot:
@@ -200,6 +204,7 @@ bool CanInferShape(HloOpcode code) {
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
+    case HloOpcode::kShuffle:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
     case HloOpcode::kSinh:
@@ -344,6 +349,7 @@ class HloParserImpl : public HloParser {
     kShapeList,
     kEnum,
     kRandomAlgorithm,
+    kShuffleMode,
     kPrecisionAlgorithm,
     kResultAccuracyType,
     kAliasing,
@@ -631,11 +637,12 @@ class HloParserImpl : public HloParser {
   bool ParsePrimitiveType(PrimitiveType* result);
   bool ParseComparisonDirection(ComparisonDirection* result);
   bool ParseComparisonOrder(Comparison::Order* result);
-  bool ParseComparisonType(Comparison::Type* result);
+  bool ParseComparisonType(Comparison::Order* result);
   bool ParseFusionKind(HloInstruction::FusionKind* result);
   bool ParseRandomDistribution(RandomDistribution* result);
   bool ParseConvKind(ConvolutionKind* result);
   bool ParseRandomAlgorithm(RandomAlgorithm* result);
+  bool ParseShuffleMode(ShuffleMode::ModeCase* result);
   bool ParsePrecision(PrecisionConfig::Precision* result);
   bool ParseAlgorithm(PrecisionConfig::Algorithm* result);
   bool ParseResultAccuracyType(ResultAccuracy::Mode* result);
@@ -758,6 +765,11 @@ class HloParserImpl : public HloParser {
   // Tracks recursion depth to prevent stack overflow from deeply nested input.
   int current_recursion_depth_ = 0;
   StackFrameIndexProto stack_frame_index_proto_;
+
+  // Next values used to fill elided constants (`{...}`) when
+  // fill_shortform_constants_with_random_values() is set.
+  uint32_t shortform_fill_word_ = 0;
+  uint8_t shortform_fill_byte_ = 0;
 };
 
 bool SplitToInt64s(absl::string_view s, char delim, std::vector<int64_t>* out) {
@@ -1841,9 +1853,11 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
     case HloOpcode::kAsin:
     case HloOpcode::kAsinh:
     case HloOpcode::kAtanh:
+    case HloOpcode::kExp2:
     case HloOpcode::kExpm1:
     case HloOpcode::kLog:
     case HloOpcode::kLog1p:
+    case HloOpcode::kLog2:
     case HloOpcode::kLogistic:
     case HloOpcode::kSqrt:
     case HloOpcode::kCbrt:
@@ -1916,6 +1930,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
     }
     // Ternary ops.
     case HloOpcode::kClamp:
+    case HloOpcode::kFma:
     case HloOpcode::kSelect: {
       if ((!preset_operands &&
            !ParseOperands(&operands, builder, /*expected_size=*/3)) ||
@@ -2727,13 +2742,13 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       if (!window) {
         window.emplace();
       }
+      if (operands.empty()) {
+        TokenError("reduce-window expects at least one input and init operand");
+        return nullptr;
+      }
       if (operands.size() % 2) {
         TokenError(StrCat("expects an even number of operands, but has ",
                           operands.size(), " operands"));
-        return nullptr;
-      }
-      if (operands.empty()) {
-        TokenError("reduce-window expects at least one input and init operand");
         return nullptr;
       }
       if (!maybe_infer_shape([&] {
@@ -2866,7 +2881,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
     case HloOpcode::kCompare: {
       optional<ComparisonDirection> direction;
       optional<ComparisonOrder> order;
-      optional<Comparison::Type> type;
+      optional<ComparisonOrder> type;
       attrs["direction"] = {/*required=*/true, AttrTy::kComparisonDirection,
                             &direction};
       attrs["order"] = {/*required=*/false, AttrTy::kComparisonOrder, &order};
@@ -2893,8 +2908,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       }
       if (type.has_value()) {
         return builder->AddInstruction(HloInstruction::CreateCompare(
-            *shape, operands[0], operands[1], *direction,
-            Comparison::DefaultOrdering(*type)));
+            *shape, operands[0], operands[1], *direction, *type));
       }
       return builder->AddInstruction(HloInstruction::CreateCompare(
           *shape, operands[0], operands[1], *direction));
@@ -3136,6 +3150,43 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       }
       return builder->AddInstruction(
           HloInstruction::CreateReverse(*shape, operands[0], *dimensions));
+    }
+    case HloOpcode::kShuffle: {
+      optional<std::vector<int64_t>> dimensions;
+      attrs["dimensions"] = {/*required=*/true, AttrTy::kBracedInt64List,
+                             &dimensions};
+      optional<ShuffleMode::ModeCase> mode;
+      attrs["mode"] = {/*required=*/true, AttrTy::kShuffleMode, &mode};
+      // Attributes below are specific to a subset of the modes, so they are
+      // optional here and checked against the mode afterwards.
+      optional<std::vector<int64_t>> shifts;
+      attrs["shifts"] = {/*required=*/false, AttrTy::kBracedInt64List, &shifts};
+      if ((!preset_operands &&
+           !ParseOperands(&operands, builder, /*expected_size=*/1)) ||
+          !ParseAttributes(attrs, allow_attributes, shape)) {
+        return nullptr;
+      }
+      ShuffleMode shuffle_mode;
+      switch (*mode) {
+        case ShuffleMode::kRotate:
+          if (!shifts.has_value()) {
+            TokenError("expects shifts for a shuffle in rotate mode");
+            return nullptr;
+          }
+          shuffle_mode = shuffle::Rotate(*shifts);
+          break;
+        case ShuffleMode::MODE_NOT_SET:
+          TokenError("expects a shuffle mode");
+          return nullptr;
+      }
+      if (!maybe_infer_shape([&] {
+            return ShapeInference::InferShuffleShape(operands[0]->shape(),
+                                                     *dimensions, shuffle_mode);
+          })) {
+        return nullptr;
+      }
+      return builder->AddInstruction(HloInstruction::CreateShuffle(
+          *shape, operands[0], *dimensions, shuffle_mode));
     }
     case HloOpcode::kSelectAndScatter: {
       optional<HloComputation*> select;
@@ -3684,8 +3735,20 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       attrs["algorithm"] = {/*required=*/false, AttrTy::kPrecisionAlgorithm,
                             &algorithm};
 
+      optional<SparsityConfig> parsed_sparsity_config;
+      attrs["sparsity_config"] = {/*required=*/false, AttrTy::kSparsityConfig,
+                                  &parsed_sparsity_config};
+      optional<BlockScalingConfig> parsed_block_scaling_config;
+      attrs["block_scaling_config"] = {/*required=*/false,
+                                       AttrTy::kBlockScalingConfig,
+                                       &parsed_block_scaling_config};
+
       if ((!preset_operands && !ParseOperands(&operands, builder)) ||
           !ParseAttributes(attrs, allow_attributes, shape)) {
+        return nullptr;
+      }
+      if (operands.size() < 2) {
+        Error(lexer_.GetLoc(), "expects at least 2 operands");
         return nullptr;
       }
 
@@ -3718,15 +3781,17 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       if (algorithm) {
         precision_config.set_algorithm(*algorithm);
       }
+      SparsityConfig sp = parsed_sparsity_config.value_or(SparsityConfig());
       if (!maybe_infer_shape([&] {
             return ShapeInference::InferDotOpShape(
                 operands[0]->shape(), operands[1]->shape(), dnum,
-                /*preferred_element_type=*/std::nullopt);
+                /*preferred_element_type=*/std::nullopt, sp);
           })) {
         return nullptr;
       }
       return builder->AddInstruction(HloInstruction::CreateDot(
-          *shape, operands[0], operands[1], dnum, precision_config));
+          *shape, operands, dnum, precision_config, sp,
+          parsed_block_scaling_config.value_or(BlockScalingConfig())));
     }
     case HloOpcode::kRaggedDot: {
       optional<std::vector<int64_t>> lhs_contracting_dims;
@@ -4098,10 +4163,11 @@ bool HloParserImpl::ParseCollectiveDeviceListBase(
     return true;
   }
 
-  // If the first token is 'mesh' or 'maximal_mesh', then we are parsing a (v3)
-  // MeshAxesReplicaGroupList.
+  // If the first token is 'mesh', 'single_device', or 'maximal_mesh', then we
+  // are parsing a (v3) MeshAxesReplicaGroupList.
   if (lexer_.GetKind() == TokKind::kIdent &&
-      (lexer_.GetStrVal() == "mesh" || lexer_.GetStrVal() == "maximal_mesh")) {
+      (lexer_.GetStrVal() == "mesh" || lexer_.GetStrVal() == "single_device" ||
+       lexer_.GetStrVal() == "maximal_mesh")) {
     std::optional<Mesh> mesh;
     if (!ParseMesh(mesh)) {
       return false;
@@ -4277,19 +4343,22 @@ bool HloParserImpl::ParseMesh(std::optional<Mesh>& mesh) {
   std::string kind = lexer_.GetStrVal();
   lexer_.Lex();
 
-  if (kind == "maximal_mesh") {
-    if (!ParseToken(TokKind::kLsquare, "expected '[' after maximal_mesh")) {
+  if (kind == "single_device" || kind == "maximal_mesh") {
+    if (!ParseToken(TokKind::kLsquare,
+                    absl::StrCat("expected '[' after ", kind))) {
       return false;
     }
     std::string device_ids_str;
     if (!ParseAttributeName(&device_ids_str) || device_ids_str != "device_id") {
-      return TokenError("expected device_id= attribute in maximal_mesh");
+      return TokenError(
+          absl::StrCat("expected device_id= attribute in ", kind));
     }
     int64_t device_id;
     if (!ParseInt64(&device_id)) {
       return false;
     }
-    if (!ParseToken(TokKind::kRsquare, "expected ']' to end maximal_mesh")) {
+    if (!ParseToken(TokKind::kRsquare,
+                    absl::StrCat("expected ']' to end ", kind))) {
       return false;
     }
     mesh.emplace(device_id);
@@ -4297,7 +4366,7 @@ bool HloParserImpl::ParseMesh(std::optional<Mesh>& mesh) {
   }
 
   if (kind != "mesh") {
-    return TokenError("Expected 'mesh' or 'maximal_mesh'");
+    return TokenError("Expected 'mesh', 'single_device', or 'maximal_mesh'");
   }
 
   // Parse @mesh[...]
@@ -4567,8 +4636,8 @@ bool HloParserImpl::ParseSingleSharding(
     return true;
   };
 
-  // Maximal sharding
-  if (mesh->IsMaximal()) {
+  // Single-device sharding
+  if (mesh->IsSingleDevice()) {
     std::vector<OpMetadata> metadata;
     if (!parse_metadata_if_present(metadata)) {
       return false;
@@ -4834,7 +4903,8 @@ bool HloParserImpl::ParseSingleSharding(std::optional<HloSharding>& sharding,
   }
 
   if (lexer_.GetKind() == TokKind::kIdent &&
-      (lexer_.GetStrVal() == "mesh" || lexer_.GetStrVal() == "maximal_mesh")) {
+      (lexer_.GetStrVal() == "mesh" || lexer_.GetStrVal() == "single_device" ||
+       lexer_.GetStrVal() == "maximal_mesh")) {
     std::optional<NamedSharding> named_sharding;
     if (ParseSingleSharding(named_sharding)) {
       sharding = HloSharding(std::move(*named_sharding));
@@ -5691,11 +5761,13 @@ bool HloParserImpl::ParseDenseLiteral(Literal* literal, const Shape& shape) {
         if (!options_.fill_shortform_constants_with_random_values()) {
           break;
         }
-        // Fill data with deterministic (garbage) values. Use static to avoid
-        // creating identical constants which could potentially got CSE'ed
-        // away. This is a best-effort approach to make sure replaying a HLO
-        // gives us same optimized HLO graph.
-        static uint32_t data = 0;
+        // Fill data with deterministic (garbage) values. The counters keep
+        // running across the elided constants of one parse, so constants of
+        // the same shape get different values and are not CSE'ed away. They
+        // are parser members rather than statics, so every parse of the same
+        // text produces the same values, regardless of what was parsed before
+        // or on which thread. This is a best effort approach to make sure
+        // replaying an HLO gives us the same optimized HLO graph.
 
         // According to the System V ABI not all 8 bit values are valid booleans
         // - only the values 0 and 1 are allowed. So to avoid undefined
@@ -5709,13 +5781,14 @@ bool HloParserImpl::ParseDenseLiteral(Literal* literal, const Shape& shape) {
             (shape.element_type() == PRED) ? kBooleanMask : kNoMask;
 
         uint32_t* raw_data = static_cast<uint32_t*>(literal->untyped_data());
-        for (int64_t i = 0; i < literal->size_bytes() / 4; ++i) {
-          raw_data[i] = data++ & mask;
+        const int64_t num_words = literal->size_bytes() / 4;
+        for (int64_t i = 0; i < num_words; ++i) {
+          raw_data[i] = shortform_fill_word_++ & mask;
         }
+        // The bytes after the last whole word.
         uint8_t* raw_data_int8 = static_cast<uint8_t*>(literal->untyped_data());
-        static uint8_t data_int8 = 0;
-        for (int64_t i = 0; i < literal->size_bytes() % 4; ++i) {
-          raw_data_int8[literal->size_bytes() / 4 + i] = data_int8++ & mask;
+        for (int64_t i = num_words * 4; i < literal->size_bytes(); ++i) {
+          raw_data_int8[i] = shortform_fill_byte_++ & mask;
         }
         break;
       }
@@ -6160,11 +6233,12 @@ bool HloParserImpl::ParseAttributeHelper(
         return true;
       }
       case AttrTy::kComparisonType: {
-        Comparison::Type result;
+        Comparison::Order result;
         if (!ParseComparisonType(&result)) {
           return false;
         }
-        static_cast<optional<Comparison::Type>*>(attr_out_ptr)->emplace(result);
+        static_cast<optional<Comparison::Order>*>(attr_out_ptr)
+            ->emplace(result);
         return true;
       }
       case AttrTy::kEnum: {
@@ -6414,6 +6488,15 @@ bool HloParserImpl::ParseAttributeHelper(
           return false;
         }
         static_cast<optional<RandomAlgorithm>*>(attr_out_ptr)->emplace(result);
+        return true;
+      }
+      case AttrTy::kShuffleMode: {
+        ShuffleMode::ModeCase result;
+        if (!ParseShuffleMode(&result)) {
+          return false;
+        }
+        static_cast<optional<ShuffleMode::ModeCase>*>(attr_out_ptr)
+            ->emplace(result);
         return true;
       }
       case AttrTy::kPrecisionAlgorithm: {
@@ -7238,17 +7321,22 @@ bool HloParserImpl::ParseDimLevelTypes(
 //   ::= 'T' ('(' dim_list ')')+
 // dim_list
 //   ::= /*empty*/
-//   ::= (int64_t | '*') (',' (int64_t | '*'))*
+//   ::= (int64_t | '*' | 'd') (',' (int64_t | '*' | 'd'))*
 bool HloParserImpl::ParseTiles(std::vector<Tile>* tiles) {
   auto parse_and_add_tile_dimension = [&]() {
-    int64_t i;
-    if (ParseInt64(&i)) {
-      tiles->back().add_dimensions(i);
-      return true;
-    }
     if (lexer_.GetKind() == TokKind::kAsterisk) {
       tiles->back().add_dimensions(Tile::kCombineDimension);
       lexer_.Lex();
+      return true;
+    }
+    if (lexer_.GetKind() == TokKind::kIdent && lexer_.GetStrVal() == "d") {
+      tiles->back().add_dimensions(Tile::kMatchDimension);
+      lexer_.Lex();
+      return true;
+    }
+    int64_t i;
+    if (ParseInt64(&i)) {
+      tiles->back().add_dimensions(i);
       return true;
     }
     return false;
@@ -8457,13 +8545,13 @@ bool HloParserImpl::ParseComparisonOrder(Comparison::Order* result) {
   return true;
 }
 
-bool HloParserImpl::ParseComparisonType(Comparison::Type* result) {
+bool HloParserImpl::ParseComparisonType(Comparison::Order* result) {
   VLOG(kDebugLevel) << "ParseComparisonType";
   if (lexer_.GetKind() != TokKind::kIdent) {
     return TokenError("expects comparison type");
   }
   std::string val = lexer_.GetStrVal();
-  auto status_or_result = StringToComparisonType(val);
+  auto status_or_result = ComparisonTypeToOrder(val);
   if (!status_or_result.ok()) {
     return TokenError(StrFormat("expects comparison type but sees: %s", val));
   }
@@ -8554,6 +8642,22 @@ bool HloParserImpl::ParseRandomAlgorithm(RandomAlgorithm* result) {
     return TokenError(
         StrFormat("expects random algorithm but sees: %s, error: %s", val,
                   status_or_result.status().message()));
+  }
+  *result = status_or_result.value();
+  lexer_.Lex();
+  return true;
+}
+
+bool HloParserImpl::ParseShuffleMode(ShuffleMode::ModeCase* result) {
+  VLOG(kDebugLevel) << "ParseShuffleMode";
+  if (lexer_.GetKind() != TokKind::kIdent) {
+    return TokenError("expects shuffle mode");
+  }
+  std::string val = lexer_.GetStrVal();
+  auto status_or_result = StringToShuffleMode(val);
+  if (!status_or_result.ok()) {
+    return TokenError(StrFormat("expects shuffle mode but sees: %s, error: %s",
+                                val, status_or_result.status().message()));
   }
   *result = status_or_result.value();
   lexer_.Lex();
@@ -9174,10 +9278,13 @@ HloComputation* HloParserImpl::CreateAsyncWrappedComputation(
   // will fail and crash. When there are not enough operands at creation time
   // (when late binding is used), we add dummy operands, and update the
   // async-wrapped computation later.
-  std::optional<int8_t> async_wrapped_opcode_arity =
-      HloOpcodeArity(async_wrapped_opcode);
-  uint64_t num_async_operands = std::max<uint64_t>(
-      async_wrapped_opcode_arity.value_or(0), operand_shapes.size());
+  int64_t min_arity = HloOpcodeArity(async_wrapped_opcode).value_or(0);
+  if (async_wrapped_opcode == HloOpcode::kDot ||
+      async_wrapped_opcode == HloOpcode::kConvolution) {
+    min_arity = 2;
+  }
+  uint64_t num_async_operands =
+      std::max<uint64_t>(min_arity, operand_shapes.size());
 
   HloComputation::Builder async_wrapped_builder("async_wrapped");
   async_wrapped_operands.reserve(num_async_operands);

@@ -1,8 +1,10 @@
-// RUN: hlo-opt %s --platform=gpu --stage=ptx --xla_gpu_target_config_filename=%S/../target_config/specs/%{GPU}.txtpb --split-input-file | FileCheck %s
-// RUN: hlo-opt %s --platform=gpu --stage=ptx --xla_gpu_target_config_filename=%S/../target_config/specs/a100_pcie_80.txtpb --split-input-file | FileCheck %s --check-prefixes=CHECK-SM80
-// RUN: hlo-opt %s --platform=gpu --stage=ptx --xla_gpu_target_config_filename=%S/../target_config/specs/h100_sxm.txtpb --split-input-file | FileCheck %s --check-prefixes=CHECK-SM90
+// RUN: %if !IS_ROCM %{ hlo-opt %s --platform=gpu --stage=ptx --xla_gpu_target_config_filename=%S/../target_config/specs/%{GPU}.txtpb --split-input-file | FileCheck %s %}
+// RUN: %if !IS_ROCM %{ hlo-opt %s --platform=gpu --stage=ptx --xla_gpu_target_config_filename=%S/../target_config/specs/a100_pcie_80.txtpb --split-input-file | FileCheck %s --check-prefixes=CHECK-SM80 %}
+// RUN: %if !IS_ROCM %{ hlo-opt %s --platform=gpu --stage=ptx --xla_gpu_target_config_filename=%S/../target_config/specs/h100_sxm.txtpb --split-input-file | FileCheck %s --check-prefixes=CHECK-SM90 %}
+// RUN: %if IS_ROCM %{ hlo-opt %s --platform=gpu --stage=llvm --xla_gpu_target_config_filename=%S/../target_config/specs/%{GPU}.txtpb --split-input-file | FileCheck --check-prefixes=CHECK-GCN %s %}
 
 // CHECK-DAG: sqrt.approx.f32
+// CHECK-GCN: llvm.sqrt.f32
 
 HloModule Test, is_scheduled=true
 
@@ -19,6 +21,7 @@ ENTRY main {
 // -----
 
 // CHECK-DAG: sqrt.approx.f32
+// CHECK-GCN: llvm.sqrt.f16
 
 HloModule Test, is_scheduled=true
 
@@ -35,6 +38,7 @@ ENTRY main {
 // -----
 
 // CHECK-DAG: rsqrt.approx.f32
+// CHECK-GCN: llvm.amdgcn.rsq.f32
 
 HloModule Test, is_scheduled=true
 
@@ -52,6 +56,8 @@ ENTRY main {
 
 // CHECK: ex2.approx.ftz.f32 %[[APPROX:.*]], %{{.*}}
 // CHECK: mul.rn.f32 %{{.*}}, %[[APPROX]], %{{.*}}
+// CHECK-GCN: llvm.exp.f32
+// CHECK-GCN-NOT: llvm.amdgcn.exp2
 
 HloModule DoesntUseEx2ApproximationDirectly, is_scheduled=true
 
@@ -70,6 +76,8 @@ ENTRY main {
 // CHECK-LABEL: exp_fusion(
 // CHECK: ex2.approx.f32
 // CHECK-NOT: mul
+// CHECK-GCN-LABEL: exp_fusion(
+// CHECK-GCN: llvm.amdgcn.exp2.f32
 
 HloModule UsesEx2ApproximationDirectly, is_scheduled=true
 
@@ -87,6 +95,9 @@ ENTRY main {
 
 // CHECK-LABEL: log_fusion(
 // CHECK-NOT: lg2.approx.f32
+// CHECK-GCN-LABEL: log_fusion(
+// CHECK-GCN: llvm.log.f32
+// CHECK-GCN-NOT: llvm.amdgcn.log
 
 HloModule DoesNotUseLogApproximation, is_scheduled=true
 
@@ -104,6 +115,8 @@ ENTRY main {
 
 // CHECK-LABEL: log_fusion(
 // CHECK: lg2.approx.f32
+// CHECK-GCN-LABEL: log_fusion(
+// CHECK-GCN: llvm.amdgcn.log.f32
 
 HloModule UsesLogApproximation, is_scheduled=true
 
@@ -120,6 +133,7 @@ ENTRY main {
 // -----
 
 // CHECK-SM80: min.NaN.f32
+// CHECK-GCN: llvm.minimum.f32
 
 HloModule Test, is_scheduled=true
 
@@ -140,6 +154,7 @@ ENTRY main {
 // CHECK-SM80: cvt.rn.f32.s16
 // CHECK-SM80: cvt.rn.bf16.f32
 // CHECK-SM90: cvt.rn.bf16.s16
+// CHECK-GCN: sitofp i16 {{.*}} to bfloat
 
 HloModule Test, is_scheduled=true
 

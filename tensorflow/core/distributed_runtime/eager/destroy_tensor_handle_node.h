@@ -39,7 +39,7 @@ class DestroyTensorHandleNode : public tensorflow::AsyncEagerNode {
         eager_client_(std::move(eager_client)),
         ready_(ready) {}
 
-  ~DestroyTensorHandleNode() override {}
+  ~DestroyTensorHandleNode() override = default;
 
   void RunAsync(StatusCallback done) override {
     EnqueueResponse* response = new EnqueueResponse;

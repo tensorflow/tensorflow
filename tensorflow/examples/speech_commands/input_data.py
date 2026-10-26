@@ -239,7 +239,34 @@ class AudioProcessor(object):
       tf.compat.v1.logging.info(
           'Successfully downloaded {0} ({1} bytes)'.format(
               filename, statinfo.st_size))
-      tarfile.open(filepath, 'r:gz').extractall(dest_directory)
+      with tarfile.open(filepath, 'r:gz') as archive:
+        if hasattr(tarfile, 'data_filter'):
+          archive.extractall(dest_directory, filter='data')
+        else:
+          # Python versions without extraction filters (before 3.10.12 and
+          # 3.11.4). Members are not on disk yet, so resolving paths with
+          # realpath here cannot see symlinks from this archive. Instead,
+          # refuse absolute paths, drive prefixes and '..' components in
+          # member names and link targets: then every file, symlink and hard
+          # link stays inside dest_directory.
+          def _is_unsafe(path):
+            return (
+                os.path.isabs(path)
+                or bool(os.path.splitdrive(path)[0])
+                or '..' in re.split(r'[\\/]', path)
+            )
+
+          for member in archive.getmembers():
+            if _is_unsafe(member.name) or (
+                (member.issym() or member.islnk())
+                and _is_unsafe(member.linkname)
+            ):
+              raise ValueError(
+                  'Refusing to extract unsafe archive member: {0}'.format(
+                      member.name
+                  )
+              )
+          archive.extractall(dest_directory)
 
   def prepare_data_index(self, silence_percentage, unknown_percentage,
                          wanted_words, validation_percentage,

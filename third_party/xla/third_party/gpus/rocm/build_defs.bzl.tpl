@@ -14,24 +14,6 @@ def if_rocm(if_true, if_false = []):
         "//conditions:default": if_false,
     })
 
-def rocm_default_copts():
-    """Default options for all ROCm compilations."""
-    return if_rocm(["-x", "rocm"])
-
-def rocm_copts(opts = []):
-    """Gets the appropriate set of copts for (maybe) ROCm compilation.
-
-      If we're doing ROCm compilation, returns copts for our particular ROCm
-      compiler.  If we're not doing ROCm compilation, returns an empty list.
-
-      """
-    return rocm_default_copts() + select({
-        "//conditions:default": [],
-        "@local_config_rocm//rocm:using_hipcc": ([
-            "",
-        ]),
-    }) + if_rocm_is_configured(opts)
-
 def rocm_gpu_architectures():
     """Returns a list of supported GPU architectures."""
     return %{rocm_gpu_architectures}
@@ -73,13 +55,6 @@ def if_rocm_hipblaslt(x):
     hipBlasLt is always available: kept for compatibility with Tensorflow.
     """
     return select({"//conditions:default": x})
-
-def rocm_library(copts = [], deps = [], **kwargs):
-    """Wrapper over cc_library which adds default ROCm options."""
-    deps = list(deps)
-    if "@local_config_rocm//rocm:rocm_headers" not in deps:
-        deps.append("@local_config_rocm//rocm:rocm_headers")
-    cc_library(copts = rocm_default_copts() + copts, deps = deps, **kwargs)
 
 def get_rbe_amdgpu_pool(is_single_gpu = False):
     return "%{single_gpu_rbe_pool}" if is_single_gpu else "%{multi_gpu_rbe_pool}"

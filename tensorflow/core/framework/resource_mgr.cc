@@ -156,6 +156,7 @@ void ResourceMgr::Clear() {
     mutex_lock l(mu_);
     tmp_containers = std::move(containers_);
     containers_.clear();  // reinitialize after move.
+    debug_type_names_.clear();
   }
   for (const auto& p : tmp_containers) {
     delete p.second;

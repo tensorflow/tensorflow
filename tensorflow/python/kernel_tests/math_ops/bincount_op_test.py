@@ -756,6 +756,49 @@ class SparseBincountOpTest(test_util.TensorFlowTestCase,
               size=size,
               weights=[]))
 
+  def test_sparse_bincount_rank0_fails(self):
+    # Regression test for the rank-0 guard in SparseBincountOp::Compute
+    # ("dense_shape must have at least 1 dimension"). Without it the kernel
+    # reads dense_shape(0) on an empty dense_shape. Shape inference may reject
+    # the input first, so both messages are accepted.
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        "Input must be less than rank 2|"
+        "dense_shape must have at least 1 dimension",
+    ):
+      self.evaluate(
+          gen_math_ops.sparse_bincount(
+              indices=constant_op.constant(
+                  [], shape=[1, 0], dtype=dtypes.int64
+              ),
+              values=[0],
+              dense_shape=constant_op.constant(
+                  [], shape=[0], dtype=dtypes.int64
+              ),
+              size=10,
+              weights=[],
+          )
+      )
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_sparse_bincount_invalid_weights_length(self):
+    # Regression test: the 2-D SparseBincount path reads `weights(i)` with the
+    # value index `i`, so a `weights` shorter than the values would be read out
+    # of bounds. It must be rejected like the 1-D path and DenseBincount do.
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        "must be the same length as `values`",
+    ):
+      self.evaluate(
+          gen_math_ops.sparse_bincount(
+              indices=[[0, 0], [1, 0], [2, 0]],
+              values=[1, 1, 1],
+              dense_shape=[3, 2],
+              size=2,
+              weights=[1.0],
+          )
+      )
+
 
 class RaggedBincountOpTest(test_util.TensorFlowTestCase,
                            parameterized.TestCase):
@@ -920,6 +963,22 @@ class RaggedBincountOpTest(test_util.TensorFlowTestCase,
               weights=[1],
               binary_output=False,
               name=None))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_ragged_bincount_invalid_weights_length(self):
+    # Regression test: RaggedBincount reads `weights(idx)` with the value
+    # index `idx`, so a `weights` shorter than the values would be read out of
+    # bounds. It must be rejected like the 1-D path and DenseBincount do.
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        "must be the same length as `values`",
+    ):
+      self.evaluate(
+          gen_math_ops.ragged_bincount(
+              splits=[0, 3], values=[1, 1, 1], size=2, weights=[1.0]
+          )
+      )
+
 
 if __name__ == "__main__":
   googletest.main()

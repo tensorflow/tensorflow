@@ -17,6 +17,8 @@ load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("@bazel_skylib//rules:common_settings.bzl", "string_flag")
 load("@config_rocm_hipcc//rocm:build_defs.bzl", "hipcc_config")
 load("@local_config_rocm//rocm:build_defs.bzl", "rocm_gpu_architectures", "rocm_lib_import", "rocm_version_number")
+load("@rules_cc//cc:cc_import.bzl", "cc_import")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 
 licenses(["restricted"])  # MPL2, portions GPL v3, LGPL v3, BSD-like
 
@@ -102,7 +104,6 @@ cc_library(
     hdrs = glob([
         "%{rocm_root}/include/**",
     ]),
-    defines = {"__HIP_DISABLE_CPP_FUNCTIONS__": "1"},
     strip_include_prefix = "%{rocm_root}/include",
     deps = [
         "@xla//third_party/libdrm:drm_headers",
@@ -306,6 +307,9 @@ rocm_lib_import(
     ]) + glob([
         "%{rocm_root}/lib/libMIOpenCKGroupedConv_" + arch + ".so"
         for arch in rocm_gpu_architectures()
+    ]) + glob([
+        "%{rocm_root}/.kpack/miopen_lib_" + arch + ".kpack"
+        for arch in rocm_gpu_architectures()
     ]),
     interface_library = "%{rocm_root}/lib/libMIOpen.so",
     deps = [
@@ -396,8 +400,12 @@ rocm_lib_import(
 cc_library(
     name = "rocsparse_libs",
     data = glob(["%{rocm_root}/lib/librocsparse.so*"]) + glob([
-        "%{rocm_root}/.kpack/blas_lib_" + arch + ".kpack"
+        pattern
         for arch in rocm_gpu_architectures()
+        for pattern in (
+            "%{rocm_root}/.kpack/blas_lib_" + arch + ".kpack",
+            "%{rocm_root}/.kpack/sparse_lib_" + arch + ".kpack",
+        )
     ]),
     deps = [
         ":hip_runtime_libs",
@@ -452,8 +460,12 @@ rocm_lib_import(
         "%{rocm_root}/lib/librocsolver.so*",
         "%{rocm_root}/lib/host-math/lib/*.so*",
     ]) + glob([
-        "%{rocm_root}/.kpack/blas_lib_" + arch + ".kpack"
+        pattern
         for arch in rocm_gpu_architectures()
+        for pattern in (
+            "%{rocm_root}/.kpack/blas_lib_" + arch + ".kpack",
+            "%{rocm_root}/.kpack/solver_lib_" + arch + ".kpack",
+        )
     ]),
     interface_library = "%{rocm_root}/lib/librocsolver.so",
     deps = [
@@ -491,6 +503,7 @@ rocm_lib_import(
             "%{rocm_root}/lib/libhipblaslt.so*",
             "%{rocm_root}/lib/librocroller.so*",
             "%{rocm_root}/lib/liborigami.so*",
+            "%{rocm_root}/lib/libtensilelite-host.so*",
         ],
     ) + glob([
         pattern
@@ -519,15 +532,74 @@ filegroup(
             "%{rocm_root}/lib/rocm_sysdeps/lib/*.so*",
             "%{rocm_root}/lib/rocm_sysdeps/share/**",
         ],
+        allow_empty = True,
         exclude = [
             "%{rocm_root}/lib/rocm_sysdeps/share/terminfo/**",
         ],
     ),
 )
 
+# rocm_sysdeps only exists in TheRock-based ROCm distributions. ROCm's own
+# libraries find it via their embedded RUNPATH; the rpath here is for binaries
+# that link a sysdeps library directly (see :drm, :drm_amdgpu, :numa). As with
+# /opt/rocm/lib in :rocm_rpath, the /opt/rocm entry lets binaries run outside
+# runfiles against a local TheRock install; it is skipped on classic ROCm.
 cc_library(
     name = "system_libs",
     data = [":system_libs_data"],
+    linkopts = select({
+        ":link_only": [],
+        ":build_hermetic": [
+            "-Wl,-rpath,../%{rocm_repo_name}/rocm/%{rocm_root}/lib/rocm_sysdeps/lib",
+        ],
+        "//conditions:default": [
+            "-Wl,-rpath,../%{rocm_repo_name}/rocm/%{rocm_root}/lib/rocm_sysdeps/lib",
+            "-Wl,-rpath,/opt/rocm/lib/rocm_sysdeps/lib",
+        ],
+    }),
+)
+
+# System libraries needed by consumers like MORI's libhsakmt.a (drm/numa
+# symbols), exposed as real link targets (not just runtime data). On TheRock
+# 7.10+ they resolve to the copies bundled under lib/rocm_sysdeps/lib. Classic
+# ROCm 7.2.x does not ship rocm_sysdeps, so those installs also pass -ldrm etc.
+# to the host linker.
+_USE_HOST_SYSDEPS = rocm_version_number() < 71000
+
+cc_library(
+    name = "drm",
+    srcs = glob(
+        ["%{rocm_root}/lib/rocm_sysdeps/lib/libdrm.so"],
+        allow_empty = True,
+    ),
+    data = [":system_libs_data"],
+    linkopts = ["-ldrm"] if _USE_HOST_SYSDEPS else [],
+    visibility = ["//visibility:public"],
+    deps = [":system_libs"],
+)
+
+cc_library(
+    name = "drm_amdgpu",
+    srcs = glob(
+        ["%{rocm_root}/lib/rocm_sysdeps/lib/libdrm_amdgpu.so"],
+        allow_empty = True,
+    ),
+    data = [":system_libs_data"],
+    linkopts = ["-ldrm_amdgpu"] if _USE_HOST_SYSDEPS else [],
+    visibility = ["//visibility:public"],
+    deps = [":system_libs"],
+)
+
+cc_library(
+    name = "numa",
+    srcs = glob(
+        ["%{rocm_root}/lib/rocm_sysdeps/lib/libnuma.so"],
+        allow_empty = True,
+    ),
+    data = [":system_libs_data"],
+    linkopts = ["-lnuma"] if _USE_HOST_SYSDEPS else [],
+    visibility = ["//visibility:public"],
+    deps = [":system_libs"],
 )
 
 filegroup(
@@ -569,6 +641,19 @@ platform(
     ],
     exec_properties = {
         "container-image": "docker://%{rocm_rbe_docker_image}",
+        "Pool": "%{rocm_rbe_pool}",
+        "OSFamily": "Linux",
+    },
+)
+
+platform(
+    name = "linux_x64_bb",
+    constraint_values = [
+        "@platforms//os:linux",
+        "@platforms//cpu:x86_64",
+        "@bazel_tools//tools/cpp:clang",
+    ],
+    exec_properties = {
         "Pool": "%{rocm_rbe_pool}",
         "OSFamily": "Linux",
     },

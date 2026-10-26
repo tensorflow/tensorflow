@@ -17,15 +17,14 @@ limitations under the License.
 #define XLA_SERVICE_GPU_GPU_MODULE_GLOBALS_H_
 
 #include <cstdint>
-#include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "absl/base/nullability.h"
-#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
-#include "absl/synchronization/mutex.h"
+#include "xla/backends/gpu/runtime/per_device_state.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/dense_data_intermediate.h"
 #include "xla/service/gpu/gpu_executable.pb.h"
@@ -61,27 +60,27 @@ class GpuModuleGlobals {
   };
 
   GpuModuleGlobals(const std::vector<uint8_t>& binary,
-                   const std::vector<ConstantInfo>& constants)
-      : binary_(binary), constants_(constants) {}
+                   const std::vector<ConstantInfo>& constants,
+                   int devices_per_host = 0)
+      : binary_(binary),
+        constants_(constants),
+        device_states_(devices_per_host) {}
 
   // Loads the executable module for `stream` and initializes constant globals.
-  // Loaded modules and resolved global addresses are cached per executor.
+  // Loaded modules and resolved global addresses are cached per device ordinal.
   absl::StatusOr<const BufferAllocToDeviceMemoryMap*> Resolve(
       se::Stream* stream);
 
  private:
+  struct DeviceState {
+    // Required to keep the loaded module alive until this helper is destroyed.
+    std::optional<se::ScopedModuleHandle> module_handle;
+    BufferAllocToDeviceMemoryMap globals;
+  };
+
   const std::vector<uint8_t>& binary_;
   const std::vector<ConstantInfo>& constants_;
-
-  absl::Mutex mutex_;
-  // Cache of module handles. Required to keep loaded modules alive until this
-  // helper is destroyed.
-  absl::flat_hash_map<se::StreamExecutor*, se::ScopedModuleHandle>
-      module_handles_ ABSL_GUARDED_BY(mutex_);
-  // Cache of constant buffer allocation maps used by `Resolve`.
-  absl::flat_hash_map<se::StreamExecutor*,
-                      std::unique_ptr<BufferAllocToDeviceMemoryMap>>
-      globals_ ABSL_GUARDED_BY(mutex_);
+  PerDeviceState<DeviceState> device_states_;
 };
 
 }  // namespace gpu

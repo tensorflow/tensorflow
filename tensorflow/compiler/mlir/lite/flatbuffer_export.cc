@@ -186,6 +186,11 @@ constexpr size_t kInitialBufferSize = 10240;
 // Flatbuffer fields to be padded to 16 bytes aligned.
 constexpr size_t kFbAlignment = 16;
 
+// Extra trailing bytes to pad after constant tensor buffers to prevent
+// out-of-bounds reads by SIMD kernels (e.g. XNNPACK microkernels require up to
+// 128 bytes on Qualcomm Hexagon DSP).
+constexpr size_t kFbTailPadding = 128;
+
 // Set `isSigned` to false if the `type` is an 8-bit unsigned integer type.
 // Since tflite doesn't support unsigned for other types, returns error if
 // `isSigned` is set to false for other types.
@@ -969,8 +974,10 @@ class Translator {
       mlir::stablehlo::PadOp pad_op, const std::vector<int32_t>& operands,
       const std::vector<int32_t>& results);
 
-  std::optional<BufferOffset<tflite::Operator>> BuildVhloGatherV1Op(
-      mlir::vhlo::GatherOpV1 gather_op, const std::vector<int32_t>& operands,
+  // Builds STABLEHLO_GATHER from a VHLO GatherOpV1 or GatherOpV2.
+  template <typename GatherOpT>
+  std::optional<BufferOffset<tflite::Operator>> BuildVhloGatherOp(
+      GatherOpT gather_op, const std::vector<int32_t>& operands,
       const std::vector<int32_t>& results,
       mlir::VhloToStablehloTypeConverter& vhlo_type_converter);
 
@@ -979,8 +986,10 @@ class Translator {
       const std::vector<int32_t>& operands, const std::vector<int32_t>& results,
       std::string op_name);
 
-  std::optional<BufferOffset<tflite::Operator>> BuildVhloScatterV1Op(
-      mlir::vhlo::ScatterOpV1 scatter_op, const std::vector<int32_t>& operands,
+  // Builds STABLEHLO_SCATTER from a VHLO ScatterOpV1 or ScatterOpV2.
+  template <typename ScatterOpT>
+  std::optional<BufferOffset<tflite::Operator>> BuildVhloScatterOp(
+      ScatterOpT scatter_op, const std::vector<int32_t>& operands,
       const std::vector<int32_t>& results,
       mlir::VhloToStablehloTypeConverter& vhlo_type_converter);
 
@@ -1116,6 +1125,10 @@ class Translator {
   // deduplicate the buffers in the flatbuffer.
   llvm::DenseMap<mlir::ElementsAttr, int> const_attribute_to_buffer_map_;
   llvm::DenseMap<mlir::ElementsAttr, int> cast_attribute_to_buffer_map_;
+  // With `use_buffer_offset_`, maps the physical fingerprint of a constant's
+  // data and type to its buffer index, to dedupe distinct attributes holding
+  // identical data.
+  absl::flat_hash_map<uint64_t, int> physical_hash_to_buffer_map_;
 
   // Map subgraph name to its debug metadata index and all of its operations'
   // debug metadata indexes. It is built during debug metadata creation, and is
@@ -1307,12 +1320,39 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
     return empty_buffer_;
   }
 
+  // Buffer fingerprint used to dedupe payloads written at buffer offsets. See
+  // the comment at its use below.
+  std::optional<uint64_t> physical_hash;
+  if (use_buffer_offset_) {
+    physical_hash = GetPhysicalBufferHash(attr);
+    if (is_streaming_cast) {
+      physical_hash = llvm::hash_combine(*physical_hash, 0xbf16f32);
+    }
+  }
+
+  auto type = mlir::cast<TensorType>(value.getType());
+
   if (can_be_deduplicated) {
     auto& dedup_map = is_streaming_cast ? cast_attribute_to_buffer_map_
                                         : const_attribute_to_buffer_map_;
     if (dedup_map.find(attr) != dedup_map.end()) {
       index = dedup_map[attr];
       return empty_buffer_;
+    }
+    if (physical_hash.has_value()) {
+      // Distinct attributes can hold identical data, e.g. the same weight
+      // materialized separately in each signature. Their payloads are written
+      // once at a shared offset (see AppendBufferData); also share the buffer
+      // index so that consumers keying on it (e.g. quantizers) see one weight
+      // rather than aliased copies.
+      uint64_t key = llvm::hash_combine(*physical_hash, mlir::hash_value(type));
+      auto [it, inserted] =
+          physical_hash_to_buffer_map_.try_emplace(key, index);
+      if (!inserted) {
+        index = it->second;
+        dedup_map[attr] = index;
+        return empty_buffer_;
+      }
     }
     dedup_map[attr] = index;
   }
@@ -1323,7 +1363,6 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
   // trouble calling ConvertToTensor(). For now, extract the tensor data from
   // ElementsAttr directly in this and read type from tflite::TensorType instead
   // of tensorflow::DataType.
-  auto type = mlir::cast<TensorType>(value.getType());
   tflite::TensorType tflite_element_type =
       GetTFLiteType(type.getElementType()).value();
 
@@ -1542,13 +1581,9 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
     // string and computing the hash of the string, but can be reliable in some
     // cases where the MLIR attributes are not deduped properly (e.g. when two
     // consts of the same value are held in different attribute types).
-    uint64_t h = GetPhysicalBufferHash(attr);
-    if (is_streaming_cast) {
-      h = llvm::hash_combine(h, 0xbf16f32);
-    }
     const_buffer_storage_.Insert(
         index, std::make_pair(attr, inst), std::move(applier),
-        /*hash=*/h,
+        /*hash=*/*physical_hash,
         /*byte_size_hint=*/mlir::TFL::GetSizeInBytes(type));
     return tflite::CreateBuffer(builder_, 0, 1, 1);
   } else {
@@ -1558,10 +1593,9 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
                             /*hash=*/0);
 
     std::string buffer_data = buffer.GetData();
-    if (custom_option_alignment_.has_value()) {
-      builder_.ForceVectorAlignment(buffer_data.size(), sizeof(uint8_t),
-                                    custom_option_alignment_.value());
-    }
+    builder_.ForceVectorAlignment(
+        buffer_data.size(), sizeof(uint8_t),
+        custom_option_alignment_.value_or(kFbAlignment));
     ReleaseBufferData(buffer);
     return tflite::CreateBuffer(
         builder_, builder_.CreateVector(
@@ -2560,10 +2594,31 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildStablehloPadOp(
       tflite::BuiltinOptions2_StablehloPadOptions, pad_option.Union());
 }
 
-std::optional<BufferOffset<tflite::Operator>> Translator::BuildVhloGatherV1Op(
-    mlir::vhlo::GatherOpV1 gather_op, const std::vector<int32_t>& operands,
+// Returns true if `attr` is a VHLO tensor attribute with no elements, e.g. the
+// unused batching dims of a VHLO GatherOpV2 / ScatterOpV2.
+static bool IsEmptyVhloTensorAttr(
+    mlir::Attribute attr,
+    mlir::VhloToStablehloTypeConverter& vhlo_type_converter) {
+  return mlir::GetVector<int64_t>(mlir::cast<mlir::vhlo::TensorV1Attr>(attr),
+                                  vhlo_type_converter)
+      .empty();
+}
+
+template <typename GatherOpT>
+std::optional<BufferOffset<tflite::Operator>> Translator::BuildVhloGatherOp(
+    GatherOpT gather_op, const std::vector<int32_t>& operands,
     const std::vector<int32_t>& results,
     mlir::VhloToStablehloTypeConverter& vhlo_type_converter) {
+  if constexpr (std::is_same_v<GatherOpT, mlir::vhlo::GatherOpV2>) {
+    if (!IsEmptyVhloTensorAttr(gather_op.getOperandBatchingDims(),
+                               vhlo_type_converter) ||
+        !IsEmptyVhloTensorAttr(gather_op.getStartIndicesBatchingDims(),
+                               vhlo_type_converter)) {
+      gather_op.emitError(
+          "stablehlo.gather with batching dims is not supported");
+      return std::nullopt;
+    }
+  }
   std::string op_name =
       gather_op.getOperation()->getName().getStringRef().str();
   uint32_t opcode_index =
@@ -2603,10 +2658,21 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildVhloGatherV1Op(
       GetOperatorDebugMetadataIndex(gather_op.getOperation()));
 }
 
-std::optional<BufferOffset<tflite::Operator>> Translator::BuildVhloScatterV1Op(
-    mlir::vhlo::ScatterOpV1 scatter_op, const std::vector<int32_t>& operands,
+template <typename ScatterOpT>
+std::optional<BufferOffset<tflite::Operator>> Translator::BuildVhloScatterOp(
+    ScatterOpT scatter_op, const std::vector<int32_t>& operands,
     const std::vector<int32_t>& results,
     mlir::VhloToStablehloTypeConverter& vhlo_type_converter) {
+  if constexpr (std::is_same_v<ScatterOpT, mlir::vhlo::ScatterOpV2>) {
+    if (!IsEmptyVhloTensorAttr(scatter_op.getInputBatchingDims(),
+                               vhlo_type_converter) ||
+        !IsEmptyVhloTensorAttr(scatter_op.getScatterIndicesBatchingDims(),
+                               vhlo_type_converter)) {
+      scatter_op.emitError(
+          "stablehlo.scatter with batching dims is not supported");
+      return std::nullopt;
+    }
+  }
   std::string op_name =
       scatter_op.getOperation()->getName().getStringRef().str();
   uint32_t opcode_index =
@@ -2914,16 +2980,22 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
     }
 
     if (auto vhlo_op = llvm::dyn_cast<mlir::vhlo::ScatterOpV1>(inst)) {
-      return BuildVhloScatterV1Op(vhlo_op, operands, results,
-                                  vhlo_type_converter);
+      return BuildVhloScatterOp(vhlo_op, operands, results,
+                                vhlo_type_converter);
+    }
+    if (auto vhlo_op = llvm::dyn_cast<mlir::vhlo::ScatterOpV2>(inst)) {
+      return BuildVhloScatterOp(vhlo_op, operands, results,
+                                vhlo_type_converter);
     }
     if (auto vhlo_op = llvm::dyn_cast<mlir::vhlo::RngBitGeneratorOpV1>(inst)) {
       return BuildVhloRngBitGeneratorV1Op(vhlo_op, operands, results,
                                           vhlo_type_converter);
     }
     if (auto vhlo_op = llvm::dyn_cast<mlir::vhlo::GatherOpV1>(inst)) {
-      return BuildVhloGatherV1Op(vhlo_op, operands, results,
-                                 vhlo_type_converter);
+      return BuildVhloGatherOp(vhlo_op, operands, results, vhlo_type_converter);
+    }
+    if (auto vhlo_op = llvm::dyn_cast<mlir::vhlo::GatherOpV2>(inst)) {
+      return BuildVhloGatherOp(vhlo_op, operands, results, vhlo_type_converter);
     }
     if (auto vhlo_op = llvm::dyn_cast<mlir::vhlo::AddOpV1>(inst)) {
       return BuildStablehloOperatorwithoutOptions(
@@ -3943,6 +4015,7 @@ std::optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
 BufferOffset<tflite::Metadata> Translator::BuildMetadata(StringRef name,
                                                          StringRef content) {
   auto buffer_index = buffers_.size();
+  builder_.ForceVectorAlignment(content.size(), sizeof(uint8_t), kFbAlignment);
   auto buffer_data = builder_.CreateVector(
       reinterpret_cast<const uint8_t*>(content.data()), content.size());
   buffers_.push_back(tflite::CreateBuffer(builder_, buffer_data));
@@ -4689,9 +4762,18 @@ absl::Status Translator::TranslateInternal() {
         reinterpret_cast<const char*>(builder_.GetBufferPointer()),
         builder_.GetSize(), /*offset=*/0);
   } else {
+    // When use_buffer_offset_ is false (the default for models under 2GB,
+    // whereas large models like LLMs enable `--use_buffer_offset` to append
+    // buffers at the end), all tensor buffers are stored inline inside the
+    // FlatBuffer builder. In this mode, buffers near the end of the FlatBuffer
+    // may lack trailing bytes before the file boundary. We write the
+    // FlatBuffer directly to the stream and append trailing zeros to ensure
+    // that the last tensor buffer has sufficient trailing padding for SIMD
+    // kernels (e.g. XNNPACK) when memory-mapped.
     export_stream_.get().write(
         reinterpret_cast<const char*>(builder_.GetBufferPointer()),
         builder_.GetSize());
+    export_stream_.get().write_zeros(kFbTailPadding);
   }
   return absl::OkStatus();
 }
@@ -4762,8 +4844,6 @@ absl::Status Translator::AppendBufferData() {
       ReleaseBufferData(*buffer);
     }
   }
-  // pad 16 bytes for the last buffer for XNNPack
-  export_stream_.get().write_zeros(16);
 
   // pad to be 16 bytes aligned
   export_stream_.get().write_zeros(kFbAlignment - offset() % kFbAlignment);
@@ -4788,6 +4868,9 @@ absl::Status Translator::AppendBufferData() {
     }
     custom_op_idx_map_[key] = std::make_pair(buffer_offset, size);
   }
+
+  // Pad trailing bytes for the last tensor buffer for SIMD/XNNPack kernels
+  export_stream_.get().write_zeros(kFbTailPadding);
 
   // pad to be 16 bytes aligned
   export_stream_.get().write_zeros(kFbAlignment - offset() % kFbAlignment);

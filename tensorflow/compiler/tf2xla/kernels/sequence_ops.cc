@@ -15,7 +15,10 @@ limitations under the License.
 
 // XLA-specific sequence and range Ops.
 
+#include <cmath>
 #include <cstdint>
+#include <cstdlib>
+#include <limits>
 #include <type_traits>
 
 #include "absl/status/statusor.h"
@@ -38,7 +41,8 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-// The type-specific part of the implementation of Range.
+// The type-specific part of the implementation of Range: checks the arguments
+// and returns delta * [0, 1, ..., size - 1] for the range's size.
 template <typename T>
 absl::StatusOr<xla::XlaOp> CreateRangeTensor(
     const xla::LiteralSlice& start_literal,
@@ -63,13 +67,22 @@ absl::StatusOr<xla::XlaOp> CreateRangeTensor(
     }
   }
   int64_t size;
-  if constexpr (std::is_integral<T>::value) {
-    int64_t start_i = static_cast<int64_t>(start);
-    int64_t limit_i = static_cast<int64_t>(limit);
-    int64_t delta_i = static_cast<int64_t>(delta);
-    size = (limit_i == start_i
-                ? 0
-                : (std::abs(limit_i - start_i) - 1) / std::abs(delta_i) + 1);
+  if constexpr (std::is_integral_v<T>) {
+    // Take |limit - start| and |delta| in uint64_t, which holds them for every
+    // T, as the CPU kernel does, so that a range wider than T can hold doesn't
+    // overflow.
+    const bool count_up = delta > static_cast<T>(0);
+    const uint64_t range =
+        count_up ? static_cast<uint64_t>(limit) - static_cast<uint64_t>(start)
+                 : static_cast<uint64_t>(start) - static_cast<uint64_t>(limit);
+    const uint64_t abs_delta =
+        count_up ? static_cast<uint64_t>(delta) : -static_cast<uint64_t>(delta);
+    const uint64_t size_unsigned = range == 0 ? 0 : (range - 1) / abs_delta + 1;
+    if (size_unsigned > std::numeric_limits<int64_t>::max()) {
+      return errors::InvalidArgument("Requires ((limit - start) / delta) <= ",
+                                     std::numeric_limits<int64_t>::max());
+    }
+    size = static_cast<int64_t>(size_unsigned);
   } else {
     double start_f = static_cast<double>(start);
     double limit_f = static_cast<double>(limit);
@@ -78,10 +91,9 @@ absl::StatusOr<xla::XlaOp> CreateRangeTensor(
         std::ceil(std::abs((limit_f - start_f) / delta_f)));
   }
 
-  return xla::ConstantR0(builder, start) +
-         xla::ConstantR0(builder, delta) *
-             xla::Iota(builder, xla::primitive_util::NativeToPrimitiveType<T>(),
-                       size);
+  return xla::ConstantR0(builder, delta) *
+         xla::Iota(builder, xla::primitive_util::NativeToPrimitiveType<T>(),
+                   size);
 }
 
 class RangeOp : public XlaOpKernel {
@@ -102,11 +114,24 @@ class RangeOp : public XlaOpKernel {
                 errors::InvalidArgument("delta must be a scalar, not shape ",
                                         delta_in_shape.DebugString()));
     xla::Literal start, limit, delta;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInput(
-                            0, &start, xla::ValueInferenceMode::kLowerBound));
-    OP_REQUIRES_OK(ctx, ctx->ConstantInput(
-                            1, &limit, xla::ValueInferenceMode::kUpperBound));
     OP_REQUIRES_OK(ctx, ctx->ConstantInput(2, &delta));
+    // Size the output from the bounds of start and limit that give the longest
+    // range: the lowest start and highest limit when counting up, and the
+    // highest start and lowest limit when counting down.
+    const xla::PrimitiveType delta_type = delta.shape().element_type();
+    const bool count_down =
+        xla::primitive_util::IsFloatingPointType(delta_type)
+            ? delta.GetAsDouble({}).value_or(0) < 0
+            : xla::primitive_util::IsSignedIntegralType(delta_type) &&
+                  delta.GetIntegralAsS64({}).value_or(0) < 0;
+    OP_REQUIRES_OK(ctx, ctx->ConstantInput(
+                            0, &start,
+                            count_down ? xla::ValueInferenceMode::kUpperBound
+                                       : xla::ValueInferenceMode::kLowerBound));
+    OP_REQUIRES_OK(ctx, ctx->ConstantInput(
+                            1, &limit,
+                            count_down ? xla::ValueInferenceMode::kLowerBound
+                                       : xla::ValueInferenceMode::kUpperBound));
 
     DataType type = input_type(0);
     absl::StatusOr<xla::XlaOp> output;
@@ -163,22 +188,50 @@ class RangeOp : public XlaOpKernel {
     bool limit_is_dynamic = false;
     OP_REQUIRES_OK(ctx,
                    ctx->ResolveInputDynamismIntoPred(1, &limit_is_dynamic));
+    // If start is dynamic, its literal is a bound, so add the input instead.
+    output = (start_is_dynamic ? ctx->Input(0)
+                               : xla::ConstantLiteral(ctx->builder(), start)) +
+             output.value();
 
     if (start_is_dynamic || limit_is_dynamic) {
       xla::XlaOp delta = ctx->Input(2);
       xla::XlaOp limit = ctx->Input(1);
       xla::XlaOp start = ctx->Input(0);
+      // The runtime values can be in the wrong order for delta's sign, which
+      // the CPU kernel rejects. Give such a range size 0 rather than a size
+      // past the output's static size.
+      const xla::XlaOp is_empty =
+          count_down ? xla::Le(start, limit) : xla::Ge(start, limit);
+      xla::XlaOp dynamic_size;
       if (DataTypeIsInteger(type)) {
-        auto dynamic_size = (xla::Abs(limit - start) + xla::Abs(delta) -
-                             xla::One(ctx->builder(), ctx->input_xla_type(0))) /
-                            xla::Abs(delta);
-        dynamic_size = xla::ConvertElementType(dynamic_size, xla::S32);
-        output = xla::SetDimensionSize(output.value(), dynamic_size, 0);
+        // Take |limit - start| and |delta| in the unsigned type of the same
+        // width, which holds them. XLA's Abs doesn't take unsigned types, whose
+        // delta is positive anyway.
+        const xla::PrimitiveType xla_type = ctx->input_xla_type(0);
+        const xla::PrimitiveType unsigned_type =
+            xla::primitive_util::UnsignedIntegralTypeForBitWidth(
+                xla::primitive_util::BitWidth(xla_type));
+        const auto as_unsigned = [&](xla::XlaOp x) {
+          return xla::BitcastConvertType(x, unsigned_type);
+        };
+        const xla::XlaOp range = count_down
+                                     ? as_unsigned(start) - as_unsigned(limit)
+                                     : as_unsigned(limit) - as_unsigned(start);
+        const xla::XlaOp abs_delta =
+            as_unsigned(xla::primitive_util::IsSignedIntegralType(xla_type)
+                            ? xla::Abs(delta)
+                            : delta);
+        const xla::XlaOp one = xla::One(ctx->builder(), unsigned_type);
+        dynamic_size =
+            xla::Select(is_empty, xla::Zero(ctx->builder(), unsigned_type),
+                        (range - one) / abs_delta + one);
       } else {
-        auto dynamic_size = (xla::Ceil(xla::Abs((limit - start) / delta)));
-        dynamic_size = xla::ConvertElementType(dynamic_size, xla::S32);
-        output = xla::SetDimensionSize(output.value(), dynamic_size, 0);
+        dynamic_size = xla::Select(
+            is_empty, xla::Zero(ctx->builder(), ctx->input_xla_type(0)),
+            xla::Ceil(xla::Abs((limit - start) / delta)));
       }
+      dynamic_size = xla::ConvertElementType(dynamic_size, xla::S32);
+      output = xla::SetDimensionSize(output.value(), dynamic_size, 0);
     }
 
     ctx->SetOutput(0, output.value());

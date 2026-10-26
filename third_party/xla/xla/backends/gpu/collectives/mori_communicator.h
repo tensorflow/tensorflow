@@ -14,7 +14,6 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_COLLECTIVES_MORI_COMMUNICATOR_H_
 
 #include <cstddef>
-#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -36,7 +35,6 @@ limitations under the License.
 #include "xla/core/collectives/symmetric_memory.h"
 #include "xla/future.h"
 #include "xla/stream_executor/device_address.h"
-#include "xla/stream_executor/stream.h"
 #include "xla/xla_data.pb.h"
 
 namespace mori::collective {
@@ -89,7 +87,7 @@ class MoriCommunicator : public GpuCommunicator {
   absl::StatusOr<size_t> CurrentRank() final;
 
   absl::StatusOr<std::unique_ptr<SymmetricMemory>> CreateSymmetricMemory(
-      se::DeviceAddressBase addr) final {
+      se::DeviceAddressBase addr, bool symmetric_window = false) final {
     // Dummy implementation: MORI buffers are already allocated from the
     // symmetric shmem heap, so the local device address is the symmetric
     // handle. Just wrap and return it unchanged.
@@ -203,14 +201,13 @@ class MoriCommunicator : public GpuCommunicator {
 
   MoriCollectives* collectives_;  // Parent MoriCollectives instance
 
-  // This communicator's participant set (NOT the global MORI clique). `rank_`
-  // is this rank within the collective, `num_ranks_` the participant count.
+  // `rank_` is this rank within the collective, `num_ranks_` the participant
+  // count. MoriCollectives only creates communicators over the global MORI
+  // clique, so these match the facade's PE id and PE count.
   int rank_ = 0;
   int num_ranks_ = 0;
-  // Owns this communicator's staging buffer + group counters (created in
-  // Create(), freed by the facade dtor before ShmemFinalize). Header-only
-  // facade.
-  std::unique_ptr<::mori::collective::CollectivesFacade> facade_;
+  // Non-owning; the CollectivesFacade singleton for this communicator's device.
+  mori::collective::CollectivesFacade* facade_ = nullptr;
   // Should all pending collectives cancel?
   std::shared_ptr<CancellationToken> cancel_;
   bool aborted_ = false;  // Has Abort() been called?

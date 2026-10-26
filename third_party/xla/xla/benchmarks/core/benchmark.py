@@ -26,6 +26,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
+from xla.benchmarks.core import platform_info
 from xla.benchmarks.jax_microbenchmarks import jax_profiler_utils
 
 
@@ -42,6 +43,7 @@ STR_TO_DTYPE_MAPPING = immutabledict.immutabledict({
     "f32": jnp.float32,
     "f8e4m3fn": jnp.float8_e4m3fn,
     "f8e5m2": jnp.float8_e5m2,
+    "f4e2m1fn": jnp.float4_e2m1fn,
     "s2": jnp.int2,
     "s4": jnp.int4,
     "s8": jnp.int8,
@@ -59,10 +61,10 @@ def str_to_dtype(dtype_str: str) -> jnp.dtype:
   """Converts a string to a JAX/NumPy dtype."""
   if dtype_str not in STR_TO_DTYPE_MAPPING:
     raise ValueError(f"Unsupported dtype: {dtype_str}")
-  return STR_TO_DTYPE_MAPPING[dtype_str]  # pyrefly: ignore[bad-return]
+  return jnp.dtype(STR_TO_DTYPE_MAPPING[dtype_str])
 
 
-DTYPE_TO_STR_MAPPING = immutabledict.immutabledict(
+DTYPE_TO_STR_MAPPING = platform_info.DtypeDict(
     {v: k for k, v in STR_TO_DTYPE_MAPPING.items()}
 )
 

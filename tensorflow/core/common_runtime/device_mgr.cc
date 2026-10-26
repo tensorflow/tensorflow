@@ -26,6 +26,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-DeviceMgr::~DeviceMgr() {}
+DeviceMgr::~DeviceMgr() = default;
 
 }  // namespace tensorflow

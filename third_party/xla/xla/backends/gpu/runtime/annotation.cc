@@ -72,6 +72,14 @@ StringHandle RegisterString(const std::string& str) {
   return {};
 }
 
+template <typename F>
+StringHandle RegisterLazyString(F&& f) {
+  if (auto domain = tsl::profiler::DefaultProfilerDomain(); domain) {
+    return tsl::profiler::RegisterString(domain, std::forward<F>(f)());
+  }
+  return {};
+}
+
 StringHandle RegisterOptionalString(const std::string& str) {
   return str.empty() ? nullptr : RegisterString(str);
 }
@@ -426,13 +434,22 @@ ModuleAnnotation::ModuleAnnotation(const HloModule& mod)
       common_src_locations_(nullptr),
       module_id_(mod.unique_id()),
       common_stack_frames_(0) {
-  std::tie(common_src_locations_, common_stack_frames_) =
-      GetLongestSourceLocationPrefix(mod);
+  if (tsl::profiler::DefaultProfilerDomain() != nullptr) {
+    std::tie(common_src_locations_, common_stack_frames_) =
+        GetLongestSourceLocationPrefix(mod);
+  }
 }
 
 #if GOOGLE_CUDA
-static nvtxPayloadSchemaEntry_t SchemaEntry(uint64_t type, const char* name,
-                                            uint64_t offset) {
+enum struct SchemaIndex { FIRST, OTHER };
+template <uint64_t offset, SchemaIndex index = SchemaIndex::OTHER>
+static nvtxPayloadSchemaEntry_t SchemaEntry(uint64_t type, const char* name) {
+  // https://github.com/NVIDIA/NVTX/blob/v3.6.0/c/include/nvtx3/nvToolsExtPayload.h#L966-L972
+  // A zero offset in a schema entry that is not the first one is interpreted as
+  // a request to compute the offset implicitly
+  static_assert(
+      index == SchemaIndex::FIRST || offset != 0,
+      "A schema entry with zero offset must be the first schema entry");
   nvtxPayloadSchemaEntry_t r{};
   r.type = type;
   r.name = name;
@@ -483,13 +500,14 @@ uint64_t ModuleAnnotation::NvtxSchemaId() {
       return 0;
     }
     const std::array<nvtxPayloadSchemaEntry_t, 3> schema = {
-        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
-                    "Name", offsetof(ModuleAnnotation, module_name_)),
-        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_INT32, "Unique ID",
-                    offsetof(ModuleAnnotation, module_id_)),
-        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
-                    "Common source locations",
-                    offsetof(ModuleAnnotation, common_src_locations_))};
+        SchemaEntry<offsetof(ModuleAnnotation, module_name_),
+                    SchemaIndex::FIRST>(
+            NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE, "Name"),
+        SchemaEntry<offsetof(ModuleAnnotation, module_id_)>(
+            NVTX_PAYLOAD_ENTRY_TYPE_INT32, "Unique ID"),
+        SchemaEntry<offsetof(ModuleAnnotation, common_src_locations_)>(
+            NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
+            "Common source locations")};
     const nvtxPayloadSchemaAttr_t schemaAttr = {
 #if defined(NVTX_PAYLOAD_SCHEMA_ATTR_NAME)
         /* .fieldMask = */ NVTX_PAYLOAD_SCHEMA_ATTR_NAME |
@@ -548,12 +566,10 @@ static std::string MakeInstructionTitle(absl::string_view prefix,
   return title;
 }
 
-static std::string MakeInstructionDetails(const HloInstruction& inst) {
-  // Collect instruction metadata as a key-value suffix that can be parsed by
-  // XProf.
-  InstructionAnnotationMetadata metadata =
-      GetInstructionAnnotationMetadata(inst);
-
+// Formats instruction metadata as a key-value suffix that can be parsed by
+// XProf.
+static std::string MakeInstructionDetails(
+    const InstructionAnnotationMetadata& metadata) {
   std::string details;
   auto append = [&](absl::string_view key, std::string value) {
     if (!value.empty()) {
@@ -583,17 +599,12 @@ static std::string MakeInstructionDetails(const HloInstruction& inst) {
   return details;
 }
 
-static std::string MakeInstructionName(absl::string_view prefix,
-                                       const HloInstruction& inst,
-                                       TraceAnnotationLevel annotation_level) {
-  std::string name = MakeInstructionTitle(prefix, inst);
-  if (annotation_level < TraceAnnotationLevel::kDetailed) {
-    return name;
+static std::string MakeInstructionName(
+    absl::string_view title, const InstructionAnnotationMetadata& metadata) {
+  if (!title.empty() && title.back() == '#') {
+    title.remove_suffix(1);
   }
-
-  name.pop_back();
-  absl::StrAppend(&name, MakeInstructionDetails(inst), "#");
-  return name;
+  return absl::StrCat(title, MakeInstructionDetails(metadata), "#");
 }
 
 InstructionAnnotation::InstructionAnnotation(
@@ -601,21 +612,26 @@ InstructionAnnotation::InstructionAnnotation(
     TraceAnnotationLevel annotation_level)
     : nvtx_name_str_(MakeInstructionTitle(
           module_annotation.longest_op_name_prefix(), inst)),
-      xprof_name_str_(MakeInstructionName(
-          module_annotation.longest_op_name_prefix(), inst, annotation_level)),
       nvtx_name_(RegisterString(nvtx_name_str_)) {
+  // Register these string lazily since they are expensive to produce and
+  // won't be used if there's no registered profiler.
   payload_ = Basic{
-      RegisterString(InstructionAsString(inst)),
-      RegisterString(
-          FormatSourceLocations(inst, module_annotation.common_stack_frames())),
-      RegisterString("\n" + CalledInstructionsAsString(inst)),
+      RegisterLazyString([&] { return InstructionAsString(inst); }),
+      RegisterLazyString([&] {
+        return FormatSourceLocations(inst,
+                                     module_annotation.common_stack_frames());
+      }),
+      RegisterLazyString(
+          [&] { return "\n" + CalledInstructionsAsString(inst); }),
   };
   if (annotation_level < TraceAnnotationLevel::kDetailed) {
+    xprof_name_str_ = nvtx_name_str_;
     return;
   }
 
   InstructionAnnotationMetadata metadata =
       GetInstructionAnnotationMetadata(inst);
+  xprof_name_str_ = MakeInstructionName(nvtx_name_str_, metadata);
 
   payload_ = Detailed{
       std::move(std::get<Basic>(payload_)),
@@ -665,12 +681,14 @@ uint64_t InstructionAnnotation::Basic::NvtxSchemaId() {
   static std::uint64_t schema_id = []() -> std::uint64_t {
 #if GOOGLE_CUDA
     const std::array<nvtxPayloadSchemaEntry_t, 3> schema = {
-        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
-                    "Source locations", offsetof(Basic, src_locations)),
-        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
-                    "HLO", offsetof(Basic, hlo_dump)),
-        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
-                    "Called HLO", offsetof(Basic, called_hlo_dump))};
+        SchemaEntry<offsetof(Basic, hlo_dump), SchemaIndex::FIRST>(
+            NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE, "HLO"),
+        SchemaEntry<offsetof(Basic, src_locations)>(
+            NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
+            "Source locations"),
+        SchemaEntry<offsetof(Basic, called_hlo_dump)>(
+            NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
+            "Called HLO")};
     return RegisterStaticSchema("XlaInstruction", schema, sizeof(Basic));
 #else
     return 0;
@@ -684,28 +702,33 @@ uint64_t InstructionAnnotation::Detailed::NvtxSchemaId() {
 #if GOOGLE_CUDA
     constexpr uint64_t kBasicOffset = offsetof(Detailed, basic);
     const std::array<nvtxPayloadSchemaEntry_t, 10> schema = {
-        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
-                    "Source locations",
-                    kBasicOffset + offsetof(Basic, src_locations)),
-        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
-                    "HLO", kBasicOffset + offsetof(Basic, hlo_dump)),
-        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
-                    "Called HLO",
-                    kBasicOffset + offsetof(Basic, called_hlo_dump)),
-        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
-                    "HLO name", offsetof(Detailed, hlo_op_name)),
-        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_INT64, "HLO unique ID",
-                    offsetof(Detailed, hlo_op_id)),
-        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
-                    "Framework op type", offsetof(Detailed, op_type)),
-        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
-                    "Framework op name", offsetof(Detailed, op_name)),
-        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
-                    "Source file", offsetof(Detailed, source_file)),
-        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_INT32, "Source line",
-                    offsetof(Detailed, source_line)),
-        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
-                    "Output shape", offsetof(Detailed, output_shape))};
+        SchemaEntry<kBasicOffset + offsetof(Basic, hlo_dump),
+                    SchemaIndex::FIRST>(
+            NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE, "HLO"),
+        SchemaEntry<kBasicOffset + offsetof(Basic, src_locations)>(
+            NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
+            "Source locations"),
+        SchemaEntry<kBasicOffset + offsetof(Basic, called_hlo_dump)>(
+            NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
+            "Called HLO"),
+        SchemaEntry<offsetof(Detailed, hlo_op_name)>(
+            NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE, "HLO name"),
+        SchemaEntry<offsetof(Detailed, hlo_op_id)>(
+            NVTX_PAYLOAD_ENTRY_TYPE_INT64, "HLO unique ID"),
+        SchemaEntry<offsetof(Detailed, op_type)>(
+            NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
+            "Framework op type"),
+        SchemaEntry<offsetof(Detailed, op_name)>(
+            NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
+            "Framework op name"),
+        SchemaEntry<offsetof(Detailed, source_file)>(
+            NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
+            "Source file"),
+        SchemaEntry<offsetof(Detailed, source_line)>(
+            NVTX_PAYLOAD_ENTRY_TYPE_INT32, "Source line"),
+        SchemaEntry<offsetof(Detailed, output_shape)>(
+            NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
+            "Output shape")};
     return RegisterStaticSchema("XlaInstructionDetailed", schema,
                                 sizeof(Detailed));
 #else
@@ -722,50 +745,52 @@ uint64_t InstructionAnnotation::Collective::NvtxSchemaId() {
     constexpr uint64_t kBasicOffset =
         kDetailedOffset + offsetof(Detailed, basic);
     const std::array<nvtxPayloadSchemaEntry_t, 17> schema = {
-        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
-                    "Source locations",
-                    kBasicOffset + offsetof(Basic, src_locations)),
-        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
-                    "HLO", kBasicOffset + offsetof(Basic, hlo_dump)),
-        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
-                    "Called HLO",
-                    kBasicOffset + offsetof(Basic, called_hlo_dump)),
-        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
-                    "HLO name",
-                    kDetailedOffset + offsetof(Detailed, hlo_op_name)),
-        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_INT64, "HLO unique ID",
-                    kDetailedOffset + offsetof(Detailed, hlo_op_id)),
-        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
-                    "Framework op type",
-                    kDetailedOffset + offsetof(Detailed, op_type)),
-        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
-                    "Framework op name",
-                    kDetailedOffset + offsetof(Detailed, op_name)),
-        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
-                    "Source file",
-                    kDetailedOffset + offsetof(Detailed, source_file)),
-        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_INT32, "Source line",
-                    kDetailedOffset + offsetof(Detailed, source_line)),
-        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
-                    "Output shape",
-                    kDetailedOffset + offsetof(Detailed, output_shape)),
-        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
-                    "Replica groups", offsetof(Collective, replica_groups)),
-        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_UINT8, "Is pipelined",
-                    offsetof(Collective, is_pipelined)),
-        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_UINT8, "Is SPMD generated",
-                    offsetof(Collective, is_spmd_generated)),
-        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
-                    "Collective group key",
-                    offsetof(Collective, collective_group_key)),
-        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
-                    "Combiner key", offsetof(Collective, combiner_key)),
-        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
-                    "Scheduling group ID",
-                    offsetof(Collective, scheduling_group_id)),
-        SchemaEntry(NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
-                    "Stream annotation",
-                    offsetof(Collective, stream_annotation))};
+        SchemaEntry<kBasicOffset + offsetof(Basic, hlo_dump),
+                    SchemaIndex::FIRST>(
+            NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE, "HLO"),
+        SchemaEntry<kBasicOffset + offsetof(Basic, src_locations)>(
+            NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
+            "Source locations"),
+        SchemaEntry<kBasicOffset + offsetof(Basic, called_hlo_dump)>(
+            NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
+            "Called HLO"),
+        SchemaEntry<kDetailedOffset + offsetof(Detailed, hlo_op_name)>(
+            NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE, "HLO name"),
+        SchemaEntry<kDetailedOffset + offsetof(Detailed, hlo_op_id)>(
+            NVTX_PAYLOAD_ENTRY_TYPE_INT64, "HLO unique ID"),
+        SchemaEntry<kDetailedOffset + offsetof(Detailed, op_type)>(
+            NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
+            "Framework op type"),
+        SchemaEntry<kDetailedOffset + offsetof(Detailed, op_name)>(
+            NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
+            "Framework op name"),
+        SchemaEntry<kDetailedOffset + offsetof(Detailed, source_file)>(
+            NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
+            "Source file"),
+        SchemaEntry<kDetailedOffset + offsetof(Detailed, source_line)>(
+            NVTX_PAYLOAD_ENTRY_TYPE_INT32, "Source line"),
+        SchemaEntry<kDetailedOffset + offsetof(Detailed, output_shape)>(
+            NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
+            "Output shape"),
+        SchemaEntry<offsetof(Collective, replica_groups)>(
+            NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
+            "Replica groups"),
+        SchemaEntry<offsetof(Collective, is_pipelined)>(
+            NVTX_PAYLOAD_ENTRY_TYPE_UINT8, "Is pipelined"),
+        SchemaEntry<offsetof(Collective, is_spmd_generated)>(
+            NVTX_PAYLOAD_ENTRY_TYPE_UINT8, "Is SPMD generated"),
+        SchemaEntry<offsetof(Collective, collective_group_key)>(
+            NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
+            "Collective group key"),
+        SchemaEntry<offsetof(Collective, combiner_key)>(
+            NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
+            "Combiner key"),
+        SchemaEntry<offsetof(Collective, scheduling_group_id)>(
+            NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
+            "Scheduling group ID"),
+        SchemaEntry<offsetof(Collective, stream_annotation)>(
+            NVTX_PAYLOAD_ENTRY_TYPE_NVTX_REGISTERED_STRING_HANDLE,
+            "Stream annotation")};
     return RegisterStaticSchema("XlaCollectiveDetailed", schema,
                                 sizeof(Collective));
 #else
@@ -783,6 +808,7 @@ ModuleAnnotations::ModuleAnnotations(const HloModule& mod,
 
   // Loop through `mod` and populate `instructions` with the information we
   // want to attach to individual instruction ranges.
+  instructions.reserve(mod.instruction_count());
   for (const HloComputation* computation : mod.computations()) {
     for (const HloInstruction* inst : computation->instructions()) {
       // e.g. inst.name is "fusion.6", inst.opcode is "kFusion" and called

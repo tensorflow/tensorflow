@@ -51,7 +51,7 @@ void SsePackInner(const int8_t* src, uint8_t* box, int src_rows, int src_cols,
   int real_src_depth = src_depth / 2;
   const __m128i bitmask_upper = _mm_set1_epi16(255U << 8);
   const __m128i bitmask_lower = _mm_set1_epi16(255U);
-  const __m128i seven = _mm_set1_epi8(7);
+  const __m128i zero_point_offset = _mm_set1_epi8(-zero_point_4bit);
   for (int m = 0; m < src_width; ++m) {
     int i = 0;
     int k = 0;
@@ -59,21 +59,21 @@ void SsePackInner(const int8_t* src, uint8_t* box, int src_rows, int src_cols,
       const __m128i values_128i = _mm_loadu_si128((__m128i*)(src_data + i));
       // sign extend uv1
       __m128i uv1 = _mm_srai_epi16(values_128i, 4);
-      uv1 = _mm_add_epi8(uv1, seven);
+      uv1 = _mm_add_epi8(uv1, zero_point_offset);
       uv1 = _mm_and_si128(uv1, bitmask_upper);
       __m128i uv2 = _mm_slli_epi16(values_128i, 8);
       uv2 = _mm_srai_epi16(uv2, 12);
-      uv2 = _mm_add_epi8(uv2, seven);
+      uv2 = _mm_add_epi8(uv2, zero_point_offset);
       uv2 = _mm_and_si128(uv2, bitmask_lower);
       uv1 = _mm_or_si128(uv1, uv2);
 
       __m128i lv1 = _mm_slli_epi16(values_128i, 4);
       lv1 = _mm_srai_epi16(lv1, 4);
-      lv1 = _mm_add_epi8(lv1, seven);
+      lv1 = _mm_add_epi8(lv1, zero_point_offset);
       lv1 = _mm_and_si128(lv1, bitmask_upper);
       __m128i lv2 = _mm_slli_epi16(values_128i, 12);
       lv2 = _mm_srai_epi16(lv2, 12);
-      lv2 = _mm_add_epi8(lv2, seven);
+      lv2 = _mm_add_epi8(lv2, zero_point_offset);
       lv2 = _mm_and_si128(lv2, bitmask_lower);
 
       lv1 = _mm_or_si128(lv1, lv2);
@@ -116,7 +116,9 @@ void SsePrepack(uint8_t* dest, const int8_t* tensor, int layout_rows,
                 int layout_cols, int src_rows, int src_cols, int width,
                 int depth) {
   size_t size = static_cast<size_t>(layout_rows) * layout_cols / 2;
-  memset(dest, static_cast<uint8_t>(119), sizeof(uint8_t) * size);
+  memset(dest,
+         static_cast<uint8_t>((-zero_point_4bit << 4) | (-zero_point_4bit)),
+         sizeof(uint8_t) * size);
   int outer_cols = layout_cols / depth;
   int outer_rows = layout_rows / width;
   int inner_cols = depth;

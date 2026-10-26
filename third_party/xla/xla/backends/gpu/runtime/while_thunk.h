@@ -21,15 +21,13 @@ limitations under the License.
 #include <optional>
 #include <string>
 
-#include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/host_memory_pool.h"
+#include "xla/backends/gpu/runtime/per_device_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
@@ -37,7 +35,6 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/command_buffer.h"
-#include "xla/stream_executor/stream_executor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
@@ -62,7 +59,7 @@ class WhileThunk : public Command {
   WhileThunk(ThunkInfo thunk_info,
              const BufferAllocation::Slice& condition_result_buffer_index,
              ThunkSequence condition_thunks, ThunkSequence body_thunks,
-             std::optional<int64_t> trip_count = std::nullopt);
+             std::optional<int64_t> trip_count, int devices_per_host);
   WhileThunk(const WhileThunk&) = delete;
   WhileThunk& operator=(const WhileThunk&) = delete;
 
@@ -116,7 +113,7 @@ class WhileThunk : public Command {
   static absl::StatusOr<std::unique_ptr<WhileThunk>> FromProto(
       ThunkInfo thunk_info, const WhileThunkProto& thunk_proto,
       absl::Span<const BufferAllocation> buffer_allocations,
-      const Deserializer& deserializer);
+      const Deserializer& deserializer, int devices_per_host);
 
  private:
   absl::Status WalkNestedCommands(CommandWalker callback) override;
@@ -131,9 +128,10 @@ class WhileThunk : public Command {
   bool is_unrolled_loop_ = false;
 
   // Host memory pool for transferring predicate value from device to host.
-  absl::Mutex mutex_;
-  absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<HostMemoryPool>>
-      host_memory_pools_ ABSL_GUARDED_BY(mutex_);
+  struct PoolState {
+    std::unique_ptr<HostMemoryPool> pool;
+  };
+  PerDeviceState<PoolState> host_memory_pools_;
 };
 
 }  // namespace xla::gpu

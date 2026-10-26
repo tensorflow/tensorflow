@@ -15,6 +15,7 @@
 
 load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
 load("@local_config_sycl//sycl:build_defs.bzl", "if_sycl", "if_sycl_build_is_configured", "sycl_library")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@xla//xla/tsl:tsl.bzl", "tf_openmp_copts")
 load("@xla//xla/tsl/mkl:build_defs.bzl", "if_mkl", "if_mkl_ml", "if_mkldnn_openmp")
 load("@xla//xla/tsl/mkl:build_defs_gpu.bzl", "convert_cl_to_cpp", "convert_header_to_cpp")

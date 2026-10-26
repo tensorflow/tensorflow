@@ -43,21 +43,26 @@ limitations under the License.
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
+#include "llvm/TargetParser/Host.h"
 #include "llvm/TargetParser/Triple.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
+#include "xla/backends/cpu/codegen/object_buffer_identifier.h"
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/debug_options_flags.h"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/test_target_triple_helper.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/status_matchers.h"  // IWYU pragma: keep
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "tsl/platform/cpu_info.h"
 
 namespace xla::cpu {
 
 namespace {
 
+using ::testing::ContainsRegex;
 using ::testing::HasSubstr;
 using ::testing::Not;
 
@@ -93,7 +98,8 @@ constexpr absl::string_view kUnoptimizedIr = R"(
 
 // Parses the LLVM IR into a ThreadSafeModule.
 static absl::StatusOr<std::unique_ptr<llvm::Module>> ParseModule(
-    llvm::LLVMContext& context, absl::string_view ir, absl::string_view name) {
+    llvm::LLVMContext& context, absl::string_view ir, absl::string_view name,
+    absl::string_view memory_region_name = "ir_compiler_test") {
   llvm::SMDiagnostic diagnostic;
   llvm::MemoryBufferRef ir_buffer(ir, name);
 
@@ -103,7 +109,7 @@ static absl::StatusOr<std::unique_ptr<llvm::Module>> ParseModule(
                     diagnostic.getMessage().str());
   }
 
-  SetModuleMemoryRegionName(*m, "ir_compiler_test");
+  SetModuleMemoryRegionName(*m, memory_region_name);
 
   return m;
 }
@@ -282,6 +288,88 @@ TEST(IrCompilerTest, TargetMachineOptionsAreCorrectlySet) {
             "+foo-feature,-bar-feature");
 }
 
+TEST(IrCompilerTest, InferTargetMachineWithEmptyTriple) {
+  ASSERT_OK_AND_ASSIGN(
+      TargetMachineOptions target_machine_options,
+      TargetMachineOptions::FromProto(TargetMachineOptionsProto()));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<llvm::TargetMachine> target_machine,
+      IrCompiler::InferTargetMachine(llvm::TargetOptions(),
+                                     llvm::CodeGenOptLevel::Default,
+                                     target_machine_options));
+  EXPECT_EQ(target_machine->getTargetTriple().getTriple(),
+            llvm::sys::getProcessTriple());
+}
+
+TEST(IrCompilerTest, IntrinsicsUseCpuImpliedFeatures) {
+  if (!tsl::port::IsX86CPU()) {
+    GTEST_SKIP() << "Test only supported on x86.";
+  }
+  constexpr absl::string_view kAtanCall = R"(
+  declare <8 x float> @xla.atan.v8f32(<8 x float>)
+  define <8 x float> @atan_call(<8 x float> %x) {
+    %r = call <8 x float> @xla.atan.v8f32(<8 x float> %x)
+    ret <8 x float> %r
+  }
+  )";
+
+  auto context = std::make_unique<llvm::LLVMContext>();
+  // AVX is implied by the CPU only, not by the explicit feature string.
+  std::unique_ptr<IrCompiler> ir_compiler = IrCompiler::Create(
+      llvm::TargetOptions(),
+      IrCompiler::Options{
+          /*opt_level=*/llvm::CodeGenOptLevel::Aggressive,
+          /*optimize_for_size=*/false,
+          TargetMachineOptions("x86_64-unknown-linux-gnu", "haswell", "")},
+      IrCompiler::CompilationHooks());
+
+  ASSERT_OK_AND_ASSIGN(auto ir_module,
+                       ParseModule(*context, kAtanCall, "test_module"));
+  ASSERT_OK_AND_ASSIGN(auto target_machine,
+                       ir_compiler->build_target_machine());
+  ir_module->setDataLayout(target_machine->createDataLayout());
+  ir_module->setTargetTriple(target_machine->getTargetTriple());
+  cantFail((*ir_compiler)(*ir_module));
+
+  std::string ir = llvm_ir::DumpToString(ir_module.get());
+  EXPECT_THAT(ir, ::testing::ContainsRegex("fmul [a-z ]*<8 x float>")) << ir;
+  EXPECT_THAT(ir, Not(HasSubstr("<4 x float>"))) << ir;
+}
+
+TEST(IrCompilerTest, IntrinsicsRecognizeAmdCpuFromImpliedSse4a) {
+  if (!tsl::port::IsX86CPU()) {
+    GTEST_SKIP() << "Test only supported on x86.";
+  }
+  constexpr absl::string_view kAtanCall = R"(
+  declare <8 x float> @xla.atan.v8f32(<8 x float>)
+  define <8 x float> @atan_call(<8 x float> %x) {
+    %r = call <8 x float> @xla.atan.v8f32(<8 x float> %x)
+    ret <8 x float> %r
+  }
+  )";
+
+  auto context = std::make_unique<llvm::LLVMContext>();
+  // znver1 implies sse4a and avx2 without explicit feature flags.
+  std::unique_ptr<IrCompiler> ir_compiler = IrCompiler::Create(
+      llvm::TargetOptions(),
+      IrCompiler::Options{
+          /*opt_level=*/llvm::CodeGenOptLevel::Aggressive,
+          /*optimize_for_size=*/false,
+          TargetMachineOptions("x86_64-unknown-linux-gnu", "znver1", "")},
+      IrCompiler::CompilationHooks());
+
+  ASSERT_OK_AND_ASSIGN(auto ir_module,
+                       ParseModule(*context, kAtanCall, "test_module"));
+  ASSERT_OK_AND_ASSIGN(auto target_machine,
+                       ir_compiler->build_target_machine());
+  ir_module->setDataLayout(target_machine->createDataLayout());
+  ir_module->setTargetTriple(target_machine->getTargetTriple());
+  cantFail((*ir_compiler)(*ir_module));
+
+  std::string ir = llvm_ir::DumpToString(ir_module.get());
+  EXPECT_THAT(ir, ::testing::ContainsRegex("fmul [a-z ]*<8 x float>")) << ir;
+  EXPECT_THAT(ir, Not(HasSubstr("<4 x float>"))) << ir;
+}
 TEST(IrCompilerTest, EmitIntrinsicCall) {
   constexpr absl::string_view kModuleName = "test_module";
   constexpr absl::string_view kMemcpyCall = R"(
@@ -433,6 +521,89 @@ INSTANTIATE_TEST_SUITE_P(IrCompilerParameterizedTestInstantiation,
                          IrCompilerParameterizedTest,
                          ::testing::Values("x86_64-grtev4-linux-gnu",
                                            "aarch64-unknown-linux-gnu"));
+
+TEST(IrCompilerTest, EmitsBufferIdentifierWithCoarseAndUniqueNames) {
+  auto context = std::make_unique<llvm::LLVMContext>();
+  std::unique_ptr<IrCompiler> ir_compiler =
+      IrCompiler::Create(llvm::TargetOptions(), IrCompiler::Options(),
+                         IrCompiler::CompilationHooks());
+
+  ASSERT_OK_AND_ASSIGN(auto ir_module, ParseModule(*context, kUnoptimizedIr,
+                                                   "unique_kernel_module_name",
+                                                   "coarse_emitter_fusion"));
+
+  ASSERT_OK_AND_ASSIGN(auto target_machine,
+                       ir_compiler->build_target_machine());
+
+  ir_module->setDataLayout(target_machine->createDataLayout());
+  ir_module->setTargetTriple(target_machine->getTargetTriple());
+
+  auto memory_buffer = cantFail((*ir_compiler)(*ir_module));
+  ASSERT_NE(memory_buffer, nullptr);
+
+  absl::string_view buffer_identifier = memory_buffer->getBufferIdentifier();
+  EXPECT_EQ(ExtractMemoryRegionName(buffer_identifier),
+            "coarse_emitter_fusion");
+  EXPECT_EQ(ExtractModuleIdentifier(buffer_identifier),
+            "unique_kernel_module_name");
+}
+
+TEST(ObjectBufferIdentifierTest, EncodeAndExtract) {
+  std::string encoded =
+      EncodeBufferIdentifier("my_region", "unique_module_123");
+  EXPECT_EQ(ExtractMemoryRegionName(encoded), "my_region");
+  EXPECT_EQ(ExtractModuleIdentifier(encoded), "unique_module_123");
+
+  // Backward compatibility with raw / un-delimited identifiers.
+  EXPECT_EQ(ExtractMemoryRegionName("legacy_region"), "legacy_region");
+  EXPECT_EQ(ExtractModuleIdentifier("legacy_region"), "legacy_region");
+  EXPECT_EQ(ExtractMemoryRegionName(""), "");
+  EXPECT_EQ(ExtractModuleIdentifier(""), "");
+}
+
+// Compiles the given LLVM IR using IrCompiler and returns the modified module.
+static absl::StatusOr<std::unique_ptr<llvm::Module>> CompileIr(
+    llvm::LLVMContext& context, absl::string_view ir, absl::string_view name,
+    IrCompiler::Options options = IrCompiler::Options()) {
+  ABSL_ASSIGN_OR_RETURN(auto ir_module, ParseModule(context, ir, name));
+  IrCompiler::CompilationHooks hooks;
+  std::unique_ptr<IrCompiler> ir_compiler =
+      IrCompiler::Create(llvm::TargetOptions(), options, hooks);
+  ABSL_ASSIGN_OR_RETURN(auto target_machine, ir_compiler->build_target_machine());
+  ir_module->setDataLayout(target_machine->createDataLayout());
+  ir_module->setTargetTriple(target_machine->getTargetTriple());
+  if (llvm::Error err = (*ir_compiler)(*ir_module).takeError()) {
+    return Internal("IrCompiler failed: %s", llvm::toString(std::move(err)));
+  }
+  return ir_module;
+}
+
+TEST(IrCompilerTest, DataFlowSanitizerInstrumentsPolynomialApproximations) {
+  constexpr absl::string_view kExpIr = R"(
+  declare float @llvm.exp.f32(float)
+
+  define float @test_exp(float %x) {
+    %res = call float @llvm.exp.f32(float %x)
+    ret float %res
+  }
+  )";
+
+  llvm::LLVMContext context;
+  IrCompiler::Options options{
+      /*opt_level=*/llvm::CodeGenOptLevel::None,
+      /*optimize_for_size=*/false,
+      TargetMachineOptions(kTargetTripleForHost, kTargetCpuForHost, ""),
+  };
+  options.dfsan_enabled = true;
+
+  ASSERT_OK_AND_ASSIGN(auto ir_module,
+                       CompileIr(context, kExpIr, "test_exp_module", options));
+
+  auto ir = llvm_ir::DumpToString(ir_module.get());
+  EXPECT_THAT(ir, HasSubstr("@test_exp.dfsan"));
+  EXPECT_THAT(ir, HasSubstr("fmul contract"));
+  EXPECT_THAT(ir, ContainsRegex("store i8 %[0-9]+, ptr @__dfsan_retval_tls"));
+}
 
 }  // namespace
 

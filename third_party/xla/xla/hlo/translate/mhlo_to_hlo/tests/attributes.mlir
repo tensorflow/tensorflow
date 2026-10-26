@@ -299,3 +299,51 @@ module @dot_algorithm_f64_f64_f64 {
     }> : (tensor<2x2x2xf64>, tensor<2x2x2xf64>) -> tensor<2x2x2xf64>  return %0 : tensor<2x2x2xf64>
   }
 }
+
+// -----
+
+// CHECK-LABEL: HloModule dot_algorithm_bf16_bf16_fp8x3
+module @dot_algorithm_bf16_bf16_fp8x3 {
+  func.func @main(%arg0: tensor<2x2x2xbf16>, %arg1: tensor<2x2x2xbf16>) -> tensor<2x2x2xf32> {
+    // CHECK: %[[ARG0:.+]] = bf16[2,2,2] parameter(0)
+    // CHECK: %[[ARG1:.+]] = bf16[2,2,2] parameter(1)
+    // CHECK: f32[2,2,2] dot(%[[ARG0]], %[[ARG1]]), {{.*}}, algorithm=dot_bf16_bf16_fp8x3
+    %0 = "mhlo.dot_general"(%arg0, %arg1) <{
+      dot_dimension_numbers = #mhlo.dot<lhs_batching_dimensions = [0], rhs_batching_dimensions = [0], lhs_contracting_dimensions = [2], rhs_contracting_dimensions = [1]>,
+      precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>],
+      algorithm = #mhlo.dot_algorithm<
+        lhs_precision_type = f8E4M3FN,
+        rhs_precision_type = f8E4M3FN,
+        accumulation_type = f32,
+        lhs_component_count = 1,
+        rhs_component_count = 1,
+        num_primitive_operations = 3,
+        allow_imprecise_accumulation = false
+      >
+    }> : (tensor<2x2x2xbf16>, tensor<2x2x2xbf16>) -> tensor<2x2x2xf32>  return %0 : tensor<2x2x2xf32>
+  }
+}
+
+// -----
+
+// CHECK-LABEL: HloModule dot_algorithm_bf16_bf16_fp8x4
+module @dot_algorithm_bf16_bf16_fp8x4 {
+  func.func @main(%arg0: tensor<2x2x2xbf16>, %arg1: tensor<2x2x2xbf16>) -> tensor<2x2x2xf32> {
+    // CHECK: %[[ARG0:.+]] = bf16[2,2,2] parameter(0)
+    // CHECK: %[[ARG1:.+]] = bf16[2,2,2] parameter(1)
+    // CHECK: f32[2,2,2] dot(%[[ARG0]], %[[ARG1]]), {{.*}}, algorithm=dot_bf16_bf16_fp8x4
+    %0 = "mhlo.dot_general"(%arg0, %arg1) <{
+      dot_dimension_numbers = #mhlo.dot<lhs_batching_dimensions = [0], rhs_batching_dimensions = [0], lhs_contracting_dimensions = [2], rhs_contracting_dimensions = [1]>,
+      precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>],
+      algorithm = #mhlo.dot_algorithm<
+        lhs_precision_type = f8E4M3FN,
+        rhs_precision_type = f8E4M3FN,
+        accumulation_type = f32,
+        lhs_component_count = 1,
+        rhs_component_count = 1,
+        num_primitive_operations = 4,
+        allow_imprecise_accumulation = false
+      >
+    }> : (tensor<2x2x2xbf16>, tensor<2x2x2xbf16>) -> tensor<2x2x2xf32>  return %0 : tensor<2x2x2xf32>
+  }
+}

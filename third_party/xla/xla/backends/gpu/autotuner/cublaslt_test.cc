@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
@@ -38,8 +39,8 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_description.pb.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -52,6 +53,16 @@ using ::testing::Not;
 using ::testing::Optional;
 
 using CublasLtBackendConfig = AutotuneResult::GemmKey;
+
+// Returns the first device executor of the default platform.
+se::StreamExecutor* GetDefaultStreamExecutor() {
+  absl::StatusOr<se::Platform*> platform = PlatformUtil::GetDefaultPlatform();
+  CHECK_OK(platform.status());
+  absl::StatusOr<se::StreamExecutor*> stream_executor =
+      (*platform)->ExecutorForDevice(0);
+  CHECK_OK(stream_executor.status());
+  return *stream_executor;
+}
 
 const char kCublasLtCustomCallHlo[] = R"(
 HloModule module
@@ -118,10 +129,9 @@ class CublasLtBackendTest : public HloHardwareIndependentTestBase {
   CublasLtBackend backend_;
 
   CublasLtBackendTest()
-      : stream_executor_(PlatformUtil::GetDefaultPlatform()
-                             .value()
-                             ->ExecutorForDevice(0)
-                             .value()),
+      : debug_options_(
+            HloHardwareIndependentTestBase::GetDebugOptionsForTest()),
+        stream_executor_(GetDefaultStreamExecutor()),
         target_config_(stream_executor_),
         backend_(stream_executor_, &debug_options_, &compiler_, &target_config_,
                  &mlir_context_) {}
@@ -213,11 +223,11 @@ TEST_F(CublasLtBackendTest, ApplyConfig) {
   config.set_autotune_workspace_size(42);
   BackendConfig backend_config;
   *backend_config.mutable_gemm() = config;
-  TF_EXPECT_OK(backend_.ApplyConfig(*hlo_module->entry_computation()
-                                         ->root_instruction()
-                                         ->mutable_operands()
-                                         .at(0),
-                                    backend_config));
+  EXPECT_OK(backend_.ApplyConfig(*hlo_module->entry_computation()
+                                      ->root_instruction()
+                                      ->mutable_operands()
+                                      .at(0),
+                                 backend_config));
   EXPECT_THAT(RunFileCheck(hlo_module->ToString(),
                            R"(CHECK: (f32[100,100]{1,0}, s8[42]{0}) custom-call
                               CHECK: "selected_algorithm":"2")"),

@@ -83,7 +83,7 @@ class ImmediateExecutionTensorHandle : public AbstractTensorHandle {
  protected:
   explicit ImmediateExecutionTensorHandle(AbstractTensorHandleKind kind)
       : AbstractTensorHandle(kind) {}
-  ~ImmediateExecutionTensorHandle() override {}
+  ~ImmediateExecutionTensorHandle() override = default;
 };
 
 namespace internal {

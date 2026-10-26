@@ -57,10 +57,6 @@ inline constexpr llvm::StringLiteral kIfrtMemoryKindAttrName =
 inline constexpr llvm::StringLiteral kIfrtEntryFunctionAttrName =
     "ifrt.entry_function";
 
-// Name of the StringAttr set on the ModuleOp to store meshes SDY uses.
-inline constexpr llvm::StringLiteral kIfrtSdyMeshesRoundTripAttr =
-    "ifrt.sdy.meshes";
-
 inline constexpr llvm::StringLiteral kCalleeMainFuncName = "main";
 
 // Name of StringAttr used to store the HloSharding.

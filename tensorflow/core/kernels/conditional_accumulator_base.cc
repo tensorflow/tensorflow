@@ -85,7 +85,7 @@ void ConditionalAccumulatorBase::TryTakeGrad(int num_required,
               if (counter_ >= attempt->elements_requested) {
                 bool successful_take_grad = TakeGradLockedHelper(
                     attempt->context, attempt->done_callback);
-                if (successful_take_grad) {
+                if (successful_take_grad || !attempt->context->status().ok()) {
                   return kComplete;
                 } else {
                   // Try again

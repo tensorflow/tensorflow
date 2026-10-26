@@ -88,18 +88,6 @@ absl::Status PjRtState::MovePjRtClientToUnused(const DeviceType& device_type) {
                           device_type);
 }
 
-absl::Status PjRtState::TestOnlyResetPjRtClient(const DeviceType& device_type) {
-  absl::MutexLock lock(mu_);
-  if (auto it = clients_.find(device_type); it != clients_.end()) {
-    unused_.push_back(std::move(it->second));
-    clients_.erase(it);
-  }
-  if (device_type == DeviceType(DEVICE_GPU)) {
-    pjrt_gpu_client_creation_info_.reset();
-  }
-  return absl::OkStatus();
-}
-
 absl::Status PjRtState::SetPjRtGpuClientCreationInfo(
     std::unique_ptr<PjRtGpuClientCreationInfo> info) {
   absl::MutexLock lock(mu_);

@@ -367,6 +367,27 @@ TEST_F(FusedResizePadConvOpTest, NoResizePadOnlySymmetricComparative) {
                                         "SAME", DT_FLOAT);
 }
 
+TEST_F(FusedResizePadConvOpTest, InvalidInputRank) {
+  TF_ASSERT_OK(NodeDefBuilder("fused_pad_conv_op", "FusedPadConv2D")
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_INT32))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Attr("T", DT_FLOAT)
+                   .Attr("mode", "REFLECT")
+                   .Attr("strides", {1, 1, 1, 1})
+                   .Attr("padding", "VALID")
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  AddInputFromArray<float>(TensorShape({3, 2}), {0, 0, 0, 0, 0, 0});
+  AddInputFromArray<int32_t>(TensorShape({4, 2}), {0, 0, 1, 1, 1, 1, 0, 0});
+  AddInputFromArray<float>(TensorShape({2, 2, 1, 1}), {0, 0, 0, 0});
+
+  const absl::Status status = RunOpKernel();
+  EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_NE(status.message().find("input must be 4-dimensional"),
+            std::string::npos);
+}
+
 class ConvOpTest : public OpsTestBase {
  protected:
   void HandwrittenConv() {
@@ -490,7 +511,7 @@ class FusedConv2DOpTest : public OpsTestBase {
   static constexpr int kImageBatchCount = 8;
 
   static constexpr bool kIsInt8 =
-      std::is_same<T, int8_t>::value || std::is_same<T, qint8>::value;
+      std::is_same_v<T, int8_t> || std::is_same_v<T, qint8>;
 
   using BiasAddGraphRunner =
       std::function<void(const Tensor& input_data, const Tensor& filter_data,
@@ -888,7 +909,7 @@ class FusedConv2DOpTest : public OpsTestBase {
 
   void ExpectMatch(const Tensor& x, const Tensor& y, double atol) {
     constexpr bool exact_match =
-        std::is_same<T, int8_t>::value || std::is_same<T, qint8>::value;
+        std::is_same_v<T, int8_t> || std::is_same_v<T, qint8>;
     if (exact_match) {
       test::ExpectEqual(x, y);
     } else {
@@ -905,7 +926,7 @@ class FusedConv2DOpTest : public OpsTestBase {
 
     constexpr int int8_scale = 80;
 
-    using ConvT = typename std::conditional<kIsInt8, int8_t, T>::type;
+    using ConvT = std::conditional_t<kIsInt8, int8_t, T>;
     DataType dtype_conv = DataTypeToEnum<ConvT>::v();
 
     TensorShape image_shape{image_batch_count, image_height, image_width,

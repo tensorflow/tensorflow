@@ -1,6 +1,6 @@
 # How to contribute
 
-We'd love to have your patches and contributions! Here are some guidelines. In general, we follow the [TensorFlow contributing guidelines](../../CONTRIBUTING.md), but have some [AutoGraph-specific style guidelines](STYLE_GUIDE.md). More details below.
+We'd love to have your patches and contributions! Here are some guidelines. In general, we follow the [TensorFlow contributing guidelines](../../../CONTRIBUTING.md), but have some [AutoGraph-specific style guidelines](STYLE_GUIDE.md). More details below.
 
 ### Note to active contributors
 
@@ -10,7 +10,7 @@ does not impact functionality, and AutoGraph will remain accessible under
 `tensorflow.contrib.autograph` until `tensorflow.contrib` is retired.
 
 ## TensorFlow Code of Conduct
-Please review and follow the [TensorFlow Code of Conduct](../../CODE_OF_CONDUCT.md).
+Please review and follow the [TensorFlow Code of Conduct](../../../CODE_OF_CONDUCT.md).
 
 ## Contributor License Agreement
 
@@ -55,7 +55,7 @@ bazel test --config=opt --copt=-O3 --copt=-march=native \
   //tensorflow/contrib/autograph/...
 ```
 
-from the root of the `tensorflow` repository. For more details see the [main TensorFlow Contributing File](../../CONTRIBUTING.md)
+from the root of the `tensorflow` repository. For more details see the [main TensorFlow Contributing File](../../../CONTRIBUTING.md)
 
 ## Developer info
 

@@ -4103,11 +4103,22 @@ class GenericConvertReductionOp : public OpRewritePattern<OpTy> {
     // to mark the reduced dimensions.
     SmallVector<bool, 4> reduced_dimensions_bitmap(input_shape.size(), false);
     SmallVector<int64_t, 4> xla_dimensions;
+    int64_t rank = input_shape.size();
     for (const APInt &index_raw : dimensions.getValues<APInt>()) {
       int64_t index = index_raw.getSExtValue();
-      int64_t rank = input_shape.size();
       if ((index < -rank || index >= rank)) return failure();
       index = (index + rank) % rank;
+      // The eager kernel and the tf2xla bridge reject duplicate reduction
+      // axes with an InvalidArgumentError. Emit the same message here so
+      // auto-clustering does not silently accept what the other two
+      // execution paths reject.
+      // https://github.com/tensorflow/tensorflow/issues/119360
+      if (reduced_dimensions_bitmap[index]) {
+        return op.emitOpError()
+               << "Invalid reduction arguments: Axes contains duplicate "
+                  "dimension: "
+               << index;
+      }
       reduced_dimensions_bitmap[index] = true;
       xla_dimensions.push_back(index);
     }
@@ -4441,6 +4452,22 @@ class ConvertTensorScatterOp : public OpRewritePattern<OpTy> {
         mlir::dyn_cast<RankedTensorType>(op.getUpdates().getType());
 
     if (!tensor_ty || !indices_ty || !updates_ty) return failure();
+
+    // The eager kernels (tensorflow/core/kernels/scatter_nd_op.cc) reject
+    // rank-0 operands with the errors below, so the same errors are emitted
+    // here to keep both paths consistent.
+    if (tensor_ty.getRank() == 0) {
+      return op.emitOpError() << "Output must be at least 1-D";
+    }
+    if (indices_ty.getRank() == 0) {
+      return op.emitOpError()
+             << "Indices shape must have rank at least one. Found:[]";
+    }
+    if (updates_ty.getRank() == 0) {
+      return op.emitOpError()
+             << "Updates shape must have rank at least one. Found:[]";
+    }
+
     // Last dimension of the indices needs to known at compile time for
     // computation of the 'update_window_dims' attribute in the dimensions
     // struct.
@@ -4449,56 +4476,14 @@ class ConvertTensorScatterOp : public OpRewritePattern<OpTy> {
 
     auto updates = op.getUpdates();
 
-    // Broadcast scalar `updates` in into expected shape as following shape:
-    // updates.shape == indices.shape[:-1] + tensor.shape[indices.shape[-1]:]
-    if (updates_ty.getRank() == 0 &&
-        (std::is_same_v<OpTy, TF::TensorScatterUpdateOp> ||
-         std::is_same_v<OpTy, TF::TensorScatterAddOp>)) {
-      if (!tensor_ty.hasStaticShape()) {
-        return failure();
-      }
-
-      if (!indices_ty.hasStaticShape()) {
-        return failure();
-      }
-
-      auto tensor_shape = tensor_ty.getShape();
-      auto indices_shape = indices_ty.getShape();
-      auto index_depth = indices_shape.back();
-      llvm::SmallVector<int64_t> expected_update_shape;
-
-      // create the expected update shape which scalar update is broadcasted to
-      expected_update_shape.append(indices_shape.begin(),
-                                   std::prev(indices_shape.end()));
-
-      expected_update_shape.append(std::next(tensor_shape.begin(), index_depth),
-                                   tensor_shape.end());
-
-      auto const_type = tensorflow::GetTypeFromTFTensorShape(
-          {static_cast<int>(expected_update_shape.size())},
-          rewriter.getIntegerType(64));
-
-      auto const_attr = GetI64ElementsAttr(expected_update_shape, &rewriter);
-
-      auto const_op =
-          TF::ConstOp::create(rewriter, op->getLoc(), const_type, const_attr);
-
-      auto broadcast_to_type = tensorflow::GetTypeFromTFTensorShape(
-          llvm::ArrayRef<int64_t>(expected_update_shape),
-          updates_ty.getElementType());
-
-      updates = TF::BroadcastToOp::create(
-          rewriter, op->getLoc(), broadcast_to_type, op.getUpdates(), const_op);
-
-      updates_ty = mlir::dyn_cast<RankedTensorType>(updates.getType());
-    }
-
     int64_t tensor_rank = tensor_ty.getRank();
     int64_t indices_rank = indices_ty.getRank();
     int64_t updates_rank =
         mlir::dyn_cast<RankedTensorType>(updates.getType()).getRank();
 
     int64_t window_dims = tensor_rank - num_index_dims;
+    if (window_dims < 0 || updates_rank < window_dims) return failure();
+
     auto dims_attr = ScatterDimensionNumbersAttr::get(
         rewriter.getContext(),
         llvm::to_vector<4>(

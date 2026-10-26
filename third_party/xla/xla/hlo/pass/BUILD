@@ -3,6 +3,10 @@
 
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
+load(
+    "//xla/tsl/platform:build_config.bzl",
+    "tf_proto_library",
+)
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 load(
     "//xla/tsl/platform/default:cuda_build_defs.bzl",
@@ -20,6 +24,11 @@ package_group(
     includes = [
         "//xla:friends",
     ],
+)
+
+tf_proto_library(
+    name = "hlo_pipeline_proto",
+    srcs = ["hlo_pipeline.proto"],
 )
 
 cc_library(
@@ -40,7 +49,6 @@ cc_library(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/log",
@@ -72,6 +80,31 @@ xla_cc_test(
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "hlo_pass_context",
+    hdrs = ["hlo_pass_context.h"],
+    deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@tsl//tsl/platform:abi",
+    ],
+)
+
+xla_cc_test(
+    name = "hlo_pass_context_test",
+    srcs = ["hlo_pass_context_test.cc"],
+    deps = [
+        ":hlo_pass_context",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -134,6 +167,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@tsl//tsl/platform",
         "@tsl//tsl/profiler/lib:scoped_annotation",
         "@tsl//tsl/profiler/lib:traceme",
         "@tsl//tsl/profiler/lib:traceme_encode",

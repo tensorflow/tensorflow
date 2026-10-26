@@ -446,17 +446,23 @@ def eig(tensor, name=None):
     v: Eigenvectors. Shape is `[..., N, N]`. The columns of the inner most
       matrices contain eigenvectors of the corresponding matrices in `tensor`
   """
-  if tensor.dtype == dtypes.float32 or tensor.dtype == dtypes.complex64:
-    out_dtype = dtypes.complex64
-  elif tensor.dtype == dtypes.float64 or tensor.dtype == dtypes.complex128:
-    out_dtype = dtypes.complex128
-  else:
-    raise ValueError(
-        "'tensor' must have dtype float32, float64, complex64, or "
-        f'complex128, got {tensor.dtype}'
-    )
-  e, v = gen_linalg_ops.eig(tensor, Tout=out_dtype, compute_v=True, name=name)
-  return e, v
+  with ops.name_scope(name, 'eig', [tensor]) as name:
+    # Convert first: the dtype check below reads `tensor.dtype`, which a
+    # list or any other unconverted value does not have. linalg.eigh and
+    # the rest of this module accept those, since they hand the argument
+    # straight to the generated op, which converts it.
+    tensor = ops.convert_to_tensor(tensor, name='tensor')
+    if tensor.dtype == dtypes.float32 or tensor.dtype == dtypes.complex64:
+      out_dtype = dtypes.complex64
+    elif tensor.dtype == dtypes.float64 or tensor.dtype == dtypes.complex128:
+      out_dtype = dtypes.complex128
+    else:
+      raise ValueError(
+          "'tensor' must have dtype float32, float64, complex64, or "
+          f'complex128, got {tensor.dtype}'
+      )
+    e, v = gen_linalg_ops.eig(tensor, Tout=out_dtype, compute_v=True, name=name)
+    return e, v
 
 
 @tf_export('linalg.eigvals', 'eigvals', v1=[])
@@ -478,17 +484,25 @@ def eigvals(tensor, name=None):
     e: Eigenvalues. Shape is `[..., N]`. The vector `e[..., :]` contains the `N`
       eigenvalues of `tensor[..., :, :]`.
   """
-  if tensor.dtype == dtypes.float32 or tensor.dtype == dtypes.complex64:
-    out_dtype = dtypes.complex64
-  elif tensor.dtype == dtypes.float64 or tensor.dtype == dtypes.complex128:
-    out_dtype = dtypes.complex128
-  else:
-    raise ValueError(
-        "'tensor' must have dtype float32, float64, complex64, or "
-        f'complex128, got {tensor.dtype}'
+  with ops.name_scope(name, 'eigvals', [tensor]) as name:
+    # Convert first: the dtype check below reads `tensor.dtype`, which a
+    # list or any other unconverted value does not have. linalg.eigh and
+    # the rest of this module accept those, since they hand the argument
+    # straight to the generated op, which converts it.
+    tensor = ops.convert_to_tensor(tensor, name='tensor')
+    if tensor.dtype == dtypes.float32 or tensor.dtype == dtypes.complex64:
+      out_dtype = dtypes.complex64
+    elif tensor.dtype == dtypes.float64 or tensor.dtype == dtypes.complex128:
+      out_dtype = dtypes.complex128
+    else:
+      raise ValueError(
+          "'tensor' must have dtype float32, float64, complex64, or "
+          f'complex128, got {tensor.dtype}'
+      )
+    e, _ = gen_linalg_ops.eig(
+        tensor, Tout=out_dtype, compute_v=False, name=name
     )
-  e, _ = gen_linalg_ops.eig(tensor, Tout=out_dtype, compute_v=False, name=name)
-  return e
+    return e
 
 
 @tf_export('linalg.eigh', v1=['linalg.eigh', 'self_adjoint_eig'])
@@ -797,31 +811,50 @@ def norm(tensor,
 
     if ord in ['fro', 'euclidean', 2, 2.0]:
       if is_matrix_norm and ord in [2, 2.0]:
-        rank = array_ops.rank(tensor)
-        positive_axis = map_fn.map_fn(
-            lambda i: cond.cond(
-                i >= 0,
-                lambda: i,
-                lambda: i + rank),
-            ops.convert_to_tensor(axis))
-        axes = math_ops.range(rank)
-        perm_before = array_ops.concat([
-            gen_array_ops.list_diff(axes, positive_axis, dtypes.int32)[0],
-            positive_axis
-        ],
-                                       axis=0)
-        perm_after = map_fn.map_fn(
-            lambda i: math_ops.cast(
-                array_ops.squeeze(
-                    array_ops.where_v2(math_ops.equal(perm_before, i))),
-                dtype=dtypes.int32), axes)
+        static_rank = tensor.shape.rank
+        if static_rank is not None:
+          # axis is already validated to contain Python ints. Compute static
+          # permutations in Python so XLA need not compile a dynamic ListDiff.
+          positive_axis = tuple(a + static_rank if a < 0 else a for a in axis)
+          axes = list(range(static_rank))
+          remaining_axes = [a for a in axes if a not in positive_axis]
+          perm_before = remaining_axes + list(positive_axis)
+          perm_after = [perm_before.index(a) for a in axes]
+        else:
+          rank = array_ops.rank(tensor)
+          positive_axis = map_fn.map_fn(
+              lambda i: cond.cond(i >= 0, lambda: i, lambda: i + rank),
+              ops.convert_to_tensor(axis),
+          )
+          axes = math_ops.range(rank)
+          perm_before = array_ops.concat(
+              [
+                  gen_array_ops.list_diff(axes, positive_axis, dtypes.int32)[0],
+                  positive_axis,
+              ],
+              axis=0,
+          )
+          perm_after = map_fn.map_fn(
+              lambda i: math_ops.cast(
+                  array_ops.squeeze(
+                      array_ops.where_v2(math_ops.equal(perm_before, i))
+                  ),
+                  dtype=dtypes.int32,
+              ),
+              axes,
+          )
         permed = array_ops.transpose(tensor, perm=perm_before)
+        # reduce_max over an empty axis is -inf. Norms are non-negative, so
+        # clamp the result at zero.
+        svd_max = math_ops.reduce_max(
+            math_ops.abs(gen_linalg_ops.svd(permed, compute_uv=False)[0]),
+            axis=-1,
+            keepdims=True,
+        )
         matrix_2_norm = array_ops.expand_dims(
-            math_ops.reduce_max(
-                math_ops.abs(gen_linalg_ops.svd(permed, compute_uv=False)[0]),
-                axis=-1,
-                keepdims=True),
-            axis=-1)
+            math_ops.maximum(svd_max, math_ops.cast(0, dtype=svd_max.dtype)),
+            axis=-1,
+        )
         result = array_ops.transpose(matrix_2_norm, perm=perm_after)
       else:
         # NOTE: we unfortunately cannot use tf.math.reduce_euclidean_norm, since
@@ -859,11 +892,15 @@ def norm(tensor,
         result = math_ops.reduce_sum(result, sum_axis, keepdims=True)
         if is_matrix_norm:
           result = math_ops.reduce_max(result, axis[-1], keepdims=True)
+          result = math_ops.maximum(
+              result, math_ops.cast(0, dtype=result.dtype)
+          )
       elif ord == np.inf:
         if is_matrix_norm:
           result = math_ops.reduce_sum(result, axis[1], keepdims=True)
         max_axis = None if axis is None else axis[0]
         result = math_ops.reduce_max(result, max_axis, keepdims=True)
+        result = math_ops.maximum(result, math_ops.cast(0, dtype=result.dtype))
       else:
         # General p-norms (positive p only)
         result = math_ops.pow(

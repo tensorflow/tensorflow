@@ -43,10 +43,13 @@ class ThunkSequenceSerDesProtobuf : public SerDesBase<ThunkSequence> {
   // For serialization, `hlo_module` and `buffer_allocations` are optional. For
   // deserialization, both are required as we rely on the HLO module to resolve
   // thunks that were generated from `HloComputation`s, and we also need buffer
-  // allocations to resolve buffer slices.
+  // allocations to resolve buffer slices. `parent_resources` is optional and
+  // carries shared resources from an enclosing container thunk when
+  // deserializing nested thunk sequences.
   explicit ThunkSequenceSerDesProtobuf(
       const HloModule* hlo_module = nullptr,
-      const std::vector<BufferAllocation>* buffer_allocations = nullptr);
+      const std::vector<BufferAllocation>* buffer_allocations = nullptr,
+      const std::vector<std::shared_ptr<Resource>>* parent_resources = nullptr);
 
   absl::StatusOr<std::string> Serialize(
       const ThunkSequence& thunk_sequence) override;
@@ -61,6 +64,7 @@ class ThunkSequenceSerDesProtobuf : public SerDesBase<ThunkSequence> {
  private:
   const HloModule* hlo_module_;
   const std::vector<BufferAllocation>* buffer_allocations_;
+  const std::vector<std::shared_ptr<Resource>>* parent_resources_;
 };
 
 // Registry for Thunk serialization/deserialization.

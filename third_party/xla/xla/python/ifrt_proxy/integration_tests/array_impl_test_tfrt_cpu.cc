@@ -32,11 +32,6 @@ int main(int argc, char** argv) {
       // legacy API calls that do not yet support custom layouts, and thus the
       // output arrays only can have default layouts.
       "ArrayImplTest.MakeArraysFromHostBufferShardsWithLayout",
-
-      // `ShardingParamSharding` does not support serialization yet.
-      // TODO(b/282757875): Enable the test once IFRT implements
-      // `ShardingParamShardingSerDes`.
-      "ArrayImplTest.AssembleAndDisassembleArray",
   };
 
   const std::string filter = absl::StrCat("-", absl::StrJoin(disabled, ":"));

@@ -102,7 +102,7 @@ absl::StatusOr<int64_t> SmallWhileLoopByteThreshold(
 
   auto itr = extra_options_map.find(kSmallWhileLoopByteThreshold);
   if (itr == extra_options_map.end()) {
-    return 1024;  // Default value.
+    return 1000000000;  // Default value.
   }
 
   int64_t byte_threshold;
@@ -155,12 +155,6 @@ std::optional<std::tuple<int64_t, int64_t, int64_t>> LlvmIrGemmTileSize(
                                                tile_size_n_in_vector_width);
 }
 
-bool UseExperimentalLoopFusion(const HloModuleConfig& config) {
-  const auto& extra_options_map =
-      config.debug_options().xla_backend_extra_options();
-  return extra_options_map.count(kDisableNewFusionEmitters) == 0;
-}
-
 bool FlattenAfterFusion(const HloModuleConfig& config) {
   const auto& extra_options_map =
       config.debug_options().xla_backend_extra_options();
@@ -168,9 +162,6 @@ bool FlattenAfterFusion(const HloModuleConfig& config) {
 }
 
 bool UseMultiOutputFusion(const HloModuleConfig& config) {
-  if (!options::UseExperimentalLoopFusion(config)) {
-    return false;
-  }
   const auto& extra_options_map =
       config.debug_options().xla_backend_extra_options();
   return extra_options_map.count(kUseMultiOutputFusion) > 0;

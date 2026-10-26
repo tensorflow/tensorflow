@@ -98,6 +98,13 @@ class Client final : public RTTIExtends<Client, xla::ifrt::Client> {
       std::optional<MemoryKind> memory_kind,
       ArrayCopySemantics semantics) override;
 
+  absl::StatusOr<std::vector<ArrayRef>> CopyArraysWithDonatedDst(
+      absl::Span<ArrayRef> arrays, absl::Span<ArrayRef> donated_dst_arrays,
+      ArrayCopySemantics semantics) override {
+    return absl::UnimplementedError(
+        "CopyArraysWithDonatedDst is not supported for the IFRT proxy client.");
+  }
+
   absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> RemapArrays(
       const RemapPlan& plan, absl::Span<xla::ifrt::ArrayRef> arrays,
       ArrayCopySemantics semantics) override;
@@ -136,10 +143,9 @@ class Client final : public RTTIExtends<Client, xla::ifrt::Client> {
         "ConcatBundles is not supported for the IFRT proxy client.");
   }
 
-  // TODO(b/474143687) add cancellation to proxy.
   void CancelExecution(
       xla::ifrt::LoadedExecutable::CancellationHandle cancellation_handle,
-      absl::Status error) override {}
+      absl::Status error) override;
 
   absl::string_view runtime_type() const override { return runtime_type_; }
   absl::string_view platform_name() const override { return platform_name_; }
@@ -173,6 +179,12 @@ class Client final : public RTTIExtends<Client, xla::ifrt::Client> {
       absl::Span<xla::ifrt::Device* const> devices) const override;
   xla::ifrt::Compiler* GetDefaultCompiler() override {
     return &default_compiler_;
+  }
+  absl::StatusOr<std::vector<tsl::Future<xla::ifrt::LoadedExecutableRef>>> Load(
+      absl::Span<const xla::ifrt::ExecutableRef> executables,
+      absl::Span<std::unique_ptr<xla::ifrt::LoadOptions>> options) override {
+    return absl::UnimplementedError(
+        "Load is not supported for the IFRT proxy client.");
   }
   absl::StatusOr<std::shared_ptr<xla::ifrt::Topology>> GetTopologyForDevices(
       const xla::ifrt::DeviceListRef& devices) const override {

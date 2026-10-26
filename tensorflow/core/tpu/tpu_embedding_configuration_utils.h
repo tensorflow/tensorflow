@@ -16,22 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_TPU_EMBEDDING_CONFIGURATION_UTILS_H_
 #define TENSORFLOW_CORE_TPU_TPU_EMBEDDING_CONFIGURATION_UTILS_H_
 
-#include <cstdint>
-
-#include "absl/status/statusor.h"
-#include "tensorflow/core/protobuf/tpu/tpu_embedding_configuration.pb.h"
-
-namespace tensorflow {
-namespace tpu {
-
-// Returns the total number of unique dynamic input tags used in optimizers. If
-// the tag specific is erroneous, returns an invalid argument error. For correct
-// tag specification, see the comment next to the OptimizerDynamicInput proto in
-// //third_party/tensorflow/core/protobuf/tpu/optimization_parameters.proto.
-absl::StatusOr<int32_t> ComputeTotalTagCountForOptimizerDynamicInputs(
-    const tensorflow::tpu::TPUEmbeddingConfiguration& tpu_embedding_config);
-
-}  // namespace tpu
-}  // namespace tensorflow
+#include "xla/tpu/protobuf/tpu_embedding_configuration_utils.h"  // IWYU pragma: export
 
 #endif  // TENSORFLOW_CORE_TPU_TPU_EMBEDDING_CONFIGURATION_UTILS_H_

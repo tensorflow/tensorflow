@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
 #include "xla/tsl/platform/logging.h"
+#include "tsl/platform/platform.h"
 
 namespace xla {
 namespace llvm_ir {
@@ -149,8 +150,9 @@ void ForLoop::Emit(llvm::IRBuilderBase* b) {
     back_branch->setMetadata(llvm::LLVMContext::MD_loop, loop_id);
   }
 
-  // Re-point the IR builder to the loop exit block.
-  b->SetInsertPoint(exit_bb_);
+  // Re-point the IR builder to the loop exit block, inserting before any
+  // instructions the split moved there (e.g. the original terminator).
+  b->SetInsertPoint(exit_bb_, exit_bb_->getFirstInsertionPt());
 }
 
 std::vector<llvm::Metadata*> ForLoop::GetLoopMetadata(llvm::IRBuilderBase* b) {
@@ -288,15 +290,15 @@ std::vector<llvm::Value*> ForLoopNest::EmitOperandArrayLoopNest(
       AddLoopsForShapeOnDimensions(shape, dimensions, name_suffix);
   // Verify every dimension except the 'dimension_to_skip' dimension was set in
   // the index.
-#ifndef NDEBUG
-  for (size_t dimension = 0; dimension < multi_index.size(); ++dimension) {
-    if (dimension == dimension_to_skip) {
-      DCHECK_EQ(nullptr, multi_index[dimension]);
-    } else {
-      DCHECK_NE(nullptr, multi_index[dimension]);
+  if constexpr (tsl::kIsDebugBuild) {
+    for (size_t dimension = 0; dimension < multi_index.size(); ++dimension) {
+      if (dimension == dimension_to_skip) {
+        DCHECK_EQ(nullptr, multi_index[dimension]);
+      } else {
+        DCHECK_NE(nullptr, multi_index[dimension]);
+      }
     }
   }
-#endif  // NDEBUG
   return multi_index;
 }
 

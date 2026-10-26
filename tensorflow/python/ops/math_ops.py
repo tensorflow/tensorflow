@@ -575,6 +575,10 @@ if gen_math_ops.mul.__doc__ is not None:
 @dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 def subtract(x, y, name=None):
+  if not tensor_util.is_tf_type(x) and tensor_util.is_tf_type(y):
+    x = ops.convert_to_tensor(x, dtype=y.dtype.base_dtype)
+  elif tensor_util.is_tf_type(x) and not tensor_util.is_tf_type(y):
+    y = ops.convert_to_tensor(y, dtype=x.dtype.base_dtype)
   return gen_math_ops.sub(x, y, name)
 
 
@@ -638,7 +642,8 @@ def scalar_mul(scalar, x, name=None):
 
   Args:
     scalar: A 0-D scalar `Tensor`. Must have known shape.
-    x: A `Tensor` or `IndexedSlices` to be scaled.
+    x: A `Tensor` or `IndexedSlices` to be scaled. Python sequences and other
+      values convertible to a `Tensor` are also accepted.
     name: A name for the operation (optional).
 
   Returns:
@@ -647,7 +652,15 @@ def scalar_mul(scalar, x, name=None):
   Raises:
     ValueError: if scalar is not a 0-D `scalar`.
   """
-  base_dtype = dtypes.as_dtype(x.dtype).base_dtype
+  x_dtype = getattr(x, "dtype", None)
+  if x_dtype is None:
+    # Python lists/tuples/scalars: convert like every other math op does,
+    # preferring the dtype of an explicitly typed `scalar`.
+    x = ops.convert_to_tensor(
+        x, dtype_hint=getattr(scalar, "dtype", None), name="x"
+    )
+    x_dtype = x.dtype
+  base_dtype = dtypes.as_dtype(x_dtype).base_dtype
   scalar = ops.convert_to_tensor(
       scalar, dtype=base_dtype, name="scalar")
   shape = scalar.get_shape()
@@ -2737,20 +2750,44 @@ def reduce_variance(input_tensor, axis=None, keepdims=False, name=None):
   name = name if name else "reduce_variance"
   with ops.name_scope(name):
     input_tensor = ops.convert_to_tensor(input_tensor)
-    means = reduce_mean(input_tensor, axis=axis, keepdims=True)
-    if means.dtype.is_integer:
-      raise TypeError(f"Input must be either real or complex. "
-                      f"Received integer type {means.dtype}.")
-    diff = input_tensor - means
-    if diff.dtype.is_complex:
-      # For complex values we need to take the absolute value before squaring.
-      # This is achieved by multiplying with the conjugate.
-      real_dtype = diff.dtype.real_dtype
-      squared_deviations = gen_math_ops.real(
-          gen_math_ops.mul(gen_math_ops.conj(diff), diff), Tout=real_dtype)
-    else:
-      squared_deviations = gen_math_ops.square(diff)
-    return reduce_mean(squared_deviations, axis=axis, keepdims=keepdims)
+    is_float16 = input_tensor.dtype == dtypes.float16
+    variance = _reduce_variance_in_stable_dtype(
+        input_tensor, is_float16, axis, keepdims
+    )
+    if is_float16:
+      variance = cast(variance, dtypes.float16)
+    return variance
+
+
+def _reduce_variance_in_stable_dtype(input_tensor, is_float16, axis, keepdims):
+  """Computes variance, promoting float16 to float32 first.
+
+  The dynamic range of float16 is too limited for the squared deviations
+  computed below, so this performs the computation on 32-bit floats before
+  returning, matching the approach `tf.nn.moments` uses for the same reason.
+  Unlike `reduce_variance`, this does not cast the result back to the
+  original dtype, so that `reduce_std` can take the square root while still
+  in the wider dtype.
+  """
+  if is_float16:
+    input_tensor = cast(input_tensor, dtypes.float32)
+  means = reduce_mean(input_tensor, axis=axis, keepdims=True)
+  if means.dtype.is_integer:
+    raise TypeError(
+        "Input must be either real or complex. "
+        f"Received integer type {means.dtype}."
+    )
+  diff = input_tensor - means
+  if diff.dtype.is_complex:
+    # For complex values we need to take the absolute value before squaring.
+    # This is achieved by multiplying with the conjugate.
+    real_dtype = diff.dtype.real_dtype
+    squared_deviations = gen_math_ops.real(
+        gen_math_ops.mul(gen_math_ops.conj(diff), diff), Tout=real_dtype
+    )
+  else:
+    squared_deviations = gen_math_ops.square(diff)
+  return reduce_mean(squared_deviations, axis=axis, keepdims=keepdims)
 
 
 @tf_export("math.reduce_std")
@@ -2800,8 +2837,17 @@ def reduce_std(input_tensor, axis=None, keepdims=False, name=None):
   name = name if name else "reduce_std"
   with ops.name_scope(name):
     input_tensor = ops.convert_to_tensor(input_tensor)
-    variance = reduce_variance(input_tensor, axis=axis, keepdims=keepdims)
-    return gen_math_ops.sqrt(variance)
+    is_float16 = input_tensor.dtype == dtypes.float16
+    # Preserve the `reduce_variance` sub-scope reduce_std has always had,
+    # rather than calling the private helper directly at this scope level.
+    with ops.name_scope("reduce_variance"):
+      variance = _reduce_variance_in_stable_dtype(
+          input_tensor, is_float16, axis, keepdims
+      )
+    std = gen_math_ops.sqrt(variance)
+    if is_float16:
+      std = cast(std, dtypes.float16)
+    return std
 
 
 @tf_export("math.reduce_prod", "reduce_prod", v1=[])

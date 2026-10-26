@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_SPARSE_CONCAT_OP_H_
 #define TENSORFLOW_CORE_KERNELS_SPARSE_CONCAT_OP_H_
 
+#include "absl/types/span.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 
 namespace tensorflow {
 
@@ -25,7 +27,8 @@ namespace functor {
 template <typename Device, typename T>
 struct SparseConcatFunctor {
   void operator()(OpKernelContext* context, const OpInputList& inds,
-                  const OpInputList& vals, const OpInputList& shapes,
+                  const OpInputList& vals,
+                  const absl::Span<const TensorShape>& input_shapes,
                   int concat_dim);
 };
 

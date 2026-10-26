@@ -101,7 +101,7 @@ ThreadPoolDevice::ThreadPoolDevice(const SessionOptions& options,
 #endif  // defined(ENABLE_ONEDNN_OPENMP) && defined(INTEL_MKL)
 }
 
-ThreadPoolDevice::~ThreadPoolDevice() {}
+ThreadPoolDevice::~ThreadPoolDevice() = default;
 
 Allocator* ThreadPoolDevice::GetAllocator(AllocatorAttributes attr) {
   return allocator_;

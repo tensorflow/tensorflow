@@ -95,9 +95,9 @@ AcquireCliquesWithCollectives(
   std::vector<Future<std::shared_ptr<LockableGpuClique::Lock>>> futures(n);
   for (size_t i = 0; i < n; ++i) {
     futures[i] = MakeFutureOn(exec, [=] {
-      return AcquireGpuClique(collectives, executors.at(i), run_id, clique,
-                              device_groups, DefaultCliqueId(), RankId(i),
-                              acquired_cliques.at(i));
+      return AcquireClique(collectives, executors.at(i), run_id, clique,
+                           device_groups, DefaultCliqueId(), RankId(i),
+                           acquired_cliques.at(i));
     });
   }
 

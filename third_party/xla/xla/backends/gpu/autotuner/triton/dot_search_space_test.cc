@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
+#include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
@@ -54,6 +55,7 @@ using ::testing::Field;
 using ::testing::Ge;
 using ::testing::IsEmpty;
 using ::testing::Le;
+using ::testing::Lt;
 using ::testing::SizeIs;
 
 // Returns a matcher that verifies that each container element that matches
@@ -93,6 +95,10 @@ auto NumCtasIs(MatcherType matcher) {
 template <typename MatcherType>
 auto WavesPerEuIs(MatcherType matcher) {
   return Field("waves_per_eu", &TritonGemmConfig::waves_per_eu, matcher);
+}
+template <typename MatcherType>
+auto MfmaSizeIs(MatcherType matcher) {
+  return Field("mfma_size", &TritonGemmConfig::mfma_size, matcher);
 }
 
 auto IsValidConfig() {
@@ -198,8 +204,71 @@ TEST_F(DotSearchSpaceTest, SerializesSearchSpace) {
   EXPECT_EQ(search_space.ToString(),
             "problem_size_BxMxNxKxE: 1x1024x1024x1024x(16->16) "
             "tile_range_MxNxK: [16-256]x[8-512]x[16-?] "
-            "desired_total_warps: 2640 occupancy_optimization: 1 "
+            "desired_total_warps: 1056 occupancy_optimization: 1 "
             "warps_per_cta: [2-?]");
+}
+
+TEST_F(DotSearchSpaceTest, ScalesDesiredWarpsWithArithmeticIntensity) {
+  // Memory-bound (128x128x128, AI ~ 42.7 FLOP/B): 5 warps/scheduler -> 2640.
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> mem_bound_module,
+      GetDefaultDotModule(/*lhs_parallel_dim=*/128, /*rhs_parallel_dim=*/128,
+                          /*contracting_dim=*/128));
+  EXPECT_THAT(MakeSearchSpace(mem_bound_module.get()).ToString(),
+              ::testing::HasSubstr("desired_total_warps: 2640"));
+
+  // Intermediate (512x512x512, AI ~ 170.7 FLOP/B): 3 warps/scheduler -> 1584.
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> mid_module,
+      GetDefaultDotModule(/*lhs_parallel_dim=*/512, /*rhs_parallel_dim=*/512,
+                          /*contracting_dim=*/512));
+  EXPECT_THAT(MakeSearchSpace(mid_module.get()).ToString(),
+              ::testing::HasSubstr("desired_total_warps: 1584"));
+
+  // Compute-bound (1024x1024x1024, AI ~ 341.3 FLOP/B): 2 warps/scheduler ->
+  // 1056.
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> compute_bound_module,
+      GetDefaultDotModule(/*lhs_parallel_dim=*/1024, /*rhs_parallel_dim=*/1024,
+                          /*contracting_dim=*/1024));
+  EXPECT_THAT(MakeSearchSpace(compute_bound_module.get()).ToString(),
+              ::testing::HasSubstr("desired_total_warps: 1056"));
+}
+
+TEST_F(DotSearchSpaceTest, ScalesDesiredWarpsWithHardwareDerivedRidgePoint) {
+  // Use a fully-populated H100 device description containing matrix unit and
+  // memory bandwidth specifications.
+  se::DeviceDescription h100_device = TestGpuDeviceInfo::H100SXMDeviceInfo();
+
+  // Memory-bound (128x128x128, AI ~ 42.7 FLOP/B): 5 warps/scheduler -> 2640.
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> mem_bound_module,
+      GetDefaultDotModule(/*lhs_parallel_dim=*/128, /*rhs_parallel_dim=*/128,
+                          /*contracting_dim=*/128));
+  TritonDotFusionSearchSpace mem_space(h100_device,
+                                       GetDot(mem_bound_module.get()));
+  EXPECT_THAT(mem_space.ToString(),
+              ::testing::HasSubstr("desired_total_warps: 2640"));
+
+  // Intermediate (512x512x512, AI ~ 170.7 FLOP/B): 3 warps/scheduler -> 1584.
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> mid_module,
+      GetDefaultDotModule(/*lhs_parallel_dim=*/512, /*rhs_parallel_dim=*/512,
+                          /*contracting_dim=*/512));
+  TritonDotFusionSearchSpace mid_space(h100_device, GetDot(mid_module.get()));
+  EXPECT_THAT(mid_space.ToString(),
+              ::testing::HasSubstr("desired_total_warps: 1584"));
+
+  // Compute-bound (1024x1024x1024, AI ~ 341.3 FLOP/B): 2 warps/scheduler ->
+  // 1056.
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> compute_bound_module,
+      GetDefaultDotModule(/*lhs_parallel_dim=*/1024, /*rhs_parallel_dim=*/1024,
+                          /*contracting_dim=*/1024));
+  TritonDotFusionSearchSpace compute_space(h100_device,
+                                           GetDot(compute_bound_module.get()));
+  EXPECT_THAT(compute_space.ToString(),
+              ::testing::HasSubstr("desired_total_warps: 1056"));
 }
 
 TEST_F(DotSearchSpaceTest, ReturnsValidConfigList) {
@@ -527,6 +596,15 @@ TEST_F(DotSearchSpaceTest, CudaDoesNotGenerateWavesPerEuConfigs) {
               AllOf(Not(IsEmpty()), Each(WavesPerEuIs(Eq(0)))));
 }
 
+TEST_F(DotSearchSpaceTest, CudaDoesNotGenerateMfmaSizeConfigs) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       GetDefaultDotModule());
+  TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
+
+  EXPECT_THAT(search_space.GenerateConfigs(),
+              AllOf(Not(IsEmpty()), Each(MfmaSizeIs(Eq(0)))));
+}
+
 class RocmDotSearchSpaceTest : public DefaultDeviceDotSearchSpaceTest {
  protected:
   RocmDotSearchSpaceTest() {
@@ -549,6 +627,30 @@ TEST_F(RocmDotSearchSpaceTest, GeneratesWavesPerEuConfigs) {
 
   EXPECT_THAT(configs, AllOf(Not(IsEmpty()), Contains(WavesPerEuIs(Ge(1))),
                              Each(WavesPerEuIs(AnyOf(0, 1, 2, 4)))));
+}
+
+TEST_F(RocmDotSearchSpaceTest, GeneratesMfmaSizeConfigs) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       GetDefaultDotModule());
+  TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
+  std::vector<TritonGemmConfig> configs = search_space.GenerateConfigs();
+
+  EXPECT_THAT(configs, AllOf(Not(IsEmpty()), Contains(MfmaSizeIs(Eq(16))),
+                             Contains(MfmaSizeIs(Eq(0))),
+                             Each(MfmaSizeIs(AnyOf(0, 16)))));
+  EXPECT_THAT(configs,
+              Not(Contains(AllOf(MfmaSizeIs(Eq(16)),
+                                 AnyOf(BlockMIs(Lt(32)), BlockNIs(Lt(32)))))));
+}
+
+TEST_F(RocmDotSearchSpaceTest, NarrowDotDoesNotGetMfmaSizeConfigs) {
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> module,
+      GetDefaultDotModule(/*lhs_parallel_dim=*/1024, /*rhs_parallel_dim=*/16));
+  TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
+
+  EXPECT_THAT(search_space.GenerateConfigs(),
+              AllOf(Not(IsEmpty()), Each(MfmaSizeIs(Eq(0)))));
 }
 
 }  // namespace

@@ -18,12 +18,12 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/codegen/xtile/xtile_config.pb.h"
-#include "xla/service/gpu/backend_configs.pb.h"
 
 namespace xla::xtile {
 namespace {
 
 using ::testing::ElementsAre;
+using ::testing::IsEmpty;
 using ::xla::xtile::BlockLevelFusionConfig;
 
 TEST(BlockLevelParametersTest,
@@ -33,36 +33,44 @@ TEST(BlockLevelParametersTest,
   tile.mutable_sizes()->Add(18);
   tile.mutable_sizes()->Add(19);
   *block_level_fusion_config.add_output_tiles() = tile;
+  block_level_fusion_config.add_sequential_tile_sizes(32);
+  block_level_fusion_config.add_sequential_tile_sizes(64);
   block_level_fusion_config.set_num_warps(12);
   block_level_fusion_config.set_num_ctas(13);
   block_level_fusion_config.set_num_stages(14);
   block_level_fusion_config.set_is_tma_allowed(true);
   block_level_fusion_config.set_is_warp_specialization_allowed(true);
   block_level_fusion_config.set_waves_per_eu(4);
+  block_level_fusion_config.set_mfma_size(16);
 
   BlockLevelParameters block_level_parameters =
       BlockLevelParameters::FromBlockLevelFusionConfig(
           block_level_fusion_config);
   EXPECT_EQ(block_level_parameters.output_tile_sizes.size(), 1);
   EXPECT_THAT(block_level_parameters.output_tile_sizes[0], ElementsAre(18, 19));
+  EXPECT_THAT(block_level_parameters.sequential_tile_sizes,
+              ElementsAre(32, 64));
   EXPECT_THAT(block_level_parameters.num_warps, 12);
   EXPECT_THAT(block_level_parameters.num_ctas, 13);
   EXPECT_THAT(block_level_parameters.num_stages, 14);
   EXPECT_THAT(block_level_parameters.is_tma_allowed, true);
   EXPECT_THAT(block_level_parameters.is_warp_specialization_allowed, true);
   EXPECT_THAT(block_level_parameters.waves_per_eu, 4);
+  EXPECT_THAT(block_level_parameters.mfma_size, 16);
 }
 
 TEST(BlockLevelParametersTest,
      BlockLevelParametersCanBeConvertedToBlockLevelFusionConfig) {
   BlockLevelParameters block_level_parameters;
   block_level_parameters.output_tile_sizes = {{18, 19}};
+  block_level_parameters.sequential_tile_sizes = {32, 64};
   block_level_parameters.num_warps = 12;
   block_level_parameters.num_ctas = 13;
   block_level_parameters.num_stages = 14;
   block_level_parameters.is_tma_allowed = true;
   block_level_parameters.is_warp_specialization_allowed = true;
   block_level_parameters.waves_per_eu = 4;
+  block_level_parameters.mfma_size = 16;
 
   BlockLevelFusionConfig block_level_fusion_config =
       block_level_parameters.ToBlockLevelFusionConfig();
@@ -70,12 +78,30 @@ TEST(BlockLevelParametersTest,
   EXPECT_EQ(block_level_fusion_config.output_tiles_size(), 1);
   EXPECT_THAT(block_level_fusion_config.output_tiles(0).sizes(),
               ElementsAre(18, 19));
+  EXPECT_THAT(block_level_fusion_config.sequential_tile_sizes(),
+              ElementsAre(32, 64));
   EXPECT_THAT(block_level_fusion_config.num_warps(), 12);
   EXPECT_THAT(block_level_fusion_config.num_ctas(), 13);
   EXPECT_THAT(block_level_fusion_config.num_stages(), 14);
   EXPECT_THAT(block_level_fusion_config.is_tma_allowed(), true);
   EXPECT_THAT(block_level_fusion_config.is_warp_specialization_allowed(), true);
   EXPECT_THAT(block_level_fusion_config.waves_per_eu(), 4);
+  EXPECT_THAT(block_level_fusion_config.mfma_size(), 16);
+}
+
+TEST(BlockLevelParametersTest,
+     EmptySequentialTileSizesAreNotSetInBlockLevelFusionConfig) {
+  BlockLevelParameters block_level_parameters;
+  block_level_parameters.output_tile_sizes = {{18, 19}};
+
+  BlockLevelFusionConfig block_level_fusion_config =
+      block_level_parameters.ToBlockLevelFusionConfig();
+
+  EXPECT_THAT(block_level_fusion_config.sequential_tile_sizes(), IsEmpty());
+  EXPECT_THAT(BlockLevelParameters::FromBlockLevelFusionConfig(
+                  block_level_fusion_config)
+                  .sequential_tile_sizes,
+              IsEmpty());
 }
 
 }  // namespace

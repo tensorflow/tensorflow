@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -35,55 +36,82 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
 
-// If the sort instruction has a tuple shape then looks for unused output
-// values and removes them from the sort instruction. Returns true if the
-// graph has been modified.
-absl::StatusOr<bool> RemoveUnusedOperandFromSort(HloInstruction* sort) {
-  if (!sort->shape().IsTuple()) {
-    return false;
-  }
-
-  HloComputation* computation = sort->parent();
-
-  if (computation->root_instruction() == sort) {
-    // Can't analyse users of the root instruction.
-    return false;
+std::optional<absl::flat_hash_set<int64_t>> GetUsedSortOperandIndices(
+    const HloInstruction* sort) {
+  if (!sort->shape().IsTuple() || sort->parent()->root_instruction() == sort) {
+    return std::nullopt;
   }
 
   absl::flat_hash_set<int64_t> used_indices;
   for (const HloInstruction* user : sort->users()) {
     if (user->opcode() != HloOpcode::kGetTupleElement) {
-      // Can't analyse users other then get-tuple-element.
-      return false;
+      return std::nullopt;
     }
     used_indices.insert(user->tuple_index());
   }
 
-  // Also note which parameters are used by the comparator computation.
-  auto comparator = sort->to_apply();
+  // Operand i corresponds to parameters 2 * i and 2 * i + 1 of the comparator
+  // computation.
+  const HloComputation* comparator = sort->to_apply();
   for (int64_t i = 0; i < sort->operand_count() * 2; ++i) {
     if (comparator->parameter_instruction(i)->user_count() > 0) {
-      // operand i corresponds to parameters 2 * i and 2 * i + 1 of the
-      // computation.
       used_indices.insert(i / 2);
     }
   }
+  return used_indices;
+}
 
-  if (used_indices.size() == sort->operand_count()) {
-    // All operands are used.
+HloComputation* CloneComparatorWithUsedOperands(
+    const HloInstruction* sort,
+    const absl::flat_hash_set<int64_t>& used_indices) {
+  HloComputation* comparator = sort->to_apply();
+  absl::flat_hash_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
+      replacements;
+  int64_t parameter_number = 0;
+  for (int64_t i = 0; i < sort->operand_count(); ++i) {
+    const HloInstruction* old_lhs_param =
+        comparator->parameter_instruction(i * 2);
+    const HloInstruction* old_rhs_param =
+        comparator->parameter_instruction(i * 2 + 1);
+    if (!used_indices.contains(i)) {
+      replacements[old_lhs_param] = nullptr;
+      replacements[old_rhs_param] = nullptr;
+      continue;
+    }
+    Shape scalar_shape =
+        ShapeUtil::MakeScalarShape(sort->operand(i)->shape().element_type());
+    replacements[old_lhs_param] = HloInstruction::CreateParameter(
+        parameter_number, scalar_shape,
+        absl::StrCat("p.", parameter_number / 2, ".lhs"));
+    ++parameter_number;
+    replacements[old_rhs_param] = HloInstruction::CreateParameter(
+        parameter_number, scalar_shape,
+        absl::StrCat("p.", parameter_number / 2, ".rhs"));
+    ++parameter_number;
+  }
+  return sort->GetModule()->AddEmbeddedComputation(
+      comparator->CloneWithReplacements(&replacements));
+}
+
+// If the sort instruction has a tuple shape then looks for unused output
+// values and removes them from the sort instruction. Returns true if the
+// graph has been modified.
+absl::StatusOr<bool> RemoveUnusedOperandFromSort(HloInstruction* sort) {
+  std::optional<absl::flat_hash_set<int64_t>> used_indices =
+      GetUsedSortOperandIndices(sort);
+  if (!used_indices.has_value() ||
+      used_indices->size() == sort->operand_count()) {
     return false;
   }
 
   std::vector<HloInstruction*> operands;
   std::vector<const Shape*> new_shapes;
   for (int64_t i = 0; i < sort->operand_count(); ++i) {
-    if (used_indices.contains(i)) {
+    if (used_indices->contains(i)) {
       operands.push_back(sort->mutable_operand(i));
       new_shapes.push_back(&sort->operand(i)->shape());
     }
@@ -92,42 +120,17 @@ absl::StatusOr<bool> RemoveUnusedOperandFromSort(HloInstruction* sort) {
   Shape new_sort_shape = new_shapes.size() == 1
                              ? *new_shapes[0]
                              : ShapeUtil::MakeTupleShapeWithPtrs(new_shapes);
+  HloComputation* computation = sort->parent();
   HloInstruction* new_sort = computation->AddInstruction(
       sort->CloneWithNewOperands(new_sort_shape, operands));
-  absl::flat_hash_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
-      replacements;
-  int64_t parameter_number = 0;
-  for (int64_t i = 0; i < sort->operand_count(); ++i) {
-    auto* old_lhs_parameter = comparator->parameter_instruction(i * 2);
-    auto* old_rhs_parameter = comparator->parameter_instruction(i * 2 + 1);
-    if (used_indices.contains(i)) {
-      Shape scalar_shape =
-          ShapeUtil::MakeShape(sort->operand(i)->shape().element_type(), {});
-      replacements[old_lhs_parameter] = HloInstruction::CreateParameter(
-          parameter_number, scalar_shape,
-          absl::StrCat("p.", parameter_number / 2, ".lhs"));
-      ++parameter_number;
-      replacements[old_rhs_parameter] = HloInstruction::CreateParameter(
-          parameter_number, scalar_shape,
-          absl::StrCat("p.", parameter_number / 2, ".rhs"));
-      ++parameter_number;
-    } else {
-      replacements[old_lhs_parameter] = nullptr;
-      replacements[old_rhs_parameter] = nullptr;
-    }
-  }
-  HloModule* module = sort->GetModule();
-  HloComputation* new_compare = module->AddEmbeddedComputation(
-      comparator->CloneWithReplacements(&replacements));
-  new_sort->set_to_apply(new_compare);
+  new_sort->set_to_apply(CloneComparatorWithUsedOperands(sort, *used_indices));
 
-  // Map from original get-tuple-element tuple index to new HLO instruction
+  // Map from original get-tuple-element tuple index to new HLO instruction.
   absl::flat_hash_map<int64_t, HloInstruction*> result_map;
   if (new_sort->shape().IsTuple()) {
-    // Old sort key maps to new sort key.
     int64_t new_index = 0;
     for (int64_t i = 0; i < sort->operand_count(); ++i) {
-      if (used_indices.count(i)) {
+      if (used_indices->contains(i)) {
         result_map[i] =
             computation->AddInstruction(HloInstruction::CreateGetTupleElement(
                 *new_shapes[new_index], new_sort, new_index));
@@ -135,9 +138,10 @@ absl::StatusOr<bool> RemoveUnusedOperandFromSort(HloInstruction* sort) {
       }
     }
   } else {
-    CHECK_EQ(used_indices.size(), 1);
-    result_map[*used_indices.begin()] = new_sort;
+    CHECK_EQ(used_indices->size(), 1);
+    result_map[*used_indices->begin()] = new_sort;
   }
+
   std::vector<HloInstruction*> users(sort->users().begin(),
                                      sort->users().end());
   for (HloInstruction* user : users) {

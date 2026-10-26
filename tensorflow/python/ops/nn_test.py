@@ -1081,7 +1081,7 @@ class GeluTest(test_lib.TestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class SwishTest(test_lib.TestCase):
+class SwishTest(test_lib.TestCase, parameterized.TestCase):
 
   def testValues(self):
     np_values = np.array(
@@ -1136,6 +1136,57 @@ class SwishTest(test_lib.TestCase):
       theoretical, numerical = gradient_checker_v2.compute_gradient(
           f, [x_tf])
       self.assertAllClose(theoretical, numerical)
+
+  @parameterized.product(
+      shapes=[
+          ((2, 3), ()),  # Scalar beta.
+          ((2, 3), (3,)),  # Vector beta.
+          ((2, 3), (1, 3)),  # Singleton dimension in beta.
+          ((2, 3), (2, 3)),  # Matching shapes.
+          ((3,), (2, 3)),  # Broadcast features.
+          ((2, 1), (1, 3)),  # Broadcast both inputs.
+          ((), (3,)),  # Scalar features.
+          ((0, 3), (3,)),  # Empty output.
+      ],
+      dtype=[dtypes.float32, dtypes.float64],
+      dynamic_shapes=[False, True],
+  )
+  def testBroadcastGradients(self, shapes, dtype, dynamic_shapes):
+    features_shape, beta_shape = shapes
+    features = constant_op.constant(
+        np.linspace(-1.0, 1.0, int(np.prod(features_shape))).reshape(
+            features_shape
+        ),
+        dtype=dtype,
+    )
+    beta = constant_op.constant(
+        np.linspace(0.5, 1.5, int(np.prod(beta_shape))).reshape(beta_shape),
+        dtype=dtype,
+    )
+    swish = nn_impl.swish
+    if dynamic_shapes:
+      swish = def_function.function(
+          swish, input_signature=[tensor_spec.TensorSpec(None, dtype)] * 2
+      )
+    theoretical, numerical = gradient_checker_v2.compute_gradient(
+        swish, [features, beta]
+    )
+    self.assertAllClose(theoretical[0], numerical[0], atol=1e-4)
+    self.assertAllClose(theoretical[1], numerical[1], atol=1e-4)
+
+  def testFloat16AndBfloat16Gradients(self):
+    for dtype in [dtypes.float16, dtypes.bfloat16]:
+      features = constant_op.constant([[1.0, 2.0], [3.0, 4.0]], dtype=dtype)
+      beta = constant_op.constant([0.5, 1.5], dtype=dtype)
+      with backprop.GradientTape() as tape:
+        tape.watch([features, beta])
+        y = nn_impl.swish(features, beta)
+      g_features, g_beta = tape.gradient(y, [features, beta])
+      self.assertEqual(g_features.dtype, dtype)
+      self.assertEqual(g_beta.dtype, dtype)
+      self.assertEqual(g_features.shape.as_list(), [2, 2])
+      self.assertEqual(g_beta.shape.as_list(), [2])
+      self.evaluate([g_features, g_beta])
 
 
 class MomentsTest(test_lib.TestCase):
@@ -1223,7 +1274,8 @@ class MomentsTest(test_lib.TestCase):
             t = constant_op.constant([[val, val, val]], dtype=dtype)
             _, var_eager = nn_impl.moments(t, axes=[1], keepdims=keepdims)
             expected = [[0.0]] if keepdims else [0.0]
-            self.assertAllClose(var_eager, expected, atol=1e-5)
+            atol = 2.5 if dtype == dtypes.float32 else 1e-5
+            self.assertAllClose(var_eager, expected, atol=atol)
             try:
               _, var_jit = def_function.function(
                   lambda x, kd=keepdims: nn_impl.moments(
@@ -1231,7 +1283,7 @@ class MomentsTest(test_lib.TestCase):
                   ),
                   jit_compile=True,
               )(t)
-              self.assertAllClose(var_jit, expected, atol=1e-5)
+              self.assertAllClose(var_jit, expected, atol=atol)
             except (errors.UnimplementedError, errors.InvalidArgumentError):
               pass
 

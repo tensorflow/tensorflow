@@ -61,6 +61,7 @@ cc_library(
     deps = [
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
@@ -179,6 +180,7 @@ xla_cc_test(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:test",
+        "//xla/hlo/testlib:verified_hlo_module",
         "//xla/service:constant_value",
         "//xla/service:value_range",
         "//xla/tsl/platform:statusor",
@@ -258,6 +260,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@tsl//tsl/platform",
     ],
 )
 
@@ -283,6 +286,7 @@ xla_cc_test(
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -381,12 +385,14 @@ cc_library(
     deps = [
         "//xla:shape_tree",
         "//xla:shape_util",
+        "//xla:tuple_tree",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
@@ -516,91 +522,6 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "logical_buffer_analysis",
-    srcs = ["logical_buffer_analysis.cc"],
-    hdrs = ["logical_buffer_analysis.h"],
-    deps = [
-        "//xla:shape_util",
-        "//xla/hlo/ir:hlo",
-        "//xla/service:logical_buffer",
-        "//xla/tsl/lib/gtl:map_util",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_macros",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
-    name = "tuple_points_to_analysis",
-    srcs = ["tuple_points_to_analysis.cc"],
-    hdrs = ["tuple_points_to_analysis.h"],
-    deps = [
-        ":logical_buffer_analysis",
-        "//xla:shape_tree",
-        "//xla:shape_util",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/service:logical_buffer",
-        "//xla/tsl/lib/gtl:compactptrset",
-        "//xla/tsl/platform:logging",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_macros",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-xla_cc_test(
-    name = "tuple_points_to_analysis_test",
-    srcs = ["tuple_points_to_analysis_test.cc"],
-    deps = [
-        ":tuple_points_to_analysis",
-        "//xla:shape_util",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/hlo/testlib:test",
-        "//xla/service:logical_buffer",
-        "//xla/tsl/platform:logging",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-xla_cc_test(
-    name = "logical_buffer_analysis_test",
-    srcs = ["logical_buffer_analysis_test.cc"],
-    deps = [
-        ":logical_buffer_analysis",
-        "//xla:shape_util",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/parser:hlo_parser",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/hlo/testlib:test",
-        "//xla/service:logical_buffer",
-        "//xla/tsl/platform:status_matchers",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_library(
     name = "interval",
     srcs = ["interval.cc"],
     hdrs = ["interval.h"],
@@ -679,6 +600,7 @@ xla_cc_test(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
     ],
 )
@@ -901,6 +823,7 @@ xla_cc_test(
         "//xla/service:hlo_module_config",
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
         "@llvm-project//llvm:Support",

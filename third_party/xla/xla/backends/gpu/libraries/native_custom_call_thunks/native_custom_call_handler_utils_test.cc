@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/libraries/native_custom_call_thunks/native_custom_call_handler_utils.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -31,6 +32,7 @@ limitations under the License.
 #include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/service/shaped_slice.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/kernel_args_packing_spec.h"
@@ -92,9 +94,31 @@ TEST(SingleResultShapeIndexTest, RejectsMultipleResults) {
       ROOT c = (f32[4], f32[4]) custom-call(p0), custom_call_target="t"
     }
   )hlo"));
-  EXPECT_THAT(SingleResultShapeIndex(tester->instruction()),
-              StatusIs(absl::StatusCode::kInvalidArgument,
-                       HasSubstr("exactly one array result")));
+  EXPECT_THAT(
+      SingleResultShapeIndex(tester->instruction()),
+      StatusIs(
+          absl::StatusCode::kInvalidArgument,
+          HasSubstr("Expected a custom call with exactly one array result, "
+                    "but t has shape (f32[4]{0}, f32[4]{0})")));
+}
+
+TEST(SingleResultShapeIndexTest, RejectsMultipleResultsWithScratchBuffers) {
+  ASSERT_OK_AND_ASSIGN(auto tester, NativeCustomCallHandlerTester::Create(R"hlo(
+    ENTRY e {
+      p0 = f32[4] parameter(0)
+      ROOT c = ((f32[4], f32[4]), u8[16]) custom-call(p0),
+        custom_call_target="t",
+        frontend_attributes={xla_gpu_native_custom_call_num_scratch_buffers="1"}
+    }
+  )hlo"));
+  EXPECT_THAT(
+      SingleResultShapeIndex(tester->instruction()),
+      StatusIs(
+          absl::StatusCode::kInvalidArgument,
+          HasSubstr("Expected a custom call with exactly one array result and "
+                    "1 scratch buffer(s) (a tuple of 2 elements whose element "
+                    "0 is an array or 1-element tuple), but t has shape "
+                    "((f32[4]{0}, f32[4]{0}), u8[16]{0})")));
 }
 
 TEST(GetSingleResultShapedSliceTest, ReturnsShapeAndSliceOfTupleElement) {
@@ -245,6 +269,120 @@ TEST_F(MakeCustomKernelThunkSequenceTest, RejectsOutOfRangeZeroedBuffer) {
                                             *kernel_args_),
               StatusIs(absl::StatusCode::kInvalidArgument,
                        HasSubstr("Zeroed output buffer index 5")));
+}
+
+constexpr absl::string_view kScratchHlo = R"hlo(
+  ENTRY e {
+    p0 = f32[4] parameter(0)
+    ROOT c = (f32[4], f32[16], s32[4]) custom-call(p0),
+      custom_call_target="test.target",
+      frontend_attributes={xla_gpu_native_custom_call_num_scratch_buffers="2"}
+  }
+)hlo";
+
+TEST(NumScratchBuffersTest, ZeroWithoutAttribute) {
+  ASSERT_OK_AND_ASSIGN(auto tester,
+                       NativeCustomCallHandlerTester::Create(kTupleResultHlo));
+  EXPECT_THAT(NumScratchBuffers(tester->instruction()), IsOkAndHolds(0));
+}
+
+TEST(NumScratchBuffersTest, ReadsTheAttribute) {
+  ASSERT_OK_AND_ASSIGN(auto tester,
+                       NativeCustomCallHandlerTester::Create(kScratchHlo));
+  EXPECT_THAT(NumScratchBuffers(tester->instruction()), IsOkAndHolds(2));
+}
+
+TEST(NumScratchBuffersTest, RejectsMalformedAttribute) {
+  ASSERT_OK_AND_ASSIGN(auto tester, NativeCustomCallHandlerTester::Create(R"hlo(
+    ENTRY e {
+      ROOT c = (f32[4], f32[16]) custom-call(), custom_call_target="t",
+        frontend_attributes={xla_gpu_native_custom_call_num_scratch_buffers="x"}
+    }
+  )hlo"));
+  EXPECT_THAT(
+      NumScratchBuffers(tester->instruction()),
+      StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr("malformed")));
+}
+
+TEST(NumScratchBuffersTest, RejectsMoreScratchBuffersThanResults) {
+  ASSERT_OK_AND_ASSIGN(auto tester, NativeCustomCallHandlerTester::Create(R"hlo(
+    ENTRY e {
+      ROOT c = f32[4] custom-call(), custom_call_target="t",
+        frontend_attributes={xla_gpu_native_custom_call_num_scratch_buffers="1"}
+    }
+  )hlo"));
+  EXPECT_THAT(NumScratchBuffers(tester->instruction()),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("claims 1 scratch buffers")));
+}
+
+TEST(ScratchShapeIndexTest, FollowsTheOriginalResults) {
+  ASSERT_OK_AND_ASSIGN(auto tester,
+                       NativeCustomCallHandlerTester::Create(kScratchHlo));
+  EXPECT_THAT(ScratchShapeIndex(tester->instruction(), 0),
+              IsOkAndHolds(ShapeIndex{1}));
+  EXPECT_THAT(ScratchShapeIndex(tester->instruction(), 1),
+              IsOkAndHolds(ShapeIndex{2}));
+  EXPECT_THAT(ScratchShapeIndex(tester->instruction(), 2),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("has 2 scratch buffers")));
+}
+
+TEST(ScratchShapeIndexTest, FollowsNestedTupleResult) {
+  ASSERT_OK_AND_ASSIGN(auto tester, NativeCustomCallHandlerTester::Create(R"hlo(
+    ENTRY e {
+      p0 = f32[4] parameter(0)
+      ROOT c = ((f32[4], s32[8]), f32[16]) custom-call(p0),
+        custom_call_target="test.target",
+        frontend_attributes={xla_gpu_native_custom_call_num_scratch_buffers="1"}
+    }
+  )hlo"));
+  EXPECT_THAT(ScratchShapeIndex(tester->instruction(), 0),
+              IsOkAndHolds(ShapeIndex{1}));
+}
+
+TEST(GetScratchShapedSliceTest, ReturnsShapeAndSliceOfScratchBuffer) {
+  ASSERT_OK_AND_ASSIGN(auto tester,
+                       NativeCustomCallHandlerTester::Create(kScratchHlo));
+  ASSERT_OK_AND_ASSIGN(
+      ShapedSlice scratch,
+      GetScratchShapedSlice(tester->instruction(), tester->context(), 1));
+  EXPECT_EQ(scratch.shape.element_type(), S32);
+  EXPECT_EQ(scratch.slice.size(), 4 * sizeof(int32_t));
+}
+
+TEST(SingleResultShapeIndexTest, IgnoresScratchBuffers) {
+  ASSERT_OK_AND_ASSIGN(auto tester,
+                       NativeCustomCallHandlerTester::Create(kScratchHlo));
+  EXPECT_THAT(SingleResultShapeIndex(tester->instruction()),
+              IsOkAndHolds(ShapeIndex{0}));
+}
+
+TEST(SingleResultShapeIndexTest, HandlesNestedTupleResultWithScratch) {
+  ASSERT_OK_AND_ASSIGN(auto tester, NativeCustomCallHandlerTester::Create(R"hlo(
+    ENTRY e {
+      p0 = f32[4] parameter(0)
+      ROOT c = ((f32[4]), f32[16]) custom-call(p0),
+        custom_call_target="test.target",
+        frontend_attributes={xla_gpu_native_custom_call_num_scratch_buffers="1"}
+    }
+  )hlo"));
+  EXPECT_THAT(SingleResultShapeIndex(tester->instruction()),
+              IsOkAndHolds(ShapeIndex{0, 0}));
+}
+
+TEST(MakeScratchShapeTest, BuildsDefaultLayoutInRequestedMemorySpace) {
+  ASSERT_OK_AND_ASSIGN(Shape plain, MakeScratchShape(F32, {2, 3}));
+  EXPECT_EQ(plain.ToString(/*print_layout=*/true), "f32[2,3]{1,0}");
+  ASSERT_OK_AND_ASSIGN(
+      Shape collective,
+      MakeScratchShape(U8, {128}, NativeCustomCallMemorySpace::kCollective));
+  EXPECT_EQ(collective.ToString(/*print_layout=*/true), "u8[128]{0:S(7)}");
+}
+
+TEST(MakeScratchShapeTest, RejectsInvalidDimensions) {
+  EXPECT_THAT(MakeScratchShape(F32, {-1}),
+              StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 }  // namespace

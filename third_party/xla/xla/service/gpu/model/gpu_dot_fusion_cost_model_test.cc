@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -680,6 +681,28 @@ TEST_F(GpuDotFusionCostModelTest,
     EXPECT_GT(frac_a100, frac_h100);
     EXPECT_GT(frac_h100, frac_b200);
   }
+}
+
+TEST_F(GpuDotFusionCostModelTest,
+       EffectiveHbmBandwidthBlackwellVariantsUseDistinctTables) {
+  se::DeviceDescription dd_gb200 = ddb200_;
+  dd_gb200.set_name("NVIDIA GB200");
+
+  se::DeviceDescription dd_gb300 = ddb200_;
+  dd_gb300.set_name("NVIDIA GB300");
+  dd_gb300.set_gpu_compute_capability(
+      se::GpuComputeCapability(se::CudaComputeCapability(10, 3)));
+
+  constexpr int64_t k32MiB = 32 * 1024 * 1024;
+  float frac_b200 =
+      GetEffectiveHbmBandwidth(k32MiB, ddb200_) / ddb200_.memory_bandwidth();
+  float frac_gb200 =
+      GetEffectiveHbmBandwidth(k32MiB, dd_gb200) / dd_gb200.memory_bandwidth();
+  float frac_gb300 =
+      GetEffectiveHbmBandwidth(k32MiB, dd_gb300) / dd_gb300.memory_bandwidth();
+
+  EXPECT_LT(frac_b200, frac_gb200);
+  EXPECT_LT(frac_gb200, frac_gb300);
 }
 
 // Verifies that minimum transfer sizes are latency-bound and achieve a small

@@ -49,12 +49,14 @@ xla_cc_test(
     tags = [
         "cuda-only",
         "gpu",
+        "nomsan",
         "requires-gpu-sm90",
     ],
     deps = [
         ":sm_bw_kernels",
         ":sm_bw_utils",
         "//xla/tsl/cuda:cudart",
+        "@com_google_absl//absl/log",
         "@com_google_googletest//:gtest_main",
     ],
 )

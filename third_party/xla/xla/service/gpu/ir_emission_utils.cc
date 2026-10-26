@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
+#include "xla/layout_util.h"
 #include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
@@ -86,6 +87,13 @@ bool IsGpublasLtSupportedGroupedMatMul(const HloInstruction& instr) {
   return false;
 }
 
+bool IsRaggedDotWgrad(const RaggedDotDimensionNumbers& dnums) {
+  const auto& lhs_contracting_dims =
+      dnums.dot_dimension_numbers().lhs_contracting_dimensions();
+  return absl::c_linear_search(lhs_contracting_dims,
+                               dnums.lhs_ragged_dimensions(0));
+}
+
 bool IsTritonSupportedRaggedDot(
     const se::GpuComputeCapability& gpu_compute_capability,
     const HloInstruction& instr) {
@@ -99,16 +107,6 @@ bool IsTritonSupportedRaggedDot(
   // Exactly one LHS ragged dimension is required: the emitter and autotuner
   // access lhs_ragged_dimensions(0) unconditionally.
   if (ragged_dims.lhs_ragged_dimensions().size() != 1) {
-    return false;
-  }
-
-  // Tiling propagation must be enabled.  TritonBackend::IsSupported gates
-  // kRaggedDot fusions on this flag — the xtile pipeline needs
-  // TiledHloComputation::Tile to drive code generation.
-  if (!instr.GetModule()
-           ->config()
-           .debug_options()
-           .xla_gpu_experimental_enable_tiling_propagation()) {
     return false;
   }
 
@@ -157,10 +155,9 @@ absl::StatusOr<bool> IsCublasSupportedMatMul(
     if (dims.Rank(DotOperandDims::kContracting) != 1) {
       return false;
     }
-    // cuBLAS doesn't support minor batch dimension.
-    if (absl::c_any_of(dims.Indices(DotOperandDims::kBatch), [&](int64_t dim) {
-          return dim == dims.shape().dimensions().size() - 1;
-        })) {
+    // cuBLAS doesn't support a physically minor batch dimension.
+    if (absl::c_linear_search(dims.Indices(DotOperandDims::kBatch),
+                              LayoutUtil::Minor(dims.shape().layout(), 0))) {
       return false;
     }
     // cuBLAS supports up to one non-contracting dimension.

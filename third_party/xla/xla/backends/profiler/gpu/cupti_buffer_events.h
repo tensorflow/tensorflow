@@ -31,7 +31,10 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_callbacks.h"
+#include "xla/backends/profiler/gpu/cupti_interface.h"
+#include "xla/backends/profiler/gpu/cupti_utils.h"
 #include "xla/backends/profiler/gpu/string_deduper.h"
 #include "xla/tsl/profiler/utils/buffer_pool.h"
 #include "xla/tsl/profiler/utils/lock_free_queue.h"
@@ -169,6 +172,9 @@ inline std::string ToXStat(const KernelDetails& kernel_info,
 // Gets the name of the CUpti_ActivityMemoryKind value.
 absl::string_view GetMemoryKindName(int8_t memory_kind);
 
+// Maps an OverheadKind enum to a string.
+std::string GetActivityOverheadKindString(CUpti_ActivityOverheadKind kind);
+
 enum class CuptiTracerEventType {
   Unsupported = 0,
   Kernel = 1,
@@ -259,6 +265,8 @@ struct CuptiTracerEvent {
     // Used for environment activities. `type` must be Environment.
     EnvironmentDetails environment_info;
   };
+  uint32_t source_graph_id = 0;
+  uint64_t source_graph_node_id = 0;
 };
 
 
@@ -376,10 +384,13 @@ class CuptiActivityBufferManager {
   std::list<ActivityBufferAndSize> cached_buffers_ TF_GUARDED_BY(buffer_mutex_);
 };
 
+// Converts the records in `cached_buffers` into events for `collector`,
+// reading them through `cupti_interface`.
 void AddActivityBufferListEventsTo(
     CuptiEventCollectorDelegate& collector,
     CuptiActivityBufferManager::CachedActivityBufferBatch& cached_buffers,
-    size_t max_activity_event_count, size_t& dropped_activity_event_count);
+    size_t max_activity_event_count, size_t& dropped_activity_event_count,
+    CuptiInterface* cupti_interface = GetCuptiInterface());
 
 class CallbackAnnotationsAndEvents {
  public:

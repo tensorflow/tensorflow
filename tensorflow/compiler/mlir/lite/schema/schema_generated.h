@@ -9101,6 +9101,7 @@ struct FullyConnectedOptionsT : public ::flatbuffers::NativeTable {
   bool keep_num_dims = false;
   bool asymmetric_quantize_inputs = false;
   tflite::TensorType quantized_bias_type = tflite::TensorType_FLOAT32;
+  std::vector<uint8_t> quant_spec{};
 };
 
 struct FullyConnectedOptions FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
@@ -9111,7 +9112,8 @@ struct FullyConnectedOptions FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Ta
     VT_WEIGHTS_FORMAT = 6,
     VT_KEEP_NUM_DIMS = 8,
     VT_ASYMMETRIC_QUANTIZE_INPUTS = 10,
-    VT_QUANTIZED_BIAS_TYPE = 12
+    VT_QUANTIZED_BIAS_TYPE = 12,
+    VT_QUANT_SPEC = 14
   };
   tflite::ActivationFunctionType fused_activation_function() const {
     return static_cast<tflite::ActivationFunctionType>(GetField<int8_t>(VT_FUSED_ACTIVATION_FUNCTION, 0));
@@ -9128,6 +9130,9 @@ struct FullyConnectedOptions FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Ta
   tflite::TensorType quantized_bias_type() const {
     return static_cast<tflite::TensorType>(GetField<int8_t>(VT_QUANTIZED_BIAS_TYPE, 0));
   }
+  const ::flatbuffers::Vector<uint8_t> *quant_spec() const {
+    return GetPointer<const ::flatbuffers::Vector<uint8_t> *>(VT_QUANT_SPEC);
+  }
   template <bool B = false>
   bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
     return VerifyTableStart(verifier) &&
@@ -9136,6 +9141,8 @@ struct FullyConnectedOptions FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Ta
            VerifyField<uint8_t>(verifier, VT_KEEP_NUM_DIMS, 1) &&
            VerifyField<uint8_t>(verifier, VT_ASYMMETRIC_QUANTIZE_INPUTS, 1) &&
            VerifyField<int8_t>(verifier, VT_QUANTIZED_BIAS_TYPE, 1) &&
+           VerifyOffset(verifier, VT_QUANT_SPEC) &&
+           verifier.VerifyVector(quant_spec()) &&
            verifier.EndTable();
   }
   FullyConnectedOptionsT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -9162,6 +9169,9 @@ struct FullyConnectedOptionsBuilder {
   void add_quantized_bias_type(tflite::TensorType quantized_bias_type) {
     fbb_.AddElement<int8_t>(FullyConnectedOptions::VT_QUANTIZED_BIAS_TYPE, static_cast<int8_t>(quantized_bias_type), 0);
   }
+  void add_quant_spec(::flatbuffers::Offset<::flatbuffers::Vector<uint8_t>> quant_spec) {
+    fbb_.AddOffset(FullyConnectedOptions::VT_QUANT_SPEC, quant_spec);
+  }
   explicit FullyConnectedOptionsBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -9179,14 +9189,35 @@ inline ::flatbuffers::Offset<FullyConnectedOptions> CreateFullyConnectedOptions(
     tflite::FullyConnectedOptionsWeightsFormat weights_format = tflite::FullyConnectedOptionsWeightsFormat_DEFAULT,
     bool keep_num_dims = false,
     bool asymmetric_quantize_inputs = false,
-    tflite::TensorType quantized_bias_type = tflite::TensorType_FLOAT32) {
+    tflite::TensorType quantized_bias_type = tflite::TensorType_FLOAT32,
+    ::flatbuffers::Offset<::flatbuffers::Vector<uint8_t>> quant_spec = 0) {
   FullyConnectedOptionsBuilder builder_(_fbb);
+  builder_.add_quant_spec(quant_spec);
   builder_.add_quantized_bias_type(quantized_bias_type);
   builder_.add_asymmetric_quantize_inputs(asymmetric_quantize_inputs);
   builder_.add_keep_num_dims(keep_num_dims);
   builder_.add_weights_format(weights_format);
   builder_.add_fused_activation_function(fused_activation_function);
   return builder_.Finish();
+}
+
+inline ::flatbuffers::Offset<FullyConnectedOptions> CreateFullyConnectedOptionsDirect(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    tflite::ActivationFunctionType fused_activation_function = tflite::ActivationFunctionType_NONE,
+    tflite::FullyConnectedOptionsWeightsFormat weights_format = tflite::FullyConnectedOptionsWeightsFormat_DEFAULT,
+    bool keep_num_dims = false,
+    bool asymmetric_quantize_inputs = false,
+    tflite::TensorType quantized_bias_type = tflite::TensorType_FLOAT32,
+    const std::vector<uint8_t> *quant_spec = nullptr) {
+  auto quant_spec__ = quant_spec ? _fbb.CreateVector<uint8_t>(*quant_spec) : 0;
+  return tflite::CreateFullyConnectedOptions(
+      _fbb,
+      fused_activation_function,
+      weights_format,
+      keep_num_dims,
+      asymmetric_quantize_inputs,
+      quantized_bias_type,
+      quant_spec__);
 }
 
 ::flatbuffers::Offset<FullyConnectedOptions> CreateFullyConnectedOptions(::flatbuffers::FlatBufferBuilder &_fbb, const FullyConnectedOptionsT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -18986,6 +19017,7 @@ inline void FullyConnectedOptions::UnPackTo(FullyConnectedOptionsT *_o, const ::
   { auto _e = keep_num_dims(); _o->keep_num_dims = _e; }
   { auto _e = asymmetric_quantize_inputs(); _o->asymmetric_quantize_inputs = _e; }
   { auto _e = quantized_bias_type(); _o->quantized_bias_type = _e; }
+  { auto _e = quant_spec(); if (_e) { _o->quant_spec.resize(_e->size()); std::copy(_e->begin(), _e->end(), _o->quant_spec.begin()); } }
 }
 
 inline ::flatbuffers::Offset<FullyConnectedOptions> CreateFullyConnectedOptions(::flatbuffers::FlatBufferBuilder &_fbb, const FullyConnectedOptionsT *_o, const ::flatbuffers::rehasher_function_t *_rehasher) {
@@ -19001,13 +19033,15 @@ inline ::flatbuffers::Offset<FullyConnectedOptions> FullyConnectedOptions::Pack(
   auto _keep_num_dims = _o->keep_num_dims;
   auto _asymmetric_quantize_inputs = _o->asymmetric_quantize_inputs;
   auto _quantized_bias_type = _o->quantized_bias_type;
+  auto _quant_spec = _o->quant_spec.size() ? _fbb.CreateVector(_o->quant_spec) : 0;
   return tflite::CreateFullyConnectedOptions(
       _fbb,
       _fused_activation_function,
       _weights_format,
       _keep_num_dims,
       _asymmetric_quantize_inputs,
-      _quantized_bias_type);
+      _quantized_bias_type,
+      _quant_spec);
 }
 
 inline SoftmaxOptionsT *SoftmaxOptions::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {

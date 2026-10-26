@@ -109,17 +109,6 @@ TEST_F(Gb200CrossCompilationTest, CrossCompilationToB200) {
   EXPECT_TRUE(!AutotunerCache::ResultCacheIsEmpty() || !entries.empty());
 }
 
-// TODO(b/565341904): RTX6000PRO has compute capability 12, while gb200
-// only 10.a. Test used to pass as we didn't do any autotuning.
-TEST_F(Gb200CrossCompilationTest, DISABLED_CrossCompilationToRTX6000PRO) {
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CompiledModule> result,
-                       CrossCompileTo(GpuModel::RTX6000PRO));
-  // Verify that the auto tuner ran.
-  ASSERT_OK_AND_ASSIGN(std::vector<autotuner::AutotuneEntry> entries,
-                       InMemoryStore().ReadAll());
-  EXPECT_TRUE(!AutotunerCache::ResultCacheIsEmpty() || !entries.empty());
-}
-
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
