@@ -16,11 +16,13 @@ limitations under the License.
 #include <stddef.h>
 #include <stdlib.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <utility>
 #include <vector>
 
+#include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/async/async_signature_runner.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
@@ -78,25 +80,75 @@ void Interpreter::SetCancellationFunction(void* data,
 bool Interpreter::IsCancelled() { return primary_subgraph().IsCancelled(); }
 
 TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
+  delegation_scope_subgraph_indices_.clear();
   return ModifyGraphWithDelegateImpl(delegate);
 }
 
 TfLiteStatus Interpreter::ModifyGraphWithDelegate(
     TfLiteOpaqueDelegateStruct* delegate) {
-  return ModifyGraphWithDelegateImpl(
-      reinterpret_cast<TfLiteDelegate*>(delegate));
+  return ModifyGraphWithDelegate(reinterpret_cast<TfLiteDelegate*>(delegate));
 }
+
+namespace {
+
+void InsertSortedUnique(std::vector<int>* indices, int subgraph_index) {
+  auto it = std::lower_bound(indices->begin(), indices->end(), subgraph_index);
+  if (it == indices->end() || *it != subgraph_index) {
+    indices->insert(it, subgraph_index);
+  }
+}
+
+}  // namespace
 
 TfLiteStatus Interpreter::ModifyGraphWithDelegate(
     TfLiteDelegate* delegate, const std::vector<int>& active_subgraph_indices) {
+  if (!active_subgraph_indices.empty() &&
+      std::all_of(active_subgraph_indices.begin(),
+                  active_subgraph_indices.end(), [this](int subgraph_index) {
+                    return subgraph_index >= 0 &&
+                           subgraph_index < static_cast<int>(subgraphs_.size());
+                  })) {
+    for (int subgraph_index : active_subgraph_indices) {
+      InsertSortedUnique(&delegation_scope_subgraph_indices_, subgraph_index);
+    }
+  }
   return ModifyGraphWithDelegateImpl(delegate, active_subgraph_indices);
 }
 
 TfLiteStatus Interpreter::ModifyGraphWithDelegate(
     TfLiteOpaqueDelegateStruct* delegate,
     const std::vector<int>& active_subgraph_indices) {
-  return ModifyGraphWithDelegateImpl(
-      reinterpret_cast<TfLiteDelegate*>(delegate), active_subgraph_indices);
+  return ModifyGraphWithDelegate(reinterpret_cast<TfLiteDelegate*>(delegate),
+                                 active_subgraph_indices);
+}
+
+TfLiteStatus Interpreter::ModifyGraphWithDelegateForSignature(
+    TfLiteDelegate* delegate, const char* signature_key) {
+  if (signature_key == nullptr) {
+    TF_LITE_REPORT_ERROR(error_reporter_, "Signature key must not be null.");
+    return kTfLiteApplicationError;
+  }
+
+  const int root_subgraph_index = GetSubgraphIndexFromSignature(signature_key);
+  if (root_subgraph_index < 0 ||
+      root_subgraph_index >= static_cast<int>(subgraphs_.size())) {
+    TF_LITE_REPORT_ERROR(error_reporter_,
+                         "Signature key '%s' not found in model signatures.",
+                         signature_key);
+    return kTfLiteApplicationError;
+  }
+
+  std::vector<int> active_subgraph_indices;
+  TF_LITE_ENSURE_STATUS(GetReachableSubgraphIndices({root_subgraph_index},
+                                                    &active_subgraph_indices));
+
+  return ModifyGraphWithDelegate(delegate, active_subgraph_indices);
+}
+
+TfLiteStatus Interpreter::ModifyGraphWithDelegateForSignature(
+    TfLiteOpaqueDelegateStruct* delegate, const char* signature_key) {
+  return ModifyGraphWithDelegateForSignature(
+      reinterpret_cast<TfLiteDelegate*>(delegate), signature_key);
 }
 
 bool Interpreter::HasDelegates() { return primary_subgraph().HasDelegates(); }
