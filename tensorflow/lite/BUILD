@@ -1051,6 +1051,7 @@ cc_test(
         "tflite_smoke_test",
     ],
     deps = [
+        ":builtin_ops",
         ":external_cpu_backend_context",
         ":framework",
         ":interpreter_test_util",
@@ -1062,6 +1063,7 @@ cc_test(
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/delegates/utils:simple_delegate",
+        "//tensorflow/lite/internal:signature_def",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/testing:util",

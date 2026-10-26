@@ -21,6 +21,7 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -77,6 +78,10 @@ class InterpreterTest : public ::testing::Test {
     signature.signature_key = signature_key;
     signature.subgraph_index = subgraph_index;
     interpreter->SetSignatureDef({signature});
+  }
+
+  void SetSignatureDef(std::vector<internal::SignatureDef> signature_defs) {
+    interpreter_->SetSignatureDef(std::move(signature_defs));
   }
 
   TfLiteStatus SetExecutionPlan(const std::vector<int>& new_plan) {
