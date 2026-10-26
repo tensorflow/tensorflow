@@ -277,7 +277,78 @@ setattr(np_arrays.ndarray, '_matmul', matmul)
 @tf_export.tf_export('experimental.numpy.tensordot', v1=[])
 @np_utils.np_doc('tensordot')
 def tensordot(a, b, axes=2):
-  return _bin_op(lambda a, b: math_ops.tensordot(a, b, axes=axes), a, b)
+  def f(a, b):  # pylint: disable=missing-docstring
+    # NumPy never silently contracts on out-of-bounds axes: it raises
+    # IndexError: tuple index out of range (axes is indexed into the shape
+    # tuple) before any computation. The backend `tensordot` instead
+    # mis-normalizes out-of-bounds entries: a negative entry such as -5 on a
+    # rank-2 input leaves a leftover negative value in the transpose `perm`,
+    # which eager silently mis-transposes and `jit_compile=True`/XLA crashes
+    # on, while a too-large entry only surfaces later inside
+    # `array_ops.transpose` with a shape/perm error unrelated to `axes`.
+    # Validate statically-known ranks and Python-int entries against NumPy's
+    # bounds up front; tensor axes or unknown ranks (e.g. `@tf.function` with
+    # an unspecified input signature) behave exactly as before, and no graph
+    # ops are added on the eager path.
+    if isinstance(axes, (list, tuple)) and len(axes) == 2:
+      a_axes = axes[0]
+      b_axes = axes[1]
+      if isinstance(a_axes, (int, np.integer)) and isinstance(
+          b_axes, (int, np.integer)
+      ):
+        # Both sides are single integers: NumPy contracts over one axis of
+        # each input.
+        a_entries, b_entries = (a_axes,), (b_axes,)
+      else:
+        a_entries, b_entries = a_axes, b_axes
+        if isinstance(a_entries, (int, np.integer)):
+          a_entries = (a_entries,)
+        if isinstance(b_entries, (int, np.integer)):
+          b_entries = (b_entries,)
+        if not isinstance(a_entries, (tuple, list)) or not isinstance(
+            b_entries, (tuple, list)
+        ):
+          # Tensor axes: leave validation to dynamic behavior as before.
+          a_entries, b_entries = (), ()
+      maybe_rank_a = a.shape.rank
+      maybe_rank_b = b.shape.rank
+      for entry in a_entries:
+        if maybe_rank_a is not None and isinstance(entry, (int, np.integer)):
+          if not (-maybe_rank_a <= int(entry) < maybe_rank_a):
+            raise ValueError(
+                f'Argument `axes` (received axes={entry}) is out of '
+                f'bounds for input {a} of rank {maybe_rank_a}.'
+            )
+      for entry in b_entries:
+        if maybe_rank_b is not None and isinstance(entry, (int, np.integer)):
+          if not (-maybe_rank_b <= int(entry) < maybe_rank_b):
+            raise ValueError(
+                f'Argument `axes` (received axes={entry}) is out of '
+                f'bounds for input {b} of rank {maybe_rank_b}.'
+            )
+    elif isinstance(axes, (int, np.integer)):
+      # Contraction over the last N axes of `a` and first N axes of `b`.
+      # NumPy errors when N exceeds either input's rank, but treats any
+      # negative N as an empty contraction (an outer product):
+      # np.tensordot(a, b, -1) has shape a.shape + b.shape.
+      maybe_rank_a = a.shape.rank
+      maybe_rank_b = b.shape.rank
+      num_axes = int(axes)
+      if num_axes < 0:
+        return math_ops.tensordot(a, b, axes=0)
+      if maybe_rank_a is not None and num_axes > maybe_rank_a:
+        raise ValueError(
+            f'Argument `axes` (received axes={axes}) is out of bounds '
+            f'for input {a} of rank {maybe_rank_a}.'
+        )
+      if maybe_rank_b is not None and num_axes > maybe_rank_b:
+        raise ValueError(
+            f'Argument `axes` (received axes={axes}) is out of bounds '
+            f'for input {b} of rank {maybe_rank_b}.'
+        )
+    return math_ops.tensordot(a, b, axes=axes)
+
+  return _bin_op(f, a, b)
 
 
 @tf_export.tf_export('experimental.numpy.inner', v1=[])
