@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/ynnpack/moe.h"
 
-#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -24,7 +23,6 @@ limitations under the License.
 
 #include "ynnpack/composites/composites.h"  // from @XNNPACK
 #include "ynnpack/include/ynnpack.h"  // from @XNNPACK
-#include "absl/algorithm/container.h"
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
@@ -113,6 +111,9 @@ struct WeightValues {
   // Quantization parameters, invalid for float weights.
   uint32_t scale_id = YNN_INVALID_VALUE_ID;
   uint32_t zero_point_id = YNN_INVALID_VALUE_ID;
+
+  bool is_blockwise = false;
+  size_t block_size = 0;
 };
 
 // The three weight tensors, in the order they appear in `node->inputs` and in
@@ -125,28 +126,34 @@ constexpr int kNumWeights = 3;
 // explicit scales, the lowering ignores the quantization of `w`, which then
 // may also be a multi-axis quantization that restates the explicit scales, per
 // output channel and expert.
-bool IsWeightTensorSupported(const TfLiteTensor& w, int scale_tensor_index) {
+bool IsWeightTensorSupported(TfLiteContext* context, const TfLiteTensor& w,
+                             int scale_tensor_index,
+                             bool allow_blockwise = false) {
+  if (w.quantization.type == kTfLiteBlockwiseQuantization) {
+    return allow_blockwise && IsTensorSupported(w, /*allow_per_channel=*/true,
+                                                /*allow_blockwise=*/true);
+  }
   if (w.quantization.type != kTfLiteMultiAxisQuantization) {
-    return IsTensorSupported(w, /*allow_per_channel=*/true);
+    return IsTensorSupported(w, /*allow_per_channel=*/true,
+                             /*allow_blockwise=*/allow_blockwise);
   }
   const auto* params =
       static_cast<const TfLiteMultiAxisQuantization*>(w.quantization.params);
-  if (scale_tensor_index < 0 || params == nullptr) {
+  if (scale_tensor_index < 0 || params == nullptr ||
+      params->scales != scale_tensor_index || params->blocksize != 0 ||
+      params->quantized_dimensions == nullptr ||
+      params->quantized_dimensions->size != 2 ||
+      params->quantized_dimensions->data[0] != 0 ||
+      params->quantized_dimensions->data[1] != 1) {
     return false;
   }
-  // The scales have to be the explicit ones, with no zero points or blocks.
-  if (params->scales != scale_tensor_index || params->zero_points >= 0 ||
-      params->blocksize != 0) {
+  int resolved_zp_idx = -1;
+  if (ResolveZeroPointTensorIndex(context, w, params->scales,
+                                  params->zero_points,
+                                  &resolved_zp_idx) != kTfLiteOk ||
+      resolved_zp_idx != -1) {
     return false;
   }
-  // Per output channel and expert, i.e. axes 0 and 1 of [D_out, E, 1, D_in].
-  const TfLiteIntArray* axes = params->quantized_dimensions;
-  if (axes == nullptr || axes->size != 2 || axes->data[0] != 0 ||
-      axes->data[1] != 1) {
-    return false;
-  }
-  // A shallow copy with the quantization cleared, so that IsTensorSupported
-  // only checks the type and dims.
   TfLiteTensor unquantized = w;
   unquantized.quantization = {kTfLiteNoQuantization, nullptr};
   unquantized.params = {};
@@ -168,11 +175,20 @@ bool IsMoe(const TfLiteRegistration* registration, const TfLiteNode* node) {
 }
 
 TfLiteStatus IsMoeSupported(const TfLiteRegistration* registration,
-                            const TfLiteNode* node, TfLiteContext* context) {
+                            const TfLiteNode* node, TfLiteContext* context,
+                            const TfLiteYNNPackDelegateOptions& options) {
   TF_LITE_ENSURE(context, IsMoe(registration, node));
+  TF_LITE_ENSURE(context, node->inputs != nullptr && node->outputs != nullptr);
   TF_LITE_ENSURE(context, node->inputs->size == kNumInputsWithoutWeightScales ||
                               node->inputs->size == kNumInputsWithWeightScales);
   TF_LITE_ENSURE_EQ(context, node->outputs->size, 1);
+
+  for (int i = 0; i < node->inputs->size; ++i) {
+    const int idx = node->inputs->data[i];
+    TF_LITE_ENSURE(context, idx >= 0 && idx < context->tensors_size);
+  }
+  const int out_idx = node->outputs->data[0];
+  TF_LITE_ENSURE(context, out_idx >= 0 && out_idx < context->tensors_size);
 
   const bool has_weight_scales =
       node->inputs->size == kNumInputsWithWeightScales;
@@ -189,7 +205,7 @@ TfLiteStatus IsMoeSupported(const TfLiteRegistration* registration,
   const TfLiteTensor& down_weights =
       context->tensors[node->inputs->data[idx.down]];
   const TfLiteTensor& scale = context->tensors[node->inputs->data[idx.scale]];
-  const TfLiteTensor& output = context->tensors[node->outputs->data[0]];
+  const TfLiteTensor& output = context->tensors[out_idx];
 
   TF_LITE_ENSURE(context, IsTensorSupported(tokens));
   TF_LITE_ENSURE(context, IsTensorSupported(routing_weights));
@@ -213,17 +229,94 @@ TfLiteStatus IsMoeSupported(const TfLiteRegistration* registration,
     const TfLiteTensor* w = weights[i];
     const int scale_tensor_index =
         has_weight_scales ? node->inputs->data[weight_scale_indices[i]] : -1;
-    TF_LITE_ENSURE(context, IsWeightTensorSupported(*w, scale_tensor_index));
+    TF_LITE_ENSURE(context, IsWeightTensorSupported(
+                                context, *w, scale_tensor_index,
+                                options.enable_blockwise_quantization));
     TF_LITE_ENSURE(context, tflite::IsConstantTensor(w));
     TF_LITE_ENSURE(context,
                    IsFloatType(w->type) || IsQuantizedWeightType(w->type));
     TF_LITE_ENSURE_EQ(context, w->type, gate_weights.type);
     TF_LITE_ENSURE(context, w->dims != nullptr && w->dims->size == 4);
-    if (has_weight_scales) {
-      const TfLiteTensor& weight_scale = context->tensors[scale_tensor_index];
+    TF_LITE_ENSURE_EQ(context, w->dims->data[2], 1);
+
+    if (w->quantization.type == kTfLiteBlockwiseQuantization) {
+      TF_LITE_ENSURE(context, !has_weight_scales);
+      TF_LITE_ENSURE(context, options.enable_blockwise_quantization);
+      const auto* bq_params = static_cast<const TfLiteBlockwiseQuantization*>(
+          w->quantization.params);
+      TF_LITE_ENSURE(context, bq_params != nullptr);
+      TF_LITE_ENSURE(context, bq_params->blocksize > 0);
+      TF_LITE_ENSURE(context, w->dims->data[3] % bq_params->blocksize == 0);
+
+      int resolved_zp_idx = -1;
+      TF_LITE_ENSURE_STATUS(
+          ResolveZeroPointTensorIndex(context, *w, bq_params->scale,
+                                      bq_params->zero_point, &resolved_zp_idx));
+      const TfLiteTensor& scale_tensor = context->tensors[bq_params->scale];
+      TF_LITE_ENSURE_EQ(context, scale_tensor.dims->size, 4);
+      TF_LITE_ENSURE_EQ(context, scale_tensor.dims->data[0], w->dims->data[0]);
+      TF_LITE_ENSURE_EQ(context, scale_tensor.dims->data[1], w->dims->data[1]);
+      TF_LITE_ENSURE_EQ(context, scale_tensor.dims->data[2], 1);
+      TF_LITE_ENSURE_EQ(context, scale_tensor.dims->data[3],
+                        w->dims->data[3] / bq_params->blocksize);
+    } else if (!has_weight_scales &&
+               w->quantization.type == kTfLiteAffineQuantization) {
+      const auto* aq_params =
+          static_cast<const TfLiteAffineQuantization*>(w->quantization.params);
+      TF_LITE_ENSURE(context, aq_params != nullptr &&
+                                  aq_params->scale != nullptr &&
+                                  aq_params->scale->size >= 1);
+      if (aq_params->scale->size > 1) {
+        TF_LITE_ENSURE_EQ(context, aq_params->quantized_dimension, 0);
+        TF_LITE_ENSURE_EQ(context, aq_params->scale->size, w->dims->data[0]);
+        TF_LITE_ENSURE(context, aq_params->zero_point != nullptr &&
+                                    (aq_params->zero_point->size == 1 ||
+                                     aq_params->zero_point->size ==
+                                         aq_params->scale->size));
+      }
+      if (aq_params->zero_point != nullptr) {
+        for (int z = 0; z < aq_params->zero_point->size; ++z) {
+          TF_LITE_ENSURE_EQ(context, aq_params->zero_point->data[z], 0);
+        }
+      }
+    } else if (!has_weight_scales && IsQuantizedWeightType(w->type)) {
+      TF_LITE_ENSURE(context,
+                     w->params.scale != 0.0f && w->params.zero_point == 0);
+    }
+  }
+
+  const int num_experts = gate_weights.dims->data[1];
+  const int d_mid = gate_weights.dims->data[0];
+  const int d_in = gate_weights.dims->data[3];
+  TF_LITE_ENSURE(context, num_experts > 0 && d_mid > 0 && d_in > 0);
+  TF_LITE_ENSURE_EQ(context, up_weights.dims->data[0], d_mid);
+  TF_LITE_ENSURE_EQ(context, up_weights.dims->data[1], num_experts);
+  TF_LITE_ENSURE_EQ(context, up_weights.dims->data[3], d_in);
+  TF_LITE_ENSURE_EQ(context, down_weights.dims->data[0], d_in);
+  TF_LITE_ENSURE_EQ(context, down_weights.dims->data[1], num_experts);
+  TF_LITE_ENSURE_EQ(context, down_weights.dims->data[3], d_mid);
+
+  const size_t num_scale_elements = tflite::NumElements(&scale);
+  TF_LITE_ENSURE(context,
+                 num_scale_elements == 1 ||
+                     num_scale_elements == static_cast<size_t>(num_experts));
+
+  if (has_weight_scales) {
+    TF_LITE_ENSURE(context, IsQuantizedWeightType(gate_weights.type));
+    const int scale_indices[] = {idx.gate_scale, idx.up_scale, idx.down_scale};
+    for (int i = 0; i < kNumWeights; ++i) {
+      const TfLiteTensor& weight_scale =
+          context->tensors[node->inputs->data[scale_indices[i]]];
       TF_LITE_ENSURE(context, IsTensorSupported(weight_scale));
       TF_LITE_ENSURE(context, tflite::IsConstantTensor(&weight_scale));
       TF_LITE_ENSURE(context, IsFloatType(weight_scale.type));
+      TF_LITE_ENSURE(context, weight_scale.dims != nullptr &&
+                                  weight_scale.dims->size == 4);
+      TF_LITE_ENSURE_EQ(context, weight_scale.dims->data[0],
+                        weights[i]->dims->data[0]);
+      TF_LITE_ENSURE_EQ(context, weight_scale.dims->data[1], num_experts);
+      TF_LITE_ENSURE_EQ(context, weight_scale.dims->data[2], 1);
+      TF_LITE_ENSURE_EQ(context, weight_scale.dims->data[3], 1);
     }
   }
 
@@ -233,6 +326,22 @@ TfLiteStatus IsMoeSupported(const TfLiteRegistration* registration,
   TF_LITE_ENSURE(context, expert_indices.dims != nullptr &&
                               expert_indices.dims->size == 3);
   TF_LITE_ENSURE(context, output.dims != nullptr && output.dims->size == 3);
+  TF_LITE_ENSURE_EQ(context, tokens.dims->data[2], d_in);
+  TF_LITE_ENSURE_EQ(context, output.dims->data[2], d_in);
+  TF_LITE_ENSURE(context, tokens.dims->data[0] > 0 && tokens.dims->data[1] > 0);
+  TF_LITE_ENSURE(context, expert_indices.dims->data[2] > 0);
+  TF_LITE_ENSURE_EQ(context, routing_weights.dims->data[2],
+                    expert_indices.dims->data[2]);
+  TF_LITE_ENSURE_EQ(context, routing_weights.dims->data[0],
+                    tokens.dims->data[0]);
+  TF_LITE_ENSURE_EQ(context, routing_weights.dims->data[1],
+                    tokens.dims->data[1]);
+  TF_LITE_ENSURE_EQ(context, expert_indices.dims->data[0],
+                    tokens.dims->data[0]);
+  TF_LITE_ENSURE_EQ(context, expert_indices.dims->data[1],
+                    tokens.dims->data[1]);
+  TF_LITE_ENSURE_EQ(context, output.dims->data[0], tokens.dims->data[0]);
+  TF_LITE_ENSURE_EQ(context, output.dims->data[1], tokens.dims->data[1]);
 
   // Sub-byte weights pack several values into one byte along the innermost
   // dimension. `IsTensorSupported` checks that for the layout the weights
@@ -252,7 +361,7 @@ TfLiteStatus IsMoeSupported(const TfLiteRegistration* registration,
 
 TfLiteStatus DefineMoeNode(TfLiteContext* context, ynn_subgraph_t subgraph,
                            TensorToValueIdMap& tensor_to_value_id,
-                           uint32_t& next_external_id, MoeDispatch* dispatch,
+                           uint32_t& next_external_id, MoeDispatch& dispatch,
                            const NodeInfo& node) {
   TF_LITE_ENSURE(context, node.inputs.size() == kNumInputsWithoutWeightScales ||
                               node.inputs.size() == kNumInputsWithWeightScales);
@@ -276,11 +385,7 @@ TfLiteStatus DefineMoeNode(TfLiteContext* context, ynn_subgraph_t subgraph,
   TF_LITE_ENSURE(context, IsFloatType(scale.type));
 
   const int num_experts = gate_weights.dims->data[1];
-  const int num_selected_experts =
-      (expert_indices.dims && expert_indices.dims->size >= 1)
-          ? expert_indices.dims->data[expert_indices.dims->size - 1]
-          : 0;
-  TF_LITE_ENSURE(context, num_selected_experts > 0);
+  TF_LITE_ENSURE(context, dispatch.batch_size > 0 && dispatch.top_k > 0);
 
   TF_LITE_ENSURE(context, tflite::NumElements(&scale) == 1 ||
                               tflite::NumElements(&scale) == num_experts);
@@ -305,28 +410,54 @@ TfLiteStatus DefineMoeNode(TfLiteContext* context, ynn_subgraph_t subgraph,
   uint32_t scale_val = GetOrCreateValueId(context, subgraph, tensor_to_value_id,
                                           node.inputs[idx.scale]);
 
-  // 1. Transpose constant weights from 4D [*, E, 1, *] to 3D [E, *, *]
-  // dropping the unit axis 2 so expert dimension E is on axis 0 and can be
-  // gathered or batched over directly.
-  int32_t perm_weights[] = {1, 3, 0};
+  // 1. Transpose constant weights from 4D [*, E, 1, *] to 3D [E, *, *],
+  // dropping the unit axis 2 so the expert dimension E is on axis 0 and the
+  // reduction dimension is on the second-to-last axis.
+  const int32_t perm_3d[] = {1, 3, 0};
+  constexpr size_t kRankWeights = 3;
   for (WeightValues& w : weights) {
     const uint32_t weights_val = GetOrCreateValueId(
         context, subgraph, tensor_to_value_id, w.tensor_index);
     TF_LITE_ENSURE_YNN_STATUS(ynn_define_static_transpose(
-        subgraph, 3, perm_weights, weights_val, &w.value_id, 0));
+        subgraph, kRankWeights, perm_3d, weights_val, &w.value_id, 0));
   }
 
   if (is_quantized) {
     for (WeightValues& w : weights) {
-      if (has_weight_scales) {
-        const uint32_t weight_scale_val = GetOrCreateValueId(
+      const TfLiteTensor& tensor = context->tensors[w.tensor_index];
+      if (tensor.quantization.type == kTfLiteBlockwiseQuantization) {
+        w.is_blockwise = true;
+        const auto* bq_params = static_cast<const TfLiteBlockwiseQuantization*>(
+            tensor.quantization.params);
+        w.block_size = bq_params->blocksize;
+        w.scale_tensor_index = bq_params->scale;
+        int resolved_zp_idx = -1;
+        TF_LITE_ENSURE_STATUS(ResolveZeroPointTensorIndex(
+            context, tensor, bq_params->scale, bq_params->zero_point,
+            &resolved_zp_idx));
+        // Drop the unit axis 2 from 4D [N, E, 1, K / block_size].
+        const int32_t perm_scale[] = {1, 0, 3};
+        if (resolved_zp_idx >= 0) {
+          const uint32_t raw_zp_val = GetOrCreateValueId(
+              context, subgraph, tensor_to_value_id, resolved_zp_idx);
+          TF_LITE_ENSURE_YNN_STATUS(ynn_define_static_transpose(
+              subgraph, 3, perm_scale, raw_zp_val, &w.zero_point_id, 0));
+        }
+
+        const uint32_t raw_scale_val = GetOrCreateValueId(
             context, subgraph, tensor_to_value_id, w.scale_tensor_index);
         TF_LITE_ENSURE_YNN_STATUS(ynn_define_static_transpose(
-            subgraph, 3, perm_weights, weight_scale_val, &w.scale_id, 0));
+            subgraph, 3, perm_scale, raw_scale_val, &w.scale_id, 0));
+      } else if (has_weight_scales) {
+        const uint32_t weight_scale_val = GetOrCreateValueId(
+            context, subgraph, tensor_to_value_id, w.scale_tensor_index);
+        const int32_t perm_2d[] = {1, 0};
+        TF_LITE_ENSURE_YNN_STATUS(ynn_define_static_transpose(
+            subgraph, 2, perm_2d, weight_scale_val, &w.scale_id, 0));
       } else {
         TF_LITE_ENSURE_STATUS(DefineQuantizationParams(
-            context, subgraph, context->tensors[w.tensor_index], &w.scale_id,
-            &w.zero_point_id));
+            context, subgraph, tensor, &w.scale_id, &w.zero_point_id));
+        TF_LITE_ENSURE_EQ(context, w.zero_point_id, YNN_INVALID_VALUE_ID);
       }
     }
   }
@@ -343,252 +474,7 @@ TfLiteStatus DefineMoeNode(TfLiteContext* context, ynn_subgraph_t subgraph,
     output_val = out_it->second;
   }
 
-  int32_t gather_axis_0 = 0;
-
-  auto dynamic_quantize = [&](uint32_t input_id, uint32_t* quant_id,
-                              uint32_t* zp_id,
-                              uint32_t* scale_id) -> TfLiteStatus {
-    int32_t reduce_axis_last = -1;
-    uint32_t min_max_id = YNN_INVALID_VALUE_ID;
-    TF_LITE_ENSURE_YNN_STATUS(ynn_define_reduce(
-        subgraph, ynn_reduce_min_max, 1, &reduce_axis_last, input_id,
-        YNN_INVALID_VALUE_ID, &min_max_id, YNN_NODE_FLAG_KEEP_DIMS));
-
-    TF_LITE_ENSURE_YNN_STATUS(ynn_define_dynamic_quantization(
-        subgraph, min_max_id, ynn_type_int8, zp_id, scale_id, 0));
-
-    TF_LITE_ENSURE_YNN_STATUS(ynn_define_quantize(
-        subgraph, input_id, ynn_type_int8, *zp_id, *scale_id, quant_id, 0));
-    return kTfLiteOk;
-  };
-
-  // A dot against dynamically quantized activations has to carry both operands'
-  // quantization parameters and dequantize the int32 accumulator; a float dot
-  // is just a dot.
-  auto define_dot = [&](uint32_t a_id, uint32_t a_zp, uint32_t a_scale,
-                        const WeightValues& w,
-                        uint32_t* out_id) -> TfLiteStatus {
-    if (!is_quantized) {
-      TF_LITE_ENSURE_YNN_STATUS(ynn_define_dot(subgraph, /*num_k_dims=*/1, a_id,
-                                               w.value_id, YNN_INVALID_VALUE_ID,
-                                               out_id, 0));
-      return kTfLiteOk;
-    }
-
-    uint32_t dot_zp = YNN_INVALID_VALUE_ID;
-    uint32_t dot_scale = YNN_INVALID_VALUE_ID;
-    TF_LITE_ENSURE_YNN_STATUS(ynn::define_dot_quantization(
-        subgraph, /*num_k_dims=*/1, a_id, a_zp, a_scale, w.value_id,
-        w.zero_point_id, w.scale_id, dot_zp, dot_scale));
-
-    // The dot accumulates into the negated zero point correction, so that the
-    // raw accumulator is already zero-point corrected.
-    uint32_t accum_init = YNN_INVALID_VALUE_ID;
-    if (dot_zp != YNN_INVALID_VALUE_ID) {
-      TF_LITE_ENSURE_YNN_STATUS(
-          ynn_define_unary(subgraph, ynn_unary_negate, dot_zp, &accum_init, 0));
-    }
-
-    uint32_t accum = YNN_INVALID_VALUE_ID;
-    TF_LITE_ENSURE_YNN_STATUS(ynn_define_dot(
-        subgraph, /*num_k_dims=*/1, a_id, w.value_id, accum_init, &accum, 0));
-
-    TF_LITE_ENSURE_YNN_STATUS(
-        ynn_define_dequantize(subgraph, accum, YNN_INVALID_VALUE_ID, dot_scale,
-                              ynn_type_fp32, out_id, 0));
-    return kTfLiteOk;
-  };
-
-  // The gate, gelu, up, product and down projection of the experts.
-  auto define_experts = [&](uint32_t a, uint32_t a_zp, uint32_t a_scale,
-                            uint32_t* out) -> TfLiteStatus {
-    uint32_t gate = YNN_INVALID_VALUE_ID;
-    TF_LITE_ENSURE_STATUS(define_dot(a, a_zp, a_scale, weights[kGate], &gate));
-
-    uint32_t act_gate = YNN_INVALID_VALUE_ID;
-    TF_LITE_ENSURE_YNN_STATUS(
-        ynn::define_approx_gelu(subgraph, gate, act_gate));
-
-    uint32_t up = YNN_INVALID_VALUE_ID;
-    TF_LITE_ENSURE_STATUS(define_dot(a, a_zp, a_scale, weights[kUp], &up));
-
-    uint32_t mid = YNN_INVALID_VALUE_ID;
-    TF_LITE_ENSURE_YNN_STATUS(ynn_define_binary(subgraph, ynn_binary_multiply,
-                                                act_gate, up, &mid, 0));
-
-    uint32_t mid_in = mid;
-    uint32_t mid_zp = YNN_INVALID_VALUE_ID;
-    uint32_t mid_scale = YNN_INVALID_VALUE_ID;
-    if (is_quantized) {
-      mid_in = YNN_INVALID_VALUE_ID;
-      TF_LITE_ENSURE_STATUS(
-          dynamic_quantize(mid, &mid_in, &mid_zp, &mid_scale));
-    } else {
-      // The dots accumulate in fp32, so the intermediate has to be narrowed
-      // back to match the down weights.
-      TF_LITE_ENSURE_STATUS(ConvertIfNeeded(context, subgraph, kTfLiteFloat32,
-                                            dot_float_type, mid_in));
-    }
-
-    return define_dot(mid_in, mid_zp, mid_scale, weights[kDown], out);
-  };
-
-  const int32_t expand_axis_3 = 3;
-  // 2. Expert outputs for every (token, selected expert) pair:
-  // -> [B, N, K, D_out]. Either lowering computes the same values.
-  uint32_t out_4d = YNN_INVALID_VALUE_ID;
-  if (dispatch != nullptr) {
-    // The tokens are bucketed by expert on the host (see `SetupMoeDispatch`):
-    // expert `e` computes the `C` slots `slot_token[e, :]`, where `C` is the
-    // largest number of (token, selected expert) pairs routed to one expert.
-    // This way each expert computes one contiguous run of rows.
-    dispatch->expert_indices_tensor_index = node.inputs[idx.expert_indices];
-    dispatch->num_experts = num_experts;
-    auto define_external = [&](ynn_type type, size_t rank,
-                               uint32_t* id) -> TfLiteStatus {
-      *id = next_external_id++;
-      TF_LITE_ENSURE_YNN_STATUS(ynn_define_tensor(
-          subgraph, type, rank, /*dims=*/nullptr, /*data=*/nullptr,
-          YNN_VALUE_FLAG_EXTERNAL_INPUT, id));
-      return kTfLiteOk;
-    };
-    TF_LITE_ENSURE_STATUS(
-        define_external(ynn_type_int32, 2, &dispatch->slot_token_id));
-    TF_LITE_ENSURE_STATUS(
-        define_external(ynn_type_int32, 3, &dispatch->token_slot_id));
-
-    const int32_t expand_axis_2 = 2;
-    uint32_t slot_token_3d = YNN_INVALID_VALUE_ID;
-    uint32_t token_slot_4d = YNN_INVALID_VALUE_ID;
-    // [E, C] -> [E, C, 1]
-    TF_LITE_ENSURE_YNN_STATUS(ynn_define_static_expand_dims(
-        subgraph, 1, &expand_axis_2, dispatch->slot_token_id, &slot_token_3d,
-        0));
-    // [B, N, K] -> [B, N, K, 1]
-    TF_LITE_ENSURE_YNN_STATUS(ynn_define_static_expand_dims(
-        subgraph, 1, &expand_axis_3, dispatch->token_slot_id, &token_slot_4d,
-        0));
-
-    // The weights are converted while still constant, so the conversion is
-    // folded once; the gather branch converts the gathered rows instead.
-    if (!is_quantized) {
-      for (WeightValues& w : weights) {
-        TF_LITE_ENSURE_STATUS(ConvertIfNeeded(
-            context, subgraph, context->tensors[w.tensor_index].type,
-            dot_float_type, w.value_id));
-      }
-    }
-
-    // [B, N, D_in] -> [T, D_in]
-    uint32_t tokens_flat = YNN_INVALID_VALUE_ID;
-    TF_LITE_ENSURE_YNN_STATUS(
-        ynn_define_fuse_dim(subgraph, 0, 2, tokens_val, &tokens_flat, 0));
-
-    // Quantize the tokens before gathering them, so that each token is only
-    // quantized once. [T, D_in] gathered by [E, C, 1] -> [E, C, D_in], and the
-    // quantization parameters [T, 1] -> [E, C, 1].
-    auto gather_slots = [&](uint32_t input, uint32_t* output) -> TfLiteStatus {
-      TF_LITE_ENSURE_YNN_STATUS(ynn_define_gather(
-          subgraph, 1, &gather_axis_0, 3, input, slot_token_3d, output, 0));
-      return kTfLiteOk;
-    };
-    uint32_t a = YNN_INVALID_VALUE_ID;
-    uint32_t a_zp = YNN_INVALID_VALUE_ID;
-    uint32_t a_scale = YNN_INVALID_VALUE_ID;
-    if (is_quantized) {
-      uint32_t tokens_q = YNN_INVALID_VALUE_ID;
-      uint32_t tokens_zp = YNN_INVALID_VALUE_ID;
-      uint32_t tokens_scale = YNN_INVALID_VALUE_ID;
-      TF_LITE_ENSURE_STATUS(
-          dynamic_quantize(tokens_flat, &tokens_q, &tokens_zp, &tokens_scale));
-      TF_LITE_ENSURE_STATUS(gather_slots(tokens_q, &a));
-      TF_LITE_ENSURE_STATUS(gather_slots(tokens_zp, &a_zp));
-      TF_LITE_ENSURE_STATUS(gather_slots(tokens_scale, &a_scale));
-    } else {
-      TF_LITE_ENSURE_STATUS(ConvertIfNeeded(context, subgraph, tokens.type,
-                                            dot_float_type, tokens_flat));
-      TF_LITE_ENSURE_STATUS(gather_slots(tokens_flat, &a));
-    }
-
-    // [E, C, D_in] x [E, D_in, *] -> [E, C, *].
-    uint32_t expert_out = YNN_INVALID_VALUE_ID;
-    TF_LITE_ENSURE_STATUS(define_experts(a, a_zp, a_scale, &expert_out));
-
-    // [E, C, D_out] -> [E * C, D_out] gathered by the slots of the tokens
-    // [B, N, K, 1] -> [B, N, K, D_out].
-    uint32_t expert_out_flat = YNN_INVALID_VALUE_ID;
-    TF_LITE_ENSURE_YNN_STATUS(
-        ynn_define_fuse_dim(subgraph, 0, 2, expert_out, &expert_out_flat, 0));
-    TF_LITE_ENSURE_YNN_STATUS(ynn_define_gather(subgraph, 1, &gather_axis_0, 4,
-                                                expert_out_flat, token_slot_4d,
-                                                &out_4d, 0));
-  } else {
-    // Expand tokens: [B, N, D_in] -> [B, N, 1, 1, D_in]
-    uint32_t tokens_5d = YNN_INVALID_VALUE_ID;
-    int32_t expand_axes_2_3[] = {2, 3};
-    TF_LITE_ENSURE_YNN_STATUS(ynn_define_static_expand_dims(
-        subgraph, 2, expand_axes_2_3, tokens_val, &tokens_5d, 0));
-
-    if (!is_quantized) {
-      TF_LITE_ENSURE_STATUS(ConvertIfNeeded(context, subgraph, tokens.type,
-                                            dot_float_type, tokens_5d));
-    }
-
-    // Expand expert indices: [B, N, K] -> [B, N, K, 1, 1]
-    uint32_t ei_5d = YNN_INVALID_VALUE_ID;
-    int32_t expand_axes_3_4[] = {3, 4};
-    TF_LITE_ENSURE_YNN_STATUS(ynn_define_static_expand_dims(
-        subgraph, 2, expand_axes_3_4, expert_indices_val, &ei_5d, 0));
-
-    // Gather weights along axis 0 (expert dim E) for active choices:
-    // [E, D_in, D_mid] gathered by [B, N, K, 1, 1] -> [B, N, K, D_in, D_mid]
-    for (WeightValues& w : weights) {
-      uint32_t gathered = YNN_INVALID_VALUE_ID;
-      TF_LITE_ENSURE_YNN_STATUS(ynn_define_gather(
-          subgraph, 1, &gather_axis_0, 5, w.value_id, ei_5d, &gathered, 0));
-      w.value_id = gathered;
-    }
-
-    if (!is_quantized) {
-      for (WeightValues& w : weights) {
-        TF_LITE_ENSURE_STATUS(ConvertIfNeeded(
-            context, subgraph, context->tensors[w.tensor_index].type,
-            dot_float_type, w.value_id));
-      }
-    }
-
-    if (is_quantized && has_weight_scales) {
-      for (WeightValues& w : weights) {
-        uint32_t gathered = YNN_INVALID_VALUE_ID;
-        TF_LITE_ENSURE_YNN_STATUS(ynn_define_gather(
-            subgraph, 1, &gather_axis_0, 5, w.scale_id, ei_5d, &gathered, 0));
-        w.scale_id = gathered;
-      }
-    }
-
-    uint32_t tokens_in = tokens_5d;
-    uint32_t tokens_zp = YNN_INVALID_VALUE_ID;
-    uint32_t tokens_scale = YNN_INVALID_VALUE_ID;
-    if (is_quantized) {
-      tokens_in = YNN_INVALID_VALUE_ID;
-      TF_LITE_ENSURE_STATUS(
-          dynamic_quantize(tokens_5d, &tokens_in, &tokens_zp, &tokens_scale));
-    }
-
-    // Batched dot products: [B, N, 1, 1, D_in] x [B, N, K, D_in, *] ->
-    // [B, N, K, 1, D_out].
-    uint32_t out_5d = YNN_INVALID_VALUE_ID;
-    TF_LITE_ENSURE_STATUS(
-        define_experts(tokens_in, tokens_zp, tokens_scale, &out_5d));
-
-    // Squeeze axis 3: [B, N, K, 1, D_out] -> [B, N, K, D_out]
-    // TODO: b/558433816 - This should be static_transpose, but it is faster to
-    // use a fuse_dim due to scheduling issues.
-    TF_LITE_ENSURE_YNN_STATUS(
-        ynn_define_fuse_dim(subgraph, 2, 2, out_5d, &out_4d, 0));
-  }
-
-  // 3. Routing weights & scale: [B, N, K] -> [B, N, K, 1]
+  // 2. Routing weights & scale: [B, N, K]
   uint32_t scale_1d = YNN_INVALID_VALUE_ID;
   if (scale.dims != nullptr && scale.dims->size > 1) {
     int32_t perm_last_axis[] = {scale.dims->size - 1};
@@ -598,6 +484,7 @@ TfLiteStatus DefineMoeNode(TfLiteContext* context, ynn_subgraph_t subgraph,
     scale_1d = scale_val;
   }
 
+  int32_t gather_axis_0 = 0;
   uint32_t rw_scaled = routing_weights_val;
   size_t num_scale_elements = tflite::NumElements(&scale);
   if (num_scale_elements == 1) {
@@ -617,25 +504,221 @@ TfLiteStatus DefineMoeNode(TfLiteContext* context, ynn_subgraph_t subgraph,
                                                 scale_gathered, &rw_scaled, 0));
   }
 
-  uint32_t rw_4d = YNN_INVALID_VALUE_ID;
-  TF_LITE_ENSURE_YNN_STATUS(ynn_define_static_expand_dims(
-      subgraph, 1, &expand_axis_3, rw_scaled, &rw_4d, 0));
+  if (!is_quantized) {
+    for (WeightValues& w : weights) {
+      TF_LITE_ENSURE_STATUS(ConvertIfNeeded(
+          context, subgraph, context->tensors[w.tensor_index].type,
+          dot_float_type, w.value_id));
+    }
+  }
 
-  // 4. Multiply weighted outputs: [B, N, K, D_out] * [B, N, K, 1] -> [B, N, K,
-  // D_out]
-  uint32_t weighted_out = YNN_INVALID_VALUE_ID;
-  TF_LITE_ENSURE_YNN_STATUS(ynn_define_binary(subgraph, ynn_binary_multiply,
-                                              out_4d, rw_4d, &weighted_out, 0));
+  auto dynamic_quantize = [&](uint32_t input_id, uint32_t* quant_id,
+                              uint32_t* zp_id,
+                              uint32_t* scale_id) -> TfLiteStatus {
+    int32_t reduce_axis_last = -1;
+    uint32_t min_max_id = YNN_INVALID_VALUE_ID;
+    TF_LITE_ENSURE_YNN_STATUS(ynn_define_reduce(
+        subgraph, ynn_reduce_min_max, 1, &reduce_axis_last, input_id,
+        YNN_INVALID_VALUE_ID, &min_max_id, YNN_NODE_FLAG_KEEP_DIMS));
 
-  // 5. Reduce sum over K (axis 2): [B, N, K, D_out] -> [B, N, D_out]
-  const int32_t reduce_axis_2 = 2;
+    TF_LITE_ENSURE_YNN_STATUS(ynn_define_dynamic_quantization(
+        subgraph, min_max_id, ynn_type_int8, zp_id, scale_id, 0));
+
+    TF_LITE_ENSURE_YNN_STATUS(ynn_define_quantize(
+        subgraph, input_id, ynn_type_int8, *zp_id, *scale_id, quant_id, 0));
+    return kTfLiteOk;
+  };
+
+  // 3. Define external inputs for host-partitioned `(token, expert)` routing
+  // so each expert `e` computes a contiguous run of rows via
+  // `ynn_define_ragged_dot`.
+  dispatch.expert_indices_tensor_index = node.inputs[idx.expert_indices];
+  dispatch.num_experts = num_experts;
+  dispatch.slot_token_id = next_external_id++;
+  dispatch.slot_expert_id = next_external_id++;
+  dispatch.token_slot_id = next_external_id++;
+
+  const size_t slot_dims[2] = {0, 1};
+  TF_LITE_ENSURE_YNN_STATUS(ynn_define_tensor(
+      subgraph, ynn_type_int32, 2, slot_dims, nullptr,
+      YNN_VALUE_FLAG_EXTERNAL_INPUT, &dispatch.slot_token_id));
+  TF_LITE_ENSURE_YNN_STATUS(ynn_define_tensor(
+      subgraph, ynn_type_int32, 2, slot_dims, nullptr,
+      YNN_VALUE_FLAG_EXTERNAL_INPUT, &dispatch.slot_expert_id));
+  const size_t token_slot_dims[3] = {0, 0, 1};
+  TF_LITE_ENSURE_YNN_STATUS(ynn_define_tensor(
+      subgraph, ynn_type_int32, 3, token_slot_dims, nullptr,
+      YNN_VALUE_FLAG_EXTERNAL_INPUT, &dispatch.token_slot_id));
+
+  // [B, N, D_in] -> [T, D_in]
+  uint32_t tokens_flat = YNN_INVALID_VALUE_ID;
   TF_LITE_ENSURE_YNN_STATUS(
-      ynn_define_reduce(subgraph, ynn_reduce_sum, 1, &reduce_axis_2,
-                        weighted_out, YNN_INVALID_VALUE_ID, &output_val, 0));
+      ynn_define_fuse_dim(subgraph, 0, 2, tokens_val, &tokens_flat, 0));
+
+  // Quantize the tokens before gathering them, so that each token is only
+  // quantized once. [T, D_in] gathered by [R, 1] -> [R, D_in], and the
+  // quantization parameters [T, 1] -> [R, 1].
+  auto gather_slots = [&](uint32_t input, uint32_t* output) -> TfLiteStatus {
+    TF_LITE_ENSURE_YNN_STATUS(ynn_define_gather(subgraph, 1, &gather_axis_0, 2,
+                                                input, dispatch.slot_token_id,
+                                                output, 0));
+    return kTfLiteOk;
+  };
+  uint32_t a = YNN_INVALID_VALUE_ID;
+  uint32_t a_zp = YNN_INVALID_VALUE_ID;
+  uint32_t a_scale = YNN_INVALID_VALUE_ID;
+  if (is_quantized) {
+    uint32_t tokens_q = YNN_INVALID_VALUE_ID;
+    uint32_t tokens_zp = YNN_INVALID_VALUE_ID;
+    uint32_t tokens_scale = YNN_INVALID_VALUE_ID;
+    TF_LITE_ENSURE_STATUS(
+        dynamic_quantize(tokens_flat, &tokens_q, &tokens_zp, &tokens_scale));
+    TF_LITE_ENSURE_STATUS(gather_slots(tokens_q, &a));
+    TF_LITE_ENSURE_STATUS(gather_slots(tokens_zp, &a_zp));
+    TF_LITE_ENSURE_STATUS(gather_slots(tokens_scale, &a_scale));
+  } else {
+    TF_LITE_ENSURE_STATUS(ConvertIfNeeded(context, subgraph, tokens.type,
+                                          dot_float_type, tokens_flat));
+    TF_LITE_ENSURE_STATUS(gather_slots(tokens_flat, &a));
+  }
+
+  auto define_ragged_dot = [&](uint32_t a_id, uint32_t a_zp_id,
+                               uint32_t a_scale_id, const WeightValues& w,
+                               uint32_t* out_id) -> TfLiteStatus {
+    if (!is_quantized) {
+      TF_LITE_ENSURE_YNN_STATUS(ynn_define_ragged_dot(
+          subgraph, /*num_k_dims=*/1, a_id, w.value_id, YNN_INVALID_VALUE_ID,
+          dispatch.slot_expert_id, out_id, 0));
+      return kTfLiteOk;
+    }
+
+    const uint32_t dot_flags =
+        (context->tensors[w.tensor_index].type == kTfLiteInt8 &&
+         w.zero_point_id == YNN_INVALID_VALUE_ID)
+            ? YNN_NODE_FLAG_SYMMETRIC_B
+            : 0;
+    if (w.is_blockwise) {
+      TF_LITE_ENSURE_YNN_STATUS(ynn::define_blockwise_dot(
+          subgraph, a_id, a_zp_id, a_scale_id, w.value_id, w.zero_point_id,
+          w.scale_id, w.block_size, /*bias_id=*/YNN_INVALID_VALUE_ID,
+          ynn_type_fp32, *out_id, dot_flags, dispatch.slot_expert_id));
+      return kTfLiteOk;
+    }
+
+    // Compute per-expert column sums sum_b [E, N] = sum_k b[e, k, n].
+    int32_t reduce_axis_k = -2;
+    uint32_t sum_b = YNN_INVALID_VALUE_ID;
+    TF_LITE_ENSURE_YNN_STATUS(
+        ynn_define_reduce(subgraph, ynn_reduce_sum, 1, &reduce_axis_k,
+                          w.value_id, YNN_INVALID_VALUE_ID, &sum_b, 0));
+
+    uint32_t sum_b_gathered = YNN_INVALID_VALUE_ID;
+    TF_LITE_ENSURE_YNN_STATUS(ynn_define_gather(subgraph, 1, &gather_axis_0, 2,
+                                                sum_b, dispatch.slot_expert_id,
+                                                &sum_b_gathered, 0));
+
+    uint32_t dot_zp = YNN_INVALID_VALUE_ID;
+    TF_LITE_ENSURE_YNN_STATUS(ynn_define_binary(
+        subgraph, ynn_binary_multiply, a_zp_id, sum_b_gathered, &dot_zp, 0));
+    const int32_t zero = 0;
+    uint32_t zero_id = YNN_INVALID_VALUE_ID;
+    TF_LITE_ENSURE_YNN_STATUS(
+        ynn_define_tensor(subgraph, ynn_type_int32, 0, nullptr, &zero,
+                          YNN_VALUE_FLAG_COPY_DATA, &zero_id));
+    uint32_t accum_init = YNN_INVALID_VALUE_ID;
+    TF_LITE_ENSURE_YNN_STATUS(ynn_define_binary(
+        subgraph, ynn_binary_subtract, zero_id, dot_zp, &accum_init, 0));
+
+    uint32_t dot_out = YNN_INVALID_VALUE_ID;
+    TF_LITE_ENSURE_YNN_STATUS(ynn_define_ragged_dot(
+        subgraph, /*num_k_dims=*/1, a_id, w.value_id, accum_init,
+        dispatch.slot_expert_id, &dot_out, dot_flags));
+
+    uint32_t dot_fp32 = YNN_INVALID_VALUE_ID;
+    TF_LITE_ENSURE_YNN_STATUS(
+        ynn_define_convert(subgraph, dot_out, ynn_type_fp32, &dot_fp32, 0));
+
+    uint32_t dot_scaled = YNN_INVALID_VALUE_ID;
+    TF_LITE_ENSURE_YNN_STATUS(ynn_define_binary(
+        subgraph, ynn_binary_multiply, dot_fp32, a_scale_id, &dot_scaled, 0));
+
+    uint32_t w_scale_for_mul = w.scale_id;
+    if (has_weight_scales) {
+      w_scale_for_mul = YNN_INVALID_VALUE_ID;
+      TF_LITE_ENSURE_YNN_STATUS(
+          ynn_define_gather(subgraph, 1, &gather_axis_0, 2, w.scale_id,
+                            dispatch.slot_expert_id, &w_scale_for_mul, 0));
+    }
+
+    TF_LITE_ENSURE_YNN_STATUS(ynn_define_binary(
+        subgraph, ynn_binary_multiply, dot_scaled, w_scale_for_mul, out_id, 0));
+    return kTfLiteOk;
+  };
+
+  // 4. [R, D_in] x [E, D_in, *] -> [R, *] via ragged_dot.
+  uint32_t gate = YNN_INVALID_VALUE_ID;
+  TF_LITE_ENSURE_STATUS(
+      define_ragged_dot(a, a_zp, a_scale, weights[kGate], &gate));
+
+  uint32_t act_gate = YNN_INVALID_VALUE_ID;
+  TF_LITE_ENSURE_YNN_STATUS(ynn::define_approx_gelu(subgraph, gate, act_gate));
+
+  uint32_t up = YNN_INVALID_VALUE_ID;
+  TF_LITE_ENSURE_STATUS(define_ragged_dot(a, a_zp, a_scale, weights[kUp], &up));
+
+  uint32_t mid = YNN_INVALID_VALUE_ID;
+  TF_LITE_ENSURE_YNN_STATUS(
+      ynn_define_binary(subgraph, ynn_binary_multiply, act_gate, up, &mid, 0));
+
+  uint32_t mid_in = mid;
+  uint32_t mid_zp = YNN_INVALID_VALUE_ID;
+  uint32_t mid_scale = YNN_INVALID_VALUE_ID;
+  if (is_quantized) {
+    mid_in = YNN_INVALID_VALUE_ID;
+    TF_LITE_ENSURE_STATUS(dynamic_quantize(mid, &mid_in, &mid_zp, &mid_scale));
+  } else {
+    TF_LITE_ENSURE_STATUS(ConvertIfNeeded(context, subgraph, kTfLiteFloat32,
+                                          dot_float_type, mid_in));
+  }
+
+  uint32_t expert_out = YNN_INVALID_VALUE_ID;
+  TF_LITE_ENSURE_STATUS(define_ragged_dot(mid_in, mid_zp, mid_scale,
+                                          weights[kDown], &expert_out));
+
+  // 5. Combine: [R, D_out] gathered by the slots of the tokens
+  // [T, K, 1] -> [T, K, D_out], weighted by the routing weights
+  // [T, K, 1], reduced over K -> [T, D_out], and split back into
+  // [B, N, D_out].
+  uint32_t token_out = YNN_INVALID_VALUE_ID;
+  TF_LITE_ENSURE_YNN_STATUS(
+      ynn_define_gather(subgraph, 1, &gather_axis_0, 3, expert_out,
+                        dispatch.token_slot_id, &token_out, 0));
+  uint32_t rw_flat = YNN_INVALID_VALUE_ID;
+  TF_LITE_ENSURE_YNN_STATUS(
+      ynn_define_fuse_dim(subgraph, 0, 2, rw_scaled, &rw_flat, 0));
+  const int32_t expand_axis_2 = 2;
+  uint32_t rw_3d = YNN_INVALID_VALUE_ID;
+  TF_LITE_ENSURE_YNN_STATUS(ynn_define_static_expand_dims(
+      subgraph, 1, &expand_axis_2, rw_flat, &rw_3d, 0));
+  uint32_t weighted_out = YNN_INVALID_VALUE_ID;
+  TF_LITE_ENSURE_YNN_STATUS(ynn_define_binary(
+      subgraph, ynn_binary_multiply, token_out, rw_3d, &weighted_out, 0));
+  const int32_t reduce_axis_1 = 1;
+  uint32_t out_flat = YNN_INVALID_VALUE_ID;
+  TF_LITE_ENSURE_YNN_STATUS(
+      ynn_define_reduce(subgraph, ynn_reduce_sum, 1, &reduce_axis_1,
+                        weighted_out, YNN_INVALID_VALUE_ID, &out_flat, 0));
+  const TfLiteTensor& output = context->tensors[node.outputs[0]];
+  if (out_it != tensor_to_value_id.end()) {
+    TF_LITE_ENSURE_STATUS(ConvertIfNeeded(context, subgraph, kTfLiteFloat32,
+                                          output.type, out_flat));
+  }
+  const size_t out_splits[] = {static_cast<size_t>(dispatch.batch_size), 0};
+  TF_LITE_ENSURE_YNN_STATUS(ynn_define_split_dim(subgraph, 0, 2, out_splits,
+                                                 out_flat, &output_val, 0));
 
   // The reduction accumulates in fp32; an output value this node created
   // itself has to be narrowed to the type of the tensor it stands for.
-  const TfLiteTensor& output = context->tensors[node.outputs[0]];
   if (out_it == tensor_to_value_id.end()) {
     TF_LITE_ENSURE_STATUS(ConvertIfNeeded(context, subgraph, kTfLiteFloat32,
                                           output.type, output_val));
@@ -646,105 +729,121 @@ TfLiteStatus DefineMoeNode(TfLiteContext* context, ynn_subgraph_t subgraph,
   return kTfLiteOk;
 }
 
-bool ShouldDispatchMoeOnHost(TfLiteContext* context, const NodeInfo& node,
-                             const std::vector<int>& partition_inputs,
-                             const TfLiteYNNPackDelegateOptions& options) {
-  if (!options.dispatch_moe_on_host) {
-    return false;
-  }
-  const bool has_weight_scales =
-      node.inputs.size() == kNumInputsWithWeightScales;
-  const MoeInputIndices idx = GetInputIndices(has_weight_scales);
-  const int expert_indices_tensor_index = node.inputs[idx.expert_indices];
-  if (!absl::c_linear_search(partition_inputs, expert_indices_tensor_index)) {
-    return false;
-  }
-  const TfLiteTensor& expert_indices =
-      context->tensors[expert_indices_tensor_index];
-  return expert_indices.dims != nullptr && expert_indices.dims->size == 3 &&
-         expert_indices.dims->data[0] * expert_indices.dims->data[1] > 1;
-}
-
 TfLiteStatus SetMoeDispatchShapes(TfLiteContext* context, ynn_runtime_t runtime,
-                                  const MoeDispatch& dispatch) {
-  const TfLiteTensor& expert_indices =
-      context->tensors[dispatch.expert_indices_tensor_index];
-  TF_LITE_ENSURE(context, expert_indices.dims != nullptr &&
-                              expert_indices.dims->size == 3);
-  const size_t slots_dims[] = {static_cast<size_t>(dispatch.num_experts),
-                               dispatch.capacity};
+                                  MoeDispatch& dispatch,
+                                  const size_t (&expert_indices_dims)[3]) {
+  const int data_tensor_index = dispatch.expert_indices_data_tensor_index >= 0
+                                    ? dispatch.expert_indices_data_tensor_index
+                                    : dispatch.expert_indices_tensor_index;
+  const TfLiteTensor& expert_indices_data_tensor =
+      context->tensors[data_tensor_index];
+  const size_t batch_size = expert_indices_dims[0];
+  const size_t seq_len = expert_indices_dims[1];
+  const size_t top_k = expert_indices_dims[2];
+  TF_LITE_ENSURE(context, batch_size > 0 && seq_len > 0 && top_k > 0);
+  TF_LITE_ENSURE_EQ(context, batch_size,
+                    static_cast<size_t>(dispatch.batch_size));
+  if (dispatch.fixed_top_k > 0) {
+    TF_LITE_ENSURE_EQ(context, top_k,
+                      static_cast<size_t>(dispatch.fixed_top_k));
+  }
+  dispatch.top_k = static_cast<int>(top_k);
+  TF_LITE_ENSURE(context,
+                 seq_len <= std::numeric_limits<size_t>::max() / batch_size);
+  const size_t num_tokens = batch_size * seq_len;
+  TF_LITE_ENSURE(context,
+                 top_k <= std::numeric_limits<size_t>::max() / num_tokens);
+  const size_t num_selected =
+      static_cast<size_t>(tflite::NumElements(&expert_indices_data_tensor));
+  TF_LITE_ENSURE_EQ(context, num_selected, num_tokens * top_k);
+
+  if (dispatch.external_tokens_tensor_index >= 0) {
+    const TfLiteTensor& tokens =
+        context->tensors[dispatch.external_tokens_tensor_index];
+    TF_LITE_ENSURE(context, tokens.dims != nullptr && tokens.dims->size == 3);
+    TF_LITE_ENSURE_EQ(context, static_cast<size_t>(tokens.dims->data[0]),
+                      batch_size);
+    TF_LITE_ENSURE_EQ(context, static_cast<size_t>(tokens.dims->data[1]),
+                      seq_len);
+  }
+  if (dispatch.external_routing_weights_tensor_index >= 0) {
+    const TfLiteTensor& rw =
+        context->tensors[dispatch.external_routing_weights_tensor_index];
+    TF_LITE_ENSURE(context, rw.dims != nullptr && rw.dims->size == 3);
+    TF_LITE_ENSURE_EQ(context, static_cast<size_t>(rw.dims->data[0]),
+                      batch_size);
+    TF_LITE_ENSURE_EQ(context, static_cast<size_t>(rw.dims->data[1]), seq_len);
+    TF_LITE_ENSURE_EQ(context, static_cast<size_t>(rw.dims->data[2]), top_k);
+  }
+
+  const size_t slot_dims[2] = {num_selected, 1};
   TF_LITE_ENSURE_YNN_STATUS(ynn_set_external_value_shape(
-      runtime, dispatch.slot_token_id, 2, slots_dims));
-  size_t token_slot_dims[3];
-  std::copy_n(expert_indices.dims->data, 3, token_slot_dims);
+      runtime, dispatch.slot_token_id, 2, slot_dims));
+  TF_LITE_ENSURE_YNN_STATUS(ynn_set_external_value_shape(
+      runtime, dispatch.slot_expert_id, 2, slot_dims));
+  const size_t token_slot_dims[3] = {num_tokens, top_k, 1};
   TF_LITE_ENSURE_YNN_STATUS(ynn_set_external_value_shape(
       runtime, dispatch.token_slot_id, 3, token_slot_dims));
   return kTfLiteOk;
 }
 
 TfLiteStatus SetupMoeDispatch(TfLiteContext* context, ynn_runtime_t runtime,
-                              MoeDispatch& dispatch, bool* reshape_required) {
-  const TfLiteTensor& expert_indices =
-      context->tensors[dispatch.expert_indices_tensor_index];
-  TF_LITE_ENSURE_EQ(context, expert_indices.type, kTfLiteInt32);
-  TF_LITE_ENSURE(context, expert_indices.dims != nullptr &&
-                              expert_indices.dims->size == 3);
-  const int32_t* expert_indices_data = expert_indices.data.i32;
-  const size_t num_selected = tflite::NumElements(&expert_indices);
-  const size_t top_k = expert_indices.dims->data[2];
-  // `DefineMoeNode` checked this when the runtime was built, but in
-  // dynamic-shape mode a resize to K = 0 does not rebuild it.
-  TF_LITE_ENSURE(context, top_k > 0);
-  TF_LITE_ENSURE(context, expert_indices_data != nullptr);
+                              MoeDispatch& dispatch) {
+  const int data_tensor_index = dispatch.expert_indices_data_tensor_index >= 0
+                                    ? dispatch.expert_indices_data_tensor_index
+                                    : dispatch.expert_indices_tensor_index;
+  const TfLiteTensor& expert_indices_data_tensor =
+      context->tensors[data_tensor_index];
+  TF_LITE_ENSURE_EQ(context, expert_indices_data_tensor.type, kTfLiteInt32);
+  const int32_t* expert_indices_data = expert_indices_data_tensor.data.i32;
+  TF_LITE_ENSURE(context, dispatch.top_k > 0);
+  const size_t top_k = static_cast<size_t>(dispatch.top_k);
+  const size_t num_selected =
+      static_cast<size_t>(tflite::NumElements(&expert_indices_data_tensor));
+  TF_LITE_ENSURE_EQ(context, num_selected % top_k, 0);
+  const size_t num_tokens = num_selected / top_k;
+  TF_LITE_ENSURE(context, num_selected == 0 || expert_indices_data != nullptr);
   const int num_experts = dispatch.num_experts;
+  const size_t max_slots =
+      static_cast<size_t>(std::numeric_limits<int32_t>::max());
+  TF_LITE_ENSURE(context, num_selected <= max_slots);
 
-  // Counting sort of the (token, selected expert) pairs by expert.
-  dispatch.count.assign(num_experts, 0);
+  // Count selections per expert and compute group offsets via prefix sum.
+  dispatch.group_offsets.assign(num_experts, 0);
   for (size_t i = 0; i < num_selected; ++i) {
     const int32_t e = expert_indices_data[i];
     TF_LITE_ENSURE_MSG(context, 0 <= e && e < num_experts,
                        "MoE expert index out of range");
-    ++dispatch.count[e];
-  }
-  // A zero capacity would make the tensors empty; keep one padding slot.
-  size_t capacity = 1;
-  for (int32_t c : dispatch.count) {
-    capacity = std::max<size_t>(capacity, c);
-  }
-  const size_t max_slots =
-      static_cast<size_t>(std::numeric_limits<int32_t>::max());
-  TF_LITE_ENSURE(context,
-                 capacity <= max_slots / static_cast<size_t>(num_experts));
-  const size_t num_slots = static_cast<size_t>(num_experts) * capacity;
-
-  // Changing the capacity changes the shapes of the whole expert computation,
-  // so the runtime has to be reshaped. We use the exact capacity rather than
-  // rounding it up to avoid reshaping: reshaping is cheap compared to
-  // computing padding slots.
-  if (capacity != dispatch.capacity) {
-    dispatch.capacity = capacity;
-    TF_LITE_ENSURE_STATUS(SetMoeDispatchShapes(context, runtime, dispatch));
-    *reshape_required = true;
+    ++dispatch.group_offsets[e];
   }
 
-  // The padding slots compute token 0 (any valid token would do); their
-  // outputs are never gathered by `token_slot`.
-  dispatch.slot_token.assign(num_slots, 0);
+  int32_t offset = 0;
+  for (int e = 0; e < num_experts; ++e) {
+    const int32_t count = dispatch.group_offsets[e];
+    dispatch.group_offsets[e] = offset;
+    offset += count;
+  }
+
+  dispatch.slot_token.assign(num_selected, 0);
+  dispatch.slot_expert.assign(num_selected, 0);
   dispatch.token_slot.resize(num_selected);
-  std::fill(dispatch.count.begin(), dispatch.count.end(), 0);
-  for (size_t i = 0; i < num_selected; ++i) {
-    const int32_t e = expert_indices_data[i];
-    const size_t slot = e * capacity + dispatch.count[e]++;
-    dispatch.slot_token[slot] = static_cast<int32_t>(i / top_k);
-    dispatch.token_slot[i] = static_cast<int32_t>(slot);
-  }
-  return kTfLiteOk;
-}
 
-TfLiteStatus SetMoeDispatchData(TfLiteContext* context, ynn_runtime_t runtime,
-                                MoeDispatch& dispatch) {
+  for (size_t t = 0; t < num_tokens; ++t) {
+    const int32_t* row = expert_indices_data + t * top_k;
+    int32_t* out_slots = dispatch.token_slot.data() + t * top_k;
+    for (size_t k = 0; k < top_k; ++k) {
+      const int32_t e = row[k];
+      const int32_t slot = dispatch.group_offsets[e]++;
+      out_slots[k] = slot;
+      dispatch.slot_token[slot] = static_cast<int32_t>(t);
+      dispatch.slot_expert[slot] = e;
+    }
+  }
+
   TF_LITE_ENSURE_YNN_STATUS(ynn_set_external_value_data(
       runtime, dispatch.slot_token_id, dispatch.slot_token.data()));
+  TF_LITE_ENSURE_YNN_STATUS(ynn_set_external_value_data(
+      runtime, dispatch.slot_expert_id, dispatch.slot_expert.data()));
   TF_LITE_ENSURE_YNN_STATUS(ynn_set_external_value_data(
       runtime, dispatch.token_slot_id, dispatch.token_slot.data()));
   return kTfLiteOk;

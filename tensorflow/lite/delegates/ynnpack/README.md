@@ -51,10 +51,6 @@ configure the YNNPACK delegate:
 *   **`--ynnpack_enable_blockwise_quantization=true|false`** (default: `false`):
     Enable support for blockwise quantization.
 
-*   **`--ynnpack_dispatch_moe_on_host=true|false`** (default: `false`):
-    Bucket the tokens of multi-token MoE ops by expert on the host, so that
-    each expert processes its tokens in one batch (prefill only).
-
 *   **`--ynnpack_sdpa_dot_type=auto|int8|fp32|fp16|bf16`** (default: `auto`):
     The type of the operands of the dot products in scaled dot product
     attention ops. With `auto`, the operands are multiplied in the more precise

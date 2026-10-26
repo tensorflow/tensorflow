@@ -133,8 +133,6 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
     // The constants folded by the previous runtime (e.g. the packed weights)
     // are only reused by the new subgraph's constant folding while that
     // runtime is alive, so keep it until the new subgraph is optimized.
-    // Rebuilds happen at runtime, e.g. when an MoE node switches between
-    // bucketing tokens on the host and gathering weights.
     std::unique_ptr<ynn_runtime, decltype(&ynn_delete_runtime)> old_runtime(
         runtime_, ynn_delete_runtime);
     runtime_ = nullptr;
@@ -156,9 +154,7 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
         num_extra_external_inputs += 2;
       } else if (node.composite_op_type == CompositeOpType::kSdpa) {
         num_extra_external_inputs += 4;
-      } else if (node.composite_op_type == CompositeOpType::kMoe &&
-                 ShouldDispatchMoeOnHost(context, node, input_tensor_indices_,
-                                         options_)) {
+      } else if (node.composite_op_type == CompositeOpType::kMoe) {
         num_extra_external_inputs += kNumMoeDispatchExternalValues;
       }
     }
@@ -338,11 +334,64 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
         TF_LITE_ENSURE_STATUS(DefineDequantizeNode(context, subgraph_,
                                                    tensor_to_value_id_, node));
       } else if (node.composite_op_type == CompositeOpType::kMoe) {
-        MoeDispatch* dispatch = nullptr;
-        if (ShouldDispatchMoeOnHost(context, node, input_tensor_indices_,
-                                    options_)) {
-          dispatch = &moe_dispatches_.emplace_back();
+        TF_LITE_ENSURE(context, node.inputs.size() >= 3);
+        MoeDispatch& dispatch = moe_dispatches_.emplace_back();
+        dispatch.expert_indices_tensor_index = node.inputs[2];
+        if (std::find(input_tensor_indices_.begin(),
+                      input_tensor_indices_.end(),
+                      node.inputs[0]) != input_tensor_indices_.end()) {
+          dispatch.external_tokens_tensor_index = node.inputs[0];
         }
+        if (std::find(input_tensor_indices_.begin(),
+                      input_tensor_indices_.end(),
+                      node.inputs[1]) != input_tensor_indices_.end()) {
+          dispatch.external_routing_weights_tensor_index = node.inputs[1];
+        }
+        int data_tensor_idx = dispatch.expert_indices_tensor_index;
+        while (std::find(input_tensor_indices_.begin(),
+                         input_tensor_indices_.end(),
+                         data_tensor_idx) == input_tensor_indices_.end() &&
+               !tflite::IsConstantTensor(&context->tensors[data_tensor_idx])) {
+          if (dispatch.expert_indices_view_nodes.size() > nodes_info_.size()) {
+            break;
+          }
+          auto producer_it = std::find_if(
+              nodes_info_.begin(), nodes_info_.end(),
+              [data_tensor_idx](const NodeInfo& n) {
+                return !n.outputs.empty() && n.outputs[0] == data_tensor_idx &&
+                       (n.builtin_code == kTfLiteBuiltinReshape ||
+                        n.builtin_code == kTfLiteBuiltinExpandDims) &&
+                       !n.inputs.empty();
+              });
+          if (producer_it == nodes_info_.end()) {
+            break;
+          }
+          const int next_idx = producer_it->inputs[0];
+          if (next_idx < 0 || next_idx >= context->tensors_size ||
+              context->tensors[next_idx].type != kTfLiteInt32) {
+            break;
+          }
+          dispatch.expert_indices_view_nodes.push_back(
+              static_cast<size_t>(producer_it - nodes_info_.begin()));
+          data_tensor_idx = next_idx;
+        }
+        std::reverse(dispatch.expert_indices_view_nodes.begin(),
+                     dispatch.expert_indices_view_nodes.end());
+        TF_LITE_ENSURE_MSG(
+            context,
+            std::find(input_tensor_indices_.begin(),
+                      input_tensor_indices_.end(),
+                      data_tensor_idx) != input_tensor_indices_.end() ||
+                tflite::IsConstantTensor(&context->tensors[data_tensor_idx]),
+            "MoE expert_indices must be a partition input or view of one");
+        dispatch.expert_indices_data_tensor_index = data_tensor_idx;
+
+        size_t ei_dims[3] = {0, 0, 0};
+        TF_LITE_ENSURE_STATUS(
+            ResolveMoeExpertIndicesShape(context, dispatch, ei_dims));
+        dispatch.batch_size = static_cast<int>(ei_dims[0]);
+        dispatch.top_k = static_cast<int>(ei_dims[2]);
+
         TF_LITE_ENSURE_STATUS(DefineMoeNode(context, subgraph_,
                                             tensor_to_value_id_,
                                             next_external_id, dispatch, node));
@@ -437,22 +486,17 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
     }
 
     if (!rebuild_required && !options_.static_shape) {
-      // Whether an MoE node buckets its tokens by expert depends on the
-      // number of tokens, so a resize can change the lowering a node should
-      // use. Not rebuilding would still be correct (both lowerings compute
-      // the same result); the rebuild is for performance. Only the number of
-      // bucketing nodes is compared, so one node switching on while another
-      // switches off is not detected.
-      size_t num_moe_dispatches = 0;
-      for (const auto& node_info : nodes_info_) {
-        if (node_info.composite_op_type == CompositeOpType::kMoe &&
-            ShouldDispatchMoeOnHost(context, node_info, input_tensor_indices_,
-                                    options_)) {
-          ++num_moe_dispatches;
+      // `DefineMoeNode` splits the flattened `[B * N, D_out]` output back to
+      // `[B, N, D_out]` with `B` fixed at subgraph build time, so a change in
+      // `B` requires a rebuild.
+      for (const MoeDispatch& dispatch : moe_dispatches_) {
+        size_t ei_dims[3] = {0, 0, 0};
+        TF_LITE_ENSURE_STATUS(
+            ResolveMoeExpertIndicesShape(context, dispatch, ei_dims));
+        if (ei_dims[0] != static_cast<size_t>(dispatch.batch_size)) {
+          rebuild_required = true;
+          break;
         }
-      }
-      if (num_moe_dispatches != moe_dispatches_.size()) {
-        rebuild_required = true;
       }
     }
 
@@ -480,8 +524,12 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
           runtime_, dummy.dummy_val_id, dummy.rank, dummy.full_dims));
     }
 
-    for (const MoeDispatch& dispatch : moe_dispatches_) {
-      TF_LITE_ENSURE_STATUS(SetMoeDispatchShapes(context, runtime_, dispatch));
+    for (MoeDispatch& dispatch : moe_dispatches_) {
+      size_t ei_dims[3] = {0, 0, 0};
+      TF_LITE_ENSURE_STATUS(
+          ResolveMoeExpertIndicesShape(context, dispatch, ei_dims));
+      TF_LITE_ENSURE_STATUS(
+          SetMoeDispatchShapes(context, runtime_, dispatch, ei_dims));
     }
 
     TF_LITE_ENSURE_YNN_STATUS(ynn_reshape_runtime(runtime_));
@@ -508,12 +556,6 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
   }
 
   TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) override {
-    bool reshape_required = false;
-    for (MoeDispatch& dispatch : moe_dispatches_) {
-      TF_LITE_ENSURE_STATUS(
-          SetupMoeDispatch(context, runtime_, dispatch, &reshape_required));
-    }
-
     if (!dummy_inputs_.empty()) {
       // Set shape for dummy inputs based on param_tensor data at each
       // invocation.
@@ -547,14 +589,7 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
         TF_LITE_ENSURE_YNN_STATUS(ynn_set_external_value_shape(
             runtime_, dummy.dummy_val_id, dummy.rank, dims));
       }
-      reshape_required = true;
-    }
-    if (reshape_required) {
       TF_LITE_ENSURE_YNN_STATUS(ynn_reshape_runtime(runtime_));
-    }
-
-    for (MoeDispatch& dispatch : moe_dispatches_) {
-      TF_LITE_ENSURE_STATUS(SetMoeDispatchData(context, runtime_, dispatch));
     }
 
     // Set input buffers.
@@ -562,6 +597,10 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
       TfLiteTensor& tensor = context->tensors[input.tensor_index];
       TF_LITE_ENSURE_YNN_STATUS(
           ynn_set_external_value_data(runtime_, input.val_id, tensor.data.raw));
+    }
+
+    for (MoeDispatch& dispatch : moe_dispatches_) {
+      TF_LITE_ENSURE_STATUS(SetupMoeDispatch(context, runtime_, dispatch));
     }
 
     // Set output buffers.
@@ -576,6 +615,122 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
   }
 
  private:
+  TfLiteStatus ResolveMoeExpertIndicesShape(TfLiteContext* context,
+                                            const MoeDispatch& dispatch,
+                                            size_t (&out_dims)[3]) const {
+    TF_LITE_ENSURE(context, dispatch.expert_indices_data_tensor_index >= 0 &&
+                                dispatch.expert_indices_data_tensor_index <
+                                    context->tensors_size);
+    const TfLiteTensor& base_tensor =
+        context->tensors[dispatch.expert_indices_data_tensor_index];
+    TF_LITE_ENSURE(context, base_tensor.dims != nullptr &&
+                                base_tensor.dims->size >= 0 &&
+                                base_tensor.dims->size <= YNN_MAX_TENSOR_RANK);
+
+    int rank = base_tensor.dims->size;
+    size_t dims[YNN_MAX_TENSOR_RANK] = {0};
+    size_t num_elements = 1;
+    for (int d = 0; d < rank; ++d) {
+      TF_LITE_ENSURE(context, base_tensor.dims->data[d] >= 0);
+      const size_t extent = static_cast<size_t>(base_tensor.dims->data[d]);
+      dims[d] = extent;
+      if (extent == 0) {
+        num_elements = 0;
+      } else if (num_elements > 0) {
+        TF_LITE_ENSURE(context, extent <= std::numeric_limits<size_t>::max() /
+                                              num_elements);
+        num_elements *= extent;
+      }
+    }
+
+    for (size_t node_idx : dispatch.expert_indices_view_nodes) {
+      TF_LITE_ENSURE(context, node_idx < nodes_info_.size());
+      const NodeInfo& view_node = nodes_info_[node_idx];
+      if (view_node.builtin_code == kTfLiteBuiltinExpandDims) {
+        TF_LITE_ENSURE_EQ(context, view_node.inputs.size(), 2);
+        TF_LITE_ENSURE(context, rank + 1 <= YNN_MAX_TENSOR_RANK);
+        const TfLiteTensor& axis_tensor = context->tensors[view_node.inputs[1]];
+        TF_LITE_ENSURE(context, axis_tensor.type == kTfLiteInt32 &&
+                                    axis_tensor.data.raw != nullptr &&
+                                    tflite::NumElements(&axis_tensor) == 1);
+        int32_t axis = *reinterpret_cast<const int32_t*>(axis_tensor.data.raw);
+        if (axis < 0) {
+          axis += rank + 1;
+        }
+        TF_LITE_ENSURE(context, axis >= 0 && axis <= rank);
+        for (int d = rank; d > axis; --d) {
+          dims[d] = dims[d - 1];
+        }
+        dims[axis] = 1;
+        ++rank;
+      } else if (view_node.builtin_code == kTfLiteBuiltinReshape) {
+        int32_t target_shape[YNN_MAX_TENSOR_RANK] = {0};
+        int target_rank = 0;
+        bool has_target = false;
+        if (view_node.inputs.size() == 2 && view_node.inputs[1] >= 0) {
+          const TfLiteTensor& shape_tensor =
+              context->tensors[view_node.inputs[1]];
+          if (IsConstant(shape_tensor, options_.static_shape)) {
+            const int num_shape_elems = tflite::NumElements(&shape_tensor);
+            TF_LITE_ENSURE(context, num_shape_elems > 0 &&
+                                        num_shape_elems <= YNN_MAX_TENSOR_RANK);
+            TF_LITE_ENSURE(context, shape_tensor.data.raw != nullptr);
+            target_rank = num_shape_elems;
+            std::copy_n(reinterpret_cast<const int32_t*>(shape_tensor.data.raw),
+                        num_shape_elems, target_shape);
+            has_target = true;
+          }
+        }
+        if (!has_target) {
+          const auto* params =
+              static_cast<const TfLiteReshapeParams*>(view_node.builtin_data);
+          TF_LITE_ENSURE(context,
+                         params != nullptr && params->num_dimensions > 0 &&
+                             params->num_dimensions <= YNN_MAX_TENSOR_RANK);
+          target_rank = params->num_dimensions;
+          std::copy_n(params->shape, target_rank, target_shape);
+        }
+        int unknown_axis = -1;
+        size_t known_product = 1;
+        size_t new_dims[YNN_MAX_TENSOR_RANK] = {0};
+        for (int d = 0; d < target_rank; ++d) {
+          if (target_shape[d] == -1) {
+            TF_LITE_ENSURE_EQ(context, unknown_axis, -1);
+            unknown_axis = d;
+          } else {
+            TF_LITE_ENSURE(context, target_shape[d] > 0);
+            const size_t extent = static_cast<size_t>(target_shape[d]);
+            TF_LITE_ENSURE(
+                context,
+                extent <= std::numeric_limits<size_t>::max() / known_product);
+            known_product *= extent;
+            new_dims[d] = extent;
+          }
+        }
+        if (unknown_axis >= 0) {
+          TF_LITE_ENSURE(
+              context, known_product > 0 && num_elements % known_product == 0);
+          new_dims[unknown_axis] = num_elements / known_product;
+        } else {
+          TF_LITE_ENSURE_EQ(context, known_product, num_elements);
+        }
+        rank = target_rank;
+        std::copy_n(new_dims, rank, dims);
+      } else {
+        return kTfLiteError;
+      }
+    }
+
+    TF_LITE_ENSURE_EQ(context, rank, 3);
+    constexpr size_t kMaxTfLiteDim =
+        static_cast<size_t>(std::numeric_limits<int>::max());
+    for (int d = 0; d < 3; ++d) {
+      TF_LITE_ENSURE(context, dims[d] > 0 && dims[d] <= kMaxTfLiteDim);
+      out_dims[d] = dims[d];
+    }
+    return kTfLiteOk;
+  }
+
   const TfLiteYNNPackDelegateOptions options_;
   slinky::thread_pool* thread_pool_ = nullptr;
   slinky::ref_count<slinky::thread_pool::task> init_task_;
@@ -684,7 +839,72 @@ class YNNPackDelegate : public SimpleDelegateInterface {
       return IsSdpaSupported(registration, node, context, options_) ==
              kTfLiteOk;
     } else if (IsMoe(registration, node)) {
-      return IsMoeSupported(registration, node, context) == kTfLiteOk;
+      return IsMoeSupported(registration, node, context, options_) ==
+                 kTfLiteOk &&
+             CanReadMoeExpertIndicesOnHost(node, context);
+    }
+    return false;
+  }
+
+  // `SetupMoeDispatch` reads `expert_indices` on the host before invoking the
+  // YNNPACK runtime. Verify that `expert_indices` (after tracing backwards
+  // through any delegated `RESHAPE` / `EXPAND_DIMS` views) is either constant,
+  // a subgraph input, or produced by an op not delegated to YNNPACK so TFLite
+  // allocates and populates its buffer before this partition's `Eval()`.
+  bool CanReadMoeExpertIndicesOnHost(const TfLiteNode* moe_node,
+                                     TfLiteContext* context) const {
+    if (moe_node == nullptr || moe_node->inputs == nullptr ||
+        moe_node->inputs->size <= 2) {
+      return false;
+    }
+    int cur_idx = moe_node->inputs->data[2];
+    if (cur_idx < 0 || cur_idx >= context->tensors_size) {
+      return false;
+    }
+    const auto* subgraph =
+        reinterpret_cast<const tflite::Subgraph*>(context->impl_);
+    if (subgraph == nullptr) {
+      return true;
+    }
+    const std::vector<int>& plan = subgraph->execution_plan();
+    for (size_t hop = 0; hop <= plan.size(); ++hop) {
+      if (tflite::IsConstantTensor(&context->tensors[cur_idx])) {
+        return true;
+      }
+      const TfLiteNode* prod_node = nullptr;
+      const TfLiteRegistration* prod_reg = nullptr;
+      for (int node_index : plan) {
+        const auto* nr = subgraph->node_and_registration(node_index);
+        if (nr == nullptr || nr->first.outputs == nullptr) continue;
+        for (int o = 0; o < nr->first.outputs->size; ++o) {
+          if (nr->first.outputs->data[o] == cur_idx) {
+            prod_node = &nr->first;
+            prod_reg = &nr->second;
+            break;
+          }
+        }
+        if (prod_node != nullptr) break;
+      }
+      if (prod_node == nullptr || prod_reg == nullptr) {
+        return true;
+      }
+      if (!IsNodeSupportedByDelegate(prod_reg, prod_node, context)) {
+        return true;
+      }
+      if ((prod_reg->builtin_code == kTfLiteBuiltinReshape ||
+           prod_reg->builtin_code == kTfLiteBuiltinExpandDims) &&
+          prod_node->inputs != nullptr && prod_node->inputs->size >= 1) {
+        const int next_idx = prod_node->inputs->data[0];
+        if (next_idx < 0 || next_idx >= context->tensors_size ||
+            context->tensors[next_idx].type != kTfLiteInt32 ||
+            tflite::NumElements(&context->tensors[next_idx]) !=
+                tflite::NumElements(&context->tensors[cur_idx])) {
+          return false;
+        }
+        cur_idx = next_idx;
+        continue;
+      }
+      return false;
     }
     return false;
   }
@@ -780,7 +1000,6 @@ TfLiteYNNPackDelegateOptions TfLiteYNNPackDelegateOptionsDefault() {
   options.consistent_arithmetic = false;
   options.no_excess_precision = false;
   options.enable_blockwise_quantization = false;
-  options.dispatch_moe_on_host = false;
   options.sdpa_dot_type = kTfLiteNoType;
   return options;
 }

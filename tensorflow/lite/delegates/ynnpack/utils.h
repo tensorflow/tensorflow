@@ -138,6 +138,18 @@ TfLiteStatus DefineQuantizationParams(TfLiteContext* context,
                                       const TfLiteTensor& tensor,
                                       uint32_t* scale_id, uint32_t* zp_id);
 
+// Validates `scale_idx` and resolves optional `zp_idx` (`BlockwiseQuantization`
+// or `MultiAxisQuantization`) to `-1` when absent or to a validated constant
+// integer tensor index matching `scale_tensor`'s shape. FlatBuffers leaves
+// omitted `int` fields at `0` rather than `-1`, so `zp_idx == 0` is treated as
+// absent unless `tensors[0]` is a valid constant integer zero-point tensor
+// distinct from `quantized_tensor` and `scale_idx` with the same shape as
+// `scale_tensor`.
+TfLiteStatus ResolveZeroPointTensorIndex(TfLiteContext* context,
+                                         const TfLiteTensor& quantized_tensor,
+                                         int scale_idx, int zp_idx,
+                                         int* resolved_zp_idx);
+
 TfLiteStatus ApplyActivation(TfLiteContext* context, ynn_subgraph_t subgraph,
                              TfLiteFusedActivation activation,
                              uint32_t input_id, uint32_t& output_id,

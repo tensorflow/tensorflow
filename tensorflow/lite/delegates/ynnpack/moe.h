@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_YNNPACK_MOE_H_
 #define TENSORFLOW_LITE_DELEGATES_YNNPACK_MOE_H_
 
+#include <cstddef>
 #include <cstdint>
-#include <memory>
 #include <vector>
 
 #include "ynnpack/include/ynnpack.h"  // from @XNNPACK
@@ -34,86 +34,67 @@ bool IsMoe(const TfLiteRegistration* registration, const TfLiteNode* node);
 
 // Validates whether the MoE node is supported by the delegate.
 TfLiteStatus IsMoeSupported(const TfLiteRegistration* registration,
-                            const TfLiteNode* node, TfLiteContext* context);
+                            const TfLiteNode* node, TfLiteContext* context,
+                            const TfLiteYNNPackDelegateOptions& options);
 
-// The host-side bucketing of the tokens of an MoE node by expert, which lets
-// each expert compute one contiguous run of the tokens routed to it.
-//
-// The buckets are computed on every invocation from the expert indices, so
-// this is only possible when the expert indices are available on the host
-// when the runtime is invoked, i.e. when they are an input of the partition.
-// The bucketed tokens are passed to the runtime in two external inputs:
-//  - `slot_token` [E, C] int32: the token each slot of each expert computes,
-//  - `token_slot` [B, N, K] int32: the slot, in [0, E * C), that computes
-//    each (token, selected expert) pair,
-// where C, the capacity, is the largest number of (token, selected expert)
-// pairs routed to one expert.
+// Host-side routing buffers for an MoE node that partitions `(token, expert)`
+// selections into `E` contiguous expert groups for `ynn_define_ragged_dot`:
+//  - `slot_token` (`[R, 1]` int32): token index `t in [0, T)` for each slot.
+//  - `slot_expert` (`[R, 1]` int32): expert index `e in [0, E)` for each slot.
+//  - `token_slot` (`[T, K, 1]` int32): slot index in `[0, R)` for each
+//    `(t, k)`.
 struct MoeDispatch {
-  // The expert indices the buckets are computed from.
   int expert_indices_tensor_index = -1;
+  // External partition input (or constant) backing
+  // `expert_indices_tensor_index` after tracing through partition-internal
+  // shape-only ops (`RESHAPE`, `EXPAND_DIMS`). TFLite does not allocate buffers
+  // for delegate-internal tensors, so `SetupMoeDispatch` reads the `int32`
+  // indices from this tensor.
+  int expert_indices_data_tensor_index = -1;
+  // Indices into `nodes_info_` of the partition-internal `RESHAPE` /
+  // `EXPAND_DIMS` ops in forward order from `expert_indices_data_tensor_index`
+  // to `expert_indices_tensor_index`. Replayed against
+  // `expert_indices_data_tensor_index` so `Prepare` and
+  // `BuildSubgraphAndRuntime` resolve the live `[B, N, K]` shape without
+  // reading unresized internal `TfLiteTensor` dims.
+  std::vector<size_t> expert_indices_view_nodes;
+  int external_tokens_tensor_index = -1;
+  int external_routing_weights_tensor_index = -1;
+  int batch_size = 0;
+  int top_k = 0;
+  // Non-zero when the op fixes `top_k` via attributes (e.g. `CUSTOM` `"moe"`).
+  int fixed_top_k = 0;
   int num_experts = 0;
 
-  // The two external inputs, see above.
   uint32_t slot_token_id = YNN_INVALID_VALUE_ID;
+  uint32_t slot_expert_id = YNN_INVALID_VALUE_ID;
   uint32_t token_slot_id = YNN_INVALID_VALUE_ID;
 
-  // The capacity the external values are currently shaped for.
-  size_t capacity = 1;
-  // The data of the two external inputs.
   std::vector<int32_t> slot_token;
+  std::vector<int32_t> slot_expert;
+  std::vector<int32_t> group_offsets;
   std::vector<int32_t> token_slot;
-  // Per-expert counts, scratch for `SetupMoeDispatch`; a member so it is
-  // not reallocated on every invocation.
-  std::vector<int32_t> count;
 };
 
-// Returns true if the tokens of the MoE `node` should be bucketed by expert
-// on the host (see `MoeDispatch`) for the current shape of its inputs. This
-// requires `options.dispatch_moe_on_host` to be enabled and the expert indices
-// to be an input of the partition, `partition_inputs`. Either choice computes
-// the same result.
-bool ShouldDispatchMoeOnHost(TfLiteContext* context, const NodeInfo& node,
-                             const std::vector<int>& partition_inputs,
-                             const TfLiteYNNPackDelegateOptions& options);
+// Maximum number of external values `DefineMoeNode` defines in `dispatch`.
+constexpr int kNumMoeDispatchExternalValues = 3;
 
-// The number of external values `DefineMoeNode` defines with a `dispatch`.
-constexpr int kNumMoeDispatchExternalValues = 2;
-
-// Defines the vectorized MoE operation in the YNNPACK subgraph.
-//
-// If `dispatch` is not null, the node consumes the tokens bucketed by expert:
-// this defines the external values of `dispatch` with the next
-// `kNumMoeDispatchExternalValues` ids from `next_external_id`, and fills in
-// its other fields; the runtime then needs `SetMoeDispatchShapes` when
-// prepared, and `SetupMoeDispatch` and `SetMoeDispatchData` before every
-// invocation. Otherwise, the node gathers the selected experts' weights for
-// each token.
+// Defines the MoE operation in the YNNPACK subgraph.
 TfLiteStatus DefineMoeNode(TfLiteContext* context, ynn_subgraph_t subgraph,
                            TensorToValueIdMap& tensor_to_value_id,
-                           uint32_t& next_external_id, MoeDispatch* dispatch,
+                           uint32_t& next_external_id, MoeDispatch& dispatch,
                            const NodeInfo& node);
 
-// Sets the shapes of the external values of `dispatch` in `runtime`, for the
-// current shape of the expert indices and capacity. The runtime has to be
-// reshaped afterwards.
+// Sets the external value shapes of `dispatch` in `runtime` for the resolved
+// `[B, N, K]` `expert_indices_dims`, updating `dispatch.top_k`.
 TfLiteStatus SetMoeDispatchShapes(TfLiteContext* context, ynn_runtime_t runtime,
-                                  const MoeDispatch& dispatch);
+                                  MoeDispatch& dispatch,
+                                  const size_t (&expert_indices_dims)[3]);
 
-// Buckets the tokens by expert for the current expert indices. If the
-// capacity changes, this sets the new shapes of the external values of
-// `dispatch` in `runtime` and sets `*reshape_required`; the runtime then has
-// to be reshaped before it is invoked. Fails if an expert index is out of
-// range. A caller that fails between this call and the reshape leaves
-// `dispatch` consistent: `capacity`, the external shapes and the two
-// vectors are set together, so the next invocation computes with matching
-// values; only the reshape's checks of that capacity are skipped.
+// Partitions the `(token, expert)` selections for the current expert indices
+// and binds `dispatch`'s buffers in `runtime`.
 TfLiteStatus SetupMoeDispatch(TfLiteContext* context, ynn_runtime_t runtime,
-                              MoeDispatch& dispatch, bool* reshape_required);
-
-// Sets the data of the external values of `dispatch` in `runtime`. This has
-// to be called after `SetupMoeDispatch`, and after the runtime is reshaped.
-TfLiteStatus SetMoeDispatchData(TfLiteContext* context, ynn_runtime_t runtime,
-                                MoeDispatch& dispatch);
+                              MoeDispatch& dispatch);
 
 }  // namespace ynnpack
 }  // namespace tflite
