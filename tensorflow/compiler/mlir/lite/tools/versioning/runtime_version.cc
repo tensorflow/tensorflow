@@ -500,7 +500,8 @@ std::string FindMinimumRuntimeVersionForOp(tflite::BuiltinOperator op_code,
               {{BuiltinOperator_STABLEHLO_COMPOSITE, 1}, "2.17.0"},
               {{BuiltinOperator_STABLEHLO_AND, 1}, "2.17.0"},
               {{BuiltinOperator_STABLEHLO_SHIFT_LEFT, 1}, "2.17.0"},
-              {{BuiltinOperator_STABLEHLO_CBRT, 1}, "2.17.0"},
+              // STABLEHLO_CBRT has no runtime kernel yet, so no release
+              // runs it.
               {{BuiltinOperator_STABLEHLO_CASE, 1}, "2.17.0"},
           });
 
