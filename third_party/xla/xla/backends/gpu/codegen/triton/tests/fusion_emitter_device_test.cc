@@ -2790,6 +2790,41 @@ ENTRY entry_computation {
                             ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
+TEST_F(TritonEmitterTest,
+       FoldedTransposeWithNonDefaultLayoutEmitsVectorizedLoads) {
+  constexpr absl::string_view kHloText = R"(
+HloModule input_transpose_fusion_module
+
+fused_transpose (param_0: bf16[1,2,128,128,2]) -> bf16[1,2,2,128,128] {
+  param_0 = bf16[1,2,128,128,2]{4,3,2,1,0} parameter(0)
+  ROOT transpose.0 = bf16[1,2,2,128,128]{4,3,2,1,0} transpose(param_0), dimensions={0,1,4,3,2}
+}
+
+ENTRY main {
+  p0 = bf16[1,2,128,128,2]{4,3,2,1,0} parameter(0)
+  ROOT input_transpose_fusion = bf16[1,2,2,128,128]{4,3,2,1,0} fusion(p0),
+    kind=kCustom, calls=fused_transpose,
+    backend_config={"fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{
+        "num_warps":"8",
+        "output_tiles":[{"sizes":["1","2","2","64","64"]}],
+        "num_ctas":1,
+        "num_stages":1,
+        "is_tma_allowed":false}}}
+})";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> verified_module,
+                       ParseAndReturnVerifiedModule(kHloText));
+  CompileAndOptionallyVerifyPtx(std::move(verified_module),
+                                R"(
+CHECK-NOT: ld.global{{(\.nc)?(\.v2)?}}.b{{(16|32)}}
+CHECK:     ld.global{{(\.nc)?}}.v4.b32
+CHECK-NOT: ld.global{{(\.nc)?(\.v2)?}}.b{{(16|32)}}
+)",
+                                /*run_optimization_passes=*/false);
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      kHloText, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
+}
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
