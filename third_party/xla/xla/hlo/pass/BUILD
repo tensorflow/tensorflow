@@ -76,6 +76,31 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "hlo_pass_context",
+    hdrs = ["hlo_pass_context.h"],
+    deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@tsl//tsl/platform:abi",
+    ],
+)
+
+xla_cc_test(
+    name = "hlo_pass_context_test",
+    srcs = ["hlo_pass_context_test.cc"],
+    deps = [
+        ":hlo_pass_context",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "hlo_pass_filter",
     srcs = ["hlo_pass_filter.cc"],
     hdrs = ["hlo_pass_filter.h"],
