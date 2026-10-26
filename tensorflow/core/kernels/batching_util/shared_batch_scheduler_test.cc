@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/batching_util/shared_batch_scheduler.h"
 
+#include <atomic>
 #include <climits>
 #include <cstddef>
 #include <cstdint>
@@ -5128,6 +5129,208 @@ TEST(SharedBatchSchedulerPriorityPolicyTest, WarmupQueueCapacityTest) {
 
   // Allow the first task to complete.
   t1_continue.Notify();
+}
+
+TEST_P(SharedBatchSchedulerPriorityPolicyTest,
+       MaxInFlightBatchesCapsConcurrentBatchesPerQueue) {
+  for (const bool rank_queues : {false, true}) {
+    for (const bool enable_priority_aware_batch_scheduler : {false, true}) {
+      TF_ASSERT_OK_AND_ASSIGN(
+          std::shared_ptr<Scheduler> scheduler,
+          CreateSharedBatchScheduler(/*num_batch_threads=*/4, Env::Default(),
+                                     rank_queues));
+
+      const size_t kBatchSize = 10;
+      QueueOptions queue_1_options = CreateQueueOptions(
+          /*max_execution_batch_size=*/kBatchSize,
+          /*input_batch_size_limit=*/
+          enable_input_batch_split() ? kBatchSize * 10 : kBatchSize,
+          /*batch_timeout_micros=*/10 * 1000 * 1000,
+          /*max_enqueued_batches=*/10);
+      queue_1_options.max_in_flight_batches = 2;
+      queue_1_options.enable_priority_aware_batch_scheduler =
+          enable_priority_aware_batch_scheduler;
+      queue_1_options.priority_aware_scheduler_options.max_queue_depth = 100;
+
+      std::atomic<int> q1_started{0};
+      std::atomic<int> q1_in_flight{0};
+      std::atomic<int> q1_max_concurrent{0};
+      absl::Notification q1_two_batches_in_flight;
+      absl::Notification q1_batch_3_started;
+      absl::Notification q1_unblock_batch_1;
+      absl::Notification q1_unblock_remaining;
+
+      auto queue_1_callback = [&](std::unique_ptr<Batch<FakeTask>> batch) {
+        EXPECT_TRUE(batch->IsClosed());
+        EXPECT_EQ(batch->size(), kBatchSize);
+        const int batch_num = q1_started.fetch_add(1) + 1;
+        const int in_flight = q1_in_flight.fetch_add(1) + 1;
+        int prev_max = q1_max_concurrent.load();
+        while (in_flight > prev_max &&
+               !q1_max_concurrent.compare_exchange_weak(prev_max, in_flight)) {
+        }
+        if (in_flight == 2 && !q1_two_batches_in_flight.HasBeenNotified()) {
+          q1_two_batches_in_flight.Notify();
+        }
+        if (batch_num == 1) {
+          q1_unblock_batch_1.WaitForNotification();
+        } else if (batch_num == 2) {
+          q1_unblock_remaining.WaitForNotification();
+        } else if (batch_num == 3) {
+          q1_batch_3_started.Notify();
+          q1_unblock_remaining.WaitForNotification();
+        }
+        q1_in_flight.fetch_sub(1);
+      };
+
+      QueueOptions queue_2_options = queue_1_options;
+      std::atomic<int> q2_started{0};
+      absl::Notification q2_two_batches_started;
+      absl::Notification q2_unblock;
+
+      auto queue_2_callback = [&](std::unique_ptr<Batch<FakeTask>> batch) {
+        EXPECT_TRUE(batch->IsClosed());
+        EXPECT_EQ(batch->size(), kBatchSize);
+        if (q2_started.fetch_add(1) + 1 == 2) {
+          q2_two_batches_started.Notify();
+        }
+        q2_unblock.WaitForNotification();
+      };
+
+      TF_ASSERT_OK_AND_ASSIGN(
+          std::unique_ptr<Queue> queue_1,
+          CreateQueue(scheduler, queue_1_options, queue_1_callback));
+      TF_ASSERT_OK_AND_ASSIGN(
+          std::unique_ptr<Queue> queue_2,
+          CreateQueue(scheduler, queue_2_options, queue_2_callback));
+
+      // Schedule 3 full batches on queue_1. Only 2 should start concurrently.
+      TF_ASSERT_OK(ScheduleTask(kBatchSize, queue_1.get()));
+      TF_ASSERT_OK(ScheduleTask(kBatchSize, queue_1.get()));
+      TF_ASSERT_OK(ScheduleTask(kBatchSize, queue_1.get()));
+
+      ASSERT_TRUE(q1_two_batches_in_flight.WaitForNotificationWithTimeout(
+          absl::Seconds(10)));
+      EXPECT_FALSE(q1_batch_3_started.WaitForNotificationWithTimeout(
+          absl::Milliseconds(50)));
+      EXPECT_EQ(q1_started.load(), 2);
+      EXPECT_EQ(q1_in_flight.load(), 2);
+
+      // While queue_1 is capped at 2 in-flight batches, queue_2 can use the
+      // remaining 2 threads on the same scheduler.
+      TF_ASSERT_OK(ScheduleTask(kBatchSize, queue_2.get()));
+      TF_ASSERT_OK(ScheduleTask(kBatchSize, queue_2.get()));
+      EXPECT_TRUE(q2_two_batches_started.WaitForNotificationWithTimeout(
+          absl::Seconds(10)));
+      EXPECT_EQ(q1_started.load(), 2);
+
+      q2_unblock.Notify();
+
+      // As soon as batch 1 of queue_1 finishes, batch 3 is immediately
+      // scheduled without waiting for batch_timeout_micros (10s).
+      q1_unblock_batch_1.Notify();
+      EXPECT_TRUE(
+          q1_batch_3_started.WaitForNotificationWithTimeout(absl::Seconds(5)));
+
+      q1_unblock_remaining.Notify();
+      queue_1 = nullptr;
+      queue_2 = nullptr;
+
+      EXPECT_EQ(q1_started.load(), 3);
+      EXPECT_LE(q1_max_concurrent.load(), 2);
+    }
+  }
+}
+
+TEST_P(SharedBatchSchedulerPriorityPolicyTest,
+       WarmupBatchesDoNotCountTowardsMaxInFlightBatches) {
+  for (const bool enable_priority_aware_batch_scheduler : {false, true}) {
+    Scheduler::Options scheduler_options;
+    scheduler_options.num_batch_threads = 2;
+    scheduler_options.num_warmup_batch_threads = 1;
+    std::shared_ptr<Scheduler> scheduler;
+    TF_ASSERT_OK(Scheduler::Create(scheduler_options, &scheduler));
+
+    const size_t kBatchSize = 10;
+    QueueOptions queue_options = CreateQueueOptions(
+        /*max_execution_batch_size=*/kBatchSize,
+        /*input_batch_size_limit=*/
+        enable_input_batch_split() ? kBatchSize * 10 : kBatchSize,
+        /*batch_timeout_micros=*/10 * 1000 * 1000,
+        /*max_enqueued_batches=*/10);
+    queue_options.max_in_flight_batches = 1;
+    queue_options.enable_priority_aware_batch_scheduler =
+        enable_priority_aware_batch_scheduler;
+    queue_options.priority_aware_scheduler_options.max_queue_depth = 100;
+
+    std::atomic<int> warmup_count{0};
+    std::atomic<int> regular_count{0};
+    absl::Notification warmup_1_started, warmup_1_continue;
+    absl::Notification warmup_2_started, warmup_2_continue;
+    absl::Notification regular_1_started, regular_1_continue;
+    absl::Notification regular_2_started, regular_2_continue;
+
+    auto callback = [&](std::unique_ptr<Batch<FakeTask>> batch) {
+      if (batch->task(0).is_warmup()) {
+        const int num = warmup_count.fetch_add(1) + 1;
+        if (num == 1) {
+          warmup_1_started.Notify();
+          warmup_1_continue.WaitForNotification();
+        } else {
+          warmup_2_started.Notify();
+          warmup_2_continue.WaitForNotification();
+        }
+      } else {
+        const int num = regular_count.fetch_add(1) + 1;
+        if (num == 1) {
+          regular_1_started.Notify();
+          regular_1_continue.WaitForNotification();
+        } else {
+          regular_2_started.Notify();
+          regular_2_continue.WaitForNotification();
+        }
+      }
+    };
+
+    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Queue> queue,
+                            CreateQueue(scheduler, queue_options, callback));
+
+    // 1. Start an in-flight warmup batch and verify it does not block a regular
+    // batch from starting despite max_in_flight_batches = 1.
+    auto warmup_task_1 = std::make_unique<FakeTask>(1);
+    warmup_task_1->set_is_warmup(true);
+    TF_ASSERT_OK(queue->Schedule(&warmup_task_1));
+    ASSERT_TRUE(
+        warmup_1_started.WaitForNotificationWithTimeout(absl::Seconds(10)));
+
+    TF_ASSERT_OK(ScheduleTask(kBatchSize, queue.get()));
+    ASSERT_TRUE(
+        regular_1_started.WaitForNotificationWithTimeout(absl::Seconds(10)));
+
+    // Enqueue a second regular batch; it must wait behind regular_1 because
+    // max_in_flight_batches = 1.
+    TF_ASSERT_OK(ScheduleTask(kBatchSize, queue.get()));
+    EXPECT_FALSE(regular_2_started.WaitForNotificationWithTimeout(
+        absl::Milliseconds(50)));
+
+    // 2. Finish warmup_1 while regular_1 is still in flight at the limit, then
+    // schedule warmup_2 and verify the in-flight regular batch does not block
+    // warmup_2 from starting.
+    warmup_1_continue.Notify();
+    auto warmup_task_2 = std::make_unique<FakeTask>(1);
+    warmup_task_2->set_is_warmup(true);
+    TF_ASSERT_OK(queue->Schedule(&warmup_task_2));
+    EXPECT_TRUE(
+        warmup_2_started.WaitForNotificationWithTimeout(absl::Seconds(10)));
+
+    // Finish regular_1 and verify regular_2 starts immediately.
+    regular_1_continue.Notify();
+    EXPECT_TRUE(
+        regular_2_started.WaitForNotificationWithTimeout(absl::Seconds(10)));
+
+    regular_2_continue.Notify();
+    warmup_2_continue.Notify();
+  }
 }
 
 }  // namespace
