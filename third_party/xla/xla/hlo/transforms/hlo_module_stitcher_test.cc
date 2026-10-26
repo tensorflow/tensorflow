@@ -25,7 +25,9 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_module_metadata.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/stack_frames.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/hlo_verifier.h"
@@ -487,6 +489,88 @@ ENTRY shared_entry {
   HloVerifier verifier(/*layout_sensitive=*/false,
                        /*allow_mixed_precision=*/false);
   EXPECT_TRUE(verifier.Run(main_module.get()).status().ok());
+}
+
+TEST_F(HloModuleStitcherTest, StitcherPreservesMetadataAndInternsStackFrames) {
+  const char* main_hlo_string = R"(
+HloModule main
+
+FileNames
+1 "main.py"
+
+FunctionNames
+1 "outer_fn"
+
+FileLocations
+1 {file_name_id=1 function_name_id=1 line=10 end_line=10 column=1 end_column=5}
+
+StackFrames
+1 {file_location_id=1 parent_frame_id=1}
+
+ENTRY main {
+  param0 = f32[100] parameter(0)
+  ROOT custom-call = f32[100] custom-call(param0),
+    custom_call_target="_xla_multi_module_call",
+    backend_config="optimized_sub_module",
+    api_version=API_VERSION_TYPED_FFI,
+    frontend_attributes={inlineable="false"},
+    metadata={op_name="outer_call" stack_frame_id=1}
+}
+)";
+
+  const char* sub_hlo_string = R"(
+HloModule optimized_sub_module
+
+FileNames
+1 "main.py"
+2 "sub.py"
+
+FunctionNames
+1 "outer_fn"
+2 "inner_fn"
+
+FileLocations
+1 {file_name_id=1 function_name_id=1 line=10 end_line=10 column=1 end_column=5}
+2 {file_name_id=2 function_name_id=2 line=20 end_line=20 column=1 end_column=5}
+
+StackFrames
+1 {file_location_id=1 parent_frame_id=1}
+2 {file_location_id=2 parent_frame_id=2}
+
+ENTRY sub_entry {
+  param0 = f32[100] parameter(0)
+  ROOT add = f32[100] add(param0, param0),
+    metadata={op_name="inner_add" stack_frame_id=2}
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto main_module,
+                       ParseAndReturnVerifiedModule(main_hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto sub_module,
+                       ParseAndReturnVerifiedModule(sub_hlo_string));
+
+  absl::flat_hash_map<std::string, HloModule*> optimized_modules;
+  optimized_modules["optimized_sub_module"] = sub_module.get();
+
+  HloModuleStitcher stitcher(optimized_modules);
+  EXPECT_THAT(stitcher.Run(main_module.get()),
+              absl_testing::IsOkAndHolds(true));
+
+  HloInstruction* root_call =
+      main_module->entry_computation()->root_instruction();
+  ASSERT_EQ(root_call->opcode(), HloOpcode::kCall);
+  EXPECT_EQ(root_call->metadata().op_name(), "outer_call");
+  EXPECT_EQ(root_call->metadata().stack_frame_id(), 1);
+
+  HloInstruction* stitched_add = root_call->to_apply()->root_instruction();
+  StackFrameId add_frame_id{stitched_add->metadata().stack_frame_id()};
+  EXPECT_EQ(add_frame_id, StackFrameId{2});
+  HloStackFrame add_frame =
+      main_module->stack_frames().GetStackFrame(add_frame_id);
+  EXPECT_EQ(add_frame.file_name, "sub.py");
+  EXPECT_EQ(add_frame.function_name, "inner_fn");
+  EXPECT_EQ(add_frame.line, 20);
+  EXPECT_EQ(add_frame.parent_frame_id, StackFrameId{1});
 }
 
 }  // namespace
