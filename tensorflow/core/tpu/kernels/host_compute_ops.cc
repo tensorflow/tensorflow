@@ -163,6 +163,7 @@ class RecvAtHostOp : public AsyncOpKernel {
       Rendezvous::Args args;
       args.device_context = ctx->op_device_context();
       args.alloc_attrs = ctx->output_alloc_attr(i);
+      args.cancellation_manager = ctx->cancellation_manager();
 
       const std::string& key = rendezvous_key[i];
       VLOG(2) << "Recv " << key;

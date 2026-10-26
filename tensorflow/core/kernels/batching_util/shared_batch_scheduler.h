@@ -561,9 +561,12 @@ class PriorityTaskQueue {
                                    max_execution_batch_size_, &output_tasks);
 
         if (!status.ok()) {
+          if constexpr (std::is_base_of_v<BatchTask, TaskType>) {
+            if (highest_priority_task_ptr != nullptr) {
+              highest_priority_task_ptr->FinishTask(status);
+            }
+          }
           LOG(ERROR) << "Failed to split task: " << status;
-          highest_priority_entry.task = std::move(highest_priority_task_ptr);
-          AddEntryInternal(std::move(highest_priority_entry));
           break;
         }
 
@@ -1601,6 +1604,11 @@ void Queue<TaskType>::PadOpenBatchWithLowPriorityTasks() {
     } else {
       absl::Status status = SplitInputBatchIntoSubtasks(&task, &output_tasks);
       if (!status.ok()) {
+        if constexpr (std::is_base_of_v<BatchTask, TaskType>) {
+          if (task != nullptr) {
+            task->FinishTask(status);
+          }
+        }
         LOG(ERROR) << "Failed to split low priority task: " << status;
         continue;
       }
