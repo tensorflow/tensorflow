@@ -679,12 +679,12 @@ TEST_F(FunctionalHloRunnerTest, AutoLayoutAssignsNonDefaultLayout) {
   }
   FunctionalHloRunner::PreprocessingOptions preproc_options;
   preproc_options.use_layouts_from_hlo_module = true;
-  CompileAndFilecheck(GetHloPath("auto_layout.hlo"),
-                      // Makes LHS contracting dimension minor.
-                      "// CHECK: entry_computation_layout={(bf16[4096,64,8]{0",
-                      preproc_options,
-                      FunctionalHloRunner::HloPassesMode::kStandardCompile,
-                      /*num_partitions=*/1);
+  CompileAndFilecheck(
+      GetHloPath("auto_layout.hlo"),
+      // Makes batch dimension major.
+      "// CHECK: entry_computation_layout={(bf16[4096,64,8]{1,0,2}",
+      preproc_options, FunctionalHloRunner::HloPassesMode::kStandardCompile,
+      /*num_partitions=*/1);
 }
 
 TEST_F(FunctionalHloRunnerTest, FixedLayoutAssignsNonDefaultLayout) {
@@ -693,12 +693,12 @@ TEST_F(FunctionalHloRunnerTest, FixedLayoutAssignsNonDefaultLayout) {
   }
   FunctionalHloRunner::PreprocessingOptions preproc_options;
   preproc_options.force_auto_layout = true;
-  CompileAndFilecheck(GetHloPath("fixed_layout.hlo"),
-                      // Makes LHS contracting dimension minor.
-                      "// CHECK: entry_computation_layout={(bf16[4096,64,8]{0",
-                      preproc_options,
-                      FunctionalHloRunner::HloPassesMode::kStandardCompile,
-                      /*num_partitions=*/1);
+  CompileAndFilecheck(
+      GetHloPath("fixed_layout.hlo"),
+      // Makes batch dimension major.
+      "// CHECK: entry_computation_layout={(bf16[4096,64,8]{1,0,2}",
+      preproc_options, FunctionalHloRunner::HloPassesMode::kStandardCompile,
+      /*num_partitions=*/1);
 }
 
 TEST_F(FunctionalHloRunnerTest, CanCompileWithoutHavingEnoughGpus) {

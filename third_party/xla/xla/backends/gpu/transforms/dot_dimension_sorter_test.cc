@@ -23,26 +23,15 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/platform/statusor.h"
-#include "xla/xla.pb.h"
 
 namespace xla::gpu {
 namespace {
 
-class WithoutDotDimensionSorterTest : public HloTestBase {
- public:
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
-    // The pass is disabled here to preserve suboptimal dimension order in
-    // 1) UnsortedDimsCreateTransposes to reveal the transposes.
-    // 2) DimOrderCanBeChanged for the comparison of ordered vs unordered.
-    // The pass does not touch SortedDimsDoNotCreateTransposes anyway because
-    // the dimensions are already ordered there.
-    debug_options.add_xla_disable_hlo_passes("dot_dimension_sorter");
-    return debug_options;
-  }
-};
+// DotDimensionSorter is not in the GPU pipeline; DotDimensionNormalizer orders
+// the contracting dimensions. These tests check the whole pipeline.
+using DotDimensionOrderTest = HloTestBase;
 
-TEST_F(WithoutDotDimensionSorterTest, UnsortedDimsCreateTransposes) {
+TEST_F(DotDimensionOrderTest, UnsortedDimsDoNotCreateTransposes) {
   const char* hlo_text = R"(
 HloModule m
 
@@ -55,11 +44,11 @@ ENTRY e {
 )";
 
   MatchOptimizedHlo(hlo_text, R"(
-; CHECK: transpose
+; CHECK-NOT: transpose
 )");
 }
 
-TEST_F(WithoutDotDimensionSorterTest, SortedDimsDoNotCreateTransposes) {
+TEST_F(DotDimensionOrderTest, SortedDimsDoNotCreateTransposes) {
   const char* hlo_text = R"(
 HloModule m
 
@@ -76,7 +65,7 @@ ENTRY e {
 )");
 }
 
-TEST_F(WithoutDotDimensionSorterTest, DimOrderCanBeChanged) {
+TEST_F(DotDimensionOrderTest, DimOrderCanBeChanged) {
   const char* hlo_text_ref = R"(
 HloModule m
 
