@@ -65,7 +65,8 @@ absl::StatusOr<std::string> BackendConfigToRawString(
 }
 
 BackendConfigWrapper::BackendConfigWrapper(std::string raw_string)
-    : raw_string_(RemoveWaitOnOperationQueues(std::move(raw_string))) {}
+    : raw_string_(RemoveWaitOnOperationQueues(std::move(raw_string))),
+      empty_(raw_string_.empty()) {}
 
 const std::string& BackendConfigWrapper::GetRawStringWithoutMutex() const {
   if (proto_ && raw_string_.empty()) {
@@ -125,16 +126,25 @@ BackendConfigWrapper& BackendConfigWrapper::operator=(
     absl::MutexLock other_lock{other.mutex_};
     temp_proto = std::move(other.proto_);
     temp_string = std::move(other.raw_string_);
+    other.raw_string_.clear();
+    other.empty_ = true;
   }
 
   absl::MutexLock this_lock{mutex_};
 
   proto_ = std::move(temp_proto);
   raw_string_ = std::move(temp_string);
+  empty_ = proto_ == nullptr && raw_string_.empty();
   return *this;
 }
 
 bool BackendConfigWrapper::operator==(const BackendConfigWrapper& other) const {
+  if (this == &other) {
+    return true;
+  }
+  if (empty() && other.empty()) {
+    return true;
+  }
   const std::string* other_raw_string = nullptr;
   {
     // Make sure to drop the lock on this mutex before calling GetRawString()
