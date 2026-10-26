@@ -2585,21 +2585,18 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
                     strides=[2, 1, 1, 1],
                     padding="SAME"))
 
-        # AvgPool accepts zero-sized outputs; MaxPool keeps its existing check.
-        if pool_func == nn_ops.avg_pool:
-          continue
-        # Filter too large.
+        # Filter too large (with stride=1, ksize=22 gives output size -1).
         with self.assertRaisesRegex(ValueError, "Negative dimension size"):
           sess.run(
               pool_func(
                   array_ops.placeholder(dtypes.float32, shape=[32, 20, 20, 3]),
-                  ksize=[1, 20, 21, 1],
+                  ksize=[1, 20, 22, 1],
                   strides=[1, 1, 1, 1],
                   padding="VALID"))
         with self.assertRaisesRegex(ValueError, "Negative dimension size"):
           pool_func(
               array_ops.placeholder(dtypes.float32, shape=[32, 20, 20, 3]),
-              ksize=[1, 21, 20, 1],
+              ksize=[1, 22, 20, 1],
               strides=[1, 1, 1, 1],
               padding="VALID")
 
