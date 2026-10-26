@@ -6769,6 +6769,7 @@ xla_cc_test(
         ":computation_layout",
         ":cpu_plugin",
         ":hlo_cse",
+        ":hlo_module_config",
         ":hlo_proto_cc",
         ":hlo_verifier",
         ":xla_transform",

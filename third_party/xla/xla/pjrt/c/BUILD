@@ -388,6 +388,7 @@ cc_library(
         ":pjrt_c_api_status_utils",
         ":pjrt_c_api_xla_transform_extension_hdrs",
         "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",
         "//xla/service:xla_transform",
         "//xla/tsl/lib/strings:proto_serialization",
