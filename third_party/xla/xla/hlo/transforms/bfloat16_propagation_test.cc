@@ -4371,4 +4371,340 @@ ENTRY main {
   }
 }
 
+TEST_F(BFloat16PropagationTest,
+       DoNotPropagateThroughReduceWithTypeChangingConvert) {
+  constexpr absl::string_view kHloReduceIntConvert = R"hlo(
+HloModule reduce_int_convert
+
+max_trunc_s32 {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  m = f32[] maximum(lhs, rhs)
+  trunc = s32[] convert(m)
+  ROOT out = f32[] convert(trunc)
+}
+
+ENTRY main {
+  p0 = f32[8,128]{1,0} parameter(0)
+  p1 = f32[8,128]{1,0} parameter(1)
+  add = f32[8,128]{1,0} add(p0, p1)
+  zero = f32[] constant(0)
+  red = f32[128]{0} reduce(add, zero), dimensions={0}, to_apply=max_trunc_s32
+  ROOT conv = bf16[128]{0} convert(red)
+}
+)hlo";
+
+  constexpr absl::string_view kHloReduceWindowF16Convert = R"hlo(
+HloModule reduce_window_f16_convert
+
+max_round_f16 {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  m = f32[] maximum(lhs, rhs)
+  narrow = f16[] convert(m)
+  ROOT out = f32[] convert(narrow)
+}
+
+ENTRY main {
+  p0 = f32[8,128]{1,0} parameter(0)
+  p1 = f32[8,128]{1,0} parameter(1)
+  add = f32[8,128]{1,0} add(p0, p1)
+  zero = f32[] constant(0)
+  rw = f32[4,128]{1,0} reduce-window(add, zero), window={size=2x1 stride=2x1}, to_apply=max_round_f16
+  ROOT conv = bf16[4,128]{1,0} convert(rw)
+}
+)hlo";
+
+  for (absl::string_view hlo :
+       {kHloReduceIntConvert, kHloReduceWindowF16Convert}) {
+    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                            ParseAndReturnVerifiedModule(hlo));
+    SCOPED_TRACE(module->name());
+    PropagatePrecision(module.get());
+    HloInstruction* add = FindInstruction(module.get(), "add");
+    ASSERT_NE(add, nullptr);
+    EXPECT_EQ(add->shape().element_type(), F32);
+  }
+}
+
+TEST_F(BFloat16PropagationTest,
+       PropagateThroughReduceWithSameTypeNonFloatConvert) {
+  constexpr absl::string_view kHloS32Reduce = R"hlo(
+HloModule reduce_same_type_s32_convert
+
+max_s32_with_same_type_converts {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  lhs_conv = s32[] convert(lhs)
+  rhs_conv = s32[] convert(rhs)
+  ROOT out = s32[] maximum(lhs_conv, rhs_conv)
+}
+
+ENTRY main {
+  p0 = s32[8,128]{1,0} parameter(0)
+  zero_s32 = s32[] constant(0)
+  ROOT red = s32[128]{0} reduce(p0, zero_s32),
+      dimensions={0}, to_apply=max_s32_with_same_type_converts
+}
+)hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> s32_module,
+                          ParseAndReturnVerifiedModule(kHloS32Reduce));
+  TestBFloat16Support bfloat16_support;
+  HloInstruction* lhs_conv = FindInstruction(s32_module.get(), "lhs_conv");
+  HloInstruction* s32_red = FindInstruction(s32_module.get(), "red");
+  ASSERT_NE(lhs_conv, nullptr);
+  ASSERT_NE(s32_red, nullptr);
+  EXPECT_TRUE(bfloat16_support.EffectiveOperandPrecisionIsOutputPrecision(
+      *lhs_conv, 0));
+  EXPECT_TRUE(
+      bfloat16_support.EffectiveOperandPrecisionIsOutputPrecision(*s32_red, 0));
+  EXPECT_TRUE(
+      bfloat16_support.EffectiveOperandPrecisionIsOutputPrecision(*s32_red, 1));
+
+  constexpr absl::string_view kHloF32Reduce = R"hlo(
+HloModule reduce_same_type_f32_convert
+
+max_f32_with_same_type_converts {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  lhs_conv = f32[] convert(lhs)
+  rhs_conv = f32[] convert(rhs)
+  ROOT out = f32[] maximum(lhs_conv, rhs_conv)
+}
+
+ENTRY main {
+  p0 = f32[8,128]{1,0} parameter(0)
+  p1 = f32[8,128]{1,0} parameter(1)
+  add = f32[8,128]{1,0} add(p0, p1)
+  zero_f32 = f32[] constant(0)
+  red = f32[128]{0} reduce(add, zero_f32),
+      dimensions={0}, to_apply=max_f32_with_same_type_converts
+  ROOT conv = bf16[128]{0} convert(red)
+}
+)hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> f32_module,
+                          ParseAndReturnVerifiedModule(kHloF32Reduce));
+  HloInstruction* f32_red = FindInstruction(f32_module.get(), "red");
+  ASSERT_NE(f32_red, nullptr);
+  EXPECT_TRUE(
+      bfloat16_support.EffectiveOperandPrecisionIsOutputPrecision(*f32_red, 0));
+  EXPECT_TRUE(
+      bfloat16_support.EffectiveOperandPrecisionIsOutputPrecision(*f32_red, 1));
+  EXPECT_TRUE(PropagatePrecision(f32_module.get()));
+  HloInstruction* add = FindInstruction(f32_module.get(), "add");
+  ASSERT_NE(add, nullptr);
+  EXPECT_EQ(add->shape().element_type(), BF16);
+}
+
+TEST_F(BFloat16PropagationTest,
+       PropagateThroughReduceWithIdempotentBF16Convert) {
+  constexpr absl::string_view kHloReduceBF16Convert = R"hlo(
+HloModule reduce_bf16_convert
+
+max_round_bf16 {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  m = f32[] maximum(lhs, rhs)
+  narrow = bf16[] convert(m)
+  ROOT out = f32[] convert(narrow)
+}
+
+ENTRY main {
+  p0 = f32[8,128]{1,0} parameter(0)
+  p1 = f32[8,128]{1,0} parameter(1)
+  add = f32[8,128]{1,0} add(p0, p1)
+  zero = f32[] constant(0)
+  red = f32[128]{0} reduce(add, zero), dimensions={0}, to_apply=max_round_bf16
+  ROOT conv = bf16[128]{0} convert(red)
+}
+)hlo";
+
+  constexpr absl::string_view kHloReduceWindowBF16Convert = R"hlo(
+HloModule reduce_window_bf16_convert
+
+max_round_bf16 {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  m = f32[] maximum(lhs, rhs)
+  narrow = bf16[] convert(m)
+  ROOT out = f32[] convert(narrow)
+}
+
+ENTRY main {
+  p0 = f32[8,128]{1,0} parameter(0)
+  p1 = f32[8,128]{1,0} parameter(1)
+  add = f32[8,128]{1,0} add(p0, p1)
+  zero = f32[] constant(0)
+  rw = f32[4,128]{1,0} reduce-window(add, zero), window={size=2x1 stride=2x1}, to_apply=max_round_bf16
+  ROOT conv = bf16[4,128]{1,0} convert(rw)
+}
+)hlo";
+
+  for (absl::string_view hlo :
+       {kHloReduceBF16Convert, kHloReduceWindowBF16Convert}) {
+    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                            ParseAndReturnVerifiedModule(hlo));
+    SCOPED_TRACE(module->name());
+    EXPECT_TRUE(PropagatePrecision(module.get()));
+    HloInstruction* add = FindInstruction(module.get(), "add");
+    ASSERT_NE(add, nullptr);
+    EXPECT_EQ(add->shape().element_type(), BF16);
+  }
+}
+
+TEST_F(BFloat16PropagationTest,
+       DoNotPropagateThroughReduceWithImplicitBoundaryNarrowing) {
+  constexpr absl::string_view kHloReduceImplicitF16 = R"hlo(
+HloModule reduce_implicit_f16
+
+max_f16 {
+  lhs = f16[] parameter(0)
+  rhs = f16[] parameter(1)
+  ROOT out = f16[] maximum(lhs, rhs)
+}
+
+ENTRY main {
+  p0 = f32[8,128]{1,0} parameter(0)
+  p1 = f32[8,128]{1,0} parameter(1)
+  add = f32[8,128]{1,0} add(p0, p1)
+  zero = f32[] constant(0)
+  red = f32[128]{0} reduce(add, zero), dimensions={0}, to_apply=max_f16
+  ROOT conv = bf16[128]{0} convert(red)
+}
+)hlo";
+
+  constexpr absl::string_view kHloReduceWindowImplicitF16 = R"hlo(
+HloModule reduce_window_implicit_f16
+
+max_f16 {
+  lhs = f16[] parameter(0)
+  rhs = f16[] parameter(1)
+  ROOT out = f16[] maximum(lhs, rhs)
+}
+
+ENTRY main {
+  p0 = f32[8,128]{1,0} parameter(0)
+  p1 = f32[8,128]{1,0} parameter(1)
+  add = f32[8,128]{1,0} add(p0, p1)
+  zero = f32[] constant(0)
+  rw = f32[4,128]{1,0} reduce-window(add, zero), window={size=2x1 stride=2x1}, to_apply=max_f16
+  ROOT conv = bf16[4,128]{1,0} convert(rw)
+}
+)hlo";
+
+  constexpr absl::string_view kHloReduceImplicitF16Output = R"hlo(
+HloModule reduce_implicit_f16_output
+
+max_f32 {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT out = f32[] maximum(lhs, rhs)
+}
+
+ENTRY main {
+  p0 = f32[8,128]{1,0} parameter(0)
+  p1 = f32[8,128]{1,0} parameter(1)
+  add = f32[8,128]{1,0} add(p0, p1)
+  zero = f32[] constant(0)
+  ROOT red = f16[128]{0} reduce(add, zero), dimensions={0}, to_apply=max_f32
+}
+)hlo";
+
+  TestBFloat16Support bfloat16_support;
+  for (absl::string_view hlo :
+       {kHloReduceImplicitF16, kHloReduceWindowImplicitF16,
+        kHloReduceImplicitF16Output}) {
+    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                            ParseAndReturnVerifiedModule(hlo));
+    SCOPED_TRACE(module->name());
+    HloInstruction* reducer = FindInstruction(module.get(), "red");
+    if (reducer == nullptr) {
+      reducer = FindInstruction(module.get(), "rw");
+    }
+    ASSERT_NE(reducer, nullptr);
+    EXPECT_FALSE(bfloat16_support.EffectiveOperandPrecisionIsOutputPrecision(
+        *reducer, 0));
+    PropagatePrecision(module.get());
+    HloInstruction* add = FindInstruction(module.get(), "add");
+    ASSERT_NE(add, nullptr);
+    EXPECT_EQ(add->shape().element_type(), F32);
+  }
+}
+
+TEST_F(BFloat16PropagationTest,
+       PropagateThroughReduceWithNonConvertNonFloatInBody) {
+  constexpr absl::string_view kHloReduceWithS32Constant = R"hlo(
+HloModule reduce_with_s32_constant
+
+max_with_s32_constant {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  tag = s32[] constant(0)
+  tup = (f32[], s32[]) tuple(lhs, tag)
+  lhs_val = f32[] get-tuple-element(tup), index=0
+  ROOT out = f32[] maximum(lhs_val, rhs)
+}
+
+ENTRY main {
+  p0 = f32[8,128]{1,0} parameter(0)
+  p1 = f32[8,128]{1,0} parameter(1)
+  add = f32[8,128]{1,0} add(p0, p1)
+  zero = f32[] constant(0)
+  red = f32[128]{0} reduce(add, zero), dimensions={0}, to_apply=max_with_s32_constant
+  ROOT conv = bf16[128]{0} convert(red)
+}
+)hlo";
+
+  TestBFloat16Support bfloat16_support;
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnVerifiedModule(kHloReduceWithS32Constant));
+  HloInstruction* red = FindInstruction(module.get(), "red");
+  ASSERT_NE(red, nullptr);
+  EXPECT_TRUE(
+      bfloat16_support.EffectiveOperandPrecisionIsOutputPrecision(*red, 0));
+  EXPECT_TRUE(
+      bfloat16_support.EffectiveOperandPrecisionIsOutputPrecision(*red, 1));
+  EXPECT_TRUE(PropagatePrecision(module.get()));
+  HloInstruction* add = FindInstruction(module.get(), "add");
+  ASSERT_NE(add, nullptr);
+  EXPECT_EQ(add->shape().element_type(), BF16);
+
+  constexpr absl::string_view kHloVariadicF32S32Reduce = R"hlo(
+HloModule variadic_f32_s32_reduce
+
+max_val_min_idx {
+  lhs_val = f32[] parameter(0)
+  lhs_idx = s32[] parameter(1)
+  rhs_val = f32[] parameter(2)
+  rhs_idx = s32[] parameter(3)
+  out_val = f32[] maximum(lhs_val, rhs_val)
+  out_idx = s32[] minimum(lhs_idx, rhs_idx)
+  ROOT out = (f32[], s32[]) tuple(out_val, out_idx)
+}
+
+ENTRY main {
+  vals = f32[8,128]{1,0} parameter(0)
+  idxs = s32[8,128]{1,0} parameter(1)
+  zero_f32 = f32[] constant(0)
+  zero_s32 = s32[] constant(0)
+  ROOT red = (f32[128]{0}, s32[128]{0}) reduce(vals, idxs, zero_f32, zero_s32),
+      dimensions={0}, to_apply=max_val_min_idx
+}
+)hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> variadic_module,
+      ParseAndReturnVerifiedModule(kHloVariadicF32S32Reduce));
+  HloInstruction* variadic_red = FindInstruction(variadic_module.get(), "red");
+  ASSERT_NE(variadic_red, nullptr);
+  for (int64_t i = 0; i < variadic_red->operand_count(); ++i) {
+    EXPECT_TRUE(bfloat16_support.EffectiveOperandPrecisionIsOutputPrecision(
+        *variadic_red, i))
+        << "operand " << i;
+  }
+}
+
 }  // namespace xla
