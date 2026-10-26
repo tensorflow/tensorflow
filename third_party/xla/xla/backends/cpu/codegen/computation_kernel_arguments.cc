@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
@@ -92,7 +93,9 @@ absl::Status Visit(const HloComputation& computation, Walk& walk) {
       ABSL_RETURN_IF_ERROR(AddSlices(operand, walk.assignment, walk.arguments));
     }
     // Parameters forward the buffers of their caller.
-    if (instruction->opcode() != HloOpcode::kParameter) {
+    if (instruction->opcode() == HloOpcode::kParameter) {
+      ABSL_RETURN_IF_ERROR(AddSlices(instruction, walk.assignment, walk.arguments));
+    } else {
       ABSL_RETURN_IF_ERROR(AddSlices(instruction, walk.assignment, walk.results));
     }
     if (instruction->opcode() == HloOpcode::kConstant) {
@@ -158,12 +161,12 @@ std::optional<std::string> Fingerprint(
   absl::flat_hash_map<BufferAllocation::Index, int64_t> thread_local_id;
   for (const HloInstruction* instruction : walk.instructions) {
     absl::StrAppend(&fingerprint, "\n");
-    absl::Status describable = ShapeUtil::ForEachSubshapeWithStatus(
-        instruction->shape(),
-        [&](const Shape&, const ShapeIndex& shape_index) -> absl::Status {
-          ABSL_ASSIGN_OR_RETURN(
-              BufferAllocation::Slice slice,
-              walk.assignment.GetUniqueSlice(instruction, shape_index));
+    ShapeUtil::ForEachSubshape(
+        instruction->shape(), [&](const Shape&, const ShapeIndex& shape_index) {
+          // Visit already checked that every slice is unique.
+          BufferAllocation::Slice slice =
+              // NOLINTNEXTLINE
+              *walk.assignment.GetUniqueSlice(instruction, shape_index);
           const BufferAllocation& allocation = *slice.allocation();
           if (auto it = table_index.find(slice); it != table_index.end()) {
             absl::StrAppend(&fingerprint, " ", it->second);
@@ -173,7 +176,9 @@ std::optional<std::string> Fingerprint(
                 !walk.walked_constants.contains(allocation.index())) {
               absl::StrAppend(&fingerprint, ":C", allocation.index());
             }
-          } else if (allocation.is_thread_local()) {
+          } else {
+            // Visit adds every other slice to the table.
+            CHECK(allocation.is_thread_local());
             int64_t id =
                 thread_local_id
                     .try_emplace(allocation.index(), thread_local_id.size())
@@ -183,14 +188,8 @@ std::optional<std::string> Fingerprint(
             }
             absl::StrAppend(&fingerprint, " T", id, ":", slice.offset(), ":",
                             slice.size(), ":", allocation.size());
-          } else {
-            return absl::UnimplementedError("Buffer outside the kernel table");
           }
-          return absl::OkStatus();
         });
-    if (!describable.ok()) {
-      return std::nullopt;
-    }
   }
 
   absl::StrAppend(&fingerprint, "\noverlaps:");

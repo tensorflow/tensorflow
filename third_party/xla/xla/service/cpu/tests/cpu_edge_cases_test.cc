@@ -485,5 +485,31 @@ ENTRY main {
             absl::StatusCode::kUnimplemented);
 }
 
+TEST_F(CpuEdgeCasesTest, SmallCallWithUnusedParameter) {
+  constexpr absl::string_view kHloText = R"(
+HloModule m
+
+callee {
+  p0 = f32[4] parameter(0)
+  p1 = f32[4] parameter(1)
+  ROOT r = f32[4] negate(p0)
+}
+
+ENTRY main {
+  p0 = f32[4] parameter(0)
+  p1 = f32[4] parameter(1)
+  ROOT c = f32[4] call(p0, p1), to_apply=callee,
+      frontend_attributes={xla_cpu_small_call="true"}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  Literal p0 = LiteralUtil::CreateR1<float>({1.0f, -2.0f, 3.0f, -4.0f});
+  Literal p1 = LiteralUtil::CreateR1<float>({5.0f, 6.0f, 7.0f, 8.0f});
+  ASSERT_OK_AND_ASSIGN(
+      const Literal result,
+      Execute(std::move(module), {&p0, &p1}, /*run_hlo_passes=*/false));
+  EXPECT_EQ(result, LiteralUtil::CreateR1<float>({-1.0f, 2.0f, -3.0f, 4.0f}));
+}
+
 }  // namespace
 }  // namespace xla::cpu
