@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/codegen/ir_emission_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_traversal.h"
+#include "xla/service/decision.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/shape.h"
@@ -38,6 +39,12 @@ namespace gpu {
 // Returns true if the instruction's fusion backend config kind matches the
 // given one.
 bool IsGpuFusionKind(const HloInstruction& hlo, absl::string_view kind);
+
+// Whether the concatenate emitter should emit a fusion with the given roots
+// and heroes. With several roots, all heroes have to be concatenates with the
+// same operand shapes and all roots have to share one shape.
+Decision UseConcatenateFusion(absl::Span<const HloInstructionAdaptor> roots,
+                              absl::Span<const HloInstructionAdaptor> heroes);
 
 class HloFusionAnalysis {
  public:

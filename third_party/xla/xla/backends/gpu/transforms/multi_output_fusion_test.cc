@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/gpu_fusible.h"
+#include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
@@ -119,6 +120,193 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionSiblingReduceAndReduceFusion) {
   ASSERT_TRUE(fusion->IsMultiOutputFusion());
   EXPECT_THAT(fusion->fused_expression_root(),
               GmockMatch(m::Tuple(m::Reduce(), m::Reduce())));
+}
+
+TEST_F(MultiOutputFusionTest, SiblingFusionOfConcatenateFusions) {
+  ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    fused_concatenate_1 {
+      p0.1 = f32[64,64]{1,0} parameter(0)
+      p1.1 = f32[64,64]{1,0} parameter(1)
+      s.1 = f32[64,64]{1,0} add(p0.1, p1.1)
+      d.1 = f32[64,64]{1,0} subtract(p0.1, p1.1)
+      top.1 = f32[32,64]{1,0} slice(s.1), slice={[0:32],[0:64]}
+      bot.1 = f32[32,64]{1,0} slice(d.1), slice={[32:64],[0:64]}
+      ROOT concat.1 = f32[64,64]{1,0} concatenate(top.1, bot.1), dimensions={0}
+    }
+
+    fused_concatenate_2 {
+      p0.2 = f32[64,64]{1,0} parameter(0)
+      p1.2 = f32[64,64]{1,0} parameter(1)
+      s.2 = f32[64,64]{1,0} add(p0.2, p1.2)
+      d.2 = f32[64,64]{1,0} subtract(p0.2, p1.2)
+      top.2 = f32[32,64]{1,0} slice(d.2), slice={[0:32],[0:64]}
+      bot.2 = f32[32,64]{1,0} slice(s.2), slice={[32:64],[0:64]}
+      ROOT concat.2 = f32[64,64]{1,0} concatenate(top.2, bot.2), dimensions={0}
+    }
+
+    ENTRY entry {
+      p0 = f32[64,64]{1,0} parameter(0)
+      p1 = f32[64,64]{1,0} parameter(1)
+      fusion.1 = f32[64,64]{1,0} fusion(p0, p1), kind=kInput, calls=fused_concatenate_1
+      fusion.2 = f32[64,64]{1,0} fusion(p0, p1), kind=kInput, calls=fused_concatenate_2
+      ROOT root = (f32[64,64]{1,0}, f32[64,64]{1,0}) tuple(fusion.1, fusion.2)
+    })")));
+  ASSERT_OK_AND_ASSIGN(bool changed, mof_.Run(module.get()));
+  ASSERT_TRUE(changed);
+  SCOPED_TRACE(module->ToString());
+  const HloInstruction* fusion =
+      module->entry_computation()->root_instruction()->operand(0)->operand(0);
+  ASSERT_TRUE(fusion->IsMultiOutputFusion());
+  EXPECT_THAT(fusion->fused_expression_root(),
+              GmockMatch(m::Tuple(m::Concatenate(), m::Concatenate())));
+  EXPECT_EQ(
+      HloFusionAnalysis::Create(*fusion, device_info_).emitter_fusion_kind(),
+      HloFusionAnalysis::EmitterFusionKind::kConcatenate);
+}
+
+TEST_F(MultiOutputFusionTest, NoSiblingFusionOfMismatchedConcatenates) {
+  ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    fused_concatenate_1 {
+      p0.1 = f32[64,64]{1,0} parameter(0)
+      top.1 = f32[32,64]{1,0} slice(p0.1), slice={[0:32],[0:64]}
+      bot.1 = f32[32,64]{1,0} slice(p0.1), slice={[32:64],[0:64]}
+      ROOT concat.1 = f32[64,64]{1,0} concatenate(bot.1, top.1), dimensions={0}
+    }
+
+    fused_concatenate_2 {
+      p0.2 = f32[64,64]{1,0} parameter(0)
+      top.2 = f32[16,64]{1,0} slice(p0.2), slice={[0:16],[0:64]}
+      bot.2 = f32[48,64]{1,0} slice(p0.2), slice={[16:64],[0:64]}
+      ROOT concat.2 = f32[64,64]{1,0} concatenate(bot.2, top.2), dimensions={0}
+    }
+
+    ENTRY entry {
+      p0 = f32[64,64]{1,0} parameter(0)
+      fusion.1 = f32[64,64]{1,0} fusion(p0), kind=kInput, calls=fused_concatenate_1
+      fusion.2 = f32[64,64]{1,0} fusion(p0), kind=kInput, calls=fused_concatenate_2
+      ROOT root = (f32[64,64]{1,0}, f32[64,64]{1,0}) tuple(fusion.1, fusion.2)
+    })")));
+  ASSERT_OK_AND_ASSIGN(bool changed, mof_.Run(module.get()));
+  ASSERT_FALSE(changed);
+}
+
+TEST_F(MultiOutputFusionTest,
+       NoSiblingFusionWhenOtherSideAlreadyReadsHeroNonElementwise) {
+  // fusion.2's epilogue reads its hero c0 through reverse. Siblings get one
+  // adaptor each, so the check has to look inside fusion.2's too.
+  ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    fused_concatenate {
+      p0.1 = f32[32,64]{1,0} parameter(0)
+      p1.1 = f32[32,64]{1,0} parameter(1)
+      ROOT concat.1 = f32[64,64]{1,0} concatenate(p0.1, p1.1), dimensions={0}
+    }
+
+    fused_multi_output_concatenate {
+      p0.2 = f32[32,64]{1,0} parameter(0)
+      p1.2 = f32[32,64]{1,0} parameter(1)
+      c0 = f32[64,64]{1,0} concatenate(p0.2, p1.2), dimensions={0}
+      c1 = f32[64,64]{1,0} concatenate(p1.2, p0.2), dimensions={0}
+      rev = f32[64,64]{1,0} reverse(c0), dimensions={0}
+      add = f32[64,64]{1,0} add(c1, rev)
+      ROOT t = (f32[64,64]{1,0}, f32[64,64]{1,0}) tuple(c0, add)
+    }
+
+    ENTRY entry {
+      p0 = f32[32,64]{1,0} parameter(0)
+      p1 = f32[32,64]{1,0} parameter(1)
+      fusion.1 = f32[64,64]{1,0} fusion(p0, p1), kind=kInput,
+          calls=fused_concatenate
+      fusion.2 = (f32[64,64]{1,0}, f32[64,64]{1,0}) fusion(p0, p1),
+          kind=kInput, calls=fused_multi_output_concatenate
+      fusion.2.c0 = f32[64,64]{1,0} get-tuple-element(fusion.2), index=0
+      fusion.2.add = f32[64,64]{1,0} get-tuple-element(fusion.2), index=1
+      ROOT root = (f32[64,64]{1,0}, f32[64,64]{1,0}, f32[64,64]{1,0})
+          tuple(fusion.1, fusion.2.c0, fusion.2.add)
+    })")));
+  const HloInstruction* fusion_1 =
+      module->entry_computation()->root_instruction()->operand(0);
+  const HloInstruction* fusion_2 =
+      module->entry_computation()->root_instruction()->operand(1)->operand(0);
+  EXPECT_FALSE(
+      ShapesCompatibleForMultiOutputFusion(*fusion_1, *fusion_2, device_info_));
+  ASSERT_OK_AND_ASSIGN(bool changed, mof_.Run(module.get()));
+  ASSERT_FALSE(changed);
+}
+
+TEST_F(MultiOutputFusionTest, NoProducerConsumerFusionIntoConcatenateFusion) {
+  // Reduced from alphafold3.
+  ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    fused_layer_norm {
+      x.1 = f32[150,150,128]{2,1,0} parameter(0)
+      m.1 = f32[150,150]{1,0} parameter(1)
+      g.1 = f32[128]{0} parameter(2)
+      mb = f32[150,150,128]{2,1,0} broadcast(m.1), dimensions={0,1}
+      gb = f32[150,150,128]{2,1,0} broadcast(g.1), dimensions={2}
+      s = f32[150,150,128]{2,1,0} subtract(x.1, mb)
+      y = f32[150,150,128]{2,1,0} multiply(s, gb)
+      ROOT yb = bf16[150,150,128]{2,1,0} convert(y)
+    }
+
+    fused_concatenate {
+      p.1 = bf16[150,150,128]{2,1,0} parameter(0)
+      t = bf16[128,150,128]{2,1,0} slice(p.1), slice={[0:128],[0:150],[0:128]}
+      tr = bf16[19200,128]{1,0} reshape(t)
+      u = bf16[22,150,128]{2,1,0} slice(p.1), slice={[128:150],[0:150],[0:128]}
+      ur = bf16[3300,128]{1,0} reshape(u)
+      ROOT cc = bf16[22500,128]{1,0} concatenate(tr, ur), dimensions={0}
+    }
+
+    ENTRY entry {
+      x = f32[150,150,128]{2,1,0} parameter(0)
+      m = f32[150,150]{1,0} parameter(1)
+      g = f32[128]{0} parameter(2)
+      ln = bf16[150,150,128]{2,1,0} fusion(x, m, g), kind=kLoop, calls=fused_layer_norm
+      concat = bf16[22500,128]{1,0} fusion(ln), kind=kInput, calls=fused_concatenate
+      ROOT root = (bf16[150,150,128]{2,1,0}, bf16[22500,128]{1,0}) tuple(ln, concat)
+    })")));
+  const HloInstruction* ln =
+      module->entry_computation()->root_instruction()->operand(0);
+  const HloInstruction* concat =
+      module->entry_computation()->root_instruction()->operand(1);
+  EXPECT_FALSE(
+      ShapesCompatibleForMultiOutputFusion(*concat, *ln, device_info_));
+  ASSERT_OK_AND_ASSIGN(bool changed, mof_.Run(module.get()));
+  ASSERT_FALSE(changed);
+}
+
+TEST_F(MultiOutputFusionTest, NoSiblingFusionOfConcatenateAndPlainLoopFusion) {
+  ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    fused_concatenate {
+      p0.1 = f32[64,64]{1,0} parameter(0)
+      top.1 = f32[32,64]{1,0} slice(p0.1), slice={[0:32],[0:64]}
+      bot.1 = f32[32,64]{1,0} slice(p0.1), slice={[32:64],[0:64]}
+      ROOT concat.1 = f32[64,64]{1,0} concatenate(top.1, bot.1), dimensions={0}
+    }
+
+    fused_loop {
+      p0.2 = f32[64,64]{1,0} parameter(0)
+      ROOT mul.2 = f32[64,64]{1,0} multiply(p0.2, p0.2)
+    }
+
+    ENTRY entry {
+      p0 = f32[64,64]{1,0} parameter(0)
+      fusion.1 = f32[64,64]{1,0} fusion(p0), kind=kInput, calls=fused_concatenate
+      fusion.2 = f32[64,64]{1,0} fusion(p0), kind=kLoop, calls=fused_loop
+      ROOT root = (f32[64,64]{1,0}, f32[64,64]{1,0}) tuple(fusion.1, fusion.2)
+    })")));
+  const HloInstruction* fusion_1 =
+      module->entry_computation()->root_instruction()->operand(0);
+  const HloInstruction* fusion_2 =
+      module->entry_computation()->root_instruction()->operand(1);
+  EXPECT_FALSE(
+      ShapesCompatibleForMultiOutputFusion(*fusion_1, *fusion_2, device_info_));
+  ASSERT_OK_AND_ASSIGN(bool changed, mof_.Run(module.get()));
+  ASSERT_FALSE(changed);
 }
 
 TEST_F(MultiOutputFusionTest, NoSiblingFusionOfColumnReductionAndElementwise) {

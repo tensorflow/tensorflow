@@ -3112,6 +3112,7 @@ cc_library(
         "//xla/codegen:ir_emission_utils",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
+        "//xla/service:decision",
         "//xla/stream_executor:device_description",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log",

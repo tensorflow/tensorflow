@@ -2547,6 +2547,7 @@ xla_cc_test(
         "//xla/service/gpu:alias_info",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu:gpu_fusible",
+        "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/stream_executor:device_description",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",
