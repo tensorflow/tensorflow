@@ -17,12 +17,14 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/cleanup/cleanup.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/tsl/profiler/backends/cpu/annotation_stack.h"
 #include "tsl/profiler/lib/nvtx_utils.h"
 
 namespace xla::gpu {
@@ -224,6 +226,81 @@ TEST(AnnotationTest, ModuleAnnotationsWithStackFrames) {
   EXPECT_THAT(detailed_fusion.xprof_name(), HasSubstr("source_file=model.py"));
   EXPECT_THAT(detailed_fusion.xprof_name(), HasSubstr("source_line=42"));
   EXPECT_THAT(detailed_fusion.xprof_name(), HasSubstr("shape=f32[4]"));
+}
+
+TEST(AnnotationTest, HloOpNameNvtxRangeFormatKeepsXprofNameIntact) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(R"(
+    HloModule test
+
+    ENTRY main {
+      a = f32[4] parameter(0)
+      b = f32[4] parameter(1)
+      ROOT add_op = f32[4] add(a, b),
+          metadata={op_type="add", op_name="jit(forward)/layer/add",
+                    source_file="model.py", source_line=42}
+    }
+  )"));
+
+  ModuleAnnotations basic_annotations(*module, TraceAnnotationLevel::kBasic,
+                                      NvtxRangeFormat::kHloOpName);
+  const InstructionAnnotation& basic_add =
+      basic_annotations.instructions.at("add_op");
+  EXPECT_EQ(basic_add.nvtx_name(), "add_op");
+  EXPECT_THAT(basic_add.xprof_name(), HasSubstr("Thunk:#"));
+  EXPECT_THAT(basic_add.xprof_name(), HasSubstr("hlo_op=add_op"));
+  EXPECT_THAT(basic_add.xprof_name(), HasSubstr("unique_hlo_op_id="));
+
+  ModuleAnnotations detailed_annotations(
+      *module, TraceAnnotationLevel::kDetailed, NvtxRangeFormat::kHloOpName);
+  const InstructionAnnotation& detailed_add =
+      detailed_annotations.instructions.at("add_op");
+  EXPECT_EQ(detailed_add.nvtx_name(), "add_op");
+  EXPECT_THAT(detailed_add.xprof_name(), HasSubstr("Thunk:#"));
+  EXPECT_THAT(detailed_add.xprof_name(), HasSubstr("hlo_op=add_op"));
+  EXPECT_THAT(detailed_add.xprof_name(), HasSubstr("op_type=add"));
+  EXPECT_THAT(detailed_add.xprof_name(), HasSubstr("source_file=model.py"));
+}
+
+TEST(AnnotationTest, FallbackInstructionAnnotationPushesToAnnotationStack) {
+  tsl::profiler::AnnotationStack::Enable(true);
+  absl::Cleanup disable_stack = [] {
+    tsl::profiler::AnnotationStack::Enable(false);
+  };
+
+  EXPECT_EQ(tsl::profiler::AnnotationStack::Get(), "");
+  {
+    auto scoped = GetInstructionAnnotation("command_buffer");
+    ASSERT_TRUE(scoped.has_value());
+    EXPECT_EQ(tsl::profiler::AnnotationStack::Get(),
+              "Thunk:#hlo_op=command_buffer#");
+  }
+  EXPECT_EQ(tsl::profiler::AnnotationStack::Get(), "");
+}
+
+TEST(AnnotationTest, XlaGpuNvtxDomainEnvSelectsHloOpNameFormat) {
+  setenv("XLA_GPU_NVTX_DOMAIN", "XLA", /*overwrite=*/1);
+  absl::Cleanup unset_env = [] { unsetenv("XLA_GPU_NVTX_DOMAIN"); };
+
+  EXPECT_EQ(DefaultNvtxRangeFormat(), NvtxRangeFormat::kHloOpName);
+  EXPECT_EQ(tsl::profiler::XlaProfilerDomain(),
+            tsl::profiler::DefaultProfilerDomain());
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(R"(
+    HloModule test
+
+    ENTRY main {
+      a = f32[4] parameter(0)
+      b = f32[4] parameter(1)
+      ROOT add_op = f32[4] add(a, b)
+    }
+  )"));
+
+  ModuleAnnotations annotations(*module);
+  const InstructionAnnotation& add_annotation =
+      annotations.instructions.at("add_op");
+  EXPECT_EQ(add_annotation.nvtx_name(), "add_op");
+  EXPECT_THAT(add_annotation.xprof_name(), HasSubstr("Thunk:#"));
+  EXPECT_THAT(add_annotation.xprof_name(), HasSubstr("hlo_op=add_op"));
 }
 
 }  // namespace

@@ -20,11 +20,13 @@ limitations under the License.
 
 namespace tsl::profiler {
 ProfilerDomainHandle DefaultProfilerDomain() { return {}; }
+ProfilerDomainHandle XlaProfilerDomain() { return {}; }
 void NameCurrentThread(const std::string&) {}
 void NameDevice(int, const std::string&) {}
 void NameStream(StreamHandle, const std::string&) {}
 void RangePop(ProfilerDomainHandle) {}
 void RangePush(ProfilerDomainHandle, const char*) {}
+void RangePush(ProfilerDomainHandle, StringHandle) {}
 namespace detail {
 void RangePush(ProfilerDomainHandle, StringHandle, uint64_t, const void*,
                size_t) {}

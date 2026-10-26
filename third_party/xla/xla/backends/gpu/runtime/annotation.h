@@ -42,6 +42,19 @@ enum class TraceAnnotationLevel : int32_t {
   kDetailed = 1,
 };
 
+// Selects the text format of NVTX instruction range titles.
+enum class NvtxRangeFormat : int32_t {
+  // Default: "Thunk:#name=...,hlo_op=...,unique_hlo_op_id=...#"
+  kKeyValue = 0,
+  // Compact HLO op name ("<hlo_op>"); full details are carried in the
+  // structured NVTX payload.
+  kHloOpName = 1,
+};
+
+// Returns NvtxRangeFormat::kHloOpName when XLA_GPU_NVTX_DOMAIN=XLA is set, and
+// NvtxRangeFormat::kKeyValue otherwise.
+NvtxRangeFormat DefaultNvtxRangeFormat();
+
 // Prepared information for the top level NVTX/profiler range covering an
 // HloModule
 class ModuleAnnotation {
@@ -73,7 +86,8 @@ class InstructionAnnotation {
  public:
   InstructionAnnotation(
       const ModuleAnnotation& module_annotation, const HloInstruction& inst,
-      TraceAnnotationLevel annotation_level = TraceAnnotationLevel::kBasic);
+      TraceAnnotationLevel annotation_level = TraceAnnotationLevel::kBasic,
+      NvtxRangeFormat nvtx_range_format = DefaultNvtxRangeFormat());
 
   // NVTX uses a compact registered name because detailed metadata is carried
   // separately in the structured payload.
@@ -143,10 +157,12 @@ class InstructionAnnotation {
 struct ModuleAnnotations {
   explicit ModuleAnnotations(
       absl::string_view module_name,
-      TraceAnnotationLevel annotation_level = TraceAnnotationLevel::kBasic);
+      TraceAnnotationLevel annotation_level = TraceAnnotationLevel::kBasic,
+      NvtxRangeFormat nvtx_range_format = DefaultNvtxRangeFormat());
   explicit ModuleAnnotations(
       const HloModule&,
-      TraceAnnotationLevel annotation_level = TraceAnnotationLevel::kBasic);
+      TraceAnnotationLevel annotation_level = TraceAnnotationLevel::kBasic,
+      NvtxRangeFormat nvtx_range_format = DefaultNvtxRangeFormat());
 
   ModuleAnnotation top_level;
   absl::flat_hash_map<absl::string_view, InstructionAnnotation> instructions;

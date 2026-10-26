@@ -564,9 +564,13 @@ absl::Status CommandExecutor::RecordUpdate(
       continue;
     }
 
-    std::optional<tsl::profiler::ScopedAnnotation> annotation =
-        GetInstructionAnnotation(command->profile_annotation());
-
+    // Do not push a per-command ScopedAnnotation during in-place parameter
+    // updates: unchanged-buffer commands are skipped above (leaving update-time
+    // NVTX attribution incomplete even when CUPTI tracks
+    // cuGraphExec*NodeSetParams), while full node attribution uses RecordCreate
+    // (or --cuda-graph-trace=node:nvtx-precapture for cudaProfilerStart).
+    // TracedCommand still pushes its annotation when re-tracing a child graph
+    // on a cache miss.
     Command::RecordUpdate record_action{recorded_commands[id]};
     ABSL_ASSIGN_OR_RETURN(recorded_commands[id],
                      command->Record(execute_params, record_params,

@@ -31,8 +31,12 @@ struct ProfilerDomain;
 // Opaque handle to a domain in the profiler/NVTX implementation
 using ProfilerDomainHandle = ProfilerDomain*;
 
-// Get the "TSL" domain if NVTX profiling is enabled, otherwise null
+// Get the "TSL" domain (or "XLA" when XLA_GPU_NVTX_DOMAIN=XLA is set) if NVTX
+// profiling is enabled, otherwise null
 ProfilerDomainHandle DefaultProfilerDomain();
+
+// Get the "XLA" domain if NVTX profiling is enabled, otherwise null
+ProfilerDomainHandle XlaProfilerDomain();
 
 // Assign a human-readable name to the current thread
 void NameCurrentThread(const std::string&);
@@ -58,6 +62,10 @@ void RangePush(ProfilerDomainHandle domain, const char*);
 inline void RangePush(ProfilerDomainHandle domain, const std::string& str) {
   RangePush(domain, str.c_str());
 }
+
+// Push a range using a pre-registered string handle without an attached
+// payload.
+void RangePush(ProfilerDomainHandle domain, StringHandle title);
 
 namespace detail {
 void RangePush(ProfilerDomainHandle domain, StringHandle title,
