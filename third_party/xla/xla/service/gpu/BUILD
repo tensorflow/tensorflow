@@ -405,10 +405,7 @@ cc_library(
         ":ptx_custom_kernel_emitter_rocm",
     ]) + if_sycl_is_configured([
         ":ptx_custom_kernel_emitter_sycl",
-    ]) + [
-        "//xla/hlo/ir:hlo",
-        "@com_google_absl//absl/status:statusor",
-    ],
+    ]) + ["@com_google_absl//absl/status:statusor"],
 )
 
 cc_library(
@@ -2653,7 +2650,6 @@ xla_test(
         "//xla/service:gpu_topology",
         "//xla/service:hlo_runner_interface",
         "//xla/tests:literal_test_util",
-        "//xla/tsl/platform:statusor",
         "//xla/util/split_proto:split_executable_and_options_writer",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -2662,7 +2658,6 @@ xla_test(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@riegeli//riegeli/bytes:string_writer",
-        "@tsl//tsl/platform:statusor",
     ],
 )
 
@@ -3191,7 +3186,6 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/stream_executor:device_description",
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/strings",
     ],
 )
 
