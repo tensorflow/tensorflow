@@ -1150,9 +1150,11 @@ cc_library(
     name = "large_constant_fold",
     srcs = [
         "transforms/large_constant_fold_pass.cc",
+        "transforms/resource_elementwise_fold.cc",
     ],
     hdrs = [
         "transforms/large_constant_fold_pass.h",
+        "transforms/resource_elementwise_fold.h",
     ],
     deps = [
         ":attribute_utils",
