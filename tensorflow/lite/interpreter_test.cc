@@ -20,6 +20,7 @@ limitations under the License.
 #include <stdlib.h>
 #include <string.h>
 
+#include <functional>
 #include <map>
 #include <memory>
 #include <string>
@@ -29,6 +30,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
@@ -36,6 +38,7 @@ limitations under the License.
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/delegates/utils/simple_delegate.h"
 #include "tensorflow/lite/external_cpu_backend_context.h"
+#include "tensorflow/lite/internal/signature_def.h"
 #include "tensorflow/lite/interpreter_options.h"
 #include "tensorflow/lite/interpreter_test_util.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -1312,6 +1315,370 @@ TEST_F(InterpreterTest,
                 &delegate, /*active_subgraph_indices=*/{0, 3}),
             kTfLiteOk);
   EXPECT_THAT(prepared_subgraphs, IsEmpty());
+}
+
+// Tests for signature-scoped delegation and subgraph reachability.
+class SignatureScopedDelegationTest : public InterpreterTest {
+ protected:
+  // Returns a delegate that records the index of every subgraph it is asked to
+  // prepare, without replacing any nodes.
+  static TfLiteDelegate CreateRecordingDelegate(
+      std::vector<int>* prepared_subgraphs) {
+    TfLiteDelegate delegate = TfLiteDelegateCreate();
+    delegate.data_ = prepared_subgraphs;
+    delegate.flags = kTfLiteDelegateFlagsAllowDynamicTensors;
+    delegate.Prepare = [](TfLiteContext* context,
+                          TfLiteDelegate* delegate) -> TfLiteStatus {
+      static_cast<std::vector<int>*>(delegate->data_)
+          ->push_back(
+              reinterpret_cast<Subgraph*>(context->impl_)->GetSubgraphIndex());
+      return kTfLiteOk;
+    };
+    return delegate;
+  }
+
+  // Returns a delegate that replaces every node of each prepared subgraph with
+  // a single delegate kernel.
+  static TfLiteDelegate CreateReplaceAllDelegate() {
+    TfLiteDelegate delegate = TfLiteDelegateCreate();
+    delegate.flags = kTfLiteDelegateFlagsAllowDynamicTensors;
+    delegate.Prepare = [](TfLiteContext* context,
+                          TfLiteDelegate* delegate) -> TfLiteStatus {
+      TfLiteIntArray* execution_plan = nullptr;
+      TF_LITE_ENSURE_STATUS(
+          context->GetExecutionPlan(context, &execution_plan));
+      TfLiteRegistration kernel{};
+      kernel.custom_name = "ReplaceAllDelegateKernel";
+      return context->ReplaceNodeSubsetsWithDelegateKernels(
+          context, kernel, execution_plan, delegate);
+    };
+    return delegate;
+  }
+
+  // Registers a default (lazily applied) delegate that records the subgraphs it
+  // prepares into `prepared_subgraphs`.
+  void AddRecordingLazyDelegateProvider(std::vector<int>* prepared_subgraphs) {
+    mutable_lazy_delegate_providers()->push_back(
+        [prepared_subgraphs](TfLiteContext* /*context*/) {
+          return Interpreter::TfLiteDelegatePtr(
+              new TfLiteDelegate(CreateRecordingDelegate(prepared_subgraphs)),
+              [](TfLiteDelegate* delegate) { delete delegate; });
+        });
+  }
+
+  // Adds a node for builtin `op` with a copy of `params` as its builtin data.
+  template <typename Params>
+  void AddNode(int subgraph_index, TfLiteBuiltinOperator op,
+               const Params& params) {
+    auto* builtin_data = static_cast<Params*>(malloc(sizeof(Params)));
+    *builtin_data = params;
+    TfLiteRegistration registration{};
+    registration.builtin_code = op;
+    // The subgraph takes ownership of `builtin_data`.
+    ASSERT_EQ(interpreter_->subgraph(subgraph_index)
+                  ->AddNodeWithParameters({}, {}, {}, nullptr, 0, builtin_data,
+                                          &registration),
+              kTfLiteOk);
+  }
+
+  // Adds a node that does not reference any other subgraph.
+  void AddLeafNode(int subgraph_index) {
+    TfLiteRegistration registration{};
+    registration.builtin_code = kTfLiteBuiltinAdd;
+    ASSERT_EQ(interpreter_->subgraph(subgraph_index)
+                  ->AddNodeWithParameters({}, {}, {}, nullptr, 0, nullptr,
+                                          &registration),
+              kTfLiteOk);
+  }
+
+  void AddIf(int subgraph_index, int then_index, int else_index) {
+    TfLiteIfParams params{};
+    params.then_subgraph_index = then_index;
+    params.else_subgraph_index = else_index;
+    AddNode(subgraph_index, kTfLiteBuiltinIf, params);
+  }
+
+  void AddWhile(int subgraph_index, int cond_index, int body_index) {
+    TfLiteWhileParams params{};
+    params.cond_subgraph_index = cond_index;
+    params.body_subgraph_index = body_index;
+    AddNode(subgraph_index, kTfLiteBuiltinWhile, params);
+  }
+
+  void AddCallOnce(int subgraph_index, int init_index) {
+    TfLiteCallOnceParams params{};
+    params.init_subgraph_index = init_index;
+    AddNode(subgraph_index, kTfLiteBuiltinCallOnce, params);
+  }
+
+  void SetSignatures(
+      const std::vector<std::pair<std::string, int>>& key_to_subgraph) {
+    std::vector<internal::SignatureDef> signature_defs;
+    for (const auto& [key, subgraph_index] : key_to_subgraph) {
+      internal::SignatureDef signature_def;
+      signature_def.signature_key = key;
+      signature_def.subgraph_index = subgraph_index;
+      signature_defs.push_back(std::move(signature_def));
+    }
+    SetSignatureDef(std::move(signature_defs));
+  }
+
+  std::vector<int> GetReachable(const std::vector<int>& roots) {
+    std::vector<int> reachable;
+    EXPECT_EQ(interpreter_->GetReachableSubgraphIndices(roots, &reachable),
+              kTfLiteOk);
+    return reachable;
+  }
+};
+
+TEST_F(SignatureScopedDelegationTest, ReachabilityFollowsAllCalleeOps) {
+  AddSubgraphs(11);  // Subgraphs 0..11.
+  AddIf(0, 1, 2);
+  AddWhile(1, 3, 4);
+  AddCallOnce(2, 5);
+  TfLiteStablehloCompositeParams composite{};
+  composite.subgraph_index = 6;
+  AddNode(3, kTfLiteBuiltinStablehloComposite, composite);
+  TfLiteStablehloCaseParams case_params{};
+  case_params.num_branches = 2;
+  case_params.branch_subgraph_indices[0] = 7;
+  case_params.branch_subgraph_indices[1] = 8;
+  AddNode(4, kTfLiteBuiltinStablehloCase, case_params);
+  TfLiteStablehloReduceWindowParams reduce_window{};
+  reduce_window.body_subgraph_index = 9;
+  AddNode(5, kTfLiteBuiltinStablehloReduceWindow, reduce_window);
+  TfLiteStablehloScatterParams scatter{};
+  scatter.update_computation_subgraph_index = 10;
+  AddNode(6, kTfLiteBuiltinStablehloScatter, scatter);
+  // Subgraph 11 is not referenced by anything.
+
+  EXPECT_THAT(GetReachable({0}), ElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10));
+  EXPECT_THAT(GetReachable({4}), ElementsAre(4, 7, 8));
+  EXPECT_THAT(GetReachable({11}), ElementsAre(11));
+}
+
+TEST_F(SignatureScopedDelegationTest,
+       ReachabilityHandlesCyclesDuplicatesAndOrder) {
+  AddSubgraphs(2);
+  AddWhile(0, 1, 1);
+  AddIf(1, 0, 1);  // Recursive reference back to the caller and itself.
+
+  EXPECT_THAT(GetReachable({1, 0, 1}), ElementsAre(0, 1));
+  EXPECT_THAT(GetReachable({2, 2}), ElementsAre(2));
+}
+
+TEST_F(SignatureScopedDelegationTest, ReachabilityValidatesArguments) {
+  AddSubgraphs(1);
+  std::vector<int> reachable = {42};
+
+  EXPECT_EQ(interpreter_->GetReachableSubgraphIndices({0}, nullptr),
+            kTfLiteApplicationError);
+  EXPECT_EQ(interpreter_->GetReachableSubgraphIndices({}, &reachable),
+            kTfLiteApplicationError);
+  EXPECT_EQ(interpreter_->GetReachableSubgraphIndices({0, 2}, &reachable),
+            kTfLiteApplicationError);
+  EXPECT_EQ(interpreter_->GetReachableSubgraphIndices({-1}, &reachable),
+            kTfLiteApplicationError);
+  EXPECT_THAT(reachable, ElementsAre(42));
+}
+
+TEST_F(SignatureScopedDelegationTest, ReachabilityRejectsInvalidCalleeIndex) {
+  AddSubgraphs(1);
+  AddCallOnce(1, 7);
+  std::vector<int> reachable = {42};
+
+  EXPECT_EQ(interpreter_->GetReachableSubgraphIndices({0}, &reachable),
+            kTfLiteOk);
+  EXPECT_THAT(reachable, ElementsAre(0));
+  reachable = {42};
+  EXPECT_EQ(interpreter_->GetReachableSubgraphIndices({1}, &reachable),
+            kTfLiteError);
+  EXPECT_THAT(reachable, ElementsAre(42));
+}
+
+TEST_F(SignatureScopedDelegationTest, ReachabilityIgnoresAppliedDelegates) {
+  AddSubgraphs(1);
+  AddIf(0, 1, 1);
+  TfLiteDelegate delegate = CreateReplaceAllDelegate();
+  ASSERT_EQ(interpreter_->ModifyGraphWithDelegate(&delegate, {0}), kTfLiteOk);
+  ASSERT_TRUE(interpreter_->subgraph(0)->IsFullyDelegated());
+
+  // The IF node is no longer in the execution plan, but its callee is still
+  // reachable through the pre-delegation plan.
+  EXPECT_THAT(GetReachable({0}), ElementsAre(0, 1));
+}
+
+TEST_F(SignatureScopedDelegationTest, ForSignatureDelegatesReachableOnly) {
+  // 0: "early" -> IF(2, 3); 1: "full" -> WHILE(3, 4); 2: early-only helper;
+  // 3: shared helper; 4: full-only helper; 5: unreferenced.
+  AddSubgraphs(5);
+  AddIf(0, 2, 3);
+  AddWhile(1, 3, 4);
+  SetSignatures({{"early", 0}, {"full", 1}});
+
+  std::vector<int> prepared_full;
+  TfLiteDelegate full_delegate = CreateRecordingDelegate(&prepared_full);
+  EXPECT_EQ(
+      interpreter_->ModifyGraphWithDelegateForSignature(&full_delegate, "full"),
+      kTfLiteOk);
+  EXPECT_THAT(prepared_full, ElementsAre(1, 3, 4));
+
+  std::vector<int> prepared_early;
+  TfLiteDelegate early_delegate = CreateRecordingDelegate(&prepared_early);
+  EXPECT_EQ(interpreter_->ModifyGraphWithDelegateForSignature(
+                reinterpret_cast<TfLiteOpaqueDelegateStruct*>(&early_delegate),
+                "early"),
+            kTfLiteOk);
+  EXPECT_THAT(prepared_early, ElementsAre(0, 2, 3));
+}
+
+TEST_F(SignatureScopedDelegationTest,
+       ForSignatureSingleSignatureSkipsUnreachableSubgraphs) {
+  AddSubgraphs(2);
+  AddCallOnce(0, 1);
+  SetSignatures({{"serving_default", 0}});
+
+  std::vector<int> prepared;
+  bool delegate_deleted = false;
+  std::unique_ptr<TfLiteDelegate, std::function<void(TfLiteDelegate*)>>
+      owned_delegate(new TfLiteDelegate(CreateRecordingDelegate(&prepared)),
+                     [&delegate_deleted](TfLiteDelegate* delegate) {
+                       delegate_deleted = true;
+                       delete delegate;
+                     });
+  EXPECT_EQ(interpreter_->ModifyGraphWithDelegateForSignature(
+                std::move(owned_delegate), "serving_default"),
+            kTfLiteOk);
+  EXPECT_THAT(prepared, ElementsAre(0, 1));
+  interpreter_.reset();
+  EXPECT_TRUE(delegate_deleted);
+}
+
+TEST_F(SignatureScopedDelegationTest, ForSignatureRejectsInvalidInput) {
+  AddSubgraphs(2);
+  AddLeafNode(0);
+  AddCallOnce(1, 9);  // Invalid callee.
+  std::vector<int> prepared;
+  TfLiteDelegate delegate = CreateRecordingDelegate(&prepared);
+
+  // Without signatures, no key is valid.
+  EXPECT_EQ(interpreter_->ModifyGraphWithDelegateForSignature(
+                &delegate, "serving_default"),
+            kTfLiteApplicationError);
+
+  SetSignatures({{"early", 0}, {"broken", 1}, {"dangling", 7}});
+  EXPECT_EQ(
+      interpreter_->ModifyGraphWithDelegateForSignature(&delegate, nullptr),
+      kTfLiteApplicationError);
+  EXPECT_EQ(
+      interpreter_->ModifyGraphWithDelegateForSignature(&delegate, "unknown"),
+      kTfLiteApplicationError);
+  EXPECT_EQ(
+      interpreter_->ModifyGraphWithDelegateForSignature(&delegate, "dangling"),
+      kTfLiteApplicationError);
+  EXPECT_EQ(
+      interpreter_->ModifyGraphWithDelegateForSignature(&delegate, "broken"),
+      kTfLiteError);
+  EXPECT_THAT(prepared, IsEmpty());
+
+  // Calls rejected before delegation (invalid key or model) must not scope the
+  // default delegates.
+  std::vector<int> lazily_prepared;
+  AddRecordingLazyDelegateProvider(&lazily_prepared);
+  EXPECT_EQ(ApplyLazyDelegateProviders(), kTfLiteOk);
+  EXPECT_THAT(lazily_prepared, ElementsAre(0, 1, 2));
+}
+
+TEST_F(SignatureScopedDelegationTest,
+       ForSignatureScopesDefaultDelegatesEvenIfDelegateFails) {
+  AddSubgraphs(1);
+  AddLeafNode(0);
+  AddLeafNode(1);
+  SetSignatures({{"early", 0}, {"full", 1}});
+  std::vector<int> lazily_prepared;
+  AddRecordingLazyDelegateProvider(&lazily_prepared);
+
+  TfLiteDelegate failing_delegate = TfLiteDelegateCreate();
+  failing_delegate.flags = kTfLiteDelegateFlagsAllowDynamicTensors;
+  failing_delegate.Prepare = [](TfLiteContext*, TfLiteDelegate*) {
+    return kTfLiteDelegateError;
+  };
+  EXPECT_EQ(interpreter_->ModifyGraphWithDelegateForSignature(&failing_delegate,
+                                                              "full"),
+            kTfLiteDelegateError);
+
+  // The signature selection expresses intent, so the CPU fallback path still
+  // only applies default delegates to the selected signature.
+  EXPECT_EQ(ApplyLazyDelegateProviders(), kTfLiteOk);
+  EXPECT_THAT(lazily_prepared, ElementsAre(1));
+}
+
+TEST_F(SignatureScopedDelegationTest, ForSignatureScopesDefaultDelegates) {
+  // 0: "early"; 1: "full" -> CALL_ONCE(2); 2: init helper; 3: "other".
+  AddSubgraphs(3);
+  AddLeafNode(0);
+  AddCallOnce(1, 2);
+  AddLeafNode(2);
+  AddLeafNode(3);
+  SetSignatures({{"early", 0}, {"full", 1}, {"other", 3}});
+  std::vector<int> lazily_prepared;
+  AddRecordingLazyDelegateProvider(&lazily_prepared);
+
+  std::vector<int> prepared;
+  TfLiteDelegate delegate = CreateRecordingDelegate(&prepared);
+  ASSERT_EQ(
+      interpreter_->ModifyGraphWithDelegateForSignature(&delegate, "full"),
+      kTfLiteOk);
+  ASSERT_EQ(
+      interpreter_->ModifyGraphWithDelegateForSignature(&delegate, "early"),
+      kTfLiteOk);
+  EXPECT_THAT(prepared, ElementsAre(1, 2, 0));
+
+  // Default delegates cover the union of the selected signatures only, even
+  // though the primary subgraph is not fully delegated.
+  EXPECT_EQ(ApplyLazyDelegateProviders(), kTfLiteOk);
+  EXPECT_THAT(lazily_prepared, ElementsAre(0, 1, 2));
+  EXPECT_TRUE(mutable_lazy_delegate_providers()->empty());
+}
+
+TEST_F(SignatureScopedDelegationTest,
+       ForSignatureSkipsDefaultDelegatesWhenSelectionFullyDelegated) {
+  AddSubgraphs(1);
+  AddLeafNode(0);
+  AddLeafNode(1);
+  SetSignatures({{"early", 0}, {"full", 1}});
+  std::vector<int> lazily_prepared;
+  AddRecordingLazyDelegateProvider(&lazily_prepared);
+
+  TfLiteDelegate delegate = CreateReplaceAllDelegate();
+  ASSERT_EQ(
+      interpreter_->ModifyGraphWithDelegateForSignature(&delegate, "full"),
+      kTfLiteOk);
+  ASSERT_TRUE(interpreter_->subgraph(1)->IsFullyDelegated());
+  ASSERT_FALSE(IsFullyDelegated());  // The primary subgraph ("early").
+
+  EXPECT_EQ(ApplyLazyDelegateProviders(), kTfLiteOk);
+  EXPECT_THAT(lazily_prepared, IsEmpty());
+}
+
+TEST_F(SignatureScopedDelegationTest,
+       ActiveSubgraphIndicesScopesDefaultDelegates) {
+  AddSubgraphs(2);
+  AddLeafNode(0);
+  AddLeafNode(1);
+  AddLeafNode(2);
+  std::vector<int> lazily_prepared;
+  AddRecordingLazyDelegateProvider(&lazily_prepared);
+
+  std::vector<int> prepared;
+  TfLiteDelegate delegate = CreateRecordingDelegate(&prepared);
+  ASSERT_EQ(interpreter_->ModifyGraphWithDelegate(&delegate, {1}), kTfLiteOk);
+  EXPECT_THAT(prepared, ElementsAre(1));
+
+  // Default delegates are scoped to the explicitly delegated subgraph even
+  // though the primary subgraph (0) is not delegated.
+  EXPECT_EQ(ApplyLazyDelegateProviders(), kTfLiteOk);
+  EXPECT_THAT(lazily_prepared, ElementsAre(1));
 }
 
 struct TestExternalContext : public TfLiteExternalContext {
