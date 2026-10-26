@@ -48,6 +48,10 @@
 // RUN: -xla-lower-tensors="gpu_device_info='rocm_compute_capability {gcn_arch_name: \"gfx942:sramecc+:xnack\"}'" \
 // RUN: | FileCheck %s --check-prefix=CHECK-GFX942-MI300
 
+// RUN: emitters_opt %s --allow-unregistered-dialect -split-input-file \
+// RUN: -xla-lower-tensors="gpu_device_info='oneapi_compute_capability {architecture: \"bmg\"}'" \
+// RUN: | FileCheck %s --check-prefix=CHECK-BMG
+
 module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32 : i32>>} {
   func.func private @add(%arg0: f32, %arg1: f32) -> f32 {
     %sum = arith.addf %arg0, %arg1 : f32
@@ -774,6 +778,11 @@ func.func @direct_atomic_rmw_fadd_f32(%in: tensor<8xf32>,
 // CHECK-GFX90A-MI200: %[[ADDR:.*]] = llvm.getelementptr
 // CHECK-GFX90A-MI200: llvm.atomicrmw ignore_denormal_mode fadd %[[ADDR]], %[[C2]] syncscope("agent-one-as") monotonic {rocdl.no_fine_grained_memory, rocdl.no_remote_memory}
 
+// CHECK-BMG-LABEL: @direct_atomic_rmw_fadd_f32
+// CHECK-BMG: %[[C2:.*]] = arith.constant 2
+// CHECK-BMG: %[[ADDR:.*]] = llvm.getelementptr
+// CHECK-BMG: llvm.atomicrmw ignore_denormal_mode fadd %[[ADDR]], %[[C2]] monotonic
+
 // -----
 
 func.func @direct_atomic_rmw_fadd_f16(%in: tensor<8xf16>,
@@ -958,6 +967,11 @@ func.func @direct_atomic_rmw_fadd_f64(%in: tensor<8xf64>,
 // CHECK-GFX90A-MI200: %[[C2:.*]] = arith.constant 2
 // CHECK-GFX90A-MI200: %[[ADDR:.*]] = llvm.getelementptr
 // CHECK-GFX90A-MI200: llvm.atomicrmw ignore_denormal_mode fadd %[[ADDR]], %[[C2]] syncscope("agent-one-as") monotonic {rocdl.no_fine_grained_memory, rocdl.no_remote_memory}
+
+// CHECK-BMG-LABEL: @direct_atomic_rmw_fadd_f64
+// CHECK-BMG: %[[C2:.*]] = arith.constant 2
+// CHECK-BMG: %[[ADDR:.*]] = llvm.getelementptr
+// CHECK-BMG: llvm.atomicrmw ignore_denormal_mode fadd %[[ADDR]], %[[C2]] monotonic
 
 
 // -----

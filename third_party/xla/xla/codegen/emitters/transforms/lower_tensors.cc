@@ -1174,8 +1174,10 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
       return failure();
     }
 
-    ml::AtomicRMWOp::create(b, loc, ml::AtomicBinOp::fadd, addr, modifier_arg,
-                            ml::AtomicOrdering::monotonic);
+    auto rmw_op =
+        ml::AtomicRMWOp::create(b, loc, ml::AtomicBinOp::fadd, addr,
+                                modifier_arg, ml::AtomicOrdering::monotonic);
+    rmw_op.setIgnoreDenormalMode(true);
     return success();
   }
 
