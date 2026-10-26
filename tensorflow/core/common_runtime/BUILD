@@ -3309,6 +3309,7 @@ tf_cc_test(
         "//tensorflow/core/kernels:random_ops",
         "//tensorflow/core/kernels:relu_op",
         "//tensorflow/core/kernels:state",
+        "@com_google_absl//absl/strings",
     ],
 )
 
