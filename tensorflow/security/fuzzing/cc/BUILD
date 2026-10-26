@@ -227,6 +227,7 @@ cc_library(
         "//tensorflow/security/fuzzing:__subpackages__",
     ],
     deps = [
+        "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:scope",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:session_options",
