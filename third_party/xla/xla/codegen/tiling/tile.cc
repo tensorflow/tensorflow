@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/codegen/tiling/experimental/tile.h"
+#include "xla/codegen/tiling/tile.h"
 
 #include <cstdint>
 #include <string>
@@ -33,12 +33,12 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
-#include "xla/codegen/tiling/experimental/tiling_space.h"
+#include "xla/codegen/tiling/tiling_space.h"
 #include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/analysis/symbolic_map.h"
 
-namespace xla::gpu::experimental {
+namespace xla::gpu {
 namespace {
 
 using ::llvm::ArrayRef;
@@ -352,4 +352,4 @@ bool Tile::operator==(const Tile& other) const {
          constraints_ == other.constraints_;
 }
 
-}  // namespace xla::gpu::experimental
+}  // namespace xla::gpu

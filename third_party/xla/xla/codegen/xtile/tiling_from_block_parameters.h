@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "llvm/ADT/SmallVector.h"
-#include "xla/codegen/tiling/experimental/tiling_space.h"
+#include "xla/codegen/tiling/tiling_space.h"
 #include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/codegen/xtile/xtile_config.pb.h"
 
@@ -31,7 +31,7 @@ namespace xla::xtile {
 // Sizes are returned "as is", i.e. they are not rounded up to the next power
 // of 2.
 absl::StatusOr<llvm::SmallVector<int64_t>> GetTilingSpaceConcreteSizes(
-    const ::xla::gpu::experimental::TilingSpace& tiling_space,
+    const ::xla::gpu::TilingSpace& tiling_space,
     const xla::xtile::BlockLevelParameters& block_level_parameters,
     bool enable_same_shape_multi_output_fusion);
 

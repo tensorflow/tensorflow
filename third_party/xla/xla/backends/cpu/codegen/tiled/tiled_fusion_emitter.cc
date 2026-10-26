@@ -49,12 +49,12 @@ limitations under the License.
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/mlir_kernel_source.h"
-#include "xla/codegen/tiling/experimental/tile.h"
-#include "xla/codegen/tiling/experimental/tiled_hlo.h"
-#include "xla/codegen/tiling/experimental/tiling_space.h"
+#include "xla/codegen/tiling/tile.h"
+#include "xla/codegen/tiling/tiled_hlo.h"
+#include "xla/codegen/tiling/tiling_space.h"
 #include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
-#include "xla/codegen/xtile/codegen/experimental_fusion_emitter.h"
+#include "xla/codegen/xtile/codegen/fusion_emitter.h"
 #include "xla/codegen/xtile/ir/xtile_attrs.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/codegen/xtile/tiling_from_block_parameters.h"
@@ -82,7 +82,7 @@ namespace {
 using llvm::SmallVector;
 using ::xla::xtile::BlockLevelParameters;
 
-namespace ge = ::xla::gpu::experimental;
+namespace ge = ::xla::gpu;
 
 constexpr int64_t kCacheLineSize = 64;
 

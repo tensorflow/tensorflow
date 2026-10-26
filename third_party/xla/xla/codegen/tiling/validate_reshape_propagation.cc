@@ -36,10 +36,10 @@ limitations under the License.
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/MLIRContext.h"
-#include "xla/codegen/tiling/experimental/test_utils.h"
-#include "xla/codegen/tiling/experimental/tile.h"
-#include "xla/codegen/tiling/experimental/tile_propagation.h"
-#include "xla/codegen/tiling/experimental/tiling_space.h"
+#include "xla/codegen/tiling/test_utils.h"
+#include "xla/codegen/tiling/tile.h"
+#include "xla/codegen/tiling/tile_propagation.h"
+#include "xla/codegen/tiling/tiling_space.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/analysis/symbolic_map.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -51,7 +51,7 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/init_main.h"
 
-namespace xla::gpu::experimental {
+namespace xla::gpu {
 namespace {
 
 std::vector<int64_t> ParseShape(absl::string_view shape_str) {
@@ -316,7 +316,7 @@ void RunValidation(const std::vector<std::pair<Shape, Shape>>& reshapes,
 }
 
 }  // namespace
-}  // namespace xla::gpu::experimental
+}  // namespace xla::gpu
 
 int main(int argc, char** argv) {
   std::string reshapes_str = "";
@@ -360,12 +360,12 @@ int main(int argc, char** argv) {
     std::string str1 = part.substr(0, split_pos + 1);
     std::string str2 = part.substr(split_pos + 1);
 
-    std::vector<int64_t> in_dims = xla::gpu::experimental::ParseShape(str1);
-    std::vector<int64_t> out_dims = xla::gpu::experimental::ParseShape(str2);
+    std::vector<int64_t> in_dims = xla::gpu::ParseShape(str1);
+    std::vector<int64_t> out_dims = xla::gpu::ParseShape(str2);
     reshapes.push_back({xla::ShapeUtil::MakeShape(xla::F32, in_dims),
                         xla::ShapeUtil::MakeShape(xla::F32, out_dims)});
   }
 
-  xla::gpu::experimental::RunValidation(reshapes, bypass_limit);
+  xla::gpu::RunValidation(reshapes, bypass_limit);
   return 0;
 }

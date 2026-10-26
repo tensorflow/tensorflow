@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/codegen/tiling/experimental/tile_propagation.h"
+#include "xla/codegen/tiling/tile_propagation.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -40,9 +40,9 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/MLIRContext.h"
-#include "xla/codegen/tiling/experimental/reshape_analysis.h"
-#include "xla/codegen/tiling/experimental/tile.h"
-#include "xla/codegen/tiling/experimental/tiling_space.h"
+#include "xla/codegen/tiling/reshape_analysis.h"
+#include "xla/codegen/tiling/tile.h"
+#include "xla/codegen/tiling/tiling_space.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
@@ -57,7 +57,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/xla_data.pb.h"
 
-namespace xla::gpu::experimental {
+namespace xla::gpu {
 namespace {
 
 using ::llvm::ArrayRef;
@@ -1989,4 +1989,4 @@ absl::StatusOr<Tiles> PropagateTileToOutput(const TilingSpace& tiling_space,
       "Input to output tile propagation not implemented for ", hlo.opcode()));
 }
 
-}  // namespace xla::gpu::experimental
+}  // namespace xla::gpu

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_CODEGEN_TILING_EXPERIMENTAL_TEST_UTILS_H_
-#define XLA_CODEGEN_TILING_EXPERIMENTAL_TEST_UTILS_H_
+#ifndef XLA_CODEGEN_TILING_TEST_UTILS_H_
+#define XLA_CODEGEN_TILING_TEST_UTILS_H_
 
 #include <cstdint>
 #include <string>
@@ -24,13 +24,13 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/codegen/tiling/experimental/tile.h"
-#include "xla/codegen/tiling/experimental/tiling_space.h"
+#include "xla/codegen/tiling/tile.h"
+#include "xla/codegen/tiling/tiling_space.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
 #include "xla/shape.h"
 #include "xla/util.h"
 
-namespace xla::gpu::experimental {
+namespace xla::gpu {
 
 MATCHER_P(MatchString, expected, "") {
   const absl::string_view expected_string = expected;
@@ -73,6 +73,13 @@ absl::Status VerifyTileEquivalence(const Tile& tile_a, const Shape& shape_a,
                                    const Tile& tile_b, const Shape& shape_b,
                                    TilingSpace* tiling_space);
 
+}  // namespace xla::gpu
+
+namespace xla::gpu::experimental {
+using ::xla::gpu::BumpCoordinates;
+using ::xla::gpu::EvaluateAccessedIndexesForTile;
+using ::xla::gpu::GetTestTile;
+using ::xla::gpu::VerifyTileEquivalence;
 }  // namespace xla::gpu::experimental
 
-#endif  // XLA_CODEGEN_TILING_EXPERIMENTAL_TEST_UTILS_H_
+#endif  // XLA_CODEGEN_TILING_TEST_UTILS_H_

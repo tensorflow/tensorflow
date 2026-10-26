@@ -32,11 +32,11 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
-#include "xla/codegen/tiling/experimental/tiled_hlo.h"
-#include "xla/codegen/tiling/experimental/tiling_space.h"
+#include "xla/codegen/tiling/tiled_hlo.h"
+#include "xla/codegen/tiling/tiling_space.h"
 #include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
-#include "xla/codegen/xtile/codegen/experimental_fusion_emitter.h"
+#include "xla/codegen/xtile/codegen/fusion_emitter.h"
 #include "xla/codegen/xtile/tiling_from_block_parameters.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -84,7 +84,7 @@ XTileTestBase::CreateXTileIrAndFileCheck(
     absl::string_view filecheck_pattern) {
   mlir::OwningOpRef<mlir::ModuleOp> xtile_dialect_module;
   LoadMlirDialectsForTriton(*mlir_context());
-  namespace ge = ::xla::gpu::experimental;
+  namespace ge = ::xla::gpu;
   auto* fusion = Cast<HloFusionInstruction>(computation.FusionInstruction());
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(fusion);
   ABSL_ASSIGN_OR_RETURN(std::unique_ptr<ge::TilingSpace> tiling_space,

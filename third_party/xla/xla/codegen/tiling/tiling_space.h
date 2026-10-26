@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_CODEGEN_TILING_EXPERIMENTAL_TILING_SPACE_H_
-#define XLA_CODEGEN_TILING_EXPERIMENTAL_TILING_SPACE_H_
+#ifndef XLA_CODEGEN_TILING_TILING_SPACE_H_
+#define XLA_CODEGEN_TILING_TILING_SPACE_H_
 
 #include <cstdint>
 #include <deque>
@@ -32,7 +32,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/tiling/constraint_expression.h"
-#include "xla/codegen/tiling/experimental/tile.h"
+#include "xla/codegen/tiling/tile.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
@@ -40,7 +40,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/shape.h"
 
-namespace xla::gpu::experimental {
+namespace xla::gpu {
 
 // TilingSpace holds information about all tiling parameters of a fusion.
 //
@@ -341,6 +341,30 @@ int64_t GetResultDimensionOffset(const HloInstruction& hlo,
 llvm::DenseMap<SymbolicExpr, SymbolicExpr> GetTileSizeReplacementMap(
     const TilingSpace& tiling_space);
 
+}  // namespace xla::gpu
+
+namespace xla::gpu::experimental {
+using ::xla::gpu::GetFirstShape;
+using ::xla::gpu::GetResultDimensionOffset;
+using ::xla::gpu::GetTileSizeReplacementMap;
+using ::xla::gpu::IsIndexWiseVariadic;
+using ::xla::gpu::TilingSpace;
 }  // namespace xla::gpu::experimental
 
-#endif  // XLA_CODEGEN_TILING_EXPERIMENTAL_TILING_SPACE_H_
+namespace xla {
+using ::xla::gpu::GetFirstShape;
+using ::xla::gpu::GetResultDimensionOffset;
+using ::xla::gpu::GetTileSizeReplacementMap;
+using ::xla::gpu::IsIndexWiseVariadic;
+using ::xla::gpu::TilingSpace;
+}  // namespace xla
+
+namespace xla::experimental {
+using ::xla::gpu::GetFirstShape;
+using ::xla::gpu::GetResultDimensionOffset;
+using ::xla::gpu::GetTileSizeReplacementMap;
+using ::xla::gpu::IsIndexWiseVariadic;
+using ::xla::gpu::TilingSpace;
+}  // namespace xla::experimental
+
+#endif  // XLA_CODEGEN_TILING_TILING_SPACE_H_

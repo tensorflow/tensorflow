@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/codegen/tiling/experimental/test_utils.h"
+#include "xla/codegen/tiling/test_utils.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -30,7 +30,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/MLIRContext.h"
-#include "xla/codegen/tiling/experimental/tile.h"
+#include "xla/codegen/tiling/tile.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/analysis/symbolic_map.h"
 #include "xla/index_util.h"
@@ -39,7 +39,7 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
-namespace xla::gpu::experimental {
+namespace xla::gpu {
 
 using ::llvm::SmallVector;
 using ::mlir::MLIRContext;
@@ -193,4 +193,4 @@ absl::Status VerifyTileEquivalence(const Tile& tile_a, const Shape& shape_a,
   return absl::OkStatus();
 }
 
-}  // namespace xla::gpu::experimental
+}  // namespace xla::gpu

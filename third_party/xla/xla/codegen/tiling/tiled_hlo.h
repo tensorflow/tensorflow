@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_CODEGEN_TILING_EXPERIMENTAL_TILED_HLO_H_
-#define XLA_CODEGEN_TILING_EXPERIMENTAL_TILED_HLO_H_
+#ifndef XLA_CODEGEN_TILING_TILED_HLO_H_
+#define XLA_CODEGEN_TILING_TILED_HLO_H_
 
 #include <cstdint>
 #include <deque>
@@ -32,14 +32,14 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/MLIRContext.h"
-#include "xla/codegen/tiling/experimental/tile.h"
-#include "xla/codegen/tiling/experimental/tiling_space.h"
+#include "xla/codegen/tiling/tile.h"
+#include "xla/codegen/tiling/tiling_space.h"
 #include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/util.h"
 
-namespace xla::gpu::experimental {
+namespace xla::gpu {
 
 class TiledHloInstruction;
 
@@ -293,6 +293,24 @@ class TiledHloComputation {
       rt_symbol_to_tiled_hlo_;
 };
 
+}  // namespace xla::gpu
+
+namespace xla::gpu::experimental {
+using ::xla::gpu::TiledHloComputation;
+using ::xla::gpu::TiledHloInstruction;
+using ::xla::gpu::TiledHloRegion;
 }  // namespace xla::gpu::experimental
 
-#endif  // XLA_CODEGEN_TILING_EXPERIMENTAL_TILED_HLO_H_
+namespace xla {
+using ::xla::gpu::TiledHloComputation;
+using ::xla::gpu::TiledHloInstruction;
+using ::xla::gpu::TiledHloRegion;
+}  // namespace xla
+
+namespace xla::experimental {
+using ::xla::gpu::TiledHloComputation;
+using ::xla::gpu::TiledHloInstruction;
+using ::xla::gpu::TiledHloRegion;
+}  // namespace xla::experimental
+
+#endif  // XLA_CODEGEN_TILING_TILED_HLO_H_

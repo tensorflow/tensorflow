@@ -13,11 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/codegen/xtile/codegen/experimental_fusion_emitter.h"
+#include "xla/codegen/xtile/codegen/fusion_emitter.h"
 
 #include <algorithm>
 #include <cstdint>
-#include <functional>
 #include <iterator>
 #include <optional>
 #include <string>
@@ -39,7 +38,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"  // IWYU pragma: keep
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Attributes.h"
@@ -61,11 +60,10 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
-#include "xla/codegen/tiling/experimental/reshape_analysis.h"
-#include "xla/codegen/tiling/experimental/scheduling.h"
-#include "xla/codegen/tiling/experimental/tile.h"
-#include "xla/codegen/tiling/experimental/tiled_hlo.h"
-#include "xla/codegen/tiling/experimental/tiling_space.h"
+#include "xla/codegen/tiling/scheduling.h"
+#include "xla/codegen/tiling/tile.h"
+#include "xla/codegen/tiling/tiled_hlo.h"
+#include "xla/codegen/tiling/tiling_space.h"
 #include "xla/codegen/xtile/codegen/dot_algorithms.h"
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/codegen/xtile/ir/transforms/passes.h"
@@ -113,17 +111,17 @@ using ::stream_executor::GpuComputeCapability;
 
 namespace arith = ::mlir::arith;
 namespace stablehlo = ::mlir::stablehlo;
-namespace ge = ::xla::gpu::experimental;
+namespace gpu = ::xla::gpu;
 
 // One tensor per result of a tiled HLO instruction.
 using EmittedResults = SmallVector<TensorValue, 1>;
 
 absl::StatusOr<std::vector<TensorValue>> EmitTiledComputation(
-    EmitterContext& emitter_ctx, const ge::TiledHloRegion& region,
-    absl::Span<const ge::TiledHloInstruction* const> roots);
+    EmitterContext& emitter_ctx, const gpu::TiledHloRegion& region,
+    absl::Span<const gpu::TiledHloInstruction* const> roots);
 
 absl::StatusOr<EmittedResults> EmitTiledHloInstruction(
-    EmitterContext& emitter_ctx, const ge::TiledHloInstruction& tiled_hlo);
+    EmitterContext& emitter_ctx, const gpu::TiledHloInstruction& tiled_hlo);
 
 Value MakeIndex(mlir::ImplicitLocOpBuilder& b, int64_t value) {
   return arith::ConstantIndexOp::create(b, value);
@@ -152,7 +150,7 @@ TensorValue ReshapeTo(mlir::ImplicitLocOpBuilder& b, TensorValue input,
 // Emits a (possibly variadic) all-gather and returns one tensor per output.
 absl::StatusOr<EmittedResults> EmitAllGather(
     EmitterContext& emitter_ctx, const HloAllGatherInstruction* all_gather,
-    const ge::TiledHloInstruction& tiled_all_gather, ValueRange operands) {
+    const gpu::TiledHloInstruction& tiled_all_gather, ValueRange operands) {
   if (all_gather->device_list()->replica_groups().empty()) {
     return Internal(
         "Triton emitting AllGather without replica groups is not supported.");
@@ -231,7 +229,7 @@ std::optional<CollectiveStrategy> GetCollectiveStrategy(
 
 absl::StatusOr<TensorValue> EmitAllToAll(
     EmitterContext& emitter_ctx, const HloAllToAllInstruction* all_to_all,
-    const ge::TiledHloInstruction& tiled_all_to_all, ValueRange operands) {
+    const gpu::TiledHloInstruction& tiled_all_to_all, ValueRange operands) {
   if (all_to_all->device_list()->replica_groups().empty()) {
     return Internal(
         "Triton emitting AllToAll without replica groups is not supported.");
@@ -311,7 +309,7 @@ absl::StatusOr<TensorValue> EmitAllToAll(
 
 absl::StatusOr<TensorValue> EmitAllReduce(
     EmitterContext& emitter_ctx, const HloAllReduceInstruction* all_reduce,
-    const ge::TiledHloInstruction& tiled_all_reduce, ValueRange operands) {
+    const gpu::TiledHloInstruction& tiled_all_reduce, ValueRange operands) {
   if (all_reduce->device_list()->replica_groups().empty()) {
     return Internal(
         "Triton emitting AllReduce without replica groups is not supported.");
@@ -365,7 +363,7 @@ absl::StatusOr<TensorValue> EmitAllReduce(
 absl::StatusOr<EmittedResults> EmitReduceScatter(
     EmitterContext& emitter_ctx,
     const HloReduceScatterInstruction* reduce_scatter,
-    const ge::TiledHloInstruction& tiled_reduce_scatter, ValueRange operands) {
+    const gpu::TiledHloInstruction& tiled_reduce_scatter, ValueRange operands) {
   if (reduce_scatter->device_list()->replica_groups().empty()) {
     return Internal(
         "Triton emitting ReduceScatter (%s) without replica groups is not "
@@ -436,7 +434,7 @@ absl::StatusOr<EmittedResults> EmitReduceScatter(
 
 absl::StatusOr<TensorValue> EmitBroadcast(
     mlir::ImplicitLocOpBuilder& b,
-    const ge::TiledHloInstruction& tiled_broadcast, TensorValue input) {
+    const gpu::TiledHloInstruction& tiled_broadcast, TensorValue input) {
   ABSL_ASSIGN_OR_RETURN(SmallVector<int64_t> input_tile_shape,
                    tiled_broadcast.operand(0)->tile().GetStaticTileSizes());
   ABSL_ASSIGN_OR_RETURN(SmallVector<int64_t> output_tile_shape,
@@ -452,7 +450,7 @@ absl::StatusOr<TensorValue> EmitBroadcast(
 }
 
 absl::StatusOr<TensorValue> EmitConcatenate(
-    EmitterContext& emitter_ctx, const ge::TiledHloInstruction& tiled_concat) {
+    EmitterContext& emitter_ctx, const gpu::TiledHloInstruction& tiled_concat) {
   auto& b = emitter_ctx.b();
   const HloConcatenateInstruction* hlo_concat =
       ::xla::Cast<HloConcatenateInstruction>(tiled_concat.hlo());
@@ -529,7 +527,7 @@ absl::StatusOr<TensorValue> EmitConcatenate(
 // Note: we currently assume that contracting_dimension_tile_index is an i32
 // scalar.
 absl::StatusOr<TensorValue> MaskOperand(mlir::ImplicitLocOpBuilder& b,
-                                        const ge::TiledHloInstruction& operand,
+                                        const gpu::TiledHloInstruction& operand,
                                         TensorValue operand_value,
                                         Value tile_index, int dimension_index,
                                         Value neutral_value) {
@@ -619,22 +617,22 @@ SmallVector<int64_t> GetSequentialDimIds(const HloInstruction& hlo) {
 // Returns the number of iterations of the loop over the contraction/reduction
 // dimensions.
 absl::StatusOr<SmallVector<int64_t>> GetSequentialLoopIterationCounts(
-    const ge::TiledHloInstruction& tiled_hlo,
+    const gpu::TiledHloInstruction& tiled_hlo,
     ArrayRef<int64_t> sequential_dim_ids) {
   const HloInstruction& hlo = *tiled_hlo.hlo();
   if (sequential_dim_ids.empty()) {
     return absl::InvalidArgumentError(absl::StrCat(
         "No sequential dimensions found for the HLO", hlo.ToString()));
   }
-  const ge::TilingSpace& tiling_space = tiled_hlo.tile().tiling_space();
+  const gpu::TilingSpace& tiling_space = tiled_hlo.tile().tiling_space();
 
   int64_t output_rank = hlo.shape().dimensions().size();
   SmallVector<int64_t> loop_iteration_counts;
   for (int64_t dim_id : sequential_dim_ids) {
-    const ge::TilingSpace::DimensionInfo& dim_info =
+    const gpu::TilingSpace::DimensionInfo& dim_info =
         tiling_space.GetDimensionInfo(hlo, output_rank++);
     TF_RET_CHECK(dim_info.type ==
-                 ge::TilingSpace::DimensionSemantics::kSequential)
+                 gpu::TilingSpace::DimensionSemantics::kSequential)
         << "Expected a sequential dimension info for contracting dimension "
         << dim_id << " in op " << hlo.ToString();
     TF_RET_CHECK(dim_info.tile_size.has_value())
@@ -659,7 +657,7 @@ absl::StatusOr<SmallVector<int64_t>> GetSequentialLoopIterationCounts(
 // }
 // c = acc
 absl::StatusOr<TensorValue> EmitDot(EmitterContext& emitter_ctx,
-                                    const ge::TiledHloInstruction& tiled_dot) {
+                                    const gpu::TiledHloInstruction& tiled_dot) {
   TF_RET_CHECK(tiled_dot.hlo_regions().size() == 1);
   ABSL_ASSIGN_OR_RETURN(SmallVector<int64_t> padded_tile_sizes,
                    tiled_dot.tile().GetStaticTileSizes());
@@ -692,7 +690,7 @@ absl::StatusOr<TensorValue> EmitDot(EmitterContext& emitter_ctx,
     b.setInsertionPointToStart(for_op.getBody());
     Value iv = for_op.getInductionVar();
     Value iv_i32 = Cast(b, for_op.getInductionVar(), b.getI32Type());
-    const ge::TilingSpace::DimensionInfo& dim_info =
+    const gpu::TilingSpace::DimensionInfo& dim_info =
         tiled_dot.tile().tiling_space().GetDimensionInfo(
             *tiled_dot.hlo(), sequential_dim_ids.front());
     ABSL_ASSIGN_OR_RETURN(
@@ -701,8 +699,8 @@ absl::StatusOr<TensorValue> EmitDot(EmitterContext& emitter_ctx,
             dim_info.id, iv, Interval{0, loop_iteration_count.front() - 1}));
 
     // Emit the dot region.
-    const ge::TiledHloInstruction* lhs_operand = tiled_dot.operand(0);
-    const ge::TiledHloInstruction* rhs_operand = tiled_dot.operand(1);
+    const gpu::TiledHloInstruction* lhs_operand = tiled_dot.operand(0);
+    const gpu::TiledHloInstruction* rhs_operand = tiled_dot.operand(1);
     ABSL_ASSIGN_OR_RETURN(
         auto results,
         EmitTiledComputation(emitter_ctx, tiled_dot.hlo_regions().front(),
@@ -756,7 +754,7 @@ absl::StatusOr<TensorValue> EmitDot(EmitterContext& emitter_ctx,
 // Emits scaled dot instruction that is not nested into the fusion.
 absl::StatusOr<TensorValue> EmitScaledDot(
     EmitterContext& emitter_ctx,
-    const ge::TiledHloInstruction& tiled_scaled_dot) {
+    const gpu::TiledHloInstruction& tiled_scaled_dot) {
   TF_RET_CHECK(tiled_scaled_dot.hlo_regions().size() == 1);
   ABSL_ASSIGN_OR_RETURN(SmallVector<int64_t> padded_tile_sizes,
                    tiled_scaled_dot.tile().GetStaticTileSizes());
@@ -789,7 +787,7 @@ absl::StatusOr<TensorValue> EmitScaledDot(
     mlir::OpBuilder::InsertionGuard g(b);
     b.setInsertionPointToStart(for_op.getBody());
     Value iv = for_op.getInductionVar();
-    const ge::TilingSpace::DimensionInfo& dim_info =
+    const gpu::TilingSpace::DimensionInfo& dim_info =
         tiled_scaled_dot.tile().tiling_space().GetDimensionInfo(
             *tiled_scaled_dot.hlo(), sequential_dim_ids.front());
     ABSL_ASSIGN_OR_RETURN(
@@ -798,7 +796,7 @@ absl::StatusOr<TensorValue> EmitScaledDot(
             dim_info.id, iv, Interval{0, loop_iteration_counts.front() - 1}));
 
     // Emit the dot region.
-    const ge::TiledHloRegion& region = tiled_scaled_dot.hlo_regions().front();
+    const gpu::TiledHloRegion& region = tiled_scaled_dot.hlo_regions().front();
     ABSL_ASSIGN_OR_RETURN(auto results,
                      EmitTiledComputation(emitter_ctx, region, region.roots()));
 
@@ -833,23 +831,23 @@ absl::StatusOr<TensorValue> EmitScaledDot(
 // through nested regions, whose loop-invariant operands may live in `region`.
 // Instructions already emitted in `emitter_ctx` are skipped.
 absl::StatusOr<TensorValue> EmitRegionInstructionWithDependencies(
-    EmitterContext& emitter_ctx, const ge::TiledHloRegion& region,
-    const ge::TiledHloInstruction* root) {
-  absl::flat_hash_set<const ge::TiledHloInstruction*> visited;
-  std::vector<const ge::TiledHloInstruction*> worklist{root};
+    EmitterContext& emitter_ctx, const gpu::TiledHloRegion& region,
+    const gpu::TiledHloInstruction* root) {
+  absl::flat_hash_set<const gpu::TiledHloInstruction*> visited;
+  std::vector<const gpu::TiledHloInstruction*> worklist{root};
   while (!worklist.empty()) {
-    const ge::TiledHloInstruction* instr = worklist.back();
+    const gpu::TiledHloInstruction* instr = worklist.back();
     worklist.pop_back();
     if (emitter_ctx.IsEmitted(*instr) || !visited.insert(instr).second) {
       continue;
     }
     absl::c_copy(instr->operands(), std::back_inserter(worklist));
-    for (const ge::TiledHloRegion& nested_region : instr->hlo_regions()) {
+    for (const gpu::TiledHloRegion& nested_region : instr->hlo_regions()) {
       absl::c_copy(nested_region.instructions(), std::back_inserter(worklist));
     }
   }
 
-  for (const ge::TiledHloInstruction* instr : region.instructions()) {
+  for (const gpu::TiledHloInstruction* instr : region.instructions()) {
     if (!visited.contains(instr)) {
       continue;
     }
@@ -911,7 +909,7 @@ struct RaggedDotParams {
   const HloRaggedDotInstruction* ragged_dot_instr;
   const RaggedDotDimensionNumbers& ragged_dims;
   const DotDimensionNumbers& dot_dims;
-  const ge::TilingSpace& tiling_space;
+  const gpu::TilingSpace& tiling_space;
   int64_t output_rank;
   int64_t lhs_ragged_dim;
   SmallVector<int64_t> padded_tile_sizes;
@@ -921,7 +919,7 @@ struct RaggedDotParams {
 
 absl::StatusOr<RaggedDotParams> BuildRaggedDotContext(
     EmitterContext& emitter_ctx,
-    const ge::TiledHloInstruction& tiled_ragged_dot) {
+    const gpu::TiledHloInstruction& tiled_ragged_dot) {
   auto& b = emitter_ctx.b();
   const auto* ragged_dot_instr =
       ::xla::Cast<HloRaggedDotInstruction>(tiled_ragged_dot.hlo());
@@ -957,8 +955,8 @@ absl::StatusOr<RaggedDotParams> BuildRaggedDotContext(
 // Bundles the loop-invariant values that the kRaggedNonContracting K-loop body
 // needs, computed once by EmitRaggedDotNonContracting before the G/K loops.
 struct NonContractingKLoopParams {
-  const ge::TiledHloInstruction* lhs_tiled;
-  const ge::TiledHloInstruction* rhs_tiled;
+  const gpu::TiledHloInstruction* lhs_tiled;
+  const gpu::TiledHloInstruction* rhs_tiled;
   int64_t lhs_ragged_dim;
   int64_t num_batch_dims;
   // i32 comparison values precomputed before the G loop registered its IV.
@@ -1103,13 +1101,13 @@ absl::StatusOr<Value> RunSqueezedTileDot(
 // updated accumulator. See the extracted helpers above for each phase.
 absl::StatusOr<Value> EmitNonContractingKLoopBody(
     EmitterContext& emitter_ctx,
-    const ge::TiledHloInstruction& tiled_ragged_dot,
+    const gpu::TiledHloInstruction& tiled_ragged_dot,
     const RaggedDotParams& rctx, const NonContractingKLoopParams& params,
     Value k_iv, TensorValue acc_k_in) {
   auto& b = emitter_ctx.b();
-  const ge::TiledHloInstruction* lhs_tiled = params.lhs_tiled;
-  const ge::TiledHloInstruction* rhs_tiled = params.rhs_tiled;
-  const ge::TiledHloRegion& region = tiled_ragged_dot.hlo_regions().front();
+  const gpu::TiledHloInstruction* lhs_tiled = params.lhs_tiled;
+  const gpu::TiledHloInstruction* rhs_tiled = params.rhs_tiled;
+  const gpu::TiledHloRegion& region = tiled_ragged_dot.hlo_regions().front();
 
   // Emit LHS and RHS tiles (K-scoped).
   // EmitRegionInstructionWithDependencies handles the full instruction chain
@@ -1173,12 +1171,12 @@ absl::StatusOr<Value> EmitNonContractingKLoopBody(
 // (accumulator, last_m) where last_m is the running prefix sum of group sizes.
 absl::StatusOr<TensorValue> EmitRaggedDotNonContracting(
     EmitterContext& emitter_ctx,
-    const ge::TiledHloInstruction& tiled_ragged_dot,
+    const gpu::TiledHloInstruction& tiled_ragged_dot,
     const RaggedDotParams& rctx) {
   auto& b = emitter_ctx.b();
   const auto* ragged_dot_instr = rctx.ragged_dot_instr;
   const DotDimensionNumbers& dot_dims = rctx.dot_dims;
-  const ge::TilingSpace& tiling_space = rctx.tiling_space;
+  const gpu::TilingSpace& tiling_space = rctx.tiling_space;
   const int64_t output_rank = rctx.output_rank;
   const SmallVector<int64_t>& padded_tile_sizes = rctx.padded_tile_sizes;
   const Type acc_type = rctx.acc_type;
@@ -1189,9 +1187,9 @@ absl::StatusOr<TensorValue> EmitRaggedDotNonContracting(
   //   dim[output_rank+1]: K  kSequential (tile_size=BLOCK_K, inner K-loop)
   // Operands in the region: [lhs, rhs, group_sizes]
 
-  const ge::TilingSpace::DimensionInfo& g_dim_info =
+  const gpu::TilingSpace::DimensionInfo& g_dim_info =
       tiling_space.GetDimensionInfo(*ragged_dot_instr, output_rank);
-  const ge::TilingSpace::DimensionInfo& k_dim_info =
+  const gpu::TilingSpace::DimensionInfo& k_dim_info =
       tiling_space.GetDimensionInfo(*ragged_dot_instr, output_rank + 1);
 
   const int64_t G = g_dim_info.dimension_size;
@@ -1200,7 +1198,7 @@ absl::StatusOr<TensorValue> EmitRaggedDotNonContracting(
   const int64_t K_tiles =
       CeilOfRatio(k_dim_info.dimension_size, *k_dim_info.tile_size);
 
-  const ge::TiledHloInstruction* gs_tiled = tiled_ragged_dot.operand(2);
+  const gpu::TiledHloInstruction* gs_tiled = tiled_ragged_dot.operand(2);
 
   // M is at output dim `num_batch_dims` (after any batch dims).
   // `lhs_ragged_dim` is also the M dim index in the LHS tile shape.
@@ -1210,7 +1208,7 @@ absl::StatusOr<TensorValue> EmitRaggedDotNonContracting(
   // evaluated cleanly without any sequential dim interference
   // (especially important when the M/N schedule swap is active).
   const int64_t BLOCK_M = padded_tile_sizes[num_batch_dims];
-  const ge::DimTile& m_output_dim_pre =
+  const gpu::DimTile& m_output_dim_pre =
       tiled_ragged_dot.tile().dim_tiles()[num_batch_dims];
   ABSL_ASSIGN_OR_RETURN(
       SmallVector<Value> m_abs_pre,
@@ -1337,12 +1335,12 @@ absl::StatusOr<TensorValue> EmitRaggedDotNonContracting(
 // prefix-sum before running the M accumulation loop.
 absl::StatusOr<TensorValue> EmitRaggedDotContracting(
     EmitterContext& emitter_ctx,
-    const ge::TiledHloInstruction& tiled_ragged_dot,
+    const gpu::TiledHloInstruction& tiled_ragged_dot,
     const RaggedDotParams& rctx) {
   auto& b = emitter_ctx.b();
   const auto* ragged_dot_instr = rctx.ragged_dot_instr;
   const DotDimensionNumbers& dot_dims = rctx.dot_dims;
-  const ge::TilingSpace& tiling_space = rctx.tiling_space;
+  const gpu::TilingSpace& tiling_space = rctx.tiling_space;
   const int64_t output_rank = rctx.output_rank;
   const SmallVector<int64_t>& padded_tile_sizes = rctx.padded_tile_sizes;
   const Type acc_type = rctx.acc_type;
@@ -1371,7 +1369,7 @@ absl::StatusOr<TensorValue> EmitRaggedDotContracting(
   // emitted directly below.
 
   // M sequential dim: output_rank + 0.
-  const ge::TilingSpace::DimensionInfo& m_dim_info =
+  const gpu::TilingSpace::DimensionInfo& m_dim_info =
       tiling_space.GetDimensionInfo(*ragged_dot_instr, output_rank);
   CHECK(m_dim_info.tile_size.has_value())
       << "M tile size not set for kRaggedContracting.";
@@ -1386,14 +1384,14 @@ absl::StatusOr<TensorValue> EmitRaggedDotContracting(
 
   // g_abs: the group index for this tile (kParallel dim 0 of output [G,...]).
   // tile_propagation layout: [G, batch..., K, N]  → G at output dim 0.
-  const ge::DimTile& g_out_dim = tiled_ragged_dot.tile().dim_tiles()[0];
+  const gpu::DimTile& g_out_dim = tiled_ragged_dot.tile().dim_tiles()[0];
   ABSL_ASSIGN_OR_RETURN(SmallVector<Value> g_abs_vec,
                    emitter_ctx.EvaluateTilingParameters({g_out_dim.offset}));
   Value g_abs = g_abs_vec[0];  // index type, = g * G_tile_size(=1) = g
 
   // Resolve group_sizes to its fusion argument buffer (needed for the
   // O(G) prefix sum: we must load gs[0..g-1] at arbitrary offsets).
-  const ge::TiledHloInstruction* gs_tiled = tiled_ragged_dot.operand(2);
+  const gpu::TiledHloInstruction* gs_tiled = tiled_ragged_dot.operand(2);
   const HloFusionInstruction& fusion = emitter_ctx.fusion();
   mlir::Value gs_buf =
       ResolveBufferArgument(emitter_ctx, fusion, gs_tiled->hlo());
@@ -1458,14 +1456,14 @@ absl::StatusOr<TensorValue> EmitRaggedDotContracting(
   // Output dim ordering: [G=0, batch..., K, N]
   // out_k_start = 1 + num_batch_dims, out_n_start = out_k_start + 1
   const int64_t out_k_start = 1 + num_batch_dims;
-  const ge::DimTile& k_out_dim =
+  const gpu::DimTile& k_out_dim =
       tiled_ragged_dot.tile().dim_tiles()[out_k_start];
   ABSL_ASSIGN_OR_RETURN(SmallVector<Value> k_abs_vec,
                    emitter_ctx.EvaluateTilingParameters({k_out_dim.offset}));
   Value k_abs = k_abs_vec[0];
 
   const int64_t out_n_start = out_k_start + 1;
-  const ge::DimTile& n_out_dim =
+  const gpu::DimTile& n_out_dim =
       tiled_ragged_dot.tile().dim_tiles()[out_n_start];
   ABSL_ASSIGN_OR_RETURN(SmallVector<Value> n_abs_vec,
                    emitter_ctx.EvaluateTilingParameters({n_out_dim.offset}));
@@ -1683,18 +1681,18 @@ absl::StatusOr<TensorValue> EmitRaggedDotContracting(
 // The group_sizes operand (op 2) is NOT loaded — it's irrelevant here.
 absl::StatusOr<TensorValue> EmitRaggedDotBatch(
     EmitterContext& emitter_ctx,
-    const ge::TiledHloInstruction& tiled_ragged_dot,
+    const gpu::TiledHloInstruction& tiled_ragged_dot,
     const RaggedDotParams& rctx) {
   auto& b = emitter_ctx.b();
   const auto* ragged_dot_instr = rctx.ragged_dot_instr;
   const DotDimensionNumbers& dot_dims = rctx.dot_dims;
-  const ge::TilingSpace& tiling_space = rctx.tiling_space;
+  const gpu::TilingSpace& tiling_space = rctx.tiling_space;
   const int64_t output_rank = rctx.output_rank;
   const Type acc_type = rctx.acc_type;
   TensorValue accumulator = rctx.accumulator;
-  const ge::TiledHloRegion& region = tiled_ragged_dot.hlo_regions().front();
+  const gpu::TiledHloRegion& region = tiled_ragged_dot.hlo_regions().front();
 
-  const ge::TilingSpace::DimensionInfo& k_dim_info =
+  const gpu::TilingSpace::DimensionInfo& k_dim_info =
       tiling_space.GetDimensionInfo(*ragged_dot_instr, output_rank);
   CHECK(k_dim_info.tile_size.has_value())
       << "K tile size not set for kRaggedBatch.";
@@ -1703,8 +1701,8 @@ absl::StatusOr<TensorValue> EmitRaggedDotBatch(
 
   const int64_t num_batch = dot_dims.lhs_batch_dimensions_size();
 
-  const ge::TiledHloInstruction* lhs_tiled = tiled_ragged_dot.operand(0);
-  const ge::TiledHloInstruction* rhs_tiled = tiled_ragged_dot.operand(1);
+  const gpu::TiledHloInstruction* lhs_tiled = tiled_ragged_dot.operand(0);
+  const gpu::TiledHloInstruction* rhs_tiled = tiled_ragged_dot.operand(1);
   // operand(2) = group_sizes — NOT emitted.
 
   // K sequential accumulation loop (same structure as EmitDot).
@@ -1768,7 +1766,7 @@ absl::StatusOr<TensorValue> EmitRaggedDotBatch(
 // Emits a kRaggedDot instruction by dispatching to the appropriate mode.
 absl::StatusOr<TensorValue> EmitRaggedDot(
     EmitterContext& emitter_ctx,
-    const ge::TiledHloInstruction& tiled_ragged_dot) {
+    const gpu::TiledHloInstruction& tiled_ragged_dot) {
   ABSL_ASSIGN_OR_RETURN(RaggedDotParams rctx,
                    BuildRaggedDotContext(emitter_ctx, tiled_ragged_dot));
 
@@ -1789,7 +1787,7 @@ absl::StatusOr<TensorValue> EmitRaggedDot(
 }
 
 absl::StatusOr<TensorValue> EmitIota(
-    EmitterContext& emitter_ctx, const ge::TiledHloInstruction& tiled_iota) {
+    EmitterContext& emitter_ctx, const gpu::TiledHloInstruction& tiled_iota) {
   auto& b = emitter_ctx.b();
   const HloIotaInstruction* hlo_iota =
       ::xla::Cast<HloIotaInstruction>(tiled_iota.hlo());
@@ -1843,12 +1841,12 @@ TensorValue EmitTranspose(mlir::ImplicitLocOpBuilder& b,
 }
 
 absl::StatusOr<TensorValue> EmitPad(EmitterContext& emitter_ctx,
-                                    const ge::TiledHloInstruction& tiled_pad) {
+                                    const gpu::TiledHloInstruction& tiled_pad) {
   auto& b = emitter_ctx.b();
   ABSL_ASSIGN_OR_RETURN(SmallVector<int64_t> tile_sizes,
                    tiled_pad.tile().GetStaticTileSizes());
 
-  const ge::TiledHloInstruction* tiled_operand = tiled_pad.operand(0);
+  const gpu::TiledHloInstruction* tiled_operand = tiled_pad.operand(0);
   const auto& pad_input_shape = tiled_operand->hlo()->shape().dimensions();
 
   // Compute tile offsets.
@@ -1896,7 +1894,7 @@ absl::StatusOr<TensorValue> EmitPad(EmitterContext& emitter_ctx,
   if (!mask) {
     return emitter_ctx.TiledHloToTensorValue(*tiled_operand);
   }
-  const ge::TiledHloInstruction* padding_value = tiled_pad.operand(1);
+  const gpu::TiledHloInstruction* padding_value = tiled_pad.operand(1);
 
   TensorValue pad_value_splat = xtile::Splat(
       b, emitter_ctx.TiledHloToTensorValue(*padding_value), tile_sizes);
@@ -1908,7 +1906,7 @@ absl::StatusOr<TensorValue> EmitPad(EmitterContext& emitter_ctx,
 }
 
 absl::StatusOr<TensorValue> EmitBitcast(
-    EmitterContext& emitter_ctx, const ge::TiledHloInstruction& tiled_bitcast,
+    EmitterContext& emitter_ctx, const gpu::TiledHloInstruction& tiled_bitcast,
     TensorValue input) {
   Shape input_shape = tiled_bitcast.hlo()->operand(0)->shape();
   const Shape& output_shape = tiled_bitcast.hlo()->shape();
@@ -2114,14 +2112,14 @@ TensorValue ExpandScanDim(mlir::ImplicitLocOpBuilder& b, TensorValue init,
 
 absl::StatusOr<std::vector<TensorValue>> EmitScan(
     EmitterContext& emitter_ctx,
-    const ge::TiledHloInstruction& tiled_hlo_scan) {
+    const gpu::TiledHloInstruction& tiled_hlo_scan) {
   auto& b = emitter_ctx.b();
   const HloScanInstruction& hlo_scan =
       *::xla::Cast<HloScanInstruction>(tiled_hlo_scan.hlo());
 
   int num_operands = hlo_scan.inputs().size();
   int64_t scan_dim = hlo_scan.scan_dimension();
-  const ge::TilingSpace& tiling_space = tiled_hlo_scan.tile().tiling_space();
+  const gpu::TilingSpace& tiling_space = tiled_hlo_scan.tile().tiling_space();
 
   // TODO(b/390559452): Support variadic scans with multiple inputs and outputs.
   if (hlo_scan.inputs().size() != 1 || hlo_scan.num_carries() != 1) {
@@ -2274,7 +2272,7 @@ absl::StatusOr<std::vector<TensorValue>> EmitScan(
   }
 
   for (int i = 0; i < num_operands; ++i) {
-    const ge::TiledHloInstruction* input_operand = tiled_hlo_scan.operand(i);
+    const gpu::TiledHloInstruction* input_operand = tiled_hlo_scan.operand(i);
 
     TensorValue input = emitter_ctx.TiledHloToTensorValue(*input_operand);
 
@@ -2318,11 +2316,11 @@ absl::StatusOr<std::vector<TensorValue>> EmitScan(
 }
 
 absl::StatusOr<TensorValue> EmitReduceWithNoRegion(
-    EmitterContext& emitter_ctx, const ge::TiledHloInstruction& tiled_hlo) {
+    EmitterContext& emitter_ctx, const gpu::TiledHloInstruction& tiled_hlo) {
   ImplicitLocOpBuilder& b = emitter_ctx.b();
   const HloReduceInstruction& reduce_hlo =
       *::xla::Cast<HloReduceInstruction>(tiled_hlo.hlo());
-  const ge::TiledHloInstruction* tiled_input = tiled_hlo.operand(0);
+  const gpu::TiledHloInstruction* tiled_input = tiled_hlo.operand(0);
   TensorValue input_value = emitter_ctx.TiledHloToTensorValue(*tiled_input);
   ABSL_ASSIGN_OR_RETURN(llvm::SmallVector<int64_t> mask_dim_bounds,
                    tiled_input->tile().GetStaticTileSizes());
@@ -2371,7 +2369,7 @@ absl::StatusOr<TensorValue> EmitCombinerStep(
 // element-wise across tiles along the reduction dimension, and then
 // performing a final reduction on the accumulated tile.
 absl::StatusOr<TensorValue> EmitReduceWithRegion(
-    EmitterContext& emitter_ctx, const ge::TiledHloInstruction& tiled_hlo) {
+    EmitterContext& emitter_ctx, const gpu::TiledHloInstruction& tiled_hlo) {
   TF_RET_CHECK(tiled_hlo.hlo_regions().size() == 1)
       << "Expected exactly one HLO region in tiled reduction instruction: "
       << tiled_hlo.hlo()->ToString();
@@ -2379,8 +2377,8 @@ absl::StatusOr<TensorValue> EmitReduceWithRegion(
   auto& b = emitter_ctx.b();
   const HloReduceInstruction& reduce_hlo =
       *::xla::Cast<HloReduceInstruction>(tiled_hlo.hlo());
-  const ge::TiledHloInstruction* tiled_input = tiled_hlo.operand(0);
-  const ge::TiledHloInstruction* tiled_init = tiled_hlo.operand(1);
+  const gpu::TiledHloInstruction* tiled_input = tiled_hlo.operand(0);
+  const gpu::TiledHloInstruction* tiled_init = tiled_hlo.operand(1);
 
   TensorValue init_value = emitter_ctx.TiledHloToTensorValue(*tiled_init);
 
@@ -2436,7 +2434,7 @@ absl::StatusOr<TensorValue> EmitReduceWithRegion(
             if (loop_iteration_counts[i] == 1) {
               continue;
             }
-            const ge::TilingSpace::DimensionInfo& dim_info =
+            const gpu::TilingSpace::DimensionInfo& dim_info =
                 tiled_hlo.tile().tiling_space().GetDimensionInfo(
                     *tiled_hlo.hlo(), sequential_dim_ids[i]);
             ABSL_ASSIGN_OR_RETURN(ScopedSequentialDimBinding iv_binding,
@@ -2492,7 +2490,7 @@ absl::StatusOr<TensorValue> EmitReduceWithRegion(
 // Emits a tiled reduction instruction, dispatching to loop-tiled reduction or
 // flat (untiled) reduction based on region configuration.
 absl::StatusOr<TensorValue> EmitReduce(
-    EmitterContext& emitter_ctx, const ge::TiledHloInstruction& tiled_hlo) {
+    EmitterContext& emitter_ctx, const gpu::TiledHloInstruction& tiled_hlo) {
   if (tiled_hlo.hlo()->operand_count() != 2) {
     // Currently we only support reduce on one input.
     // TODO(b/525357362): Add variadic support.
@@ -2507,7 +2505,7 @@ absl::StatusOr<TensorValue> EmitReduce(
 
 absl::StatusOr<std::variant<TensorValue, EmittedResults>>
 EmitTiledHloInstructionImpl(EmitterContext& emitter_ctx,
-                            const ge::TiledHloInstruction& tiled_hlo) {
+                            const gpu::TiledHloInstruction& tiled_hlo) {
   auto& b = emitter_ctx.b();
   const HloInstruction* hlo = tiled_hlo.hlo();
   VLOG(4) << "EmitTiledHloInstruction: " << hlo->ToString();
@@ -2581,7 +2579,7 @@ EmitTiledHloInstructionImpl(EmitterContext& emitter_ctx,
   }
   std::vector<Value> operands;
   operands.reserve(hlo->operands().size());
-  for (const ge::TiledHloInstruction* operand : tiled_hlo.operands()) {
+  for (const gpu::TiledHloInstruction* operand : tiled_hlo.operands()) {
     operands.push_back(emitter_ctx.TiledHloToTensorValue(*operand));
   }
   // Please keep the cases in alphabetical order.
@@ -2664,7 +2662,7 @@ EmitTiledHloInstructionImpl(EmitterContext& emitter_ctx,
 }
 
 absl::StatusOr<EmittedResults> EmitTiledHloInstruction(
-    EmitterContext& emitter_ctx, const ge::TiledHloInstruction& tiled_hlo) {
+    EmitterContext& emitter_ctx, const gpu::TiledHloInstruction& tiled_hlo) {
   ABSL_ASSIGN_OR_RETURN(auto result,
                    EmitTiledHloInstructionImpl(emitter_ctx, tiled_hlo));
   if (auto* single = std::get_if<TensorValue>(&result)) {
@@ -2674,8 +2672,8 @@ absl::StatusOr<EmittedResults> EmitTiledHloInstruction(
 }
 
 absl::StatusOr<std::vector<TensorValue>> EmitTiledComputation(
-    EmitterContext& emitter_ctx, const ge::TiledHloRegion& region,
-    absl::Span<const ge::TiledHloInstruction* const> roots) {
+    EmitterContext& emitter_ctx, const gpu::TiledHloRegion& region,
+    absl::Span<const gpu::TiledHloInstruction* const> roots) {
   for (const auto* tiled_hlo : region.instructions()) {
     if (emitter_ctx.IsEmitted(*tiled_hlo)) {
       continue;
@@ -2718,12 +2716,12 @@ absl::StatusOr<std::vector<TensorValue>> EmitTiledComputation(
 absl::StatusOr<std::vector<ScopedSequentialDimBinding>>
 EmitFullyTiledSequentialDimensions(
     ImplicitLocOpBuilder& b, EmitterContext& emitter_ctx,
-    const ge::TiledHloComputation& tiled_computation) {
+    const gpu::TiledHloComputation& tiled_computation) {
   std::vector<ScopedSequentialDimBinding> bindings;
   const auto& tiling_space = tiled_computation.tiling_space();
   for (const auto& [dim_id, dim_info] :
        llvm::enumerate(tiling_space.dimensions())) {
-    if (dim_info.type != ge::TilingSpace::DimensionSemantics::kSequential) {
+    if (dim_info.type != gpu::TilingSpace::DimensionSemantics::kSequential) {
       continue;
     }
     QCHECK(dim_info.hlo != nullptr) << "Sequential dimension " << dim_id
@@ -2741,7 +2739,7 @@ EmitFullyTiledSequentialDimensions(
       ABSL_ASSIGN_OR_RETURN(
           ScopedSequentialDimBinding binding,
           emitter_ctx.MapSymbolIdToSequentialDimValueScoped(
-              ge::TiledDimId(dim_id), MakeIndex(b, 0), Interval{0, 0}));
+              gpu::TiledDimId(dim_id), MakeIndex(b, 0), Interval{0, 0}));
       bindings.push_back(std::move(binding));
     }
   }
@@ -2928,8 +2926,8 @@ Value ApplyGroupSizeTileIdRemapping(ImplicitLocOpBuilder& b,
 
 absl::Status EmitGeneric(ImplicitLocOpBuilder& b,
                          const HloFusionInstruction& fusion,
-                         const ge::TiledHloComputation& tiled_computation,
-                         const ge::Schedule& schedule, xtile::EntryFuncOp fn,
+                         const gpu::TiledHloComputation& tiled_computation,
+                         const gpu::Schedule& schedule, xtile::EntryFuncOp fn,
                          MLIRContext* mlir_context) {
   if (VLOG_IS_ON(6)) {
     VLOG(6) << "Emitting XTile IR for fusion\n"
@@ -2987,7 +2985,7 @@ absl::Status EmitGeneric(ImplicitLocOpBuilder& b,
   // Emit tiled scans first to open their loop and bind its induction variable,
   // which epilogue instructions tiled along the scan dimension (e.g. an iota)
   // depend on.
-  for (const ge::TiledHloInstruction* tiled_hlo :
+  for (const gpu::TiledHloInstruction* tiled_hlo :
        tiled_computation.tiled_root_region().instructions()) {
     if (tiled_hlo->hlo()->opcode() == HloOpcode::kScan &&
         !tiled_hlo->hlo_regions().empty()) {
@@ -3033,11 +3031,12 @@ absl::Status EmitGeneric(ImplicitLocOpBuilder& b,
   return absl::OkStatus();
 }
 
-// Implementation for the experimental tiling space.
+// Implementation for the tiling space.
 class TileRequirementsVisitor : public DefaultTileRequirementsVisitor {
  public:
-  explicit TileRequirementsVisitor(const ge::TiledHloComputation& computation) {
-    for (const ge::TiledHloInstruction* tiled_hlo :
+  explicit TileRequirementsVisitor(
+      const gpu::TiledHloComputation& computation) {
+    for (const gpu::TiledHloInstruction* tiled_hlo :
          computation.instructions()) {
       PopulateMap(tiled_hlo);
     }
@@ -3064,7 +3063,7 @@ class TileRequirementsVisitor : public DefaultTileRequirementsVisitor {
   // Look up the instruction in the tiled HLO map.
   // For parameters to nested fusions, we walk up the parameter chain to find
   // the outermost operand index.
-  absl::StatusOr<const ge::TiledHloInstruction*> LookupTiledHlo(
+  absl::StatusOr<const gpu::TiledHloInstruction*> LookupTiledHlo(
       const HloInstruction* original_instr) const {
     auto it = hlo_to_tiled_.find(original_instr);
     if (it != hlo_to_tiled_.end()) {
@@ -3082,7 +3081,7 @@ class TileRequirementsVisitor : public DefaultTileRequirementsVisitor {
         original_instr->ToString()));
   }
 
-  void PopulateMap(const ge::TiledHloInstruction* tiled_hlo) {
+  void PopulateMap(const gpu::TiledHloInstruction* tiled_hlo) {
     hlo_to_tiled_[tiled_hlo->hlo()] = tiled_hlo;
     for (const auto& region : tiled_hlo->hlo_regions()) {
       for (const auto* region_instruction : region.instructions()) {
@@ -3092,7 +3091,7 @@ class TileRequirementsVisitor : public DefaultTileRequirementsVisitor {
   }
 
   absl::flat_hash_map<const HloInstruction*,
-                      const xla::gpu::experimental::TiledHloInstruction*>
+                      const xla::gpu::TiledHloInstruction*>
       hlo_to_tiled_;
 };
 
@@ -3103,7 +3102,7 @@ class TileRequirementsVisitor : public DefaultTileRequirementsVisitor {
 // utilities.
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
     absl::string_view fn_name, const HloFusionInstruction& fusion,
-    const ::xla::gpu::experimental::TiledHloComputation& tiled_computation,
+    const ::xla::gpu::TiledHloComputation& tiled_computation,
     MLIRContext& mlir_context, absl::Span<mlir::Type> opaque_args_types,
     const std::optional<GpuComputeCapability>& gpu_cc, int num_tiles_per_pid) {
   const HloComputation* hlo_computation =

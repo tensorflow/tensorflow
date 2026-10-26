@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_CODEGEN_TILING_EXPERIMENTAL_SCHEDULING_H_
-#define XLA_CODEGEN_TILING_EXPERIMENTAL_SCHEDULING_H_
+#ifndef XLA_CODEGEN_TILING_SCHEDULING_H_
+#define XLA_CODEGEN_TILING_SCHEDULING_H_
 
 #include <cstdint>
 #include <string>
@@ -22,11 +22,11 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "llvm/ADT/MapVector.h"
-#include "xla/codegen/tiling/experimental/tiled_hlo.h"
+#include "xla/codegen/tiling/tiled_hlo.h"
 #include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 
-namespace xla::gpu::experimental {
+namespace xla::gpu {
 
 struct Schedule {
   // Maps from the parallel dimension ID to the symbolic expression that depends
@@ -69,6 +69,21 @@ absl::StatusOr<Schedule> GetSchedule(
     const TiledHloComputation& tiled_computation,
     int64_t num_tiles_per_pid = 1);
 
+}  // namespace xla::gpu
+
+namespace xla::gpu::experimental {
+using ::xla::gpu::GetSchedule;
+using ::xla::gpu::Schedule;
 }  // namespace xla::gpu::experimental
 
-#endif  // XLA_CODEGEN_TILING_EXPERIMENTAL_SCHEDULING_H_
+namespace xla {
+using ::xla::gpu::GetSchedule;
+using ::xla::gpu::Schedule;
+}  // namespace xla
+
+namespace xla::experimental {
+using ::xla::gpu::GetSchedule;
+using ::xla::gpu::Schedule;
+}  // namespace xla::experimental
+
+#endif  // XLA_CODEGEN_TILING_SCHEDULING_H_

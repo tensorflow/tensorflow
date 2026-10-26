@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/codegen/tiling/experimental/tile_propagation.h"
+#include "xla/codegen/tiling/tile_propagation.h"
 
 #include <cstdint>
 #include <memory>
@@ -32,9 +32,9 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/MLIRContext.h"
-#include "xla/codegen/tiling/experimental/test_utils.h"
-#include "xla/codegen/tiling/experimental/tile.h"
-#include "xla/codegen/tiling/experimental/tiling_space.h"
+#include "xla/codegen/tiling/test_utils.h"
+#include "xla/codegen/tiling/tile.h"
+#include "xla/codegen/tiling/tiling_space.h"
 #include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/analysis/symbolic_map.h"
@@ -46,7 +46,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/util.h"
 
-namespace xla::gpu::experimental {
+namespace xla::gpu {
 namespace {
 
 using ::absl_testing::StatusIs;
@@ -2545,4 +2545,4 @@ TEST_F(TilePropagationTest, CanPropagateToInputsOfRaggedDotOpContracting) {
 }
 
 }  // namespace
-}  // namespace xla::gpu::experimental
+}  // namespace xla::gpu

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_CODEGEN_TILING_EXPERIMENTAL_TILE_PROPAGATION_H_
-#define XLA_CODEGEN_TILING_EXPERIMENTAL_TILE_PROPAGATION_H_
+#ifndef XLA_CODEGEN_TILING_TILE_PROPAGATION_H_
+#define XLA_CODEGEN_TILING_TILE_PROPAGATION_H_
 
 #include <cstdint>
 #include <string>
@@ -22,11 +22,11 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
-#include "xla/codegen/tiling/experimental/tile.h"
-#include "xla/codegen/tiling/experimental/tiling_space.h"
+#include "xla/codegen/tiling/tile.h"
+#include "xla/codegen/tiling/tiling_space.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 
-namespace xla::gpu::experimental {
+namespace xla::gpu {
 
 using Tiles = llvm::SmallVector<Tile, 2>;
 
@@ -46,6 +46,27 @@ absl::StatusOr<Tiles> PropagateTileToOutput(const TilingSpace& tiling_space,
                                             const Tile& input_tile,
                                             int64_t input_index);
 
+}  // namespace xla::gpu
+
+namespace xla::gpu::experimental {
+using ::xla::gpu::PropagateTilesToInputs;
+using ::xla::gpu::PropagateTileToInput;
+using ::xla::gpu::PropagateTileToOutput;
+using ::xla::gpu::Tiles;
 }  // namespace xla::gpu::experimental
 
-#endif  // XLA_CODEGEN_TILING_EXPERIMENTAL_TILE_PROPAGATION_H_
+namespace xla {
+using ::xla::gpu::PropagateTilesToInputs;
+using ::xla::gpu::PropagateTileToInput;
+using ::xla::gpu::PropagateTileToOutput;
+using ::xla::gpu::Tiles;
+}  // namespace xla
+
+namespace xla::experimental {
+using ::xla::gpu::PropagateTilesToInputs;
+using ::xla::gpu::PropagateTileToInput;
+using ::xla::gpu::PropagateTileToOutput;
+using ::xla::gpu::Tiles;
+}  // namespace xla::experimental
+
+#endif  // XLA_CODEGEN_TILING_TILE_PROPAGATION_H_

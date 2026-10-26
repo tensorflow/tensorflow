@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/codegen/tiling/experimental/scheduling.h"
+#include "xla/codegen/tiling/scheduling.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -40,11 +40,10 @@ limitations under the License.
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/MLIRContext.h"
-#include "xla/codegen/tiling/experimental/tile.h"
-#include "xla/codegen/tiling/experimental/tiled_hlo.h"
-#include "xla/codegen/tiling/experimental/tiling_space.h"
+#include "xla/codegen/tiling/tile.h"
+#include "xla/codegen/tiling/tiled_hlo.h"
+#include "xla/codegen/tiling/tiling_space.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
-#include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/analysis/symbolic_map.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -58,7 +57,7 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
-namespace xla::gpu::experimental {
+namespace xla::gpu {
 
 namespace {
 
@@ -635,4 +634,4 @@ int64_t Schedule::GetNumTilesPerPid() const {
   return CeilOfRatio(num_tiles, num_pids);
 }
 
-}  // namespace xla::gpu::experimental
+}  // namespace xla::gpu

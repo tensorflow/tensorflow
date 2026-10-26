@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/codegen/tiling/experimental/reshape_analysis.h"
+#include "xla/codegen/tiling/reshape_analysis.h"
 
 #include <cstdint>
 #include <string>
@@ -29,7 +29,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 
-namespace xla::gpu::experimental {
+namespace xla::gpu {
 namespace {
 
 using ::llvm::SmallVector;
@@ -173,4 +173,4 @@ llvm::SmallVector<int64_t> PositionsOfNonTrivialDims(
   return positions;
 }
 
-}  // namespace xla::gpu::experimental
+}  // namespace xla::gpu

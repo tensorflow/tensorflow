@@ -52,9 +52,10 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
-#include "xla/codegen/tiling/experimental/reshape_analysis.h"
-#include "xla/codegen/tiling/experimental/tiled_hlo.h"
-#include "xla/codegen/tiling/experimental/tiling_space.h"
+#include "xla/codegen/tiling/reshape_analysis.h"
+#include "xla/codegen/tiling/tile.h"
+#include "xla/codegen/tiling/tiled_hlo.h"
+#include "xla/codegen/tiling/tiling_space.h"
 #include "xla/codegen/xtile/ir/xtile_attrs.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/comparison_util.h"
@@ -93,7 +94,7 @@ using ::stream_executor::GpuComputeCapability;
 
 namespace ma = ::mlir::arith;
 namespace mh = ::mlir::mhlo;
-namespace ge = ::xla::gpu::experimental;
+namespace gpu = ::xla::gpu;
 namespace mm = ::mlir::math;
 
 namespace {
@@ -392,7 +393,7 @@ absl::StatusOr<SmallVector<Value>> EmitterContext::EvaluateTilingParameters(
   // Then plug in pid, sequential and runtime values.
 
   MLIRContext* mlir_context = tiled_computation_.GetMLIRContext();
-  const ge::TilingSpace& tiling_space = tiled_computation_.tiling_space();
+  const gpu::TilingSpace& tiling_space = tiled_computation_.tiling_space();
   int64_t num_dimensions = tiling_space.num_dimensions();
   int64_t num_parallel_dimensions = tiling_space.num_parallel_dimensions();
   // Get all dimension and symbol IDs from all of the expressions.
@@ -431,14 +432,14 @@ absl::StatusOr<SmallVector<Value>> EmitterContext::EvaluateTilingParameters(
                                              default_replacement);
   for (const int64_t dim : dim_ids) {
     switch (tiling_space.dimensions()[dim].type) {
-      case ge::TilingSpace::DimensionSemantics::kParallel:
-      case ge::TilingSpace::DimensionSemantics::kReplica:
+      case gpu::TilingSpace::DimensionSemantics::kParallel:
+      case gpu::TilingSpace::DimensionSemantics::kReplica:
         dim_replacements[dim] = schedule_.GetPidExpr(dim);
         break;
-      case ge::TilingSpace::DimensionSemantics::kSequential: {
+      case gpu::TilingSpace::DimensionSemantics::kSequential: {
         dim_replacements[dim] =
             CreateSymbolExpr(symbol_count++, dim_values.size(), mlir_context);
-        auto [value, range] = GetSequentialDimValue(ge::TiledDimId(dim));
+        auto [value, range] = GetSequentialDimValue(gpu::TiledDimId(dim));
         symbol_values.push_back(value);
         symbol_variables.push_back(IndexingMap::Variable{
             range, absl::StrCat("k_", dim - num_parallel_dimensions)});
@@ -832,7 +833,7 @@ Value Bitcast(mlir::ImplicitLocOpBuilder& b, Value value, Type type) {
 }
 
 /*static */ absl::StatusOr<TileInfo> TileInfo::Construct(
-    EmitterContext& emitter_ctx, const ge::TiledHloInstruction& tiled_hlo) {
+    EmitterContext& emitter_ctx, const gpu::TiledHloInstruction& tiled_hlo) {
   const Shape& logical_shape = tiled_hlo.hlo()->shape();
   ABSL_ASSIGN_OR_RETURN(SmallVector<int64_t> logical_tile_strides,
                    tiled_hlo.tile().GetStaticTileStrides());

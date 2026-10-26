@@ -26,7 +26,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/MLIRContext.h"
-#include "xla/codegen/tiling/experimental/tiling_space.h"
+#include "xla/codegen/tiling/tiling_space.h"
 #include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
@@ -65,9 +65,8 @@ class GetTileTilingSpaceConcreteSizesTest
         BlockLevelParameters::FromBlockLevelFusionConfig(
             backend_config.fusion_backend_config().block_level_fusion_config());
     auto fusion_adaptor = HloFusionAdaptor::ForInstruction(fusion);
-    ABSL_ASSIGN_OR_RETURN(auto tiling_space,
-                     ::xla::gpu::experimental::TilingSpace::Create(
-                         *fusion_adaptor, &mlir_context_));
+    ABSL_ASSIGN_OR_RETURN(auto tiling_space, ::xla::gpu::TilingSpace::Create(
+                                            *fusion_adaptor, &mlir_context_));
     return GetTilingSpaceConcreteSizes(
         *tiling_space, block_level_parameters,
         GetDebugOptionsForTest()

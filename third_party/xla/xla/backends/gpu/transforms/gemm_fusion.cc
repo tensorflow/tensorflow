@@ -48,9 +48,9 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/backends/gpu/transforms/bitcast_utils.h"
 #include "xla/backends/gpu/transforms/convert_triton_gemm_config.h"
-#include "xla/codegen/tiling/experimental/tile.h"
-#include "xla/codegen/tiling/experimental/tiled_hlo.h"
-#include "xla/codegen/tiling/experimental/tiling_space.h"
+#include "xla/codegen/tiling/tile.h"
+#include "xla/codegen/tiling/tiled_hlo.h"
+#include "xla/codegen/tiling/tiling_space.h"
 #include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/hlo/analysis/shape_tracker.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
@@ -1301,7 +1301,7 @@ FusionDecision CanUnpackS4ParametersInFusion(
 FusionDecision CanTile(mlir::MLIRContext& mlir_context,
                        const HloFusionAdaptor& fusion,
                        const se::DeviceDescription& device_description) {
-  namespace ge = ::xla::gpu::experimental;
+  namespace ge = ::xla::gpu;
   auto ts = ge::TilingSpace::Create(fusion, &mlir_context);
   if (!ts.ok()) {
     return FusionDecision::Forbid(

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_CODEGEN_TILING_EXPERIMENTAL_RESHAPE_ANALYSIS_H_
-#define XLA_CODEGEN_TILING_EXPERIMENTAL_RESHAPE_ANALYSIS_H_
+#ifndef XLA_CODEGEN_TILING_RESHAPE_ANALYSIS_H_
+#define XLA_CODEGEN_TILING_RESHAPE_ANALYSIS_H_
 
 #include <cstdint>
 #include <string>
@@ -26,7 +26,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "xla/shape.h"
 
-namespace xla::gpu::experimental {
+namespace xla::gpu {
 
 // Categorizes a "minimal" reshape.
 enum class MinimalReshapeCategory {
@@ -114,6 +114,30 @@ std::vector<MinimalReshape> GetMinimalReshapes(const Shape& input_shape,
 llvm::SmallVector<int64_t> PositionsOfNonTrivialDims(
     absl::Span<const int64_t> dimensions);
 
+}  // namespace xla::gpu
+
+namespace xla::gpu::experimental {
+using ::xla::gpu::DimensionRange;
+using ::xla::gpu::GetMinimalReshapes;
+using ::xla::gpu::MinimalReshape;
+using ::xla::gpu::MinimalReshapeCategory;
+using ::xla::gpu::PositionsOfNonTrivialDims;
 }  // namespace xla::gpu::experimental
 
-#endif  // XLA_CODEGEN_TILING_EXPERIMENTAL_RESHAPE_ANALYSIS_H_
+namespace xla {
+using ::xla::gpu::DimensionRange;
+using ::xla::gpu::GetMinimalReshapes;
+using ::xla::gpu::MinimalReshape;
+using ::xla::gpu::MinimalReshapeCategory;
+using ::xla::gpu::PositionsOfNonTrivialDims;
+}  // namespace xla
+
+namespace xla::experimental {
+using ::xla::gpu::DimensionRange;
+using ::xla::gpu::GetMinimalReshapes;
+using ::xla::gpu::MinimalReshape;
+using ::xla::gpu::MinimalReshapeCategory;
+using ::xla::gpu::PositionsOfNonTrivialDims;
+}  // namespace xla::experimental
+
+#endif  // XLA_CODEGEN_TILING_RESHAPE_ANALYSIS_H_

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_CODEGEN_TILING_EXPERIMENTAL_TILE_H_
-#define XLA_CODEGEN_TILING_EXPERIMENTAL_TILE_H_
+#ifndef XLA_CODEGEN_TILING_TILE_H_
+#define XLA_CODEGEN_TILING_TILE_H_
 
 #include <algorithm>
 #include <cstddef>
@@ -35,7 +35,7 @@ limitations under the License.
 #include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 
-namespace xla::gpu::experimental {
+namespace xla::gpu {
 
 // Tiled dimension ID within tiling space. Separate type for safety to not
 // confuse dimension ID in the tiling space with e.g. position of dimension
@@ -274,6 +274,29 @@ DimTile GetFullDimTile(int64_t dim_size, mlir::MLIRContext* ctx);
 DimTile GetDefaultDimTile(TiledDimId id, SymbolicExpr tile_size,
                           int64_t dim_size);
 
+}  // namespace xla::gpu
+
+namespace xla::gpu::experimental {
+using ::xla::gpu::DimTile;
+using ::xla::gpu::GetDefaultDimTile;
+using ::xla::gpu::GetFullDimTile;
+using ::xla::gpu::Tile;
+using ::xla::gpu::TiledDimId;
 }  // namespace xla::gpu::experimental
 
-#endif  // XLA_CODEGEN_TILING_EXPERIMENTAL_TILE_H_
+namespace xla {
+using ::xla::gpu::DimTile;
+using ::xla::gpu::GetDefaultDimTile;
+using ::xla::gpu::GetFullDimTile;
+using ::xla::gpu::TiledDimId;
+}  // namespace xla
+
+namespace xla::experimental {
+using ::xla::gpu::DimTile;
+using ::xla::gpu::GetDefaultDimTile;
+using ::xla::gpu::GetFullDimTile;
+using ::xla::gpu::Tile;
+using ::xla::gpu::TiledDimId;
+}  // namespace xla::experimental
+
+#endif  // XLA_CODEGEN_TILING_TILE_H_

@@ -33,7 +33,7 @@ limitations under the License.
 #include "llvm/Support/MathExtras.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
-#include "xla/codegen/tiling/experimental/tiling_space.h"
+#include "xla/codegen/tiling/tiling_space.h"
 #include "xla/codegen/tiling/tiling_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -226,8 +226,8 @@ absl::StatusOr<bool> HasStaleSequentialTileSizes(
   ABSL_ASSIGN_OR_RETURN(PooledOrFallbackMlirContext context,
                    BorrowMlirContextOr(mlir_context_pool, mlir_context));
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(&fusion);
-  absl::StatusOr<std::unique_ptr<experimental::TilingSpace>> tiling_space =
-      experimental::TilingSpace::Create(*fusion_adaptor, context.get());
+  absl::StatusOr<std::unique_ptr<TilingSpace>> tiling_space =
+      TilingSpace::Create(*fusion_adaptor, context.get());
   if (!tiling_space.ok()) {
     return false;
   }

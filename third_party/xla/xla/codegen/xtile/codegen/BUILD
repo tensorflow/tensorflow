@@ -46,10 +46,10 @@ cc_library(
         "//xla:xla_proto_cc",
         "//xla/codegen:ir_emission_utils",
         "//xla/codegen/emitters:elemental_hlo_to_mlir",
-        "//xla/codegen/tiling/experimental:reshape_analysis",
-        "//xla/codegen/tiling/experimental:scheduling",
-        "//xla/codegen/tiling/experimental:tile",
-        "//xla/codegen/tiling/experimental:tiled_hlo",
+        "//xla/codegen/tiling:reshape_analysis",
+        "//xla/codegen/tiling:scheduling",
+        "//xla/codegen/tiling:tile",
+        "//xla/codegen/tiling:tiled_hlo",
         "//xla/codegen/xtile/ir:xtile",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/analysis:interval",
@@ -84,10 +84,10 @@ cc_library(
 cc_library(
     name = "fusion_emitter",
     srcs = [
-        "experimental_fusion_emitter.cc",
+        "fusion_emitter.cc",
     ],
     hdrs = [
-        "experimental_fusion_emitter.h",
+        "fusion_emitter.h",
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
@@ -100,10 +100,9 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/codegen/emitters/ir:xla",
-        "//xla/codegen/tiling/experimental:reshape_analysis",
-        "//xla/codegen/tiling/experimental:scheduling",
-        "//xla/codegen/tiling/experimental:tile",
-        "//xla/codegen/tiling/experimental:tiled_hlo",
+        "//xla/codegen/tiling:scheduling",
+        "//xla/codegen/tiling:tile",
+        "//xla/codegen/tiling:tiled_hlo",
         "//xla/codegen/xtile:xtile_config_proto_cc",
         "//xla/codegen/xtile/ir:xtile",
         "//xla/codegen/xtile/ir/transforms:passes",
@@ -140,6 +139,11 @@ cc_library(
         "@stablehlo//:stablehlo_ops",
         "@tsl//tsl/platform:path",
     ],
+)
+
+alias(
+    name = "experimental_fusion_emitter",
+    actual = ":fusion_emitter",
 )
 
 cc_library(

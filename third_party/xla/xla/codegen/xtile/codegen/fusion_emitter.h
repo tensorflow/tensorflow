@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_CODEGEN_XTILE_CODEGEN_EXPERIMENTAL_FUSION_EMITTER_H_
-#define XLA_CODEGEN_XTILE_CODEGEN_EXPERIMENTAL_FUSION_EMITTER_H_
+#ifndef XLA_CODEGEN_XTILE_CODEGEN_FUSION_EMITTER_H_
+#define XLA_CODEGEN_XTILE_CODEGEN_FUSION_EMITTER_H_
 
 #include <optional>
 
@@ -27,7 +27,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"
 #include "mlir/Pass/PassManager.h"
 #include "xla/autotuning.pb.h"
-#include "xla/codegen/tiling/experimental/tiled_hlo.h"
+#include "xla/codegen/tiling/tiled_hlo.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/stream_executor/device_description.h"
 
@@ -44,7 +44,7 @@ namespace xla::xtile {
 // Omit otherwise.
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
     absl::string_view fn_name, const HloFusionInstruction& fusion,
-    const ::xla::gpu::experimental::TiledHloComputation& tiled_computation,
+    const ::xla::gpu::TiledHloComputation& tiled_computation,
     mlir::MLIRContext& mlir_context,
     absl::Span<mlir::Type> opaque_args_types = {},
     const std::optional<stream_executor::GpuComputeCapability>& gpu_cc = {},
@@ -52,4 +52,4 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
 
 }  // namespace xla::xtile
 
-#endif  // XLA_CODEGEN_XTILE_CODEGEN_EXPERIMENTAL_FUSION_EMITTER_H_
+#endif  // XLA_CODEGEN_XTILE_CODEGEN_FUSION_EMITTER_H_

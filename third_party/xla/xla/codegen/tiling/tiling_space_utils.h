@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_CODEGEN_TILING_EXPERIMENTAL_TILING_SPACE_UTILS_H_
-#define XLA_CODEGEN_TILING_EXPERIMENTAL_TILING_SPACE_UTILS_H_
+#ifndef XLA_CODEGEN_TILING_TILING_SPACE_UTILS_H_
+#define XLA_CODEGEN_TILING_TILING_SPACE_UTILS_H_
 
 #include <cstdint>
 #include <vector>
@@ -35,4 +35,14 @@ absl::StatusOr<std::vector<FlatTiling>> GetFlatTilingsForInputSpace(
 
 }  // namespace xla
 
-#endif  // XLA_CODEGEN_TILING_EXPERIMENTAL_TILING_SPACE_UTILS_H_
+namespace xla::gpu {
+using ::xla::FlatTiling;
+using ::xla::GetFlatTilingsForInputSpace;
+}  // namespace xla::gpu
+
+namespace xla::gpu::experimental {
+using ::xla::FlatTiling;
+using ::xla::GetFlatTilingsForInputSpace;
+}  // namespace xla::gpu::experimental
+
+#endif  // XLA_CODEGEN_TILING_TILING_SPACE_UTILS_H_

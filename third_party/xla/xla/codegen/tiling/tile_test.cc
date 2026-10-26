@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/codegen/tiling/experimental/tile.h"
+#include "xla/codegen/tiling/tile.h"
 
 #include <cstdint>
 #include <memory>
@@ -24,14 +24,14 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/DenseMap.h"
 #include "mlir/IR/MLIRContext.h"
-#include "xla/codegen/tiling/experimental/tiling_space.h"
+#include "xla/codegen/tiling/tiling_space.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
 #include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/analysis/symbolic_map.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 
-namespace xla::gpu::experimental {
+namespace xla::gpu {
 namespace {
 
 class TileTest : public HloHardwareIndependentTestBase {
@@ -226,4 +226,4 @@ TEST_F(TileTest, ToStringWithMultipleConstraints) {
 }
 
 }  // namespace
-}  // namespace xla::gpu::experimental
+}  // namespace xla::gpu

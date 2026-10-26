@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/codegen/tiling/experimental/tiled_hlo.h"
+#include "xla/codegen/tiling/tiled_hlo.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -47,9 +47,9 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
-#include "xla/codegen/tiling/experimental/tile.h"
-#include "xla/codegen/tiling/experimental/tile_propagation.h"
-#include "xla/codegen/tiling/experimental/tiling_space.h"
+#include "xla/codegen/tiling/tile.h"
+#include "xla/codegen/tiling/tile_propagation.h"
+#include "xla/codegen/tiling/tiling_space.h"
 #include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -60,7 +60,7 @@ limitations under the License.
 #include "xla/service/name_uniquer.h"
 #include "xla/util.h"
 
-namespace xla::gpu::experimental {
+namespace xla::gpu {
 
 using ::llvm::ArrayRef;
 using ::llvm::SmallVector;
@@ -136,8 +136,7 @@ class OrderedTiledHloPtrSet {
   // element was inserted.
   std::pair<TiledHloInstruction*, bool> Insert(const HloInstruction* hlo,
                                                Tile tile) {
-    return Insert(hlo,
-                  llvm::SmallVector<experimental::Tile, 2>{std::move(tile)});
+    return Insert(hlo, llvm::SmallVector<Tile, 2>{std::move(tile)});
   }
 
   // Inserts an operand of `user` into the set. For tuple-producing operands
@@ -164,7 +163,7 @@ class OrderedTiledHloPtrSet {
     if (pending.tiled_hlo == nullptr) {
       pending.tiles.resize(num_outputs);
       pending.tiled_hlo = &instructions_.emplace_back(
-          operand_hlo, llvm::SmallVector<experimental::Tile, 2>{});
+          operand_hlo, llvm::SmallVector<Tile, 2>{});
     }
 
     const int64_t index = user.tuple_index();
@@ -183,9 +182,9 @@ class OrderedTiledHloPtrSet {
       return std::make_pair(pending.tiled_hlo, false);
     }
 
-    llvm::SmallVector<experimental::Tile, 2> tiles;
+    llvm::SmallVector<Tile, 2> tiles;
     tiles.reserve(num_outputs);
-    for (const std::optional<experimental::Tile>& t : pending.tiles) {
+    for (const std::optional<Tile>& t : pending.tiles) {
       tiles.push_back(*t);
     }
     pending.tiled_hlo->set_tiles(std::move(tiles));
@@ -212,8 +211,7 @@ class OrderedTiledHloPtrSet {
 
  private:
   std::pair<TiledHloInstruction*, bool> Insert(
-      const HloInstruction* hlo,
-      llvm::SmallVector<experimental::Tile, 2> tiles) {
+      const HloInstruction* hlo, llvm::SmallVector<Tile, 2> tiles) {
     TiledHloInstruction& candidate =
         instructions_.emplace_back(hlo, std::move(tiles));
     auto [it, inserted] = hash_set_.insert(&candidate);
@@ -241,7 +239,7 @@ class OrderedTiledHloPtrSet {
 
   struct PendingTupleProducer {
     TiledHloInstruction* tiled_hlo = nullptr;
-    llvm::SmallVector<std::optional<experimental::Tile>, 2> tiles;
+    llvm::SmallVector<std::optional<Tile>, 2> tiles;
     int64_t num_assigned = 0;
   };
 
@@ -510,17 +508,6 @@ void PrintTiledHloInstruction(
   }
 }
 
-// Extracts `HloInstruction`s from a span of `HloInstructionAdaptor`s.
-absl::InlinedVector<const HloInstruction*, 2> ToInstructions(
-    absl::Span<const HloInstructionAdaptor> instruction_adaptors) {
-  absl::InlinedVector<const HloInstruction*, 2> hlo_instructions;
-  hlo_instructions.reserve(instruction_adaptors.size());
-  absl::c_transform(
-      instruction_adaptors, std::back_inserter(hlo_instructions),
-      [&](const HloInstructionAdaptor& instr) { return &instr.instruction(); });
-  return hlo_instructions;
-}
-
 // State of a region under construction. Linked to the enclosing region's
 // context so that loop-invariant instructions can be inserted into an outer
 // region while a nested one is being built.
@@ -560,8 +547,7 @@ RegionContext* GetRootRegion(RegionContext* current) {
 //
 // Instructions are not ordered.
 absl::StatusOr<TiledHloRegion> CreateHloRegion(
-    llvm::SmallVector<std::pair<const HloInstruction*, experimental::Tile>, 4>
-        roots,
+    llvm::SmallVector<std::pair<const HloInstruction*, Tile>, 4> roots,
     const HloFusionAdaptor& fusion, TilingSpace& tiling_space,
     std::deque<TiledHloInstruction>& instruction_storage,
     absl::flat_hash_map<int64_t,
@@ -608,8 +594,7 @@ absl::StatusOr<TiledHloRegion> CreateHloRegion(
         hlo->operand_count(), nullptr);
 
     for (const auto& region_root_ids : spec.region_roots) {
-      llvm::SmallVector<std::pair<const HloInstruction*, experimental::Tile>, 4>
-          region_roots;
+      llvm::SmallVector<std::pair<const HloInstruction*, Tile>, 4> region_roots;
       region_roots.reserve(region_root_ids.size());
       for (int64_t id : region_root_ids) {
         region_roots.emplace_back(&operands[id].instruction(),
@@ -689,7 +674,7 @@ void TiledHloRegion::SortInstructionsPostOrder() {
 
 /*static*/ absl::StatusOr<TiledHloComputation> TiledHloComputation::Tile(
     const HloFusionAdaptor& fusion, std::unique_ptr<TilingSpace> tiling_space) {
-  llvm::SmallVector<std::pair<const HloInstruction*, experimental::Tile>, 4>
+  llvm::SmallVector<std::pair<const HloInstruction*, xla::gpu::Tile>, 4>
       tiled_roots;
   tiled_roots.reserve(fusion.GetRoots().size());
   for (const auto& [root, tile] :
@@ -735,4 +720,4 @@ std::string TiledHloComputation::ToString() const {
   return ss.str();
 }
 
-}  // namespace xla::gpu::experimental
+}  // namespace xla::gpu

@@ -19,8 +19,8 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/types/span.h"
-#include "xla/codegen/tiling/experimental/tiled_hlo.h"
-#include "xla/codegen/tiling/experimental/tiling_space.h"
+#include "xla/codegen/tiling/tiled_hlo.h"
+#include "xla/codegen/tiling/tiling_space.h"
 #include "xla/service/decision.h"
 #include "xla/stream_executor/device_description.h"
 
@@ -40,6 +40,9 @@ Decision VerifyTritonConstraints(const TiledHloComputation& tiled_computation,
                                  const se::DeviceDescription& device_info);
 
 }  // namespace experimental
+
+using experimental::VerifySubsetOfTritonConstraints;
+using experimental::VerifyTritonConstraints;
 
 }  // namespace gpu
 }  // namespace xla

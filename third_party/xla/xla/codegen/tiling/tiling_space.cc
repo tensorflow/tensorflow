@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/codegen/tiling/experimental/tiling_space.h"
+#include "xla/codegen/tiling/tiling_space.h"
 
 #include <cstdint>
 #include <memory>
@@ -40,8 +40,8 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/codegen/tiling/constraint_expression.h"
-#include "xla/codegen/tiling/experimental/tile.h"
-#include "xla/codegen/tiling/experimental/tiling_space_utils.h"
+#include "xla/codegen/tiling/tile.h"
+#include "xla/codegen/tiling/tiling_space_utils.h"
 #include "xla/codegen/tiling/tiling_util.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/interval.h"
@@ -59,7 +59,7 @@ limitations under the License.
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
-namespace xla::gpu::experimental {
+namespace xla::gpu {
 namespace {
 
 std::string HloPtrToString(const HloInstruction* hlo) {
@@ -907,4 +907,4 @@ TilingSpace::GetValidTilings(bool tile_reduction_dimensions) {
   }
   return valid_tilings;
 }
-}  // namespace xla::gpu::experimental
+}  // namespace xla::gpu

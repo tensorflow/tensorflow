@@ -46,9 +46,8 @@ limitations under the License.
 #include "llvm/Support/MathExtras.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/triton/fusion.h"
-#include "xla/codegen/tiling/experimental/tiled_hlo.h"
-#include "xla/codegen/tiling/experimental/tiling_space.h"
-#include "xla/codegen/tiling/experimental/tiling_space_utils.h"
+#include "xla/codegen/tiling/tiled_hlo.h"
+#include "xla/codegen/tiling/tiling_space.h"
 #include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/codegen/xtile/tiling_from_block_parameters.h"
@@ -361,8 +360,8 @@ bool DoesTilingFitInRegisters(const HloFusionAdaptor& fusion_adaptor,
                               const se::DeviceDescription& device_info) {
   for (const HloInstructionAdaptor& root : fusion_adaptor.GetRoots()) {
     int64_t root_tile_size = 1;
-    for (auto [index, dim] : llvm::enumerate(
-             experimental::GetFirstShape(&root.instruction()).dimensions())) {
+    for (auto [index, dim] :
+         llvm::enumerate(GetFirstShape(&root.instruction()).dimensions())) {
       int64_t dim_id =
           tiling_space.GetDimensionInfo(root.instruction(), index).id.value();
       int64_t tile_size = padded_tile_sizes[dim_id];

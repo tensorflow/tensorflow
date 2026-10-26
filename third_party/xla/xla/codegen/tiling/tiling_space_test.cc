@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/codegen/tiling/experimental/tiling_space.h"
+#include "xla/codegen/tiling/tiling_space.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -29,7 +29,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/MLIRContext.h"
-#include "xla/codegen/tiling/experimental/tile.h"
+#include "xla/codegen/tiling/tile.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
 #include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
@@ -42,7 +42,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/xla.pb.h"
 
-namespace xla::gpu::experimental {
+namespace xla::gpu {
 namespace {
 
 using ::absl_testing::IsOkAndHolds;
@@ -298,6 +298,7 @@ TEST_F(TilingSpaceTest, DynamicSlice) {
 TEST_F(TilingSpaceTest, TwoOutputsParallelDims) {
   GTEST_SKIP() << "Arbitrary multi-output fusions are currently not supported "
                   "in TilingSpace (b/502910372).";
+  /* TODO(b/502910372): Re-enable once supported.
   HloInstruction* root = ParseAndGetRoot(R"(
     HloModule m
     f {
@@ -344,6 +345,7 @@ TEST_F(TilingSpaceTest, TwoOutputsParallelDims) {
            offsets [tid_2 * ts_2, tid_3 * ts_3] sizes [ts_2, ts_3]
            strides [1, 1] upper bounds [11, 9]
   )"));
+  */
 }
 
 TEST_F(TilingSpaceTest, TwoOutputsEqualShapesParallelDims) {
@@ -1315,4 +1317,4 @@ TEST_F(TilingSpaceTest, ScanWithNonElementwiseEpilogueIsRejected) {
                        HasSubstr("could not be located in the tiling space")));
 }
 }  // namespace
-}  // namespace xla::gpu::experimental
+}  // namespace xla::gpu
