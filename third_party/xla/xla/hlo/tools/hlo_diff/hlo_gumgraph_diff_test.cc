@@ -161,6 +161,43 @@ ENTRY entry {
               IsEmpty());
 }
 
+TEST_F(HloDiffTest, SwappedEntryParametersAreReportedAsMoved) {
+  // (x, y) -> x - y vs. (y, x) -> x - y.
+  constexpr absl::string_view kLeftHlo = R"(
+HloModule module
+
+ENTRY entry {
+  x = f32[4] parameter(0)
+  y = f32[4] parameter(1)
+  ROOT subtract = f32[4] subtract(x, y)
+}
+)";
+  constexpr absl::string_view kRightHlo = R"(
+HloModule module
+
+ENTRY entry {
+  y = f32[4] parameter(0)
+  x = f32[4] parameter(1)
+  ROOT subtract = f32[4] subtract(x, y)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module_l,
+                          ParseAndReturnVerifiedModule(kLeftHlo));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module_r,
+                          ParseAndReturnVerifiedModule(kRightHlo));
+  TF_ASSERT_OK_AND_ASSIGN(auto diff_result,
+                          ComputeDiff(*module_l, *module_r, DiffOptions()));
+
+  // The entry parameters are matched by number, so each one is used at the
+  // other operand position of the subtract.
+  EXPECT_THAT(GetSortedLeftInstructionNames(
+                  diff_result.diff_result->changed_instructions),
+              IsEmpty());
+  EXPECT_THAT(GetSortedLeftInstructionNames(
+                  diff_result.diff_result->moved_instructions),
+              ElementsAre("x", "y"));
+}
+
 }  // namespace
 }  // namespace hlo_diff
 }  // namespace xla
