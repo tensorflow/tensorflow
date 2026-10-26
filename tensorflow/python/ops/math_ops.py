@@ -5580,22 +5580,29 @@ def tensordot(a, b, axes, name=None):
     a = ops.convert_to_tensor(a, name="a")
     b = ops.convert_to_tensor(b, name="b")
     a_axes, b_axes = _tensordot_axes(a, axes)
-    if (isinstance(a_axes, (list, tuple)) and isinstance(b_axes, (list, tuple))
+    if (
+        isinstance(a_axes, (list, tuple, np.ndarray))
+        and isinstance(b_axes, (list, tuple, np.ndarray))
         and a.shape.rank is not None
-        and b.shape.rank is not None):
+        and b.shape.rank is not None
+    ):
       # The contraction is lowered to a reshape + matmul, so mismatched axes
       # whose sizes have equal products would otherwise be silently accepted.
       a_dims = a.shape.as_list()
       b_dims = b.shape.as_list()
       for a_axis, b_axis in zip(a_axes, b_axes):
-        if isinstance(a_axis, int) and isinstance(b_axis, int):
+        if (
+            isinstance(a_axis, compat.integral_types)
+            and isinstance(b_axis, compat.integral_types)
+        ):
           a_dim = a_dims[a_axis]
           b_dim = b_dims[b_axis]
           if a_dim is not None and b_dim is not None and a_dim != b_dim:
             raise ValueError(
                 f"Contraction axes of a and b must have the same size. "
                 f"Received axis {a_axis} of a with size {a_dim} and axis "
-                f"{b_axis} of b with size {b_dim}.")
+                f"{b_axis} of b with size {b_dim}."
+            )
     a_reshape, a_free_dims, a_free_dims_static = _tensordot_reshape(a, a_axes)
     b_reshape, b_free_dims, b_free_dims_static = _tensordot_reshape(
         b, b_axes, True)

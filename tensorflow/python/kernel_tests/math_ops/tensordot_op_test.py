@@ -38,6 +38,24 @@ def _add_test(test, test_name, fn):
 class TensordotTest(test_lib.TestCase):
 
   @test_util.run_in_graph_and_eager_modes(use_gpu=True)
+  def test_mismatched_contraction_axis_sizes_with_equal_product(self):
+    # 3*4 == 4*3, so reshape + matmul alone cannot catch the mismatch.
+    a = array_ops.ones((2, 3, 4), dtype=dtypes.float32)
+    b = array_ops.ones((4, 3, 5), dtype=dtypes.float32)
+    for axes in (
+        2,
+        ([1, 2], [0, 1]),
+        ([-2, -1], [0, 1]),
+        (np.array([1, 2]), np.array([0, 1])),
+        ([np.int64(1), np.int64(2)], [np.int64(0), np.int64(1)]),
+    ):
+      with self.assertRaisesRegex(
+          ValueError,
+          r"Contraction axes of a and b must have the same size",
+      ):
+        math_ops.tensordot(a, b, axes)
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
   def test_invalid_shape(self):
     a = [[1, 2], [3, 4]]
     b = [[1, 2], [3, 4], [5, 6]]
