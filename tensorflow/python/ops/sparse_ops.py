@@ -2909,20 +2909,43 @@ def sparse_transpose(sp_input, perm=None, name=None):
 
   Raises:
     TypeError: If `sp_input` is not a `SparseTensor`.
+    ValueError: If `perm` is statically known and is not a 1-D permutation
+      of the dimensions of `sp_input`. If the rank of `sp_input` is unknown,
+      `perm` is only checked to be a permutation of `range(len(perm))`.
   """
   with ops.name_scope(name, "SparseTranspose", [sp_input]) as name:
     if perm is None:
+      # The default permutation is valid by construction: skip validation.
       if sp_input.shape.rank is not None:
         rank = sp_input.shape.rank
         perm = (rank - 1) - np.arange(0, rank, 1)
+        perm_ = perm
       else:
         rank = array_ops.rank(sp_input)
         perm = (rank - 1) - math_ops.range(0, rank, 1)
+        perm_ = None
+    else:
+      perm_ = tensor_util.constant_value(ops.convert_to_tensor(perm))
+      if perm_ is not None:
+        if perm_.ndim != 1:
+          raise ValueError(
+              "'perm' must be a 1-D permutation of the dimensions of"
+              f" 'sp_input'. Received perm={perm_.tolist()}."
+          )
+        rank = (
+            sp_input.shape.rank
+            if sp_input.shape.rank is not None
+            else len(perm_)
+        )
+        if sorted(perm_.tolist()) != list(range(rank)):
+          raise ValueError(
+              "'perm' must be a 1-D permutation of the dimensions of"
+              f" 'sp_input'. Received perm={perm_.tolist()} for rank {rank}."
+          )
     indices = sp_input.indices
     transposed_indices = array_ops.transpose(
         array_ops.gather(array_ops.transpose(indices), perm))
 
-    perm_ = tensor_util.constant_value(ops.convert_to_tensor(perm))
     if perm_ is not None and sp_input.get_shape().is_fully_defined():
       old_shape_ = sp_input.get_shape().as_list()
       transposed_dense_shape = list(old_shape_)  # Copy.

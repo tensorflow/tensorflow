@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/backends/gpu/transforms/sort_rewriter.h"
 
+#include <cstdint>
+#include <limits>
 #include <memory>
 #include <string>
 #include <tuple>
@@ -23,6 +25,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/base/casts.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -30,8 +33,11 @@ limitations under the License.
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
@@ -328,6 +334,176 @@ ENTRY %main {
 
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_FALSE(RunModuleAndPass(module.get()));
+}
+
+// ROCm rewrites a plain float total-order sort onto signed integer keys.
+// CUDA rewrites the float keys.
+TEST_F(SortRewriterTest, FloatTotalOrder) {
+  constexpr char kHlo[] = R"(
+HloModule TestModule
+
+%compare {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  ROOT %gt = pred[] compare(%lhs, %rhs), direction=GT, order=TOTAL
+}
+
+ENTRY %main {
+  %input = f32[1000] parameter(0)
+  ROOT %sort = f32[1000] sort(%input), dimensions={0}, is_stable=true, to_apply=%compare
+})";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  EXPECT_TRUE(RunModuleAndPass(module.get()));
+  const PrimitiveType expected_key_type =
+      TestGpuDeviceInfo::CudaOrRocmDeviceInfo()
+              .gpu_compute_capability()
+              .IsRocm()
+          ? S32
+          : F32;
+  bool found_expected_key = false;
+  for (const HloInstruction* inst :
+       module->entry_computation()->instructions()) {
+    if (inst->opcode() == HloOpcode::kCustomCall &&
+        inst->custom_call_target() ==
+            kCubDeviceRadixSortUnassignedScratchSizeTarget) {
+      EXPECT_EQ(inst->operand(0)->shape().element_type(), expected_key_type);
+      found_expected_key = true;
+    }
+  }
+  EXPECT_TRUE(found_expected_key);
+}
+
+// The custom call sorts the encoded s32 key and passes the values through.
+// `key_parameter` is the parameter number of the original f32 keys.
+void ExpectEncodedTotalOrderKey(const HloInstruction* custom_call,
+                                int64_t key_parameter,
+                                int64_t value_parameter) {
+  ASSERT_NE(custom_call, nullptr);
+  EXPECT_THAT(custom_call,
+              GmockMatch(m::CustomCall(
+                  {kCubDeviceRadixSortUnassignedScratchSizeTarget},
+                  m::Select(m::Compare(), m::Xor(),
+                            m::BitcastConvert(m::Parameter(key_parameter)))
+                      .WithElementType(S32),
+                  m::Parameter(value_parameter))));
+}
+
+// Key is operand 0. The result tuple keeps that order, and the key is
+// bitcast back to f32 after the integer sort.
+TEST_F(SortRewriterTest, FloatTotalOrderPairKeyAtOperand0) {
+  constexpr char kHlo[] = R"(
+HloModule TestModule
+
+%compare {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  %lhs_value = s32[] parameter(2)
+  %rhs_value = s32[] parameter(3)
+  ROOT %gt = pred[] compare(%lhs, %rhs), direction=GT, order=TOTAL
+}
+
+ENTRY %main {
+  %keys = f32[8] parameter(0)
+  %values = s32[8] parameter(1)
+  ROOT %sort = (f32[8], s32[8]) sort(%keys, %values),
+      dimensions={0}, is_stable=true, to_apply=%compare
+})";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  SortRewriter pass(TestGpuDeviceInfo::AMDMI210DeviceInfo());
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, module.get()));
+  EXPECT_TRUE(changed);
+  const HloInstruction* custom_call = nullptr;
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Tuple(
+          m::BitcastConvert(
+              m::Select(m::Compare(), m::Xor(),
+                        m::GetTupleElement(m::CustomCall(&custom_call), 0)))
+              .WithShape(F32, {8}),
+          m::GetTupleElement(m::CustomCall(), 1).WithShape(S32, {8}))));
+  ExpectEncodedTotalOrderKey(custom_call, /*key_parameter=*/0,
+                             /*value_parameter=*/1);
+}
+
+// Key is operand 1. PairInOperandOrder swaps the tuple back to operand order.
+TEST_F(SortRewriterTest, FloatTotalOrderPairKeyAtOperand1) {
+  constexpr char kHlo[] = R"(
+HloModule TestModule
+
+%compare {
+  %lhs_value = s32[] parameter(0)
+  %rhs_value = s32[] parameter(1)
+  %lhs = f32[] parameter(2)
+  %rhs = f32[] parameter(3)
+  ROOT %gt = pred[] compare(%lhs, %rhs), direction=GT, order=TOTAL
+}
+
+ENTRY %main {
+  %values = s32[8] parameter(0)
+  %keys = f32[8] parameter(1)
+  ROOT %sort = (s32[8], f32[8]) sort(%values, %keys),
+      dimensions={0}, is_stable=true, to_apply=%compare
+})";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  SortRewriter pass(TestGpuDeviceInfo::AMDMI210DeviceInfo());
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, module.get()));
+  EXPECT_TRUE(changed);
+  const HloInstruction* custom_call = nullptr;
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Tuple(
+          m::GetTupleElement(m::CustomCall(), 1).WithShape(S32, {8}),
+          m::BitcastConvert(
+              m::Select(m::Compare(), m::Xor(),
+                        m::GetTupleElement(m::CustomCall(&custom_call), 0)))
+              .WithShape(F32, {8}))));
+  ExpectEncodedTotalOrderKey(custom_call, /*key_parameter=*/1,
+                             /*value_parameter=*/0);
+}
+
+// Random RunAndCompare inputs almost never contain both -0 and +0. The keys
+// interleave -0 and +0, so a sort that treats them as equal keeps the input
+// order and fails in both directions. The distinct values expose the order.
+TEST_F(SortRewriterTest, FloatTotalOrderSpecialValues) {
+  if (!test_runner().HasProperty(HloRunnerPropertyTag::kUsingGpuRocm)) {
+    GTEST_SKIP() << "Total-order float key encoding is only enabled on ROCm.";
+  }
+  constexpr char kHloTemplate[] = R"(
+HloModule TestModule
+
+%compare {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  %lhs_value = s32[] parameter(2)
+  %rhs_value = s32[] parameter(3)
+  ROOT %cmp = pred[] compare(%lhs, %rhs), direction=$0, order=TOTAL
+}
+
+ENTRY %main {
+  %keys = f32[10] parameter(0)
+  %values = s32[10] parameter(1)
+  ROOT %sort = (f32[10], s32[10]) sort(%keys, %values),
+      dimensions={0}, is_stable=true, to_apply=%compare
+})";
+
+  const float neg_nan = absl::bit_cast<float>(0xFFC00000u);
+  const float pos_nan = absl::bit_cast<float>(0x7FC00000u);
+  const float inf = std::numeric_limits<float>::infinity();
+  const Literal keys = LiteralUtil::CreateR1<float>(
+      {0.0f, pos_nan, -1.0f, -0.0f, -inf, 1.0f, 0.0f, neg_nan, inf, -0.0f});
+  const Literal values =
+      LiteralUtil::CreateR1<int32_t>({0, 1, 2, 3, 4, 5, 6, 7, 8, 9});
+  for (absl::string_view direction : {"LT", "GT"}) {
+    SCOPED_TRACE(direction);
+    ASSERT_OK_AND_ASSIGN(auto module,
+                         ParseAndReturnVerifiedModule(
+                             absl::Substitute(kHloTemplate, direction)));
+    EXPECT_TRUE(
+        RunAndCompare(std::move(module), {&keys, &values}, ErrorSpec{0, 0}));
+  }
 }
 
 // Only 1D shapes are supported.
@@ -805,6 +981,48 @@ ENTRY main {
                         m::Op(), m::Parameter()),
           1)))
       << module->ToString();
+}
+
+// ROCm sorts total-order float keys as signed integers of the same width.
+// CUDA sorts the float keys directly.
+TEST_P(SortRewriterTest, SortTotalOrder) {
+  auto [dtype, direction] = GetParam();
+  std::string type_name = primitive_util::LowercasePrimitiveTypeName(dtype);
+  std::string direction_str = direction ? "LT" : "GT";
+
+  std::string hlo_str = absl::Substitute(
+      R"(
+total_order_comparator {
+  lhs = $0[] parameter(0)
+  rhs = $0[] parameter(1)
+  ROOT compare = pred[] compare(lhs, rhs), direction=$1, order=TOTAL
+}
+ENTRY main {
+  p = $0[16,128] parameter(0)
+  ROOT sort = $0[16,128] sort(p), dimensions={1}, is_stable=true, to_apply=total_order_comparator
+})",
+      type_name, direction_str);
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_str));
+  EXPECT_TRUE(RunModuleAndPass(module.get())) << module->ToString();
+  const PrimitiveType expected_key_type =
+      TestGpuDeviceInfo::CudaOrRocmDeviceInfo()
+              .gpu_compute_capability()
+              .IsRocm()
+          ? primitive_util::SignedIntegralTypeForBitWidth(
+                primitive_util::BitWidth(dtype))
+          : dtype;
+  bool found_expected_key = false;
+  for (const HloInstruction* inst :
+       module->entry_computation()->instructions()) {
+    if (inst->opcode() == HloOpcode::kCustomCall &&
+        inst->custom_call_target() ==
+            kCubDeviceRadixSortUnassignedScratchSizeTarget) {
+      EXPECT_EQ(inst->operand(0)->shape().element_type(), expected_key_type);
+      found_expected_key = true;
+    }
+  }
+  EXPECT_TRUE(found_expected_key);
 }
 
 INSTANTIATE_TEST_SUITE_P(

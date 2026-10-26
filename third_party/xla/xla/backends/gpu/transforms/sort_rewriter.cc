@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/libraries/cub/cub_scratch_size_deviceless_lookup.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -79,6 +80,7 @@ enum class SortOrderType {
 struct SortComputationAnalysis {
   int key_operand;  // 0 or 1
   bool descending;
+  bool is_total_order;
   SortOrderType sort_order;
   PrimitiveType key_type;
   std::optional<PrimitiveType> value_type;
@@ -125,11 +127,12 @@ std::optional<SortComputationAnalysis> AnalyzeCompareOp(
     return std::nullopt;
   }
 
-  // Return the tensor index and the sort direction.
+  // Return the tensor index, direction, and total-order bit from this compare.
   bool descending = compare->direction() == ComparisonDirection::kGt ||
                     compare->direction() == ComparisonDirection::kGe;
   bool reverse = first_index != index0;
   return SortComputationAnalysis{first_index / 2, descending != reverse,
+                                 compare->order() == ComparisonOrder::kTotal,
                                  sort_order};
 }
 
@@ -212,9 +215,12 @@ std::optional<SortComputationAnalysis> AnalyzeSortOp(
       return std::nullopt;
     }
   }
-  return SortComputationAnalysis{
-      sort_analysis->key_operand, sort_analysis->descending,
-      sort_analysis->sort_order, sort_key_type, sort_value_type};
+  return SortComputationAnalysis{sort_analysis->key_operand,
+                                 sort_analysis->descending,
+                                 sort_analysis->is_total_order,
+                                 sort_analysis->sort_order,
+                                 sort_key_type,
+                                 sort_value_type};
 }
 
 // Returns whether the sort operation is supported by CUB.
@@ -256,17 +262,17 @@ bool AreOperandTypesSupportedByCub(
   }
 }
 
-// Restore the result shape after sorting a pair of tensors.
-// The trailing argument is the scratch buffer which should be discarded.
-HloInstruction* UnpackResultPair(HloSortInstruction* sort_op,
-                                 HloInstruction* custom_call, bool swap) {
-  HloInstruction* gte0 =
-      sort_op->AddInstruction(HloInstruction::CreateGetTupleElement(
-          sort_op->operand(0)->shape(), custom_call, swap ? 1 : 0));
-  HloInstruction* gte1 =
-      sort_op->AddInstruction(HloInstruction::CreateGetTupleElement(
-          sort_op->operand(1)->shape(), custom_call, swap ? 0 : 1));
-  return sort_op->AddInstruction(HloInstruction::CreateTuple({gte0, gte1}));
+// Build the sort result in operand order. The radix sort stores the key first,
+// so `swap` is set when that key was operand 1.
+HloInstruction* PairInOperandOrder(HloSortInstruction* sort_op,
+                                   HloInstruction* sorted_key,
+                                   HloInstruction* sorted_value, bool swap) {
+  if (!swap) {
+    return sort_op->AddInstruction(
+        HloInstruction::CreateTuple({sorted_key, sorted_value}));
+  }
+  return sort_op->AddInstruction(
+      HloInstruction::CreateTuple({sorted_value, sorted_key}));
 }
 
 // Add HLO ops to materialize sort keys for Numpy sort order from the sort op's
@@ -805,6 +811,58 @@ absl::StatusOr<bool> ShouldRewriteSort(
   return false;
 }
 
+// Same signed-integer map as ComparisonExpander: negative values are xored
+// with the signed max, so integer order matches float total order. The map is
+// its own inverse for types that have a negative zero.
+HloInstruction* ApplySignedTotalOrderBits(HloSortInstruction* sort_op,
+                                          HloInstruction* bits) {
+  const Shape& signed_shape = bits->shape();
+  PrimitiveType signed_type = signed_shape.element_type();
+  Shape pred_shape = ShapeUtil::ChangeElementType(signed_shape, PRED);
+  HloInstruction* zero =
+      sort_op->AddInstruction(HloInstruction::CreateBroadcast(
+          signed_shape,
+          sort_op->AddInstruction(
+              HloInstruction::CreateConstant(LiteralUtil::Zero(signed_type))),
+          {}));
+  HloInstruction* max_value =
+      sort_op->AddInstruction(HloInstruction::CreateBroadcast(
+          signed_shape,
+          sort_op->AddInstruction(HloInstruction::CreateConstant(
+              LiteralUtil::MaxValue(signed_type))),
+          {}));
+  HloInstruction* is_negative =
+      sort_op->AddInstruction(HloInstruction::CreateCompare(
+          pred_shape, bits, zero, ComparisonDirection::kLt));
+  HloInstruction* flipped =
+      sort_op->AddInstruction(HloInstruction::CreateBinary(
+          signed_shape, HloOpcode::kXor, max_value, bits));
+  return sort_op->AddInstruction(HloInstruction::CreateTernary(
+      signed_shape, HloOpcode::kSelect, is_negative, flipped, bits));
+}
+
+HloInstruction* OrderedIntegralFromFloat(HloSortInstruction* sort_op,
+                                         HloInstruction* value) {
+  int64_t bit_width = primitive_util::BitWidth(value->shape().element_type());
+  PrimitiveType signed_type =
+      primitive_util::SignedIntegralTypeForBitWidth(bit_width);
+  Shape signed_shape =
+      ShapeUtil::ChangeElementType(value->shape(), signed_type);
+  HloInstruction* bits = sort_op->AddInstruction(
+      HloInstruction::CreateBitcastConvert(signed_shape, value));
+  return ApplySignedTotalOrderBits(sort_op, bits);
+}
+
+HloInstruction* FloatFromOrderedIntegral(HloSortInstruction* sort_op,
+                                         HloInstruction* ordered,
+                                         PrimitiveType float_type) {
+  HloInstruction* restored = ApplySignedTotalOrderBits(sort_op, ordered);
+  Shape float_shape =
+      ShapeUtil::ChangeElementType(ordered->shape(), float_type);
+  return sort_op->AddInstruction(
+      HloInstruction::CreateBitcastConvert(float_shape, restored));
+}
+
 }  // namespace
 
 // Rewrites a single sort instruction with a custom call.
@@ -846,6 +904,20 @@ absl::StatusOr<bool> SortRewriter::RunOnInstruction(
     values = packed.second;
   }
 
+  // rocprim's float radix sort equates +0 and -0. On ROCm, convert a plain
+  // total-order float key to signed-integer order, sort that key, then
+  // convert the sorted keys back.
+  bool encode_total_order = false;
+  PrimitiveType original_key_type = keys->shape().element_type();
+  // kDefaultOrder is any plain compare. is_total_order selects order=TOTAL.
+  if (device_description_.gpu_compute_capability().IsRocm() &&
+      primitive_util::HasNegativeZero(original_key_type) &&
+      sort_analysis.sort_order == SortOrderType::kDefaultOrder &&
+      sort_analysis.is_total_order) {
+    encode_total_order = true;
+    keys = OrderedIntegralFromFloat(sort_op, keys);
+  }
+
   // Build the resulting shape for the custom call.
   std::vector<Shape> shapes{keys->shape()};
   std::vector<HloInstruction*> operands{keys};
@@ -872,13 +944,11 @@ absl::StatusOr<bool> SortRewriter::RunOnInstruction(
   sort_options.set_descending(sort_analysis.descending);
   ABSL_RETURN_IF_ERROR(custom_call->set_backend_config(sort_options));
 
-  // Build the replacement instruction.
+  // Build the replacement instruction. For Numpy order, element 1 holds the
+  // original input or the packed key/value pair. Otherwise element 0 holds the
+  // keys and element 1 holds the values, if any.
   HloInstruction* replacement;
-  if (!sorting_pairs) {
-    replacement =
-        sort_op->parent()->AddInstruction(HloInstruction::CreateGetTupleElement(
-            sort_op->shape(), custom_call, 0));
-  } else if (sort_analysis.sort_order == SortOrderType::kNumpyOrder) {
+  if (sort_analysis.sort_order == SortOrderType::kNumpyOrder) {
     if (sort_op->operand_count() == 1) {
       // Discard the synthetic keys generated for sorting in Numpy order.
       replacement =
@@ -888,8 +958,21 @@ absl::StatusOr<bool> SortRewriter::RunOnInstruction(
       replacement = UnpackNumpySortPairs(sort_op, custom_call, sort_analysis);
     }
   } else {
-    replacement = UnpackResultPair(sort_op, custom_call,
-                                   /*swap=*/sort_analysis.key_operand == 1);
+    HloInstruction* sorted_keys = sort_op->AddInstruction(
+        HloInstruction::CreateGetTupleElement(keys->shape(), custom_call, 0));
+    if (encode_total_order) {
+      sorted_keys =
+          FloatFromOrderedIntegral(sort_op, sorted_keys, original_key_type);
+    }
+    if (!sorting_pairs) {
+      replacement = sorted_keys;
+    } else {
+      HloInstruction* sorted_values =
+          sort_op->AddInstruction(HloInstruction::CreateGetTupleElement(
+              values->shape(), custom_call, 1));
+      replacement = PairInOperandOrder(sort_op, sorted_keys, sorted_values,
+                                       /*swap=*/sort_analysis.key_operand == 1);
+    }
   }
 
   // Replace sort operation with custom call followed by GTE.

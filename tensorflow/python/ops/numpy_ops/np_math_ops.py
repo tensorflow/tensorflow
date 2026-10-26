@@ -1412,6 +1412,32 @@ def logical_not(x):
   return math_ops.logical_not(x)
 
 
+def _validate_destination_axis(axis, start, stop):
+  """Validates the destination axis for linspace and geomspace."""
+  # NumPy raises AxisError for an out-of-bounds destination axis instead of
+  # letting the backend fail with a confusing error. In NumPy the samples
+  # array has rank `bd + 1`, where `bd` is the broadcast rank of `start` and
+  # `stop`, and valid destination axes are [-(bd + 1), bd] - exactly the
+  # domain the backend's `expand_dims`/`moveaxis` accepts. Only
+  # statically-known ranks and Python-int `axis` values are checked; unknown
+  # ranks or tensor axes, e.g. `@tf.function` with an unspecified input
+  # signature, behave exactly as before, and no graph ops are added on the
+  # eager path.
+  if isinstance(axis, (int, np.integer)):
+    maybe_bd = start.shape.rank
+    maybe_bd_stop = stop.shape.rank
+    if maybe_bd is not None and maybe_bd_stop is not None:
+      dimension = max(maybe_bd, maybe_bd_stop) + 1
+      normalized = int(axis)
+      if normalized < 0:
+        normalized += dimension
+      if normalized < 0 or normalized >= dimension:
+        raise ValueError(
+            f'destination: axis {axis} is out of bounds for array of '
+            f'dimension {dimension}'
+        )
+
+
 @tf_export.tf_export('experimental.numpy.linspace', v1=[])
 @np_utils.np_doc('linspace')
 def linspace(  # pylint: disable=missing-docstring
@@ -1443,6 +1469,8 @@ def linspace(  # pylint: disable=missing-docstring
         f'Received: num={num}'
     )
   step = ops.convert_to_tensor(np.nan)
+  _validate_destination_axis(axis, start, stop)
+
   if endpoint:
     result = math_ops.linspace(start, stop, num, axis=axis)
     if num > 1:
@@ -1525,6 +1553,7 @@ def geomspace(start, stop, num=50, endpoint=True, dtype=None, axis=0):  # pylint
   computation_dtype = np.promote_types(dtype.as_numpy_dtype, np.float32)
   start = np_array_ops.asarray(start, dtype=computation_dtype)
   stop = np_array_ops.asarray(stop, dtype=computation_dtype)
+  _validate_destination_axis(axis, start, stop)
   # follow the numpy geomspace convention for negative and complex endpoints
   start_sign = 1 - np_array_ops.sign(np_array_ops.real(start))
   stop_sign = 1 - np_array_ops.sign(np_array_ops.real(stop))
