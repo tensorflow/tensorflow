@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/lite/tools/benchmark/benchmark_model.h"
 
+#include <cstddef>
 #include <cstdint>
+#include <cstdio>
 
 #ifdef __linux__
 #include <unistd.h>
@@ -25,15 +27,21 @@ limitations under the License.
 #include <memory>
 #include <sstream>
 #include <string>
+#include <vector>
 
+#include "tensorflow/core/util/stats_calculator.h"  // IWYU pragma: keep
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/profiling/memory_info.h"
+#include "tensorflow/lite/profiling/memory_usage_monitor.h"
 #include "tensorflow/lite/profiling/time.h"
+#include "tensorflow/lite/tools/benchmark/benchmark_params.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_utils.h"
+#include "tensorflow/lite/tools/command_line_flags.h"
 #include "tensorflow/lite/tools/logging.h"
 
 namespace tflite {
 namespace benchmark {
-using tensorflow::StatWithPercentiles;
+using tensorflow::StatWithPercentiles;  // NOLINT(misc-include-cleaner)
 
 constexpr int kMemoryCheckIntervalMs = 50;
 
@@ -100,12 +108,20 @@ void BenchmarkLoggingListener::OnBenchmarkEnd(const BenchmarkResults& results) {
                    << "init=" << init_mem_usage.mem_footprint_kb / 1024.0
                    << " overall="
                    << overall_mem_usage.mem_footprint_kb / 1024.0;
+  TFLITE_LOG(INFO) << "Memory footprint delta breakdown (MB): init=(CPU="
+                   << results.init_cpu_rss_mb()
+                   << ", GPU=" << results.init_gpu_mem_mb()
+                   << ") overall=(CPU=" << results.overall_cpu_rss_mb()
+                   << ", GPU=" << results.overall_gpu_mem_mb() << ")";
 
   auto peak_mem_mb = results.peak_mem_mb();
   if (peak_mem_mb > 0) {
     TFLITE_LOG(INFO)
         << "Overall peak memory footprint (MB) via periodic monitoring: "
         << peak_mem_mb;
+    TFLITE_LOG(INFO) << "Overall peak memory footprint breakdown (MB): "
+                     << "CPU peak=" << results.peak_cpu_rss_mb()
+                     << ", GPU peak=" << results.peak_gpu_mem_mb();
 #ifdef __linux__
     size_t vsize, rss, shared, code;
     GetRssStats(&vsize, &rss, &shared, &code);
@@ -306,13 +322,32 @@ TfLiteStatus BenchmarkModel::Run() {
   auto peak_memory_reporter = MayCreateMemoryUsageMonitor();
   if (peak_memory_reporter != nullptr) peak_memory_reporter->Start();
   const double model_size_mb = MayGetModelFileSize() / 1e6;
-  const auto start_mem_usage = profiling::memory::GetMemoryUsage();
+  auto start_mem_usage = profiling::memory::GetMemoryUsage();
+  const int64_t start_cpu_rss_kb = profiling::memory::GetCurrentCpuRssKb();
+  const int64_t start_gpu_kb = profiling::memory::GetCurrentGpuMemoryKb();
+  if (start_cpu_rss_kb >= 0) {
+    start_mem_usage.mem_footprint_kb =
+        start_cpu_rss_kb + (start_gpu_kb >= 0 ? start_gpu_kb : 0);
+  }
   int64_t initialization_start_us = profiling::time::NowMicros();
   TF_LITE_ENSURE_STATUS(Init());
-  const auto init_end_mem_usage = profiling::memory::GetMemoryUsage();
   int64_t initialization_end_us = profiling::time::NowMicros();
+  auto init_end_mem_usage = profiling::memory::GetMemoryUsage();
+  const int64_t init_end_cpu_rss_kb = profiling::memory::GetCurrentCpuRssKb();
+  const int64_t init_end_gpu_kb = profiling::memory::GetCurrentGpuMemoryKb();
+  if (init_end_cpu_rss_kb >= 0) {
+    init_end_mem_usage.mem_footprint_kb =
+        init_end_cpu_rss_kb + (init_end_gpu_kb >= 0 ? init_end_gpu_kb : 0);
+  }
   int64_t startup_latency_us = initialization_end_us - initialization_start_us;
   const auto init_mem_usage = init_end_mem_usage - start_mem_usage;
+  const double init_cpu_rss_mb =
+      (start_cpu_rss_kb >= 0 && init_end_cpu_rss_kb >= 0)
+          ? (init_end_cpu_rss_kb - start_cpu_rss_kb) / 1024.0
+          : 0.0;
+  const double init_gpu_mem_mb = ((init_end_gpu_kb >= 0 ? init_end_gpu_kb : 0) -
+                                  (start_gpu_kb >= 0 ? start_gpu_kb : 0)) /
+                                 1024.0;
 
   if (model_size_mb > 0) {
     TFLITE_LOG(INFO) << "The input model file size (MB): " << model_size_mb;
@@ -347,18 +382,42 @@ TfLiteStatus BenchmarkModel::Run() {
   StatWithPercentiles<int64_t> inference_time_us =
       Run(params_.Get<int32_t>("num_runs"), params_.Get<float>("min_secs"),
           params_.Get<float>("max_secs"), REGULAR, &status);
-  const auto overall_mem_usage =
-      profiling::memory::GetMemoryUsage() - start_mem_usage;
+  auto overall_end_mem_usage = profiling::memory::GetMemoryUsage();
+  const int64_t overall_end_cpu_rss_kb =
+      profiling::memory::GetCurrentCpuRssKb();
+  const int64_t overall_end_gpu_kb = profiling::memory::GetCurrentGpuMemoryKb();
+  if (overall_end_cpu_rss_kb >= 0) {
+    overall_end_mem_usage.mem_footprint_kb =
+        overall_end_cpu_rss_kb +
+        (overall_end_gpu_kb >= 0 ? overall_end_gpu_kb : 0);
+  }
+  const auto overall_mem_usage = overall_end_mem_usage - start_mem_usage;
+  const double overall_cpu_rss_mb =
+      (start_cpu_rss_kb >= 0 && overall_end_cpu_rss_kb >= 0)
+          ? (overall_end_cpu_rss_kb - start_cpu_rss_kb) / 1024.0
+          : 0.0;
+  const double overall_gpu_mem_mb =
+      ((overall_end_gpu_kb >= 0 ? overall_end_gpu_kb : 0) -
+       (start_gpu_kb >= 0 ? start_gpu_kb : 0)) /
+      1024.0;
 
   float peak_mem_mb = profiling::memory::MemoryUsageMonitor::kInvalidMemUsageMB;
+  float peak_cpu_rss_mb =
+      profiling::memory::MemoryUsageMonitor::kInvalidMemUsageMB;
+  float peak_gpu_mem_mb =
+      profiling::memory::MemoryUsageMonitor::kInvalidMemUsageMB;
   if (peak_memory_reporter != nullptr) {
     peak_memory_reporter->Stop();
     peak_mem_mb = peak_memory_reporter->GetPeakMemUsageInMB();
+    peak_cpu_rss_mb = peak_memory_reporter->GetPeakCpuRssInMB();
+    peak_gpu_mem_mb = peak_memory_reporter->GetPeakGpuFootprintInMB();
   }
 
   listeners_.OnBenchmarkEnd({model_size_mb, startup_latency_us, input_bytes,
                              warmup_time_us, inference_time_us, init_mem_usage,
-                             overall_mem_usage, peak_mem_mb});
+                             overall_mem_usage, peak_mem_mb, peak_cpu_rss_mb,
+                             peak_gpu_mem_mb, init_cpu_rss_mb, init_gpu_mem_mb,
+                             overall_cpu_rss_mb, overall_gpu_mem_mb});
   return status;
 }
 

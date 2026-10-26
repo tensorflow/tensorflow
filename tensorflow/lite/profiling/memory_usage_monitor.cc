@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <thread>  // NOLINT(build/c++11)
 #include <utility>
 
 #include "absl/synchronization/mutex.h"
@@ -28,6 +29,23 @@ limitations under the License.
 namespace tflite {
 namespace profiling {
 namespace memory {
+namespace {
+
+class DefaultSampler : public MemoryUsageMonitor::Sampler {
+ public:
+  int64_t GetCurrentCpuRssKb() override {
+    return tflite::profiling::memory::GetCurrentCpuRssKb();
+  }
+  int64_t GetCurrentGpuMemoryKb() override {
+    return tflite::profiling::memory::GetCurrentGpuMemoryKb();
+  }
+};
+
+}  // namespace
+
+MemoryUsageMonitor::MemoryUsageMonitor(int sampling_interval_ms)
+    : MemoryUsageMonitor(sampling_interval_ms,
+                         std::make_unique<DefaultSampler>()) {}
 
 MemoryUsageMonitor::MemoryUsageMonitor(int sampling_interval_ms,
                                        std::unique_ptr<Sampler> sampler)
@@ -54,9 +72,24 @@ void MemoryUsageMonitor::Start() {
     // Note we retrieve the memory usage at the very beginning of the thread.
     while (true) {
       const auto mem_info = sampler_->GetMemoryUsage();
+      const int64_t cpu_rss_kb = sampler_->GetCurrentCpuRssKb();
+      const int64_t gpu_footprint_kb = sampler_->GetCurrentGpuMemoryKb();
       {
         absl::MutexLock lock(mutex_);
-        int64_t current_peak_bytes = mem_info.mem_footprint_kb * 1024;
+        int64_t mem_footprint_kb = mem_info.mem_footprint_kb;
+        if (cpu_rss_kb >= 0) {
+          const int64_t gpu_kb = gpu_footprint_kb >= 0 ? gpu_footprint_kb : 0;
+          mem_footprint_kb = cpu_rss_kb + gpu_kb;
+          int64_t current_cpu_rss_bytes = cpu_rss_kb * 1024;
+          if (current_cpu_rss_bytes > peak_cpu_rss_bytes_) {
+            peak_cpu_rss_bytes_ = current_cpu_rss_bytes;
+          }
+          int64_t current_gpu_footprint_bytes = gpu_kb * 1024;
+          if (current_gpu_footprint_bytes > peak_gpu_footprint_bytes_) {
+            peak_gpu_footprint_bytes_ = current_gpu_footprint_bytes;
+          }
+        }
+        int64_t current_peak_bytes = mem_footprint_kb * 1024;
         if (current_peak_bytes > peak_mem_footprint_bytes_) {
           peak_mem_footprint_bytes_ = current_peak_bytes;
         }

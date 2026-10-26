@@ -22,11 +22,15 @@ limitations under the License.
 #include <cstring>
 #include <ostream>
 #include <string>
+#include <unordered_set>
 
 #ifdef __linux__
+#include <dirent.h>
 #include <malloc.h>
+#include <stdio.h>
 #include <sys/resource.h>
 #include <sys/time.h>
+#include <unistd.h>
 #elif defined(__APPLE__)
 #include <mach/mach.h>
 #include <malloc/malloc.h>
@@ -68,9 +72,131 @@ int64_t GetCurrentVmSwapKb() {
   // If the VmSwap line is not found, it means 0 swap is being used.
   return 0;
 }
-#endif
+
+#if !defined(__ANDROID__)
+int64_t ParseDrmMemoryValueKb(const char* line) {
+  const char* colon = strchr(line, ':');
+  if (colon == nullptr) {
+    return 0;
+  }
+  int64_t value = 0;
+  char unit[16] = {0};
+  int matched = sscanf(colon + 1, "%" SCNd64 " %15s", &value, unit);
+  if (matched < 1 || value <= 0) {
+    return 0;
+  }
+  if (strcmp(unit, "KiB") == 0 || strcmp(unit, "kB") == 0) {
+    return value;
+  }
+  if (strcmp(unit, "MiB") == 0 || strcmp(unit, "MB") == 0) {
+    return value * 1024;
+  }
+  return value / 1024;
+}
+#endif  // !defined(__ANDROID__)
+#endif  // defined(__linux__)
 
 }  // namespace
+
+int64_t GetCurrentCpuRssKb() {
+#if defined(__linux__)
+  FILE* rollup_file = fopen("/proc/self/smaps_rollup", "r");
+  if (!rollup_file) {
+    return -1;
+  }
+  char line[256];
+  while (fgets(line, sizeof(line), rollup_file)) {
+    if (strncmp(line, "Rss:", 4) == 0) {
+      int64_t value_kb = -1;
+      if (sscanf(line + 4, "%" SCNd64, &value_kb) == 1) {
+        fclose(rollup_file);
+        return value_kb;
+      }
+      fclose(rollup_file);
+      return -1;
+    }
+  }
+  fclose(rollup_file);
+#endif  // defined(__linux__)
+  return -1;
+}
+
+int64_t GetCurrentGpuMemoryKb() {
+#if defined(__linux__)
+#if defined(__ANDROID__)
+  if (access("/system/bin/dumpsys", X_OK) == 0) {
+    FILE* pipe = popen("/system/bin/dumpsys gpu --gpumem 2>/dev/null", "r");
+    if (pipe != nullptr) {
+      const std::string proc_prefix =
+          "Proc " + std::to_string(getpid()) + " total:";
+      char buf[256];
+      int64_t gpu_kb = 0;
+      while (fgets(buf, sizeof(buf), pipe) != nullptr) {
+        const char* pos = strstr(buf, proc_prefix.c_str());
+        if (pos != nullptr) {
+          int64_t bytes = 0;
+          if (sscanf(pos + proc_prefix.size(), "%" SCNd64, &bytes) == 1 &&
+              bytes >= 0) {
+            gpu_kb = bytes / 1024;
+          }
+          break;
+        }
+      }
+      pclose(pipe);
+      return gpu_kb;
+    }
+  }
+#else
+  DIR* fdinfo_dir = opendir("/proc/self/fdinfo");
+  if (fdinfo_dir != nullptr) {
+    std::unordered_set<std::string> seen_drm_clients;
+    int64_t drm_total_kb = 0;
+    struct dirent* entry = nullptr;
+    while ((entry = readdir(fdinfo_dir)) != nullptr) {
+      if (entry->d_name[0] == '.') {
+        continue;
+      }
+      std::string path =
+          std::string("/proc/self/fdinfo/") + std::string(entry->d_name);
+      FILE* fdinfo_file = fopen(path.c_str(), "r");
+      if (!fdinfo_file) {
+        continue;
+      }
+      std::string client_id;
+      std::string pdev;
+      int64_t resident_kb = 0;
+      int64_t memory_kb = 0;
+      bool has_resident_tag = false;
+      char line[256];
+      while (fgets(line, sizeof(line), fdinfo_file)) {
+        if (strncmp(line, "drm-client-id:", 14) == 0) {
+          client_id = line + 14;
+        } else if (strncmp(line, "drm-pdev:", 9) == 0) {
+          pdev = line + 9;
+        } else if (strncmp(line, "drm-resident-", 13) == 0) {
+          has_resident_tag = true;
+          resident_kb += ParseDrmMemoryValueKb(line);
+        } else if (strncmp(line, "drm-memory-", 11) == 0) {
+          memory_kb += ParseDrmMemoryValueKb(line);
+        }
+      }
+      fclose(fdinfo_file);
+      if (!client_id.empty()) {
+        std::string client_key = pdev + ":" + client_id;
+        if (seen_drm_clients.insert(client_key).second) {
+          drm_total_kb += has_resident_tag ? resident_kb : memory_kb;
+        }
+      }
+    }
+    closedir(fdinfo_dir);
+    return drm_total_kb;
+  }
+#endif  // defined(__ANDROID__)
+  return 0;
+#else
+  return -1;
+#endif  // defined(__linux__)
+}
 
 bool MemoryUsage::IsSupported() {
 #if defined(__linux__) || defined(__APPLE__) || defined(_WIN32)
