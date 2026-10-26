@@ -5240,7 +5240,12 @@ bool HloParserImpl::ParseInstructionNames(
     if (!ParseName(&name)) {
       return Error(loc, "expects a instruction name");
     }
-    std::pair<HloInstruction*, LocTy>* instr = FindInstruction(name);
+    std::optional<Shape> default_shape;
+    if (tsl::gtl::FindOrNull(current_name_table(), name) == nullptr) {
+      default_shape = ShapeUtil::MakeNil();
+    }
+    std::pair<HloInstruction*, LocTy>* instr =
+        FindInstruction(name, default_shape);
     if (!instr) {
       return TokenError(StrFormat("instruction '%s' is not defined", name));
     }

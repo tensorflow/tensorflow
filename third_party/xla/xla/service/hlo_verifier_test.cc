@@ -6629,6 +6629,79 @@ TEST_F(HloVerifierTest, VerifyFanInDuplicateOperands) {
               HasSubstr("custom-call to FanIn must have distinct operands"));
 }
 
+TEST_F(HloVerifierTest, VerifyCrossBufferSliceCustomFusionOnStreamsValid) {
+  // Verifies that HloVerifier accepts a valid two-level cross-buffer slice
+  // custom fusion (wrapping an inner dynamic-update-slice custom fusion)
+  // operating in-place on a FanOut stream buffer before joining at FanIn.
+  const char* const hlo = R"(
+  HloModule module
+
+  inner_dus_comp {
+    dst_p = b(s32[4]) parameter(0)
+    src_p = s32[2] parameter(1)
+    zero = s32[] constant(0)
+    slice = s32[2] dynamic-slice(src_p, zero), dynamic_slice_sizes={2}
+    ROOT dus = b(s32[4]) dynamic-update-slice(dst_p, slice, zero)
+  }
+
+  outer_scatter_comp {
+    outer_dst = b(s32[4]) parameter(0)
+    outer_src = s32[2] parameter(1)
+    ROOT inner_fusion = b(s32[4]) fusion(outer_dst, outer_src), kind=kCustom,
+      calls=inner_dus_comp
+  }
+
+  ENTRY computation {
+    p0 = s32[4] parameter(0)
+    p1 = s32[2] parameter(1)
+    b0 = b(s32[4]) custom-call(p0), custom_call_target="Pin",
+      output_to_operand_aliasing={{}: (0, {})}
+    fan_out = (b(s32[4]), b(s32[4])) custom-call(b0),
+      custom_call_target="FanOut", output_to_operand_aliasing={{0}: (0, {})}
+    anchor = b(s32[4]) get-tuple-element(fan_out), index=0
+    stream1 = b(s32[4]) get-tuple-element(fan_out), index=1
+    scatter_fusion = b(s32[4]) fusion(stream1, p1), kind=kCustom,
+      calls=outer_scatter_comp, output_to_operand_aliasing={{}: (0, {})}
+    fan_in = b(s32[4]) custom-call(anchor, scatter_fusion),
+      custom_call_target="FanIn", output_to_operand_aliasing={{}: (0, {})}
+    ROOT v = s32[4] custom-call(fan_in), custom_call_target="Unpin",
+      output_to_operand_aliasing={{}: (0, {})}
+  })";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  EXPECT_THAT(verifier().Run(module.get()), StatusIs(absl::StatusCode::kOk));
+}
+
+TEST_F(HloVerifierTest, VerifyNonCrossBufferSliceFusionWithBuffersRejected) {
+  // Verifies that HloVerifier rejects a custom fusion operating on buffer
+  // shapes when it is not a recognized cross-buffer slice custom fusion.
+  const char* const hlo = R"(
+  HloModule module
+
+  bad_fusion_comp {
+    dst_p = b(s32[4]) parameter(0)
+    ROOT copy_b = b(s32[4]) custom-call(dst_p), custom_call_target="AddOne",
+      output_to_operand_aliasing={{}: (0, {})}
+  }
+
+  ENTRY computation {
+    p0 = s32[4] parameter(0)
+    b0 = b(s32[4]) custom-call(p0), custom_call_target="Pin",
+      output_to_operand_aliasing={{}: (0, {})}
+    bad_fusion = b(s32[4]) fusion(b0), kind=kCustom,
+      calls=bad_fusion_comp, output_to_operand_aliasing={{}: (0, {})}
+    ROOT v = s32[4] custom-call(bad_fusion), custom_call_target="Unpin",
+      output_to_operand_aliasing={{}: (0, {})}
+  })";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.message(),
+      HasSubstr("Seen buffers while buffers aren't allowed in this context"));
+}
+
 TEST_F(HloVerifierTest, Scan) {
   const char* const hlo_string = R"(
   HloModule scan_module

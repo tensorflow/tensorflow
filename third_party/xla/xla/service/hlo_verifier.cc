@@ -4037,12 +4037,75 @@ int64_t CountWriters(const HloInstruction* inst,
 //    call2 = b(f32[32]) custom-call(b1),
 //      custom_call_target="writer_2",
 //      output_to_operand_aliasing={{}: (0, {})},
+// Returns true if `inst` is an inner or outer cross buffer slice or update
+// custom fusion:
+// - An inner slice custom fusion whose root is kDynamicUpdateSlice(dst,
+//   kDynamicSlice(src, ...), ...), or
+// - An outer custom fusion with output_to_operand_aliasing whose root is an
+//   inner slice custom fusion or a two element tuple (src_param,
+//   inner_slice_fusion).
+bool IsCrossBufferSliceCustomFusion(const HloInstruction* inst) {
+  if (inst == nullptr || !inst->IsCustomFusion()) {
+    return false;
+  }
+  const HloInstruction* root = inst->fused_expression_root();
+  if (root->opcode() == HloOpcode::kDynamicUpdateSlice &&
+      root->operand(1)->opcode() == HloOpcode::kDynamicSlice) {
+    return true;
+  }
+  if (inst->output_operand_aliasing().empty()) {
+    return false;
+  }
+  if (root->opcode() == HloOpcode::kTuple && root->operand_count() == 2 &&
+      root->operand(0)->opcode() == HloOpcode::kParameter) {
+    root = root->operand(1);
+  }
+  return root->IsCustomFusion() && root->fused_expression_root()->opcode() ==
+                                       HloOpcode::kDynamicUpdateSlice;
+}
+
 int64_t CountWritersInUser(const HloInstruction* inst,
                            absl::Span<const int64_t> shape_index,
                            const HloInstruction* user) {
+  // For cross buffer slice custom fusions and async-start instructions wrapping
+  // them, inspect the called computation's parameter users rather than
+  // conservatively assuming the instruction always writes to the buffer. This
+  // distinguishes read only buffer accesses (such as async gather) from
+  // mutating accesses (such as async scatter), preventing false multiple writer
+  // errors.
+  if (IsCrossBufferSliceCustomFusion(user) ||
+      (user->opcode() == HloOpcode::kAsyncStart &&
+       IsCrossBufferSliceCustomFusion(user->async_wrapped_instruction()))) {
+    const HloComputation* callee = user->opcode() == HloOpcode::kFusion
+                                       ? user->fused_instructions_computation()
+                                       : user->async_wrapped_computation();
+    int64_t num_writers = 0;
+    for (int64_t i = 0; i < user->operand_count(); ++i) {
+      if (user->operand(i) == inst) {
+        const HloInstruction* param = callee->parameter_instruction(i);
+        num_writers += CountWriters(param, shape_index);
+      }
+    }
+    return num_writers;
+  }
+
+  // Since conditional branches are mutually exclusive at runtime, a buffer can
+  // have at most the maximum number of writers across all branches rather than
+  // the sum across branches.
+  if (user->opcode() == HloOpcode::kConditional) {
+    int64_t max_writers = 0;
+    for (int64_t b = 0; b < user->branch_count(); ++b) {
+      if (user->operand(b + 1) == inst) {
+        const HloComputation* branch = user->branch_computation(b);
+        const HloInstruction* param = branch->parameter_instruction(0);
+        max_writers = std::max(max_writers, CountWriters(param, shape_index));
+      }
+    }
+    return max_writers;
+  }
+
   if (HloCallableInstruction::ClassOf(user) ||
       user->opcode() == HloOpcode::kWhile ||
-      user->opcode() == HloOpcode::kConditional ||
       user->opcode() == HloOpcode::kDynamicUpdateSlice) {
     // For HloCallableInstruction, we may overcount here if we will allow
     // a buffer operand not in results.
@@ -4475,7 +4538,11 @@ absl::Status VerifyBuffers(const HloModule& module, bool layout_sensitive) {
       if (inst->opcode() == HloOpcode::kCustomCall) {
         ABSL_RETURN_IF_ERROR(VerifyCustomCall(Cast<HloCustomCallInstruction>(inst),
                                          layout_sensitive));
-      } else if (inst->opcode() == HloOpcode::kWhile) {
+      } else if (inst->opcode() == HloOpcode::kWhile ||
+                 IsCrossBufferSliceCustomFusion(inst)) {
+        // Verify unique buffer writers on cross buffer slice custom fusions to
+        // ensure that internal buffer aliasing and concurrent stream writes do
+        // not create conflicting buffer updates.
         ABSL_RETURN_IF_ERROR(CheckBufferHasUniqueWriters(inst));
       } else if (inst->opcode() == HloOpcode::kParameter) {
         if (comp->IsEntryComputation()) {
