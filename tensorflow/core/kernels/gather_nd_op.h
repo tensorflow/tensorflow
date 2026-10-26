@@ -74,6 +74,12 @@ absl::Status DoGatherNd(
         absl::StrCat("indices has too many elements for int indexing: ", N_big,
                      " > ", std::numeric_limits<int>::max()));
   }
+  if (N_big > std::numeric_limits<Index>::max()) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "indices has too many elements for ",
+        DataTypeString(DataTypeToEnum<Index>::v()), " indexing: ", N_big, " > ",
+        std::numeric_limits<Index>::max()));
+  }
   if (params.NumElements() > std::numeric_limits<Index>::max()) {
     return errors::InvalidArgument("params.NumElements() too large for ",
                                    DataTypeString(DataTypeToEnum<Index>::v()),
