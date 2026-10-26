@@ -42,6 +42,10 @@ tf_class {
     argspec: "args=[\'self\', \'_\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "clear_cache"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "experimental_get_compiler_ir"
     argspec: "args=[\'self\'], varargs=args, keywords=kwargs, defaults=None"
   }

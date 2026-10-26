@@ -326,7 +326,8 @@ class PolymorphicFunction(Callable, metaclass=abc.ABCMeta):
 
       ```
       HloModule a_inference_f_120__.8,
-      entry_computation_layout={(f32[10,20]{1,0},f32[10,20]{1,0})->f32[10,20]{1,0}}
+      entry_computation_layout={
+          (f32[10,20]{1,0},f32[10,20]{1,0})->f32[10,20]{1,0}}
 
       ENTRY %a_inference_f_120__.8 (arg0.1: f32[10,20], arg1.2: f32[10,20]) ->
       f32[10,20] {
@@ -368,6 +369,11 @@ class PolymorphicFunction(Callable, metaclass=abc.ABCMeta):
         (3) or if input shapes are not fully defined for tf.TensorSpec inputs
       TypeError: When called with input in graph mode.
     """
+    pass
+
+  @abc.abstractmethod
+  def clear_cache(self) -> None:
+    """Removes all cached concrete functions for this tf.function."""
     pass
 
 
