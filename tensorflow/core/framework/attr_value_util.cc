@@ -302,7 +302,7 @@ std::string SummarizeAttrValue(const AttrValue& attr_value) {
     case AttrValue::kI:
       return absl::StrCat(attr_value.i());
     case AttrValue::kF:
-      return absl::StrCat(strings::LegacyPrecision(attr_value.f()));
+      return absl::StrCat(absl::HighPrecision(attr_value.f()));
     case AttrValue::kB:
       return attr_value.b() ? "true" : "false";
     case AttrValue::kType:
@@ -324,7 +324,7 @@ std::string SummarizeAttrValue(const AttrValue& attr_value) {
       } else if (attr_value.list().f_size() > 0) {
         for (int i = 0; i < attr_value.list().f_size(); ++i) {
           pieces.push_back(
-              absl::StrCat(strings::LegacyPrecision(attr_value.list().f(i))));
+              absl::StrCat(absl::HighPrecision(attr_value.list().f(i))));
         }
       } else if (attr_value.list().b_size() > 0) {
         for (int i = 0; i < attr_value.list().b_size(); ++i) {
