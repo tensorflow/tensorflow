@@ -1,0 +1,129 @@
+diff --git a/shardy/dialect/sdy/ir/utils.cc b/shardy/dialect/sdy/ir/utils.cc
+index bfa65e31..027835a6 100644
+--- a/shardy/dialect/sdy/ir/utils.cc
++++ b/shardy/dialect/sdy/ir/utils.cc
+@@ -493,11 +493,27 @@ TensorShardingAttr getFuncResultSharding(FuncOp funcOp, int64_t resNum) {
+   return funcOp.getResultAttrOfType<TensorShardingAttr>(resNum, kShardingAttr);
+ }
+ 
++TensorShardingAttr getShardingOrNull(
++    TensorShardingPerValueAttr shardingPerValue, int64_t num) {
++  if (!shardingPerValue) {
++    return TensorShardingAttr();
++  }
++  return shardingPerValue.getSharding(num);
++}
++
+ void setFuncResultSharding(FuncOp funcOp, int64_t resNum,
+                            TensorShardingAttr sharding) {
+   funcOp.setResultAttr(resNum, kShardingAttr, sharding);
+ }
+ 
++void setFuncResultShardings(func::FuncOp funcOp,
++                            TensorShardingPerValueAttr shardingPerValue) {
++  for (int resNum = 0; resNum < funcOp.getNumResults(); resNum++) {
++    setFuncResultSharding(funcOp, resNum,
++                          getShardingOrNull(shardingPerValue, resNum));
++  }
++}
++
+ SmallVector<AxisRefAttr> getGreatestCommonPrefix(ArrayRef<AxisRefAttr> first,
+                                                  ArrayRef<AxisRefAttr> second) {
+   SmallVector<AxisRefAttr> result;
+@@ -756,6 +772,12 @@ SmallVector<AxisRefAttr> getAxisSetDiff(ArrayRef<AxisRefAttr> axesA,
+   return result;
+ }
+ 
++bool isUsedBy(Value value, Operation* user) {
++  return llvm::any_of(value.getUses(), [user](const OpOperand& use) {
++    return use.getOwner() == user;
++  });
++}
++
+ void truncateAxesByRemovingOverlaps(SmallVector<AxisRefAttr>& axes,
+                                     ArrayRef<AxisRefAttr> otherAxisRefs) {
+   for (const auto [axisIndex, curAxis] : llvm::enumerate(axes)) {
+@@ -1264,6 +1286,33 @@ FuncOp getMainFuncOrDie(ModuleOp moduleOp, const SymbolTable& symbolTable,
+   return getFuncOpOrDie(kMainFuncName, symbolTable);
+ }
+ 
++void insertReshardsOnFuncArguments(FuncOp funcOp, CallOp callOp,
++                                   const SymbolTable& symbolTable,
++                                   IRRewriter& rewriter) {
++  TensorShardingPerValueAttr funcArgShardings =
++      getFuncArgShardings(funcOp, symbolTable);
++  if (!funcArgShardings) {
++    Attribute meshOrRef = getMeshOrRef(
++        callOp.getNumOperands(), symbolTable,
++        [&](int64_t i) { return getSharding(callOp.getOperand(i)); });
++    // Return without inserting reshards as neither func arguments nor call
++    // operands have a sharding with non-single-device mesh.
++    if (!meshOrRef) {
++      return;
++    }
++    funcArgShardings = getFullyClosedLike(callOp.getOperands(), meshOrRef);
++  }
++  rewriter.setInsertionPoint(callOp);
++  for (auto [funcArgSharding, operand] : llvm::zip_equal(
++           funcArgShardings.getShardings(), callOp->getOpOperands())) {
++    if (!funcArgSharding.isEquivalent(getSharding(operand.get()))) {
++      auto reshardOp = ReshardOp::create(rewriter, operand.get().getLoc(),
++                                         operand.get(), funcArgSharding);
++      operand.set(reshardOp);
++    }
++  }
++}
++
+ namespace {
+ void insertReshardsOnFuncResults(TensorShardingPerValueAttr funcResultShardings,
+                                  CallOp callOp, IRRewriter& rewriter) {
+diff --git a/shardy/dialect/sdy/ir/utils.h b/shardy/dialect/sdy/ir/utils.h
+index 7a946874..5faa45e1 100644
+--- a/shardy/dialect/sdy/ir/utils.h
++++ b/shardy/dialect/sdy/ir/utils.h
+@@ -376,10 +376,21 @@ void setSharding(Value value, TensorShardingAttr sharding);
+ // Return the sharding of the `resNum` result of the given `funcOp`.
+ TensorShardingAttr getFuncResultSharding(func::FuncOp funcOp, int64_t resNum);
+ 
++// Returns the sharding of the `num` sharding of the given
++// `shardingPerValue`. Returns null sharding if `shardingPerValue` is null.
++TensorShardingAttr getShardingOrNull(
++    TensorShardingPerValueAttr shardingPerValue, int64_t num);
++
+ // Sets the sharding of the `resNum` result of the given `funcOp` to `sharding`.
+ void setFuncResultSharding(func::FuncOp funcOp, int64_t resNum,
+                            TensorShardingAttr sharding);
+ 
++// Sets/overrides the result sharding attributes on `funcOp` to a
++// `TensorShardingPerValueAttr` named `sdy.sharding` consisting of `shardings`.
++// Clears func result sharding if `shardingPerValue` is null.
++void setFuncResultShardings(func::FuncOp funcOp,
++                            TensorShardingPerValueAttr shardingPerValue);
++
+ // Returns the sharding of each value in `values`. Returns an empty array if the
+ // op has no sharding attributes.
+ SmallVector<TensorShardingAttr> getShardings(ValueRange values);
+@@ -576,6 +587,10 @@ bool hasOnlyUsersOfType(Operation* op) {
+   });
+ }
+ 
++
++// Returns true if `value` is used by `user`.
++bool isUsedBy(Value value, Operation* user);
++
+ // Returns the largest prefix of `axisRef` that does not overlap with any axes
+ // in `otherAxisRefs`.
+ template <typename Range>
+@@ -691,6 +706,12 @@ mlir::func::FuncOp getMainFuncOrDie(ModuleOp moduleOp,
+                                     const SymbolTable& symbolTable,
+                                     bool useSingleFunc = false);
+ 
++// Adds reshard operations to resolve conflicts between call argument
++// sharding and func input sharding.
++void insertReshardsOnFuncArguments(func::FuncOp funcOp, func::CallOp callOp,
++                                   const mlir::SymbolTable& symbolTable,
++                                   IRRewriter& rewriter);
++
+ // Adds reshard operations to resolve conflicts between call result
+ // sharding and func result sharding. Sets the call result sharding to the func
+ // result shardings. Assumes `callOp` has non-empty
