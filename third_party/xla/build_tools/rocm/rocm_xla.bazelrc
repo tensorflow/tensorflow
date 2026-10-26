@@ -56,6 +56,8 @@ build:rocm_rbe_dynamic --experimental_local_execution_delay=1000
 build:rocm_rbe_dynamic --remote_download_minimal
 build:rocm_rbe_dynamic --local_resources=cpu=HOST_CPUS
 
+build:ci_repo_cache --repository_cache=/bazel-repo-cache/repo
+
 build:tsan --strip=never
 build:tsan --copt -fsanitize=thread
 build:tsan --copt -g

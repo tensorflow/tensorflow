@@ -143,6 +143,7 @@ jobs:
             --//jax:build_jaxlib=wheel \
             --//jax:build_jax=true \
             --local_test_jobs=1 \
+            --repository_cache=/bazel-repo-cache/repo \
             --action_env=JAX_ENABLE_X64=0 \
             --repo_env=HERMETIC_PYTHON_VERSION=3.14 \
             --repo_env=TF_ROCM_RBE_DOCKER_IMAGE="${DOCKER_IMAGE}" \
@@ -174,6 +175,19 @@ jobs:
     container: ${{ needs.rocm-config.outputs.skip-xla != 'true' && needs.rocm-config.outputs.docker-image || null }}  # zizmor: ignore[unpinned-images]
     env:
       DOCKER_IMAGE: ${{ needs.rocm-config.outputs.docker-image }}
+      # Bazel flags shared by every XLA invocation below: bazel-diff and both
+      # test runs. Spliced into the `run:` blocks as plain text, so the
+      # `${VAR}` references are expanded by the shell of the step using them.
+      ROCM_COMMON_BAZEL_ARGS: >-
+        --config=rocm_ci_hermetic
+        --config=rocm_rbe_dynamic
+        --config=ci_repo_cache
+        --repo_env=TF_ROCM_RBE_DOCKER_IMAGE="${DOCKER_IMAGE}"
+        --repo_env=ROCM_PATH=""
+        --repo_env=ROCM_DISTRO_URL="${ROCM_DISTRO_URL}"
+        --repo_env=ROCM_DISTRO_HASH="${ROCM_DISTRO_HASH}"
+        --repo_env=TF_ROCM_AMDGPU_TARGETS="${ROCM_AMD_GPU_TARGETS}"
+        --repo_env=TF_ROCM_RBE_SINGLE_GPU_POOL="${ROCM_SINGLE_GPU_RBE_POOL}"
     defaults:
       run:
         shell: bash
@@ -198,15 +212,8 @@ jobs:
             --build_name="XLA Linux x86 AMD Instinct GPU" \
             --use_cquery \
             --bazelrc="build_tools/rocm/rocm_xla_ci.bazelrc" \
-            --config=rocm_ci_hermetic \
-            --config=rocm_rbe_dynamic \
+            ${{ env.ROCM_COMMON_BAZEL_ARGS }} \
             --config=ci_single_gpu \
-            --repo_env="TF_ROCM_RBE_DOCKER_IMAGE=${DOCKER_IMAGE}" \
-            --repo_env="ROCM_PATH=" \
-            --repo_env="ROCM_DISTRO_URL=${ROCM_DISTRO_URL}" \
-            --repo_env="ROCM_DISTRO_HASH=${ROCM_DISTRO_HASH}" \
-            --repo_env="TF_ROCM_AMDGPU_TARGETS=${ROCM_AMD_GPU_TARGETS}" \
-            --repo_env="TF_ROCM_RBE_SINGLE_GPU_POOL=${ROCM_SINGLE_GPU_RBE_POOL}" \
             --target_pattern="//xla/..." \
             --output_target_pattern_file="${RUNNER_TEMP:-/tmp}/rocm_impacted_targets.txt"
 
@@ -221,18 +228,10 @@ jobs:
           XLA_ROCM_TARGET_PATTERN_FILE: ${{ steps.bazel_diff.outputs.target_pattern_file }}
         run: |
           build_tools/rocm/run_xla_ci_build.sh \
-            --config=rocm_ci_hermetic \
-            --config=rocm_rbe_dynamic \
+            ${{ env.ROCM_COMMON_BAZEL_ARGS }} \
             --config=ci_single_gpu \
             --test_env=HSA_CO_DMACOPY_SIZE=-1 \
             --config=no_flaky \
-            --repo_env=TF_ROCM_RBE_DOCKER_IMAGE="${DOCKER_IMAGE}" \
-            --repo_env=TF_ROCM_AMDGPU_TARGETS=gfx950 \
-            --repo_env=ROCM_PATH="" \
-            --repo_env=ROCM_DISTRO_URL="${ROCM_DISTRO_URL}" \
-            --repo_env=ROCM_DISTRO_HASH="${ROCM_DISTRO_HASH}" \
-            --repo_env=TF_ROCM_AMDGPU_TARGETS="${ROCM_AMD_GPU_TARGETS}" \
-            --repo_env=TF_ROCM_RBE_SINGLE_GPU_POOL="${ROCM_SINGLE_GPU_RBE_POOL}" \
             --local_test_jobs=1 \
             --bes_keywords=xla \
             --bes_keywords=upstream \
@@ -249,19 +248,11 @@ jobs:
           XLA_ROCM_TARGET_PATTERN_FILE: ${{ steps.bazel_diff.outputs.target_pattern_file }}
         run: |
           build_tools/rocm/run_xla_ci_build.sh \
-            --config=rocm_ci_hermetic \
-            --config=rocm_rbe_dynamic \
+            ${{ env.ROCM_COMMON_BAZEL_ARGS }} \
             --config=ci_rocm_cpu \
             --config=no_flaky \
             --local_test_jobs=200 \
             --test_env=HSA_CO_DMACOPY_SIZE=-1 \
-            --repo_env=TF_ROCM_RBE_DOCKER_IMAGE="${DOCKER_IMAGE}" \
-            --repo_env=TF_ROCM_AMDGPU_TARGETS=gfx950 \
-            --repo_env=ROCM_PATH="" \
-            --repo_env=ROCM_DISTRO_URL="${ROCM_DISTRO_URL}" \
-            --repo_env=ROCM_DISTRO_HASH="${ROCM_DISTRO_HASH}" \
-            --repo_env=TF_ROCM_AMDGPU_TARGETS="${ROCM_AMD_GPU_TARGETS}" \
-            --repo_env=TF_ROCM_RBE_SINGLE_GPU_POOL="${ROCM_SINGLE_GPU_RBE_POOL}" \
             --bes_keywords=xla \
             --bes_keywords=upstream \
             --bes_keywords=cpu \
