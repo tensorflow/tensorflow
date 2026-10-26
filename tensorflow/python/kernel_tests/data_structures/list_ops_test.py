@@ -1883,6 +1883,28 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         [1.0, 2.0],
     )
 
+  @test_util.run_in_graph_and_eager_modes
+  def testSetItemResizeExceedingMaxElementsFails(self):
+    # Regression test: TensorListSetItem with resize_if_index_out_of_bounds=True
+    # and no max_num_elements cap used to allow unbounded allocation (CWE-770).
+    # The fix applies the same kMaxTensorListElements guard used by
+    # TensorListReserve and TensorListResize.
+    l = list_ops.empty_tensor_list(
+        element_dtype=dtypes.float32,
+        element_shape=[],
+        max_num_elements=-1,
+    )
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, "exceeds maximum allowed elements"
+    ):
+      l = gen_list_ops.tensor_list_set_item(
+          input_handle=l,
+          index=(1 << 24),
+          item=constant_op.constant(1.0),
+          resize_if_index_out_of_bounds=True,
+      )
+      self.evaluate(l)
+
   @test_util.run_deprecated_v1
   @test_util.enable_control_flow_v2
   def testSkipEagerResizeGrad(self):
