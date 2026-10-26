@@ -18,7 +18,9 @@
 #define XLA_HLO_TOOLS_HLO_DIFF_UTILS_TEST_UTIL_H_
 
 #include <string>
+#include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -30,6 +32,21 @@
 
 namespace xla {
 namespace hlo_diff {
+
+// Returns the sorted names of the left instructions in `pairs`, a map from left
+// to right instructions.
+template <typename PairMap>
+std::vector<std::string> GetSortedLeftInstructionNames(const PairMap& pairs) {
+  std::vector<std::string> names;
+  names.reserve(pairs.size());
+  // The names are sorted below, so the iteration order doesn't matter.
+  // NOLINTNEXTLINE(*-custom-deterministic-iteration-order)
+  for (const auto& [left, right] : pairs) {
+    names.emplace_back(left->name());
+  }
+  absl::c_sort(names);
+  return names;
+}
 
 // Returns the node with the given name.
 // Returns nullptr if the node is not found.

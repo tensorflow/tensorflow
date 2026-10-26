@@ -5451,6 +5451,21 @@ TEST(HloParserSingleOpTest, SingleOpNoNames) {
               GmockMatch(m::Multiply(m::Parameter(0), m::Parameter(1))));
 }
 
+TEST(HloParserSingleOpTest, SingleOpWithControlPredecessors) {
+  const std::string text =
+      "%multiply = f32[2,4]{1,0} multiply(f32[2,4]{1,0} %broadcast, "
+      "f32[2,4]{1,0} %x), control-predecessors={%control_pred, %x}";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(text));
+  const HloComputation* computation = module->entry_computation();
+  ASSERT_NE(computation, nullptr);
+  const HloInstruction* root = computation->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Multiply(m::Parameter(0), m::Parameter(1))));
+  ASSERT_EQ(root->control_predecessors().size(), 2);
+  EXPECT_EQ(root->control_predecessors()[0]->name(), "control_pred");
+  EXPECT_EQ(root->control_predecessors()[1]->name(), "x");
+}
+
 TEST(HloParserSingleOpTest, SkipStackFrameIndex) {
   const std::string text = R"(HloModule m, entry_computation_layout={()->pred[]}
 
