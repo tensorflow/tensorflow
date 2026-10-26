@@ -1167,7 +1167,6 @@ absl::Status BundleReader::GetSliceValue(
     absl::string_view full_tensor_key,
     const BundleEntryProto& full_tensor_entry, const TensorSlice& slice_spec,
     Tensor* val) {
-  using checkpoint::RegisterTensorSlice;
   using checkpoint::TensorSliceSet;
   DCHECK_GE(full_tensor_entry.slices_size(), 0);
 
@@ -1179,31 +1178,25 @@ absl::Status BundleReader::GetSliceValue(
 
   // Populates the "full tensor key -> TensorSliceSet" cache.
   if (tss == nullptr) {
+    // Build the set locally and add it to the cache only after every slice
+    // registers, so a malformed slice cannot leave an incomplete set behind
+    // for a subsequent lookup.
+    auto new_tss =
+        std::make_unique<TensorSliceSet>(full_shape, full_tensor_entry.dtype());
     if (full_tensor_entry.slices().empty()) {
       // Special case: a writer has saved a tensor fully, but the reader wants
       // to read in slices.  We therefore register the full slice on-demand here
       // without further complicating the on-disk bundle format.
-      TF_RETURN_IF_ERROR(RegisterTensorSlice(
-          full_tensor_key_string, full_shape, full_tensor_entry.dtype(),
-          /* tag */ "",
-          /* full slice */ TensorSlice(full_shape.dims()), &tensor_slices_));
+      TF_RETURN_IF_ERROR(
+          new_tss->Register(TensorSlice(full_shape.dims()), /*tag=*/""));
     }
-    // Validate every proto before changing the cache, so a malformed later
-    // slice cannot leave an incomplete set for a subsequent lookup.
-    std::vector<TensorSlice> stored_slices;
-    stored_slices.reserve(full_tensor_entry.slices_size());
     for (const TensorSliceProto& slice : full_tensor_entry.slices()) {
       TensorSlice stored_slice;
       TF_RETURN_IF_ERROR(TensorSlice::BuildTensorSlice(slice, &stored_slice));
-      stored_slices.push_back(std::move(stored_slice));
+      TF_RETURN_IF_ERROR(new_tss->Register(stored_slice, /*tag=*/""));
     }
-    for (const TensorSlice& stored_slice : stored_slices) {
-      TF_RETURN_IF_ERROR(RegisterTensorSlice(
-          full_tensor_key_string, full_shape, full_tensor_entry.dtype(),
-          /* tag */ "", stored_slice, &tensor_slices_));
-    }
-    tss = gtl::FindPtrOrNull(tensor_slices_, full_tensor_key_string);
-    CHECK_NE(tss, nullptr);
+    tss = new_tss.get();
+    tensor_slices_.emplace(full_tensor_key_string, new_tss.release());
   }
   if (!tss->QueryMeta(slice_spec, &details)) {
     return absl::InvalidArgumentError(
@@ -1231,10 +1224,11 @@ absl::Status BundleReader::GetSliceValue(
     }
 
     if (stored_slice_entry.dtype() != full_tensor_entry.dtype()) {
-      return errors::DataLoss("Stored slice dtype ",
-                              DataTypeString(stored_slice_entry.dtype()),
-                              " does not match full tensor dtype ",
-                              DataTypeString(full_tensor_entry.dtype()));
+      return absl::DataLossError(absl::StrCat(
+          "Stored slice dtype ", DataTypeString(stored_slice_entry.dtype()),
+          " for tensor ", full_tensor_key_string,
+          " does not match full tensor dtype ",
+          DataTypeString(full_tensor_entry.dtype())));
     }
 
     // TODO(zongheng): should we take an OpKernelContext, so that we can call

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/util/tensor_bundle/tensor_bundle.h"
 
+#include <cstdint>
 #include <random>
 #include <string>
 #include <utility>
@@ -764,7 +765,6 @@ TEST(TensorBundleTest, ValidatedPartitionedTensorSlices) {
   test::ExpectTensorEqual<float>(part, test::AsTensor<float>({2, 3}));
 }
 
-
 TEST(TensorBundleTest, ValidatedEmptyFullTensorSlice) {
   const std::string prefix = Prefix("validated_empty_full_slice");
   const TensorShape full_shape({0});
@@ -775,6 +775,12 @@ TEST(TensorBundleTest, ValidatedEmptyFullTensorSlice) {
                                  Tensor(DT_FLOAT, full_shape)));
     TF_ASSERT_OK(writer.Finish());
   }
+  // AddSlice() writes a full slice as a plain entry. Store the full extent in
+  // the entry so that the first read parses and registers it as a slice.
+  TF_ASSERT_OK(
+      RewriteEntry(prefix, "tensor", [&full_extent](BundleEntryProto* entry) {
+        full_extent.AsProto(entry->add_slices());
+      }));
   BundleReader reader(Env::Default(), prefix);
   TF_ASSERT_OK(reader.status());
   Tensor full(DT_FLOAT, full_shape);
@@ -789,10 +795,22 @@ TEST(TensorBundleTest, InvalidStoredSliceExtents) {
   const TensorShape full_shape({4});
   const TensorSlice first = TensorSlice::ParseOrDie("0,2");
   const TensorSlice second = TensorSlice::ParseOrDie("2,2");
-  for (const auto& extent :
-       std::vector<std::pair<int64_t, int64_t>>{{-1, 2}, {2, 0}, {2, -2}}) {
+  // The first three extents fail when the stored slice is built. The last two
+  // build, but fail to register on the full shape: {2, 5} ends past the end
+  // and {1, 2} overlaps the first slice.
+  struct InvalidExtent {
+    int64_t start;
+    int64_t length;
+    absl::StatusCode code;
+  };
+  for (const InvalidExtent& extent :
+       std::vector<InvalidExtent>{{-1, 2, absl::StatusCode::kInvalidArgument},
+                                  {2, 0, absl::StatusCode::kInvalidArgument},
+                                  {2, -2, absl::StatusCode::kInvalidArgument},
+                                  {2, 5, absl::StatusCode::kInternal},
+                                  {1, 2, absl::StatusCode::kInternal}}) {
     const std::string prefix = Prefix(
-        absl::StrCat("invalid_extent_", extent.first, "_", extent.second));
+        absl::StrCat("invalid_extent_", extent.start, "_", extent.length));
     {
       BundleWriter writer(Env::Default(), prefix);
       TF_ASSERT_OK(writer.AddSlice("tensor", full_shape, first,
@@ -804,31 +822,36 @@ TEST(TensorBundleTest, InvalidStoredSliceExtents) {
     TF_ASSERT_OK(
         RewriteEntry(prefix, "tensor", [&extent](BundleEntryProto* entry) {
           auto* stored_extent = entry->mutable_slices(1)->mutable_extent(0);
-          stored_extent->set_start(extent.first);
-          stored_extent->set_length(extent.second);
+          stored_extent->set_start(extent.start);
+          stored_extent->set_length(extent.length);
         }));
     BundleReader reader(Env::Default(), prefix);
     TF_ASSERT_OK(reader.status());
-    std::vector<TensorSlice> slices;
-    EXPECT_TRUE(
-        absl::IsInvalidArgument(reader.LookupTensorSlices("tensor", &slices)));
-    EXPECT_TRUE(slices.empty());
+    const bool fails_build = extent.code == absl::StatusCode::kInvalidArgument;
+    if (fails_build) {
+      std::vector<TensorSlice> slices;
+      EXPECT_TRUE(absl::IsInvalidArgument(
+          reader.LookupTensorSlices("tensor", &slices)));
+      EXPECT_TRUE(slices.empty());
+    }
     // Retrying must still validate the malformed second slice, even when the
     // requested data is entirely in the valid first slice.
     for (int attempt = 0; attempt < 2; ++attempt) {
       Tensor full(DT_FLOAT, full_shape);
       const absl::Status full_status = reader.Lookup("tensor", &full);
-      EXPECT_TRUE(absl::IsInvalidArgument(full_status)) << full_status;
-      EXPECT_TRUE(absl::StrContains(full_status.message(),
-                                    "Expected non-negative start"))
-          << full_status;
+      EXPECT_EQ(full_status.code(), extent.code) << full_status;
       Tensor part(DT_FLOAT, TensorShape({2}));
       const absl::Status slice_status =
           reader.LookupSlice("tensor", first, &part);
-      EXPECT_TRUE(absl::IsInvalidArgument(slice_status)) << slice_status;
-      EXPECT_TRUE(absl::StrContains(slice_status.message(),
-                                    "Expected non-negative start"))
-          << slice_status;
+      EXPECT_EQ(slice_status.code(), extent.code) << slice_status;
+      if (fails_build) {
+        EXPECT_TRUE(absl::StrContains(full_status.message(),
+                                      "Expected non-negative start"))
+            << full_status;
+        EXPECT_TRUE(absl::StrContains(slice_status.message(),
+                                      "Expected non-negative start"))
+            << slice_status;
+      }
     }
   }
 }
