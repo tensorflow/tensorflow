@@ -1140,6 +1140,7 @@ absl::Status BundleReader::ReadCurrent(Tensor* val) {
 
 absl::Status BundleReader::LookupTensorSlices(
     absl::string_view key, std::vector<TensorSlice>* slices) {
+  DCHECK(slices != nullptr);
   slices->clear();
   BundleEntryProto entry;
   TF_RETURN_IF_ERROR(GetBundleEntryProto(key, &entry));
@@ -1196,7 +1197,7 @@ absl::Status BundleReader::GetSliceValue(
       TF_RETURN_IF_ERROR(new_tss->Register(stored_slice, /*tag=*/""));
     }
     tss = new_tss.get();
-    tensor_slices_.emplace(full_tensor_key_string, new_tss.release());
+    tensor_slices_[full_tensor_key_string] = new_tss.release();
   }
   if (!tss->QueryMeta(slice_spec, &details)) {
     return absl::InvalidArgumentError(
