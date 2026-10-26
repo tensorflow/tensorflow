@@ -225,7 +225,8 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
   virtual absl::StatusOr<llvm::Value*> EmitReducePrecision(
       const HloInstruction* hlo, llvm::Value* x);
 
-  virtual absl::StatusOr<std::tuple<llvm::Value*, llvm::Value*, llvm::Value*>>
+  virtual absl::StatusOr<std::tuple<llvm::Value*, llvm::Value*, llvm::Value*,
+                                    llvm::Value*, llvm::Value*>>
   EmitComplexAbsHelper(PrimitiveType prim_type, llvm::Value* real,
                        llvm::Value* imag, bool return_sqrt);
 
